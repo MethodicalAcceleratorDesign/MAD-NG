@@ -2,9 +2,9 @@ Methodical Accelerator Design
 ===
 
       ____  __   ______    ______    |
-       /  \/  \   /  _  \   /  _  \  | Methodical Accelerator Design (2015+)
-      /  ,--, /  /  /_/ /  /  /_/ /  |
-     /__/  /_/  /__/ /_/  /_____ /   | http://cern.ch/mad
+       /  \/  \   /  _  \   /  _  \  | Methodical Accelerator Design
+      /  ,--, /  /  /_/ /  /  /_/ /  | http://cern.ch/mad
+     /__/  /_/  /__/ /_/  /_____ /   | version 0.0.0 (2015)
                                      |
 
 
