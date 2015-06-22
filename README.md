@@ -1,0 +1,4 @@
+mad
+===
+
+Methodical Accelerator Design
