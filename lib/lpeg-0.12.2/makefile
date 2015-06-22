@@ -1,7 +1,7 @@
-LIBNAME = lpeg
-LUADIR = ../luajit-2.0/src
+LIBNAME = lpeg.so
+LUADIR = ../lua
 
-COPT = -O2
+COPT = -O3
 # COPT = -DLPEG_DEBUG -g
 
 CWARNS = -Wall -Wextra -pedantic \
@@ -36,7 +36,7 @@ macosx:
 	make lpeg.so "DLLFLAGS = -bundle -undefined dynamic_lookup"
 
 lpeg.so: $(FILES)
-	env $(CC) $(DLLFLAGS) $(FILES) -o lpeg.so
+	env $(CC) $(DLLFLAGS) $(FILES) -o $(LIBNAME)
 
 $(FILES): makefile
 
@@ -44,7 +44,7 @@ test: test.lua re.lua lpeg.so
 	./test.lua
 
 clean:
-	rm -f $(FILES) lpeg.so
+	rm -f $(FILES) lpeg-*.so
 
 
 lpcap.o: lpcap.c lpcap.h lptypes.h

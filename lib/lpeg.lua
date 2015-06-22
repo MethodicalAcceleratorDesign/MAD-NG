@@ -1,11 +1,14 @@
---[[
-Wrapper for lpeg.so.
-Requires and returns lpeg.so, keeping the cpath as it is.
-]]
-
+local pkg = "lpeg-0.12.2"
+local oss = jit.os
 local pcp = package.cpath
-package.cpath = ";;./lib/lpeg/lpeg-0.12/?.so;.\\lib\\?\\lpeg-0.12\\?.dll;"
+local plp = package.path
+package.cpath = ";;./lib/"..pkg.."/?-"..oss..".so;.\\lib\\"..pkg.."\\?-"..oss..".dll;"
+package.path = ";;./lib/"..pkg.."/?.lua;.\\lib\\"..pkg.."\\?.lua;"
 local lpeg = require"lpeg"
-lpeg.setmaxstack(1024)
+local re   = require"re"
 package.cpath = pcp
-return lpeg
+package.path  = plp
+
+lpeg.setmaxstack(1024)
+
+return lpeg, re
