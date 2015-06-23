@@ -2,9 +2,9 @@
 # All Targets
 #
 
-all-lnx: lpeg-lnx
-all-osx: lpeg-osx
-all-win: lpeg-win
+all-lnx: luajit-lnx lpeg-lnx
+all-osx: luajit-osx lpeg-osx
+all-win: luajit-win lpeg-win
 
 #
 # LuaJIT (see README.luajit)
