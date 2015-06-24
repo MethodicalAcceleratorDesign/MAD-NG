@@ -42,7 +42,7 @@ cleanall: clean
 	rm -rf $(addsuffix "$(PWD)/luajit/",$(OSLIST))
 
 #
-# Detect platform (same as luajit ffi.os)
+# Detect platform (same as luajit jit.os)
 #
 
 ifeq ($(or $(windir),$(WINDIR)),)
