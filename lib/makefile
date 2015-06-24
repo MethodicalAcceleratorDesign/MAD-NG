@@ -26,7 +26,7 @@ luajit:
 # LPEG (see README.lpeg)
 #
 
-lpeg: luajit
+lpeg:
 	make -C $@ $(TG) LUADIR=../luajit/$(OS)/include/luajit-2.1 LIBNAME=lpeg-$(OS).so
 
 ###############################################################################
@@ -39,7 +39,7 @@ clean:
 	$(foreach pkg,$(packages),make -C $(pkg) clean ;)
 
 cleanall: clean
-	rm -rf $(addsuffix "$(PWD)/luajit/",$(OSLIST))
+	rm -rf $(addprefix $(PWD)/luajit/,$(OSLIST))
 
 #
 # Detect platform (same as luajit jit.os)
