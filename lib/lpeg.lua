@@ -1,4 +1,4 @@
-local oss = jit.os
+local oss = ffi.os
 local pcp = package.cpath
 local plp = package.path
 package.cpath = ";;./lib/lpeg/?-"..oss..".so;.\\lib\\lpeg\\?-"..oss..".dll;"

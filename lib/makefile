@@ -1,42 +1,64 @@
 #
-# All Targets
+# Packages
 #
 
-all-lnx: luajit-lnx lpeg-lnx
-all-osx: luajit-osx lpeg-osx
-all-win: luajit-win lpeg-win
+packages := luajit lpeg
+
+#
+# Targets
+#
+
+.PHONY: $(packages)
+
+all:    $(packages)
+
+###############################################################################
 
 #
 # LuaJIT (see README.luajit)
 #
 
-.PHONY: luajit
-
-luajit-lnx: luajit
-	rm -rf "$(PWD)/luajit/Linux" ; \
-	make -C luajit install PREFIX="$(PWD)/luajit/Linux"
-
-luajit-osx: luajit
-	rm -rf "$(PWD)/luajit/OSX" ; \
-	make -C luajit install PREFIX="$(PWD)/luajit/OSX"
- 
-luajit-win: luajit
-	rm -rf "$(PWD)/luajit/Windows" ; \
-	make -C luajit install PREFIX="$(PWD)/luajit/Windows"
-
 luajit:
-	make -C luajit clean ; \
-	make -C luajit amalg
+	make -C $@ amalg ; \
+	make -C $@ install PREFIX="$(PWD)/$@/$(OS)"
 
 #
 # LPEG (see README.lpeg)
 #
 
-lpeg-osx:
-	make -C lpeg macosx LUADIR=../luajit/OSX/include/luajit-2.1 LIBNAME=lpeg-OSX.so
+lpeg: luajit
+	make -C $@ $(TG) LUADIR=../luajit/$(OS)/include/luajit-2.1 LIBNAME=lpeg-$(OS).so
 
-lpeg-lnx:
-	make -C lpeg linux LUADIR=../luajit/Linux/include/luajit-2.1 LIBNAME=lpeg-Linux.so
+###############################################################################
 
-lpeg-win:
-	make -C lpeg windows LUADIR=../luajit/Linux/include/luajit-2.1 LIBNAME=lpeg-Windows.so
+#
+# Cleaning
+#
+
+clean:
+	$(foreach pkg,$(packages),make -C $(pkg) clean ;)
+
+cleanall: clean
+	rm -rf $(addsuffix "$(PWD)/luajit/",$(OSLIST))
+
+#
+# Detect platform (same as luajit ffi.os)
+#
+
+ifeq ($(or $(windir),$(WINDIR)),)
+OS := $(subst Darwin,OSX,$(shell uname -s))
+else
+OS := Windows
+endif
+
+OSLIST := Linux OSX Windows
+
+ifeq ($(filter $(OS),$(OSLIST)),)
+$(error Unsupported platform $(OS))
+endif
+
+TG = $(target-$(OS))
+
+target-Linux   := linux
+target-OSX     := macosx
+target-Windows := windows
