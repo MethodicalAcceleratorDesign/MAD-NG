@@ -2,6 +2,7 @@ local M = { __author = 'ldeniau', __version = '2015.06.25', help = {}, test = {}
 
 local ffi = require 'ffi'
 local clib = ffi.C
+local mabs = math.abs
 
 local cfun = {
   { 'abs', 'arg',
@@ -30,37 +31,41 @@ for _, t in ipairs(cfun) do
   end
 end
 
+-- Lua inline
 local complex
 
-local tocomplex = function (x, y)
-  if type(x) == 'number' then x = complex(x) end
-  if type(y) == 'number' then y = complex(y) end
-  return x, y
+function M.real (x) return x.re end
+function M.imag (x) return x.im end
+function M.conj (x) return complex(x.re, -x.im) end
+
+function M.__unm (x) return complex(-x.re, -x.im) end
+
+function M.__eq  (x,y)
+  x, y = complex(x), complex(y)
+  return x.re == y.re and x.im == y.im
 end
 
-function M.real (x) return x.re end 
-function M.imag (x) return x.im end 
-function M.conj (x) return complex(x.re, -x.im) end 
-
-function M.add (x, y)
-  x, y = tocomplex(x, y)
+function M.__add (x, y)
+  x, y = complex(x), complex(y)
   return complex(x.re + y.re, x.im + y.im)
 end
 
-function M.sub (x, y)
-  x, y = tocomplex(x, y)
+function M.__sub (x, y)
+  x, y = complex(x), complex(y)
   return complex(x.re - y.re, x.im - y.im)
 end
 
-function M.mul (x, y)
-  x, y = tocomplex(x, y)
+function M.__mul (x, y)
+  x, y = complex(x), complex(y)
   return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
 end
 
-function M.div (x, y)
-  x, y = tocomplex(x, y)
+function M.__div (x, y)
+  x = complex(x)
+  if type(y) == 'number' then return complex(x.re / y, x.im / y) end
+
   local r, d
-  if math.abs(y.re) < math.abs(y.im) then
+  if mabs(y.re) < mabs(y.im) then
     r = y.re / y.im
     d = y.re * r + y.im
     return complex((x.re * r + x.im) / d, (y.im * r - y.re) / d)
@@ -81,16 +86,9 @@ function M.tostring (x)
 end
 
 M.__index = M
-M.__eq  = function (x,y) return x.re == y.re and x.im == y.im end
-M.__unm = function (x) return complex(-x.re, -x.im) end
-M.__add = M.add
-M.__sub = M.sub
-M.__mul = M.mul
-M.__div = M.div
 M.__pow = clib.cpow
 M.__tostring = M.tostring
 
 complex = ffi.metatype('complex', M)
-M.I     = complex(0,1)
 
 return complex
