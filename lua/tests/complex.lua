@@ -9,3 +9,7 @@ for i=1,n do
 end
 
 print('n=', n, 'a=', a, 'b=', b)
+print('a^2=', a^2)
+print('a^n=', a^n)
+print('a^0.5=', a^0.5)
+print('sqrt(a)=', a:sqrt())

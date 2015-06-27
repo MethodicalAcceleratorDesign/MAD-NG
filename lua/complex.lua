@@ -1,6 +1,7 @@
 local M = { __author = 'ldeniau', __version = '2015.06.25', help = {}, test = {} }
 
 local ffi = require 'ffi'
+local bit = require 'bit'
 local clib = ffi.C
 local mabs = math.abs
 
@@ -76,6 +77,33 @@ function M.__div (x, y)
   end
 end
 
+local band, rshift = bit.band, bit.rshift
+local int_msk = 2^52 + 2^51
+
+local function is_integer(x)
+  return (x + int_msk) - int_msk == x
+end
+
+function M.pow (x, y)
+  if not is_integer(y) then
+    return clib.cpow(x, y)
+  end
+
+  if y <  0 then x, y = 1/x, -y end
+
+  local r = 1;
+
+  while true do
+    if band(y, 1) ~= 0 then r = r * x end
+    y = rshift(y, 1)
+    if y == 0 then break end
+    x = x * x
+  end
+
+  return r
+end
+M.__pow = M.pow
+
 function M.tostring (x)
 -- io.write('complex.__tostring called\n')
       if x.im == 0 then return tostring(x.re)
@@ -85,9 +113,8 @@ function M.tostring (x)
   end
 end
 
-M.__index = M
-M.__pow = clib.cpow
 M.__tostring = M.tostring
+M.__index = M
 
 complex = ffi.metatype('complex', M)
 
