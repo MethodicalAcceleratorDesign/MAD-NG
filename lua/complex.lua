@@ -1,4 +1,4 @@
-local M = { __author = 'ldeniau', __version = '2015.06.25', help = {}, test = {} }
+local M = { __author = 'ldeniau', __version = '2015.06.28', help = {}, test = {} }
 
 local ffi = require 'ffi'
 local bit = require 'bit'
@@ -8,7 +8,7 @@ local mabs = math.abs
 local cfun = {
   { 'abs', 'arg',
     fmt = "double c%s (double complex x);" },
-  {  'exp',  'log',  'proj',  'sqrt',
+  {  'exp',  'log', 'sqrt',  'proj',
      'sin',  'cos',  'tan',  'sinh',  'cosh',  'tanh',
     'asin', 'acos', 'atan', 'asinh', 'acosh', 'atanh',
     fmt = "double complex c%s (double complex x);" },
@@ -89,7 +89,7 @@ function M.pow (x, y)
     return clib.cpow(x, y)
   end
 
-  if y <  0 then x, y = 1/x, -y end
+  if y < 0 then x, y = 1/x, -y end
 
   local r = 1;
 
@@ -105,7 +105,7 @@ end
 M.__pow = M.pow
 
 function M.tostring (x)
--- io.write('complex.__tostring called\n')
+-- io.write('complex.__tostring called\n') -- __tostring never called, bug?
       if x.im == 0 then return tostring(x.re)
   elseif x.re == 0 then return string.format('%si',tostring(x.im))
   elseif x.im <  0 then return string.format('%s%si',tostring(x.re),tostring(x.im))
