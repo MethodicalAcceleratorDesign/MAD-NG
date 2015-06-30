@@ -1,5 +1,1 @@
---[[
-for _,v in ipairs(arg) do
-	print(v)
-end
-]]
+local M = { __author = 'ldeniau', __version = '2015.06', help = {}, test = {} }

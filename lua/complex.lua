@@ -1,19 +1,55 @@
-local M = { __author = 'ldeniau', __version = '2015.06.28', help = {}, test = {} }
+local M = { __author = 'ldeniau', __version = '2015.06.30', __help = {}, __test = {} }
+
+-- HELP ------------------------------------------------------------------------
+
+M.__help.self = [[
+NAME
+  complex -- complex number
+
+SYNOPSIS
+  complex = require 'complex'
+  local I = complex(0,1)
+  local z = 2+3i
+  local Z = 2+3*I
+
+DESCRIPTION
+  The module complex implements the operators and math functions on complex
+  numbers:
+  - (unary), -, +, *, /, ^, ==,
+  real, imag, conj,
+  abs, arg, exp, log, pow, sqrt, proj,
+  sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
+  tostring.
+
+RETURN VALUES
+  The constructor of complex number
+
+SEE ALSO
+  math
+]]
+
+-- DEFS ------------------------------------------------------------------------
 
 local ffi = require 'ffi'
 local bit = require 'bit'
+local gen = require 'generic'
 local clib = ffi.C
-local mabs = math.abs
+local m_abs, isint = math.abs, math.isint
 
 local cfun = {
   { 'abs', 'arg',
-    fmt = "double c%s (double complex x);" },
-  {  'exp',  'log', 'sqrt',  'proj',
-     'sin',  'cos',  'tan',  'sinh',  'cosh',  'tanh',
-    'asin', 'acos', 'atan', 'asinh', 'acosh', 'atanh',
-    fmt = "double complex c%s (double complex x);" },
+    fmt = "double c%s (double complex x);"
+  },
+
+  { 'exp',  'log', 'sqrt',  'proj',
+    'sin',  'cos',  'tan',  'sinh',  'cosh',  'tanh',
+   'asin', 'acos', 'atan', 'asinh', 'acosh', 'atanh',
+    fmt = "double complex c%s (double complex x);"
+  },
+
   { 'pow',
-    fmt = "double complex c%s (double complex x, double complex y);" }
+    fmt = "double complex c%s (double complex x, double complex y);"
+  }
 }
 
 -- C API
@@ -66,7 +102,7 @@ function M.__div (x, y)
   if type(y) == 'number' then return complex(x.re / y, x.im / y) end
 
   local r, d
-  if mabs(y.re) < mabs(y.im) then
+  if m_abs(y.re) < m_abs(y.im) then
     r = y.re / y.im
     d = y.re * r + y.im
     return complex((x.re * r + x.im) / d, (y.im * r - y.re) / d)
@@ -78,14 +114,9 @@ function M.__div (x, y)
 end
 
 local band, rshift = bit.band, bit.rshift
-local int_msk = 2^52 + 2^51
-
-local function is_integer(x)
-  return (x + int_msk) - int_msk == x
-end
 
 function M.pow (x, y)
-  if not is_integer(y) then
+  if not isint(y) then
     return clib.cpow(x, y)
   end
 
@@ -105,7 +136,7 @@ end
 M.__pow = M.pow
 
 function M.tostring (x)
--- io.write('complex.__tostring called\n') -- __tostring never called, bug?
+-- io.write('complex.__tostring called\n') -- __tostring never called...
       if x.im == 0 then return tostring(x.re)
   elseif x.re == 0 then return string.format('%si',tostring(x.im))
   elseif x.im <  0 then return string.format('%s%si',tostring(x.re),tostring(x.im))
@@ -115,6 +146,8 @@ end
 
 M.__tostring = M.tostring
 M.__index = M
+
+-- END -------------------------------------------------------------------------
 
 complex = ffi.metatype('complex', M)
 
