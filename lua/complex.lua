@@ -21,11 +21,11 @@ DESCRIPTION
     sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
     tostring.
 
-RETURN VALUES
-  The constructor of complex number
+RETURN VALUE
+  The constructor of complex numbers
 
 SEE ALSO
-  math
+  math, generic
 ]]
 
 -- DEFS ------------------------------------------------------------------------
