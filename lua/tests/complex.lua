@@ -2,13 +2,14 @@ package.path = '../?.lua;' .. package.path
 local generic = require 'generic'
 local complex = require 'complex'
 
-local sqrt, abs = generic.sqrt, generic.abs
+local sqrt = generic.sqrt
 
 local a, b = (1+1i)/(sqrt(2)+1e-8), 1
 local n = arg[1] and tonumber(arg[1]) or 1e8
 
+local C = require 'ffi' .C
 for i=1,n do
-	b = b * a
+	b = C.csqrt(b * a)
 end
 
 print('n=', n, 'a=', a, 'b=', b)
@@ -18,6 +19,8 @@ print('a^0.5=', a^0.5)
 print('sqrt(a)=', sqrt(a))
 
 --[[
+b *= a
+
 mathematica:
 0.493068692[627911512064026273807993328818603327910066849118793 + 0i
 online accurate calc:

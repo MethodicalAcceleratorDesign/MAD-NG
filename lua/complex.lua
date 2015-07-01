@@ -7,7 +7,7 @@ NAME
   complex -- complex number
 
 SYNOPSIS
-  complex = require 'complex'
+  local complex = require 'complex'
   local I = complex(0,1)
   local z = 2+3i
   local Z = 2+3*I
@@ -15,11 +15,11 @@ SYNOPSIS
 DESCRIPTION
   The module complex implements the operators and math functions on complex
   numbers:
-  - (unary), -, +, *, /, ^, ==,
-  real, imag, conj,
-  abs, arg, exp, log, pow, sqrt, proj,
-  sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
-  tostring.
+    (unary) -, (binary) -, +, *, /, ^, ==,
+    real, imag, conj,
+    abs, arg, exp, log, pow, sqrt, proj,
+    sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
+    tostring.
 
 RETURN VALUES
   The constructor of complex number
@@ -34,21 +34,21 @@ local ffi = require 'ffi'
 local bit = require 'bit'
 local gen = require 'generic'
 local clib = ffi.C
-local m_abs, isint = math.abs, math.isint
+local m_abs, isint, isnum = math.abs, math.isint, math.isnum
 
 local cfun = {
   { 'abs', 'arg',
-    fmt = "double c%s (double complex x);"
+    fmt = "double c%s (double complex);"
   },
 
   { 'exp',  'log', 'sqrt',  'proj',
     'sin',  'cos',  'tan',  'sinh',  'cosh',  'tanh',
    'asin', 'acos', 'atan', 'asinh', 'acosh', 'atanh',
-    fmt = "double complex c%s (double complex x);"
+    fmt = "double complex c%s (double complex);"
   },
 
   { 'pow',
-    fmt = "double complex c%s (double complex x, double complex y);"
+    fmt = "double complex c%s (double complex, double complex);"
   }
 }
 
@@ -61,14 +61,14 @@ for _, t in ipairs(cfun) do
 end
 ffi.cdef( table.concat(cdefs, '\n') )
 
--- Lua API
+-- C->Lua API
 for _, t in ipairs(cfun) do
   for _, f in ipairs(t) do
     M[f] = clib['c' .. f]
   end
 end
 
--- Lua inline
+-- Lua API
 local complex
 
 function M.real (x) return x.re end
@@ -99,7 +99,9 @@ end
 
 function M.__div (x, y)
   x = complex(x)
-  if type(y) == 'number' then return complex(x.re / y, x.im / y) end
+  if isnum(y) then
+    return complex(x.re / y, x.im / y)
+  end
 
   local r, d
   if m_abs(y.re) < m_abs(y.im) then
@@ -136,7 +138,7 @@ end
 M.__pow = M.pow
 
 function M.tostring (x)
--- io.write('complex.__tostring called\n') -- __tostring never called...
+-- io.write('complex.__tostring called\n') -- __tostring never called (bug?)...
       if x.im == 0 then return tostring(x.re)
   elseif x.re == 0 then return string.format('%si',tostring(x.im))
   elseif x.im <  0 then return string.format('%s%si',tostring(x.re),tostring(x.im))

@@ -1,5 +1,5 @@
 // compilation
-// gcc -std=c11 -W -Wall -Wextra -pedantic -static-libgcc -O3 -ffast-math complex.c -o complex
+// gcc -std=c11 -W -Wall -Wextra -pedantic -static-libgcc -O3 -ffast-math -ftree-vectorize complex.c -o complex
 // usage: ./complex 100000001
 
 #include <stdio.h>
@@ -14,7 +14,7 @@ main(int argc, char *argv[])
 	int n = argc > 1 ? strtol(argv[1],0,0) : 100000000;
 
 	for(int i=1; i <= n; i++)
-		b *= a ;
+		b = csqrt(b * a);
 
 	printf("%d: a=%.14g%+.14gi, b=%.14g%+.14gi\n", n, creal(a), cimag(a), creal(b), cimag(b));
 }

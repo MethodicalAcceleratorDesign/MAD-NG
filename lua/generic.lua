@@ -7,10 +7,14 @@ NAME
   generic -- generic common functions
 
 SYNOPSIS
-  gen = require 'generic'
+  local gen = require 'generic'
 
 DESCRIPTION
-  The module generic wraps common functions with a dispatcher
+  The module generic wraps common functions with an object-oriented dispatcher.
+  It adds few useful functions:
+    isint, inum, round, sign, sinc, step,         (math)
+    arg, real, imag, conj, proj,                  (complex) 
+    cross, dot                                    (vector)
 
 RETURN VALUES
   The table of generic functions
@@ -24,72 +28,56 @@ SEE ALSO
 local fun = {
 
 -- NUMBER ------------------------------
-    -- no wrap
-    { 'atan2', 'deg', 'fmod', 'frexp', 'huge', 'isint', 'ldexp', 'max', 'min', 'modf', 'pi',
-      'rad', 'random', 'randomseed', 
-      fmt = [[
-          M.%s = math.%s
-      ]]
-    },
-    -- 1 arg
-    { 'abs', 'acos', 'asin', 'atan', 'ceil', 'cos', 'cosh', 'exp', 'floor', 'frexp',
-      'log10', 'round', 'sign', 'sin', 'sinc', 'sinh', 'sqrt', 'step', 'tan', 'tanh',
-      fmt = [[
-        local m_%s = math.%s
-        M.%s = function (x)
-          return type(x) == 'number' and m_%s(x) or x:%s()
-        end
-      ]]
-    },
-    -- 2 args with dispatch on 1st arg (only)
-    { 'log', 'pow',
-      fmt = [[
-        local m_%s = math.%s
-        M.%s = function (x, y)
-          return type(x) == 'number' and m_%s(x, y) or x:%s(y)
-        end
-      ]]
-    },
+  -- no wrap
+  { 'atan2', 'deg', 'fmod', 'frexp', 'huge', 'isint', 'isnum', 'ldexp', 'max', 'min',
+    'modf', 'pi', 'rad', 'random', 'randomseed', 
+    fmt = "M.%s = math.%s"
+  },
+  -- 1 arg
+  { 'abs', 'acos', 'asin', 'atan', 'ceil', 'cos', 'cosh', 'exp', 'floor', 'frexp',
+    'log10', 'round', 'sign', 'sin', 'sinc', 'sinh', 'sqrt', 'step', 'tan', 'tanh',
+    fmt = "local m_%s = math.%s\n" ..
+          "M.%s = function (x) return isnum(x) and m_%s(x) or x:%s() end"
+  },
+  -- 2 args with dispatch on 1st arg (only)
+  { 'log', 'pow',
+    fmt = "local m_%s = math.%s\n" ..
+          "M.%s = function (x, y) return isnum(x) and m_%s(x, y) or x:%s(y) end"
+  },
 
 -- OTHER -------------------------------
-    { 'arg', 'imag',                          -- complex
-      fmt = [[
-        M.%s = function (x) 
-          return type(x) == 'number' and 0.0 or x:%s()
-        end
-      ]]
-    },
+  { 'arg', 'imag',                          -- complex
+    fmt = "M.%s = function (x) return isnum(x) and 0.0 or x:%s() end"
+  },
 
-    { 'conj', 'real', 'proj',                 -- complex
-      fmt = [[
-        M.%s = function (x) 
-          return type(x) == 'number' and x or x:%s()
-        end
-      ]]
-    },
+  { 'conj', 'real', 'proj',                 -- complex
+    'retain', 'release',                    -- expr
+    fmt = "M.%s = function (x) return isnum(x) and x or x:%s() end"
+  },
 
-    { 'cross', 'dot',                         -- vector
-      fmt = [[
-        M.%s = function (x) return x:%s() end
-      ]]
-    },
+  { 'cross', 'dot',                         -- vector
+    fmt = "M.%s = function (x) return x:%s() end"
+  },
 
-    { 'tostring',
-      fmt = [[
-        M.%s = function (x)
-          return type(x) == 'number' and %s(x) or x:%s()
-        end
-      ]]
-    },
+  { 'tostring',
+    fmt = "M.%s = function (x) return isnum(x) and %s(x) or x:%s() end"
+  },
 }
 
 -- Extensions ------------------------------------------------------------------
 
+local type = type
 local abs, ceil, floor, sin = math.abs, math.ceil, math.floor, math.sin
 local int_msk = 2^52 + 2^51
 
+local function isnum(x)
+  return type(x) == 'number'
+end
+
+math.isnum = isnum
+
 math.isint = function (x)
-  return (x + int_msk) - int_msk == x
+  return isnum(x) and (x + int_msk) - int_msk == x
 end
 
 math.round = function (x)
@@ -110,7 +98,10 @@ end
 
 -- Generic API -----------------------------------------------------------------
 
-local def = { "local M = {}" }
+local def = {[[
+  local M = {}
+  local isnum = math.isnum
+]]}
 
 for _, t in ipairs(fun) do
   for _, f in ipairs(t) do
