@@ -38,17 +38,17 @@ local m_abs, isint, isnum = math.abs, math.isint, math.isnum
 
 local cfun = {
   { 'abs', 'arg',
-    fmt = "double c%s (double complex);"
+    fmt = "double c%s (complex);"
   },
 
   { 'exp',  'log', 'sqrt',  'proj',
     'sin',  'cos',  'tan',  'sinh',  'cosh',  'tanh',
    'asin', 'acos', 'atan', 'asinh', 'acosh', 'atanh',
-    fmt = "double complex c%s (double complex);"
+    fmt = "complex c%s (complex);"
   },
 
   { 'pow',
-    fmt = "double complex c%s (double complex, double complex);"
+    fmt = "complex c%s (complex, complex);"
   }
 }
 
