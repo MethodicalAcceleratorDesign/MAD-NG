@@ -18,7 +18,8 @@ DESCRIPTION
     (unary) -, (binary) -, +, *, /, ^, ==,
     real, imag, conj,
     abs, arg, exp, log, pow, sqrt, proj,
-    sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
+     sin,  cos,  tan,  sinh,  cosh,  tanh,
+    asin, acos, atan, asinh, acosh, atanh,
     tostring.
 
 RETURN VALUE
@@ -103,15 +104,16 @@ function M.__div (x, y)
     return complex(x.re / y, x.im / y)
   end
 
-  local r, d
-  if m_abs(y.re) < m_abs(y.im) then
+  local r, n
+  x, y = complex(x), complex(y)
+  if abs(y.re) < abs(y.im) then
     r = y.re / y.im
-    d = y.re * r + y.im
-    return complex((x.re * r + x.im) / d, (y.im * r - y.re) / d)
+    n = 1 / (y.re * r + y.im)
+    return complex((x.re * r + x.im) * n, (y.im * r - y.re) * n)
   else
     r = y.im / y.re
-    d = y.im * r + y.re
-    return complex((x.im * r + x.re) / d, (x.im - x.re * r) / d)
+    n = 1 / (y.im * r + y.re)
+    return complex((x.im * r + x.re) * n, (x.im - x.re * r) * n)
   end
 end
 
