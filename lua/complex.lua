@@ -72,9 +72,9 @@ function mt.atanh (x) clib.mad_cnum_atanh (x.re, x.im, res) ; return res[0] end
 function mt.pow (x, y)
   if type(y) == 'number' then
     if y <  0 then x, y = 1/x, -y end
-    if y == 0 then return 1 end
-    if y == 1 then return x end
     if y == 2 then return x*x end
+    if y == 1 then return x end
+    if y == 0 then return 1 end
     y = complex(y)
   end
 
