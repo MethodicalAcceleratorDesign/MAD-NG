@@ -1,4 +1,3 @@
-package.path = '../?.lua;' .. package.path
 local generic = require 'generic'
 local complex = require 'complex'
 
@@ -7,9 +6,8 @@ local sqrt = generic.sqrt
 local a, b = (1+1i)/(sqrt(2)+1e-8), 1
 local n = arg[1] and tonumber(arg[1]) or 1e8
 
-local C = require 'ffi' .C
 for i=1,n do
-	b = C.csqrt(b * a)
+	b = (b * a):sqrt()
 end
 
 print('n=', n, 'a=', a, 'b=', b)
