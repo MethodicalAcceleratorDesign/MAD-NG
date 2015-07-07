@@ -31,45 +31,42 @@ SEE ALSO
 
 -- DEFS ------------------------------------------------------------------------
 
-print(package.path)
-
 local ffi  = require 'ffi'
 local clib = require 'mad'
 
 local abs = math.abs
 
 -- Lua API
-local mt = {}
 local res = ffi.new 'complex[1]'
 local complex = ffi.typeof 'complex'
 
-function mt.real  (x) return x.re end
-function mt.imag  (x) return x.im end
-function mt.conj  (x) return complex( x.re, -x.im) end
+function M.real  (x) return x.re end
+function M.imag  (x) return x.im end
+function M.conj  (x) return complex( x.re, -x.im) end
 
-function mt.abs   (x) return clib.mad_cnum_abs (x.re, x.im) end
-function mt.arg   (x) return clib.mad_cnum_arg (x.re, x.im) end
+function M.abs   (x) return clib.mad_cnum_abs (x.re, x.im) end
+function M.arg   (x) return clib.mad_cnum_arg (x.re, x.im) end
 
-function mt.exp   (x) clib.mad_cnum_exp   (x.re, x.im, res) ; return res[0] end
-function mt.log   (x) clib.mad_cnum_log   (x.re, x.im, res) ; return res[0] end
-function mt.sqrt  (x) clib.mad_cnum_sqrt  (x.re, x.im, res) ; return res[0] end
-function mt.proj  (x) clib.mad_cnum_proj  (x.re, x.im, res) ; return res[0] end
+function M.exp   (x) clib.mad_cnum_exp   (x.re, x.im, res) ; return res[0] end
+function M.log   (x) clib.mad_cnum_log   (x.re, x.im, res) ; return res[0] end
+function M.sqrt  (x) clib.mad_cnum_sqrt  (x.re, x.im, res) ; return res[0] end
+function M.proj  (x) clib.mad_cnum_proj  (x.re, x.im, res) ; return res[0] end
 
-function mt.sin   (x) clib.mad_cnum_sin   (x.re, x.im, res) ; return res[0] end
-function mt.cos   (x) clib.mad_cnum_cos   (x.re, x.im, res) ; return res[0] end
-function mt.tan   (x) clib.mad_cnum_tan   (x.re, x.im, res) ; return res[0] end
-function mt.sinh  (x) clib.mad_cnum_sinh  (x.re, x.im, res) ; return res[0] end
-function mt.cosh  (x) clib.mad_cnum_cosh  (x.re, x.im, res) ; return res[0] end
-function mt.tanh  (x) clib.mad_cnum_tanh  (x.re, x.im, res) ; return res[0] end
+function M.sin   (x) clib.mad_cnum_sin   (x.re, x.im, res) ; return res[0] end
+function M.cos   (x) clib.mad_cnum_cos   (x.re, x.im, res) ; return res[0] end
+function M.tan   (x) clib.mad_cnum_tan   (x.re, x.im, res) ; return res[0] end
+function M.sinh  (x) clib.mad_cnum_sinh  (x.re, x.im, res) ; return res[0] end
+function M.cosh  (x) clib.mad_cnum_cosh  (x.re, x.im, res) ; return res[0] end
+function M.tanh  (x) clib.mad_cnum_tanh  (x.re, x.im, res) ; return res[0] end
 
-function mt.asin  (x) clib.mad_cnum_asin  (x.re, x.im, res) ; return res[0] end
-function mt.acos  (x) clib.mad_cnum_acos  (x.re, x.im, res) ; return res[0] end
-function mt.atan  (x) clib.mad_cnum_atan  (x.re, x.im, res) ; return res[0] end
-function mt.asinh (x) clib.mad_cnum_asinh (x.re, x.im, res) ; return res[0] end
-function mt.acosh (x) clib.mad_cnum_acosh (x.re, x.im, res) ; return res[0] end
-function mt.atanh (x) clib.mad_cnum_atanh (x.re, x.im, res) ; return res[0] end
+function M.asin  (x) clib.mad_cnum_asin  (x.re, x.im, res) ; return res[0] end
+function M.acos  (x) clib.mad_cnum_acos  (x.re, x.im, res) ; return res[0] end
+function M.atan  (x) clib.mad_cnum_atan  (x.re, x.im, res) ; return res[0] end
+function M.asinh (x) clib.mad_cnum_asinh (x.re, x.im, res) ; return res[0] end
+function M.acosh (x) clib.mad_cnum_acosh (x.re, x.im, res) ; return res[0] end
+function M.atanh (x) clib.mad_cnum_atanh (x.re, x.im, res) ; return res[0] end
 
-function mt.pow (x, y)
+function M.pow (x, y)
   if type(y) == 'number' then
     if y <  0 then x, y = 1/x, -y end
     if y == 2 then return x*x end
@@ -83,7 +80,7 @@ function mt.pow (x, y)
   return res[0]
 end
 
-function mt.tostring (x)
+function M.tostring (x)
 -- io.write('complex.__tostring called\n') -- __tostring never called (bug?)...
       if x.im == 0 then return                        tostring(x.re)
   elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
@@ -92,31 +89,31 @@ function mt.tostring (x)
   end
 end
 
-function mt.__unm (x)
+function M.__unm (x)
   return complex(-x.re, -x.im)
 end
 
-function mt.__eq  (x,y)
+function M.__eq  (x,y)
   x, y = complex(x), complex(y)
   return x.re == y.re and x.im == y.im
 end
 
-function mt.__add (x, y)
+function M.__add (x, y)
   x, y = complex(x), complex(y)
   return complex(x.re + y.re, x.im + y.im)
 end
 
-function mt.__sub (x, y)
+function M.__sub (x, y)
   x, y = complex(x), complex(y)
   return complex(x.re - y.re, x.im - y.im)
 end
 
-function mt.__mul (x, y)
+function M.__mul (x, y)
   x, y = complex(x), complex(y)
   return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
 end
 
-function mt.__div (x, y)
+function M.__div (x, y)
   local r, n
 
   x = complex(x)
@@ -133,11 +130,10 @@ function mt.__div (x, y)
   end
 end
 
-mt.__pow = mt.pow
-mt.__tostring = mt.tostring
-mt.__index = mt
-
-ffi.metatype('complex', mt)
+M.__tostring = M.tostring
+M.__pow      = M.pow
+M.__index    = M
 
 -- END -------------------------------------------------------------------------
-return complex
+return ffi.metatype('complex', M)
+

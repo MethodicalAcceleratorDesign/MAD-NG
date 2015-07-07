@@ -99,7 +99,7 @@ end
 -- Generic API -----------------------------------------------------------------
 
 local def = {[[
-  local M = {}
+  local M = ...
   local isnum = math.isnum
 ]]}
 
@@ -109,11 +109,8 @@ for _, t in ipairs(fun) do
   end
 end
 
-def[#def+1] = "return M"
-
 -- print(table.concat(def, '\n'))
+load( table.concat(def, '\n') ) (M)
 
 -- END -------------------------------------------------------------------------
-
-local  M = load( table.concat(def, '\n') ) ()
 return M

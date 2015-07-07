@@ -3,6 +3,8 @@ local complex = require 'complex'
 
 local sqrt = generic.sqrt
 
+print('I=', complex(0,1))
+
 local a, b = (1+1i)/(sqrt(2)+1e-8), 1
 local n = arg[1] and tonumber(arg[1]) or 1e8
 
