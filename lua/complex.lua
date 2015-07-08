@@ -4,7 +4,7 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  complex -- complex number
+  complex
 
 SYNOPSIS
   local complex = require 'complex'
@@ -15,10 +15,10 @@ SYNOPSIS
 DESCRIPTION
   The module complex implements the operators and math functions on complex
   numbers:
-    (unary) -, (binary) -, +, *, /, ^, ==,
+    (minus) -, +, -, *, /, ^, ==,
     real, imag, conj,
     abs, arg, exp, log, pow, sqrt, proj,
-     sin,  cos,  tan,  sinh,  cosh,  tanh,
+    sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     tostring.
 
@@ -93,7 +93,7 @@ function M.__unm (x)
   return complex(-x.re, -x.im)
 end
 
-function M.__eq  (x,y)
+function M.__eq  (x, y)
   x, y = complex(x), complex(y)
   return x.re == y.re and x.im == y.im
 end

@@ -9,8 +9,4 @@ while arg[1]:sub(1,1) == '-' do
 	table.remove(arg,1)
 end
 
---for k,v in pairs(arg) do
---	print(k,v)
---end
-
-dofile(arg[1])
+dofile( table.remove(arg,1) )

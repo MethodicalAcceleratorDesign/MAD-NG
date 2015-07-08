@@ -9,7 +9,7 @@ local a, b = (1+1i)/(sqrt(2)+1e-8), 1
 local n = arg[1] and tonumber(arg[1]) or 1e8
 
 for i=1,n do
-	b = (b * a):sqrt()
+	b = a * b
 end
 
 print('n=', n, 'a=', a, 'b=', b)
@@ -35,4 +35,3 @@ cpow (direct ^1e8):
 ipow (log2(1e8) ~ 27 loops):
 0.493068687[57683  +  0i
 ]]
-

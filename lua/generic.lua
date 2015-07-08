@@ -4,7 +4,7 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  generic -- generic common functions
+  generic -- generic for common functions
 
 SYNOPSIS
   local gen = require 'generic'
@@ -14,22 +14,22 @@ DESCRIPTION
   It adds few useful functions:
     isint, inum, round, sign, sinc, step,         (math)
     arg, real, imag, conj, proj,                  (complex) 
-    cross, dot                                    (vector)
 
 RETURN VALUES
   The table of generic functions
 
 SEE ALSO
-  math
+  math, complex
 ]]
 
 -- DEFS ------------------------------------------------------------------------
 
 local fun = {
 
--- NUMBER ------------------------------
+-- NUMBERS -----------------------------
   -- no wrap
-  { 'atan2', 'deg', 'fmod', 'frexp', 'huge', 'isint', 'isnum', 'ldexp', 'max', 'min',
+  { 'unm', 'add', 'sub', 'mul', 'div', 'mod',
+    'atan2', 'deg', 'fmod', 'frexp', 'huge', 'isint', 'isnum', 'ldexp', 'max', 'min',
     'modf', 'pi', 'rad', 'random', 'randomseed', 
     fmt = "M.%s = math.%s"
   },
@@ -45,18 +45,13 @@ local fun = {
           "M.%s = function (x, y) return isnum(x) and m_%s(x, y) or x:%s(y) end"
   },
 
--- OTHER -------------------------------
+-- OBJECTS -----------------------------
   { 'arg', 'imag',                          -- complex
     fmt = "M.%s = function (x) return isnum(x) and 0.0 or x:%s() end"
   },
 
   { 'conj', 'real', 'proj',                 -- complex
-    'retain', 'release',                    -- expr
     fmt = "M.%s = function (x) return isnum(x) and x or x:%s() end"
-  },
-
-  { 'cross', 'dot',                         -- vector
-    fmt = "M.%s = function (x) return x:%s() end"
   },
 
   { 'tostring',
@@ -66,35 +61,22 @@ local fun = {
 
 -- Extensions ------------------------------------------------------------------
 
-local type = type
-local abs, ceil, floor, sin = math.abs, math.ceil, math.floor, math.sin
 local int_msk = 2^52 + 2^51
 
-local function isnum(x)
-  return type(x) == 'number'
-end
+function math.unm   (x)   return -x    end
+function math.add   (x,y) return x + y end
+function math.sub   (x,y) return x - y end
+function math.mul   (x,y) return x * y end
+function math.div   (x,y) return x / y end
+function math.mod   (x,y) return x % y end
 
-math.isnum = isnum
+function math.isnum (x)   return type(x) == 'number' end
+function math.isint (x)   return math.isnum(x) and (x + int_msk) - int_msk == x end
 
-math.isint = function (x)
-  return isnum(x) and (x + int_msk) - int_msk == x
-end
-
-math.round = function (x)
-  return x < 0 and ceil(x-0.5) or floor(x+0.5)
-end
-
-math.sign = function (x)
-  return x < 0 and -1 or 1
-end
-
-math.step = function (x)
-  return x < 0 and 0 or 1
-end
-
-math.sinc = function (x)
-  return abs(x) < 1e-12 and 1.0 or sin(x)/x
-end
+function math.sign  (x)   return x < 0 and -1 or 1 end
+function math.step  (x)   return x < 0 and  0 or 1 end
+function math.round (x)   return x < 0 and math.ceil(x-0.5) or math.floor(x+0.5) end
+function math.sinc  (x)   return math.abs(x) < 1e-12 and 1.0 or math.sin(x)/x end
 
 -- Generic API -----------------------------------------------------------------
 
@@ -109,7 +91,6 @@ for _, t in ipairs(fun) do
   end
 end
 
--- print(table.concat(def, '\n'))
 load( table.concat(def, '\n') ) (M)
 
 -- END -------------------------------------------------------------------------
