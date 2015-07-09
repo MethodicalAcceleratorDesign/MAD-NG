@@ -27,10 +27,19 @@ SEE ALSO
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi = require 'ffi'
-local tbl_new = require 'table.new'
 local generic = require 'generic'
-local sqrt, acos = generic.sqrt, generic.acos
+local tbl_new = require 'table.new'
+
+local real, imag, conj, 
+      abs, arg, exp, log, sqrt, proj,
+      sin, cos, tan, sinh, cosh, tanh,
+      asin, acos, atan, asinh, acosh, atanh,
+      unm, add, sub, mul, div, mod, pow = 
+      generic.real, generic.imag, generic.conj,
+      generic.abs, generic.arg, generic.exp, generic.log, generic.sqrt, generic.proj,
+      generic.sin, generic.cos, generic.tan, generic.sinh, generic.cosh, generic.tanh,
+      generic.asin, generic.acos, generic.atan, generic.asinh, generic.acosh, generic.atanh,
+      generic.unm, generic.add, generic.sub, generic.mul, generic.div, generic.mod, generic.pow
 
 -- Lua API
 
@@ -38,40 +47,20 @@ local function isvec (x)
   return getmetatable(x) == M
 end
 
-local pool = {}
-
 local function vector (x)
-  local n = type(x) == 'number' and x or #x
-  local ct = pool[n]
-
-  if not ct then
-    ffi.cdef("typedef struct { double data[$]; } vector" .. n, n)
-    local mt = { __len = n, __index = M }
-    ct = ffi.metatype("vector" .. n, mt)
-    pool[n] = ct
-  end
-
-  local r = type(x) == 'table' and ct({x}) or ct()
-end
-
---[[
-local function vector (x)
-  if type(x) == 'number' then
-    return setmetatable(tbl_new(x,0), M)
-  elseif type(x) == 'table' then
+  if type(x) == 'table'  then
+    x[0] = #x
     return setmetatable(x, M)
   end
-  error("invalid argument to vector constructor, expecting size or table")
-end
-]]
 
-function M.__eq (x, y)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  for i=1,n do
-    if x[i] ~= y[i] then return false end
+  if type(x) == 'number' and x > 0 then
+    local n = x
+    x = tbl_new(n,0)
+    x[0] = n
+    return setmetatable(x, M)
   end
-  return true
+
+  error("invalid argument to vector constructor, expecting size or table")
 end
 
 function M.norm (x)
@@ -131,55 +120,64 @@ function M.map2 (x, y, f)
 end
 
 function M.maps (x, y, f)
-  local r
   if not isvec(x) then
     local n = #y
-    r = vector(n)
+    local r = vector(n)
     for i=1,n do r[i] = f(x, y[i]) end
-  elseif not isvec(y) then
-    local n = #x
-    r = vector(n)
-    for i=1,n do r[i] = f(x[i], y) end
-  else
-    local n = #x
-    r = vector(n)
-    if n ~= #y then error("incompatible vector lengths") end
-    for i=1,n do r[i] = f(x[i], y[i]) end
+    return r
   end
+
+  if not isvec(y) then
+    local n = #x
+    local r = vector(n)
+    for i=1,n do r[i] = f(x[i], y) end
+    return r
+  end
+
+  local n = #x
+  if n ~= #y then error("incompatible vector lengths") end
+  local r = vector(n)
+  for i=1,n do r[i] = f(x[i], y[i]) end
   return r
 end
 
-function M.real  (x)   return M.map (x,   generic.real)  end
-function M.imag  (x)   return M.map (x,   generic.imag)  end
-function M.conj  (x)   return M.map (x,   generic.conj)  end
+function M.real  (x)   return M.map (x,   real)  end
+function M.imag  (x)   return M.map (x,   imag)  end
+function M.conj  (x)   return M.map (x,   conj)  end
+function M.abs   (x)   return M.map (x,   abs)   end
+function M.arg   (x)   return M.map (x,   arg)   end
+function M.exp   (x)   return M.map (x,   exp)   end
+function M.log   (x)   return M.map (x,   log)   end
+function M.sqrt  (x)   return M.map (x,   sqrt)  end
+function M.proj  (x)   return M.map (x,   proj)  end
+function M.sin   (x)   return M.map (x,   sin)   end
+function M.cos   (x)   return M.map (x,   cos)   end
+function M.tan   (x)   return M.map (x,   tan)   end
+function M.sinh  (x)   return M.map (x,   sinh)  end
+function M.cosh  (x)   return M.map (x,   cosh)  end
+function M.tanh  (x)   return M.map (x,   tanh)  end
+function M.asin  (x)   return M.map (x,   asin)  end
+function M.acos  (x)   return M.map (x,   acos)  end
+function M.atan  (x)   return M.map (x,   atan)  end
+function M.asinh (x)   return M.map (x,   asinh) end
+function M.acosh (x)   return M.map (x,   acosh) end
+function M.atanh (x)   return M.map (x,   atanh) end
+function M.__unm (x)   return M.map (x,   unm)   end
+function M.__add (x,y) return M.maps(x,y, add)   end
+function M.__sub (x,y) return M.maps(x,y, sub)   end
+function M.__mul (x,y) return M.maps(x,y, mul)   end
+function M.__div (x,y) return M.maps(x,y, div)   end
+function M.__mod (x,y) return M.maps(x,y, mod)   end
+function M.__pow (x,y) return M.maps(x,y, pow)   end
 
-function M.abs   (x)   return M.map (x,   generic.abs)   end
-function M.arg   (x)   return M.map (x,   generic.arg)   end
-function M.exp   (x)   return M.map (x,   generic.exp)   end
-function M.log   (x)   return M.map (x,   generic.log)   end
-function M.sqrt  (x)   return M.map (x,   generic.sqrt)  end
-function M.proj  (x)   return M.map (x,   generic.proj)  end
-
-function M.sin   (x)   return M.map (x,   generic.sin)   end
-function M.cos   (x)   return M.map (x,   generic.cos)   end
-function M.tan   (x)   return M.map (x,   generic.tan)   end
-function M.sinh  (x)   return M.map (x,   generic.sinh)  end
-function M.cosh  (x)   return M.map (x,   generic.cosh)  end
-function M.tanh  (x)   return M.map (x,   generic.tanh)  end
-function M.asin  (x)   return M.map (x,   generic.asin)  end
-function M.acos  (x)   return M.map (x,   generic.acos)  end
-function M.atan  (x)   return M.map (x,   generic.atan)  end
-function M.asinh (x)   return M.map (x,   generic.asinh) end
-function M.acosh (x)   return M.map (x,   generic.acosh) end
-function M.atanh (x)   return M.map (x,   generic.atanh) end
-
-function M.__unm (x)   return M.map (x,   generic.unm)   end
-function M.__add (x,y) return M.maps(x,y, generic.add)   end
-function M.__sub (x,y) return M.maps(x,y, generic.sub)   end
-function M.__mul (x,y) return M.maps(x,y, generic.mul)   end
-function M.__div (x,y) return M.maps(x,y, generic.div)   end
-function M.__mod (x,y) return M.maps(x,y, generic.mod)   end
-function M.__pow (x,y) return M.maps(x,y, generic.pow)   end
+function M.__eq (x, y)
+  local n = #x
+  if n ~= #y then error("incompatible vector lengths") end
+  for i=1,n do
+    if x[i] ~= y[i] then return false end
+  end
+  return true
+end
 
 function M.__tostring (x, sep)
   local n = #x
@@ -190,6 +188,7 @@ end
 
 M.pow      = M.__pow
 M.tostring = M.__tostring
+M.__len    = function (x) return x[0] end
 M.__index  = M
 
 -- END -------------------------------------------------------------------------
