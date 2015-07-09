@@ -14,8 +14,7 @@ for i=1,n do
 	b = a * b + b - a
 end
 
-for i=1,#b do io.write(generic.tostring(b[i]), ' ') end
-io.write('\n')
+io.write(b:tostring(), '\n')
 
 local x = vector {1,0,0}
 local y = vector {0,1,0}

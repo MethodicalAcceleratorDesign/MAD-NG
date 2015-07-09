@@ -4,29 +4,31 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  vector
+  matrix
 
 SYNOPSIS
-  local vector = require 'vector'
+  local matrix = require 'matrix'
 
 DESCRIPTION
-  The module vector implements the operators and math functions on vectors:
+  The module matrix implements the operators and math functions on matrices:
     (minus) -, +, -, *, /, %, ^, ==, #
-    real, imag, conj, norm, angle, dot, cross,
+    rows, cols, sizes,
+    real, imag, conj, norm, angle,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, map, map2, maps, tostring.
 
 RETURN VALUES
-  The constructor of vectors
+  The constructor of matrices
 
 SEE ALSO
-  math, complex, generic
+  math, complex, vector, generic
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
+local vector  = require 'vector'
 local generic = require 'generic'
 local tbl_new = require 'table.new'
 
@@ -43,94 +45,110 @@ local real, imag, conj,
 
 -- Lua API
 
-local function isvec (x)
+local function ismat (x)
   return getmetatable(x) == M
 end
 
-local function vector (x)
-  if type(x) == 'table'  then
-    x[0] = #x
-    return setmetatable(x, M)
+local function matrix (rows, cols)
+  if type(rows) == 'table' then
+    local m = rows
+    m[0] = #m
+    for i=1,m[0] do
+      m[i] = vector(m[i])
+      assert(#m[i] == #m[1], "inhomegeneous sizes in table of tables")
+    end
+    return setmetatable(m, M)
   end
 
-  if type(x) == 'number' and x > 0 then
-    local n = x
-    x = tbl_new(n,0)
-    x[0] = n
-    return setmetatable(x, M)
+  if type(rows) == 'number' and rows > 0 and
+     type(cols) == 'number' and cols > 0 then
+    local m = tbl_new(rows,0)
+    m[0] = rows
+    for i=1,m[0] do m[i] = vector(cols) end
+    return setmetatable(m, M)
   end
 
-  error("invalid argument to vector constructor, expecting size or table")
+  error("invalid argument to matrix constructor, expecting (rows,cols) or table of tables")
+end
+
+function M.rows (x) return x[0] end
+function M.cols (x) return #x[1] end
+function M.sizes(x) return x:rows(), x:cols() end
+
+function M.transpose (x)
+  local rows, cols = x:sizes()
+  local r = matrix(cols, rows)
+  for i=1,rows do
+    for j=1,cols do
+      r[j][i] = x[i][j]
+    end
+  end
+  return r
 end
 
 function M.norm (x)
-  return sqrt(x:dot(x))
-end
-
-function M.angle (x, y)
-  local w = x:dot(y)
-  local v = sqrt(x:dot(x) * y:dot(y))
-  return acos(w/v) -- [0, pi]
-end
-
-function M.dot (x, y)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  local r = 0
-  for i=1,n do r = r + x[i] * y[i] end
-  return r
-  -- return M.foldl(M.map2(x, y, generic.mul), 0, generic.add)
-end
-
-function M.cross (x, y)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  local r = vector(n)
-  for i=1,n-2 do
-    r[i] = x[i+1] * y[i+2] - x[i+2] * y[i+1]
-  end
-  r[n-1] = x[n] * y[1] - x[1] * y[n]
-  r[n  ] = x[1] * y[2] - x[2] * y[1]
+  local r = vector(x:rows())
+  for i=1,#r do r[i] = x[i]:norm() end
   return r
 end
 
 function M.foldl (x, r, f)
-  for i=1,#x do r = f(r, x[i]) end
+  for i=1,x:rows() do r[i] = x[i]:foldl(r[i], f) end
   return r
 end
 
 function M.foldr (x, r, f)
-  for i=1,#x do r = f(x[i], r) end
+  for i=1,x:rows() do r[i] = x[i]:foldr(r[i], f) end
   return r
 end
 
 function M.map (x, f)
-  local n = #x
-  local r = vector(n)
-  for i=1,n do r[i] = f(x[i]) end
+  local rows, cols = x:sizes()
+  local r = matrix(rows, cols)
+  for i=1,rows do
+    for j=1,cols do
+      r[i][j] = f(x[i][j])
+    end
+  end
   return r
 end
 
 function M.map2 (x, y, f)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  local r = vector(n)
-  for i=1,n do r[i] = f(x[i], y[i]) end
+  local rows, cols = x:sizes()
+
+  if rows ~= y:rows() or cols ~= y:cols() then
+    error("incompatible matrices sizes")
+  end
+
+  local r = matrix(rows, cols)
+  for i=1,rows do
+    for j=1,cols do
+      r[i][j] = f(x[i][j], y[i][j])
+    end
+  end
   return r
 end
 
 function M.maps (x, y, f)
-  if not isvec(x) then
-    local n = #y
-    local r = vector(n)
-    for i=1,n do r[i] = f(x, y[i]) end
+  if not ismat(x) then
+    local rows, cols = y:sizes()
+    local r = matrix(rows, cols)
+    for i=1,rows do
+      for j=1,cols do
+        r[i][j] = f(x, y[i][j])
+      end
+    end
     return r
   end
 
-  if not isvec(y) then
-    local n = #x
-    local r = vector(n)
-    for i=1,n do r[i] = f(x[i], y) end
+  if not ismat(y) then
+    local rows, cols = x:sizes()
+    local r = matrix(rows, cols)
+    for i=1,rows do
+      for j=1,cols do
+        r[i][j] = f(x[i][j], y)
+      end
+    end
     return r
   end
 
@@ -167,25 +185,33 @@ function M.__mod (x,y) return M.maps(x,y, mod)   end
 function M.__pow (x,y) return M.maps(x,y, pow)   end
 
 function M.__eq (x, y)
-  local n = #x
-  if n ~= #y then return false end
-  for i=1,n do
-    if x[i] ~= y[i] then return false end
+  local rows, cols = x:sizes()
+  if rows ~= y:rows() or cols ~= y:cols() then return false end
+  for i=1,rows do
+    for j=1,cols do
+      if x[i][j] ~= y[i][j] then return false end
+    end
   end
   return true
 end
 
-function M.__tostring (x, sep)
-  local n = #x
-  local r = tbl_new(n,0)
-  for i=1,n do r[i] = tostring(x[i]) end
-  return table.concat(r, sep or ' ')
+function M.__tostring (x, sep, lsep)
+  local rows, cols = x:sizes()
+  local r = tbl_new(rows, 0)
+  for i=1,rows do
+    local c = tbl_new(cols, 0)
+    for j=1,cols do
+      c[j] = tostring(x[i][j])
+    end
+    r[i] = table.concat(c, sep or ' ')
+  end
+  return table.concat(r, lsep or '\n')
 end
 
 M.pow      = M.__pow
 M.tostring = M.__tostring
-M.__len    = function (x) return x[0] end
+M.__len    = function (x) return x:rows() * x:cols() end
 M.__index  = M
 
 -- END -------------------------------------------------------------------------
-return vector
+return matrix
