@@ -11,12 +11,13 @@ SYNOPSIS
 
 DESCRIPTION
   The module vector implements the operators and math functions on vectors:
-    (minus) -, +, -, *, /, %, ^, ==, #
+    (minus) -, +, -, *, /, %, ^, ==,
+    size, get, set, zeros, set_table,
     real, imag, conj, norm, angle, dot, cross,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    foldl, foldr, map, map2, maps, tostring.
+    copy, foldl, foldr, map, map2, maps, tostring.
 
 RETURN VALUES
   The constructor of vectors
@@ -27,40 +28,80 @@ SEE ALSO
  
 -- DEFS ------------------------------------------------------------------------
 
+local ffi     = require 'ffi'
 local generic = require 'generic'
-local tbl_new = require 'table.new'
 
-local real, imag, conj, 
+local isnum, iscpx, iscalar,
+      real, imag, conj, ident,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
       unm, add, sub, mul, div, mod, pow = 
-      generic.real, generic.imag, generic.conj,
+      generic.is_number, generic.is_complex, generic.is_scalar,
+      generic.real, generic.imag, generic.conj, generic.ident,
       generic.abs, generic.arg, generic.exp, generic.log, generic.sqrt, generic.proj,
       generic.sin, generic.cos, generic.tan, generic.sinh, generic.cosh, generic.tanh,
       generic.asin, generic.acos, generic.atan, generic.asinh, generic.acosh, generic.atanh,
       generic.unm, generic.add, generic.sub, generic.mul, generic.div, generic.mod, generic.pow
 
+local istype, sizeof, fill = ffi.istype, ffi.sizeof, ffi.fill
+
 -- Lua API
 
+ffi.cdef[[
+typedef struct { int32_t n; double  data[?]; }  vector_t;
+typedef struct { int32_t n; complex data[?]; } cvector_t;
+]]
+
+local  vec_ct = ffi.typeof ' vector_t'
+local cvec_ct = ffi.typeof 'cvector_t'
+
 local function isvec (x)
-  return getmetatable(x) == M
+  return istype('vector_t', x)
 end
 
-local function vector (x)
-  if type(x) == 'table'  then
-    x[0] = #x
-    return setmetatable(x, M)
+local function iscvec (x)
+  return istype('cvector_t', x)
+end
+
+local function vec_alloc (ct, n)
+  local r = ct(n) -- default init: compiled for size <= 128 bytes
+  r.n = n
+  return r
+end
+
+local function vector_from_table(tbl, is_complex)
+  local ct = (is_complex or iscpx(tbl[1])) and cvec_ct or vec_ct
+  local r = vec_alloc(ct, #tbl)
+  return r:set_table(tbl)
+end
+
+local function vector (n, is_complex)
+  if type(n) == 'table' then
+    return vector_from_table(n, is_complex)
   end
 
-  if type(x) == 'number' and x > 0 then
-    local n = x
-    x = tbl_new(n,0)
-    x[0] = n
-    return setmetatable(x, M)
+  if n > 0 then
+    return vec_alloc(is_complex and cvec_ct or vec_ct, n)
   end
 
   error("invalid argument to vector constructor, expecting size or table")
+end
+
+function M.get  (x, i)    return x.data[ i-1 ] end
+function M.set  (x, i, e) x.data[ i-1 ] = e ; return x end
+function M.size (x)       return x.n end
+
+function M.zeros(x)
+  fill(x.data, sizeof(isvec(x) and 'double' or 'complex', x:size()))
+  return x
+end
+
+function M.set_table (x, tbl)
+  local n = x:size()
+  assert(#tbl == n, "incompatible table size")
+  for i=1,n do x.data[i-1] = tbl[i] end
+  return x
 end
 
 function M.norm (x)
@@ -74,69 +115,80 @@ function M.angle (x, y)
 end
 
 function M.dot (x, y)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
+  local n = x:size()
+  assert(n == y:size(), "incompatible vector sizes")
   local r = 0
-  for i=1,n do r = r + x[i] * y[i] end
+  for i=0,n-1 do r = r + x.data[i] * y.data[i] end
   return r
   -- return M.foldl(M.map2(x, y, generic.mul), 0, generic.add)
 end
 
 function M.cross (x, y)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  local r = vector(n)
+  local n = x:size()
+  assert(n == y:size(), "incompatible vector sizes")
+  local r = vector(n, iscvec(x) or iscvec(y))
   for i=1,n-2 do
-    r[i] = x[i+1] * y[i+2] - x[i+2] * y[i+1]
+    r.data[i-1] = x.data[i] * y.data[i+1] - x.data[i+1] * y.data[i]
   end
-  r[n-1] = x[n] * y[1] - x[1] * y[n]
-  r[n  ] = x[1] * y[2] - x[2] * y[1]
+  r.data[n-2] = x.data[n-1] * y.data[0] - x.data[0] * y.data[n-1]
+  r.data[n-1] = x.data[  0] * y.data[1] - x.data[1] * y.data[  0]
   return r
 end
 
 function M.foldl (x, r, f)
-  for i=1,#x do r = f(r, x[i]) end
+  local n = x:size()
+  for i=0,n-1 do r = f(r, x.data[i]) end
   return r
 end
 
 function M.foldr (x, r, f)
-  for i=1,#x do r = f(x[i], r) end
+  local n = x:size()
+  for i=0,n-1 do r = f(x.data[i], r) end
   return r
 end
 
 function M.map (x, f)
-  local n = #x
-  local r = vector(n)
-  for i=1,n do r[i] = f(x[i]) end
+  local n = x:size()
+  local r0 = f(x.data[0])
+  local r = vector(n, iscpx(r0))
+  r.data[0] = r0
+  for i=1,n-1 do r.data[i] = f(x.data[i]) end
   return r
 end
 
 function M.map2 (x, y, f)
-  local n = #x
-  if n ~= #y then error("incompatible vector lengths") end
-  local r = vector(n)
-  for i=1,n do r[i] = f(x[i], y[i]) end
+  local n = x:size()
+  assert(n == y:size(), "incompatible vector lengths")
+  local r0 = f(x.data[0], y.data[0])
+  local r = vector(n, iscpx(r0))
+  r.data[0] = r0
+  for i=1,n-1 do r.data[i] = f(x.data[i], y.data[i]) end
   return r
 end
 
 function M.maps (x, y, f)
-  if not isvec(x) then
-    local n = #y
-    local r = vector(n)
-    for i=1,n do r[i] = f(x, y[i]) end
+  if iscalar(x) then
+    local n = y:size()    
+    local r0 = f(x, y.data[0])
+    local r = vector(n, iscpx(r0))
+    r.data[0] = r0
+    for i=1,n-1 do r.data[i] = f(x, y.data[i]) end
     return r
   end
 
-  if not isvec(y) then
-    local n = #x
-    local r = vector(n)
-    for i=1,n do r[i] = f(x[i], y) end
+  if iscalar(y) then
+    local n = x:size()    
+    local r0 = f(x.data[0], y)
+    local r = vector(n, iscpx(r0))
+    r.data[0] = r0
+    for i=1,n-1 do r.data[i] = f(x.data[i], y) end
     return r
   end
 
   return M.map2(x, y, f)
 end
 
+function M.copy  (x)   return M.map (x,   ident) end
 function M.real  (x)   return M.map (x,   real)  end
 function M.imag  (x)   return M.map (x,   imag)  end
 function M.conj  (x)   return M.map (x,   conj)  end
@@ -167,25 +219,27 @@ function M.__mod (x,y) return M.maps(x,y, mod)   end
 function M.__pow (x,y) return M.maps(x,y, pow)   end
 
 function M.__eq (x, y)
-  local n = #x
-  if n ~= #y then return false end
-  for i=1,n do
-    if x[i] ~= y[i] then return false end
+  local n = x:size()
+  if n ~= y:size() then return false end
+  for i=0,n-1 do
+    if x.data[i] ~= y.data[i] then return false end
   end
   return true
 end
 
 function M.__tostring (x, sep)
-  local n = #x
-  local r = tbl_new(n,0)
-  for i=1,n do r[i] = tostring(x[i]) end
+  local n = x:size()
+  local r = {}
+  for i=1,n do r[i] = tostring(x.data[i-1]) end
   return table.concat(r, sep or ' ')
 end
 
-M.pow      = M.__pow
-M.tostring = M.__tostring
-M.__len    = function (x) return x[0] end
-M.__index  = M
+M.pow       = M.__pow
+M.tostring  = M.__tostring
+M.__index   = M
+
+ffi.metatype( 'vector_t', M)
+ffi.metatype('cvector_t', M)
 
 -- END -------------------------------------------------------------------------
 return vector
