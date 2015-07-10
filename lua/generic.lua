@@ -4,23 +4,27 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  generic -- generic for common functions
+  gmath -- generic wrapper for math functions
 
 SYNOPSIS
-  local gen = require 'generic'
+  local gm = require 'gmath'
 
 DESCRIPTION
-  The module generic wraps common functions with an object-oriented dispatcher.
+  The module generic wraps common math functions with an object-oriented dispatcher.
   It adds few useful functions:
-    isint, isnum, iscalar, round, sign, sinc, step,       (math)
+    is_number, is_integer, is_scalar,                     (math)
     ident, umn, add, sub, mul, div, mod,
+    sign, step, round, sinc,
     arg, real, imag, conj, proj,                          (complex) 
+    tostring.                                             (other)
+
+  Other modules may also extend the module generic (e.g. vector and matrix)
 
 RETURN VALUES
   The table of generic functions
 
 SEE ALSO
-  math, complex
+  math, complex, vector, matrix
 ]]
 
 -- DEFS ------------------------------------------------------------------------
@@ -76,12 +80,8 @@ function M.mod   (x,y) return x % y end
 
 function M.is_number  (x) return type(x) == 'number' end
 function M.is_integer (x) return type(x) == 'number' and (x + int_msk) - int_msk == x end
-function M.is_scalar  (x) return type(x) == 'number' or istype('complex', x) end
-function M.is_complex (x) return istype(  'complex', x) end
-function M.is_vector  (x) return istype( 'vector_t', x) end
-function M.is_cvector (x) return istype('cvector_t', x) end
-function M.is_matrix  (x) return istype( 'matrix_t', x) end
-function M.is_cmatrix (x) return istype('cmatrix_t', x) end
+function M.is_complex (x) return type(x) == 'cdata'  and istype('complex', x) end
+function M.is_scalar  (x) return M.is_number(x) or M.is_complex(x) end
 
 function math.sign  (x) return x < 0 and -1 or 1 end
 function math.step  (x) return x < 0 and  0 or 1 end
