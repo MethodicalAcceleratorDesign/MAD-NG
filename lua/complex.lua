@@ -26,7 +26,7 @@ RETURN VALUE
   The constructor of complex numbers
 
 SEE ALSO
-  math, generic
+  math, gmath
 ]]
 
 -- DEFS ------------------------------------------------------------------------
@@ -37,8 +37,8 @@ local clib = require 'mad'
 local abs = math.abs
 
 -- Lua API
-local res = ffi.new 'complex[1]'
 local complex = ffi.typeof 'complex'
+local res = ffi.new 'complex[1]'
 
 function M.real  (x) return x.re end
 function M.imag  (x) return x.im end
@@ -65,29 +65,6 @@ function M.atan  (x) clib.mad_cnum_atan  (x.re, x.im, res) ; return res[0] end
 function M.asinh (x) clib.mad_cnum_asinh (x.re, x.im, res) ; return res[0] end
 function M.acosh (x) clib.mad_cnum_acosh (x.re, x.im, res) ; return res[0] end
 function M.atanh (x) clib.mad_cnum_atanh (x.re, x.im, res) ; return res[0] end
-
-function M.pow (x, y)
-  if type(y) == 'number' then
-    if y <  0 then x, y = 1/x, -y end
-    if y == 2 then return x*x end
-    if y == 1 then return x end
-    if y == 0 then return 1 end
-    y = complex(y)
-  end
-
-  x = complex(x)
-  clib.mad_cnum_pow(x.re, x.im, y.re, y.im, res)
-  return res[0]
-end
-
-function M.tostring (x)
--- io.write('complex.__tostring called\n') -- __tostring never called (bug?)...
-      if x.im == 0 then return                        tostring(x.re)
-  elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
-  elseif x.im <  0 then return string.format('%s%si', tostring(x.re),tostring(x.im))
-  else                  return string.format('%s+%si',tostring(x.re),tostring(x.im))
-  end
-end
 
 function M.__unm (x)
   return complex(-x.re, -x.im)
@@ -130,10 +107,33 @@ function M.__div (x, y)
   end
 end
 
-M.__tostring = M.tostring
-M.__pow      = M.pow
-M.__index    = M
+function M.__pow (x, y)
+  if type(y) == 'number' then
+    if y <  0 then x, y = 1/x, -y end
+    if y == 2 then return x*x end
+    if y == 1 then return x end
+    if y == 0 then return 1 end
+    y = complex(y)
+  end
+
+  x = complex(x)
+  clib.mad_cnum_pow(x.re, x.im, y.re, y.im, res)
+  return res[0]
+end
+
+function M.__tostring (x)
+      if x.im == 0 then return                        tostring(x.re)
+  elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
+  elseif x.im <  0 then return string.format('%s%si', tostring(x.re),tostring(x.im))
+  else                  return string.format('%s+%si',tostring(x.re),tostring(x.im))
+  end
+end
+
+M.pow      = M.__pow
+M.tostring = M.__tostring
+M.__index  = M
+
+ffi.metatype('complex', M)
 
 -- END -------------------------------------------------------------------------
-return ffi.metatype('complex', M)
-
+return complex

@@ -1,7 +1,7 @@
-local generic = require 'generic'
 local complex = require 'complex'
+local gmath   = require 'gmath'
 
-local sqrt = generic.sqrt
+local sqrt = gmath.sqrt
 
 print('I=', complex(0,1))
 

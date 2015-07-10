@@ -12,7 +12,7 @@ SYNOPSIS
 DESCRIPTION
   The module vector implements the operators and math functions on vectors:
     (minus) -, +, -, *, /, %, ^, ==,
-    size, get, set, zeros, set_table,
+    size, get, set, zeros, ones, set_table,
     real, imag, conj, norm, angle, dot, cross,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
@@ -23,26 +23,32 @@ RETURN VALUES
   The constructor of vectors
 
 SEE ALSO
-  math, complex, generic
+  math, gmath, complex, matrix
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi     = require 'ffi'
-local generic = require 'generic'
+local ffi = require 'ffi'
+local gm  = require 'gmath'
 
+-- extend gmath
+local istype = ffi.istype
+function gm.is_vector  (x) return type(x) == 'cdata' and istype( 'vector_t', x) end
+function gm.is_cvector (x) return type(x) == 'cdata' and istype('cvector_t', x) end
+
+-- locals
 local isnum, iscpx, iscalar,
       real, imag, conj, ident,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
       unm, add, sub, mul, div, mod, pow = 
-      generic.is_number, generic.is_complex, generic.is_scalar,
-      generic.real, generic.imag, generic.conj, generic.ident,
-      generic.abs, generic.arg, generic.exp, generic.log, generic.sqrt, generic.proj,
-      generic.sin, generic.cos, generic.tan, generic.sinh, generic.cosh, generic.tanh,
-      generic.asin, generic.acos, generic.atan, generic.asinh, generic.acosh, generic.atanh,
-      generic.unm, generic.add, generic.sub, generic.mul, generic.div, generic.mod, generic.pow
+      gm.is_number, gm.is_complex, gm.is_scalar,
+      gm.real, gm.imag, gm.conj, gm.ident,
+      gm.abs, gm.arg, gm.exp, gm.log, gm.sqrt, gm.proj,
+      gm.sin, gm.cos, gm.tan, gm.sinh, gm.cosh, gm.tanh,
+      gm.asin, gm.acos, gm.atan, gm.asinh, gm.acosh, gm.atanh,
+      gm.unm, gm.add, gm.sub, gm.mul, gm.div, gm.mod, gm.pow
 
 local istype, sizeof, fill = ffi.istype, ffi.sizeof, ffi.fill
 
@@ -88,12 +94,18 @@ local function vector (n, is_complex)
   error("invalid argument to vector constructor, expecting size or table")
 end
 
-function M.get  (x, i)    return x.data[ i-1 ] end
-function M.set  (x, i, e) x.data[ i-1 ] = e ; return x end
 function M.size (x)       return x.n end
+function M.get  (x, i)    return x.data[i-1] end
+function M.set  (x, i, e) x.data[i-1] = e ; return x end
 
 function M.zeros(x)
   fill(x.data, sizeof(isvec(x) and 'double' or 'complex', x:size()))
+  return x
+end
+
+function M.ones (x, e)
+  e = e or 1 
+  for i=0,x:size()-1 do x.data[i] = e end
   return x
 end
 
@@ -120,7 +132,7 @@ function M.dot (x, y)
   local r = 0
   for i=0,n-1 do r = r + x.data[i] * y.data[i] end
   return r
-  -- return M.foldl(M.map2(x, y, generic.mul), 0, generic.add)
+  -- return M.foldl(M.map2(x, y, gm.mul), 0, gm.add)
 end
 
 function M.cross (x, y)
@@ -136,14 +148,12 @@ function M.cross (x, y)
 end
 
 function M.foldl (x, r, f)
-  local n = x:size()
-  for i=0,n-1 do r = f(r, x.data[i]) end
+  for i=0,x:size()-1 do r = f(r, x.data[i]) end
   return r
 end
 
 function M.foldr (x, r, f)
-  local n = x:size()
-  for i=0,n-1 do r = f(x.data[i], r) end
+  for i=0,x:size()-1 do r = f(x.data[i], r) end
   return r
 end
 
@@ -158,7 +168,7 @@ end
 
 function M.map2 (x, y, f)
   local n = x:size()
-  assert(n == y:size(), "incompatible vector lengths")
+  assert(n == y:size(), "incompatible vector sizes")
   local r0 = f(x.data[0], y.data[0])
   local r = vector(n, iscpx(r0))
   r.data[0] = r0
@@ -230,13 +240,13 @@ end
 function M.__tostring (x, sep)
   local n = x:size()
   local r = {}
-  for i=1,n do r[i] = tostring(x.data[i-1]) end
+  for i=1,n do r[i] = tostring(x:get(i)) end
   return table.concat(r, sep or ' ')
 end
 
-M.pow       = M.__pow
-M.tostring  = M.__tostring
-M.__index   = M
+M.pow      = M.__pow
+M.tostring = M.__tostring
+M.__index  = M
 
 ffi.metatype( 'vector_t', M)
 ffi.metatype('cvector_t', M)

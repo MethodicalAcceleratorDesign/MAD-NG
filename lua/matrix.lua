@@ -12,7 +12,7 @@ SYNOPSIS
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
     (minus) -, +, -, *, /, %, ^, ==, #
-    sizes, rows, cols, get, set, zeros,
+    rows, cols, size, sizes, get, set, zeros, ones,
     set_row, set_col, set_diag, set_table,
     real, imag, conj, norm, angle,
     abs, arg, exp, log, pow, sqrt, proj,
@@ -24,28 +24,35 @@ RETURN VALUES
   The constructor of matrices
 
 SEE ALSO
-  math, complex, vector, generic
+  math, gmath, complex, vector
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi     = require 'ffi'
-local vector  = require 'vector'
-local generic = require 'generic'
+local ffi    = require 'ffi'
+local vector = require 'vector'
+local gm     = require 'gmath'
 
-local isnum, iscpx, iscalar, isvec, iscvec, min,
+-- extend gmath
+local istype = ffi.istype
+function gm.is_matrix  (x) return type(x) == 'cdata' and istype( 'matrix_t', x) end
+function gm.is_cmatrix (x) return type(x) == 'cdata' and istype('cmatrix_t', x) end
+
+-- locals
+local isnum, iscpx, iscalar, 
+      isvec, iscvec, min,
       real, imag, conj, ident,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
       unm, add, sub, mul, div, mod, pow = 
-      generic.is_number, generic.is_complex, generic.is_scalar,
-      generic.is_vector, generic.is_cvector, generic.min,
-      generic.real, generic.imag, generic.conj, generic.ident,
-      generic.abs, generic.arg, generic.exp, generic.log, generic.sqrt, generic.proj,
-      generic.sin, generic.cos, generic.tan, generic.sinh, generic.cosh, generic.tanh,
-      generic.asin, generic.acos, generic.atan, generic.asinh, generic.acosh, generic.atanh,
-      generic.unm, generic.add, generic.sub, generic.mul, generic.div, generic.mod, generic.pow
+      gm.is_number, gm.is_complex, gm.is_scalar,
+      gm.is_vector, gm.is_cvector, gm.min,
+      gm.real, gm.imag, gm.conj, gm.ident,
+      gm.abs, gm.arg, gm.exp, gm.log, gm.sqrt, gm.proj,
+      gm.sin, gm.cos, gm.tan, gm.sinh, gm.cosh, gm.tanh,
+      gm.asin, gm.acos, gm.atan, gm.asinh, gm.acosh, gm.atanh,
+      gm.unm, gm.add, gm.sub, gm.mul, gm.div, gm.mod, gm.pow
 
 local istype, sizeof, fill = ffi.istype, ffi.sizeof, ffi.fill
 
@@ -74,9 +81,8 @@ local function mat_alloc (ct, nr, nc)
 end
 
 local function matrix_from_table(tbl, is_complex)
-  local nr, nc = #tbl, #tbl[1]
   local ct = (is_complex or iscpx(tbl[1][1])) and cmat_ct or mat_ct
-  local r = mat_alloc(ct, nr, nc)
+  local r = mat_alloc(ct, #tbl, #tbl[1])
   return r:set_table(tbl)
 end
 
@@ -96,44 +102,40 @@ local function idx (x, i, j)
   return (i-1) * x.nc + (j-1)
 end
 
-function M.get   (x, i, j)    return x.data[ idx(x,i,j) ] end
-function M.set   (x, i, j, e) x.data[ idx(x,i,j) ] = e ; return x end
-function M.rows  (x)          return x.nr       end
-function M.cols  (x)          return x.nc       end
-function M.sizes (x)          return x.nr, x.nc end
+function M.rows  (x)          return x.nr        end
+function M.cols  (x)          return x.nc        end
+function M.size  (x)          return x.nr * x.nc end
+function M.sizes (x)          return x.nr , x.nc end
+function M.get   (x, i, j)    return x.data[idx(x,i,j)] end
+function M.set   (x, i, j, e) x.data[idx(x,i,j)] = e ; return x end
 
 function M.zeros(x)
-  local nr, nc = x:sizes()
-  fill(x.data, sizeof(ismat(x) and 'double' or 'complex', nr*nc))
+  fill(x.data, sizeof(ismat(x) and 'double' or 'complex', x:size()))
   return x
 end
 
-function M.ones (x, elem)
-  local nr, nc = x:sizes()
+function M.ones (x, e)
+  local nr, nc, n = x:sizes()
   x:zeros()
-  local n, e = min(nr, nc), elem or 0
-  for i=1,n do x.data[ idx(x,i,i) ] = e end
+  n, e = min(nr, nc), e or 1
+  for i=1,n do x:set(i,i, e) end
   return x
 end
 
-function M.set_col (x,ic,v)
-  local nr, nc = x:sizes()
-  local n = min(nr, nc)
-  for i=1,n do x.data[ idx(x,i,ic) ] = v[i] end
+function M.set_col (x,jc,v)
+  for i=1,x:rows() do x:set(i,jc, v:get(i)) end
   return x
 end
 
 function M.set_row (x,ir,v)
-  local nr, nc = x:sizes()
-  local n, xi = min(nr, nc)
-  for j=1,n do x.data [ idx(x,ir,i) ] = v[j] end
+  for j=1,x:cols() do x:set(ir,j, v:get(j)) end
   return x
 end
 
 function M.set_diag (x,v)
   local nr, nc = x:sizes()
   local n = min(nr, nc)
-  for i=1,n do x.data[ idx(x,i,i) ] = v[i] end
+  for i=1,n do x:set(i,i, v:get(i)) end
   return x
 end
 
@@ -152,7 +154,7 @@ function M.transpose (x, y)
   local r = y or matrix(nc, nr, iscmat(x))
   for i=1,nr do
     local xi = idx(x,i,0)
-    for j=1,nc do r.data[ idx(r,j,i) ] = x.data[xi+j] end
+    for j=1,nc do r:set(j,i, x.data[xi+j]) end
   end
   return r
 end
@@ -252,7 +254,7 @@ function M.__pow (x,y) return M.maps(x,y, pow)   end
 
 function M.__eq (x, y)
   local nr, nc = x:sizes()
-  if nr ~= y.nr or nc ~= y.nc then return false end
+  if nr ~= y:rows() or nc ~= y:cols() then return false end
   for i=0,nr*nc-1 do
     if x.data[i] ~= y.data[i] then return false end
   end
@@ -315,9 +317,9 @@ function M.__tostring (x, sep, lsep)
   return table.concat(r, lsep or '\n')
 end
 
-M.pow       = M.__pow
-M.tostring  = M.__tostring
-M.__index   = M
+M.pow      = M.__pow
+M.tostring = M.__tostring
+M.__index  = M
 
 ffi.metatype( 'matrix_t', M)
 ffi.metatype('cmatrix_t', M)

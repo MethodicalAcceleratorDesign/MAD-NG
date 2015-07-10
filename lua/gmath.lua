@@ -4,13 +4,13 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  gmath -- generic wrapper for math functions
+  gmath -- generic math functions
 
 SYNOPSIS
   local gm = require 'gmath'
 
 DESCRIPTION
-  The module generic wraps common math functions with an object-oriented dispatcher.
+  The module gmath wraps common math functions with an object-oriented dispatcher.
   It adds few useful functions:
     is_number, is_integer, is_scalar,                     (math)
     ident, umn, add, sub, mul, div, mod,
@@ -18,7 +18,7 @@ DESCRIPTION
     arg, real, imag, conj, proj,                          (complex) 
     tostring.                                             (other)
 
-  Other modules may also extend the module generic (e.g. vector and matrix)
+  Other modules may also extend the module gmath (e.g. vector and matrix)
 
 RETURN VALUES
   The table of generic functions

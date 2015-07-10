@@ -1,8 +1,8 @@
-local generic = require 'generic'
 local complex = require 'complex'
 local vector  = require 'vector'
+local gmath   = require 'gmath'
 
-local sqrt = generic.sqrt
+local sqrt, tostring = gmath.sqrt, gmath.tostring
 
 local n = arg[1] and tonumber(arg[1]) or 1e7
 
@@ -14,7 +14,7 @@ for i=1,n do
 	b = a * b + b - a
 end
 
-io.write(b:tostring(), '\n')
+io.write(tostring(b), '\n')
 
 local x = vector {1,0,0}
 local y = vector {0,1,0}
