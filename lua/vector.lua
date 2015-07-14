@@ -12,139 +12,76 @@ SYNOPSIS
 DESCRIPTION
   The module vector implements the operators and math functions on vectors:
     (minus) -, +, -, *, /, %, ^, ==,
-    size, get, set, zeros, ones, set_table,
-    real, imag, conj, norm, angle, dot, cross,
+    size, sizes, get, set, zeros, ones, set_table,
+    unm, add, sub, mul, div, mod, pow,
+    real, imag, conj, norm, angle, inner_prod, outer_prod, cross_prod,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    copy, foldl, foldr, map, map2, maps, tostring.
+    copy, foldl, foldr, map, map2, tostring, totable.
 
 RETURN VALUES
   The constructor of vectors
 
 SEE ALSO
-  math, gmath, complex, matrix
+  math, gmath, complex, cvector, matrix, cmatrix
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi = require 'ffi'
-local gm  = require 'gmath'
+local ffi    = require 'ffi'
+local clib   = require 'mad'
+local linalg = require 'linalg'
+local gm     = require 'gmath'
+
+local vector, cvector, matrix, cmatrix =
+  linalg.vector, linalg.cvector, linalg.matrix, linalg.cmatrix
 
 -- extend gmath
 local istype = ffi.istype
-function gm.is_vector  (x) return type(x) == 'cdata' and istype( 'vector_t', x) end
-function gm.is_cvector (x) return type(x) == 'cdata' and istype('cvector_t', x) end
 
 -- locals
-local isnum, iscpx, iscalar,
-      real, imag, conj, ident,
+local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
+      real, imag, conj, ident, min,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
       unm, add, sub, mul, div, mod, pow = 
       gm.is_number, gm.is_complex, gm.is_scalar,
-      gm.real, gm.imag, gm.conj, gm.ident,
+      gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
+      gm.real, gm.imag, gm.conj, gm.ident, gm.min,
       gm.abs, gm.arg, gm.exp, gm.log, gm.sqrt, gm.proj,
       gm.sin, gm.cos, gm.tan, gm.sinh, gm.cosh, gm.tanh,
       gm.asin, gm.acos, gm.atan, gm.asinh, gm.acosh, gm.atanh,
-      gm.unm, gm.add, gm.sub, gm.mul, gm.div, gm.mod, gm.pow
+      gm.unm, gm.mod, gm.pow
 
 local istype, sizeof, fill = ffi.istype, ffi.sizeof, ffi.fill
 
+local cres = ffi.new 'complex[1]'
+
 -- Lua API
 
-ffi.cdef[[
-typedef struct { int32_t n; double  data[?]; }  vector_t;
-typedef struct { int32_t n; complex data[?]; } cvector_t;
-]]
-
-local  vec_ct = ffi.typeof ' vector_t'
-local cvec_ct = ffi.typeof 'cvector_t'
-
-local function isvec (x)
-  return istype('vector_t', x)
-end
-
-local function iscvec (x)
-  return istype('cvector_t', x)
-end
-
-local function vec_alloc (ct, n)
-  local r = ct(n) -- default init: compiled for size <= 128 bytes
-  r.n = n
-  return r
-end
-
-local function vector_from_table(tbl, is_complex)
-  local ct = (is_complex or iscpx(tbl[1])) and cvec_ct or vec_ct
-  local r = vec_alloc(ct, #tbl)
-  return r:set_table(tbl)
-end
-
-local function vector (n, is_complex)
-  if type(n) == 'table' then
-    return vector_from_table(n, is_complex)
-  end
-
-  if n > 0 then
-    return vec_alloc(is_complex and cvec_ct or vec_ct, n)
-  end
-
-  error("invalid argument to vector constructor, expecting size or table")
-end
-
-function M.size (x)       return x.n end
-function M.get  (x, i)    return x.data[i-1] end
-function M.set  (x, i, e) x.data[i-1] = e ; return x end
+function M.size  (x)       return x.n end
+function M.sizes (x)       return x.n, 1 end
+function M.get   (x, i)    return x.data[i-1] end
+function M.set   (x, i, e) x.data[i-1] = e ; return x end
 
 function M.zeros(x)
-  fill(x.data, sizeof(isvec(x) and 'double' or 'complex', x:size()))
+  fill(x.data, sizeof('double', x:size()))
   return x
 end
 
-function M.ones (x, e)
-  e = e or 1 
-  for i=0,x:size()-1 do x.data[i] = e end
+function M.ones (x, e_)
+  local n, e = x:size(), e_ or 1
+  for i=0,n-1 do x.data[i] = e end
   return x
 end
 
 function M.set_table (x, tbl)
   local n = x:size()
-  assert(#tbl == n, "incompatible table size")
+  assert(#tbl == n, "incompatible vector sizes with table")
   for i=1,n do x.data[i-1] = tbl[i] end
   return x
-end
-
-function M.norm (x)
-  return sqrt(x:dot(x))
-end
-
-function M.angle (x, y)
-  local w = x:dot(y)
-  local v = sqrt(x:dot(x) * y:dot(y))
-  return acos(w/v) -- [0, pi]
-end
-
-function M.dot (x, y)
-  local n = x:size()
-  assert(n == y:size(), "incompatible vector sizes")
-  local r = 0
-  for i=0,n-1 do r = r + x.data[i] * y.data[i] end
-  return r
-  -- return M.foldl(M.map2(x, y, gm.mul), 0, gm.add)
-end
-
-function M.cross (x, y)
-  local n = x:size()
-  assert(n == y:size(), "incompatible vector sizes")
-  local r = vector(n, iscvec(x) or iscvec(y))
-  for i=1,n-2 do
-    r.data[i-1] = x.data[i] * y.data[i+1] - x.data[i+1] * y.data[i]
-  end
-  r.data[n-2] = x.data[n-1] * y.data[0] - x.data[0] * y.data[n-1]
-  r.data[n-1] = x.data[  0] * y.data[1] - x.data[1] * y.data[  0]
-  return r
 end
 
 function M.foldl (x, r, f)
@@ -157,99 +94,296 @@ function M.foldr (x, r, f)
   return r
 end
 
-function M.map (x, f)
+function M.map (x, f, r_)
   local n = x:size()
-  local r0 = f(x.data[0])
-  local r = vector(n, iscpx(r0))
-  r.data[0] = r0
-  for i=1,n-1 do r.data[i] = f(x.data[i]) end
+  local r = r_ or vector(n)
+  assert(n == r:size(), "incompatible vector sizes")
+  for i=0,n-1 do r.data[i] = f(x.data[i]) end
   return r
 end
 
-function M.map2 (x, y, f)
+function M.map2 (x, y, f, r_)
   local n = x:size()
+  local r = r_ or vector(n)
   assert(n == y:size(), "incompatible vector sizes")
-  local r0 = f(x.data[0], y.data[0])
-  local r = vector(n, iscpx(r0))
-  r.data[0] = r0
-  for i=1,n-1 do r.data[i] = f(x.data[i], y.data[i]) end
+  assert(n == r:size(), "incompatible vector sizes")
+  for i=0,n-1 do r.data[i] = f(x.data[i], y.data[i]) end
   return r
 end
 
-function M.maps (x, y, f)
-  if iscalar(x) then
-    local n = y:size()    
-    local r0 = f(x, y.data[0])
-    local r = vector(n, iscpx(r0))
-    r.data[0] = r0
-    for i=1,n-1 do r.data[i] = f(x, y.data[i]) end
-    return r
+function M.inner_prod (x, y)
+  assert(x:size() == y:size(), "incompatible vector sizes")
+  if isvec(y) then
+    return clib.mad_vec_dot(x.data, y.data, x:size())
+  elseif iscvec(y) then
+    clib.mad_vec_dotv(x.data, y.data, cres, x:size())
+    return cres[0]
+  else
+    error("incompatible vector operands")
   end
-
-  if iscalar(y) then
-    local n = x:size()    
-    local r0 = f(x.data[0], y)
-    local r = vector(n, iscpx(r0))
-    r.data[0] = r0
-    for i=1,n-1 do r.data[i] = f(x.data[i], y) end
-    return r
-  end
-
-  return M.map2(x, y, f)
 end
 
-function M.copy  (x)   return M.map (x,   ident) end
-function M.real  (x)   return M.map (x,   real)  end
-function M.imag  (x)   return M.map (x,   imag)  end
-function M.conj  (x)   return M.map (x,   conj)  end
-function M.abs   (x)   return M.map (x,   abs)   end
-function M.arg   (x)   return M.map (x,   arg)   end
-function M.exp   (x)   return M.map (x,   exp)   end
-function M.log   (x)   return M.map (x,   log)   end
-function M.sqrt  (x)   return M.map (x,   sqrt)  end
-function M.proj  (x)   return M.map (x,   proj)  end
-function M.sin   (x)   return M.map (x,   sin)   end
-function M.cos   (x)   return M.map (x,   cos)   end
-function M.tan   (x)   return M.map (x,   tan)   end
-function M.sinh  (x)   return M.map (x,   sinh)  end
-function M.cosh  (x)   return M.map (x,   cosh)  end
-function M.tanh  (x)   return M.map (x,   tanh)  end
-function M.asin  (x)   return M.map (x,   asin)  end
-function M.acos  (x)   return M.map (x,   acos)  end
-function M.atan  (x)   return M.map (x,   atan)  end
-function M.asinh (x)   return M.map (x,   asinh) end
-function M.acosh (x)   return M.map (x,   acosh) end
-function M.atanh (x)   return M.map (x,   atanh) end
-function M.__unm (x)   return M.map (x,   unm)   end
-function M.__add (x,y) return M.maps(x,y, add)   end
-function M.__sub (x,y) return M.maps(x,y, sub)   end
-function M.__mul (x,y) return M.maps(x,y, mul)   end
-function M.__div (x,y) return M.maps(x,y, div)   end
-function M.__mod (x,y) return M.maps(x,y, mod)   end
-function M.__pow (x,y) return M.maps(x,y, pow)   end
+function M.outer_prod (x, y, r_)
+  local nr, nc = x:size(), y:size()
+  local r = r_ or isvec(y) and matrix(nr,nr) or cmatrix(nr,nc)
+  assert(isvec(y) and ismat(r) or iscmat(r), "incompatible matrix kinds")
+  assert(nr == r:rows() and nc == r:cols(), "incompatible vector-matrix sizes")
+  for i=1,nr do
+    for j=1,nc do r:set(i,j, x:get(i)*y:get(j)) end
+  end
+  return r
+end
+
+function M.cross_prod (x, y, r_)
+  local n = x:size()
+  local r = r_ or vector(n)
+  assert(n == y:size(), "incompatible vector sizes")
+  assert(n == r:size(), "incompatible vector sizes")
+  for i=1,n-2 do
+    r.data[i-1] = x.data[i] * y.data[i+1] - x.data[i+1] * y.data[i]
+  end
+  r.data[n-2] = x.data[n-1] * y.data[0] - x.data[0] * y.data[n-1]
+  r.data[n-1] = x.data[  0] * y.data[1] - x.data[1] * y.data[  0]
+  return r
+end
+
+function M.norm (x)
+  return sqrt(clib.mad_vec_dot(x.data, x.data, x:size()))
+end
+
+function M.angle (x, y)
+  local w = x:inner_prod(y)
+  local v = x:norm() * y:norm()
+  return acos(w / v) -- [0, pi]
+end
+
+function M.copy  (x, r_)  return x:map (ident, r_) end
+function M.real  (x, r_)  return x:map (real , r_) end
+function M.imag  (x, r_)  return x:map (imag , r_) end
+function M.conj  (x, r_)  return x:map (conj , r_) end
+function M.abs   (x, r_)  return x:map (abs  , r_) end
+function M.arg   (x, r_)  return x:map (arg  , r_) end
+function M.exp   (x, r_)  return x:map (exp  , r_) end
+function M.log   (x, r_)  return x:map (log  , r_) end
+function M.sqrt  (x, r_)  return x:map (sqrt , r_) end
+function M.proj  (x, r_)  return x:map (proj , r_) end
+function M.sin   (x, r_)  return x:map (sin  , r_) end
+function M.cos   (x, r_)  return x:map (cos  , r_) end
+function M.tan   (x, r_)  return x:map (tan  , r_) end
+function M.sinh  (x, r_)  return x:map (sinh , r_) end
+function M.cosh  (x, r_)  return x:map (cosh , r_) end
+function M.tanh  (x, r_)  return x:map (tanh , r_) end
+function M.asin  (x, r_)  return x:map (asin , r_) end
+function M.acos  (x, r_)  return x:map (acos , r_) end
+function M.atan  (x, r_)  return x:map (atan , r_) end
+function M.asinh (x, r_)  return x:map (asinh, r_) end
+function M.acosh (x, r_)  return x:map (acosh, r_) end
+function M.atanh (x, r_)  return x:map (atanh, r_) end
+function M.unm   (x, r_)  return x:map (unm  , r_) end
+function M.mod   (x, y, r_) return x:map2(y, mod, r_) end -- TODO
+function M.pow   (x, y, r_) return x:map2(y, pow, r_) end -- TODO
 
 function M.__eq (x, y)
-  local n = x:size()
-  if n ~= y:size() then return false end
-  for i=0,n-1 do
+  if iscalar(y) then
+    for i=0,x:size()-1 do
+      if x.data[i] ~= y then return false end
+    end
+    return true
+  end
+
+  if x:rows() ~= y:rows() or x:cols() ~= y:cols() then return false end
+  for i=0,x:size()-1 do
     if x.data[i] ~= y.data[i] then return false end
   end
   return true
 end
 
-function M.__tostring (x, sep)
+function M.add (x, y, r_)
+  if isnum(x) then -- num + vec => vec + num
+    local r = r_ or vector(y:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(y:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_addn(y.data, x, r.data, r:size())
+    return r
+  end
+
+  -- isvec(x)
+  local r
+  if isnum(y) then -- vec + num
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_addn(x.data, y, r.data, r:size())
+  elseif iscpx(y) then -- vec + cpx
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_addc(x.data, y.re, y.im, r.data, r:size())
+  elseif isvec(y) then -- vec + vec
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_add(x.data, y.data, r.data, r:size())
+  elseif iscvec(y) then -- vec + cvec => cvec + vec
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_cvec_addv(y.data, x.data, r.data, r:size())
+  else
+    error("incompatible vector (+) operands")
+  end
+  return r
+end
+
+function M.sub (x, y, r_)
+  if isnum(x) then -- num - vec
+    local r = r_ or vector(y:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(y:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_subn (y.data, x, r.data, r:size())
+    return r
+  end
+
+  -- isvec(x)
+  local r
+  if isnum(y) then -- vec - num => vec + -num
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_addn(x.data, -y, r.data, r:size())
+  elseif iscpx(y) then -- vec - cpx => vec + -cpx
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_addc(x.data, -y.re, -y.im, r.data, r:size())
+  elseif isvec(y) then -- vec - vec
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_sub(x.data, y.data, r.data, r:size())
+  elseif iscvec(y) then -- vec - cvec
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_cvec_subv(x.data, y.data, r.data, r:size())
+  else
+    error("incompatible vector (-) operands")
+  end
+  return r
+end
+
+function M.mul (x, y, r_)
+  if isnum(x) then -- num * vec => vec * num
+    local r = r_ or vector(y:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(y:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_muln (y.data, x, r.data, r:size())
+    return r
+  end
+
+  -- isvec(x)
+  local r
+  if isnum(y) then -- vec * num
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_muln(x.data, y, r.data, r:size())
+  elseif iscpx(y) then -- vec * cpx
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
+  elseif isvec(y) then -- vec * vec
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_mul(x.data, y.data, r.data, r:size())
+  elseif iscvec(y) then -- vec * cvec => cvec * vec
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_cvec_mulv(y.data, x.data, r.data, r:size())
+  elseif ismat(y) then -- vec * mat
+    r = r_ or vector(y:cols())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == y:rows(), "incompatible vector-matrix sizes")
+    assert(r:size() == y:cols(), "incompatible vector-matrix sizes")
+    clib.mad_mat_vmul(x.data, y.data, r.data, r:rows(), r:cols())
+  elseif iscmat(y) then -- vec * cmat
+    r = r_ or cvector(y:cols())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == y:rows(), "incompatible vector-cmatrix sizes")
+    assert(r:size() == y:cols(), "incompatible vector-cmatrix sizes")
+    clib.mad_cmat_vmul(x.data, y.data, r.data, r:rows(), r:cols())
+  else
+    error("incompatible vector (*) operands")
+  end
+  return r
+end
+
+function M.div (x, y, r_)
+  if isnum(x) then -- num / vec
+    local r = r_ or vector(y:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(y:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_divn (y.data, x, r.data, r:size())
+    return r
+  end
+
+  -- isvec(x)
+  local r
+  if isnum(y) then -- vec / num => vec * (1/num)
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_muln(x.data, 1/y, r.data, r:size())
+  elseif iscpx(y) then -- vec / cpx => vec * (1/cpx)
+    r, y = r_ or cvector(x:size()), 1/y
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
+  elseif ismat(y) then -- vec / mat => vec * inv(mat)
+    error("vec/mat: NYI matrix inverse")
+  elseif iscmat(y) then -- vec / cmat => vec * inv(cmat)
+    error("vec/cmat: NYI matrix inverse")
+  else
+    error("incompatible vector (/) operands")
+  end
+  return r
+end
+
+function M.tostring (x, sep)
   local n = x:size()
   local r = {}
   for i=1,n do r[i] = tostring(x:get(i)) end
   return table.concat(r, sep or ' ')
 end
 
-M.pow      = M.__pow
-M.tostring = M.__tostring
+function M.totable(x, r_)
+  local n = x:sizes()
+  local r = r_ or tbl_new(n,0)
+  assert(type(r) == 'table', "invalid argument, table expected")
+  for i=1,n do r[i] = x:get(i) end
+  return r
+end
+
+M.__unm      = M.unm
+M.__add      = M.add
+M.__sub      = M.sub
+M.__mul      = M.mul
+M.__div      = M.div
+M.__mod      = M.mod
+M.__pow      = M.pow
+M.__tostring = M.tostring
 M.__index  = M
 
-ffi.metatype( 'vector_t', M)
-ffi.metatype('cvector_t', M)
+ffi.metatype('vector_t', M)
 
 -- END -------------------------------------------------------------------------
 return vector

@@ -1,4 +1,4 @@
-// gcc -std=c11 -W -Wall -Wextra -pedantic -O3 -ffast-math -shared -fPIC -static-libgcc *.c -o libmad-OSX.so -lm
+// gcc -std=c11 -W -Wall -Wextra -pedantic -O3 -ffast-math -ftree-vectorize -shared -fPIC -static-libgcc *.c -o libmad-OSX.so -lm
 
 #include <complex.h>
 #include "mad_cnum.h"
