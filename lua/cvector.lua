@@ -35,8 +35,8 @@ local clib   = require 'mad'
 local linalg = require 'linalg'
 local gm     = require 'gmath'
 
-local vector, cvector, matrix, cmatrix =
-  linalg.vector, linalg.cvector, linalg.matrix, linalg.cmatrix
+local vector, cvector = linalg.vector, linalg.cvector
+local matrix, cmatrix = linalg.matrix, linalg.cmatrix
 
 -- extend gmath
 

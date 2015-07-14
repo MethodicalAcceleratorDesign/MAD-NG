@@ -8,6 +8,8 @@ NAME
 
 SYNOPSIS
   local linalg = require 'linalg'
+  local vector, cvector = linalg.vector, linalg.cvector
+  local matrix, cmatrix = linalg.matrix, linalg.cmatrix
 
 DESCRIPTION
   The module linalg provides consistent definitions of vectors, complex vectors,
