@@ -28,6 +28,7 @@ void  mad_cnum_asinh (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_acosh (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_atanh (num_t x_re, num_t x_im, cnum_t *r);
 
+void  mad_cnum_div   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_pow   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 
 #undef  num_t

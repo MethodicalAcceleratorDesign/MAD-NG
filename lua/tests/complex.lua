@@ -1,3 +1,5 @@
+-- time luajit -jv -Oloopunroll=50 -e "package.path = './?.lua;./lua/?.lua;./lib/?.lua;' .. package.path" lua/tests/complex.lua
+
 local complex = require 'complex'
 local gmath   = require 'gmath'
 
@@ -9,7 +11,7 @@ local a, b = (1+1i)/(sqrt(2)+1e-8), 1
 local n = arg[1] and tonumber(arg[1]) or 1e8
 
 for i=1,n do
-	b = a * b
+	b = a / b
 end
 
 print('n=', n, 'a=', a, 'b=', b)

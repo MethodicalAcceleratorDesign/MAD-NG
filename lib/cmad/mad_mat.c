@@ -1,5 +1,3 @@
-// gcc -std=c11 -W -Wall -Wextra -pedantic -O3 -ffast-math -ftree-vectorize -shared -fPIC -static-libgcc *.c -o libmad-OSX.so -lm
-
 #include "mad_mat.h"
 #include <complex.h>
 #include <assert.h>
@@ -12,7 +10,7 @@ typedef double _Complex cnum_t;
 #define CHKXYR assert( x && y && r && x != r && y != r )
 
 // [m x n] = [m x p] * [p x n]
-/*
+/* Naive implementation
 #define MMUL \
   for (size_t i=0; i < m; i++) \
     for (size_t j=0; j < n; j++) { \
@@ -38,7 +36,7 @@ typedef double _Complex cnum_t;
     } \
   } \
   if (n & 2) { \
-    size_t j=n-3; \
+    size_t j=n-2-(n & 1); \
     for (size_t i=0; i < m; i++) { \
       r[i*n+j  ] = 0; \
       r[i*n+j+1] = 0; \
@@ -71,6 +69,20 @@ typedef double _Complex cnum_t;
     r[j] = 0; \
     for (size_t k=0; k < p; k++) \
       r[j] += x[k] * y[k*n+j]; \
+  } \
+
+// transpose, in place or not
+#define TRANS(C) \
+  assert(x && r); \
+  if (x == r) { \
+    assert(m == n); \
+    for (size_t i=0; i < m; i++) \
+    for (size_t j=i; j < n; j++) \
+      r[j*n+i] = C(r[i*n+j]); \
+  } else { \
+    for (size_t i=0; i < m; i++) \
+    for (size_t j=0; j < n; j++) \
+      r[j*m+i] = C(x[i*n+j]); \
   } \
 
 
@@ -111,31 +123,7 @@ void mad_cmat_cmul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n, size_
 { CHKXR; VMUL; }
 
 void mad_mat_trans (const num_t *x, num_t *r, size_t m, size_t n)
-{ 
-  assert(x && r);
-  if (x == r) {
-    assert(m == n);
-    for (size_t i=0  ; i < m; i++)
-    for (size_t j=i+1; j < n; j++)
-      r[j*n+i] = r[i*n+j];
-  } else {
-    for (size_t i=0; i < m; i++)
-    for (size_t j=0; j < n; j++)
-      r[j*m+i] = x[i*n+j];
-  }
-}
+{ TRANS() }
 
 void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
-{ 
-  assert(x && r);
-  if (x == r) {
-    assert(m == n);
-    for (size_t i=0; i < m; i++)
-    for (size_t j=i; j < n; j++)
-      r[j*n+i] = conj(r[i*n+j]);
-  } else {
-    for (size_t i=0; i < m; i++)
-    for (size_t j=0; j < n; j++)
-      r[j*m+i] = conj(x[i*n+j]);
-  }
-}
+{ TRANS(conj) }

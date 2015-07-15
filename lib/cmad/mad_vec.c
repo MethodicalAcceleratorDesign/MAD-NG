@@ -1,5 +1,3 @@
-// gcc -std=c11 -W -Wall -Wextra -pedantic -O3 -ffast-math -ftree-vectorize -shared -fPIC -static-libgcc *.c -o libmad-OSX.so -lm
-
 #include "mad_vec.h"
 #include <math.h>
 #include <complex.h>

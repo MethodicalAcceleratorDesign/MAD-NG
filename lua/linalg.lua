@@ -24,8 +24,9 @@ SEE ALSO
 
 -- DEFS ------------------------------------------------------------------------
 
-local ffi = require 'ffi'
-local gm  = require 'gmath'
+local ffi  = require 'ffi'
+local cmad = require 'cmad'
+local gm   = require 'gmath'
 
 ffi.cdef[[
 typedef struct { int32_t n;      double  data[?]; }  vector_t;
@@ -34,19 +35,20 @@ typedef struct { int32_t nr, nc; double  data[?]; }  matrix_t;
 typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 ]]
 
+-- locals
 local  vec_ct = ffi.typeof  'vector_t'
 local cvec_ct = ffi.typeof 'cvector_t'
 local  mat_ct = ffi.typeof  'matrix_t'
 local cmat_ct = ffi.typeof 'cmatrix_t'
+local istype  = ffi.istype
 
 -- extend gmath
-local istype = ffi.istype
 function gm.is_vector  (x) return type(x) == 'cdata' and istype( 'vector_t', x) end
 function gm.is_cvector (x) return type(x) == 'cdata' and istype('cvector_t', x) end
 function gm.is_matrix  (x) return type(x) == 'cdata' and istype( 'matrix_t', x) end
 function gm.is_cmatrix (x) return type(x) == 'cdata' and istype('cmatrix_t', x) end
 
--- vec
+-- vec --------------------------------
 
 local function vec_alloc (n)
   local r = vec_ct(n) -- default init: compiled for size <= 128 bytes
@@ -71,7 +73,7 @@ local function vector (n)
   error("invalid argument to vector constructor, expecting size or table")
 end
 
--- cvec
+-- cvec -------------------------------
 
 local function cvec_alloc (n)
   local r = cvec_ct(n) -- default init: compiled for size <= 128 bytes
@@ -96,7 +98,7 @@ local function cvector (n)
   error("invalid argument to cvector constructor, expecting size or table")
 end
 
--- mat
+-- mat --------------------------------
 
 local function mat_alloc (nr, nc)
   local r = mat_ct(nr*nc) -- default init: compiled for size <= 128 bytes
@@ -121,7 +123,7 @@ local function matrix (nr, nc)
   error("invalid argument to matrix constructor, expecting (rows,cols) or table of tables")
 end
 
--- cmat
+-- cmat -------------------------------
 
 local function cmat_alloc (nr, nc)
   local r = cmat_ct(nr*nc) -- default init: compiled for size <= 128 bytes
@@ -148,6 +150,7 @@ end
 
 -- END -------------------------------------------------------------------------
 return {
+  cmad    = cmad,
   vector  = vector,
   matrix  = matrix,
   cvector = cvector,

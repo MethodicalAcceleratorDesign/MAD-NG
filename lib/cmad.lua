@@ -1,6 +1,6 @@
-local oss = jit.os
-local ffi = require 'ffi'
-local mad = ffi.load("lib/mad/libmad-" .. oss .. ".so")
+local oss  = jit.os
+local ffi  = require 'ffi'
+local cmad = ffi.load("lib/cmad/libmad-" .. oss .. ".so")
 
 ffi.cdef[[
 typedef double num_t;
@@ -32,6 +32,7 @@ void  mad_cnum_asinh (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_acosh (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_atanh (num_t x_re, num_t x_im, cnum_t *r);
 
+void  mad_cnum_div   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_pow   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 ]]
 
@@ -96,4 +97,4 @@ void mad_cmat_vmul (const  num_t *x, const cnum_t *y, cnum_t *r, size_t n, size_
 void mad_cmat_cmul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p);           // cvec * cmat
 ]]
 
-return mad
+return cmad

@@ -30,23 +30,20 @@ SEE ALSO
 -- DEFS ------------------------------------------------------------------------
 
 local ffi    = require 'ffi'
-local clib   = require 'mad'
 local linalg = require 'linalg'
 local gm     = require 'gmath'
 
+-- locals
+local clib            = linalg.cmad
 local vector, cvector = linalg.vector, linalg.cvector
 local matrix, cmatrix = linalg.matrix, linalg.cmatrix
 
--- extend gmath
-local istype = ffi.istype
-
--- locals
 local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
       real, imag, conj, ident, min,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, add, sub, mul, div, mod, pow = 
+      unm, mod, pow = 
       gm.is_number, gm.is_complex, gm.is_scalar,
       gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
       gm.real, gm.imag, gm.conj, gm.ident, gm.min,
@@ -348,10 +345,22 @@ function M.div (x, y, r_)
     assert(iscvec(r), "incompatible vector kinds")
     assert(x:size() == r:size(), "incompatible vector sizes")
     clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
+  elseif isvec(y) then -- vec / vec
+    r = r_ or vector(x:size())
+    assert(isvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_div(x.data, y.data, r.data, r:size())
+  elseif iscvec(y) then -- vec / cvec
+    r = r_ or cvector(x:size())
+    assert(iscvec(r), "incompatible vector kinds")
+    assert(x:size() == y:size(), "incompatible vector sizes")
+    assert(x:size() == r:size(), "incompatible vector sizes")
+    clib.mad_vec_divv(y.data, x.data, r.data, r:size())
   elseif ismat(y) then -- vec / mat => vec * inv(mat)
     error("vec/mat: NYI matrix inverse")
   elseif iscmat(y) then -- vec / cmat => vec * inv(cmat)
-    error("vec/cmat: NYI matrix inverse")
+    error("vec/cmat: NYI cmatrix inverse")
   else
     error("incompatible vector (/) operands")
   end

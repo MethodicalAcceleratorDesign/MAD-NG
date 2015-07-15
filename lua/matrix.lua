@@ -17,7 +17,7 @@ DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
     (minus) -, +, -, *, /, %, ^, ==,
     rows, cols, size, sizes, get, set, zeros, ones,
-    unm, add, sub, mul, div, mod, pow,
+    unm, add, sub, mul, div, mod, pow, schur_prod,
     get_row, get_col, get_diag, transpose,
     set_row, set_col, set_diag, set_table,
     real, imag, conj, trace, norm, angle, inner_prod,
@@ -35,21 +35,21 @@ SEE ALSO
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi     = require 'ffi'
-local clib    = require 'mad'
+local ffi    = require 'ffi'
 local linalg = require 'linalg'
 local gm     = require 'gmath'
 
+-- locals
+local clib            = linalg.cmad
 local vector, cvector = linalg.vector, linalg.cvector
 local matrix, cmatrix = linalg.matrix, linalg.cmatrix
 
--- locals
 local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
       real, imag, conj, ident, min,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, add, sub, mul, div, mod, pow = 
+      unm, mod, pow = 
       gm.is_number, gm.is_complex, gm.is_scalar,
       gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
       gm.real, gm.imag, gm.conj, gm.ident, gm.min,
@@ -177,6 +177,19 @@ function M.map2 (x, y, f, r_)
   assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
   assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
   for i=0,nr*nc-1 do r.data[i] = f(x.data[i], y.data[i]) end
+  return r
+end
+
+function M.schur_prod (x, y, r_)
+  local nr, nc = x:sizes()
+  local r = r_ or ismat(y) and matrix(nr, nc) or cmatrix(nr, nc)
+  assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
+  assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  if ismat(y) then
+    clib.mad_vec_mul(x.data, y.data, r.data, nr*nc)
+  else
+    clib.mad_cvec_mulv(y.data, x.data, r.data, nr*nc)
+  end
   return r
 end
 

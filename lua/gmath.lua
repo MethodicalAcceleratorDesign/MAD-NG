@@ -24,7 +24,7 @@ RETURN VALUES
   The table of generic functions
 
 SEE ALSO
-  math, complex, vector, matrix
+  math, complex, vector, cvector, matrix, cmatrix
 ]]
 
 -- DEFS ------------------------------------------------------------------------
