@@ -368,7 +368,7 @@ function M.mul (x, y, r_)
     assert(isvec(r), "incompatible matrix-vector kinds")
     assert(x:cols() == y:size(),                   "incompatible matrix-vector sizes")
     assert(x:rows() == r:size(),                   "incompatible matrix-vector sizes")
-    clib.mad_mat_mulv(x.data, y.data, r.data, x:rows(), x:cols())
+    clib.mad_mat_muln(x.data, y.data, r.data, x:rows(), x:cols())
   elseif iscvec(y) then -- mat * cvec
     r = r_ or cvector(x:rows())
     assert(iscvec(r), "incompatible matrix-vector kinds")

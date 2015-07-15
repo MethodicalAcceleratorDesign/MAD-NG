@@ -92,13 +92,13 @@ void mad_mat_mul (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, 
 void mad_mat_mulm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
 { CHKYR; MMUL; }
 
-void mad_mat_mulv (const num_t *x, const num_t *y, num_t *r, size_t m, size_t p)
+void mad_mat_muln (const num_t *x, const num_t *y, num_t *r, size_t m, size_t p)
 { CHKYR; MULV; }
 
 void mad_mat_mulc (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t p)
 { CHKYR; MULV; }
 
-void mad_mat_vmul (const num_t *x, const num_t *y, num_t *r, size_t n, size_t p)
+void mad_mat_nmul (const num_t *x, const num_t *y, num_t *r, size_t n, size_t p)
 { CHKXR; VMUL; }
 
 void mad_mat_cmul (const cnum_t *x, const num_t *y, cnum_t *r, size_t n, size_t p)
@@ -110,13 +110,13 @@ void mad_cmat_mul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t
 void mad_cmat_mulm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p)
 { CHKXR; MMUL; }
 
-void mad_cmat_mulv (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t p)
+void mad_cmat_muln (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t p)
 { CHKXR; MULV; }
 
 void mad_cmat_mulc (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t p)
 { CHKYR; MULV; }
 
-void mad_cmat_vmul (const num_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)
+void mad_cmat_nmul (const num_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)
 { CHKYR; VMUL; }
 
 void mad_cmat_cmul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)

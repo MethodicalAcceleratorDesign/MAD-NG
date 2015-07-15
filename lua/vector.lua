@@ -311,13 +311,13 @@ function M.mul (x, y, r_)
     assert(isvec(r), "incompatible vector kinds")
     assert(x:size() == y:rows(), "incompatible vector-matrix sizes")
     assert(r:size() == y:cols(), "incompatible vector-matrix sizes")
-    clib.mad_mat_vmul(x.data, y.data, r.data, r:rows(), r:cols())
+    clib.mad_mat_nmul(x.data, y.data, r.data, r:rows(), r:cols())
   elseif iscmat(y) then -- vec * cmat
     r = r_ or cvector(y:cols())
     assert(iscvec(r), "incompatible vector kinds")
     assert(x:size() == y:rows(), "incompatible vector-cmatrix sizes")
     assert(r:size() == y:cols(), "incompatible vector-cmatrix sizes")
-    clib.mad_cmat_vmul(x.data, y.data, r.data, r:rows(), r:cols())
+    clib.mad_cmat_nmul(x.data, y.data, r.data, r:rows(), r:cols())
   else
     error("incompatible vector (*) operands")
   end

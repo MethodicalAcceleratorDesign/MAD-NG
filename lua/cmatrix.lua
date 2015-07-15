@@ -372,7 +372,7 @@ function M.mul (x, y, r_)
     assert(iscvec(r), "incompatible cmatrix-cvector kinds")
     assert(x:cols() == y:size(),                  "incompatible cmatrix-vector sizes")
     assert(x:rows() == r:size(),                  "incompatible cmatrix-vector sizes")
-    clib.mad_cmat_mulv(x.data, y.data, r.data, x:rows(), x:cols())
+    clib.mad_cmat_muln(x.data, y.data, r.data, x:rows(), x:cols())
   elseif iscvec(y) then -- cmat * cvec
     r = r_ or cvector(x:rows())
     assert(iscvec(r), "incompatible cmatrix-cvector kinds")
