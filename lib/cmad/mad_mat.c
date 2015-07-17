@@ -10,7 +10,7 @@ typedef double _Complex cnum_t;
 #define CHKXYR assert( x && y && r && x != r && y != r )
 
 // [m x n] = [m x p] * [p x n]
-/* Naive implementation
+/* Naive implementation (not vectorize)
 #define MMUL \
   for (size_t i=0; i < m; i++) \
     for (size_t j=0; j < n; j++) { \
@@ -20,13 +20,35 @@ typedef double _Complex cnum_t;
     } \
 */
 
+// portable vectorized matrix-matrix multiplication
+// loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
+// get ~ speed-up factor compared to dgemm from openblas and lapack...
 #define MMUL \
-  for (size_t i=0; i < m; i++) { \
-    for (size_t j=0; j < n-3; j+=4) { \
-      r[i*n+j  ] = 0; \
-      r[i*n+j+1] = 0; \
-      r[i*n+j+2] = 0; \
-      r[i*n+j+3] = 0; \
+  if (n >= 8) { \
+    for (size_t i=0; i < m; i++) { \
+      for (size_t j=0; j < n-7; j+=8) { \
+        r[i*n+j  ] = r[i*n+j+1] = \
+        r[i*n+j+2] = r[i*n+j+3] = \
+        r[i*n+j+4] = r[i*n+j+5] = \
+        r[i*n+j+6] = r[i*n+j+7] = 0; \
+        for (size_t k=0; k < p; k++) { \
+          r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
+          r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
+          r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
+          r[i*n+j+3] += x[i*p+k] * y[k*n+j+3]; \
+          r[i*n+j+4] += x[i*p+k] * y[k*n+j+4]; \
+          r[i*n+j+5] += x[i*p+k] * y[k*n+j+5]; \
+          r[i*n+j+6] += x[i*p+k] * y[k*n+j+6]; \
+          r[i*n+j+7] += x[i*p+k] * y[k*n+j+7]; \
+        } \
+      } \
+    } \
+  } \
+  if (n & 4) { \
+    size_t j = n - n%8; \
+    for (size_t i=0; i < m; i++) { \
+      r[i*n+j  ] = r[i*n+j+1] = \
+      r[i*n+j+2] = r[i*n+j+3] = 0; \
       for (size_t k=0; k < p; k++) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
@@ -36,10 +58,9 @@ typedef double _Complex cnum_t;
     } \
   } \
   if (n & 2) { \
-    size_t j=n-2-(n & 1); \
+    size_t j = n - n%4; \
     for (size_t i=0; i < m; i++) { \
-      r[i*n+j  ] = 0; \
-      r[i*n+j+1] = 0; \
+      r[i*n+j] = r[i*n+j+1] = 0; \
       for (size_t k=0; k < p; k++) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
@@ -47,7 +68,7 @@ typedef double _Complex cnum_t;
     } \
   } \
   if (n & 1) { \
-    size_t j=n-1; \
+    size_t j = n - 1; \
     for (size_t i=0; i < m; i++) { \
       r[i*n+j] = 0; \
       for (size_t k=0; k < p; k++) \

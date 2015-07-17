@@ -2,16 +2,17 @@
 
 local complex = require 'complex'
 local matrix  = require 'matrix'
+local cmatrix = require 'cmatrix'
 local gmath   = require 'gmath'
 
 local sqrt, tostring = gmath.sqrt, gmath.tostring
 
 local n = arg[1] and tonumber(arg[1]) or 1e7
-
-local I = 1.0/6 -- complex(0,1)
-local a = matrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I},}
-local b = matrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I},}
-local r = matrix (6,6)
+--1.0/6 -- 
+local I = complex(0,1.0/6)
+local a = cmatrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I},}
+local b = cmatrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I},}
+local r = cmatrix (6,6)
 
 for i=1,n do
   b:mul(a,r)
