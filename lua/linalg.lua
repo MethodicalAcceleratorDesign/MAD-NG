@@ -50,102 +50,68 @@ function gm.is_cmatrix (x) return type(x) == 'cdata' and istype('cmatrix_t', x) 
 
 -- vec --------------------------------
 
-local function vec_alloc (n)
-  local r = vec_ct(n) -- default init: compiled for size <= 128 bytes
+local function vec_alloc (ct, n)
+  local r = ct(n) -- default init: compiled for size <= 128 bytes
   r.n = n
   return r
 end
 
-local function vector_from_table(tbl)
-  local r = vec_alloc(#tbl)
+local function vector_from_table(ct, tbl)
+  local r = vec_alloc(ct, #tbl)
   return r:set_table(tbl)
 end
 
 local function vector (n)
   if type(n) == 'table' then
-    return vector_from_table(n)
+    return vector_from_table(vec_ct, n)
+  elseif n > 0 then
+    return vec_alloc(vec_ct, n)
+  else
+    error("invalid argument to vector constructor, expecting size or table")
   end
-
-  if n > 0 then
-    return vec_alloc(n)
-  end
-
-  error("invalid argument to vector constructor, expecting size or table")
-end
-
--- cvec -------------------------------
-
-local function cvec_alloc (n)
-  local r = cvec_ct(n) -- default init: compiled for size <= 128 bytes
-  r.n = n
-  return r
-end
-
-local function cvector_from_table (tbl)
-  local r = cvec_alloc(#tbl)
-  return r:set_table(tbl)
 end
 
 local function cvector (n)
   if type(n) == 'table' then
-    return cvector_from_table(n)
+    return vector_from_table(cvec_ct, n)
+  elseif n > 0 then
+    return vec_alloc(cvec_ct, n)
+  else
+    error("invalid argument to cvector constructor, expecting size or table")
   end
-
-  if n > 0 then
-    return cvec_alloc(n)
-  end
-
-  error("invalid argument to cvector constructor, expecting size or table")
 end
 
 -- mat --------------------------------
 
-local function mat_alloc (nr, nc)
-  local r = mat_ct(nr*nc) -- default init: compiled for size <= 128 bytes
+local function mat_alloc (ct, nr, nc)
+  local r = ct(nr*nc) -- default init: compiled for size <= 128 bytes
   r.nr, r.nc = nr, nc
   return r
 end
 
-local function matrix_from_table (tbl)
-  local r = mat_alloc(#tbl, #tbl[1])
+local function matrix_from_table (ct, tbl)
+  local r = mat_alloc(ct, #tbl, #tbl[1])
   return r:set_table(tbl)
 end
 
 local function matrix (nr, nc)
   if type(nr) == 'table' then
-    return matrix_from_table(nr)
+    return matrix_from_table(mat_ct, nr)
+  elseif nr > 0 and nc > 0 then
+    return mat_alloc(mat_ct, nr, nc)
+  else
+    error("invalid argument to matrix constructor, expecting (rows,cols) or table of tables")
   end
-
-  if nr > 0 and nc > 0 then
-    return mat_alloc(nr, nc)
-  end
-
-  error("invalid argument to matrix constructor, expecting (rows,cols) or table of tables")
-end
-
--- cmat -------------------------------
-
-local function cmat_alloc (nr, nc)
-  local r = cmat_ct(nr*nc) -- default init: compiled for size <= 128 bytes
-  r.nr, r.nc = nr, nc
-  return r
-end
-
-local function cmatrix_from_table (tbl)
-  local r = cmat_alloc(#tbl, #tbl[1])
-  return r:set_table(tbl)
 end
 
 local function cmatrix (nr, nc)
   if type(nr) == 'table' then
-    return cmatrix_from_table(nr)
+    return matrix_from_table(cmat_ct, nr)
+  elseif nr > 0 and nc > 0 then
+    return mat_alloc(cmat_ct, nr, nc)
+  else
+    error("invalid argument to cmatrix constructor, expecting (rows,cols) or table of tables")
   end
-
-  if nr > 0 and nc > 0 then
-    return cmat_alloc(nr, nc)
-  end
-
-  error("invalid argument to cmatrix constructor, expecting (rows,cols) or table of tables")
 end
 
 -- END -------------------------------------------------------------------------
@@ -156,5 +122,3 @@ return {
   cvector = cvector,
   cmatrix = cmatrix,
 }
-
-

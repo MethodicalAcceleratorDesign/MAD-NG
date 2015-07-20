@@ -14,6 +14,9 @@ local a = cmatrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, 
 local b = cmatrix { {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I}, {I,I,I,I,I,I},}
 local r = cmatrix (6,6)
 
+check_bounds = true
+-- print(a:get(100,100))
+
 for i=1,n do
   b:mul(a,r)
   b, r = r, b

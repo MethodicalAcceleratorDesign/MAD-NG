@@ -19,7 +19,7 @@ all:    $(packages)
 #
 
 luajit:
-	make -C $@ amalg ; \
+	make -C $@ amalg   PREFIX="$(PWD)/$@/$(OS)" ; \
 	make -C $@ install PREFIX="$(PWD)/$@/$(OS)"
 
 #

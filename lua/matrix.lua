@@ -16,16 +16,17 @@ SYNOPSIS
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
     (minus) -, +, -, *, /, %, ^, ==,
-    rows, cols, size, sizes, get, set, zeros, ones,
     unm, add, sub, mul, div, mod, pow, schur_prod,
-    get_row, get_col, get_diag, transpose,
+    rows, cols, size, sizes, get, set, get0, set0,
+    zeros, ones, fill, copy,
+    get_row, get_col, get_diag, transpose, t,
     set_row, set_col, set_diag, set_table,
-    real, imag, conj, trace, norm, angle, inner_prod,
+    real, imag, conj, trace, norm, angle,
+    dot, inner_prod,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    copy, foldl, foldr, foreach, map, map2,
-    tostring, totable.
+    foldl, foldr, foreach, map, map2, tostring, totable.
 
 RETURN VALUES
   The constructor of matrices
@@ -65,7 +66,19 @@ local cres = ffi.new 'complex[1]'
 
 -- Lua API
 
-local function idx (x, i, j)
+local function idx0 (x, i, j)
+  if check_bounds0 then
+    assert(0 <= i and i < x.nr, "row index out of bounds")
+    assert(0 <= j and j < x.nc, "col index out of bounds")
+  end
+  return i * x.nc + j
+end
+
+local function idx1(x, i, j)
+  if check_bounds then
+    assert(1 <= i and i <= x.nr, "row index out of bounds")
+    assert(1 <= j and j <= x.nc, "col index out of bounds")
+  end
   return (i-1) * x.nc + (j-1)
 end
 
@@ -73,18 +86,26 @@ function M.rows  (x)          return x.nr        end
 function M.cols  (x)          return x.nc        end
 function M.size  (x)          return x.nr * x.nc end
 function M.sizes (x)          return x.nr , x.nc end
-function M.get   (x, i, j)    return x.data[idx(x,i,j)] end
-function M.set   (x, i, j, e) x.data[idx(x,i,j)] = e ; return x end
+function M.get   (x, i, j)    return x.data[idx1(x,i,j)] end
+function M.get0  (x, i, j)    return x.data[idx0(x,i,j)] end
+function M.set   (x, i, j, e) x.data[idx1(x,i,j)] = e ; return x end
+function M.set0  (x, i, j, e) x.data[idx0(x,i,j)] = e ; return x end
+
+function M.reshape (x, nr, nc)
+  assert(nr*nc <= x:size(), "incompatible matrix sizes")
+  x.nr, x.nc = nr, nc
+  return x
+end
 
 function M.zeros (x)
   fill(x.data, sizeof(ismat(x) and 'double' or 'complex', x:size()))
   return x
 end
 
-function M.ones (x, e_)
+function M.ones (x, e_) -- zeros + diagonal
   x:zeros()
   local n, e = min(x:sizes()), e_ or 1
-  for i=1,n do x:set(i,i, e) end
+  for i=0,n-1 do x:set0(i,i, e) end
   return x
 end
 
@@ -108,7 +129,7 @@ function M.get_diag (x, r_)
   local n = min(x:sizes())
   local r = r_ or ismat(x) and vector(n) or cvector(n)
   assert(n == r:size(), "incompatible matrix-vector sizes")
-  for i=1,n do r:set(i, x:get(i,i)) end
+  for i=0,n-1 do r:set0(i, x:get0(i,i)) end
   return r
 end
 
@@ -129,7 +150,7 @@ end
 function M.set_diag (x, v)
   local n = min(x:sizes())
   assert(n == v:size(), "incompatible matrix-vector sizes")
-  for i=1,n do x:set(i,i, v:get(i)) end
+  for i=0,n-1 do x:set0(i,i, v:get0(i)) end
   return x
 end
 
@@ -137,7 +158,7 @@ function M.set_table (x, tbl)
   local nr, nc = x:sizes()
   assert(#tbl == nr, "incompatible matrix col sizes with table of tables")
   for i=1,nr do
-    local ti, xi = tbl[i], idx(x,i,0)
+    local ti, xi = tbl[i], idx1(x,i,0)
     assert(#ti == nc, "incompatible matrix row sizes with table of tables")
     for j=1,nc do x.data[xi + j] = ti[j] end
   end
@@ -148,13 +169,13 @@ function M.foldl (x, r, f, t_)
   local nr, nc = x:sizes()
   if t_ then
     assert(nc == r:size(), "incompatible matrix-vector sizes")
-    for j=1,nc do
-      for i=1,nr do r:set(j, f(r:get(j), x:get(i,j))) end
+    for j=0,nc-1 do
+      for i=0,nr-1 do r:set0(j, f(r:get0(j), x:get0(i,j))) end
     end
   else
     assert(nr == r:size(), "incompatible matrix-vector sizes")
-    for i=1,nr do
-      for j=1,nc do r:set(i, f(r:get(i), x:get(i,j))) end
+    for i=0,nr-1 do
+      for j=0,nc-1 do r:set0(i, f(r:get0(i), x:get0(i,j))) end
     end
   end
   return r
@@ -164,27 +185,29 @@ function M.foldr (x, r, f, t_)
   local nr, nc = x:sizes()
   if t_ then
     assert(nc == r:size(), "incompatible matrix-vector sizes")
-    for j=1,nc do
-      for i=1,nr do r:set(j, f(x:get(i,j), r:get(j))) end
+    for j=0,nc-1 do
+      for i=0,nr-1 do r:set0(j, f(x:get0(i,j), r:get0(j))) end
     end
   else
     assert(nr == r:size(), "incompatible matrix-vector sizes")
-    for i=1,nr do
-      for j=1,nc do r:set(i, f(x:get(i,j), r:get(i))) end
+    for i=0,nr-1 do
+      for j=0,nc-1 do r:set0(i, f(x:get0(i,j), r:get0(i))) end
     end
   end
   return r
 end
 
 function M.foreach (x, f)
-  local n = x:size()
-  for i=0,n-1 do f(x.data[i]) end
+  local nr, nc = x:sizes()
+  for i=1,nr do
+    for i=1,nc do f(x:get(i,j), i, j) end
+  end
   return x
 end
 
 function M.map (x, f, r_)
   local nr, nc = x:sizes()
-  local r0 = f(x.data[0])
+  local r0 = f(x:get(1,1))
   local r = r_ or isnum(r0) and matrix(nr, nc) or cmatrix(nr, nc)
   assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
   r.data[0] = r0
@@ -193,9 +216,9 @@ function M.map (x, f, r_)
 end
 
 function M.map2 (x, y, f, r_)
+  assert(ismat(y) or iscmat(y), "matrix expected for 2nd argument")
   local nr, nc = x:sizes()
-  assert(ismat(y) or iscmat(y), "invalid map2 second argument")
-  local r0 = f(x.data[0], y.data[0])
+  local r0 = f(x:get(1,1), y:get(1,1))
   local r = r_ or isnum(r0) and matrix(nr, nc) or cmatrix(nr, nc)
   assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
   assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
@@ -216,16 +239,20 @@ function M.transpose (x, r_)
   return r
 end
 
+M.t = M.transpose
+
 function M.trace (x)
   local n = min(x:sizes())
   local r = 0
-  for i=1,n do r = r + x:get(i,i) end
+  for i=0,n-1 do r = r + x:get0(i,i) end
   return r
 end
 
 function M.inner_prod (x, y)
   return (x:transpose() * y):trace()
 end
+
+M.dot = M.inner_prod
 
 function M.norm (x)
   -- Frobenius (consistent with inner_prod)
@@ -243,6 +270,7 @@ function M.angle (x, y)
   return acos(w / v) -- [0, pi]
 end
 
+function M.fill  (x, e )  return x:map(function () return e end, x) end
 function M.copy  (x, r_)  return x:map(ident, r_) end
 function M.real  (x, r_)  return x:map(real , r_) end
 function M.imag  (x, r_)  return x:map(imag , r_) end

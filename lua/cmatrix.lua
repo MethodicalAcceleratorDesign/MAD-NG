@@ -17,16 +17,17 @@ DESCRIPTION
   The module cmatrix implements the operators and math functions on
   complex matrices:
     (minus) -, +, -, *, /, %, ^, ==,
-    rows, cols, size, sizes, get, set, zeros, ones,
     unm, add, sub, mul, div, mod, pow, schur_prod,
-    get_row, get_col, get_diag, transpose,
+    rows, cols, size, sizes, get, set, get0, set0,
+    zeros, ones, fill, copy,
+    get_row, get_col, get_diag, transpose, t,
     set_row, set_col, set_diag, set_table,
-    real, imag, conj, trace, norm, angle, inner_prod,
+    real, imag, conj, trace, norm, angle,
+    dot, inner_prod,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    copy, foldl, foldr, foreach, map, map2,
-    tostring, totable.
+    foldl, foldr, foreach, map, map2, tostring, totable.
 
 RETURN VALUES
   The constructor of complex matrices
@@ -40,7 +41,7 @@ SEE ALSO
 local linalg = require 'linalg'
 local matrix = require 'matrix'
 
--- implemented in matrix module
+-- implemented by the matrix module
 
 -- END -------------------------------------------------------------------------
 return linalg.cmatrix
