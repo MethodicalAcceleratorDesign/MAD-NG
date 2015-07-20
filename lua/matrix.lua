@@ -28,6 +28,10 @@ DESCRIPTION
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, foreach, map, map2, tostring, totable.
 
+REMARK
+  check_bounds  can be set to true to check out of bounds indexes in get , set
+  check_bounds0 can be set to true to check out of bounds indexes in get0, set0
+
 RETURN VALUES
   The constructor of matrices
 

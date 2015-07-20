@@ -8,6 +8,10 @@ NAME
 
 SYNOPSIS
   local vector = require 'vector'
+  local v1 = vector {1,2,3,4,5,6}
+  local v2 = vector(6)
+  local r1 = v1:dot(v2)
+  local v3 = v1:cross(v2) 
 
 DESCRIPTION
   The module vector implements the operators and math functions on vectors:
@@ -21,6 +25,10 @@ DESCRIPTION
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, foreach, map, map2, tostring, totable.
+
+REMARK
+  check_bounds  can be set to true to check out of bounds indexes in get , set
+  check_bounds0 can be set to true to check out of bounds indexes in get0, set0
 
 RETURN VALUES
   The constructor of vectors

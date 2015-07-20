@@ -8,6 +8,10 @@ NAME
 
 SYNOPSIS
   local cvector = require 'cvector'
+  local v1 = cvector {1,2+2i,3,4+2i,5,6+2i}
+  local v2 = cvector(6)
+  local r1 = v1:dot(v2)
+  local v3 = v1:cross(v2)
 
 DESCRIPTION
   The module cvector implements the operators and math functions on
@@ -22,6 +26,10 @@ DESCRIPTION
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, map, map2, tostring, totable.
+
+REMARK
+  check_bounds  can be set to true to check out of bounds indexes in get , set
+  check_bounds0 can be set to true to check out of bounds indexes in get0, set0
 
 RETURN VALUES
   The constructor of complex vectors
