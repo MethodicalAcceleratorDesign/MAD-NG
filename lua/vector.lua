@@ -241,7 +241,7 @@ function M.angle (x, y, n_)
   local v = x:norm() * y:norm()
   assert(v ~= 0, "null vector")
   local a = acos(w / v) -- [0, pi]
-  if n_ ~= nil and x:mixed(y, n_) < 0 then a = -a end -- [-pi, pi]
+  if n_ and x:mixed(y, n_) < 0 then a = -a end -- [-pi, pi]
   return a
 end
 
