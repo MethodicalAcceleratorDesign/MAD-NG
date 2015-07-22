@@ -15,7 +15,7 @@ SYNOPSIS
 
 DESCRIPTION
   The module vector implements the operators and math functions on vectors:
-    (minus) -, +, -, *, /, %, ^, ==, #, ..,
+    (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow,
     size, sizes, get, set, get0, set0,
     zeros, ones, unit, fill, copy,
@@ -607,6 +607,10 @@ M.__concat   = M.concat
 M.__tostring = M.tostring
 M.__index    = function (self, idx)
   return isnum(idx) and self:get(idx) or M[idx]
+end
+M.__newindex = function (self, idx, val)
+  self:set(idx, val)
+  return self
 end
 
 ffi.metatype( 'vector_t', M)
