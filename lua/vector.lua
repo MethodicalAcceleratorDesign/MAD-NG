@@ -49,7 +49,7 @@ RELATIONS (3D GEOMETRY)
   unitary   :   |u| = 1
   orthogonal:   u'.v = 0
   collinear :   |uxv| = 0
-  coplanar  :   |(uxv)'.w| = 0
+  coplanar  :   (uxv)'.w = 0
 
 RETURN VALUES
   The constructor of vectors
