@@ -16,22 +16,22 @@ SYNOPSIS
 DESCRIPTION
   The module cmatrix implements the operators and math functions on
   complex matrices:
-    (minus) -, +, -, *, /, %, ^, ==,
-    unm, add, sub, mul, div, mod, pow, schur_prod,
+    (minus) -, +, -, *, /, %, ^, ==, #, ..,
+    unm, add, sub, mul, div, mod, pow, schur,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, fill, copy,
-    get_row, get_col, get_diag, transpose, t,
-    set_row, set_col, set_diag, set_table,
-    real, imag, conj, trace, norm, angle,
-    dot, inner_prod,
+    zeros, ones, unit, fill, copy, transpose, t,
+    get_row, get_col, get_diag, set_row, set_col, set_diag,
+    real, imag, conj, norm, angle,
+    dot, inner, trace, tr,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    foldl, foldr, foreach, map, map2, tostring, totable.
+    foldl, foldr, foreach, map, map2,
+    concat, tostring, totable, tovector, fromtable.
 
 REMARK
-  check_bounds  can be set to true to check out of bounds indexes in get , set
-  check_bounds0 can be set to true to check out of bounds indexes in get0, set0
+  check_bounds  =true checks out of bounds indexes in get , set
+  check_bounds0 =true checks out of bounds indexes in get0, set0
 
 RETURN VALUES
   The constructor of complex matrices

@@ -15,22 +15,22 @@ SYNOPSIS
 
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
-    (minus) -, +, -, *, /, %, ^, ==,
-    unm, add, sub, mul, div, mod, pow, schur_prod,
+    (minus) -, +, -, *, /, %, ^, ==, #, ..,
+    unm, add, sub, mul, div, mod, pow, schur,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, fill, copy,
-    get_row, get_col, get_diag, transpose, t,
-    set_row, set_col, set_diag, set_table,
-    real, imag, conj, trace, norm, angle,
-    dot, inner_prod,
+    zeros, ones, unit, fill, copy, transpose, t,
+    get_row, get_col, get_diag, set_row, set_col, set_diag,
+    real, imag, conj, norm, angle,
+    dot, inner, trace, tr,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    foldl, foldr, foreach, map, map2, tostring, totable.
+    foldl, foldr, foreach, map, map2,
+    concat, tostring, totable, tovector, fromtable.
 
 REMARK
-  check_bounds  can be set to true to check out of bounds indexes in get , set
-  check_bounds0 can be set to true to check out of bounds indexes in get0, set0
+  check_bounds  =true checks out of bounds indexes in get , set
+  check_bounds0 =true checks out of bounds indexes in get0, set0
 
 RETURN VALUES
   The constructor of matrices
@@ -41,9 +41,10 @@ SEE ALSO
  
 -- DEFS ------------------------------------------------------------------------
 
-local ffi    = require 'ffi'
-local linalg = require 'linalg'
-local gm     = require 'gmath'
+local ffi     = require 'ffi'
+local linalg  = require 'linalg'
+local gm      = require 'gmath'
+local tbl_new = require 'table.new'
 
 -- locals
 local clib            = linalg.cmad
@@ -72,16 +73,14 @@ local cres = ffi.new 'complex[1]'
 
 local function idx0 (x, i, j)
   if check_bounds0 then
-    assert(0 <= i and i < x.nr, "row index out of bounds")
-    assert(0 <= j and j < x.nc, "col index out of bounds")
+    assert(0 <= i and i < x.nr and 0 <= j and j < x.nc, "0-index out of bounds")
   end
   return i * x.nc + j
 end
 
 local function idx1(x, i, j)
   if check_bounds then
-    assert(1 <= i and i <= x.nr, "row index out of bounds")
-    assert(1 <= j and j <= x.nc, "col index out of bounds")
+    assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
   end
   return (i-1) * x.nc + (j-1)
 end
@@ -113,19 +112,28 @@ function M.ones (x, e_) -- zeros + diagonal
   return x
 end
 
+function M.unit(x)
+  local n = x:norm()
+  assert(n ~= 0, "null matrix")
+  if n ~= 1 then x:div(n, x) end
+  return x
+end
+
 function M.get_col (x, jc, r_)
-  local nr = x:rows()
+  local nr, nc, j = x:sizes(), jc-1
   local r = r_ or ismat(x) and vector(nr) or cvector(nr)
+  assert(0 <= j and j < nc, "column index out of bounds")
   assert(nr == r:size(), "incompatible matrix-vector sizes")
-  for i=1,nr do r:set(i, x:get(i,jc)) end
+  for i=0,nr-1 do r:set0(i, x:get0(i,j)) end
   return r
 end
 
 function M.get_row (x, ir, r_)
-  local nc = x:cols()
-  local r = r_ or ismat(x) and vector(nr) or cvector(nr)
+  local nr, nc, i = x:sizes(), ir-1
+  local r = r_ or ismat(x) and vector(nc) or cvector(nc)
+  assert(0 <= i and i < nr, "row index out of bounds")
   assert(nc == r:size(), "incompatible matrix-vector sizes")
-  for i=1,nc do r:set(i, x:get(i,ir)) end
+  for j=0,nc-1 do r:set0(j, x:get0(i,j)) end
   return r
 end
 
@@ -138,16 +146,18 @@ function M.get_diag (x, r_)
 end
 
 function M.set_col (x, jc, v)
-  local nr = x:rows()
+  local nr, nc, j = x:sizes(), jc-1
+  assert(0 <= j and j < nc, "column index out of bounds")
   assert(nr == v:size(), "incompatible matrix-vector sizes")
-  for i=1,nr do x:set(i,jc, v:get(i)) end
+  for i=0,nr-1 do x:set0(i,j, v:get0(i)) end
   return x
 end
 
 function M.set_row (x, ir, v)
-  local nc = x:cols()
+  local nr, nc, i = x:sizes(), ir-1
+  assert(0 <= i and i < nr, "row index out of bounds")
   assert(nc == v:size(), "incompatible matrix-vector sizes")
-  for j=1,nc do x:set(ir,j, v:get(i)) end
+  for j=0,nc-1 do x:set0(i,j, v:get0(j)) end
   return x
 end
 
@@ -155,17 +165,6 @@ function M.set_diag (x, v)
   local n = min(x:sizes())
   assert(n == v:size(), "incompatible matrix-vector sizes")
   for i=0,n-1 do x:set0(i,i, v:get0(i)) end
-  return x
-end
-
-function M.set_table (x, tbl)
-  local nr, nc = x:sizes()
-  assert(#tbl == nr, "incompatible matrix col sizes with table of tables")
-  for i=1,nr do
-    local ti, xi = tbl[i], idx1(x,i,0)
-    assert(#ti == nc, "incompatible matrix row sizes with table of tables")
-    for j=1,nc do x.data[xi + j] = ti[j] end
-  end
   return x
 end
 
@@ -202,16 +201,13 @@ function M.foldr (x, r, f, t_)
 end
 
 function M.foreach (x, f)
-  local nr, nc = x:sizes()
-  for i=1,nr do
-    for i=1,nc do f(x:get(i,j), i, j) end
-  end
+  for i=0,x:size()-1 do f(x.data[i]) end
   return x
 end
 
 function M.map (x, f, r_)
   local nr, nc = x:sizes()
-  local r0 = f(x:get(1,1))
+  local r0 = f(x.data[0])
   local r = r_ or isnum(r0) and matrix(nr, nc) or cmatrix(nr, nc)
   assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
   r.data[0] = r0
@@ -222,10 +218,10 @@ end
 function M.map2 (x, y, f, r_)
   assert(ismat(y) or iscmat(y), "matrix expected for 2nd argument")
   local nr, nc = x:sizes()
-  local r0 = f(x:get(1,1), y:get(1,1))
+  local r0 = f(x.data[0], y.data[0])
   local r = r_ or isnum(r0) and matrix(nr, nc) or cmatrix(nr, nc)
-  assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
-  assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  assert(nr == y:rows() and nc == y:cols() and
+         nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
   r.data[0] = r0
   for i=1,nr*nc-1 do r.data[i] = f(x.data[i], y.data[i]) end
   return r
@@ -243,23 +239,50 @@ function M.transpose (x, r_)
   return r
 end
 
-M.t = M.transpose
+M.t = M.transpose -- shortcut
 
 function M.trace (x)
-  local n = min(x:sizes())
-  local r = 0
+  local n, r = min(x:sizes()), 0
   for i=0,n-1 do r = r + x:get0(i,i) end
   return r
 end
 
-function M.inner_prod (x, y)
-  return (x:transpose() * y):trace()
+M.tr = M.trace -- shortcut
+
+function M.inner (x, y)
+  return (x:t() * y):tr() -- to optimize without temporary x^t * y
 end
 
-M.dot = M.inner_prod
+function M.inner (x, y)
+  if ismat(x) then
+    if ismat(y) then -- <mat,mat>
+      assert(x:rows() == y:rows(), "incompatible matrix sizes")
+      return clib.mad_mat_dot(x.data, y.data, x:cols(), y:cols(), x:rows())
+    elseif iscmat(y) then -- <mat,cmat>
+      assert(x:rows() == y:rows(), "incompatible matrix sizes")
+      clib.mad_mat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+      return cres[0]
+    else goto invalid end
+  end
+
+  if iscmat(x) then
+    if ismat(y) then -- <cmat,mat>
+      assert(x:rows() == y:rows(), "incompatible matrix sizes")
+      clib.mad_cmat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+    elseif iscmat(y) then -- <cmat,cmat>
+      assert(x:rows() == y:rows(), "incompatible matrix sizes")
+      clib.mad_cmat_dot(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+    else goto invalid end
+    return cres[0]
+  end
+
+::invalid:: error("invalid matrix dot operands")
+end
+
+M.dot = M.inner -- shortcut
 
 function M.norm (x)
-  -- Frobenius (consistent with inner_prod)
+  -- Frobenius norm (consistent with inner product)
   if ismat(x) then
     return sqrt(clib.mad_vec_dot(x.data, x.data, x:size()))
   else
@@ -269,7 +292,7 @@ function M.norm (x)
 end
 
 function M.angle (x, y)
-  local w = x:inner_prod(y)
+  local w = x:inner(y)
   local v = x:norm() * y:norm()
   return acos(w / v) -- [0, pi]
 end
@@ -343,13 +366,13 @@ function M.add (x, y, r_)
       clib.mad_vec_addc(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then -- mat + mat => vec + vec
       r = r_ or matrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_add(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- mat + cmat => cvec + vec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_cvec_addv(y.data, x.data, r.data, r:size())
     else goto invalid end
     return r
@@ -366,13 +389,13 @@ function M.add (x, y, r_)
       clib.mad_vec_addc(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then -- cmat + mat => cvec + vec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_vec_add(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- cmat + cmat => cvec + cvec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_addv(y.data, x.data, r.data, r:size())
     else goto invalid end
     return r
@@ -408,13 +431,13 @@ function M.sub (x, y, r_)
       clib.mad_vec_addc(x.data, -y.re, -y.im, r.data, r:size())
     elseif ismat(y) then -- mat - mat => vec - vec
       r = r_ or matrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_sub(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- mat - cmat => vec - cvec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_cvec_subv(x.data, y.data, r.data, r:size())
     else goto invalid end
     return r
@@ -431,13 +454,13 @@ function M.sub (x, y, r_)
       clib.mad_cvec_addc(x.data, -y.re, -y.im, r.data, r:size())
     elseif ismat(y) then -- cmat - mat => cvec - vec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_subv(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- cmat - cmat => cvec - cvec
       r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:rows() == y:rows() and x:cols() == y:cols() and
+             x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_sub(x.data, y.data, r.data, r:size())
     else goto invalid end
     return r
@@ -473,23 +496,19 @@ function M.mul (x, y, r_)
       clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
     elseif isvec(y) then -- mat * vec
       r = r_ or vector(x:rows())
-      assert(x:cols() == y:size(),                   "incompatible matrix-vector sizes")
-      assert(x:rows() == r:size(),                   "incompatible matrix-vector sizes")
+      assert(x:cols() == y:size() and x:rows() == r:size(), "incompatible matrix-vector sizes")
       clib.mad_mat_muln(x.data, y.data, r.data, x:rows(), x:cols())
     elseif iscvec(y) then -- mat * cvec
       r = r_ or cvector(x:rows())
-      assert(x:cols() == y:size(),                   "incompatible matrix-cvector sizes")
-      assert(x:rows() == r:size(),                   "incompatible matrix-cvector sizes")
+      assert(x:cols() == y:size() and x:rows() == r:size(), "incompatible matrix-cvector sizes")
       clib.mad_mat_mulc(x.data, y.data, r.data, x:rows(), x:cols())
     elseif ismat(y) then -- mat * mat
       r = r_ or matrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows(),                          "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_mat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
     elseif iscmat(y) then -- mat * cmat
       r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows(),                          "incompatible matrix sizes")
-      assert(x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
+      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_mat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
     else goto invalid end
    return r
@@ -506,23 +525,19 @@ function M.mul (x, y, r_)
       clib.mad_cvec_mulc(x.data, y.re, y.im, r.data, r:size())
     elseif isvec(y) then -- cmat * vec
       r = r_ or cvector(x:rows())
-      assert(x:cols() == y:size(),                  "incompatible cmatrix-vector sizes")
-      assert(x:rows() == r:size(),                  "incompatible cmatrix-vector sizes")
+      assert(x:cols() == y:size() and x:rows() == r:size(), "incompatible cmatrix-vector sizes")
       clib.mad_cmat_muln(x.data, y.data, r.data, x:rows(), x:cols())
     elseif iscvec(y) then -- cmat * cvec
       r = r_ or cvector(x:rows())
-      assert(x:cols() == y:size(),                  "incompatible cmatrix-cvector sizes")
-      assert(x:rows() == r:size(),                  "incompatible cmatrix-cvector sizes")
+      assert(x:cols() == y:size() and x:rows() == r:size(), "incompatible cmatrix-cvector sizes")
       clib.mad_cmat_mulc(x.data, y.data, r.data, x:rows(), x:cols())
     elseif ismat(y) then -- cmat * mat
       r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows(),                          "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cmat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
     elseif iscmat(y) then -- cmat * cmat
       r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows(),                          "incompatible cmatrix sizes")
-      assert(x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
+      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cmat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
     else goto invalid end
     return r
@@ -589,19 +604,19 @@ function M.div (x, y, r_)
 ::invalid:: error("incompatible matrix (/) operands")
 end
 
-function M.schur_prod (x, y, r_)
+function M.schur (x, y, r_)
   local nr, nc, r = x:sizes()
 
   if ismat(x) then
     if ismat(y) then -- mat .* mat => vec * vec
       r = r_ or matrix(nr, nc)
-      assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
-      assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+      assert(nr == y:rows() and nc == y:cols() and
+             nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_mul(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- mat .* cmat => cvec * vec
       r = r_ or cmatrix(nr, nc)
-      assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
-      assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+      assert(nr == y:rows() and nc == y:cols() and
+             nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
       clib.mad_cvec_mulv(y.data, x.data, r.data, r:size())
     else goto invalid end
     return r
@@ -610,13 +625,13 @@ function M.schur_prod (x, y, r_)
   if iscmat(x) then
     if ismat(y) then -- mat .* cmat => cvec * vec
       r = r_ or cmatrix(nr, nc)
-      assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
-      assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+      assert(nr == y:rows() and nc == y:cols() and
+             nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
       clib.mad_cvec_mulv(y.data, x.data, r.data, nr*nc)
     elseif iscmat(y) then -- cmat .* cmat => cvec * cvec
       r = r_ or cmatrix(nr, nc)
-      assert(nr == y:rows() and nc == y:cols(), "incompatible matrix sizes")
-      assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+      assert(nr == y:rows() and nc == y:cols() and
+             nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
       clib.mad_cvec_mul(x.data, y.data, r.data, nr*nc)
     else goto invalid end
     return r
@@ -625,29 +640,67 @@ function M.schur_prod (x, y, r_)
 ::invalid:: error("invalid matrix (.*) operands")
 end
 
+function M.concat (x, y, v_, r_)
+  local nrx, ncx, nry, ncy = x:sizes(), y:sizes()
+  if v_ then -- concat columns (vectical)
+    local nr, nc = nrx + nry, ncx
+    local r = r_ or ismat(x) and ismat(y) and matrix(nr,nc) or cmatrix(nr,nc)
+    assert(ncx == ncy and nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+    local nx, ny = nrx * nc, nry * nc
+    for i=0,nx-1 do r.data[i   ] = x.data[i] end
+    for i=0,ny-1 do r.data[i+nx] = y.data[i] end
+  else -- concat rows (horizontal)
+    local nr, nc = nrx, ncx + ncy
+    local r = r_ or ismat(x) and ismat(y) and matrix(nr,nc) or cmatrix(nr,nc)
+    assert(nrx == nry and nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+    for i=0,nr do
+      for j=0,ncx-1 do r:set0(i,j    , x:get0(i,j)) end
+      for j=0,ncy-1 do r:set0(i,j+ncx, y:get0(i,j)) end
+    end
+  end
+  return r
+end
+
 function M.tostring (x, sep_, lsep_)
   local nr, nc = x:sizes()
-  local r, c = {}, {}
-  for i=1,nr do
-    for j=1,nc do c[j] = tostring(x:get(i,j)) end
-    r[i] = table.concat(c, sep_ or ' ')
+  local r, c = tbl_new(nr,0), tbl_new(nc,0)
+  for i=0,nr-1 do
+    for j=0,nc-1 do c[j+1] = tostring(x:get0(i,j)) end
+    r[i+1] = table.concat(c, sep_ or ' ')
   end
   return table.concat(r, lsep_ or '\n')
 end
-
-local tbl_new = require 'table.new'
 
 function M.totable(x, r_)
   local nr, nc = x:sizes()
   local r = r_ or tbl_new(nr,0)
   assert(type(r) == 'table', "invalid argument, table expected")
-  for i=1,nr do
-    local c = r[i] or tbl_new(nc,0)
+  for i=0,nr-1 do
+    local c = r[i+1] or tbl_new(nc,0)
     assert(type(c) == 'table', "invalid argument, table of tables expected")
-    for j=1,nc do c[j] = x:get(i,j) end
-    r[i] = c
+    for j=0,nc-1 do c[j+1] = x:get0(i,j) end
+    r[i+1] = c
   end
   return r
+end
+
+function M.tovector(x, r_)
+  local n = x:size()
+  local r = r_ or ismat(x) and vector(n) or cvector(n)
+  assert(n == r:size(), "incompatible matrix-vector sizes")
+  for i=0,n-1 do r.data[i] = x.data[i] end
+  return r
+end
+
+function M.fromtable (x, tbl)
+  local nr, nc = x:sizes()
+  assert(#tbl == nr, "incompatible matrix-table column sizes")
+  for i=0,nr-1 do
+    local ti, xi = tbl[i+1], idx0(x,i,0)
+    assert(#ti == nc, "incompatible matrix-table row sizes")
+    for j=0,nc-1 do x.data[xi + j] = ti[j+1] end
+  end
+  return x
 end
 
 M.__unm      = M.unm
@@ -657,6 +710,8 @@ M.__mul      = M.mul
 M.__div      = M.div
 M.__mod      = M.mod
 M.__pow      = M.pow
+M.__len      = M.size
+M.__concat   = M.concat
 M.__tostring = M.tostring
 M.__index    = M
 

@@ -5,6 +5,7 @@
 typedef double           num_t;
 typedef double _Complex cnum_t;
 
+#define CHKXY  assert( x && y )
 #define CHKXR  assert( x && y && r && x != r )
 #define CHKYR  assert( x && y && r && y != r )
 #define CHKXYR assert( x && y && r && x != r && y != r )
@@ -22,7 +23,7 @@ typedef double _Complex cnum_t;
 
 // portable vectorized matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
-// get ~ speed-up factor compared to dgemm from openblas and lapack...
+// get xN speed-up factor compared to dgemm from openblas and lapack...
 #define MMUL \
   if (n >= 8) { \
     for (size_t i=0; i < m; i++) { \
@@ -106,6 +107,22 @@ typedef double _Complex cnum_t;
       r[j*m+i] = C(x[i*n+j]); \
   } \
 
+#define DOT(C) \
+  *r = 0; \
+  size_t mn = m < n ? m : n; \
+  for (size_t i=0; i < mn; i++) \
+    for (size_t k=0; k < p; k++) \
+      *r += C(x[k*m+i]) * y[k*n+i]; \
+
+
+void mad_mat_trans (const num_t *x, num_t *r, size_t m, size_t n)
+{ TRANS(); }
+
+num_t mad_mat_dot (const num_t *x, const num_t *y, size_t m, size_t n, size_t p)
+{ CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
+
+void mad_mat_dotm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+{ CHKXY; DOT(); }
 
 void mad_mat_mul (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, size_t p)
 { CHKXYR; MMUL; }
@@ -125,6 +142,16 @@ void mad_mat_nmul (const num_t *x, const num_t *y, num_t *r, size_t n, size_t p)
 void mad_mat_cmul (const cnum_t *x, const num_t *y, cnum_t *r, size_t n, size_t p)
 { CHKXR; VMUL; }
 
+
+void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
+{ TRANS(conj); }
+
+void mad_cmat_dot (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+{ CHKXY; DOT(conj); }
+
+void mad_cmat_dotm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+{ CHKXY; DOT(conj); }
+
 void mad_cmat_mul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
 { CHKXYR; MMUL; }
 
@@ -142,9 +169,3 @@ void mad_cmat_nmul (const num_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t
 
 void mad_cmat_cmul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)
 { CHKXR; VMUL; }
-
-void mad_mat_trans (const num_t *x, num_t *r, size_t m, size_t n)
-{ TRANS() }
-
-void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
-{ TRANS(conj) }

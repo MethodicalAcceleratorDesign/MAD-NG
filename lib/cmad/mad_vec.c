@@ -13,15 +13,16 @@ typedef double _Complex cnum_t;
 
 #define CNUM(a)  cnum_t a = (* (cnum_t*) & (num_t[2]) { (a##_re), (a##_im) })
 
-#define VEC(OP)  for (size_t i=0; i < n; i++) r[i] = x[i] OP y[i]
-#define VECS(OP) for (size_t i=0; i < n; i++) r[i] = x[i] OP y
-#define SVEC(OP) for (size_t i=0; i < n; i++) r[i] = x    OP y[i]
+#define VEC(OP)        for (size_t i=0; i < n; i++) r[i] = x[i] OP y[i]
+#define VECS(OP)       for (size_t i=0; i < n; i++) r[i] = x[i] OP y
+#define SVEC(OP)       for (size_t i=0; i < n; i++) r[i] = x    OP y[i]
+#define DOT(C)   *r=0; for (size_t i=0; i < n; i++) *r += C(x[i]) * y[i]
 
 num_t mad_vec_dot (const num_t *x, const num_t *y, size_t n)
-{ CHKXY; num_t r=0; for (size_t i=0; i < n; i++) r += x[i]*y[i]; return r; }
+{ CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
 
 void mad_vec_dotv (const  num_t *x, const cnum_t *y, cnum_t *r, size_t n)
-{ CHKXYR; *r=0; for (size_t i=0; i < n; i++) *r += x[i]*conj(y[i]); }
+{ CHKXYR; DOT(); }
 
 void mad_vec_add (const num_t *x, const num_t *y, num_t *r, size_t n)
 { CHKXYR; VEC(+); }
@@ -67,10 +68,10 @@ void mad_vec_divc (const num_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t n)
 
 
 void mad_cvec_dot (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n)
-{ CHKXYR; *r=0; for (size_t i=0; i < n; i++) *r += x[i]*conj(y[i]); }
+{ CHKXYR; DOT(conj); }
 
 void mad_cvec_dotv (const cnum_t *x, const num_t *y, cnum_t *r, size_t n)
-{ CHKXYR; *r=0; for (size_t i=0; i < n; i++) *r += x[i]*y[i]; }
+{ CHKXYR; DOT(conj); }
 
 void mad_cvec_add (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n)
 { CHKXYR; VEC(+); }

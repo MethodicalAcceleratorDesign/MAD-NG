@@ -28,15 +28,46 @@ matrices.
 ]]
 
 ffi.cdef[[
+// Y = alpha * A * X + beta * Y
+void dgemv_(char* TRANS, const int* M, const int* N,
+           double* alpha, double* A, const int* LDA, double* X,
+           const int* INCX, double* beta, double* C, const int* INCY);
 // C = alpha * A * B + beta * C                                               
 void dgemm_(char* TRANSA, char* TRANSB, const int* M,
            const int* N, const int* K, double* alpha, double* A,
            const int* LDA, double* B, const int* LDB, double* beta,
            double* C, const int* LDC);
-// Y = alpha * A * X + beta * Y                                               
-void dgemv_(char* TRANS, const int* M, const int* N,
-           double* alpha, double* A, const int* LDA, double* X,
-           const int* INCX, double* beta, double* C, const int* INCY);
+
+// N x N
+void dgesv_(const int *N, const int *nrhs, double *A, const int *lda,
+            int *ipiv, double *b, const int *ldb, int *info);
+//void zgesv_
+
+// Driver N x N
+//void dgesvx_
+//void zgesvx_
+
+// M x N
+void dgels_(const char *trans, const int *M, const int *N, const int *nrhs,
+    		double *A, const int *lda, double *b, const int *ldb, double *work,
+    		const int *lwork, int *info);
+//void zgels_
+
+// Driver M x N: min | b - Ax | using SVD
+//void dgelss_
+//void zgelss_
+
+
+// SVD
+void dgesvd_(const char* jobu, const char* jobvt, const int* M, const int* N,
+        	 double* A, const int* lda, double* S, double* U, const int* ldu,
+        	 double* VT, const int* ldvt, double* work,const int* lwork,
+        	 const int* info);
+//void zgesvd_
+
+// Eigen values/vectors
+//void dggev_
+//void zggev_
 ]]
 
 return lapack

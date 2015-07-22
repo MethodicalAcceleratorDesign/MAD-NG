@@ -15,6 +15,9 @@ DESCRIPTION
   The module linalg provides consistent definitions of vectors, complex vectors,
   matrices and complex matrices.
 
+REMARK
+  This module should not be loaded directly. (SEE ALSO)
+
 RETURN VALUES
   The constructors of vectors, complex vectors, matrices and complex matrices.
 
@@ -48,6 +51,9 @@ function gm.is_cvector (x) return type(x) == 'cdata' and istype('cvector_t', x) 
 function gm.is_matrix  (x) return type(x) == 'cdata' and istype( 'matrix_t', x) end
 function gm.is_cmatrix (x) return type(x) == 'cdata' and istype('cmatrix_t', x) end
 
+-- enable bound check (global)
+check_bounds = true
+
 -- vec --------------------------------
 
 local function vec_alloc (ct, n)
@@ -56,14 +62,14 @@ local function vec_alloc (ct, n)
   return r
 end
 
-local function vector_from_table(ct, tbl)
+local function vec_fromtable(ct, tbl)
   local r = vec_alloc(ct, #tbl)
-  return r:set_table(tbl)
+  return r:fromtable(tbl)
 end
 
 local function vector (n)
   if type(n) == 'table' then
-    return vector_from_table(vec_ct, n)
+    return vec_fromtable(vec_ct, n)
   elseif n > 0 then
     return vec_alloc(vec_ct, n)
   else
@@ -73,7 +79,7 @@ end
 
 local function cvector (n)
   if type(n) == 'table' then
-    return vector_from_table(cvec_ct, n)
+    return vec_fromtable(cvec_ct, n)
   elseif n > 0 then
     return vec_alloc(cvec_ct, n)
   else
@@ -89,14 +95,14 @@ local function mat_alloc (ct, nr, nc)
   return r
 end
 
-local function matrix_from_table (ct, tbl)
+local function mat_fromtable (ct, tbl)
   local r = mat_alloc(ct, #tbl, #tbl[1])
-  return r:set_table(tbl)
+  return r:fromtable(tbl)
 end
 
 local function matrix (nr, nc)
   if type(nr) == 'table' then
-    return matrix_from_table(mat_ct, nr)
+    return mat_fromtable(mat_ct, nr)
   elseif nr > 0 and nc > 0 then
     return mat_alloc(mat_ct, nr, nc)
   else
@@ -106,7 +112,7 @@ end
 
 local function cmatrix (nr, nc)
   if type(nr) == 'table' then
-    return matrix_from_table(cmat_ct, nr)
+    return mat_fromtable(cmat_ct, nr)
   elseif nr > 0 and nc > 0 then
     return mat_alloc(cmat_ct, nr, nc)
   else
