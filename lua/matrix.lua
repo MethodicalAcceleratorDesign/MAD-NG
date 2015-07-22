@@ -20,13 +20,12 @@ DESCRIPTION
     rows, cols, size, sizes, get, set, get0, set0,
     zeros, ones, unit, fill, copy, transpose, t,
     get_row, get_col, get_diag, set_row, set_col, set_diag,
-    real, imag, conj, norm, angle,
-    dot, inner, trace, tr,
+    real, imag, conj, norm, angle, dot, inner, trace, tr,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, foreach, map, map2,
-    concat, tostring, totable, tovector, fromtable.
+    concat, reshape, tostring, totable, tovector, fromtable.
 
 REMARK
   check_bounds  =true checks out of bounds indexes in get , set
@@ -250,13 +249,12 @@ end
 M.tr = M.trace -- shortcut
 
 function M.inner (x, y)
-  --  (x:t() * y):tr()
+  assert(x:rows() == y:rows(), "incompatible matrix sizes")
+
   if ismat(x) then
     if ismat(y) then -- <mat,mat>
-      assert(x:rows() == y:rows(), "incompatible matrix sizes")
       return clib.mad_mat_dot(x.data, y.data, x:cols(), y:cols(), x:rows())
     elseif iscmat(y) then -- <mat,cmat>
-      assert(x:rows() == y:rows(), "incompatible matrix sizes")
       clib.mad_mat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
       return cres[0]
     else goto invalid end
@@ -264,10 +262,8 @@ function M.inner (x, y)
 
   if iscmat(x) then
     if ismat(y) then -- <cmat,mat>
-      assert(x:rows() == y:rows(), "incompatible matrix sizes")
       clib.mad_cmat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
     elseif iscmat(y) then -- <cmat,cmat>
-      assert(x:rows() == y:rows(), "incompatible matrix sizes")
       clib.mad_cmat_dot(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
     else goto invalid end
     return cres[0]

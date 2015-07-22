@@ -21,13 +21,12 @@ DESCRIPTION
     rows, cols, size, sizes, get, set, get0, set0,
     zeros, ones, unit, fill, copy, transpose, t,
     get_row, get_col, get_diag, set_row, set_col, set_diag,
-    real, imag, conj, norm, angle,
-    dot, inner, trace, tr,
+    real, imag, conj, norm, angle, dot, inner, trace, tr,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, foreach, map, map2,
-    concat, tostring, totable, tovector, fromtable.
+    concat, reshape, tostring, totable, tovector, fromtable.
 
 REMARK
   check_bounds  =true checks out of bounds indexes in get , set
