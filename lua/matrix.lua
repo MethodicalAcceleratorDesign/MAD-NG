@@ -250,10 +250,7 @@ end
 M.tr = M.trace -- shortcut
 
 function M.inner (x, y)
-  return (x:t() * y):tr() -- to optimize without temporary x^t * y
-end
-
-function M.inner (x, y)
+  --  (x:t() * y):tr()
   if ismat(x) then
     if ismat(y) then -- <mat,mat>
       assert(x:rows() == y:rows(), "incompatible matrix sizes")
