@@ -15,6 +15,7 @@ DESCRIPTION
     is_number, is_integer, is_scalar,                     (math)
     ident, umn, add, sub, mul, div, mod,
     sign, step, round, sinc,
+    eq, ne, lt, le, gt, ge,                               (logical)
     arg, real, imag, conj, proj,                          (complex) 
     tostring.                                             (other)
 
@@ -77,6 +78,13 @@ function M.sub   (x,y) return x - y end
 function M.mul   (x,y) return x * y end
 function M.div   (x,y) return x / y end
 function M.mod   (x,y) return x % y end
+
+function M.eq    (x,y) return x == y end
+function M.ne    (x,y) return x ~= y end
+function M.lt    (x,y) return x <  y end
+function M.le    (x,y) return x <= y end
+function M.gt    (x,y) return x >  y end
+function M.ge    (x,y) return x >= y end
 
 function M.is_number  (x) return type(x) == 'number' end
 function M.is_integer (x) return type(x) == 'number' and (x + int_msk) - int_msk == x end
