@@ -35,20 +35,20 @@ RETURN VALUES
   The constructor of matrices
 
 SEE ALSO
-  math, gmath, complex, vector, cvector, cmatrix
+  math, gmath, complex, vector, cvector, cmatrix, linalg
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
 local ffi     = require 'ffi'
-local linalg  = require 'linalg'
 local gm      = require 'gmath'
+local linbas  = require 'linbas'
 local tbl_new = require 'table.new'
 
 -- locals
-local clib            = linalg.cmad
-local vector, cvector = linalg.vector, linalg.cvector
-local matrix, cmatrix = linalg.matrix, linalg.cmatrix
+local clib            = linbas.cmad
+local vector, cvector = linbas.vector, linbas.cvector
+local matrix, cmatrix = linbas.matrix, linbas.cmatrix
 
 local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
       real, imag, conj, ident, min,

@@ -27,19 +27,19 @@ RETURN VALUE
   The constructor of complex numbers
 
 SEE ALSO
-  math, gmath, vector, cvector, matrix, cmatrix
+  math, gmath, cvector, cmatrix
 ]]
 
 -- DEFS ------------------------------------------------------------------------
 
 local ffi    = require 'ffi'
-local linalg = require 'linalg'
+local linbas = require 'linbas'
 local gm     = require 'gmath'
 
 -- locals
-local clib            = linalg.cmad
-local vector, cvector = linalg.vector, linalg.cvector
-local matrix, cmatrix = linalg.matrix, linalg.cmatrix
+local clib            = linbas.cmad
+local vector, cvector = linbas.vector, linbas.cvector
+local matrix, cmatrix = linbas.matrix, linbas.cmatrix
 
 local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat =
       gm.is_number, gm.is_complex, gm.is_scalar,

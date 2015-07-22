@@ -4,15 +4,15 @@ local M = { __author = 'ldeniau', __version = '2015.06', __help = {}, __test = {
 
 M.__help.self = [[
 NAME
-  linalg
+  linbas -- linear algebra basics
 
 SYNOPSIS
-  local linalg = require 'linalg'
-  local vector, cvector = linalg.vector, linalg.cvector
-  local matrix, cmatrix = linalg.matrix, linalg.cmatrix
+  local linbas = require 'linbas'
+  local vector, cvector = linbas.vector, linbas.cvector
+  local matrix, cmatrix = linbas.matrix, linbas.cmatrix
 
 DESCRIPTION
-  The module linalg provides consistent definitions of vectors, complex vectors,
+  The module linbas provides consistent definitions of vectors, complex vectors,
   matrices and complex matrices.
 
 REMARK
@@ -22,7 +22,7 @@ RETURN VALUES
   The constructors of vectors, complex vectors, matrices and complex matrices.
 
 SEE ALSO
-  math, gmath, complex, vector, cvector, matrix, cmatrix
+  math, gmath, complex, vector, cvector, matrix, cmatrix, linalg
 ]]
 
 -- DEFS ------------------------------------------------------------------------

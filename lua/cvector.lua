@@ -56,15 +56,15 @@ RETURN VALUES
   The constructor of complex vectors
 
 SEE ALSO
-  math, gmath, complex, vector, matrix, cmatrix
+  math, gmath, complex, vector, matrix, cmatrix, linalg
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
-local linalg = require 'linalg'
+local linbas = require 'linbas'
 local vector = require 'vector'
 
 -- implemented by the vector module
 
 -- END -------------------------------------------------------------------------
-return linalg.cvector
+return linbas.cvector

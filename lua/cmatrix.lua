@@ -36,15 +36,15 @@ RETURN VALUES
   The constructor of complex matrices
 
 SEE ALSO
-  math, gmath, complex, vector, cvector, matrix
+  math, gmath, complex, vector, cvector, matrix, linalg
 ]]
  
 -- DEFS ------------------------------------------------------------------------
 
-local linalg = require 'linalg'
+local linbas = require 'linbas'
 local matrix = require 'matrix'
 
 -- implemented by the matrix module
 
 -- END -------------------------------------------------------------------------
-return linalg.cmatrix
+return linbas.cmatrix
