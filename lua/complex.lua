@@ -41,9 +41,11 @@ local clib            = linbas.cmad
 local vector, cvector = linbas.vector, linbas.cvector
 local matrix, cmatrix = linbas.matrix, linbas.cmatrix
 
-local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat =
+local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
+      tostring =
       gm.is_number, gm.is_complex, gm.is_scalar,
-      gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix
+      gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
+      gm.tostring
 
 local istype = ffi.istype
 local abs = math.abs
@@ -78,10 +80,6 @@ function M.asinh (x) clib.mad_cnum_asinh (x.re, x.im, cres) ; return cres[0] end
 function M.acosh (x) clib.mad_cnum_acosh (x.re, x.im, cres) ; return cres[0] end
 function M.atanh (x) clib.mad_cnum_atanh (x.re, x.im, cres) ; return cres[0] end
 
-function M.__unm (x)
-  return complex(-x.re, -x.im)
-end
-
 function M.__eq  (x, y)
   if iscalar(y) then
     x, y = complex(x), complex(y)
@@ -89,6 +87,10 @@ function M.__eq  (x, y)
   else
     return y == x
   end
+end
+
+function M.unm (x)
+  return complex(-x.re, -x.im)
 end
 
 function M.add (x, y, r_)
@@ -268,6 +270,7 @@ function M.tostring (x)
   end
 end
 
+M.__unm      = M.unm
 M.__add      = M.add
 M.__sub      = M.sub
 M.__mul      = M.mul
@@ -275,7 +278,7 @@ M.__div      = M.div
 M.__mod      = M.mod
 M.__pow      = M.pow
 M.__tostring = M.tostring
-M.__index  = M
+M.__index    = M
 
 ffi.metatype('complex', M)
 

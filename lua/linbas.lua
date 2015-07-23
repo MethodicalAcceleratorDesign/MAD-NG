@@ -32,8 +32,8 @@ local cmad = require 'cmad'
 local gm   = require 'gmath'
 
 ffi.cdef[[
-typedef struct { int32_t n;      double  data[?]; }  vector_t;
-typedef struct { int32_t n;      complex data[?]; } cvector_t;
+typedef struct { int32_t n, col; double  data[?]; }  vector_t;
+typedef struct { int32_t n, col; complex data[?]; } cvector_t;
 typedef struct { int32_t nr, nc; double  data[?]; }  matrix_t;
 typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 ]]
@@ -58,7 +58,7 @@ check_bounds = true
 
 local function vec_alloc (ct, n)
   local r = ct(n) -- default init: compiled for size <= 128 bytes
-  r.n = n
+  r.n, r.col = n, 1
   return r
 end
 

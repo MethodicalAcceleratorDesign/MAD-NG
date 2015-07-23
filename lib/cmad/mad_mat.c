@@ -93,7 +93,9 @@ typedef double _Complex cnum_t;
       r[j] += x[k] * y[k*n+j]; \
   } \
 
-// transpose, in place or not
+// transpose, in place only for square matrix
+// inplace for non-square matrix could use FFTW...
+// see http://www.fftw.org/faq/section3.html#transpose
 #define TRANS(C) \
   assert(x && r); \
   if (x == r) { \
@@ -144,6 +146,9 @@ void mad_mat_cmul (const cnum_t *x, const num_t *y, cnum_t *r, size_t n, size_t 
 
 
 void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
+{ TRANS(); }
+
+void mad_cmat_ctrans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
 { TRANS(conj); }
 
 void mad_cmat_dot (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)

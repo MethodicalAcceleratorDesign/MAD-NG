@@ -18,7 +18,7 @@ DESCRIPTION
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow,
     size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy,
+    zeros, ones, unit, fill, copy, transpose, trans, t,
     real, imag, conj, norm, angle,
     dot, inner, cross, mixed, outer, (products)
     abs, arg, exp, log, pow, sqrt, proj,
@@ -75,14 +75,14 @@ local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, mod, pow = 
+      unm, mod, pow, tostring = 
       gm.is_number, gm.is_complex, gm.is_scalar,
       gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
       gm.real, gm.imag, gm.conj, gm.ident, gm.min,
       gm.abs, gm.arg, gm.exp, gm.log, gm.sqrt, gm.proj,
       gm.sin, gm.cos, gm.tan, gm.sinh, gm.cosh, gm.tanh,
       gm.asin, gm.acos, gm.atan, gm.asinh, gm.acosh, gm.atanh,
-      gm.unm, gm.mod, gm.pow
+      gm.unm, gm.mod, gm.pow, gm.tostring
 
 local istype, sizeof, fill = ffi.istype, ffi.sizeof, ffi.fill
 
@@ -104,8 +104,10 @@ local function idx1(x, i)
   return i-1
 end
 
+function M.rows  (x)       return x.col and x.n or 1 end
+function M.cols  (x)       return x.col and 1 or x.n end
 function M.size  (x)       return x.n end
-function M.sizes (x)       return x.n, 1 end
+function M.sizes (x)       if x.col then return x.n, 1 else return 1, x.n end end
 function M.get   (x, i)    return x.data[idx1(x,i)] end
 function M.get0  (x, i)    return x.data[idx0(x,i)] end
 function M.set   (x, i, e) x.data[idx1(x,i)] = e ; return x end
@@ -164,6 +166,22 @@ function M.map2 (x, y, f, r_)
   for i=1,n-1 do r.data[i] = f(x.data[i], y.data[i]) end
   return r
 end
+
+function M.transpose (x, r_, c_)
+  local n = x:size()
+  local r = r_ or isvec(x) and vector(n) or cvector(n)
+  local c = c_ or true
+  assert(n == r:size(), "incompatible vector sizes")
+  if isvec(x) or c ~= true then
+    for i=0,n-1 do r.data[i] =      x.data[i]  end
+  else
+    for i=0,n-1 do r.data[i] = conj(x.data[i]) end
+  end
+  return r
+end
+
+M.t = M.transpose -- shortcut
+M.trans = function (x, r_) return x:t(r_, false) end
 
 function M.inner (x, y)
   assert(x:size() == y:size(), "incompatible vector sizes")
@@ -573,7 +591,7 @@ function M.tostring (x, sep)
 end
 
 function M.totable(x, r_)
-  local n = x:sizes()
+  local n = x:size()
   local r = r_ or tbl_new(n,0)
   assert(type(r) == 'table', "invalid argument, table expected")
   for i=0,n-1 do r[i+1] = x:get0(i) end

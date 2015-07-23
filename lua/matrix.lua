@@ -8,8 +8,10 @@ NAME
 
 SYNOPSIS
   local matrix = require 'matrix'
-  local m1 = matrix {{1,2},{3,4},{5,6}}
-  local m2 = matrix(2,3)
+  local m1 = matrix(2,3)
+  local m2 = matrix {{1,2},{3,4},{5,6}}
+  local m3 = matrix {1,2,3,4,5,6} -- column vector = {{1},{2},...}
+  local m4 = matrix {{1,2,3,4,5,6}} -- row vector
   local m3 = m1:transpose()
   m1:transpose(m2) 
 
@@ -18,7 +20,7 @@ DESCRIPTION
     (minus) -, +, -, *, /, %, ^, ==, #, ..,
     unm, add, sub, mul, div, mod, pow, schur,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy, transpose, t,
+    zeros, ones, unit, fill, copy, transpose, trans, t,
     get_row, get_col, get_diag, set_row, set_col, set_diag,
     real, imag, conj, norm, angle, dot, inner, trace, tr,
     abs, arg, exp, log, pow, sqrt, proj,
@@ -55,14 +57,14 @@ local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, mod, pow = 
+      unm, mod, pow, tostring = 
       gm.is_number, gm.is_complex, gm.is_scalar,
       gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
       gm.real, gm.imag, gm.conj, gm.ident, gm.min,
       gm.abs, gm.arg, gm.exp, gm.log, gm.sqrt, gm.proj,
       gm.sin, gm.cos, gm.tan, gm.sinh, gm.cosh, gm.tanh,
       gm.asin, gm.acos, gm.atan, gm.asinh, gm.acosh, gm.atanh,
-      gm.unm, gm.mod, gm.pow
+      gm.unm, gm.mod, gm.pow, gm.tostring
 
 local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
 
@@ -119,7 +121,7 @@ function M.unit(x)
 end
 
 function M.get_col (x, jc, r_)
-  local nr, nc, j = x:sizes(), jc-1
+  local nr, nc, j = x:rows(), x:cols(), jc-1
   local r = r_ or ismat(x) and vector(nr) or cvector(nr)
   assert(0 <= j and j < nc, "column index out of bounds")
   assert(nr == r:size(), "incompatible matrix-vector sizes")
@@ -128,7 +130,7 @@ function M.get_col (x, jc, r_)
 end
 
 function M.get_row (x, ir, r_)
-  local nr, nc, i = x:sizes(), ir-1
+  local nr, nc, i = x:rows(), x:cols(), ir-1
   local r = r_ or ismat(x) and vector(nc) or cvector(nc)
   assert(0 <= i and i < nr, "row index out of bounds")
   assert(nc == r:size(), "incompatible matrix-vector sizes")
@@ -145,7 +147,7 @@ function M.get_diag (x, r_)
 end
 
 function M.set_col (x, jc, v)
-  local nr, nc, j = x:sizes(), jc-1
+  local nr, nc, j = x:rows(), x:cols(), jc-1
   assert(0 <= j and j < nc, "column index out of bounds")
   assert(nr == v:size(), "incompatible matrix-vector sizes")
   for i=0,nr-1 do x:set0(i,j, v:get0(i)) end
@@ -153,7 +155,7 @@ function M.set_col (x, jc, v)
 end
 
 function M.set_row (x, ir, v)
-  local nr, nc, i = x:sizes(), ir-1
+  local nr, nc, i = x:rows(), x:cols(), ir-1
   assert(0 <= i and i < nr, "row index out of bounds")
   assert(nc == v:size(), "incompatible matrix-vector sizes")
   for j=0,nc-1 do x:set0(i,j, v:get0(j)) end
@@ -226,19 +228,23 @@ function M.map2 (x, y, f, r_)
   return r
 end
 
-function M.transpose (x, r_)
+function M.transpose (x, r_, c_)
   local nr, nc = x:sizes()
   local r = r_ or ismat(x) and matrix(nc, nr) or cmatrix(nc, nr)
+  local c = c_ or true
   assert(nr == r:cols() and nc == r:rows(), "incompatible matrix sizes")
   if ismat(x) then
-    clib.mad_mat_trans (x.data, r.data, nr, nc)
+    clib.mad_mat_trans(x.data, r.data, nr, nc)
+  elseif c == true then
+    clib.mad_cmat_ctrans(x.data, r.data, nr, nc) -- conjugate transpose
   else
-    clib.mad_cmat_trans(x.data, r.data, nr, nc)
+    clib.mad_cmat_trans(x.data, r.data, nr, nc) -- no conjugate
   end
   return r
 end
 
 M.t = M.transpose -- shortcut
+M.trans = function (x, r_) return x:t(r_, false) end
 
 function M.trace (x)
   local n, r = min(x:sizes()), 0
@@ -539,14 +545,6 @@ function M.mul (x, y, r_)
 ::invalid:: error("invalid matrix (*) operands")
 end
 
-local lapack = require 'lapack'
-local T = ffi.new('char[1]', 'T')
-local Ms = ffi.new('int32_t[1]')
-local Ns = ffi.new('int32_t[1]')
-local Ks = ffi.new('int32_t[1]')
-local ZERO = ffi.new('double[1]')
-local ONE  = ffi.new('double[1]', 1.0)
-
 function M.div (x, y, r_)
   local r
 
@@ -568,8 +566,6 @@ function M.div (x, y, r_)
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then -- mat / mat => mat * inv(mat)
---      Ms[0], Ns[0], Ks[0] = r:rows(), r:cols(), x:cols()
---      lapack.dgemm_(T, T, Ms, Ns, Ks, ONE, x.data, Ns, y.data, Ns, ZERO, r.data, Ns)
       error("mat/mat: NYI matrix inverse")
     elseif iscmat(y) then -- mat / cmat => mat * inv(cmat)
       error("mat/cmat: NYI matrix inverse")
@@ -634,7 +630,8 @@ function M.schur (x, y, r_)
 end
 
 function M.concat (x, y, v_, r_)
-  local nrx, ncx, nry, ncy = x:sizes(), y:sizes()
+  local nrx, ncx = x:sizes()
+  local nry, ncy = y:sizes()
   if v_ then -- concat columns (vectical)
     local nr, nc = nrx + nry, ncx
     local r = r_ or ismat(x) and ismat(y) and matrix(nr,nc) or cmatrix(nr,nc)

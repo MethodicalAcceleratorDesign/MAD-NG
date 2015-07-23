@@ -58,18 +58,20 @@ local fun = {
   { 'conj', 'real', 'proj',                 -- complex
     fmt = "M.%s = function (x) return M.is_number(x) and x or x:%s() end"
   },
-
-  { 'tostring',
-    fmt = "M.%s = function (x) return M.is_number(x) and %s(x) or x:%s() end"
-  },
 }
 
 -- Extensions ------------------------------------------------------------------
 local ffi = require 'ffi'
 
 local istype = ffi.istype
+local format = string.format
 local abs, ceil, floor, sin = math.abs, math.ceil, math.floor, math.sin
 local int_msk = 2^52 + 2^51
+
+function math.sign  (x) return x < 0 and -1 or 1 end
+function math.step  (x) return x < 0 and  0 or 1 end
+function math.round (x) return x < 0 and ceil(x-0.5) or floor(x+0.5) end
+function math.sinc  (x) return abs(x) < 1e-12 and 1.0 or sin(x)/x end
 
 function M.ident (x)   return  x    end
 function M.unm   (x)   return -x    end
@@ -87,14 +89,16 @@ function M.gt    (x,y) return x >  y end
 function M.ge    (x,y) return x >= y end
 
 function M.is_number  (x) return type(x) == 'number' end
-function M.is_integer (x) return type(x) == 'number' and (x + int_msk) - int_msk == x end
 function M.is_complex (x) return type(x) == 'cdata'  and istype('complex', x) end
-function M.is_scalar  (x) return M.is_number(x) or M.is_complex(x) end
 
-function math.sign  (x) return x < 0 and -1 or 1 end
-function math.step  (x) return x < 0 and  0 or 1 end
-function math.round (x) return x < 0 and ceil(x-0.5) or floor(x+0.5) end
-function math.sinc  (x) return abs(x) < 1e-12 and 1.0 or sin(x)/x end
+function M.is_scalar  (x) return M.is_number(x) or M.is_complex(x) end
+function M.is_integer (x) return M.is_number(x) and (x + int_msk) - int_msk == x end
+
+function M.tostring (x)
+  return M.is_number(x) and format(M.format, x) or x.tostring and x:tostring() or tostring(x)
+end
+
+M.format = "%g" -- default
 
 -- Generic API -----------------------------------------------------------------
 
