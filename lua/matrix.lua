@@ -342,29 +342,46 @@ M.dot = M.inner -- shortcut
 
 function M.cross (x, y, r_)
   assert(isamat(y), "matrix expected for 2nd argument")
-  local n = x:rows()
-  assert(n >= 2 and x:cols() == 1 and y:cols() == 1, "invalid matrix sizes")
-  local r = r_ or ismat(x) and ismat(y) and matrix(n,1) or cmatrix(n,1)
-  assert(n == y:rows() and n == r:rows() and r:cols() == 1, "incompatible matrix sizes")
-  for i=1,n-2 do
-    r.data[i-1] = x.data[i] * y.data[i+1] - x.data[i+1] * y.data[i]
+  local nr, nc = x:sizes()
+  assert(nr == 3, "invalid matrix sizes")
+  local r = r_ or ismat(x) and ismat(y) and matrix(3,nc) or cmatrix(3,nc)
+  assert(nr == y:rows() and nc == y:cols() and
+         nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  local i0, i1, i2 = 0, nc, 2*nc
+  for i=0,nc-1 do
+    r.data[i0] = x.data[i1] * y.data[i2] - x.data[i2] * y.data[i1]
+    r.data[i1] = x.data[i2] * y.data[i0] - x.data[i0] * y.data[i2]
+    r.data[i2] = x.data[i0] * y.data[i1] - x.data[i1] * y.data[i0]
+    i0, i1, i2 = i0+1, i1+1, i2+1
   end
-  r.data[n-2] = x.data[n-1] * y.data[0] - x.data[0] * y.data[n-1]
-  r.data[n-1] = x.data[  0] * y.data[1] - x.data[1] * y.data[  0]
   return r
 end
 
-function M.mixed (x, y, z)
+function M.mixed (x, y, z, r_)
   -- x:cross(y):dot(z) without temporary
-  assert(isamat(y), "matrix expected for 2nd argument")
-  local n, r = x:rows(), 0
-  assert(n >= 2 and x:cols() == 1 and y:cols() == 1 and z:cols() == 1, "invalid matrix sizes")
-  assert(n == y:rows() and n == z:rows(), "incompatible matrix sizes")
-  for i=1,n-2 do
-    r = r + conj(x.data[i] * y.data[i+1] - x.data[i+1] * y.data[i]) * z.data[i-1]
+  assert(isamat(y) and isamat(z), "matrices expected for 2nd and 3rd arguments")
+  local nr, nc = x:sizes()
+  assert(nr == 3, "invalid matrix sizes")
+  local r
+  if nc == 1 then -- single mixed product (r_ ignored)
+    assert(nr == y:rows() and 1 == y:cols() and
+           nr == z:rows() and 1 == z:cols(), "incompatible matrix sizes")
+    r = conj(x.data[1] * y.data[2] - x.data[2] * y.data[1]) * z.data[0] +
+        conj(x.data[2] * y.data[0] - x.data[0] * y.data[2]) * z.data[1] +
+        conj(x.data[0] * y.data[1] - x.data[1] * y.data[0]) * z.data[2]
+  else -- multiple mixed products
+    r = r_ or ismat(x) and ismat(y) and matrix(nc,1) or cmatrix(nc,1)
+    assert(nr == y:rows() and nc == y:cols() and
+           nr == z:rows() and nc == z:cols() and
+           nc == r:rows() and 1  == r:cols(), "incompatible matrix sizes")
+    local i0, i1, i2 = 0, nc, 2*nc
+    for i=0,nc-1 do
+      r.data[i] = conj(x.data[i1] * y.data[i2] - x.data[i2] * y.data[i1]) * z.data[i0] +
+                  conj(x.data[i2] * y.data[i0] - x.data[i0] * y.data[i2]) * z.data[i1] +
+                  conj(x.data[i0] * y.data[i1] - x.data[i1] * y.data[i0]) * z.data[i2]
+      i0, i1, i2 = i0+1, i1+1, i2+1
+    end
   end
-  r = r + conj(x.data[n-1] * y.data[0] - x.data[0] * y.data[n-1]) * z.data[n-2]
-  r = r + conj(x.data[  0] * y.data[1] - x.data[1] * y.data[  0]) * z.data[n-1]
   return r
 end
 
