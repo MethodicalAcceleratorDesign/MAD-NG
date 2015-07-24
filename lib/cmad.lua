@@ -1,6 +1,6 @@
 local oss  = jit.os
 local ffi  = require 'ffi'
-local cmad = ffi.load("lib/cmad/libmad-" .. oss .. ".so")
+local cmad = ffi.load("lib/cmad/libcmad-" .. oss .. ".so")
 
 ffi.cdef[[
 typedef double num_t;

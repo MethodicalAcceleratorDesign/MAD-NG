@@ -2,11 +2,13 @@
 # Packages
 #
 
-packages := luajit lpeg
+packages := luajit lpeg lapack cmad
 
 #
 # Targets
 #
+
+.DEFAULT_GOAL: cmad
 
 .PHONY: $(packages)
 
@@ -28,6 +30,21 @@ luajit:
 
 lpeg:
 	make -C $@ $(TG) LUADIR=../luajit/$(OS)/include/luajit-2.1 LIBNAME=lpeg-$(OS).so
+
+#
+# LAPACK (see README.lapack)
+#
+
+lapack:
+	make -C $@ shared LIBNAME=liblapack-$(OS).so
+
+#
+# CMAD (see README.cmad)
+#
+
+cmad:
+	make -C $@ $(TG) LIBNAME=libcmad-$(OS).so
+
 
 ###############################################################################
 

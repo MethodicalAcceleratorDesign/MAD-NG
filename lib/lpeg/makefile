@@ -35,6 +35,9 @@ linux:
 macosx:
 	make lpeg.so "DLLFLAGS = -bundle -undefined dynamic_lookup"
 
+windows:
+	echo "NYI, bye"
+
 lpeg.so: $(FILES)
 	env $(CC) $(DLLFLAGS) $(FILES) -o $(LIBNAME)
 
