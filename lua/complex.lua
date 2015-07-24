@@ -32,27 +32,26 @@ SEE ALSO
 
 -- DEFS ------------------------------------------------------------------------
 
-local ffi    = require 'ffi'
-local linbas = require 'linbas'
-local gm     = require 'gmath'
+local ffi     = require 'ffi'
+local clib    = require 'cmad'
+local gmath   = require 'gmath'
+local cmatrix = require 'cmatrix'
 
 -- locals
-local clib            = linbas.cmad
-local vector, cvector = linbas.vector, linbas.cvector
-local matrix, cmatrix = linbas.matrix, linbas.cmatrix
-
-local isnum, iscpx, iscalar, isvec, iscvec, ismat, iscmat,
-      tostring =
-      gm.is_number, gm.is_complex, gm.is_scalar,
-      gm.is_vector, gm.is_cvector, gm.is_matrix, gm.is_cmatrix,
-      gm.tostring
+local isnum, iscpx, iscal, ismat, iscmat, tostring =
+      gmath.is_number, gmath.is_complex, gmath.is_scalar,
+      gmath.is_matrix, gmath.is_cmatrix, gmath.tostring
 
 local istype = ffi.istype
 local abs = math.abs
 
--- Lua API
-local complex = ffi.typeof 'complex'
 local cres = ffi.new 'complex[1]'
+
+-- FFI types
+
+local complex = ffi.typeof 'complex'
+
+-- Lua API
 
 function M.real  (x) return x.re end
 function M.imag  (x) return x.im end
@@ -81,7 +80,7 @@ function M.acosh (x) clib.mad_cnum_acosh (x.re, x.im, cres) ; return cres[0] end
 function M.atanh (x) clib.mad_cnum_atanh (x.re, x.im, cres) ; return cres[0] end
 
 function M.__eq  (x, y)
-  if iscalar(y) then
+  if iscal(y) then
     x, y = complex(x), complex(y)
     return x.re == y.re and x.im == y.im
   else
@@ -104,29 +103,15 @@ function M.add (x, y, r_)
 
   -- iscpx(x)
   local r
-  if isvec(y) then -- cpx + vec => vec + cpx
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-vector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_vec_addc(y.data, x.re, x.im, r.data, r:size())
-  elseif iscvec(y) then -- cpx + cvec => cvec + cpx
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-cvector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_cvec_addc(y.data, x.re, x.im, r.data, r:size())
-  elseif ismat(y) then -- cpx + mat => vec + cpx
+  if ismat(y) then -- cpx + mat => vec + cpx
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_vec_addc(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx + cmat => cvec + cpx
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_cvec_addc(y.data, x.re, x.im, r.data, r:size())
-  else
-    error("incompatible complex (+) operands")
-  end
+  else error("incompatible complex (+) operands") end
   return r
 end
 
@@ -141,29 +126,15 @@ function M.sub (x, y, r_)
 
   -- iscpx(x)
   local r
-  if isvec(y) then -- cpx - vec
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-vector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_vec_subc(y.data, x.re, x.im, r.data, r:size())
-  elseif iscvec(y) then -- cpx - cvec
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-cvector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_cvec_subc(y.data, x.re, x.im, r.data, r:size())
-  elseif ismat(y) then -- cpx - mat => cpx - vec
+  if ismat(y) then -- cpx - mat => cpx - vec
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_vec_subc(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx - cmat => cpx - cvec
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_cvec_subc(y.data, x.re, x.im, r.data, r:size())
-  else
-    error("incompatible complex (-) operands")
-  end
+  else error("incompatible complex (-) operands") end
   return r
 end
 
@@ -178,65 +149,36 @@ function M.mul (x, y, r_)
 
   -- iscpx(x)
   local r
-  if isvec(y) then -- cpx * vec => vec * cpx
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-vector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_vec_mulc(y.data, x.re, x.im, r.data, r:size())
-  elseif iscvec(y) then -- cpx * cvec => cvec * cpx
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-cvector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_cvec_mulc(y.data, x.re, x.im, r.data, r:size())
-  elseif ismat(y) then -- cpx * mat => vec * cpx
+  if ismat(y) then -- cpx * mat => vec * cpx
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_vec_mulc(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx * cmat => cvec * cpx
     r = r_ or cmatrix(y:sizes())
-    assert(iscmat(r), "incompatible cmatrix kinds")
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     clib.mad_cvec_mulc(y.data, x.re, x.im, r.data, r:size())
-  else
-    error("incompatible complex (*) operands")
-  end
+  else error("invalid complex (*) operands") end
   return r
-end
-
-local function cdiv(x, y)
-  clib.mad_cnum_div(x.re, x.im, y.re, y.im, cres)
-  return cres[0] 
 end
 
 function M.div (x, y, r_)
   if isnum(x) then -- num / cpx
-    return cdiv(complex(x), y)
+    clib.mad_cnum_div(x, 0, y.re, y.im, cres)
+    return cres[0] 
   elseif isnum(y) then -- cpx / num
     return complex(x.re / y, x.im / y)
   elseif iscpx(y) then -- cpx / cpx
-    return cdiv(x, y)
+    clib.mad_cnum_div(x.re, x.im, y.re, y.im, cres)
+    return cres[0]
   end
 
   -- iscpx(x)
   local r
-  if isvec(y) then -- cpx / vec
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-vector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_vec_divc(y.data, x.re, x.im, r.data, r:size())
-  elseif iscvec(y) then -- cpx / cvec
-    r = r_ or cvector(y:size())
-    assert(iscvec(r), "incompatible complex-cvector kinds")
-    assert(y:size() == r:size(), "incompatible cvector sizes")
-    clib.mad_cvec_divc(y.data, x.re, x.im, r.data, r:size())
-  elseif ismat(y) then -- cpx / mat => cpx * inv(mat) => cpx * vec
+  if ismat(y) then -- cpx / mat => cpx * inv(mat) => cpx * vec
     error("cpx/mat: NYI matrix inverse")
   elseif iscmat(y) then -- cpx / cmat => cpx * inv(cmat) => cpx * cvec
     error("cpx/cmat: NYI cmatrix inverse")
-  else
-    error("incompatible complex (-) operands")
-  end
+  else error("invalid complex (/) operands") end
   return r
 end
 

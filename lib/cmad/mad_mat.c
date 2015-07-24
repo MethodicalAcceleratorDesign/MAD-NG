@@ -11,7 +11,7 @@ typedef double _Complex cnum_t;
 #define CHKXYR assert( x && y && r && x != r && y != r )
 
 // [m x n] = [m x p] * [p x n]
-/* Naive implementation (not vectorize)
+/* Naive implementation (not vectorized)
 #define MMUL \
   for (size_t i=0; i < m; i++) \
     for (size_t j=0; j < n; j++) { \
@@ -24,7 +24,9 @@ typedef double _Complex cnum_t;
 // portable vectorized matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 // get xN speed-up factor compared to dgemm from openblas and lapack...
-#define MMUL \
+
+// [m x n] = [m x p] * [p x n]
+#define MMUL { \
   if (n >= 8) { \
     for (size_t i=0; i < m; i++) { \
       for (size_t j=0; j < n-7; j+=8) { \
@@ -76,8 +78,9 @@ typedef double _Complex cnum_t;
         r[i*n+j] += x[i*p+k] * y[k*n+j]; \
     } \
   } \
+} \
 
-// [m x 1] = [m x p] * [p x 1]
+// n==1: [m x 1] = [m x p] * [p x 1]
 #define MULV \
   for (size_t i=0; i < m; i++) { \
     r[i] = 0; \
@@ -85,7 +88,7 @@ typedef double _Complex cnum_t;
       r[i] += x[i*p+k] * y[k]; \
   } \
 
-// [1 x n] = [1 x p] * [p x n]
+// m==1: [1 x n] = [1 x p] * [p x n]
 #define VMUL \
   for (size_t j=0; j < n; j++) { \
     r[j] = 0; \
@@ -93,12 +96,53 @@ typedef double _Complex cnum_t;
       r[j] += x[k] * y[k*n+j]; \
   } \
 
+// p==1: [m x n] = [m x 1] * [1 x n]
+#define KMUL \
+  for (size_t i=0; i < m; i++) { \
+  for (size_t j=0; j < n; j++) \
+    r[i*n+j] = x[i] * y[j]; \
+  } \
+
+// m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
+#define VMULV \
+  { r[0] = 0; \
+    for (size_t k=0; k < p; k++) \
+      r[0] += x[k] * y[k]; \
+  } \
+
+// -----
+
+#define MUL() { \
+  if (m == 1 && n == 1) VMULV \
+  else      if (m == 1) VMUL \
+  else      if (n == 1) MULV \
+  else      if (p == 1) KMUL \
+  else                  MMUL \
+} \
+
+#define DOT(C) { \
+  *r = 0; \
+  if (m == 1 && n == 1) { \
+    for (size_t i=0; i < p; i++) \
+      *r += C(x[i]) * y[i]; \
+  } else { \
+    size_t mn = m < n ? m : n; \
+    for (size_t i=0; i < mn; i++) \
+      for (size_t k=0; k < p; k++) \
+        *r += C(x[k*m+i]) * y[k*n+i]; \
+  } \
+} \
+
 // transpose, in place only for square matrix
 // inplace for non-square matrix could use FFTW...
 // see http://www.fftw.org/faq/section3.html#transpose
-#define TRANS(C) \
+#define TRANS(C) { \
   assert(x && r); \
-  if (x == r) { \
+  if (m == 1 || n == 1) { \
+    size_t mn = m*n; \
+    for (size_t i=0; i < mn; i++) \
+      r[i] = C(x[i]); \
+  } else if (x == r) { \
     assert(m == n); \
     for (size_t i=0; i < m; i++) \
     for (size_t j=i; j < n; j++) \
@@ -108,13 +152,7 @@ typedef double _Complex cnum_t;
     for (size_t j=0; j < n; j++) \
       r[j*m+i] = C(x[i*n+j]); \
   } \
-
-#define DOT(C) \
-  *r = 0; \
-  size_t mn = m < n ? m : n; \
-  for (size_t i=0; i < mn; i++) \
-    for (size_t k=0; k < p; k++) \
-      *r += C(x[k*m+i]) * y[k*n+i]; \
+} \
 
 
 void mad_mat_trans (const num_t *x, num_t *r, size_t m, size_t n)
@@ -127,23 +165,10 @@ void mad_mat_dotm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t 
 { CHKXY; DOT(); }
 
 void mad_mat_mul (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, size_t p)
-{ CHKXYR; MMUL; }
+{ CHKXYR; MUL(); }
 
 void mad_mat_mulm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKYR; MMUL; }
-
-void mad_mat_muln (const num_t *x, const num_t *y, num_t *r, size_t m, size_t p)
-{ CHKYR; MULV; }
-
-void mad_mat_mulc (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t p)
-{ CHKYR; MULV; }
-
-void mad_mat_nmul (const num_t *x, const num_t *y, num_t *r, size_t n, size_t p)
-{ CHKXR; VMUL; }
-
-void mad_mat_cmul (const cnum_t *x, const num_t *y, cnum_t *r, size_t n, size_t p)
-{ CHKXR; VMUL; }
-
+{ CHKYR; MUL(); }
 
 void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
 { TRANS(); }
@@ -158,19 +183,7 @@ void mad_cmat_dotm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t
 { CHKXY; DOT(conj); }
 
 void mad_cmat_mul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKXYR; MMUL; }
+{ CHKXYR; MUL(); }
 
 void mad_cmat_mulm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKXR; MMUL; }
-
-void mad_cmat_muln (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t p)
-{ CHKXR; MULV; }
-
-void mad_cmat_mulc (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t p)
-{ CHKYR; MULV; }
-
-void mad_cmat_nmul (const num_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)
-{ CHKYR; VMUL; }
-
-void mad_cmat_cmul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t n, size_t p)
-{ CHKXR; VMUL; }
+{ CHKXR; MUL(); }
