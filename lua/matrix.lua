@@ -67,6 +67,7 @@ local ffi     = require 'ffi'
 local clib    = require 'cmad'
 local gmath   = require 'gmath'
 local linbas  = require 'linbas'
+local linalg  = require 'linalg'
 local tbl_new = require 'table.new'
 
 -- locals
@@ -630,43 +631,37 @@ function M.div (x, y, r_)
   local r
 
   if isnum(x) then
-    if ismat(y) then      -- num / mat => num * inv(mat)
-      error("num/mat: NYI matrix inverse")
-    elseif ismat(y) then  -- num / cmat => num * inv(cmat)
-      error("num/cmat: NYI cmatrix inverse")
+    if isamat(y) then      -- num / (mat or cmat)
+      return linalg.solve_XA_B(y, x, r_)
     else goto invalid end
   end
 
   if ismat(x) then
-    if isnum(y) then      -- mat / num => vec * (1/num)
+    if isnum(y) then       -- mat / num => vec * (1/num)
       r = r_ or matrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_muln(x.data, 1/y, r.data, r:size())
-    elseif iscpx(y) then  -- mat / cpx => vec * (1/cpx)
+    elseif iscpx(y) then   -- mat / cpx => vec * (1/cpx)
       r, y = r_ or cmatrix(x:sizes()), 1/y
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
       clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
-    elseif ismat(y) then  -- mat / mat => mat * inv(mat)
-      error("mat/mat: NYI matrix inverse")
-    elseif iscmat(y) then -- mat / cmat => mat * inv(cmat)
-      error("mat/cmat: NYI matrix inverse")
+    elseif isamat(y) then  -- mat / (mat or cmat)
+      r = linalg.solve_XA_B(y, x, r_)
     else goto invalid end
     return r
   end
 
   if iscmat(x) then
-    if isnum(y) then      -- cmat / num => cvec * (1/num)
+    if isnum(y) then       -- cmat / num => cvec * (1/num)
       r = r_ or cmatrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_muln(x.data, 1/y, r.data, r:size())
-    elseif iscpx(y) then  -- cmat / cpx => cvec * (1/cpx)
+    elseif iscpx(y) then   -- cmat / cpx => cvec * (1/cpx)
       r, y = r_ or cmatrix(x:sizes()), 1/y
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_mulc(x.data, y.re, y.im, r.data, r:size())
-    elseif ismat(y) then  -- cmat / mat => cmat * inv(mat)
-      error("cmat/mat: NYI matrix inverse")
-    elseif iscmat(y) then -- cmat / cmat => cmat * inv(cmat)
-      error("cmat/cmat: NYI cmatrix inverse")
+    elseif isamat(y) then  -- cmat / (mat or cmat)
+      r = linalg.solve_XA_B(y, x, r_)
     else goto invalid end
     return r
   end

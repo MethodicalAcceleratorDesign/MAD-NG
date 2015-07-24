@@ -33,18 +33,19 @@ gmath.format = "%- 10.5f"
 -- solving AX=B and XA=B
 local info, rcond, ferr
 
-X1, info, rcond, err = linalg.solve_AX_B_eps(A,B )
+linalg.use_expert_drivers = false
+
+X1, info, rcond, ferr = linalg.solve_AX_B(A, B)
 print('info=', info, 'rcond=', rcond)
 io.write('X1=\n', tostring(X1), '\n')
-io.write('Err=\n', tostring(err), '\n')
+io.write('Err=\n', tostring(ferr), '\n')
 
 for i=1,1e6 do
-X2, info, rcond, err = linalg.solve_XA_B_eps(A,Bt)
+X2, info, rcond, ferr = linalg.solve_XA_B(A, Bt)
 end
-
 print('info=', info, 'rcond=', rcond)
 io.write('X2=\n', tostring(X2), '\n')
-io.write('Err=\n', tostring(err), '\n')
+io.write('Err=\n', tostring(ferr), '\n')
 
 -- end of solving AX=B and XA=B
 

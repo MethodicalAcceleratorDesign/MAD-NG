@@ -16,7 +16,8 @@ DESCRIPTION
   solve_AX_B, solve_XA_B
 
 REMARK:
-  By default, use_drivers is false (faster).
+  By default, use_expert_drivers is false (faster).
+  By default, check_info is false (user's reponsibility).
 
 RETURN VALUES
   The module as table of solvers.
@@ -28,11 +29,18 @@ SEE ALSO
 
 -- DEFS ------------------------------------------------------------------------
 
-local ffi     = require 'ffi'
-local lapack  = require 'lapack'
-local matrix  = require 'matrix'
-local cmatrix = require 'cmatrix'
-local gmath   = require 'gmath'
+local ffi    = require 'ffi'
+local lapack = require 'lapack'
+local linbas = require 'linbas'
+local gmath  = require 'gmath'
+
+-- local
+local  matrix = linbas. matrix
+local cmatrix = linbas.cmatrix
+
+local isnum, iscpx, iscal, ismat, iscmat, isamat =
+  gmath.is_number, gmath.is_complex, gmath.is_scalar,
+  gmath.is_matrix, gmath.is_cmatrix, gmath.isa_matrix
 
 -- FFI types
 
@@ -52,8 +60,6 @@ local nrhs_   = int_ct()
 local info_   = int_ct()
 local rcond_  = dbl_ct()
 
-local ismat, iscmat = gmath.is_matrix, gmath.is_cmatrix
-
 -- solvers API
 
 local function solve_nn_XA_B (A, B, err_)
@@ -72,7 +78,7 @@ local function solve_nn_XA_B (A, B, err_)
     error("invalid input arguments")
   end
 
-  if err_ then
+  if M.check_info then
         if info_[0] < 0 then error("invalid input matrix")
     elseif info_[0] > 0 then error("singular matrix detected") end
   end
@@ -117,7 +123,7 @@ local function dsolve_nn_XA_B (A, B, err_)
     error("invalid input arguments")
   end
 
-  if err_ then
+  if M.check_info then
         if info_[0] < 0 then error("invalid input matrix")
     elseif info_[0] > 0 then error("singular matrix detected") end
   end
@@ -127,23 +133,30 @@ end
 
 -- Lua API
 
-M.use_drivers = false -- default
+M.check_info         = false -- default
+M.use_expert_drivers = false -- default
 
-function M.solve_AX_B (A, B, err_)
+function M.solve_AX_B (A, B, X_)
   -- XA = B -> X = B A^-1 = ((A^-1)^t B^t)^t
-  assert(isamat(A) and isamat(B), "invalid argument to solver")
+  assert(isamat(A), "invalid 1st argument to solver")
+  if iscal(B) then error("NYI: matrix inverse") end
 
-  if M.use_drivers ~= true then
+  assert(not X or B:rows() == X:rows() and
+                  B:cols() == X:cols(), "incompatible matrix sizes")
+
+  if M.use_expert_drivers ~= true then
     if A:rows() == A:cols() then
-      local X, info = solve_nn_XA_B(A:trans(), B:trans(), err_)
+      local X, info =
+        solve_nn_XA_B(A:trans(), B:trans())
       return X:trans(), info
     else
       error("NYI: solving non-square system")
     end
   else
     if A:rows() == A:cols() then
-      local X, info, rcond, ferr = dsolve_nn_XA_B(A:trans(), B:trans(), err_)
-      return X:trans(), info
+      local X, info, rcond, ferr = 
+        dsolve_nn_XA_B(A:trans(), B:trans())
+      return X:trans(), info, rcond, ferr
     else
       error("NYI: solving non-square system")
     end    
@@ -151,18 +164,25 @@ function M.solve_AX_B (A, B, err_)
 
 end
 
-function M.solve_XA_B (A, B, err_)
-  assert(isamat(A) and isamat(B), "invalid argument to solver")
+function M.solve_XA_B (A, B, X_)
+  -- case A [n x n] or [m x n] and m < n or m > n
+  -- case B is_scalar or isa_matrix
+  -- case X is provided or not
+  assert(isamat(A), "invalid 1st argument to solver")
+  if iscal(B) then error("NYI: matrix inverse") end
 
-  if M.use_drivers ~= true then
+  assert(not X or B:rows() == X:rows() and
+                  B:cols() == X:cols(), "incompatible matrix sizes")
+
+  if M.use_expert_drivers ~= true then
     if A:rows() == A:cols() then -- square system
-      return solve_nn_XA_B(A:copy(), B:copy(), err_)
+      return solve_nn_XA_B(A:copy(), B:copy())
     else
       error("NYI: solving non-square system")
     end
   else
     if A:rows() == A:cols() then
-      return dsolve_nn_XA_B(A:copy(), B:copy(), err_)
+      return dsolve_nn_XA_B(A:copy(), B:copy())
     else
       error("NYI: solving non-square system")
     end
