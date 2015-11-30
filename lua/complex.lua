@@ -94,9 +94,9 @@ end
 
 function M.add (x, y, r_)
   if isnum(x) then -- num + cpx
-    return complex(x + y.re, x + y.im)
+    return complex(x + y.re, y.im)
   elseif isnum(y) then -- cpx + num
-    return complex(x.re + y, x.im + y)
+    return complex(x.re + y, x.im)
   elseif iscpx(y) then -- cpx + cpx
     return complex(x.re + y.re, x.im + y.im)
   end
@@ -117,9 +117,9 @@ end
 
 function M.sub (x, y, r_)
   if isnum(x) then -- num - cpx
-    return complex(x - y.re, x - y.im)
+    return complex(x - y.re, - y.im)
   elseif isnum(y) then -- cpx - num
-    return complex(x.re - y, x.im - y)
+    return complex(x.re - y, x.im)
   elseif iscpx(y) then -- cpx - cpx
     return complex(x.re - y.re, x.im - y.im)
   end

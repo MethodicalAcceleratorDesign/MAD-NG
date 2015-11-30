@@ -14,6 +14,7 @@ SYNOPSIS
   local m4 = matrix {1,2,3,4,5,6}              -- column matrix = {{1},{2},...}
   local m5 = matrix {{1,2,3,4,5,6}}            -- row matrix
   local m6 = m1:transpose()                    -- row matrix
+  local I6 = matrix(6):ones()                  -- 6x6 identity
 
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:

@@ -8,12 +8,13 @@ NAME
 
 SYNOPSIS
   local cmatrix = require 'cmatrix'
-  local m1 = cmatrix(3)                 -- column cmatrix = cmatrix(3,1)
+  local m1 = cmatrix(3)                             -- column cmatrix = cmatrix(3,1)
   local m2 = cmatrix(2,3)
   local m3 = cmatrix {{1,2+2i},{3,4+2i},{5,6+2i}}
-  local m4 = cmatrix {1,2,3,4,5,6}      -- column cmatrix = {{1+0i},{2+0i},...}
-  local m5 = cmatrix {{1,2,3,4,5,6}}    -- row cmatrix
-  local m6 = m1:transpose()             -- row cmatrix, transpose conjugate
+  local m4 = cmatrix {1,2,3,4,5,6}                  -- column cmatrix = {{1+0i},{2+0i},...}
+  local m5 = cmatrix {{1,2,3,4,5,6}}                -- row cmatrix
+  local m6 = m1:transpose()                         -- row cmatrix, transpose conjugate
+  local I6 = cmatrix(6):ones()                      -- 6x6 identity
 
 DESCRIPTION
   The module cmatrix implements the operators and math functions on

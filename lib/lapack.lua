@@ -9,22 +9,11 @@ for real matrices and zgesv, zlange, and zgecon for complex matrices. When the
 matrix is nonsquare or singular dgelss is used for real matrices and zgelss for
 complex matrices. More information on LAPACK is available in the references.
 
-For dense matrices the Cholesky method uses LAPACK functions such as dpotrf and
-dpotrs for real matrices and zpotrf and zpotrs for complex matrices. For sparse
-matrices the Cholesky method uses the "TAUCS" library.
-
-For eigenvalue computation when the input is an × matrix of machine numbers and
-the number of eigenvalues requested is less than 20% of  an Arnoldi method is
-used. Otherwise, if the input matrix is numerical then a method using LAPACK
-routines is used.
-
 LAPACK is the default method for computing the entire set of eigenvalues and
-eigenvectors. When the matrix is unsymmetric, dgeev is used for real matrices
-and zgeev is used for complex matrices. For symmetric matrices, dsyevr is used
-for real matrices and zheevr is used for complex matrices. For generalized
-eigenvalues the routine dggev is used for real matrices and zggev for complex
-matrices.
-
+eigenvectors. For generalized eigenvalues the routine dggev is used for real
+matrices and zggev for complex matrices. When the matrix is unsymmetric, dgeev
+is used for real matrices and zgeev is used for complex matrices. For symmetric
+matrices, dsyevr is used for real matrices and zheevr is used for complex matrices.
 ]]
 
 --[[
@@ -37,30 +26,14 @@ DOUBLE PRECISION    double*
 Transpose:
 C       -> Row Major
 Fortran -> Col Major (transpose of C)
-"T" (real) or "C" (complex)
-
-Example: C = alpha A * B + beta C
-
-SUBROUTINE DGEMM(TRANSA,TRANSB,M,N,K,ALPHA,A,LDA,B,LDB,BETA,C,LDC)
-.. Scalar Arguments ..
-DOUBLE PRECISION ALPHA,BETA
-INTEGER K,LDA,LDB,LDC,M,N
-CHARACTER TRANSA,TRANSB
-.. Array Arguments ..
-DOUBLE PRECISION A(LDA,*),B(LDB,*),C(LDC,*)
-
-void dgemm_(const char* TRANSA, const char* TRANSB, const int* M,
-            const int* N, const int* K, const double* alpha, const double* A,
-            const int* LDA, const double* B, const int* LDB, const double* beta,
-            double* C, const int* LDC);
-
-Use case: degmm_('T', 'T', M, N, K, 1.0, A, K, B, N, 0.0, C, N)
+'T' (real) or 'C' (complex conjugate)
 ]]
 
 ffi.cdef[[
 // -----
 // C <- alpha * A * B + beta * C with A[m x p], B[p x n] and C[m x n]                                       
 // if beta ~= 0.0, C must be initialized
+// slow functions, replaced by faster C matmul
 // -----
 void dgemm_(const char *tA, const char *tB, const int *m, const int *n, const int *p,
             const double  *alpha, const double  *A, const int *lda,
@@ -72,14 +45,26 @@ void zgemm_(const char *tA, const char *tB, const int *m, const int *n, const in
             const complex *beta ,       complex *C, const int *ldc);
 
 // -----
+// inverse A[m x n]
+// A <- A^-1, ipiv[min(m,n)] <- pivot indices
+// info < 0 -> invalid input, info > 0 -> singular matrix
+// sizes: lwork=-1, work[0]=optimal size
+// -----
+void dgetrf_(const int* m, const int *n, double* A, const int* lda, int* ipiv, int* info);
+void dgetri_(const int* n, double* A, const int* lda, int* ipiv, double* work, int* lwork, int* info);
+
+void zgetrf_(const int* m, const int *n, complex* A, const int* lda, int* ipiv, int* info);
+void zgetri_(const int* n, complex* A, const int* lda, int* ipiv, complex* work, int* lwork, int* info);
+
+// -----
 // solve A * X = B with A[n x n] and B[n x nrhs]
 // A <- L * U, ipiv[n] <- pivot indices, B <- X (if info = 0)
 // info < 0 -> invalid input, info > 0 -> singular matrix
 // -----
 void dgesv_(const int *n, const int *nrhs, double  *A, const int *lda,
-                                int *ipiv, double  *B, const int *ldb, int *info);
+                                int *IPIV, double  *B, const int *ldb, int *info);
 void zgesv_(const int *n, const int *nrhs, complex *A, const int *lda,
-                                int *ipiv, complex *B, const int *ldb, int *info);
+                                int *IPIV, complex *B, const int *ldb, int *info);
 
 // -----
 // solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs] to machine precision
@@ -100,37 +85,27 @@ void zgesvx_(const char *fact, const char *trans, const int *n, const int *nrhs,
              complex *X, const int *ldx, double *rcond, double *ferr, double *berr,
              complex *work, double *rwork, int *info);
 
-/*
-          2: DGELSY 
-          3: DGELSS 
-          4: DGELSD 
-*/
-
-// M x N
-void dgels_(const char *trans, const int *M, const int *N, const int *nrhs,
-            double *A, const int *lda, double *b, const int *ldb, double *work,
-            const int *lwork, int *info);
-//void zgels_
-
-// Driver M x N: min | b - Ax | using SVD
-//void dgelss_
-//void zgelss_
-
-
-// SVD + driver
-void dgesvd_(const char* jobu, const char* jobvt, const int* M, const int* N,
-             double* A, const int* lda, double* S, double* U, const int* ldu,
-             double* VT, const int* ldvt, double* work,const int* lwork,
-             const int* info);
-//void zgesvd_
-//void dgesdd_
-//void zgesdd_
+// -----
+// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min | b - Ax | using SVD
+// A <- right singular vectors, B <- X (if info = 0), S <- singular value in decreasing order
+// rcond: S(i) <= rcond*S(1) are retained. rcond < 0 -> use machine precision
+// rank <- rank of A (i.e. number of SV)
+// info < 0 -> invalid input, info > 0 -> singular matrix
+// R sizes: work[lwork], lwork >= 3*min(m,n) + max( 2*min(m,n), max(m,n), nrhs )
+// C sizes: work[lwork], lwork >= 2*min(m,n) + max(m,n,nrhs), rwork[5*min(m,n)]
+// -----
+void dgelss_(const int *m, const int *n, const int *nrhs,
+             double *A, const int *lda, double *B, const int *ldb,
+             double *S, const double *rcond, int *rank,
+             double *work, const int *lwork, int *info);
+void zgelss_(const int *m, const int *n, const int *nrhs,
+             complex *A, const int *lda, complex *B, const int *ldb,
+             double *S, const double *rcond, int *rank,
+             complex *work, const int *lwork, double *rwork, int *info);
 
 // Eigen values/vectors
-//void dggev_
-//void zggev_
+// void dggev_
+// void zggev_
 ]]
-
--- complex versions
 
 return lapack
