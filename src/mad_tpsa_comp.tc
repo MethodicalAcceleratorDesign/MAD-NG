@@ -1,0 +1,62 @@
+#ifndef TPSA_COMPOSE_TEMPLATE
+#define TPSA_COMPOSE_TEMPLATE
+
+#define T struct tpsa
+#define D struct tpsa_desc
+
+// #define DEBUG
+
+static inline void
+check_same_desc(int sa, const T *ma[sa])
+{
+  assert(ma);
+  for (int i = 1; i < sa; ++i)
+    ensure(ma[i]->desc == ma[i-1]->desc);
+}
+
+static inline void
+check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
+{
+  assert(ma && mb && mc);
+  ensure(sa && sb && sc);
+  ensure(sa == sc);
+  ensure(sb == ma[0]->desc->nmv);
+  check_same_desc(sa,ma);
+  check_same_desc(sb,mb);
+  check_same_desc(sc,(const T**)mc);
+  ensure(ma[0]->desc == mb[0]->desc);
+  ensure(ma[0]->desc == mc[0]->desc);
+}
+
+#ifdef _OPENMP
+#include "tpsa_compose_par.tc"
+#endif
+#include "tpsa_compose_ser.tc"
+
+
+void
+mad_tpsa_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
+{
+#ifdef TRACE
+  printf("tpsa_compose\n");
+#endif
+  check_compose(sa, ma, sb, mb, sc, mc);
+
+  #ifdef _OPENMP
+  ord_t highest = 0;
+  for (int i = 0; i < sa; ++i)
+    if (ma[i]->hi > highest)
+      highest = ma[i]->hi;
+  if (highest >= 6)
+    mad_tpsa_compose_par(sa,ma,mb,mc);
+  else
+  #endif
+    mad_tpsa_compose_ser(sa,ma,mb,mc);
+}
+
+#undef T
+#undef D
+
+#undef CTX
+
+#endif

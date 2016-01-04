@@ -1,0 +1,157 @@
+#ifndef TPSA_COMPOSE_PAR_TEMPLATE
+#define TPSA_COMPOSE_PAR_TEMPLATE
+
+struct compose_ctx_par {
+  int cached_size, sa;
+  D *d;
+  T **cached;
+};
+
+#define MAX_CACHED_ORDS 4
+#define CTX struct compose_ctx_par
+
+static inline T*
+get_mono(int c, int tmp_idx, T *tmps[2], ord_t complement[], CTX *ctx)
+{
+  if (c < ctx->cached_size && ctx->cached[c])
+    return ctx->cached[c];
+
+  D *d = ctx->d;
+  T **cached = ctx->cached;
+
+  for (int m = ctx->cached_size - 1; m > 0; --m)
+    if (cached[m] && mono_leq(d->nv, d->To[m], d->To[c])) {
+      mono_sub(d->nv, d->To[c], d->To[m], complement);
+      int compl_idx = desc_get_idx(d, d->nv, complement);
+      T *t = get_mono(compl_idx, tmp_idx ^ 1, tmps, complement, ctx);
+
+#ifdef DEBUG
+      mono_print(da->nv, da->To[c]);
+      printf(" = ");
+      mono_print(da->nv, da->To[m]);
+      mono_print(da->nv, da->To[compl_idx]);
+      printf("m=%d", m);
+      printf("\n");
+#endif
+
+      mad_tpsa_mul(t, cached[m], tmps[tmp_idx]);
+      break;
+    }
+
+  // update cache if needed
+  if (c < ctx->cached_size) {
+    assert(!cached[c]);             // no double alloc
+    cached[c] = mad_tpsa_newd(d,mad_tpsa_default);
+    mad_tpsa_copy(tmps[tmp_idx], cached[c]);
+  }
+  return tmps[tmp_idx];
+}
+
+static inline void
+sequential_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
+{
+  assert(ma && mc && ctx);
+
+  // cleanup & ord 0
+  for (int i = 0; i < sa; ++i)
+    mad_tpsa_scalar(mc[i], ma[i]->coef[0]);
+
+  ord_t mono[ctx->d->nv];
+  T *tmps[2] = { mad_tpsa_new(ctx->d,-1), mad_tpsa_new(ctx->d,-1) }, *t = NULL;
+  for (int c = 1; c < ctx->cached_size; ++c) {
+    // TODO: only cache what is needed
+    t = get_mono(c, 0, tmps, mono, ctx);
+    for (int i = 0; i < sa; ++i)
+      if (ma[i]->coef[c])
+        scale_and_accum(ma[i]->coef[c], t, mc[i]);
+  }
+  mad_tpsa_del(tmps[0]);
+  mad_tpsa_del(tmps[1]);
+}
+
+static int COMPOSE_NUM_THREADS;
+
+static inline void
+parallel_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
+{
+  ord_t highest = 0;
+  for (int i = 0; i < sa; ++i)
+    if (ma[i]->hi > highest)
+      highest = ma[i]->hi;
+  int max_coeff = ctx->d->hpoly_To_idx[highest+1];
+
+  if (!COMPOSE_NUM_THREADS)
+    COMPOSE_NUM_THREADS = get_num_threads();
+
+  T *mt[COMPOSE_NUM_THREADS][sa];
+  #pragma omp parallel num_threads(COMPOSE_NUM_THREADS)
+  {
+    int id = omp_get_thread_num();
+
+    // alloc private vars
+    ord_t mono[ctx->d->nv];
+    T *tmps[2] = { mad_tpsa_new(ctx->d,-1), mad_tpsa_new(ctx->d,-1) };
+    T **m_curr_thread = mt[id], *t = NULL;
+    for (int i = 0; i < sa; ++i)
+      m_curr_thread[i] = mad_tpsa_new(ctx->d,-1);
+
+    #pragma omp for
+    for (int c = ctx->cached_size; c < max_coeff; ++c) {
+      int needed = 0;
+      for (int i = 0; i < sa; ++i)
+        if (ma[i]->coef[c]) {
+          needed = 1;
+          break;
+        }
+      if (!needed) continue;
+
+      t = get_mono(c, 0, tmps, mono, ctx);
+      for (int i = 0; i < sa; ++i)
+        if (ma[i]->coef[c])
+          scale_and_accum(ma[i]->coef[c], t, m_curr_thread[i]);
+    }
+
+    mad_tpsa_del(tmps[0]);
+    mad_tpsa_del(tmps[1]);
+  }
+
+  for (int thread = 0; thread < COMPOSE_NUM_THREADS; ++thread)
+    for (int i = 0; i < sa; ++i) {
+      scale_and_accum(1, mt[thread][i], mc[i]);
+      mad_tpsa_del(mt[thread][i]);
+    }
+}
+
+static inline void
+mad_tpsa_compose_par(int sa, const T *ma[], const T *mb[], T *mc[])
+{
+#ifdef TRACE
+  printf("tpsa_compose_ser\n");
+#endif
+  // locals
+  D *d = ma[0]->desc;
+  int nv = d->nv;
+
+  ord_t to_cache = d->mo < MAX_CACHED_ORDS ? d->mo : MAX_CACHED_ORDS;
+  int cached_size = d->hpoly_To_idx[to_cache+1];
+  T *cached[cached_size];
+
+  /* cached[0] not in use --> */              cached[0] = NULL;
+  for (int c =      1; c <= nv         ; ++c) cached[c] = (T *) mb[c-1];
+  for (int c = nv + 1; c <  cached_size; ++c) cached[c] = NULL;
+
+  CTX ctx = { .d = d, .cached_size = cached_size, .cached = cached };
+
+  // compose
+  sequential_compose(sa, ma, mc, &ctx);
+  parallel_compose(sa, ma, mc, &ctx);
+
+  // finalize
+  for (int c = nv + 1; c < cached_size; ++c)
+    mad_tpsa_del(cached[c]);
+}
+
+#undef MAX_CACHED_ORDS
+#undef CTX
+
+#endif // TPSA_COMPOSE_PAR_TEMPLATE
