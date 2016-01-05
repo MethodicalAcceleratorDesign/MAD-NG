@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <assert.h>
+
+#include "mad.h"
 #include "mad_tpsa.h"
 
 #define T struct tpsa
-#define num_t double
 
 // #define TRACE
 

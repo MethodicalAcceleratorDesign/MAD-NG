@@ -1,15 +1,14 @@
-#ifndef MAD_MONO_H
-#define MAD_MONO_H
+#ifndef MAD_BIT_H
+#define MAD_BIT_H
 
 /*
  o----------------------------------------------------------------------------o
  |
- | Monomial module interface
+ | Bit module interface
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
  | Contrib: -
  |
  o----------------------------------------------------------------------------o
@@ -20,38 +19,32 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provide some functions to handle monomials as array of ord_t
+  - provide simple functions to manipulate bits.
  
   Information:
-  - parameters ending with an underscope can be null.
-
-  Errors:
-  - TODO
+  - all functions are inlined
 
  o----------------------------------------------------------------------------o
  */
 
 // --- types -----------------------------------------------------------------o
 
-typedef unsigned char ord_t;
+typedef unsigned int bit_t;
 
 // --- interface -------------------------------------------------------------o
 
-void  mad_mono_fill  (int n,       ord_t a[n], ord_t v);
-void  mad_mono_cpy   (int n, const ord_t a[n],                   ord_t r[n]);
+static bit_t mad_bit_set     (bit_t b, int n);
+static bit_t mad_bit_get     (bit_t b, int n);
+static bit_t mad_bit_clr     (bit_t b, int n);
+static bit_t mad_bit_add     (bit_t a, bit_t b);
+static bit_t mad_bit_trunc   (bit_t b, int n);
+static bit_t mad_bit_lowest  (bit_t b);
+static bit_t mad_bit_highest (bit_t b);
 
-ord_t mad_mono_max   (int n, const ord_t a[n]);
-int   mad_mono_ord   (int n, const ord_t a[n]);
-int   mad_mono_equ   (int n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_leq   (int n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_rcmp  (int n, const ord_t a[n], const ord_t b[n]);
+// --- implementation (private) ----------------------------------------------o
 
-void  mad_mono_add   (int n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
-void  mad_mono_sub   (int n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
-
-void  mad_mono_sort  (int n, const ord_t a[n], int idxs[n]);
-void  mad_mono_print (int n, const ord_t a[n]);
+#include "mad_bit_impl.h"
 
 // ---------------------------------------------------------------------------o
 
-#endif //  MAD_MONO_H
+#endif // MAD_BIT_H

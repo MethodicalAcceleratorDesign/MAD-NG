@@ -24,10 +24,7 @@
  o----------------------------------------------------------------------------o
  */
 
-#include <stddef.h>
-
-#define  num_t double
-#define cnum_t double _Complex
+#include "mad.h"
 
 // --- interface -------------------------------------------------------------o
 
@@ -74,8 +71,5 @@ void  mad_cvec_divn (const cnum_t *y,        num_t  x       , cnum_t *r, size_t 
 void  mad_cvec_divc (const cnum_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t n); //  cpx  / cvec
 
 // ---------------------------------------------------------------------------o
-
-#undef  num_t
-#undef cnum_t
 
 #endif // MAD_VEC_H

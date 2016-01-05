@@ -24,10 +24,7 @@
  o----------------------------------------------------------------------------o
  */
 
-#include <stddef.h>
-
-#define  num_t double
-#define cnum_t double _Complex
+#include "mad.h"
 
 // --- interface -------------------------------------------------------------o
 
@@ -60,8 +57,5 @@ int   mad_cmat_div    (const cnum_t *x, const cnum_t *y,        cnum_t *r, size_
 int   mad_cmat_divm   (const cnum_t *x, const  num_t *y,        cnum_t *r, size_t m, size_t n, size_t p, num_t rcond);  //  cmat /  mat
 
 // ---------------------------------------------------------------------------o
-
-#undef  num_t
-#undef cnum_t
 
 #endif // MAD_MAT_H

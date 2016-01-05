@@ -27,15 +27,14 @@
  o----------------------------------------------------------------------------o
  */
 
-// --- macros ----------------------------------------------------------------o
+// --- includes --------------------------------------------------------------o
 
-#ifndef __GNUC__
-#define __attribute__(a)
-#endif
+#include <stddef.h>
 
 // --- types -----------------------------------------------------------------o
 
 typedef const char*      str_t;
+typedef int              idx_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
 
@@ -44,13 +43,28 @@ typedef double _Complex cnum_t;
 #define TRUE  1
 #define FALSE 0
 
+// --- macros ----------------------------------------------------------------o
+
+#define MIN(a,b)    ((a)<(b) ? (a):(b))
+#define MAX(a,b)    ((a)>(b) ? (a):(b))
+#define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
+#define MKSTR(a)    MKSTR_OP(a)
+#define MKSTR_OP(a) #a
+
+// --- GNU C -----------------------------------------------------------------o
+
+#ifndef __GNUC__
+#define __attribute__(a)
+#endif
+
 // --- Open Multi-Processing -------------------------------------------------o
 
 #ifdef _OPENMP
 #include <omp.h>
 #else
-#define omp_get_max_threads() 1
+#define omp_get_num_procs()   1
 #define omp_get_num_threads() 1
+#define omp_get_max_threads() 1
 #define omp_get_thread_num()  0
 #endif
 

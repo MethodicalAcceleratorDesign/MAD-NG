@@ -1,7 +1,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | Memory module implementation
+ | Truncated Power Series Algebra module implementation
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -17,21 +17,25 @@
  o----------------------------------------------------------------------------o
 */
 
-#include <string.h>
-#include <stdlib.h>
-#include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <limits.h>
+#include <assert.h>
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+#include "mad_mem.h"
+#include "mad_vec.h"
+#include "mad_mat.h"
 
-#include "mad.h"
-#include "mad_tpsa.h"
+#include "mad_bit.h"
 #include "mad_mono.h"
-#include "mad_tpsa_utils.tc"
-#include "mad_tpsa_desc.tc"
+#include "mad_tpsa.h"
 
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
+
+#include "mad_tpsa_desc.tc"
 
 // #define TRACE
 
@@ -58,7 +62,7 @@ mad_tpsa_debug(const T *t)
   D *d = t->desc;
   printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=%g ", t->nz, t->lo, t->hi, t->mo, t->coef[0]);
   ord_t hi = min_ord(t->hi, t->mo, t->desc->trunc);
-  int i = d->hpoly_To_idx[imax(1,t->lo)]; // ord 0 already printed
+  int i = d->hpoly_To_idx[MAX(1,t->lo)]; // ord 0 already printed
   for (; i < d->hpoly_To_idx[hi+1]; ++i)
     if (t->coef[i])
       printf("[%d]=%g ", i, t->coef[i]);
@@ -173,7 +177,7 @@ mad_tpsa_copy(const T *src, T *dst)
   }
   dst->hi = min_ord(src->hi, dst->mo, d->trunc);
   dst->lo = src->lo;
-  dst->nz = btrunc(src->nz, dst->hi);
+  dst->nz = mad_bit_trunc(src->nz, dst->hi);
   // dst->tmp = src->tmp;  // managed from outside
 
   for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
@@ -311,14 +315,14 @@ mad_tpsa_set0(T *t, num_t a, num_t b)
   assert(t);
   t->coef[0] = a*t->coef[0] + b;
   if (t->coef[0]) {
-    t->nz = bset(t->nz,0);
+    t->nz = mad_bit_set(t->nz,0);
     for (int c = t->desc->hpoly_To_idx[1]; c < t->desc->hpoly_To_idx[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = 0;
   }
   else {
-    t->nz = bclr(t->nz,0);
-    t->lo = min_ord2(b_lowest(t->nz),t->mo);
+    t->nz = mad_bit_clr(t->nz,0);
+    t->lo = min_ord2(mad_bit_lowest(t->nz),t->mo);
   }
 }
 
@@ -338,14 +342,14 @@ mad_tpsa_seti(T *t, int i, num_t a, num_t b)
   if (v == 0) {
     t->coef[i] = v;
     if (i == 0 && t->lo == 0) {
-      t->nz = bclr(t->nz,0);
-      t->lo = min_ord2(b_lowest(t->nz),t->mo);
+      t->nz = mad_bit_clr(t->nz,0);
+      t->lo = min_ord2(mad_bit_lowest(t->nz),t->mo);
     }
     return;
   }
 
   ord_t o = d->ords[i];
-  t->nz = bset(t->nz,o);
+  t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
     for (int c = d->hpoly_To_idx[o]; c < d->hpoly_To_idx[o+1]; ++c)
       t->coef[c] = 0;
@@ -370,7 +374,7 @@ mad_tpsa_setm(T *t, int n, const ord_t m[n], num_t a, num_t b)
   assert(t && m);
   assert(n <= t->desc->nv);
 #ifdef TRACE
-  printf("set_mono: "); mono_print(n, m); printf("\n");
+  printf("set_mono: "); mad_mono_print(n, m); printf("\n");
 #endif
   idx_t i = desc_get_idx(t->desc,n,m);
   mad_tpsa_seti(t,i,a,b);
@@ -404,7 +408,7 @@ mad_tpsa_map(const T *a, T *c, num_t (*f)(num_t v, int i_))
 
   c->hi = min_ord(a->hi, c->mo, d->trunc);
   c->lo = a->lo;
-  c->nz = btrunc(a->nz, c->hi);
+  c->nz = mad_bit_trunc(a->nz, c->hi);
 
   for (int i = d->hpoly_To_idx[c->lo]; i < d->hpoly_To_idx[c->hi+1]; ++i)
     c->coef[i] = f(a->coef[i], i);
@@ -419,9 +423,8 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
   ensure(a->desc == b->desc && a->desc == c->desc);
 
   idx_t *pi = a->desc->hpoly_To_idx;
-  if (a->lo > b->lo)
-    swap(&a,&b);
-  ord_t c_hi = min_ord(imax(a->hi,b->hi),c->mo,c->desc->trunc), c_lo = a->lo;
+  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
+  ord_t c_hi = min_ord(MAX(a->hi,b->hi),c->mo,c->desc->trunc), c_lo = a->lo;
 
   num_t va, vb;
   for (int i = pi[c_lo]; i < pi[c_hi+1]; ++i) {
@@ -434,7 +437,7 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
   }
   c->lo = c_lo;
   c->hi = c_hi;
-  c->nz = btrunc(badd(a->nz,b->nz),c->hi);
+  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz),c->hi);
 
   return c;
 }
@@ -444,12 +447,13 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
 #undef TRACE
 
 // --- --- OPERATIONS ---------------------------------------------------------
-// #include "tpsa_ops.tc"
 
-// #include "tpsa_fun.tc"
+#include "mad_tpsa_ops.tc"
 
-// // #include "tpsa_compose.tc"
+#include "mad_tpsa_fun.tc"
 
-// // #include "tpsa_minv.tc"
+#include "mad_tpsa_comp.tc"
 
-// #include "tpsa_io.tc"
+#include "mad_tpsa_minv.tc"
+
+#include "mad_tpsa_io.tc"

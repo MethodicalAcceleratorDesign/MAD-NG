@@ -4,7 +4,7 @@ local ffi = require 'ffi'
 
 ffi.cdef[[
 typedef const char*      str_t;
-typedef unsigned char    ord_t;
+typedef int              idx_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
 ]]

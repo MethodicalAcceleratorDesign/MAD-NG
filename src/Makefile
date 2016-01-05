@@ -15,39 +15,57 @@
 # o----------------------------------------------------------------------------o
 #
 
-CC      := gcc-mp-4.8
-LJ      := ../bin/lj2-macosx
+# setup
+CC  := gcc
+LJ  := ../bin/luajit
+DIR := build
 
+# depend
+DFLAGS  := -std=c11 -MM 
+
+# compiler
 CFLAGS  := -std=c11 -W -Wall -Wextra -pedantic
-CFLAGS  += -O3 -flto -ffast-math -ftree-vectorize -fPIC $(OMP)
-CFLAGS  += -I../lib/luajit/OSX/include/luajit-2.1 
+CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
+CFLAGS  += #-flto
+CFLAGS  += #-fopenmp
 
-LJFLAGS :=
+# lua
+LFLAGS  :=
 
+# linker
 LDFLAGS := -pagezero_size 10000 -image_base 100000000
-LDFLAGS += -static-libgfortran # -static-libgcc 
+LDFLAGS += -static-libgfortran # -static-libgcc -> crash LuaJIT
 LDFLAGS += -Wl,-macosx_version_min,10.8
 LDFLAGS += ../lib/luajit/src/libluajit.a \
            ../lib/lapack/liblapack.a \
            ../lib/lapack/librefblas.a \
-           /opt/local/lib/gcc48/libgfortran.a \
-           /opt/local/lib/gcc48/libquadmath.a
+           -lgfortran $(shell gcc -print-file-name=libquadmath.a)
 
-# OMP := -fopenmp
+# files setup
+CSRC    := $(wildcard *.c)
+LSRC    := # $(wildcard *.lua) # compile also lua modules
 
-CSRC    := $(filter-out %_test.c,$(wildcard *.c))
-LSRC    := # $(filter-out %_test.lua,$(wildcard *.lua))
+DEP     := $(patsubst %.c,%.d,$(CSRC))
+DEP     := $(addprefix $(DIR)/,$(DEP))
+
 OBJ     := $(patsubst %.c,%.o,$(CSRC))
 OBJ     += $(patsubst %.lua,%.o,$(LSRC))
+OBJ     := $(addprefix $(DIR)/,$(OBJ))
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+DOIT    := $(shell mkdir -p $(DIR))
 
-%.o: %.lua
-	$(LJ) $(LJFLAGS) -b $< $@
-
+# rules
 mad: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
+
+$(DIR)/%.d: %.c
+	$(CC) $(DFLAGS) $< > $@
+
+$(DIR)/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(DIR)/%.o: %.lua
+	$(LJ) $(LFLAGS) -b $< $@
 
 dep:
 	otool -L mad
@@ -56,4 +74,12 @@ clean:
 	rm -f mad
 
 cleanall: clean
-	rm -f *.o
+	rm -rf $(DIR)
+
+# files specific setup
+$(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/OSX/include/luajit-2.1
+
+# include dependencies
+ifeq ($(filter-out mad,$(MAKECMDGOALS)),)
+-include $(DEP)
+endif

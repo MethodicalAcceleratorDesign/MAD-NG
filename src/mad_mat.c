@@ -26,10 +26,6 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-#define  str_t const char*
-#define  num_t double
-#define cnum_t double _Complex
-
 // --- implementation --------------------------------------------------------o
 
 #define CHKR     assert( r )
@@ -42,9 +38,6 @@
 #define CHKXYRX  assert( x && y && r && x != r )
 #define CHKXYRY  assert( x && y && r && y != r )
 #define CHKXYRXY assert( x && y && r && x != r && y != r )
-
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
 
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { (a##_re), (a##_im) })
 

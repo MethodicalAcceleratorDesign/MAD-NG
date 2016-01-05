@@ -2,7 +2,7 @@ local gmath  = require 'gmath'
 local matrix = require 'matrix'
 local jit    = require('jit')
 local jitv   = require('jit.v')
--- jit.opt.start("sizemcode=256","loopunroll=10")
+-- jit.opt.start("sizemcode=256","loopunroll=25")
 jitv.start()
 
 --

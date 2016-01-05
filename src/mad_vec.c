@@ -22,9 +22,6 @@
 
 #include "mad_vec.h"
 
-#define  num_t double
-#define cnum_t double _Complex
-
 // --- implementation --------------------------------------------------------o
 
 #define CHKR    assert( r )

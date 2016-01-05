@@ -1,5 +1,5 @@
-#ifndef TPSA_COMPOSE__SER_TEMPLATE
-#define TPSA_COMPOSE_SER_TEMPLATE
+#ifndef MAD_TPSA_COMPOSE_SER_TC
+#define MAD_TPSA_COMPOSE_SER_TC
 
 // #define TRACE
 
@@ -20,7 +20,7 @@ get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
   assert(pure_mono && knb_coef);
   D *d = a->desc;
   ord_t mono[d->nv], knb_mono[d->nv];
-  mono_copy(d->nv, pure_mono, mono);
+  mad_mono_cpy(d->nv, pure_mono, mono);
   num_t val;
   idx_t idx, idx_knb_only;
   mad_tpsa_clear(knb_coef);
@@ -29,12 +29,12 @@ get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
     idx = desc_get_idx(d, d->nv, mono);
     val = mad_tpsa_geti(a,idx);
     if (val) {
-      mono_copy(d->nv , mono, knb_mono);
-      mono_fill(d->nmv, knb_mono, 0);  // remove map vars, keep only the knobs
+      mad_mono_cpy (d->nv , mono, knb_mono);
+      mad_mono_fill(d->nmv, knb_mono, 0);  // remove map vars, keep only the knobs
       idx_knb_only = desc_get_idx(d, d->nv, knb_mono);
-      mad_tpsa_seti(knb_coef, idx_knb_only, 0.0,val);
+      mad_tpsa_seti(knb_coef, idx_knb_only, 0.0, val);
     }
-  } while(nxt_mono_by_var(d, d->nv, mono, d->nmv));
+  } while(nxt_mono_by_var(d, d->nv, mono /*, d->nmv*/));
 
   return knb_coef;
 }
@@ -44,8 +44,8 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
 {
   D *d = ma[0]->desc;
   if (d->nmv < d->nv) { // there are knobs
-    T *knb_coef = mad_tpsa_new(d,d->ko);
-    T *tmp      = mad_tpsa_new(d,d->trunc);
+    T *knb_coef = mad_tpsa_newd(d,d->ko);
+    T *tmp      = mad_tpsa_newd(d,d->trunc);
 
     for (int i = 0; i < sa; ++i) {
       mad_tpsa_scalar(mc[i],ma[i]->coef[0]);
@@ -69,8 +69,7 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
       mad_tpsa_scalar(mc[i], ma[i]->coef[0]);
       for (int v = 1; v <= d->nv; ++v) {
         num_t coef = mad_tpsa_geti(ma[i],v);
-        if (coef)
-          scale_and_accum(coef, mb[v-1], mc[i]);
+        if (coef) scale_and_accum(coef, mb[v-1], mc[i]);
       }
     }
   }
@@ -99,8 +98,7 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
   else {                        // no knobs
     for (int i = 0; i < ctx->sa; ++i) {
       num_t coef = mad_tpsa_geti(ctx->ma[i],idx);
-      if (coef)
-        scale_and_accum(coef, ctx->ords[o], ctx->mc[i]);
+      if (coef) scale_and_accum(coef, ctx->ords[o], ctx->mc[i]);
     }
   }
 
@@ -119,7 +117,7 @@ init_required(int sa, const T *ma[sa], char required[])
   D *d = ma[0]->desc;
   int nv = d->nv, *pi = d->hpoly_To_idx;
   ord_t highest_ord = 0;
-  double eps = 1e-10; // ld: very bad!!!
+  double eps = 1e-10; // LD: very bad!!!
 
   // original nodes
   memset(required, 0, d->nc);
@@ -127,7 +125,7 @@ init_required(int sa, const T *ma[sa], char required[])
     if (ma[i]->hi > highest_ord)
       highest_ord = ma[i]->hi;
     for (int c = 0; c < pi[ ma[i]->hi+1 ]; ++c)
-      if (   bget(ma[i]->nz,d->ords[c])
+      if (mad_bit_get(ma[i]->nz, d->ords[c])
           && (ma[i]->coef[c] < -eps || ma[i]->coef[c] > eps)) // != 0
         required[c] = 1;
   }
@@ -141,7 +139,7 @@ init_required(int sa, const T *ma[sa], char required[])
   for (int o = highest_ord; o > 1; --o) {
     for (int c = pi[o]; c < pi[o+1]; ++c)
       if (required[c]) {
-        mono_copy(nv,d->To[c],mono);
+        mad_mono_cpy(nv,d->To[c],mono);
         for (j = nv-1; j >= 0 && !mono[j]; --j)
           ; // get j to first non-zero element
         mono[j]--;
@@ -173,15 +171,15 @@ mad_tpsa_compose_ser(int sa, const T *ma[], const T *mb[], T *mc[])
 
   // initialization
   for (int v = 0; v <  da->nv; ++v) mono[v] = 0;
-  for (int o = 0; o <= highest_ord; ++o) ords[o] = mad_tpsa_new(da,da->trunc);
+  for (int o = 0; o <= highest_ord; ++o) ords[o] = mad_tpsa_newd(da,da->trunc);
   mad_tpsa_scalar(ords[0],1.0);
   for (int ic = 0; ic < sa; ++ic)
     mad_tpsa_clear(mc[ic]);
 
   CTX ctx = { .sa=sa, .ma=ma,   .mc=mc,  .required=required,
               .da=da, .mb=mb, .ords=ords  };
-  ctx.knb_coef = da->ko ? mad_tpsa_new(da,da->ko) : NULL;
-  ctx.tmp      = mad_tpsa_new(da,da->trunc);
+  ctx.knb_coef = da->ko ? mad_tpsa_newd(da,da->ko) : NULL;
+  ctx.tmp      = mad_tpsa_newd(da,da->trunc);
 
   // do composition from root of tree, ord 0
   compose(0, 0, mono, &ctx);
@@ -189,10 +187,11 @@ mad_tpsa_compose_ser(int sa, const T *ma[], const T *mb[], T *mc[])
   // cleanup
   for (int o = 0; o <= highest_ord; ++o)
     mad_tpsa_del(ords[o]);
+
   mad_tpsa_del(ctx.knb_coef);
   mad_tpsa_del(ctx.tmp);
 }
 
 #undef CTX
 
-#endif  // TPSA_COMPOSE_SER_TEMPLATE
+#endif  // MAD_TPSA_COMPOSE_SER_TC

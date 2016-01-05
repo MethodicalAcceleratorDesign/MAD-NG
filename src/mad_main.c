@@ -51,7 +51,7 @@
 // --- helpers ---------------------------------------------------------------o
 
 static lua_State *mad_luastate;
-static STR        mad_progname;
+static str_t      mad_progname;
 
 void
 mad_lua_setloc (int level)
@@ -85,13 +85,13 @@ mad_fatal_extrn (void)
 static struct option {
   int iscr, nopt, narg, argc;
   int quiet, interact;
-  STR input;
+  str_t input;
 } option[1] = {{0}};
 
 static void
 banner(void)
 {
-  static STR msg = 
+  static str_t msg = 
   "    ____  __   ______    ______     |   Methodical Accelerator Design\n"
   "     /  \\/  \\   /  _  \\   /  _  \\   |   release: " VERSION " (" OSNAME ")\n"
   "    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
@@ -110,7 +110,7 @@ banner(void)
 static void
 usage(void)
 {
-  static STR msg =
+  static str_t msg =
   "usage: %s [options]... [script [args]...]\n"
   "  -e chunck   execute string 'chunck'\n"
   "  -l name     load library 'name'\n"
@@ -127,7 +127,7 @@ usage(void)
 }
 
 static void
-set_level(STR level, int *target)
+set_level(str_t level, int *target)
 {
   char *end = "";
   int   lvl = *level ? strtol(level, &end, 10) : 1;
@@ -209,7 +209,7 @@ make_arg(lua_State *L, char *argv[])
 }
 
 static void
-load_file(lua_State *L, STR file)
+load_file(lua_State *L, str_t file)
 {
   debug(4, "loading script '%s'", file);
 
@@ -223,7 +223,7 @@ load_file(lua_State *L, STR file)
 }
 
 static void
-load_string(lua_State *L, STR str)
+load_string(lua_State *L, str_t str)
 {
   debug(4, "loading string '%s'", str);
 
@@ -235,7 +235,7 @@ load_string(lua_State *L, STR str)
 }
 
 static void
-run_chunk(lua_State *L, STR chunk, int narg)
+run_chunk(lua_State *L, str_t chunk, int narg)
 {
   debug(4, "running script '%s' with %d arg", chunk, narg);
 
@@ -295,7 +295,7 @@ exec_args(lua_State *L, char *argv[])
 static void
 run_init(lua_State *L)
 {
-  STR init = getenv("MAD_INIT");
+  str_t init = getenv("MAD_INIT");
   if (init) {
     if (*init == '@')
       load_file  (L, init+1);
