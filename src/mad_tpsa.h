@@ -32,13 +32,12 @@
  */
 
 #include <stdio.h>
+#include "mad_mono.h"
 
 // --- types -----------------------------------------------------------------o
 
 struct tpsa;
 struct tpsa_desc;
-
-typedef unsigned char ord_t;
 
 // --- interface -------------------------------------------------------------o
 

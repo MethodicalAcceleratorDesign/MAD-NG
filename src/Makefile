@@ -42,7 +42,7 @@ LDFLAGS += ../lib/luajit/src/libluajit.a \
            -lgfortran $(shell gcc -print-file-name=libquadmath.a)
 
 # files setup
-CSRC    := $(wildcard *.c)
+CSRC    := $(wildcard *.c sse/*.c)
 LSRC    := # $(wildcard *.lua) # compile also lua modules
 
 DEP     := $(patsubst %.c,%.d,$(CSRC))
@@ -52,7 +52,7 @@ OBJ     := $(patsubst %.c,%.o,$(CSRC))
 OBJ     += $(patsubst %.lua,%.o,$(LSRC))
 OBJ     := $(addprefix $(DIR)/,$(OBJ))
 
-DOIT    := $(shell mkdir -p $(DIR))
+DOIT    := $(shell mkdir -p $(DIR) $(DIR)/sse)
 
 # rules
 mad: $(OBJ)

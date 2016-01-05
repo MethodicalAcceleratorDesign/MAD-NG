@@ -103,13 +103,12 @@ mad_mono_print (int n, const ord_t m[n])
 
 // --- optimized versions ----------------------------------------------------o
 
-/*
 #if   defined(__AVX2__)
-#  include "mad_mono_avx.tc"
+#  include "sse/mad_mono_sse.tc"
+// #  include "avx/mad_mono_avx.tc"
 #elif defined(__SSE2__)
-#  include "mad_mono_sse.tc"
+#  include "sse/mad_mono_sse.tc"
 #else
-*/
 
 // --- default versions ------------------------------------------------------o
 
@@ -145,4 +144,4 @@ mad_mono_ord (int n, const ord_t a[n])
   return s;
 }
 
-// #endif // __SSE2__ || __AVX2__
+#endif // __SSE2__ || __AVX2__
