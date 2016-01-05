@@ -4,7 +4,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | Descriptor (TPSA) module interface (open!)
+ | Descriptor (TPSA) module interface (private)
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
