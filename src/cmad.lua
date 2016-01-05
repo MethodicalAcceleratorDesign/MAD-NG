@@ -3,10 +3,13 @@ local ffi = require 'ffi'
 -- types
 
 ffi.cdef[[
-typedef const char*      str_t;
-typedef int              idx_t;
-typedef double           num_t;
-typedef double _Complex cnum_t;
+typedef  const char*       str_t; // mad.h
+typedef  int               idx_t; // mad.h
+typedef  double            num_t; // mad.h
+typedef  double _Complex  cnum_t; // mad.h
+
+typedef  unsigned int      bit_t; // mad_bit.h
+typedef  unsigned char     ord_t; // mad_mono.h
 ]]
 
 -- functions for logging (mad_log.h)

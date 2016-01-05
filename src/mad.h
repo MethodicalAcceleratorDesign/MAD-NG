@@ -47,7 +47,10 @@ typedef double _Complex cnum_t;
 
 #define MIN(a,b)    ((a)<(b) ? (a):(b))
 #define MAX(a,b)    ((a)>(b) ? (a):(b))
+#define MIN3(a,b,c)  MIN(a,MIN(b,c))
+#define MAX3(a,b,c)  MAX(a,MAX(b,c))
 #define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
+
 #define MKSTR(a)    MKSTR_OP(a)
 #define MKSTR_OP(a) #a
 

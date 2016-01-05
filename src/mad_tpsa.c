@@ -24,18 +24,19 @@
 #include <limits.h>
 #include <assert.h>
 
-#include "mad_mem.h"
-#include "mad_vec.h"
-#include "mad_mat.h"
-
+#include "mad_mem.h" 
 #include "mad_bit.h"
 #include "mad_mono.h"
 #include "mad_tpsa.h"
+#include "mad_desc.h"
+
+#include "mad_vec.h" // mad_tpsa_minv
+#include "mad_mat.h" // mad_tpsa_minv
 
 #undef  ensure
 #define ensure(test) mad_ensure(test, MKSTR(test))
 
-#include "mad_tpsa_desc.tc"
+// #include "mad_tpsa_desc.tc"
 
 // #define TRACE
 
@@ -61,7 +62,7 @@ mad_tpsa_debug(const T *t)
 {
   D *d = t->desc;
   printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=%g ", t->nz, t->lo, t->hi, t->mo, t->coef[0]);
-  ord_t hi = min_ord(t->hi, t->mo, t->desc->trunc);
+  ord_t hi = MIN3(t->hi, t->mo, t->desc->trunc);
   int i = d->hpoly_To_idx[MAX(1,t->lo)]; // ord 0 already printed
   for (; i < d->hpoly_To_idx[hi+1]; ++i)
     if (t->coef[i])
@@ -175,7 +176,7 @@ mad_tpsa_copy(const T *src, T *dst)
     mad_tpsa_clear(dst);
     return dst;
   }
-  dst->hi = min_ord(src->hi, dst->mo, d->trunc);
+  dst->hi = MIN3(src->hi, dst->mo, d->trunc);
   dst->lo = src->lo;
   dst->nz = mad_bit_trunc(src->nz, dst->hi);
   // dst->tmp = src->tmp;  // managed from outside
@@ -204,7 +205,7 @@ mad_tpsa_del(T *t)
   printf("tpsa del %p\n", (void*)t);
 #endif
   D *d = t->desc;
-  if (d->stack_top < DESC_STACK_SIZE)
+  if (d->stack_top < mad_desc_stack)
     d->stack[++d->stack_top] = t;
   else
     free(t);
@@ -242,14 +243,14 @@ mad_tpsa_midx(const T *t, int n, const ord_t m[n])
 {
   assert(t && t->desc);
   assert(n <= t->desc->nv);
-  return desc_get_idx(t->desc, n, m);
+  return mad_desc_get_idx(t->desc, n, m);
 }
 
 int
 mad_tpsa_midx_sp(const T *t, int n, const int m[n])
 {
   assert(t && t->desc);
-  return desc_get_idx_sp(t->desc, n, m);
+  return mad_desc_get_idx_sp(t->desc, n, m);
 }
 
 
@@ -278,7 +279,7 @@ mad_tpsa_getm(const T *t, int n, const ord_t m[n])
 {
   assert(t && m);
   D *d = t->desc;
-  idx_t i = desc_get_idx(d,n,m);
+  idx_t i = mad_desc_get_idx(d,n,m);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
@@ -290,7 +291,7 @@ mad_tpsa_getm_sp(const T *t, int n, const idx_t m[n])
   // --- mono is sparse; represented as [(i o)]
   assert(t && m);
   D *d = t->desc;
-  idx_t i = desc_get_idx_sp(d,n,m);
+  idx_t i = mad_desc_get_idx_sp(d,n,m);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
@@ -322,7 +323,7 @@ mad_tpsa_set0(T *t, num_t a, num_t b)
   }
   else {
     t->nz = mad_bit_clr(t->nz,0);
-    t->lo = min_ord2(mad_bit_lowest(t->nz),t->mo);
+    t->lo = MIN(mad_bit_lowest(t->nz),t->mo);
   }
 }
 
@@ -343,7 +344,7 @@ mad_tpsa_seti(T *t, int i, num_t a, num_t b)
     t->coef[i] = v;
     if (i == 0 && t->lo == 0) {
       t->nz = mad_bit_clr(t->nz,0);
-      t->lo = min_ord2(mad_bit_lowest(t->nz),t->mo);
+      t->lo = MIN(mad_bit_lowest(t->nz),t->mo);
     }
     return;
   }
@@ -376,7 +377,7 @@ mad_tpsa_setm(T *t, int n, const ord_t m[n], num_t a, num_t b)
 #ifdef TRACE
   printf("set_mono: "); mad_mono_print(n, m); printf("\n");
 #endif
-  idx_t i = desc_get_idx(t->desc,n,m);
+  idx_t i = mad_desc_get_idx(t->desc,n,m);
   mad_tpsa_seti(t,i,a,b);
 }
 
@@ -390,7 +391,7 @@ mad_tpsa_setm_sp(T *t, int n, const idx_t m[n], num_t a, num_t b)
     printf("%d %d  ", m[i], m[i+1]);
   printf("]\n");
 #endif
-  idx_t i = desc_get_idx_sp(t->desc,n,m);
+  idx_t i = mad_desc_get_idx_sp(t->desc,n,m);
   mad_tpsa_seti(t,i,a,b);
 }
 
@@ -406,7 +407,7 @@ mad_tpsa_map(const T *a, T *c, num_t (*f)(num_t v, int i_))
   D *d = a->desc;
   if (d->trunc < a->lo) { mad_tpsa_clear(c); return c; }
 
-  c->hi = min_ord(a->hi, c->mo, d->trunc);
+  c->hi = MIN3(a->hi, c->mo, d->trunc);
   c->lo = a->lo;
   c->nz = mad_bit_trunc(a->nz, c->hi);
 
@@ -424,7 +425,7 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
 
   idx_t *pi = a->desc->hpoly_To_idx;
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-  ord_t c_hi = min_ord(MAX(a->hi,b->hi),c->mo,c->desc->trunc), c_lo = a->lo;
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->desc->trunc), c_lo = a->lo;
 
   num_t va, vb;
   for (int i = pi[c_lo]; i < pi[c_hi+1]; ++i) {

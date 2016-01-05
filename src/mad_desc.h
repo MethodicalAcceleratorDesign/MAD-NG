@@ -1,0 +1,88 @@
+#ifndef MAD_DESC_H
+#define MAD_DESC_H
+
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | Descriptor (TPSA) module interface (open!)
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+  
+  Purpose:
+  - provide a full feathered Generalized TPSA package
+ 
+  Information:
+  - parameters ending with an underscope can be null.
+
+  Errors:
+  - TODO
+
+ o----------------------------------------------------------------------------o
+ */
+
+#include "mad.h"
+
+// --- types -----------------------------------------------------------------o
+
+enum { mad_desc_stack = 20 };
+
+struct tpsa_desc {
+  int      id;        // WARNING: needs to be 1st field, for Lua compatibility
+  int      nmv,nv, nc,// number of map vars, number of all vars, number of coeff
+           size;      // bytes used by current desc
+  char*   *var_names_;// names of map variables; TODO: move it 1 level above and set indirection
+  ord_t    mo, ko,    // maximum order: for map, for knobs
+           trunc,     // truncation order for operations; always <= mo
+          *var_ords,  // limiting order for each monomial variable
+          *map_ords,  // max order for each TPSA in map -- used just for desc comparison
+          *monos,     // 'matrix' storing the monomials (sorted by ord)
+          *ords,      // order of each mono of To
+         **To,        // Table by orders -- pointers to monos, sorted by order
+         **Tv;        // Table by vars   -- pointers to monos, sorted by vars
+  idx_t   *sort_var,  // array
+          *hpoly_To_idx,  // poly start in To
+          *tv2to, *to2tv, // lookup tv->to, to->tv
+          *H,         // indexing matrix, in Tv
+         **L;         // multiplication indexes -- L[oa][ob] = lc; lc[ia][ib] = ic
+  idx_t ***L_idx;     // L_idx[oa,ob] = [start] [split] [end] idxs in L
+  ord_t  **ocs;       // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
+  int      stack_top; // current top of stack size
+  struct tpsa *t0, *t1, *t2, *t3, *t4; // temps used by mul, fixed points and high level funs for aliasing
+  struct tpsa *stack[mad_desc_stack]; // stack of temporary TPSA
+};
+
+// --- interface -------------------------------------------------------------o
+
+#define D struct tpsa_desc
+
+idx_t mad_desc_get_idx         (const D *d, int n, const ord_t m[n]);
+idx_t mad_desc_get_idx_sp      (const D *d, int n, const idx_t m[n]);
+int   mad_desc_mono_isvalid    (const D *d, int n, const ord_t m[n]);
+int   mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n]);
+int   mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m[n]);
+
+#undef D
+
+// --- helpers ---------------------------------------------------------------o
+
+static inline idx_t
+hpoly_idx_rect(idx_t ib, idx_t ia, idx_t ia_size)
+{
+  return ib*ia_size + ia;
+}
+
+// ---------------------------------------------------------------------------o
+
+#endif // MAD_DESC_H
+

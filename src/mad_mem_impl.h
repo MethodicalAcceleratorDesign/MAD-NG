@@ -33,7 +33,7 @@ void* (mad_realloc) (void*, size_t) __attribute__((hot));
 void  (mad_free)    (void*)         __attribute__((hot));
 size_t mad_mem_size (void*)         __attribute__((hot,const));
 
-// note: 2048 should be mblk_max
+// note: 2048 == mblk_max from mad_mem.c
 
 #define mad_alloc_tmp(T,NAME,L) \
   T NAME##_local_tmp__[2048/sizeof(T)]; \

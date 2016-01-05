@@ -105,7 +105,7 @@ mad_mono_print (int n, const ord_t m[n])
 
 #if   defined(__AVX2__)
 #  include "sse/mad_mono_sse.tc"
-// #  include "avx/mad_mono_avx.tc"
+// #  include "avx/mad_mono_avx.tc" -> NYI
 #elif defined(__SSE2__)
 #  include "sse/mad_mono_sse.tc"
 #else

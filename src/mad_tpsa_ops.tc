@@ -229,7 +229,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   const num_t *ca = a->coef;
         num_t *cc;
 
-  c->hi = min_ord(c->mo, d->trunc, a->hi-ord);  // initial guess, readjust based on nz
+  c->hi = MIN3(c->mo, d->trunc, a->hi-ord);  // initial guess, readjust based on nz
   for (int oc = 1; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+ord)) {
       cc = c->coef + pi[oc];
@@ -240,7 +240,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
       else
         hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
     }
-  c->lo = min_ord2(mad_bit_lowest(c->nz),c->mo);
+  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
   c->hi = mad_bit_highest(c->nz);
 }
 
@@ -258,8 +258,8 @@ scale_and_accum(num_t v, const T *a, T *c)
   D *d = c->desc;
   const num_t *ca = a->coef;
         num_t *cc = c->coef;
-  ord_t new_hi = min_ord(a->hi,c->mo,d->trunc);
-  ord_t new_lo = min_ord2(a->lo,c->lo);
+  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
+  ord_t new_lo = MIN(a->lo,c->lo);
 
   for (int i = d->hpoly_To_idx[new_lo ]; i < d->hpoly_To_idx[c->lo   ]; ++i) cc[i] = 0;
   for (int i = d->hpoly_To_idx[c->hi+1]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] = 0;
@@ -283,7 +283,7 @@ mad_tpsa_abs(const T *a, T *c)
   assert(a && c);
   ensure(a->desc == c->desc);
 
-  c->hi = min_ord(a->hi, c->mo, c->desc->trunc);
+  c->hi = MIN3(a->hi, c->mo, c->desc->trunc);
   c->lo = a->lo;
   c->nz = mad_bit_trunc(a->nz,c->hi);
 
@@ -302,8 +302,8 @@ mad_tpsa_nrm1(const T *a, const T *b_)
     ensure(a->desc == b_->desc);
     if (a->lo > b_->lo) { const T *t_; SWAP(a,b_,t_); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[min_ord2(a ->hi,a ->desc->trunc)+1],
-          start_b = pi[b_->lo], end_b = pi[min_ord2(b_->hi,b_->desc->trunc)+1];
+    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->desc->trunc)+1],
+          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->desc->trunc)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm += fabs(a->coef[i]);
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += fabs(a->coef[i] - b_->coef[i]);
@@ -311,7 +311,7 @@ mad_tpsa_nrm1(const T *a, const T *b_)
     for (           ; i <     end_b         ; ++i) norm += fabs(b_->coef[i]);
   }
   else {
-    ord_t hi = min_ord2(a->hi, a->desc->trunc);
+    ord_t hi = MIN(a->hi, a->desc->trunc);
     for (int o = a->lo; o <= hi; ++o)
       if (mad_bit_get(a->nz,o)) {
         for (int i = pi[o]; i < pi[o+1]; ++i)
@@ -331,8 +331,8 @@ mad_tpsa_nrm2(const T *a, const T *b_)
     ensure(a->desc == b_->desc);
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[min_ord2(a ->hi,a ->desc->trunc)+1],
-          start_b = pi[b_->lo], end_b = pi[min_ord2(b_->hi,b_->desc->trunc)+1];
+    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->desc->trunc)+1],
+          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->desc->trunc)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm +=  a->coef[i]              *  a->coef[i];
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += (a->coef[i]-b_->coef[i]) * (a->coef[i]-b_->coef[i]);
@@ -340,7 +340,7 @@ mad_tpsa_nrm2(const T *a, const T *b_)
     for (           ; i <     end_b         ; ++i) norm +=  b_->coef[i]             *  b_->coef[i];
   }
   else {
-    ord_t hi = min_ord2(a->hi, a->desc->trunc);
+    ord_t hi = MIN(a->hi, a->desc->trunc);
     for (int o = a->lo; o <= hi; ++o)
       if (mad_bit_get(a->nz,o)) {
         for (int i = pi[o]; i < pi[o+1]; ++i)
@@ -364,7 +364,7 @@ mad_tpsa_der(const T *a, T *c, int var)
   mad_tpsa_scalar(c,mad_tpsa_geti(a,var));  // TODO: what if alpha[var] == 0 ?
 
   D *d = c->desc;
-  c->hi = min_ord(c->mo, d->trunc, a->hi-1);
+  c->hi = MIN3(c->mo, d->trunc, a->hi-1);
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
 
   idx_t *pi = d->hpoly_To_idx;
@@ -376,7 +376,7 @@ mad_tpsa_der(const T *a, T *c, int var)
   for (oc = 2; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+1))
       hpoly_der_gt(ca,c->coef+pi[oc],var,oc,der_ord,&c->nz,d);
-  c->lo = min_ord2(mad_bit_lowest(c->nz),c->mo);
+  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
   c->hi = mad_bit_highest(c->nz);
 }
 
@@ -388,11 +388,11 @@ mad_tpsa_mder(const T *a, T *c, int n, const ord_t mono[n])
 #endif
   assert(a && c && a != c);
   assert(a->desc == c->desc);
-  ensure(desc_mono_isvalid(a->desc,n,mono));
+  ensure(mad_desc_mono_isvalid(a->desc,n,mono));
 
   ord_t der_ord = mad_mono_ord(n,mono);
   ensure(der_ord > 0);
-  idx_t idx = desc_get_idx(a->desc,n,mono);
+  idx_t idx = mad_desc_get_idx(a->desc,n,mono);
   if (idx < a->desc->hpoly_To_idx[2]) {  // fallback on simple version
     mad_tpsa_der(a,c,idx);
     return;
@@ -436,7 +436,7 @@ mad_tpsa_scl(const T *a, num_t v, T *c)
 
   D *d = a->desc;
   c->lo = a->lo;
-  c->hi = min_ord(a->hi, c->mo, d->trunc);
+  c->hi = MIN3(a->hi, c->mo, d->trunc);
   c->nz = mad_bit_trunc(a->nz,c->hi);
   for (int i = d->hpoly_To_idx[c->lo]; i < d->hpoly_To_idx[c->hi+1]; ++i)
     c->coef[i] = v * a->coef[i];
@@ -467,7 +467,7 @@ mad_tpsa_axpbypc(num_t c1, const T *a, num_t c2, const T *b, num_t c3, T *c)
     const T* t; SWAP(a,b,t);
     num_t n;    SWAP(c1,c2,n);
   }
-  ord_t c_hi = min_ord(MAX(a->hi,b->hi), c->mo, c->desc->trunc);  // TODO: optimise c_hi == 0 ?
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);  // TODO: optimise c_hi == 0 ?
   TPSA_LINOP(c1 *, + c2 *, 0);  // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
 
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
@@ -535,7 +535,7 @@ mad_tpsa_add(const T *a, const T *b, T *c)
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  ord_t c_hi = min_ord(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
   TPSA_LINOP( ,+,0);  // c->coef[i] = a->coef[i] + b->coef[i];
   c->lo = a->lo;      // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -551,7 +551,7 @@ mad_tpsa_sub(const T *a, const T *b, T *c)
   assert(a && b && c);
   ensure(a->desc == b->desc && a->desc == c->desc);
 
-  ord_t c_hi = min_ord(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
   if (a->lo > b->lo) {
     const T* t; SWAP(a,b,t);
     TPSA_LINOP(-,+,0);  // c->coef[i] = - a->coef[i] + b->coef[i];
@@ -559,7 +559,7 @@ mad_tpsa_sub(const T *a, const T *b, T *c)
   else {
     TPSA_LINOP( ,-,0);  // c->coef[i] =   a->coef[i] - b->coef[i];
   }
-  c->lo = min_ord2(a->lo,b->lo);
+  c->lo = MIN(a->lo,b->lo);
   c->hi = c_hi;
   c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
 }
@@ -577,7 +577,7 @@ mad_tpsa_mul(const T *a, const T *b, T *r)
 
   D *d = a->desc;
   c->lo = a->lo + b->lo;
-  c->hi = min_ord(a->hi + b->hi, c->mo, d->trunc);
+  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
 
   // empty
   if (c->lo > c->hi) { mad_tpsa_clear(c); goto ret; }

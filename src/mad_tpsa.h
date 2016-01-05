@@ -32,6 +32,7 @@
  */
 
 #include <stdio.h>
+#include "mad.h"
 #include "mad_mono.h"
 
 // --- types -----------------------------------------------------------------o
@@ -39,20 +40,22 @@
 struct tpsa;
 struct tpsa_desc;
 
-// --- interface -------------------------------------------------------------o
-
-#define T struct tpsa
-#define D struct tpsa_desc
+// --- globals ---------------------------------------------------------------o
 
 extern const ord_t mad_tpsa_default;
 extern const ord_t mad_tpsa_same;
 extern       int   mad_tpsa_strict;
 
+// --- interface -------------------------------------------------------------o
+
+#define T struct tpsa
+#define D struct tpsa_desc
+
 // descriptors (tpsa factories, bounded to maps)
-D*    mad_tpsa_desc_new (int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv]);
-D*    mad_tpsa_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
-                         int nk, const ord_t knb_ords[nk], ord_t dk); // knobs
-void  mad_tpsa_desc_del (D *d);
+D*    mad_desc_new (int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv]);
+D*    mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
+                    int nk, const ord_t knb_ords[nk], ord_t dk); // knobs
+void  mad_desc_del (D *d);
 
 // Introspection
 ord_t mad_tpsa_gtrunc  (      D *d, ord_t to);

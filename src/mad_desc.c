@@ -1,52 +1,56 @@
-#ifndef MAD_TPSA_DESC_TC
-#define MAD_TPSA_DESC_TC
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | Descriptor (TPSA) module implementation
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+  
+  Purpose:
+  - provide a full feathered Generalized TPSA package
+ 
+  Information:
+  - parameters ending with an underscope can be null.
+
+  Errors:
+  - TODO
+
+ o----------------------------------------------------------------------------o
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+#include <assert.h>
+
+#include "mad_mem.h"
+#include "mad_bit.h"
+#include "mad_mono.h"
+#include "mad_tpsa.h"
+#include "mad_desc.h"
 
 #define TRACE
 #define DEBUG
 
-#define D struct tpsa_desc
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
 
-enum { DESC_STACK_SIZE = 20 };
 const ord_t DESC_MAX = CHAR_BIT * sizeof(bit_t);
 
-struct tpsa_desc {
-  int      id;        // WARNING: needs to be 1st field, for Lua compatibility
-  int      nmv,nv, nc,// number of map vars, number of all vars, number of coeff
-           size;      // bytes used by current desc
-  char   **var_names_;// names of map variables; TODO: move it 1 level above and set indirection
-  ord_t    mo, ko,    // maximum order: for map, for knobs
-           trunc,     // truncation order for operations; always <= mo
-          *var_ords,  // limiting order for each monomial variable
-          *map_ords,  // max order for each TPSA in map -- used just for desc comparison
-          *monos,     // 'matrix' storing the monomials (sorted by ord)
-          *ords,      // order of each mono of To
-         **To,        // Table by orders -- pointers to monos, sorted by order
-         **Tv;        // Table by vars   -- pointers to monos, sorted by vars
-  idx_t   *sort_var,  // array
-          *hpoly_To_idx,  // poly start in To
-          *tv2to, *to2tv, // lookup tv->to, to->tv
-          *H,         // indexing matrix, in Tv
-         **L;         // multiplication indexes -- L[oa][ob] = lc; lc[ia][ib] = ic
-  int   ***L_idx;     // L_idx[oa,ob] = [start] [split] [end] idxs in L
-  ord_t  **ocs;       // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
-  int      stack_top; // current top of stack size
-  struct tpsa *t0, *t1, *t2, *t3, *t4; // temps used by mul, fixed points and high level funs for aliasing
-  struct tpsa *stack[DESC_STACK_SIZE]; // stack of TPSA to minimize slow allocations in users expressions
-};
+#define D struct tpsa_desc
 
 // --- HELPERS ----------------------------------------------------------------
-
-static inline ord_t
-min_ord2(ord_t a, ord_t b)
-{
-  return a<b ? a : b;
-}
-
-static inline ord_t
-min_ord(ord_t a, ord_t b, ord_t c)
-{
-  return min_ord2(a, min_ord2(b,c));
-}
 
 static inline int
 max_nc(int nv, int no)
@@ -61,59 +65,7 @@ max_nc(int nv, int no)
   return num / den;
 }
 
-static inline idx_t
-hpoly_idx_rect(idx_t ib, idx_t ia, int ia_size)
-{
-  return ib*ia_size + ia;
-}
-
-
 // --- MONOMIALS --------------------------------------------------------------
-
-static inline int
-desc_mono_isvalid(const D *d, int n, const ord_t m[n])
-{
-  assert(d && m);
-  int nmv = d->nmv;
-  return    ( n <= d->nv )
-         && (          mad_mono_ord(n    ,m)     <= d->mo)
-         && (n > nmv ? mad_mono_ord(n-nmv,m+nmv) <= d->ko : 1)
-         && mad_mono_leq(n,m,d->var_ords);
-}
-
-static inline int
-desc_mono_isvalid_sp(const D *d, int n, const idx_t m[n])
-{
-  assert(d && m);
-  if (n & 1)
-    return 0;
-  ord_t mo = 0, ko = 0;
-  for (int i = 0; i < n; i += 2) {
-    int mono_idx = m[i] - 1; // translate from var idx to mono idx
-    if (mono_idx >= d->nv)         return 0;
-
-    ord_t o = m[i+1];
-    if (o > d->var_ords[mono_idx]) return 0;
-    mo += o;
-    if (mono_idx > d->nmv)
-      ko += o;
-  }
-  return (mo <= d->mo) && (ko <= d->ko);
-}
-
-static inline int
-nxt_mono_by_var(D *d, int n, ord_t m[n])
-{
-  assert(d && m);
-  idx_t *sort = d->sort_var;
-  for (int i=0; i < n; ++i) {
-    ++m[sort[i]];
-    if (desc_mono_isvalid(d, n, m))
-      return 1;
-    m[sort[i]] = 0;
-  }
-  return 0;
-}
 
 static inline void
 nxt_mono_by_unk(int n, const ord_t a[n], const idx_t sort[n], int r, int o, ord_t m[n])
@@ -177,7 +129,7 @@ make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_id
     for   (int i = pi[ 1 ]; i < pi[2]; ++i) { // i goes through ord  1
       for (int j = pi[o-1]; j < pi[o]; ++j) { // j goes through ord (o-1)
         mad_mono_add(nv, d->monos + i*nv, d->monos + j*nv, m);
-        if (desc_mono_isvalid(d, nv, m)) {
+        if (mad_desc_mono_isvalid(d, nv, m)) {
           // ensure there is space for m
           if (need_realloc && curr_mono_idx >= d->nc) {
             tbl_realloc_monos(d,0);
@@ -359,7 +311,7 @@ tbl_by_var(D *d)
     d->to2tv[idx] = mi;
     d->Tv[mi]     = d->To[idx];
     ++mi;
-  } while (nxt_mono_by_var(d,nv,m));
+  } while (mad_desc_mono_nxtbyvar(d,nv,m));
   assert(mi == d->nc);
 
 #ifdef DEBUG
@@ -427,22 +379,6 @@ tbl_index_H_sp(const D *d, int n, const idx_t m[n])
   return I;
 }
 
-static inline idx_t
-desc_get_idx(const D *d, int n, const ord_t m[n])
-{
-  assert(d && m);
-  ensure(desc_mono_isvalid(d, n, m));
-  return d->tv2to[tbl_index_H(d,n,m)];
-}
-
-static inline idx_t
-desc_get_idx_sp(const D *d, int n, const idx_t m[n])
-{
-  assert(d && m);
-  ensure(desc_mono_isvalid_sp(d, n, m));
-  return d->tv2to[tbl_index_H_sp(d,n,m)];
-}
-
 static inline void
 tbl_clear_H(D *d)
 {
@@ -475,7 +411,7 @@ tbl_solve_H(D *d)
     accum += vo[v];
     for (int o = vo[v]+2; o <= MIN(accum,d->mo); o++) { // orders
       nxt_mono_by_unk(nv,vo,sort,r,o,mono);  // ATTENTION: it's r, not v
-      if (desc_mono_isvalid(d,nv,mono)) {
+      if (mad_desc_mono_isvalid(d,nv,mono)) {
         idx_t idx0 = tbl_index_H(d,nv,mono);
         idx_t idx1 = find_index_bin(nv,(const ord_t**)d->Tv,mono,idx0,d->nc,BY_VAR);
         d->H[r*cols + o] = idx1 - idx0;
@@ -569,7 +505,7 @@ static inline void
 tbl_print_L(const D *d)
 {
   int ho = d->mo / 2;
-  for (int oc = 2; oc <= min_ord2(d->mo,5); ++oc)
+  for (int oc = 2; oc <= MIN(d->mo,5); ++oc)
     for (int j = 1; j <= oc/2; ++j) {
       int oa = oc - j, ob = j;
       printf("L[%d][%d] = {", ob, oa);
@@ -606,7 +542,7 @@ tbl_build_LC(int oa, int ob, D *d)
     int lim_a = oa == ob ? ib+1 : pi[oa+1];   // triangular is lower left
     for (int ia = pi[oa]; ia < lim_a; ++ia) {
       mad_mono_add(d->nv, To[ia], To[ib], m);
-      if (desc_mono_isvalid(d,d->nv,m)) {
+      if (mad_desc_mono_isvalid(d,d->nv,m)) {
         ic = tv2to[tbl_index_H(d,d->nv,m)];
         idx_lc = hpoly_idx_rect(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
@@ -745,7 +681,7 @@ tbl_check_L(D *d)
           if (ic >= 0 && ic < d->hpoly_To_idx[oc]) return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
-          if (ic < 0 && desc_mono_isvalid(d,d->nv,m))
+          if (ic < 0 && mad_desc_mono_isvalid(d,d->nv,m))
                                                    return -3e7          - 13;
         }
       }
@@ -1035,8 +971,69 @@ get_desc(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const 
 
 // --- Public Functions -------------------------------------------------------
 
+idx_t
+mad_desc_get_idx(const D *d, int n, const ord_t m[n])
+{
+  assert(d && m);
+  ensure(mad_desc_mono_isvalid(d, n, m));
+  return d->tv2to[tbl_index_H(d,n,m)];
+}
+
+idx_t
+mad_desc_get_idx_sp(const D *d, int n, const idx_t m[n])
+{
+  assert(d && m);
+  ensure(mad_desc_mono_isvalid_sp(d, n, m));
+  return d->tv2to[tbl_index_H_sp(d,n,m)];
+}
+
+int
+mad_desc_mono_isvalid(const D *d, int n, const ord_t m[n])
+{
+  assert(d && m);
+  int nmv = d->nmv;
+  return    ( n <= d->nv )
+         && (          mad_mono_ord(n    ,m)     <= d->mo)
+         && (n > nmv ? mad_mono_ord(n-nmv,m+nmv) <= d->ko : 1)
+         && mad_mono_leq(n,m,d->var_ords);
+}
+
+int
+mad_desc_mono_isvalid_sp(const D *d, int n, const idx_t m[n])
+{
+  assert(d && m);
+  if (n & 1)
+    return 0;
+  ord_t mo = 0, ko = 0;
+  for (int i = 0; i < n; i += 2) {
+    int mono_idx = m[i] - 1; // translate from var idx to mono idx
+    if (mono_idx >= d->nv)         return 0;
+
+    ord_t o = m[i+1];
+    if (o > d->var_ords[mono_idx]) return 0;
+    mo += o;
+    if (mono_idx > d->nmv)
+      ko += o;
+  }
+  return (mo <= d->mo) && (ko <= d->ko);
+}
+
+int
+mad_desc_mono_nxtbyvar(const D *d, int n, ord_t m[n])
+{
+  assert(d && m);
+  const idx_t *sort = d->sort_var;
+  for (int i=0; i < n; ++i) {
+    ++m[sort[i]];
+    if (mad_desc_mono_isvalid(d, n, m))
+      return 1;
+    m[sort[i]] = 0;
+  }
+  return 0;
+}
+
 D*
-mad_tpsa_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv])
+mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv])
 {
   ensure(var_ords);
   ord_t mo, map_ords[nv];  // to parse optional param
@@ -1055,7 +1052,7 @@ mad_tpsa_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], s
 }
 
 D*
-mad_tpsa_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
+mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
                    int nk, const ord_t knb_ords[nk], ord_t dk)
 {
   // input validation
@@ -1090,7 +1087,7 @@ mad_tpsa_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], 
 }
 
 void
-mad_tpsa_desc_del(D *d)
+mad_desc_del(D *d)
 {
   assert(d);
   free(d->var_ords);
@@ -1134,6 +1131,8 @@ mad_tpsa_desc_del(D *d)
   mad_tpsa_del(d->t1); mad_tpsa_del(d->t2);
   mad_tpsa_del(d->t3); mad_tpsa_del(d->t4);
 
+  // TODO: delete the TPSA in the stack...
+
   // remove descriptor from global array
   Ds[d->id] = NULL;
   free(d);
@@ -1143,5 +1142,3 @@ mad_tpsa_desc_del(D *d)
 #undef D
 #undef TRACE
 #undef DEBUG
-
-#endif // MAD_TPSA_DESC_TC
