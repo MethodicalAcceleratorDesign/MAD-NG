@@ -22,38 +22,26 @@
 #include <stdarg.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 #include <assert.h>
 
-#include "mad_mem.h" 
-#include "mad_bit.h"
-#include "mad_mono.h"
+#include "mad_mem.h"
 #include "mad_tpsa.h"
-#include "mad_desc.h"
 
-#include "mad_vec.h" // mad_tpsa_minv
-#include "mad_mat.h" // mad_tpsa_minv
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
-
-// #include "mad_tpsa_desc.tc"
-
-// #define TRACE
+#include "mad_tpsa_impl.h"
+#include "mad_desc_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc
 
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
+
+// --- GLOBALS ----------------------------------------------------------------
+
 const ord_t mad_tpsa_default   = -1;
 const ord_t mad_tpsa_same      = -2;
       int   mad_tpsa_strict    =  0;
-
-struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
-  D      *desc;
-  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
-  bit_t   nz;
-  int     tmp;
-  num_t   coef[];
-};
 
 // --- DEBUGGING --------------------------------------------------------------
 
@@ -425,7 +413,8 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
 
   idx_t *pi = a->desc->hpoly_To_idx;
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->desc->trunc), c_lo = a->lo;
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->desc->trunc),
+        c_lo = a->lo;
 
   num_t va, vb;
   for (int i = pi[c_lo]; i < pi[c_hi+1]; ++i) {
@@ -442,19 +431,3 @@ mad_tpsa_map2(const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i
 
   return c;
 }
-
-#undef T
-#undef D
-#undef TRACE
-
-// --- --- OPERATIONS ---------------------------------------------------------
-
-#include "mad_tpsa_ops.tc"
-
-#include "mad_tpsa_fun.tc"
-
-#include "mad_tpsa_comp.tc"
-
-#include "mad_tpsa_minv.tc"
-
-#include "mad_tpsa_io.tc"

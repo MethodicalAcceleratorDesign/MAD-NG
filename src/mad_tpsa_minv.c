@@ -1,10 +1,48 @@
-#ifndef MAD_TPSA_MINV_TC
-#define MAD_TPSA_MINV_TC
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | TPSA map inversion module implementation
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+*/
+
+#include <assert.h>
+
+#include "mad_mem.h"
+#include "mad_vec.h" // mad_tpsa_minv
+#include "mad_mat.h" // mad_tpsa_minv
+#include "mad_tpsa.h"
+
+#include "mad_tpsa_impl.h"
+#include "mad_desc_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc
 
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
+
 // --- LOCAL FUNCTIONS --------------------------------------------------------
+
+static inline void
+check_same_desc(int sa, const T *ma[sa])
+{
+  assert(ma);
+  for (int i = 1; i < sa; ++i)
+    ensure(ma[i]->desc == ma[i-1]->desc);
+}
+
 static inline void
 check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
 {
@@ -209,7 +247,3 @@ mad_tpsa_pminv(int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
   }
 }
 
-#undef T
-#undef D
-
-#endif // MAD_TPSA_MINV_TC

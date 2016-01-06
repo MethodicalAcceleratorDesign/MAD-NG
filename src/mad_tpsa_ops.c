@@ -1,10 +1,36 @@
-#ifndef MAD_TPSA_OPS_TC
-#define MAD_TPSA_OPS_TC
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | TPSA operators module implementation
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+*/
+
+#include <math.h>
+#include <assert.h>
+
+#include "mad_log.h"
+#include "mad_tpsa.h"
+
+#include "mad_tpsa_impl.h"
+#include "mad_desc_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc
 
-// #define TRACE
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
 
@@ -244,36 +270,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   c->hi = mad_bit_highest(c->nz);
 }
 
-static inline void
-scale_and_accum(num_t v, const T *a, T *c)
-{
-#ifdef TRACE
-  printf("scale_and_accum %lf\n", v);
-#endif
-  assert(a && c);
-  ensure(a->desc == c->desc);
-  if (!v || a->lo > a->hi)
-    return;
-
-  D *d = c->desc;
-  const num_t *ca = a->coef;
-        num_t *cc = c->coef;
-  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
-  ord_t new_lo = MIN(a->lo,c->lo);
-
-  for (int i = d->hpoly_To_idx[new_lo ]; i < d->hpoly_To_idx[c->lo   ]; ++i) cc[i] = 0;
-  for (int i = d->hpoly_To_idx[c->hi+1]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] = 0;
-
-  for (int i = d->hpoly_To_idx[a->lo]; i < d->hpoly_To_idx[new_hi+1]; ++i)
-    cc[i] += v * ca[i];
-  c->lo = new_lo;
-  c->hi = new_hi > c->hi ? new_hi : c->hi;
-  c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
-}
-
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
-
-#include <math.h>
 
 // --- --- UNARY ---------------------------------------------------------------
 
@@ -300,7 +297,7 @@ mad_tpsa_nrm1(const T *a, const T *b_)
   int *pi = a->desc->hpoly_To_idx;
   if (b_) {
     ensure(a->desc == b_->desc);
-    if (a->lo > b_->lo) { const T *t_; SWAP(a,b_,t_); }
+    if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
 
     idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->desc->trunc)+1],
           start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->desc->trunc)+1];
@@ -407,22 +404,6 @@ mad_tpsa_mder(const T *a, T *c, int n, const ord_t mono[n])
   hpoly_der(a,idx,der_ord,c);
 }
 
-// --- --- BINARY --------------------------------------------------------------
-
-//      TPSA_LINOP(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
-#define TPSA_LINOP(OPA, OPB, ORD) \
-{ \
-    idx_t *pi = c->desc->hpoly_To_idx; \
-    idx_t start_a = pi[MAX(a->lo,ORD)], end_a = pi[MIN(a->hi,c_hi)+1]; \
-    idx_t start_b = pi[MAX(b->lo,ORD)], end_b = pi[MIN(b->hi,c_hi)+1]; \
-    int i = start_a; \
-    for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
-    for (; i <           start_b ; ++i) c->coef[i] = 0; \
-    for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = OPA a->coef[i] OPB b->coef[i]; \
-    for (; i <     end_a         ; ++i) c->coef[i] = OPA a->coef[i]; \
-    for (; i <           end_b   ; ++i) c->coef[i] =                OPB b->coef[i]; \
-} \
-
 void
 mad_tpsa_scl(const T *a, num_t v, T *c)
 {
@@ -440,6 +421,236 @@ mad_tpsa_scl(const T *a, num_t v, T *c)
   c->nz = mad_bit_trunc(a->nz,c->hi);
   for (int i = d->hpoly_To_idx[c->lo]; i < d->hpoly_To_idx[c->hi+1]; ++i)
     c->coef[i] = v * a->coef[i];
+}
+
+// --- --- BINARY --------------------------------------------------------------
+
+//      TPSA_LINOP(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
+#define TPSA_LINOP(OPA, OPB, ORD) \
+do { \
+    idx_t *pi = c->desc->hpoly_To_idx; \
+    idx_t start_a = pi[MAX(a->lo,ORD)], end_a = pi[MIN(a->hi,c_hi)+1]; \
+    idx_t start_b = pi[MAX(b->lo,ORD)], end_b = pi[MIN(b->hi,c_hi)+1]; \
+    int i = start_a; \
+    for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
+    for (; i <           start_b ; ++i) c->coef[i] = 0; \
+    for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = OPA a->coef[i] OPB b->coef[i]; \
+    for (; i <     end_a         ; ++i) c->coef[i] = OPA a->coef[i]; \
+    for (; i <           end_b   ; ++i) c->coef[i] =                OPB b->coef[i]; \
+} while(0) \
+
+void
+mad_tpsa_acc(const T *a, num_t v, T *c)
+{
+#ifdef TRACE
+  printf("scale_and_accum %lf\n", v);
+#endif
+  assert(a && c);
+  ensure(a->desc == c->desc);
+  if (!v || a->lo > a->hi) return;
+
+  D *d = c->desc;
+  const num_t *ca = a->coef;
+        num_t *cc = c->coef;
+  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
+  ord_t new_lo = MIN(a->lo,c->lo);
+
+  for (int i = d->hpoly_To_idx[new_lo ]; i < d->hpoly_To_idx[c->lo   ]; ++i) cc[i] = 0;
+  for (int i = d->hpoly_To_idx[c->hi+1]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] = 0;
+
+  for (int i = d->hpoly_To_idx[a->lo]; i < d->hpoly_To_idx[new_hi+1]; ++i)
+    cc[i] += v * ca[i];
+  c->lo = new_lo;
+  c->hi = new_hi > c->hi ? new_hi : c->hi;
+  c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
+}
+
+/* TODO: check if this version is faster or not than the one above
+void
+mad_tpsa_acc(const T *a, num_t v, T *c)
+{
+#ifdef TRACE
+  printf("tpsa_acc\n");
+#endif
+  assert(a && c);
+  ensure(a->desc == c->desc);
+  if (!v || a->lo > a->hi) return;
+
+  const T *t=0, *b=c;
+  if (a->lo > b->lo) SWAP(a,b,t);
+
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
+  if (t) TPSA_LINOP(v*,+  ,0);  // c->coef[i] = v*a->coef[i] +   c->coef[i];
+  else   TPSA_LINOP(  ,+v*,0);  // c->coef[i] =   c->coef[i] + v*a->coef[i];
+  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
+  c->hi = c_hi;
+  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
+}
+*/
+
+void
+mad_tpsa_add(const T *a, const T *b, T *c)
+{
+#ifdef TRACE
+  printf("tpsa_add\n");
+#endif
+  assert(a && b && c);
+  ensure(a->desc == b->desc && a->desc == c->desc);
+
+  const T* t=0; 
+  if (a->lo > b->lo) SWAP(a,b,t);
+
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
+  TPSA_LINOP( ,+,0);  // c->coef[i] = a->coef[i] + b->coef[i];
+  c->lo = a->lo;      // a->lo <= b->lo  (because of swap)
+  c->hi = c_hi;
+  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
+}
+
+void
+mad_tpsa_sub(const T *a, const T *b, T *c)
+{
+#ifdef TRACE
+  printf("tpsa_sub\n");
+#endif
+  assert(a && b && c);
+  ensure(a->desc == b->desc && a->desc == c->desc);
+
+  const T* t=0; 
+  if (a->lo > b->lo) SWAP(a,b,t);
+
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
+  if (t) TPSA_LINOP(-,+,0); // c->coef[i] = - a->coef[i] + b->coef[i];
+  else   TPSA_LINOP( ,-,0); // c->coef[i] =   a->coef[i] - b->coef[i];
+  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
+  c->hi = c_hi;
+  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
+}
+
+void
+mad_tpsa_mul(const T *a, const T *b, T *r)
+{
+#ifdef TRACE
+  printf("tpsa_mul\n");
+#endif
+  assert(a && b && r);
+  ensure(a->desc == b->desc && a->desc == r->desc);
+
+  T *c = (a == r || b == r) ? r->desc->t0 : r;
+
+  D *d = a->desc;
+  c->lo = a->lo + b->lo;
+  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
+
+  // empty
+  if (c->lo > c->hi) { mad_tpsa_clear(c); goto ret; }
+
+  // order 0
+  num_t a0 = a->coef[0], b0 = b->coef[0];
+  c->coef[0] = a0 * b0;
+  c->nz = c->coef[0] != 0;
+  if (c->hi == 0) {
+    if (!c->coef[0]) c->lo = c->mo; // reset
+    goto ret;
+  }
+
+  // order 1+
+  idx_t max_ord1 = d->hpoly_To_idx[2];
+  if (mad_bit_get(a->nz,1) && b0 && mad_bit_get(b->nz,1) && a0) {
+    for (int i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
+  }
+  else if (mad_bit_get(a->nz,1) && b0) {
+    for (int i = 1; i < max_ord1; ++i) c->coef[i] =                 b0*a->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
+  }
+  else if (mad_bit_get(b->nz,1) && a0) {
+    for (int i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
+  }
+
+  // order 2+
+  if (c->hi >= 2) {
+    if (a->lo > b->lo) {     //  a is the left-most one
+      const T* t; SWAP(a,b,t);
+      a0 = a->coef[0];
+      b0 = b->coef[0];
+    }
+
+    ord_t c_hi = c->hi;          // needed by TPSA_LINOP
+    TPSA_LINOP(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
+    for (int i = d->hpoly_To_idx[MAX(a->hi,b->hi)+1]; i < d->hpoly_To_idx[c_hi+1]; ++i)
+      c->coef[i] = 0;
+
+    if (a0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,b->nz),c->hi);
+    if (b0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
+
+    #ifdef _OPENMP
+    if (c->hi >= 12)
+      hpoly_mul_par(a,b,c);
+    else
+    #endif
+      hpoly_mul_ser(a,b,c);
+  }
+
+ret:
+  assert(a != c && b != c);
+  if (c != r) mad_tpsa_copy(c,r);
+}
+
+void
+mad_tpsa_div(const T *a, const T *b, T *c)
+{
+#ifdef TRACE
+  printf("tpsa_div\n");
+#endif
+  assert(a && b && c);
+  ensure(a->desc == b->desc && a->desc == c->desc);
+  ensure(b->coef[0] != 0);
+
+  if (b->hi == 0) { mad_tpsa_scl(a,1/b->coef[0],c); return; }
+
+  T *tmp = c->desc->t4;  // t1-t3 used in inv
+  mad_tpsa_inv(b,1,tmp);
+  mad_tpsa_mul(a,tmp,c);
+}
+
+void
+mad_tpsa_ipow(const T *a, T *c, int n)
+{
+#ifdef TRACE
+  printf("tpsa_pow %p to %d\n", (void*)a, n);
+#endif
+  assert(a && c);
+  ensure(a->desc == c->desc);
+
+  int inv = 0;
+
+  if (n < 0) { n = -n; inv = 1; }
+
+  T *t1 = c->desc->t1;
+
+  switch (n) {
+    case 0: mad_tpsa_scalar(c, 1); break; // ok: no copy
+    case 1: mad_tpsa_copy(a, c);   break; // ok: 1 copy
+    case 2: mad_tpsa_mul(a,a, c);  break; // ok: 1 copy if a==c
+    case 3: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,a,  c); break; // ok: 1 copy if a==c
+    case 4: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,t1, c); break; // ok: no copy
+    default: {
+      T *t2 = c->desc->t2;
+
+      mad_tpsa_copy  (a, t1);
+      mad_tpsa_scalar(c, 1 );
+
+      for (;;) {
+        if (n  & 1)   mad_tpsa_mul(c ,t1, c ); // ok: 1 copy
+        if (n /= 2) { mad_tpsa_mul(t1,t1, t2); T *t=t2; t2=t1; t1=t; } // ok: no copy
+        else break;
+      }
+    }
+  }
+
+  if (inv) mad_tpsa_inv(c,1, c);
 }
 
 void
@@ -525,133 +736,6 @@ mad_tpsa_ax2pby2pcz2(num_t a, const T *x, num_t b, const T *y, num_t c, const T 
 }
 
 void
-mad_tpsa_add(const T *a, const T *b, T *c)
-{
-#ifdef TRACE
-  printf("tpsa_add\n");
-#endif
-  assert(a && b && c);
-  ensure(a->desc == b->desc && a->desc == c->desc);
-
-  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
-  TPSA_LINOP( ,+,0);  // c->coef[i] = a->coef[i] + b->coef[i];
-  c->lo = a->lo;      // a->lo <= b->lo  (because of swap)
-  c->hi = c_hi;
-  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
-}
-
-void
-mad_tpsa_sub(const T *a, const T *b, T *c)
-{
-#ifdef TRACE
-  printf("tpsa_sub\n");
-#endif
-  assert(a && b && c);
-  ensure(a->desc == b->desc && a->desc == c->desc);
-
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);
-  if (a->lo > b->lo) {
-    const T* t; SWAP(a,b,t);
-    TPSA_LINOP(-,+,0);  // c->coef[i] = - a->coef[i] + b->coef[i];
-  }
-  else {
-    TPSA_LINOP( ,-,0);  // c->coef[i] =   a->coef[i] - b->coef[i];
-  }
-  c->lo = MIN(a->lo,b->lo);
-  c->hi = c_hi;
-  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
-}
-
-void
-mad_tpsa_mul(const T *a, const T *b, T *r)
-{
-#ifdef TRACE
-  printf("tpsa_mul\n");
-#endif
-  assert(a && b && r);
-  ensure(a->desc == b->desc && a->desc == r->desc);
-
-  T *c = (a == r || b == r) ? r->desc->t0 : r;
-
-  D *d = a->desc;
-  c->lo = a->lo + b->lo;
-  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
-
-  // empty
-  if (c->lo > c->hi) { mad_tpsa_clear(c); goto ret; }
-
-  // order 0
-  num_t a0 = a->coef[0], b0 = b->coef[0];
-  c->coef[0] = a0 * b0;
-  c->nz = c->coef[0] != 0;
-  if (c->hi == 0) {
-    if (!c->coef[0]) c->lo = c->mo; // reset
-    goto ret;
-  }
-
-  idx_t max_ord1 = d->hpoly_To_idx[2];
-  if (mad_bit_get(a->nz,1) && b0 && mad_bit_get(b->nz,1) && a0) {
-    for (int i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
-  }
-  else if (mad_bit_get(a->nz,1) && b0) {
-    for (int i = 1; i < max_ord1; ++i) c->coef[i] =                 b0*a->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
-  }
-  else if (mad_bit_get(b->nz,1) && a0) {
-    for (int i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
-  }
-
-  // order 2+
-  if (c->hi >= 2) {
-    if (a->lo > b->lo) {     //  a is the left-most one
-      const T* t; SWAP(a,b,t);
-      a0 = a->coef[0];
-      b0 = b->coef[0];
-    }
-
-    ord_t c_hi = c->hi;          // needed by TPSA_LINOP
-    TPSA_LINOP(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
-    for (int i = d->hpoly_To_idx[MAX(a->hi,b->hi)+1]; i < d->hpoly_To_idx[c_hi+1]; ++i)
-      c->coef[i] = 0;
-
-    if (a0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,b->nz),c->hi);
-    if (b0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
-
-    #ifdef _OPENMP
-    if (c->hi >= 12)
-      hpoly_mul_par(a,b,c);
-    else
-    #endif
-      hpoly_mul_ser(a,b,c);
-  }
-
-ret:
-  assert(a != c && b != c);
-  if (c != r) mad_tpsa_copy(c,r);
-}
-
-void
-mad_tpsa_div(const T *a, const T *b, T *c)
-{
-#ifdef TRACE
-  printf("tpsa_div\n");
-#endif
-  assert(a && b && c);
-  ensure(a->desc == b->desc && a->desc == c->desc);
-  ensure(b->coef[0] != 0);
-
-  if (b->hi == 0) { mad_tpsa_scl(a,1/b->coef[0],c); return; }
-
-  T *tmp = c->desc->t4;  // t1-3 used in inv
-  mad_tpsa_inv(b,1,tmp);
-  mad_tpsa_mul(a,tmp,c);
-}
-
-void
 mad_tpsa_poisson(const T *a, const T *b, T *c, int n)
 {
   // C = [A,B] (POISSON BRACKET, 2*n: No of PHASEVARS
@@ -680,46 +764,3 @@ mad_tpsa_poisson(const T *a, const T *b, T *c, int n)
   for (int i = 0; i < 4; ++i)
     mad_tpsa_del(is[i]);
 }
-
-void
-mad_tpsa_ipow(const T *a, T *c, int n)
-{
-#ifdef TRACE
-  printf("tpsa_pow %p to %d\n", (void*)a, n);
-#endif
-  assert(a && c);
-  ensure(a->desc == c->desc);
-
-  int inv = 0;
-
-  if (n < 0) { n = -n; inv = 1; }
-
-  T *t1 = c->desc->t1;
-
-  switch (n) {
-    case 0: mad_tpsa_scalar(c, 1); break; // ok: no copy
-    case 1: mad_tpsa_copy(a, c);   break; // ok: 1 copy
-    case 2: mad_tpsa_mul(a,a, c);  break; // ok: 1 copy if a==c
-    case 3: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,a,  c); break; // ok: 1 copy if a==c
-    case 4: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,t1, c); break; // ok: no copy
-    default: {
-      T *t2 = c->desc->t2;
-
-      mad_tpsa_copy  (a, t1);
-      mad_tpsa_scalar(c, 1 );
-
-      for (;;) {
-        if (n  & 1)   mad_tpsa_mul(c ,t1, c ); // ok: 1 copy
-        if (n /= 2) { mad_tpsa_mul(t1,t1, t2); T *t=t2; t2=t1; t1=t; } // ok: no copy
-        else break;
-      }
-    }
-  }
-
-  if (inv) mad_tpsa_inv(c,1, c);
-}
-
-#undef TRACE
-#undef T
-#undef D
-#endif

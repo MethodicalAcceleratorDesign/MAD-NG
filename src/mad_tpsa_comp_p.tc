@@ -1,6 +1,25 @@
 #ifndef MAD_TPSA_COMPOSE_PAR_TC
 #define MAD_TPSA_COMPOSE_PAR_TC
 
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | TPSA parallel map composition module implementation
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+*/
+
 struct compose_ctx_par {
   int cached_size, sa;
   D *d;
@@ -48,7 +67,7 @@ get_mono(int c, int tmp_idx, T *tmps[2], ord_t complement[], CTX *ctx)
 }
 
 static inline void
-sequential_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
+compose_ser(int sa, const T *ma[], T *mc[], CTX *ctx)
 {
   assert(ma && mc && ctx);
 
@@ -64,7 +83,7 @@ sequential_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
     t = get_mono(c, 0, tmps, mono, ctx);
     for (int i = 0; i < sa; ++i)
       if (ma[i]->coef[c])
-        scale_and_accum(ma[i]->coef[c], t, mc[i]);
+        mad_tpsa_acc(t, ma[i]->coef[c], mc[i]);
   }
   mad_tpsa_del(tmps[0]);
   mad_tpsa_del(tmps[1]);
@@ -73,7 +92,7 @@ sequential_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
 static int COMPOSE_NUM_THREADS;
 
 static inline void
-parallel_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
+compose_par(int sa, const T *ma[], T *mc[], CTX *ctx)
 {
   ord_t highest = 0;
   for (int i = 0; i < sa; ++i)
@@ -110,7 +129,7 @@ parallel_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
       t = get_mono(c, 0, tmps, mono, ctx);
       for (int i = 0; i < sa; ++i)
         if (ma[i]->coef[c])
-          scale_and_accum(ma[i]->coef[c], t, m_curr_thread[i]);
+          mad_tpsa_acc(t, ma[i]->coef[c], m_curr_thread[i]);
     }
 
     mad_tpsa_del(tmps[0]);
@@ -119,16 +138,16 @@ parallel_compose(int sa, const T *ma[], T *mc[], CTX *ctx)
 
   for (int thread = 0; thread < COMPOSE_NUM_THREADS; ++thread)
     for (int i = 0; i < sa; ++i) {
-      scale_and_accum(1, mt[thread][i], mc[i]);
+      mad_tpsa_acc(mt[thread][i], 1, mc[i]);
       mad_tpsa_del(mt[thread][i]);
     }
 }
 
 static inline void
-mad_tpsa_compose_par(int sa, const T *ma[], const T *mb[], T *mc[])
+compose_parallel(int sa, const T *ma[], const T *mb[], T *mc[])
 {
 #ifdef TRACE
-  printf("tpsa_compose_ser\n");
+  printf("compose_parallel\n");
 #endif
   // locals
   D *d = ma[0]->desc;
@@ -145,8 +164,8 @@ mad_tpsa_compose_par(int sa, const T *ma[], const T *mb[], T *mc[])
   CTX ctx = { .d = d, .cached_size = cached_size, .cached = cached };
 
   // compose
-  sequential_compose(sa, ma, mc, &ctx);
-  parallel_compose(sa, ma, mc, &ctx);
+  compose_ser(sa, ma, mc, &ctx);
+  compose_par(sa, ma, mc, &ctx);
 
   // finalize
   for (int c = nv + 1; c < cached_size; ++c)

@@ -1,20 +1,14 @@
-#include <stdio.h>
 #include <assert.h>
 
-#include "mad.h"
 #include "mad_tpsa.h"
 
-#define T struct tpsa
+// TODO: update the maps with the final Lua versions!
 
-// #define TRACE
+#define T struct tpsa
 
 void
 mad_track_drift(T * restrict m[], num_t L, num_t B, num_t E)
 {
-#ifdef TRACE
-  printf("track_drift\n");
-#endif
-
   assert(m);
 
   T *x = m[0], *px = m[1];
@@ -47,10 +41,6 @@ mad_track_drift(T * restrict m[], num_t L, num_t B, num_t E)
 void
 mad_track_kick(T * restrict m[], num_t L, num_t B, int n, num_t Bn[n], num_t An[n])
 {
-#ifdef TRACE
-  printf("track_drift\n");
-#endif
-
   assert(m);
 
   T *x = m[0], *px = m[1];
@@ -91,4 +81,3 @@ mad_track_kick(T * restrict m[], num_t L, num_t B, int n, num_t Bn[n], num_t An[
   mad_tpsa_del(bbxtw);
 }
 
-#undef T

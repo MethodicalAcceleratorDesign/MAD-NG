@@ -35,13 +35,10 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_bit.h"
-#include "mad_mono.h"
 #include "mad_tpsa.h"
-#include "mad_desc.h"
 
-#define TRACE
-#define DEBUG
+#include "mad_tpsa_impl.h"
+#include "mad_desc_impl.h"
 
 #undef  ensure
 #define ensure(test) mad_ensure(test, MKSTR(test))

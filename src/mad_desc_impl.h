@@ -1,10 +1,10 @@
-#ifndef MAD_DESC_H
-#define MAD_DESC_H
+#ifndef MAD_DESC_IMPL_H
+#define MAD_DESC_IMPL_H
 
 /*
  o----------------------------------------------------------------------------o
  |
- | Descriptor (TPSA) module interface (private)
+ | Descriptor (TPSA) module implementation
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -18,20 +18,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
-  Purpose:
-  - provide a full feathered Generalized TPSA package
- 
-  Information:
-  - parameters ending with an underscope can be null.
-
-  Errors:
-  - TODO
-
- o----------------------------------------------------------------------------o
- */
+*/
 
 #include "mad.h"
+#include "mad_mono.h"
 
 // --- types -----------------------------------------------------------------o
 
@@ -84,5 +74,5 @@ hpoly_idx_rect(idx_t ib, idx_t ia, idx_t ia_size)
 
 // ---------------------------------------------------------------------------o
 
-#endif // MAD_DESC_H
+#endif // MAD_DESC_IMPL_H
 

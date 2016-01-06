@@ -1,12 +1,39 @@
-#ifndef MAD_TPSA_FUN_TC
-#define MAD_TPSA_FUN_TC
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | TPSA functions module implementation
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          C. Tomoiaga
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+*/
+
+#include <math.h>
+#include <assert.h>
+
+#include "mad_log.h"
+#include "mad_tpsa.h"
+
+#include "mad_tpsa_impl.h"
+#include "mad_desc_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc
 
-// #define TRACE
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
+
 static inline void
 fixed_point_iteration(const T *a, T *c, int iter, num_t expansion_coef[iter+1])
 {
@@ -21,20 +48,20 @@ fixed_point_iteration(const T *a, T *c, int iter, num_t expansion_coef[iter+1])
     mad_tpsa_copy(a,acp);
 
   // iter 1
-  mad_tpsa_scl(a,expansion_coef[1],c);
-  mad_tpsa_set0(c, 0.0,expansion_coef[0]);
+  mad_tpsa_scl(a, expansion_coef[1], c);
+  mad_tpsa_set0(c, 0, expansion_coef[0]);
 
   // iter 2..iter
   if (iter >= 2) {
     T *pow = a->desc->t1,
-      *tmp = a->desc->t3, *t_;
-    mad_tpsa_set0(acp, 0.0,0.0);
+      *tmp = a->desc->t3, *t;
+    mad_tpsa_set0(acp, 0,0);
     mad_tpsa_copy(acp,pow);  // already did ord 1
 
     for (int i = 2; i <= iter; ++i) {
       mad_tpsa_mul(acp,pow,tmp);
-      scale_and_accum(expansion_coef[i],tmp,c);
-      SWAP(pow,tmp,t_);
+      mad_tpsa_acc(tmp,expansion_coef[i],c);
+      SWAP(pow,tmp,t);
     }
   }
 }
@@ -51,26 +78,27 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, num_t sin_coef[iter_s+1],
     mad_tpsa_copy(a,acp);
 
   // iter 1
-  mad_tpsa_scl(a,sin_coef[1],s); mad_tpsa_set0(s, 0.0,sin_coef[0]);
-  mad_tpsa_scl(a,cos_coef[1],c); mad_tpsa_set0(c, 0.0,cos_coef[0]);
+  mad_tpsa_scl(a,sin_coef[1],s); mad_tpsa_set0(s, 0,sin_coef[0]);
+  mad_tpsa_scl(a,cos_coef[1],c); mad_tpsa_set0(c, 0,cos_coef[0]);
 
   if (max_iter >= 2) {
     T *pow = a->desc->t1,
-      *tmp = a->desc->t3, *t_;
-    mad_tpsa_set0(acp, 0.0,0.0);
+      *tmp = a->desc->t3, *t;
+    mad_tpsa_set0(acp, 0,0);
     mad_tpsa_copy(acp,pow);
 
     for (int i = 1; i <= max_iter; ++i) {
       mad_tpsa_mul(acp,pow,tmp);
 
-      if (i <= iter_s) scale_and_accum(sin_coef[i],tmp,s);
-      if (i <= iter_c) scale_and_accum(cos_coef[i],tmp,c);
-      SWAP(pow,tmp,t_);
+      if (i <= iter_s) mad_tpsa_acc(tmp,sin_coef[i],s);
+      if (i <= iter_c) mad_tpsa_acc(tmp,cos_coef[i],c);
+      SWAP(pow,tmp,t);
     }
   }
 }
 
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
+
 void
 mad_tpsa_inv(const T *a, num_t v, T *c) // v/a
 {
@@ -111,7 +139,7 @@ mad_tpsa_sqrt(const T *a, T *c)
   num_t expansion_coef[to+1], a0 = a->coef[0];
   expansion_coef[0] = sqrt(a0);
   for (int o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2.0*o) * (2.0*o-3);
+    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2*o) * (2*o-3);
 
   fixed_point_iteration(a,c,to,expansion_coef);
 }
@@ -130,9 +158,9 @@ mad_tpsa_invsqrt(const T *a, num_t v, T *c)  // c = v/a
   if (!to || a->hi == 0) { mad_tpsa_scalar(c, v/sqrt(a->coef[0])); return; }
 
   num_t expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = 1.0/sqrt(a0);
+  expansion_coef[0] = 1/sqrt(a0);
   for (int o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2.0*o) * (2.0*o-1);
+    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2*o) * (2*o-1);
 
   fixed_point_iteration(a,c,to,expansion_coef);
   mad_tpsa_scl(c,v,c);
@@ -360,10 +388,10 @@ mad_tpsa_sirx(const T *a, T *c)
   ensure(a->coef[0] == 0);
 
   ord_t to = MIN(c->mo,c->desc->trunc);
-  if (!to) { mad_tpsa_scalar(c, 1.0); return; }
+  if (!to) { mad_tpsa_scalar(c, 1); return; }
 
   num_t expansion_coef[to+1];
-  expansion_coef[0] = 1.0;
+  expansion_coef[0] = 1;
   for (int o = 1; o <= to; ++o)
     expansion_coef[o] = -expansion_coef[o-1] / (2*o * (2*o+1));
 
@@ -382,10 +410,10 @@ mad_tpsa_corx(const T *a, T *c)
   ensure(a->coef[0] == 0);
 
   ord_t to = MIN(c->mo,c->desc->trunc);
-  if (!to) { mad_tpsa_scalar(c, 1.0); return; }
+  if (!to) { mad_tpsa_scalar(c, 1); return; }
 
   num_t expansion_coef[to+1];
-  expansion_coef[0] = 1.0;
+  expansion_coef[0] = 1;
   for (int o = 1; o <= to; ++o)
     expansion_coef[o] = -expansion_coef[o-1] / (2*o * (2*o-1));
 
@@ -404,11 +432,11 @@ mad_tpsa_sinc(const T *a, T *c)
   ensure(a->coef[0] == 0);
 
   ord_t to = MIN(c->mo,c->desc->trunc);
-  if (!to) { mad_tpsa_scalar(c, 1.0); return; }
+  if (!to) { mad_tpsa_scalar(c, 1); return; }
 
   num_t expansion_coef[to+1];
-  expansion_coef[0] = 1.0;
-  expansion_coef[1] = 0.0;
+  expansion_coef[0] = 1;
+  expansion_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
     expansion_coef[o] = -expansion_coef[o-2] / (o * (o+1));
 
@@ -773,7 +801,3 @@ mad_tpsa_erf(const T *a, T *c)
 
   fixed_point_iteration(a,c,to,expansion_coef);
 }
-
-#undef T
-#undef D
-#endif // MAD_TPSA_FUN_TC

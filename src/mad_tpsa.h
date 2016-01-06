@@ -32,6 +32,7 @@
  */
 
 #include <stdio.h>
+
 #include "mad.h"
 #include "mad_mono.h"
 
@@ -106,9 +107,10 @@ void  mad_tpsa_sub     (const T *a, const T *b, T *c);
 void  mad_tpsa_mul     (const T *a, const T *b, T *c);
 void  mad_tpsa_div     (const T *a, const T *b, T *c);
 
-void  mad_tpsa_scl     (const T *a, num_t v, T *c);  // c = v*a
-void  mad_tpsa_inv     (const T *a, num_t v, T *c);  // c = v/a
-void  mad_tpsa_invsqrt (const T *a, num_t v, T *c);  // c = v/sqrt(a)
+void  mad_tpsa_acc     (const T *a, num_t v, T *c);  // c += v*a, aliasing OK
+void  mad_tpsa_scl     (const T *a, num_t v, T *c);  // c  = v*a
+void  mad_tpsa_inv     (const T *a, num_t v, T *c);  // c  = v/a
+void  mad_tpsa_invsqrt (const T *a, num_t v, T *c);  // c  = v/sqrt(a)
 void  mad_tpsa_sqrt    (const T *a, T *c);
 void  mad_tpsa_exp     (const T *a, T *c);
 void  mad_tpsa_log     (const T *a, T *c);
