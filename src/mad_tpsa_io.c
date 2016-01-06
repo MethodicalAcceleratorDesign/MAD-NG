@@ -17,16 +17,13 @@
  o----------------------------------------------------------------------------o
 */
 
-#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 #include <math.h>
 
 #include "mad_mem.h"
-#include "mad_tpsa.h"
-
-#include "mad_tpsa_impl.h"
 #include "mad_desc_impl.h"
+#include "mad_tpsa_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc

@@ -21,10 +21,8 @@
 #include <assert.h>
 
 #include "mad_log.h"
-#include "mad_tpsa.h"
-
-#include "mad_tpsa_impl.h"
 #include "mad_desc_impl.h"
+#include "mad_tpsa_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc
@@ -744,7 +742,7 @@ mad_tpsa_poisson(const T *a, const T *b, T *c, int n)
 
   T *is[4];
   for (int i = 0; i < 4; ++i)
-    is[i] = mad_tpsa_newd(a->desc,a->desc->trunc);
+    is[i] = mad_tpsa_new(a, a->desc->trunc);
 
   for (int i = 1; i <= n; ++i) {
     mad_tpsa_der(a, is[0], 2*i - 1);

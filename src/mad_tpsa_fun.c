@@ -21,10 +21,8 @@
 #include <assert.h>
 
 #include "mad_log.h"
-#include "mad_tpsa.h"
-
-#include "mad_tpsa_impl.h"
 #include "mad_desc_impl.h"
+#include "mad_tpsa_impl.h"
 
 #define T struct tpsa
 #define D struct tpsa_desc

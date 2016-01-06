@@ -35,17 +35,15 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_tpsa.h"
-
-#include "mad_tpsa_impl.h"
 #include "mad_desc_impl.h"
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
 
 const ord_t DESC_MAX = CHAR_BIT * sizeof(bit_t);
 
-#define D struct tpsa_desc
+// --- GLOBALS ----------------------------------------------------------------
+
+const ord_t mad_tpsa_default   = -1;
+const ord_t mad_tpsa_same      = -2;
+      int   mad_tpsa_strict    =  0;
 
 // --- HELPERS ----------------------------------------------------------------
 
@@ -1027,6 +1025,38 @@ mad_desc_mono_nxtbyvar(const D *d, int n, ord_t m[n])
     m[sort[i]] = 0;
   }
   return 0;
+}
+
+// --- Public Functions -------------------------------------------------------
+
+int
+mad_desc_maxsize(const D *d)
+{
+  assert(d);
+  return d->nc;
+}
+
+ord_t
+mad_desc_maxord(const D *d)
+{
+  assert(d);
+  return d->mo;
+}
+
+ord_t
+mad_desc_gtrunc(D *d, ord_t to)
+{
+  assert(d);
+  ord_t orig = d->trunc;
+  if (to == mad_tpsa_same)
+    return orig;
+
+  if (to == mad_tpsa_default)
+    to = d->mo;
+  else
+    ensure(to <= d->mo);
+  d->trunc = to;
+  return orig;
 }
 
 D*

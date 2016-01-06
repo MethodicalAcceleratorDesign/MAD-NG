@@ -20,12 +20,15 @@
  o----------------------------------------------------------------------------o
 */
 
-#include "mad.h"
-#include "mad_mono.h"
+#include "mad_bit.h"
+#include "mad_desc.h"
 
 // --- types -----------------------------------------------------------------o
 
 enum { mad_desc_stack = 20 };
+
+struct tpsa;
+struct ctpsa;
 
 struct tpsa_desc {
   int      id;        // WARNING: needs to be 1st field, for Lua compatibility
@@ -47,9 +50,14 @@ struct tpsa_desc {
          **L;         // multiplication indexes -- L[oa][ob] = lc; lc[ia][ib] = ic
   idx_t ***L_idx;     // L_idx[oa,ob] = [start] [split] [end] idxs in L
   ord_t  **ocs;       // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
-  int      stack_top; // current top of stack size
+
   struct tpsa *t0, *t1, *t2, *t3, *t4; // temps used by mul, fixed points and high level funs for aliasing
   struct tpsa *stack[mad_desc_stack]; // stack of temporary TPSA
+  int          stack_top; // current top of stack size
+
+  struct ctpsa *ct0, *ct1, *ct2, *ct3, *ct4; // temps used by mul, fixed points and high level funs for aliasing
+  struct ctpsa *cstack[mad_desc_stack]; // stack of temporary TPSA
+  int           cstack_top; // current top of stack size
 };
 
 // --- interface -------------------------------------------------------------o
@@ -62,9 +70,18 @@ int   mad_desc_mono_isvalid    (const D *d, int n, const ord_t m[n]);
 int   mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n]);
 int   mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m[n]);
 
-#undef D
+struct tpsa*  mad_tpsa_newd    (D *d, ord_t mo);
+void          mad_tpsa_del     (struct tpsa *t);
+
+struct ctpsa* mad_ctpsa_newd   (D *d, ord_t mo);
+void          mad_ctpsa_del    (struct ctpsa *t);
+
+// #undef D
 
 // --- helpers ---------------------------------------------------------------o
+
+#undef  ensure
+#define ensure(test) mad_ensure(test, MKSTR(test))
 
 static inline idx_t
 hpoly_idx_rect(idx_t ib, idx_t ia, idx_t ia_size)

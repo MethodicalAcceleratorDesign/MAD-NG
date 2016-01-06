@@ -51,8 +51,13 @@ typedef double _Complex cnum_t;
 #define MAX3(a,b,c)  MAX(a,MAX(b,c))
 #define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
 
-#define MKSTR(a)    MKSTR_OP(a)
-#define MKSTR_OP(a) #a
+#define MKSTR(a)     MKSTR_OP_(a)
+#define MKSTR_OP_(a) #a
+
+#define MKNAME(a,b)      MKNAME_OP_(a,b)
+#define MKNAME3(a,b,c)   MKNAME(a,MKNAME(b,c))
+#define MKNAME4(a,b,c,d) MKNAME(a,MKNAME(b,MKNAME(c,d)))
+#define MKNAME_OP_(a,b)  a##b
 
 // --- GNU C -----------------------------------------------------------------o
 

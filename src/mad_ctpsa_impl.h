@@ -1,10 +1,10 @@
-#ifndef MAD_TPSA_IMPL_H
-#define MAD_TPSA_IMPL_H
+#ifndef MAD_CTPSA_IMPL_H
+#define MAD_CTPSA_IMPL_H
 
 /*
  o----------------------------------------------------------------------------o
  |
- | Truncated Power Series Algebra module implementation
+ | Complex Truncated Power Series Algebra module implementation
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -20,26 +20,28 @@
  o----------------------------------------------------------------------------o
 */
 
+#include <complex.h>
+
 #include "mad_bit.h"
-#include "mad_tpsa.h"
+#include "mad_ctpsa.h"
 
 // --- types -----------------------------------------------------------------o
 
-struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
+struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
   struct tpsa_desc *desc;
   ord_t             lo, hi, mo; // lowest/highest used ord, trunc ord
   bit_t             nz;
   int               tmp;
-  num_t             coef[];
+  cnum_t            coef[];
 };
 
-#define T struct tpsa
-#define NUM num_t
-#define FUN(name) MKNAME(mad_tpsa_,name)
-#define PFX(name) MKNAME(,name)
-#define FMT "%g"
-#define VAL(num) num
+#define T struct ctpsa
+#define NUM cnum_t
+#define FUN(name) MKNAME(mad_ctpsa_,name)
+#define PFX(name) MKNAME(c,name)
+#define FMT "%g%+gi"
+#define VAL(num) real(num), imag(num) 
 
 // ---------------------------------------------------------------------------o
 
-#endif // MAD_TPSA_IMPL_H
+#endif // MAD_CTPSA_IMPL_H

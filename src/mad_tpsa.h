@@ -50,30 +50,24 @@ extern       int   mad_tpsa_strict;
 // --- interface -------------------------------------------------------------o
 
 #define T struct tpsa
-#define D struct tpsa_desc
 
-// descriptors (tpsa factories, bounded to maps)
-D*    mad_desc_new (int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv]);
-D*    mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
-                    int nk, const ord_t knb_ords[nk], ord_t dk); // knobs
-void  mad_desc_del (D *d);
+// ctors, dtor
+T*    mad_tpsa_newd    (struct tpsa_desc
+                                *d, ord_t mo); // if mo > d_mo, mo = d_mo
+T*    mad_tpsa_new     (const T *t, ord_t mo);
+void  mad_tpsa_del     (      T *t);
+void  mad_tpsa_delv    (      T *t1, T *t2, ...);
 
-// Introspection
-ord_t mad_tpsa_gtrunc  (      D *d, ord_t to);
-int   mad_tpsa_maxsize (const D *d);
-ord_t mad_tpsa_maxord  (const D *d);
-D*    mad_tpsa_desc    (const T *t);
+// introspection
+struct tpsa_desc*
+      mad_tpsa_desc    (const T *t);
 ord_t mad_tpsa_ord     (const T *t);
 ord_t mad_tpsa_ordv    (const T *t1, const T *t2, ...);  // max order of all
 
-// ctors, dtor
-T*    mad_tpsa_newd    (      D *d, ord_t mo); // if mo > d_mo, mo = d_mo
-T*    mad_tpsa_new     (const T *t, ord_t mo);
+// initialization
 T*    mad_tpsa_copy    (const T *t, T *dst);
 void  mad_tpsa_clear   (      T *t);
 void  mad_tpsa_scalar  (      T *t, num_t v);
-void  mad_tpsa_del     (      T *t);
-void  mad_tpsa_delv    (      T *t1, T *t2, ...);
 
 // indexing / monomials
 const ord_t*
@@ -160,14 +154,14 @@ void  mad_tpsa_pminv   (int sa, const T *ma[],                        int sc, T 
 void  mad_tpsa_scan_coef(      T *t, FILE *stream_);
 T*    mad_tpsa_scan     (            FILE *stream_); // TODO
 void  mad_tpsa_print    (const T *t, FILE *stream_);
-D*    mad_tpsa_scan_desc(            FILE *stream_);
+struct tpsa_desc*
+      mad_tpsa_scan_desc(            FILE *stream_);
 void  mad_tpsa_debug    (const T *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
 #define mad_tpsa_delv(...) mad_tpsa_delv(__VA_ARGS__,NULL)
 
 #undef T
-#undef D
 
 // ---------------------------------------------------------------------------o
 
