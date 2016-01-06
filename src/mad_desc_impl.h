@@ -60,9 +60,9 @@ struct tpsa_desc {
   int           cstack_top; // current top of stack size
 };
 
-// --- interface -------------------------------------------------------------o
-
 #define D struct tpsa_desc
+
+// --- interface -------------------------------------------------------------o
 
 idx_t mad_desc_get_idx         (const D *d, int n, const ord_t m[n]);
 idx_t mad_desc_get_idx_sp      (const D *d, int n, const idx_t m[n]);
@@ -75,8 +75,6 @@ void          mad_tpsa_del     (struct tpsa *t);
 
 struct ctpsa* mad_ctpsa_newd   (D *d, ord_t mo);
 void          mad_ctpsa_del    (struct ctpsa *t);
-
-// #undef D
 
 // --- helpers ---------------------------------------------------------------o
 

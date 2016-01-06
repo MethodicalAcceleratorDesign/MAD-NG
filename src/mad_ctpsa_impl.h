@@ -20,8 +20,6 @@
  o----------------------------------------------------------------------------o
 */
 
-#include <complex.h>
-
 #include "mad_bit.h"
 #include "mad_ctpsa.h"
 
@@ -36,11 +34,16 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 };
 
 #define T struct ctpsa
-#define NUM cnum_t
-#define FUN(name) MKNAME(mad_ctpsa_,name)
-#define PFX(name) MKNAME(c,name)
-#define FMT "%g%+gi"
-#define VAL(num) real(num), imag(num) 
+
+// --- helpers ---------------------------------------------------------------o
+
+#define NUM        cnum_t
+#define FUN(name)  MKNAME(mad_ctpsa_,name)
+#define PFX(name)  MKNAME(c,name)
+#define FMT        "%g%+gi"
+#define VAL(num)   creal(num), cimag(num) 
+
+#include <complex.h>
 
 // ---------------------------------------------------------------------------o
 

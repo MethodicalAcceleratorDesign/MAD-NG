@@ -34,11 +34,14 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 };
 
 #define T struct tpsa
-#define NUM num_t
+
+// --- helpers ---------------------------------------------------------------o
+
+#define NUM       num_t
 #define FUN(name) MKNAME(mad_tpsa_,name)
 #define PFX(name) MKNAME(,name)
-#define FMT "%g"
-#define VAL(num) num
+#define FMT       "%g"
+#define VAL(num)  num
 
 // ---------------------------------------------------------------------------o
 
