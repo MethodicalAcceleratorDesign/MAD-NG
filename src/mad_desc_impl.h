@@ -25,8 +25,6 @@
 
 // --- types -----------------------------------------------------------------o
 
-enum { mad_desc_stack = 20 };
-
 struct tpsa;
 struct ctpsa;
 
@@ -51,13 +49,8 @@ struct tpsa_desc {
   idx_t ***L_idx;     // L_idx[oa,ob] = [start] [split] [end] idxs in L
   ord_t  **ocs;       // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
 
-  struct tpsa *t0, *t1, *t2, *t3, *t4; // temps used by mul, fixed points and high level funs for aliasing
-  struct tpsa *stack[mad_desc_stack]; // stack of temporary TPSA
-  int          stack_top; // current top of stack size
-
-  struct ctpsa *ct0, *ct1, *ct2, *ct3, *ct4; // temps used by mul, fixed points and high level funs for aliasing
-  struct ctpsa *cstack[mad_desc_stack]; // stack of temporary TPSA
-  int           cstack_top; // current top of stack size
+  struct tpsa  * t0, * t1, * t2, * t3, * t4; // temps used by mul, fix pts and high lvl funs for aliasing
+  struct ctpsa *ct0, *ct1, *ct2, *ct3, *ct4; // complex temps
 };
 
 #define D struct tpsa_desc

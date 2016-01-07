@@ -86,14 +86,9 @@ FUN(newd) (D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo);
 
-  T *t;
-  if (d->PFX(stack_top) > 0)
-    t = d->PFX(stack)[d->PFX(stack_top)--];
-  else {
-    t = malloc(sizeof(T) + d->nc * sizeof(NUM));
-    assert(t);
-    t->desc = d;
-  }
+  T *t = malloc(sizeof(T) + d->nc * sizeof(NUM));
+
+  t->desc = d;
   t->lo = t->mo = mo;
   t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking NZ[0]
   t->tmp = 0;
@@ -141,11 +136,7 @@ FUN(clear) (T *t)
 void
 FUN(del) (T *t)
 {
-  D *d = t->desc;
-  if (d->PFX(stack_top) < mad_desc_stack)
-    d->PFX(stack)[++d->PFX(stack_top)] = t;
-  else
-    free(t);
+  free(t);
 }
 
 void

@@ -1126,8 +1126,6 @@ mad_desc_del(D *d)
   mad_ctpsa_del(d->ct3);
   mad_ctpsa_del(d->ct4);
 
-  // TODO: delete the TPSA in the stack and cstack
-
   // remove descriptor from global array
   Ds[d->id] = NULL;
   free(d);
