@@ -46,13 +46,13 @@ DESCRIPTION
     arg, real, imag, conj, proj,                          (complex) 
     tostring.                                             (other)
 
-  Other modules may also extend the module gmath (e.g. vector and matrix)
+  Other modules may also extend the module gmath (e.g. matrix & tpsa)
 
 RETURN VALUES
   The table of generic functions
 
 SEE ALSO
-  math, complex, matrix, cmatrix
+  math, complex
 ]]
 
 -- modules -------------------------------------------------------------------o

@@ -25,10 +25,11 @@
 
 // --- types -----------------------------------------------------------------o
 
-struct tpsa;
-struct ctpsa;
+typedef struct  desc  desc_t;
+typedef struct  tpsa  tpsa_t;
+typedef struct ctpsa ctpsa_t;
 
-struct tpsa_desc {
+struct desc {
   int      id;        // WARNING: needs to be 1st field, for Lua compatibility
   int      nmv,nv, nc,// number of map vars, number of all vars, number of coeff
            size;      // bytes used by current desc
@@ -49,25 +50,25 @@ struct tpsa_desc {
   idx_t ***L_idx;     // L_idx[oa,ob] = [start] [split] [end] idxs in L
   ord_t  **ocs;       // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
 
-  struct tpsa  * t0, * t1, * t2, * t3, * t4; // temps used by mul, fix pts and high lvl funs for aliasing
-  struct ctpsa *ct0, *ct1, *ct2, *ct3, *ct4; // complex temps
+   tpsa_t * t0, * t1, * t2, * t3, * t4; // temps used by mul, fix pts and high lvl funs for aliasing
+  ctpsa_t *ct0, *ct1, *ct2, *ct3, *ct4; // complex temps
 };
-
-#define D struct tpsa_desc
 
 // --- interface -------------------------------------------------------------o
 
-idx_t mad_desc_get_idx         (const D *d, int n, const ord_t m[n]);
-idx_t mad_desc_get_idx_sp      (const D *d, int n, const idx_t m[n]);
-int   mad_desc_mono_isvalid    (const D *d, int n, const ord_t m[n]);
-int   mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n]);
-int   mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m[n]);
+#define D desc_t
 
-struct tpsa*  mad_tpsa_newd    (D *d, ord_t mo);
-void          mad_tpsa_del     (struct tpsa *t);
+idx_t    mad_desc_get_idx         (const D *d, int n, const ord_t m[n]);
+idx_t    mad_desc_get_idx_sp      (const D *d, int n, const idx_t m[n]);
+int      mad_desc_mono_isvalid    (const D *d, int n, const ord_t m[n]);
+int      mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n]);
+int      mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m[n]);
 
-struct ctpsa* mad_ctpsa_newd   (D *d, ord_t mo);
-void          mad_ctpsa_del    (struct ctpsa *t);
+tpsa_t*  mad_tpsa_newd  (D *d, ord_t mo);
+void     mad_tpsa_del   (tpsa_t *t);
+
+ctpsa_t* mad_ctpsa_newd (D *d, ord_t mo);
+void     mad_ctpsa_del  (ctpsa_t *t);
 
 // --- helpers ---------------------------------------------------------------o
 

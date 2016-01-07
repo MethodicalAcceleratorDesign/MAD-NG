@@ -91,7 +91,7 @@ FUN(newd) (D *d, ord_t mo)
   t->desc = d;
   t->lo = t->mo = mo;
   t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking NZ[0]
-  t->tmp = 0;
+  t->is_tmp = 0;
   return t;
 }
 
@@ -116,7 +116,6 @@ FUN(copy) (const T *src, T *dst)
   dst->hi = MIN3(src->hi, dst->mo, d->trunc);
   dst->lo = src->lo;
   dst->nz = mad_bit_trunc(src->nz, dst->hi);
-  // dst->tmp = src->tmp;  // managed from outside
 
   for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
     dst->coef[i] = src->coef[i];
@@ -130,7 +129,6 @@ FUN(clear) (T *t)
   assert(t);
   t->hi = t->nz = t->coef[0] = 0;
   t->lo = t->mo;
-  // t->tmp = 0;  // managed from outside
 }
 
 void

@@ -1,7 +1,7 @@
 --[=[
  o----------------------------------------------------------------------------o
  |
- | Matrix module (complex)
+ | TPSA module (real)
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,10 +16,10 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provides full set of functions and operations on real and complex matrices
+  - provides full set of functions and operations on real and complex TPSA
 
   Information:
-  - real and complex matrices are implemented the module matrix (not this one)
+  - real and complex TPSA are implemented by this module
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -30,21 +30,13 @@ local M = { __help = {}, __test = {} }
 
 M.__help.self = [[
 NAME
-  cmatrix
+  tpsa
 
 SYNOPSIS
-  local cmatrix = require 'cmatrix'
-  local m1 = cmatrix(3)                             -- column cmatrix = cmatrix(3,1)
-  local m2 = cmatrix(2,3)
-  local m3 = cmatrix {{1,2+2i},{3,4+2i},{5,6+2i}}
-  local m4 = cmatrix {1,2,3,4,5,6}                  -- column cmatrix = {{1+0i},{2+0i},...}
-  local m5 = cmatrix {{1,2,3,4,5,6}}                -- row cmatrix
-  local m6 = m1:transpose()                         -- row cmatrix, transpose conjugate
-  local I6 = cmatrix(6):ones()                      -- 6x6 identity
+  local tpsa = require 'tpsa'
 
 DESCRIPTION
-  The module cmatrix implements the operators and math functions on
-  complex matrices:
+  The module tpsa implements the operators and math functions on TPSA:
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
     rows, cols, size, sizes, get, set, get0, set0,
@@ -64,45 +56,51 @@ DESCRIPTION
 REMARK:
   By default, check_bounds is true.
 
-RELATIONS (3D GEOMETRY)
-  inner prod:   u'.v = |u|.|v| cos(u^v)
-  cross prod:   uxv = |u|.|v| sin(u^v) \vec{n}
-  mixed prod:   (uxv)'.w = u'.(vxw) = det(u,v,w)
-  outer prod:   u.v' = matrix
-  dble xprod:   ux(vxw) = (u.w) \vec{v} - (u.v) \vec{w}
-                (uxv)xw = (u.w) \vec{v} - (v.w) \vec{u}
-  norm      :   |u| = sqrt(u'.u)
-  angle     :   u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
-  unit      :   u / |u|
-  projection:   u'.v
-  projector :   I -   u.u' / u'.u
-  reflector :   I - 2 u.u' / u'.u
-  area      :   |uxv|
-  volume    :   |(uxv)'.w|
-  unitary   :   |u| = 1
-  orthogonal:   u'.v = 0
-  collinear :   |uxv| = 0
-  coplanar  :   (uxv)'.w = 0
-
 RETURN VALUES
-  The constructor of complex matrices
+  The constructor of TPSA
 
 SEE ALSO
-  math, gmath, complex, matrix, cmatrix
+  gmath, complex, matrix, cmatrix, ctpsa
 ]]
  
 -- modules -------------------------------------------------------------------o
 
-local xmat = require 'xmatrix'
+local ffi   = require 'ffi'
+local clib  = require 'cmad'
+local gmath = require 'gmath'
+local xtpsa = require 'xtpsa'
+
+local tbl_new = require 'table.new'
 
 -- locals --------------------------------------------------------------------o
 
+local isnum, iscpx, iscal, ismat, iscmat, isamat,
+      real, imag, conj, ident, min,
+      abs, arg, exp, log, sqrt, proj,
+      sin, cos, tan, sinh, cosh, tanh,
+      asin, acos, atan, asinh, acosh, atanh,
+      unm, mod, pow, tostring = 
+      gmath.is_number, gmath.is_complex, gmath.is_scalar,
+      gmath.is_matrix, gmath.is_cmatrix, gmath.isa_matrix,
+      gmath.real, gmath.imag, gmath.conj, gmath.ident, gmath.min,
+      gmath.abs, gmath.arg, gmath.exp, gmath.log, gmath.sqrt, gmath.proj,
+      gmath.sin, gmath.cos, gmath.tan, gmath.sinh, gmath.cosh, gmath.tanh,
+      gmath.asin, gmath.acos, gmath.atan, gmath.asinh, gmath.acosh, gmath.atanh,
+      gmath.unm, gmath.mod, gmath.pow, gmath.tostring
+
+local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
+
+local cres = ffi.new 'complex[1]'
+
 -- FFI type constructors
-local cmatrix = xmat.cmatrix
+
+local tpsa  = xtpsa.tpsa
+local ctpsa = xtpsa.ctpsa
 
 -- implementation ------------------------------------------------------------o
 
--- implemented by the matrix module
+ffi.metatype( 'tpsa_t', M)
+ffi.metatype('ctpsa_t', M)
 
 ------------------------------------------------------------------------------o
-return cmatrix
+return tpsa

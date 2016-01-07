@@ -1,7 +1,7 @@
 --[=[
  o----------------------------------------------------------------------------o
  |
- | Matrix constructor module
+ | TPSA constructor module
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,11 +16,11 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provides types and constructors to matrices
+  - provides types and constructors to tpsa
 
   Information:
-  - this module is loaded by matrix and cmatrix, modules. It should
-    not be loaded by users.
+  - this module is loaded by tpsa and ctpsa modules. It should not be loaded
+    by users.
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -31,20 +31,19 @@ local M = { __help = {}, __test = {} }
 
 M.__help.self = [[
 NAME
-  matctr -- linear algebra basics (types contructors)
+  xtpsa -- TPSA contructors
 
 SYNOPSIS
   This module should not be loaded directly, SEE ALSO.
 
 DESCRIPTION
-  The module matctr provides consistent definitions of matrices and
-  complex matrices.
+  The module xtpsa provides consistent definitions of TPSA and complex TPSA.
 
 RETURN VALUES
-  The constructors of matrices and complex matrices.
+  The constructors of TPSA and complex TPSA.
 
 SEE ALSO
-  math, gmath, complex, matrix, cmatrix
+  tpsa, ctpsa
 ]]
 
 -- modules -------------------------------------------------------------------o
@@ -56,8 +55,25 @@ local gmath = require 'gmath'
 -- ffi -----------------------------------------------------------------------o
 
 ffi.cdef[[
-typedef struct { int32_t nr, nc; double  data[?]; }  matrix_t;
-typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
+typedef struct {
+  int id;     // warning: rest of fields are not exposed
+} desc_t;
+
+typedef struct { // warning: must be kept identical to C definition
+  desc_t *desc;
+  ord_t   lo, hi, mo;
+  bit_t   nz;
+  int     is_tmp;
+  num_t   coef[?];
+} tpsa_t;
+
+typedef struct { // warning: must be kept identical to C definition
+  desc_t *desc;
+  ord_t   lo, hi, mo;
+  bit_t   nz;
+  int     is_tmp;
+  cnum_t  coef[?];
+} ctpsa_t;
 ]]
 
 -- threshold to use external allocator and save memory inside the 1GB limit
@@ -68,24 +84,25 @@ local mad_alloc = 1024
 local istype  = ffi.istype
 
 -- FFI type constructors
-local  matrix_ctor = ffi.typeof( 'matrix_t')
-local cmatrix_ctor = ffi.typeof('cmatrix_t')
+local  tpsa_ctor = ffi.typeof( 'tpsa_t')
+local ctpsa_ctor = ffi.typeof('ctpsa_t')
 
 -- implementation ------------------------------------------------------------o
 
-function gmath.is_matrix (x)
-  return type(x) == 'cdata' and istype('matrix_t', x)
+function gmath.is_tpsa (x)
+  return type(x) == 'cdata' and istype('tpsa_t', x)
 end
 
-function gmath.is_cmatrix (x)
-  return type(x) == 'cdata' and istype('cmatrix_t', x)
+function gmath.is_ctpsa (x)
+  return type(x) == 'cdata' and istype('ctpsa_t', x)
 end
 
-function gmath.isa_matrix (x)
-  return type(x) == 'cdata' and (istype('matrix_t', x) or istype('cmatrix_t', x))
+function gmath.isa_tpsa (x)
+  return type(x) == 'cdata' and (istype('tpsa_t', x) or istype('ctpsa_t', x))
 end
 
-local function matrix_alloc (nr, nc)
+local function tpsa_alloc (nr, nc)
+  -- TODO
   local len = nr*nc
   local mat
   if len < mad_alloc then
@@ -100,7 +117,8 @@ local function matrix_alloc (nr, nc)
   return mat
 end
 
-local function cmatrix_alloc (nr, nc)
+local function ctpsa_alloc (nr, nc)
+  -- TODO
   local len = nr*nc
   local mat
   if len < (mad_alloc/2) then
@@ -115,28 +133,25 @@ local function cmatrix_alloc (nr, nc)
   return mat
 end
 
-local function fromtable (ctor, tbl)
-  local nr, nc = #tbl or 1, type(tbl[1]) == 'table' and #tbl[1] or 1
-  return ctor(nr,nc):fromtable(tbl)
-end
-
-local function matrix (nr, nc_)
+local function tpsa (nr, nc_)
+  -- TODO
   local nc = nc_ or 1
   if type(nr) == 'table' then
-    return fromtable(matrix_alloc, nr)
+    return fromtable(tpsa_alloc, nr)
   elseif nr > 0 and nc > 0 then
-    return matrix_alloc(nr, nc)
+    return tpsa_alloc(nr, nc)
   else
     error("invalid argument to matrix constructor, expecting (rows[,cols]) or table [of tables]")
   end
 end
 
-local function cmatrix (nr, nc_)
+local function ctpsa (nr, nc_)
+  -- TODO
   local nc = nc_ or 1
   if type(nr) == 'table' then
     return mat_fromtable(cmatrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
-    return cmatrix_alloc(nr, nc)
+    return ctpsa_alloc(nr, nc)
   else
     error("invalid argument to cmatrix constructor, expecting (rows[,cols]) or table [of tables]")
   end
@@ -144,6 +159,6 @@ end
 
 ------------------------------------------------------------------------------o
 return {
-  matrix  = matrix,
-  cmatrix = cmatrix,
+   tpsa =  tpsa,
+  ctpsa = ctpsa,
 }

@@ -1,7 +1,7 @@
 --[=[
  o----------------------------------------------------------------------------o
  |
- | Matrix module (complex)
+ | TPSA module (complex)
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,10 +16,10 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provides full set of functions and operations on real and complex matrices
+  - provides full set of functions and operations on real and complex TPSA
 
   Information:
-  - real and complex matrices are implemented the module matrix (not this one)
+  - real and complex TPSA are implemented the module tpsa (not this one)
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -30,21 +30,15 @@ local M = { __help = {}, __test = {} }
 
 M.__help.self = [[
 NAME
-  cmatrix
+  ctpsa
 
 SYNOPSIS
-  local cmatrix = require 'cmatrix'
-  local m1 = cmatrix(3)                             -- column cmatrix = cmatrix(3,1)
-  local m2 = cmatrix(2,3)
-  local m3 = cmatrix {{1,2+2i},{3,4+2i},{5,6+2i}}
-  local m4 = cmatrix {1,2,3,4,5,6}                  -- column cmatrix = {{1+0i},{2+0i},...}
-  local m5 = cmatrix {{1,2,3,4,5,6}}                -- row cmatrix
-  local m6 = m1:transpose()                         -- row cmatrix, transpose conjugate
-  local I6 = cmatrix(6):ones()                      -- 6x6 identity
+  local ctpsa = require 'ctpsa'
 
 DESCRIPTION
-  The module cmatrix implements the operators and math functions on
-  complex matrices:
+  The module ctpsa implements the operators and math functions on
+  complex TPSA:
+  TODO
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
     rows, cols, size, sizes, get, set, get0, set0,
@@ -64,45 +58,25 @@ DESCRIPTION
 REMARK:
   By default, check_bounds is true.
 
-RELATIONS (3D GEOMETRY)
-  inner prod:   u'.v = |u|.|v| cos(u^v)
-  cross prod:   uxv = |u|.|v| sin(u^v) \vec{n}
-  mixed prod:   (uxv)'.w = u'.(vxw) = det(u,v,w)
-  outer prod:   u.v' = matrix
-  dble xprod:   ux(vxw) = (u.w) \vec{v} - (u.v) \vec{w}
-                (uxv)xw = (u.w) \vec{v} - (v.w) \vec{u}
-  norm      :   |u| = sqrt(u'.u)
-  angle     :   u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
-  unit      :   u / |u|
-  projection:   u'.v
-  projector :   I -   u.u' / u'.u
-  reflector :   I - 2 u.u' / u'.u
-  area      :   |uxv|
-  volume    :   |(uxv)'.w|
-  unitary   :   |u| = 1
-  orthogonal:   u'.v = 0
-  collinear :   |uxv| = 0
-  coplanar  :   (uxv)'.w = 0
-
 RETURN VALUES
-  The constructor of complex matrices
+  The constructor of complex TPSA
 
 SEE ALSO
-  math, gmath, complex, matrix, cmatrix
+  gmath, complex, matrix, cmatrix, tpsa
 ]]
  
 -- modules -------------------------------------------------------------------o
 
-local xmat = require 'xmatrix'
+local xtpsa = require 'xtpsa'
 
 -- locals --------------------------------------------------------------------o
 
 -- FFI type constructors
-local cmatrix = xmat.cmatrix
+local ctpsa = xtpsa.ctpsa
 
 -- implementation ------------------------------------------------------------o
 
 -- implemented by the matrix module
 
 ------------------------------------------------------------------------------o
-return cmatrix
+return ctpsa

@@ -36,7 +36,7 @@
 
 // --- types -----------------------------------------------------------------o
 
-struct tpsa_desc;
+typedef struct desc desc_t;
 
 // --- globals ---------------------------------------------------------------o
 
@@ -46,7 +46,7 @@ extern       int   mad_tpsa_strict;
 
 // --- interface -------------------------------------------------------------o
 
-#define D struct tpsa_desc
+#define D desc_t
 
 // ctors, dtor
 D*    mad_desc_new (int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv]);

@@ -87,15 +87,15 @@ RETURN VALUES
   The constructor of matrices
 
 SEE ALSO
-  math, gmath, complex, matrix, cmatrix
+  gmath, complex, matrix, cmatrix
 ]]
  
 -- modules -------------------------------------------------------------------o
 
-local ffi     = require 'ffi'
-local clib    = require 'cmad'
-local gmath   = require 'gmath'
-local matctr  = require 'matctr'
+local ffi   = require 'ffi'
+local clib  = require 'cmad'
+local gmath = require 'gmath'
+local xmat  = require 'xmatrix'
 --local linalg  = require 'linalg'
 local tbl_new = require 'table.new'
 
@@ -121,8 +121,8 @@ local cres = ffi.new 'complex[1]'
 
 -- FFI type constructors
 
-local matrix  = matctr.matrix
-local cmatrix = matctr.cmatrix
+local matrix  = xmat.matrix
+local cmatrix = xmat.cmatrix
 
 -- implementation ------------------------------------------------------------o
 

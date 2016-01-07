@@ -26,17 +26,16 @@
 // --- types -----------------------------------------------------------------o
 
 struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
-  struct tpsa_desc *desc;
-  ord_t             lo, hi, mo; // lowest/highest used ord, trunc ord
-  bit_t             nz;
-  int               tmp;
-  cnum_t            coef[];
+  desc_t *desc;
+  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
+  bit_t   nz;
+  int     is_tmp;
+  cnum_t  coef[];
 };
-
-#define T struct ctpsa
 
 // --- helpers ---------------------------------------------------------------o
 
+#define T           ctpsa_t
 #define NUM         cnum_t
 #define FUN(name)   MKNAME(mad_ctpsa_,name)
 #define PFX(name)   MKNAME(c,name)
