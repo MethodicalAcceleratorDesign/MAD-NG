@@ -98,11 +98,7 @@ tbl_realloc_monos(D *d, int new_nc_)
   // if new_nc_ is 0, it increases the capacity of exiting array
   assert(d);
 
-  if (!new_nc_)
-    new_nc_ = d->nc * 2;
-#ifdef TRACE
-  printf("realloc for nc= %d\n", new_nc_);
-#endif
+  if (!new_nc_) new_nc_ = d->nc * 2;
   d->nc = new_nc_;
   d->monos = realloc(d->monos, d->nc * d->nv * sizeof *(d->monos));
   d->ords  = realloc(d->ords,  d->nc         * sizeof *(d->monos));
@@ -111,10 +107,6 @@ tbl_realloc_monos(D *d, int new_nc_)
 static inline idx_t  // idx to end of d->monos
 make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_idx[])
 {
-#ifdef TRACE
-  printf("make_higher_ord_monos, cmi=%d\n", curr_mono_idx);
-#endif
-
   // ords 2..mo
   int nv = d->nv;
   ord_t m[nv], *curr_mono = d->monos + curr_mono_idx*nv;
@@ -157,10 +149,6 @@ static inline void
 make_monos(D *d)
 {
   // builds the monomials matrix in To order
-#ifdef TRACE
-  printf("make_monos for %p\n", (void*)d);
-#endif
-
   assert(d && d->var_ords);
   const int max_init_alloc = 20000;  // to fit (6,12)
   d->nc = max_nc(d->nv, d->mo);
@@ -253,10 +241,6 @@ find_index_bin(int n, const ord_t **T, const ord_t m[n], const int from_idx, con
 static inline void
 tbl_by_ord(D *d)
 {
-#ifdef TRACE
-  printf("tbl_by_ord for %p\n", (void*)d);
-#endif
-
   assert(d && d->var_ords && d->hpoly_To_idx && d->monos);
 
   d->To    = malloc(d->nc * sizeof *(d->To));
@@ -281,9 +265,6 @@ tbl_by_ord(D *d)
 static inline void
 tbl_by_var(D *d)
 {
-#ifdef TRACE
-  printf("tbl_by_var for %p\n", (void*)d);
-#endif
   assert(d && d->var_ords && d->sort_var && d->monos && d->hpoly_To_idx);
 
   d->Tv    = malloc(d->nc * sizeof *(d->Tv));
@@ -377,9 +358,6 @@ tbl_index_H_sp(const D *d, int n, const idx_t m[n])
 static inline void
 tbl_clear_H(D *d)
 {
-#ifdef TRACE
-  printf("tbl_clear_H for %p\n", (void*)d);
-#endif
   int cols = d->mo + 2, accum = 0;
   idx_t *sort = d->sort_var, si;
   for (int r = d->nv - 1; r >= 0; --r) {  // rows (sorted vars)
@@ -393,9 +371,6 @@ tbl_clear_H(D *d)
 static inline void
 tbl_solve_H(D *d)
 {
-#ifdef TRACE
-  printf("tbl_solve_H for %p\n", (void*)d);
-#endif
   idx_t *sort = d->sort_var, v;
   int nv = d->nv, cols = d->mo + 2, accum = d->var_ords[sort[nv-1]];
   ord_t mono[nv], *vo = d->var_ords;
@@ -420,9 +395,6 @@ tbl_solve_H(D *d)
 static inline void
 tbl_build_H(D *d)
 {
-#ifdef TRACE
-  printf("tbl_build_H\n");
-#endif
   idx_t *H = d->H;
   int rows = d->nv, cols = d->mo + 2, nc = d->nc;
   ord_t *var_ords = d->var_ords, **Tv = d->Tv;
@@ -462,9 +434,6 @@ tbl_set_H(D *d)
 {
   assert(d && d->var_ords && d->Tv && d->To);
   assert(d->nv != 0);
-#ifdef TRACE
-  printf("tbl_set_H for %p\n", (void*)d);
-#endif
 
   d->H = malloc(d->nv * (d->mo+2) * sizeof *(d->H));
   assert(d->H);
@@ -559,9 +528,6 @@ tbl_build_LC(int oa, int ob, D *d)
 static inline int**
 get_LC_idxs(int oa, int ob, D *d)
 {
-#ifdef TRACE
-  printf("get_L_idxs oa=%d ob=%d d=%p\n", oa, ob, (void*)d);
-#endif
   int oc = oa + ob;
   const idx_t *pi = d->hpoly_To_idx, *lc = d->L[d->mo/2*oa + ob],
                 T = (pi[oc+1] + pi[oc] - 1) / 2;  // splitting threshold of oc
@@ -615,9 +581,6 @@ get_LC_idxs(int oa, int ob, D *d)
 static inline void
 tbl_set_L(D *d)
 {
-#ifdef TRACE
-  printf("tbl_set_L from %p\n", (void*)d);
-#endif
   ord_t o = d->mo, ho = d->mo / 2;
   int size_L = (o*ho + 1) * sizeof *(d->L);
   d->L = malloc(size_L);
@@ -806,9 +769,6 @@ static D  *Ds[TPSA_DESC_NUM];
 static inline void
 set_var_ords(D *d, const ord_t ords[])
 {
-#ifdef TRACE
-  printf("set_var_ords: "); mad_mono_print(d->nv,ords); printf("\n");
-#endif
   assert(d && ords);
 
   d->sort_var = malloc(d->nv * sizeof *(d->sort_var));
@@ -835,7 +795,7 @@ set_var_names(D *d, str_t var_nam_[])
   if (!var_nam_)
     return;
 
-#ifdef TRACE
+#ifdef DEBUG
   printf("set_var_names=[ ");
   for (int i = 0; i < d->nmv; ++i) printf("%s ", var_nam_[i]);
   printf("]\n");
@@ -857,10 +817,6 @@ set_var_names(D *d, str_t var_nam_[])
 static inline D*
 desc_init(int nmv, const ord_t map_ords[nmv], int nv, ord_t ko)
 {
-#ifdef TRACE
-  printf("desc_ini nmv=%d nv=%d ko=%d map_ords=",nmv,nv,ko);
-  mad_mono_print(nmv,map_ords); printf("\n");
-#endif
   assert(map_ords);
 
   D *d = malloc(sizeof *d);
@@ -893,14 +849,19 @@ desc_build(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, cons
   tbl_set_H(d);
   tbl_set_L(d);
   build_dispatch(d);
-  d->t0 = mad_tpsa_newd(d,d->mo);
-  d->t1 = mad_tpsa_newd(d,d->mo);
-  d->t2 = mad_tpsa_newd(d,d->mo);
-  d->t3 = mad_tpsa_newd(d,d->mo);
-  d->t4 = mad_tpsa_newd(d,d->mo);
+  d-> t0 = mad_tpsa_newd (d,d->mo);
+  d-> t1 = mad_tpsa_newd (d,d->mo);
+  d-> t2 = mad_tpsa_newd (d,d->mo);
+  d-> t3 = mad_tpsa_newd (d,d->mo);
+  d-> t4 = mad_tpsa_newd (d,d->mo);
+  d->ct0 = mad_ctpsa_newd(d,d->mo);
+  d->ct1 = mad_ctpsa_newd(d,d->mo);
+  d->ct2 = mad_ctpsa_newd(d,d->mo);
+  d->ct3 = mad_ctpsa_newd(d,d->mo);
+  d->ct4 = mad_ctpsa_newd(d,d->mo);
   // TODO: add the size of the temps to d->size
 
-#ifdef TRACE
+#ifdef DEBUG
   printf("nc = %d ---- Total desc size: %d bytes\n", d->nc, d->size);
 #endif
 
@@ -1080,7 +1041,7 @@ mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t 
 
 D*
 mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
-                   int nk, const ord_t knb_ords[nk], ord_t dk)
+              int nk, const ord_t knb_ords[nk], ord_t dk)
 {
   // input validation
   ensure(nv && var_ords);
@@ -1154,18 +1115,20 @@ mad_desc_del(D *d)
     free(d->ocs);
   }
 
-  mad_tpsa_del(d->t0);
-  mad_tpsa_del(d->t1); mad_tpsa_del(d->t2);
-  mad_tpsa_del(d->t3); mad_tpsa_del(d->t4);
+  mad_tpsa_del (d-> t0);
+  mad_tpsa_del (d-> t1);
+  mad_tpsa_del (d-> t2);
+  mad_tpsa_del (d-> t3);
+  mad_tpsa_del (d-> t4);
+  mad_ctpsa_del(d->ct0);
+  mad_ctpsa_del(d->ct1);
+  mad_ctpsa_del(d->ct2);
+  mad_ctpsa_del(d->ct3);
+  mad_ctpsa_del(d->ct4);
 
-  // TODO: delete the TPSA in the stack...
+  // TODO: delete the TPSA in the stack and cstack
 
   // remove descriptor from global array
   Ds[d->id] = NULL;
   free(d);
 }
-
-
-#undef D
-#undef TRACE
-#undef DEBUG

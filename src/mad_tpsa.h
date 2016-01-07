@@ -151,11 +151,11 @@ void  mad_tpsa_minv    (int sa, const T *ma[],                        int sc, T 
 void  mad_tpsa_pminv   (int sa, const T *ma[],                        int sc, T *mc[], int row_select[sa]);
 
 // I/O
-void  mad_tpsa_scan_coef(      T *t, FILE *stream_);
-T*    mad_tpsa_scan     (            FILE *stream_); // TODO
-void  mad_tpsa_print    (const T *t, FILE *stream_);
 struct tpsa_desc*
-      mad_tpsa_scan_desc(            FILE *stream_);
+      mad_tpsa_scan_hdr (                         FILE *stream_);
+void  mad_tpsa_scan_coef(      T *t,              FILE *stream_); // TODO
+T*    mad_tpsa_scan     (                         FILE *stream_); // TODO
+void  mad_tpsa_print    (const T *t, str_t name_, FILE *stream_);
 void  mad_tpsa_debug    (const T *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)

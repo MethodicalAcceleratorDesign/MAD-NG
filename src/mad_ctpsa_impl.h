@@ -37,12 +37,14 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 
 // --- helpers ---------------------------------------------------------------o
 
-#define NUM        cnum_t
-#define FUN(name)  MKNAME(mad_ctpsa_,name)
-#define PFX(name)  MKNAME(c,name)
-#define FMT        "%g%+gi"
-#define VAL(num)   creal(num), cimag(num) 
+#define NUM         cnum_t
+#define FUN(name)   MKNAME(mad_ctpsa_,name)
+#define PFX(name)   MKNAME(c,name)
+#define VAL(num)    creal(num), cimag(num) 
+#define FMT         "%g%+gi"
+#define SELECT(R,C) C
 
+#include <tgmath.h>
 #include <complex.h>
 
 // ---------------------------------------------------------------------------o

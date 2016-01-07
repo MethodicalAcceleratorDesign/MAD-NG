@@ -22,23 +22,19 @@
 
 #include "mad_log.h"
 #include "mad_desc_impl.h"
+
+#ifdef    MAD_CTPSA_IMPL
+#include "mad_ctpsa_impl.h"
+#else
 #include "mad_tpsa_impl.h"
-
-#define T struct tpsa
-#define D struct tpsa_desc
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
+#endif
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
 
 static inline void
-hpoly_triang_mul(const num_t *ca, const num_t *cb, num_t *cc, int nb,
+hpoly_triang_mul(const NUM *ca, const NUM *cb, NUM *cc, int nb,
                  const idx_t l[], const int *idx[])
 {
-#ifdef TRACE
-  printf("triang_mul\n");
-#endif
   // asymm: c[2 2] = a[2 0]*b[0 2] + a[0 2]*b[2 0]
   for (idx_t ib = 0; ib < nb; ib++)
     if (cb[ib] || ca[ib])
@@ -50,12 +46,9 @@ hpoly_triang_mul(const num_t *ca, const num_t *cb, num_t *cc, int nb,
 }
 
 static inline void
-hpoly_sym_mul(const num_t *ca1, const num_t *cb1, const num_t *ca2, const num_t *cb2,
-              num_t *cc, int na, int nb, const idx_t l[], const int *idx[])
+hpoly_sym_mul(const NUM *ca1, const NUM *cb1, const NUM *ca2, const NUM *cb2,
+              NUM *cc, int na, int nb, const idx_t l[], const int *idx[])
 {
-#ifdef TRACE
-  printf("sym_mul\n");
-#endif
   // na > nb so longer loop is inside
   for (idx_t ib=0; ib < nb; ib++)
     if (cb1[ib] || ca2[ib])
@@ -67,12 +60,9 @@ hpoly_sym_mul(const num_t *ca1, const num_t *cb1, const num_t *ca2, const num_t 
 }
 
 static inline void
-hpoly_asym_mul(const num_t *ca, const num_t *cb, num_t *cc, int na, int nb,
+hpoly_asym_mul(const NUM *ca, const NUM *cb, NUM *cc, int na, int nb,
                const idx_t l[], const int *idx[])
 {
-#ifdef TRACE
-  printf("asym_mul\n");
-#endif
   // oa > ob so longer loop is inside
   for (idx_t ib=0; ib < nb; ib++)
     if (cb[ib])
@@ -86,13 +76,10 @@ hpoly_asym_mul(const num_t *ca, const num_t *cb, num_t *cc, int na, int nb,
 static inline void
 hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, int in_parallel)
 {
-#ifdef TRACE
-  printf("hpoly_mul\n");
-#endif
   D *d = c->desc;
   int *pi = d->hpoly_To_idx, hod = d->mo/2;
-  const num_t *ca = a->coef,  *cb = b->coef;
-        num_t *cc = c->coef;
+  const NUM *ca = a->coef,  *cb = b->coef;
+        NUM *cc = c->coef;
         bit_t nza = a->nz  ,  nzb = b->nz;
 
   for (int i = 0; ocs[i]; ++i) {
@@ -150,10 +137,6 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, int in_par
 static inline void
 hpoly_mul_par(const T *a, const T *b, T *c)
 {
-#ifdef TRACE
-  printf("poly_mul_parallel\n");
-#endif
-
   int nb_threads = omp_get_num_procs();
   bit_t c_nzs[nb_threads];
   for (int t = 0; t < nb_threads; ++t)
@@ -171,9 +154,6 @@ hpoly_mul_par(const T *a, const T *b, T *c)
 static inline void
 hpoly_mul_ser(const T *a, const T *b, T *c)
 {
-#ifdef TRACE
-  printf("poly_mul_serial\n");
-#endif
   hpoly_mul(a,b,c,c->desc->ocs[0],&c->nz,0);
 }
 
@@ -195,7 +175,7 @@ der_coef(idx_t ia, idx_t di, ord_t der_ord, const D* d)
 }
 
 static inline void
-hpoly_der_lt(const num_t ca[], num_t cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
+hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *pi = d->hpoly_To_idx;
@@ -212,7 +192,7 @@ hpoly_der_lt(const num_t ca[], num_t cc[], idx_t idx, ord_t oc, ord_t ord, bit_t
 }
 
 static inline void
-hpoly_der_eq(const num_t ca[], num_t cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
+hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *pi = d->hpoly_To_idx;
@@ -229,7 +209,7 @@ hpoly_der_eq(const num_t ca[], num_t cc[], idx_t idx, ord_t oc, ord_t ord, bit_t
 }
 
 static inline void
-hpoly_der_gt(const num_t ca[], num_t cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
+hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
   const idx_t *lc = d->L[oc*ho + ord], *pi = d->hpoly_To_idx;
@@ -250,8 +230,8 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
   D *d = c->desc;
   idx_t *pi = d->hpoly_To_idx;
-  const num_t *ca = a->coef;
-        num_t *cc;
+  const NUM *ca = a->coef;
+        NUM *cc;
 
   c->hi = MIN3(c->mo, d->trunc, a->hi-ord);  // initial guess, readjust based on nz
   for (int oc = 1; oc <= c->hi; ++oc)
@@ -273,7 +253,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 // --- --- UNARY ---------------------------------------------------------------
 
 void
-mad_tpsa_abs(const T *a, T *c)
+FUN(abs) (const T *a, T *c)
 {
   assert(a && c);
   ensure(a->desc == c->desc);
@@ -287,11 +267,11 @@ mad_tpsa_abs(const T *a, T *c)
     c->coef[i] = fabs(a->coef[i]);
 }
 
-num_t
-mad_tpsa_nrm1(const T *a, const T *b_)
+NUM
+FUN(nrm1) (const T *a, const T *b_)
 {
   assert(a);
-  num_t norm = 0.0;
+  NUM norm = 0.0;
   int *pi = a->desc->hpoly_To_idx;
   if (b_) {
     ensure(a->desc == b_->desc);
@@ -316,11 +296,11 @@ mad_tpsa_nrm1(const T *a, const T *b_)
   return norm;
 }
 
-num_t
-mad_tpsa_nrm2(const T *a, const T *b_)
+NUM
+FUN(nrm2) (const T *a, const T *b_)
 {
   assert(a);
-  num_t norm = 0.0;
+  NUM norm = 0.0;
   int *pi = a->desc->hpoly_To_idx;
   if (b_) {
     ensure(a->desc == b_->desc);
@@ -346,24 +326,21 @@ mad_tpsa_nrm2(const T *a, const T *b_)
 }
 
 void
-mad_tpsa_der(const T *a, T *c, int var)
+FUN(der) (const T *a, T *c, int var)
 {
-#ifdef TRACE
-  printf("mad_tpsa_der\n");
-#endif
   assert(a && c && a != c);
   ensure(var >= a->desc->hpoly_To_idx[1] && var < a->desc->hpoly_To_idx[2]);
   // TODO: ensure map_order[var] > 0
 
-  if (a->hi == 0) { mad_tpsa_clear(c); return; }
-  mad_tpsa_scalar(c,mad_tpsa_geti(a,var));  // TODO: what if alpha[var] == 0 ?
+  if (a->hi == 0) { FUN(clear)(c); return; }
+  FUN(scalar)(c,FUN(geti)(a,var));  // TODO: what if alpha[var] == 0 ?
 
   D *d = c->desc;
   c->hi = MIN3(c->mo, d->trunc, a->hi-1);
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
 
   idx_t *pi = d->hpoly_To_idx;
-  const num_t *ca = a->coef;
+  const NUM *ca = a->coef;
 
   ord_t der_ord = 1, oc = 1;
   if (mad_bit_get(a->nz,oc+1))
@@ -376,11 +353,8 @@ mad_tpsa_der(const T *a, T *c, int var)
 }
 
 void
-mad_tpsa_mder(const T *a, T *c, int n, const ord_t mono[n])
+FUN(mder) (const T *a, T *c, int n, const ord_t mono[n])
 {
-#ifdef TRACE
-  printf("mad_tpsa_der_m\n");
-#endif
   assert(a && c && a != c);
   assert(a->desc == c->desc);
   ensure(mad_desc_mono_isvalid(a->desc,n,mono));
@@ -389,12 +363,12 @@ mad_tpsa_mder(const T *a, T *c, int n, const ord_t mono[n])
   ensure(der_ord > 0);
   idx_t idx = mad_desc_get_idx(a->desc,n,mono);
   if (idx < a->desc->hpoly_To_idx[2]) {  // fallback on simple version
-    mad_tpsa_der(a,c,idx);
+    FUN(der)(a,c,idx);
     return;
   }
 
   // ord 0 & setup
-  mad_tpsa_scalar(c,mad_tpsa_geti(a,idx) * der_coef(idx,idx,der_ord,a->desc));
+  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,a->desc));
   if (a->hi <= der_ord)
     return;
 
@@ -403,15 +377,12 @@ mad_tpsa_mder(const T *a, T *c, int n, const ord_t mono[n])
 }
 
 void
-mad_tpsa_scl(const T *a, num_t v, T *c)
+FUN(scl) (const T *a, NUM v, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_scale %lf\n", v);
-#endif
   assert(a && c);
   ensure(a->desc == c->desc);
 
-  if (a->hi == 0) { mad_tpsa_scalar(c, v*a->coef[0]); return; }
+  if (a->hi == 0) { FUN(scalar)(c, v*a->coef[0]); return; }
 
   D *d = a->desc;
   c->lo = a->lo;
@@ -438,18 +409,15 @@ do { \
 } while(0) \
 
 void
-mad_tpsa_acc(const T *a, num_t v, T *c)
+FUN(acc) (const T *a, NUM v, T *c)
 {
-#ifdef TRACE
-  printf("scale_and_accum %lf\n", v);
-#endif
   assert(a && c);
   ensure(a->desc == c->desc);
   if (!v || a->lo > a->hi) return;
 
   D *d = c->desc;
-  const num_t *ca = a->coef;
-        num_t *cc = c->coef;
+  const NUM *ca = a->coef;
+        NUM *cc = c->coef;
   ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
   ord_t new_lo = MIN(a->lo,c->lo);
 
@@ -465,11 +433,8 @@ mad_tpsa_acc(const T *a, num_t v, T *c)
 
 /* TODO: check if this version is faster or not than the one above
 void
-mad_tpsa_acc(const T *a, num_t v, T *c)
+FUN(acc) (const T *a, NUM v, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_acc\n");
-#endif
   assert(a && c);
   ensure(a->desc == c->desc);
   if (!v || a->lo > a->hi) return;
@@ -487,11 +452,8 @@ mad_tpsa_acc(const T *a, num_t v, T *c)
 */
 
 void
-mad_tpsa_add(const T *a, const T *b, T *c)
+FUN(add) (const T *a, const T *b, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_add\n");
-#endif
   assert(a && b && c);
   ensure(a->desc == b->desc && a->desc == c->desc);
 
@@ -506,11 +468,8 @@ mad_tpsa_add(const T *a, const T *b, T *c)
 }
 
 void
-mad_tpsa_sub(const T *a, const T *b, T *c)
+FUN(sub) (const T *a, const T *b, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_sub\n");
-#endif
   assert(a && b && c);
   ensure(a->desc == b->desc && a->desc == c->desc);
 
@@ -526,25 +485,22 @@ mad_tpsa_sub(const T *a, const T *b, T *c)
 }
 
 void
-mad_tpsa_mul(const T *a, const T *b, T *r)
+FUN(mul) (const T *a, const T *b, T *r)
 {
-#ifdef TRACE
-  printf("tpsa_mul\n");
-#endif
   assert(a && b && r);
   ensure(a->desc == b->desc && a->desc == r->desc);
 
-  T *c = (a == r || b == r) ? r->desc->t0 : r;
+  T *c = (a == r || b == r) ? r->desc->PFX(t0) : r;
 
   D *d = a->desc;
   c->lo = a->lo + b->lo;
   c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
 
   // empty
-  if (c->lo > c->hi) { mad_tpsa_clear(c); goto ret; }
+  if (c->lo > c->hi) { FUN(clear)(c); goto ret; }
 
   // order 0
-  num_t a0 = a->coef[0], b0 = b->coef[0];
+  NUM a0 = a->coef[0], b0 = b->coef[0];
   c->coef[0] = a0 * b0;
   c->nz = c->coef[0] != 0;
   if (c->hi == 0) {
@@ -593,32 +549,26 @@ mad_tpsa_mul(const T *a, const T *b, T *r)
 
 ret:
   assert(a != c && b != c);
-  if (c != r) mad_tpsa_copy(c,r);
+  if (c != r) FUN(copy)(c,r);
 }
 
 void
-mad_tpsa_div(const T *a, const T *b, T *c)
+FUN(div) (const T *a, const T *b, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_div\n");
-#endif
   assert(a && b && c);
   ensure(a->desc == b->desc && a->desc == c->desc);
   ensure(b->coef[0] != 0);
 
-  if (b->hi == 0) { mad_tpsa_scl(a,1/b->coef[0],c); return; }
+  if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
-  T *tmp = c->desc->t4;  // t1-t3 used in inv
-  mad_tpsa_inv(b,1,tmp);
-  mad_tpsa_mul(a,tmp,c);
+  T *tmp = c->desc->PFX(t4);  // t1-t3 used in inv
+  FUN(inv) (b,1,tmp);
+  FUN(mul) (a,tmp,c);
 }
 
 void
-mad_tpsa_ipow(const T *a, T *c, int n)
+FUN(ipow) (const T *a, T *c, int n)
 {
-#ifdef TRACE
-  printf("tpsa_pow %p to %d\n", (void*)a, n);
-#endif
   assert(a && c);
   ensure(a->desc == c->desc);
 
@@ -626,55 +576,49 @@ mad_tpsa_ipow(const T *a, T *c, int n)
 
   if (n < 0) { n = -n; inv = 1; }
 
-  T *t1 = c->desc->t1;
+  T *t1 = c->desc->PFX(t1);
 
   switch (n) {
-    case 0: mad_tpsa_scalar(c, 1); break; // ok: no copy
-    case 1: mad_tpsa_copy(a, c);   break; // ok: 1 copy
-    case 2: mad_tpsa_mul(a,a, c);  break; // ok: 1 copy if a==c
-    case 3: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,a,  c); break; // ok: 1 copy if a==c
-    case 4: mad_tpsa_mul(a,a, t1); mad_tpsa_mul(t1,t1, c); break; // ok: no copy
+    case 0: FUN(scalar) (c, 1);    break; // ok: no copy
+    case 1: FUN(copy  ) (a, c);    break; // ok: 1 copy
+    case 2: FUN(mul   ) (a,a, c);  break; // ok: 1 copy if a==c
+    case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
+    case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
     default: {
-      T *t2 = c->desc->t2;
+      T *t2 = c->desc->PFX(t2);
 
-      mad_tpsa_copy  (a, t1);
-      mad_tpsa_scalar(c, 1 );
+      FUN(copy  )(a, t1);
+      FUN(scalar)(c, 1 );
 
       for (;;) {
-        if (n  & 1)   mad_tpsa_mul(c ,t1, c ); // ok: 1 copy
-        if (n /= 2) { mad_tpsa_mul(t1,t1, t2); T *t=t2; t2=t1; t1=t; } // ok: no copy
+        if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
+        if (n /= 2) { FUN(mul)(t1,t1, t2); T *t=t2; t2=t1; t1=t; } // ok: no copy
         else break;
       }
     }
   }
 
-  if (inv) mad_tpsa_inv(c,1, c);
+  if (inv) FUN(inv)(c,1, c);
 }
 
 void
-mad_tpsa_axpb(num_t a, const T *x, num_t b, T *r)
+FUN(axpb) (NUM a, const T *x, NUM b, T *r)
 {
-#ifdef TRACE
-  printf("tpsa_axpb %g*x + %g\n", a, b);
-#endif
   assert(x && r);
   ensure(x->desc == r->desc);
-  mad_tpsa_scl(x,a,r);
-  if (b) mad_tpsa_set0(r, 1,b);
+  FUN(scl)(x,a,r);
+  if (b) FUN(set0)(r, 1,b);
 }
 
 void
-mad_tpsa_axpbypc(num_t c1, const T *a, num_t c2, const T *b, num_t c3, T *c)
+FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 {
-#ifdef TRACE
-  printf("tpsa_axpbypc %g*x + %g*y + %g\n", c1, c2, c3);
-#endif
   assert(a && b && c);
   ensure(a->desc == b->desc && b->desc == c->desc);
 
   if (a->lo > b->lo)  {
     const T* t; SWAP(a,b,t);
-    num_t n;    SWAP(c1,c2,n);
+    NUM n;    SWAP(c1,c2,n);
   }
   ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->desc->trunc);  // TODO: optimise c_hi == 0 ?
   TPSA_LINOP(c1 *, + c2 *, 0);  // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
@@ -683,58 +627,58 @@ mad_tpsa_axpbypc(num_t c1, const T *a, num_t c2, const T *b, num_t c3, T *c)
   c->hi = c_hi;
   c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
 
-  if (c3) mad_tpsa_set0(c, 1,c3);
+  if (c3) FUN(set0) (c, 1,c3);
 }
 
 void
-mad_tpsa_axypb(num_t a, const T *x, const T *y, num_t b, T *r)
+FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
 {
   assert(x && y && r);
   ensure(x->desc == y->desc && y->desc == r->desc);
 
-  T *t1 = (x == r || y == r) ? r->desc->t1 : r;
-  mad_tpsa_mul(x,y, t1);
-  mad_tpsa_axpb(a,t1, b, r);
+  T *t1 = (x == r || y == r) ? r->desc->PFX(t1) : r;
+  FUN(mul)(x,y, t1);
+  FUN(axpb)(a,t1, b, r);
 }
 
 void
-mad_tpsa_axypbzpc(num_t a, const T *x, const T *y, num_t b, const T *z, num_t c, T *r)
+FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
 {
   assert(x && y && z && r);
   ensure(x->desc == y->desc && y->desc == z->desc && z->desc == r->desc);
 
-  T *t1 = (x == r || y == r || z == r) ? r->desc->t1 : r;
-  mad_tpsa_mul(x,y, t1);
-  mad_tpsa_axpbypc(a,t1, b,z, c, r);
+  T *t1 = (x == r || y == r || z == r) ? r->desc->PFX(t1) : r;
+  FUN(mul)(x,y, t1);
+  FUN(axpbypc)(a,t1, b,z, c, r);
 }
 
 void
-mad_tpsa_axypbvwpc(num_t a, const T *x, const T *y,
-                   num_t b, const T *v, const T *w, num_t c, T *r)
+FUN(axypbvwpc) (NUM a, const T *x, const T *y,
+                NUM b, const T *v, const T *w, NUM c, T *r)
 {
   assert(x && y && v && w && r);
   ensure(x->desc == y->desc && y->desc == v->desc && v->desc == w->desc && w->desc == r->desc);
 
-  T *t1 = (x == r || y == r || v == r || w == r) ? r->desc->t1 : r;
-  T *t2 = (v == r || w == r || t1 == r) ? r->desc->t2 : r;
-  mad_tpsa_mul(x,y, t1);
-  mad_tpsa_mul(v,w, t2);
-  mad_tpsa_axpbypc(a,t1, b,t2, c, r);
+  T *t1 = (x == r || y == r || v == r || w == r) ? r->desc->PFX(t1) : r;
+  T *t2 = (v == r || w == r || t1 == r) ? r->desc->PFX(t2) : r;
+  FUN(mul)(x,y, t1);
+  FUN(mul)(v,w, t2);
+  FUN(axpbypc)(a,t1, b,t2, c, r);
 }
 
 void
-mad_tpsa_ax2pby2pcz2(num_t a, const T *x, num_t b, const T *y, num_t c, const T *z, T *r)
+FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
 {
   assert(x && y && z && r);
   ensure(x->desc == y->desc && y->desc == z->desc && z->desc == r->desc);
 
-  T *t3 = (z == r) ? r->desc->t3 : r;
-  mad_tpsa_axypbvwpc(a,x,x, b,y,y, 0, t3);
-  mad_tpsa_axypbzpc(c,z,z, 1,t3, 0, r);
+  T *t3 = (z == r) ? r->desc->PFX(t3) : r;
+  FUN(axypbvwpc)(a,x,x, b,y,y, 0, t3);
+  FUN(axypbzpc)(c,z,z, 1,t3, 0, r);
 }
 
 void
-mad_tpsa_poisson(const T *a, const T *b, T *c, int n)
+FUN(poisson) (const T *a, const T *b, T *c, int n)
 {
   // C = [A,B] (POISSON BRACKET, 2*n: No of PHASEVARS
   assert(a && b && c);
@@ -742,23 +686,23 @@ mad_tpsa_poisson(const T *a, const T *b, T *c, int n)
 
   T *is[4];
   for (int i = 0; i < 4; ++i)
-    is[i] = mad_tpsa_new(a, a->desc->trunc);
+    is[i] = FUN(new)(a, a->desc->trunc);
 
   for (int i = 1; i <= n; ++i) {
-    mad_tpsa_der(a, is[0], 2*i - 1);
-    mad_tpsa_der(b, is[1], 2*i    );
-    mad_tpsa_mul(is[0],is[1],is[2]);
-    mad_tpsa_add(is[3],is[2],is[0]);
-    mad_tpsa_copy(is[0],is[3]);      // TODO: use swap ?
+    FUN(der)(a, is[0], 2*i - 1);
+    FUN(der)(b, is[1], 2*i    );
+    FUN(mul)(is[0],is[1],is[2]);
+    FUN(add)(is[3],is[2],is[0]);
+    FUN(copy)(is[0],is[3]);      // TODO: use swap ?
 
-    mad_tpsa_der(a, is[0], 2*i    );
-    mad_tpsa_der(b, is[1], 2*i - 1);
-    mad_tpsa_mul(is[0],is[1],is[2]);
-    mad_tpsa_sub(is[3],is[2],is[0]);
-    mad_tpsa_copy(is[0],is[3]);
+    FUN(der)(a, is[0], 2*i    );
+    FUN(der)(b, is[1], 2*i - 1);
+    FUN(mul)(is[0],is[1],is[2]);
+    FUN(sub)(is[3],is[2],is[0]);
+    FUN(copy)(is[0],is[3]);
   }
 
-  mad_tpsa_copy(is[3], c);
+  FUN(copy)(is[3], c);
   for (int i = 0; i < 4; ++i)
-    mad_tpsa_del(is[i]);
+    FUN(del)(is[i]);
 }

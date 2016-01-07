@@ -38,18 +38,18 @@ get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
   D *d = a->desc;
   ord_t mono[d->nv], knb_mono[d->nv];
   mad_mono_cpy(d->nv, pure_mono, mono);
-  num_t val;
+  NUM val;
   idx_t idx, idx_knb_only;
-  mad_tpsa_clear(knb_coef);
+  FUN(clear)(knb_coef);
 
   do {
     idx = mad_desc_get_idx(d, d->nv, mono);
-    val = mad_tpsa_geti(a,idx);
+    val = FUN(geti)(a,idx);
     if (val) {
       mad_mono_cpy (d->nv , mono, knb_mono);
       mad_mono_fill(d->nmv, knb_mono, 0);  // remove map vars, keep only the knobs
       idx_knb_only = mad_desc_get_idx(d, d->nv, knb_mono);
-      mad_tpsa_seti(knb_coef, idx_knb_only, 0.0, val);
+      FUN(seti)(knb_coef, idx_knb_only, 0.0, val);
     }
   } while(mad_desc_mono_nxtbyvar(d, d->nv, mono /*, d->nmv*/));
 
@@ -61,19 +61,19 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
 {
   D *d = ma[0]->desc;
   if (d->nmv < d->nv) { // there are knobs
-    T *knb_coef = mad_tpsa_newd(d,d->ko);
-    T *tmp      = mad_tpsa_newd(d,d->trunc);
+    T *knb_coef = FUN(newd)(d,d->ko);
+    T *tmp      = FUN(newd)(d,d->trunc);
 
     for (int i = 0; i < sa; ++i) {
-      mad_tpsa_scalar(mc[i],ma[i]->coef[0]);
+      FUN(scalar)(mc[i],ma[i]->coef[0]);
 
       // ord 1 -- vars
       for (int v = 1; v <= d->nmv; ++v)
         if (ma[i]->coef[v]) {
           T *coef = get_knobs_coef(ma[i], d->To[v], knb_coef);
           if (coef->nz) {
-            mad_tpsa_mul(coef, mb[v-1], tmp);
-            mad_tpsa_acc(tmp, 1, mc[i]);
+            FUN(mul)(coef, mb[v-1], tmp);
+            FUN(acc)(tmp, 1, mc[i]);
           }
         }
       // ord 1 -- knobs
@@ -83,10 +83,10 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
   }
   else {                        // no knobs
     for (int i = 0; i < sa; ++i) {
-      mad_tpsa_scalar(mc[i], ma[i]->coef[0]);
+      FUN(scalar)(mc[i], ma[i]->coef[0]);
       for (int v = 1; v <= d->nv; ++v) {
-        num_t coef = mad_tpsa_geti(ma[i],v);
-        if (coef) mad_tpsa_acc(mb[v-1], coef, mc[i]);
+        NUM coef = FUN(geti)(ma[i],v);
+        if (coef) FUN(acc)(mb[v-1], coef, mc[i]);
       }
     }
   }
@@ -101,21 +101,21 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
     return;
 
   if (o > 0)
-    mad_tpsa_mul(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
+    FUN(mul)(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
 
   if (da->nmv < da->nv) { // there are knobs
     for (int i = 0; i < ctx->sa; ++i) {
       T *coef = get_knobs_coef(ctx->ma[i], curr_mono, ctx->knb_coef);
       if (coef->nz) {
-        mad_tpsa_mul(coef, ctx->ords[o], ctx->tmp);
-        mad_tpsa_acc(ctx->tmp, 1, ctx->mc[i]);
+        FUN(mul)(coef, ctx->ords[o], ctx->tmp);
+        FUN(acc)(ctx->tmp, 1, ctx->mc[i]);
       }
     }
   }
   else {                        // no knobs
     for (int i = 0; i < ctx->sa; ++i) {
-      num_t coef = mad_tpsa_geti(ctx->ma[i],idx);
-      if (coef) mad_tpsa_acc(ctx->ords[o], coef, ctx->mc[i]);
+      NUM coef = FUN(geti)(ctx->ma[i],idx);
+      if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[i]);
     }
   }
 
@@ -134,7 +134,6 @@ init_required(int sa, const T *ma[sa], char required[])
   D *d = ma[0]->desc;
   int nv = d->nv, *pi = d->hpoly_To_idx;
   ord_t highest_ord = 0;
-  double eps = 1e-10; // LD: very bad!!!
 
   // original nodes
   memset(required, 0, d->nc);
@@ -142,8 +141,7 @@ init_required(int sa, const T *ma[sa], char required[])
     if (ma[i]->hi > highest_ord)
       highest_ord = ma[i]->hi;
     for (int c = 0; c < pi[ ma[i]->hi+1 ]; ++c)
-      if (mad_bit_get(ma[i]->nz, d->ords[c])
-          && (ma[i]->coef[c] < -eps || ma[i]->coef[c] > eps)) // != 0
+      if (mad_bit_get(ma[i]->nz, d->ords[c]) && ma[i]->coef[c] != 0)
         required[c] = 1;
   }
 
@@ -170,10 +168,6 @@ init_required(int sa, const T *ma[sa], char required[])
 static inline void
 compose_serial(int sa, const T *ma[], const T *mb[], T *mc[])
 {
-#ifdef TRACE
-  printf("compose_serial\n");
-#endif
-
   // locals
   D *da = ma[0]->desc;
   ord_t mono[da->nv];
@@ -188,25 +182,25 @@ compose_serial(int sa, const T *ma[], const T *mb[], T *mc[])
 
   // initialization
   for (int v = 0; v <  da->nv; ++v) mono[v] = 0;
-  for (int o = 0; o <= highest_ord; ++o) ords[o] = mad_tpsa_newd(da,da->trunc);
-  mad_tpsa_scalar(ords[0],1.0);
+  for (int o = 0; o <= highest_ord; ++o) ords[o] = FUN(newd)(da,da->trunc);
+  FUN(scalar)(ords[0],1.0);
   for (int ic = 0; ic < sa; ++ic)
-    mad_tpsa_clear(mc[ic]);
+    FUN(clear)(mc[ic]);
 
   CTX ctx = { .sa=sa, .ma=ma,   .mc=mc,  .required=required,
               .da=da, .mb=mb, .ords=ords  };
-  ctx.knb_coef = da->ko ? mad_tpsa_newd(da,da->ko) : NULL;
-  ctx.tmp      = mad_tpsa_newd(da,da->trunc);
+  ctx.knb_coef = da->ko ? FUN(newd)(da,da->ko) : NULL;
+  ctx.tmp      = FUN(newd)(da,da->trunc);
 
   // do composition from root of tree, ord 0
   compose(0, 0, mono, &ctx);
 
   // cleanup
   for (int o = 0; o <= highest_ord; ++o)
-    mad_tpsa_del(ords[o]);
+    FUN(del)(ords[o]);
 
-  mad_tpsa_del(ctx.knb_coef);
-  mad_tpsa_del(ctx.tmp);
+  FUN(del)(ctx.knb_coef);
+  FUN(del)(ctx.tmp);
 }
 
 #undef CTX

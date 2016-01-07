@@ -151,11 +151,9 @@ void   mad_ctpsa_minv    (int sa, const T *ma[],                        int sc, 
 void   mad_ctpsa_pminv   (int sa, const T *ma[],                        int sc, T *mc[], int row_select[sa]);
 
 // I/O
-void   mad_ctpsa_scan_coef(      T *t, FILE *stream_);
+void   mad_ctpsa_scan_coef(      T *t, FILE *stream_); // TODO
 T*     mad_ctpsa_scan     (            FILE *stream_); // TODO
-void   mad_ctpsa_print    (const T *t, FILE *stream_);
-struct tpsa_desc*
-       mad_ctpsa_scan_desc(            FILE *stream_);
+void   mad_ctpsa_print    (const T *t, str_t name_, FILE *stream_);
 void   mad_ctpsa_debug    (const T *t);
 
 #define mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)

@@ -20,18 +20,15 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_vec.h" // mad_tpsa_minv
-#include "mad_mat.h" // mad_tpsa_minv
-#include "mad_tpsa.h"
-
-#include "mad_tpsa_impl.h"
+#include "mad_vec.h"
+#include "mad_mat.h"
 #include "mad_desc_impl.h"
 
-#define T struct tpsa
-#define D struct tpsa_desc
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
+#ifdef    MAD_CTPSA_IMPL
+#include "mad_ctpsa_impl.h"
+#else
+#include "mad_tpsa_impl.h"
+#endif
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
 
@@ -53,7 +50,7 @@ check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
   ensure(ma[0]->desc == mc[0]->desc);
 }
 
-/* GSL BASED VERSION
+/* GSL BASED REAL VERSION (NO COMPLEX)
 
 #include <gsl/gsl_linalg.h>
 #include <gsl/gsl_matrix.h>
@@ -75,14 +72,14 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
     for (; v < cv; ++v) gsl_matrix_set(mat_var, i,v   , ma[i]->coef[v+1]);
     for (; v < nv; ++v) gsl_matrix_set(mat_knb, i,v-cv, ma[i]->coef[v+1]);
 
-    mad_tpsa_copy(ma[i], nonlin[i]);
+    FUN(copy)(ma[i], nonlin[i]);
 
     // clear constant and linear part
     for (int c = 0; c < d->hpoly_To_idx[2]; ++c)
       nonlin[i]->coef[c] = 0;
     nonlin[i]->nz = bclr(nonlin[i]->nz,0);
     nonlin[i]->nz = bclr(nonlin[i]->nz,1);
-    mad_tpsa_scl(nonlin[i],-1,nonlin[i]);
+    FUN(scl)(nonlin[i],-1,nonlin[i]);
   }
 
   // invert linear
@@ -94,16 +91,16 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 
   if (nk != 0) {
     gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
-                   -1.0, mat_vari, mat_knb,
-                    0.0, mat_knbi);
+                   -1, mat_vari, mat_knb,
+                    0, mat_knbi);
   }
 
   // copy result into TPSA
   for (int i = 0; i < cv; ++i) {
     for (int v = 0; v < cv; ++v)
-      mad_tpsa_seti(lin_inv[i], v    +1, 0.0, gsl_matrix_get(mat_vari, i,v));
+      FUN(seti)(lin_inv[i], v    +1, 0, gsl_matrix_get(mat_vari, i,v));
     for (int k = 0; k < nk; ++k)
-      mad_tpsa_seti(lin_inv[i], k+cv +1, 0.0, gsl_matrix_get(mat_knbi, i,k));
+      FUN(seti)(lin_inv[i], k+cv +1, 0, gsl_matrix_get(mat_knbi, i,k));
   }
 
   gsl_matrix_free(mat_var);
@@ -117,10 +114,10 @@ static void
 split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 {
   int nv = d->nv, cv = d->nmv, nk = nv - cv; // #vars, #canonical vars, #knobs
-  alloc_tmp(num_t, mat_var , cv*cv); // canonical vars
-  alloc_tmp(num_t, mat_vari, cv*cv); // inverse of vars
-  alloc_tmp(num_t, mat_knb , cv*nk); // knobs
-  alloc_tmp(num_t, mat_knbi, cv*nk); // 'inverse' of knobs
+  alloc_tmp(NUM, mat_var , cv*cv); // canonical vars
+  alloc_tmp(NUM, mat_vari, cv*cv); // inverse of vars
+  alloc_tmp(NUM, mat_knb , cv*nk); // knobs
+  alloc_tmp(NUM, mat_knbi, cv*nk); // 'inverse' of knobs
 
   // split linear, (-1 * nonlinear)
   for (int i = 0; i < cv; ++i) {
@@ -128,7 +125,7 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
     for (; v < cv; ++v) mat_var[i*cv +  v    ] = ma[i]->coef[v+1];
     for (; v < nv; ++v) mat_knb[i*nk + (v-cv)] = ma[i]->coef[v+1];
 
-    mad_tpsa_copy(ma[i], nonlin[i]);
+    FUN(copy)(ma[i], nonlin[i]);
 
     // clear constant and linear part
     for (int c = 0; c < d->hpoly_To_idx[2]; ++c)
@@ -136,24 +133,32 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 
     nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,0);
     nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,1);
-    mad_tpsa_scl(nonlin[i],-1,nonlin[i]);
+    FUN(scl)(nonlin[i],-1,nonlin[i]);
   }
 
   // invert linear part: mat_vari = mat_var^-1
-  mad_mat_invn(mat_var, 1.0, mat_vari, cv, cv, -1.0);
-
+# ifndef MAD_CTPSA_IMPL
+  mad_mat_invn(mat_var, 1, mat_vari, cv, cv, -1);
   if (nk != 0) {
     // mat_knbi = - mat_vari * mat_knb
     mad_mat_mul(mat_vari, mat_knb, mat_knbi, cv, nk, cv);
-    mad_vec_muln(mat_knbi, -1.0, mat_knbi, cv*nk);
+    mad_vec_muln(mat_knbi, -1, mat_knbi, cv*nk);
   }
+# else
+  mad_cmat_invn(mat_var, 1, mat_vari, cv, cv, -1);
+  if (nk != 0) {
+    // mat_knbi = - mat_vari * mat_knb
+    mad_cmat_mul(mat_vari, mat_knb, mat_knbi, cv, nk, cv);
+    mad_cvec_muln(mat_knbi, -1, mat_knbi, cv*nk);
+  }
+# endif
 
   // copy result into TPSA
   for (int i = 0; i < cv; ++i) {
     for (int v = 0; v < cv; ++v)
-      mad_tpsa_seti(lin_inv[i], v    +1, 0.0, mat_vari[i*cv + v]);
+      FUN(seti)(lin_inv[i], v    +1, 0, mat_vari[i*cv + v]);
     for (int k = 0; k < nk; ++k)
-      mad_tpsa_seti(lin_inv[i], k+cv +1, 0.0, mat_knbi[i*nk + k]);
+      FUN(seti)(lin_inv[i], k+cv +1, 0, mat_knbi[i*nk + k]);
   }
 
   free_tmp(mat_var );
@@ -165,7 +170,7 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
 
 void
-mad_tpsa_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
+FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
 {
   assert(ma && mc);
   check_minv(sa,ma,sc,mc);
@@ -175,9 +180,9 @@ mad_tpsa_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
   D *d = ma[0]->desc;
   T *lin_inv[sa], *nonlin[sa], *tmp[sa];
   for (int i = 0; i < sa; ++i) {
-    lin_inv[i] = mad_tpsa_newd(d,1);
-    nonlin[i]  = mad_tpsa_new(ma[i], mad_tpsa_same);
-    tmp[i]     = mad_tpsa_new(ma[i], mad_tpsa_same);
+    lin_inv[i] = FUN(newd)(d,1);
+    nonlin[i]  = FUN(new)(ma[i], mad_tpsa_same);
+    tmp[i]     = FUN(new)(ma[i], mad_tpsa_same);
   }
 
   split_and_inv(d, ma, lin_inv, nonlin);
@@ -186,28 +191,28 @@ mad_tpsa_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
   // MC (OF ORDER I) = AL^-1 o [ I - ANL (NONLINEAR) o MC (OF ORDER I-1) ]
 
   for (int i = 0; i < sa; ++i)
-    mad_tpsa_copy(lin_inv[i], mc[i]);
+    FUN(copy)(lin_inv[i], mc[i]);
 
   for (int o = 2; o <= d->mo; ++o) {
     d->trunc = o;
-    mad_tpsa_compose(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
+    FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
 
     for (int v = 0; v < sa; ++v)
-      mad_tpsa_seti(tmp[v], v+1, 1.0,1.0);    // add I
+      FUN(seti)(tmp[v], v+1, 1.0,1.0);    // add I
 
-    mad_tpsa_compose(sa, (const T**)lin_inv, sa, (const T**)tmp, sa, mc);
+    FUN(compose)(sa, (const T**)lin_inv, sa, (const T**)tmp, sa, mc);
   }
 
   // cleanup
   for (int i = 0; i < sa; ++i) {
-    mad_tpsa_del(lin_inv[i]);
-    mad_tpsa_del(nonlin[i]);
-    mad_tpsa_del(tmp[i]);
+    FUN(del)(lin_inv[i]);
+    FUN(del)(nonlin[i]);
+    FUN(del)(tmp[i]);
   }
 }
 
 void
-mad_tpsa_pminv(int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
+FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
 {
   assert(ma && mc && row_select);
   check_minv(sa,ma,sc,mc);
@@ -220,30 +225,30 @@ mad_tpsa_pminv(int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
   for (int i = 0; i < sa; ++i) {
     if (row_select[i]) {
-      mUsed  [i] = mad_tpsa_new (ma[i], mad_tpsa_same);
-      mInv   [i] = mad_tpsa_new (ma[i], mad_tpsa_same);
-      mUnused[i] = mad_tpsa_newd(d,1);
-      mad_tpsa_copy(ma[i],mUsed[i]);
-      mad_tpsa_seti(mUnused[i], i+1,  0.0,1.0);
+      mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
+      mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
+      mUnused[i] = FUN(newd)(d,1);
+      FUN(copy)(ma[i],mUsed[i]);
+      FUN(seti)(mUnused[i], i+1,  0.0,1.0);
     }
     else {
-      mUsed  [i] = mad_tpsa_newd(d,1);
-      mInv   [i] = mad_tpsa_newd(d,1);
-      mUnused[i] = mad_tpsa_new (ma[i], mad_tpsa_same);
-      mad_tpsa_copy(ma[i],mUnused[i]);
-      mad_tpsa_seti(mUsed[i], i+1,  0.0,1.0);
+      mUsed  [i] = FUN(newd)(d,1);
+      mInv   [i] = FUN(newd)(d,1);
+      mUnused[i] = FUN(new) (ma[i], mad_tpsa_same);
+      FUN(copy)(ma[i],mUnused[i]);
+      FUN(seti)(mUsed[i], i+1,  0.0,1.0);
     }
-    mad_tpsa_set0(mUsed  [i], 0.0,0.0);
-    mad_tpsa_set0(mUnused[i], 0.0,0.0);
+    FUN(set0)(mUsed  [i], 0.0,0.0);
+    FUN(set0)(mUnused[i], 0.0,0.0);
   }
 
-  mad_tpsa_minv(sa,(const T**)mUsed,sa,mInv);
-  mad_tpsa_compose(sa,(const T**)mUnused,sa,(const T**)mInv,sc,mc);
+  FUN(minv)(sa,(const T**)mUsed,sa,mInv);
+  FUN(compose)(sa,(const T**)mUnused,sa,(const T**)mInv,sc,mc);
 
   for (int i = 0; i < sa; ++i) {
-    mad_tpsa_del(mUsed[i]);
-    mad_tpsa_del(mUnused[i]);
-    mad_tpsa_del(mInv[i]);
+    FUN(del)(mUsed[i]);
+    FUN(del)(mUnused[i]);
+    FUN(del)(mInv[i]);
   }
 }
 

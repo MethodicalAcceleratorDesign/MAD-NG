@@ -23,13 +23,12 @@
 
 #include "mad_log.h"
 #include "mad_desc_impl.h"
+
+#ifdef    MAD_CTPSA_IMPL
+#include "mad_ctpsa_impl.h"
+#else
 #include "mad_tpsa_impl.h"
-
-#define T struct tpsa
-#define D struct tpsa_desc
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
+#endif
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
 
@@ -63,11 +62,8 @@ check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
 
 void
-mad_tpsa_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
+FUN(compose) (int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 {
-#ifdef TRACE
-  printf("tpsa_compose\n");
-#endif
   check_compose(sa, ma, sb, mb, sc, mc);
 
   #ifdef _OPENMP

@@ -17,19 +17,20 @@
  o----------------------------------------------------------------------------o
 */
 
+#include <math.h>
 #include <string.h>
 #include <assert.h>
-#include <math.h>
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
+
+#ifdef    MAD_CTPSA_IMPL
+#include "mad_ctpsa_impl.h"
+#define  SPC "                     "
+#else
 #include "mad_tpsa_impl.h"
-
-#define T struct tpsa
-#define D struct tpsa_desc
-
-#undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
+#define  SPC
+#endif
 
 // --- LOCAL FUNCTIONS -------------------------------------------------------
 
@@ -75,14 +76,12 @@ scan_var_names(FILE *stream, int nmv, char *buf)
 
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
 
+#ifndef MAD_CTPSA_IMPL // only once
+
 D*
-mad_tpsa_scan_desc(FILE *stream_)
+FUN(scan_hdr) (FILE *stream_)
 {
-#ifdef TRACE
-  printf("tpsa_desc_read from %p\n", (void*)stream_);
-#endif
-  if (!stream_)
-    stream_ = stdin;
+  if (!stream_) stream_ = stdin;
 
   const int BUF_SIZE = 100;
   char buf[BUF_SIZE];
@@ -136,22 +135,25 @@ mad_tpsa_scan_desc(FILE *stream_)
   return d;
 }
 
+#endif // !MAD_CTPSA_IMPL
+
 void
-mad_tpsa_scan_coef(T *t, FILE *stream_)
+FUN(scan_coef) (T *t, FILE *stream_)
 {
-#ifdef TRACE
-  printf("tpsa_scan_coef from %p\n", (void*)stream_);
-#endif
   assert(t);
+  if (!stream_) stream_ = stdin;
 
-  if (!stream_)
-    stream_ = stdin;
-
-  num_t c;
+  NUM c;
   int nv = t->desc->nv, read_cnt = -1;
   ord_t o, ords[nv];
-  mad_tpsa_clear(t);
+  FUN(clear)(t);
+
+#ifndef MAD_CTPSA_IMPL
   while ((read_cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
+#else
+  while ((read_cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 2) {
+#endif 
+
     #ifdef DEBUG
       printf("c=%.2f o=%d\n", c, o);
     #endif
@@ -159,20 +161,20 @@ mad_tpsa_scan_coef(T *t, FILE *stream_)
     ensure(mad_mono_ord(nv,ords) == o);  // consistency check
     if (o > t->mo)  // TODO: give warning ?
       break;        // printed by increasing orders
-    mad_tpsa_setm(t,nv,ords, 0.0,c);
+    FUN(setm)(t,nv,ords, 0.0,c);
   }
 }
 
 T*
-mad_tpsa_scan(FILE *stream_)
+FUN(scan) (FILE *stream_)
 {
   // TODO
   (void)stream_;
-  ensure(0 && "NOT YET IMPLEMENTED");
+  ensure(!"NOT YET IMPLEMENTED");
 }
 
 void
-mad_tpsa_print(const T *t, FILE *stream_)
+FUN(print) (const T *t, str_t name_, FILE *stream_)
 {
   assert(t);
   // TODO: print map vars and name
@@ -181,9 +183,9 @@ mad_tpsa_print(const T *t, FILE *stream_)
   D *d = t->desc;
 
   // print header
-  str_t name = "-UNNAMED--";
+  if (!name_) name_ = "-UNNAMED--";
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
-          name,d->mo,d->nmv,d->ko, d->nv - d->nmv);
+          name_,d->mo,d->nmv,d->ko, d->nv - d->nmv);
   print_ords(d->nmv,d->map_ords,stream_);
   fprintf(stream_, " ||| VAR ORDS: ");
   print_ords(d->nv,d->var_ords,stream_);
@@ -200,11 +202,17 @@ mad_tpsa_print(const T *t, FILE *stream_)
     return;
   }
 
-  fprintf(stream_, "\n    I  COEFFICIENT          ORDER   EXPONENTS");
+  fprintf(stream_, "\n    I  COEFFICIENT         " SPC " ORDER   EXPONENTS");
   int idx = 1;
   for (int c = 0; c < d->nc; ++c)
     if (mad_bit_get(t->nz,d->ords[c]) && fabs(t->coef[c]) > 1e-10) {
-      fprintf(stream_, "\n%6d  %21.14lE%5hhu   ", idx, t->coef[c], d->ords[c]);
+
+#ifndef MAD_CTPSA_IMPL
+      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , idx, VAL(t->coef[c]), d->ords[c]);
+#else
+      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);      
+#endif
+
       print_ords(d->nv, d->To[c], stream_);
       idx++;
     }

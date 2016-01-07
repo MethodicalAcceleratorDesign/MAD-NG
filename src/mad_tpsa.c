@@ -125,9 +125,7 @@ FUN(copy) (const T *src, T *dst)
 
   for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
     dst->coef[i] = src->coef[i];
-#ifdef TRACE
-  printf("Copied from %p to %p\n", (void*)src, (void*)dst);
-#endif
+
   return dst;
 }
 
@@ -143,9 +141,6 @@ FUN(clear) (T *t)
 void
 FUN(del) (T *t)
 {
-#ifdef TRACE
-  printf("tpsa del %p\n", (void*)t);
-#endif
   D *d = t->desc;
   if (d->PFX(stack_top) < mad_desc_stack)
     d->PFX(stack)[++d->PFX(stack_top)] = t;
@@ -271,9 +266,6 @@ FUN(set0) (T *t, NUM a, NUM b)
 void
 FUN(seti) (T *t, int i, NUM a, NUM b)
 {
-#ifdef TRACE
-  printf("tpsa_seti for %p i=%d a=%lf b=%lf\n", (void*)t, i, a,b);
-#endif
   assert(t);
   D *d = t->desc;
   ensure(i >= 0 && i < d->nc && d->ords[i] <= t->mo);
@@ -315,9 +307,6 @@ FUN(setm) (T *t, int n, const ord_t m[n], NUM a, NUM b)
 {
   assert(t && m);
   assert(n <= t->desc->nv);
-#ifdef TRACE
-  printf("set_mono: "); mad_mono_print(n, m); printf("\n");
-#endif
   idx_t i = mad_desc_get_idx(t->desc,n,m);
   FUN(seti)(t,i,a,b);
 }
@@ -326,12 +315,6 @@ void
 FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
 {
   assert(t && m);
-#ifdef TRACE
-  printf("set_mono_sp: [ ");
-  for (int i=0; i < n; i += 2)
-    printf("%d %d  ", m[i], m[i+1]);
-  printf("]\n");
-#endif
   idx_t i = mad_desc_get_idx_sp(t->desc,n,m);
   FUN(seti)(t,i,a,b);
 }
