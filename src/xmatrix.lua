@@ -86,14 +86,13 @@ function gmath.isa_matrix (x)
 end
 
 local function matrix_alloc (nr, nc)
-  local len = nr*nc
-  local mat
+  local len, mat = nr*nc, nil
   if len < mad_alloc then
     mat = matrix_ctor(len)
   else
     local siz = ffi.sizeof('matrix_t', len)
     local ptr = clib.mad_malloc(siz)
-    local mat = ffi.gc(ffi.cast('matrix_t&', ptr), clib.mad_free)
+    mat = ffi.gc(ffi.cast('matrix_t&', ptr), clib.mad_free)
     ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
@@ -101,14 +100,13 @@ local function matrix_alloc (nr, nc)
 end
 
 local function cmatrix_alloc (nr, nc)
-  local len = nr*nc
-  local mat
+  local len, mat = nr*nc, nil
   if len < (mad_alloc/2) then
     mat = cmatrix_ctor(len)
   else
     local siz = ffi.sizeof('cmatrix_t', len)
     local ptr = clib.mad_malloc(siz)
-    local mat = ffi.gc(ffi.cast('cmatrix_t&', ptr), clib.mad_free)
+    mat = ffi.gc(ffi.cast('cmatrix_t&', ptr), clib.mad_free)
     ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
@@ -134,7 +132,7 @@ end
 local function cmatrix (nr, nc_)
   local nc = nc_ or 1
   if type(nr) == 'table' then
-    return mat_fromtable(cmatrix_alloc, nr)
+    return fromtable(cmatrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
     return cmatrix_alloc(nr, nc)
   else

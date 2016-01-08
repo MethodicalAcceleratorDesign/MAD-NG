@@ -55,8 +55,10 @@ local gmath = require 'gmath'
 -- ffi -----------------------------------------------------------------------o
 
 ffi.cdef[[
-typedef struct {
-  int id;     // warning: rest of fields are not exposed
+typedef struct { // warning: must be kept identical to C definition
+  int   id;
+  int   nmv, nv, nc;
+  ord_t mo, ko, trunc;
 } desc_t;
 
 typedef struct { // warning: must be kept identical to C definition
@@ -101,59 +103,59 @@ function gmath.isa_tpsa (x)
   return type(x) == 'cdata' and (istype('tpsa_t', x) or istype('ctpsa_t', x))
 end
 
-local function tpsa_alloc (nr, nc)
-  -- TODO
-  local len = nr*nc
-  local mat
+local function is_desc(x)
+  return type(x) == 'cdata' and istype('desc_t', x)
+end
+
+local isa_tpsa = gmath.isa_tpsa
+
+local function tpsa_alloc (desc, mo)
+  local len, tpsa = desc.nc, nil
   if len < mad_alloc then
-    mat = matrix_ctor(len)
+    tpsa = tpsa_ctor(len)
   else
-    local siz = ffi.sizeof('matrix_t', len)
+    local siz = ffi.sizeof('tpsa_t', len)
     local ptr = clib.mad_malloc(siz)
-    local mat = ffi.gc(ffi.cast('matrix_t&', ptr), clib.mad_free)
-    ffi.fill(mat, siz)
+    tpsa = ffi.gc(ffi.cast('tpsa_t&', ptr), clib.mad_free)
   end
-  mat.nr, mat.nc = nr, nc
-  return mat
+  tpsa.desc = desc
+  tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
+  tpsa.nz, tpsa.is_tmp, tpsa.coef[0] = 0, 0, 0
+  return tpsa
 end
 
-local function ctpsa_alloc (nr, nc)
-  -- TODO
-  local len = nr*nc
-  local mat
+local function ctpsa_alloc (desc, mo)
+  local len, tpsa = desc.nc, nil
   if len < (mad_alloc/2) then
-    mat = cmatrix_ctor(len)
+    tpsa = tpsa_ctor(len)
   else
-    local siz = ffi.sizeof('cmatrix_t', len)
+    local siz = ffi.sizeof('ctpsa_t', len)
     local ptr = clib.mad_malloc(siz)
-    local mat = ffi.gc(ffi.cast('cmatrix_t&', ptr), clib.mad_free)
-    ffi.fill(mat, siz)
+    tpsa = ffi.gc(ffi.cast('ctpsa_t&', ptr), clib.mad_free)
   end
-  mat.nr, mat.nc = nr, nc
-  return mat
+  tpsa.desc = desc
+  tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
+  tpsa.nz, tpsa.is_tmp, tpsa.coef[0] = 0, 0, 0
+  return tpsa
 end
 
-local function tpsa (nr, nc_)
-  -- TODO
-  local nc = nc_ or 1
-  if type(nr) == 'table' then
-    return fromtable(tpsa_alloc, nr)
-  elseif nr > 0 and nc > 0 then
-    return tpsa_alloc(nr, nc)
+local function tpsa (t, mo_)
+  if isa_tpsa(t) then
+    return tpsa_alloc(t.d, mo_ or t.mo)
+  elseif is_desc(t) then
+    return tpsa_alloc(  d, mo_ or d.mo)
   else
-    error("invalid argument to matrix constructor, expecting (rows[,cols]) or table [of tables]")
+    error("invalid argument to tpsa constructor, expecting TPSA or descriptor")
   end
 end
 
-local function ctpsa (nr, nc_)
-  -- TODO
-  local nc = nc_ or 1
-  if type(nr) == 'table' then
-    return mat_fromtable(cmatrix_alloc, nr)
-  elseif nr > 0 and nc > 0 then
-    return ctpsa_alloc(nr, nc)
+local function ctpsa (t, mo_)
+  if isa_tpsa(t) then
+    return ctpsa_alloc(t.d, mo_ or t.mo)
+  elseif is_desc(t) then
+    return ctpsa_alloc(  d, mo_ or d.mo)
   else
-    error("invalid argument to cmatrix constructor, expecting (rows[,cols]) or table [of tables]")
+    error("invalid argument to ctpsa constructor, expecting TPSA or descriptor")
   end
 end
 
