@@ -55,27 +55,31 @@ local gmath = require 'gmath'
 -- ffi -----------------------------------------------------------------------o
 
 ffi.cdef[[
-typedef struct { // warning: must be kept identical to C definition
+typedef struct  desc  desc_t;
+typedef struct  tpsa  tpsa_t;
+typedef struct ctpsa ctpsa_t;
+
+struct desc { // warning: must be kept identical to C definition
   int   id;
   int   nmv, nv, nc;
   ord_t mo, ko, trunc;
-} desc_t;
+};
 
-typedef struct { // warning: must be kept identical to C definition
+struct tpsa { // warning: must be kept identical to C definition
   desc_t *desc;
   ord_t   lo, hi, mo;
   bit_t   nz;
   int     is_tmp;
   num_t   coef[?];
-} tpsa_t;
+};
 
-typedef struct { // warning: must be kept identical to C definition
+struct ctpsa { // warning: must be kept identical to C definition
   desc_t *desc;
   ord_t   lo, hi, mo;
   bit_t   nz;
   int     is_tmp;
   cnum_t  coef[?];
-} ctpsa_t;
+};
 ]]
 
 -- threshold to use external allocator and save memory inside the 1GB limit

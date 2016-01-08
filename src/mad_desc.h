@@ -46,20 +46,16 @@ extern       int   mad_tpsa_strict;
 
 // --- interface -------------------------------------------------------------o
 
-#define D desc_t
-
 // ctors, dtor
-D*    mad_desc_new (int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv]);
-D*    mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
-                    int nk, const ord_t knb_ords[nk], ord_t dk); // knobs
-void  mad_desc_del (D *d);
+desc_t* mad_desc_new  (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[]);
+desc_t* mad_desc_newk (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[],
+                       int nk, const ord_t knb_ords[], ord_t dk); // knobs
+void    mad_desc_del  (desc_t *d);
 
 // introspection
-int   mad_desc_maxsize (const D *d);
-ord_t mad_desc_maxord  (const D *d);
-ord_t mad_desc_gtrunc  (      D *d, ord_t to);
-
-#undef D
+int     mad_desc_maxsize (const desc_t *d);
+ord_t   mad_desc_maxord  (const desc_t *d);
+ord_t   mad_desc_gtrunc  (      desc_t *d, ord_t to);
 
 // ---------------------------------------------------------------------------o
 

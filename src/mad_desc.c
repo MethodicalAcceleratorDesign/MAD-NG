@@ -38,6 +38,7 @@
 #include "mad_desc_impl.h"
 
 const ord_t DESC_MAX = CHAR_BIT * sizeof(bit_t);
+const int   desc_max_temps = sizeof(((desc_t*)0)->t)/sizeof(*((desc_t*)0)->t);
 
 // --- GLOBALS ----------------------------------------------------------------
 
@@ -840,7 +841,9 @@ static inline D*
 desc_build(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const ord_t ords[nv], ord_t ko)
 {
   assert(map_ords && ords);
+
   D *d = desc_init(nmv,map_ords, nv, ko);
+
   set_var_ords(d, ords);
   set_var_names(d, var_nam_);
   make_monos(d);
@@ -849,16 +852,13 @@ desc_build(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, cons
   tbl_set_H(d);
   tbl_set_L(d);
   build_dispatch(d);
-  d-> t0 = mad_tpsa_newd (d,d->mo);
-  d-> t1 = mad_tpsa_newd (d,d->mo);
-  d-> t2 = mad_tpsa_newd (d,d->mo);
-  d-> t3 = mad_tpsa_newd (d,d->mo);
-  d-> t4 = mad_tpsa_newd (d,d->mo);
-  d->ct0 = mad_ctpsa_newd(d,d->mo);
-  d->ct1 = mad_ctpsa_newd(d,d->mo);
-  d->ct2 = mad_ctpsa_newd(d,d->mo);
-  d->ct3 = mad_ctpsa_newd(d,d->mo);
-  d->ct4 = mad_ctpsa_newd(d,d->mo);
+
+  // set temps
+  for(int i=0; i < desc_max_temps; i++) {
+    d-> t[i] = mad_tpsa_newd (d,d->mo);
+    d->ct[i] = mad_ctpsa_newd(d,d->mo);
+  }
+
   // TODO: add the size of the temps to d->size
 
 #ifdef DEBUG
@@ -1115,16 +1115,10 @@ mad_desc_del(D *d)
     free(d->ocs);
   }
 
-  mad_tpsa_del (d-> t0);
-  mad_tpsa_del (d-> t1);
-  mad_tpsa_del (d-> t2);
-  mad_tpsa_del (d-> t3);
-  mad_tpsa_del (d-> t4);
-  mad_ctpsa_del(d->ct0);
-  mad_ctpsa_del(d->ct1);
-  mad_ctpsa_del(d->ct2);
-  mad_ctpsa_del(d->ct3);
-  mad_ctpsa_del(d->ct4);
+  for(int i=0; i < desc_max_temps; i++) {
+    mad_tpsa_del (d-> t[i]);
+    mad_ctpsa_del(d->ct[i]);
+  }
 
   // remove descriptor from global array
   Ds[d->id] = NULL;

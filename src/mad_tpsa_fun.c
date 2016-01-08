@@ -41,7 +41,7 @@ fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
   assert(a && c && expansion_coef);
   assert(iter >= 1); // ord 0 treated outside
 
-  T *acp = a->desc->PFX(t2);
+  T *acp = a->desc->PFX(t[2]);
   if (iter >=2)      // save copy before scale, to deal with aliasing
     FUN(copy)(a,acp);
 
@@ -51,8 +51,8 @@ fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
 
   // iter 2..iter
   if (iter >= 2) {
-    T *pow = a->desc->PFX(t1),
-      *tmp = a->desc->PFX(t3), *t;
+    T *pow = a->desc->PFX(t[1]),
+      *tmp = a->desc->PFX(t[3]), *t;
     FUN(set0)(acp, 0,0);
     FUN(copy)(acp,pow);  // already did ord 1
 
@@ -71,7 +71,7 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
   int max_iter = MAX(iter_s,iter_c);
-  T *acp = a->desc->PFX(t2);
+  T *acp = a->desc->PFX(t[2]);
   if (max_iter >= 2)      // save copy before scale, to deal with aliasing
     FUN(copy)(a,acp);
 
@@ -80,8 +80,8 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
   FUN(scl)(a,cos_coef[1],c); FUN(set0)(c, 0,cos_coef[0]);
 
   if (max_iter >= 2) {
-    T *pow = a->desc->PFX(t1),
-      *tmp = a->desc->PFX(t3), *t;
+    T *pow = a->desc->PFX(t[1]),
+      *tmp = a->desc->PFX(t[3]), *t;
     FUN(set0)(acp, 0,0);
     FUN(copy)(acp,pow);
 
@@ -415,7 +415,7 @@ FUN(tan) (const T *a, T *c)
   if (to > 5) {
     FUN(cos)(a,c);
     FUN(inv)(c,1,c);
-    T *tmp = c->desc->PFX(t4);
+    T *tmp = c->desc->PFX(t[4]);
     FUN(sin)(a,tmp);
     FUN(mul)(tmp,c,c);  // 1 copy
     return;
@@ -448,7 +448,7 @@ FUN(cot) (const T *a, T *c)
   if (to > 5) {
     FUN(sin)(a,c);
     FUN(inv)(c,1,c);
-    T *tmp = c->desc->PFX(t4);
+    T *tmp = c->desc->PFX(t[4]);
     FUN(cos)(a,tmp);
     FUN(mul)(tmp,c,c);  // 1 copy
     return;

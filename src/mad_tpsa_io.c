@@ -76,7 +76,17 @@ scan_var_names(FILE *stream, int nmv, char *buf)
 
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
 
-#ifndef MAD_CTPSA_IMPL // only once
+#ifdef MAD_CTPSA_IMPL
+
+extern D* mad_tpsa_scan_hdr(FILE*);
+
+D*
+FUN(scan_hdr) (FILE *stream_)
+{
+  return mad_tpsa_scan_hdr(stream_);
+}
+
+#else
 
 D*
 FUN(scan_hdr) (FILE *stream_)

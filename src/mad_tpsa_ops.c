@@ -490,7 +490,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   assert(a && b && r);
   ensure(a->desc == b->desc && a->desc == r->desc);
 
-  T *c = (a == r || b == r) ? r->desc->PFX(t0) : r;
+  T *c = (a == r || b == r) ? r->desc->PFX(t[0]) : r;
 
   D *d = a->desc;
   c->lo = a->lo + b->lo;
@@ -561,7 +561,7 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
-  T *tmp = c->desc->PFX(t4);  // t1-t3 used in inv
+  T *tmp = c->desc->PFX(t[4]);  // t1-t3 used in inv
   FUN(inv) (b,1,tmp);
   FUN(mul) (a,tmp,c);
 }
@@ -576,7 +576,7 @@ FUN(ipow) (const T *a, T *c, int n)
 
   if (n < 0) { n = -n; inv = 1; }
 
-  T *t1 = c->desc->PFX(t1);
+  T *t1 = c->desc->PFX(t[1]);
 
   switch (n) {
     case 0: FUN(scalar) (c, 1);    break; // ok: no copy
@@ -585,7 +585,7 @@ FUN(ipow) (const T *a, T *c, int n)
     case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
     case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
     default: {
-      T *t2 = c->desc->PFX(t2);
+      T *t2 = c->desc->PFX(t[2]);
 
       FUN(copy  )(a, t1);
       FUN(scalar)(c, 1 );
@@ -636,7 +636,7 @@ FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
   assert(x && y && r);
   ensure(x->desc == y->desc && y->desc == r->desc);
 
-  T *t1 = (x == r || y == r) ? r->desc->PFX(t1) : r;
+  T *t1 = (x == r || y == r) ? r->desc->PFX(t[1]) : r;
   FUN(mul)(x,y, t1);
   FUN(axpb)(a,t1, b, r);
 }
@@ -647,7 +647,7 @@ FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
   assert(x && y && z && r);
   ensure(x->desc == y->desc && y->desc == z->desc && z->desc == r->desc);
 
-  T *t1 = (x == r || y == r || z == r) ? r->desc->PFX(t1) : r;
+  T *t1 = (x == r || y == r || z == r) ? r->desc->PFX(t[1]) : r;
   FUN(mul)(x,y, t1);
   FUN(axpbypc)(a,t1, b,z, c, r);
 }
@@ -659,8 +659,8 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
   assert(x && y && v && w && r);
   ensure(x->desc == y->desc && y->desc == v->desc && v->desc == w->desc && w->desc == r->desc);
 
-  T *t1 = (x == r || y == r || v == r || w == r) ? r->desc->PFX(t1) : r;
-  T *t2 = (v == r || w == r || t1 == r) ? r->desc->PFX(t2) : r;
+  T *t1 = (x == r || y == r || v == r || w == r) ? r->desc->PFX(t[1]) : r;
+  T *t2 = (v == r || w == r || t1 == r) ? r->desc->PFX(t[2]) : r;
   FUN(mul)(x,y, t1);
   FUN(mul)(v,w, t2);
   FUN(axpbypc)(a,t1, b,t2, c, r);
@@ -672,7 +672,7 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
   assert(x && y && z && r);
   ensure(x->desc == y->desc && y->desc == z->desc && z->desc == r->desc);
 
-  T *t3 = (z == r) ? r->desc->PFX(t3) : r;
+  T *t3 = (z == r) ? r->desc->PFX(t[3]) : r;
   FUN(axypbvwpc)(a,x,x, b,y,y, 0, t3);
   FUN(axypbzpc)(c,z,z, 1,t3, 0, r);
 }

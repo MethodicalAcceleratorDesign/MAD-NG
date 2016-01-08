@@ -53,8 +53,9 @@ struct desc {
   idx_t ***L_idx;      // L_idx[oa,ob] = [start] [split] [end] idxs in L
   ord_t  **ocs;        // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
 
-   tpsa_t * t0, * t1, * t2, * t3, * t4; // temps for mul, fix pts, high lvl funs for aliasing
-  ctpsa_t *ct0, *ct1, *ct2, *ct3, *ct4; // complex temps
+                       // WARNING: temps must be used with care (internal side effects)
+   tpsa_t * t[5];      // temps for mul[0], fix pts[1-3], div & funs[4], alg funs[1-3] for aliasing
+  ctpsa_t *ct[5];      // temps for ctpsa
 };
 
 // --- interface -------------------------------------------------------------o
