@@ -41,66 +41,53 @@ static bit_t mad_bit_trunc   (bit_t b, int n);
 static int   mad_bit_lowest  (bit_t b);
 static int   mad_bit_highest (bit_t b);
 
+// ---------------------------------------------------------------------------o
+
 #endif // MAD_BIT_H
 
+/*\
 
+ |
+ |
+ |
+ |
+ |
 
+ P
+ R
+ I
+ V
+ A
+ T
+ E
 
+ I
+ M
+ P
+ L
+ E
+ M
+ E
+ N
+ T
+ A
+ T
+ I
+ O
+ N
 
+ |
+ |
+ |
+ |
+ |
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// --- implementation (private) ----------------------------------------------o
+\*/
 
 #ifndef MAD_BIT_IMPL_H
 #define MAD_BIT_IMPL_H
+
+// --- implementation (private) ----------------------------------------------o
 
 // http://graphics.stanford.edu/~seander/bithacks.html
 

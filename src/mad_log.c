@@ -22,7 +22,14 @@
 #include <assert.h>
 
 #include "mad_main.h"
-#include "mad_log_nodef.h"
+#include "mad_log.h"
+
+#undef fatal
+#undef error
+#undef warn
+#undef info
+#undef debug
+#undef ensure
 
 /*
 Note about thread-safety:

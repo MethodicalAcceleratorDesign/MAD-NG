@@ -23,7 +23,13 @@
 #include <assert.h>
 
 #include "mad_log.h"
-#include "mad_mem_nodef.h"
+#include "mad_mem.h"
+
+#undef malloc
+#undef realloc
+#undef free
+#undef alloc_tmp
+#undef free_tmp
 
 // --- macros ----------------------------------------------------------------o
 
