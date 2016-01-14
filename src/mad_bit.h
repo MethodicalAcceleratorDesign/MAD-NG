@@ -145,7 +145,7 @@ mad_bit_lowest (bit_t b)
 }
 
 static inline int
-mad_bit_highest2 (bit_t b)
+mad_bit_highest (bit_t b)
 {
   #define R2(n)    n,     n + 2*64,     n + 1*64,     n + 3*64
   #define R4(n) R2(n), R2(n + 2*16), R2(n + 1*16), R2(n + 3*16)
@@ -154,10 +154,10 @@ mad_bit_highest2 (bit_t b)
   #undef  R2
   #undef  R4
   #undef  R6
-  bit_t r = (tbl[ b        & 0xff] << 24) | 
-            (tbl[(b >>  8) & 0xff] << 16) | 
-            (tbl[(b >> 16) & 0xff] <<  8) |
-            (tbl[(b >> 24) & 0xff]);
+  bit_t r = (tbl[ b        & 0xFF] << 24) | 
+            (tbl[(b >>  8) & 0xFF] << 16) | 
+            (tbl[(b >> 16) & 0xFF] <<  8) |
+            (tbl[(b >> 24) & 0xFF]);
   return 31 - mad_bit_lowest(r);
 }
 
