@@ -124,27 +124,18 @@ mad_bit_trunc (bit_t b, int n)
 static inline int
 mad_bit_lowest (bit_t b)
 {
-  static const unsigned char tbl[32] = {
-    0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
-    31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
-  };
-  return b ? tbl[((b & -b) * 0x077CB531u) >> 27] : 32;
+  extern const unsigned char mad_bit_lowest_tbl_[32];
+  return b ? mad_bit_lowest_tbl_[((b & -b) * 0x077CB531u) >> 27] : 32;
 }
 
 static inline int
 mad_bit_highest (bit_t b)
 {
-  #define R2(n)    n,     n + 2*64,     n + 1*64,     n + 3*64
-  #define R4(n) R2(n), R2(n + 2*16), R2(n + 1*16), R2(n + 3*16)
-  #define R6(n) R4(n), R4(n + 2*4 ), R4(n + 1*4 ), R4(n + 3*4 )
-  static const unsigned char tbl[256] = { R6(0), R6(2), R6(1), R6(3) };
-  #undef  R2
-  #undef  R4
-  #undef  R6
-  bit_t r = (tbl[ b        & 0xFF] << 24) | 
-            (tbl[(b >>  8) & 0xFF] << 16) | 
-            (tbl[(b >> 16) & 0xFF] <<  8) |
-            (tbl[(b >> 24) & 0xFF]);
+  extern const unsigned char mad_bit_highest_tbl_[256];
+  bit_t r = (mad_bit_highest_tbl_[ b        & 0xFF] << 24) | 
+            (mad_bit_highest_tbl_[(b >>  8) & 0xFF] << 16) | 
+            (mad_bit_highest_tbl_[(b >> 16) & 0xFF] <<  8) |
+            (mad_bit_highest_tbl_[(b >> 24) & 0xFF]);
   return 31 - mad_bit_lowest(r);
 }
 
