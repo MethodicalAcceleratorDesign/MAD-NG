@@ -31,16 +31,17 @@ local M = { __help = {}, __test = {} }
 
 M.__help.self = [[
 NAME
-  xtpsa -- TPSA contructors
+  xtpsa -- GTPSA contructors
 
 SYNOPSIS
-  This module should not be loaded directly, SEE ALSO.
+  This module should not be loaded directly.
 
 DESCRIPTION
-  The module xtpsa provides consistent definitions of TPSA and complex TPSA.
+  The module xtpsa provides consistent definitions and constructors of
+  real GTPSA and complex GTPSA.
 
 RETURN VALUES
-  The constructors of TPSA and complex TPSA.
+  The constructors of real GTPSA, complex GTPSA and GTPSA descriptor.
 
 SEE ALSO
   tpsa, ctpsa
