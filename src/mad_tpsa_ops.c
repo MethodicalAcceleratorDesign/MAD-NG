@@ -431,7 +431,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
 }
 
-/* TODO: check if this version is faster or not than the one above
+/* TODO: check if this version is faster or not than the one above (use LINOP)
 void
 FUN(acc) (const T *a, NUM v, T *c)
 {
@@ -706,3 +706,49 @@ FUN(poisson) (const T *a, const T *b, T *c, int n)
   for (int i = 0; i < 4; ++i)
     FUN(del)(is[i]);
 }
+
+// --- WITHOUT COMPLEX-BY-VALUE VERSION ---------------------------------------
+
+#ifdef MAD_CTPSA_IMPL
+
+void FUN(nrm1_r) (const T *t, const T *t2_, cnum_t *r)
+{ *r = FUN(nrm1)(t, t2_); }
+
+void FUN(nrm2_r) (const T *t, const T *t2_, cnum_t *r)
+{ *r = FUN(nrm2)(t, t2_); }
+
+void FUN(acc_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(acc)(a, CNUM(v), c); }
+
+void FUN(scl_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(scl)(a, CNUM(v), c); }
+
+void FUN(axpb_r) (num_t a_re, num_t a_im, const T *x,
+                  num_t b_re, num_t b_im, T *r)
+{ FUN(axpb)(CNUM(a), x, CNUM(b), r); }
+
+void FUN(axpbypc_r) (num_t a_re, num_t a_im, const T *x,
+                     num_t b_re, num_t b_im, const T *y,
+                     num_t c_re, num_t c_im, T *r)
+{ FUN(axpbypc)(CNUM(a), x, CNUM(b), y, CNUM(c), r); }
+
+void FUN(axypb_r) (num_t a_re, num_t a_im, const T *x, const T *y,
+                   num_t b_re, num_t b_im, T *r)
+{ FUN(axypb)(CNUM(a), x, y, CNUM(b), r); }
+
+void FUN(axypbzpc_r) (num_t a_re, num_t a_im, const T *x, const T *y,
+                      num_t b_re, num_t b_im, const T *z,
+                      num_t c_re, num_t c_im, T *r)
+{ FUN(axypbzpc)(CNUM(a), x, y, CNUM(b), z, CNUM(c), r); }
+
+void FUN(axypbvwpc_r) (num_t a_re, num_t a_im, const T *x, const T *y,
+                       num_t b_re, num_t b_im, const T *v, const T *w,
+                       num_t c_re, num_t c_im, T *r)
+{ FUN(axypbvwpc)(CNUM(a), x, y, CNUM(b), v, w, CNUM(c), r); }
+
+void FUN(ax2pby2pcz2_r)(num_t a_re, num_t a_im, const T *x,
+                        num_t b_re, num_t b_im, const T *y,
+                        num_t c_re, num_t c_im, const T *z, T *r)
+{ FUN(ax2pby2pcz2)(CNUM(a), x, CNUM(b), y, CNUM(c), z, r); }
+
+#endif

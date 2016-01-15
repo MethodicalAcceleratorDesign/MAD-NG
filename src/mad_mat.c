@@ -39,7 +39,7 @@
 #define CHKXYRY  assert( x && y && r && y != r )
 #define CHKXYRXY assert( x && y && r && x != r && y != r )
 
-#define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { (a##_re), (a##_im) })
+#define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
 // [m x n] = [m x p] * [p x n]
 // naive implementation (not vectorized)

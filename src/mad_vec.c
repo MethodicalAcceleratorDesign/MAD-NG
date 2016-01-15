@@ -30,7 +30,7 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
-#define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { (a##_re), (a##_im) })
+#define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
 #define SET(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x
 #define CPY(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[i]

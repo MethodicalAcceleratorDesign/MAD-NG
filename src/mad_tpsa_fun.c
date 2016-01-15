@@ -97,6 +97,16 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
 
 // --- PUBLIC FUNCTIONS -------------------------------------------------------
 
+#ifdef MAD_CTPSA_IMPL
+
+void FUN(inv_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(inv)(a, CNUM(v), c); }
+
+void FUN(invsqrt_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(invsqrt)(a, CNUM(v), c); }
+
+#endif
+
 void
 FUN(inv) (const T *a, NUM v, T *c) // v/a
 {

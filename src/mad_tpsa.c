@@ -132,6 +132,26 @@ FUN(clear) (T *t)
 }
 
 void
+FUN(scalar) (T *t, NUM v)
+{
+  assert(t);
+  if (v) {
+    t->coef[0] = v;
+    t->nz = 1;
+    t->lo = t->hi = 0;
+  }
+  else
+    FUN(clear)(t);
+}
+
+#ifdef MAD_CTPSA_IMPL
+
+void FUN(scalar_r) (T *t, num_t v_re, num_t v_im)
+{ FUN(scalar)(t, CNUM(v)); }
+
+#endif
+
+void
 FUN(del) (T *t)
 {
   free(t);
@@ -223,19 +243,6 @@ FUN(getm_sp) (const T *t, int n, const idx_t m[n])
 }
 
 void
-FUN(scalar) (T *t, NUM v)
-{
-  assert(t);
-  if (v) {
-    t->coef[0] = v;
-    t->nz = 1;
-    t->lo = t->hi = 0;
-  }
-  else
-    FUN(clear) (t);
-}
-
-void
 FUN(set0) (T *t, NUM a, NUM b)
 {
   assert(t);
@@ -308,6 +315,38 @@ FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
   FUN(seti)(t,i,a,b);
 }
 
+// --- WITHOUT COMPLEX-BY-VALUE VERSION ---------------------------------------
+
+#ifdef MAD_CTPSA_IMPL
+
+void FUN(get0_r) (const T *t, NUM *r)
+{ assert(r); *r = FUN(get0)(t); }
+
+void FUN(geti_r) (const T *t, int i, NUM *r)
+{ assert(r); *r = FUN(geti)(t, i); }
+
+void FUN(getm_r) (const T *t, int n, const ord_t m[n], NUM *r)
+{ assert(r); *r = FUN(getm)(t, n, m); }
+
+void FUN(getm_sp_r) (const T *t, int n, const idx_t m[n], NUM *r)
+{ assert(r); *r = FUN(getm_sp)(t, n, m); }
+
+void FUN(set0_r) (T *t, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(set0)(t, CNUM(a), CNUM(b)); }
+
+void FUN(seti_r) (T *t, int i, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(seti)(t, i, CNUM(a), CNUM(b)); }
+
+void FUN(setm_r) (T *t, int n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(setm)(t, n, m, CNUM(a), CNUM(b)); }
+
+void FUN(setm_sp_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(setm_sp)(t, n, m, CNUM(a), CNUM(b)); }
+
+#endif // MAD_CTPSA_IMPL
+
+
+#if 0 // not really useful and dangerous!
 // --- --- TRANSFORMATION -----------------------------------------------------
 
 T*
@@ -356,3 +395,4 @@ FUN(map2) (const T *a, const T *b, T *c, NUM (*f)(NUM va, NUM vb, int i_))
 
   return c;
 }
+#endif
