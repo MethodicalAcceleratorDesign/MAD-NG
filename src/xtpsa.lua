@@ -134,18 +134,18 @@ local function tpsa_alloc (d, mo)
 end
 
 local function ctpsa_alloc (d, mo)
-  local nc, tpsa = d.nc, nil
+  local nc, ctpsa = d.nc, nil
   if nc < (mad_alloc/2) then
-    tpsa = tpsa_ctor(nc)
+    ctpsa = ctpsa_ctor(nc)
   else
     local siz = ffi.sizeof('ctpsa_t', nc)
     local ptr = clib.mad_malloc(siz)
-    tpsa = ffi.gc(ffi.cast('ctpsa_t&', ptr), clib.mad_free)
+    ctpsa = ffi.gc(ffi.cast('ctpsa_t&', ptr), clib.mad_free)
   end
-  tpsa.d = d
-  tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
-  tpsa.nz, tpsa.coef[0] = 0, 0
-  return tpsa
+  ctpsa.d = d
+  ctpsa.lo, ctpsa.hi, ctpsa.mo = mo, 0, mo
+  ctpsa.nz, ctpsa.coef[0] = 0, 0
+  return ctpsa
 end
 
 -- tpsa(t)       -> t.mo
