@@ -91,7 +91,6 @@ FUN(newd) (D *d, ord_t mo)
   t->desc = d;
   t->lo = t->mo = mo;
   t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking NZ[0]
-  t->is_tmp = 0;
   return t;
 }
 

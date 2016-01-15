@@ -68,7 +68,6 @@ struct tpsa { // warning: must be kept identical to C definition
   desc_t *desc;
   ord_t   lo, hi, mo;
   bit_t   nz;
-  int     is_tmp;
   num_t   coef[?];
 };
 
@@ -76,7 +75,6 @@ struct ctpsa { // warning: must be kept identical to C definition
   desc_t *desc;
   ord_t   lo, hi, mo;
   bit_t   nz;
-  int     is_tmp;
   cnum_t  coef[?];
 };
 ]]

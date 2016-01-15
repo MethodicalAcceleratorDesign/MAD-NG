@@ -29,7 +29,6 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
   desc_t *desc;
   ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
   bit_t   nz;
-  int     is_tmp;
   num_t   coef[];
 };
 
