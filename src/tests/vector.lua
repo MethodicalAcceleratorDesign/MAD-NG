@@ -13,7 +13,7 @@ local a = vector {1.0001, 1.0002, 1.0003, 1.0004}
 local b = vector {I,I,I,I}
 
 for i=1,n do
-	b = a * b + b - a
+	b = a - b
 end
 
 io.write(tostring(b), '\n')

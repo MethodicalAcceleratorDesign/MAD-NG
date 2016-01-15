@@ -376,16 +376,16 @@ function M.inner (x, y)
     if ismat(y) then
       return clib.mad_mat_dot(x.data, y.data, x:cols(), y:cols(), x:rows())
     else
-      clib.mad_mat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+      clib.mad_mat_dotm_r(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
       return cres[0]
     end
   end
 
   if iscmat(x) then
     if ismat(y) then
-      clib.mad_cmat_dotm(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+      clib.mad_cmat_dotm_r(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
     else
-      clib.mad_cmat_dot(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
+      clib.mad_cmat_dot_r(x.data, y.data, cres, x:cols(), y:cols(), x:rows())
     end
     return cres[0]
   end
@@ -458,7 +458,7 @@ function M.norm (x)
   if ismat(x) then
     return sqrt(clib.mad_vec_dot(x.data, x.data, x:size()))
   else
-    clib.mad_cvec_dot(x.data, x.data, cres, x:size())
+    clib.mad_cvec_dot_r(x.data, x.data, cres, x:size())
     return sqrt(cres[0])
   end
 end
@@ -540,7 +540,7 @@ function M.add (x, y, r_)
     if isnum(y) then      -- mat + num => vec + num
       clib.mad_vec_addn(x.data, y, r.data, r:size())
     elseif iscpx(y) then  -- mat + cpx => vec + cpx
-      clib.mad_vec_addc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- mat + mat => vec + vec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
       clib.mad_vec_add(x.data, y.data, r.data, r:size())
@@ -557,7 +557,7 @@ function M.add (x, y, r_)
     if isnum(y) then      -- cmat + num => cvec + num
       clib.mad_vec_addn(x.data, y, r.data, r:size())
     elseif iscpx(y) then  -- cmat + cpx => cvec + cpx
-      clib.mad_vec_addc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- cmat + mat => cvec + vec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
       clib.mad_vec_add(x.data, y.data, r.data, r:size())
@@ -591,7 +591,7 @@ function M.sub (x, y, r_)
     if isnum(y) then      -- mat - num => vec + -num
       clib.mad_vec_addn(x.data, -y, r.data, r:size())
     elseif iscpx(y) then  -- mat - cpx => vec + -cpx
-      clib.mad_vec_addc(x.data, -y.re, -y.im, r.data, r:size())
+      clib.mad_vec_addc_r(x.data, -y.re, -y.im, r.data, r:size())
     elseif ismat(y) then  -- mat - mat => vec - vec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
       clib.mad_vec_sub(x.data, y.data, r.data, r:size())
@@ -608,7 +608,7 @@ function M.sub (x, y, r_)
     if isnum(y) then      -- cmat - num => cvec + -num
       clib.mad_cvec_addn(x.data, -y, r.data, r:size())
     elseif iscpx(y) then  -- cmat - cpx => cvec + -cpx
-      clib.mad_cvec_addc(x.data, -y.re, -y.im, r.data, r:size())
+      clib.mad_cvec_addc_r(x.data, -y.re, -y.im, r.data, r:size())
     elseif ismat(y) then  -- cmat - mat => cvec - vec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_subv(x.data, y.data, r.data, r:size())
@@ -644,7 +644,7 @@ function M.mul (x, y, r_)
     elseif iscpx(y) then  -- mat * cpx => vec * cpx
       r = r_ or cmatrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      clib.mad_vec_mulc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- mat * mat
       r = r_ or matrix(x:rows(), y:cols())
       assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
@@ -665,7 +665,7 @@ function M.mul (x, y, r_)
     elseif iscpx(y) then  -- cmat * cpx => cvec * cpx
       r = r_ or cmatrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_cvec_mulc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- cmat * mat
       r = r_ or cmatrix(x:rows(), y:cols())
       assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
@@ -703,7 +703,7 @@ function M.div (x, y, r_, rcond_)
     elseif iscpx(y) then   -- mat / cpx => vec / cpx
       r = r_ or cmatrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      clib.mad_vec_divc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_vec_divc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- mat / mat => X * Y^-1 => [m x n] = [m x p] * [p x n] => X:[m x p], Y:[n x p]
       r = r_ or matrix(x:rows(), y:rows())
       assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible matrix sizes")
@@ -724,7 +724,7 @@ function M.div (x, y, r_, rcond_)
     elseif iscpx(y) then   -- cmat / cpx => cvec / cpx
       r = r_ or cmatrix(x:sizes())
       assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_cvec_divc(x.data, y.re, y.im, r.data, r:size())
+      clib.mad_cvec_divc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- cmat / mat
       r = r_ or cmatrix(x:rows(), y:rows())
       assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible cmatrix sizes")

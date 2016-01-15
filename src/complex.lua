@@ -129,9 +129,9 @@ function M.add (x, y, r_)
   assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
 
   if ismat(y) then -- cpx + mat => vec + cpx
-    clib.mad_vec_addc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx + cmat => cvec + cpx
-    clib.mad_cvec_addc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size())
   else error("incompatible complex (+) operands") end
   return r
 end
@@ -150,9 +150,9 @@ function M.sub (x, y, r_)
   assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
 
   if ismat(y) then -- cpx - mat => cpx - vec
-    clib.mad_vec_subc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx - cmat => cpx - cvec
-    clib.mad_cvec_subc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size())
   else error("incompatible complex (-) operands") end
   return r
 end
@@ -171,9 +171,9 @@ function M.mul (x, y, r_)
   assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
     
   if ismat(y) then -- cpx * mat => vec * cpx
-    clib.mad_vec_mulc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size())
   elseif iscmat(y) then -- cpx * cmat => cvec * cpx
-    clib.mad_cvec_mulc(y.data, x.re, x.im, r.data, r:size())
+    clib.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size())
   else error("invalid complex (*) operands") end
   return r
 end
@@ -194,9 +194,9 @@ function M.div (x, y, r_, rcond_)
   assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
 
   if ismat(y) then -- cpx / mat
-    clib.mad_mat_invc (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
+    clib.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
   elseif iscmat(y) then -- cpx / cmat
-    clib.mad_cmat_invc(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
+    clib.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
   else error("invalid complex (/) operands") end
   return r
 end
