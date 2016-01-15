@@ -59,18 +59,18 @@
 #define ensure(cond, ...)  mad_ensure(cond,__VA_ARGS__)
 
 // interface for manual call, don't set location
-void mad_fatalf  (str_t fmt, ...);
-void mad_errorf  (str_t fmt, ...);
-void mad_warnf   (str_t fmt, ...);
-void mad_infof   (int lvl, str_t fmt, ...);
-void mad_debugf  (int lvl, str_t fmt, ...);
+void mad_fatalf      (str_t fmt, ...);
+void mad_errorf      (str_t fmt, ...);
+void mad_warnf       (str_t fmt, ...);
+void mad_infof       (int lvl, str_t fmt, ...);
+void mad_debugf      (int lvl, str_t fmt, ...);
 
 // interface only for ffi without variadic support (!= macros)
-void mad_fatal   (str_t msg);
-void mad_error   (str_t msg);
-void mad_warn    (str_t msg);
-void mad_info    (int lvl, str_t msg);
-void mad_debug   (int lvl, str_t msg);
+void mad_fatal       (str_t msg);
+void mad_error       (str_t msg);
+void mad_warn        (str_t msg);
+void mad_info        (int lvl, str_t msg);
+void mad_debug       (int lvl, str_t msg);
 
 // utils
 void mad_log_setloc  (str_t file, int line);

@@ -46,18 +46,18 @@
 
 // --- interface -------------------------------------------------------------o
 
-#define malloc(size_)         mad_malloc  (size_)
-#define realloc(ptr_, size_)  mad_realloc (ptr_, size_)
-#define free(ptr_)            mad_free    (ptr_)
+#define malloc(size_)               mad_malloc  (size_)
+#define realloc(ptr_, size_)        mad_realloc (ptr_, size_)
+#define free(ptr_)                  mad_free    (ptr_)
 
-// local temporary buffer
+// local buffer
 #define alloc_tmp(type,name,length) mad_alloc_tmp (type,name,length)
 #define free_tmp(name)              mad_free_tmp  (name)
 
 // allocator
-void*  mad_malloc  (size_t size_);
-void*  mad_realloc (void  *ptr_ , size_t size_);
-void   mad_free    (void  *ptr_);
+void*  mad_malloc      (size_t size_);
+void*  mad_realloc     (void  *ptr_ , size_t size_);
+void   mad_free        (void  *ptr_);
 
 // utils
 size_t mad_mem_size    (void *ptr_);
