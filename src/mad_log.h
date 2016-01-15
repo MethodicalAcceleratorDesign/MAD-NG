@@ -77,7 +77,7 @@ void mad_log_setloc  (str_t file, int line);
 void mad_log_setloc1 (str_t file, int line); // foreign location
 void mad_log_getstat (long *error_, long *warn_, long *info_, long *debug_);
 
-// automatic location
+// location
 #define mad_log_saveloc() mad_log_setloc(__FILE__, __LINE__)
 
 // --- globals ---------------------------------------------------------------o
@@ -87,82 +87,10 @@ extern int mad_debug_level;
 extern int mad_inside_script;
 extern int mad_trace_location;
 
+// --- implementation (private) ----------------------------------------------o
+
+#include "mad_log_priv.h"
+
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_LOG_H
-
-/*\
-
- |
- |
- |
- |
- |
-
- P
- R
- I
- V
- A
- T
- E
-
- I
- M
- P
- L
- E
- M
- E
- N
- T
- A
- T
- I
- O
- N
-
- |
- |
- |
- |
- |
-
-\*/
-
-#ifndef MAD_LOG_IMPL_H
-#define MAD_LOG_IMPL_H
-
-// --- implementation (private) ----------------------------------------------o
-
-#define mad_fatal(...)         (mad_savtrcloc(0),mad_fatalf(  __VA_ARGS__))
-#define mad_error(...)         (mad_savtrcloc(2),mad_errorf(  __VA_ARGS__))
-#define mad_warn(...)          (mad_savtrcloc(2),mad_warnf (  __VA_ARGS__))
-#define mad_info(l,...) ((void)(mad_chkmsglvl(l) && \
-                               (mad_savtrcloc(3),mad_infof (l,__VA_ARGS__),0)))
-#define mad_debug(l,...)((void)(mad_chkerrlvl(l) && \
-                               (mad_savtrcloc(1),mad_debugf(l,__VA_ARGS__),0)))
-
-#define mad_ensure(c,...)((void)(!(c) && (mad_fatal(__VA_ARGS__),0)))
-
-void (mad_fatal)   (str_t)      __attribute__((noreturn));
-void mad_fatalf    (str_t, ...) __attribute__((format(printf,1,2),noreturn));
-void mad_errorf    (str_t, ...) __attribute__((format(printf,1,2)));
-void mad_warnf     (str_t, ...) __attribute__((format(printf,1,2)));
-void mad_infof (int,str_t, ...) __attribute__((format(printf,2,3)));
-void mad_debugf(int,str_t, ...) __attribute__((format(printf,2,3)));
-
-void mad_log_setloc (str_t, int) __attribute__((hot));
-
-#define mad_savtrcloc(l) \
-  ((void)(mad_trace_location >= (l) && (mad_log_saveloc(),0)))
-
-#define mad_chkmsglvl(l) \
-  (mad_info_level >= (l))
-
-#define mad_chkerrlvl(l) \
-  (mad_debug_level >= (l))
-
-// ---------------------------------------------------------------------------o
-
-#endif // MAD_LOG_IMPL_H

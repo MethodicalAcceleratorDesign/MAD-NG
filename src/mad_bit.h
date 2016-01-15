@@ -25,7 +25,7 @@
   - all functions are inlined
 
  o----------------------------------------------------------------------------o
- */
+*/
 
 // --- types -----------------------------------------------------------------o
 
@@ -41,104 +41,10 @@ static bit_t mad_bit_trunc   (bit_t b, int n);
 static int   mad_bit_lowest  (bit_t b);
 static int   mad_bit_highest (bit_t b);
 
+// --- implementation (private) ----------------------------------------------o
+
+#include "mad_bit_priv.h"
+
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_BIT_H
-
-/*\
-
- |
- |
- |
- |
- |
-
- P
- R
- I
- V
- A
- T
- E
-
- I
- M
- P
- L
- E
- M
- E
- N
- T
- A
- T
- I
- O
- N
-
- |
- |
- |
- |
- |
-
-\*/
-
-#ifndef MAD_BIT_IMPL_H
-#define MAD_BIT_IMPL_H
-
-// --- implementation (private) ----------------------------------------------o
-
-// http://graphics.stanford.edu/~seander/bithacks.html
-
-static inline bit_t
-mad_bit_set (bit_t b, int n)
-{
-  return b | (1u << n);
-}
-
-static inline bit_t
-mad_bit_get (bit_t b, int n)
-{
-  return b & (1u << n);
-}
-
-static inline bit_t
-mad_bit_clr (bit_t b, int n)
-{
-  return b & ~(1u << n);
-}
-
-static inline bit_t
-mad_bit_add (bit_t a, bit_t b)
-{
-  return a | b;
-}
-
-static inline bit_t
-mad_bit_trunc (bit_t b, int n)
-{
-  return b & ((2u << n) - 1);
-}
-
-static inline int
-mad_bit_lowest (bit_t b)
-{
-  extern const unsigned char mad_bit_lowest_tbl_[32];
-  return b ? mad_bit_lowest_tbl_[((b & -b) * 0x077CB531u) >> 27] : 32;
-}
-
-static inline int
-mad_bit_highest (bit_t b)
-{
-  extern const unsigned char mad_bit_highest_tbl_[256];
-  bit_t r = (mad_bit_highest_tbl_[ b        & 0xFF] << 24) | 
-            (mad_bit_highest_tbl_[(b >>  8) & 0xFF] << 16) | 
-            (mad_bit_highest_tbl_[(b >> 16) & 0xFF] <<  8) |
-            (mad_bit_highest_tbl_[(b >> 24) & 0xFF]);
-  return 31 - mad_bit_lowest(r);
-}
-
-// ---------------------------------------------------------------------------o
-
-#endif // MAD_BIT_IMPL_H

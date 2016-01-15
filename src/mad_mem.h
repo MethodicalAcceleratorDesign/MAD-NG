@@ -64,75 +64,10 @@ size_t mad_mem_size    (void *ptr_);
 size_t mad_mem_cached  (void);
 size_t mad_mem_collect (void);
 
+// --- implementation (private) ----------------------------------------------o
+
+#include "mad_mem_priv.h"
+
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_MEM_H
-
-/*\
-
- |
- |
- |
- |
- |
-
- P
- R
- I
- V
- A
- T
- E
-
- I
- M
- P
- L
- E
- M
- E
- N
- T
- A
- T
- I
- O
- N
-
- |
- |
- |
- |
- |
-
-\*/
-
-#ifndef MAD_MEM_IMPL_H
-#define MAD_MEM_IMPL_H
-
-// --- implementation (private) ----------------------------------------------o
-
-#include "mad_log.h"
-
-#define mad_malloc(s)    (mad_savtrcloc(2), mad_malloc(s))
-#define mad_realloc(p,s) (mad_savtrcloc(2), mad_realloc(p,s))
-#define mad_free(p)      (mad_savtrcloc(2), mad_free(p))
-
-void* (mad_malloc)  (size_t)        __attribute__((hot,malloc));
-void* (mad_realloc) (void*, size_t) __attribute__((hot));
-void  (mad_free)    (void*)         __attribute__((hot));
-size_t mad_mem_size (void*)         __attribute__((hot,const));
-
-// note: 2048 == mblk_max from mad_mem.c
-
-#define mad_alloc_tmp(T,NAME,L) \
-  T NAME##_local_tmp__[2048/sizeof(T)]; \
-  T *NAME = ((size_t)(L) > (2048/sizeof(T)) ? \
-            mad_malloc((size_t)(L) * sizeof(T)) : NAME##_local_tmp__)
-
-#define mad_free_tmp(NAME) \
-  (NAME != NAME##_local_tmp__ ? mad_free(NAME) : (void)0)
-
-// ---------------------------------------------------------------------------o
-
-#endif // MAD_MEM_IMPL_H
