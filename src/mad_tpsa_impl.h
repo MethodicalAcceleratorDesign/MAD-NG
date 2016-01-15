@@ -26,7 +26,7 @@
 // --- types -----------------------------------------------------------------o
 
 struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
-  desc_t *desc;
+  desc_t *d;
   ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
   bit_t   nz;
   num_t   coef[];

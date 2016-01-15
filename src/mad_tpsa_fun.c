@@ -41,7 +41,7 @@ fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
   assert(a && c && expansion_coef);
   assert(iter >= 1); // ord 0 treated outside
 
-  T *acp = a->desc->PFX(t[2]);
+  T *acp = a->d->PFX(t[2]);
   if (iter >=2)      // save copy before scale, to deal with aliasing
     FUN(copy)(a,acp);
 
@@ -51,8 +51,8 @@ fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
 
   // iter 2..iter
   if (iter >= 2) {
-    T *pow = a->desc->PFX(t[1]),
-      *tmp = a->desc->PFX(t[3]), *t;
+    T *pow = a->d->PFX(t[1]),
+      *tmp = a->d->PFX(t[3]), *t;
     FUN(set0)(acp, 0,0);
     FUN(copy)(acp,pow);  // already did ord 1
 
@@ -71,7 +71,7 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
   int max_iter = MAX(iter_s,iter_c);
-  T *acp = a->desc->PFX(t[2]);
+  T *acp = a->d->PFX(t[2]);
   if (max_iter >= 2)      // save copy before scale, to deal with aliasing
     FUN(copy)(a,acp);
 
@@ -80,8 +80,8 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
   FUN(scl)(a,cos_coef[1],c); FUN(set0)(c, 0,cos_coef[0]);
 
   if (max_iter >= 2) {
-    T *pow = a->desc->PFX(t[1]),
-      *tmp = a->desc->PFX(t[3]), *t;
+    T *pow = a->d->PFX(t[1]),
+      *tmp = a->d->PFX(t[3]), *t;
     FUN(set0)(acp, 0,0);
     FUN(copy)(acp,pow);
 
@@ -111,10 +111,10 @@ void
 FUN(inv) (const T *a, NUM v, T *c) // v/a
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] != 0);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/a->coef[0]); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -130,12 +130,12 @@ FUN(sqrt) (const T *a, T *c)
 {
 // SQRT(A0+P) = SQRT(A0)*(1+1/2(P/A0)-1/8*(P/A0)**2+...)
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   SELECT(ensure(a->coef[0] >= 0),);
 
   if (a->coef[0] == 0) { FUN(clear)(c); return; }
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sqrt(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -150,10 +150,10 @@ void
 FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] SELECT(> 0, != 0));
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/sqrt(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -170,9 +170,9 @@ FUN(exp) (const T *a, T *c)
 {
 // EXP(A0+P) = EXP(A0)*(1+P+P**2/2!+...)
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, exp(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -188,10 +188,10 @@ FUN(log) (const T *a, T *c)
 {
 // LOG(A0+P) = LOG(A0) + (P/A0) - 1/2*(P/A0)**2 + 1/3*(P/A0)**3 - ...)
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] SELECT(> 0, != 0));
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, log(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -208,9 +208,9 @@ FUN(sin) (const T *a, T *c)
 {
 // SIN(A0+P) = SIN(A0)*(1-P**2/2!+P**4/4!+...) + COS(A0)*(P-P**3/3!+P**5/5!+...)
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sin(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -227,9 +227,9 @@ FUN(cos) (const T *a, T *c)
 {
 // COS(A0+P) = COS(A0)*(1-P**2/2!+P**4/4!+...) - SIN(A0)*(P-P**3/3!+P**5/5!+...)
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, cos(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -245,10 +245,10 @@ void
 FUN(sincos) (const T *a, T *s, T *c)
 {
   assert(a && s && c);
-  ensure(a->desc == s->desc && a->desc == c->desc);
+  ensure(a->d == s->d && a->d == c->d);
 
-  ord_t sto = MIN(s->mo,s->desc->trunc),
-        cto = MIN(c->mo,c->desc->trunc);
+  ord_t sto = MIN(s->mo,s->d->trunc),
+        cto = MIN(c->mo,c->d->trunc);
 
   NUM s_a0 = sin(a->coef[0]), c_a0 = cos(a->coef[0]);
   if (a->hi == 0) {
@@ -282,9 +282,9 @@ void
 FUN(sinh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sinh(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -300,9 +300,9 @@ void
 FUN(cosh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, cosh(a->coef[0])); return; }
 
   NUM expansion_coef[to+1], a0 = a->coef[0];
@@ -318,10 +318,10 @@ void
 FUN(sincosh) (const T *a, T *sh, T *ch)
 {
   assert(a && sh && ch);
-  ensure(a->desc == sh->desc && a->desc == ch->desc);
+  ensure(a->d == sh->d && a->d == ch->d);
 
-  ord_t sto = MIN(sh->mo,sh->desc->trunc),
-        cto = MIN(ch->mo,ch->desc->trunc);
+  ord_t sto = MIN(sh->mo,sh->d->trunc),
+        cto = MIN(ch->mo,ch->d->trunc);
 
   NUM s_a0 = sinh(a->coef[0]), c_a0 = cosh(a->coef[0]);  // TODO: use sincos ?
   if (a->hi == 0) {
@@ -356,10 +356,10 @@ FUN(sirx) (const T *a, T *c)
 {
 // SIN(SQRT(P))/SQRT(P) = 1 - P/3! + P**2/5! - P**3/7! + ...
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] == 0);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
   NUM expansion_coef[to+1];
@@ -375,10 +375,10 @@ FUN(corx) (const T *a, T *c)
 {
 // COS(SQRT(P)) = 1 - P/2! + P**2/4! - P**3/6! + ...
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] == 0);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
   NUM expansion_coef[to+1];
@@ -394,10 +394,10 @@ FUN(sinc) (const T *a, T *c)
 {
 // SIN(P)/P = 1 - P**2/3! + P**4/5! - P**6/7! + ...
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   ensure(a->coef[0] == 0);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
   NUM expansion_coef[to+1];
@@ -417,15 +417,15 @@ void
 FUN(tan) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
 
   if (!to || a->hi == 0) { FUN(scalar)(c, tan(a->coef[0])); return; }
   if (to > 5) {
     FUN(cos)(a,c);
     FUN(inv)(c,1,c);
-    T *tmp = c->desc->PFX(t[4]);
+    T *tmp = c->d->PFX(t[4]);
     FUN(sin)(a,tmp);
     FUN(mul)(tmp,c,c);  // 1 copy
     return;
@@ -450,15 +450,15 @@ void
 FUN(cot) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
 
   if (!to || a->hi == 0) { FUN(scalar)(c, tan(M_PI_2 - a->coef[0])); return; }
   if (to > 5) {
     FUN(sin)(a,c);
     FUN(inv)(c,1,c);
-    T *tmp = c->desc->PFX(t[4]);
+    T *tmp = c->d->PFX(t[4]);
     FUN(cos)(a,tmp);
     FUN(mul)(tmp,c,c);  // 1 copy
     return;
@@ -483,9 +483,9 @@ void
 FUN(asin) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -507,9 +507,9 @@ void
 FUN(acos) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -531,9 +531,9 @@ void
 FUN(atan) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -554,9 +554,9 @@ void
 FUN(acot) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -577,9 +577,9 @@ void
 FUN(tanh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -602,9 +602,9 @@ void
 FUN(coth) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -627,9 +627,9 @@ void
 FUN(asinh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -651,9 +651,9 @@ void
 FUN(acosh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -675,9 +675,9 @@ void
 FUN(atanh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -698,9 +698,9 @@ void
 FUN(acoth) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
@@ -722,9 +722,9 @@ FUN(erf) (const T *a, T *c)
 {
   // ERF(X) is the integral from 0 to x from [2/sqrt(PI) * exp(-x*x)]
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
 
-  ord_t to = MIN(c->mo,c->desc->trunc);
+  ord_t to = MIN(c->mo,c->d->trunc);
   ensure(to <= 5);
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];

@@ -65,14 +65,14 @@ struct desc { // warning: must be kept identical to C definition
 };
 
 struct tpsa { // warning: must be kept identical to C definition
-  desc_t *desc;
+  desc_t *d;
   ord_t   lo, hi, mo;
   bit_t   nz;
   num_t   coef[?];
 };
 
 struct ctpsa { // warning: must be kept identical to C definition
-  desc_t *desc;
+  desc_t *d;
   ord_t   lo, hi, mo;
   bit_t   nz;
   cnum_t  coef[?];
@@ -81,7 +81,8 @@ struct ctpsa { // warning: must be kept identical to C definition
 
 -- locals --------------------------------------------------------------------o
 
-local istype  = ffi.istype
+local istype = ffi.istype
+local min, max = math.min, math.max
 
 -- FFI type constructors
 local  tpsa_ctor   = ffi.typeof( 'tpsa_t')
@@ -116,11 +117,11 @@ function gmath.isa_tpsa (x)
 end
 
 local function tpsa_alloc (desc, mo)
-  local len, tpsa = desc.nc, nil
-  if len < mad_alloc then
-    tpsa = tpsa_ctor(len)
+  local nc, tpsa = desc.nc, nil
+  if nc < mad_alloc then
+    tpsa = tpsa_ctor(nc)
   else
-    local siz = ffi.sizeof('tpsa_t', len)
+    local siz = ffi.sizeof('tpsa_t', nc)
     local ptr = clib.mad_malloc(siz)
     tpsa = ffi.gc(ffi.cast('tpsa_t&', ptr), clib.mad_free)
   end
@@ -131,11 +132,11 @@ local function tpsa_alloc (desc, mo)
 end
 
 local function ctpsa_alloc (desc, mo)
-  local len, tpsa = desc.nc, nil
-  if len < (mad_alloc/2) then
-    tpsa = tpsa_ctor(len)
+  local nc, tpsa = desc.nc, nil
+  if nc < (mad_alloc/2) then
+    tpsa = tpsa_ctor(nc)
   else
-    local siz = ffi.sizeof('ctpsa_t', len)
+    local siz = ffi.sizeof('ctpsa_t', nc)
     local ptr = clib.mad_malloc(siz)
     tpsa = ffi.gc(ffi.cast('ctpsa_t&', ptr), clib.mad_free)
   end
@@ -147,9 +148,14 @@ end
 
 local isa_tpsa = gmath.isa_tpsa
 
+-- tpsa(t) -> same
+-- tpsa(d) -> default
+-- tpsa(t, mo) -> desc + mo
+-- tpsa(d, mo) -> desc + mo
+
 local function tpsa (t, mo_)
   if isa_tpsa(t) then
-    return tpsa_alloc(t.d, mo_ or t.mo)
+    return tpsa_alloc(t.d, mo_ >= 0 and mo_ or mo_ < 0 and d.mo_ or t.mo)
   elseif is_desc(t) then
     return tpsa_alloc(  d, mo_ or d.mo)
   else

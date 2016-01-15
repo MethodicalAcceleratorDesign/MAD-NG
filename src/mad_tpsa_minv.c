@@ -37,17 +37,17 @@ check_same_desc(int sa, const T *ma[sa])
 {
   assert(ma);
   for (int i = 1; i < sa; ++i)
-    ensure(ma[i]->desc == ma[i-1]->desc);
+    ensure(ma[i]->d == ma[i-1]->d);
 }
 
 static inline void
 check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
 {
   ensure(sa == sc);
-  ensure(sa == ma[0]->desc->nmv); // 'square' matrix, ignoring knobs
+  ensure(sa == ma[0]->d->nmv); // 'square' matrix, ignoring knobs
   check_same_desc(sa,ma);
   check_same_desc(sc,(const T**)mc);
-  ensure(ma[0]->desc == mc[0]->desc);
+  ensure(ma[0]->d == mc[0]->d);
 }
 
 /* GSL BASED REAL VERSION (NO COMPLEX)
@@ -177,7 +177,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
   for (int i = 0; i < sa; ++i)
     ensure(mad_bit_get(ma[i]->nz,1));
 
-  D *d = ma[0]->desc;
+  D *d = ma[0]->d;
   T *lin_inv[sa], *nonlin[sa], *tmp[sa];
   for (int i = 0; i < sa; ++i) {
     lin_inv[i] = FUN(newd)(d,1);
@@ -220,7 +220,7 @@ FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
     if (row_select[i])
       ensure(mad_bit_get(ma[i]->nz,1));
 
-  D *d = ma[0]->desc;
+  D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
   for (int i = 0; i < sa; ++i) {

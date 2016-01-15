@@ -154,7 +154,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   NUM c;
-  int nv = t->desc->nv, read_cnt = -1;
+  int nv = t->d->nv, read_cnt = -1;
   ord_t o, ords[nv];
   FUN(clear)(t);
 
@@ -190,7 +190,7 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   // TODO: print map vars and name
 
   if (!stream_) stream_ = stdout;
-  D *d = t->desc;
+  D *d = t->d;
 
   // print header
   if (!name_) name_ = "-UNNAMED--";

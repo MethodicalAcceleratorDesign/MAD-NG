@@ -37,7 +37,7 @@ check_same_desc(int sa, const T *ma[sa])
 {
   assert(ma);
   for (int i = 1; i < sa; ++i)
-    ensure(ma[i]->desc == ma[i-1]->desc);
+    ensure(ma[i]->d == ma[i-1]->d);
 }
 
 static inline void
@@ -46,12 +46,12 @@ check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
   assert(ma && mb && mc);
   ensure(sa && sb && sc);
   ensure(sa == sc);
-  ensure(sb == ma[0]->desc->nmv);
+  ensure(sb == ma[0]->d->nmv);
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
   check_same_desc(sc,(const T**)mc);
-  ensure(ma[0]->desc == mb[0]->desc);
-  ensure(ma[0]->desc == mc[0]->desc);
+  ensure(ma[0]->d == mb[0]->d);
+  ensure(ma[0]->d == mc[0]->d);
 }
 
 #ifdef _OPENMP

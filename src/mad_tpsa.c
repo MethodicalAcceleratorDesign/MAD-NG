@@ -35,9 +35,9 @@
 void
 FUN(debug) (const T *t)
 {
-  D *d = t->desc;
+  D *d = t->d;
   printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=" FMT " ", t->nz, t->lo, t->hi, t->mo, VAL(t->coef[0]));
-  ord_t hi = MIN3(t->hi, t->mo, t->desc->trunc);
+  ord_t hi = MIN3(t->hi, t->mo, t->d->trunc);
   int i = d->hpoly_To_idx[MAX(1,t->lo)]; // ord 0 already printed
   for (; i < d->hpoly_To_idx[hi+1]; ++i)
     if (t->coef[i])
@@ -52,7 +52,7 @@ D*
 FUN(desc) (const T *t)
 {
   assert(t);
-  return t->desc;
+  return t->d;
 }
 
 ord_t
@@ -88,7 +88,7 @@ FUN(newd) (D *d, ord_t mo)
 
   T *t = malloc(sizeof(T) + d->nc * sizeof(NUM));
 
-  t->desc = d;
+  t->d = d;
   t->lo = t->mo = mo;
   t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking NZ[0]
   return t;
@@ -99,15 +99,15 @@ FUN(new) (const T *t, ord_t mo)
 {
   assert(t);
   if (mo == mad_tpsa_same) mo = t->mo;
-  return FUN(newd)(t->desc,mo);
+  return FUN(newd)(t->d,mo);
 }
 
 T*
 FUN(copy) (const T *src, T *dst)
 {
   assert(src && dst);
-  ensure(src->desc == dst->desc);
-  D *d = src->desc;
+  ensure(src->d == dst->d);
+  D *d = src->d;
   if (d->trunc < src->lo) {
     FUN(clear)(dst);
     return dst;
@@ -175,7 +175,7 @@ const ord_t*
 FUN(mono) (const T *t, int i, int *n, ord_t *total_ord_)
 {
   assert(t && n);
-  D *d = t->desc;
+  D *d = t->d;
   ensure(0 <= i && i < d->nc);
   *n = d->nv;
   if (total_ord_)
@@ -186,16 +186,16 @@ FUN(mono) (const T *t, int i, int *n, ord_t *total_ord_)
 int
 FUN(midx) (const T *t, int n, const ord_t m[n])
 {
-  assert(t && t->desc);
-  assert(n <= t->desc->nv);
-  return mad_desc_get_idx(t->desc, n, m);
+  assert(t && t->d);
+  assert(n <= t->d->nv);
+  return mad_desc_get_idx(t->d, n, m);
 }
 
 int
 FUN(midx_sp) (const T *t, int n, const int m[n])
 {
-  assert(t && t->desc);
-  return mad_desc_get_idx_sp(t->desc, n, m);
+  assert(t && t->d);
+  return mad_desc_get_idx_sp(t->d, n, m);
 }
 
 // --- --- ACCESSORS ----------------------------------------------------------
@@ -211,7 +211,7 @@ NUM
 FUN(geti) (const T *t, int i)
 {
   assert(t);
-  D *d = t->desc;
+  D *d = t->d;
   ensure(i >= 0 && i < d->nc);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo);
@@ -222,7 +222,7 @@ NUM
 FUN(getm) (const T *t, int n, const ord_t m[n])
 {
   assert(t && m);
-  D *d = t->desc;
+  D *d = t->d;
   idx_t i = mad_desc_get_idx(d,n,m);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo);
@@ -234,7 +234,7 @@ FUN(getm_sp) (const T *t, int n, const idx_t m[n])
 {
   // --- mono is sparse; represented as [(i o)]
   assert(t && m);
-  D *d = t->desc;
+  D *d = t->d;
   idx_t i = mad_desc_get_idx_sp(d,n,m);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo);
@@ -248,7 +248,7 @@ FUN(set0) (T *t, NUM a, NUM b)
   t->coef[0] = a*t->coef[0] + b;
   if (t->coef[0]) {
     t->nz = mad_bit_set(t->nz,0);
-    for (int c = t->desc->hpoly_To_idx[1]; c < t->desc->hpoly_To_idx[t->lo]; ++c)
+    for (int c = t->d->hpoly_To_idx[1]; c < t->d->hpoly_To_idx[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = 0;
   }
@@ -262,7 +262,7 @@ void
 FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
-  D *d = t->desc;
+  D *d = t->d;
   ensure(i >= 0 && i < d->nc && d->ords[i] <= t->mo);
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
@@ -301,8 +301,8 @@ void
 FUN(setm) (T *t, int n, const ord_t m[n], NUM a, NUM b)
 {
   assert(t && m);
-  assert(n <= t->desc->nv);
-  idx_t i = mad_desc_get_idx(t->desc,n,m);
+  assert(n <= t->d->nv);
+  idx_t i = mad_desc_get_idx(t->d,n,m);
   FUN(seti)(t,i,a,b);
 }
 
@@ -310,7 +310,7 @@ void
 FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
 {
   assert(t && m);
-  idx_t i = mad_desc_get_idx_sp(t->desc,n,m);
+  idx_t i = mad_desc_get_idx_sp(t->d,n,m);
   FUN(seti)(t,i,a,b);
 }
 
@@ -352,10 +352,10 @@ T*
 FUN(map) (const T *a, T *c, NUM (*f)(NUM v, int i_))
 {
   assert(a && c);
-  ensure(a->desc == c->desc);
+  ensure(a->d == c->d);
   // TODO: use on the whole range, not just [lo,hi]
 
-  D *d = a->desc;
+  D *d = a->d;
   if (d->trunc < a->lo) { FUN(clear)(c); return c; }
 
   c->hi = MIN3(a->hi, c->mo, d->trunc);
@@ -372,11 +372,11 @@ T*
 FUN(map2) (const T *a, const T *b, T *c, NUM (*f)(NUM va, NUM vb, int i_))
 {
   assert(a && b && c);
-  ensure(a->desc == b->desc && a->desc == c->desc);
+  ensure(a->d == b->d && a->d == c->d);
 
-  idx_t *pi = a->desc->hpoly_To_idx;
+  idx_t *pi = a->d->hpoly_To_idx;
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->desc->trunc),
+  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->d->trunc),
         c_lo = a->lo;
 
   NUM va, vb;
