@@ -21,44 +21,44 @@
 
 // http://graphics.stanford.edu/~seander/bithacks.html
 
-static inline bit_t
+static inline bit_t  __attribute__((const))
 mad_bit_set (bit_t b, int n)
 {
   return b | (1u << n);
 }
 
-static inline bit_t
+static inline bit_t  __attribute__((const))
 mad_bit_get (bit_t b, int n)
 {
   return b & (1u << n);
 }
 
-static inline bit_t
+static inline bit_t __attribute__((const))
 mad_bit_clr (bit_t b, int n)
 {
   return b & ~(1u << n);
 }
 
-static inline bit_t
+static inline bit_t __attribute__((const))
 mad_bit_add (bit_t a, bit_t b)
 {
   return a | b;
 }
 
-static inline bit_t
+static inline bit_t __attribute__((const))
 mad_bit_trunc (bit_t b, int n)
 {
   return b & ((2u << n) - 1);
 }
 
-static inline int
+static inline int __attribute__((const))
 mad_bit_lowest (bit_t b)
 {
   extern const unsigned char mad_bit_lowest_tbl_[32];
   return b ? mad_bit_lowest_tbl_[((b & -b) * 0x077CB531u) >> 27] : 32;
 }
 
-static inline int
+static inline int __attribute__((const))
 mad_bit_highest (bit_t b)
 {
   extern const unsigned char mad_bit_highest_tbl_[256];
