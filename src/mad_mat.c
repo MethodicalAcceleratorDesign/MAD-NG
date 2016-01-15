@@ -204,60 +204,60 @@
 
 // --- mat
 
-void mad_mat_ident(num_t *r, size_t m, size_t n, size_t ldr)
+void mad_mat_ident(num_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; num_t x = 0; SET(); x = 1; DIAG(); }
 
-void mad_mat_set(num_t x, num_t *r, size_t m, size_t n, size_t ldr)
+void mad_mat_set(num_t x, num_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; SET(); }
 
-void mad_mat_cpy(const num_t *x, num_t *r, size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_mat_cpy(const num_t x[], num_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXRX; CPY(); }
 
-void mad_mat_cpym(const num_t *x, cnum_t *r, size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_mat_cpym(const num_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXR; CPY(); }
 
-void mad_mat_trans (const num_t *x, num_t *r, size_t m, size_t n)
+void mad_mat_trans (const num_t x[], num_t r[], size_t m, size_t n)
 { CHKXR; TRANS(); }
 
-num_t mad_mat_dot (const num_t *x, const num_t *y, size_t m, size_t n, size_t p)
+num_t mad_mat_dot (const num_t x[], const num_t y[], size_t m, size_t n, size_t p)
 { CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
 
-void mad_mat_dotm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_mat_dotm (const num_t x[], const cnum_t y[], cnum_t *r, size_t m, size_t n, size_t p)
 { CHKXY; DOT(); }
 
-void mad_mat_mul (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, size_t p)
+void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, size_t p)
 { CHKXYRXY; MUL(); }
 
-void mad_mat_mulm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRY; MUL(); }
 
 // -- cmat
 
-void mad_cmat_ident(cnum_t *r, size_t m, size_t n, size_t ldr)
+void mad_cmat_ident(cnum_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; cnum_t x = 0; SET(); x = 1; DIAG(); }
 
-void mad_cmat_set(num_t x_re, num_t x_im, cnum_t *r, size_t m, size_t n, size_t ldr)
+void mad_cmat_set(num_t x_re, num_t x_im, cnum_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; CNUM(x); SET(); }
 
-void mad_cmat_cpy(const cnum_t *x, cnum_t *r, size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_cmat_cpy(const cnum_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXRX; CPY(); }
 
-void mad_cmat_trans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
+void mad_cmat_trans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
 { CHKXR; TRANS(); }
 
-void mad_cmat_ctrans (const cnum_t *x, cnum_t *r, size_t m, size_t n)
+void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
 { CHKXR; TRANS(conj); }
 
-void mad_cmat_dot (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_cmat_dot (const cnum_t x[], const cnum_t y[], cnum_t *r, size_t m, size_t n, size_t p)
 { CHKXY; DOT(conj); }
 
-void mad_cmat_dotm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_cmat_dotm (const cnum_t x[], const num_t y[], cnum_t *r, size_t m, size_t n, size_t p)
 { CHKXY; DOT(conj); }
 
-void mad_cmat_mul (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRXY; MUL(); }
 
-void mad_cmat_mulm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p)
+void mad_cmat_mulm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRX; MUL(); }
 
 // -- lapack -----------------------------------------------------------------o
@@ -299,7 +299,7 @@ void zgelsy_ (const int *m, const int *n, const int *nrhs,
 // -- inverse ----------------------------------------------------------------o
 
 int
-mad_mat_invn (const num_t *y, num_t x, num_t *r, size_t m, size_t n, num_t rcond)
+mad_mat_invn (const num_t y[], num_t x, num_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   alloc_tmp(num_t, u, n*n);
@@ -311,7 +311,7 @@ mad_mat_invn (const num_t *y, num_t x, num_t *r, size_t m, size_t n, num_t rcond
 }
 
 int
-mad_mat_invc (const num_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t m, size_t n, num_t rcond)
+mad_mat_invc (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   alloc_tmp(num_t, u, n*n);
@@ -325,7 +325,7 @@ mad_mat_invc (const num_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t m, size_
 }
 
 int
-mad_cmat_invn (const cnum_t *y, num_t x, cnum_t *r, size_t m, size_t n, num_t rcond)
+mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   alloc_tmp(cnum_t, u, n*n);
@@ -337,7 +337,7 @@ mad_cmat_invn (const cnum_t *y, num_t x, cnum_t *r, size_t m, size_t n, num_t rc
 }
 
 int
-mad_cmat_invc (const cnum_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t m, size_t n, num_t rcond)
+mad_cmat_invc (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   alloc_tmp(cnum_t, u, n*n);
@@ -358,7 +358,7 @@ mad_cmat_invc (const cnum_t *y, num_t x_re, num_t x_im, cnum_t *r, size_t m, siz
 //    and  X':[p x m] = B:[M=p x NRHS=m], ipiv:[N]
 
 int
-mad_mat_div (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, size_t p, num_t rcond)
+mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, size_t p, num_t rcond)
 {
   CHKXYR;
   int info=0;
@@ -393,7 +393,7 @@ mad_mat_div (const num_t *x, const num_t *y, num_t *r, size_t m, size_t n, size_
 }
 
 int
-mad_mat_divm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p, num_t rcond)
+mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p, num_t rcond)
 {
   CHKXYR;
   int info=0;
@@ -429,7 +429,7 @@ mad_mat_divm (const num_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, si
 }
 
 int
-mad_cmat_div (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, size_t p, num_t rcond)
+mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p, num_t rcond)
 {
   CHKXYR;
   int info=0;
@@ -465,7 +465,7 @@ mad_cmat_div (const cnum_t *x, const cnum_t *y, cnum_t *r, size_t m, size_t n, s
 }
 
 int
-mad_cmat_divm (const cnum_t *x, const num_t *y, cnum_t *r, size_t m, size_t n, size_t p, num_t rcond)
+mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n, size_t p, num_t rcond)
 {
   CHKXYR;
   int info=0;
