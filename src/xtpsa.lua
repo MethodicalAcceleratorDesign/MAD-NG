@@ -116,8 +116,10 @@ function gmath.isa_tpsa (x)
   return type(x) == 'cdata' and (istype('tpsa_t', x) or istype('ctpsa_t', x))
 end
 
-local function tpsa_alloc (desc, mo)
-  local nc, tpsa = desc.nc, nil
+local isa_tpsa = gmath.isa_tpsa
+
+local function tpsa_alloc (d, mo)
+  local nc, tpsa = d.nc, nil
   if nc < mad_alloc then
     tpsa = tpsa_ctor(nc)
   else
@@ -125,14 +127,14 @@ local function tpsa_alloc (desc, mo)
     local ptr = clib.mad_malloc(siz)
     tpsa = ffi.gc(ffi.cast('tpsa_t&', ptr), clib.mad_free)
   end
-  tpsa.desc = desc
+  tpsa.d = d
   tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
-  tpsa.nz, tpsa.is_tmp, tpsa.coef[0] = 0, 0, 0
+  tpsa.nz, tpsa.coef[0] = 0, 0
   return tpsa
 end
 
-local function ctpsa_alloc (desc, mo)
-  local nc, tpsa = desc.nc, nil
+local function ctpsa_alloc (d, mo)
+  local nc, tpsa = d.nc, nil
   if nc < (mad_alloc/2) then
     tpsa = tpsa_ctor(nc)
   else
@@ -140,24 +142,21 @@ local function ctpsa_alloc (desc, mo)
     local ptr = clib.mad_malloc(siz)
     tpsa = ffi.gc(ffi.cast('ctpsa_t&', ptr), clib.mad_free)
   end
-  tpsa.desc = desc
+  tpsa.d = d
   tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
-  tpsa.nz, tpsa.is_tmp, tpsa.coef[0] = 0, 0, 0
+  tpsa.nz, tpsa.coef[0] = 0, 0
   return tpsa
 end
 
-local isa_tpsa = gmath.isa_tpsa
-
--- tpsa(t) -> same
--- tpsa(d) -> default
--- tpsa(t, mo) -> desc + mo
--- tpsa(d, mo) -> desc + mo
+-- tpsa(t)       -> t.mo
+-- tpsa(d)       -> d.mo
+-- tpsa(t|d, mo) -> mo
 
 local function tpsa (t, mo_)
   if isa_tpsa(t) then
-    return tpsa_alloc(t.d, mo_ >= 0 and mo_ or mo_ < 0 and d.mo_ or t.mo)
+    return tpsa_alloc(t.d, mo_ and max(0,min(mo_,t.d.mo)) or t.mo)
   elseif is_desc(t) then
-    return tpsa_alloc(  d, mo_ or d.mo)
+    return tpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
     error("invalid argument to tpsa constructor, expecting TPSA or descriptor")
   end
@@ -165,9 +164,9 @@ end
 
 local function ctpsa (t, mo_)
   if isa_tpsa(t) then
-    return ctpsa_alloc(t.d, mo_ or t.mo)
+    return ctpsa_alloc(t.d, mo_ and max(0,min(mo_,t.d.mo)) or t.mo)
   elseif is_desc(t) then
-    return ctpsa_alloc(  d, mo_ or d.mo)
+    return ctpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
     error("invalid argument to ctpsa constructor, expecting TPSA or descriptor")
   end
@@ -202,16 +201,11 @@ local function desc (args)
   if cvar_nams then for i=1,nv do cvar_nams[i-1] =                       args.v [i]            end end
   if cknb_ords then for i=1,nk do cknb_ords[i-1] = is_table(args.ko) and args.ko[i] or args.ko end end
 
-  local desc
-
   if nk > 0 then
-    desc = clib.mad_tpsa_desc_newk(nv, cvar_ords, cmap_ords, cvar_nams, nk, cknb_ords, dk)
+    return clib.mad_tpsa_desc_newk(nv, cvar_ords, cmap_ords, cvar_nams, nk, cknb_ords, dk)
   else
-    desc = clib.mad_tpsa_desc_new (nv, cvar_ords, cmap_ords, cvar_nams)
+    return clib.mad_tpsa_desc_new (nv, cvar_ords, cmap_ords, cvar_nams)
   end
-
-  tmp_stack[desc.id] = { top=0 }
-  return desc
 end
 
 ------------------------------------------------------------------------------o
