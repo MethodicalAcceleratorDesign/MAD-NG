@@ -37,14 +37,16 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
-const ord_t DESC_MAX = CHAR_BIT * sizeof(bit_t);
-const int   desc_max_temps = sizeof(((desc_t*)0)->t)/sizeof(*((desc_t*)0)->t);
-
 // --- GLOBALS ----------------------------------------------------------------
 
 const ord_t mad_tpsa_default   = -1;
 const ord_t mad_tpsa_same      = -2;
       int   mad_tpsa_strict    =  0;
+
+// --- CONSTANTS --------------------------------------------------------------
+
+const ord_t desc_max_order = CHAR_BIT * sizeof(bit_t);
+const int   desc_max_temps = sizeof(((desc_t*)0)->t)/sizeof(*((desc_t*)0)->t);
 
 // --- HELPERS ----------------------------------------------------------------
 
@@ -1025,6 +1027,7 @@ mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t 
 {
   ensure(var_ords);
   ord_t mo, map_ords[nv];  // to parse optional param
+
   if (map_ords_) {
     for (int i = 0; i < nv; ++i) ensure(var_ords[i] <= map_ords_[i]);
     mad_mono_cpy(nv,map_ords_,map_ords);
@@ -1034,7 +1037,7 @@ mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t 
     mo = mad_mono_max(nv,var_ords);
     mad_mono_fill(nv,map_ords,mo);
   }
-  ensure(mo < DESC_MAX);
+  ensure(mo < desc_max_order);
 
   return get_desc(nv,map_ords,var_nam_, nv,var_ords, 0);
 }
@@ -1047,7 +1050,7 @@ mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t
   ensure(nv && var_ords);
   // ensure(nk && knb_ords);
   ensure(dk <= mad_mono_ord(nk,knb_ords));
-  ensure(mad_mono_ord(nv,var_ords) + mad_mono_ord(nk,knb_ords) < DESC_MAX);
+  ensure(mad_mono_ord(nv,var_ords) + mad_mono_ord(nk,knb_ords) < desc_max_order);
 
   ord_t map_ords[nv];  // to parse optional param
   if (map_ords_) {

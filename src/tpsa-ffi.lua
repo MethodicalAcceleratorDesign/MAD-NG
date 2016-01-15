@@ -76,10 +76,6 @@ void  mad_tpsa_seti    (      T *t, int i,                  num_t a, num_t b);
 void  mad_tpsa_setm    (      T *t, int n, const ord_t m[], num_t a, num_t b);
 void  mad_tpsa_setm_sp (      T *t, int n, const int   m[], num_t a, num_t b);
 
-// tranformations
-T*    mad_tpsa_map     (const T *a,             T *c, num_t (*f)(num_t v, int i_));
-T*    mad_tpsa_map2    (const T *a, const T *b, T *c, num_t (*f)(num_t va, num_t vb, int i_));
-
 // operations
 void  mad_tpsa_abs     (const T *a, T *c);
 num_t mad_tpsa_nrm1    (const T *t, const T *t2_);
@@ -347,19 +343,12 @@ function M.scale(src, val, dst)
   clib.mad_tpsa_scl(src,val,dst)
 end
 
-function M.map(t, r, f)
-  -- TODO: implement to use pull-style API (no C->Lua callback)
-  clib.mad_tpsa_map(t,r,f)
-end
-
-function M.map2(t1, t2, r, f)
-  clib.mad_tpsa_map2(t1,t2,r,f)
-end
-
 -- --- BINARY ------------------------------------------------------------------
+
 M.add = clib.mad_tpsa_add
 M.sub = clib.mad_tpsa_sub
 M.div = clib.mad_tpsa_div
+
 function M.mul(a,b,c)  -- wrapper for benchmarking
   clib.mad_tpsa_mul(a,b,c)
 end

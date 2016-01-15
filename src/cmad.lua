@@ -8,9 +8,6 @@ typedef  int               idx_t; // mad.h
 typedef  double            num_t; // mad.h
 typedef  double _Complex  cnum_t; // mad.h
 
-typedef  unsigned int      bit_t; // mad_bit.h
-typedef  unsigned char     ord_t; // mad_mono.h
-
 typedef  struct _IO_FILE    FILE; // stdio.h
 ]]
 
@@ -43,37 +40,36 @@ void*  realloc (void  *ptr_ , size_t size_);
 void   free    (void  *ptr_);
 ]]
 
--- functions for real and complex numbers for LuaJIT (mad_num.h)
+-- functions for real and complex numbers (mad_num.h)
 
 ffi.cdef [[
-num_t mad_cnum_abs   (num_t x_re, num_t x_im);
-num_t mad_cnum_arg   (num_t x_re, num_t x_im);
+num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
+num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
 
-void  mad_cnum_exp   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_log   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sqrt  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_proj  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_log_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_sin   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cos   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tan   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sinh  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cosh  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tanh  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sin_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_cos_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_tan_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sinh_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_cosh_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_tanh_r  (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_asin  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acos  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atan  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_asinh (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acosh (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atanh (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_asin_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_acos_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_atan_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_div   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
-void  mad_cnum_pow   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_div_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 ]]
 
--- functions for vector-vector and vector-scalar operations for LuaJIT (mad_vec.h)
--- note: matrices can be treated as vector for element wise operations
+-- functions for vector-vector, scalar-vector and vector-scalar operations (mad_vec.h)
 
 ffi.cdef[[
 void   mad_vec_set   (                         num_t x        ,  num_t  r[], size_t n); //  num -> vec
@@ -131,7 +127,8 @@ void   mad_cvec_divc  (const cnum_t y[],       cnum_t x        , cnum_t  r[], si
 void   mad_cvec_divc_r(const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cpx  / cvec
 ]]
 
--- functions for matrix-matrix, vector-matrix and matrix-vector operations for LuaJIT (mad_mat.h)
+-- functions for matrix-matrix, vector-matrix and matrix-vector operations (mad_mat.h)
+-- note: matrices can be treated as vectors for elements-wise operations
 
 ffi.cdef[[
 void   mad_mat_ident   (                                           num_t  r[], size_t m, size_t n,             size_t ldr); // ident-> mat
@@ -169,10 +166,31 @@ int    mad_cmat_div    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], s
 int    mad_cmat_divm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat /  mat
 ]]
 
--- functions for GTPSA descriptor (mad_desc.h)
+-- functions for monomials (mad_mono.h)
 
 ffi.cdef[[
-typedef struct desc desc_t;
+typedef unsigned char ord_t; // mad_mono.h
+
+void  mad_mono_fill  (int n,       ord_t a[], ord_t v);
+void  mad_mono_cpy   (int n, const ord_t a[], ord_t r[]);
+
+ord_t mad_mono_max   (int n, const ord_t a[]);
+int   mad_mono_ord   (int n, const ord_t a[]);
+int   mad_mono_equ   (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_leq   (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_rcmp  (int n, const ord_t a[], const ord_t b[]);
+
+void  mad_mono_add   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
+void  mad_mono_sub   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
+
+void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
+void  mad_mono_print (int n, const ord_t a[]);
+]]
+
+-- functions for GTPSA descriptors (mad_desc.h)
+
+ffi.cdef[[
+typedef struct desc desc_t; // mad_desc.h
 
 // globals
 extern const ord_t mad_tpsa_default;
@@ -191,10 +209,10 @@ ord_t   mad_desc_maxord  (const desc_t *d);
 ord_t   mad_desc_gtrunc  (      desc_t *d, ord_t to);
 ]]
 
--- functions for real GTPSA (mad_tpsa.h)
+-- functions for GTPSAs real (mad_tpsa.h)
 
 ffi.cdef[[
-typedef struct tpsa tpsa_t;
+typedef struct tpsa tpsa_t; // mad_tpsa.h
 
 // ctors, dtor
 tpsa_t* mad_tpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
@@ -305,10 +323,10 @@ void    mad_tpsa_scan_coef(      tpsa_t *t,              FILE *stream_); // TODO
 void    mad_tpsa_debug    (const tpsa_t *t);
 ]]
 
--- functions for complex GTPSA (mad_ctpsa.h)
+-- functions for GTPSAs complex (mad_ctpsa.h)
 
 ffi.cdef[[
-typedef struct ctpsa ctpsa_t;
+typedef struct ctpsa ctpsa_t; // mad_ctpsa.h
 
 // ctors, dtor
 ctpsa_t* mad_ctpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo

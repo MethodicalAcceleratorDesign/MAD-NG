@@ -37,24 +37,6 @@ SYNOPSIS
 
 DESCRIPTION
   The module tpsa implements the operators and math functions on TPSA:
-    (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
-    unm, add, sub, mul, div, mod, pow, emul, ediv,
-    rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy,
-    get_row, get_col, get_diag, get_sub,
-    set_row, set_col, set_diag, set_sub,
-    transpose, t, trans, ctrans,
-    real, imag, conj, norm, angle, trace, tr,
-    dot, inner, cross, mixed, outer,
-    abs, arg, exp, log, pow, sqrt, proj,
-    sin, cos, tan, sinh, cosh, tanh,
-    asin, acos, atan, asinh, acosh, atanh,
-    foldl, foldr, foreach, map, map2, maps,
-    concat, reshape, tostring, totable, fromtable,
-    check_bounds.
-
-REMARK:
-  By default, check_bounds is true.
 
 RETURN VALUES
   The constructor of TPSA

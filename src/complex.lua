@@ -80,27 +80,27 @@ function M.real  (x) return x.re end
 function M.imag  (x) return x.im end
 function M.conj  (x) return complex( x.re, -x.im) end
 
-function M.abs   (x) return clib.mad_cnum_abs (x.re, x.im) end
-function M.arg   (x) return clib.mad_cnum_arg (x.re, x.im) end
+function M.abs   (x) return clib.mad_cnum_abs_r (x.re, x.im) end
+function M.arg   (x) return clib.mad_cnum_arg_r (x.re, x.im) end
 
-function M.exp   (x) clib.mad_cnum_exp   (x.re, x.im, cres) ; return cres[0] end
-function M.log   (x) clib.mad_cnum_log   (x.re, x.im, cres) ; return cres[0] end
-function M.sqrt  (x) clib.mad_cnum_sqrt  (x.re, x.im, cres) ; return cres[0] end
-function M.proj  (x) clib.mad_cnum_proj  (x.re, x.im, cres) ; return cres[0] end
+function M.exp   (x) clib.mad_cnum_exp_r   (x.re, x.im, cres) ; return cres[0] end
+function M.log   (x) clib.mad_cnum_log_r   (x.re, x.im, cres) ; return cres[0] end
+function M.sqrt  (x) clib.mad_cnum_sqrt_r  (x.re, x.im, cres) ; return cres[0] end
+function M.proj  (x) clib.mad_cnum_proj_r  (x.re, x.im, cres) ; return cres[0] end
 
-function M.sin   (x) clib.mad_cnum_sin   (x.re, x.im, cres) ; return cres[0] end
-function M.cos   (x) clib.mad_cnum_cos   (x.re, x.im, cres) ; return cres[0] end
-function M.tan   (x) clib.mad_cnum_tan   (x.re, x.im, cres) ; return cres[0] end
-function M.sinh  (x) clib.mad_cnum_sinh  (x.re, x.im, cres) ; return cres[0] end
-function M.cosh  (x) clib.mad_cnum_cosh  (x.re, x.im, cres) ; return cres[0] end
-function M.tanh  (x) clib.mad_cnum_tanh  (x.re, x.im, cres) ; return cres[0] end
+function M.sin   (x) clib.mad_cnum_sin_r   (x.re, x.im, cres) ; return cres[0] end
+function M.cos   (x) clib.mad_cnum_cos_r   (x.re, x.im, cres) ; return cres[0] end
+function M.tan   (x) clib.mad_cnum_tan_r   (x.re, x.im, cres) ; return cres[0] end
+function M.sinh  (x) clib.mad_cnum_sinh_r  (x.re, x.im, cres) ; return cres[0] end
+function M.cosh  (x) clib.mad_cnum_cosh_r  (x.re, x.im, cres) ; return cres[0] end
+function M.tanh  (x) clib.mad_cnum_tanh_r  (x.re, x.im, cres) ; return cres[0] end
 
-function M.asin  (x) clib.mad_cnum_asin  (x.re, x.im, cres) ; return cres[0] end
-function M.acos  (x) clib.mad_cnum_acos  (x.re, x.im, cres) ; return cres[0] end
-function M.atan  (x) clib.mad_cnum_atan  (x.re, x.im, cres) ; return cres[0] end
-function M.asinh (x) clib.mad_cnum_asinh (x.re, x.im, cres) ; return cres[0] end
-function M.acosh (x) clib.mad_cnum_acosh (x.re, x.im, cres) ; return cres[0] end
-function M.atanh (x) clib.mad_cnum_atanh (x.re, x.im, cres) ; return cres[0] end
+function M.asin  (x) clib.mad_cnum_asin_r  (x.re, x.im, cres) ; return cres[0] end
+function M.acos  (x) clib.mad_cnum_acos_r  (x.re, x.im, cres) ; return cres[0] end
+function M.atan  (x) clib.mad_cnum_atan_r  (x.re, x.im, cres) ; return cres[0] end
+function M.asinh (x) clib.mad_cnum_asinh_r (x.re, x.im, cres) ; return cres[0] end
+function M.acosh (x) clib.mad_cnum_acosh_r (x.re, x.im, cres) ; return cres[0] end
+function M.atanh (x) clib.mad_cnum_atanh_r (x.re, x.im, cres) ; return cres[0] end
 
 function M.__eq  (x, y)
   if iscal(y) then
@@ -180,12 +180,12 @@ end
 
 function M.div (x, y, r_, rcond_)
   if isnum(x) then -- num / cpx
-    clib.mad_cnum_div(x, 0, y.re, y.im, cres)
+    clib.mad_cnum_div_r(x, 0, y.re, y.im, cres)
     return cres[0] 
   elseif isnum(y) then -- cpx / num
     return complex(x.re / y, x.im / y)
   elseif iscpx(y) then -- cpx / cpx
-    clib.mad_cnum_div(x.re, x.im, y.re, y.im, cres)
+    clib.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
     return cres[0]
   end
 
@@ -216,7 +216,7 @@ function M.pow (x, y)
 
   if iscpx(y) then
     x = complex(x)
-    clib.mad_cnum_pow(x.re, x.im, y.re, y.im, cres)
+    clib.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres)
     return cres[0]
   end
 

@@ -37,20 +37,20 @@ typedef unsigned char ord_t;
 
 // --- interface -------------------------------------------------------------o
 
-void  mad_mono_fill  (int n,       ord_t a[n], ord_t v);
-void  mad_mono_cpy   (int n, const ord_t a[n],                   ord_t r[n]);
+void  mad_mono_fill  (int n,       ord_t a[], ord_t v);
+void  mad_mono_cpy   (int n, const ord_t a[], ord_t r[]);
 
-ord_t mad_mono_max   (int n, const ord_t a[n]);
-int   mad_mono_ord   (int n, const ord_t a[n]);
-int   mad_mono_equ   (int n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_leq   (int n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_rcmp  (int n, const ord_t a[n], const ord_t b[n]);
+ord_t mad_mono_max   (int n, const ord_t a[]);
+int   mad_mono_ord   (int n, const ord_t a[]);
+int   mad_mono_equ   (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_leq   (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_rcmp  (int n, const ord_t a[], const ord_t b[]);
 
-void  mad_mono_add   (int n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
-void  mad_mono_sub   (int n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
+void  mad_mono_add   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
+void  mad_mono_sub   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
 
-void  mad_mono_sort  (int n, const ord_t a[n], int idxs[n]);
-void  mad_mono_print (int n, const ord_t a[n]);
+void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
+void  mad_mono_print (int n, const ord_t a[]);
 
 // ---------------------------------------------------------------------------o
 

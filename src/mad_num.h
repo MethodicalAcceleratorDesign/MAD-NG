@@ -28,30 +28,30 @@
 
 // --- interface -------------------------------------------------------------o
 
-num_t mad_cnum_abs   (num_t x_re, num_t x_im);
-num_t mad_cnum_arg   (num_t x_re, num_t x_im);
+num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
+num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
 
-void  mad_cnum_exp   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_log   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sqrt  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_proj  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_log_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_sin   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cos   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tan   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sinh  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cosh  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tanh  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sin_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_cos_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_tan_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sinh_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_cosh_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_tanh_r  (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_asin  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acos  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atan  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_asinh (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acosh (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atanh (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_asin_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_acos_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_atan_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r);
 
-void  mad_cnum_div   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
-void  mad_cnum_pow   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_div_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 
 // ---------------------------------------------------------------------------o
 

@@ -60,9 +60,6 @@ typedef struct { int32_t nr, nc; double  data[?]; }  matrix_t;
 typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 ]]
 
--- threshold to use external allocator and save memory inside the 1GB limit
-local mad_alloc = 1024
-
 -- locals --------------------------------------------------------------------o
 
 local istype = ffi.istype
@@ -70,6 +67,9 @@ local istype = ffi.istype
 -- FFI type constructors
 local  matrix_ctor = ffi.typeof( 'matrix_t')
 local cmatrix_ctor = ffi.typeof('cmatrix_t')
+
+-- threshold for external allocator
+local mad_alloc = 1024
 
 -- implementation ------------------------------------------------------------o
 

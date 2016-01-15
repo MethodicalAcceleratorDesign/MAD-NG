@@ -120,7 +120,6 @@ local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
 local cres = ffi.new 'complex[1]'
 
 -- FFI type constructors
-
 local matrix  = xmat.matrix
 local cmatrix = xmat.cmatrix
 
