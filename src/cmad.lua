@@ -186,6 +186,8 @@ int   mad_mono_rcmp  (int n, const ord_t a[], const ord_t b[]);
 void  mad_mono_add   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
 void  mad_mono_sub   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
 
+void  mad_mono_concat(int n, const ord_t a[], int m, const ord_t b[], ord_t r[]);
+
 void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
 void  mad_mono_print (int n, const ord_t a[]);
 ]]
