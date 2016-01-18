@@ -4,6 +4,10 @@ local gmath   = require 'gmath'
 local complex = require 'complex'
 local matrix  = require 'matrix'
 local cmatrix = require 'cmatrix'
+local jit    = require('jit')
+local jitv   = require('jit.v')
+
+jitv.start()
 
 local sqrt, tostring = gmath.sqrt, gmath.tostring
 

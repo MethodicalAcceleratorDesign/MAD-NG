@@ -207,13 +207,13 @@
 void mad_mat_ident(num_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; num_t x = 0; SET(); x = 1; DIAG(); }
 
-void mad_mat_set(num_t x, num_t r[], size_t m, size_t n, size_t ldr)
+void mad_mat_fill(num_t x, num_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; SET(); }
 
-void mad_mat_cpy(const num_t x[], num_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_mat_copy(const num_t x[], num_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXRX; CPY(); }
 
-void mad_mat_cpym(const num_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_mat_copym(const num_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXR; CPY(); }
 
 void mad_mat_trans (const num_t x[], num_t r[], size_t m, size_t n)
@@ -239,13 +239,13 @@ void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size
 void mad_cmat_ident(cnum_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; cnum_t x = 0; SET(); x = 1; DIAG(); }
 
-void mad_cmat_set(cnum_t x, cnum_t r[], size_t m, size_t n, size_t ldr)
+void mad_cmat_fill(cnum_t x, cnum_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; SET(); }
 
-void mad_cmat_set_r(num_t x_re, num_t x_im, cnum_t r[], size_t m, size_t n, size_t ldr)
+void mad_cmat_fill_r(num_t x_re, num_t x_im, cnum_t r[], size_t m, size_t n, size_t ldr)
 { CHKR; CNUM(x); SET(); }
 
-void mad_cmat_cpy(const cnum_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
+void mad_cmat_copy(const cnum_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, size_t ldr)
 { CHKXRX; CPY(); }
 
 void mad_cmat_trans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
@@ -384,12 +384,12 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
   int info=0;
   const int nn=n, nm=m, np=p;
   alloc_tmp(num_t, a, n*p);
-  mad_vec_cpy(y, a, n*p);
+  mad_vec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) { 
     int ipiv[n];
-    mad_vec_cpy(x, r, m*p);
+    mad_vec_copy(x, r, m*p);
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return free_tmp(a), n;
   }
@@ -399,11 +399,11 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
   alloc_tmp(num_t, rr, ldb*nm);
-  mad_mat_cpy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
+  mad_mat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, &info); // query
   alloc_tmp(num_t, wk, lwork=sz);
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, &info); // compute
-  mad_mat_cpy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   free_tmp(wk); free_tmp(rr); free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
@@ -419,12 +419,12 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
   int info=0;
   const int nn=n, nm=m, np=p;
   alloc_tmp(cnum_t, a, n*p);
-  mad_cvec_cpy(y, a, n*p);
+  mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) { 
     int ipiv[n];
-    mad_vec_cpyv(x, r, m*p);
+    mad_vec_copyv(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return free_tmp(a), n;
   }
@@ -435,11 +435,11 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
   alloc_tmp(cnum_t, rr, ldb*nm);
-  mad_mat_cpym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
+  mad_mat_copym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
   alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_cpy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   free_tmp(wk); free_tmp(rr); free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
@@ -455,12 +455,12 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
   int info=0;
   const int nn=n, nm=m, np=p;
   alloc_tmp(cnum_t, a, n*p);
-  mad_cvec_cpy(y, a, n*p);
+  mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) { 
     int ipiv[n];
-    mad_cvec_cpy(x, r, m*p);
+    mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return free_tmp(a), n;
   }
@@ -471,11 +471,11 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
   alloc_tmp(cnum_t, rr, ldb*nm);
-  mad_cmat_cpy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
+  mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
   alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_cpy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   free_tmp(wk); free_tmp(rr); free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
@@ -491,12 +491,12 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   int info=0;
   const int nn=n, nm=m, np=p;
   alloc_tmp(cnum_t, a, n*p);
-  mad_vec_cpyv(y, a, n*p);
+  mad_vec_copyv(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) { 
     int ipiv[n];
-    mad_cvec_cpy(x, r, m*p);
+    mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return free_tmp(a), n;
   }
@@ -507,11 +507,11 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
   alloc_tmp(cnum_t, rr, ldb*nm);
-  mad_cmat_cpy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
+  mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
   alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_cpy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   free_tmp(wk); free_tmp(rr); free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");

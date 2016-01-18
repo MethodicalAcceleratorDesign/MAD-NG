@@ -45,6 +45,22 @@ mad_mono_fill (int n, ord_t a[n], ord_t v)
   for (int i=0; i < n; ++i) a[i] = v;
 }
 
+void
+mad_mono_copy (int n, const ord_t a[n], ord_t r[n])
+{
+  assert(a && r);
+  for (int i=0; i < n; ++i) r[i] = a[i];
+}
+
+void
+mad_mono_concat (int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
+{
+  assert(a && b && r);
+  int i, j;
+  for (i=0; i < n; ++i) r[i  ] = a[i];
+  for (j=0; j < m; ++j) r[i+j] = b[i];
+}
+
 ord_t
 mad_mono_max (int n, const ord_t a[n])
 {
@@ -53,13 +69,6 @@ mad_mono_max (int n, const ord_t a[n])
   for (int i = 1; i < n; ++i)
     if (a[i] > mo) mo = a[i];
   return mo;
-}
-
-void
-mad_mono_cpy (int n, const ord_t a[n], ord_t r[n])
-{
-  assert(a && r);
-  for (int i=0; i < n; ++i) r[i] = a[i];
 }
 
 int

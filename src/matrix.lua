@@ -96,7 +96,7 @@ local ffi   = require 'ffi'
 local clib  = require 'cmad'
 local gmath = require 'gmath'
 local xmat  = require 'xmatrix'
---local linalg  = require 'linalg'
+
 local tbl_new = require 'table.new'
 
 -- locals --------------------------------------------------------------------o
@@ -869,7 +869,7 @@ M.__index    = function (self, idx)
   return isnum(idx) and self.data[idx] or M[idx]
 end
 M.__newindex = function (self, idx, val)
-  if isnum(idx) then self.data[idx] = val end
+  self.data[idx] = val
 end
 
 ffi.metatype( 'matrix_t', M)

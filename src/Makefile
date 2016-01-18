@@ -26,8 +26,8 @@ DFLAGS  := -std=c11 -MM
 # compiler
 CFLAGS  := -std=c11 -W -Wall -Wextra -pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
-CFLAGS  += #-flto
-CFLAGS  += #-fopenmp
+CFLAGS  += # -flto
+CFLAGS  += # -fopenmp
 
 # lua
 LFLAGS  :=

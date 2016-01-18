@@ -93,12 +93,12 @@ SEE ALSO
  
 -- modules -------------------------------------------------------------------o
 
-local xmat = require 'xmatrix'
+local xmatrix = require 'xmatrix'
 
 -- locals --------------------------------------------------------------------o
 
 -- FFI type constructors
-local cmatrix = xmat.cmatrix
+local cmatrix = xmatrix.cmatrix
 
 -- implementation ------------------------------------------------------------o
 

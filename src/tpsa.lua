@@ -61,7 +61,72 @@ local tpsa = xtpsa.tpsa
 
 -- implementation ------------------------------------------------------------o
 
-ffi.metatype( 'tpsa_t', M)
+function M.copy(x, r_)
+  local r = r_ or x:tpsa()
+  clib.mad_tpsa_copy(x, r)
+  return r
+end
+
+-- indexing -------------------------------------------------------------
+
+function M.get_idx(t,m)
+  return clib.mad_tpsa_midx(t,#m,mono_t(#m,m))
+end
+
+function M.get_idx_sp(t,m)
+  return clib.mad_tpsa_midx_sp(t,#m,smono_t(#m,m))
+end
+
+function M.get_mono(t,i)
+  local nv, ord = int_ptr(), ord_ptr()
+  local cmono = clib.mad_tpsa_mono(t,i,nv,ord)
+  local m = {}
+  for i=1,nv[0] do
+    m[i] = cmono[i-1]
+  end
+  return m, ord[0]
+end
+
+-- PEEK & POKE -----------------------------------------------------------------
+
+M.clear  = clib.mad_tpsa_clear
+M.get0   = clib.mad_tpsa_get0
+M.get_at = clib.mad_tpsa_geti
+M.scalar = clib.mad_tpsa_scalar
+
+function M.get(t, m)
+  return clib.mad_tpsa_getm(t, #m, mono_t(#m,m))
+end
+
+function M.get_sp(t,m)
+  -- m = {idx1, ord1, idx2, ord2, ... }
+  return clib.mad_tpsa_getm_sp(t, #m, smono_t(#m,m))
+end
+
+function M.set0(t, a,b)
+  if not b then a, b = 0, a end
+  clib.mad_tpsa_set0(t,a,b)
+end
+
+
+function M.set_at(t, i, a,b)
+  if not b then a, b = 0, a end
+  clib.mad_tpsa_seti(t,i,a,b)
+end
+
+function M.set(t, m, a,b)
+  if not b then a, b = 0, a end
+  clib.mad_tpsa_setm(t, #m, mono_t(#m, m), a, b)
+end
+
+function M.set_sp(t, m, a,b)
+  if not b then a, b = 0, a end
+  clib.mad_tpsa_setm_sp(t, #m, smono_t(#m,m), a, b)
+end
+
+
+
+ffi.metatype('tpsa_t', M)
 
 ------------------------------------------------------------------------------o
 return tpsa

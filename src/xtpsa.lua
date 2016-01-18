@@ -51,6 +51,7 @@ SEE ALSO
 
 local ffi   = require 'ffi'
 local clib  = require 'cmad'
+local mono  = require 'mono'
 local gmath = require 'gmath'
 
 -- ffi -----------------------------------------------------------------------o
@@ -85,14 +86,9 @@ local istype = ffi.istype
 local min, max = math.min, math.max
 
 -- FFI type constructors
-local  tpsa_ctor   = ffi.typeof( 'tpsa_t')
-local ctpsa_ctor   = ffi.typeof('ctpsa_t')
-
-local strs_ctor    = ffi.typeof('str_t[?]')
-local mono_ctor    = ffi.typeof('ord_t[?]')
-
--- threshold for external allocator
-local mad_alloc = 1024
+local  tpsa_ctor = ffi.typeof( 'tpsa_t')
+local ctpsa_ctor = ffi.typeof('ctpsa_t')
+local  strs_ctor = ffi.typeof('str_t[?]')
 
 -- implementation ------------------------------------------------------------o
 
@@ -120,7 +116,7 @@ local isa_tpsa = gmath.isa_tpsa
 
 local function tpsa_alloc (d, mo)
   local nc, tpsa = d.nc, nil
-  if nc < mad_alloc then
+  if nc < clib.mad_alloc_threshold then
     tpsa = tpsa_ctor(nc)
   else
     local siz = ffi.sizeof('tpsa_t', nc)
@@ -135,7 +131,7 @@ end
 
 local function ctpsa_alloc (d, mo)
   local nc, ctpsa = d.nc, nil
-  if nc < (mad_alloc/2) then
+  if nc < (clib.mad_alloc_threshold/2) then
     ctpsa = ctpsa_ctor(nc)
   else
     local siz = ffi.sizeof('ctpsa_t', nc)
@@ -187,24 +183,23 @@ local function desc (args)
 
   local nv = args.nv or is_table(args.vo) and #args.vo or 0
   local nk = args.nk or is_table(args.ko) and #args.ko or 0
-  local dk = args.dk or 0
 
   assert(nv > 0, "invalid number of variables")
 
-  local cvar_ords =             mono_ctor(nv)
-  local cmap_ords = args.mo and mono_ctor(nv) or nil
-  local cvar_nams = args.v  and strs_ctor(nv) or nil
-  local cknb_ords = nk > 0  and mono_ctor(nk) or nil
+  local cvar =             mono(args.vo, nv)
+  local cmap = args.mo and mono(args.mo, nv)
+  local cknb = args.ko and mono(args.ko, nk)
+  local names
 
-                    for i=1,nv do cvar_ords[i-1] = is_table(args.vo) and args.vo[i] or args.vo end
-  if cmap_ords then for i=1,nv do cmap_ords[i-1] = is_table(args.mo) and args.mo[i] or args.mo end end
-  if cvar_nams then for i=1,nv do cvar_nams[i-1] =                       args.v [i]            end end
-  if cknb_ords then for i=1,nk do cknb_ords[i-1] = is_table(args.ko) and args.ko[i] or args.ko end end
+  if args.v then
+    names = strs_ctor(nv)
+    for i=1,nv do names[i-1] = args.v[i] end
+  end
 
   if nk > 0 then
-    return clib.mad_tpsa_desc_newk(nv, cvar_ords, cmap_ords, cvar_nams, nk, cknb_ords, dk)
+    return clib.mad_tpsa_desc_newk(nv, cvar.ord, cmap.ord, names, nk, cknb.ord, args.dk or 0)
   else
-    return clib.mad_tpsa_desc_new (nv, cvar_ords, cmap_ords, cvar_nams)
+    return clib.mad_tpsa_desc_new (nv, cvar.ord, cmap.ord, names)
   end
 end
 
@@ -213,4 +208,5 @@ return {
    tpsa =  tpsa,
   ctpsa = ctpsa,
    desc =  desc,
+   mono =  mono,
 }

@@ -125,7 +125,7 @@ make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_id
             tbl_realloc_monos(d,0);
             curr_mono = d->monos + nv*curr_mono_idx;
           }
-          mad_mono_cpy(nv, m, curr_mono);
+          mad_mono_copy(nv, m, curr_mono);
           d->ords[curr_mono_idx] = o;
           curr_mono_idx++;
           curr_mono += nv;
@@ -782,7 +782,7 @@ set_var_ords(D *d, const ord_t ords[])
   d->var_ords = malloc(d->nv * sizeof *(d->var_ords));
   assert(d->var_ords);
   d->size += d->nv * sizeof *(d->var_ords);
-  mad_mono_cpy(d->nv,ords,d->var_ords);
+  mad_mono_copy(d->nv,ords,d->var_ords);
 
 #ifdef DEBUG
   printf("var_ords sorting: [");
@@ -833,7 +833,7 @@ desc_init(int nmv, const ord_t map_ords[nmv], int nv, ord_t ko)
 
   d->map_ords = malloc(nmv * sizeof *(d->map_ords));
   assert(d->map_ords);
-  mad_mono_cpy(nmv,map_ords,d->map_ords);
+  mad_mono_copy(nmv,map_ords,d->map_ords);
   d->size += nmv * sizeof *(d->map_ords);
 
   return d;
@@ -1030,7 +1030,7 @@ mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t 
 
   if (map_ords_) {
     for (int i = 0; i < nv; ++i) ensure(var_ords[i] <= map_ords_[i]);
-    mad_mono_cpy(nv,map_ords_,map_ords);
+    mad_mono_copy(nv,map_ords_,map_ords);
     mo = mad_mono_max(nv,map_ords);
   }
   else {
@@ -1056,7 +1056,7 @@ mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t
   if (map_ords_) {
     for (int i = 0; i < nv; ++i)
       ensure(var_ords[i] <= map_ords_[i]);
-    mad_mono_cpy(nv,map_ords_,map_ords);
+    mad_mono_copy(nv,map_ords_,map_ords);
   }
   else {
     ord_t mo = mad_mono_max(nv,var_ords);

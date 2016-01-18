@@ -41,13 +41,13 @@
 
 // --- vec
 
-void mad_vec_set (num_t x, num_t r[], size_t n)
+void mad_vec_fill (num_t x, num_t r[], size_t n)
 { CHKR; SET(); }
 
-void mad_vec_cpy (const num_t x[], num_t r[], size_t n)
+void mad_vec_copy (const num_t x[], num_t r[], size_t n)
 { CHKXR; CPY(); }
 
-void mad_vec_cpyv (const num_t x[], cnum_t r[], size_t n)
+void mad_vec_copyv (const num_t x[], cnum_t r[], size_t n)
 { CHKXR; CPY(); }
 
 num_t mad_vec_dot (const num_t x[], const num_t y[], size_t n)
@@ -115,16 +115,16 @@ void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t
 
 // --- cvec
  
-void mad_cvec_set (cnum_t x, cnum_t r[], size_t n)
+void mad_cvec_fill (cnum_t x, cnum_t r[], size_t n)
 { CHKR; SET(); }
 
-void mad_cvec_set_r (num_t x_re, num_t x_im, cnum_t r[], size_t n)
+void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], size_t n)
 { CHKR; CNUM(x); SET(); }
 
-void mad_cvec_cpy (const cnum_t x[], cnum_t r[], size_t n)
+void mad_cvec_copy (const cnum_t x[], cnum_t r[], size_t n)
 { CHKXR; CPY(); }
 
-void mad_cvec_cpyv (const cnum_t x[], num_t r[], size_t n)
+void mad_cvec_copyv (const cnum_t x[], num_t r[], size_t n)
 { CHKXR; CPY(); }
 
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], size_t n)

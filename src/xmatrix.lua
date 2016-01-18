@@ -68,9 +68,6 @@ local istype = ffi.istype
 local  matrix_ctor = ffi.typeof( 'matrix_t')
 local cmatrix_ctor = ffi.typeof('cmatrix_t')
 
--- threshold for external allocator
-local mad_alloc = 1024
-
 -- implementation ------------------------------------------------------------o
 
 function gmath.is_matrix (x)
@@ -87,7 +84,7 @@ end
 
 local function matrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len < mad_alloc then
+  if len < clib.mad_alloc_threshold then
     mat = matrix_ctor(len)
   else
     local siz = ffi.sizeof('matrix_t', len)
@@ -101,7 +98,7 @@ end
 
 local function cmatrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len < (mad_alloc/2) then
+  if len < (clib.mad_alloc_threshold/2) then
     mat = cmatrix_ctor(len)
   else
     local siz = ffi.sizeof('cmatrix_t', len)
