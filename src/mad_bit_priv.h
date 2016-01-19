@@ -51,6 +51,22 @@ mad_bit_trunc (bit_t b, int n)
   return b & ((2u << n) - 1);
 }
 
+// --- optimized versions ----------------------------------------------------o
+#ifdef __SSE2__
+
+#include <x86intrin.h>
+
+static inline int __attribute__((const))
+mad_bit_lowest (bit_t b)
+{ return b ? _bit_scan_forward(b) : 32; }
+
+static inline int __attribute__((const))
+mad_bit_highest (bit_t b)
+{ return b ? _bit_scan_reverse(b) : -1; }
+
+// --- default versions ------------------------------------------------------o
+#else
+
 static inline int __attribute__((const))
 mad_bit_lowest (bit_t b)
 {
@@ -68,6 +84,8 @@ mad_bit_highest (bit_t b)
             (mad_bit_highest_tbl_[(b >> 24) & 0xFF]);
   return 31 - mad_bit_lowest(r);
 }
+
+#endif // __SSE2__
 
 // ---------------------------------------------------------------------------o
 

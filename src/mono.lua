@@ -169,11 +169,12 @@ M.__tostring = M.tostring
 
 M.__lt = function (a, b) return a <= b and a ~= b end
 
--- monomial-as-array behavior, unchecked bounds
+-- monomial-as-array behavior
 M.__index = function (a, idx)
-  return isnum(idx) and a.ord[idx] or M[idx]
+  return isnum(idx) and idx >= 0 and idx < a.n and a.ord[idx] or M[idx]
 end
 M.__newindex = function (a, idx, val)
+  assert(isnum(idx) and idx >= 0 and idx < a.n, "invalid index")
   a.ord[idx] = val
 end
 
