@@ -38,8 +38,8 @@ static bit_t mad_bit_get     (bit_t b, int n);
 static bit_t mad_bit_clr     (bit_t b, int n);
 static bit_t mad_bit_add     (bit_t a, bit_t b);
 static bit_t mad_bit_trunc   (bit_t b, int n);
-static int   mad_bit_lowest  (bit_t b);
-static int   mad_bit_highest (bit_t b);
+extern int   mad_bit_lowest  (bit_t b);
+extern int   mad_bit_highest (bit_t b);
 
 // --- implementation (private) ----------------------------------------------o
 
