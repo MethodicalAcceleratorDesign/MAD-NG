@@ -45,8 +45,8 @@ typedef double _Complex cnum_t;
 
 // --- macros ----------------------------------------------------------------o
 
-#define MIN(a,b)    ((a)<(b) ? (a):(b))
-#define MAX(a,b)    ((a)>(b) ? (a):(b))
+#define MIN(a,b)    ((b)<(a) ? (b):(a))
+#define MAX(a,b)    ((b)>(a) ? (b):(a))
 #define MIN3(a,b,c)  MIN(a,MIN(b,c))
 #define MAX3(a,b,c)  MAX(a,MAX(b,c))
 #define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
