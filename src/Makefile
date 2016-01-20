@@ -24,7 +24,7 @@ DIR := build
 DFLAGS  := -std=c11 -MM 
 
 # compiler
-CFLAGS  := -std=c11 -W -Wall -Wextra -pedantic
+CFLAGS  := -std=c11 -W -Wall -Wextra #-pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
 CFLAGS  += # -flto
 CFLAGS  += # -fopenmp
@@ -54,12 +54,14 @@ OBJ     := $(addprefix $(DIR)/,$(OBJ))
 
 DOIT    := $(shell mkdir -p $(DIR) $(DIR)/sse)
 
+VPATH    = $(DIR)
+
 # rules
 mad: $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
 
 $(DIR)/%.d: %.c
-	$(CC) $(DFLAGS) $< > $@
+	$(CC) $(DFLAGS) $< | sed 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' > $@
 
 $(DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
