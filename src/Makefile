@@ -15,16 +15,19 @@
 # o----------------------------------------------------------------------------o
 #
 
+# project
+PRJ := mad
+
 # setup
 CC  := gcc
 LJ  := ../bin/luajit
 DIR := build
 
 # depend
-DFLAGS  := -std=c11 -MM 
+DFLAGS  := -std=c99 -MM 
 
 # compiler
-CFLAGS  := -std=c11 -W -Wall -Wextra #-pedantic
+CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
 CFLAGS  += # -flto
 CFLAGS  += # -fopenmp
@@ -54,14 +57,16 @@ OBJ     := $(addprefix $(DIR)/,$(OBJ))
 
 DOIT    := $(shell mkdir -p $(DIR) $(DIR)/sse)
 
-VPATH    = $(DIR)
+# files specific setup
+$(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/OSX/include/luajit-2.1
 
 # rules
-mad: $(OBJ)
+$(PRJ): $(OBJ)
 	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
 
 $(DIR)/%.d: %.c
-	$(CC) $(DFLAGS) $< | sed 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' > $@
+	$(CC) $(DFLAGS) $< > $@
+	@sed -i '' -e 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' $@
 
 $(DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -78,8 +83,8 @@ clean:
 cleanall: clean
 	rm -rf $(DIR)
 
-# files specific setup
-$(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/OSX/include/luajit-2.1
+# default rule
+.DEFAULT_GOAL := $(PRJ)
 
 # include dependencies
 ifeq ($(filter-out mad,$(MAKECMDGOALS)),)
