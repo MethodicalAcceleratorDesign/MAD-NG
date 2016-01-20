@@ -87,11 +87,11 @@ end
 -- mono(val, len)
 
 local function mono (m, n_)
-  local n = is_table(m) and #m or n_
+  local n = is_table(m) and #m or n_ or m
   local r = mono_alloc(n)
   if is_table(m) then
     for i=1,n   do r.ord[i-1] = m[i] end
-  else
+  elseif isnum(m) then
     for i=0,n-1 do r.ord[i-1] = m    end
   end
   return r
