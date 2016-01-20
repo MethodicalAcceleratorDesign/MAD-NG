@@ -66,7 +66,7 @@ ord_t
 (FUN(ordv)) (const T *t1, const T *t2, ...)
 {
   assert(t1 && t2);
-  ord_t mo = t1->mo > t2->mo ? t1->mo : t2->mo;
+  ord_t mo = MAX(t1->mo, t2->mo);
   va_list args;
   va_start(args,t2);
   while ((t2 = va_arg(args,T*)))
@@ -230,8 +230,7 @@ FUN(getm_sp) (const T *t, int n, const idx_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx_sp(d,n,m);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo);
+  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -247,8 +246,9 @@ FUN(set0) (T *t, NUM a, NUM b)
     t->lo = 0;
   }
   else {
+    int n = mad_bit_lowest(t->nz);
     t->nz = mad_bit_clr(t->nz,0);
-    t->lo = MIN(mad_bit_lowest(t->nz),t->mo);
+    t->lo = MIN(n,t->mo);
   }
 }
 
@@ -265,8 +265,9 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   if (v == 0) {
     t->coef[i] = v;
     if (i == 0 && t->lo == 0) {
+      int n = mad_bit_lowest(t->nz);
       t->nz = mad_bit_clr(t->nz,0);
-      t->lo = MIN(mad_bit_lowest(t->nz),t->mo);
+      t->lo = MIN(n,t->mo);
     }
     return;
   }

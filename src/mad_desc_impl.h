@@ -22,12 +22,10 @@
 
 #include "mad_bit.h"
 #include "mad_desc.h"
+#include "mad_tpsa.h"
+#include "mad_ctpsa.h"
 
 // --- types -----------------------------------------------------------------o
-
-typedef struct  desc  desc_t;
-typedef struct  tpsa  tpsa_t;
-typedef struct ctpsa ctpsa_t;
 
 struct desc {
   int      id;         // WARNING: needs to be identical with Lua for compatibility

@@ -33,12 +33,11 @@
 
 #include <stdio.h>
 
-#include "mad.h"
 #include "mad_mono.h"
+#include "mad_desc.h"
 
 // --- types -----------------------------------------------------------------o
 
-typedef struct desc desc_t;
 typedef struct tpsa tpsa_t;
 
 // --- globals ---------------------------------------------------------------o

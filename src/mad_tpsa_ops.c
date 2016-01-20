@@ -244,7 +244,8 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
       else
         hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
     }
-  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
+  int n = mad_bit_lowest(c->nz);
+  c->lo = MIN(n,c->mo);
   c->hi = mad_bit_highest(c->nz);
 }
 
@@ -348,7 +349,8 @@ FUN(der) (const T *a, T *c, int var)
   for (oc = 2; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+1))
       hpoly_der_gt(ca,c->coef+pi[oc],var,oc,der_ord,&c->nz,d);
-  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
+  int n = mad_bit_lowest(c->nz);
+  c->lo = MIN(n,c->mo);
   c->hi = mad_bit_highest(c->nz);
 }
 
@@ -427,7 +429,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   for (int i = d->hpoly_To_idx[a->lo]; i < d->hpoly_To_idx[new_hi+1]; ++i)
     cc[i] += v * ca[i];
   c->lo = new_lo;
-  c->hi = new_hi > c->hi ? new_hi : c->hi;
+  c->hi = MAX(new_hi, c->hi);
   c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
 }
 
