@@ -18,11 +18,31 @@
 
 #include "mad_bit.h"
 
-// --- constants -------------------------------------------------------------o
+#ifdef __SSE2__
+
+// --- optimized versions ----------------------------------------------------o
+
+#include <x86intrin.h>
+
+int
+mad_bit_lowest (bit_t b)
+{
+  return b ? _bit_scan_forward(b) : 32;
+}
+
+int
+mad_bit_highest (bit_t b)
+{
+  return b ? _bit_scan_reverse(b) : -1;
+}
+
+#else // !__SSE2__
+
+// --- default versions ------------------------------------------------------o
 
 // http://graphics.stanford.edu/~seander/bithacks.html
 
-const unsigned char mad_bit_lowest_tbl_[32] = {
+static const unsigned char mad_bit_lowest_tbl_[32] = {
   0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
   31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
 };
@@ -31,25 +51,9 @@ const unsigned char mad_bit_lowest_tbl_[32] = {
 #define R4(n) R2(n), R2(n + 2*16), R2(n + 1*16), R2(n + 3*16)
 #define R6(n) R4(n), R4(n + 2*4 ), R4(n + 1*4 ), R4(n + 3*4 )
 
-const unsigned char mad_bit_highest_tbl_[256] = {
+static const unsigned char mad_bit_highest_tbl_[256] = {
   R6(0), R6(2), R6(1), R6(3)
 };
-
-// --- optimized versions ----------------------------------------------------o
-#ifdef __SSE2__
-
-#include <x86intrin.h>
-
-int
-mad_bit_lowest (bit_t b)
-{ return b ? _bit_scan_forward(b) : 32; }
-
-int
-mad_bit_highest (bit_t b)
-{ return b ? _bit_scan_reverse(b) : -1; }
-
-// --- default versions ------------------------------------------------------o
-#else
 
 int
 mad_bit_lowest (bit_t b)
@@ -66,6 +70,8 @@ mad_bit_highest (bit_t b)
             (mad_bit_highest_tbl_[(b >> 24) & 0xFF]);
   return 31 - mad_bit_lowest(r);
 }
+
+// ---------------------------------------------------------------------------o
 
 #endif // __SSE2__
 
