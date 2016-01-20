@@ -86,7 +86,7 @@ FUN(newd) (D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo);
 
-  T *t = malloc(sizeof(T) + d->nc * sizeof(NUM));
+  T *t = mad_malloc(sizeof(T) + d->nc * sizeof(NUM));
 
   t->d = d;
   t->lo = t->mo = mo;
@@ -153,7 +153,7 @@ void FUN(scalar_r) (T *t, num_t v_re, num_t v_im)
 void
 FUN(del) (T *t)
 {
-  free(t);
+  mad_free(t);
 }
 
 void
@@ -171,30 +171,24 @@ void
 
 // --- --- INDEXING / MONOMIALS -----------------------------------------------
 
-const ord_t*
-FUN(mono) (const T *t, int i, int *n, ord_t *total_ord_)
+int
+FUN(mono) (const T *t, int n, ord_t m_[n], idx_t i)
 {
-  assert(t && n);
-  D *d = t->d;
-  ensure(0 <= i && i < d->nc);
-  *n = d->nv;
-  if (total_ord_)
-    *total_ord_ = d->ords[i];
-  return d->To[i];
+  assert(t);
+  return mad_desc_get_mono(t->d, n, m_, i);
 }
 
 int
 FUN(midx) (const T *t, int n, const ord_t m[n])
 {
-  assert(t && t->d);
-  assert(n <= t->d->nv);
+  assert(t && m);
   return mad_desc_get_idx(t->d, n, m);
 }
 
 int
 FUN(midx_sp) (const T *t, int n, const int m[n])
 {
-  assert(t && t->d);
+  assert(t && m);
   return mad_desc_get_idx_sp(t->d, n, m);
 }
 

@@ -63,12 +63,12 @@ scan_var_names(FILE *stream, int nmv, char *buf)
   if (!read_cnt)
     return NULL;
 
-  char **var_names = malloc(nmv * sizeof(*var_names));
+  char **var_names = mad_malloc(nmv * sizeof(*var_names));
   assert(var_names);
   for (int i = 0; i < nmv; ++i) {
     read_cnt = fscanf(stream, "%s", buf);
     ensure(read_cnt && !feof(stream) && !ferror(stream));
-    var_names[i] = malloc(strlen(buf) * sizeof(var_names));
+    var_names[i] = mad_malloc(strlen(buf) * sizeof(var_names));
     strcpy(var_names[i],buf);
   }
   return var_names;
@@ -123,8 +123,8 @@ FUN(scan_hdr) (FILE *stream_)
     d = mad_desc_newk(nmv,var_ords,map_ords,(str_t*)var_names,nk,knb_ords,ko);
     if (var_names) {
       for (int i = 0; i < nmv; ++i)
-        free(var_names[i]);
-      free(var_names);
+        mad_free(var_names[i]);
+      mad_free(var_names);
     }
     ensure(fgets(buf, BUF_SIZE, stream_));  // finish  3rd line
   }

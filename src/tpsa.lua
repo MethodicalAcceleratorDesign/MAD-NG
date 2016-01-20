@@ -56,8 +56,9 @@ local tbl_new = require 'table.new'
 local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
 
 -- FFI type constructors
-local desc = xtpsa.desc
 local tpsa = xtpsa.tpsa
+local desc = xtpsa.desc
+local mono = xtpsa.mono
 
 -- implementation ------------------------------------------------------------o
 
@@ -70,21 +71,17 @@ end
 -- indexing -------------------------------------------------------------
 
 function M.get_idx(t,m)
-  return clib.mad_tpsa_midx(t,#m,mono_t(#m,m))
+  return clib.mad_tpsa_midx(t,m.n,m.ord)
 end
 
 function M.get_idx_sp(t,m)
-  return clib.mad_tpsa_midx_sp(t,#m,smono_t(#m,m))
+  return clib.mad_tpsa_midx_sp(t,m.n,m.ord)
 end
 
 function M.get_mono(t,i)
-  local nv, ord = int_ptr(), ord_ptr()
-  local cmono = clib.mad_tpsa_mono(t,i,nv,ord)
-  local m = {}
-  for i=1,nv[0] do
-    m[i] = cmono[i-1]
-  end
-  return m, ord[0]
+  local m = mono(t.d.nv)
+  local tot = clib.mad_tpsa_mono(t,i,m.ord)
+  return m, tot
 end
 
 -- PEEK & POKE -----------------------------------------------------------------

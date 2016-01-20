@@ -62,11 +62,12 @@ struct desc {
 
 #define D desc_t
 
-idx_t    mad_desc_get_idx         (const D *d, int n, const ord_t m[n]);
-idx_t    mad_desc_get_idx_sp      (const D *d, int n, const idx_t m[n]);
-int      mad_desc_mono_isvalid    (const D *d, int n, const ord_t m[n]);
-int      mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n]);
-int      mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m[n]);
+idx_t    mad_desc_get_idx         (const D *d, int n, const ord_t m [n]);
+idx_t    mad_desc_get_idx_sp      (const D *d, int n, const idx_t m [n]);
+int      mad_desc_get_mono        (const D *d, int n,       ord_t m_[n], idx_t i);
+int      mad_desc_mono_isvalid    (const D *d, int n, const ord_t m [n]);
+int      mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m [n]);
+int      mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m [n]);
 
 tpsa_t*  mad_tpsa_newd  (D *d, ord_t mo);
 void     mad_tpsa_del   (tpsa_t *t);
@@ -77,7 +78,7 @@ void     mad_ctpsa_del  (ctpsa_t *t);
 // --- helpers ---------------------------------------------------------------o
 
 #undef  ensure
-#define ensure(test) mad_ensure(test, MKSTR(test))
+#define ensure(test) assert(test)
 
 static inline idx_t
 hpoly_idx_rect(idx_t ib, idx_t ia, idx_t ia_size)

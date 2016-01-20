@@ -25,12 +25,6 @@
 #include "mad_log.h"
 #include "mad_mem.h"
 
-#undef malloc
-#undef realloc
-#undef free
-#undef alloc_tmp
-#undef free_tmp
-
 // --- macros ----------------------------------------------------------------o
 
 /*
@@ -62,6 +56,7 @@ union mblk {
 
   struct { // used mblk
     unsigned slot;
+    unsigned mark;
     union { // alignment of data
       ptrdiff_t s, *sp;
       size_t    u, *up;
@@ -133,6 +128,7 @@ static inline void*
 init_node (union mblk *ptr, size_t slot)
 {
     ptr->used.slot = slot;
+    ptr->used.mark = 0xDEADBEEF;
     return ptr->used.data;
 }
 
@@ -163,13 +159,26 @@ MAC(if (ppool->cached > cach_max) mad_mem_collect(); )
 }
 
 void*
+(mad_calloc) (size_t count, size_t esize)
+{
+  size_t size = count * esize;
+  void  *ptr  = (mad_malloc)(size);
+  return memset(ptr, 0, size);
+}
+
+void*
 (mad_realloc) (void *ptr_, size_t size)
 {
   if (!size) return (mad_free)  (ptr_), NULL;
   if (!ptr_) return (mad_malloc)(size);
 
   union mblk *ptr = get_base(ptr_);
+
+  if (ptr->used.mark != 0xDEADBEEF)
+    mad_fatalf("invalid pointer");
+
   size_t slot = get_slot(size);
+
 MAC(
   struct pool *ppool = pool;
   if (ppool->cached > cach_max) mad_mem_collect(); )
@@ -189,8 +198,12 @@ void
 {
   if (ptr_) {
     union mblk *ptr = get_base(ptr_);
+
+    if (ptr->used.mark != 0xDEADBEEF)
+      mad_fatalf("invalid pointer");
+
     size_t slot = ptr->used.slot;
-  
+
     if (slot < slot_max) {
       struct pool *ppool = pool;
       struct slot *pptr = ppool->slot+slot;
@@ -203,6 +216,15 @@ MAC(  ppool->cached += slot+1;
 }
 
 // -- utils
+
+void*
+mad_mem_check (void *ptr_)
+{
+  if (!ptr_)
+    mad_fatalf("invalid pointer (out of memory)");
+
+  return ptr_;
+}
 
 size_t
 mad_mem_size (void* ptr_)

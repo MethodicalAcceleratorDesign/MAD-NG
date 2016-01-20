@@ -188,7 +188,7 @@ void  mad_mono_sub   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
 
 void  mad_mono_concat(int n, const ord_t a[], int m, const ord_t b[], ord_t r[]);
 
-void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
+void  mad_mono_sort  (int n, const ord_t a[], idx_t idxs[]);
 void  mad_mono_print (int n, const ord_t a[]);
 ]]
 
@@ -236,10 +236,9 @@ void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
 
 // indexing / monomials
-const ord_t*
-        mad_tpsa_mono    (const tpsa_t *t, int i, int *n, ord_t *total_ord_);
-int     mad_tpsa_midx    (const tpsa_t *t, int n, const ord_t m[]);
-int     mad_tpsa_midx_sp (const tpsa_t *t, int n, const int   m[]); // sparse mono [(i,o)]
+int     mad_tpsa_mono    (const tpsa_t *t, int n,       ord_t m_[], idx_t i);
+int     mad_tpsa_midx    (const tpsa_t *t, int n, const ord_t m []);
+int     mad_tpsa_midx_sp (const tpsa_t *t, int n, const int   m []); // sparse mono [(i,o)]
 
 // accessors
 num_t   mad_tpsa_get0    (const tpsa_t *t);
@@ -351,8 +350,7 @@ void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
 
 // indexing / monomials
-const ord_t*
-         mad_ctpsa_mono    (const ctpsa_t *t, int i, int *n, ord_t *total_ord_);
+int      mad_ctpsa_mono    (const ctpsa_t *t, int n,       ord_t m_[], idx_t i);
 int      mad_ctpsa_midx    (const ctpsa_t *t, int n, const ord_t m[]);
 int      mad_ctpsa_midx_sp (const ctpsa_t *t, int n, const int   m[]); // sparse mono [(i,o)]
 

@@ -21,7 +21,6 @@
   Purpose:
   - fast memory allocator (per-thread pool).
   - MAD memory handlers: mad_malloc, mad_realloc, mad_free
-    shortcuts: malloc, realloc, free
   - allocated memory can be used-by/moved-to any thread (global allocator).
   - temporary buffer are only for local use (scoped), and the length
     corresponds to the number of elements of type 'type' in the buffer.
@@ -34,6 +33,7 @@
   - mad_mem_collect frees the cached memory and returns its amount (slow).
   - temporay buffers can be either on the stack or allocated with mad_malloc
     depending on their size, and must always be locally freed.
+  - defining MAD_MEM_STD replaces mad allocator by C allocator
 
   Errors:
   - mad_realloc or mad_free on pointers not returned by mad_malloc or
@@ -46,16 +46,13 @@
 
 // --- interface -------------------------------------------------------------o
 
-#define malloc(size_)               mad_malloc  (size_)
-#define realloc(ptr_, size_)        mad_realloc (ptr_, size_)
-#define free(ptr_)                  mad_free    (ptr_)
-
 // local buffer
-#define alloc_tmp(type,name,length) mad_alloc_tmp (type,name,length)
-#define free_tmp(name)              mad_free_tmp  (name)
+#define mad_alloc_tmp(type,name,length)
+#define mad_free_tmp(name)
 
-// allocator
-void*  mad_malloc      (size_t size_);
+// allocator (note: no calloc!)
+void*  mad_malloc      (size_t size);
+void*  mad_calloc      (size_t count, size_t size );
 void*  mad_realloc     (void  *ptr_ , size_t size_);
 void   mad_free        (void  *ptr_);
 

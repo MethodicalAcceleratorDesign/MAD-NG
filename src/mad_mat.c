@@ -314,10 +314,10 @@ int
 mad_mat_invn (const num_t y[], num_t x, num_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
-  alloc_tmp(num_t, u, n*n);
+  mad_alloc_tmp(num_t, u, n*n);
   mad_mat_ident(u, n, n, n);
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
-  free_tmp(u);
+  mad_free_tmp(u);
   if (x != 1.0) mad_vec_muln(r, x, r, m*n);
   return rank;
 }
@@ -330,13 +330,13 @@ int
 mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
-  alloc_tmp(num_t, u, n*n);
+  mad_alloc_tmp(num_t, u, n*n);
   mad_mat_ident(u, n, n, n);
-  alloc_tmp(num_t, t, m*n);
+  mad_alloc_tmp(num_t, t, m*n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
-  free_tmp(u);
+  mad_free_tmp(u);
   if (x != 1.0) mad_vec_mulc(t, x, r, m*n);
-  free_tmp(t);
+  mad_free_tmp(t);
   return rank;
 }
 
@@ -344,10 +344,10 @@ int
 mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
-  alloc_tmp(cnum_t, u, n*n);
+  mad_alloc_tmp(cnum_t, u, n*n);
   mad_cmat_ident(u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
-  free_tmp(u);
+  mad_free_tmp(u);
   if (x != 1.0) mad_cvec_muln(r, x, r, m*n);
   return rank;
 }
@@ -356,10 +356,10 @@ int
 mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], size_t m, size_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
-  alloc_tmp(cnum_t, u, n*n);
+  mad_alloc_tmp(cnum_t, u, n*n);
   mad_cmat_ident(u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
-  free_tmp(u);
+  mad_free_tmp(u);
   if (x != 1.0) mad_cvec_mulc(r, x, r, m*n);
   return rank;
 }
@@ -383,7 +383,7 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
   CHKXYR;
   int info=0;
   const int nn=n, nm=m, np=p;
-  alloc_tmp(num_t, a, n*p);
+  mad_alloc_tmp(num_t, a, n*p);
   mad_vec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
@@ -391,20 +391,20 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
     int ipiv[n];
     mad_vec_copy(x, r, m*p);
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
-    if (!info) return free_tmp(a), n;
+    if (!info) return mad_free_tmp(a), n;
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   num_t sz;
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
-  alloc_tmp(num_t, rr, ldb*nm);
+  mad_alloc_tmp(num_t, rr, ldb*nm);
   mad_mat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, &info); // query
-  alloc_tmp(num_t, wk, lwork=sz);
+  mad_alloc_tmp(num_t, wk, lwork=sz);
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, &info); // compute
   mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  free_tmp(wk); free_tmp(rr); free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
   if (info > 0) fatal("unexpect lapack error");
@@ -418,7 +418,7 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
   CHKXYR;
   int info=0;
   const int nn=n, nm=m, np=p;
-  alloc_tmp(cnum_t, a, n*p);
+  mad_alloc_tmp(cnum_t, a, n*p);
   mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
@@ -426,7 +426,7 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
     int ipiv[n];
     mad_vec_copyv(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
-    if (!info) return free_tmp(a), n;
+    if (!info) return mad_free_tmp(a), n;
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -434,13 +434,13 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
   num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
-  alloc_tmp(cnum_t, rr, ldb*nm);
+  mad_alloc_tmp(cnum_t, rr, ldb*nm);
   mad_mat_copym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  free_tmp(wk); free_tmp(rr); free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
   if (info > 0) fatal("unexpect lapack error");
@@ -454,7 +454,7 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
   CHKXYR;
   int info=0;
   const int nn=n, nm=m, np=p;
-  alloc_tmp(cnum_t, a, n*p);
+  mad_alloc_tmp(cnum_t, a, n*p);
   mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
@@ -462,7 +462,7 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
     int ipiv[n];
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
-    if (!info) return free_tmp(a), n;
+    if (!info) return mad_free_tmp(a), n;
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -470,13 +470,13 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
   num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
-  alloc_tmp(cnum_t, rr, ldb*nm);
+  mad_alloc_tmp(cnum_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  free_tmp(wk); free_tmp(rr); free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
   if (info > 0) fatal("unexpect lapack error");
@@ -490,7 +490,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   CHKXYR;
   int info=0;
   const int nn=n, nm=m, np=p;
-  alloc_tmp(cnum_t, a, n*p);
+  mad_alloc_tmp(cnum_t, a, n*p);
   mad_vec_copyv(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
@@ -498,7 +498,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
     int ipiv[n];
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
-    if (!info) return free_tmp(a), n;
+    if (!info) return mad_free_tmp(a), n;
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -506,13 +506,13 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
-  alloc_tmp(cnum_t, rr, ldb*nm);
+  mad_alloc_tmp(cnum_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  free_tmp(wk); free_tmp(rr); free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
   if (info < 0) fatal("invalid input argument");
   if (info > 0) fatal("unexpect lapack error");

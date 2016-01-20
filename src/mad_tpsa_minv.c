@@ -114,10 +114,10 @@ static void
 split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 {
   int nv = d->nv, cv = d->nmv, nk = nv - cv; // #vars, #canonical vars, #knobs
-  alloc_tmp(NUM, mat_var , cv*cv); // canonical vars
-  alloc_tmp(NUM, mat_vari, cv*cv); // inverse of vars
-  alloc_tmp(NUM, mat_knb , cv*nk); // knobs
-  alloc_tmp(NUM, mat_knbi, cv*nk); // 'inverse' of knobs
+  mad_alloc_tmp(NUM, mat_var , cv*cv); // canonical vars
+  mad_alloc_tmp(NUM, mat_vari, cv*cv); // inverse of vars
+  mad_alloc_tmp(NUM, mat_knb , cv*nk); // knobs
+  mad_alloc_tmp(NUM, mat_knbi, cv*nk); // 'inverse' of knobs
 
   // split linear, (-1 * nonlinear)
   for (int i = 0; i < cv; ++i) {
@@ -161,10 +161,10 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
       FUN(seti)(lin_inv[i], k+cv +1, 0, mat_knbi[i*nk + k]);
   }
 
-  free_tmp(mat_var );
-  free_tmp(mat_vari);
-  free_tmp(mat_knb );
-  free_tmp(mat_knbi);
+  mad_free_tmp(mat_var );
+  mad_free_tmp(mat_vari);
+  mad_free_tmp(mat_knb );
+  mad_free_tmp(mat_knbi);
 }
 
 // --- PUBLIC FUNCTIONS -------------------------------------------------------

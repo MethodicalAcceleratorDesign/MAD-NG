@@ -103,8 +103,8 @@ tbl_realloc_monos(D *d, int new_nc_)
 
   if (!new_nc_) new_nc_ = d->nc * 2;
   d->nc = new_nc_;
-  d->monos = realloc(d->monos, d->nc * d->nv * sizeof *(d->monos));
-  d->ords  = realloc(d->ords,  d->nc         * sizeof *(d->monos));
+  d->monos = mad_realloc(d->monos, d->nc * d->nv * sizeof *(d->monos));
+  d->ords  = mad_realloc(d->ords,  d->nc         * sizeof *(d->monos));
 }
 
 static inline idx_t  // idx to end of d->monos
@@ -161,9 +161,9 @@ make_monos(D *d)
     d->nc = max_init_alloc;
   }
 
-  d->monos        = malloc(d->nc * nv  * sizeof *(d->monos));
-  d->ords         = malloc(d->nc       * sizeof *(d->ords));
-  d->hpoly_To_idx = malloc((d->mo + 2) * sizeof *(d->hpoly_To_idx));
+  d->monos        = mad_malloc(d->nc * nv  * sizeof *(d->monos));
+  d->ords         = mad_malloc(d->nc       * sizeof *(d->ords));
+  d->hpoly_To_idx = mad_malloc((d->mo + 2) * sizeof *(d->hpoly_To_idx));
   assert(d->monos);
   assert(d->ords);
   assert(d->hpoly_To_idx);
@@ -246,7 +246,7 @@ tbl_by_ord(D *d)
 {
   assert(d && d->var_ords && d->hpoly_To_idx && d->monos);
 
-  d->To    = malloc(d->nc * sizeof *(d->To));
+  d->To    = mad_malloc(d->nc * sizeof *(d->To));
   assert(d->To);
   d->size += d->nc * sizeof *(d->To);
 
@@ -270,9 +270,9 @@ tbl_by_var(D *d)
 {
   assert(d && d->var_ords && d->sort_var && d->monos && d->hpoly_To_idx);
 
-  d->Tv    = malloc(d->nc * sizeof *(d->Tv));
-  d->tv2to = malloc(d->nc * sizeof *(d->tv2to));
-  d->to2tv = malloc(d->nc * sizeof *(d->to2tv));
+  d->Tv    = mad_malloc(d->nc * sizeof *(d->Tv));
+  d->tv2to = mad_malloc(d->nc * sizeof *(d->tv2to));
+  d->to2tv = mad_malloc(d->nc * sizeof *(d->to2tv));
   assert(d->Tv);
   assert(d->tv2to);
   assert(d->to2tv);
@@ -438,7 +438,7 @@ tbl_set_H(D *d)
   assert(d && d->var_ords && d->Tv && d->To);
   assert(d->nv != 0);
 
-  d->H = malloc(d->nv * (d->mo+2) * sizeof *(d->H));
+  d->H = mad_malloc(d->nv * (d->mo+2) * sizeof *(d->H));
   assert(d->H);
   d->size += d->nv * (d->mo+2) * sizeof *(d->H);
 
@@ -497,7 +497,7 @@ tbl_build_LC(int oa, int ob, D *d)
              cols = pi[oa+1] - pi[oa], rows  = pi[ob+1] - pi[ob]; // sizes
 
   int mat_size = rows * cols;
-  idx_t *lc = malloc(mat_size * sizeof *lc);
+  idx_t *lc = mad_malloc(mat_size * sizeof *lc);
   assert(lc);
   d->size += mat_size * sizeof *lc;
   for (int i = 0; i < mat_size; ++i)
@@ -537,11 +537,11 @@ get_LC_idxs(int oa, int ob, D *d)
   const int  cols =  pi[oa+1] - pi[oa],
              rows =  pi[ob+1] - pi[ob];
 
-  int **LC_idx = malloc(3 * sizeof *LC_idx);
+  int **LC_idx = mad_malloc(3 * sizeof *LC_idx);
   assert(LC_idx);
   d->size += 3 * sizeof *LC_idx;
 
-  int *limits = malloc(3 * rows * sizeof *limits); // rows: [start split end]
+  int *limits = mad_malloc(3 * rows * sizeof *limits); // rows: [start split end]
   assert(limits);
   d->size += 3 * rows * sizeof *limits;
 
@@ -586,12 +586,12 @@ tbl_set_L(D *d)
 {
   ord_t o = d->mo, ho = d->mo / 2;
   int size_L = (o*ho + 1) * sizeof *(d->L);
-  d->L = malloc(size_L);
+  d->L = mad_malloc(size_L);
   assert(d->L);
   d->size += size_L;
 
   int size_lci = (o*ho + 1) * sizeof *(d->L_idx);
-  d->L_idx = malloc(size_lci);
+  d->L_idx = mad_malloc(size_lci);
   assert(d->L_idx);
   d->size += size_lci;
 
@@ -720,20 +720,19 @@ static inline void
 build_dispatch(D *d)
 {
   int nb_threads = omp_get_num_procs();
-  d->ocs = malloc(nb_threads * sizeof *(d->ocs));
+  d->ocs = mad_malloc(nb_threads * sizeof *(d->ocs));
   assert(d->ocs);
   d->size += nb_threads * sizeof *(d->ocs);
 
   int sizes[nb_threads];
   for (int t = 0; t < nb_threads; ++t) {
-    d->ocs[t] = calloc(d->mo, sizeof *(d->ocs[t]));
-    assert(d->ocs[t]);
-    d->size += d->mo * sizeof *(d->ocs[t]);
+    d->ocs[t] = mad_calloc(d->mo, sizeof *d->ocs[t]);
+    d->size += d->mo * sizeof *d->ocs[t];
     sizes[t] = 0;
   }
 
   long long int ops[d->mo+1], dops[nb_threads];
-  memset(dops,0,nb_threads * sizeof *dops);
+  memset(dops, 0, nb_threads * sizeof *dops);
   get_ops(d,ops);
 
   if (nb_threads == 1 || d->mo < 12) {
@@ -774,15 +773,15 @@ set_var_ords(D *d, const ord_t ords[])
 {
   assert(d && ords);
 
-  d->sort_var = malloc(d->nv * sizeof *(d->sort_var));
+  d->sort_var = mad_malloc(d->nv * sizeof *d->sort_var);
   assert(d->sort_var);
-  d->size += d->nv * sizeof *(d->sort_var);
-  mad_mono_sort(d->nv,ords,d->sort_var);
+  d->size += d->nv * sizeof *d->sort_var;
+  mad_mono_sort(d->nv, ords, d->sort_var);
 
-  d->var_ords = malloc(d->nv * sizeof *(d->var_ords));
+  d->var_ords = mad_malloc(d->nv * sizeof *d->var_ords);
   assert(d->var_ords);
-  d->size += d->nv * sizeof *(d->var_ords);
-  mad_mono_copy(d->nv,ords,d->var_ords);
+  d->size += d->nv * sizeof *d->var_ords;
+  mad_mono_copy(d->nv, ords, d->var_ords);
 
 #ifdef DEBUG
   printf("var_ords sorting: [");
@@ -804,13 +803,13 @@ set_var_names(D *d, str_t var_nam_[])
   printf("]\n");
 #endif
   assert(d);
-  d->var_names_ = malloc(d->nmv * sizeof *(d->var_names_));
+  d->var_names_ = mad_malloc(d->nmv * sizeof *(d->var_names_));
   assert(d->var_names_);
   d->size += d->nmv * sizeof *(d->var_names_);
 
   for (int i = 0; i < d->nmv; ++i) {
     int n = strlen(var_nam_[i]);
-    d->var_names_[i] = malloc(n * sizeof *(d->var_names_[i]));
+    d->var_names_[i] = mad_malloc(n * sizeof *(d->var_names_[i]));
     assert(d->var_names_[i]);
     d->size += n * sizeof *(d->var_names_[i]);
     strcpy(d->var_names_[i],var_nam_[i]);
@@ -822,7 +821,7 @@ desc_init(int nmv, const ord_t map_ords[nmv], int nv, ord_t ko)
 {
   assert(map_ords);
 
-  D *d = malloc(sizeof *d);
+  D *d = mad_malloc(sizeof *d);
   assert(d);
   memset(d, 0, sizeof(*d));
   d->size = sizeof(d);
@@ -831,7 +830,7 @@ desc_init(int nmv, const ord_t map_ords[nmv], int nv, ord_t ko)
   d->ko = ko;
   d->mo = d->trunc = mad_mono_max(nmv,map_ords);
 
-  d->map_ords = malloc(nmv * sizeof *(d->map_ords));
+  d->map_ords = mad_malloc(nmv * sizeof *(d->map_ords));
   assert(d->map_ords);
   mad_mono_copy(nmv,map_ords,d->map_ords);
   d->size += nmv * sizeof *(d->map_ords);
@@ -928,6 +927,16 @@ get_desc(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const 
 }
 
 // --- Public Functions -------------------------------------------------------
+
+int
+mad_desc_get_mono (const D *d, int n, ord_t m_[n], idx_t i)
+{
+  assert(d);
+  ensure(0 <= n && n < d->nv);
+  ensure(0 <= i && i < d->nc);
+  if (m_ && n) memcpy(m_, d->To[i], n * sizeof(ord_t));
+  return d->ords[i];
+}
 
 idx_t
 mad_desc_get_idx(const D *d, int n, const ord_t m[n])
@@ -1081,41 +1090,41 @@ void
 mad_desc_del(D *d)
 {
   assert(d);
-  free(d->var_ords);
-  free(d->map_ords);
-  free(d->monos);
-  free(d->ords);
-  free(d->To);
-  free(d->Tv);
-  free(d->hpoly_To_idx);
-  free(d->tv2to);
-  free(d->to2tv);
-  free(d->H);
+  mad_free(d->var_ords);
+  mad_free(d->map_ords);
+  mad_free(d->monos);
+  mad_free(d->ords);
+  mad_free(d->To);
+  mad_free(d->Tv);
+  mad_free(d->hpoly_To_idx);
+  mad_free(d->tv2to);
+  mad_free(d->to2tv);
+  mad_free(d->H);
 
   if (d->var_names_) {
     for (int i = 0; i < d->nmv; ++i)
-      free(d->var_names_[i]);
-    free(d->var_names_);
+      mad_free(d->var_names_[i]);
+    mad_free(d->var_names_);
   }
 
   if (d->L) {  // if L exists, then L_idx exists too
     for (int i = 0; i < 1 + d->mo * d->mo/2; ++i) {
-      free(d->L   [i]);
+      mad_free(d->L   [i]);
       // printf("here %d\n", i);
       if (d->L_idx[i]) {
-        free(d->L_idx[i][0]);  // allocated as single block
-        free(d->L_idx[i]);
+        mad_free(d->L_idx[i][0]);  // allocated as single block
+        mad_free(d->L_idx[i]);
       }
     }
-    free(d->L);
-    free(d->L_idx);
+    mad_free(d->L);
+    mad_free(d->L_idx);
   }
 
   if (d->ocs) {
     int nb_threads = omp_get_num_procs();
     for (int t = 0; t < nb_threads; ++t)
-      free(d->ocs[t]);
-    free(d->ocs);
+      mad_free(d->ocs[t]);
+    mad_free(d->ocs);
   }
 
   for(int i=0; i < desc_max_temps; i++) {
@@ -1125,5 +1134,5 @@ mad_desc_del(D *d)
 
   // remove descriptor from global array
   Ds[d->id] = NULL;
-  free(d);
+  mad_free(d);
 }

@@ -66,18 +66,17 @@ void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
 
 // indexing / monomials
-const ord_t*
-        mad_tpsa_mono    (const tpsa_t *t, int i, int *n, ord_t *total_ord_);
-int     mad_tpsa_midx    (const tpsa_t *t, int n, const ord_t m[]);
-int     mad_tpsa_midx_sp (const tpsa_t *t, int n, const int   m[]); // sparse mono [(i,o)]
+int     mad_tpsa_mono    (const tpsa_t *t, int n,       ord_t m_[], idx_t i);
+int     mad_tpsa_midx    (const tpsa_t *t, int n, const ord_t m []);
+int     mad_tpsa_midx_sp (const tpsa_t *t, int n, const int   m []); // sparse mono [(i,o)]
 
 // accessors
 num_t   mad_tpsa_get0    (const tpsa_t *t);
-num_t   mad_tpsa_geti    (const tpsa_t *t, int i);
+num_t   mad_tpsa_geti    (const tpsa_t *t, idx_t i);
 num_t   mad_tpsa_getm    (const tpsa_t *t, int n, const ord_t m[]);
 num_t   mad_tpsa_getm_sp (const tpsa_t *t, int n, const int   m[]); // sparse mono [(i,o)]
 void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */             num_t a, num_t b);
-void    mad_tpsa_seti    (      tpsa_t *t, int i,                  num_t a, num_t b);
+void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                num_t a, num_t b);
 void    mad_tpsa_setm    (      tpsa_t *t, int n, const ord_t m[], num_t a, num_t b);
 void    mad_tpsa_setm_sp (      tpsa_t *t, int n, const int   m[], num_t a, num_t b);
 
