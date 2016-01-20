@@ -72,6 +72,8 @@ struct slot {
   union mblk *list;
 };
 
+#define MARK 0xDEADBEEF // marker
+
 // sizes & offsets
 enum {
   mblk_stp = 1<< 4, // step size is 16 bytes
@@ -128,7 +130,7 @@ static inline void*
 init_node (union mblk *ptr, size_t slot)
 {
     ptr->used.slot = slot;
-    ptr->used.mark = 0xDEADBEEF;
+    ptr->used.mark = MARK;
     return ptr->used.data;
 }
 
@@ -174,7 +176,7 @@ void*
 
   union mblk *ptr = get_base(ptr_);
 
-  if (ptr->used.mark != 0xDEADBEEF)
+  if (ptr->used.mark != MARK)
     mad_fatalf("invalid pointer");
 
   size_t slot = get_slot(size);
@@ -199,7 +201,7 @@ void
   if (ptr_) {
     union mblk *ptr = get_base(ptr_);
 
-    if (ptr->used.mark != 0xDEADBEEF)
+    if (ptr->used.mark != MARK)
       mad_fatalf("invalid pointer");
 
     size_t slot = ptr->used.slot;
@@ -230,7 +232,12 @@ size_t
 mad_mem_size (void* ptr_)
 {
   if (!ptr_) return 0;
-  size_t slot = get_base(ptr_)->used.slot;
+  union mblk *ptr = get_base(ptr_);
+
+  if (ptr->used.mark != MARK)
+    mad_fatalf("invalid pointer");
+
+  size_t slot = ptr->used.slot;
   return slot != get_slot(0) ? (slot+1) * mblk_stp : 0;
 }
 

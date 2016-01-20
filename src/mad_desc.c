@@ -53,7 +53,7 @@ const int   desc_max_temps = sizeof(((desc_t*)0)->t)/sizeof(*((desc_t*)0)->t);
 static inline int
 max_nc(int nv, int no)
 {
-  // #coeff(nv,no) = (nv+no)! / (nv!*no!)
+  // #coeff(nv,no) = (nv+no)! / (nv! no!)
   int max = MAX(nv,no);
   long long unsigned int num = 1, den = 1;
   for (int i = max + 1; i <= nv+no; ++i) {
@@ -270,14 +270,11 @@ tbl_by_var(D *d)
 {
   assert(d && d->var_ords && d->sort_var && d->monos && d->hpoly_To_idx);
 
-  d->Tv    = mad_malloc(d->nc * sizeof *(d->Tv));
-  d->tv2to = mad_malloc(d->nc * sizeof *(d->tv2to));
-  d->to2tv = mad_malloc(d->nc * sizeof *(d->to2tv));
-  assert(d->Tv);
-  assert(d->tv2to);
-  assert(d->to2tv);
-  d->size +=     d->nc * sizeof *(d->Tv);
-  d->size += 2 * d->nc * sizeof *(d->tv2to);  // tv2to + to2tv
+  d->Tv    = mad_malloc(d->nc * sizeof *d->Tv);
+  d->tv2to = mad_malloc(d->nc * sizeof *d->tv2to);
+  d->to2tv = mad_malloc(d->nc * sizeof *d->to2tv);
+  d->size +=     d->nc * sizeof *d->Tv;
+  d->size += 2 * d->nc * sizeof *d->tv2to;  // tv2to + to2tv
 
   int mi = 0, nv = d->nv;
   ord_t m[nv];
@@ -939,7 +936,7 @@ mad_desc_get_mono (const D *d, int n, ord_t m_[n], idx_t i)
 }
 
 idx_t
-mad_desc_get_idx(const D *d, int n, const ord_t m[n])
+mad_desc_get_idx (const D *d, int n, const ord_t m[n])
 {
   assert(d && m);
   ensure(mad_desc_mono_isvalid(d, n, m));
@@ -947,7 +944,7 @@ mad_desc_get_idx(const D *d, int n, const ord_t m[n])
 }
 
 idx_t
-mad_desc_get_idx_sp(const D *d, int n, const idx_t m[n])
+mad_desc_get_idx_sp (const D *d, int n, const idx_t m[n])
 {
   assert(d && m);
   ensure(mad_desc_mono_isvalid_sp(d, n, m));
@@ -955,23 +952,23 @@ mad_desc_get_idx_sp(const D *d, int n, const idx_t m[n])
 }
 
 int
-mad_desc_mono_isvalid(const D *d, int n, const ord_t m[n])
+mad_desc_mono_isvalid (const D *d, int n, const ord_t m[n])
 {
   assert(d && m);
   int nmv = d->nmv;
-  return    ( n <= d->nv )
+  return    (n                                   <= d->nv)
          && (          mad_mono_ord(n    ,m)     <= d->mo)
          && (n > nmv ? mad_mono_ord(n-nmv,m+nmv) <= d->ko : 1)
          && mad_mono_leq(n,m,d->var_ords);
 }
 
 int
-mad_desc_mono_isvalid_sp(const D *d, int n, const idx_t m[n])
+mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n])
 {
   assert(d && m);
-  if (n & 1)
-    return 0;
-  ord_t mo = 0, ko = 0;
+  if (n & 1) return 0;
+
+  int mo = 0, ko = 0;
   for (int i = 0; i < n; i += 2) {
     int mono_idx = m[i] - 1; // translate from var idx to mono idx
     if (mono_idx >= d->nv)         return 0;
@@ -979,21 +976,19 @@ mad_desc_mono_isvalid_sp(const D *d, int n, const idx_t m[n])
     ord_t o = m[i+1];
     if (o > d->var_ords[mono_idx]) return 0;
     mo += o;
-    if (mono_idx > d->nmv)
-      ko += o;
+    if (mono_idx > d->nmv) ko += o;
   }
-  return (mo <= d->mo) && (ko <= d->ko);
+  return mo <= d->mo && ko <= d->ko;
 }
 
 int
-mad_desc_mono_nxtbyvar(const D *d, int n, ord_t m[n])
+mad_desc_mono_nxtbyvar (const D *d, int n, ord_t m[n])
 {
   assert(d && m);
   const idx_t *sort = d->sort_var;
   for (int i=0; i < n; ++i) {
     ++m[sort[i]];
-    if (mad_desc_mono_isvalid(d, n, m))
-      return 1;
+    if (mad_desc_mono_isvalid(d, n, m)) return 1;
     m[sort[i]] = 0;
   }
   return 0;
@@ -1071,8 +1066,7 @@ mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t
     ord_t mo = mad_mono_max(nv,var_ords);
     mad_mono_fill(nv,map_ords,mo);
   }
-  if (dk == 0)
-    dk = mad_mono_max(nk,knb_ords);
+  if (dk == 0) dk = mad_mono_max(nk,knb_ords);
   ensure(dk <= mad_mono_max(nv,map_ords));
 
   ord_t ords[nv+nk];
@@ -1109,11 +1103,10 @@ mad_desc_del(D *d)
 
   if (d->L) {  // if L exists, then L_idx exists too
     for (int i = 0; i < 1 + d->mo * d->mo/2; ++i) {
-      mad_free(d->L   [i]);
-      // printf("here %d\n", i);
+      mad_free(d->L[i]);
       if (d->L_idx[i]) {
-        mad_free(d->L_idx[i][0]);  // allocated as single block
-        mad_free(d->L_idx[i]);
+        mad_free(*d->L_idx[i]);  // allocated as single block
+        mad_free( d->L_idx[i]);
       }
     }
     mad_free(d->L);
