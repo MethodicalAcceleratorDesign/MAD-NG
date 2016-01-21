@@ -207,8 +207,7 @@ FUN(geti) (const T *t, int i)
   assert(t);
   D *d = t->d;
   ensure(i >= 0 && i < d->nc);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo);
+  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -218,8 +217,7 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx(d,n,m);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo);
+  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
