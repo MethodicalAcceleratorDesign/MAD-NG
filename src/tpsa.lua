@@ -256,10 +256,8 @@ end
 
 function M.pow (a, n, r_)
   assert(istpsa(a) and isint(n), "invalid GTPSA (^) operands")
-
   if a.hi == 0 then return a.coef[0] ^ n end
-
-  local r = a:tpsa()
+  local r = r_ or a:tpsa()
   clib.mad_tpsa_ipow(a, r, n)
   return r
 end
