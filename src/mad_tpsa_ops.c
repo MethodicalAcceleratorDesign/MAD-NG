@@ -397,7 +397,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 // --- --- BINARY --------------------------------------------------------------
 
 // TPSA_LINOP_ORD(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
-// TPSA_LINOP assume ORD=0 and avoid GCC warning -Wtype-limits
+// TPSA_LINOP assumes ORD=0 and avoids GCC warning -Wtype-limits
 
 #define TPSA_LINOP(OPA, OPB) \
 do { \
