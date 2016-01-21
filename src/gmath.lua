@@ -120,8 +120,11 @@ function M.le    (x,y) return x <= y end
 function M.gt    (x,y) return x >  y end
 function M.ge    (x,y) return x >= y end
 
-function M.is_number  (x) return type(x) == 'number' end
-function M.is_complex (x) return type(x) == 'cdata'  and istype('complex', x) end
+function M.is_table   (x) return type(x) == 'table'    end
+function M.is_number  (x) return type(x) == 'number'   end
+function M.is_function(x) return type(x) == 'function' end
+
+function M.is_complex (x) return type(x) == 'cdata' and istype('complex', x) end
 
 function M.is_scalar  (x) return M.is_number(x) or M.is_complex(x) end
 function M.is_integer (x) return M.is_number(x) and (x + int_msk) - int_msk == x end
