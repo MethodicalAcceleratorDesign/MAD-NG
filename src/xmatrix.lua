@@ -63,6 +63,7 @@ typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 -- locals --------------------------------------------------------------------o
 
 local istype = ffi.istype
+local istable = gmath.is_table
 
 -- FFI type constructors
 local  matrix_ctor = ffi.typeof( 'matrix_t')
@@ -111,13 +112,13 @@ local function cmatrix_alloc (nr, nc)
 end
 
 local function fromtable (ctor, tbl)
-  local nr, nc = #tbl or 1, type(tbl[1]) == 'table' and #tbl[1] or 1
+  local nr, nc = #tbl or 1, istable(tbl[1]) and #tbl[1] or 1
   return ctor(nr,nc):fromtable(tbl)
 end
 
 local function matrix (nr, nc_)
   local nc = nc_ or 1
-  if type(nr) == 'table' then
+  if istable(nr) then
     return fromtable(matrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
     return matrix_alloc(nr, nc)
@@ -128,7 +129,7 @@ end
 
 local function cmatrix (nr, nc_)
   local nc = nc_ or 1
-  if type(nr) == 'table' then
+  if istable(nr) then
     return fromtable(cmatrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
     return cmatrix_alloc(nr, nc)
