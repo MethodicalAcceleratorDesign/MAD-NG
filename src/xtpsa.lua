@@ -51,8 +51,8 @@ SEE ALSO
 
 local ffi   = require 'ffi'
 local clib  = require 'cmad'
-local mono  = require 'mono'
 local gmath = require 'gmath'
+local mono  = require 'mono'
 
 -- ffi -----------------------------------------------------------------------o
 
@@ -84,6 +84,7 @@ struct ctpsa { // warning: must be kept identical to C definition
 
 local istype = ffi.istype
 local min, max = math.min, math.max
+local istable = gmath.is_table
 
 -- FFI type constructors
 local  tpsa_ctor = ffi.typeof( 'tpsa_t')
@@ -92,11 +93,7 @@ local  strs_ctor = ffi.typeof('str_t[?]')
 
 -- implementation ------------------------------------------------------------o
 
-local function is_table(x)
-  return type(x) == 'table'
-end
-
-local function is_desc(x)
+function gmath.is_desc(x)
   return type(x) == 'cdata' and istype('desc_t', x)
 end
 
@@ -111,8 +108,6 @@ end
 function gmath.isa_tpsa (x)
   return type(x) == 'cdata' and (istype('tpsa_t', x) or istype('ctpsa_t', x))
 end
-
-local isa_tpsa = gmath.isa_tpsa
 
 local function tpsa_alloc (d, mo)
   local nc, tpsa = d.nc, nil
@@ -181,8 +176,8 @@ end
 local function desc (args)
   assert(args and args.vo, "not enough arguments for TPSA descriptor")
 
-  local nv = args.nv or is_table(args.vo) and #args.vo or 0
-  local nk = args.nk or is_table(args.ko) and #args.ko or 0
+  local nv = args.nv or istable(args.vo) and #args.vo or 0
+  local nk = args.nk or istable(args.ko) and #args.ko or 0
 
   assert(nv > 0, "invalid number of variables")
 
@@ -208,5 +203,4 @@ return {
    tpsa =  tpsa,
   ctpsa = ctpsa,
    desc =  desc,
-   mono =  mono,
 }
