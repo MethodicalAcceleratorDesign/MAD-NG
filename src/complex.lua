@@ -62,12 +62,12 @@ local cmatrix = require 'cmatrix'
 
 -- locals --------------------------------------------------------------------o
 
+local istype = ffi.istype
+local abs = math.abs
+
 local isnum, iscpx, iscal, ismat, iscmat, tostring =
       gmath.is_number, gmath.is_complex, gmath.is_scalar,
       gmath.is_matrix, gmath.is_cmatrix, gmath.tostring
-
-local istype = ffi.istype
-local abs = math.abs
 
 local cres = ffi.new 'complex[1]'
 
@@ -194,9 +194,9 @@ function M.div (x, y, r_, rcond_)
   assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
 
   if ismat(y) then -- cpx / mat
-    clib.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
+    clib.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
   elseif iscmat(y) then -- cpx / cmat
-    clib.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
+    clib.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
   else error("invalid complex (/) operands") end
   return r
 end
