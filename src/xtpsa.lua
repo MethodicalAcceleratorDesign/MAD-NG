@@ -109,6 +109,8 @@ function gmath.isa_tpsa (x)
   return type(x) == 'cdata' and (istype('tpsa_t', x) or istype('ctpsa_t', x))
 end
 
+local isdesc, isatpsa = gmath.is_desc, gmath.isa_tpsa
+
 local function tpsa_alloc (d, mo)
   local nc, tpsa = d.nc, nil
   if nc < clib.mad_alloc_threshold then
@@ -144,9 +146,9 @@ end
 -- tpsa(t|d, mo) -> mo
 
 local function tpsa (t, mo_)
-  if isa_tpsa(t) then
+  if isatpsa(t) then
     return tpsa_alloc(t.d, mo_ and max(0,min(mo_,t.d.mo)) or t.mo)
-  elseif is_desc(t) then
+  elseif isdesc(t) then
     return tpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
     error("invalid argument to tpsa constructor, expecting TPSA or descriptor")
@@ -154,9 +156,9 @@ local function tpsa (t, mo_)
 end
 
 local function ctpsa (t, mo_)
-  if isa_tpsa(t) then
+  if isatpsa(t) then
     return ctpsa_alloc(t.d, mo_ and max(0,min(mo_,t.d.mo)) or t.mo)
-  elseif is_desc(t) then
+  elseif isdesc(t) then
     return ctpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
     error("invalid argument to ctpsa constructor, expecting TPSA or descriptor")
