@@ -396,12 +396,27 @@ FUN(scl) (const T *a, NUM v, T *c)
 
 // --- --- BINARY --------------------------------------------------------------
 
-//      TPSA_LINOP(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
-#define TPSA_LINOP(OPA, OPB, ORD) \
+// TPSA_LINOP_ORD(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
+// TPSA_LINOP assume ORD=0 and avoid GCC warning -Wtype-limits
+
+#define TPSA_LINOP(OPA, OPB) \
 do { \
     idx_t *pi = c->d->hpoly_To_idx; \
-    idx_t start_a = pi[MAX(ORD,a->lo)], end_a = pi[MIN(a->hi,c_hi)+1]; \
-    idx_t start_b = pi[MAX(ORD,b->lo)], end_b = pi[MIN(b->hi,c_hi)+1]; \
+    idx_t start_a = pi[a->lo], end_a = pi[MIN(a->hi,c_hi)+1]; \
+    idx_t start_b = pi[b->lo], end_b = pi[MIN(b->hi,c_hi)+1]; \
+    int i = start_a; \
+    for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
+    for (; i <           start_b ; ++i) c->coef[i] = 0; \
+    for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = OPA a->coef[i] OPB b->coef[i]; \
+    for (; i <     end_a         ; ++i) c->coef[i] = OPA a->coef[i]; \
+    for (; i <           end_b   ; ++i) c->coef[i] =                OPB b->coef[i]; \
+} while(0) \
+
+#define TPSA_LINOP_ORD(OPA, OPB, ORD) \
+do { \
+    idx_t *pi = c->d->hpoly_To_idx; \
+    idx_t start_a = pi[MAX(a->lo,ORD)], end_a = pi[MIN(a->hi,c_hi)+1]; \
+    idx_t start_b = pi[MAX(b->lo,ORD)], end_b = pi[MIN(b->hi,c_hi)+1]; \
     int i = start_a; \
     for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
     for (; i <           start_b ; ++i) c->coef[i] = 0; \
@@ -445,8 +460,8 @@ FUN(acc) (const T *a, NUM v, T *c)
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
-  if (t) TPSA_LINOP(v*,+  ,0);  // c->coef[i] = v*a->coef[i] +   c->coef[i];
-  else   TPSA_LINOP(  ,+v*,0);  // c->coef[i] =   c->coef[i] + v*a->coef[i];
+  if (t) TPSA_LINOP(v*,+  );  // c->coef[i] = v*a->coef[i] +   c->coef[i];
+  else   TPSA_LINOP(  ,+v*);  // c->coef[i] =   c->coef[i] + v*a->coef[i];
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
@@ -463,8 +478,8 @@ FUN(add) (const T *a, const T *b, T *c)
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
-  TPSA_LINOP( ,+,0);  // c->coef[i] = a->coef[i] + b->coef[i];
-  c->lo = a->lo;      // a->lo <= b->lo  (because of swap)
+  TPSA_LINOP( ,+);  // c->coef[i] = a->coef[i] + b->coef[i];
+  c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
 }
@@ -479,8 +494,8 @@ FUN(sub) (const T *a, const T *b, T *c)
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
-  if (t) TPSA_LINOP(-,+,0); // c->coef[i] = - a->coef[i] + b->coef[i];
-  else   TPSA_LINOP( ,-,0); // c->coef[i] =   a->coef[i] - b->coef[i];
+  if (t) TPSA_LINOP(-,+); // c->coef[i] = - a->coef[i] + b->coef[i];
+  else   TPSA_LINOP( ,-); // c->coef[i] =   a->coef[i] - b->coef[i];
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
@@ -533,8 +548,8 @@ FUN(mul) (const T *a, const T *b, T *r)
       b0 = b->coef[0];
     }
 
-    ord_t c_hi = c->hi;          // needed by TPSA_LINOP
-    TPSA_LINOP(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
+    ord_t c_hi = c->hi;              // needed by TPSA_LINOP
+    TPSA_LINOP_ORD(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
     for (int i = d->hpoly_To_idx[MAX(a->hi,b->hi)+1]; i < d->hpoly_To_idx[c_hi+1]; ++i)
       c->coef[i] = 0;
 
@@ -623,7 +638,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
     NUM n;    SWAP(c1,c2,n);
   }
   ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);  // TODO: optimise c_hi == 0 ?
-  TPSA_LINOP(c1 *, + c2 *, 0);  // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
+  TPSA_LINOP(c1 *, + c2 *);  // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
 
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
