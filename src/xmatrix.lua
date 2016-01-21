@@ -62,12 +62,12 @@ typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 
 -- locals --------------------------------------------------------------------o
 
-local istype = ffi.istype
+local istype  = ffi.istype
 local istable = gmath.is_table
 
 -- FFI type constructors
-local  matrix_ctor = ffi.typeof( 'matrix_t')
-local cmatrix_ctor = ffi.typeof('cmatrix_t')
+local  matrix_ctor = ffi.typeof  'matrix_t'
+local cmatrix_ctor = ffi.typeof 'cmatrix_t'
 
 -- implementation ------------------------------------------------------------o
 

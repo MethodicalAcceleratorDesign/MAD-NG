@@ -82,14 +82,15 @@ struct ctpsa { // warning: must be kept identical to C definition
 
 -- locals --------------------------------------------------------------------o
 
-local istype = ffi.istype
+local istype   = ffi.istype
 local min, max = math.min, math.max
-local istable = gmath.is_table
+local istable  = gmath.is_table
 
 -- FFI type constructors
-local  tpsa_ctor = ffi.typeof( 'tpsa_t')
-local ctpsa_ctor = ffi.typeof('ctpsa_t')
-local  strs_ctor = ffi.typeof('str_t[?]')
+local  tpsa_ctor = ffi.typeof 'tpsa_t'
+local ctpsa_ctor = ffi.typeof 'ctpsa_t'
+local  strs_ctor = ffi.typeof 'str_t[?]'
+
 
 -- implementation ------------------------------------------------------------o
 

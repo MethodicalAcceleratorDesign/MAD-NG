@@ -55,17 +55,21 @@ local tbl_new = require 'table.new'
 
 local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
 local min, max = math.min, math.max
-local isnum, istable, istpsa = gmath.is_number, gmath.is_table, gmath.is_tpsa
+local isnum, isint, istable, istpsa =
+      gmath.is_number, gmath.is_integer, gmath.is_table, gmath.is_tpsa
 
 -- FFI type constructors
 local tpsa = xtpsa.tpsa
 local desc = xtpsa.desc
 local mono = xtpsa.mono
 
-local cint_arr = ffi.typeof('const int[?]')
+local int_arr   = ffi.typeof '      int[?]'
+local int_carr  = ffi.typeof 'const int[?]'
+
+local tpsa_arr  = ffi.typeof       'tpsa_t* [?]'
+local tpsa_carr = ffi.typeof 'const tpsa_t* [?]'
 
 -- implementation ------------------------------------------------------------o
-
 
 function M.mono (t, tbl_)
   return mono(tbl_ or t.d.nv)
@@ -92,7 +96,7 @@ end
 function M.get_idx_sp (t,tbl)
   -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
-  local m = cint_arr(n)
+  local m = int_carr(n)
   for i=1,n do m[i-1] = tbl[i] end
   return clib.mad_tpsa_midx_sp(t, n, m)
 end
@@ -117,7 +121,7 @@ end
 function M.get_sp (t, tbl)
   -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
-  local m = cint_arr(n)
+  local m = int_carr(n)
   for i=1,n do m[i-1] = tbl[i] end
   return clib.mad_tpsa_getm_sp(t, n, m)
 end
@@ -140,12 +144,17 @@ function M.set_sp (t, tbl, a, b)
   if b == nil then a, b = 0, a end
   -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
-  local m = cint_arr(n)
+  local m = int_carr(n)
   for i=1,n do m[i-1] = tbl[i] end
   clib.mad_tpsa_setm_sp(t, n, m, a, b)
 end
 
 -- unary operators -----------------------------------------------------------o
+
+function M.unm (t, r_)
+  local r = r_ or t:tpsa()
+  clib.mad_tpsa_scl(t, -1, r)
+end
 
 function M.abs (t, r_)
   local r = r_ or t:tpsa()
@@ -245,13 +254,236 @@ function M.div (a, b, r_)
   return r
 end
 
+function M.pow (a, n, r_)
+  assert(istpsa(a) and isint(n), "invalid GTPSA (^) operands")
+
+  if a.hi == 0 then return a.coef[0] ^ n end
+
+  local r = a:tpsa()
+  clib.mad_tpsa_ipow(a, r, n)
+  return r
+end
+
 function M.poisson(a, b, n, r_)
   local r = r_ or a:tpsa(max(a.mo,b.mo))
   clib.mad_tpsa_poisson(a, b, r, n)
   return r
 end
 
+-- maps ----------------------------------------------------------------------o
+
+function M.compose (ma, mb, mr)
+  -- ma, mb, mr -- compatible lua arrays of TPSAs
+  local cma, cmb, cmr =
+        tpsa_carr(#ma, ma), tpsa_carr(#mb, mb), tpsa_arr(#mr, mr)
+  clib.mad_tpsa_compose(#ma, cma, #mb, cmb, #mr, cmr)
+end
+
+function M.minv (ma, mr)
+  -- ma, mr -- compatible lua arrays of TPSAs
+  local cma, cmc = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
+  clib.mad_tpsa_minv(#ma, cma, #mc, cmc)
+end
+
+function M.pminv (ma, mr, rows)
+  -- ma, mr -- compatible lua arrays of TPSAs
+  local cma, cmr = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
+  local sel = int_arr(#rows)
+  for i=1,#rows do sel[i-1] = rows[i] end
+  clib.mad_tpsa_pminv(#ma, cma, #mr, cmr, sel)
+end
+
+-- functions -----------------------------------------------------------------o
+
+function M.acc (a, v, r_)  -- r += v*a
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_acc(a, v, r)
+  return r
+end
+
+function M.inv (a, v, r_)  -- v/a
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_inv(a, v, r)
+  return r
+end
+
+function M.invsqrt (a, b, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_invsqrt(a, b, r)
+  return r
+end
+
+function M.sqrt (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_sqrt(a, r)
+  return r
+end
+
+function M.exp (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_exp(a, r)
+  return r
+end
+
+function M.log (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_log(a, r)
+  return r
+end
+
+function M.sin (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_sin(a, r)
+  return r
+end
+
+function M.cos (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_cos(a, r)
+  return r
+end
+
+function M.tan (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_tan(a, r)
+  return r
+end
+
+function M.cot (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_cot(a, r)
+  return r
+end
+
+function M.sinh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_sinh(a, r)
+  return r
+end
+
+function M.cosh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_cosh(a, r)
+  return r
+end
+
+function M.tanh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_tanh(a, r)
+  return r
+end
+
+function M.coth (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_coth(a, r)
+  return r
+end
+
+function M.asin (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_asin(a, r)
+  return r
+end
+
+function M.acos (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_acos(a, r)
+  return r
+end
+
+function M.atan (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_atan(a, r)
+  return r
+end
+
+function M.acot (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_acot(a, r)
+  return r
+end
+
+function M.asinh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_asinh(a, r)
+  return r
+end
+
+function M.acosh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_acosh(a, r)
+  return r
+end
+
+function M.atanh (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_atanh(a, r)
+  return r
+end
+
+function M.acoth (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_acoth(a, r)
+  return r
+end
+
+function M.erf (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_erf(a, r)
+  return r
+end
+
+function M.sinc (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_sinc(a, r)
+  return r
+end
+
+function M.sirx (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_sirx(a, r)
+  return r
+end
+
+function M.corx (a, r_)
+  local r = r_ or a:tpsa()
+  clib.mad_tpsa_corx(a, r)
+  return r
+end
+
+function M.sincos (a, rs_, rc_)
+  local rs = rs_ or a:tpsa()
+  local rc = rc_ or a:tpsa()
+  clib.mad_tpsa_sincos(a, rs, rc)
+  return rs, rc
+end
+
+function M.sincosh (a, rs_, rc_)
+  local rs = rs_ or a:tpsa()
+  local rc = rc_ or a:tpsa()
+  clib.mad_tpsa_sincosh(a, rs, rc)
+  return rs, rc
+end
+
+-- I/O -----------------------------------------------------------------------o
+
+M.print = clib.mad_tpsa_print
+
+function M.read (_, file)
+  local d = clib.mad_tpsa_scan_desc(file)
+  local t = tpsa(d)
+  clib.mad_tpsa_scan_coef(t, file)
+  return t
+end
+
 ------------------------------------------------------------------------------o
+
+M.__unm = M.unm
+M.__add = M.add
+M.__sub = M.sub
+M.__mul = M.mul
+M.__div = M.div
+M.__pow = M.pow
 
 ffi.metatype('tpsa_t', M)
 

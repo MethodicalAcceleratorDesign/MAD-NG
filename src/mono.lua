@@ -67,7 +67,7 @@ local istype = ffi.istype
 local isnum, istable = gmath.is_number, gmath.is_table
 
 -- FFI type constructors
-local mono_ctor = ffi.typeof('mono_t')
+local mono_ctor = ffi.typeof 'mono_t'
 
 -- implementation ------------------------------------------------------------o
 
