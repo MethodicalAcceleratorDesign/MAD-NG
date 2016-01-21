@@ -44,8 +44,9 @@ SEE ALSO
 
 -- modules -------------------------------------------------------------------o
 
-local ffi  = require 'ffi'
-local clib = require 'cmad'
+local ffi   = require 'ffi'
+local clib  = require 'cmad'
+local gmath = require 'gmath'
 
 local tbl_new = require 'table.new'
 
@@ -63,18 +64,15 @@ struct mono {
 -- locals --------------------------------------------------------------------o
 
 local istype = ffi.istype
+local isnum, istable = gmath.is_number, gmath.is_table
 
 -- FFI type constructors
 local mono_ctor = ffi.typeof('mono_t')
 
 -- implementation ------------------------------------------------------------o
 
-local function isnum(x)
-  return type(x) == 'number'
-end
-
-local function is_table(x)
-  return type(x) == 'table'
+function gmath.is_mono (x)
+  return type(x) == 'cdata' and istype('mono_t', x)
 end
 
 local function mono_alloc(n)
@@ -83,13 +81,14 @@ local function mono_alloc(n)
   return r
 end
 
+-- mono(len) -> zeroed
 -- mono(tbl)
 -- mono(val, len)
 
 local function mono (m, n_)
-  local n = is_table(m) and #m or n_ or m
+  local n = istable(m) and #m or n_ or m
   local r = mono_alloc(n)
-  if is_table(m) then
+  if istable(m) then
     for i=1,n   do r.ord[i-1] = m[i] end
   elseif isnum(m) then
     for i=0,n-1 do r.ord[i-1] = m    end
