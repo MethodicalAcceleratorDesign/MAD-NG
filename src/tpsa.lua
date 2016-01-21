@@ -1,7 +1,7 @@
 --[=[
  o----------------------------------------------------------------------------o
  |
- | TPSA module (real)
+ | GTPSA module (real)
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,7 +16,7 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provides full set of functions and operations on real TPSA
+  - provides full set of functions and operations on real GTPSA
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -33,10 +33,10 @@ SYNOPSIS
   local tpsa = require 'tpsa'
 
 DESCRIPTION
-  The module tpsa implements the operators and math functions on TPSA:
+  The module tpsa implements the operators and math functions on GTPSA.
 
 RETURN VALUES
-  The constructor of TPSA
+  The constructor of real GTPSA
 
 SEE ALSO
   gmath, complex, matrix, cmatrix, ctpsa
@@ -48,8 +48,6 @@ local ffi   = require 'ffi'
 local clib  = require 'cmad'
 local gmath = require 'gmath'
 local xtpsa = require 'xtpsa'
-
-local tbl_new = require 'table.new'
 
 -- locals --------------------------------------------------------------------o
 
@@ -128,7 +126,7 @@ end
 
 function M.set0 (t, a, b)
   if b == nil then a, b = 0, a end
-  clib.mad_tpsa_set0(t,a,b)
+  clib.mad_tpsa_set0(t, a, b)
 end
 
 function M.set (t, i, a, b)
@@ -266,29 +264,6 @@ function M.poisson(a, b, n, r_)
   local r = r_ or a:tpsa(max(a.mo,b.mo))
   clib.mad_tpsa_poisson(a, b, r, n)
   return r
-end
-
--- maps ----------------------------------------------------------------------o
-
-function M.compose (ma, mb, mr)
-  -- ma, mb, mr -- compatible lua arrays of TPSAs
-  local cma, cmb, cmr =
-        tpsa_carr(#ma, ma), tpsa_carr(#mb, mb), tpsa_arr(#mr, mr)
-  clib.mad_tpsa_compose(#ma, cma, #mb, cmb, #mr, cmr)
-end
-
-function M.minv (ma, mr)
-  -- ma, mr -- compatible lua arrays of TPSAs
-  local cma, cmc = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
-  clib.mad_tpsa_minv(#ma, cma, #mc, cmc)
-end
-
-function M.pminv (ma, mr, rows)
-  -- ma, mr -- compatible lua arrays of TPSAs
-  local cma, cmr = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
-  local sel = int_arr(#rows)
-  for i=1,#rows do sel[i-1] = rows[i] end
-  clib.mad_tpsa_pminv(#ma, cma, #mr, cmr, sel)
 end
 
 -- functions -----------------------------------------------------------------o
@@ -463,13 +438,37 @@ function M.sincosh (a, rs_, rc_)
   return rs, rc
 end
 
+-- maps ----------------------------------------------------------------------o
+
+-- TODO: these methods should be moved to the map module
+
+function M.compose (ma, mb, mr)
+  -- ma, mb, mr -- compatible lua arrays of TPSAs
+  local cma, cmb, cmr =
+        tpsa_carr(#ma, ma), tpsa_carr(#mb, mb), tpsa_arr(#mr, mr)
+  clib.mad_tpsa_compose(#ma, cma, #mb, cmb, #mr, cmr)
+end
+
+function M.minv (ma, mr)
+  -- ma, mr -- compatible lua arrays of TPSAs
+  local cma, cmc = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
+  clib.mad_tpsa_minv(#ma, cma, #mc, cmc)
+end
+
+function M.pminv (ma, mr, rows)
+  -- ma, mr -- compatible lua arrays of TPSAs
+  local cma, cmr = tpsa_carr(#ma, ma), tpsa_arr(#mr, mr)
+  local sel = int_arr(#rows)
+  for i=1,#rows do sel[i-1] = rows[i] end
+  clib.mad_tpsa_pminv(#ma, cma, #mr, cmr, sel)
+end
+
 -- I/O -----------------------------------------------------------------------o
 
 M.print = clib.mad_tpsa_print
 
 function M.read (_, file)
-  local d = clib.mad_tpsa_scan_desc(file)
-  local t = tpsa(d)
+  local t = tpsa(clib.mad_tpsa_scan_hdr(file))
   clib.mad_tpsa_scan_coef(t, file)
   return t
 end
