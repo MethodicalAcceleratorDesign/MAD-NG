@@ -92,16 +92,17 @@ SEE ALSO
  
 -- modules -------------------------------------------------------------------o
 
-local ffi   = require 'ffi'
-local clib  = require 'cmad'
-local gmath = require 'gmath'
-local xmat  = require 'xmatrix'
+local ffi     = require 'ffi'
+local clib    = require 'cmad'
+local gmath   = require 'gmath'
+local xmatrix = require 'xmatrix'
 
 local tbl_new = require 'table.new'
 
 -- locals --------------------------------------------------------------------o
 
-local isnum, iscpx, iscal, ismat, iscmat, isamat,
+local isnum, iscpx, iscal,
+      ismat, iscmat, isamat,
       real, imag, conj, ident, min,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
@@ -120,8 +121,8 @@ local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
 local cres = ffi.new 'complex[1]'
 
 -- FFI type constructors
-local matrix  = xmat.matrix
-local cmatrix = xmat.cmatrix
+local matrix  = xmatrix.matrix
+local cmatrix = xmatrix.cmatrix
 
 -- implementation ------------------------------------------------------------o
 
