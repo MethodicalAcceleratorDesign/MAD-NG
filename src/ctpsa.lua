@@ -255,7 +255,7 @@ function M.add (a, b, r_)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_set0_r(r, 1, 0, b.re, b.im)
   elseif isctpsa(b) then -- ctpsa + ctpsa
-    r = r_ or ctpsa(amax(a.mo,b.mo))
+    r = r_ or ctpsa(a, max(a.mo,b.mo))
     clib.mad_ctpsa_add(a, b, r)
   else error("invalid GTPSA (+) operands") end
   return r
@@ -275,7 +275,7 @@ function M.sub (a, b, r_)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_set0_r(r, 1, 0, -b.re, -b.im)
   elseif isctpsa(b) then -- ctpsa - ctpsa
-    r = r_ or ctpsa(amax(a.mo,b.mo))
+    r = r_ or ctpsa(a, max(a.mo,b.mo))
     clib.mad_ctpsa_sub(a, b, r)
   else error("invalid GTPSA (-) operands") end
   return r
@@ -294,7 +294,7 @@ function M.mul (a, b, r_)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_scl_r(a, b.re, b.im, r)
   elseif isctpsa(b) then -- ctpsa * ctpsa
-    r = r_ or ctpsa(amax(a.mo,b.mo))
+    r = r_ or ctpsa(a, max(a.mo,b.mo))
     clib.mad_ctpsa_mul(a, b, r)
   else error("invalid GTPSA (*) operands") end
   return r
@@ -313,7 +313,7 @@ function M.div (a, b, r_)
     b = iscpx(b) and 1/b or complex(1/b)
     clib.mad_ctpsa_scl_r(a, b.re, b.im, r)
   elseif isctpsa(b) then -- ctpsa / ctpsa
-    r = r_ or ctpsa(amax(a.mo,b.mo))
+    r = r_ or ctpsa(a, max(a.mo,b.mo))
     clib.mad_ctpsa_div(a, b, r)
   else error("invalid GTPSA (/) operands") end
   return r
@@ -328,7 +328,7 @@ function M.pow (a, n, r_)
 end
 
 function M.poisson(a, b, n, r_)
-  local r = r_ or ctpsa(amax(a.mo,b.mo))
+  local r = r_ or ctpsa(a, max(a.mo,b.mo))
   clib.mad_ctpsa_poisson(a, b, r, n)
   return r
 end

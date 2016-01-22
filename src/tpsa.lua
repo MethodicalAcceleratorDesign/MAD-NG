@@ -85,7 +85,8 @@ function M.copy (t, r_)
 end
 
 function M.complex (re_, im_, r_)
-  local r = r_ or ctpsa(re_ or im_)
+  local re, im = re_ or im_, im_ or re_
+  local r = r_ or ctpsa(re, max(re.mo, im.mo))
   clib.mad_tpsa_complex(re_, im_, r)
   return r
 end
@@ -203,7 +204,7 @@ function M.add (a, b, r_)
     r = a:copy(r_)
     clib.mad_tpsa_set0(r, 1, b)
   elseif istpsa(b) then  -- tpsa + tpsa
-    r = r_ or tpsa(amax(a.mo,b.mo))
+    r = r_ or tpsa(a, max(a.mo,b.mo))
     clib.mad_tpsa_add(a, b, r)
   else error("invalid GTPSA (+) operands") end
   return r
@@ -221,7 +222,7 @@ function M.sub (a, b, r_)
     r = a:copy(r_)
     clib.mad_tpsa_set0(r, 1, -b)
   elseif istpsa(b) then  -- tpsa - tpsa
-    r = r_ or tpsa(amax(a.mo,b.mo))
+    r = r_ or tpsa(a, max(a.mo,b.mo))
     clib.mad_tpsa_sub(a, b, r)
   else error("invalid GTPSA (-) operands") end
   return r
@@ -238,7 +239,7 @@ function M.mul (a, b, r_)
     r = r_ or tpsa(a)
     clib.mad_tpsa_scl(a, b, r)
   elseif istpsa(b) then  -- tpsa * tpsa
-    r = r_ or tpsa(amax(a.mo,b.mo))
+    r = r_ or tpsa(a, max(a.mo,b.mo))
     clib.mad_tpsa_mul(a, b, r)
   else error("invalid GTPSA (*) operands") end
   return r
@@ -255,7 +256,7 @@ function M.div (a, b, r_)
     r = r_ or tpsa(a)
     clib.mad_tpsa_scl(a, 1/b, r)
   elseif istpsa(b) then  -- tpsa / tpsa
-    r = r_ or tpsa(amax(a.mo,b.mo))
+    r = r_ or tpsa(a, max(a.mo,b.mo))
     clib.mad_tpsa_div(a, b, r)
   else error("invalid GTPSA (/) operands") end
   return r
@@ -270,7 +271,7 @@ function M.pow (a, n, r_)
 end
 
 function M.poisson(a, b, n, r_)
-  local r = r_ or tpsa(amax(a.mo,b.mo))
+  local r = r_ or tpsa(a, max(a.mo,b.mo))
   clib.mad_tpsa_poisson(a, b, r, n)
   return r
 end
