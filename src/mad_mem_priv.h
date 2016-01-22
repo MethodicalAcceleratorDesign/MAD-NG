@@ -36,7 +36,7 @@
 #define mad_realloc(p,s) (mad_savtrcloc(2), mad_mem_check(realloc(p,s)))
 #define mad_free(p)      (                                free   (p)   )
 
-#endif // DEFAULT_MEM_ALLOC
+#endif // MAD_MEM_STD
 
 void* (mad_malloc)   (size_t)         __attribute__((hot,malloc));
 void* (mad_calloc)   (size_t, size_t) __attribute__((hot,malloc));

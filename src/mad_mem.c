@@ -28,6 +28,9 @@
 // --- macros ----------------------------------------------------------------o
 
 /*
+Note about debugging:
+  If MAD_MEM_CHECKMARK != 0, mad_realloc and mad_free check for the marker
+
 Note about auto collect:
   If MAD_MEM_AUTOCOLLECT != 0, the memory allocator will bound the amount
   of cached memory to pool_max. Default is to bound the memory cached for
@@ -36,6 +39,12 @@ Note about auto collect:
 
 #ifdef _OPENMP
 #define MAD_MEM_AUTOCOLLECT 1
+#endif
+
+#if     MAD_MEM_CHECKMARK != 0
+#define CHK(...) __VA_ARGS__
+#else
+#define CHK(...)
 #endif
 
 #if     MAD_MEM_AUTOCOLLECT != 0
@@ -56,7 +65,7 @@ union mblk {
 
   struct { // used mblk
     unsigned slot;
-    unsigned mark;
+CHK(unsigned mark; )
     union { // alignment of data
       ptrdiff_t s, *sp;
       size_t    u, *up;
@@ -72,7 +81,7 @@ struct slot {
   union mblk *list;
 };
 
-#define MARK 0xDEADBEEF // marker
+#define MARK 0xDEADC0DE // marker
 
 // sizes & offsets
 enum {
@@ -130,7 +139,7 @@ static inline void*
 init_node (union mblk *ptr, size_t slot)
 {
     ptr->used.slot = slot;
-    ptr->used.mark = MARK;
+CHK(ptr->used.mark = MARK; )
     return ptr->used.data;
 }
 
@@ -176,8 +185,9 @@ void*
 
   union mblk *ptr = get_base(ptr_);
 
+CHK(
   if (ptr->used.mark != MARK)
-    mad_fatalf("invalid pointer");
+    mad_fatalf("invalid pointer"); )
 
   size_t slot = get_slot(size);
 
@@ -201,8 +211,9 @@ void
   if (ptr_) {
     union mblk *ptr = get_base(ptr_);
 
-    if (ptr->used.mark != MARK)
-      mad_fatalf("invalid pointer");
+CHK(
+  if (ptr->used.mark != MARK)
+    mad_fatalf("invalid pointer"); )
 
     size_t slot = ptr->used.slot;
 
@@ -234,13 +245,15 @@ mad_mem_size (void* ptr_)
   if (!ptr_) return 0;
   union mblk *ptr = get_base(ptr_);
 
+CHK(
   if (ptr->used.mark != MARK)
-    mad_fatalf("invalid pointer");
+    mad_fatalf("invalid pointer"); )
 
   size_t slot = ptr->used.slot;
   return slot != get_slot(0) ? (slot+1) * mblk_stp : 0;
 }
 
+// note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
 mad_mem_cached (void)
 {
@@ -260,7 +273,7 @@ MAC(
   return cached * mblk_stp;
 }
 
-// note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.2
+// note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
 mad_mem_collect (void)
 {

@@ -22,17 +22,18 @@
   - fast memory allocator (per-thread pool).
   - MAD memory handlers: mad_malloc, mad_realloc, mad_free
   - allocated memory can be used-by/moved-to any thread (global allocator).
-  - temporary buffer are only for local use (scoped), and the length
+  - temporary allocation are only for local use (scoped), and the length
     corresponds to the number of elements of type 'type' in the buffer.
  
   Information:
   - parameters ending with an underscope can be null.
   - mad_malloc and mad_realloc call mad_fatal with caller location if
     (re)allocation fails instead of returning a NULL pointer.
+  - mad_calloc calls mad_malloc and set to zeros the allocated memory.
   - mad_mem_cached returns the amount of memory cached (slow).
   - mad_mem_collect frees the cached memory and returns its amount (slow).
   - temporay buffers can be either on the stack or allocated with mad_malloc
-    depending on their size, and must always be locally freed.
+    depending on their size, and must _always_ be locally freed.
   - defining MAD_MEM_STD replaces mad allocator by C allocator
 
   Errors:
