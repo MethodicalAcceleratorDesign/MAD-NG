@@ -57,9 +57,10 @@ local isnum, isint, istable, istpsa =
       gmath.is_number, gmath.is_integer, gmath.is_table, gmath.is_tpsa
 
 -- FFI type constructors
-local tpsa = xtpsa.tpsa
-local desc = xtpsa.desc
-local mono = xtpsa.mono
+local tpsa  = xtpsa.tpsa
+local ctpsa = xtpsa.ctpsa
+local desc  = xtpsa.desc
+local mono  = xtpsa.mono
 
 local int_arr   = ffi.typeof '      int[?]'
 local int_carr  = ffi.typeof 'const int[?]'
@@ -68,6 +69,10 @@ local tpsa_arr  = ffi.typeof       'tpsa_t* [?]'
 local tpsa_carr = ffi.typeof 'const tpsa_t* [?]'
 
 -- implementation ------------------------------------------------------------o
+
+M.tpsa  = tpsa
+M.ctpsa = ctpsa
+M.gtpsa = tpsa
 
 function M.mono (t, tbl_)
   return mono(tbl_ or t.d.nv)

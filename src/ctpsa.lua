@@ -59,6 +59,7 @@ local isnum, isint, iscpx, isscl, istable, isctpsa =
       gmath.is_table, gmath.is_ctpsa
 
 -- FFI type constructors
+local tpsa  = xtpsa.tpsa
 local ctpsa = xtpsa.ctpsa
 local desc  = xtpsa.desc
 local mono  = xtpsa.mono
@@ -72,6 +73,10 @@ local ctpsa_carr = ffi.typeof 'const ctpsa_t* [?]'
 local cres = ffi.new 'complex[1]'
 
 -- implementation ------------------------------------------------------------o
+
+M.tpsa  = tpsa
+M.ctpsa = ctpsa
+M.gtpsa = ctpsa
 
 function M.mono (t, tbl_)
   return mono(tbl_ or t.d.nv)
