@@ -84,8 +84,8 @@ void    mad_tpsa_setm_sp (      tpsa_t *t, int n, const int   m[], num_t a, num_
 
 // operations
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
-num_t   mad_tpsa_nrm1    (const tpsa_t *t, const tpsa_t *t2_);
-num_t   mad_tpsa_nrm2    (const tpsa_t *t, const tpsa_t *t2_);
+num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
+num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
 void    mad_tpsa_der     (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
 void    mad_tpsa_mder    (const tpsa_t *a, tpsa_t *c, int n, const ord_t m[]);
 

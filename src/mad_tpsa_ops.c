@@ -286,6 +286,21 @@ FUN(arg) (const T *a, T *c)
     c->coef[i] = carg(a->coef[i]);
 }
 
+void
+FUN(conj) (const T *a, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d);
+
+  c->hi = MIN3(a->hi, c->mo, c->d->trunc);
+  c->lo = a->lo;
+  c->nz = mad_bit_trunc(a->nz,c->hi);
+
+  idx_t *pi = c->d->ord2idx;
+  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    c->coef[i] = conj(a->coef[i]);
+}
+
 #endif
 
 NUM

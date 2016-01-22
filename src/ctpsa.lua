@@ -88,6 +88,12 @@ function M.copy (t, r_)
   return r
 end
 
+function M.conj (t, r_)
+  local r = r_ or ctpsa(t)
+  clib.mad_ctpsa_conj(t, r) -- conjugate
+  return r
+end
+
 function M.real (t, r_)
   local r = r_ or tpsa(t)
   clib.mad_ctpsa_real(t, r) -- real part
@@ -95,12 +101,6 @@ function M.real (t, r_)
 end
 
 function M.imag (t, r_)
-  local r = r_ or tpsa(t)
-  clib.mad_ctpsa_imag(t, r) -- imaginary part
-  return r
-end
-
-function M.conj (t, r_)
   local r = r_ or tpsa(t)
   clib.mad_ctpsa_imag(t, r) -- imaginary part
   return r

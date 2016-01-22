@@ -98,8 +98,9 @@ void     mad_ctpsa_setm_sp_r(      ctpsa_t *t, int n, const int   m[], num_t a_r
 // operations
 void     mad_ctpsa_abs     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_arg     (const ctpsa_t *a, ctpsa_t *c);
-cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *t, const ctpsa_t *t2_);
-cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *t, const ctpsa_t *t2_);
+void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
+cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *a, const ctpsa_t *b_);
+cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *a, const ctpsa_t *b_);
 void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
 void     mad_ctpsa_mder    (const ctpsa_t *a, ctpsa_t *c, int n, const ord_t m[]);
 
@@ -142,8 +143,8 @@ void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_ipow    (const ctpsa_t *a, ctpsa_t *c, int n);
 
 // operations without complex-by-value
-void     mad_ctpsa_nrm1_r   (const ctpsa_t *t, const ctpsa_t *t2_, cnum_t *r);
-void     mad_ctpsa_nrm2_r   (const ctpsa_t *t, const ctpsa_t *t2_, cnum_t *r);
+void     mad_ctpsa_nrm1_r   (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
+void     mad_ctpsa_nrm2_r   (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
 void     mad_ctpsa_acc_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_scl_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
