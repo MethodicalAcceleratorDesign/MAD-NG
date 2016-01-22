@@ -113,7 +113,7 @@ make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_id
   // ords 2..mo
   int nv = d->nv;
   ord_t m[nv], *curr_mono = d->monos + curr_mono_idx*nv;
-  idx_t *pi = d->hpoly_To_idx;
+  idx_t *pi = d->ord2idx;
 
   for (ord_t o = 2; o <= d->mo; o++) {        // to build ord o:
     for   (int i = pi[ 1 ]; i < pi[2]; ++i) { // i goes through ord  1
@@ -163,15 +163,15 @@ make_monos(D *d)
 
   d->monos        = mad_malloc(d->nc * nv  * sizeof *(d->monos));
   d->ords         = mad_malloc(d->nc       * sizeof *(d->ords));
-  d->hpoly_To_idx = mad_malloc((d->mo + 2) * sizeof *(d->hpoly_To_idx));
+  d->ord2idx = mad_malloc((d->mo + 2) * sizeof *(d->ord2idx));
   assert(d->monos);
   assert(d->ords);
-  assert(d->hpoly_To_idx);
+  assert(d->ord2idx);
 
   // ord 0
   mad_mono_fill(nv, d->monos, 0);
-  d->hpoly_To_idx[0] = d->ords[0] = 0;
-  d->hpoly_To_idx[1] = 1;
+  d->ord2idx[0] = d->ords[0] = 0;
+  d->ord2idx[1] = 1;
   int curr_mono_idx = 1;
 
   // ord 1
@@ -185,7 +185,7 @@ make_monos(D *d)
         var_at_idx[curr_mono_idx]      = i;
         curr_mono_idx++;
       }
-    d->hpoly_To_idx[2] = curr_mono_idx;
+    d->ord2idx[2] = curr_mono_idx;
   }
 
   int real_nc = curr_mono_idx;
@@ -195,7 +195,7 @@ make_monos(D *d)
   tbl_realloc_monos(d, real_nc);
   d->size += real_nc * d->nv * sizeof *(d->monos);
   d->size += real_nc         * sizeof *(d->ords);
-  d->size += (d->mo + 2)     * sizeof *(d->hpoly_To_idx);
+  d->size += (d->mo + 2)     * sizeof *(d->ord2idx);
 }
 
 static inline int
@@ -244,7 +244,7 @@ find_index_bin(int n, const ord_t **T, const ord_t m[n], const int from_idx, con
 static inline void
 tbl_by_ord(D *d)
 {
-  assert(d && d->var_ords && d->hpoly_To_idx && d->monos);
+  assert(d && d->var_ords && d->ord2idx && d->monos);
 
   d->To    = mad_malloc(d->nc * sizeof *(d->To));
   assert(d->To);
@@ -268,7 +268,7 @@ tbl_by_ord(D *d)
 static inline void
 tbl_by_var(D *d)
 {
-  assert(d && d->var_ords && d->sort_var && d->monos && d->hpoly_To_idx);
+  assert(d && d->var_ords && d->sort_var && d->monos && d->ord2idx);
 
   d->Tv    = mad_malloc(d->nc * sizeof *d->Tv);
   d->tv2to = mad_malloc(d->nc * sizeof *d->tv2to);
@@ -282,7 +282,7 @@ tbl_by_var(D *d)
   do {
     int o = mad_mono_ord(nv, m);
     int idx = find_index_bin(nv, (const ord_t**)d->To, m,
-                             d->hpoly_To_idx[o], d->hpoly_To_idx[o+1], BY_ORD);
+                             d->ord2idx[o], d->ord2idx[o+1], BY_ORD);
     d->tv2to[mi]  = idx;
     d->to2tv[idx] = mi;
     d->Tv[mi]     = d->To[idx];
@@ -473,7 +473,7 @@ tbl_print_L(const D *d)
     for (int j = 1; j <= oc/2; ++j) {
       int oa = oc - j, ob = j;
       printf("L[%d][%d] = {", ob, oa);
-      tbl_print_LC(d->L[oa*ho + ob], oa, ob, d->hpoly_To_idx);
+      tbl_print_LC(d->L[oa*ho + ob], oa, ob, d->ord2idx);
     }
   if (d->mo > 5)
     printf("Orders 5 to %d omitted...\n", d->mo);
@@ -485,11 +485,11 @@ tbl_build_LC(int oa, int ob, D *d)
 #ifdef DEBUG
   // printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
 #endif
-  assert(d && d->To && d->hpoly_To_idx && d->tv2to);
+  assert(d && d->To && d->ord2idx && d->tv2to);
   assert(oa < d->mo && ob < d->mo);
 
   ord_t **To = d->To;
-  const int *pi   = d->hpoly_To_idx,  *tv2to = d->tv2to,          // shorter names
+  const int *pi   = d->ord2idx,  *tv2to = d->tv2to,          // shorter names
              iao  = pi[oa],            ibo   = pi[ob],            // offsets
              cols = pi[oa+1] - pi[oa], rows  = pi[ob+1] - pi[ob]; // sizes
 
@@ -529,7 +529,7 @@ static inline int**
 get_LC_idxs(int oa, int ob, D *d)
 {
   int oc = oa + ob;
-  const idx_t *pi = d->hpoly_To_idx, *lc = d->L[d->mo/2*oa + ob],
+  const idx_t *pi = d->ord2idx, *lc = d->L[d->mo/2*oa + ob],
                 T = (pi[oc+1] + pi[oc] - 1) / 2;  // splitting threshold of oc
   const int  cols =  pi[oa+1] - pi[oa],
              rows =  pi[ob+1] - pi[ob];
@@ -615,8 +615,8 @@ tbl_set_L(D *d)
 static inline int
 tbl_check_L(D *d)
 {
-  assert(d && d->hpoly_To_idx && d->L && d->var_ords && d->To && d->H);
-  int ho = d->mo / 2, *pi = d->hpoly_To_idx;
+  assert(d && d->ord2idx && d->L && d->var_ords && d->To && d->H);
+  int ho = d->mo / 2, *pi = d->ord2idx;
   ord_t m[d->nv];
   for (int oc = 2; oc <= d->mo; ++oc)
     for (int j = 1; j <= oc / 2; ++j) {
@@ -636,7 +636,7 @@ tbl_check_L(D *d)
 
           int ic = lc[il];
           if (ic >= pi[oc+1])                      return  3e7 + ic*1e5 + 11;
-          if (ic >= 0 && ic < d->hpoly_To_idx[oc]) return  3e7 + ic*1e5 + 12;
+          if (ic >= 0 && ic < d->ord2idx[oc]) return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
           if (ic < 0 && mad_desc_mono_isvalid(d,d->nv,m))
@@ -681,7 +681,7 @@ tbl_check(D *d)
 static inline void
 get_ops(D *d, long long int ops[])
 {
-  int *pi = d->hpoly_To_idx;
+  int *pi = d->ord2idx;
   for (int o = 2; o <= d->mo; ++o) {
     ops[o] = 0;
     for (int j = 1; j <= (o-1)/2; ++j) {
@@ -1090,7 +1090,7 @@ mad_desc_del(D *d)
   mad_free(d->ords);
   mad_free(d->To);
   mad_free(d->Tv);
-  mad_free(d->hpoly_To_idx);
+  mad_free(d->ord2idx);
   mad_free(d->tv2to);
   mad_free(d->to2tv);
   mad_free(d->H);

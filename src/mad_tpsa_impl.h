@@ -46,8 +46,6 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 
 #endif
 
-#define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { (re), (im) })
-
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_TPSA_IMPL_H

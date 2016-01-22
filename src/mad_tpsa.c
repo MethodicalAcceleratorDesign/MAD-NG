@@ -38,8 +38,8 @@ FUN(debug) (const T *t)
   D *d = t->d;
   printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=" FMT " ", t->nz, t->lo, t->hi, t->mo, VAL(t->coef[0]));
   ord_t hi = MIN3(t->hi, t->mo, t->d->trunc);
-  int i = d->hpoly_To_idx[MAX(1,t->lo)]; // ord 0 already printed
-  for (; i < d->hpoly_To_idx[hi+1]; ++i)
+  int i = d->ord2idx[MAX(1,t->lo)]; // ord 0 already printed
+  for (; i < d->ord2idx[hi+1]; ++i)
     if (t->coef[i])
       printf("[%d]=" FMT " ", i, VAL(t->coef[i]));
   printf(" }\n");
@@ -112,7 +112,7 @@ FUN(copy) (const T *t, T *dst)
   dst->lo = t->lo;
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
-  for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
+  for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
     dst->coef[i] = t->coef[i];
 }
 
@@ -220,7 +220,7 @@ FUN(set0) (T *t, NUM a, NUM b)
   t->coef[0] = a*t->coef[0] + b;
   if (t->coef[0]) {
     t->nz = mad_bit_set(t->nz,0);
-    for (int c = t->d->hpoly_To_idx[1]; c < t->d->hpoly_To_idx[t->lo]; ++c)
+    for (int c = t->d->ord2idx[1]; c < t->d->ord2idx[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = 0;
   }
@@ -254,17 +254,17 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   ord_t o = d->ords[i];
   t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (int c = d->hpoly_To_idx[o]; c < d->hpoly_To_idx[o+1]; ++c)
+    for (int c = d->ord2idx[o]; c < d->ord2idx[o+1]; ++c)
       t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (int c = d->hpoly_To_idx[t->hi+1]; c < d->hpoly_To_idx[o+1]; ++c)
+    for (int c = d->ord2idx[t->hi+1]; c < d->ord2idx[o+1]; ++c)
       t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (int c = d->hpoly_To_idx[o]; c < d->hpoly_To_idx[t->lo]; ++c)
+    for (int c = d->ord2idx[o]; c < d->ord2idx[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = o;
   }
@@ -336,7 +336,7 @@ FUN(map) (const T *a, T *c, NUM (*f)(NUM v, int i_))
   c->lo = a->lo;
   c->nz = mad_bit_trunc(a->nz, c->hi);
 
-  for (int i = d->hpoly_To_idx[c->lo]; i < d->hpoly_To_idx[c->hi+1]; ++i)
+  for (int i = d->ord2idx[c->lo]; i < d->ord2idx[c->hi+1]; ++i)
     c->coef[i] = f(a->coef[i], i);
 
   return c;
@@ -348,7 +348,7 @@ FUN(map2) (const T *a, const T *b, T *c, NUM (*f)(NUM va, NUM vb, int i_))
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d);
 
-  idx_t *pi = a->d->hpoly_To_idx;
+  idx_t *pi = a->d->ord2idx;
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
   ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->d->trunc),
         c_lo = a->lo;

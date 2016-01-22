@@ -32,13 +32,15 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *dst)
 {
   assert(t && dst);
   ensure(t->d == dst->d);
+
   desc_t *d = t->d;
   if (d->trunc < t->lo) { mad_tpsa_clear(dst); return; }
-  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
+
   dst->lo = t->lo;
+  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
-  for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
+  for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
     dst->coef[i] = creal(t->coef[i]);  
 }
 
@@ -47,13 +49,15 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *dst)
 {
   assert(t && dst);
   ensure(t->d == dst->d);
+
   desc_t *d = t->d;
   if (d->trunc < t->lo) { mad_tpsa_clear(dst); return; }
-  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
+
   dst->lo = t->lo;
+  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
-  for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
+  for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
     dst->coef[i] = cimag(t->coef[i]);  
 }
 
@@ -67,16 +71,17 @@ mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst)
 
   D *d = dst->d;
   if (d->trunc < MIN(re->lo, im->lo)) { mad_ctpsa_clear(dst); return; }
+
   ord_t hi = MAX(re->hi, im->hi);
-  dst->hi  = MIN3(hi, dst->mo, d->trunc);
   dst->lo  = MIN(re->lo, im->lo);
+  dst->hi  = MIN3(hi, dst->mo, d->trunc);
   dst->nz  = mad_bit_trunc(mad_bit_add(re->nz, im->nz), dst->hi);
 
-  for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i) {
+  for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i) {
     dst->coef[i] = 0;
-    if (re_ && d->hpoly_To_idx[re->lo] <= i && i < d->hpoly_To_idx[re->hi+1])
+    if (re_ && d->ord2idx[re->lo] <= i && i < d->ord2idx[re->hi+1])
       dst->coef[i] += re->coef[i];
-    if (im_ && d->hpoly_To_idx[im->lo] <= i && i < d->hpoly_To_idx[im->hi+1])
+    if (im_ && d->ord2idx[im->lo] <= i && i < d->ord2idx[im->hi+1])
       dst->coef[i] += im->coef[i]*I;
   }
 }

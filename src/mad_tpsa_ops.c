@@ -77,7 +77,7 @@ static inline void
 hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, int in_parallel)
 {
   D *d = c->d;
-  int *pi = d->hpoly_To_idx, hod = d->mo/2;
+  int *pi = d->ord2idx, hod = d->mo/2;
   const NUM *ca = a->coef,  *cb = b->coef;
         NUM *cc = c->coef;
         bit_t nza = a->nz  ,  nzb = b->nz;
@@ -178,7 +178,7 @@ static inline void
 hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[ord*ho + oc], *pi = d->hpoly_To_idx;
+  const idx_t *lc = d->L[ord*ho + oc], *pi = d->ord2idx;
   int nc = pi[oc+1] - pi[oc], cols = pi[ord+1] - pi[ord];
   // idx = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
@@ -195,7 +195,7 @@ static inline void
 hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[ord*ho + oc], *pi = d->hpoly_To_idx;
+  const idx_t *lc = d->L[ord*ho + oc], *pi = d->ord2idx;
   int nc = pi[ord+1] - pi[ord];
   idx_t idx_shifted = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
@@ -212,7 +212,7 @@ static inline void
 hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[oc*ho + ord], *pi = d->hpoly_To_idx;
+  const idx_t *lc = d->L[oc*ho + ord], *pi = d->ord2idx;
   int nc = pi[oc+1] - pi[oc];
   idx_t idx_shifted = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
@@ -229,7 +229,7 @@ static inline void
 hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
   D *d = c->d;
-  idx_t *pi = d->hpoly_To_idx;
+  idx_t *pi = d->ord2idx;
   const NUM *ca = a->coef;
         NUM *cc;
 
@@ -263,7 +263,7 @@ FUN(abs) (const T *a, T *c)
   c->lo = a->lo;
   c->nz = mad_bit_trunc(a->nz,c->hi);
 
-  idx_t *pi = c->d->hpoly_To_idx;
+  idx_t *pi = c->d->ord2idx;
   for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i) {
     c->coef[i] = fabs(a->coef[i]);
   }
@@ -281,7 +281,7 @@ FUN(arg) (const T *a, T *c)
   c->lo = a->lo;
   c->nz = mad_bit_trunc(a->nz,c->hi);
 
-  idx_t *pi = c->d->hpoly_To_idx;
+  idx_t *pi = c->d->ord2idx;
   for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
     c->coef[i] = carg(a->coef[i]);
 }
@@ -293,7 +293,7 @@ FUN(nrm1) (const T *a, const T *b_)
 {
   assert(a);
   NUM norm = 0.0;
-  int *pi = a->d->hpoly_To_idx;
+  int *pi = a->d->ord2idx;
   if (b_) {
     ensure(a->d == b_->d);
     if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
@@ -322,7 +322,7 @@ FUN(nrm2) (const T *a, const T *b_)
 {
   assert(a);
   NUM norm = 0.0;
-  int *pi = a->d->hpoly_To_idx;
+  int *pi = a->d->ord2idx;
   if (b_) {
     ensure(a->d == b_->d);
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
@@ -350,7 +350,7 @@ void
 FUN(der) (const T *a, T *c, int var)
 {
   assert(a && c && a != c);
-  ensure(var >= a->d->hpoly_To_idx[1] && var < a->d->hpoly_To_idx[2]);
+  ensure(var >= a->d->ord2idx[1] && var < a->d->ord2idx[2]);
   // TODO: ensure map_order[var] > 0
 
   if (a->hi == 0) { FUN(clear)(c); return; }
@@ -360,7 +360,7 @@ FUN(der) (const T *a, T *c, int var)
   c->hi = MIN3(c->mo, d->trunc, a->hi-1);
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
 
-  idx_t *pi = d->hpoly_To_idx;
+  idx_t *pi = d->ord2idx;
   const NUM *ca = a->coef;
 
   ord_t der_ord = 1, oc = 1;
@@ -384,7 +384,7 @@ FUN(mder) (const T *a, T *c, int n, const ord_t mono[n])
   ord_t der_ord = mad_mono_ord(n,mono);
   ensure(der_ord > 0);
   idx_t idx = mad_desc_get_idx(a->d,n,mono);
-  if (idx < a->d->hpoly_To_idx[2]) {  // fallback on simple version
+  if (idx < a->d->ord2idx[2]) {  // fallback on simple version
     FUN(der)(a,c,idx);
     return;
   }
@@ -410,7 +410,7 @@ FUN(scl) (const T *a, NUM v, T *c)
   c->lo = a->lo;
   c->hi = MIN3(a->hi, c->mo, d->trunc);
   c->nz = mad_bit_trunc(a->nz,c->hi);
-  for (int i = d->hpoly_To_idx[c->lo]; i < d->hpoly_To_idx[c->hi+1]; ++i)
+  for (int i = d->ord2idx[c->lo]; i < d->ord2idx[c->hi+1]; ++i)
     c->coef[i] = v * a->coef[i];
 }
 
@@ -421,7 +421,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 
 #define TPSA_LINOP(OPA, OPB) \
 do { \
-    idx_t *pi = c->d->hpoly_To_idx; \
+    idx_t *pi = c->d->ord2idx; \
     idx_t start_a = pi[a->lo], end_a = pi[MIN(a->hi,c_hi)+1]; \
     idx_t start_b = pi[b->lo], end_b = pi[MIN(b->hi,c_hi)+1]; \
     int i = start_a; \
@@ -434,7 +434,7 @@ do { \
 
 #define TPSA_LINOP_ORD(OPA, OPB, ORD) \
 do { \
-    idx_t *pi = c->d->hpoly_To_idx; \
+    idx_t *pi = c->d->ord2idx; \
     idx_t start_a = pi[MAX(a->lo,ORD)], end_a = pi[MIN(a->hi,c_hi)+1]; \
     idx_t start_b = pi[MAX(b->lo,ORD)], end_b = pi[MIN(b->hi,c_hi)+1]; \
     int i = start_a; \
@@ -458,9 +458,9 @@ FUN(acc) (const T *a, NUM v, T *c)
   ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
   ord_t new_lo = MIN(a->lo,c->lo);
 
-  for (int i = d->hpoly_To_idx[new_lo ]; i < d->hpoly_To_idx[c->lo   ]; ++i) cc[i] = 0;
-  for (int i = d->hpoly_To_idx[c->hi+1]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] = 0;
-  for (int i = d->hpoly_To_idx[a->lo  ]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] += v * ca[i];
+  for (int i = d->ord2idx[new_lo ]; i < d->ord2idx[c->lo   ]; ++i) cc[i] = 0;
+  for (int i = d->ord2idx[c->hi+1]; i < d->ord2idx[new_hi+1]; ++i) cc[i] = 0;
+  for (int i = d->ord2idx[a->lo  ]; i < d->ord2idx[new_hi+1]; ++i) cc[i] += v * ca[i];
 
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
@@ -548,7 +548,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   }
 
   // order 1+
-  idx_t max_ord1 = d->hpoly_To_idx[2];
+  idx_t max_ord1 = d->ord2idx[2];
   if (mad_bit_get(a->nz,1) && b0 && mad_bit_get(b->nz,1) && a0) {
     for (int i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
     c->nz = mad_bit_set(c->nz,1);
@@ -572,7 +572,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 
     ord_t c_hi = c->hi;              // needed by TPSA_LINOP
     TPSA_LINOP_ORD(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
-    for (int i = d->hpoly_To_idx[MAX(a->hi,b->hi)+1]; i < d->hpoly_To_idx[c_hi+1]; ++i)
+    for (int i = d->ord2idx[MAX(a->hi,b->hi)+1]; i < d->ord2idx[c_hi+1]; ++i)
       c->coef[i] = 0;
 
     if (a0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,b->nz),c->hi);

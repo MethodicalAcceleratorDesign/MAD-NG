@@ -32,26 +32,29 @@ struct desc {
   int      nmv, nv, nc;// number of map vars, number of all vars, number of coeff
   ord_t    mo, ko,     // maximum order: for map, for knobs
            trunc;      // truncation order for operations; always <= mo
-                       // END of compatibility with Lua
+  // end of compatibility with Lua
 
   char*   *var_names_; // names of map variables; TODO: move it 1 level above and set indirection
 
   size_t   size;       // bytes used by current desc
+
   ord_t   *var_ords,   // limiting order for each monomial variable
           *map_ords,   // max order for each TPSA in map -- used just for desc comparison
           *monos,      // 'matrix' storing the monomials (sorted by ord)
           *ords,       // order of each mono of To
          **To,         // Table by orders -- pointers to monos, sorted by order
-         **Tv;         // Table by vars   -- pointers to monos, sorted by vars
-  idx_t   *sort_var,   // array
-          *hpoly_To_idx,  // poly start in To
-          *tv2to, *to2tv, // lookup tv->to, to->tv
-          *H,          // indexing matrix, in Tv
-         **L;          // multiplication indexes -- L[oa][ob] = lc; lc[ia][ib] = ic
-  idx_t ***L_idx;      // L_idx[oa,ob] = [start] [split] [end] idxs in L
-  ord_t  **ocs;        // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
+         **Tv,         // Table by vars   -- pointers to monos, sorted by vars
+         **ocs;        // ocs[t,i] = o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
 
-                       // WARNING: temps must be used with care (internal side effects)
+  idx_t   *sort_var,   // array
+          *ord2idx,    // order to polynomial start index in To (i.e. in TPSA coef[])
+          *tv2to,      // lookup tv->to
+          *to2tv,      // lookup to->tv
+          *H,          // indexing matrix, in Tv
+         **L,          // multiplication indexes -- L[oa][ob] = lc; lc[ia][ib] = ic
+        ***L_idx;      // L_idx[oa,ob] = [start] [split] [end] idxs in L
+
+  // WARNING: temps must be used with care (internal side effects)
    tpsa_t * t[5];      // temps for mul[0], fix pts[1-3], div & funs[4], alg funs[1-3] for aliasing
   ctpsa_t *ct[5];      // temps for ctpsa
 };

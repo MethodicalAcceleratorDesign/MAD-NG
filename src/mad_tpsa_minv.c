@@ -75,7 +75,7 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
     FUN(copy)(ma[i], nonlin[i]);
 
     // clear constant and linear part
-    for (int c = 0; c < d->hpoly_To_idx[2]; ++c)
+    for (int c = 0; c < d->ord2idx[2]; ++c)
       nonlin[i]->coef[c] = 0;
     nonlin[i]->nz = bclr(nonlin[i]->nz,0);
     nonlin[i]->nz = bclr(nonlin[i]->nz,1);
@@ -128,7 +128,7 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
     FUN(copy)(ma[i], nonlin[i]);
 
     // clear constant and linear part
-    for (int c = 0; c < d->hpoly_To_idx[2]; ++c)
+    for (int c = 0; c < d->ord2idx[2]; ++c)
       nonlin[i]->coef[c] = 0;
 
     nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,0);
