@@ -61,6 +61,7 @@ local isnum, iscpx, isscl, ident, isatpsa, tostring =
       gmath.isa_tpsa, gmath.tostring
 
 local D = {}  -- private desc
+local C = {}  -- private ctor
 local V = {}  -- private keys
 local T = {}  -- temporary keys
 
@@ -69,7 +70,7 @@ local S_dft = {'x', 'px', 'y', 'py', 't', 'pt'} -- default variable names
 
 -- implementation ------------------------------------------------------------o
 
-local function make_map(args, num_ctor, tpsa_ctor)
+local function make_map(args, num, tpsa)
   if args.v then
     for _,v in ipairs(args.v) do
       assert(S_lst[v], "invalid variable name")
@@ -77,16 +78,16 @@ local function make_map(args, num_ctor, tpsa_ctor)
   else args.v = S_dft end
 
   local dsc = desc(args)
-  local map = { [D]=dsc, [V]={}, [T]={} }
+  local map = { [D]=dsc, [C]=tpsa, [V]={}, [T]={} }
   local var = args.v
   local mo  = args.mo or args.vo
 
   for i=1,dsc.nmv do
     map[V][i] = var[i]
     if mo[i] == 0 then
-      map[V][var[i]] = num_ctor(0)
+      map[V][var[i]] = num(0)
     else
-      map[V][var[i]] = tpsa_ctor(dsc, mo[i])
+      map[V][var[i]] = tpsa(dsc, mo[i])
     end
   end
 
