@@ -458,7 +458,7 @@ tbl_print_LC(const idx_t *lc, int oa, int ob, int *pi)
   for (int ib = pi[ob]; ib < pi[ob+1]; ++ib) {
     printf("\n  ");
     for (int ia = pi[oa]; ia < pi[oa+1]; ++ia) {
-      int ic = lc[hpoly_idx_rect(ib-ibo,ia-iao,cols)];
+      int ic = lc[hpoly_idx(ib-ibo,ia-iao,cols)];
       printf("%3d ", ic);
     }
   }
@@ -508,7 +508,7 @@ tbl_build_LC(int oa, int ob, D *d)
       mad_mono_add(d->nv, To[ia], To[ib], m);
       if (mad_desc_mono_isvalid(d,d->nv,m)) {
         ic = tv2to[tbl_index_H(d,d->nv,m)];
-        idx_lc = hpoly_idx_rect(ib-ibo, ia-iao, cols);
+        idx_lc = hpoly_idx(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
 #ifdef DEBUG
         /*
@@ -550,17 +550,17 @@ get_LC_idxs(int oa, int ob, D *d)
 
   for (int ib = 0; ib < rows; ++ib) {
     int ia;
-    for (ia = 0; lc[hpoly_idx_rect(ib,ia,cols)] == -1; ++ia)
+    for (ia = 0; lc[hpoly_idx(ib,ia,cols)] == -1; ++ia)
       ;  // shift ia to first valid entry
     LC_idx[START][ib] = ia;
 
-    for (ia = oa == ob ? ib : cols-1; lc[hpoly_idx_rect(ib,ia,cols)] == -1; --ia)
+    for (ia = oa == ob ? ib : cols-1; lc[hpoly_idx(ib,ia,cols)] == -1; --ia)
       ;  // shift ia to last valid entry
     LC_idx[END  ][ib] = ia + 1;
 
     LC_idx[SPLIT][ib] = oa == ob ? ib+1 : cols;
     for (ia = LC_idx[START][ib]; ia < LC_idx[END][ib]; ++ia)
-      if (lc[hpoly_idx_rect(ib,ia,cols)] >= T) {
+      if (lc[hpoly_idx(ib,ia,cols)] >= T) {
         LC_idx[SPLIT][ib] = ia;
         break;
       }
@@ -630,7 +630,7 @@ tbl_check_L(D *d)
         int lim_a = oa == ob ? ibl+1 : sa;
         for (int ial = 0; ial < lim_a; ++ial) {
           int ib = ibl + pi[ob], ia = ial + pi[oa];
-          int il = hpoly_idx_rect(ibl,ial,sa);
+          int il = hpoly_idx(ibl,ial,sa);
           if (il < 0)                              return -2e7 - ia*1e5 - ib;
           if (il >= sa * sb)                       return  2e7 + ia*1e5 + ib;
 

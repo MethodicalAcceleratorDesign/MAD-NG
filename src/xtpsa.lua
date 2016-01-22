@@ -152,7 +152,7 @@ local function tpsa (t, mo_)
   elseif isdesc(t) then
     return tpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
-    error("invalid argument to tpsa constructor, expecting TPSA or descriptor")
+    error("invalid argument to tpsa constructor, expecting GTPSA or descriptor")
   end
 end
 
@@ -162,7 +162,7 @@ local function ctpsa (t, mo_)
   elseif isdesc(t) then
     return ctpsa_alloc(t  , mo_ and max(0,min(mo_,t  .mo)) or t.mo)
   else
-    error("invalid argument to ctpsa constructor, expecting TPSA or descriptor")
+    error("invalid argument to ctpsa constructor, expecting GTPSA or descriptor")
   end
 end
 
@@ -177,7 +177,7 @@ end
 -- ex2: {vo={2,2} [, mo={3,3}] [, v={'x', 'px'}] [, nk=3,ko=1] [, dk=2]}
 
 local function desc (args)
-  assert(args and args.vo, "not enough arguments for TPSA descriptor")
+  assert(args and args.vo, "not enough arguments for GTPSA descriptor")
 
   local nv = args.nv or istable(args.vo) and #args.vo or 0
   local nk = args.nk or istable(args.ko) and #args.ko or 0

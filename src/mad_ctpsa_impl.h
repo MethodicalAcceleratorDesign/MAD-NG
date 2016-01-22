@@ -34,6 +34,8 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 
 // --- helpers ---------------------------------------------------------------o
 
+#ifndef MAD_TPSA_NOHELPER
+
 #define T           ctpsa_t
 #define NUM         cnum_t
 #define FUN(name)   MKNAME(mad_ctpsa_,name)
@@ -43,6 +45,8 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 #define SELECT(R,C) C
 
 #define CNUM(a) (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
+
+#endif
 
 #include <tgmath.h>
 #include <complex.h>

@@ -43,7 +43,7 @@ void   free    (void  *ptr_);
 static const int mad_alloc_threshold = 256;
 ]]
 
--- functions for real and complex numbers (mad_num.h)
+-- functions for real and complex numbers (mad_cnum.h)
 
 ffi.cdef [[
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
@@ -195,7 +195,10 @@ void  mad_mono_print (int n, const ord_t a[]);
 -- functions for GTPSA descriptors (mad_desc.h)
 
 ffi.cdef[[
-typedef struct desc desc_t; // mad_desc.h
+// types
+typedef struct desc  desc_t;  // mad_desc.h
+typedef struct tpsa  tpsa_t;  // mad_tpsa.h
+typedef struct ctpsa ctpsa_t; // mad_ctpsa.h
 
 // globals
 extern const ord_t mad_tpsa_default;
@@ -217,8 +220,6 @@ ord_t   mad_desc_gtrunc  (      desc_t *d, ord_t to);
 -- functions for GTPSAs real (mad_tpsa.h)
 
 ffi.cdef[[
-typedef struct tpsa tpsa_t; // mad_tpsa.h
-
 // ctors, dtor
 tpsa_t* mad_tpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo);
@@ -231,9 +232,12 @@ ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max order of all
 
 // initialization
-tpsa_t* mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
+void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
 void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
+
+// conversion
+void    mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst);
 
 // indexing / monomials
 int     mad_tpsa_mono    (const tpsa_t *t, int n,       ord_t m_[], idx_t i);
@@ -330,8 +334,6 @@ void    mad_tpsa_debug    (const tpsa_t *t);
 -- functions for GTPSAs complex (mad_ctpsa.h)
 
 ffi.cdef[[
-typedef struct ctpsa ctpsa_t; // mad_ctpsa.h
-
 // ctors, dtor
 ctpsa_t* mad_ctpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 ctpsa_t* mad_ctpsa_new     (const ctpsa_t *t, ord_t mo);
@@ -344,10 +346,14 @@ ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t1, const ctpsa_t *t2, ...);  // max order of all
 
 // initialization
-ctpsa_t* mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
+void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
+
+// conversion
+void     mad_ctpsa_real    (const ctpsa_t *t, struct tpsa *dst);
+void     mad_ctpsa_imag    (const ctpsa_t *t, struct tpsa *dst);
 
 // indexing / monomials
 int      mad_ctpsa_mono    (const ctpsa_t *t, int n,       ord_t m_[], idx_t i);
@@ -376,6 +382,7 @@ void     mad_ctpsa_setm_sp_r(      ctpsa_t *t, int n, const int   m[], num_t a_r
 
 // operations
 void     mad_ctpsa_abs     (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_arg     (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *t, const ctpsa_t *t2_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *t, const ctpsa_t *t2_);
 void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it

@@ -39,7 +39,7 @@ hpoly_triang_mul(const NUM *ca, const NUM *cb, NUM *cc, int nb,
   for (idx_t ib = 0; ib < nb; ib++)
     if (cb[ib] || ca[ib])
       for (idx_t ia = idx[0][ib]; ia < idx[1][ib]; ia++) {
-        int ic = l[hpoly_idx_rect(ib,ia,nb)];
+        int ic = l[hpoly_idx(ib,ia,nb)];
         if (ic >= 0)
           cc[ic] = cc[ic] + ca[ia]*cb[ib] + (ia == ib ? 0 : ca[ib]*cb[ia]);
       }
@@ -53,7 +53,7 @@ hpoly_sym_mul(const NUM *ca1, const NUM *cb1, const NUM *ca2, const NUM *cb2,
   for (idx_t ib=0; ib < nb; ib++)
     if (cb1[ib] || ca2[ib])
       for (idx_t ia=idx[0][ib]; ia < idx[1][ib]; ia++) {
-        int ic = l[hpoly_idx_rect(ib, ia, na)];
+        int ic = l[hpoly_idx(ib, ia, na)];
         if (ic >= 0)
           cc[ic] = cc[ic] + ca1[ia]*cb1[ib] + ca2[ib]*cb2[ia];
       }
@@ -67,7 +67,7 @@ hpoly_asym_mul(const NUM *ca, const NUM *cb, NUM *cc, int na, int nb,
   for (idx_t ib=0; ib < nb; ib++)
     if (cb[ib])
       for (idx_t ia=idx[0][ib]; ia < idx[1][ib]; ia++) {
-        int ic = l[hpoly_idx_rect(ib,ia,na)];
+        int ic = l[hpoly_idx(ib,ia,na)];
         if (ic >= 0)
           cc[ic] = cc[ic] + ca[ia]*cb[ib];
       }
@@ -182,7 +182,7 @@ hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   int nc = pi[oc+1] - pi[oc], cols = pi[ord+1] - pi[ord];
   // idx = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
-    idx_t ia = lc[hpoly_idx_rect(ic,idx-pi[ord],cols)];
+    idx_t ia = lc[hpoly_idx(ic,idx-pi[ord],cols)];
     if (ia >= 0 && ca[ia]) {
       assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
@@ -199,7 +199,7 @@ hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   int nc = pi[ord+1] - pi[ord];
   idx_t idx_shifted = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
-    idx_t ia = lc[hpoly_idx_rect(MAX(ic,idx_shifted),MIN(ic,idx_shifted),nc)];
+    idx_t ia = lc[hpoly_idx(MAX(ic,idx_shifted),MIN(ic,idx_shifted),nc)];
     if (ia >= 0 && ca[ia]) {
       assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
@@ -216,7 +216,7 @@ hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   int nc = pi[oc+1] - pi[oc];
   idx_t idx_shifted = idx - pi[ord];
   for (int ic = 0; ic < nc; ++ic) {
-    idx_t ia = lc[hpoly_idx_rect(idx_shifted,ic,nc)];
+    idx_t ia = lc[hpoly_idx(idx_shifted,ic,nc)];
     if (ia >= 0 && ca[ia]) {
       assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
@@ -264,9 +264,29 @@ FUN(abs) (const T *a, T *c)
   c->nz = mad_bit_trunc(a->nz,c->hi);
 
   idx_t *pi = c->d->hpoly_To_idx;
-  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i) {
     c->coef[i] = fabs(a->coef[i]);
+  }
 }
+
+#ifdef MAD_CTPSA_IMPL
+
+void
+FUN(arg) (const T *a, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d);
+
+  c->hi = MIN3(a->hi, c->mo, c->d->trunc);
+  c->lo = a->lo;
+  c->nz = mad_bit_trunc(a->nz,c->hi);
+
+  idx_t *pi = c->d->hpoly_To_idx;
+  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    c->coef[i] = carg(a->coef[i]);
+}
+
+#endif
 
 NUM
 FUN(nrm1) (const T *a, const T *b_)
@@ -440,9 +460,8 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   for (int i = d->hpoly_To_idx[new_lo ]; i < d->hpoly_To_idx[c->lo   ]; ++i) cc[i] = 0;
   for (int i = d->hpoly_To_idx[c->hi+1]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] = 0;
+  for (int i = d->hpoly_To_idx[a->lo  ]; i < d->hpoly_To_idx[new_hi+1]; ++i) cc[i] += v * ca[i];
 
-  for (int i = d->hpoly_To_idx[a->lo]; i < d->hpoly_To_idx[new_hi+1]; ++i)
-    cc[i] += v * ca[i];
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
   c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
@@ -459,7 +478,8 @@ FUN(acc) (const T *a, NUM v, T *c)
   const T *t=0, *b=c;
   if (a->lo > b->lo) SWAP(a,b,t);
 
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
+  ord_t   hi = MAX(a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
   if (t) TPSA_LINOP(v*,+  );  // c->coef[i] = v*a->coef[i] +   c->coef[i];
   else   TPSA_LINOP(  ,+v*);  // c->coef[i] =   c->coef[i] + v*a->coef[i];
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
@@ -477,7 +497,8 @@ FUN(add) (const T *a, const T *b, T *c)
   const T* t=0; 
   if (a->lo > b->lo) SWAP(a,b,t);
 
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
+  ord_t   hi = MAX(a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
   TPSA_LINOP( ,+);  // c->coef[i] = a->coef[i] + b->coef[i];
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -493,7 +514,8 @@ FUN(sub) (const T *a, const T *b, T *c)
   const T* t=0; 
   if (a->lo > b->lo) SWAP(a,b,t);
 
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);
+  ord_t   hi = MAX(a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
   if (t) TPSA_LINOP(-,+); // c->coef[i] = - a->coef[i] + b->coef[i];
   else   TPSA_LINOP( ,-); // c->coef[i] =   a->coef[i] - b->coef[i];
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
@@ -637,7 +659,8 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
     const T* t; SWAP(a,b,t);
     NUM n;    SWAP(c1,c2,n);
   }
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi), c->mo, c->d->trunc);  // TODO: optimise c_hi == 0 ?
+  ord_t   hi = MAX(a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);  // TODO: optimise c_hi == 0 ?
   TPSA_LINOP(c1 *, + c2 *);  // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
 
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)

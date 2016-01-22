@@ -79,7 +79,7 @@ void     mad_ctpsa_del  (ctpsa_t *t);
 #define ensure(test) assert(test)
 
 static inline idx_t
-hpoly_idx_rect(idx_t ib, idx_t ia, idx_t ia_size)
+hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
 {
   return ib*ia_size + ia;
 }

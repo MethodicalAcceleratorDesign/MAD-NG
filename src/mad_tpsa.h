@@ -38,6 +38,7 @@
 
 // --- types -----------------------------------------------------------------o
 
+struct ctpsa;
 typedef struct tpsa tpsa_t;
 
 // --- globals ---------------------------------------------------------------o
@@ -52,7 +53,6 @@ extern       int   mad_tpsa_strict;
 tpsa_t* mad_tpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo);
 void    mad_tpsa_del     (      tpsa_t *t);
-void    mad_tpsa_delv    (      tpsa_t *t1, tpsa_t *t2, ...);
 
 // introspection
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
@@ -60,9 +60,12 @@ ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max order of all
 
 // initialization
-tpsa_t* mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
+void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
 void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
+
+// conversion
+void    mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, struct ctpsa *dst);
 
 // indexing / monomials
 int     mad_tpsa_mono    (const tpsa_t *t, int n,       ord_t m_[], idx_t i);
@@ -156,7 +159,6 @@ void    mad_tpsa_scan_coef(      tpsa_t *t,              FILE *stream_); // TODO
 void    mad_tpsa_debug    (const tpsa_t *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
-#define mad_tpsa_delv(...) mad_tpsa_delv(__VA_ARGS__,NULL)
 
 // ---------------------------------------------------------------------------o
 

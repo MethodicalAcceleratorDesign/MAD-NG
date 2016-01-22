@@ -74,9 +74,7 @@ local cres = ffi.new 'complex[1]'
 
 -- implementation ------------------------------------------------------------o
 
-M.tpsa  = tpsa
-M.ctpsa = ctpsa
-M.gtpsa = ctpsa
+M.tpsa = ctpsa
 
 function M.mono (t, tbl_)
   return mono(tbl_ or t.d.nv)
@@ -85,8 +83,26 @@ end
 -- initialization ------------------------------------------------------------o
 
 function M.copy (t, r_)
-  local r = r_ or t:ctpsa()
+  local r = r_ or ctpsa(t)
   clib.mad_ctpsa_copy(t, r)
+  return r
+end
+
+function M.real (t, r_)
+  local r = r_ or tpsa(t)
+  clib.mad_ctpsa_real(t, r) -- real part
+  return r
+end
+
+function M.imag (t, r_)
+  local r = r_ or tpsa(t)
+  clib.mad_ctpsa_imag(t, r) -- imaginary part
+  return r
+end
+
+function M.conj (t, r_)
+  local r = r_ or tpsa(t)
+  clib.mad_ctpsa_imag(t, r) -- imaginary part
   return r
 end
 
@@ -180,13 +196,18 @@ end
 -- unary operators -----------------------------------------------------------o
 
 function M.unm (t, r_)
-  local r = r_ or t:ctpsa()
+  local r = r_ or ctpsa(t)
   clib.mad_ctpsa_scl_r(t, -1, 0, r)
 end
 
 function M.abs (t, r_)
-  local r = r_ or t:ctpsa()
-  clib.mad_ctpsa_abs(t,r)
+  local r = r_ or ctpsa(t)
+  clib.mad_ctpsa_abs(t, r)
+end
+
+function M.arg (t, r_)
+  local r = r_ or ctpsa(t)
+  clib.mad_ctpsa_arg(t, r)
 end
 
 function M.nrm1 (t1, t2_)
@@ -200,20 +221,20 @@ function M.nrm2 (t1, t2_)
 end
 
 function M.der (t, ivar, r_)
-  local r = r_ or t:ctpsa()
+  local r = r_ or ctpsa(t)
   clib.mad_ctpsa_der(t, r, ivar)
   return r
 end
 
 function M.mder (t, tbl, r_)
-  local r = r_ or t:ctpsa()
+  local r = r_ or ctpsa(t)
   local m = mono(tbl)
   clib.mad_ctpsa_mder(t, r, m.n, m.ord)
   return r
 end
 
 function M.scale (t, v, r_)
-  local r = r_ or t:ctpsa()
+  local r = r_ or ctpsa(t)
   v = iscpx(v) and v or complex(v)
   clib.mad_ctpsa_scl_r(t, v.re, v.im, r)
   return r
@@ -234,7 +255,7 @@ function M.add (a, b, r_)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_set0_r(r, 1, 0, b.re, b.im)
   elseif isctpsa(b) then -- ctpsa + ctpsa
-    r = r_ or a:ctpsa(max(a.mo,b.mo))
+    r = r_ or ctpsa(amax(a.mo,b.mo))
     clib.mad_ctpsa_add(a, b, r)
   else error("invalid GTPSA (+) operands") end
   return r
@@ -244,7 +265,7 @@ function M.sub (a, b, r_)
   local r
   if isscl(a) then       -- cpx - ctpsa
     if b.hi == 0 then return a - b.coef[0] end
-    r = r_ or b:ctpsa()
+    r = r_ or ctpsa(b)
     a = iscpx(a) and a or complex(a)
     clib.mad_ctpsa_scl_r (b, -1, 0, r)
     clib.mad_ctpsa_set0_r(r,  1, 0, a.re, a.im)
@@ -254,7 +275,7 @@ function M.sub (a, b, r_)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_set0_r(r, 1, 0, -b.re, -b.im)
   elseif isctpsa(b) then -- ctpsa - ctpsa
-    r = r_ or a:ctpsa(max(a.mo,b.mo))
+    r = r_ or ctpsa(amax(a.mo,b.mo))
     clib.mad_ctpsa_sub(a, b, r)
   else error("invalid GTPSA (-) operands") end
   return r
@@ -264,16 +285,16 @@ function M.mul (a, b, r_)
   local r
   if isscl(a) then       -- cpx * ctpsa
     if b.hi == 0 then return a * b.coef[0] end
-    r = r_ or b:ctpsa()
+    r = r_ or ctpsa(b)
     a = iscpx(a) and a or complex(a)
     clib.mad_ctpsa_scl_r(b, a.re, a.im, r)
   elseif isscl(b) then   -- ctpsa * cpx
     if a.hi == 0 then return a.coef[0] * b end
-    r = r_ or a:ctpsa()
+    r = r_ or ctpsa(a)
     b = iscpx(b) and b or complex(b)
     clib.mad_ctpsa_scl_r(a, b.re, b.im, r)
   elseif isctpsa(b) then -- ctpsa * ctpsa
-    r = r_ or a:ctpsa(max(a.mo,b.mo))
+    r = r_ or ctpsa(amax(a.mo,b.mo))
     clib.mad_ctpsa_mul(a, b, r)
   else error("invalid GTPSA (*) operands") end
   return r
@@ -283,16 +304,16 @@ function M.div (a, b, r_)
   local r
   if isscl(a) then       -- cpx / ctpsa
     if b.hi == 0 then return a / b.coef[0] end
-    r = r_ or b:ctpsa()
+    r = r_ or ctpsa(b)
     a = iscpx(a) and a or complex(a)
     clib.mad_ctpsa_inv_r(b, a.re, a.im, r)
   elseif isscl(b) then   -- ctpsa / cpx
     if a.hi == 0 then return a.coef[0] / b end
-    r = r_ or a:ctpsa()
+    r = r_ or ctpsa(a)
     b = iscpx(b) and 1/b or complex(1/b)
     clib.mad_ctpsa_scl_r(a, b.re, b.im, r)
   elseif isctpsa(b) then -- ctpsa / ctpsa
-    r = r_ or a:ctpsa(max(a.mo,b.mo))
+    r = r_ or ctpsa(amax(a.mo,b.mo))
     clib.mad_ctpsa_div(a, b, r)
   else error("invalid GTPSA (/) operands") end
   return r
@@ -301,13 +322,13 @@ end
 function M.pow (a, n, r_)
   assert(isctpsa(a) and isint(n), "invalid GTPSA (^) operands")
   if a.hi == 0 then return a.coef[0] ^ n end
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_ipow(a, r, n)
   return r
 end
 
 function M.poisson(a, b, n, r_)
-  local r = r_ or a:ctpsa(max(a.mo,b.mo))
+  local r = r_ or ctpsa(amax(a.mo,b.mo))
   clib.mad_ctpsa_poisson(a, b, r, n)
   return r
 end
@@ -315,174 +336,174 @@ end
 -- functions -----------------------------------------------------------------o
 
 function M.acc (a, v, r_)  -- r += v*a
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   v = iscpx(v) and v or complex(v)
   clib.mad_ctpsa_acc_r(a, v.re, v.im, r)
   return r
 end
 
 function M.inv (a, v, r_)  -- v/a
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   v = iscpx(v) and v or complex(v)
   clib.mad_ctpsa_inv_r(a, v.re, v.im, r)
   return r
 end
 
 function M.invsqrt (a, v, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   v = iscpx(v) and v or complex(v)
   clib.mad_ctpsa_invsqrt_r(a, v.re, v.im, r)
   return r
 end
 
 function M.sqrt (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_sqrt(a, r)
   return r
 end
 
 function M.exp (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_exp(a, r)
   return r
 end
 
 function M.log (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_log(a, r)
   return r
 end
 
 function M.sin (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_sin(a, r)
   return r
 end
 
 function M.cos (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_cos(a, r)
   return r
 end
 
 function M.tan (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_tan(a, r)
   return r
 end
 
 function M.cot (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_cot(a, r)
   return r
 end
 
 function M.sinh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_sinh(a, r)
   return r
 end
 
 function M.cosh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_cosh(a, r)
   return r
 end
 
 function M.tanh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_tanh(a, r)
   return r
 end
 
 function M.coth (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_coth(a, r)
   return r
 end
 
 function M.asin (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_asin(a, r)
   return r
 end
 
 function M.acos (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_acos(a, r)
   return r
 end
 
 function M.atan (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_atan(a, r)
   return r
 end
 
 function M.acot (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_acot(a, r)
   return r
 end
 
 function M.asinh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_asinh(a, r)
   return r
 end
 
 function M.acosh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_acosh(a, r)
   return r
 end
 
 function M.atanh (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_atanh(a, r)
   return r
 end
 
 function M.acoth (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_acoth(a, r)
   return r
 end
 
 function M.erf (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_erf(a, r)
   return r
 end
 
 function M.sinc (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_sinc(a, r)
   return r
 end
 
 function M.sirx (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_sirx(a, r)
   return r
 end
 
 function M.corx (a, r_)
-  local r = r_ or a:ctpsa()
+  local r = r_ or ctpsa(a)
   clib.mad_ctpsa_corx(a, r)
   return r
 end
 
 function M.sincos (a, rs_, rc_)
-  local rs = rs_ or a:ctpsa()
-  local rc = rc_ or a:ctpsa()
+  local rs = rs_ or ctpsa(a)
+  local rc = rc_ or ctpsa(a)
   clib.mad_ctpsa_sincos(a, rs, rc)
   return rs, rc
 end
 
 function M.sincosh (a, rs_, rc_)
-  local rs = rs_ or a:ctpsa()
-  local rc = rc_ or a:ctpsa()
+  local rs = rs_ or ctpsa(a)
+  local rc = rc_ or ctpsa(a)
   clib.mad_ctpsa_sincosh(a, rs, rc)
   return rs, rc
 end

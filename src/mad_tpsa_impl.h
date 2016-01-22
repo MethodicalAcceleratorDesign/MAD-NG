@@ -34,6 +34,8 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 
 // --- helpers ---------------------------------------------------------------o
 
+#ifndef MAD_TPSA_NOHELPER
+
 #define T           tpsa_t
 #define NUM         num_t
 #define FUN(name)   MKNAME(mad_tpsa_,name)
@@ -41,6 +43,10 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 #define VAL(num)    num
 #define FMT         "%g"
 #define SELECT(R,C) R
+
+#endif
+
+#define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { (re), (im) })
 
 // ---------------------------------------------------------------------------o
 

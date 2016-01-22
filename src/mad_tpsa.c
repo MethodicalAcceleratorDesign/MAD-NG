@@ -70,8 +70,7 @@ ord_t
   va_list args;
   va_start(args,t2);
   while ((t2 = va_arg(args,T*)))
-    if (t2->mo > mo)
-      mo = t2->mo;
+    if (t2->mo > mo) mo = t2->mo;
   va_end(args);
   return mo;
 }
@@ -102,24 +101,19 @@ FUN(new) (const T *t, ord_t mo)
   return FUN(newd)(t->d,mo);
 }
 
-T*
-FUN(copy) (const T *src, T *dst)
+void
+FUN(copy) (const T *t, T *dst)
 {
-  assert(src && dst);
-  ensure(src->d == dst->d);
-  D *d = src->d;
-  if (d->trunc < src->lo) {
-    FUN(clear)(dst);
-    return dst;
-  }
-  dst->hi = MIN3(src->hi, dst->mo, d->trunc);
-  dst->lo = src->lo;
-  dst->nz = mad_bit_trunc(src->nz, dst->hi);
+  assert(t && dst);
+  ensure(t->d == dst->d);
+  D *d = t->d;
+  if (d->trunc < t->lo) { FUN(clear)(dst); return; }
+  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
+  dst->lo = t->lo;
+  dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
   for (int i = d->hpoly_To_idx[dst->lo]; i < d->hpoly_To_idx[dst->hi+1]; ++i)
-    dst->coef[i] = src->coef[i];
-
-  return dst;
+    dst->coef[i] = t->coef[i];
 }
 
 void
@@ -154,19 +148,6 @@ void
 FUN(del) (T *t)
 {
   mad_free(t);
-}
-
-void
-(FUN(delv))(T *t1, T *t2, ...)
-{
-  assert(t1 && t2);
-  FUN(del)(t1);
-  FUN(del)(t2);
-  va_list args;
-  va_start(args,t2);
-  while((t2 = va_arg(args,T*)))
-    FUN(del)(t2);
-  va_end(args);
 }
 
 // --- --- INDEXING / MONOMIALS -----------------------------------------------

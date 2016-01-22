@@ -38,6 +38,8 @@
 
 // --- types -----------------------------------------------------------------o
 
+struct tpsa;
+
 typedef struct ctpsa ctpsa_t;
 
 // --- globals ---------------------------------------------------------------o
@@ -52,7 +54,6 @@ extern       int   mad_tpsa_strict;
 ctpsa_t* mad_ctpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 ctpsa_t* mad_ctpsa_new     (const ctpsa_t *t, ord_t mo);
 void     mad_ctpsa_del     (      ctpsa_t *t);
-void     mad_ctpsa_delv    (      ctpsa_t *t1, ctpsa_t *t2, ...);
 
 // introspection
 desc_t*  mad_ctpsa_desc    (const ctpsa_t *t);
@@ -60,10 +61,14 @@ ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t1, const ctpsa_t *t2, ...);  // max order of all
 
 // initialization
-ctpsa_t* mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
+void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
+
+// conversion
+void     mad_ctpsa_real    (const ctpsa_t *t, struct tpsa *dst);
+void     mad_ctpsa_imag    (const ctpsa_t *t, struct tpsa *dst);
 
 // indexing / monomials
 int      mad_ctpsa_mono    (const ctpsa_t *t, int n,       ord_t m_[], idx_t i);
@@ -92,6 +97,7 @@ void     mad_ctpsa_setm_sp_r(      ctpsa_t *t, int n, const int   m[], num_t a_r
 
 // operations
 void     mad_ctpsa_abs     (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_arg     (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *t, const ctpsa_t *t2_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *t, const ctpsa_t *t2_);
 void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
@@ -193,7 +199,6 @@ void     mad_ctpsa_scan_coef(      ctpsa_t *t,              FILE *stream_); // T
 void     mad_ctpsa_debug    (const ctpsa_t *t);
 
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
-#define  mad_ctpsa_delv(...) mad_ctpsa_delv(__VA_ARGS__,NULL)
 
 // ---------------------------------------------------------------------------o
 
