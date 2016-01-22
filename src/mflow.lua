@@ -56,8 +56,9 @@ local mono  = xtpsa.mono
 -- locals --------------------------------------------------------------------o
 
 local type, insert = type, table.insert
-local isnum, iscpx, isscl, ident =
-      gmath.is_number, gmath.is_complex, gmath.is_scalar, gmath.ident
+local isnum, iscpx, isscl, ident, isatpsa, tostring =
+      gmath.is_number, gmath.is_complex, gmath.is_scalar, gmath.ident,
+      gmath.isa_tpsa, gmath.tostring
 
 local D = {}  -- private desc
 local V = {}  -- private keys
@@ -100,82 +101,97 @@ local function cmap(args)
   return make_map(args, complex, ctpsa)
 end
 
--- indexing ------------------------------------------------------------------o
+-- initialization ------------------------------------------------------------o
 
-function M.__index (tbl, key)
---  io.write("getting ", key, '\n')
-  return tbl[V][key] or tbl[T][key] or M[key]
+function M.clear(map)
+  map = map[T] -- clear tempory variables
+  for i,k in ipairs(map) do
+    map[i], map[k] = nil, nil
+  end
+  return map
 end
 
-function M.__newindex (tbl, key, val)
---  io.write("setting ", key, '\n')
-  local K = tbl[V][key] and V or T
-  local v = tbl[K][key]         -- get the variable
+-- access --------------------------------------------------------------------o
 
-  if v == nil then              -- create the variable
-    tbl[K][#tbl[K]+1] = key
-    tbl[K][key]       = val
-  elseif isscl(v) then          -- number or tpsa -> number
-    tbl[K][key] = isscl(val) and val or val.coef[0]
+function M.get(map, var, mono)
+  return isscl(map[var]) and map[var] or map[var]:get(mono)
+end
+
+function M.set(map, var, mono, val)
+  val = val or mono
+  if isscl(map[var]) then
+    map[var] = val
+  else
+    map[var]:set(mono, val)
+  end
+  return map
+end
+
+function M.unit(map)
+  for i,k in ipairs(map[V]) do
+    if isatpsa(map[V][k]) then
+      map[V][k]:set_sp({i,1}, 1)
+    end
+  end
+  return map
+end
+
+function M.gtrunc(map, ...)
+  local to, mo = -1
+  for _,v in ipairs{...} do
+    mo = isscl(v) and 0 or v.mo
+    to = mo > to and mo or to
+  end
+  map[D].trunc = mo and to or map[D].mo
+  return map
+end
+
+-- indexing ------------------------------------------------------------------o
+
+function M.__index (map, key)
+--  io.write("getting ", key, '\n')
+  return map[V][key] or map[T][key] or M[key]
+end
+
+function M.__newindex (map, key, val)
+--  io.write("setting ", key, '\n')
+  local K = map[V][key] and V or T
+  local v = map[K][key]         -- get variable
+
+  if v == nil then              -- create tmp variable
+    map[T][#map[T]+1] = key
+    map[T][key]       = val
+  elseif isscl(v) then          -- scalar or tpsa -> scalar
+    map[K][key] = isscl(val) and val or val.coef[0]
   elseif isscl(val) then
-    v:scalar(val)               -- number -> TPSA
+    v:scalar(val)               -- scalar -> TPSA
   else
     val:copy(v)                 -- TPSA -> TPSA
   end
 end
 
--- TODO
+-- I/O -----------------------------------------------------------------------o
 
-function M.clear(tbl)
-  tbl = tbl[T]
-  for i,k in ipairs(tbl) do
-    tbl[k]:set_tmp():release()
-    tbk[i] = nil
-  end
-end
-
-function M.print_tmp(tbl)
-  tbl = tbl[T]
-  for i,k in ipairs(tbl) do
-    print(i, k, tbl[k])
-  end
-end
-
-function M.print(tbl)
-  for _,name in ipairs(tbl[V]) do
-    local var = tbl[V][name]
+local function print_map(map)
+  for _,name in ipairs(map) do
+    local var = map[name]
     io.write(name, ': ')
     if isnum(var) then
-      print(var)
+      io.write(var, '\n')
     else
       var:print()
+      io.write('\n')
     end
   end
+  return map
 end
 
-function M.to(tbl, ...)
-  if not tbl[D] then return end
-  local to, mo = -1
-  for _,v in ipairs{...} do
-    mo = isnum(v) and 0 or v.mo
-    to = mo > to and mo or to
-  end
-
-  tpsa.gtrunc(tbl[D],to)
+function M.print_tmp(map)
+  return print_map(map[T])
 end
 
-function M.set(tbl, var, mono, val)
-  if isnum(tbl[var]) then
-    assert(mono_sum(mono) == 0, "Invalid set for constant var")
-    tbl[var] = val
-  else
-    tbl[var]:set(mono, val)
-  end
-end
-
-function M.get(tbl, var, mono)
-  return isnum(tbl[var]) and assert(mono_sum(mono) == 0, "Invalid get") and tbl[var]
-         or tbl[var]:get(mono)
+function M.print(map)
+  return print_map(map[V])
 end
 
 ------------------------------------------------------------------------------o

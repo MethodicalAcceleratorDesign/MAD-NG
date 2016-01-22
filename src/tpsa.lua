@@ -139,12 +139,12 @@ function M.set0 (t, a, b)
   clib.mad_tpsa_set0(t, a, b)
 end
 
-function M.set (t, i, a, b)
+function M.set (t, m, a, b)
   if b == nil then a, b = 0, a end
-  if isnum(i) then
-    clib.mad_tpsa_seti(t, i, a, b)
+  if isnum(m) then
+    clib.mad_tpsa_seti(t, m, a, b)
   end
-  local m = istable(i) and mono(i) or i
+  m = istable(m) and mono(m) or m
   clib.mad_tpsa_setm(t, m.n, m.ord, a, b)
 end
 
