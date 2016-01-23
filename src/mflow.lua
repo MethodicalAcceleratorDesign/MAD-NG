@@ -128,10 +128,13 @@ function M.set(map, var, mono, val)
   return map
 end
 
-function M.unit(map)
+function M.init(map, tbl)
   for i,k in ipairs(map[V]) do
     if isatpsa(map[V][k]) then
+      map[V][k]:set0(tbl[i])
       map[V][k]:set_sp({i,1}, 1)
+    else
+      map[V][k] = tbl[i]
     end
   end
   return map
