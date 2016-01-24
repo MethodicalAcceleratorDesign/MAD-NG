@@ -56,7 +56,7 @@ local mono  = xtpsa.mono
 -- locals --------------------------------------------------------------------o
 
 local type, insert = type, table.insert
-local isnum, iscpx, isscl, ident, isatpsa, tostring =
+local isnum, iscpx, ident, isatpsa, tostring =
       gmath.is_number, gmath.is_complex, gmath.is_scalar, gmath.ident,
       gmath.isa_tpsa, gmath.tostring
 
@@ -104,10 +104,21 @@ end
 
 -- initialization ------------------------------------------------------------o
 
-function M.clear(map)
-  map = map[T] -- clear tempory variables
-  for i,k in ipairs(map) do
-    map[i], map[k] = nil, nil
+function M.clear(map)  -- clear tempory variables
+  for i,k in ipairs(map[T]) do
+    map[T][i], map[T][k] = nil, nil
+  end
+  return map
+end
+
+function M.init(map, tbl)
+  for i,k in ipairs(map[V]) do
+    if isscl(map[V][k]) then
+      map[V][k] = tbl[i]
+    else -- tpsa
+      map[V][k]:set0(tbl[i])
+      map[V][k]:set_sp({i,1}, 1)
+    end
   end
   return map
 end
@@ -124,18 +135,6 @@ function M.set(map, var, mono, val)
     map[var] = val
   else
     map[var]:set(mono, val)
-  end
-  return map
-end
-
-function M.init(map, tbl)
-  for i,k in ipairs(map[V]) do
-    if isatpsa(map[V][k]) then
-      map[V][k]:set0(tbl[i])
-      map[V][k]:set_sp({i,1}, 1)
-    else
-      map[V][k] = tbl[i]
-    end
   end
   return map
 end
