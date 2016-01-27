@@ -49,7 +49,7 @@
       r[i*n+j] = 0; \
       for (size_t k=0; k < p; k++) \
         r[i*n+j] += x[i*p+k] * y[k*n+j]; \
-    } \
+    }
 */
 
 // [m x n] = [m x p] * [p x n]
@@ -108,7 +108,7 @@
         r[i*n+j] += x[i*p+k] * y[k*n+j]; \
     } \
   } \
-} \
+}
 
 // n==1: [m x 1] = [m x p] * [p x 1]
 #define MULV \
@@ -116,7 +116,7 @@
     r[i] = 0; \
     for (size_t k=0; k < p; k++) \
       r[i] += x[i*p+k] * y[k]; \
-  } \
+  }
 
 // m==1: [1 x n] = [1 x p] * [p x n]
 #define VMUL \
@@ -124,21 +124,21 @@
     r[j] = 0; \
     for (size_t k=0; k < p; k++) \
       r[j] += x[k] * y[k*n+j]; \
-  } \
+  }
 
 // p==1: [m x n] = [m x 1] * [1 x n]
 #define KMUL \
   for (size_t i=0; i < m; i++) { \
   for (size_t j=0; j < n; j++) \
     r[i*n+j] = x[i] * y[j]; \
-  } \
+  }
 
 // m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
 #define VMULV \
   { r[0] = 0; \
     for (size_t k=0; k < p; k++) \
       r[0] += x[k] * y[k]; \
-  } \
+  }
 
 #define MUL() { \
   if (m == 1 && n == 1) VMULV \
@@ -146,7 +146,7 @@
   else      if (n == 1) MULV \
   else      if (p == 1) KMUL \
   else                  MMUL \
-} \
+}
 
 // -----
 
@@ -163,7 +163,7 @@
       for (size_t k=0; k < p; k++) \
         *r += C(x[k*m+i]) * y[k*n+i]; \
   } \
-} \
+}
 
 // [m x n] transpose, in place only for square matrix
 // inplace for non-square matrix could use FFTW...
@@ -183,24 +183,24 @@
     for (size_t j=0; j < n; j++) \
       r[j*m+i] = C(x[i*n+j]); \
   } \
-} \
+}
 
 #define CPY(OP) { \
   for (size_t i=0; i<m; i++) \
   for (size_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x[i*ldx+j]; \
-} \
+}
 
 #define SET(OP) { \
   for (size_t i=0; i<m; i++) \
   for (size_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x; \
-} \
+}
 
 #define DIAG(OP) { \
   for (size_t i=0; i<MIN(m,n); i++) \
     r[i*ldr+i] OP##= x; \
-} \
+}
 
 // --- mat
 

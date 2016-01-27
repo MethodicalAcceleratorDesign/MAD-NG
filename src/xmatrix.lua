@@ -117,7 +117,7 @@ local function fromtable (ctor, tbl)
 end
 
 local function matrix (nr, nc_)
-  local nc = nc_ or 1
+  local nc = nc_ or nr -- square
   if istable(nr) then
     return fromtable(matrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
@@ -128,7 +128,7 @@ local function matrix (nr, nc_)
 end
 
 local function cmatrix (nr, nc_)
-  local nc = nc_ or 1
+  local nc = nc_ or nr -- square
   if istable(nr) then
     return fromtable(cmatrix_alloc, nr)
   elseif nr > 0 and nc > 0 then
@@ -138,8 +138,18 @@ local function cmatrix (nr, nc_)
   end
 end
 
+local function vector (n)
+  return matrix(n,1)
+end
+
+local function cvector (n)
+  return cmatrix(n,1)
+end
+
 ------------------------------------------------------------------------------o
 return {
+   vector =  vector,
+  cvector = cvector,
    matrix =  matrix,
   cmatrix = cmatrix,
 }

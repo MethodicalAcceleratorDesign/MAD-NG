@@ -43,7 +43,7 @@ void   free    (void  *ptr_);
 static const int mad_alloc_threshold = 256;
 ]]
 
--- functions for real and complex numbers (mad_cnum.h)
+-- functions for real and complex numbers (mad_num.h)
 
 ffi.cdef [[
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);

@@ -1,7 +1,7 @@
 --[=[
  o----------------------------------------------------------------------------o
  |
- | Matrix module (complex)
+ | Vector module (complex)
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,10 +16,10 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - provides full set of functions and operations on real and complex matrices
+  - provides full set of functions and operations on complex vectors
 
   Information:
-  - real and complex matrices are implemented the module matrix (not this one)
+  - complex vectors are complex matrices [n x 1] implemented by module matrix
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -30,36 +30,16 @@ local M = { __help = {}, __test = {} }
 
 M.__help.self = [[
 NAME
-  cmatrix
+  cvector
 
 SYNOPSIS
-  local cmatrix = require 'cmatrix'
-  local m1 = cmatrix(3)                -- column cmatrix = cmatrix(3,1)
-  local m2 = cmatrix(2,3)
-  local m3 = cmatrix {{1,2+2i},{3,4+2i},{5,6+2i}}
-  local m4 = cmatrix {1,2,3,4,5,6}     -- column cmatrix = {{1+0i},{2+0i},...}
-  local m5 = cmatrix {{1,2,3,4,5,6}}   -- row cmatrix
-  local m6 = m1:transpose()            -- row cmatrix, transpose conjugate
-  local I6 = cmatrix(6):ones()         -- 6x6 identity
+  local cvector = require 'cvector'
+  local v1 = cvector(3)                -- column cvector
+  local v2 = cvector {1,2,3,4,5,6}     -- column cvector = {{1+0i},{2+0i},...}
+  local v3 = v1:transpose()            -- row cvector, transpose conjugate
 
 DESCRIPTION
-  The module cmatrix implements the operators and math functions on
-  complex matrices:
-    (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
-    unm, add, sub, mul, div, mod, pow, emul, ediv,
-    rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy,
-    get_row, get_col, get_diag, get_sub,
-    set_row, set_col, set_diag, set_sub,
-    transpose, t, trans, ctrans,
-    real, imag, conj, norm, angle, trace, tr,
-    dot, inner, cross, mixed, outer,
-    abs, arg, exp, log, pow, sqrt, proj,
-    sin, cos, tan, sinh, cosh, tanh,
-    asin, acos, atan, asinh, acosh, atanh,
-    foldl, foldr, foreach, map, map2, maps,
-    concat, reshape, tostring, totable, fromtable,
-    check_bounds.
+  Complex vectors are complex matrices with one column.
 
 REMARK:
   By default, check_bounds is true.
@@ -85,10 +65,10 @@ RELATIONS (3D GEOMETRY)
   coplanar  :   (uxv)'.w = 0
 
 RETURN VALUES
-  The constructor of complex matrices
+  The constructor of complex vectors
 
 SEE ALSO
-  math, gmath, complex, matrix, cmatrix
+  math, gmath, complex, vector, matrix, cmatrix
 ]]
  
 -- modules -------------------------------------------------------------------o
@@ -98,11 +78,11 @@ local xmatrix = require 'xmatrix'
 -- locals --------------------------------------------------------------------o
 
 -- FFI type constructors
-local cmatrix = xmatrix.cmatrix
+local cvector = xmatrix.cvector
 
 -- implementation ------------------------------------------------------------o
 
 -- implemented by the matrix module
 
 ------------------------------------------------------------------------------o
-return cmatrix
+return cvector

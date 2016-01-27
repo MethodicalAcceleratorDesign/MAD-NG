@@ -19,7 +19,7 @@
 #include <complex.h>
 #include <assert.h>
 
-#include "mad_cnum.h"
+#include "mad_num.h"
 
 // --- implementation --------------------------------------------------------o
 

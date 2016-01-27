@@ -34,13 +34,13 @@ NAME
 
 SYNOPSIS
   local matrix = require 'matrix'
-  local m1 = matrix(3)                         -- column matrix = matrix(3,1)
+  local m1 = matrix(3)                      -- column matrix = matrix(3,1)
   local m2 = matrix(2,3)
   local m3 = matrix {{1,2},{3,4},{5,6}}
-  local m4 = matrix {1,2,3,4,5,6}              -- column matrix = {{1},{2},...}
-  local m5 = matrix {{1,2,3,4,5,6}}            -- row matrix
-  local m6 = m1:transpose()                    -- row matrix
-  local I6 = matrix(6):ones()                  -- 6x6 identity
+  local m4 = matrix {1,2,3,4,5,6}           -- column matrix = {{1},{2},...}
+  local m5 = matrix {{1,2,3,4,5,6}}         -- row matrix
+  local m6 = m1:transpose()                 -- row matrix
+  local I6 = matrix(6):ones()               -- 6x6 identity
 
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
