@@ -29,7 +29,7 @@ DFLAGS  := -std=c99 -MM
 # compiler
 CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
-CFLAGS  += # -flto
+CFLAGS  += -flto
 CFLAGS  += # -fopenmp
 
 # lua
@@ -46,7 +46,7 @@ LDFLAGS += ../lib/luajit/src/libluajit.a \
 
 # files setup
 CSRC    := $(wildcard *.c sse/*.c)
-LSRC    := # $(wildcard *.lua) # compile also lua modules
+LSRC    := $(wildcard *.lua) # compile also lua modules
 
 DEP     := $(patsubst %.c,%.d,$(CSRC))
 DEP     := $(addprefix $(DIR)/,$(DEP))

@@ -560,10 +560,10 @@ function M.add (x, y, r_)
       clib.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size())
     elseif ismat(y) then  -- cmat + mat => cvec + vec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      clib.mad_vec_add(x.data, y.data, r.data, r:size())
+      clib.mad_vec_addv(x.data, y.data, r.data, r:size())
     elseif iscmat(y) then -- cmat + cmat => cvec + cvec
       assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      clib.mad_cvec_addv(y.data, x.data, r.data, r:size())
+      clib.mad_cvec_add(y.data, x.data, r.data, r:size())
     else goto invalid end
     return r
   end
