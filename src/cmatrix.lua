@@ -48,7 +48,7 @@ DESCRIPTION
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy,
+    zeros, ones, eye, unit, fill, copy,
     get_row, get_col, get_diag, get_sub,
     set_row, set_col, set_diag, set_sub,
     transpose, t, trans, ctrans,

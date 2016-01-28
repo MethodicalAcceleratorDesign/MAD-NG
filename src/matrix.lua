@@ -47,7 +47,7 @@ DESCRIPTION
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, unit, fill, copy,
+    zeros, ones, eye, unit, fill, copy,
     get_row, get_col, get_diag, get_sub,
     set_row, set_col, set_diag, set_sub,
     transpose, t, trans, ctrans,
@@ -182,7 +182,13 @@ function M.zeros (x)
   return x
 end
 
-function M.ones (x, e_) -- zeros + diagonal
+function M.ones (x, e_)
+  local n, e = x:size(), e_ or 1
+  for i=0,n-1 do x.data[i] = e end
+  return x
+end
+
+function M.eye (x, e_) -- zeros + diagonal
   x:zeros()
   local n, e = min(x:sizes()), e_ or 1
   for i=0,n-1 do x:set0(i,i, e) end
