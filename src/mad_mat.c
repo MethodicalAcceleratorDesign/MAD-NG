@@ -571,19 +571,19 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], size_t m, siz
   int info=0;
   const int nm=m, nn=n;
 
-  size_t rwk_sz = MIN(m,n) * MAX(5*MIN(m,n)+7, 2*MAX(m,n)+2*MIN(m,n)+1);
   cnum_t sz;
   int lwork=-1;
   int iwk[8*MIN(m,n)];
+  size_t rwk_sz = MIN(m,n) * MAX(5*MIN(m,n)+7, 2*MAX(m,n)+2*MIN(m,n)+1);
+  mad_alloc_tmp(num_t, rwk, rwk_sz);
   mad_alloc_tmp(cnum_t, ra, m*n);
   mad_cmat_trans(x, ra, m, n);
-  mad_alloc_tmp(num_t, rwk, rwk_sz);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, rwk, iwk, &info); // query
   mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, rwk, iwk, &info); // compute
-  mad_free_tmp(wk); mad_free_tmp(rwk); mad_free_tmp(ra);
+  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
   mad_cmat_trans(u, u, m, m);
-  mad_cvec_conj (v, v, n*n );
+  mad_cvec_conj (v, v, n*n);
 
   if (info < 0) fatal("invalid input argument");
   if (info > 0) error("SVD did not converged");
