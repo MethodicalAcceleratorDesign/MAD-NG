@@ -65,8 +65,8 @@ local C = {}  -- private ctor
 local V = {}  -- private keys
 local T = {}  -- temporary keys
 
-local S_lst = {'x', 'px', 'y', 'py', 't', 'pt'} -- allowed variable names
-local S_dft = {'x', 'px', 'y', 'py', 't', 'pt'} -- default variable names
+local S_lst = {x=1, px=1, y=1, py=1, t=1, pt=1} -- allowed variable names
+local S_dft = {x=1, px=1, y=1, py=1, t=1, pt=1} -- default variable names
 
 -- implementation ------------------------------------------------------------o
 

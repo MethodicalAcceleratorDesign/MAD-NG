@@ -195,9 +195,9 @@ local function desc (args)
   end
 
   if nk > 0 then
-    return clib.mad_tpsa_desc_newk(nv, cvar.ord, cmap.ord, names, nk, cknb.ord, args.dk or 0)
+    return clib.mad_desc_newk(nv, cvar.ord, cmap.ord, names, nk, cknb.ord, args.dk or 0)
   else
-    return clib.mad_tpsa_desc_new (nv, cvar.ord, cmap.ord, names)
+    return clib.mad_desc_new (nv, cvar.ord, cmap.ord, names)
   end
 end
 
