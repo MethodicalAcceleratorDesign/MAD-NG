@@ -57,6 +57,7 @@ void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], si
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cnum ->cvec
 void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec
 void   mad_cvec_copyv (const cnum_t x[],                          num_t  r[], size_t n); //  cvec -> vec
+void   mad_cvec_conj  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec*
 cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , size_t n); // <cvec , cvec>
 cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , size_t n); // <cvec ,  vec>
 void   mad_cvec_dot_r (const cnum_t x[], const cnum_t y[]      , cnum_t *r  , size_t n); // <cvec , cvec>

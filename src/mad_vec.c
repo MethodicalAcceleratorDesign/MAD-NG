@@ -34,6 +34,7 @@
 
 #define SET(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x
 #define CPY(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[i]
+#define MAP(FN)      for (size_t i=0; i < n; i++)  r[i]  = FN(x[i])
 #define VEC(OP)      for (size_t i=0; i < n; i++)  r[i]     = x[i] OP y[i]
 #define VECS(OP)     for (size_t i=0; i < n; i++)  r[i]     = x[i] OP y
 #define SVEC(OP)     for (size_t i=0; i < n; i++)  r[i]     = x    OP y[i]
@@ -126,6 +127,9 @@ void mad_cvec_copy (const cnum_t x[], cnum_t r[], size_t n)
 
 void mad_cvec_copyv (const cnum_t x[], num_t r[], size_t n)
 { CHKXR; CPY(); }
+
+void mad_cvec_conj (const cnum_t x[], cnum_t r[], size_t n)
+{ CHKXR; MAP(conj); }
 
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], size_t n)
 { CHKXY; cnum_t r_, *r=&r_; DOT(conj); return *r; }

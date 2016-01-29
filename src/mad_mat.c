@@ -168,7 +168,7 @@
 // [m x n] transpose, in place only for square matrix
 // inplace for non-square matrix could use FFTW...
 // see http://www.fftw.org/faq/section3.html#transpose
-#define TRANS(C) { \
+#define TRANS(C,T) { \
   if (m == 1 || n == 1) { \
     size_t mn = m*n; \
     for (size_t i=0; i < mn; i++) \
@@ -176,8 +176,11 @@
   } else if ((const void*)x == (const void*)r) { \
     assert(m == n); \
     for (size_t i=0; i < m; i++) \
-    for (size_t j=i; j < n; j++) \
-      r[j*n+i] = C(r[i*n+j]); \
+    for (size_t j=i; j < n; j++) { \
+      T t = C(r[j*m+i]); \
+      r[j*m+i] = C(r[i*n+j]); \
+      r[i*n+j] = t; \
+    } \
   } else { \
     for (size_t i=0; i < m; i++) \
     for (size_t j=0; j < n; j++) \
@@ -217,7 +220,7 @@ void mad_mat_copym(const num_t x[], cnum_t r[], size_t m, size_t n, size_t ldx, 
 { CHKXR; CPY(); }
 
 void mad_mat_trans (const num_t x[], num_t r[], size_t m, size_t n)
-{ CHKXR; TRANS(); }
+{ CHKXR; TRANS(,num_t); }
 
 num_t mad_mat_dot (const num_t x[], const num_t y[], size_t m, size_t n, size_t p)
 { CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
@@ -249,10 +252,10 @@ void mad_cmat_copy(const cnum_t x[], cnum_t r[], size_t m, size_t n, size_t ldx,
 { CHKXRX; CPY(); }
 
 void mad_cmat_trans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
-{ CHKXR; TRANS(); }
+{ CHKXR; TRANS(,cnum_t); }
 
 void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
-{ CHKXR; TRANS(conj); }
+{ CHKXR; TRANS(conj,cnum_t); }
 
 cnum_t mad_cmat_dot (const cnum_t x[], const cnum_t y[], size_t m, size_t n, size_t p)
 { CHKXY; cnum_t r_, *r = &r_; DOT(conj); return *r; }
@@ -280,29 +283,42 @@ matrix is square and nonsingular the routines dgesv and zgesv are used
 otherwise routines dgelsy and zgelsy are used.
 
 LAPACK is the default method for computing the entire set of eigenvalues and
-eigenvectors. For generalized eigenvalues the routine dggev zggev are used.
+eigenvectors. For generalized eigenvalues the routines dggev zggev are used.
 See also [d,z]geev and [d,z]syevr, zheevr.
+
+LAPACK is the default method for computing the entire set of singluar values
+and singular vectors. For generalized SVD the routines dgesdd zgesdd are used.
 */
 
 // -----
 // solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
 // -----
-void dgesv_ (const int *n, const int *nrhs, num_t  *A, const int *lda,
-                                 int *IPIV, num_t  *B, const int *ldb, int *info);
-void zgesv_ (const int *n, const int *nrhs, cnum_t *A, const int *lda,
-                                 int *IPIV, cnum_t *B, const int *ldb, int *info);
+void dgesv_ (const int *n, const int *nrhs, num_t  A[], const int *lda,
+                                 int *IPIV, num_t  B[], const int *ldb, int *info);
+void zgesv_ (const int *n, const int *nrhs, cnum_t A[], const int *lda,
+                                 int *IPIV, cnum_t B[], const int *ldb, int *info);
 
 // -----
 // Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min | b - Ax | using QR
 // -----
 void dgelsy_ (const int *m, const int *n, const int *nrhs,
-              num_t *A, const int *lda, num_t *B, const int *ldb,
-              int *jpvt, const num_t *rcond, int *rank,
-              num_t *work, const int *lwork, int *info);
+              num_t A[], const int *lda, num_t B[], const int *ldb,
+              int jpvt[], const num_t *rcond, int *rank,
+              num_t work[], const int lwork[], int *info);
 void zgelsy_ (const int *m, const int *n, const int *nrhs,
-              cnum_t *A, const int *lda, cnum_t *B, const int *ldb,
-              int *jpvt, const num_t *rcond, int *rank,
-              cnum_t *work, const int *lwork, num_t *rwork, int *info);
+              cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
+              int jpvt[], const num_t *rcond, int *rank,
+              cnum_t work[], const int lwork[], num_t rwork[], int *info);
+
+// -----
+// SVD A[m x n]
+// -----
+void dgesdd_(str_t jobz, const int *m, const int *n, num_t A[], const int *lda,
+             num_t S[], num_t U[], const int *ldu, num_t VT[], const int *ldvt,
+             num_t work[], int *lwork, int iwork[], int *info);
+void zgesdd_(str_t jobz, const int *m, const int *n, cnum_t A[], const int *lda,
+             num_t S[], cnum_t U[], const int *ldu, cnum_t VT[], const int *ldvt,
+             cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
 
 // Eigen values/vectors
 // void dggev_
@@ -382,7 +398,7 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
 {
   CHKXYR;
   int info=0;
-  const int nn=n, nm=m, np=p;
+  const int nm=m, nn=n, np=p;
   mad_alloc_tmp(num_t, a, n*p);
   mad_vec_copy(y, a, n*p);
 
@@ -417,7 +433,7 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
 {
   CHKXYR;
   int info=0;
-  const int nn=n, nm=m, np=p;
+  const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cnum_t, a, n*p);
   mad_cvec_copy(y, a, n*p);
 
@@ -453,7 +469,7 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
 {
   CHKXYR;
   int info=0;
-  const int nn=n, nm=m, np=p;
+  const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cnum_t, a, n*p);
   mad_cvec_copy(y, a, n*p);
 
@@ -489,7 +505,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
 {
   CHKXYR;
   int info=0;
-  const int nn=n, nm=m, np=p;
+  const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cnum_t, a, n*p);
   mad_vec_copyv(y, a, n*p);
 
@@ -520,3 +536,57 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   return rank;
 }
 
+// -- SVD ---------------------------------------------------------------------o
+
+// SVD decomposition A = U * S * V.t()
+// A:[m x n], U:[m x m], S:[min(m,n)], V:[n x n]
+int
+mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], size_t m, size_t n)
+{
+  assert( x && u && s && v );
+  int info=0;
+  const int nm=m, nn=n;
+
+  num_t sz;
+  int lwork=-1;
+  int iwk[8*MIN(m,n)];
+  mad_alloc_tmp(num_t, ra, m*n);
+  mad_mat_trans(x, ra, m, n);
+  dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, iwk, &info); // query
+  mad_alloc_tmp(num_t, wk, lwork=sz);
+  dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, iwk, &info); // compute
+  mad_free_tmp(wk); mad_free_tmp(ra);
+  mad_mat_trans(u, u, m, m);
+
+  if (info < 0) fatal("invalid input argument");
+  if (info > 0) error("SVD did not converged");
+
+  return info;
+}
+
+int
+mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], size_t m, size_t n)
+{
+  assert( x && u && s && v );
+  int info=0;
+  const int nm=m, nn=n;
+
+  size_t rwk_sz = MIN(m,n) * MAX(5*MIN(m,n)+7, 2*MAX(m,n)+2*MIN(m,n)+1);
+  cnum_t sz;
+  int lwork=-1;
+  int iwk[8*MIN(m,n)];
+  mad_alloc_tmp(cnum_t, ra, m*n);
+  mad_cmat_trans(x, ra, m, n);
+  mad_alloc_tmp(num_t, rwk, rwk_sz);
+  zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, rwk, iwk, &info); // query
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, rwk, iwk, &info); // compute
+  mad_free_tmp(wk); mad_free_tmp(rwk); mad_free_tmp(ra);
+  mad_cmat_trans(u, u, m, m);
+  mad_cvec_conj (v, v, n*n );
+
+  if (info < 0) fatal("invalid input argument");
+  if (info > 0) error("SVD did not converged");
+
+  return info;
+}

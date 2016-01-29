@@ -104,6 +104,7 @@ void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], si
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cnum ->cvec
 void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec
 void   mad_cvec_copyv (const cnum_t x[],                          num_t  r[], size_t n); //  cvec -> vec
+void   mad_cvec_conj  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec*
 cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , size_t n); // <cvec , cvec>
 cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , size_t n); // <cvec ,  vec>
 void   mad_cvec_dot_r (const cnum_t x[], const cnum_t y[]      , cnum_t *r  , size_t n); // <cvec , cvec>
@@ -149,6 +150,7 @@ int    mad_mat_invc    (const  num_t y[],       cnum_t x  ,       cnum_t  r[], s
 int    mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,           num_t rcond);  // cnum /  mat
 int    mad_mat_div     (const  num_t x[], const  num_t y[],        num_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat /  mat
 int    mad_mat_divm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat / cmat
+int    mad_mat_svd     (const  num_t x[], num_t u[], num_t s[],    num_t  v[], size_t m, size_t n);                         // u * s * v.t
 
 void   mad_cmat_ident  (                                          cnum_t  r[], size_t m, size_t n,             size_t ldr); //  ident->cmat
 void   mad_cmat_fill   (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
@@ -167,6 +169,7 @@ int    mad_cmat_invc   (const cnum_t y[],       cnum_t x  ,       cnum_t  r[], s
 int    mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,           num_t rcond);  //  cnum / cmat
 int    mad_cmat_div    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat / cmat
 int    mad_cmat_divm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat /  mat
+int    mad_cmat_svd    (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], size_t m, size_t n);                         // u * s * v.t
 ]]
 
 -- functions for monomials (mad_mono.h)

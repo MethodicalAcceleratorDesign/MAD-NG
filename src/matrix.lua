@@ -57,6 +57,7 @@ DESCRIPTION
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     foldl, foldr, foreach, map, map2, maps,
+    solve, svd, eigen,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.
 
@@ -798,6 +799,32 @@ function M.ediv (x, y, r_)
   end
 
   error("invalid matrix (./) operands")
+end
+
+function M.svd (x, ru_, rs_, rv_)
+  local nr, nc = x:sizes()
+  local ru, rs, rv
+
+  if ismat(x) then
+    ru = ru_ or matrix(nr,nr)
+    rs = rs_ or matrix(min(nr,nc),1)
+    rv = rv_ or matrix(nc,nc)
+    assert(ru:rows() == nr and ru:cols() == nr and
+           rv:rows() == nc and rv:cols() == nc and
+           rs:rows() == min(nr,nc) and rs:cols() == 1, "incompatible matrix sizes")
+    clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+
+  elseif iscmat(x) then
+    ru = ru_ or cmatrix(nr,nr)
+    rs = rs_ or  matrix(min(nr,nc),1)
+    rv = rv_ or cmatrix(nc,nc)
+    assert(ru:rows() == nr and ru:cols() == nr and
+           rv:rows() == nc and rv:cols() == nc and
+           rs:rows() == min(nr,nc) and rs:cols() == 1, "incompatible cmatrix sizes")
+    clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+  else error("invalid matrix type for SVD") end
+
+  return ru, rs, rv
 end
 
 function M.concat (x, y, v_, r_)
