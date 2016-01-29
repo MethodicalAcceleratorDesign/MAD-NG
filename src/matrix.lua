@@ -498,7 +498,6 @@ function M.fill  (x, e )    return x:map (function() return e end, x) end
 function M.copy  (x, r_)    return x:map (ident , r_) end
 function M.real  (x, r_)    return x:map (real  , r_) end
 function M.imag  (x, r_)    return x:map (imag  , r_) end
-function M.conj  (x, r_)    return x:map (conj  , r_) end
 function M.unm   (x, r_)    return x:map (unm   , r_) end
 function M.abs   (x, r_)    return x:map (abs   , r_) end
 function M.arg   (x, r_)    return x:map (arg   , r_) end
@@ -522,7 +521,7 @@ function M.mod   (x, y, r_) return x:maps(y, mod, r_) end
 function M.pow   (x, y, r_) return x:maps(y, pow, r_) end
 
 --[[ TODO
-  det, eigen
+  det
   mexp, mlog, msqrt, mpow
   __eq with tol
 ]]
