@@ -282,12 +282,11 @@ LAPACK is the default method for solving dense numerical matrices. When the
 matrix is square and nonsingular the routines dgesv and zgesv are used
 otherwise routines dgelsy and zgelsy are used.
 
-LAPACK is the default method for computing the entire set of eigenvalues and
-eigenvectors. For generalized eigenvalues the routines dggev zggev are used.
-See also [d,z]geev and [d,z]syevr, zheevr.
-
 LAPACK is the default method for computing the entire set of singluar values
-and singular vectors. For generalized SVD the routines dgesdd zgesdd are used.
+and singular vectors. For generalized SVD the routines dgesdd and zgesdd are used.
+
+LAPACK is the default method for computing the entire set of eigenvalues and
+eigenvectors. For generalized eigenvalues the routines dggev and zggev are used.
 */
 
 // -----
@@ -313,16 +312,21 @@ void zgelsy_ (const int *m, const int *n, const int *nrhs,
 // -----
 // SVD A[m x n]
 // -----
-void dgesdd_(str_t jobz, const int *m, const int *n, num_t A[], const int *lda,
-             num_t S[], num_t U[], const int *ldu, num_t VT[], const int *ldvt,
-             num_t work[], int *lwork, int iwork[], int *info);
-void zgesdd_(str_t jobz, const int *m, const int *n, cnum_t A[], const int *lda,
-             num_t S[], cnum_t U[], const int *ldu, cnum_t VT[], const int *ldvt,
-             cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
+void dgesdd_ (str_t jobz, const int *m, const int *n, num_t A[], const int *lda,
+              num_t S[], num_t U[], const int *ldu, num_t VT[], const int *ldvt,
+              num_t work[], int *lwork, int iwork[], int *info);
+void zgesdd_ (str_t jobz, const int *m, const int *n, cnum_t A[], const int *lda,
+              num_t S[], cnum_t U[], const int *ldu, cnum_t VT[], const int *ldvt,
+              cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
 
 // Eigen values/vectors
-// void dggev_
-// void zggev_
+void dggev_ (str_t jobvl, str_t jobvr, const int *n, num_t A[], const int *lda,
+             num_t WR[], num_t WI[],
+             num_t VL[], const int *ldvl, num_t VR[], const int *ldvr,
+             num_t work[], int *lwork, int *info);
+void zggev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
+             cnum_t W[], cnum_t VL[], const int *ldvl, cnum_t VR[], const int *ldvr,
+             cnum_t work[], int *lwork, num_t rwork[], int *info);
 
 // -- inverse ----------------------------------------------------------------o
 
@@ -540,6 +544,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
 
 // SVD decomposition A = U * S * V.t()
 // A:[m x n], U:[m x m], S:[min(m,n)], V:[n x n]
+
 int
 mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], size_t m, size_t n)
 {
@@ -559,7 +564,7 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], size_t m, size_t 
   mad_mat_trans(u, u, m, m);
 
   if (info < 0) fatal("invalid input argument");
-  if (info > 0) error("SVD did not converged");
+  if (info > 0) error("SVD failed to converged");
 
   return info;
 }
@@ -586,7 +591,61 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], size_t m, siz
   mad_cvec_conj (v, v, n*n);
 
   if (info < 0) fatal("invalid input argument");
-  if (info > 0) error("SVD did not converged");
+  if (info > 0) error("SVD failed to converged");
+
+  return info;
+}
+
+// -- EIGEN -------------------------------------------------------------------o
+
+// Eigen values and vectors
+// A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
+
+int
+mad_mat_eigen (const num_t x[], num_t wr[], num_t wi[], num_t vl[], num_t vr[], size_t n)
+{
+  assert( x && wr && wi && vl && vr );
+  int info=0;
+  const int nn=n;
+
+  num_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(num_t, ra, n*n);
+  mad_mat_trans(x, ra, n, n);
+  dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
+  mad_alloc_tmp(num_t, wk, lwork=sz);
+  dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
+  mad_free_tmp(wk); mad_free_tmp(ra);
+  mad_mat_trans(vl, vl, n, n);
+  mad_mat_trans(vr, vr, n, n);
+
+  if (info < 0) fatal("invalid input argument");
+  if (info > 0) warn ("eigen failed to compute all eigenvalues");
+
+  return info;
+}
+
+int
+mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], size_t n)
+{
+  assert( x && w && vl && vr );
+  int info=0;
+  const int nn=n;
+
+  cnum_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(num_t, rwk, 2*n);
+  mad_alloc_tmp(cnum_t, ra, n*n);
+  mad_cmat_trans(x, ra, n, n);
+  zggev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn, &sz, &lwork, rwk, &info); // query
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  zggev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn,  wk, &lwork, rwk, &info); // compute
+  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
+  mad_cmat_trans(vl, vl, n, n);
+  mad_cmat_trans(vr, vr, n, n);
+
+  if (info < 0) fatal("invalid input argument");
+  if (info > 0) warn ("eigen failed to compute all eigenvalues");
 
   return info;
 }

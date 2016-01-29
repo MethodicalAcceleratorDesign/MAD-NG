@@ -347,6 +347,21 @@ function M.maps (x, y, f, r_)
   return r
 end
 
+function M.conjugate (x, r_)
+  local nr, nc = x:sizes()
+  local r = r_ or ismat(x) and matrix(nc, nr) or cmatrix(nc, nr)
+
+  assert(nr == r:cols() and nc == r:rows(), "incompatible matrix sizes")
+  if ismat(x) and x.data ~= r.data then
+    clib.mad_vec_copy(x.data, r.data, nr*nc)  -- copy
+  elseif iscmat(x) then
+    clib.mad_cvec_conj(x.data, r.data, nr*nc) -- conjugate
+  end
+  return r
+end
+
+M.conj = M.conjugate -- shortcut
+
 function M.transpose (x, r_, c_)
   local nr, nc = x:sizes()
   local r = r_ or ismat(x) and matrix(nc, nr) or cmatrix(nc, nr)
@@ -801,30 +816,35 @@ function M.ediv (x, y, r_)
   error("invalid matrix (./) operands")
 end
 
-function M.svd (x, ru_, rs_, rv_)
+function M.svd (x)
   local nr, nc = x:sizes()
-  local ru, rs, rv
 
   if ismat(x) then
-    ru = ru_ or matrix(nr,nr)
-    rs = rs_ or matrix(min(nr,nc),1)
-    rv = rv_ or matrix(nc,nc)
-    assert(ru:rows() == nr and ru:cols() == nr and
-           rv:rows() == nc and rv:cols() == nc and
-           rs:rows() == min(nr,nc) and rs:cols() == 1, "incompatible matrix sizes")
-    clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+    local ru, rv, rs = matrix(nr,nr), matrix(nc,nc), matrix(min(nr,nc),1)
+    local info = clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+    return ru, rs, rv, info
+  else
+    local ru, rv, rs = cmatrix(nr,nr), cmatrix(nc,nc), matrix(min(nr,nc),1)
+    local info = clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+    return ru, rs, rv, info
+  end
+end
 
-  elseif iscmat(x) then
-    ru = ru_ or cmatrix(nr,nr)
-    rs = rs_ or  matrix(min(nr,nc),1)
-    rv = rv_ or cmatrix(nc,nc)
-    assert(ru:rows() == nr and ru:cols() == nr and
-           rv:rows() == nc and rv:cols() == nc and
-           rs:rows() == min(nr,nc) and rs:cols() == 1, "incompatible cmatrix sizes")
-    clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
-  else error("invalid matrix type for SVD") end
+function M.eigen (x)
+  local nr, nc = x:sizes()
+  assert(nr == nc, "matrix must be square")
 
-  return ru, rs, rv
+  if ismat(x) then
+    local wr, wi = matrix(nr, 1), matrix(nr, 1)
+    local vl, vr = matrix(nr,nr), matrix(nr,nr)
+    local info = clib.mad_mat_eigen(x.data, wr.data, wi.data, vl.data, vr.data, x:rows())
+    return wr, wi, vl, vr, info
+  else
+    local w      = cmatrix(nr, 1)
+    local vl, vr = cmatrix(nr,nr), cmatrix(nr,nr)
+    local info = clib.mad_cmat_eigen(x.data, w.data, vl.data, vr.data, x:rows())
+    return w, vl, vr, info
+  end
 end
 
 function M.concat (x, y, v_, r_)
