@@ -56,7 +56,7 @@ local mono  = xtpsa.mono
 -- locals --------------------------------------------------------------------o
 
 local type, insert = type, table.insert
-local isnum, iscpx, ident, isatpsa, tostring =
+local isnum, iscpx, isscl, ident, isatpsa, tostring =
       gmath.is_number, gmath.is_complex, gmath.is_scalar, gmath.ident,
       gmath.isa_tpsa, gmath.tostring
 
@@ -77,10 +77,16 @@ local function make_map(args, num, tpsa)
     end
   else args.v = S_dft end
 
-  local dsc = desc(args)
-  local map = { [D]=dsc, [C]=tpsa, [V]={}, [T]={} }
   local var = args.v
   local mo  = args.mo or args.vo
+  local d   = false
+
+  for i=1,#mo do
+    if mo[i] > 0 then d = true ; break end
+  end
+
+  local dsc = d and desc(args) or {nmv=#mo} -- TODO
+  local map = { [D]=dsc, [C]=tpsa, [V]={}, [T]={} }
 
   for i=1,dsc.nmv do
     map[V][i] = var[i]
