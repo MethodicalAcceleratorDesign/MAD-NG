@@ -51,7 +51,7 @@ DESCRIPTION
     zeros, ones, eye, unit, fill, copy,
     get_row, get_col, get_diag, get_sub,
     set_row, set_col, set_diag, set_sub,
-    transpose, t, trans, ctrans,
+    transpose, t, trans, ctrans, conjugate,
     real, imag, conj, norm, angle, trace, tr,
     dot, inner, cross, mixed, outer,
     abs, arg, exp, log, pow, sqrt, proj,
@@ -94,7 +94,9 @@ SEE ALSO
  
 -- modules -------------------------------------------------------------------o
 
+local complex = require 'complex'
 local xmatrix = require 'xmatrix'
+local  matrix = require  'matrix'
 
 -- locals --------------------------------------------------------------------o
 

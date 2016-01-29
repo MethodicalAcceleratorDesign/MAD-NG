@@ -74,6 +74,7 @@ SEE ALSO
 -- modules -------------------------------------------------------------------o
 
 local xmatrix = require 'xmatrix'
+local  matrix = require  'matrix'
 
 -- locals --------------------------------------------------------------------o
 

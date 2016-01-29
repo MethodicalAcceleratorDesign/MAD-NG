@@ -1,8 +1,6 @@
 -- time luajit -jv -Oloopunroll=50 -e "package.path = './?.lua;./lua/?.lua;./lib/?.lua;' .. package.path" lua/tests/matrix.lua
 
 local gmath   = require 'gmath'
-local complex = require 'complex'
-local matrix  = require 'matrix'
 local cmatrix = require 'cmatrix'
 
 local tostring = gmath.tostring

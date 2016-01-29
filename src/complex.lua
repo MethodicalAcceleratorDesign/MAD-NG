@@ -58,7 +58,7 @@ SEE ALSO
 local ffi     = require 'ffi'
 local clib    = require 'cmad'
 local gmath   = require 'gmath'
-local cmatrix = require 'cmatrix'
+local xmatrix = require 'xmatrix'
 
 -- locals --------------------------------------------------------------------o
 
@@ -73,6 +73,7 @@ local cres = ffi.new 'complex[1]'
 
 -- FFI type constructors
 local complex = ffi.typeof 'complex'
+local cmatrix = xmatrix.cmatrix
 
 -- implementation ------------------------------------------------------------o
 
