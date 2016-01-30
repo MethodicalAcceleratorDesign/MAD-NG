@@ -602,20 +602,24 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], size_t m, siz
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
 
 int
-mad_mat_eigen (const num_t x[], num_t wr[], num_t wi[], num_t vl[], num_t vr[], size_t n)
+mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], size_t n)
 {
-  assert( x && wr && wi && vl && vr );
+  assert( x && w && vl && vr );
   int info=0;
   const int nn=n;
 
   num_t sz;
   int lwork=-1;
+  mad_alloc_tmp(num_t, wr, n);
+  mad_alloc_tmp(num_t, wi, n);
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
   dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
   mad_alloc_tmp(num_t, wk, lwork=sz);
   dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
+  mad_vec_cvec(wi, wr, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
+  mad_free_tmp(wi); mad_free_tmp(wr); 
   mad_mat_trans(vl, vl, n, n);
   mad_mat_trans(vr, vr, n, n);
 

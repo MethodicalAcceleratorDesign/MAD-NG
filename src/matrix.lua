@@ -821,33 +821,31 @@ end
 
 function M.svd (x)
   local nr, nc = x:sizes()
+  local rs, ru, rv, info = matrix(min(nr,nc),1)
 
   if ismat(x) then
-    local ru, rv, rs = matrix(nr,nr), matrix(nc,nc), matrix(min(nr,nc),1)
-    local info = clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
-    return ru, rs, rv, info
+    ru, rv = matrix(nr,nr), matrix(nc,nc) 
+    info = clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
   else
-    local ru, rv, rs = cmatrix(nr,nr), cmatrix(nc,nc), matrix(min(nr,nc),1)
-    local info = clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
-    return ru, rs, rv, info
+    ru, rv = cmatrix(nr,nr), cmatrix(nc,nc)
+    info = clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
   end
+  return ru, rs, rv, info
 end
 
 function M.eigen (x)
   local nr, nc = x:sizes()
   assert(nr == nc, "matrix must be square")
+  local w, vl, vr, info = cmatrix(nr, 1)
 
   if ismat(x) then
-    local wr, wi = matrix(nr, 1), matrix(nr, 1)
-    local vl, vr = matrix(nr,nr), matrix(nr,nr)
-    local info = clib.mad_mat_eigen(x.data, wr.data, wi.data, vl.data, vr.data, x:rows())
-    return wr, wi, vl, vr, info
+    vl, vr = matrix(nr,nr), matrix(nr,nr)
+    info = clib.mad_mat_eigen (x.data, w.data, vl.data, vr.data, x:rows())
   else
-    local w      = cmatrix(nr, 1)
-    local vl, vr = cmatrix(nr,nr), cmatrix(nr,nr)
-    local info = clib.mad_cmat_eigen(x.data, w.data, vl.data, vr.data, x:rows())
-    return w, vl, vr, info
+    vl, vr = cmatrix(nr,nr), cmatrix(nr,nr)
+    info = clib.mad_cmat_eigen(x.data, w.data, vl.data, vr.data, x:rows())
   end
+  return w, vl, vr, info
 end
 
 function M.concat (x, y, v_, r_)

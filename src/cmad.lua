@@ -78,6 +78,7 @@ ffi.cdef[[
 void   mad_vec_fill  (                         num_t x        ,  num_t  r[], size_t n); //  num -> vec
 void   mad_vec_copy  (const  num_t x[],                          num_t  r[], size_t n); //  vec -> vec
 void   mad_vec_copyv (const  num_t x[],                         cnum_t  r[], size_t n); //  vec ->cvec
+void   mad_vec_cvec  (const  num_t x[], const  num_t y[],       cnum_t  r[], size_t n); // vr,vi->cvec
 num_t  mad_vec_dot   (const  num_t x[], const  num_t y[]                   , size_t n); // <vec ,  vec>
 cnum_t mad_vec_dotv  (const  num_t x[], const cnum_t y[]                   , size_t n); // <vec , cvec>
 void   mad_vec_dotv_r(const  num_t x[], const cnum_t y[]      , cnum_t *r  , size_t n); // <vec , cvec>
@@ -103,7 +104,7 @@ void   mad_vec_divc_r(const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], siz
 void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], size_t n); //  cnum ->cvec
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cnum ->cvec
 void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec
-void   mad_cvec_copyv (const cnum_t x[],                          num_t  r[], size_t n); //  cvec -> vec
+void   mad_cvec_vec   (const cnum_t x[],             num_t re[], num_t  ri[], size_t n); //  cvec->vr,vi
 void   mad_cvec_conj  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec*
 cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , size_t n); // <cvec , cvec>
 cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , size_t n); // <cvec ,  vec>
@@ -136,7 +137,7 @@ void   mad_cvec_divc_r(const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], si
 
 ffi.cdef[[
 void   mad_mat_ident   (                                           num_t  r[], size_t m, size_t n,             size_t ldr); // ident-> mat
-void   mad_mat_fill    (                         num_t x  ,        num_t  r[], size_t m, size_t n,             size_t ldr); //  num -> mat
+void   mad_mat_set     (                         num_t x  ,        num_t  r[], size_t m, size_t n,             size_t ldr); //  num -> mat
 void   mad_mat_copy    (const  num_t x[],                          num_t  r[], size_t m, size_t n, size_t ldx, size_t ldr); //  mat -> mat
 void   mad_mat_copym   (const  num_t x[],                         cnum_t  r[], size_t m, size_t n, size_t ldx, size_t ldr); //  mat ->cmat
 void   mad_mat_trans   (const  num_t x[],                          num_t  r[], size_t m, size_t n);                         //  mat.t()
@@ -151,11 +152,11 @@ int    mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], s
 int    mad_mat_div     (const  num_t x[], const  num_t y[],        num_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat /  mat
 int    mad_mat_divm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat / cmat
 int    mad_mat_svd     (const  num_t x[], num_t u[], num_t s[],    num_t  v[], size_t m, size_t n);                         // u * s * v.t
-int    mad_mat_eigen   (const  num_t x[], num_t wr[], num_t wi[], num_t vl[], num_t vr[], size_t n);                        // (wr,wi) vl, vr
+int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],           size_t n);                        //  w, vl, vr
 
 void   mad_cmat_ident  (                                          cnum_t  r[], size_t m, size_t n,             size_t ldr); //  ident->cmat
-void   mad_cmat_fill   (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
-void   mad_cmat_fill_r (                  num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
+void   mad_cmat_set    (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
+void   mad_cmat_set_r  (                  num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
 void   mad_cmat_copy   (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n, size_t ldx, size_t ldr); //  cmat ->cmat
 void   mad_cmat_trans  (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat.t()
 void   mad_cmat_ctrans (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat.ct()
@@ -171,7 +172,7 @@ int    mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], s
 int    mad_cmat_div    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat / cmat
 int    mad_cmat_divm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat /  mat
 int    mad_cmat_svd    (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], size_t m, size_t n);                         // u * s * v.t
-int    mad_cmat_eigen  (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[], size_t n);                                   // w, vl, vr
+int    mad_cmat_eigen  (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],           size_t n);                         // w, vl, vr
 ]]
 
 -- functions for monomials (mad_mono.h)
