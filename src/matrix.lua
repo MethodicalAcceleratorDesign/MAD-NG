@@ -521,7 +521,6 @@ function M.mod   (x, y, r_) return x:maps(y, mod, r_) end
 function M.pow   (x, y, r_) return x:maps(y, pow, r_) end
 
 --[[ TODO
-  det
   mexp, mlog, msqrt, mpow
   __eq with tol
 ]]
