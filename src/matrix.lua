@@ -814,8 +814,8 @@ function M.ediv (x, y, r_)
   error("invalid matrix (./) operands")
 end
 
-function M.solve(a, b)
-  return (b:t()/a:t()):t()
+function M.solve(a, b, rcond_)
+  return b:t():div(a:t(), nil, rcond_):t()
 end
 
 function M.svd (x)
