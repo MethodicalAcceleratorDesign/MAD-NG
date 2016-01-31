@@ -171,7 +171,11 @@
     size_t mn = m*n; \
     for (size_t i=0; i < mn; i++) \
       r[i] = C(x[i]); \
-  } else if ((const void*)x == (const void*)r && m == n) { \
+  } else if ((const void*)x != (const void*)r) { \
+    for (size_t i=0; i < m; i++) \
+    for (size_t j=0; j < n; j++) \
+      r[j*m+i] = C(x[i*n+j]); \
+  } else if (m == n) { \
     for (size_t i=0; i < m; i++) \
     for (size_t j=i; j < n; j++) { \
       T t = C(r[j*m+i]); \
@@ -179,9 +183,12 @@
       r[i*n+j] = t; \
     } \
   } else { \
+    mad_alloc_tmp(T, t, m*n); \
     for (size_t i=0; i < m; i++) \
     for (size_t j=0; j < n; j++) \
-      r[j*m+i] = C(x[i*n+j]); \
+      t[j*m+i] = C(x[i*n+j]); \
+    memcpy(r, t, m*n*sizeof(T)); \
+    mad_free_tmp(t); \
   } \
 }
 
