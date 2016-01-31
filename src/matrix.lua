@@ -917,12 +917,12 @@ M.__len      = M.size
 M.__concat   = M.concat
 M.__tostring = M.tostring
 
--- matrix-as-array behavior, unchecked bounds
+-- matrix-as-table behavior, unchecked bounds
 M.__index    = function (self, idx)
-  return isnum(idx) and self.data[idx] or M[idx]
+  return isnum(idx) and self.data[idx-1] or M[idx]
 end
 M.__newindex = function (self, idx, val)
-  self.data[idx] = val
+  self.data[idx-1] = val
 end
 
 ffi.metatype( 'matrix_t', M)
