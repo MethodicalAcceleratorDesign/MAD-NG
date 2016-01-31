@@ -348,14 +348,12 @@ function M.maps (x, y, f, r_)
 end
 
 function M.conjugate (x, r_)
-  local nr, nc = x:sizes()
-  local r = r_ or ismat(x) and matrix(nc, nr) or cmatrix(nc, nr)
-
-  assert(nr == r:cols() and nc == r:rows(), "incompatible matrix sizes")
+  local r = r_ or ismat(x) and matrix(x:sizes()) or cmatrix(x:sizes())
+  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
   if ismat(x) and x.data ~= r.data then
-    clib.mad_vec_copy(x.data, r.data, nr*nc)  -- copy
+    clib.mad_vec_copy (x.data, r.data, x:size()) -- copy
   elseif iscmat(x) then
-    clib.mad_cvec_conj(x.data, r.data, nr*nc) -- conjugate
+    clib.mad_cvec_conj(x.data, r.data, x:size()) -- conjugate
   end
   return r
 end
@@ -368,11 +366,11 @@ function M.transpose (x, r_, c_)
   local c = c_ or true
   assert(nr == r:cols() and nc == r:rows(), "incompatible matrix sizes")
   if ismat(x) then
-    clib.mad_mat_trans(x.data, r.data, nr, nc)   -- transpose
+    clib.mad_mat_trans  (x.data, r.data, nr, nc)  -- transpose
   elseif c == true then
-    clib.mad_cmat_ctrans(x.data, r.data, nr, nc) -- conjugate transpose
+    clib.mad_cmat_ctrans(x.data, r.data, nr, nc)  -- conjugate transpose
   else
-    clib.mad_cmat_trans(x.data, r.data, nr, nc)  -- transpose (no conjugate)
+    clib.mad_cmat_trans (x.data, r.data, nr, nc)  -- transpose (no conjugate)
   end
   return r
 end
@@ -498,6 +496,7 @@ function M.fill  (x, e )    return x:map (function() return e end, x) end
 function M.copy  (x, r_)    return x:map (ident , r_) end
 function M.real  (x, r_)    return x:map (real  , r_) end
 function M.imag  (x, r_)    return x:map (imag  , r_) end
+--function M.conj  (x, r_)    return x:map (conj  , r_) end
 function M.unm   (x, r_)    return x:map (unm   , r_) end
 function M.abs   (x, r_)    return x:map (abs   , r_) end
 function M.arg   (x, r_)    return x:map (arg   , r_) end
@@ -547,7 +546,7 @@ function M.add (x, y, r_)
     r = r_ or iscmat(y) and cmatrix(y:sizes()) or matrix(y:sizes())
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
     if ismat(y) then      -- num + mat => vec + num
-      clib.mad_vec_addn(y.data, x, r.data, r:size())
+      clib.mad_vec_addn (y.data, x, r.data, r:size())
     elseif iscmat(y) then -- num + cmat => cvec + num
       clib.mad_cvec_addn(y.data, x, r.data, r:size())
     else goto invalid end
@@ -598,7 +597,7 @@ function M.sub (x, y, r_)
     r = r_ or (iscpx(y) or iscmat(y)) and cmatrix(y:sizes()) or matrix(y:sizes())
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
     if ismat(y) then      -- num - mat => num - vec
-      clib.mad_vec_subn(y.data, x, r.data, r:size())
+      clib.mad_vec_subn (y.data, x, r.data, r:size())
     elseif iscmat(y) then -- num - cmat => num - cvec
       clib.mad_cvec_subn(y.data, x, r.data, r:size())
     else goto invalid end
@@ -649,7 +648,7 @@ function M.mul (x, y, r_)
     r = r_ or (iscpx(y) or iscmat(y)) and cmatrix(y:sizes()) or matrix(y:sizes())
     assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
     if ismat(y) then      -- num * mat => vec * num
-      clib.mad_vec_muln(y.data, x, r.data, r:size())
+      clib.mad_vec_muln (y.data, x, r.data, r:size())
     elseif iscmat(y) then -- num * cmat => cvec * num
       clib.mad_cvec_muln(y.data, x, r.data, r:size())
     else goto invalid end
@@ -768,7 +767,7 @@ function M.emul (x, y, r_)
 
   if ismat(x) then
     if ismat(y) then    -- mat .* mat => vec * vec
-      clib.mad_vec_mul(x.data, y.data, r.data, r:size())
+      clib.mad_vec_mul  (x.data, y.data, r.data, r:size())
     else                -- mat .* cmat => cvec * vec
       clib.mad_cvec_mulv(y.data, x.data, r.data, r:size())
     end
@@ -779,7 +778,7 @@ function M.emul (x, y, r_)
     if ismat(y) then    -- mat .* cmat => cvec * vec
       clib.mad_cvec_mulv(y.data, x.data, r.data, r:size())
     else                -- cmat .* cmat => cvec * cvec
-      clib.mad_cvec_mul(x.data, y.data, r.data, r:size())
+      clib.mad_cvec_mul (x.data, y.data, r.data, r:size())
     end
     return r
   end
@@ -795,7 +794,7 @@ function M.ediv (x, y, r_)
 
   if ismat(x) then
     if ismat(y) then    -- mat ./ mat => vec / vec
-      clib.mad_vec_div(x.data, y.data, r.data, r:size())
+      clib.mad_vec_div (x.data, y.data, r.data, r:size())
     else                -- mat ./ cmat => vec / cvec
       clib.mad_vec_divv(x.data, y.data, r.data, r:size())
     end
@@ -806,7 +805,7 @@ function M.ediv (x, y, r_)
     if ismat(y) then    -- mat ./ cmat => cvec / vec
       clib.mad_cvec_divv(x.data, y.data, r.data, r:size())
     else                -- cmat ./ cmat => cvec / cvec
-      clib.mad_cvec_div(x.data, y.data, r.data, r:size())
+      clib.mad_cvec_div (x.data, y.data, r.data, r:size())
     end
     return r
   end

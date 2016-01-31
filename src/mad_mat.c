@@ -53,10 +53,10 @@
 */
 
 // [m x n] = [m x p] * [p x n]
-// portable vectorized matrix-matrix multiplication
+// portable vectorized gerenal matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 // get xN speed-up factor compared to dgemm from openblas and lapack...
-#define MMUL { \
+#define MMUL { /* mat * mat */ \
   if (n >= 8) { \
     for (size_t i=0; i < m; i++) { \
       for (size_t j=0; j < n-7; j+=8) { \
@@ -111,7 +111,7 @@
 }
 
 // n==1: [m x 1] = [m x p] * [p x 1]
-#define MULV \
+#define MULV /* mat * vec */ \
   for (size_t i=0; i < m; i++) { \
     r[i] = 0; \
     for (size_t k=0; k < p; k++) \
@@ -119,7 +119,7 @@
   }
 
 // m==1: [1 x n] = [1 x p] * [p x n]
-#define VMUL \
+#define VMUL /* vec * mat */ \
   for (size_t j=0; j < n; j++) { \
     r[j] = 0; \
     for (size_t k=0; k < p; k++) \
@@ -127,14 +127,14 @@
   }
 
 // p==1: [m x n] = [m x 1] * [1 x n]
-#define KMUL \
+#define KMUL /* outer */ \
   for (size_t i=0; i < m; i++) { \
   for (size_t j=0; j < n; j++) \
     r[i*n+j] = x[i] * y[j]; \
   }
 
 // m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
-#define VMULV \
+#define VMULV /* inner */ \
   { r[0] = 0; \
     for (size_t k=0; k < p; k++) \
       r[0] += x[k] * y[k]; \
@@ -165,16 +165,13 @@
   } \
 }
 
-// [m x n] transpose, in place only for square matrix
-// inplace for non-square matrix could use FFTW...
-// see http://www.fftw.org/faq/section3.html#transpose
+// [m x n] transpose
 #define TRANS(C,T) { \
   if (m == 1 || n == 1) { \
     size_t mn = m*n; \
     for (size_t i=0; i < mn; i++) \
       r[i] = C(x[i]); \
-  } else if ((const void*)x == (const void*)r) { \
-    assert(m == n); \
+  } else if ((const void*)x == (const void*)r && m == n) { \
     for (size_t i=0; i < m; i++) \
     for (size_t j=i; j < n; j++) { \
       T t = C(r[j*m+i]); \
@@ -290,7 +287,7 @@ eigenvectors. For generalized eigenvalues the routines dggev and zggev are used.
 */
 
 // -----
-// solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
+// Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
 // -----
 void dgesv_ (const int *n, const int *nrhs, num_t  A[], const int *lda,
                                  int *IPIV, num_t  B[], const int *ldb, int *info);
@@ -319,7 +316,9 @@ void zgesdd_ (str_t jobz, const int *m, const int *n, cnum_t A[], const int *lda
               num_t S[], cnum_t U[], const int *ldu, cnum_t VT[], const int *ldvt,
               cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
 
-// Eigen values/vectors
+// -----
+// Eigen values/vectors A[n x n]
+// -----
 void dggev_ (str_t jobvl, str_t jobvr, const int *n, num_t A[], const int *lda,
              num_t WR[], num_t WI[],
              num_t VL[], const int *ldvl, num_t VR[], const int *ldvr,
