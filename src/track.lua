@@ -82,9 +82,13 @@ end
 local function track_drift(e, m)
   local L, iB, T = e.length, m.beta0_inv, m.total_path
   m.lpz = L/sqrt(1 + 2*iB*m.pt + m.pt^2 - m.px^2 - m.py^2)
+
   m.x   = m.x + m.px * m.lpz
   m.y   = m.y + m.py * m.lpz
   m.t   = m.t + (iB + m.pt) * m.lpz - (1-T)*L*iB
+
+  io.write('drift: ', e.name, ' at ', e.s_pos, ' with len= ', L, '\n')
+  m:print()
 end
 
 local function track_kick(e, m)
@@ -111,6 +115,9 @@ local function track_kick(e, m)
       m.pz = sqrt( 1 + 2*iB*m.pt + m.pt^2 )
       m.t = m.t + ( kn0l * m.x - ks0l * m.y ) * (iB + m.pt) / m.pz
     end
+
+  io.write('kick: ', e.name, ' at ', e.s_pos, '\n')
+  m:print()
 end
 
 -- load track maps into elements
@@ -141,7 +148,7 @@ M.track = function (info)
   local seq = info.seq or error("invalid sequence")
   local map = info.map or error("invalid map to track")
   local tbl = info.tbl and M.table(info.tbl) or nil
-  local dft =  { name='dft', idx=1, length=1 } -- drift for local use
+  local dft =  { name='dft', idx=1, s_pos=0, length=1 } -- drift for local use
 
   --io.write('tracking map:\n')
   --map:print()
@@ -156,6 +163,7 @@ M.track = function (info)
     -- implicit drift with L = ds
     if ds > 1e-8 then
       dft.name = 'dft_' .. dft.idx
+      dft.s_pos = e.s_pos
       dft.length = ds
       dft.idx = dft.idx + 1
       track_drift(dft, map)
