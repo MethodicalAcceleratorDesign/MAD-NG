@@ -65,7 +65,7 @@ local sqrt = function(a)
 end
 
 local same = function(a, b)
-  return not is_number(a) and a:same(b) or a
+  return is_number(a) and a or a:same(b)
 end
 
 local scalar = function(a, b) -- in place

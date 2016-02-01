@@ -72,7 +72,7 @@ $(DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(DIR)/%.o: %.lua
-	$(LJ) $(LFLAGS) -b $< $@
+	$(LJ) $(LFLAGS) -bg $< $@
 
 dep:
 	otool -L mad

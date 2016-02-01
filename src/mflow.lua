@@ -47,6 +47,7 @@ SEE ALSO
 
 local gmath   = require 'gmath'
 local tpsa    = require 'tpsa'
+local ctpsa   = require 'ctpsa'
 local xtpsa   = require 'xtpsa'
 local complex = require 'complex'
 
@@ -70,6 +71,16 @@ local S_dft = {x=1, px=1, y=1, py=1, t=1, pt=1} -- default variable names
 
 -- implementation ------------------------------------------------------------o
 
+-- nv: number of variables (if mo is a value)
+-- mo: map variables orders with mo[i] > vo[i]
+-- vo: variables orders (array or value)
+-- nk: number of knobs (if ko is a value)
+-- ko: knobs orders (array or value)
+-- dk: max knobs 'cross' orders (degres)
+-- ex0: {nv=2, mo=3 [,vo=2]}
+-- ex1: {mo={3,3} [, vo={2,2}] [, v={'x', 'px'}] [, ko={1,1,1}] [, dk=2]}
+-- ex2: {mo={3,3} [, vo={2,2}] [, v={'x', 'px'}] [, nk=3,ko=1] [, dk=2]}
+
 local function make_map(args, num, tpsa)
   if args.v then
     for _,v in ipairs(args.v) do
@@ -77,8 +88,10 @@ local function make_map(args, num, tpsa)
     end
   else args.v = S_dft end
 
+  if not args.vo then args.vo = args.mo end
+
   local var = args.v
-  local mo  = args.mo or args.vo
+  local mo  = args.mo
   local d   = false
 
   for i=1,#mo do

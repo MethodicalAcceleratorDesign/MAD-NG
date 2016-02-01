@@ -70,13 +70,17 @@ local tpsa_carr = ffi.typeof 'const tpsa_t* [?]'
 
 -- implementation ------------------------------------------------------------o
 
-M.tpsa = tpsa
-
 function M.mono (t, tbl_)
   return mono(tbl_ or t.d.nv)
 end
 
 -- initialization ------------------------------------------------------------o
+
+function M.same (t, t2_)
+  local mo = t.mo
+  if t2_ and t2_.mo > t.mo then mp = t2_.mo end
+  return istpsa(t) and tpsa(t, mo) or ctpsa(t, mo)
+end
 
 function M.copy (t, r_)
   local r = r_ or tpsa(t)
@@ -475,7 +479,9 @@ end
 
 -- I/O -----------------------------------------------------------------------o
 
-M.print = clib.mad_tpsa_print
+function M.print(t, name, file)
+  clib.mad_tpsa_print(t, name, file)
+end
 
 function M.read (_, file)
   local t = tpsa(clib.mad_tpsa_scan_hdr(file))
@@ -485,12 +491,14 @@ end
 
 ------------------------------------------------------------------------------o
 
-M.__unm = M.unm
-M.__add = M.add
-M.__sub = M.sub
-M.__mul = M.mul
-M.__div = M.div
-M.__pow = M.pow
+M.__unm   = M.unm
+M.__add   = M.add
+M.__sub   = M.sub
+M.__mul   = M.mul
+M.__div   = M.div
+M.__pow   = M.pow
+M.__index = M
+
 
 ffi.metatype('tpsa_t', M)
 

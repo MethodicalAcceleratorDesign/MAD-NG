@@ -17,8 +17,8 @@ tbl:write()
 local track = require 'track' .track
 local map   = require 'mflow' .map
 
-if true then
-  m = map {v={'x','px', 'y','py', 't','pt'}, vo={0,0,0,0,0,0}} -- only scalars
+if false then
+  m = map {v={'x','px', 'y','py', 't','pt'}, mo={0,0,0,0,0,0}} -- only scalars
 
   m.x  = 1e-4 -- orbit at origin
   m.y  = 1e-4
@@ -28,7 +28,9 @@ if true then
   m.py = 0
   m.pt = 1e-6
 else
-  m = map {v={'x','px', 'y','py', 't','pt'}, vo={2,2,2,2,2,2}} -- high orders
+  m = map {v={'x','px', 'y','py', 't','pt'}, mo={2,2,2,2,2,2}} -- high orders
+
+m:print()
 
   m.x:set({0}, 1e-4)
   m.y:set({0}, 1e-4)
