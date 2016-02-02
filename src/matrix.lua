@@ -56,7 +56,7 @@ DESCRIPTION
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    solve, svd, eigen, fft, rfft, ifft, irfft,
+    solve, svd, eigen, fft, ifft, rfft, irfft,
     foldl, foldr, foreach, map, map2, maps,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.
@@ -118,7 +118,7 @@ local isnum, iscpx, iscal,
       gmath.unm, gmath.mod, gmath.pow, gmath.tostring
 
 local istype, cast, sizeof, fill = ffi.istype, ffi.cast, ffi.sizeof, ffi.fill
-local floor = math.floor
+local floor, max = math.floor, math.max
 
 local cres = ffi.new 'complex[1]'
 
@@ -841,7 +841,7 @@ function M.svd (x)
 
   if ismat(x) then
     ru, rv = matrix(nr,nr), matrix(nc,nc) 
-    info = clib.mad_mat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
+    info = clib.mad_mat_svd (x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
   else
     ru, rv = cmatrix(nr,nr), cmatrix(nc,nc)
     info = clib.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
@@ -866,29 +866,20 @@ end
 
 function M.fft (x, r_)
   local nr, nc = x:sizes()
-  local r
+  local r = r_ or cmatrix(nr,nc)
+  assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
 
   if nr == 1 or nc == 1 then -- 1D FFT
-    if ismat(x) then -- vec -> cvec
-      local nr, nc = floor(nr/2+1), floor(nc/2+1)
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+    if ismat(x) then -- vec  -> cvec
       clib.mad_vec_fft (x.data, r.data, x:size())
     else             -- cvec -> cvec
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible cmatrix sizes")
       clib.mad_cvec_fft(x.data, r.data, x:size())
     end
   else                       -- 2D FFT
-    if ismat(x) then -- mat -> cmat
-      local nc = floor(nc/2+1)
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_mat_fft (x.data, r.data, x:sizes())
+    if ismat(x) then -- mat  -> cmat
+      clib.mad_mat_fft (x.data, r.data, x:rows(), x:cols())
     else             -- cmat -> cmat
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_cmat_fft(x.data, r.data, x:sizes())
+      clib.mad_cmat_fft(x.data, r.data, x:rows(), x:cols())
     end
   end
 
@@ -897,28 +888,55 @@ end
 
 function M.ifft (x, r_)
   local nr, nc = x:sizes()
-  local r = r_
+  local r = r_ or cmatrix(nr,nc)
+  assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
 
   if nr == 1 or nc == 1 then -- 1D FFT
-    if ismat(r) then -- cvec -> vec
-      local nr, nc = floor(r:rows()/2+1), floor(r:cols()/2+1)
-      assert(x:rows() == nr and x:cols() == nc, "incompatible matrix sizes")
-      clib.mad_vec_ifft (x.data, r.data, r:size())
-    else             -- cvec -> cvec
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_cvec_ifft(x.data, r.data, r:size())
-    end
+    clib.mad_cvec_ifft(x.data, r.data, x:size())
   else                       -- 2D FFT
-    if ismat(r) then -- cmat -> mat
-      local nr, nc = r:rows(), floor(r:cols()/2+1)
-      assert(x:rows() == nr and x:cols() == nc, "incompatible cmatrix sizes")
-      clib.mad_mat_ifft (x.data, r.data, r:sizes())
-    else             -- cmat -> cmat
-      r = r_ or cmatrix(nr,nc)
-      assert(nr == r:rows() and nc == r:cols(), "incompatible cmatrix sizes")
-      clib.mad_cmat_ifft(x.data, r.data, r:sizes())
-    end
+    clib.mad_cmat_ifft(x.data, r.data, x:rows(), x:cols())
+  end
+
+  return r
+end
+
+function M.rfft (x, r_)
+  assert(ismat(x), "matrix must be real") 
+  local nr, nc = x:sizes()
+  local r
+
+  if nr == 1 or nc == 1 then -- 1D FFT
+    nr, nc = floor(nr/2+1), floor(nc/2+1)
+    r = r_ or cmatrix(nr,nc)
+    assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+    clib.mad_vec_rfft(x.data, r.data, x:size())
+  else                       -- 2D FFT
+    nc = floor(nc/2+1)
+    r = r_ or cmatrix(nr,nc)
+    assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+    clib.mad_mat_rfft(x.data, r.data, x:rows(), x:cols())
+  end
+
+  return r
+end
+
+function M.irfft (x, r_) -- r_ can be the length
+  assert(not r_ or ismat(r_), "result matrix must be real")
+  local nr, nc = x:sizes()
+  local r
+
+  if nr == 1 or nc == 1 then -- 1D FFT
+    nr, nc = max(1,(nr-1)*2), max(1,(nc-1)*2)
+    r = r_ or matrix(nr,nc)
+    assert(nr == r:rows() or nr+1 == r:rows() and
+           nc == r:cols() or nc+1 == r:cols(), "incompatible matrix sizes")
+    clib.mad_vec_irfft(x.data, r.data, r:size())
+  else                       -- 2D FFT
+    nc = (nc-1)*2
+    r = r_ or matrix(nr,nc)
+    assert(nr == r:rows() and
+           nc == r:cols() or nc+1 == r:cols(), "incompatible matrix sizes")
+    clib.mad_mat_irfft(x.data, r.data, r:rows(), r:cols())
   end
 
   return r

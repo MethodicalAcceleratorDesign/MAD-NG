@@ -694,7 +694,7 @@ mad_mat_irfft (const cnum_t x[], num_t r[], size_t m, size_t n)
   fftw_execute(p);
   fftw_destroy_plan(p);
   mad_free_tmp(cx);
-  mad_vec_muln(r, 1.0/(m*n), r, n);
+  mad_vec_muln(r, 1.0/(m*n), r, m*n);
 }
 
 void
@@ -713,5 +713,5 @@ mad_cmat_ifft(const cnum_t x[], cnum_t r[], size_t m, size_t n)
   fftw_plan p = fftw_plan_dft_2d(m, n, (cnum_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  mad_cvec_muln(r, 1.0/(m*n), r, n);
+  mad_cvec_muln(r, 1.0/(m*n), r, m*n);
 }
