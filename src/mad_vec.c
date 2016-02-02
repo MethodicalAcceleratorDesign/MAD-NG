@@ -224,8 +224,18 @@ void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], size
 
 #include <fftw3.h>
 
-void // x [n] -> r [n/2+1]
+void // x [n] -> r [n]
 mad_vec_fft (const num_t x[], cnum_t r[], size_t n)
+{
+  CHKXR;
+  mad_alloc_tmp(cnum_t, cx, n);
+  mad_vec_copyv(x, cx, n);
+  mad_cvec_fft(cx, r, n);
+  mad_free_tmp(cx);
+}
+
+void // x [n] -> r [n/2+1]
+mad_vec_rfft (const num_t x[], cnum_t r[], size_t n)
 {
   CHKXR;
   fftw_plan p = fftw_plan_dft_r2c_1d(n, (num_t*)x, r, FFTW_ESTIMATE);
@@ -234,16 +244,16 @@ mad_vec_fft (const num_t x[], cnum_t r[], size_t n)
 }
 
 void // x [n/2+1] -> r [n]
-mad_vec_ifft (const cnum_t x[], num_t r[], size_t n)
+mad_vec_irfft (const cnum_t x[], num_t r[], size_t n)
 {
   CHKXR;
   size_t nn = n/2+1;
-  mad_alloc_tmp(cnum_t, xx, nn);
-  mad_cvec_copy(x, xx, nn);
-  fftw_plan p = fftw_plan_dft_c2r_1d(n, xx, r, FFTW_ESTIMATE);
+  mad_alloc_tmp(cnum_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
+  fftw_plan p = fftw_plan_dft_c2r_1d(n, cx, r, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  mad_free_tmp(xx);
+  mad_free_tmp(cx);
   mad_vec_muln(r, 1.0/n, r, n);
 }
 

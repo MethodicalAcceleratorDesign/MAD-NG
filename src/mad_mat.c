@@ -668,22 +668,32 @@ void // x [m x n] -> r [m, n/2+1]
 mad_mat_fft (const num_t x[], cnum_t r[], size_t m, size_t n)
 {
   CHKXR;
+  mad_alloc_tmp(cnum_t, cx, m*n);
+  mad_vec_copyv(x, cx, m*n);
+  mad_cmat_fft(cx, r, m, n);
+  mad_free_tmp(cx);
+}
+
+void // x [m x n] -> r [m, n/2+1]
+mad_mat_rfft (const num_t x[], cnum_t r[], size_t m, size_t n)
+{
+  CHKXR;
   fftw_plan p = fftw_plan_dft_r2c_2d(m, n, (num_t*)x, r, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
 }
 
 void // x [m x n/2+1] -> r [m x n]
-mad_mat_ifft (const cnum_t x[], num_t r[], size_t m, size_t n)
+mad_mat_irfft (const cnum_t x[], num_t r[], size_t m, size_t n)
 {
   CHKXR;
   size_t nn = m*(n/2+1);
-  mad_alloc_tmp(cnum_t, xx, nn);
-  mad_cvec_copy(x, xx, nn);
-  fftw_plan p = fftw_plan_dft_c2r_2d(m, n, xx, r, FFTW_ESTIMATE);
+  mad_alloc_tmp(cnum_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
+  fftw_plan p = fftw_plan_dft_c2r_2d(m, n, cx, r, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  mad_free_tmp(xx);
+  mad_free_tmp(cx);
   mad_vec_muln(r, 1.0/(m*n), r, n);
 }
 

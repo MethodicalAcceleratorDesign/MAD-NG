@@ -47,16 +47,16 @@ DESCRIPTION
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
     rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, eye, unit, fill, copy,
+    zeros, ones, eye, fill, copy,
     get_row, get_col, get_diag, get_sub,
     set_row, set_col, set_diag, set_sub,
     transpose, t, trans, ctrans, conjugate,
-    real, imag, conj, norm, angle, trace, tr,
+    real, imag, conj, unit, norm, angle, trace, tr,
     dot, inner, cross, mixed, outer,
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    solve, svd, eigen, fft, ifft,
+    solve, svd, eigen, fft, rfft, ifft, irfft,
     foldl, foldr, foreach, map, map2, maps,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.
@@ -128,6 +128,14 @@ local cmatrix = xmatrix.cmatrix
 
 -- implementation ------------------------------------------------------------o
 
+local function istable(t)
+  return type(t) == 'table'
+end
+
+local function isfunc(f)
+  return type(f) == 'function'
+end
+
 local function unsafe_get0 (x, i, j) return x.data[ i    * x.nc +  j   ]     end
 local function unsafe_set0 (x, i, j, e)     x.data[ i    * x.nc +  j   ] = e end
 local function unsafe_get  (x, i, j) return x.data[(i-1) * x.nc + (j-1)]     end
@@ -197,10 +205,13 @@ function M.eye (x, e_) -- zeros + diagonal
   return x
 end
 
-function M.unit(x)
-  local n = x:norm()
-  assert(n ~= 0, "null matrix")
-  if n ~= 1 then x:div(n, x) end
+function M.fill (x, f)
+  if isscl  (f) then return x:map (function() return f end, x) end
+  if istable(f) then return x:fromtable             (f)        end
+  assert(isfunc(f), "invalid filling source, expects scalar, table or function")
+  for i=1,x:rows() do
+  for j=1,x:cols() do x:set(i,j, f(i,j, x:get(i,j))) end
+  end
   return x
 end
 
@@ -474,6 +485,13 @@ function M.outer (x, y, r_)
   return r
 end
 
+function M.unit(x)
+  local n = x:norm()
+  assert(n ~= 0, "null matrix")
+  if n ~= 1 then x:div(n, x) end
+  return x
+end
+
 function M.norm (x)
   -- Frobenius norm (consistent with inner product)
   if ismat(x) then
@@ -493,7 +511,6 @@ function M.angle (x, y, n_)
   return a
 end
 
-function M.fill  (x, e )    return x:map (function() return e end, x) end
 function M.copy  (x, r_)    return x:map (ident , r_) end
 function M.real  (x, r_)    return x:map (real  , r_) end
 function M.imag  (x, r_)    return x:map (imag  , r_) end
