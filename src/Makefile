@@ -29,7 +29,7 @@ DFLAGS  := -std=c99 -MM
 # compiler
 CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
-CFLAGS  += -flto
+CFLAGS  += # -flto
 CFLAGS  += # -fopenmp
 
 # lua
@@ -42,6 +42,7 @@ LDFLAGS += -Wl,-macosx_version_min,10.8
 LDFLAGS += ../lib/luajit/src/libluajit.a \
            ../lib/lapack/liblapack.a \
            ../lib/lapack/librefblas.a \
+           ../lib/fftw-3.3.4/.libs/libfftw3.a \
            -lgfortran $(shell gcc -print-file-name=libquadmath.a)
 
 # files setup
@@ -59,6 +60,8 @@ DOIT    := $(shell mkdir -p $(DIR) $(DIR)/sse)
 
 # files specific setup
 $(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/OSX/include/luajit-2.1
+$(DIR)/mad_vec.o:  CFLAGS += -I../lib/fftw-3.3.4/api
+$(DIR)/mad_mat.o:  CFLAGS += -I../lib/fftw-3.3.4/api
 
 # rules
 $(PRJ): $(OBJ)

@@ -659,3 +659,49 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], size_t n
 
   return info;
 }
+
+// -- fftw3 -------------------------------------------------------------------o
+
+#include <fftw3.h>
+
+void // x [m x n] -> r [m, n/2+1]
+mad_mat_fft (const num_t x[], cnum_t r[], size_t m, size_t n)
+{
+  CHKXR;
+  fftw_plan p = fftw_plan_dft_r2c_2d(m, n, (num_t*)x, r, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+}
+
+void // x [m x n/2+1] -> r [m x n]
+mad_mat_ifft (const cnum_t x[], num_t r[], size_t m, size_t n)
+{
+  CHKXR;
+  size_t nn = m*(n/2+1);
+  mad_alloc_tmp(cnum_t, xx, nn);
+  mad_cvec_copy(x, xx, nn);
+  fftw_plan p = fftw_plan_dft_c2r_2d(m, n, xx, r, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+  mad_free_tmp(xx);
+  mad_vec_muln(r, 1.0/(m*n), r, n);
+}
+
+void
+mad_cmat_fft (const cnum_t x[], cnum_t r[], size_t m, size_t n)
+{
+  CHKXR;
+  fftw_plan p = fftw_plan_dft_2d(m, n, (cnum_t*)x, r, FFTW_FORWARD, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+}
+
+void
+mad_cmat_ifft(const cnum_t x[], cnum_t r[], size_t m, size_t n)
+{
+  CHKXR;
+  fftw_plan p = fftw_plan_dft_2d(m, n, (cnum_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+  mad_cvec_muln(r, 1.0/(m*n), r, n);
+}

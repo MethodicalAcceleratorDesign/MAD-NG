@@ -44,7 +44,9 @@ int    mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], s
 int    mad_mat_div     (const  num_t x[], const  num_t y[],        num_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat /  mat
 int    mad_mat_divm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  mat / cmat
 int    mad_mat_svd     (const  num_t x[], num_t u[], num_t s[],    num_t  v[], size_t m, size_t n);                         // u * s * v.t
-int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],           size_t n);                        //  w, vl, vr
+int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],           size_t n);                         //  w, vl, vr
+void   mad_mat_fft     (const  num_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  mat ->cmat
+void   mad_mat_ifft    (const cnum_t x[],                          num_t  r[], size_t m, size_t n);                         // cmat -> mat
 
 void   mad_cmat_ident  (                                          cnum_t  r[], size_t m, size_t n,             size_t ldr); //  ident->cmat
 void   mad_cmat_set    (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
@@ -65,6 +67,8 @@ int    mad_cmat_div    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], s
 int    mad_cmat_divm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p, num_t rcond);  //  cmat /  mat
 int    mad_cmat_svd    (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], size_t m, size_t n);                         // u * s * v.t
 int    mad_cmat_eigen  (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],           size_t n);                         // w, vl, vr
+void   mad_cmat_fft    (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat ->cmat
+void   mad_cmat_ifft   (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat ->cmat
 
 // ---------------------------------------------------------------------------o
 
