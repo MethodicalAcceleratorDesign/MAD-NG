@@ -943,8 +943,7 @@ function M.irfft (x, r_) -- r_ can be the length
   return r
 end
 
-function M.conv(x, y_, r_) -- convolution theorem
-  local y = y_ or x
+function M.conv(x, y, r_) -- convolution theorem
   local r = r_ or matrix(x:sizes())
   local xf = x:rfft()
   if x == y then
@@ -954,8 +953,7 @@ function M.conv(x, y_, r_) -- convolution theorem
   end
 end
 
-function M.corr(x, y_, r_) -- correlation theorem
-  local y = y_ or x
+function M.corr(x, y, r_) -- correlation theorem
   local r = r_ or matrix(x:sizes())
   local xf = x:rfft()
   if x == y then
