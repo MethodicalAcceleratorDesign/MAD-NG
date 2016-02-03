@@ -57,7 +57,8 @@ DESCRIPTION
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    solve, svd, eigen, fft, ifft, rfft, irfft,
+    solve, svd, eigen,
+    fft, ifft, rfft, irfft, conv, corr,
     foldl, foldr, foreach, map, map2, maps,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.

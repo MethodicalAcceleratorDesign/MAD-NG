@@ -56,7 +56,8 @@ DESCRIPTION
     abs, arg, exp, log, pow, sqrt, proj,
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
-    solve, svd, eigen, fft, ifft, rfft, irfft,
+    solve, svd, eigen,
+    fft, ifft, rfft, irfft, conv, corr,
     foldl, foldr, foreach, map, map2, maps,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.
@@ -940,6 +941,29 @@ function M.irfft (x, r_) -- r_ can be the length
   end
 
   return r
+end
+
+function M.conv(x, y_, r_) -- convolution theorem
+  local y = y_ or x
+  local r = r_ or matrix(x:sizes())
+  local xf = x:rfft()
+  if x == y then
+    return xf:emul(xf      ,xf):irfft(r)
+  else
+    return xf:emul(y:rfft(),xf):irfft(r)
+  end
+end
+
+function M.corr(x, y_, r_) -- correlation theorem
+  local y = y_ or x
+  local r = r_ or matrix(x:sizes())
+  local xf = x:rfft()
+  if x == y then
+    return xf:emul(xf:conj(  ),xf):irfft(r)
+  else
+    local yf = y:rfft()
+    return xf:emul(yf:conj(yf),xf):irfft(r)
+  end
 end
 
 function M.concat (x, y, v_, r_)
