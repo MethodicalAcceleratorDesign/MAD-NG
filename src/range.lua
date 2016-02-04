@@ -142,7 +142,7 @@ function M.tovector (r)
 end
 
 function M.tostring (r)
-  if r._step == 1 or r._step == -1 then
+  if r._step == 1 then
     return string.format("%g:%g", r._start, r._stop)
   else
     return string.format("%g:%g:%g", r._start, r._stop, r._step)
