@@ -185,5 +185,9 @@ function M.__index (r, i)
   return isnum(i) and r:value(i) or M[i]
 end
 
+function M.__eq (r1, r2)
+  return r1._start == r2._start and r1._step == r2._step and r1._size == r2._size
+end
+
 ------------------------------------------------------------------------------o
 return range

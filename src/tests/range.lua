@@ -56,6 +56,9 @@ io.write('r=', string.format("%.14f", r[#r]), '\n')
 io.write('t=', string.format("%.14f", t[#t]), '\n')
 io.write('x=', string.format("%.14f", x[#x]), '\n')
 
+print(range(1,5,2) == range(1,4,2)) -- true
+print(range(1,5,2) ~= range(1,4,3)) -- true
+
 
 print(isrange(nil))
 print(isrange(2))
