@@ -53,13 +53,13 @@ SEE ALSO
  
 -- modules -------------------------------------------------------------------o
 
-local tnew   = require 'table.new'
+local table  = require 'table.new'
 local gmath  = require 'gmath'
 local vector = require 'vector'
 
 -- locals --------------------------------------------------------------------o
 
-local floor = math.floor
+local max, floor = math.max, math.floor
 
 -- implementation ------------------------------------------------------------o
 
@@ -70,13 +70,11 @@ end
 -- constructor
 
 function range (start, stop, step)
-  assert(start, "invalid range 'start' argument")
-  if not stop then start, stop = start < 0 and -1 or 1, start end
+  assert(start and step ~= 0, "invalid range argument")
+  if not stop then start, stop = 0, start end
   if not step then step = start > stop and -1 or 1 end
-  assert(start > stop and step < 0 or step > 0, "invalid range 'step' argument")
-  local length = floor((stop-start)/step+1.5)
-  local halt   = step > 0 and stop-step or stop+step
-  return setmetatable({_start=start, _stop=stop, _step=step, _length=length, _halt=halt}, M)
+  local size = max(0,floor((stop-start)/step+1.5))
+  return setmetatable({_start=start, _stop=stop, _step=step, _size=size}, M)
 end
 
 -- methods
@@ -86,37 +84,40 @@ function M.range (r)
 end
 
 function M.bounds (r)
-  if r._step > 0 then
-    return r._start, r._stop
-  else
+  if r._step < 0 then
     return r._stop, r._start
+  else
+    return r._start, r._stop
   end    
 end
 
 function M.size (r)
-  return r._length
+  return r._size
 end
 
-function M.overlap (r, other)
-  local s1, s2 = r    :bounds()
-  local o1, o2 = other:bounds()
-  return not (s1 < o1 and s2 < o1 or s1 > o2)
+function M.overlap (r, s)
+  local rl, rh = r:bounds()
+  local sl, sh = s:bounds()
+  return not (rl < sl and rh < sl or rl > sh)
 end
 
 -- metamethods
 
 M.__len = M.size
 
-function M.__call (r, _, i) -- iterator: for n in rng
-  if not i then return r._start end
-  if r._step > 0 and i > r._halt or
-     r._step < 0 and i < r._halt then return end
-  return i + r._step
+local function iter(r, i)
+  if i < r._size then
+    return i+1, r._start+i*r._step
+  end
+end
+
+function M.__ipairs (r) -- iterator: for n in ipairs(r)
+  return iter, r, 0
 end
 
 function M.__index (r, i)
   if type(i) == 'number' then
-    return i >= 1 and i <= r._length and r._start+(i-1)*r._step or nil
+    return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
   else
     return M[i]
   end
@@ -125,7 +126,7 @@ end
 -- convertion
 
 local function convert_to (r, ctor)
-  local n = r._length
+  local n = r._size
   local t = ctor(n,0)
   for i=1,n do
     t[i] = r._start+(i-1)*r._step
@@ -134,7 +135,7 @@ local function convert_to (r, ctor)
 end
 
 function M.totable (r)
-  return convert_to(r, tnew)
+  return convert_to(r, table)
 end
 
 function M.tovector (r)
