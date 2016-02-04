@@ -101,28 +101,6 @@ function M.overlap (r, s)
   return not (rl < sl and rh < sl or rl > sh)
 end
 
--- metamethods
-
-M.__len = M.size
-
-local function iter(r, i)
-  if i < r._size then
-    return i+1, r._start+i*r._step
-  end
-end
-
-function M.__ipairs (r) -- iterator: for n in ipairs(r)
-  return iter, r, 0
-end
-
-function M.__index (r, i)
-  if type(i) == 'number' then
-    return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
-  else
-    return M[i]
-  end
-end
-
 -- convertion
 
 local function convert (r, ctor)
@@ -147,6 +125,29 @@ function M.tostring (r)
     return string.format("%g:%g", r._start, r._stop)
   else
     return string.format("%g:%g:%g", r._start, r._stop, r._step)
+  end
+end
+
+-- metamethods
+
+M.__len      = M.size
+M.__tostring = M.tostring
+
+local function iter(r, i)
+  if i < r._size then
+    return i+1, r._start+i*r._step
+  end
+end
+
+function M.__ipairs (r) -- iterator: for n in ipairs(r)
+  return iter, r, 0
+end
+
+function M.__index (r, i)
+  if type(i) == 'number' then
+    return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
+  else
+    return M[i]
   end
 end
 

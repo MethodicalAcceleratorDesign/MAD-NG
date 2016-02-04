@@ -1035,6 +1035,14 @@ M.__len      = M.size
 M.__concat   = M.concat
 M.__tostring = M.tostring
 
+local function iter (x, i)
+  if i < x:size() then return i+1, x.data[i] end
+end
+
+M.__ipairs   = function (self)
+  return iter, self, 0
+end
+
 -- matrix-as-table behavior, unchecked bounds
 M.__index    = function (self, idx)
   return isnum(idx) and self.data[idx-1] or M[idx]
