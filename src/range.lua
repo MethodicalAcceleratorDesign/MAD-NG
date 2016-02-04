@@ -83,16 +83,29 @@ function M.range (r)
   return r._start, r._stop, r._step
 end
 
+function M.size (r)
+  return r._size
+end
+
+function M.first (r)
+  return r._size > 0 and r._start or nil
+end
+
+function M.last (r)
+  return r._size > 0 and r._start+(r._size-1)*r._step or nil
+end
+
+function M.index (r, x)
+  local i = floor((x-start)/step+1.5))
+  return i >= 1 and i <= r._size and i or nil
+end
+
 function M.bounds (r)
   if r._step < 0 then
     return r._stop, r._start
   else
     return r._start, r._stop
   end    
-end
-
-function M.size (r)
-  return r._size
 end
 
 function M.overlap (r, s)
