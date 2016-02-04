@@ -59,13 +59,15 @@ local vector = require 'vector'
 
 -- locals --------------------------------------------------------------------o
 
-local max, floor = math.max, math.floor
+local max, floor, isnum = math.max, math.floor, gmath.is_number
 
 -- implementation ------------------------------------------------------------o
 
-function gmath.is_range (x)
+function isrange (x)
   return getmetatable(x) == M
 end
+
+gmath.is_range = isrange
 
 -- constructor
 
@@ -75,6 +77,13 @@ function range (start, stop, step)
   if not step then step = start > stop and -1 or 1 end
   local size = max(0,floor((stop-start)/step+1.5))
   return setmetatable({_start=start, _stop=stop, _step=step, _size=size}, M)
+end
+
+-- mutator
+
+function M.reverse (r)
+  r._start, r._stop, r._step = r._stop, r._start, -r._step
+  return r
 end
 
 -- methods
@@ -92,7 +101,7 @@ function M.first (r)
 end
 
 function M.last (r)
-  return r._size > 0 and r._start+(r._size-1)*r._step or nil
+  return r:value(r:size())
 end
 
 function M.index (r, x)
@@ -100,9 +109,20 @@ function M.index (r, x)
   return i >= 1 and i <= r._size and i or nil
 end
 
+function M.value (r, i)
+  return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
+end
+
 function M.element (r, x)
-  local i = r:index(x)
-  return i and x == r._start+(i-1)*r._step or nil
+  return x == r:value(r:index(x))
+end
+
+function M.minmax (r)
+  if r._step < 0 then
+    return r:last(), r:first()
+  else
+    return r:first(), r:last()
+  end    
 end
 
 function M.bounds (r)
@@ -162,11 +182,7 @@ function M.__ipairs (r) -- iterator: for n in ipairs(r)
 end
 
 function M.__index (r, i)
-  if type(i) == 'number' then
-    return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
-  else
-    return M[i]
-  end
+  return isnum(i) and r:value(i) or M[i]
 end
 
 ------------------------------------------------------------------------------o
