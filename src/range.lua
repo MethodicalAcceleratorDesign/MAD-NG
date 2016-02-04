@@ -125,7 +125,7 @@ end
 
 -- convertion
 
-local function convert_to (r, ctor)
+local function convert (r, ctor)
   local n = r._size
   local t = ctor(n,0)
   for i=1,n do
@@ -135,11 +135,11 @@ local function convert_to (r, ctor)
 end
 
 function M.totable (r)
-  return convert_to(r, table)
+  return convert(r, table)
 end
 
 function M.tovector (r)
-  return convert_to(r, vector)
+  return convert(r, vector)
 end
 
 function M.tostring (r)
