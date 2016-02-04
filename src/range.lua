@@ -96,8 +96,13 @@ function M.last (r)
 end
 
 function M.index (r, x)
-  local i = floor((x-start)/step+1.5))
+  local i = floor((x-r._start)/r._step+1.5)
   return i >= 1 and i <= r._size and i or nil
+end
+
+function M.element (r, x)
+  local i = r:index(x)
+  return i and x == r._start+(i-1)*r._step or nil
 end
 
 function M.bounds (r)
