@@ -80,7 +80,19 @@ function gmath.is_cmatrix (x)
 end
 
 function gmath.isa_matrix (x)
-  return type(x) == 'cdata' and (istype('matrix_t', x) or istype('cmatrix_t', x))
+  return type(x) == 'cdata' and istype('matrix_t', x) or istype('cmatrix_t', x)
+end
+
+function gmath.is_vector (x)
+  return gmath.is_matrix(x) and x.nr == 1 or x.nc == 1
+end
+
+function gmath.is_cvector (x)
+  return gmath.is_cmatrix(x) and x.nr == 1 or x.nc == 1
+end
+
+function gmath.isa_vector (x)
+  return gmath.isa_matrix(x) and x.nr == 1 or x.nc == 1
 end
 
 local function matrix_alloc (nr, nc)

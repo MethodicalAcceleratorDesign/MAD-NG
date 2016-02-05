@@ -33,24 +33,28 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
+#define NO(a) 
+#define ID(a) a
+
 #define CNUM2(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 #define CNUMR(re)    CNUM2(re,0)
 #define CNUMI(im)    CNUM2(0,im)
 #define CNUM(a)      cnum_t a = CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 
-#define SET(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x
+#define SET(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[0]
 #define CPY(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[i]
+#define FOLD(OP)     for (size_t i=0; i < n; i++)  r[0] OP##= x[i]
 #define MAP(FN)      for (size_t i=0; i < n; i++)  r[i]  = FN(x[i])
 #define MAP2(FN)     for (size_t i=0; i < n; i++)  r[i]  = FN(x[i], y[i])
-#define VEC(OP)      for (size_t i=0; i < n; i++)  r[i]     = x[i] OP y[i]
-#define VECS(OP)     for (size_t i=0; i < n; i++)  r[i]     = x[i] OP y
-#define SVEC(OP)     for (size_t i=0; i < n; i++)  r[i]     = x    OP y[i]
-#define DOT(C) *r=0; for (size_t i=0; i < n; i++) *r       += C(x[i]) * y[i]
+#define VEC(OP)      for (size_t i=0; i < n; i++)  r[i]  = x[i] OP y[i]
+#define VECS(OP)     for (size_t i=0; i < n; i++)  r[i]  = x[i] OP y
+#define SVEC(OP)     for (size_t i=0; i < n; i++)  r[i]  = x    OP y[i]
+#define DOT(C)       for (size_t i=0; i < n; i++)  r[0] += C(x[i]) * y[i]
 
 // --- vec
 
-void mad_vec_fill (num_t x, num_t r[], size_t n)
-{ CHKR; SET(); }
+void mad_vec_fill (num_t xx, num_t r[], size_t n)
+{ CHKR; num_t *x=&xx; SET(); }
 
 void mad_vec_copy (const num_t x[], num_t r[], size_t n)
 { CHKXR; CPY(); }
@@ -66,13 +70,13 @@ void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], size_t n)
 }
 
 num_t mad_vec_dot (const num_t x[], const num_t y[], size_t n)
-{ CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
+{ CHKXY; num_t r_=0, *r=&r_; DOT(ID); return *r; }
 
 cnum_t mad_vec_dotv (const  num_t x[], const cnum_t y[], size_t n)
-{ CHKXY; cnum_t r_, *r=&r_; DOT(); return *r;}
+{ CHKXY; cnum_t r_=0, *r=&r_; DOT(ID); return *r;}
 
 void mad_vec_dotv_r (const  num_t x[], const cnum_t y[], cnum_t *r, size_t n)
-{ CHKXYR; DOT(); }
+{ CHKXYR; *r=0; DOT(ID); }
 
 void mad_vec_add (const num_t x[], const num_t y[], num_t r[], size_t n)
 { CHKXYR; VEC(+); }
@@ -128,13 +132,17 @@ void mad_vec_divc (const num_t y[], cnum_t x, cnum_t r[], size_t n)
 void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
 { CHKYR; CNUM(x); SVEC(/); }
 
-// --- cvec
- 
-void mad_cvec_fill (cnum_t x, cnum_t r[], size_t n)
-{ CHKR; SET(); }
+void mad_vec_center (const num_t x[], num_t r[], size_t n)
+{ CHKXR; num_t m=0; { num_t *r=&m; FOLD(+); }
+                    { num_t *x=&m; SET (-); } }
 
-void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{ CHKR; CNUM(x); SET(); }
+// --- cvec
+
+void mad_cvec_fill (cnum_t xx, cnum_t r[], size_t n)
+{ CHKR; cnum_t *x=&xx; SET(); }
+
+void mad_cvec_fill_r (num_t xx_re, num_t xx_im, cnum_t r[], size_t n)
+{ CHKR; CNUM(xx); { cnum_t *x=&xx; SET(); } }
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], size_t n)
 { CHKXR; CPY(); }
@@ -149,16 +157,16 @@ void mad_cvec_conj (const cnum_t x[], cnum_t r[], size_t n)
 { CHKXR; MAP(conj); }
 
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], size_t n)
-{ CHKXY; cnum_t r_, *r=&r_; DOT(conj); return *r; }
+{ CHKXY; cnum_t r_=0, *r=&r_; DOT(conj); return *r; }
 
 void mad_cvec_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, size_t n)
-{ CHKXYR; DOT(conj); }
+{ CHKXYR; *r=0; DOT(conj); }
 
 cnum_t mad_cvec_dotv (const cnum_t x[], const num_t y[], size_t n)
-{ CHKXY; cnum_t r_, *r=&r_; DOT(conj); return *r; }
+{ CHKXY; cnum_t r_=0, *r=&r_; DOT(conj); return *r; }
 
 void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, size_t n)
-{ CHKXYR; DOT(conj); }
+{ CHKXYR; *r=0; DOT(conj); }
 
 void mad_cvec_add (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t n)
 { CHKXYR; VEC(+); }
@@ -219,6 +227,10 @@ void mad_cvec_divc (const cnum_t y[], cnum_t x, cnum_t r[], size_t n)
 
 void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
 { CHKYR; CNUM(x); SVEC(/); }
+
+void mad_cvec_center (const cnum_t x[], cnum_t r[], size_t n)
+{ CHKXR; cnum_t m=0; { cnum_t *r=&m; FOLD(+); }
+                     { cnum_t *x=&m; SET (-); } }
 
 // -- fftw3 -------------------------------------------------------------------o
 

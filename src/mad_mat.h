@@ -48,6 +48,7 @@ int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],  
 void   mad_mat_fft     (const  num_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  mat ->cmat
 void   mad_mat_rfft    (const  num_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  mat ->cmat
 void   mad_mat_irfft   (const cnum_t x[],                          num_t  r[], size_t m, size_t n);                         // cmat -> mat
+void   mad_mat_center  (const  num_t x[],                          num_t  r[], size_t m, size_t n);                         //  mat -> mat-<mat>_r
 
 void   mad_cmat_ident  (                                          cnum_t  r[], size_t m, size_t n,             size_t ldr); //  ident->cmat
 void   mad_cmat_set    (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat
@@ -70,6 +71,7 @@ int    mad_cmat_svd    (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], s
 int    mad_cmat_eigen  (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],           size_t n);                         // w, vl, vr
 void   mad_cmat_fft    (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat ->cmat
 void   mad_cmat_ifft   (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat ->cmat
+void   mad_cmat_center (const cnum_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  cmat ->cmat-<cmat>_r
 
 // ---------------------------------------------------------------------------o
 

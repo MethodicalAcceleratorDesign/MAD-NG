@@ -45,12 +45,10 @@ void  (mad_free)     (void*)          __attribute__((hot));
 size_t mad_mem_size  (void*)          __attribute__((hot,const));
 void*  mad_mem_check (void*)          __attribute__((hot,const));
 
-// note: 2048 == mblk_max from mad_mem.c
-
 #undef  mad_alloc_tmp
 #define mad_alloc_tmp(T,NAME,L) \
-  T NAME##_local_tmp__[2048/sizeof(T)]; \
-  T *NAME = ((size_t)(L) > (2048/sizeof(T)) ? \
+  T NAME##_local_tmp__[8192/sizeof(T)]; \
+  T *NAME = ((size_t)(L) > (8192/sizeof(T)) ? \
             mad_malloc((size_t)(L) * sizeof(T)) : NAME##_local_tmp__)
 
 #undef  mad_free_tmp

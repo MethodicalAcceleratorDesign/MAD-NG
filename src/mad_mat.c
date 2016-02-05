@@ -39,6 +39,9 @@
 #define CHKXYRY  assert( x && y && r && y != r )
 #define CHKXYRXY assert( x && y && r && x != r && y != r )
 
+#define NO(a) 
+#define ID(a) a
+
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
 // [m x n] = [m x p] * [p x n]
@@ -153,7 +156,6 @@
 // r = trace([p x m]^t * [p x n])
 // Frobenius inner product
 #define DOT(C) { \
-  *r = 0; \
   if (m == 1 && n == 1) { \
     for (size_t i=0; i < p; i++) \
       *r += C(x[i]) * y[i]; \
@@ -227,19 +229,29 @@ void mad_mat_trans (const num_t x[], num_t r[], size_t m, size_t n)
 { CHKXR; TRANS(,num_t); }
 
 num_t mad_mat_dot (const num_t x[], const num_t y[], size_t m, size_t n, size_t p)
-{ CHKXY; num_t r_, *r=&r_; DOT(); return *r; }
+{ CHKXY; num_t r_=0, *r=&r_; DOT(ID); return *r; }
 
 cnum_t mad_mat_dotm (const num_t x[], const cnum_t y[], size_t m, size_t n, size_t p)
-{ CHKXY; cnum_t r_, *r = &r_; DOT(); return *r; }
+{ CHKXY; cnum_t r_=0, *r = &r_; DOT(ID); return *r; }
 
 void mad_mat_dotm_r (const num_t x[], const cnum_t y[], cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKXYR; DOT(); }
+{ CHKXYR; *r=0; DOT(ID); }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, size_t p)
 { CHKXYRXY; MUL(); }
 
 void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRY; MUL(); }
+
+void mad_mat_center (const num_t x[], num_t r[], size_t m, size_t n)
+{
+  mad_alloc_tmp(num_t, u, m);
+  for (size_t i=0; i < m; i++) { u[i]  = 0;
+  for (size_t j=0; j < n; j++)   u[i] += x[i*n+j]; }
+  for (size_t i=0; i < m; i++)
+  for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - u[i];
+  mad_free_tmp(u);
+}
 
 // -- cmat
 
@@ -262,22 +274,32 @@ void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], size_t m, size_t n)
 { CHKXR; TRANS(conj,cnum_t); }
 
 cnum_t mad_cmat_dot (const cnum_t x[], const cnum_t y[], size_t m, size_t n, size_t p)
-{ CHKXY; cnum_t r_, *r = &r_; DOT(conj); return *r; }
+{ CHKXY; cnum_t r_=0, *r = &r_; DOT(conj); return *r; }
 
 void mad_cmat_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKXYR; DOT(conj); }
+{ CHKXYR; *r=0; DOT(conj); }
 
 cnum_t mad_cmat_dotm (const cnum_t x[], const num_t y[], size_t m, size_t n, size_t p)
-{ CHKXY; cnum_t r_, *r = &r_; DOT(conj); return *r; }
+{ CHKXY; cnum_t r_=0, *r = &r_; DOT(conj); return *r; }
 
 void mad_cmat_dotm_r (const cnum_t x[], const num_t y[], cnum_t *r, size_t m, size_t n, size_t p)
-{ CHKXYR; DOT(conj); }
+{ CHKXYR; *r=0; DOT(conj); }
 
 void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRXY; MUL(); }
 
 void mad_cmat_mulm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n, size_t p)
 { CHKXYRX; MUL(); }
+
+void mad_cmat_center (const cnum_t x[], cnum_t r[], size_t m, size_t n)
+{
+  mad_alloc_tmp(cnum_t, u, m);
+  for (size_t i=0; i < m; i++) { u[i]  = 0;
+  for (size_t j=0; j < n; j++)   u[i] += x[i*n+j]; }
+  for (size_t i=0; i < m; i++)
+  for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - u[i];
+  mad_free_tmp(u);
+}
 
 // -- lapack -----------------------------------------------------------------o
 

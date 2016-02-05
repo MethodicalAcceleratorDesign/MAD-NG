@@ -46,8 +46,8 @@ DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
     (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
     unm, add, sub, mul, div, mod, pow, emul, ediv,
-    rows, cols, size, sizes, get, set, get0, set0,
-    zeros, ones, eye, fill, copy,
+    rows, cols, size, sizes, tsizes, get, set, get0, set0,
+    zeros, ones, eye, fill, copy, same, tsame,
     get_row, get_col, get_diag, get_sub,
     set_row, set_col, set_diag, set_sub,
     transpose, t, trans, ctrans, conjugate,
@@ -57,7 +57,7 @@ DESCRIPTION
     sin, cos, tan, sinh, cosh, tanh,
     asin, acos, atan, asinh, acosh, atanh,
     solve, svd, eigen,
-    fft, ifft, rfft, irfft, conv, corr,
+    fft, ifft, rfft, irfft, conv, corr, covar,
     foldl, foldr, foreach, map, map2, maps,
     concat, reshape, tostring, totable, fromtable,
     check_bounds.
@@ -104,14 +104,14 @@ local tbl_new = require 'table.new'
 -- locals --------------------------------------------------------------------o
 
 local isnum, iscpx, iscal,
-      ismat, iscmat, isamat,
+      ismat, iscmat, isamat, isvec,
       real, imag, conj, ident, min,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
       unm, mod, pow, tostring = 
       gmath.is_number, gmath.is_complex, gmath.is_scalar,
-      gmath.is_matrix, gmath.is_cmatrix, gmath.isa_matrix,
+      gmath.is_matrix, gmath.is_cmatrix, gmath.isa_matrix, gmath.is_vector,
       gmath.real, gmath.imag, gmath.conj, gmath.ident, gmath.min,
       gmath.abs, gmath.arg, gmath.exp, gmath.log, gmath.sqrt, gmath.proj,
       gmath.sin, gmath.cos, gmath.tan, gmath.sinh, gmath.cosh, gmath.tanh,
@@ -186,6 +186,14 @@ function M.reshape (x, nr, nc)
   assert(nr*nc <= x:size(), "incompatible matrix sizes")
   x.nr, x.nc = nr, nc
   return x
+end
+
+function M.same(x)
+  return ismat(x) and matrix(x:sizes()) or cmatrix(x:sizes())
+end
+
+function M.tsame(x)
+  return ismat(x) and matrix(x:tsizes()) or cmatrix(x:tsizes())
 end
 
 function M.zeros (x)
@@ -486,11 +494,22 @@ function M.outer (x, y, r_)
   return r
 end
 
-function M.unit(x)
+function M.unit(x, r_)
   local n = x:norm()
   assert(n ~= 0, "null matrix")
-  if n ~= 1 then x:div(n, x) end
-  return x
+  local r = r_ or x
+  if n ~= 1 then x:div(n, r) end
+  return r
+end
+
+function M.center(x, r_)
+  local r = r_ or x
+      if isvec (x) then clib.mad_vec_center (x.data, r.data, x:size())
+  elseif ismat (x) then clib.mad_mat_center (x.data, r.data, x:rows(), x:cols())
+  elseif iscvec(x) then clib.mad_cvec_center(x.data, r.data, x:size())
+  elseif iscmat(x) then clib.mad_cmat_center(x.data, r.data, x:rows(), x:cols())
+  end
+  return r
 end
 
 function M.norm (x)
@@ -944,23 +963,39 @@ function M.irfft (x, r_) -- r_ can be the length
 end
 
 function M.conv(x, y, r_) -- convolution theorem
-  local r = r_ or matrix(x:sizes())
-  local xf = x:rfft()
-  if x == y then
-    return xf:emul(xf      ,xf):irfft(r)
-  else
-    return xf:emul(y:rfft(),xf):irfft(r)
+  local r = r_ or x:same()
+  if ismat(x) then -- mat
+    local xf = x:rfft()
+    if x == y then return xf:emul(xf      ,xf):irfft(r)
+    else           return xf:emul(y:rfft(),xf):irfft(r)
+    end
+  else             -- cmat
+    local xf = x:fft()
+    if x == y then return xf:emul(xf     ,xf):ifft(r)
+    else           return xf:emul(y:fft(),xf):ifft(r)
+    end
   end
 end
 
 function M.corr(x, y, r_) -- correlation theorem
-  local r = r_ or matrix(x:sizes())
-  local xf = x:rfft()
-  if x == y then
-    return xf:emul(xf:conj(  ),xf):irfft(r)
-  else
-    local yf = y:rfft()
-    return xf:emul(yf:conj(yf),xf):irfft(r)
+  local r = r_ or x:same()
+  if ismat(x) then -- mat
+    local xf, yf = x:rfft()
+    if x == y then     return xf:emul(xf:conj(  ),xf):irfft(r)
+    else yf = y:rfft() return xf:emul(yf:conj(yf),xf):irfft(r)
+    end
+  else             -- cmat
+    local xf, yf = x:fft()
+    if x == y then     return xf:emul(xf:conj(  ),xf):ifft(r)
+    else yf = y:fft()  return xf:emul(yf:conj(yf),xf):ifft(r)
+    end
+  end
+end
+
+function M.covar(x, y, r_) -- covariance of random (row) vectors
+  local xc = x:center(x:same())
+  if x == y then return xc:corr(xc                , r_)
+  else           return xc:corr(y:center(y:same()), r_)
   end
 end
 
