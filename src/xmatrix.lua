@@ -116,6 +116,8 @@ local function fromtable (ctor, tbl)
   return ctor(nr,nc):fromtable(tbl)
 end
 
+-- constructors
+
 local function matrix (nr, nc_)
   local nc = nc_ or nr -- square
   if istable(nr) then
