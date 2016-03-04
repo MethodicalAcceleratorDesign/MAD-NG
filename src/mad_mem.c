@@ -41,13 +41,13 @@ Note about auto collect:
 #define MAD_MEM_AUTOCOLLECT 1
 #endif
 
-#if     MAD_MEM_CHECKMARK != 0
+#ifdef MAD_MEM_CHECKMARK
 #define CHK(...) __VA_ARGS__
 #else
 #define CHK(...)
 #endif
 
-#if     MAD_MEM_AUTOCOLLECT != 0
+#ifdef  MAD_MEM_AUTOCOLLECT
 #define MAC(...) __VA_ARGS__
 #define CAM(...) 
 #else

@@ -26,6 +26,7 @@
 #include <time.h>
 #include <assert.h>
 
+#include "mad_main.h"
 #include "mad_log.h"
 
 #ifdef POSIX_VERSION
@@ -78,6 +79,7 @@ mad_fatal_extrn (void)
   lua_pushstring(L, "");
   debug(4, "lua_fatal: calling lua_error");
   lua_error(L);  // no return, but crash!!!
+  exit(EXIT_FAILURE); // make gcc happy (never reached)
 }
 
 // --- locals ----------------------------------------------------------------o
@@ -129,9 +131,9 @@ usage(void)
 static void
 set_level(str_t level, int *target)
 {
-  char *end = "";
+  char *end;
   int   lvl = *level ? strtol(level, &end, 10) : 1;
-  if ((*level && *end) || lvl < 0 || lvl > 100 ) usage();
+  if ((*level && end && *end) || lvl < 0 || lvl > 100 ) usage();
   *target = lvl;
 }
 

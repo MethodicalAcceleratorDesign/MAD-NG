@@ -29,8 +29,8 @@ DFLAGS  := -std=c99 -MM
 # compiler
 CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
 CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC # -flto -fopenmp
-CFLAGS  += -Waggregate-return -Wcast-align -Wcast-qual -Wdisabled-optimization \
-	         -Wpointer-arith -Wshadow -Wsign-compare -Wundef -Wwrite-strings \
+CFLAGS  += -Waggregate-return -Wcast-align -Wdisabled-optimization \
+	         -Wpointer-arith -Wsign-compare -Wundef -Wwrite-strings \
 	         -Wbad-function-cast -Wmissing-prototypes -Wnested-externs \
 	         -Wstrict-prototypes -Wunreachable-code
 
@@ -41,10 +41,10 @@ LFLAGS  :=
 LDFLAGS := -pagezero_size 10000 -image_base 100000000
 LDFLAGS += -static-libgfortran # -static-libgcc -> crash LuaJIT
 LDFLAGS += -Wl,-macosx_version_min,10.8
-LDFLAGS += ../lib/luajit/src/libluajit.a \
-           ../lib/lapack/liblapack.a \
-           ../lib/lapack/librefblas.a \
-           ../lib/fftw-3.3.4/.libs/libfftw3.a \
+LDFLAGS += ../lib/libluajit.a \
+           ../lib/liblapack.a \
+           ../lib/librefblas.a \
+           ../lib/libfftw3.a \
            -lgfortran $(shell gcc -print-file-name=libquadmath.a)
 
 # files setup
@@ -61,9 +61,9 @@ OBJ     := $(addprefix $(DIR)/,$(OBJ))
 DOIT    := $(shell mkdir -p $(DIR) $(DIR)/sse)
 
 # files specific setup
-$(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/OSX/include/luajit-2.1
-$(DIR)/mad_vec.o:  CFLAGS += -I../lib/fftw-3.3.4/api
-$(DIR)/mad_mat.o:  CFLAGS += -I../lib/fftw-3.3.4/api
+$(DIR)/mad_main.o: CFLAGS += -I../lib/luajit/src
+$(DIR)/mad_vec.o:  CFLAGS += -I../lib/fftw3/api
+$(DIR)/mad_mat.o:  CFLAGS += -I../lib/fftw3/api
 
 # rules
 $(PRJ): $(OBJ)
