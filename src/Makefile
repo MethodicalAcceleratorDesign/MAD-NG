@@ -28,9 +28,11 @@ DFLAGS  := -std=c99 -MM
 
 # compiler
 CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
-CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC
-CFLAGS  += # -flto
-CFLAGS  += # -fopenmp
+CFLAGS  += -O3 -ffast-math -ftree-vectorize -fPIC # -flto -fopenmp
+CFLAGS  += -Waggregate-return -Wcast-align -Wcast-qual -Wdisabled-optimization \
+	         -Wpointer-arith -Wshadow -Wsign-compare -Wundef -Wwrite-strings \
+	         -Wbad-function-cast -Wmissing-prototypes -Wnested-externs \
+	         -Wstrict-prototypes -Wunreachable-code
 
 # lua
 LFLAGS  :=
