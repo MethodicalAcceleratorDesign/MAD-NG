@@ -42,8 +42,7 @@ LDFLAGS := -pagezero_size 10000 -image_base 100000000
 LDFLAGS += -static-libgfortran # -static-libgcc -> crash LuaJIT
 LDFLAGS += -Wl,-macosx_version_min,10.8
 LDFLAGS += ../lib/libluajit.a \
-           ../lib/liblapack.a \
-           ../lib/librefblas.a \
+           ../lib/liblapack.a ../lib/librefblas.a \
            ../lib/libfftw3.a \
            -lgfortran $(shell gcc -print-file-name=libquadmath.a)
 
