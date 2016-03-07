@@ -562,7 +562,7 @@ function M.pow   (x, y, r_) return x:maps(y, pow, r_) end
   __eq with tol
 ]]
 
-function M.__eq (x, y)
+function M.equal (x, y)
   if iscal(y) then
     for i=0,x:size()-1 do
       if x.data[i] ~= y then return false end
@@ -1059,6 +1059,7 @@ function M.fromtable (x, t)
   return x
 end
 
+M.__eq       = M.equal
 M.__unm      = M.unm
 M.__add      = M.add
 M.__sub      = M.sub
