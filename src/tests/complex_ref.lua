@@ -1,6 +1,27 @@
 local M = {}
 
-M.z1 = {{re=1, im=1}, {re=-1, im=1}, {re=1, im=-1}, {re=-1, im=-1}, {re=0, im=0}, {re=0, im=2}, {re=1, im=0}}
+-- M.z1 = {{re=1, im=1}, {re=-1, im=1}, {re=1, im=-1}, {re=-1, im=-1}, {re=0, im=0}, {re=0, im=2}, {re=1, im=0}}
+
+local pi, sin, cos = math.pi, math.sin, math.cos
+local tnew = require 'table.new'
+
+local N = 20
+
+local function make_roots(n, scl)
+  local roots = tnew(n,0)
+  local angle
+
+  for i=1,n do
+    angle = (2*pi*(i-1))/n
+    roots[i].re = cos(angle)*scl
+    roots[i].im = sin(angle)*scl
+  end
+
+  return roots
+end
+
+M.unitroots  = make_roots(N * 4, 1)
+M.sqrt2roots = make_roots(N * 4, math.sqrt(2))
 
 M.expRef ={
   { re= 1.4686939399158852  , im= 2.2873552871788424  },
