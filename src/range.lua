@@ -56,7 +56,7 @@ SEE ALSO
 local ffi    = require 'ffi'
 local gmath  = require 'gmath'
 local vector = require 'vector'
-local table   = require 'table.new'
+local table  = require 'table.new'
 
 -- ffi -----------------------------------------------------------------------o
 
