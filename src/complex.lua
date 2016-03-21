@@ -103,7 +103,7 @@ function M.asinh (x) clib.mad_cnum_asinh_r (x.re, x.im, cres) ; return cres[0] e
 function M.acosh (x) clib.mad_cnum_acosh_r (x.re, x.im, cres) ; return cres[0] end
 function M.atanh (x) clib.mad_cnum_atanh_r (x.re, x.im, cres) ; return cres[0] end
 
-function M.__eq  (x, y)
+function M.equal  (x, y)
   if iscal(y) then
     x, y = complex(x), complex(y)
     return x.re == y.re and x.im == y.im
@@ -224,7 +224,7 @@ function M.pow (x, y)
   error("incompatible complex (^) operands")
 end
 
-function M.tostring (x)
+function M.tostring (x, fmt_)
       if x.im == 0 then return                        tostring(x.re)
   elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
   elseif x.im <  0 then return string.format('%s%si', tostring(x.re),tostring(x.im))
@@ -239,6 +239,7 @@ M.__mul      = M.mul
 M.__div      = M.div
 M.__mod      = M.mod
 M.__pow      = M.pow
+M.__eq       = M.equal
 M.__tostring = M.tostring
 M.__index    = M
 
