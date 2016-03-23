@@ -100,6 +100,7 @@ local fun = {
 
 function math.sign  (x) return x < 0 and -1 or 1 end
 function math.step  (x) return x < 0 and  0 or 1 end
+function math.trunc (x) return x < 0 and ceil(x) or floor(x) end
 function math.round (x) return x < 0 and ceil(x-0.5) or floor(x+0.5) end
 function math.sinc  (x) return abs(x) < 1e-12 and 1.0 or sin(x)/x end
 

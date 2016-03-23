@@ -63,7 +63,7 @@ local xmatrix = require 'xmatrix'
 -- locals --------------------------------------------------------------------o
 
 local istype = ffi.istype
-local abs = math.abs
+local abs, modf = math.abs, math.modf
 
 local isnum, iscpx, iscal, ismat, iscmat, tostring =
       gmath.is_number, gmath.is_complex, gmath.is_scalar,
@@ -203,7 +203,10 @@ function M.div (x, y, r_, rcond_)
 end
 
 function M.mod (x, y)
-  error("cpx % cpx: NYI")
+  local r = x/y
+  local _, re = modf(r.re)
+  local _, im = modf(r.im)
+  return y * complex(re, im)
 end
 
 function M.pow (x, y)
