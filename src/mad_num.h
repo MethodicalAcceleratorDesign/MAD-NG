@@ -31,6 +31,9 @@
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
 num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
 
+void  mad_cnum_rect_r  (num_t  rho, num_t  ang, cnum_t *r);
+void  mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r);
+
 void  mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_log_r   (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r);
@@ -51,6 +54,7 @@ void  mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r);
 
 void  mad_cnum_div_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_mod_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 
 // ---------------------------------------------------------------------------o

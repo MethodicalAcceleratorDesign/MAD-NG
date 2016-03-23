@@ -84,6 +84,9 @@ function M.conj  (x) return complex( x.re, -x.im) end
 function M.abs   (x) return clib.mad_cnum_abs_r (x.re, x.im) end
 function M.arg   (x) return clib.mad_cnum_arg_r (x.re, x.im) end
 
+function M.rect  (x) clib.mad_cnum_rect_r  (x.re, x.im, cres) ; return cres[0] end
+function M.polar (x) clib.mad_cnum_polar_r (x.re, x.im, cres) ; return cres[0] end
+
 function M.exp   (x) clib.mad_cnum_exp_r   (x.re, x.im, cres) ; return cres[0] end
 function M.log   (x) clib.mad_cnum_log_r   (x.re, x.im, cres) ; return cres[0] end
 function M.sqrt  (x) clib.mad_cnum_sqrt_r  (x.re, x.im, cres) ; return cres[0] end
@@ -203,10 +206,18 @@ function M.div (x, y, r_, rcond_)
 end
 
 function M.mod (x, y)
-  local r = x/y
-  local _, re = modf(r.re)
-  local _, im = modf(r.im)
-  return y * complex(re, im)
+  if isnum(x) then     -- num % cpx
+    clib.mad_cnum_mod_r(x, 0, y.re, y.im, cres)
+    return cres[0] 
+  elseif isnum(y) then -- cpx % num
+    clib.mad_cnum_mod_r(x.re, x.im, y, 0, cres)
+    return cres[0] 
+  elseif iscpx(y) then -- cpx % cpx
+    clib.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres)
+    return cres[0]
+  end
+
+  error("incompatible complex (%) operands")
 end
 
 function M.pow (x, y)
