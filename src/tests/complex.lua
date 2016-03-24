@@ -283,6 +283,7 @@ end
 function TestComplex:testEqu()
   isTrue ( C(1,1)    == C(1,1)    )
   isTrue ( C(0,1)    == C(0,1)    )
+  isTrue ( C(1,0)    == 1         )
   isTrue ( C(0,1)    == 1i        )
   isTrue ( C(1,0)    == C(1,0)    )
   isTrue ( C(-0.1,1) == C(-0.1,1) )
@@ -339,10 +340,10 @@ function TestComplex:testMod()
 end
 
 function TestComplex:testPow()
-  isEqu   ( C(1,1)^0, 1       )
-  isEqu   ( C(1,1)^1, C(1,1)  )
-  isEqu   ( C(1,1)^2, C(0,2)  )
-  isNotEqu( C(1,1)^3, C(-2,2) )
+  isTrue ( C(1,1)^0 == 1 )
+  isEqu  ( C(1,1)^1, C(1,1)  )
+  isEqu  ( C(1,1)^2, C(0,2)  )
+  isEqu  ( C(1,1)^3, C(-2,2) )
 end
 
 function TestComplex:testTostring()

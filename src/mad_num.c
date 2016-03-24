@@ -69,3 +69,12 @@ void mad_cnum_rect_r (num_t rho, num_t ang, cnum_t *r)
 void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
 { CHKR; *r = CNUM2( cabs(CNUM(x)), carg(CNUM(x)) ); }
 
+void mad_cnum_ipow_r (num_t x_re, num_t x_im, long long y, cnum_t *r)
+{ CHKR; cnum_t x = CNUM(x);
+  *r = 1;
+  if (y < 0) y = -y, x = 1/x;
+  for (;;) {
+    if (y & 1) *r *= x;
+    if (y >>= 1) x *= x; else break;
+  }
+}

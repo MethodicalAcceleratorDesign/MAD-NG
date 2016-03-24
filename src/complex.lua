@@ -65,8 +65,8 @@ local xmatrix = require 'xmatrix'
 local istype = ffi.istype
 local abs, modf = math.abs, math.modf
 
-local isnum, iscpx, iscal, ismat, iscmat, tostring =
-      gmath.is_number, gmath.is_complex, gmath.is_scalar,
+local isnum, isint, iscpx, iscal, ismat, iscmat, tostring =
+      gmath.is_number, gmath.is_integer, gmath.is_complex, gmath.is_scalar,
       gmath.is_matrix, gmath.is_cmatrix, gmath.tostring
 
 local cres = ffi.new 'complex[1]'
@@ -106,7 +106,7 @@ function M.asinh (x) clib.mad_cnum_asinh_r (x.re, x.im, cres) ; return cres[0] e
 function M.acosh (x) clib.mad_cnum_acosh_r (x.re, x.im, cres) ; return cres[0] end
 function M.atanh (x) clib.mad_cnum_atanh_r (x.re, x.im, cres) ; return cres[0] end
 
-function M.equal  (x, y)
+function M.equal (x, y)
   if iscal(y) then
     x, y = complex(x), complex(y)
     return x.re == y.re and x.im == y.im
@@ -222,10 +222,13 @@ end
 
 function M.pow (x, y)
   if isnum(y) then
-    if y <  0 then x, y = 1/x, -y end
-    if y == 2 then return x*x end
-    if y == 1 then return x end
-    if y == 0 then return 1 end
+    if y == 2 then return x*x end -- common case
+    if y == 1 then return x   end -- stupid case
+    if y == 0 then return 1   end -- promote type
+    if isint(y) then
+      clib.mad_cnum_ipow_r(x.re, x.im, y, cres)
+      return cres[0]
+    end
     y = complex(y)
   end
 
