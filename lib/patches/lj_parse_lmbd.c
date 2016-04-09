@@ -2318,7 +2318,8 @@ static void parse_return(LexState *ls, int islambda)
   int has_list = islambda && lex_opt(ls, '(');
   if (!islambda) lj_lex_next(ls); /* Skip 'return'. */
   fs->flags |= PROTO_HAS_RETURN;
-  if (parse_isend(ls->tok) || ls->tok == ';') {  /* Bare return. */
+  if (parse_isend(ls->tok) || ls->tok == ';'     /* Bare return. */
+                           || (has_list && ls->tok == ')')) {
     ins = BCINS_AD(BC_RET0, 0, 1);
   } else {  /* Return with one or more values. */
     ExpDesc e;  /* Receives the _last_ expression in the list. */
