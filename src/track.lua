@@ -116,8 +116,8 @@ local function track_kick(e, m)
       m.t = m.t + ( kn0l * m.x - ks0l * m.y ) * (iB + m.pt) / m.pz
     end
 
-  io.write('kick: ', e.name, ' at ', e.s_pos, '\n')
-  m:print()
+--  io.write('kick: ', e.name, ' at ', e.s_pos, '\n')
+--  m:print()
 end
 
 -- load track maps into elements

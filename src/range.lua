@@ -80,12 +80,25 @@ end
 
 -- constructor
 
+local function size (start, stop, step)
+--  if step < -1 or step > 1 then
+--    return max(0, floor( (stop-start)/step +step +0.5) )
+--  end
+  if step > 1 then
+    return max(0, floor( (stop-start+1)/step +0.5) )
+  elseif step < -1 then
+    return max(0, floor( (stop-start-1)/step +0.5) )
+  else
+    return max(0, floor( (stop-start  )/step +1.5) )
+  end
+end
+  
 function range (start, stop, step)
   assert(start and step ~= 0, "invalid range argument")
   local r = range_ctor()
   if not stop then start, stop = 0, start end
   if not step then step = start > stop and -1 or 1 end
-  local size = max(0,floor((stop-start)/step+1.5))
+  local size = size(start, stop, step)
   r._start, r._stop, r._step, r._size = start, stop, step, size
   return r
 end
@@ -94,13 +107,13 @@ end
 
 function M.scale (r, a)
   r._stop, r._step = r._stop*a, r._step*a
-  r._size = max(0,floor((r._stop-r._start)/r._step+1.5))
+  r._size = size(r._start, r._stop, r._step)
   return r
 end
 
 function M.translate (r, a)
   r._start, r._stop = r._start+a, r._stop+a
-  r._size = max(0,floor((r._stop-r._start)/r._step+1.5))
+  r._size = size(r._start, r._stop, r._step)
   return r
 end
 
@@ -127,8 +140,13 @@ function M.last (r)
   return r:value(r._size)
 end
 
-function M.index (r, x)
+--[[function M.index (r, x)
   local i = floor((x-r._start)/r._step+1.5)
+  return i >= 1 and i <= r._size and i or nil
+end]]
+
+function M.index (r, x)
+  local i = size(r._start, x, r._step)
   return i >= 1 and i <= r._size and i or nil
 end
 
@@ -192,10 +210,19 @@ function M.tostring (r)
   end
 end
 
+function M.equal (r1, r2)
+  if r1._size == 0 and r2._size == 0 then
+    return true
+  else
+    return r1._start == r2._start and r1._step == r2._step and r1._size == r2._size
+  end          
+end
+
 -- metamethods
 
 M.__len      = M.size
 M.__tostring = M.tostring
+M.__eq       = M.equal
 
 local function iter(r, i)
   if i < r._size then
@@ -211,13 +238,8 @@ function M.__index (r, i)
   return isnum(i) and r:value(i) or M[i]
 end
 
-function M.__eq (r1, r2)
-  if r1._size == 0 and r2._size == 0 then
-    return true
-  else
-    return r1._start == r2._start and r1._step == r2._step and r1._size == r2._size
-  end          
-end
+
+
 
 ffi.metatype('range_t', M)
 
