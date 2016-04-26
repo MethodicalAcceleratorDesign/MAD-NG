@@ -57,7 +57,7 @@ SEE ALSO
 -- implementation ------------------------------------------------------------o
 
 local MT  = {} -- metatable of object (root)
-local MTT = {} -- metatable of table proxy
+local MTT = {} -- metatable of tables (proxy)
  
 local var = {} -- special key to store object members
 local obj = {} -- special key to store object self reference
@@ -105,18 +105,18 @@ local function init_class (self) -- init object as a class
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
-local function init_table (self, k, v) -- wrap table with a proxy
+local function init_table (self, k, v) -- put table in a proxy
   local sv = self[var]
   sv[k] = setmetatable({[var]=v, [obj]=self[obj] or self}, MTT)
   return sv[k]
 end
 
-local function eval_tbl(self, k, v) -- read-eval table variables
+local function eval_tbl(self, k, v) -- read-eval table members
   return is_function(v) and v(self[obj]) or
          is_table   (v) and init_table(self, k, v) or v
 end
 
-local function eval_obj(self, k, v) -- read-eval object variables
+local function eval_obj(self, k, v) -- read-eval object members
   return is_function(v) and v(self) or
          is_table   (v) and init_table(self, k, v) or v
 end
