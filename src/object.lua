@@ -56,6 +56,9 @@ SEE ALSO
 
 -- implementation ------------------------------------------------------------o
 
+local MT  = {} -- metatable of object (root)
+local MTT = {} -- metatable of table proxy
+ 
 local var = {} -- special key to store object members
 local obj = {} -- special key to store object self reference
 
@@ -93,7 +96,7 @@ local function init_parent (self) -- init parent as a class
   return self
 end
 
-local function init_class (self) -- init object as a object
+local function init_class (self) -- init object as a class
   local sv = self[var]
   sv[var] = {}                                -- set var
   if rawget(self, name) ~= nil then
@@ -102,27 +105,23 @@ local function init_class (self) -- init object as a object
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
-local mk_proxy -- forward declaration
-
-local function eval_tbl(self, k, v) -- read-eval table variables
-  return is_function(v) and v(self[obj]) or
-         is_table   (v) and mk_proxy(self, k, v) or v
-end
-
-local function eval_obj(self, k, v) -- read-eval object variables
-  return is_function(v) and v(self) or
-         is_table   (v) and mk_proxy(self, k, v) or v
-end
-
--- proxy for controlling tables stored in object variables
-
-local MTT = {} -- metatable of proxy
- 
-function mk_proxy (self, k, v) -- proxy ctor
+local function init_table (self, k, v) -- wrap table with a proxy
   local sv = self[var]
   sv[k] = setmetatable({[var]=v, [obj]=self[obj] or self}, MTT)
   return sv[k]
 end
+
+local function eval_tbl(self, k, v) -- read-eval table variables
+  return is_function(v) and v(self[obj]) or
+         is_table   (v) and init_table(self, k, v) or v
+end
+
+local function eval_obj(self, k, v) -- read-eval object variables
+  return is_function(v) and v(self) or
+         is_table   (v) and init_table(self, k, v) or v
+end
+
+-- proxy for controlling tables stored in object variables
 
 function MTT:__index (k)
   local v = self[var][k]
@@ -135,8 +134,6 @@ function MTT:__pairs  () return pairs(self[var])  end
 function MTT:__ipairs () return ipairs(self[var]) end
 
 -- proxy for controlling object variables
-
-local MT  = {} -- metatable of object
 
 function MT:__call (a) -- object ctor
   if is_table(a) then
