@@ -58,6 +58,7 @@ SEE ALSO
 
 local MT  = {} -- metatable of object (root)
 local MTT = {} -- metatable of tables (proxy)
+local MTF = {} -- metatable of functions (proxy)
  
 local var = {} -- special key to store object members
 local obj = {} -- special key to store object self reference
@@ -81,6 +82,10 @@ end
 
 local function is_table (a)
   return type(a) == 'table' and getmetatable(a) == nil
+end
+
+local function is_callable (a)
+  return type(a) == 'function' or type(a) == 'table' and a.__call ~= nil
 end
 
 local function init_parent (self) -- init parent as a class
@@ -121,6 +126,11 @@ local function eval_obj(self, k, v) -- read-eval object members
          is_table   (v) and init_table(self, k, v) or v
 end
 
+-- proxy for controlling functions stored in object variables
+
+function MTF:__call (...)
+  return self[1](...)
+end
 -- proxy for controlling tables stored in object variables
 
 function MTT:__index (k)
@@ -128,7 +138,10 @@ function MTT:__index (k)
   return v and eval_tbl(self, k, v)
 end
 
-function MTT:__newindex (k, v)   self[var][k] = v  end
+function MTT:__newindex (k, v)
+  self[var][k] = v
+end
+
 function MTT:__len    () return #self[var]        end
 function MTT:__pairs  () return pairs(self[var])  end
 function MTT:__ipairs () return ipairs(self[var]) end
@@ -150,7 +163,10 @@ function MT:__index (k) -- (+inheritance)
   return v and eval_obj(self, k, v) or getmetatable(self)[k]
 end
 
-function MT:__newindex (k, v)   self[var][k] = v  end
+function MT:__newindex (k, v)
+  self[var][k] = v
+end
+
 function MT:__len    () return #self[var]         end
 function MT:__pairs  () return pairs(self[var])   end
 function MT:__ipairs () return ipairs(self[var])  end
@@ -170,8 +186,16 @@ function MT:set (a, v) -- idem __newindex (+shallow copy)
   return self
 end
 
-function MT:set_method(k, f)
-  if is_function(f) then
+function MT:set_function (k, f)
+  if is_callable(f) then
+    self[var][k] = setmetatable({f}, MTF)
+    return self
+  end
+  error("invalid set_function argument")
+end
+
+function MT:set_method (k, f)
+  if is_callable(f) then
     rawset(self,k,f)
     return self
   end
