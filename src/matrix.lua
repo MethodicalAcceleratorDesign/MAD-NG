@@ -86,7 +86,7 @@ RELATIONS (3D GEOMETRY)
   coplanar  :   (uxv)'.w = 0
 
 RETURN VALUES
-  The constructor of matrices
+  The constructor of matrices.
 
 SEE ALSO
   gmath, complex, matrix, cmatrix
