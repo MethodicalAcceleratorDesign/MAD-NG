@@ -16,116 +16,196 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - TODO
+  - Provide an object model to support prototype-based programming
 
  o----------------------------------------------------------------------------o
 ]=]
 
 local M = { __help = {}, __test = {} }
 
--- module --------------------------------------------------------------------o
+-- help ----------------------------------------------------------------------o
 
 M.__help.self = [[
 NAME
   object -- creates objects
 
 SYNOPSIS
-  object = require"object"
+  object = require 'object'
   obj1 = object {}               -- create a new empty object
   obj2 = object { ... }          -- create a new object with values
+  obj3 = object 'name' { ... }   -- create a new object with name and values
 
 DESCRIPTION
-  The module object creates new objects from lists that become instances
-  of their parent, with callable semantic (i.e. constructor). A 'list' is a
-  table without metatable.
+  The module object implements the necessary machinery to support
+  prototype-based programming and deferred expressions.
   
-  The returned object has its parent (its constructor) set as metatable and
-  inherits all properties of it automatically, hence implementing a prototype
-  language.
-
-  Hence an object is a 'table' that can be used as a constructor (a function)
-  to create new instances of itself, an object (a table) or a class/parent
-  (a metatable).
-
-  The module provides some utilities like :spr, :isa, and .is_object for type
-  identification, :set and :cpy for data manipulation, and .is_list to check
-  for lists, that is 'virgin' tables.
-
 RETURN VALUES
-  The input list properly setup to be an object.
-
-ERRORS
-  If the object does not receive a list, an invalid argument error is raised.
+  The constructor of objects.
 
 EXAMPLES
   Object = require 'object'
   Point = Object {}                     -- Point derives from Object
   p0 = Point { x=0, y=0 }               -- p0 is an instance of Point
   p1 = Point { x=1, y=1 }               -- p1 is an instance of Point
-  p2 = p1:cpy()                         -- p2 is a copy of p1
   p1:set { x=-1, y=-2 }                 -- set p1.x and p1.y (slow)
   p1.x, p1.y = 1, 2                     -- set p1.x and p1.y (faster)
-
-  is_list = require"utils".is_list
-  is_list { x=0, y=0 }                  -- return true
-  is_list (p0)                          -- return false
-  p0:isa(Point)                         -- return true
 
 SEE ALSO
   None
 ]]
 
--- locals ----------------------------------------------------------------------
+-- implementation ------------------------------------------------------------o
 
-local getmetatable, setmetatable = getmetatable, setmetatable
-local type, pairs = type, pairs
-local is_list = require "utils" .is_list
+local var = {} -- special key to store object members
+local obj = {} -- special key to store object self reference
 
-local MT = {}; setmetatable(M, MT) -- make this module the root of all objects
+-- protect var
 
--- members ---------------------------------------------------------------------
+setmetatable(var, {
+  __index    =\ error "incomplete object initialization",
+  __newindex =\ error "incomplete object initialization"
+})
 
-M.name = 'object'
-M.is_object = true
+-- helpers
 
--- methods ---------------------------------------------------------------------
-
--- return the next parent
-function M:spr()
-  return getmetatable(self)
+local function is_string (a)
+  return type(a) == 'string'
 end
 
--- return the parent id or nil
-function M:isa(id)
-  local a = getmetatable(self);
-  while a ~= nil and a ~= id do a = getmetatable(a) end
-  return a ~= nil
+local function is_function (a)
+  return type(a) == 'function'
 end
 
--- set values taken from iterator
-function M:set(a)
-  for k,v in pairs(a) do self[k] = v end
+local function is_table (a)
+  return type(a) == 'table' and getmetatable(a) == nil
+end
+
+local function init_parent (self) -- init parent as a class
+  if rawget(self, '__call') == nil then
+    local mt = getmetatable(self) -- copy metamethods
+    rawset(self, '__call'    , rawget(mt, '__call'    ))
+    rawset(self, '__index'   , rawget(mt, '__index'   ))
+    rawset(self, '__newindex', rawget(mt, '__newindex'))
+  end
   return self
 end
 
--- make a copy
-function M:cpy()
-  return setmetatable({}, getmetatable(self)):set(self)
-end
-
--- metamethods -----------------------------------------------------------------
-
--- constructor
-function MT:__call(a)
-  if is_list(a) then
-    if not rawget(self, '__call') then
-      self.__index = self         -- inheritance
-      self.__call  = MT.__call    -- constructor
-    end
-    return setmetatable(a, self)
+local function init_class (self) -- init object as a object
+  local sv = self[var]
+  sv[var] = {}                                -- set var
+  if rawget(self, name) ~= nil then
+    sv.name = self.name                       -- set name
   end
-  error ("invalid constructor argument, list expected")
+  return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
--- end -------------------------------------------------------------------------
-return M
+local mk_proxy -- forward declaration
+
+local function eval_tbl(self, k, v) -- read-eval table variables
+  return is_function(v) and v(self[obj]) or
+         is_table   (v) and mk_proxy(self, k, v) or v
+end
+
+local function eval_obj(self, k, v) -- read-eval object variables
+  return is_function(v) and v(self) or
+         is_table   (v) and mk_proxy(self, k, v) or v
+end
+
+-- proxy for controlling tables stored in object variables
+
+local MTT = {} -- metatable of proxy
+ 
+function mk_proxy (self, k, v) -- proxy ctor
+  local sv = self[var]
+  sv[k] = setmetatable({[var]=v, [obj]=self[obj] or self}, MTT)
+  return sv[k]
+end
+
+function MTT:__index (k) -- table read access
+  local v = self[var][k]
+  return v and eval_tbl(self, k, v)
+end
+
+function MTT:__newindex (k, v) -- table write access
+  self[var][k] = v
+end
+
+-- proxy for controlling object variables
+
+local MT  = {} -- metatable of object
+
+function MT:__call (a) -- object ctor
+  if is_table(a) then
+    if self[var] == var then self[var] = a; return self end
+    return setmetatable( {        [var]=a  }, init_parent(self) )
+  elseif is_string(a) then
+    return setmetatable( {name=a, [var]=var}, init_parent(self) )
+  end
+  error("invalid object argument")
+end
+
+function MT:__index (k) -- object read access (+inheritance)
+  local v = self[var][k]
+  return v and eval_obj(self, k, v) or getmetatable(self)[k]
+end
+
+function MT:__newindex (k, v) -- object write access
+  self[var][k] = v
+end
+
+function MT:parent () -- parent
+  return getmetatable(self)
+end
+
+function MT:get (k) -- idem __index (-eval)
+  return self[var][k] or getmetatable(self)[k]
+end
+
+function MT:set (a, v) -- idem __newindex (+shallow copy)
+  local sv = self[var]
+  if v ~= nil then
+    sv[a] = v
+  else -- shallow copy (slow)
+    for k,v in pairs(a) do sv[k] = v end
+  end
+  return self
+end
+
+function MT:set_method(k, f)
+  if is_function(f) then
+    rawset(self,k,f)
+    return self
+  end
+  error("invalid set_method argument")
+end
+
+function MT:make_class ()
+  if self[var] ~= nil then
+    return self:init_class()
+  end
+  error("invalid or incomplete object")
+end
+
+function MT:dump (file, level, indent)
+  local fp = file or io.stdout
+  local lv = level or 1
+  local id = indent or 1
+  local sv = self[var]
+  local pa = self:parent()
+  if id == 1 then
+    fp:write("objdump '", self.name, "' [", tostring(self), "]\n")
+  end
+  for k,v in pairs(sv) do
+    for i=1,id do fp:write("  ") end
+    fp:write(tostring(k), ": ", tostring(v), "\n")
+  end
+  if lv > 1 and pa ~= MT then
+    for i=1,id do fp:write("  ") end
+    fp:write("parent '", pa.name, "' [", tostring(pa), "]\n")
+    pa:dump(fp, lv-1, id+1)
+  end
+  fp:write("\n")
+end
+
+------------------------------------------------------------------------------o
+return setmetatable( {name='Object', [var]={}}, MT ) -- root
