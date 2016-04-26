@@ -215,15 +215,15 @@ function MT:dump (file, level, indent)
   local id = indent or 1
   local sv = self[var]
   local pa = self:parent()
-  if id == 1 then
+  if id == 1 then -- header
     fp:write("objdump '", self.name, "' [", tostring(self), "]\n")
   end
-  for k,v in pairs(sv) do
-    for i=1,id do fp:write("  ") end
+  for k,v in pairs(sv) do -- keys
+    for i=1,id do fp:write("  ") end -- indent
     fp:write(tostring(k), ": ", tostring(v), "\n")
   end
-  if lv > 1 and pa ~= MT then
-    for i=1,id do fp:write("  ") end
+  if lv > 1 and pa ~= MT then -- parent
+    for i=1,id do fp:write("  ") end -- indent
     fp:write("parent '", pa.name, "' [", tostring(pa), "]\n")
     pa:dump(fp, lv-1, id+1)
   end
