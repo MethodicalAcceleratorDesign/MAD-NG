@@ -86,6 +86,9 @@ local function init_parent (self) -- init parent as a class
     rawset(self, '__call'    , rawget(mt, '__call'    ))
     rawset(self, '__index'   , rawget(mt, '__index'   ))
     rawset(self, '__newindex', rawget(mt, '__newindex'))
+    rawset(self, '__len'     , rawget(mt, '__len'     ))
+    rawset(self, '__pairs'   , rawget(mt, '__pairs'   ))
+    rawset(self, '__ipairs'  , rawget(mt, '__ipairs'  ))
   end
   return self
 end
