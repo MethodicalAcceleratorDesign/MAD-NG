@@ -37,7 +37,7 @@ SYNOPSIS
 
 DESCRIPTION
   The module object implements the necessary machinery to support
-  prototype-based programming and deferred expressions.
+  prototype-based programming, and __eval and __copy metamethods.
   
 RETURN VALUES
   The constructor of objects.
@@ -84,8 +84,14 @@ local function is_table (a)
   return type(a) == 'table' and getmetatable(a) == nil
 end
 
+local function is_copyable (a)
+  local mt = getmetatable(a)
+  return mt and mt.__copy
+end
+
 local function is_callable (a)
-  return type(a) == 'function' or type(a) == 'table' and a.__call ~= nil
+  local mt = getmetatable(a)
+  return is_function(a) or mt and mt.__call
 end
 
 local function init_parent (self) -- init parent as a class
@@ -104,9 +110,7 @@ end
 local function init_class (self) -- init object as a class
   local sv = self[var]
   sv[var] = {}                                -- set var
-  if rawget(self, name) ~= nil then
-    sv.name = self.name                       -- set name
-  end
+  sv.name = self.name                         -- set name
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
@@ -133,13 +137,17 @@ function MTF:__call (...)
 end
 -- proxy for controlling tables stored in object variables
 
-function MTT:__index (k)
+function MTT:__index (k) -- (+__eval)
   local v = self[var][k]
   return v and eval_tbl(self, k, v)
 end
 
-function MTT:__newindex (k, v)
-  self[var][k] = v
+function MTT:__newindex (k, nv) -- (+__copy)
+  local v = self[var][k]
+  if is_copyable(v)
+  then self[var][k] = v:__copy(nv)
+  else self[var][k] = nv
+  end
 end
 
 function MTT:__len    () return #self[var]        end
@@ -158,13 +166,17 @@ function MT:__call (a) -- object ctor
   error("invalid object argument")
 end
 
-function MT:__index (k) -- (+inheritance)
+function MT:__index (k) -- (+__eval+inheritance)
   local v = self[var][k]
   return v and eval_obj(self, k, v) or getmetatable(self)[k]
 end
 
-function MT:__newindex (k, v)
-  self[var][k] = v
+function MT:__newindex (k, nv) -- (+__copy)
+  local v = self[var][k]
+  if is_copyable(v)
+  then self[var][k] = v:__copy(nv)
+  else self[var][k] = nv
+  end
 end
 
 function MT:__len    () return #self[var]         end
@@ -172,7 +184,7 @@ function MT:__pairs  () return pairs(self[var])   end
 function MT:__ipairs () return ipairs(self[var])  end
 function MT:parent   () return getmetatable(self) end
 
-function MT:get (k) -- idem __index (-eval)
+function MT:get (k) -- idem __index (-__eval)
   return self[var][k] or getmetatable(self)[k]
 end
 
@@ -216,15 +228,17 @@ function MT:dump (file, level, indent)
   local sv = self[var]
   local pa = self:parent()
   if id == 1 then -- header
-    fp:write("objdump '", self.name, "' [", tostring(self), "]\n")
+    fp:write("objdump '", self.name, "' [", tostring(sv), "]\n")
   end
   for k,v in pairs(sv) do -- keys
     for i=1,id do fp:write("  ") end -- indent
-    fp:write(tostring(k), ": ", tostring(v), "\n")
+    fp:write(tostring(k), ": ",
+             tostring(getmetatable(v) == MTF and v[1]   or
+                      getmetatable(v) == MTT and v[var] or v), "\n")
   end
   if lv > 1 and pa ~= MT then -- parent
     for i=1,id do fp:write("  ") end -- indent
-    fp:write("parent '", pa.name, "' [", tostring(pa), "]\n")
+    fp:write("parent '", pa.name, "' [", tostring(pa[var]), "]\n")
     pa:dump(fp, lv-1, id+1)
   end
   fp:write("\n")

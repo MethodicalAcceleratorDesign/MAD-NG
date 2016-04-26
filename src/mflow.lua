@@ -188,7 +188,7 @@ function M.__newindex (map, key, val)
   elseif isscl(val) then
     v:scalar(val)               -- scalar -> TPSA
   else
-    val:copy(v)                 -- TPSA -> TPSA
+    val:copy(v)                 -- TPSA -> TPSA, BUG: v:copy(val) ??
   end
 end
 
