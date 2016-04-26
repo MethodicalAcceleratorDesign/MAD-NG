@@ -58,8 +58,7 @@ SEE ALSO
 
 local var = {} -- special key to store object members
 local obj = {} -- special key to store object self reference
-
-local MT = {} -- metatable of tables (proxy)
+local MT  = {} -- metatable of tables (proxy)
  
 -- protect var
 
@@ -90,7 +89,7 @@ local function is_callable (a)
   return type(a) == 'function' or rawget(getmetatable(a) or {}, '__call')
 end
 
-local function init_class (self) -- init to be a class
+local function obj2cls (self) -- convert object to a class
   if rawget(self, '__call') == nil then
     local mt = getmetatable(self) -- copy metamethods
     rawset(self, '__call'    , rawget(mt, '__call'    ))
@@ -103,14 +102,14 @@ local function init_class (self) -- init to be a class
   return self
 end
 
-local function var_to_obj (self) -- convert variables to object
+local function var2obj (self) -- convert variables to an object
   local sv = self[var]
   sv[var] = {}                                -- set var
-  sv.name = self.name                         -- set name
+  sv.name = rawget(self,name)                 -- set name
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
-local function proxy (self, k, v) -- put table in a proxy
+local function proxy (self, k, v) -- wrap table with a proxy
   local sv = self[var]
   sv[k] = setmetatable({name=k, [var]=v, [obj]=rawget(self,obj) or self}, MT)
   return sv[k]
@@ -149,9 +148,9 @@ function MT:__ipairs () return ipairs(self[var]) end
 function M:__call (a) -- object ctor
   if is_table(a) then
     if self[var] == var then self[var] = a; return self end
-    return setmetatable( {        [var]=a  }, init_class(self) )
+    return setmetatable( {        [var]=a  }, obj2cls(self) )
   elseif is_string(a) then
-    return setmetatable( {name=a, [var]=var}, init_class(self) )
+    return setmetatable( {name=a, [var]=var}, obj2cls(self) )
   end
   error("invalid object argument")
 end
@@ -196,7 +195,7 @@ end
 
 function M:make_class ()
   assert(self[var] ~= nil, "invalid or incomplete object")
-  return self:var_to_obj():init_class()
+  return self:var2obj():init_class()
 end
 
 -- debug
