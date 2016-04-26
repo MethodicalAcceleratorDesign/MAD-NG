@@ -121,14 +121,15 @@ function mk_proxy (self, k, v) -- proxy ctor
   return sv[k]
 end
 
-function MTT:__index (k) -- table read access
+function MTT:__index (k)
   local v = self[var][k]
   return v and eval_tbl(self, k, v)
 end
 
-function MTT:__newindex (k, v) -- table write access
-  self[var][k] = v
-end
+function MTT:__newindex (k, v)   self[var][k] = v  end
+function MTT:__len    () return #self[var]        end
+function MTT:__pairs  () return pairs(self[var])  end
+function MTT:__ipairs () return ipairs(self[var]) end
 
 -- proxy for controlling object variables
 
@@ -144,18 +145,16 @@ function MT:__call (a) -- object ctor
   error("invalid object argument")
 end
 
-function MT:__index (k) -- object read access (+inheritance)
+function MT:__index (k) -- (+inheritance)
   local v = self[var][k]
   return v and eval_obj(self, k, v) or getmetatable(self)[k]
 end
 
-function MT:__newindex (k, v) -- object write access
-  self[var][k] = v
-end
-
-function MT:parent () -- parent
-  return getmetatable(self)
-end
+function MT:__newindex (k, v)   self[var][k] = v  end
+function MT:__len    () return #self[var]         end
+function MT:__pairs  () return pairs(self[var])   end
+function MT:__ipairs () return ipairs(self[var])  end
+function MT:parent   () return getmetatable(self) end
 
 function MT:get (k) -- idem __index (-eval)
   return self[var][k] or getmetatable(self)[k]
