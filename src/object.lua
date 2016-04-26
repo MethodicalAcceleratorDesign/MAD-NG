@@ -195,7 +195,7 @@ end
 
 function M:make_class ()
   assert(self[var] ~= nil, "invalid or incomplete object")
-  return self:var2obj():init_class()
+  return self:var2obj():obj2cls()
 end
 
 -- debug
