@@ -56,18 +56,16 @@ SEE ALSO
 
 -- implementation ------------------------------------------------------------o
 
-local MT  = {} -- metatable of object (root)
-local MTT = {} -- metatable of tables (proxy)
-local MTF = {} -- metatable of functions (proxy)
- 
 local var = {} -- special key to store object members
 local obj = {} -- special key to store object self reference
 
+local MT = {} -- metatable of tables (proxy)
+ 
 -- protect var
 
 setmetatable(var, {
   __index    =\ error "incomplete object initialization",
-  __newindex =\ error "incomplete object initialization"
+  __newindex =\ error "incomplete object initialization",
 })
 
 -- helpers
@@ -85,16 +83,14 @@ local function is_table (a)
 end
 
 local function is_copyable (a)
-  local mt = getmetatable(a)
-  return mt and mt.__copy
+  return rawget(getmetatable(a) or {}, '__copy')
 end
 
 local function is_callable (a)
-  local mt = getmetatable(a)
-  return is_function(a) or mt and mt.__call
+  return type(a) == 'function' or rawget(getmetatable(a) or {}, '__call')
 end
 
-local function init_parent (self) -- init parent as a class
+local function init_class (self) -- init to be a class
   if rawget(self, '__call') == nil then
     local mt = getmetatable(self) -- copy metamethods
     rawset(self, '__call'    , rawget(mt, '__call'    ))
@@ -107,88 +103,82 @@ local function init_parent (self) -- init parent as a class
   return self
 end
 
-local function init_class (self) -- init object as a class
+local function var_to_obj (self) -- convert variables to object
   local sv = self[var]
   sv[var] = {}                                -- set var
   sv.name = self.name                         -- set name
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
-local function init_table (self, k, v) -- put table in a proxy
+local function proxy (self, k, v) -- put table in a proxy
   local sv = self[var]
-  sv[k] = setmetatable({[var]=v, [obj]=self[obj] or self}, MTT)
+  sv[k] = setmetatable({name=k, [var]=v, [obj]=rawget(self,obj) or self}, MT)
   return sv[k]
 end
 
 local function eval_tbl(self, k, v) -- read-eval table members
   return is_function(v) and v(self[obj]) or
-         is_table   (v) and init_table(self, k, v) or v
+         is_table   (v) and proxy(self, k, v) or v
 end
 
 local function eval_obj(self, k, v) -- read-eval object members
   return is_function(v) and v(self) or
-         is_table   (v) and init_table(self, k, v) or v
+         is_table   (v) and proxy(self, k, v) or v
 end
 
--- proxy for controlling functions stored in object variables
-
-function MTF:__call (...)
-  return self[1](...)
-end
 -- proxy for controlling tables stored in object variables
 
-function MTT:__index (k) -- (+__eval)
+function MT:__index (k) -- (+__eval)
   local v = self[var][k]
+--  io.write('++ ', rawget(self[obj], 'name') or tostring(self[obj]), '.', self.name, '[', tostring(k), '] = ', tostring(v), '\n')
   return v and eval_tbl(self, k, v)
-end
-
-function MTT:__newindex (k, nv) -- (+__copy)
-  local v = self[var][k]
-  if is_copyable(v)
-  then self[var][k] = v:__copy(nv)
-  else self[var][k] = nv
-  end
-end
-
-function MTT:__len    () return #self[var]        end
-function MTT:__pairs  () return pairs(self[var])  end
-function MTT:__ipairs () return ipairs(self[var]) end
-
--- proxy for controlling object variables
-
-function MT:__call (a) -- object ctor
-  if is_table(a) then
-    if self[var] == var then self[var] = a; return self end
-    return setmetatable( {        [var]=a  }, init_parent(self) )
-  elseif is_string(a) then
-    return setmetatable( {name=a, [var]=var}, init_parent(self) )
-  end
-  error("invalid object argument")
-end
-
-function MT:__index (k) -- (+__eval+inheritance)
-  local v = self[var][k]
-  return v and eval_obj(self, k, v) or getmetatable(self)[k]
 end
 
 function MT:__newindex (k, nv) -- (+__copy)
   local v = self[var][k]
-  if is_copyable(v)
-  then self[var][k] = v:__copy(nv)
-  else self[var][k] = nv
-  end
+  local c = is_copyable(v) or is_copyable(nv)
+  self[var][k] = c and c(v,nv) or nv
 end
 
-function MT:__len    () return #self[var]         end
-function MT:__pairs  () return pairs(self[var])   end
-function MT:__ipairs () return ipairs(self[var])  end
-function MT:parent   () return getmetatable(self) end
+function MT:__len    () return #self[var]        end
+function MT:__pairs  () return pairs(self[var])  end
+function MT:__ipairs () return ipairs(self[var]) end
 
-function MT:get (k) -- idem __index (-__eval)
+-- proxy for controlling object variables
+
+function M:__call (a) -- object ctor
+  if is_table(a) then
+    if self[var] == var then self[var] = a; return self end
+    return setmetatable( {        [var]=a  }, init_class(self) )
+  elseif is_string(a) then
+    return setmetatable( {name=a, [var]=var}, init_class(self) )
+  end
+  error("invalid object argument")
+end
+
+function M:__index (k) -- (+__eval+inheritance)
+  local v = self[var][k]
+--  io.write('++ ', rawget(self, 'name') or tostring(self), '.', tostring(k), " = ", tostring(v), "\n")
+  return v and eval_obj(self, k, v) or getmetatable(self)[k]
+end
+
+function M:__newindex (k, nv) -- (+__copy)
+  local v = self[var][k]
+  local c = is_copyable(v) or is_copyable(nv)
+  self[var][k] = c and c(v,nv) or nv
+end
+
+function M:__len     () return #self[var]         end
+function M:__pairs   () return pairs(self[var])   end
+function M:__ipairs  () return ipairs(self[var])  end
+function M:parent    () return getmetatable(self) end
+function M:variables () return self[var]          end
+
+function M:get (k) -- idem __index (-__eval)
   return self[var][k] or getmetatable(self)[k]
 end
 
-function MT:set (a, v) -- idem __newindex (+shallow copy)
+function M:set (a, v) -- idem __newindex (+shallow copy)
   local sv = self[var]
   if v ~= nil then
     sv[a] = v
@@ -198,30 +188,20 @@ function MT:set (a, v) -- idem __newindex (+shallow copy)
   return self
 end
 
-function MT:set_function (k, f)
-  if is_callable(f) then
-    self[var][k] = setmetatable({f}, MTF)
-    return self
-  end
-  error("invalid set_function argument")
+function M:set_function (k, f)
+  assert(is_callable(f), "invalid set_function argument")
+  rawset(self,k,f)
+  return self
 end
 
-function MT:set_method (k, f)
-  if is_callable(f) then
-    rawset(self,k,f)
-    return self
-  end
-  error("invalid set_method argument")
+function M:make_class ()
+  assert(self[var] ~= nil, "invalid or incomplete object")
+  return self:var_to_obj():init_class()
 end
 
-function MT:make_class ()
-  if self[var] ~= nil then
-    return self:init_class()
-  end
-  error("invalid or incomplete object")
-end
+-- debug
 
-function MT:dump (file, level, indent)
+function M:dump (file, level, indent)
   local fp = file or io.stdout
   local lv = level or 1
   local id = indent or 1
@@ -233,10 +213,9 @@ function MT:dump (file, level, indent)
   for k,v in pairs(sv) do -- keys
     for i=1,id do fp:write("  ") end -- indent
     fp:write(tostring(k), ": ",
-             tostring(getmetatable(v) == MTF and v[1]   or
-                      getmetatable(v) == MTT and v[var] or v), "\n")
+             tostring(getmetatable(v) == MT and v[var] or v), "\n")
   end
-  if lv > 1 and pa ~= MT then -- parent
+  if lv > 1 and pa ~= M then -- parent
     for i=1,id do fp:write("  ") end -- indent
     fp:write("parent '", pa.name, "' [", tostring(pa[var]), "]\n")
     pa:dump(fp, lv-1, id+1)
@@ -245,4 +224,4 @@ function MT:dump (file, level, indent)
 end
 
 ------------------------------------------------------------------------------o
-return setmetatable( {name='Object', [var]={}}, MT ) -- root
+return setmetatable( {name='Object', [var]={}}, M ) -- root
