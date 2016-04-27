@@ -36,14 +36,18 @@ SYNOPSIS
   obj3 = object 'name' { ... }   -- create a new object with name and values
 
 DESCRIPTION
-  The module object implements the necessary machinery to support prototype
+  The module object implements the necessary machinery to support prototype-
   based programming with some extensions:
-  - On read, value lookup follows the hierachy of objects, but functions are
-    automatically called with 'self' passed as argument (can be ignored) before
-    the value is returned. To avoid this behavior, use 'set_function' to store
-    functions with arguments and call semantic.
-  - On write, if value or new value have defined __copy metamethod, it will
-    be called with both as arguments and the returned value will be stored.
+  - On read, the lookup of values follows the inheritance down to 'Object'.
+    If the retrieved value is a function, it is called with 'self' passed as
+    argument (can be ignored) and the result is returned (i.e. property).
+    To store functions with arguments and call semantic, use 'set_function'.
+    To store metamethods for instances, use 'set_metamethod'.
+  - On write, if the object has a defined __update metamethod, it will be
+    called with 'self', key, and value as arguments, otherwise the value is
+    stored.
+  - __par points to the 'self' parent
+  - __var points to the 'self' variables
 
 RETURN VALUES
   The constructor of objects.
@@ -96,8 +100,8 @@ local function is_object (a)
   return type(a) == 'table' and getmetatable(a) ~= nil and rawget(a,var) ~= nil
 end
 
-local function is_copyable (a)
-  return rawget(getmetatable(a) or {}, '__copy')
+local function is_notifiable (a)
+  return rawget(getmetatable(a) or {}, '__update')
 end
 
 local function is_callable (a)
@@ -112,19 +116,17 @@ local function obj2cls (self) -- convert object to a class
     rawset(self, '__call'    , rawget(mt, '__call'    ))
     rawset(self, '__index'   , rawget(mt, '__index'   ))
     rawset(self, '__newindex', rawget(mt, '__newindex'))
-    rawset(self, '__len'     , rawget(mt, '__len'     ))
-    rawset(self, '__pairs'   , rawget(mt, '__pairs'   ))
-    rawset(self, '__ipairs'  , rawget(mt, '__ipairs'  ))
+    rawset(self, '__update'  , rawget(mt, '__update'  ))
   end
   return self
 end
 
 function M:__call (a) -- object ctor
   if is_string(a) then -- named obj
-    return setmetatable({name=a, [var]=var}, obj2cls(self)) -- set parent
+    return setmetatable({__id=a, [var]=var}, obj2cls(self)) -- set parent
   elseif is_table(a) then
     if self[var] == var then -- finalize named obj, set inheritance
-      if rawget(self,'name') ~= nil then a.name, self.name = self.name, nil end
+      if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
       self[var] = setmetatable(a, {__index=getmetatable(self)[var]});
       return self
     else -- unamed obj
@@ -135,37 +137,24 @@ function M:__call (a) -- object ctor
   error("invalid object argument")
 end
 
+local function eval (self, v) -- variable eval
+  return is_function(v) and v(self) or v
+end
+
 local function get (self, k) -- object lookup
   return self and (rawget(self,k) or get(getmetatable(self),k))
 end
 
-local function eval (self, v) -- variable lookup-eval
-  return is_function(v) and v(self) or v
-end
-
-function M:__index (k) -- (+__eval+inheritance)
+function M:__index (k) -- (+eval+inheritance)
   return eval(self, self[var][k]) or get(getmetatable(self),k)
 end
 
-function M:__newindex (k, nv) -- (+__copy)
-  local v = rawget(self[var],k)
-  local c = v and (is_copyable(v) or is_copyable(nv))
-  self[var][k] = c and c(v,nv) or nv
+function M:__newindex (k, v) -- (+__update)
+  local m = is_notifiable(self)
+  if m then m(self, k, v) else self[var][k] = v end
 end
-
-function M:__len    () return #self[var]        end
-function M:__pairs  () return pairs(self[var])  end
-function M:__ipairs () return ipairs(self[var]) end
 
 -- object methods
-
-function M:isa (obj)
-  assert(is_object(obj), "invalid argument")
-  while self and self ~= obj do
-    self = getmetatable(self)
-  end
-  return self == obj
-end
 
 function M:set_function (name, func)
   assert(is_callable(func), "invalid argument")
@@ -173,10 +162,16 @@ function M:set_function (name, func)
   return self
 end
 
+function M:set_metamethod (name, func)
+  assert(is_callable(func), "invalid argument")
+  rawset(self, name, func)
+  return self
+end
+
 function M:make_class ()
   local sv = self[var] -- self[var] becomes self and discards old self
   sv[var] = setmetatable({},{__index=getmetatable(self)[var]});
-  if rawget(sv,'name') ~= nil then s[var].name, sv.name = sv.name, nil end
+  if rawget(sv,'__id') ~= nil then s[var].__id, sv.__id = sv.__id, nil end
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 
@@ -195,21 +190,26 @@ function M:dump (file, level, indent, vars)
         if is_string(v) then fp:write(": '", tostring(v)   , "'")
     elseif is_proxy (v) then fp:write(": [", tostring(v[1]), "]")
                         else fp:write(":  ", tostring(v)) end
-    if va[k] and k ~= 'name' then fp:write(" (*)") else va[k] = true end
+    if va[k] and k ~= '__id' then fp:write(" (*)") else va[k] = true end
     fp:write("\n")
   end
   -- parent
-  if lv > 1 and pa ~= M then pa:dump(fp, lv-1, id+1, va)
-                        else fp:write("\n") end
+  if lv > 1 and pa ~= M then pa:dump(fp, lv-1, id+1, va) end
 end
 
 -- root object
 
 local object = setmetatable({
-  [var] = { name  ='Object',
-            parent=\s getmetatable(s),
-            rawget=\s rawget(s,var),
+  [var] = { __id ='Object',
+            __par=\s getmetatable(s),
+            __var=\s rawget(s,var),
+            name =\s s.__id, -- alias
           }}, M )
+: set_function('isa', function(s,o)
+    assert(is_object(o), "invalid argument")
+    while s and s ~= o do s = getmetatable(s) end
+    return s == o
+  end)
 
 ------------------------------------------------------------------------------o
 return object

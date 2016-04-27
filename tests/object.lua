@@ -12,10 +12,10 @@ print(p3.name, p3.x, p3.y)
 
 local x = 5
 
-local p4 = p3 'p4' { x=\s s.parent.x, y=\s 2*s.x }
+local p4 = p3 'p4' { x=\s s.__par.x, y=\s 2*s.x }
 
 print(p4.name, p4.x, p4.y, p4.z)
-print(p4.name, p4.rawget.x, p4.rawget.y, p4.rawget.z)
+print(p4.name, p4.__var.x, p4.__var.y, p4.__var.z)
 
 local p5 = p4 'p5' { y=\ { 0, 3*x } }
 
@@ -51,8 +51,19 @@ print(p3.name, p3.x) -- p3.__index
 print(p5.toto)
 
 print("list of p5 variables")
-for k,v in pairs(p5) do
+for k,v in pairs(p5.__var) do
   print(k, ":", v, p5[k])
 end 
 
---p3:dump(nil, 4) -- 3rd
+print("trying to destroy [var]")
+p5.__var = nil
+p5:dump(nil, 4) -- 3rd
+
+p5[p5.__var] = nil
+p5:dump(nil, 4) -- 3rd
+
+for k,v in pairs(p5) do
+  if v == p5.__var then p5[k] = k end
+end 
+p5:dump(nil, 4) -- 3rd
+
