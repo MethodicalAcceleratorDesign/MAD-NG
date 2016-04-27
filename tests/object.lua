@@ -25,9 +25,11 @@ local p6 = p5 'p6' { x=5 }
 
 print(p6.name, p6.x, p6.y[1], p6.y[2])
 
-p3:set_function('f', \x,y (x+y, x-y))
+p3:set_function('f', \x,y   (x+y, x-y))
+p3:set_function('g', \s,x,y (x+y, x-y, s.name))
 
 print(p5.name, p5.f(2,3))
+print(p5.name, p5:g(2,3))
 
 p3:dump(nil, 4) -- 1st
 
