@@ -48,12 +48,15 @@ DESCRIPTION
       'set_method' or 'set_metamethod' respectively.
   - On write, the value is simply stored (no lookup).
     + To override this behavior, just (re)defined the __newindex metamethod
-      using set_metamethod with override as true (use with care!).
+      using set_metamethod with 'override' as true (use with care!).
   - On build, the new instance is connected to its parent (inheritance).
     + If the new instance has a defined __init metamethod (inherited), it will
       be called on the new instance and non-nil result is returned.
-  - __par points to the 'self' parent
-  - __var points to the 'self' variables
+  - Root 'Object' defines the following variables:
+    + 'name'  points to 'self' name unless overridden
+    + '__par' points to 'self' parent unless overridden
+    + '__var' points to 'self' variables unless overridden
+    + '__id'  holds 'self' name (may be inherited)
 
 RETURN VALUES
   The constructor of objects.
@@ -189,17 +192,17 @@ end
 
 function M:set_method (name, func)
   assert(is_object(self)               , "invalid 'self' argument, valid object expected")
-  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   assert(meta[name] ~= name            , "invalid 'name' argument, metamethod detected")
+  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   rawset(self, name, func)
   return self
 end
 
 function M:set_metamethod (name, func, override)
   assert(is_object(self)               , "invalid 'self' argument, valid object expected")
-  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   assert(meta[name] == name            , "invalid 'name' argument, not a metamethod")
-  assert(MT[name] == nil or override   , "cannot override 'Object' behavior")
+  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
+  assert(MT[name] == nil or override   , "cannot override inherited 'Object' behavior")
   local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
