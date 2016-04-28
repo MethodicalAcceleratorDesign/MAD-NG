@@ -16,7 +16,8 @@
  o----------------------------------------------------------------------------o
   
   Purpose:
-  - Provide an object model to support prototype-based programming
+  - Provide an object model to support prototype-based programming with value
+    semantic for functions stored in variables and further extensions. 
 
  o----------------------------------------------------------------------------o
 ]=]
@@ -36,16 +37,21 @@ SYNOPSIS
   obj3 = object 'name' { ... }   -- create a new object with name and values
 
 DESCRIPTION
-  The module object implements the necessary machinery to support prototype-
-  based programming with some extensions:
-  - On read, the lookup of values follows the inheritance down to 'Object'.
-    If the retrieved value is a function, it is called with 'self' passed as
-    argument (can be ignored) and the result is returned (i.e. property).
-    To store functions with arguments and call semantic, use 'set_function'.
-    To store metamethods for instances, use 'set_metamethod'.
-  - On write, if the object has a defined __update metamethod, it will be
-    called with 'self', key, and value as arguments, otherwise the value is
-    stored.
+  The 'object' module implements the necessary machinery to support prototype-
+  based programming with value semantic for functions and further extensions:
+  - On read, the lookup of values follows the inheritance down to 'Object' with
+    precedence of variables over methods.
+    + If the retrieved value is a function, it is called with 'self' passed as
+      argument (can be ignored) and it returns the result.
+    + To store functions with arguments in variables, use 'set_function'.
+    + To store methods or metamethods for instances (both are inherited), use
+      'set_method' or 'set_metamethod' respectively.
+  - On write, the value is simply stored (no lookup).
+    + To override this behavior, just (re)defined the __newindex metamethod
+      using set_metamethod with override as true (use with care!).
+  - On build, the new instance is connected to its parent (inheritance).
+    + If the new instance has a defined __init metamethod (inherited), it will
+      be called on the new instance and non-nil result is returned.
   - __par points to the 'self' parent
   - __var points to the 'self' variables
 
@@ -83,9 +89,10 @@ local MT = {}
 
 -- metamethods
 local meta = { -- from lj_obj.h
-  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__ipairs',
-  '__le', '__len', '__lt', '__metatable', '__mod', '__mode', '__mul',
-  '__newindex', '__pairs', '__pow', '__sub', '__tostring', '__unm', '__update',
+  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
+  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
+  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
+  '__unm',
 }
 for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
@@ -111,15 +118,16 @@ local function is_object (a)
   return type(a) == 'table' and getmetatable(a) ~= nil and rawget(a,var) ~= nil
 end
 
-local function is_notifiable (a)
-  return rawget(getmetatable(a) or {}, '__update')
-end
-
 local function is_callable (a)
   return type(a) == 'function' or rawget(getmetatable(a) or {}, '__call')
 end
 
 -- objects are proxies controlling variables access and inheritance
+
+local function init(a)
+  local m = rawget(getmetatable(a), '__init')
+  return m and m(a) or a
+end
 
 function MT:__call (a) -- object ctor
   if is_string(a) then -- named obj
@@ -129,11 +137,11 @@ function MT:__call (a) -- object ctor
     if self[var] == var0 then -- finalize named obj, set fast inheritance
       if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
       self[var] = setmetatable(a, self);
-      return self
+      return init(self)
     else -- unamed obj
       local obj = {[par]=self, [var]=a, __index=self[var]}
       setmetatable(a, obj) -- set fast inheritance
-      return setmetatable(obj, getmetatable(self))
+      return init(setmetatable(obj, getmetatable(self)))
     end
   end
   error("invalid object argument")
@@ -154,9 +162,8 @@ function MT:__index (k) -- (+eval+inheritance)
   return eval(self, self[var][k]) or get(rawget(self,par),k)
 end
 
-function MT:__newindex (k, v) -- (+__update)
-  local m = is_notifiable(self)
-  if m then m(self, k, v) else self[var][k] = v end
+function MT:__newindex (k, v)
+  self[var][k] = v
 end
 
 function MT:__len   () return #self[var]        end
@@ -168,36 +175,31 @@ function MT:__ipairs() return ipairs(self[var]) end
 M.is_object = is_object
 
 function M:isa (obj)
-  assert(is_object(obj), "invalid argument")
+  assert(is_object(obj), "invalid 'obj' argument, object expected")
   while self and self ~= obj do self = rawget(self,par) end
   return self == obj
 end
 
-function M:set_parent (obj)
-  assert(self ~= M, "'Object' must be root")
-  assert(is_object(obj), "invalid argument")
-  self[par] = obj
-  self.__index = obj[var]
-  setmetatable(self, getmetatable(obj))
-  return self
-end
-
 function M:set_function (name, func)
-  assert(is_callable(func) or func == nil, "invalid argument")
+  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   self[var][name] = is_function(func) and setmetatable({func}, MF) or func
   return self
 end
 
 function M:set_method (name, func)
-  assert((is_callable(func) or func == nil) and meta[name] ~= name,
-         "invalid argument")
+  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
+  assert(meta[name] ~= name            , "invalid 'name' argument, metamethod detected")
   rawset(self, name, func)
   return self
 end
 
 function M:set_metamethod (name, func, override)
-  assert((is_callable(func) or func == nil) and meta[name] == name
-         and (MT[name] == nil or override), "invalid argument")
+  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
+  assert(meta[name] == name            , "invalid 'name' argument, not a metamethod")
+  assert(MT[name] == nil or override   , "cannot override 'Object' behavior")
   local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
@@ -207,11 +209,25 @@ function M:set_metamethod (name, func, override)
   return self
 end
 
+function M:set_parent (obj, name)
+  assert(self ~= M                        , "'Object' must stay the root of objects")
+  assert(is_object(self) or is_table(self), "invalid 'self' argument, table or object expected")
+  assert(is_object(obj)                   , "invalid 'obj' argument, object expected")
+  rawset(self, par, obj)
+  rawset(self, '__index', obj[var])
+  if is_table(self) and rawget(self,var) == nil then
+    rawset(self, var, setmetatable({__id=name},self))
+  end 
+  setmetatable(self, getmetatable(obj))
+  return self
+end
+
 --[=[ TODO
 function M:make_class ()
   local sv = self[var] -- self[var] becomes self and discards old self
-  sv[var] = setmetatable({},{__index=getmetatable(self)[var]});
-  if rawget(sv,'__id') ~= nil then s[var].__id, sv.__id = sv.__id, nil end
+  if rawget(sv,'__id') ~= nil then sv[var].__id, sv.__id = sv.__id, nil end
+  sv[var] = setmetatable({}, sv);
+
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
 --]=]
@@ -246,7 +262,7 @@ function M:dump (file, level, indent, vars)
   end
 end
 
--- root object
+-- root Object = module
 
 M[var] = {
   __id ='Object',
