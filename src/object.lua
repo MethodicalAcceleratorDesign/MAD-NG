@@ -80,7 +80,7 @@ SEE ALSO
 --[=[
   Schematic object-model representation:
   --------------------------------------
-  (see last 3 lines of __call ctor)
+  (see the 3 lines of 2nd local obj in __call ctor)
 
   o0 = require 'object'
   o1 = o0 'obj1' {*o1-var*}
