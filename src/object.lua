@@ -80,6 +80,7 @@ SEE ALSO
 --[=[
   Schematic object-model representation:
   --------------------------------------
+  (see last 3 lines of __call ctor)
 
   o0 = require 'object'
   o1 = o0 'obj1' {*o1-var*}
@@ -143,7 +144,7 @@ SEE ALSO
 -- implementation ------------------------------------------------------------o
 
 -- metamethods
-local meta = { -- from lj_obj.h
+local meta = { -- from lj_obj.h + __init
   '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
   '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
   '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
@@ -200,7 +201,7 @@ local function init(a)
   return m and m(a) or a
 end
 
-function MT:__call (a) -- object ctor
+function MT:__call (a) -- object ctor (define object-model)
   if is_string(a) then -- named obj
     local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]}
     return setmetatable(obj, getmetatable(self)) -- incomplete obj
