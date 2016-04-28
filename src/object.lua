@@ -65,8 +65,8 @@ SEE ALSO
 
 -- implementation ------------------------------------------------------------o
 
--- special protected key to store object members
-local var = setmetatable({}, {
+-- special protected key to store parent and object members
+local par, var, var0 = {}, {}, setmetatable({}, {
   __index   =\ error "incomplete object initialization",
   __newindex=\ error "incomplete object initialization",
 })
@@ -77,6 +77,17 @@ local MF = {
   __index   =\ error "private object",
   __newindex=\ error "private const object",
 }
+
+-- metatable of 'Object'
+local MT = {}
+
+-- metamethods
+local meta = { -- from lj_obj.h
+  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__ipairs',
+  '__le', '__len', '__lt', '__metatable', '__mod', '__mode', '__mul',
+  '__newindex', '__pairs', '__pow', '__sub', '__tostring', '__unm', '__update',
+}
+for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- helpers
 
@@ -110,28 +121,19 @@ end
 
 -- objects are proxies controlling variables access and inheritance
 
-local function obj2cls (self) -- convert object to a class
-  if rawget(self, '__call') == nil then
-    local mt = getmetatable(self) -- copy metamethods
-    rawset(self, '__call'    , rawget(mt, '__call'    ))
-    rawset(self, '__index'   , rawget(mt, '__index'   ))
-    rawset(self, '__newindex', rawget(mt, '__newindex'))
-    rawset(self, '__update'  , rawget(mt, '__update'  ))
-  end
-  return self
-end
-
-function M:__call (a) -- object ctor
+function MT:__call (a) -- object ctor
   if is_string(a) then -- named obj
-    return setmetatable({__id=a, [var]=var}, obj2cls(self)) -- set parent
+    local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]}
+    return setmetatable(obj, getmetatable(self))
   elseif is_table(a) then
-    if self[var] == var then -- finalize named obj, set inheritance
+    if self[var] == var0 then -- finalize named obj, set fast inheritance
       if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
-      self[var] = setmetatable(a, {__index=getmetatable(self)[var]});
+      self[var] = setmetatable(a, self);
       return self
     else -- unamed obj
-      setmetatable(a, {__index=self[var]}) -- set inheritance
-      return setmetatable({[var]=a}, obj2cls(self)) -- set parent
+      local obj = {[par]=self, [var]=a, __index=self[var]}
+      setmetatable(a, obj) -- set fast inheritance
+      return setmetatable(obj, getmetatable(self))
     end
   end
   error("invalid object argument")
@@ -142,74 +144,117 @@ local function eval (self, v) -- variable eval
 end
 
 local function get (self, k) -- object lookup
-  return self and (rawget(self,k) or get(getmetatable(self),k))
+--  if self == nil then return nil else
+--  io.write("get  : ", k, " '", tostring(self[var].__id or 'nil'), "'\n") end
+  return self and (rawget(self,k) or get(rawget(self,par),k))
 end
 
-function M:__index (k) -- (+eval+inheritance)
-  return eval(self, self[var][k]) or get(getmetatable(self),k)
+function MT:__index (k) -- (+eval+inheritance)
+--  io.write("index: ", k, " '", tostring(self[var].__id or 'nil'), "'\n")
+  return eval(self, self[var][k]) or get(rawget(self,par),k)
 end
 
-function M:__newindex (k, v) -- (+__update)
+function MT:__newindex (k, v) -- (+__update)
   local m = is_notifiable(self)
   if m then m(self, k, v) else self[var][k] = v end
 end
 
+function MT:__len   () return #self[var]        end
+function MT:__pairs () return pairs(self[var])  end
+function MT:__ipairs() return ipairs(self[var]) end
+
 -- object methods
 
+M.is_object = is_object
+
+function M:isa (obj)
+  assert(is_object(obj), "invalid argument")
+  while self and self ~= obj do self = rawget(self,par) end
+  return self == obj
+end
+
+function M:set_parent (obj)
+  assert(self ~= M, "'Object' must be root")
+  assert(is_object(obj), "invalid argument")
+  self[par] = obj
+  self.__index = obj[var]
+  setmetatable(self, getmetatable(obj))
+  return self
+end
+
 function M:set_function (name, func)
-  assert(is_callable(func), "invalid argument")
+  assert(is_callable(func) or func == nil, "invalid argument")
   self[var][name] = is_function(func) and setmetatable({func}, MF) or func
   return self
 end
 
-function M:set_metamethod (name, func)
-  assert(is_callable(func), "invalid argument")
+function M:set_method (name, func)
+  assert((is_callable(func) or func == nil) and meta[name] ~= name,
+         "invalid argument")
   rawset(self, name, func)
   return self
 end
 
+function M:set_metamethod (name, func, override)
+  assert((is_callable(func) or func == nil) and meta[name] == name
+         and (MT[name] == nil or override), "invalid argument")
+  local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
+  if sm == pm then -- create a new metatable if shared with parent
+    sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
+    setmetatable(self, sm)
+  end
+  rawset(sm, name, func)
+  return self
+end
+
+--[=[ TODO
 function M:make_class ()
   local sv = self[var] -- self[var] becomes self and discards old self
   sv[var] = setmetatable({},{__index=getmetatable(self)[var]});
   if rawget(sv,'__id') ~= nil then s[var].__id, sv.__id = sv.__id, nil end
   return setmetatable(sv, getmetatable(self)) -- set parent
 end
+--]=]
 
 -- debug
 
 function M:dump (file, level, indent, vars)
-  local sv, pa, va = self[var], getmetatable(self), vars or {}
-  local fp, lv, id = file or io.stdout, level or 1, indent or 1
+  local sv = self[var] 
+  file, level, indent, vars =
+    file or io.stdout, level or 1e6, indent or 1, vars or {}
   -- header
-  for i=1,id-1 do fp:write("  ") end -- indent
-  fp:write("objdump [", tostring(sv), "]\n")
+  for i=1,indent-1 do file:write("  ") end -- indent
+  file:write("+ [", tostring(sv), "]\n")
   -- variables
   for k,v in pairs(sv) do
-    for i=1,id do fp:write("  ") end -- indent
-    fp:write(tostring(k))
-        if is_string(v) then fp:write(": '", tostring(v)   , "'")
-    elseif is_proxy (v) then fp:write(": [", tostring(v[1]), "]")
-                        else fp:write(":  ", tostring(v)) end
-    if va[k] and k ~= '__id' then fp:write(" (*)") else va[k] = true end
-    fp:write("\n")
+    for i=1,indent do file:write("  ") end -- indent
+    file:write(tostring(k))
+        if is_string(v) then file:write(": '", tostring(v)   , "'")
+    elseif is_proxy (v) then file:write(": [", tostring(v[1]), "]")
+                        else file:write(":  ", tostring(v)) end
+    if vars[k] and string.sub(k,1,2) ~= '__' then
+      file:write(" (")
+      for i=1,vars[k] do file:write('*') end
+      file:write(")");
+    end
+    vars[k] = (vars[k] or 0)+1
+    file:write("\n")
   end
   -- parent
-  if lv > 1 and pa ~= M then pa:dump(fp, lv-1, id+1, va) end
+  if level > 1 and self ~= M then
+    self[par]:dump(file, level-1, indent+1, vars)
+  end
 end
 
 -- root object
 
-local object = setmetatable({
-  [var] = { __id ='Object',
-            __par=\s getmetatable(s),
-            __var=\s rawget(s,var),
-            name =\s s.__id, -- alias
-          }}, M )
-: set_function('isa', function(s,o)
-    assert(is_object(o), "invalid argument")
-    while s and s ~= o do s = getmetatable(s) end
-    return s == o
-  end)
+M[var] = {
+  __id ='Object',
+  __par=\s rawget(s,par),
+  __var=\s rawget(s,var),
+  name =\s s.__id, -- alias
+}
 
 ------------------------------------------------------------------------------o
-return object
+return setmetatable(M,MT)
+

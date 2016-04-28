@@ -10,6 +10,8 @@ print(p1.name, p1.x, p1.y)
 print(p2.name, p2.x, p2.y)
 print(p3.name, p3.x, p3.y)
 
+print(p3.name, p3:is_object(), p1.is_object(p3), p1.is_object({}))
+
 local x = 5
 
 local p4 = p3 'p4' { x=\s s.__par.x, y=\s 2*s.x }
@@ -31,14 +33,14 @@ p3:set_function('g', \s,x,y (x+y, x-y, s.name))
 print(p5.name, p5.f(2,3))
 print(p5.name, p5:g(2,3))
 
-p3:dump(nil, 4) -- 1st
+p3:dump() -- 1st
 
 print("+++ 2nd")
 print(p3.name, p3.x)
 p3.x = nil
 print(p3.name, p3.x)
 
---p3:dump(nil, 4) -- 2nd
+--p3:dump() -- 2nd
 
 print("+++ 3rd")
 rawset(p3, 'x', 3)   -- bypass [var]
@@ -55,15 +57,15 @@ for k,v in pairs(p5.__var) do
   print(k, ":", v, p5[k])
 end 
 
-print("trying to destroy [var]")
+print("trying to damage [var]")
 p5.__var = nil
-p5:dump(nil, 4) -- 3rd
+p5:dump() -- 3rd
 
 p5[p5.__var] = nil
-p5:dump(nil, 4) -- 3rd
+p5:dump() -- 3rd
 
 for k,v in pairs(p5) do
-  if v == p5.__var then p5[k] = k end
+  if v == p5.__var then p5[k] = nil end
 end 
-p5:dump(nil, 4) -- 3rd
+p5:dump() -- 3rd
 
