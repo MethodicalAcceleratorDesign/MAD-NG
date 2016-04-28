@@ -63,10 +63,13 @@ RETURN VALUES
 
 EXAMPLES
   Object = require 'object'
-  Point = Object {}                     -- Point derives from Object
-  p0 = Point { x=0, y=0 }               -- p0 is an instance of Point
-  p1 = Point { x=1, y=1 }               -- p1 is an instance of Point
-  p1.x, p1.y = 1, 2                     -- set p1.x and p1.y
+  Point = Object {}              -- point is an instance of Object
+  p0 = Point { x=0, y=0 }        -- p0 is an instance of Point
+  p1 = Point { x=1, y=1 }        -- p1 is an instance of Point
+  p2 = p1 { x=3 }                -- p2 is an instance of p1 and inherits p1.y
+  p1.x, p1.z = 2, 3              -- set p1.x, p1.z
+  print(p1.x, p1.y, p1.z)        -- print 2 1 3 
+  print(p2.x, p2.y, p2.z)        -- print 3 1 3 
 
 SEE ALSO
   None
@@ -74,48 +77,79 @@ SEE ALSO
 
 -- documentation -------------------------------------------------------------o
 
---[[
+--[=[
   Schematic object-model representation:
   --------------------------------------
 
-  obj0 = require 'object'
-  obj1 = obj0 'obj1' {}
-  obj2 = obj1 'obj2' {}
+  o0 = require 'object'
+  o1 = o0 'obj1' {*o1-var*}
+  o2 = o1 'obj2' {*o2-var*}
+  o3 = o1 'obj2' {*o3-var*}                    +-------------+
+                             +---------------+>| *meta-tbl*  |<------------+
++---------+                  |   +---------+ | | metamethods | +---------+ |
+|  *o2*   |                  |   |  *o1*   | | +-------------+ |  *o0*   | |
+|  [meta] |------------------+   |  [meta] |-+                 |  [meta] |-+
+|   [par] |------------------|-->|   [par] |------------------>|   [par] |-->.
+| __index |------------------|-+ | __index |-----------------+ | __index |-->.
+|         |  +-----------+   | | |         |  +-----------+  | |         |
+|   [var] |->|  *o2-var* |   | | |   [var] |->| *o1-var*  |  | |   [var] |-+
+| methods |  |    [meta] |-+ | | | methods |  |    [meta] |-+| | methods | |
++---------+  | variables | | | | +---------+  | variables | || +---------+ |
+     ^       +-----------+ | | |      ^       +-----------+ ||        +----+
+     +---------------------+ | |      |             ^       ||        v
++---------+                  | |      +-------------|-------+|  +-----------+
+|  *o3*   |                  | |      |             |        |  | *o0-var*  |
+|  [meta] |------------------+ |      |             |        +->|    [meta] |->.
+|   [par] |--------------------|------+             |           | variables |
+| __index |--------------------+--------------------+           +-----------+
+|         |  +-----------+
+|   [var] |->| *o3-var*  |
+| methods |  |    [meta] |-+
++---------+  | variables | |
+     ^       +-----------+ |
+     +---------------------+
 
-                                                           +-------------+     
-             +-----------------------------------+--/ /--->| *meta-tbl*  |     
-             |                                   |         |             |     
-+---------+  |                      +---------+  |         | metamethods |     
-| *obj2*  |  |                      | *obj1*  |  |         +-------------+     
-|  [meta] |--+                      |  [meta] |--+                             
-|   [par] |------------------------>|   [par] |-------------------------/ /--> 
-| __index |----------------------+  | __index |----------------------+         
-|         |   +------------+     |  |         |   +------------+     |         
-|   [var] |-->| *obj2-var* |     |  |   [var] |-->| *obj1-var* |     |         
-| methods |   |     [meta] |--+  |  | methods |   |     [meta] |--+  |         
-+---------+   | variables  |  |  |  +---------+   | variables  |  |  |         
-     ^        +------------+  |  |       ^        +------------+  |  |         
-     |                        |  |       |              ^         |  |         
-     +------------------------+  |       +--------------|---------+  |         
-                                 +----------------------+            +--/ /--> 
+  Catching creation:
+  ------------------
 
-  Notification on write:
-  ----------------------
+  Example how to count the number of objects created
 
-  Example how to set a notification-on-write with logging to file
+  local count = 0
+  local function set_counter (self)
+    local mm = function (self)
+      count = count + 1
+      return self
+    end
+    self:set_metamethod('__init', mm)
+  end
+  set_counter(o0) -- before o1,o2,o3 creation
 
-  local function set_notification (self, file)
-    local fp = file or io.stdout
-    local nwidx = rawget(getmetatable(self) or {}, '__newindex')
+  Catching writes:
+  ----------------
+
+  Example how to set a notification-on-write with logging
+
+  local function set_notification (self)
+    local nwidx = rawget(getmetatable(self),'__newindex')
     local mm = function (self, k, v)
-      trace(fp, self, k, v) -- logging
-      nwidx(    self, k, v) -- forward
+      trace(self, k, v) -- logging
+      nwidx(self, k, v) -- forward
     end
     self:set_metamethod('__newindex', mm, true) -- override!
   end
---]]
+  set_notification(o1) -- before o2,o3 creation
+]=]
 
 -- implementation ------------------------------------------------------------o
+
+-- metamethods
+local meta = { -- from lj_obj.h
+  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
+  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
+  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
+  '__unm',
+}
+for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- special protected key to store parent and object members
 local par, var, var0 = {}, {}, setmetatable({}, {
@@ -132,15 +166,6 @@ local MF = {
 
 -- metatable of 'Object'
 local MT = {}
-
--- metamethods
-local meta = { -- from lj_obj.h
-  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
-  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
-  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
-  '__unm',
-}
-for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- helpers
 
