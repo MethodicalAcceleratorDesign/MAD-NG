@@ -72,6 +72,49 @@ SEE ALSO
   None
 ]]
 
+-- documentation -------------------------------------------------------------o
+
+--[[
+  Schematic object-model representation:
+  --------------------------------------
+
+  obj0 = require 'object'
+  obj1 = obj0 'obj1' {}
+  obj2 = obj1 'obj2' {}
+
+                                                           +-------------+     
+             +-----------------------------------+--/ /--->| *meta-tbl*  |     
+             |                                   |         |             |     
++---------+  |                      +---------+  |         | metamethods |     
+| *obj2*  |  |                      | *obj1*  |  |         +-------------+     
+|  [meta] |--+                      |  [meta] |--+                             
+|   [par] |------------------------>|   [par] |-------------------------/ /--> 
+| __index |----------------------+  | __index |----------------------+         
+|         |   +------------+     |  |         |   +------------+     |         
+|   [var] |-->| *obj2-var* |     |  |   [var] |-->| *obj1-var* |     |         
+| methods |   |     [meta] |--+  |  | methods |   |     [meta] |--+  |         
++---------+   | variables  |  |  |  +---------+   | variables  |  |  |         
+     ^        +------------+  |  |       ^        +------------+  |  |         
+     |                        |  |       |              ^         |  |         
+     +------------------------+  |       +--------------|---------+  |         
+                                 +----------------------+            +--/ /--> 
+
+  Notification on write:
+  ----------------------
+
+  Example how to set a notification-on-write with logging to file
+
+  local function set_notification (self, file)
+    local fp = file or io.stdout
+    local nwidx = rawget(getmetatable(self) or {}, '__newindex')
+    local mm = function (self, k, v)
+      trace(fp, self, k, v) -- logging
+      nwidx(    self, k, v) -- forward
+    end
+    self:set_metamethod('__newindex', mm, true) -- override!
+  end
+--]]
+
 -- implementation ------------------------------------------------------------o
 
 -- special protected key to store parent and object members
@@ -202,8 +245,8 @@ function M:set_metamethod (name, func, override)
   assert(is_object(self)               , "invalid 'self' argument, valid object expected")
   assert(meta[name] == name            , "invalid 'name' argument, not a metamethod")
   assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
-  assert(MT[name] == nil or override   , "cannot override inherited 'Object' behavior")
   local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
+  assert(rawget(sm, name) == nil or override, "cannot override inherited behavior")
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
     setmetatable(self, sm)
