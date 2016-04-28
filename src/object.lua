@@ -132,19 +132,19 @@ end
 function MT:__call (a) -- object ctor
   if is_string(a) then -- named obj
     local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]}
-    return setmetatable(obj, getmetatable(self))
+    return setmetatable(obj, getmetatable(self)) -- incomplete obj
   elseif is_table(a) then
-    if self[var] == var0 then -- finalize named obj, set fast inheritance
+    if self[var] == var0 then -- finalize named obj
       if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
-      self[var] = setmetatable(a, self);
+      self[var] = setmetatable(a, self); -- set fast inheritance
       return init(self)
-    else -- unamed obj
+    else -- unnamed obj
       local obj = {[par]=self, [var]=a, __index=self[var]}
       setmetatable(a, obj) -- set fast inheritance
-      return init(setmetatable(obj, getmetatable(self)))
+      return init(setmetatable(obj, getmetatable(self))) -- complete obj
     end
   end
-  error("invalid object argument")
+  error("invalid object constructor argument, string or table expected")
 end
 
 local function eval (self, v) -- variable eval
@@ -175,20 +175,20 @@ function MT:__ipairs() return ipairs(self[var]) end
 M.is_object = is_object
 
 function M:isa (obj)
-  assert(is_object(obj), "invalid 'obj' argument, object expected")
+  assert(is_object(obj), "invalid 'obj' argument, valid object expected")
   while self and self ~= obj do self = rawget(self,par) end
   return self == obj
 end
 
 function M:set_function (name, func)
-  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_object(self)               , "invalid 'self' argument, valid object expected")
   assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   self[var][name] = is_function(func) and setmetatable({func}, MF) or func
   return self
 end
 
 function M:set_method (name, func)
-  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_object(self)               , "invalid 'self' argument, valid object expected")
   assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   assert(meta[name] ~= name            , "invalid 'name' argument, metamethod detected")
   rawset(self, name, func)
@@ -196,7 +196,7 @@ function M:set_method (name, func)
 end
 
 function M:set_metamethod (name, func, override)
-  assert(is_object(self)               , "invalid 'self' argument, object expected")
+  assert(is_object(self)               , "invalid 'self' argument, valid object expected")
   assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
   assert(meta[name] == name            , "invalid 'name' argument, not a metamethod")
   assert(MT[name] == nil or override   , "cannot override 'Object' behavior")
@@ -212,7 +212,7 @@ end
 function M:set_parent (obj, name)
   assert(self ~= M                        , "'Object' must stay the root of objects")
   assert(is_object(self) or is_table(self), "invalid 'self' argument, table or object expected")
-  assert(is_object(obj)                   , "invalid 'obj' argument, object expected")
+  assert(is_object(obj)                   , "invalid 'obj' argument, valid object expected")
   rawset(self, par, obj)
   rawset(self, '__index', obj[var])
   if is_table(self) and rawget(self,var) == nil then
@@ -221,16 +221,6 @@ function M:set_parent (obj, name)
   setmetatable(self, getmetatable(obj))
   return self
 end
-
---[=[ TODO
-function M:make_class ()
-  local sv = self[var] -- self[var] becomes self and discards old self
-  if rawget(sv,'__id') ~= nil then sv[var].__id, sv.__id = sv.__id, nil end
-  sv[var] = setmetatable({}, sv);
-
-  return setmetatable(sv, getmetatable(self)) -- set parent
-end
---]=]
 
 -- debug
 
