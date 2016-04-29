@@ -40,23 +40,25 @@ DESCRIPTION
   The 'object' module implements the necessary machinery to support prototype-
   based programming with value semantic for functions and further extensions:
   - On read, the lookup of values follows the inheritance down to 'Object' with
-    precedence of variables over methods.
+    the following precedence: immediate methods, variables, inherited methods.
     + If the retrieved value is a function, it is called with 'self' passed as
-      argument (can be ignored) and it returns the result.
+      argument (can be ignored) and the result is returned.
     + To store functions with arguments in variables, use 'set_function'.
-    + To store methods or metamethods for instances (both are inherited), use
-      'set_method' or 'set_metamethod' respectively.
+    + To store methods or metamethods (both are inherited), use 'set_method'
+      or 'set_metamethod' respectively.
   - On write, the value is simply stored (no lookup).
     + To override this behavior, just (re)defined the __newindex metamethod
-      using set_metamethod with 'override' as true (use with care!).
+      using set_metamethod with 'override' set to 'true' (use with care!).
   - On build, the new instance is connected to its parent (inheritance).
     + If the new instance has a defined __init metamethod (inherited), it will
-      be called on the new instance and non-nil result is returned.
+      be called on the new instance and non-nil result or the new instance will
+      be returned. This feature is particularly useful to copy immediate methods
+      to new instances.
   - Root 'Object' defines the following variables:
-    + 'name'  points to 'self' name unless overridden
-    + '__par' points to 'self' parent unless overridden
-    + '__var' points to 'self' variables unless overridden
-    + '__id'  holds 'self' name (may be inherited)
+    + 'name'  points to 'self' name unless overridden (alias)
+    + '__par' points to 'self' parent unless overridden (alias)
+    + '__var' points to 'self' variables unless overridden (alias)
+    + '__id'  holds 'self' name if provided (variable)
 
 RETURN VALUES
   The constructor of objects.
@@ -80,7 +82,7 @@ SEE ALSO
 --[=[
   Schematic object-model representation:
   --------------------------------------
-  (see the 3 lines of 2nd local obj in __call ctor)
+  (see the 3 lines of the 'unamed obj' compound statement in __call ctor)
 
   o0 = require 'object'
   o1 = o0 'obj1' {*o1-var*}
@@ -90,8 +92,8 @@ SEE ALSO
 +---------+                  |   +---------+ | | metamethods | +---------+ |
 |  *o2*   |                  |   |  *o1*   | | +-------------+ |  *o0*   | |
 |  [meta] |------------------+   |  [meta] |-+                 |  [meta] |-+
-|   [par] |------------------|-->|   [par] |------------------>|   [par] |-->.
-| __index |------------------|-+ | __index |-----------------+ | __index |-->.
+|   [par] |------------------|-->|   [par] |------------------>|   [par] |--->.
+| __index |------------------|-+ | __index |-----------------+ | __index |--->.
 |         |  +-----------+   | | |         |  +-----------+  | |         |
 |   [var] |->|  *o2-var* |   | | |   [var] |->| *o1-var*  |  | |   [var] |-+
 | methods |  |    [meta] |-+ | | | methods |  |    [meta] |-+| | methods | |
@@ -134,7 +136,7 @@ SEE ALSO
     local nwidx = rawget(getmetatable(self),'__newindex')
     local mm = function (self, k, v)
       trace(self, k, v) -- logging
-      nwidx(self, k, v) -- forward
+      nwidx(self, k, v) -- forward, mandatory!
     end
     self:set_metamethod('__newindex', mm, true) -- override!
   end
@@ -158,15 +160,15 @@ local par, var, var0 = {}, {}, setmetatable({}, {
   __newindex=\ error "incomplete object initialization",
 })
 
+-- metatable of 'Object'
+local MT = {}
+
 -- metatable of 'true' function proxy
 local MF = {
   __call    =\t,... -> t[1](...),
   __index   =\ error "private object",
   __newindex=\ error "private const object",
 }
-
--- metatable of 'Object'
-local MT = {}
 
 -- helpers
 
@@ -203,7 +205,7 @@ end
 
 function MT:__call (a) -- object ctor (define object-model)
   if is_string(a) then -- named obj
-    local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]}
+    local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]} -- proxy
     return setmetatable(obj, getmetatable(self)) -- incomplete obj
   elseif is_table(a) then
     if self[var] == var0 then -- finalize named obj
@@ -211,8 +213,8 @@ function MT:__call (a) -- object ctor (define object-model)
       self[var] = setmetatable(a, self); -- set fast inheritance
       return init(self)
     else -- unnamed obj
-      local obj = {[par]=self, [var]=a, __index=self[var]}
-      setmetatable(a, obj) -- set fast inheritance
+      local obj = {[par]=self, [var]=a, __index=self[var]} -- proxy
+      setmetatable(a, obj)                               -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self))) -- complete obj
     end
   end
@@ -310,7 +312,7 @@ function M:dump (file, level, indent, vars)
         if is_string(v) then file:write(": '", tostring(v)   , "'")
     elseif is_proxy (v) then file:write(": [", tostring(v[1]), "]")
                         else file:write(":  ", tostring(v)) end
-    if vars[k] and string.sub(k,1,2) ~= '__' then
+    if vars[k] and string.sub(k,1,2) ~= '__' then -- mark overrides
       file:write(" (")
       for i=1,vars[k] do file:write('*') end
       file:write(")");
@@ -328,9 +330,9 @@ end
 
 M[var] = {
   __id ='Object',
-  __par=\s rawget(s,par),
-  __var=\s rawget(s,var),
-  name =\s s.__id, -- alias
+  __par=\s rawget(s,par), -- alias
+  __var=\s rawget(s,var), -- alias
+  name =\s s.__id,        -- alias
 }
 
 ------------------------------------------------------------------------------o
