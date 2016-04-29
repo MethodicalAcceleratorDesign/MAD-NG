@@ -221,19 +221,17 @@ function MT:__call (a) -- object ctor (define object-model)
   error("invalid object constructor argument, string or table expected")
 end
 
-local function eval (self, v) -- variable eval
-  return is_function(v) and v(self) or v
-end
-
 local function get (self, k) -- object lookup
 --  if self == nil then return nil else
---  io.write("get  : ", k, " '", tostring(self[var].__id or 'nil'), "'\n") end
+--  io.write("get  : '", tostring(self[var].__id or ''), "'\n") end
   return self and (rawget(self,k) or get(rawget(self,par),k))
 end
 
 function MT:__index (k) -- (+eval+inheritance)
---  io.write("index: ", k, " '", tostring(self[var].__id or 'nil'), "'\n")
-  return eval(self, self[var][k]) or get(rawget(self,par),k)
+--  io.write("index: ", k, " '", tostring(self[var].__id or ''), "'\n")
+  local v = self[var][k] -- inheritance of variables
+  if is_function(v) then return v(self) -- function with value semantic
+  else return v or get(rawget(self,par),k) end -- inheritance of methods
 end
 
 function MT:__newindex (k, v)
@@ -289,7 +287,7 @@ function M:set_parent (obj, name)
   assert(is_object(obj)                   , "invalid 'obj' argument, valid object expected")
   rawset(self, par, obj)
   rawset(self, '__index', obj[var])
-  if is_table(self) and rawget(self,var) == nil then
+  if is_table(self) then
     rawset(self, var, setmetatable({__id=name},self))
   end 
   setmetatable(self, getmetatable(obj))
