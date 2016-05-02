@@ -1,47 +1,55 @@
 diff --git a/src/Makefile b/src/Makefile
-index 3f25192..e37a348 100644
+index 3f25192..0cbfdc3 100644
 --- a/src/Makefile
 +++ b/src/Makefile
-@@ -110,6 +110,10 @@ XCFLAGS=
+@@ -99,7 +99,7 @@ XCFLAGS=
+ # enabled by default. Some other features that *might* break some existing
+ # code (e.g. __pairs or os.execute() return values) can be enabled here.
+ # Note: this does not provide full compatibility with Lua 5.2 at this time.
+-#XCFLAGS+= -DLUAJIT_ENABLE_LUA52COMPAT
++XCFLAGS+= -DLUAJIT_ENABLE_LUA52COMPAT
+ #
+ # Disable the JIT compiler, i.e. turn LuaJIT into a pure interpreter.
+ #XCFLAGS+= -DLUAJIT_DISABLE_JIT
+@@ -110,6 +110,9 @@ XCFLAGS=
  #XCFLAGS+= -DLUAJIT_NUMMODE=1
  #XCFLAGS+= -DLUAJIT_NUMMODE=2
  #
 +# Support for local 'in' table syntax
 +XCFLAGS+= -DLUAJIT_LOCAL_INTABLE
 +#
-+#
  ##############################################################################
  
  ##############################################################################
 diff --git a/src/lj_parse.c b/src/lj_parse.c
-index 610c861..261c751 100644
+index 610c861..0d92f2a 100644
 --- a/src/lj_parse.c
 +++ b/src/lj_parse.c
-@@ -2251,12 +2251,27 @@ static void parse_local(LexState *ls)
-     var_get(ls, fs, fs->nactvar - 1).startpc = fs->pc;
-   } else {  /* Local variable declaration. */
-     ExpDesc e;
--    BCReg nexps, nvars = 0;
-+    BCReg nexps = 0, nvars = 0;
-     do {  /* Collect LHS. */
-       var_new(ls, nvars++, lex_str(ls));
+@@ -2257,6 +2257,28 @@ static void parse_local(LexState *ls)
      } while (lex_opt(ls, ','));
      if (lex_opt(ls, '=')) {  /* Optional RHS. */
        nexps = expr_list(ls, &e);
-+#ifdef LUAJIT_LOCAL_INTABLE            /* LD: 2016.04.29 */
++#ifdef LUAJIT_LOCAL_INTABLE                                /* LD: 2016.04.29 */
 +    } else if (lex_opt(ls, TK_in)) { /* Optional RHS. */
-+      ExpDesc k;
 +      FuncState *fs = ls->fs;
-+      GCstr* ts = lex_str(ls);      /* read table name */
-+      for (;;) {
-+	var_lookup_(fs, ts, &e, 1); /* lookup table, e.k=VLOCAL,VUPVAL,VGLOBAL*/
-+	expr_toanyreg(fs, &e);      /* table -> reg, e.k=VRELOCABLE */
-+	expr_init(&k, VKSTR, 0);    /* init key and get key name, k.k=VKSTR */
-+	k.u.sval = strref(var_get(ls, fs, fs->nactvar+nexps).name);
-+	expr_index(fs, &e, &k);     /* set key index in table, e.k=VINDEXED */
-+	if (++nexps == nvars) break;/* all vars processed? */
-+	expr_tonextreg(fs, &e);     /* table.key -> reg, e.k=VRELOCABLE */
++      BCReg vars = fs->nactvar;
++      bcreg_reserve(fs, nvars);                  /* reserve regs for n vars */
++      var_new_lit(ls, nvars, "(in)");            /* create hidden '(in)' var */
++      expr(ls, &e);                              /* parse table expr */
++      assign_adjust(ls, nvars+1, nvars+1, &e);   /* discharge expr to '(in)' */
++      var_add(ls, nvars+1);                      /* expose vars + '(in)' */
++      for (nexps=0; nexps < nvars; nexps++) {
++      	ExpDesc k, v;
++      	expr_init(&e, VNONRELOC, fs->freereg-1); /* load table expr */
++	expr_init(&k, VKSTR, 0);                 /* set key from var name */
++	k.u.sval = strref(var_get(ls, fs, vars+nexps).name);
++	expr_index(fs, &e, &k);                  /* set key index in table */
++      	expr_init(&v, VLOCAL, vars+nexps);       /* set dest. var */
++	bcemit_store(fs, &v, &e);                /* store value to var */
 +      }
++      var_remove(ls, vars+nvars);                /* drop hidden '(in)' var */
++      /* parse_chunk frees regs after each stmt., no need to drop table expr */
++      return;
 +#endif
      } else {  /* Or implicitly set to nil. */
        e.k = VVOID;
