@@ -24,11 +24,101 @@ index 3f25192..5f3183a 100644
  ##############################################################################
  
  ##############################################################################
+diff --git a/src/lj_cparse.c b/src/lj_cparse.c
+index 16d2cb6..24b827b 100644
+--- a/src/lj_cparse.c
++++ b/src/lj_cparse.c
+@@ -1480,8 +1480,8 @@ static CPscl cp_decl_spec(CPState *cp, CPDecl *decl, CPscl scl)
+       cp_next(cp);
+       continue;
+     }
+-    if (sz || tdef ||
+-	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX)))
++    if (sz || tdef ||                                     /* LD: 2016.05.02 */
++	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX|CDF_XRANGE)))
+       break;
+     switch (cp->tok) {
+     case CTOK_STRUCT:
+@@ -1513,6 +1513,8 @@ end_decl:
+ 
+   if ((cds & CDF_COMPLEX))  /* Use predefined complex types. */
+     tdef = sz == 4 ? CTID_COMPLEX_FLOAT : CTID_COMPLEX_DOUBLE;
++  else if ((cds & CDF_XRANGE))  /* Use predefined xrange types. */
++    tdef = CTID_XRANGE;                                   /* LD: 2016.05.02 */
+ 
+   if (tdef) {
+     cp_push_type(decl, tdef);
+diff --git a/src/lj_ctype.c b/src/lj_ctype.c
+index bc47cc5..7c41bae 100644
+--- a/src/lj_ctype.c
++++ b/src/lj_ctype.c
+@@ -67,6 +67,7 @@
+   _("__signed",		0,	CTOK_SIGNED) \
+   _("__signed__",	0,	CTOK_SIGNED) \
+   _("unsigned",		0,	CTOK_UNSIGNED) \
++  _("xrange",		0,	CTOK_XRANGE) \
+   /* Type qualifiers. */ \
+   _("const",		0,	CTOK_CONST) \
+   _("__const",		0,	CTOK_CONST) \
+@@ -515,6 +516,8 @@ static void ctype_repr(CTRepr *ctr, CTypeID id)
+ 	if (size == 2*sizeof(float)) ctype_preplit(ctr, "float");
+ 	ctype_preplit(ctr, "complex");
+ 	return;
++      } else if (id == CTID_XRANGE) { /* LD: 2016.05.02 */
++	ctype_preplit(ctr, "xrange");
+       } else {
+ 	ctype_preplit(ctr, ")))");
+ 	ctype_prepnum(ctr, size);
+diff --git a/src/lj_ctype.h b/src/lj_ctype.h
+index e9b426f..cf5427f 100644
+--- a/src/lj_ctype.h
++++ b/src/lj_ctype.h
+@@ -289,6 +289,7 @@ typedef struct CTState {
+   _(DOUBLE,		8,	CT_NUM, CTF_FP|CTALIGN(3)) \
+   _(COMPLEX_FLOAT,	8,	CT_ARRAY, CTF_COMPLEX|CTALIGN(2)|CTID_FLOAT) \
+   _(COMPLEX_DOUBLE,	16,	CT_ARRAY, CTF_COMPLEX|CTALIGN(3)|CTID_DOUBLE) \
++  _(XRANGE,		24, 	CT_ARRAY, CTF_VECTOR|CTALIGN(3)|CTID_DOUBLE) \
+   _(P_VOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_VOID) \
+   _(P_CVOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CVOID) \
+   _(P_CCHAR,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CCHAR) \
+@@ -335,7 +336,7 @@ CTTYDEF(CTTYIDDEF)
+ /* Simple declaration specifiers. */
+ #define CDSDEF(_) \
+   _(VOID) _(BOOL) _(CHAR) _(INT) _(FP) \
+-  _(LONG) _(LONGLONG) _(SHORT) _(COMPLEX) _(SIGNED) _(UNSIGNED) \
++  _(LONG) _(LONGLONG) _(SHORT) _(COMPLEX) _(XRANGE) _(SIGNED) _(UNSIGNED) \
+   _(CONST) _(VOLATILE) _(RESTRICT) _(INLINE) \
+   _(TYPEDEF) _(EXTERN) _(STATIC) _(AUTO) _(REGISTER)
+ 
 diff --git a/src/lj_lex.c b/src/lj_lex.c
-index 0187c42..fc82932 100644
+index 0187c42..c09fa0e 100644
 --- a/src/lj_lex.c
 +++ b/src/lj_lex.c
-@@ -317,6 +317,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
+@@ -53,6 +53,12 @@ static LJ_NOINLINE LexChar lex_more(LexState *ls)
+   return (LexChar)(uint8_t)p[0];
+ }
+ 
++/* Check next character. */
++static LJ_AINLINE LexChar lex_nextahead(LexState *ls)      /* LD: 2016.05.02 */
++{                                   /* --ls->p is always valid, see lex_more */
++  return (LexChar)(uint8_t)*(ls->p < ls->pe ? ls->p : (lex_more(ls), --ls->p));
++}
++
+ /* Get next character. */
+ static LJ_AINLINE LexChar lex_next(LexState *ls)
+ {
+@@ -93,8 +99,8 @@ static void lex_number(LexState *ls, TValue *tv)
+   lua_assert(lj_char_isdigit(ls->c));
+   if ((c = ls->c) == '0' && (lex_savenext(ls) | 0x20) == 'x')
+     xp = 'p';
+-  while (lj_char_isident(ls->c) || ls->c == '.' ||
+-	 ((ls->c == '-' || ls->c == '+') && (c | 0x20) == xp)) {
++  while (lj_char_isident(ls->c) || (ls->c == '.' && lex_nextahead(ls) != '.') ||
++	 ((ls->c == '-' || ls->c == '+') && (c | 0x20) == xp)) {     /* '..' */
+     c = ls->c;
+     lex_savenext(ls);
+   }
+@@ -317,6 +323,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
        continue;
      case '-':
        lex_next(ls);
@@ -36,7 +126,15 @@ index 0187c42..fc82932 100644
        if (ls->c != '-') return '-';
        lex_next(ls);
        if (ls->c == '[') {  /* Long comment "--[=*[...]=*]". */
-@@ -346,6 +347,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
+@@ -328,6 +335,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
+ 	  continue;
+ 	}
+       }
++    case '!':
+       /* Short comment "--.*\n". */
+       while (!lex_iseol(ls) && ls->c != LEX_EOF)
+ 	lex_next(ls);
+@@ -346,6 +354,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
        }
      case '=':
        lex_next(ls);
@@ -56,6 +154,35 @@ index 7fed1fd..bd99d3a 100644
    __(label, ::) __(number, <number>) __(name, <name>) __(string, <string>) \
    __(eof, <eof>)
  
+diff --git a/src/lj_meta.c b/src/lj_meta.c
+index c7993ad..299579a 100644
+--- a/src/lj_meta.c
++++ b/src/lj_meta.c
+@@ -268,6 +268,24 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
+       setcont(top-1, lj_cont_cat);
+       if (LJ_FR2) { setnilV(top); setnilV(top+2); top += 2; }
+       return top+1;  /* Trigger metamethod call. */
++#if LJ_HASFFI
++    } else if (tvisnumber(top) && tvisnumber(top-1)) {
++      /* convert 2-3 concatenated numbers into a range */ /* LD: 2016.05.02 */
++      double start, stop, step;
++      if (left > 1 && tvisnumber(top-2)) {
++	top -= 2; left -= 2;
++	start = numV(top); stop = numV(top+1); step = numV(top+2);
++      } else {
++	top -= 1; left -= 1;
++	start = numV(top); stop = numV(top+1);
++	step = start > stop ? -1 : 1;
++      }
++      GCcdata *cd = lj_cdata_new_(L, CTID_XRANGE, 3*sizeof(double));
++      ((double *)cdataptr(cd))[0] = start;
++      ((double *)cdataptr(cd))[1] = stop;
++      ((double *)cdataptr(cd))[2] = step;
++      setcdataV(L, top, cd);
++#endif
+     } else {
+       /* Pick as many strings as possible from the top and concatenate them:
+       **
 diff --git a/src/lj_parse.c b/src/lj_parse.c
 index 610c861..6e9d7a0 100644
 --- a/src/lj_parse.c
