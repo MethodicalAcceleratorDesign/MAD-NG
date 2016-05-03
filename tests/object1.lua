@@ -19,7 +19,7 @@ local p4 = p3 'p4' { x=\s s.__par.x, y=\s 2*s.x }
 print(p4.name, p4.x, p4.y, p4.z)
 print(p4.name, p4.__var.x, p4.__var.y, p4.__var.z)
 
-local p5 = p4 'p5' { y=\ { 0, 3*x } }
+local p5 = p4 'p5' { y:={ 0, 3*x } }
 
 print(p5.name, p5.x, p5.y[1], p5.y[2])
 
