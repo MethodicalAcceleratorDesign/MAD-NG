@@ -1,3 +1,62 @@
+Patches for MAD
+===============
+
+- Patch for one line comment starting by '!'
+- Patch for xrange primary type (complex-like)
+- Patch for local 'in table' (see below)
+- Patch for lambda syntax and direct call (see below)
+- Patch for deferred expression in table ctor
+
+Patch for one-line comment
+==========================
+
+With the patch for one-line comment the following syntax is supported:
+[-DLUAJIT_COMMENT_EMARK]
+
+! this is a single line comment
+
+becomes _strictly_ equivalent to the Lua syntax
+
+-- this is a comment
+
+This syntax extension is for shorter comment syntax like in Fortran. It may be
+deactivated in the future if the character becomes used by Lua syntax.
+
+Patch for xrange cdata type
+===========================
+
+With the patch for xrange cdata type extension the following syntax is
+supported: [-DLUAJIT_CTYPE_XRANGE]
+
+3..4               (note: spaces are not needed around concat operator)
+3..4..0.1
+start..stop
+start..stop..step  (order is the same as numerical for)
+
+becomes _strictly_ equivalent to the Lua syntax
+
+ffi = require 'ffi'
+xrange = ffi.typeof 'xrange'
+xrange(3,4)
+xrange(3,4,0.1)
+xrange(start,stop)
+xrange(start,stop,step)
+
+Default values for missing arguments are:
+xrange(start)            -- equiv. xrange(start,start,1), i.e. point-like range
+xrange(start,stop)       -- equiv. xrange(start,stop,start > stop and -1 or 1)
+xrange(start,stop,step)
+
+Empty range:
+xrange(start,stop,start > stop and 1 or -1)
+
+Indexing range:
+xrange(start,stop,step)[3] -> start+(3-1)*step or nil (if ouside range)
+
+Note about numerical stability:
+a=0; for   v =                1,1e8,0.1   do a = v end; print(a) -> 99999999.94
+a=0; for _,v in ipairs(xrange(1,1e8,0.1)) do a = v end; print(a) -> 100000000
+
 Patch for local 'in' table
 ==========================
 
@@ -5,19 +64,17 @@ With the patch of local 'in' table extension the following syntax is supported:
 [-DLUAJIT_LOCAL_INTABLE]
 
 local sin, cos, tan in math
-local vector, matrix in require "matrix"
+local vector, matrix in require 'matrix'
 
 becomes _strictly_ equivalent to the Lua syntax
 
 local sin, cos, tan = math.sin, math.cos, math.tan
-
-local vector, matrix, (in)   -- '(in)' is a special hidden identifier
-(in) = require "matrix"      -- inaccessible from LuaJIT.
+local vector, matrix, (in)   -- '(in)' is a temporary special hidden identifier
+(in) = require 'matrix'      -- inaccessible from LuaJIT.
 vector, matrix = (in).vector, (in).matrix
 
 This syntax extension is particularly useful with LuaJIT considering the
 frequent needs to have local copies of variables for performance reason.
-
 
 Patch for lambda syntax
 =======================
@@ -25,55 +82,81 @@ Patch for lambda syntax
 With the patch of lamdba syntax extension the following syntaxes are
 supported: [-DLUAJIT_LAMBDA_SYNTAX]
 
-\(arg_list) (expr)
-\(arg_list) (expr_list)
+\par_list    expr
+\par_list   (expr)
+\(par_list)  expr
+\(par_list) (expr)
+
+\par_list   (expr_list)
+\(par_list) (expr_list)
 
 become _strictly_ equivalent to the Lua syntaxes
 
-function (arg_list) return expr      end
-function (arg_list) return expr_list end
+function (par_list) return expr      end
+function (par_list) return expr_list end
 
-+ Parenthesis around arg_list and non-emtpy expr are optional for lambda.
-+ Parenthesis around expr_list and empty expr are required for lambda.
-+ Following the function syntax, arg_list, expr and expr_list can be empty.
++ Parenthesis around par_list and non-emtpy expr are *optional* for lambda.
++ Parenthesis around expr_list and empty expr are *required* for lambda.
++ Following the function syntax, par_list, expr and expr_list can be empty.
 + The first lambda parameter name (if any) or parenthesis (if any) must “touch”
-  the lambda sign (backslash). Any space or tab between the lambda sign and a
-  token will be understood as a lambda with void parameter.
+  the lambda sign (backslash) to be understood as starting par_list. Any other
+  character (even touching), including space or tab between the lambda sign and
+  the expr or expr_list will be understood as a lambda with void parameter.
 
-With the patch for lamdba syntax with arrow support, the following syntaxes are
-also supported: [-DLUAJIT_LAMBDA_SYNTAX]
+For completness with common lambda notation in other programming language (e.g.
+Haskell), the following syntaxes are also supported by the patch:
 
-\(arg_list) -> (expr)
-\(arg_list) -> (expr_list)
-\(arg_list) => function_body
+\(par_list) -> (expr)
+\(par_list) -> (expr_list)
+\(par_list) => function_body
 
 which is _strictly_ equivalent to the Lua syntaxes (as above)
 
-function (arg_list) return expr      end
-function (arg_list) return expr_list end
-function (arg_list) function_body
+function (par_list) return expr      end
+function (par_list) return expr_list end
+function (par_list) function_body
 
-+ Single arrow is optional, but fat arrow is required.
-+ Parenthesis around arg_list is optional for the three lambda forms.
-+ Function_body must include the closing 'end' as it _is_ the Lua function body.
++ Single arrow is *optional*, but fat arrow is *required*.
++ Parenthesis around par_list is *optional* for the three lambda forms.
++ Parenthesis around expr and expr_list follow the same rules as without arrow.
++ Function_body must include the closing 'end' as it *is* the Lua function body.
 
 With the patch of lamdba syntax with direct call support, the following syntaxes
 are also supported: [-DLUAJIT_LAMBDA_DCALL]
 
-func \(arg_list) (expr)
-func \(arg_list) (expr_list)
+func \(par_list) (expr)
+func \(par_list) (expr_list)
 
 become _strictly_ equivalent to the Lua syntaxes (as above)
 
-func( \(arg_list) (expr)      )
-func( \(arg_list) (expr_list) )
+func( \(par_list) (expr)      )
+func( \(par_list) (expr_list) )
 
-where func is a function syntax. This is an extension of the table and string
-call syntax.
+where func is a function call syntax. This is an extension of the function call
+syntax for table constructor and string literal.
 
----
+Patch for deferred expression
+=============================
 
+With the patch of lamdba syntax extension the following syntaxes are
+supported: [-DLUAJIT_LAMBDA_DEFER]
+
+{ key := expr }
+{ key := (expr_list) }
+
+become _strictly_ equivalent to the Lambda syntaxes
+
+{ key =\ expr }
+{ key =\ (expr_list) }
+
+but it is not sensitive to the space following the lambda backslash character,
+as it is always void of parameter.
+
+-------------------------------------------------------------------------------
+
+----
 Examples of equivalent forms in Lua and Lambda syntaxes:
+----
 
 > f=function (x) return x*x end
 > f=\(x) (x*x)
@@ -99,7 +182,7 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 > =f(4,5)
 
 > sqrt=math.sqrt
-> f=function (x,y) return sqrt(x*x+y*y) end
+> f=function (x,y,z) return sqrt(x*x+y*y) end
 > f=\x,y sqrt(x*x+y*y)         -- hypotenuse
 > =f(2,3)
 3.605551275464
@@ -153,13 +236,17 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 > =a:f(2)
 20
 
-Example: Fibonacci sequence (2nd is more readable)
+----
+Example: Fibonacci sequence (2nd is more readable?)
+----
 
 fib=\n n<2 and n or fib(n-1)+fib(n-2)
 
-fib=\(n) n<2 and n or fib(n-1)+fib(n-2)
+fib=\n -> n<2 and n or fib(n-1)+fib(n-2)
 
+----
 Example: composition of lambda
+----
 
 > id=\... ...
 > f=\x x^2
@@ -177,7 +264,7 @@ Example: composition of lambda
 8  0
 
 > sm, gm = setmetatable, getmetatable
-> -- let’s define ^ and bottom for function composition
+> -- let’s define ^ and _ (bottom) for function composition
 > _ = sm({id}, { __pow  = \f,g sm({cat(f,g[1])}, gm(g)),
 >>               __call = \g,... g[1](...) })
 
@@ -194,14 +281,19 @@ true
 > =assert(p2(2,3)) 
 true
 
+----
 Example: direct call syntax 
+----
 
 > _ = \f f()
 > x=3
 > = _\ x*x
 9
 
+----
 *Note on performance*
+----
+
 p1 and p2 are creating lambda functions in each call, but if we redefine the
 lamda creation outside:
 
@@ -220,4 +312,3 @@ for i=1,1e9 do p3(i,i+1) end
 The performance is improved by a factor 2000 (!) The reason is that creation of
 lambda function are not compiled... Same problem for composition as it
 also creates a lambda function (i.e. the composed function in cat).
-
