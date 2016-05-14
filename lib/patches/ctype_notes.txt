@@ -1,0 +1,149 @@
+========================================
+Notes about CTYPE in LuaJIT (for XRANGE)
+========================================
+
+enum from lj_ctype.h:
+---------------------
+ CTF_XRANGE = 0x04000000u           C Type Flag
+CTID_XRANGE = 17                    C Type ID
+CTOK_XRANGE = 255 + 13 + 10         C Type tOKen
+ CDF_XRANGE = 1u << 9               C Declaration Flag
+ CTA_                               C Type Attribute
+ CTFP_                              C Type Flag for Parser (e.g. GCC attributes)
+
+if CTF_XRANGE is used by LuaJIT in the future, see alt implementation at the end
+
+CTInfo lj_ctype_typeinfo[] from lj_ctype.c:
+-------------------------------------------
+
+[CTID_XRANGE] = CTINFO(CT_ARRAY, (((sz=24) & 0x3fu)<<10)+(CTALIGN(3)|CTID_DOUBLE))
+              = (CT_ARRAY << 28) + (24 << 10) + (CTALIGN(3)|CTF_FP)
+["xrange"]    = CTINFO(CT_KW, (((sz=0) & 0x3fu)<<10)+CTOK_XRANGE)
+              = (CT_KW << 28) + CTOK_XRANGE
+0x3fu = 63 = max encoded size
+
+Info description:
+-----------------
+
+      ---------- info -----------
+ |    type(CT)  flags...  A   cid | size   |  sib  | next  | name  |
+ +--------------------------------+--------+-------+-------+-------+
+ |  0 NUM       BFcvUL..  A       | size   |       | type  |       |
+ |  1 STRUCT    ..cvU..V  A       | size   | field | name? | name? |
+ |  2 PTR       ..cvR...  A   cid | size   |       | type  |       |
+ |  3 ARRAY     VCcvDX.V  A   cid | size   |       | type  |       |
+ |  4 VOID      ..cv....  A       | size   |       | type  |       |
+ |  5 ENUM                A   cid | size   | const | name? | name? |
+ |  6 FUNC      ....VS.. cc   cid | nargs  | field | name? | name? |
+ |  7 TYPEDEF                 cid |        |       | name  | name  |
+ |  8 ATTRIB        attrnum   cid | attr   | sib?  | type? |       |
+ |  9 FIELD                   cid | offset | field |       | name? |
+ | 10 BITFIELD  B.vcU csz bsz pos | offset | field |       | name? |
+ | 11 CONSTVAL     c          cid | value  | const | name  | name  |
+ | 12 EXTERN                  cid |        | sib?  | name  | name  |
+ | 13 KW                      tok | size   |       | name  | name  |
+ +--------------------------------+--------+-------+-------+-------+
+      type[4]   flags[8] A[4] cid[16]
+      ....      BFcvUL..          (Bool, Flt, cst, vol, Usign, Long)
+                VC  RDXV          (Vec, Cpx, Ref, Dual, Xrng, Vla)
+                    U             (Union)
+                    VS            (Vararg, SSE reg)
+
+numconv: use bits 0x3C000000 [..xx|xx..000000]
+attrnum: none, qual, align, subtyp, redir, bad
+A: alignment
+cc: calling convention (decl, this, fast, std)
+cid: children ID (chain for attributes)
+sib: sibling element (chain for fields in struct/union/enum, args)
+next: chain for name hash collisions
+NUM: bool or integer or fp (exclusive)
+
+Useful helpers:
+---------------
+
+CTINFO(ct,flg)               = (ct << 28) + flg
+CTALIGN(al)                  = (al << 16)
+CTATTRIB(at)                 = (at << 16)
+CTSIZE_INVALID               = 0xffffffffu
+
+ctype_cid(info)              = info & 0x0000ffffu (children id)
+ctype_type(info)             = info >> 28
+ctype_align(info)            = (info >> 16) & 15 (max alignment 2^15)
+ctype_attrib(info)           = (info >> 16) & 255 (max 256 attributes)
+ctype_hassize(info)          = ctype_type(info) <= CT_HASSIZE
+ctype_isstruct(info)         = ctype_type(info) == CT_STRUCT (idem other CT)
+ctype_isattrib(info)         = ctype_type(info) == CT_ATTRIB (idem other CT)
+ctype_isxattrib(info,at)     = (info & 0xf0ff0000u) == CTINFO(CT_ATTRIB, at << 16)
+
+ctype_ispointer(info)        = (info >> 29) == (CT_PTR >> 1) (Array or Pointer = 001.)      
+ctype_isref(info)            = (info & (0xf0000000u|CTF_REF)) == CTINFO(CT_PTR, CTF_REF)
+ctype_isfp(info)             = (info & (0xf0000000u|CTF_FP)) == CTINFO(CT_NUM, CTF_FP)
+ctype_isinteger(info)        = (info & (0xf0000000u|CTF_BOOL|CTF_FP)) == CTINFO(CT_NUM, 0)
+ctype_iscomplex(info)        = (info & (0xf0000000u|CTF_COMPLEX)) == CTINFO(CT_ARRAY, CTF_COMPLEX)
+ctype_isdualnum(info)        = (info & (0xf0000000u|CTF_DUALNUM)) == CTINFO(CT_ARRAY, CTF_DUALNUM)
+ctype_isxrange(info)         = (info & (0xf0000000u|CTF_XRANGE )) == CTINFO(CT_ARRAY, CTF_XRANGE)
+
+ctype_get       (cts,id)     = cts->tab + id = ct
+ctype_child     (cts,ct)     = cts->tab + cid = cct
+ctype_typeid    (cts,ct)     = ct - cts->tab = id
+ctype_raw       (cts,id)     = rct: while not attrib loop over cid chain (raw ct)
+ctype_rawchild  (cts,id)     = rct: loop over cid chain until not attrib (raw ct)
+lj_ctype_rawref (cts,id)     = rct: loop over cid chain until not attrib or ref (raw ct)
+lj_ctype_size   (cts,id)     = rct->size
+lj_ctype_info   (cts,id,&sz) = collect qualifiers and last size of id and cid(s)
+lj_ctype_getname(cts,...)    = loop over hash chain until found for CT mask (e.g. 1u<<CT_STRUCT)
+                               set ct, return id
+
+Useful typedefs:
+----------------
+
+typedef uint32_t CTInfo;   /* Type info. */
+typedef uint32_t CTSize;   /* Type size. */
+typedef uint32_t CTypeID;  /* Type ID. */
+typedef uint16_t CTypeID1; /* Minimum-sized type ID. */
+
+/* C type table element. */
+typedef struct CType {
+  CTInfo info;          /* Type info. */
+  CTSize size;          /* Type size or other info. */
+  CTypeID1 sib;         /* Sibling element. */
+  CTypeID1 next;        /* Next element in hash chain. */
+  GCRef name;           /* Element name (GCstr). */
+} CType;
+
+/* C type state. */
+typedef struct CTState {
+  CType *tab;           /* C type table. */
+  CTypeID top;          /* Current top of C type table. */
+  MSize sizetab;        /* Size of C type table. */
+...
+  CTypeID1 hash[128];   /* Hash anchors for C type table. */
+} CTState;
+
+In case CTF_XRANGE flag is used:
+--------------------------------
+
+0- load ffi library on demand (or see lj_init.c)
+   if (!ctype_ctsG(G(L))) {
+     ptrdiff_t oldtop = savestack(L, L->top);
+     luaopen_ffi(L);  /* Load FFI library on-demand. */
+     L->top = restorestack(L, oldtop);
+   }
+
+1- use ffi.cdef to define the struct xrange (require FFI loaded)
+   lua_pushstring(L, "struct xrange { double start, stop, step; };");
+   or
+   lua_pushliteral(L, "struct xrange { double start, stop, step; };");
+   lj_cf_ffi_cdef(L)
+
+2- in lj_meta_cat (lj_meta.c)
+    GCstr *name = lj_str_newlit(L, "xrange");
+    CTState *cts = ctype_cts(L);
+    CType *ct; GCcdata *cd; CTypeID id;
+    id = lj_ctype_getname(cts, &ct, name, 1u<<CT_STRUCT)
+    if (!id) lj_err_callerv(L, LJ_ERR_FFI_NODECL, strdata(name));
+    (may need id = ctype_raw(ct->info))
+    (possibly to cache the pair (L,id) in static variables)
+
+3- in rec_cat (lj_record.c)
+   same as lj_meta_cat minus sanity checks (already checked with VM)

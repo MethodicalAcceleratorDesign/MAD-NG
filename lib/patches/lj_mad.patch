@@ -1,5 +1,5 @@
 diff --git a/src/Makefile b/src/Makefile
-index 3f25192..a9479ec 100644
+index 3f25192..93e009a 100644
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -99,7 +99,7 @@ XCFLAGS=
@@ -30,6 +30,98 @@ index 3f25192..a9479ec 100644
  ##############################################################################
  
  ##############################################################################
+@@ -139,11 +151,11 @@ XCFLAGS=
+ #
+ # Turn on assertions for the Lua/C API to debug problems with lua_* calls.
+ # This is rather slow -- use only while developing C libraries/embeddings.
+-#XCFLAGS+= -DLUA_USE_APICHECK
++XCFLAGS+= -DLUA_USE_APICHECK
+ #
+ # Turn on assertions for the whole LuaJIT VM. This significantly slows down
+ # everything. Use only if you suspect a problem with LuaJIT itself.
+-#XCFLAGS+= -DLUA_USE_ASSERT
++XCFLAGS+= -DLUA_USE_ASSERT
+ #
+ ##############################################################################
+ # You probably don't need to change anything below this line!
+diff --git a/src/lib_ffi.c b/src/lib_ffi.c
+index 1feee21..89ad1ea 100644
+--- a/src/lib_ffi.c
++++ b/src/lib_ffi.c
+@@ -773,7 +773,7 @@ LJLIB_CF(ffi_metatype)
+   TValue *tv;
+   GCcdata *cd;
+   if (!(ctype_isstruct(ct->info) || ctype_iscomplex(ct->info) ||
+-	ctype_isvector(ct->info)))
++	ctype_isvector(ct->info) || ctype_isxrange (ct->info) ))
+     lj_err_arg(L, 1, LJ_ERR_FFI_INVTYPE);
+   tv = lj_tab_setinth(L, t, -(int32_t)id);
+   if (!tvisnil(tv))
+diff --git a/src/lib_init.c b/src/lib_init.c
+index 63c2ace..a28d438 100644
+--- a/src/lib_init.c
++++ b/src/lib_init.c
+@@ -26,11 +26,14 @@ static const luaL_Reg lj_lib_load[] = {
+   { LUA_DBLIBNAME,	luaopen_debug },
+   { LUA_BITLIBNAME,	luaopen_bit },
+   { LUA_JITLIBNAME,	luaopen_jit },
++#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
++  { LUA_FFILIBNAME,	luaopen_ffi },
++#endif
+   { NULL,		NULL }
+ };
+ 
+ static const luaL_Reg lj_lib_preload[] = {
+-#if LJ_HASFFI
++#if LJ_HASFFI && !defined(LUAJIT_CTYPE_XRANGE)             /* LD: 2016.05.14 */
+   { LUA_FFILIBNAME,	luaopen_ffi },
+ #endif
+   { NULL,		NULL }
+diff --git a/src/lj_cdata.c b/src/lj_cdata.c
+index 05e27da..963d4fc 100644
+--- a/src/lj_cdata.c
++++ b/src/lj_cdata.c
+@@ -146,6 +146,11 @@ collect_attrib:
+       } else if ((ct->info & (CTF_VECTOR|CTF_COMPLEX))) {
+ 	if ((ct->info & CTF_COMPLEX)) idx &= 1;
+ 	*qual |= CTF_CONST;  /* Valarray elements are constant. */
++#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
++      } else if ((ct->info & CTF_XRANGE)) {
++        *qual |= 1;  /* Block num index to emulate struct-like fields. */
++        return ct;  /* But return the resolved raw type. */
++#endif
+       }
+       *pp = p + idx*(int32_t)sz;
+       return ct;
+@@ -165,8 +170,8 @@ collect_attrib:
+       CTSize ofs;
+       CType *fct = lj_ctype_getfieldq(cts, ct, name, &ofs, qual);
+       if (fct) {
+-	*pp = p + ofs;
+-	return fct;
++        *pp = p + ofs;
++        return fct;
+       }
+     } else if (ctype_iscomplex(ct->info)) {
+       if (name->len == 2) {
+@@ -179,6 +184,17 @@ collect_attrib:
+ 	  return ct;
+ 	}
+       }
++#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
++    } else if (ctype_isxrange(ct->info)) { /* See also recff_cdata_index */
++        if ((name->len == 5 && !memcmp(strdata(name), "start", 5)) ||
++            (name->len == 4 && !memcmp(strdata(name), "stop" , 4)) ||
++            (name->len == 4 && !memcmp(strdata(name), "step" , 4))) {
++          *qual |= CTF_CONST;  /* XRange fields are constant. */
++          *pp = p + (strdata(name)[2] == 'o') *   sizeof(double)
++                  + (strdata(name)[2] == 'e') * 2*sizeof(double);
++          return ct;
++        }
++#endif
+     } else if (cd->ctypeid == CTID_CTYPEID) {
+       /* Allow indexing a (pointer to) struct constructor to get constants. */
+       CType *sct = ctype_raw(cts, *(CTypeID *)p);
 diff --git a/src/lj_char.c b/src/lj_char.c
 index 11f23ef..0f9576e 100644
 --- a/src/lj_char.c
@@ -59,23 +151,54 @@ index 11f23ef..0f9576e 100644
    128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,
    128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,128,
 diff --git a/src/lj_cparse.c b/src/lj_cparse.c
-index 16d2cb6..2f814bb 100644
+index 16d2cb6..9d36bcc 100644
 --- a/src/lj_cparse.c
 +++ b/src/lj_cparse.c
+@@ -789,7 +789,7 @@ static void cp_push_type(CPDecl *decl, CTypeID id)
+     cp_push(decl, info & ~CTMASK_CID, size);  /* Copy type. */
+     break;
+   case CT_ARRAY:
+-    if ((ct->info & (CTF_VECTOR|CTF_COMPLEX))) {
++    if ((ct->info & (CTF_VECTOR|CTF_COMPLEX|CTF_XRANGE))) {
+       info |= (decl->attr & CTF_QUAL);
+       decl->attr &= ~CTF_QUAL;
+     }
 @@ -1481,7 +1481,7 @@ static CPscl cp_decl_spec(CPState *cp, CPDecl *decl, CPscl scl)
        continue;
      }
      if (sz || tdef ||
 -	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX)))
-+    	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX)))
++    	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX|CDF_XRANGE)))
        break;
      switch (cp->tok) {
      case CTOK_STRUCT:
+@@ -1513,6 +1513,10 @@ end_decl:
+ 
+   if ((cds & CDF_COMPLEX))  /* Use predefined complex types. */
+     tdef = sz == 4 ? CTID_COMPLEX_FLOAT : CTID_COMPLEX_DOUBLE;
++#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
++  else if ((cds & CDF_XRANGE))  /* Use predefined xrange type. */
++    tdef = CTID_XRANGE;
++#endif
+ 
+   if (tdef) {
+     cp_push_type(decl, tdef);
 diff --git a/src/lj_crecord.c b/src/lj_crecord.c
-index c0f7e3d..24d7080 100644
+index c0f7e3d..29c08f1 100644
 --- a/src/lj_crecord.c
 +++ b/src/lj_crecord.c
-@@ -123,10 +123,13 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
+@@ -115,6 +115,10 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
+       return IRT_NUM;
+     else if (ct->size == 2*sizeof(float))
+       return IRT_FLOAT;
++#ifdef LUAJIT_CTYPE_XRANGE				   /* LD: 2016.05.14 */
++  } else if (ctype_isxrange(ct->info)) {
++    return IRT_NUM;
++#endif
+   }
+   return IRT_CDATA;
+ }
+@@ -123,10 +127,13 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
  
  /* Maximum length and unroll of inlined copy/fill. */
  #define CREC_COPY_MAXUNROLL		16
@@ -90,7 +213,139 @@ index c0f7e3d..24d7080 100644
  /* Number of windowed registers used for optimized memory copy. */
  #if LJ_TARGET_X86
  #define CREC_COPY_REGWIN		2
-@@ -927,7 +930,7 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
+@@ -169,6 +176,18 @@ static MSize crec_copy_struct(CRecMemList *ml, CTState *cts, CType *ct)
+ 	ml[mlp].tp = tp;
+ 	mlp++;
+       }
++#ifdef LUAJIT_CTYPE_XRANGE				   /* LD: 2016.05.14 */
++      if (ctype_isxrange(cct->info)) {
++        if (mlp >= CREC_COPY_MAXUNROLL) return 0;
++        ml[mlp].ofs = df->size + sizeof(double);
++        ml[mlp].tp = tp;
++        mlp++;
++        if (mlp >= CREC_COPY_MAXUNROLL) return 0;
++        ml[mlp].ofs = df->size + 2*sizeof(double);
++        ml[mlp].tp = tp;
++        mlp++;
++      }
++#endif
+     } else if (!ctype_isconstval(df->info)) {
+       /* NYI: bitfields and sub-structures. */
+       return 0;
+@@ -575,15 +594,35 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
+   } else if (ctype_iscomplex(sinfo)) {  /* Unbox/box complex. */
+     ptrdiff_t esz = (ptrdiff_t)(s->size >> 1);
+     TRef ptr, tr1, tr2, dp;
+-    dp = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
++    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
+     tr1 = emitir(IRT(IR_XLOAD, t), sp, 0);
+-    ptr = emitir(IRT(IR_ADD, IRT_PTR), sp, lj_ir_kintp(J, esz));
++    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
+     tr2 = emitir(IRT(IR_XLOAD, t), ptr, 0);
+-    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
+-    emitir(IRT(IR_XSTORE, t), ptr, tr1);
+-    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
+-    emitir(IRT(IR_XSTORE, t), ptr, tr2);
++
++    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
++          emitir(IRT(IR_XSTORE, t), ptr, tr1);
++    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
++          emitir(IRT(IR_XSTORE, t), ptr, tr2);
++    return dp;
++#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
++  } else if (ctype_isxrange(sinfo)) {  /* Unbox/box xrange. */
++    ptrdiff_t esz = sizeof(double);
++    TRef ptr, tr1, tr2, tr3, dp;
++    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
++    tr1 = emitir(IRT(IR_XLOAD, IRT_NUM), sp, 0);
++    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
++    tr2 = emitir(IRT(IR_XLOAD, IRT_NUM), ptr, 0);
++    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, 2*esz));
++    tr3 = emitir(IRT(IR_XLOAD, IRT_NUM), ptr, 0);
++
++    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
++          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr1);
++    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
++          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr2);
++    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+2*esz));
++          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr3);
+     return dp;
++#endif
+   } else {
+     /* NYI: copyval of vectors. */
+   err_nyi:
+@@ -760,8 +799,8 @@ void LJ_FASTCALL recff_cdata_index(jit_State *J, RecordFFData *rd)
+ again:
+   idx = J->base[1];
+   if (tref_isnumber(idx)) {
+-    idx = lj_opt_narrow_cindex(J, idx);
+-    if (ctype_ispointer(ct->info)) {
++    idx = lj_opt_narrow_cindex(J, idx);                    /* LD: 2016.05.14 */
++    if (ctype_ispointer(ct->info) && !(ct->info & CTF_XRANGE)) {
+       CTSize sz;
+   integer_key:
+       if ((ct->info & CTF_COMPLEX))
+@@ -813,23 +852,23 @@ again:
+       CType *fct;
+       fct = lj_ctype_getfield(cts, ct, name, &fofs);
+       if (fct) {
+-	/* Always specialize to the field name. */
+-	emitir(IRTG(IR_EQ, IRT_STR), idx, lj_ir_kstr(J, name));
+-	if (ctype_isconstval(fct->info)) {
+-	  if (fct->size >= 0x80000000u &&
+-	      (ctype_child(cts, fct)->info & CTF_UNSIGNED)) {
+-	    J->base[0] = lj_ir_knum(J, (lua_Number)(uint32_t)fct->size);
+-	    return;
+-	  }
+-	  J->base[0] = lj_ir_kint(J, (int32_t)fct->size);
+-	  return;  /* Interpreter will throw for newindex. */
+-	} else if (ctype_isbitfield(fct->info)) {
+-	  lj_trace_err(J, LJ_TRERR_NYICONV);
+-	} else {
+-	  lua_assert(ctype_isfield(fct->info));
+-	  sid = ctype_cid(fct->info);
+-	}
+-	ofs += (ptrdiff_t)fofs;
++        /* Always specialize to the field name. */
++        emitir(IRTG(IR_EQ, IRT_STR), idx, lj_ir_kstr(J, name));
++        if (ctype_isconstval(fct->info)) {
++          if (fct->size >= 0x80000000u &&
++              (ctype_child(cts, fct)->info & CTF_UNSIGNED)) {
++            J->base[0] = lj_ir_knum(J, (lua_Number)(uint32_t)fct->size);
++            return;
++          }
++          J->base[0] = lj_ir_kint(J, (int32_t)fct->size);
++          return;  /* Interpreter will throw for newindex. */
++        } else if (ctype_isbitfield(fct->info)) {
++          lj_trace_err(J, LJ_TRERR_NYICONV);
++        } else {
++          lua_assert(ctype_isfield(fct->info));
++          sid = ctype_cid(fct->info);
++        }
++        ofs += (ptrdiff_t)fofs;
+       }
+     } else if (ctype_iscomplex(ct->info)) {
+       if (name->len == 2 &&
+@@ -840,6 +879,18 @@ again:
+ 	if (strdata(name)[0] == 'i') ofs += (ct->size >> 1);
+ 	sid = ctype_cid(ct->info);
+       }
++#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
++    } else if (ctype_isxrange(ct->info)) { /* See also lj_cdata_index */
++      if ((name->len == 5 && !memcmp(strdata(name), "start", 5)) ||
++          (name->len == 4 && !memcmp(strdata(name), "stop" , 4)) ||
++          (name->len == 4 && !memcmp(strdata(name), "step" , 4))) {
++        /* Always specialize to the field name. */
++        emitir(IRTG(IR_EQ, IRT_STR), idx, lj_ir_kstr(J, name));
++        ofs += (strdata(name)[2] == 'o') *   sizeof(double) +
++               (strdata(name)[2] == 'e') * 2*sizeof(double);
++        sid = ctype_cid(ct->info);
++      }
++#endif
+     }
+   }
+   if (!sid) {
+@@ -927,7 +978,7 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
        trsz = lj_ir_kint(J, sz);
      }
      trcd = emitir(IRTG(IR_CNEW, IRT_CDATA), trid, trsz);
@@ -99,6 +354,121 @@ index c0f7e3d..24d7080 100644
        TRef dp;
        CTSize align;
      special:  /* Only handle bulk zero-fill for large/VLA/VLS types. */
+diff --git a/src/lj_ctype.c b/src/lj_ctype.c
+index bc47cc5..5100ca3 100644
+--- a/src/lj_ctype.c
++++ b/src/lj_ctype.c
+@@ -67,6 +67,7 @@
+   _("__signed",		0,	CTOK_SIGNED) \
+   _("__signed__",	0,	CTOK_SIGNED) \
+   _("unsigned",		0,	CTOK_UNSIGNED) \
++  _("xrange",		0,	CTOK_XRANGE) \
+   /* Type qualifiers. */ \
+   _("const",		0,	CTOK_CONST) \
+   _("__const",		0,	CTOK_CONST) \
+@@ -515,6 +516,11 @@ static void ctype_repr(CTRepr *ctr, CTypeID id)
+ 	if (size == 2*sizeof(float)) ctype_preplit(ctr, "float");
+ 	ctype_preplit(ctr, "complex");
+ 	return;
++#ifdef LUAJIT_CTYPE_XRANGE                                  /* LD: 2016.05.14 */
++      } else if ((info & CTF_XRANGE)) {
++        ctype_preplit(ctr, "xrange");
++        return;
++#endif
+       } else {
+ 	ctype_preplit(ctr, ")))");
+ 	ctype_prepnum(ctr, size);
+diff --git a/src/lj_ctype.h b/src/lj_ctype.h
+index e9b426f..8ff3ddf 100644
+--- a/src/lj_ctype.h
++++ b/src/lj_ctype.h
+@@ -42,25 +42,25 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
+ **  ---------- info ------------
+ ** |type      flags...  A   cid | size   |  sib  | next  | name  |
+ ** +----------------------------+--------+-------+-------+-------+--
+-** |NUM       BFvcUL..  A       | size   |       | type  |       |
+-** |STRUCT    ..vcU..V  A       | size   | field | name? | name? |
+-** |PTR       ..vcR...  A   cid | size   |       | type  |       |
+-** |ARRAY     VCvc...V  A   cid | size   |       | type  |       |
+-** |VOID      ..vc....  A       | size   |       | type  |       |
++** |NUM       BFcvUL..  A       | size   |       | type  |       |
++** |STRUCT    ..cvU..V  A       | size   | field | name? | name? |
++** |PTR       ..cvR...  A   cid | size   |       | type  |       |
++** |ARRAY     VCcvDX.V  A   cid | size   |       | type  |       |
++** |VOID      ..cv....  A       | size   |       | type  |       |
+ ** |ENUM                A   cid | size   | const | name? | name? |
+ ** |FUNC      ....VS.. cc   cid | nargs  | field | name? | name? |
+ ** |TYPEDEF                 cid |        |       | name  | name  |
+ ** |ATTRIB        attrnum   cid | attr   | sib?  | type? |       |
+ ** |FIELD                   cid | offset | field |       | name? |
+-** |BITFIELD  B.vcU csz bsz pos | offset | field |       | name? |
+-** |CONSTVAL     c          cid | value  | const | name  | name  |
++** |BITFIELD  B.cvU csz bsz pos | offset | field |       | name? |
++** |CONSTVAL    c           cid | value  | const | name  | name  |
+ ** |EXTERN                  cid |        | sib?  | name  | name  |
+ ** |KW                      tok | size   |       | name  | name  |
+ ** +----------------------------+--------+-------+-------+-------+--
+ **        ^^  ^^--- bits used for C type conversion dispatch
+ */
+ 
+-/* C type info flags.     TFFArrrr  */
++/* C type info flags.     TFFArrrr  CType[4], Flags[8], Align[4], ChildID[16] */
+ #define CTF_BOOL	0x08000000u	/* Boolean: NUM, BITFIELD. */
+ #define CTF_FP		0x04000000u	/* Floating-point: NUM. */
+ #define CTF_CONST	0x02000000u	/* Const qualifier. */
+@@ -71,6 +71,8 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
+ #define CTF_REF		0x00800000u	/* Reference: PTR. */
+ #define CTF_VECTOR	0x08000000u	/* Vector: ARRAY. */
+ #define CTF_COMPLEX	0x04000000u	/* Complex: ARRAY. */
++#define CTF_DUALNUM	0x00800000u	/* Dual number: ARRAY. */
++#define CTF_XRANGE	0x00400000u	/* XRange: ARRAY. */
+ #define CTF_UNION	0x00800000u	/* Union: STRUCT. */
+ #define CTF_VARARG	0x00800000u	/* Vararg: FUNC. */
+ #define CTF_SSEREGPARM	0x00400000u	/* SSE register parameters: FUNC. */
+@@ -78,6 +80,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
+ #define CTF_QUAL	(CTF_CONST|CTF_VOLATILE)
+ #define CTF_ALIGN	(CTMASK_ALIGN<<CTSHIFT_ALIGN)
+ #define CTF_UCHAR	((char)-1 > 0 ? CTF_UNSIGNED : 0)
++#define CTF_VALARR      (CTF_VECTOR|CTF_COMPLEX|CTF_DUALNUM|CTF_XRANGE)
+ 
+ /* Flags used in parser.  .F.Ammvf   cp->attr  */
+ #define CTFP_ALIGNED	0x00000001u	/* cp->attr + ALIGN */
+@@ -230,11 +233,15 @@ typedef struct CTState {
+   (((info) & (CTMASK_NUM|CTF_REF)) == CTINFO(CT_PTR, CTF_REF))
+ 
+ #define ctype_isrefarray(info) \
+-  (((info) & (CTMASK_NUM|CTF_VECTOR|CTF_COMPLEX)) == CTINFO(CT_ARRAY, 0))
++  (((info) & (CTMASK_NUM|CTF_VALARR)) == CTINFO(CT_ARRAY, 0))
+ #define ctype_isvector(info) \
+   (((info) & (CTMASK_NUM|CTF_VECTOR)) == CTINFO(CT_ARRAY, CTF_VECTOR))
+ #define ctype_iscomplex(info) \
+   (((info) & (CTMASK_NUM|CTF_COMPLEX)) == CTINFO(CT_ARRAY, CTF_COMPLEX))
++#define ctype_isdualnum(info) \
++  (((info) & (CTMASK_NUM|CTF_DUALNUM)) == CTINFO(CT_ARRAY, CTF_DUALNUM))
++#define ctype_isxrange(info) \
++  (((info) & (CTMASK_NUM|CTF_XRANGE)) == CTINFO(CT_ARRAY, CTF_XRANGE))
+ 
+ #define ctype_isvltype(info) \
+   (((info) & ((CTMASK_NUM|CTF_VLA) - (2u<<CTSHIFT_NUM))) == \
+@@ -289,6 +296,8 @@ typedef struct CTState {
+   _(DOUBLE,		8,	CT_NUM, CTF_FP|CTALIGN(3)) \
+   _(COMPLEX_FLOAT,	8,	CT_ARRAY, CTF_COMPLEX|CTALIGN(2)|CTID_FLOAT) \
+   _(COMPLEX_DOUBLE,	16,	CT_ARRAY, CTF_COMPLEX|CTALIGN(3)|CTID_DOUBLE) \
++  _(DUALNUM,		16,	CT_ARRAY, CTF_DUALNUM|CTALIGN(3)|CTID_DOUBLE) \
++  _(XRANGE,             24,     CT_ARRAY, CTF_XRANGE |CTALIGN(3)|CTID_DOUBLE) \
+   _(P_VOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_VOID) \
+   _(P_CVOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CVOID) \
+   _(P_CCHAR,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CCHAR) \
+@@ -335,7 +344,8 @@ CTTYDEF(CTTYIDDEF)
+ /* Simple declaration specifiers. */
+ #define CDSDEF(_) \
+   _(VOID) _(BOOL) _(CHAR) _(INT) _(FP) \
+-  _(LONG) _(LONGLONG) _(SHORT) _(COMPLEX) _(SIGNED) _(UNSIGNED) \
++  _(LONG) _(LONGLONG) _(SHORT) _(SIGNED) _(UNSIGNED) \
++  _(COMPLEX) _(DUALNUM) _(XRANGE) \
+   _(CONST) _(VOLATILE) _(RESTRICT) _(INLINE) \
+   _(TYPEDEF) _(EXTERN) _(STATIC) _(AUTO) _(REGISTER)
+ 
 diff --git a/src/lj_lex.c b/src/lj_lex.c
 index 0187c42..01b8f9a 100644
 --- a/src/lj_lex.c
@@ -180,23 +550,20 @@ index 7fed1fd..f456ba1 100644
    __(eof, <eof>)
  
 diff --git a/src/lj_meta.c b/src/lj_meta.c
-index c7993ad..9eb41cf 100644
+index c7993ad..a5be460 100644
 --- a/src/lj_meta.c
 +++ b/src/lj_meta.c
-@@ -239,6 +239,24 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
+@@ -239,6 +239,21 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
  {
    int fromc = 0;
    if (left < 0) { left = -left; fromc = 1; }
-+#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.02 */
++#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
 +  if (tvisnumber(top) && tvisnumber(top-1)) {
 +    /* Convert 2-3 concatenated numbers into a xrange, see also rec_cat. */
 +    const int has_step = left > 1 && tvisnumber(top-2);
-+    GCstr *name = lj_str_newlit(L, "xrange_t");
-+    CTState *cts = ctype_cts(L); CType *ct; GCcdata *cd;
-+    CTypeID id = (lj_ctype_getname(cts, &ct, name, -1), ctype_cid(ct->info));
-+    if (!id) lj_err_callerv(L, LJ_ERR_FFI_NODECL, strdata(name));
++    CTState *cts = ctype_cts(L);
 +    /* Allocate cdata xrange. */
-+    cd = lj_cdata_new(cts, id, 3*sizeof(double));
++    GCcdata *cd = lj_cdata_new(cts, CTID_XRANGE, 3*sizeof(double));
 +    /* Copy start, stop[, step], default step is 1. */
 +    top = has_step ? top-2 : top-1;
 +    ((double *)cdataptr(cd))[0] = numV(top);
@@ -204,10 +571,24 @@ index c7993ad..9eb41cf 100644
 +    ((double *)cdataptr(cd))[2] = has_step ? numV(top+2) : 1;
 +    setcdataV(L, top, cd);
 +  } else
-+#endif /* LUAJIT_CTYPE_XRANGE */
++#endif
    do {
      if (!(tvisstr(top) || tvisnumber(top)) ||
  	!(tvisstr(top-1) || tvisnumber(top-1))) {
+diff --git a/src/lj_opt_fold.c b/src/lj_opt_fold.c
+index e1d1369..802cf7e 100644
+--- a/src/lj_opt_fold.c
++++ b/src/lj_opt_fold.c
+@@ -711,7 +711,8 @@ LJFOLDF(kfold_add_kgc)
+     CType *ct = ctype_raw(ctype_ctsG(J2G(J)), gco2cd(o)->ctypeid);
+     if (ctype_isnum(ct->info) || ctype_isenum(ct->info) ||
+ 	ctype_isptr(ct->info) || ctype_isfunc(ct->info) ||
+-	ctype_iscomplex(ct->info) || ctype_isvector(ct->info))
++	ctype_iscomplex(ct->info) || ctype_isxrange(ct->info) ||
++        ctype_isvector(ct->info))
+       return lj_ir_kkptr(J, (char *)o + ofs);
+   }
+ #endif
 diff --git a/src/lj_parse.c b/src/lj_parse.c
 index 610c861..906d06b 100644
 --- a/src/lj_parse.c
@@ -469,25 +850,21 @@ index 610c861..906d06b 100644
    case TK_break:
      lj_lex_next(ls);
 diff --git a/src/lj_record.c b/src/lj_record.c
-index 8a72b0c..e679872 100644
+index 8a72b0c..ba9027d 100644
 --- a/src/lj_record.c
 +++ b/src/lj_record.c
-@@ -1823,9 +1823,40 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
+@@ -1823,9 +1823,36 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
    lua_assert(baseslot < topslot);
    for (s = baseslot; s <= topslot; s++)
      (void)getslot(J, s);  /* Ensure all arguments have a reference. */
-+#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.12 */
++#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
 +  if (tref_isnumber (top[0]) && tref_isnumber (top[-1])) {
 +    /* Convert 2-3 concatenated numbers into a xrange, see also lj_meta_cat. */
 +    TRef dp, tr, *base = &J->base[baseslot];
 +    const int has_step = top-2 >= base && tref_isnumber(top[-2]);
 +    const int esz = sizeof(double);
-+    GCstr *name = lj_str_newlit(J->L, "xrange_t");
-+    CTState *cts = ctype_cts(J->L); CType *ct;
-+    CTypeID id = (lj_ctype_getname(cts, &ct, name, -1), ctype_cid(ct->info));
-+    if (!id) lj_err_callerv(J->L, LJ_ERR_FFI_NODECL, strdata(name));
 +    /* Allocate cdata xrange. */
-+    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, id), TREF_NIL);
++    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, CTID_XRANGE), TREF_NIL);
 +    /* First convert integers to numbers. */
 +    top = has_step ? top-2 : top-1;
 +    if (tref_isinteger(top[0])) top[0]=emitir(IRTN(IR_CONV), top[0], IRCONV_NUM_INT);
@@ -506,7 +883,7 @@ index 8a72b0c..e679872 100644
 +    /* rec_check_ir(J); rec_check_slots(J); */
 +    return dp;
 +  } else
-+#endif /* LUAJIT_CTYPE_XRANGE */
++#endif
    if (tref_isnumber_str(top[0]) && tref_isnumber_str(top[-1])) {
 -    TRef tr, hdr, *trp, *xbase, *base = &J->base[baseslot];
 -    /* First convert numbers to strings. */
