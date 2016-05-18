@@ -35,8 +35,13 @@
 
 typedef const char*      str_t;
 typedef int              idx_t;
+typedef struct xrange    rng_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
+
+struct xrange {
+  double start, stop, step;
+};
 
 // --- constants -------------------------------------------------------------o
 

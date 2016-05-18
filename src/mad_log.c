@@ -134,9 +134,8 @@ mad_fatalf (str_t fmt, ...)
   putc('\n', stderr);
   fflush(stderr);
 
-  // if (location->extrn) mad_fatal_extrn();
-
-  exit(EXIT_FAILURE);
+  mad_luaerr("C fatal error");
+  exit(EXIT_FAILURE); // never reached
 }
 
 void
@@ -160,6 +159,9 @@ mad_errorf (str_t fmt, ...)
 
   putc('\n', stderr);
   fflush(stderr);
+
+  mad_luaerr("C error");
+  exit(EXIT_FAILURE); // never reached
 }
 
 void

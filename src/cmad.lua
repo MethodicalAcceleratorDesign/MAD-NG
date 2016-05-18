@@ -5,6 +5,7 @@ local ffi = require 'ffi'
 ffi.cdef[[
 typedef  const char*       str_t; // mad.h
 typedef  int               idx_t; // mad.h
+typedef  xrange            rng_t; // mad.h
 typedef  double            num_t; // mad.h
 typedef  double _Complex  cnum_t; // mad.h
 
