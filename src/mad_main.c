@@ -1,7 +1,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | MAD main
+ | MAD frontend
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -194,7 +194,6 @@ static void print_usage(void)
   "  -j cmd    Perform JIT control command.\n"
   "  -O[opt]   Control JIT optimizations.\n"
   "  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
-  "  -v        Show version information.\n"
   "  -q        Do not show version information.\n"
   "  -E        Ignore environment variables.\n"
   "  --        Stop handling options.\n"
@@ -253,6 +252,11 @@ static int docall(lua_State *L, int narg, int clear)
 }
 
 #if 0
+static void print_version(void)
+{
+  fputs(LUAJIT_VERSION " -- " LUAJIT_COPYRIGHT ". " LUAJIT_URL "\n", stdout);
+}
+
 static void print_jit_status(lua_State *L)
 {
   int n;
@@ -533,10 +537,6 @@ static int collectargs(char **argv, int *flags)
     case 'i':
       notail(argv[i]);
       *flags |= FLAGS_INTERACTIVE;
-      /* fallthrough */
-    case 'v':
-      notail(argv[i]);
-      *flags |= FLAGS_VERSION;
       break;
     case 'q':
       notail(argv[i]);
@@ -665,12 +665,9 @@ static int pmain(lua_State *L)
     if (s->status != 0) return 0;
   }
   if ((flags & FLAGS_INTERACTIVE)) {
-//    print_jit_status(L);
     dotty(L);
-  } else if (script == 0 && !(flags & (FLAGS_EXEC|FLAGS_VERSION))) {
+  } else if (script == 0 && !(flags & FLAGS_EXEC)) {
     if (lua_stdin_is_tty()) {
-      print_version();
-//      print_jit_status(L);
       dotty(L);
     } else {
       dofile(L, NULL);  /* executes stdin as a file */

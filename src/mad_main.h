@@ -4,7 +4,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | MAD main
+ | MAD frontend
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
