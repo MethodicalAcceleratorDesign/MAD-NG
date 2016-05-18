@@ -23,7 +23,7 @@
 
   Comment:
     MAD is embedding the LuaJIT library and frontend developped by Mike Pall.
-    See copyright notice hereafter and file COPYRIGHT.luajit in this directory.
+    See COPYRIGHT.luajit in this directory.
  o----------------------------------------------------------------------------o
  */
 
@@ -33,7 +33,8 @@ void mad_luaerr (const char *msg);
 void mad_luawrn (const char *msg);
 void mad_luatrc (const char *msg);
 
-#ifdef LUALIB_API
+#ifdef LUALIB_API // Only valid in a Lua environment
+LUALIB_API int luaL_error (lua_State *L, const char *fmt, ...);
 LUALIB_API int luaL_warn  (lua_State *L, const char *fmt, ...);
 LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...);
 #endif
