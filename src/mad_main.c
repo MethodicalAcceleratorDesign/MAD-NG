@@ -64,7 +64,7 @@
 #endif
 
 static lua_State *globalL = NULL;
-static const char *progname = LUA_PROGNAME;
+static const char *progname = "mad";
 
 /* --- MAD -------------------------------------------------------------------*/
 
@@ -79,13 +79,6 @@ void check_stdin_is_tty(void)
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
 #endif
-
-extern void lj_err_callermsg(lua_State *L, const char *msg);
-
-void mad_luaerr (const char *msg)
-{
-  lj_err_callermsg(globalL, msg);
-}
 
 #ifndef MAD_VERSION
 #define MAD_VERSION "0.0.0"
@@ -111,7 +104,61 @@ static void print_version(void)
 
   strftime(buf, sizeof buf, "%F %T", tm);
   printf(msg, ver, buf);
-/*  fputs(LUAJIT_VERSION " -- " LUAJIT_COPYRIGHT ". " LUAJIT_URL "\n", stdout); */
+}
+
+static const char* logmsg (lua_State *L, const char *fmt, va_list va)
+{
+  luaL_where(L, 1);
+  lua_pushvfstring(L, fmt, va);
+  lua_concat(L, 2);
+  return lua_tostring(L, -1);
+}
+
+LUALIB_API int luaL_warn (lua_State *L, const char *fmt, ...)
+{
+  va_list va;
+  va_start(va, fmt);
+  fprintf(stderr, "warning: %s\n", logmsg(L, fmt, va));
+  va_end(va);
+  return 0;
+}
+
+LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...)
+{
+  va_list va;
+  va_start(va, fmt);
+  fprintf(stderr, "trace: %s\n", logmsg(L, fmt, va));
+  va_end(va);
+  return 0;
+}
+
+void mad_luaerr (const char *msg)
+{
+  luaL_error(globalL, msg);
+}
+
+void mad_luawrn (const char *msg)
+{
+  luaL_warn(globalL, msg);
+}
+
+void mad_luatrc (const char *msg)
+{
+  luaL_trace(globalL, msg);
+}
+
+static int mad_warn (lua_State *L) {
+  return luaL_warn(L, "%s", luaL_checkstring(L, 1));
+}
+
+static int mad_trace (lua_State *L) {
+  return luaL_trace(L, "%s", luaL_checkstring(L, 1));
+}
+
+static void mad_register(lua_State *L)
+{
+  lua_register(L, "warn" , mad_warn );  
+  lua_register(L, "trace", mad_trace);
 }
 
 /* --- MAD -------------------------------------------------------------------*/
@@ -604,6 +651,7 @@ static int pmain(lua_State *L)
   }
   lua_gc(L, LUA_GCSTOP, 0);  /* stop collector during initialization */
   luaL_openlibs(L);  /* open libraries */
+  mad_register(L);
   lua_gc(L, LUA_GCRESTART, -1);
   if (!(flags & FLAGS_NOENV)) {
     s->status = handle_luainit(L);
