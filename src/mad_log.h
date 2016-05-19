@@ -25,7 +25,7 @@
 
   Information:
   - error, warn, trace print to stderr; ensure = cond + error
-  - warn and trace use tags 'warning' and 'trace'
+  - warn and trace use tags 'warning:' and 'trace:'
   - mad_trace_level:
   	trace with level <= mad_trace_level are active
   - mad_trace_location:

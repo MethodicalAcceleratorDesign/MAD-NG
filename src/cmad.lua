@@ -12,33 +12,33 @@ typedef  double _Complex  cnum_t; // mad.h
 typedef  struct _IO_FILE    FILE; // stdio.h
 ]]
 
--- functions for logging (mad_log.h)
+-- functions for logging (mad_log.h and mad_main.h)
 
 ffi.cdef [[
-void mad_fatal (str_t msg);
-void mad_error (str_t msg);
-void mad_warn  (str_t msg);
-void mad_info  (int lvl, str_t msg);
-void mad_debug (int lvl, str_t msg);
+void mad_error (str_t msg, ...);
+void mad_warn  (str_t msg, ...);
+void mad_trace (str_t msg, ...);
 
-void mad_log_setloc1 (str_t file, int line);
+extern int mad_trace_level;    // print traces with level >= .
+extern int mad_trace_location; // print location (always for error)
 ]]
 
 -- functions for memory management (mad_mem.h)
 
 ffi.cdef [[
-void*  mad_malloc  (size_t size_);
-void*  mad_realloc (void  *ptr_ , size_t size_);
-void   mad_free    (void  *ptr_);
+void*  mad_malloc   (size_t size_);
+void*  mad_calloc   (size_t count, size_t size );
+void*  mad_realloc  (void  *ptr_ , size_t size_);
+void   mad_free     (void  *ptr_);
 
-size_t mad_mem_size    (void *ptr_);
-size_t mad_mem_cached  (void);
-size_t mad_mem_collect (void);
+size_t mad_msize    (void *ptr_);
+size_t mad_mcached  (void);
+size_t mad_mcollect (void);
 
 // alternate for memcheck
-void*  malloc  (size_t size_);
-void*  realloc (void  *ptr_ , size_t size_);
-void   free    (void  *ptr_);
+void*  malloc       (size_t size_);
+void*  realloc      (void  *ptr_ , size_t size_);
+void   free         (void  *ptr_);
 
 // threshold between C and Lua allocator in 8 bytes unit
 static const int mad_alloc_threshold = 256;
