@@ -52,15 +52,15 @@
 #define mad_free_tmp(name)
 
 // allocator (note: no calloc!)
-void*  mad_malloc      (size_t size);
-void*  mad_calloc      (size_t count, size_t size );
-void*  mad_realloc     (void  *ptr_ , size_t size_);
-void   mad_free        (void  *ptr_);
+void*  mad_malloc   (size_t size);
+void*  mad_calloc   (size_t count, size_t size );
+void*  mad_realloc  (void  *ptr_ , size_t size_);
+void   mad_free     (void  *ptr_);
 
 // utils
-size_t mad_mem_size    (void *ptr_);
-size_t mad_mem_cached  (void);
-size_t mad_mem_collect (void);
+size_t mad_msize    (void *ptr_);
+size_t mad_mcached  (void);
+size_t mad_mcollect (void);
 
 // --- implementation (private) ----------------------------------------------o
 

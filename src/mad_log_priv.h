@@ -19,33 +19,23 @@
  o----------------------------------------------------------------------------o
 */
 
-#define mad_fatal(...)         (mad_savtrcloc(0),mad_fatalf(  __VA_ARGS__))
-#define mad_error(...)         (mad_savtrcloc(2),mad_errorf(  __VA_ARGS__))
-#define mad_warn(...)          (mad_savtrcloc(2),mad_warnf (  __VA_ARGS__))
-#define mad_info(l,...) ((void)(mad_chkmsglvl(l) && \
-                               (mad_savtrcloc(3),mad_infof (l,__VA_ARGS__),0)))
-#define mad_debug(l,...)((void)(mad_chkerrlvl(l) && \
-                               (mad_savtrcloc(1),mad_debugf(l,__VA_ARGS__),0)))
+#define mad_error(...)     mad_savtrcfun(  mad_error(__VA_ARGS__))
+#define mad_warn(...)      mad_savtrcfun(  mad_warn (__VA_ARGS__))
+#define mad_trace(l,...)   mad_savchkfun(l,mad_trace(__VA_ARGS__))
+#define mad_ensure(c,...)  mad_savtstfun(c,mad_error(__VA_ARGS__))
 
-#define mad_ensure(c,...)((void)(!(c) && (mad_fatal(__VA_ARGS__),0)))
+#define mad_savtrcfun(f) \
+  (mad_trace_function = __func__, f)
 
-void (mad_fatal)   (str_t)      __attribute__((noreturn));
-void mad_fatalf    (str_t, ...) __attribute__((format(printf,1,2),noreturn));
-void mad_errorf    (str_t, ...) __attribute__((format(printf,1,2)));
-void mad_warnf     (str_t, ...) __attribute__((format(printf,1,2)));
-void mad_infof (int,str_t, ...) __attribute__((format(printf,2,3)));
-void mad_debugf(int,str_t, ...) __attribute__((format(printf,2,3)));
+#define mad_savchkfun(l,f) \
+  ((void)(mad_trace_level >= (l) && (mad_savtrcfun(f),0)))
 
-void mad_log_setloc (str_t, int) __attribute__((hot));
+#define mad_savtstfun(c,f) \
+  ((void)(!(c) && (mad_savtrcfun(f),0)))
 
-#define mad_savtrcloc(l) \
-  ((void)(mad_trace_location >= (l) && (mad_log_saveloc(),0)))
-
-#define mad_chkmsglvl(l) \
-  (mad_info_level >= (l))
-
-#define mad_chkerrlvl(l) \
-  (mad_debug_level >= (l))
+void (mad_error) (str_t, ...) __attribute__((format(printf,1,2),noreturn));
+void (mad_warn)  (str_t, ...) __attribute__((format(printf,1,2)));
+void (mad_trace) (str_t, ...) __attribute__((format(printf,1,2)));
 
 // ---------------------------------------------------------------------------o
 

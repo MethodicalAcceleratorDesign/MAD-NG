@@ -23,27 +23,29 @@
 
 #ifndef MAD_MEM_STD
 
-#define mad_malloc(s)    (mad_savtrcloc(2), mad_malloc (s)  )
-#define mad_calloc(c,s)  (mad_savtrcloc(2), mad_calloc (c,s))
-#define mad_realloc(p,s) (mad_savtrcloc(2), mad_realloc(p,s))
-#define mad_free(p)      (mad_savtrcloc(2), mad_free   (p)  )
+#define mad_malloc(s)    mad_savtrcfun(mad_malloc (s)  )
+#define mad_calloc(c,s)  mad_savtrcfun(mad_calloc (c,s))
+#define mad_realloc(p,s) mad_savtrcfun(mad_realloc(p,s))
+#define mad_free(p)      mad_savtrcfun(mad_free   (p)  )
+#define mad_msize(p)     mad_savtrcfun(mad_msize  (p)  )
 
 #else
 
 #include <stdlib.h>
-#define mad_malloc(s)    (mad_savtrcloc(2), mad_mem_check(malloc (s))  )
-#define mad_calloc(c,s)  (mad_savtrcloc(2), mad_mem_check(calloc (c,s)))
-#define mad_realloc(p,s) (mad_savtrcloc(2), mad_mem_check(realloc(p,s)))
-#define mad_free(p)      (                                free   (p)   )
+#define mad_malloc(s)    mad_savtrcfun(mad_mcheck(malloc (s))  )
+#define mad_calloc(c,s)  mad_savtrcfun(mad_mcheck(calloc (c,s)))
+#define mad_realloc(p,s) mad_savtrcfun(mad_mcheck(realloc(p,s)))
+#define mad_free(p)      mad_savtrcfun(           free   (p)   )
+#define mad_msize(p)                                     (0)
 
 #endif // MAD_MEM_STD
 
-void* (mad_malloc)   (size_t)         __attribute__((hot,malloc));
-void* (mad_calloc)   (size_t, size_t) __attribute__((hot,malloc));
-void* (mad_realloc)  (void* , size_t) __attribute__((hot));
-void  (mad_free)     (void*)          __attribute__((hot));
-size_t mad_mem_size  (void*)          __attribute__((hot,const));
-void*  mad_mem_check (void*)          __attribute__((hot,const));
+void*  (mad_malloc)   (size_t)         __attribute__((hot,malloc));
+void*  (mad_calloc)   (size_t, size_t) __attribute__((hot,malloc));
+void*  (mad_realloc)  (void* , size_t) __attribute__((hot));
+void   (mad_free)     (void*)          __attribute__((hot));
+size_t (mad_msize)    (void*)          __attribute__((hot,const));
+void*  (mad_mcheck)   (void*)          __attribute__((hot,const));
 
 #undef  mad_alloc_tmp
 #define mad_alloc_tmp(T,NAME,L) \

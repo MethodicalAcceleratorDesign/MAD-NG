@@ -160,9 +160,9 @@ MAC(ppool->cached -= slot+1; )
 MAC(if (ppool->cached > cach_max) mad_mem_collect(); )
     ptr = malloc(size ? get_size(slot) : 0);
     if (!ptr) {
-      mad_mem_collect();
+      mad_mcollect();
       ptr = malloc(size ? get_size(slot) : 0);
-      if (!ptr) mad_fatalf("out of memory");
+      if (!ptr) (mad_error)("out of memory (requested size: %zu bytes)", size);
     }
   }
 
@@ -187,7 +187,7 @@ void*
 
 CHK(
   if (ptr->used.mark != MARK)
-    mad_fatalf("invalid pointer"); )
+    (mad_error)("invalid pointer"); )
 
   size_t slot = get_slot(size);
 
@@ -197,9 +197,9 @@ MAC(
 
   ptr = realloc(ptr, size ? get_size(slot) : 0);
   if (!ptr) {
-    mad_mem_collect();
+    mad_mcollect();
     ptr = realloc(ptr, size ? get_size(slot) : 0);
-    if (!ptr) mad_fatalf("out of memory");
+    if (!ptr) (mad_error)("out of memory (requested size: %zu bytes)", size);
   }
 
   return init_node(ptr, slot);
@@ -213,7 +213,7 @@ void
 
 CHK(
   if (ptr->used.mark != MARK)
-    mad_fatalf("invalid pointer"); )
+    (mad_error)("invalid pointer"); )
 
     size_t slot = ptr->used.slot;
 
@@ -231,23 +231,23 @@ MAC(  ppool->cached += slot+1;
 // -- utils
 
 void*
-mad_mem_check (void *ptr_)
+(mad_mcheck) (void *ptr_)
 {
   if (!ptr_)
-    mad_fatalf("invalid pointer (out of memory)");
+    (mad_error)("invalid pointer (out of memory)");
 
   return ptr_;
 }
 
 size_t
-mad_mem_size (void* ptr_)
+(mad_msize) (void* ptr_)
 {
   if (!ptr_) return 0;
   union mblk *ptr = get_base(ptr_);
 
 CHK(
   if (ptr->used.mark != MARK)
-    mad_fatalf("invalid pointer"); )
+    (mad_error)("invalid pointer"); )
 
   size_t slot = ptr->used.slot;
   return slot != get_slot(0) ? (slot+1) * mblk_stp : 0;
@@ -255,7 +255,7 @@ CHK(
 
 // note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
-mad_mem_cached (void)
+(mad_mcached) (void)
 {
   struct pool *ppool = pool;
   size_t cached = 0;
@@ -275,7 +275,7 @@ MAC(
 
 // note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
-mad_mem_collect (void)
+(mad_mcollect) (void)
 {
   struct pool *ppool = pool;
   union mblk *ptr, *nxt;

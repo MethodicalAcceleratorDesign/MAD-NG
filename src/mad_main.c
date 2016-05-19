@@ -109,11 +109,22 @@ static void print_version(void)
   printf(msg, ver, buf);
 }
 
+int         mad_trace_level    = 0;
+int         mad_trace_location = 0;
+const char* mad_trace_function = NULL;
+
 static const char* logmsg (lua_State *L, const char *fmt, va_list va)
 {
-  luaL_where(L, 1);
-  lua_pushvfstring(L, fmt, va);
-  lua_concat(L, 2);
+  if (mad_trace_location) {
+    int n = 2;
+    luaL_where(L, 1);
+    if (mad_trace_function)
+      lua_pushfstring(L, "C.%s:", mad_trace_function), ++n;
+    lua_pushvfstring(L, fmt, va);
+    lua_concat(L, n);
+  } else
+    lua_pushvfstring(L, fmt, va);
+
   return lua_tostring(L, -1);
 }
 
@@ -121,6 +132,7 @@ LUALIB_API int luaL_warn (lua_State *L, const char *fmt, ...)
 {
   va_list va;
   va_start(va, fmt);
+  mad_trace_function = NULL;
   fprintf(stderr, "warning: %s\n", logmsg(L, fmt, va));
   va_end(va);
   return 0;
@@ -128,40 +140,63 @@ LUALIB_API int luaL_warn (lua_State *L, const char *fmt, ...)
 
 LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...)
 {
-  va_list va;
-  va_start(va, fmt);
-  fprintf(stderr, "trace: %s\n", logmsg(L, fmt, va));
-  va_end(va);
+  if (mad_trace_level) {
+    va_list va;
+    va_start(va, fmt);
+    mad_trace_function = NULL;
+    fprintf(stderr, "trace: %s\n", logmsg(L, fmt, va));
+    va_end(va);
+  }
   return 0;
 }
 
-void mad_luaerr (const char *msg)
+void mad_error (const char *fmt, ...)
 {
+  char msg[256];
+  int n = 0;
+  va_list va;
+  va_start(va, fmt);
+  if (mad_trace_function)
+    n = snprintf(msg, 255, "%s:", mad_trace_function);
+  vsnprintf(msg+n, 255-n, fmt, va);
+  va_end(va);
+  msg[255] = '\0';
   luaL_error(globalL, msg);
 }
 
-void mad_luawrn (const char *msg)
+void mad_warn (const char *fmt, ...)
 {
-  luaL_warn(globalL, msg);
+  va_list va;
+  va_start(va, fmt);
+  fprintf(stderr, "warning: %s\n", logmsg(globalL, fmt, va));
+  va_end(va);
 }
 
-void mad_luatrc (const char *msg)
+void mad_trace (const char *fmt, ...)
 {
-  luaL_trace(globalL, msg);
+  if (mad_trace_level) {
+    va_list va;
+    va_start(va, fmt);
+    fprintf(stderr, "trace: %s\n", logmsg(globalL, fmt, va));
+    va_end(va);
+  }
 }
 
-static int mad_warn (lua_State *L) {
+static int mad_luawarn (lua_State *L) {
   return luaL_warn(L, "%s", luaL_checkstring(L, 1));
 }
 
-static int mad_trace (lua_State *L) {
-  return luaL_trace(L, "%s", luaL_checkstring(L, 1));
+static int mad_luatrace (lua_State *L) {
+  if (mad_trace_level)
+    return luaL_trace(L, "%s", luaL_checkstring(L, 1));
+  else
+    return 0;
 }
 
 static void mad_register(lua_State *L)
 {
-  lua_register(L, "warn" , mad_warn );  
-  lua_register(L, "trace", mad_trace);
+  lua_register(L, "warn" , mad_luawarn );  
+  lua_register(L, "trace", mad_luatrace);
 }
 
 /* --- MAD -------------------------------------------------------------------*/
