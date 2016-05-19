@@ -30,8 +30,8 @@
   - mad_malloc and mad_realloc call mad_fatal with caller location if
     (re)allocation fails instead of returning a NULL pointer.
   - mad_calloc calls mad_malloc and set to zeros the allocated memory.
-  - mad_mem_cached returns the amount of memory cached (slow).
-  - mad_mem_collect frees the cached memory and returns its amount (slow).
+  - mad_mcached returns the amount of memory cached (slow).
+  - mad_mcollect frees the cached memory and returns its amount (slow).
   - temporay buffers can be either on the stack or allocated with mad_malloc
     depending on their size, and must _always_ be locally freed.
   - defining MAD_MEM_STD replaces mad allocator by C allocator

@@ -157,7 +157,7 @@ void*
     ptr = pptr->list, pptr->list = ptr->free.next;
 MAC(ppool->cached -= slot+1; )
   } else {
-MAC(if (ppool->cached > cach_max) mad_mem_collect(); )
+MAC(if (ppool->cached > cach_max) mad_mcollect(); )
     ptr = malloc(size ? get_size(slot) : 0);
     if (!ptr) {
       mad_mcollect();
@@ -193,7 +193,7 @@ CHK(
 
 MAC(
   struct pool *ppool = pool;
-  if (ppool->cached > cach_max) mad_mem_collect(); )
+  if (ppool->cached > cach_max) mad_mcollect(); )
 
   ptr = realloc(ptr, size ? get_size(slot) : 0);
   if (!ptr) {
@@ -222,7 +222,7 @@ CHK(
       struct slot *pptr = ppool->slot+slot;
       ptr->free.next = pptr->list, pptr->list = ptr;
 MAC(  ppool->cached += slot+1;
-      if (ppool->cached > cach_max) mad_mem_collect(); )
+      if (ppool->cached > cach_max) mad_mcollect(); )
     }
     else free(ptr);
   }
