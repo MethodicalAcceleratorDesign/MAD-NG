@@ -71,14 +71,17 @@ static const char *progname = "mad";
 #include <time.h>
 #include "mad_main.h"
 
-#if 0 // LJ_TARGET_POSIX
-void check_stdin_is_tty(void)
+/*
+#if LJ_TARGET_POSIX
+#undef lua_stdin_is_tty
+int lua_stdin_is_tty(void)
 {
   struct stat stats;
   fstat(0, &stats);
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
 #endif
+*/
 
 #ifndef MAD_VERSION
 #define MAD_VERSION "0.0.0"
