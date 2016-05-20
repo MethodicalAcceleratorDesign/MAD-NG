@@ -19,8 +19,9 @@
   - Frontend (main) of the MAD application.
 
   Comment:
-    MAD is embedding the LuaJIT library and frontend developped by Mike Pall.
-    See copyright notice hereafter and file COPYRIGHT.luajit in this directory.
+  - MAD is embedding the LuaJIT library and frontend developped by Mike Pall
+    modified for the purpose of MAD. See COPYRIGHT.luajit in the lib/patches
+    directory.
  o----------------------------------------------------------------------------o
  */
 
