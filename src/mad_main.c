@@ -316,7 +316,7 @@ static void print_jit_status(lua_State *L)
 }
 #endif
 
-static int getargs(lua_State *L, char **argv, int n)
+static int setargs(lua_State *L, char **argv, int n)
 {
   int narg;
   int i;
@@ -331,6 +331,7 @@ static int getargs(lua_State *L, char **argv, int n)
     lua_pushstring(L, argv[i]);
     lua_rawseti(L, -2, i - n);
   }
+  lua_setglobal(L, "arg");
   return narg;
 }
 
@@ -437,12 +438,10 @@ static void dotty(lua_State *L)
   progname = oldprogname;
 }
 
-static int handle_script(lua_State *L, char **argv, int n)
+static int handle_script(lua_State *L, char **argv, int n, int narg)
 {
   int status;
   const char *fname;
-  int narg = getargs(L, argv, n);  /* collect arguments */
-  lua_setglobal(L, "arg");
   fname = argv[n];
   if (strcmp(fname, "-") == 0 && strcmp(argv[n-1], "--") != 0)
     fname = NULL;  /* stdin */
@@ -673,7 +672,7 @@ static int pmain(lua_State *L)
 {
   struct Smain *s = &smain;
   char **argv = s->argv;
-  int script;
+  int script, narg;
   int flags = 0;
   globalL = L;
   if (argv[0] && argv[0][0]) progname = argv[0];
@@ -697,10 +696,11 @@ static int pmain(lua_State *L)
     if (s->status != 0) return 0;
   }
   if ((flags & FLAGS_VERSION)) print_version();
+  narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
   s->status = runargs(L, argv, (script > 0) ? script : s->argc);
   if (s->status != 0) return 0;
   if (script) {
-    s->status = handle_script(L, argv, script);
+    s->status = handle_script(L, argv, script, narg);
     if (s->status != 0) return 0;
   }
   if ((flags & FLAGS_INTERACTIVE)) {
