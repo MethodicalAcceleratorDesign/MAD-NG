@@ -538,7 +538,7 @@ index e1d1369..802cf7e 100644
    }
  #endif
 diff --git a/src/lj_parse.c b/src/lj_parse.c
-index 610c861..e25441b 100644
+index 610c861..65ccf93 100644
 --- a/src/lj_parse.c
 +++ b/src/lj_parse.c
 @@ -1695,13 +1695,16 @@ static void expr_kvalue(TValue *v, ExpDesc *e)
@@ -716,37 +716,40 @@ index 610c861..e25441b 100644
      /* bcemit_store(fs, &v, &b) without setting VSTACK_VAR_RW. */
      expr_free(fs, &b);
      expr_toreg(fs, &b, v.u.s.info);
-@@ -2257,6 +2289,29 @@ static void parse_local(LexState *ls)
+@@ -2257,6 +2289,32 @@ static void parse_local(LexState *ls)
      } while (lex_opt(ls, ','));
      if (lex_opt(ls, '=')) {  /* Optional RHS. */
        nexps = expr_list(ls, &e);
 +#ifdef LUAJIT_LOCAL_INTABLE                                /* LD: 2016.04.29 */
 +    } else if (lex_opt(ls, TK_in)) { /* Optional RHS. */
 +      FuncState *fs = ls->fs;
-+      BCReg vars = fs->nactvar;
-+      bcreg_reserve(fs, nvars);                  /* reserve regs for n vars */
-+      var_new_lit(ls, nvars, "(in)");            /* create hidden '(in)' var */
-+      expr(ls, &e);                              /* parse table expr */
-+      assign_adjust(ls, nvars+1, nvars+1, &e);   /* discharge expr to '(in)' */
-+      var_add(ls, nvars+1);                      /* expose vars + '(in)' */
++      BCReg vars = fs->nactvar, regs = fs->freereg;
++      lua_assert(vars == regs);			/* sanity check */
++      bcreg_reserve(fs, nvars);			/* reserve regs for n vars */
++      var_new_lit(ls, nvars, "(in)");		/* create hidden '(in)' var */
++      expr(ls, &e);				/* parse table expr */
++      assign_adjust(ls, nvars+1, nvars+1, &e);	/* discharge expr to '(in)' */
++      var_add(ls, nvars+1);			/* expose vars + '(in)' */
 +      for (nexps=0; nexps < nvars; nexps++) {
 +	ExpDesc k, v;
-+	expr_init(&e, VNONRELOC, fs->freereg-1); /* load table expr */
-+	expr_init(&k, VKSTR, 0);                 /* set key from var name */
++	expr_init(&e, VNONRELOC, vars+nvars);	/* load table expr */
++	expr_init(&k, VKSTR, 0);		/* set key from var name */
 +	k.u.sval = strref(var_get(ls, fs, vars+nexps).name);
-+	expr_index(fs, &e, &k);                  /* set key index in table */
-+	expr_init(&v, VLOCAL, vars+nexps);       /* set dest. var */
-+	v.u.s.aux = fs->varmap[vars+nexps];      /* VLOCAL vstack index */
-+	bcemit_store(fs, &v, &e);                /* store value to var */
++	expr_index(fs, &e, &k);			/* set key index in table */
++	expr_init(&v, VLOCAL, vars+nexps);	/* set dest. var */
++	v.u.s.aux = fs->varmap[regs+nexps];	/* VLOCAL vstack index */
++	bcemit_store(fs, &v, &e);		/* store value to var */
 +      }
-+      var_remove(ls, vars+nvars);                /* drop hidden '(in)' var */
-+      /* parse_chunk frees regs after each stmt., no need to drop table expr */
++      var_remove(ls, vars+nvars);		/* drop hidden '(in)' var */
++      fs->freereg--, ls->vtop--;		/* optional, see parse_chunk */
++      lua_assert(fs->nactvar == vars+nvars);	/* sanity checks */
++      lua_assert(fs->freereg == regs+nvars);
 +      return;
 +#endif
      } else {  /* Or implicitly set to nil. */
        e.k = VVOID;
        nexps = 0;
-@@ -2281,7 +2336,7 @@ static void parse_func(LexState *ls, BCLine line)
+@@ -2281,7 +2339,7 @@ static void parse_func(LexState *ls, BCLine line)
      needself = 1;
      expr_field(ls, &v);
    }
@@ -755,7 +758,7 @@ index 610c861..e25441b 100644
    fs = ls->fs;
    bcemit_store(fs, &v, &b);
    fs->bcbase[fs->pc - 1].line = line;  /* Set line for the store. */
-@@ -2300,18 +2355,20 @@ static int parse_isend(LexToken tok)
+@@ -2300,18 +2358,20 @@ static int parse_isend(LexToken tok)
    }
  }
  
@@ -781,7 +784,7 @@ index 610c861..e25441b 100644
      if (nret == 1) {  /* Return one result. */
        if (e.k == VCALL) {  /* Check for tail call. */
  	BCIns *ip = bcptr(fs, &e);
-@@ -2333,6 +2390,7 @@ static void parse_return(LexState *ls)
+@@ -2333,6 +2393,7 @@ static void parse_return(LexState *ls)
        }
      }
    }
@@ -789,7 +792,7 @@ index 610c861..e25441b 100644
    if (fs->flags & PROTO_CHILD)
      bcemit_AJ(fs, BC_UCLO, 0, 0);  /* May need to close upvalues first. */
    bcemit_INS(fs, ins);
-@@ -2646,7 +2704,7 @@ static int parse_stmt(LexState *ls)
+@@ -2646,7 +2707,7 @@ static int parse_stmt(LexState *ls)
      parse_local(ls);
      break;
    case TK_return:
