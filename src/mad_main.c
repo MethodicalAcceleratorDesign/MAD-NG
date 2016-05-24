@@ -33,11 +33,13 @@
 ** Copyright (C) 1994-2008 Lua.org, PUC-Rio. See Copyright Notice in lua.h
 */
 
+#define _GNU_SOURCE 1
 #define _DARWIN_BETTER_REALPATH 1
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #define luajit_c
 
@@ -202,31 +204,29 @@ static void mad_register(lua_State *L)
 static void setpaths(void)
 {
   char *path;
-  progpath[0] = '\0';
-  currpath[0] = '\0';
 
   /* get currpath */
-  getcwd(currpath, sizeof currpath);
+  if (!getcwd(currpath, sizeof currpath)) *currpath=0;
 
   /* get progpath */
-  if (strchr(progname, '/') || strchr(progname, '\\'))
-    realpath(progname, progpath);
-  else if ((path = getenv("PATH")) && *path) {
+  if (strchr(progname, '/') || strchr(progname, '\\')) {
+    if (!realpath(progname, progpath)) *progpath=0;
+  } else if ((path = getenv("PATH")) && *path) {
     char buf[PATH_MAX+1], *p;
     char psep = strchr(path, ';' ) ? ';'  : ':';
     char dsep = strchr(path, '\\') ? '\\' : '/';
     for(;;) {
       p = strchr(path, psep);
-      if (p) *p = '\0';
+      if (p) *p=0;
       if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, progname) > 0 &&
-          realpath(buf, progpath)) break;
-      if (p) *p = psep, path = p+1; else break;
+          realpath(buf, progpath)) break; else *progpath=0;
+      if (p) *p=psep, path=p+1; else break;
     }
-    if ((p=strrchr(progpath, dsep))) *p = '\0'; /* remove progname */
+    if ((p=strrchr(progpath, dsep))) *p=0; /* remove progname */
   } 
 
-  currpath[PATH_MAX] = '\0';
-  progpath[PATH_MAX] = '\0';
+  currpath[PATH_MAX]=0;
+  progpath[PATH_MAX]=0;
 
   trace(2, "progname = '%s'", progname);
   trace(2, "progpath = '%s'", progpath);
