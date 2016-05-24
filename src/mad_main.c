@@ -203,30 +203,29 @@ static void mad_register(lua_State *L)
 
 static void setpaths(void)
 {
-  char *path;
+  char *path, *p;
 
   /* get currpath */
-  if (!getcwd(currpath, sizeof currpath)) *currpath=0;
+  if (!getcwd(currpath, sizeof currpath)) *currpath = 0;
 
   /* get progpath */
   if (strchr(progname, '/') || strchr(progname, '\\')) {
-    if (!realpath(progname, progpath)) *progpath=0;
+    if (!realpath(progname, progpath)) *progpath = 0;
   } else if ((path = getenv("PATH")) && *path) {
-    char buf[PATH_MAX+1], *p;
+    char buf[PATH_MAX+1];
     char psep = strchr(path, ';' ) ? ';'  : ':';
     char dsep = strchr(path, '\\') ? '\\' : '/';
     for(;;) {
       p = strchr(path, psep);
-      if (p) *p=0;
+      if (p) *p = 0;
       if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, progname) > 0 &&
-          realpath(buf, progpath)) break; else *progpath=0;
-      if (p) *p=psep, path=p+1; else break;
+          realpath(buf, progpath)) break; else *progpath = 0;
+      if (p) *p = psep, path = p+1; else break;
     }
-    if ((p=strrchr(progpath, dsep))) *p=0; /* remove progname */
   } 
 
-  currpath[PATH_MAX]=0;
-  progpath[PATH_MAX]=0;
+  currpath[PATH_MAX] = progpath[PATH_MAX]  = 0; /* sanity closure */
+  if ((p=strrchr(progpath, *progpath))) *p = 0; /* remove progname */
 
   trace(2, "progname = '%s'", progname);
   trace(2, "progpath = '%s'", progpath);
