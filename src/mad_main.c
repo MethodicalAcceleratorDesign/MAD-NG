@@ -53,6 +53,7 @@
 #include "lj_arch.h"
 
 static lua_State *globalL = NULL;
+static const char* progname = "mad";
 
 /* --- MAD (start) -----------------------------------------------------------*/
 
@@ -61,24 +62,23 @@ static lua_State *globalL = NULL;
 #include <sys/stat.h>
 #include "mad_log.h"
 
+#ifndef MAD_VERSION
+#define MAD_VERSION "0.0.0"
+#endif
+
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
-static str_t progname = "mad";
-static char  progpath[PATH_MAX+1] = "";
-static char  currpath[PATH_MAX+1] = "";
+static char  prog_name[PATH_MAX+1] = "";
+static char  prog_path[PATH_MAX+1] = "";
+static char  curr_path[PATH_MAX+1] = "";
 
-#undef lua_stdin_is_tty
 static int lua_stdin_is_tty(void)
 {
   struct stat stats;
   fstat(0, &stats);
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
-
-#ifndef MAD_VERSION
-#define MAD_VERSION "0.0.0"
-#endif
 
 static void print_version(void)
 {
@@ -187,31 +187,43 @@ static void setpaths(void)
 {
   char *path, *p;
 
-  /* get currpath */
-  if (!getcwd(currpath, sizeof currpath)) *currpath = 0;
+  /* check for path in progname */
+  p = strrchr(progname, '/'); if (!p) p = strrchr(progname, '\\');
 
-  /* get progpath */
-  if (strchr(progname, '/') || strchr(progname, '\\')) {
-    if (!realpath(progname, progpath)) *progpath = 0;
+  /* get prog_name */
+  strcpy(prog_name, p ? p+1 : progname);
+
+  /* get prog_path */
+  if (p) {
+    if (!realpath(progname, prog_path)) *prog_path = 0;
   } else if ((path = getenv("PATH")) && *path) {
     char buf[PATH_MAX+1];
-    char psep = strchr(path, ';' ) ? ';'  : ':';
-    char dsep = strchr(path, '\\') ? '\\' : '/';
+    char psep = strchr(path, ';') ? ';' : ':' ;
+    char dsep = strchr(path, '/') ? '/' : '\\';
     for(;;) {
       p = strchr(path, psep);
       if (p) *p = 0;
-      if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, progname) > 0 &&
-          realpath(buf, progpath)) break; else *progpath = 0;
+      if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, prog_name) > 0 &&
+          realpath(buf, prog_path)) break; else *prog_path = 0;
       if (p) *p = psep, path = p+1; else break;
     }
   } 
 
-  currpath[PATH_MAX] = progpath[PATH_MAX]  = 0; /* sanity closure */
-  if ((p=strrchr(progpath, *progpath))) *p = 0; /* remove progname */
+  /* get curr_path */
+  if (!getcwd(curr_path, sizeof curr_path)) *curr_path = 0;
 
-  trace(2, "progname = '%s'", progname);
-  trace(2, "progpath = '%s'", progpath);
-  trace(2, "currpath = '%s'", currpath);
+  /* cleaning */
+  curr_path[PATH_MAX] = prog_path[PATH_MAX]  = 0; /* sanity closure */
+  if ((p=strrchr(prog_path, *prog_path))) *p = 0; /* remove prog_name */
+
+  /* add trailing dir separator */
+  p = curr_path+strlen(curr_path), p[0] = *curr_path, p[1] = 0;
+  p = prog_path+strlen(prog_path), p[0] = *prog_path, p[1] = 0;
+
+  trace(2, "argv[0]   = '%s'", progname );
+  trace(2, "prog_name = '%s'", prog_name);
+  trace(2, "prog_path = '%s'", prog_path);
+  trace(2, "curr_path = '%s'", curr_path);
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
