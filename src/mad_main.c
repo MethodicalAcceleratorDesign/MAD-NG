@@ -52,13 +52,13 @@
 
 #include "lj_arch.h"
 
-#include <unistd.h>
-#define lua_stdin_is_tty()	isatty(0)
-
 static lua_State *globalL = NULL;
 
 /* --- MAD (start) -----------------------------------------------------------*/
 
+/* Assume Mingw64 or Cygwin */
+#include <unistd.h>
+#include <sys/stat.h>
 #include "mad_log.h"
 
 int mad_trace_level    = 0;
@@ -68,17 +68,13 @@ static str_t progname = "mad";
 static char  progpath[PATH_MAX+1] = "";
 static char  currpath[PATH_MAX+1] = "";
 
-/*
-#if LJ_TARGET_POSIX
 #undef lua_stdin_is_tty
-int lua_stdin_is_tty(void)
+static int lua_stdin_is_tty(void)
 {
   struct stat stats;
   fstat(0, &stats);
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
-#endif
-*/
 
 #ifndef MAD_VERSION
 #define MAD_VERSION "0.0.0"
