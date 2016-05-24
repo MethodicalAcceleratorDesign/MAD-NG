@@ -21,31 +21,37 @@
 
 #include "mad_log.h"
 
+#undef mad_malloc
+#undef mad_calloc
+#undef mad_realloc
+#undef mad_free
+#undef mad_msize
+
 #ifndef MAD_MEM_STD
 
-#define mad_malloc(s)    mad_savtrcfun(mad_malloc (s)  )
-#define mad_calloc(c,s)  mad_savtrcfun(mad_calloc (c,s))
-#define mad_realloc(p,s) mad_savtrcfun(mad_realloc(p,s))
-#define mad_free(p)      mad_savtrcfun(mad_free   (p)  )
-#define mad_msize(p)     mad_savtrcfun(mad_msize  (p)  )
+#define mad_malloc(s)    mad_malloc (__func__, s)  
+#define mad_calloc(c,s)  mad_calloc (__func__, c,s)
+#define mad_realloc(p,s) mad_realloc(__func__, p,s)
+#define mad_free(p)      mad_free   (__func__, p)  
+#define mad_msize(p)     mad_msize  (__func__, p)  
 
 #else
 
 #include <stdlib.h>
-#define mad_malloc(s)    mad_savtrcfun(mad_mcheck(malloc (s))  )
-#define mad_calloc(c,s)  mad_savtrcfun(mad_mcheck(calloc (c,s)))
-#define mad_realloc(p,s) mad_savtrcfun(mad_mcheck(realloc(p,s)))
-#define mad_free(p)      mad_savtrcfun(           free   (p)   )
-#define mad_msize(p)                                     (0)
+#define mad_malloc(s)    mad_mcheck(__func__, malloc (s))
+#define mad_calloc(c,s)  mad_mcheck(__func__, calloc (c,s))
+#define mad_realloc(p,s) mad_mcheck(__func__, realloc(p,s))
+#define mad_free(p)                           free   (p)
+#define mad_msize(p)                                 (0)
 
 #endif // MAD_MEM_STD
 
-void*  (mad_malloc)   (size_t)         __attribute__((hot,malloc));
-void*  (mad_calloc)   (size_t, size_t) __attribute__((hot,malloc));
-void*  (mad_realloc)  (void* , size_t) __attribute__((hot));
-void   (mad_free)     (void*)          __attribute__((hot));
-size_t (mad_msize)    (void*)          __attribute__((hot,const));
-void*  (mad_mcheck)   (void*)          __attribute__((hot,const));
+void*  (mad_malloc)   (str_t, size_t)         __attribute__((hot,malloc));
+void*  (mad_calloc)   (str_t, size_t, size_t) __attribute__((hot,malloc));
+void*  (mad_realloc)  (str_t, void* , size_t) __attribute__((hot));
+void   (mad_free)     (str_t, void*)          __attribute__((hot));
+size_t (mad_msize)    (str_t, void*)          __attribute__((hot,const));
+void*  (mad_mcheck)   (str_t, void*)          __attribute__((hot,const));
 
 #undef  mad_alloc_tmp
 #define mad_alloc_tmp(T,NAME,L) \

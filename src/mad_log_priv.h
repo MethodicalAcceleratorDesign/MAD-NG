@@ -19,23 +19,17 @@
  o----------------------------------------------------------------------------o
 */
 
-#define mad_error(...)     mad_savtrcfun(  mad_error(__VA_ARGS__))
-#define mad_warn(...)      mad_savtrcfun(  mad_warn (__VA_ARGS__))
-#define mad_trace(l,...)   mad_savchkfun(l,mad_trace(__VA_ARGS__))
-#define mad_ensure(c,...)  mad_savtstfun(c,mad_error(__VA_ARGS__))
+#define mad_error(...)                     mad_error(__func__, __VA_ARGS__)
+#define mad_warn(...)                      mad_warn (__func__, __VA_ARGS__)
+#define mad_trace(l,...)   mad_logchkfun(l,mad_trace(__func__, __VA_ARGS__))
+#define mad_ensure(c,...)  mad_logtstfun(c,mad_error(__func__, __VA_ARGS__))
 
-#define mad_savtrcfun(f) \
-  (mad_trace_function = __func__, f)
+#define mad_logchkfun(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
+#define mad_logtstfun(c,f) ((void)(!(c)                   && (f,0)))
 
-#define mad_savchkfun(l,f) \
-  ((void)(mad_trace_level >= (l) && (mad_savtrcfun(f),0)))
-
-#define mad_savtstfun(c,f) \
-  ((void)(!(c) && (mad_savtrcfun(f),0)))
-
-void (mad_error) (str_t, ...) __attribute__((format(printf,1,2),noreturn));
-void (mad_warn)  (str_t, ...) __attribute__((format(printf,1,2)));
-void (mad_trace) (str_t, ...) __attribute__((format(printf,1,2)));
+void (mad_error) (str_t,str_t,...) __attribute__((format(printf,2,3),noreturn));
+void (mad_warn)  (str_t,str_t,...) __attribute__((format(printf,2,3)));
+void (mad_trace) (str_t,str_t,...) __attribute__((format(printf,2,3)));
 
 // ---------------------------------------------------------------------------o
 

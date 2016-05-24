@@ -51,14 +51,14 @@
 #define mad_alloc_tmp(type,name,length)
 #define mad_free_tmp(name)
 
-// allocator (note: no calloc!)
-void*  mad_malloc   (size_t size);
-void*  mad_calloc   (size_t count, size_t size );
-void*  mad_realloc  (void  *ptr_ , size_t size_);
-void   mad_free     (void  *ptr_);
+// allocator (fake declarations: same signature as stdlib.h)
+#define mad_malloc(  size         )
+#define mad_calloc(  count, size  )
+#define mad_realloc( ptr_ , size_ )
+#define mad_free(    ptr_         )
+#define mad_msize(   ptr_         )
 
 // utils
-size_t mad_msize    (void *ptr_);
 size_t mad_mcached  (void);
 size_t mad_mcollect (void);
 
