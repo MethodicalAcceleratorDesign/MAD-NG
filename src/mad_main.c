@@ -39,7 +39,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <limits.h>
+#include <time.h>
 
 #define luajit_c
 
@@ -50,29 +52,13 @@
 
 #include "lj_arch.h"
 
-#if LJ_TARGET_POSIX
 #include <unistd.h>
 #define lua_stdin_is_tty()	isatty(0)
-#elif LJ_TARGET_WINDOWS
-#include <io.h>
-#ifdef __BORLANDC__
-#define lua_stdin_is_tty()	isatty(_fileno(stdin))
-#else
-#define lua_stdin_is_tty()	_isatty(_fileno(stdin))
-#endif
-#else
-#define lua_stdin_is_tty()	1
-#endif
-
-#if !LJ_TARGET_CONSOLE
-#include <signal.h>
-#endif
 
 static lua_State *globalL = NULL;
 
 /* --- MAD (start) -----------------------------------------------------------*/
 
-#include <time.h>
 #include "mad_log.h"
 
 int mad_trace_level    = 0;
@@ -234,7 +220,6 @@ static void setpaths(void)
 
 /* --- MAD (end) -------------------------------------------------------------*/
 
-#if !LJ_TARGET_CONSOLE
 static void lstop(lua_State *L, lua_Debug *ar)
 {
   (void)ar;  /* unused arg. */
@@ -251,7 +236,6 @@ static void laction(int i)
 			 terminate process (default action) */
   lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
 }
-#endif
 
 static void print_usage(void)
 {
@@ -687,11 +671,7 @@ static int runargs(lua_State *L, char **argv, int n)
 
 static int handle_luainit(lua_State *L)
 {
-#if LJ_TARGET_CONSOLE
-  str_t init = NULL;
-#else
   str_t init = getenv(LUA_INIT);
-#endif
   if (init == NULL)
     return 0;  /* status OK */
   else if (init[0] == '@')
