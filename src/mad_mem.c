@@ -163,7 +163,7 @@ MAC(if (ppool->cached > cach_max) mad_mcollect(); )
       mad_mcollect();
       ptr = malloc(size ? get_size(slot) : 0);
       if (!ptr)
-        (mad_error)(fname, "out of memory (%llu bytes)", (uint64_t)size);
+        (mad_error)(fname, "out of memory (%lu bytes)", (unsigned long)size);
     }
   }
 
@@ -201,7 +201,7 @@ MAC(
     mad_mcollect();
     ptr = realloc(ptr, size ? get_size(slot) : 0);
     if (!ptr)
-      (mad_error)(fname, "out of memory (%llu bytes)", (uint64_t)size);
+      (mad_error)(fname, "out of memory (%lu bytes)", (unsigned long)size);
   }
 
   return init_node(ptr, slot);
