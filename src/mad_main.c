@@ -120,6 +120,7 @@ LUALIB_API int luaL_warn (lua_State *L, str_t fmt, ...)
   va_start(va, fmt);
   fprintf(stderr, "warning: %s\n", logmsg(L, NULL, fmt, va));
   va_end(va);
+  fflush(stderr);
   return 0;
 }
 
@@ -130,6 +131,7 @@ LUALIB_API int luaL_trace (lua_State *L, str_t fmt, ...)
     va_start(va, fmt);
     fprintf(stderr, "trace: %s\n", logmsg(L, NULL, fmt, va));
     va_end(va);
+    fflush(stderr);
   }
   return 0;
 }
@@ -154,6 +156,7 @@ void (mad_warn) (str_t fname, str_t fmt, ...)
   va_start(va, fmt);
   fprintf(stderr, "warning: %s\n", logmsg(globalL, fname, fmt, va));
   va_end(va);
+  fflush(stderr);
 }
 
 void (mad_trace) (str_t fname, str_t fmt, ...)
@@ -163,6 +166,7 @@ void (mad_trace) (str_t fname, str_t fmt, ...)
     va_start(va, fmt);
     fprintf(stderr, "trace: %s\n", logmsg(globalL, fname, fmt, va));
     va_end(va);
+    fflush(stderr);
   }
 }
 
