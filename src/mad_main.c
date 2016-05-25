@@ -57,8 +57,9 @@ static const char* progname = "mad";
 
 /* --- MAD (start) -----------------------------------------------------------*/
 
-/* Assume Mingw64 or Cygwin */
+/* Assume Posix: MacOSX, Linux, Mingw32/64 or Cygwin */
 #include <unistd.h>
+#include <libintl.h>
 #include <sys/stat.h>
 #include "mad_log.h"
 
