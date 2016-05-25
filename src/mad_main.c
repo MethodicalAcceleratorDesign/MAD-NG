@@ -61,7 +61,6 @@ static const char* progname = "mad";
 
 /* Assume Posix: MacOSX, Linux, Mingw32/64 or Cygwin */
 #include <unistd.h>
-#include <libintl.h>
 #include <sys/stat.h>
 #include "mad_log.h"
 
@@ -72,9 +71,9 @@ static const char* progname = "mad";
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
-static char  prog_name[PATH_MAX+1] = "";
-static char  prog_path[PATH_MAX+1] = "";
-static char  curr_path[PATH_MAX+1] = "";
+static char prog_name[PATH_MAX+1] = "";
+static char prog_path[PATH_MAX+1] = "";
+static char curr_path[PATH_MAX+1] = "";
 
 static int lua_stdin_is_tty(void)
 {
@@ -193,27 +192,44 @@ static void mad_register(lua_State *L)
 /* Windows: not declared by any mean but provided by libgettextlib */
 extern char *realpath(const char *restrict fname, char *restrict rname);
 
+static char* winpath(char *buf)
+{
+  char *p = buf;
+  while ((p = strchr(p, '/'))) *p++ = '\\';
+  return buf;
+}
+
+static char* winexe(char *buf)
+{
+  int len = strlen(buf);
+  if (len > 0 && (len < 4 || strcmp(buf+len-4, ".exe")))
+    strcpy(buf+len, ".exe");
+  return buf;
+}
+
 static void setpaths(void)
 {
-  char *path, *p, nul = 0, psep = ':', dsep = '/';
+  char *path, *p, nul = 0, psep = ':', dsep = '/', buf[PATH_MAX+4+1];
 
   /* get curr_path [getenv(unix:"PWD" or win:"CD")] */
   if (!(path = getcwd(curr_path, sizeof curr_path))) *curr_path = nul;
+  if (!path && !(path = getenv("PATH"))) path = &nul;
 
   /* retrieve separators */
-  if (!path && !(path = getenv("PATH"))) path = &nul;
   p = strchr(path, '/'); if (!p) p = strchr(path, '\\');
   if (p) dsep = *p, psep = *p == '\\' ? ';' : ':';
 
   /* get prog_name */
-  p = strrchr(progname, dsep);
-  strncpy(prog_name, p ? p+1 : progname, sizeof prog_name);
+  strcpy(buf, progname);
+  if (dsep == '\\') winexe(winpath(buf));
+  p = strrchr(buf, dsep);
+  strcpy(prog_name, p ? p+1 : buf);
 
   /* get prog_path */
   if (p) {
-    if (!realpath(progname, prog_path)) *prog_path = nul;
+    if (snprintf(buf, sizeof buf, "%s%c%s", curr_path, dsep, prog_name) > 0 &&
+       !realpath(buf, prog_path)) *prog_path = nul;
   } else if ((path = getenv("PATH")) && *path) {
-    char buf[PATH_MAX+1];
     for(;;) {
       p = strchr(path, psep);
       if (p) *p = nul;
@@ -222,7 +238,7 @@ static void setpaths(void)
       if (p) *p = psep, path = p+1; else { *prog_path = nul; break; }
     }
   }
-  if (!*prog_path) strncpy(prog_path, progname, sizeof prog_path);
+  if (dsep == '\\') winexe(winpath(prog_path));
   if ((p=strrchr(prog_path, dsep)) && !strcmp(p+1, prog_name)) *p = nul;
   else *prog_path = nul; /* no path */ 
 
