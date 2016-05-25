@@ -34,6 +34,8 @@
 */
 
 #define _GNU_SOURCE 1
+#define _XOPEN_UNIX 1
+#define _XOPEN_VERSION 700
 #define _DARWIN_BETTER_REALPATH 1
 
 #include <stdio.h>
@@ -96,7 +98,7 @@ static void print_version(void)
   struct tm *tm = localtime(&t);
   char buf[80];
 
-  strftime(buf, sizeof buf, "%F %T", tm);
+  strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", tm);
   printf(msg, ver, buf);
 }
 
@@ -188,43 +190,51 @@ static void mad_register(lua_State *L)
   lua_register(L, "trace", mad_luatrace);
 }
 
+/* Windows: not declared by any mean but provided by libgettextlib */
+extern char *realpath(const char *restrict fname, char *restrict rname);
+
 static void setpaths(void)
 {
-  char *path, *p;
+  char *path, *p, nul = 0, psep = ':', dsep = '/';
 
-  /* check for path in progname */
-  p = strrchr(progname, '/'); if (!p) p = strrchr(progname, '\\');
+  /* get curr_path [getenv(unix:"PWD" or win:"CD")] */
+  if (!(path = getcwd(curr_path, sizeof curr_path))) *curr_path = nul;
+
+  /* retrieve separators */
+  if (!path && !(path = getenv("PATH"))) path = &nul;
+  p = strchr(path, '/'); if (!p) p = strchr(path, '\\');
+  if (p) dsep = *p, psep = *p == '\\' ? ';' : ':';
 
   /* get prog_name */
-  strcpy(prog_name, p ? p+1 : progname);
+  p = strrchr(progname, dsep);
+  strncpy(prog_name, p ? p+1 : progname, sizeof prog_name);
 
   /* get prog_path */
   if (p) {
-    if (!realpath(progname, prog_path)) *prog_path = 0;
+    if (!realpath(progname, prog_path)) *prog_path = nul;
   } else if ((path = getenv("PATH")) && *path) {
     char buf[PATH_MAX+1];
-    char psep = strchr(path, ';') ? ';' : ':' ;
-    char dsep = strchr(path, '/') ? '/' : '\\';
     for(;;) {
       p = strchr(path, psep);
-      if (p) *p = 0;
+      if (p) *p = nul;
       if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, prog_name) > 0 &&
-          realpath(buf, prog_path)) break; else *prog_path = 0;
-      if (p) *p = psep, path = p+1; else break;
+          realpath(buf, prog_path)) { if (p) *p = psep; break; }
+      if (p) *p = psep, path = p+1; else { *prog_path = nul; break; }
     }
-  } 
+  }
+  if (!*prog_path) strncpy(prog_path, progname, sizeof prog_path);
+  if ((p=strrchr(prog_path, dsep)) && !strcmp(p+1, prog_name)) *p = nul;
+  else *prog_path = nul; /* no path */ 
 
-  /* get curr_path */
-  if (!getcwd(curr_path, sizeof curr_path)) *curr_path = 0;
-
-  /* cleaning */
-  curr_path[PATH_MAX] = prog_path[PATH_MAX]  = 0; /* sanity closure */
-  if ((p=strrchr(prog_path, *prog_path))) *p = 0; /* remove prog_name */
+  curr_path[PATH_MAX] = prog_path[PATH_MAX] = nul; /* sanity closure */
 
   /* add trailing dir separator */
-  p = curr_path+strlen(curr_path), p[0] = *curr_path, p[1] = 0;
-  p = prog_path+strlen(prog_path), p[0] = *prog_path, p[1] = 0;
+  if (*curr_path && (p=curr_path+strlen(curr_path))[-1] != dsep)
+    p[0] = dsep, p[1] = nul;
+  if (*prog_path && (p=prog_path+strlen(prog_path))[-1] != dsep)
+    p[0] = dsep, p[1] = nul;
 
+  trace(2, "path      = '%s'", getenv("PATH"));
   trace(2, "argv[0]   = '%s'", progname );
   trace(2, "prog_name = '%s'", prog_name);
   trace(2, "prog_path = '%s'", prog_path);
