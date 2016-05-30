@@ -189,7 +189,7 @@ index 16d2cb6..3c32f39 100644
    if (tdef) {
      cp_push_type(decl, tdef);
 diff --git a/src/lj_crecord.c b/src/lj_crecord.c
-index d568b20..93aac44 100644
+index d568b20..ac73be3 100644
 --- a/src/lj_crecord.c
 +++ b/src/lj_crecord.c
 @@ -115,6 +115,10 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
@@ -290,15 +290,6 @@ index d568b20..93aac44 100644
        CTSize sz;
    integer_key:
        if ((ct->info & CTF_COMPLEX))
-@@ -836,7 +875,7 @@ again:
- 	  J->base[0] = lj_ir_kint(J, (int32_t)fct->size);
- 	  return;  /* Interpreter will throw for newindex. */
- 	} else if (ctype_isbitfield(fct->info)) {
--	  lj_trace_err(J, LJ_TRERR_NYICONV);
-+	lj_trace_err(J, LJ_TRERR_NYICONV);
- 	} else {
- 	  lua_assert(ctype_isfield(fct->info));
- 	  sid = ctype_cid(fct->info);
 @@ -852,6 +891,18 @@ again:
  	if (strdata(name)[0] == 'i') ofs += (ct->size >> 1);
  	sid = ctype_cid(ct->info);
@@ -565,7 +556,7 @@ index 73a368e..9f3da26 100644
    }
  #endif
 diff --git a/src/lj_parse.c b/src/lj_parse.c
-index 610c861..53b1c83 100644
+index 610c861..be803fa 100644
 --- a/src/lj_parse.c
 +++ b/src/lj_parse.c
 @@ -23,6 +23,7 @@
@@ -619,7 +610,7 @@ index 610c861..53b1c83 100644
      expr(ls, &val);
      if (expr_isk(&key) && key.k != VKNIL &&
  	(key.k == VKSTR || expr_isk_nojump(&val))) {
-@@ -1803,15 +1810,16 @@ static void expr_table(LexState *ls, ExpDesc *e)
+@@ -1803,15 +1810,17 @@ static void expr_table(LexState *ls, ExpDesc *e)
    }
  }
  
@@ -634,7 +625,8 @@ index 610c861..53b1c83 100644
 -  if (needself)
 -    var_new_lit(ls, nparams++, "self");
 -  if (ls->tok != ')') {
-+  int has_param = islambda && (ls->c == '(' || lj_char_isident(ls->c));
++  int has_param = islambda &&
++                  (ls->c == '(' || ls->c == '.' || lj_char_isident(ls->c));
 +  lex_check(ls, islambda ? '\\' : '(');
 +  int has_paren = !islambda || (has_param && lex_opt(ls, '('));
 +  if (needself) var_new_lit(ls, nparams++, "self");
@@ -642,7 +634,7 @@ index 610c861..53b1c83 100644
      do {
        if (ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) {
  	var_new(ls, nparams++, lex_str(ls));
-@@ -1827,15 +1835,16 @@ static BCReg parse_params(LexState *ls, int needself)
+@@ -1827,15 +1836,16 @@ static BCReg parse_params(LexState *ls, int needself)
    var_add(ls, nparams);
    lua_assert(fs->nactvar == nparams);
    bcreg_reserve(fs, nparams);
@@ -662,7 +654,7 @@ index 610c861..53b1c83 100644
  {
    FuncState fs, *pfs = ls->fs;
    FuncScope bl;
-@@ -1844,12 +1853,19 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
+@@ -1844,12 +1854,19 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
    fs_init(ls, &fs);
    fscope_begin(&fs, &bl, 0);
    fs.linedefined = line;
@@ -683,7 +675,7 @@ index 610c861..53b1c83 100644
    pt = fs_finish(ls, (ls->lastline = ls->linenumber));
    pfs->bcbase = ls->bcstack + oldbase;  /* May have been reallocated. */
    pfs->bclim = (BCPos)(ls->sizebcstack - oldbase);
-@@ -1864,7 +1880,7 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
+@@ -1864,7 +1881,7 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
        pfs->flags |= PROTO_FIXUP_RETURN;
      pfs->flags |= PROTO_CHILD;
    }
@@ -692,11 +684,10 @@ index 610c861..53b1c83 100644
  }
  
  /* Parse expression list. Last expression is left open. */
-@@ -1880,6 +1896,10 @@ static BCReg expr_list(LexState *ls, ExpDesc *v)
+@@ -1880,6 +1897,9 @@ static BCReg expr_list(LexState *ls, ExpDesc *v)
    return n;
  }
  
-+
 +/* Forward declaration. */
 +static void expr_simple(LexState *ls, ExpDesc *v);
 +
@@ -733,11 +724,11 @@ index 610c861..53b1c83 100644
      lj_lex_next(ls);
 -    parse_body(ls, v, 0, ls->linenumber);
 +    parse_body(ls, v, 0, 0, ls->linenumber);
-+    return;
+     return;
 +#ifdef LUAJIT_LAMBDA_SYNTAX /* LD: 2016.04.07 */
 +  case '\\':
 +    parse_body(ls, v, 0, 1, ls->linenumber);
-     return;
++    return;
 +#endif
    default:
      expr_primary(ls, v);
