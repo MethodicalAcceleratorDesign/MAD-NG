@@ -35,6 +35,7 @@ SYNOPSIS
   obj1 = object {}               -- create a new empty object
   obj2 = object { ... }          -- create a new object with values
   obj3 = object 'name' { ... }   -- create a new object with name and values
+  obj4 = obj3 'name' { ... }     -- create a new object from parent (class)
 
 DESCRIPTION
   The 'object' module implements the necessary machinery to support prototype-
