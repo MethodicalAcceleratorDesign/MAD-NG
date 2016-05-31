@@ -71,10 +71,6 @@ static const char* progname = "mad";
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
-static char prog_name[PATH_MAX+1] = "";
-static char prog_path[PATH_MAX+1] = "";
-static char curr_path[PATH_MAX+1] = "";
-
 static int lua_stdin_is_tty(void)
 {
 	struct stat stats;
@@ -84,8 +80,8 @@ static int lua_stdin_is_tty(void)
 
 static void print_version(void)
 {
-	str_t ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
-	str_t msg = 
+	const char* ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
+	const char* msg = 
 	"    ____  __   ______    ______     |   Methodical Accelerator Design\n"
 	"     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
 	"    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
@@ -102,7 +98,7 @@ static void print_version(void)
 }
 
 static const char*
-logmsg (lua_State *L, str_t fname, str_t fmt, va_list va)
+logmsg (lua_State *L, const char* fname, const char* fmt, va_list va)
 {
 	if (mad_trace_location) {
 		int n = 2;
@@ -116,7 +112,7 @@ logmsg (lua_State *L, str_t fname, str_t fmt, va_list va)
 	return lua_tostring(L, -1);
 }
 
-LUALIB_API int luaL_warn (lua_State *L, str_t fmt, ...)
+LUALIB_API int luaL_warn (lua_State *L, const char* fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
@@ -126,7 +122,7 @@ LUALIB_API int luaL_warn (lua_State *L, str_t fmt, ...)
 	return 0;
 }
 
-LUALIB_API int luaL_trace (lua_State *L, str_t fmt, ...)
+LUALIB_API int luaL_trace (lua_State *L, const char* fmt, ...)
 {
 	if (mad_trace_level) {
 		va_list va;
@@ -138,7 +134,7 @@ LUALIB_API int luaL_trace (lua_State *L, str_t fmt, ...)
 	return 0;
 }
 
-void (mad_error) (str_t fname, str_t fmt, ...)
+void (mad_error) (const char* fname, const char* fmt, ...)
 {
 	char msg[256];
 	int n = 0;
@@ -152,7 +148,7 @@ void (mad_error) (str_t fname, str_t fmt, ...)
 	exit(EXIT_FAILURE); /* never reached */
 }
 
-void (mad_warn) (str_t fname, str_t fmt, ...)
+void (mad_warn) (const char* fname, const char* fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
@@ -161,7 +157,7 @@ void (mad_warn) (str_t fname, str_t fmt, ...)
 	fflush(stderr);
 }
 
-void (mad_trace) (str_t fname, str_t fmt, ...)
+void (mad_trace) (const char* fname, const char* fmt, ...)
 {
 	if (mad_trace_level) {
 		va_list va;
@@ -207,10 +203,13 @@ static char* winexe(char *buf)
 	return buf;
 }
 
-static void setpaths(void)
+static void setpaths(lua_State *L)
 {
-	char *path, *p, nul = 0, psep = ':', dsep = '/';
+	char prog_name[PATH_MAX+1] = "";
+	char prog_path[PATH_MAX+1] = "";
+	char curr_path[PATH_MAX+1] = "";
 	char nam[PATH_MAX+4+1], buf[PATH_MAX+4+1];
+	char *path, *p, nul = 0, psep = ':', dsep = '/';
 
 	/* get curr_path [getenv(unix:"PWD" or win:"CD")] */
 	if (!(path = getcwd(curr_path, sizeof curr_path))) *curr_path = nul;
@@ -251,11 +250,18 @@ found:
 	if (*prog_path && (p=prog_path+strlen(prog_path))[-1] != dsep)
 		p[0] = dsep, p[1] = nul;
 
-	trace(2, "path      = '%s'", getenv("PATH"));
-	trace(2, "argv[0]   = '%s'", progname );
-	trace(2, "prog_name = '%s'", prog_name);
-	trace(2, "prog_path = '%s'", prog_path);
-	trace(2, "curr_path = '%s'", curr_path);
+	/* set global table 'path' */
+	lua_createtable(L, 0, 3);
+  lua_pushstring(L, "currpath");
+  lua_pushstring(L, curr_path);
+	lua_rawset(L, -3);
+  lua_pushstring(L, "progpath");
+  lua_pushstring(L, prog_path);
+	lua_rawset(L, -3);
+  lua_pushstring(L, "progname");
+  lua_pushstring(L, prog_name);
+	lua_rawset(L, -3);
+	lua_setglobal(L, "path");
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -297,7 +303,7 @@ static void print_usage(void)
 	fflush(stderr);
 }
 
-static void l_message(str_t pname, str_t msg)
+static void l_message(const char* pname, const char* msg)
 {
 	if (pname) { fputs(pname, stderr); fputc(':', stderr); fputc(' ', stderr); }
 	fputs(msg, stderr); fputc('\n', stderr);
@@ -307,7 +313,7 @@ static void l_message(str_t pname, str_t msg)
 static int report(lua_State *L, int status)
 {
 	if (status && !lua_isnil(L, -1)) {
-		str_t msg = lua_tostring(L, -1);
+		const char* msg = lua_tostring(L, -1);
 		if (msg == NULL) msg = "(error object is not a string)";
 		l_message(progname, msg);
 		lua_pop(L, 1);
@@ -356,7 +362,7 @@ static void print_version(void)
 static void print_jit_status(lua_State *L)
 {
 	int n;
-	str_t s;
+	const char* s;
 	lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
 	lua_getfield(L, -1, "jit");  /* Get jit.* module table. */
 	lua_remove(L, -2);
@@ -392,19 +398,19 @@ static int setargs(lua_State *L, char **argv, int n)
 	return narg;
 }
 
-static int dofile(lua_State *L, str_t name)
+static int dofile(lua_State *L, const char* name)
 {
 	int status = luaL_loadfile(L, name) || docall(L, 0, 1);
 	return report(L, status);
 }
 
-static int dostring(lua_State *L, str_t s, str_t name)
+static int dostring(lua_State *L, const char* s, const char* name)
 {
 	int status = luaL_loadbuffer(L, s, strlen(s), name) || docall(L, 0, 1);
 	return report(L, status);
 }
 
-static int dolibrary(lua_State *L, str_t name)
+static int dolibrary(lua_State *L, const char* name)
 {
 	lua_getglobal(L, "require");
 	lua_pushstring(L, name);
@@ -413,7 +419,7 @@ static int dolibrary(lua_State *L, str_t name)
 
 static void write_prompt(lua_State *L, int firstline)
 {
-	str_t p;
+	const char* p;
 	lua_getfield(L, LUA_GLOBALSINDEX, firstline ? "_PROMPT" : "_PROMPT2");
 	p = lua_tostring(L, -1);
 	if (p == NULL) p = firstline ? LUA_PROMPT : LUA_PROMPT2;
@@ -426,8 +432,8 @@ static int incomplete(lua_State *L, int status)
 {
 	if (status == LUA_ERRSYNTAX) {
 		size_t lmsg;
-		str_t msg = lua_tolstring(L, -1, &lmsg);
-		str_t tp = msg + lmsg - (sizeof(LUA_QL("<eof>")) - 1);
+		const char* msg = lua_tolstring(L, -1, &lmsg);
+		const char* tp = msg + lmsg - (sizeof(LUA_QL("<eof>")) - 1);
 		if (strstr(msg, LUA_QL("<eof>")) == tp) {
 			lua_pop(L, 1);
 			return 1;
@@ -475,7 +481,7 @@ static int loadline(lua_State *L)
 static void dotty(lua_State *L)
 {
 	int status;
-	str_t oldprogname = progname;
+	const char* oldprogname = progname;
 	progname = NULL;
 	while ((status = loadline(L)) != -1) {
 		if (status == 0) status = docall(L, 0, 0);
@@ -498,7 +504,7 @@ static void dotty(lua_State *L)
 static int handle_script(lua_State *L, char **argv, int n, int narg)
 {
 	int status;
-	str_t fname;
+	const char* fname;
 	fname = argv[n];
 	if (strcmp(fname, "-") == 0 && strcmp(argv[n-1], "--") != 0)
 		fname = NULL;  /* stdin */
@@ -519,7 +525,7 @@ static int loadjitmodule(lua_State *L)
 	lua_pushvalue(L, -3);
 	lua_concat(L, 2);
 	if (lua_pcall(L, 1, 1, 0)) {
-		str_t msg = lua_tostring(L, -1);
+		const char* msg = lua_tostring(L, -1);
 		if (msg && !strncmp(msg, "module ", 7))
 			goto nomodule;
 		return report(L, 1);
@@ -536,12 +542,12 @@ static int loadjitmodule(lua_State *L)
 }
 
 /* Run command with options. */
-static int runcmdopt(lua_State *L, str_t opt)
+static int runcmdopt(lua_State *L, const char* opt)
 {
 	int narg = 0;
 	if (opt && *opt) {
 		for (;;) {  /* Split arguments. */
-			str_t p = strchr(opt, ',');
+			const char* p = strchr(opt, ',');
 			narg++;
 			if (!p) break;
 			if (p == opt)
@@ -559,9 +565,9 @@ static int runcmdopt(lua_State *L, str_t opt)
 }
 
 /* JIT engine control command: try jit library first or load add-on module. */
-static int dojitcmd(lua_State *L, str_t cmd)
+static int dojitcmd(lua_State *L, const char* cmd)
 {
-	str_t opt = strchr(cmd, '=');
+	const char* opt = strchr(cmd, '=');
 	lua_pushlstring(L, cmd, opt ? (size_t)(opt - cmd) : strlen(cmd));
 	lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
 	lua_getfield(L, -1, "jit");  /* Get jit.* module table. */
@@ -580,7 +586,7 @@ static int dojitcmd(lua_State *L, str_t cmd)
 }
 
 /* Optimization flags. */
-static int dojitopt(lua_State *L, str_t opt)
+static int dojitopt(lua_State *L, const char* opt)
 {
 	lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
 	lua_getfield(L, -1, "jit.opt");  /* Get jit.opt.* module table. */
@@ -674,7 +680,7 @@ static int runargs(lua_State *L, char **argv, int n)
 		lua_assert(argv[i][0] == '-');
 		switch (argv[i][1]) {  /* option */
 		case 'e': {
-			str_t chunk = argv[i] + 2;
+			const char* chunk = argv[i] + 2;
 			if (*chunk == '\0') chunk = argv[++i];
 			lua_assert(chunk != NULL);
 			if (dostring(L, chunk, "=(command line)") != 0)
@@ -682,7 +688,7 @@ static int runargs(lua_State *L, char **argv, int n)
 			break;
 			}
 		case 'l': {
-			str_t filename = argv[i] + 2;
+			const char* filename = argv[i] + 2;
 			if (*filename == '\0') filename = argv[++i];
 			lua_assert(filename != NULL);
 			if (dolibrary(L, filename))
@@ -690,7 +696,7 @@ static int runargs(lua_State *L, char **argv, int n)
 			break;
 			}
 		case 'j': {  /* LuaJIT extension */
-			str_t cmd = argv[i] + 2;
+			const char* cmd = argv[i] + 2;
 			if (*cmd == '\0') cmd = argv[++i];
 			lua_assert(cmd != NULL);
 			if (dojitcmd(L, cmd))
@@ -711,7 +717,7 @@ static int runargs(lua_State *L, char **argv, int n)
 
 static int handle_luainit(lua_State *L)
 {
-	str_t init = getenv(LUA_INIT);
+	const char* init = getenv(LUA_INIT);
 	if (init == NULL)
 		return 0;  /* status OK */
 	else if (init[0] == '@')
@@ -741,7 +747,7 @@ static int pmain(lua_State *L)
 		s->status = 1;
 		return 0;
 	}
-	setpaths();
+	setpaths(L);
 	narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
 	if ((flags & FLAGS_NOENV)) {
 		lua_pushboolean(L, 1);
