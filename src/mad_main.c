@@ -742,6 +742,7 @@ static int pmain(lua_State *L)
 		return 0;
 	}
 	setpaths();
+	narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
 	if ((flags & FLAGS_NOENV)) {
 		lua_pushboolean(L, 1);
 		lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
@@ -755,7 +756,6 @@ static int pmain(lua_State *L)
 		if (s->status != 0) return 0;
 	}
 	if ((flags & FLAGS_VERSION)) print_version();
-	narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
 	s->status = runargs(L, argv, (script > 0) ? script : s->argc);
 	if (s->status != 0) return 0;
 	if (script) {
