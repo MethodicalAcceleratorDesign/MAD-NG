@@ -249,7 +249,7 @@ static void setpaths (lua_State *L, int no_env)
 
   /* get home_path */
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
-	if ((path = getenv("HOMEDRIVE"))) strcat(strcpy(home_path, path), "\\");
+	if ((path = getenv("HOMEDRIVE"))) strcpy(home_path, path);
 	if ((path = getenv("HOMEPATH" ))) strcat(home_path, path);
 	winpath(home_path);
 #else
