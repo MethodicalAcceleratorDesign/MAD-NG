@@ -82,13 +82,15 @@ static int lua_stdin_is_tty (void)
   fstat(0, &stats);
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
+
+/* Missing declaration in Mingw */
+int setenv(const char *name, const char *value, int overwrite);
 #endif
 
 /* --- MAD (start) -----------------------------------------------------------*/
 
 /* Assume Posix: MacOSX, Linux, Mingw32/64 or Cygwin */
 #include <unistd.h>
-#include <signal.h>
 #include <limits.h>
 #include <time.h>
 #include "mad_log.h"
