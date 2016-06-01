@@ -464,12 +464,9 @@ found:
 static int handle_madinit (lua_State *L)
 {
 	const char *init = getenv("MAD_INIT");
-	if (init == NULL)
-		return 0;  /* status OK */
-	else if (init[0] == '@')
-		return dofile(L, init+1);
-	else
-		return dostring(L, init, "=" "MAD_INIT");
+	if (init == NULL)	return 0;  /* status OK */
+	else if (init[0] == '@') return dofile(L, init+1);
+	else return dostring(L, init, "=" "MAD_INIT");
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -535,8 +532,8 @@ static int traceback(lua_State *L)
 {
 	if (!lua_isstring(L, 1)) { /* Non-string error object? Try metamethod. */
 		if (lua_isnoneornil(L, 1) ||
-	!luaL_callmeta(L, 1, "__tostring") ||
-	!lua_isstring(L, -1))
+				!luaL_callmeta(L, 1, "__tostring") ||
+				!lua_isstring(L, -1))
 			return 1;  /* Return non-string error object. */
 		lua_remove(L, 1);  /* Replace object by result of __tostring metamethod. */
 	}
@@ -651,8 +648,7 @@ static int pushline(lua_State *L, int firstline)
 	write_prompt(L, firstline);
 	if (fgets(buf, LUA_MAXINPUT, stdin)) {
 		size_t len = strlen(buf);
-		if (len > 0 && buf[len-1] == '\n')
-			buf[len-1] = '\0';
+		if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
 		if (firstline && buf[0] == '=')
 			lua_pushfstring(L, "return %s", buf+1);
 		else
@@ -666,13 +662,11 @@ static int loadline(lua_State *L)
 {
 	int status;
 	lua_settop(L, 0);
-	if (!pushline(L, 1))
-		return -1;  /* no input */
+	if (!pushline(L, 1)) return -1;  /* no input */
 	for (;;) {  /* repeat until gets a complete line */
 		status = luaL_loadbuffer(L, lua_tostring(L, 1), lua_strlen(L, 1), "=stdin");
 		if (!incomplete(L, status)) break;  /* cannot try to add lines? */
-		if (!pushline(L, 0))  /* no more input? */
-			return -1;
+		if (!pushline(L, 0)) return -1; /* no more input? */
 		lua_pushliteral(L, "\n");  /* add a new line... */
 		lua_insert(L, -2);  /* ...between the two lines */
 		lua_concat(L, 3);  /* join them */
@@ -713,10 +707,8 @@ static int handle_script(lua_State *L, char **argv, int n, int narg)
 		fname = NULL;  /* stdin */
 	status = luaL_loadfile(L, fname);
 	lua_insert(L, -(narg+1));
-	if (status == 0)
-		status = docall(L, narg, 0);
-	else
-		lua_pop(L, narg);
+	if (status == 0) status = docall(L, narg, 0);
+	else lua_pop(L, narg);
 	return report(L, status);
 }
 
@@ -729,15 +721,14 @@ static int loadjitmodule(lua_State *L)
 	lua_concat(L, 2);
 	if (lua_pcall(L, 1, 1, 0)) {
 		const char *msg = lua_tostring(L, -1);
-		if (msg && !strncmp(msg, "module ", 7))
-			goto nomodule;
+		if (msg && !strncmp(msg, "module ", 7))	goto nomodule;
 		return report(L, 1);
 	}
 	lua_getfield(L, -1, "start");
 	if (lua_isnil(L, -1)) {
 	nomodule:
 		l_message(progname,
-				"unknown luaJIT command or jit.* modules not installed");
+			"unknown luaJIT command or jit.* modules not installed");
 		return 1;
 	}
 	lua_remove(L, -2);  /* Drop module table. */
@@ -753,16 +744,12 @@ static int runcmdopt(lua_State *L, const char *opt)
 			const char *p = strchr(opt, ',');
 			narg++;
 			if (!p) break;
-			if (p == opt)
-				lua_pushnil(L);
-			else
-				lua_pushlstring(L, opt, (size_t)(p - opt));
+			if (p == opt) lua_pushnil(L);
+			else lua_pushlstring(L, opt, (size_t)(p - opt));
 			opt = p + 1;
 		}
-		if (*opt)
-			lua_pushstring(L, opt);
-		else
-			lua_pushnil(L);
+		if (*opt)	lua_pushstring(L, opt);
+		else			lua_pushnil(L);
 	}
 	return report(L, lua_pcall(L, narg, 0, 0));
 }
@@ -779,11 +766,9 @@ static int dojitcmd(lua_State *L, const char *cmd)
 	lua_gettable(L, -2);  /* Lookup library function. */
 	if (!lua_isfunction(L, -1)) {
 		lua_pop(L, 2);  /* Drop non-function and jit.* table, keep module name. */
-		if (loadjitmodule(L))
-			return 1;
-	} else {
+		if (loadjitmodule(L)) return 1;
+	} else
 		lua_remove(L, -2);  /* Drop jit.* table. */
-	}
 	lua_remove(L, -2);  /* Drop module name. */
 	return runcmdopt(L, opt ? opt+1 : opt);
 }
@@ -804,8 +789,7 @@ static int dobytecode(lua_State *L, char **argv)
 {
 	int narg = 0;
 	lua_pushliteral(L, "bcsave");
-	if (loadjitmodule(L))
-		return 1;
+	if (loadjitmodule(L)) return 1;
 	if (argv[0][2]) {
 		narg++;
 		argv[0][1] = '-';
@@ -820,10 +804,10 @@ static int dobytecode(lua_State *L, char **argv)
 #define notail(x)	{if ((x)[2] != '\0') return -1;}
 
 #define FLAGS_INTERACTIVE	1
-#define FLAGS_VERSION		2
-#define FLAGS_EXEC		4
-#define FLAGS_OPTION		8
-#define FLAGS_NOENV		16
+#define FLAGS_VERSION			2
+#define FLAGS_EXEC				4
+#define FLAGS_OPTION			8
+#define FLAGS_NOENV				16
 
 static int collectargs(char **argv, int *flags)
 {
@@ -851,14 +835,11 @@ static int collectargs(char **argv, int *flags)
 		case 'j':  /* LuaJIT extension */
 		case 'l':
 			*flags |= FLAGS_OPTION;
-			if (argv[i][2] == '\0') {
-	i++;
-	if (argv[i] == NULL) return -1;
-			}
+			if (argv[i][2] == '\0' && argv[++i] == NULL) return -1;
 			break;
 		case 'O': break;  /* LuaJIT extension */
 		case 'b':  /* LuaJIT extension */
-			if (*flags) return -1;
+			if ((*flags &= ~FLAGS_VERSION)) return -1;
 			*flags |= FLAGS_EXEC;
 			return 0;
 		case 'E':
@@ -886,29 +867,22 @@ static int runargs(lua_State *L, char **argv, int n)
 			const char *chunk = argv[i] + 2;
 			if (*chunk == '\0') chunk = argv[++i];
 			lua_assert(chunk != NULL);
-			if (dostring(L, chunk, "=(command line)") != 0)
-	return 1;
-			break;
-			}
+			if (dostring(L, chunk, "=(command line)") != 0)	return 1;
+		} break;
 		case 'l': {
 			const char *filename = argv[i] + 2;
 			if (*filename == '\0') filename = argv[++i];
 			lua_assert(filename != NULL);
-			if (dolibrary(L, filename))
-	return 1;  /* stop if file fails */
-			break;
-			}
+			if (dolibrary(L, filename))	return 1;  /* stop if file fails */
+		} break;
 		case 'j': {  /* LuaJIT extension */
 			const char *cmd = argv[i] + 2;
 			if (*cmd == '\0') cmd = argv[++i];
 			lua_assert(cmd != NULL);
-			if (dojitcmd(L, cmd))
-	return 1;
-			break;
-			}
+			if (dojitcmd(L, cmd))	return 1;
+		} break;
 		case 'O':  /* LuaJIT extension */
-			if (dojitopt(L, argv[i] + 2))
-	return 1;
+			if (dojitopt(L, argv[i] + 2)) return 1;
 			break;
 		case 'b':  /* LuaJIT extension */
 			return dobytecode(L, argv+i);
@@ -925,12 +899,9 @@ static int handle_luainit(lua_State *L)
 #else
   const char *init = getenv(LUA_INIT);
 #endif
-	if (init == NULL)
-		return 0;  /* status OK */
-	else if (init[0] == '@')
-		return dofile(L, init+1);
-	else
-		return dostring(L, init, "=" LUA_INIT);
+	if (init == NULL)	return 0;  /* status OK */
+	else if (init[0] == '@') return dofile(L, init+1);
+	else return dostring(L, init, "=" LUA_INIT);
 }
 
 static struct Smain {
