@@ -76,7 +76,7 @@ static const char *progname = "mad";
 #include <sys/stat.h>
 
 #undef     lua_stdin_is_tty
-static int lua_stdin_is_tty(void)
+static int lua_stdin_is_tty (void)
 {
   struct stat stats;
   fstat(0, &stats);
@@ -101,10 +101,10 @@ int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
 /* Forward declarations. */
-static int dofile(lua_State *L, const char *name);
-static int dostring(lua_State *L, const char *s, const char *name);
+static int dofile   (lua_State *L, const char *name);
+static int dostring (lua_State *L, const char *s, const char *name);
 
-static void print_version(void)
+static void print_version (void)
 {
 	const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
 	const char *msg = 
@@ -121,17 +121,6 @@ static void print_version(void)
 
 	strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", tm);
 	printf(msg, ver, buf);
-}
-
-static int handle_madinit(lua_State *L)
-{
-	const char *init = getenv("MAD_INIT");
-	if (init == NULL)
-		return 0;  /* status OK */
-	else if (init[0] == '@')
-		return dofile(L, init+1);
-	else
-		return dostring(L, init, "=MAD_INIT");
 }
 
 static const char*
@@ -216,32 +205,31 @@ static int mad_luatrace (lua_State *L) {
 		return 0;
 }
 
-static void mad_register(lua_State *L)
-{
-	lua_register(L, "warn" , mad_luawarn );  
-	lua_register(L, "trace", mad_luatrace);
-}
-
 /* Windows: not declared by any mean but provided by libgettextlib */
-extern char *realpath(const char *restrict fname, char *restrict rname);
+extern char *realpath (const char *restrict fname, char *restrict rname);
 
-static char* winpath(char *buf)
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+static char* winpath (char *buf)
 {
 	char *p = buf;
 	while ((p = strchr(p, '/'))) *p++ = '\\';
 	return buf;
 }
 
-static char* winexe(char *buf)
+static char* winexe (char *buf)
 {
 	int len = strlen(buf);
 	if (len > 0 && (len < 4 || strcmp(buf+len-4, ".exe")))
 		strcpy(buf+len, ".exe");
 	return buf;
 }
+#endif
 
-static void setpaths(lua_State *L)
+static void setpaths (lua_State *L, int no_env)
 {
+	lua_register(L, "warn" , mad_luawarn );  
+	lua_register(L, "trace", mad_luatrace);
+
 	char prog_name[PATH_MAX+1] = "";
 	char prog_path[PATH_MAX+1] = "";
 	char curr_path[PATH_MAX+1] = "";
@@ -258,17 +246,19 @@ static void setpaths(lua_State *L)
 	if (p) dsep = *p, psep = *p == '\\' ? ';' : ':';
 
   /* get home_path */
-	if (dsep == '\\') {
-		if ((path = getenv("HOMEDRIVE"))) strcpy(home_path, path);
-		if ((path = getenv("HOMEPATH" ))) strcat(home_path, path);
-		winpath(home_path);
-  } else {
-    if ((path = getenv("HOME"     ))) strcpy(home_path, path);
-  }
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+	if ((path = getenv("HOMEDRIVE"))) strcat(strcpy(home_path, path), "\\");
+	if ((path = getenv("HOMEPATH" ))) strcat(home_path, path);
+	winpath(home_path);
+#else
+	if ((path = getenv("HOME"     ))) strcpy(home_path, path);
+#endif
 
 	/* get prog_name */
 	strcpy(nam, progname);
-	if (dsep == '\\') winexe(winpath(nam)); /* canonize */
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+	winexe(winpath(prog_path));  /* canonize */
+#endif
 	p = strrchr(nam, dsep);
 	strcpy(prog_name, p ? p+1 : nam);
 
@@ -288,7 +278,9 @@ static void setpaths(lua_State *L)
   *prog_path = nul;
 
 found:
-	if (dsep == '\\') winexe(winpath(prog_path));  /* canonize */
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+	winexe(winpath(prog_path));  /* canonize */
+#endif
   if ((p=strrchr(prog_path, dsep)) && !strcmp(p+1, prog_name)) *p = nul;
 
 	/* add trailing dir separator */
@@ -318,6 +310,164 @@ found:
   lua_pushstring(L, buf);
 	lua_rawset(L, -3);
 	lua_setglobal(L, "path");
+
+	if (no_env) return;
+
+	const char *mpath = getenv("MAD_PATH"), *cpath  = getenv("MAD_CPATH");
+	const char *lpath = getenv("LUA_PATH"), *lcpath = getenv("LUA_CPATH");
+	int len, mlen, clen, marg, carg;
+
+	trace(2, "LUA_PATH='%s'", lpath ? lpath : "");
+	trace(2, "LUA_CPATH='%s'", lcpath ? lcpath : "");
+
+	if (mpath) marg = 0, mlen = strlen(mpath);
+	else
+		mpath = "./?.mad;./?.lua;" 												// CURR_PATH
+						/* MAD modules (user's home) */
+						"%s.mad/?.mad;" 													// HOME_PATH	(1)
+						"%s.mad/?.lua;" 													// HOME_PATH	(1)
+						/* MAD modules (relative) */
+						"%s?.mad;"																// MAD_PATH		(1)
+						"%s?.lua;"																// MAD_PATH		(1)
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+						/* MAD modules (relative) */
+						"%s../mad/?.mad;"													// MAD_PATH		(1)
+						"%s../mad/?.lua;"													// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (relative) */
+						"%s../Lua/5.1/?.lua;"											// MAD_PATH		(1)
+						"%s../Lua/5.1/?/init.lua;"								// MAD_PATH		(1)
+						"%s../Lua/5.1/lua/?.lua;"									// MAD_PATH		(1)
+						"%s../Lua/5.1/lua/?/init.lua;"						// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (absolute) */
+						"C:/Program Files/Lua/5.1/?.lua;"
+						"C:/Program Files/Lua/5.1/?/init.lua;"
+						"C:/Program Files/Lua/5.1/lua/?.lua;"
+						"C:/Program Files/Lua/5.1/lua/?/init.lua;",
+		marg = 4+6,
+#else
+						/* MAD modules (relative) */
+						"%s../share/mad/?.mad;"										// MAD_PATH		(1)
+						"%s../share/mad/?.lua;"										// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (relative) */
+						"%s../share/lua/5.1/?.lua;"								// MAD_PATH		(1)
+						"%s../share/lua/5.1/?/init.lua;"					// MAD_PATH		(1)
+						"%s../lib/lua/5.1/?.lua;"									// MAD_PATH		(1)
+						"%s../lib/lua/5.1/?/init.lua;"						// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (/opt/local absolute) */
+						"/opt/local/share/lua/5.1/?.lua;"
+						"/opt/local/share/lua/5.1/?/init.lua;"
+						"/opt/local/lib/lua/5.1/?.lua;"
+						"/opt/local/lib/lua/5.1/?/init.lua;"
+						/* From Lua unofficial uFAQ (/usr/local absolute) */
+						"/usr/local/share/lua/5.1/?.lua;"
+						"/usr/local/share/lua/5.1/?/init.lua;"
+						"/usr/local/lib/lua/5.1/?.lua;"
+						"/usr/local/lib/lua/5.1/?/init.lua;",
+		marg = 4+6,
+#endif
+		mlen = strlen(mpath)-(2*marg)
+					 + 2*strlen(home_path) + (marg-2)*strlen(prog_path);
+
+	if (cpath) carg = 0, clen = strlen(cpath);
+	else
+		cpath = 
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+						"./?.dll;./?.so;"													// CURR_PATH
+						/* MAD modules (user's home) */
+						"%s.mad/?.dll;"														// HOME_PATH	(1)
+						"%s.mad/?.so;"														// HOME_PATH	(1)
+						/* MAD modules (relative) */
+						"%s?.dll;"																// MAD_PATH		(1)
+						"%s?.so;"																	// MAD_PATH		(1)
+						"%s../lib/mad/?.dll;"											// MAD_PATH		(1)
+						"%s../lib/mad/?.so;" 											// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (relative) */
+						"%s../lib/lua/5.1/?.dll;"									// MAD_PATH		(1)
+						"%s../lib/lua/5.1/?.so;"									// MAD_PATH		(1)
+						"C:/Program Files/Lua/5.1/?.dll;"
+						"C:/Program Files/Lua/5.1/?.so;"
+						"C:/Program Files/Lua/5.1/clibs/?.dll;"
+						"C:/Program Files/Lua/5.1/clibs/?.so;",
+		carg = 8,
+#elif LUAJIT_OS == LUAJIT_OS_OSX
+						"./?.dylib;./?.so;"												// CURR_PATH
+						/* MAD modules (user's home) */
+						"%s.mad/?.dylib;"													// HOME_PATH	(1)
+						"%s.mad/?.so;"														// HOME_PATH	(1)
+						/* MAD modules (relative) */
+						"%s?.dylib;"															// MAD_PATH		(1)
+						"%s?.so;"																	// MAD_PATH		(1)
+						"%s../lib/mad/?.dylib;"										// MAD_PATH		(1)
+						"%s../lib/mad/?.so;"											// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (relative) */
+						"%s../lib/lua/5.1/?.dylib;"								// MAD_PATH		(1)
+						"%s../lib/lua/5.1/?.so;"									// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (/opt/local absolute) */
+						"/opt/local/lib/lua/5.1/?.dylib;"
+						"/opt/local/lib/lua/5.1/?.so;"
+						/* From Lua unofficial uFAQ (/usr/local absolute) */
+						"/usr/local/lib/lua/5.1/?.dylib;"
+						"/usr/local/lib/lua/5.1/?.so;",
+		carg = 8,
+#else
+						"./?.so;"																	// CURR_PATH
+						/* MAD modules (user's home) */
+						"%s.mad/?.so;"														// HOME_PATH	(1)
+						/* MAD modules (relative) */
+						"%s?.so;"																	// MAD_PATH		(1)
+						"%s../lib/mad/?.so;"											// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (relative) */
+						"%s../lib/lua/5.1/?.so;"									// MAD_PATH		(1)
+						/* From Lua unofficial uFAQ (/opt/local absolute) */
+						"/opt/local/lib/lua/5.1/?.so;"
+						/* From Lua unofficial uFAQ (/usr/local absolute) */
+						"/usr/local/lib/lua/5.1/?.so;",
+		carg = 4,
+#endif
+		clen = strlen(cpath)-(2*carg)
+					 + 2*strlen(home_path) + (carg-2)*strlen(prog_path);
+
+	/* LUA_PATH = $MAD_PATH;$LUA_PATH */
+	char env[(mlen>clen?mlen:clen) + strlen(lpath ? lpath : "") + 1];
+	ensure(marg == 10, "invalid number of path argument");
+	len = snprintf(env, sizeof env, mpath, /* next args discarded without %s */
+					 				home_path, home_path, prog_path, prog_path, prog_path,
+					 				prog_path, prog_path, prog_path, prog_path, prog_path);
+	if (lpath) strcat(env, lpath); else if (len>0) env[len-1] = nul;
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+	winpath(env); /* canonize */
+#endif
+
+	trace(2, "set LUA_PATH='%s'", env);
+	setenv("LUA_PATH", env, 1);
+	
+	/* LUA_CPATH = $MAD_CPATH;$LUA_CPATH */
+	ensure(carg == 8 || carg == 4, "invalid number of path argument");
+  if (carg == 4)
+		len = snprintf(env, sizeof env, cpath, /* next args discarded without %s */
+						 			 home_path, prog_path, prog_path, prog_path);
+	else
+		len = snprintf(env, sizeof env, cpath, /* next args discarded without %s */
+						 			 home_path, home_path, prog_path, prog_path,
+						 			 prog_path, prog_path, prog_path, prog_path);
+	if (lcpath) strcat(env, lcpath); else if (len>0) env[len-1] = nul;
+#if LUAJIT_OS == LUAJIT_OS_WINDOWS
+	winpath(env); /* canonize */
+#endif
+
+	trace(2, "set LUA_CPATH='%s'", env);
+	setenv("LUA_CPATH", env, 1);
+}
+
+static int handle_madinit (lua_State *L)
+{
+	const char *init = getenv("MAD_INIT");
+	if (init == NULL)
+		return 0;  /* status OK */
+	else if (init[0] == '@')
+		return dofile(L, init+1);
+	else
+		return dostring(L, init, "=" "MAD_INIT");
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -802,7 +952,7 @@ static int pmain(lua_State *L)
 		s->status = 1;
 		return 0;
 	}
-	setpaths(L);
+	setpaths(L, flags & FLAGS_NOENV);
 	narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
 	if ((flags & FLAGS_NOENV)) {
 		lua_pushboolean(L, 1);
@@ -810,7 +960,6 @@ static int pmain(lua_State *L)
 	}
 	lua_gc(L, LUA_GCSTOP, 0);  /* stop collector during initialization */
 	luaL_openlibs(L);  /* open libraries */
-	mad_register(L);
 	lua_gc(L, LUA_GCRESTART, -1);
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_luainit(L);
