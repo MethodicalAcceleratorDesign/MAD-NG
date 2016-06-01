@@ -319,9 +319,6 @@ found:
 	const char *lpath = getenv("LUA_PATH"), *lcpath = getenv("LUA_CPATH");
 	int len, mlen, clen, marg, carg;
 
-	trace(2, "LUA_PATH='%s'", lpath ? lpath : "");
-	trace(2, "LUA_CPATH='%s'", lcpath ? lcpath : "");
-
 	if (mpath) marg = 0, mlen = strlen(mpath);
 	else
 		mpath = "./?.mad;./?.lua;" 												// CURR_PATH
@@ -427,7 +424,7 @@ found:
 		carg = 4,
 #endif
 		clen = strlen(cpath)-(2*carg)
-					 + 2*strlen(home_path) + (carg-2)*strlen(prog_path);
+					 + (carg/4)*strlen(home_path) + (carg-carg/4)*strlen(prog_path);
 
 	/* LUA_PATH = $MAD_PATH;$LUA_PATH */
 	char env[(mlen>clen?mlen:clen) + strlen(lpath ? lpath : "") + 1];
@@ -439,12 +436,10 @@ found:
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 	winpath(env); /* canonize */
 #endif
-
-	trace(2, "set LUA_PATH='%s'", env);
 	setenv("LUA_PATH", env, 1);
 	
 	/* LUA_CPATH = $MAD_CPATH;$LUA_CPATH */
-	ensure(carg == 8 || carg == 4, "invalid number of path argument");
+	ensure(carg == 4 || carg == 8, "invalid number of path argument");
   if (carg == 4)
 		len = snprintf(env, sizeof env, cpath, /* next args discarded without %s */
 						 			 home_path, prog_path, prog_path, prog_path);
@@ -456,8 +451,6 @@ found:
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 	winpath(env); /* canonize */
 #endif
-
-	trace(2, "set LUA_CPATH='%s'", env);
 	setenv("LUA_CPATH", env, 1);
 }
 
