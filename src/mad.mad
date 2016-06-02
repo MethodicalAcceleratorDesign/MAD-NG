@@ -46,42 +46,80 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local is_table in require 'madl_utils'
-
--- implementation -------------------------------------------------------------o
-
-local function load_modules (modules)
-  for i=1,#modules do
-    local modname = modules[i]
-    assert(M[modname] == nil, "overriding mad definition: "..modname)
-
-    local modref = require ("madl_"..modname);
-    assert(modref ~= nil, "module not found: "..modname)
---    assert(type(modref.__help) == 'table', "module without help: "..modname)
-
-    if is_table(modref) then
-      for k,v in pairs(modref) do
-        assert(M[k] == nil,"overriding mad definition: "..k.." ["..modname.."]")
-        M[k] = v
-      end
-    else
-      M[modname] = modref
-    end
-  end
-end
-
--- modules to load ------------------------------------------------------------o
-
--- order matters.
-load_modules {
+local modules = { -- order matters.
   'utils',
   'object',
 
---  'helper',
 --  'beam',
 --  'element',
 --  'sequence',
 }
 
--------------------------------------------------------------------------------o
+local is_string, is_table, is_iterable, is_indexable in require 'madl_utils'
+
+-- implementation -------------------------------------------------------------o
+
+M.import = function (a, override)
+  local m = a
+  if is_string(a) then
+    m = require('madl_'..a) or require(a);
+    assert(m ~= nil, "module not found: "..a)
+  end
+
+  if is_iterable(m) then
+    for k,v in pairs(m) do
+      assert(M[k] == nil or override, "overriding definition: "..k.." ["..a.."]")
+      M[k] = v
+    end
+  else
+    assert(M[a] == nil or override, "overriding definition: "..a)
+    M[a] = m
+  end
+end
+
+M.export = function (a, pat, override)
+  a = a or _G
+  pat = pat or '.*'
+  assert(is_table(a)   , "invalid argument #1 (table expected)")
+  assert(is_string(pat), "invalid argument #2 (string expected)")
+  for k,v in pairs(M) do
+    if is_string(k) then
+        if string.find(k, pat) and
+           a[k] == nil or override then a[k] = v end
+    else
+        if a[k] == nil or override then a[k] = v end
+    end
+  end
+  return a
+end
+
+M.help = function (a)
+  assert(is_string(a), "invalid argument #1 (string expected)")
+  local dot = string.find(a, '.', 1, true)
+  local mod = dot and string.sub(a, 1, dot-1) or a
+  local fun = dot and string.sub(a, dot+1) or 'self'
+  local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or
+							package.loaded['mad'][mod] -- or?
+  local str = "no help found"
+  if is_indexable(ctx) and ctx.__help and ctx.__help[fun] then
+      str = ctx.__help[fun]
+  elseif is_table(ctx) then
+  	for k,v in pairs(ctx) do
+  		if is_indexable(v) and v.__help and v.__help[fun] then
+      	str = v.__help[fun]
+      end
+    end
+  end
+  io.write(str)
+end
+
+-- self ref
+M.mad = M
+
+-- load MAD modules
+for _,v in ipairs(modules) do
+  M.import(v)
+end
+
+-- end ------------------------------------------------------------------------o
 return M
