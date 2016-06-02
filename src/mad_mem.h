@@ -17,14 +17,14 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - fast memory allocator (per-thread pool).
   - MAD memory handlers: mad_malloc, mad_realloc, mad_free
   - allocated memory can be used-by/moved-to any thread (global allocator).
   - temporary allocation are only for local use (scoped), and the length
     corresponds to the number of elements of type 'type' in the buffer.
- 
+
   Information:
   - parameters ending with an underscope can be null.
   - mad_malloc and mad_realloc call mad_fatal with caller location if
@@ -43,7 +43,7 @@
  o----------------------------------------------------------------------------o
  */
 
-#include "mad.h"
+#include "mad_defs.h"
 
 // --- interface -------------------------------------------------------------o
 

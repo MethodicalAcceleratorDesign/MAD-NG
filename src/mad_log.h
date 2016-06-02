@@ -17,7 +17,7 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - MAD log handlers: mad_(error, warn, trace, ensure)
     shortcuts: error, warn, trace, ensure
@@ -35,7 +35,7 @@
  o----------------------------------------------------------------------------o
  */
 
-#include "mad.h"
+#include "mad_defs.h"
 #include "mad_main.h"
 
 // --- interface -------------------------------------------------------------o

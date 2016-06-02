@@ -14,7 +14,7 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-	
+
 	Purpose:
 	- Frontend (main) of the MAD application.
 
@@ -110,7 +110,7 @@ static int dostring (lua_State *L, const char *s, const char *name);
 static void print_version (void)
 {
 	const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
-	const char *msg = 
+	const char *msg =
 	"    ____  __   ______    ______     |   Methodical Accelerator Design\n"
 	"     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
 	"    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
@@ -197,11 +197,13 @@ LJ_NOINLINE void (mad_trace) (const char *fname, const char *fmt, ...)
 	}
 }
 
-static int mad_luawarn (lua_State *L) {
+static int mad_luawarn (lua_State *L)
+{
 	return luaL_warn(L, "%s", luaL_checkstring(L, 1));
 }
 
-static int mad_luatrace (lua_State *L) {
+static int mad_luatrace (lua_State *L)
+{
   /* Should also be checked on Lua side to avoid spurious call */
 	if (mad_trace_level)
 		return luaL_trace(L, "%s", luaL_checkstring(L, 1));
@@ -209,10 +211,30 @@ static int mad_luatrace (lua_State *L) {
 		return 0;
 }
 
+static int mad_luatracelevel (lua_State *L)
+{
+	int level = mad_trace_level;
+	if (lua_gettop(L) == 1)
+		mad_trace_level = luaL_checknumber(L, 1);
+	lua_pushnumber(L, level);
+	return 1;
+}
+
+static int mad_luatracelocation (lua_State *L)
+{
+	int location = mad_trace_location;
+	if (lua_gettop(L) == 1)
+		mad_trace_location = luaL_checknumber(L, 1);
+	lua_pushnumber(L, location);
+	return 1;
+}
+
 static void regfunc (lua_State *L)
 {
-	lua_register(L, "warn" , mad_luawarn );
-	lua_register(L, "trace", mad_luatrace);
+	lua_register(L, "warn"			 		, mad_luawarn );
+	lua_register(L, "trace"			 		, mad_luatrace);
+	lua_register(L, "trace_level"		, mad_luatracelevel);
+	lua_register(L, "trace_location", mad_luatracelocation);
 }
 
 /* Windows: not declared by any mean but provided by libgettextlib */
@@ -278,7 +300,7 @@ static void setpaths (lua_State *L, int no_env)
 			p = strchr(path, psep);
 			if (p) *p = nul;
 			if (snprintf(buf, sizeof buf, "%s%c%s", path, dsep, prog_name) > 0 &&
-					realpath(buf, prog_path)) { if (p) *p = psep; goto found; } 
+					realpath(buf, prog_path)) { if (p) *p = psep; goto found; }
 			if (p) *p = psep, path = p+1; else break;
 		}
 	}
@@ -374,7 +396,7 @@ found:
 
 	if (cpath) carg = 0, clen = strlen(cpath);
 	else
-		cpath = 
+		cpath =
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 						"./?.dll;./?.so;"													// CURR_PATH
 						/* MAD modules (user's home) */
@@ -442,7 +464,7 @@ found:
 	winpath(env); /* canonize */
 #endif
 	setenv("LUA_PATH", env, 1);
-	
+
 	/* LUA_CPATH = $MAD_CPATH;$LUA_CPATH */
 	ensure(carg == 4 || carg == 8, "invalid number of path argument");
   if (carg == 4)

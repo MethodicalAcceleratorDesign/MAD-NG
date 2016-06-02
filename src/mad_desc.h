@@ -18,10 +18,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - provide a full feathered Generalized TPSA package
- 
+
   Information:
   - parameters ending with an underscope can be null.
 
@@ -31,7 +31,7 @@
  o----------------------------------------------------------------------------o
  */
 
-#include "mad.h"
+#include "mad_defs.h"
 #include "mad_mono.h"
 
 // --- types -----------------------------------------------------------------o

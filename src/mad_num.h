@@ -17,14 +17,14 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - wrappers around functions of real and complex numbers for LuaJIT
 
  o----------------------------------------------------------------------------o
  */
 
-#include "mad.h"
+#include "mad_defs.h"
 
 // --- interface -------------------------------------------------------------o
 
