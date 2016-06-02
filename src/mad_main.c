@@ -50,6 +50,7 @@
 #include "luajit.h"
 
 #include "lj_arch.h"
+#include "lj_def.h"
 
 #if LJ_TARGET_POSIX
 #include <unistd.h>
@@ -162,7 +163,7 @@ LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...)
 	return 0;
 }
 
-void (mad_error) (const char *fname, const char *fmt, ...)
+LJ_NOINLINE void (mad_error) (const char *fname, const char *fmt, ...)
 {
 	char msg[256];
 	int n = 0;
@@ -176,7 +177,7 @@ void (mad_error) (const char *fname, const char *fmt, ...)
 	exit(EXIT_FAILURE); /* never reached */
 }
 
-void (mad_warn) (const char *fname, const char *fmt, ...)
+LJ_NOINLINE void (mad_warn) (const char *fname, const char *fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
@@ -185,7 +186,7 @@ void (mad_warn) (const char *fname, const char *fmt, ...)
 	fflush(stderr);
 }
 
-void (mad_trace) (const char *fname, const char *fmt, ...)
+LJ_NOINLINE void (mad_trace) (const char *fname, const char *fmt, ...)
 {
 	if (mad_trace_level) {
 		va_list va;
@@ -201,10 +202,17 @@ static int mad_luawarn (lua_State *L) {
 }
 
 static int mad_luatrace (lua_State *L) {
+  /* Should also be checked on Lua side to avoid spurious call */
 	if (mad_trace_level)
 		return luaL_trace(L, "%s", luaL_checkstring(L, 1));
 	else
 		return 0;
+}
+
+static void regfunc (lua_State *L)
+{
+	lua_register(L, "warn" , mad_luawarn );
+	lua_register(L, "trace", mad_luatrace);
 }
 
 /* Windows: not declared by any mean but provided by libgettextlib */
@@ -229,9 +237,6 @@ static char* winexe (char *buf)
 
 static void setpaths (lua_State *L, int no_env)
 {
-	lua_register(L, "warn" , mad_luawarn );  
-	lua_register(L, "trace", mad_luatrace);
-
 	char prog_name[PATH_MAX+1] = "";
 	char prog_path[PATH_MAX+1] = "";
 	char curr_path[PATH_MAX+1] = "";
@@ -933,6 +938,7 @@ static int pmain(lua_State *L)
 		s->status = handle_madinit(L);
 		if (s->status != 0) return 0;
 	}
+	regfunc(L);
 	if ((flags & FLAGS_VERSION)) print_version();
 	s->status = runargs(L, argv, (script > 0) ? script : s->argc);
 	if (s->status != 0) return 0;

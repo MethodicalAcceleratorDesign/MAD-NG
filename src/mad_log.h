@@ -29,8 +29,8 @@
   - mad_trace_level:
   	trace with level <= mad_trace_level are active
   - mad_trace_location:
-  	?  location is traced by error
     >0 location is traced by error, warn and trace
+     0 location is traced by error (only)
 
  o----------------------------------------------------------------------------o
  */
