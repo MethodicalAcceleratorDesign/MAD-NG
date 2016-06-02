@@ -232,7 +232,7 @@ void mad_cvec_center (const cnum_t x[], cnum_t r[], size_t n)
 { CHKXR; cnum_t m=0; { cnum_t *r=&m; FOLD(+); }
                      { cnum_t *x=&m; SET (-); } }
 
-// -- fftw3 -------------------------------------------------------------------o
+// -- FFT ---------------------------------------------------------------------o
 
 #include <fftw3.h>
 
@@ -287,3 +287,49 @@ mad_cvec_ifft(const cnum_t x[], cnum_t r[], size_t n)
   fftw_destroy_plan(p);
   mad_cvec_muln(r, 1.0/n, r, n);
 }
+
+// -- NFFT --------------------------------------------------------------------o
+
+#if 0
+#include <nfft3.h>
+
+void
+mad_cvec_nfft (const cnum_t x[], const num_t x_pos[], cnum_t r[], size_t n, size_t n_pos)
+{
+  assert( x && x_pos && r );
+  nfft_plan p;
+  nfft_init_1d(&p, n, n_pos);
+  memcpy(p.x, x_pos, p.M_total * sizeof *x_pos); // TODO:  resample from n_pos to p.M_total?
+  if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  memcpy(p.f_hat, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total?
+  nfft_trafo(&p);
+  memcpy(r, p.f, p.N_total * sizeof *r); // TODO: resample from p.N_total to n? 
+  nfft_finalize(&p);
+}
+
+void
+mad_cvec_infft (const cnum_t x[], const num_t x_pos[], cnum_t r[], size_t n, size_t n_pos)
+{
+  assert( x && x_pos && r );
+  nfft_plan p;
+  nfft_init_1d(&p, n, n_pos);
+  memcpy(p.x, x_pos, p.M_total * sizeof *x_pos); // TODO:  resample from n_pos to p.M_total
+  if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  memcpy(p.f, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total
+  nfft_adjoint(&p);
+  memcpy(r, p.f_hat, p.N_total * sizeof *r); // TODO: resample from p.N_total to n? 
+  nfft_finalize(&p);
+}
+
+void
+mad_cvec_nnfft (const cnum_t x[], const num_t x_pos[], const num_t f_pos[], cnum_t r[], size_t n, size_t n_pos)
+{
+  assert( x && x_pos && f_pos && r );
+}
+
+void
+mad_cvec_innfft (const cnum_t x[], const num_t x_pos[], const num_t f_pos[], cnum_t r[], size_t n, size_t n_pos)
+{
+  assert( x && x_pos && f_pos && r );
+}
+#endif

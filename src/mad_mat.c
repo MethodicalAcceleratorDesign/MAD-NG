@@ -682,7 +682,7 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], size_t n
   return info;
 }
 
-// -- fftw3 -------------------------------------------------------------------o
+// -- FFT ---------------------------------------------------------------------o
 
 #include <fftw3.h>
 
@@ -737,3 +737,5 @@ mad_cmat_ifft(const cnum_t x[], cnum_t r[], size_t m, size_t n)
   fftw_destroy_plan(p);
   mad_cvec_muln(r, 1.0/(m*n), r, m*n);
 }
+
+// -- NFFT --------------------------------------------------------------------o
