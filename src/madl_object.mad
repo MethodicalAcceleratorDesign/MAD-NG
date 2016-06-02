@@ -31,7 +31,7 @@ NAME
   object -- creates objects
 
 SYNOPSIS
-  object = require 'object'
+  object = mad.Object
   obj1 = object {}               -- create a new empty object
   obj2 = object { ... }          -- create a new object with values
   obj3 = object 'name' { ... }   -- create a new object with name and values
@@ -62,13 +62,12 @@ DESCRIPTION
     + '__id'  holds 'self' name if provided (variable)
 
 METHODS
-  name, isa, set, set_function, set_method, set_metamethod, set_parent, dump
-  (for debug)
-  #, ipairs, pairs
+  #, name, isa (is_instanceOf), set, set_function, set_method, set_metamethod,
+  set_parent, dump (for debug)
 
 RETURN VALUES
   A table constaining Object, the root constructor of objects, and some helpers
-  like is_object, is_table, is_string, is_number, is_function, is_callable.
+  like is_object, is_instanceOf.
 
 EXAMPLES
   Point = mad.Object {}          -- point is an instance of Object
@@ -149,6 +148,11 @@ SEE ALSO
   set_notification(o1) -- before o2,o3 creation
 ]=]
 
+-- locals ---------------------------------------------------------------------o
+
+local is_string, is_table, is_function, is_callable
+      in require 'madl_utils'
+
 -- implementation -------------------------------------------------------------o
 
 -- metamethods
@@ -178,32 +182,19 @@ local MF = {
 
 -- helpers
 
-local function is_string (a)
-  return type(a) == 'string'
-end
-
-local function is_number (a)
-  return type(a) == 'number'
-end
-
-local function is_function (a)
-  return type(a) == 'function'
-end
-
 local function is_proxy (a)
   return type(a) == 'table' and getmetatable(a) == MF
-end
-
-local function is_table (a)
-  return type(a) == 'table' and getmetatable(a) == nil
 end
 
 local function is_object (a)
   return type(a) == 'table' and getmetatable(a) ~= nil and rawget(a,var) ~= nil
 end
 
-local function is_callable (a)
-  return type(a) == 'function' or rawget(getmetatable(a) or {}, '__call')
+local function is_instanceOf (a, b)
+  assert(is_object(a), "invalid 1st argument, valid object expected")
+  assert(is_object(b), "invalid 2nd argument, valid object expected")
+  while a and a ~= b do a = rawget(a,par) end
+  return a == b
 end
 
 -- objects are proxies controlling variables access and inheritance
@@ -251,11 +242,8 @@ function MT:__ipairs() return ipairs(self[var]) end
 
 -- object methods
 
-function M:isa (obj)
-  assert(is_object(obj), "invalid 'obj' argument, valid object expected")
-  while self and self ~= obj do self = rawget(self,par) end
-  return self == obj
-end
+M.isa           = is_instanceOf
+M.is_instanceOf = is_instanceOf
 
 function M:set (tbl)
   assert(is_table(tbl), "invalid 'table' argument, valid raw table expected")
@@ -347,14 +335,10 @@ M[var] = {
   name =\s s.__id,        -- alias
 }
 
--------------------------------------------------------------------------------o
-return {
-  Object      = setmetatable(M,MT),
-  is_object   = is_object,
+-- end ------------------------------------------------------------------------o
 
-  is_table    = is_table,
-  is_string   = is_string,
-  is_number   = is_number,
-  is_function = is_function,
-  is_callable = is_callable,
+return {
+  Object        = setmetatable(M,MT),
+  is_object     = is_object,
+  is_instanceOf = is_instanceOf,
 }
