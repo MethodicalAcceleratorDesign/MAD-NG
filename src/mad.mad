@@ -90,10 +90,16 @@ M.import = function (a, override)
     for k,v in pairs(m) do
       assert(M[k] == nil or override, "overriding definition: "..k.." ["..a.."]")
       M[k] = v
+      if is_indexable(v) and v.__help and v.__help.self then
+        M.__help[k] = v.__help.self
+      end
     end
   else
     assert(M[a] == nil or override, "overriding definition: "..a)
     M[a] = m
+    if is_indexable(m) and m.__help and m.__help.self then
+      M.__help[a] = m.__help.self
+    end
   end
 end
 
@@ -120,30 +126,34 @@ M.help = function (a)
   local fun = dot and string.sub(a, dot+1) or 'self'
   local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or
               package.loaded['mad'][mod] -- or?
-  local hlp
+
+  -- find help context
   if is_indexable(ctx) and ctx.__help and ctx.__help[fun] then
-    hlp = ctx.__help
   elseif is_iterable(ctx) then
     for k,v in pairs(ctx) do
       if is_indexable(v) and v.__help and v.__help[fun] then
-        hlp = v.__help ; break
+        ctx = v ; break
       end
     end
+  else
+    io.write("  No help found for "..a.."\n")
+    return
   end
-  io.write(hlp and hlp[fun] or "  No help found for "..a.."\n")
+  io.write(ctx.__help[fun]);
 
-  -- collect subcategories
+  -- find related (sub) topics
+  if is_indexable(ctx[fun]) and ctx[fun].__help then
+    ctx = ctx[fun]
+  end
   local sub = {}
-  local len = 2
-  if hlp then
-    for k,_ in pairs(hlp) do
-      if k ~= 'self' then
-        len = len + #k + 2
-        if len > 80
-        then sub[#sub+1] = '\n  '..k ; len = #k + 2
-        else sub[#sub+1] = k end
-      end
-    end
+  for k,_ in pairs(ctx.__help) do
+    if k ~= 'self' then sub[#sub+1] = k end
+  end
+  table.sort(sub)
+  local len = 2 -- tab
+  for i,v in ipairs(sub) do
+    len = len + #v + 2 -- sep
+    if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
   end
   local str = table.concat(sub, ', ')
   if str ~= '' then
@@ -151,13 +161,11 @@ M.help = function (a)
   end
 end
 
--- self ref
-M.mad = M
+-- end ------------------------------------------------------------------------o
 
 -- load MAD modules
 for _,v in ipairs(modules) do
   M.import(v)
 end
 
--- end ------------------------------------------------------------------------o
 return M
