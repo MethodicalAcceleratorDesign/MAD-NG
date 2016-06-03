@@ -524,6 +524,8 @@ static void print_usage(void)
 	"  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
 	"  -q        Do not show version information.\n"
 	"  -t[num]   Set initial trace level for debugging.\n"
+	"  -T[num]   Set initial trace level and location for debugging.\n"
+	"  -M        Do not load MAD environment.\n"
 	"  -E        Ignore environment variables.\n"
 	"  --        Stop handling options.\n"
 	"  -         Execute stdin and stop handling options.\n", stderr);
@@ -828,11 +830,12 @@ static int dobytecode(lua_State *L, char **argv)
 #define FLAGS_EXEC				4
 #define FLAGS_OPTION			8
 #define FLAGS_NOENV				16
+#define FLAGS_MADENV			128
 
 static int collectargs(char **argv, int *flags)
 {
 	int i;
-	*flags |= FLAGS_VERSION;
+	*flags |= FLAGS_VERSION|FLAGS_MADENV;
 	for (i = 1; argv[i] != NULL; i++) {
 		if (argv[i][0] != '-')  /* Not an option? */
 			return i;
@@ -859,11 +862,16 @@ static int collectargs(char **argv, int *flags)
 			break;
 		case 'O': break;  /* LuaJIT extension */
 		case 'b':  /* LuaJIT extension */
-			if ((*flags &= ~FLAGS_VERSION)) return -1;
+			if ((*flags &= ~(FLAGS_VERSION|FLAGS_MADENV))) return -1;
 			*flags |= FLAGS_EXEC;
 			return 0;
 		case 'E':
+			notail(argv[i]);
 			*flags |= FLAGS_NOENV;
+			break;
+		case 'M': /* no MAD environment */
+			notail(argv[i]);
+			*flags &= ~FLAGS_MADENV;
 			break;
 		case 'T': /* MAD initial trace level */
 			mad_trace_location = 1;
@@ -954,13 +962,14 @@ static int pmain(lua_State *L)
 	lua_gc(L, LUA_GCSTOP, 0);  /* stop collector during initialization */
 	luaL_openlibs(L);  /* open libraries */
 	lua_gc(L, LUA_GCRESTART, -1);
+	regfunc(L);
+	if ((flags & FLAGS_MADENV)) dolibrary(L, "mad");
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_luainit(L);
 		if (s->status != 0) return 0;
 		s->status = handle_madinit(L);
 		if (s->status != 0) return 0;
 	}
-	regfunc(L);
 	if ((flags & FLAGS_VERSION)) print_version();
 	s->status = runargs(L, argv, (script > 0) ? script : s->argc);
 	if (s->status != 0) return 0;

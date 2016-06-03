@@ -3,7 +3,7 @@
  |
  | Object module (object model)
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
@@ -41,12 +41,13 @@ DESCRIPTION
   The 'object' module implements the necessary machinery to support prototype-
   based programming with value semantic for functions and further extensions:
   - On read, the lookup of values follows the inheritance down to 'Object' with
-    the following precedence: immediate methods, variables, inherited methods.
+    the following precedence: immediate methods (self), variables, inherited
+    methods (parent).
     + If the retrieved value is a function, it is called with 'self' passed as
       argument (can be ignored) and the result is returned.
     + To store functions with arguments in variables, use 'set_function'.
-    + To store methods or metamethods (both are inherited), use 'set_method'
-      or 'set_metamethod' respectively.
+    + To store methods (immediate and inherited), use 'set_method'.
+    + To store metamethods (shared), use 'set_metamethod'.
   - On write, the value is simply stored (no lookup).
     + To override this behavior, just (re)defined the __newindex metamethod
       using set_metamethod with 'override' set to 'true' (use with care!).
@@ -84,10 +85,9 @@ SEE ALSO
 
 -- documentation --------------------------------------------------------------o
 
---[=[
-  Schematic object-model representation:
-  --------------------------------------
-  (see the 3 lines of the 'unamed obj' compound statement in __call ctor)
+M.__help.object_model = [=[
+Schematic object-model representation:
+--------------------------------------
 
   o0 = require 'object'
   o1 = o0 'obj1' {*o1-var*}
@@ -117,10 +117,17 @@ SEE ALSO
      ^       +-----------+ |
      +---------------------+
 
-  Catching creation:
-  ------------------
+]=]
+-- For details, see the 3 lines of the 'unamed obj' compound statement in __call
+-- ctor
 
-  Example how to count the number of objects created
+-- examples -------------------------------------------------------------------o
+
+M.__help.object_model_examples = [=[
+Catching creation:
+------------------
+
+ Example how to count the number of objects created
 
   local count = 0
   local function set_counter (self)
@@ -132,10 +139,10 @@ SEE ALSO
   end
   set_counter(o0) -- before o1,o2,o3 creation
 
-  Catching writes:
-  ----------------
+Catching writes:
+----------------
 
-  Example how to set a notification-on-write with logging
+Example how to set a notification-on-write with logging
 
   local function set_notification (self)
     local nwidx = rawget(getmetatable(self),'__newindex')
@@ -146,11 +153,12 @@ SEE ALSO
     self:set_metamethod('__newindex', mm, true) -- override!
   end
   set_notification(o1) -- before o2,o3 creation
+
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
-local is_string, is_table, is_function, is_callable
+local is_string, is_rawtable, is_function, is_callable
       in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
@@ -173,7 +181,7 @@ local par, var, var0 = {}, {}, setmetatable({}, {
 -- metatable of 'Object'
 local MT = {}
 
--- metatable of 'true' function proxy
+-- metatable of 'true function' proxy
 local MF = {
   __call    =\t,... -> t[1](...),
   __index   =\ error "private object",
@@ -187,7 +195,7 @@ local function is_proxy (a)
 end
 
 local function is_object (a)
-  return type(a) == 'table' and getmetatable(a) ~= nil and rawget(a,var) ~= nil
+  return type(a) == 'table' and rawget(a,var) ~= nil
 end
 
 local function is_instanceOf (a, b)
@@ -208,7 +216,7 @@ function MT:__call (a) -- object ctor (define object-model)
   if is_string(a) then -- named obj
     local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]} -- proxy
     return setmetatable(obj, getmetatable(self)) -- incomplete obj
-  elseif is_table(a) then
+  elseif is_rawtable(a) then
     if self[var] == var0 then -- finalize named obj
       if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
       self[var] = setmetatable(a, self); -- set fast inheritance
@@ -219,7 +227,7 @@ function MT:__call (a) -- object ctor (define object-model)
       return init(setmetatable(obj, getmetatable(self))) -- complete obj
     end
   end
-  error("invalid object constructor argument, string or table expected")
+  error("invalid object constructor argument (string or table expected)")
 end
 
 local function get (self, k) -- object lookup
@@ -277,7 +285,8 @@ M.is_instanceOf = is_instanceOf
 M.isa           = is_instanceOf
 
 function M:set (tbl)
-  assert(is_table(tbl), "invalid 'table' argument, valid raw table expected")
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,v in pairs(tbl) do
     rawset(var, k, v)
@@ -286,8 +295,8 @@ function M:set (tbl)
 end
 
 function M:set_function (name, func)
-  assert(is_object(self)               , "invalid 'self' argument, valid object expected")
-  assert(is_callable(func) or func==nil, "invalid 'func' argument, not callable")
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
   self[var][name] = is_function(func) and setmetatable({func}, MF) or func
   return self
 end
@@ -316,11 +325,11 @@ end
 
 function M:set_parent (obj, name)
   assert(self ~= M                        , "'Object' must stay the root of objects")
-  assert(is_object(self) or is_table(self), "invalid 'self' argument, table or object expected")
+  assert(is_object(self) or is_rawtable(self), "invalid 'self' argument, raw table or object expected")
   assert(is_object(obj)                   , "invalid 'obj' argument, valid object expected")
   rawset(self, par, obj)
   rawset(self, '__index', obj[var])
-  if is_table(self) then
+  if is_rawtable(self) then
     rawset(self, var, setmetatable({__id=name},self))
   end
   setmetatable(self, getmetatable(obj))
@@ -329,10 +338,10 @@ end
 
 -- debug
 
-function M:dump (file, level, indent, vars)
+function M:dump (file_, level_, indent_, vars_)
   local sv = self[var]
-  file, level, indent, vars =
-    file or io.stdout, level or 1e6, indent or 1, vars or {}
+  local file, level, indent, vars =
+    file_ or io.stdout, level_ or 1e6, indent_ or 1, vars_ or {}
   -- header
   for i=1,indent-1 do file:write("  ") end -- indent
   file:write("+ [", tostring(sv), "]\n")
