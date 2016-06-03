@@ -36,6 +36,8 @@ SYNOPSIS
 DESCRIPTION
   The 'mad' module provides direct 1-level access to all the modules content of
   the MAD application. This is the recommended way to load the MAD environment.
+  It also provides online help of modules and functions, and allow to export or
+  import module, tables, functions etc. into the mad environment.
 
 RETURN VALUES
   The table containing all modules returned content flatten.
@@ -72,7 +74,8 @@ local modules = {
 -- 'track',
 }
 
-local is_string, is_table, is_iterable, is_indexable in require 'madl_utils'
+local is_string, is_table, is_rawtable, is_iterable, is_indexable
+      in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
 
@@ -83,7 +86,7 @@ M.import = function (a, override)
     assert(m ~= nil, "module not found: "..a)
   end
 
-  if is_iterable(m) then
+  if is_rawtable(m) then
     for k,v in pairs(m) do
       assert(M[k] == nil or override, "overriding definition: "..k.." ["..a.."]")
       M[k] = v
@@ -116,18 +119,36 @@ M.help = function (a)
   local mod = dot and string.sub(a, 1, dot-1) or a
   local fun = dot and string.sub(a, dot+1) or 'self'
   local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or
-							package.loaded['mad'][mod] -- or?
-  local str = "  No help found for "..a.."\n"
+              package.loaded['mad'][mod] -- or?
+  local hlp
   if is_indexable(ctx) and ctx.__help and ctx.__help[fun] then
-      str = ctx.__help[fun]
+    hlp = ctx.__help
   elseif is_iterable(ctx) then
-  	for k,v in pairs(ctx) do
-  		if is_indexable(v) and v.__help and v.__help[fun] then
-      	str = v.__help[fun]
+    for k,v in pairs(ctx) do
+      if is_indexable(v) and v.__help and v.__help[fun] then
+        hlp = v.__help ; break
       end
     end
   end
-  io.write(str)
+  io.write(hlp and hlp[fun] or "  No help found for "..a.."\n")
+
+  -- collect subcategories
+  local sub = {}
+  local len = 2
+  if hlp then
+    for k,_ in pairs(hlp) do
+      if k ~= 'self' then
+        len = len + #k + 2
+        if len > 80
+        then sub[#sub+1] = '\n  '..k ; len = #k + 2
+        else sub[#sub+1] = k end
+      end
+    end
+  end
+  local str = table.concat(sub, ', ')
+  if str ~= '' then
+    io.write("\nRelated topics:\n  ", str, '\n')
+  end
 end
 
 -- self ref
