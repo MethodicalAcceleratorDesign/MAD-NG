@@ -963,7 +963,7 @@ static int pmain(lua_State *L)
 	luaL_openlibs(L);  /* open libraries */
 	lua_gc(L, LUA_GCRESTART, -1);
 	regfunc(L);
-	if ((flags & FLAGS_MADENV)) dolibrary(L, "mad");
+	if ((flags & FLAGS_MADENV)) dolibrary(L, "MAD");
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_luainit(L);
 		if (s->status != 0) return 0;

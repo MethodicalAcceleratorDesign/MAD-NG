@@ -26,36 +26,49 @@ local M = { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
-M.__help.self = [[
+M.__help.self = [=[
 NAME
   mad -- Methodical Accelerator Design environment
 
 SYNOPSIS
-  local mad = require 'mad'
+  local Sequence, Line, Quadrupole in MAD
 
 DESCRIPTION
-  The 'mad' module provides direct 1-level access to all modules of the MAD
-  application. This is the recommended way to load the MAD environment. This
-  module also provides online help for modules and functions, and it allows to
-  export/import modules, tables, functions etc. from/into the MAD environment.
+  The 'MAD' environement provides direct 1-level access to all embedded modules
+  of the MAD application. This module also provides online help for modules and
+  other component, and it allows to export/import modules, tables, functions
+  etc. from/to the MAD environment. This is the recommended way to
+  extract/extend the MAD environment with modules not embedded.
+
+  To clear the global environment from mad, just set it to nil:
+  mad = nil                 -- release global reference
+  local mad = require 'mad' -- retain  local  reference
+
+REMARK
+  The MAD environment is automatically loaded in the global environment (i.e.
+  _G) when the MAD application is started, unless the -M option is used. Hence,
+  all components of MAD can be accessed using mad table access like in
+  mad.component or retieved in local variables (recommended) using <local in
+  table> syntax as in the example above.
 
 RETURN VALUES
   A table containing all modules flatten.
 
 SEE ALSO
   None
-]]
+]=]
 
 -- locals ---------------------------------------------------------------------o
 
 local modules = {
 -- order matters
   'utils',
+  'gmath',
+  'xrange',
   'object',
 
+
 -- 'cmad',
--- 'gmath',
-'xrange',
 -- 'complex',
 -- 'matrix',
 --
@@ -79,11 +92,36 @@ local is_string, is_table, is_rawtable, is_iterable, is_indexable
 
 -- implementation -------------------------------------------------------------o
 
-M.import = function (a, override)
-  local m = a
+M.__help.import = [[
+NAME
+  import -- import modules, tables, functions, etc. to MAD environment
+
+SYNOPSIS
+  MAD.import 'module'              -- import module
+  MAD.import(func, 'fname')        -- import function
+  MAD.import(func, 'fname', true)  -- import and override function
+
+DESCRIPTION
+
+  The 'import' function import modules, tables, functions, etc. into the MAD
+  environment. If the argument #1 is a string, it will be treated as the name
+  of a module and replaced by the value returned by require before further
+  processing. If the argument #1 is a raw table (eventually after the
+  require), it will be imported flat, i.e. each members will be added
+  individually to the MAD environment.
+
+RETURN VALUES
+  None.
+
+SEE ALSO
+  None.
+]]
+
+M.import = function (a, b, override)
   if is_string(a) then
-    m = require('madl_'..a) or require(a);
-    assert(m ~= nil, "module not found: "..a)
+    b = a
+    a = require('madl_'..a) or require(a);
+    assert(a ~= nil, "module not found: "..b)
   end
 
   if is_rawtable(m) then
@@ -103,6 +141,9 @@ M.import = function (a, override)
   end
 end
 
+M.__help.export = [[
+]]
+
 M.export = function (pat_, ctx_, override)
   local pat = pat_ or '.*'
   local ctx = ctx_ or _G
@@ -118,6 +159,33 @@ M.export = function (pat_, ctx_, override)
   end
   return ctx
 end
+
+M.__help.help = [[
+NAME
+  help -- display help for modules and functions
+
+SYNOPSIS
+  MAD.help 'help'   -- help on help
+  MAD.help 'Object' -- help on root object 'Object'
+  MAD.help 'gmath'  -- help on gmath module
+
+DESCRIPTION
+  The 'help' function looks for embedded helps for modules and functions and
+  tries to build a list of related topics automatically.
+
+REMARK
+
+  If the 'help' function is exported from the MAD environment, it can be used
+  directly:
+    MAD.export 'help'
+    help 'Object'
+
+RETURN VALUES
+  None.
+
+SEE ALSO
+  None.
+]]
 
 M.help = function (a)
   assert(is_string(a), "invalid argument #1 (string expected)")
@@ -136,7 +204,7 @@ M.help = function (a)
       end
     end
   else
-    io.write("  No help found for '"..a.."'\n")
+    io.write("  No help found for '"..a.."'.\n")
     return
   end
   io.write(ctx.__help[fun]);
@@ -157,18 +225,22 @@ M.help = function (a)
   end
   local str = table.concat(sub, ', ')
   if str ~= '' then
-    io.write("\nRelated topics:\n  ", str, '\n')
+    io.write("\nRelated topics:\n  ", str, '.\n')
   end
 end
 
--- end ------------------------------------------------------------------------o
+-- environment ----------------------------------------------------------------o
 
 -- load MAD modules
 for _,v in ipairs(modules) do
   M.import(v)
 end
 
--- set global
-mad = M
+-- protect MAD environment (foolproof protection, no more)
+local mad = setmetatable({},{__index=M})
 
-return M
+-- set global
+MAD = mad
+
+-- end ------------------------------------------------------------------------o
+return mad
