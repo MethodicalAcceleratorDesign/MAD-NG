@@ -31,25 +31,26 @@ NAME
   mad -- Methodical Accelerator Design environment
 
 SYNOPSIS
-  local Sequence, Line, Quadrupole in MAD
+  local Sequence, Drift, Quadrupole in MAD
 
 DESCRIPTION
   The 'MAD' environement provides direct 1-level access to all embedded modules
   of the MAD application. This module also provides online help for modules and
-  other component, and it allows to export/import modules, tables, functions
+  other component, and it allows to export/import modules, objects, functions
   etc. from/to the MAD environment. This is the recommended way to
-  extract/extend the MAD environment with modules not embedded.
-
-  To clear the global environment from mad, just set it to nil:
-  mad = nil                 -- release global reference
-  local mad = require 'mad' -- retain  local  reference
+  extract/extend the MAD environment with things not embedded in the
+  application.
 
 REMARK
   The MAD environment is automatically loaded in the global environment (i.e.
   _G) when the MAD application is started, unless the -M option is used. Hence,
-  all components of MAD can be accessed using mad table access like in
-  mad.component or retieved in local variables (recommended) using <local in
-  table> syntax as in the example above.
+  all components of MAD can be accessed using MAD table access like in
+  MAD.component or retieved in local variables (recommended) using <local in
+  table> syntax extension as in the example above.
+
+  To clear the global environment from mad, just set it to nil:
+  MAD = nil                 -- release global reference
+  local mad = require 'MAD' -- retain  local  reference
 
 RETURN VALUES
   A table containing all modules flatten.
@@ -63,10 +64,9 @@ SEE ALSO
 local modules = {
 -- order matters
   'utils',
-  'gmath',
-  'xrange',
+--  'gmath',
+--  'xrange',
   'object',
-
 
 -- 'cmad',
 -- 'complex',
@@ -87,7 +87,7 @@ local modules = {
 -- 'track',
 }
 
-local is_string, is_table, is_rawtable, is_iterable, is_indexable
+local is_boolean, is_string, is_table, is_rawtable, is_iterable, is_indexable
       in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
@@ -97,18 +97,24 @@ NAME
   import -- import modules, tables, functions, etc. to MAD environment
 
 SYNOPSIS
-  MAD.import 'module'              -- import module
-  MAD.import(func, 'fname')        -- import function
-  MAD.import(func, 'fname', true)  -- import and override function
+  MAD.import 'module'                -- import module (load and flatten)
+  MAD.import('module', true)         -- import module but allow override
+  MAD.import(func, 'fname')          -- import function
+  MAD.import(func, 'fname', true)    -- import function but allow override
 
 DESCRIPTION
 
-  The 'import' function import modules, tables, functions, etc. into the MAD
-  environment. If the argument #1 is a string, it will be treated as the name
-  of a module and replaced by the value returned by require before further
-  processing. If the argument #1 is a raw table (eventually after the
-  require), it will be imported flat, i.e. each members will be added
-  individually to the MAD environment.
+  The 'import' function import modules, tables, functions, objects, etc. into
+  the MAD environment. If the argument #1 is a string, it will be treated as the
+  name of a module and replaced by the value returned by 'require' before
+  further processing. If the argument #1 is a raw table (eventually after the
+  require) and the argument #2 is not a string, it will be imported flat, that
+  is each members will be added individually to the MAD environment. If the
+  argument #2 is a string, the argument #1 will be inserted as-is even if it is
+  a raw table.
+
+  If the symbol already exists, import will report an error
+  and stop loading.
 
 RETURN VALUES
   None.
@@ -118,27 +124,36 @@ SEE ALSO
 ]]
 
 M.import = function (a, b, override)
+  if is_boolean(b) then
+    override, b = b -- shift args right
+  end
   if is_string(a) then
-    b = a
-    a = require('madl_'..a) or require(a);
+    b, a = a, require('madl_'..a) or require(a); -- shift args right
     assert(a ~= nil, "module not found: "..b)
   end
+  assert(is_string(b), "invalid argument #2 (string expected)")
 
-  if is_rawtable(m) then
-    for k,v in pairs(m) do
-      assert(M[k] == nil or override, "overriding definition: "..k.." ["..a.."]")
-      M[k] = v
+  -- Now: a is an object/module, b is its name, override is true/false or nil.
+  local t = { obj = {}, hlp = {} } -- make a local copy first in case of error
+  if is_rawtable(a) then -- flatten raw table
+    for k,v in pairs(a) do
+      assert(M[k] == nil or override, "cannot override definition for "..k)
+      t.obj[k] = v
       if is_indexable(v) and v.__help and v.__help.self then
-        M.__help[k] = v.__help.self
+        t.hlp[k] = v.__help.self
       end
     end
   else
-    assert(M[a] == nil or override, "overriding definition: "..a)
-    M[a] = m
-    if is_indexable(m) and m.__help and m.__help.self then
-      M.__help[a] = m.__help.self
+    assert(M[b] == nil or override, "cannot override definition for "..b)
+    t.obj[b] = a
+    if is_indexable(a) and a.__help and a.__help.self then
+      t.hlp[b] = a.__help.self
     end
   end
+
+  -- finalize the transaction
+  for k,v in pairs(t.obj) do M[k] = v end
+  for k,v in pairs(t.hlp) do M.__help[k] = v end
 end
 
 M.__help.export = [[
@@ -174,7 +189,6 @@ DESCRIPTION
   tries to build a list of related topics automatically.
 
 REMARK
-
   If the 'help' function is exported from the MAD environment, it can be used
   directly:
     MAD.export 'help'
@@ -184,7 +198,7 @@ RETURN VALUES
   None.
 
 SEE ALSO
-  None.
+  MAD.export.
 ]]
 
 M.help = function (a)
@@ -192,8 +206,7 @@ M.help = function (a)
   local dot = string.find(a, '.', 1, true)
   local mod = dot and string.sub(a, 1, dot-1) or a
   local fun = dot and string.sub(a, dot+1) or 'self'
-  local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or
-              package.loaded['mad'][mod] -- or?
+  local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or M[mod]
 
   -- find help context
   if is_indexable(ctx) and ctx.__help and ctx.__help[fun] then
