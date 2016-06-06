@@ -87,8 +87,8 @@ local modules = {
 -- 'track',
 }
 
-local is_boolean, is_string, is_table, is_rawtable, is_iterable, is_indexable
-      in require 'madl_utils'
+local is_nil, is_boolean, is_string, is_table, is_rawtable,
+      is_iterable, is_indexable in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
 
@@ -97,24 +97,30 @@ NAME
   import -- import modules, tables, functions, etc. to MAD environment
 
 SYNOPSIS
-  MAD.import 'module'                -- import module (load and flatten)
-  MAD.import('module', true)         -- import module but allow override
-  MAD.import(func, 'fname')          -- import function
-  MAD.import(func, 'fname', true)    -- import function but allow override
+  MAD.import('module' [, override])
+  MAD.import(rawtable [, override])
+  MAD.import(component, 'name' [, override])
 
 DESCRIPTION
-
-  The 'import' function import modules, tables, functions, objects, etc. into
+  The 'import' function imports modules, tables, functions, objects, etc. into
   the MAD environment. If the argument #1 is a string, it will be treated as the
   name of a module and replaced by the value returned by 'require' before
   further processing. If the argument #1 is a raw table (eventually after the
-  require) and the argument #2 is not a string, it will be imported flat, that
-  is each members will be added individually to the MAD environment. If the
-  argument #2 is a string, the argument #1 will be inserted as-is even if it is
-  a raw table.
+  require) and argument #2 is not a string, each key-value pairs will be added
+  individually to the MAD environment (i.e. flatten). If the argument #2 is a
+  string, the argument #1 will be inserted with key-value = #2-#1, even if
+  argument #1 is a raw table. If the key already exists in the MAD environment,
+  'import' will report an error and stop unless argument #2 or #3 (depending on
+  arguments #1 and #2) is true to allow overriding.
 
-  If the symbol already exists, import will report an error
-  and stop loading.
+EXAMPLES
+  MAD.import('module')               -- import module (load and flatten)
+  MAD.import('module', true)         -- import module but allow override
+  MAD.import(func, 'fname')          -- import named function
+  MAD.import(func, 'fname', true)    -- import function but allow override
+  MAD.import({...})                  -- import anonymous raw table (flatten)
+  MAD.import({...},'constants')      -- import named raw table (don't flatten)
+  MAD.import({...}, true)            -- import raw table but allow override
 
 RETURN VALUES
   None.
@@ -130,12 +136,12 @@ M.import = function (a, b, override)
   if is_string(a) then
     b, a = a, require('madl_'..a) or require(a); -- shift args right
     assert(a ~= nil, "module not found: "..b)
+    if is_rawtable(a) then b = nil end -- module exports anonymous rawtable
   end
-  assert(is_string(b), "invalid argument #2 (string expected)")
 
-  -- Now: a is an object/module, b is its name, override is true/false or nil.
+  -- collect and check
   local t = { obj = {}, hlp = {} } -- make a local copy first in case of error
-  if is_rawtable(a) then -- flatten raw table
+  if is_rawtable(a) and not is_string(b) then -- flatten anonymous raw table
     for k,v in pairs(a) do
       assert(M[k] == nil or override, "cannot override definition for "..k)
       t.obj[k] = v
@@ -144,6 +150,7 @@ M.import = function (a, b, override)
       end
     end
   else
+    assert(is_string(b), "invalid argument #2 (string expected)")
     assert(M[b] == nil or override, "cannot override definition for "..b)
     t.obj[b] = a
     if is_indexable(a) and a.__help and a.__help.self then
@@ -157,6 +164,35 @@ M.import = function (a, b, override)
 end
 
 M.__help.export = [[
+NAME
+  export -- export modules, tables, functions, etc. from MAD environment
+
+SYNOPSIS
+  MAD.import 'module'                -- import module (load and flatten)
+  MAD.import('module', true)         -- import module but allow override
+  MAD.import(func, 'fname')          -- import function
+  MAD.import(func, 'fname', true)    -- import function but allow override
+  MAD.import({...})                  -- import raw table (and flatten)
+  MAD.import({...},'constants')      -- import named raw table (no flatten)
+
+DESCRIPTION
+  The 'import' function import modules, tables, functions, objects, etc. into
+  the MAD environment. If the argument #1 is a string, it will be treated as the
+  name of a module and replaced by the value returned by 'require' before
+  further processing. If the argument #1 is a raw table (eventually after the
+  require) and the argument #2 is not a string, it will be imported and flatten,
+  that is each key-value pairs will be added individually to the MAD
+  environment. If the argument #2 is a string, the argument #1 will be inserted
+  with key-value = #2-#1, even if argument #1 is a raw table.
+    If the key already exists in the MAD environment, 'import' will report an
+  error and stop unless argument #2 or #3 (depending on arguments #1 and #2) is
+  true to allow overriding.
+
+RETURN VALUES
+  None.
+
+SEE ALSO
+  None.
 ]]
 
 M.export = function (pat_, ctx_, override)
@@ -186,11 +222,11 @@ SYNOPSIS
 
 DESCRIPTION
   The 'help' function looks for embedded helps for modules and functions and
-  tries to build a list of related topics automatically.
+  tries to build a list of 'Related topics' automatically.
 
 REMARK
   If the 'help' function is exported from the MAD environment, it can be used
-  directly:
+  directly as follow:
     MAD.export 'help'
     help 'Object'
 
