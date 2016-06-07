@@ -28,7 +28,7 @@ local M = { __help = {} }
 
 M.__help.self = [=[
 NAME
-  mad -- Methodical Accelerator Design environment
+  MAD -- Methodical Accelerator Design environment
 
 SYNOPSIS
   local component_list in MAD
@@ -41,36 +41,38 @@ DESCRIPTION
   extract/extend the MAD environment with components not embedded in the
   application.
 
-EXAMPLES
-  local Sequence, Drift, Multipole in MAD    -- local in table syntax
-  local quad = MAD.Quadrupole                -- local assignment
-
-REMARK
   The MAD environment is automatically loaded in the global environment (i.e.
   _G) when the MAD application is started, unless the -M option is used. Hence,
   all components of MAD can be accessed using table access on the MAD
   environment or retieved in local variables (recommended) using <local in
-  table> syntax extension as in the example above.
+  table> syntax extension as in the example below.
 
-  To clear the global environment from MAD, set it to nil:
-  MAD = nil                   -- release global reference
-  local mad = require 'MAD'   -- retain  local  reference
-  local Drift in mad          -- retrieve Drift in a local variable
-
-RETURN VALUES
+RETURN VALUE
   A table containing all MAD components.
 
+ERRORS
+  None.
+
+EXAMPLES
+  local Sequence, Drift, Multipole in MAD    -- local in table syntax
+  local quad = MAD.Quadrupole                -- local assignment
+
+  To clear the global environment from MAD, set it to nil:
+  MAD = nil                           -- release global reference
+  local mad = require 'MAD'           -- retain  local  reference
+  local Drift in mad                  -- retrieve Drift from the local reference
+
 SEE ALSO
-  None
+  None.
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
 local modules = {
   'utils',
+  'object',
 --  'gmath',
 --  'xrange',
-  'object',
 
 -- 'cmad',
 -- 'complex',
@@ -102,8 +104,8 @@ NAME
 
 SYNOPSIS
   MAD.import('module' [, override])
-  MAD.import(rawtable [, 'name' [, override])
-  MAD.import(component, 'name' [, override]])
+  MAD.import(rawtable [, 'name' [, override]])
+  MAD.import(component, 'name' [, override])
 
 DESCRIPTION
   The import function imports modules, tables, functions, objects, etc. into the
@@ -113,9 +115,17 @@ DESCRIPTION
   and argument #2 is not a string, each key-value pairs of this table will be
   added individually to the MAD environment (i.e. flatten). If the argument #2
   is a string (key), the argument #1 (value) will be added as a key-value pair
-  to the MAD environment, even if argument #1 is a raw table. If a key already
-  exists in the MAD environment before insertion, 'import' will trig an error
-  unless overriding is allowed.
+  to the MAD environment, even if argument #1 is a raw table.
+
+RETURN VALUE
+  None.
+
+ERRORS
+  The import function trigs an error in the following conditions:
+    - If the module to load is not found,
+    - If the component is not a raw table and the name is missing,
+    - If a key already exists in the MAD environment before insertion and
+      overriding is not allowed by argument #2 or #3 of the forms above.
 
 EXAMPLES
   MAD.import('module')               -- import module (load and flatten)
@@ -125,9 +135,6 @@ EXAMPLES
   MAD.import({...})                  -- import anonymous raw table (flatten)
   MAD.import({...},'constants')      -- import named raw table (don't flatten)
   MAD.import({...}, true)            -- import raw table but allow override
-
-RETURN VALUES
-  None.
 
 SEE ALSO
   None.
@@ -147,18 +154,22 @@ M.import = function (a, b, override)
   local t = { obj = {}, hlp = {} } -- make a local copy first in case of error
   if is_rawtable(a) and not is_string(b) then -- flatten anonymous raw table
     for k,v in pairs(a) do
-      assert(M[k] == nil or override, "cannot override definition for "..k)
-      t.obj[k] = v
-      if is_indexable(v) and v.__help and v.__help.self then
-        t.hlp[k] = v.__help.self
+      if k ~= '__help' then
+        assert(M[k] == nil or override, "cannot override definition for "..k)
+        t.obj[k] = v
+        if is_indexable(v) and v.__help and v.__help.self then
+          t.hlp[k] = v.__help.self
+        end
       end
     end
   else
     assert(is_string(b), "invalid argument #2 (string expected)")
-    assert(M[b] == nil or override, "cannot override definition for "..b)
-    t.obj[b] = a
-    if is_indexable(a) and a.__help and a.__help.self then
-      t.hlp[b] = a.__help.self
+    if b ~= '__help' then
+      assert(M[b] == nil or override, "cannot override definition for "..b)
+      t.obj[b] = a
+      if is_indexable(a) and a.__help and a.__help.self then
+        t.hlp[b] = a.__help.self
+      end
     end
   end
 
@@ -176,11 +187,20 @@ SYNOPSIS
 
 DESCRIPTION
   The export function exports tables, functions, objects, etc. from the MAD
-  environment to specified context or global context if none is specified. The
-  argument #1 provides a matching pattern to select the components to export.
-  The argument #2 specifies the destination context or _G if none is specified.
-  If a key already exists in the destination context before insertion, export
-  will trig an error unless overriding is allowed.
+  environment to the specified context or global context if none is specified.
+  The argument #1 provides a matching pattern to select the components to export
+  (only string keys can be exported). The argument #2 specifies the destination
+  context or _G if none is specified.
+
+RETURN VALUE
+  The destination context.
+
+ERRORS
+  The export function trigs an error in the following conditions:
+    - If the pattern argument is not a string,
+    - If the destination context is not indexable,
+    - If a key already exists in the destination context before insertion and
+      overriding is not allowed by argument #3 of the form above.
 
 EXAMPLES
   MAD.export()                       -- export all MAD components to _G
@@ -189,9 +209,6 @@ EXAMPLES
   MAD.export('help')                 -- export help function to _G
   MAD.export('^is_.*$')              -- export all is_* functions to _G
   ctx = MAD.export('^is_.*$',{})     -- export all is_* functions to table
-
-RETURN VALUES
-  The destination context.
 
 SEE ALSO
   None.
@@ -203,11 +220,9 @@ M.export = function (pat_, ctx_, override)
   assert(is_string(pat), "invalid argument #1 (string expected)")
   assert(is_indexable(ctx), "invalid argument #2 (indexable expected)")
   for k,v in pairs(M) do
-    if is_string(k) then
-        if string.find(k, pat) and
-           ctx[k] == nil or override then ctx[k] = v end
-    else
-        if ctx[k] == nil or override then ctx[k] = v end
+    if is_string(k) and string.find(k, pat) then
+      assert(ctx[k] == nil or override, "cannot override definition for "..k)
+      ctx[k] = v
     end
   end
   return ctx
@@ -218,25 +233,27 @@ NAME
   help -- display help for modules and functions
 
 SYNOPSIS
-  MAD.help 'topic'   -- help on topic
+  MAD.help('topic')
 
 DESCRIPTION
   The help function looks for embedded helps for modules and functions and tries
   to build a list of 'Related topics' automatically.
 
+  If the help function is exported from the MAD environment, it can be used
+  directly, as follow:
+    MAD.export 'help'
+    help 'topic'
+
+RETURN VALUE
+  None.
+
+ERROR
+  None.
+
 EXAMPLES
   MAD.help 'help'   -- help on help
   MAD.help 'Object' -- help on root object 'Object'
   MAD.help 'gmath'  -- help on gmath module
-
-REMARK
-  If the help function is exported from the MAD environment, it can be used
-  directly as follow:
-    MAD.export 'help'
-    help 'Object'
-
-RETURN VALUES
-  None.
 
 SEE ALSO
   MAD.export.
