@@ -74,7 +74,7 @@ ERROR
   Objects constructors trig an error if the optional argument #1 (name) is not a
   string or if the argument #1 (if a name is provided) or #2 is not a raw table.
   Using an object incompletely initialized (e.g. with a name but no value) trigs
-  an error.
+  also an error.
 
 EXAMPLES
   Point = MAD.Object {}          -- point is an instance of Object
@@ -98,7 +98,8 @@ Schematic object-model representation:
   o0 = MAD.Object
   o1 = o0 'obj1' {*o1-var*}
   o2 = o1 'obj2' {*o2-var*}
-  o3 = o1 'obj3' {*o3-var*}                    +-------------+
+  o3 = o1 'obj3' {*o3-var*}
+                                               +-------------+
                              +---------------+>| *meta-tbl*  |<------------+
 +---------+                  |   +---------+ | | metamethods | +---------+ |
 |  *o2*   |                  |   |  *o1*   | | +-------------+ |  *o0*   | |
@@ -175,7 +176,7 @@ local meta = { -- from lj_obj.h + __init
 }
 for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
--- special protected key to store parent and object members
+-- special protected keys to store parent and object members
 local par, var, var0 = {}, {}, setmetatable({}, {
   __index   =\ error "incomplete object initialization",
   __newindex=\ error "incomplete object initialization",
@@ -215,19 +216,19 @@ local function init(a)
   return m and m(a) or a
 end
 
-function MT:__call (a) -- object ctor (define object-model)
-  if is_string(a) then -- named obj
+function MT:__call (a) -- object constructor (define the object-model)
+  if is_string(a) then -- named object
     local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]} -- proxy
-    return setmetatable(obj, getmetatable(self)) -- incomplete obj
+    return setmetatable(obj, getmetatable(self)) -- incomplete object
   elseif is_rawtable(a) then
-    if self[var] == var0 then -- finalize named obj
+    if self[var] == var0 then -- finalize named object
       if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id, nil end
       self[var] = setmetatable(a, self); -- set fast inheritance
       return init(self)
-    else -- unnamed obj
+    else -- unnamed object
       local obj = {[par]=self, [var]=a, __index=self[var]} -- proxy
       setmetatable(a, obj)                               -- set fast inheritance
-      return init(setmetatable(obj, getmetatable(self))) -- complete obj
+      return init(setmetatable(obj, getmetatable(self))) -- complete object
     end
   end
   error("invalid object constructor argument (string or table expected)")
@@ -258,25 +259,34 @@ NAME
   is_object, is_instanceOf, isa   -- identify parent (class) of objects
 
 SYNOPSIS
-  Object.is_object(obj)
-  Object.is_instanceOf(obj,class)
-  Object.isa(obj,class)
+  is_object(obj)
+  is_instanceOf(obj,class)
+  isa(obj,class)
 
-  obj:is_object()
   obj:is_instanceOf(class)
   obj:isa(class)
 
 DESCRIPTION
-  Method is_instanceOf follows and check the objects hierarchy from 'obj' down
-  to 'class'. Method is_object(obj) is equivalent to is_instanceOf(obj, Object)
-  but faster. Method isa is an alias for is_instanceOf.
+  Method is_instanceOf follows and check the objects hierarchy from obj down to
+  class. Function is_object(obj) is equivalent to is_instanceOf(obj, Object) but
+  faster. Method isa is an alias for is_instanceOf.
 
 RETURN VALUES
   is_object, is_instanceOf return true if obj inherits from Object or class
   respectively.
 
 ERROR
-  is_instanceOf trig an error if the argument #2 is not a valid object.
+  is_instanceOf trig an error if the argument #2 (class) is not a valid object.
+
+EXAMPLES
+  local is_object, is_instanceOf, Object in MAD
+  print( is_object 'yes' )                    -- false
+  print( is_object(Object) )                  -- true
+  print( is_object(Object {}) )               -- true
+
+  print( is_instanceOf('yes', Object) )       -- false
+  print( is_instanceOf(Object, Object) )      -- true
+  print( is_instanceOf(Object {},Object) )    -- true
 
 SEE ALSO
   None.
@@ -284,7 +294,6 @@ SEE ALSO
 M.__help.is_object     = M.__help.isa
 M.__help.is_instanceOf = M.__help.isa
 
-M.is_object     = is_object
 M.is_instanceOf = is_instanceOf
 M.isa           = is_instanceOf
 
@@ -293,22 +302,32 @@ NAME
   set, set_function, set_method, set_metamethod, set_parent.
 
 SYNOPSIS
-  Object.set(obj, {...})
-  Object.set_function(obj, 'fname', func)
-  Object.set_method(obj, 'fname', func)
-  Object.set_metamethod(obj, '__name', metafunc, override)
-  Object.set_parent()
+  set(obj, {...})
+  set_function(obj, 'fname', func [, override])
+  set_method(obj, 'fname', func [, override])
+  set_metamethod(obj, '__name', metafunc [, override])
+  set_parent(obj, class [, 'name'])
 
   obj:set({...})
-  obj:set_function('fname', func)
-  obj:set_method('fname', func)
-  obj:set_metamethod('__name', metafunc, override)
-  obj:set_parent()
+  obj:set_function('fname', func [, override])
+  obj:set_method('fname', func [, override])
+  obj:set_metamethod('__name', metafunc [, override])
+  obj:set_parent(class[, name])
 
 DESCRIPTION
+  The set method sets or updates values of an object from a raw table.
 
-RETURN VALUES
+RETURN VALUE
   The object.
+
+ERRORS
+
+  All these methods trig an error if argument #1 is not a valid object. Methods
+  set, set_method and set_metamethod trig an error if argument #2 is not a raw
+  table, a metamethod name and not a metamethod name respectively. Methods
+  set_function, set_method and set_metamethod trig an error if argument #3 is
+  neither callable nor nil, or if the name already exists and overriding is
+  not allowed by argument #4 of the form above.
 
 SEE ALSO
   None.
@@ -324,17 +343,19 @@ function M:set (tbl)
   return self
 end
 
-function M:set_function (name, func)
+function M:set_function (name, func, override)
   assert(is_object(self)               , "invalid argument #1 (object expected)")
   assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
+  assert(rawget(self, name) == nil or override, "cannot override function")
   self[var][name] = is_function(func) and setmetatable({func}, MF) or func
   return self
 end
 
-function M:set_method (name, func)
+function M:set_method (name, func, override)
   assert(is_object(self)               , "invalid argument #1 (object expected)")
   assert(meta[name] ~= name            , "invalid argument #2 (metamethod detected)")
   assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
+  assert(rawget(self, name) == nil or override, "cannot override method")
   rawset(self, name, func)
   return self
 end
@@ -344,7 +365,7 @@ function M:set_metamethod (name, func, override)
   assert(meta[name] == name            , "invalid argument #2 (metamethod expected)")
   assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
   local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
-  assert(rawget(sm, name) == nil or override, "cannot override inherited behavior")
+  assert(rawget(sm, name) == nil or override, "cannot override shared metamethod")
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
     setmetatable(self, sm)
