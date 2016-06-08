@@ -1,19 +1,19 @@
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Number module implementation
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 */
 
 #include <math.h>
@@ -22,7 +22,7 @@
 
 #include "mad_num.h"
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 #define CHKR  assert( r )
 
@@ -31,9 +31,13 @@
 
 // --- num
 
-num_t mad_num_asinh   (num_t x) { return asinh(x); }
-num_t mad_num_acosh   (num_t x) { return acosh(x); }
-num_t mad_num_atanh   (num_t x) { return atanh(x); }
+num_t mad_num_asinh   (num_t x) { return asinh(x);  }
+num_t mad_num_acosh   (num_t x) { return acosh(x);  }
+num_t mad_num_atanh   (num_t x) { return atanh(x);  }
+
+num_t mad_num_erf     (num_t x) { return erf(x);    }
+num_t mad_num_gamma   (num_t x) { return tgamma(x); }
+num_t mad_num_lgamma  (num_t x) { return lgamma(x); }
 
 // --- cnum
 

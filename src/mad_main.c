@@ -231,10 +231,10 @@ static int mad_luatracelocation (lua_State *L)
 
 static void regfunc (lua_State *L)
 {
-	lua_register(L, "warn"			 		, mad_luawarn );
-	lua_register(L, "trace"			 		, mad_luatrace);
-	lua_register(L, "trace_level"		, mad_luatracelevel);
-	lua_register(L, "trace_location", mad_luatracelocation);
+	lua_register(L, "warn"			 				, mad_luawarn );
+	lua_register(L, "trace"			 				, mad_luatrace);
+	lua_register(L, "trace_setlevel"		, mad_luatracelevel);
+	lua_register(L, "trace_setlocation"	, mad_luatracelocation);
 }
 
 /* Windows: not declared by any mean but provided by libgettextlib */

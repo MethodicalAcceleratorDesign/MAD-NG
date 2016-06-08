@@ -2,35 +2,39 @@
 #define MAD_NUM_H
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Number module interface
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
   Purpose:
   - wrappers around functions of real and complex numbers for LuaJIT
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include "mad_defs.h"
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 num_t mad_num_asinh    (num_t x);
 num_t mad_num_acosh    (num_t x);
 num_t mad_num_atanh    (num_t x);
+
+num_t mad_num_erf      (num_t x);
+num_t mad_num_gamma    (num_t x);
+num_t mad_num_lgamma   (num_t x);
 
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
 num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
@@ -63,6 +67,6 @@ void  mad_cnum_div_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *
 void  mad_cnum_mod_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 
-// ---------------------------------------------------------------------------o
+// ----------------------------------------------------------------------------o
 
 #endif // MAD_NUM_H
