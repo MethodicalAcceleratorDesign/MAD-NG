@@ -28,6 +28,10 @@
 
 // --- interface -------------------------------------------------------------o
 
+num_t mad_num_asinh    (num_t x);
+num_t mad_num_acosh    (num_t x);
+num_t mad_num_atanh    (num_t x);
+
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
 num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
 

@@ -30,108 +30,143 @@ local M = { __help = {} }
 
 M.__help.self = [=[
 NAME
-  gmath -- generic math functions
+  gmath -- generic math functions and constants
 
 SYNOPSIS
+  abs, acos, asin, atan, ceil, cos, cosh, deg, exp, floor, fmod, frexp, ldexp,
+  log, log10, max, min, modf, pow, rad, random, randomseed, sin, sinh, sqrt,
+  tan, tanh,                                                         (functions)
+  eps, inf, nan, pi,                                                 (constants)
+  umn, add, sub, mul, div, mod,                                      (operators)
+  ident, angle, sign, step, round, sinc, trunc,                          (extra)
+  eq, ne, lt, le, gt, ge,                                              (logical)
+  carg, real, imag, conj, proj.                                        (complex)
 
 DESCRIPTION
-  The module gmath wraps common math functions with object-oriented dispatch.
-  It adds few useful functions:
-    is_number, is_integer, is_scalar,                     (math)
-    ident, umn, add, sub, mul, div, mod,
-    sign, step, round, sinc,
-    eq, ne, lt, le, gt, ge,                               (logical)
-    arg, real, imag, conj, proj,                          (complex)
-    tostring.                                             (other)
+  The module gmath wraps common math functions with object-oriented dispatch,
+  and adds few useful constants and functions.
 
-  Other modules may also extend the module gmath (e.g. matrix & tpsa)
+RETURN VALUE
+  A table constaining these math functions and constants.
 
-RETURN VALUES
-  The table of generic functions
+ERROR
+  None.
 
 SEE ALSO
   math, complex.
 ]=]
 
--- modules --------------------------------------------------------------------o
-
-local ffi = require 'ffi'
-
 -- locals ---------------------------------------------------------------------o
 
-local istype = ffi.istype
-local format = string.format
-local abs, ceil, floor, sin = math.abs, math.ceil, math.floor, math.sin
+local is_number in require 'madl_utils'
+local istype, cdef in require 'ffi'
+local format in string
 
-local fun = {
+local abs, acos, asin, atan, atan2, ceil, cos, cosh, deg, exp, floor, fmod,
+      frexp, huge, ldexp, log, log10, max, min, modf, pi, pow, rad, random,
+      randomseed, sin, sinh, sqrt, tan, tanh in math
 
--- Numbers --
-  -- no wrap
-  { 'atan2', 'deg', 'fmod', 'frexp', 'huge', 'ldexp', 'max', 'min',
-    'modf', 'pi', 'rad', 'random', 'randomseed',
-    fmt = "M.%s = math.%s"
-  },
-  -- 1 arg
-  { 'abs', 'acos', 'asin', 'atan', 'ceil', 'cos', 'cosh', 'exp', 'floor', 'frexp',
-    'log10', 'round', 'sign', 'sin', 'sinc', 'sinh', 'sqrt', 'step', 'tan', 'tanh',
-    fmt = "local m_%s = math.%s\n" ..
-          "M.%s = function (x) return M.is_number(x) and m_%s(x) or x:%s() end"
-  },
-  -- 2 args with dispatch on 1st arg (only)
-  { 'log', 'pow',
-     fmt = "local m_%s = math.%s\n" ..
-          "M.%s = function (x, y) return M.is_number(x) and m_%s(x, y) or x:%s(y) end"
-  },
+-- t={}; for k in pairs(math) do t[#t+1]=k end;
+-- table.sort(t); print(table.concat(t,', '))
 
--- Objects --
-  { 'arg', 'imag',                          -- complex
-    fmt = "M.%s = function (x) return M.is_number(x) and 0.0 or x:%s() end"
-  },
+-- ffi ------------------------------------------------------------------------o
 
-  { 'conj', 'real', 'proj',                 -- complex
-    fmt = "M.%s = function (x) return M.is_number(x) and x or x:%s() end"
-  },
-}
+cdef [[
+num_t mad_num_asinh(num_t x);
+num_t mad_num_acosh(num_t x);
+num_t mad_num_atanh(num_t x);
+]]
 
 -- implementation -------------------------------------------------------------o
 
-function math.sign  (x) return x < 0 and -1 or 1 end
-function math.step  (x) return x < 0 and  0 or 1 end
-function math.sinc  (x) return abs(x) < 1e-10 and 1.0 or sin(x)/x end
+-- format
+M.format = "%g"
 
-function math.trunc (x) return x < 0 and ceil(x) or floor(x) end
-function math.round (x) return x < 0 and ceil(x-0.5) or floor(x+0.5) end
-function math.isint (x) return x > -2^52 and x < 2^52 and (x % 1) == 0 end
+-- constants
+M.eps   = 2.2204460492503131e-16
+M.huge  = 1.7976931348623157e+308
+M.tiny  = 2.2250738585072014e-308
+M.inf   = 1/0
+M.Inf   = 1/0
+M.nan   = 0/0
+M.NaN   = 0/0
+M.pi    = pi
+M.twopi = 2*pi
 
-M.format = "%g" -- default
+-- generator
+M.randomseed = randomseed
+M.random     = random
 
-function M.ident (x)   return  x    end
-function M.unm   (x)   return -x    end
-function M.add   (x,y) return x + y end
-function M.sub   (x,y) return x - y end
-function M.mul   (x,y) return x * y end
-function M.div   (x,y) return x / y end
-function M.mod   (x,y) return x % y end
+-- unary
+M.abs   = \x -> is_number(x) and abs  (x) or x:abs  ()
+M.acos  = \x -> is_number(x) and acos (x) or x:acos ()
+M.asin  = \x -> is_number(x) and asin (x) or x:asin ()
+M.atan  = \x -> is_number(x) and atan (x) or x:atan ()
+M.ceil  = \x -> is_number(x) and ceil (x) or x:ceil ()
+M.cos   = \x -> is_number(x) and cos  (x) or x:cos  ()
+M.cosh  = \x -> is_number(x) and cosh (x) or x:cosh ()
+M.deg   = \x -> is_number(x) and deg  (x) or x:deg  ()
+M.exp   = \x -> is_number(x) and exp  (x) or x:exp  ()
+M.floor = \x -> is_number(x) and floor(x) or x:floor()
+M.frexp = \x -> is_number(x) and frexp(x) or x:frexp()
+M.log10 = \x -> is_number(x) and log10(x) or x:log10()
+M.modf  = \x -> is_number(x) and modf (x) or x:modf ()
+M.rad   = \x -> is_number(x) and rad  (x) or x:rad  ()
+M.sin   = \x -> is_number(x) and sin  (x) or x:sin  ()
+M.sinh  = \x -> is_number(x) and sinh (x) or x:sinh ()
+M.sqrt  = \x -> is_number(x) and sqrt (x) or x:sqrt ()
+M.tan   = \x -> is_number(x) and tan  (x) or x:tan  ()
+M.tanh  = \x -> is_number(x) and tanh (x) or x:tanh ()
 
-function M.eq    (x,y) return x == y end
-function M.ne    (x,y) return x ~= y end
-function M.lt    (x,y) return x <  y end
-function M.le    (x,y) return x <= y end
-function M.gt    (x,y) return x >  y end
-function M.ge    (x,y) return x >= y end
+M.asinh = \x -> is_number(x) and mad_num_asinh(x) or x:asinh()
+M.acosh = \x -> is_number(x) and mad_num_acosh(x) or x:acosh()
+M.atanh = \x -> is_number(x) and mad_num_atanh(x) or x:atanh()
 
--- extend the current module implementation
-local def = {[[
-  local M = ...
-]]}
+-- binary
+M.angle = \x,y -> is_number(x) and atan2(x,y) or x:angle(y)
+M.fmod  = \x,y -> is_number(x) and fmod (x,y) or x:fmod (y)
+M.ldexp = \x,e -> is_number(x) and ldexp(x,e) or x:ldexp(e)
+M.log   = \x,b -> is_number(x) and log  (x,b) or x:log  (b)
+M.pow   = \x,y -> is_number(x) and pow  (x,y) or x:pow  (y)
 
-for _, t in ipairs(fun) do
-  for _, f in ipairs(t) do
-    def[#def+1] = string.gsub(t.fmt, '%%s', f)
-  end
-end
+-- variadic
+M.max   = \x,... -> is_number(x) and max(x,...) or x:max(...)
+M.min   = \x,... -> is_number(x) and min(x,...) or x:min(...)
 
-load( table.concat(def, '\n') ) (M)
+-- extra
+M.ident = \...  ...
+M.sign  = \x -> is_number(x) and (x<0 and -1 or 1) or x:sign()
+M.step  = \x -> is_number(x) and (x<0 and  0 or 1) or x:step()
+M.sinc  = \x -> is_number(x) and (abs(x)<1e-10 and 1 or sin(x)/x) or x:sinc()
+M.trunc = \x -> is_number(x) and (x<0 and ceil(x) or floor(x)) or x:trunc()
+M.round = \x -> is_number(x) and (x<0 and ceil(x-0.5) or floor(x+0.5)) or x:round()
 
--------------------------------------------------------------------------------o
+-- operators
+M.unm   = \x   -> -x
+M.add   = \x,y ->  x + y
+M.sub   = \x,y ->  x - y
+M.mul   = \x,y ->  x * y
+M.div   = \x,y ->  x / y
+M.mod   = \x,y ->  x % y
+--M.pow = \x,y ->  x ^ y
+
+-- logical
+M.eq    = \x,y -> x == y
+M.ne    = \x,y -> x ~= y
+M.lt    = \x,y -> x <  y
+M.le    = \x,y -> x <= y
+M.gt    = \x,y -> x >  y
+M.ge    = \x,y -> x >= y
+
+-- complex
+M.carg  = \x -> is_number(x) and (x<0 and pi or 0.0) or x:carg()
+M.real  = \x -> is_number(x) and x                   or x:real()
+M.imag  = \x -> is_number(x) and 0.0                 or x:imag()
+M.conj  = \x -> is_number(x) and x                   or x:conj()
+M.norm  = \x -> is_number(x) and abs(x)              or x:norm()
+M.proj  = \x -> is_number(x) and x                   or x:proj()
+M.rect  = \x -> is_number(x) and x                   or x:rect()
+M.polar = \x -> is_number(x) and x                   or x:polar()
+
+-- end ------------------------------------------------------------------------o
 return M

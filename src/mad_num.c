@@ -29,6 +29,12 @@
 #define CNUM2(a,b) (* (cnum_t*) & (num_t[2]) { a, b })
 #define CNUM(a) CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 
+// --- num
+
+num_t mad_num_asinh   (num_t x) { return asinh(x); }
+num_t mad_num_acosh   (num_t x) { return acosh(x); }
+num_t mad_num_atanh   (num_t x) { return atanh(x); }
+
 // --- cnum
 
 num_t mad_cnum_abs_r  (num_t x_re, num_t x_im) { return cabs( CNUM(x) ); }
