@@ -35,15 +35,26 @@ NAME
 
 SYNOPSIS
   local range = require 'xrange'
+  local r1 = range(1,10,1)
+  local r2 = range(20,10,-1)
+  local r3 = 1..10..1
+  local r = 2..1..0.1               -- empty range
+  local r = XR(2,1,0)               -- empty range
   TODO
 
 DESCRIPTION
   Ranges describe start, stop (included) and step. Zero step gives empty range
   with get, index (i.e. []) and iterator (i.e. ipairs).
+  Ranges module implements the functions:
+    range, get, value, size, index, first, last,
+    minmax, bounds, ovelap, equal, tostring, totable 
+    TODO: tovector, scale, translate, revert
 
 REMARK:
-  - Indexing a range outside its bounds return nil.
-  - Ranges can be used as (stateless) iterators in for loops
+  - Indexing a range outside its bounds return false.
+  - Values outside the range bounds can be used with function value().
+  - Empty ranges initiated bounds can be used with function bounds().
+  - Ranges can be used as (stateless) iterators in for loops. 
 
 RETURN VALUES
   The constructor of ranges
@@ -149,39 +160,28 @@ function M.range (r)
   return r.start, r.stop, r.step
 end
 
-function M.size (r) -- size
+function M.size (r) 
   return size(r:range())
-end
-
-M.get   = get
-M.value = value
-M.len   = M.size
-
-
---[[
-function M.first (r)
-  return r._size > 0 and r._start or nil
-end
-
-function M.last (r)
-  return r:value(r._size)
 end
 
 function M.index (r, x)
   local i = size(r.start, x, r.step)
-  return i >= 1 and i <= r._size and i or nil
+  return i >= 1 and i <= r:size() and i or nil
 end
 
-function M.value (r, i)
-  return i >= 1 and i <= r._size and r._start+(i-1)*r._step or nil
+function M.first(r)
+  return r.start
 end
 
-function M.element (r, x)
-  return x == r:value(r:index(x))
+function M.last (r)
+  if r:size() == 0 then 
+    return r.start
+  else 
+    return r:value(r:size()) end
 end
 
 function M.minmax (r)
-  if r._step < 0 then
+  if r.step < 0 then
     return r:last(), r:first()
   else
     return r:first(), r:last()
@@ -189,15 +189,15 @@ function M.minmax (r)
 end
 
 function M.bounds (r)
-  if r._step < 0 then
-    return r._stop, r._start
+  if r.step < 0 then
+    return r.stop, r.start
   else
-    return r._start, r._stop
+    return r.start, r.stop
   end
 end
 
 function M.overlap (r, s)
-  if r._size == 0 or s._size == 0 then
+  if r:size() == 0 or s:size() == 0 then
     return false
   end
 
@@ -206,12 +206,40 @@ function M.overlap (r, s)
   return not (rl < sl and rh < sl or rl > sh)
 end
 
--- convertion
+function M.equal (r1, r2)
+  if r1:size() == 0 and r2:size() == 0 then
+    return true
+  else
+    return r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
+  end
+end
+
+-- mutator
+
+--[[function M.scale (r, a)
+  r._stop, r._step = r._stop*a, r._step*a
+  r._size = size(r._start, r._stop, r._step)
+  return r
+end
+
+function M.translate (r, a)
+  r._start, r._stop = r._start+a, r._stop+a
+  r._size = size(r._start, r._stop, r._step)
+  return r
+end
+
+function M.reverse (r)
+  r.start, r.stop, r.step = r.stop, r.start, -r.step
+  return r
+end]]
+
+-- convertion 
 
 local function convert (r, ctor)
-  local t = ctor(r._size,0)
-  for i=1,r._size do
-    t[i] = r._start+(i-1)*r._step
+  local size = r:size()
+  local t = ctor(size,0)
+  for i=1,size do
+    t[i] = r.start+(i-1)*r.step
   end
   return t
 end
@@ -220,32 +248,30 @@ function M.totable (r)
   return convert(r, table)
 end
 
-function M.tovector (r)
-  return convert(r, vector)
-end
-
 function M.tostring (r)
-  if r._step == 1 then
-    return string.format("%g:%g", r._start, r._stop)
+  if r.step == 1 then
+    return string.format("%g:%g", r.start, r.stop)
   else
-    return string.format("%g:%g:%g", r._start, r._stop, r._step)
+    return string.format("%g:%g:%g", r.start, r.stop, r.step)
   end
 end
 
-function M.equal (r1, r2)
-  if r1._size == 0 and r2._size == 0 then
-    return true
-  else
-    return r1._start == r2._start and r1._step == r2._step and r1._size == r2._size
-  end
-end
-]]
+--function M.tovector (r)
+--  return convert(r, vector)
+--end
+
+M.get   = get
+M.value = value
+M.len   = M.size
 
 -- metamethods
+M.__eq       = M.equal
+
+--[[
+
 --[[
 M.__len      = M.size
 M.__tostring = M.tostring
-M.__eq       = M.equal
 
 local function iter(r, i)
   if i < r._size then
