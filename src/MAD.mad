@@ -28,7 +28,7 @@ local M = { __help = {} }
 
 -- list of modules to import at start in MAD
 local modules = {
-  'utils', 'object', 'gmath', -- 'xrange',
+  'utils', 'object', 'gmath', 'xrange',
 
 -- 'cmad', 'complex', 'matrix',
 -- 'mono', 'tpsa', 'ctpsa',
@@ -183,13 +183,14 @@ NAME
 
 SYNOPSIS
   export(['pattern' [, context [, override]]])
+  export({string_list} [, context [, override]]])
 
 DESCRIPTION
   The export function exports tables, functions, objects, etc. from the MAD
   environment to the specified context or global context if none is specified.
-  The argument #1 provides a matching pattern to select the components to export
-  (only string keys can be exported). The argument #2 specifies the destination
-  context or _G if none is specified.
+  The argument #1 provides a matching pattern or a list of strings to select the
+  components to export (only string keys can be exported). The argument #2
+  specifies the destination context or _G if none is specified.
 
 RETURN VALUE
   The destination context.
@@ -197,6 +198,7 @@ RETURN VALUE
 ERRORS
   The export function trigs an error in the following conditions:
     - If the pattern argument is not a string,
+    - If the table argument is not a list of strings,
     - If the destination context is not indexable,
     - If a key already exists in the destination context before insertion and
       overriding is not allowed by argument #3 of the form above.
@@ -209,6 +211,10 @@ EXAMPLES
   export('help')                 -- export help function to _G
   export('^is_.*$')              -- export all is_* functions to _G
   ctx = export('^is_.*$',{})     -- export all is_* functions to table
+  export 'sin'                   -- export all *sin* function to _G
+  export '^sin$'                 -- export only sin function to _G (slow)
+  export {'sin'}                 -- export only sin function to _G (fast)
+  export {'sin','cos','tan'}     -- export all these functions to _G (fast)
 
 SEE ALSO
   MAD.import.
@@ -217,12 +223,22 @@ SEE ALSO
 M.export = function (pat_, ctx_, override)
   local pat = pat_ or '.*'
   local ctx = ctx_ or _G
-  assert(is_string(pat), "invalid argument #1 (string expected)")
+  assert(is_string(pat) or is_rawtable(pat),
+                            "invalid argument #1 (string or table expected)")
   assert(is_indexable(ctx), "invalid argument #2 (indexable expected)")
-  for k,v in pairs(M) do
-    if is_string(k) and string.find(k, pat) then
-      assert(ctx[k] == nil or override, "cannot override definition for "..k)
-      ctx[k] = v
+  if is_string(pat) then
+    for k,v in pairs(M) do
+      if is_string(k) and string.find(k, pat) then
+        assert(ctx[k] == nil or override, "cannot override definition for "..k)
+        ctx[k] = v
+      end
+    end
+  else
+    for _,k in ipairs(pat) do
+      if M[k] then
+        assert(ctx[k] == nil or override, "cannot override definition for "..k)
+        ctx[k] = M[k]
+      end
     end
   end
   return ctx
