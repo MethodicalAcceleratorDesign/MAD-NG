@@ -3,7 +3,7 @@
  |
  | Range module
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
@@ -16,16 +16,14 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - provides full set of functions and operations on ranges
-
-  Information:
-  - ranges are not tables nor vector. totable and tovector convert a range in
-    a table or a vector.
+  - Provides full set of functions and operations on ranges (xranges) and
+    logrange.
 
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = {} }
+local M    = { __help = {} }
+local Mlog = { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
@@ -34,64 +32,48 @@ NAME
   range
 
 SYNOPSIS
-  local range = require 'xrange'
-  local r1 = range(1,10,1)
-  local r2 = range(20,10,-1)
-  local r3 = 1..10..1
-  local r = 2..1..0.1               -- empty range
-  local r = XR(2,1,0)               -- empty range
-  TODO
+  local r1 = range(start [,stop [,step]])
+  local r2 = start..stop[..step]
+  print(r1.start, r1.stop, r1.step)
 
 DESCRIPTION
-  Ranges describe start, stop (included) and step. Zero step gives empty range
-  with get, index (i.e. []) and iterator (i.e. ipairs).
-  Ranges module implements the functions:
-    range, get, value, size, index, first, last,
-    minmax, bounds, ovelap, equal, tostring, totable 
-    TODO: tovector, scale, translate, revert
+  Ranges are defined by their start, stop (included) and step fields. Zero step
+  or steps with opposite sign to stop-start lead to an empty range. Ranges can
+  be used as stateless iterators in for loops (i.e. ipairs), and provide better
+  numerical stability for 'true' floating point numbers.
+    Some methods like get, index (i.e. []) and iterator (i.e. ipairs) return nil
+  outside the boundaries, and some others like value don't check for boundaries.
+  The range module implements the functions:
+    range (constructor), get, value, size, index, first, last, minmax, bounds,
+    ovelap, equal, tostring, totable, tovector, scale, translate, revert.
 
-REMARK:
-  - Indexing a range outside its bounds return false.
-  - Values outside the range bounds can be used with function value().
-  - Empty ranges initiated bounds can be used with function bounds().
-  - Ranges can be used as (stateless) iterators in for loops. 
-
-RETURN VALUES
+RETURN VALUE
   The constructor of ranges
 
+ERROR
+
+EXAMPLES
+
 SEE ALSO
-  matrix
+  None.
 ]=]
 
--- modules --------------------------------------------------------------------o
-
-local ffi    = require 'ffi'
-local table  = require 'table.new'
-
--- ffi ------------------------------------------------------------------------o
-
--- xrange layout must be compatible with double[3] for num..num[..num] semantic
---ffi.cdef[[
---  struct xrange { double start, stop, step; };
---]]
+Mlog.__help.self = M.__help.self
 
 -- locals ---------------------------------------------------------------------o
 
-local istype     in ffi
-local max, floor in math
+local new, cdef, typeof, metatype in require 'ffi'
+local is_number, is_range         in require 'madl_utils'
+local max, floor                  in math
 
--- FFI type constructors
-local range = ffi.typeof 'xrange'
+cdef [[
+  typedef struct logxrange { const double start, stop, step; } logxrange;
+]]
+
+local range    = typeof 'xrange'
+local logrange = typeof 'logxrange'
 
 -- implementation -------------------------------------------------------------o
-
--- helper
-
-function is_range (x)
-  return type(x) == 'cdata' and istype('xrange', x)
-end
-
--- constructor
 
 local function size (start, stop, step)
   if step > 1 then
@@ -109,58 +91,101 @@ local function value (r, x)
   return r.start + (x-1)*r.step
 end
 
-local function getpos (r, x)
-  local v = value(r, x)
-  return v <= r.stop and v >= r.start and v
+local function valuelog (r, x)
+  return r.start * r.step^(x-1)
 end
 
-local function getneg (r, x)
-  local v = value(r, x)
-  return v >= r.stop and v <= r.start and v
-end
-
-local function iterpos(r, i)
+local function iterincr(r, i)
   local v = value(r, i)
-  if v <= r.stop  then return i+1, v end
+  if v <= r.stop then return i+1, v end
 end
 
-local function iterneg(r, i)
+local function iterincrlog(r, i)
+  local v = valuelog(r, i)
+  if v <= r.stop then return i+1, v end
+end
+
+local function iterdecr(r, i)
   local v = value(r, i)
   if v >= r.stop then return i+1, v end
 end
 
+local function iterdecrlog(r, i)
+  local v = valuelog(r, i)
+  if v >= r.stop then return i+1, v end
+end
+
 local function get (r, x)
-  return r.step > 0 and getpos(r, x) or r.step < 0 and getneg(r, x)
+  local v = value(r, x)
+  if x >= 1 and ((r.step > 0 and v <= r.stop)  or
+                 (r.step < 0 and v >= r.stop)) then
+    return v
+  end
+end
+
+local function getlog (r, x)
+  local v = valuelog(r, x)
+  if x >= 1 and
+    ((r.step > 1 and r.start > 0 or r.step < 1 and r.start < 0) and v <= r.stop) or
+    ((r.step > 1 and r.start < 0 or r.step < 1 and r.start > 0) and v >= r.stop)
+  then return v
+  end
 end
 
 function M.__new (ct, start, stop, step)
-  assert(start ~= nil, "xrange: invalid #1 argument")
+  assert(is_number(start), "invalid argument #1 (expect number)")
   if stop == nil then stop = start end -- default
   if step == nil then step = 1 end     -- default
-  return ffi.new(ct, start, stop, step)
+  return new(ct, start, stop, step)
+end
+
+function Mlog.__new (ct, start, stop, step)
+  assert(is_number(start), "invalid argument #1 (expect number)")
+  if stop == nil then stop = start end -- default
+  if step == nil then step = 2 end     -- default
+  return new(ct, start, stop, step)
+end
+
+function M.log (a)
+  return logrange(a.start, a.stop, a.step)
 end
 
 function M.__index (r, a)
-  if type(a) == "number"
-    then return get(r, a) else return M[a]
-  end
+  if is_number(a) then return get(r, a) else return M[a] end
+end
+
+function Mlog.__index (r, a)
+  if is_number(a) then return getlog(r, a) else return M[a] end
 end
 
 function M.__ipairs (r)
   if r.step > 0 then
-    return iterpos, r, 0
+    return iterincr, r, 0
   elseif r.step < 0 then
-    return iterneg, r, 0
+    return iterdecr, r, 0
   end
 end
 
--- methods
+function Mlog.__ipairs (r)
+  if r.step > 1 and r.start > 0 or r.step < 1 and r.start < 0 then
+    return iterincrlog, r, 1
+  elseif r.step > 1 and r.start < 0 or r.step < 1 and r.start > 0 then
+    return iterdecrlog, r, 1
+  end
+end
 
 function M.range (r)
   return r.start, r.stop, r.step
 end
 
-function M.size (r) 
+function Mlog.range (r)
+  return r.start, r.stop, r.step
+end
+
+-- methods
+--[=[
+
+function M.size (r)
   return size(r:range())
 end
 
@@ -174,9 +199,9 @@ function M.first(r)
 end
 
 function M.last (r)
-  if r:size() == 0 then 
+  if r:size() == 0 then
     return r.start
-  else 
+  else
     return r:value(r:size()) end
 end
 
@@ -216,7 +241,8 @@ end
 
 -- mutator
 
---[[function M.scale (r, a)
+--[[
+function M.scale (r, a)
   r._stop, r._step = r._stop*a, r._step*a
   r._size = size(r._start, r._stop, r._step)
   return r
@@ -233,7 +259,7 @@ function M.reverse (r)
   return r
 end]]
 
--- convertion 
+-- convertion
 
 local function convert (r, ctor)
   local size = r:size()
@@ -245,7 +271,7 @@ local function convert (r, ctor)
 end
 
 function M.totable (r)
-  return convert(r, table)
+  return convert(r, tnew)
 end
 
 function M.tostring (r)
@@ -259,13 +285,18 @@ end
 --function M.tovector (r)
 --  return convert(r, vector)
 --end
+]=]
 
-M.get   = get
-M.value = value
-M.len   = M.size
+M.get       = get
+M.value     = value
+M.len       = M.size
+
+Mlog.get    = logget
+Mlog.value  = logvalue
+Mlog.len    = M.logsize
 
 -- metamethods
-M.__eq       = M.equal
+-- M.__eq      = M.equal
 
 --[[
 
@@ -284,7 +315,11 @@ function M.__ipairs (r) -- iterator: for n in ipairs(r)
 end
 ]]
 
-ffi.metatype('xrange', M)
+metatype('xrange'   , M   )
+metatype('logxrange', Mlog)
 
 -------------------------------------------------------------------------------o
-return range
+return {
+  range    = range,
+  logrange = logrange,
+}
