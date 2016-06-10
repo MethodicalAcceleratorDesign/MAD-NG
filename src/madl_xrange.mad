@@ -64,7 +64,7 @@ Mlog.__help.self = M.__help.self
 
 local new, cdef, typeof, metatype in require 'ffi'
 local is_number, is_range         in require 'madl_utils'
-local max, floor                  in math
+local abs, floor, max             in math
 
 cdef [[
   typedef struct logxrange { const double start, stop, step; } logxrange;
@@ -88,49 +88,40 @@ local function size (start, stop, step)
 end
 
 local function sizelog (start, stop, step)
-  -- TODO
-  if step > 1 then
-    return max(0, floor( (stop-start+1)/step +0.5) )
-  elseif step < -1 then
-    return max(0, floor( (stop-start-1)/step +0.5) )
-  elseif step ~= 0 then
-    return max(0, floor( (stop-start  )/step +1.5) )
-  else
-    return 0
-  end
+  return size(log(abs(start)), log(abs(stop)), log(abs(step)))
 end
 
 local function value (r, x)
-  return r.start + (x-1)*r.step
+  return r.start + x*r.step -- N => step = (stop-start)/(N-1)
 end
 
 local function valuelog (r, x)
-  return r.start * r.step^(x-1)
+  return r.start * r.step^x -- N => step = (stop/start)^(1/(N-1))
 end
 
-local function iterincr(r, i)
+local function iterincr (r, i)
   local v = value(r, i)
   if v <= r.stop then return i+1, v end
 end
 
-local function iterincrlog(r, i)
+local function iterincrlog (r, i)
   local v = valuelog(r, i)
   if v <= r.stop then return i+1, v end
 end
 
-local function iterdecr(r, i)
+local function iterdecr (r, i)
   local v = value(r, i)
   if v >= r.stop then return i+1, v end
 end
 
-local function iterdecrlog(r, i)
+local function iterdecrlog (r, i)
   local v = valuelog(r, i)
   if v >= r.stop then return i+1, v end
 end
 
 local function get (r, x)
   local v = value(r, x)
-  if x >= 1 and ((r.step > 0 and v <= r.stop)  or
+  if x >= 0 and ((r.step > 0 and v <= r.stop)  or
                  (r.step < 0 and v >= r.stop)) then
     return v
   end
@@ -139,7 +130,7 @@ end
 local function getlog (r, x)
   local v = valuelog(r, x)
   local s = abs(r.step)
-  if x >= 1 and
+  if x >= 0 and
     ((s > 1 and r.start > 0 or s < 1 and r.start < 0) and v <= r.stop) or
     ((s > 1 and r.start < 0 or s < 1 and r.start > 0) and v >= r.stop)
   then return v
@@ -165,11 +156,11 @@ function M.log (a)
 end
 
 function M.__index (r, a)
-  if is_number(a) then return get(r, a) else return M[a] end
+  if is_number(a) then return get(r, a-1) else return M[a] end
 end
 
 function Mlog.__index (r, a)
-  if is_number(a) then return getlog(r, a) else return M[a] end
+  if is_number(a) then return getlog(r, a-1) else return Mlog[a] end
 end
 
 function M.__ipairs (r)
@@ -183,9 +174,9 @@ end
 function Mlog.__ipairs (r)
   local s = abs(r.step)
   if s > 1 and r.start > 0 or s < 1 and r.start < 0 then
-    return iterincrlog, r, 1
+    return iterincrlog, r, 0
   elseif s > 1 and r.start < 0 or s < 1 and r.start > 0 then
-    return iterdecrlog, r, 1
+    return iterdecrlog, r, 0
   end
 end
 
