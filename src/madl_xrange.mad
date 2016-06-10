@@ -63,7 +63,7 @@ Mlog.__help.self = M.__help.self
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
 local is_number                           in require 'madl_utils'
-local abs, floor, max                     in math
+local abs, floor, log, max                in math
 
 cdef [[
   typedef struct logrange { const double start, stop, step; } logrange;
@@ -80,6 +80,14 @@ end
 
 local function is_logrange (a)
   return istype('logrange', a)
+end
+
+local function irange (start, stop, step)
+  return ipairs(range(start, stop, step))
+end
+
+local function ilogrange (start, stop, step)
+  return ipairs(logrange(start, stop, step))
 end
 
 local function size (start, stop, step)
@@ -158,17 +166,33 @@ local function getlog (r, x)
   end
 end
 
+-- alternate constructors with #steps specified
+
+local function nrange (start, stop, n)
+  assert(is_number(start) and is_number(stop) and is_number(n),
+         "invalid argument #1, #2 or #3 (number expected")
+  return range(start, stop, nstep(start, stop, n))
+end
+
+local function nlogrange (start, stop, n)
+  assert(is_number(start) and is_number(stop) and is_number(n),
+         "invalid argument #1, #2 or #3 (number expected")
+  return logrange(start, stop, nsteplog(start, stop, n))
+end
+
+-- members
+
 function M.__new (ct, start, stop, step)
   assert(is_number(start), "invalid argument #1 (expect number)")
-  if stop == nil then stop = start end -- default
-  if step == nil then step = 1 end     -- default
+  if stop == nil then stop = start end   -- default
+  if step == nil then step = 1 end       -- default
   return new(ct, start, stop, step)
 end
 
 function Mlog.__new (ct, start, stop, step)
   assert(is_number(start), "invalid argument #1 (expect number)")
-  if stop == nil then stop = start end                    -- default
-  if step == nil then step = nsteplog(start,stop,100) end -- default
+  if stop == nil then stop = start end   -- default
+  if step == nil then step = 2 end       -- default
   return new(ct, start, stop, step)
 end
 
@@ -201,6 +225,16 @@ function Mlog.__ipairs (r)
   end
 end
 
+function M.__eq (r1, r2)
+  return is_range(r1) and is_range(r2) and
+         r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
+end
+
+function Mlog.__eq (r1, r2)
+  return is_logrange(r1) and is_logrange(r2) and
+         r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
+end
+
 function M.range (r)
   return r.start, r.stop, r.step
 end
@@ -220,16 +254,34 @@ end
 M.get      = get
 M.value    = value
 M.nstep    = nstep
-M.len      = M.size
+M.__len    = M.size
 
 Mlog.get   = getlog
 Mlog.value = valuelog
 Mlog.nstep = nsteplog
-Mlog.len   = Mlog.size
+Mlog.__len = Mlog.size
 
--- methods
+function M.scale (r, a)
+  return range(r.start, r.stop*a, r.step*a)
+end
+
+function Mlog.scale (r, a)
+  return nlogrange(r.start, r.stop*a, r:size())
+end
+
+function M.translate (r, a)
+  return range(r.start+a, r.stop+a, r.step)
+end
+
+function M.inverse (r)
+  return range(r.stop, r.start, -r.step)
+end
+
+function Mlog.inverse (r, a)
+  return logrange(r.stop, r.start, 1/r.step)
+end
+
 --[=[
-
 function M.index (r, x)
   local i = size(r.start, x, r.step)
   return i >= 1 and i <= r:size() and i or nil
@@ -272,34 +324,6 @@ function M.overlap (r, s)
   return not (rl < sl and rh < sl or rl > sh)
 end
 
-function M.equal (r1, r2)
-  if r1:size() == 0 and r2:size() == 0 then
-    return true
-  else
-    return r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
-  end
-end
-
--- mutator
-
---[[
-function M.scale (r, a)
-  r._stop, r._step = r._stop*a, r._step*a
-  r._size = size(r._start, r._stop, r._step)
-  return r
-end
-
-function M.translate (r, a)
-  r._start, r._stop = r._start+a, r._stop+a
-  r._size = size(r._start, r._stop, r._step)
-  return r
-end
-
-function M.reverse (r)
-  r.start, r.stop, r.step = r.stop, r.start, -r.step
-  return r
-end]]
-
 -- convertion
 
 local function convert (r, ctor)
@@ -328,26 +352,6 @@ end
 --end
 ]=]
 
--- metamethods
--- M.__eq      = M.equal
-
---[[
-
---[[
-M.__len      = M.size
-M.__tostring = M.tostring
-
-local function iter(r, i)
-  if i < r._size then
-    return i+1, r._start+i*r._step
-  end
-end
-
-function M.__ipairs (r) -- iterator: for n in ipairs(r)
-  return iter, r, 0
-end
-]]
-
 metatype('xrange'  , M   )
 metatype('logrange', Mlog)
 
@@ -355,6 +359,10 @@ metatype('logrange', Mlog)
 return {
   range       = range,
   logrange    = logrange,
+  nrange      = nrange,      -- constructor with N steps
+  nlogrange   = nlogrange,   -- constructor with N steps
+  irange      = irange,      -- iterator
+  ilogrange   = ilogrange,   -- iterator
   is_range    = is_range,
   is_logrange = is_logrange,
 }
