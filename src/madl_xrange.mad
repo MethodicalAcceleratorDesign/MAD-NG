@@ -16,8 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provides full set of functions and operations on ranges (xranges) and
-    logrange.
+  - Provides full set of functions and operations on ranges and logranges.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -62,9 +61,9 @@ Mlog.__help.self = M.__help.self
 
 -- locals ---------------------------------------------------------------------o
 
-local new, cdef, typeof, metatype in require 'ffi'
-local is_number, is_range         in require 'madl_utils'
-local abs, floor, max             in math
+local new, cdef, istype, typeof, metatype in require 'ffi'
+local is_number                           in require 'madl_utils'
+local abs, floor, max                     in math
 
 cdef [[
   typedef struct logxrange { const double start, stop, step; } logxrange;
@@ -74,6 +73,14 @@ local range    = typeof 'xrange'
 local logrange = typeof 'logxrange'
 
 -- implementation -------------------------------------------------------------o
+
+local function is_range (a)
+  return istype('xrange', a)
+end
+
+local function is_logrange (a)
+  return istype('logxrange', a)
+end
 
 local function size (start, stop, step)
   if step > 1 then
@@ -92,11 +99,25 @@ local function sizelog (start, stop, step)
 end
 
 local function value (r, x)
-  return r.start + x*r.step -- N => step = (stop-start)/(N-1)
+  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
 end
 
 local function valuelog (r, x)
-  return r.start * r.step^x -- N => step = (stop/start)^(1/(N-1))
+  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
+end
+
+local function nstep (start, stop, n)
+  if is_range(start) then
+    start, stop, n = start.start, start.stop, stop -- shift args
+  end
+  return (stop-start)/(n-1)
+end
+
+local function nsteplog (start, stop, n)
+  if is_range(start) or is_logrange(start) then
+    start, stop, n = start.start, start.stop, stop -- shift args
+  end
+  return (stop/start)^(1/(n-1))
 end
 
 local function iterincr (r, i)
@@ -146,8 +167,8 @@ end
 
 function Mlog.__new (ct, start, stop, step)
   assert(is_number(start), "invalid argument #1 (expect number)")
-  if stop == nil then stop = start end -- default
-  if step == nil then step = 2 end     -- default
+  if stop == nil then stop = start end                    -- default
+  if step == nil then step = nsteplog(start,stop,100) end -- default
   return new(ct, start, stop, step)
 end
 
@@ -198,11 +219,13 @@ end
 
 M.get      = get
 M.value    = value
-M.len      = size
+M.nstep    = nstep
+M.len      = M.size
 
 Mlog.get   = getlog
 Mlog.value = valuelog
-Mlog.len   = sizelog
+Mlog.nstep = nsteplog
+Mlog.len   = Mlog.size
 
 -- methods
 --[=[
@@ -330,6 +353,8 @@ metatype('logxrange', Mlog)
 
 -------------------------------------------------------------------------------o
 return {
-  range    = range,
-  logrange = logrange,
+  range       = range,
+  logrange    = logrange,
+  is_range    = is_range,
+  is_logrange = is_logrange,
 }
