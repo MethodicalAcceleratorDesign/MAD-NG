@@ -63,14 +63,16 @@ Mlog.__help.self = M.__help.self
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
 local is_number                           in require 'madl_utils'
-local abs, floor, log, max                in math
+local abs, ceil, floor, log, max          in math
 
 cdef [[
-  typedef struct logrange { const double start, stop, step; } logrange;
+  typedef struct logxrange { const double start, stop, step; } logxrange;
 ]]
 
+-- constructors ---------------------------------------------------------------o
+
 local range    = typeof 'xrange'
-local logrange = typeof 'logrange'
+local logrange = typeof 'logxrange'
 
 -- implementation -------------------------------------------------------------o
 
@@ -79,15 +81,39 @@ local function is_range (a)
 end
 
 local function is_logrange (a)
-  return istype('logrange', a)
+  return istype('logxrange', a)
 end
 
-local function irange (start, stop, step)
-  return ipairs(range(start, stop, step))
+local function is_empty(start, stop, step)
+  return not (step >= 0 and start <= stop or
+              step <  0 and start >  stop or false)
 end
 
-local function ilogrange (start, stop, step)
-  return ipairs(logrange(start, stop, step))
+local function is_emptylog(start, stop, step)
+  step = abs(step)
+  return not (step >= 1 and (start >= 0 and start <= stop  or
+                             start <  0 and start >  stop) or
+              step <  1 and (start >= 0 and start >= stop  or
+                             start <  0 and start <  stop) or false)
+end
+
+local function bounds(start, stop, step)
+  if step >= 0 and start <= stop then
+    return start, stop
+  elseif step < 0 and start > stop then
+    return stop, start
+  end
+end
+
+local function boundslog(start, stop, step)
+  step = abs(step)
+  if (step >= 1 and start >= 0 and start <= stop) or
+     (step <  1 and start <= 0 and start <= stop) then
+    return start, stop
+  elseif (step >= 1 and start <= 0 and start >= stop) or
+         (step <  1 and start >= 0 and start >= stop) then
+    return stop, start
+  end
 end
 
 local function size (start, stop, step)
@@ -106,26 +132,26 @@ local function sizelog (start, stop, step)
   return size(log(abs(start)), log(abs(stop)), log(abs(step)))
 end
 
-local function value (r, x)
-  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
-end
-
-local function valuelog (r, x)
-  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
-end
-
 local function nstep (start, stop, n)
   if is_range(start) then
     start, stop, n = start.start, start.stop, stop -- shift args
   end
-  return (stop-start)/(n-1)
+  return n >= 1 and (stop-start)/abs(ceil(n)-1) or 0
 end
 
 local function nsteplog (start, stop, n)
   if is_range(start) or is_logrange(start) then
     start, stop, n = start.start, start.stop, stop -- shift args
   end
-  return (stop/start)^(1/(n-1))
+  return n >= 1 and (stop/start)^(1/abs(ceil(n)-1)) or 1
+end
+
+local function value (r, x)
+  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
+end
+
+local function valuelog (r, x)
+  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
 end
 
 local function iterincr (r, i)
@@ -166,6 +192,13 @@ local function getlog (r, x)
   end
 end
 
+local function canonize(start, stop, step)
+  if not is_empty(start, stop, step) then
+    return start, stop, step
+  end
+  return start, stop, 0
+end
+
 -- alternate constructors with #steps specified
 
 local function nrange (start, stop, n)
@@ -178,6 +211,16 @@ local function nlogrange (start, stop, n)
   assert(is_number(start) and is_number(stop) and is_number(n),
          "invalid argument #1, #2 or #3 (number expected")
   return logrange(start, stop, nsteplog(start, stop, n))
+end
+
+-- iterators
+
+local function irange (start, stop, step)
+  return ipairs(range(start, stop, step))
+end
+
+local function ilogrange (start, stop, step)
+  return ipairs(logrange(start, stop, step))
 end
 
 -- members
@@ -254,65 +297,40 @@ end
 M.get      = get
 M.value    = value
 M.nstep    = nstep
+M.is_empty = is_empty
 M.__len    = M.size
 
-Mlog.get   = getlog
-Mlog.value = valuelog
-Mlog.nstep = nsteplog
-Mlog.__len = Mlog.size
+Mlog.get      = getlog
+Mlog.value    = valuelog
+Mlog.nstep    = nsteplog
+Mlog.is_empty = is_emptylog
+Mlog.__len    = Mlog.size
 
-function M.scale (r, a)
-  return range(r.start, r.stop*a, r.step*a)
-end
-
-function Mlog.scale (r, a)
-  return nlogrange(r.start, r.stop*a, r:size())
-end
-
-function M.translate (r, a)
-  return range(r.start+a, r.stop+a, r.step)
-end
-
-function M.inverse (r)
+function M.reverse (r)
   return range(r.stop, r.start, -r.step)
 end
 
-function Mlog.inverse (r, a)
+function Mlog.reverse (r, a)
   return logrange(r.stop, r.start, 1/r.step)
 end
 
---[=[
-function M.index (r, x)
-  local i = size(r.start, x, r.step)
-  return i >= 1 and i <= r:size() and i or nil
-end
-
-function M.first(r)
-  return r.start
-end
-
-function M.last (r)
-  if r:size() == 0 then
-    return r.start
-  else
-    return r:value(r:size()) end
-end
-
-function M.minmax (r)
-  if r.step < 0 then
-    return r:last(), r:first()
-  else
-    return r:first(), r:last()
-  end
-end
-
 function M.bounds (r)
-  if r.step < 0 then
-    return r.stop, r.start
-  else
+  if r.step > 0 then
     return r.start, r.stop
+  elseif r.step < 0 then
+    return r.stop, r.start
   end
 end
+
+function Mlog.bounds (r)
+  if r.step > 1 then
+    return r.start, r.stop
+  elseif r.step < 1 then
+    return r.stop, r.start
+  end
+end
+
+--[=[
 
 function M.overlap (r, s)
   if r:size() == 0 or s:size() == 0 then
@@ -352,8 +370,8 @@ end
 --end
 ]=]
 
-metatype('xrange'  , M   )
-metatype('logrange', Mlog)
+metatype('xrange'   , M   )
+metatype('logxrange', Mlog)
 
 -------------------------------------------------------------------------------o
 return {
