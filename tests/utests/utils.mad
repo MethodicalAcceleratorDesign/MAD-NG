@@ -6,7 +6,6 @@
  | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          A. Teska, aleksandra.teska at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -24,347 +23,159 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertTrue, assertFalse in require 'luaunit'
+local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals
+      in require 'luaunit'
 
 local is_nil, is_boolean, is_number, is_string, is_function, is_table,
       is_cdata, is_xrange, is_complex, is_integer, is_scalar, is_rawtable,
       is_iterable, is_indexable, is_callable, is_comparable, is_ordered,
       getmetatable in MAD
 
+local cat = \f,g\... f(g(...))
+local sm, gm = setmetatable, getmetatable
+
 -- regression test suite ------------------------------------------------------o
 
 TestUtils = {}
 
-function TestUtils:testIsNil()
-  local a, b = nil
-  local f = \;
-  assertTrue ( is_nil(nil) )
-  assertTrue ( is_nil(a)   )
-  assertTrue ( is_nil(b)   )
-  assertTrue ( is_nil(f()) )
+local types = {
+['nil']      = { nil, __, ___ },
+  boolean    = { false, true, 1==1, 0<1, 1<0 },
+  number     = { 0.1, 0.01, -0.1, -0.01, 2^-32, 2^-53, 2^52+1, -2^52-1 },
+  string     = { '', '""', "''", "\"", '\'', '0', 'inf', 'nan', 'false' },
+['function'] = { \ (), \ false, \ 0, \ '0', \\ (), \{}, \\{}, \ 0..0, \ 0i },
+  table      = { {}, {false}, {0}, {'0'}, {\ ()}, {{}}, {\{}}, {0..0}, {0i} },
+  xrange     = { 0..0, 0..0.1, 0.1..0, 1..2..0.1, -0.2..-0.1..0.1 },
+  complex    = { 0i, 1i, 10i, 0.1i, -0i, -1i, -10i, -0.1i },
+  integer    = { 0, 1, 2^32, 2^52, -0, -1, -2^32, -2^52, 2^52+0.1 },
+}
 
-  assertFalse( is_nil(f)      )
-  assertFalse( is_nil(false)  )
-  assertFalse( is_nil(true)   )
-  assertFalse( is_nil(1)      )
-  assertFalse( is_nil(0.1)    )
-  assertFalse( is_nil('0')    )
-  assertFalse( is_nil {1,2,3} )
+local function assertTypes (tkey, tfunc, tskip)
+  tkey = is_string(tkey) and {tkey} or tkey
+  tskip = is_nil(tskip) and {} or tskip
+  for _,s in ipairs(tkey) do
+    tkey[s] = assertTrue
+  end
+  for k,t in pairs(types) do
+    if is_nil(tskip[k]) then
+      for i,v in ipairs(t) do
+         if tfunc(v) ~= (tkey[k] and true or false) then
+           print(k,i,v,tfunc(v)) ! uncomment to find the faulty case
+         end
+        (tkey[k] or assertFalse) ( tfunc(v) )
+      end
+    end
+  end
 end
 
---[=[
-function TestUtils:testIsBoolean()
-  local f=\x x*2
-  local b = true
-  assertTrue ( is_boolean(is_nil(a))  )
-  assertTrue ( is_boolean(b)          )
-  assertTrue ( is_boolean(true)       )
-  assertTrue ( is_boolean(false)      )
+function TestUtils:testIsNil()
+  assertTypes( 'nil', is_nil )
+end
 
-  assertFalse( is_boolean(nil)            )
-  assertFalse( is_boolean(10)             )
-  assertFalse( is_boolean(4.1)            )
-  assertFalse( is_boolean(f)              )
-  assertFalse( is_boolean('10')           )
-  assertFalse( is_boolean({1,2,3})        )
-  assertFalse( is_boolean(Object 'O1' {}) )
-  --assertFalse( is_boolean(XR(1,20))       )
-  --assertFalse( is_boolean(logrange(1,20)) )
-  --add test: fun()) with output=boolean
+function TestUtils:testIsBoolean()
+  assertTypes( 'boolean', is_boolean )
 end
 
 function TestUtils:testIsNumber()
-  local f=\x x*2
-  assertTrue ( is_number(2.2)            )
-  assertTrue ( is_number(-2.2)           )
-  assertTrue ( is_number(10)             )
-  assertTrue ( is_number(f(2))           )
-  assertTrue( is_number(XR(1,20)[1])     )
+  assertTypes( {'number', 'integer'}, is_number )
+end
 
-  assertFalse( is_number(nil)            )
-  assertFalse( is_number(true)           )
-  assertFalse( is_number(f)              )
-  assertFalse( is_number('10')           )
-  assertFalse( is_number({1,2,3})        )
-  assertFalse( is_number(Object '1' {})  )
-  --assertFalse( is_number(XR(1,20))       )
-  --assertFalse( is_number(logrange(1,20)) )
-  --assertFalse( is_number(C(1,2) ) )
+function TestUtils:testIsNumber2()
+  local t = {'nil', 'number', 'complex', 'integer'}
+  local f = cat(is_number,tonumber)
+  assertTypes( t, f, {string=true} )
+
+  assertFalse( f(types.string[1]) )
+  assertFalse( f(types.string[2]) )
+  assertFalse( f(types.string[3]) )
+  assertFalse( f(types.string[4]) )
+  assertFalse( f(types.string[5]) )
+  assertTrue ( f(types.string[6]) )
+  assertTrue ( f(types.string[7]) )
+  assertTrue ( f(types.string[8]) )
+  assertFalse( f(types.string[9]) )
 end
 
 function TestUtils:testIsString()
-  assertTrue ( is_string('a')       )
-  assertTrue ( is_string('10.1')    )
-  assertTrue ( is_string('true')    )
-  assertTrue ( is_string(tostring(2)      ) )
-  assertTrue ( is_string(tostring(-2.2)   ) )
-  assertTrue ( is_string(tostring('10')   ) )
-  --assertTrue ( is_string(tostring(XR(1,2))) )
-  --assertTrue ( is_string(tostring(C(1,2))) )
+  assertTypes( 'string', is_string )
+end
 
-  assertFalse( is_string({'1','2'})      )
-  assertFalse( is_string(nil)            )
-  assertFalse( is_string(false)          )
-  assertFalse( is_string({1,2,3})        )
-  assertFalse( is_string(-2.2)           )
-  assertFalse( is_string(10)             )
-  local O1 = Object 'O1' {x=1}
-  assertFalse( is_string(O1)                )
-  assertFalse( is_string(O1 'O2' {y ='aa'}) )
-  assertTrue ( is_string(O1.name )          )
-  --assertFalse( is_string(XR(1,1))        )
-  --assertFalse( is_string(logrange(1,20)) )
-  --assertFalse( is_string(C(1,1))     )
+function TestUtils:testIsString2()
+  local t = {}
+  for k in pairs(types) do t[#t+1] = k end
+  assertTypes( t, cat(is_string,tostring) )
 end
 
 function TestUtils:testIsFunction()
-  local is_fun = is_function
-  local a = \x x+1
-  assertTrue ( is_fun(is_fun)         )
-  assertTrue ( is_fun(a    )          )
-  assertTrue ( is_fun(G.unm)          )
-
-  local O1 = Object 'O1' {x=1, y=\s s.x+1}
-  assertFalse( is_fun(O1.y)           ) -- should it be recognize as a function?
-  assertFalse( is_fun(O1)             )
-  assertFalse( is_fun(O1.name)        )
-  assertFalse( is_fun(O1.x)           )
-  assertFalse( is_fun()               )
-  assertFalse( is_fun(nil)            )
-  assertFalse( is_fun(true)           )
-  assertFalse( is_fun(-2.2)           )
-  assertFalse( is_fun(12)             )
-  assertFalse( is_fun({1,2,3})        )
-  assertFalse( is_fun('10')           )
-  --assertFalse( is_fun(XR(1,2))        )
-  --assertFalse( is_fun(logrange(1,20)) )
---  assertFalse( is_fun(C(1,2))  )
+  assertTypes( 'function', is_function )
 end
 
 function TestUtils:testIsTable()
-  --additional matrix tests after integration
-  assertTrue ( is_table({1,2,3})        )
-  assertTrue ( is_table({1,2,3})        )
-  assertTrue ( is_table({-3})           )
-  assertTrue ( is_table({'1','2'})      )
-  assertTrue ( is_table(Object {y=1})   )
-
-  assertFalse( is_table(nil)            )
-  assertFalse( is_table(true)           )
-  assertFalse( is_table(-2.2)           )
-  assertFalse( is_table('10')           )
-  --assertFalse( is_table(logrange(1,20)) )
-  --assertFalse( is_table(XR(1,20))       )
-  --assertFalse( is_table(C(1,2))    )
+  assertTypes( 'table', is_table )
 end
 
-function TestUtils:testIsCdata()
-  --what else can be a cdata except for ranges? Complex? -> tests after integration
-  local f=\x x*2
-  --assertTrue ( is_cdata(XR(1,20))        )
-  --assertTrue ( is_cdata(XR(-20,-40,-2))  )
-  --assertTrue ( is_cdata(XR(-20,-40,-2))  )
-  --assertTrue ( is_cdata(XR(-20,-40,-2))  )
-  --assertTrue ( is_cdata(-2..20)          )
-  --assertTrue ( is_cdata(10..2)           )
-  --assertTrue ( is_cdata(1..10..0)        )
-  --assertTrue ( is_cdata(10.1..1.2..-0.1) )
-  --assertTrue ( is_cdata(logrange(1,20))  )
-  --assertTrue ( is_cdata(C(1,2))          )
-
-  assertFalse( is_cdata(nil)             )
-  assertFalse( is_cdata(true)            )
-  assertFalse( is_cdata(120)             )
-  assertFalse( is_cdata('0')             )
-  assertFalse( is_cdata({1,2,3})         )
-  assertFalse( is_cdata(f(2))            )
-  assertFalse( is_cdata(f)               )
-  assertFalse( is_cdata(Object {y=1})    )
+function TestUtils:testIsCData()
+  assertTypes( {'complex', 'xrange'}, is_cdata )
 end
 
-function TestUtils:testIsRange()
-  local f=\x x*2
-  local f1=\x (x..10)
-  --assertTrue ( is_xrange(XR(1,20))        )
-  --assertTrue ( is_xrange(-2..20)          )
-  --assertTrue ( is_xrange(10..2)           )
-  --assertTrue ( is_xrange(1..10..0)        )
-  --assertTrue ( is_xrange(10.1..1.2..-0.1) )
-  --assertTrue ( is_xrange(f1(1))           )
-
-  assertFalse( is_xrange(nil)             )
-  assertFalse( is_xrange(true)            )
-  assertFalse( is_xrange(120)             )
-  assertFalse( is_xrange('0')             )
-  assertFalse( is_xrange({1,2,3})         )
-  assertFalse( is_xrange(f(2))            )
-  assertFalse( is_xrange(f)               )
-  assertFalse( is_xrange(f1)              )
-  --assertFalse( is_xrange(logrange(1,20))  )
-  assertFalse( is_xrange(Object {y=1})    )
+function TestUtils:testIsXRange()
+  assertTypes( 'xrange', is_xrange )
 end
 
---[[function TestUtils:testIs_complex()
-  assertTrue ( is_complex(C(1,2))         )
-  assertTrue ( is_complex(C(-2,2.))       )
-  assertTrue ( is_complex(C(0,0))         )
-  assertTrue ( is_complex(C(1,0))         )
-
-  assertFalse( is_complex(nil)            )
-  assertFalse( is_complex(true)           )
-  assertFalse( is_complex({1,2,3})        )
-  assertFalse( is_complex(2.2)            )
-  assertFalse( is_complex(-2.2)           )
-  assertFalse( is_complex('10')           )
-  assertFalse( is_complex(XR(2,10))       )
-  assertFalse( is_complex(Object {y=1})   )
-  assertFalse( is_complex(logrange(1,20)) )
-end]]
+function TestUtils:testIsComplex()
+  assertTypes( 'complex', is_complex )
+end
 
 function TestUtils:testIsInteger()
-  assertTrue ( is_integer( 2)              )
-  assertTrue ( is_integer(-2)              )
-  --assertTrue ( is_integer((1..20)[1])      )
-
-  --assertFalse( is_integer(logrange(1,20))  )
-  --assertFalse( is_integer(1..20)           )
-  --assertFalse( is_integer((20..1)[2])      )
-  assertFalse( is_integer(XR(-10.1,12)[2]) )
-  assertFalse( is_integer(nil)             )
-  assertFalse( is_integer(true)            )
-  assertFalse( is_integer(2^60)            )
-  assertFalse( is_integer(-2^60)           )
-  assertFalse( is_integer(2.2)             )
-  assertFalse( is_integer(-2.2)            )
-  assertFalse( is_integer('10')            )
-  assertFalse( is_integer({1,2,3})         )
-  assertFalse( is_integer(Object {y=1})    )
- -- assertFalse( is_int(C(1,2))          )
-end
-
-function TestUtils:testIsScalar()
-  --assertTrue ( is_scalar(C(1,2))         )
-  assertTrue ( is_scalar(-2.2)           )
-  assertTrue ( is_scalar(1)              )
-  --assertTrue ( is_scalar(XR(1,2)[1])     )
-
-  --assertFalse( is_scalar(logrange(1,20)) )
-  --assertFalse( is_scalar(XR(1,2))        )
-  assertFalse( is_scalar(nil)            )
-  assertFalse( is_scalar(true)           )
-  assertFalse( is_scalar({1,2,3})        )
-  assertFalse( is_scalar('10')           )
-  assertFalse( is_scalar(Object {y=1})   )
+  assertTypes( 'integer', is_integer )
 end
 
 function TestUtils:testIsRawtable()
-  --rawtable = table without metatable
-  assertTrue ( is_rawtable({1,2})          )
-  assertTrue ( is_rawtable({'a','b'})      )
+  assertTypes( 'table', is_rawtable )
+  assertFalse( is_rawtable(sm({},{})) )
+end
 
-  local f=\x x+2
-  assertFalse( is_rawtable(f)              )
-  assertFalse( is_rawtable(logrange(1,20)) )
-  assertFalse( is_rawtable(nil)            )
-  assertFalse( is_rawtable(true)           )
-  assertFalse( is_rawtable(-2.2)           )
-  assertFalse( is_rawtable('10')           )
-  assertFalse( is_rawtable(Object {y=1})   )
-  assertFalse( is_rawtable(Object {})      )
-  --assertFalse( is_rawtable(1..20)          )
-  --assertFalse( is_rawtable(XR(1,20))       )
-  --assertFalse( is_rawtable(C(1,2))         )
+function TestUtils:testIsScalar()
+  assertTypes( {'number', 'complex', 'integer'}, is_scalar )
 end
 
 function TestUtils:testIsIterable()
-  assertTrue ( is_iterable({1,2})          )
-  assertTrue ( is_iterable({'a','b'})      )
-  assertTrue ( is_iterable(Object {x=2})   )
-  assertTrue ( is_iterable(1..20)          )
-  --assertTrue ( is_iterable(XR(1,20))       )
-  --assertTrue ( is_iterable(logrange(1,20)) )
-
-  local f=\x x+2
-  assertFalse( is_iterable(f)              )
-  assertFalse( is_iterable(nil)            )
-  assertFalse( is_iterable(true)           )
-  assertFalse( is_iterable(-2.2)           )
-  assertFalse( is_iterable('10')           )
-  --assertFalse( is_iterable(C(1,2))    )
+  assertTypes( {'table', 'xrange'}, is_iterable )
+  assertTrue ( is_iterable(sm({},{})) ) ! fake tests: tables are always iterable
+  assertTrue ( is_iterable(sm({},{__ipair=\ ()})) )
+  assertTrue ( is_iterable(sm({},{__pairs=\ ()})) )
 end
 
-
-function TestUtils:testIsIndexable()
-  assertTrue ( is_indexable({1,2})          )
-  assertTrue ( is_indexable({'a','b'})      )
-  assertTrue ( is_indexable('10')           )
-  assertTrue ( is_indexable(Object {x=2})   )
-  --assertTrue ( is_indexable(XR(1,20))       )
-  --assertTrue ( is_indexable(1..20)          )
-  --assertTrue ( is_indexable(logrange(1,20)) )
-
-  local f=\x x+2
-  assertFalse( is_indexable(f)              )
-  assertFalse( is_indexable(nil)            )
-  assertFalse( is_indexable(true)           )
-  assertFalse( is_indexable(-2.2)           )
-  --assertFalse( is_index(C(1,2))    )
+function TestUtils:testIndexable()
+  assertTypes( {'string', 'table', 'xrange'}, is_indexable )
+  assertTrue ( is_indexable(sm({},{})) )
 end
 
 function TestUtils:testIsCallable()
-  local f=\x x+2
-  assertTrue ( is_callable(f)              )
-  assertTrue ( is_callable(is_callable)    )
-  assertTrue ( is_callable(G.sin)          )
-  assertTrue ( is_callable(Object {x=2})   )
-
-  assertFalse( is_callable({1,2})          )
-  assertFalse( is_callable({'a','b'})      )
-  assertFalse( is_callable('10')           )
-  assertFalse( is_callable(nil)            )
-  assertFalse( is_callable(true)           )
-  assertFalse( is_callable(-2.2)           )
-  --assertFalse( is_callable(logrange(1,20)) )
-  --assertFalse( is_callable(1..20)          )
-  --assertFalse( is_callable(XR(1,20))       )
-  --assertFalse( is_call(C(1,2))    )
+  assertTypes( {'function'}, is_callable )
+  assertFalse( is_callable(sm({},{})) )
+  assertTrue ( is_callable(sm({},{__call=\ ()})) )
 end
 
 function TestUtils:testIsComparable()
-  local f=\x x+2
-  assertTrue ( is_comparable(-2.2)           )
-  assertTrue ( is_comparable(12)             )
-  assertTrue ( is_comparable('10')           )
-  assertTrue ( is_comparable('test')         )
-
-  assertFalse( is_comparable(Object {x=2})   )
-  assertFalse( is_comparable({1,2})          )
-  assertFalse( is_comparable({'a','b'})      )
-  assertFalse( is_comparable(f)              )
-  assertFalse( is_comparable(nil)            )
-  assertFalse( is_comparable(true)           )
-  --assertFalse( is_comparable(1..20)          )
-  --assertFalse( is_comparable(XR(1,20))       )
-  --assertTrue ( is_comparable(logrange(1,20)) )
+  assertTypes( {'number', 'string', 'xrange', 'integer'}, is_comparable )
+  assertFalse( is_comparable(sm({},{})) )
+  assertTrue ( is_comparable(sm({},{__eq=\ ()})) )
 end
 
 function TestUtils:testIsOrdered()
-  local f=\x x+2
-  assertTrue ( is_ordered(-2.2)           )
-  assertTrue ( is_ordered(12)             )
-  assertTrue ( is_ordered('10')           )
-  assertTrue ( is_ordered('test')         )
-
-  assertFalse( is_ordered(Object {x=2})   )
-  assertFalse( is_ordered({1,2})          )
-  assertFalse( is_ordered({'a','b'})      )
-  assertFalse( is_ordered(f)              )
-  assertFalse( is_ordered(nil)            )
-  assertFalse( is_ordered(true)           )
-  --assertFalse( is_ordered(1..20)          )
-  --assertFalse( is_ordered(XR(1,20))       )
-  --assertFalse( is_ordered(logrange(1,20)) )
+  assertTypes( {'number', 'string', 'integer'}, is_ordered )
+  assertFalse( is_ordered(sm({},{})) )
+  assertTrue ( is_ordered(sm({},{__lt=\ ()})) )
+  assertTrue ( is_ordered(sm({},{__le=\ ()})) )
 end
-]=]
+
+function TestUtils:testGetmetatable()
+  local t = {'nil', 'boolean', 'number', 'function', 'table', 'integer'}
+  assertTypes( t, cat(is_nil,gm) )
+  assertTypes( {'string', 'complex', 'xrange'}, \a gm(a)~=nil )
+  assertTypes( 'complex', \a gm(a)==gm(0i) )
+  assertTypes( 'xrange' , \a gm(a)==gm(0..0) )
+end
 
 -- end ------------------------------------------------------------------------o
