@@ -31,20 +31,20 @@ local assertEquals, assertAlmostEquals =
 
 TestLuaCore = {}
 
-local function isPrimeDivisible(self, c)
-  for i=3, self.prime_count do
-    if self.primes[i] * self.primes[i] > c then break end
-    if c % self.primes[i] == 0 then return true end
-  end
-  return false
-end
-
-local function addPrime(self, c)
-  self.prime_count = self.prime_count + 1
-  self.primes[self.prime_count] = c
-end
-
 local function getPrimes(n)
+  local function isPrimeDivisible(self, c)
+    for i=3, self.prime_count do
+      if self.primes[i] * self.primes[i] > c then break end
+      if c % self.primes[i] == 0 then return true end
+    end
+    return false
+  end
+
+  local function addPrime(self, c)
+    self.prime_count = self.prime_count + 1
+    self.primes[self.prime_count] = c
+  end
+
   local p = { prime_count=3, primes={ 1,2,3 } }
   local c = 5
   while p.prime_count < n do
@@ -96,9 +96,9 @@ end
 function TestLuaCore:testDuplicates()
   local inp = {'b','a','c','c','e','a','c','d','c','d'}
   local out = {'a','c','d'}
-  local res = find_duplicates2(inp, res)
+  local res = {}
   assertEquals( find_duplicates(inp), out )
-  assertEquals( res, out )
+  assertEquals( find_duplicates2(inp, res) or res, out )
 end
 
 -- performance test suite -----------------------------------------------------o
