@@ -45,7 +45,7 @@ local function addPrime(self, c)
 end
 
 local function getPrimes(n)
-  local p = { prime_count=3, primes={ 1, 2, 3 } }
+  local p = { prime_count=3, primes={ 1,2,3 } }
   local c = 5
   while p.prime_count < n do
     if not isPrimeDivisible(p, c) then
@@ -80,10 +80,25 @@ local function find_duplicates(inp)
   return res
 end
 
+local function find_duplicates2(inp, res)
+  for i=1,#res do res[i]=nil end
+  for _,v in ipairs(inp) do
+    res[v] = res[v] and res[v]+1 or 1
+  end
+  for _,v in ipairs(inp) do
+    if res[v] and res[v] > 1 then
+      res[#res+1] = v
+    end
+    res[v] = nil
+  end
+end
+
 function TestLuaCore:testDuplicates()
   local inp = {'b','a','c','c','e','a','c','d','c','d'}
   local out = {'a','c','d'}
+  local res = find_duplicates2(inp, res)
   assertEquals( find_duplicates(inp), out )
+  assertEquals( res, out )
 end
 
 -- performance test suite -----------------------------------------------------o
@@ -101,11 +116,22 @@ end
 function Test_LuaCore:testDuplicates()
   local inp = {'b','a','c','c','e','a','c','d','c','d'}
   local out = {'a','c','d'}
-  local t0 = os.clock()
-  for i=1,5e5 do find_duplicates(inp) end
+  local t0, res = os.clock()
+  for i=1,5e5 do res = find_duplicates(inp) end
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.5, 1 )
-  assertEquals( find_duplicates(inp), out )
+  assertAlmostEquals( dt , 0.4, 1 )
+  assertEquals( res, out )
+end
+
+function Test_LuaCore:testDuplicates2()
+  local inp = {'b','a','c','c','e','a','c','d','c','d'}
+  local out = {'a','c','d'}
+  local res = {}
+  local t0 = os.clock()
+  for i=1,5e5 do find_duplicates2(inp, res) end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt , 0.2, 1 )
+  assertEquals( res, out )
 end
 
 -- end ------------------------------------------------------------------------o
