@@ -24,8 +24,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertTrue, assertFalse, assertEquals, assertAlmostEquals
-      in require 'luaunit'
+local assertNil, assertTrue, assertFalse, assertEquals, assertAlmostEquals,
+      assertStrContains in require 'luaunit'
 local max, min in math
 
 -- regression test suite ------------------------------------------------------o
@@ -47,9 +47,14 @@ function TestLambda:testNoExpr()
     assertEquals( f3(-3), f(-3) )
   end
   do
-    local f0,f1 = \ (),\()()  -- \, or \(), : error
+    local f0,f1 = \ (),\()()
     assertEquals( f0(-3), f(-3) )
     assertEquals( f1(-3), f(-3) )
+  end
+  do -- expected syntax error
+    local res, err = load "local f0,f1 = \\, \\()"
+    assertNil( res )
+    assertStrContains( err, "unexpected symbol near ','")
   end
 end
 
@@ -101,7 +106,7 @@ function TestLambda:testNoExprParent()
   local id = function () return end
   local f = function () return id() end
   do
-    local f0 = \ (id())  -- \ (()) : error
+    local f0 = \ (id())
     local f1 = \()(id())
     assertEquals( f0(-3), f(-3) )
     assertEquals( f1(-3), f(-3) )
@@ -110,6 +115,11 @@ function TestLambda:testNoExprParent()
     local f0,f1 = \ (id()),\()(id())
     assertEquals( f0(-3), f(-3) )
     assertEquals( f1(-3), f(-3) )
+  end
+  do -- expected syntax error
+    local res, err = load "\\ (())"
+    assertNil( res )
+    assertStrContains( err, "unexpected symbol near '\\'")
   end
 end
 
@@ -287,7 +297,7 @@ function TestLambda:testExprParent()
   local f = function (x) return 2*(x+x) end
   local x = -3
   do
-    local f0 = \ 2*(x+x)  -- \ (x+x)*2 : error
+    local f0 = \ 2*(x+x)
     local f1 = \ (2*(x+x))
     local f2 = \ ((x+x)*2)
     local f3 = \x 2*(x+x)
@@ -329,6 +339,11 @@ function TestLambda:testExprParent()
     assertEquals( f9(-3), f(-3) )
     assertEquals( fA(-3), f(-3) )
     assertEquals( fB(-3), f(-3) )
+  end
+  do -- expected syntax error
+    local res, err = load "\\ (x+x)*2"
+    assertNil( res )
+    assertStrContains( err, "unexpected symbol near '\\'")
   end
 end
 
@@ -822,16 +837,17 @@ function TestLambda:testDeferredExpr()
   local x,y = 2,-3
   local a = { f0:=(x+y,x-y), f1=\ (x+y,x-y), f2=\x,y(x+y,x-y),
               f3:=2*(x+y)  , f4=\ 2*(x+y)  , f5=\x,y 2*(x+y),
-              f6:=((x+y)*2) }
+              f6:=((x+y)*2), f7:=\x,y 2*(x+y) }
   local _ = function (f) return f(x,y) end
   do
-    assertEquals( a.f0()   , _\ (x+y,x-y) )
-    assertEquals( a.f1()   , _\ (x+y,x-y) )
-    assertEquals( a.f2(x,y), _\ (x+y,x-y) )
-    assertEquals( a.f3()   , _\ 2*(x+y) )
-    assertEquals( a.f4()   , _\ 2*(x+y) )
-    assertEquals( a.f5(x,y), _\ 2*(x+y) )
-    assertEquals( a.f6()   , _\ 2*(x+y) )
+    assertEquals( a.f0()     , _\ (x+y,x-y) )
+    assertEquals( a.f1()     , _\ (x+y,x-y) )
+    assertEquals( a.f2(x,y)  , _\ (x+y,x-y) )
+    assertEquals( a.f3()     , _\ 2*(x+y)   )
+    assertEquals( a.f4()     , _\ 2*(x+y)   )
+    assertEquals( a.f5(x,y)  , _\ 2*(x+y)   )
+    assertEquals( a.f6()     , _\ 2*(x+y)   )
+    assertEquals( a.f7()(x,y), _\ 2*(x+y)   )
   end
 end
 
