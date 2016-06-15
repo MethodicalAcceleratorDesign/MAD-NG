@@ -28,9 +28,8 @@ local assertNil, assertNotNil, assertTrue, assertFalse in require 'luaunit'
 local is_nil, is_boolean, is_number, is_string, is_function, is_table,
       is_cdata, is_xrange, is_complex, is_integer, is_scalar, is_rawtable,
       is_iterable, is_indexable, is_callable, is_comparable, is_ordered,
-      getmetatable in MAD
+      identity, compose, compose_bottom, getmetatable in MAD
 
-local cat = \f,g\... f(g(...))
 local sm, gm = setmetatable, getmetatable
 
 -- regression test suite ------------------------------------------------------o
@@ -81,7 +80,7 @@ end
 
 function TestUtils:testIsNumber2()
   local t = {'nil', 'number', 'complex', 'integer'}
-  local f = cat(is_number,tonumber)
+  local f = compose(is_number, tonumber)
   assertTypes( t, f, {string=true} )
 
   assertFalse( f(types.string[1]) )
@@ -100,9 +99,8 @@ function TestUtils:testIsString()
 end
 
 function TestUtils:testIsString2()
-  local t = {}
-  for k in pairs(types) do t[#t+1] = k end
-  assertTypes( t, cat(is_string,tostring) )
+  local t = {} ; for k in pairs(types) do t[#t+1] = k end
+  assertTypes( t, compose(is_string, tostring) )
 end
 
 function TestUtils:testIsFunction()
@@ -140,14 +138,16 @@ end
 
 function TestUtils:testIsIterable()
   assertTypes( {'table', 'xrange'}, is_iterable )
-  assertTrue ( is_iterable(sm({},{})) ) ! fake tests: tables are always iterable
+  assertTrue ( is_iterable(sm({},{})) ) ! fake: tables are always iterable
   assertTrue ( is_iterable(sm({},{__ipair=\ ()})) )
   assertTrue ( is_iterable(sm({},{__pairs=\ ()})) )
 end
 
 function TestUtils:testIndexable()
   assertTypes( {'string', 'table', 'xrange'}, is_indexable )
-  assertTrue ( is_indexable(sm({},{})) )
+  assertTrue ( is_indexable(sm({},{})) ) ! fake: tables are always indexable
+  assertTrue ( is_indexable(sm({},{__index=\ ()})) )
+  assertTrue ( is_indexable(sm({},{__newindex=\ ()})) )
 end
 
 function TestUtils:testIsCallable()
@@ -169,9 +169,23 @@ function TestUtils:testIsOrdered()
   assertTrue ( is_ordered(sm({},{__le=\ ()})) )
 end
 
+function TestUtils:testCompose()
+  local id, id1, id4 = \n,...(n+1,...), \...(1,...), \n n==4
+  local f = compose(id4,compose(id,compose(id,compose(id,id1))))
+  local t = {} ; for k in pairs(types) do t[#t+1] = k end
+  assertTypes( t, f )
+end
+
+function TestUtils:testComposeBottom()
+  local id, id1, id4, _ = \n,...(n+1,...), \...(1,...), \n n==4, compose_bottom
+  local f = id4^id^id^id^id1^_
+  local t = {} ; for k in pairs(types) do t[#t+1] = k end
+  assertTypes( t, f )
+end
+
 function TestUtils:testGetmetatable()
   local t = {'nil', 'boolean', 'number', 'function', 'table', 'integer'}
-  assertTypes( t, cat(is_nil,gm) )
+  assertTypes( t, compose(is_nil, gm) )
   assertTypes( {'string', 'complex', 'xrange'}, \a gm(a)~=nil )
   assertTypes( 'complex', \a gm(a)==gm(0i) )
   assertTypes( 'xrange' , \a gm(a)==gm(0..0) )
