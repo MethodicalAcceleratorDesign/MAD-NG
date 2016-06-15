@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide a small regression test suites for some Lua features.
+  - Provide a small set of test suites for some Lua features.
 
  o-----------------------------------------------------------------------------o
 ]=]
