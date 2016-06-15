@@ -53,17 +53,20 @@ DESCRIPTION
     This feature is particularly useful to copy immediate methods to new
     instances.
   - To set:
+    + variables (multi set), use set_variable.
     + functions with arguments or avoid value semantic, use set_function.
     + immediate methods (inherited), use set_method.
     + metamethods (shared), use set_metamethod.
+    + set, setf, setm, setmm are shortcuts for set_variable, set_function,
+      set_method, set_metamethod.
   - Root 'Object' defines the following variables:
     + 'name'  points to 'self' name unless overridden (alias)
     + '__par' points to 'self' parent unless overridden (alias)
     + '__var' points to 'self' variables unless overridden (alias)
     + '__id'  holds 'self' name if provided (variable)
   - Each object inherits the following methods:
-    #, name, is_object, is_instanceOf, isa, set, set_function, set_method,
-    set_metamethod, set_parent, dump (for debug).
+    #, name, is_object, is_instanceOf, isa, set, setf, setm, setmm,
+    set_variable, set_function, set_method, set_metamethod, set_parent, dump.
 
 RETURN VALUES
   A table constaining Object, the root constructor of objects, and the helpers
@@ -141,7 +144,7 @@ Catching creation:
       count = count + 1
       return self
     end
-    self:set_metamethod('__init', mm)
+    self:set_metamethod { __init = mm }
   end
   set_counter(MAD.Object) -- before any child creation
 
@@ -155,7 +158,7 @@ Catching writes:
       trace(self, k, v) -- logging
       nwidx(self, k, v) -- forward, mandatory!
     end
-    self:set_metamethod('__newindex', mm, true) -- override!
+    self:set_metamethod({__newindex = mm}, true) -- override!
   end
   set_notification(MAD.Object) -- before any child creation
 ]=]
@@ -299,39 +302,43 @@ M.isa           = is_instanceOf
 
 M.__help.set = [=[
 NAME
-  set, set_function, set_method, set_metamethod.
+  set_variable, set_function, set_method, set_metamethod.
+  set, setf, setm, setmm.
 
 SYNOPSIS
-  set(obj, {...})
-  set_function(obj, 'fname', func [, override])
-  set_method(obj, 'fname', func [, override])
-  set_metamethod(obj, '__name', metafunc [, override])
+  set_variable  (obj, {...} [, override])
+  set_function  (obj, {...} [, override])
+  set_method    (obj, {...} [, override])
+  set_metamethod(obj, {...} [, override])
 
-  obj:set({...})
-  obj:set_function('fname', func [, override])
-  obj:set_method('fname', func [, override])
-  obj:set_metamethod('__name', metafunc [, override])
+  obj:set_variable  ({...} [, override])
+  obj:set_function  ({...} [, override])
+  obj:set_method    ({...} [, override])
+  obj:set_metamethod({...} [, override])
 
 DESCRIPTION
-  The set method sets or updates values from a raw table. The set_function
-  method sets functions in a special way to bypass the automatic value semantic
-  of the object model and enforce the call semantic. The set_method method sets
-  functions as immediate methods that can be inherited by children (see the 'On
-  read' semantic in the object model). The set_metamethod method sets functions
-  as metamethods that are shared by children (see the object model scheme).
-  Methamethods names must be one of the supported Lua metamethod or the MAD
-  specific __init metamethod.
+  The set_variable method sets or updates values from a raw table. The
+  set_function method sets functions in a special way to bypass the automatic
+  value semantic of the object model and enforce the call semantic. The
+  set_method method sets functions as immediate methods that can be inherited by
+  children (see the 'On read' semantic in the object model). The set_metamethod
+  method sets functions as metamethods that are shared by children (see the
+  object model scheme). Metamethods names must be one of the supported Lua
+  metamethod or the MAD specific __init metamethod. Methods set, setf, setm and
+  setmm are valid shortcuts for set_variable, set_function, set_method,
+  set_metamethod respectively. The default value for override is 'false' for all
+  methods except set and set_variable, for which this is 'true'.
 
 RETURN VALUE
   The object.
 
 ERRORS
   All these methods trig an error if argument #1 is not a valid object. Methods
-  set, set_method and set_metamethod trig an error if argument #2 is not a raw
-  table, a metamethod name and not a metamethod name respectively. Methods
-  set_function, set_method and set_metamethod trig an error if argument #3 is
-  neither callable nor nil, or if the name already exists and overriding is
-  not allowed by argument #4 of the form above.
+  set_variable, set_function, set_method and set_metamethod trig an error if
+  argument #2 is not a raw table. Methods set_function, set_method and
+  set_metamethod trig an error if values in the raw table (argument #2) are not
+  callable. All these methods trig an error if keys in the raw table (argument
+  #2) already exist and overriding is not allowed by argument #3.
 
 EXAMPLES
   Point = MAD.Object {}                -- point is an instance of Object
@@ -339,57 +346,76 @@ EXAMPLES
   p1:set { x=1, z=3 }                  -- update p1.x and set p1.z
   p1:set { z2=\s 2*s.z }               -- set p1.z2 = 2*p1.z
   p1.z3=\s 3*s.z                       -- set p1.z3 = 3*p1.z
-  p1:set_function('zn', \s,n n*s.z)    -- set function p1:zn(n) = n*p1.z
+  p1:setf { zn=\s,n n*s.z }            -- set function p1:zn(n) = n*p1.z
   print(p1.x, p1.y, p1.z, p1.z2, p1.z3, p1:zn(4))
     1       2       3       6       9       12
 
 SEE ALSO
   None.
 ]=]
+M.__help.setf           = M.__help.set
+M.__help.setm           = M.__help.set
+M.__help.setmm          = M.__help.set
+M.__help.set_variable   = M.__help.set
 M.__help.set_function   = M.__help.set
 M.__help.set_method     = M.__help.set
 M.__help.set_metamethod = M.__help.set
 
-function M:set (tbl)
+function M:set_variable (tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,v in pairs(tbl) do
-    rawset(var, k, v)
+    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
+    var[k] = v
   end
   return self
 end
 
-function M:set_function (name, func, override)
-  assert(is_object(self)               , "invalid argument #1 (object expected)")
-  assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
-  assert(rawget(self, name) == nil or override, "cannot override function")
-  self[var][name] = is_function(func) and setmetatable({func}, MF) or func
+function M:set_function (tbl, override)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  local var = self[var]
+  for k,f in pairs(tbl) do
+    assert(is_callable(f), "invalid component (callable expected)")
+    assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
+    var[k] = is_function(f) and setmetatable({f}, MF) or f
+  end
   return self
 end
 
-function M:set_method (name, func, override)
-  assert(is_object(self)               , "invalid argument #1 (object expected)")
-  assert(meta[name] ~= name            , "invalid argument #2 (metamethod detected)")
-  assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
-  assert(rawget(self, name) == nil or override, "cannot override method")
-  rawset(self, name, func)
+function M:set_method (tbl, override)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  for k,m in pairs(tbl) do
+    assert(meta[k] ~= k  , "invalid key (metamethod detected)")
+    assert(is_callable(m), "invalid component (callable expected)")
+    assert(is_nil(rawget(self,k)) or override==true, "cannot override method")
+    rawset(self, k, m)
+  end
   return self
 end
 
-function M:set_metamethod (name, func, override)
-  assert(is_object(self)               , "invalid argument #1 (object expected)")
-  assert(meta[name] == name            , "invalid argument #2 (metamethod expected)")
-  assert(is_callable(func) or func==nil, "invalid argument #3 (callable expected)")
+function M:set_metamethod (tbl, override)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
-  assert(rawget(sm, name) == nil or override, "cannot override shared metamethod")
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
-    setmetatable(self, sm)
   end
-  rawset(sm, name, func)
-  return self
+  for k,mm in pairs(tbl) do
+    assert(meta[k] == k  , "invalid key (metamethod expected)")
+    assert(is_callable(mm), "invalid component (callable expected)")
+    assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
+    rawset(sm, k, mm)
+  end
+  return setmetatable(self, sm)
 end
+
+M.set   = M.set_variable
+M.setf  = M.set_function
+M.setm  = M.set_method
+M.setmm = M.set_metamethod
 
 M.__help.set_parent = [=[
 NAME
@@ -397,34 +423,35 @@ NAME
 
 SYNOPSIS
   set_parent(obj, class [, 'name'])
-  obj:set_parent(class[, name])
+  obj:set_parent(class [, 'name'])
 
 DESCRIPTION
   The set_parent method changes or sets the parent (class) of a valid object or
   a raw table and optionally set its name. This method is _not_ equivalent to
-  the constructor of objects because it does not set values. This method is
-  better suited to turn a module with methods into an object.
+  the constructor of objects because the raw table will become the object, not
+  the values. This method is better suited to turn a module with methods into an
+  object.
 
 RETURN VALUE
   The object.
 
 ERRORS
   The set_parent function trigs an error if the argument #1 is not a valid
-  object, not a raw table, or is Object, and if the argument #2 is not a valid
+  object or a raw table, or it is Object, and if the argument #2 is not a valid
   object.
 
 EXAMPLES
-  MAD.set_parent({...}, Object, 'mymodule')
+  MAD.set_parent({...}, Object, 'myobject')
 
 SEE ALSO
   None.
 ]=]
 
 function M:set_parent (class, name)
-  assert(self ~= M          , "'Object' must stay the root of objects")
-  assert(is_object(self) or is_rawtable(self)
-                            , "invalid argument #1 (raw table or object expected)")
-  assert(is_object(class)   , "invalid argument #2 (object expected)")
+  assert(self ~= M       , "'Object' must stay the root of objects")
+  assert(is_object(self) or is_rawtable(self),
+                           "invalid argument #1 (raw table or object expected)")
+  assert(is_object(class), "invalid argument #2 (object expected)")
   rawset(self, par, class)
   rawset(self, '__index', class[var])
   if is_rawtable(self) then
