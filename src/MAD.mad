@@ -70,9 +70,13 @@ EXAMPLES
   local quad = MAD.Quadrupole                -- local assignment
 
   To clear the global environment from MAD, set it to nil:
-  MAD = nil                           -- release global reference
-  local mad = require 'MAD'           -- retain  local  reference
-  local Drift in mad                  -- retrieve Drift from the local reference
+  local mad = MAD  MAD = nil                 -- retain local and release global
+  local Drift in mad                         -- retrieve Drift from local mad
+
+  To clear MAD extensions from the global environment (backup in MAD),
+  set them to nil:
+  arg, path, warn, trace, trace_setlevel, trace_setlocation = nil
+  local argv, path, warn, trace, trace_setlevel, trace_setlocation in MAD
 
 SEE ALSO
   None.
@@ -82,8 +86,8 @@ SEE ALSO
 
 local _C in require 'madl_cmad'
 
-local is_nil, is_boolean, is_string, is_table, is_rawtable,
-      is_iterable, is_indexable in require 'madl_utils'
+local is_nil, is_boolean, is_string, is_rawtable, is_iterable, is_indexable
+      in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
 
@@ -98,88 +102,72 @@ M.trace_setlocation = trace_setlocation
 
 M.__help.import = [=[
 NAME
-  import -- import modules, tables, functions, etc. to MAD environment
+  import -- import modules and components to MAD environment
 
 SYNOPSIS
   import('module' [, override])
-  import(rawtable [, 'name' [, override]])
-  import(component, 'name' [, override])
+  import({...} [, override])
 
 DESCRIPTION
   The import function imports modules, tables, functions, objects, etc. into the
   MAD environment. If the argument #1 is a string, it will be treated as the
   name of a module and replaced by the value returned by require before further
-  processing. If the argument #1 is a raw table (eventually after the require)
-  and argument #2 is not a string, each key-value pairs of this table will be
-  added individually to the MAD environment (i.e. flatten). If the argument #2
-  is a string (key), the argument #1 (value) will be added as a key-value pair
-  to the MAD environment, even if argument #1 is a raw table.
+  processing. If the argument #1 or the value returned by require is a raw
+  table, each key-value pairs of this table will be added individually to the
+  MAD environment (i.e. flatten).
 
 RETURN VALUE
   None.
 
 ERRORS
   The import function trigs an error in the following conditions:
+    - If argument #1 is not a string or a raw table,
     - If the module to load is not found,
-    - If the component is not a raw table and the name is missing,
     - If a key already exists in the MAD environment before insertion and
-      overriding is not allowed by argument #2 or #3 of the forms above.
+      overriding is not allowed by argument #2 of the forms above.
 
 EXAMPLES
   local import in MAD
-  import('module')               -- import module (load and flatten)
-  import('module', true)         -- import module but allow override
-  import(func, 'fname')          -- import named function
-  import(func, 'fname', true)    -- import function but allow override
-  import({...})                  -- import anonymous raw table (flatten)
-  import({...},'constants')      -- import named raw table (don't flatten)
-  import({...}, true)            -- import raw table but allow override
+  import('module')             -- import module (load and flatten)
+  import('module', true)       -- import module but allow override
+  import({name=func})          -- import named function
+  import({name=func}, true)    -- import function but allow override
+  import({...})                -- import anonymous raw table (flatten)
+  import({...}, true)          -- import raw table but allow override
+  import({constants={}})       -- import raw table (flatten) with a named table
 
 SEE ALSO
   MAD.export.
 ]=]
 
-M.import = function (a, b, override)
-  if is_boolean(b) then
-    override, b = b -- shift args right
-  end
-  if is_string(a) then
-    b, a = a, require('madl_'..a) or require(a); -- shift args right
-    assert(a ~= nil, "module not found: "..b)
-    if is_rawtable(a) then b = nil end -- module exports anonymous rawtable
-  end
+M.import = function (a, override)
+  assert(is_string(a) or is_rawtable(a),
+                           "invalid argument #1 (string or raw table expected)")
+  local tbl = is_string(a) and (require('madl_'..a) or require(a)) or a
+  assert(tbl ~= nil, "module not found: "..a)
+  if not is_rawtable(tbl) then tbl = {a=tbl} end -- simplify further processing
 
   -- collect and check
-  local t = { obj = {}, hlp = {} } -- make a local copy first in case of error
-  if is_rawtable(a) and not is_string(b) then -- flatten anonymous raw table
-    for k,v in pairs(a) do
-      if k ~= '__help' then
-        assert(M[k] == nil or override, "cannot override definition for "..k)
-        t.obj[k] = v
-        if is_indexable(v) and v.__help and v.__help.self then
-          t.hlp[k] = v.__help.self
-        end
-      end
-    end
-  else
-    assert(is_string(b), "invalid argument #2 (string expected)")
-    if b ~= '__help' then
-      assert(M[b] == nil or override, "cannot override definition for "..b)
-      t.obj[b] = a
-      if is_indexable(a) and a.__help and a.__help.self then
-        t.hlp[b] = a.__help.self
+  local tmp = { obj = {}, hlp = {} } -- make a local copy first in case of error
+  for k,v in pairs(tbl) do
+    if k ~= '__help' then
+      assert(is_nil(M[k]) or override == true,
+             "cannot override definition for "..k)
+      tmp.obj[k] = v
+      if is_indexable(v) and v.__help and v.__help.self then
+        tmp.hlp[k] = v.__help.self
       end
     end
   end
 
-  -- finalize the transaction
-  for k,v in pairs(t.obj) do M[k] = v end
-  for k,v in pairs(t.hlp) do M.__help[k] = v end
+  -- finalize the import
+  for k,v in pairs(tmp.obj) do M[k] = v end
+  for k,v in pairs(tmp.hlp) do M.__help[k] = v end
 end
 
 M.__help.export = [=[
 NAME
-  export -- export modules, tables, functions, etc. from MAD environment
+  export -- export components from MAD environment
 
 SYNOPSIS
   export(['pattern' [, context [, override]]])
@@ -190,18 +178,19 @@ DESCRIPTION
   environment to the specified context or global context if none is specified.
   The argument #1 provides a matching pattern or a list of strings to select the
   components to export (only string keys can be exported). The argument #2
-  specifies the destination context or _G if none is specified.
+  specifies the destination context or _G if none is specified. The argument #3
+  override is 'false' by default.
 
 RETURN VALUE
   The destination context.
 
 ERRORS
   The export function trigs an error in the following conditions:
-    - If the pattern argument is not a string,
-    - If the table argument is not a list of strings,
-    - If the destination context is not indexable,
+    - If the pattern argument #1 is not a string,
+    - If the table argument #1 is not a raw table of strings,
+    - If the destination context argument #2 is not indexable,
     - If a key already exists in the destination context before insertion and
-      overriding is not allowed by argument #3 of the form above.
+      overriding is not allowed by argument #3.
 
 EXAMPLES
   local export in MAD
@@ -224,23 +213,27 @@ M.export = function (pat, ctx, override)
   if is_boolean(ctx) then
     override, ctx = ctx -- shift args right
   end
-  pat, ctx = pat or '.*', ctx or _G
+  pat, ctx = pat or '.*', ctx or _G -- default
   assert(is_string(pat) or is_rawtable(pat),
-                            "invalid argument #1 (string or table expected)")
-  assert(is_indexable(ctx), "invalid argument #2 (indexable expected)")
+                           "invalid argument #1 (string or raw table expected)")
+  assert(is_indexable(ctx),"invalid argument #2 (indexable expected)")
+  local tbl = is_string(pat) and {} or pat
+
+   -- record matching keys
   if is_string(pat) then
-    for k,v in pairs(M) do
+    for k in pairs(M) do
       if is_string(k) and string.find(k, pat) then
-        assert(ctx[k] == nil or override, "cannot override definition for "..k)
-        ctx[k] = v
+        tbl[#tbl+1] = k
       end
     end
-  else
-    for _,k in ipairs(pat) do
-      if M[k] then
-        assert(ctx[k] == nil or override, "cannot override definition for "..k)
-        ctx[k] = M[k]
-      end
+  end
+
+  -- process export
+  for _,k in ipairs(tbl) do
+    if M[k] then
+      assert(ctx[k] == nil or override == true,
+             "cannot override definition for "..k)
+      ctx[k] = M[k]
     end
   end
   return ctx
