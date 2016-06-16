@@ -51,7 +51,7 @@ local function getPrimes(n)
     if not isPrimeDivisible(p, c) then
       addPrime(p, c)
     end
-    c = c + 2 -- process only odd numbers
+    c = c + 2
   end
   return p
 end
@@ -109,8 +109,8 @@ function Test_LuaCore:testPrimes()
   local t0, p = os.clock()
   p = getPrimes(2e5)
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.5, 1 )
   assertEquals( p.primes[p.prime_count], 2750131 )
+  assertAlmostEquals( dt , 0.5, 1 )
 end
 
 function Test_LuaCore:testDuplicates()
@@ -119,8 +119,8 @@ function Test_LuaCore:testDuplicates()
   local t0, res = os.clock()
   for i=1,5e5 do res = find_duplicates(inp) end
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.4, 1 )
   assertEquals( res, out )
+  assertAlmostEquals( dt , 0.4, 1 )
 end
 
 function Test_LuaCore:testDuplicates2()
@@ -130,8 +130,30 @@ function Test_LuaCore:testDuplicates2()
   local t0 = os.clock()
   for i=1,5e5 do find_duplicates2(inp, res) end
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.2, 1 )
   assertEquals( res, out )
+  assertAlmostEquals( dt , 0.2, 1 )
+end
+
+function Test_LuaCore:testLinkedList()
+  local nxt = {}
+
+  local function generate(n)
+    local t = {x=1}
+    for j=1,n do t = {[nxt]=t} end
+    return t
+  end
+
+  local function find(t,k)
+    if t[k] ~= nil then return t[k] end
+    return find(t[nxt],k)
+  end
+
+  local l, s, n = generate(10), 0, 5e6
+  local t0 = os.clock()
+  for i=1,n do s = s + find(l, 'x') end
+  local dt = os.clock() - t0
+  assertEquals( s, n )
+  assertAlmostEquals( dt , 0.5, 1 )
 end
 
 -- end ------------------------------------------------------------------------o
