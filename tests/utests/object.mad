@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
-      assertAlmostEquals in require 'luaunit'
+      assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
 local is_function, is_table, Object in MAD
 local sin in math
 
@@ -33,10 +33,48 @@ local sin in math
 TestObject = {}
 
 function TestObject:testConstructor()
+  local p0 = Object 'p0' {}
+  local p1 = Object {}
+  local p2 = Object 'p2'
+  local p3 = Object
+
+  local p00 = p0 'p00' {}
+  local p01 = p0 {}
+  local p02 = p0 'p02'
+  local p03 = p0
+
+  assertNil( p0.a )
+  assertNil( p1.a )
+  assertNil( rawget(p2, a) )
+  assertNil( p3.a )
+
+  p0.a = ''   assertEquals( p0.a, '' )
+  p1.a = ''   assertEquals( p1.a, '' )
+--  p2.a = ''   assertEquals( p2.a, '' )
+--  p3.a = ''   assertEquals( p3.a, '' )
+
+!  assertNil( p00.a )
+!  assertNil( p01.a )
+!  assertNil( p02.a )
+!  assertNil( p03.a )
+!
+!  p00.a = '0'   assertEquals( p00.a, '0' )
+!  p01.a = '0'   assertEquals( p01.a, '0' )
+!  p02.a = '0'   assertEquals( p02.a, '0' )
+!  p03.a = '0'   assertEquals( p03.a, '0' )
+
+
+
   --isErrEqu( "incomplete object initialization", )
   --isErrEqu( "incomplete object initialization", )
   --isErrEqu( "private object", )
   --isErrEqu( "private const object", )
+end
+
+function TestObject:testIsObject()
+end
+
+function TestObject:testInheritance()
   local Point = Object 'Point' {}
   local p1 = Point 'p1' { x=3, y=2, z=1  }
   local p2 = p1    'p2' { x=2, y=1 }
@@ -59,12 +97,6 @@ function TestObject:testConstructor()
   assertEquals( p5.y   , 'a'  )
   assertEquals( p5.z   , p1.z )
   assertEquals( p5.k   , 1    )
-end
-
-function TestObject:testIsObject()
-end
-
-function TestObject:testInheritance()
 end
 
 function TestObject:testIsInstanceOf()
@@ -285,38 +317,6 @@ function TestObject:testCount() --subtest of set_methamethod
   assertEquals( count, 2 )
 end
 
-function TestObject:testSetParent()
-  local Po = Object 'Po' { x=1, y=3       }
-  local p1 = Po 'p1' { x=3, y=2, z=1  }
-  local p2 = p1 'p2' { y=\s 2*s.x     }
-  local p3 = p2 'p3' { x=2, y=1, z=x  }
-  assertEquals( p2.x, p1.x )
-  assertEquals( p2.z, p1.z )
-
-  p2:set_parent( Po )
-  assertEquals( p2.x, Po.x )
-  assertEquals( p2.z, Po.z )
-  assertEquals( p2.z, nil  )
-
-  p1:set_parent( p3 )
-  assertNotEquals( p1.x, p3.x )
-  assertNotEquals( p1.y, p3.y )
-  assertNotEquals( p1.z, p3.z )
-  assertEquals( p1.x, 3 )
-  assertEquals( p1.y, 2 )
-  assertEquals( p1.z, 1 )
-
-  local ob = Object '' {}
-  ob:set_parent( p1 )
-  assertEquals( ob.x, p1.x )
-  assertEquals( ob.y, p1.y )
-  assertEquals( ob.z, p1.z )
-
-  --isErrEqu( "'Object' must stay the root of objects", )
-  --isErrEqu( "invalid 'self' argument, table or object expected", )
-  --isErrEqu( "invalid 'obj' argument, valid object expected", )
-end
-
 -- performance test suite -----------------------------------------------------o
 
 Test_Object = {}
@@ -354,8 +354,8 @@ function Test_Object:testPrimes()
   local t0 = os.clock()
   p:getPrimes(2e5)
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.5, 1 )
   assertEquals( p.primes[p.prime_count], 2750131 )
+  assertAlmostEquals( dt , 0.5, 1 )
 end
 
 function Test_Object:testDuplicates()
@@ -387,8 +387,32 @@ function Test_Object:testDuplicates()
   local t0 = os.clock()
   for i=1,5e5 do inp:find_duplicates(res:clear()) end
   local dt = os.clock() - t0
-  assertAlmostEquals( dt , 0.5, 1 )
   assertEquals( res, out )
+  assertAlmostEquals( dt , 0.5, 1 )
 end
+
+function Test_Object:testLinkedList()
+  local List = Object {}
+  local nxt = {}
+
+  local function generate(n)
+    local t = List {x=1}
+    for j=1,n do t = List {[nxt]=t} end
+    return t
+  end
+
+  local function find(t,k)
+    if t[k] ~= nil then return t[k] end
+    return find(t[nxt],k)
+  end
+
+  local l, s, n = generate(10), 0, 5e6
+  local t0 = os.clock()
+  for i=1,n do s = s + find(l, 'x') end
+  local dt = os.clock() - t0
+  assertEquals( s, n )
+  assertAlmostEquals( dt , 3.5, 1 )
+end
+
 
 -- end ------------------------------------------------------------------------o
