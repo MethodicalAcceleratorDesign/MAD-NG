@@ -181,24 +181,24 @@ for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- special protected keys to store parent and object members
 local par, var, var0 = {}, {}, setmetatable({}, {
-  __index   =\ error "incomplete object initialization",
-  __newindex=\ error "incomplete object initialization",
+  __index    := error "incomplete object initialization",
+  __newindex := error "incomplete object initialization",
 })
 
--- metatable of 'Object'
+-- metatable of objects
 local MT = {}
 
--- metatable of 'true function' proxy
-local MF = {
-  __call    =\t,... -> t[1](...),
-  __index   =\ error "private object",
-  __newindex=\ error "private const object",
+-- metatable of 'true functions' proxy
+local MTF = {
+  __call      = \t,... -> t[1](...),
+  __index    := error       "function object",
+  __newindex := error "const function object",
 }
 
 -- helpers
 
 local function is_proxy (a)
-  return is_table(a) and getmetatable(a) == MF
+  return is_table(a) and getmetatable(a) == MTF
 end
 
 local function is_object (a)
@@ -210,6 +210,10 @@ local function is_instanceOf (a, b)
   if not is_object(a) then return false end
   while a and a ~= b do a = rawget(a,par) end
   return a == b
+end
+
+local function get (self, k) -- object lookup
+  return self and (rawget(self,k) or get(rawget(self,par),k))
 end
 
 -- objects are proxies controlling variables access and inheritance
@@ -234,11 +238,7 @@ function MT:__call (a) -- object constructor (define the object-model)
       return init(setmetatable(obj, getmetatable(self))) -- complete object
     end
   end
-  error("invalid object constructor argument (string or table expected)")
-end
-
-local function get (self, k) -- object lookup
-  return self and (rawget(self,k) or get(rawget(self,par),k))
+  error("invalid argument #1 to object constructor (string or table expected)")
 end
 
 function MT:__index (k) -- (+eval+inheritance)
@@ -259,15 +259,16 @@ function MT:__ipairs() return ipairs(self[var]) end
 
 M.__help.isa = [=[
 NAME
-  is_object, is_instanceOf, isa   -- identify parent (class) of objects
+  is_object, is_instanceOf, isa.       -- identify object parent
 
 SYNOPSIS
   is_object(obj)
-  is_instanceOf(obj,class)
-  isa(obj,class)
 
-  obj:is_instanceOf(class)
+  isa(obj,class)
+  is_instanceOf(obj,class)
+
   obj:isa(class)
+  obj:is_instanceOf(class)
 
 DESCRIPTION
   Method is_instanceOf follows and check the objects hierarchy from obj down to
@@ -379,7 +380,7 @@ function M:set_function (tbl, override)
   for k,f in pairs(tbl) do
     assert(is_callable(f), "invalid component (callable expected)")
     assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
-    var[k] = is_function(f) and setmetatable({f}, MF) or f
+    var[k] = is_function(f) and setmetatable({f}, MTF) or f
   end
   return self
 end
@@ -502,7 +503,7 @@ M[var] = {
 
 -- end ------------------------------------------------------------------------o
 return {
-  Object        = setmetatable(M,MT),
+  Object        = setmetatable(M,MT){},
   is_object     = is_object,
   is_instanceOf = is_instanceOf,
 }
