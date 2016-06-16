@@ -40,33 +40,28 @@ DESCRIPTION
   The object module implements the necessary machinery to support prototype-
   based programming with value semantic for functions and further extensions:
   - On read, the lookup of values and functions follows the inheritance down to
-    Object with the following precedence: immediate methods (object), variables,
-    inherited methods (parent). If the retrieved value is a function, it is
-    called with self passed as argument #1 (can be ignored) and the result is
-    returned (i.e. function with value semantic).
+    Object. If the retrieved value is a function, it is called with self passed
+    as argument #1 (can be ignored) and the result is returned (i.e. function
+    with value semantic).
   - On write, the value is simply stored in the current object (no lookup). To
     override this behavior, just (re)defined the __newindex metamethod using
-    set_metamethod with allowed overriding (use with care!).
+    set_metamethod with overriding allowed (use with care!).
   - On build, the new instance is connected to its parent (inheritance). If the
     new instance has a defined __init metamethod (shared), it will be called on
     the new instance and non-nil result or the new instance will be returned.
-    This feature is particularly useful to copy immediate methods to new
-    instances.
   - To set:
-    + variables (multi set), use set_variable.
-    + functions with arguments or avoid value semantic, use set_function.
-    + immediate methods (inherited), use set_method.
+    + variables (inherited), use set_variable.
+    + functions (inherited) n-ary or avoid value semantic, use set_function.
     + metamethods (shared), use set_metamethod.
-    + set, setf, setm, setmm are shortcuts for set_variable, set_function,
-      set_method, set_metamethod.
+    + set, setf, setmm are set_variable, set_function, set_metamethod aliases.
   - Root 'Object' defines the following variables:
     + 'name'  points to 'self' name unless overridden (alias)
     + '__par' points to 'self' parent unless overridden (alias)
     + '__var' points to 'self' variables unless overridden (alias)
     + '__id'  holds 'self' name if provided (variable)
   - Each object inherits the following methods:
-    #, name, is_object, is_instanceOf, isa, set, setf, setm, setmm,
-    set_variable, set_function, set_method, set_metamethod, dump.
+    #, name, is_object, is_instanceOf, isa, set, setf, setmm, set_variable,
+    set_function, set_metamethod, dump.
 
 RETURN VALUES
   A table constaining Object, the root constructor of objects, and the helpers
@@ -74,10 +69,9 @@ RETURN VALUES
   might not be a valid object.
 
 ERROR
-  Objects constructors trig an error if the optional argument #1 (name) is not a
-  string or if the argument #1 (if a name is provided) or #2 is not a raw table.
-  Using an object incompletely initialized (e.g. with a name but no value) trigs
-  also an error.
+  Objects constructors trig an error if the argument #1is not a string (name) or
+  a raw table (variables). Using an object incompletely initialized (e.g. with a
+  name but no value) trigs also an error.
 
 EXAMPLES
   Point = MAD.Object {}          -- point is an instance of Object
@@ -111,9 +105,9 @@ Schematic object-model representation:
 | __index |------------------|-+ | __index |-----------------+ | __index |--->.
 |         |  +-----------+   | | |         |  +-----------+  | |         |
 |   [var] |->|  *o2-var* |   | | |   [var] |->| *o1-var*  |  | |   [var] |-+
-| methods |  |    [meta] |-+ | | | methods |  |    [meta] |-+| | methods | |
-+---------+  | variables | | | | +---------+  | variables | || +---------+ |
-     ^       +-----------+ | | |      ^       +-----------+ ||        +----+
++---------+  |    [meta] |-+ | | +---------+  |    [meta] |-+| +---------+ |
+     ^       | variables | | | |      ^       | variables | ||             |
+     |       +-----------+ | | |      |       +-----------+ ||        +----+
      +---------------------+ | |      |             ^       ||        v
 +---------+                  | |      +-------------|-------+|  +-----------+
 |  *o3*   |                  | |      |             |        |  | *o0-var*  |
@@ -122,9 +116,9 @@ Schematic object-model representation:
 | __index |--------------------+--------------------+           +-----------+
 |         |  +-----------+
 |   [var] |->| *o3-var*  |
-| methods |  |    [meta] |-+
-+---------+  | variables | |
-     ^       +-----------+ |
++---------+  |    [meta] |-+
+     ^       | variables | |
+     |       +-----------+ |
      +---------------------+
 ]=]
 -- For details, see the 3 lines of the 'unamed obj' compound statement in __call
@@ -180,25 +174,36 @@ local meta = { -- from lj_obj.h + __init
 for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- special protected keys to store parent and object members
-local par, var, var0 = {}, {}, setmetatable({}, {
+local par, fct, var, var0 = {}, {}, {}, setmetatable({}, {
   __index    := error "incomplete object initialization",
   __newindex := error "incomplete object initialization",
+  __metatable = false,
 })
 
 -- metatable of objects
 local MT = {}
 
 -- metatable of 'true functions' proxy
-local MTF = {
-  __call      = \t,... -> t[1](...),
+local MF = {
+  __call      = \t,... -> t[fct](...),
   __index    := error       "function object",
   __newindex := error "const function object",
+  __metatable = false,
 }
 
 -- helpers
 
+local function init (a)
+  local m = rawget(getmetatable(a), '__init')
+  return m and m(a) or a
+end
+
+local function proxy (f)
+  return setmetatable({[fct]=f}, MF)
+end
+
 local function is_proxy (a)
-  return is_table(a) and getmetatable(a) == MTF
+  return is_table(a) and rawget(a,fct) ~= nil
 end
 
 local function is_object (a)
@@ -212,16 +217,7 @@ local function is_instanceOf (a, b)
   return a == b
 end
 
-local function get (self, k) -- object lookup
-  return self and (rawget(self,k) or get(rawget(self,par),k))
-end
-
 -- objects are proxies controlling variables access and inheritance
-
-local function init(a)
-  local m = rawget(getmetatable(a), '__init')
-  return m and m(a) or a
-end
 
 function MT:__call (a) -- object constructor (define the object-model)
   if is_string(a) then -- named object
@@ -243,8 +239,9 @@ end
 
 function MT:__index (k) -- (+eval+inheritance)
   local v = self[var][k]                       -- inheritance of variables
-  if is_function(v) then return v(self)        -- function with value semantic
-  else return v or get(rawget(self,par),k) end -- inheritance of methods
+  if is_function(v)
+  then return v(self)                          -- function with value semantic
+  else return v end
 end
 
 function MT:__newindex (k, v)
@@ -299,48 +296,43 @@ SEE ALSO
 M.__help.is_object     = M.__help.isa
 M.__help.is_instanceOf = M.__help.isa
 
-M.is_instanceOf = is_instanceOf
-M.isa           = is_instanceOf
+M.is_instanceOf = proxy(is_instanceOf)
+M.isa           = M.is_instanceOf
 
 M.__help.set = [=[
 NAME
-  set_variable, set_function, set_method, set_metamethod,
-  set, setf, setm, setmm.
+  set_variable, set_function, set_metamethod,
+  set, setf, setmm.
 
 SYNOPSIS
   set_variable  (obj, {...} [, override])
   set_function  (obj, {...} [, override])
-  set_method    (obj, {...} [, override])
   set_metamethod(obj, {...} [, override])
 
   obj:set_variable  ({...} [, override])
   obj:set_function  ({...} [, override])
-  obj:set_method    ({...} [, override])
   obj:set_metamethod({...} [, override])
 
 DESCRIPTION
   The set_variable method sets or updates values from a raw table. The
-  set_function method sets functions in a special way to bypass the automatic
-  value semantic of the object model and enforce the call semantic. The
-  set_method method sets functions as immediate methods that can be inherited by
-  children (see the 'On read' semantic in the object model). The set_metamethod
-  method sets functions as metamethods that are shared by children (see the
-  object model scheme). Metamethods names must be one of the supported Lua
-  metamethod or the MAD specific __init metamethod. Methods set, setf, setm and
-  setmm are valid shortcuts for set_variable, set_function, set_method,
-  set_metamethod respectively. The default value for override is 'false' for all
-  methods except set and set_variable, for which this is 'true'.
+  set_function method sets functions from a raw table in a special way that
+  bypasses the value semantic of functions in the object model and enforces the
+  call semantic. The set_metamethod method sets metamethods from a raw table
+  that are shared by children (see the object model scheme). The methods set,
+  setf and setmm are aliases for set_variable, set_function, set_metamethod
+  respectively. The default value for override is 'false' for all methods except
+  set_variable, for which it is 'true'.
 
 RETURN VALUE
   The object.
 
 ERRORS
-  All these methods trig an error if argument #1 is not a valid object. Methods
-  set_variable, set_function, set_method and set_metamethod trig an error if
-  argument #2 is not a raw table. The methods set_function, set_method and
-  set_metamethod trig an error if values in the raw table (argument #2) are not
-  callable. All these methods trig an error if keys in the raw table (argument
-  #2) already exist and overriding is not allowed by argument #3.
+  All these methods trig an error if argument #1 is not a valid object and if
+  argument #2 is not a raw table. The method set_function trig an error if
+  values in the raw table (argument #2) are not callable. All these methods trig
+  an error if keys in the raw table (argument #2) already exist and overriding
+  is not allowed by argument #3. The metamethod names must be one of the
+  supported Lua metamethod or the MAD specific __init metamethod.
 
 EXAMPLES
   Point = MAD.Object {}                -- point is an instance of Object
@@ -356,11 +348,9 @@ SEE ALSO
   None.
 ]=]
 M.__help.setf           = M.__help.set
-M.__help.setm           = M.__help.set
 M.__help.setmm          = M.__help.set
 M.__help.set_variable   = M.__help.set
 M.__help.set_function   = M.__help.set
-M.__help.set_method     = M.__help.set
 M.__help.set_metamethod = M.__help.set
 
 function M:set_variable (tbl, override)
@@ -381,19 +371,7 @@ function M:set_function (tbl, override)
   for k,f in pairs(tbl) do
     assert(is_callable(f), "invalid component (callable expected)")
     assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
-    var[k] = is_function(f) and setmetatable({f}, MTF) or f
-  end
-  return self
-end
-
-function M:set_method (tbl, override)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  for k,m in pairs(tbl) do
-    assert(meta[k] ~= k  , "invalid key (metamethod detected)")
-    assert(is_callable(m), "invalid component (callable expected)")
-    assert(is_nil(rawget(self,k)) or override==true, "cannot override method")
-    rawset(self, k, m)
+    var[k] = is_function(f) and proxy(f) or f
   end
   return self
 end
@@ -407,16 +385,18 @@ function M:set_metamethod (tbl, override)
   end
   for k,mm in pairs(tbl) do
     assert(meta[k] == k  , "invalid key (metamethod expected)")
-    assert(is_callable(mm), "invalid component (callable expected)")
     assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
     rawset(sm, k, mm)
   end
   return setmetatable(self, sm)
 end
 
+M.set_variable   = proxy(M.set_variable  )
+M.set_function   = proxy(M.set_function  )
+M.set_metamethod = proxy(M.set_metamethod)
+
 M.set   = M.set_variable
 M.setf  = M.set_function
-M.setm  = M.set_method
 M.setmm = M.set_metamethod
 
 -- debug
@@ -424,7 +404,7 @@ M.setmm = M.set_metamethod
 function M:dump (file_, level_, indent_, vars_)
   local sv = self[var]
   local file, level, indent, vars =
-    file_ or io.stdout, level_ or 1e6, indent_ or 1, vars_ or {}
+    file_ or io.stdout, level_ or 1e9, indent_ or 1, vars_ or {}
   -- header
   for i=1,indent-1 do file:write("  ") end -- indent
   file:write("+ [", tostring(sv), "]\n")
@@ -432,8 +412,8 @@ function M:dump (file_, level_, indent_, vars_)
   for k,v in pairs(sv) do
     for i=1,indent do file:write("  ") end -- indent
     file:write(tostring(k))
-        if is_string(v) then file:write(": '", tostring(v)   , "'")
-    elseif is_proxy (v) then file:write(": [", tostring(v[1]), "]")
+        if is_string(v) then file:write(": '", tostring(v)     , "'")
+    elseif is_proxy (v) then file:write(": [", tostring(v[fct]), "]")
                         else file:write(":  ", tostring(v)) end
     if vars[k] and string.sub(k,1,2) ~= '__' then -- mark overrides
       file:write(" (")
@@ -449,18 +429,18 @@ function M:dump (file_, level_, indent_, vars_)
   end
 end
 
+M.dump = proxy(M.dump)
+
 -- root Object = module instance
 
-M[var] = {
-  __id ='Object',
-  __par=\s rawget(s,par), -- alias
-  __var=\s rawget(s,var), -- alias
-  name =\s s.__id,        -- alias
-}
+M.__id  = 'Object'
+M.__par = \s rawget(s,par) -- alias
+M.__var = \s rawget(s,var) -- alias
+M.name  = \s s.__id        -- alias
 
 -- end ------------------------------------------------------------------------o
 return {
-  Object        = setmetatable(M,MT){},
+  Object        = setmetatable({[var]=M},MT){},
   is_object     = is_object,
   is_instanceOf = is_instanceOf,
 }
