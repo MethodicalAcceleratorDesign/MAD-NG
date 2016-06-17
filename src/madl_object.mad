@@ -28,7 +28,7 @@ local M = { __help = {} }
 
 M.__help.self = [=[
 NAME
-  object -- creates objects
+  object -- manage object model
 
 SYNOPSIS
   obj1 = Object {}               -- create a new empty object
@@ -101,7 +101,6 @@ Schematic object-model representation:
 +---------+                  |   +---------+ | | metamethods | +---------+ |
 |  *o2*   |                  |   |  *o1*   | | +-------------+ |  *o0*   | |
 |  [meta] |------------------+   |  [meta] |-+                 |  [meta] |-+
-|   [par] |------------------|-->|   [par] |------------------>|   [par] |--->.
 | __index |------------------|-+ | __index |-----------------+ | __index |--->.
 |         |  +-----------+   | | |         |  +-----------+  | |         |
 |   [var] |->|  *o2-var* |   | | |   [var] |->| *o1-var*  |  | |   [var] |-+
@@ -112,9 +111,8 @@ Schematic object-model representation:
 +---------+                  | |      +-------------|-------+|  +-----------+
 |  *o3*   |                  | |      |             |        |  | *o0-var*  |
 |  [meta] |------------------+ |      |             |        +->|    [meta] |->.
-|   [par] |--------------------|------+             |           | variables |
-| __index |--------------------+--------------------+           +-----------+
-|         |  +-----------+
+| __index |--------------------+--------------------+           | variables |
+|         |  +-----------+                                      +-----------+
 |   [var] |->| *o3-var*  |
 +---------+  |    [meta] |-+
      ^       | variables | |
@@ -173,22 +171,24 @@ local meta = { -- from lj_obj.h + __init
 }
 for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
--- special protected keys to store parent, object members and true functions
-local var, par, fct = {}, {}, {}
-local var0 = setmetatable({}, {
-  __index    := error "incomplete object initialization",
-  __newindex := error "incomplete object initialization",
-  __metatable = false,
-})
-
 -- metatable of objects
 local MT = {}
+
+-- protected keys to object members and true functions
+local var, fct = {}, {}, {}
+
+-- instance and metatable of 'incomplete objects' proxy
+local var0 = setmetatable({}, {
+  __index     := error "forbidden read access to incomplete object proxy",
+  __newindex  := error "forbidden write access to incomplete object proxy",
+  __metatable = false,
+})
 
 -- metatable of 'true functions' proxy
 local MF = {
   __call      = \t,... -> t[fct](...),
-  __index    := error          "function object",
-  __newindex := error "readonly function object",
+  __index     := error "forbidden read access to object function proxy",
+  __newindex  := error "forbidden write access to object function proxy",
   __metatable = false,
 }
 
@@ -197,6 +197,10 @@ local MF = {
 local function init (a)
   local m = rawget(getmetatable(a), '__init')
   return m and m(a) or a
+end
+
+local function parent (a)
+  return getmetatable(rawget(a,'__index'))
 end
 
 local function proxy (f)
@@ -214,25 +218,25 @@ end
 local function is_instanceOf (a, b)
   assert(is_object(b), "invalid argument #2 (object expected)")
   if not is_object(a) then return false end
-  while a and a ~= b do a = rawget(a,par) end
+  while a and a ~= b do a = parent(a) end
   return a == b
 end
 
 -- objects are proxies controlling variables access and inheritance
 
 function MT:__call (a) -- object constructor (define the object-model)
-  if is_string(a) then -- named object
-    local obj = {__id=a, [par]=self, [var]=var0, __index=self[var]} -- proxy
-    return setmetatable(obj, getmetatable(self)) -- incomplete object
+  if is_string(a) then                                  -- named object
+    local obj = {__id=a, [var]=var0, __index=self[var]} -- proxy
+    return setmetatable(obj, getmetatable(self))        -- incomplete object
   elseif is_rawtable(a) then
-    if self[var] == var0 then -- finalize named object
-      if rawget(self,'__id') ~= nil then a.__id, self.__id = self.__id end
-      self[var] = setmetatable(a, self); -- set fast inheritance
+    if self[var] == var0 then                           -- finalize named object
+      a.__id, self.__id = self.__id
+      self[var] = setmetatable(a, self);                -- set fast inheritance
       return init(self)
-    else -- unnamed object
-      local obj = {[par]=self, [var]=a, __index=self[var]} -- proxy
-      setmetatable(a, obj)                               -- set fast inheritance
-      return init(setmetatable(obj, getmetatable(self))) -- complete object
+    else                                                -- unnamed object
+      local obj = {[var]=a, __index=self[var]}          -- proxy
+      setmetatable(a, obj)                              -- set fast inheritance
+      return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
   error("invalid argument #1 to object constructor (string or table expected)")
@@ -377,7 +381,7 @@ end
 function M:set_metamethod (tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local sm, pm = getmetatable(self), getmetatable(rawget(self,par))
+  local sm, pm = getmetatable(self), getmetatable(parent(self))
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
   end
@@ -415,7 +419,7 @@ function M:dump (file_, level_, indent_, vars_)
   end
   -- parent
   if level > 1 and self ~= M then
-    self[par]:dump(file, level-1, indent+1, vars)
+    parent(self):dump(file, level-1, indent+1, vars)
   end
 end
 
@@ -434,7 +438,7 @@ M.isa, M.set, M.setf, M.setmm =
 
 -- members
 M.__id  = 'Object'
-M.__par = \s rawget(s,par) -- alias
+M.__par = parent
 M.__var = \s rawget(s,var) -- alias
 M.name  = \s s.__id        -- alias
 
