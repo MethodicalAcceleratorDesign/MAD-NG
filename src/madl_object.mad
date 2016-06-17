@@ -157,8 +157,8 @@ Catching writes:
 
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_string, is_table, is_rawtable, is_function, is_callable
-      in require 'madl_utils'
+local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
+      is_callable in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
 
@@ -174,8 +174,8 @@ for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 -- metatable of objects
 local MT = {}
 
--- protected keys to object members and true functions
-local var, fct = {}, {}
+-- protected keys to object members, true functions and readonly flag
+local var, fct, rof = {}, {}, {}
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -203,16 +203,29 @@ local function parent (a)
   return getmetatable(rawget(a,'__index'))
 end
 
-local function proxy (f)
+local function fproxy (f)
   return setmetatable({[fct]=f}, MF)
 end
 
-local function is_proxy (a)
+local function is_fproxy (a)
   return is_table(a) and rawget(a,fct) ~= nil
 end
 
 local function is_object (a)
   return is_table(a) and rawget(a,var) ~= nil
+end
+
+local function is_readonly (a)
+  return is_table(a) and rawget(a,rof) == true
+end
+
+local function set_readonly (a, b)
+  assert(rawget(a,var) ~= M,
+         "invalid argument #1 (forbidden access to 'Object')")
+  assert(is_nil(b) or is_boolean(b),
+         "invalid argument #2 (boolean or nil expected)")
+  rawset(a, rof, b)
+  return a
 end
 
 local function is_instanceOf (a, b)
@@ -242,7 +255,7 @@ function MT:__call (a) -- object constructor (define the object-model)
   error("invalid argument #1 to object constructor (string or table expected)")
 end
 
-function MT:__index (k) -- (+eval+inheritance)
+function MT:__index (k)
   local v = self[var][k]                       -- inheritance of variables
   if is_function(v)
   then return v(self)                          -- function with value semantic
@@ -250,6 +263,7 @@ function MT:__index (k) -- (+eval+inheritance)
 end
 
 function MT:__newindex (k, v)
+  assert(rawget(self,rof)~=true, "forbidden write access to readonly object")
   self[var][k] = v
 end
 
@@ -259,32 +273,38 @@ function MT:__ipairs() return ipairs(self[var]) end
 
 -- object methods
 
-M.__help.isa = [=[
+M.__help.is_object = [=[
 NAME
-  is_object, is_instanceOf, isa.       -- identify object class
+  is_object, is_instanceOf,            -- identify object class
+  is_readonly, set_readonly.           -- check and set object status
 
 SYNOPSIS
   is_object(obj)
+  is_readonly(obj)
   is_instanceOf(obj,class)
 
-  obj:isa(class)
+  obj:is_readonly()
   obj:is_instanceOf(class)
+  obj:set_readonly(boolean or nil)
 
 DESCRIPTION
   The is_instanceOf method follows and check the objects hierarchy from obj down
   to class or Object if class is not in the hierarchy of obj. The is_object
   function is equivalent to is_instanceOf(obj, Object) but faster. The method
-  isa is an alias for is_instanceOf.
+  set_readonly protects or unprotects against write access (weak protection).
 
 RETURN VALUES
   is_object and is_instanceOf return true if obj inherits from Object or class
-  respectively.
+  respectively. is_readonly returns true if obj is read only. set_readonly
+  returns the object.
 
 ERROR
   is_instanceOf trigs an error if the argument #2 (class) is not a valid object.
+  set_readonly trigs an error if the argument #2 is not a boolean or nil or if
+  argument #1 is Object itself.
 
 EXAMPLES
-  local is_object, is_instanceOf, Object in MAD
+  local is_object, is_instanceOf, is_readonly, Object in MAD
   print( is_object 'yes' )                    -- false
   print( is_object(Object) )                  -- true
   print( is_object(Object {}) )               -- true
@@ -293,11 +313,16 @@ EXAMPLES
   print( is_instanceOf(Object, Object) )      -- true
   print( is_instanceOf(Object {},Object) )    -- true
 
+  print( is_readonly(Object) )                -- true
+  Object.a = 2                                -- error
+  Object {} :set_readonly(true).a = 2         -- error
+
 SEE ALSO
   None.
 ]=]
-M.__help.is_object     = M.__help.isa
-M.__help.is_instanceOf = M.__help.isa
+M.__help.is_readonly   = M.__help.is_object
+M.__help.is_instanceOf = M.__help.is_object
+M.__help.set_readonly  = M.__help.is_object
 
 M.__help.set = [=[
 NAME
@@ -306,12 +331,12 @@ NAME
 
 SYNOPSIS
   set_variable  (obj, {...} [, override])
-  set_function  (obj, {...} [, override])
-  set_metamethod(obj, {...} [, override])
+  set_function  (obj, {...} [, override [, ignore]])
+  set_metamethod(obj, {...} [, override [, ignore]])
 
   obj:set_variable  ({...} [, override])
-  obj:set_function  ({...} [, override])
-  obj:set_metamethod({...} [, override])
+  obj:set_function  ({...} [, override [, ignore]])
+  obj:set_metamethod({...} [, override [, ignore]])
 
 DESCRIPTION
   The set_variable method sets or updates values from a raw table. The
@@ -321,7 +346,7 @@ DESCRIPTION
   that are shared by children (see the object model scheme). The methods set,
   setf and setmm are aliases for set_variable, set_function, set_metamethod
   respectively. The default value for override is 'false' for all methods except
-  set_variable, for which it is 'true'.
+  set_variable, for which it is 'true'. The default value for ignore is 'false'.
 
 RETURN VALUE
   The object.
@@ -331,8 +356,10 @@ ERRORS
   argument #2 is not a raw table. The method set_function trig an error if
   values in the raw table (argument #2) are not callable. All these methods trig
   an error if keys in the raw table (argument #2) already exist and overriding
-  is not allowed by argument #3. The metamethod names must be one of the
-  supported Lua metamethod or the MAD specific __init metamethod.
+  is not allowed by argument #3. The components for set_function must be
+  callable, unless ignore is 'true'. The metamethod names for set_metamethod
+  must be one of the supported Lua metamethod name or the MAD specific __init
+  metamethod name, unless ignore is 'true'.
 
 EXAMPLES
   Point = MAD.Object {}                -- point is an instance of Object
@@ -359,32 +386,32 @@ local function set_variable (self, tbl, override)
   local var = self[var]
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
-    var[k] = v
+    rawset(var, k, v)
   end
   return self
 end
 
-local function set_function (self, tbl, override)
+local function set_function (self, tbl, override, ignore)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,f in pairs(tbl) do
-    assert(is_callable(f), "invalid component (callable expected)")
+    assert(is_callable(f) or ignore==true, "invalid component (callable expected)")
     assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
-    var[k] = is_function(f) and proxy(f) or f
+    rawset(var, k, is_function(f) and fproxy(f) or f)
   end
   return self
 end
 
-local function set_metamethod (self, tbl, override)
+local function set_metamethod (self, tbl, override, ignore)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local sm, pm = getmetatable(self), getmetatable(parent(self))
+  local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
   end
   for k,mm in pairs(tbl) do
-    assert(meta[k] == k  , "invalid key (metamethod expected)")
+    assert(meta[k] == k  or ignore==true, "invalid key (metamethod expected)")
     assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
     rawset(sm, k, mm)
   end
@@ -393,8 +420,9 @@ end
 
 -- debug
 
-local function dump (self, file_, level_, indent_, vars_)
+local function rawdump (self, file_, level_, indent_, vars_)
   local sv = self[var]
+--  print('self.name=', self.name, 'self', self, 'var', sv, 'parent', parent(self))
   local file, level, indent, vars =
     file_ or io.stdout, level_ or 1e9, indent_ or 1, vars_ or {}
   -- header
@@ -405,7 +433,7 @@ local function dump (self, file_, level_, indent_, vars_)
     for i=1,indent do file:write("  ") end -- indent
     file:write(tostring(k))
         if is_string(v) then file:write(": '", tostring(v)     , "'")
-    elseif is_proxy (v) then file:write(": [", tostring(v[fct]), "]")
+    elseif is_fproxy(v) then file:write(": [", tostring(v[fct]), "]")
                         else file:write(":  ", tostring(v)) end
     if vars[k] and string.sub(k,1,2) ~= '__' then -- mark overrides
       file:write(" (")
@@ -416,23 +444,29 @@ local function dump (self, file_, level_, indent_, vars_)
     file:write("\n")
   end
   -- parent
-  if level > 1 and self ~= M then
-    parent(self):dump(file, level-1, indent+1, vars)
+  if level > 1 and sv ~= M then
+    rawdump(parent(self), file, level-1, indent+1, vars)
   end
 end
 
--- root Object = module instance
+-- root Object = module
+
+local Object = setmetatable({[var]=M, [rof]=true},MT)
+
+ -- parent link
+setmetatable(M, Object)
 
 -- methods
-M.is_instanceOf  = proxy( is_instanceOf  )
-M.set_variable   = proxy( set_variable   )
-M.set_function   = proxy( set_function   )
-M.set_metamethod = proxy( set_metamethod )
-M.dump           = proxy( dump           )
+M.is_readonly    = fproxy( is_readonly    )
+M.is_instanceOf  = fproxy( is_instanceOf  )
+M.set_readonly   = fproxy( set_readonly   )
+M.set_variable   = fproxy( set_variable   )
+M.set_function   = fproxy( set_function   )
+M.set_metamethod = fproxy( set_metamethod )
+M.rawdump        = fproxy( rawdump        )
 
 -- aliases
-M.isa, M.set, M.setf, M.setmm =
-  M.is_instanceOf, M.set_variable, M.set_function, M.set_metamethod
+M.set, M.setf, M.setmm = M.set_variable, M.set_function, M.set_metamethod
 
 -- members
 M.__id  = 'Object'
@@ -442,7 +476,8 @@ M.name  = \s s.__id        -- alias
 
 -- end ------------------------------------------------------------------------o
 return {
-  Object        = setmetatable({[var]=M},MT){},
+  Object        = Object,
   is_object     = is_object,
+  is_readonly   = is_readonly,
   is_instanceOf = is_instanceOf,
 }
