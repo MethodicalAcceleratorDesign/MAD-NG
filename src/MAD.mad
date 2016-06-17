@@ -120,11 +120,10 @@ RETURN VALUE
   None.
 
 ERRORS
-  The import function trigs an error in the following conditions:
-    - If argument #1 is not a string or a raw table,
-    - If the module to load is not found,
-    - If a key already exists in the MAD environment before insertion and
-      overriding is not allowed by argument #2 of the forms above.
+  The import function trigs an error if argument #1 is not a string or a raw
+  table, or if the module to load is not found, or if a key already exists in
+  the MAD environment before insertion and overriding is not allowed by argument
+  #2.
 
 EXAMPLES
   local import in MAD
@@ -148,21 +147,22 @@ M.import = function (a, override)
   if not is_rawtable(tbl) then tbl = {a=tbl} end -- simplify further processing
 
   -- collect and check
-  local tmp = { obj = {}, hlp = {} } -- make a local copy first in case of error
+  local obj, hlp = {}, {} -- make a local copies first in case of error
   for k,v in pairs(tbl) do
-    if k ~= '__help' then
+    if k == '__help' then hlp[a] = v
+    else
       assert(is_nil(M[k]) or override == true,
              "cannot override definition for " .. tostring(k))
-      tmp.obj[k] = v
-      if is_indexable(v) and v.__help and v.__help.self then
-        tmp.hlp[k] = v.__help.self
+      obj[k] = v
+      if is_indexable(v) and v.__help then
+        hlp[k] = v.__help
       end
     end
   end
 
   -- finalize the import
-  for k,v in pairs(tmp.obj) do M[k] = v end
-  for k,v in pairs(tmp.hlp) do M.__help[k] = v end
+  for k,v in pairs(obj) do M[k] = v end
+  for k,v in pairs(hlp) do M.__help[k] = v end
 end
 
 M.__help.export = [=[
@@ -184,12 +184,10 @@ RETURN VALUE
   The destination context.
 
 ERRORS
-  The export function trigs an error in the following conditions:
-    - If the pattern argument #1 is not a string,
-    - If the table argument #1 is not a raw table,
-    - If the destination context argument #2 is not indexable,
-    - If a key already exists in the destination context before insertion and
-      overriding is not allowed by argument #3.
+  The export function trigs an error if the argument #1 is not a string pattern
+  or a raw table of keys, or if the argument #2 is not indexable, or if a key
+  already exists in the destination context and overriding is not allowed by
+  argument #3.
 
 EXAMPLES
   local export in MAD
@@ -246,8 +244,8 @@ SYNOPSIS
   help('topic')
 
 DESCRIPTION
-  The help function looks for embedded helps for modules and functions and tries
-  to build a list of 'Related topics' automatically.
+  The help function looks for embedded helps for modules and components and
+  tries to build a list of 'Related topics' automatically.
 
   If the help function is exported from the MAD environment, it can be used
   directly, as follow:
@@ -258,7 +256,7 @@ RETURN VALUE
   None.
 
 ERROR
-  None.
+  The help function trigs an error if argument #1 is not a string.
 
 EXAMPLES
   local help in MAD
@@ -272,19 +270,23 @@ SEE ALSO
 
 M.help = function (a)
   assert(is_string(a), "invalid argument #1 (string expected)")
-  local dot = string.find(a, '.', 1, true)
-  local mod = dot and string.sub(a, 1, dot-1) or a
-  local fun = dot and string.sub(a, dot+1) or 'self'
-  local ctx = package.loaded[mod] or package.loaded['madl_'..mod] or M[mod]
-  local ref
+  local ref, str
 
-  -- find help context
-  if is_indexable(ctx) and ctx.__help and ctx.__help[fun] then
-    ref = ctx
-  elseif is_iterable(ctx) then
-    for k,v in pairs(ctx) do
-      if is_indexable(v) and v.__help and v.__help[fun] then
-        ref = v ; break
+  -- search for help
+  if a == 'MAD' then
+    ref, str = MAD.__help, MAD.__help.self
+  else
+    local dot = string.find(a, '.', 1, true)
+    local mod = dot and string.sub(a, 1, dot-1) or a
+    local fun = dot and string.sub(a, dot+1) or 'self'
+
+    for m,mv in pairs(MAD.__help) do
+      if m == mod then
+        if is_string(mv) then ref, str = MAD.__help, mv break end
+        if is_indexable(mv) and mv[fun] then ref, str = mv, mv[fun] break end
+      end
+      if not dot then
+        if is_indexable(mv) and mv[mod] then ref, str = mv, mv[mod] break end
       end
     end
   end
@@ -292,15 +294,12 @@ M.help = function (a)
     io.write("  No help found for '" .. a .. "'.\n")
     return
   end
-  io.write(ref.__help[fun]);
+  io.write(str);
 
-  -- find related (sub) topics, sort items, and wrap output at 80 columns
-  if is_indexable(ref[fun]) and ref[fun].__help then
-    ref = ref[fun]
-  end
+  -- find related topics, sort items, and wrap output at 80 columns
   local sub = {}
-  for k,_ in pairs(ref.__help) do
-    if k ~= 'self' then sub[#sub+1] = k end
+  for k,v in pairs(ref) do
+    if k ~= 'self' and v ~= str then sub[#sub+1] = k end
   end
   table.sort(sub)
   local len = 2 -- tab
@@ -308,7 +307,7 @@ M.help = function (a)
     len = len + #v + 2 -- sep
     if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
   end
-  local str = table.concat(sub, ', ')
+  str = table.concat(sub, ', ')
   if str ~= '' then
     io.write("\nRelated topics:\n  ", str, '.\n')
   end

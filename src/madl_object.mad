@@ -87,7 +87,7 @@ SEE ALSO
 
 -- documentation --------------------------------------------------------------o
 
-M.__help.object_model_scheme = [=[
+M.__help['object model scheme'] = [=[
 
 Schematic object-model representation:
 --------------------------------------
@@ -119,26 +119,18 @@ Schematic object-model representation:
      |       +-----------+ |
      +---------------------+
 ]=]
--- For details, see the 3 lines of the 'unamed obj' compound statement in __call
--- constructor
 
 -- examples -------------------------------------------------------------------o
 
-M.__help.object_model_examples = [=[
+M.__help['object model examples'] = [=[
 
 Catching creation:
 ------------------
   Example how to count the number of objects created
 
   local count = 0
-  local function set_counter (self)
-    local mm = function (self)
-      count = count + 1
-      return self
-    end
-    self:set_metamethod { __init = mm }
-  end
-  set_counter(MAD.Object) -- before any child creation
+  local set_counter = \s s:setmm{ __init =\=> count=count+1 end }
+  set_counter(MAD.Object) -- count children creation
 
 Catching writes:
 ----------------
@@ -146,30 +138,21 @@ Catching writes:
 
   local function set_notification (self)
     local nwidx = rawget(getmetatable(self),'__newindex')
-    local mm = function (self, k, v)
-      trace(self, k, v) -- logging
-      nwidx(self, k, v) -- forward, mandatory!
+    local mm = \s,k,v =>
+      trace(s,k,v) -- logging
+      nwidx(s,k,v) -- forward, mandatory!
     end
     self:set_metamethod({__newindex = mm}, true) -- override!
   end
-  set_notification(MAD.Object) -- before any child creation
+  set_notification(MAD.Object) -- notify writes to any children
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
-      is_callable in require 'madl_utils'
+      is_metaname, is_callable in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
-
--- metamethods
-local meta = { -- from lj_obj.h + __init
-  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
-  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
-  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
-  '__unm',
-}
-for _,v in ipairs(meta) do meta[v]=v end -- build dictionary
 
 -- metatable of objects
 local MT = {}
@@ -187,8 +170,6 @@ local var0 = setmetatable({}, {
 -- metatable of 'true functions' proxy
 local MF = {
   __call      = \t,... -> t[fct](...),
-  __index     := error "forbidden read access to object function proxy",
-  __newindex  := error "forbidden write access to object function proxy",
   __metatable = false,
 }
 
@@ -331,12 +312,12 @@ NAME
 
 SYNOPSIS
   set_variable  (obj, {...} [, override])
-  set_function  (obj, {...} [, override [, ignore]])
-  set_metamethod(obj, {...} [, override [, ignore]])
+  set_function  (obj, {...} [, override [, strict]])
+  set_metamethod(obj, {...} [, override [, strict]])
 
   obj:set_variable  ({...} [, override])
-  obj:set_function  ({...} [, override [, ignore]])
-  obj:set_metamethod({...} [, override [, ignore]])
+  obj:set_function  ({...} [, override [, strict]])
+  obj:set_metamethod({...} [, override [, strict]])
 
 DESCRIPTION
   The set_variable method sets or updates values from a raw table. The
@@ -346,7 +327,7 @@ DESCRIPTION
   that are shared by children (see the object model scheme). The methods set,
   setf and setmm are aliases for set_variable, set_function, set_metamethod
   respectively. The default value for override is 'false' for all methods except
-  set_variable, for which it is 'true'. The default value for ignore is 'false'.
+  set_variable, for which it is 'true'. The default value for strict is 'true'.
 
 RETURN VALUE
   The object.
@@ -357,9 +338,9 @@ ERRORS
   values in the raw table (argument #2) are not callable. All these methods trig
   an error if keys in the raw table (argument #2) already exist and overriding
   is not allowed by argument #3. The components for set_function must be
-  callable, unless ignore is 'true'. The metamethod names for set_metamethod
+  callable, unless strict is 'false'. The metamethod names for set_metamethod
   must be one of the supported Lua metamethod name or the MAD specific __init
-  metamethod name, unless ignore is 'true'.
+  metamethod name, unless strict is 'false'.
 
 EXAMPLES
   Point = MAD.Object {}                -- point is an instance of Object
@@ -391,27 +372,27 @@ local function set_variable (self, tbl, override)
   return self
 end
 
-local function set_function (self, tbl, override, ignore)
+local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,f in pairs(tbl) do
-    assert(is_callable(f) or ignore==true, "invalid component (callable expected)")
+    assert(is_callable(f) or strict==false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
     rawset(var, k, is_function(f) and fproxy(f) or f)
   end
   return self
 end
 
-local function set_metamethod (self, tbl, override, ignore)
+local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create a new metatable if shared with parent
-    sm={} ; for _,v in ipairs(meta) do sm[v] = pm[v] end
+    sm={} ; for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
-    assert(meta[k] == k  or ignore==true, "invalid key (metamethod expected)")
+    assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
     assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
     rawset(sm, k, mm)
   end
@@ -432,7 +413,7 @@ local function rawdump (self, file_, level_, indent_, vars_)
   for k,v in pairs(sv) do
     for i=1,indent do file:write("  ") end -- indent
     file:write(tostring(k))
-        if is_string(v) then file:write(": '", tostring(v)     , "'")
+        if is_string(v) then file:write(": '", tostring(v):sub(1,15), "'")
     elseif is_fproxy(v) then file:write(": [", tostring(v[fct]), "]")
                         else file:write(":  ", tostring(v)) end
     if vars[k] and string.sub(k,1,2) ~= '__' then -- mark overrides
