@@ -25,7 +25,7 @@
 
 local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
       assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
-local is_function, is_table, Object in MAD
+local is_function, is_table, is_object, is_readonly, Object in MAD
 local sin in math
 
 -- regression test suite ------------------------------------------------------o
@@ -37,82 +37,179 @@ function TestObject:testConstructor()
   local p1 = Object {}
   local p2 = Object 'p2'
   local p3 = Object
+  local p4 = Object('p4',{})
+
+  local p00 = p0 'p00' {}
+  local p01 = p0 {}
+  local p02 = p0 'p02'
+  local p03 = p0
+  local p04 = p0('p04',{})
+
+  local get = \s,k s[k]
+  local set = \s,k,v => s[k]=v end
+  local msg = {
+    "forbidden read access to incomplete object",
+    "forbidden write access to incomplete object",
+    "forbidden write access to readonly object",
+    "invalid argument #1 to constructor (string or raw table expected)",
+    "invalid argument #2 to constructor (raw table expected)"
+  }
+
+  -- invalid ctor argument
+  assertErrorMsgContains(msg[4], Object, true)
+  assertErrorMsgContains(msg[4], Object, 1)
+  assertErrorMsgContains(msg[4], Object, \ ())
+  assertErrorMsgContains(msg[4], Object, Object)
+  assertErrorMsgContains(msg[5], Object, 'p', true)
+  assertErrorMsgContains(msg[5], Object, 'p', 1)
+  assertErrorMsgContains(msg[5], Object, 'p', '1')
+  assertErrorMsgContains(msg[5], Object, 'p', \ ())
+  assertErrorMsgContains(msg[5], Object, 'p', Object)
+
+  -- read
+  assertNil( p0.a )
+  assertNil( p1.a )
+  assertErrorMsgContains(msg[1], get, p2, a)
+  assertNil( p3.a )
+  assertNil( p4.a )
+
+  -- write
+  p0.a = ''   assertEquals( p0.a, '' )
+  p1.a = ''   assertEquals( p1.a, '' )
+  assertErrorMsgContains(msg[2], set, p2, a, '')
+  assertErrorMsgContains(msg[3], set, p3, a, '')
+  p4.a = ''   assertEquals( p4.a, '' )
+
+  -- read child
+  assertEquals( p00.a, '' )
+  assertEquals( p01.a, '' )
+  assertErrorMsgContains(msg[1], get, p02, a)
+  assertEquals( p03.a, '' )
+  assertEquals( p04.a, '' )
+
+  -- write child
+  p00.a = '0'   assertEquals( p00.a, '0' )
+  p01.a = '0'   assertEquals( p01.a, '0' )
+  assertErrorMsgContains(msg[2], set, p02, a, '')
+  p03.a = '0'   assertEquals( p03.a, '0' )
+  p04.a = '0'   assertEquals( p04.a, '0' )
+end
+
+function TestObject:testIsObject()
+  local p0 = Object 'p0' {}
+  local p1 = Object {}
+  local p2 = Object 'p2'
+  local p3 = Object
 
   local p00 = p0 'p00' {}
   local p01 = p0 {}
   local p02 = p0 'p02'
   local p03 = p0
 
-  assertNil( p0.a )
-  assertNil( p1.a )
-  assertNil( rawget(p2, a) )
-  assertNil( p3.a )
-
-  p0.a = ''   assertEquals( p0.a, '' )
-  p1.a = ''   assertEquals( p1.a, '' )
---  p2.a = ''   assertEquals( p2.a, '' )
---  p3.a = ''   assertEquals( p3.a, '' )
-
-!  assertNil( p00.a )
-!  assertNil( p01.a )
-!  assertNil( p02.a )
-!  assertNil( p03.a )
-!
-!  p00.a = '0'   assertEquals( p00.a, '0' )
-!  p01.a = '0'   assertEquals( p01.a, '0' )
-!  p02.a = '0'   assertEquals( p02.a, '0' )
-!  p03.a = '0'   assertEquals( p03.a, '0' )
-
-
-
-  --isErrEqu( "incomplete object initialization", )
-  --isErrEqu( "incomplete object initialization", )
-  --isErrEqu( "private object", )
-  --isErrEqu( "private const object", )
+  assertTrue ( is_object(p0) )
+  assertTrue ( is_object(p1) )
+  assertTrue ( is_object(p2) )
+  assertTrue ( is_object(p3) )
+  assertTrue ( is_object(p00) )
+  assertTrue ( is_object(p01) )
+  assertTrue ( is_object(p02) )
+  assertTrue ( is_object(p03) )
+  assertFalse( is_object(nil)  )
+  assertFalse( is_object(1)    )
+  assertFalse( is_object({})   )
+  assertFalse( is_object(\ ()) )
 end
 
-function TestObject:testIsObject()
+function TestObject:testIsReadonly()
+  local p0 = Object 'p0' {}
+  local p1 = Object {}
+  local p2 = Object 'p2'
+  local p3 = Object
+
+  local p00 = p0 'p00' {}
+  local p01 = p0 {}
+  local p02 = p0 'p02'
+  local p03 = p0
+
+  assertFalse( is_readonly(p0)  )
+  assertFalse( is_readonly(p1)  )
+  assertFalse( is_readonly(p2)  )
+  assertTrue ( is_readonly(p3)  )
+  assertFalse( is_readonly(p00) )
+  assertFalse( is_readonly(p01) )
+  assertFalse( is_readonly(p02) )
+  assertFalse( is_readonly(p03) )
+  assertTrue ( is_readonly(p03:set_readonly(true)) )
+  p0:set_readonly(true)
+  assertTrue ( is_readonly(p0)  )
+  assertFalse( is_readonly(p00) )
 end
 
 function TestObject:testInheritance()
-  local Point = Object 'Point' {}
-  local p1 = Point 'p1' { x=3, y=2, z=1  }
-  local p2 = p1    'p2' { x=2, y=1 }
-  local p3 = p2    'p3' { x=1  }
-  local p4 = p3    'p4' { }
-  local p5 = p1    'p5' { x=nil, y='a', k=1}
-  assertEquals( p2.z   , p1.z )
-  assertEquals( p2.z   , 1    )
-  assertEquals( p2.x   , 2    )
-  assertEquals( p2.y   , 1    )
-  assertEquals( p3.y   , p2.y )
-  assertEquals( p3.z   , p2.z )
-  assertEquals( p3.z   , p1.z )
-  assertEquals( p3.name, 'p3' )
-  assertEquals( p3.x   , 1    )
-  assertEquals( p4.x   , p3.x )
-  assertEquals( p4.y   , p2.y )
-  assertEquals( p4.z   , p1.z )
-  assertEquals( p5.x   , p1.x )
-  assertEquals( p5.y   , 'a'  )
-  assertEquals( p5.z   , p1.z )
-  assertEquals( p5.k   , 1    )
+  local p0 = Object {}
+  local p1 = p0 { x=3, y=2, z=1  }
+  local p2 = p1 { x=2, y=1 }
+  local p3 = p2 { x=1  }
+  local p4 = p3 { }
+
+  assertEquals( p0 , {} )
+  assertEquals( p1 , { x=3, y=2, z=1 } )
+  assertEquals( p2 , { x=2, y=1, z=1 } )
+  assertEquals( p3 , { x=1, y=1, z=1 } )
+  assertEquals( p4 , { x=1, y=1, z=1 } )
+  p2:set{x=5, y=6}  p4:set{y=5, z=6}
+  assertEquals( p0 , {} )
+  assertEquals( p1 , { x=3, y=2, z=1 } )
+  assertEquals( p2 , { x=5, y=6, z=1 } )
+  assertEquals( p3 , { x=1, y=6, z=1 } )
+  assertEquals( p4 , { x=1, y=5, z=6 } )
+
+  assertNotEquals( p2 , { x=4, y=6, z=1 } )
 end
 
 function TestObject:testIsInstanceOf()
-  local Po = Object 'Po' {}
-  local p1 = Po 'p1' { x=3, y=2, z=1  }
-  local p2 = p1 'p2' { y=\s 2*s.x }
-  local a = Object { x=1 }
-  assertTrue ( p1:is_instanceOf(Po) )
-  assertTrue ( p2:is_instanceOf(Po) )
+  local p0 = Object {}
+  local p1 = p0 { }
+  local p2 = p1 { }
+  local p3 = p1 { }
+  local p4 = p3 { }
+
+  assertTrue ( Object:is_instanceOf(Object) )
+
+  assertTrue ( p0:is_instanceOf(Object) )
+  assertTrue ( p0:is_instanceOf(p0) )
+  assertFalse( p0:is_instanceOf(p1) )
+  assertFalse( p0:is_instanceOf(p2) )
+  assertFalse( p0:is_instanceOf(p3) )
+  assertFalse( p0:is_instanceOf(p4) )
+
+  assertTrue ( p1:is_instanceOf(Object) )
+  assertTrue ( p1:is_instanceOf(p0) )
+  assertTrue ( p1:is_instanceOf(p1) )
+  assertFalse( p1:is_instanceOf(p2) )
+  assertFalse( p1:is_instanceOf(p3) )
+  assertFalse( p1:is_instanceOf(p4) )
+
+  assertTrue ( p2:is_instanceOf(Object) )
+  assertTrue ( p2:is_instanceOf(p0) )
   assertTrue ( p2:is_instanceOf(p1) )
-  assertTrue ( p1:is_instanceOf(Po) )
-  assertFalse( Po:is_instanceOf(p1) )
-  assertFalse( Po:is_instanceOf(p2) )
-  assertFalse( Po:is_instanceOf(a)  )
-  assertTrue ( p1:is_instanceOf(Po) )
-  assertFalse( Po:is_instanceOf(p1) )
+  assertTrue ( p2:is_instanceOf(p2) )
+  assertFalse( p2:is_instanceOf(p3) )
+  assertFalse( p2:is_instanceOf(p4) )
+
+  assertTrue ( p3:is_instanceOf(Object) )
+  assertTrue ( p3:is_instanceOf(p0) )
+  assertTrue ( p3:is_instanceOf(p1) )
+  assertTrue ( p3:is_instanceOf(p3) )
+
+  assertTrue ( p4:is_instanceOf(Object) )
+  assertTrue ( p4:is_instanceOf(p0) )
+  assertTrue ( p4:is_instanceOf(p1) )
+  assertTrue ( p4:is_instanceOf(p3) )
+  assertTrue ( p4:is_instanceOf(p4) )
+
+  assertFalse( p4:is_instanceOf(p2) )
+  assertFalse( p4:is_instanceOf(p2) )
 end
 
 function TestObject:testValueSemantic()
