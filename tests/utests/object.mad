@@ -138,6 +138,7 @@ function TestObject:testIsReadonly()
   local msg = {
     "invalid argument #1 (forbidden access to 'Object')",
     "invalid argument #2 (boolean or nil expected)",
+    "invalid argument #1 (forbidden access to 'ro_obj')",
   }
 
   assertFalse( is_readonly(p0)  )
@@ -402,6 +403,30 @@ function TestObject:testMetamethodSharing()
   --isErrEqu( "invalid 'self' argument, valid object expected", )
   --isErrEqu( "invalid 'name' argument, not a metamethod"     , )
   --isErrEqu( "invalid 'func' argument, not callable"         , )
+end
+
+function TestObject:testMetamethodForwarding()
+  local msg = {
+    "invalid argument #1 (forbidden access to 'ro_obj')",
+    "invalid argument #2 (boolean or nil expected)",
+  }
+
+  local ro_obj = Object {} :set_readonly(true)
+  local parent = ro_obj.parent
+  ro_obj:set_function {
+    set_readonly = \s,f =>
+      assert(s ~= ro_obj, msg[1])
+      return parent.set_readonly(s,f)
+    end
+  }
+  ro_obj:set_metamethod {__init = \s -> s:set_readonly(true) }
+
+  assertErrorMsgContains(msg[1], ro_obj.set_readonly, ro_obj, true)
+
+  local ro_chld = ro_obj {}
+  assertTrue ( is_readonly(ro_chld) )
+  assertFalse( is_readonly(ro_chld:set_readonly(false)) )
+  assertErrorMsgContains(msg[2], ro_chld.set_readonly, ro_chld, 1)
 end
 
 function TestObject:testMetamethodNotification()

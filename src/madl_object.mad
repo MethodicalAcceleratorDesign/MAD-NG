@@ -129,7 +129,7 @@ Catching creation:
   Example how to count the number of objects created
 
   local count = 0
-  local set_counter = \s s:setmm{ __init =\=> count=count+1 end }
+  local set_counter = \s s:setmm { __init =\=> count=count+1 end }
   set_counter(MAD.Object) -- count children creation
 
 Catching writes:
@@ -145,6 +145,25 @@ Catching writes:
     self:set_metamethod({__newindex = mm}, true) -- override!
   end
   set_notification(MAD.Object) -- notify writes to any children
+
+Forwarding to parent:
+---------------------
+  Example how to forbid status change through set_readonly
+
+  local ro_obj = Object {} :set_readonly(true) -- set status
+  local parent = ro_obj.parent
+  ro_obj:set_function {
+    set_readonly = \s,f =>                     -- block any changes for ro_obj
+      assert(s ~= ro_obj, "invalid argument #1 (forbidden access to 'ro_obj')")
+      return parent.set_readonly(s,f)          -- forward to parent for children
+    end
+  }
+
+Copying status to children:
+---------------------------
+  Example how to make children of ro_obj readonly by default (but modifiable)
+
+  ro_obj:set_metamethod {__init = \s -> s:set_readonly(true) }
 ]=]
 
 -- locals ---------------------------------------------------------------------o
@@ -458,10 +477,11 @@ M.rawdump        = fproxy( rawdump        )
 M.set, M.setf, M.setmm = M.set_variable, M.set_function, M.set_metamethod
 
 -- members
-M.__id  = 'Object'
-M.__par = parent
-M.__var = \s rawget(s,var) -- alias
-M.name  = \s s.__id        -- alias
+M.__id   = 'Object'
+M.__par  = parent
+M.__var  = \s rawget(s,var) -- alias
+M.name   = \s s.__id        -- alias
+M.parent = \s s.__par       -- alias
 
 -- end ------------------------------------------------------------------------o
 return {
