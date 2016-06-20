@@ -25,7 +25,8 @@
 
 local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
       assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
-local is_function, is_table, is_object, is_readonly, Object in MAD
+local is_function, is_table, is_object, is_instanceOf, is_readonly, Object
+      in MAD
 local sin in math
 
 -- regression test suite ------------------------------------------------------o
@@ -65,6 +66,9 @@ function TestObject:testConstructor()
   assertErrorMsgContains(msg[5], Object, 'p', '1')
   assertErrorMsgContains(msg[5], Object, 'p', \ ())
   assertErrorMsgContains(msg[5], Object, 'p', Object)
+
+  -- ctor equivalence
+  assertEquals(p04, Object 'p04' {})
 
   -- read
   assertNil( p0.a )
@@ -131,6 +135,11 @@ function TestObject:testIsReadonly()
   local p02 = p0 'p02'
   local p03 = p0
 
+  local msg = {
+    "invalid argument #1 (forbidden access to 'Object')",
+    "invalid argument #2 (boolean or nil expected)",
+  }
+
   assertFalse( is_readonly(p0)  )
   assertFalse( is_readonly(p1)  )
   assertFalse( is_readonly(p2)  )
@@ -143,6 +152,10 @@ function TestObject:testIsReadonly()
   p0:set_readonly(true)
   assertTrue ( is_readonly(p0)  )
   assertFalse( is_readonly(p00) )
+  assertErrorMsgContains(msg[1], Object.set_readonly, Object, true)
+  assertErrorMsgContains(msg[1], Object.set_readonly, Object, false)
+  assertErrorMsgContains(msg[2], p0.set_readonly, p0, 1)
+  assertErrorMsgContains(msg[2], p00.set_readonly, p0, '')
 end
 
 function TestObject:testInheritance()
@@ -152,19 +165,34 @@ function TestObject:testInheritance()
   local p3 = p2 { x=1  }
   local p4 = p3 { }
 
-  assertEquals( p0 , {} )
-  assertEquals( p1 , { x=3, y=2, z=1 } )
-  assertEquals( p2 , { x=2, y=1, z=1 } )
-  assertEquals( p3 , { x=1, y=1, z=1 } )
-  assertEquals( p4 , { x=1, y=1, z=1 } )
+  assertEquals   ( p0 , {} )
+  assertEquals   ( p1 , { x=3, y=2, z=1 } )
+  assertNotEquals( p1 , { x=3, y=2 } )
+  assertEquals   ( p2 , { x=2, y=1, z=1 } )
+  assertEquals   ( p2 , { x=2, y=1 } )
+  assertNotEquals( p2 , { x=2 } )
+  assertEquals   ( p3 , { x=1, y=1, z=1 } )
+  assertEquals   ( p3 , { x=1, y=1 } )
+  assertEquals   ( p3 , { x=1 } )
+  assertNotEquals( p3 , {} )
+  assertEquals   ( p4 , { x=1, y=1, z=1 } )
+  assertEquals   ( p4 , { x=1, y=1 } )
+  assertEquals   ( p4 , { x=1 } )
+  assertEquals   ( p4 , {} )
   p2:set{x=5, y=6}  p4:set{y=5, z=6}
-  assertEquals( p0 , {} )
-  assertEquals( p1 , { x=3, y=2, z=1 } )
-  assertEquals( p2 , { x=5, y=6, z=1 } )
-  assertEquals( p3 , { x=1, y=6, z=1 } )
-  assertEquals( p4 , { x=1, y=5, z=6 } )
-
-  assertNotEquals( p2 , { x=4, y=6, z=1 } )
+  assertEquals   ( p0 , {} )
+  assertEquals   ( p1 , { x=3, y=2, z=1 } )
+  assertNotEquals( p1 , { x=3, y=2 } )
+  assertEquals   ( p2 , { x=5, y=6, z=1 } )
+  assertEquals   ( p2 , { x=5, y=6 } )
+  assertNotEquals( p2 , { x=5 } )
+  assertEquals   ( p3 , { x=1, y=6, z=1 } )
+  assertEquals   ( p3 , { x=1, y=6 } )
+  assertEquals   ( p3 , { x=1 } )
+  assertNotEquals( p3 , {} )
+  assertEquals   ( p4 , { x=1, y=5, z=6 } )
+  assertEquals   ( p4 , { y=5, z=6 } )
+  assertNotEquals( p4 , { z=6 } )
 end
 
 function TestObject:testIsInstanceOf()
@@ -173,6 +201,10 @@ function TestObject:testIsInstanceOf()
   local p2 = p1 { }
   local p3 = p1 { }
   local p4 = p3 { }
+
+  local msg = {
+    "invalid argument #2 (object expected)",
+  }
 
   assertTrue ( Object:is_instanceOf(Object) )
 
@@ -200,19 +232,27 @@ function TestObject:testIsInstanceOf()
   assertTrue ( p3:is_instanceOf(Object) )
   assertTrue ( p3:is_instanceOf(p0) )
   assertTrue ( p3:is_instanceOf(p1) )
+  assertFalse( p3:is_instanceOf(p2) )
   assertTrue ( p3:is_instanceOf(p3) )
+  assertFalse( p3:is_instanceOf(p4) )
 
   assertTrue ( p4:is_instanceOf(Object) )
   assertTrue ( p4:is_instanceOf(p0) )
   assertTrue ( p4:is_instanceOf(p1) )
+  assertFalse( p4:is_instanceOf(p2) )
   assertTrue ( p4:is_instanceOf(p3) )
   assertTrue ( p4:is_instanceOf(p4) )
 
-  assertFalse( p4:is_instanceOf(p2) )
-  assertFalse( p4:is_instanceOf(p2) )
+  assertFalse( is_instanceOf(0 , p0) )
+  assertFalse( is_instanceOf('', p0) )
+  assertFalse( is_instanceOf({}, p0) )
+
+  assertErrorMsgContains(msg[1], is_instanceOf, p0, 0)
+  assertErrorMsgContains(msg[1], is_instanceOf, p0, '')
+  assertErrorMsgContains(msg[1], is_instanceOf, p0, {})
 end
 
-function TestObject:testValueSemantic()
+function TestObject:testValueSemantic() -- TODO
   local Po = Object 'Po' {}
   local p1 = Po 'p1' { x=3, y=2, z=1  }
   local p2 = p1 'p2' { y=\s 2*s.x }
