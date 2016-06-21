@@ -24,9 +24,10 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
-      assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
-local is_function, is_table, is_object, is_instanceOf, is_readonly, Object
-      in MAD
+      assertAlmostEquals, assertStrContains, assertErrorMsgContains
+      in require 'luaunit'
+local is_number, is_function, is_table, is_object, is_instanceOf, is_readonly,
+      Object in MAD
 local sin in math
 
 -- regression test suite ------------------------------------------------------o
@@ -431,6 +432,50 @@ function TestObject:testSpecialVariable()
   assertEquals   ( p4.__par.__var.z(p4).y, p3.z.y )
 end
 
+function TestObject:testIterators()
+  local p0 = Object 'p0' { 2, 3, 4, x=1, y=2, z:=3 }
+  local p1 = p0 'p1' { 7, 8, x=-1, y={} }
+  local c
+
+  assertEquals(#p0, 3)
+  assertEquals(#p1, 2)
+
+  c=0 for k,v in  pairs(p0) do c=c+1 assertEquals(p0[k], v) end
+  assertEquals(c , 7)
+  c=0 for k,v in  pairs(p1) do c=c+1 assertEquals(p1[k], v) end
+  assertEquals(c , 5)
+  c=0 for i,v in ipairs(p0) do c=c+1 assertEquals(p0[i], v) end
+  assertEquals(c , 3)
+  c=0 for i,v in ipairs(p1) do c=c+1 assertEquals(p1[i], v) end
+  assertEquals(c , 2)
+  c=0 for i=1,#p0           do c=c+1 assertEquals(p0[i], i+1) end
+  assertEquals(c , 3)
+  c=0 for i=1,#p1           do c=c+1 assertEquals(p1[i], i+6) end
+  assertEquals(c , 2)
+  c=1 while p0[c]           do c=c+1 assertEquals(p0[c-1], c) end
+  assertEquals(c , 4)
+  c=1 while p1[c]           do c=c+1 assertEquals(p1[c-1]%5, c) end
+  assertEquals(c , 4)
+
+  -- bypass function evaluation, v may be a function but loops get same length
+  c=0 for k,v in  pairs(p0.__var) do c=c+1 assertEquals(p0.__var[k], v) end
+  assertEquals(c , 7)
+  c=0 for k,v in  pairs(p1.__var) do c=c+1 assertEquals(p1.__var[k], v) end
+  assertEquals(c , 5)
+  c=0 for i,v in ipairs(p0.__var) do c=c+1 assertEquals(p0.__var[i], v) end
+  assertEquals(c , 3)
+  c=0 for i,v in ipairs(p1.__var) do c=c+1 assertEquals(p1.__var[i], v) end
+  assertEquals(c , 2)
+  c=0 for i=1,#p0.__var           do c=c+1 assertEquals(p0.__var[i], i+1) end
+  assertEquals(c , 3)
+  c=0 for i=1,#p1.__var           do c=c+1 assertEquals(p1.__var[i], i+6) end
+  assertEquals(c , 2)
+  c=1 while p0.__var[c]           do c=c+1 assertEquals(p0.__var[c-1], c) end
+  assertEquals(c , 4)
+  c=1 while p1.__var[c]           do c=c+1 assertEquals(p1.__var[c-1]%5, c) end
+  assertEquals(c , 4)
+end
+
 function TestObject:testGetVariable()
   local p0 = Object 'p0' { x=1, y=2, z:=3 }
   local p1 = p0 'p1' { x=-1, y={} }
@@ -510,15 +555,49 @@ function TestObject:testSetVariable()
 end
 
 function TestObject:testSetFunction()
-  local p0 = Object 'p0' { x=1, y=2, z:=3 }
-  local p1 = p0 'p1' { x=-1, y={} }
-  local vs = {'name', 'x','y','z'}
+  local p0 = Object 'p0' { z:=3 }
+  local p1 = p0 'p1' {}
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (raw table expected)",
     "invalid value (callable expected)",
     "cannot override function",
   }
+  p0:set_function { x:=2, y =\s,n s.z*n }
+
+  assertFalse ( is_function(p0.x) )
+  assertFalse ( is_function(p0.y) )
+  assertFalse ( is_function(p0.z) )
+  assertEquals( p0.z, 3 )
+  assertFalse ( is_function(p0:get{'z'}.z) )
+  assertTrue  ( is_function(p0:get({'z'},false).z) )
+  assertTrue  ( is_function(p0.__var.z) )
+
+  assertFalse ( is_function(p1.x) )
+  assertFalse ( is_function(p1.y) )
+  assertFalse ( is_function(p1.z) )
+  assertEquals( p1.x(), 2)
+  assertEquals( p1:y(3), 9)
+
+  assertTrue  ( is_table(p1.x) )
+  assertTrue  ( is_table(p1.y) )
+  assertTrue  ( is_number(p1.z) )
+
+  p1:set_function({ x:=\ 2, y =\s\n s.z*n })
+
+  assertTrue  ( is_table   (p1.x) )
+  assertTrue  ( is_function(p1.x()) )
+  assertEquals( p1.x()(), 2)
+
+  assertTrue  ( is_table   (p1.y) )
+  assertTrue  ( is_function(p1:y()) )
+  assertEquals( p1:y()(3), 9)
+
+  p1.y = \s\n s.z*n -- not equivalent to setf and slower!
+  assertFalse ( is_table   (p1.y) )
+  assertTrue  ( is_function(p1.y) )
+  assertFalse ( is_function(p1.y(3)) )
+  assertEquals( p1.y(3), 9)
 
   assertErrorMsgContains(msg[1], p0.setf, 1)
   assertErrorMsgContains(msg[1], p0.setf, '')
@@ -530,13 +609,46 @@ function TestObject:testSetFunction()
   assertErrorMsgContains(msg[3], p0.setf, p0, {x=1})
   assertErrorMsgContains(msg[3], p0.setf, p0, {x=''})
 
-  assertErrorMsgContains(msg[4], p0.setf, p0, {x:=3})
+  assertErrorMsgContains(msg[4], p0.setf, p0, {x:=3}, false)
 end
 
 function TestObject:testSetMetamethod()
-end
+  local p0 = Object 'p0' { 1, 2, z:=3 }
+  local p1 = p0 'p1' {}
+  local msg = {
+    "invalid argument #1 (object expected)",
+    "invalid argument #2 (raw table expected)",
+    "invalid key (metamethod expected)",
+    "cannot override metamethod",
+  }
+  local tostr = \s =>
+      local str = ''
+      for k,v in pairs(s) do str = str .. tostring(k) .. ', ' end
+      return str
+    end
 
-function TestObject:testMetamethodSharing()
+  p0:set_metamethod { __tostring = tostr }
+  assertEquals     (tostring(p0), '1, 2, z, __id, ')
+  assertNotEquals  (tostring(p1), '__id, ')
+  assertStrContains(tostring(p1), 'table:')
+
+  p1:set_metamethod { __tostring = tostr }
+  assertEquals      (tostring(p1), '__id, ')
+  p1:set_function({ x:=\ 2, y =\s\n s.z*n }) p1.z =\ 3
+  assertNotEquals   (tostring(p1), 'x, y, z, __id, ')
+  assertEquals      (tostring(p1), 'y, x, __id, z, ')
+
+  assertErrorMsgContains(msg[1], p0.setmm, 1)
+  assertErrorMsgContains(msg[1], p0.setmm, '')
+  assertErrorMsgContains(msg[1], p0.setmm, {})
+
+  assertErrorMsgContains(msg[2], p0.setmm, p0, 1)
+  assertErrorMsgContains(msg[2], p0.setmm, p0, '')
+
+  assertErrorMsgContains(msg[3], p0.setmm, p0, {x=1})
+  assertErrorMsgContains(msg[3], p0.setmm, p0, {y=''})
+
+  assertErrorMsgContains(msg[4], p0.setmm, p0, {__index=false}, false)
 end
 
 function TestObject:testMetamethodForwarding()
