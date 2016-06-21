@@ -173,6 +173,9 @@ local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
 
 -- implementation -------------------------------------------------------------o
 
+-- root of all objects
+local Object
+
 -- metatable of objects
 local MT = {}
 
@@ -220,11 +223,11 @@ local function is_readonly (a)
 end
 
 local function set_readonly (a, b)
-  assert(rawget(a,var) ~= M,
+  assert(a ~= Object,
          "invalid argument #1 (forbidden access to 'Object')")
   assert(is_nil(b) or is_boolean(b),
          "invalid argument #2 (boolean or nil expected)")
-  rawset(a, rof, b)
+  rawset(a, rof, b ~= false)
   return a
 end
 
@@ -404,22 +407,23 @@ SYNOPSIS
   obj:set_variable  ({...} [, override])
   obj:set_function  ({...} [, override [, strict]])
   obj:set_metamethod({...} [, override [, strict]])
-  obj:get_allkeys   (depthlevel)
+  obj:get_allkeys   ([class [, pattern]])
 
 DESCRIPTION
   The get_variable method gets values from a raw table containing the list of
   keys to get, following the value semantic of functions unless eval is 'false'.
-  The get_allkeys collect all the variables keys of an object, including those
-  inherited from parents up to depthlevel or Object (excluded). The set_variable
-  method sets or updates values from a raw table. The set_function method sets
-  or updates functions from a raw table in a special way that bypasses the value
-  semantic of functions in the object model and enforces the call semantic. The
-  set_metamethod method sets metamethods from a raw table that are shared by
-  children (see the object model scheme). The methods get, set, setf and setmm
-  are aliases for get_variable, set_variable, set_function, set_metamethod
-  respectively. The default value for override is 'true' for set_variable and
-  set_function and 'false' for set_metamethod. The default value for eval and
-  strict is 'true'. The default value for depthlevel is 'huge'.
+  The get_allkeys method collects all the variables keys of an object that
+  matches the pattern (if any), including those inherited from parents up to
+  class (excluded). The set_variable method sets or updates values from a raw
+  table. The set_function method sets or updates functions from a raw table in a
+  special way that bypasses the value semantic of functions in the object model
+  and enforces the call semantic. The set_metamethod method sets metamethods
+  from a raw table that are shared by children (see the object model scheme).
+  The methods get, set, setf and setmm are aliases for get_variable,
+  set_variable, set_function, set_metamethod respectively. The default value for
+  override is 'true' for set_variable and set_function and 'false' for
+  set_metamethod. The default value for eval and strict is 'true'. The default
+  value for class is 'Object' and for pattern is '' (all strings match '').
 
 RETURN VALUE
   A table containing the key-value pairs for the specified keys for the method
@@ -448,8 +452,8 @@ EXAMPLES
   t = p1:get{'x','y','z','z2','z3'}    -- get variables values
   print(t.x, t.y, t.z, t.z2, t.z3)
     1       2       3       6       9
-  t = p1:get(p1:getk())                -- get all variables values
-
+  t = p1:get(p1:getk(nil,'[^_]'))      -- get all variables values with keys not
+                                       --  starting by an underscore
 SEE ALSO
   None.
 ]=]
@@ -457,26 +461,10 @@ M.__help.getk           = M.__help.get
 M.__help.set            = M.__help.get
 M.__help.setf           = M.__help.get
 M.__help.setmm          = M.__help.get
-M.__help.get_key        = M.__help.get
+M.__help.get_allkeys    = M.__help.get
 M.__help.set_variable   = M.__help.get
 M.__help.set_function   = M.__help.get
 M.__help.set_metamethod = M.__help.get
-
-local function get_allkeys (self, level)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  local var, key = self[var], {}
-
-  while var ~= M and level > 0 do
-    for k in pairs(var) do key[k] = k end
-    level, self = level-1, parent(self)
-    var = self[var]
-  end
-
-  for k in pairs(key) do
-    key[#key+1], key[k] = key[k], nil
-  end
-  return key
-end
 
 local function get_variable (self, tbl, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
@@ -527,40 +515,62 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
--- debug
-
-local function rawdump (self, file_, level_, indent_, vars_)
-  local sv = self[var]
---  print('self.name=', self.name, 'self', self, 'var', sv, 'parent', parent(self))
-  local file, level, indent, vars =
-    file_ or io.stdout, level_ or 1e9, indent_ or 1, vars_ or {}
-  -- header
-  for i=1,indent-1 do file:write("  ") end -- indent
-  file:write("+ [", tostring(sv), "]\n")
-  -- variables
-  for k,v in pairs(sv) do
-    for i=1,indent do file:write("  ") end -- indent
-    file:write(tostring(k))
-        if is_string(v) then file:write(": '", tostring(v):sub(1,15), "'")
-    elseif is_fproxy(v) then file:write(": [", tostring(v[fct]), "]")
-                        else file:write(":  ", tostring(v)) end
-    if vars[k] and string.sub(k,1,2) ~= '__' then -- mark overrides
-      file:write(" (")
-      for i=1,vars[k] do file:write('*') end
-      file:write(")");
+local function get_allkeys (self, class, pattern)
+  class, pattern = class or Object, pattern or ''
+  assert(is_object(self)   , "invalid argument #1 (object expected)")
+  assert(is_object(class)  , "invalid argument #2 (object expected)")
+  assert(is_string(pattern), "invalid argument #3 (string expected)")
+  local key = {}
+  while self and self ~= class do
+    for k in pairs(self[var]) do key[k] = k end
+    self = parent(self)
+  end
+  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  local res = {}
+  for k in pairs(key) do
+    if is_string(k) and string.find(k, pattern) then
+      res[#res+1] = k
     end
-    vars[k] = (vars[k] or 0)+1
-    file:write("\n")
   end
-  -- parent
-  if level > 1 and sv ~= M then
-    rawdump(parent(self), file, level-1, indent+1, vars)
-  end
+  return res
 end
 
--- root Object = module
+-- debug
 
-local Object = setmetatable({[var]=M, [rof]=true},MT)
+local function strdump (self, class, pattern)
+  class, pattern = class or Object, pattern or ''
+  assert(is_object(self)   , "invalid argument #1 (object expected)")
+  assert(is_object(class)  , "invalid argument #2 (object expected)")
+  assert(is_string(pattern), "invalid argument #3 (string expected)")
+  local cnt, res, spc, str = {}, {}, ""
+  while self and self ~= class do
+    -- header
+    str = rawget(self[var], '__id') and (" '"..self[var].__id.."'") or ""
+    res[#res+1] = spc.."+ ["..tostring(self[var]).."]"..str
+    spc = spc .. "  "
+    -- variables
+    for k,v in pairs(self[var]) do
+      if is_string(k) and k ~= '__id' and string.find(k, pattern) then
+        str = spc .. tostring(k)
+            if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
+        elseif is_fproxy(v) then str = str..": ["..tostring(v[fct]).."]"
+        else                     str = str..":  "..tostring(v) end
+        if cnt[k]
+        then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
+        else cnt[k] = 0 end
+        cnt[k] = cnt[k] + 1
+        res[#res+1] = str
+      end
+    end
+    self = parent(self)
+  end
+  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  res[#res+1] = ''
+  return table.concat(res, '\n')
+end
+
+-- root Object variables = module
+Object = setmetatable({[var]=M, [rof]=true},MT)
 
  -- parent link
 setmetatable(M, Object)
@@ -574,7 +584,7 @@ M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
 M.set_metamethod = fproxy( set_metamethod )
-M.rawdump        = fproxy( rawdump        )
+M.strdump        = fproxy( strdump        )
 
 -- aliases
 M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys,
