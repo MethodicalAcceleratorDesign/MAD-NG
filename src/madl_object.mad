@@ -275,9 +275,32 @@ function MT:__newindex (k, v)
   self[var][k] = v
 end
 
-function MT:__len   () return #self[var]        end
-function MT:__pairs () return pairs(self[var])  end
-function MT:__ipairs() return ipairs(self[var]) end
+function MT:__len ()
+  return #self[var]
+end
+
+local function iterk (self, k)
+  local v
+  k, v = next(self[var], k)
+  if is_function(v)
+  then return k, v(self)
+  else return k, v end
+end
+
+function MT:__pairs ()
+  return iterk, self, nil
+end
+
+local function iteri (self, i)
+  i = i + 1
+  local v = rawget(self[var], i)
+  if is_function(v) then return i, v(self)
+  elseif v ~= nil   then return i, v end
+end
+
+function MT:__ipairs()
+  return iteri, self, 0
+end
 
 -- object methods
 
@@ -332,6 +355,47 @@ M.__help.is_readonly   = M.__help.is_object
 M.__help.is_instanceOf = M.__help.is_object
 M.__help.set_readonly  = M.__help.is_object
 
+
+M.__help.iterators = [=[
+NAME
+  #, pairs, ipairs    -- length operator and iterators
+
+SYNOPSIS
+  #obj
+  for k,v in  pairs(obj) do ... end
+  for i,v in ipairs(obj) do ... end
+
+DESCRIPTION
+  The length operator is equivalent to the table length operator applied to the
+  object variables. The pairs and ipairs iterators iterate respectively over all
+  the keys and over all the list keys (indexes) of the object variables, but
+  not over the inherited variables. The function value semantic is preserved.
+
+RETURN VALUES
+  The length operator returns the number of items in the list part of the
+  object. The pairs and ipairs operators return the appropriate arguments for
+  stateless iterators, that is the iterator function, the object and the
+  pre-initial key.
+
+EXAMPLES
+  local p0 = MAD.Object 'p0' { 2, 3, 4, x=1, y=2, z:=3 }
+  local p1 = p0 'p1' { 7, 8, x=-1, y={} }
+
+  for i=1,#p0           do print(i,    p0[i]) end
+  for i=1,#p1           do print(i,    p1[i]) end
+  for k,v in  pairs(p0) do print(k, v, p0[k]) end
+  for k,v in  pairs(p1) do print(k, v, p1[k]) end
+  for i,v in ipairs(p0) do print(i, v, p0[i]) end
+  for i,v in ipairs(p1) do print(i, v, p1[i]) end
+
+SEE ALSO
+  None.
+]=]
+M.__help.length = M.__help.iterators
+M.__help.pairs  = M.__help.iterators
+M.__help.ipairs = M.__help.iterators
+
+
 M.__help.get = [=[
 NAME
   get_variable, set_variable, set_function, set_metamethod,
@@ -346,15 +410,15 @@ SYNOPSIS
 DESCRIPTION
   The get_variable method gets values from a raw table containing the list of
   keys to get, following the value semantic of functions unless eval is 'false'.
-  The The set_variable method sets or updates values from a raw table. The
-  set_function method sets functions from a raw table in a special way that
-  bypasses the value semantic of functions in the object model and enforces the
-  call semantic. The set_metamethod method sets metamethods from a raw table
-  that are shared by children (see the object model scheme). The methods get,
-  set, setf and setmm are aliases for get_variable, set_variable, set_function,
-  set_metamethod respectively. The default value for override is 'false' for all
-  methods except set_variable, for which it is 'true'. The default value for
-  eval and strict is 'true'.
+  The set_variable method sets or updates values from a raw table. The
+  set_function method sets or updates functions from a raw table in a special
+  way that bypasses the value semantic of functions in the object model and
+  enforces the call semantic. The set_metamethod method sets metamethods from a
+  raw table that are shared by children (see the object model scheme). The
+  methods get, set, setf and setmm are aliases for get_variable, set_variable,
+  set_function, set_metamethod respectively. The default value for override is
+  'true' for set_variable and set_function and 'false' for set_metamethod. The
+  default value for eval and strict is 'true'.
 
 RETURN VALUE
   A table containing the key-value pairs for the specified keys for the method
@@ -364,7 +428,7 @@ ERRORS
   All these methods trig an error if argument #1 is not a valid object and if
   argument #2 is not a raw table. The method set_function trig an error if
   values in the raw table (argument #2) are not callable. All these methods
-  (except get_variable) trig an error if keys in the raw table (argument #2)
+  except get_variable trig an error if keys in the raw table (argument #2)
   already exist and overriding is not allowed by argument #3. The components for
   set_function must be callable, unless strict is 'false'. The metamethod names
   for set_metamethod must be one of the supported Lua metamethod name or the MAD
@@ -421,7 +485,7 @@ local function set_function (self, tbl, override, strict)
   local var = self[var]
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
-    assert(is_nil(rawget(var,k)) or override==true, "cannot override function")
+    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
     rawset(var, k, is_function(f) and fproxy(f) or f)
   end
   return self
