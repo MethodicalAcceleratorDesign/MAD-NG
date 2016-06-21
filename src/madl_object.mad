@@ -396,31 +396,35 @@ M.__help.ipairs = M.__help.iterators
 
 M.__help.get = [=[
 NAME
-  get_variable, set_variable, set_function, set_metamethod,
-  get, set, setf, setmm.
+  get_variable, get_allkeys, set_variable, set_function, set_metamethod,
+  get, getk, set, setf, setmm.
 
 SYNOPSIS
   obj:get_variable  ({...} [, eval])
   obj:set_variable  ({...} [, override])
   obj:set_function  ({...} [, override [, strict]])
   obj:set_metamethod({...} [, override [, strict]])
+  obj:get_allkeys   (depthlevel)
 
 DESCRIPTION
   The get_variable method gets values from a raw table containing the list of
   keys to get, following the value semantic of functions unless eval is 'false'.
-  The set_variable method sets or updates values from a raw table. The
-  set_function method sets or updates functions from a raw table in a special
-  way that bypasses the value semantic of functions in the object model and
-  enforces the call semantic. The set_metamethod method sets metamethods from a
-  raw table that are shared by children (see the object model scheme). The
-  methods get, set, setf and setmm are aliases for get_variable, set_variable,
-  set_function, set_metamethod respectively. The default value for override is
-  'true' for set_variable and set_function and 'false' for set_metamethod. The
-  default value for eval and strict is 'true'.
+  The get_allkeys collect all the variables keys of an object, including those
+  inherited from parents up to depthlevel or Object (excluded). The set_variable
+  method sets or updates values from a raw table. The set_function method sets
+  or updates functions from a raw table in a special way that bypasses the value
+  semantic of functions in the object model and enforces the call semantic. The
+  set_metamethod method sets metamethods from a raw table that are shared by
+  children (see the object model scheme). The methods get, set, setf and setmm
+  are aliases for get_variable, set_variable, set_function, set_metamethod
+  respectively. The default value for override is 'true' for set_variable and
+  set_function and 'false' for set_metamethod. The default value for eval and
+  strict is 'true'. The default value for depthlevel is 'huge'.
 
 RETURN VALUE
   A table containing the key-value pairs for the specified keys for the method
-  get_variable, the object itself for other methods.
+  get_variable, a table containing all the variables keys for the method
+  get_allkeys, and the object itself for other methods.
 
 ERRORS
   All these methods trig an error if argument #1 is not a valid object and if
@@ -444,16 +448,35 @@ EXAMPLES
   t = p1:get{'x','y','z','z2','z3'}    -- get variables values
   print(t.x, t.y, t.z, t.z2, t.z3)
     1       2       3       6       9
+  t = p1:get(p1:getk())                -- get all variables values
 
 SEE ALSO
   None.
 ]=]
+M.__help.getk           = M.__help.get
 M.__help.set            = M.__help.get
 M.__help.setf           = M.__help.get
 M.__help.setmm          = M.__help.get
+M.__help.get_key        = M.__help.get
 M.__help.set_variable   = M.__help.get
 M.__help.set_function   = M.__help.get
 M.__help.set_metamethod = M.__help.get
+
+local function get_allkeys (self, level)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  local var, key = self[var], {}
+
+  while var ~= M and level > 0 do
+    for k in pairs(var) do key[k] = k end
+    level, self = level-1, parent(self)
+    var = self[var]
+  end
+
+  for k in pairs(key) do
+    key[#key+1], key[k] = key[k], nil
+  end
+  return key
+end
 
 local function get_variable (self, tbl, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
@@ -546,6 +569,7 @@ setmetatable(M, Object)
 M.is_readonly    = fproxy( is_readonly    )
 M.is_instanceOf  = fproxy( is_instanceOf  )
 M.set_readonly   = fproxy( set_readonly   )
+M.get_allkeys    = fproxy( get_allkeys    )
 M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
@@ -553,8 +577,8 @@ M.set_metamethod = fproxy( set_metamethod )
 M.rawdump        = fproxy( rawdump        )
 
 -- aliases
-M.get, M.set, M.setf, M.setmm =
-  M.get_variable, M.set_variable, M.set_function, M.set_metamethod
+M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys,
+  M.set_variable, M.set_function, M.set_metamethod
 
 -- members
 M.__id   = 'Object'
