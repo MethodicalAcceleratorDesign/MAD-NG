@@ -26,84 +26,33 @@
 local assertEquals, assertAlmostEquals, assertTrue, assertFalse
       in require 'luaunit'
 local dat = require 'gmath_dat'
-local eps, inf, nan, pi, twopi in MAD
-local randomseed, random, ldexp, frexp, abs, acos, asin, atan, ceil, cos, cosh,
-      deg, exp, floor, log, log10, modf, rad, sin, sinh, sqrt, tan, tanh, asinh,
-      acosh, atanh, erf, gamma, lgamma, angle, fmod, pow, atan2, max, min,
-      ident, sign, step, sinc, trunc, round, unm, add, sub, mul, div, mod, eq,
-      ne, lt, le, gt, ge, carg, real, imag, conj, norm, proj, rect, polar
-      in MAD
+
+local
+  abs, acos, asin, atan, ceil, cos, cosh, deg, exp, floor, log,
+  log10, max, min, modf, rad, sin, sinh, sqrt, tan, tanh,  --(generic functions)
+  atan2, fmod, frexp, ldexp, random, randomseed,       --(non-generic functions)
+  acosh, angle, asinh, atanh, erf, frac, gamma, lgamma,
+  round, sign, sinc, step, trunc,                    --(extra generic functions)
+  umn, add, sub, mul, div, mod, pow,
+  eq, ne, lt, le, gt, ge,                             --(operators as functions)
+  carg, real, imag, conj, rect, polar,             --(generic complex functions)
+  eps, huge, tiny, I, inf, Inf, nan, NaN, pi, Pi,                  --(constants)
+  option                                                               --(setup)
+  in MAD
 
 -- regression test suite ------------------------------------------------------o
 
 TestGmath = {}
 
-function TestGmath:testRandom()
-  for i=1,1000 do
-    assertTrue( random()    >= 0   )
-    assertTrue( random()    <  1   )
-    assertTrue( random(100) >= 1   )
-    assertTrue( random(100) <= 100 )
-    assertTrue( random(-1,1) >= -1 )
-    assertTrue( random(-1,1) <=  1 )
-    assertTrue( random(-1,2^52) >= -1    )
-    assertTrue( random(-1,2^52) <=  2^52 )
-  end
-end
+local values = { -- ranges instead of loops for better precision
+  unit  = 0..1..0.05   , -- 21 points
+  angle = 0..pi/4..0.05, -- 21 points
 
-function TestGmath:testRandomseed()
-  local val  = {}
-  local oldVal = {}
-  for j=1,10 do
-    randomseed( j )
-    for i=1,500 do
-      val[i] = random(0,2^52)
-      assertTrue ( val[i] >= 0    )
-      assertTrue ( val[i] <= 2^52 )
-      assertFalse( val[i] == oldVal[i] )
-      oldVal[i] = val[i]
-    end
-  end
-end
+}
 
-function TestGmath:testLdexp()
-  assertEquals( ldexp(0,0)   , 0   )
-  assertEquals( ldexp(0,-3)  , 0   )
-  assertEquals( ldexp(-3,0)  ,-3   )
-  assertEquals( ldexp(3,0)   , 3   )
-  assertEquals( ldexp(3,1)   , 6   )
-  assertEquals( ldexp(3,2)   , 12  )
-  assertEquals( ldexp(20,-0) , 20  )
-  assertEquals( ldexp(20,-1) , 10  )
-  assertEquals( ldexp(20,-2) , 5   )
-  assertEquals( ldexp(3,2.1) , 12  )
-  assertEquals( ldexp(3,1.9) , 6   )
-  assertEquals( ldexp(3,-inf), 0   )
-  assertEquals( ldexp(3,inf) , inf )
-  assertEquals( ldexp(inf,2) , inf )
-  assertEquals( ldexp(-inf,2),-inf )
-  assertEquals( ldexp(2.1,10), 2150.4 )
-  assertEquals( ldexp(2.1,32), 9019431321.6 )
-  assertAlmostEquals( ldexp(2.1,50), 2.36438980436951e15, 0.5 )
-end
+-- keep the order of the import above
 
-function TestGmath:testFrexp()
-  assertEquals( {frexp(0)}, {0,0} )
-  assertEquals( {frexp(1)}, {0.5,1} )
-
-  for i=-100,100 do
-    assertEquals( ldexp(frexp(2^i)), 2^i )
-  end
-  for x=-100,100,0.1 do
-    assertEquals( ldexp(frexp(x)), x )
-  end
-
-  assertEquals( {frexp(-0.2)},{-0.8,-2} )
-  assertEquals( {frexp(-inf)}, {-inf,0} )
-  assertEquals( {frexp( inf)}, { inf,0} )
-end
-
--- unary --
+-- generic functions
 
 function TestGmath:testAbs()
   assertEquals( abs(2)     , 2    )
@@ -157,23 +106,6 @@ function TestGmath:testAtan()
   assertEquals( atan(-inf),-1/2*pi )
 end
 
-function TestGmath:testCos()
-
-  for i=1,#dat.inpCos do
-    local ref = dat.cos[i]
-    local res = dat.inpCos[i]
-    assertAlmostEquals( cos(res) , ref, eps )
-    assertAlmostEquals( cos(-res), ref, eps )
-  end
-
-  assertEquals ( cos(0)    , 1 )
-  assertEquals ( cos(pi)   ,-1 )
-  assertEquals ( cos(twopi), 1 )
-  assertAlmostEquals( cos(pi/3)  , 1/2, eps )
-  assertAlmostEquals( cos(pi/2)  , 0  , eps )
-  assertAlmostEquals( cos(3/2*pi), 0  , eps )
-end
-
 function TestGmath:testCeil()
   assertEquals( ceil(0)     , 0    )
   assertEquals( ceil(-0)    , 0    )
@@ -189,19 +121,20 @@ function TestGmath:testCeil()
   assertEquals( ceil( inf), inf )
 end
 
-function TestGmath:testFloor()
-  assertEquals( floor(0)     , 0    )
-  assertEquals( floor(-0)    , 0    )
-  assertEquals( floor(0.9)   , 0    )
-  assertEquals( floor(1.1)   , 1    )
-  assertEquals( floor(-0.9)  ,-1    )
-  assertEquals( floor(-1.1)  ,-2    )
-  assertEquals( floor(100.21), 100  )
-  assertEquals( floor(2^52)  , 2^52 )
-  assertEquals( floor( 2^32*0.1),  429496729)
-  assertEquals( floor(-2^32*0.1), -429496730)
-  assertEquals( floor(-inf),-inf )
-  assertEquals( floor( inf), inf )
+function TestGmath:testCos()
+  for i=1,#dat.inpCos do
+    local ref = dat.cos[i]
+    local res = dat.inpCos[i]
+    assertAlmostEquals( cos(res) , ref, eps )
+    assertAlmostEquals( cos(-res), ref, eps )
+  end
+
+  assertEquals ( cos(0)    , 1 )
+  assertEquals ( cos(pi)   ,-1 )
+  assertEquals ( cos(2*pi), 1 )
+  assertAlmostEquals( cos(pi/3)  , 1/2, eps )
+  assertAlmostEquals( cos(pi/2)  , 0  , eps )
+  assertAlmostEquals( cos(3/2*pi), 0  , eps )
 end
 
 function TestGmath:testCosh()
@@ -219,7 +152,7 @@ end
 
 function TestGmath:testDeg()
   assertEquals( deg(0)    , 0   )
-  assertEquals( deg(twopi), 360 )
+  assertEquals( deg(2*pi), 360 )
   assertEquals( deg(pi)   , 180 )
   assertEquals( deg(pi/2) , 90  )
   assertAlmostEquals( deg(pi/3), 60, eps )
@@ -238,6 +171,21 @@ function TestGmath:testExp()
   assertEquals( exp(0)   , 1   )
   assertEquals( exp(-inf), 0   )
   assertEquals( exp(inf) , inf )
+end
+
+function TestGmath:testFloor()
+  assertEquals( floor(0)     , 0    )
+  assertEquals( floor(-0)    , 0    )
+  assertEquals( floor(0.9)   , 0    )
+  assertEquals( floor(1.1)   , 1    )
+  assertEquals( floor(-0.9)  ,-1    )
+  assertEquals( floor(-1.1)  ,-2    )
+  assertEquals( floor(100.21), 100  )
+  assertEquals( floor(2^52)  , 2^52 )
+  assertEquals( floor( 2^32*0.1),  429496729)
+  assertEquals( floor(-2^32*0.1), -429496730)
+  assertEquals( floor(-inf),-inf )
+  assertEquals( floor( inf), inf )
 end
 
 function TestGmath:testLog()
@@ -266,6 +214,20 @@ function TestGmath:testLog10()
   assertEquals( log10(10^29), 29  )
 end
 
+function TestGmath:testMax()
+  assertEquals( max(2,4,5,6)   , 6    )
+  assertEquals( max(-2.2,-7.1) ,-2.2  )
+  assertEquals( max(2,eps)     , 2    )
+  assertEquals( max(2^52, 2^53), 2^53 )
+end
+
+function TestGmath:testMin()
+  assertEquals( min(2,4,5,6)    , 2    )
+  assertEquals( min(-2.2,-7.1)  ,-7.1  )
+  assertEquals( min(2,eps)      , eps  )
+  assertEquals( min(-2^52,-2^53),-2^53 )
+end
+
 function TestGmath:testModf()  -- second output missing
   local i,f = modf(0)
   assertEquals( i, 0   )
@@ -279,7 +241,7 @@ function TestGmath:testModf()  -- second output missing
 end
 
 function TestGmath:testRad()
-  assertEquals( rad(360), twopi )
+  assertEquals( rad(360), 2*pi )
   assertEquals( rad(0)  , 0     )
   assertEquals( rad(180), pi    )
   assertEquals( rad(90) , pi/2  )
@@ -299,7 +261,7 @@ function TestGmath:testSin()
   assertEquals( sin(0)     , 0  )
   assertEquals( sin(pi/2)  , 1  )
   assertEquals( sin(3/2*pi),-1  )
-  assertAlmostEquals( sin(twopi) , 0  , eps )
+  assertAlmostEquals( sin(2*pi) , 0  , eps )
   assertAlmostEquals( sin(pi)    , 0  , eps )
   assertAlmostEquals( sin(pi/6)  , 1/2, eps )
   assertAlmostEquals( sin(7/6*pi),-1/2, eps )
@@ -338,7 +300,7 @@ function TestGmath:testTan()
   assertEquals( tan(0), 0 )
   assertAlmostEquals( tan(pi/4)  , 1, eps )
   assertAlmostEquals( tan(3/4*pi),-1, eps )
-  assertAlmostEquals( tan(twopi) , 0, eps )
+  assertAlmostEquals( tan(2*pi) , 0, eps )
   assertAlmostEquals( tan(pi)    , 0, eps )
 end
 
@@ -355,18 +317,100 @@ function TestGmath:testTanh()
   assertEquals( tanh(-inf),-1 )
 end
 
-function TestGmath:testAsinh()
-  for i=1,#dat.inp1 do
-    local ref = dat.asinh[i]
-    local res = dat.inp1[i]
-    assertAlmostEquals( asinh(res)  , ref, eps )
-    assertAlmostEquals( -asinh(-res), ref, eps )
+-- functions wo generic
+
+function TestGmath:testAtan2()
+  assertEquals( atan2(0,0)      , 0      )
+  assertEquals( atan2(0,2)      , 0      )
+  assertEquals( atan2(0,2^52)   , 0      )
+  assertEquals( atan2(0,inf)    , 0      )
+  assertEquals( atan2(0,-1)     , pi     )
+  assertEquals( atan2(0,-2^52)  , pi     )
+  assertEquals( atan2(0,-inf)   , pi     )
+  assertEquals( atan2(2,0)      , pi/2   )
+  assertEquals( atan2(inf,0)    , pi/2   )
+  assertEquals( atan2(-2,0)     ,-pi/2   )
+  assertEquals( atan2(-inf,0)   ,-pi/2   )
+  assertEquals( atan2(inf,inf)  , pi/4   )
+  assertEquals( atan2(-inf,-inf),-pi*3/4 )
+end
+
+function TestGmath:testFmod()
+  assertAlmostEquals( fmod(20.2, 10.1), 0  , eps )
+  assertAlmostEquals( fmod(9.2, 2)    , 1.2, eps )
+  assertAlmostEquals( fmod(7.4,-1.2)  , 0.2, eps )
+  assertEquals( fmod( 4, 3), 1 )
+  assertEquals( fmod( 9,-3), 0 )
+  assertEquals( fmod( 9,-2), 1 )
+  assertEquals( fmod(-1, 2),-1 )
+end
+
+function TestGmath:testLdexp()
+  assertEquals( ldexp(0,0)   , 0   )
+  assertEquals( ldexp(0,-3)  , 0   )
+  assertEquals( ldexp(-3,0)  ,-3   )
+  assertEquals( ldexp(3,0)   , 3   )
+  assertEquals( ldexp(3,1)   , 6   )
+  assertEquals( ldexp(3,2)   , 12  )
+  assertEquals( ldexp(20,-0) , 20  )
+  assertEquals( ldexp(20,-1) , 10  )
+  assertEquals( ldexp(20,-2) , 5   )
+  assertEquals( ldexp(3,2.1) , 12  )
+  assertEquals( ldexp(3,1.9) , 6   )
+  assertEquals( ldexp(3,-inf), 0   )
+  assertEquals( ldexp(3,inf) , inf )
+  assertEquals( ldexp(inf,2) , inf )
+  assertEquals( ldexp(-inf,2),-inf )
+  assertEquals( ldexp(2.1,10), 2150.4 )
+  assertEquals( ldexp(2.1,32), 9019431321.6 )
+  assertAlmostEquals( ldexp(2.1,50), 2.36438980436951e15, 0.5 )
+end
+
+function TestGmath:testFrexp()
+  assertEquals( {frexp(0)}, {0,0} )
+  assertEquals( {frexp(1)}, {0.5,1} )
+
+  for i=-100,100 do
+    assertEquals( ldexp(frexp(2^i)), 2^i )
+  end
+  for x=-100,100,0.1 do
+    assertEquals( ldexp(frexp(x)), x )
   end
 
-  assertEquals( asinh(0)   , 0   )
-  assertEquals( asinh(inf) , inf )
-  assertEquals( asinh(-inf),-inf )
+  assertEquals( {frexp(-0.2)},{-0.8,-2} )
+  assertEquals( {frexp(-inf)}, {-inf,0} )
+  assertEquals( {frexp( inf)}, { inf,0} )
 end
+
+function TestGmath:testRandom()
+  for i=1,1000 do
+    assertTrue( random()    >= 0   )
+    assertTrue( random()    <  1   )
+    assertTrue( random(100) >= 1   )
+    assertTrue( random(100) <= 100 )
+    assertTrue( random(-1,1) >= -1 )
+    assertTrue( random(-1,1) <=  1 )
+    assertTrue( random(-1,2^52) >= -1    )
+    assertTrue( random(-1,2^52) <=  2^52 )
+  end
+end
+
+function TestGmath:testRandomseed()
+  local val  = {}
+  local oldVal = {}
+  for j=1,10 do
+    randomseed( j )
+    for i=1,500 do
+      val[i] = random(0,2^52)
+      assertTrue ( val[i] >= 0    )
+      assertTrue ( val[i] <= 2^52 )
+      assertFalse( val[i] == oldVal[i] )
+      oldVal[i] = val[i]
+    end
+  end
+end
+
+-- extra generic functions
 
 function TestGmath:testAcosh()
   for i=1,#dat.inp3 do
@@ -378,6 +422,35 @@ function TestGmath:testAcosh()
   assertEquals( acosh(1)  , 0   )
   assertEquals( acosh(inf), inf )
   assertEquals( tostring(acosh(0)), tostring(nan) )
+end
+
+function TestGmath:testAngle()
+  assertEquals( angle(0,0)      , 0      )
+  assertEquals( angle(0,2)      , 0      )
+  assertEquals( angle(0,2^52)   , 0      )
+  assertEquals( angle(0,inf)    , 0      )
+  assertEquals( angle(0,-1)     , pi     )
+  assertEquals( angle(0,-2^52)  , pi     )
+  assertEquals( angle(0,-inf)   , pi     )
+  assertEquals( angle(2,0)      , pi/2   )
+  assertEquals( angle(inf,0)    , pi/2   )
+  assertEquals( angle(-2,0)     ,-pi/2   )
+  assertEquals( angle(-inf,0)   ,-pi/2   )
+  assertEquals( angle(inf,inf)  , pi/4   )
+  assertEquals( angle(-inf,-inf),-pi*3/4 )
+end
+
+function TestGmath:testAsinh()
+  for i=1,#dat.inp1 do
+    local ref = dat.asinh[i]
+    local res = dat.inp1[i]
+    assertAlmostEquals( asinh(res)  , ref, eps )
+    assertAlmostEquals( -asinh(-res), ref, eps )
+  end
+
+  assertEquals( asinh(0)   , 0   )
+  assertEquals( asinh(inf) , inf )
+  assertEquals( asinh(-inf),-inf )
 end
 
 function TestGmath:testAtanh()
@@ -404,6 +477,18 @@ function TestGmath:testErf()
   assertEquals( erf(inf) , 1 )
   assertEquals( erf(-inf),-1 )
   assertEquals( erf(0)   , 0 )
+end
+
+function TestGmath:testFrac()  -- second output missing
+  local i,f = modf(0)
+  assertEquals( i, 0   )
+  assertEquals( f, nil )
+  local i,f = modf(-20.2)
+  assertEquals( i, -20 )
+  --assertEquals( f, 0.2 )
+
+  --print (math.modf(2.2))
+  --print (modf(2.2))
 end
 
 function TestGmath:testGamma()
@@ -445,61 +530,13 @@ function TestGmath:testLgamma() -- output diffrent then expected results
 !  assertEquals( lgamma(-inf), 0 )
 end
 
--- binary
-
-function TestGmath:testAngle()
-  assertEquals( angle(0,0)      , 0      )
-  assertEquals( angle(0,2)      , 0      )
-  assertEquals( angle(0,2^52)   , 0      )
-  assertEquals( angle(0,inf)    , 0      )
-  assertEquals( angle(0,-1)     , pi     )
-  assertEquals( angle(0,-2^52)  , pi     )
-  assertEquals( angle(0,-inf)   , pi     )
-  assertEquals( angle(2,0)      , pi/2   )
-  assertEquals( angle(inf,0)    , pi/2   )
-  assertEquals( angle(-2,0)     ,-pi/2   )
-  assertEquals( angle(-inf,0)   ,-pi/2   )
-  assertEquals( angle(inf,inf)  , pi/4   )
-  assertEquals( angle(-inf,-inf),-pi*3/4 )
+function TestGmath:testRound()
+  assertEquals( round(1.2) , 1 )
+  assertEquals( round(7.9) , 8 )
+  assertEquals( round(-1.2),-1 )
+  assertEquals( round(-2.8),-3 )
+  assertEquals( round(0)   , 0 )
 end
-
-function TestGmath:testFmod()
-  assertAlmostEquals( fmod(20.2, 10.1), 0  , eps )
-  assertAlmostEquals( fmod(9.2, 2)    , 1.2, eps )
-  assertAlmostEquals( fmod(7.4,-1.2)  , 0.2, eps )
-  assertEquals( fmod( 4, 3), 1 )
-  assertEquals( fmod( 9,-3), 0 )
-  assertEquals( fmod( 9,-2), 1 )
-  assertEquals( fmod(-1, 2),-1 )
-end
-
-function TestGmath:testPow()
-  assertEquals( pow(2,8)  , 256  )
-  assertEquals( pow(2,0)  , 1    )
-  assertEquals( pow(0,2)  , 0    )
-  assertEquals( pow(2,-2) , 0.25 )
-  assertEquals( pow(-2,3) ,-8    )
-  assertEquals( pow(inf,8), inf  )
-  assertEquals( pow(8,inf), inf  )
-end
-
--- variadic
-
-function TestGmath:testMax()
-  assertEquals( max(2,4,5,6)   , 6    )
-  assertEquals( max(-2.2,-7.1) ,-2.2  )
-  assertEquals( max(2,eps)     , 2    )
-  assertEquals( max(2^52, 2^53), 2^53 )
-end
-
-function TestGmath:testMin()
-  assertEquals( min(2,4,5,6)    , 2    )
-  assertEquals( min(-2.2,-7.1)  ,-7.1  )
-  assertEquals( min(2,eps)      , eps  )
-  assertEquals( min(-2^52,-2^53),-2^53 )
-end
-
--- extra --
 
 function TestGmath:testSign()
   assertEquals( sign(2)   , 1 )
@@ -507,14 +544,6 @@ function TestGmath:testSign()
   assertEquals( sign(-2)  ,-1 )
   assertEquals( sign(-4.1),-1 )
   assertEquals( sign(0)   , 1 )
-end
-
-function TestGmath:testStep()
-  assertEquals( step(2)   , 1 )
-  assertEquals( step(7.2) , 1 )
-  assertEquals( step(0)   , 1 )
-  assertEquals( step(-2)  , 0 )
-  assertEquals( step(-4.1), 0 )
 end
 
 function TestGmath:testSinc()
@@ -526,6 +555,14 @@ function TestGmath:testSinc()
   end
 end
 
+function TestGmath:testStep()
+  assertEquals( step(2)   , 1 )
+  assertEquals( step(7.2) , 1 )
+  assertEquals( step(0)   , 1 )
+  assertEquals( step(-2)  , 0 )
+  assertEquals( step(-4.1), 0 )
+end
+
 function TestGmath:testTrunc()
   assertEquals( trunc(1.2) , 1 )
   assertEquals( trunc(7.9) , 7 )
@@ -534,15 +571,7 @@ function TestGmath:testTrunc()
   assertEquals( trunc(0)   , 0 )
 end
 
-function TestGmath:testRound()
-  assertEquals( round(1.2) , 1 )
-  assertEquals( round(7.9) , 8 )
-  assertEquals( round(-1.2),-1 )
-  assertEquals( round(-2.8),-3 )
-  assertEquals( round(0)   , 0 )
-end
-
--- operators --
+-- operators as functions
 
 function TestGmath:testUnm()
   assertEquals( unm(2) ,-2 )
@@ -610,7 +639,15 @@ function TestGmath:testMod()
   assertEquals( mod(-1 , 2), 1 )
 end
 
--- logical --
+function TestGmath:testPow()
+  assertEquals( pow(2,8)  , 256  )
+  assertEquals( pow(2,0)  , 1    )
+  assertEquals( pow(0,2)  , 0    )
+  assertEquals( pow(2,-2) , 0.25 )
+  assertEquals( pow(-2,3) ,-8    )
+  assertEquals( pow(inf,8), inf  )
+  assertEquals( pow(8,inf), inf  )
+end
 
 function TestGmath:testEq()
   assertTrue ( eq( 2.2, 2.2 ) )
@@ -663,7 +700,7 @@ function TestGmath:testGe()
   assertFalse( ge(-6  ,-1   ) )
 end
 
--- complex --
+-- generic complex functions
 
 function TestGmath:testCarg()
   assertEquals( carg(0)    , 0  )
@@ -698,12 +735,6 @@ function TestGmath:testNorm()
   assertEquals( norm(-2.22), 2.22 )
   assertEquals( norm(2^60) , 2^60 )
   assertEquals( norm(-2^60), 2^60 )
-end
-
-function TestGmath:testProj()
-  assertEquals( proj(0)   , 0   )
-  assertEquals( proj(1.1) , 1.1 )
-  assertEquals( proj(-2.1),-2.1 )
 end
 
 function TestGmath:testRect()
@@ -752,7 +783,7 @@ function TestGmath:testDelegation()
   mock.lgamma = \ 'mock.lgamma'  assertEquals(lgamma(mock), 'mock.lgamma')
 
   mock.angle  = \ 'mock.angle '  assertEquals(angle (mock), 'mock.angle ')
-  mock.fmod   = \ 'mock.fmod  '  assertEquals(fmod  (mock), 'mock.fmod  ')
+  mock.mod    = \ 'mock.mod   '  assertEquals(mod   (mock), 'mock.mod   ')
   mock.pow    = \ 'mock.pow   '  assertEquals(pow   (mock), 'mock.pow   ')
 
   mock.max    = \ 'mock.max   '  assertEquals(max   (mock), 'mock.max   ')
@@ -769,7 +800,6 @@ function TestGmath:testDelegation()
   mock.imag   = \ 'mock.imag  '  assertEquals(imag  (mock), 'mock.imag  ')
   mock.conj   = \ 'mock.conj  '  assertEquals(conj  (mock), 'mock.conj  ')
   mock.norm   = \ 'mock.norm  '  assertEquals(norm  (mock), 'mock.norm  ')
-  mock.proj   = \ 'mock.proj  '  assertEquals(proj  (mock), 'mock.proj  ')
   mock.rect   = \ 'mock.rect  '  assertEquals(rect  (mock), 'mock.rect  ')
   mock.polar  = \ 'mock.polar '  assertEquals(polar (mock), 'mock.polar ')
 end

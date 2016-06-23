@@ -27,30 +27,40 @@ local M, Mlog = { __help = {} }, { __help = {} }
 
 M.__help.self = [=[
 NAME
-  range
+  range, logrange         -- range and logarithmic ranges
 
 SYNOPSIS
-  local r1 = range(start [,stop [,step]])
-  local r2 = start..stop[..step]
-  print(r1.start, r1.stop, r1.step)
+  r1 = range(start [, stop [, step]])
+  r2 = nrange(start [, stop [, npoints]])
+  r3 = start..stop[..step]
+
+  l1 = logrange(lstart [, lstop [, lstep]])
+  r2 = nlogrange(lstart [, lstop [, npoints]])
+  l2 = log(lstart..lstop[..lstep])
 
 DESCRIPTION
-  Ranges are defined by their start, stop (included) and step fields. Zero step
-  or steps with opposite sign to stop-start lead to an empty range. Ranges can
-  be used as stateless iterators in for loops (i.e. ipairs), and provide better
-  numerical stability for 'true' floating point numbers.
-    Some methods like get, index (i.e. []) and iterator (i.e. ipairs) return nil
-  outside the boundaries, and some others like value don't check for boundaries.
-  The range module implements the functions:
-    range (constructor), get, value, size, index, first, last, minmax, bounds,
-    ovelap, equal, tostring, totable, tovector, scale, translate, revert.
 
-RETURN VALUE
-  The constructor of ranges
+  Ranges are defined by their start, stop (included) and step arguments. A step
+  of value zero or a step with opposite sign to stop-start lead to an empty
+  range. The ranges can be used as stateless iterators in for loops (i.e.
+  ipairs), and provide better numerical stability for 'true' floating point
+  numbers. Some methods like index (i.e. []), iterators (i.e. ipairs) and get
+  (segment interpolation) return nil outside the boundaries, and some others
+  like value (line interpolation) don't check for boundaries.
+
+RETURN VALUES
+  The table constaining the constructors for range and logrange (argument #3 is
+  step), the constructors for nrange and nlogrange (argument #3 is npoints), the
+  iterators irange and ilogrange for direct use in for loops, and the functions
+  is_range and is_logrange to identify the ranges object.
 
 ERROR
 
 EXAMPLES
+  r1 = range(start [,stop [,step]])
+  r2 = start..stop[..step]
+  print(r1.start, r1.stop, r1.step)
+  local l1 = range(start [,stop [,step]])
 
 SEE ALSO
   None.
@@ -63,6 +73,7 @@ local new, cdef, istype, typeof, metatype in require 'ffi'
 local is_number                           in require 'madl_utils'
 local abs, ceil, floor, log, max          in math
 
+-- ctypes are xrange and logxrange
 cdef [[
   typedef struct logxrange { const double start, stop, step; } logxrange;
 ]]
@@ -130,18 +141,18 @@ local function sizelog (start, stop, step)
   return size(log(abs(start)), log(abs(stop)), log(abs(step)))
 end
 
-local function nstep (start, stop, n)
+local function n_step (start, stop, nstep)
   if is_range(start) then
     start, stop, n = start.start, start.stop, stop -- shift args
   end
-  return n >= 1 and (stop-start)/abs(ceil(n)-1) or 0
+  return n >= 1 and (stop-start)/abs(ceil(nstep)-1) or 0
 end
 
-local function nsteplog (start, stop, n)
+local function n_steplog (start, stop, nstep)
   if is_range(start) or is_logrange(start) then
     start, stop, n = start.start, start.stop, stop -- shift args
   end
-  return n >= 1 and (stop/start)^(1/abs(ceil(n)-1)) or 1
+  return n >= 1 and (stop/start)^(1/abs(ceil(nstep)-1)) or 1
 end
 
 local function value (r, x)
@@ -199,16 +210,18 @@ end
 
 -- alternate constructors with #steps specified
 
-local function nrange (start, stop, n)
+local function nrange (start, stop, nstep)
+  if is_nil(n) return range(start, stop) end
   assert(is_number(start) and is_number(stop) and is_number(n),
-         "invalid argument #1, #2 or #3 (number expected")
-  return range(start, stop, nstep(start, stop, n))
+         "invalid argument #1, #2 or #3 (number expected)")
+  return range(start, stop, n_step(start, stop, nstep))
 end
 
-local function nlogrange (start, stop, n)
+local function nlogrange (start, stop, nstep)
+  if is_nil(n) return range(start, stop) end
   assert(is_number(start) and is_number(stop) and is_number(n),
          "invalid argument #1, #2 or #3 (number expected")
-  return logrange(start, stop, nsteplog(start, stop, n))
+  return logrange(start, stop, n_steplog(start, stop, nstep))
 end
 
 -- iterators
@@ -221,7 +234,7 @@ local function ilogrange (start, stop, step)
   return ipairs(logrange(start, stop, step))
 end
 
--- members
+-- metamethods
 
 function M.__new (ct, start, stop, step)
   assert(is_number(start), "invalid argument #1 (expect number)")
@@ -276,6 +289,36 @@ function Mlog.__eq (r1, r2)
          r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
 end
 
+M.__help.is_range = [=[
+NAME
+  is_range, is_logrange,            -- identify ranges
+
+SYNOPSIS
+  is_range(rng)
+  is_logrange(lrng)
+
+DESCRIPTION
+
+RETURN VALUES
+  is_range and is_logrange return true if their argument is a range of
+  respective types.
+
+EXAMPLES
+  local is_range, is_logrange, log in MAD
+  print( is_range 'yes' )                     -- false
+  print( is_range(0..1) )                     -- true
+  print( is_range(log(0..1)) )                -- false
+
+  print( is_logrange 'yes' )                  -- false
+  print( is_logrange(0..1) )                  -- false
+  print( is_logrange(log(0..1)) )             -- true
+
+SEE ALSO
+  None.
+]=]
+M.__help.is_logrange = M.__help.is_range
+
+
 function M.range (r)
   return r.start, r.stop, r.step
 end
@@ -294,13 +337,13 @@ end
 
 M.get      = get
 M.value    = value
-M.nstep    = nstep
+M.nstep    = n_step
 M.is_empty = is_empty
 M.__len    = M.size
 
 Mlog.get      = getlog
 Mlog.value    = valuelog
-Mlog.nstep    = nsteplog
+Mlog.nstep    = n_steplog
 Mlog.is_empty = is_emptylog
 Mlog.__len    = Mlog.size
 
