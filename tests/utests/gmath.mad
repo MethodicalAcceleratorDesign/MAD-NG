@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertEquals, assertAlmostEquals, assertTrue, assertFalse
+local assertFalse, assertTrue, assertEquals, assertAlmostEquals
       in require 'luaunit'
 local dat = require 'gmath_dat'
 
@@ -33,9 +33,9 @@ local
   atan2, fmod, frexp, ldexp, random, randomseed,       --(non-generic functions)
   acosh, angle, asinh, atanh, erf, frac, gamma, lgamma,
   round, sign, sinc, step, trunc,                    --(extra generic functions)
-  umn, add, sub, mul, div, mod, pow,
+  unm, add, sub, mul, div, mod, pow,
   eq, ne, lt, le, gt, ge,                             --(operators as functions)
-  carg, real, imag, conj, rect, polar,             --(generic complex functions)
+  carg, real, imag, conj, norm, rect, polar,       --(generic complex functions)
   eps, huge, tiny, I, inf, Inf, nan, NaN, pi, Pi,                  --(constants)
   option                                                               --(setup)
   in MAD
@@ -44,10 +44,25 @@ local
 
 TestGmath = {}
 
-local values = { -- ranges instead of loops for better precision
-  unit  = 0..1..0.05   , -- 21 points
-  angle = 0..pi/4..0.05, -- 21 points
+local values = {
+  int  = {0, 1, 1e9, 2^31, 2^32, 2^52},
+  dec  = {2^-52, 2^-32, 2^-31, 1e-9, 1, 1e9, 2^31, 2^32, 2^52},
+  num  = {0, tiny, 2^-64, 2^-63, 2^-53, 2^-52, 2^-32, 2^-31, 1e-9,
+          0.1, 1-eps, 1, 1+eps, 1.1,
+          1e9, 2^31, 2^32, 2^52, 2^53, 2^63, 2^64, huge, inf},
+  rad  = {0, eps, pi/180, pi/90, pi/36, pi/18, pi/12, pi/6,
+          pi/4-eps, pi/4, pi/4+eps, pi/3, pi/2-eps, pi/2, pi/2+eps,
+          pi-pi/3, pi-pi/4, pi-pi/6, pi-pi/12, pi-eps, pi},
+  deg  = {0, eps, 1, 2, 5, 10, 15, 30,
+          45-eps, 45, 45+eps, 60, 90-eps, 90, 90+eps,
+          120, 135, 150, 165, 180-eps, 180},
 
+  num2 = {tiny, 2^-64, 2^-63, 2^-53, 2^-52, 2^-32, 2^-31, 1e-9,
+          0.1, 1-eps, 1, 1+eps, 1.1,
+          1e9, 2^31, 2^32, 2^52, 2^53, 2^63, 2^64, huge},
+  rad2 = {0, eps, pi/180, pi/90, pi/36, pi/18, pi/12, pi/6,
+          pi/4-eps, pi/4, pi/4+eps, pi/3, pi/2-eps, pi/2},
+  deg2 = {0, eps, 1, 2, 5, 10, 15, 30, 45-eps, 45, 45+eps, 60, 90-eps, 90},
 }
 
 -- keep the order of the import above
@@ -55,55 +70,67 @@ local values = { -- ranges instead of loops for better precision
 -- generic functions
 
 function TestGmath:testAbs()
-  assertEquals( abs(2)     , 2    )
-  assertEquals( abs(-2)    , 2    )
-  assertEquals( abs(1.2)   , 1.2  )
-  assertEquals( abs(-2.22) , 2.22 )
-  assertEquals( abs(2^60)  , 2^60 )
-  assertEquals( abs(-2^60) , 2^60 )
-  assertEquals( abs(0)     , 0    )
-  assertEquals( abs(-0)    , 0    )
-  assertEquals( -abs(-0)   , 0    )
-  assertEquals( -abs(-0)   , -0   )
+  for _,v in ipairs(values.num) do
+    assertEquals(  abs( v),  v )
+    assertEquals(  abs(-v),  v )
+    assertEquals( -abs(-v), -v )
+  end
+  assertEquals( -abs(-0), 0 )
 end
 
 function TestGmath:testAcos()
-  for i=1,#dat.inp2 do
-    local ref = dat.acos[i]
-    local res = dat.inp2[i]
-    assertAlmostEquals( acos(res), ref, eps )
-    assertAlmostEquals( -(acos(-res)-pi/2), ref-pi/2, eps )
+  for _,v in ipairs(values.rad) do
+    assertAlmostEquals( acos(cos( v)), v, eps )
+    assertAlmostEquals( acos(cos(-v)), v, eps )
+    assertAlmostEquals( acos(v/pi), pi-acos(-v/pi), eps )
+    assertAlmostEquals( acos(v/pi), pi/2-asin(v/pi), eps )
   end
-
-  assertEquals( acos(1) , 0      )
-  assertEquals( acos(-1), pi     )
-  assertEquals( acos(0) , 1/2*pi )
+  assertEquals      ( acos(-1)        ,   pi        )
+  assertEquals      ( acos(-sqrt(3)/2), 5*pi/6      )
+  assertAlmostEquals( acos(-sqrt(2)/2), 3*pi/4, eps )
+  assertAlmostEquals( acos(-0.5)      , 2*pi/3, eps )
+  assertEquals      ( acos( 0)        ,   pi/2      )
+  assertEquals      ( acos( 0.5)      ,   pi/3      )
+  assertAlmostEquals( acos( sqrt(2)/2),   pi/4, eps )
+  assertAlmostEquals( acos( sqrt(3)/2),   pi/6, eps )
+  assertEquals      ( acos( 1)        ,   0         )
 end
 
 function TestGmath:testAsin()
-  for i=1,#dat.inp2 do
-    local ref = dat.asin[i]
-    local res = dat.inp2[i]
-    assertAlmostEquals( asin(res)  , ref, eps )
-    assertAlmostEquals( -asin(-res), ref, eps )
+  for _,v in ipairs(values.rad2) do
+    assertAlmostEquals( asin(sin( v)),  v, eps )
+    assertAlmostEquals( asin(sin(-v)), -v, eps )
+    assertAlmostEquals( asin(v/pi), -asin(-v/pi), eps )
+    assertAlmostEquals( asin(v/pi), pi/2-acos(v/pi), eps )
   end
-
-  assertEquals( asin(0) , 0      )
-  assertEquals( asin(-1),-1/2*pi )
-  assertEquals( asin(1) , 1/2*pi )
+  assertEquals      ( asin(-1)        , -pi/2      )
+  assertEquals      ( asin(-sqrt(3)/2), -pi/3      )
+  assertAlmostEquals( asin(-sqrt(2)/2), -pi/4, eps )
+  assertAlmostEquals( asin(-0.5)      , -pi/6, eps )
+  assertEquals      ( asin( 0)        , 0          )
+  assertAlmostEquals( asin( 0.5)      ,  pi/6, eps )
+  assertAlmostEquals( asin( sqrt(2)/2),  pi/4, eps )
+  assertEquals      ( asin( sqrt(3)/2),  pi/3      )
+  assertEquals      ( asin( 1)        ,  pi/2      )
 end
 
 function TestGmath:testAtan()
-  for i=1,#dat.inp1 do
-    local ref = dat.atan[i]
-    local res = dat.inp1[i]
-    assertAlmostEquals( atan(res)  , ref, eps )
-    assertAlmostEquals( -atan(-res), ref, eps )
+  for _,v in ipairs(values.rad2) do
+    assertAlmostEquals( atan(tan( v)),  v, eps )
+    assertAlmostEquals( atan(tan(-v)), -v, eps )
   end
-
-  assertEquals( atan(0)   , 0      )
-  assertEquals( atan(inf) , 1/2*pi )
-  assertEquals( atan(-inf),-1/2*pi )
+  for _,v in ipairs(values.num2) do
+    assertAlmostEquals( (atan(v)+atan(-v))/v, 0, eps )
+  end
+  assertEquals      ( atan(-inf)      , -pi/2      )
+  assertAlmostEquals( atan(-sqrt(3))  , -pi/3, eps )
+  assertEquals      ( atan(-1)        , -pi/4      )
+  assertAlmostEquals( atan(-1/sqrt(3)), -pi/6, eps )
+  assertEquals      ( atan(0)         ,  0         )
+  assertAlmostEquals( atan( 1/sqrt(3)),  pi/6, eps )
+  assertEquals      ( atan( 1)        ,  pi/4      )
+  assertAlmostEquals( atan( sqrt(3))  ,  pi/3, eps )
+  assertEquals      ( atan( inf)      ,  pi/2      )
 end
 
 function TestGmath:testCeil()
@@ -228,16 +255,13 @@ function TestGmath:testMin()
   assertEquals( min(-2^52,-2^53),-2^53 )
 end
 
-function TestGmath:testModf()  -- second output missing
+function TestGmath:testModf()
   local i,f = modf(0)
-  assertEquals( i, 0   )
-  assertEquals( f, nil )
+  assertEquals( i, 0 )
+  assertEquals( f, 0 )
   local i,f = modf(-20.2)
   assertEquals( i, -20 )
-  --assertEquals( f, 0.2 )
-
-  --print (math.modf(2.2))
-  --print (modf(2.2))
+  assertAlmostEquals( f, -0.2, eps )
 end
 
 function TestGmath:testRad()
@@ -479,16 +503,13 @@ function TestGmath:testErf()
   assertEquals( erf(0)   , 0 )
 end
 
-function TestGmath:testFrac()  -- second output missing
+function TestGmath:testFrac()
   local i,f = modf(0)
-  assertEquals( i, 0   )
-  assertEquals( f, nil )
+  assertEquals( i, 0 )
+  assertEquals( f, 0 )
   local i,f = modf(-20.2)
   assertEquals( i, -20 )
-  --assertEquals( f, 0.2 )
-
-  --print (math.modf(2.2))
-  --print (modf(2.2))
+  assertAlmostEquals( f, -0.2, eps )
 end
 
 function TestGmath:testGamma()
@@ -783,8 +804,6 @@ function TestGmath:testDelegation()
   mock.lgamma = \ 'mock.lgamma'  assertEquals(lgamma(mock), 'mock.lgamma')
 
   mock.angle  = \ 'mock.angle '  assertEquals(angle (mock), 'mock.angle ')
-  mock.mod    = \ 'mock.mod   '  assertEquals(mod   (mock), 'mock.mod   ')
-  mock.pow    = \ 'mock.pow   '  assertEquals(pow   (mock), 'mock.pow   ')
 
   mock.max    = \ 'mock.max   '  assertEquals(max   (mock), 'mock.max   ')
   mock.min    = \ 'mock.min   '  assertEquals(min   (mock), 'mock.min   ')
