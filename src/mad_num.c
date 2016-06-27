@@ -36,7 +36,7 @@ num_t mad_num_acosh   (num_t x) { return acosh(x);  }
 num_t mad_num_atanh   (num_t x) { return atanh(x);  }
 
 num_t mad_num_erf     (num_t x) { return erf(x);    }
-num_t mad_num_gamma   (num_t x) { return tgamma(x); }
+num_t mad_num_tgamma  (num_t x) { return tgamma(x); }
 num_t mad_num_lgamma  (num_t x) { return lgamma(x); }
 
 // --- cnum

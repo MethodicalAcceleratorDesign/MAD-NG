@@ -31,14 +31,14 @@ local
   abs, acos, asin, atan, ceil, cos, cosh, deg, exp, floor, log,
   log10, max, min, modf, rad, sin, sinh, sqrt, tan, tanh,  --(generic functions)
   atan2, fmod, frexp, ldexp, random, randomseed,       --(non-generic functions)
-  acosh, angle, asinh, atanh, erf, frac, gamma, lgamma,
+  acosh, angle, asinh, atanh, erf, frac, tgamma, lgamma,
   round, sign, sinc, step, trunc,                    --(extra generic functions)
   unm, add, sub, mul, div, mod, pow,
   eq, ne, lt, le, gt, ge,                             --(operators as functions)
   carg, real, imag, conj, norm, rect, polar,       --(generic complex functions)
   eps, huge, tiny, I, inf, Inf, nan, NaN, pi, Pi,                  --(constants)
-  option                                                               --(setup)
-  in MAD
+  option,                                                              --(setup)
+  swap in MAD
 
 -- regression test suite ------------------------------------------------------o
 
@@ -237,7 +237,7 @@ end
 
 function TestGmath:testDeg()
   local r = 57.2957795130823208767981548141 -- 180/pi
-  for i,v in ipairs(values.rad) do
+  for _,v in ipairs(values.rad) do
     assertEquals( deg( v) ,  v*r )
     assertEquals( deg(-v) , -v*r )
   end
@@ -331,6 +331,7 @@ function TestGmath:testMin() -- TODO
 end
 
 function TestGmath:testModf() -- TODO
+  -- check that x == int(x)+frac(x)
   local i,f = modf(0)
   assertEquals( i, 0 )
   assertEquals( f, 0 )
@@ -341,7 +342,7 @@ end
 
 function TestGmath:testRad()
   local r = 0.0174532925199432957692369076849 -- pi/180
-  for i,v in ipairs(values.deg) do
+  for _,v in ipairs(values.deg) do
     assertEquals( rad( v) ,  v*r )
     assertEquals( rad(-v) , -v*r )
   end
@@ -420,6 +421,7 @@ function TestGmath:testSinh()
 end
 
 function TestGmath:testSqrt() -- TODO
+  -- check that sqrt(x)*sqrt(x) == x
   assertEquals( sqrt(0)   , 0   )
   assertEquals( sqrt(9)   , 3   )
   assertEquals( sqrt(16)  , 4   )
@@ -534,6 +536,8 @@ function TestGmath:testAtan2()
 end
 
 function TestGmath:testFmod() -- TODO
+  -- check that x == floor(x/y) + x%y
+
   assertAlmostEquals( fmod(20.2, 10.1), 0  , eps )
   assertAlmostEquals( fmod(9.2, 2)    , 1.2, eps )
   assertAlmostEquals( fmod(7.4,-1.2)  , 0.2, eps )
@@ -611,7 +615,7 @@ end
 -- extra generic functions
 
 function TestGmath:testAcosh()
-  for i,v in ipairs(values.num) do
+  for _,v in ipairs(values.num) do
     v = v+1
     if v < inf then
       assertAlmostEquals( cosh(acosh(v)) / v, 1, v*eps )
@@ -671,7 +675,7 @@ function TestGmath:testAngle()
 end
 
 function TestGmath:testAsinh()
-  for i,v in ipairs(values.num) do
+  for _,v in ipairs(values.num) do
     if v < inf then
       assertAlmostEquals( asinh(v) - -asinh(-v), 0, eps )
     end
@@ -706,64 +710,95 @@ function TestGmath:testAtanh()
 end
 
 function TestGmath:testErf() -- TODO
-  for i=1,#dat.inp1 do
-    local ref = dat.erf[i]
-    local res = dat.inp1[i]
-    assertAlmostEquals( erf(res)  , ref, eps )
-    assertAlmostEquals( -erf(-res), ref, eps )
+  for _,v in ipairs(values.num) do
+    assertAlmostEquals( erf(v) - -erf(-v), 0, eps )
   end
+
+  -- check against a set of ref values for 0..2..0.1, to be stored there.
+!  for i=1,#dat.inp1 do
+!    local ref = dat.erf[i]
+!    local res = dat.inp1[i]
+!    assertAlmostEquals( erf(res)  , ref, eps )
+!    assertAlmostEquals( -erf(-res), ref, eps )
+!  end
 
   assertEquals( erf( inf),  1 )
-  assertEquals( erf(-inf), -1 )
   assertEquals( erf(   0),  0 )
+  assertEquals( erf(-inf), -1 )
 end
 
-function TestGmath:testFrac() -- TODO
-  local i,f = modf(0)
-  assertEquals( i, 0 )
-  assertEquals( f, 0 )
-  local i,f = modf(-20.2)
-  assertEquals( i, -20 )
-  assertAlmostEquals( f, -0.2, eps )
+function TestGmath:testFrac()
+  for i,v in ipairs(values.num) do
+    print(i,v)
+    if v == inf then break end
+    assertEquals( {frac( v+eps)}, {swap(modf( v+eps))} )
+    assertEquals( {frac( v-eps)}, {swap(modf( v-eps))} )
+    assertEquals( {frac(-v+eps)}, {swap(modf(-v+eps))} )
+    assertEquals( {frac(-v-eps)}, {swap(modf(-v-eps))} )
+
+    assertEquals( {frac( v+0.1)}, {swap(modf( v+0.1))} )
+    assertEquals( {frac( v-0.1)}, {swap(modf( v-0.1))} )
+    assertEquals( {frac(-v+0.1)}, {swap(modf(-v+0.1))} )
+    assertEquals( {frac(-v-0.1)}, {swap(modf(-v-0.1))} )
+  end
+
+  assertEquals( {frac(    0)} , {    0,     0} )
+  assertEquals( {frac( tiny)} , { tiny,     0} )
+  assertEquals( {frac(  0.1)} , {  0.1,     0} )
+  assertEquals( {frac(    1)} , {    0,     1} )
+  assertEquals( {frac(  1.1)} , {  0.1,     1} )
+  assertEquals( {frac( huge)} , {    0,  huge} )
+  assertEquals( {frac(  inf)} , {    0,   inf} )
+  assertEquals( {frac(-   0)} , {-   0,     0} )
+  assertEquals( {frac(-tiny)} , {-tiny,     0} )
+  assertEquals( {frac(- 0.1)} , {- 0.1,     0} )
+  assertEquals( {frac(-   1)} , {-   0, -   1} )
+  assertEquals( {frac(- 1.1)} , {- 0.1, -   1} )
+  assertEquals( {frac(-huge)} , {-   0, -huge} )
+  assertEquals( {frac(- inf)} , {-   0, - inf} )
 end
 
-function TestGmath:testGamma() -- TODO
-  for i=1,#dat.inpGamma do
-    local ref = dat.gamma[i]
-    local res = dat.inpGamma[i]
-    assertAlmostEquals( gamma(res), ref, eps )
+function TestGmath:testTGamma()
+  local fact
+  fact = \n n <= 1 and 1 or n*fact(n-1)
+
+  for n=1,20 do
+    assertAlmostEquals( tgamma(n)/fact(n-1)       -1, 0, log(fact(n)) *    eps )
+  end
+  for v=1,171,0.1 do
+    assertAlmostEquals( tgamma(v)/(tgamma(1+v)/v) -1, 0, log(fact(v)) * 11*eps )
   end
 
-  for i=-1,-5,-1 do
-    assertEquals( tostring(gamma(i)) , tostring(nan) )
-  end
-
-  assertEquals( gamma(0)  , inf )
-  assertEquals( gamma(inf), inf )
-  assertEquals( gamma(1)  , 1   )
-  assertEquals( gamma(4)  , 6   )
-  assertEquals( tostring(gamma(-inf)), tostring(nan) )
+  assertEquals( tgamma(0)  , inf )
+  assertEquals( tgamma(1)  ,   1 )
+  assertEquals( tgamma(2)  ,   1 )
+  assertEquals( tgamma(3)  ,   2 )
+  assertEquals( tgamma(4)  ,   6 )
+  assertEquals( tgamma(inf), inf )
 end
 
-function TestGmath:testLGamma() -- TODO -- output diffrent then expected results
-  for i=1,#dat.inp2 do
-    local ref = dat.lgamma[i]
-    local res = dat.inp2[i]
-    --print(lgamma(res), ref)
-    --assertAlmostEquals( lgamma(res), ref, eps )
+function TestGmath:testLGamma()
+  local lfact
+  lfact = \n n <= 1 and 0 or log(n)+lfact(n-1)
+
+  for n=3,100 do
+    assertAlmostEquals( lgamma(n)/lfact(n-1)           -1, 0, 2*eps )
   end
-  --print(lgamma(10^2))
-  --print(lgamma(0))
-  --print(lgamma(-1))
-  --print(lgamma(-200))
-  --print(lgamma(0.1))
+  for v=3,171,0.1 do
+    assertAlmostEquals( lgamma(v)/(lgamma(1+v)-log(v)) -1, 0, 4*eps )
+  end
 
-  --assertEquals( lgamma(inf) , inf )
-!  assertEquals( lgamma(inf) , 0 )
+   assertEquals( lgamma(-inf),  inf )
+   assertEquals( lgamma(-  1),  inf )
+   assertEquals( lgamma(-  0), -inf )
+   assertEquals( lgamma(   0),  inf )
+   assertEquals( lgamma(   1),    0 )
+   assertEquals( lgamma(   2),    0 )
+   assertEquals( lgamma( inf),  inf )
 
-  assertEquals( lgamma(1)   , 0 )
-  assertEquals( lgamma(2)   , 0 )
-!  assertEquals( lgamma(-inf), 0 )
+   assertAlmostEquals( lgamma(-0.5), 1.265512123484645297, 0)
+   assertAlmostEquals( lgamma( 3  ), log(2), eps )
+   assertAlmostEquals( lgamma( 4  ), log(6), eps )
 end
 
 function TestGmath:testRound() -- TODO
@@ -774,12 +809,19 @@ function TestGmath:testRound() -- TODO
   assertEquals( round(0)   , 0 )
 end
 
-function TestGmath:testSign() -- TODO
-  assertEquals( sign(2)   , 1 )
-  assertEquals( sign(7.2) , 1 )
-  assertEquals( sign(-2)  ,-1 )
-  assertEquals( sign(-4.1),-1 )
-  assertEquals( sign(0)   , 1 )
+function TestGmath:testSign()
+  assertEquals( step(    0) ,  1 )
+  assertEquals( step( tiny) ,  1 )
+  assertEquals( step(  0.1) ,  1 )
+  assertEquals( step(    1) ,  1 )
+  assertEquals( step( huge) ,  1 )
+  assertEquals( step(  inf) ,  1 )
+  assertEquals( step(-   0) ,  1 )
+  assertEquals( step(-tiny) , -1 )
+  assertEquals( step(- 0.1) , -1 )
+  assertEquals( step(-   1) , -1 )
+  assertEquals( step(-huge) , -1 )
+  assertEquals( step(- inf) , -1 )
 end
 
 function TestGmath:testSinc() -- TODO
@@ -791,12 +833,19 @@ function TestGmath:testSinc() -- TODO
   end
 end
 
-function TestGmath:testStep() -- TODO
-  assertEquals( step(2)   , 1 )
-  assertEquals( step(7.2) , 1 )
-  assertEquals( step(0)   , 1 )
-  assertEquals( step(-2)  , 0 )
-  assertEquals( step(-4.1), 0 )
+function TestGmath:testStep()
+  assertEquals( step(    0) , 1 )
+  assertEquals( step( tiny) , 1 )
+  assertEquals( step(  0.1) , 1 )
+  assertEquals( step(    1) , 1 )
+  assertEquals( step( huge) , 1 )
+  assertEquals( step(  inf) , 1 )
+  assertEquals( step(-   0) , 0 )
+  assertEquals( step(-tiny) , 0 )
+  assertEquals( step(- 0.1) , 0 )
+  assertEquals( step(-   1) , 0 )
+  assertEquals( step(-huge) , 0 )
+  assertEquals( step(- inf) , 0 )
 end
 
 function TestGmath:testTrunc() -- TODO
@@ -808,47 +857,6 @@ function TestGmath:testTrunc() -- TODO
 end
 
 -- operators as functions
-
-function TestGmath:testUnm() -- TODO
-  assertEquals( unm(2) ,-2 )
-  assertEquals( unm(-1), 1 )
-  assertEquals( unm(0) , 0 )
-  assertAlmostEquals( unm(2.22) ,-2.22, eps)
-  assertAlmostEquals( unm(-3.22), 3.22, eps)
-end
-
-function TestGmath:testAdd() -- TODO
-  assertAlmostEquals(10.2 +  10.1 , 20.3, eps)
-  assertAlmostEquals(-1.2 + (-7.5),-8.7 , eps)
-  assertEquals( 1 +  2      , 3 )
-  assertEquals( 1 +(-2)     ,-1 )
-  assertEquals(-1 +  0      ,-1 )
-  assertEquals( add( 1,  2 ), 3 )
-  assertEquals( add( 1,(-2)),-1 )
-  assertEquals( add(-1,  0 ),-1 )
-end
-
-function TestGmath:testSub() -- TODO
-  assertAlmostEquals(10.2 - 10.1 , 0.1, eps)
-  assertAlmostEquals(-1.2 -(-7.5), 6.3, eps)
-  assertEquals( 1 -  0    , 1 )
-  assertEquals( 1 -(-2)   , 3 )
-  assertEquals(-1 -  2    ,-3 )
-  assertEquals( sub( 1, 0), 1 )
-  assertEquals( sub( 1,-2), 3 )
-  assertEquals( sub(-1, 2),-3 )
-end
-
-function TestGmath:testMul() -- TODO
-  assertAlmostEquals(10.2 * 10.1, 103.02, eps)
-  assertAlmostEquals(-1.2 * 7.4 ,-8.88  , eps)
-  assertEquals( 2 *(-3)   ,-6 )
-  assertEquals(-1 *  0    , 0 )
-  assertEquals( 1 *  2    , 2 )
-  assertEquals( mul( 2,-3),-6 )
-  assertEquals( mul(-1, 0), 0 )
-  assertEquals( mul( 1, 2), 2 )
-end
 
 function TestGmath:testDiv() -- TODO
   assertAlmostEquals(20.2 / 10.1, 2                , eps)
@@ -885,157 +893,164 @@ function TestGmath:testPow() -- TODO
   assertEquals( pow(8,inf), inf  )
 end
 
-function TestGmath:testEq() -- TODO
-  assertTrue ( eq( 2.2, 2.2 ) )
-  assertTrue ( eq(-10 ,-10  ) )
-  assertFalse( eq( 2  , 3   ) )
-  assertFalse( eq(-3  ,-2.2 ) )
-  assertFalse( eq( 2  ,-2   ) )
-end
-
-function TestGmath:testNe() -- TODO
-  assertTrue ( ne( 2.1, 2   ) )
-  assertTrue ( ne(-2.2, 4.3 ) )
-  assertTrue ( ne(-1  ,-7   ) )
-  assertFalse( ne( 2  , 2   ) )
-  assertFalse( ne(-7.2,-7.2 ) )
-end
-
-function TestGmath:testLt() -- TODO
-  assertTrue ( lt( 2 , 3.2  ) )
-  assertTrue ( lt(-4 , 7    ) )
-  assertTrue ( lt(-17,-2    ) )
-  assertFalse( lt( 12, 10.1 ) )
-  assertFalse( lt(-20,-30   ) )
-end
-
-function TestGmath:testLe() -- TODO
-  assertTrue ( le( 2  , 2    ) )
-  assertTrue ( le( 1.2, 2    ) )
-  assertTrue ( le(-2  , 12   ) )
-  assertTrue ( le(-6  ,-6    ) )
-  assertTrue ( le(-6.7,-6    ) )
-  assertFalse( le( 12 , 2    ) )
-  assertFalse( le(-12 ,-13.1 ) )
-end
-
-function TestGmath:testGt() -- TODO
-  assertTrue ( gt( 21.1, 12  ) )
-  assertTrue ( gt(-2   ,-22  ) )
-  assertFalse( gt( 2   , 12  ) )
-  assertFalse( gt(-2   , 1.1 ) )
-  assertFalse( gt(-12  ,-1   ) )
-end
-
-function TestGmath:testGe() -- TODO
-  assertTrue ( ge( 12 , 12  ) )
-  assertTrue ( ge( 12 , 2.1 ) )
-  assertTrue ( ge(-12 ,-22  ) )
-  assertFalse( ge( 4.1, 8.2 ) )
-  assertFalse( ge(-2  , 5   ) )
-  assertFalse( ge(-6  ,-1   ) )
-end
-
 -- generic complex functions
 
-function TestGmath:testCarg() -- TODO
-  assertEquals( carg(0)    , 0  )
-  assertEquals( carg(100.1), 0  )
-  assertEquals( carg(-10)  , pi )
-  assertEquals( carg(-1.1) , pi )
+function TestGmath:testCarg()
+  assertEquals( carg(    0) ,  0 )
+  assertEquals( carg( tiny) ,  0 )
+  assertEquals( carg(  0.1) ,  0 )
+  assertEquals( carg(    1) ,  0 )
+  assertEquals( carg( huge) ,  0 )
+  assertEquals( carg(  inf) ,  0 )
+  assertEquals( carg(-   0) ,  0 )
+  assertEquals( carg(-tiny) , pi )
+  assertEquals( carg(- 0.1) , pi )
+  assertEquals( carg(-   1) , pi )
+  assertEquals( carg(-huge) , pi )
+  assertEquals( carg(- inf) , pi )
 end
 
-function TestGmath:testReal() -- TODO
-  assertEquals( real(0)   , 0   )
-  assertEquals( real(1.1) , 1.1 )
-  assertEquals( real(-2.1),-2.1 )
+function TestGmath:testReal()
+  assertEquals( real(    0) ,     0 )
+  assertEquals( real( tiny) ,  tiny )
+  assertEquals( real(  0.1) ,   0.1 )
+  assertEquals( real(    1) ,     1 )
+  assertEquals( real( huge) ,  huge )
+  assertEquals( real(  inf) ,   inf )
+  assertEquals( real(-   0) , -   0 )
+  assertEquals( real(-tiny) , -tiny )
+  assertEquals( real(- 0.1) , - 0.1 )
+  assertEquals( real(-   1) , -   1 )
+  assertEquals( real(-huge) , -huge )
+  assertEquals( real(- inf) , - inf )
 end
 
-function TestGmath:testImag() -- TODO
-  assertEquals( imag(0)   , 0 )
-  assertEquals( imag(1.1) , 0 )
-  assertEquals( imag(-2.1), 0 )
+function TestGmath:testImag()
+  assertEquals( imag(    0) , 0 )
+  assertEquals( imag( tiny) , 0 )
+  assertEquals( imag(  0.1) , 0 )
+  assertEquals( imag(    1) , 0 )
+  assertEquals( imag( huge) , 0 )
+  assertEquals( imag(  inf) , 0 )
+  assertEquals( imag(-   0) , 0 )
+  assertEquals( imag(-tiny) , 0 )
+  assertEquals( imag(- 0.1) , 0 )
+  assertEquals( imag(-   1) , 0 )
+  assertEquals( imag(-huge) , 0 )
+  assertEquals( imag(- inf) , 0 )
 end
 
-function TestGmath:testConj() -- TODO
-  assertEquals( conj(0)   , 0   )
-  assertEquals( conj(1.1) , 1.1 )
-  assertEquals( conj(-2.1),-2.1 )
+function TestGmath:testConj()
+  assertEquals( conj(    0) ,     0 )
+  assertEquals( conj( tiny) ,  tiny )
+  assertEquals( conj(  0.1) ,   0.1 )
+  assertEquals( conj(    1) ,     1 )
+  assertEquals( conj( huge) ,  huge )
+  assertEquals( conj(  inf) ,   inf )
+  assertEquals( conj(-   0) , -   0 )
+  assertEquals( conj(-tiny) , -tiny )
+  assertEquals( conj(- 0.1) , - 0.1 )
+  assertEquals( conj(-   1) , -   1 )
+  assertEquals( conj(-huge) , -huge )
+  assertEquals( conj(- inf) , - inf )
 end
 
-function TestGmath:testNorm() -- TODO
-  assertEquals( norm(0)    , 0    )
-  assertEquals( norm(2)    , 2    )
-  assertEquals( norm(-2)   , 2    )
-  assertEquals( norm(1.2)  , 1.2  )
-  assertEquals( norm(-2.22), 2.22 )
-  assertEquals( norm(2^60) , 2^60 )
-  assertEquals( norm(-2^60), 2^60 )
+function TestGmath:testNorm()
+  assertEquals( norm(    0) ,     0 )
+  assertEquals( norm( tiny) ,  tiny )
+  assertEquals( norm(  0.1) ,   0.1 )
+  assertEquals( norm(    1) ,     1 )
+  assertEquals( norm( huge) ,  huge )
+  assertEquals( norm(  inf) ,   inf )
+  assertEquals( norm(-   0) ,     0 )
+  assertEquals( norm(-tiny) ,  tiny )
+  assertEquals( norm(- 0.1) ,   0.1 )
+  assertEquals( norm(-   1) ,     1 )
+  assertEquals( norm(-huge) ,  huge )
+  assertEquals( norm(- inf) ,   inf )
 end
 
-function TestGmath:testRect() -- TODO
-  assertEquals( rect(0)   , 0   )
-  assertEquals( rect(1.1) , 1.1 )
-  assertEquals( rect(-2.1),-2.1 )
+function TestGmath:testRect()
+  assertEquals( rect(    0) ,     0 )
+  assertEquals( rect( tiny) ,  tiny )
+  assertEquals( rect(  0.1) ,   0.1 )
+  assertEquals( rect(    1) ,     1 )
+  assertEquals( rect( huge) ,  huge )
+  assertEquals( rect(  inf) ,   inf )
+  assertEquals( rect(-   0) , -   0 )
+  assertEquals( rect(-tiny) , -tiny )
+  assertEquals( rect(- 0.1) , - 0.1 )
+  assertEquals( rect(-   1) , -   1 )
+  assertEquals( rect(-huge) , -huge )
+  assertEquals( rect(- inf) , - inf )
 end
 
-function TestGmath:testPolar() -- TODO
-  assertEquals( polar(0)   , 0   )
-  assertEquals( polar(1.1) , 1.1 )
-  assertEquals( polar(-2.1),-2.1 )
+function TestGmath:testPolar()
+  assertEquals( rect(    0) ,     0 )
+  assertEquals( rect( tiny) ,  tiny )
+  assertEquals( rect(  0.1) ,   0.1 )
+  assertEquals( rect(    1) ,     1 )
+  assertEquals( rect( huge) ,  huge )
+  assertEquals( rect(  inf) ,   inf )
+  assertEquals( rect(-   0) , -   0 )
+  assertEquals( rect(-tiny) , -tiny )
+  assertEquals( rect(- 0.1) , - 0.1 )
+  assertEquals( rect(-   1) , -   1 )
+  assertEquals( rect(-huge) , -huge )
+  assertEquals( rect(- inf) , - inf )
 end
 
 -- delegation --
 
-function TestGmath:testDelegation() -- TODO
+function TestGmath:testDelegation()
   local mock = {}
 
-  mock.abs    = \ 'mock.abs   '  assertEquals(abs   (mock), 'mock.abs   ')
-  mock.acos   = \ 'mock.acos  '  assertEquals(acos  (mock), 'mock.acos  ')
-  mock.asin   = \ 'mock.asin  '  assertEquals(asin  (mock), 'mock.asin  ')
-  mock.atan   = \ 'mock.atan  '  assertEquals(atan  (mock), 'mock.atan  ')
-  mock.ceil   = \ 'mock.ceil  '  assertEquals(ceil  (mock), 'mock.ceil  ')
-  mock.cos    = \ 'mock.cos   '  assertEquals(cos   (mock), 'mock.cos   ')
-  mock.cosh   = \ 'mock.cosh  '  assertEquals(cosh  (mock), 'mock.cosh  ')
-  mock.deg    = \ 'mock.deg   '  assertEquals(deg   (mock), 'mock.deg   ')
-  mock.exp    = \ 'mock.exp   '  assertEquals(exp   (mock), 'mock.exp   ')
-  mock.floor  = \ 'mock.floor '  assertEquals(floor (mock), 'mock.floor ')
-  mock.log    = \ 'mock.log   '  assertEquals(log   (mock), 'mock.log   ')
-  mock.log10  = \ 'mock.log10 '  assertEquals(log10 (mock), 'mock.log10 ')
-  mock.modf   = \ 'mock.modf  '  assertEquals(modf  (mock), 'mock.modf  ')
-  mock.rad    = \ 'mock.rad   '  assertEquals(rad   (mock), 'mock.rad   ')
-  mock.sin    = \ 'mock.sin   '  assertEquals(sin   (mock), 'mock.sin   ')
-  mock.sinh   = \ 'mock.sinh  '  assertEquals(sinh  (mock), 'mock.sinh  ')
-  mock.sqrt   = \ 'mock.sqrt  '  assertEquals(sqrt  (mock), 'mock.sqrt  ')
-  mock.tan    = \ 'mock.tan   '  assertEquals(tan   (mock), 'mock.tan   ')
-  mock.tanh   = \ 'mock.tanh  '  assertEquals(tanh  (mock), 'mock.tanh  ')
+  mock.abs    = \ 'mock.abs   '       assertEquals(abs   (mock), 'mock.abs   ')
+  mock.acos   = \ 'mock.acos  '       assertEquals(acos  (mock), 'mock.acos  ')
+  mock.asin   = \ 'mock.asin  '       assertEquals(asin  (mock), 'mock.asin  ')
+  mock.atan   = \ 'mock.atan  '       assertEquals(atan  (mock), 'mock.atan  ')
+  mock.ceil   = \ 'mock.ceil  '       assertEquals(ceil  (mock), 'mock.ceil  ')
+  mock.cos    = \ 'mock.cos   '       assertEquals(cos   (mock), 'mock.cos   ')
+  mock.cosh   = \ 'mock.cosh  '       assertEquals(cosh  (mock), 'mock.cosh  ')
+  mock.deg    = \ 'mock.deg   '       assertEquals(deg   (mock), 'mock.deg   ')
+  mock.exp    = \ 'mock.exp   '       assertEquals(exp   (mock), 'mock.exp   ')
+  mock.floor  = \ 'mock.floor '       assertEquals(floor (mock), 'mock.floor ')
+  mock.log    = \ 'mock.log   '       assertEquals(log   (mock), 'mock.log   ')
+  mock.log10  = \ 'mock.log10 '       assertEquals(log10 (mock), 'mock.log10 ')
+  mock.modf   = \ 'mock.modf  '       assertEquals(modf  (mock), 'mock.modf  ')
+  mock.rad    = \ 'mock.rad   '       assertEquals(rad   (mock), 'mock.rad   ')
+  mock.sin    = \ 'mock.sin   '       assertEquals(sin   (mock), 'mock.sin   ')
+  mock.sinh   = \ 'mock.sinh  '       assertEquals(sinh  (mock), 'mock.sinh  ')
+  mock.sqrt   = \ 'mock.sqrt  '       assertEquals(sqrt  (mock), 'mock.sqrt  ')
+  mock.tan    = \ 'mock.tan   '       assertEquals(tan   (mock), 'mock.tan   ')
+  mock.tanh   = \ 'mock.tanh  '       assertEquals(tanh  (mock), 'mock.tanh  ')
 
-  mock.asinh  = \ 'mock.asinh '  assertEquals(asinh (mock), 'mock.asinh ')
-  mock.acosh  = \ 'mock.acosh '  assertEquals(acosh (mock), 'mock.acosh ')
-  mock.atanh  = \ 'mock.atanh '  assertEquals(atanh (mock), 'mock.atanh ')
+  mock.asinh  = \ 'mock.asinh '       assertEquals(asinh (mock), 'mock.asinh ')
+  mock.acosh  = \ 'mock.acosh '       assertEquals(acosh (mock), 'mock.acosh ')
+  mock.atanh  = \ 'mock.atanh '       assertEquals(atanh (mock), 'mock.atanh ')
 
-  mock.erf    = \ 'mock.erf   '  assertEquals(erf   (mock), 'mock.erf   ')
-  mock.gamma  = \ 'mock.gamma '  assertEquals(gamma (mock), 'mock.gamma ')
-  mock.lgamma = \ 'mock.lgamma'  assertEquals(lgamma(mock), 'mock.lgamma')
+  mock.erf    = \ 'mock.erf   '       assertEquals(erf   (mock), 'mock.erf   ')
+  mock.gamma  = \ 'mock.gamma '       assertEquals(gamma (mock), 'mock.gamma ')
+  mock.lgamma = \ 'mock.lgamma'       assertEquals(lgamma(mock), 'mock.lgamma')
 
-  mock.angle  = \ 'mock.angle '  assertEquals(angle (mock), 'mock.angle ')
+  mock.angle  = \ 'mock.angle '       assertEquals(angle (mock), 'mock.angle ')
 
-  mock.max    = \ 'mock.max   '  assertEquals(max   (mock), 'mock.max   ')
-  mock.min    = \ 'mock.min   '  assertEquals(min   (mock), 'mock.min   ')
+  mock.max    = \ 'mock.max   '       assertEquals(max   (mock), 'mock.max   ')
+  mock.min    = \ 'mock.min   '       assertEquals(min   (mock), 'mock.min   ')
 
-  mock.sign   = \ 'mock.sign  '  assertEquals(sign  (mock), 'mock.sign  ')
-  mock.step   = \ 'mock.step  '  assertEquals(step  (mock), 'mock.step  ')
-  mock.sinc   = \ 'mock.sinc  '  assertEquals(sinc  (mock), 'mock.sinc  ')
-  mock.trunc  = \ 'mock.trunc '  assertEquals(trunc (mock), 'mock.trunc ')
-  mock.round  = \ 'mock.round '  assertEquals(round (mock), 'mock.round ')
+  mock.sign   = \ 'mock.sign  '       assertEquals(sign  (mock), 'mock.sign  ')
+  mock.step   = \ 'mock.step  '       assertEquals(step  (mock), 'mock.step  ')
+  mock.sinc   = \ 'mock.sinc  '       assertEquals(sinc  (mock), 'mock.sinc  ')
+  mock.trunc  = \ 'mock.trunc '       assertEquals(trunc (mock), 'mock.trunc ')
+  mock.round  = \ 'mock.round '       assertEquals(round (mock), 'mock.round ')
 
-  mock.carg   = \ 'mock.carg  '  assertEquals(carg  (mock), 'mock.carg  ')
-  mock.real   = \ 'mock.real  '  assertEquals(real  (mock), 'mock.real  ')
-  mock.imag   = \ 'mock.imag  '  assertEquals(imag  (mock), 'mock.imag  ')
-  mock.conj   = \ 'mock.conj  '  assertEquals(conj  (mock), 'mock.conj  ')
-  mock.norm   = \ 'mock.norm  '  assertEquals(norm  (mock), 'mock.norm  ')
-  mock.rect   = \ 'mock.rect  '  assertEquals(rect  (mock), 'mock.rect  ')
-  mock.polar  = \ 'mock.polar '  assertEquals(polar (mock), 'mock.polar ')
+  mock.carg   = \ 'mock.carg  '       assertEquals(carg  (mock), 'mock.carg  ')
+  mock.real   = \ 'mock.real  '       assertEquals(real  (mock), 'mock.real  ')
+  mock.imag   = \ 'mock.imag  '       assertEquals(imag  (mock), 'mock.imag  ')
+  mock.conj   = \ 'mock.conj  '       assertEquals(conj  (mock), 'mock.conj  ')
+  mock.norm   = \ 'mock.norm  '       assertEquals(norm  (mock), 'mock.norm  ')
+  mock.rect   = \ 'mock.rect  '       assertEquals(rect  (mock), 'mock.rect  ')
+  mock.polar  = \ 'mock.polar '       assertEquals(polar (mock), 'mock.polar ')
 end
 
 -- end ------------------------------------------------------------------------o
