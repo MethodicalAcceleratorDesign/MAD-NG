@@ -31,7 +31,60 @@ local assertEquals, assertAlmostEquals =
 
 TestLuaCore = {}
 
-local function getPrimes(n)
+-- modf regression test -------------------------------------------------------o
+
+function TestLuaCore:testFrac()
+  local modf = math.modf
+  local eps  = 2.2204460492503131e-16
+  local tiny = 2.2250738585072012e-308
+  local huge = 1.7976931348623158e+308
+  local inf  = 1/0
+  local num = { 2^31, 2^32, 2^52, 2^53, 2^63, 2^64, huge, inf }
+
+  local function second(a,b) return b end
+  local function frac(x) return second(modf(x)) end
+
+  for i,v in ipairs(num) do
+    if v == inf then break end -- pb with luajit?
+    assertEquals( frac( v+eps), second(modf( v+eps)) )
+    assertEquals( frac( v-eps), second(modf( v-eps)) )
+    assertEquals( frac(-v+eps), second(modf(-v+eps)) )
+    assertEquals( frac(-v-eps), second(modf(-v-eps)) )
+    assertEquals( frac( v+0.1), second(modf( v+0.1)) )
+    assertEquals( frac( v-0.1), second(modf( v-0.1)) )
+    assertEquals( frac(-v+0.1), second(modf(-v+0.1)) )
+    assertEquals( frac(-v-0.1), second(modf(-v-0.1)) )
+    assertEquals( frac( v+0.7), second(modf( v+0.7)) )
+    assertEquals( frac( v-0.7), second(modf( v-0.7)) )
+    assertEquals( frac(-v+0.7), second(modf(-v+0.7)) )
+    assertEquals( frac(-v-0.7), second(modf(-v-0.7)) )
+  end
+
+  assertEquals( frac(    0) ,     0 )
+  assertEquals( frac( tiny) ,  tiny )
+  assertEquals( frac(  0.1) ,   0.1 )
+  assertEquals( frac(  0.5) ,   0.5 )
+  assertEquals( frac(  0.7) ,   0.7 )
+  assertEquals( frac(    1) ,     0 )
+  assertEquals( frac(  1.5) ,   0.5 )
+  assertEquals( frac(  1.7) ,   0.7 )
+  assertEquals( frac( huge) ,     0 )
+--  assertEquals( frac(  inf) ,     0 ) -- get NaN, pb with luajit?
+  assertEquals( frac(-   0) , -   0 )
+  assertEquals( frac(-tiny) , -tiny )
+  assertEquals( frac(- 0.1) , - 0.1 )
+  assertEquals( frac(- 0.5) , - 0.5 )
+  assertEquals( frac(- 0.7) , - 0.7 )
+  assertEquals( frac(-   1) , -   0 )
+  assertEquals( frac(- 1.5) , - 0.5 )
+  assertEquals( frac(- 1.7) , - 0.7 )
+  assertEquals( frac(-huge) , -   0 )
+--  assertEquals( frac(- inf) ,     0 ) -- get NaN, pb with luajit?
+end
+
+-- get_primes regression test -------------------------------------------------o
+
+local function get_primes(n)
   local function isPrimeDivisible(self, c)
     for i=3, self.prime_count do
       if self.primes[i] * self.primes[i] > c then break end
@@ -57,7 +110,7 @@ local function getPrimes(n)
 end
 
 function TestLuaCore:testPrimes()
-  local p = getPrimes(1e3)
+  local p = get_primes(1e3)
   assertEquals( p.primes[p.prime_count-0], 7907 )
   assertEquals( p.primes[p.prime_count-1], 7901 )
   assertEquals( p.primes[p.prime_count-2], 7883 )
@@ -65,6 +118,8 @@ function TestLuaCore:testPrimes()
   assertEquals( p.primes[p.prime_count-4], 7877 )
   assertEquals( p.primes[p.prime_count-5], 7873 )
 end
+
+-- find_duplicate regression test ---------------------------------------------o
 
 local function find_duplicates(inp)
   local res = {}
@@ -107,7 +162,7 @@ Test_LuaCore = {}
 
 function Test_LuaCore:testPrimes()
   local t0, p = os.clock()
-  p = getPrimes(2e5)
+  p = get_primes(2e5)
   local dt = os.clock() - t0
   assertEquals( p.primes[p.prime_count], 2750131 )
   assertAlmostEquals( dt , 0.5, 1 )
