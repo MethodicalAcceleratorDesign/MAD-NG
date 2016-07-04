@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertFalse, assertTrue, assertEquals, assertAlmostEquals
+local assertFalse, assertTrue, assertEquals, assertNotEquals, assertAlmostEquals
       in require 'luaunit'
 local dat = require 'gmath_dat'
 
@@ -72,6 +72,42 @@ local values = {
 --
 
 -- keep the order of the import above
+
+-- constant
+
+function TestGmath:testConstant()
+  assertEquals(  pi , 3.1415926535897932385 )
+  assertEquals(  pi , atan(1)*4 )
+
+  assertEquals(  pi ,  Pi )
+  assertEquals( -pi , -Pi )
+
+  assertEquals(  eps ,  2.2204460492503131e-16  )
+  assertEquals(  huge,  1.7976931348623158e+308 )
+  assertEquals(  tiny,  2.2250738585072012e-308 )
+
+  assertEquals( -eps , -2.2204460492503131e-16  )
+  assertEquals( -huge, -1.7976931348623158e+308 )
+  assertEquals( -tiny, -2.2250738585072012e-308 )
+
+  assertEquals(  inf,  Inf )
+  assertEquals( -inf, -Inf )
+
+  assertNotEquals(  nan,  nan )
+  assertNotEquals( -nan,  nan )
+  assertNotEquals(  nan, -nan )
+  assertNotEquals( -nan, -nan )
+
+  assertNotEquals(  nan,  NaN )
+  assertNotEquals( -nan,  NaN )
+  assertNotEquals(  nan, -NaN )
+  assertNotEquals( -nan, -NaN )
+
+  assertEquals( tostring( nan), 'nan' )
+  assertEquals( tostring(-nan), 'nan' )
+  assertEquals( tostring( NaN), 'nan' )
+  assertEquals( tostring(-NaN), 'nan' )
+end
 
 -- generic functions
 
@@ -261,7 +297,7 @@ function TestGmath:testCosh()
 end
 
 function TestGmath:testDeg()
-  local r = 57.2957795130823208767981548141 -- 180/pi
+  local r = 57.2957795130823208768 -- 180/pi
   for _,v in ipairs(values.rad) do
     assertEquals( deg( v) ,  v*r )
     assertEquals( deg(-v) , -v*r )
@@ -468,7 +504,7 @@ function TestGmath:testModf()
 end
 
 function TestGmath:testRad()
-  local r = 0.0174532925199432957692369076849 -- pi/180
+  local r = 0.0174532925199432958 -- pi/180
   for _,v in ipairs(values.deg) do
     assertEquals( rad( v) ,  v*r )
     assertEquals( rad(-v) , -v*r )
@@ -690,36 +726,48 @@ function TestGmath:testAtan2()
   assertEquals( tostring(atan2(nan,nan)), 'nan' )
 end
 
-function TestGmath:testFmod()
+function TestGmath:testFMod()
+  local e, n, f, r
   for _,x in ipairs(values.num) do
   for _,y in ipairs(values.num) do
-    if y > x and y < inf then
-      assertAlmostEquals(      x%y , x - floor(x/y)*x, 0 )
-      assertAlmostEquals( fmod(x,y), x - floor(x/y)*x, 0 )
+    if x < y then
+      assertEquals( fmod( x, y),  x )
+      assertEquals( fmod(-x, y), -x )
+      assertEquals( fmod( x,-y),  x )
+      assertEquals( fmod(-x,-y), -x )
+    elseif y/x >= tiny/eps and x < inf and y < inf then
+      n = floor(x/y)
+      f = fmod(x,y)
+      r = x - (n*y + f)
+      if r < 0 then r = r+y end
+      e = n * eps / 10
+      assertTrue( 0 <= f and f < y )
+      assertTrue( r < e )
     end
   end end
 
-  assertAlmostEquals( fmod(-5.1, -3) - -2.1, 0, 2*eps)
-  assertAlmostEquals( fmod(-5.1,  3) - -2.1, 0, 2*eps)
-  assertAlmostEquals( fmod( 5.1, -3) -  2.1, 0, 2*eps)
-  assertAlmostEquals( fmod( 5.1,  3) -  2.1, 0, 2*eps)
+  assertAlmostEquals( fmod(-5.1, -3  ) - -2.1, 0, 2*eps)
+  assertAlmostEquals( fmod(-5.1,  3  ) - -2.1, 0, 2*eps)
+  assertAlmostEquals( fmod( 5.1, -3  ) -  2.1, 0, 2*eps)
+  assertAlmostEquals( fmod( 5.1,  3  ) -  2.1, 0, 2*eps)
 
-  assertAlmostEquals( fmod(-5.1, -3.1) - -2, 0, 2*eps)
-  assertAlmostEquals( fmod(-5.1,  3.1) - -2, 0, 2*eps)
-  assertAlmostEquals( fmod( 5.1, -3.1) -  2, 0, 2*eps)
-  assertAlmostEquals( fmod( 5.1,  3.1) -  2, 0, 2*eps)
+  assertAlmostEquals( fmod(-5.1, -3.1) - -2  , 0, 2*eps)
+  assertAlmostEquals( fmod(-5.1,  3.1) - -2  , 0, 2*eps)
+  assertAlmostEquals( fmod( 5.1, -3.1) -  2  , 0, 2*eps)
+  assertAlmostEquals( fmod( 5.1,  3.1) -  2  , 0, 2*eps)
 
-  assertEquals( fmod(1,  inf), 1 )
-  assertEquals( fmod(1, -inf), 1 )
+  assertEquals      ( fmod( 1  ,  inf)       ,  1 )
+  assertEquals      ( fmod(-1  ,  inf)       , -1 )
+  assertEquals      ( fmod( 1  , -inf)       ,  1 )
+  assertEquals      ( fmod(-1  , -inf)       , -1 )
 
-  assertEquals( tostring(1 %  inf) , 'nan' ) -- not IEEE, luajit?
-  assertEquals( tostring(1 % -inf) , 'nan' ) -- not IEEE, luajit?
-
-  assertEquals( tostring( inf % nan), 'nan' )
-  assertEquals( tostring(-inf % nan), 'nan' )
-  assertEquals( tostring(   1 %   0), 'nan' )
-  assertEquals( tostring(   1 % - 0), 'nan' )
-  assertEquals( tostring( nan % nan), 'nan' )
+  assertEquals( tostring(fmod( inf,  inf)), 'nan' )
+  assertEquals( tostring(fmod(-inf, -inf)), 'nan' )
+  assertEquals( tostring(fmod( inf,  nan)), 'nan' )
+  assertEquals( tostring(fmod(-inf,  nan)), 'nan' )
+  assertEquals( tostring(fmod(   1,    0)), 'nan' )
+  assertEquals( tostring(fmod(   1, -  0)), 'nan' )
+  assertEquals( tostring(fmod( nan,  nan)), 'nan' )
 end
 
 function TestGmath:testLdexp()
@@ -928,7 +976,8 @@ function TestGmath:testErf() -- TODO
     assertAlmostEquals( erf(v) - -erf(-v), 0, eps )
   end
 
-  -- check against a set of ref values for 0..2..0.1 and 2..1003..7, to be stored there.
+  -- check against a set of ref values for 0..2..0.1 and 2..1003..7
+  -- to be stored there.
 
   assertEquals( erf( inf),  1 )
   assertEquals( erf(   0),  0 )
@@ -1176,19 +1225,38 @@ function TestGmath:testDiv() -- TODO
   assertEquals( div(-1, 2),-0.5 )
 end
 
-function TestGmath:testMod() -- TODO
-  -- see test for fmod
-  assertAlmostEquals(20.2 % 10.1, 0, eps)
-  assertAlmostEquals( 7.4 %-1.2 ,-1, eps)
-  assertEquals( 4 %  2     , 0 )
-  assertEquals( 4 %  3     , 1 )
-  assertEquals( 9 %(-3)    , 0 )
-  assertEquals( 9 %(-2)    ,-1 )
-  assertEquals(-1 %  2     , 1 )
-  assertEquals( mod( 4 , 3), 1 )
-  assertEquals( mod( 9 ,-3), 0 )
-  assertEquals( mod( 9 ,-2),-1 )
-  assertEquals( mod(-1 , 2), 1 )
+function TestGmath:testMod()
+  -- a % b == a - math.floor(a/b)*b (not IEEE:IEC 60559)
+
+  for _,x in ipairs(values.num) do
+  for _,y in ipairs(values.num) do
+    if y > 0 and y < inf and x < inf then
+      assertEquals( x%y , x - floor(x/y)*y )
+    end
+  end end
+
+  assertAlmostEquals( -5.1 % -3   - -2.1, 0, 2*eps)
+  assertAlmostEquals( -5.1 %  3   -  0.9, 0, 2*eps)
+  assertAlmostEquals(  5.1 % -3   - -0.9, 0, 2*eps)
+  assertAlmostEquals(  5.1 %  3   -  2.1, 0, 2*eps)
+
+  assertAlmostEquals( -5.1 % -3.1 - -2  , 0, 2*eps)
+  assertAlmostEquals( -5.1 %  3.1 -  1.1, 0, 2*eps)
+  assertAlmostEquals(  5.1 % -3.1 - -1.1, 0, 2*eps)
+  assertAlmostEquals(  5.1 %  3.1 -  2  , 0, 2*eps)
+
+  assertEquals( tostring(   1 %  inf), 'nan' )
+  assertEquals( tostring(  -1 %  inf), 'nan' )
+  assertEquals( tostring(   1 % -inf), 'nan' )
+  assertEquals( tostring(  -1 % -inf), 'nan' )
+
+  assertEquals( tostring( inf %  inf), 'nan' )
+  assertEquals( tostring(-inf % -inf), 'nan' )
+  assertEquals( tostring( inf %  nan), 'nan' )
+  assertEquals( tostring(-inf %  nan), 'nan' )
+  assertEquals( tostring(   1 %    0), 'nan' )
+  assertEquals( tostring(   1 %  - 0), 'nan' )
+  assertEquals( tostring( nan %  nan), 'nan' )
 end
 
 function TestGmath:testPow() -- TODO
