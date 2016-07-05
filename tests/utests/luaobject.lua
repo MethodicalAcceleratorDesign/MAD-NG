@@ -144,8 +144,8 @@ function MT:__call (a, b) -- object constructor (define the object-model)
       local obj = {__id=a, [var]=var0, __index=self[var]} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {__id=a, [var]=b, __index=self[var]}  -- proxy
-      setmetatable(b, obj)                              -- set fast inheritance
+      local obj = {[var]=b, __index=self[var]}  -- proxy
+      b.__id = a ; setmetatable(b, obj)                 -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
