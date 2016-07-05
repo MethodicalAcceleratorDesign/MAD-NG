@@ -23,9 +23,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local luaunit = require 'luaunit'
-local assertEquals, assertAlmostEquals =
-      luaunit.assertEquals, luaunit.assertAlmostEquals
+local lu = require 'luaunit'
+local assertEquals, assertAlmostEquals = lu.assertEquals, lu.assertAlmostEquals
 
 -- regression test suite ------------------------------------------------------o
 
@@ -212,3 +211,8 @@ function Test_LuaCore:testLinkedList()
 end
 
 -- end ------------------------------------------------------------------------o
+
+-- run as a standalone test
+if MAD == nil then
+  os.exit( lu.LuaUnit.run() )
+end
