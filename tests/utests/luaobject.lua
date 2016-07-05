@@ -1,3 +1,76 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Object model (pure Lua) regression tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the object module without extension
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- expected from other modules ------------------------------------------------o
+
+local metaname = { -- from lj_obj.h + __init
+  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
+  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
+  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
+  '__unm',
+}
+for _,v in ipairs(metaname) do metaname[v]=v end -- build dictionary
+
+local function is_nil (a)
+  return type(a) == 'nil'
+end
+
+local function is_boolean (a)
+  return type(a) == 'boolean'
+end
+
+local function is_number (a)
+  return type(a) == 'number'
+end
+
+local function is_string (a)
+  return type(a) == 'string'
+end
+
+local function is_function (a)
+  return type(a) == 'function'
+end
+
+local function is_table (a)
+  return type(a) == 'table'
+end
+
+local function is_rawtable (a)
+  return type(a) == 'table' and getmetatable(a) == nil
+end
+
+local function is_metaname (a)
+  return metaname[a] == a
+end
+
+local function is_callable (a)
+  if type(a) == 'function' then return true end
+  local mt = getmetatable(a)
+  return mt and mt.__call ~= nil or false
+end
+
+-- implementation -------------------------------------------------------------o
+
 -- module and metatable of objects
 local M, MT = {}, {}
 
@@ -35,28 +108,22 @@ local function fproxy (f)
   return setmetatable({[fct]=f}, MF)
 end
 
-local function is_callable (a)
-  if type(a) == "function" then return true end
-  local mt = getmetatable(a)
-  return mt and mt.__call ~= nil or false
-end
-
-local function is_table (a)
-  return type(a) == "table" and getmetatable(a) == nil
+local function is_fproxy (a)
+  return is_table(a) and rawget(a,fct) ~= nil
 end
 
 local function is_object (a)
-  return type(a) == "table" and rawget(a,var) ~= nil
+  return is_table(a) and rawget(a,var) ~= nil
 end
 
 local function is_readonly (a)
-  return type(a) == "table" and rawget(a,rof) == true
+  return is_table(a) and rawget(a,rof) == true
 end
 
 local function set_readonly (a, b)
   assert(a ~= Object,
          "invalid argument #1 (forbidden access to 'Object')")
-  assert(b == nil or type(b) == "boolean",
+  assert(is_nil(b) or is_boolean(b),
          "invalid argument #2 (boolean or nil expected)")
   rawset(a, rof, b ~= false)
   return a
@@ -72,16 +139,16 @@ end
 -- objects are proxies controlling variables access and inheritance
 
 function MT:__call (a, b) -- object constructor (define the object-model)
-  if type(a) == "string" then                           -- named object
-    if b == nil then
+  if is_string(a) then                                  -- named object
+    if is_nil(b) then
       local obj = {__id=a, [var]=var0, __index=self[var]} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
-    elseif is_table(b) then
+    elseif is_rawtable(b) then
       local obj = {__id=a, [var]=b, __index=self[var]}  -- proxy
       setmetatable(b, obj)                              -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
-  elseif is_table(a) then
+  elseif is_rawtable(a) then
     if self[var] == var0 then                           -- finalize named object
       a.__id, self.__id = self.__id
       self[var] = setmetatable(a, self);                -- set fast inheritance
@@ -92,14 +159,14 @@ function MT:__call (a, b) -- object constructor (define the object-model)
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
-  error(b == nil
+  error(is_nil(b)
         and "invalid argument #1 to constructor (string or raw table expected)"
         or  "invalid argument #2 to constructor (raw table expected)")
 end
 
 function MT:__index (k)
   local v = self[var][k]                       -- inheritance of variables
-  if type(v) == "function"
+  if is_function(v)
   then return v(self)                          -- function with value semantic
   else return v end
 end
@@ -116,7 +183,7 @@ end
 local function iterk (self, k)
   local v
   k, v = next(self[var], k)
-  if type(v) == "function"
+  if is_function(v)
   then return k, v(self)
   else return k, v end
 end
@@ -128,7 +195,7 @@ end
 local function iteri (self, i)
   i = i + 1
   local v = rawget(self[var], i)
-  if type(v) == "function" then return i, v(self)
+  if is_function(v) then return i, v(self)
   elseif v ~= nil   then return i, v end
 end
 
@@ -138,7 +205,7 @@ end
 
 local function get_variable (self, tbl, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_table(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var, res = self[var], {}
   if eval ~= false
   then for _,k in ipairs(tbl) do res[k] = self[k] end
@@ -149,10 +216,10 @@ end
 
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_table(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,v in pairs(tbl) do
-    assert(rawget(var,k) == nil or override~=false, "cannot override variable")
+    assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
     rawset(var, k, v)
   end
   return self
@@ -160,27 +227,26 @@ end
 
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_table(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local var = self[var]
   for k,f in pairs(tbl) do
-
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
-    assert(rawget(var,k) == nil or override~=false, "cannot override function")
-    rawset(var, k, type(f) == "function" and fproxy(f) or f)
+    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
+    rawset(var, k, is_function(f) and fproxy(f) or f)
   end
   return self
 end
 
 local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_table(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create a new metatable if shared with parent
     sm={} ; for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
---    assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
-    assert(rawget(sm,k) == nil or override==true, "cannot override metamethod")
+    assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
+    assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
     rawset(sm, k, mm)
   end
   return setmetatable(self, sm)
@@ -190,7 +256,7 @@ local function get_allkeys (self, class, pattern)
   class, pattern = class or Object, pattern or ''
   assert(is_object(self)   , "invalid argument #1 (object expected)")
   assert(is_object(class)  , "invalid argument #2 (object expected)")
-  assert(type(pattern) == "string", "invalid argument #3 (string expected)")
+  assert(is_string(pattern), "invalid argument #3 (string expected)")
   local key = {}
   while self and self ~= class do
     for k in pairs(self[var]) do key[k] = k end
@@ -199,11 +265,43 @@ local function get_allkeys (self, class, pattern)
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
   local res = {}
   for k in pairs(key) do
-    if type(k) == "string" and string.find(k, pattern) then
+    if is_string(k) and string.find(k, pattern) then
       res[#res+1] = k
     end
   end
   return res
+end
+
+local function strdump (self, class, pattern)
+  class, pattern = class or Object, pattern or ''
+  assert(is_object(self)   , "invalid argument #1 (object expected)")
+  assert(is_object(class)  , "invalid argument #2 (object expected)")
+  assert(is_string(pattern), "invalid argument #3 (string expected)")
+  local cnt, res, spc, str = {}, {}, ""
+  while self and self ~= class do
+    -- header
+    str = rawget(self[var], '__id') and (" '"..self[var].__id.."'") or ""
+    res[#res+1] = spc.."+ ["..tostring(self[var]).."]"..str
+    spc = spc .. "  "
+    -- variables
+    for k,v in pairs(self[var]) do
+      if is_string(k) and k ~= '__id' and string.find(k, pattern) then
+        str = spc .. tostring(k)
+            if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
+        elseif is_fproxy(v) then str = str..": ["..tostring(v[fct]).."]"
+        else                     str = str..":  "..tostring(v) end
+        if cnt[k]
+        then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
+        else cnt[k] = 0 end
+        cnt[k] = cnt[k] + 1
+        res[#res+1] = str
+      end
+    end
+    self = parent(self)
+  end
+  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  res[#res+1] = ''
+  return table.concat(res, '\n')
 end
 
 -- root Object variables = module
@@ -217,13 +315,15 @@ M.is_readonly    = fproxy( is_readonly    )
 M.is_instanceOf  = fproxy( is_instanceOf  )
 M.set_readonly   = fproxy( set_readonly   )
 M.get_allkeys    = fproxy( get_allkeys    )
-M.set_function   = fproxy( set_function   )
 M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
+M.set_function   = fproxy( set_function   )
 M.set_metamethod = fproxy( set_metamethod )
+M.strdump        = fproxy( strdump        )
 
-M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys, M.set_variable,
-M.set_function, M.set_metamethod -- alias
+-- aliases
+M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys,
+  M.set_variable, M.set_function, M.set_metamethod
 
 -- members
 M.__id   = 'Object'
@@ -232,7 +332,7 @@ M.__var  = function(s) return rawget(s,var) end -- alias
 M.name   = function(s) return s.__id end        -- alias
 M.parent = function(s) return s.__par end       -- alias
 
--- end ------------------------------------------------------------------------o
+-- end of object model --------------------------------------------------------o
 
 local lu = require 'luaunit'
 local assertEquals, assertAlmostEquals, assertErrorMsgContains, assertNil,
@@ -241,9 +341,11 @@ local assertEquals, assertAlmostEquals, assertErrorMsgContains, assertNil,
       lu.assertNil, lu.assertTrue, lu.assertFalse, lu.assertNotEquals,
       lu.assertStrContains
 
-TestObject = {}
+-- regression test suite ------------------------------------------------------o
 
-function TestObject:testConstructor()
+TestLuaObject = {}
+
+function TestLuaObject:testConstructor()
   local p0 = Object 'p0' {}
   local p1 = Object {}
   local p2 = Object 'p2'
@@ -310,7 +412,7 @@ function TestObject:testConstructor()
   p04.a = '0'   assertEquals( p04.a, '0' )
 end
 
-function TestObject:testIsObject()
+function TestLuaObject:testIsObject()
   local p0 = Object 'p0' {}
   local p1 = Object {}
   local p2 = Object 'p2'
@@ -335,7 +437,7 @@ function TestObject:testIsObject()
   assertFalse( is_object(function() end) )
 end
 
-function TestObject:testIsReadonly()
+function TestLuaObject:testIsReadonly()
   local p0 = Object 'p0' {}
   local p1 = Object {}
   local p2 = Object 'p2'
@@ -370,7 +472,7 @@ function TestObject:testIsReadonly()
   assertErrorMsgContains(msg[2], p00.set_readonly, p0, '')
 end
 
-function TestObject:testInheritance()
+function TestLuaObject:testInheritance()
   local p0 = Object {}
   local p1 = p0 { x=3, y=2, z=1  }
   local p2 = p1 { x=2, y=1 }
@@ -414,7 +516,7 @@ function TestObject:testInheritance()
   assertNotEquals( p4 , { z=6 } )
 end
 
-function TestObject:testIsInstanceOf()
+function TestLuaObject:testIsInstanceOf()
   local p0 = Object {}
   local p1 = p0 { }
   local p2 = p1 { }
@@ -471,7 +573,7 @@ function TestObject:testIsInstanceOf()
   assertErrorMsgContains(msg[1], is_instanceOf, p0, {})
 end
 
-function TestObject:testValueSemantic()
+function TestLuaObject:testValueSemantic()
   local p0 = Object {}
   local p1 = p0 { x=3, y=2, z=function(s) return 2*s.y end}
   local p2 = p1 { x=2, y=function(s) return 3*s.x end }
@@ -529,7 +631,7 @@ function TestObject:testValueSemantic()
   assertNotEquals( p4:get(vs)      , { x=3, y=5 } )
 end
 
-function TestObject:testArrayValueSemantic()
+function TestLuaObject:testArrayValueSemantic()
   local p0 = Object {}
   local p1 = p0 { x=3, y=2, z=function(s) return { x=3*s.x, y=2*s.y } end }
   local p2 = p1 { x=2, y=function(s) return 2*s.x end }
@@ -569,7 +671,7 @@ function TestObject:testArrayValueSemantic()
   assertNotEquals( p4:get(vs)      , { x=5, y=15 } )
 end
 
-function TestObject:testSpecialVariable()
+function TestLuaObject:testSpecialVariable()
   local p0 = Object 'p0' {}
   local p1 = p0 { x=3, y=function(s) return 2*s.x end, z=function(s) return { x=3*s.x, y=2*s.y } end }
   local p2 = p1 { x=2, y=function(s) return 4*s.x end }
@@ -642,7 +744,7 @@ function TestObject:testSpecialVariable()
   assertEquals   ( p4.__par.__var.z(p4).y, p3.z.y )
 end
 
-function TestObject:testIterators()
+function TestLuaObject:testIterators()
   local p0 = Object 'p0' { 2, 3, 4, x=1, y=2, z=function() return 3 end}
   local p1 = p0 'p1' { 7, 8, x=-1, y={} }
   local c
@@ -686,7 +788,7 @@ function TestObject:testIterators()
   assertEquals(c , 4)
 end
 
-function TestObject:testGetVariable()
+function TestLuaObject:testGetVariable()
   local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
   local p1 = p0 'p1' { x=-1, y={} }
   local vs = {'name', 'x','y','z'}
@@ -704,21 +806,21 @@ function TestObject:testGetVariable()
   assertEquals ( p0:get(vs, true ).z, 3 )
   assertEquals ( p0:get(vs, nil  ).z, 3 )
 
-  assertTrue  ( type(p0:get(vs, false).name) == "function" )
-  assertTrue  ( type(p0:get(vs, false).z)    == "function" )
-  assertFalse ( type(p0:get(vs, nil  ).z)    == "function" )
+  assertTrue  ( is_function(p0:get(vs, false).name) )
+  assertTrue  ( is_function(p0:get(vs, false).z) )
+  assertFalse ( is_function(p0:get(vs, nil  ).z) )
 
-  assertTrue  ( type(p1:get(vs, false).name) == "function" )
-  assertTrue  ( type(p1:get(vs, false).z)    == "function" )
-  assertTrue  ( type(p1:get(vs, false).y)    == "table" )
-  assertTrue  ( type(p1:get(vs, true ).y)    == "table" )
+  assertTrue  ( is_function(p1:get(vs, false).name) )
+  assertTrue  ( is_function(p1:get(vs, false).z) )
+  assertTrue  ( is_table   (p1:get(vs, false).y) )
+  assertTrue  ( is_table   (p1:get(vs, true ).y) )
 
   assertErrorMsgContains(msg[1], p0.get, 1, vs)
   assertErrorMsgContains(msg[1], p0.get, {}, vs)
   assertErrorMsgContains(msg[2], p0.get, p0, 1)
 end
 
-function TestObject:testSetVariable()
+function TestLuaObject:testSetVariable()
   local p0 = Object 'p0' {}
   local p1 = p0 'p1' {}
   local vs = {'name', 'x','y','z'}
@@ -740,14 +842,14 @@ function TestObject:testSetVariable()
   assertEquals(             p0:get(vs, true ).z, 3 )
   assertEquals(             p0:get(vs, nil  ).z, 3 )
 
-  assertTrue  ( type(p0:get(vs, false).name) == "function" )
-  assertTrue  ( type(p0:get(vs, false).z)    == "function" )
-  assertFalse ( type(p0:get(vs, nil  ).z)    == "function" )
+  assertTrue  ( is_function(p0:get(vs, false).name) )
+  assertTrue  ( is_function(p0:get(vs, false).z) )
+  assertFalse ( is_function(p0:get(vs, nil  ).z) )
 
-  assertTrue  ( type(p1:get(vs, false).name) == "function"  )
-  assertTrue  ( type(p1:get(vs, false).z)    == "function"  )
-  assertTrue  ( type(p1:get(vs, false).y)    == "table" )
-  assertTrue  ( type(p1:get(vs, true ).y)    == "table" )
+  assertTrue  ( is_function(p1:get(vs, false).name) )
+  assertTrue  ( is_function(p1:get(vs, false).z) )
+  assertTrue  ( is_table   (p1:get(vs, false).y) )
+  assertTrue  ( is_table   (p1:get(vs, true ).y) )
 
   assertErrorMsgContains(msg[1], p0.set, 1)
   assertErrorMsgContains(msg[1], p0.set, '')
@@ -764,7 +866,7 @@ function TestObject:testSetVariable()
   assertErrorMsgContains(msg[3], p1.set, p1, {z=2}, false)
 end
 
-function TestObject:testSetFunction()
+function TestLuaObject:testSetFunction()
   local p0 = Object 'p0' { z=function() return 3 end }
   local p1 = p0 'p1' {}
   local msg = {
@@ -775,38 +877,38 @@ function TestObject:testSetFunction()
   }
   p0:set_function { x=function() return 2 end, y=function(s,n) return s.z*n end }
 
-  assertFalse ( type(p0.x) == "function" )
-  assertFalse ( type(p0.y) == "function" )
-  assertFalse ( type(p0.z) == "function" )
+  assertFalse ( is_function(p0.x) )
+  assertFalse ( is_function(p0.y) )
+  assertFalse ( is_function(p0.z) )
   assertEquals( p0.z, 3 )
-  assertFalse ( type(p0:get{'z'}.z) == "function" )
-  assertTrue  ( type(p0:get({'z'},false).z) == "function" )
-  assertTrue  ( type(p0.__var.z) == "function" )
+  assertFalse ( is_function(p0:get{'z'}.z) )
+  assertTrue  ( is_function(p0:get({'z'},false).z) )
+  assertTrue  ( is_function(p0.__var.z) )
 
-  assertFalse ( type(p1.x) == "function" )
-  assertFalse ( type(p1.y) == "function" )
-  assertFalse ( type(p1.z) == "function" )
+  assertFalse ( is_function(p1.x) )
+  assertFalse ( is_function(p1.y) )
+  assertFalse ( is_function(p1.z) )
   assertEquals( p1.x(), 2)
   assertEquals( p1:y(3), 9)
 
-  assertTrue  ( type(p1.x) == "table" )
-  assertTrue  ( type(p1.y) == "table" )
-  assertTrue  ( type(p1.z) == "number" )
+  assertTrue  ( is_table(p1.x) )
+  assertTrue  ( is_table(p1.y) )
+  assertTrue  ( is_number(p1.z) )
 
   p1:set_function({ x=function() return function() return 2 end end, y =function(s) return function(n) return s.z*n end end })
 
-  assertTrue  ( type(p1.x) == "table" )
-  assertTrue  ( type(p1.x()) == "function" )
+  assertTrue  ( is_table   (p1.x) )
+  assertTrue  ( is_function(p1.x()) )
   assertEquals( p1.x()(), 2)
 
-  assertTrue  ( type(p1.y) == "table" )
-  assertTrue  ( type(p1:y()) == "function" )
+  assertTrue  ( is_table   (p1.y) )
+  assertTrue  ( is_function(p1:y()) )
   assertEquals( p1:y()(3), 9)
 
   p1.y = function(s) return function(n) return s.z*n end end
-  assertFalse ( type(p1.y) == "table" )
-  assertTrue  ( type(p1.y) == "function" )
-  assertFalse ( type(p1.y(3)) == "function" )
+  assertFalse ( is_table   (p1.y) )
+  assertTrue  ( is_function(p1.y) )
+  assertFalse ( is_function(p1.y(3)) )
   assertEquals( p1.y(3), 9)
 
   assertErrorMsgContains(msg[1], p0.setf, 1)
@@ -822,7 +924,7 @@ function TestObject:testSetFunction()
   assertErrorMsgContains(msg[4], p0.setf, p0, {x=function() return 3 end}, false)
 end
 
-function TestObject:testSetMetamethod()
+function TestLuaObject:testSetMetamethod()
   local p0 = Object 'p0' { 1, 2, z=function() return 3 end }
   local p1 = p0 'p1' {}
   local msg = {
@@ -855,13 +957,13 @@ function TestObject:testSetMetamethod()
   assertErrorMsgContains(msg[2], p0.setmm, p0, 1)
   assertErrorMsgContains(msg[2], p0.setmm, p0, '')
 
---  assertErrorMsgContains(msg[3], p0.setmm, p0, {x=1})
---  assertErrorMsgContains(msg[3], p0.setmm, p0, {y=''})
+  assertErrorMsgContains(msg[3], p0.setmm, p0, {x=1})
+  assertErrorMsgContains(msg[3], p0.setmm, p0, {y=''})
 
   assertErrorMsgContains(msg[4], p0.setmm, p0, {__index=false}, false)
 end
 
-function TestObject:testGetAllKeys()
+function TestLuaObject:testGetAllKeys()
   local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
   local p1 = p0 'p1' { x=-1, y={} }
   local msg = {
@@ -892,9 +994,44 @@ function TestObject:testGetAllKeys()
   assertErrorMsgContains(msg[4], p0.getk, p0, nil, 1)
 end
 
+function TestLuaObject:testStrDump()
+  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
+  local p1 = p0 'p1' { x=-1, y={} }
+  local msg = {
+    "invalid argument #1 (object expected)",
+    "invalid argument #2 (object expected)",
+    "invalid argument #2 (parent of argument #1 expected)",
+    "invalid argument #3 (string expected)",
+  }
+  local str_p0 =[[
++ [table] 'p0'
+  y:  2
+  x:  1
+  z:  function
+]]
+  local str_p1 =[[
++ [table] 'p1'
+  y:  table
+  x:  -1
+  + [table] 'p0'
+    y:  2 (*)
+    x:  1 (*)
+    z:  function
+]]
+
+  assertEquals(string.gsub(p0:strdump(), ': 0x%x+', ''), str_p0)
+  assertEquals(string.gsub(p1:strdump(), ': 0x%x+', ''), str_p1)
+
+  assertErrorMsgContains(msg[1], p0.strdump, 1)
+  assertErrorMsgContains(msg[1], p0.strdump, 1, Object)
+  assertErrorMsgContains(msg[2], p0.strdump, p0, 1)
+  assertErrorMsgContains(msg[3], p0.strdump, p0, p1)
+  assertErrorMsgContains(msg[4], p0.strdump, p0, nil, 1)
+end
+
 -- examples test suite --------------------------------------------------------o
 
-function TestObject:testMetamethodForwarding()
+function TestLuaObject:testMetamethodForwarding()
   local msg = {
     "invalid argument #1 (forbidden access to 'ro_obj')",
     "invalid argument #2 (boolean or nil expected)",
@@ -918,7 +1055,7 @@ function TestObject:testMetamethodForwarding()
   assertErrorMsgContains(msg[2], ro_chld.set_readonly, ro_chld, 1)
 end
 
-function TestObject:testMetamethodNotification()
+function TestLuaObject:testMetamethodNotification()
   local p1 = Object 'p1' { x=1, y=2  }
   local p2 = p1 'p2' { x=2, y=-1, z=0 }
   local p3 = p2 'p3' { x=3  }
@@ -951,7 +1088,7 @@ function TestObject:testMetamethodNotification()
   p4.x = 5 -- new behavior, notify about update if you really can
 end
 
-function TestObject:testMetamethodCounting()
+function TestLuaObject:testMetamethodCounting()
   local count = 0
   local set_counter = function(s) return s:setmm { __init =function() count=count+1 end } end
 
@@ -963,9 +1100,9 @@ end
 
 -- performance test suite -----------------------------------------------------o
 
-Test_Object = {}
+Test_LuaObject = {}
 
-function Test_Object:testPrimes()
+function Test_LuaObject:testPrimes()
   local Primes = Object {}
 
   Primes:set_function {
@@ -1002,7 +1139,7 @@ function Test_Object:testPrimes()
   assertAlmostEquals( dt , 0.5, 1 )
 end
 
-function Test_Object:testDuplicates()
+function Test_LuaObject:testDuplicates()
   local DupFinder = Object {}
 
   DupFinder:set_function {
@@ -1035,7 +1172,7 @@ function Test_Object:testDuplicates()
   assertAlmostEquals( dt , 0.5, 1 )
 end
 
-function Test_Object:testLinkedList()
+function Test_LuaObject:testLinkedList()
   local List = Object {}
   local nxt = {}
 
@@ -1058,6 +1195,9 @@ function Test_Object:testLinkedList()
   assertAlmostEquals( dt, 0.5, 1 )
 end
 
--- local gmath = require 'gmath'
+-- end ------------------------------------------------------------------------o
 
-os.exit( lu.LuaUnit.run() )
+-- run as a standalone test
+if MAD == nil then
+  os.exit( lu.LuaUnit.run() )
+end
