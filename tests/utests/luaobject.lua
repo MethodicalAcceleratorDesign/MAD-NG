@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide regression test suites for the object module without extension
+  - Provide regression test suites for the object module without extension.
 
  o-----------------------------------------------------------------------------o
 ]=]
