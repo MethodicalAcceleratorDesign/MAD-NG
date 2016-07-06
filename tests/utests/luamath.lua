@@ -2351,3 +2351,8 @@ function TestLuaGmath:testPolar()
 end
 
 -- end ------------------------------------------------------------------------o
+
+-- run as a standalone test
+if MAD == nil then
+  os.exit( lu.LuaUnit.run() )
+end
