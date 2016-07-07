@@ -1,0 +1,405 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Range module regression tests - logrange
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: A.Z. Teska, aleksandra.teska at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the range module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
+      assertErrorMsgContains, assertNil, assertIsString in require 'luaunit'
+      
+local range, nrange, log, logrange, nlogrange, ilogrange, is_logrange, 
+      is_cdata, is_function, is_xrange in MAD
+local is_empty, nstep in logrange 
+local eps, inf, nan   in require 'madl_gmath'
+
+-- regression test suite ------------------------------------------------------o
+
+TestLogrange = {}
+
+function TestLogrange:testConcatCtor()
+  assertTrue( is_cdata ( log(1..10)        ) )
+  assertTrue( is_cdata ( log(1..10..1)     ) )
+  assertTrue( is_cdata ( log(10..1)        ) )
+  assertTrue( is_cdata ( log(1.. 10)       ) )
+  assertTrue( is_cdata ( log(1 .. 10 .. 0) ) )
+  assertTrue( is_cdata ( log(inf..inf..inf)) )
+  
+  assertEquals( log(1..10).start   , 1  )  
+  assertEquals( log(1..10).stop    , 10 )
+  assertEquals( log(1..10).step    , 1  )
+  assertEquals( log(1..10..1).start, 1  )  
+  assertEquals( log(1..10..1).stop , 10 )
+  assertEquals( log(1..10..1).step , 1  )
+
+  assertEquals( log(10..1).start   , 10 )  
+  assertEquals( log(10..1).stop    , 1  )
+  assertEquals( log(10..1).step    , 1  )
+  assertEquals( log(1..10..0).start, 1  )  
+  assertEquals( log(1..10..0).stop , 10 )
+  assertEquals( log(1..10..0).step , 0  )
+
+  assertEquals( log(1..inf).start       , 1   )
+  assertEquals( log(1..inf).stop        , inf )
+  assertEquals( log(1..inf).step        , 1   )
+  assertEquals( log(inf..inf..inf).start, inf )
+  assertEquals( log(inf..inf..inf).stop , inf )
+  assertEquals( log(inf..inf..inf).step , inf )
+
+  assertFalse( is_xrange( log(1..10..1) ) )
+  assertFalse( is_xrange( log(10..1)    ) )
+  local a = 2 
+  assertTrue ( is_cdata ( log(1..10..a) ) )
+  assertFalse( is_xrange( log(1..10..a) ) )
+
+  local msg = { "attempt to call method 'log' (a nil value)" }
+  assertErrorMsgContains( msg[1], log, 1..10..'')
+  assertErrorMsgContains( msg[1], log, 1..''    )
+  
+  assertTrue( is_cdata(log(nan..nan..nan))     ) 
+  assertFalse( is_xrange(log(nan..nan..nan))   ) 
+  assertEquals( tostring(log(nan..nan..nan).start), 'nan' ) 
+  assertEquals( tostring(log(nan..nan..nan).stop) , 'nan' ) 
+  assertEquals( tostring(log(nan..nan..nan).step) , 'nan' ) 
+end
+
+function TestLogrange:testConstructor()
+  local msg = { "invalid argument #1 (expect number)", 
+                "cannot convert 'string' to 'const double'" }
+  assertErrorMsgContains( msg[1], logrange                )
+  assertErrorMsgContains( msg[1], logrange, ''            )
+  assertErrorMsgContains( msg[1], logrange,(10..10^5..10) )
+  assertErrorMsgContains( msg[2], logrange, 10, ''        )
+  assertErrorMsgContains( msg[2], logrange, 10, 10^5, ''  )
+  
+  assertTrue( is_cdata(logrange(10,10^5))    )
+  assertTrue( is_cdata(logrange(10,10^5,10)) )
+  assertTrue( is_cdata(logrange(10,10^5,0))  )
+  assertTrue( is_cdata(logrange(10,10^5,-1)) )
+  assertFalse( is_xrange(logrange(10,10^5,0))  )
+  assertFalse( is_xrange(logrange(10,10^5,-1)) )
+    
+  assertEquals( logrange(10).start        , 10   )
+  assertEquals( logrange(10).stop         , 10   )
+  assertEquals( logrange(10).step         , 2    )
+  assertEquals( logrange(10,10^2).start   , 10   )
+  assertEquals( logrange(10,10^2).stop    , 10^2 )
+  assertEquals( logrange(10,10^2).step    , 2    )
+  assertEquals( logrange(10,10^5,10).start, 10   )
+  assertEquals( logrange(10,10^5,10).stop , 10^5 )
+  assertEquals( logrange(10,10^5,10).step , 10   )    
+  
+  assertEquals( logrange(0,10^5,10).start, 0    )
+  assertEquals( logrange(0,10^5,10).stop , 10^5 )
+  assertEquals( logrange(0,10^5,10).step , 10   )
+  
+  assertEquals( logrange(inf,inf,inf).start, inf )
+  assertEquals( logrange(inf,inf,inf).stop , inf )
+  assertEquals( logrange(inf,inf,inf).step , inf )
+end
+
+function TestLogrange:testNConstructor()
+  local msg = { "invalid argument #1 (expect number)",
+                "invalid argument #1, #2 or #3 (number expected)" }
+  assertErrorMsgContains( msg[1], nlogrange               )
+  assertErrorMsgContains( msg[1], nlogrange,  nil, 1      )
+  assertErrorMsgContains( msg[2], nlogrange,  nil, 1, 1   )
+  assertErrorMsgContains( msg[1], nlogrange, ''           )
+  assertErrorMsgContains( msg[1], nlogrange, '', ''       )
+  assertErrorMsgContains( msg[2], nlogrange, '', 1 , 1    )
+  assertErrorMsgContains( msg[2], nlogrange, '', '', 1    )
+  assertErrorMsgContains( msg[2], nlogrange, 1 , 2 , ''   )
+  assertErrorMsgContains( msg[1], nlogrange,(10..10^5..5) )
+
+  assertTrue( is_cdata(nlogrange(10))      )
+  assertTrue( is_cdata(nlogrange(10,10))   )
+  assertTrue( is_cdata(nlogrange(10,10,1)) )
+  assertTrue( is_cdata(nlogrange(10,10,0)) )
+
+  assertEquals( nlogrange(10).start     , 10   )
+  assertEquals( nlogrange(10).stop      , 10   )
+  assertEquals( nlogrange(10).step      , 1    )
+  assertEquals( nlogrange(10,10^5).start, 10   )
+  assertEquals( nlogrange(10,10^5).stop , 10^5 )
+  assertEquals( nlogrange(10,10^5).step , 1    )
+
+  assertEquals( nlogrange(1,10^5,1).start , 1    )
+  assertEquals( nlogrange(1,10^5,1).stop  , 10^5 )
+  assertEquals( nlogrange(1,10^5,1).step  , inf  )
+  assertEquals( nlogrange(1,10^5,0).step  , 1    )
+  assertEquals( nlogrange(1,10^5,inf).step, 1    )
+  assertAlmostEquals( nlogrange(1,10^5,6).step / 10, 1, eps )
+
+  assertEquals( nlogrange( inf, inf, inf).start, inf )
+  assertEquals( nlogrange( inf, inf, inf).stop , inf )
+  assertEquals( nlogrange( inf, inf, inf).step , 1   )
+
+  assertTrue ( is_cdata (nlogrange(nan,nan,nan))    ) 
+  assertFalse( is_xrange(nlogrange(nan,nan,nan))    ) 
+  assertEquals( nlogrange(nan,nan,nan).step, 1      ) 
+  assertEquals( tostring(nlogrange(nan,nan,nan).start), 'nan' ) 
+  assertEquals( tostring(nlogrange(nan,nan,nan).stop) , 'nan' ) 
+end
+
+function TestLogrange:testReadonly() 
+  local msg = { "attempt to write to constant location", }
+  local f=\r,v => r.start = v end   
+  assertErrorMsgContains( msg[1], f, log(1..10^5..10)   , 10 )
+  assertErrorMsgContains( msg[1], f, logrange(1,10^5,10), 1  )
+  assertErrorMsgContains( msg[1], f, nlogrange(1,10^5,6), 1  )
+  local f=\r,v => r.stop  = v end   
+  assertErrorMsgContains( msg[1], f, log(1..10^5..10)   , 10 )
+  assertErrorMsgContains( msg[1], f, logrange(1,10^5,10), 1  )
+  assertErrorMsgContains( msg[1], f, nlogrange(1,10^5,6), 1  )
+  local f=\r,v => r.step  = v end   
+  assertErrorMsgContains( msg[1], f, log(1..10^5..10)   , 10 )
+  assertErrorMsgContains( msg[1], f, logrange(1,10^5,10), 1  )
+  assertErrorMsgContains( msg[1], f, nlogrange(1,10^5,6), 1  )
+end
+
+function TestLogrange:testIsLogrange()
+  assertTrue( is_logrange(logrange(1))         )
+  assertTrue( is_logrange(logrange(1))         )
+  assertTrue( is_logrange(logrange(1,0))       )
+  assertTrue( is_logrange(logrange(1,10))      )
+  assertTrue( is_logrange(logrange(10,1))      )
+  assertTrue( is_logrange(logrange(1,10^6,10)) )
+  assertTrue( is_logrange(nlogrange(1,10,10))  )
+  assertTrue( is_logrange(nlogrange(1,10,1))   )
+  assertTrue( is_logrange(nlogrange(1,10^6,7)) )
+  assertFalse( is_logrange('')                 )
+  assertFalse( is_logrange(1..10)              )  
+  assertFalse( is_logrange(nrange(1,10,2))     )
+end
+
+function TestLogrange:testRange()
+  assertEquals( {logrange(1,10)     :range()}, {1,10,2}    )
+  assertEquals( {logrange(1,10,1)   :range()}, {1,10,1}    )
+  assertEquals( {logrange(1,10^6,10):range()}, {1,10^6,10} )
+  assertEquals( {nlogrange(1,10,1)  :range()}, {1,10,inf}  )
+end
+
+function TestLogrange:testValue()
+  assertEquals( logrange(1,10^6,10) :value(-1)  , 0.1  )
+  assertEquals( logrange(1,10^6,10) :value(7)   , 10^7 )
+  assertEquals( logrange(1,10^6,0)  :value(1)   , 0    )
+  assertEquals( nlogrange(1,10^6,1) :value(1)   , inf  )
+  assertEquals( nlogrange(1,10^6,0) :value(1)   , 1    )
+  assertEquals( logrange(1,10^6,10) :value(inf) , inf  )
+  assertEquals( logrange(1,10^6,10) :value(-inf), 0    )
+  assertEquals( nlogrange(1,10^6,7) :value(inf) , inf  )
+  assertEquals( tostring(logrange (1,10^6,10):value(nan)), 'nan' )
+  assertEquals( tostring(nlogrange(1,10^6,7) :value(nan)), 'nan' )
+
+  assertEquals( logrange(10^6,1,0.1):value(0) , 10^6 )
+  assertEquals( logrange(1,10^6,10) :value(0) , 1    )
+  assertAlmostEquals( (nlogrange(1,10^6,6)  :value(5)  / 10^6)-1, 0, 2*eps )
+  assertAlmostEquals( (nlogrange(2^-12,1,13):value(12) / 1   )-1, 0, 4*eps )
+  --assertAlmostEquals( (nlogrange(10^-6,1,7) :value(6)  / 1   )-1, 0, 4*eps ) --eps
+end
+
+function TestLogrange:testGet() 
+  assertNil( logrange(1,10^6,10) :get(-1)   )
+  assertNil( logrange(1,10^6,10) :get(7)    )
+  assertNil( logrange(1,10^6,0)  :get(0)    )
+  assertNil( nlogrange(1,10^6,0) :get(0)    )
+  assertNil( nlogrange(1,10^6,1) :get(1)    )
+  assertNil( logrange(1,10^6,10) :get(inf)  )
+  assertNil( logrange(1,10^6,10) :get(-inf) )
+  assertNil( nlogrange(1,10^6,7) :get(inf)  )
+  assertNil( logrange (1,10^6,10):get(nan)  ) 
+  assertNil( nlogrange(1,10^6,7) :get(nan)  )
+  assertEquals( logrange(1,10^6,10)   :get(0), 1    )
+  assertEquals( logrange(-10^6,-1,0.1):get(0),-10^6 )
+  assertEquals( logrange(-1,-10^6,10) :get(0),-1    )
+  assertEquals( logrange(10^6,1,0.1)  :get(0), 10^6 )
+  assertEquals( nlogrange(1,10^6,1)   :get(0), 1    )
+  assertEquals( logrange(2^6,2,1/2)   :get(5), 2    )
+  assertEquals( logrange(2,2^6,2)     :get(4), 2^5  )
+
+  assertAlmostEquals( (nlogrange(1,10^6,7)  :get(3)  / 10^3)-1, 0, 3*eps )
+  assertAlmostEquals( (nlogrange(1,10^6,7)  :get(6)  / 10^6)-1, 0, 5*eps )
+  assertAlmostEquals( (nlogrange(2^-12,1,13):get(12) / 1   )-1, 0, 4*eps )
+  --assertAlmostEquals( (nlogrange(10^-6,1,7) :get(6)  / 1   )-1, 0, 4*eps ) --eps 
+  --print( nlogrange(1,10^6,6):get(4) * 15.848931924611 )
+  --print( nlogrange(1,10^6,6):get(5) )
+end 
+
+function TestLogrange:testIndex()  
+  assertNil( logrange(1,10^6,10)[0]    )
+  assertNil( nlogrange(1,10^6,1)[10]   )
+  assertNil( logrange(1,10^6,10)[inf]  )
+  assertNil( logrange(1,10^6,10)[-inf] )
+  assertNil( nlogrange(1,10^6,7)[inf]  )
+  assertNil( nlogrange(1,10^6,7)[-inf] )
+  assertNil( logrange(1,10^6,10)[nil]  )
+  assertNil( nlogrange(1,10^6,7)[nil]  )
+  assertNil( logrange(1,10^6,10)['']   )
+  assertNil( nlogrange(1,10^6,7)['']   )
+  assertNil( logrange(1,10^6,10)[nan]  )
+  assertNil( nlogrange(1,10^6,1)[nan]  )
+
+  assertEquals( logrange(10,10^8,10)[1], 10   )
+  assertEquals( logrange(10,10^8,10)[8], 10^8 )
+  assertAlmostEquals( (nlogrange(10,10^8,8)[1] / 10  )-1, 0, eps )
+  --assertAlmostEquals( (nlogrange(10,10^8,8)[8] / 10^8)-1, 0, 4*eps ) --eps
+
+  local res = logrange(10, 10^5, 10)
+  local ref = { 10, 10^2, 10^3, 10^4, 10^5 }
+  for j=1, res:size() do assertEquals( res[j], ref[j] ) end
+
+  local res = nlogrange( 2, 2^6, 6 )
+  local ref = { 2, 2^2, 2^3, 2^4, 2^5, 2^6 }
+  for j=1, res:size() do assertEquals( res[j], ref[j] ) end
+end
+
+function TestLogrange:testSize()
+  assertEquals( logrange(10^7,0,0.1)  :size(), inf )
+  assertEquals( logrange(1,10^6,1)    :size(), 0 )
+  assertEquals( logrange(1,10^6,0)    :size(), 0 )
+  assertEquals( logrange(1,10^6,10)   :size(), 7 )
+  assertEquals( logrange(1,2^5)       :size(), 6 )
+  assertEquals( logrange(-1,-2^5,2)   :size(), 6 )
+  assertEquals( logrange(-10^6,-1,0.1):size(), 7 )
+  assertEquals( logrange(-1,-10^6,10) :size(), 7 )
+  assertEquals( logrange(10^7,1,0.1)  :size(), 8 )
+  
+  assertEquals( nlogrange(1,2^5,6)    :size(), 6 )
+  assertEquals( nlogrange(10,10^6,6)  :size(), 6 )
+  assertEquals( nlogrange(10,10^6,7)  :size(), 7 )
+  assertEquals( nlogrange(10,10^6,8)  :size(), 8 )
+  assertEquals( nlogrange(10,10^6,9)  :size(), 9 )
+  assertEquals( nlogrange(5,5^6,6)    :size(), 6 )
+  assertEquals( nlogrange(2,2^6,6)    :size(), 6 )
+  
+  assertEquals( logrange(10^7,1,0.1):size(), #logrange(10^7,1,0.1) )
+  assertEquals( nlogrange(1,2^5,6)  :size(), #nlogrange(1,2^5,6)   )
+end
+
+function TestLogrange:testIsEmpty()
+  assertTrue ( is_empty( logrange(1,10,0)     :range() ) )
+  assertTrue ( is_empty( logrange(1,10^6,0.1) :range() ) )
+  assertTrue ( is_empty( logrange(2,2^-2,2)   :range() ) )
+  assertFalse( is_empty( logrange(2,2^-2,1/2) :range() ) )
+  assertFalse( is_empty( nlogrange(1,10,1)    :range() ) )
+  assertFalse( is_empty( nlogrange(1,10^3,0.1):range() ) )
+end
+
+function TestLogrange:testNsteplog()
+  assertEquals( nstep(range(1)   , 1), 1  )
+  assertEquals( nstep(range(1,10), 0), 1  )
+  assertEquals( nstep(logrange(1), 1), 1  )
+  assertEquals( nstep(logrange(1), 0), 1  )
+  assertEquals( nstep(logrange(1),-2), 1  )
+  assertEquals( nstep(logrange(1,1)  , 10)  , 1   )
+  assertEquals( nstep(logrange(1,10) , 1)   , inf )
+  assertEquals( nstep(logrange(10,10^6,10)  , 1) , inf )
+  assertEquals( nstep(logrange(10^2,10^6,10), 3) , 100 )
+  assertAlmostEquals( nstep(logrange(10,10^6,10) , 6) / 10 , 1, eps )
+  assertAlmostEquals( nstep(logrange(10^6,10)    , 6) / 0.1, 1, eps )
+  assertAlmostEquals( nstep(nlogrange(10^6,10,6) , 6) / 0.1, 1, eps )
+
+  assertEquals( nstep(10,10^5,0) , 1    )
+  assertEquals( nstep(10,10^5,5) , 10   )
+  assertEquals( nstep(10,10^5,-1), 1    )
+  assertEquals( nstep(10,10^5,1) , inf  )
+  assertEquals( nstep(10,10^5,2) , 10^4 )
+end
+
+function TestLogrange:testReverse() 
+  assertEquals( logrange(1,10^6,10)  :reverse(), logrange(10^6,1,0.1) )
+  assertEquals( logrange(10^7,10,0.1):reverse(), logrange(10,10^7,10) )
+  assertEquals( logrange(1,10^6,10)  :reverse(), logrange(10^6,1,0.1) )
+  --assertEquals( nlogrange(10,10^6,6) :reverse(), nlogrange(10^6,10,6) )
+  --print( nlogrange(10,10^6,6):reverse().start, nlogrange(10^6,10,6).start )
+  --print( nlogrange(10,10^6,6):reverse().stop , nlogrange(10^6,10,6).stop  )
+  --print( nlogrange(10,10^6,6):reverse().step , nlogrange(10^6,10,6).step  )
+end
+
+function TestLogrange:testBounds()
+  assertEquals( {logrange(10)          :bounds()}, { 10, 10 }   )
+  assertEquals( {logrange(10,inf)      :bounds()}, { 10, inf }  )
+  assertEquals( {logrange(10^5,10,1)   :bounds()}, { nil, nil } )
+  assertEquals( {logrange(10^5,10,10)  :bounds()}, { 10^5, 10 } )
+  assertEquals( {logrange(10^5,10,0)   :bounds()}, { 10, 10^5 } )
+  assertEquals( {logrange(1,10^6,10)   :bounds()}, { 1, 10^6 }  )
+  assertEquals( {logrange(-10^6,-1,0.1):bounds()}, {-1,-10^6 }  )
+  assertEquals( {logrange(-1,-10^6,10) :bounds()}, {-1,-10^6 }  )
+  assertEquals( {logrange(10^6,1,0.1)  :bounds()}, { 1, 10^6 }  )
+  assertEquals( {nlogrange(-1,-10^6,6) :bounds()}, {-1,-10^6 }  )
+end
+
+function TestLogrange:testEqual()  
+  assertTrue( logrange(1,10^6,10)  == log(1..10^6..10) )
+  assertFalse( logrange(1,10^6,10) == range(1,10^6,10) )
+--  assertTrue( logrange(1,10^6,10)  ==  nlogrange(1,10^6,7) )
+
+--  print( logrange(1,10^6,10)      , nlogrange(1,10^6,7)       )
+--  print( logrange(1,10^6,10).start, nlogrange(1,10^6,7).start ) 
+--  print( logrange(1,10^6,10).stop , nlogrange(1,10^6,7).stop  )
+--  print( logrange(1,10^6,10).step , nlogrange(1,10^6,7).step  )
+end
+
+function TestLogrange:testIlogrange() 
+    local msg = { "invalid argument #1 (expect number)", 
+                "cannot convert 'string' to 'const double'" }
+  assertErrorMsgContains( msg[1], ilogrange                )
+  assertErrorMsgContains( msg[1], ilogrange, ''            )
+  assertErrorMsgContains( msg[1], ilogrange,(10..10^5..10) )
+  assertErrorMsgContains( msg[2], ilogrange, 10, ''        )
+  assertErrorMsgContains( msg[2], ilogrange, 10, 10^5, ''  )
+
+  local r =   logrange(2)
+  for i,v in ilogrange(2)          do assertAlmostEquals((r[i]/v)-1, 0, eps) end
+  local r =   logrange(2, 2^5)
+  for i,v in ilogrange(2, 2^5)     do assertAlmostEquals((r[i]/v)-1, 0, eps) end 
+  local r =   logrange(1,10^6,10)
+  for i,v in ilogrange(1,10^6,10)  do assertAlmostEquals((r[i]/v)-1, 0, eps) end
+  local r =   logrange(10^6,1,0.1)
+  for i,v in ilogrange(10^6,1,0.1) do assertAlmostEquals((r[i]/v)-1,0,2*eps) end
+
+  local ir = {ilogrange(1,10^6,10)}
+  assertTrue( is_function(ir[1]) )
+  assertTrue( is_logrange(ir[2]) )
+  assertTrue( ir[3] == 0         )
+
+  local ir = {ilogrange(1,10,1)}
+  assertFalse( ir[1] or ir[2] or ir[3] )  
+ 
+  --assertFalse( ir[1] or ir[2] or ir[3] )  
+  --local ir = {ilogrange(1,10^6,0.1)}
+  --local ir = {ilogrange(10^6,1,10)}
+  --assertFalse( ir[1] or ir[2] or ir[3] )  
+end
+
+-- performance test suite -----------------------------------------------------o
+
+Test_Logrange = {}
+--function Test_Logrange:testIrange()
+--  local s = 1024
+--  local r = logrange(2,2^s)
+--  local t0 = os.clock()
+--  for i,v in ilogrange(2,2^s) do assert(r[i], v) end
+--  local dt = os.clock() - t0 
+--  assertAlmostEquals( dt, 1, 1 )
+--end 
+
+-- end ------------------------------------------------------------------------o

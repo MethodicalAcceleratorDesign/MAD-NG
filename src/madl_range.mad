@@ -39,7 +39,6 @@ SYNOPSIS
   l2 = log(lstart..lstop[..lstep])
 
 DESCRIPTION
-
   Ranges are defined by their start, stop (included) and step arguments. A step
   of value zero or a step with opposite sign to stop-start lead to an empty
   range. The ranges can be used as stateless iterators in for loops (i.e.
@@ -55,6 +54,9 @@ RETURN VALUES
   is_range and is_logrange to identify the ranges object.
 
 ERROR
+  Range and logrange constructors trigg an error if the argument #1 is not a 
+  a number. Nrange and nlogrange constructor triggs an error if any of the input 
+  arguments is not a number.
 
 EXAMPLES
   r1 = range(start [,stop [,step]])
@@ -70,7 +72,7 @@ Mlog.__help.self = M.__help.self
 -- locals ---------------------------------------------------------------------o
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
-local is_number                           in require 'madl_utils'
+local is_number, is_nil                   in require 'madl_utils'
 local abs, ceil, floor, log, max          in math
 
 -- ctypes are xrange and logxrange
@@ -106,7 +108,7 @@ local function is_emptylog(start, stop, step)
                              start <  0 and start <  stop) or false)
 end
 
-local function bounds(start, stop, step)
+--[[local function bounds(start, stop, step)
   if step >= 0 and start <= stop then
     return start, stop
   elseif step < 0 and start > stop then
@@ -123,15 +125,16 @@ local function boundslog(start, stop, step)
          (step <  1 and start >= 0 and start >= stop) then
     return stop, start
   end
-end
+end]]
 
 local function size (start, stop, step)
+local round = \x -> is_number(x) and (x<0 and floor(x+0.5) or ceil(x-0.5)) 
   if step > 1 then
-    return max(0, floor( (stop-start+1)/step +0.5) )
+    return max(0, round( (stop-start+1)/step +0.5) )
   elseif step < -1 then
-    return max(0, floor( (stop-start-1)/step +0.5) )
+    return max(0, round( (stop-start-1)/step +0.5) )
   elseif step ~= 0 then
-    return max(0, floor( (stop-start  )/step +1.5) )
+    return max(0, round( (stop-start  )/step + 1) )
   else
     return 0
   end
@@ -143,20 +146,20 @@ end
 
 local function n_step (start, stop, nstep)
   if is_range(start) then
-    start, stop, n = start.start, start.stop, stop -- shift args
+    start, stop, nstep = start.start, start.stop, stop -- shift args
   end
-  return n >= 1 and (stop-start)/abs(ceil(nstep)-1) or 0
+  return nstep >= 1 and (stop-start)/abs(ceil(nstep)-1) or 0
 end
 
 local function n_steplog (start, stop, nstep)
   if is_range(start) or is_logrange(start) then
-    start, stop, n = start.start, start.stop, stop -- shift args
+    start, stop, nstep = start.start, start.stop, stop -- shift args
   end
-  return n >= 1 and (stop/start)^(1/abs(ceil(nstep)-1)) or 1
+  return nstep >= 1 and (stop/start)^(1/abs(ceil(nstep)-1)) or 1
 end
 
 local function value (r, x)
-  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
+  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)  
 end
 
 local function valuelog (r, x)
@@ -201,26 +204,26 @@ local function getlog (r, x)
   end
 end
 
-local function canonize(start, stop, step)
+--[[local function canonize(start, stop, step)
   if not is_empty(start, stop, step) then
     return start, stop, step
   end
   return start, stop, 0
-end
+end]]
 
 -- alternate constructors with #steps specified
 
 local function nrange (start, stop, nstep)
-  if is_nil(n) then return range(start, stop) end
-  assert(is_number(start) and is_number(stop) and is_number(n),
+  if is_nil(nstep) then return range(start, stop) end
+  assert(is_number(start) and is_number(stop) and is_number(nstep),
          "invalid argument #1, #2 or #3 (number expected)")
   return range(start, stop, n_step(start, stop, nstep))
 end
 
 local function nlogrange (start, stop, nstep)
-  if is_nil(n) then return range(start, stop) end
-  assert(is_number(start) and is_number(stop) and is_number(n),
-         "invalid argument #1, #2 or #3 (number expected")
+  if is_nil(nstep) then return range(start, stop) end
+  assert(is_number(start) and is_number(stop) and is_number(nstep),
+         "invalid argument #1, #2 or #3 (number expected)")
   return logrange(start, stop, n_steplog(start, stop, nstep))
 end
 
@@ -290,21 +293,26 @@ function Mlog.__eq (r1, r2)
 end
 
 M.__help.is_range = [=[
+
 NAME
-  is_range, is_logrange,            -- identify ranges
+  is_range, is_logrange, is_empty     -- identify ranges
 
 SYNOPSIS
   is_range(rng)
   is_logrange(lrng)
+  is_empty(start [, stop [, step]])
 
 DESCRIPTION
+  Functions used for identifing type of range.
 
 RETURN VALUES
-  is_range and is_logrange return true if their argument is a range of
-  respective types.
+  is_range and is_logrange return true if their argument is a range of 
+  respective types. is_empty returns true for ranges with step equal to zero or 
+  step with opposite sign to stop-start lead of range. 
 
 EXAMPLES
   local is_range, is_logrange, log in MAD
+  local is_empty in range
   print( is_range 'yes' )                     -- false
   print( is_range(0..1) )                     -- true
   print( is_range(log(0..1)) )                -- false
@@ -312,12 +320,49 @@ EXAMPLES
   print( is_logrange 'yes' )                  -- false
   print( is_logrange(0..1) )                  -- false
   print( is_logrange(log(0..1)) )             -- true
+  
+  print( is_empty(1,10,-1) )                  -- true
+  print( is_empty(10,1,1)  )                  -- true
+  print( is_empty(1,10,1)  )                  -- false
+  print( is_empty(1,10,0)  )                  -- false
 
 SEE ALSO
   None.
 ]=]
-M.__help.is_logrange = M.__help.is_range
+M.__help.is_logrange = M.__help.is_range 
+M.__help.is_empty    = M.__help.is_range 
 
+M.__help.irange = [=[
+
+NAME
+  irange, ilogrange               -- ranges interators
+
+SYNOPSIS
+  irange(start [, stop [, step]])
+  ilogrange(start [, stop [, step]])
+
+DESCRIPTION
+  Functions are an equivalent of ipairs for ranges and logranges.
+
+RETURN VALUES
+  irange and ilogrange return the appropriate arguments for stateless iterators 
+  build from given type of range, that is the iterator function, the object and 
+  the pre-initial key.
+
+EXAMPLES
+  local irange, ilogrange, is_function, is_range in MAD 
+  local ir = {irange(1,10,1)}
+  print( is_function(ir[1]) )                  -- true 
+  print( is_range(ir[2])    )                  -- true 
+  print( ir[3] == 0         )                  -- true 
+  
+  for i,v in irange(1,10,2)       do print(i,v) end     
+  for i,v in ilogrange(1,10^6,10) do print(i,v) end  
+
+SEE ALSO
+  ipairs
+]=]
+M.__help.ilogrange = M.__help.irange
 
 function M.range (r)
   return r.start, r.stop, r.step
@@ -371,6 +416,132 @@ function Mlog.bounds (r)
   end
 end
 
+M.__help.value = [=[
+
+NAME
+  value, get, index                   -- range interpolation
+
+SYNOPSIS
+  rng:value(x)
+  rng:get(x)
+  rng[x]
+  
+DESCRIPTION
+  Functions used for interpolation of ranges.Points from value and get functions
+  are iterated from 0, indexing elements starts from 1. Index and get are 
+  functions used for segment interpolation, they return nil outside the 
+  boundaries, value is used for line interpolation.
+
+RETURN VALUES       
+  Function return values of given data points in range. 
+
+EXAMPLES
+  local range, value, get in MAD
+  local rng = range(1,10,1)
+  print( rng:value(0)  )                      -- 1
+  print( rng:value(9)  )                      -- 10
+  print( rng:value(10) )                      -- 11
+  print( rng:value(-1) )                      -- 0
+ 
+  print( rng:get(0)  )                        -- 1
+  print( rng:get(9)  )                        -- 10
+  print( rng:get(10) )                        -- nil
+  print( rng:get(-1) )                        -- nil
+ 
+  print( rng[1]  )                            -- 1
+  print( rng[10] )                            -- 10
+  print( rng[11] )                            -- nil
+  print( rng[0]  )                            -- nil
+  
+SEE ALSO
+  None.
+]=]
+M.__help.get   = M.__help.value 
+M.__help.index = M.__help.value 
+
+M.__help.range = [=[
+
+NAME
+  range, bounds                      
+
+SYNOPSIS
+  rng:range()
+  lrng:range()
+  rng:bounds()
+  lrng:bounds()
+
+DESCRIPTION
+
+RETURN VALUES
+  range returns the values of start, stop and step of a given range. bounds 
+  returns the start and stop values that restrain the range, their order is 
+  dependand on the lead of range. 
+
+EXAMPLES
+  local range, nrange, logrange in MAD
+  print( range(1,10,1)       :range()  )          -- 1,10,1    
+  print( (1..10)             :range()  )          -- 1,10,1   
+  print( nrange(1,10,10)     :range()  )          -- 1,10,1   
+  print( logrange(1,10^6,10) :range()  )          -- 1,10^6,10
+  print( nlogrange(1,10,1)   :range()  )          -- 1,10,inf  
+  print( range(1,10,0)       :bounds() )          -- nil,nil
+  print( range(1,10,1)       :bounds() )          -- 1,10   
+  print( range(10,1,-1)      :bounds() )          -- 1,10   
+  print( logrange(10^5,10,1) :bounds() )          -- nil, nil 
+  print( logrange(10^5,10,10):bounds() )          -- 10^5, 10 
+  print( range(1,10,-1)      :bounds() )          -- 10,1
+
+SEE ALSO
+  None.
+]=]
+
+M.__help.bounds = M.__help.range 
+
+M.__help.equal = [=[
+
+NAME
+  equal, size, reversed
+
+SYNOPSIS
+  rng1 == rng2
+  rng:size()
+  lrng:size()
+  rng:reverse()
+  lrng:reverse()
+
+DESCRIPTION
+
+RETURN VALUES
+  size returns the number of possible steps in a given range. reverse returns 
+  range with reversed from original start-stop lead and step with opposite sign 
+  for ranges and 1/step for logranges. Function equal returns true only if 
+  compared ranges have same start, stop and step values.
+
+EXAMPLES
+  local logrange, range, nrange in MAD
+  print( logrange(1,10^6,10)  == log(1..10^6..10))  -- true
+  print( range(1,20)          ==  1..20          )  -- true
+  print( range(-1,-20,-1)     == -1..-20..-1     )  -- true
+  print( nrange(1,20,20)      ==  1..20          )  -- true
+
+  print( range(1)            :size() )              -- 1  
+  print( range(1,10)         :size() )              -- 10 
+  print( range(1,-10)        :size() )              -- 0  
+  print( logrange(10^7,0,0.1):size() )              -- inf 
+  print( logrange(1,10^6,1)  :size() )              -- 0 
+  print( logrange(1,10^6,10) :size() )              -- 7 
+
+  print( (1..10..0.1)         :reverse() )          -- (10..1..-0.1) 
+  print( range(2,20,2)        :reverse() )          -- range(20,2,-2)
+  print( nrange(1,2,2)        :reverse() )          -- nrange(2,1,2) 
+  print( logrange(1,10^6,10)  :reverse() )          -- logrange(10^6,1,0.1) 
+  print( logrange(10^7,10,0.1):reverse() )          -- logrange(10,10^7,10) 
+
+SEE ALSO
+  None.
+]=]
+M.__help.size     = M.__help.empty
+M.__help.reversed = M.__help.empty
 --[=[
 
 function M.overlap (r, s)
