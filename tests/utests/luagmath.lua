@@ -29,14 +29,15 @@ local
   atan2, frexp, ldexp, modf, random, randomseed,       -- (functions wo generic)
   fmod, pow,                                         -- (operators as functions)
   huge, pi =                                                      -- (constants)
-  math.abs,   math.acos,  math.asin,  math.atan, math.ceil,   math.cos, cosh,
+  math.abs,   math.acos,  math.asin,  math.atan, math.ceil,   math.cos, math.cosh,
   math.deg,   math.exp,   math.floor, math.log,  math.log10,  math.max,
-  math.min,   math.rad,   math.sin,   math.sinh, math.sqrt,   math.tan, tanh,
+  math.min,   math.rad,   math.sin,   math.sinh, math.sqrt,   math.tan, math.tanh,
   math.atan2, math.frexp, math.ldexp, math.modf, math.random, math.randomseed,
   math.fmod,  math.pow,
   math.huge,  math.pi
 
 local function is_number(a) return type(a) == "number" end
+local function is_nan(a)    return type(a) == 'number' and a ~= a end
 local function first (a,b) return a end
 local function second(a,b) return b end
 
@@ -50,67 +51,66 @@ local nan  = 0/0
 local NaN  = 0/0
 local pi   = pi
 local Pi   = pi
-
--- generic unary functions
-local function abs   (x) return is_number(x) and abs  (x)  or x:abs  () end
-local function acos  (x) return is_number(x) and acos (x)  or x:acos () end
-local function asin  (x) return is_number(x) and asin (x)  or x:asin () end
-local function atan  (x) return is_number(x) and atan (x)  or x:atan () end
-local function ceil  (x) return is_number(x) and ceil (x)  or x:ceil () end
-local function cos   (x) return is_number(x) and cos  (x)  or x:cos  () end
-local function cosh  (x) return is_number(x) and cosh (x)  or x:cosh () end
-local function deg   (x) return is_number(x) and deg  (x)  or x:deg  () end
-local function exp   (x) return is_number(x) and exp  (x)  or x:exp  () end
-local function floor (x) return is_number(x) and floor(x)  or x:floor() end
-local function log   (x) return is_number(x) and log  (x)  or x:log  () end
-local function log10 (x) return is_number(x) and log10(x)  or x:log10() end
-local function rad   (x) return is_number(x) and rad  (x)  or x:rad  () end
-local function sin   (x) return is_number(x) and sin  (x)  or x:sin  () end
-local function sinh  (x) return is_number(x) and sinh (x)  or x:sinh () end
-local function sqrt  (x) return is_number(x) and sqrt (x)  or x:sqrt () end
-local function tan   (x) return is_number(x) and tan  (x)  or x:tan  () end
-local function tanh  (x) return is_number(x) and tanh (x)  or x:tanh () end
-
 -- generic binary functions
-local function angle (x,y) return is_number(x) and atan2(y,x) or x:angle(y) end
+local angle = function (x,y) return is_number(x) and atan2(y,x) or x:angle(y) end
 
 -- generic variadic functions
-local function max(x,...) return is_number(x) and max(x,...) or x:max(...) end
-local function min(x,...) return is_number(x) and min(x,...) or x:min(...) end
+local max = function (x,...) return is_number(x) and max(x,...) or x:max(...) end
+local min = function (x,...) return is_number(x) and min(x,...) or x:min(...) end
 
 -- extra generic functions
-local function sign (x) return is_number(x) and (x>=0 and 1 or x<0 and -1 or x)  or x:sign()end
-local function step (x) return is_number(x) and (x>=0 and 1 or x<0 and  0 or x)  or x:step()end
-local function sinc (x) return is_number(x) and (abs(x)<1e-10 and 1 or sin(x)/x) or x:sinc()end
-local function frac (x) return is_number(x) and second(modf(x)) or x:frac()                 end
-local function trunc(x) return is_number(x) and first (modf(x)) or x:trunc()                end
-local function round(x) return is_number(x) and (x>0 and floor(x+0.5) or x<0 and ceil(x-0.5) or x) or x:round() end
+local sign  = function (x) return is_number(x) and (x>=0 and 1 or x<0 and -1 or x)  or x:sign()end
+local step  = function (x) return is_number(x) and (x>=0 and 1 or x<0 and  0 or x)  or x:step()end
+local sinc  = function (x) return is_number(x) and (abs(x)<1e-10 and 1 or sin(x)/x) or x:sinc()end
+local frac  = function (x) return is_number(x) and second(modf(x)) or x:frac()                 end
+local trunc = function (x) return is_number(x) and first (modf(x)) or x:trunc()                end
+local round = function (x) return is_number(x) and (x>0 and floor(x+0.5) or x<0 and ceil(x-0.5) or x) or x:round() end
 
 -- operators
-local function unm(x  ) return -x     end
-local function add(x,y) return  x + y end
-local function sub(x,y) return  x - y end
-local function mul(x,y) return  x * y end
-local function div(x,y) return  x / y end
-local function mod(x,y) return  x % y end
-local function pow(x,y) return  x ^ y end
+local unm = function (x  ) return -x     end
+local add = function (x,y) return  x + y end
+local sub = function (x,y) return  x - y end
+local mul = function (x,y) return  x * y end
+local div = function (x,y) return  x / y end
+local mod = function (x,y) return  x % y end
+local pow = function (x,y) return  x ^ y end
 
 -- logical
-local function eq(x,y) return x == y end
-local function ne(x,y) return x ~= y end
-local function lt(x,y) return x <  y end
-local function le(x,y) return x <= y end
-local function gt(x,y) return x >  y end
-local function ge(x,y) return x >= y end
+local eq = function (x,y) return x == y end
+local ne = function (x,y) return x ~= y end
+local lt = function (x,y) return x <  y end
+local le = function (x,y) return x <= y end
+local gt = function (x,y) return x >  y end
+local ge = function (x,y) return x >= y end
 
 -- complex generic functions
-local function carg (x) return is_number(x) and (x>=0 and 0 or x<0 and pi or x) or x:carg() end
-local function real (x) return is_number(x) and x                               or x:real() end
-local function imag (x) return is_number(x) and 0                               or x:imag() end
-local function conj (x) return is_number(x) and x                               or x:conj() end
-local function norm (x) return is_number(x) and abs(x)                          or x:norm() end
-local function rect (x) return is_number(x) and abs(x) or x:rect()  end
-local function polar(x) return is_number(x) and abs(x) or x:polar() end -- TODO +M.carg(x)*1i
+local carg  = function (x) return is_number(x) and (x>=0 and 0 or x<0 and pi or x) or x:carg() end
+local real  = function (x) return is_number(x) and x                               or x:real() end
+local imag  = function (x) return is_number(x) and 0                               or x:imag() end
+local conj  = function (x) return is_number(x) and x                               or x:conj() end
+local norm  = function (x) return is_number(x) and abs(x)                          or x:norm() end
+local rect  = function (x) return is_number(x) and abs(x) or x:rect()  end
+local polar = function (x) return is_number(x) and abs(x) or x:polar() end -- TODO +M.carg(x)*1i
+
+-- generic unary functions
+local abs   = function (x) return is_number(x) and abs  (x)  or x:abs  () end
+local acos  = function (x) return is_number(x) and acos (x)  or x:acos () end
+local asin  = function (x) return is_number(x) and asin (x)  or x:asin () end
+local atan  = function (x) return is_number(x) and atan (x)  or x:atan () end
+local ceil  = function (x) return is_number(x) and ceil (x)  or x:ceil () end
+local cos   = function (x) return is_number(x) and cos  (x)  or x:cos  () end
+local cosh  = function (x) return is_number(x) and cosh (x)  or x:cosh () end
+local deg   = function (x) return is_number(x) and deg  (x)  or x:deg  () end
+local exp   = function (x) return is_number(x) and exp  (x)  or x:exp  () end
+local floor = function (x) return is_number(x) and floor(x)  or x:floor() end
+local log   = function (x) return is_number(x) and log  (x)  or x:log  () end
+local log10 = function (x) return is_number(x) and log10(x)  or x:log10() end
+local rad   = function (x) return is_number(x) and rad  (x)  or x:rad  () end
+local sin   = function (x) return is_number(x) and sin  (x)  or x:sin  () end
+local sinh  = function (x) return is_number(x) and sinh (x)  or x:sinh () end
+local sqrt  = function (x) return is_number(x) and sqrt (x)  or x:sqrt () end
+local tan   = function (x) return is_number(x) and tan  (x)  or x:tan  () end
+local tanh  = function (x) return is_number(x) and tanh (x)  or x:tanh () end
 
 -- locals ---------------------------------------------------------------------o
 
@@ -1340,25 +1340,6 @@ end
 
 -- extra generic functions
 
-function TestLuaGmath:testAcosh()
-  for _,v in ipairs(values.num) do
-    v = v+1
-    if v < inf then
-      assertAlmostEquals( cosh(acosh(v)) / v, 1, v*eps )
-    end
-    if v > 1+1e-9 and v < huge then
-      assertAlmostEquals( log(v+sqrt(v^2-1)) / acosh(v), 1 , eps )
-    end
-  end
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals(        1/acosh( 1    ) ,  inf  ) -- check for +0
-  assertEquals(          acosh(inf   ) ,  inf  )
-  assertEquals( tostring(acosh( 1-eps)), 'nan' )
-  assertEquals( tostring(acosh( 0    )), 'nan' )
-  assertEquals( tostring(acosh(nan   )), 'nan' )
-end
-
 function TestLuaGmath:testAngle()
   for _,x in ipairs(values.num) do
   for _,y in ipairs(values.num) do
@@ -1408,112 +1389,6 @@ function TestLuaGmath:testAngle()
   assertEquals( tostring(angle(nan,nan)), 'nan' )
 end
 
-function TestLuaGmath:testAsinh()
-  for _,v in ipairs(values.num) do
-    if v < inf then
-      assertAlmostEquals( asinh(v) - -asinh(-v), 0, eps )
-    end
-    if v > 0 and asinh(v) < 710 then -- skip huge
-      assertAlmostEquals( sinh(asinh(v)) / v - 1       , 0, 15*eps )
-      assertAlmostEquals( log(v+sqrt(v^2+1)) - asinh(v), 0, 16*eps )
-    end
-  end
-
-  assertAlmostEquals( sinh(asinh(huge)) / huge - 1, 0, 400*eps )
-
-  assertEquals( asinh(-inf), -inf )
-  assertEquals( asinh(   0),    0 )
-  assertEquals( asinh( inf),  inf )
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals(        1/asinh(-0  ), -inf  ) -- check for -0
-  assertEquals(        1/asinh( 0  ),  inf  ) -- check for +0
-  assertEquals(          asinh(-inf), -inf  )
-  assertEquals(          asinh( inf),  inf  )
-  assertEquals( tostring(asinh(nan)), 'nan' )
-end
-
-function TestLuaGmath:testAtanh()
-  for _,v in ipairs(values.rad) do
-    if v/pi < 1 then -- skip inf
-      assertAlmostEquals( atanh(v/pi) - -atanh(-v/pi), 0, eps )
-    end
-  end
-  for _,v in ipairs(values.rad2) do
-    assertAlmostEquals( atanh(tanh( v)) -  v, 0, 2*eps )
-    assertAlmostEquals( atanh(tanh(-v)) - -v, 0, 2*eps )
-  end
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/atanh(-0), -inf ) -- check for -0
-  assertEquals( 1/atanh( 0),  inf ) -- check for +0
-  assertEquals(   atanh(-1), -inf )
-  assertEquals(   atanh( 1),  inf )
-
-  assertEquals( tostring(atanh(-1-eps)), 'nan' )
-  assertEquals( tostring(atanh( 1+eps)), 'nan' )
-  assertEquals( tostring(atanh(   nan)), 'nan' )
-end
-
-function TestLuaGmath:testErf()
-  -- SetPrecision[Table[Erf[x],{x, 0, 0.1, 0.002}],20]
-  local val1 = {0, 0.0022567553251835242509, 0.0045134925964086976269,
-  0.0067701937601504658809, 0.0090268407637503350616, 0.011283415555849619569,
-  0.013539900086822627759, 0.015796276309209784233, 0.018052526178150646308,
-  0.020308631651816868441, 0.022564574691844942883, 0.024820337263768959407,
-  0.027075901337453026768, 0.029331248887523666408, 0.031586361893801956358,
-  0.033841222341735428814, 0.036095812222829884441, 0.038350113535080727900,
-  0.040604108283404306834, 0.042857778480068768612, 0.045111106145124750533,
-  0.047364073306835702271, 0.049616662002107868312, 0.051868854276919972024,
-  0.054120632186752504200, 0.056371977797016629974, 0.058622873183482727966,
-  0.060873300432708506158, 0.063123241642466618173, 0.065372678922171981175,
-  0.067621594393308448456, 0.069869970189855162834, 0.072117788458712334121,
-  0.074365031360126412907, 0.076611681068114972915, 0.078857719770890760680,
-  0.081103129671285412172, 0.083347892987172433887, 0.085591991951889698220,
-  0.087835408814661175558, 0.090078125841018152897, 0.092320125313219897345,
-  0.094561389530673264914, 0.096801900810352198290, 0.099041641487215878459,
-  0.10128059391462689021, 0.10351874046476788882, 0.10575606352905811414,
-  0.10799254551856884987, 0.11022816886443817519, 0.11246291601828489748}
-  -- SetPrecision[Table[Erf[x],{x, 0.1, 5, 0.1}],20]
-  local val2 = {0.11246291601828489748, 0.22270258921047847434,
-  0.32862675945912750430, 0.42839235504666856036, 0.52049987781304662970,
-  0.60385609084792601919, 0.67780119383741843642, 0.74210096470766051535,
-  0.79690821242283216286, 0.84270079294971489414, 0.88020506957408173321,
-  0.91031397822963544542, 0.93400794494065242368, 0.95228511976264884620,
-  0.96610514647531076093, 0.97634838334464402188, 0.98379045859077451919,
-  0.98909050163573075665, 0.99279042923525750997, 0.99532226501895271209,
-  0.99702053334366702586, 0.99813715370201816501, 0.99885682340264336787,
-  0.99931148610335496230, 0.99959304798255499414, 0.99976396558347069288,
-  0.99986566726005943195, 0.99992498680533459243, 0.99995890212190052804,
-  0.99997790950300136092, 0.99998835134263275304, 0.99999397423884828218,
-  0.99999694229020352765, 0.99999847800663710373, 0.99999925690162760894,
-  0.99999964413700703769, 0.99999983284894211621, 0.99999992299607254331,
-  0.99999996520775136233, 0.99999998458274208524, 0.99999999329997235620,
-  0.99999999714450582555, 0.99999999880652823414, 0.9999999995108289630,
-  0.9999999998033839432, 0.9999999999225039904, 0.9999999999700474040,
-  0.9999999999886478586, 0.9999999999957810415, 0.9999999999984625632}
-
-  local i
-  i=0 for v=0,0.1,0.002 do i=i+1
-    assertAlmostEquals( erf(v) - val1[i], 0, eps )
-  end
-  i=0 for v=0.1,5,0.1 do i=i+1
-    assertAlmostEquals( erf(v) - val2[i], 0, eps )
-  end
-
-  for _,v in ipairs(values.num) do
-    assertAlmostEquals( erf(v) - -erf(-v), 0, eps )
-  end
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/erf(-  0), -inf ) -- check for -0
-  assertEquals( 1/erf(   0),  inf ) -- check for +0
-  assertEquals(   erf(-inf), - 1  )
-  assertEquals(   erf( inf),   1  )
-
-  assertEquals( tostring(erf(nan)), 'nan' )
-end
-
 function TestLuaGmath:testFrac()
   for _,v in ipairs(values.num) do
     if v == inf then break end -- pb, see below
@@ -1540,7 +1415,7 @@ function TestLuaGmath:testFrac()
   assertEquals( frac(  1.5) ,   0.5 )
   assertEquals( frac(  1.7) ,   0.7 )
   assertEquals( frac( huge) ,     0 )
-!  assertEquals( frac(  inf) ,     0 ) -- get nan, pb with modf and jit
+--  assertEquals( frac(  inf) ,     0 ) -- get nan, pb with modf and jit
   assertEquals( frac(-   0) , -   0 )
   assertEquals( frac(-tiny) , -tiny )
   assertEquals( frac(- 0.1) , - 0.1 )
@@ -1550,118 +1425,12 @@ function TestLuaGmath:testFrac()
   assertEquals( frac(- 1.5) , - 0.5 )
   assertEquals( frac(- 1.7) , - 0.7 )
   assertEquals( frac(-huge) , -   0 )
-!  assertTrue  ( frac(- inf) ,     0 ) -- get nan, pb with modf and jit
+--  assertTrue  ( frac(- inf) ,     0 ) -- get nan, pb with modf and jit
 
   assertAlmostEquals( frac( 1.1)-0.1, 0, eps/2 )
   assertAlmostEquals( frac(-1.1)+0.1, 0, eps/2 )
 
   assertEquals( tostring(frac(nan)), 'nan' )
-end
-
-function TestLuaGmath:testTGamma()
-  local fact
-  fact = function(n) return n <= 1 and 1 or n*fact(n-1) end
-
-  -- SetPrecision[Table[Gamma[x],{x, 0.01, 1, 0.03}],20]
-  local val1 = {99.432585119150616038, 24.460955022856119001,
-  13.773600607733806456, 9.5135076986687305833, 7.2302419210119861503,
-  5.8112691664561264560, 4.8467633533349454567, 4.1504815795927783029,
-  3.6256099082219082064, 3.2168517018296229892, 2.8903360540117146726,
-  2.6241632564984840315, 2.4035500200786530378, 2.2181595437576882013,
-  2.0605493863359747309, 1.9252268183155301084, 1.8080512889238926633,
-  1.7058438140839640162, 1.6161242687335750645, 1.5369302649435188091,
-  1.4666895221797529025, 1.4041281721350677980, 1.3482037306042777836,
-  1.2980553326475579023, 1.2529662618990031753, 1.2123353744883700323,
-  1.1756550511468120135, 1.1424940039550788295, 1.1124837369484652516,
-  1.0853077874677194981, 1.0606931055726904756, 1.0384030930559640105,
-  1.0182319420865892923, 1}
-  -- SetPrecision[Table[Gamma[x],{x, 1, 10, 0.3}],20]
-  local val2 = {1, 0.89747069630627729353,
-  0.89351534928769016375, 0.96176583190738740292, 1.1018024908797128258,
-  1.3293403881791370225, 1.6764907877644363854, 2.1976202783924772000,
-  2.9812064268103326548, 4.1706517837966021744, 6.0000000000000000000,
-  8.8553433604540359170, 13.381285870932442705, 20.667385961857860366,
-  32.578096050331353695, 52.342777784553518927, 85.621737512705280437,
-  142.45194406567867418, 240.83377998344568027, 413.40751676527088421,
-  720.00000000000000000, 1271.4236336639089586, 2275.0326986324494101,
-  4122.7094842854376111, 7562.2882799713024724, 14034.407293483413014,
-  26339.986354508604563, 49973.708949624793604, 95809.457688134469208,
-  185550.93597230646992, 362880}
-  -- http://oeis.org/A030169
-  local xmin, ymin = 1.46163214496836234126, 0.88560319441088870028
-
-  local i
-  i=0 for v=0.01,1,0.03 do i=i+1 -- should be done with range
-    v=0.01+0.03*(i-1)
-    assertAlmostEquals( tgamma(v)/val1[i] -1, 0, eps )
-  end
-  i=0 for v=1,10,0.3 do i=i+1 -- should be done with range
-    v=1+0.3*(i-1)
-    assertAlmostEquals( tgamma(v)/val2[i] -1, 0, eps )
-  end
-
-  for n=1,20 do
-    assertAlmostEquals( tgamma(n)/fact(n-1)       -1, 0, log(fact(n)) *   eps )
-  end
-  i=0 for v=1,171.6,0.1 do i=i+1 -- should be done with range
-    v=1+0.1*(i-1)
-    assertAlmostEquals( tgamma(v)/(tgamma(1+v)/v) -1, 0, log(fact(v)) *11*eps )
-  end
-
-  assertEquals( tgamma(  1),    1 )
-  assertEquals( tgamma(  2),    1 )
-  assertEquals( tgamma(  3),    2 )
-  assertEquals( tgamma(  4),    6 )
-  assertEquals( tgamma(xmin), ymin )
-  assertAlmostEquals( tgamma( 0.5), sqrt(pi), eps )
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals( tgamma(- 0 ), -inf )
-  assertEquals( tgamma(  0 ),  inf )
-  assertEquals( tgamma( inf),  inf )
-
-  assertEquals( tostring(tgamma(-   1)), 'nan' )
-  assertEquals( tostring(tgamma(-   2)), 'nan' )
-  assertEquals( tostring(tgamma(-2^52)), 'nan' )
-  assertEquals( tostring(tgamma(- inf)), 'nan' )
-  assertEquals( tostring(tgamma(  nan)), 'nan' )
-end
-
-function TestLuaGmath:testLGamma()
-  local lfact
-  lfact = function(n) return n <= 1 and 0 or log(n)+lfact(n-1) end
-
-  -- Note: This test is failing on Ubuntu 14.04
-  -- The C function lgamma is returning incorrect values. This might be a
-  -- linking problem between mad (luajit) and libm because printing the value
-  -- returned in mad_num.c already shows the problem, while a free standing C
-  -- application gives correct values, i.e. lgamma itself works fine.
-
-  for n=3,100 do
-    assertAlmostEquals( lgamma(n)/lfact(n-1)           -1, 0, 2*eps )
-  end
-  for v=3,171,0.1 do
-    assertAlmostEquals( lgamma(v)/(lgamma(1+v)-log(v)) -1, 0, 4*eps )
-  end
-
-  assertEquals( lgamma(-0), -inf )
-  assertEquals( lgamma( 0),  inf )
-
-  assertAlmostEquals( lgamma(-0.5), 1.265512123484645297, 0)
-  assertAlmostEquals( lgamma( 0.5), log(sqrt(pi)), 0)
-  assertAlmostEquals( lgamma( 3  ), log(2), eps )
-  assertAlmostEquals( lgamma( 4  ), log(6), eps )
-
-  -- Check for IEEE:IEC 60559 compliance
-  assertEquals( lgamma(    1),    0 )
-  assertEquals( lgamma(    2),    0 )
-  assertEquals( lgamma(- inf),  inf )
-  assertEquals( lgamma(-2^52),  inf )
-  assertEquals( lgamma(-   2),  inf )
-  assertEquals( lgamma(-   1),  inf )
-  assertEquals( lgamma(  inf),  inf )
-
-  assertEquals( tostring(lgamma(nan)), 'nan' )
 end
 
 function TestLuaGmath:testRound()
@@ -2348,6 +2117,91 @@ function TestLuaGmath:testPolar()
   assertEquals( polar(- inf) ,  inf )
 
   assertEquals( tostring(polar(nan)), 'nan' )
+end
+
+-- delegation --
+
+function TestLuaGmath:testDelegation()
+  local mock, mock2, mmock = {}, {}, {}
+  setmetatable(mock , mmock)
+  setmetatable(mock2, mmock)
+
+  mock.abs    = function() return 'mock.abs   ' end       assertEquals(abs   (mock), 'mock.abs   ')
+  mock.acos   = function() return 'mock.acos  ' end       assertEquals(acos  (mock), 'mock.acos  ')
+  mock.asin   = function() return 'mock.asin  ' end       assertEquals(asin  (mock), 'mock.asin  ')
+  mock.atan   = function() return 'mock.atan  ' end       assertEquals(atan  (mock), 'mock.atan  ')
+  mock.ceil   = function() return 'mock.ceil  ' end       assertEquals(ceil  (mock), 'mock.ceil  ')
+  mock.cos    = function() return 'mock.cos   ' end       assertEquals(cos   (mock), 'mock.cos   ')
+  mock.cosh   = function() return 'mock.cosh  ' end       assertEquals(cosh  (mock), 'mock.cosh  ')
+  mock.deg    = function() return 'mock.deg   ' end       assertEquals(deg   (mock), 'mock.deg   ')
+  mock.exp    = function() return 'mock.exp   ' end       assertEquals(exp   (mock), 'mock.exp   ')
+  mock.floor  = function() return 'mock.floor ' end       assertEquals(floor (mock), 'mock.floor ')
+  mock.log    = function() return 'mock.log   ' end       assertEquals(log   (mock), 'mock.log   ')
+  mock.log10  = function() return 'mock.log10 ' end       assertEquals(log10 (mock), 'mock.log10 ')
+  mock.rad    = function() return 'mock.rad   ' end       assertEquals(rad   (mock), 'mock.rad   ')
+  mock.sin    = function() return 'mock.sin   ' end       assertEquals(sin   (mock), 'mock.sin   ')
+  mock.sinh   = function() return 'mock.sinh  ' end       assertEquals(sinh  (mock), 'mock.sinh  ')
+  mock.sqrt   = function() return 'mock.sqrt  ' end       assertEquals(sqrt  (mock), 'mock.sqrt  ')
+  mock.tan    = function() return 'mock.tan   ' end       assertEquals(tan   (mock), 'mock.tan   ')
+  mock.tanh   = function() return 'mock.tanh  ' end       assertEquals(tanh  (mock), 'mock.tanh  ')
+  mock.angle  = function() return 'mock.angle ' end assertEquals(angle(mock, mock2), 'mock.angle ')
+  mock.max    = function() return 'mock.max   ' end       assertEquals(max   (mock), 'mock.max   ')
+  mock.min    = function() return 'mock.min   ' end       assertEquals(min   (mock), 'mock.min   ')
+  mock.sign   = function() return 'mock.sign  ' end       assertEquals(sign  (mock), 'mock.sign  ')
+  mock.step   = function() return 'mock.step  ' end       assertEquals(step  (mock), 'mock.step  ')
+  mock.sinc   = function() return 'mock.sinc  ' end       assertEquals(sinc  (mock), 'mock.sinc  ')
+  mock.frac   = function() return 'mock.frac  ' end       assertEquals(frac  (mock), 'mock.frac  ')
+  mock.trunc  = function() return 'mock.trunc ' end       assertEquals(trunc (mock), 'mock.trunc ')
+  mock.round  = function() return 'mock.round ' end       assertEquals(round (mock), 'mock.round ')
+  mock.carg   = function() return 'mock.carg  ' end       assertEquals(carg  (mock), 'mock.carg  ')
+  mock.real   = function() return 'mock.real  ' end       assertEquals(real  (mock), 'mock.real  ')
+  mock.imag   = function() return 'mock.imag  ' end       assertEquals(imag  (mock), 'mock.imag  ')
+  mock.conj   = function() return 'mock.conj  ' end       assertEquals(conj  (mock), 'mock.conj  ')
+  mock.norm   = function() return 'mock.norm  ' end       assertEquals(norm  (mock), 'mock.norm  ')
+  mock.rect   = function() return 'mock.rect  ' end       assertEquals(rect  (mock), 'mock.rect  ')
+  mock.polar  = function() return 'mock.polar ' end       assertEquals(polar (mock), 'mock.polar ')
+
+  local set = function(a,k) a[k] = (a[k] or 0) + 1 end
+  local get = function(a,k) return a[k] end
+  local inc = function(a,k) set(a,k) return get(a,k) end
+
+  mmock.__unm = function(a  ) return inc(a, 'unm') end
+  mmock.__add = function(a,b) return inc(a, 'add') end
+  mmock.__sub = function(a,b) return inc(a, 'sub') end
+  mmock.__mul = function(a,b) return inc(a, 'mul') end
+  mmock.__div = function(a,b) return inc(a, 'div') end
+  mmock.__mod = function(a,b) return inc(a, 'mod') end
+  mmock.__pow = function(a,b) return inc(a, 'pow') end
+  mmock.__eq  = function(a,b) return inc(a, 'eq')  end
+  mmock.__lt  = function(a,b) return inc(a, 'lt')  end
+  mmock.__le  = function(a,b) return inc(a, 'le')  end
+
+  assertEquals(     -  mock , get(mock, 'unm'))
+  assertEquals(mock +  mock2, get(mock, 'add'))
+  assertEquals(mock -  mock2, get(mock, 'sub'))
+  assertEquals(mock *  mock2, get(mock, 'mul'))
+  assertEquals(mock /  mock2, get(mock, 'div'))
+  assertEquals(mock %  mock2, get(mock, 'mod'))
+  assertEquals(mock ^  mock2, get(mock, 'pow'))
+  assertEquals(mock == mock2, true)
+  assertEquals(mock <  mock2, true)
+  assertEquals(mock <= mock2, true)
+
+  assertEquals(mock ~= mock2, false)
+  assertEquals(mock >  mock2, true)
+  assertEquals(mock >= mock2, true)
+  assertEquals(get(mock, 'unm'), 1)
+  assertEquals(get(mock, 'add'), 1)
+  assertEquals(get(mock, 'sub'), 1)
+  assertEquals(get(mock, 'mul'), 1)
+  assertEquals(get(mock, 'div'), 1)
+  assertEquals(get(mock, 'mod'), 1)
+  assertEquals(get(mock, 'pow'), 1)
+  assertEquals(get(mock , 'eq'), 2)
+  assertEquals(get(mock , 'lt'), 1)
+  assertEquals(get(mock , 'le'), 1)
+  assertEquals(get(mock2, 'lt'), 1)
+  assertEquals(get(mock2, 'le'), 1)
 end
 
 -- end ------------------------------------------------------------------------o
