@@ -30,6 +30,7 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
 local range   , nrange   , irange   , is_range,
       logrange, nlogrange, ilogrange, is_logrange,
       tiny, eps, huge, inf, nan in MAD
+local is_function in MAD
 
 -- regression test suite ------------------------------------------------------o
 
@@ -37,7 +38,7 @@ TestRange = {}
 
 function TestRange:testConstructor()
   local msg = {
-    "invalid argument #1 (expect number)",
+    "invalid argument #1 (number expected)",
     "cannot convert 'string' to 'double'",
   }
 
@@ -59,7 +60,6 @@ end
 
 function TestRange:testConcatCtor()
   local a = 2
-
   assertTrue( is_range(0..9)           )
   assertTrue( is_range(0..9..2)        )
   assertTrue( is_range(0..9..0)        )
@@ -81,10 +81,11 @@ function TestRange:testConcatCtor()
   assertTrue( is_range(- .1.. .9.. .5) )
 
   assertEquals( - .1.. .9.. .5, range(-.1,.9,.5) ) -- baseline
+  assertEquals( 0..9..2       , range(0,9,2)     )
+  assertEquals( 0.9..0..-0.1  , range(0.9,0,-0.1)     )
 
   assertTrue( is_range(a..a)           )
   assertTrue( is_range(a..a..a)        )
-
   assertTrue( is_range(-a..-a)         )
   assertTrue( is_range(-a..-a..-a)     )
 
@@ -110,41 +111,22 @@ function TestRange:testFields()
   assertEquals( range(1,10).start  , 1  )
   assertEquals( range(1,10).stop   , 10 )
   assertEquals( range(1,10).step   , 1  )
-  assertEquals( range(1,10,0.1).start, 1  )
-  assertEquals( range(1,10,0.1).stop , 10 )
-  assertEquals( range(1,10,0.1).step , 0.1  )
+  assertEquals( range(1,10,0.1).start, 1   )
+  assertEquals( range(1,10,0.1).stop , 10  )
+  assertEquals( range(1,10,0.1).step , 0.1 )
 
-  assertEquals( range(1,10,2):range(), {1,10,2}  ) -- baseline
+  assertEquals( {range(1)       :range()}, {1,1,1}       )
+  assertEquals( {range(1,10)    :range()}, {1,10,1}      )
+  assertEquals( {range(1,10,0.1):range()}, {1,10,0.1}    )
+  assertEquals( {range(1,10,2)  :range()}, {1,10,2}      )
+  assertEquals( {(2..10)        :range()}, {2,10,1}      )
+  assertEquals( {(2..10..5)     :range()}, {2,10,5}      )
+  assertEquals( {(10..2)        :range()}, {10,2,1}      )
+  assertEquals( {(10..1)        :range()}, {10,1,1}      )
+  assertEquals( {(1..10..0)     :range()}, {1,10,0}      )
+  assertEquals( {(1..inf)       :range()}, {1,inf,1}     )
+  assertEquals( {(inf..inf..inf):range()}, {inf,inf,inf} )
 
-  assertEquals( (2..10).start   , 2  )
-  assertEquals( (2..10).stop    , 10 )
-  assertEquals( (2..10).step    , 1  )
-
-  assertEquals( (2..10..5).start, 2  )
-  assertEquals( (2..10..5).stop , 10 )
-  assertEquals( (2..10..5).step , 5  )
-
-  assertEquals( (10..2).start   , 10 )
-  assertEquals( (10..2).stop    , 2  )
-  assertEquals( (10..2).step    , 1  )
-
-  assertEquals( (10..2..5).start, 10 )
-  assertEquals( (10..2..5).stop , 2  )
-  assertEquals( (10..2..5).step , 5  )
-
-  assertEquals( (10..1).start   , 10 )
-  assertEquals( (10..1).stop    , 1  )
-  assertEquals( (10..1).step    , 1  )
-  assertEquals( (1..10..0).start, 1  )
-  assertEquals( (1..10..0).stop , 10 )
-  assertEquals( (1..10..0).step , 0  )
-
-  assertEquals( (1..inf).start       , 1   )
-  assertEquals( (1..inf).stop        , inf )
-  assertEquals( (1..inf).step        , 1   )
-  assertEquals( (inf..inf..inf).start, inf )
-  assertEquals( (inf..inf..inf).stop , inf )
-  assertEquals( (inf..inf..inf).step , inf )
 
   assertEquals( tostring(range(nan,nan,nan).start), 'nan' )
   assertEquals( tostring(range(nan,nan,nan).stop) , 'nan' )
@@ -156,39 +138,41 @@ function TestRange:testReadonly()
     "attempt to write to constant location",
   }
   local f1=\r,v => r.start = v end
-  assertErrorMsgContains( msg[1], f1, 1..10..1       , 1 )
-  assertErrorMsgContains( msg[1], f1, range(1,10,1)  , 1 )
+  assertErrorMsgContains( msg[1], f1, 1..10..0.1     , 1 )
+  assertErrorMsgContains( msg[1], f1, range(1,10,0.1), 1 )
   assertErrorMsgContains( msg[1], f1, nrange(1,10,10), 1 )
   local f2=\r,v => r.stop  = v end
-  assertErrorMsgContains( msg[1], f2, 1..10..1       , 1 )
-  assertErrorMsgContains( msg[1], f2, range(1,10,1)  , 1 )
+  assertErrorMsgContains( msg[1], f2, 1..10..0.1     , 1 )
+  assertErrorMsgContains( msg[1], f2, range(1,10,0.1), 1 )
   assertErrorMsgContains( msg[1], f2, nrange(1,10,10), 1 )
   local f3=\r,v => r.step  = v end
-  assertErrorMsgContains( msg[1], f3, 1..10..1       , 1 )
-  assertErrorMsgContains( msg[1], f3, range(1,10,1)  , 1 )
+  assertErrorMsgContains( msg[1], f3, 1..10..0.1     , 1 )
+  assertErrorMsgContains( msg[1], f3, range(1,10,0.1), 1 )
   assertErrorMsgContains( msg[1], f3, nrange(1,10,10), 1 )
   assertErrorMsgContains( msg[1], f3, nrange(1,10,1) , 1 )
 end
 
 function TestRange:testIsRange()
-  assertTrue( is_range(1..0)     )
-  assertTrue( is_range(1..10..0) )
-  assertTrue( is_range(1..0..10) )
-  assertTrue( is_range(10..1)    )
-  assertTrue( is_range(1..10)    )
-  assertTrue( is_range(range(1))        )
-  assertTrue( is_range(range(1,10))     )
+  assertTrue( is_range(range(1))   )
+  assertTrue( is_range(1..10)      )
+  assertTrue( is_range(1..10..0.1) )
+  assertTrue( is_range(1..0)       )
+  assertTrue( is_range(1..0..10)   )
+  assertTrue( is_range(1..10..0)   )
+  assertTrue( is_range(10..1)      )
+  assertTrue( is_range(1..10)      )
   assertTrue( is_range(nrange(1,10,10)) )
   assertTrue( is_range(nrange(1,10,1))  )
   assertTrue( is_range(nrange(1,10,0))  )
-  assertFalse( is_range('')                  )
+  assertFalse( is_range('') )
+  assertFalse( is_range(2)  )
   assertFalse( is_range(logrange(1,10^6,10)) )
   assertFalse( is_range(nlogrange(1,10,10))  )
 end
 
 function TestRange:testRange()
   assertEquals( {range(1,10)    :range()}, {1,10,1}    )
-  assertEquals( {range(1,10,1)  :range()}, {1,10,1}    )
+  assertEquals( {range(1,10,0.1):range()}, {1,10,0.1}  )
   assertEquals( {(1..10)        :range()}, {1,10,1}    )
   assertEquals( {(1..2.2..0.1)  :range()}, {1,2.2,0.1} )
   assertEquals( {nrange(1,10,10):range()}, {1,10,1}    )
@@ -199,7 +183,7 @@ end
 
 function TestRange:testNConstructor()
   local msg = {
-    "invalid argument #1 (expect number)",
+    "invalid argument #1 (number expected)",
     "invalid argument #1, #2 or #3 (number expected)",
   }
 
@@ -242,22 +226,21 @@ function TestRange:testNConstructor()
   assertEquals( nrange( inf, inf, inf).stop , inf )
   assertEquals( tostring(nrange( inf, inf, inf).step), 'nan' )
 
-  assertTrue( is_cdata (nrange(nan,nan,nan))    )
-  assertTrue( is_xrange(nrange(nan,nan,nan))    )
+  assertTrue( is_range(nrange(nan,nan,nan))    )
   assertEquals( nrange(nan,nan,nan).step, 0     )
   assertEquals( tostring(nrange(nan,nan,nan).start), 'nan' )
   assertEquals( tostring(nrange(nan,nan,nan).stop) , 'nan' )
 end
 
 function TestRange:testValue()
-  assertEquals( range(1,10,1) :value(-1)  , 0   )
-  assertEquals( range(1,10,1) :value(11)  , 12  )
-  assertEquals( range(1,10,0) :value(1)   , 1   )
-  assertEquals( range(10,1,1) :value(1)   , 11  )
-  assertEquals( range(10,1,1) :value(inf) , inf )
-  assertEquals( range(10,1,1) :value(-inf),-inf )
-  assertEquals( nrange(1,10,1):value(1)   , inf )
-  assertEquals( nrange(1,10,1):value(inf) , inf )
+  assertEquals( range(1,10,0.1):value(-1)  , 0   )
+  assertEquals( range(1,10,0.1):value(11)  , 12  )
+  assertEquals( range(1,10,0)  :value(1)   , 1   )
+  assertEquals( range(10,1,1)  :value(1)   , 11  )
+  assertEquals( range(10,1,1)  :value(inf) , inf )
+  assertEquals( range(10,1,1)  :value(-inf),-inf )
+  assertEquals( nrange(1,10,1) :value(1)   , inf )
+  assertEquals( nrange(1,10,1) :value(inf) , inf )
   assertEquals( tostring(range(1,10,1) :value(nan)), 'nan' )
   assertEquals( tostring(nrange(1,10,1):value(nan)), 'nan' )
 
@@ -271,43 +254,43 @@ function TestRange:testValue()
   assertEquals( (0..10):value(huge), huge )
 end
 
-function TestRange:testGet()
-  assertNil( range(1,10,1) :get(-1)   )
-  assertNil( range(1,10,1) :get(11)   )
-  assertNil( range(1,10,0) :get(1)    )
-  assertNil( range(10,1,1) :get(1)    )
-  assertNil( nrange(1,10,1):get(1)    )
-  assertNil( range(1,10,1) :get(inf)  )
-  assertNil( range(1,10,1) :get(-inf) )
-  assertNil( nrange(1,10,1):get(inf)  )
-  assertNil( nrange(1,10,1):get(-inf) )
-  assertNil( range(1,10,1) :get(nan)  )
-  assertNil( nrange(1,10,1):get(nan)  )
+--[[function TestRange:testGet() --adjust the needed values
+  assertNil( range(1,10,0.1) :get(-1)   )
+  assertNil( range(1,10,0.1) :get(11)   )
+  assertNil( range(1,10,0)   :get(1)    )
+  assertNil( range(10,1,1)   :get(1)    )
+  assertNil( nrange(1,10,1)  :get(1)    )
+  assertNil( range(1,10,0.1) :get(inf)  )
+  assertNil( range(1,10,0.1) :get(-inf) )
+  assertNil( nrange(1,10,1)  :get(inf)  )
+  assertNil( nrange(1,10,1)  :get(-inf) )
+  assertNil( range(1,10,0.1) :get(nan)  )
+  assertNil( nrange(1,10,1)  :get(nan)  )
 
-  assertEquals( range(1,10,1)    :get(0)  , 1   )
-  assertEquals( (1..20..1)       :get(1)  , 2   )
-  assertEquals( (1..20..1)       :get(1.1), 2.1 )
+  assertEquals( range(1,10,0.5)  :get(0)  , 1   )
+  assertEquals( (1..20..0.1)     :get(1)  , 2   )
+  assertEquals( (1..20..0.1)     :get(1.1), 2.1 )
   assertEquals( range(1,100,1)   :get(99) , 100 )
   assertEquals( nrange(1,100,100):get(99) , 100 )
   assertAlmostEquals( (2..-2..-0.1):get(22)- -0.2, 0, eps )
-end
+end]]
 
 function TestRange:testIndex()
   assertNil( (10..1..-1)[11]       )
   assertNil( (10..1..-1)[0]        )
-  assertNil( range(1,10,1)[11]     )
-  assertNil( range(1,10,1)[0]      )
+  assertNil( range(1,10,0.1)[11]   )
+  assertNil( range(1,10,0.1)[0]    )
   assertNil( nrange(1,10,1)[10]    )
   assertNil( nrange(1,10,10)[inf]  )
-  assertNil( range(1,10,1)[inf]    )
+  assertNil( range(1,10,0.1)[inf]    )
   assertNil( nrange(1,10,10)[-inf] )
-  assertNil( range(1,10,1)[-inf]   )
+  assertNil( range(1,10,0.1)[-inf]   )
   assertNil( nrange(1,10,10)[nan]  )
-  assertNil( range(1,10,1)[nan]    )
+  assertNil( range(1,10,0.1)[nan]    )
   assertNil( nrange(1,10,10)['']   )
-  assertNil( range(1,10,1)['']     )
+  assertNil( range(1,10,0.1)['']     )
   assertNil( nrange(1,10,10)[nil]  )
-  assertNil( range(1,10,1)[nil]    )
+  assertNil( range(1,10,0.1)[nil]    )
 
   assertEquals( range(1,10,1)[1] , 1   )
   assertEquals( range(1,10,1)[10], 10  )
@@ -324,25 +307,40 @@ function TestRange:testIndex()
 end
 
 function TestRange:testIsEmpty()
+
+  --function needs reshufling, working both for values and for ranges?
+--print((1..10):is_empty())
+
+  local is_empty in range
+  local msg = {
+  "attempt to compare number with nil"}
+  --assertErrorMsgContains( msg[1], is_empty, range(1,10,-1) )
+  --assertErrorMsgContains( msg[1], is_empty, 1              )
+  --assertErrorMsgContains( msg[1], is_empty, 1,10           )
+
   assertFalse( is_empty( range(1)       :range() ) )
   assertFalse( is_empty( range(1,10)    :range() ) )
-  assertFalse( is_empty( range(1,10,1)  :range() ) )
-  assertFalse( is_empty( range(1,10,0)  :range() ) ) -- empty range?
+  assertFalse( is_empty( range(1,10,0.1):range() ) )
   assertFalse( is_empty( range(1,-10,-1):range() ) )
-  assertFalse( is_empty( nrange(1,10,0) :range() ) )
-  assertFalse( is_empty( nrange(1,10,-1):range() ) )
+  assertTrue ( is_empty( range(1,10,0)  :range() ) )
+  assertTrue ( is_empty(1,10,-1) )
+  assertTrue ( is_empty(range(1,-10,1) :range() ) )
+  assertTrue ( is_empty(range(1,10,-1) :range() ) )
+  assertFalse( is_empty(nrange(1,10,1) :range() ) ) -- empty range(r.step=inf)?
 
-  assertTrue ( is_empty(1,10,-1)                   )
-  assertTrue ( is_empty( range(1,10,-1) :range() ) )
-  assertTrue ( is_empty( range(1,-10,1) :range() ) )
-  assertFalse( is_empty( nrange(1,10,1) :range() ) ) -- empty range(r.step=inf)?
-
-  local msg = { 
-    'attempt to compare nil with number' 
-  }
-  assertErrorMsgContains( msg[1], is_empty, range(1,10,-1) )
-  assertErrorMsgContains( msg[1], is_empty, 1              )
-  assertErrorMsgContains( msg[1], is_empty, 1,10           )
+  assertTrue( is_empty( nrange(1,10,-1):range() ) ) -- trigs an error, to check
+  assertTrue( is_empty( nrange(1,10,0) :range() ) ) ---should it be empty?
+  --assertFalse( ( range(1)       :range() ):is_empty() )
+  --assertFalse( ( range(1,10)    :range() ):is_empty() )
+  --assertFalse( ( range(1,10,0.1):range() ):is_empty() )
+  --assertFalse( ( range(1,10,0)  :range() ):is_empty() ) -- empty range?
+  --assertFalse( ( range(1,-10,-1):range() ):is_empty() )
+  --assertFalse( ( nrange(1,10,0) :range() ):is_empty() )
+  --assertFalse( ( nrange(1,10,-1):range() ):is_empty() )
+  --assertTrue ( (1,10,-1):is_empty() )
+  --assertTrue ( range(1,-10,1) :range() :is_empty() )
+  --assertTrue ( range(1,10,-1) :range() :is_empty() )
+  --assertFalse( nrange(1,10,1) :range() :is_empty() ) -- empty range(r.step=inf)?
 end
 
 function TestRange:testSize()
@@ -393,7 +391,12 @@ function TestRange:testSize()
   assertEquals( nrange(2,10,nil) :size(), 9  )
 end
 
-function TestRange:testNstep()
+--[[function TestRange:testNstep()
+  local msg = { 
+    'attempt to compare nil with number' 
+  }
+  assertErrorMsgContains( msg[1], nstep, 1    )
+  assertErrorMsgContains( msg[1], nstep, 1, 1 )
   assertEquals( tostring(nstep(range(1), 1)), 'nan' )
   assertEquals( nstep(range(1)     , 2) , 0   )
   assertEquals( nstep(range(1)     , 0) , 0   )
@@ -418,13 +421,8 @@ function TestRange:testNstep()
   assertEquals( nstep(10,1,2.1), -4.5 )
   assertEquals( nstep(10,1,2.7), -4.5 )
 
-  local msg = { 
-    'attempt to compare nil with number' 
-  }
-  assertErrorMsgContains( msg[1], nstep, 1    )
-  assertErrorMsgContains( msg[1], nstep, 1, 1 )
 end
-
+]]
 function TestRange:testReverse()
   assertEquals( (1..10..0.1)  :reverse(), (10..1..-0.1)   )
   assertEquals( range(2,20,-1):reverse(), range(20,2,1)   )
@@ -460,9 +458,9 @@ function TestRange:testEqual()
 end
 
 function TestRange:testIrange()
-  local msg = { 
-    "invalid argument #1 (expect number)",
-    "cannot convert 'string' to 'double'", 
+  local msg = {
+    "invalid argument #1 (number expected)",
+    "cannot convert 'string' to 'double'",
   }
   assertErrorMsgContains( msg[1], irange            )
   assertErrorMsgContains( msg[1], irange, ''        )
