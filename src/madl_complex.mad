@@ -35,11 +35,13 @@ SYNOPSIS
   local z1 = 2+3i
   local z2 = 2+3*I
   print(z1.re, z1.im)
+  print(tostring(z2))
 
 DESCRIPTION
-  The module complex implements the operators and mathematical functions on
+  The complex module implements the operators and mathematical functions on
   complex numbers:
-  (minus) -, +, -, *, /, %, ^, ==, tostring,
+  (minus) -, +, -, *, /, %, ^, ==,
+  unm, add, sub, mul, div, mod, pow, eq,
   carg, real, imag, conj, norm, rect, polar,
   angle, abs, ceil, floor, exp, log, sqrt,
   sin, cos, tan, sinh, cosh, tanh,
@@ -58,12 +60,13 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local new, typeof, metatype            in require 'ffi'
-local _C                               in require 'madl_cmad'
-local is_number, is_complex, is_scalar in require 'madl_utils'
-local cmatrix, is_matrix, is_cmatrix   in require 'madl_xmatrix'
-local frac, trunc, round               in require 'madl_gmath'
-local ceil, floor                      in math
+local new, typeof, metatype                            in require 'ffi'
+local _C                                               in require 'madl_cmad'
+local is_number, is_integer, is_complex, is_scalar,
+      tostring                                         in require 'madl_utils'
+local cmatrix, is_matrix, is_cmatrix                   in require 'madl_xmatrix'
+local frac, trunc, round                               in require 'madl_gmath'
+local ceil, floor                                      in math
 
 -- FFI type constructors
 local complex = typeof 'complex'
@@ -176,7 +179,7 @@ function M.__mul (x, y, r_)
   local r = r_ or cmatrix(y:sizes())
   assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
 
-  if is_matrix(y) then      -- cpx * mat => vec * cpx
+  if is_matrix(y) then      -- cpx * mat  => vec * cpx
     _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size())
   elseif is_cmatrix(y) then -- cpx * cmat => cvec * cpx
     _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size())
@@ -199,7 +202,7 @@ function M.__div (x, y, r_, rcond_)
   local r = r_ or cmatrix(y:tsizes())
   assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
 
-  if is_matrix(y) then -- cpx / mat
+  if is_matrix(y) then      -- cpx / mat
     _C.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
   elseif is_cmatrix(y) then -- cpx / cmat
     _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
@@ -227,7 +230,7 @@ function M.__pow (x, y)
     if y == 2 then return x*x end -- common case
     if y == 1 then return x   end -- stupid case
     if y == 0 then return 1   end -- promote type
-    if isint(y) then
+    if is_integer(y) then
       _C.mad_cnum_ipow_r(x.re, x.im, y, cres)
       return cres[0]
     end
@@ -253,12 +256,19 @@ function M.__eq (x, y)
 end
 
 function M.__tostring (x, fmt_)
-      if x.im == 0 then return                        tostring(x.re)
-  elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
-  elseif x.im <  0 then return string.format('%s%si', tostring(x.re),tostring(x.im))
-  else                  return string.format('%s+%si',tostring(x.re),tostring(x.im))
+  if x.im == 0 then
+    return tostring(x.re, fmt_)
+  elseif x.re == 0 then
+    return tostring(x.im, fmt_) ..'i'
+  elseif x.im <  0 then
+    return tostring(x.re, fmt_) .. tostring(x.im, fmt_) ..'i'
+  else
+    return tostring(x.re, fmt_) ..'+'.. tostring(x.im, fmt_) ..'i'
   end
 end
+
+M.unm, M.add, M.sub, M.mul, M.div, M.mod, M.pow, M.eq =
+  M.__unm, M.__add, M.__sub, M.__mul, M.__div, M.__mod, M.__pow, M.__eq
 
 M.__index = M
 
