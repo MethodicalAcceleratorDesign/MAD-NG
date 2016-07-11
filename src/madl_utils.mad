@@ -35,7 +35,8 @@ SYNOPSIS
   is_nan, is_integer, is_scalar, is_rawtable,                  (specializations)
   is_iterable, is_indexable, is_callable, is_comparable, is_ordered,  (concepts)
   identity, first, second, swap, compose, compose_bottom,           (functional)
-  getmetatable.                                                      (extension)
+  option { format='.%16g' },                                             (setup)
+  tostring, getmetatable.                                            (extension)
 
 DESCRIPTION
   The utils module provides useful single argument utility functions:
@@ -46,13 +47,15 @@ DESCRIPTION
   - is_scalar returns true if the argument is a number or a complex.
   - is_nan returns true if the argument is a not-a-number.
   - is_rawtable returns true if the argument is a table without a metatable set,
-  - is_iterable, is_indexable, is_callable, is_comparable and is_ordered return
-    true if the argument fulfills the concept requirements.
+  - is_iterable, is_indexable, is_callable, is_comparable, is_ordered and
+    is_stringable return true if the argument fulfills the concept requirements.
   - identity returns its arguments.
   - first, second and swap return arguments #1, #2 and #2 #1 respectively
     (i.e. #1 #2 swapped).
   - compose composes two callable objects.
   - compose_bottom allows to compose (right to left) callable objects using ^.
+  - option stores various setups.
+  - tostring is an extended version that includes also format and delegation.
   - getmetatable is an extended version that works also with cdata.
 
 RETURN VALUE
@@ -85,18 +88,23 @@ M.__help.is_indexable   = M.__help.self
 M.__help.is_callable    = M.__help.self
 M.__help.is_comparable  = M.__help.self
 M.__help.is_ordered     = M.__help.self
+M.__help.is_stringable  = M.__help.self
 
 M.__help.swap           = M.__help.self
 M.__help.identity       = M.__help.self
 M.__help.compose        = M.__help.self
 M.__help.compose_bottom = M.__help.self
 
+M.__help.option         = M.__help.self
+M.__help.tostring       = M.__help.self
+
 M.__help.getmetatable   = M.__help.self
 
 -- locals ---------------------------------------------------------------------o
 
 local istype, typeof, miscmap in require 'ffi'
-local type, getmetatable = type, getmetatable
+local format in string
+local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- implementation -------------------------------------------------------------o
 
@@ -178,38 +186,43 @@ end
 
 assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
-local function gm (a)
+local function getmetatbl (a)
   return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
 end
 
 M.is_iterable = function (a)
   if type(a) == 'table' then return true end
-  local mt = gm(a)
+  local mt = getmetatbl(a)
   return mt and (mt.__pairs or mt.__ipairs) ~= nil or false
 end
 
 M.is_indexable = function (a)
   if type(a) == 'table' then return true end
-  local mt = gm(a)
+  local mt = getmetatbl(a)
   return mt and (mt.__index or mt.__newindex) ~= nil or false
 end
 
 M.is_callable = function (a)
   if type(a) == 'function' then return true end
-  local mt = gm(a)
+  local mt = getmetatbl(a)
   return mt and mt.__call ~= nil or false
 end
 
 M.is_comparable = function (a)
   if type(a) == 'number' or type(a) == 'string' then return true end
-  local mt = gm(a)
+  local mt = getmetatbl(a)
   return mt and mt.__eq ~= nil or false
 end
 
 M.is_ordered = function (a)
   if type(a) == 'number' or type(a) == 'string' then return true end
-  local mt = gm(a)
+  local mt = getmetatbl(a)
   return mt and (mt.__lt or mt.__le) ~= nil or false
+end
+
+M.is_stringable = function (a)
+  local mt = getmetatbl(a)
+  return mt and (mt.__tostring) ~= nil or false
 end
 
 -- functional composition
@@ -226,9 +239,24 @@ M.compose_bottom = setmetatable({M.identity}, {
       { M.compose(assert(M.is_callable(f) and f), g[1]) }, getmetatable(g))
   })
 
--- metatable extension
+-- options
 
-M.getmetatable = gm
+local option = {
+  format = "%.16g",
+}
+
+M.tostring = function (a, fmt_)
+  fmt_ = fmt_ or option.format
+  if type(a) == 'number' then return string.format(fmt_, a)
+  elseif M.is_stringable(a) then return a:__tostring(fmt_) -- delegate
+  else return tostring(a) -- Lua version
+  end
+end
+
+-- extensions
+
+M.option       = option
+M.getmetatable = getmetatbl
 
 -- end ------------------------------------------------------------------------o
 return M
