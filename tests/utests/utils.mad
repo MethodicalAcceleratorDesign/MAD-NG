@@ -27,9 +27,11 @@ local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals
       in require 'luaunit'
 
 local is_nil, is_boolean, is_number, is_string, is_function, is_table,
-      is_cdata, is_xrange, is_complex, is_nan, is_integer, is_scalar,
-      is_rawtable, is_iterable, is_indexable, is_callable, is_comparable,
-      is_ordered, first, second, swap, compose, compose_bottom, getmetatable
+      is_cdata, is_complex, is_xrange, is_nan, is_integer, is_scalar,
+      is_rawtable, is_metaname, is_iterable, is_indexable, is_callable,
+      is_comparable, is_ordered, is_concatable, is_stringable,
+      identity, first, second, swap, compose, compose_bottom,
+      option, tostring, getmetatable
       in MAD
 
 local sm, gm = setmetatable, getmetatable
@@ -61,9 +63,9 @@ local function assertTypes (tkey, tfunc, tskip)
   for k,t in pairs(types) do
     if is_nil(tskip[k]) then
       for i,v in ipairs(t) do
-        !if tfunc(v) ~= (tkey[k] and true or false) then
-        !  print(k,i,v,tfunc(v)) ! uncomment to find the faulty case
-        !end
+        if tfunc(v) ~= (tkey[k] and true or false) then
+          print(k,i,v,tfunc(v)) ! uncomment to find the faulty case
+        end
         (tkey[k] or assertFalse) ( tfunc(v) )
       end
     end
@@ -119,12 +121,12 @@ function TestUtils:testIsCData()
   assertTypes( {'complex', 'xrange'}, is_cdata )
 end
 
-function TestUtils:testIsXRange()
-  assertTypes( 'xrange', is_xrange )
-end
-
 function TestUtils:testIsComplex()
   assertTypes( 'complex', is_complex )
+end
+
+function TestUtils:testIsXRange()
+  assertTypes( 'xrange', is_xrange )
 end
 
 function TestUtils:testIsNan()
@@ -143,46 +145,73 @@ function TestUtils:testIsInteger()
   assertTypes( 'integer', is_integer )
 end
 
+function TestUtils:testIsScalar()
+  assertTypes( {'number', 'complex', 'integer', 'nan'}, is_scalar )
+end
+
 function TestUtils:testIsRawtable()
   assertTypes( 'table', is_rawtable )
   assertFalse( is_rawtable(sm({},{})) )
 end
 
-function TestUtils:testIsScalar()
-  assertTypes( {'number', 'complex', 'integer', 'nan'}, is_scalar )
+function TestUtils:testIsMetaname()
+  local meta = {
+    '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
+    '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
+    '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
+    '__unm',
+  }
+  for _,s in ipairs(meta) do
+    assertTrue( is_metaname(s) )
+  end
+  for _,s in ipairs(meta) do
+    assertFalse( is_metaname(s:sub(3)) )
+  end
 end
 
 function TestUtils:testIsIterable()
   assertTypes( {'table', 'xrange'}, is_iterable )
   assertTrue ( is_iterable(sm({},{})) ) ! fake: tables are always iterable
-  assertTrue ( is_iterable(sm({},{__ipair=\ ()})) )
-  assertTrue ( is_iterable(sm({},{__pairs=\ ()})) )
+  assertTrue ( is_iterable(sm({},{__ipair:=()})) )
+  assertTrue ( is_iterable(sm({},{__pairs:=()})) )
 end
 
 function TestUtils:testIndexable()
-  assertTypes( {'string', 'table', 'xrange'}, is_indexable )
+  assertTypes( {'string', 'table', 'complex', 'xrange'}, is_indexable )
   assertTrue ( is_indexable(sm({},{})) ) ! fake: tables are always indexable
-  assertTrue ( is_indexable(sm({},{__index=\ ()})) )
-  assertTrue ( is_indexable(sm({},{__newindex=\ ()})) )
+  assertTrue ( is_indexable(sm({},{__index:=()})) )
+  assertTrue ( is_indexable(sm({},{__newindex:=()})) )
 end
 
 function TestUtils:testIsCallable()
   assertTypes( {'function'}, is_callable )
   assertFalse( is_callable(sm({},{})) )
-  assertTrue ( is_callable(sm({},{__call=\ ()})) )
+  assertTrue ( is_callable(sm({},{__call:=()})) )
 end
 
 function TestUtils:testIsComparable()
-  assertTypes( {'number', 'string', 'xrange', 'integer', 'nan'}, is_comparable )
+  assertTypes( {'number', 'string', 'complex', 'xrange', 'integer', 'nan'}, is_comparable )
   assertFalse( is_comparable(sm({},{})) )
-  assertTrue ( is_comparable(sm({},{__eq=\ ()})) )
+  assertTrue ( is_comparable(sm({},{__eq:=()})) )
 end
 
 function TestUtils:testIsOrdered()
   assertTypes( {'number', 'string', 'integer', 'nan'}, is_ordered )
   assertFalse( is_ordered(sm({},{})) )
-  assertTrue ( is_ordered(sm({},{__lt=\ ()})) )
-  assertTrue ( is_ordered(sm({},{__le=\ ()})) )
+  assertTrue ( is_ordered(sm({},{__lt:=()})) )
+  assertTrue ( is_ordered(sm({},{__le:=()})) )
+end
+
+function TestUtils:testIsConcatenable()
+  assertTypes( 'string', is_concatable )
+  assertFalse( is_concatable(sm({},{})) )
+  assertTrue ( is_concatable(sm({},{__concat:=()})) )
+end
+
+function TestUtils:testIsStringable()
+  assertTypes( 'complex', is_stringable )
+  assertFalse( is_stringable(sm({},{})) )
+  assertTrue ( is_stringable(sm({},{__tostring:=()})) )
 end
 
 function TestUtils:testFirst()
@@ -226,6 +255,20 @@ function TestUtils:testComposeBottom()
   local f = id4^id^id^id^id1^_
   local t = {} ; for k in pairs(types) do t[#t+1] = k end
   assertTypes( t, f )
+end
+
+function TestUtils:testTostring()
+  local format = option.format
+  option.format = '%.10f'
+  assertEquals ( tostring(1/3 ),  '0.3333333333')
+  assertEquals ( tostring(1/3i), '-0.3333333333i')
+  option.format = '%.13f'
+  assertEquals ( tostring(1/3 ),  '0.3333333333333')
+  assertEquals ( tostring(1/3i), '-0.3333333333333i')
+  option.format = '%-2.4e'
+  assertEquals ( tostring(1/(0.5+3i)), '5.4054e-02-3.2432e-01i')
+  assertEquals ( tostring(0.5+ 1/3i ), '5.0000e-01-3.3333e-01i')
+  option.format = format
 end
 
 function TestUtils:testGetmetatable()
