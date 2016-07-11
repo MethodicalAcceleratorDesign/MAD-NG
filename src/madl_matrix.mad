@@ -1,32 +1,32 @@
 --[=[
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
- | Matrix module (real)
+ | Matrix module
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
-  
+ o-----------------------------------------------------------------------------o
+
   Purpose:
   - provides full set of functions and operations on real and complex matrices
 
   Information:
   - real and complex matrices are implemented by this module
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = {}, __test = {} }
+local M = { __help = {} }
 
--- help ----------------------------------------------------------------------o
+-- help -----------------------------------------------------------------------o
 
 M.__help.self = [[
 NAME
@@ -91,7 +91,7 @@ RETURN VALUES
 SEE ALSO
   gmath, complex, matrix, cmatrix
 ]]
- 
+
 -- modules -------------------------------------------------------------------o
 
 local ffi     = require 'ffi'
@@ -109,7 +109,7 @@ local isnum, iscpx, iscal,
       abs, arg, exp, log, sqrt, proj,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, mod, pow, tostring = 
+      unm, mod, pow, tostring =
       gmath.is_number, gmath.is_complex, gmath.is_scalar,
       gmath.is_matrix, gmath.is_cmatrix, gmath.isa_matrix, gmath.is_vector,
       gmath.real, gmath.imag, gmath.conj, gmath.ident, gmath.min,
@@ -152,7 +152,7 @@ local function safe_set0 (x, i, j, e)
   unsafe_set0(x, i, j, e)
 end
 
-local function safe_get (x, i, j)   
+local function safe_get (x, i, j)
   assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
   return unsafe_get(x, i, j)
 end
@@ -262,7 +262,7 @@ function M.get_sub (x, rg, r_)
 end
 
 function M.set_col (x, jc, y)
-  local j, nr, nc = jc-1, x:sizes() 
+  local j, nr, nc = jc-1, x:sizes()
   assert(0 <= j and j < nc, "column index out of bounds")
   local n = min(nr, #y)
   for i=0,n-1 do x:set0(i,j, y[i+1]) end
@@ -554,15 +554,16 @@ function M.atan  (x, r_)    return x:map (atan  , r_) end
 function M.asinh (x, r_)    return x:map (asinh , r_) end
 function M.acosh (x, r_)    return x:map (acosh , r_) end
 function M.atanh (x, r_)    return x:map (atanh , r_) end
-function M.mod   (x, y, r_) return x:maps(y, mod, r_) end
-function M.pow   (x, y, r_) return x:maps(y, pow, r_) end
+
+function M.__mod (x, y, r_) return x:maps(y, mod, r_) end
+function M.__pow (x, y, r_) return x:maps(y, pow, r_) end
 
 --[[ TODO
-  mexp, mlog, msqrt, mpow
+  mexp, mlog, msqrt, mpow using Padé Approximants
   __eq with tol
 ]]
 
-function M.equal (x, y)
+function M.__eq (x, y)
   if iscal(y) then
     for i=0,x:size()-1 do
       if x.data[i] ~= y then return false end
@@ -577,7 +578,7 @@ function M.equal (x, y)
   return true
 end
 
-function M.add (x, y, r_)
+function M.__add (x, y, r_)
   local r
 
   if isnum(x) then
@@ -628,7 +629,7 @@ function M.add (x, y, r_)
 ::invalid:: error("invalid matrix (+) operands")
 end
 
-function M.sub (x, y, r_)
+function M.__sub (x, y, r_)
   local r
 
   if isnum(x) then
@@ -679,7 +680,7 @@ function M.sub (x, y, r_)
 ::invalid:: error("invalid matrix (-) operands")
 end
 
-function M.mul (x, y, r_)
+function M.__mul (x, y, r_)
   local r
 
   if isnum(x) then
@@ -738,7 +739,7 @@ function M.mul (x, y, r_)
 ::invalid:: error("invalid matrix (*) operands")
 end
 
-function M.div (x, y, r_, rcond_)
+function M.__div (x, y, r_, rcond_)
   local r
 
   if isnum(x) then
@@ -860,7 +861,7 @@ function M.svd (x)
   local rs, ru, rv, info = matrix(min(nr,nc),1)
 
   if ismat(x) then
-    ru, rv = matrix(nr,nr), matrix(nc,nc) 
+    ru, rv = matrix(nr,nr), matrix(nc,nc)
     info = clib.mad_mat_svd (x.data, ru.data, rs.data, rv.data, x:rows(), x:cols())
   else
     ru, rv = cmatrix(nr,nr), cmatrix(nc,nc)
@@ -921,7 +922,7 @@ function M.ifft (x, r_)
 end
 
 function M.rfft (x, r_)
-  assert(ismat(x), "matrix must be real") 
+  assert(ismat(x), "matrix must be real")
   local nr, nc = x:sizes()
   local r
 
@@ -1022,16 +1023,6 @@ function M.concat (x, y, v_, r_)
   return r
 end
 
-function M.tostring (x, sep_, lsep_)
-  local nr, nc = x:sizes()
-  local r, c = tbl_new(nr,0), tbl_new(nc,0)
-  for i=0,nr-1 do
-    for j=0,nc-1 do c[j+1] = tostring(x:get0(i,j)) end
-    r[i+1] = table.concat(c, sep_ or ' ')
-  end
-  return table.concat(r, lsep_ or '\n')
-end
-
 function M.totable(x, r_)
   local nr, nc = x:sizes()
   local r = r_ or tbl_new(nr,0)
@@ -1059,17 +1050,20 @@ function M.fromtable (x, t)
   return x
 end
 
-M.__eq       = M.equal
-M.__unm      = M.unm
-M.__add      = M.add
-M.__sub      = M.sub
-M.__mul      = M.mul
-M.__div      = M.div
-M.__mod      = M.mod
-M.__pow      = M.pow
-M.__len      = M.size
-M.__concat   = M.concat
-M.__tostring = M.tostring
+function M.__tostring (x, sep_, lsep_)
+  local nr, nc = x:sizes()
+  local r, c = tbl_new(nr,0), tbl_new(nc,0)
+  for i=0,nr-1 do
+    for j=0,nc-1 do c[j+1] = tostring(x:get0(i,j)) end
+    r[i+1] = table.concat(c, sep_ or ' ')
+  end
+  return table.concat(r, lsep_ or '\n')
+end
+
+M.unm, M.add, M.sub, M.mul, M.div, M.mod, M.pow, M.eq =
+  M.__unm, M.__add, M.__sub, M.__mul, M.__div, M.__mod, M.__pow, M.__eq
+
+M.__len, M.__concat, M.__tostring = M.size, M.concat, M.tostring
 
 local function iter (x, i)
   if i < x:size() then return i+1, x.data[i] end
@@ -1091,4 +1085,4 @@ ffi.metatype( 'matrix_t', M)
 ffi.metatype('cmatrix_t', M)
 
 ------------------------------------------------------------------------------o
-return matrix
+return xmatrix
