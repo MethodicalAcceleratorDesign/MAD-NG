@@ -1,112 +1,250 @@
 --[=[
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Complex number module
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
   Purpose:
-  - provides full set of functions and operations on complex numbers
+  - Provide full set of functions and operations on complex numbers
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 ]=]
 
 local M = { __help = {} }
 
--- help ----------------------------------------------------------------------o
+-- help -----------------------------------------------------------------------o
 
 M.__help.self = [[
 NAME
   complex -- functions and operators on complex numbers
 
 SYNOPSIS
-  local complex = require 'complex'
+  local complex in MAD
   local I = complex(0,1)
-  local z = 2+3i
-  local Z = 2+3*I
+  local z1 = 2+3i
+  local z2 = 2+3*I
+  print(z1.re, z1.im)
 
 DESCRIPTION
-  The module complex implements the operators and math functions on complex
-  numbers:
-    (minus) -, +, -, *, /, ^, ==,
-    add, sub, mul, div,
-    real, imag, conj,
-    abs, arg, exp, log, pow, sqrt, proj,
-    sin, cos, tan, sinh, cosh, tanh,
-    asin, acos, atan, asinh, acosh, atanh,
-    tostring.
+  The module complex implements the operators and mathematical functions on
+  complex numbers:
+  (minus) -, +, -, *, /, %, ^, ==, tostring,
+  carg, real, imag, conj, norm, rect, polar,
+  angle, abs, ceil, floor, exp, log, sqrt,
+  sin, cos, tan, sinh, cosh, tanh,
+  asin, acos, atan, asinh, acosh, atanh,
+  erf, tgamma, lgamma.
 
 RETURN VALUE
-  The constructor of complex numbers
+  The constructor of complex numbers.
+
+ERROR
+  See ISO/IEC 9899:1999 (and ISO/IEC 9899:2011).
 
 SEE ALSO
-  math, gmath, cmatrix
+  gmath, matrix
 ]]
 
--- modules -------------------------------------------------------------------o
+-- locals ---------------------------------------------------------------------o
 
-local ffi     = require 'ffi'
-local gmath   = require 'madl_gmath'
-local xmatrix = require 'madl_xmatrix'
-
--- locals --------------------------------------------------------------------o
-
-local istype = ffi.istype
-local abs, modf = math.abs, math.modf
-
-local isnum, isint, iscpx, iscal, ismat, iscmat, tostring =
-      gmath.is_number, gmath.is_integer, gmath.is_complex, gmath.is_scalar,
-      gmath.is_matrix, gmath.is_cmatrix, gmath.tostring
-
-local cres = ffi.new 'complex[1]'
+local new, typeof, metatype            in require 'ffi'
+local _C                               in require 'madl_cmad'
+local is_number, is_complex, is_scalar in require 'madl_utils'
+local cmatrix, is_matrix, is_cmatrix   in require 'madl_xmatrix'
+local frac, trunc, round               in require 'madl_gmath'
+local ceil, floor                      in math
 
 -- FFI type constructors
-local complex = ffi.typeof 'complex'
-local cmatrix = xmatrix.cmatrix
+local complex = typeof 'complex'
 
--- implementation ------------------------------------------------------------o
+-- Temporary for returned values
+local cres = new 'complex[1]'
 
-function M.real  (x) return x.re end
-function M.imag  (x) return x.im end
-function M.conj  (x) return complex( x.re, -x.im) end
+-- implementation -------------------------------------------------------------o
 
-function M.abs   (x) return clib.mad_cnum_abs_r (x.re, x.im) end
-function M.arg   (x) return clib.mad_cnum_arg_r (x.re, x.im) end
+-- generic binary functions
+M.angle = \x,y -> _C.mad_cnum_arg_r(y.re, y.im) - _C.mad_cnum_arg_r(x.re, x.im)
 
-function M.rect  (x) clib.mad_cnum_rect_r  (x.re, x.im, cres) ; return cres[0] end
-function M.polar (x) clib.mad_cnum_polar_r (x.re, x.im, cres) ; return cres[0] end
+-- extra generic functions
+M.frac  = \x -> complex(frac (x.re), frac (x.im))
+M.trunc = \x -> complex(trunc(x.re), trunc(x.im))
+M.round = \x -> complex(round(x.re), round(x.im))
 
-function M.exp   (x) clib.mad_cnum_exp_r   (x.re, x.im, cres) ; return cres[0] end
-function M.log   (x) clib.mad_cnum_log_r   (x.re, x.im, cres) ; return cres[0] end
-function M.sqrt  (x) clib.mad_cnum_sqrt_r  (x.re, x.im, cres) ; return cres[0] end
-function M.proj  (x) clib.mad_cnum_proj_r  (x.re, x.im, cres) ; return cres[0] end
+-- complex generic functions
+M.carg  = \x -> _C.mad_cnum_arg_r (x.re, x.im)
+M.real  = \x -> x.re
+M.imag  = \x -> x.im
+M.conj  = \x -> complex(x.re, -x.im)
+M.norm  = \x -> _C.mad_cnum_abs_r   (x.re, x.im)
+M.rect  = \x => _C.mad_cnum_rect_r  (x.re, x.im, cres) return cres[0] end
+M.polar = \x => _C.mad_cnum_polar_r (x.re, x.im, cres) return cres[0] end
 
-function M.sin   (x) clib.mad_cnum_sin_r   (x.re, x.im, cres) ; return cres[0] end
-function M.cos   (x) clib.mad_cnum_cos_r   (x.re, x.im, cres) ; return cres[0] end
-function M.tan   (x) clib.mad_cnum_tan_r   (x.re, x.im, cres) ; return cres[0] end
-function M.sinh  (x) clib.mad_cnum_sinh_r  (x.re, x.im, cres) ; return cres[0] end
-function M.cosh  (x) clib.mad_cnum_cosh_r  (x.re, x.im, cres) ; return cres[0] end
-function M.tanh  (x) clib.mad_cnum_tanh_r  (x.re, x.im, cres) ; return cres[0] end
+-- generic unary functions
+M.abs   = \x -> _C.mad_cnum_abs_r(x.re, x.im)
+M.ceil  = \x -> complex(ceil (x.re), ceil (x.im))
+M.floor = \x -> complex(floor(x.re), floor(x.im))
 
-function M.asin  (x) clib.mad_cnum_asin_r  (x.re, x.im, cres) ; return cres[0] end
-function M.acos  (x) clib.mad_cnum_acos_r  (x.re, x.im, cres) ; return cres[0] end
-function M.atan  (x) clib.mad_cnum_atan_r  (x.re, x.im, cres) ; return cres[0] end
-function M.asinh (x) clib.mad_cnum_asinh_r (x.re, x.im, cres) ; return cres[0] end
-function M.acosh (x) clib.mad_cnum_acosh_r (x.re, x.im, cres) ; return cres[0] end
-function M.atanh (x) clib.mad_cnum_atanh_r (x.re, x.im, cres) ; return cres[0] end
+M.exp   = \x => _C.mad_cnum_exp_r   (x.re, x.im, cres) return cres[0] end
+M.log   = \x => _C.mad_cnum_log_r   (x.re, x.im, cres) return cres[0] end
+M.sqrt  = \x => _C.mad_cnum_sqrt_r  (x.re, x.im, cres) return cres[0] end
 
-function M.equal (x, y)
-  if iscal(y) then
+M.sin   = \x => _C.mad_cnum_sin_r   (x.re, x.im, cres) return cres[0] end
+M.cos   = \x => _C.mad_cnum_cos_r   (x.re, x.im, cres) return cres[0] end
+M.tan   = \x => _C.mad_cnum_tan_r   (x.re, x.im, cres) return cres[0] end
+M.sinh  = \x => _C.mad_cnum_sinh_r  (x.re, x.im, cres) return cres[0] end
+M.cosh  = \x => _C.mad_cnum_cosh_r  (x.re, x.im, cres) return cres[0] end
+M.tanh  = \x => _C.mad_cnum_tanh_r  (x.re, x.im, cres) return cres[0] end
+
+M.asin  = \x => _C.mad_cnum_asin_r  (x.re, x.im, cres) return cres[0] end
+M.acos  = \x => _C.mad_cnum_acos_r  (x.re, x.im, cres) return cres[0] end
+M.atan  = \x => _C.mad_cnum_atan_r  (x.re, x.im, cres) return cres[0] end
+M.asinh = \x => _C.mad_cnum_asinh_r (x.re, x.im, cres) return cres[0] end
+M.acosh = \x => _C.mad_cnum_acosh_r (x.re, x.im, cres) return cres[0] end
+M.atanh = \x => _C.mad_cnum_atanh_r (x.re, x.im, cres) return cres[0] end
+
+M.erf    = \x -> 'NYI' -- MIT or http://apps.jcns.fz-juelich.de/doku/sc/libcerf
+M.tgamma = \x -> 'NYI'
+M.lgamma = \x -> 'NYI'
+
+function M.__unm (x)
+  return complex(-x.re, -x.im)
+end
+
+function M.__add (x, y, r_)
+  if is_number(x) then      -- num + cpx
+    return complex(x + y.re, y.im)
+  elseif is_number(y) then  -- cpx + num
+    return complex(x.re + y, x.im)
+  elseif is_complex(y) then -- cpx + cpx
+    return complex(x.re + y.re, x.im + y.im)
+  end
+
+  -- is_complex(x)
+  local r = r_ or cmatrix(y:sizes())
+  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
+
+  if is_matrix(y) then -- cpx + mat => vec + cpx
+    _C.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size())
+  elseif is_cmatrix(y) then -- cpx + cmat => cvec + cpx
+    _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size())
+  else error("incompatible complex (+) operands") end
+  return r
+end
+
+function M.__sub (x, y, r_)
+  if is_number(x) then      -- num - cpx
+    return complex(x - y.re, - y.im)
+  elseif is_number(y) then  -- cpx - num
+    return complex(x.re - y, x.im)
+  elseif is_complex(y) then -- cpx - cpx
+    return complex(x.re - y.re, x.im - y.im)
+  end
+
+  -- is_complex(x)
+  local r = r_ or cmatrix(y:sizes())
+  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
+
+  if is_matrix(y) then      -- cpx - mat => cpx - vec
+    _C.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size())
+  elseif is_cmatrix(y) then -- cpx - cmat => cpx - cvec
+    _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size())
+  else error("incompatible complex (-) operands") end
+  return r
+end
+
+function M.__mul (x, y, r_)
+  if is_number(x) then      -- num * cpx
+    return complex(x * y.re, x * y.im)
+  elseif is_number(y) then  -- cpx * num
+    return complex(x.re * y, x.im * y)
+  elseif is_complex(y) then -- cpx * cpx
+    return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
+  end
+
+  -- is_complex(x)
+  local r = r_ or cmatrix(y:sizes())
+  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
+
+  if is_matrix(y) then      -- cpx * mat => vec * cpx
+    _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size())
+  elseif is_cmatrix(y) then -- cpx * cmat => cvec * cpx
+    _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size())
+  else error("invalid complex (*) operands") end
+  return r
+end
+
+function M.__div (x, y, r_, rcond_)
+  if is_number(x) then      -- num / cpx
+    _C.mad_cnum_div_r(x, 0, y.re, y.im, cres)
+    return cres[0]
+  elseif is_number(y) then  -- cpx / num
+    return complex(x.re / y, x.im / y)
+  elseif is_complex(y) then -- cpx / cpx
+    _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
+    return cres[0]
+  end
+
+  -- is_complex(x)
+  local r = r_ or cmatrix(y:tsizes())
+  assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
+
+  if is_matrix(y) then -- cpx / mat
+    _C.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
+  elseif is_cmatrix(y) then -- cpx / cmat
+    _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
+  else error("invalid complex (/) operands") end
+  return r
+end
+
+function M.__mod (x, y)
+  if is_number(x) then     -- num % cpx
+    _C.mad_cnum_mod_r(x, 0, y.re, y.im, cres)
+    return cres[0]
+  elseif is_number(y) then -- cpx % num
+    _C.mad_cnum_mod_r(x.re, x.im, y, 0, cres)
+    return cres[0]
+  elseif is_complex(y) then -- cpx % cpx
+    _C.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres)
+    return cres[0]
+  end
+
+  error("incompatible complex (%) operands")
+end
+
+function M.__pow (x, y)
+  if is_number(y) then
+    if y == 2 then return x*x end -- common case
+    if y == 1 then return x   end -- stupid case
+    if y == 0 then return 1   end -- promote type
+    if isint(y) then
+      _C.mad_cnum_ipow_r(x.re, x.im, y, cres)
+      return cres[0]
+    end
+    y = complex(y)
+  end
+
+  if is_complex(y) then
+    x = complex(x)
+    _C.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres)
+    return cres[0]
+  end
+
+  error("incompatible complex (^) operands")
+end
+
+function M.__eq (x, y)
+  if is_scalar(y) then
     x, y = complex(x), complex(y)
     return x.re == y.re and x.im == y.im
   else
@@ -114,133 +252,7 @@ function M.equal (x, y)
   end
 end
 
-function M.unm (x)
-  return complex(-x.re, -x.im)
-end
-
-function M.add (x, y, r_)
-  if isnum(x) then -- num + cpx
-    return complex(x + y.re, y.im)
-  elseif isnum(y) then -- cpx + num
-    return complex(x.re + y, x.im)
-  elseif iscpx(y) then -- cpx + cpx
-    return complex(x.re + y.re, x.im + y.im)
-  end
-
-  -- iscpx(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if ismat(y) then -- cpx + mat => vec + cpx
-    clib.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif iscmat(y) then -- cpx + cmat => cvec + cpx
-    clib.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("incompatible complex (+) operands") end
-  return r
-end
-
-function M.sub (x, y, r_)
-  if isnum(x) then -- num - cpx
-    return complex(x - y.re, - y.im)
-  elseif isnum(y) then -- cpx - num
-    return complex(x.re - y, x.im)
-  elseif iscpx(y) then -- cpx - cpx
-    return complex(x.re - y.re, x.im - y.im)
-  end
-
-  -- iscpx(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if ismat(y) then -- cpx - mat => cpx - vec
-    clib.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif iscmat(y) then -- cpx - cmat => cpx - cvec
-    clib.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("incompatible complex (-) operands") end
-  return r
-end
-
-function M.mul (x, y, r_)
-  if isnum(x) then -- num * cpx
-    return complex(x * y.re, x * y.im)
-  elseif isnum(y) then -- cpx * num
-    return complex(x.re * y, x.im * y)
-  elseif iscpx(y) then -- cpx * cpx
-    return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
-  end
-
-  -- iscpx(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if ismat(y) then -- cpx * mat => vec * cpx
-    clib.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif iscmat(y) then -- cpx * cmat => cvec * cpx
-    clib.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("invalid complex (*) operands") end
-  return r
-end
-
-function M.div (x, y, r_, rcond_)
-  if isnum(x) then -- num / cpx
-    clib.mad_cnum_div_r(x, 0, y.re, y.im, cres)
-    return cres[0]
-  elseif isnum(y) then -- cpx / num
-    return complex(x.re / y, x.im / y)
-  elseif iscpx(y) then -- cpx / cpx
-    clib.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  -- iscpx(x)
-  local r = r_ or cmatrix(y:tsizes())
-  assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
-
-  if ismat(y) then -- cpx / mat
-    clib.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
-  elseif iscmat(y) then -- cpx / cmat
-    clib.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
-  else error("invalid complex (/) operands") end
-  return r
-end
-
-function M.mod (x, y)
-  if isnum(x) then     -- num % cpx
-    clib.mad_cnum_mod_r(x, 0, y.re, y.im, cres)
-    return cres[0]
-  elseif isnum(y) then -- cpx % num
-    clib.mad_cnum_mod_r(x.re, x.im, y, 0, cres)
-    return cres[0]
-  elseif iscpx(y) then -- cpx % cpx
-    clib.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  error("incompatible complex (%) operands")
-end
-
-function M.pow (x, y)
-  if isnum(y) then
-    if y == 2 then return x*x end -- common case
-    if y == 1 then return x   end -- stupid case
-    if y == 0 then return 1   end -- promote type
-    if isint(y) then
-      clib.mad_cnum_ipow_r(x.re, x.im, y, cres)
-      return cres[0]
-    end
-    y = complex(y)
-  end
-
-  if iscpx(y) then
-    x = complex(x)
-    clib.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  error("incompatible complex (^) operands")
-end
-
-function M.tostring (x, fmt_)
+function M.__tostring (x, fmt_)
       if x.im == 0 then return                        tostring(x.re)
   elseif x.re == 0 then return string.format('%si',                  tostring(x.im))
   elseif x.im <  0 then return string.format('%s%si', tostring(x.re),tostring(x.im))
@@ -248,19 +260,9 @@ function M.tostring (x, fmt_)
   end
 end
 
-M.__unm      = M.unm
-M.__add      = M.add
-M.__sub      = M.sub
-M.__mul      = M.mul
-M.__div      = M.div
-M.__mod      = M.mod
-M.__pow      = M.pow
-M.__eq       = M.equal
-M.__tostring = M.tostring
-M.__index    = M
+M.__index = M
 
-ffi.metatype('complex', M)
+metatype('complex', M)
 
--- end -----------------------------------------------------------------------o
-
+-- end ------------------------------------------------------------------------o
 return complex
