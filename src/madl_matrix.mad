@@ -175,18 +175,14 @@ end
 
 M.check_bounds(nil, true) -- default
 
+-- sizes, same, shape ---------------------------------------------------------o
+
 M.rows   = \x -> x.nr
 M.cols   = \x -> x.nc
 M.size   = \x -> x.nr * x.nc
 M.sizes  = \x -> (x.nr, x.nc)
 M.tsizes = \x -> (x.nc, x.nr)
 M.length = M.size
-
-function M.reshape (x, nr, nc)
-  assert(nr*nc <= x:size(), "incompatible matrix sizes")
-  x.nr, x.nc = nr, nc
-  return x
-end
 
 function M.same(x)
   return is_matrix(x) and matrix(x:sizes()) or cmatrix(x:sizes())
@@ -195,6 +191,14 @@ end
 function M.tsame(x)
   return is_matrix(x) and matrix(x:tsizes()) or cmatrix(x:tsizes())
 end
+
+function M.reshape (x, nr, nc)
+  assert(nr*nc <= x:size(), "incompatible matrix sizes")
+  x.nr, x.nc = nr, nc
+  return x
+end
+
+-- fill, get, set -------------------------------------------------------------o
 
 function M.zeros (x)
   fill(x.data, sizeof(is_matrix(x) and 'double' or 'complex', x:size()))
@@ -215,11 +219,11 @@ function M.eye (x, e_) -- zeros + diagonal
 end
 
 function M.fill (x, f)
-  if is_scalar  (f) then return x:map (function() return f end, x) end
-  if is_table(f) then return x:fromtable             (f)        end
-  assert(is_function(f), "invalid filling source, expects scalar, table or function")
+  if is_scalar(f) then return x:ones     (f) end
+  if is_table (f) then return x:fromtable(f) end
+  assert(is_function(f), "invalid argument #2, scalar, function or table expected")
   for i=1,x:rows() do
-  for j=1,x:cols() do x:set(i,j, f(i,j, x:get(i,j))) end
+  for j=1,x:cols() do x:set(i,j, f(x:get(i,j), i,j)) end
   end
   return x
 end
@@ -250,14 +254,18 @@ function M.get_diag (x, r_)
   return r
 end
 
-function M.get_sub (x, rg, r_)
-  local i, j, nr, nc = rg[1]-1, rg[2]-1, rg[3], rg[4]
-  assert(0 <= i and i+nr <= x:rows(), "row index out of bounds")
-  assert(0 <= j and j+nc <= x:cols(), "column index out of bounds")
+function M.get_sub (x, rr, cr, r_)
+  local nr, nc = rr:size(), cr:size()
+  local rl, rh = rr:bounds()
+  local cl, ch = cr:bounds()
+  assert(0 < rl and rh <= x:rows(), "row index out of bounds")
+  assert(0 < cl and ch <= x:cols(), "column index out of bounds")
   local r = r_ or is_matrix(x) and matrix(nr,nc) or cmatrix(nr,nc)
-  assert(nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
-  for ii=0,nr-1 do
-  for jj=0,nc-1 do r:set0(ii,jj, x:get0(i+ii,j+jj)) end end
+  assert(nr <= r:rows() and nc <= r:cols(), "incompatible matrix sizes")
+  for ri,rv in ipairs(rr) do
+  for ci,cv in ipairs(cr) do
+    r:set(ri,ci, x:get(rv,cv))
+  end end
   return r
 end
 
@@ -283,12 +291,55 @@ function M.set_diag (x, y)
   return x
 end
 
-function M.set_sub (x, rg, y)
-  local i, j, nr, nc = rg[1]-1, rg[2]-1, y:sizes()
-  assert(0 <= i and i+nr <= x:rows(), "row index out of bounds")
-  assert(0 <= j and j+nc <= x:cols(), "column index out of bounds")
-  for ii=0,nr-1 do
-  for jj=0,nc-1 do x:set0(i+ii,j+jj, y:get0(ii,jj)) end end
+function M.set_sub (x, rr, cr, y)
+  local nr, nc = rr:size(), cr:size()
+  local rl, rh = rr:bounds()
+  local cl, ch = cr:bounds()
+  assert(0 < rl and rh <= x:rows(), "row index out of bounds")
+  assert(0 < cl and ch <= x:cols(), "column index out of bounds")
+  assert(nr <= y:rows() and nc <= y:cols(), "incompatible matrix sizes")
+  for ri,rv in ipairs(rr) do
+  for ci,cv in ipairs(cr) do
+    x:set(rv,cv, y:get(ri,ci))
+  end end
+  return r
+end
+
+-- foreach, map, fold ---------------------------------------------------------o
+
+function M.foreach (x, f)
+  for i=0,x:size()-1 do f(x.data[i]) end
+  return x
+end
+
+function M.map (x, f, r_)
+  local r0 = f(x.data[0])
+  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
+  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+  r.data[0] = r0
+  for i=1,x:size()-1 do r.data[i] = f(x.data[i]) end
+  return r
+end
+
+function M.map2 (x, y, f, r_)
+  assert(isa_matrix(y), "matrix expected for 2nd argument")
+  local r0 = f(x.data[0], y.data[0])
+  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
+  assert(x:rows() == y:rows() and x:cols() == y:cols() and
+         x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+  r.data[0] = r0
+  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y.data[i]) end
+  return r
+end
+
+function M.maps (x, y, f, r_)
+  if is_matrix(y) then return x:map2(y,f,r_) end
+  assert(is_scalar(y), "scalar expected for 2nd argument")
+  local r0 = f(x.data[0], y)
+  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
+  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
+  r.data[0] = r0
+  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y) end
   return r
 end
 
@@ -332,41 +383,7 @@ function M.foldr (x, r, f)
   return r
 end
 
-function M.foreach (x, f)
-  for i=0,x:size()-1 do f(x.data[i]) end
-  return x
-end
-
-function M.map (x, f, r_)
-  local r0 = f(x.data[0])
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i]) end
-  return r
-end
-
-function M.map2 (x, y, f, r_)
-  assert(isa_matrix(y), "matrix expected for 2nd argument")
-  local r0 = f(x.data[0], y.data[0])
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == y:rows() and x:cols() == y:cols() and
-         x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y.data[i]) end
-  return r
-end
-
-function M.maps (x, y, f, r_)
-  if is_matrix(y) then return x:map2(y,f,r_) end
-  assert(is_scalar(y), "scalar expected for 2nd argument")
-  local r0 = f(x.data[0], y)
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y) end
-  return r
-end
+-- conjugate, transpose -------------------------------------------------------o
 
 function M.conjugate (x, r_)
   local r = r_ or is_matrix(x) and matrix(x:sizes()) or cmatrix(x:sizes())
@@ -405,6 +422,8 @@ function M.trace (x)
 end
 
 M.tr = M.trace -- shortcut
+
+-- inner, cross, mixed, outer -------------------------------------------------o
 
 function M.inner (x, y)
   -- (x:t() * y):tr() without temporaries
@@ -492,6 +511,8 @@ function M.outer (x, y, r_)
   return r
 end
 
+-- unit, center, norm, angle --------------------------------------------------o
+
 function M.unit(x, r_)
   local n = x:norm()
   assert(n ~= 0, "null matrix")
@@ -500,7 +521,7 @@ function M.unit(x, r_)
   return r
 end
 
-function M.center(x, r_)
+function M.center(x, r_) -- center data on average
   local r = r_ or x
       if is_vector (x) then _C.mad_vec_center (x.data, r.data, x:size())
   elseif is_matrix (x) then _C.mad_mat_center (x.data, r.data, x:rows(), x:cols())
@@ -528,6 +549,8 @@ function M.angle (x, y, n_)
   if n_ and x:mixed(y, n_) < 0 then a = -a end -- [-pi, pi]
   return a
 end
+
+-- generic functions ----------------------------------------------------------o
 
 M.copy  = \x,r_   -> x:map (identity, r_)
 
@@ -562,6 +585,8 @@ M.atan  = \x,r_   -> x:map (atan    , r_)
 M.asinh = \x,r_   -> x:map (asinh   , r_)
 M.acosh = \x,r_   -> x:map (acosh   , r_)
 M.atanh = \x,r_   -> x:map (atanh   , r_)
+
+-- generic operators ----------------------------------------------------------o
 
 M.unm   = \x,r_   -> x:map (unm     , r_)
 M.mod   = \x,y,r_ -> x:maps(y, mod  , r_)
@@ -861,6 +886,8 @@ function M.ediv (x, y, r_)
   error("invalid matrix (./) operands")
 end
 
+-- linear algebra -------------------------------------------------------------o
+
 function M.solve(a, b, rcond_)
   return b:t():div(a:t(), nil, rcond_):t()
 end
@@ -893,6 +920,8 @@ function M.eigen (x)
   end
   return w, vl, vr, info
 end
+
+-- FFT, convolution, correlation, covrariance ---------------------------------o
 
 function M.fft (x, r_)
   local nr, nc = x:sizes()
@@ -1009,6 +1038,8 @@ function M.covar(x, y, r_) -- covariance of random (row) vectors
   end
 end
 
+-- concatenation, conversion --------------------------------------------------o
+
 function M.concat (x, y, v_, r_)
   assert(isa_matrix(y), "matrix expected for 2nd argument")
   local nrx, ncx = x:sizes()
@@ -1069,6 +1100,8 @@ function M.tostring (x, sep_, lsep_)
   return table.concat(r, lsep_ or '\n')
 end
 
+-- metamethods ----------------------------------------------------------------o
+
 M.__unm, M.__add, M.__sub, M.__mul, M.__div, M.__mod, M.__pow =
 M.  unm, M.  add, M.  sub, M.  mul, M.  div, M.  mod, M.  pow
 
@@ -1097,5 +1130,5 @@ metatype('cmatrix_t', M)
 
 xmatrix.__help = M.__help
 
--------------------------------------------------------------------------------o
+-- end ------------------------------------------------------------------------o
 return xmatrix
