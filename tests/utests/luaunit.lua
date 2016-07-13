@@ -2071,7 +2071,7 @@ end
 
         local expandedList = self.expandClasses( listOfNameAndInst )
         local filteredList, filteredOutList = self.applyPatternFilter(
-            self.patternIncludedFilter, self.patternExcludedFilter, expandedList )
+            self.patternIncludeFilter, self.patternExcludeFilter, expandedList )
 
         self:startSuite( #filteredList, #filteredOutList )
 
