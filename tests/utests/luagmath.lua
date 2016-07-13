@@ -115,9 +115,10 @@ local tanh  = function (x) return is_number(x) and tanh (x)  or x:tanh () end
 -- locals ---------------------------------------------------------------------o
 
 local lu = require 'luaunit'
-local assertFalse, assertTrue, assertEquals, assertNotEquals, assertAlmostEquals
-      = lu.assertFalse, lu.assertTrue, lu.assertEquals, lu.assertNotEquals,
-        lu.assertAlmostEquals
+local assertFalse, assertTrue, assertEquals, assertNotEquals,
+      assertAlmostEquals, assertNaN =
+      lu.assertFalse, lu.assertTrue, lu.assertEquals, lu.assertNotEquals,
+      lu.assertAlmostEquals, lu.assertNaN
 
 -- regression test suite ------------------------------------------------------o
 
@@ -212,10 +213,10 @@ function TestLuaGmath:testConstant()
   assertFalse( is_nan('nan') )
   assertFalse( is_nan('NaN') )
 
-  assertEquals( tostring( nan), 'nan' )
-  assertEquals( tostring(-nan), 'nan' )
-  assertEquals( tostring( NaN), 'nan' )
-  assertEquals( tostring(-NaN), 'nan' )
+  assertNaN  ( nan)
+  assertNaN  (-nan)
+  assertNaN  ( NaN)
+  assertNaN  (-NaN)
 end
 
 -- generic functions
@@ -233,7 +234,7 @@ function TestLuaGmath:testAbs()
   assertEquals(   abs(-inf), inf )
   assertEquals(   abs( inf), inf )
 
-  assertEquals( tostring(abs(nan)), 'nan' )
+  assertNaN( abs(nan) )
 end
 
 function TestLuaGmath:testAcos()
@@ -266,10 +267,10 @@ function TestLuaGmath:testAcos()
   assertEquals      ( acos(-1  ) -    pi   , 0        )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals(          acos( 1    ) ,   0   )
-  assertEquals( tostring(acos(-1-eps)), 'nan' )
-  assertEquals( tostring(acos( 1+eps)), 'nan' )
-  assertEquals( tostring(acos(nan   )), 'nan' )
+  assertEquals( acos( 1    ) ,   0   )
+  assertNaN   ( acos(-1-eps) )
+  assertNaN   ( acos( 1+eps) )
+  assertNaN   ( acos(nan   ) )
 end
 
 function TestLuaGmath:testAsin()
@@ -302,9 +303,9 @@ function TestLuaGmath:testAsin()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals(        1/asin( 0    ) ,  inf  ) -- check for +0
   assertEquals(        1/asin(-0    ) , -inf  ) -- check for -0
-  assertEquals( tostring(asin(-1-eps)), 'nan' )
-  assertEquals( tostring(asin( 1+eps)), 'nan' )
-  assertEquals( tostring(asin(nan   )), 'nan' )
+  assertNaN( asin(-1-eps) )
+  assertNaN( asin( 1+eps) )
+  assertNaN( asin(nan   ) )
 end
 
 function TestLuaGmath:testAtan()
@@ -326,11 +327,11 @@ function TestLuaGmath:testAtan()
   assertAlmostEquals( atan( r3 ) -  pi/3 , 0, eps )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/atan( 0  ),  inf  ) -- check for -0
-  assertEquals( 1/atan(-0  ), -inf  ) -- check for +0
-  assertEquals(   atan(-inf), -pi/2 )
-  assertEquals(   atan( inf),  pi/2 )
-  assertEquals( tostring(atan(nan)), 'nan' )
+  assertEquals( 1/atan( 0  ) ,  inf  ) -- check for -0
+  assertEquals( 1/atan(-0  ) , -inf  ) -- check for +0
+  assertEquals(   atan(-inf) , -pi/2 )
+  assertEquals(   atan( inf) ,  pi/2 )
+  assertNaN   (   atan( nan) )
 end
 
 function TestLuaGmath:testCeil()
@@ -359,7 +360,7 @@ function TestLuaGmath:testCeil()
   assertEquals(   ceil(- inf) , -inf )
   assertEquals(   ceil(  inf) ,  inf )
 
-  assertEquals( tostring(ceil(nan)), 'nan' )
+  assertNaN( ceil(nan) )
 end
 
 function TestLuaGmath:testCos()
@@ -393,11 +394,11 @@ function TestLuaGmath:testCos()
   assertEquals      ( cos(-   pi   ) - -1  , 0      )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals(          cos( -0 ) ,   1   )
-  assertEquals(          cos(  0 ) ,   1   )
-  assertEquals( tostring(cos(-inf)), 'nan' )
-  assertEquals( tostring(cos( inf)), 'nan' )
-  assertEquals( tostring(cos( nan)), 'nan' )
+  assertEquals( cos( -0 ) ,   1   )
+  assertEquals( cos(  0 ) ,   1   )
+  assertNaN   ( cos(-inf) )
+  assertNaN   ( cos( inf) )
+  assertNaN   ( cos( nan) )
 end
 
 function TestLuaGmath:testCosh()
@@ -419,7 +420,7 @@ function TestLuaGmath:testCosh()
   assertEquals( cosh(-inf), inf )
   assertEquals( cosh( inf), inf )
 
-  assertEquals( tostring(cosh(nan)), 'nan' )
+  assertNaN( cosh(nan) )
 end
 
 function TestLuaGmath:testDeg()
@@ -451,7 +452,7 @@ function TestLuaGmath:testDeg()
   assertAlmostEquals( deg(   pi/6 ) /   30, 1, eps )
   assertAlmostEquals( deg(   pi/3 ) /   60, 1, eps )
 
-  assertEquals( tostring(deg(nan)), 'nan' )
+  assertNaN( deg(nan) )
 end
 
 function TestLuaGmath:testExp()
@@ -510,7 +511,7 @@ function TestLuaGmath:testExp()
   assertEquals( exp(-inf),  0  )
   assertEquals( exp( inf), inf )
 
-  assertEquals( tostring(exp(nan)), 'nan' )
+  assertNaN( exp(nan) )
 end
 
 function TestLuaGmath:testFloor()
@@ -539,7 +540,7 @@ function TestLuaGmath:testFloor()
   assertEquals(   floor(- inf) , -inf )
   assertEquals(   floor(  inf) ,  inf )
 
-  assertEquals( tostring(floor(nan)), 'nan' )
+  assertNaN( floor(nan) )
 end
 
 function TestLuaGmath:testLog()
@@ -561,9 +562,9 @@ function TestLuaGmath:testLog()
   assertEquals( log(1)  ,  0   )
   assertEquals( log(inf),  inf )
 
-  assertEquals( tostring(log(-tiny)), 'nan' )
-  assertEquals( tostring(log(-inf )), 'nan' )
-  assertEquals( tostring(log( nan )), 'nan' )
+  assertNaN( log(-tiny) )
+  assertNaN( log(-inf ) )
+  assertNaN( log( nan ) )
 end
 
 function TestLuaGmath:testLog10()
@@ -584,9 +585,9 @@ function TestLuaGmath:testLog10()
   assertEquals( log10(  1),  0  )
   assertEquals( log10(inf), inf )
 
-  assertEquals( tostring(log10(-tiny)), 'nan' )
-  assertEquals( tostring(log10(-inf )), 'nan' )
-  assertEquals( tostring(log10( nan )), 'nan' )
+  assertNaN( log10(-tiny) )
+  assertNaN( log10(-inf ) )
+  assertNaN( log10( nan ) )
 end
 
 function TestLuaGmath:testMax()
@@ -612,7 +613,7 @@ function TestLuaGmath:testMax()
   assertEquals( max(nan,   0 ),   0  )
   assertEquals( max(nan,  inf),  inf )
 
-  assertEquals( tostring(max(nan)), 'nan' )
+  assertNaN( max(nan) )
 end
 
 function TestLuaGmath:testMin()
@@ -638,7 +639,7 @@ function TestLuaGmath:testMin()
   assertEquals( min(nan,   0 ),   0  )
   assertEquals( min(nan,  inf),  inf )
 
-  assertEquals( tostring(min(nan)), 'nan' )
+  assertNaN( min(nan) )
 end
 
 function TestLuaGmath:testModf()
@@ -694,8 +695,8 @@ function TestLuaGmath:testModf()
   assertEquals( 1/second(modf(-inf )), -inf  ) -- check for -0
   assertEquals( 1/second(modf( inf )),  inf  ) -- check for +0
 
-  assertEquals( tostring( first(modf(nan))), 'nan' )
-  assertEquals( tostring(second(modf(nan))), 'nan' )
+  assertNaN(  first(modf(nan)) )
+  assertNaN( second(modf(nan)) )
 end
 
 function TestLuaGmath:testPow()
@@ -769,10 +770,10 @@ function TestLuaGmath:testPow()
   assertEquals   (pow( nan, - 0 ),   1  )
   assertEquals   (pow(-nan, - 0 ),   1  )
 
-  assertEquals   ( tostring(pow(- 1  , 0.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  ,-0.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  , 1.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  ,-1.5)), 'nan' )
+  assertNaN( pow(- 1  , 0.5) )
+  assertNaN( pow(- 1  ,-0.5) )
+  assertNaN( pow(- 1  , 1.5) )
+  assertNaN( pow(- 1  ,-1.5) )
 
   assertEquals   (pow(  0   , -inf),  inf )
   assertEquals   (pow(- 0   , -inf),  inf )
@@ -826,31 +827,31 @@ function TestLuaGmath:testPow()
   assertEquals  ( pow( inf  ,   10),  inf )
   assertEquals  ( pow( inf  ,   11),  inf )
 
-  assertEquals   ( tostring(pow( 0  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-0  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( 0  , -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-0  , -nan)), 'nan' )
+  assertNaN( pow( 0  ,  nan) )
+  assertNaN( pow(-0  ,  nan) )
+  assertNaN( pow( 0  , -nan) )
+  assertNaN( pow(-0  , -nan) )
 
-  assertEquals   ( tostring(pow(-1  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-1  , -nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan,   1 )), 'nan' )
-  assertEquals   ( tostring(pow(-nan,   1 )), 'nan' )
-  assertEquals   ( tostring(pow( nan, - 1 )), 'nan' )
-  assertEquals   ( tostring(pow(-nan, - 1 )), 'nan' )
+  assertNaN( pow(-1  ,  nan) )
+  assertNaN( pow(-1  , -nan) )
+  assertNaN( pow( nan,   1 ) )
+  assertNaN( pow(-nan,   1 ) )
+  assertNaN( pow( nan, - 1 ) )
+  assertNaN( pow(-nan, - 1 ) )
 
-  assertEquals   ( tostring(pow( inf,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-inf,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( inf, -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-inf, -nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan,  inf)), 'nan' )
-  assertEquals   ( tostring(pow(-nan,  inf)), 'nan' )
-  assertEquals   ( tostring(pow( nan, -inf)), 'nan' )
-  assertEquals   ( tostring(pow(-nan, -inf)), 'nan' )
+  assertNaN( pow( inf,  nan) )
+  assertNaN( pow(-inf,  nan) )
+  assertNaN( pow( inf, -nan) )
+  assertNaN( pow(-inf, -nan) )
+  assertNaN( pow( nan,  inf) )
+  assertNaN( pow(-nan,  inf) )
+  assertNaN( pow( nan, -inf) )
+  assertNaN( pow(-nan, -inf) )
 
-  assertEquals   ( tostring(pow( nan,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-nan,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan, -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-nan, -nan)), 'nan' )
+  assertNaN( pow( nan,  nan) )
+  assertNaN( pow(-nan,  nan) )
+  assertNaN( pow( nan, -nan) )
+  assertNaN( pow(-nan, -nan) )
 end
 
 function TestLuaGmath:testRad()
@@ -877,7 +878,7 @@ function TestLuaGmath:testRad()
   assertEquals( rad( 360),  2*pi  )
   assertEquals( rad( inf),  inf   )
 
-  assertEquals( tostring(rad(nan)), 'nan' )
+  assertNaN( rad(nan) )
 end
 
 function TestLuaGmath:testSin()
@@ -912,11 +913,11 @@ function TestLuaGmath:testSin()
   assertAlmostEquals( sin(-   pi   ) - -0  , 0,   eps )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals(        1/sin( -0 ) , -inf  ) -- check for -0
-  assertEquals(        1/sin(  0 ) ,  inf  ) -- check for +0
-  assertEquals( tostring(sin(-inf)), 'nan' )
-  assertEquals( tostring(sin( inf)), 'nan' )
-  assertEquals( tostring(sin( nan)), 'nan' )
+  assertEquals( 1/sin( -0 ) , -inf  ) -- check for -0
+  assertEquals( 1/sin(  0 ) ,  inf  ) -- check for +0
+  assertNaN( sin(-inf) )
+  assertNaN( sin( inf) )
+  assertNaN( sin( nan) )
 end
 
 function TestLuaGmath:testSinh()
@@ -946,7 +947,7 @@ function TestLuaGmath:testSinh()
   assertEquals(   sinh(-inf), -inf )
   assertEquals(   sinh( inf),  inf )
 
-  assertEquals( tostring(sinh(nan)), 'nan' )
+  assertNaN( sinh(nan) )
 end
 
 function TestLuaGmath:testSqrt()
@@ -955,17 +956,17 @@ function TestLuaGmath:testSqrt()
       assertAlmostEquals( sqrt(v)*sqrt(v) / v - 1, 0, eps )
     end
   end
-  assertEquals( tostring(sqrt(-inf)), 'nan' )
-  assertEquals( tostring(sqrt(-1  )), 'nan' )
-  assertEquals( tostring(sqrt(-0.1)), 'nan' )
+  assertNaN( sqrt(-inf) )
+  assertNaN( sqrt(-1  ) )
+  assertNaN( sqrt(-0.1) )
 
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( 1/sqrt(- 0  ) , -inf ) -- check for -0
   assertEquals( 1/sqrt(  0  ) ,  inf ) -- check for +0
   assertEquals(   sqrt( inf ) ,  inf )
-  assertEquals( tostring(sqrt(-tiny)), 'nan' )
-  assertEquals( tostring(sqrt(-inf )), 'nan' )
-  assertEquals( tostring(sqrt( nan )), 'nan' )
+  assertNaN( sqrt(-tiny) )
+  assertNaN( sqrt(-inf ) )
+  assertNaN( sqrt( nan ) )
 end
 
 function TestLuaGmath:testTan()
@@ -1000,9 +1001,9 @@ function TestLuaGmath:testTan()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals(        1/tan( -0 ) , -inf  ) -- check for -0
   assertEquals(        1/tan(  0 ) ,  inf  ) -- check for +0
-  assertEquals( tostring(tan(-inf)), 'nan' )
-  assertEquals( tostring(tan( inf)), 'nan' )
-  assertEquals( tostring(tan( nan)), 'nan' )
+  assertNaN( tan(-inf) )
+  assertNaN( tan( inf) )
+  assertNaN( tan( nan) )
 end
 
 function TestLuaGmath:testTanh()
@@ -1033,7 +1034,7 @@ function TestLuaGmath:testTanh()
   assertEquals( 1/tanh( 0  ),  inf ) -- check for +0
   assertEquals(   tanh(-inf), -1   )
   assertEquals(   tanh( inf),  1   )
-  assertEquals( tostring(tanh(nan)), 'nan' )
+  assertNaN( tanh(nan) )
 end
 
 -- functions wo generic
@@ -1144,9 +1145,9 @@ function TestLuaGmath:testAtan2()
   assertEquals(  atan2( inf,   inf) ,   pi/4 )
   assertEquals(  atan2(-inf,   inf) ,-  pi/4 )
 
-  assertEquals( tostring(atan2(nan, 0 )), 'nan' )
-  assertEquals( tostring(atan2( 0 ,nan)), 'nan' )
-  assertEquals( tostring(atan2(nan,nan)), 'nan' )
+  assertNaN( atan2(nan, 0 ) )
+  assertNaN( atan2( 0 ,nan) )
+  assertNaN( atan2(nan,nan) )
 end
 
 function TestLuaGmath:testFMod()
@@ -1206,41 +1207,41 @@ function TestLuaGmath:testFMod()
   assertEquals(  fmod( 10 , -inf),  10 )
   assertEquals(  fmod(-10 , -inf), -10 )
 
-  assertEquals( tostring(fmod( inf,  0.5)), 'nan' )
-  assertEquals( tostring(fmod( inf, -0.5)), 'nan' )
-  assertEquals( tostring(fmod(-inf,  0.5)), 'nan' )
-  assertEquals( tostring(fmod(-inf, -0.5)), 'nan' )
-  assertEquals( tostring(fmod( inf,  1  )), 'nan' )
-  assertEquals( tostring(fmod( inf, -1  )), 'nan' )
-  assertEquals( tostring(fmod(-inf,  1  )), 'nan' )
-  assertEquals( tostring(fmod(-inf, -1  )), 'nan' )
-  assertEquals( tostring(fmod( inf,  10 )), 'nan' )
-  assertEquals( tostring(fmod( inf, -10 )), 'nan' )
-  assertEquals( tostring(fmod(-inf,  10 )), 'nan' )
-  assertEquals( tostring(fmod(-inf, -10 )), 'nan' )
+  assertNaN( fmod( inf,  0.5) )
+  assertNaN( fmod( inf, -0.5) )
+  assertNaN( fmod(-inf,  0.5) )
+  assertNaN( fmod(-inf, -0.5) )
+  assertNaN( fmod( inf,  1  ) )
+  assertNaN( fmod( inf, -1  ) )
+  assertNaN( fmod(-inf,  1  ) )
+  assertNaN( fmod(-inf, -1  ) )
+  assertNaN( fmod( inf,  10 ) )
+  assertNaN( fmod( inf, -10 ) )
+  assertNaN( fmod(-inf,  10 ) )
+  assertNaN( fmod(-inf, -10 ) )
 
-  assertEquals( tostring(fmod( 0.5,  0  )), 'nan' )
-  assertEquals( tostring(fmod(-0.5,  0  )), 'nan' )
-  assertEquals( tostring(fmod( 0.5, -0  )), 'nan' )
-  assertEquals( tostring(fmod(-0.5, -0  )), 'nan' )
-  assertEquals( tostring(fmod( 1  ,  0  )), 'nan' )
-  assertEquals( tostring(fmod(-1  ,  0  )), 'nan' )
-  assertEquals( tostring(fmod( 1  , -0  )), 'nan' )
-  assertEquals( tostring(fmod(-1  , -0  )), 'nan' )
-  assertEquals( tostring(fmod( 10 ,  0  )), 'nan' )
-  assertEquals( tostring(fmod(-10 ,  0  )), 'nan' )
-  assertEquals( tostring(fmod( 10 , -0  )), 'nan' )
-  assertEquals( tostring(fmod(-10 , -0  )), 'nan' )
+  assertNaN( fmod( 0.5,  0  ) )
+  assertNaN( fmod(-0.5,  0  ) )
+  assertNaN( fmod( 0.5, -0  ) )
+  assertNaN( fmod(-0.5, -0  ) )
+  assertNaN( fmod( 1  ,  0  ) )
+  assertNaN( fmod(-1  ,  0  ) )
+  assertNaN( fmod( 1  , -0  ) )
+  assertNaN( fmod(-1  , -0  ) )
+  assertNaN( fmod( 10 ,  0  ) )
+  assertNaN( fmod(-10 ,  0  ) )
+  assertNaN( fmod( 10 , -0  ) )
+  assertNaN( fmod(-10 , -0  ) )
 
-  assertEquals( tostring(fmod( inf,  inf)), 'nan' )
-  assertEquals( tostring(fmod(-inf,  inf)), 'nan' )
-  assertEquals( tostring(fmod( inf, -inf)), 'nan' )
-  assertEquals( tostring(fmod(-inf, -inf)), 'nan' )
+  assertNaN( fmod( inf,  inf) )
+  assertNaN( fmod(-inf,  inf) )
+  assertNaN( fmod( inf, -inf) )
+  assertNaN( fmod(-inf, -inf) )
 
-  assertEquals( tostring(fmod( nan,  nan)), 'nan' )
-  assertEquals( tostring(fmod(-nan,  nan)), 'nan' )
-  assertEquals( tostring(fmod( nan, -nan)), 'nan' )
-  assertEquals( tostring(fmod(-nan, -nan)), 'nan' )
+  assertNaN( fmod( nan,  nan) )
+  assertNaN( fmod(-nan,  nan) )
+  assertNaN( fmod( nan, -nan) )
+  assertNaN( fmod(-nan, -nan) )
 end
 
 function TestLuaGmath:testLdexp()
@@ -1262,9 +1263,9 @@ function TestLuaGmath:testLdexp()
   assertEquals( ldexp( 3  , 2.1),   12 )
   assertEquals( ldexp( inf,   0),  inf )
 
-  assertEquals( tostring(ldexp(nan,   0)), 'nan' )
-  assertEquals( tostring(ldexp(nan,   1)), 'nan' )
-  assertEquals( tostring(ldexp(nan, nan)), 'nan' )
+  assertNaN( ldexp(nan,   0) )
+  assertNaN( ldexp(nan,   1) )
+  assertNaN( ldexp(nan, nan) )
 end
 
 function TestLuaGmath:testFrexp()
@@ -1301,9 +1302,9 @@ function TestLuaGmath:testFrexp()
   assertAlmostEquals( f - 1    , 0, eps)
   assertEquals      ( e - 1024 , 0     )
 
-  assertEquals( tostring(frexp(nan,   0)), 'nan' )
-  assertEquals( tostring(frexp(nan,   1)), 'nan' )
-  assertEquals( tostring(frexp(nan, nan)), 'nan' )
+  assertNaN( frexp(nan,   0) )
+  assertNaN( frexp(nan,   1) )
+  assertNaN( frexp(nan, nan) )
 end
 
 function TestLuaGmath:testRandom()
@@ -1318,9 +1319,9 @@ function TestLuaGmath:testRandom()
     assertTrue( random(-1,2^52) <=  2^52 )
   end
 
-  assertEquals( tostring(random(nan,  0 )), 'nan' )
-  assertEquals( tostring(random( 0 , nan)), 'nan' )
-  assertEquals( tostring(random(nan, nan)), 'nan' )
+  assertNaN( random(nan,  0 ) )
+  assertNaN( random( 0 , nan) )
+  assertNaN( random(nan, nan) )
 end
 
 function TestLuaGmath:testRandomseed()
@@ -1384,9 +1385,9 @@ function TestLuaGmath:testAngle()
   assertEquals( angle( -inf,  inf),  pi/4*3 )
   assertEquals( angle( -inf, -inf), -pi/4*3 )
 
-  assertEquals( tostring(angle(nan, 0 )), 'nan' )
-  assertEquals( tostring(angle( 0 ,nan)), 'nan' )
-  assertEquals( tostring(angle(nan,nan)), 'nan' )
+  assertNaN( angle(nan, 0 ) )
+  assertNaN( angle( 0 ,nan) )
+  assertNaN( angle(nan,nan) )
 end
 
 function TestLuaGmath:testFrac()
@@ -1430,7 +1431,7 @@ function TestLuaGmath:testFrac()
   assertAlmostEquals( frac( 1.1)-0.1, 0, eps/2 )
   assertAlmostEquals( frac(-1.1)+0.1, 0, eps/2 )
 
-  assertEquals( tostring(frac(nan)), 'nan' )
+  assertNaN( frac(nan) )
 end
 
 function TestLuaGmath:testRound()
@@ -1459,7 +1460,7 @@ function TestLuaGmath:testRound()
   assertEquals(   round(- inf) , -inf )
   assertEquals(   round(  inf) ,  inf )
 
-  assertEquals( tostring(round(nan)), 'nan' )
+  assertNaN( round(nan) )
 end
 
 function TestLuaGmath:testSign()
@@ -1476,7 +1477,7 @@ function TestLuaGmath:testSign()
   assertEquals( sign(-huge) , -1 )
   assertEquals( sign(- inf) , -1 )
 
-  assertEquals( tostring(sign(nan)), 'nan' )
+  assertNaN( sign(nan) )
 end
 
 function TestLuaGmath:testSinc()
@@ -1491,9 +1492,9 @@ function TestLuaGmath:testSinc()
     end
   end
 
-  assertEquals( tostring(sinc(-inf)), 'nan' )
-  assertEquals( tostring(sinc( inf)), 'nan' )
-  assertEquals( tostring(sinc( nan)), 'nan' )
+  assertNaN( sinc(-inf) )
+  assertNaN( sinc( inf) )
+  assertNaN( sinc( nan) )
 end
 
 function TestLuaGmath:testStep()
@@ -1510,7 +1511,7 @@ function TestLuaGmath:testStep()
   assertEquals( step(-huge) , 0 )
   assertEquals( step(- inf) , 0 )
 
-  assertEquals( tostring(step(nan)), 'nan' )
+  assertNaN( step(nan) )
 end
 
 function TestLuaGmath:testTrunc()
@@ -1554,7 +1555,7 @@ function TestLuaGmath:testTrunc()
   assertEquals(   trunc(- inf) , -inf )
   assertEquals(   trunc(  inf) ,  inf )
 
-  assertEquals( tostring(trunc(nan)), 'nan' )
+  assertNaN( trunc(nan) )
 end
 
 -- operators as functions
@@ -1588,20 +1589,20 @@ function TestLuaGmath:testMulOp()
   assertEquals( mul( inf,-inf), -inf )
   assertEquals( mul(-inf,-inf),  inf )
 
-  assertEquals( tostring(mul(   0, inf)), 'nan' )
-  assertEquals( tostring(mul(   0,-inf)), 'nan' )
-  assertEquals( tostring(mul(-  0, inf)), 'nan' )
-  assertEquals( tostring(mul(-  0,-inf)), 'nan' )
+  assertNaN( mul(   0, inf) )
+  assertNaN( mul(   0,-inf) )
+  assertNaN( mul(-  0, inf) )
+  assertNaN( mul(-  0,-inf) )
 
-  assertEquals( tostring(mul( inf,   0)), 'nan' )
-  assertEquals( tostring(mul(-inf,   0)), 'nan' )
-  assertEquals( tostring(mul( inf,-  0)), 'nan' )
-  assertEquals( tostring(mul(-inf,-  0)), 'nan' )
+  assertNaN( mul( inf,   0) )
+  assertNaN( mul(-inf,   0) )
+  assertNaN( mul( inf,-  0) )
+  assertNaN( mul(-inf,-  0) )
 
-  assertEquals( tostring(mul(  0 , nan)), 'nan' )
-  assertEquals( tostring(mul( nan,  0 )), 'nan' )
-  assertEquals( tostring(mul(  1 , nan)), 'nan' )
-  assertEquals( tostring(mul( nan,  1 )), 'nan' )
+  assertNaN( mul(  0 , nan) )
+  assertNaN( mul( nan,  0 ) )
+  assertNaN( mul(  1 , nan) )
+  assertNaN( mul( nan,  1 ) )
 end
 
 function TestLuaGmath:testDivOp()
@@ -1642,20 +1643,20 @@ function TestLuaGmath:testDivOp()
   assertEquals(   div( inf,-  1), -inf )
   assertEquals(   div(-inf,-  1),  inf )
 
-  assertEquals( tostring(div( inf, inf)), 'nan' )
-  assertEquals( tostring(div(-inf, inf)), 'nan' )
-  assertEquals( tostring(div( inf,-inf)), 'nan' )
-  assertEquals( tostring(div(-inf,-inf)), 'nan' )
+  assertNaN( div( inf, inf) )
+  assertNaN( div(-inf, inf) )
+  assertNaN( div( inf,-inf) )
+  assertNaN( div(-inf,-inf) )
 
-  assertEquals( tostring(div( 0, 0)), 'nan' )
-  assertEquals( tostring(div( 0,-0)), 'nan' )
-  assertEquals( tostring(div(-0, 0)), 'nan' )
-  assertEquals( tostring(div(-0,-0)), 'nan' )
+  assertNaN( div( 0, 0) )
+  assertNaN( div( 0,-0) )
+  assertNaN( div(-0, 0) )
+  assertNaN( div(-0,-0) )
 
-  assertEquals( tostring(div( 0 , nan)), 'nan' )
-  assertEquals( tostring(div(nan,  0 )), 'nan' )
-  assertEquals( tostring(div( 1 , nan)), 'nan' )
-  assertEquals( tostring(div(nan,  1 )), 'nan' )
+  assertNaN( div( 0 , nan) )
+  assertNaN( div(nan,  0 ) )
+  assertNaN( div( 1 , nan) )
+  assertNaN( div(nan,  1 ) )
 end
 
 function TestLuaGmath:testModOp()
@@ -1677,18 +1678,18 @@ function TestLuaGmath:testModOp()
   assertAlmostEquals( mod( 5.1, -3.1) - -1.1, 0, 2*eps)
   assertAlmostEquals( mod( 5.1,  3.1) -  2  , 0, 2*eps)
 
-  assertEquals( tostring(mod( 1,  inf)), 'nan' )
-  assertEquals( tostring(mod(-1,  inf)), 'nan' )
-  assertEquals( tostring(mod( 1, -inf)), 'nan' )
-  assertEquals( tostring(mod(-1, -inf)), 'nan' )
+  assertNaN( mod( 1,  inf) )
+  assertNaN( mod(-1,  inf) )
+  assertNaN( mod( 1, -inf) )
+  assertNaN( mod(-1, -inf) )
 
-  assertEquals( tostring(mod( inf,  inf)), 'nan' )
-  assertEquals( tostring(mod(-inf, -inf)), 'nan' )
-  assertEquals( tostring(mod( inf,  nan)), 'nan' )
-  assertEquals( tostring(mod(-inf,  nan)), 'nan' )
-  assertEquals( tostring(mod(   1,    0)), 'nan' )
-  assertEquals( tostring(mod(   1,  - 0)), 'nan' )
-  assertEquals( tostring(mod( nan,  nan)), 'nan' )
+  assertNaN( mod( inf,  inf) )
+  assertNaN( mod(-inf, -inf) )
+  assertNaN( mod( inf,  nan) )
+  assertNaN( mod(-inf,  nan) )
+  assertNaN( mod(   1,    0) )
+  assertNaN( mod(   1,  - 0) )
+  assertNaN( mod( nan,  nan) )
 end
 
 function TestLuaGmath:testPowOp()
@@ -1762,10 +1763,10 @@ function TestLuaGmath:testPowOp()
   assertEquals   (pow( nan, - 0 ),   1  )
   assertEquals   (pow(-nan, - 0 ),   1  )
 
-  assertEquals   ( tostring(pow(- 1  , 0.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  ,-0.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  , 1.5)), 'nan' )
-  assertEquals   ( tostring(pow(- 1  ,-1.5)), 'nan' )
+  assertNaN( pow(- 1  , 0.5) )
+  assertNaN( pow(- 1  ,-0.5) )
+  assertNaN( pow(- 1  , 1.5) )
+  assertNaN( pow(- 1  ,-1.5) )
 
   assertEquals   (pow(  0   , -inf),  inf )
   assertEquals   (pow(- 0   , -inf),  inf )
@@ -1819,31 +1820,31 @@ function TestLuaGmath:testPowOp()
   assertEquals  ( pow( inf  ,   10),  inf )
   assertEquals  ( pow( inf  ,   11),  inf )
 
-  assertEquals   ( tostring(pow( 0  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-0  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( 0  , -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-0  , -nan)), 'nan' )
+  assertNaN( pow( 0  ,  nan) )
+  assertNaN( pow(-0  ,  nan) )
+  assertNaN( pow( 0  , -nan) )
+  assertNaN( pow(-0  , -nan) )
 
-  assertEquals   ( tostring(pow(-1  ,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-1  , -nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan,   1 )), 'nan' )
-  assertEquals   ( tostring(pow(-nan,   1 )), 'nan' )
-  assertEquals   ( tostring(pow( nan, - 1 )), 'nan' )
-  assertEquals   ( tostring(pow(-nan, - 1 )), 'nan' )
+  assertNaN( pow(-1  ,  nan) )
+  assertNaN( pow(-1  , -nan) )
+  assertNaN( pow( nan,   1 ) )
+  assertNaN( pow(-nan,   1 ) )
+  assertNaN( pow( nan, - 1 ) )
+  assertNaN( pow(-nan, - 1 ) )
 
-  assertEquals   ( tostring(pow( inf,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-inf,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( inf, -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-inf, -nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan,  inf)), 'nan' )
-  assertEquals   ( tostring(pow(-nan,  inf)), 'nan' )
-  assertEquals   ( tostring(pow( nan, -inf)), 'nan' )
-  assertEquals   ( tostring(pow(-nan, -inf)), 'nan' )
+  assertNaN( pow( inf,  nan) )
+  assertNaN( pow(-inf,  nan) )
+  assertNaN( pow( inf, -nan) )
+  assertNaN( pow(-inf, -nan) )
+  assertNaN( pow( nan,  inf) )
+  assertNaN( pow(-nan,  inf) )
+  assertNaN( pow( nan, -inf) )
+  assertNaN( pow(-nan, -inf) )
 
-  assertEquals   ( tostring(pow( nan,  nan)), 'nan' )
-  assertEquals   ( tostring(pow(-nan,  nan)), 'nan' )
-  assertEquals   ( tostring(pow( nan, -nan)), 'nan' )
-  assertEquals   ( tostring(pow(-nan, -nan)), 'nan' )
+  assertNaN( pow( nan,  nan) )
+  assertNaN( pow(-nan,  nan) )
+  assertNaN( pow( nan, -nan) )
+  assertNaN( pow(-nan, -nan) )
 end
 
 function TestLuaGmath:testPowOp2()
@@ -1915,10 +1916,10 @@ function TestLuaGmath:testPowOp2()
   assertEquals   (  nan ^- 0 ,   1  )
   assertEquals   ((-nan)^- 0 ,   1  )
 
-  assertEquals   ( tostring((- 1)^ 0.5), 'nan' )
-  assertEquals   ( tostring((- 1)^-0.5), 'nan' )
-  assertEquals   ( tostring((- 1)^ 1.5), 'nan' )
-  assertEquals   ( tostring((- 1)^-1.5), 'nan' )
+  assertNaN( (- 1)^ 0.5 )
+  assertNaN( (- 1)^-0.5 )
+  assertNaN( (- 1)^ 1.5 )
+  assertNaN( (- 1)^-1.5 )
 
   assertEquals   (   0    ^ -inf,  inf )
   assertEquals   ((- 0   )^ -inf,  inf )
@@ -1972,31 +1973,31 @@ function TestLuaGmath:testPowOp2()
   assertEquals  (    inf  ^   10 ,  inf )
   assertEquals  (    inf  ^   11 ,  inf )
 
-  assertEquals   ( tostring(  0   ^  nan), 'nan' )
-  assertEquals   ( tostring((-0  )^  nan), 'nan' )
-  assertEquals   ( tostring(  0   ^ -nan), 'nan' )
-  assertEquals   ( tostring((-0  )^ -nan), 'nan' )
+  assertNaN(   0   ^  nan )
+  assertNaN( (-0  )^  nan )
+  assertNaN(   0   ^ -nan )
+  assertNaN( (-0  )^ -nan )
 
-  assertEquals   ( tostring((-1  )^  nan), 'nan' )
-  assertEquals   ( tostring((-1  )^ -nan), 'nan' )
-  assertEquals   ( tostring(  nan ^   1 ), 'nan' )
-  assertEquals   ( tostring((-nan)^   1 ), 'nan' )
-  assertEquals   ( tostring(  nan ^ - 1 ), 'nan' )
-  assertEquals   ( tostring((-nan)^ - 1 ), 'nan' )
+  assertNaN( (-1  )^  nan )
+  assertNaN( (-1  )^ -nan )
+  assertNaN(   nan ^   1  )
+  assertNaN( (-nan)^   1  )
+  assertNaN(   nan ^ - 1  )
+  assertNaN( (-nan)^ - 1  )
 
-  assertEquals   ( tostring(  inf ^  nan), 'nan' )
-  assertEquals   ( tostring((-inf)^  nan), 'nan' )
-  assertEquals   ( tostring(  inf ^ -nan), 'nan' )
-  assertEquals   ( tostring((-inf)^ -nan), 'nan' )
-  assertEquals   ( tostring(  nan ^  inf), 'nan' )
-  assertEquals   ( tostring((-nan)^  inf), 'nan' )
-  assertEquals   ( tostring(  nan ^ -inf), 'nan' )
-  assertEquals   ( tostring((-nan)^ -inf), 'nan' )
+  assertNaN(   inf ^  nan )
+  assertNaN( (-inf)^  nan )
+  assertNaN(   inf ^ -nan )
+  assertNaN( (-inf)^ -nan )
+  assertNaN(   nan ^  inf )
+  assertNaN( (-nan)^  inf )
+  assertNaN(   nan ^ -inf )
+  assertNaN( (-nan)^ -inf )
 
-  assertEquals   ( tostring(  nan ^  nan), 'nan' )
-  assertEquals   ( tostring((-nan)^  nan), 'nan' )
-  assertEquals   ( tostring(  nan ^ -nan), 'nan' )
-  assertEquals   ( tostring((-nan)^ -nan), 'nan' )
+  assertNaN(   nan ^  nan )
+  assertNaN( (-nan)^  nan )
+  assertNaN(   nan ^ -nan )
+  assertNaN( (-nan)^ -nan )
 end
 
 -- generic complex functions
@@ -2015,7 +2016,7 @@ function TestLuaGmath:testCarg()
   assertEquals( carg(-huge) , pi )
   assertEquals( carg(- inf) , pi )
 
-  assertEquals( tostring(carg(nan)), 'nan' )
+  assertNaN( carg(nan) )
 end
 
 function TestLuaGmath:testReal()
@@ -2032,7 +2033,7 @@ function TestLuaGmath:testReal()
   assertEquals( real(-huge) , -huge )
   assertEquals( real(- inf) , - inf )
 
-  assertEquals( tostring(real(nan)), 'nan' )
+  assertNaN( real(nan) )
 end
 
 function TestLuaGmath:testImag()
@@ -2065,7 +2066,7 @@ function TestLuaGmath:testConj()
   assertEquals( conj(-huge) , -huge )
   assertEquals( conj(- inf) , - inf )
 
-  assertEquals( tostring(conj(nan)), 'nan' )
+  assertNaN( conj(nan) )
 end
 
 function TestLuaGmath:testNorm()
@@ -2082,7 +2083,7 @@ function TestLuaGmath:testNorm()
   assertEquals( norm(-huge) ,  huge )
   assertEquals( norm(- inf) ,   inf )
 
-  assertEquals( tostring(norm(nan)), 'nan' )
+  assertNaN( norm(nan) )
 end
 
 function TestLuaGmath:testRect()
@@ -2099,7 +2100,7 @@ function TestLuaGmath:testRect()
   assertEquals( rect(-huge) ,  huge )
   assertEquals( rect(- inf) ,   inf )
 
-  assertEquals( tostring(rect(nan)), 'nan' )
+  assertNaN( rect(nan) )
 end
 
 function TestLuaGmath:testPolar()
@@ -2116,7 +2117,7 @@ function TestLuaGmath:testPolar()
   assertEquals( polar(-huge) , huge )
   assertEquals( polar(- inf) ,  inf )
 
-  assertEquals( tostring(polar(nan)), 'nan' )
+  assertNaN( polar(nan) )
 end
 
 -- delegation --
