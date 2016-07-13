@@ -164,10 +164,10 @@ end
 M.private.sortedPairs = sortedPairs
 
 local function strsplit(delimiter, text)
--- Split text into a list consisting of the strings in text,
--- separated by strings matching delimiter (which may be a pattern).
--- example: strsplit(",%s*", "Anna, Bob, Charlie,Dolores")
-    if string.find("", delimiter, 1, true) then -- this would result in endless loops
+-- Split text into a list consisting of the strings in text, separated
+-- by strings matching delimiter (which may _NOT_ be a pattern).
+-- Example: strsplit(", ", "Anna, Bob, Charlie, Dolores")
+    if delimiter == "" then -- this would result in endless loops
         error("delimiter matches empty string!")
     end
     local list, pos, first, last = {}, 1
@@ -193,7 +193,7 @@ M.private.hasNewLine = hasNewLine
 
 local function prefixString( prefix, s )
     -- Prefix all the lines of s with prefix
-    return prefix .. table.concat(strsplit('\n', s), '\n' .. prefix)
+    return prefix .. string.gsub(s, '\n', '\n' .. prefix)
 end
 M.private.prefixString = prefixString
 
@@ -471,15 +471,14 @@ local function _table_contains(t, element)
         local type_e = type(element)
         for _, value in pairs(t) do
             if type(value) == type_e then
+                if value == element then
+                    return true
+                end
                 if type_e == 'table' then
                     -- if we wanted recursive items content comparison, we could use
                     -- _is_table_items_equals(v, expected) but one level of just comparing
                     -- items is sufficient
                     if M.private._is_table_equals( value, element ) then
-                        return true
-                    end
-                else
-                    if value == element then
                         return true
                     end
                 end
@@ -490,54 +489,72 @@ local function _table_contains(t, element)
 end
 
 local function _is_table_items_equals(actual, expected )
-    if (type(actual) == 'table') and (type(expected) == 'table') then
-        for k,v in pairs(actual) do
+    local type_a, type_e = type(actual), type(expected)
+
+    if (type_a == 'table') and (type_e == 'table') then
+        for k, v in pairs(actual) do
             if not _table_contains(expected, v) then
                 return false
             end
         end
-        for k,v in pairs(expected) do
+        for k, v in pairs(expected) do
             if not _table_contains(actual, v) then
                 return false
             end
         end
         return true
-    elseif type(actual) ~= type(expected) then
+
+    elseif type_a ~= type_e then
         return false
-    elseif actual == expected then
-        return true
+
+    elseif actual ~= expected then
+        return false
     end
-    return false
+
+    return true
 end
 
-local function _is_table_equals(actual, expected)
-    if (type(actual) == 'table') and (type(expected) == 'table') then
+local function _is_table_equals(actual, expected, recursions)
+    local type_a, type_e = type(actual), type(expected)
+    recursions = recursions or {}
+
+    if type_a ~= type_e then
+        return false -- different types won't match
+    end
+
+    if (type_a == 'table') --[[ and (type_e == 'table') ]] and not recursions[actual] then
+        -- Tables must have identical element count, or they can't match.
         if (#actual ~= #expected) then
             return false
         end
 
-        local actualTableKeys = {}
-        for k,v in pairs(actual) do
+        -- add "actual" to the recursions table, to detect and avoid loops
+        recursions[actual] = true
+
+        local actualKeysMatched, actualTableKeys = {}, {}
+
+        for k, v in pairs(actual) do
             if M.TABLE_EQUALS_KEYBYCONTENT and type(k) == "table" then
                 -- If the keys are tables, things get a bit tricky here as we
                 -- can have _is_table_equals(k1, k2) and t[k1] ~= t[k2]. So we
                 -- collect actual's table keys, group them by length for
                 -- performance, and then for each table key in expected we look
                 -- it up in actualTableKeys.
-                if not actualTableKeys[#k] then actualTableKeys[#k] = {} end
-                table.insert(actualTableKeys[#k], k)
+                local count = #k
+                if not actualTableKeys[count] then actualTableKeys[count] = {} end
+                table.insert(actualTableKeys[count], k)
             else
-                if not _is_table_equals(v, expected[k]) then
-                    return false
+                if not _is_table_equals(v, expected[k], recursions) then
+                    return false -- Mismatch on value, tables can't be equal
                 end
+                actualKeysMatched[k] = true -- Keep track of matched keys
             end
         end
 
-        for k,v in pairs(expected) do
+        for k, v in pairs(expected) do
             if M.TABLE_EQUALS_KEYBYCONTENT and type(k) == "table" then
-                local candidates = actualTableKeys[#k]
+                local candidates, found = actualTableKeys[#k], nil
                 if not candidates then return false end
-                local found
                 for i, candidate in pairs(candidates) do
                     if _is_table_equals(candidate, k) then
                         found = candidate
@@ -548,13 +565,24 @@ local function _is_table_equals(actual, expected)
                         break
                     end
                 end
-                if not(found and _is_table_equals(actual[found], v)) then return false end
-            else
-                if not _is_table_equals(v, actual[k]) then
+                if not(found and _is_table_equals(actual[found], v)) then
+                    -- Either no matching key, or a different value
                     return false
                 end
+            else
+                if not actualKeysMatched[k] then
+                    -- Found a key that we did not see in "actual" -> mismatch
+                    return false
+                end
+                -- Otherwise we know that actual[k] was already matched
+                -- against v = expected[k]. Remove k from the table again.
+                actualKeysMatched[k] = nil
             end
         end
+
+        -- If we have any keys left in the actualKeysMatched table, then those
+        -- were missing from "expected", meaning the tables are different.
+        if next(actualKeysMatched) then return false end
 
         if M.TABLE_EQUALS_KEYBYCONTENT then
             for _, keys in pairs(actualTableKeys) do
@@ -566,12 +594,12 @@ local function _is_table_equals(actual, expected)
         end
 
         return true
-    elseif type(actual) ~= type(expected) then
+
+    elseif actual ~= expected then
         return false
-    elseif actual == expected then
-        return true
     end
-    return false
+
+    return true
 end
 M.private._is_table_equals = _is_table_equals
 
@@ -673,9 +701,9 @@ function M.almostEquals( actual, expected, margin )
             prettystr(actual), prettystr(expected), prettystr(margin))
     end
     if margin < 0 then
-        error('almostEquals: margin must be positive, current value is ' .. margin, 3)
+        error('almostEquals: margin must not be negative, current value is ' .. margin, 3)
     end
-    return math.abs(expected - actual) <= margin
+    return math.abs(expected - actual) <= realmargin
 end
 
 function M.assertAlmostEquals( actual, expected, margin )
@@ -933,6 +961,7 @@ local list_of_funcs = {
     { 'assertIsTable'           , 'assert_is_table' },
     { 'assertIsBoolean'         , 'assert_is_boolean' },
     { 'assertIsNil'             , 'assert_is_nil' },
+    { 'assertIsNaN'             , 'assert_is_nan' },
     { 'assertIsFunction'        , 'assert_is_function' },
     { 'assertIsThread'          , 'assert_is_thread' },
     { 'assertIsUserdata'        , 'assert_is_userdata' },
@@ -954,7 +983,7 @@ local list_of_funcs = {
     { 'assertIsTable'           , 'assert_table' },
     { 'assertIsBoolean'         , 'assert_boolean' },
     { 'assertIsNil'             , 'assert_nil' },
-    { 'assertIsNan'             , 'assert_nan' },
+    { 'assertIsNaN'             , 'assert_nan' },
     { 'assertIsFunction'        , 'assert_function' },
     { 'assertIsThread'          , 'assert_thread' },
     { 'assertIsUserdata'        , 'assert_userdata' },
@@ -965,7 +994,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assert_not_is_table' },
     { 'assertNotIsBoolean'      , 'assert_not_is_boolean' },
     { 'assertNotIsNil'          , 'assert_not_is_nil' },
-    { 'assertNotIsNan'          , 'assert_not_is_nan' },
+    { 'assertNotIsNaN'          , 'assert_not_is_nan' },
     { 'assertNotIsFunction'     , 'assert_not_is_function' },
     { 'assertNotIsThread'       , 'assert_not_is_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_is_userdata' },
@@ -976,7 +1005,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assertNotTable' },
     { 'assertNotIsBoolean'      , 'assertNotBoolean' },
     { 'assertNotIsNil'          , 'assertNotNil' },
-    { 'assertNotIsNan'          , 'assertNotNan' },
+    { 'assertNotIsNaN'          , 'assertNotNaN' },
     { 'assertNotIsFunction'     , 'assertNotFunction' },
     { 'assertNotIsThread'       , 'assertNotThread' },
     { 'assertNotIsUserdata'     , 'assertNotUserdata' },
@@ -987,7 +1016,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assert_not_table' },
     { 'assertNotIsBoolean'      , 'assert_not_boolean' },
     { 'assertNotIsNil'          , 'assert_not_nil' },
-    { 'assertNotIsNan'          , 'assert_not_nan' },
+    { 'assertNotIsNaN'          , 'assert_not_nan' },
     { 'assertNotIsFunction'     , 'assert_not_function' },
     { 'assertNotIsThread'       , 'assert_not_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_userdata' },
@@ -1005,7 +1034,7 @@ local list_of_funcs = {
 
 -- Create all aliases in M
 for _,v in ipairs( list_of_funcs ) do
-    funcname, alias = v[1], v[2]
+    local funcname, alias = v[1], v[2]
     M[alias] = M[funcname]
 
     if EXPORT_ASSERT_TO_GLOBALS then
@@ -2004,8 +2033,8 @@ end
                     error( 'Instance must be a table or a function, not a '..type(instance)..', value '..prettystr(instance))
                 end
                 if M.LuaUnit.isClassMethod( name ) then
-                    className, methodName = M.LuaUnit.splitClassMethod( name )
-                    methodInstance = instance[methodName]
+                    local className, methodName = M.LuaUnit.splitClassMethod( name )
+                    local methodInstance = instance[methodName]
                     if methodInstance == nil then
                         error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
                     end
@@ -2040,11 +2069,9 @@ end
         --   * { class name, class instance }
         --   * { class.method name, class instance }
 
-        local expandedList, filteredList, filteredOutList, className, methodName, methodInstance
-        expandedList = self.expandClasses( listOfNameAndInst )
-
-        filteredList, filteredOutList = self.applyPatternFilter(
-            self.patternIncludeFilter, self.patternExcludeFilter, expandedList )
+        local expandedList = self.expandClasses( listOfNameAndInst )
+        local filteredList, filteredOutList
+            = self.applyPatternFilter( self.patternFilter, expandedList )
 
         self:startSuite( #filteredList, #filteredOutList )
 
@@ -2057,8 +2084,8 @@ end
                     error( 'Instance must be a table or a function, not a '..type(instance)..', value '..prettystr(instance))
                 else
                     assert( M.LuaUnit.isClassMethod( name ) )
-                    className, methodName = M.LuaUnit.splitClassMethod( name )
-                    methodInstance = instance[methodName]
+                    local className, methodName = M.LuaUnit.splitClassMethod( name )
+                    local methodInstance = instance[methodName]
                     if methodInstance == nil then
                         error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
                     end
@@ -2083,12 +2110,12 @@ end
     function M.LuaUnit:runSuiteByNames( listOfName )
         -- Run an explicit list of test names
 
-        local  className, methodName, instanceName, instance, methodInstance
+        local instanceName, instance
         local listOfNameAndInst = {}
 
         for i,name in ipairs( listOfName ) do
             if M.LuaUnit.isClassMethod( name ) then
-                className, methodName = M.LuaUnit.splitClassMethod( name )
+                local className, methodName = M.LuaUnit.splitClassMethod( name )
                 instanceName = className
                 instance = _G[instanceName]
 
@@ -2100,7 +2127,7 @@ end
                     error( 'Instance of '..instanceName..' must be a table, not '..type(instance))
                 end
 
-                methodInstance = instance[methodName]
+                local methodInstance = instance[methodName]
                 if methodInstance == nil then
                     error( "Could not find method in class "..tostring(className).." for method "..tostring(methodName) )
                 end
