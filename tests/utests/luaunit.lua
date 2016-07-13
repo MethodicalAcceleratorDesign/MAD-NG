@@ -703,7 +703,7 @@ function M.almostEquals( actual, expected, margin )
     if margin < 0 then
         error('almostEquals: margin must not be negative, current value is ' .. margin, 3)
     end
-    return math.abs(expected - actual) <= realmargin
+    return math.abs(expected - actual) <= margin
 end
 
 function M.assertAlmostEquals( actual, expected, margin )
@@ -2070,8 +2070,8 @@ end
         --   * { class.method name, class instance }
 
         local expandedList = self.expandClasses( listOfNameAndInst )
-        local filteredList, filteredOutList
-            = self.applyPatternFilter( self.patternFilter, expandedList )
+        local filteredList, filteredOutList = self.applyPatternFilter(
+            self.patternIncludedFilter, self.patternExcludedFilter, expandedList )
 
         self:startSuite( #filteredList, #filteredOutList )
 
