@@ -6,7 +6,7 @@
  | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- | Contrib: -
+ | Contrib: A.Z. Teska, aleksandra.teska at cern.ch
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -78,7 +78,7 @@ Mlog.__help.self = M.__help.self
 -- locals ---------------------------------------------------------------------o
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
-local is_number, is_nil, defhelp          in require 'madl_utils'
+local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
 local abs, ceil, floor, log, max          in math
 
 
@@ -95,6 +95,7 @@ local logrange = typeof 'logxrange'
 -- implementation -------------------------------------------------------------o
 
 local function value (r, x)
+  if is_inf(r.step) and x == 0 then return r.start end --to be revised
   return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
 end
 
@@ -151,7 +152,7 @@ end
 local function iterincr (r, i)
   local v = value(r, i)
   if v <= r.stop then return i+1, v end
-end   
+end
 
 local function iterincrlog (r, i)
   local v = valuelog(r, i)
@@ -249,11 +250,21 @@ function Mlog.__index (r, a)
   if is_number(a) then return getlog(r, a-1) else return Mlog[a] end
 end
 
+--function M.__ipairs (r)
+--  if r.step > 0 then
+--    return iterincr, r, 0
+--  elseif r.step < 0 then
+--    return iterdecr, r, 0
+--  end
+--end
+
 function M.__ipairs (r)
-  if r.step > 0 then
+  if r.step > 0 and r.start <= r.stop then
     return iterincr, r, 0
-  elseif r.step < 0 then
+  elseif r.step < 0 and r.start > r.stop then
     return iterdecr, r, 0
+  else
+    return false
   end
 end
 
@@ -299,10 +310,6 @@ EXAMPLES
   local is_empty in range
   print( is_range 'yes' )                     -- false
   print( is_range(0..1) )                     -- true
-  print( is_range(log(0..1)) )                -- false
-
-  print( is_logrange 'yes' )                  -- false
-  print( is_logrange(0..1) )                  -- false
   print( is_logrange(log(0..1)) )             -- true
 
   print( is_empty(1,10,-1) )                  -- true
@@ -366,12 +373,10 @@ end
 
 M.get         = get
 M.value       = value
---M.step       = step
 M.__len       = M.size
 
 Mlog.get      = getlog
 Mlog.value    = valuelog
---Mlog.step    = steplog
 Mlog.__len    = Mlog.size
 
 function M.reverse (r)
@@ -475,13 +480,10 @@ EXAMPLES
   print( (1..10)             :range()  )          -- 1,10,1
   print( nrange(1,10,10)     :range()  )          -- 1,10,1
   print( logrange(1,10^6,10) :range()  )          -- 1,10^6,10
-  print( nlogrange(1,10,1)   :range()  )          -- 1,10,inf
-  print( range(1,10,0)       :bounds() )          -- nil,nil
   print( range(1,10,1)       :bounds() )          -- 1,10
   print( range(10,1,-1)      :bounds() )          -- 1,10
-  print( logrange(10^5,10,1) :bounds() )          -- nil, nil
-  print( logrange(10^5,10,10):bounds() )          -- 10^5, 10
   print( range(1,10,-1)      :bounds() )          -- 10,1
+  print( logrange(10^5,10,10):bounds() )          -- 10^5, 10
 
 SEE ALSO
   None.
@@ -504,7 +506,7 @@ SYNOPSIS
 DESCRIPTION
 
 RETURN VALUES
-  size returns the number of possible steps in a given range. reverse returns
+  size returns the number of points contained in a given range. reverse returns
   range with reversed from original start-stop lead and step with opposite sign
   for ranges and 1/step for logranges. Function equal returns true only if
   compared ranges have same start, stop and step values.
@@ -512,20 +514,15 @@ RETURN VALUES
 EXAMPLES
   local logrange, range, nrange in MAD
   print( logrange(1,10^6,10)  == log(1..10^6..10))  -- true
-  print( range(1,20)          ==  1..20          )  -- true
-  print( range(-1,-20,-1)     == -1..-20..-1     )  -- true
+  print( range(1,20)          ==  1..20..1       )  -- true
   print( nrange(1,20,20)      ==  1..20          )  -- true
 
-  print( range(1)            :size() )              -- 1
   print( range(1,10)         :size() )              -- 10
   print( range(1,-10)        :size() )              -- 0
-  print( logrange(10^7,0,0.1):size() )              -- inf
-  print( logrange(1,10^6,1)  :size() )              -- 0
   print( logrange(1,10^6,10) :size() )              -- 7
 
   print( (1..10..0.1)         :reverse() )          -- (10..1..-0.1)
   print( range(2,20,2)        :reverse() )          -- range(20,2,-2)
-  print( nrange(1,2,2)        :reverse() )          -- nrange(2,1,2)
   print( logrange(1,10^6,10)  :reverse() )          -- logrange(10^6,1,0.1)
   print( logrange(10^7,10,0.1):reverse() )          -- logrange(10,10^7,10)
 
