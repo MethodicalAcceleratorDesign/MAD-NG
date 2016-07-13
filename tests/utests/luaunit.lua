@@ -55,6 +55,9 @@ Options:
   -p, --pattern PATTERN:  Execute all test names matching the Lua PATTERN
                           May be repeated to include severals patterns
                           Make sure you escape magic chars like +? with %
+  -x, --exclude PATTERN:  Exclude all test names matching the Lua PATTERN
+                          May be repeated to include severals patterns
+                          Make sure you escape magic chars like +? with %
   testname1, testname2, ... : tests to run in the form of testFunction,
                               TestClass or TestClass.testMethod
 ]]
@@ -617,13 +620,13 @@ function M.assertError(f, ...)
 end
 
 function M.assertTrue(value)
-    if not value then
+    if value ~= true then
         failure("expected: true, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertFalse(value)
-    if value then
+    if value ~= false then
         failure("expected: false, actual: " ..prettystr(value), 2)
     end
 end
@@ -637,6 +640,18 @@ end
 function M.assertNotIsNil(value)
     if value == nil then
         failure("expected non nil value, received nil", 2)
+    end
+end
+
+function M.assertIsNaN(value)
+    if tostring(value) ~= 'nan' then
+        failure("expected: nan, actual: " ..prettystr(value), 2)
+    end
+end
+
+function M.assertNotIsNaN(value)
+    if tostring(value) == 'nan' then
+        failure("expected non nan value, received nan", 2)
     end
 end
 
@@ -928,6 +943,7 @@ local list_of_funcs = {
     { 'assertIsTable'           , 'assertTable' },
     { 'assertIsBoolean'         , 'assertBoolean' },
     { 'assertIsNil'             , 'assertNil' },
+    { 'assertIsNaN'             , 'assertNaN' },
     { 'assertIsFunction'        , 'assertFunction' },
     { 'assertIsThread'          , 'assertThread' },
     { 'assertIsUserdata'        , 'assertUserdata' },
@@ -938,6 +954,7 @@ local list_of_funcs = {
     { 'assertIsTable'           , 'assert_table' },
     { 'assertIsBoolean'         , 'assert_boolean' },
     { 'assertIsNil'             , 'assert_nil' },
+    { 'assertIsNan'             , 'assert_nan' },
     { 'assertIsFunction'        , 'assert_function' },
     { 'assertIsThread'          , 'assert_thread' },
     { 'assertIsUserdata'        , 'assert_userdata' },
@@ -948,6 +965,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assert_not_is_table' },
     { 'assertNotIsBoolean'      , 'assert_not_is_boolean' },
     { 'assertNotIsNil'          , 'assert_not_is_nil' },
+    { 'assertNotIsNan'          , 'assert_not_is_nan' },
     { 'assertNotIsFunction'     , 'assert_not_is_function' },
     { 'assertNotIsThread'       , 'assert_not_is_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_is_userdata' },
@@ -958,6 +976,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assertNotTable' },
     { 'assertNotIsBoolean'      , 'assertNotBoolean' },
     { 'assertNotIsNil'          , 'assertNotNil' },
+    { 'assertNotIsNan'          , 'assertNotNan' },
     { 'assertNotIsFunction'     , 'assertNotFunction' },
     { 'assertNotIsThread'       , 'assertNotThread' },
     { 'assertNotIsUserdata'     , 'assertNotUserdata' },
@@ -968,6 +987,7 @@ local list_of_funcs = {
     { 'assertNotIsTable'        , 'assert_not_table' },
     { 'assertNotIsBoolean'      , 'assert_not_boolean' },
     { 'assertNotIsNil'          , 'assert_not_nil' },
+    { 'assertNotIsNan'          , 'assert_not_nan' },
     { 'assertNotIsFunction'     , 'assert_not_function' },
     { 'assertNotIsThread'       , 'assert_not_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_userdata' },
@@ -1443,6 +1463,7 @@ end
         -- --error, -e: treat errors as fatal (quit program)
         -- --output, -o, + name: select output type
         -- --pattern, -p, + pattern: run test matching pattern, may be repeated
+        -- --exclude, -x, + pattern: run test not matching pattern, may be repeated
         -- --name, -n, + fname: name of output file for junit, default to stdout
         -- [testnames, ...]: run selected test names
         --
@@ -1451,12 +1472,14 @@ end
         -- output: nil, 'tap', 'junit', 'text', 'nil'
         -- testNames: nil or a list of test names to run
         -- pattern: nil or a list of patterns
+        -- exclude: nil or a list of patterns
 
         local result = {}
         local state = nil
         local SET_OUTPUT = 1
         local SET_PATTERN = 2
-        local SET_FNAME = 3
+        local SET_EXCLUDE = 3
+        local SET_FNAME = 4
 
         if cmdLine == nil then
             return result
@@ -1490,6 +1513,9 @@ end
             elseif option == '--pattern' or option == '-p' then
                 state = SET_PATTERN
                 return state
+            elseif option == '--exclude' or option == '-x' then
+                state = SET_EXCLUDE
+                return state
             end
             error('Unknown option: '..option,3)
         end
@@ -1506,6 +1532,13 @@ end
                     table.insert( result['pattern'], cmdArg )
                 else
                     result['pattern'] = { cmdArg }
+                end
+                return
+            elseif state == SET_EXCLUDE then
+                if result['exclude'] then
+                    table.insert( result['exclude'], cmdArg )
+                else
+                    result['exclude'] = { cmdArg }
                 end
                 return
             end
@@ -1561,6 +1594,23 @@ end
         -- if patternFilter is nil, return true (no filtering)
         if patternFilter == nil then
             return true
+        end
+
+        for i,pattern in ipairs(patternFilter) do
+            if string.find(expr, pattern) then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    function M.LuaUnit.patternExclude( patternFilter, expr )
+        -- check if any of patternFilter is contained in expr. If so, return true.
+        -- return false if None of the patterns are contained in expr
+        -- if patternFilter is nil, return false (no filtering)
+        if patternFilter == nil then
+            return false
         end
 
         for i,pattern in ipairs(patternFilter) do
@@ -1690,7 +1740,8 @@ end
             startTime = os.clock(),
             startDate = os.date(os.getenv('LUAUNIT_DATEFMT')),
             startIsodate = os.date('%Y-%m-%dT%H:%M:%S'),
-            patternFilter = self.patternFilter,
+            patternIncludeFilter = self.patternIncludeFilter,
+            patternExcludeFilter = self.patternExcludeFilter,
             tests = {},
             failures = {},
             errors = {},
@@ -1968,11 +2019,12 @@ end
         return result
     end
 
-    function M.LuaUnit.applyPatternFilter( patternFilter, listOfNameAndInst )
+    function M.LuaUnit.applyPatternFilter( patternIncFilter, patternExcFilter, listOfNameAndInst )
         local included, excluded = {}, {}
         for i, v in ipairs( listOfNameAndInst ) do
             -- local name, instance = v[1], v[2]
-            if M.LuaUnit.patternInclude( patternFilter, v[1] ) then
+            if  M.LuaUnit.patternInclude( patternIncFilter, v[1] ) and
+            not M.LuaUnit.patternExclude( patternExcFilter, v[1] ) then
                 table.insert( included, v )
             else
                 table.insert( excluded, v )
@@ -1991,7 +2043,8 @@ end
         local expandedList, filteredList, filteredOutList, className, methodName, methodInstance
         expandedList = self.expandClasses( listOfNameAndInst )
 
-        filteredList, filteredOutList = self.applyPatternFilter( self.patternFilter, expandedList )
+        filteredList, filteredOutList = self.applyPatternFilter(
+            self.patternIncludeFilter, self.patternExcludeFilter, expandedList )
 
         self:startSuite( #filteredList, #filteredOutList )
 
@@ -2111,11 +2164,12 @@ end
 
         -- We expect these option fields to be either `nil` or contain
         -- valid values, so it's safe to always copy them directly.
-        self.verbosity     = options.verbosity
-        self.quitOnError   = options.quitOnError
-        self.quitOnFailure = options.quitOnFailure
-        self.fname         = options.fname
-        self.patternFilter = options.pattern
+        self.verbosity            = options.verbosity
+        self.quitOnError          = options.quitOnError
+        self.quitOnFailure        = options.quitOnFailure
+        self.fname                = options.fname
+        self.patternIncludeFilter = options.pattern
+        self.patternExcludeFilter = options.exclude
 
         if options.output and options.output:lower() == 'junit' and options.fname == nil then
             print('With junit output, a filename must be supplied with -n or --name')
