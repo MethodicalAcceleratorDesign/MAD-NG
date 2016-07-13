@@ -644,13 +644,13 @@ function M.assertNotIsNil(value)
 end
 
 function M.assertIsNaN(value)
-    if tostring(value) ~= 'nan' then
+    if type(value) ~= "number" or value == value then
         failure("expected: nan, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIsNaN(value)
-    if tostring(value) == 'nan' then
+    if type(value) == "number" and value ~= value then
         failure("expected non nan value, received nan", 2)
     end
 end
