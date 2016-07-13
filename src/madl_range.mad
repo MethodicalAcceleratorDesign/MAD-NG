@@ -6,7 +6,7 @@
  | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- | Contrib: -
+ | Contrib: A.Z. Teska, aleksandra.teska at cern.ch
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -78,11 +78,9 @@ Mlog.__help.self = M.__help.self
 -- locals ---------------------------------------------------------------------o
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
-local is_number, is_nil, defhelp          in require 'madl_utils'
+local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
 local abs, ceil, floor, log, max          in math
 
--- helper: to be checked as I suspect that better formula don't need it...
-local round = \x -> is_number(x) and (x<0 and floor(x+0.5) or ceil(x-0.5))
 
 -- ctypes are xrange and logxrange
 cdef [[
@@ -97,6 +95,7 @@ local logrange = typeof 'logxrange'
 -- implementation -------------------------------------------------------------o
 
 local function value (r, x)
+  if is_inf(r.step) and x == 0 then return r.start end --to be revised
   return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
 end
 
@@ -172,7 +171,7 @@ end
 
 local function size (start, stop, step)
   if step ~= 0 then
-    return max(0, round( (stop-start)/step + 1) )
+    return max(0, floor( (stop-start)/step + 1) )
   else
     return 0
   end
@@ -185,8 +184,9 @@ end
 -- alternate constructors with #steps specified
 
 local function step (start, stop, size)
-  if size == 1 then
-    return (stop - start) + 1
+  if size == 1  then
+   if     stop >= start then return (stop - start) + 1
+   elseif stop <  start then return (stop - start) - 1 end
   elseif size > 1 then
     return (stop - start) / abs(ceil(size) - 1)
   else
@@ -194,12 +194,8 @@ local function step (start, stop, size)
   end
 end
 
--- step
-local function n_pointlog (start, stop, npoint)
-  if is_range(start) or is_logrange(start) then
-    start, stop, npoint = start.start, start.stop, stop -- shift args
-  end
-  return npoint >= 1 and (stop/start)^(1/abs(ceil(npoint)-1)) or 1
+local function steplog (start, stop, size)
+  return size >= 1 and (stop/start)^(1/abs(ceil(size)-1)) or 1
 end
 
 local function nrange (start, stop, size)
@@ -209,11 +205,11 @@ local function nrange (start, stop, size)
   return range(start, stop, step(start, stop, size))
 end
 
-local function nlogrange (start, stop, npoint)
-  if is_nil(npoint) then return range(start, stop) end
-  assert(is_number(start) and is_number(stop) and is_number(npoint),
+local function nlogrange (start, stop, size)
+  if is_nil(size) then return range(start, stop) end
+  assert(is_number(start) and is_number(stop) and is_number(size),
          "invalid argument #1, #2 or #3 (number expected)")
-  return logrange(start, stop, n_pointlog(start, stop, npoint))
+  return logrange(start, stop, steplog(start, stop, size))
 end
 
 -- iterators
@@ -254,11 +250,21 @@ function Mlog.__index (r, a)
   if is_number(a) then return getlog(r, a-1) else return Mlog[a] end
 end
 
+--function M.__ipairs (r)
+--  if r.step > 0 then
+--    return iterincr, r, 0
+--  elseif r.step < 0 then
+--    return iterdecr, r, 0
+--  end
+--end
+
 function M.__ipairs (r)
-  if r.step > 0 then
+  if r.step > 0 and r.start <= r.stop then
     return iterincr, r, 0
-  elseif r.step < 0 then
+  elseif r.step < 0 and r.start > r.stop then
     return iterdecr, r, 0
+  else
+    return false
   end
 end
 
@@ -304,10 +310,6 @@ EXAMPLES
   local is_empty in range
   print( is_range 'yes' )                     -- false
   print( is_range(0..1) )                     -- true
-  print( is_range(log(0..1)) )                -- false
-
-  print( is_logrange 'yes' )                  -- false
-  print( is_logrange(0..1) )                  -- false
   print( is_logrange(log(0..1)) )             -- true
 
   print( is_empty(1,10,-1) )                  -- true
@@ -371,12 +373,10 @@ end
 
 M.get         = get
 M.value       = value
---M.npoint       = n_point
 M.__len       = M.size
 
 Mlog.get      = getlog
 Mlog.value    = valuelog
---Mlog.npoint    = n_pointlog
 Mlog.__len    = Mlog.size
 
 function M.reverse (r)
@@ -401,6 +401,16 @@ function Mlog.bounds (r)
   elseif r.step < 1 then
     return r.stop, r.start
   end
+end
+
+function M.overlap (r, s)
+  if r:size() == 0 or s:size() == 0 then
+    return false
+  end
+
+  local rl, rh = r:bounds()
+  local sl, sh = s:bounds()
+  return not (rl < sl and rh < sl or rl > sh)
 end
 
 M.__help.value = [=[
@@ -470,13 +480,10 @@ EXAMPLES
   print( (1..10)             :range()  )          -- 1,10,1
   print( nrange(1,10,10)     :range()  )          -- 1,10,1
   print( logrange(1,10^6,10) :range()  )          -- 1,10^6,10
-  print( nlogrange(1,10,1)   :range()  )          -- 1,10,inf
-  print( range(1,10,0)       :bounds() )          -- nil,nil
   print( range(1,10,1)       :bounds() )          -- 1,10
   print( range(10,1,-1)      :bounds() )          -- 1,10
-  print( logrange(10^5,10,1) :bounds() )          -- nil, nil
-  print( logrange(10^5,10,10):bounds() )          -- 10^5, 10
   print( range(1,10,-1)      :bounds() )          -- 10,1
+  print( logrange(10^5,10,10):bounds() )          -- 10^5, 10
 
 SEE ALSO
   None.
@@ -499,7 +506,7 @@ SYNOPSIS
 DESCRIPTION
 
 RETURN VALUES
-  size returns the number of possible steps in a given range. reverse returns
+  size returns the number of points contained in a given range. reverse returns
   range with reversed from original start-stop lead and step with opposite sign
   for ranges and 1/step for logranges. Function equal returns true only if
   compared ranges have same start, stop and step values.
@@ -507,20 +514,15 @@ RETURN VALUES
 EXAMPLES
   local logrange, range, nrange in MAD
   print( logrange(1,10^6,10)  == log(1..10^6..10))  -- true
-  print( range(1,20)          ==  1..20          )  -- true
-  print( range(-1,-20,-1)     == -1..-20..-1     )  -- true
+  print( range(1,20)          ==  1..20..1       )  -- true
   print( nrange(1,20,20)      ==  1..20          )  -- true
 
-  print( range(1)            :size() )              -- 1
   print( range(1,10)         :size() )              -- 10
   print( range(1,-10)        :size() )              -- 0
-  print( logrange(10^7,0,0.1):size() )              -- inf
-  print( logrange(1,10^6,1)  :size() )              -- 0
   print( logrange(1,10^6,10) :size() )              -- 7
 
   print( (1..10..0.1)         :reverse() )          -- (10..1..-0.1)
   print( range(2,20,2)        :reverse() )          -- range(20,2,-2)
-  print( nrange(1,2,2)        :reverse() )          -- nrange(2,1,2)
   print( logrange(1,10^6,10)  :reverse() )          -- logrange(10^6,1,0.1)
   print( logrange(10^7,10,0.1):reverse() )          -- logrange(10,10^7,10)
 
@@ -556,19 +558,7 @@ end]]
   return start, stop, 0
 end]]
 
-
 --[=[
-
-function M.overlap (r, s)
-  if r:size() == 0 or s:size() == 0 then
-    return false
-  end
-
-  local rl, rh = r:bounds()
-  local sl, sh = s:bounds()
-  return not (rl < sl and rh < sl or rl > sh)
-end
-
 -- convertion
 
 local function convert (r, ctor)
