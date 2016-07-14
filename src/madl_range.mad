@@ -77,9 +77,9 @@ Mlog.__help.self = M.__help.self
 
 -- locals ---------------------------------------------------------------------o
 
-local new, cdef, istype, typeof, metatype in require 'ffi'
-local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
-local abs, ceil, floor, log, max          in math
+local new, cdef, istype, typeof, metatype         in require 'ffi'
+local is_number, is_nil, is_inf, forget, defhelp  in require 'madl_utils'
+local abs, ceil, floor, log, max                  in math
 
 
 -- ctypes are xrange and logxrange
@@ -144,23 +144,22 @@ local function getlog (r, x)
   if x >= 0 and
     ((s > 1 and r.start > 0 or s < 1 and r.start < 0) and v <= r.stop) or
     ((s > 1 and r.start < 0 or s < 1 and r.start > 0) and v >= r.stop)
-  then return 
-v  end
+  then return v end
 end
 
 local function iterincr (r, i)
-local v = value(r, i)
-if v <= r.stop then return i+1, v end
+  local v = value(r, i)
+  if v <= r.stop then return i+1, v end
 end
 
 local function iterincrlog (r, i)
-local v = valuelog(r, i)
-if v <= r.stop then return i+1, v end
+  local v = valuelog(r, i)
+  if v <= r.stop then return i+1, v end
 end
 
 local function iterdecr (r, i)
-local v = value(r, i)
-if v >= r.stop then return i+1, v end
+  local v = value(r, i)
+  if v >= r.stop then return i+1, v end
 end
 
 local function iterdecrlog (r, i)
@@ -242,24 +241,13 @@ function Mlog.__index (r, a)
   if is_number(a) then return getlog(r, a-1) else return Mlog[a] end
 end
 
---function M.__ipairs (r)
---  if r.step > 0 and r.start <= r.stop then
---    return iterincr, r, 0
---  elseif r.step < 0 and r.start > r.stop then
---    return iterdecr, r, 0
---  else
---    return false
---  end
---end
-
 function M.__ipairs (r)
-  if r.step > 0 then 
+  if r.step > 0 then
     return iterincr, r, 0
   elseif r.step < 0 then
     return iterdecr, r, 0
-  else 
-    return false
   end
+  return forget
 end
 
 function Mlog.__ipairs (r)
@@ -384,10 +372,8 @@ end
 function M.bounds (r)
   if r.step > 0 and r.start <= r.stop then
     return r.start, r.stop
-  elseif r.step < 0 and r.start > r.stop then
+  elseif r.step < 0 and r.start >= r.stop then
     return r.stop, r.start
-  else
-    return nil
   end
 end
 
@@ -400,17 +386,12 @@ function Mlog.bounds (r)
 end
 
 function M.overlap (r, s)
-  if r:size() == 0 or s:size() == 0 then
-    return false
-  end
-
   local rl, rh = r:bounds()
   local sl, sh = s:bounds()
-  return not (rl < sl and rh < sl or rl > sh)
+  return not (rl == nil or sl == nil or rh < sl or rl > sh)
 end
 
 M.__help.value = [=[
-
 NAME
   value, get, index                   -- range interpolation
 
@@ -453,7 +434,6 @@ M.__help.get   = M.__help.value
 M.__help.index = M.__help.value
 
 M.__help.range = [=[
-
 NAME
   range, bounds, overlap
 
@@ -491,7 +471,6 @@ SEE ALSO
 M.__help.bounds = M.__help.range
 
 M.__help.equal = [=[
-
 NAME
   ==, size, reverse
 
@@ -511,7 +490,7 @@ RETURN VALUES
   compared ranges have same start, stop and step values.
 
 EXAMPLES
-  local logrange, range, nrange in MAD
+  local logrange, range, nrange, log in MAD
   print( logrange(1,10^6,10)  == log(1..10^6..10))  -- true
   print( range(1,20)          ==  1..20..1       )  -- true
   print( nrange(1,20,20)      ==  1..20          )  -- true
@@ -542,13 +521,6 @@ M.__help.reversed = M.__help.empty
   end
 end]]
 
---[[local function canonize(start, stop, step)
-  if not is_empty(start, stop, step) then
-    return start, stop, step
-  end
-  return start, stop, 0
-end]]
-
 --[=[
 -- convertion
 
@@ -567,9 +539,9 @@ end
 
 function M.tostring (r)
   if r.step == 1 then
-    return string.format("%g:%g", r.start, r.stop)
+    return string.format("%g..%g", r.start, r.stop)
   else
-    return string.format("%g:%g:%g", r.start, r.stop, r.step)
+    return string.format("%g..%g..%g", r.start, r.stop, r.step)
   end
 end
 

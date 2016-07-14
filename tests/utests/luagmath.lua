@@ -433,15 +433,17 @@ function TestLuaGmath:testDeg()
   assertEquals      ( deg(-2*pi   ) - -360, 0         )
   assertEquals      ( deg(-  pi   ) - -180, 0         )
   assertEquals      ( deg(-  pi/2 ) - - 90, 0         )
-  assertAlmostEquals( deg(-  pi/3 ) - - 60, 0, 40*eps ) -- pb w ± ?
+  assertAlmostEquals( deg(-  pi/3 ) - - 60, 0, 32*eps )
   assertEquals      ( deg(-  pi/4 ) - - 45, 0         )
-  assertAlmostEquals( deg(-  pi/6 ) - - 30, 0, 40*eps ) -- pb w ± ?
+  assertAlmostEquals( deg(-  pi/6 ) - - 30, 0, 16*eps )
+  assertAlmostEquals( deg(-  pi/12) - - 15, 0,  8*eps )
   assertEquals      ( deg(-  pi/18) - - 10, 0         )
   assertEquals      ( deg(   0    ) -    0, 0         )
   assertEquals      ( deg(   pi/18) -   10, 0         )
-  assertAlmostEquals( deg(   pi/6 ) -   30, 0, 40*eps ) -- pb w ± ?
+  assertAlmostEquals( deg(   pi/12) -   15, 0,  8*eps )
+  assertAlmostEquals( deg(   pi/6 ) -   30, 0, 16*eps )
   assertEquals      ( deg(   pi/4 ) -   45, 0         )
-  assertAlmostEquals( deg(   pi/3 ) -   60, 0, 40*eps ) -- pb w ± ?
+  assertAlmostEquals( deg(   pi/3 ) -   60, 0, 32*eps )
   assertEquals      ( deg(   pi/2 ) -   90, 0         )
   assertEquals      ( deg(   pi   ) -  180, 0         )
   assertEquals      ( deg( 2*pi   ) -  360, 0         )
