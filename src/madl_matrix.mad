@@ -117,7 +117,7 @@ local new, istype, metatype, cast, sizeof, fill in require 'ffi'
 
 local _C in require 'madl_cmad'
 
-local is_number, is_function, is_table, is_complex, is_scalar,
+local is_number, is_table, is_complex, is_scalar, is_callable,
       identity, defhelp in require 'madl_utils'
 
 local carg, real, imag, conj, norm, rect, polar,
@@ -136,14 +136,20 @@ local cres = new 'complex[1]'
 
 -- implementation -------------------------------------------------------------o
 
-local idx  = \i,j,c -> ((i-1)*c + (j-1))
-local idx0 = \i,j,c -> ( i   *c +  j   )
-local idx1 = \i,j,c -> ((i-1)*c +  j   )
+local idx0 = \i,j,c   -> ( i   *c +  j   )
+local idx  = \i,j,c   -> ((i-1)*c + (j-1))
 
-local get  = \x,i,j   -> x.data[idx (i,j,x.nc)]
+local geti = \x,i     -> x.data[i-1]
+local seti = \x,i,e   => x.data[i-1] = e end
 local get0 = \x,i,j   -> x.data[idx0(i,j,x.nc)]
-local set  = \x,i,j,e => x.data[idx (i,j,x.nc)] = e end
 local set0 = \x,i,j,e => x.data[idx0(i,j,x.nc)] = e end
+local get  = \x,i,j   -> x.data[idx (i,j,x.nc)]
+local set  = \x,i,j,e => x.data[idx (i,j,x.nc)] = e end
+
+local function safe_geti (x, i)
+  assert(1 <= i and i <= x.nr*x.nc, "1-index out of bounds")
+  return geti(x, i)
+end
 
 local function safe_get0 (x, i, j)
   assert(0 <= i and i <  x.nr and 0 <= j and j <  x.nc, "0-index out of bounds")
@@ -153,6 +159,11 @@ end
 local function safe_get (x, i, j)
   assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
   return get (x, i, j)
+end
+
+local function safe_seti (x, i, e)
+  assert(1 <= i and i <= x.nr*x.nc, "1-index out of bounds")
+  seti(x, i, e)
 end
 
 local function safe_set0 (x, i, j, e)
@@ -166,13 +177,13 @@ local function safe_set (x, i, j, e)
 end
 
 function M.set_bounds_check (self, flag)
-  local old = M.get0 == safe_get0
+  local old = M.geti == safe_geti
   if flag == true then
-    M.get0, M.get = safe_get0, safe_get
-    M.set0, M.set = safe_set0, safe_set
+    M.geti, M.get0, M.get = safe_geti, safe_get0, safe_get
+    M.seti, M.set0, M.set = safe_seti, safe_set0, safe_set
   else
-    M.get0, M.get = get0, get
-    M.set0, M.set = set0, set
+    M.geti, M.get0, M.get = geti, get0, get
+    M.seti, M.set0, M.set = seti, set0, set
   end
   return old;
 end
@@ -188,27 +199,24 @@ M.sizes  = \x -> (x.nr, x.nc)
 M.tsizes = \x -> (x.nc, x.nr)
 M.length = M.size
 
-function M.same(x)
-  return is_matrix(x) and matrix(x:sizes()) or cmatrix(x:sizes())
+function M.same (x, nr_, nc_)
+  if is_matrix(x)
+  then return  matrix(nr_ or x.nr, nc_ or x.nc)
+  else return cmatrix(nr_ or x.nr, nc_ or x.nc)
+  end
 end
 
-function M.tsame(x)
-  return is_matrix(x) and matrix(x:tsizes()) or cmatrix(x:tsizes())
-end
-
-function M.ssame(x, nr, nc)
-  return is_matrix(x) and matrix(nr, nc) or cmatrix(nr, nc)
-end
-
-function M.reshape (x, nr, nc)
+function M.reshape (x, nr_, nc_)
+  local nr, nc = nr_ or x.nr, nc_ or x.nc
   assert(nr*nc <= x:size(), "incompatible matrix sizes")
   x.nr, x.nc = nr, nc
   return x
 end
 
-function M.unsafe_reshape (x, nr, nc)
+function M.unsafe_reshape (x, nr_, nc_)
   -- no check, user is responsible to keeping track of the true allocated size
-  x.nr, x.nc = nr, nc
+  -- if nr*nc > x:size()
+  x.nr, x.nc = nr_ or x.nr, nc_ or x.nc
   return x
 end
 
@@ -235,104 +243,122 @@ end
 function M.fill (x, a)
   if is_scalar  (a) then return x:ones     (a) end
   if is_table   (a) then return x:fromtable(a) end
-  if is_function(a) then
-    for i=1,x:rows() do
-    for j=1,x:cols() do
-      set(x,i,j, a(get(x,i,j), i,j))
-    end end
+  if is_callable(a) then -- function generator
+    for i=0,x:rows()-1 do
+      for j=0,x:cols()-1 do
+        set0(x,i,j, a(get0(x,i,j), i+1,j+1))
+      end
+    end
     return x
   end
   error("invalid argument #2, scalar, table or function generator expected")
 end
 
-function M.get_diag (x, r_) -- equivalent to x:get_vec(1..x:size()..x.nc+1)
+function M.get_diag (x, r_) -- equivalent to x:get_vec(1..x:size()..x:cols()+1)
   local n = min(x:sizes())
-  local r = r_ or x:ssame(n,1)
+  local r = r_ or x:same(n,1)
   assert(is_table(r) or n == r:size(), "incompatible matrix sizes")
-  for i=0,n-1 do r[i+1] = get0(x, i,i) end
+  for i=0,n-1 do r[i+1] = get0(x,i,i) end
   return r
+end
+
+function M.set_diag (x, y)
+  local n = min(#y, x:sizes())
+  for i=0,n-1 do set0(x,i,i, y[i+1]) end
+  return x
 end
 
 function M.get_row (x, ir, r_)  -- ir: number, range, table, vector
   if is_number(ir) then ir = {ir} end
-  local rr, nr, nc = #ir, x:sizes()
-  local r = r_ or x:ssame(rr,nc)
-  assert(is_table(r) or rr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
-  for i,ii in ipairs(ir) do
-  for j=1,nc do
-    r[idx1(i,j,nc)] = safe_get(x, ii,j)
-  end end
+  local k, nr, nc = 1, #ir, x:cols()
+  local r = r_ or x:same(nr,nc)
+  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  for _,i in ipairs(ir) do
+    for j=1,nc do
+      r[k] = safe_get(x,i,j)  k=k+1
+    end
+  end
   return r
+end
+
+function M.set_row (x, ir, y)  -- ir: number, range, table, vector
+  if is_number(ir) then ir = {ir} end
+  local k, nc = 1, x:cols()
+  assert(#ir*nc <= #y, "incompatible matrix sizes")
+  for _,i in ipairs(ir) do
+    for j=1,nc do
+      safe_set(x,i,j, y[k])  k=k+1
+    end
+  end
+  return x
 end
 
 function M.get_col (x, jc, r_)  -- jc: number, range, table, vector
   if is_number(jc) then jc = {jc} end
-  local rc, nr, nc = #jc, x:sizes()
-  local r = r_ or x:ssame(nr,rc)
-  assert(is_table(r) or nr == r:rows() and rc == r:cols(), "incompatible matrix sizes")
+  local k, nr, nc = 1, x:rows(), #jc
+  local r = r_ or x:same(nr,nc)
+  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
   for i=1,nr do
-  for j,jj in ipairs(jc) do
-    r[idx1(i,j,rc)] = safe_get(x, i,jj)
-  end end
+    for _,j in ipairs(jc) do
+      r[k] = safe_get(x,i,j)  k=k+1
+    end
+  end
   return r
+end
+
+function M.set_col (x, jc, y)  -- jc: number, range, table, vector
+  if is_number(jc) then jc = {jc} end
+  local k, nr = 1, x:rows()
+  assert(nr*#jc <= #y, "incompatible matrix sizes")
+  for i=1,nr do
+    for _,j in ipairs(jc) do
+      safe_set(x,i,j, y[k])  k=k+1
+    end
+  end
+  return x
 end
 
 function M.get_vec (x, ij, r_)  -- ij: number, range, table, vector
   if is_number(ij) then ij = {ij} end
-  local n, nr, nc = #ij, x:sizes()
-  local r = r_ or x:ssame(n,1)
+  local n = #ij
+  local r = r_ or x:same(n,1)
   assert(is_table(r) or n == r:size(), "incompatible matrix sizes")
-  for i,ii in ipairs(ij) do r[i] = x[ii] end
+  for i,ii in ipairs(ij) do r[i] = safe_geti(x,ii) end
   return r
+end
+
+function M.set_vec (x, ij, y)  -- ij: number, range, table, vector
+  if is_number(ij) then ij = {ij} end
+  assert(#ij <= #y, "incompatible matrix sizes")
+  for i,ii in ipairs(ij) do safe_seti(x,ii, y[i]) end
+  return x
 end
 
 function M.get_sub (x, ir, jc, r_) -- ir, jc: number, range, table, vector
   if is_number(ir) then ir = {ir} end
   if is_number(jc) then jc = {jc} end
-  local rr, rc, nr, nc = #ir, #jc, x:sizes()
-  local r = r_ or x:ssame(rr,rc)
-  assert(is_table(r) or rr <= r:rows() and rc <= r:cols(), "incompatible matrix sizes")
-  for i,ii in ipairs(ir) do
-  for j,jj in ipairs(jc) do
-    r[idx1(i,j,rc)] = safe_get(x, ii,jj)
-  end end
+  local k, nr, nc = 1, #ir, #jc
+  local r = r_ or x:same(nr,nc)
+  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  for _,i in ipairs(ir) do
+    for _,j in ipairs(jc) do
+      r[k] = safe_get(x,i,j)  k=k+1
+    end
+  end
   return r
 end
 
-function M.set_col (x, jc, y)
-  local j, nr, nc = jc-1, x:sizes()
-  assert(0 <= j and j < nc, "column index out of bounds")
-  local n = min(nr, #y)
-  for i=0,n-1 do x:set0(i,j, y[i+1]) end
+function M.set_sub (x, ir, jc, y) -- ir, jc: number, range, table, vector
+  if is_number(ir) then ir = {ir} end
+  if is_number(jc) then jc = {jc} end
+  assert(#ir * #jc == #y, "incompatible matrix sizes")
+  local k = 1
+  for _,i in ipairs(ir) do
+    for _,j in ipairs(jc) do
+      safe_set(x,i,j, y[k])  k=k+1
+    end
+  end
   return x
-end
-
-function M.set_row (x, ir, y)
-  local i, nr, nc = ir-1, x:sizes()
-  assert(0 <= i and i < nr, "row index out of bounds")
-  local n = min(nc, #y)
-  for j=0,n-1 do x:set0(i,j, y[j+1]) end
-  return x
-end
-
-function M.set_diag (x, y)
-  local n = min(#y, x:sizes())
-  for i=0,n-1 do x:set0(i,i, y[i+1]) end
-  return x
-end
-
-function M.set_sub (x, rr, cr, y)
-  local nr, nc = rr:size(), cr:size()
-  local rl, rh = rr:bounds()
-  local cl, ch = cr:bounds()
-  assert(0 < rl and rh <= x:rows(), "row index out of bounds")
-  assert(0 < cl and ch <= x:cols(), "column index out of bounds")
-  assert(nr <= y:rows() and nc <= y:cols(), "incompatible matrix sizes")
-  for ri,rv in ipairs(rr) do
-  for ci,cv in ipairs(cr) do
-    x:set(rv,cv, y:get(ri,ci))
-  end end
-  return r
 end
 
 -- foreach, map, fold ---------------------------------------------------------o
