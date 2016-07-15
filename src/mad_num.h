@@ -36,11 +36,10 @@ num_t mad_num_erf      (num_t x);
 num_t mad_num_tgamma   (num_t x);
 num_t mad_num_lgamma   (num_t x);
 
-num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
-num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
-
-void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
+num_t mad_cnum_carg_r  (num_t x_re, num_t x_im);
+num_t mad_cnum_norm_r  (num_t x_re, num_t x_im);
 void  mad_cnum_unit_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_rect_r  (num_t  rho, num_t  ang, cnum_t *r);
 void  mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r);
 
