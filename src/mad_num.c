@@ -64,6 +64,15 @@ void mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = casinh ( 
 void mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cacosh ( CNUM(x) ); }
 void mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catanh ( CNUM(x) ); }
 
+void mad_cnum_unit_r (num_t x_re, num_t x_im, cnum_t *r)
+{ CHKR; *r = CNUM(x) / cabs( CNUM(x) ); }
+
+void mad_cnum_rect_r (num_t rho, num_t ang, cnum_t *r)
+{ CHKR; *r = CNUM2( rho * cos(ang), rho * sin(ang) ); }
+
+void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
+{ CHKR; *r = CNUM2( cabs(CNUM(x)), carg(CNUM(x)) ); }
+
 void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = CNUM(x) / CNUM(y);  }
 
@@ -73,15 +82,6 @@ void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 
 void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = cpow( CNUM(x), CNUM(y) ); }
-
-void mad_cnum_unit_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = CNUM(x) / cabs( CNUM(x) ); }
-
-void mad_cnum_rect_r (num_t rho, num_t ang, cnum_t *r)
-{ CHKR; *r = CNUM2( rho * cos(ang), rho * sin(ang) ); }
-
-void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = CNUM2( cabs(CNUM(x)), carg(CNUM(x)) ); }
 
 void mad_cnum_ipow_r (num_t x_re, num_t x_im, long long y, cnum_t *r)
 { CHKR; cnum_t x = CNUM(x);
