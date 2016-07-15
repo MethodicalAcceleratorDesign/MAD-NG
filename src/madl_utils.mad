@@ -32,12 +32,13 @@ NAME
 SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
   is_cdata, is_complex, is_xrange,                              (extended types)
-  is_nan, is_integer, is_scalar, is_rawtable, is_metaname,     (specializations)
-  is_iterable, is_indexable, is_callable, is_comparable, is_ordered,
-  is_concatable, is_stringable,                                       (concepts)
-  identity, first, second, swap, compose, compose_bottom,           (functional)
+  is_inf, is_nan, is_integer, is_scalar, is_rawtable,          (specializations)
+  is_metaname,
+  is_iterable, is_indexable, is_callable, is_comparable, is_ordered,  (concepts)
+  is_concatable, is_stringable,
+  ident, first, second, swap, rep, compose, compose_bottom,         (functional)
   option { format='%.16g' },                                             (setup)
-  tostring, getmetatable.                                            (extension)
+  tostring, getmetatable.                                           (extensions)
 
 DESCRIPTION
   The utils module provides useful single argument utility functions:
@@ -54,9 +55,10 @@ DESCRIPTION
     concept requirements.
   - is_stringable checks only if the argument supports the __tostring metamethod
     because objects are always stringable in Lua.
-  - identity returns its arguments.
+  - ident is the identity function.
   - first, second and swap return arguments #1, #2 and #2 #1 respectively
     (i.e. #1 #2 swapped).
+  - rep returns a sequence holding the same element n-times (or inf).
   - compose composes two callable objects.
   - compose_bottom allows to compose (right to left) callable objects using ^.
   - option stores various setup.
@@ -214,18 +216,49 @@ end
 
 -- functional composition
 
-M.identity = \...  ...
-M.forget   = \     ()
-M.first    = \a    a
-M.second   = \a,b  b
-M.swap     = \a,b (b,a)
-M.compose  = \f,g\... f(g(...))
+M.ident   = \...  ...
+M.forget  = \     ()
+M.first   = \a    a
+M.second  = \a,b  b
+M.swap    = \a,b (b,a)
+M.compose = \f,g\... f(g(...))
 
-M.compose_bottom = setmetatable({M.identity}, {
+M.compose_bottom = setmetatable({M.ident}, {
     __call = \g,... g[1](...),
     __pow  = \f,g setmetatable(
       { M.compose(assert(M.is_callable(f) and f), g[1]) }, getmetatable(g))
   })
+
+-- repeater
+
+local rep_n, rep_a = {}, {}
+
+local rep_it = \s,i => if i < s[rep_n] then return i+1, s[rep_a] end end
+local rep_mt = {
+  __len      = \s   -> s[rep_n],
+  __index    = \s,i => if 1 <= i and i <= s[rep_n] then return s[rep_a] end end,
+  __pairs    = \s   -> (rep_it, s, 0),
+  __ipairs   = \s   -> (rep_it, s, 0),
+  __metatable = false,
+}
+
+local repi_it = \s,i -> (i+1, s[rep_a])
+local repi_mt = {
+  __len       = \s -> 2^31,
+  __index     = \s -> s[rep_a],
+  __pairs     = \s -> (repi_it, s, 0),
+  __ipairs    = \s -> (repi_it, s, 0),
+  __metatable = false,
+}
+
+M.rep = function (a, n_)
+  if n_ == nil then
+    return setmetatable({[rep_a] = a}, repi_mt)
+  elseif type(n_) == "number" and n_ >= 0 then
+    return setmetatable({[rep_a] = a, [rep_n] = n_}, rep_mt)
+  end
+  error("invalid argument #2 (size or nil expected)")
+end
 
 -- options
 
