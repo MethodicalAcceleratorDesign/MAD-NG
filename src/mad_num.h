@@ -43,9 +43,10 @@ void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_rect_r  (num_t  rho, num_t  ang, cnum_t *r);
 void  mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r);
 
+void  mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_log_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_log10_r (num_t x_re, num_t x_im, cnum_t *r);
 
 void  mad_cnum_sin_r   (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_cos_r   (num_t x_re, num_t x_im, cnum_t *r);
