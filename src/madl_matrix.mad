@@ -39,23 +39,26 @@ SYNOPSIS
 
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
-    (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
-    unm, add, sub, mul, div, mod, pow, eq, emul, ediv,
-    zeros, ones, eye, fill, copy, same,
-    rows, cols, size, sizes, tsizes, length,
-    get, get0, geti, getrow, getcol, getvec, getdiag, getsub,
-    set, set0, seti, setrow, setcol, setvec, setdiag, setsub,
-    transpose, t, trans, ctrans, conjugate,
-    real, imag, conj, unit, norm, angle, trace, tr,
-    dot, inner, cross, mixed, outer,
-    abs, arg, exp, log, pow, sqrt, proj,
-    sin, cos, tan, sinh, cosh, tanh,
-    asin, acos, atan, asinh, acosh, atanh,
-    solve, svd, eigen,
-    fft, ifft, rfft, irfft, conv, corr, covar,
-    foldl, foldr, foreach, map, map2, maps,
-    concat, reshape, totable, fromtable,
-    check_bounds.
+  (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
+  unm, add, sub, mul (emul), div (ediv), mod, pow, eq,
+  zeros, ones, eye, fill, copy, same (esame),
+  rows, cols, size (length), sizes, tsizes,
+  get, get0, geti, getrow, getcol, getvec, getdiag, getsub,
+  set, set0, seti, setrow, setcol, setvec, setdiag, setsub,
+  transpose, t, trans, ctrans, conjugate,
+  dot, inner, cross, mixed, outer, trace, tr,
+
+  carg, real, imag, conj, norm, unit, rect, polar,
+  ceil, floor, frac, trunc, round,
+  abs, angle, exp, log, sqrt,
+  sin, cos, tan, sinh, cosh, tanh,
+  asin, acos, atan, asinh, acosh, atanh,
+  erf, tgamma, lgamma,
+  solve, svd, eigen,
+  fft, ifft, rfft, irfft, conv, corr, covar,
+  foreach, map, map2, map3, foldl, foldr,
+  concat, reshape, unsafe_reshape, totable, fromtable,
+  check_bounds.
   By default, check_bounds is true.
 
 RETURN VALUES
@@ -118,7 +121,7 @@ local new, istype, metatype, cast, sizeof, fill in require 'ffi'
 local _C in require 'madl_cmad'
 
 local is_number, is_table, is_complex, is_scalar, is_callable,
-      identity, defhelp in require 'madl_utils'
+      ident, rep, defhelp in require 'madl_utils'
 
 local carg, real, imag, conj, norm, rect, polar,
       abs, ceil, floor, exp, log, sqrt,
@@ -133,6 +136,8 @@ local matrix, cmatrix,
 
 -- tmp for returned values
 local cres = new 'complex[1]'
+
+-- repeated element -----------------------------------------------------------o
 
 -- implementation -------------------------------------------------------------o
 
@@ -206,6 +211,13 @@ function M.same (x, nr_, nc_)
   end
 end
 
+function M.esame (x, e, nr_, nc_)
+  if is_number(e)
+  then return  matrix(nr_ or x.nr, nc_ or x.nc)
+  else return cmatrix(nr_ or x.nr, nc_ or x.nc)
+  end
+end
+
 function M.reshape (x, nr_, nc_)
   local nr, nc = nr_ or x.nr, nc_ or x.nc
   assert(nr*nc <= x:size(), "incompatible matrix sizes")
@@ -257,22 +269,23 @@ end
 function M.getdiag (x, r_) -- equivalent to x:get_vec(1..x:size()..x:cols()+1)
   local n = min(x:sizes())
   local r = r_ or x:same(n,1)
-  assert(is_table(r) or n == r:size(), "incompatible matrix sizes")
+  assert(is_table(r) or n <= #r, "incompatible sizes")
   for i=0,n-1 do r[i+1] = get0(x,i,i) end
   return r
 end
 
-function M.setdiag (x, y)
+function M.setdiag (x, y)  -- y: scalar, range, table, matrix
+  if is_scalar(y) then y = rep(y) end
   local n = min(#y, x:sizes())
   for i=0,n-1 do set0(x,i,i, y[i+1]) end
   return x
 end
 
-function M.getrow (x, ir, r_)  -- ir: number, range, table, vector
+function M.getrow (x, ir, r_)  -- ir: number, range, table, matrix
   if is_number(ir) then ir = {ir} end
   local k, nr, nc = 1, #ir, x:cols()
   local r = r_ or x:same(nr,nc)
-  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  assert(is_table(r) or nr*nc <= #r, "incompatible sizes")
   for _,i in ipairs(ir) do
     for j=1,nc do
       r[k] = safe_get(x,i,j)  k=k+1
@@ -281,10 +294,11 @@ function M.getrow (x, ir, r_)  -- ir: number, range, table, vector
   return r
 end
 
-function M.setrow (x, ir, y)  -- ir: number, range, table, vector
+function M.setrow (x, ir, y)  -- ir/y: number/scalar, range, table, matrix
   if is_number(ir) then ir = {ir} end
+  if is_scalar(y)  then y  = rep(y) end
   local k, nc = 1, x:cols()
-  assert(#ir*nc <= #y, "incompatible matrix sizes")
+  assert(#ir*nc <= #y, "incompatible sizes")
   for _,i in ipairs(ir) do
     for j=1,nc do
       safe_set(x,i,j, y[k])  k=k+1
@@ -293,11 +307,11 @@ function M.setrow (x, ir, y)  -- ir: number, range, table, vector
   return x
 end
 
-function M.getcol (x, jc, r_)  -- jc: number, range, table, vector
+function M.getcol (x, jc, r_)  -- jc: number, range, table, matrix
   if is_number(jc) then jc = {jc} end
   local k, nr, nc = 1, x:rows(), #jc
   local r = r_ or x:same(nr,nc)
-  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  assert(is_table(r) or nr*nc <= #r, "incompatible sizes")
   for i=1,nr do
     for _,j in ipairs(jc) do
       r[k] = safe_get(x,i,j)  k=k+1
@@ -306,10 +320,11 @@ function M.getcol (x, jc, r_)  -- jc: number, range, table, vector
   return r
 end
 
-function M.setcol (x, jc, y)  -- jc: number, range, table, vector
+function M.setcol (x, jc, y)  -- jc/y: number/scalar, range, table, matrix
   if is_number(jc) then jc = {jc} end
+  if is_scalar(y)  then y  = rep(y) end
   local k, nr = 1, x:rows()
-  assert(nr*#jc <= #y, "incompatible matrix sizes")
+  assert(nr*#jc <= #y, "incompatible sizes")
   for i=1,nr do
     for _,j in ipairs(jc) do
       safe_set(x,i,j, y[k])  k=k+1
@@ -318,28 +333,29 @@ function M.setcol (x, jc, y)  -- jc: number, range, table, vector
   return x
 end
 
-function M.getvec (x, ij, r_)  -- ij: number, range, table, vector
+function M.getvec (x, ij, r_)  -- ij: number, range, table, matrix
   if is_number(ij) then ij = {ij} end
   local n = #ij
   local r = r_ or x:same(n,1)
-  assert(is_table(r) or n == r:size(), "incompatible matrix sizes")
+  assert(is_table(r) or n <= #r, "incompatible sizes")
   for i,ii in ipairs(ij) do r[i] = safe_geti(x,ii) end
   return r
 end
 
-function M.setvec (x, ij, y)  -- ij: number, range, table, vector
+function M.setvec (x, ij, y)  -- ij/y: number/scalar, range, table, matrix
   if is_number(ij) then ij = {ij} end
-  assert(#ij <= #y, "incompatible matrix sizes")
+  if is_scalar(y)  then y  = rep(y) end
+  assert(#ij <= #y, "incompatible sizes")
   for i,ii in ipairs(ij) do safe_seti(x,ii, y[i]) end
   return x
 end
 
-function M.getsub (x, ir, jc, r_) -- ir, jc: number, range, table, vector
+function M.getsub (x, ir, jc, r_) -- ir,jc: number, range, table, matrix
   if is_number(ir) then ir = {ir} end
   if is_number(jc) then jc = {jc} end
   local k, nr, nc = 1, #ir, #jc
   local r = r_ or x:same(nr,nc)
-  assert(is_table(r) or nr == r:rows() and nc == r:cols(), "incompatible matrix sizes")
+  assert(is_table(r) or nr*nc <= #r, "incompatible sizes")
   for _,i in ipairs(ir) do
     for _,j in ipairs(jc) do
       r[k] = safe_get(x,i,j)  k=k+1
@@ -348,10 +364,11 @@ function M.getsub (x, ir, jc, r_) -- ir, jc: number, range, table, vector
   return r
 end
 
-function M.setsub (x, ir, jc, y) -- ir, jc: number, range, table, vector
+function M.setsub (x, ir, jc, y) -- ir,jc/y: number/scalar, range, table, matrix
   if is_number(ir) then ir = {ir} end
   if is_number(jc) then jc = {jc} end
-  assert(#ir * #jc == #y, "incompatible matrix sizes")
+  if is_scalar(y)  then y  = rep(y) end
+  assert(#ir*#jc <= #y, "incompatible sizes")
   local k = 1
   for _,i in ipairs(ir) do
     for _,j in ipairs(jc) do
@@ -364,38 +381,41 @@ end
 -- foreach, map, fold ---------------------------------------------------------o
 
 function M.foreach (x, f)
+  assert(is_callable(f), "invalid argument #2 (callable expected)")
   for i=0,x:size()-1 do f(x.data[i]) end
   return x
 end
 
 function M.map (x, f, r_)
-  local r0 = f(x.data[0])
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i]) end
+  assert(is_callable(f), "invalid argument #2 (callable expected)")
+  local n, r0 = x:size(), f(x.data[0])
+  local r = r_ or x:esame(r0)
+  assert(is_table(r) or n <= #r, "incompatible sizes")
+  r[1] = r0
+  for i=2,n do r[i] = f(geti(x,i)) end
   return r
 end
 
 function M.map2 (x, y, f, r_)
-  assert(isa_matrix(y), "matrix expected for 2nd argument")
-  local r0 = f(x.data[0], y.data[0])
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == y:rows() and x:cols() == y:cols() and
-         x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y.data[i]) end
+  assert(is_callable(f), "invalid argument #3 (callable expected)")
+  if is_scalar(y) then y = rep(y) end
+  local n, r0 = x:size(), f(x.data[0], y[1])
+  local r = r_ or x:esame(r0)
+  assert((is_table(r) or n <= #r) and n <= #y, "incompatible sizes")
+  r[1] = r0
+  for i=2,n do r[i] = f(geti(x,i), y[i]) end
   return r
 end
 
-function M.maps (x, y, f, r_)
-  if is_matrix(y) then return x:map2(y,f,r_) end
-  assert(is_scalar(y), "scalar expected for 2nd argument")
-  local r0 = f(x.data[0], y)
-  local r = r_ or is_number(r0) and matrix(x:sizes()) or cmatrix(x:sizes())
-  assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-  r.data[0] = r0
-  for i=1,x:size()-1 do r.data[i] = f(x.data[i], y) end
+function M.map3 (x, y, z, f, r_)
+  assert(is_callable(f), "invalid argument #4 (callable expected)")
+  if is_scalar(y) then y = rep(y) end
+  if is_scalar(z) then z = rep(z) end
+  local n, r0 = x:size(), f(x.data[0], y[1], z[1])
+  local r = r_ or x:esame(r0)
+  assert((is_table(r) or n <= #r) and n <= #y and n <= #z, "incompatible sizes")
+  r[1] = r0
+  for i=2,n do r[i] = f(geti(x,i), y[i], z[i]) end
   return r
 end
 
@@ -608,45 +628,45 @@ end
 
 -- generic functions ----------------------------------------------------------o
 
-M.copy  = \x,r_   -> x:map (identity, r_)
+M.copy  = \x,r_ -> x:map(ident, r_)
 
-M.carg  = \x,r_   -> x:map (carg    , r_)
-M.real  = \x,r_   -> x:map (real    , r_)
-M.imag  = \x,r_   -> x:map (imag    , r_)
+M.carg  = \x,r_ -> x:map(carg , r_)
+M.real  = \x,r_ -> x:map(real , r_)
+M.imag  = \x,r_ -> x:map(imag , r_)
 M.conj  = M.conjugate
-M.rect  = \x,r_   -> x:map (rect    , r_)
-M.polar = \x,r_   -> x:map (polar   , r_)
+M.rect  = \x,r_ -> x:map(rect , r_)
+M.polar = \x,r_ -> x:map(polar, r_)
 
-M.ceil  = \x,r_   -> x:map (ceil    , r_)
-M.floor = \x,r_   -> x:map (floor   , r_)
-M.frac  = \x,r_   -> x:map (frac    , r_)
-M.trunc = \x,r_   -> x:map (trunc   , r_)
-M.round = \x,r_   -> x:map (round   , r_)
+M.ceil  = \x,r_ -> x:map(ceil , r_)
+M.floor = \x,r_ -> x:map(floor, r_)
+M.frac  = \x,r_ -> x:map(frac , r_)
+M.trunc = \x,r_ -> x:map(trunc, r_)
+M.round = \x,r_ -> x:map(round, r_)
 
-M.abs   = \x,r_   -> x:map (abs     , r_)
-M.exp   = \x,r_   -> x:map (exp     , r_)
-M.log   = \x,r_   -> x:map (log     , r_)
-M.sqrt  = \x,r_   -> x:map (sqrt    , r_)
+M.abs   = \x,r_ -> x:map(abs  , r_)
+M.exp   = \x,r_ -> x:map(exp  , r_)
+M.log   = \x,r_ -> x:map(log  , r_)
+M.sqrt  = \x,r_ -> x:map(sqrt , r_)
 
-M.sin   = \x,r_   -> x:map (sin     , r_)
-M.cos   = \x,r_   -> x:map (cos     , r_)
-M.tan   = \x,r_   -> x:map (tan     , r_)
-M.sinh  = \x,r_   -> x:map (sinh    , r_)
-M.cosh  = \x,r_   -> x:map (cosh    , r_)
-M.tanh  = \x,r_   -> x:map (tanh    , r_)
+M.sin   = \x,r_ -> x:map(sin  , r_)
+M.cos   = \x,r_ -> x:map(cos  , r_)
+M.tan   = \x,r_ -> x:map(tan  , r_)
+M.sinh  = \x,r_ -> x:map(sinh , r_)
+M.cosh  = \x,r_ -> x:map(cosh , r_)
+M.tanh  = \x,r_ -> x:map(tanh , r_)
 
-M.asin  = \x,r_   -> x:map (asin    , r_)
-M.acos  = \x,r_   -> x:map (acos    , r_)
-M.atan  = \x,r_   -> x:map (atan    , r_)
-M.asinh = \x,r_   -> x:map (asinh   , r_)
-M.acosh = \x,r_   -> x:map (acosh   , r_)
-M.atanh = \x,r_   -> x:map (atanh   , r_)
+M.asin  = \x,r_ -> x:map(asin , r_)
+M.acos  = \x,r_ -> x:map(acos , r_)
+M.atan  = \x,r_ -> x:map(atan , r_)
+M.asinh = \x,r_ -> x:map(asinh, r_)
+M.acosh = \x,r_ -> x:map(acosh, r_)
+M.atanh = \x,r_ -> x:map(atanh, r_)
 
 -- generic operators ----------------------------------------------------------o
 
-M.unm   = \x,r_   -> x:map (unm     , r_)
-M.mod   = \x,y,r_ -> x:maps(y, mod  , r_)
-M.pow   = \x,y,r_ -> x:maps(y, pow  , r_)
+M.unm = \x  ,r_ -> x:map (   unm, r_)
+M.mod = \x,y,r_ -> x:map2(y, mod, r_)
+M.pow = \x,y,r_ -> x:map2(y, pow, r_)
 
 --[[ TODO
   mexp, mlog, msqrt, mpow using Padé Approximants
