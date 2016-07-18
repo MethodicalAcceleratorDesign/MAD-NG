@@ -37,6 +37,14 @@ local is_function in MAD
 
 TestRange = {}
 
+local values = {
+  num  = {0, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
+          0.1-eps, 0.1, 0.1+eps, 0.5, 0.7-eps, 0.7, 0.7+eps, 1-eps, 1, 1+eps,
+          1.1, 1.7, 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53,
+          2^63, 2^64 },
+  num2 = {huge, tiny, inf, nan}
+}
+
 function TestRange:testConstructor()
 	local msg = {
 		"invalid argument #1 (number expected)",
@@ -57,8 +65,12 @@ function TestRange:testConstructor()
   assertTrue( is_range(range(1,10,2))      )
   assertTrue( is_range(range(1,10,-2))     )
   assertTrue( is_range(range(-10,-1,-0.7)) )
-
-	assertTrue( is_range(range(nan,nan,nan))    )
+	
+	assertTrue( is_range(range(1   , 10 , nan)) )
+	assertTrue( is_range(range(1   , 10 ,-nan)) )
+	assertTrue( is_range(range( 1  , nan, nan)) )
+	assertTrue( is_range(range( 1  ,-nan,-nan)) )
+	assertTrue( is_range(range( nan, nan, nan)) )
 	assertTrue( is_range(range(-nan,-nan,-nan)) )
 end
 
@@ -102,14 +114,14 @@ function TestRange:testConcatCtor()
 	assertTrue( is_range(-a..-a)         )
 	assertTrue( is_range(-a..-a..-a)     )
 
-	assertTrue( is_range( inf..inf..inf  ) )
-	assertTrue( is_range(-inf..-inf..-inf) )
+  assertTrue( is_range(1..10.. nan)      )
+	assertTrue( is_range(1..10..-nan)      )
+  assertTrue( is_range(1.. nan.. nan)    )
+	assertTrue( is_range(1..-nan..-nan)    )
   assertTrue( is_range( nan..nan..nan  ) )
 	assertTrue( is_range(-nan..-nan..-nan) )
-
-	assertNaN( (nan..nan..nan).start )
-	assertNaN( (nan..nan..nan).stop  )
-	assertNaN( (nan..nan..nan).step  )
+	assertTrue( is_range( inf..inf..inf  ) )
+	assertTrue( is_range(-inf..-inf..-inf) )
 
 	assertIsString( 1..''    )
 	assertIsString( 1..10..'')
@@ -124,6 +136,7 @@ function TestRange:testFields()
 	assertEquals( {range(1,10)    :range()}   , {1,10,1}      )
 	assertEquals( {range(1,10,0.1):range()}   , {1,10,0.1}    )
 	assertEquals( {range(1,10,2)  :range()}   , {1,10,2}      )
+	assertEquals( {range(1,10,nil):range()}   , {1,10,1}      )
 	assertEquals( {(2..10)        :range()}   , {2,10,1}      )
 	assertEquals( {(2..10..5)     :range()}   , {2,10,5}      )
 	assertEquals( {(10..2)        :range()}   , {10,2,1}      )
@@ -134,9 +147,35 @@ function TestRange:testFields()
 	assertEquals( {(inf..inf..inf):range()}   , {inf,inf,inf}    )
 	assertEquals( {(-inf..-inf..-inf):range()}, {-inf,-inf,-inf} )
 
-	assertNaN( range(nan,nan,nan).start )
-	assertNaN( range(nan,nan,nan).stop  )
-	assertNaN( range(nan,nan,nan).step  )
+	assertEquals( range(1,10,nan).start , 1  )
+	assertEquals( range(1,10,nan).stop  , 10 )
+	assertNaN   ( range(1,10,nan).step       )
+	assertEquals( range(1,10,-nan).start, 1  )
+	assertEquals( range(1,10,-nan).stop , 10 )
+	assertNaN   ( range(1,10,-nan).step      )
+
+	assertNaN( range( nan, nan, nan).start )
+	assertNaN( range( nan, nan, nan).stop  )
+	assertNaN( range( nan, nan, nan).step  )
+	assertNaN( range(-nan,-nan,-nan).start )
+	assertNaN( range(-nan,-nan,-nan).stop  )
+	assertNaN( range(-nan,-nan,-nan).step  )
+
+	assertEquals(  range( 1, 10, nan).start, 1  )
+	assertEquals(  range( 1, 10, nan).stop , 10 )
+	assertNaN   (  range( 1, 10, nan).step      )
+	assertEquals(  range( 1, 10,-nan).start, 1  )
+	assertEquals(  range( 1, 10,-nan).stop , 10 )
+	assertNaN   (  range( 1, 10,-nan).step      )
+	assertEquals(  range( 1, nan, nan).start, 1 )
+	assertNaN   (  range( 1, nan, nan).stop     )
+	assertNaN   (  range( 1, nan, nan).step     )
+	assertEquals(  range( 1, nan, 10 ).start, 1 )
+	assertNaN   (  range( 1, nan, 10 ).stop     )
+	assertEquals(  range( 1, nan, 10 ).step ,10 )
+	assertEquals(  range( 1,-nan, 10 ).start, 1 )
+	assertNaN   (  range( 1,-nan, 10 ).stop     )
+	assertEquals(  range( 1,-nan, 10 ).step ,10 )
 end
 
 function TestRange:testReadonly()
@@ -199,6 +238,7 @@ function TestRange:testIsEmpty()
 	assertTrue ( nrange(2,10,0)   :is_empty() )
   assertTrue ( nrange(2,10,inf) :is_empty() )
 	assertTrue ( nrange(1,10,-inf):is_empty() )
+  
   assertFalse( nrange(2,10,nan) :is_empty() )
   assertFalse( nrange(2,10,0.1) :is_empty() )
 	assertFalse( (0..9..eps)      :is_empty() )
@@ -211,6 +251,13 @@ function TestRange:testIsEmpty()
   assertFalse( range(1,10,0.1)  :is_empty() )
   assertFalse( range(0,-10,-1)  :is_empty() )
   assertFalse( nrange(0,9,10)   :is_empty() )
+
+	assertTrue ( range( 1  , 10 , nan) :is_empty() )
+	assertTrue ( range( 1  , 10 ,-nan) :is_empty() )
+	assertTrue ( range( 1  , nan, nan) :is_empty() )
+	assertTrue ( range( 1  ,-nan,-nan) :is_empty() )
+	assertTrue ( range( nan, nan, nan) :is_empty() )
+	assertTrue ( range(-nan,-nan,-nan) :is_empty() )
 end
 
 function TestRange:testNConstructor()
@@ -280,6 +327,18 @@ function TestRange:testNConstructor()
 	assertNaN   ( nrange(-nan,-nan,-nan).start    )
 	assertNaN   ( nrange(-nan,-nan,-nan).stop     )
 	assertEquals( nrange(-nan,-nan,-nan).step , 1 )
+
+	assertEquals( {nrange( 1, 10,  nan):range()}, {1,10,10} )
+	assertEquals( {nrange( 1, 10, -nan):range()}, {1,10,10} )
+	assertEquals(  nrange( 1, nan, nan).start, 1 )
+	assertNaN   (  nrange( 1, nan, nan).stop     )
+	assertEquals(  nrange( 1, nan, nan).step , 1 )
+	assertEquals(  nrange( 1, nan, 10 ).start, 1 )
+	assertNaN   (  nrange( 1, nan, 10 ).stop     )
+	assertNaN   (  nrange( 1, nan, 10 ).step     )
+	assertEquals(  nrange( 1,-nan, 10 ).start, 1 )
+	assertNaN   (  nrange( 1,-nan, 10 ).stop     )
+	assertNaN   (  nrange( 1,-nan, 10 ).step     )
 end
 
 function TestRange:testNCnstrSinglePoint()
@@ -302,8 +361,11 @@ function TestRange:testNCnstrSinglePoint()
 end
 
 function TestRange:testValue()
-	--assertNil( range(1,10) :value(nil)  ) --is_number in value/raporting err in test
-	--assertNil( range(1,10) :value('')   )
+	local msg = {"attempt to perform arithmetic on local 'x' "}
+	local value in range
+	assertErrorMsgContains( msg[1], value, range(1,10), ''  )
+	assertErrorMsgContains( msg[1], value, range(1,10), nil )
+
   assertNaN   ( range(2,10, inf):value(0)   )
   assertNaN   ( range(2,10,-inf):value(0)   )
   assertEquals( range(2,10, inf):value(1)   , inf )
@@ -337,9 +399,7 @@ function TestRange:testValue()
 end
 
 function TestRange:testGet()
-	--assertNil( range(1,10,0.1) :get('')   ) --is_number in value/raporting err
-	--assertNil( range(1,10,0.1) :get(nil)  )
-  assertNil( range(2,10, inf):get(0) )
+	assertNil( range(2,10, inf):get(0) )
   assertNil( range(2,10,-inf):get(0) )
   assertNil( range(2,10, inf):get(1) )
   assertNil( range(2,10,-inf):get(2) )
@@ -388,10 +448,9 @@ function TestRange:testGet()
 	res =   range(10,-1,-0.7)
 	ref = {10 , 9.3, 8.6, 7.9, 7.2, 6.5, 5.8, 5.1,
 			   4.4, 3.7, 3  , 2.3, 1.6, 0.9, 0.2, -0.5 }
-	--for i=1,#res do
-	--	print(res:get(i-1))
-	--	assertAlmostEquals(res:get(i-1) - ref[i], 0, 4* eps)  --eps e-15
-	--end
+  for i=1,#res do
+  	assertAlmostEquals(res[i] - ref[i], 0, 6*eps) -- 6 eps @ 1.6
+  end
 end
 
 function TestRange:testIndex()
@@ -511,24 +570,29 @@ function TestRange:testSize()
   assertAlmostEquals( range(0  ,0.5, eps):size() - 0.5/eps, 1, eps)
   assertAlmostEquals( range(0.5,  0,-eps):size() - 0.5/eps, 1, eps)
 
-  assertEquals( nrange(2,10, inf) :size(), 0 )
-	assertEquals( nrange(1,10,-inf) :size(), 0 )
-  assertEquals( nrange(2,10, 0  ) :size(), 0 )
-  assertEquals( nrange(2,10,-0  ) :size(), 0 )
-  assertEquals( nrange(2,10,-1  ) :size(), 0 )
-  assertEquals( nrange(2,10, 0.1) :size(), 1 )
-  assertEquals( nrange(2,10, nan) :size(), 1 )
-  assertEquals( nrange(2,10,-nan) :size(), 1 )
+  assertEquals( nrange(2,10, 0  ) :size(), 0  )
+  assertEquals( nrange(2,10,-0  ) :size(), 0  )
+  assertEquals( nrange(2,10,-1  ) :size(), 0  )
+  assertEquals( nrange(2,10, 0.1) :size(), 1  )
   assertEquals( nrange(2 ,10,nil) :size(), 9  )
   assertEquals( nrange(2 ,10,1.1) :size(), 2  )
 	assertEquals( nrange(1 ,32,9  ) :size(), 9  )
 	assertEquals( nrange(1 ,32,10 ) :size(), 10 )
   assertEquals( nrange(10,1 ,1  ) :size(), 1  )
+  assertEquals( nrange(2,10, inf) :size(), 0  )
+	assertEquals( nrange(1,10,-inf) :size(), 0  )
+  assertEquals( nrange(2,10, nan) :size(), 1  )
+  assertEquals( nrange(2,10,-nan) :size(), 1  )
 
   assertEquals( (0..24..4)        :size(), #(0..24..4)      )
   assertEquals( nrange(1,32,9)    :size(), #nrange(1,32,9)  )
-  --assertNaN( range(2,10, nan):size() )  --err: expected: nan, actual: 0
-  --assertNaN( range(2,10,-nan):size() )  --err: expected: nan, actual: 0
+  
+  assertEquals( range( 2  , 10 , nan):size(), 0 )
+  assertEquals( range( 2  , 10 ,-nan):size(), 0 )
+  assertEquals( range( 2  , nan, nan):size(), 0 )
+  assertEquals( range( 2  ,-nan,-nan):size(), 0 )
+  assertEquals( range( nan, nan, nan):size(), 0 )
+  assertEquals( range(-nan,-nan,-nan):size(), 0 )
 end
 
 function TestRange:testEqual()
@@ -581,6 +645,8 @@ function TestRange:testBounds()
 	assertEquals( {range( 10,-1 ,-0.1):bounds()}, {-1,10}   )
 	assertEquals( {range(-10, 1 , 0.1):bounds()}, {-10,1}   )
 	assertEquals( {range(-10,-1 , 0.1):bounds()}, {-10,-1}  )
+	assertEquals( {range( 10, 10, 0.1):bounds()}, {10,10}   )
+	assertEquals( {range(-10,-10,-0.1):bounds()}, {-10,-10} )
 
 	assertEquals( {nrange(1 ,20,1 )   :bounds()}, {1,20}    )
 	assertEquals( {nrange(20,1 ,10)   :bounds()}, {1,20}    )
@@ -592,12 +658,14 @@ function TestRange:testOverlap()
 	assertTrue( (1..9)     		 :overlap(1..1)       )
 	assertTrue( (1..9..0.7)		 :overlap(9..1..-0.7) )
 
-	assertFalse( range(0,10,0) :overlap(0..9) 		)
-	assertFalse( range(0,-10,1):overlap(0..9) 		)
-	assertFalse( range(0,10,-1):overlap(0..9) 		)
-	assertFalse( range(0,9,0)  :overlap(0..9) 		)
-	assertFalse( (0..9)        :overlap(0..-9..0) )
-	assertFalse( (-9..-1..-1)  :overlap(0..9)     )
+	assertFalse( range(0,10,0) :overlap(0..9) 		 )
+	assertFalse( range(0,-10,1):overlap(0..9) 		 )
+	assertFalse( range(0,10,-1):overlap(0..9) 		 )
+	assertFalse( range(0,9,0)  :overlap(0..9) 		 )
+	assertFalse( (0..9)        :overlap(0..-9..0)  )
+	assertFalse( (-9..-1..-1)  :overlap(0..9)      )
+  assertFalse( range(2,10,2) :overlap(12..20..2) )
+  assertFalse( range(12,20,2):overlap(2..10..2)  )
 
 	assertTrue ( range( 1 , 10, 0.1):overlap(-9..9) )
 	assertTrue ( range( 10,-1 ,-0.1):overlap(-9..9) )
@@ -627,13 +695,30 @@ function TestRange:testIrange()
 	assertErrorMsgContains( msg[1], irange, nil, 1      )
 	assertErrorMsgContains( msg[2], irange, 1  , ''     )
 	assertErrorMsgContains( msg[2], irange, 1  , 10, '' )
-
+ 
 	local r, ir
 	ir = {irange(1,10,1)}
 	assertTrue( is_function(ir[1]) )
 	assertTrue( is_range(ir[2])    )
 	assertTrue( ir[3] == 0         )
 
+	for i,v in irange( 1 , 10, 0  ) do print() end 
+	--print(irange(1,10,inf))
+	--print(irange(1,10,tiny))
+	--print(irange(1,10,huge))
+	--eps around, 1, 0, 0.5
+
+	--better way of testing empty iranges
+	r = range( nan, nan, nan) for i,v in irange( nan, nan, nan) do assertEquals(r[i], v ) end 
+	r = range(-nan,-nan,-nan) for i,v in irange(-nan,-nan,-nan) do assertEquals(r[i], v ) end 
+	r = range( 1, nan, nan) for i,v in irange( 1, nan, nan) do assertEquals(r[i], v ) end 
+	r = range( 1,-nan,-nan) for i,v in irange( 1,-nan,-nan) do assertEquals(r[i], v ) end 
+	r = range( 1, 10 , nan) for i,v in irange( 1, 10 , nan) do assertEquals(r[i], v ) end 
+	r = range( 1, 10 ,-nan) for i,v in irange( 1, 10 ,-nan) do assertEquals(r[i], v ) end 
+	r = range( 1, 10 , nil) for i,v in irange( 1, 10 , nil) do assertEquals(r[i], v ) end 
+
+	r = range( 1 , 10, 0  ) for i,v in irange( 1 , 10, 0  ) do assertEquals(r[i], v ) end 
+	r = range( 1 , 10,-0  ) for i,v in irange( 1 , 10,-0  ) do assertEquals(r[i], v ) end
 	r = range( 1 , 10,-0.1) for i,v in irange( 1 , 10,-0.1) do assertEquals(r[i], v ) end
 	r = range( 1 ,-10, 0.1) for i,v in irange( 1 ,-10, 0.1) do assertEquals(r[i], v ) end
 	r = range(-1 ,-10, 0.1) for i,v in irange(-1 ,-10, 0.1) do assertEquals(r[i], v ) end
@@ -657,15 +742,6 @@ function TestRange:testIrange()
 	r = range( 1  , 10, 2  ) for i,v in irange(1  , 10, 2  ) do assertEquals(r[i], v) end
 	r = range( 0.5, 0 ,-0.1) for i,v in irange(0.5, 0 ,-0.1) do assertEquals(r[i], v) end
 	r = range( 10 ,-1 ,-0.7) for i,v in irange(10 ,-1 ,-0.7) do assertEquals(r[i], v) end
-
-	--r = range( 1 , 10, 0  ) for i,v in irange( 1 , 10, 0  ) do assertEquals(r[i], v ) end -- how to check?
-	--r = range( 1 , 10,-0  ) for i,v in irange( 1 , 10,-0  ) do assertEquals(r[i], v ) end
-
---  TODO: imprecise test...
---	ir = {irange(1,10,0)}	 assertFalse( ir[1] or ir[2] or ir[3] )
---	ir = {irange(10,1)}    assertFalse( ir[1] or ir[2] or ir[3] )
---	ir = {irange(10,1,1)}	 assertFalse( ir[1] or ir[2] or ir[3] )
---	ir = {irange(1,10,-1)} assertFalse( ir[1] or ir[2] or ir[3] )
 end
 
 -- performance test suite -----------------------------------------------------o
