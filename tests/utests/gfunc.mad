@@ -1,0 +1,157 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | GFunc regression tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the gfunc module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals,
+      assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
+
+local ident, forget, first, second, swap, rep, compose, compose_bottom
+      in MAD
+
+-- regression test suite ------------------------------------------------------o
+
+TestGfunc = {}
+
+function TestGfunc:testIdent()
+  local f=\ (1,2,3)
+  assertEquals( ident(1)     , 1     )
+  assertEquals( ident(1,nil) , 1     )
+  assertEquals({ident(nil,1)}, {nil,1} )
+  assertEquals( ident(1,2)   , 1,2   )
+  assertEquals( ident(1,2,3) , 1,2,3 )
+  assertEquals( ident(f())   , 1,2,3 )
+end
+
+function TestGfunc:testForget()
+  local f=\ (1,2,3)
+  assertNil( forget(1)     )
+  assertNil( forget(1,nil) )
+  assertNil( forget(nil,1) )
+  assertNil( forget(1,2)   )
+  assertNil( forget(1,2,3) )
+  assertNil( forget(f())   )
+end
+
+function TestGfunc:testFirst()
+  local f=\ (1,2,3)
+  assertEquals( first(1)    , 1   )
+  assertEquals( first(1,nil), 1   )
+  assertEquals( first(nil,1), nil )
+  assertEquals( first(1,2)  , 1   )
+  assertEquals( first(1,2,3), 1   )
+  assertEquals( first(f())  , 1   )
+end
+
+function TestGfunc:testSecond()
+  local f=\ (1,2,3)
+  assertEquals( second(1)    , nil )
+  assertEquals( second(1,nil), nil )
+  assertEquals( second(nil,1), 1   )
+  assertEquals( second(1,2)  , 2   )
+  assertEquals( second(1,2,3), 2   )
+  assertEquals( second(f())  , 2   )
+end
+
+function TestGfunc:testSwap()
+  local f=\ (1,2,3)
+  assertEquals( {swap(1)}    , {nil,1} )
+  assertEquals( {swap(nil,1)}, {1}     )
+  assertEquals( {swap(1,2)}  , {2,1} )
+  assertEquals( {swap(1,2,3)}, {2,1} )
+  assertEquals( {swap(f())}  , {2,1} )
+end
+
+function TestGfunc:testRep()
+  local msg = {
+    "invalid argument #2 (size or nil expected)",
+  }
+
+  assertEquals( #rep(9), 2^31 )
+  assertEquals(  rep(9)[1], 9 )
+  assertEquals(  rep(9)[1e9], 9 )
+  assertEquals(  rep(9)[-1], 9 )
+  assertEquals(  rep(9)[nil], 9 )
+
+  assertErrorMsgContains(msg[1], rep, 9, -1)
+  assertEquals( rep(9,0), {} )
+  assertEquals( rep(9,1), {9} )
+  assertEquals( rep(9,2), {9,9} )
+  assertEquals( rep(9,3), {9,9,9} )
+
+  assertEquals( #rep(9,0), 0 )
+  assertEquals( #rep(9,3), 3 )
+  assertEquals( #rep(9,500), 500 )
+  assertEquals( #rep(9,1e9), 1e9 )
+
+  assertEquals( rep(9,  1)[ 1] , 9 )
+  assertEquals( rep(9,500)[500], 9 )
+  assertNil   ( rep(9,1e9)[-1] )
+  assertNil   ( rep(9,1e9)[ 0] )
+  assertEquals( rep(9,1e9)[ 1] , 9 )
+  assertEquals( rep(9,1e9)[1e9], 9 )
+  assertNil   ( rep(9,1e9)[1e9+1]  )
+
+  for _,v in ipairs(rep(3,10)) do assertEquals( v, 3 ) end
+  for _,v in  pairs(rep(3,10)) do assertEquals( v, 3 ) end
+
+  local a
+  a=rep(3)    for i=1,10 do assertEquals( a[i], 3 ) end
+  a=rep(3,10) for i=1,#a do assertEquals( a[i], 3 ) end
+end
+
+function TestGfunc:testCompose()
+  local id, id1, id4 = \n,...(n+1,...), \...(1,...), \n n
+  local f = compose(id4,compose(id,compose(id,compose(id,id1))))
+  assertEquals ( f(0  ), 4 )
+  assertEquals ( f(1  ), 4 )
+  assertEquals ( f(nan), 4 )
+  assertEquals ( f(nil), 4 )
+end
+
+function TestGfunc:testComposeBottom()
+  local id, id1, id4, _ = \n,...(n+1,...), \...(1,...), \n n, compose_bottom
+  local f = id4^id^id^id^id1^_
+  assertEquals ( f(0  ), 4 )
+  assertEquals ( f(1  ), 4 )
+  assertEquals ( f(nan), 4 )
+  assertEquals ( f(nil), 4 )
+end
+
+-- performance test suite -----------------------------------------------------o
+
+Test_Gfunc = {}
+
+function Test_Gfunc:testCompose()
+  local f, g, h, _ = \x,y (x+y,x-y), \x,y x*y, \x,y x^2-y^2, compose_bottom
+  local gf = g^f^_
+  local p  = \x,y gf(x,y) == h(x,y)
+  local t0 = os.clock()
+  for i=1,94906266 do assert(p(i-1,i), i) end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt , 0.5, 1 )
+  assertTrue ( p(94906266-1, 94906266  ) )
+  assertFalse( p(94906266  , 94906266+1) )
+end
+
+-- end ------------------------------------------------------------------------o

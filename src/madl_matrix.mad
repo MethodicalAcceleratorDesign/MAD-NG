@@ -121,7 +121,9 @@ local new, istype, metatype, cast, sizeof, fill in require 'ffi'
 local _C in require 'madl_cmad'
 
 local is_number, is_table, is_complex, is_scalar, is_callable,
-      ident, rep, defhelp in require 'madl_utils'
+      defhelp in require 'madl_utils'
+
+local ident, rep in require 'madl_gfunc'
 
 local carg, real, imag, conj, norm, rect, polar,
       abs, ceil, floor, exp, log, sqrt,
@@ -137,7 +139,13 @@ local matrix, cmatrix,
 -- tmp for returned values
 local cres = new 'complex[1]'
 
--- repeated element -----------------------------------------------------------o
+-- tmp for index identity TODO (should come from func module)
+local sid = setmetatable({ n=0 }, {
+  __len       = \s   -> s.n,
+  __call      = \s,n => s.n=n return s end,
+  __index     = \_,i -> i,
+  __newindex := error("invalid write access"),
+})
 
 -- implementation -------------------------------------------------------------o
 
@@ -380,31 +388,62 @@ end
 
 -- foreach, map, fold ---------------------------------------------------------o
 
-function M.foreach (x, f)
+function M.foreach (x, f, ij_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  for i=0,x:size()-1 do f(x.data[i]) end
+  if ij_ == nil then
+    for i=0,x:size()-1 do f(x.data[i]) end
+  else
+    local ij = ij_
+    if is_number(ij) then ij = {ij} end
+    for _,i in ipairs(ij) do f(safe_geti(x,i)) end
+  end
   return x
 end
 
-function M.map (x, f, r_)
+function M.map (x, f, ij_, r_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  local n, r0 = x:size(), f(x.data[0])
+
+  if ij_ == nil then
+    local n, r0 = x:size(), f(x.data[0])
+    local r = r_ or x:esame(r0)
+    assert(is_table(r) or n <= #r, "incompatible sizes")
+    r[1] = r0
+    for i=2,n do r[i] = f(geti(x,i)) end
+    return r
+  end
+
+  local ij = ij_ or sid(x:size())
+  if is_number(ij) then ij = {ij} end
+  local n, r0 = #ij, f(safe_geti(x,ij[1]))
   local r = r_ or x:esame(r0)
   assert(is_table(r) or n <= #r, "incompatible sizes")
-  r[1] = r0
-  for i=2,n do r[i] = f(geti(x,i)) end
+  r[ij[1]] = r0
+  for i=2,n do r[ij[i]] = f(safe_geti(x,ij[i])) end
   return r
 end
 
-function M.map2 (x, y, f, r_)
+function M.map2 (x, y, f, ij_, r_)
   assert(is_callable(f), "invalid argument #3 (callable expected)")
   if is_scalar(y) then y = rep(y) end
-  local n, r0 = x:size(), f(x.data[0], y[1])
+
+  if ij_ == nil then
+    local n, r0 = x:size(), f(x.data[0], y[1])
+    local r = r_ or x:esame(r0)
+    assert((is_table(r) or n <= #r) and n <= #y, "incompatible sizes")
+    r[1] = r0
+    for i=2,n do r[i] = f(geti(x,i), y[i]) end
+    return r
+  end
+
+  local ij = ij_ or sid(x:size())
+  if is_number(ij) then ij = {ij} end
+  local n, r0 = #ij, f(safe_geti(x,ij[1]), y[ij[1]])
   local r = r_ or x:esame(r0)
   assert((is_table(r) or n <= #r) and n <= #y, "incompatible sizes")
-  r[1] = r0
-  for i=2,n do r[i] = f(geti(x,i), y[i]) end
+  r[ij[1]] = r0
+  for i=2,n do r[ij[i]] = f(safe_geti(x,ij[i]), y[ij[i]]) end
   return r
+
 end
 
 function M.map3 (x, y, z, f, r_)
