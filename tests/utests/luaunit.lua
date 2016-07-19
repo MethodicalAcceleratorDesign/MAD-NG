@@ -1946,8 +1946,7 @@ end
         -- We do this by stripping the failure prefix from the error message,
         -- while keeping track of the gsub() count. A non-zero value -> failure
         local failed, iter_msg
-        iter_msg = self.execCount and 'iteration: '..self.currentCount..', '
-
+        iter_msg = self.exeCount and 'iteration: '..self.currentCount..', '
         err.msg, failed = err.msg:gsub(M.FAILURE_PREFIX, iter_msg or '', 1)
         if failed > 0 then
             err.status = NodeStatus.FAIL
@@ -1963,7 +1962,6 @@ end
 
         return err -- return the error "object" (table)
     end
-
 
     function M.LuaUnit:execOneFunction(className, methodName, classInstance, methodInstance)
         -- When executing a test function, className and classInstance must be nil
@@ -1996,10 +1994,10 @@ end
 
           -- run setUp first (if any)
           if classInstance then
-              local func =    self.asFunction( classInstance.setUp )
-                           or self.asFunction( classInstance.Setup )
-                           or self.asFunction( classInstance.setup )
-                           or self.asFunction( classInstance.SetUp )
+              local func = self.asFunction( classInstance.setUp ) or
+                           self.asFunction( classInstance.Setup ) or
+                           self.asFunction( classInstance.setup ) or
+                           self.asFunction( classInstance.SetUp )
               if func then
                   self:addStatus(self:protectedCall(classInstance, func, className..'.setUp'))
               end
@@ -2012,10 +2010,10 @@ end
 
           -- lastly, run tearDown (if any)
           if classInstance then
-              local func =    self.asFunction( classInstance.tearDown )
-                           or self.asFunction( classInstance.TearDown )
-                           or self.asFunction( classInstance.teardown )
-                           or self.asFunction( classInstance.Teardown )
+              local func = self.asFunction( classInstance.tearDown ) or
+                           self.asFunction( classInstance.TearDown ) or
+                           self.asFunction( classInstance.teardown ) or
+                           self.asFunction( classInstance.Teardown )
               if func then
                   self:addStatus(self:protectedCall(classInstance, func, className..'.tearDown'))
               end
