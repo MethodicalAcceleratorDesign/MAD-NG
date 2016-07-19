@@ -241,8 +241,9 @@ local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
-  if sm == pm then -- create a new metatable if shared with parent
-    sm={} ; for k,v in pairs(pm) do sm[k] = v end
+  if sm == pm or sm == pm.__orig then -- create new metatable if same as parent
+    assert(sm == pm, "invalid metatable (parent metatable newer than child)")
+    sm={ __orig=pm } for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
     assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
@@ -303,6 +304,8 @@ local function strdump (self, class, pattern)
   res[#res+1] = ''
   return table.concat(res, '\n')
 end
+
+-- TODO: show command...
 
 -- root Object variables = module
 Object = setmetatable({[var]=M, [rof]=true},MT)
@@ -941,12 +944,15 @@ function TestLuaObject:testSetFunction()
   assertErrorMsgContains(msg[4], p0.setf, p0, {x=function() return 3 end}, false)
 end
 
+local count = 0
+
 function TestLuaObject:testSetMetamethod()
   local p0 = Object 'p0' { 1, 2, z=function() return 3 end }
   local p1 = p0 'p1' {}
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (raw table expected)",
+    "invalid metatable (parent metatable newer than child)",
     "invalid key (metamethod expected)",
     "cannot override metamethod",
   }
@@ -956,12 +962,19 @@ function TestLuaObject:testSetMetamethod()
       return str
     end
 
-  p0:set_metamethod { __tostring = tostr }
+  p0:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
   assertEquals     (tostring(p0), '1, 2, z, __id, ')
-  assertNotEquals  (tostring(p1), '__id, ')
+  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
   assertStrContains(tostring(p1), 'table:')
 
-  p1:set_metamethod { __tostring = tostr }
+  -- p1 created after p0 metatable was cloned, share metatable with Object
+  assertErrorMsgContains(msg[3], p1.set_metamethod, p1, { __tostring = tostr })
+  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
+  assertStrContains(tostring(p1), 'table:')
+
+  p1 = p0 'p1' {} -- new clone, share metatable with p0
+  assertErrorMsgContains(msg[5], p1.set_metamethod, p1, { __tostring = tostr })
+  p1:set_metamethod({ __tostring = tostr }, true) -- need override
   assertEquals      (tostring(p1), '__id, ')
   p1:set_function({ x=function() return function() return 2 end end, y =function(s) return function(n) return s.z*n end end }) p1.z =function() return 3 end
   assertNotEquals   (tostring(p1), 'x, y, z, __id, ')
@@ -974,10 +987,10 @@ function TestLuaObject:testSetMetamethod()
   assertErrorMsgContains(msg[2], p0.setmm, p0, 1)
   assertErrorMsgContains(msg[2], p0.setmm, p0, '')
 
-  assertErrorMsgContains(msg[3], p0.setmm, p0, {x=1})
-  assertErrorMsgContains(msg[3], p0.setmm, p0, {y=''})
+  assertErrorMsgContains(msg[4], p0.setmm, p0, {x=1})
+  assertErrorMsgContains(msg[4], p0.setmm, p0, {y=''})
 
-  assertErrorMsgContains(msg[4], p0.setmm, p0, {__index=false}, false)
+  assertErrorMsgContains(msg[5], p0.setmm, p0, {__index=false}, false)
 end
 
 function TestLuaObject:testGetAllKeys()

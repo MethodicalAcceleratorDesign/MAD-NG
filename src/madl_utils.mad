@@ -33,11 +33,19 @@ SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
   is_cdata, is_complex, is_xrange,                              (extended types)
   is_inf, is_nan, is_integer, is_scalar, is_rawtable,          (specializations)
-  is_metaname,
-  is_iterable, is_indexable, is_callable, is_comparable, is_ordered,  (concepts)
-  is_concatable, is_stringable,
+  is_equal, is_not_equal, is_lesser, is_lesser_or_equal,     (logical operators)
+  is_greater, is_greater_or_equal, bool, logical_not,
+  logical_and, logical_or (aliases is_eq, is_ne, is_lt, is_le, is_gt, is_ge,
+  lnot, land, lor),
+  unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
+  is_metaname, has_metatable,                                      (metamethods)
+  has_length, is_iterable, is_indexable, is_callable, is_comparable,  (concepts)
+  is_ordered, is_concatenable, is_stringable, is_collectable,
+  has_constructor, is_negatable, is_addable, is_substractable,
+  is_multiplicable, is_dividable, is_modulable, is_powerable,
+  is_same, same,                                              (types comparison)
   option { format='%.16g' },                                             (setup)
-  tostring, getmetatable.                                           (extensions)
+  tostring, get_metatable.                                          (extensions)
 
 DESCRIPTION
   The utils module provides useful single argument utility functions:
@@ -45,21 +53,29 @@ DESCRIPTION
     is_complex and is_xrange return true if the argument is of expected type,
   - is_integer returns true if the argument is an integer number within the
     interval of [-2^52, 2^52],
-  - is_scalar returns true if the argument is a number or a complex.
-  - is_inf and is_nan return true if argument is ±infinity or not-a-number.
-  - is_rawtable returns true if the argument is a table without a metatable set,
+  - is_scalar returns true if the argument is a number or a complex,
+  - is_inf and is_nan return true if argument is ±infinity or not-a-number,
+  - is_rawtable returns true if the argument is a table without metatable,
+  - is_equal, is_not_equal, is_lesser, is_lesser_or_equal, is_greater and
+    is_greater_or_equal, bool, logical_not, logical_and, logical_or are
+    functions wrapping logical operators,
+  - unm, add, sub, mul, div, mod, pow, get, set, len, cat, call are functions
+    wrapping other operators (i.e. -, +, -, *, /, %, ^, [], []=, #, .., ()),
   - is_ismetaname returns true if the argument is a valid metamethod name,
-  - is_iterable, is_indexable, is_callable, is_comparable, is_ordered,
-    is_concatable and is_stringable return true if the argument fulfills the
-    concept requirements.
-  - is_stringable checks only if the argument supports the __tostring metamethod
-    because objects are always stringable in Lua.
-  - option stores various setup.
-  - tostring is extended to handle option.format and delegation, and accepts an
-    extra format argument that overrides option.format if provided. To let the
+  - has_metatable returns true is the argument has a metatable,
+  - has_length, is_iterable, is_indexable, is_callable, is_comparable,
+    is_ordered, is_concatenable, is_stringable, is_collectable, is_addable,
+    is_substractable, is_multiplicable, is_dividable, is_modulable and
+    is_powerable return true if the argument fulfills the concept requirements,
+  - is_stringable, is_collectable and has_constructor check only if the argument
+    supports respectively the __tostring, the __gc and the __new metamethods
+    because objects are always stringable, collectable and constructible in Lua,
+  - option stores various setup,
+  - tostring is extended to handle option.format and delegation. To let the
     command print uses this version, it must be exported to override the
-    global environment one (i.e. MAD.export('tostring', true)).
-  - getmetatable is an extended version that works also with cdata.
+    global environment one (i.e. MAD.export('tostring', true)),
+  - get_metatable is an extended version of getmetatable that works also with
+    cdata.
 
 RETURN VALUE
   A table constaining these utility functions and the option table.
@@ -80,6 +96,14 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- implementation -------------------------------------------------------------o
 
+-- metatables
+
+assert(miscmap, "missing MAD extension (no cdata metatable access)")
+
+local function get_metatable (a)
+  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
+end
+
 -- metamethods
 
 local metaname = { -- from lj_obj.h + __init
@@ -90,139 +114,215 @@ local metaname = { -- from lj_obj.h + __init
 }
 for _,v in ipairs(metaname) do metaname[v]=v end -- build dictionary
 
+-- values
+
+local value_type = { -- types that cannot be indirectly modified
+  ['nil'] = true, boolean = true, number = true, string = true,
+  ['function'] = true, thread = true,
+}
+
 -- types
 
-M.is_nil = function (a)
-  return type(a) == 'nil'
-end
-
-M.is_boolean = function (a)
-  return type(a) == 'boolean'
-end
-
-M.is_number = function (a)
-  return type(a) == 'number'
-end
-
-M.is_string = function (a)
-  return type(a) == 'string'
-end
-
-M.is_function = function (a)
-  return type(a) == 'function'
-end
-
-M.is_table = function (a)
-  return type(a) == 'table'
-end
+M.is_nil      = \a -> type(a) == 'nil'
+M.is_boolean  = \a -> type(a) == 'boolean'
+M.is_number   = \a -> type(a) == 'number'
+M.is_string   = \a -> type(a) == 'string'
+M.is_function = \a -> type(a) == 'function'
+M.is_table    = \a -> type(a) == 'table'
 
 -- cdata types
 
-M.is_cdata = function (a)
-  return type(a) == 'cdata'
-end
-
-M.is_complex = function (a)
-  return istype('complex', a)
-end
-
-M.is_xrange = function (a)
-  return istype('xrange', a)
-end
+M.is_cdata    = \a type(a) == 'cdata'
+M.is_complex  = \a istype('complex', a)
+M.is_xrange   = \a istype('xrange' , a)
 
 -- specializations
 
-M.is_inf = function (a)
-  return type(a) == 'number' and abs(a) == 1/0
-end
+local is_number, is_string, is_table, is_function, is_complex in M
 
-M.is_nan = function (a)
-  return type(a) == 'number' and a ~= a
-end
+M.is_nan      = \a -> is_number(a) and a ~= a
+M.is_inf      = \a -> is_number(a) and abs(a) == 1/0
+M.is_integer  = \a -> is_number(a) and a>=-2^52 and a<=2^52 and (a%1)==0
+M.is_scalar   = \a -> is_number(a) or is_complex(a)
+M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
 
-M.is_integer = function (a)
-  return type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a % 1) == 0
-end
+-- logical
 
-M.is_scalar = function (a)
-  return type(a) == 'number' or istype('complex', a)
-end
+M.bool  = \x   -> not not x
+M.lnot  = \x   -> not x
+M.land  = \x,y -> x and y
+M.lor   = \x,y -> x or  y
+M.is_eq = \x,y -> x == y
+M.is_ne = \x,y -> x ~= y
+M.is_lt = \x,y -> x <  y
+M.is_le = \x,y -> x <= y
+M.is_gt = \x,y -> x >  y
+M.is_ge = \x,y -> x >= y
 
-M.is_rawtable = function (a)
-  return type(a) == 'table' and getmetatable(a) == nil
-end
 
--- names
+M.logical_not         = M.lnot
+M.logical_and         = M.land
+M.logical_or          = M.lor
+M.is_equal            = M.is_eq
+M.is_not_equal        = M.is_ne
+M.is_lesser           = M.is_lt
+M.is_lesser_or_equal  = M.is_le
+M.is_greater          = M.is_gt
+M.is_greater_or_equal = M.is_ge
 
-M.is_metaname = function (a)
-  return metaname[a] == a
-end
+-- operators
+
+M.unm  = \x   -> -x
+M.add  = \x,y ->  x + y
+M.sub  = \x,y ->  x - y
+M.mul  = \x,y ->  x * y
+M.div  = \x,y ->  x / y
+M.mod  = \x,y ->  x % y
+M.pow  = \x,y ->  x ^ y
+
+M.get  = \x,k   -> x[k]
+M.set  = \x,k,v => x[k]=v end
+M.len  = \x     -> #x
+M.cat  = \x,y   -> x..y
+M.call = \x,... -> x(...)
+
+-- metamethods
+
+
+M.is_metaname   = \a -> metaname[a] == a
+M.has_metatable = \a -> get_metatable(a) ~= nil
+M.get_metatable = get_metatable
 
 -- concepts
 
-assert(miscmap, "missing MAD extension (no cdata metatable access)")
-
-local function getmetatbl (a)
-  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
+M.has_length = function (a)
+  if is_string(a) or is_table(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__len ~= nil or false
 end
 
 M.is_iterable = function (a)
-  if type(a) == 'table' then return true end
-  local mt = getmetatbl(a)
+  if is_table(a) then return true end
+  local mt = get_metatable(a)
   return mt and (mt.__pairs or mt.__ipairs) ~= nil or false
 end
 
 M.is_indexable = function (a)
-  if type(a) == 'table' then return true end
-  local mt = getmetatbl(a)
+  if is_table(a) then return true end
+  local mt = get_metatable(a)
   return mt and (mt.__index or mt.__newindex) ~= nil or false
 end
 
 M.is_callable = function (a)
-  if type(a) == 'function' then return true end
-  local mt = getmetatbl(a)
+  if is_function(a) then return true end
+  local mt = get_metatable(a)
   return mt and mt.__call ~= nil or false
 end
 
 M.is_comparable = function (a)
-  if type(a) == 'number' or type(a) == 'string' then return true end
-  local mt = getmetatbl(a)
+  if is_number(a) or is_string(a) then return true end
+  local mt = get_metatable(a)
   return mt and mt.__eq ~= nil or false
 end
 
 M.is_ordered = function (a)
-  if type(a) == 'number' or type(a) == 'string' then return true end
-  local mt = getmetatbl(a)
+  if is_number(a) or is_string(a) then return true end
+  local mt = get_metatable(a)
   return mt and (mt.__lt or mt.__le) ~= nil or false
 end
 
-M.is_concatable = function (a)
-  if type(a) == 'string' then return true end
-  local mt = getmetatbl(a)
+M.is_concatenable = function (a)
+  if is_string(a) then return true end
+  local mt = get_metatable(a)
   return mt and mt.__concat ~= nil or false
 end
 
 M.is_stringable = function (a)
-  local mt = getmetatbl(a)
+  local mt = get_metatable(a)
   return mt and mt.__tostring ~= nil or false
+end
+
+M.is_collectable = function (a)
+  local mt = get_metatable(a)
+  return mt and mt.__gc ~= nil or false
+end
+
+M.has_constructor = function (a)
+  local mt = get_metatable(a)
+  return mt and mt.__new ~= nil or false
+end
+
+M.is_negatable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__unm ~= nil or false
+end
+
+M.is_addable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__add ~= nil or false
+end
+
+M.is_substractable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__sub ~= nil or false
+end
+
+M.is_multiplicable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__mul ~= nil or false
+end
+
+M.is_dividable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__div ~= nil or false
+end
+
+M.is_modulable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__mod ~= nil or false
+end
+
+M.is_powerable = function (a)
+  if is_number(a) then return true end
+  local mt = get_metatable(a)
+  return mt and mt.__pow ~= nil or false
+end
+
+-- same
+
+local is_rawtable, is_indexable, is_callable, is_stringable in M
+
+M.is_same = function (a, b)
+  return type(a) == type(b) and get_metatable(a) == get_metatable(b)
+end
+
+M.same = function (a, ...)
+  if value_type[type(a)] then return a end
+  if is_rawtable(a) then return {} end
+  assert(is_indexable(a) and is_callable(a.same),
+         "invalid argument #1 (expecting :same method)")
+  return a:same(...)
 end
 
 -- options
 
-local option = {
+M.option = {
   format = "%.16g",
 }
 
+local option in M
+
 M.tostring = function (a)
-  if type(a) == 'number' then return string.format(option.format, a) end
-  if M.is_stringable(a)  then return a:__tostring() end -- delegate
+  if is_number(a) then return string.format(option.format, a) end
+  if is_stringable(a) then return a:__tostring() end -- delegate
   return tostring(a) -- builtin
 end
-
--- extensions
-
-M.option       = option
-M.getmetatable = getmetatbl
 
 -- default help
 

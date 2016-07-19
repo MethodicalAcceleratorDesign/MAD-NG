@@ -613,9 +613,15 @@ function TestLuaGmath:testMax()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( max(nan, -inf), -inf )
   assertEquals( max(nan,   0 ),   0  )
+--  assertEquals( max(0  ,  nan),   0  )
   assertEquals( max(nan,  inf),  inf )
-
-  assertNaN( max(nan) )
+  assertEquals( max(nan, 0, 1),   1  )
+  assertEquals( max(nan,nan,0),   0  )
+--  assertEquals( max(nan,0,nan),   0  )
+--  assertEquals( max(0,nan,nan),   0  )
+  assertNaN   ( max(nan)         )
+  assertNaN   ( max(nan,nan)     )
+  assertNaN   ( max(nan,nan,nan) )
 end
 
 function TestLuaGmath:testMin()
@@ -639,9 +645,15 @@ function TestLuaGmath:testMin()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( min(nan, -inf), -inf )
   assertEquals( min(nan,   0 ),   0  )
+--  assertEquals( min(0  ,  nan),   0  )
   assertEquals( min(nan,  inf),  inf )
-
-  assertNaN( min(nan) )
+  assertEquals( min(nan, 0,-1), - 1  )
+  assertEquals( min(nan,nan,0),   0  )
+--  assertEquals( min(nan,0,nan),   0  )
+--  assertEquals( min(0,nan,nan),   0  )
+  assertNaN   ( min(nan)         )
+  assertNaN   ( min(nan,nan)     )
+  assertNaN   ( min(nan,nan,nan) )
 end
 
 function TestLuaGmath:testModf()

@@ -26,8 +26,10 @@
 local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
       assertAlmostEquals, assertStrContains, assertErrorMsgContains
       in require 'luaunit'
+
 local is_number, is_function, is_table, is_object, is_instanceOf, is_readonly,
       Object in MAD
+
 local sin in math
 
 -- regression test suite ------------------------------------------------------o
@@ -636,6 +638,7 @@ function TestObject:testSetMetamethod()
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (raw table expected)",
+    "invalid metatable (parent metatable newer than child)",
     "invalid key (metamethod expected)",
     "cannot override metamethod",
   }
@@ -645,12 +648,19 @@ function TestObject:testSetMetamethod()
       return str
     end
 
-  p0:set_metamethod { __tostring = tostr }
+  p0:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
   assertEquals     (tostring(p0), '1, 2, z, __id, ')
-  assertNotEquals  (tostring(p1), '__id, ')
+  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
   assertStrContains(tostring(p1), 'table:')
 
-  p1:set_metamethod { __tostring = tostr }
+  -- p1 created after p0 metatable was cloned, share metatable with Object
+  assertErrorMsgContains(msg[3], p1.set_metamethod, p1, { __tostring = tostr })
+  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
+  assertStrContains(tostring(p1), 'table:')
+
+  p1 = p0 'p1' {} -- new clone, share metatable with p0
+  assertErrorMsgContains(msg[5], p1.set_metamethod, p1, { __tostring = tostr })
+  p1:set_metamethod({ __tostring = tostr }, true) -- need override
   assertEquals      (tostring(p1), '__id, ')
   p1:set_function({ x:=\ 2, y =\s\n s.z*n }) p1.z =\ 3
   assertNotEquals   (tostring(p1), 'x, y, z, __id, ')
@@ -663,10 +673,10 @@ function TestObject:testSetMetamethod()
   assertErrorMsgContains(msg[2], p0.setmm, p0, 1)
   assertErrorMsgContains(msg[2], p0.setmm, p0, '')
 
-  assertErrorMsgContains(msg[3], p0.setmm, p0, {x=1})
-  assertErrorMsgContains(msg[3], p0.setmm, p0, {y=''})
+  assertErrorMsgContains(msg[4], p0.setmm, p0, {x=1})
+  assertErrorMsgContains(msg[4], p0.setmm, p0, {y=''})
 
-  assertErrorMsgContains(msg[4], p0.setmm, p0, {__index=false}, false)
+  assertErrorMsgContains(msg[5], p0.setmm, p0, {__index=false}, false)
 end
 
 function TestObject:testGetAllKeys()
