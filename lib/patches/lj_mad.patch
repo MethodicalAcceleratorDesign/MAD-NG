@@ -30,25 +30,6 @@ index fb5fdcb..7d8e300 100644
  ##############################################################################
  
  ##############################################################################
-diff --git a/src/jit/bcsave.lua b/src/jit/bcsave.lua
-index d0968b1..5117f71 100644
---- a/src/jit/bcsave.lua
-+++ b/src/jit/bcsave.lua
-@@ -125,12 +125,12 @@ extern "C"
- #ifdef _WIN32
- __declspec(dllexport)
- #endif
--const char %s%s[] = {
-+const unsigned char %s%s[] = {
- ]], LJBC_PREFIX, ctx.modname))
-   else
-     fp:write(string.format([[
- #define %s%s_SIZE %d
--static const char %s%s[] = {
-+static const unsigned char %s%s[] = {
- ]], LJBC_PREFIX, ctx.modname, #s, LJBC_PREFIX, ctx.modname))
-   end
-   local t, n, m = {}, 0, 0
 diff --git a/src/lib_ffi.c b/src/lib_ffi.c
 index 1feee21..7cc830a 100644
 --- a/src/lib_ffi.c
@@ -186,7 +167,7 @@ index 16d2cb6..3c32f39 100644
    if (tdef) {
      cp_push_type(decl, tdef);
 diff --git a/src/lj_crecord.c b/src/lj_crecord.c
-index d568b20..ac73be3 100644
+index 4799031..90fe51e 100644
 --- a/src/lj_crecord.c
 +++ b/src/lj_crecord.c
 @@ -115,6 +115,10 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
@@ -234,25 +215,20 @@ index d568b20..ac73be3 100644
      } else if (!ctype_isconstval(df->info)) {
        /* NYI: bitfields and sub-structures. */
        return 0;
-@@ -575,15 +594,35 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
-   } else if (ctype_iscomplex(sinfo)) {  /* Unbox/box complex. */
-     ptrdiff_t esz = (ptrdiff_t)(s->size >> 1);
+@@ -577,13 +596,33 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
      TRef ptr, tr1, tr2, dp;
--    dp = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
-+    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
+     dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
      tr1 = emitir(IRT(IR_XLOAD, t), sp, 0);
 -    ptr = emitir(IRT(IR_ADD, IRT_PTR), sp, lj_ir_kintp(J, esz));
 +    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
      tr2 = emitir(IRT(IR_XLOAD, t), ptr, 0);
 -    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
--    emitir(IRT(IR_XSTORE, t), ptr, tr1);
--    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
--    emitir(IRT(IR_XSTORE, t), ptr, tr2);
 +
 +    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
-+          emitir(IRT(IR_XSTORE, t), ptr, tr1);
+           emitir(IRT(IR_XSTORE, t), ptr, tr1);
+-    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
 +    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
-+          emitir(IRT(IR_XSTORE, t), ptr, tr2);
+           emitir(IRT(IR_XSTORE, t), ptr, tr2);
      return dp;
 +#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
 +  } else if (ctype_isxrange(sinfo)) {  /* Unbox/box xrange. */
@@ -340,35 +316,19 @@ index bc47cc5..5100ca3 100644
  	ctype_preplit(ctr, ")))");
  	ctype_prepnum(ctr, size);
 diff --git a/src/lj_ctype.h b/src/lj_ctype.h
-index e9b426f..0dbad9e 100644
+index 4e49f57..0dbad9e 100644
 --- a/src/lj_ctype.h
 +++ b/src/lj_ctype.h
-@@ -42,25 +42,25 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
- **  ---------- info ------------
- ** |type      flags...  A   cid | size   |  sib  | next  | name  |
- ** +----------------------------+--------+-------+-------+-------+--
--** |NUM       BFvcUL..  A       | size   |       | type  |       |
--** |STRUCT    ..vcU..V  A       | size   | field | name? | name? |
--** |PTR       ..vcR...  A   cid | size   |       | type  |       |
--** |ARRAY     VCvc...V  A   cid | size   |       | type  |       |
--** |VOID      ..vc....  A       | size   |       | type  |       |
-+** |NUM       BFcvUL..  A       | size   |       | type  |       |
-+** |STRUCT    ..cvU..V  A       | size   | field | name? | name? |
-+** |PTR       ..cvR...  A   cid | size   |       | type  |       |
+@@ -45,7 +45,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
+ ** |NUM       BFcvUL..  A       | size   |       | type  |       |
+ ** |STRUCT    ..cvU..V  A       | size   | field | name? | name? |
+ ** |PTR       ..cvR...  A   cid | size   |       | type  |       |
+-** |ARRAY     VCcv...V  A   cid | size   |       | type  |       |
 +** |ARRAY     VCcvX..V  A   cid | size   |       | type  |       |
-+** |VOID      ..cv....  A       | size   |       | type  |       |
+ ** |VOID      ..cv....  A       | size   |       | type  |       |
  ** |ENUM                A   cid | size   | const | name? | name? |
  ** |FUNC      ....VS.. cc   cid | nargs  | field | name? | name? |
- ** |TYPEDEF                 cid |        |       | name  | name  |
- ** |ATTRIB        attrnum   cid | attr   | sib?  | type? |       |
- ** |FIELD                   cid | offset | field |       | name? |
--** |BITFIELD  B.vcU csz bsz pos | offset | field |       | name? |
--** |CONSTVAL     c          cid | value  | const | name  | name  |
-+** |BITFIELD  B.cvU csz bsz pos | offset | field |       | name? |
-+** |CONSTVAL    c           cid | value  | const | name  | name  |
- ** |EXTERN                  cid |        | sib?  | name  | name  |
- ** |KW                      tok | size   |       | name  | name  |
- ** +----------------------------+--------+-------+-------+-------+--
+@@ -60,7 +60,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
  **        ^^  ^^--- bits used for C type conversion dispatch
  */
  
@@ -727,11 +687,11 @@ index 5df4c6e..df59284 100644
      lj_lex_next(ls);
 -    parse_body(ls, v, 0, ls->linenumber);
 +    parse_body(ls, v, 0, 0, ls->linenumber);
-     return;
++    return;
 +#ifdef LUAJIT_LAMBDA_SYNTAX /* LD: 2016.04.07 */
 +  case '\\':
 +    parse_body(ls, v, 0, 1, ls->linenumber);
-+    return;
+     return;
 +#endif
    default:
      expr_primary(ls, v);
@@ -884,7 +844,7 @@ index e662265..56f12b1 100644
    default: return x;
    }
 diff --git a/src/luajit.c b/src/luajit.c
-index 00e12bd..410a5af 100644
+index 4de2d43..f818b26 100644
 --- a/src/luajit.c
 +++ b/src/luajit.c
 @@ -40,6 +40,18 @@
