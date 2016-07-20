@@ -43,35 +43,38 @@ DESCRIPTION
     Object. If the retrieved value is a function, it is called with self passed
     as argument #1 (can be ignored) and the result is returned (i.e. function
     with value semantic).
-  - On write, the value is simply stored in the current object (no lookup). To
-    override this behavior, just (re)defined the __newindex metamethod using
-    set_metamethod with overriding allowed (use with care!).
+  - On write, the value is simply stored in the current object (no lookup)
+    unless it is readonly. To override these behaviors, just (re)defined the
+    __newindex metamethod using set_metamethod with overriding allowed (use with
+    care!).
   - On build, the new instance is connected to its parent (inheritance). If the
     new instance has a defined __init metamethod (shared), it will be called on
     the new instance and non-nil result or the new instance will be returned.
   - To set:
-    + variables (inherited), use set_variable.
-    + functions (inherited) n-ary or avoid value semantic, use set_function.
+    + variables, use set_variable.
+    + functions n-arity or avoid value semantic, use set_function.
     + metamethods (shared), use set_metamethod.
-    + set, setf, setmm are set_variable, set_function, set_metamethod aliases.
+    + set, setf and setmm are set_variable, set_function, set_metamethod aliases.
+  - To get:
+    + variables (inherited), use get_variable.
+    + the list of all variables matching some pattern, including inherited ones,
+      use get_varkey.
+    + get and getk are get_variable and get_varkey aliases.
   - Root 'Object' defines the following variables:
     + 'name'  points to 'self' name unless overridden (alias)
     + '__par' points to 'self' parent unless overridden (alias)
     + '__var' points to 'self' variables unless overridden (alias)
     + '__id'  holds 'self' name if provided (variable)
-  - Each object inherits the following methods:
-    #, name, is_object, is_instanceOf, isa, set, setf, setmm, set_variable,
-    set_function, set_metamethod, dump.
 
 RETURN VALUES
   A table constaining Object, the root constructor of objects, and the helpers
-  is_object and is_instanceOf for function-like usage in case the argument #1
-  might not be a valid object.
+  is_object, is_class, is_instanceOf, is_readonly for function-like usage in
+  case the argument #1 might not be a valid object.
 
 ERROR
-  Objects constructors trig an error if the argument #1is not a string (name) or
-  a raw table (variables). Using an object incompletely initialized (e.g. with a
-  name but no value) trigs also an error.
+  Objects constructors trig an error if the argument #1 is not a string (name)
+  or a raw table (variables). Using an object incompletely initialized (e.g.
+  with a name but no value) trigs also an error.
 
 EXAMPLES
   Point = MAD.Object {}          -- point is an instance of Object
@@ -102,7 +105,7 @@ Schematic object-model representation:
 |  *o2*   |                  |   |  *o1*   | | +-------------+ |  *o0*   | |
 |  [meta] |------------------+   |  [meta] |-+                 |  [meta] |-+
 | __index |------------------|-+ | __index |-----------------+ | __index |--->.
-|         |  +-----------+   | | |         |  +-----------+  | |         |
+|   [flg] |  +-----------+   | | |   [flg] |  +-----------+  | |   [flg] |
 |   [var] |->|  *o2-var* |   | | |   [var] |->| *o1-var*  |  | |   [var] |-+
 +---------+  |    [meta] |-+ | | +---------+  |    [meta] |-+| +---------+ |
      ^       | variables | | | |      ^       | variables | ||             |
@@ -112,7 +115,7 @@ Schematic object-model representation:
 |  *o3*   |                  | |      |             |        |  | *o0-var*  |
 |  [meta] |------------------+ |      |             |        +->|    [meta] |->.
 | __index |--------------------+--------------------+           | variables |
-|         |  +-----------+                                      +-----------+
+|   [flg] |  +-----------+                                      +-----------+
 |   [var] |->| *o3-var*  |
 +---------+  |    [meta] |-+
      ^       | variables | |
@@ -169,7 +172,8 @@ Copying status to children:
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
-      is_metaname, is_callable, defhelp in require 'madl_utils'
+      bclr, bset, btst, is_metaname, is_callable, defhelp
+      in require 'madl_utils'
 
 -- implementation -------------------------------------------------------------o
 
@@ -179,8 +183,11 @@ local Object
 -- metatable of objects
 local MT = {}
 
--- protected keys to object members, true functions and readonly flag
-local var, fct, rof = {}, {}, {}
+-- protected keys to object members, true functions, class and readonly flag
+local var, fct, flg = {}, {}, {}, {}
+
+-- flags (bit num)
+local flg_ro, flg_cl = 0, 1
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -191,7 +198,7 @@ local var0 = setmetatable({}, {
 
 -- metatable of 'true functions' proxy
 local MF = {
-  __call      = \t,... -> t[fct](...),
+  __call      = \s,... -> rawget(s,fct)(...),
   __metatable = false,
 }
 
@@ -210,28 +217,46 @@ local function fproxy (f)
   return setmetatable({[fct]=f}, MF)
 end
 
+local function fclass (a)
+  return btst(rawget(a,flg) or 0, flg_cl)
+end
+
+local function freadonly (a)
+  return btst(rawget(a,flg) or 0, flg_ro)
+end
+
 local function is_fproxy (a)
   return is_table(a) and rawget(a,fct) ~= nil
 end
 
-local function is_object (a)
+local function is_object (a) -- exported
   return is_table(a) and rawget(a,var) ~= nil
 end
 
-local function is_readonly (a)
-  return is_table(a) and rawget(a,rof) == true
+local function is_class (a) -- exported
+  return is_table(a) and fclass(a)
 end
 
-local function set_readonly (a, b)
-  assert(a ~= Object,
-         "invalid argument #1 (forbidden access to 'Object')")
-  assert(is_nil(b) or is_boolean(b),
-         "invalid argument #2 (boolean or nil expected)")
-  rawset(a, rof, b ~= false)
+local function is_readonly (a) -- exported
+  return is_table(a) and freadonly(a)
+end
+
+local function set_class (a) -- not exported
+  rawset(a,flg, bset(rawget(a,flg) or 0, flg_cl))
   return a
 end
 
-local function is_instanceOf (a, b)
+local function set_readonly (a, b) -- exported
+  assert(a ~= Object, "invalid argument #1 (forbidden access to 'Object')")
+  assert(is_nil(b) or is_boolean(b),
+                      "invalid argument #2 (boolean or nil expected)")
+  if b ~= false
+  then rawset(a,flg, bset(rawget(a,flg) or 0, flg_ro))
+  else rawset(a,flg, bclr(rawget(a,flg) or 0, flg_ro)) end
+  return a
+end
+
+local function is_instanceOf (a, b) -- exported
   assert(is_object(b), "invalid argument #2 (object expected)")
   if not is_object(a) then return false end
   while a and a ~= b do a = parent(a) end
@@ -243,21 +268,22 @@ end
 function MT:__call (a, b) -- object constructor (define the object-model)
   if is_string(a) then                                  -- named object
     if is_nil(b) then
-      local obj = {__id=a, [var]=var0, __index=self[var]} -- proxy
+      local obj = {__id=a, [var]=var0, __index=rawget(self,var)} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {[var]=b, __index=self[var]}          -- proxy
-      b.__id = a ; setmetatable(b, obj)                 -- set fast inheritance
+      local obj = {[var]=b, __index=rawget(self,var)}   -- proxy
+      b.__id=a  setmetatable(b, obj)  set_class(self)   -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
-    if self[var] == var0 then                           -- finalize named object
+    if rawget(self,var) == var0 then                    -- finalize named object
       a.__id, self.__id = self.__id
-      self[var] = setmetatable(a, self);                -- set fast inheritance
+      rawset(self,var, setmetatable(a, self));          -- set fast inheritance
+      set_class(parent(self))
       return init(self)
-    else                                                -- named object
-      local obj = {[var]=a, __index=self[var]}          -- proxy
-      setmetatable(a, obj)                              -- set fast inheritance
+    else                                                -- unnamed object
+      local obj = {[var]=a, __index=rawget(self,var)}   -- proxy
+      setmetatable(a, obj)  set_class(self)             -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
@@ -267,24 +293,24 @@ function MT:__call (a, b) -- object constructor (define the object-model)
 end
 
 function MT:__index (k)
-  local v = self[var][k]                       -- inheritance of variables
+  local v = rawget(self,var)[k]                      -- inheritance of variables
   if is_function(v)
-  then return v(self)                          -- function with value semantic
+  then return v(self)                            -- function with value semantic
   else return v end
 end
 
 function MT:__newindex (k, v)
-  assert(rawget(self,rof)~=true, "forbidden write access to readonly object")
-  self[var][k] = v
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  rawget(self,var)[k] = v
 end
 
 function MT:__len ()
-  return #self[var]
+  return #rawget(self,var)
 end
 
 local function iterk (self, k)
   local v
-  k, v = next(self[var], k)
+  k, v = next(rawget(self,var), k)
   if is_function(v)
   then return k, v(self)
   else return k, v end
@@ -296,7 +322,7 @@ end
 
 local function iteri (self, i)
   i = i + 1
-  local v = rawget(self[var], i)
+  local v = rawget(rawget(self,var), i)
   if is_function(v) then return i, v(self)
   elseif v ~= nil   then return i, v end
 end
@@ -310,13 +336,15 @@ end
 M.__help.is_object = [=[
 NAME
   is_object, is_instanceOf,            -- identify object class
-  is_readonly, set_readonly.           -- check and set object status
+  is_class, is_readonly, set_readonly. -- check and set object status
 
 SYNOPSIS
+  is_class(obj)
   is_object(obj)
   is_readonly(obj)
   is_instanceOf(obj,class)
 
+  obj:is_class()
   obj:is_readonly()
   obj:is_instanceOf(class)
   obj:set_readonly(boolean or nil)
@@ -326,11 +354,13 @@ DESCRIPTION
   to class or Object if class is not in the hierarchy of obj. The is_object
   function is equivalent to is_instanceOf(obj, Object) but faster. The method
   set_readonly protects or unprotects against write access (weak protection).
+  The functions is_class and is_readonly check the status of the object, where a
+  class is an object already used as a constructor.
 
 RETURN VALUES
   is_object and is_instanceOf return true if obj inherits from Object or class
-  respectively. is_readonly returns true if obj is read only. set_readonly
-  returns the object.
+  respectively. is_readonly and is_class return true if obj is read only or was
+  already used as a constructor, respectively. set_readonly returns the object.
 
 ERROR
   is_instanceOf trigs an error if the argument #2 (class) is not a valid object.
@@ -342,10 +372,12 @@ EXAMPLES
   print( is_object 'yes' )                    -- false
   print( is_object(Object) )                  -- true
   print( is_object(Object {}) )               -- true
-
+  print( is_class 'yes' )                     -- false
+  print( is_class(Object) )                   -- true
+  print( is_class(Object {}) )                -- false
   print( is_instanceOf('yes', Object) )       -- false
   print( is_instanceOf(Object, Object) )      -- true
-  print( is_instanceOf(Object {},Object) )    -- true
+  print( is_instanceOf(Object {}, Object) )   -- true
 
   print( is_readonly(Object) )                -- true
   Object.a = 2                                -- error
@@ -354,6 +386,7 @@ EXAMPLES
 SEE ALSO
   None.
 ]=]
+M.__help.is_class      = M.__help.is_object
 M.__help.is_readonly   = M.__help.is_object
 M.__help.is_instanceOf = M.__help.is_object
 M.__help.set_readonly  = M.__help.is_object
@@ -399,7 +432,7 @@ M.__help.ipairs = M.__help.iterators
 
 M.__help.get = [=[
 NAME
-  get_variable, get_allkeys, set_variable, set_function, set_metamethod,
+  get_variable, get_varkey, set_variable, set_function, set_metamethod,
   get, getk, set, setf, setmm.
 
 SYNOPSIS
@@ -407,12 +440,12 @@ SYNOPSIS
   obj:set_variable  ({...} [, override])
   obj:set_function  ({...} [, override [, strict]])
   obj:set_metamethod({...} [, override [, strict]])
-  obj:get_allkeys   ([class [, pattern]])
+  obj:get_varkey   ([class [, pattern]])
 
 DESCRIPTION
   The get_variable method gets values from a raw table containing the list of
   keys to get, following the value semantic of functions unless eval is 'false'.
-  The get_allkeys method collects all the variables keys of an object that
+  The get_varkey method collects all the variables names of an object that
   matches the pattern (if any), including those inherited from parents up to
   class (excluded). The set_variable method sets or updates values from a raw
   table. The set_function method sets or updates functions from a raw table in a
@@ -427,8 +460,8 @@ DESCRIPTION
 
 RETURN VALUE
   A table containing the key-value pairs for the specified keys for the method
-  get_variable, a table containing all the variables keys for the method
-  get_allkeys, and the object itself for other methods.
+  get_variable, a table containing all the variables names for the method
+  get_varkey, and the object itself for other methods.
 
 ERRORS
   All these methods trig an error if argument #1 is not a valid object and if
@@ -461,7 +494,7 @@ M.__help.getk           = M.__help.get
 M.__help.set            = M.__help.get
 M.__help.setf           = M.__help.get
 M.__help.setmm          = M.__help.get
-M.__help.get_allkeys    = M.__help.get
+M.__help.get_varkey     = M.__help.get
 M.__help.get_variable   = M.__help.get
 M.__help.set_variable   = M.__help.get
 M.__help.set_function   = M.__help.get
@@ -470,7 +503,7 @@ M.__help.set_metamethod = M.__help.get
 local function get_variable (self, tbl, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var, res = self[var], {}
+  local var, res = rawget(self,var), {}
   if eval ~= false
   then for _,k in ipairs(tbl) do res[k] = self[k] end
   else for _,k in ipairs(tbl) do res[k] = var [k] end
@@ -481,7 +514,7 @@ end
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var = self[var]
+  local var = rawget(self,var)
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
     rawset(var, k, v)
@@ -492,7 +525,7 @@ end
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var = self[var]
+  local var = rawget(self,var)
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
@@ -505,9 +538,9 @@ local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
-  if sm == pm or sm == pm.__orig then -- create new metatable if same as parent
-    assert(sm == pm, "invalid metatable (parent metatable newer than child)")
-    sm={ __orig=pm } for k,v in pairs(pm) do sm[k] = v end
+  if sm == pm then -- create new metatable if same as parent
+    assert(not fclass(self), "invalid metatable (class unexpected)")
+    sm={} for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
     assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
@@ -517,14 +550,14 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
-local function get_allkeys (self, class, pattern)
+local function get_varkey (self, class, pattern)
   class, pattern = class or Object, pattern or ''
   assert(is_object(self)   , "invalid argument #1 (object expected)")
   assert(is_object(class)  , "invalid argument #2 (object expected)")
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local key = {}
   while self and self ~= class do
-    for k in pairs(self[var]) do key[k] = k end
+    for k in pairs(rawget(self,var)) do key[k] = k end
     self = parent(self)
   end
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
@@ -550,16 +583,17 @@ local function strdump (self, class, pattern)
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local cnt, res, spc, str = {}, {}, ""
   while self and self ~= class do
+    local vars = rawget(self,var)
     -- header
-    str = rawget(self[var], '__id') and (" '"..self[var].__id.."'") or ""
-    res[#res+1] = spc.."+ ["..tostring(self[var]).."]"..str
+    str = rawget(vars, '__id') and (" '"..vars.__id.."'") or ""
+    res[#res+1] = spc.."+ ["..tostring(vars).."]"..str
     spc = spc .. "  "
     -- variables
-    for k,v in pairs(self[var]) do
+    for k,v in pairs(vars) do
       if is_string(k) and k ~= '__id' and string.find(k, pattern) then
         str = spc .. tostring(k)
             if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
-        elseif is_fproxy(v) then str = str..": ["..tostring(v[fct]).."]"
+        elseif is_fproxy(v) then str = str..": ["..tostring(rawget(v,fct)).."]"
         else                     str = str..":  "..tostring(v) end
         if cnt[k]
         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
@@ -576,16 +610,17 @@ local function strdump (self, class, pattern)
 end
 
 -- root Object variables = module
-Object = setmetatable({[var]=M, [rof]=true},MT)
+Object = setmetatable({[var]=M, [flg]=bset(0,flg_ro)},MT)
 
  -- parent link
 setmetatable(M, Object)
 
 -- methods
+M.is_class       = fproxy( is_class       )
 M.is_readonly    = fproxy( is_readonly    )
 M.is_instanceOf  = fproxy( is_instanceOf  )
 M.set_readonly   = fproxy( set_readonly   )
-M.get_allkeys    = fproxy( get_allkeys    )
+M.get_varkey     = fproxy( get_varkey    )
 M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
@@ -593,10 +628,36 @@ M.set_metamethod = fproxy( set_metamethod )
 M.strdump        = fproxy( strdump        )
 
 -- aliases
-M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys,
+M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_varkey,
   M.set_variable, M.set_function, M.set_metamethod
 
 -- members
+M.__help.name = [=[
+NAME
+  name, parent    -- inherited variables
+
+SYNOPSIS
+  obj.name
+  obj.parent.name
+
+DESCRIPTION
+  The name and parent variables are aliased inherited from Object that return
+  respectively the name and the parent of the current object. In practice, these
+  variables are defined as functions with value semantic.
+
+RETURN VALUES
+  The name and parent variables refer respectively to the name and the parent of
+  the current object.
+
+EXAMPLES
+  local p0 = MAD.Object 'p0' {}
+  local p1 = p0 'p1' {}
+  print(obj.name, obj.parent.name)  -- 'p0'   'p1'
+
+SEE ALSO
+  None.
+]=]
+
 M.__id   = 'Object'
 M.__par  = parent
 M.__var  = \s rawget(s,var) -- alias
@@ -608,6 +669,7 @@ defhelp(M)
 -- end ------------------------------------------------------------------------o
 return {
   Object        = Object,
+  is_class      = is_class,
   is_object     = is_object,
   is_readonly   = is_readonly,
   is_instanceOf = is_instanceOf,

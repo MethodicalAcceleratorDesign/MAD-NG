@@ -165,15 +165,15 @@ function MT:__call (a, b) -- object constructor (define the object-model)
 end
 
 function MT:__index (k)
-  local v = self[var][k]                       -- inheritance of variables
+  local v = rawget(self,var)[k]                      -- inheritance of variables
   if is_function(v)
-  then return v(self)                          -- function with value semantic
+  then return v(self)                            -- function with value semantic
   else return v end
 end
 
 function MT:__newindex (k, v)
-  assert(rawget(self,rof)~=true, "forbidden write access to readonly object")
-  self[var][k] = v
+  assert(rawget(self,rof) ~= true, "forbidden write access to readonly object")
+  rawget(self,var)[k] = v
 end
 
 function MT:__len ()
