@@ -33,6 +33,7 @@ SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
   is_cdata, is_complex, is_xrange,                              (extended types)
   is_inf, is_nan, is_integer, is_scalar, is_rawtable,          (specializations)
+  bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
   is_equal, is_not_equal, is_lesser, is_lesser_or_equal,     (logical operators)
   is_greater, is_greater_or_equal, bool, logical_not,
   logical_and, logical_or (aliases is_eq, is_ne, is_lt, is_le, is_gt, is_ge,
@@ -56,6 +57,8 @@ DESCRIPTION
   - is_scalar returns true if the argument is a number or a complex,
   - is_inf and is_nan return true if argument is ±infinity or not-a-number,
   - is_rawtable returns true if the argument is a table without metatable,
+  - bnot, band, bor, bxor, tobit and tohex imported from bit module
+  - bclr, bset and btst respectively clear, set and test bit 0..31 of the value.
   - is_equal, is_not_equal, is_lesser, is_lesser_or_equal, is_greater and
     is_greater_or_equal, bool, logical_not, logical_and, logical_or are
     functions wrapping logical operators,
@@ -89,9 +92,10 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local istype, typeof, miscmap in require 'ffi'
-local format                  in string
-local abs                     in math
+local istype, typeof, miscmap                  in require 'ffi'
+local bnot, band, bor, bxor, rol, tobit, tohex in require 'bit'
+local format                                   in string
+local abs                                      in math
 local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- implementation -------------------------------------------------------------o
@@ -121,30 +125,18 @@ local value_type = { -- types that cannot be indirectly modified
   ['function'] = true, thread = true,
 }
 
--- types
+-- bits
 
-M.is_nil      = \a -> type(a) == 'nil'
-M.is_boolean  = \a -> type(a) == 'boolean'
-M.is_number   = \a -> type(a) == 'number'
-M.is_string   = \a -> type(a) == 'string'
-M.is_function = \a -> type(a) == 'function'
-M.is_table    = \a -> type(a) == 'table'
+M.bnot  = bnot
+M.band  = band
+M.bor   = bor
+M.bxor  = bxor
+M.tobit = tobit
+M.tohex = tohex
 
--- cdata types
-
-M.is_cdata    = \a type(a) == 'cdata'
-M.is_complex  = \a istype('complex', a)
-M.is_xrange   = \a istype('xrange' , a)
-
--- specializations
-
-local is_number, is_string, is_table, is_function, is_complex in M
-
-M.is_nan      = \a -> is_number(a) and a ~= a
-M.is_inf      = \a -> is_number(a) and abs(a) == 1/0
-M.is_integer  = \a -> is_number(a) and a>=-2^52 and a<=2^52 and (a%1)==0
-M.is_scalar   = \a -> is_number(a) or is_complex(a)
-M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
+M.btst = \x,n -> band(x, rol( 1, n)) ~= 0
+M.bclr = \x,n -> band(x, rol(-2, n))
+M.bset = \x,n -> bor (x, rol( 1, n))
 
 -- logical
 
@@ -158,7 +150,6 @@ M.is_lt = \x,y -> x <  y
 M.is_le = \x,y -> x <= y
 M.is_gt = \x,y -> x >  y
 M.is_ge = \x,y -> x >= y
-
 
 M.logical_not         = M.lnot
 M.logical_and         = M.land
@@ -186,8 +177,32 @@ M.len  = \x     -> #x
 M.cat  = \x,y   -> x..y
 M.call = \x,... -> x(...)
 
--- metamethods
+-- types
 
+M.is_nil      = \a -> type(a) == 'nil'
+M.is_boolean  = \a -> type(a) == 'boolean'
+M.is_number   = \a -> type(a) == 'number'
+M.is_string   = \a -> type(a) == 'string'
+M.is_function = \a -> type(a) == 'function'
+M.is_table    = \a -> type(a) == 'table'
+
+-- cdata types
+
+M.is_cdata    = \a type(a) == 'cdata'
+M.is_complex  = \a istype('complex', a)
+M.is_xrange   = \a istype('xrange' , a)
+
+-- specializations
+
+local is_number, is_string, is_table, is_function, is_complex in M
+
+M.is_nan      = \a -> is_number(a) and a ~= a
+M.is_inf      = \a -> is_number(a) and abs(a) == 1/0
+M.is_integer  = \a -> is_number(a) and a>=-2^52 and a<=2^52 and (a%1)==0
+M.is_scalar   = \a -> is_number(a) or is_complex(a)
+M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
+
+-- metamethods
 
 M.is_metaname   = \a -> metaname[a] == a
 M.has_metatable = \a -> get_metatable(a) ~= nil
