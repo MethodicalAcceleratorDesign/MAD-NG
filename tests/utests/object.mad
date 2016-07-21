@@ -633,12 +633,10 @@ function TestObject:testSetFunction()
 end
 
 function TestObject:testSetMetamethod()
-  local p0 = Object 'p0' { 1, 2, z:=3 }
-  local p1 = p0 'p1' {}
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (raw table expected)",
-    "invalid metatable (parent metatable newer than child)",
+    "invalid metatable (class unexpected)",
     "invalid key (metamethod expected)",
     "cannot override metamethod",
   }
@@ -648,23 +646,30 @@ function TestObject:testSetMetamethod()
       return str
     end
 
+  local p0, p1
+
+  p0 = Object 'p0' { 1, 2, z:=3 }
+  p1 = p0 'p1' {}
+  -- p1 created means p0 is a class and cannot modify its metatable
+  assertErrorMsgContains(msg[3], p0.set_metamethod, p0, { __tostring = tostr })
+
+  p0 = Object 'p0' { 1, 2, z:=3 } -- fresh p0
   p0:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
-  assertEquals     (tostring(p0), '1, 2, z, __id, ')
-  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
-  assertStrContains(tostring(p1), 'table:')
+  assertEquals     (tostring(p0), '1, 2, z, __id, ')  -- tostring -> tostr
+  assertNotEquals  (tostring(p1), '__id, ')           -- builtin tostring
+  assertStrContains(tostring(p1), 'table:')           -- builtin tostring
 
-  -- p1 created after p0 metatable was cloned, share metatable with Object
-  assertErrorMsgContains(msg[3], p1.set_metamethod, p1, { __tostring = tostr })
-  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
-  assertStrContains(tostring(p1), 'table:')
+  -- p1 still the child of old p0 and not yet a class
+  p1:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
+  assertEquals     (tostring(p1), '__id, ')           -- tostring -> tostr
 
-  p1 = p0 'p1' {} -- new clone, share metatable with p0
+  p1 = p0 'p1' {} -- fresh p1
   assertErrorMsgContains(msg[5], p1.set_metamethod, p1, { __tostring = tostr })
-  p1:set_metamethod({ __tostring = tostr }, true) -- need override
-  assertEquals      (tostring(p1), '__id, ')
+  p1:set_metamethod({ __tostring = tostr }, true) -- clone need override
+  assertEquals      (tostring(p1), '__id, ')          -- tostring -> tostr
   p1:set_function({ x:=\ 2, y =\s\n s.z*n }) p1.z =\ 3
-  assertNotEquals   (tostring(p1), 'x, y, z, __id, ')
-  assertEquals      (tostring(p1), 'y, x, __id, z, ')
+  assertNotEquals   (tostring(p1), 'x, y, z, __id, ') -- tostring -> tostr
+  assertEquals      (tostring(p1), 'y, x, __id, z, ') -- tostring -> tostr
 
   assertErrorMsgContains(msg[1], p0.setmm, 1)
   assertErrorMsgContains(msg[1], p0.setmm, '')
@@ -679,7 +684,7 @@ function TestObject:testSetMetamethod()
   assertErrorMsgContains(msg[5], p0.setmm, p0, {__index=false}, false)
 end
 
-function TestObject:testGetAllKeys()
+function TestObject:testGetVarkey()
   local p0 = Object 'p0' { x=1, y=2, z:=3 }
   local p1 = p0 'p1' { x=-1, y={} }
   local msg = {
@@ -774,7 +779,6 @@ end
 function TestObject:testMetamethodNotification()
   local p1 = Object 'p1' { x=1, y=2  }
   local p2 = p1 'p2' { x=2, y=-1, z=0 }
-  local p3 = p2 'p3' { x=3  }
 
   local function trace (fp, self, k, v)
 --[[fp:write("object: '", self.name,
@@ -798,10 +802,12 @@ function TestObject:testMetamethodNotification()
 
   set_notification(p2) -- new metamethod created, metatable is cloned
   p2.x = 3 -- new behavior, notify about update
-  p3.x = 4 -- created before set_metamethod (bad!), old behavior
 
-  local p4 = p2 'p4' { x=3 } -- new, inherit metatable
-  p4.x = 5 -- new behavior, notify about update if you really can
+  local p3 = p2 'p3' { x=3  } -- new, inherit metatable
+  p3.x = 4 -- new behavior, notify about update
+
+  local p4 = p2 'p4' { x=4 } -- new, inherit metatable
+  p4.x = 5 -- new behavior, notify about update
 end
 
 function TestObject:testMetamethodCounting()
