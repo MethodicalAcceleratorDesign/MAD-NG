@@ -8,7 +8,7 @@
 -- x86/x64 disassembler module. All the interesting stuff is there.
 ------------------------------------------------------------------------------
 
-local dis_x86 = require((string.match(..., ".*%.") or "").."dis_x86")
+local dis_x86 = require("ljit_dis_x86")
 return {
   create = dis_x86.create64,
   disass = dis_x86.disass64,

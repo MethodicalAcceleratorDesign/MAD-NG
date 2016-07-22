@@ -61,7 +61,7 @@
 local jit = require("jit")
 assert(jit.version_num == 20100, "LuaJIT core/library version mismatch")
 local jutil = require("jit.util")
-local vmdef = require("jit.vmdef")
+local vmdef = require("ljit_vmdef")
 local funcinfo, traceinfo = jutil.funcinfo, jutil.traceinfo
 local type, format = type, string.format
 local stdout, stderr = io.stdout, io.stderr

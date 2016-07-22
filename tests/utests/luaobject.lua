@@ -23,6 +23,13 @@
 
 -- expected from other modules ------------------------------------------------o
 
+local bit = require 'bit'
+local band, bor, brol = bit.band, bit.bor, bit.rol
+
+local btst = function (x,n) return band(x, brol( 1, n)) ~= 0 end
+local bclr = function (x,n) return band(x, brol(-2, n))      end
+local bset = function (x,n) return bor (x, brol( 1, n))      end
+
 local metaname = { -- from lj_obj.h + __init
   '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
   '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
@@ -77,8 +84,11 @@ local M, MT = {}, {}
 -- root of all objects
 local Object
 
--- protected keys to object members, true functions and readonly flag
-local var, fct, rof = {}, {}, {}
+-- protected keys to object members, true functions, class and readonly flag
+local var, fct, flg = {}, {}, {}, {}
+
+-- flags (bit num)
+local flg_ro, flg_cl = 0, 1
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -89,7 +99,7 @@ local var0 = setmetatable({}, {
 
 -- metatable of 'true functions' proxy
 local MF = {
-  __call      = function(t,...) return t[fct](...) end,
+  __call      = function(s,...) return s[fct](...) end,
   __metatable = false,
 }
 
@@ -108,6 +118,14 @@ local function fproxy (f)
   return setmetatable({[fct]=f}, MF)
 end
 
+local function fclass (a)
+  return btst(rawget(a,flg) or 0, flg_cl)
+end
+
+local function freadonly (a)
+  return btst(rawget(a,flg) or 0, flg_ro)
+end
+
 local function is_fproxy (a)
   return is_table(a) and rawget(a,fct) ~= nil
 end
@@ -116,16 +134,26 @@ local function is_object (a)
   return is_table(a) and rawget(a,var) ~= nil
 end
 
-local function is_readonly (a)
-  return is_table(a) and rawget(a,rof) == true
+local function is_class (a) -- exported
+  return is_table(a) and fclass(a)
+end
+
+local function is_readonly (a) -- exported
+  return is_table(a) and freadonly(a)
+end
+
+local function set_class (a) -- not exported
+  rawset(a,flg, bset(rawget(a,flg) or 0, flg_cl))
+  return a
 end
 
 local function set_readonly (a, b)
-  assert(a ~= Object,
-         "invalid argument #1 (forbidden access to 'Object')")
+  assert(a ~= Object, "invalid argument #1 (forbidden access to 'Object')")
   assert(is_nil(b) or is_boolean(b),
-         "invalid argument #2 (boolean or nil expected)")
-  rawset(a, rof, b ~= false)
+                      "invalid argument #2 (boolean or nil expected)")
+  if b ~= false
+  then rawset(a,flg, bset(rawget(a,flg) or 0, flg_ro))
+  else rawset(a,flg, bclr(rawget(a,flg) or 0, flg_ro)) end
   return a
 end
 
@@ -141,21 +169,22 @@ end
 function MT:__call (a, b) -- object constructor (define the object-model)
   if is_string(a) then                                  -- named object
     if is_nil(b) then
-      local obj = {__id=a, [var]=var0, __index=self[var]} -- proxy
+      local obj = {__id=a, [var]=var0, __index=rawget(self,var)} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {[var]=b, __index=self[var]}  -- proxy
-      b.__id = a ; setmetatable(b, obj)                 -- set fast inheritance
+      local obj = {[var]=b, __index=rawget(self,var)}   -- proxy
+      b.__id=a  setmetatable(b, obj)  set_class(self)   -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
-    if self[var] == var0 then                           -- finalize named object
+    if rawget(self,var) == var0 then                    -- finalize named object
       a.__id, self.__id = self.__id
-      self[var] = setmetatable(a, self);                -- set fast inheritance
+      rawset(self,var, setmetatable(a, self));          -- set fast inheritance
+      set_class(parent(self))
       return init(self)
-    else                                                -- named object
-      local obj = {[var]=a, __index=self[var]}          -- proxy
-      setmetatable(a, obj)                              -- set fast inheritance
+    else                                                -- unnamed object
+      local obj = {[var]=a, __index=rawget(self,var)}   -- proxy
+      setmetatable(a, obj)  set_class(self)             -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
@@ -172,17 +201,17 @@ function MT:__index (k)
 end
 
 function MT:__newindex (k, v)
-  assert(rawget(self,rof) ~= true, "forbidden write access to readonly object")
+  assert(not freadonly(self), "forbidden write access to readonly object")
   rawget(self,var)[k] = v
 end
 
 function MT:__len ()
-  return #self[var]
+  return #rawget(self,var)
 end
 
 local function iterk (self, k)
   local v
-  k, v = next(self[var], k)
+  k, v = next(rawget(self,var), k)
   if is_function(v)
   then return k, v(self)
   else return k, v end
@@ -194,7 +223,7 @@ end
 
 local function iteri (self, i)
   i = i + 1
-  local v = rawget(self[var], i)
+  local v = rawget(rawget(self,var), i)
   if is_function(v) then return i, v(self)
   elseif v ~= nil   then return i, v end
 end
@@ -206,7 +235,7 @@ end
 local function get_variable (self, tbl, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var, res = self[var], {}
+  local var, res = rawget(self,var), {}
   if eval ~= false
   then for _,k in ipairs(tbl) do res[k] = self[k] end
   else for _,k in ipairs(tbl) do res[k] = var [k] end
@@ -217,7 +246,7 @@ end
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var = self[var]
+  local var = rawget(self,var)
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
     rawset(var, k, v)
@@ -228,7 +257,7 @@ end
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
-  local var = self[var]
+  local var = rawget(self,var)
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
@@ -241,9 +270,9 @@ local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
-  if sm == pm or sm == pm.__orig then -- create new metatable if same as parent
-    assert(sm == pm, "invalid metatable (parent metatable newer than child)")
-    sm={ __orig=pm } for k,v in pairs(pm) do sm[k] = v end
+  if sm == pm then -- create new metatable if same as parent
+    assert(not fclass(self), "invalid metatable (class unexpected)")
+    sm={} for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
     assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
@@ -253,14 +282,14 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
-local function get_allkeys (self, class, pattern)
+local function get_varkey (self, class, pattern)
   class, pattern = class or Object, pattern or ''
   assert(is_object(self)   , "invalid argument #1 (object expected)")
   assert(is_object(class)  , "invalid argument #2 (object expected)")
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local key = {}
   while self and self ~= class do
-    for k in pairs(self[var]) do key[k] = k end
+    for k in pairs(rawget(self,var)) do key[k] = k end
     self = parent(self)
   end
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
@@ -280,12 +309,13 @@ local function strdump (self, class, pattern)
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local cnt, res, spc, str = {}, {}, ""
   while self and self ~= class do
+    local vars = rawget(self,var)
     -- header
-    str = rawget(self[var], '__id') and (" '"..self[var].__id.."'") or ""
-    res[#res+1] = spc.."+ ["..tostring(self[var]).."]"..str
+    str = rawget(vars, '__id') and (" '"..vars.__id.."'") or ""
+    res[#res+1] = spc.."+ ["..tostring(vars).."]"..str
     spc = spc .. "  "
     -- variables
-    for k,v in pairs(self[var]) do
+    for k,v in pairs(vars) do
       if is_string(k) and k ~= '__id' and string.find(k, pattern) then
         str = spc .. tostring(k)
             if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
@@ -308,16 +338,17 @@ end
 -- TODO: show command...
 
 -- root Object variables = module
-Object = setmetatable({[var]=M, [rof]=true},MT)
+Object = setmetatable({[var]=M, [flg]=bset(0,flg_ro)},MT)
 
  -- parent link
 setmetatable(M, Object)
 
 -- methods
+M.is_class       = fproxy( is_class       )
 M.is_readonly    = fproxy( is_readonly    )
 M.is_instanceOf  = fproxy( is_instanceOf  )
 M.set_readonly   = fproxy( set_readonly   )
-M.get_allkeys    = fproxy( get_allkeys    )
+M.get_varkey     = fproxy( get_varkey     )
 M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
@@ -325,7 +356,7 @@ M.set_metamethod = fproxy( set_metamethod )
 M.strdump        = fproxy( strdump        )
 
 -- aliases
-M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_allkeys,
+M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_varkey,
   M.set_variable, M.set_function, M.set_metamethod
 
 -- members
@@ -947,12 +978,10 @@ end
 local count = 0
 
 function TestLuaObject:testSetMetamethod()
-  local p0 = Object 'p0' { 1, 2, z=function() return 3 end }
-  local p1 = p0 'p1' {}
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (raw table expected)",
-    "invalid metatable (parent metatable newer than child)",
+    "invalid metatable (class unexpected)",
     "invalid key (metamethod expected)",
     "cannot override metamethod",
   }
@@ -962,23 +991,30 @@ function TestLuaObject:testSetMetamethod()
       return str
     end
 
+  local p0, p1
+  p0 = Object 'p0' { 1, 2, z=function() return 3 end }
+  p1 = p0 'p1' {}
+
+  -- p1 created means p0 is a class and cannot modify its metatable
+  assertErrorMsgContains(msg[3], p0.set_metamethod, p0, { __tostring = tostr })
+
+  p0 = Object 'p0' { 1, 2, z=function() return 3 end } -- fresh p0
   p0:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
-  assertEquals     (tostring(p0), '1, 2, z, __id, ')
-  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
-  assertStrContains(tostring(p1), 'table:')
+  assertEquals     (tostring(p0), '1, 2, z, __id, ')  -- tostring -> tostr
+  assertNotEquals  (tostring(p1), '__id, ')           -- builtin tostring
+  assertStrContains(tostring(p1), 'table:')           -- builtin tostring
 
-  -- p1 created after p0 metatable was cloned, share metatable with Object
-  assertErrorMsgContains(msg[3], p1.set_metamethod, p1, { __tostring = tostr })
-  assertNotEquals  (tostring(p1), '__id, ') -- builtin tostring
-  assertStrContains(tostring(p1), 'table:')
+  -- p1 still the child of old p0 and not yet a class
+  p1:set_metamethod { __tostring = tostr } -- clone metatable shared with Object
+  assertEquals     (tostring(p1), '__id, ')           -- tostring -> tostr
 
-  p1 = p0 'p1' {} -- new clone, share metatable with p0
+  p1 = p0 'p1' {} -- fresh p1
   assertErrorMsgContains(msg[5], p1.set_metamethod, p1, { __tostring = tostr })
-  p1:set_metamethod({ __tostring = tostr }, true) -- need override
-  assertEquals      (tostring(p1), '__id, ')
+  p1:set_metamethod({ __tostring = tostr }, true)  -- clone need override
+  assertEquals      (tostring(p1), '__id, ')          -- tostring -> tostr
   p1:set_function({ x=function() return function() return 2 end end, y =function(s) return function(n) return s.z*n end end }) p1.z =function() return 3 end
-  assertNotEquals   (tostring(p1), 'x, y, z, __id, ')
-  assertEquals      (tostring(p1), 'y, x, __id, z, ')
+  assertNotEquals   (tostring(p1), 'x, y, z, __id, ') -- tostring -> tostr
+  assertEquals      (tostring(p1), 'y, x, __id, z, ') -- tostring -> tostr
 
   assertErrorMsgContains(msg[1], p0.setmm, 1)
   assertErrorMsgContains(msg[1], p0.setmm, '')
@@ -993,7 +1029,7 @@ function TestLuaObject:testSetMetamethod()
   assertErrorMsgContains(msg[5], p0.setmm, p0, {__index=false}, false)
 end
 
-function TestLuaObject:testGetAllKeys()
+function TestLuaObject:testGetVarKey()
   local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
   local p1 = p0 'p1' { x=-1, y={} }
   local msg = {
@@ -1088,7 +1124,6 @@ end
 function TestLuaObject:testMetamethodNotification()
   local p1 = Object 'p1' { x=1, y=2  }
   local p2 = p1 'p2' { x=2, y=-1, z=0 }
-  local p3 = p2 'p3' { x=3  }
 
   local function trace (fp, self, k, v)
 --[[fp:write("object: '", self.name,
@@ -1112,10 +1147,12 @@ function TestLuaObject:testMetamethodNotification()
 
   set_notification(p2) -- new metamethod created, metatable is cloned
   p2.x = 3 -- new behavior, notify about update
-  p3.x = 4 -- created before set_metamethod (bad!), old behavior
 
-  local p4 = p2 'p4' { x=3 } -- new, inherit metatable
-  p4.x = 5 -- new behavior, notify about update if you really can
+  local p3 = p2 'p3' { x=3  } -- new, inherit metatable
+  p3.x = 4 -- new behavior, notify about update
+
+  local p4 = p2 'p4' { x=4 } -- new, inherit metatable
+  p4.x = 5 -- new behavior, notify about update
 end
 
 function TestLuaObject:testMetamethodCounting()

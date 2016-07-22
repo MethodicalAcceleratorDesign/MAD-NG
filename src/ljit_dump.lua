@@ -57,7 +57,7 @@
 local jit = require("jit")
 assert(jit.version_num == 20100, "LuaJIT core/library version mismatch")
 local jutil = require("jit.util")
-local vmdef = require("jit.vmdef")
+local vmdef = require("ljit_vmdef")
 local funcinfo, funcbc = jutil.funcinfo, jutil.funcbc
 local traceinfo, traceir, tracek = jutil.traceinfo, jutil.traceir, jutil.tracek
 local tracemc, tracesnap = jutil.tracemc, jutil.tracesnap
@@ -140,7 +140,7 @@ local function dump_mcode(tr)
   if not info then return end
   local mcode, addr, loop = tracemc(tr)
   if not mcode then return end
-  if not disass then disass = require("jit.dis_"..jit.arch) end
+  if not disass then disass = require("ljit_dis_"..jit.arch) end
   if addr < 0 then addr = addr + 2^32 end
   out:write("---- TRACE ", tr, " mcode ", #mcode, "\n")
   local ctx = disass.create(mcode, addr, dumpwrite)
@@ -384,7 +384,7 @@ end
 
 -- Return a register name or stack slot for a rid/sp location.
 local function ridsp_name(ridsp, ins)
-  if not disass then disass = require("jit.dis_"..jit.arch) end
+  if not disass then disass = require("ljit_dis_"..jit.arch) end
   local rid, slot = band(ridsp, 0xff), shr(ridsp, 8)
   if rid == 253 or rid == 254 then
     return (slot == 0 or slot == 255) and " {sink" or format(" {%04d", ins-slot)
@@ -671,7 +671,7 @@ local function dumpon(opt, outfile)
   end
   if m.b then
     jit.attach(dump_record, "record")
-    if not bcline then bcline = require("jit.bc").line end
+    if not bcline then bcline = require("ljit_bc").line end
   end
   if m.x or m.X then
     jit.attach(dump_texit, "texit")
