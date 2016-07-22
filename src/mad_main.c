@@ -738,7 +738,7 @@ static int handle_script(lua_State *L, char **argv, int n, int narg)
 static int loadjitmodule(lua_State *L)
 {
 	lua_getglobal(L, "require");
-	lua_pushliteral(L, "jit.");
+	lua_pushliteral(L, "ljit_");
 	lua_pushvalue(L, -3);
 	lua_concat(L, 2);
 	if (lua_pcall(L, 1, 1, 0)) {
@@ -750,7 +750,7 @@ static int loadjitmodule(lua_State *L)
 	if (lua_isnil(L, -1)) {
 	nomodule:
 		l_message(progname,
-			"unknown luaJIT command or jit.* modules not installed");
+			"unknown MAD command or ljit_* modules not installed");
 		return 1;
 	}
 	lua_remove(L, -2);  /* Drop module table. */

@@ -21,7 +21,7 @@ local LJBC_PREFIX = "luaJIT_BC_"
 
 local function usage()
   io.stderr:write[[
-Save LuaJIT bytecode: luajit -b[options] input output
+Save JIT bytecode: mad -b[options] input output
   -l        Only list bytecode.
   -s        Strip debug info (default).
   -g        Keep debug info.
@@ -577,7 +577,7 @@ end
 
 local function bclist(input, output)
   local f = readfile(input)
-  require("jit.bc").dump(f, savefile(output, "w"), true)
+  require("ljit_bc").dump(f, savefile(output, "w"), true)
 end
 
 local function bcsave(ctx, input, output)

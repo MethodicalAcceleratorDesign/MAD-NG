@@ -43,7 +43,7 @@
 local jit = require("jit")
 assert(jit.version_num == 20100, "LuaJIT core/library version mismatch")
 local profile = require("jit.profile")
-local vmdef = require("jit.vmdef")
+local vmdef = require("ljit_vmdef")
 local math = math
 local pairs, ipairs, tonumber, floor = pairs, ipairs, tonumber, math.floor
 local sort, format = table.sort, string.format
@@ -251,7 +251,7 @@ local function prof_start(mode)
   local m = {}
   for c in mode:gmatch(".") do m[c] = c end
   prof_states = m.z or m.v
-  if prof_states == "z" then zone = require("jit.zone") end
+  if prof_states == "z" then zone = require("ljit_zone") end
   local scope = m.l or m.f or m.F or (prof_states and "" or "f")
   local flags = (m.p or "")
   prof_raw = m.r
