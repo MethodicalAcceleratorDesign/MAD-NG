@@ -50,7 +50,6 @@
 #include "luajit.h"
 
 #include "lj_arch.h"
-#include "lj_def.h"
 
 #if LJ_TARGET_POSIX
 #include <unistd.h>
@@ -79,6 +78,7 @@ static const char *progname = "mad";
 #include <unistd.h>
 #include <limits.h>
 #include <time.h>
+#include "lj_def.h"
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
@@ -108,7 +108,7 @@ static int lua_stdin_is_tty (void)
 }
 #endif /* __MINGW32/64__ */
 
-static void print_version (void)
+static void print_mad_version (void)
 {
 	const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
 	const char *msg =
@@ -230,7 +230,7 @@ static int mad_luatracelocation (lua_State *L)
 	return 1;
 }
 
-static void regfunc (lua_State *L)
+static void mad_regfunc (lua_State *L)
 {
 	lua_register(L, "warn"			 				, mad_luawarn );
 	lua_register(L, "trace"			 				, mad_luatrace);
@@ -258,7 +258,7 @@ static char* winexe (char *buf)
 }
 #endif
 
-static void setpaths (lua_State *L, int no_env)
+static void mad_setpaths (lua_State *L, int no_env)
 {
 	char prog_name[PATH_MAX+1] = "";
 	char prog_path[PATH_MAX+1] = "";
@@ -484,10 +484,17 @@ found:
 
 static int handle_madinit (lua_State *L)
 {
+#if LJ_TARGET_CONSOLE
+  const char *init = NULL;
+#else
 	const char *init = getenv("MAD_INIT");
-	if (init == NULL)	return 0;  /* status OK */
-	else if (init[0] == '@') return dofile(L, init+1);
-	else return dostring(L, init, "=" "MAD_INIT");
+#endif
+	if (init == NULL)
+		return 0;  /* status OK */
+	else if (init[0] == '@')
+		return dofile(L, init+1);
+	else
+		return dostring(L, init, "=" "MAD_INIT");
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -583,6 +590,11 @@ static int docall(lua_State *L, int narg, int clear)
 	return status;
 }
 
+static void print_version(void)
+{
+	print_mad_version();
+}
+
 static void print_jit_status(lua_State *L)
 {
 	int n;
@@ -602,23 +614,15 @@ static void print_jit_status(lua_State *L)
 	putc('\n', stdout);
 }
 
-static int setargs(lua_State *L, char **argv, int n)
+static void createargtable(lua_State *L, char **argv, int argc, int argf)
 {
-	int narg;
-	int i;
-	int argc = 0;
-	while (argv[argc]) argc++;  /* count total number of arguments */
-	narg = argc - (n + 1);  /* number of arguments to the script */
-	luaL_checkstack(L, narg + 3, "too many arguments to script");
-	for (i = n+1; i < argc; i++)
-		lua_pushstring(L, argv[i]);
-	lua_createtable(L, narg, n + 1);
-	for (i = 0; i < argc; i++) {
-		lua_pushstring(L, argv[i]);
-		lua_rawseti(L, -2, i - n);
-	}
-	lua_setglobal(L, "arg");
-	return narg;
+  int i;
+  lua_createtable(L, argc - argf, argf);
+  for (i = 0; i < argc; i++) {
+    lua_pushstring(L, argv[i]);
+    lua_rawseti(L, -2, i - argf);
+  }
+  lua_setglobal(L, "arg");
 }
 
 static int dofile(lua_State *L, const char *name)
@@ -724,18 +728,31 @@ static void dotty(lua_State *L)
 	progname = oldprogname;
 }
 
-static int handle_script(lua_State *L, char **argv, int n, int narg)
+static int handle_script(lua_State *L, char **argx)
 {
-	int status;
-	const char *fname;
-	fname = argv[n];
-	if (strcmp(fname, "-") == 0 && strcmp(argv[n-1], "--") != 0)
-		fname = NULL;  /* stdin */
-	status = luaL_loadfile(L, fname);
-	lua_insert(L, -(narg+1));
-	if (status == 0) status = docall(L, narg, 0);
-	else lua_pop(L, narg);
-	return report(L, status);
+  int status;
+  const char *fname = argx[0];
+  if (strcmp(fname, "-") == 0 && strcmp(argx[-1], "--") != 0)
+    fname = NULL;  /* stdin */
+  status = luaL_loadfile(L, fname);
+  if (status == 0) {
+    /* Fetch args from arg table. LUA_INIT or -e might have changed them. */
+    int narg = 0;
+    lua_getglobal(L, "arg");
+    if (lua_istable(L, -1)) {
+      do {
+				narg++;
+				lua_rawgeti(L, -narg, narg);
+      } while (!lua_isnil(L, -1));
+      lua_pop(L, 1);
+      lua_remove(L, -narg);
+      narg--;
+    } else {
+      lua_pop(L, 1);
+    }
+    status = docall(L, narg, 0);
+  }
+  return report(L, status);
 }
 
 /* Load add-on module. */
@@ -854,7 +871,7 @@ static int collectargs(char **argv, int *flags)
 		switch (argv[i][1]) {  /* Check option. */
 		case '-':
 			notail(argv[i]);
-			return (argv[i+1] != NULL ? i+1 : 0);
+			return i+1;
 		case '\0':
 			return i;
 		case 'i':
@@ -877,9 +894,10 @@ static int collectargs(char **argv, int *flags)
 			break;
 		case 'O': break;  /* LuaJIT extension */
 		case 'b':  /* LuaJIT extension */
-			if ((*flags &= ~(FLAGS_VERSION|FLAGS_MADENV))) return -1;
+			*flags &= ~(FLAGS_VERSION|FLAGS_MADENV);
+			if (*flags) return -1;
 			*flags |= FLAGS_EXEC;
-			return 0;
+			return i+1;
 		case 'E':
 			notail(argv[i]);
 			*flags |= FLAGS_NOENV;
@@ -896,13 +914,13 @@ static int collectargs(char **argv, int *flags)
 		default: return -1;  /* invalid option */
 		}
 	}
-	return 0;
+	return i;
 }
 
-static int runargs(lua_State *L, char **argv, int n)
+static int runargs(lua_State *L, char **argv, int argn)
 {
 	int i;
-	for (i = 1; i < n; i++) {
+	for (i = 1; i < argn; i++) {
 		if (argv[i] == NULL) continue;
 		lua_assert(argv[i][0] == '-');
 		switch (argv[i][1]) {
@@ -969,48 +987,64 @@ static int pmain(lua_State *L)
 {
 	struct Smain *s = &smain;
 	char **argv = s->argv;
-	int script, narg;
+	int argn;
 	int flags = 0;
 	globalL = L;
 	if (argv[0] && argv[0][0]) progname = argv[0];
-	LUAJIT_VERSION_SYM();  /* linker-enforced version check */
-	script = collectargs(argv, &flags);
-	if (script < 0) {  /* invalid args? */
+
+	LUAJIT_VERSION_SYM();  /* Linker-enforced version check. */
+
+	argn = collectargs(argv, &flags);
+  if (argn < 0) {  /* Invalid args? */
 		print_usage();
 		s->status = 1;
 		return 0;
 	}
-	setpaths(L, flags & FLAGS_NOENV);
-	narg = setargs(L, argv, (script > 0) ? script : s->argc); /* set arg */
+
 	if ((flags & FLAGS_NOENV)) {
 		lua_pushboolean(L, 1);
 		lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
 	}
 
+	/* Set paths _before_ libraries are open. */
+	mad_setpaths(L, flags & FLAGS_NOENV);
+
 	/* Stop collector during library initialization. */
 	lua_gc(L, LUA_GCSTOP, 0);
-	luaL_openlibs(L);  /* open libraries */
+	luaL_openlibs(L);
 	lua_gc(L, LUA_GCRESTART, -1);
-	regfunc(L);
-	if ((flags & FLAGS_MADENV)) dolibrary(L, "MAD");
+
+	createargtable(L, argv, s->argc, argn);
+
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_luainit(L);
 		if (s->status != 0) return 0;
+	}
+
+	/* MAD section. */
+	mad_regfunc(L);
+	if ((flags & FLAGS_MADENV)) dolibrary(L, "MAD");
+	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_madinit(L);
 		if (s->status != 0) return 0;
 	}
+
 	if ((flags & FLAGS_VERSION)) print_version();
-	s->status = runargs(L, argv, (script > 0) ? script : s->argc);
+
+	s->status = runargs(L, argv, argn);
 	if (s->status != 0) return 0;
-	if (script) {
-		s->status = handle_script(L, argv, script, narg);
+
+	if (s->argc > argn) {
+    s->status = handle_script(L, argv + argn);
 		if (s->status != 0) return 0;
 	}
+
 	if ((flags & FLAGS_INTERACTIVE)) {
 		(void)print_jit_status;
 		dotty(L);
-	} else if (script == 0 && !(flags & FLAGS_EXEC)) {
+	} else if (s->argc == argn && !(flags & FLAGS_EXEC)) {
 		if (lua_stdin_is_tty()) {
+			(void)print_version;
 			(void)print_jit_status;
 			dotty(L);
 		} else {
