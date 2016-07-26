@@ -80,8 +80,9 @@ Mlog.__help.self = M.__help.self
 local new, cdef, istype, typeof, metatype in require 'ffi'
 local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
 local forget                              in require 'madl_gfunc'
-local abs, ceil, floor, log, max          in math
+local abs, ceil, floor, log, exp, max     in math
 
+local exp_1 = exp(1)
 
 -- ctypes are xrange and logxrange
 cdef [[
@@ -100,7 +101,8 @@ local function value (r, x)
 end
 
 local function valuelog (r, x)
-  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
+  return exp(r.start + r.step*x)
+--  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
 end
 
 local function is_range (a)
@@ -116,38 +118,19 @@ function M.range (r)
 end
 
 function Mlog.range (r)
-  return r.start, r.stop, r.step
+  return exp(r.start), exp(r.stop), exp(r.step)
 end
 
 local function is_empty(start, stop, step)
-  return not (step > 0 and start <= stop or
-              step < 0 and start >= stop or false)
+  return not (step >= 0 and start <= stop or
+              step <= 0 and start >= stop or false)
 end
 
---local function is_emptylog(start, stop, step)
---  step = abs(step)
---  return not (step > 1 and (start >= 0 and start <= stop  or
---                            start <  0 and start >= stop) or
---              step < 1 and (start >= 0 and start >= stop  or
---                            start <  0 and start <= stop) or false)
---end
-
 local function is_emptylog(start, stop, step)
-  if step >= 0 then
-      return not (step > 1 and (start >= 0 and start <= stop  or
-                                start <  0 and start >= stop) or
-                  step < 1 and (start >= 0 and start >= stop  or
-                                start <  0 and start <= stop) or false)
-
---for this need of size%2
-  elseif step < 0 then
-    return ((step <= -1  and (start >= 0 and (start <= stop and (step%2) == 1)  or
-                                              start >= stop and (step%2) == 0)  or
-                              start <  0 and (start <= stop and (step%2) == 0   or
-                                              start >= stop and (step%2) == 1)) or
-            (step >= -1  and (start >= 0 and  start >= stop and (step%2) == 0   or
-                              start <  0 and  start <= stop and (step%2) == 0)) or false)
-  end
+  return not (step > 1 and (start >= 0 and start <= stop  or
+                            start <  0 and start >= stop) or
+              step < 1 and (start >= 0 and start >= stop  or
+                            start <  0 and start <= stop) or false)
 end
 
 local function get (r, x)
@@ -158,20 +141,12 @@ local function get (r, x)
   end
 end
 
---local function getlog (r, x)
---  local v, s = valuelog(r, x), abs(r.step)
---  if x >= 0 and
---    ((s > 1 and r.start > 0 or s < 1 and r.start < 0) and v <= r.stop) or
---    ((s > 1 and r.start < 0 or s < 1 and r.start > 0) and v >= r.stop)
---  then return v end
---end
-
 local function getlog (r, x)
-  local v, s = valuelog(r, x), abs(r.step)
-  if x >= 0 and
-    ((s > 1 and r.start > 0 or s < 1 and r.start < 0) and v <= (r.stop + r.step^0.1)) or
-    ((s > 1 and r.start < 0 or s < 1 and r.start > 0) and v >= (r.stop - r.step^0.1))
-  then return v end
+  local v = value(r, x)
+  if x >= 0 and (r.step > 0 and v <= r.stop or
+                 r.step < 0 and v >= r.stop) then
+    return exp(v)
+  end
 end
 
 local function iterincr (r, i)
@@ -180,8 +155,8 @@ local function iterincr (r, i)
 end
 
 local function iterincrlog (r, i)
-  local v = valuelog(r, i)
-  if v <= r.stop then return i+1, v end
+  local v = value(r, i)
+  if v <= r.stop then return i+1, exp(v) end
 end
 
 local function iterdecr (r, i)
@@ -190,8 +165,8 @@ local function iterdecr (r, i)
 end
 
 local function iterdecrlog (r, i)
-  local v = valuelog(r, i)
-  if v >= r.stop then return i+1, v end
+  local v = value(r, i)
+  if v >= r.stop then return i+1, exp(v) end
 end
 
 local function size (start, stop, step)
@@ -200,11 +175,7 @@ local function size (start, stop, step)
   -- step ~= 0 and max(0, floor( (stop-start)/step + 1) ) or 0
 end
 
-local function sizelog (start, stop, step)
-  --local sz = (floor(stop/start)^(1/(step + 1))
-  --return (step == 0 or sz < 0) and 0 or sz
-  return size(log(abs(start)), log(abs(stop)), log(abs(step)))
-end
+local sizelog = size
 
 -- alternate constructors with #steps specified
 
@@ -216,9 +187,11 @@ local function step (start, stop, size)
   if stop <  start then return (stop - start) - 1 end
 end
 
-local function steplog (start, stop, size)
-  return size >= 1 and (stop/start)^(1/abs(ceil(size)-1)) or 1
-end
+local steplog = step
+
+--local function steplog (start, stop, size)
+--  return size >= 1 and (stop/start)^(1/abs(ceil(size)-1)) or 1
+--end
 
 local function nrange (start, stop, size)
   if is_number(size)==false then size = 50 end
@@ -254,10 +227,12 @@ function M.__new (ct, start, stop, step)
 end
 
 function Mlog.__new (ct, start, stop, step)
-  assert(is_number(start), "invalid argument #1 (number expected)")
+  assert(is_number(start) and start > 0, "invalid argument #1 (positive number expected)")
   if stop == nil then stop = start end   -- default
-  if step == nil then step = 2 end       -- default
-  return new(ct, start, stop, step)
+  if step == nil then step = exp_1 end   -- default
+  assert(is_number(stop) and stop > 0, "invalid argument #2 (positive number expected)")
+  assert(is_number(step) and step > 0, "invalid argument #3 (positive number expected)")
+  return new(ct, log(start), log(stop), log(step))
 end
 
 function M.__index (r, a)
@@ -278,13 +253,22 @@ function M.__ipairs (r)
 end
 
 function Mlog.__ipairs (r)
-  local s = abs(r.step)
-  if s > 1 and r.start > 0 or s < 1 and r.start < 0 then
+  if r.step > 0 then
     return iterincrlog, r, 0
-  elseif s > 1 and r.start < 0 or s < 1 and r.start > 0 then
+  elseif r.step < 0 then
     return iterdecrlog, r, 0
   end
+  return forget
 end
+
+-- function Mlog.__ipairs (r)
+--   local s = abs(r.step)
+--   if s > 1 and r.start > 0 or s < 1 and r.start < 0 then
+--     return iterincrlog, r, 0
+--   elseif s > 1 and r.start < 0 or s < 1 and r.start > 0 then
+--     return iterdecrlog, r, 0
+--   end
+-- end
 
 function M.__eq (r1, r2)
   return is_range(r1) and is_range(r2) and
