@@ -16,6 +16,7 @@ local M={}
 M.private = {}
 
 M.VERSION='3.2'
+M._VERSION=M.VERSION -- For LuaUnit v2 compatibility
 
 --[[ Some people like assertEquals( actual, expected ) and some people prefer
 assertEquals( expected, actual ).
@@ -648,6 +649,18 @@ function M.assertError(f, ...)
     end
 end
 
+function M.assertIf(value)
+    if not value then
+        failure("expected: not false or nil, actual: " ..prettystr(value), 2)
+    end
+end
+
+function M.assertNotIf(value)
+    if value then
+        failure("expected: false or nil, actual: " ..prettystr(value), 2)
+    end
+end
+
 function M.assertTrue(value)
     if value ~= true then
         failure("expected: true, actual: " ..prettystr(value), 2)
@@ -684,6 +697,18 @@ function M.assertNotIsNaN(value)
     end
 end
 
+function M.assertIsInf(value)
+    if math.abs(value) ~= 1/0 then
+        failure("expected: inf, actual: " ..prettystr(value), 2)
+    end
+end
+
+function M.assertNotIsInf(value)
+    if math.abs(value) == 1/0 then
+        failure("expected non inf value, received ±inf", 2)
+    end
+end
+
 function M.assertEquals(actual, expected)
     if type(actual) == 'table' and type(expected) == 'table' then
         if not _is_table_equals(actual, expected) then
@@ -696,7 +721,13 @@ function M.assertEquals(actual, expected)
     end
 end
 
+-- Help Lua in corner cases like almostEquals(1.1, 1.0, 0.1), which by default
+-- may not work. We need to give a default margin; EPSILON defines the
+-- default value to use for this:
+M.EPSILON = 1E-12
+
 function M.almostEquals( actual, expected, margin )
+    margin = margin or M.EPSILON
     if type(actual) ~= 'number' or type(expected) ~= 'number' or type(margin) ~= 'number' then
         error_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
             prettystr(actual), prettystr(expected), prettystr(margin))
@@ -861,6 +892,22 @@ for _, funcName in ipairs(
 end
 
 --[[
+Add shortcuts for verifying type of a variable, without failure (luaunit v2 compatibility)
+M.isXxx(value) -> returns true if type(value) conforms to "xxx"
+]]
+for _, typeExpected in ipairs(
+    {'Number', 'String', 'Table', 'Boolean',
+     'Function', 'Userdata', 'Thread', 'Nil' }
+) do
+    local typeExpectedLower = typeExpected:lower()
+    local isType = function(value)
+        return (type(value) == typeExpectedLower)
+    end
+    M['is'..typeExpected] = isType
+    M['is_'..typeExpectedLower] = isType
+end
+
+--[[
 Add non-type assertion functions to the module table M. Each of these functions
 takes a single parameter "value", and checks that its Lua type differs from the
 expected string (derived from the function name):
@@ -928,7 +975,8 @@ function M.wrapFunctions(...)
     -- so just do nothing !
     io.stderr:write[[Use of WrapFunctions() is no longer needed.
 Just prefix your test function names with "test" or "Test" and they
-will be picked up and run by LuaUnit.]]
+will be picked up and run by LuaUnit.
+]]
 end
 
 local list_of_funcs = {
@@ -940,6 +988,8 @@ local list_of_funcs = {
     { 'assertNotEquals'         , 'assert_not_equals' },
     { 'assertAlmostEquals'      , 'assert_almost_equals' },
     { 'assertNotAlmostEquals'   , 'assert_not_almost_equals' },
+    { 'assertIf'                , 'assert_if' },
+    { 'assertNotIf'             , 'assert_not_if' },
     { 'assertTrue'              , 'assert_true' },
     { 'assertFalse'             , 'assert_false' },
     { 'assertStrContains'       , 'assert_str_contains' },
@@ -963,6 +1013,7 @@ local list_of_funcs = {
     { 'assertIsBoolean'         , 'assert_is_boolean' },
     { 'assertIsNil'             , 'assert_is_nil' },
     { 'assertIsNaN'             , 'assert_is_nan' },
+    { 'assertIsInf'             , 'assert_is_inf' },
     { 'assertIsFunction'        , 'assert_is_function' },
     { 'assertIsThread'          , 'assert_is_thread' },
     { 'assertIsUserdata'        , 'assert_is_userdata' },
@@ -974,6 +1025,7 @@ local list_of_funcs = {
     { 'assertIsBoolean'         , 'assertBoolean' },
     { 'assertIsNil'             , 'assertNil' },
     { 'assertIsNaN'             , 'assertNaN' },
+    { 'assertIsInf'             , 'assertInf' },
     { 'assertIsFunction'        , 'assertFunction' },
     { 'assertIsThread'          , 'assertThread' },
     { 'assertIsUserdata'        , 'assertUserdata' },
@@ -985,6 +1037,7 @@ local list_of_funcs = {
     { 'assertIsBoolean'         , 'assert_boolean' },
     { 'assertIsNil'             , 'assert_nil' },
     { 'assertIsNaN'             , 'assert_nan' },
+    { 'assertIsInf'             , 'assert_inf' },
     { 'assertIsFunction'        , 'assert_function' },
     { 'assertIsThread'          , 'assert_thread' },
     { 'assertIsUserdata'        , 'assert_userdata' },
@@ -996,6 +1049,7 @@ local list_of_funcs = {
     { 'assertNotIsBoolean'      , 'assert_not_is_boolean' },
     { 'assertNotIsNil'          , 'assert_not_is_nil' },
     { 'assertNotIsNaN'          , 'assert_not_is_nan' },
+    { 'assertNotIsInf'          , 'assert_not_is_inf' },
     { 'assertNotIsFunction'     , 'assert_not_is_function' },
     { 'assertNotIsThread'       , 'assert_not_is_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_is_userdata' },
@@ -1007,6 +1061,7 @@ local list_of_funcs = {
     { 'assertNotIsBoolean'      , 'assertNotBoolean' },
     { 'assertNotIsNil'          , 'assertNotNil' },
     { 'assertNotIsNaN'          , 'assertNotNaN' },
+    { 'assertNotIsInf'          , 'assertNotInf' },
     { 'assertNotIsFunction'     , 'assertNotFunction' },
     { 'assertNotIsThread'       , 'assertNotThread' },
     { 'assertNotIsUserdata'     , 'assertNotUserdata' },
@@ -1018,6 +1073,7 @@ local list_of_funcs = {
     { 'assertNotIsBoolean'      , 'assert_not_boolean' },
     { 'assertNotIsNil'          , 'assert_not_nil' },
     { 'assertNotIsNaN'          , 'assert_not_nan' },
+    { 'assertNotIsInf'          , 'assert_not_inf' },
     { 'assertNotIsFunction'     , 'assert_not_function' },
     { 'assertNotIsThread'       , 'assert_not_thread' },
     { 'assertNotIsUserdata'     , 'assert_not_userdata' },
@@ -1584,6 +1640,7 @@ end
             error('Unknown parse state: '.. state)
         end
 
+
         for i, cmdArg in ipairs(cmdLine) do
             if state ~= nil then
                 setArg( cmdArg, state, result )
@@ -1963,6 +2020,7 @@ end
         return err -- return the error "object" (table)
     end
 
+
     function M.LuaUnit:execOneFunction(className, methodName, classInstance, methodInstance)
         -- When executing a test function, className and classInstance must be nil
         -- When executing a class method, all parameters must be set
@@ -1990,34 +2048,34 @@ end
         self:startTest(prettyFuncName)
 
         for iter_n = 1, self.exeCount or 1 do
-          self.currentCount = iter_n
+            self.currentCount = iter_n
 
-          -- run setUp first (if any)
-          if classInstance then
-              local func = self.asFunction( classInstance.setUp ) or
-                           self.asFunction( classInstance.Setup ) or
-                           self.asFunction( classInstance.setup ) or
-                           self.asFunction( classInstance.SetUp )
-              if func then
-                  self:addStatus(self:protectedCall(classInstance, func, className..'.setUp'))
-              end
-          end
+            -- run setUp first (if any)
+            if classInstance then
+                local func = self.asFunction( classInstance.setUp ) or
+                             self.asFunction( classInstance.Setup ) or
+                             self.asFunction( classInstance.setup ) or
+                             self.asFunction( classInstance.SetUp )
+                if func then
+                    self:addStatus(self:protectedCall(classInstance, func, className..'.setUp'))
+                end
+            end
 
-          -- run testMethod()
-          if self.result.currentNode:isPassed() then
-              self:addStatus(self:protectedCall(classInstance, methodInstance, prettyFuncName))
-          end
+            -- run testMethod()
+            if self.result.currentNode:isPassed() then
+                self:addStatus(self:protectedCall(classInstance, methodInstance, prettyFuncName))
+            end
 
-          -- lastly, run tearDown (if any)
-          if classInstance then
-              local func = self.asFunction( classInstance.tearDown ) or
-                           self.asFunction( classInstance.TearDown ) or
-                           self.asFunction( classInstance.teardown ) or
-                           self.asFunction( classInstance.Teardown )
-              if func then
-                  self:addStatus(self:protectedCall(classInstance, func, className..'.tearDown'))
-              end
-          end
+            -- lastly, run tearDown (if any)
+            if classInstance then
+                local func = self.asFunction( classInstance.tearDown ) or
+                             self.asFunction( classInstance.TearDown ) or
+                             self.asFunction( classInstance.teardown ) or
+                             self.asFunction( classInstance.Teardown )
+                if func then
+                    self:addStatus(self:protectedCall(classInstance, func, className..'.tearDown'))
+                end
+            end
         end
 
         self:endTest()
@@ -2204,10 +2262,10 @@ end
 
         -- We expect these option fields to be either `nil` or contain
         -- valid values, so it's safe to always copy them directly.
-        self.verbosity            = options.verbosity
-        self.quitOnError          = options.quitOnError
-        self.quitOnFailure        = options.quitOnFailure
-        self.fname                = options.fname
+        self.verbosity     = options.verbosity
+        self.quitOnError   = options.quitOnError
+        self.quitOnFailure = options.quitOnFailure
+        self.fname         = options.fname
         self.exeCount             = options.exeCount
         self.patternIncludeFilter = options.pattern
         self.patternExcludeFilter = options.exclude
