@@ -33,7 +33,7 @@ almostEquals in such case is EPSILON with an initial default value set to
 10^-12. If the user provides a margin, it is used unmodified as a replacement to
 EPSILON, which is then discarded. EPSILON can be changed by the user to suit
 better its needs if the initial default value is not acceptable. ]]--
-M.EPSILON = 1E-12
+M.EPSILON = 2^-52
 
 -- set this to false to debug luaunit
 local STRIP_LUAUNIT_FROM_STACKTRACE=true
@@ -707,13 +707,13 @@ function M.assertNotIsNaN(value)
 end
 
 function M.assertIsInf(value)
-    if math.abs(value) ~= 1/0 then
+    if type(value) ~= "number" or math.abs(value) ~= 1/0 then
         failure("expected: inf, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIsInf(value)
-    if math.abs(value) == 1/0 then
+    if type(value) == "number" and math.abs(value) == 1/0 then
         failure("expected non inf value, received ±inf", 2)
     end
 end
@@ -733,10 +733,7 @@ end
 -- Help Lua in corner cases like almostEquals(1.1, 1.0, 0.1), which by default
 -- may not work. We need to give a default margin; EPSILON defines the
 -- default value to use for this:
-M.EPSILON = 1E-12
-
 function M.almostEquals( actual, expected, margin )
-    margin = margin or M.EPSILON
     if type(actual) ~= 'number' or type(expected) ~= 'number' or type(margin) ~= 'number' then
         error_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
             prettystr(actual), prettystr(expected), prettystr(margin))
@@ -749,6 +746,7 @@ end
 
 function M.assertAlmostEquals( actual, expected, margin )
     -- check that two floats are close by margin
+    margin = margin or M.EPSILON
     if not M.almostEquals(actual, expected, margin) then
         if not M.ORDER_ACTUAL_EXPECTED then
             expected, actual = actual, expected
@@ -775,6 +773,7 @@ end
 
 function M.assertNotAlmostEquals( actual, expected, margin )
     -- check that two floats are not close by margin
+    margin = margin or M.EPSILON
     if M.almostEquals(actual, expected, margin) then
         if not M.ORDER_ACTUAL_EXPECTED then
             expected, actual = actual, expected
