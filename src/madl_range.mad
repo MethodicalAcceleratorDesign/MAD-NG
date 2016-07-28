@@ -87,7 +87,7 @@ local exp_1 = exp(1)
 
 -- ctypes are xrange and logxrange
 cdef [[
-  typedef struct logxrange { const double start, stop, step; } logxrange;
+  typedef struct logxrange { const double logstart, logstop, logstep; } logxrange;
 ]]
 
 -- constructors ---------------------------------------------------------------o
@@ -102,7 +102,7 @@ local function value (r, x)
 end
 
 local function valuelog (r, x)
-  return exp(r.start + r.step*x)
+  return exp(r.logstart + r.logstep*x)
 --  return r.start * r.step^x -- N points => step = (stop/start)^(1/(N-1))
 end
 
@@ -119,7 +119,7 @@ function M.range (r)
 end
 
 function Mlog.range (r)
-  return exp(r.start), exp(r.stop), exp(r.step)
+  return exp(r.logstart), exp(r.logstop), exp(r.logstep)
 end
 
 local function is_empty(start, stop, step)
@@ -127,11 +127,9 @@ local function is_empty(start, stop, step)
               step <= 0 and start >= stop or false)
 end
 
-local function is_emptylog(start, stop, step)
-  return not (step > 1 and (start >= 0 and start <= stop  or
-                            start <  0 and start >= stop) or
-              step < 1 and (start >= 0 and start >= stop  or
-                            start <  0 and start <= stop) or false)
+local function is_emptylog(logstart, logstop, logstep)
+  return not (logstep > 1 and logstart <= logstop or
+              logstep < 1 and logstart >= logstop or false)
 end
 
 local function get (r, x)
@@ -144,8 +142,8 @@ end
 
 local function getlog (r, x)
   local v = value(r, x)
-  if x >= 0 and (r.step >= 0 and v <= r.stop or
-                 r.step <  0 and v >= r.stop) then
+  if x >= 0 and (r.logstep >= 0 and v <= r.logstop or
+                 r.logstep <  0 and v >= r.logstop) then
     return exp(v)
   end
 end
@@ -157,7 +155,7 @@ end
 
 local function iterincrlog (r, i)
   local v = value(r, i)
-  if v <= r.stop then return i+1, exp(v) end
+  if v <= r.logstop then return i+1, exp(v) end
 end
 
 local function iterdecr (r, i)
@@ -167,7 +165,7 @@ end
 
 local function iterdecrlog (r, i)
   local v = value(r, i)
-  if v >= r.stop then return i+1, exp(v) end
+  if v >= r.logstop then return i+1, exp(v) end
 end
 
 local function size (start, stop, step)
@@ -176,7 +174,11 @@ local function size (start, stop, step)
   --step ~= 0 and max(0, floor( (stop-start)/step + 1) ) or 0
 end
 
-local sizelog = size
+local function sizelog (start, stop, step)
+  start, stop, step = log(start), log(stop), log(step)
+  local sz = floor((stop-start)/step + 1)
+  return abs(step) == 0 and inf or sz < 0 and 0 or sz
+end
 
 -- alternate constructors with #steps specified
 
@@ -188,7 +190,11 @@ local function step (start, stop, size)
   if stop <  start then return (stop - start) - 1 end
 end
 
-local steplog = step
+local function steplog (start, stop, size)
+  size = ceil(size)
+  if size <= 0 then return 0 end
+  if size >  1 then return (stop/start)^(1/(ceil(size)-1)) else return 1 end
+end
 
 --local function steplog (start, stop, size)
 --  return size >= 1 and (stop/start)^(1/abs(ceil(size)-1)) or 1
@@ -214,8 +220,8 @@ local function irange (start, stop, step)
   return ipairs(range(start, stop, step))
 end
 
-local function ilogrange (start, stop, step)
-  return ipairs(logrange(start, stop, step))
+local function ilogrange (logstart, logstop, logstep)
+  return ipairs(logrange(logstart, logstop, logstep))
 end
 
 -- metamethods
@@ -279,7 +285,7 @@ end
 
 function Mlog.__eq (r1, r2)
   return is_logrange(r1) and is_logrange(r2) and
-         r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
+         r1.logstart == r2.logstart and r1.logstep == r2.logstep and r1.logstop == r2.logstop
 end
 
 M.__help.is_range = [=[
@@ -371,7 +377,7 @@ function M.reverse (r)
 end
 
 function Mlog.reverse (r, a)
-  return logrange(r.stop, r.start, 1/r.step)
+  return logrange(r.logstop, r.logstart, 1/r.logstep)
 end
 
 M.get         = get
@@ -395,10 +401,10 @@ function M.bounds (r)
 end
 
 function Mlog.bounds (r)
-  if r.step > 1 then
-    return r.start, r.stop
-  elseif r.step < 1 then
-    return r.stop, r.start
+  if r.logstep > 1 then
+    return r.logstart, r.logstop
+  elseif r.logstep < 1 then
+    return r.logstop, r.logstart
   end
 end
 

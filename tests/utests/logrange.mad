@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
-      assertErrorMsgContains, assertNil, assertNaN, assertIsString
+      assertErrorMsgContains, assertNil, assertNaN, assertIsString, assertInf
       in require 'luaunit'
 
 local range   , nrange   , irange   , is_range,
@@ -53,6 +53,12 @@ local values = {
            { 1   , 10^5 , 0.1},
            { 1   , 10^-5, 10 },
            },
+  nlrng =  {
+           { 10^5, 1    , 100 },
+           { 1   , 10^5 , 100 },
+           { 1   , 10^-5, 100 },
+           },
+
 }
 
 function TestLogrange:testConstructor()
@@ -72,20 +78,20 @@ function TestLogrange:testConstructor()
   assertErrorMsgContains( msg[3],  logrange, 1, 10, '' )
   assertErrorMsgContains( msg[1],  logrange,-a,-a      )
   assertErrorMsgContains( msg[1],  logrange,-a,-a,-a   )
-  assertErrorMsgContains( msg[3],  logrange, 1  , 10 , nan )
-  assertErrorMsgContains( msg[2],  logrange, 1  , nan, nan )
-  assertErrorMsgContains( msg[1],  logrange, nan, nan, nan )
-  assertErrorMsgContains( msg[3],  logrange, 1  , 10 ,-nan )
-  assertErrorMsgContains( msg[2],  logrange, 1  , nan,-nan )
-  assertErrorMsgContains( msg[1],  logrange,-nan,-nan,-nan )
-  assertErrorMsgContains( msg[3],  logrange, 1  , 10^5,-10 )
-  assertErrorMsgContains( msg[2],  logrange, 1  ,-10^5, 10 )
-  assertErrorMsgContains( msg[1],  logrange,-1  , 10^5, 10 )
-  assertErrorMsgContains( msg[3],  logrange, 1  , 10^5, 0  )
-  assertErrorMsgContains( msg[3], nlogrange, 1  , 10^5,-1  )
-  assertErrorMsgContains( msg[3], nlogrange, 1  , 10^5, 0  )
-  assertErrorMsgContains( msg[2], nlogrange, 1  , 0   , 1  )
-  assertErrorMsgContains( msg[1], nlogrange, 0  , 10^5, 1  )
+  assertErrorMsgContains( msg[3],  logrange, 1  , 10  , nan )
+  assertErrorMsgContains( msg[2],  logrange, 1  , nan , nan )
+  assertErrorMsgContains( msg[1],  logrange, nan, nan , nan )
+  assertErrorMsgContains( msg[3],  logrange, 1  , 10  ,-nan )
+  assertErrorMsgContains( msg[2],  logrange, 1  , nan ,-nan )
+  assertErrorMsgContains( msg[1],  logrange,-nan,-nan ,-nan )
+  assertErrorMsgContains( msg[3],  logrange, 1  , 10^5,-10  )
+  assertErrorMsgContains( msg[2],  logrange, 1  ,-10^5, 10  )
+  assertErrorMsgContains( msg[1],  logrange,-1  , 10^5, 10  )
+  assertErrorMsgContains( msg[3],  logrange, 1  , 10^5, 0   )
+  assertErrorMsgContains( msg[3], nlogrange, 1  , 10^5,-1   )
+  assertErrorMsgContains( msg[3], nlogrange, 1  , 10^5, 0   )
+  assertErrorMsgContains( msg[2], nlogrange, 1  , 0   , 1   )
+  assertErrorMsgContains( msg[1], nlogrange, 0  , 10^5, 1   )
 
   assertTrue( is_logrange( logrange(1)       ) )
   assertTrue( is_logrange( logrange(1,10)    ) )
@@ -106,29 +112,53 @@ function TestLogrange:testConstructor()
 end
 
 function TestLogrange:testFields()
---diffrent output for range() /.start /.stop /.start
+  local lr
+  assertEquals( logrange( 1 )    .logstart, log(1)  )
+  assertEquals( logrange( 1 )    .logstop , log(1)  )
+  assertEquals( logrange( 1 )    .logstep , 1       )
+  assertEquals( logrange( 1, 10 ).logstart, log(1)  )
+  assertEquals( logrange( 1, 10 ).logstop , log(10) )
+  assertEquals( logrange( 1, 10 ).logstep , 1       )
 
   assertEquals( {logrange( 1 ):range()}, { 1, 1, exp(1)} )
-  assertEquals( logrange( 1 ).start, log(1) )
-  assertEquals( logrange( 1 ).stop , log(1) )
-  assertEquals( logrange( 1 ).step , 1      )
+  lr = { logrange( 1, 10 ):range() }
+  assertAlmostEquals( lr[1] - 1     , 0,   eps )
+  assertAlmostEquals( lr[2] - 10    , 0, 9*eps )
+  assertAlmostEquals( lr[3] - exp(1), 0,   eps )
+  -- print( lr[2] - 10 )
+  -- print( 10  -  exp(log(10))  )
+  -- print( 100 -  exp(log(100)) )
 
-  --assertEquals( {logrange( 1, 10 ):range()}, { 1, 10, exp(1)} )
-  --assertEquals( logrange( 1, 10 ).start, log(1)  )
-  --assertEquals( logrange( 1, 10 ).stop , log(10) )
-  --assertEquals( logrange( 1, 10 ).step , 1       )
 
-  --for _,v in ipairs(values.lempty) do
-  --  assertEquals( {range(v[1],v[2],v[3]):range()}, {v[1],v[2],v[3]} )
-  --end
-  --for _,v in ipairs(values.lrng)do
-  --  assertEquals( {range(v[1],v[2],v[3]):range()}, {v[1],v[2],v[3]} )
-  --end
-  --for _,v in ipairs(values.limit) do
-  --  assertEquals( {logrange( 1 ,10, v):range()}, { exp(1),exp(10), exp(v)} )
-  --  assertEquals( {logrange( 1, v , v):range()}, { exp(1),exp(v ), exp(v)} )
-  --  assertEquals( {logrange( v, v , v):range()}, { exp(v),exp(v ), exp(v)} )
-  --end
+  for _,v in ipairs(values.lempty) do
+    lr = { logrange(v[1],v[2],v[3]):range() }
+    assertAlmostEquals( lr[1] - v[1] , 0, 100000*eps )
+    assertAlmostEquals( lr[2] - v[2] , 0, 100000*eps )
+    assertAlmostEquals( lr[3] - v[3] , 0,      9*eps )
+  end
+  for _,v in ipairs(values.lrng)do
+    lr = { logrange(v[1],v[2],v[3]):range() }
+    assertAlmostEquals( lr[1] - v[1] , 0, 100000*eps )
+    assertAlmostEquals( lr[2] - v[2] , 0, 100000*eps )
+    assertAlmostEquals( lr[3] - v[3] , 0,      9*eps )
+  end
+
+    lr = { logrange( 1, 10, huge ):range() }
+    assertAlmostEquals( lr[1] - 1 , 0,   eps )
+    assertAlmostEquals( lr[2] - 10, 0, 9*eps )
+    --assertAlmostEquals( lr[3] - huge , 0,   eps )
+    --print(log(exp(huge)))
+    --print( lr[3], huge , lr[3] - huge )
+
+    lr = { logrange( 1, 10, tiny ):range() }
+    assertAlmostEquals( lr[1] - 1 , 0,   eps )
+    assertAlmostEquals( lr[2] - 10, 0, 9*eps )
+    assertAlmostEquals( lr[3] - tiny , 0,   eps )
+
+    lr = { logrange( 1, 10, inf  ):range() }
+    assertAlmostEquals( lr[1] - 1 , 0,   eps )
+    assertAlmostEquals( lr[2] - 10, 0, 9*eps )
+    assertNaN( lr[3] - inf )
 end
 
 function TestLogrange:testReadonly()
@@ -137,45 +167,51 @@ function TestLogrange:testReadonly()
     "attempt to write to constant location",
   }
   for _,v in ipairs(values.num) do
-    f1=\r,v => r.start = v end
+    f1=\r,v => r.logstart = v end
     assertErrorMsgContains( msg[1], f1, logrange(1,10,0.1), v )
     assertErrorMsgContains( msg[1], f1, nlogrange(1,10,10), v )
-    f2=\r,v => r.stop  = v end
+    f2=\r,v => r.logstop  = v end
     assertErrorMsgContains( msg[1], f2, logrange(1,10,0.1), v )
     assertErrorMsgContains( msg[1], f2, nlogrange(1,10,10), v )
-    f3=\r,v => r.step  = v end
+    f3=\r,v => r.logstep  = v end
     assertErrorMsgContains( msg[1], f3, logrange(1,10,0.1), v )
     assertErrorMsgContains( msg[1], f3, nlogrange(1,10,10), v )
   end
 end
 
--- function TestLogrange:testIsLogrange()
--- end
+ function TestLogrange:testIsLogrange()
+  assertFalse( is_logrange('') )
+  assertFalse( is_logrange(2)  )
+  assertFalse( is_logrange(range(1)) )
+  assertFalse( is_logrange(1..10)    )
+  assertFalse( is_logrange(nrange(1,10,1))  )
+  assertFalse( is_logrange(nrange(1,10,0))  )
+
+  assertTrue ( is_logrange( logrange( 10^5, 1    , 0.1)) )
+  assertTrue ( is_logrange( logrange( 1   , 10^5 , 10 )) )
+  assertTrue ( is_logrange( logrange( 1   , 10^-5, 0.1)) )
+  assertTrue ( is_logrange( logrange( 10^5, 1    , 10 )) )
+  assertTrue ( is_logrange(nlogrange( 1   , 10   ,10  )) )
+ end
 
 function TestLogrange:testRange()
   local r
- -- r =  logrange(1)       assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
-  r =  logrange(1,10,10) assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
-  r = nlogrange(1,10,10) assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
+  r =  logrange(1)       assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
+  r =  logrange(1,10,10) assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
+  r = nlogrange(1,10,10) assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
 
   for _,v in ipairs(values.lempty) do
-    r = logrange(v[1],v[2],v[3]) assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
+    r = logrange(v[1],v[2],v[3]) assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
   end
   for _,v in ipairs(values.lrng) do
-    r = logrange(v[1],v[2],v[3]) assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
+    r = logrange(v[1],v[2],v[3]) assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
   end
   for _,v in ipairs(values.num) do
-    r = logrange( 1 ,10, v)      assertEquals( { r:range() }, {exp(r.start), exp(r.stop), exp(r.step)} )
+    r = logrange( 1 ,10, v)      assertEquals( { r:range() }, {exp(r.logstart), exp(r.logstop), exp(r.logstep)} )
   end
-  --for _,v in ipairs(values.limit) do
-  --  r = logrange( 1 ,10, v)  assertEquals( { r:range() }, {r.start, r.stop, r.step} )
-  --  r = logrange( 1, v , v)  assertEquals( { r:range() }, {r.start, r.stop, r.step} )
-  --  r = logrange( v, v , v)  assertEquals( { r:range() }, {r.start, r.stop, r.step} )
-  --  r = logrange(-v,-v ,-v)  assertEquals( { r:range() }, {r.start, r.stop, r.step} )
-  --end
 end
 
-function TestLogrange:testIsEmpty() -- fix fun
+function TestLogrange:testIsEmpty()
   for _,v in ipairs(values.lempty) do
     assertTrue ( logrange(v[1],v[2],v[3]):is_empty() )
   end
@@ -184,41 +220,139 @@ function TestLogrange:testIsEmpty() -- fix fun
   end
   assertFalse( logrange(1)          :is_empty() )
   assertFalse( logrange(1,10)       :is_empty() )
-  assertFalse( nlogrange(2, 10, 0.1):is_empty() )
-  assertFalse( nlogrange(2, 10, nan):is_empty() )
+  assertTrue ( nlogrange(2, 10, 0.1):is_empty() )
+  assertTrue ( nlogrange(2, 10, nan):is_empty() )
 
- --[[for _,v in ipairs(values.num) do
-    if v~=0 then
+ for _,v in ipairs(values.num) do
+    if v > 1 then
       assertFalse( logrange( 1 , 10, v):is_empty() )
-      assertFalse(nlogrange( 1 , 10, v):is_empty() )
+      assertTrue ( logrange( 10, 1 , v):is_empty() )
+    elseif v < 1 then
+      assertTrue ( logrange( 1 , 10, v):is_empty() )
+      assertFalse( logrange( 10, 1 , v):is_empty() )
+    else
+      assertTrue ( logrange( 10, 1 , v):is_empty() )
+      assertTrue ( logrange( 1 , 10, v):is_empty() )
     end
   end
-  for _,v in ipairs(values.limit) do
-    assertFalse( logrange( 1 , 10, v):is_empty() )
-    assertFalse( logrange( v , v , v):is_empty() )
+  for _,v in ipairs(values.num) do
+    if v <= 1 then
+      assertTrue ( nlogrange( 1 , 10, v):is_empty() )
+      assertTrue ( nlogrange( 10, 1 , v):is_empty() )
+    elseif v < 2^63 then
+      assertFalse( nlogrange( 1 , 10, v):is_empty() )
+      assertFalse( nlogrange( 10, 1 , v):is_empty() )
+    else   -- to be checked
+      assertTrue ( nlogrange( 1 , 10, v):is_empty() )
+      assertTrue ( nlogrange( 10, 1 , v):is_empty() )
+    end
   end
+
+    assertFalse(  logrange( 1, 10, huge ):is_empty() )
+    assertFalse(  logrange( 1, 10, inf  ):is_empty() )
+    assertTrue (  logrange( 1, 10, tiny ):is_empty() )
+    assertTrue ( nlogrange( 1, 10, huge ):is_empty() )
+    assertTrue ( nlogrange( 1, 10, tiny ):is_empty() )
+    assertTrue ( nlogrange( 1, 10, inf  ):is_empty() )
 end
 
 function TestLogrange:testNConstructor()
-  --assertEquals( {nlogrange( 1 )    :range()}, {1,1 ,50 } )
+  local a = 2
+  local msg = {
+    "invalid argument #1 or #2(number expected)",
+    "invalid argument #1 (positive number expected)",
+    "invalid argument #2 (positive number expected)",
+    "invalid argument #3 (positive number expected)",
+  }
+  assertErrorMsgContains( msg[1], nlogrange                )
+  assertErrorMsgContains( msg[1], nlogrange, 1             )
+  assertErrorMsgContains( msg[1], nlogrange, nil, 1        )
+  assertErrorMsgContains( msg[1], nlogrange, nil, 1  , 1   )
+  assertErrorMsgContains( msg[1], nlogrange, ''            )
+  assertErrorMsgContains( msg[1], nlogrange, '' , ''       )
+  assertErrorMsgContains( msg[1], nlogrange, '' , 1  , 1   )
+  assertErrorMsgContains( msg[1], nlogrange, '' , '' , 1   )
+  assertErrorMsgContains( msg[1], nlogrange, (1..10..1)    )
+  assertErrorMsgContains( msg[4], nlogrange, 1  , 10 , 0   )
+  assertErrorMsgContains( msg[4], nlogrange, 1  , 10 ,-1   )
+  assertErrorMsgContains( msg[3], nlogrange, 1  ,-10 , 1   )
+  assertErrorMsgContains( msg[2], nlogrange,-1  , 10 , 1   )
+  assertErrorMsgContains( msg[2], nlogrange, -a ,-a  ,-a   )
+  assertErrorMsgContains( msg[3], nlogrange, 1  , nan, nan )
+  assertErrorMsgContains( msg[2], nlogrange, nan, nan, nan )
 
+  assertTrue( is_logrange(nlogrange( a, a, a))   )
+  assertTrue( is_logrange(nlogrange(1,10 ))      )
+  assertTrue( is_logrange(nlogrange(1,10 , 1))   )
+  assertTrue( is_logrange(nlogrange(1, 2 , ''))  )
+  assertTrue( is_logrange(nlogrange(1, 10, nan)) )
+
+  for _,v in ipairs(values.num) do
+    assertTrue( is_logrange( nlogrange( 1, 10, v)) )
+  end
+  for _,v in ipairs(values.limit) do
+    assertTrue( is_logrange( nlogrange( 1, 10, v)) )
+  end
+  for _,v in ipairs(values.nlrng) do
+    assertTrue( is_logrange( nlogrange(v[1],v[2],v[3]) ) )
+  end
+end
+
+function TestLogrange:testNCnstrFields()
+  assertTrue( is_logrange(nlogrange(1,10 ))      )
+  assertTrue( is_logrange(nlogrange(1,10, 1))    )
+  assertTrue( is_logrange(nlogrange(1, 10, nan)) )
+  assertTrue( is_logrange(nlogrange(1, 2 , ''))  )
+
+  for _,v in ipairs(values.nlrng)do
+    lr = { nlogrange(v[1],v[2],v[3]):range() }
+    assertAlmostEquals( lr[1] - v[1] , 0, 100000*eps )
+    assertAlmostEquals( lr[2] - v[2] , 0, 100000*eps )
+    --assertAlmostEquals( lr[3] - v[3] , 0,      9*eps )
+  end
+ end
+
+function TestLogrange:testValue()
+  assertEquals( logrange(1)           :value(0), 1 )
+  assertNaN   ( logrange(1 ,10, inf)  :value(0), 1 )
+  assertEquals( logrange(1 ,10, huge) :value(0), 1 )
+
+  for _,v in ipairs(values.nlrng) do
+    assertAlmostEquals( nlogrange(v[1],v[2],v[3]):value(0) - v[1],0, 100000*eps )
+  end
+  for _,v in ipairs(values.lrng) do
+    assertAlmostEquals(  logrange(v[1],v[2],v[3]):value(0) - v[1],0, 100000*eps )
+  end
+  for _,v in ipairs(values.lempty) do
+    assertAlmostEquals(  logrange(v[1],v[2],v[3]):value(0) - v[1],0, 100000*eps )
+  end
+
+  assertEquals( logrange(1, 10, huge):value(0) , 1 )
+  assertEquals( logrange(1, 10, tiny):value(0) , 1 )
+  assertNaN   ( logrange(1, 10, inf ):value(0) )
+  --assertAlmostEquals( (0..1..0.1):value(eps) - exp(eps), 0, eps )
 end
 
 function TestLogrange:testSize()
+  assertEquals(  logrange(1)                :size(), 1   )
+  assertEquals(  logrange(2 ,10, inf)       :size(), 1   )
+  assertEquals(  logrange(2 ,10, huge)      :size(), 1   )
+  assertEquals( nlogrange(10^5, 1    , 100 ):size(), 100 )
+  assertEquals( nlogrange(1   , 10^-5, 100 ):size(), 100 )
+  assertEquals( nlogrange(1   , 10^5 , 100 ):size(), 100 )
+  assertEquals( nlogrange(1   , 10, 0.1)    :size(), inf )
+  assertEquals( nlogrange(10^5, 1 , 1  )    :size(), inf )
+
+  for _,v in ipairs(values.lrng) do
+    assertEquals( logrange(v[1],v[2],v[3]):size() ,6 )
+  end
  end
-
-function TestLogrange:testGet()
-  local lr
-]]
-end
-
 --[[
-function TestLogrange:testNCnstrFields()
-end
-function TestLogrange:testValue()
+function TestLogrange:testGet()
 end
 function TestLogrange:testIndex()
 end
+
 function TestLogrange:testEqual()
 end
 function TestLogrange:testReverse()
