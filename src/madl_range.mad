@@ -80,7 +80,6 @@ Mlog.__help.self = M.__help.self
 local new, cdef, istype, typeof, metatype in require 'ffi'
 local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
 local forget                              in require 'madl_gfunc'
-local inf                                 in require 'madl_gmath'
 local abs, ceil, floor, log, exp, max     in math
 
 local exp_1 = exp(1)
@@ -98,11 +97,11 @@ local logrange = typeof 'logxrange'
 -- implementation -------------------------------------------------------------o
 
 local function value (r, x)
-  return r.start + r.step*x -- N points => step = (stop-start)/(N-1)
+  return r.start + r.step*x
 end
 
 local function valuelog (r, x)
-  return exp(r.logstart + r.logstep*x) -- N points => step = (stop/start)^(1/(N-1))
+  return exp(r.logstart + r.logstep*x)
 end
 
 local function is_range (a)
@@ -137,9 +136,9 @@ local function get (r, x)
 end
 
 local function getlog (r, x)
-  local v = value(r, x)
+  local v = r.logstart + r.logstep*x
   if x >= 0 and (r.logstep >= 0 and v <= r.logstop or
-                 r.logstep <  0 and v >= r.logstop) then
+                 r.logstep <  0 and v >= r.logstop ) then -- values not precise
     return exp(v)
   end
 end
@@ -150,7 +149,8 @@ local function iterincr (r, i)
 end
 
 local function iterincrlog (r, i)
-  local v = value(r, i)
+  --local v = valuelog(r, i)
+  local v = r.logstart + r.logstep*i
   if v <= r.logstop then return i+1, exp(v) end
 end
 
@@ -160,7 +160,8 @@ local function iterdecr (r, i)
 end
 
 local function iterdecrlog (r, i)
-  local v = value(r, i)
+  --local v = valuelog(r, i)
+  local v = r.logstart + r.logstep*i
   if v >= r.logstop then return i+1, exp(v) end
 end
 
@@ -171,12 +172,12 @@ end
 
 local sizelog = size
 
--- alternate constructors with #steps specified
+-- alternate constructors with #points specified
 
 local function step (start, stop, size)
   size = ceil(size)
-  if size <= 0     then return 0 end
   if size >  1     then return (stop - start) / abs(size-1) end
+  --else return 2*(stop - start) end
   if stop >= start then return (stop - start) + 1 end
   if stop <  start then return (stop - start) - 1 end
 end
@@ -188,16 +189,18 @@ local function steplog (start, stop, size)
 end
 
 local function nrange (start, stop, size)
-  if is_number(size) == false then size = 50 end
+  size = size or 50
+  assert(size > 0, "invalid argument #3 (positive number expected)" )
   assert(is_number(start) and is_number(stop),
-         "invalid argument #1 or #2(number expected)")
+         "invalid argument #1 or #2 (number expected)")
   return range(start, stop, step(start, stop, size))
 end
 
 local function nlogrange (start, stop, size)
-  if is_number(size) == false then size = 50 end
+  size = size or 50
+  assert(size > 0, "invalid argument #3 (positive number expected)" )
   assert(is_number(start) and is_number(stop),
-         "invalid argument #1 or #2(number expected)")
+         "invalid argument #1 or #2 (number expected)")
   return logrange(start, stop, steplog(start, stop, size))
 end
 
@@ -243,27 +246,17 @@ function M.__ipairs (r)
   elseif r.step < 0 then
     return iterdecr, r, 0
   end
-
   return forget
 end
 
 function Mlog.__ipairs (r)
-  if r.step > 0 then
+  if r.logstep > 0 then
     return iterincrlog, r, 0
-  elseif r.step < 0 then
+  elseif r.logstep < 0 then
     return iterdecrlog, r, 0
   end
   return forget
 end
-
--- function Mlog.__ipairs (r)
---   local s = abs(r.step)
---   if s > 1 and r.start > 0 or s < 1 and r.start < 0 then
---     return iterincrlog, r, 0
---   elseif s > 1 and r.start < 0 or s < 1 and r.start > 0 then
---     return iterdecrlog, r, 0
---   end
--- end
 
 function M.__eq (r1, r2)
   return is_range(r1) and is_range(r2) and
@@ -276,7 +269,6 @@ function Mlog.__eq (r1, r2)
 end
 
 M.__help.is_range = [=[
-
 NAME
   is_range, is_logrange, is_empty     -- identify ranges
 
@@ -312,7 +304,6 @@ M.__help.is_logrange = M.__help.is_range
 M.__help.is_empty    = M.__help.is_range
 
 M.__help.irange = [=[
-
 NAME
   irange, ilogrange               -- ranges interators
 
@@ -364,7 +355,7 @@ function M.reverse (r)
 end
 
 function Mlog.reverse (r, a)
-  return logrange(r.logstop, r.logstart, 1/r.logstep)
+  return logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
 end
 
 M.get         = get
@@ -388,10 +379,13 @@ function M.bounds (r)
 end
 
 function Mlog.bounds (r)
-  if r.logstep > 1 and r.logstart <= r.logstop then
-    return exp(r.logstart), exp(r.logstop)
-  elseif r.logstep < 1 and r.logstart >= r.logstop then
-    return exp(r.logstop ), exp(r.logstart)
+  local start, stop = exp(r.logstart), exp(r.logstop)
+  if r.logstep > 0 and r.logstart <= r.logstop then
+    return start, stop
+  elseif r.logstep < 0 and r.logstart >= r.logstop then
+    return stop, start
+  elseif r.logstep == 0  then
+    return start, start
   end
 end
 
@@ -400,6 +394,8 @@ function M.overlap (r, s)
   local sl, sh = s:bounds()
   return not (rl == nil or sl == nil or rh < sl or rl > sh)
 end
+
+Mlog.overlap = M.overlap
 
 M.__help.value = [=[
 NAME
