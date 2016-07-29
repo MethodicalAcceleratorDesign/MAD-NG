@@ -6,7 +6,8 @@
  | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- | Contrib: A.Z. Teska, aleksandra.teska at cern.ch
+ |          A.Z. Teska, aleksandra.teska at cern.ch
+ | Contrib: -
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -86,7 +87,9 @@ local exp_1 = exp(1)
 
 -- ctypes are xrange and logxrange
 cdef [[
-  typedef struct logxrange { const double logstart, logstop, logstep; } logxrange;
+  typedef struct logxrange {
+    const double logstart, logstop, logstep;
+  } logxrange;
 ]]
 
 -- constructors ---------------------------------------------------------------o
@@ -94,41 +97,23 @@ cdef [[
 local range    = typeof 'xrange'
 local logrange = typeof 'logxrange'
 
+local is_range    = \a -> istype('xrange'   , a)
+local is_logrange = \a -> istype('logxrange', a)
+
 -- implementation -------------------------------------------------------------o
 
-local function value (r, x)
-  return r.start + r.step*x
-end
+local value = \start,step,x -> start + step*x
 
-local function valuelog (r, x)
-  return exp(r.logstart + r.logstep*x)
-end
-
-local function is_range (a)
-  return istype('xrange', a)
-end
-
-local function is_logrange (a)
-  return istype('logxrange', a)
-end
-
-function M.range (r)
-  return r.start, r.stop, r.step
-end
-
-function Mlog.range (r)
-  return exp(r.logstart), exp(r.logstop), exp(r.logstep)
-end
+M.range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
+Mlog.range = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
 
 local function is_empty(start, stop, step)
   return not (step >= 0 and start <= stop or
               step <= 0 and start >= stop or false)
 end
 
-local is_emptylog = is_empty
-
 local function get (r, x)
-  local v = value(r, x)
+  local v = value(r.start, r.step, x)
   if x >= 0 and (r.step >= 0 and v <= r.stop or
                  r.step <  0 and v >= r.stop) then
     return v
@@ -136,7 +121,7 @@ local function get (r, x)
 end
 
 local function getlog (r, x)
-  local v = r.logstart + r.logstep*x
+  local v = value(r.logstart, r.logstep, x)
   if x >= 0 and (r.logstep >= 0 and v <= r.logstop or
                  r.logstep <  0 and v >= r.logstop ) then -- values not precise
     return exp(v)
@@ -144,24 +129,22 @@ local function getlog (r, x)
 end
 
 local function iterincr (r, i)
-  local v = value(r, i)
+  local v = value(r.start, r.step, i)
   if v <= r.stop then return i+1, v end
 end
 
-local function iterincrlog (r, i)
-  --local v = valuelog(r, i)
-  local v = r.logstart + r.logstep*i
-  if v <= r.logstop then return i+1, exp(v) end
-end
-
 local function iterdecr (r, i)
-  local v = value(r, i)
+  local v = value(r.start, r.step, i)
   if v >= r.stop then return i+1, v end
 end
 
+local function iterincrlog (r, i)
+  local v = value(r.logstart, r.logstep, i)
+  if v <= r.logstop then return i+1, exp(v) end
+end
+
 local function iterdecrlog (r, i)
-  --local v = valuelog(r, i)
-  local v = r.logstart + r.logstep*i
+  local v = value(r.logstart, r.logstep, i)
   if v >= r.logstop then return i+1, exp(v) end
 end
 
@@ -170,22 +153,23 @@ local function size (start, stop, step)
   return sz < 0 and 0 or sz
 end
 
-local sizelog = size
-
 -- alternate constructors with #points specified
 
 local function step (start, stop, size)
   size = ceil(size)
-  if size >  1     then return (stop - start) / abs(size-1) end
-  --else return 2*(stop - start) end
-  if stop >= start then return (stop - start) + 1 end
-  if stop <  start then return (stop - start) - 1 end
+  if size > 1 then
+    return (stop - start) / abs(size-1)
+  end
+  if stop >= start
+  then return (stop - start) + 1
+  else return (stop - start) - 1 end
 end
 
 local function steplog (start, stop, size)
   size = ceil(size)
   if size <= 0 then return 0 end
-  if size >  1 then return (stop/start)^(1/(ceil(size)-1)) else return 1 end
+  if size == 1 then return 1 end
+  return (stop/start)^(1/(size-1))
 end
 
 local function nrange (start, stop, size)
@@ -210,8 +194,8 @@ local function irange (start, stop, step)
   return ipairs(range(start, stop, step))
 end
 
-local function ilogrange (logstart, logstop, logstep)
-  return ipairs(logrange(logstart, logstop, logstep))
+local function ilogrange (start, stop, step)
+  return ipairs(logrange(start, stop, step))
 end
 
 -- metamethods
@@ -264,8 +248,8 @@ function M.__eq (r1, r2)
 end
 
 function Mlog.__eq (r1, r2)
-  return is_logrange(r1) and is_logrange(r2) and
-         r1.logstart == r2.logstart and r1.logstep == r2.logstep and r1.logstop == r2.logstop
+  return is_logrange(r1) and is_logrange(r2) and r1.logstart == r2.logstart and
+         r1.logstep == r2.logstep and r1.logstop == r2.logstop
 end
 
 M.__help.is_range = [=[
@@ -334,39 +318,25 @@ SEE ALSO
 ]=]
 M.__help.ilogrange = M.__help.irange
 
-function M.size (r)
-  return size(r.start, r.stop, r.step)
-end
+M.value       = \r,x ->      value(r.start   , r.step   , x)
+Mlog.value    = \r,x -> exp( value(r.logstart, r.logstep, x) )
 
-function Mlog.size (r)
-  return sizelog(r.logstart, r.logstop, r.logstep)
-end
+M.size        = \r -> size(r.start   , r.stop   , r.step   )
+Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
 
-function M.is_empty (r)
-  return is_empty(r.start, r.stop, r.step)
-end
+M.is_empty    = \r -> is_empty(r.start   , r.stop   , r.step   )
+Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
 
-function Mlog.is_empty (r)
-  return is_emptylog(r.logstart, r.logstop, r.logstep)
-end
+M.reverse     = \r -> range   (    r.stop    ,     r.start    ,     -r.step    )
+Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
 
-function M.reverse (r)
-  return range(r.stop, r.start, -r.step)
-end
+M.get      = get
+M.__len    = M.size
+M.__unm    = M.reverse
 
-function Mlog.reverse (r, a)
-  return logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
-end
-
-M.get         = get
-M.value       = value
-M.__len       = M.size
-M.__unm       = M.reverse
-
-Mlog.get      = getlog
-Mlog.value    = valuelog
-Mlog.__len    = Mlog.size
-Mlog.__unm    = Mlog.reverse
+Mlog.get   = getlog
+Mlog.__len = Mlog.size
+Mlog.__unm = Mlog.reverse
 
 function M.bounds (r)
   if r.step > 0 and r.start <= r.stop then
