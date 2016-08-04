@@ -22,47 +22,47 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M, Mlog = { __help = {} }, { __help = {} }
+local M    = { __help = {} }
+local Mlog = { __help = M.__help }
 
 -- help -----------------------------------------------------------------------o
 
 M.__help.self = [=[
 NAME
-  range, logrange -- range and logarithmic ranges
+  range, logrange -- range and logarithmic range
 
 SYNOPSIS
-  r1 = range (start [, stop [, step]])
-  r2 = nrange(start [, stop [, npoints]])
-  r3 = start..stop[..step]
-
-  l1 = logrange (lstart [, lstop [, lstep]])
-  l2 = nlogrange(lstart [, lstop [, npoints]])
-  l2 = log(lstart..lstop[..lstep])
+  r1 = start..stop[..step] -- raw range
+  r2 = range    (start [, stop [, step]])
+  r3 = nrange   (start [, stop [, size]])
+  r4 = logrange (start [, stop [, step]])
+  r5 = nlogrange(start [, stop [, size]])
 
 DESCRIPTION
-  Ranges are defined by their start, stop (included) and step arguments. A step
-  with opposite sign to stop-start lead to an empty range, step of value zero
-  (one for logrange) returns infinit line of starting point values. Ranges can
-  be used as stateless iterators in for loops (i.e. ipairs), and provide better
-  numerical stability for non-exact floating point numbers. Some methods like
-  index (i.e. []), iterators (i.e.ipairs) and get (segment interpolation) return
-  nil outside the boundaries, and some others like value (line interpolation)
-  don't check for boundaries.
+  Ranges are defined by their start, stop (included) and step arguments. A range
+  can define an empty set (i.e. step with opposite sign to stop-start), a point
+  set (i.e. step larger than start-stop), a finite set of points (i.e. non-zero
+  step not greater than start-stop), an infinite set of single point (i.e. zero
+  step for range, one for logrange). Ranges can be used as stateless iterators
+  in for loops (i.e. ipairs), and provide better numerical stability for non-
+  exact floating point numbers. The methods index (i.e. []), iterators (i.e.
+  ipairs) and get return nil outside the boundaries (segment interpolation),
+  while the method value does not check for boundaries (line interpolation).
 
 RETURN VALUES
-  The table constaining the constructors for range and logrange (argument #3 is
-  step), the constructors for nrange and nlogrange (argument #3 is npoints), the
-  iterators irange and ilogrange for direct use in for loops, and the functions
+  The table containing the constructors for range and logrange (argument #3 is
+  step), the constructors for nrange and nlogrange (argument #3 is size), their
+  respective stateless iterators for direct use in for loops, and the functions
   is_range and is_logrange to identify the ranges object.
 
 ERRORS
-  Range, nrange, logrange and nlogrange constructors trig an error if any of the
-  argument #1, #2 and #3 (if provided) are not a number (positive number in case
-  of logrange and nlogrange).
+  Constructors trig an error if any of the argument #1, #2 and #3 (if provided)
+  are not finite numbers for range and nrange or not strictly positive finite
+  numbers for logrange and nlogrange or if size is not a positive number.
 
 EXAMPLES
   do
-    local range = MAD.range
+    local range in MAD
     r01 = range(1)
     r02 = range(1,10)
     r03 = range(1,10,2)
@@ -79,56 +79,106 @@ EXAMPLES
 SEE ALSO
   None.
 ]=]
-Mlog.__help.self = M.__help.self
 
 -- locals ---------------------------------------------------------------------o
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
-local is_number, is_nil, is_inf, defhelp  in require 'madl_utils'
-local forget                              in require 'madl_gfunc'
-local abs, ceil, floor, log, exp, max     in math
+local is_nil, is_nan, is_number, defhelp  in require 'madl_utils'
+local eps, huge, inf, sign                in require 'madl_gmath'
+local abs, ceil, floor, log, exp          in math
 
 local exp_1 = exp(1)
 
 -- ctypes are xrange and logxrange
 cdef [[
-  typedef struct logxrange {
-    const double logstart, logstop, logstep;
+  typedef const struct logxrange {
+    double logstart, logstop, logstep;
   } logxrange;
 ]]
 
 -- constructors ---------------------------------------------------------------o
 
-local range    = typeof 'xrange'
+local range    = typeof    'xrange'
 local logrange = typeof 'logxrange'
 
-local is_range    = \a -> istype('xrange'   , a)
+local is_range    = \a -> istype(   'xrange', a)
 local is_logrange = \a -> istype('logxrange', a)
 
 -- implementation -------------------------------------------------------------o
 
-local value = \start,step,x -> start + step*x
+local function value (start, step, x)
+  return step == 0 and start or start + step*x
+end
 
-M.range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
-Mlog.range = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
+local function size (start, stop, step)
+  local delta = stop-start
+  if step == 0 then return huge * sign(delta) end
+  local siz = floor( delta / step ) + 1
+  return siz < 0 and 0 or siz
+end
 
-local function is_empty(start, stop, step)
+local function step (start, stop, size)
+  local delta = stop-start
+  if size >  1 then return delta / (size-1) end
+  if size == 1 then return huge * sign(delta) end
+  return -huge * sign(delta)
+end
+
+local function adjust (start, stop, step_, size_)
+  -- adjust step_ such that following properties hold:
+  --   size (start, stop , step_  ) == size_
+  --   step (start, stop , size_  ) == step_
+  --   value(start, step_, size_-1) == stop
+  -- adjustment max: step = step * (1-eps)^2
+  if size_ ~= nil then
+    step_ = step(start, stop, size_)
+    if size_ > 1 and size_ > size(start, stop, step_) then
+      step_ = step_ - step_*eps
+    end
+  elseif abs(step_) < huge then
+    size_ = size(start, stop, step_)
+    if abs(step_) > abs(step(start, stop, size_)) then
+      step_ = step_ - step_*eps
+    end
+  end
+  if abs(step_) < huge then
+    local last = value(start, step_, size_-1)
+    if step_ > 0 and last > stop or step_ < 0 and last < stop then
+        step_ = step_ - step_*eps
+    end
+  end
+  return start, stop, step_
+end
+
+local function equal (start1, stop1, step1, start2, stop2, step2)
+  return start1 == start2 and stop1 == stop2 and
+         (step1 == step2 or abs(step1/step2 - 1) < 2*eps)
+end
+
+local function is_empty (start, stop, step)
   return not (step >= 0 and start <= stop or
               step <= 0 and start >= stop or false)
 end
 
+local function bounds (start, stop, step)
+  if not is_empty(start, stop, step) then
+    local last = value(start, step, size(start, stop, step)-1)
+    if step > 0 and last <= stop then return start, last end
+    if step < 0 and last >= stop then return last, start end
+    return start, start
+  end
+end
+
 local function get (r, x)
   local v = value(r.start, r.step, x)
-  if x >= 0 and (r.step >= 0 and v <= r.stop or
-                 r.step <  0 and v >= r.stop) then
+  if x >= 0 and not is_empty(v, r.stop, r.step) then
     return v
   end
 end
 
 local function getlog (r, x)
   local v = value(r.logstart, r.logstep, x)
-  if x >= 0 and (r.logstep >= 0 and v <= r.logstop or
-                 r.logstep <  0 and v >= r.logstop ) then -- values not precise
+  if x >= 0 and not is_empty(v, r.logstop, r.logstep) then
     return exp(v)
   end
 end
@@ -153,72 +203,46 @@ local function iterdecrlog (r, i)
   if v >= r.logstop then return i+1, exp(v) end
 end
 
-local function size (start, stop, step)
-  local sz = floor((stop-start)/step + 1)
-  return sz < 0 and 0 or sz
-end
-
--- alternate constructors with #points specified
-
-local function step (start, stop, size)
-  size = ceil(size)
-  if size > 1 then
-    return (stop - start) / abs(size-1)
-  end
-  if stop >= start
-  then return (stop - start) + 1
-  else return (stop - start) - 1 end
-end
-
-local function steplog (start, stop, size)
-  size = ceil(size)
-  if size <= 0 then return 0 end
-  if size == 1 then return 1 end
-  return (stop/start)^(1/(size-1))
-end
+-- alternate constructors with size = #points specified
 
 local function nrange (start, stop, size)
-  size = size or 50
-  assert(size > 0, "invalid argument #3 (positive number expected)" )
-  assert(is_number(start) and is_number(stop),
-         "invalid argument #1 or #2 (number expected)")
-  return range(start, stop, step(start, stop, size))
+  size = size or 100
+  assert(is_number(size) and size >= 0,
+         "invalid argument #3 (positive number expected)" )
+  return range(start, stop, nil, ceil(size))
 end
 
 local function nlogrange (start, stop, size)
-  size = size or 50
-  assert(size > 0, "invalid argument #3 (positive number expected)" )
-  assert(is_number(start) and is_number(stop),
-         "invalid argument #1 or #2 (number expected)")
-  return logrange(start, stop, steplog(start, stop, size))
-end
-
--- iterators
-
-local function irange (start, stop, step)
-  return ipairs(range(start, stop, step))
-end
-
-local function ilogrange (start, stop, step)
-  return ipairs(logrange(start, stop, step))
+  size = size or 100
+  assert(is_number(size) and size >= 0,
+         "invalid argument #3 (positive number expected)" )
+  return logrange(start, stop, nil, ceil(size))
 end
 
 -- metamethods
 
-function M.__new (ct, start, stop, step)
-  assert(is_number(start), "invalid argument #1 (number expected)")
-  if stop == nil then stop = start end   -- default
-  if step == nil then step = 1 end       -- default
-  return new(ct, start, stop, step)
+function M.__new (ct, start, stop, step_, size_)
+  assert(is_number(start) and abs(start) < inf,
+         "invalid argument #1 (finite number expected)")
+  if stop == nil then stop = start end
+  assert(is_number(stop ) and abs(stop ) < inf,
+         "invalid argument #2 (finite number expected)")
+  if step_ == nil then step_ = 1 end -- hardcoded in xrange, do not change!
+  assert(is_number(step_) and abs(step_) < inf,
+         "invalid argument #3 (finite number expected)")
+  return new(ct, adjust(start, stop, step_, size_))
 end
 
-function Mlog.__new (ct, start, stop, step)
-  assert(is_number(start) and start > 0, "invalid argument #1 (positive number expected)")
-  if stop == nil then stop = start end   -- default
-  if step == nil then step = exp_1 end   -- default
-  assert(is_number(stop) and stop > 0, "invalid argument #2 (positive number expected)")
-  assert(is_number(step) and step > 0, "invalid argument #3 (positive number expected)")
-  return new(ct, log(start), log(stop), log(step))
+function Mlog.__new (ct, start, stop, step_, size_)
+  assert(is_number(start) and start > 0 and start < inf,
+         "invalid argument #1 (positive finite number expected)")
+  if stop == nil then stop = start end
+  assert(is_number(stop ) and stop  > 0 and stop  < inf,
+         "invalid argument #2 (positive finite number expected)")
+  if step_ == nil then step_ = exp_1 end
+  assert(is_number(step_) and step_ > 0 and step_ < inf,
+         "invalid argument #3 (positive finite number expected)")
+  return new(ct, adjust(log(start), log(stop), log(step_), size_))
 end
 
 function M.__index (r, a)
@@ -230,150 +254,80 @@ function Mlog.__index (r, a)
 end
 
 function M.__ipairs (r)
-  if r.step > 0 then
-    return iterincr, r, 0
-  elseif r.step < 0 then
-    return iterdecr, r, 0
-  end
-  return forget
+  if r.step >= 0
+  then return iterincr, r, 0
+  else return iterdecr, r, 0 end
 end
 
 function Mlog.__ipairs (r)
-  if r.logstep > 0 then
-    return iterincrlog, r, 0
-  elseif r.logstep < 0 then
-    return iterdecrlog, r, 0
-  end
-  return forget
+  if r.logstep >= 0
+  then return iterincrlog, r, 0
+  else return iterdecrlog, r, 0 end
 end
 
 function M.__eq (r1, r2)
   return is_range(r1) and is_range(r2) and
-         r1.start == r2.start and r1.step == r2.step and r1.stop == r2.stop
+         equal(r1.start, r1.stop, r1.step, r2.start, r2.stop, r2.step)
 end
 
 function Mlog.__eq (r1, r2)
-  return is_logrange(r1) and is_logrange(r2) and r1.logstart == r2.logstart and
-         r1.logstep == r2.logstep and r1.logstop == r2.logstop
+  return is_logrange(r1) and is_logrange(r2) and
+     equal(r1.logstart,r1.logstop,r1.logstep, r2.logstart,r2.logstop,r2.logstep)
 end
 
-M.__help.is_range = [=[
-NAME
-  is_range, is_logrange, is_empty     -- identify ranges
+M   .__len    = M   .size
+Mlog.__len    = Mlog.size
 
-SYNOPSIS
-  is_range(rng)
-  is_logrange(lrng)
-  rng:is_empty()
+M   .__unm    = M   .reverse
+Mlog.__unm    = Mlog.reverse
 
-DESCRIPTION
-  Functions used for identifing type of range.
+M   .get      = get
+Mlog.get      = getlog
 
-RETURN VALUES
-  is_range and is_logrange return true if their argument is a range of
-  respective types. is_empty returns true for ranges with step less then zero or
-  step with opposite sign to stop-start lead of range.
-
-EXAMPLES
-  do
-    local is_range, is_logrange, logrange, range in MAD
-    print( is_range 'yes' )                     -- false
-    print( is_range(0..1) )                     -- true
-    print( is_logrange(logrange(1,10)) )        -- true
-
-    print( range(1,10,-1):is_empty )            -- true
-    print( range(10,1,1) :is_empty )            -- true
-    print( range(1,10,1) :is_empty )            -- false
-    print(     (1..10..0):is_empty )            -- false
-  end
-
-SEE ALSO
-  None.
-]=]
-M.__help.is_logrange = M.__help.is_range
-M.__help.is_empty    = M.__help.is_range
-
-M.__help.irange = [=[
-NAME
-  irange, ilogrange               -- ranges interators
-
-SYNOPSIS
-  irange(start [, stop [, step]])
-  ilogrange(start [, stop [, step]])
-
-DESCRIPTION
-  Functions are an equivalent of ipairs for ranges and logranges.
-
-RETURN VALUES
-  irange and ilogrange return the appropriate arguments for stateless iterators
-  build from given type of range, that is the iterator function, the object and
-  the pre-initial key.
-
-EXAMPLES
-  do
-    local irange, ilogrange, is_function, is_range in MAD
-    local ir = {irange(1,10,1)}
-    print( is_function(ir[1]) )                  -- true
-    print( is_range(ir[2])    )                  -- true
-    print( ir[3] == 0         )                  -- true
-
-    for i,v in irange(1,10,2)       do print(i,v) end
-    for i,v in ilogrange(1,10^6,10) do print(i,v) end
-  end
-
-SEE ALSO
-  ipairs
-]=]
-M.__help.ilogrange = M.__help.irange
-
-M.value       = \r,x ->      value(r.start   , r.step   , x)
+M   .value    = \r,x ->      value(r.   start, r.   step, x)
 Mlog.value    = \r,x -> exp( value(r.logstart, r.logstep, x) )
 
-M.size        = \r -> size(r.start   , r.stop   , r.step   )
+M   .size     = \r -> size(r.   start, r.   stop, r.   step)
 Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
 
-M.is_empty    = \r -> is_empty(r.start   , r.stop   , r.step   )
+M   .is_empty = \r -> is_empty(r.   start, r.   stop, r.   step)
 Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
 
-M.reverse     = \r -> range   (    r.stop    ,     r.start    ,     -r.step    )
+M   .range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
+Mlog.range    = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
+
+M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
 Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
 
-M.get      = get
-M.__len    = M.size
-M.__unm    = M.reverse
+-- iterators
 
-Mlog.get   = getlog
-Mlog.__len = Mlog.size
-Mlog.__unm = Mlog.reverse
+local irange     = \start, stop, step -> ipairs(    range(start, stop, step))
+local inrange    = \start, stop, size -> ipairs(   nrange(start, stop, size))
+local ilogrange  = \start, stop, step -> ipairs( logrange(start, stop, step))
+local inlogrange = \start, stop, size -> ipairs(lognrange(start, stop, size))
+
+-- bounds
 
 function M.bounds (r)
-  if r.step > 0 and r.start <= r.stop then
-    return r.start, r.stop
-  elseif r.step < 0 and r.start >= r.stop then
-    return r.stop, r.start
-  elseif r.step == 0  then
-    return r.start, r.start
-  end
+  return bounds(r.start, r.stop, r.step)
 end
 
 function Mlog.bounds (r)
-  local start, stop = exp(r.logstart), exp(r.logstop)
-  if r.logstep > 0 and r.logstart <= r.logstop then
-    return start, stop
-  elseif r.logstep < 0 and r.logstart >= r.logstop then
-    return stop, start
-  elseif r.logstep == 0  then
-    return start, start
-  end
+  local start, stop = bounds(r.logstart, r.logstop, r.logstep)
+  if start ~= nil then return exp(start), exp(stop) end
 end
 
 function M.overlap (r, s)
-  local rl, rh = r:bounds()
-  local sl, sh = s:bounds()
+  local rl, rh = bounds(r.start, r.stop, r.step)
+  local sl, sh = bounds(s.start, s.stop, s.step)
   return not (rl == nil or sl == nil or rh < sl or rl > sh)
 end
 
-Mlog.overlap = M.overlap
+function Mlog.overlap (r, s)
+  local rl, rh = bounds(r.logstart, r.logstop, r.logstep)
+  local sl, sh = bounds(s.logstart, s.logstop, s.logstep)
+  return not (rl == nil or sl == nil or rh < sl or rl > sh)
+end
 
 M.__help.value = [=[
 NAME
@@ -385,9 +339,9 @@ SYNOPSIS
   rng[x]
 
 DESCRIPTION
-  Functions used for interpolation of ranges.Points from value and get functions
-  are iterated from 0, indexing elements starts from 1. Index and get are
-  functions used for segment interpolation, they return nil outside the
+  Functions used for interpolation of ranges. Points from value and get
+  functions are iterated from 0, indexing elements starts from 1. Index and get
+  are functions used for segment interpolation, they return nil outside the
   boundaries, value is used for line interpolation.
 
 RETURN VALUES
@@ -415,6 +369,72 @@ SEE ALSO
 ]=]
 M.__help.get   = M.__help.value
 M.__help.index = M.__help.value
+
+M.__help.is_range = [=[
+NAME
+  is_range, is_logrange, is_empty     -- identify ranges
+
+SYNOPSIS
+  is_range(rng)
+  is_logrange(lrng)
+  rng:is_empty()
+
+DESCRIPTION
+  Functions used to identify ranges type and kind.
+
+RETURN VALUES
+  is_range and is_logrange return true if their argument is a range of
+  respective types. is_empty returns true for empty ranges (i.e. empty segment).
+
+EXAMPLES
+  do
+    local is_range, is_logrange, logrange, range in MAD
+    print( is_range 'yes' )                     -- false
+    print( is_range(0..1) )                     -- true
+    print( is_logrange(logrange(1,10)) )        -- true
+
+    print( range(1,10,-1):is_empty )            -- true
+    print( range(10,1,1) :is_empty )            -- true
+    print( range(1,10,1) :is_empty )            -- false
+    print(     (1..10..0):is_empty )            -- false
+  end
+
+SEE ALSO
+  None.
+]=]
+M.__help.is_empty = M.__help.is_range
+
+M.__help.irange = [=[
+NAME
+  irange, ilogrange               -- ranges stateless iterators
+  inrange, inlogrange             -- ranges stateless iterators
+
+SYNOPSIS
+  irange    (start [, stop [, step]])
+  ilogrange (start [, stop [, step]])
+  inrange   (start [, stop [, size]])
+  inlogrange(start [, stop [, size]])
+
+DESCRIPTION
+  irange and ilogrange are equivalent to compose ipairs with range and logrange
+  respectively. inrange and inlogrange are equivalent to compose ipairs with
+  nrange and nlogrange respectively.
+
+RETURN VALUES
+  irange, ilogrange, inrange and inlogrange return stateless iterators for
+  direct use in for loops.
+
+EXAMPLES
+  do
+    for i,v in irange(1,10,2)        do print(i,v) end
+    for i,v in ilogrange(1,1e6,10)   do print(i,v) end
+    for i,v in inrange(1,10,10)      do print(i,v) end
+    for i,v in inlogrange(1,1e6,1e6) do print(i,v) end
+  end
+
+SEE ALSO
+  ipairs
+]=]
 
 M.__help.range = [=[
 NAME
@@ -451,7 +471,6 @@ EXAMPLES
 SEE ALSO
   None.
 ]=]
-
 M.__help.bounds = M.__help.range
 
 M.__help.equal = [=[
@@ -523,24 +542,29 @@ end
 --end
 ]=]
 
-metatype('xrange'   , defhelp(M)   )
+metatype(   'xrange', defhelp(M)   )
 metatype('logxrange', defhelp(Mlog))
 
 -------------------------------------------------------------------------------o
 return {
+  -- constructors
   range       = range,
   logrange    = logrange,
-  nrange      = nrange,      -- constructor with N points
-  nlogrange   = nlogrange,   -- constructor with N points
+  nrange      = nrange,
+  nlogrange   = nlogrange,
 
-  irange      = irange,      -- iterator
-  ilogrange   = ilogrange,   -- iterator
+  -- iterators
+  irange      = irange,
+  ilogrange   = ilogrange,
+  inrange     = inrange,
+  inlogrange  = inlogrange,
 
+  -- type identification
   is_range    = is_range,
   is_logrange = is_logrange,
 
 --  linspace  = nrange,      -- TODO: compose with :tovector()
 --  logspace  = nlogrange,   -- TODO: compose with :tovector()
 
-  __help      = M.__help,
+  __help      = M.__help,    -- shared with Mlog
 }
