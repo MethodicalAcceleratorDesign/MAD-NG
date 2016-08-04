@@ -49,10 +49,10 @@ DESCRIPTION
   asin, acos, atan, asinh, acosh, atanh,
   erf, tgamma, lgamma, infi, InfI.
 
-RETURN VALUE
-  The constructor of complex numbers.
+RETURN VALUES
+  The constructor of complex numbers and the imaginary infinity.
 
-ERROR
+ERRORS
   See ISO/IEC 9899:1999 (and ISO/IEC 9899:2011).
 
 SEE ALSO
@@ -65,7 +65,7 @@ local new, typeof, metatype                            in require 'ffi'
 local _C                                               in require 'madl_cmad'
 local is_number, is_integer, is_complex, is_scalar,
       tostring, defhelp                                in require 'madl_utils'
-local cmatrix, is_matrix, is_cmatrix                   in require 'madl_xmatrix'
+local cmatrix, is_matrix, is_cmatrix, isa_matrix       in require 'madl_xmatrix'
 local frac, trunc, round, inf                          in require 'madl_gmath'
 local abs, ceil, floor                                 in math
 
@@ -83,8 +83,8 @@ M.InfI  = M.infi
 
 -- generic functions
 M.angle = \x,y -> _C.mad_cnum_carg_r(y.re, y.im) - _C.mad_cnum_carg_r(x.re, x.im)
-M.abs   = \x   -> complex(abs(x.re), abs(x.im))
 
+M.abs   = \x -> complex(abs  (x.re), abs  (x.im))
 M.ceil  = \x -> complex(ceil (x.re), ceil (x.im))
 M.floor = \x -> complex(floor(x.re), floor(x.im))
 M.frac  = \x -> complex(frac (x.re), frac (x.im))
@@ -192,13 +192,53 @@ function M.mul (x, y, r_)
   return r
 end
 
+--[[
+Possible types for operands as input for binary operators:
+
+  op1  op  op2
+  cpx      any    : op2 can be a cpx
+  any      cpx    : op1 without metatable or __op defined
+]]--
+
+--[[
+function M.div (x, y, r_, rcond_)
+  if is_number(x) then      -- num / cpx
+    _C.mad_cnum_div_r(x, 0, y.re, y.im, cres)
+    return cres[0]
+  end
+
+  if is_scalar(x) then
+    x = complex(x)
+    if is_number(y) then       -- cpx / num
+      return complex(x.re / y, x.im / y)
+    elseif is_complex(y) then  -- cpx / cpx
+      _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
+      return cres[0]
+    end
+  end
+
+  -- is_complex(x) and isa_matrix(y)
+  assert(isa_matrix(y), "invalid complex (/) operands #2")
+
+  local r = r_ or cmatrix(y:tsizes())
+  assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
+
+  if is_matrix(y) then      -- cpx / mat
+    _C.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
+  else                      -- cpx / cmat
+    _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
+  end
+  return r
+end
+]]--
+
 function M.div (x, y, r_, rcond_)
   if is_number(x) then      -- num / cpx
     _C.mad_cnum_div_r(x, 0, y.re, y.im, cres)
     return cres[0]
   elseif is_number(y) then  -- cpx / num
     return complex(x.re / y, x.im / y)
-  elseif is_complex(y) then -- cpx / cpx
+  elseif is_complex(y) then -- cpx / cpx                           BUG: string/cpx
     _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
     return cres[0]
   end
@@ -216,18 +256,9 @@ function M.div (x, y, r_, rcond_)
 end
 
 function M.mod (x, y)
-  if is_number(x) then     -- num % cpx
-    _C.mad_cnum_mod_r(x, 0, y.re, y.im, cres)
-    return cres[0]
-  elseif is_number(y) then -- cpx % num
-    _C.mad_cnum_mod_r(x.re, x.im, y, 0, cres)
-    return cres[0]
-  elseif is_complex(y) then -- cpx % cpx
-    _C.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  error("incompatible complex (%) operands")
+  x, y = complex(x), complex(y)
+  _C.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres)
+  return cres[0]
 end
 
 function M.pow (x, y)
@@ -239,29 +270,20 @@ function M.pow (x, y)
       _C.mad_cnum_ipow_r(x.re, x.im, y, cres)
       return cres[0]
     end
-    y = complex(y)
   end
 
-  if is_complex(y) then
-    x = complex(x)
-    _C.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  error("incompatible complex (^) operands")
+  x, y = complex(x), complex(y)
+  _C.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres)
+  return cres[0]
 end
 
 function M.eq (x, y)
-  if is_scalar(y) then
-    x, y = complex(x), complex(y)
-    return x.re == y.re and x.im == y.im
-  else
-    return y == x
-  end
+  x, y = complex(x), complex(y)
+  return x.re == y.re and x.im == y.im
 end
 
 function M.__tostring (x)
-  if x.im == 0 then
+      if x.im == 0 then
     return tostring(x.re)
   elseif x.re == 0 then
     return tostring(x.im) ..'i'
