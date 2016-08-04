@@ -32,33 +32,47 @@ NAME
   range, logrange -- range and logarithmic range
 
 SYNOPSIS
-  r1 = start..stop[..step] -- raw range
+  r1 = start..stop[..step]  -- raw range
   r2 = range    (start [, stop [, step]])
   r3 = nrange   (start [, stop [, size]])
   r4 = logrange (start [, stop [, step]])
   r5 = nlogrange(start [, stop [, size]])
 
 DESCRIPTION
-  Ranges are defined by their start, stop (included) and step arguments. A range
-  can define an empty set (i.e. step with opposite sign to stop-start), a point
-  set (i.e. step larger than start-stop), a finite set of points (i.e. non-zero
-  step not greater than start-stop), an infinite set of single point (i.e. zero
-  step for range, one for logrange). Ranges can be used as stateless iterators
-  in for loops (i.e. ipairs), and provide better numerical stability for non-
-  exact floating point numbers. The methods index (i.e. []), iterators (i.e.
-  ipairs) and get return nil outside the boundaries (segment interpolation),
-  while the method value does not check for boundaries (line interpolation).
+  Ranges are defined by their start, stop (included) and step arguments. The
+  defaults for stop, step and size are respectively start, 1 and 100. A range
+  can define various entities using specific values for step:
+  - an empty sequence                      (e.g. sign(step) ~= sign(stop-start))
+  - a  singleton, a single point  sequence (e.g. step > stop-start for step > 0)
+  - an interval , a two    points sequence             (e.g. step == stop-start)
+  - a  finite sequence of points           (e.g. step < stop-start for step > 0)
+  - an infinite constant sequence   (e.g. step == 0 or 1 for range and logrange)
+
+  Ranges can be used as stateless iterators in generic for loops (i.e. ipairs),
+  and provide better numerical stability for non-exact floating point numbers.
+  The index (i.e. []), iterators (i.e. ipairs) and get methods return nil
+  outside the boundaries (segment interpolation), while the value method does
+  not check for boundaries (line interpolation).
 
 RETURN VALUES
-  The table containing the constructors for range and logrange (argument #3 is
-  step), the constructors for nrange and nlogrange (argument #3 is size), their
-  respective stateless iterators for direct use in for loops, and the functions
-  is_range and is_logrange to identify the ranges object.
+  The constructors for range and logrange (argument #3 is step), the
+  constructors for nrange and nlogrange (argument #3 is size), their respective
+  stateless iterators for generic for loops, and the functions is_range and
+  is_logrange to identify the ranges object.
 
 ERRORS
   Constructors trig an error if any of the argument #1, #2 and #3 (if provided)
   are not finite numbers for range and nrange or not strictly positive finite
   numbers for logrange and nlogrange or if size is not a positive number.
+
+REMARK
+  The raw range are built by concatenating numbers that create range objects
+  storing the user values unmodified, while other constructors adjust the step
+  field to fulfil the following properties given r = range(start, stop, step)
+  and nr = nrange(start, stop, size):
+    0 <= stop - r :value(r :size()-1) < eps
+    0 <= stop - nr:value(nr:size()-1) < eps
+    nr:size() == size
 
 EXAMPLES
   do
@@ -71,7 +85,7 @@ EXAMPLES
     r12 = 1..10
     r13 = 1..10..2
     r14 = 0..1.5..0.1
-    r15 = 0..-1.5..-0.1
+    r15 = 0..-1.5..-.1
     r19 = 0..1.5.. .1
     print(r05.start, r15.stop, r15.step)  -- print 0 -1.5 0.1
   end
@@ -106,30 +120,53 @@ local is_logrange = \a -> istype('logxrange', a)
 
 -- implementation -------------------------------------------------------------o
 
+--[[
+  Motivation to forbid ±inf in constructors:
+  - value returns NaN if
+      step  == 0    and x     == ±inf  (valid)
+      step  == ±inf and x     == 0     (forbid)
+    x*step  == ±inf and start == ∓inf  (forbid)
+  - size return NaN if
+      step  == 0    and stop  == start (guard)
+      start == ±inf and stop  == start (forbid)
+  - step return NaN if
+      size  == 1    and stop  == start (guard)
+      start == ±inf and stop  == start (forbid)
+]]--
+
 local function value (start, step, x)
-  return step == 0 and start or start + step*x
+  return start + step*x
 end
 
 local function size (start, stop, step)
-  local delta = stop-start
-  if step == 0 then return huge * sign(delta) end
-  local siz = floor( delta / step ) + 1
-  return siz < 0 and 0 or siz
+  local diff = stop-start
+  if step == 0 then return huge * sign(diff) end
+  local size = floor( diff / step ) + 1
+  return size < 0 and 0 or size
 end
 
 local function step (start, stop, size)
-  local delta = stop-start
-  if size >  1 then return delta / (size-1) end
-  if size == 1 then return huge * sign(delta) end
-  return -huge * sign(delta)
+  local diff = stop-start
+  if size >  1 then return diff / (size-1) end
+  if size == 1 then return huge * sign(diff) end
+  return -huge * sign(diff)
 end
 
+local function stepeq (step1, step2)
+  return step1 == step2 or abs(step1/step2 - 1) < 2*eps
+end
+
+--[[
+  Motivation to adjust step in constructors:
+    The following properties should hold even for rational numbers:
+    - size  (start, stop , step_  ) == size_
+    - step  (start, stop , size_  ) == step_
+    - value (start, step_, size_-1) == stop
+    The maximum adjustment is step = step * (1-eps)^2, beyond this value it is
+    the user reponsibility to provide better inputs.
+]]--
+
 local function adjust (start, stop, step_, size_)
-  -- adjust step_ such that following properties hold:
-  --   size (start, stop , step_  ) == size_
-  --   step (start, stop , size_  ) == step_
-  --   value(start, step_, size_-1) == stop
-  -- adjustment max: step = step * (1-eps)^2
   if size_ ~= nil then
     step_ = step(start, stop, size_)
     if size_ > 1 and size_ > size(start, stop, step_) then
@@ -148,11 +185,6 @@ local function adjust (start, stop, step_, size_)
     end
   end
   return start, stop, step_
-end
-
-local function equal (start1, stop1, step1, start2, stop2, step2)
-  return start1 == start2 and stop1 == stop2 and
-         (step1 == step2 or abs(step1/step2 - 1) < 2*eps)
 end
 
 local function is_empty (start, stop, step)
@@ -202,6 +234,24 @@ local function iterdecrlog (r, i)
   local v = value(r.logstart, r.logstep, i)
   if v >= r.logstop then return i+1, exp(v) end
 end
+
+M   .get      = get
+Mlog.get      = getlog
+
+M   .value    = \r,x ->     value(r.   start, r.   step, x)
+Mlog.value    = \r,x -> exp(value(r.logstart, r.logstep, x))
+
+M   .size     = \r -> size(r.   start, r.   stop, r.   step)
+Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
+
+M   .is_empty = \r -> is_empty(r.   start, r.   stop, r.   step)
+Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
+
+M   .range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
+Mlog.range    = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
+
+M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
+Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
 
 -- alternate constructors with size = #points specified
 
@@ -266,38 +316,20 @@ function Mlog.__ipairs (r)
 end
 
 function M.__eq (r1, r2)
-  return is_range(r1) and is_range(r2) and
-         equal(r1.start, r1.stop, r1.step, r2.start, r2.stop, r2.step)
+  return is_range(r1) and is_range(r2) and r1.start == r2.start and
+         r1.stop == r2.stop and stepeq(r1.step, r2.step)
 end
 
 function Mlog.__eq (r1, r2)
-  return is_logrange(r1) and is_logrange(r2) and
-     equal(r1.logstart,r1.logstop,r1.logstep, r2.logstart,r2.logstop,r2.logstep)
+  return is_logrange(r1) and is_logrange(r2) and r1.logstart == r2.logstart and
+         r1.logstop == r2.logstop and stepeq(r1.logstep, r2.logstep)
 end
 
-M   .__len    = M   .size
-Mlog.__len    = Mlog.size
+M   .__len = M   .size
+Mlog.__len = Mlog.size
 
-M   .__unm    = M   .reverse
-Mlog.__unm    = Mlog.reverse
-
-M   .get      = get
-Mlog.get      = getlog
-
-M   .value    = \r,x ->      value(r.   start, r.   step, x)
-Mlog.value    = \r,x -> exp( value(r.logstart, r.logstep, x) )
-
-M   .size     = \r -> size(r.   start, r.   stop, r.   step)
-Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
-
-M   .is_empty = \r -> is_empty(r.   start, r.   stop, r.   step)
-Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
-
-M   .range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
-Mlog.range    = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
-
-M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
-Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
+M   .__unm = M   .reverse
+Mlog.__unm = Mlog.reverse
 
 -- iterators
 
@@ -331,7 +363,7 @@ end
 
 M.__help.value = [=[
 NAME
-  value, get, index                   -- range interpolation
+  value, get, [] (index)  -- range interpolation
 
 SYNOPSIS
   rng:value(x)
@@ -339,44 +371,50 @@ SYNOPSIS
   rng[x]
 
 DESCRIPTION
-  Functions used for interpolation of ranges. Points from value and get
-  functions are iterated from 0, indexing elements starts from 1. Index and get
-  are functions used for segment interpolation, they return nil outside the
-  boundaries, value is used for line interpolation.
+  Methods used for interpolating ranges. Value and get methods are iterated from
+  0, and indexing starts from 1. Index and get are used for segment
+  interpolation, they return nil outside the boundaries, while value is used for
+  line interpolation and never fails.
 
 RETURN VALUES
-  Function return values of given data points in range.
+  These methods return the interpolated value for given a data point in the
+  range.
 
 EXAMPLES
   do
     local range in MAD
     local rng = range(1,10,1)
     print( rng:value(0)  )                      -- 1
+    print( rng:value(9)  )                      -- 10
     print( rng:value(10) )                      -- 11
     print( rng:value(-1) )                      -- 0
+    print( rng:value(-10))                      -- -9
 
     print( rng:get(0)  )                        -- 1
     print( rng:get(9)  )                        -- 10
     print( rng:get(10) )                        -- nil
     print( rng:get(-1) )                        -- nil
 
-    print( rng[1]  )                            -- 1
     print( rng[0]  )                            -- nil
+    print( rng[1]  )                            -- 1
+    print( rng[10]  )                           -- 10
+    print( rng[11]  )                           -- nil
   end
 
 SEE ALSO
   None.
 ]=]
-M.__help.get   = M.__help.value
-M.__help.index = M.__help.value
+M.__help.get     = M.__help.value
+M.__help.index   = M.__help.value
+M.__help.__index = M.__help.value
 
 M.__help.is_range = [=[
 NAME
-  is_range, is_logrange, is_empty     -- identify ranges
+  is_range, is_logrange, is_empty     -- range identification
 
 SYNOPSIS
   is_range(rng)
-  is_logrange(lrng)
+  is_logrange(rng)
   rng:is_empty()
 
 DESCRIPTION
@@ -510,8 +548,8 @@ EXAMPLES
 SEE ALSO
   None.
 ]=]
-M.__help.size     = M.__help.empty
-M.__help.reversed = M.__help.empty
+M.__help.size    = M.__help.empty
+M.__help.reverse = M.__help.empty
 
 --[=[
 -- convertion
@@ -542,8 +580,8 @@ end
 --end
 ]=]
 
-metatype(   'xrange', defhelp(M)   )
-metatype('logxrange', defhelp(Mlog))
+metatype(   'xrange', defhelp(M   )) -- , 'range'   ))
+metatype('logxrange', defhelp(Mlog)) -- , 'logrange'))
 
 -------------------------------------------------------------------------------o
 return {
