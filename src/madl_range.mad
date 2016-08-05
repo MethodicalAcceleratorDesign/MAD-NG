@@ -50,6 +50,8 @@ local is_logrange = \a -> istype('logxrange', a)
 
 -- implementation -------------------------------------------------------------o
 
+-- helpers
+
 --[[
   Motivation to forbid ±inf in constructors:
   - value returns NaN if
@@ -165,41 +167,7 @@ local function iterdecrlog (r, i)
   if v >= r.logstop then return i+1, exp(v) end
 end
 
-M   .get      = get
-Mlog.get      = getlog
-
-M   .value    = \r,x ->     value(r.   start, r.   step, x)
-Mlog.value    = \r,x -> exp(value(r.logstart, r.logstep, x))
-
-M   .size     = \r -> size(r.   start, r.   stop, r.   step)
-Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
-
-M   .is_empty = \r -> is_empty(r.   start, r.   stop, r.   step)
-Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
-
-M   .range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
-Mlog.range    = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
-
-M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
-Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
-
--- alternate constructors with size = #points
-
-local function nrange (start, stop, size)
-  size = size or 100
-  assert(is_number(size) and size >= 0,
-         "invalid argument #3 (positive number expected)" )
-  return range(start, stop, nil, ceil(size))
-end
-
-local function nlogrange (start, stop, size)
-  size = size or 100
-  assert(is_number(size) and size >= 0,
-         "invalid argument #3 (positive number expected)" )
-  return logrange(start, stop, nil, ceil(size))
-end
-
--- metamethods
+-- constructors
 
 function M.__new (ct, start, stop, step_, size_)
   assert(is_number(start) and abs(start) < inf,
@@ -224,6 +192,44 @@ function Mlog.__new (ct, start, stop, step_, size_)
          "invalid argument #3 (positive finite number expected)")
   return new(ct, adjust(log(start), log(stop), log(step_), size_))
 end
+
+-- alternate constructors with size = #points
+
+local function nrange (start, stop, size)
+  size = size or 100
+  assert(is_number(size) and size >= 0,
+         "invalid argument #3 (positive number expected)" )
+  return range(start, stop, nil, ceil(size))
+end
+
+local function nlogrange (start, stop, size)
+  size = size or 100
+  assert(is_number(size) and size >= 0,
+         "invalid argument #3 (positive number expected)" )
+  return logrange(start, stop, nil, ceil(size))
+end
+
+-- methods
+
+M   .get      = get
+Mlog.get      = getlog
+
+M   .value    = \r,x ->     value(r.   start, r.   step, x)
+Mlog.value    = \r,x -> exp(value(r.logstart, r.logstep, x))
+
+M   .size     = \r -> size(r.   start, r.   stop, r.   step)
+Mlog.size     = \r -> size(r.logstart, r.logstop, r.logstep)
+
+M   .is_empty = \r -> is_empty(r.   start, r.   stop, r.   step)
+Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
+
+M   .range    = \r -> (    r.start    ,     r.stop    ,     r.step    )
+Mlog.range    = \r -> (exp(r.logstart), exp(r.logstop), exp(r.logstep))
+
+M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
+Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
+
+-- metamethods
 
 function M.__index (r, a)
   if is_number(a) then return get(r, a-1) else return M[a] end
@@ -261,14 +267,7 @@ Mlog.__len = Mlog.size
 M   .__unm = M   .reverse
 Mlog.__unm = Mlog.reverse
 
--- iterators
-
-local irange     = \start, stop, step -> ipairs(    range(start, stop, step))
-local inrange    = \start, stop, size -> ipairs(   nrange(start, stop, size))
-local ilogrange  = \start, stop, step -> ipairs( logrange(start, stop, step))
-local inlogrange = \start, stop, size -> ipairs(lognrange(start, stop, size))
-
--- bounds
+-- intervals
 
 function M.bounds (r)
   return bounds(r.start, r.stop, r.step)
@@ -290,6 +289,13 @@ function Mlog.overlap (r, s)
   local sl, sh = bounds(s.logstart, s.logstop, s.logstep)
   return not (rl == nil or sl == nil or rh < sl or rl > sh)
 end
+
+-- iterators
+
+local irange     = \start, stop, step -> ipairs(    range(start, stop, step))
+local inrange    = \start, stop, size -> ipairs(   nrange(start, stop, size))
+local ilogrange  = \start, stop, step -> ipairs( logrange(start, stop, step))
+local inlogrange = \start, stop, size -> ipairs(lognrange(start, stop, size))
 
 --[=[
 -- convertion
