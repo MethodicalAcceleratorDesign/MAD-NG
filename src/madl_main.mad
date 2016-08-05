@@ -1,0 +1,190 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | MAD environment (sandbox)
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Load in order all the modules of the MAD application and flatten them into
+    the MAD environment for direct 1-level access using local 'in' table syntax.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- modules --------------------------------------------------------------------o
+
+-- list of modules to import in MAD
+-- modules under dev: gfunc, gplot
+-- modules under rev: range, complex, matrix
+local modules = {
+  'utils', 'gfunc', 'gmath', 'range', 'complex', 'matrix',
+  'object', -- 'beam', 'element', 'line', 'sequence', 'table',
+-- 'gplot',
+-- 'survey',
+-- 'mono', 'tpsa', 'ctpsa',
+-- 'mflow', 'track',
+}
+
+-- locals ---------------------------------------------------------------------o
+
+local _C in require 'madl_cmad'
+
+local is_nil, is_boolean, is_string, is_rawtable, is_iterable, is_indexable,
+      defhelp in require 'madl_utils'
+
+require 'table.new' -- load new in table (side effect)
+
+-- implementation -------------------------------------------------------------o
+
+-- special global fields and backup
+M._C    = _C     -- C access
+M.argv  = arg    -- backup of arg
+M.path  = path
+M.warn  = warn
+M.trace = trace
+M.trace_setlevel    = trace_setlevel
+M.trace_setlocation = trace_setlocation
+
+-- import
+
+M.import = function (a, override)
+  assert(is_string(a) or is_rawtable(a),
+                           "invalid argument #1 (string or raw table expected)")
+  local tbl = is_string(a) and (require('madl_'..a) or require(a)) or a
+  assert(tbl ~= nil, "module not found: " .. tostring(a))
+  if not is_rawtable(tbl) then tbl = {a=tbl} end -- simplify further processing
+
+  -- collect and check
+  local obj, hlp = {}, {} -- make a local copies first in case of error
+  for k,v in pairs(tbl) do
+    if k == '__help' then hlp[a] = v
+    else
+      assert(is_nil(M[k]) or override == true,
+             "cannot override definition for " .. tostring(k))
+      obj[k] = v
+      if is_indexable(v) and v.__help then
+        hlp[k] = v.__help
+      end
+    end
+  end
+
+  -- finalize the import
+  for k,v in pairs(obj) do M[k] = v end
+  for k,v in pairs(hlp) do M.__help[k] = v end
+end
+
+-- export
+
+M.export = function (pattern, context, override)
+  if is_boolean(context) then
+    override, context = context -- shift args right
+  end
+  pattern, context = pattern or '', context or _G -- default
+  assert(is_string(pattern) or is_rawtable(pattern),
+                           "invalid argument #1 (string or raw table expected)")
+  assert(is_indexable(context),"invalid argument #2 (indexable expected)")
+  local tbl = is_string(pattern) and {} or pattern
+
+   -- record matching keys
+  if is_string(pattern) then
+    for k in pairs(M) do
+      if is_string(k) and string.find(k, pattern) then
+        tbl[#tbl+1] = k
+      end
+    end
+  end
+
+  -- process export
+  for _,k in ipairs(tbl) do
+    if M[k] then
+      assert(context[k] == nil or override == true,
+             "cannot override definition for " .. tostring(k))
+      context[k] = M[k]
+    end
+  end
+  return context
+end
+
+-- help
+
+M.help = function (a)
+  assert(is_nil(a) or is_string(a), "invalid argument #1 (string expected)")
+  local ref, str
+
+  -- search for help
+  if is_nil(a) or a == 'MAD' or a == 'self' then
+    ref, str = MAD.__help, MAD.__help.self
+  else
+    local dot = string.find(a, '.', 1, true)
+    local mod = dot and string.sub(a, 1, dot-1) or a
+    local fun = dot and string.sub(a, dot+1) or 'self'
+
+    for m,mv in pairs(MAD.__help) do
+      if m == mod then
+        if is_string(mv) then ref, str = MAD.__help, mv break end
+        if is_indexable(mv) and mv[fun] then ref, str = mv, mv[fun] break end
+      end
+      if not dot then
+        if is_indexable(mv) and mv[mod] then ref, str = mv, mv[mod] break end
+      end
+    end
+  end
+  if not ref or ref == '' then
+    io.write("  No help found for '" .. a .. "'.\n")
+    return
+  end
+  io.write(str);
+
+  -- find related topics, sort items, and wrap output at 80 columns
+  local sub = {}
+  for k,v in pairs(ref) do
+    if k ~= 'self' and v ~= str then sub[#sub+1] = k end
+  end
+  table.sort(sub)
+  local len = 2 -- tab
+  for i,v in ipairs(sub) do
+    len = len + #v + 2 -- sep
+    if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
+  end
+  str = table.concat(sub, ', ')
+  if str ~= '' then
+    io.write("\nRelated topics:\n  ", str, '.\n')
+  end
+end
+
+-- help
+M.__help = require 'madh_main'
+defhelp(M, 'MAD')
+
+-- environment ----------------------------------------------------------------o
+
+-- load MAD modules
+for _,m in ipairs(modules) do
+  M.import(m)
+end
+
+-- protect MAD environment (foolproof protection, no more)
+local mad = setmetatable({},{
+    __index     = M,
+    __newindex := error "MAD is readonly",
+    __pairs    := (next, M, nil),
+  })
+
+-- set global
+MAD = mad
+
+-- end ------------------------------------------------------------------------o
+return mad

@@ -82,7 +82,7 @@ static const char *progname = "mad";
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
-#define MAD_VERSION "0.0.1"
+#define MAD_VERSION "0.0.2"
 #endif
 
 int mad_trace_level    = 0;
@@ -1023,7 +1023,7 @@ static int pmain(lua_State *L)
 
 	/* MAD section. */
 	mad_regfunc(L);
-	if ((flags & FLAGS_MADENV)) dolibrary(L, "MAD");
+	if ((flags & FLAGS_MADENV)) dolibrary(L, "madl_main");
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_madinit(L);
 		if (s->status != 0) return 0;
