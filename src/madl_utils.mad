@@ -32,53 +32,53 @@ NAME
 SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
   is_cdata, is_complex, is_xrange,                              (extended types)
-  is_inf, is_nan, is_integer, is_scalar, is_rawtable,          (specializations)
+  is_nan, is_inf, is_integer, is_scalar, is_rawtable,          (specializations)
   bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
-  is_equal, is_not_equal, is_lesser, is_lesser_or_equal,     (logical operators)
-  is_greater, is_greater_or_equal, bool, logical_not,
-  logical_and, logical_or (aliases is_eq, is_ne, is_lt, is_le, is_gt, is_ge,
-  lnot, land, lor),
+  bool, logical_not, logical_and, logical_or, is_equal,      (logical operators)
+  is_not_equal, is_lesser, is_lesser_or_equal, is_greater, is_greater_or_equal,
+  lnot, land, lor, is_eq, is_ne, is_lt, is_le, is_gt, is_ge, (aliases for logop)
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
-  is_metaname, has_metatable,                                      (metamethods)
+  is_metaname, has_metatable, get_metatable,                       (metamethods)
   has_length, is_iterable, is_indexable, is_callable, is_comparable,  (concepts)
-  is_ordered, is_concatenable, is_stringable, is_collectable,
-  has_constructor, is_negatable, is_addable, is_substractable,
-  is_multiplicable, is_dividable, is_modulable, is_powerable,
+  is_ordered, is_concatenable, is_stringable, is_collectable, has_constructor,
+  is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+  is_modulable, is_powerable,
   is_same, same,                                              (types comparison)
-  option { format='%.16g' },                                             (setup)
-  tostring, get_metatable.                                          (extensions)
+  tostring,                                                         (extensions)
+  option { format='%.16g' }.                                             (setup)
 
 DESCRIPTION
   The utils module provides useful utility functions:
   - is_nil, is_boolean, is_number, is_string, is_function, is_table, is_cdata,
     is_complex and is_xrange return true if the argument is of expected type,
+  - is_nan and is_inf return true if argument is not-a-number or ±infinity,
   - is_integer returns true if the argument is an integer number within the
     interval of [-2^52, 2^52],
   - is_scalar returns true if the argument is a number or a complex,
-  - is_inf and is_nan return true if argument is ±infinity or not-a-number,
   - is_rawtable returns true if the argument is a table without metatable,
-  - bnot, band, bor, bxor, tobit and tohex imported from bit module
-  - bclr, bset and btst respectively clear, set and test bit 0..31 of the value.
-  - is_equal, is_not_equal, is_lesser, is_lesser_or_equal, is_greater and
-    is_greater_or_equal, bool, logical_not, logical_and, logical_or are
+  - bnot, band, bor, bxor, tobit and tohex imported are from the bit module,
+  - bclr, bset and btst respectively clear, set and test bit 0..31 of an int32,
+  - bool, logical_not, logical_and, logical_or, is_equal, is_not_equal,
+    is_lesser, is_lesser_or_equal, is_greater and is_greater_or_equal are
     functions wrapping logical operators,
   - unm, add, sub, mul, div, mod, pow, get, set, len, cat, call are functions
-    wrapping other operators (i.e. -, +, -, *, /, %, ^, [], []=, #, .., ()),
+    wrapping other operators (i.e. -n, +, -, *, /, %, ^, [], []=, #, .., ()),
   - is_ismetaname returns true if the argument is a valid metamethod name,
   - has_metatable returns true is the argument has a metatable,
+  - get_metatable is an extended version of getmetatable that works also with
+    cdata,
   - has_length, is_iterable, is_indexable, is_callable, is_comparable,
-    is_ordered, is_concatenable, is_stringable, is_collectable, is_addable,
-    is_substractable, is_multiplicable, is_dividable, is_modulable and
-    is_powerable return true if the argument fulfills the concept requirements,
+    is_ordered, is_concatenable, is_stringable, is_collectable, has_constructor,
+    is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+    is_modulable and is_powerable return true if the argument fulfills the
+    concept requirements,
   - is_stringable, is_collectable and has_constructor check only if the argument
     supports respectively the __tostring, the __gc and the __new metamethods
     because objects are always stringable, collectable and constructible in Lua,
-  - option stores various setup,
   - tostring is extended to handle option.format and delegation. To let the
-    command print uses this version, it must be exported to override the
+    print command uses this version, it must be exported to override the
     global environment one (i.e. MAD.export('tostring', true)),
-  - get_metatable is an extended version of getmetatable that works also with
-    cdata.
+  - option is a table that stores various setup.
 
 RETURN VALUES
   These utility functions and the option table.
@@ -110,7 +110,7 @@ end
 
 -- metamethods
 
-local metaname = { -- from lj_obj.h + __init
+local metaname = { -- list of metanames from lj_obj.h + __init
   '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
   '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
   '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
@@ -120,9 +120,15 @@ for _,v in ipairs(metaname) do metaname[v]=v end -- build dictionary
 
 -- values
 
-local value_type = { -- types that cannot be indirectly modified
+local value_type = { -- list of types that cannot be indirectly modified
   ['nil'] = true, boolean = true, number = true, string = true,
   ['function'] = true, thread = true,
+}
+
+-- options
+
+local option = {
+  format = "%.16g",
 }
 
 -- bits
@@ -327,13 +333,9 @@ M.same = function (a, ...)
   return a:same(...)
 end
 
--- options
+-- extensions
 
-M.option = {
-  format = "%.16g",
-}
-
-local option, is_stringable in M
+local is_stringable in M
 
 M.tostring = function (a)
   if is_number(a) then return string.format(option.format, a) end
@@ -341,9 +343,11 @@ M.tostring = function (a)
   return tostring(a) -- builtin
 end
 
--- default help
+-- options
 
-M.__help.defhelp = '' -- no help
+M.option = option
+
+-- default help
 
 M.defhelp = function (m, name)
   local ref = m.__help and m.__help.self
@@ -351,13 +355,16 @@ M.defhelp = function (m, name)
   for k in pairs(m) do
     if k ~= '__help' and m.__help[k] == nil then
       if name then
-        io.write('defhelp: no help found for '..name..' item ',tostring(k),'\n')
+        io.write('defhelp: no help found for '..name..' item: ',tostring(k),'\n')
       end
       m.__help[k] = ref
     end
   end
   return m
 end
+
+ -- no help
+M.__help.defhelp = ''
 
 -- end ------------------------------------------------------------------------o
 return M.defhelp(M)
