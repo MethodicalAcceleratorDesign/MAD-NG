@@ -28,9 +28,9 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
 			assertErrorMsgContains, assertNil, assertNaN, assertIsString
 			in require 'luaunit'
 
-local range   , nrange   , irange   , is_range,
-			logrange, nlogrange, ilogrange, is_logrange,
-			tiny, eps, huge, inf, nan in MAD
+local range   , nrange   , irange   , inrange   , is_range,
+      logrange, nlogrange, ilogrange, inlogrange, is_logrange, log,
+      tiny, eps, huge, inf, nan in MAD
 local is_function in MAD
 
 -- regression test suite ------------------------------------------------------o
@@ -345,6 +345,7 @@ function TestRange:testSize()
 end
 
 function TestRange:testStep()
+	local r, r1, cr, v
   assertEquals( nrange( 1 , 1 , 1    ).step, huge )
   assertEquals( nrange( 1 , 10, 0    ).step,-huge )
   assertEquals( nrange( 1 , 10, 0.1  ).step, huge )
@@ -359,17 +360,16 @@ function TestRange:testStep()
   assertEquals( nrange( 1 , 10, 10   ).step, 1    )
   assertEquals( nrange( 1 , 10, 1+eps).step, 9    )
   assertEquals( nrange( 1 , 10, 1.1  ).step, 9    )
+  assertEquals( nrange( 1 , 10, 1, 1 ).step, huge )
 
   assertAlmostEquals( nrange( 1, 10, 1e6).step, 9.000009000009e-06, eps )
   assertAlmostEquals( nrange( 1, 10, 1e9).step, 9.000000009e-09   , eps )
   --assertEquals( nrange( 1, 10, huge).step, 5.0064161816412e-308 )
-end
 
-function TestRange:testStepEq()
-  local r, cr, r1, v
   r  = range( 1, 10, tiny)
   r1 = range( 1, 10, tiny, r:size())
   cr = 1..10..tiny
+  assertEquals( r.step / r1.step - 1, inf )
   assertFalse( r  == r1 )
   assertFalse( cr == r1 )
   assertTrue ( r  == cr )
@@ -377,6 +377,7 @@ function TestRange:testStepEq()
   r  = range( 1, 10, eps)
   r1 = range( 1, 10, eps, r:size())
   cr = 1..10..eps
+  assertEquals( r.step / r1.step - 1, 0 )
   assertTrue ( r  == r1 )
   assertTrue ( cr == r1 )
   assertTrue ( r  == cr )
@@ -384,32 +385,42 @@ function TestRange:testStepEq()
   r  = range( 1, 10, huge)
   r1 = range( 1, 10, huge, r:size())
   cr = 1..10..huge
+  assertEquals( r.step / r1.step - 1, 0 )
   assertTrue ( r  == r1 )
   assertTrue ( cr == r1 )
   assertTrue ( r  == cr )
 
-  v = { 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53, 2^63, 2^64 }
+  v = {1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53, 2^63, 2^64, huge }
   for _,v in ipairs(v) do
-    r1 = range( 1, v, 1, v)
-    r  = range( 1, v, 1)
-    assertTrue( r == r1 )
+    r  = range( 1, 10, v)
+    cr = 1..10..v
+    r1 = range( 1, 10, v, 1)
+    assertEquals( r.step , cr.step )
+    assertEquals( r1.step, huge    )
   end
+end
 
+function TestRange:testStepEq()
+  local r, cr, r1, v
   v = { { 0.1+eps, 90 }, { 0.7-eps, 13 }, { 0.7, 13 }, { 0.7+eps, 13 },
-        { 1  +eps, 9  }, { 1.1    , 9  }, { 1.7, 6  }, { 2      , 5  },}
+        { 1  +eps, 9  }, { 1.1    , 9  }, { 1.7, 6  }, { 2      , 5  }, }
   for _,v in ipairs(v) do
-    r1 = range( 1, 10, v[1], v[2])
     r  = range( 1, 10, v[1]      )
+    r1 = range( 1, 10, v[1], v[2])
     assertEquals( r:size(), v[2] )
     assertFalse( r == r1 )
-  end
+  	--print( v[1], r.step    , r1.step     )
+  	--print( v[1], r:value(2), r1:value(2) )
+  	--print( v[1], r.step / r1.step - 1    )
+	end
 
-  v = { { 0.5, 19 }, { 1 - eps, 10 }, { 1, 10 },}
+  v = { { 0.5, 19 }, { 1 - eps, 10 }, { 1, 10 }, }
   for _,v in ipairs(v) do
-    r1 = range( 1, 10, v[1], v[2])
-    r  = range( 1, 10, v[1]      )
-    assertEquals( r:size(), v[2] )
+    r1 = range( 1, 10, v[1], v[2] )
+    r  = range( 1, 10, v[1]       )
+    assertEquals( r:size() , v[2] )
     assertTrue( r == r1 )
+    assertTrue( r.step / r1.step - 1 < 2*eps)
   end
 end
 
@@ -428,7 +439,7 @@ function TestRange:testAdjust()
   for _,v in ipairs(v) do
     r  = range( 1, 10, v[1])
     cr = 1..10..v[1]
-    r1 = range( 1, 10, v[1], v[2])
+    r1 = range( 1, 10, v[1], v[2])  -- forced change in step, so the boundry fits .stop value
     assertEquals( r.step  , cr.step )
     assertAlmostEquals( r.step - r1.step + v[3], 0, 2*eps )
   end
@@ -441,15 +452,6 @@ function TestRange:testAdjust()
     assertEquals( r.step, cr.step )
     assertAlmostEquals( r.step - r1.step, 0, eps )
   end
-  v = {1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53, 2^63, 2^64, huge }
-  for _,v in ipairs(v) do
-    r  = range( 1, 10, v)
-    cr = 1..10..v
-    r1 = range( 1, 10, v, 1)
-    assertEquals( r.step , cr.step )
-    assertEquals( r1.step, huge    )
-  end
-
   for _,v in ipairs(values.rng) do
     r  = range(v[1],v[2],v[3])
     cr = v[1]..v[2]..v[3]
@@ -676,6 +678,7 @@ function TestRange:testNConstructor()
   assertTrue( is_range(nrange( 1, 10, 0  )) )
   assertTrue( is_range(nrange( 1, 10, 1  )) )
   assertTrue( is_range(nrange( 1, 10, inf)) )
+  --print(nrange(1,10,inf):range())
 
   for _,v in ipairs(values.num) do
     if v > 0 then assertTrue( is_range(nrange( 1, 10, v)) ) end
@@ -811,7 +814,7 @@ function TestRange:testIndex()
 
   res =   range( 10,-1,-0.7)
   ref = {10 , 9.3, 8.6, 7.9, 7.2, 6.5, 5.8, 5.1,
-         4.4, 3.7, 3  , 2.3, 1.6, 0.9, 0.2, -0.5 }
+         4.4, 3.7, 3  , 2.3, 1.6, 0.9, 0.2,-0.5 }
   for i=1,#res do
     assertAlmostEquals(res[i] - ref[i], 0, 6*eps) -- 6 eps @ 1.6
   end
@@ -876,23 +879,23 @@ function TestRange:testIrange()
   assertTrue( is_range(ir[2])    )
   assertTrue( ir[3] == 0         )
 
-  r = range( 1 )           for i,v in irange(1)              do  assertEquals(r[i], v) end
-  r = range( 1  , 5 )      for i,v in irange(1  , 5 )        do  assertEquals(r[i], v) end
-  r = range( 1  , 10, 2  ) for i,v in irange(1  , 10, 2  )   do  assertEquals(r[i], v) end
-  r = range( 0.5, 0 ,-0.1) for i,v in irange(0.5, 0 ,-0.1)   do  assertEquals(r[i], v) end
-  r = range( 10 ,-1 ,-0.7) for i,v in irange(10 ,-1 ,-0.7)   do  assertEquals(r[i], v) end
-  r = range( 1  , 10, nil) for i,v in irange( 1 , 10, nil)   do  assertEquals(r[i], v) end
+  r =  range( 1 )           for i,v in  irange(1)            do  assertEquals(r[i], v) end
+  r =  range( 1  , 5 )      for i,v in  irange(1  , 5 )      do  assertEquals(r[i], v) end
+  r =  range( 1  , 10, 2  ) for i,v in  irange(1  , 10, 2  ) do  assertEquals(r[i], v) end
+  r =  range( 0.5, 0 ,-0.1) for i,v in  irange(0.5, 0 ,-0.1) do  assertEquals(r[i], v) end
+  r =  range( 10 ,-1 ,-0.7) for i,v in  irange(10 ,-1 ,-0.7) do  assertEquals(r[i], v) end
+  r =  range( 1  , 10, nil) for i,v in  irange( 1 , 10, nil) do  assertEquals(r[i], v) end
+  r = nrange( 1  , 10, 10 ) for i,v in inrange( 1 , 10, 10 ) do  assertEquals(r[i], v) end
+  r = nrange( 10 , 1 , 10 ) for i,v in inrange( 10, 1 , 10 ) do  assertEquals(r[i], v) end
 
   for _,v in ipairs(values.rng) do
     r = range(v[1],v[2],v[3]) for i,v in irange(v[1],v[2],v[3]) do assertEquals(r[i], v) end
   end
-
-  r,s = range( 1, 10, huge)  ,0 for i,v in irange( 1, 10, huge)   do s=s+1 ; assertEquals(s, 1) end
-  r,s = range( 1, 10,-huge)  ,0 for i,v in irange( 1, 10,-huge)   do s=s+1 ; assertEquals(s, 0) end
-
   for _,v in ipairs(values.empty) do
     r,s = range(v[1],v[2],v[3]),0 for i,v in irange(v[1],v[2],v[3]) do s=s+1; assertEquals(s, 0) end
   end
+  r,s = range( 1, 10, huge)  ,0 for i,v in irange( 1, 10, huge)   do s=s+1 ; assertEquals(s, 1) end
+  r,s = range( 1, 10,-huge)  ,0 for i,v in irange( 1, 10,-huge)   do s=s+1 ; assertEquals(s, 0) end
 end
 
 -- performance test suite -----------------------------------------------------o
