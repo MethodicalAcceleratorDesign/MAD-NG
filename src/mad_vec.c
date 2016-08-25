@@ -33,7 +33,7 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
-#define NO(a) 
+#define NO(a)
 #define ID(a) a
 
 #define CNUM2(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
@@ -255,20 +255,6 @@ mad_vec_rfft (const num_t x[], cnum_t r[], size_t n)
   fftw_destroy_plan(p);
 }
 
-void // x [n/2+1] -> r [n]
-mad_vec_irfft (const cnum_t x[], num_t r[], size_t n)
-{
-  CHKXR;
-  size_t nn = n/2+1;
-  mad_alloc_tmp(cnum_t, cx, nn);
-  mad_cvec_copy(x, cx, nn);
-  fftw_plan p = fftw_plan_dft_c2r_1d(n, cx, r, FFTW_ESTIMATE);
-  fftw_execute(p);
-  fftw_destroy_plan(p);
-  mad_free_tmp(cx);
-  mad_vec_muln(r, 1.0/n, r, n);
-}
-
 void
 mad_cvec_fft (const cnum_t x[], cnum_t r[], size_t n)
 {
@@ -288,6 +274,20 @@ mad_cvec_ifft(const cnum_t x[], cnum_t r[], size_t n)
   mad_cvec_muln(r, 1.0/n, r, n);
 }
 
+void // x [n/2+1] -> r [n]
+mad_cvec_irfft (const cnum_t x[], num_t r[], size_t n)
+{
+  CHKXR;
+  size_t nn = n/2+1;
+  mad_alloc_tmp(cnum_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
+  fftw_plan p = fftw_plan_dft_c2r_1d(n, cx, r, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+  mad_free_tmp(cx);
+  mad_vec_muln(r, 1.0/n, r, n);
+}
+
 // -- NFFT --------------------------------------------------------------------o
 
 #if 0
@@ -303,7 +303,7 @@ mad_cvec_nfft (const cnum_t x[], const num_t x_pos[], cnum_t r[], size_t n, size
   if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   memcpy(p.f_hat, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total?
   nfft_trafo(&p);
-  memcpy(r, p.f, p.N_total * sizeof *r); // TODO: resample from p.N_total to n? 
+  memcpy(r, p.f, p.N_total * sizeof *r); // TODO: resample from p.N_total to n?
   nfft_finalize(&p);
 }
 
@@ -317,7 +317,7 @@ mad_cvec_infft (const cnum_t x[], const num_t x_pos[], cnum_t r[], size_t n, siz
   if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   memcpy(p.f, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total
   nfft_adjoint(&p);
-  memcpy(r, p.f_hat, p.N_total * sizeof *r); // TODO: resample from p.N_total to n? 
+  memcpy(r, p.f_hat, p.N_total * sizeof *r); // TODO: resample from p.N_total to n?
   nfft_finalize(&p);
 }
 

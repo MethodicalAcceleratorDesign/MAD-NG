@@ -39,7 +39,7 @@
 #define CHKXYRY  assert( x && y && r && y != r )
 #define CHKXYRXY assert( x && y && r && x != r && y != r )
 
-#define NO(a) 
+#define NO(a)
 #define ID(a) a
 
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
@@ -435,7 +435,7 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], size_t m, size_t n, si
   mad_vec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
-  if (n == p) { 
+  if (n == p) {
     int ipiv[n];
     mad_vec_copy(x, r, m*p);
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
@@ -470,7 +470,7 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n,
   mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
-  if (n == p) { 
+  if (n == p) {
     int ipiv[n];
     mad_vec_copyv(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
@@ -506,7 +506,7 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t m, size_t n
   mad_cvec_copy(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
-  if (n == p) { 
+  if (n == p) {
     int ipiv[n];
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
@@ -542,7 +542,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, size_t n
   mad_vec_copyv(y, a, n*p);
 
   // square system (y is square, n == p), use LU decomposition
-  if (n == p) { 
+  if (n == p) {
     int ipiv[n];
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
@@ -647,7 +647,7 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], size_t n)
   dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
   mad_vec_cvec(wi, wr, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
-  mad_free_tmp(wi); mad_free_tmp(wr); 
+  mad_free_tmp(wi); mad_free_tmp(wr);
   mad_mat_trans(vl, vl, n, n);
   mad_mat_trans(vr, vr, n, n);
 
@@ -705,20 +705,6 @@ mad_mat_rfft (const num_t x[], cnum_t r[], size_t m, size_t n)
   fftw_destroy_plan(p);
 }
 
-void // x [m x n/2+1] -> r [m x n]
-mad_mat_irfft (const cnum_t x[], num_t r[], size_t m, size_t n)
-{
-  CHKXR;
-  size_t nn = m*(n/2+1);
-  mad_alloc_tmp(cnum_t, cx, nn);
-  mad_cvec_copy(x, cx, nn);
-  fftw_plan p = fftw_plan_dft_c2r_2d(m, n, cx, r, FFTW_ESTIMATE);
-  fftw_execute(p);
-  fftw_destroy_plan(p);
-  mad_free_tmp(cx);
-  mad_vec_muln(r, 1.0/(m*n), r, m*n);
-}
-
 void
 mad_cmat_fft (const cnum_t x[], cnum_t r[], size_t m, size_t n)
 {
@@ -736,6 +722,20 @@ mad_cmat_ifft(const cnum_t x[], cnum_t r[], size_t m, size_t n)
   fftw_execute(p);
   fftw_destroy_plan(p);
   mad_cvec_muln(r, 1.0/(m*n), r, m*n);
+}
+
+void // x [m x n/2+1] -> r [m x n]
+mad_cmat_irfft (const cnum_t x[], num_t r[], size_t m, size_t n)
+{
+  CHKXR;
+  size_t nn = m*(n/2+1);
+  mad_alloc_tmp(cnum_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
+  fftw_plan p = fftw_plan_dft_c2r_2d(m, n, cx, r, FFTW_ESTIMATE);
+  fftw_execute(p);
+  fftw_destroy_plan(p);
+  mad_free_tmp(cx);
+  mad_vec_muln(r, 1.0/(m*n), r, m*n);
 }
 
 // -- NFFT --------------------------------------------------------------------o

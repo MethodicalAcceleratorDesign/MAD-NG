@@ -64,8 +64,8 @@ SEE ALSO
 local new, typeof, metatype in require 'ffi'
 local abs, ceil, floor      in math
 
-local _C, is_number, is_integer, is_complex, is_scalar, tostring, defhelp,
-      frac, trunc, round, inf in MAD
+local _C, is_number, is_integer, is_complex, is_scalar, is_function,
+      frac, trunc, round, inf, tostring, defhelp in MAD
 
 -- FFI type constructors
 local complex = typeof 'complex'
@@ -128,59 +128,55 @@ function M.__unm (x)
 end
 
 function M.__add (x, y, r_)
-  if is_number(x) then         -- num + cpx
+  if is_number(x) then                           -- num + cpx
     return complex(x + y.re, y.im)
-  elseif is_complex(x) then
-    if is_number(y) then       -- cpx + num
-      return complex(x.re + y, x.im)
-    elseif is_complex(y) then  -- cpx + cpx
-      return complex(x.re + y.re, x.im + y.im)
-    elseif y.__radd_cpx then   -- cpx + ?
-      return y:__radd_cpx(x, _r)
-    else error("invalid argument #2 (unsupported operation)") end
-  else   error("invalid argument #1 (scalar expected)"      ) end
+  elseif is_number(y) then                       -- cpx + num
+    return complex(x.re + y, x.im)
+  elseif is_complex(y) and is_complex(x) then    -- cpx + cpx
+    return complex(x.re + y.re, x.im + y.im)
+  elseif is_function(y.__radd_cpx) then          -- cpx + ?
+    return y:__radd_cpx(x, r_)
+  end
+  error("invalid arguments (unsupported complex operation)")
 end
 
 function M.__sub (x, y, r_)
-  if is_number(x) then         -- num - cpx
+  if is_number(x) then                           -- num - cpx
     return complex(x - y.re, - y.im)
-  elseif is_complex(x) then
-    if is_number(y) then       -- cpx - num
-      return complex(x.re - y, x.im)
-    elseif is_complex(y) then  -- cpx - cpx
-      return complex(x.re - y.re, x.im - y.im)
-    elseif y.__rsub_cpx then   -- cpx - ?
-      return y:__rsub_cpx(x, _r)
-    else error("invalid argument #2 (unsupported operation)") end
-  else   error("invalid argument #1 (scalar expected)"      ) end
+  elseif is_number(y) then                       -- cpx - num
+    return complex(x.re - y, x.im)
+  elseif is_complex(y) and is_complex(x) then    -- cpx - cpx
+    return complex(x.re - y.re, x.im - y.im)
+  elseif is_function(y.__rsub_cpx) then          -- cpx - ?
+    return y:__rsub_cpx(x, r_)
+  end
+  error("invalid arguments (unsupported complex operation)")
 end
 
 function M.__mul (x, y, r_)
-  if is_number(x) then         -- num * cpx
+  if is_number(x) then                           -- num * cpx
     return complex(x * y.re, x * y.im)
-  elseif is_complex(x) then
-    if is_number(y) then       -- cpx * num
-      return complex(x.re * y, x.im * y)
-    elseif is_complex(y) then  -- cpx * cpx
-      return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
-    elseif y.__rmul_cpx then   -- cpx * ?
-      return y:__rmul_cpx(x, _r)
-    else error("invalid argument #2 (unsupported operation)") end
-  else   error("invalid argument #1 (scalar expected)"      ) end
+  elseif is_number(y) then                       -- cpx * num
+    return complex(x.re * y, x.im * y)
+  elseif is_complex(y) and is_complex(x) then    -- cpx * cpx
+    return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
+  elseif is_function(y.__rmul_cpx) then          -- cpx * ?
+    return y:__rmul_cpx(x, r_)
+  end
+  error("invalid arguments (unsupported complex operation)")
 end
 
 function M.__div (x, y, r_, rcond_)
-  if is_number(x) then         -- num / cpx
+  if is_number(x) then                           -- num / cpx
     _C.mad_cnum_div_r(x, 0, y.re, y.im, cres) return cres[0]
-  elseif is_complex(x) then
-    if is_number(y) then       -- cpx / num
-      return complex(x.re / y, x.im / y)
-    elseif is_complex(y) then  -- cpx / cpx
-      _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres) return cres[0]
-    elseif y.__rdiv_cpx then   -- cpx / ?
-      return y:__rdiv_cpx(x, r_, rcond_)
-    else error("invalid argument #2 (unsupported operation)") end
-  else   error("invalid argument #1 (scalar expected)"      ) end
+  elseif is_number(y) then                       -- cpx / num
+    return complex(x.re / y, x.im / y)
+  elseif is_complex(y) and is_complex(x) then    -- cpx / cpx
+    _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres) return cres[0]
+  elseif is_function(y.__rdiv_cpx) then          -- cpx / ?
+    return y:__rdiv_cpx(x, r_, rcond_)
+  end
+  error("invalid arguments (unsupported complex operation)")
 end
 
 function M.__mod (x, y)
@@ -233,95 +229,3 @@ return {
 
   __help = M.__help,
 }
-
--- tmp backup -----------------------------------------------------------------o
-
---[[ OLD style of dispatch
-local cmatrix, is_matrix, is_cmatrix, isa_matrix in MAD
-
-function M.add (x, y, r_)
-  if is_number(x) then      -- num + cpx
-    return complex(x + y.re, y.im)
-  elseif is_number(y) then  -- cpx + num
-    return complex(x.re + y, x.im)
-  elseif is_complex(y) then -- cpx + cpx
-    return complex(x.re + y.re, x.im + y.im)
-  end
-
-  -- is_complex(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if is_matrix(y) then -- cpx + mat => vec + cpx
-    _C.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif is_cmatrix(y) then -- cpx + cmat => cvec + cpx
-    _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("incompatible complex (+) operands") end
-  return r
-end
-
-function M.sub (x, y, r_)
-  if is_number(x) then      -- num - cpx
-    return complex(x - y.re, - y.im)
-  elseif is_number(y) then  -- cpx - num
-    return complex(x.re - y, x.im)
-  elseif is_complex(y) then -- cpx - cpx
-    return complex(x.re - y.re, x.im - y.im)
-  end
-
-  -- is_complex(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if is_matrix(y) then      -- cpx - mat => cpx - vec
-    _C.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif is_cmatrix(y) then -- cpx - cmat => cpx - cvec
-    _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("incompatible complex (-) operands") end
-  return r
-end
-
-function M.mul (x, y, r_)
-  if is_number(x) then      -- num * cpx
-    return complex(x * y.re, x * y.im)
-  elseif is_number(y) then  -- cpx * num
-    return complex(x.re * y, x.im * y)
-  elseif is_complex(y) then -- cpx * cpx
-    return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
-  end
-
-  -- is_complex(x)
-  local r = r_ or cmatrix(y:sizes())
-  assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-
-  if is_matrix(y) then      -- cpx * mat  => vec * cpx
-    _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size())
-  elseif is_cmatrix(y) then -- cpx * cmat => cvec * cpx
-    _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size())
-  else error("invalid complex (*) operands") end
-  return r
-end
-
-function M.div (x, y, r_, rcond_)
-  if is_number(x) then      -- num / cpx
-    _C.mad_cnum_div_r(x, 0, y.re, y.im, cres)
-    return cres[0]
-  elseif is_number(y) then  -- cpx / num
-    return complex(x.re / y, x.im / y)
-  elseif is_complex(y) then -- cpx / cpx                         BUG: string/cpx
-    _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres)
-    return cres[0]
-  end
-
-  -- is_complex(x)
-  local r = r_ or cmatrix(y:tsizes())
-  assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible cmatrix sizes")
-
-  if is_matrix(y) then      -- cpx / mat
-    _C.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
-  elseif is_cmatrix(y) then -- cpx / cmat
-    _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or 0)
-  else error("invalid complex (/) operands") end
-  return r
-end
-]]--
