@@ -31,17 +31,27 @@ NAME
   matrix -- real and complex vectors and matrices
 
 SYNOPSIS
-  m1 = matrix(nrow [, ncol])          -- default ncol = nrow (square matrix)
-  v1 = vector(nrow)                   -- vector = [nrow x 1] (column matrix)
+  mr1 = matrix(nrow [, ncol])          -- default ncol = nrow (square matrix)
+  mr2 = matrix {{...}, ...}            -- from table (rows length must be equal)
+  mr3 = matrix(mr2)                    -- same shape and type as mr2
 
-  m2 = matrix {{...}, ...}            -- from table (rows length must be equal)
-  v2 = vector {...}                   -- from table (column vector)
+  mc1 = cmatrix(nrow [, ncol])         -- complex variant
+  mc2 = cmatrix {{...}, ...}           -- complex variant
+  mc3 = cmatrix(mr2)                   -- complex variant
+
+  vr1 = vector(nrow)                   -- vector = [nrow x 1] (column matrix)
+  vr2 = vector {...}                   -- from table (column vector)
+  vr3 = vector(vr2)                    -- same shape and type as vr2
+
+  vc1 = cvector(nrow)                  -- complex variant
+  vc2 = cvector {...}                  -- complex variant
+  vc3 = cvector(vr2)                   -- complex variant
 
 DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
   (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
   unm, add, sub, mul (emul), div (ediv), mod, pow, eq,
-  zeros, ones, eye, fill, copy, same (esame),
+  zeros, ones, eye, fill, copy, same,
   rows, cols, size (length), sizes, tsizes,
   get, get0, geti, getrow, getcol, getvec, getdiag, getsub,
   set, set0, seti, setrow, setcol, setvec, setdiag, setsub,
@@ -56,13 +66,16 @@ DESCRIPTION
   erf, tgamma, lgamma,
   solve, svd, eigen,
   fft, ifft, rfft, irfft, conv, corr, covar,
+
+  is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector, isa_vector,
+
   foreach, map, map2, map3, foldl, foldr,
-  concat, reshape, unsafe_reshape, totable, fromtable,
-  check_bounds.
-  By default, check_bounds is true.
+  concat, reshape, unsafe_reshape, totable, fromtable, set_check_bounds.
+
+  By default, boundaries checking is true.
 
 RETURN VALUES
-  The constructor of matrices. Vectors are specialized matrices.
+  The constructed matrices. Vectors are specialized matrices.
 
 ERRORS
   TODO
@@ -80,10 +93,10 @@ EXAMPLES
   c3 = cvector {1,2,3,4,5,6}          -- column cvector [6 x 1]
   c4 = cvector {{1,2,3,4,5,6}}        -- row cvector [1 x 6]
   c5 = c2:transpose()                 -- row cmatrix, transpose conjugate
-  I6 = cmatrix(6):ones()              -- identity cmatrix [6 x 6]
+  I6 = cmatrix(6):eye()               -- identity cmatrix [6 x 6]
 
 SEE ALSO
-  gmath, complex
+  gmath, gfunc, complex
 ]=]
 
 -- documentation --------------------------------------------------------------o
@@ -94,7 +107,7 @@ M.__help['3D Geometry relations'] = [=[
   cross prod:   uxv = |u|.|v| sin(u^v) \vec{n}
   mixed prod:   (uxv)'.w = u'.(vxw) = det(u,v,w)
   outer prod:   u.v' = matrix
-  dble xprod:   ux(vxw) = (u.w) \vec{v} - (u.v) \vec{w}
+  dbl x-prod:   ux(vxw) = (u.w) \vec{v} - (u.v) \vec{w}
                 (uxv)xw = (u.w) \vec{v} - (v.w) \vec{u}
   norm      :   |u| = sqrt(u'.u)
   angle     :   u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
@@ -112,7 +125,8 @@ M.__help['3D Geometry relations'] = [=[
 
 -- locals ---------------------------------------------------------------------o
 
-local new, istype, metatype, cast, sizeof, fill in require 'ffi'
+local new, istype, metatype, cast, typeof, sizeof, fill, cdef, gc
+      in require 'ffi'
 
 local _C, is_nil, is_number, is_table, is_complex, is_scalar, is_callable,
       defhelp, ident, rep,
@@ -120,10 +134,7 @@ local _C, is_nil, is_number, is_table, is_complex, is_scalar, is_callable,
       abs, ceil, floor, exp, log, sqrt,
       sin, cos, tan, sinh, cosh, tanh,
       asin, acos, atan, asinh, acosh, atanh,
-      unm, mod, pow,
-      min, max, matrix, cmatrix,
-      is_matrix, is_cmatrix, isa_matrix,
-      is_vector, is_cvector, isa_vector in MAD
+      unm, mod, pow, min, max in MAD
 
 -- tmp for returned values
 local cres = new 'complex[1]'
@@ -135,6 +146,91 @@ local sid = setmetatable({ n=0 }, {
   __index     = \_,i -> i,
   __newindex := error("invalid write access"),
 })
+
+-- constructors ---------------------------------------------------------------o
+
+-- FFI types
+cdef [[
+typedef struct  matrix { int32_t nr, nc; double  data[?]; }  matrix_t;
+typedef struct cmatrix { int32_t nr, nc; complex data[?]; } cmatrix_t;
+]]
+
+local  matrix_ctor = typeof  'matrix_t'
+local cmatrix_ctor = typeof 'cmatrix_t'
+
+local is_matrix  = \x -> istype( 'matrix_t', x)
+local is_cmatrix = \x -> istype('cmatrix_t', x)
+local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x)
+
+local is_vector  = \x -> is_matrix(x)  and (x.nr == 1 or x.nc == 1)
+local is_cvector = \x -> is_cmatrix(x) and (x.nr == 1 or x.nc == 1)
+local isa_vector = \x -> isa_matrix(x) and (x.nr == 1 or x.nc == 1)
+
+-- allocators
+
+local function matrix_alloc (nr, nc)
+  local len, mat = nr*nc, nil
+  if len < _C.mad_alloc_threshold then
+    mat = matrix_ctor(len)
+  else
+    local siz = sizeof('matrix_t', len)
+    local ptr = _C.mad_malloc(siz)
+    mat = gc(cast('matrix_t&', ptr), _C.mad_free)
+    fill(mat, siz)
+  end
+  mat.nr, mat.nc = nr, nc
+  return mat
+end
+
+local function cmatrix_alloc (nr, nc)
+  local len, mat = nr*nc, nil
+  if len < (_C.mad_alloc_threshold/2) then
+    mat = cmatrix_ctor(len)
+  else
+    local siz = sizeof('cmatrix_t', len)
+    local ptr = _C.mad_malloc(siz)
+    mat = gc(cast('cmatrix_t&', ptr), _C.mad_free)
+    fill(mat, siz)
+  end
+  mat.nr, mat.nc = nr, nc
+  return mat
+end
+
+local function fromtable (ctor, tbl)
+  local nr, nc = #tbl or 1, is_table(tbl[1]) and #tbl[1] or 1
+  return ctor(nr,nc):fromtable(tbl)
+end
+
+-- constructors
+
+local function matrix (nr, nc_)
+  if is_table(nr) then
+    return fromtable(matrix_alloc, nr)
+  elseif isa_matrix(nr) then
+    return matrix_alloc(nr:sizes())
+  end
+  local nc = nc_ or nr -- square
+  if nr > 0 and nc > 0 then
+    return matrix_alloc(nr, nc)
+  end
+  error("invalid argument #1 or #2, matrix or nrow[,ncol] or table [of tables] expected")
+end
+
+local function cmatrix (nr, nc_)
+  if is_table(nr) then
+    return fromtable(cmatrix_alloc, nr)
+  elseif isa_matrix(nr) then
+    return cmatrix_alloc(nr:sizes())
+  end
+  local nc = nc_ or nr -- square
+  if nr > 0 and nc > 0 then
+    return cmatrix_alloc(nr, nc)
+  end
+  error("invalid argument #1 or #2, matrix or nrow[,ncol] or table [of tables] expected")
+end
+
+local  vector = \n ->  matrix(n,1)
+local cvector = \n -> cmatrix(n,1)
 
 -- implementation -------------------------------------------------------------o
 
@@ -222,15 +318,13 @@ M.sizes  = \x -> (x.nr, x.nc)
 M.tsizes = \x -> (x.nc, x.nr)
 M.length = M.size
 
-function M.same (x, nr_, nc_)
-  if is_matrix(x)
-  then return  matrix(nr_ or x.nr, nc_ or x.nc)
-  else return cmatrix(nr_ or x.nr, nc_ or x.nc)
+--   valid call x:same(), x:same(e), x:same(nr, nc), x:same(e, nr, nc)
+-- invalid call x:same(e, nr), will be interpreted as x:same(nr, nc)
+function M.same (x, e_, nr_, nc_)
+  if is_nil(nc_) then
+    nr_, nc_, e_ = e_, nr_, x.data[0]
   end
-end
-
-function M.esame (x, e, nr_, nc_)
-  if is_number(e)
+  if is_number(e_)
   then return  matrix(nr_ or x.nr, nc_ or x.nc)
   else return cmatrix(nr_ or x.nr, nc_ or x.nc)
   end
@@ -415,7 +509,7 @@ function M.map (x, f, ij_, r_)
 
   if ij_ == nil then
     local n, r0 = x:size(), f(x.data[0])
-    local r = r_ or x:esame(r0)
+    local r = r_ or x:same(r0)
     assert(is_table(r) or n <= #r, "incompatible sizes")
     r[1] = r0
     for i=2,n do r[i] = f(geti(x,i)) end
@@ -425,7 +519,7 @@ function M.map (x, f, ij_, r_)
   local ij = ij_ or sid(x:size())
   if is_number(ij) then ij = {ij} end
   local n, r0 = #ij, f(safe_geti(x,ij[1]))
-  local r = r_ or x:esame(r0)
+  local r = r_ or x:same(r0)
   assert(is_table(r) or n <= #r, "incompatible sizes")
   r[ij[1]] = r0
   for i=2,n do r[ij[i]] = f(safe_geti(x,ij[i])) end
@@ -438,7 +532,7 @@ function M.map2 (x, y, f, ij_, r_)
 
   if ij_ == nil then
     local n, r0 = x:size(), f(x.data[0], y[1])
-    local r = r_ or x:esame(r0)
+    local r = r_ or x:same(r0)
     assert((is_table(r) or n <= #r) and n <= #y, "incompatible sizes")
     r[1] = r0
     for i=2,n do r[i] = f(geti(x,i), y[i]) end
@@ -448,7 +542,7 @@ function M.map2 (x, y, f, ij_, r_)
   local ij = ij_ or sid(x:size())
   if is_number(ij) then ij = {ij} end
   local n, r0 = #ij, f(safe_geti(x,ij[1]), y[ij[1]])
-  local r = r_ or x:esame(r0)
+  local r = r_ or x:same(r0)
   assert((is_table(r) or n <= #r) and n <= #y, "incompatible sizes")
   r[ij[1]] = r0
   for i=2,n do r[ij[i]] = f(safe_geti(x,ij[i]), y[ij[i]]) end
@@ -461,7 +555,7 @@ function M.map3 (x, y, z, f, r_)
   if is_scalar(y) then y = rep(y) end
   if is_scalar(z) then z = rep(z) end
   local n, r0 = x:size(), f(x.data[0], y[1], z[1])
-  local r = r_ or x:esame(r0)
+  local r = r_ or x:same(r0)
   assert((is_table(r) or n <= #r) and n <= #y and n <= #z, "incompatible sizes")
   r[1] = r0
   for i=2,n do r[i] = f(geti(x,i), y[i], z[i]) end
@@ -766,7 +860,7 @@ function M.__add (x, y, r)
   error("invalid arguments (unsupported matrix operation)")
 end
 
-function MC.__radd_cpx (y, x, r)                  -- cpx + mat => cpx + vec
+function MC.__radd_cpx (y, x, r)                  -- cpx + cmat => cpx + cvec
   r = chksiz(r,y) or cmatrix(y)
   _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size()) return r
 end
@@ -822,7 +916,7 @@ function M.__sub (x, y, r)
   error("invalid arguments (unsupported matrix operation)")
 end
 
-function MC.__rsub_cpx (y, x, r)                  -- cpx - mat => cpx - vec
+function MC.__rsub_cpx (y, x, r)                  -- cpx - cmat => cpx - cvec
   r = chksiz(r,y) or cmatrix(y)
   _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size()) return r
 end
@@ -878,7 +972,7 @@ function M.__mul (x, y, r)
   error("invalid arguments (unsupported matrix operation)")
 end
 
-function MC.__rmul_cpx (y, x, r)                  -- cpx * mat => cpx * vec
+function MC.__rmul_cpx (y, x, r)                  -- cpx * cmat => cpx * cvec
   r = chksiz(r,y) or cmatrix(y)
   _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size()) return r
 end
@@ -934,7 +1028,7 @@ function M.__div (x, y, r, rcond_)
   error("invalid arguments (unsupported matrix operation)")
 end
 
-function MC.__rdiv_cpx (y, x, r, rcond_)         -- cpx / mat => cpx / vec
+function MC.__rdiv_cpx (y, x, r, rcond_)         -- cpx / cmat
   r = chksiz(r,y) or cmatrix(y)
   _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
   return r
@@ -1276,4 +1370,18 @@ metatype( 'matrix_t', M )
 metatype('cmatrix_t', MC)
 
 -- end ------------------------------------------------------------------------o
-return { __help = M.__help }
+return {
+  vector     = vector,
+  cvector    = cvector,
+  matrix     = matrix,
+  cmatrix    = cmatrix,
+
+  is_vector  = is_vector,
+  is_matrix  = is_matrix,
+  is_cvector = is_cvector,
+  is_cmatrix = is_cmatrix,
+  isa_vector = isa_vector,
+  isa_matrix = isa_matrix,
+
+  __help     = M.__help
+}
