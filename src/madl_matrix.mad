@@ -22,7 +22,7 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = {} }
+local M, MC = { __help = {} }, {}
 
 -- help -----------------------------------------------------------------------o
 
@@ -114,7 +114,7 @@ M.__help['3D Geometry relations'] = [=[
 
 local new, istype, metatype, cast, sizeof, fill in require 'ffi'
 
-local _C, is_number, is_table, is_complex, is_scalar, is_callable,
+local _C, is_nil, is_number, is_table, is_complex, is_scalar, is_callable,
       defhelp, ident, rep,
       carg, real, imag, conj, norm, rect, polar,
       abs, ceil, floor, exp, log, sqrt,
@@ -191,6 +191,27 @@ function M.set_bounds_check (self, flag)
 end
 
 M.set_bounds_check(nil, true) -- default
+
+-- sizes check helper
+
+local function chksiz (r, x, y)
+  assert(is_nil(r) or (r:rows() == x:rows() and r:cols() == x:cols()) and
+         is_nil(y) or (y:rows() == x:rows() and y:cols() == x:cols()),
+         "incompatible matrix sizes")
+  return r
+end
+
+local function chksizm (r, x, y)
+  assert(is_nil(r) or (r:rows() == x:rows() and r:cols() == y:cols()) and
+         x:cols() == y:rows(), "incompatible matrix sizes")
+  return r
+end
+
+local function chksizd (r, x, y)
+  assert(is_nil(r) or (r:rows() == x:rows() and r:cols() == y:rows()) and
+         x:cols() == y:cols(), "incompatible matrix sizes")
+  return r
+end
 
 -- sizes, same, shape ---------------------------------------------------------o
 
@@ -716,225 +737,232 @@ function M.eq (x, y)
   return true
 end
 
-function M.add (x, y, r_)
-  local r
+-- add
 
-  if is_number(x) then
-    r = r_ or is_cmatrix(y) and cmatrix(y:sizes()) or matrix(y:sizes())
-    assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
-    if is_matrix(y) then      -- num + mat => vec + num
-      _C.mad_vec_addn (y.data, x, r.data, r:size())
-    elseif is_cmatrix(y) then -- num + cmat => cvec + num
-      _C.mad_cvec_addn(y.data, x, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-  if is_matrix(x) then
-    r = r_ or (is_complex(y) or is_cmatrix(y)) and cmatrix(x:sizes()) or matrix(x:sizes())
-    assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-    if is_number(y) then      -- mat + num => vec + num
-      _C.mad_vec_addn(x.data, y, r.data, r:size())
-    elseif is_complex(y) then  -- mat + cpx => vec + cpx
-      _C.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- mat + mat => vec + vec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      _C.mad_vec_add(x.data, y.data, r.data, r:size())
-    elseif is_cmatrix(y) then -- mat + cmat => cvec + vec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      _C.mad_cvec_addv(y.data, x.data, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-  if is_cmatrix(x) then
-    r = r_ or cmatrix(x:sizes())
-    assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-    if is_number(y) then      -- cmat + num => cvec + num
-      _C.mad_vec_addn(x.data, y, r.data, r:size())
-    elseif is_complex(y) then  -- cmat + cpx => cvec + cpx
-      _C.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- cmat + mat => cvec + vec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      _C.mad_vec_addv(x.data, y.data, r.data, r:size())
-    elseif is_cmatrix(y) then -- cmat + cmat => cvec + cvec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_add(y.data, x.data, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-::invalid:: error("invalid matrix (+) operands")
+function M.__radd_cpx (y, x, r)                  -- cpx + mat => cpx + vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size()) return r
 end
 
-function M.sub (x, y, r_)
-  local r
-
-  if is_number(x) then
-    r = r_ or (is_complex(y) or is_cmatrix(y)) and cmatrix(y:sizes()) or matrix(y:sizes())
-    assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
-    if is_matrix(y) then      -- num - mat => num - vec
-      _C.mad_vec_subn (y.data, x, r.data, r:size())
-    elseif is_cmatrix(y) then -- num - cmat => num - cvec
-      _C.mad_cvec_subn(y.data, x, r.data, r:size())
-    else goto invalid end
-    return r
+function M.__add (x, y, r)
+  if is_number(x) then                           -- num + mat => num + vec
+    r = chksiz(r,y) or matrix(y)
+    _C.mad_vec_addn(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- mat + num => vec + num
+    r = chksiz(r,x) or matrix(x)
+    _C.mad_vec_addn(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- mat + cpx => vec + cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) and is_matrix(x) then      -- mat + mat => vec + vec
+    r = chksiz(r,x,y) or matrix(x)
+    _C.mad_vec_add(x.data, y.data, r.data, r:size()) return r
+  elseif is_cmatrix(y) then                      -- mat + cmat => vec + cvec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_addv(y.data, x.data, r.data, r:size()) return r
+  elseif is_function(y.__radd_mat) then          -- mat + ?
+    return y:__radd_mat(x, r)
   end
-
-  if is_matrix(x) then
-    r = r_ or (is_complex(y) or is_cmatrix(y)) and cmatrix(x:sizes()) or matrix(x:sizes())
-    assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-    if is_number(y) then      -- mat - num => vec + -num
-      _C.mad_vec_addn(x.data, -y, r.data, r:size())
-    elseif is_complex(y) then  -- mat - cpx => vec + -cpx
-      _C.mad_vec_addc_r(x.data, -y.re, -y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- mat - mat => vec - vec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      _C.mad_vec_sub(x.data, y.data, r.data, r:size())
-    elseif is_cmatrix(y) then -- mat - cmat => vec - cvec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible matrix sizes")
-      _C.mad_cvec_subv(x.data, y.data, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-  if is_cmatrix(x) then
-    r = r_ or cmatrix(x:sizes())
-    assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-    if is_number(y) then      -- cmat - num => cvec + -num
-      _C.mad_cvec_addn(x.data, -y, r.data, r:size())
-    elseif is_complex(y) then  -- cmat - cpx => cvec + -cpx
-      _C.mad_cvec_addc_r(x.data, -y.re, -y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- cmat - mat => cvec - vec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_subv(x.data, y.data, r.data, r:size())
-    elseif is_cmatrix(y) then -- cmat - cmat => cvec - cvec
-      assert(x:rows() == y:rows() and x:cols() == y:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_sub(x.data, y.data, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-::invalid:: error("invalid matrix (-) operands")
+  error("invalid arguments (unsupported matrix operation)")
 end
 
-function M.mul (x, y, r_)
-  local r
-
-  if is_number(x) then
-    r = r_ or (is_complex(y) or is_cmatrix(y)) and cmatrix(y:sizes()) or matrix(y:sizes())
-    assert(y:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
-    if is_matrix(y) then      -- num * mat => vec * num
-      _C.mad_vec_muln (y.data, x, r.data, r:size())
-    elseif is_cmatrix(y) then -- num * cmat => cvec * num
-      _C.mad_cvec_muln(y.data, x, r.data, r:size())
-    else goto invalid end
-    return r
-  end
-
-  if is_matrix(x) then
-    if is_number(y) then      -- mat * num => vec * num
-      r = r_ or matrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_vec_muln(x.data, y, r.data, r:size())
-    elseif is_complex(y) then  -- mat * cpx => vec * cpx
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- mat * mat
-      r = r_ or matrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_mat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
-    elseif is_cmatrix(y) then -- mat * cmat
-      r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_mat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
-    else goto invalid end
-   return r
-  end
-
-  if is_cmatrix(x) then
-    if is_number(y) then      -- cmat * num => cvec * num
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_muln(x.data, y, r.data, r:size())
-    elseif is_complex(y) then  -- cmat * cpx => cvec * cpx
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- cmat * mat
-      r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cmat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
-    elseif is_cmatrix(y) then -- cmat * cmat
-      r = r_ or cmatrix(x:rows(), y:cols())
-      assert(x:cols() == y:rows() and x:rows() == r:rows() and y:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cmat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols())
-    else goto invalid end
-    return r
-  end
-
-::invalid:: error("invalid matrix (*) operands")
+function MC.__radd_cpx (y, x, r)                  -- cpx + mat => cpx + vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size()) return r
 end
 
-function M.div (x, y, r_, rcond_)
-  local r
-
-  if is_number(x) then
-    r = r_ or is_cmatrix(y) and cmatrix(y:tsizes()) or matrix(y:tsizes())
-    assert(y:rows() == r:cols() and y:cols() == r:rows(), "incompatible matrix sizes")
-    if is_matrix(y) then      -- num / mat
-      _C.mad_mat_invn (y.data, x, r.data, y:rows(), y:cols(), rcond_ or -1)
-    elseif is_cmatrix(y) then -- num / cmat
-      _C.mad_cmat_invn(y.data, x, r.data, y:rows(), y:cols(), rcond_ or -1)
-    else goto invalid end
-    return r
+function MC.__add (x, y, r)
+  if is_number(x) then                           -- num + cmat => num + cvec
+    r = chksiz(r,y) or cmatrix(y)
+    _C.mad_cvec_addn(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- cmat + num => cvec + num
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_addn(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- cmat + cpx => cvec + cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_addc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) then                       -- cmat + mat => cvec + vec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_addv(x.data, y.data, r.data, r:size()) return r
+  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat + cmat => cvec + cvec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_add(x.data, y.data, r.data, r:size()) return r
+  elseif is_function(y.__radd_cmat) then         -- cmat + ?
+    return y:__radd_cmat(x, r)
   end
-
-  if is_matrix(x) then
-    if is_number(y) then       -- mat / num => vec / num
-      r = r_ or matrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_vec_divn(x.data, y, r.data, r:size())
-    elseif is_complex(y) then   -- mat / cpx => vec / cpx
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible matrix sizes")
-      _C.mad_vec_divc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- mat / mat => X * Y^-1 => [m x n] = [m x p] * [p x n] => X:[m x p], Y:[n x p]
-      r = r_ or matrix(x:rows(), y:rows())
-      assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible matrix sizes")
-      _C.mad_mat_div(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1)
-    elseif is_cmatrix(y) then  -- mat / cmat
-      r = r_ or cmatrix(x:rows(), y:rows())
-      assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible matrix sizes")
-      _C.mad_mat_divm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1)
-    else goto invalid end
-    return r
-  end
-
-  if is_cmatrix(x) then
-    if is_number(y) then       -- cmat / num => cvec / num
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_muln(x.data, 1/y, r.data, r:size())
-    elseif is_complex(y) then   -- cmat / cpx => cvec / cpx
-      r = r_ or cmatrix(x:sizes())
-      assert(x:rows() == r:rows() and x:cols() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cvec_divc_r(x.data, y.re, y.im, r.data, r:size())
-    elseif is_matrix(y) then  -- cmat / mat
-      r = r_ or cmatrix(x:rows(), y:rows())
-      assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cmat_divm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1)
-    elseif is_cmatrix(y) then  -- cmat / cmat
-      r = r_ or cmatrix(x:rows(), y:rows())
-      assert(x:cols() == y:cols() and x:rows() == r:rows() and y:rows() == r:cols(), "incompatible cmatrix sizes")
-      _C.mad_cmat_div(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1)
-    else goto invalid end
-    return r
-  end
-
-::invalid:: error("incompatible matrix (/) operands")
+  error("invalid arguments (unsupported matrix operation)")
 end
+
+-- sub
+
+function M.__rsub_cpx (y, x, r)                  -- cpx - mat => cpx - vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size()) return r
+end
+
+function M.__sub (x, y, r)
+  if is_number(x) then                           -- num - mat => num - vec
+    r = chksiz(r,y) or matrix(y)
+    _C.mad_vec_subn(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- mat - num => vec + -num
+    r = chksiz(r,x) or matrix(x)
+    _C.mad_vec_addn(x.data, -y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- mat - cpx => vec + -cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_vec_addc_r(x.data, -y.re, -y.im, r.data, r:size()) return r
+  elseif is_matrix(y) and is_matrix(x) then      -- mat - mat => vec - vec
+    r = chksiz(r,x,y) or matrix(x)
+    _C.mad_vec_sub(x.data, y.data, r.data, r:size()) return r
+  elseif is_cmatrix(y) then                      -- mat - cmat => vec - cvec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_subv(y.data, x.data, r.data, r:size()) return r
+  elseif is_function(y.__rsub_mat) then          -- mat - ?
+    return y:__rsub_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.__rsub_cpx (y, x, r)                  -- cpx - mat => cpx - vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size()) return r
+end
+
+function MC.__sub (x, y, r)
+  if is_number(x) then                           -- num - cmat => num - cvec
+    r = chksiz(r,y) or cmatrix(y)
+    _C.mad_cvec_subn(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- cmat - num => cvec + -num
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_addn(x.data, -y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- cmat - cpx => cvec + -cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_addc_r(x.data, -y.re, -y.im, r.data, r:size()) return r
+  elseif is_matrix(y) then                       -- cmat - mat => cvec - vec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_subv(x.data, y.data, r.data, r:size()) return r
+  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat - cmat => cvec - cvec
+    r = chksiz(r,x,y) or cmatrix(x)
+    _C.mad_cvec_sub(x.data, y.data, r.data, r:size()) return r
+  elseif is_function(y.__rsub_cmat) then         -- cmat - ?
+    return y:__rsub_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- mul
+
+function M.__rmul_cpx (y, x, r)                  -- cpx * mat => cpx * vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size()) return r
+end
+
+function M.__mul (x, y, r)
+  if is_number(x) then                           -- num * mat => num * vec
+    r = chksiz(r,y) or matrix(y)
+    _C.mad_vec_muln(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- mat * num => vec * num
+    r = chksiz(r,x) or matrix(x)
+    _C.mad_vec_muln(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- mat * cpx => vec * cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) and is_matrix(x) then      -- mat * mat => vec * vec
+    r = chksizm(r,x,y) or matrix(x:rows(), y:cols())
+    _C.mad_mat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols()) return r
+  elseif is_cmatrix(y) then                      -- mat * cmat => vec * cvec
+    r = chksizm(r,x,y) or cmatrix(x:rows(), y:cols())
+    _C.mad_mat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols()) return r
+  elseif is_function(y.__rmul_mat) then          -- mat * ?
+    return y:__rmul_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.__rmul_cpx (y, x, r)                  -- cpx * mat => cpx * vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size()) return r
+end
+
+function MC.__mul (x, y, r)
+  if is_number(x) then                           -- num * cmat => num * cvec
+    r = chksiz(r,y) or cmatrix(y)
+    _C.mad_cvec_muln(y.data, x, r.data, r:size()) return r
+  elseif is_number(y) then                       -- cmat * num => cvec * num
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_muln(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- cmat * cpx => cvec * cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) then                       -- cmat * mat => cvec * vec
+    r = chksizm(r,x,y) or cmatrix(x:rows(), y:cols())
+    _C.mad_cmat_mulm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols()) return r
+  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat * cmat => cvec * cvec
+    r = chksizm(r,x,y) or cmatrix(x:rows(), y:cols())
+    _C.mad_cmat_mul(x.data, y.data, r.data, r:rows(), r:cols(), x:cols()) return r
+  elseif is_function(y.__rmul_cmat) then         -- cmat * ?
+    return y:__rmul_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- div
+
+function M.__rdiv_cpx (y, x, r, rcond_)          -- cpx / mat
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_mat_invc_r (y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1) return r
+end
+
+function M.__div (x, y, r, rcond_)
+  if is_number(x) then                           -- num / mat
+    r = chksiz(r,y) or matrix(y)
+    _C.mad_mat_invn (y.data, x, r.data, y:rows(), y:cols(), rcond_ or -1) return r
+  elseif is_number(y) then                       -- mat / num => vec / num
+    r = chksiz(r,x) or matrix(x)
+    _C.mad_vec_divn(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- mat / cpx => vec / cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_vec_divc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) and is_matrix(x) then      -- mat / mat => vec / vec
+    r = chksizd(r,x,y) or matrix(x:rows(), y:rows())
+    _C.mad_mat_div(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1) return r
+  elseif is_cmatrix(y) then                      -- mat / cmat => vec / cvec
+    r = chksizd(r,x,y) or cmatrix(x:rows(), y:rows())
+    _C.mad_mat_divm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1) return r
+  elseif is_function(y.__rdiv_mat) then          -- mat / ?
+    return y:__rdiv_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.__rdiv_cpx (y, x, r, rcond_)         -- cpx / mat => cpx / vec
+  r = chksiz(r,y) or cmatrix(y)
+  _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y:rows(), y:cols(), rcond_ or -1)
+  return r
+end
+
+function MC.__div (x, y, r, rcond_)
+  if is_number(x) then                           -- num / cmat => num / cvec
+    r = chksiz(r,y) or cmatrix(y)
+    _C.mad_cmat_invn(y.data, x, r.data, y:rows(), y:cols(), rcond_ or -1) return r
+  elseif is_number(y) then                       -- cmat / num => cvec / num
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_divn(x.data, y, r.data, r:size()) return r
+  elseif is_complex(y) then                      -- cmat / cpx => cvec / cpx
+    r = chksiz(r,x) or cmatrix(x)
+    _C.mad_cvec_divc_r(x.data, y.re, y.im, r.data, r:size()) return r
+  elseif is_matrix(y) then                       -- cmat / mat => cvec / vec
+    r = chksizd(r,x,y) or cmatrix(x:rows(), y:rows())
+    _C.mad_cmat_divm(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1) return r
+  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat / cmat => cvec / cvec
+    r = chksizd(r,x,y) or cmatrix(x:rows(), y:rows())
+    _C.mad_cmat_div(x.data, y.data, r.data, r:rows(), r:cols(), x:cols(), rcond_ or -1) return r
+  elseif is_function(y.__rdiv_cmat) then         -- cmat / ?
+    return y:__rdiv_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- element wise mul and div
 
 function M.emul (x, y, r_)
   assert(isa_matrix(y), "matrix expected for 2nd argument")
@@ -1093,13 +1121,13 @@ function M.irfft (x, r_) -- r_ can be the length
     r = r_ or matrix(nr,nc)
     assert(nr == r:rows() or nr+1 == r:rows() and
            nc == r:cols() or nc+1 == r:cols(), "incompatible matrix sizes")
-    _C.mad_vec_irfft(x.data, r.data, r:size())
+    _C.mad_cvec_irfft(x.data, r.data, r:size())
   else                       -- 2D FFT
     nc = (nc-1)*2
     r = r_ or matrix(nr,nc)
     assert(nr == r:rows() and
            nc == r:cols() or nc+1 == r:cols(), "incompatible matrix sizes")
-    _C.mad_mat_irfft(x.data, r.data, r:rows(), r:cols())
+    _C.mad_cmat_irfft(x.data, r.data, r:rows(), r:cols())
   end
 
   return r
@@ -1194,7 +1222,7 @@ function M.fromtable (x, t)
   return x
 end
 
-function M.tostring (x, sep_, lsep_)
+function M.__tostring (x, sep_, lsep_)
   local nr, nc = x:sizes()
   local r, c = table.new(nr,0), table.new(nc,0)
   for i=0,nr-1 do
@@ -1206,11 +1234,14 @@ end
 
 -- metamethods ----------------------------------------------------------------o
 
-M.__unm, M.__add, M.__sub, M.__mul, M.__div, M.__mod, M.__pow =
-M.  unm, M.  add, M.  sub, M.  mul, M.  div, M.  mod, M.  pow
+M.  unm, M.  add, M.  sub, M.  mul, M.  div, M.  mod, M.  pow =
+M.__unm, M.__add, M.__sub, M.__mul, M.__div, M.__mod, M.__pow
 
-M.__eq, M.__len , M.__concat, M.__tostring =
-M.  eq, M.length, M.  concat, M.  tostring
+MC.  add, MC.  sub, MC.  mul, MC.  div =
+MC.__add, MC.__sub, MC.__mul, MC.__div
+
+M.  eq, M.length, M.  concat, M.  tostring =
+M.__eq, M.__len , M.__concat, M.__tostring
 
 local function iter (x, i)
   if i < x:size() then return i+1, x.data[i] end
@@ -1224,13 +1255,25 @@ end
 M.__index    = function (self, idx)
   return is_number(idx) and self.data[idx-1] or M[idx]
 end
+
+MC.__index = function (self, idx)
+  return is_number(idx) and self.data[idx-1] or MC[idx]
+end
+
 M.__newindex = function (self, idx, val)
   self.data[idx-1] = val
 end
 
+-- matrices -------------------------------------------------------------------o
+
 defhelp(M)
-metatype( 'matrix_t', M)
-metatype('cmatrix_t', M)
+
+for k,v in pairs(M) do
+  if is_nil(MC[k]) then MC[k] = v end
+end
+
+metatype( 'matrix_t', M )
+metatype('cmatrix_t', MC)
 
 -- end ------------------------------------------------------------------------o
 return { __help = M.__help }

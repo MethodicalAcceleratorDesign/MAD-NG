@@ -55,7 +55,6 @@ void   mad_vec_divc  (const  num_t y[],       cnum_t x        , cnum_t  r[], siz
 void   mad_vec_divc_r(const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cpx /  vec
 void   mad_vec_fft   (const  num_t x[],                         cnum_t  r[], size_t n); //  vec ->cvec
 void   mad_vec_rfft  (const  num_t x[],                         cnum_t  r[], size_t n); //  vec ->cvec
-void   mad_vec_irfft (const cnum_t x[],                          num_t  r[], size_t n); // cvec -> vec
 void   mad_vec_center(const  num_t x[],                          num_t  r[], size_t n); //  vec -> vec-<vec>
 
 void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], size_t n); //  cnum ->cvec
@@ -89,6 +88,7 @@ void   mad_cvec_divc  (const cnum_t y[],       cnum_t x        , cnum_t  r[], si
 void   mad_cvec_divc_r(const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t n); //  cpx  / cvec
 void   mad_cvec_fft   (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec
 void   mad_cvec_ifft  (const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec
+void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], size_t n); //  cvec -> vec
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], size_t n); //  cvec ->cvec-<cvec>
 
 // ---------------------------------------------------------------------------o
