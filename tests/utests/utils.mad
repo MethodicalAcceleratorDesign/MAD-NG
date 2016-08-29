@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals,
-      assertErrorMsgContains in require 'luaunit'
+      assertAlmostEquals, assertErrorMsgContains in require 'luaunit'
 
 local btst, bclr, bset, band, bxor, tobit, is_nil, is_boolean, is_number,
       is_string, is_function, is_table, is_cdata, is_complex, is_xrange, is_inf,
@@ -34,7 +34,7 @@ local btst, bclr, bset, band, bxor, tobit, is_nil, is_boolean, is_number,
       is_collectable, has_constructor, is_negatable, is_addable,
       is_substractable, is_multiplicable, is_dividable, is_modulable,
       is_powerable, has_member, has_method, is_same, same, tostring, totable,
-      option, compose, pi in MAD
+      option, compose, pi, log, eps in MAD
 
 local sm = setmetatable
 
@@ -43,7 +43,6 @@ local sm = setmetatable
 TestUtils = {}
 
 local types = {
-['nil']      = { nil, __, ___ },
   boolean    = { false, true, 1==1, 0<1, 1<0 },
   number     = { 0.1, 0.01, -0.1, -0.01, 2^-32, 2^-53, 2^52+1, -2^52-1 },
   string     = { '', '""', "''", "\"", '\'', '0', 'inf', 'nan', 'false' },
@@ -69,7 +68,7 @@ local function assertTypes (tkey, tfunc, tskip, ...)
       for i,v in ipairs(t) do
         local r = tfunc(v, ...)
         if r ~= (tkey[k] and true or false) then
-          print(k,i,v,r) ! print the faulty case before assertion
+          print('broken case:', k,i,v,r) ! print the faulty case before assertion
         end
         (tkey[k] or assertFalse) ( r )
       end
@@ -200,7 +199,8 @@ function TestUtils:testBset()
 end
 
 function TestUtils:testIsNil()
-  assertTypes( 'nil', is_nil )
+  assertTrue( is_nil(nil) )
+  assertTrue( is_nil(___) )
 end
 
 function TestUtils:testIsBoolean()
@@ -212,7 +212,7 @@ function TestUtils:testIsNumber()
 end
 
 function TestUtils:testIsNumber2()
-  local t = {'nil', 'number', 'complex', 'integer', 'inf', 'nan'}
+  local t = {'number', 'complex', 'integer', 'inf', 'nan'}
   local f = compose(is_number, tonumber)
   assertTypes( t, f, {string=true} )
 
@@ -309,9 +309,7 @@ function TestUtils:testIsMetaname()
 end
 
 function TestUtils:testGetmetatable()
-  local t = {
-    'nil', 'boolean', 'number', 'function', 'table', 'integer', 'inf', 'nan'
-  }
+  local t = {'boolean', 'number', 'function', 'table', 'integer', 'inf', 'nan'}
   local gm = MAD.get_metatable
   assertTypes( t, compose(is_nil, gm) )
   assertTypes( {'string', 'complex', 'xrange'}, \a gm(a)~=nil )
@@ -476,6 +474,28 @@ function TestUtils:testHasMethod()
   assertTrue ( has_method({none:=()}   , 'none') )
 end
 
+function TestUtils:testIsSame()
+  local t = {} ; for k in pairs(types) do t[#t+1] = k end
+  local i, j = 1, 0
+  local chk = \s =>
+    if j >= #types[t[i]] then i, j = i+1, 1 else j = j+1 end
+    return is_same(s, types[t[i]][1])
+  end
+
+  assertTypes( t, chk )
+end
+
+function TestUtils:testSame()
+  local t = {} ; for k in pairs(types) do t[#t+1] = k end
+  local i, j = 1, 0
+  local chk = \s =>
+    if j >= #types[t[i]] then i, j = i+1, 1 else j = j+1 end
+    return is_same(same(s), types[t[i]][1])
+  end
+
+  assertTypes( t, chk )
+end
+
 function TestUtils:testToString()
   local format in option -- save
   option.format = '%.10f'
@@ -494,7 +514,13 @@ function TestUtils:testToTable()
   assertEquals ( totable(pi), {pi} )
   assertEquals ( totable("hello"), {'h', 'e', 'l', 'l', 'o'} )
   assertEquals ( totable(1i), {1i} )
-  assertEquals ( totable(1..2), {1, 2} )
+  assertEquals ( totable(1..5), {1, 2, 3, 4, 5} )
+  local t = totable(log(1..10000..10))
+  assertAlmostEquals ( t[1]/1     - 1, 0,   0   )
+  assertAlmostEquals ( t[2]/10    - 1, 0,   eps )
+  assertAlmostEquals ( t[3]/100   - 1, 0, 2*eps )
+  assertAlmostEquals ( t[4]/1000  - 1, 0, 3*eps )
+  assertAlmostEquals ( t[5]/10000 - 1, 0, 4*eps )
 end
 
 -- end ------------------------------------------------------------------------o
