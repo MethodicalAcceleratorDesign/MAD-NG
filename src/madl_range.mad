@@ -35,18 +35,11 @@ local exp_1 = exp(1)
 
 -- constructors ---------------------------------------------------------------o
 
--- ctypes are xrange and logxrange
-cdef [[
-  typedef const struct logxrange {
-    double logstart, logstop, logstep;
-  } logxrange;
-]]
+local range    = typeof 'xrange'
+local logrange = typeof 'const struct { double logstart, logstop, logstep; }'
 
-local range    = typeof    'xrange'
-local logrange = typeof 'logxrange'
-
-local is_range    = \a -> istype(   'xrange', a)
-local is_logrange = \a -> istype('logxrange', a)
+local is_range    = \a -> istype(   range, a)
+local is_logrange = \a -> istype(logrange, a)
 
 -- implementation -------------------------------------------------------------o
 
@@ -133,40 +126,6 @@ local function bounds (start, stop, step)
   end
 end
 
-local function get (r, x)
-  local v = value(r.start, r.step, x)
-  if x >= 0 and not is_empty(v, r.stop, r.step) then
-    return v
-  end
-end
-
-local function getlog (r, x)
-  local v = value(r.logstart, r.logstep, x)
-  if x >= 0 and not is_empty(v, r.logstop, r.logstep) then
-    return exp(v)
-  end
-end
-
-local function iterincr (r, i)
-  local v = value(r.start, r.step, i)
-  if v <= r.stop then return i+1, v end
-end
-
-local function iterdecr (r, i)
-  local v = value(r.start, r.step, i)
-  if v >= r.stop then return i+1, v end
-end
-
-local function iterincrlog (r, i)
-  local v = value(r.logstart, r.logstep, i)
-  if v <= r.logstop then return i+1, exp(v) end
-end
-
-local function iterdecrlog (r, i)
-  local v = value(r.logstart, r.logstep, i)
-  if v >= r.logstop then return i+1, exp(v) end
-end
-
 -- constructors
 
 function M.__new (ct, start, stop, step_, size_)
@@ -209,14 +168,10 @@ local function nlogrange (start, stop, size)
   return logrange(start, stop, nil, ceil(size))
 end
 
--- raw logrange from raw range
-
-M.log = \r -> new(logrange, log(r.start), log(r.stop), log(r.step))
-
 -- methods
 
-M   .get      = get
-Mlog.get      = getlog
+M.same        = \x -> x
+Mlog.same     = \x -> x
 
 M   .value    = \r,x ->     value(r.   start, r.   step, x)
 Mlog.value    = \r,x -> exp(value(r.logstart, r.logstep, x))
@@ -230,14 +185,50 @@ Mlog.is_empty = \r -> is_empty(r.logstart, r.logstop, r.logstep)
 M   .reverse  = \r -> range   (    r.   stop ,     r.   start ,     -r.   step )
 Mlog.reverse  = \r -> logrange(exp(r.logstop), exp(r.logstart), exp(-r.logstep))
 
+function M.get (r, x)
+  local v = value(r.start, r.step, x)
+  if x >= 0 and not is_empty(v, r.stop, r.step) then
+    return v
+  end
+end
+
+function Mlog.get (r, x)
+  local v = value(r.logstart, r.logstep, x)
+  if x >= 0 and not is_empty(v, r.logstop, r.logstep) then
+    return exp(v)
+  end
+end
+
+-- iterators
+
+local function iterincr (r, i)
+  local v = value(r.start, r.step, i)
+  if v <= r.stop then return i+1, v end
+end
+
+local function iterdecr (r, i)
+  local v = value(r.start, r.step, i)
+  if v >= r.stop then return i+1, v end
+end
+
+local function iterincrlog (r, i)
+  local v = value(r.logstart, r.logstep, i)
+  if v <= r.logstop then return i+1, exp(v) end
+end
+
+local function iterdecrlog (r, i)
+  local v = value(r.logstart, r.logstep, i)
+  if v >= r.logstop then return i+1, exp(v) end
+end
+
 -- metamethods
 
 function M.__index (r, a)
-  if is_number(a) then return get(r, a-1) else return M[a] end
+  if is_number(a) then return r:get(a-1) else return M[a] end
 end
 
 function Mlog.__index (r, a)
-  if is_number(a) then return getlog(r, a-1) else return Mlog[a] end
+  if is_number(a) then return r:get(a-1) else return Mlog[a] end
 end
 
 function M.__ipairs (r)
@@ -299,42 +290,42 @@ local inrange    = \start,stop,size -> ipairs(   nrange(start, stop, size))
 local ilogrange  = \start,stop,step -> ipairs( logrange(start, stop, step))
 local inlogrange = \start,stop,size -> ipairs(nlogrange(start, stop, size))
 
---[=[
--- convertion
+-- conversion
 
-local function convert (r, ctor)
-  local size = r:size()
-  local t = ctor(size,0)
-  for i=1,size do
-    t[i] = r.start+(i-1)*r.step
-  end
+-- from raw range to raw logrange
+M.log = \r -> new(logrange, log(r.start), log(r.stop), log(r.step))
+
+function M.__totable (r)
+  local s = r:size()
+  local t = table.new(s,0)
+  for i=1,s do t[i] = r:value(i-1) end
   return t
 end
+Mlog.__totable = M.__totable
 
-function M.totable (r)
-  return convert(r, tnew)
-end
-
-function M.tostring (r)
-  if r.step == 1 then
-    return string.format("%g..%g", r.start, r.stop)
-  else
-    return string.format("%g..%g..%g", r.start, r.stop, r.step)
+function M.__tostring (r)
+  if r.step == 1
+  then return string.format("%g..%g", r.start, r.stop)
+  else return string.format("%g..%g..%g", r:ranges())
   end
 end
 
---function M.tovector (r)
---  return convert(r, vector)
---end
-]=]
+function Mlog.__tostring (r)
+  if r.logstep == 1
+  then return string.format("%g..%g", r.logstart, r.logstop)
+  else return string.format("%g..%g..%g", r:ranges())
+  end
+end
 
 -- help
+
 M   .__help = require 'madh_range'     defhelp(M   , 'range'   )
 Mlog.__help = require 'madh_range'     defhelp(Mlog, 'logrange')
 
 -- metatable
-metatype(   'xrange', M   )
-metatype('logxrange', Mlog)
+
+metatype(   range, M   )
+metatype(logrange, Mlog)
 
 -------------------------------------------------------------------------------o
 return {
@@ -353,9 +344,6 @@ return {
   -- type identification
   is_range    = is_range,
   is_logrange = is_logrange,
-
---  linspace  = nrange,      -- TODO: compose with :tovector()
---  logspace  = nlogrange,   -- TODO: compose with :tovector()
 
   __help      = M.__help,    -- shared with Mlog
 }
