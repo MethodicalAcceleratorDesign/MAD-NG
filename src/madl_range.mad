@@ -27,11 +27,13 @@ local M, Mlog = {}, {}
 -- locals ---------------------------------------------------------------------o
 
 local new, cdef, istype, typeof, metatype in require 'ffi'
-local abs, ceil, floor, log, exp          in math
+local abs, ceil, floor, modf, log, exp    in math
 
 local is_nil, is_nan, is_number, defhelp, eps, huge, inf, sign in MAD
 
-local exp_1 = exp(1)
+-- constants
+
+local exp_1, epsilon = exp(1), 1e-12
 
 -- constructors ---------------------------------------------------------------o
 
@@ -66,7 +68,7 @@ end
 local function size (start, stop, step)
   local diff = stop-start
   if step == 0 then return huge * sign(diff) end
-  local size = floor( diff / step ) + 1
+  local size = floor( diff / step + 1 )
   return size < 0 and 0 or size
 end
 
@@ -83,7 +85,8 @@ end
 
 --[[
   Motivation to adjust step in constructors:
-    The following properties should hold even for rational numbers:
+    Step is adjusted if computed size is 1e-12 close to next integer.
+    Then the following properties should hold even for rational numbers:
     - size  (start, stop , step_  ) == size_
     - step  (start, stop , size_  ) == step_
     - value (start, step_, size_-1) == stop
@@ -94,14 +97,16 @@ end
 local function adjust (start, stop, step_, size_)
   if size_ ~= nil then
     step_ = step(start, stop, size_)
-    if size_ > 1 and size_ > size(start, stop, step_) then
-      step_ = step_ - step_*eps
+  else
+    local frac
+    size_, frac = modf( (stop-start) / step_ + 1 )
+    if frac >= 1-epsilon then
+      size_ = size_ + 1
+      step_ = step(start, stop, size_)
     end
-  elseif abs(step_) < huge then
-    size_ = size(start, stop, step_)
-    if abs(step_) > abs(step(start, stop, size_)) then
-      step_ = step_ - step_*eps
-    end
+  end
+  if size_ > 1 and size_ > size(start, stop, step_) then
+    step_ = step_ - step_*eps
   end
   if abs(step_) < huge then
     local last = value(start, step_, size_-1)
@@ -292,8 +297,9 @@ local inlogrange = \start,stop,size -> ipairs(nlogrange(start, stop, size))
 
 -- conversion
 
--- from raw range to raw logrange
-M.log = \r -> new(logrange, log(r.start), log(r.stop), log(r.step))
+-- from raw range to raw logrange, convert default step
+M.log = \r ->
+      new(logrange, log(r.start), log(r.stop), r.step ~= 1 and log(r.step) or 1)
 
 function M.__totable (r)
   local s = r:size()
