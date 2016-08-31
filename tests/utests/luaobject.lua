@@ -1077,7 +1077,7 @@ function TestLuaObject:testStrDump()
 ]]
   local str_p1 =[[
 + [table] 'p1'
-  y:  table
+  y:  {}
   x:  -1
   + [table] 'p0'
     y:  2 (*)
