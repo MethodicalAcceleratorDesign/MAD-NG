@@ -66,9 +66,8 @@ local function value (start, step, x)
 end
 
 local function size (start, stop, step)
-  local diff = stop-start
-  if step == 0 then return huge * sign(diff) end
-  local size = floor( diff / step + 1 )
+  if step == 0 then return huge end
+  local size = floor( (stop-start) / step + 1 )
   return size < 0 and 0 or size
 end
 
@@ -98,13 +97,17 @@ local function adjust (start, stop, step_, size_)
   if size_ ~= nil then
     step_ = step(start, stop, size_)
   else
-    local diff, frac = stop-start
-    size_, frac = modf( diff / step_ + 1 )
-    if frac > 1-epsilon then
-      size_ = size_ + 1
-    end
-    if size_ <= 1 or frac > 0 and frac < epsilon or frac > 1-epsilon then
-      step_ = step(start, stop, size_)
+    if step_ == 0 then
+      size_ = huge
+    else
+      local frac
+      size_, frac = modf( (stop-start) / step_ + 1 )
+      if frac > 1-epsilon then
+        size_ = size_ + 1
+      end
+      if size_ <= 1 or frac > 0 and frac < epsilon or frac > 1-epsilon then
+        step_ = step(start, stop, size_)
+      end
     end
   end
   if abs(step_) < huge then
@@ -142,8 +145,8 @@ function M.__new (ct, start, stop, step_, size_)
   assert(is_number(stop ) and abs(stop ) < inf,
          "invalid argument #2 (finite number expected)")
   if step_ == nil then step_ = 1 end -- hardcoded in xrange, do not change!
-  assert(is_number(step_) and abs(step_) < inf,
-         "invalid argument #3 (finite number expected)")
+  assert(is_number(step_) and abs(step_) < inf and (step_ ~= 0 or start == stop),
+         "invalid argument #3 (finite number ~= 0 expected)")
   return new(ct, adjust(start, stop, step_, size_))
 end
 
@@ -154,8 +157,8 @@ function Mlog.__new (ct, start, stop, step_, size_)
   assert(is_number(stop ) and stop  > 0 and stop  < inf,
          "invalid argument #2 (positive finite number expected)")
   if step_ == nil then step_ = exp_1 end
-  assert(is_number(step_) and step_ > 0 and step_ < inf,
-         "invalid argument #3 (positive finite number expected)")
+  assert(is_number(step_) and step_ > 0 and step_ < inf and (step_ ~= 1 or start == stop),
+         "invalid argument #3 (positive finite number ~= 1 expected)")
   return new(ct, adjust(log(start), log(stop), log(step_), size_))
 end
 
@@ -300,8 +303,8 @@ local inlogrange = \start,stop,size -> ipairs(nlogrange(start, stop, size))
 -- conversion
 
 -- from raw range to raw logrange, convert default step
-M.log = \r ->
-      new(logrange, log(r.start), log(r.stop), r.step ~= 1 and log(r.step) or 1)
+M.log = \r -> new(logrange, log(r.start), log(r.stop),
+                  (r.step ~= 1 or r.start == r.stop) and log(r.step) or 1)
 
 function M.__totable (r)
   local s = r:size()
