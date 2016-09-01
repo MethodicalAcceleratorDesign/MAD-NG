@@ -39,7 +39,7 @@ TestRange = {}
 
 local values = {
   lim   = { tiny, eps, huge },
-  num   = {0, tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
+  num   = { tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
           0.1-eps, 0.1, 0.1+eps, 0.5, 0.7-eps, 0.7, 0.7+eps, 1-eps, 1, 1+eps,
           1.1, 1.7, 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53,
           2^63, 2^64, huge },
@@ -58,7 +58,7 @@ local values = {
 				  { 10, 1 , 0.1}, { 10,-1 , 0.1}, {-10, 1 ,-0.1}, {-10,-1 ,-0.1},
 				  },
   zeros = {
-          { 0 , 0 , 0  }, {-0 ,-0 ,-0  }, { 1 , 10, 0  }, { 1 , 10,-0  },
+          { 0 , 0 , 0  }, {-0 ,-0 ,-0  }, { 1 , 1, 0  }, { 1 , 1,-0  },
           },
 }
 
@@ -395,13 +395,15 @@ function TestRange:testEqual()
 end
 
 function TestRange:testSize()
-	assertNaN   ( ( inf.. inf..0)  :size() )
-  assertNaN   ( (-inf..-inf..0)  :size() )
+  assertEquals( ( inf.. inf..0)  :size(), huge )
+  assertEquals( (-inf..-inf..0)  :size(), huge )
   assertEquals( (-inf.. inf..0)  :size(), huge )
   assertEquals( ( 1 .. 10.. huge):size(), 1    )
   assertEquals( ( 10..  1..-huge):size(), 1    )
   assertEquals( ( 1 .. 10.. tiny):size(), inf  )
   assertEquals( ( 10..  1..-tiny):size(), inf  )
+  assertEquals( ( 1 .. 1 .. 0)   :size(), huge )
+  assertEquals( ( 1 .. 10.. 0)   :size(), huge )
   assertEquals( ( 1 .. 10    )   :size(), 10   )
   assertEquals( (-10..-1     )   :size(), 10   )
   assertEquals( (-1 ..-10..-1)   :size(), 10   )
@@ -470,7 +472,8 @@ function TestRange:testConstructor()
 	local msg = {
 		"invalid argument #1 (finite number expected)",
 		"invalid argument #2 (finite number expected)",
-		"invalid argument #3 (finite number expected)",
+		"invalid argument #3 (finite number ~= 0 expected)"
+
 	}
 	assertErrorMsgContains( msg[1], range                )
 	assertErrorMsgContains( msg[1], range, nil, 1        )
@@ -490,14 +493,20 @@ function TestRange:testConstructor()
 	assertErrorMsgContains( msg[2], range, 1  ,-inf,-inf )
 	assertErrorMsgContains( msg[1], range, inf, inf, inf )
 	assertErrorMsgContains( msg[1], range,-inf,-inf,-inf )
-  assertEquals(  1..10    , range(1,10)    )
-	assertEquals(  a.. a..huge, range( a, a) )
-	assertEquals( -a..-a..huge, range(-a,-a) )
-	assertEquals(  a.. a..huge, range( a, a, a) )
-	assertEquals( -a..-a..huge, range(-a,-a,-a) )
+  assertErrorMsgContains( msg[3], range,  1 , 10 , 0   )
+  assertErrorMsgContains( msg[3], range,  1 , 10 ,-0   )
+  assertEquals(  1.. 1.. 0  , range( 1 , 1 , 0) )
+  assertEquals(  1.. 1..-0  , range( 1 , 1 ,-0) )
+  assertEquals(  0.. 0.. 0  , range( 0 , 0 , 0) )
+  assertEquals( -0..-0..-0  , range(-0 ,-0 ,-0) )
+  assertEquals(  a.. a..huge, range( a , a , a) )
+  assertEquals( -a..-a..huge, range(-a ,-a ,-a) )
+  assertEquals(  1..10      , range( 1 , 10)    )
+  assertEquals(  a.. a..huge, range( a , a )    )
+  assertEquals( -a..-a..huge, range(-a ,-a )    )
 
-	for _,v in ipairs(values.rng) do
-		assertTrue( is_range( range(v[1],v[2],v[3]) ) )
+  for _,v in ipairs(values.rng) do
+    assertTrue( is_range( range(v[1],v[2],v[3]) ) )
     if v[1] ~= v[2] then
       assertEquals( range(v[1],v[2],v[3]), v[1]..v[2]..v[3]  )
     else
@@ -507,14 +516,10 @@ function TestRange:testConstructor()
   for _,v in ipairs(values.empty) do
     assertTrue( is_range( range(v[1],v[2],v[3]) ) )
     if v[1] > v[2] then
-		  assertEquals( range(v[1],v[2],v[3]), v[1]..v[2].. huge )
+      assertEquals( range(v[1],v[2],v[3]), v[1]..v[2].. huge )
     else
       assertEquals( range(v[1],v[2],v[3]), v[1]..v[2]..-huge )
     end
-  end
-  for _,v in ipairs(values.zeros)do
-    --print( range(v[1],v[2],v[3]), v[1]..v[2]..v[3]  )
-    --assertEquals( range(v[1],v[2],v[3]), v[1]..v[2]..v[3]  ) -- (step = -0 -> only adjusted)
   end
   for _,v in ipairs(values.num) do
     if v < 10 then
@@ -553,6 +558,12 @@ function TestRange:testNConstructor()
   assertErrorMsgContains( msg[1], nrange,-nan,-nan,-nan  )
   assertErrorMsgContains( msg[1], nrange, 1  , 10 ,-huge )
   assertErrorMsgContains( msg[1], nrange, 1  , 10 ,-tiny )
+  assertEquals( nrange( 0 , 0 , 0).step, -huge )
+  assertEquals( nrange(-0 ,-0 ,-0).step, -huge )
+  assertEquals( nrange( 1 , 1 , 0).step, -huge )
+  assertEquals( nrange( 1 , 1 ,-0).step, -huge )
+  assertEquals( nrange( 1 , 10, 0).step, -huge )
+  assertEquals( nrange( 1 , 10,-0).step, -huge )
 
   r = nrange( 1 , 10, 10 ) for i,v in inrange( 1 , 10, 10 ) do assertEquals(r[i], v) end
   r = nrange( 10, 1 , 10 ) for i,v in inrange( 10, 1 , 10 ) do assertEquals(r[i], v) end
@@ -560,7 +571,6 @@ end
 
 function TestRange:testNanAndInfCtor()
   assertNaN   (  range( 1, 10, 1):value( nan) )
-  assertNaN   (  range( 1, 10, 0):value( inf) )
   assertNaN   ( nrange( 1, 10, 1):value( nan) )
   assertEquals( nrange( 1, 10, 1):value( inf), inf )
   assertEquals( nrange( 1, 10, 0):value( inf),-inf )
@@ -597,9 +607,13 @@ function TestRange:testAdjSize()
     end
   end
 
-  assertEquals( nrange( 2, 10, nil) :size()  , 100  )
-  assertEquals( nrange( 2, 10, 1.1) :size()  , 2    )
-  assertEquals( nrange( 1, 32, 9  ) :size()  , 9    )
+  assertEquals( nrange( 2, 10, nil):size(), 100  )
+  assertEquals( nrange( 2, 10, 1.1):size(), 2    )
+  assertEquals( nrange( 1, 32, 9  ):size(), 9    )
+  assertEquals(  range( 0 , 0 , 0 ):size(), huge )
+  assertEquals(  range(-0 ,-0 ,-0 ):size(), huge )
+  assertEquals(  range( 1 , 1 , 0 ):size(), huge )
+  assertEquals(  range( 1 , 1 ,-0 ):size(), huge )
 end
 
 function TestRange:testAdjStep()
@@ -634,6 +648,10 @@ function TestRange:testAdjStep()
       assertEquals( nr.step, huge )
     end
   end
+  assertEquals(  range( 0  , 0   , 0   ).step, 0    )
+  assertEquals(  range(-0  ,-0   ,-0   ).step,-0    )
+  assertEquals(  range( 1  , 1   , 0   ).step, 0    )
+  assertEquals(  range( 1  , 1   ,-0   ).step,-0    )
   assertEquals( nrange( 1  , 100 )      .step, 1    )
   assertEquals( nrange( 100, 1   )      .step,-1    )
   assertEquals( nrange( 1  , 10 , 0    ).step,-huge )
@@ -684,16 +702,20 @@ function TestRange:testAdjStop()
     end
   end
 
-  r = range(1, 10, 1e-09)    s = r:size()   assertEquals( r:value(s-1), r.stop )
-  r = range(1, 10, 0.1  )    s = r:size()   assertEquals( r:value(s-1), r.stop )
-  r = range(1, 10, 0.5  )    s = r:size()   assertEquals( r:value(s-1), r.stop )
-  r = range(1, 10, 1    )    s = r:size()   assertEquals( r:value(s-1), r.stop )
-  r = range(1, 10, 0.1-eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
-  r = range(1, 10, 0.1+eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
-  r = range(1, 10, 1  -eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
-  r = range(1, 10, 1  +eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
-  r = range(1, 10, 0.5-eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
-  r = range(1, 10, 0.5+eps)  s = r:size()   assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 0, 0 , 0    )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range(-0,-0 ,-0    )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 1 , 0    )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 1 ,-0    )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 10, 1e-09)    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 10, 0.1  )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 10, 0.5  )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 10, 1    )    s = r:size()  assertEquals( r:value(s-1), r.stop )
+  r = range( 1, 10, 0.1-eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 1, 10, 0.1+eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 1, 10, 1  -eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 1, 10, 1  +eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 1, 10, 0.5-eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
+  r = range( 1, 10, 0.5+eps)  s = r:size()  assertAlmostEquals( r:value(s-1) - r.stop, 0, eps )
 end
 
 -- Combination
@@ -713,11 +735,11 @@ function TestRange:testBounds()
   assertEquals( { range( 1 , 20, 10 ) :bounds()}, { 1  , 11  , 10     } )
   assertEquals( { range( 20, 1 ,-2  ) :bounds()}, { 2  , 20  , 2      } )
 
+  for _,v in ipairs(values.zeros) do
+    assertEquals( {range(v[1],v[2],v[3]):bounds()}, {v[1], v[1], huge})
+  end
   for _,v in ipairs(values.empty) do
     assertEquals( {range(v[1],v[2],v[3])  :bounds()}, {nil, nil, nil})
-  end
-  for _,v in ipairs(values.zeros) do
-    --assertEquals( {range(v[1],v[2],v[3]):bounds()}, {v[1], v[1], huge})
   end
   for _,v in ipairs(values.rng) do
     if v[1] ~= v[2] then
@@ -778,7 +800,7 @@ function TestRange:testOverlap()
   end
   for _,v in ipairs(values.zeros) do
     assertFalse( range(v[1],v[2],v[3]):overlap(2..10) )
-    --assertTrue ( range(v[1],v[2],v[3]):overlap(0..1)  )
+    assertTrue ( range(v[1],v[2],v[3]):overlap(0..1)  )
   end
 end
 
