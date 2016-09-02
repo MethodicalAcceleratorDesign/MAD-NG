@@ -37,11 +37,11 @@ local exp_1, epsilon = exp(1), 1e-12
 
 -- constructors ---------------------------------------------------------------o
 
-local range    = typeof 'xrange'
-local logrange = typeof 'struct { const double logstart, logstop, logstep; }'
+local    range_ctor = typeof 'xrange'
+local logrange_ctor = typeof 'struct { const double logstart,logstop,logstep; }'
 
-local is_range    = \a -> istype(   range, a)
-local is_logrange = \a -> istype(logrange, a)
+local is_range    = \a -> istype(   range_ctor, a)
+local is_logrange = \a -> istype(logrange_ctor, a)
 
 -- implementation -------------------------------------------------------------o
 
@@ -136,44 +136,44 @@ end
 
 -- constructors
 
-function M.__new (ct, start, stop, step_, size_)
-  assert(is_number(start) and abs(start) < inf,
-         "invalid argument #1 (finite number expected)")
-  if stop == nil then stop = start end
-  assert(is_number(stop ) and abs(stop ) < inf,
-         "invalid argument #2 (finite number expected)")
-  if step_ == nil then step_ = 1 end -- hardcoded in xrange, do not change!
-  assert(is_number(step_) and abs(step_) < inf and (step_ ~= 0 or start == stop),
-         "invalid argument #3 (finite number ~= 0 expected)")
-  return new(ct, adjust(start, stop, step_, size_))
+local function range (start, stop_, step_)
+  assert(is_number(start) and abs(start) < inf, "invalid argument #1 (finite number expected)")
+  if is_nil(stop_) then start, stop_ = 1, start end
+  assert(is_number(stop_) and abs(stop_) < inf, "invalid argument #2 (finite number expected)")
+  if is_nil(step_) then step_ = 1 end -- hardcoded in xrange, do not change!
+  assert(is_number(step_) and abs(step_) < inf and (step_ ~= 0 or start == stop_),
+                                           "invalid argument #3 (finite number ~= 0 expected)")
+  return range_ctor(adjust(start, stop_, step_))
 end
 
-function Mlog.__new (ct, start, stop, step_, size_)
-  assert(is_number(start) and start > 0 and start < inf,
-         "invalid argument #1 (positive finite number expected)")
-  if stop == nil then stop = start end
-  assert(is_number(stop ) and stop  > 0 and stop  < inf,
-         "invalid argument #2 (positive finite number expected)")
-  if step_ == nil then step_ = exp_1 end
-  assert(is_number(step_) and step_ > 0 and step_ < inf and (step_ ~= 1 or start == stop),
-         "invalid argument #3 (positive finite number ~= 1 expected)")
-  return new(ct, adjust(log(start), log(stop), log(step_), size_))
+local function logrange (start, stop_, step_)
+  assert(is_number(start) and start > 0 and start < inf, "invalid argument #1 (positive finite number expected)")
+  if is_nil(stop_) then start, stop_ = 1, start end
+  assert(is_number(stop_) and stop_ > 0 and stop_ < inf, "invalid argument #2 (positive finite number expected)")
+  if is_nil(step_) then step_ = exp_1 end
+  assert(is_number(step_) and step_ > 0 and step_ < inf and step_ ~= 1,
+                                                    "invalid argument #3 (positive finite number ~= 1 expected)")
+  return logrange_ctor(adjust(log(start), log(stop_), log(step_)))
 end
 
 -- alternate constructors with size = #points
 
-local function nrange (start, stop, size)
-  size = size or 100
-  assert(is_number(size) and size >= 0,
-         "invalid argument #3 (positive number expected)" )
-  return range(start, stop, nil, ceil(size))
+local function nrange (start, stop_, size_)
+  assert(is_number(start) and abs(start) < inf, "invalid argument #1 (finite number expected)")
+  if is_nil(stop_) then start, stop_ = 1, start end
+  assert(is_number(stop_) and abs(stop_) < inf, "invalid argument #2 (finite number expected)")
+  if is_nil(size_) then size_ = 100 end
+  assert(is_number(size_) and size_ >= 0,    "invalid argument #3 (positive number expected)" )
+  return range_ctor(adjust(start, stop_, nil, ceil(size_)))
 end
 
-local function nlogrange (start, stop, size)
-  size = size or 100
-  assert(is_number(size) and size >= 0,
-         "invalid argument #3 (positive number expected)" )
-  return logrange(start, stop, nil, ceil(size))
+local function nlogrange (start, stop_, size_)
+  assert(is_number(start) and start > 0 and start < inf, "invalid argument #1 (positive finite number expected)")
+  if is_nil(stop_) then start, stop_ = 1, start end
+  assert(is_number(stop_) and stop_ > 0 and stop_ < inf, "invalid argument #2 (positive finite number expected)")
+  if is_nil(size_) then size_ = 100 end
+  assert(is_number(size_) and size_ >= 0,                "invalid argument #3 (positive number expected)" )
+  return logrange_ctor(adjust(log(start), log(stop_), nil, ceil(size_)))
 end
 
 -- methods
@@ -205,6 +205,16 @@ function Mlog.get (r, x)
   if x >= 0 and not is_empty(v, r.logstop, r.logstep) then
     return exp(v)
   end
+end
+
+function M.last(r)
+  local s = r:size()
+  if s >= 1 then return r:value(s-1) end
+end
+
+function Mlog.last(r)
+  local s = r:size()
+  if s >= 1 then return r:value(s-1) end
 end
 
 -- iterators
@@ -276,19 +286,19 @@ M   .bounds = \r -> bounds(r.start, r.stop, r.step)
 
 function Mlog.bounds (r)
   local start, stop, step = bounds(r.logstart, r.logstop, r.logstep)
-  if start ~= nil then return exp(start), exp(stop), exp(step) end
+  if not is_nil(start) then return exp(start), exp(stop), exp(step) end
 end
 
 function M.overlap (r, s)
   local rl, rh = bounds(r.start, r.stop, r.step)
   local sl, sh = bounds(s.start, s.stop, s.step)
-  return not (rl == nil or sl == nil or rh < sl or rl > sh)
+  return not (is_nil(rl) or is_nil(sl) or rh < sl or rl > sh)
 end
 
 function Mlog.overlap (r, s)
   local rl, rh = bounds(r.logstart, r.logstop, r.logstep)
   local sl, sh = bounds(s.logstart, s.logstop, s.logstep)
-  return not (rl == nil or sl == nil or rh < sl or rl > sh)
+  return not (is_nil(rl) or is_nil(sl) or rh < sl or rl > sh)
 end
 
 -- iterators
@@ -301,8 +311,7 @@ local inlogrange = \start,stop,size -> ipairs(nlogrange(start, stop, size))
 -- conversion
 
 -- from raw range to raw logrange, convert default step
-M.log = \r -> new(logrange, log(r.start), log(r.stop),
-                  (r.step ~= 1 or r.start == r.stop) and log(r.step) or 1)
+M.log = \r -> logrange_ctor(log(r.start), log(r.stop), r.step ~= 1 and log(r.step) or 1)
 
 function M.__totable (r)
   local s = r:size()
@@ -333,8 +342,8 @@ Mlog.__help = require 'madh_range'     defhelp(Mlog, 'logrange')
 
 -- metatable
 
-metatype(   range, M   )
-metatype(logrange, Mlog)
+metatype(   range_ctor, M   )
+metatype(logrange_ctor, Mlog)
 
 -------------------------------------------------------------------------------o
 return {
