@@ -29,7 +29,7 @@ local M, Mlog = {}, {}
 local new, cdef, istype, typeof, metatype in require 'ffi'
 local abs, ceil, floor, modf, log, exp    in math
 
-local is_nil, is_nan, is_number, defhelp, eps, huge, inf, sign in MAD
+local is_nil, is_nan, is_number, defhelp, sign, eps, huge, inf, nan in MAD
 
 -- constants
 
@@ -66,20 +66,43 @@ local function value (start, step, x)
 end
 
 local function size (start, stop, step)
-  if step == 0 then return huge end
+  if step == 0 then return inf end
   local size = floor( (stop-start) / step + 1 )
   return size < 0 and 0 or size
 end
 
+local function last (start, stop, step)
+  if step == 0 then return start end
+  local size = size(start, stop, step)
+  if size >= 1 then
+    return size < inf and value(start, step, size-1) or stop
+  end
+end
+
 local function step (start, stop, size)
   local diff = stop-start
-  if size >  1 then return diff / (size-1)   end
+  if size >  1 then return diff / (size-1) end
   if size == 1 then return huge * sign(diff) end
-  return -huge * sign(diff)
+  return nan -- empty range
 end
 
 local function stepeq (step1, step2)
   return step1 == step2 or abs(step1/step2 - 1) < epsilon
+end
+
+local function bounds (start, stop, step)
+  local last = last(start, stop, step)
+  if not is_nil(last) then
+    if step >= 0
+    then return start, last ,  step
+    else return last , start, -step
+    end
+  end
+end
+
+local function is_empty (start, stop, step)
+  return not (step >= 0 and start <= stop or
+              step <= 0 and start >= stop or false)
 end
 
 --[[
@@ -94,44 +117,30 @@ end
 ]]--
 
 local function adjust (start, stop, step_, size_)
-  if size_ ~= nil then
+  if not is_nil(size_) then -- step from size
     step_ = step(start, stop, size_)
-  elseif step_ == 0 then
+  elseif step_ == 0 then    -- no adjustment
     return start, stop, step_
-  else
+  else                      -- size from step
     local frac
     size_, frac = modf( (stop-start) / step_ + 1 )
     if frac > 1-epsilon then
       size_ = size_ + 1
-    end
-    if size_ <= 1 or frac > 0 and frac < epsilon or frac > 1-epsilon then
+    end                     -- adjust step from size
+    if size_ > 1 and (frac > 0 and frac < epsilon or frac > 1-epsilon) then
       step_ = step(start, stop, size_)
     end
   end
-  if abs(step_) < huge then
-    if size_ > 1 and size_ > size(start, stop, step_) then
+  if size_ > 1 then
+    if size_ > size(start, stop, step_) then
       step_ = step_ - step_*eps
     end
-    local last = value(start, step_, size_-1)
+    local last = last(start, stop, step_)
     if step_ > 0 and last > stop or step_ < 0 and last < stop then
-        step_ = step_ - step_*eps
+      step_ = step_ - step_*eps
     end
   end
   return start, stop, step_
-end
-
-local function is_empty (start, stop, step)
-  return not (step >= 0 and start <= stop or
-              step <= 0 and start >= stop or false)
-end
-
-local function bounds (start, stop, step)
-  if not is_empty(start, stop, step) then
-    local last = value(start, step, size(start, stop, step)-1)
-    if step > 0 and last <= stop then return start, last,  step end
-    if step < 0 and last >= stop then return last, start, -step end
-    return start, stop, step
-  end
 end
 
 -- constructors
@@ -142,7 +151,7 @@ local function range (start, stop_, step_)
   assert(is_number(stop_) and abs(stop_) < inf, "invalid argument #2 (finite number expected)")
   if is_nil(step_) then step_ = 1 end -- hardcoded in xrange, do not change!
   assert(is_number(step_) and abs(step_) < inf and (step_ ~= 0 or start == stop_),
-                                           "invalid argument #3 (finite number ~= 0 expected)")
+                                                "invalid argument #3 (finite number expected)")
   return range_ctor(adjust(start, stop_, step_))
 end
 
@@ -163,7 +172,7 @@ local function nrange (start, stop_, size_)
   if is_nil(stop_) then start, stop_ = 1, start end
   assert(is_number(stop_) and abs(stop_) < inf, "invalid argument #2 (finite number expected)")
   if is_nil(size_) then size_ = 100 end
-  assert(is_number(size_) and size_ >= 0,    "invalid argument #3 (positive number expected)" )
+  assert(is_number(size_) and size_ >= 0,     "invalid argument #3 (positive number expected)")
   return range_ctor(adjust(start, stop_, nil, ceil(size_)))
 end
 
@@ -208,13 +217,12 @@ function Mlog.get (r, x)
 end
 
 function M.last(r)
-  local s = r:size()
-  if s >= 1 then return r:value(s-1) end
+  return last(r.start, r.stop, r.step)
 end
 
 function Mlog.last(r)
-  local s = r:size()
-  if s >= 1 then return r:value(s-1) end
+  local lst = last(r.logstart, r.logstop, r.logstep)
+  return lst and exp(lst)
 end
 
 -- iterators
@@ -330,7 +338,7 @@ end
 
 function Mlog.__tostring (r)
   if r.logstep == 1
-  then return string.format("%g..%g", r.logstart, r.logstop)
+  then return string.format("%g..%g", exp(r.logstart), exp(r.logstop))
   else return string.format("%g..%g..%g", r:ranges())
   end
 end

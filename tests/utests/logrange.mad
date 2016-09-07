@@ -322,32 +322,20 @@ function TestLogrange:testReverse()
   lr = log( 1..10^5..tiny):reverse()
   assertEquals( lr.logstart, log(10^5) )
   assertEquals( lr.logstop , log(1   ) )
-  assertEquals( lr.logstep , huge      )
+  assertEquals( lr.logstep , log(1/tiny) )
   lr = log( 1..10^5..eps ):reverse()
   assertEquals( lr.logstart, log(10^5) )
   assertEquals( lr.logstop , log(1   ) )
-  assertEquals( lr.logstep , huge      )
-  lr = log( 1..10^5..tiny):reverse()
-  assertEquals( lr.logstart, log(10^5) )
-  assertEquals( lr.logstop , log(1   ) )
-  assertEquals( lr.logstep , huge      )
-  assertEquals( log(10^5..1    ..10 ):reverse().logstep,-huge )
-  assertEquals( log(1   ..10^5 ..0.1):reverse().logstep, huge )
-  assertEquals( log(1   ..10^-5..10 ):reverse().logstep,-huge )
+  assertEquals( lr.logstep , log(1/eps))
+  assertAlmostEquals( log(10^5..1    ..10 ):reverse().logstep/log(0.1)-1, 0, eps )
+  assertAlmostEquals( log(1   ..10^5 ..0.1):reverse().logstep/log(10 )-1, 0, eps)
+  assertAlmostEquals( log(1   ..10^-5..10 ):reverse().logstep/log(0.1)-1, 0, eps)
 
   for _,v in ipairs(values.lrng) do
     assertEquals( log(v[1]..v[2]..v[3]):reverse(), log(v[2]..v[1]..1/v[3]) )
   end
   for _,v in ipairs(values.num) do
-    if v < 1 then
-      assertEquals( log( 1..10^5..v):reverse().logstep, huge )
-    elseif v > 10^5 then
-      assertEquals( log( 1..10^5..v):reverse().logstep,-huge )
-    elseif v > 1 then
-      assertEquals( log( 1..10^5.. v):reverse(), log(10^5..1..1/v) )
-    else
-      assertEquals( log( 1..10^5..v):reverse().logstep,-1    )
-    end
+    assertAlmostEquals( log( 1..10^5..v):reverse().logstep/log(1/v)-1, 0, eps )
   end
 end
 
@@ -444,25 +432,19 @@ function TestLogrange:testConstructor()
   assertTrue  ( is_logrange( logrange( 1 )) )
   assertEquals( logrange( 1 ).logstart, log(1) )
   assertEquals( logrange( 1 ).logstop , log(1) )
-  assertEquals( logrange( 1 ).logstep , huge   )
-  assertFalse ( logrange( 1 ):is_empty()    )
+  assertEquals( logrange( 1 ).logstep ,     1  )
+  assertFalse ( logrange( 1 ):is_empty()       )
 end
 
 function TestLogrange:testCtorSingleArg()
   assertEquals( logrange(1).logstart, log(1) )
   assertEquals( logrange(1).logstop , log(1) )
-  assertEquals( logrange(1).logstep , huge )
+  assertEquals( logrange(1).logstep , 1 )
 
   for _,v in ipairs(values.num) do
-    assertEquals( logrange( v).logstart, log(1) )
-    assertEquals( logrange(v).logstop, log(v) )
-    if v == 1-eps then
-      assertEquals( logrange(v).logstep,-huge )
-    elseif v <= 2 then
-      assertEquals( logrange(v).logstep, huge )
-    else
-      assertEquals( logrange(v).logstep, 1    )
-    end
+    assertEquals( logrange(v).logstart, log(1) )
+    assertEquals( logrange(v).logstop , log(v) )
+    assertEquals( logrange(v).logstep ,     1  )
   end
 end
 
@@ -539,8 +521,10 @@ function TestLogrange:testAdjSize()
     lr =  logrange( 1, 100, v )
     s  = lr:size()
     nr = nlogrange( 1, 100, s )
-    if v ~= tiny then
+    if s ~= 0 then
       assertEquals( nr:size(), lr:size() )
+    else
+      assertNaN( nr.logstep )
     end
   end
 
@@ -554,10 +538,10 @@ function TestLogrange:testAdjSize()
 end
 
 function TestLogrange:testAdjStep()
-  local nr, i
+  local nr, s
   for _,v in ipairs(values.lrng) do
     if v[1] ~= v[2] then
-      lr =  logrange( v[1], v[2], v[3] )
+      lr = logrange( v[1], v[2], v[3] )
       s  = lr:size()
       nr = nlogrange( v[1], v[2], s )
       assertTrue( lr == nr )
@@ -565,40 +549,34 @@ function TestLogrange:testAdjStep()
      end
   end
   for _,v in ipairs(values.num) do
-    if v < 1 then
-      assertEquals( logrange( 1, 100, v ).logstep,-huge )
-    elseif v > 1 and v <= 100 then
-      assertAlmostEquals( logrange( 1, 100, v ).logstep / log(v) - 1, 0, eps )
-    elseif v == 1 then
-      assertAlmostEquals( logrange( 1, 1  , v ).logstep , 0, eps )
-    else
-      assertEquals( logrange( 1, 100, v ).logstep, huge )
-    end
+    assertAlmostEquals( logrange(1, 100, v).logstep/log(v)-1, 0, eps )
   end
   for _,v in ipairs(values.num) do
-    lr  = logrange( 1, 100, v )
-    s  = lr:size()
-    nr = nlogrange( 1, 100, s )
-    if  v > 100 then
-      assertEquals( lr.logstep, huge )
-      assertEquals( lr.logstep, nr.logstep )
-    elseif v < 1  then
-      assertEquals( lr.logstep, -huge )
-      assertEquals( lr.logstep,-nr.logstep )
+    nr = nlogrange( 1, 100, v )
+    s = nr:size()
+    if s < 1 then
+      assertNaN ( nr.logstep )
+    elseif s == 1 then
+      assertEquals( nr.logstep, huge )
+    elseif s > 1 and s < inf and exp(nr.logstep) ~= 1 then
+      lr = logrange( 1, 100, exp(nr.logstep) )
+      assertAlmostEquals( lr.logstep/nr.logstep-1, 0, eps*v ) -- mantissa...
+    else
+      assertEquals(exp(nr.logstep), 1) -- forbidden case
     end
   end
 
   assertEquals( nlogrange( 1 , 1 , 1    ).logstep, huge )
-  assertEquals( nlogrange( 1 , 10, 0    ).logstep,-huge )
+  assertNaN   ( nlogrange( 1 , 10, 0    ).logstep       )
   assertEquals( nlogrange( 1 , 10, 0.1  ).logstep, huge )
   assertEquals( nlogrange( 1 , 10, 1    ).logstep, huge )
   assertEquals( nlogrange( 1 , 10, tiny ).logstep, huge )
   assertEquals( nlogrange( 1 , 10, eps  ).logstep, huge )
   assertEquals( nlogrange( 1 , 10, inf  ).logstep, 0    )
   assertEquals( nlogrange( 10, 10, 2    ).logstep, 0    )
-  assertEquals(  logrange( 1 , 10, huge ).logstep, huge )
-  assertEquals(  logrange( 1 , 10, tiny ).logstep,-huge )
-  assertEquals(  logrange( 1 , 10, eps  ).logstep,-huge )
+  assertEquals(  logrange( 1 , 10, huge ).logstep, log(huge) )
+  assertEquals(  logrange( 1 , 10, tiny ).logstep, log(tiny) )
+  assertEquals(  logrange( 1 , 10, eps  ).logstep, log(eps ) )
 end
 
 function TestLogrange:testAdjStop()
@@ -632,9 +610,9 @@ function TestLogrange:testAdjStop()
   end
   for _,v in ipairs(values.num) do
     lr = logrange( 1, 100, v )
-    s  = lr:size()
-    if v > 100 or v < 1 then
-      assertEquals( lr:value(s-1), exp(lr.logstart) )
+    if lr:last() ~= nil then
+      assertTrue( lr:last() >= exp(lr.logstop-lr.logstep) )
+      assertTrue( lr:last() <= exp(lr.logstop) )
     end
   end
 end
@@ -645,16 +623,10 @@ function TestLogrange:testBounds()
     assertEquals( {logrange(v[1],v[2],v[3]):bounds()}, {nil, nil, nil})
   end
   assertEquals( { logrange( 1 , 20, tiny):bounds()}, { nil, nil, nil   } )
-  assertEquals( { logrange( 1 )          :bounds()}, { 1  , 1  , inf   } )
-  lr = { nlogrange( 1 , 20, huge):bounds() }
-  assertAlmostEquals( lr[1] / 1    - 1 , 0, eps )
-  assertAlmostEquals( lr[2] / 20   - 1 , 0, eps )
-  assertAlmostEquals( lr[3] / 1    - 1 , 0, eps )
-  assertEquals( {nlogrange( 1 , 20, tiny):bounds()}, { 1  , 1  , inf   } )
-  lr = { logrange( 1 , 20, huge):bounds() }
-  assertAlmostEquals( lr[1] / 1    - 1 , 0, eps )
-  assertAlmostEquals( lr[2] / 1    - 1 , 0, eps )
-  assertInf(lr[3])
+  assertEquals( { logrange( 1 )          :bounds()}, { 1  , 1  , exp(1)} )
+  assertEquals( {nlogrange( 1 , 20, huge):bounds()}, { 1, 1, 1  } )
+  assertEquals( {nlogrange( 1 , 20, tiny):bounds()}, { 1, 1, inf} )
+  assertEquals( { logrange( 1 , 20, huge):bounds()}, { 1, 1, exp(log(huge))})
 
   for _,v in ipairs(values.lrng) do
     lr = {logrange(v[1],v[2],v[3]):bounds()}
