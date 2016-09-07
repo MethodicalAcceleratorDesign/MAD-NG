@@ -37,59 +37,58 @@ SYNOPSIS
 DESCRIPTION
   Ranges are defined by their start, stop (included) and step arguments. The
   default values for start, step and size are respectively 1, 1 and 100.
-  A range can define various entities using specific values for step:
+  A range can represent various entities using specific values for step:
   - an empty sequence                      (e.g. sign(step) ~= sign(stop-start))
-  - a  singleton, a single point  sequence (e.g. step > stop-start for step > 0)
-  - an interval , a two    points sequence             (e.g. step == stop-start)
-  - a  finite sequence of points           (e.g. step < stop-start for step > 0)
-  - an infinite constant sequence          (e.g. start == stop and step == 0 or
-                                            1 for range and logrange)
+  - a  singleton, a sequence of one point           (e.g. step > stop-start > 0)
+  - an interval, a sequence of two points              (e.g. step == stop-start)
+  - a finite sequence of points                     (e.g. 0 < step < stop-start)
+  - an infinite constant sequence             (e.g. step == 0 and start == stop)
 
   Ranges can be used as stateless iterators in generic for loops (i.e. ipairs),
   and provide better numerical stability for non-exact floating point numbers.
-  The index (i.e. []), iterators (i.e. ipairs) and get methods return nil
-  outside the boundaries (segment interpolation), while the value method does
-  not check for boundaries (line interpolation).
+  The index (i.e. []), iterators (i.e. ipairs), get() and last() methods return
+  nil outside the boundaries (segment interpolation), while the value method
+  does not check for boundaries (line interpolation) and returns either the
+  interpolated value or NaN for empty set.
 
 RETURN VALUES
   The constructed ranges (see REMARK for details).
 
 ERRORS
-  Constructors trig an error if any of the argument #1, #2 and #3 (if provided)
-  are not finite numbers for range and nrange or not strictly positive finite
-  numbers for logrange and nlogrange or if size is not a positive number. An
-  error will be also triggered when step is equal to 0 (and start ~= stop) for
-  range or to 1 for logrange.
+  The constructors trig an error if any of the argument #1, #2 and #3 (if
+  provided) are not finite numbers for range and nrange or not strictly positive
+  finite numbers for logrange and nlogrange or if size is not a positive number.
+  An error will be also triggered when step is 0 and start ~= stop for range or
+  1 for logrange.
 
 REMARK
-  The raw range (resp. raw logrange) are built by concatenating numbers that
-  create range objects storing the user values unmodified (resp. log of the user
-  values unmodified), while other constructors adjust the step field to fulfil
-  the following properties given r = range(start, stop, step) and nr =
-  nrange(start, stop, size):
-    0 <= stop - r :value(r :size()-1) < eps
-    0 <= stop - nr:value(nr:size()-1) < eps
-    nr:size() == size
+  A raw range is built by 'concatenating' numbers that stores user's values
+  unmodified. A raw logrange is built by taking the (generic) log of a raw
+  range. Other constructors may adjust the value of step to fulfil the following
+  properties for non empty ranges:
+    r = range(start, stop, step)
+    step is ajusted if r:size() is within 1e-12 of an integer (before rounding)
+    stop-step <= r:last() <= stop for step >= 0
+    stop-step >= r:last() >= stop for step <= 0
+    step/r.step-1 < 2*eps
 
 EXAMPLES
   do
     local range in MAD
-    r01 = range(1)
+    r01 = range(10)
     r02 = range(1,10)
-    r03 = range(1,10,2)
+    r03 = range(1,10,1)
     r04 = range(0,1.5,0.1)
     r05 = range(0,-1.5,-0.1)
     r12 = 1..10
-    r13 = 1..10..2
-    r14 = 0..1.5..0.1
+    r13 = 1..10..1
+    r14 = 0..1.5.. .1
     r15 = 0..-1.5..-.1
-    r19 = 0..1.5.. .1
-    print(r05.start, r15.stop, r15.step)  -- print 0 -1.5 0.1
+    print(r15.start, r15.stop, r15.step)  -- print 0 -1.5 -0.1
   end
 
 SEE ALSO
-  Step in singleton, Infinite constant sequence, Motivation to adjust step,
-  Motivation to forbid ±inf
+  None.
 ]=]
 __help['..']     = __help.self
 __help.range     = __help.self
@@ -100,27 +99,29 @@ __help.log       = __help.self
 
 __help.value = [=[
 NAME
-  value, get, [] (index)  -- range interpolation
+  value, get, last, [] (index)  -- range interpolation
 
 SYNOPSIS
   rng:value(x)
   rng:get(x)
+  rng:last()
   rng[x]
 
 DESCRIPTION
-  Methods used for interpolating ranges. Value and get methods are iterated from
-  0, and indexing starts from 1. Index and get are used for segment
-  interpolation, they return nil outside the boundaries, while value is used for
-  line interpolation and never fails.
+  The value, get and indexing methods are used for interpolating ranges. The
+  value and get methods start from 0, while the indexing operator starts from 1.
+  The indexing, get and last methods are used for segment interpolation and
+  return nil outside the boundaries, while the value method is used for line
+  interpolation and never fails. For empty sets they all return nil except
+  the value method that returns NaN.
 
 RETURN VALUES
-  These methods return the interpolated value for given a data point in the
-  range.
+  These methods return the interpolated range value at a given point, nil or NaN
+  otherwise.
 
 EXAMPLES
   do
-    local range in MAD
-    local rng = range(1,10,1)
+    local rng = MAD.range(1,10,1)
     print( rng:value( 0 ) )                    -- 1
     print( rng:value( 9 ) )                    -- 10
     print( rng:value( 10) )                    -- 11
@@ -142,6 +143,7 @@ SEE ALSO
   None.
 ]=]
 __help.get   = __help.value
+__help.last  = __help.value
 __help.index = __help.value
 __help['[]'] = __help.value
 
@@ -155,11 +157,13 @@ SYNOPSIS
   rng:is_empty()
 
 DESCRIPTION
-  Functions used to identify ranges type and kind.
+  The is_range and is_logrange functions are useful to identify the types of the
+  ranges, while the is_empty method check if a the range is empty.
 
 RETURN VALUES
-  is_range and is_logrange return true if their argument is a range of
-  respective types. is_empty returns true for empty ranges (i.e. empty segment).
+  The is_range and is_logrange functions return true if their argument are
+  respectivaly a range and a logrange. The is_empty method returns true if the
+  range is empty (i.e. no point).
 
 EXAMPLES
   do
@@ -182,7 +186,7 @@ __help.is_empty    = __help.is_range
 __help.irange = [=[
 NAME
   irange , ilogrange              -- ranges stateless iterators
-  inrange, inlogrange             -- ranges stateless iterators
+  inrange, inlogrange
 
 SYNOPSIS
   irange    (start [, stop [, step]])
@@ -191,20 +195,21 @@ SYNOPSIS
   inlogrange(start [, stop [, size]])
 
 DESCRIPTION
-  irange and ilogrange are equivalent to compose ipairs with range and logrange
-  respectively. inrange and inlogrange are equivalent to compose ipairs with
+  The irange, ilogrange inrange and inlogrange functions are equivalent to
+  the composition of the ipairs function with the constructors range, logrange,
   nrange and nlogrange respectively.
 
 RETURN VALUES
-  irange, ilogrange, inrange and inlogrange return stateless iterators for
-  direct use in for loops.
+  The irange, ilogrange, inrange and inlogrange function return stateless
+  iterators for direct use in for loops.
 
 EXAMPLES
   do
-    for i,v in irange ( 1, 10, 2 )       do print(i,v) end
-    for i,v in inrange( 1, 10, 10)       do print(i,v) end
-    for i,v in ilogrange ( 1, 1e6, 10 )  do print(i,v) end
-    for i,v in inlogrange( 1, 1e6, 1e6)  do print(i,v) end
+    local irange, ilogrange, inrange, inlogrange in MAD
+    for i,v in irange ( 1, 10, 2 )      do print(i,v) end
+    for i,v in inrange( 1, 10, 10)      do print(i,v) end
+    for i,v in ilogrange ( 1, 1e6, 10)  do print(i,v) end
+    for i,v in inlogrange( 1, 1e6, 7 )  do print(i,v) end
   end
 
 SEE ALSO
@@ -220,22 +225,25 @@ NAME
 
 SYNOPSIS
   rng:ranges()
-  lrng:ranges()
   rng:bounds()
-  lrng:bounds()
   rng1:overlap(rng2)
-  lrng1:overlap(lrng2)
 
 DESCRIPTION
-  Bounds computes the value of the last point in given range. Function is then
-  checking the lead of range based on value of step and comparison of last and
-  stop.
+  The ranges function is useful to retrieve the components that define a range.
+  They are different from its fields in case of logranges. The bounds method
+  computes the boundaries of the range interpolated as a segment using the last
+  method, and return these boundaries in ascending order followed by the step
+  with proper sign. The overlap method checks if two ranges of the same type
+  overlap using the bounds method.
 
 RETURN VALUES
-  Ranges returns the values of start, stop and step of a given range. bounds
-  returns the start, last and step values that restrain the range, their order
-  depends on the lead of range. Overlap returns true if two ranges have at least
-  one common point.
+  The ranges method returns the start, stop and step of the range. The bounds
+  method returns the start, last and step of the range, where start is always
+  lesser of equal to last for non empty set, nil otherwise. The overlap method
+  returns true if two ranges have at least one common point.
+
+ERRORS
+  The overlap method trigs an error if the two ranges are not of the same types.
 
 EXAMPLES
   do
@@ -261,21 +269,20 @@ NAME
 
 SYNOPSIS
   rng1 == rng2
-  rng:size()
-  lrng:size()
+  rng:size()   , #rng
+  rng:reverse(), -rng
   rng:same()
-  lrng:same()
-  rng:reverse()
-  lrng:reverse()
 
 DESCRIPTION
   TODO
 
 RETURN VALUES
-  size returns the number of points contained in a given range. same returns the
-  range itself (readonly semantic). reverse returns range reversed from original
-  start-stop lead and step with opposite sign. Function equal returns true only
-  ifcompared ranges have same start, stop and step values.
+  The equal operator checks if two ranges are of same types with equal
+  components, taking into account the possible adjustement of their respective
+  steps. The size method (operator #) returns the number of points in the range
+  when interpolated as a segment. The reverse methods (operator unary -) returns
+  a new range reversed from original. The same method returns the range itself
+  due to its readonly semantic.
 
 EXAMPLES
   do
@@ -286,10 +293,10 @@ EXAMPLES
     print( range(1, 10)         :size() )             -- 10
     print( range(1,-10)         :size() )             -- 0
 
-    print( (1..10..0.1)         :reverse() )          -- (10..1..-0.1)
-    print( range(2,20,2)        :reverse() )          -- range(20,2,-2)
-    print( logrange(1,10^6,10)  :reverse() )          -- logrange(10^6,1,0.1)
-    print( logrange(10^7,10,0.1):reverse() )          -- logrange(10,10^7,10)
+    print( (1..10..0.1)         :reverse() )          -- 10..1..-0.1
+    print( range(2,20,2)        :reverse() )          -- 20..2..-2
+    print( logrange(1,10^6,10)  :reverse() )          -- 1e6..1..0.1
+    print( logrange(10^7,10,0.1):reverse() )          -- 10..1e7..10
   end
 
 SEE ALSO
@@ -302,8 +309,8 @@ __help.size    = __help.equal
 __help.same    = __help.equal
 __help.reverse = __help.equal
 
-__help['Motivation to forbid ±inf'] = [=[
-  Motivation to forbid ±inf in constructors:
+__help['Why ±inf are forbidden'] = [=[
+  [Dev] Motivation to forbid ±inf in constructors:
   - value would return NaN if
       step  == 0    and x     == ±inf  (valid)
       step  == ±inf and x     == 0     (forbid)
@@ -316,8 +323,8 @@ __help['Motivation to forbid ±inf'] = [=[
       start == ±inf and stop  == start (forbid)
 ]=]
 
-__help['Motivation to adjust step'] = [=[
-  Motivation to adjust step in constructors:
+__help['Why adjusting step'] = [=[
+  [Dev] Motivation to adjust step in non raw constructors:
     Step is adjusted if the computed size is close to an integer by ±1e-12.
     Then the following properties should hold even for rational numbers:
     - size  (start, stop , step_  ) == size_
@@ -326,29 +333,24 @@ __help['Motivation to adjust step'] = [=[
     The maximum adjustment is step = step * (1-eps)^2, beyond this value it is
     the user reponsibility to provide better inputs.
 
-  Modification was implemented to ensure that the last value of range is
-  accurate to expected by user stop value or last value fitting within range.
-  Maximum acceptable difference between adjusted and originally provided step is
-  epsilon = 1e-12.
+  These numerical adjustements were implemented to ensure that ranges behave
+  more as expected by users, still fitting within range limits. The maximum
+  relative difference between adjusted and original step is epsilon = 1e-12 if
+  the size is provided (i.e. nrange), plus -2*eps*step to ensure aforementioned
+  properties.
 ]=]
 
 __help['Infinite constant sequence'] = [=[
-  Step == 0 or 1 for range or logrange can be used to create an infinite
-  constant sequence of repeated value. To create constant sequence provided
-  range has to fulfil the equality start == stop. All the points are equal to
-  both start and stop values. Any other combination is forbidden and will trigg
-  an error. Modification was made to unify the step, size and bounds of constant
-  sequence.
+  Infinite constant sequences can be created by using start == stop and step = 0
+  in range constructor or size = inf in nrange constructor. The user must satify
+  the constraint start == stop in both constructors to show its intention.
 ]=]
 
-__help['Step in singleton'] = [=[
-  Singleton sequence can be initated with nrange of which input size is equal
-  to 1 or range generated with provided step bigger than the difference between
-  start and stop value (eg. step > stop-start for step > 0).
-
-  Value of step in a range generated as single point sequence gets unified
-  accordingly to function:
-  -> huge * sign(stop - start)
+__help['Singleton sequence'] = [=[
+  Singleton sequences can be created by using step > stop-start for start < stop
+  and step < stop-start for stop < start in range constructor or size = 1 in
+  nrange constructor. In this latter case with size = 1, step will be set to
+  huge * sign(stop-start).
 ]=]
 
 -- no help
