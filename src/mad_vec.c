@@ -33,7 +33,6 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
-#define NO(a)
 #define ID(a) a
 
 #define CNUM2(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
@@ -41,15 +40,15 @@
 #define CNUMI(im)    CNUM2(0,im)
 #define CNUM(a)      cnum_t a = CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 
-#define SET(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[0]
-#define CPY(OP)      for (size_t i=0; i < n; i++)  r[i] OP##= x[i]
-#define FOLD(OP)     for (size_t i=0; i < n; i++)  r[0] OP##= x[i]
-#define MAP(FN)      for (size_t i=0; i < n; i++)  r[i]  = FN(x[i])
-#define MAP2(FN)     for (size_t i=0; i < n; i++)  r[i]  = FN(x[i], y[i])
-#define VEC(OP)      for (size_t i=0; i < n; i++)  r[i]  = x[i] OP y[i]
-#define VECS(OP)     for (size_t i=0; i < n; i++)  r[i]  = x[i] OP y
-#define SVEC(OP)     for (size_t i=0; i < n; i++)  r[i]  = x    OP y[i]
-#define DOT(C)       for (size_t i=0; i < n; i++)  r[0] += C(x[i]) * y[i]
+#define SET(OP)   for (size_t i=0; i < n; i++) r[i] OP##= x[0]
+#define CPY(OP)   for (size_t i=0; i < n; i++) r[i] OP##= x[i]
+#define FOLD(OP)  for (size_t i=0; i < n; i++) r[0] OP##= x[i]
+#define MAP(FN)   for (size_t i=0; i < n; i++) r[i]  = FN(x[i])
+#define MAP2(FN)  for (size_t i=0; i < n; i++) r[i]  = FN(x[i], y[i])
+#define VEC(OP)   for (size_t i=0; i < n; i++) r[i]  = x[i] OP y[i]
+#define VECS(OP)  for (size_t i=0; i < n; i++) r[i]  = x[i] OP y
+#define SVEC(OP)  for (size_t i=0; i < n; i++) r[i]  = x    OP y[i]
+#define DOT(C)    for (size_t i=0; i < n; i++) r[0] += C(x[i]) * y[i]
 
 // --- vec
 
@@ -57,7 +56,7 @@ void mad_vec_fill (num_t xx, num_t r[], size_t n)
 { CHKR; num_t *x=&xx; SET(); }
 
 void mad_vec_copy (const num_t x[], num_t r[], size_t n)
-{ CHKXR; CPY(); }
+{ CHKXR; if (x != r) CPY(); }
 
 void mad_vec_copyv (const num_t x[], cnum_t r[], size_t n)
 { CHKXR; CPY(); }
@@ -145,7 +144,7 @@ void mad_cvec_fill_r (num_t xx_re, num_t xx_im, cnum_t r[], size_t n)
 { CHKR; CNUM(xx); { cnum_t *x=&xx; SET(); } }
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], size_t n)
-{ CHKXR; CPY(); }
+{ CHKXR; if (x != r) CPY(); }
 
 void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], size_t n)
 { CHKX; num_t *r;
