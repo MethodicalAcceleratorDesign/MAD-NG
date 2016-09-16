@@ -39,10 +39,10 @@ SYNOPSIS
   lnot, land, lor, is_eq, is_ne, is_lt, is_le, is_gt, is_ge, (aliases for logop)
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
   is_metaname, has_metatable, get_metatable,                       (metamethods)
-  has_length, is_iterable, is_indexable, is_callable, is_comparable,  (concepts)
-  is_ordered, is_concatenable, is_stringable, is_tablable, is_collectable,
-  has_constructor, is_negatable, is_addable, is_substractable, is_multiplicable,
-  is_dividable, is_modulable, is_powerable, has_member, has_method,
+  has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
+  is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+  is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+  is_modulable, is_powerable, has_member, has_method, has_metamethod,
   is_same, same,                                              (types comparison)
   tostring, totable,                                                (extensions)
   option { format='%.16g' }.                                             (setup)
@@ -67,17 +67,16 @@ DESCRIPTION
   - has_metatable returns true is the argument has a metatable,
   - get_metatable is an extended version of getmetatable that works also with
     cdata,
-  - has_length, is_iterable, is_indexable, is_callable, is_comparable,
-    is_ordered, is_concatenable, is_stringable, is_tablable, is_collectable,
-    has_constructor, is_negatable, is_addable, is_substractable,
-    is_multiplicable, is_dividable, is_modulable, is_powerable, has_member and
-    has_method return true if the argument fulfills the concept requirements,
-  - is_stringable, is_tablable, is_collectable and has_constructor check only
-    if the argument supports respectively the __tostring, the __totable, the
-    __gc and the __new metamethods because objects are always stringable,
-    tableable, collectable and constructible in MAD,
-  - has_member and has_method returns true if argument #1 has argument #2 as a
-    member and a callable member respectively,
+  - has_length, is_iterable, is_mappable, is_indexable, is_callable,
+    is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+    is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+    is_modulable, is_powerable, has_member, has_method and has_metamethod return
+    true if the argument fulfills the concept requirements,
+  - is_stringable and is_tablable check only if the argument supports
+    respectively the __tostring and the __totable metamethods because objects
+    are always stringable and tableable in MAD,
+  - has_member, has_method and has_metamethod returns true if argument #1 has
+    argument #2 as a member, a callable member and a meta member respectively,
   - tostring is extended to handle option.format and delegation. To let the
     print command uses this version, it must be exported to override the
     global environment one (i.e. MAD.export('tostring', true)),
@@ -108,9 +107,7 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
-local function get_metatable (a)
-  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
-end
+local cdata_mt = \a -> miscmap[ -tonumber(typeof(a)) ]
 
 -- metamethods
 
@@ -120,14 +117,13 @@ local metaname = { -- list of metanames from lj_obj.h + __init + __totable
   '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
   '__totable', '__unm',
 }
-for _,v in ipairs(metaname) do metaname[v]=v end -- build dictionary
+for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
 -- values
 
-local value_type = { -- list of types that cannot be indirectly modified
+local value_t = { -- list of types that cannot be modified
   ['nil'] = true, boolean = true, number = true, string = true, -- table = nil
   ['function'] = true, thread = true,
-  -- would be nice to have complex and xrange here
 }
 
 -- options
@@ -215,140 +211,59 @@ M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
 
 -- metamethods
 
+local is_cdata in M
+
 M.is_metaname   = \a -> metaname[a] == a
+M.get_metatable = \a -> is_cdata(a) and cdata_mt(a) or getmetatable(a)
+
+local get_metatable in M
+
 M.has_metatable = \a -> get_metatable(a) ~= nil
-M.get_metatable = get_metatable
+
+M.has_metamethod = function (a, f, f2)
+  local mt = get_metatable(a)
+  return mt and (mt[f] or mt[f2]) ~= nil or false
+end
 
 -- concepts
 
-local is_string, is_function in M
+local is_string, is_function, has_metamethod in M
 
-M.has_length = function (a)
-  if is_string(a) or is_table(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__len ~= nil or false
-end
+M.is_stringable    = \a -> has_metamethod(a, '__tostring')
+M.is_tablable      = \a -> has_metamethod(a, '__totable' )
 
-M.is_iterable = function (a)
-  if is_table(a) then return true end
-  local mt = get_metatable(a)
-  return mt and (mt.__ipairs or mt.__pairs) ~= nil or false
-end
+M.is_callable      = \a -> is_function(a) or has_metamethod(a, '__call'  )
+M.is_iterable      = \a -> is_table(a)    or has_metamethod(a, '__ipairs')
+M.is_mappable      = \a -> is_table(a)    or has_metamethod(a, '__pairs' )
+M.is_indexable     = \a -> is_table(a)    or has_metamethod(a, '__index' )
+M.is_concatenable  = \a -> is_string(a)   or has_metamethod(a, '__concat')
+M.is_negatable     = \a -> is_number(a)   or has_metamethod(a, '__unm'   )
+M.is_addable       = \a -> is_number(a)   or has_metamethod(a, '__add'   )
+M.is_substractable = \a -> is_number(a)   or has_metamethod(a, '__sub'   )
+M.is_multiplicable = \a -> is_number(a)   or has_metamethod(a, '__mul'   )
+M.is_dividable     = \a -> is_number(a)   or has_metamethod(a, '__div'   )
+M.is_modulable     = \a -> is_number(a)   or has_metamethod(a, '__mod'   )
+M.is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   )
 
-M.is_indexable = function (a)
-  if is_table(a) then return true end
-  local mt = get_metatable(a)
-  return mt and (mt.__index or mt.__newindex) ~= nil or false
-end
-
-M.is_callable = function (a)
-  if is_function(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__call ~= nil or false
-end
-
-M.is_comparable = function (a)
-  if is_number(a) or is_string(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__eq ~= nil or false
-end
-
-M.is_ordered = function (a)
-  if is_number(a) or is_string(a) then return true end
-  local mt = get_metatable(a)
-  return mt and (mt.__lt or mt.__le) ~= nil or false
-end
-
-M.is_concatenable = function (a)
-  if is_string(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__concat ~= nil or false
-end
-
-M.is_stringable = function (a)
-  local mt = get_metatable(a)
-  return mt and mt.__tostring ~= nil or false
-end
-
-M.is_tablable = function (a)
-  local mt = get_metatable(a)
-  return mt and mt.__totable ~= nil or false
-end
-
-M.is_collectable = function (a)
-  local mt = get_metatable(a)
-  return mt and mt.__gc ~= nil or false
-end
-
-M.has_constructor = function (a)
-  local mt = get_metatable(a)
-  return mt and mt.__new ~= nil or false
-end
-
-M.is_negatable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__unm ~= nil or false
-end
-
-M.is_addable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__add ~= nil or false
-end
-
-M.is_substractable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__sub ~= nil or false
-end
-
-M.is_multiplicable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__mul ~= nil or false
-end
-
-M.is_dividable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__div ~= nil or false
-end
-
-M.is_modulable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__mod ~= nil or false
-end
-
-M.is_powerable = function (a)
-  if is_number(a) then return true end
-  local mt = get_metatable(a)
-  return mt and mt.__pow ~= nil or false
-end
+M.has_length    = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len')
+M.is_comparable = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' )
+M.is_ordered    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__le', '__lt')
 
 local is_indexable, is_callable in M
 
-M.has_member = function (a, f)
-  return is_indexable(a) and a[f] ~= nil or false
-end
-
-M.has_method = function (a, f)
-  return is_indexable(a) and is_callable(a[f]) or false
-end
+M.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
+M.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 
 -- same
 
 local is_rawtable, has_method in M
 
-M.is_same = function (a, b)
-  return type(a) == type(b) and get_metatable(a) == get_metatable(b)
-end
+M.is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b)
 
 M.same = function (a, ...)
-  if value_type[type(a)]       then return a
-  elseif is_rawtable(a)        then return {}
-  elseif has_method(a, 'same') then return a:same(...)
+  if     value_t[type(a)] or is_complex(a) then return a
+  elseif is_rawtable(a)                    then return {}
+  elseif has_method(a, 'same')             then return a:same(...)
   end
   error("invalid argument #1 (clonable object expected)")
 end
