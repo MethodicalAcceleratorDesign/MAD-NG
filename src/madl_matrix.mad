@@ -121,16 +121,18 @@ MR.__help['Matrix properties'] = [=[
 Useful properties of square matrix:
   symmetric :   M = M',  positive-definite:  v' M v > 0 (positive-semidef >= 0)
   hermitian :   M = M^*, complex symmetric, v^* M v > 0 (negative-def < 0)
-  skew      :   M = -M' (skew-symmetric), M = -M^* (skew-hermitian)
+  skew/anti :   M = -M' (skew-symmetric), M = -M^* (skew-hermitian)
   invertible:   M M^-1 = M^-1 M = I (M^-1 exists) det(M) ~=  0 (i.e. GL(n))
                                                   det(M)  = +1 (i.e. SL(n))
   normal    :   M M' = M' M
-  orthogonal:   M M' = M' M = I -> M^-1 = M',     det(M)  = ±1 (i.e.  O(n))
+  orthogonal:   M M' = M' M = I => M^-1 = M',     det(M)  = ±1 (i.e.  O(n))
                 row/col form an orthonormal basis det(M)  = +1 (i.e. SO(n))
   unitary   :   M M^* = I, complex orthogonal,   |det(M)| = +1 (i.e.  U(n))
                 row/col form an orthonormal basis det(M)  = +1 (i.e. SU(n))
-  symplectic:   M' J M = J -> M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
-                J = {{0, I},{-I, 0}}, J^-1 = J' = -J, J^2 = -I, det(J) = 1
+  symplectic:   M' J M = J => M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
+                J = {{0,I},{-I,0}}, J^-1 = J' = -J, J^2 = -I, det(J) = 1
+                J is the reference non-singular skew-symmetric bilinear form
+                symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B
 ]=]
 
 -- locals ---------------------------------------------------------------------o
@@ -342,7 +344,7 @@ function MR.same (x, e_, nr_, nc_)
   error("invalid argument #2 (scalar expected)")
 end
 
--- zeros, ones, fill, reshape (in place) --------------------------------------o
+-- zeros, ones, eye, symp, circ, fill, vec, reshape (in place) ----------------o
 
 function MR.zeros (x)
   fill(x.data, sizeof(is_matrix(x) and 'double' or 'complex', x:size()))
@@ -356,8 +358,46 @@ function MR.ones (x, e_)
 end
 
 function MR.eye (x, e_) -- zeros + diag
-  local n, nc, e = x:zeros():size(), x:ncol(), e_ or 1
+  local n, nc, e = x:size(), x:ncol(), e_ or 1
+  x:zeros()
   for i=0,n-1,nc+1 do seti0(x,i,e) end
+  return x
+end
+
+function MR.symp (x, t_) -- zeros + symp
+  local nr, nc = x:sizes()
+  assert(nr == nc and nr%2 == 0, "invalid argument #1 (2n square matrix expected)")
+  local t, n2 = t_ or 'J', nr/2
+  x:zeros()
+  if t == 'J'
+  then for i=1,n2 do set(x,2*i-1,2*i,1) set(x,2*i,2*i-1,-1) end
+  else for i=1,n2 do set(x,i,n2+i,1)    set(x,n2+i,i,-1)    end
+  end
+  return x
+end
+
+function MR.circ (x, v) -- circ
+  assert(is_iterable(v), "invalid argument #2 (iterable expected)")
+  local d
+  if isa_vector(v) then
+    d = v:nrow() == 1 and 'row' or 'col'
+  elseif is_iterable(v[1]) then
+    d, v = 'row', v[1]
+  else
+    d = 'col'
+  end
+  local k, nr, nc = 0, x:sizes()
+  if d == 'row' then
+    for i=1,nr do
+    for j=nc-i+2,nc do seti0(x,k, v[j]) k=k+1 end
+    for j=1,nc-i+1  do seti0(x,k, v[j]) k=k+1 end
+    end
+  else
+    for i=1,nr do
+    for j= i,  1,-1 do seti0(x,k, v[j]) k=k+1 end
+    for j=nc,i+1,-1 do seti0(x,k, v[j]) k=k+1 end
+    end
+  end
   return x
 end
 
@@ -380,6 +420,15 @@ function MR.fill (x, a)
     return x
   end
   error("invalid argument #2 (scalar, callable or indexable expected)")
+end
+
+function MR.vec (x, d_)
+  local n = x:size()
+  if d_ == 'row'
+  then x.nr, x.nc = 1, n
+  else x.nr, x.nc = n, 1
+  end
+  return x
 end
 
 function MR.reshape (x, nr_, nc_)
