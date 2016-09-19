@@ -595,23 +595,23 @@ end
 
 function MR.foldl (x, f, r_, d_, x0_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  if is_string(r_) then r_, d_, x0_ = nil, r_, d_ end
-  if not (is_nil(d_) or is_string(d_)) then d_, x0_ = nil, d_ end
+  if is_string(r_) then r_, d_, x0_ = nil, r_, is_nil(x0_) and d_ or x0_ end
+  if not (is_nil(d_) or is_string(d_)) and is_nil(x0_) then d_, x0_ = nil, d_ end
   assert(is_nil(r_) or is_scalar(r_) or is_iterable(r_),
          "invalid argument #3 (scalar or iterable expected)")
   local r, d = prep_fold(x, r_, d_, 1)
-  local nr, nc = x:sizes()
-  if d == 'vec' then         -- fold as vector (default)
+  local nr, nc, rr = x:sizes()
+  if d == 'vec' then        -- fold as vector (default)
     if x0_ ~= nil then r = f(x0_, r) end
-    for i=2,nr*nc do r = f(r, geti(x,i)) end
-  elseif d == 'row' then     -- fold rows
-    for i=1,nr do
-    if x0_ ~= nil then r[i] = f(x0_, r[i]) end
-    for j=2,nc do r[i] = f(r[i], get(x, i,j)) end end
-  elseif d == 'col' then     -- fold columns
-    for j=1,nc do
-    if x0_ ~= nil then r[j] = f(x0_, r[j]) end
-    for i=2,nr do r[j] = f(r[j], get(x, i,j)) end end
+    for i=2,nr*nc   do r = f(r, geti(x,i)) end
+  elseif d == 'row' then    -- fold rows
+    for i=1,nr      do rr = r[i]
+    if x0_ ~= nil then rr = f(x0_, rr) end
+    for j=2,nc      do rr = f(rr, get(x, i,j)) end r[i] = rr end
+  elseif d == 'col' then    -- fold columns
+    for j=1,nc      do rr = r[j]
+    if x0_ ~= nil then rr = f(x0_, rr) end
+    for i=2,nr      do rr = f(rr, get(x, i,j)) end r[j] = rr end
   else
     error("invalid argument #4 ('vec|row|col' expected)")
   end
@@ -620,23 +620,23 @@ end
 
 function MR.foldr (x, f, r_, d_, x0_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  if is_string(r_) then r_, d_, x0_ = nil, r_, d_ end
-  if not (is_nil(d_) or is_string(d_)) then d_, x0_ = nil, d_ end
+  if is_string(r_) then r_, d_, x0_ = nil, r_, is_nil(x0_) and d_ or x0_ end
+  if not (is_nil(d_) or is_string(d_)) and is_nil(x0_) then d_, x0_ = nil, d_ end
   assert(is_nil(r_) or is_scalar(r_) or is_iterable(r_),
          "invalid argument #3 (scalar or iterable expected)")
   local r, d = prep_fold(x, r_, d_, -1)
-  local nr, nc = x:sizes()
-  if d == 'vec' then         -- fold as vector (default)
-    if x0_ ~= nil then r = f(r, x0_) end
+  local nr, nc, rr = x:sizes()
+  if d == 'vec' then        -- fold as vector (default)
+    if x0_ ~= nil    then r = f(r, x0_) end
     for i=nr*nc-1,1,-1 do r = f(geti(x,i), r) end
-  elseif d == 'row' then     -- fold rows
-    for i=nr  ,1,-1 do
-    if x0_ ~= nil then r[i] = f(r[i], x0_) end
-    for j=nc-1,1,-1 do r[i] = f(get(x, i,j), r[i]) end end
-  elseif d == 'col' then     -- fold columns
-    for j=nc  ,1,-1 do
-    if x0_ ~= nil then r[j] = f(r[j], x0_) end
-    for i=nr-1,1,-1 do r[j] = f(get(x, i,j), r[j]) end end
+  elseif d == 'row' then    -- fold rows
+    for i=nr  ,1,-1 do rr = r[i]
+    if x0_ ~= nil then rr = f(rr, x0_) end
+    for j=nc-1,1,-1 do rr = f(get(x, i,j), rr) end r[i] = rr end
+  elseif d == 'col' then    -- fold columns
+    for j=nc  ,1,-1 do rr = r[j]
+    if x0_ ~= nil then rr = f(rr, x0_) end
+    for i=nr-1,1,-1 do rr = f(get(x, i,j), rr) end r[j] = rr end
   else
     error("invalid argument #4 ('vec|row|col' expected)")
   end
@@ -669,22 +669,23 @@ end
 
 function MR.scanl (x, f, r_, d_, x0_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  if is_string(r_) then r_, d_, x0_ = nil, r_, d_ end
-  if not (is_nil(d_) or is_string(d_)) then d_, x0_ = nil, d_ end
+  if is_string(r_) then r_, d_, x0_ = nil, r_, is_nil(x0_) and d_ or x0_ end
+  if not (is_nil(d_) or is_string(d_)) and is_nil(x0_) then d_, x0_ = nil, d_ end
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
   local r, d = prep_scan(x, r_, d_, 1)
-  local nr, nc = x:sizes()
-  if d == 'vec' then         -- scan as vector (default)
-    if x0_ ~= nil then r[1] = f(r[1], x0_) end
-    for i=2,nr*nc do r[i] = f(r[i-1], geti(x,i)) end
-  elseif d == 'row' then
-    for i=1,nr do            -- scan rows
-    if x0_ ~= nil then r[idx(i,1,nc)+1] = f(x0_, r[idx(i,1,nc)+1]) end
-    for j=2,nc do r[idx(i,j,nc)+1] = f(r[idx(i,j-1,nc)+1], get(x, i,j)) end end
-  elseif d == 'col' then
-    for j=1,nc do            -- scan columns
-    if x0_ ~= nil then r[idx(1,j,nc)+1] = f(x0_, r[idx(1,j,nc)+1]) end
-    for i=2,nr do r[idx(i,j,nc)+1] = f(r[idx(i-1,j,nc)+1], get(x, i,j)) end end
+  local nr, nc, rr = x:sizes()
+  if d == 'vec' then                           -- scan as vector (default)
+    rr = r[1]
+    if x0_ ~= nil then rr = f(x0_, rr)         r[1] = rr end
+    for i=2,nr*nc   do rr = f(rr, geti(x,i))   r[i] = rr end
+  elseif d == 'row' then                       -- scan rows
+    for i=1,nr      do rr = r[idx(i,1,nc)+1]
+    if x0_ ~= nil then rr = f(x0_, rr)         r[idx(i,1,nc)+1] = rr end
+    for j=2,nc      do rr = f(rr, get(x, i,j)) r[idx(i,j,nc)+1] = rr end end
+  elseif d == 'col' then                       -- scan columns
+    for j=1,nc      do rr = r[idx(1,j,nc)+1]
+    if x0_ ~= nil then rr = f(x0_, rr)         r[idx(1,j,nc)+1] = rr end
+    for i=2,nr      do rr = f(rr, get(x, i,j)) r[idx(i,j,nc)+1] = rr end end
   else
     error("invalid argument #4 ('vec|row|col' expected)")
   end
@@ -693,22 +694,23 @@ end
 
 function MR.scanr (x, f, r_, d_, x0_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  if is_string(r_) then r_, d_, x0_ = nil, r_, d_ end
-  if not (is_nil(d_) or is_string(d_)) then d_, x0_ = nil, d_ end
+  if is_string(r_) then r_, d_, x0_ = nil, r_, is_nil(x0_) and d_ or x0_ end
+  if not (is_nil(d_) or is_string(d_)) and is_nil(x0_) then d_, x0_ = nil, d_ end
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
   local r, d = prep_scan(x, r_, d_, -1)
-  local nr, nc = x:sizes()
-  if d == 'vec' then         -- scan as vector (default)
-    if x0_ ~= nil then r[nr*nc] = f(r[nr*nc], x0_) end
-    for i=nr*nc-1,1,-1 do r[i] = f(geti(x,i), r[i+1]) end
-  elseif d == 'row' then
-    for i=nr  ,1,-1 do       -- scan rows
-    if x0_ ~= nil then r[idx(i,nc,nc)+1] = f(r[idx(i,nc,nc)+1], x0_) end
-    for j=nc-1,1,-1 do r[idx(i, j,nc)+1] = f(get(x, i,j), r[idx(i,j+1,nc)+1]) end end
-  elseif d == 'col' then
-    for j=nc  ,1,-1 do       -- scan columns
-    if x0_ ~= nil then r[idx(nr,j,nc)+1] = f(r[idx(nr,j,nc)+1], x0_) end
-    for i=nr-1,1,-1 do r[idx(i ,j,nc)+1] = f(get(x, i,j), r[idx(i+1,j,nc)+1]) end end
+  local nr, nc, rr = x:sizes()
+  if d == 'vec' then                            -- scan as vector (default)
+    rr = r[nr*nc]
+    if x0_ ~= nil    then rr = f(rr, x0_)       r[nr*nc] = rr end
+    for i=nr*nc-1,1,-1 do rr = f(geti(x,i), rr) r[i    ] = rr end
+  elseif d == 'row' then                        -- scan rows
+    for i=nr  ,1,-1 do rr = r[idx(i,nc,nc)+1]
+    if x0_ ~= nil then rr = f(rr, x0_)          r[idx(i,nc,nc)+1] = rr end
+    for j=nc-1,1,-1 do rr = f(get(x, i,j), rr)  r[idx(i, j,nc)+1] = rr end end
+  elseif d == 'col' then                        -- scan columns
+    for j=nc  ,1,-1 do rr = r[idx(nr,j,nc)+1]
+    if x0_ ~= nil then rr = f(rr, x0_)          r[idx(nr,j,nc)+1] = rr end
+    for i=nr-1,1,-1 do rr = f(get(x, i,j), rr)  r[idx(i ,j,nc)+1] = rr end end
   else
     error("invalid argument #4 ('vec|row|col' expected)")
   end
@@ -973,7 +975,7 @@ local any = \r,x lor (r, pred(x))
 function MR.all (x,p,r_,d_)
   assert(is_nil(pred), "reentrant use of all (not expected)")
   pred=p
-  local res = x:foldl(all,r_,d_,true )
+  local res = x:foldl(all,r_,d_,true)
   pred=nil
   return res
 end
