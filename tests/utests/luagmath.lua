@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide regression test suites for the gmath module without extension.
+  - Provide regression test suites for the gmath module without MAD extensions.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -51,6 +51,7 @@ local nan  = 0/0
 local NaN  = 0/0
 local pi   = pi
 local Pi   = pi
+
 -- generic binary functions
 local angle = function (x,y) return is_number(x) and atan2(y,x) or x:angle(y) end
 
@@ -88,7 +89,6 @@ local carg  = function (x) return is_number(x) and (x>=0 and 0 or x<0 and pi or 
 local real  = function (x) return is_number(x) and x                               or x:real() end
 local imag  = function (x) return is_number(x) and 0                               or x:imag() end
 local conj  = function (x) return is_number(x) and x                               or x:conj() end
-local norm  = function (x) return is_number(x) and abs(x)                          or x:norm() end
 local rect  = function (x) return is_number(x) and abs(x) or x:rect()  end
 local polar = function (x) return is_number(x) and abs(x) or x:polar() end -- TODO +M.carg(x)*1i
 
@@ -227,6 +227,16 @@ function TestLuaGmath:testAbs()
     assertEquals(  abs(-v),  v )
     assertEquals( -abs(-v), -v )
   end
+
+  assertEquals( abs( tiny) ,  tiny )
+  assertEquals( abs(  0.1) ,   0.1 )
+  assertEquals( abs(    1) ,     1 )
+  assertEquals( abs( huge) ,  huge )
+  assertEquals( abs(-tiny) ,  tiny )
+  assertEquals( abs(- 0.1) ,   0.1 )
+  assertEquals( abs(-   1) ,     1 )
+  assertEquals( abs(-huge) ,  huge )
+  assertNaN   ( abs(  nan) )
 
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( 1/abs(- 0 ), inf ) -- check for +0
@@ -2083,23 +2093,6 @@ function TestLuaGmath:testConj()
   assertNaN( conj(nan) )
 end
 
-function TestLuaGmath:testNorm()
-  assertEquals( norm(    0) ,     0 )
-  assertEquals( norm( tiny) ,  tiny )
-  assertEquals( norm(  0.1) ,   0.1 )
-  assertEquals( norm(    1) ,     1 )
-  assertEquals( norm( huge) ,  huge )
-  assertEquals( norm(  inf) ,   inf )
-  assertEquals( norm(-   0) ,     0 )
-  assertEquals( norm(-tiny) ,  tiny )
-  assertEquals( norm(- 0.1) ,   0.1 )
-  assertEquals( norm(-   1) ,     1 )
-  assertEquals( norm(-huge) ,  huge )
-  assertEquals( norm(- inf) ,   inf )
-
-  assertNaN( norm(nan) )
-end
-
 function TestLuaGmath:testRect()
   assertEquals( rect(    0) ,     0 )
   assertEquals( rect( tiny) ,  tiny )
@@ -2172,7 +2165,6 @@ function TestLuaGmath:testDelegation()
   mock.real   = function() return 'mock.real  ' end       assertEquals(real  (mock), 'mock.real  ')
   mock.imag   = function() return 'mock.imag  ' end       assertEquals(imag  (mock), 'mock.imag  ')
   mock.conj   = function() return 'mock.conj  ' end       assertEquals(conj  (mock), 'mock.conj  ')
-  mock.norm   = function() return 'mock.norm  ' end       assertEquals(norm  (mock), 'mock.norm  ')
   mock.rect   = function() return 'mock.rect  ' end       assertEquals(rect  (mock), 'mock.rect  ')
   mock.polar  = function() return 'mock.polar ' end       assertEquals(polar (mock), 'mock.polar ')
 
