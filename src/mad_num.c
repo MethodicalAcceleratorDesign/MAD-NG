@@ -29,22 +29,10 @@
 #define CNUM2(a,b) (* (cnum_t*) & (num_t[2]) { a, b })
 #define CNUM(a) CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 
-// --- num
-
-num_t mad_num_asinh   (num_t x) { return asinh(x);  }
-num_t mad_num_acosh   (num_t x) { return acosh(x);  }
-num_t mad_num_atanh   (num_t x) { return atanh(x);  }
-
-num_t mad_num_erf     (num_t x) { return erf(x);    }
-num_t mad_num_tgamma  (num_t x) { return tgamma(x); }
-num_t mad_num_lgamma  (num_t x) { return lgamma(x); }
-
 // --- cnum
 
-num_t mad_cnum_carg_r (num_t x_re, num_t x_im) { return carg( CNUM(x) ); }
-num_t mad_cnum_norm_r (num_t x_re, num_t x_im) { return cabs( CNUM(x) ); }
-
-void mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cproj  ( CNUM(x) ); }
+num_t mad_cnum_abs_r  (num_t x_re, num_t x_im) { return cabs( CNUM(x) ); }
+num_t mad_cnum_arg_r  (num_t x_re, num_t x_im) { return carg( CNUM(x) ); }
 
 void mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = csqrt  ( CNUM(x) ); }
 void mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cexp   ( CNUM(x) ); }
@@ -64,6 +52,8 @@ void mad_cnum_atan_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catan  ( 
 void mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = casinh ( CNUM(x) ); }
 void mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cacosh ( CNUM(x) ); }
 void mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catanh ( CNUM(x) ); }
+
+void mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cproj  ( CNUM(x) ); }
 
 void mad_cnum_unit_r (num_t x_re, num_t x_im, cnum_t *r)
 { CHKR; *r = CNUM(x) / cabs( CNUM(x) ); }
