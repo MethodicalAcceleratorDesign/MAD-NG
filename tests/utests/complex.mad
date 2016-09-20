@@ -28,7 +28,7 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
       in require 'luaunit'
 
 local complex, infi, InfI, tiny, eps, huge, inf, nan, pi, Pi, is_complex,
-      is_function,
+      is_function, is_table,
       cos, sin, tan, cosh, sinh, tanh, asinh, atanh, asin, atan, atan2 in MAD
 
 local x, y
@@ -51,15 +51,15 @@ local values = {
   deg2 = {0, eps, 2*eps, 1, 2, 5, 10, 15, 30, 45, 60, 90},
 }
 
-local function unitCircle (r, n, val)
+local function unitCircle (r, n)
   local deg
   local z = {}
-  if val ~= nil then
-    for i,deg in ipairs(val) do
+  if is_table(n) then
+    for i,deg in ipairs(n) do
       z[i] = complex( r*cos( deg ), r*sin( deg ) )
     end
   else
-    for i = 0,2*n do
+    for i = 0, 2*n do
       deg  = 2*pi*(i-1)/n
       z[i] = complex( r*cos( deg ), r*sin( deg ) )
     end
@@ -67,15 +67,8 @@ local function unitCircle (r, n, val)
   return z
 end
 
---function TestComplex:testUnitC()
---  local z = {}
---  z = unitCircle( 1, 2, values.deg)
---  z = unitCircle( 1, 2 )
---  for i = 1,#z do print(z[i]) end
---end
-
 function TestComplex:testCtor()
-  local msg, C = {
+  local msg, c = {
   "cannot convert 'string' to 'complex'",
   "cannot convert 'nil' to 'complex'"   ,
   "cannot convert 'string' to 'double'" ,
@@ -100,18 +93,17 @@ function TestComplex:testCtor()
     assertTrue( is_complex( complex(-v,-v) ) )
   end
 
-  for _,x in ipairs(values.num) do                   -- should be relocated
+  for _,x in ipairs(values.num) do                 -- should be relocated
     for _,y in ipairs(values.num) do
       c = complex( x, y)
       assertEquals( c, complex(c:real(), c:imag()) )
     end
   end
-  for _,z in ipairs(unitCircle( 1, 2, values.deg)) do -- should be relocated
-    c = complex( z[1], z[2])
-    assertEquals( c, complex(c:real(), c:imag()) )
+  for _,z in ipairs(unitCircle( 1, values.deg)) do -- should be relocated
+    assertEquals( z, complex(z:real(), z:imag()) )
   end
 
-  assertEquals( complex(0,1)^2, complex(-1,0))        -- should be relocated
+  assertEquals( complex(0,1)^2, complex(-1,0))     -- should be relocated
 end
 
 function TestComplex:testCtorFields()
@@ -158,20 +150,6 @@ function TestComplex:testAngle()
   end
 end
 
-function TestComplex:testAbs()
-  -- assertEquals( complex(x,y):abs(), hypot(x,y) )
-
-  for _,z in ipairs(unitCircle( 1, 2, values.deg)) do
-    assertAlmostEquals( complex( z[1], z[2]):abs() - 1, 0, eps )
-    assertAlmostEquals( complex(-z[1], z[2]):abs() - 1, 0, eps )
-    assertAlmostEquals( complex( z[1],-z[2]):abs() - 1, 0, eps )
-    assertAlmostEquals( complex(-z[1],-z[2]):abs() - 1, 0, eps )
-  end
-  for _,z in ipairs(unitCircle( 10, 2, values.deg)) do
-    assertAlmostEquals( complex( z[1], z[2]):abs() - 10, 0, 8*eps )
-  end
-end
-
 function TestComplex:testCeil() -- add special cases values.num
   for _,x in ipairs(values.rad) do
     for _,y in ipairs(values.rad) do
@@ -182,9 +160,27 @@ function TestComplex:testCeil() -- add special cases values.num
       else                          assertEquals( complex(x,y):ceil(), complex(0,0) ) end
     end
   end
+  assertEquals( complex( tiny,  tiny):ceil() , complex(    1,     1) )
+  assertEquals( complex(  0.1,   0.1):ceil() , complex(    1,     1) )
+  assertEquals( complex(  0.5,   0.5):ceil() , complex(    1,     1) )
+  assertEquals( complex(  0.7,   0.7):ceil() , complex(    1,     1) )
+  assertEquals( complex(    1,     1):ceil() , complex(    1,     1) )
+  assertEquals( complex(  1.1,   1.1):ceil() , complex(    2,     2) )
+  assertEquals( complex(  1.5,   1.5):ceil() , complex(    2,     2) )
+  assertEquals( complex(  1.7,   1.7):ceil() , complex(    2,     2) )
+  assertEquals( complex( huge,  huge):ceil() , complex( huge,  huge) )
+  assertEquals( complex(-tiny, -tiny):ceil() , complex(-   0, -   0) )
+  assertEquals( complex(- 0.1, - 0.1):ceil() , complex(-   0, -   0) )
+  assertEquals( complex(- 0.5, - 0.5):ceil() , complex(-   0, -   0) )
+  assertEquals( complex(- 0.7, - 0.7):ceil() , complex(-   0, -   0) )
+  assertEquals( complex(-   1, -   1):ceil() , complex(-   1, -   1) )
+  assertEquals( complex(- 1.1, - 1.1):ceil() , complex(-   1, -   1) )
+  assertEquals( complex(- 1.5, - 1.5):ceil() , complex(-   1, -   1) )
+  assertEquals( complex(- 1.7, - 1.7):ceil() , complex(-   1, -   1) )
+  assertEquals( complex(-huge, -huge):ceil() , complex(-huge, -huge) )
 end
 
-function TestComplex:testFloor() -- add special cases values.num
+function TestComplex:testFloor()
   for _,x in ipairs(values.rad) do
     for _,y in ipairs(values.rad) do
       x, y = x/pi, y/pi
@@ -196,28 +192,47 @@ function TestComplex:testFloor() -- add special cases values.num
   end
 end
 
-function TestComplex:testFrac() -- add special cases values.num
+function TestComplex:testFrac()
   local frac in MAD
-  for _,z in ipairs(unitCircle( 1, 2, values.deg)) do
-    assertEquals( complex( z[1], z[2]):frac().re - frac(z[1]), 0, eps )
-    assertEquals( complex( z[1], z[2]):frac().im - frac(z[2]), 0, eps )
-    --print( z, complex( z[1], z[2]):frac() )
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:frac().re, frac(z.re) )
+    assertEquals( z:frac().im, frac(z.im) )
   end
 end
 
-function TestComplex:testTrunc() -- add special cases values.num
+function TestComplex:testTrunc()
   local trunc in MAD
-  for _,z in ipairs(unitCircle( 1, 2, values.deg)) do
-    assertEquals( complex( z[1], z[2]):trunc().re - trunc(z[1]), 0, eps )
-    assertEquals( complex( z[1], z[2]):trunc().im - trunc(z[2]), 0, eps )
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:trunc().re - trunc(z.re), 0, eps )
+    assertEquals( z:trunc().im - trunc(z.im), 0, eps )
   end
 end
 
-function TestComplex:testRound() -- add special cases values.num
+function TestComplex:testRound()
   local round in MAD
-  for _,z in ipairs(unitCircle( 1, 2, values.deg)) do
-    assertEquals( complex( z[1], z[2]):round().re - round(z[1]), 0, eps )
-    assertEquals( complex( z[1], z[2]):round().im - round(z[2]), 0, eps )
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:round().re - round(z.re), 0, eps )
+    assertEquals( z:round().im - round(z.im), 0, eps )
+  end
+end
+
+function TestComplex:testAbs()
+  local hypot in MAD
+  for _,x in ipairs(values.rad) do
+    for _,y in ipairs(values.rad) do
+      x, y = x/pi, y/pi
+      assertAlmostEquals( complex(x,y):abs() - hypot(x,y), 0, eps )
+    end
+  end
+
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertAlmostEquals( complex( z[1], z[2]):abs() - 1, 0, eps )
+    assertAlmostEquals( complex(-z[1], z[2]):abs() - 1, 0, eps )
+    assertAlmostEquals( complex( z[1],-z[2]):abs() - 1, 0, eps )
+    assertAlmostEquals( complex(-z[1],-z[2]):abs() - 1, 0, eps )
+  end
+  for _,z in ipairs(unitCircle( 10, values.deg)) do
+    assertAlmostEquals( z:abs() - 10, 0, 8*eps )
   end
 end
 
@@ -301,9 +316,31 @@ function TestComplex:testLog()
   assertNaN   ( complex( nan, nan):log().im      )
 end
 
---function TestComplex:testLog10() end
+function TestComplex:testLog10()
+  --for i,x in ipairs(values.rad) do
+  --  if x > 0 and x < inf then
+  --    assertAlmostEquals( complex(x,x):log10() - log(v)/log(10), 0, 300*eps)
+  --  end
+  --end
+  --for i=0,200 do
+  --  assertAlmostEquals( complex(10^ i):log10() -  i, 0, 150*eps)
+  --  assertAlmostEquals( complex(10^-i):log10() - -i, 0, 150*eps)
+  --end
+  --assertEquals( complex( 10, 10):log10(), 1   )
+end
 
 function TestComplex:testSin()
+  --for _,v in ipairs(values.rad) do
+  --  assertAlmostEquals( sin(v)           - -sin(-v)             , 0, eps )
+  --  assertAlmostEquals( sin(v)           -  cos(pi/2-v)         , 0, eps )
+  --  assertAlmostEquals( sin(v)           - (2*sin(v/2)*cos(v/2)), 0, eps )
+  --  assertAlmostEquals( sin(asin( v/pi)) -  v/pi                , 0, eps )
+  --  assertAlmostEquals( sin(asin(-v/pi)) - -v/pi                , 0, eps )
+  --end
+  --assertNaN   (   sin(-inf) )
+  --assertNaN   (   sin( inf) )
+  --assertNaN   (   sin( nan) )
+
   assertEquals( complex( 0, 0):sin(), complex( 0, 0) )
 end
 
@@ -584,7 +621,49 @@ function TestComplex:testAtanh()
   end
 end
 
-function TestComplex:testConj() --after testImag
+--[[
+function TestComplex:testErf() end
+function TestComplex:testTgamma() end
+function TestComplex:testLgamma() end
+]]
+
+-- complex generic functions
+
+function TestComplex:testCarg()
+  -- Check for IEEE:IEC 60559 compliance
+  for _,x in ipairs(values.rad) do
+    for _,y in ipairs(values.rad) do
+      x, y = x/pi, y/pi
+      assertEquals( complex( x, y):carg(), atan2( y, x) )
+    end
+  end
+end
+
+function TestComplex:testReal()
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:real()                   , z.re )
+    assertEquals( complex(-z.re, z.im):real(),-z.re )
+    assertEquals( complex( z.re,-z.im):real(), z.re )
+    assertEquals( complex(-z.re,-z.im):real(),-z.re )
+  end
+end
+
+function TestComplex:testImag()
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:imag()                   , z.im )
+    assertEquals( complex(-z.re, z.im):imag(), z.im )
+    assertEquals( complex( z.re,-z.im):imag(),-z.im )
+    assertEquals( complex(-z.re,-z.im):imag(),-z.im )
+  end
+end
+
+function TestComplex:testConj()
+  for _,z in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( z:conj()                   , complex( z.re,-z.im) )
+    assertEquals( complex(-z.re, z.im):conj(), complex(-z.re,-z.im) )
+    assertEquals( complex( z.re,-z.im):conj(), complex( z.re, z.im) )
+    assertEquals( complex(-z.re,-z.im):conj(), complex(-z.re, z.im) )
+  end
   -- Check for IEEE:IEC 60559 compliance
   for _,x in ipairs(values.rad) do
     for _,y in ipairs(values.rad) do
@@ -603,36 +682,20 @@ function TestComplex:testConj() --after testImag
   end
 end
 
-function TestComplex:testCarg() --befor testReal
-  -- Check for IEEE:IEC 60559 compliance
-  for _,x in ipairs(values.rad) do
-    for _,y in ipairs(values.rad) do
-      x, y = x/pi, y/pi
-      assertEquals( complex( x, y):carg(), atan2( y, x) )
-    end
-  end
-end
-
---[[
-function TestComplex:testErf() end
-function TestComplex:testTgamma() end
-function TestComplex:testLgamma() end
-
--- complex generic functions
-
-function TestComplex:testReal() end
-function TestComplex:testImag() end
-
-function TestComplex:testNorm() end
-function TestComplex:testUnit() end
 function TestComplex:testProj()
   assertEquals( complex( 1  , 2  ):proj(), complex( 1  , 2) )
   assertEquals( complex( inf,-1  ):proj(), complex( inf, 0) )
   assertEquals( complex( 0  ,-inf):proj(), complex( inf, 0) )
 end
+
+--[[
 function TestComplex:testRect() end
 function TestComplex:testPolar() end
 
+-- complex non-generic functions
+function TestComplex:testUnit() end
+
+-- complex operators
 function TestComplex:testUnm() end
 function TestComplex:testAdd() end
 function TestComplex:testSub() end
