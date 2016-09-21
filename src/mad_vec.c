@@ -34,23 +34,7 @@
 #define CHKXYR  assert( x && y && r )
 
 // rename to CNUM
-#define CNUM2(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
-
-// to remove
-#define ID(a) a
-#define CNUMR(re)    CNUM2(re,0)
-#define CNUMI(im)    CNUM2(0,im)
-#define CNUM(a)      cnum_t a = CNUM2(MKNAME(a,_re), MKNAME(a,_im))
-#define LOOPI     for (size_t i=0; i < n; i++)
-#define SET(OP)   LOOPI r[i] OP##= x[0]
-#define CPY(OP)   LOOPI r[i] OP##= x[i]
-#define FOLD(OP)  LOOPI r[0] OP##= x[i]
-#define MAP(FN)   LOOPI r[i]  = FN(x[i])
-#define MAP2(FN)  LOOPI r[i]  = FN(x[i], y[i])
-#define VEC(OP)   LOOPI r[i]  = x[i] OP y[i]
-#define VECS(OP)  LOOPI r[i]  = x[i] OP y
-#define SVEC(OP)  LOOPI r[i]  = x    OP y[i]
-#define DOT(C)    LOOPI r[0] += C(x[i]) * y[i]
+#define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
 // --- vec
 
@@ -65,9 +49,9 @@ void mad_vec_copyv (const num_t x[], cnum_t r[], size_t n)
 
 void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], size_t n)
 { assert( r && (x || y) );
-  if (x && y) for (size_t i=0; i < n; i++) r[i] = CNUM2(x[i],y[i]);
-  else if (x) for (size_t i=0; i < n; i++) r[i] =       x[i]      ;
-  else        for (size_t i=0; i < n; i++) r[i] = CNUM2(0   ,y[i]);
+  if (x && y) for (size_t i=0; i < n; i++) r[i] = CNUM(x[i],y[i]);
+  else if (x) for (size_t i=0; i < n; i++) r[i] =      x[i]      ;
+  else        for (size_t i=0; i < n; i++) r[i] = CNUM(0   ,y[i]);
 }
 
 num_t mad_vec_dot (const num_t x[], const num_t y[], size_t n)
@@ -89,7 +73,7 @@ void mad_vec_addc (const num_t x[], cnum_t y, cnum_t r[], size_t n)
 { CHKXR; for (size_t i=0; i < n; i++) r[i] = x[i] + y; }
 
 void mad_vec_addc_r (const num_t x[], num_t y_re, num_t y_im, cnum_t r[], size_t n)
-{ mad_vec_addc(x, CNUM2(y_re,y_im), r, n); }
+{ mad_vec_addc(x, CNUM(y_re,y_im), r, n); }
 
 void mad_vec_sub (const num_t x[], const num_t y[], num_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] - y[i]; }
@@ -104,7 +88,7 @@ void mad_vec_subc (const num_t y[], cnum_t x, cnum_t r[], size_t n)
 { CHKYR; for (size_t i=0; i < n; i++) r[i] = x - y[i]; }
 
 void mad_vec_subc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{ mad_vec_subc(y, CNUM2(x_re,x_im), r, n); }
+{ mad_vec_subc(y, CNUM(x_re,x_im), r, n); }
 
 void mad_vec_mul (const num_t x[], const num_t y[], num_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] * y[i]; }
@@ -116,7 +100,7 @@ void mad_vec_mulc (const num_t x[], cnum_t y, cnum_t r[], size_t n)
 { CHKXR; for (size_t i=0; i < n; i++) r[i] = x[i] * y; }
 
 void mad_vec_mulc_r (const num_t x[], num_t y_re, num_t y_im, cnum_t r[], size_t n)
-{ mad_vec_mulc(x, CNUM2(y_re,y_im), r, n); }
+{ mad_vec_mulc(x, CNUM(y_re,y_im), r, n); }
 
 void mad_vec_div (const num_t x[], const num_t y[], num_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] / y[i]; }
@@ -131,7 +115,7 @@ void mad_vec_divc (const num_t y[], cnum_t x, cnum_t r[], size_t n)
 { CHKYR; for (size_t i=0; i < n; i++) r[i] = x / y[i]; }
 
 void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{  mad_vec_divc(y, CNUM2(x_re,x_im), r, n); }
+{  mad_vec_divc(y, CNUM(x_re,x_im), r, n); }
 
 void mad_vec_center (const num_t x[], num_t r[], size_t n)
 { CHKXR;
@@ -147,7 +131,7 @@ void mad_cvec_fill (cnum_t x, cnum_t r[], size_t n)
 { CHKR; for (size_t i=0; i < n; i++) r[i] = x; }
 
 void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{ mad_cvec_fill(CNUM2(x_re,x_im), r, n); }
+{ mad_cvec_fill(CNUM(x_re,x_im), r, n); }
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], size_t n)
 { mad_vec_copy((const num_t*)x, (num_t*)r, 2*n); }
@@ -188,7 +172,7 @@ void mad_cvec_addc (const cnum_t x[], cnum_t y, cnum_t r[], size_t n)
 { CHKXR; for (size_t i=0; i < n; i++) r[i] = x[i] + y; }
 
 void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], size_t n)
-{ mad_cvec_addc(x, CNUM2(y_re,y_im), r, n); }
+{ mad_cvec_addc(x, CNUM(y_re,y_im), r, n); }
 
 void mad_cvec_sub (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] - y[i]; }
@@ -203,7 +187,7 @@ void mad_cvec_subc (const cnum_t y[], cnum_t x, cnum_t r[], size_t n)
 { CHKYR; for (size_t i=0; i < n; i++) r[i] = x - y[i];; }
 
 void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{ mad_cvec_subc(y, CNUM2(x_re,x_im), r, n); }
+{ mad_cvec_subc(y, CNUM(x_re,x_im), r, n); }
 
 void mad_cvec_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] * y[i]; }
@@ -218,7 +202,7 @@ void mad_cvec_mulc (const cnum_t x[], cnum_t y, cnum_t r[], size_t n)
 { CHKXR; for (size_t i=0; i < n; i++) r[i] = x[i] * y; }
 
 void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], size_t n)
-{ mad_cvec_mulc(x, CNUM2(y_re,y_im), r, n); }
+{ mad_cvec_mulc(x, CNUM(y_re,y_im), r, n); }
 
 void mad_cvec_div (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] / y[i]; }
@@ -233,7 +217,7 @@ void mad_cvec_divc (const cnum_t y[], cnum_t x, cnum_t r[], size_t n)
 { CHKYR; for (size_t i=0; i < n; i++) r[i] = x / y[i]; }
 
 void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], size_t n)
-{ mad_cvec_divc(y, CNUM2(x_re,x_im), r, n); }
+{ mad_cvec_divc(y, CNUM(x_re,x_im), r, n); }
 
 void mad_cvec_center (const cnum_t x[], cnum_t r[], size_t n)
 { CHKXR;
