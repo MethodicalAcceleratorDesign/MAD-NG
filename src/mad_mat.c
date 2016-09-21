@@ -243,13 +243,13 @@ void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], size_t m, size
 { CHKXYRY; MUL(); }
 
 void mad_mat_center (const num_t x[], num_t r[], size_t m, size_t n)
-{
-  mad_alloc_tmp(num_t, u, m);
-  for (size_t i=0; i < m; i++) { u[i]  = 0;
-  for (size_t j=0; j < n; j++)   u[i] += x[i*n+j]; }
-  for (size_t i=0; i < m; i++)
-  for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - u[i];
-  mad_free_tmp(u);
+{ CHKXR;
+  for (size_t i=0; i < m; i++) {
+    num_t mu = 0;
+    for (size_t j=0; j < n; j++) mu += x[i*n+j];
+    mu /= n;
+    for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+  }
 }
 
 // -- cmat
@@ -291,13 +291,13 @@ void mad_cmat_mulm (const cnum_t x[], const num_t y[], cnum_t r[], size_t m, siz
 { CHKXYRX; MUL(); }
 
 void mad_cmat_center (const cnum_t x[], cnum_t r[], size_t m, size_t n)
-{
-  mad_alloc_tmp(cnum_t, u, m);
-  for (size_t i=0; i < m; i++) { u[i]  = 0;
-  for (size_t j=0; j < n; j++)   u[i] += x[i*n+j]; }
-  for (size_t i=0; i < m; i++)
-  for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - u[i];
-  mad_free_tmp(u);
+{ CHKXR;
+  for (size_t i=0; i < m; i++) {
+    cnum_t mu = 0;
+    for (size_t j=0; j < n; j++) mu += x[i*n+j];
+    mu /= n;
+    for (size_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+  }
 }
 
 // -- lapack -----------------------------------------------------------------o
