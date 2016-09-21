@@ -33,7 +33,7 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
-// rename to CNUM
+#define SQR(a)      ((a)*(a))
 #define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
 // --- vec
@@ -57,11 +57,26 @@ void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], size_t n)
 num_t mad_vec_dot (const num_t x[], const num_t y[], size_t n)
 { CHKXY; num_t r=0; for (size_t i=0; i < n; i++) r += x[i] * y[i]; return r; }
 
-cnum_t mad_vec_dotv (const  num_t x[], const cnum_t y[], size_t n)
+cnum_t mad_vec_dotv (const num_t x[], const cnum_t y[], size_t n)
 { CHKXY; cnum_t r=0; for (size_t i=0; i < n; i++) r += x[i] * y[i]; return r; }
 
-void mad_vec_dotv_r (const  num_t x[], const cnum_t y[], cnum_t *r, size_t n)
+void mad_vec_dotv_r (const num_t x[], const cnum_t y[], cnum_t *r, size_t n)
 { CHKR; *r = mad_vec_dotv(x, y, n); }
+
+num_t mad_vec_norm (const num_t x[], size_t n)
+{ return sqrt(mad_vec_dot(x, x, n)); }
+
+num_t mad_vec_dist (const num_t x[], const num_t y[], size_t n)
+{ CHKXY; num_t r=0;
+  for (size_t i=0; i < n; i++) r += SQR(x[i] - y[i]);
+  return sqrt(r);
+}
+
+num_t mad_vec_distv (const num_t x[], const cnum_t y[], size_t n)
+{ CHKXY; num_t r=0;
+  for (size_t i=0; i < n; i++) r += SQR(x[i] - creal(y[i])) + SQR(cimag(y[i]));
+  return sqrt(r);
+}
 
 void mad_vec_add (const num_t x[], const num_t y[], num_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] + y[i]; }
@@ -158,6 +173,18 @@ cnum_t mad_cvec_dotv (const cnum_t x[], const num_t y[], size_t n)
 
 void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, size_t n)
 { CHKR; *r = mad_cvec_dotv(x, y, n); }
+
+num_t mad_cvec_norm (const cnum_t x[], size_t n)
+{ return mad_vec_norm((const num_t*)x, 2*n); }
+
+num_t mad_cvec_dist (const cnum_t x[], const cnum_t y[], size_t n)
+{ return mad_vec_dist((const num_t*)x, (const num_t*)y, 2*n); }
+
+num_t mad_cvec_distv (const cnum_t x[], const num_t y[], size_t n)
+{ CHKXY; num_t r=0;
+  for (size_t i=0; i < n; i++) r += SQR(creal(x[i]) - y[i]) + SQR(cimag(x[i]));
+  return sqrt(r);
+}
 
 void mad_cvec_add (const cnum_t x[], const cnum_t y[], cnum_t r[], size_t n)
 { CHKXYR; for (size_t i=0; i < n; i++) r[i] = x[i] + y[i]; }
