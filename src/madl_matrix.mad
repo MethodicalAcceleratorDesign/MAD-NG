@@ -142,8 +142,8 @@ Useful properties of square matrix:
 
 -- locals ---------------------------------------------------------------------o
 
-local new, istype, metatype, cast, typeof, sizeof, fill, cdef, gc
-      in require 'ffi'
+local ffi = require 'ffi'
+local istype in ffi
 
 local _C, is_nil, is_boolean, is_number, is_string, is_table, is_complex,
       is_scalar, is_callable, is_iterable, is_indexable, has_method,
@@ -155,7 +155,11 @@ local _C, is_nil, is_boolean, is_number, is_string, is_table, is_complex,
       compose, tostring, defhelp in MAD
 
 -- tmp for returned values
-local cres = new 'complex[1]'
+local cres = ffi.new 'complex[1]'
+
+-- constants
+local dbl_sz = ffi.sizeof 'double'
+local cpx_sz = ffi.sizeof 'complex'
 
 -- scalar repeater
 local rep_mt = { __len := 2^31, __index = \s s[1] }
@@ -163,15 +167,15 @@ local rep    = \x -> setmetatable({x}, rep_mt)
 
 -- types ----------------------------------------------------------------------o
 
-cdef [[
+ffi.cdef [[
 typedef struct { int32_t nr, nc; double  data[?]; }  matrix_t;
 typedef struct { int32_t nr, nc; complex data[?]; } cmatrix_t;
 ]]
 
-local  matrix_ctor = typeof ' matrix_t'
-local cmatrix_ctor = typeof 'cmatrix_t'
-local  matrix_cref = typeof ' matrix_t&'
-local cmatrix_cref = typeof 'cmatrix_t&'
+local  matrix_ctor = ffi.typeof ' matrix_t'
+local cmatrix_ctor = ffi.typeof 'cmatrix_t'
+local  matrix_cref = ffi.typeof ' matrix_t&'
+local cmatrix_cref = ffi.typeof 'cmatrix_t&'
 
 local is_matrix  = \x -> istype( matrix_ctor, x)
 local is_cmatrix = \x -> istype(cmatrix_ctor, x)
@@ -194,10 +198,10 @@ local function matrix_alloc (nr, nc)
   if len < _C.mad_alloc_threshold then
     mat = matrix_ctor(len) -- VLA
   else
-    local siz = sizeof(matrix_ctor, len)
+    local siz = ffi.sizeof(matrix_ctor, len)
     local ptr = _C.mad_malloc(siz)
-    mat = gc(cast(matrix_cref, ptr), _C.mad_free)
-    fill(mat, siz)
+    mat = ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free)
+    ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
   return mat
@@ -208,10 +212,10 @@ local function cmatrix_alloc (nr, nc)
   if len < _C.mad_alloc_threshold/2 then
     mat = cmatrix_ctor(len) -- VLA
   else
-    local siz = sizeof(cmatrix_ctor, len)
+    local siz = ffi.sizeof(cmatrix_ctor, len)
     local ptr = _C.mad_malloc(siz)
-    mat = gc(cast(cmatrix_cref, ptr), _C.mad_free)
-    fill(mat, siz)
+    mat = ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free)
+    ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
   return mat
@@ -342,17 +346,36 @@ function MR.same (x, e_, nr_, nc_)
     nr_, nc_, e_ = e_, nr_, x.data[0]
   end
   if is_number(e_) then
-    return matrix(nr_ or x.nr, nc_ or x.nc)
+    return  matrix(nr_ or x.nr, nc_ or x.nc)
   elseif is_complex(e_) then
     return cmatrix(nr_ or x.nr, nc_ or x.nc)
   end
   error("invalid argument #2 (scalar expected)")
 end
 
--- zeros, ones, eye, symp, circ, fill, vec, reshape (in place) ----------------o
+-- copy, zeros, ones, eye, symp, circ, fill, vec, reshape (in place) ----------o
+
+function MR.copy (x, y)
+  assert(is_matrix(y) and x:size() <= y:size(),
+         "invalid argument #1 (matrix with compatible size expected")
+  ffi.copy(x.data, y.data, dbl_sz * x:size())
+  return x
+end
+
+function MR.copy (x, y)
+  assert(is_cmatrix(y) and x:size() <= y:size(),
+         "invalid argument #1 (matrix with compatible size expected")
+  ffi.copy(x.data, y.data, cpx_sz * x:size())
+  return x
+end
 
 function MR.zeros (x)
-  fill(x.data, sizeof(is_matrix(x) and 'double' or 'complex', x:size()))
+  ffi.fill(x.data, dbl_sz * x:size())
+  return x
+end
+
+function MC.zeros (x)
+  ffi.fill(x.data, cpx_sz * x:size())
   return x
 end
 
@@ -441,7 +464,7 @@ end
 
 function MR.reshape (x, nr_, nc_)
   local nr, nc = nr_ or x.nr*x.nc, nc_ or 1
-  assert(nr*nc <= x:size(), "invalid new matrix sizes")
+  assert(nr*nc <= x:size(), "invalid matrix new sizes")
   x.nr, x.nc = nr, nc
   return x
 end
@@ -1003,8 +1026,6 @@ function MR.angle (x, y, n_)
 end
 
 -- special maps ---------------------------------------------------------------o
-
-MR.copy  = \x,r_ -> x:map(ident, r_)
 
 MR.ceil  = \x,r_ -> x:map(ceil , r_)
 MR.floor = \x,r_ -> x:map(floor, r_)
@@ -1616,8 +1637,8 @@ for k,v in pairs(MR) do
   if is_nil(MC[k]) then MC[k] = v end
 end
 
-metatype( matrix_ctor, MR)
-metatype(cmatrix_ctor, MC)
+ffi.metatype( matrix_ctor, MR)
+ffi.metatype(cmatrix_ctor, MC)
 
 -- end ------------------------------------------------------------------------o
 return {
