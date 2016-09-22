@@ -48,6 +48,7 @@ int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],  
 void   mad_mat_fft     (const  num_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  mat ->cmat
 void   mad_mat_rfft    (const  num_t x[],                         cnum_t  r[], size_t m, size_t n);                         //  mat ->cmat
 void   mad_mat_center  (const  num_t x[],                          num_t  r[], size_t m, size_t n);                         //  mat -> mat-<mat>_r
+void   mad_mat_symperr (const  num_t x[],                          num_t  r[],           size_t n);                         //  M' J M - J
 
 void   mad_cmat_ident  (                                          cnum_t  r[], size_t m, size_t n,             size_t ldr); //  ident->cmat
 void   mad_cmat_fill   (                        cnum_t x  ,       cnum_t  r[], size_t m, size_t n,             size_t ldr); //  cnum ->cmat

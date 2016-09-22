@@ -880,14 +880,14 @@ MR.polar = \x,r_ -> x:map(polar, r_)
 
 -- special folds --------------------------------------------------------------o
 
-local sqr  = \r,x -> r + x*x
-local csqr = \r,x -> r + abs(x*x)
+local ssqr = \r,x -> r + x*x
+local sabs = \r,x -> r + abs(x)
 
 MR.min     = \x,r_,d_ -> x:foldl(min ,r_,d_)
 MR.max     = \x,r_,d_ -> x:foldl(max ,r_,d_)
 MR.sum     = \x,r_,d_ -> x:foldl(add ,r_,d_)
-MR.sumsqr  = \x,r_,d_ -> x:foldl(sqr ,r_,d_)
-MC.sumsqr  = \x,r_,d_ -> x:foldl(csqr,r_,d_)
+MR.sumabs  = \x,r_,d_ -> x:foldl(sabs,r_,d_)
+MR.sumsqr  = \x,r_,d_ -> x:foldl(ssqr,r_,d_)
 MR.product = \x,r_,d_ -> x:foldl(mul ,r_,d_)
 
 local pred = nil
@@ -943,6 +943,40 @@ function MR.trace (x)
 end
 
 MR.tr = MR.trace -- shortcut
+
+-- symplecticity deviation, compute M' J M - J --------------------------------o
+
+function MR.symperr (x, r_) -- symplecticity deviation
+  if is_string(r_) and r_ == 'in' then r_ = x end
+  local nr, nc = x:sizes()
+  assert(nr == nc and nr % 2 == 0, "invalid argument #1 (2n matrix expected)")
+  local r = chksiz(r_,x) or x:same()
+
+!  local i1, j1, k1
+!  for i0=1,nr-1,2 do     i1=i0+1
+!  for j0=1,nr-1,2 do     j1=j0+1
+!    local s0, s1, s2, s3 = 0, 0, 0, 0
+!    if i0 == j0 then
+!      for k0=1,nr-1,2 do k1=k0+1
+!        s1 = s1 + get(x,k0,i0)*get(x,k1,j1) - get(x,k1,i0)*get(x,k0,j1)
+!        s2 = s2 + get(x,k0,i1)*get(x,k1,j0) - get(x,k1,i1)*get(x,k0,j0)
+!      end
+!      s1, s2 = s1-1, s2+1
+!    else
+!      for k0=1,nr-1,2 do k1=k0+1
+!        s0 = s0 + get(x,k0,i0)*get(x,k1,j0) - get(x,k1,i0)*get(x,k0,j0)
+!        s1 = s1 + get(x,k0,i0)*get(x,k1,j1) - get(x,k1,i0)*get(x,k0,j1)
+!        s2 = s2 + get(x,k0,i1)*get(x,k1,j0) - get(x,k1,i1)*get(x,k0,j0)
+!        s3 = s3 + get(x,k0,i1)*get(x,k1,j1) - get(x,k1,i1)*get(x,k0,j1)
+!      end
+!    end
+!    s = s + abs(s0)^2 + abs(s1)^2 + abs(s2)^2 + abs(s3)^2
+!    set(r,i0,j0,s0) set(r,i0,j1,s1) set(r,i1,j0,s2) set(r,i1,j1,s3)
+!  end end
+!  return r, s
+  _C.mad_mat_symperr(x.data, r.data, nr)
+  return r
+end
 
 -- inner, cross, mixed, outer -------------------------------------------------o
 
@@ -1069,7 +1103,7 @@ function MR.unit (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
-  local r = chksiz(r_,x) or x
+  local r = chksiz(r_,x) or x:same()
   if is_matrix(x)
   then _C.mad_vec_divn  (x.data, n         , r.data, r:size())
   else _C.mad_vec_divc_r(x.data, n.re, n.im, r.data, r:size())
@@ -1079,7 +1113,7 @@ end
 
 function MR.center (x, r_) -- center data on mean
   if is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or x
+  local r = chksiz(r_,x) or x:same()
   if is_vector(x)
   then _C.mad_vec_center(x.data, r.data, x:size ())
   else _C.mad_mat_center(x.data, r.data, x:sizes())
@@ -1089,7 +1123,7 @@ end
 
 function MC.center (x, r_) -- center data on mean
   if is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or x
+  local r = chksiz(r_,x) or x:same()
   if is_cvector(x)
   then _C.mad_cvec_center(x.data, r.data, x:size ())
   else _C.mad_cmat_center(x.data, r.data, x:sizes())
