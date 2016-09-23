@@ -47,14 +47,14 @@ DESCRIPTION
   The module matrix implements the operators and math functions on matrices:
   is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector, isa_vector,
   nrow, ncol, size (length), sizes, tsizes,
-  zeros, ones, eye, sympJ, sympS, circ, fill, vshape, reshape,        (in place)
+  zeros, ones, eye, symp, circ, fill, vshape, reshape,                (in place)
   get, get0, geti, geti0, getv, getdiag, getrow, getcol, getsub,
   set, set0, seti, seti0, setv, setdiag, setrow, setcol, setsub,
   same, copy, concat,
   foreach, mapat, map, map2, map3, foldl, foldr, scanl, scanr, filter,
 
   (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
-  unm, add, sub, mul (emul), div (ediv), mod, pow, eq,
+  unm, add, sub, mul, tmul, emul, div, ediv, mod, pow, eq,
   transpose, t, conjugate, conj, trace, tr,
   dot, inner, cross, mixed, outer, norm, distance, unit, center,
 
@@ -67,6 +67,7 @@ DESCRIPTION
 
   rot, rotx, roty, rotz, rotxy, rotxz, rotyz, rotyx, rotzx, rotzy, rotxyz,
   rotv, torotv, rotq, torotq,
+  sympinv, symperr,
 
   solve, svd, eigen,
   fft, ifft, rfft, irfft, conv, corr, covar.
@@ -132,13 +133,9 @@ Useful properties of square matrix:
                row/col form an orthonormal basis det(M)  = +1 (i.e. SO(n))
   unitary   :  M M^* = I, complex orthogonal,   |det(M)| = +1 (i.e.  U(n))
                row/col form an orthonormal basis det(M)  = +1 (i.e. SU(n))
-  symplectic:  M' S M = S => M^-1 = S^-1 M'      det(M)  = ±1 (i.e. Sp(n))
-               M' J M = J => M^-1 = J^-1 M'
-               S is the standard       non-singular skew-symmetric bilinear form
+  symplectic:  M' J M = J => M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
                J is the block-diagonal non-singular skew-symmetric bilinear form
-               S = {{0,I},{-I,0}}  , S^-1 = S' = -S, S^2 = -I, det(S) = 1
-               J = {{0,1},{-1,0}}_i, J^-1 = J' = -J, J^2 = -I, det(J) = 1
-               canonical vars S = {q1,...,qn,p1,..,pn}, J = {q1,p1,...,qn,pn}
+               J = diag {{0,1},{-1,0}}, J^-1 = J' = -J, J^2 = -I, det(J) = +1
                symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B
 ]=]
 
@@ -269,6 +266,12 @@ local function chksizm (r, x, y) -- mul
   return r
 end
 
+local function chksiztm (r, x, y) -- tmul
+  assert(is_nil(r) or (r.nr == x.nc and r.nc == y.nc) and x.nr == y.nr,
+         "incompatible matrix sizes")
+  return r
+end
+
 local function chksizd (r, x, y) -- div
   assert(is_nil(r) or (r.nr == x.nr and r.nc == y.nr) and x.nc == y.nc,
          "incompatible matrix sizes")
@@ -394,20 +397,11 @@ function MR.eye (x, e_) -- zeros + diag
   return x
 end
 
-function MR.sympJ (x) -- zeros + J
+function MR.symp (x) -- zeros + J
   local nr, nc = x:sizes()
   assert(nr == nc and nr % 2 == 0, "invalid argument #1 (2n matrix expected)")
   x:zeros()
   for i=1,nr-1,2 do set(x,i,i+1,1) set(x,i+1,i,-1) end
-  return x
-end
-
-function MR.sympS (x) -- zeros + S
-  local nr, nc = x:sizes()
-  assert(nr == nc and nr % 2 == 0, "invalid argument #1 (2n matrix expected)")
-  x:zeros()
-  local n2 = nr/2
-  for i=1,n2 do set(x,i,n2+i,1) set(x,n2+i,i,-1) end
   return x
 end
 
@@ -1337,8 +1331,36 @@ function MC.__mul (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat * cmat => cvec * cvec
     r = chksizm(r,x,y) or cmatrix(x:nrow(), y:ncol())
     _C.mad_cmat_mul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
-  elseif has_method(y, '__rmul_cmat') then         -- cmat * ?
+  elseif has_method(y, '__rmul_cmat') then       -- cmat * ?
     return y:__rmul_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- tmul
+
+function MR.tmul (x, y, r)
+  if is_matrix(y) and is_matrix(x) then         -- mat' * mat => vec * vec
+    r = chksiztm(r,x,y) or matrix(x:ncol(), y:ncol())
+    _C.mad_mat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif is_cmatrix(y) then                     -- mat' * cmat => vec * cvec
+    r = chksitm(r,x,y) or cmatrix(x:ncol(), y:ncol()) -- to check
+    _C.mad_mat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif has_method(y, '__rtmul_mat') then      -- mat' * ?
+    return y:__rtmul_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.tmul (x, y, r)
+  if is_matrix(y) then                          -- cmat' * mat => cvec * vec
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
+    _C.mad_cmat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif is_cmatrix(y) then   -- cmat' * cmat => cvec * cvec
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol()) -- to check
+    _C.mad_cmat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif has_method(y, '__rtmul_cmat') then     -- cmat' * ?
+    return y:__rtmul_cmat(x, r)
   end
   error("invalid arguments (unsupported matrix operation)")
 end

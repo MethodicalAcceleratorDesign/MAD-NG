@@ -38,6 +38,8 @@ cnum_t mad_mat_dotm    (const  num_t x[], const cnum_t y[],                    s
 void   mad_mat_dotm_r  (const  num_t x[], const cnum_t y[],       cnum_t *r  , size_t m, size_t n, size_t p);               // <mat , cmat>
 void   mad_mat_mul     (const  num_t x[], const  num_t y[],        num_t  r[], size_t m, size_t n, size_t p);               //  mat *  mat
 void   mad_mat_mulm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  mat * cmat
+void   mad_mat_tmul    (const  num_t x[], const  num_t y[],        num_t  r[], size_t m, size_t n, size_t p);               //  mat'*  mat
+void   mad_mat_tmulm   (const  num_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  mat'* cmat
 int    mad_mat_invn    (const  num_t y[],        num_t x  ,        num_t  r[], size_t m, size_t n,           num_t rcond);  //  num /  mat
 int    mad_mat_invc    (const  num_t y[],       cnum_t x  ,       cnum_t  r[], size_t m, size_t n,           num_t rcond);  // cnum /  mat
 int    mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,           num_t rcond);  // cnum /  mat
@@ -63,6 +65,8 @@ void   mad_cmat_dot_r  (const cnum_t x[], const cnum_t y[],       cnum_t *r  , s
 void   mad_cmat_dotm_r (const cnum_t x[], const  num_t y[],       cnum_t *r  , size_t m, size_t n, size_t p);               // <cmat ,  mat>
 void   mad_cmat_mul    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  cmat * cmat
 void   mad_cmat_mulm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  cmat *  mat
+void   mad_cmat_tmul   (const cnum_t x[], const cnum_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  cmat'* cmat
+void   mad_cmat_tmulm  (const cnum_t x[], const  num_t y[],       cnum_t  r[], size_t m, size_t n, size_t p);               //  cmat'*  mat
 int    mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t  r[], size_t m, size_t n,           num_t rcond);  //   num / cmat
 int    mad_cmat_invc   (const cnum_t y[],       cnum_t x  ,       cnum_t  r[], size_t m, size_t n,           num_t rcond);  //  cnum / cmat
 int    mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], size_t m, size_t n,           num_t rcond);  //  cnum / cmat
