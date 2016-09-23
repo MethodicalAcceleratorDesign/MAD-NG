@@ -28,7 +28,7 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
       in require 'luaunit'
 
 local complex, infi, InfI, tiny, eps, huge, inf, nan, pi, Pi,
-      cos, sin, tan, cosh, sinh, tanh, asinh, atanh, asin, atan, atan2,
+      sqrt, cos, sin, tan, cosh, sinh, tanh, asinh, atanh, asin, atan, atan2,
       is_complex, is_function, is_table, exp, frac, trunc, round, hypot in MAD
 
 -- regression test suite ------------------------------------------------------o
@@ -125,23 +125,15 @@ end
 
 -- generic functions
 
-function TestComplex:testAngle() -- TODO
-  local x, y
-  for _,x in ipairs(values.rad) do
-    for _,y in ipairs(values.rad) do
-      x, y = x/pi, y/pi
-      assertEquals( complex( x, y):angle(complex( x, y)), 0 )
-      assertEquals( complex( x,-y):angle(complex( x,-y)), 0 )
-      assertEquals( complex(-x, y):angle(complex(-x, y)), 0 )
-      assertEquals( complex(-x,-y):angle(complex(-x,-y)), 0 )
-      --print("angle:", ( C ):angle(C), "tan:", ( C ):atan(C) )
-
-      --assertEquals( ( x,  y):angle(), ( y,  x):atan2() )
-      --assertEquals( ( x, -y):angle(), (-y,  x):atan2() )
-      --assertEquals( (-x,  y):angle(), ( y, -x):atan2() )
-      --assertEquals( (-x, -y):angle(), (-y, -x):atan2() )
-    end
-  end
+function TestComplex:testAngle() -- checked with carg (should be relocated?)
+  for _,z  in ipairs(unitCircle( 1, values.deg)) do
+  for _,z1 in ipairs(unitCircle( 1, values.deg)) do
+    assertEquals( ( z ):angle( z1 ), z1:carg() - z:carg() )
+    assertEquals( complex( z.re, z.im):angle(complex( z.re, z.im)), 0 )
+    assertEquals( complex( z.re,-z.im):angle(complex( z.re,-z.im)), 0 )
+    assertEquals( complex(-z.re, z.im):angle(complex(-z.re, z.im)), 0 )
+    assertEquals( complex(-z.re,-z.im):angle(complex(-z.re,-z.im)), 0 )
+  end end
 end
 
 function TestComplex:testCeil()
@@ -213,8 +205,35 @@ end
 -- TODO below (to be changed: branches, special cases )
 
 function TestComplex:testSqrt()
-  assertEquals( complex(0,2):sqrt(), complex(1,1) )
-  assertEquals( complex(1,0):sqrt(), complex(1,0) )
+  assertEquals( 1/(complex( 0, 0):sqrt().re), inf )
+  assertEquals( 1/(complex( 0, 0):sqrt().im), inf )
+  assertEquals( 1/(complex(-0,-0):sqrt().re), inf )
+  assertEquals( 1/(complex(-0,-0):sqrt().im),-inf )
+  assertEquals(    complex( 0, 2):sqrt()    , complex(1,1) )
+  assertEquals(    complex( 1, 0):sqrt()    , complex(1,0) )
+  assertEquals(    complex( 0, 1):sqrt()    , sqrt(2)/2 * (1+1i) )
+
+  -- only positive real with cut alonge negative axis returns values in the
+  -- right half plane(including imaginary axis), brunchcut along the negative
+  -- axis
+  -- (r*cos(deg)+Isin(deg)):sqrt() == sqrt(r)(cos(deg/2)+Isin(deg/2))
+  -- print("\n")
+  local r, c = 1
+  for i,z in ipairs(unitCircle( r, values.deg)) do
+    --c = sqrt(r)*complex( cos(values.deg[i]/2), sin(values.deg[i]/2))
+
+    --print( values.deg[i], z, (z:sqrt()).im + sqrt(r) * sin(values.deg[i]/2))
+    --print( values.deg[i], z, (z:sqrt()).re + sqrt(r) * cos(values.deg[i]/2))
+    --assertAlmostEquals( (z:sqrt()).im - sqrt(r) * sin(values.deg[i]/2), 0, eps )
+    --assertAlmostEquals( (z:sqrt()).re - sqrt(r) * cos(values.deg[i]/2), 0, eps )
+
+    assertEquals( complex( z.re, z.im):sqrt().re, (complex( z.re,-z.im):sqrt().re) )
+    assertEquals( complex( z.re, z.im):sqrt().im,-(complex( z.re,-z.im):sqrt().im) )
+    --assertEquals( complex( z.re, z.im):sqrt().re, (complex(-z.re,-z.im):sqrt().re) )
+    --assertEquals( complex( z.re, z.im):sqrt().im,-(complex(-z.re,-z.im):sqrt().im) )
+    --assertEquals( complex( z.re, z.im):sqrt().re, (complex(-z.re, z.im):sqrt().re) )
+    --assertEquals( complex( z.re, z.im):sqrt().im,-(complex(-z.re, z.im):sqrt().im) )
+    end
 
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0):sqrt(), complex( 0, 0 ) )
@@ -766,16 +785,36 @@ function TestComplex:testProj()
   assertEquals( complex( nan , inf):proj(), complex( inf , 0) )
 end
 
-function TestComplex:testRect() --TODO: special cases
+function TestComplex:testRect()
+  assertEquals( complex( 0   , 0   ):rect(), complex( 0   , 0) )
+  assertEquals( complex( tiny, tiny):rect(), complex( tiny, 0) )
+  assertEquals( complex( tiny, 0   ):rect(), complex( tiny, 0) )
+  assertNaN   ( complex( inf , inf ):rect().re )
+  assertNaN   ( complex( inf , inf ):rect().im )
+  assertNaN   ( complex(-inf ,-inf ):rect().re )
+  assertNaN   ( complex(-inf ,-inf ):rect().im )
+  assertNaN   ( complex( nan , nan ):rect().re )
+  assertNaN   ( complex( nan , nan ):rect().im )
+
   for _,z in ipairs(unitCircle( 1, values.deg)) do
-    assertAlmostEquals( (z:polar() - complex( hypot(z.re,z.im), atan2(z.im,z.re))).re, 0, eps )
-    assertAlmostEquals( (z:polar() - complex( hypot(z.re,z.im), atan2(z.im,z.re))).im, 0, eps )
+    assertEquals( z:rect(), complex( z.re*cos(z.im), z.re*sin(z.im) ) )
   end
 end
 
-function TestComplex:testPolar() --TODO: special cases
+function TestComplex:testPolar()
+  assertEquals( complex( 0   , 0   ):polar(), complex( 0  , 0 ) )
+  assertEquals( complex( tiny, 0   ):polar(), complex( 0  , 0 ) )
+  assertEquals( complex( 1   , 0   ):polar(), complex( 1  , 0 ) )
+  assertEquals( complex(-1   , 0   ):polar(), complex( 1  , pi) )
+  assertEquals( complex( tiny, tiny):polar(), complex( 0  , atan2(tiny,tiny)) )
+  assertEquals( complex( inf , inf ):polar(), complex( inf, atan2( inf, inf)) )
+  assertEquals( complex(-inf ,-inf ):polar(), complex( inf, atan2(-inf,-inf)) )
+  assertNaN   ( complex( nan , nan ):polar().re )
+  assertNaN   ( complex( nan , nan ):polar().im )
+
   for _,z in ipairs(unitCircle( 1, values.deg)) do
-    assertEquals( z:rect(), complex( z.re*cos(z.im), z.re*sin(z.im) ) )
+    assertAlmostEquals( (z:polar() - complex( hypot(z.re,z.im), atan2(z.im,z.re))).re, 0, eps )
+    assertAlmostEquals( (z:polar() - complex( hypot(z.re,z.im), atan2(z.im,z.re))).im, 0, eps )
   end
 end
 
@@ -804,14 +843,14 @@ end
 -- complex operators
 
 function TestComplex:testUnm()
-  assertEquals( 1/(complex( 0  , 0 ):unm()).re,-inf )
-  assertEquals( 1/(complex( 0  , 0 ):unm()).im,-inf )
-  assertEquals( 1/(complex(-0  ,-0 ):unm()).re, inf )
-  assertEquals( 1/(complex(-0  ,-0 ):unm()).im, inf )
-  assertEquals( complex( inf, inf)  :unm(), complex(-inf,-inf) )
-  assertEquals( complex(-inf,-inf)  :unm(), complex( inf, inf) )
-  assertNaN   ( complex( nan, nan)  :unm().re )
-  assertNaN   ( complex( nan, nan)  :unm().im )
+  assertEquals( 1/(complex( 0  , 0  ):unm()).re,-inf )
+  assertEquals( 1/(complex( 0  , 0  ):unm()).im,-inf )
+  assertEquals( 1/(complex(-0  ,-0  ):unm()).re, inf )
+  assertEquals( 1/(complex(-0  ,-0  ):unm()).im, inf )
+  assertEquals(    complex( inf, inf):unm(), complex(-inf,-inf) )
+  assertEquals(    complex(-inf,-inf):unm(), complex( inf, inf) )
+  assertNaN   (    complex( nan, nan):unm().re )
+  assertNaN   (    complex( nan, nan):unm().im )
 
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals( z:unm()                   , complex(-z.re,-z.im) )
@@ -964,10 +1003,40 @@ function TestComplex:testDiv()
   end end
 end
 
---[[
 function TestComplex:testMod()
+--  for _,x in ipairs(values.num) do
+--  for _,y in ipairs(values.num) do
+--    if y > 0 and y < inf and x < inf then
+--      assertEquals( x%y , x - floor(x/y)*y )
+--    end
+--  end end
+
+  assertNaN( complex(1,1):mod(complex(   1,  inf)).re )
+  assertNaN( complex(1,1):mod(complex(   1,  inf)).im )
+  assertNaN( complex(1,1):mod(complex(-  1,  inf)).re )
+  assertNaN( complex(1,1):mod(complex(-  1,  inf)).im )
+  assertNaN( complex(1,1):mod(complex(   1, -inf)).re )
+  assertNaN( complex(1,1):mod(complex(   1, -inf)).im )
+  assertNaN( complex(1,1):mod(complex(-  1, -inf)).re )
+  assertNaN( complex(1,1):mod(complex(-  1, -inf)).im )
+  assertNaN( complex(1,1):mod(complex( inf,  inf)).re )
+  assertNaN( complex(1,1):mod(complex( inf,  inf)).im )
+  assertNaN( complex(1,1):mod(complex(-inf, -inf)).re )
+  assertNaN( complex(1,1):mod(complex(-inf, -inf)).im )
+  assertNaN( complex(1,1):mod(complex( inf,  nan)).re )
+  assertNaN( complex(1,1):mod(complex( inf,  nan)).im )
+  assertNaN( complex(1,1):mod(complex( nan,  nan)).re )
+  assertNaN( complex(1,1):mod(complex( nan,  nan)).im )
+
+--  assertNaN( complex(1,1):mod(complex(-inf,  nan)).re )
+--  assertNaN( complex(1,1):mod(complex(-inf,  nan)).im )
+--  assertNaN( complex(1,1):mod(complex(   1,    0)).re )
+--  assertNaN( complex(1,1):mod(complex(   1,    0)).im )
+--  assertNaN( complex(1,1):mod(complex(   1,  - 0)).re )
+--  assertNaN( complex(1,1):mod(complex(   1,  - 0)).im )
 end
 
+--[[
 function TestComplex:testPow()
 end
 ]]
