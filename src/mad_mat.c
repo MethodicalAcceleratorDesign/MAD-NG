@@ -29,6 +29,7 @@
 // --- implementation --------------------------------------------------------o
 
 #define CHKR     assert( r )
+#define CHKX     assert( x )
 #define CHKXY    assert( x && y )
 #define CHKXR    assert( x && r )
 #define CHKYR    assert( y && r )
@@ -302,9 +303,9 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], size_t m, size_t n)
 
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
 
-void mad_mat_symperr (const num_t x[], num_t r[], size_t n)
-{ CHKXR; assert(n % 2 == 0);
-  num_t s0, s1, s2, s3;
+num_t mad_mat_symperr (const num_t x[], num_t r[], size_t n)
+{ CHKX; assert(x != r && n % 2 == 0);
+  num_t s=0, s0, s1, s2, s3;
   for (size_t i = 0; i < n-1; i += 2)
   for (size_t j = 0; j < n-1; j += 2) {
     if (i == j) {
@@ -313,6 +314,7 @@ void mad_mat_symperr (const num_t x[], num_t r[], size_t n)
         s1 += x[k*n+i  ] * x[(k+1)*n+j+1] - x[(k+1)*n+i  ] * x[k*n+j+1];
         s2 += x[k*n+i+1] * x[(k+1)*n+j  ] - x[(k+1)*n+i+1] * x[k*n+j  ];
       }
+      s += s1*s1 + s2*s2;
     } else {
       s0 = s1 = s2 = s3 = 0;
       for (size_t k = 0; k < n-1; k += 2) {
@@ -321,9 +323,71 @@ void mad_mat_symperr (const num_t x[], num_t r[], size_t n)
         s2 += x[k*n+i+1] * x[(k+1)*n+j  ] - x[(k+1)*n+i+1] * x[k*n+j  ];
         s3 += x[k*n+i+1] * x[(k+1)*n+j+1] - x[(k+1)*n+i+1] * x[k*n+j+1];
       }
+      s += s0*s0 + s1*s1 + s2*s2 + s3*s3;
     }
-    r[ i   *n+j] = s0, r[ i   *n+j+1] = s1;
-    r[(i+1)*n+j] = s2, r[(i+1)*n+j+1] = s3;
+    if (r) {
+      r[ i   *n+j] = s0, r[ i   *n+j+1] = s1;
+      r[(i+1)*n+j] = s2, r[(i+1)*n+j+1] = s3;
+    }
+  }
+  return sqrt(s);
+}
+
+num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], size_t n)
+{ CHKX; assert(x != r && n % 2 == 0);
+  cnum_t s=0, s0, s1, s2, s3;
+  for (size_t i = 0; i < n-1; i += 2)
+  for (size_t j = 0; j < n-1; j += 2) {
+    if (i == j) {
+      s0 = s3 = 0, s1 = -1, s2 = 1;
+      for (size_t k = 0; k < n-1; k += 2) {
+        s1 += conj(x[k*n+i  ]) * x[(k+1)*n+j+1] - conj(x[(k+1)*n+i  ]) * x[k*n+j+1];
+        s2 += conj(x[k*n+i+1]) * x[(k+1)*n+j  ] - conj(x[(k+1)*n+i+1]) * x[k*n+j  ];
+      }
+      s += s1*s1 + s2*s2;
+    } else {
+      s0 = s1 = s2 = s3 = 0;
+      for (size_t k = 0; k < n-1; k += 2) {
+        s0 += conj(x[k*n+i  ]) * x[(k+1)*n+j  ] - conj(x[(k+1)*n+i  ]) * x[k*n+j  ];
+        s1 += conj(x[k*n+i  ]) * x[(k+1)*n+j+1] - conj(x[(k+1)*n+i  ]) * x[k*n+j+1];
+        s2 += conj(x[k*n+i+1]) * x[(k+1)*n+j  ] - conj(x[(k+1)*n+i+1]) * x[k*n+j  ];
+        s3 += conj(x[k*n+i+1]) * x[(k+1)*n+j+1] - conj(x[(k+1)*n+i+1]) * x[k*n+j+1];
+      }
+      s += s0*s0 + s1*s1 + s2*s2 + s3*s3;
+    }
+    if (r) {
+      r[ i   *n+j] = s0, r[ i   *n+j+1] = s1;
+      r[(i+1)*n+j] = s2, r[(i+1)*n+j+1] = s3;
+    }
+  }
+  return cabs(s);
+}
+
+// -- Symplectic inverse, compute -J M' J -------------------------------------o
+
+void mad_mat_sympinv (const num_t x[], num_t r[], size_t n)
+{ CHKXR; assert(n % 2 == 0);
+  num_t t;
+  for (size_t i = 0; i < n-1; i += 2)
+  for (size_t j = 0; j < n-1; j += 2) {
+    t              =  x[ i   *n+j  ];
+    r[ i   *n+j  ] =  x[(i+1)*n+j+1];
+    r[ i   *n+j+1] = -x[ i   *n+j+1];
+    r[(i+1)*n+j  ] = -x[(i+1)*n+j  ];
+    r[(i+1)*n+j+1] = t;
+  }
+}
+
+void mad_cmat_sympinv (const cnum_t x[], cnum_t r[], size_t n)
+{ CHKXR; assert(n % 2 == 0);
+  cnum_t t;
+  for (size_t i = 0; i < n-1; i += 2)
+  for (size_t j = 0; j < n-1; j += 2) {
+    t              =  conj(x[ i   *n+j  ]);
+    r[ i   *n+j  ] =  conj(x[(i+1)*n+j+1]);
+    r[ i   *n+j+1] = -conj(x[ i   *n+j+1]);
+    r[(i+1)*n+j  ] = -conj(x[(i+1)*n+j  ]);
+    r[(i+1)*n+j+1] = t;
   }
 }
 
