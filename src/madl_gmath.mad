@@ -80,7 +80,7 @@ local abs, acos, asin, atan, atan2, ceil, cos, cosh, deg, exp, floor, fmod,
       frexp, huge, ldexp, log, log10, max, min, modf, pi, pow, rad, random,
       randomseed, sin, sinh, sqrt, tan, tanh in math
 
-local _C, is_number, first, second in MAD
+local _C, is_number, is_nil, first, second in MAD
 
 -- t={}; for k in pairs(math) do t[#t+1]=k end;
 -- table.sort(t); print(table.concat(t,', '))
@@ -154,12 +154,67 @@ M.max        = max
 M.min        = min
 M.deg        = deg
 M.rad        = rad
-M.random     = random
-M.randomseed = randomseed
 
 M.sign = \x -> x>=0 and 1 or x<0 and -1 or x
 M.step = \x -> x>=0 and 1 or x<0 and  0 or x
 M.sinc = \x -> abs(x)<1e-10 and 1 or sin(x)/x
+
+-- random number generators ---------------------------------------------------o
+
+local randn_spare
+
+M.randomseed = \x => randn_spare=nil ; randomseed(x) end
+
+-- LuaJIT Tausworthe PRNG with period 2^223
+-- generates 52 pseudo-random bits in [0,1)
+M.random = random
+
+-- Box-Muller transformation (Marsaglia polar form)
+-- generates pseudo-random gaussian numbers
+local function randn ()
+  local x1, x2, w
+  if randn_spare then
+    x1, randn_spare = randn_spare, nil
+    return x1
+  end
+  repeat
+    x1 = 2*random() - 1
+    x2 = 2*random() - 1
+    w = x1*x1 + x2*x2
+  until w < 1
+  w = sqrt( -2 * log(w) / w )
+  randn_spare = x2*w
+  return x1*w
+end
+
+-- Inverse transform sampling (for 'small' lamdba in O(lambda))
+-- Discrete Univariate Distributions, L. Devroye, p505
+local function randp (l)
+  assert(is_number(l) and l > 0 and l < 30,
+         "invalid argument #1 (0 < lambda < 30 expected)")
+  local x, p = 0, exp(-l)
+  local s, u = p, random()
+  while u > s do
+    x = x + 1
+    p = p * l/x
+    s = s + p
+  end
+  return x
+end
+
+local function tgauss (c_)
+  if is_nil(c_) then return randn() end
+  local c, r = abs(c_)
+  repeat r = randn() until abs(r) <= c
+  return r
+end
+
+M.randf   = \ random()
+M.randn   = randn
+M.gauss   = randn
+M.tgauss  = tgauss
+M.randp   = randp
+M.poisson = randp
 
 -- end ------------------------------------------------------------------------o
 return MAD.utility.defhelp(M) -- todo: per function help -> 'gmath'
