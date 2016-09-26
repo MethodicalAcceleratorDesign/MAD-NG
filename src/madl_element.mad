@@ -1,0 +1,177 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Elements module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide the hierarchy (taxonomy) of the lattice elements
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = { __help = {} }
+
+-- help -----------------------------------------------------------------------o
+
+M.__help.self = [=[
+NAME
+  element -- define MAD elements
+
+SYNOPSIS
+
+DESCRIPTION
+  The module element is a front-end to the factory of all MAD elements.
+
+RETURN VALUES
+
+EXAMPLES
+  local quadrupole in MAD.elements
+  mq = quadrupole 'mq' {}
+  qf = mq { k1  =  0.1   } -- focusing quadrupole
+  qd = mq { k1 := -qf.k1 } -- defocusing quadrupole
+
+SEE ALSO
+  sequence, line, beam, object
+]=]
+
+-- locals ----------------------------------------------------------------------
+
+local Object in MAD
+
+-- functions -------------------------------------------------------------------
+
+--[[ To move in Object?
+local function show_inheritance(self, depth, sep)
+  show_list(self, element_fields, sep)
+  if depth > 0 and not rawget(self:class(), 'kind') then
+    show_inheritance(self:class(), depth-1)
+  end
+end
+
+local function show_properties(self, disp, sep)
+  local show = type(disp) == 'number' and show_inheritance or show_list
+  show(self, disp, sep)
+end
+
+function MT:show(disp)
+  io.write('  ', string.format('%-25s',self:class().name.." '"..self.name.."' "), '{ at= ', self.s_pos, ', ')
+  show_properties(self, disp)
+  io.write(' },\n')
+end
+
+function MT:show_madx(disp)
+  io.write('  ', string.format('%-25s',self.name..': '..self:class().name..', '), 'at= ', self.s_pos, ', ')
+  show_properties(self, disp, {'= ', ', '})
+  io.write(';\n')
+end
+]]
+
+-- metamethods -----------------------------------------------------------------
+
+--[[
+-- constructor of elements, can be unamed (inherit its name)
+function MT:__call(a)
+  if type(a) == 'string' then -- class 'name' { ... }
+    return function(t)
+      if is_list(t) then
+        t.name = a
+        if not self:is_class() then init(self) end
+        return setmetatable(t, self)
+      end
+      error ("invalid element constructor argument, list expected")
+    end
+  end
+
+  if is_list(a) then  -- class { ... }
+    if not self:is_class() then init(self) end
+    return setmetatable(a, self)
+  end
+  error ("invalid element constructor argument, string expected")
+end
+
+-- concatenation
+function MT.__add(a, b)
+  return line { a, b }
+end
+
+-- repetition
+function MT.__mul(n, a)
+  if type(a) == 'number' then n, a = a, n end
+  return line { _rep=n, a }
+end
+]]
+
+-- members ---------------------------------------------------------------------
+
+local E = {
+  element = Object 'element' { kind='element', is_element=true }
+}
+
+E.element:set_metamethod {
+  __add = \a,b error("NYI"),
+  __mul = \n,a error("NYI"),
+}
+
+-- objects
+
+E.marker         = E.element 'marker'  { kind='marker', is_marker =true }
+E.slink          = E.element 'slink'   { kind='slink' , is_slink  =true }
+E.patch          = E.element 'patch'   { kind='patch' , is_patch  =true }
+
+-- frames
+
+E.strait_element = E.element 'strait_element' { kind='strait_element', is_strait=true }
+E.curved_element = E.element 'curved_element' { kind='curved_element', is_curved=true }
+E.  thin_element = E.element   'thin_element' { kind=  'thin_element', is_thin  =true }
+
+-- references
+
+E.drift          = E.strait_element 'drift'       { kind='drift'         }
+E.rbend          = E.strait_element 'rbend'       { kind='rbend'         }
+E.quadrupole     = E.strait_element 'quadrupole'  { kind='quadrupole'    }
+E.sextupole      = E.strait_element 'sextupole'   { kind='sextupole'     }
+E.octupole       = E.strait_element 'octupole'    { kind='octupole'      }
+E.decapole       = E.strait_element 'decapole'    { kind='decapole'      }
+E.dodecapole     = E.strait_element 'dodecapole'  { kind='dodecapole'    }
+E.kicker         = E.strait_element 'kicker'      { kind='kicker'        }
+E.solenoid       = E.strait_element 'solenoid'    { kind='solenoid'      }
+E.wiggler        = E.strait_element 'wiggler'     { kind='wiggler'       }
+E.elseparator    = E.strait_element 'elseparator' { kind='elseparator'   }
+E.rfcavity       = E.strait_element 'rfcavity'    { kind='rfcavity'      }
+E.collimator     = E.strait_element 'collimator'  { kind='collimator'    }
+E.instrument     = E.strait_element 'instrument'  { kind='instrument'    }
+E.placeholder    = E.strait_element 'placeholder' { kind='placeholder'   }
+
+E.sbend          = E.curved_element 'sbend'       { kind='sbend'         }
+
+E.multipole      = E.thin_element   'multipole'   { kind='multipole'     }
+E.rfmultipole    = E.thin_element   'rfmultipole' { kind='rfmultipole'   }
+
+-- specializations
+
+E.twcavity       = E.rfcavity       'twcavity'    { kind='twcavity'      }
+E.crabcavity     = E.rfmultipole    'crabcavity'  { kind='crabcavity'    }
+
+E.hkicker        = E.kicker         'hkicker'     { kind='hkicker'       }
+E.vkicker        = E.kicker         'vkicker'     { kind='vkicker'       }
+
+E.bpm            = E.instrument     'bpm'         { kind='bpm'           }
+E.blm            = E.instrument     'blm'         { kind='blm'           }
+
+-- hook
+M.element = E
+
+-- end -------------------------------------------------------------------------
+return MAD.utility.defhelp(M) -- todo: per function help -> 'element'
