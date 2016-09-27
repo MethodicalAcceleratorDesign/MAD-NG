@@ -68,8 +68,8 @@ void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = CNUM(x) / CNUM(y);  }
 
 void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; num_t _[1]; cnum_t cr = CNUM(x) / CNUM(y);
-  *r = CNUM(y) * CNUM2(modf(creal(cr),_), modf(cimag(cr),_)); }
+{ CHKR; cnum_t cr = CNUM(x) / CNUM(y);
+  *r = CNUM(x) - CNUM(y) * CNUM2(round(creal(cr)), round(cimag(cr))); }
 
 void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = cpow( CNUM(x), CNUM(y) ); }
