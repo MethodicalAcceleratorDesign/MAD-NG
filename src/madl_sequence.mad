@@ -58,7 +58,7 @@ M.__help.add = [=[
 
 -- locals ---------------------------------------------------------------------o
 
-local element in MAD.element
+local element, line in MAD.element
 
 -- implementation -------------------------------------------------------------o
 
@@ -106,6 +106,39 @@ local function find_index_by_pos(t, s_pos, start)
   return nil
 end
 
+-- compute s positions of sequence elements
+local function element_spos(seq, elem, idx)
+  local s_pos = elem.s_pos
+  if is_number(s_pos) then return s_pos end
+  if s_pos == 'ongoing' then
+    seq_error("cycling dependencies detected", seq, elem, idx)
+  end
+
+  elem.s_pos = 'ongoing'
+
+  local pos   = elem.at    or 0
+  local from  = elem.from  or elem.at and 'start' or 'prev'
+  local refer = elem.refer or seq.refer           or 'entry'
+
+      if refer == 'entry'   then ;
+  elseif refer == 'centre'  then pos = pos - (seq and seq.length/2 or elem.length/2)
+  elseif refer == 'exit'    then pos = pos - (seq and seq.length   or elem.length)
+  elseif seq and seq[refer] then pos = pos - seq[refer].s_pos
+  else seq_error("invalid refer '"..refer.."'", seq, elem, idx)
+  end
+
+      if from == 'start'       then ;
+  elseif from == 'end' and len then pos = len - pos
+  elseif from == 'prev'        then pos = pos + seq[idx-1].s_pos + seq[idx-1].length
+  elseif from == 'next'        then pos = pos + element_spos(seq, seq[idx+1], idx+1)
+  elseif seq[from]             then pos = pos + element_spos(seq, seq[from], seq[from].idx)
+  else seq_error("invalid from '"..from.."'", seq, elem, idx)
+  end
+
+  elem.s_pos = pos
+  return pos
+end
+
 --  local states = {s_pos='todo', _idx=idx, _at=at, _from=from, _refer=refer, _seq=seq,
 --                  element=shadow_get, class=shadow_class}
 
@@ -122,6 +155,8 @@ local function add_element_key(self, elem)
   else                       ref[#ref+1] = elem         -- already many elements
   end
 end
+
+local add_item -- forward declaration
 
 local function add_element(self, elem, at, from, refer, seq)
   local i = #self+1
@@ -146,108 +181,100 @@ local function add_sequence(self, sequ, at, from, refer, rev)
   end
 end
 
-local add_line -- forward declaration (x-ref in this order lets add_item to be inlined)
-
-local function add_error(self, item)
-  error("invalid item '"..(item.name or '?').."' at slot "..(#self+1).." in sequence '"..self.name.."'")
-end
-
-local function add_item(self, item, at, from, refer, rev)
-      if item.is_element  then add_element (self, item, at, from, refer)
-  elseif item.is_line     then add_line    (self, item, at, from, refer, rev)
-  elseif item.is_sequence then add_sequence(self, item, at, from, refer, rev)
-  else                         add_error   (self, item)
+function add_item (seq, item, at, from, refer, rev)
+      if item.is_element  then add_element (seq, item, at, from, refer)
+  elseif item.is_line     then add_line    (seq, item, at, from, refer, rev)
+  elseif item.is_sequence then add_sequence(seq, item, at, from, refer, rev)
+  else                         add_error   (seq, item)
   end
 end
 
-add_line = function(self, line, at, from, refer, rev)
---  io.write('add_line: \'', line:mangled_name(), '\' at slot ', #self+1, '\n')
-  local j_beg, j_end, j_step
-  local n = (line._rep or 1) * (rev or 1)
+local function flatten_line (flat, line, rev, k)
+  local n = (line._rep or 1) * rev
+  local start, stop, step
 
-  if n<0
-  then n, j_beg, j_end, j_step = -n, #line, 1, -1
-  else    j_beg, j_end, j_step =     1, #line,  1
+  if n < 0
+  then n, start, stop, step = -n, #line,     1, -1
+  else n, start, stop, step =  n, 1    , #line,  1
   end
 
-  for i=1,n do
-    for j=j_beg,j_end,j_step do
-      add_item(self, line[j], at, from, refer, j_step)
+  for i = 1,n do
+    for j = start,stop,step do
+      if line[j].is_line
+      then k = flatten_line(flat, line[j], step, k)
+      else k, flat[k] = k+1, line[j]
+      end
     end
   end
+  return k
 end
 
-local function add_list(self, lst)
-  if is_list(lst) then
-    for _,v in ipairs(lst) do
-      add_item(self, v)
+local function flatten_seq (seq)
+  local flat, k = {}, 1
+  for idx,elem in ipairs(seq) do
+    if elem.is_element ~= true then
+      seq_error("invalid element detected", seq, elem, idx)
     end
-  else add_item(self, lst)
+    if elem.is_line == true then
+      k = flatten_line(flat, elem, 1, k)
+    else
+      k, flat[k], k = k+1, elem
+    end
   end
+  return flat
 end
 
--- compute s positions of sequence elements
-local function element_spos(seq, elem, idx)
-  local s_pos = elem.s_pos
-  if is_number(s_pos) then return s_pos end
-  if s_pos == 'ongoing' then
-    error("cycling dependencies detected", seq, elem, idx)
+function init_sequence (seq)
+  local flat = flatten_seq(seq)
+  for i,e in ipairs(flat) do
+    seq[i] = e
   end
-
-  elem.s_pos = 'ongoing'
-
-  local pos   = elem.at    or 0
-  local from  = elem.from  or elem.at and 'start' or 'prev'
-  local refer = elem.refer or seq.refer           or 'entry'
-
-      if refer == 'entry'   then ;
-  elseif refer == 'centre'  then pos = pos - (seq and seq.length/2 or elem.length/2)
-  elseif refer == 'exit'    then pos = pos - (seq and seq.length   or elem.length)
-  elseif seq and seq[refer] then pos = pos - seq[refer].s_pos
-  else error("invalid refer: "..elem._refer)
-  end
-
-      if from == 'start'       then ;
-  elseif from == 'end' and len then pos = len - pos
-  elseif from == 'prev'        then pos = pos + seq[idx-1].s_pos + seq[idx-1].length
-  elseif from == 'next'        then pos = pos + element_spos(seq, seq[idx+1], idx+1)
-  elseif seq[from]             then pos = pos + element_spos(seq, seq[from], seq[from].idx)
-  else error("invalid from: "..elem._from)
-  end
-
-  elem.s_pos = pos
-  return pos
+  seq[#flat+1] = nil
+  -- adjust_length(seq)
+  return seq
 end
 
-local function set_element(seq, elem, idx)
-  if elem.is_element ~= true then
-    seq_error("invalid element detected", seq, elem, idx)
-  end
-  if elem:get_raw('sequence') ~= nil then
-    seq_error("already assigned element detected", seq, elem, idx)
-  end
-  elem.sequence = seq
-end
-
-local function adjust_length(seq)
+--[[ SEQUENCE
+local function adjust_length (seq)
   local last = seq[#seq]
   if not seq.length or seq.length < last.s_pos + last.length then
     seq.length = last.s_pos + last.length
   end
 end
 
-init_sequence = function (seq)
-  for idx,elem in ipairs(seq) do
-    set_element(seq, elem, idx)
-  end
-  adjust_length(seq)
-  return seq
-end
+---  if elem:get_raw('sequence') ~= nil then
+--    seq_error("already assigned element detected", seq, elem, idx)
+--  end
+--  elem.sequence = seq
 
---[[ SEQUENCE
 -- concatenation
 function M.__add(sequ, a)
   return sequ:add(a)
+end
+
+-- methods
+function M:add(a, at, from, refer)
+  if at or not a.at then add_item(self, a, at, from, refer)                 -- positional params
+  elseif is_list(a) then add_item(self, a.item or a[1], a.at, a.from, a.refer)   -- named params
+  else error("invalid set of parameters in incremental construction of sequence '"..self.name.."'")
+  end
+  return self
+end
+
+function M:set(a)
+  self[1] = nil -- clear sequence
+  copy_fields(self, a, sequence_fields)
+  add_element(self, start_marker, 0)
+  add_list   (self, a)
+  return self:done()
+end
+
+function M:done()
+  add_element   (self, end_marker, self.length)
+  sequence_spos (self)
+  adjust_length (self)
+  clean_sequence(self)
+  return self
 end
 ]]
 
@@ -339,30 +366,6 @@ end
 ]]
 
 -- methods -------------------------------------------------------------------o
-
-function M:add(a, at, from, refer)
-  if at or not a.at then add_item(self, a, at, from, refer)                 -- positional params
-  elseif is_list(a) then add_item(self, a.item or a[1], a.at, a.from, a.refer)   -- named params
-  else error("invalid set of parameters in incremental construction of sequence '"..self.name.."'")
-  end
-  return self
-end
-
-function M:set(a)
-  self[1] = nil -- clear sequence
-  copy_fields(self, a, sequence_fields)
-  add_element(self, start_marker, 0)
-  add_list   (self, a)
-  return self:done()
-end
-
-function M:done()
-  add_element   (self, end_marker, self.length)
-  sequence_spos (self)
-  adjust_length (self)
-  clean_sequence(self)
-  return self
-end
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
 
