@@ -39,7 +39,7 @@ local values = {
   num  = {0, tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
           0.1-eps, 0.1, 0.1+eps, 0.5, 0.7-eps, 0.7, 0.7+eps, 1-eps, 1, 1+eps,
           1.1, 1.7, 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53,
-          2^63, 2^64, huge, inf},
+          2^63, 2^64, huge},
   rad  = {0, eps, 2*eps, pi/180, pi/90, pi/36, pi/18, pi/12, pi/6, pi/4, pi/3, pi/2,
           pi-pi/3, pi-pi/4, pi-pi/6, pi-pi/12, pi},
   rad2 = {0, eps, 2*eps, pi/180, pi/90, pi/36, pi/18, pi/12, pi/6, pi/4, pi/3, pi/2},
@@ -91,6 +91,13 @@ function TestComplex:testCtor()
     assertTrue( is_complex( complex( v, v) ) )
     assertTrue( is_complex( complex(-v,-v) ) )
   end
+  assertTrue  ( is_complex( complex( 0  , inf) ) )
+  assertTrue  ( is_complex( complex( 0  ,-inf) ) )
+  assertTrue  ( is_complex( complex(-inf, 0  ) ) )
+  assertTrue  ( is_complex( complex( inf, 0  ) ) )
+  assertTrue  ( is_complex( complex( inf, inf) ) )
+  assertTrue  ( is_complex( complex(-inf,-inf) ) )
+
   assertNaN   ( complex(nan, 1  ).re    )
   assertEquals( complex(nan, 1  ).im, 1 )
   assertEquals( complex(1  , nan).re, 1 )
@@ -132,6 +139,19 @@ function TestComplex:testCtorFields()
     assertEquals( (-v+ 0*1i).im,  0 )
     assertEquals( ( v+ 0*1i).im,  0 )
   end
+    assertEquals( complex( 0  , inf).re,  0   )
+    assertEquals( complex( 0  ,-inf).re,  0   )
+    assertEquals( complex(-inf, 0  ).re, -inf )
+    assertEquals( complex( inf, 0  ).re,  inf )
+    assertEquals( complex( inf, inf).re,  inf )
+    assertEquals( complex(-inf,-inf).re, -inf )
+
+    assertEquals( complex( 0  , inf).im,  inf )
+    assertEquals( complex( 0  ,-inf).im, -inf )
+    assertEquals( complex(-inf, 0  ).im,  0   )
+    assertEquals( complex( inf, 0  ).im,  0   )
+    assertEquals( complex( inf, inf).im,  inf )
+    assertEquals( complex(-inf,-inf).im, -inf )
 end
 
 -- generic functions
@@ -202,6 +222,10 @@ function TestComplex:testAbs()
       assertAlmostEquals( complex(x,y):abs() - hypot(x,y), 0, eps )
     end
   end
+  for _,x in ipairs(values.num) do
+    if x ~= huge then assertAlmostEquals( complex(x,x):abs() - hypot(x,x), 0, eps )
+    else              assertInf( complex(x,x):abs() )  end
+  end
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( complex( z[1], z[2]):abs() - 1, 0, eps )
     assertAlmostEquals( complex(-z[1], z[2]):abs() - 1, 0, eps )
@@ -214,9 +238,14 @@ function TestComplex:testAbs()
 end
 
 function TestComplex:testSqrt()
-  local r, z = 1
   -- (r*cos(deg)+Isin(deg)):sqrt() == sqrt(r)(cos(deg/2)+Isin(deg/2))
+  local r, z, deg2 = 1
   for i,z in ipairs(unitCircle( r, values.deg2)) do
+    deg2 = values.deg2[i]
+    --print(deg2, complex( z.re, z.im):sqrt(), ( sqrt(r)*complex( cos(deg2/2), sin(deg2/2))) )
+
+    --assertAlmostEquals( z:sqrt().re - (sqrt(r)*complex( cos(deg2/2), sin(deg2/2))).re, 0, eps )
+    --assertAlmostEquals( z:sqrt().im - (sqrt(r)*complex( cos(deg2/2), sin(deg2/2))).im, 0, eps )
     assertEquals( complex( z.re, z.im):sqrt().re, (complex( z.re,-z.im):sqrt().re) )
     assertEquals( complex( z.re, z.im):sqrt().im,-(complex( z.re,-z.im):sqrt().im) )
   end
@@ -299,6 +328,12 @@ function TestComplex:testExp()
     assertEquals( (sin(y) - (z:exp() - (-z):exp()) / 2i), complex(0,0) )
     assertEquals( (cos(y) - (z:exp() + (-z):exp()) / 2 ), complex(0,0) )
   end
+  for _,y in ipairs(values.num) do
+    z = complex(0,y)
+    assertEquals( (sin(y) - (z:exp() - (-z):exp()) / 2i), complex(0,0) )
+    assertEquals( (cos(y) - (z:exp() + (-z):exp()) / 2 ), complex(0,0) )
+  end
+
   for i,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals( z      ,             complex( 0, values.deg[i]):exp() )
     assertEquals( z:exp(), exp(z.re) * complex( cos(z.im), sin(z.im))   )
@@ -336,6 +371,7 @@ function TestComplex:testExp()
 end
 
 function TestComplex:testLog()
+  local z
 --branch cut along the negative real axis
   assertEquals( complex(-(0+eps), 0):log(), complex(-36.04365338911715, pi))
 
@@ -348,24 +384,23 @@ function TestComplex:testLog()
   assertEquals( complex( 0, 1):log(), complex( 0, pi/2 ) )
   assertEquals( complex( 0,-1):log(), complex( 0,-pi/2 ) )
 
-  --should be .im?
-  assertAlmostEquals( complex( 0,  pi      ):log().re - (1.14472988584940 + 1.57079632679490i).re, 0,    eps )
-  assertAlmostEquals( complex( 0,- pi      ):log().re - (1.14472988584940 - 1.57079632679490i).re, 0,    eps )
-  assertAlmostEquals( complex( 0,  pi + 1  ):log().re - (1.42108041279429 + 1.57079632679490i).re, 0, 12*eps )
-  assertAlmostEquals( complex( 0,-(pi + 1) ):log().re - (1.42108041279429 - 1.57079632679490i).re, 0, 12*eps )
-  assertAlmostEquals( complex(-0,  pi      ):log().re - (1.14472988584940 + 1.57079632679490i).re, 0,    eps )
-  assertAlmostEquals( complex(-0,- pi      ):log().re - (1.14472988584940 - 1.57079632679490i).re, 0,    eps )
-  assertAlmostEquals( complex(-0,  pi + 1  ):log().re - (1.42108041279429 + 1.57079632679490i).re, 0, 12*eps )
-  assertAlmostEquals( complex(-0,-(pi + 1) ):log().re - (1.42108041279429 - 1.57079632679490i).re, 0, 12*eps )
+  assertAlmostEquals( complex( 0,  pi      ):log().re - 1.14472988584940 , 0,    eps )
+  assertAlmostEquals( complex( 0,- pi      ):log().re - 1.14472988584940 , 0,    eps )
+  assertAlmostEquals( complex( 0,  pi + 1  ):log().re - 1.42108041279429 , 0, 12*eps )
+  assertAlmostEquals( complex( 0,-(pi + 1) ):log().re - 1.42108041279429 , 0, 12*eps )
+  assertAlmostEquals( complex(-0,  pi      ):log().re - 1.14472988584940 , 0,    eps )
+  assertAlmostEquals( complex(-0,- pi      ):log().re - 1.14472988584940 , 0,    eps )
+  assertAlmostEquals( complex(-0,  pi + 1  ):log().re - 1.42108041279429 , 0, 12*eps )
+  assertAlmostEquals( complex(-0,-(pi + 1) ):log().re - 1.42108041279429 , 0, 12*eps )
 
-  assertAlmostEquals( complex( 1,  pi      ):log().re - (1.19298515341341 + 1.26262725567891i).re, 0,    eps )
-  assertAlmostEquals( complex( 1,- pi      ):log().re - (1.19298515341341 - 1.26262725567891i).re, 0,    eps )
-  assertAlmostEquals( complex( 1,  pi + pi ):log().re - (1.85038446670685 + 1.41296513650674i).re, 0, 10*eps )
-  assertAlmostEquals( complex( 1,-(pi + pi)):log().re - (1.85038446670685 - 1.41296513650674i).re, 0, 10*eps )
-  assertAlmostEquals( complex(-1,  pi      ):log().re - (1.19298515341341 + 1.87896539791088i).re, 0,    eps )
-  assertAlmostEquals( complex(-1,- pi      ):log().re - (1.19298515341341 - 1.87896539791088i).re, 0,    eps )
-  assertAlmostEquals( complex(-1,  pi + pi ):log().re - (1.85038446670685 + 1.72862751708306i).re, 0, 10*eps )
-  assertAlmostEquals( complex(-1,-(pi + pi)):log().re - (1.85038446670685 - 1.72862751708306i).re, 0, 10*eps )
+  assertAlmostEquals( complex( 0,  pi      ):log().im -  1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex( 0,- pi      ):log().im - -1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex( 0,  pi + 1  ):log().im -  1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex( 0,-(pi + 1) ):log().im - -1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex(-0,  pi      ):log().im -  1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex(-0,- pi      ):log().im - -1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex(-0,  pi + 1  ):log().im -  1.57079632679490, 0, 16*eps )
+  assertAlmostEquals( complex(-0,-(pi + 1) ):log().im - -1.57079632679490, 0, 16*eps )
 
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:exp():log()).re - z.re, 0, eps )
@@ -376,7 +411,15 @@ function TestComplex:testLog()
     assertAlmostEquals( (1/z):log().re - -(z:log()).re, 0, eps )
     assertEquals      ( (1/z):log().im,  -(z:log()).im         )
   end
-
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi then
+      assertAlmostEquals( (z:exp():log()).re - z.re, 0,  eps )
+      assertAlmostEquals( (z:exp():log()).im - z.im, 0,  eps )
+      assertAlmostEquals( (z:log():exp()).re - z.re, 0,2*eps )
+      assertAlmostEquals( (z:log():exp()).im - z.im, 0,  eps )
+    end
+  end
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals      ( z:log().re,      (-z):log().re )
     assertAlmostEquals( abs(z:log().im - (-z):log().im ) - pi, 0, 2*eps )
@@ -409,10 +452,16 @@ end
 
 function TestComplex:testSin()
   --sin(z) =  sin(x)*cosh(y) + I*cos(x)*sinh(y)
+  local z
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals( sin( z), complex( sin( z.re)*cosh( z.im), cos( z.re)*sinh( z.im) ) )
     assertEquals( sin(-z), complex( sin(-z.re)*cosh(-z.im), cos(-z.re)*sinh(-z.im) ) )
     assertAlmostEquals( sin(z+2*pi).re - sin(z).re, 0, 4*eps)
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    assertEquals( sin( z), complex( sin( z.re)*cosh( z.im), cos( z.re)*sinh( z.im) ) )
+    assertEquals( sin(-z), complex( sin(-z.re)*cosh(-z.im), cos(-z.re)*sinh(-z.im) ) )
   end
 
   assertEquals( complex( 0   , 0   ):sin(), complex( 0   , 0   ) )
@@ -429,12 +478,17 @@ end
 
 function TestComplex:testCos()
   --cos(z) =  cos(x)*cosh(y) + I*sin(x)*sinh(y)
+  local z
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals( cos( z), complex( cos( z.re)*cosh( z.im),-sin( z.re)*sinh( z.im) ) )
     assertEquals( cos(-z), complex( cos(-z.re)*cosh(-z.im),-sin(-z.re)*sinh(-z.im) ) )
     assertAlmostEquals( cos(z+2*pi).re - cos(z).re, 0, 4*eps)
   end
-
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    assertEquals( cos( z), complex( cos( z.re)*cosh( z.im),-sin( z.re)*sinh( z.im) ) )
+    assertEquals( cos(-z), complex( cos(-z.re)*cosh(-z.im),-sin(-z.re)*sinh(-z.im) ) )
+  end
   assertEquals( complex( 0   , 0   ):cos(), complex( 1  , 0  ) )
   assertEquals( complex( tiny, tiny):cos(), complex( 1  , 0  ) )
   assertEquals( complex( huge, huge):cos(), complex(-inf,-inf) )
@@ -461,6 +515,13 @@ function TestComplex:testTan()
     assertAlmostEquals( (z:tan() - z:sin() / z:cos() ).re, 0,   eps )
     assertAlmostEquals( (z:tan() - z:sin() / z:cos() ).im, 0, 2*eps )
   end
+  for _,x in ipairs( values.num ) do
+    z = complex( x, x)
+    if x < 10e2 then
+      assertAlmostEquals( (z:tan() - z:sin() / z:cos() ).re, 0,   eps )
+      assertAlmostEquals( (z:tan() - z:sin() / z:cos() ).im, 0, 2*eps )
+    end
+  end
 
   assertEquals( complex( 0   , 0   ):tan(), complex( 0   , 0   ) )
   assertEquals( complex( tiny, tiny):tan(), complex( tiny, tiny) )
@@ -474,11 +535,22 @@ end
 
 function TestComplex:testSinh()
   -- sinh(z) = (exp(z)-exp(-z))/2
-  local x, y
+  local x, y, z
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (sinh( z) - (exp( z)-exp(-z))/2).re, 0,2*eps )
     assertAlmostEquals( (sinh(-z) - (exp(-z)-exp( z))/2).im, 0,2*eps )
     assertEquals( sinh( z), complex( sinh( z.re)*cos( z.im),cosh( z.re)*sin( z.im) ) )
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < 10e2 then
+      assertAlmostEquals( (sinh( z) - (exp( z)-exp(-z))/2).re, 0,2*eps )
+      assertAlmostEquals( (sinh(-z) - (exp(-z)-exp( z))/2).im, 0,2*eps )
+      assertEquals( sinh( z), complex( sinh( z.re)*cos( z.im),cosh( z.re)*sin( z.im) ) )
+    else
+      assertNaN( (sinh( z) - (exp( z)-exp(-z))/2).re )
+      assertNaN( (sinh(-z) - (exp(-z)-exp( z))/2).im )
+    end
   end
 
   -- Check for IEEE:IEC 60559 compliance
@@ -522,7 +594,7 @@ end
 
 function TestComplex:testCosh()
   -- cosh(z) = (exp(z)+exp(-z))/2
-  local x
+  local x, z
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (cosh( z) - (exp( z)+exp(-z))/2).re, 0,2*eps )
     assertAlmostEquals( (cosh(-z) - (exp(-z)+exp( z))/2).im, 0,2*eps )
@@ -530,7 +602,16 @@ function TestComplex:testCosh()
     assertAlmostEquals( (z+z1):cosh().re - (cosh(z)*cosh(z1)+sinh(z)*sinh(z1)).re, 0, 4*eps )
     assertAlmostEquals( (z+z1):cosh().im - (cosh(z)*cosh(z1)+sinh(z)*sinh(z1)).im, 0, 4*eps )
   end end
-
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < 10e2 then
+      assertAlmostEquals( (cosh( z) - (exp( z)+exp(-z))/2).re, 0,2*eps )
+      assertAlmostEquals( (cosh(-z) - (exp(-z)+exp( z))/2).im, 0,2*eps )
+    else
+      assertNaN( (cosh( z) - (exp( z)+exp(-z))/2).re)
+      assertNaN( (cosh(-z) - (exp(-z)+exp( z))/2).im)
+    end
+  end
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0  ):cosh(), complex( 1, 0) )
   assertNaN   ( complex( 0, inf):cosh().re    )
@@ -574,7 +655,7 @@ function TestComplex:testCosh()
 end
 
 function TestComplex:testTanh()
-  local x, y
+  local x, y, z
   for _,x in ipairs(values.rad) do
     for _,y in ipairs(values.rad) do
       x = x/pi, y/pi
@@ -586,6 +667,16 @@ function TestComplex:testTanh()
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:tanh() - z:sinh() / z:cosh() ).re, 0,   eps )
     assertAlmostEquals( (z:tanh() - z:sinh() / z:cosh() ).im, 0, 2*eps )
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < 10e2 then
+      assertAlmostEquals( (z:tanh() - z:sinh() / z:cosh() ).re, 0, 2*eps )
+      assertAlmostEquals( (z:tanh() - z:sinh() / z:cosh() ).im, 0, 4*eps )
+    else
+      assertNaN( (z:tanh() - z:sinh() / z:cosh() ).re )
+      assertNaN( (z:tanh() - z:sinh() / z:cosh() ).im )
+    end
   end
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0  ):tanh(), complex( 0, 0) )
@@ -621,6 +712,7 @@ function TestComplex:testTanh()
 end
 
 function TestComplex:testAsin()
+  local z
   assertNaN   ( complex( nan, nan):asin().re )
   assertNaN   ( complex( nan, nan):asin().im )
   assertEquals( complex( 0  , 0  ):asin(), complex( 0   , 0) )
@@ -631,6 +723,22 @@ function TestComplex:testAsin()
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:asin():sin() - z).re, 0, eps )
     assertAlmostEquals( (z:asin():sin() - z).im, 0, eps )
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi/2 then
+      assertAlmostEquals( (z:asin():sin() - z).re, 0,     eps )
+      assertAlmostEquals( (z:asin():sin() - z).im, 0,     eps )
+    elseif x < 10 then
+      assertAlmostEquals( (z:asin():sin() - z).re, 0,   2*eps )
+      assertAlmostEquals( (z:asin():sin() - z).im, 0,   2*eps )
+    elseif x == 10  then
+      assertAlmostEquals( (z:asin():sin() - z).re, 0,  16*eps )
+      assertAlmostEquals( (z:asin():sin() - z).im, 0,  16*eps )
+    elseif x == 100 then
+      assertAlmostEquals( (z:asin():sin() - z).re, 0, 128*eps )
+      assertAlmostEquals( (z:asin():sin() - z).im, 0, 128*eps )
+    end
   end
 
 --branch cut outside [-1,+1] along the real axis,
@@ -657,11 +765,19 @@ function TestComplex:testAsin()
 end
 
 function TestComplex:testAcos()
+  local z
   assertEquals( complex( 1, 0 ):acos(), complex( 0 , 0) )
   assertEquals( complex(-1, 0 ):acos(), complex( pi, 0) )
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:acos():cos() - z).re, 0, eps )
     assertAlmostEquals( (z:acos():cos() - z).im, 0, eps )
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < 10 then
+      assertAlmostEquals( (z:acos():cos() - z).re, 0, 2*eps )
+      assertAlmostEquals( (z:acos():cos() - z).im, 0, 2*eps )
+    end
   end
 
 --branch cut outside [-1,+1] along the real axis,
@@ -721,6 +837,7 @@ function TestComplex:testAcos()
 end
 
 function TestComplex:testAtan()
+  local z
   assertNaN   ( complex( nan, nan):atan().re )
   assertNaN   ( complex( nan, nan):atan().im )
   assertEquals( complex( 0  , 0  ):atan(), complex( 0   , 0  ) )
@@ -729,6 +846,19 @@ function TestComplex:testAtan()
 
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:atan():tan() - z).re, 0, eps )
+    assertAlmostEquals( (z:atan():tan() - z).im, 0, eps )
+    assertAlmostEquals( (z:atan() - z:sinh() / z:cosh() ).re, 0, 2*eps )
+    assertAlmostEquals( (z:atan() - z:sinh() / z:cosh() ).im, 0, 4*eps )
+  end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi/2 then
+      assertAlmostEquals( (z:atan():tan() - z).re, 0,   eps )
+      assertAlmostEquals( (z:atan():tan() - z).im, 0,   eps )
+    elseif x < 10 then
+      assertAlmostEquals( (z:atan():tan() - z).re, 0, 8*eps )
+      assertAlmostEquals( (z:atan():tan() - z).im, 0, 8*eps )
+    end
   end
 
 --branch cuts outside the interval [-i,i] alonge the imaginary axis
@@ -752,6 +882,7 @@ function TestComplex:testAtan()
 end
 
 function TestComplex:testAsinh()
+  local x, y, z
 --asinh functions compute the complex arc hyperbolic sine of z, with branch cuts
 --outside the interval [−i, +i] along the imaginary axis
 assertAlmostEquals( complex( 0,  1     ):asinh().re -  0                   , 0,    eps )
@@ -771,11 +902,21 @@ assertAlmostEquals( complex( 0,-(1+1  )):asinh().im - -1.57079632679490    , 0, 
 --mathematically unbounded along the real axis and in the interval [−i π/2, +i
 --π /2] along the imaginary axis.
 
-  local x, y
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:asinh():sinh() - z).re, 0, eps )
     assertAlmostEquals( (z:asinh():sinh() - z).im, 0, eps )
   end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi/2 then
+      assertAlmostEquals( (z:asinh():sinh() - z).re, 0,   eps )
+      assertAlmostEquals( (z:asinh():sinh() - z).im, 0,   eps )
+    elseif x < 10 then
+      assertAlmostEquals( (z:asinh():sinh() - z).re, 0, 2*eps )
+      assertAlmostEquals( (z:asinh():sinh() - z).im, 0, 2*eps )
+    end
+  end
+
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0):asinh(), complex( 0, 0) )
   for _,x in ipairs(values.rad) do
@@ -828,6 +969,16 @@ function TestComplex:testAcosh()
     assertAlmostEquals( (z:acosh():cosh() - z).re, 0, eps )
     assertAlmostEquals( (z:acosh():cosh() - z).im, 0, eps )
   end
+  for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi/2 then
+      assertAlmostEquals( (z:acosh():cosh() - z).re, 0,   eps )
+      assertAlmostEquals( (z:acosh():cosh() - z).im, 0,   eps )
+    elseif x < 10 then
+      assertAlmostEquals( (z:acosh():cosh() - z).re, 0, 2*eps )
+      assertAlmostEquals( (z:acosh():cosh() - z).im, 0, 2*eps )
+    end
+  end
 
 -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0):acosh(), complex( 0, pi/2) )
@@ -877,6 +1028,18 @@ assertEquals( complex( (1+eps), 0):atanh().re -  18.36840028483855, 0 )
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertAlmostEquals( (z:atanh():tanh() - z).re, 0, 2*eps )
   end
+for _,x in ipairs(values.num) do
+    z = complex( x, x)
+    if x < pi/2 then
+      assertAlmostEquals( (z:acosh():cosh() - z).re, 0,   eps )
+      assertAlmostEquals( (z:acosh():cosh() - z).im, 0,   eps )
+    elseif x < 10 then
+      assertAlmostEquals( (z:acosh():cosh() - z).re, 0, 2*eps )
+      assertAlmostEquals( (z:acosh():cosh() - z).im, 0, 2*eps )
+    end
+  end
+
+
 -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0  ):atanh(), complex( 0  , 0   ) )
   assertEquals( complex( 0, nan):atanh().re, 0 )
@@ -998,6 +1161,8 @@ function TestComplex:testImag()
   for _,z in ipairs(unitCircle( 1, values.deg)) do
     assertEquals( z, complex(z:real(), z:imag()) )
   end
+  c = complex( inf, inf)
+  assertEquals( c, complex(c:real(), c:imag()) )
 end
 
 function TestComplex:testConj()
