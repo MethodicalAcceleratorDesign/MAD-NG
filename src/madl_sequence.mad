@@ -58,7 +58,7 @@ M.__help.add = [=[
 
 -- locals ---------------------------------------------------------------------o
 
-local element, line in MAD.element
+local element in MAD.element
 
 -- implementation -------------------------------------------------------------o
 
@@ -70,20 +70,13 @@ sequence:set_metamethod {
   __init = \s -> init_sequence(s),
 }
 
-local function seq_error(msg, seq, elem, idx)
-    error(msg .. " in sequence '"  .. seq.name
+local function seq_error(msg, sequ, elem, idx)
+    error(msg .. " in sequence '"  .. sequ.name
               .. "' for element '" .. elem.name
               .. "' at index "     .. (idx or '?'))
 end
 
 -- functions ------------------------------------------------------------------o
-
--- utils
-local function copy_fields(t, a, lst)
-  for _,v in ipairs(lst) do
-    t[v] = a[v]
-  end
-end
 
 -- search
 local function find_index_by_ref(t, a, start)
@@ -139,6 +132,7 @@ local function element_spos(seq, elem, idx)
   return pos
 end
 
+--[[
 --  local states = {s_pos='todo', _idx=idx, _at=at, _from=from, _refer=refer, _seq=seq,
 --                  element=shadow_get, class=shadow_class}
 
@@ -157,12 +151,6 @@ local function add_element_key(self, elem)
 end
 
 local add_item -- forward declaration
-
-local function add_element(self, elem, at, from, refer, seq)
-  local i = #self+1
-  self[i] = shadow_element(elem, i, at, from, refer, seq)
-  add_element_key(self, self[i])
-end
 
 local function add_sequence(self, sequ, at, from, refer, rev)
 --  io.write('add_sequ: \'', sequ.name, '\' at slot ', #self+1, '\n')
@@ -188,10 +176,18 @@ function add_item (seq, item, at, from, refer, rev)
   else                         add_error   (seq, item)
   end
 end
+]]
 
-local function flatten_line (flat, line, rev, k)
+local function copy_sequ (sequ, flat, k)
+  for idx,elem in ipairs(sequ) do
+    k, flat[k] = k+1, elem
+  end
+  return k
+end
+
+local function flatten_line (line, flat, k, rev)
   local n = (line._rep or 1) * rev
-  local start, stop, step
+  local start, stop, step, elem
 
   if n < 0
   then n, start, stop, step = -n, #line,     1, -1
@@ -200,38 +196,45 @@ local function flatten_line (flat, line, rev, k)
 
   for i = 1,n do
     for j = start,stop,step do
-      if line[j].is_line
-      then k = flatten_line(flat, line[j], step, k)
-      else k, flat[k] = k+1, line[j]
+      elem = line[j]
+      if i == 1 and elem.is_element ~= true then
+        seq_error("invalid element detected", line, elem, j)
+      elseif elem.is_bline == true then
+        k = flatten_line(elem, flat, k, step)
+      elseif elem.is_sequence == true then
+        k = copy_sequ(elem, flat, k)
+      else
+        k, flat[k] = k+1, elem
       end
     end
   end
   return k
 end
 
-local function flatten_seq (seq)
-  local flat, k = {}, 1
-  for idx,elem in ipairs(seq) do
+function flatten_sequ (sequ, flat, k)
+  for idx,elem in ipairs(sequ) do
     if elem.is_element ~= true then
-      seq_error("invalid element detected", seq, elem, idx)
-    end
-    if elem.is_line == true then
-      k = flatten_line(flat, elem, 1, k)
+      seq_error("invalid element detected", sequ, elem, idx)
+    elseif elem.is_bline == true then
+      k = flatten_line(elem, flat, k, 1)
+    elseif elem.is_sequence == true then
+      k = copy_sequ(elem, flat, k)
     else
-      k, flat[k], k = k+1, elem
+      k, flat[k] = k+1, elem
     end
   end
-  return flat
+  return k
 end
 
-function init_sequence (seq)
-  local flat = flatten_seq(seq)
+function init_sequence (sequ)
+  local flat = {}
+  flatten_sequ(sequ, flat, 1)
   for i,e in ipairs(flat) do
-    seq[i] = e
+    sequ[i] = e
   end
-  seq[#flat+1] = nil
-  -- adjust_length(seq)
-  return seq
+  sequ[#flat+1] = nil
+  -- adjust_length(sequ) -- todo: insert drift?
+  return sequ
 end
 
 --[[ SEQUENCE
@@ -372,6 +375,7 @@ MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
 -- end -------------------------------------------------------------------------
 return {
   sequence = sequence,
+  bline    = sequence,
 
   __help   = M.__help,
 }
