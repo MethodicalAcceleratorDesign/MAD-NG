@@ -30,34 +30,23 @@ NAME
   sequence -- build sequences
 
 SYNOPSIS
-  seq = sequence 'name' { element_list... }
+  seq = sequence 'name' { attribute-list, element-list... }
 
 DESCRIPTION
+  TODO
 
 RETURN VALUE
 
 EXAMPLE
-  sequ = require "sequence"
-  elem = require "element"
-  MB, MQ = elem.sbend, elem.quadrupole
-  my_seq = sequ 'name' {
-    MQ 'QF', MB 'MB', MQ 'QD', MB 'MB',
-  }
+  see LHC sequences
 
 SEE ALSO
-  line, element, beam
+  bline, element, beam
 ]]
-
-M.__help.add = [=[
-  :add(item [, pos [, from [, refer]]])                      :positional params
-  :add{[item=]item [, at=pos [, from='from' [, refer='refer']]]}  :named params
-  item= elem|list|sequ
-  from= 'start'|'end'|'prev'|'next'|'name'  (default= at and 'start' or 'prev')
-  refer= 'entry'|'centre'|'exit'|'name'        ('name' is only for subsequence)
-]=]
 
 -- locals ---------------------------------------------------------------------o
 
+local is_nil in MAD
 local element in MAD.element
 
 -- implementation -------------------------------------------------------------o
@@ -79,27 +68,22 @@ end
 -- functions ------------------------------------------------------------------o
 
 -- search
-local function find_index_by_ref(t, a, start)
-  for i=start or 1,#t do -- linear search
-    if t[i] == a then return i end
-  end
-end
-
-local function find_index_by_name(t, name, start)
-  for i=start or 1,#t do -- linear search
-    if t[i].name == name then return i end
+local function find_index_by_ref(sequ, elem, start)
+  for i=start or 1,#sequ do  -- linear search
+    if sequ[i] == elem then return i end
   end
   return nil
 end
 
-local function find_index_by_pos(t, s_pos, start)
-  for i=start or 1,#t do  -- binary search: TODO
-    if t[i].s_pos >= s_pos then return i end
+local function find_index_by_pos(sequ, s_pos, start)
+  local s = sequ.s_pos
+  for i=start or 1,#s_pos do -- linear search
+    if s[i] >= s_pos then return i end
   end
   return nil
 end
 
--- compute s positions of sequence elements
+-- compute s positions of sequence elements (TODO)
 local function element_spos(seq, elem, idx)
   local s_pos = elem.s_pos
   if is_number(s_pos) then return s_pos end
@@ -131,52 +115,6 @@ local function element_spos(seq, elem, idx)
   elem.s_pos = pos
   return pos
 end
-
---[[
---  local states = {s_pos='todo', _idx=idx, _at=at, _from=from, _refer=refer, _seq=seq,
---                  element=shadow_get, class=shadow_class}
-
--- construction
-local function add_element_key(self, elem)
-  if elem.kind == 'drift' then return end     -- drifts are never registered
-
--- io.write('add_elem: \'', elem.name, '\' at slot ', #self+1, '\n')
-  local name = elem.name
-  local ref = self[name]
-
-      if ref == nil     then self[name] = elem          -- not yet registered
-  elseif ref.is_element then self[name] = {ref, elem}   -- already one element
-  else                       ref[#ref+1] = elem         -- already many elements
-  end
-end
-
-local add_item -- forward declaration
-
-local function add_sequence(self, sequ, at, from, refer, rev)
---  io.write('add_sequ: \'', sequ.name, '\' at slot ', #self+1, '\n')
-  if rev and rev<0 then -- reverse, store sequ info with end_marker
-    add_element(self, shadow_get(sequ[#sequ]), at, from, refer, sequ)
-    for j=#sequ-1,1,-1 do
-      at = sequ[j+1].s_pos - sequ[j].s_pos - sequ[j].length
-      add_element(self, shadow_get(sequ[j]), at, 'prev', 'entry')
-    end
-  else                  -- direct, store sequ info with start_marker
-    add_element(self, shadow_get(sequ[1]), at, from, refer, sequ)
-    for j=2,#sequ do
-      at = sequ[j].s_pos - sequ[j-1].s_pos - sequ[j-1].length
-      add_element(self, shadow_get(sequ[j]), at, 'prev', 'entry')
-    end
-  end
-end
-
-function add_item (seq, item, at, from, refer, rev)
-      if item.is_element  then add_element (seq, item, at, from, refer)
-  elseif item.is_line     then add_line    (seq, item, at, from, refer, rev)
-  elseif item.is_sequence then add_sequence(seq, item, at, from, refer, rev)
-  else                         add_error   (seq, item)
-  end
-end
-]]
 
 local function copy_sequ (sequ, flat, k)
   for idx,elem in ipairs(sequ) do
@@ -211,7 +149,8 @@ local function flatten_line (line, flat, k, rev)
   return k
 end
 
-function flatten_sequ (sequ, flat, k)
+local function flatten_sequ (sequ, flat)
+  local k = #flat+1
   for idx,elem in ipairs(sequ) do
     if elem.is_element ~= true then
       seq_error("invalid element detected", sequ, elem, idx)
@@ -223,18 +162,39 @@ function flatten_sequ (sequ, flat, k)
       k, flat[k] = k+1, elem
     end
   end
-  return k
+  assert(#sequ+1 <= k, "unexpected sequence fill")
+  return flat, k
+end
+
+local function add_uniq_elem (to, elem)
+  if is_nil(to) or to == elem then return elem end  -- no ref yet or equal ref
+  if to.is_element then return {to, elem} end       -- one ref
+  for i=1,#to do
+    if to[i] == elem then return to end             -- many refs, already there
+  end
+  to[#to+1] = elem        return to                 -- many refs, not yet there
+end
+
+local function add_mult_elem (to, elem)
+  if is_nil(to)    then return  elem      end  -- no ref yet
+  if to.is_element then return {to, elem} end  -- one ref
+  to[#to+1] = elem      return  to             -- many refs
+end
+
+local function build_sequ (sequ, flat)
+  for idx,elem in ipairs(flat) do
+    local name = elem.name
+    sequ[name] = add_mult_elem(sequ[name], elem)
+    sequ[string.gsub(name, "%.", "_")] = sequ[name]
+    sequ[idx] = elem
+  end
+  return sequ
 end
 
 function init_sequence (sequ)
-  local flat, k = {}, 1
-  k = flatten_sequ(sequ, flat, k)
-  for i,e in ipairs(flat) do
-    sequ[i] = e
-  end
-  sequ[k] = nil
-  assert(#sequ+1 == k, "unexpected sequence fill")
-  -- adjust_length(sequ) -- todo: insert drift?
+  local flat = flatten_sequ(sequ, {})
+  build_sequ(sequ, flat)
+  -- adjust_length(sequ) -- todo: add a trailing drift?
   return sequ
 end
 
@@ -369,7 +329,31 @@ local function clean_sequence(self)
 end
 ]]
 
--- methods -------------------------------------------------------------------o
+local function tie (seq1, seq2)
+  -- e.g. LHCB1:tie(LHCB2)
+  assert(seq2.is_sequence == true, "invalid argument #2 (sequence expected)")
+  for i1,e1 in ipairs(seq1) do
+    local name = e1.name
+    local e2 = seq2[name]
+    if e2 ~= nil then
+      assert(e1.is_element == true, "invalid shared element (must be unique)")
+      assert(e2.is_element == true, "invalid shared element (must be unique)")
+      seq1[name] = e1( {at = e1:get_raw 'at', from = e1:get_raw 'from'} )
+      seq2[name] = e1( {at = e2:get_raw 'at', from = e2:get_raw 'from'} )
+      local i2 = find_index_by_ref(seq2, e2, i1) or find_index_by_ref(seq2, e2)
+      seq1[i1] = seq1[name]
+      seq2[i2] = seq2[name]
+      e1.at, e1.from = nil, nil
+    end
+  end
+  return seq1
+end
+
+-- methods --------------------------------------------------------------------o
+
+sequence:set_function {
+  tie = tie,
+}
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
 
