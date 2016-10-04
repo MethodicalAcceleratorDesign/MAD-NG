@@ -176,13 +176,6 @@ end
 
 -- methods
 
-local function get_raw (self, k)
-  local v = rawget(rawget(self,var),k)                         -- no inheritance
-  if is_function(v)
-  then return v(self)                            -- function with value semantic
-  else return v end
-end
-
 local function set_readonly (a, b) -- exported
   assert(a ~= Object, "invalid argument #1 (forbidden access to 'Object')")
   assert(is_nil(b) or is_boolean(b),
@@ -198,6 +191,10 @@ local function is_instanceOf (a, b) -- exported
   if not is_object(a) then return false end
   while a and a ~= b do a = parent(a) end
   return a == b
+end
+
+local function get_raw (self, k)
+  return rawget(rawget(self,var),k)    -- no inheritance nor function evaluation
 end
 
 local function get_variable (self, tbl, eval)
@@ -270,6 +267,37 @@ local function get_varkey (self, class, pattern)
   return res
 end
 
+-- environments
+
+local function open_env (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  self.__prev_env = getfenv(2)
+  setfenv(2, self)
+  return self
+end
+
+local function close_env (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(self.__prev_env ~= nil, "invalid environment (open_env expected in same scope)")
+  setfenv(2, self.__prev_env)
+  self.__prev_env = nil
+  return self
+end
+
+local function dump_env (self)
+  for k,v in pairs(self) do
+    if is_rawtable(v) then
+      for k,v in pairs(v) do
+        print(k,'=',v)
+      end
+    elseif is_object(v) then
+      print(k,'=',v.name)
+    else
+      print(k,'=',v)
+    end
+  end
+end
+
 -- TODO: show (__tostring?) command...
 
 -- debug
@@ -324,6 +352,8 @@ M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
 M.set_metamethod = fproxy( set_metamethod )
+M.open_env       = fproxy( open_env       )
+M.close_env      = fproxy( close_env      )
 M.strdump        = fproxy( strdump        )
 
 -- aliases
