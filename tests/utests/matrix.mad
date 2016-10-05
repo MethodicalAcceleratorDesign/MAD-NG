@@ -28,28 +28,50 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
 local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
-local complex, infi, tiny, eps, huge, inf, nan, pi, Pi in MAD
+local complex, infi, tiny, eps, huge, inf, nan, pi, Pi,
+      randomseed, log in MAD
 
 -- regression test suite ------------------------------------------------------o
 
 TestMatrix  = {}
 TestCMatrix = {}
 
-local values = {}
+local m = {}
+for j=1,10 do m[j] = matrix(10,10):random(randomseed(j)) end
+
+local v = {}
+for j=1,10 do v[j] = vector(10):random(randomseed(j)) end
+
+local values = {
+  num = { tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
+          0.1-eps, 0.1, 0.1+eps, 0.5, 0.7-eps, 0.7, 0.7+eps, 1-eps, 1, 1+eps,
+          1.1, 1.7, 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53,
+          2^63, 2^64, huge },
+}
 
 function TestMatrix:testCtorMatrix()
+  -- creation of matrices with different seeds
   local msg = {
   "invalid argument #1 or #2 (nrow[,ncol] or table [of tables] expected)",
   "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')" ,
   }
   assertErrorMsgContains( msg[1], matrix, ''   )
   assertErrorMsgContains( msg[1], matrix, nil  )
-  assertErrorMsgContains( msg[1], matrix, -0   )
+  assertErrorMsgContains( msg[1], matrix, 0    )
+  assertErrorMsgContains( msg[1], matrix,-1    )
   assertErrorMsgContains( msg[1], matrix, 1..2 )
   assertErrorMsgContains( msg[1], matrix, infi )
   assertErrorMsgContains( msg[1], matrix, nan  )
   assertErrorMsgContains( msg[2], matrix, inf  )
-  --print(matrix(msg))
+
+  for _,v in ipairs(v) do
+    assertTrue( is_matrix(v) )
+    assertTrue( is_vector(v) )
+  end
+  for _,m in ipairs(m) do
+    assertTrue ( is_matrix(m) )
+    assertFalse( is_vector(m) )
+  end
 
 end
 
@@ -60,11 +82,15 @@ function TestMatrix:testCtorCMatrix()
   }
   assertErrorMsgContains( msg[1], cmatrix, ''   )
   assertErrorMsgContains( msg[1], cmatrix, nil  )
-  assertErrorMsgContains( msg[1], cmatrix, -1   )
+  assertErrorMsgContains( msg[1], cmatrix, 0    )
+  assertErrorMsgContains( msg[1], cmatrix,-1    )
   assertErrorMsgContains( msg[1], cmatrix, 1..2 )
   assertErrorMsgContains( msg[1], cmatrix, infi )
   assertErrorMsgContains( msg[1], cmatrix, nan  )
   assertErrorMsgContains( msg[2], cmatrix, inf  )
+
+  --print( "\n" )
+  --print( matrix(20,20):random(randomseed(0.1)) )
 end
 
 function TestMatrix:testIs_matrix()
@@ -107,24 +133,162 @@ function TestMatrix:testIsa_matrix()
   assertTrue ( isa_matrix(cmatrix(2,2)) )
   assertTrue ( isa_matrix( vector(1)  ) )
   assertTrue ( isa_matrix(cvector(1)  ) )
-
 end
-
-function TestMatrix:testLinspace() end
-function TestMatrix:testLogspace() end
 
 -- get, set -------------------------------------------------------------------o
 
-function TestMatrix:testGeti0() end
-function TestMatrix:testGeti()  end
-function TestMatrix:testGet0()  end
-function TestMatrix:testGet()   end
+-- all the special cases and then compering the values for generated matrices
+-- with expected ones, how to reach expected val -- compare with tables of the same values
 
-function TestMatrix:testSeti0() end
-function TestMatrix:testSeti()  end
-function TestMatrix:testSet0()  end
-function TestMatrix:testSet()   end
+function TestMatrix:testGeti0()
+  local msg = {
+  "attempt to call a nil value",
+  }
+  assertErrorMsgContains( msg[1], geti0, m, nil   )
 
+  assertEquals( m[1]:geti0( tiny), m[1]:geti0( 0) )
+  assertEquals( m[1]:geti0( 0.1 ), m[1]:geti0( 0) )
+  assertEquals( m[1]:geti0( eps ), m[1]:geti0( 0) )
+
+  assertNil( m[1]:geti0( huge) )
+  assertNil( m[1]:geti0( nan ) )
+  assertNil( m[1]:geti0( inf ) )
+  assertNil( m[1]:geti0(-1   ) )
+end
+
+function TestMatrix:testGeti()
+  --assertNil( m[1]:geti(  ) )
+  assertNil( m[1]:geti( huge) )
+  assertNil( m[1]:geti( nan ) )
+  assertNil( m[1]:geti( inf ) )
+  assertNil( m[1]:geti(-1   ) )
+  assertNil( m[1]:geti( 0   ) )
+  assertNil( m[1]:geti( eps ) )
+
+  assertEquals( m[1]:geti0( 1.1 ), m[1]:geti0( 1) )
+end
+
+function TestMatrix:testGet0()
+  local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], get0, m[1], 0  , nil )
+  assertErrorMsgContains( msg[1], get0, m[1], nil, 0   )
+
+  assertNil( m[1]:get0( huge, 0   ) )
+  assertNil( m[1]:get0( nan , 0   ) )
+  assertNil( m[1]:get0( inf , 0   ) )
+  assertNil( m[1]:get0(-1   , 0   ) )
+  assertNil( m[1]:get0( 0   , huge) )
+  assertNil( m[1]:get0( 0   , nan ) )
+  assertNil( m[1]:get0( 0   , inf ) )
+  assertNil( m[1]:get0( 0   ,-1   ) )
+
+  --print( m[1]:get0( 0    , 0) )
+end
+
+function TestMatrix:testGet()
+  local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], get0, m[1], 1  , nil )
+  assertErrorMsgContains( msg[1], get0, m[1], nil, 1   )
+
+  assertNil( m[1]:get( huge, 1   ) )
+  assertNil( m[1]:get( nan , 1   ) )
+  assertNil( m[1]:get( inf , 1   ) )
+  assertNil( m[1]:get(-1   , 1   ) )
+  assertNil( m[1]:get( 0   , 1   ) )
+  assertNil( m[1]:get( 1   , huge) )
+  assertNil( m[1]:get( 1   , nan ) )
+  assertNil( m[1]:get( 1   , inf ) )
+  assertNil( m[1]:get( 1   ,-1   ) )
+  assertNil( m[1]:get( 1   , 0   ) )
+end
+
+-- sets have to use get in testing(get dependand)
+function TestMatrix:testSeti0()
+end
+
+function TestMatrix:testSeti()
+end
+
+function TestMatrix:testSet0()
+end
+
+function TestMatrix:testSet()
+end
+
+-- should go after seti0
+function TestMatrix:testLinspace()
+  -- mess with step messeges, to be looked up
+  local msg, l = {
+  "attempt to perform arithmetic on local 'start'",
+  "attempt to perform arithmetic on local 'stop' ",
+
+  "invalid argument #1 or #2 (nrow[,ncol] or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t'",
+  "attempt to compare number with string",
+  --"invalid argument #3 (size expected)"  ,
+  }
+  assertErrorMsgContains( msg[1], linspace, nil, 1   )
+  assertErrorMsgContains( msg[1], linspace, '' , 1   )
+  assertErrorMsgContains( msg[2], linspace, 1  , nil )
+  assertErrorMsgContains( msg[2], linspace, 1  , ''  )
+
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  , 0   )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-1   )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  , nan )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-nan )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-inf )
+  assertErrorMsgContains( msg[4], linspace, 2  , 2  , inf )
+  assertErrorMsgContains( msg[5], linspace, 2  , 2  , ''  )
+
+  assertEquals( #linspace( 2  , 2  , nil)     , 100 )
+  assertEquals(  linspace( 2  , 2  , nil)[1]  , 2   )
+  assertEquals(  linspace( 2  , 2  , nil)[100], 2   )
+
+  l = linspace( 2  ,-inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = linspace( 2  , inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = linspace( inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace(-inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace( 2  , nan)  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace( nan, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+end
+
+function TestMatrix:testLogspace()
+-- investigate the values inside the logspace
+--
+  local msg, l = {
+  "attempt to index local 'x' "  ,
+  "attempt to call method 'log' ",
+  "invalid argument #1 or #2 (nrow[,ncol] or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t'",
+  }
+
+  assertErrorMsgContains( msg[1], logspace, nil, 1   )
+  assertErrorMsgContains( msg[2], logspace, '' , 1   )  --attempt to call method 'log' ?
+  assertErrorMsgContains( msg[1], logspace, 1  , nil )
+  assertErrorMsgContains( msg[2], logspace, 1  , ''  )  --attempt to call method 'log' ?
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-1  )
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   , 0  )
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   , nan)
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-nan)
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-inf)
+  assertErrorMsgContains( msg[4], logspace, 2  ,2   , inf)
+
+  assertEquals( #logspace( 2  , 2  , nil)     , 100 )
+  assertEquals(  logspace( 2  , 2  , nil)[1]  , 2   ) -- shouldn't it be log(2) ?
+  assertEquals(  logspace( 2  , 2  , nil)[100], 2   )
+
+  l = logspace( 2  ,-inf)  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( 2  , inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = logspace( inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace(-inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( 2  , nan)  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( nan, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+
+end
 --[[
 -- size, same -----------------------------------------------------------------o
 
