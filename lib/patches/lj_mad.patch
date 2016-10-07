@@ -222,25 +222,20 @@ index 4799031..90fe51e 100644
      } else if (!ctype_isconstval(df->info)) {
        /* NYI: bitfields and sub-structures. */
        return 0;
-@@ -575,15 +594,35 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
-   } else if (ctype_iscomplex(sinfo)) {  /* Unbox/box complex. */
-     ptrdiff_t esz = (ptrdiff_t)(s->size >> 1);
+@@ -577,13 +596,33 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
      TRef ptr, tr1, tr2, dp;
--    dp = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
-+    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
+     dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
      tr1 = emitir(IRT(IR_XLOAD, t), sp, 0);
 -    ptr = emitir(IRT(IR_ADD, IRT_PTR), sp, lj_ir_kintp(J, esz));
 +    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
      tr2 = emitir(IRT(IR_XLOAD, t), ptr, 0);
 -    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
--    emitir(IRT(IR_XSTORE, t), ptr, tr1);
--    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
--    emitir(IRT(IR_XSTORE, t), ptr, tr2);
 +
 +    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
-+          emitir(IRT(IR_XSTORE, t), ptr, tr1);
+           emitir(IRT(IR_XSTORE, t), ptr, tr1);
+-    ptr = emitir(IRT(IR_ADD, IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
 +    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
-+          emitir(IRT(IR_XSTORE, t), ptr, tr2);
+           emitir(IRT(IR_XSTORE, t), ptr, tr2);
      return dp;
 +#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
 +  } else if (ctype_isxrange(sinfo)) {  /* Unbox/box xrange. */
@@ -397,6 +392,42 @@ index 4e49f57..0dbad9e 100644
    _(CONST) _(VOLATILE) _(RESTRICT) _(INLINE) \
    _(TYPEDEF) _(EXTERN) _(STATIC) _(AUTO) _(REGISTER)
  
+diff --git a/src/lj_gc.c b/src/lj_gc.c
+index 7c70746..6e66faf 100644
+--- a/src/lj_gc.c
++++ b/src/lj_gc.c
+@@ -669,6 +669,7 @@ static size_t gc_onestep(lua_State *L)
+ /* Perform a limited amount of incremental GC steps. */
+ int LJ_FASTCALL lj_gc_step(lua_State *L)
+ {
++  // fprintf(stderr, "%s\n", __func__);
+   global_State *g = G(L);
+   GCSize lim;
+   int32_t ostate = g->vmstate;
+@@ -701,6 +702,7 @@ int LJ_FASTCALL lj_gc_step(lua_State *L)
+ /* Ditto, but fix the stack top first. */
+ void LJ_FASTCALL lj_gc_step_fixtop(lua_State *L)
+ {
++  // fprintf(stderr, "%s\n", __func__);
+   if (curr_funcisL(L)) L->top = curr_topL(L);
+   lj_gc_step(L);
+ }
+@@ -709,6 +711,7 @@ void LJ_FASTCALL lj_gc_step_fixtop(lua_State *L)
+ /* Perform multiple GC steps. Called from JIT-compiled code. */
+ int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
+ {
++  // fprintf(stderr, "%s\n", __func__);
+   lua_State *L = gco2th(gcref(g->cur_L));
+   L->base = tvref(G(L)->jit_base);
+   L->top = curr_topL(L);
+@@ -722,6 +725,7 @@ int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
+ /* Perform a full GC cycle. */
+ void lj_gc_fullgc(lua_State *L)
+ {
++  // fprintf(stderr, "%s\n", __func__);
+   global_State *g = G(L);
+   int32_t ostate = g->vmstate;
+   setvmstate(g, GC);
 diff --git a/src/lj_lex.c b/src/lj_lex.c
 index 0187c42..01b8f9a 100644
 --- a/src/lj_lex.c
@@ -525,7 +556,7 @@ index 5f4b881..ea9fd84 100644
    }
  #endif
 diff --git a/src/lj_parse.c b/src/lj_parse.c
-index 5df4c6e..df59284 100644
+index 5df4c6e..a930c7e 100644
 --- a/src/lj_parse.c
 +++ b/src/lj_parse.c
 @@ -23,6 +23,7 @@
@@ -536,7 +567,614 @@ index 5df4c6e..df59284 100644
  #include "lj_lex.h"
  #include "lj_parse.h"
  #include "lj_vm.h"
-@@ -1695,13 +1696,16 @@ static void expr_kvalue(TValue *v, ExpDesc *e)
+@@ -177,6 +178,7 @@ LJ_NORET LJ_NOINLINE static void err_token(LexState *ls, LexToken tok)
+ 
+ LJ_NORET static void err_limit(FuncState *fs, uint32_t limit, const char *what)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (fs->linedefined == 0)
+     lj_lex_error(fs->ls, 0, LJ_ERR_XLIMM, limit, what);
+   else
+@@ -198,6 +200,7 @@ LJ_NORET static void err_limit(FuncState *fs, uint32_t limit, const char *what)
+ /* Add a number constant. */
+ static BCReg const_num(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   lua_State *L = fs->L;
+   TValue *o;
+   lua_assert(expr_isnumk(e));
+@@ -211,6 +214,7 @@ static BCReg const_num(FuncState *fs, ExpDesc *e)
+ /* Add a GC object constant. */
+ static BCReg const_gc(FuncState *fs, GCobj *gc, uint32_t itype)
+ {
++  // fprintf(stderr, "%s:%d:{%d}\n", __func__, __LINE__, fs->ls->lastline);
+   lua_State *L = fs->L;
+   TValue key, *o;
+   setgcV(L, &key, gc, itype);
+@@ -226,12 +230,15 @@ static BCReg const_gc(FuncState *fs, GCobj *gc, uint32_t itype)
+ static BCReg const_str(FuncState *fs, ExpDesc *e)
+ {
+   lua_assert(expr_isstrk(e) || e->k == VGLOBAL);
++  // fprintf(stderr, "%s:{%d} '%s'\n", __func__, fs->ls->lastline, strdata(gco2str(obj2gco(e->u.sval))));
+   return const_gc(fs, obj2gco(e->u.sval), LJ_TSTR);
+ }
+ 
+ /* Anchor string constant to avoid GC. */
+ GCstr *lj_parse_keepstr(LexState *ls, const char *str, size_t len)
+ {
++  // char buf[21]; memcpy(buf, str, len > 20 ? 20 : len); buf[len > 20 ? 20 : len] = '\0';
++  // fprintf(stderr, "%s:{%d}: '%s'[%lu]\n", __func__, ls->lastline, buf, len);
+   /* NOBARRIER: the key is new or kept alive. */
+   lua_State *L = ls->L;
+   GCstr *s = lj_str_new(L, str, len);
+@@ -241,10 +248,24 @@ GCstr *lj_parse_keepstr(LexState *ls, const char *str, size_t len)
+   return s;
+ }
+ 
++/* LD: 2016.10.06 */
++static void lj_parse_keepstr2(LexState *ls, FuncState *pfs)
++{
++  if (ls->tok == TK_name) {
++    /* NOBARRIER: the key is new or kept alive. */
++    GCstr *s = strV(&ls->tokval);
++    // fprintf(stderr, "%s:{%d} '%s'\n", __func__, pfs->ls->lastline, strdata(s));
++    TValue *tv = lj_tab_setstr(ls->L, pfs->kt, s);
++    if (tvisnil(tv)) setboolV(tv, 1);
++    lj_gc_check(ls->L);
++  }
++}
++
+ #if LJ_HASFFI
+ /* Anchor cdata to avoid GC. */
+ void lj_parse_keepcdata(LexState *ls, TValue *tv, GCcdata *cd)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   /* NOBARRIER: the key is new or kept alive. */
+   lua_State *L = ls->L;
+   setcdataV(L, tv, cd);
+@@ -257,6 +278,7 @@ void lj_parse_keepcdata(LexState *ls, TValue *tv, GCcdata *cd)
+ /* Get next element in jump list. */
+ static BCPos jmp_next(FuncState *fs, BCPos pc)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   ptrdiff_t delta = bc_j(fs->bcbase[pc].ins);
+   if ((BCPos)delta == NO_JMP)
+     return NO_JMP;
+@@ -267,6 +289,7 @@ static BCPos jmp_next(FuncState *fs, BCPos pc)
+ /* Check if any of the instructions on the jump list produce no value. */
+ static int jmp_novalue(FuncState *fs, BCPos list)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   for (; list != NO_JMP; list = jmp_next(fs, list)) {
+     BCIns p = fs->bcbase[list >= 1 ? list-1 : list].ins;
+     if (!(bc_op(p) == BC_ISTC || bc_op(p) == BC_ISFC || bc_a(p) == NO_REG))
+@@ -278,6 +301,7 @@ static int jmp_novalue(FuncState *fs, BCPos list)
+ /* Patch register of test instructions. */
+ static int jmp_patchtestreg(FuncState *fs, BCPos pc, BCReg reg)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCInsLine *ilp = &fs->bcbase[pc >= 1 ? pc-1 : pc];
+   BCOp op = bc_op(ilp->ins);
+   if (op == BC_ISTC || op == BC_ISFC) {
+@@ -311,6 +335,7 @@ static void jmp_dropval(FuncState *fs, BCPos list)
+ /* Patch jump instruction to target. */
+ static void jmp_patchins(FuncState *fs, BCPos pc, BCPos dest)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCIns *jmp = &fs->bcbase[pc].ins;
+   BCPos offset = dest-(pc+1)+BCBIAS_J;
+   lua_assert(dest != NO_JMP);
+@@ -322,6 +347,7 @@ static void jmp_patchins(FuncState *fs, BCPos pc, BCPos dest)
+ /* Append to jump list. */
+ static void jmp_append(FuncState *fs, BCPos *l1, BCPos l2)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (l2 == NO_JMP) {
+     return;
+   } else if (*l1 == NO_JMP) {
+@@ -339,6 +365,7 @@ static void jmp_append(FuncState *fs, BCPos *l1, BCPos l2)
+ static void jmp_patchval(FuncState *fs, BCPos list, BCPos vtarget,
+ 			 BCReg reg, BCPos dtarget)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   while (list != NO_JMP) {
+     BCPos next = jmp_next(fs, list);
+     if (jmp_patchtestreg(fs, list, reg))
+@@ -352,6 +379,7 @@ static void jmp_patchval(FuncState *fs, BCPos list, BCPos vtarget,
+ /* Jump to following instruction. Append to list of pending jumps. */
+ static void jmp_tohere(FuncState *fs, BCPos list)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   fs->lasttarget = fs->pc;
+   jmp_append(fs, &fs->jpc, list);
+ }
+@@ -359,6 +387,7 @@ static void jmp_tohere(FuncState *fs, BCPos list)
+ /* Patch jump list to target. */
+ static void jmp_patch(FuncState *fs, BCPos list, BCPos target)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (target == fs->pc) {
+     jmp_tohere(fs, list);
+   } else {
+@@ -372,6 +401,7 @@ static void jmp_patch(FuncState *fs, BCPos list, BCPos target)
+ /* Bump frame size. */
+ static void bcreg_bump(FuncState *fs, BCReg n)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCReg sz = fs->freereg + n;
+   if (sz > fs->framesize) {
+     if (sz >= LJ_MAX_SLOTS)
+@@ -383,6 +413,7 @@ static void bcreg_bump(FuncState *fs, BCReg n)
+ /* Reserve registers. */
+ static void bcreg_reserve(FuncState *fs, BCReg n)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   bcreg_bump(fs, n);
+   fs->freereg += n;
+ }
+@@ -390,6 +421,7 @@ static void bcreg_reserve(FuncState *fs, BCReg n)
+ /* Free register. */
+ static void bcreg_free(FuncState *fs, BCReg reg)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (reg >= fs->nactvar) {
+     fs->freereg--;
+     lua_assert(reg == fs->freereg);
+@@ -399,6 +431,7 @@ static void bcreg_free(FuncState *fs, BCReg reg)
+ /* Free register for expression. */
+ static void expr_free(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (e->k == VNONRELOC)
+     bcreg_free(fs, e->u.s.info);
+ }
+@@ -408,6 +441,7 @@ static void expr_free(FuncState *fs, ExpDesc *e)
+ /* Emit bytecode instruction. */
+ static BCPos bcemit_INS(FuncState *fs, BCIns ins)
+ {
++  // fprintf(stderr, "%s:{%d}: ins[%d]=%d\n", __func__, fs->ls->lastline, fs->pc, ins);
+   BCPos pc = fs->pc;
+   LexState *ls = fs->ls;
+   jmp_patchval(fs, fs->jpc, pc, NO_REG, pc);
+@@ -424,6 +458,21 @@ static BCPos bcemit_INS(FuncState *fs, BCIns ins)
+   fs->pc = pc+1;
+   return pc;
+ }
++/* Uncomment to trace emitted BC.
++  {
++    static BCInsLine *g_bcbase;
++    static BCPos g_pc;
++    int i;
++    if (g_bcbase != fs->bcbase) g_pc = 0, g_bcbase = fs->bcbase;
++    if (g_pc != pc) {
++      for (i = g_pc; i < pc; i++)
++        fprintf(stderr, " > ins[%d]=%d\n", i, g_bcbase[i].ins);
++      g_pc = pc;
++    }
++  }
++  return pc;
++}
++*/
+ 
+ #define bcemit_ABC(fs, o, a, b, c)	bcemit_INS(fs, BCINS_ABC(o, a, b, c))
+ #define bcemit_AD(fs, o, a, d)		bcemit_INS(fs, BCINS_AD(o, a, d))
+@@ -436,6 +485,7 @@ static BCPos bcemit_INS(FuncState *fs, BCIns ins)
+ /* Discharge non-constant expression to any register. */
+ static void expr_discharge(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCIns ins;
+   if (e->k == VUPVAL) {
+     ins = BCINS_AD(BC_UGET, 0, e->u.s.info);
+@@ -469,6 +519,7 @@ static void expr_discharge(FuncState *fs, ExpDesc *e)
+ /* Emit bytecode to set a range of registers to nil. */
+ static void bcemit_nil(FuncState *fs, BCReg from, BCReg n)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (fs->pc > fs->lasttarget) {  /* No jumps to current position? */
+     BCIns *ip = &fs->bcbase[fs->pc-1].ins;
+     BCReg pto, pfrom = bc_a(*ip);
+@@ -505,6 +556,7 @@ static void bcemit_nil(FuncState *fs, BCReg from, BCReg n)
+ /* Discharge an expression to a specific register. Ignore branches. */
+ static void expr_toreg_nobranch(FuncState *fs, ExpDesc *e, BCReg reg)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCIns ins;
+   expr_discharge(fs, e);
+   if (e->k == VKSTR) {
+@@ -557,6 +609,7 @@ static BCPos bcemit_jmp(FuncState *fs);
+ /* Discharge an expression to a specific register. */
+ static void expr_toreg(FuncState *fs, ExpDesc *e, BCReg reg)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   expr_toreg_nobranch(fs, e, reg);
+   if (e->k == VJMP)
+     jmp_append(fs, &e->t, e->u.s.info);  /* Add it to the true jump list. */
+@@ -582,6 +635,7 @@ static void expr_toreg(FuncState *fs, ExpDesc *e, BCReg reg)
+ /* Discharge an expression to the next free register. */
+ static void expr_tonextreg(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   expr_discharge(fs, e);
+   expr_free(fs, e);
+   bcreg_reserve(fs, 1);
+@@ -591,6 +645,7 @@ static void expr_tonextreg(FuncState *fs, ExpDesc *e)
+ /* Discharge an expression to any register. */
+ static BCReg expr_toanyreg(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   expr_discharge(fs, e);
+   if (e->k == VNONRELOC) {
+     if (!expr_hasjump(e)) return e->u.s.info;  /* Already in a register. */
+@@ -606,6 +661,7 @@ static BCReg expr_toanyreg(FuncState *fs, ExpDesc *e)
+ /* Partially discharge expression to a value. */
+ static void expr_toval(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (expr_hasjump(e))
+     expr_toanyreg(fs, e);
+   else
+@@ -615,6 +671,7 @@ static void expr_toval(FuncState *fs, ExpDesc *e)
+ /* Emit store for LHS expression. */
+ static void bcemit_store(FuncState *fs, ExpDesc *var, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCIns ins;
+   if (var->k == VLOCAL) {
+     fs->ls->vstack[var->u.s.aux].info |= VSTACK_VAR_RW;
+@@ -659,6 +716,7 @@ static void bcemit_store(FuncState *fs, ExpDesc *var, ExpDesc *e)
+ /* Emit method lookup expression. */
+ static void bcemit_method(FuncState *fs, ExpDesc *e, ExpDesc *key)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCReg idx, func, obj = expr_toanyreg(fs, e);
+   expr_free(fs, e);
+   func = fs->freereg;
+@@ -683,6 +741,7 @@ static void bcemit_method(FuncState *fs, ExpDesc *e, ExpDesc *key)
+ /* Emit unconditional branch. */
+ static BCPos bcemit_jmp(FuncState *fs)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCPos jpc = fs->jpc;
+   BCPos j = fs->pc - 1;
+   BCIns *ip = &fs->bcbase[j].ins;
+@@ -700,6 +759,7 @@ static BCPos bcemit_jmp(FuncState *fs)
+ /* Invert branch condition of bytecode instruction. */
+ static void invertcond(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCIns *ip = &fs->bcbase[e->u.s.info - 1].ins;
+   setbc_op(ip, bc_op(*ip)^1);
+ }
+@@ -707,6 +767,7 @@ static void invertcond(FuncState *fs, ExpDesc *e)
+ /* Emit conditional branch. */
+ static BCPos bcemit_branch(FuncState *fs, ExpDesc *e, int cond)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCPos pc;
+   if (e->k == VRELOCABLE) {
+     BCIns *ip = bcptr(fs, e);
+@@ -728,6 +789,7 @@ static BCPos bcemit_branch(FuncState *fs, ExpDesc *e, int cond)
+ /* Emit branch on true condition. */
+ static void bcemit_branch_t(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCPos pc;
+   expr_discharge(fs, e);
+   if (e->k == VKSTR || e->k == VKNUM || e->k == VKTRUE)
+@@ -746,6 +808,7 @@ static void bcemit_branch_t(FuncState *fs, ExpDesc *e)
+ /* Emit branch on false condition. */
+ static void bcemit_branch_f(FuncState *fs, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCPos pc;
+   expr_discharge(fs, e);
+   if (e->k == VKNIL || e->k == VKFALSE)
+@@ -786,6 +849,7 @@ static int foldarith(BinOpr opr, ExpDesc *e1, ExpDesc *e2)
+ /* Emit arithmetic operator. */
+ static void bcemit_arith(FuncState *fs, BinOpr opr, ExpDesc *e1, ExpDesc *e2)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCReg rb, rc, t;
+   uint32_t op;
+   if (foldarith(opr, e1, e2))
+@@ -823,6 +887,7 @@ static void bcemit_arith(FuncState *fs, BinOpr opr, ExpDesc *e1, ExpDesc *e2)
+ /* Emit comparison operator. */
+ static void bcemit_comp(FuncState *fs, BinOpr opr, ExpDesc *e1, ExpDesc *e2)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   ExpDesc *eret = e1;
+   BCIns ins;
+   expr_toval(fs, e1);
+@@ -869,6 +934,7 @@ static void bcemit_comp(FuncState *fs, BinOpr opr, ExpDesc *e1, ExpDesc *e2)
+ /* Fixup left side of binary operator. */
+ static void bcemit_binop_left(FuncState *fs, BinOpr op, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (op == OPR_AND) {
+     bcemit_branch_t(fs, e);
+   } else if (op == OPR_OR) {
+@@ -885,6 +951,7 @@ static void bcemit_binop_left(FuncState *fs, BinOpr op, ExpDesc *e)
+ /* Emit binary operator. */
+ static void bcemit_binop(FuncState *fs, BinOpr op, ExpDesc *e1, ExpDesc *e2)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (op <= OPR_POW) {
+     bcemit_arith(fs, op, e1, e2);
+   } else if (op == OPR_AND) {
+@@ -921,6 +988,7 @@ static void bcemit_binop(FuncState *fs, BinOpr op, ExpDesc *e1, ExpDesc *e2)
+ /* Emit unary operator. */
+ static void bcemit_unop(FuncState *fs, BCOp op, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   if (op == BC_NOT) {
+     /* Swap true and false lists. */
+     { BCPos temp = e->f; e->f = e->t; e->t = temp; }
+@@ -985,6 +1053,7 @@ static void bcemit_unop(FuncState *fs, BCOp op, ExpDesc *e)
+ /* Check and consume optional token. */
+ static int lex_opt(LexState *ls, LexToken tok)
+ {
++  // fprintf(stderr, "%s:{%d} : '%c'[%d]\n", __func__, ls->lastline, tok, tok);
+   if (ls->tok == tok) {
+     lj_lex_next(ls);
+     return 1;
+@@ -995,6 +1064,7 @@ static int lex_opt(LexState *ls, LexToken tok)
+ /* Check and consume token. */
+ static void lex_check(LexState *ls, LexToken tok)
+ {
++  // fprintf(stderr, "%s:{%d} : '%c'[%d]\n", __func__, ls->lastline, tok, tok);
+   if (ls->tok != tok)
+     err_token(ls, tok);
+   lj_lex_next(ls);
+@@ -1003,6 +1073,7 @@ static void lex_check(LexState *ls, LexToken tok)
+ /* Check for matching token. */
+ static void lex_match(LexState *ls, LexToken what, LexToken who, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d} : %d : '%c'[%d] : '%c'[%d] \n", __func__, ls->lastline, line, what, what, who, who);
+   if (!lex_opt(ls, what)) {
+     if (line == ls->linenumber) {
+       err_token(ls, what);
+@@ -1017,6 +1088,7 @@ static void lex_match(LexState *ls, LexToken what, LexToken who, BCLine line)
+ /* Check for string token. */
+ static GCstr *lex_str(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d} : '%15s'\n", __func__, ls->lastline, strVdata(&ls->tokval));
+   GCstr *s;
+   if (ls->tok != TK_name && (LJ_52 || ls->tok != TK_goto))
+     err_token(ls, TK_name);
+@@ -1032,6 +1104,7 @@ static GCstr *lex_str(LexState *ls)
+ /* Define a new local variable. */
+ static void var_new(LexState *ls, BCReg n, GCstr *name)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   MSize vtop = ls->vtop;
+   checklimit(fs, fs->nactvar+n, LJ_MAX_LOCVAR, "local variables");
+@@ -1057,6 +1130,7 @@ static void var_new(LexState *ls, BCReg n, GCstr *name)
+ /* Add local variables. */
+ static void var_add(LexState *ls, BCReg nvars)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCReg nactvar = fs->nactvar;
+   while (nvars--) {
+@@ -1071,6 +1145,7 @@ static void var_add(LexState *ls, BCReg nvars)
+ /* Remove local variables. */
+ static void var_remove(LexState *ls, BCReg tolevel)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   while (fs->nactvar > tolevel)
+     var_get(ls, fs, --fs->nactvar).endpc = fs->pc;
+@@ -1079,6 +1154,7 @@ static void var_remove(LexState *ls, BCReg tolevel)
+ /* Lookup local variable name. */
+ static BCReg var_lookup_local(FuncState *fs, GCstr *n)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   int i;
+   for (i = fs->nactvar-1; i >= 0; i--) {
+     if (n == strref(var_get(fs->ls, fs, i).name))
+@@ -1090,6 +1166,7 @@ static BCReg var_lookup_local(FuncState *fs, GCstr *n)
+ /* Lookup or add upvalue index. */
+ static MSize var_lookup_uv(FuncState *fs, MSize vidx, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   MSize i, n = fs->nuv;
+   for (i = 0; i < n; i++)
+     if (fs->uvmap[i] == vidx)
+@@ -1110,6 +1187,7 @@ static void fscope_uvmark(FuncState *fs, BCReg level);
+ static MSize var_lookup_(FuncState *fs, GCstr *name, ExpDesc *e, int first)
+ {
+   if (fs) {
++    // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+     BCReg reg = var_lookup_local(fs, name);
+     if ((int32_t)reg >= 0) {  /* Local in this function? */
+       expr_init(e, VLOCAL, reg);
+@@ -1125,6 +1203,7 @@ static MSize var_lookup_(FuncState *fs, GCstr *name, ExpDesc *e, int first)
+       }
+     }
+   } else {  /* Not found in any function, must be a global. */
++    // fprintf(stderr, "%s:{%d}\n", __func__, -1);
+     expr_init(e, VGLOBAL, 0);
+     e->u.sval = name;
+   }
+@@ -1140,6 +1219,7 @@ static MSize var_lookup_(FuncState *fs, GCstr *name, ExpDesc *e, int first)
+ /* Add a new goto or label. */
+ static MSize gola_new(LexState *ls, GCstr *name, uint8_t info, BCPos pc)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   MSize vtop = ls->vtop;
+   if (LJ_UNLIKELY(vtop >= ls->sizevstack)) {
+@@ -1164,6 +1244,7 @@ static MSize gola_new(LexState *ls, GCstr *name, uint8_t info, BCPos pc)
+ /* Patch goto to jump to label. */
+ static void gola_patch(LexState *ls, VarInfo *vg, VarInfo *vl)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCPos pc = vg->startpc;
+   setgcrefnull(vg->name);  /* Invalidate pending goto. */
+@@ -1174,6 +1255,7 @@ static void gola_patch(LexState *ls, VarInfo *vg, VarInfo *vl)
+ /* Patch goto to close upvalues. */
+ static void gola_close(LexState *ls, VarInfo *vg)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCPos pc = vg->startpc;
+   BCIns *ip = &fs->bcbase[pc].ins;
+@@ -1191,6 +1273,7 @@ static void gola_close(LexState *ls, VarInfo *vg)
+ /* Resolve pending forward gotos for label. */
+ static void gola_resolve(LexState *ls, FuncScope *bl, MSize idx)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   VarInfo *vg = ls->vstack + bl->vstart;
+   VarInfo *vl = ls->vstack + idx;
+   for (; vg < vl; vg++)
+@@ -1210,6 +1293,7 @@ static void gola_resolve(LexState *ls, FuncScope *bl, MSize idx)
+ /* Fixup remaining gotos and labels for scope. */
+ static void gola_fixup(LexState *ls, FuncScope *bl)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   VarInfo *v = ls->vstack + bl->vstart;
+   VarInfo *ve = ls->vstack + ls->vtop;
+   for (; v < ve; v++) {
+@@ -1245,6 +1329,7 @@ static void gola_fixup(LexState *ls, FuncScope *bl)
+ /* Find existing label. */
+ static VarInfo *gola_findlabel(LexState *ls, GCstr *name)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   VarInfo *v = ls->vstack + ls->fs->bl->vstart;
+   VarInfo *ve = ls->vstack + ls->vtop;
+   for (; v < ve; v++)
+@@ -1258,6 +1343,7 @@ static VarInfo *gola_findlabel(LexState *ls, GCstr *name)
+ /* Begin a scope. */
+ static void fscope_begin(FuncState *fs, FuncScope *bl, int flags)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   bl->nactvar = (uint8_t)fs->nactvar;
+   bl->flags = flags;
+   bl->vstart = fs->ls->vtop;
+@@ -1269,6 +1355,7 @@ static void fscope_begin(FuncState *fs, FuncScope *bl, int flags)
+ /* End a scope. */
+ static void fscope_end(FuncState *fs)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   FuncScope *bl = fs->bl;
+   LexState *ls = fs->ls;
+   fs->bl = bl->prev;
+@@ -1293,6 +1380,7 @@ static void fscope_end(FuncState *fs)
+ /* Mark scope as having an upvalue. */
+ static void fscope_uvmark(FuncState *fs, BCReg level)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   FuncScope *bl;
+   for (bl = fs->bl; bl && bl->nactvar > level; bl = bl->prev)
+     ;
+@@ -1305,6 +1393,7 @@ static void fscope_uvmark(FuncState *fs, BCReg level)
+ /* Fixup bytecode for prototype. */
+ static void fs_fixup_bc(FuncState *fs, GCproto *pt, BCIns *bc, MSize n)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCInsLine *base = fs->bcbase;
+   MSize i;
+   pt->sizebc = n;
+@@ -1317,6 +1406,7 @@ static void fs_fixup_bc(FuncState *fs, GCproto *pt, BCIns *bc, MSize n)
+ /* Fixup upvalues for child prototype, step #2. */
+ static void fs_fixup_uv2(FuncState *fs, GCproto *pt)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   VarInfo *vstack = fs->ls->vstack;
+   uint16_t *uv = proto_uv(pt);
+   MSize i, n = pt->sizeuv;
+@@ -1334,6 +1424,7 @@ static void fs_fixup_uv2(FuncState *fs, GCproto *pt)
+ /* Fixup constants for prototype. */
+ static void fs_fixup_k(FuncState *fs, GCproto *pt, void *kptr)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   GCtab *kt;
+   TValue *array;
+   Node *node;
+@@ -1387,6 +1478,7 @@ static void fs_fixup_k(FuncState *fs, GCproto *pt, void *kptr)
+ /* Fixup upvalues for prototype, step #1. */
+ static void fs_fixup_uv1(FuncState *fs, GCproto *pt, uint16_t *uv)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   setmref(pt->uv, uv);
+   pt->sizeuv = fs->nuv;
+   memcpy(uv, fs->uvtmp, fs->nuv*sizeof(VarIndex));
+@@ -1396,6 +1488,7 @@ static void fs_fixup_uv1(FuncState *fs, GCproto *pt, uint16_t *uv)
+ /* Prepare lineinfo for prototype. */
+ static size_t fs_prep_line(FuncState *fs, BCLine numline)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   return (fs->pc-1) << (numline < 256 ? 0 : numline < 65536 ? 1 : 2);
+ }
+ 
+@@ -1403,6 +1496,7 @@ static size_t fs_prep_line(FuncState *fs, BCLine numline)
+ static void fs_fixup_line(FuncState *fs, GCproto *pt,
+ 			  void *lineinfo, BCLine numline)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCInsLine *base = fs->bcbase + 1;
+   BCLine first = fs->linedefined;
+   MSize i = 0, n = fs->pc-1;
+@@ -1436,6 +1530,7 @@ static void fs_fixup_line(FuncState *fs, GCproto *pt,
+ /* Prepare variable info for prototype. */
+ static size_t fs_prep_var(LexState *ls, FuncState *fs, size_t *ofsvar)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   VarInfo *vs =ls->vstack, *ve;
+   MSize i, n;
+   BCPos lastpc;
+@@ -1478,6 +1573,7 @@ static size_t fs_prep_var(LexState *ls, FuncState *fs, size_t *ofsvar)
+ /* Fixup variable info for prototype. */
+ static void fs_fixup_var(LexState *ls, GCproto *pt, uint8_t *p, size_t ofsvar)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   setmref(pt->uvinfo, p);
+   setmref(pt->varinfo, (char *)p + ofsvar);
+   memcpy(p, sbufB(&ls->sb), sbuflen(&ls->sb));  /* Copy from temp. buffer. */
+@@ -1509,6 +1605,7 @@ static int bcopisret(BCOp op)
+ /* Fixup return instruction for prototype. */
+ static void fs_fixup_ret(FuncState *fs)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   BCPos lastpc = fs->pc;
+   if (lastpc <= fs->lasttarget || !bcopisret(bc_op(fs->bcbase[lastpc-1].ins))) {
+     if ((fs->bl->flags & FSCOPE_UPVAL))
+@@ -1626,6 +1723,7 @@ static void expr(LexState *ls, ExpDesc *v);
+ /* Return string expression. */
+ static void expr_str(LexState *ls, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   expr_init(e, VKSTR, 0);
+   e->u.sval = lex_str(ls);
+ }
+@@ -1633,6 +1731,7 @@ static void expr_str(LexState *ls, ExpDesc *e)
+ /* Return index expression. */
+ static void expr_index(FuncState *fs, ExpDesc *t, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, fs->ls->lastline);
+   /* Already called: expr_toval(fs, e). */
+   t->k = VINDEXED;
+   if (expr_isnumk(e)) {
+@@ -1665,6 +1764,7 @@ static void expr_index(FuncState *fs, ExpDesc *t, ExpDesc *e)
+ /* Parse index expression with named field. */
+ static void expr_field(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   ExpDesc key;
+   expr_toanyreg(fs, v);
+@@ -1676,6 +1776,7 @@ static void expr_field(LexState *ls, ExpDesc *v)
+ /* Parse index expression with brackets. */
+ static void expr_bracket(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   lj_lex_next(ls);  /* Skip '['. */
+   expr(ls, v);
+   expr_toval(ls->fs, v);
+@@ -1695,13 +1796,17 @@ static void expr_kvalue(TValue *v, ExpDesc *e)
    }
  }
  
@@ -546,6 +1184,7 @@ index 5df4c6e..df59284 100644
  /* Parse table constructor expression. */
  static void expr_table(LexState *ls, ExpDesc *e)
  {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
    FuncState *fs = ls->fs;
    BCLine line = ls->linenumber;
    GCtab *t = NULL;
@@ -554,7 +1193,7 @@ index 5df4c6e..df59284 100644
    uint32_t narr = 1;  /* First array index. */
    uint32_t nhash = 0;  /* Number of hash entries. */
    BCReg freg = fs->freereg;
-@@ -1712,16 +1716,16 @@ static void expr_table(LexState *ls, ExpDesc *e)
+@@ -1712,16 +1817,16 @@ static void expr_table(LexState *ls, ExpDesc *e)
    lex_check(ls, '{');
    while (ls->tok != '}') {
      ExpDesc key, val;
@@ -575,7 +1214,7 @@ index 5df4c6e..df59284 100644
        nhash++;
      } else {
        expr_init(&key, VKNUM, 0);
-@@ -1729,6 +1733,9 @@ static void expr_table(LexState *ls, ExpDesc *e)
+@@ -1729,6 +1834,9 @@ static void expr_table(LexState *ls, ExpDesc *e)
        narr++;
        needarr = vcall = 1;
      }
@@ -585,7 +1224,7 @@ index 5df4c6e..df59284 100644
      expr(ls, &val);
      if (expr_isk(&key) && key.k != VKNIL &&
  	(key.k == VKSTR || expr_isk_nojump(&val))) {
-@@ -1803,15 +1810,17 @@ static void expr_table(LexState *ls, ExpDesc *e)
+@@ -1803,15 +1911,18 @@ static void expr_table(LexState *ls, ExpDesc *e)
    }
  }
  
@@ -594,6 +1233,7 @@ index 5df4c6e..df59284 100644
 +/* Parse function parameters. */                           /* LD: 2016.04.07 */
 +static BCReg parse_params(LexState *ls, int needself, int islambda)
  {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
    FuncState *fs = ls->fs;
    BCReg nparams = 0;
 -  lex_check(ls, '(');
@@ -609,7 +1249,7 @@ index 5df4c6e..df59284 100644
      do {
        if (ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) {
  	var_new(ls, nparams++, lex_str(ls));
-@@ -1827,15 +1836,16 @@ static BCReg parse_params(LexState *ls, int needself)
+@@ -1827,16 +1938,18 @@ static BCReg parse_params(LexState *ls, int needself)
    var_add(ls, nparams);
    lua_assert(fs->nactvar == nparams);
    bcreg_reserve(fs, nparams);
@@ -627,9 +1267,11 @@ index 5df4c6e..df59284 100644
 +/* Parse body of a function. */                            /* LD: 2016.04.07 */
 +static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCLine line)
  {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
    FuncState fs, *pfs = ls->fs;
    FuncScope bl;
-@@ -1844,12 +1854,19 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
+   GCproto *pt;
+@@ -1844,12 +1957,19 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
    fs_init(ls, &fs);
    fscope_begin(&fs, &bl, 0);
    fs.linedefined = line;
@@ -640,26 +1282,33 @@ index 5df4c6e..df59284 100644
    bcemit_AD(&fs, BC_FUNCF, 0, 0);  /* Placeholder. */
 +  if (islambda > 0) {
 +    if (lex_opt(ls, TK_fatarrow)) { islambda=0; goto body; }
-+    else { lex_opt(ls, TK_arrow); parse_return(ls, 1); }
++    lex_opt(ls, TK_arrow);   parse_return(ls, 1); lj_parse_keepstr2(ls, pfs);
 +  } else if (islambda < 0) { parse_return(ls, 1);
 +  } else {
-+  body:
-   parse_chunk(ls);
-   if (ls->tok != TK_end) lex_match(ls, TK_end, TK_function, line);
++body:
+     parse_chunk(ls);
+     if (ls->tok != TK_end) lex_match(ls, TK_end, TK_function, line);
 +  }
    pt = fs_finish(ls, (ls->lastline = ls->linenumber));
    pfs->bcbase = ls->bcstack + oldbase;  /* May have been reallocated. */
    pfs->bclim = (BCPos)(ls->sizebcstack - oldbase);
-@@ -1864,7 +1881,7 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
+@@ -1864,12 +1984,14 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
        pfs->flags |= PROTO_FIXUP_RETURN;
      pfs->flags |= PROTO_CHILD;
    }
 -  lj_lex_next(ls);
 +  if (!islambda) lj_lex_next(ls);
++  // fprintf(stderr, "%s-ret:{%d}\n", __func__, ls->lastline);
  }
  
  /* Parse expression list. Last expression is left open. */
-@@ -1880,6 +1897,9 @@ static BCReg expr_list(LexState *ls, ExpDesc *v)
+ static BCReg expr_list(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BCReg n = 1;
+   expr(ls, v);
+   while (lex_opt(ls, ',')) {
+@@ -1880,9 +2002,13 @@ static BCReg expr_list(LexState *ls, ExpDesc *v)
    return n;
  }
  
@@ -669,7 +1318,11 @@ index 5df4c6e..df59284 100644
  /* Parse function argument list. */
  static void parse_args(LexState *ls, ExpDesc *e)
  {
-@@ -1908,6 +1928,10 @@ static void parse_args(LexState *ls, ExpDesc *e)
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   ExpDesc args;
+   BCIns ins;
+@@ -1908,6 +2034,10 @@ static void parse_args(LexState *ls, ExpDesc *e)
      expr_init(&args, VKSTR, 0);
      args.u.sval = strV(&ls->tokval);
      lj_lex_next(ls);
@@ -680,7 +1333,15 @@ index 5df4c6e..df59284 100644
    } else {
      err_syntax(ls, LJ_ERR_XFUNARG);
      return;  /* Silence compiler. */
-@@ -1957,7 +1981,11 @@ static void expr_primary(LexState *ls, ExpDesc *v)
+@@ -1930,6 +2060,7 @@ static void parse_args(LexState *ls, ExpDesc *e)
+ /* Parse primary expression. */
+ static void expr_primary(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   /* Parse prefix expression. */
+   if (ls->tok == '(') {
+@@ -1957,7 +2088,11 @@ static void expr_primary(LexState *ls, ExpDesc *v)
        expr_str(ls, &key);
        bcemit_method(fs, v, &key);
        parse_args(ls, v);
@@ -693,7 +1354,15 @@ index 5df4c6e..df59284 100644
        expr_tonextreg(fs, v);
        if (LJ_FR2) bcreg_reserve(fs, 1);
        parse_args(ls, v);
-@@ -2003,8 +2031,13 @@ static void expr_simple(LexState *ls, ExpDesc *v)
+@@ -1970,6 +2105,7 @@ static void expr_primary(LexState *ls, ExpDesc *v)
+ /* Parse simple expression. */
+ static void expr_simple(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   switch (ls->tok) {
+   case TK_number:
+     expr_init(v, (LJ_HASFFI && tviscdata(&ls->tokval)) ? VKCDATA : VKNUM, 0);
+@@ -2003,8 +2139,13 @@ static void expr_simple(LexState *ls, ExpDesc *v)
      return;
    case TK_function:
      lj_lex_next(ls);
@@ -708,7 +1377,86 @@ index 5df4c6e..df59284 100644
    default:
      expr_primary(ls, v);
      return;
-@@ -2243,7 +2276,7 @@ static void parse_local(LexState *ls)
+@@ -2064,6 +2205,7 @@ static BinOpr expr_binop(LexState *ls, ExpDesc *v, uint32_t limit);
+ /* Parse unary expression. */
+ static void expr_unop(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BCOp op;
+   if (ls->tok == TK_not) {
+     op = BC_NOT;
+@@ -2083,6 +2225,7 @@ static void expr_unop(LexState *ls, ExpDesc *v)
+ /* Parse binary expressions with priority higher than the limit. */
+ static BinOpr expr_binop(LexState *ls, ExpDesc *v, uint32_t limit)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BinOpr op;
+   synlevel_begin(ls);
+   expr_unop(ls, v);
+@@ -2104,12 +2247,14 @@ static BinOpr expr_binop(LexState *ls, ExpDesc *v, uint32_t limit)
+ /* Parse expression. */
+ static void expr(LexState *ls, ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   expr_binop(ls, v, 0);  /* Priority 0: parse whole expression. */
+ }
+ 
+ /* Assign expression to the next register. */
+ static void expr_next(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   ExpDesc e;
+   expr(ls, &e);
+   expr_tonextreg(ls->fs, &e);
+@@ -2118,6 +2263,7 @@ static void expr_next(LexState *ls)
+ /* Parse conditional expression. */
+ static BCPos expr_cond(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   ExpDesc v;
+   expr(ls, &v);
+   if (v.k == VKNIL) v.k = VKFALSE;
+@@ -2136,6 +2282,7 @@ typedef struct LHSVarList {
+ /* Eliminate write-after-read hazards for local variable assignment. */
+ static void assign_hazard(LexState *ls, LHSVarList *lh, const ExpDesc *v)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCReg reg = v->u.s.info;  /* Check against this variable. */
+   BCReg tmp = fs->freereg;  /* Rename to this temp. register (if needed). */
+@@ -2161,6 +2308,7 @@ static void assign_hazard(LexState *ls, LHSVarList *lh, const ExpDesc *v)
+ /* Adjust LHS/RHS of an assignment. */
+ static void assign_adjust(LexState *ls, BCReg nvars, BCReg nexps, ExpDesc *e)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   int32_t extra = (int32_t)nvars - (int32_t)nexps;
+   if (e->k == VCALL) {
+@@ -2184,6 +2332,7 @@ static void assign_adjust(LexState *ls, BCReg nvars, BCReg nexps, ExpDesc *e)
+ /* Recursively parse assignment statement. */
+ static void parse_assignment(LexState *ls, LHSVarList *lh, BCReg nvars)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   ExpDesc e;
+   checkcond(ls, VLOCAL <= lh->v.k && lh->v.k <= VINDEXED, LJ_ERR_XSYNTAX);
+   if (lex_opt(ls, ',')) {  /* Collect LHS list and recurse upwards. */
+@@ -2221,6 +2370,7 @@ static void parse_assignment(LexState *ls, LHSVarList *lh, BCReg nvars)
+ /* Parse call statement or assignment. */
+ static void parse_call_assign(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   LHSVarList vl;
+   expr_primary(ls, &vl.v);
+@@ -2235,6 +2385,7 @@ static void parse_call_assign(LexState *ls)
+ /* Parse 'local' statement. */
+ static void parse_local(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   if (lex_opt(ls, TK_function)) {  /* Local function declaration. */
+     ExpDesc v, b;
+     FuncState *fs = ls->fs;
+@@ -2243,7 +2394,7 @@ static void parse_local(LexState *ls)
      v.u.s.aux = fs->varmap[fs->freereg];
      bcreg_reserve(fs, 1);
      var_add(ls, 1);
@@ -717,7 +1465,7 @@ index 5df4c6e..df59284 100644
      /* bcemit_store(fs, &v, &b) without setting VSTACK_VAR_RW. */
      expr_free(fs, &b);
      expr_toreg(fs, &b, v.u.s.info);
-@@ -2257,6 +2290,32 @@ static void parse_local(LexState *ls)
+@@ -2257,6 +2408,32 @@ static void parse_local(LexState *ls)
      } while (lex_opt(ls, ','));
      if (lex_opt(ls, '=')) {  /* Optional RHS. */
        nexps = expr_list(ls, &e);
@@ -750,7 +1498,15 @@ index 5df4c6e..df59284 100644
      } else {  /* Or implicitly set to nil. */
        e.k = VVOID;
        nexps = 0;
-@@ -2281,7 +2340,7 @@ static void parse_func(LexState *ls, BCLine line)
+@@ -2269,6 +2446,7 @@ static void parse_local(LexState *ls)
+ /* Parse 'function' statement. */
+ static void parse_func(LexState *ls, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs;
+   ExpDesc v, b;
+   int needself = 0;
+@@ -2281,7 +2459,7 @@ static void parse_func(LexState *ls, BCLine line)
      needself = 1;
      expr_field(ls, &v);
    }
@@ -759,7 +1515,7 @@ index 5df4c6e..df59284 100644
    fs = ls->fs;
    bcemit_store(fs, &v, &b);
    fs->bcbase[fs->pc - 1].line = line;  /* Set line for the store. */
-@@ -2300,18 +2359,20 @@ static int parse_isend(LexToken tok)
+@@ -2300,18 +2478,21 @@ static int parse_isend(LexToken tok)
    }
  }
  
@@ -768,6 +1524,7 @@ index 5df4c6e..df59284 100644
 +/* Parse 'return' statement. */                            /* LD: 2016.04.07 */
 +static void parse_return(LexState *ls, int islambda)
  {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
    BCIns ins;
    FuncState *fs = ls->fs;
 -  lj_lex_next(ls);  /* Skip 'return'. */
@@ -785,7 +1542,7 @@ index 5df4c6e..df59284 100644
      if (nret == 1) {  /* Return one result. */
        if (e.k == VCALL) {  /* Check for tail call. */
  	BCIns *ip = bcptr(fs, &e);
-@@ -2333,6 +2394,7 @@ static void parse_return(LexState *ls)
+@@ -2333,14 +2514,17 @@ static void parse_return(LexState *ls)
        }
      }
    }
@@ -793,7 +1550,113 @@ index 5df4c6e..df59284 100644
    if (fs->flags & PROTO_CHILD)
      bcemit_AJ(fs, BC_UCLO, 0, 0);  /* May need to close upvalues first. */
    bcemit_INS(fs, ins);
-@@ -2646,7 +2708,7 @@ static int parse_stmt(LexState *ls)
++  // fprintf(stderr, "%s-ret:{%d}\n", __func__, ls->lastline);
+ }
+ 
+ /* Parse 'break' statement. */
+ static void parse_break(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   ls->fs->bl->flags |= FSCOPE_BREAK;
+   gola_new(ls, NAME_BREAK, VSTACK_GOTO, bcemit_jmp(ls->fs));
+ }
+@@ -2348,6 +2532,7 @@ static void parse_break(LexState *ls)
+ /* Parse 'goto' statement. */
+ static void parse_goto(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   GCstr *name = lex_str(ls);
+   VarInfo *vl = gola_findlabel(ls, name);
+@@ -2360,6 +2545,7 @@ static void parse_goto(LexState *ls)
+ /* Parse label. */
+ static void parse_label(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   GCstr *name;
+   MSize idx;
+@@ -2394,6 +2580,7 @@ static void parse_label(LexState *ls)
+ /* Parse a block. */
+ static void parse_block(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   FuncScope bl;
+   fscope_begin(fs, &bl, 0);
+@@ -2404,6 +2591,7 @@ static void parse_block(LexState *ls)
+ /* Parse 'while' statement. */
+ static void parse_while(LexState *ls, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCPos start, loop, condexit;
+   FuncScope bl;
+@@ -2424,6 +2612,7 @@ static void parse_while(LexState *ls, BCLine line)
+ /* Parse 'repeat' statement. */
+ static void parse_repeat(LexState *ls, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCPos loop = fs->lasttarget = fs->pc;
+   BCPos condexit;
+@@ -2451,6 +2640,7 @@ static void parse_repeat(LexState *ls, BCLine line)
+ /* Parse numeric 'for'. */
+ static void parse_for_num(LexState *ls, GCstr *varname, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCReg base = fs->freereg;
+   FuncScope bl;
+@@ -2492,6 +2682,7 @@ static void parse_for_num(LexState *ls, GCstr *varname, BCLine line)
+ */
+ static int predict_next(LexState *ls, FuncState *fs, BCPos pc)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BCIns ins = fs->bcbase[pc].ins;
+   GCstr *name;
+   cTValue *o;
+@@ -2521,6 +2712,7 @@ static int predict_next(LexState *ls, FuncState *fs, BCPos pc)
+ /* Parse 'for' iterator. */
+ static void parse_for_iter(LexState *ls, GCstr *indexname)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   ExpDesc e;
+   BCReg nvars = 0;
+@@ -2563,6 +2755,7 @@ static void parse_for_iter(LexState *ls, GCstr *indexname)
+ /* Parse 'for' statement. */
+ static void parse_for(LexState *ls, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   GCstr *varname;
+   FuncScope bl;
+@@ -2582,6 +2775,7 @@ static void parse_for(LexState *ls, BCLine line)
+ /* Parse condition and 'then' block. */
+ static BCPos parse_then(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BCPos condexit;
+   lj_lex_next(ls);  /* Skip 'if' or 'elseif'. */
+   condexit = expr_cond(ls);
+@@ -2593,6 +2787,7 @@ static BCPos parse_then(LexState *ls)
+ /* Parse 'if' statement. */
+ static void parse_if(LexState *ls, BCLine line)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   FuncState *fs = ls->fs;
+   BCPos flist;
+   BCPos escapelist = NO_JMP;
+@@ -2619,6 +2814,7 @@ static void parse_if(LexState *ls, BCLine line)
+ /* Parse a statement. Returns 1 if it must be the last one in a chunk. */
+ static int parse_stmt(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   BCLine line = ls->linenumber;
+   switch (ls->tok) {
+   case TK_if:
+@@ -2646,7 +2842,7 @@ static int parse_stmt(LexState *ls)
      parse_local(ls);
      break;
    case TK_return:
@@ -802,6 +1665,14 @@ index 5df4c6e..df59284 100644
      return 1;  /* Must be last. */
    case TK_break:
      lj_lex_next(ls);
+@@ -2676,6 +2872,7 @@ static int parse_stmt(LexState *ls)
+ /* A chunk is a list of statements optionally separated by semicolons. */
+ static void parse_chunk(LexState *ls)
+ {
++  // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
+   int islast = 0;
+   synlevel_begin(ls);
+   while (!islast && !parse_isend(ls->tok)) {
 diff --git a/src/lj_record.c b/src/lj_record.c
 index 76699a9..e157573 100644
 --- a/src/lj_record.c
