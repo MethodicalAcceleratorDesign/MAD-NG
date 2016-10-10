@@ -1,0 +1,917 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Matrix module regression tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: A.Z. Teska, aleksandra.teska at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the matrix module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
+      assertErrorMsgContains, assertNil, assertNaN, assertIsString, assertInf
+      in require 'luaunit'
+
+local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
+      is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
+
+local complex, infi, tiny, eps, huge, inf, nan, pi, Pi,
+      randomseed, log, is_complex, range in MAD
+
+-- regression test suite ------------------------------------------------------o
+
+TestMatrix  = {}
+TestCMatrix = {}
+
+  -- creation of matrices with different seeds
+local  mat,  vec = {}, {}
+local cmat, cvec = {}, {}
+randomseed(os.clock()*2^52)
+for j=1,10 do mat [j] =  matrix(j,j):random() end
+for j=1,10 do vec [j] =  vector(j)  :random() end
+for j=1,10 do cmat[j] = cmatrix(j,j):random() end
+for j=1,10 do cvec[j] = cvector(j)  :random() end
+
+local values = {
+  num = { tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
+          0.1-eps, 0.1, 0.1+eps, 0.5, 0.7-eps, 0.7, 0.7+eps, 1-eps, 1, 1+eps,
+          1.1, 1.7, 2, 10, 1e2, 1e3, 1e6, 1e9, 2^31, 2^32, 2^52, 2^53,
+          2^63, 2^64, huge },
+}
+
+function TestMatrix:testCtorMatrix()
+  local msg = {
+  "invalid argument #1 or #2 (nrow[,ncol] >0 or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')" ,
+  }
+  assertErrorMsgContains( msg[1], matrix, ''   )
+  assertErrorMsgContains( msg[1], matrix, nil  )
+  assertErrorMsgContains( msg[1], matrix, 0    )
+  assertErrorMsgContains( msg[1], matrix,-1    )
+  assertErrorMsgContains( msg[1], matrix,-tiny )
+  assertErrorMsgContains( msg[1], matrix, 1..2 )
+  assertErrorMsgContains( msg[1], matrix, infi )
+  assertErrorMsgContains( msg[1], matrix, nan  )
+  assertErrorMsgContains( msg[1], matrix,-inf  )
+  assertErrorMsgContains( msg[2], matrix, inf  )
+  assertErrorMsgContains( msg[2], matrix, huge )
+
+  assertEquals( matrix(tiny).nr, 0 )
+  assertEquals( matrix(eps) .nr, 0 )
+  assertEquals( matrix(tiny).nc, 0 )
+  assertEquals( matrix(eps) .nc, 0 )
+  --print( matrix(tiny).data[0] )
+  --print( matrix(eps) .data[0] )
+  --print( matrix(tiny).data[4] )
+  --print( matrix(eps) .data[4] )
+
+  for i,v in ipairs(vec) do
+    assertTrue( is_matrix(v) )
+    assertTrue( is_vector(v) )
+
+    assertEquals(v.nr, i)
+    assertEquals(v.nc, 1)
+  end
+  for i,m in ipairs(mat) do
+    assertTrue ( is_matrix(m) )
+    if i == 1 then assertTrue ( is_vector(m) )
+              else assertFalse( is_vector(m) ) end
+    assertTrue ( is_matrix(matrix(i,i)) )
+
+    assertEquals(m.nr, i)
+    assertEquals(m.nc, i)
+  end
+end
+
+function TestMatrix:testCtorCMatrix()
+  local msg = {
+  "invalid argument #1 or #2 (nrow[,ncol] >0 or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')" ,
+  }
+  assertErrorMsgContains( msg[1], cmatrix, ''   )
+  assertErrorMsgContains( msg[1], cmatrix, nil  )
+  assertErrorMsgContains( msg[1], cmatrix, 0    )
+  assertErrorMsgContains( msg[1], cmatrix,-1    )
+  assertErrorMsgContains( msg[1], cmatrix,-tiny )
+  assertErrorMsgContains( msg[1], cmatrix, 1..2 )
+  assertErrorMsgContains( msg[1], cmatrix, infi )
+  assertErrorMsgContains( msg[1], cmatrix,-infi )
+  assertErrorMsgContains( msg[1], cmatrix, nan  )
+  assertErrorMsgContains( msg[1], cmatrix,-inf  )
+  assertErrorMsgContains( msg[2], cmatrix, inf  )
+
+  assertEquals( cmatrix(tiny).nr, 0 )
+  assertEquals( cmatrix(eps) .nr, 0 )
+  assertEquals( cmatrix(tiny).nc, 0 )
+  assertEquals( cmatrix(eps) .nc, 0 )
+
+  assertEquals( cmatrix(0.1) .nr, 0 )
+  assertEquals( cmatrix(0.1) .nc, 0 )
+  --print("\n")
+  --print( cmatrix(tiny).data[0] ) -- "nonSelectedCount"
+  --print( cmatrix(eps) .data[0] )
+  --print( cmatrix(0.1).data[0] )
+  --print( cmatrix(tiny).data[4] )
+  --print( cmatrix(eps) .data[4] )
+
+  for i,cv in ipairs(cvec) do
+    assertTrue( is_cmatrix(cv) )
+    assertTrue( is_cvector(cv) )
+
+    assertEquals(cv.nr, i)
+    assertEquals(cv.nc, 1)
+  end
+
+  for i,cm in ipairs(cmat) do
+    assertTrue( is_cmatrix(cm) )
+    --print(cm)
+    for i=1,#cm do
+      is_complex( cm[i] )
+    end
+
+    assertEquals(cm.nr, i)
+    assertEquals(cm.nc, i)
+  end
+end
+
+--indeirect matrix allocations tests missing
+
+function TestMatrix:testIs_matrix()
+  assertTrue ( is_matrix( matrix(2,2)) )
+  assertFalse( is_matrix(cmatrix(2,2)) )
+  assertTrue ( is_matrix( vector(1)  ) )
+  assertFalse( is_matrix(cvector(1)  ) )
+end
+
+function TestMatrix:testIs_cmatrix()
+  assertFalse( is_cmatrix( matrix(2,2)) )
+  assertTrue ( is_cmatrix(cmatrix(2,2)) )
+  assertFalse( is_cmatrix( vector(1)  ) )
+  assertTrue ( is_cmatrix(cvector(1)  ) )
+end
+
+function TestMatrix:testIs_vector()
+  assertFalse( is_vector( matrix(2,2)) )
+  assertFalse( is_vector(cmatrix(2,2)) )
+  assertTrue ( is_vector( vector(1)  ) )
+  assertFalse( is_vector(cvector(1)  ) )
+end
+
+function TestMatrix:testIs_cvector()
+  assertFalse( is_cvector( matrix(2,2)) )
+  assertFalse( is_cvector(cmatrix(2,2)) )
+  assertFalse( is_cvector( vector(1)  ) )
+  assertTrue ( is_cvector(cvector(1)  ) )
+end
+
+function TestMatrix:testIsa_vector()
+  assertFalse( isa_vector( matrix(2,2)) )
+  assertFalse( isa_vector(cmatrix(2,2)) )
+  assertTrue ( isa_vector( vector(1)  ) )
+  assertTrue ( isa_vector(cvector(1)  ) )
+end
+
+function TestMatrix:testIsa_matrix()
+  assertTrue ( isa_matrix( matrix(2,2)) )
+  assertTrue ( isa_matrix(cmatrix(2,2)) )
+  assertTrue ( isa_matrix( vector(1)  ) )
+  assertTrue ( isa_matrix(cvector(1)  ) )
+end
+
+-- get, set -------------------------------------------------------------------o
+
+local refT =
+  {
+  { 0.9286338430918031, 0.7981905327208816, 0.2918908989053144, 1 },
+  {-0.3540043171200369, 0.8020336034136235, 0.2751589695263197, 1 },
+  { 0.4426082303008909, 0.6793722299415492,-0.4718603395451262, 1 },
+  { 0.9370700019205285,-0.657495562826343 , 0.9678081932273772, 1 },
+  { 0.6563040282125301, 0.7689912808655879, 0.1214582415972276, 1 },
+  }
+local resM = matrix(refT)
+
+function TestMatrix:testGeti0()
+  local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], geti0,  mat[10], nil )  -- is there a point in nil tests?
+  assertErrorMsgContains( msg[1], geti0, cmat[10], nil )  -- is there a point in nil tests?
+
+  assertNil(  mat[10]:geti0( inf ) )
+  assertNil(  mat[10]:geti0( huge) )
+  assertNil(  mat[10]:geti0( huge) )
+  assertNil(  mat[10]:geti0( nan ) )
+  assertNil(  mat[10]:geti0(-1   ) )
+  assertNil(  mat[10]:geti0( 100 ) )
+
+  assertEquals( mat[10]:geti0( tiny), mat[10]:geti0( 0) )
+  assertEquals( mat[10]:geti0( 0.1 ), mat[10]:geti0( 0) )
+  assertEquals( mat[10]:geti0( eps ), mat[10]:geti0( 0) )
+
+--is there a point in adding the cmat here?
+  assertNil( cmat[10]:geti0( inf ) )
+  assertNil( cmat[10]:geti0( huge) )
+  assertNil( cmat[10]:geti0( huge) )
+  assertNil( cmat[10]:geti0( nan ) )
+  assertNil( cmat[10]:geti0(-1   ) )
+  assertNil( cmat[10]:geti0( 100 ) )
+
+  assertEquals( cmat[10]:geti0( tiny), cmat[10]:geti0( 0) )
+  assertEquals( cmat[10]:geti0( 0.1 ), cmat[10]:geti0( 0) )
+  assertEquals( cmat[10]:geti0( eps ), cmat[10]:geti0( 0) )
+
+  local m2  = matrix(5,5)
+  for i = 1,5 do  for j = 1,5 do  assertEquals( m2:geti0(i+j-1), 0 ) end end
+
+  for j = 1,4 do
+  for i = 1,4 do
+    assertEquals( refT[j][i], resM:geti0( ((j-1)*4 )+i-1 ) )
+  end end
+end
+
+function TestMatrix:testGeti()
+local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], geti, mat[10], nil )
+
+  assertNil( mat[10]:geti( huge) )
+  assertNil( mat[10]:geti( nan ) )
+  assertNil( mat[10]:geti( inf ) )
+  assertNil( mat[10]:geti(-1   ) )
+  assertNil( mat[10]:geti( 0   ) )
+  assertNil( mat[10]:geti( eps ) )
+  assertNil( mat[10]:geti( 101 ) )
+  assertEquals( mat[10]:geti( 1.1 ), mat[10]:geti( 1) )
+
+  local m2  = matrix(5,5)
+  for i = 1,5 do  for j = 1,5 do  assertEquals( m2:geti(i+j), 0 ) end end
+
+  for j = 1,4 do
+  for i = 1,4 do
+    assertEquals( refT[j][i], resM:geti( ((j-1)*4 )+i ) )
+  end end
+end
+
+function TestMatrix:testGet0()
+  local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], get0, mat[1], 0  , nil )
+  assertErrorMsgContains( msg[1], get0, mat[1], nil, 0   )
+
+  assertNil( mat[1]:get0( huge, 0   ) )
+  assertNil( mat[1]:get0( nan , 0   ) )
+  assertNil( mat[1]:get0( inf , 0   ) )
+  assertNil( mat[1]:get0(-1   , 0   ) )
+  assertNil( mat[1]:get0( 0   , huge) )
+  assertNil( mat[1]:get0( 0   , nan ) )
+  assertNil( mat[1]:get0( 0   , inf ) )
+  assertNil( mat[1]:get0( 0   ,-1   ) )
+
+  local m2  = matrix(5,5)
+  for i = 1,5 do  for j = 1,5 do  assertEquals( m2:get0(i-1,j-1), 0 ) end end
+
+  for j = 1,4 do
+  for i = 1,4 do
+    assertEquals( refT[j][i], resM:get0(j-1,i-1) )
+  end end
+end
+
+function TestMatrix:testGet()
+  local msg = {
+    "attempt to call a nil value",
+    }
+  assertErrorMsgContains( msg[1], get0, mat[1], 1  , nil )
+  assertErrorMsgContains( msg[1], get0, mat[1], nil, 1   )
+
+  assertNil( mat[1]:get( huge, 1   ) )
+  assertNil( mat[1]:get( nan , 1   ) )
+  assertNil( mat[1]:get( inf , 1   ) )
+  assertNil( mat[1]:get(-1   , 1   ) )
+  assertNil( mat[1]:get( 0   , 1   ) )
+  assertNil( mat[1]:get( 1   , huge) )
+  assertNil( mat[1]:get( 1   , nan ) )
+  assertNil( mat[1]:get( 1   , inf ) )
+  assertNil( mat[1]:get( 1   ,-1   ) )
+  assertNil( mat[1]:get( 1   , 0   ) )
+
+  local m2  = matrix(5,5)
+  for i = 1,5 do  for j = 1,5 do  assertEquals( m2:get(i,j), 0 ) end end
+
+  for j = 1,4 do
+  for i = 1,4 do
+    assertEquals( refT[j][i], resM:get(j,i) )
+  end end
+end
+
+function TestMatrix:testSeti0()
+  local msg, m2 = {
+    "0-index out of bounds",
+    "attempt to call a nil value",
+    }
+  m2 = resM
+  local seti0 in MAD
+  --assertErrorMsgContains( msg[1], seti0, m2,-1   , 1 )
+  --assertErrorMsgContains( msg[1], seti0, m2, huge, 1 )
+  --assertErrorMsgContains( msg[1], seti0, m2, inf , 1 )
+  assertErrorMsgContains( msg[2], seti0, m2, nan , 1 )
+  assertErrorMsgContains( msg[2], seti0, m2, nil , 1 )
+  for j = 1,4 do
+  for i = 1,4 do
+    m2:seti0( ((j-1)*4 )+i-1, 0       )
+    assertEquals( m2:geti0( ((j-1)*4 )+i-1 ), 0       )
+    m2:seti0( ((j-1)*4 )+i-1, refT[j][i] )
+    assertEquals( resM:geti0( ((j-1)*4 )+i-1 ), refT[j][i] )
+  end end
+
+  m2 = matrix(5,5)
+  for i = 1,5 do
+  for j = 1,5 do
+    m2:seti0( i+j-1, 1 )
+    assertEquals( m2:geti0(i+j-1), 1 )
+  end end
+
+end
+
+function TestMatrix:testSeti()
+  local msg, m2 = {
+    "1-index out of bounds",
+    "attempt to call a nil value",
+    }
+  m2 = resM
+  --assertErrorMsgContains( msg[1], seti, m2, 0   , 1 )
+  --assertErrorMsgContains( msg[1], seti, m2, 0.1 , 1 )
+  --assertErrorMsgContains( msg[1], seti, m2,-1   , 1 )
+  --assertErrorMsgContains( msg[1], seti, m2, huge, 1 )
+  --assertErrorMsgContains( msg[1], seti, m2, inf , 1 )
+  assertErrorMsgContains( msg[2], seti, m2, nan , 1 )
+  assertErrorMsgContains( msg[2], seti, m2, nil , 1 )
+  for j = 1,4 do
+  for i = 1,4 do
+    m2:seti( ((j-1)*4 )+i, 0       )
+    assertEquals( m2:geti( ((j-1)*4 )+i ), 0          )
+    m2:seti( ((j-1)*4 )+i, refT[j][i] )
+    assertEquals( m2:geti( ((j-1)*4 )+i ), refT[j][i] )
+  end end
+
+  m2  = matrix(5,5)
+  for i = 1,5 do
+  for j = 1,5 do
+    m2:seti0( i+j, 1 )
+    assertEquals( m2:geti0(i+j), 1 )
+    end end
+end
+
+function TestMatrix:testSet0()
+  local msg, m2 = {
+    "0-index out of bounds",
+    "attempt to call a nil value",
+    }
+  m2 = resM
+  --assertErrorMsgContains( msg[1], set0, m2,-1   , 1, 1 )
+  --assertErrorMsgContains( msg[1], set0, m2, huge, 1, 1 )
+  --assertErrorMsgContains( msg[1], set0, m2, inf , 1, 1 )
+  assertErrorMsgContains( msg[2], set0, m2, nan , 1, 1 )
+  assertErrorMsgContains( msg[2], set0, m2, nil , 1, 1 )
+  for j = 1,4 do
+  for i = 1,4 do
+    m2:set0( i-1, j-1, 0       )
+    assertEquals( m2:get0(i-1,j-1), 0       )
+    m2:set0( i-1, j-1, refT[j][i] )
+    assertEquals( m2:get0(i-1,j-1), refT[j][i] )
+  end end
+
+  m2  = matrix(5,5)
+  for i = 1,5 do
+  for j = 1,5 do
+    m2:set0( i-1, j-1, 1 )
+    assertEquals( m2:get0(i-1,j-1), 1 )
+  end end
+end
+
+function TestMatrix:testSet()
+  local msg, m2 = {
+    "1-index out of bounds",
+    "attempt to call a nil value",
+    }
+  m2 = resM
+  --assertErrorMsgContains( msg[1], set, m2, 0   , 1, 1 ) -- should be err msg 1, gets err msg 2
+  --assertErrorMsgContains( msg[1], set, m2, 0.1 , 1, 1 )
+  --assertErrorMsgContains( msg[1], set, m2,-1   , 1, 1 )
+  --assertErrorMsgContains( msg[1], set, m2, huge, 1, 1 )
+  --assertErrorMsgContains( msg[1], set, m2, inf , 1, 1 )
+  assertErrorMsgContains( msg[2], set, m2, nan , 1, 1 )
+  assertErrorMsgContains( msg[2], set, m2, nil , 1, 1 )
+  for j = 1,4 do
+  for i = 1,4 do
+    m2:set( i, j, 0       )
+    assertEquals( m2:get(i,j), 0       )
+    m2:set( i, j, refT[j][i] )
+    assertEquals( m2:get(i,j), refT[j][i] )
+  end end
+
+  m2  = matrix(5,5)
+  for i = 1,5 do
+  for j = 1,5 do
+    m2:set( i, j, 1 )
+    assertEquals( m2:get(i,j), 1 )
+  end end
+
+end
+
+-- both linspance and logspace need normal values check, closer look to special cases
+function TestMatrix:testLinspace()
+  -- mess with step messeges, to be looked up
+  local msg, l = {
+  "attempt to perform arithmetic on local 'start'",
+  "attempt to perform arithmetic on local 'stop' ",
+
+  "invalid argument #1 or #2 (nrow[,ncol] >0 or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t'",
+  "attempt to compare number with string",
+  --"invalid argument #3 (size expected)"  ,
+  }
+  assertErrorMsgContains( msg[1], linspace, nil, 1   )
+  assertErrorMsgContains( msg[1], linspace, '' , 1   )
+  assertErrorMsgContains( msg[2], linspace, 1  , nil )
+  assertErrorMsgContains( msg[2], linspace, 1  , ''  )
+
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  , 0   )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-1   )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  , nan )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-nan )
+  assertErrorMsgContains( msg[3], linspace, 2  , 2  ,-inf )
+  assertErrorMsgContains( msg[4], linspace, 2  , 2  , inf )
+  assertErrorMsgContains( msg[5], linspace, 2  , 2  , ''  )
+
+  assertEquals( #linspace( 2  , 2  , nil)     , 100 )
+  assertEquals(  linspace( 2  , 2  , nil)[1]  , 2   )
+  assertEquals(  linspace( 2  , 2  , nil)[100], 2   )
+
+  l = linspace( 2  ,-inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = linspace( 2  , inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = linspace( inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace(-inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace( 2  , nan)  for i = 1, #l do assertNaN( l[i] ) end
+  l = linspace( nan, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+end
+
+function TestMatrix:testLogspace()
+-- investigate the values inside the logspace
+  local msg, l = {
+  "attempt to index local 'x' "  ,
+  "attempt to call method 'log' ",
+  "invalid argument #1 or #2 (nrow[,ncol] >0 or table [of tables] expected)",
+  "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t'",
+  }
+  assertErrorMsgContains( msg[1], logspace, nil, 1   )
+  assertErrorMsgContains( msg[2], logspace, '' , 1   )  --attempt to call method 'log' ?
+  assertErrorMsgContains( msg[1], logspace, 1  , nil )
+  assertErrorMsgContains( msg[2], logspace, 1  , ''  )  --attempt to call method 'log' ?
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-1  )
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   , 0  )
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   , nan)
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-nan)
+  assertErrorMsgContains( msg[3], logspace, 2  ,2   ,-inf)
+  assertErrorMsgContains( msg[4], logspace, 2  ,2   , inf)
+
+  assertEquals( #logspace( 2  , 2  , nil)     , 100 )
+  assertEquals(  logspace( 2  , 2  , nil)[1]  , 2   )
+  assertEquals(  logspace( 2  , 2  , nil)[100], 2   )
+
+  l = logspace( 2  ,-inf)  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( 2  , inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
+  l = logspace( inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace(-inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( 2  , nan)  for i = 1, #l do assertNaN( l[i] ) end
+  l = logspace( nan, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+
+end
+
+function TestMatrix:testSame()
+  local m, cm =  matrix(3,3):random(), cmatrix(3,3):random()
+  local msg, s = {
+    "invalid argument #2 (scalar expected)",
+    "invalid argument #1 or #2 (nrow[,ncol] >0 or table [of tables] expected)",
+    }
+  local same in MAD
+  assertErrorMsgContains( msg[1], same, m, ''      )
+  assertErrorMsgContains( msg[1], same, m, {}      )
+  assertErrorMsgContains( msg[1], same, m, 1..2    )
+  assertErrorMsgContains( msg[2], same, m, 1, ''   )
+  assertErrorMsgContains( msg[2], same, m, 1, {}   )
+  assertErrorMsgContains( msg[2], same, m, 1, 1..2 )
+  assertErrorMsgContains( msg[2], same, m, 1, nan  )
+
+  s = m:same( nan) for i = 1,3 do for j = 1,3 do  assertEquals( s:get(i,j), 0 ) end end
+  s = m:same( inf) for i = 1,3 do for j = 1,3 do  assertEquals( s:get(i,j), 0 ) end end
+  s = m:same( 0  ) for i = 1,3 do for j = 1,3 do  assertEquals( s:get(i,j), 0 ) end end
+
+  -- no input
+  s = cm:same( ) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc},{m.nr, m.nc} )
+  s =  m:same( ) assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc},{m.nr, m.nc} )
+  for i = 1,3 do for j = 1,3 do  assertEquals( s:get(i,j), 0 ) end end
+
+  -- one arg: e_
+  s =  m:same(complex(1,1)) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc},{m.nr,m.nc} )
+  s = cm:same(1)            assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc},{m.nr,m.nc} )
+  for i = 1,3 do for j = 1,3 do  assertEquals( s:get(i,j), 0 ) end end
+
+  -- two arg: nr, nc
+  s = cm:same(2,2) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {2,2} )
+  s = cm:same(4,4) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {4,4} )
+  s =  m:same(2,2) assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {2,2} )
+  s =  m:same(4,4) assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {4,4} )
+  for i = 1,4 do for j = 1,4 do  assertEquals( s:get(i,j), 0 ) end end
+
+  -- three arg: e_, nr, nc
+  s = m:same(complex(1,1), 2, 2) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {2,2} )
+  s = m:same(complex(1,1), 5, 5) assertFalse( is_matrix(s) ) assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {5,5} )
+  s = cm:same(1, 2, 2)           assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {2,2} )
+  s = cm:same(1, 5, 5)           assertTrue ( is_matrix(s) ) assertFalse( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {5,5} )
+  for i = 1,5 do for j = 1,5 do  assertEquals( s:get(i,j), 0 ) end end
+
+end
+
+function TestMatrix:testGetsub()
+  local getsub in MAD
+  local msg = {
+    "invalid argument #2 (iterable expected)", --is_iterable(ir) --has iparis or number ir -> iterable: number or range or table
+    "invalid argument #3 (iterable expected)", --is_iterable(jc) --has iparis or number jr -> iterable: number or range or table
+    "invalid argument #4 (iterable expected)", --is_iterable(r ) --has iparis           r_ -> scalar or iterable:
+    "invalid range member '1'",
+    }
+  -- -1  huge  inf  nan  nil
+  local m1, m2 = matrix(4,4):random()
+  --assertErrorMsgContains( msg[1], getsub, m, '', 0, 0  )
+  --assertErrorMsgContains( msg[1], getsub, m, 0, 0, 0  )
+  --assertErrorMsgContains( msg[4], getsub, m, 1..2, 1..2, 1..4  )
+  --assertErrorMsgContains( msg[4], m1:getsub(1..2, 1..2, 1..4 ) )
+  --print( m1:getsub(1..2, 1..2, 1..4 ) )     --err
+  --print( m1:getsub(1..2, 1..2, 1..4 ) )     --err
+
+  --print( m1:getsub(1..2, 1..2) )
+  --print( m1:getsub(1..2, 1..2, {}  ) )
+  --print( m1:getsub(1..2, 1..2, {{}}  ) )
+  --print( m1:getsub(1, 1, {1..1}  ) )
+
+  --print( m1:getsub(1..2, 1..2, {1i}    ) )
+  --print( m1:getsub(1..2, 1..2, {false} ) )
+  --print( m1:getsub(1..2, 1..2, {''}    ) )
+end
+
+-- size, same -----------------------------------------------------------------o
+
+local subM, subCM = {}, {}
+for j=1,10 do subM [j] =  mat[10]:getsub(1..10, 1..j)
+              subCM[j] = cmat[10]:getsub(1..10, 1..j)
+end
+
+function TestMatrix:testNrow()
+  assertEquals(  matrix(1   ):nrow(), 1 )
+  assertEquals( cmatrix(1   ):nrow(), 1 )
+  assertEquals( cmatrix(tiny):nrow(), 0 )
+  assertEquals(  matrix(tiny):nrow(), 0 )
+  assertEquals(  matrix(eps ):nrow(), 0 )
+
+  for i, m in ipairs( mat)  do  assertEquals(  m:nrow(), i  ) end
+  for i, v in ipairs( vec)  do  assertEquals(  v:nrow(), i  ) end
+  for i,cm in ipairs(cmat)  do  assertEquals( cm:nrow(), i  ) end
+  for i,cv in ipairs(cvec)  do  assertEquals( cv:nrow(), i  ) end
+
+  for i, m in ipairs(subM)  do  assertEquals(  m:nrow(), 10 ) end
+  for i,cm in ipairs(subCM) do  assertEquals( cm:nrow(), 10 ) end
+end
+
+function TestMatrix:testNcol()
+  assertEquals(  matrix(1   ):ncol(), 1 )
+  assertEquals( cmatrix(1   ):ncol(), 1 )
+  assertEquals( cmatrix(tiny):ncol(), 0 )
+  assertEquals(  matrix(tiny):ncol(), 0 )
+  assertEquals(  matrix(eps ):ncol(), 0 )
+
+  for i, m in ipairs( mat)  do assertEquals(  m:ncol(), i ) end
+  for i, v in ipairs( vec)  do assertEquals(  v:ncol(), 1 ) end
+  for i,cm in ipairs(cmat)  do assertEquals( cm:ncol(), i ) end
+  for i,cv in ipairs(cvec)  do assertEquals( cv:ncol(), 1 ) end
+
+  for i, m in ipairs(subM)  do assertEquals(  m:ncol(), i ) end
+  for i,cm in ipairs(subCM) do assertEquals( cm:ncol(), i ) end
+end
+
+function TestMatrix:testSize()
+  assertEquals(  matrix(1   ):size(), 1^2 )
+  assertEquals( cmatrix(1   ):size(), 1^2 )
+  assertEquals(  matrix(2   ):size(), 2^2 )
+  assertEquals(  matrix(tiny):size(), 0   )
+  assertEquals(  matrix(eps ):size(), 0   )
+
+  for i, m in ipairs( mat)  do assertEquals(  m:size(), i*i  ) end
+  for i, v in ipairs( vec)  do assertEquals(  v:size(), i*1  ) end
+  for i,cm in ipairs(cmat)  do assertEquals( cm:size(), i*i  ) end
+  for i,cv in ipairs(cvec)  do assertEquals( cv:size(), i*1  ) end
+
+  for i, m in ipairs(subM)  do assertEquals(  m:size(), 10*i ) end
+  for i,cm in ipairs(subCM) do assertEquals( cm:size(), 10*i ) end
+end
+
+function TestMatrix:testSizes()
+  assertEquals( { matrix(1   ):sizes()}, {1,1} )
+  assertEquals( {cmatrix(1   ):sizes()}, {1,1} )
+  assertEquals( { matrix(2   ):sizes()}, {2,2} )
+  assertEquals( { matrix(tiny):sizes()}, {0,0} )
+  assertEquals( { matrix(eps ):sizes()}, {0,0} )
+
+  for i, m in ipairs( mat)  do assertEquals( {  m:sizes() }, {i ,i} ) end
+  for i, v in ipairs( vec)  do assertEquals( {  v:sizes() }, {i ,1} ) end
+  for i,cm in ipairs(cmat)  do assertEquals( { cm:sizes() }, {i ,i} ) end
+  for i,cv in ipairs(cvec)  do assertEquals( { cv:sizes() }, {i ,1} ) end
+
+  for i, m in ipairs(subM)  do assertEquals( {  m:sizes() }, {10,i} ) end
+  for i,cm in ipairs(subCM) do assertEquals( { cm:sizes() }, {10,i} ) end
+end
+
+function TestMatrix:testTsizes()
+  assertEquals( { matrix(1   ,2):tsizes()}, {2,1} )
+  assertEquals( {cmatrix(1   ,2):tsizes()}, {2,1} )
+  assertEquals( { matrix(tiny,2):tsizes()}, {2,0} )
+  assertEquals( { matrix(eps ,2):tsizes()}, {2,0} )
+
+  for i, m in ipairs( mat)  do assertEquals( {  m:tsizes() }, {i ,i} ) end
+  for i, v in ipairs( vec)  do assertEquals( {  v:tsizes() }, {1 ,i} ) end
+  for i,cm in ipairs(cmat)  do assertEquals( { cm:tsizes() }, {i ,i} ) end
+  for i,cv in ipairs(cvec)  do assertEquals( { cv:tsizes() }, {1 ,i} ) end
+
+  for i, m in ipairs(subM)  do assertEquals( {  m:tsizes() }, {i,10} ) end
+  for i,cm in ipairs(subCM) do assertEquals( { cm:tsizes() }, {i,10} ) end
+end
+
+function TestMatrix:testRandom() -- uses seti0, size
+  local m1, m2 = matrix(2,2)
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    }
+
+  --assertErrorMsgContains( msg[1], random, m1, 100 ) -- different err
+  --assertNaN( random(nan,  0 ) )
+  --assertNaN( random( 0 , nan) )
+  --assertNaN( random(nan, nan) )
+
+  randomseed(os.clock()*2^52)
+  local oldVal, val = {},{}
+  for i=1,2 do
+    m1 = matrix(2,2):random()
+    for i = 1,m1:size() do
+      val[i] = m1:geti(i)
+      assertTrue( val[i] <  1    )
+      assertTrue( val[i] >= 0    )
+      assertTrue( val[i] <= 2^52 )
+      assertFalse( val[i] == oldVal[i] )
+      oldVal[i] = val[i]
+    end
+  end
+end
+
+function TestMatrix:testFill() --uses: sizes, set, get
+  local msg = {
+    "invalid argument #2 (scalar, callable or indexable expected)",
+    }
+end
+
+--[[
+
+function TestMatrix:testCopy()
+  local msg = {
+    "invalid argument #1 (matrix with compatible size expected"),}
+end
+
+function TestCMatrix:testCopy()
+  local msg = {
+    "invalid argument #1 (matrix with compatible size expected"),}
+end
+
+function TestMatrix:testZeros() end
+function TestCMatrix:testZeros() end
+
+function TestMatrix:testOnes() end
+function TestMatrix:testEye() end
+
+function TestMatrix:testSymp()
+  local msg = {
+    "invalid argument #1 (2n matrix expected)",}
+end
+function TestMatrix:testCirc()
+  local msg = {
+    "invalid argument #2 (iterable expected)",}
+end
+
+function TestMatrix:testVshape() end
+function TestMatrix:testReshape()
+  local msg = {
+    "invalid matrix new sizes",
+    }
+end
+-- conversion -----------------------------------------------------------------o
+
+function TestMatrix:testTosting() end
+function TestMatrix:testTotable() end
+
+-- getx, setx -----------------------------------------------------------------o
+
+function TestMatrix:testGetv() end
+function TestMatrix:testSetv() end
+function TestMatrix:testGetdiag() end
+function TestMatrix:testSetdiag() end
+
+function TestMatrix:testGetrow() end
+function TestMatrix:testSetrow() end
+
+function TestMatrix:testGetcol() end
+function TestMatrix:testSetcol() end
+
+function TestMatrix:testGetsub() end
+function TestMatrix:testSetsub() end
+
+-- foreach, filter, map, fold, scan -------------------------------------------o
+
+function TestMatrix:testForeach() end
+function TestMatrix:testFilter() end
+function TestMatrix:testMapat() end
+function TestMatrix:testMap() end
+function TestMatrix:testMap2() end
+function TestMatrix:testMap3() end
+
+function TestMatrix:testFoldl() end
+function TestMatrix:testFoldr() end
+
+function TestMatrix:testScanl() end
+function TestMatrix:testScanr() end
+
+-- special maps ---------------------------------------------------------------o
+
+function TestMatrix:testCeil () end
+function TestMatrix:testFloor() end
+function TestMatrix:testFrac () end
+function TestMatrix:testTrunc() end
+function TestMatrix:testRound() end
+
+function TestMatrix:testAbs  () end
+function TestMatrix:testSqrt () end
+function TestMatrix:testExp  () end
+function TestMatrix:testLog  () end
+function TestMatrix:testLog10() end
+
+function TestMatrix:testSin () end
+function TestMatrix:testCos () end
+function TestMatrix:testTan () end
+function TestMatrix:testSinh() end
+function TestMatrix:testCosh() end
+function TestMatrix:testTanh() end
+
+function TestMatrix:testAsin () end
+function TestMatrix:testAcos () end
+function TestMatrix:testAtan () end
+function TestMatrix:testAsinh() end
+function TestMatrix:testAcosh() end
+function TestMatrix:testAtanh() end
+
+function TestMatrix:testErf   () end
+function TestMatrix:testTgamma() end
+function TestMatrix:testLgamma() end
+
+function TestMatrix:testCarg () end
+function TestMatrix:testReal () end
+function TestMatrix:testImag () end
+function TestMatrix:testConj () end
+function TestMatrix:testProj () end
+function TestMatrix:testRect () end
+function TestMatrix:testPolar() end
+
+-- special folds --------------------------------------------------------------o
+
+function TestMatrix:testMin() end
+function TestMatrix:testMax() end
+function TestMatrix:testSum() end
+function TestMatrix:testSumabs() end
+function TestMatrix:testSumsqr() end
+function TestMatrix:testProduct() end
+function TestMatrix:testAll() end
+function TestMatrix:testAny() end
+
+-- conjugate, transpose -------------------------------------------------------o
+
+function TestMatrix:testTranspose() end
+function TestCMatrix:testTranspose() end
+
+function TestMatrix:testTrace() end
+
+-- symplectic matrix ----------------------------------------------------------o
+
+function TestMatrix:testSympinv() end
+function TestCMatrix:testSympinv() end
+
+function TestMatrix:testSymperr() end
+function TestCMatrix:testSymperr() end
+
+-- inner, cross, mixed, outer -------------------------------------------------o
+
+function TestMatrix:testInner() end
+function TestCMatrix:testInner() end
+
+function TestMatrix:testCross() end
+function TestMatrix:testMixed() end
+function TestMatrix:testOuter() end
+
+-- norm, unit, center, angle (in place) ---------------------------------------o
+
+function TestMatrix:testNorm() end
+function TestCMatrix:testNorm() end
+
+function TestMatrix:testDistance() end
+function TestCMatrix:testDistance() end
+
+function TestMatrix:testUnit() end
+function TestCMatrix:testUnit() end
+
+function TestMatrix:testCenter() end
+function TestCMatrix:testCenter() end
+
+function TestMatrix:testAngle() end
+
+-- operators ------------------------------------------------------------------o
+
+function TestMatrix:testEq() end
+
+function TestMatrix:testAddCPx() end
+function TestMatrix:testAdd() end
+function TestCMatrix:testAddCPx() end
+function TestCMatrix:testAdd() end
+
+function TestMatrix:testSubCPx() end
+function TestMatrix:testSub() end
+function TestCMatrix:testSubCPx() end
+function TestCMatrix:testSub() end
+
+function TestMatrix:testMulCPx() end
+function TestMatrix:testMul() end
+function TestCMatrix:testMulCPx() end
+function TestCMatrix:testMul() end
+
+function TestMatrix:testTmul() end
+function TestCMatrix:testTmul() end
+
+function TestMatrix:testDivCPx() end
+function TestMatrix:testDiv() end
+function TestCMatrix:testDivCPx() end
+function TestCMatrix:testDiv() end
+
+function TestMatrix:testEmul() end
+function TestCMatrix:testEmul() end
+function TestMatrix:testEdiv() end
+function TestCMatrix:testEdiv() end
+
+-- linear algebra -------------------------------------------------------------o
+
+function TestMatrix:testSolve() end
+function TestMatrix:testSvd() end
+function TestCMatrix:testSvd() end
+
+function TestMatrix:testEigen() end
+function TestCMatrix:testEigen() end
+
+-- FFT, convolution, correlation, covrariance ---------------------------------o
+
+function TestMatrix:testFft() end
+function TestMatrix:testIfft() end
+function TestMatrix:testRfft() end
+function TestMatrix:testIrfft() end
+
+ -- convolution theorem
+function TestMatrix:testConv() end
+function TestCMatrix:testConv() end
+
+ -- correlation theorem
+function TestMatrix:testCorr() end
+function TestCMatrix:testCorr() end
+function TestMatrix:testCovar() end
+
+-- concatenation --------------------------------------------------------------o
+
+function TestMatrix:testConcat() end
+]]
+
+-- end ------------------------------------------------------------------------o
