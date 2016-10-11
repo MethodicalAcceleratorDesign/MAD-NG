@@ -28,8 +28,8 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
 local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
-local complex, infi, tiny, eps, huge, inf, nan, pi, Pi,
-      randomseed, log, is_complex, range in MAD
+local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log,
+      is_complex, range, nrange, is_cdata in MAD
 
 -- regression test suite ------------------------------------------------------o
 
@@ -49,6 +49,7 @@ local values = {
 local mth = \f,s,... s[f](s,...)
 
 function TestMatrix:testCtorMatrix()
+  local mat, vec = {}, {}
   local msg = {
   "invalid argument #1 or #2 (nrow[,ncol] >=1 or table [of tables] expected)",
   "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')" ,
@@ -65,15 +66,14 @@ function TestMatrix:testCtorMatrix()
   assertErrorMsgContains( msg[1], matrix,-tiny )
   assertErrorMsgContains( msg[2], matrix, inf  )
   assertErrorMsgContains( msg[2], matrix, huge )
-  local mat, vec = {}, {}
   for i=1,3 do mat [i] = matrix(  i,  i)
                vec [i] = vector(  i,  i) end
 
   for i,v in ipairs(vec) do
-    assertTrue( is_matrix(v) )
-    assertTrue( is_vector(v) )
-    assertEquals(v.nr, i)
-    assertEquals(v.nc, 1)
+    assertTrue  ( is_matrix(v) )
+    assertTrue  ( is_vector(v) )
+    assertEquals( v.nr, i )
+    assertEquals( v.nc, 1 )
   end
 
   for i,m in ipairs(mat) do
@@ -84,6 +84,7 @@ function TestMatrix:testCtorMatrix()
 end
 
 function TestMatrix:testCtorCMatrix()
+  local cmat, cvec = {}, {}
   local msg = {
   "invalid argument #1 or #2 (nrow[,ncol] >=1 or table [of tables] expected)",
   "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')" ,
@@ -101,15 +102,14 @@ function TestMatrix:testCtorCMatrix()
   assertErrorMsgContains( msg[1], cmatrix, nan  )
   assertErrorMsgContains( msg[1], cmatrix,-inf  )
   assertErrorMsgContains( msg[2], cmatrix, inf  )
-  local cmat, cvec = {}, {}
   for i=1,3 do cmat [i] = cmatrix(  i,  i)
                cvec [i] = cvector(  i,  i) end
 
   for i,cv in ipairs(cvec) do
-    assertTrue( is_cmatrix(cv) )
-    assertTrue( is_cvector(cv) )
-    assertEquals(cv.nr, i)
-    assertEquals(cv.nc, 1)
+    assertTrue  ( is_cmatrix(cv) )
+    assertTrue  ( is_cvector(cv) )
+    assertEquals( cv.nr, i )
+    assertEquals( cv.nc, 1 )
   end
 
   for i,cm in ipairs(cmat) do
@@ -119,7 +119,13 @@ function TestMatrix:testCtorCMatrix()
   end
 end
 
---indeirect matrix allocations tests missing
+function TestMatrix:testMalloc()
+  local m, cm
+  --m  =  matrix (16,16)
+  --cm = cmatrix (12,12)
+end
+
+--indeirect matrix allocations tests
 
 function TestMatrix:testIs_matrix()
   assertTrue ( is_matrix( matrix(2,2)) )
@@ -395,7 +401,7 @@ end
 -- both linspance and logspace need normal values check, closer look to special cases
 function TestMatrix:testLinspace()
   -- mess with step messeges, to be looked up
-  local msg, l = {
+  local msg, l, r = {
     "attempt to perform arithmetic on local 'start'",
     "attempt to perform arithmetic on local 'stop' ",
 
@@ -416,9 +422,11 @@ function TestMatrix:testLinspace()
   assertErrorMsgContains( msg[4], linspace, 2  , 2  , inf )
   assertErrorMsgContains( msg[5], linspace, 2  , 2  , ''  )
 
-  assertEquals( #linspace( 2  , 2  , nil)     , 100 )
-  assertEquals(  linspace( 2  , 2  , nil)[1]  , 2   )
-  assertEquals(  linspace( 2  , 2  , nil)[100], 2   )
+  assertTrue  ( is_cdata (linspace(1,1)) )
+  assertTrue  ( is_vector(linspace(1,1)) )
+  assertEquals( #linspace( 2, 2, nil)     , 100 )
+  assertEquals(  linspace( 2, 2, nil)[1]  , 2   )
+  assertEquals(  linspace( 2, 2, nil)[100], 2   )
 
   l = linspace( 2  ,-inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
   l = linspace( 2  , inf)  for i = 2, #l do assertInf( l[i] ) end assertNaN( l[1] )
@@ -426,6 +434,34 @@ function TestMatrix:testLinspace()
   l = linspace(-inf, 2  )  for i = 1, #l do assertNaN( l[i] ) end
   l = linspace( 2  , nan)  for i = 1, #l do assertNaN( l[i] ) end
   l = linspace( nan, 2  )  for i = 1, #l do assertNaN( l[i] ) end
+
+  local nrng = {
+          { 1  , 100, 100}, { 1, 100, 10 }   , { 100, 1 , 10 }, { 1,-100, 10 },
+          { 100,-1  , 10 }, {-1, 100, 10 }   , {-100, 1 , 10 }, {-1,-100, 10 },
+          {-100,-1  , 10 },-- { 1, 0  , 1/eps }, { 0.5, 1  , 1/eps },
+          }
+
+  for _,v in ipairs(nrng) do
+    nr = nrange  ( v[1], v[2], v[3] )
+    l  = linspace( v[1], v[2], v[3] )
+    for i=1,#nr do
+      assertEquals( l[i] - nr[i], 0 )
+    end
+  end
+
+  local r, s
+  for _,v in ipairs(values.num) do
+    r = range( 1, 100, v )
+    s = r:size()
+    if s < 20 then
+      l = linspace( 1, 100, s)
+      for i=1,#r do
+        --assertEquals( l[i] - r[i], 0 )
+        print( l[i] - r[i] )
+      end
+    end
+  end
+
 end
 
 function TestMatrix:testLogspace()
@@ -433,7 +469,7 @@ function TestMatrix:testLogspace()
     "attempt to index local 'x' "  ,
     "attempt to call method 'log' ",
     "invalid argument #1 or #2 (nrow[,ncol] >=1 or table [of tables] expected)",
-    "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t'",
+    "bad argument #1 to 'mad_malloc' (cannot convert 'nil' to 'uint64_t')",
     }
   assertErrorMsgContains( msg[1], logspace, nil, 1   )
   assertErrorMsgContains( msg[2], logspace, '' , 1   )
@@ -513,17 +549,18 @@ function TestMatrix:testGetsub()
     }
   assertErrorMsgContains( msg[1], mth, 'getsub', matrix(2,2), ''  , 0   , 1  )
   assertErrorMsgContains( msg[3], mth, 'getsub', matrix(2,2), 0   , 0   , 1  )
-  assertErrorMsgContains( msg[4], mth, 'getsub', matrix(2,2), 1..2, 1..2, 1..4  )
+  assertErrorMsgContains( msg[4], mth, 'getsub', matrix(2,2), 1..2, 1..2, 1..4 )
 
+  m = matrix(2,2)
+  --print( matrix(3,3):getsub(1..2, 1..2, m) )
+  --print( "\n" )
+  --print( matrix(3,3):getsub(linspace(1,2,2), 1..2, m) )
 
-  local m = matrix(2,2)
-  print( matrix(3,3):getsub(1..2, 1..2, m) )
-
-  --print( matrix(3,3):getsub(1..2, 1..2, {}  ) )
-  --print( matrix(3,3):getsub(1..2, 1..2, {{}}  ) )
-  --print( matrix(3,3):getsub(1..2, 1..2, {1i}    ) )
-  --print( matrix(3,3):getsub(1..2, 1..2, {false} ) )
-  --print( matrix(3,3):getsub(1..2, 1..2, {''}    ) )
+  --print( matrix(3,3):getsub(1..2, 1..2, {}     ) )
+  --print( matrix(3,3):getsub(1..2, 1..2, {{}}   ) )
+  --print( matrix(3,3):getsub(1..2, 1..2, {1i}   ) )
+  --print( matrix(3,3):getsub(1..2, 1..2, {false}) )
+  --print( matrix(3,3):getsub(1..2, 1..2, {''}   ) )
 end
 
 -- size, same -----------------------------------------------------------------o
