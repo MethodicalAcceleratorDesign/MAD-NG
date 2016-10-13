@@ -497,7 +497,7 @@ static int handle_madinit (lua_State *L)
 		return dostring(L, init, "=" "MAD_INIT");
 }
 
-// Extra integrated libs to load
+/* Extra integrated libs to load. */
 LUALIB_API int luaopen_lpeg (lua_State *L);
 
 static void mad_openlibs (lua_State *L)
