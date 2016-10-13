@@ -149,7 +149,7 @@ local _C, is_nil, is_boolean, is_number, is_string, is_table, is_complex,
       carg, real, imag, conj, norm, rect, polar,
       abs, ceil, floor, exp, log, sqrt,
       sin, cos, tan, sinh, cosh, tanh,
-      asin, acos, atan, asinh, acosh, atanh               in MAD
+      asin, acos, atan, asinh, acosh, atanh, inf          in MAD
 local is_callable, is_iterable, is_indexable              in MAD.concept
 local unm, add, mul, mod, pow, min, max, land, lor, is_eq in MAD.operator
 
@@ -194,13 +194,13 @@ MR.isa_vector = isa_vector
 
 local function matrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len < _C.mad_alloc_threshold then
+  if len <= _C.mad_alloc_threshold then
     mat = matrix_ctor(len) -- VLA
   else
-    local siz = ffi.sizeof(matrix_ctor, len)
-    local ptr = _C.malloc(siz)
+    assert(len <= 2^31, "matrix too large")
+    local siz = ffi.sizeof(matrix_ctor, 0) + len*dbl_sz
+    local ptr = assert(_C.calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(matrix_cref, ptr), _C.free)
-    ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
   return mat
@@ -208,13 +208,13 @@ end
 
 local function cmatrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len < _C.mad_alloc_threshold/2 then
+  if len <= _C.mad_alloc_threshold/2 then
     mat = cmatrix_ctor(len) -- VLA
   else
-    local siz = ffi.sizeof(cmatrix_ctor, len)
-    local ptr = _C.malloc(siz)
+    assert(len <= 2^30, "matrix too large")
+    local siz = ffi.sizeof(cmatrix_ctor, 0) + len*cpx_sz
+    local ptr = assert(_C.calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.free)
-    ffi.fill(mat, siz)
   end
   mat.nr, mat.nc = nr, nc
   return mat
@@ -1701,22 +1701,30 @@ function MR.__totable (x, r_)
   return r
 end
 
-function linspace (start, stop, n_)
-  local n = n_ or 100
-  assert(is_number(n) and n > 0, "invalid argument #3 (size expected)")
-  local v = (is_complex(start) or is_complex(stop)) and cvector(n) or vector(n)
-  local step = n > 1 and (stop-start)/(n-1) or 0
-  for i=0,n-1 do seti0(v, i, start+step*i) end
+function linspace (start, stop_, size_)
+  assert(is_scalar(start) and abs(start) < inf, "invalid argument #1 (finite scalar expected)")
+  if is_nil(stop_) then start, stop_ = 0, start end
+  assert(is_scalar(stop_) and abs(stop_) < inf, "invalid argument #2 (finite scalar expected)")
+  if is_nil(size_) then size_ = 100 else size_ = math.ceil(size_) end
+  assert(is_number(size_) and size_ > 0,        "invalid argument #3 (positive number expected)")
+  local v = (is_complex(start) or is_complex(stop_)) and cvector(size_) or vector(size_)
+  local step = size_ > 1 and (stop_-start)/(size_-1) or 0
+  for i=0,size_-1 do seti0(v, i, start+step*i) end
   return v
 end
 
-function logspace (start, stop, n_)
-  local n = n_ or 100
-  assert(is_number(n) and n > 0, "invalid argument #3 (size expected)")
-  local v = (is_complex(start) or is_complex(stop)) and cvector(n) or vector(n)
-  local logstart, logstop = log(start), log(stop)
-  local logstep = n > 1 and (logstop-logstart)/(n-1) or 0
-  for i=0,n-1 do seti0(v, i, exp(logstart+logstep*i)) end
+function logspace (start, stop_, size_)
+  assert(is_number(start) and start > 0 and start < inf or
+         is_complex(start) and abs(start) < inf, "invalid argument #1 (positive finite number expected)")
+  if is_nil(stop_) then start, stop_ = 1, start end
+  assert(is_number(stop_) and stop_ > 0 and stop_ < inf or
+         is_complex(stop_) and abs(stop_) < inf, "invalid argument #2 (positive finite number expected)")
+  if is_nil(size_) then size_ = 100 else size_ = math.ceil(size_) end
+  assert(is_number(size_) and size_ > 0,        "invalid argument #3 (positive number expected)")
+  local v = (is_complex(start) or is_complex(stop_)) and cvector(size_) or vector(size_)
+  local logstart, logstop = log(start), log(stop_)
+  local logstep = size_ > 1 and (logstop-logstart)/(size_-1) or 0
+  for i=0,size_-1 do seti0(v, i, exp(logstart+logstep*i)) end
   return v
 end
 
