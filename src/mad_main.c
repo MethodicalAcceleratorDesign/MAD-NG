@@ -497,6 +497,23 @@ static int handle_madinit (lua_State *L)
 		return dostring(L, init, "=" "MAD_INIT");
 }
 
+/* Extra integrated libs to load. */
+LUALIB_API int luaopen_lpeg (lua_State *L);
+
+static void mad_openlibs (lua_State *L)
+{
+	static struct { const char* name; int(*func)(lua_State*); } libs[] = {
+    { "lpeg", luaopen_lpeg },
+    { NULL  , NULL },
+	};
+
+	for (int i=0; libs[i].name; i++) {
+    lua_pushcfunction(L, libs[i].func);
+    lua_pushstring(L, libs[i].name);
+    lua_call(L, 1, 0);
+  }
+}
+
 /* --- MAD (end) -------------------------------------------------------------*/
 
 #if !LJ_TARGET_CONSOLE
@@ -1012,6 +1029,7 @@ static int pmain(lua_State *L)
 	/* Stop collector during library initialization. */
 	lua_gc(L, LUA_GCSTOP, 0);
 	luaL_openlibs(L);
+	mad_openlibs(L);
 	lua_gc(L, LUA_GCRESTART, -1);
 
 	createargtable(L, argv, s->argc, argn);
