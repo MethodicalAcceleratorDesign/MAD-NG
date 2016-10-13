@@ -246,7 +246,7 @@ end
 
 
 -- exported names
-local regex = {
+local re = {
   compile = compile,
   match = match,
   find = find,
@@ -254,6 +254,6 @@ local regex = {
   updatelocale = updatelocale,
 }
 
-if version == "Lua 5.1" then _G.regex = regex end
+if version == "Lua 5.1" then _G.re = re end
 
-return { regex = regex }
+return { regex = re }
