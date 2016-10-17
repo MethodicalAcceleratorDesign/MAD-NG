@@ -119,7 +119,7 @@ end
 
 local function convert_name (str)
   str = string.lower(string.gsub(str, '([.$])', '_'))
-  -- incr(env.__nam, str)
+  -- incr(env.nam, str)
   return str
 end
 
@@ -146,7 +146,7 @@ local function convert_variable (line, cap)
   if string.sub(cap[6],1,1) == '(' then
     cap[6] = '(' .. cap[6] .. ')'
   end
-  -- incr(env.__var, cap[2])
+  -- incr(env.var, cap[2])
   return table.concat( cap )
 end
 
@@ -161,12 +161,12 @@ local function convert_command (line, cap)
     seq = nil
     return '}'
   end
-  if cap[3] == ',' and env.__elm[cmd] ~= nil then -- update
+  if cap[3] == ',' and env.elm[cmd] ~= nil then -- update
     assert(seq == nil, "invalid update inside sequence definition")
     spc, cap[3] = string.match(line, command_attr, cap[4]+1)
     assert(cap[3], "invalid empty update detected")
     cap[3] = convert_names(cap[3])
-    return string.format("%s['%s'] :set %s{ %s }",  env.__elm[cmd], cap[2], spc or '', cap[3])
+    return string.format("%s['%s'] :set %s{ %s }",  env.elm[cmd], cap[2], spc or '', cap[3])
   else -- command
     line = '-- ' .. line
   end
@@ -197,14 +197,15 @@ local function convert_element (line, cap)
   if cls == 'sequence' then -- sequence
     assert(not seq, "invalid sequence definition inside sequence definition")
     seq, clo, pfx = elm, ',', elm .. ' = '
-    env.__seq[elm] = elm
-    env.__seq[#env.__seq+1] = elm
+    env.seq[elm] = elm
+    env.seq[#env.seq+1] = elm
   elseif not seq then       -- class
     clo, pfx = ' }', elm .. ' = '
-    env.__elm[elm] = cls
+    env.elm[elm] = cls
   else                      -- element
     clo, pfx = ' },', ''
-    env.__elm[elm] = seq
+    if env.elm[elm] then env.tie[env.elm[elm]] = seq end
+    env.elm[elm] = seq
   end
   if cap[4] == ',' then     -- attribute
     spc, cap[4] = string.match(line, element_attr, cap[5]+1)
@@ -236,26 +237,26 @@ local function load (_, file_in, file_out)
   assert(is_string(file_in)                     , "invalid input file name")
   assert(is_string(file_out) or is_nil(file_out), "invalid ouput file name")
 
-  env = { __nam={}, __var={}, __elm={}, __seq={} }
+  env = { seq={}, elm={}, tie={} } -- nam={}, var={} }
 
   -- load file
   local inf = assert( io.open(file_in) )
   local out = {}
   out[1] = "local MADX = MADX -- local"
-  out[2] = "MADX:open_env()"
+  out[2] = "MADX:open_env()\n\n"
 
   for line in inf:lines() do
     line = convert_comments   (line)
     line = convert_tokens     (line)
     line = convert_statements (line)
     out[#out+1] = line
-  --  io.write(seq and "S" or "", ln, ": ", line, '\n')
   end
-  if #env.__seq == 2 then
-    out[#out+1] = string.format("%s:tie(%s)", env.__seq[1], env.__seq[2])
+  for k,v in pairs(env.tie) do
+    out[#out+1] = string.format("%s:tie(%s)", k, v)
   end
-  out[#out+1] = "MADX:close_env()"
+  out[#out+1] = "\n\nMADX:close_env()"
   inf:close()
+
   env = nil
 
   if file_out then -- save file
