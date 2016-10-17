@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide basic compatibility with MADX sequence
+  - Provide basic compatibility with MADX sequences and optics files
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -53,33 +53,59 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local Object, is_number in MAD
+local Object, is_nil, is_number, is_string in MAD
 
+-- MADX environment -----------------------------------------------------------o
 
+assert(is_nil(MADX), "MADX environment already defined")
 
-
-
-local file = arg[1]
-assert(file ~= nil, "missing file name")
-
-local function display_head ()
-  io.write [[
-local abs, sqrt, exp, log, log10, sin, cos, tan, asin, acos, atan,
-      sinh, cosh, tanh, ranf, gauss, tgauss, floor, ceil, round,
-      frac, erf, erfc, sinc in MAD
-local pi, twopi, degrad, raddeg, amu0, emass, mumass, nmass, pmass, clight,
-      qelect, hbar, erad, prad in MAD.constant
-local sequence, sbend, rbend, quadrupole, sextupole, octupole, multipole,
-      solenoid, hkicker, vkicker, kicker, rfcavity, marker, placeholder,
-      instrument, monitor, collimator in MAD.element
-local tkicker, rcollimator = kicker, collimator -- alias
+MADX = Object {}  -- global
 local MADX = MADX -- local
-MADX:open_env()
-]]
-end
 
-local seq = nil
-local env = { __nam={}, __var={}, __elm={}, __seq={} }
+-- math functions, see mad_dict.c from MAD-X source
+MADX:set_function {
+  abs    = math.abs   ,
+  sqrt   = math.sqrt  ,
+  exp    = math.exp   ,
+  log    = math.log   ,
+  log10  = math.log10 ,
+  sin    = math.sin   ,
+  cos    = math.cos   ,
+  tan    = math.tan   ,
+  sinh   = math.sinh  ,
+  cosh   = math.cosh  ,
+  tanh   = math.tanh  ,
+  asin   = math.asin  ,
+  acos   = math.acos  ,
+  atan   = math.atan  ,
+  asinh  = MAD .asinh ,
+  acosh  = MAD .acosh ,
+  atanh  = MAD .atanh ,
+  ranf   = MAD .ranf  ,
+  gauss  = MAD .gauss ,
+  tgauss = MAD .tgauss,
+  floor  = math.floor ,
+  ceil   = math.ceil  ,
+  round  = MAD .round ,
+  frac   = MAD .frac  ,
+  erf    = MAD .erf   ,
+  erfc   = MAD .erfc  ,
+  sinc   = MAD .sinc  ,
+}
+
+-- constants
+MADX:set_variable(MAD.constant)
+
+-- elements
+MADX:set_variable(MAD.element)
+
+-- aliases (not in MAD)
+MADX.tkicker     = MAD.element.kicker
+MADX.rcollimator = MAD.element.collimator
+
+-- load -----------------------------------------------------------------------o
+
+local seq, env
 
 local function incr (t,k)
   t[k] = (t[k] or 0) + 1
@@ -93,7 +119,7 @@ end
 
 local function convert_name (str)
   str = string.lower(string.gsub(str, '([.$])', '_'))
-  incr(env.__nam, str)
+  -- incr(env.__nam, str)
   return str
 end
 
@@ -107,6 +133,7 @@ local function convert_tokens (line)
   line = string.gsub(line, '(%w+)', tok)
   line = string.gsub(line, '->', '.')
   line = string.gsub(line, '%%', '.')
+  line = string.gsub(line, '&', ' ')
   return line
 end
                --   [1]  [2]             [3]  [4]  [5]  [6]
@@ -119,7 +146,7 @@ local function convert_variable (line, cap)
   if string.sub(cap[6],1,1) == '(' then
     cap[6] = '(' .. cap[6] .. ')'
   end
-  incr(env.__var, cap[2])
+  -- incr(env.__var, cap[2])
   return table.concat( cap )
 end
 
@@ -146,12 +173,21 @@ local function convert_command (line, cap)
   return line
 end
               --   [1]  [2]                    [3]                [4]  [5]
-local element = "^(%s*)([%a_][%w%._$]*)%s*:%s*([%a_][%w%._$]*)%s*([,;])()"
+local element = "^(%s*)([%a_][%w%._$]*)%s*:%s*([%a_][%w%._$]*)%s*([,;=])()"
 local element_attr = "(%s*)([^;]*);"
+local element_line = "(%s*)(%b())%s*;"
 local element_from = "from%s*=%s*([%a_][%w%._$]*)"
 
 local function convert_from (str)
   return string.gsub(str, element_from, "from = '%1'")
+end
+
+local function convert_line (str)
+  local cap = string.sub(str, 2, -2)
+  if cap ~= '' then
+    cap = '{ ' .. cap
+  end
+  return cap
 end
 
 local function convert_element (line, cap)
@@ -174,6 +210,10 @@ local function convert_element (line, cap)
     spc, cap[4] = string.match(line, element_attr, cap[5]+1)
     cap[4] = convert_from (cap[4] or '')
     cap[4] = convert_names(cap[4])
+  elseif cap[4] == '=' then -- line
+    spc, cap[4] = string.match(line, element_line, cap[5]+1)
+    cap[4] = convert_line (cap[4] or '')
+    cap[4] = convert_names(cap[4])
   else
     cap[4] = ''
   end
@@ -192,18 +232,47 @@ local function convert_statements (line)
   return line
 end
 
-local ln = 0
-display_head()
-for line in io.lines(file) do
-  ln = ln+1
-  line = convert_comments   (line)
-  line = convert_tokens     (line)
-  line = convert_statements (line)
-  io.write(line, '\n')
---  io.write(seq and "S" or "", ln, ": ", line, '\n')
+local function load (_, file_in, file_out)
+  assert(is_string(file_in)                     , "invalid input file name")
+  assert(is_string(file_out) or is_nil(file_out), "invalid ouput file name")
+
+  env = { __nam={}, __var={}, __elm={}, __seq={} }
+
+  -- load file
+  local inf = assert( io.open(file_in) )
+  local out = {}
+  out[1] = "local MADX = MADX -- local"
+  out[2] = "MADX:open_env()"
+
+  for line in inf:lines() do
+    line = convert_comments   (line)
+    line = convert_tokens     (line)
+    line = convert_statements (line)
+    out[#out+1] = line
+  --  io.write(seq and "S" or "", ln, ": ", line, '\n')
+  end
+  if #env.__seq == 2 then
+    out[#out+1] = string.format("%s:tie(%s)", env.__seq[1], env.__seq[2])
+  end
+  out[#out+1] = "MADX:close_env()"
+  inf:close()
+  env = nil
+
+  if file_out then -- save file
+    local outf = assert( io.open(file_out, "w") )
+    for i,s in ipairs(out) do
+      outf:write(s, '\n')
+  --  outf.write(i, ": ", s, '\n')
+    end
+  else -- in memory TODO
+  end
+
+  collectgarbage()
 end
 
-if #env.__seq == 2 then
-  io.write(string.format("%s:tie(%s)\n", env.__seq[1], env.__seq[2]))
-end
-io.write "MADX:close_env()\n"
+MADX:set_function { load = load }
+
+M.madxload = \inf,outf -> load(nil, inf, outf)
+
+-- end ------------------------------------------------------------------------o
+return MAD.utility.defhelp(M) -- todo: per function help -> 'madx'
