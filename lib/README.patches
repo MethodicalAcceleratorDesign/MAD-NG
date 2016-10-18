@@ -163,19 +163,19 @@ syntax for table constructor and string literal.
 Patch for deferred expression
 =============================
 
-With the patch of lamdba syntax extension, the following syntaxes are
-supported: [-DLUAJIT_LAMBDA_DEFER]
+With the patch of lamdba syntax extension, the following syntaxes inside table
+constructor (only) are supported: [-DLUAJIT_LAMBDA_DEFER]
 
 { key := expr }
-{ key := (expr_list) }
 
 become _strictly_ equivalent to the Lambda syntaxes
 
 { key =\ expr }
-{ key =\ (expr_list) }
 
-but it is not sensitive to the space following the lambda backslash character,
-as it is always void of parameter.
+but it supports only expr as RHS (not expr_list), meaning that it can start with
+a parenthesis without triggering the special expr_list semantic. It is also not
+sensitive to the space following the lambda backslash character, as it is always
+void of parameter.
 
 -------------------------------------------------------------------------------
 
@@ -218,7 +218,7 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 5   -1
 
 > f=function () return  x end  -- free variable x
-> f=\ x                        -- note the space
+> f=\ x   -- note the space
 > x=10
 > =f()
 10
@@ -227,7 +227,7 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 20
 
 > f=function () return -x end  -- free variable x
-> f=\ -x                       -- note the space
+> f=\ -x   -- note the space
 > x=10
 > =f()
 -10
@@ -235,16 +235,36 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 > =f()
 -20
 
+> f=function () return (x+1)*2 end -- free variable x
+> f=\ ((x+1)*2)   -- note the extra parenthesis to avoid invalid expr_list
+> x=4
+> =f()
+10
+> x=9
+> =f()
+20
+> f=\ 2*(x+1)     -- no expr_list, ok
+> =f()
+20
+
+> a= { f=function () return (x+1)*2 end } -- free variable x
+> a= { f:=(x+1)*2 }   -- note no extra space nor parenthesis needed
+> x=4
+> =a.f()
+10
+> x=9
+> =a.f()
+20
+
 > a={ f=function (x,y) return x+y,x-y end, 3 }
-> a={ f=\x,y (x+y,x-y), 3 }
+> a={ f=\x,y (x+y,x-y), 3 } -- multiple values returned
 > =a.f(2,3)
 5   -1
 > =a[1]
 3
 
-> x,y=4,6
 > a={ f=function (x,y) return x+y end, x-y, 3 }
-> a={ f=\x,y x+y, x-y, 3 }
+> a={ f=\x,y x+y, x-y, 3 }  -- single value returned
 > =a.f(2,3)
 5
 > =a[1]
@@ -252,9 +272,26 @@ Examples of equivalent forms in Lua and Lambda syntaxes:
 > =a[2]
 3
 
+> x,y=4,6
+> a= { f=function () return x+y,x-y end, 3 }
+> =a.f()                   -- multiple values returned
+10  -2
+> =a[1]
+3
+> a= { f=\ (x+y,x-y), 3 }
+> =a.f()                   -- multiple values returned, equivalent but needs ()
+10  -2
+> =a[1]
+3
+> a= { f:=x+y, x-y, 3 }
+> =a.f()                   -- single value returned, not equivalent
+10
+> =a[1]                    -- x-y
+-2
+
 > z=10
 > a={ f=function (s,y) return s.x*y+z end, x=3 }
-> a={ f=\s,y s.x*y+z, x=3 }
+> a={ f=\s,y s.x*y+z, x=3 }  -- single value return using 'self'
 > =a:f(2)
 16
 > a.x=5

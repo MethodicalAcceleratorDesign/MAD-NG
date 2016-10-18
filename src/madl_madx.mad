@@ -1,0 +1,313 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | MADX module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide basic compatibility with MADX sequences and optics files
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = { __help = {} }
+
+-- help -----------------------------------------------------------------------o
+
+M.__help.self = [=[
+NAME
+  madx for MAD-X compatibility
+
+SYNOPSIS
+  local MADX = require "madx"
+
+DESCRIPTION
+  This module provide the function loadmadx that read MADX sequence and optics
+  files and load then in the MADX global variable. If it does not exist, it will
+  create the globla MADX variable as an object and load all elements, constants,
+  and math functions compatible with MADX.
+
+RETURN VALUES
+  The MADX global variable
+
+EXAMPLES
+  local MADX = require "madx"
+  MADX:open_env()
+  -- inline definition
+  MADX:close_env()
+
+SEE ALSO
+  element, object
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local Object, is_nil, is_number, is_string in MAD
+
+-- MADX environment -----------------------------------------------------------o
+
+assert(is_nil(MADX), "MADX environment already defined")
+
+MADX = Object {}  -- global
+local MADX = MADX -- local
+
+-- math functions, see mad_dict.c from MAD-X source
+MADX:set_function {
+  abs    = math.abs   ,
+  sqrt   = math.sqrt  ,
+  exp    = math.exp   ,
+  log    = math.log   ,
+  log10  = math.log10 ,
+  sin    = math.sin   ,
+  cos    = math.cos   ,
+  tan    = math.tan   ,
+  sinh   = math.sinh  ,
+  cosh   = math.cosh  ,
+  tanh   = math.tanh  ,
+  asin   = math.asin  ,
+  acos   = math.acos  ,
+  atan   = math.atan  ,
+  asinh  = MAD .asinh ,
+  acosh  = MAD .acosh ,
+  atanh  = MAD .atanh ,
+  ranf   = MAD .ranf  ,
+  gauss  = MAD .gauss ,
+  tgauss = MAD .tgauss,
+  floor  = math.floor ,
+  ceil   = math.ceil  ,
+  round  = MAD .round ,
+  frac   = MAD .frac  ,
+  erf    = MAD .erf   ,
+  erfc   = MAD .erfc  ,
+  sinc   = MAD .sinc  ,
+}
+
+-- constants
+MADX:set_variable(MAD.constant)
+
+-- elements
+MADX:set_variable(MAD.element)
+
+-- aliases (not in MAD)
+MADX.tkicker     = MAD.element.kicker
+MADX.rcollimator = MAD.element.collimator
+
+MADX.exit        = 'exit'
+MADX.entry       = 'entry'
+MADX.centre      = 'centre'
+
+-- load -----------------------------------------------------------------------o
+
+--[[
+  env content:
+  ------------
+  [id]     = seq_name        (list of sequences)
+  cur      = seq_id          (0 -> not in seq def)
+  elm[str] = seq_id   of elm (0 -> elm is a class)
+  seq[str] = seq_id   of seq
+  cls[elm] = cls_name of elm
+  tie[id1] = id2             ([id1]:tie([id2])
+]]--
+local env = nil
+
+local cmt = { ['//'] = '--', ['/*'] = '--[[', ['*/'] = ']]', }
+
+local function convert_comments (line)
+  return string.gsub(line, '([/*][/*])', cmt)
+end
+
+local tok = { real='', const='', shared='', REAL='', CONST='', SHARED='' }
+
+local function convert_tokens (line)
+  line = string.gsub(line, '(%w+)', tok)
+  line = string.gsub(line, '->', '.')
+  line = string.gsub(line, '%%', '.')
+  line = string.gsub(line, '&', ' ')
+  return line
+end
+
+local function convert_name (str)
+  local c = string.sub(str,1,1)
+  if c == '"' or c == "'" then
+    assert(c == string.sub(str,-1), "unterminated string")
+    return str
+  else
+    return string.lower(string.gsub(str, '([.$])', '_'))
+  end
+end
+
+local function convert_names (str)
+  return string.gsub(str, "(['\"]?[%a_][%w%._$]*['\"]?)", convert_name)
+end
+
+local function convert_from (str)
+  return string.gsub(str, "[Ff][Rr][Oo][Mm]%s*=%s*([%a_][%w%._$]*)", "from = '%1'")
+end
+
+               --   [1]  [2]             [3]  [4]  [5]  [6]
+local variable = "^(%s*)([%a_][%w%._$]*)(%s*)(:?=)(%s*)([^;]*);"
+
+local function convert_variable (line, cap)
+  assert(env.cur == 0, "unsupported variable definition inside sequence")
+  cap[2] = convert_name (cap[2])
+  cap[6] = convert_names(cap[6])
+  if cap[4] == ':=' then
+    cap[4] = '=\\ '
+    if string.sub(cap[6],1,1) == '(' then
+      cap[6] = '(' .. cap[6] .. ')'
+    end
+  end
+  return table.concat( cap )
+end
+
+              --   [1]  [2]                [3]  [4]
+local command = "^(%s*)([%a_][%w%._$]*)%s*([,;])()"
+local command_attr = "(%s*)([^;]*);"
+
+local function convert_command (line, cap)
+  local cmd = convert_name(cap[2])
+  if cmd == 'endsequence' then
+    env.cur = 0
+    return '}'
+  end
+  local sid, spc, clo, pfx, set = env.elm[cmd]
+  if cap[3] == ',' and sid then  -- element update
+    spc, cap[3] = string.match(line, command_attr, cap[4]+1)
+    if env.cur == 0 then                  -- outside sequence definition
+      pfx = sid > 0 and env[sid] .. "['" .. cap[2] .. "']" or cmd
+      clo, set, cap[3] = ' }', ':set ', convert_names(cap[3] or '')
+    else                                  -- inside sequence definition
+      warn("element update inside sequence " .. env[env.cur] .. ": " .. cmd)
+      assert(is_nil(env.tie[sid]) or env.tie[sid] == env.cur,
+             "unsupported multi-tie for sequence:", env[sid])
+      env.tie[sid] = env.cur
+      pfx = env.cls[cmd] .. " '" .. cap[2] .. "'"
+      clo, set, cap[3] = ' },', '', convert_names(convert_from(cap[3] or ''))
+    end
+    return string.format("%s%s %s%s{ %s%s",
+                         cap[1], pfx, set, spc or '', cap[3], clo)
+  else                                    -- command, ignored
+    line = '-- ' .. line
+  end
+  return line
+end
+              --   [1]  [2]                    [3]                [4]  [5]
+local element = "^(%s*)([%a_][%w%._$]*)%s*:%s*([%a_][%w%._$]*)%s*([,;=])()"
+local element_attr = "(%s*)([^;]*);"
+local element_line = "(%s*)(%b())%s*;"
+
+local function convert_line (str)
+  local cap = string.sub(str, 2, -2)
+  if cap ~= '' then cap = '{ ' .. cap end -- closing '}' is appened
+  return cap
+end
+
+local function convert_element (line, cap)
+  local nam = convert_name(cap[2])
+  local cmd = convert_name(cap[3])
+  local sid, spc, clo, pfx = env.elm[nam]
+  if cmd == 'sequence' then -- sequence
+    assert(env.cur == 0, "invalid sequence definition inside sequence")
+    pfx, clo     = nam .. ' = ', ','
+    env[#env+1]  = nam
+    env.seq[nam] = #env
+    env.cur      = #env
+  elseif env.cur == 0 then  -- class
+    pfx, clo     = nam .. ' = ', ' }'
+    env.cls[nam] = cmd
+    env.elm[nam] = 0
+  else                      -- element
+    pfx, clo     = '', ' },'
+    if sid then
+      warn("implicit element re-definition ignored: " .. nam)
+      assert(is_nil(env.tie[sid]) or env.tie[sid] == env.cur,
+             "unsupported multi-tie for sequence:", env[sid])
+      env.tie[sid] = env.cur
+    else
+      env.cls[nam] = cmd
+      env.elm[nam] = env.cur
+    end
+  end
+  if cap[4] == ',' then     -- attribute
+    assert(cmd ~= 'line', "unexpected line definition")
+    spc, cap[4] = string.match(line, element_attr, cap[5]+1)
+    cap[4] = convert_names(convert_from(cap[4] or ''))
+  elseif cap[4] == '=' then -- line
+    assert(cmd == 'line', "line definition expected")
+    spc, cap[4] = string.match(line, element_line, cap[5]+1)
+    cap[4] = convert_names(convert_line(cap[4] or ''))
+  else
+    cap[4] = ''
+  end
+  return string.format("%s%s%s '%s' %s{ %s%s",
+                       cap[1], pfx, cmd, cap[2], spc or '', cap[4], clo)
+end
+
+local capf = \i,j,... -> {...}
+local function convert_statements (line)
+  local cap
+  cap = capf( string.find(line, variable) )
+  if #cap > 0 then return convert_variable(line, cap) end
+  cap = capf( string.find(line, element) )
+  if #cap > 0 then return convert_element (line, cap) end
+  cap = capf( string.find(line, command) )
+  if #cap > 0 then return convert_command (line, cap) end
+  return line
+end
+
+local function load_file (_, file_in, file_out)
+  assert(is_string(file_in)                     , "invalid input file name")
+  assert(is_string(file_out) or is_nil(file_out), "invalid ouput file name")
+
+  env = { cur=0, seq={}, elm={}, cls={}, tie={} }
+
+  -- load file
+  local inf = assert( io.open(file_in) )
+  local out = {}
+  out[1] = "local MADX = MADX -- local"
+  out[2] = "MADX:open_env()\n"
+
+  for line in inf:lines() do
+    line = convert_comments   (line)
+    line = convert_tokens     (line)
+    line = convert_statements (line)
+    out[#out+1] = line
+  end
+  for k,v in pairs(env.tie) do
+    out[#out+1] = string.format("\n%s:tie(%s)", env[k], env[v])
+  end
+  out[#out+1] = "\nMADX:close_env()"
+  inf:close()
+
+  -- save to file
+  if file_out then
+    local outf = assert( io.open(file_out, "w") )
+    for i,s in ipairs(out) do
+      outf:write(s, '\n')
+    end
+  -- compile in memory
+  else
+    assert( load( table.concat(out,'\n') ) ) ()
+  end
+
+  env, out = nil, nil
+  collectgarbage()
+end
+
+MADX:set_function { load = load_file }
+
+M.madxload = \inf,outf -> load_file(nil, inf, outf)
+
+-- end ------------------------------------------------------------------------o
+return MAD.utility.defhelp(M) -- todo: per function help -> 'madx'

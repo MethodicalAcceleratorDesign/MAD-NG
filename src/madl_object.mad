@@ -29,7 +29,7 @@ local M = {}
 local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
       is_metaname in MAD
 local bclr, bset, btst in MAD.operator
-local is_callable      in MAD.concept
+local is_callable, is_iterable, is_mappable in MAD.concept
 
 -- implementation -------------------------------------------------------------o
 
@@ -148,30 +148,12 @@ function MT:__len ()
   return #rawget(self,var)
 end
 
-local function iterk (self, k)
-  local v
-  k, v = next(rawget(self,var), k)
-  if is_function(v)
-  then return k, v(self)
-  else return k, v end
-end
-
 function MT:__pairs ()
-  return iterk, self, nil
-end
-
-local function iteri (self, i)
-  i = i + 1
-  local v = rawget(rawget(self,var), i)
-  if v ~= nil then
-    if is_function(v)
-    then return i, v(self)
-    else return i, v end
-  end
+ return pairs(rawget(self,var))
 end
 
 function MT:__ipairs()
-  return iteri, self, 0
+ return ipairs(rawget(self,var))
 end
 
 -- methods
@@ -197,20 +179,20 @@ local function get_raw (self, k)
   return rawget(rawget(self,var),k)    -- no inheritance nor function evaluation
 end
 
-local function get_variable (self, tbl, eval)
+local function get_variable (self, lst, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
   local var, res = rawget(self,var), {}
   if eval ~= false
-  then for _,k in ipairs(tbl) do res[k] = self[k] end
-  else for _,k in ipairs(tbl) do res[k] = var [k] end
+  then for _,k in ipairs(lst) do res[k] = self[k] end
+  else for _,k in ipairs(lst) do res[k] = var [k] end
   end
   return res
 end
 
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   local var = rawget(self,var)
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
@@ -221,7 +203,7 @@ end
 
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   local var = rawget(self,var)
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
@@ -233,7 +215,7 @@ end
 
 local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_rawtable(tbl), "invalid argument #2 (raw table expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
     assert(not fclass(self), "invalid metatable (class unexpected)")
