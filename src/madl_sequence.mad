@@ -46,7 +46,7 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_rawtable in MAD
+local is_nil, is_string, is_rawtable, vector, sign in MAD
 local element in MAD.element
 
 -- implementation -------------------------------------------------------------o
@@ -59,7 +59,7 @@ sequence:set_metamethod {
   __init = \s -> init_sequence(s),
 }
 
-local function seq_error(msg, sequ, elem, idx)
+local function seq_error (msg, sequ, elem, idx)
     error(msg .. " in sequence '"  .. sequ.name
               .. "' for element '" .. elem.name
               .. "' at index "     .. (idx or '?'))
@@ -68,22 +68,34 @@ end
 -- functions ------------------------------------------------------------------o
 
 -- identifier
-local function ident(name)
-  return string.lower(string.gsub(name, "%.", "_"))
+local function ident (name)
+  return string.lower(string.gsub(name, '[.$]', '_'))
 end
 
 -- search
-local function find_index_by_ref(sequ, elem, start)
-  for i=start or 1,#sequ do  -- linear search
+local function find_idx (sequ, elem, start_)
+  local start, stop, step = start_ or 1
+  if start > 0
+  then stop, step = #sequ, 1
+  else stop, step, start = 1, -1, -start
+  end
+  for i=start,stop,step do  -- linear search
     if sequ[i] == elem then return i end
   end
   return nil
 end
 
-local function find_index_by_pos(sequ, s_pos, start)
-  local s = sequ.s_pos
-  for i=start or 1,#s_pos do -- linear search
-    if s[i] >= s_pos then return i end
+local function find_sindex (sequ, s, start_)
+  local s_pos = sequ.s_pos
+  local start = start_ or 1
+  if start > 0 then
+    for i=start,#s_pos do    -- linear search
+      if s_pos[i] >= s then return i end
+    end
+  elseif start < 0 and -start <= #s_pos then
+    for i=-start,1,-1 do -- linear search
+      if s_pos[i] <= s then return i end
+    end
   end
   return nil
 end
@@ -104,37 +116,48 @@ local function add_uniq_elem (to, elem)
   to[#to+1] = elem        return to                 -- many refs, not yet there
 end
 
--- compute s positions of sequence elements (TODO)
-local function element_spos(seq, elem, idx)
-  local s_pos = elem.s_pos
-  if is_number(s_pos) then return s_pos end
-  if s_pos == 'ongoing' then
-    seq_error("cycling dependencies detected", seq, elem, idx)
+-- compute s positions of sequence elements
+local function elem_spos(seq, idx)
+  local s_pos = seq.s_pos[idx]
+  if s_pos >= 0 then return s_pos end
+  if s_pos == -2e9 then     -- value for 'ongoing'
+    seq_error("cycling dependencies detected", seq, seq[idx], idx)
+  elseif s_pos ~= -1e9 then -- value for 'uninitialized'
+    seq_error("corrupted s-position detected", seq, seq[idx], idx)
   end
 
-  elem.s_pos = 'ongoing'
+  seq.s_pos[idx] = -2e9     -- 'ongoing'
 
+  local elem  = seq[idx]
+  local len   = elem.l     or 0 -- lrad...
   local pos   = elem.at    or 0
-  local from  = elem.from  or elem.at and 'start' or 'prev'
-  local refer = elem.refer or seq.refer           or 'entry'
+  local from  = elem.from  or elem.at and 'start' or idx > 1 and 'prev' or 'start'
+  local refer = elem.refer or seq.refer or 'entry'
 
-      if refer == 'entry'   then ;
-  elseif refer == 'centre'  then pos = pos - (seq and seq.length/2 or elem.length/2)
-  elseif refer == 'exit'    then pos = pos - (seq and seq.length   or elem.length)
-  elseif seq and seq[refer] then pos = pos - seq[refer].s_pos
-  else seq_error("invalid refer '"..refer.."'", seq, elem, idx)
+      if refer == 'entry'  then ;
+  elseif refer == 'centre' then pos = pos - len/2
+  elseif refer == 'exit'   then pos = pos - len
+  else seq_error("invalid refer to '" .. refer .. "'", seq, elem, idx)
   end
 
-      if from == 'start'       then ;
-  elseif from == 'end' and len then pos = len - pos
-  elseif from == 'prev'        then pos = pos + seq[idx-1].s_pos + seq[idx-1].length
-  elseif from == 'next'        then pos = pos + element_spos(seq, seq[idx+1], idx+1)
-  elseif seq[from]             then pos = pos + element_spos(seq, seq[from], seq[from].idx)
-  else seq_error("invalid from '"..from.."'", seq, elem, idx)
+      if from == 'start'   then ;
+  elseif from == 'end'     then pos = seq.l - pos
+  elseif from == 'prev'    then pos = pos + (idx > 0 and seq.s_pos[idx-1]+(seq[idx-1].l or 0) or 0)
+  elseif from == 'next'    then pos = pos + elem_spos(seq, idx+1)
+  elseif seq[from]         then pos = pos + elem_spos(seq, find_idx(seq, seq[from], -sign(elem.at)*idx))
+  else seq_error("invalid from of '" .. from .. "'", seq, elem, idx)
   end
 
-  elem.s_pos = pos
+  seq.s_pos[idx] = pos
   return pos
+end
+
+local function sequ_spos (sequ)
+  if is_nil(sequ.__s_pos) then
+    sequ.__s_pos = vector(#sequ):ones(-1e9)
+    for idx=1,#sequ do elem_spos(sequ, idx) end
+  end
+  return sequ.__s_pos
 end
 
 local function copy_sequ (sequ, flat, k)
@@ -345,7 +368,7 @@ local function tie (seq1, seq2)
     if e2 ~= nil then
       assert(e1.is_element == true, "invalid shared element (must be unique)")
       assert(e2.is_element == true, "invalid shared element (must be unique)")
-      local i2 = find_index_by_ref(seq2, e2, i1) or find_index_by_ref(seq2, e2)
+      local i2 = find_idx(seq2, e2, i1) or find_idx(seq2, e2)
       local id = ident(name)
       seq1[name] = e1( {at = e1:get_raw 'at', from = e1:get_raw 'from'} )
       seq2[name] = e1( {at = e2:get_raw 'at', from = e2:get_raw 'from'} )
@@ -362,10 +385,18 @@ local function tie (seq1, seq2)
   return seq1, { [ident(seq1.name)] = shrd1, [ident(seq2.name)] = shrd2 }
 end
 
+-- attributes -----------------------------------------------------------------o
+
+sequence:set_variable {
+  s_pos = \s -> is_nil(s.__s_pos) and sequ_spos(s) or s.__s_pos
+}
+
 -- methods --------------------------------------------------------------------o
 
 sequence:set_function {
-  tie = tie,
+  tie      = tie,
+  index_of = \s,e,i -> find_idx(s,s[e],i),
+  spos_of  = \s,e,i -> s.s_pos[is_string(e) and s:index_of(e,i) or find_idx(s,e,i)]
 }
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
