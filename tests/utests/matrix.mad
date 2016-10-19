@@ -29,7 +29,8 @@ local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
 local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log,
-      is_complex, range, nrange, nlogrange, is_cdata in MAD
+      is_complex, range, nrange, nlogrange, is_cdata, is_table
+      in MAD
 
 -- regression test suite ------------------------------------------------------o
 
@@ -857,12 +858,13 @@ function TestMatrix:testReshape()
 end
 
 function TestMatrix:testGetsub()
-  local msg = {
+  local msg, m, cm = {
     "invalid argument #2 (iterable expected)", --is_iterable(ir) --has iparis or number
     "invalid argument #3 (iterable expected)", --is_iterable(jc) --has iparis or number
     "invalid argument #4 (iterable expected)", --is_iterable(r ) --has iparis
     "invalid range member '1'"        ,
     "cannot convert 'nil' to 'double'",
+    "attempt to compare 'number' with 'complex'",
     }
   assertErrorMsgContains( msg[1], mth, 'getsub', matrix(2,2), ''  , 0   , 1    )
   assertErrorMsgContains( msg[2], mth, 'getsub', matrix(2,2), 2                )
@@ -876,53 +878,60 @@ function TestMatrix:testGetsub()
   assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), 0, 1, matrix(1)  )
   assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), 3, 1, matrix(1)  )
 
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), vector(1), 1 )
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2),  0       , 1 )
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), {0}      , 1 )
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), 1, vector(1) )
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), 1,  0        )
+  assertErrorMsgContains( msg[5], mth, 'getsub', matrix(2,2), 1, {0}       )
+
+  assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2,2), cvector({1}), 1 )
+  assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2,2), 1, cvector({1}) )
+
 -- full on test with every possible option, then use this to test othe get
+-- making the loop over few inputs starting with rr for example
 
-  -- ir,jc: number, range, table, matrix
-  -- ir,jc/y: number/scalar, range, table, matrix
-  -- x      in { matrix, cmatrix }
-  -- ir, jc in { n, a..b, {}, vector }
-  -- rr     in { {}, vector }
-  local mth2 = \f,s,... s[f](s,...)
+-- ir,jc: number, range, table, matrix
+-- ir,jc/y: number/scalar, range, table, matrix
+-- x      in { matrix, cmatrix }
+-- ir, jc in { n, a..b, {}, vector }
+-- rr     in { {}, vector }
 
-  local x  = { matrix, cmatrix }
-  local ir = { n, 1..2, {}, vector }
-  local rr = { {}, vector }
+--*check if with this fucntion you can go from real to complex matrix
 
+  local r, t, x
+  t = { nil, {} }
+
+  for j=1,#t do
   for nr=1,5 do
   for nc=1,5 do
-    local m = matrix(nr,nc):fill(1..(nr*nc))
+    x  = {
+       matrix(nr,nc):fill(1..(nr*nc)),
+      cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)
+    }
+        for k=1,#x do
+    for n = 1,nr do
+      for m = 1,nc do
+        r  = { n, 1..n, {1,n}, vector({1,n}), matrix({{1,n},{1,n}}) }
+        r1 = { m, 1..m, {1,m}, vector({1,m}), matrix({{1,m},{1,m}}) }
+          for i=1,#r do
+            for i1=1,#r1 do
+              --print( x[k]:getsub(r[i], r1[i1], t[j]) )
+            end
+          end
+        end
+      end
+    end
+  end end end
 
-  end end
+  local M = matrix(5,5):fill(1..(5*5))
+  assertTrue( is_table (M:getsub(1, 1, {} )) )
+  assertTrue( is_vector(M:getsub(1, 1, nil)) )
 
-  local M = matrix(3,3):fill(1..(3*3))
-  assertEquals( M:getsub(4 , 1, {}), {} )
-  assertEquals( M:getsub(0 , 1, {}), {} )
-  assertEquals( M:getsub( 1,1)        , matrix( {1}          ) )
-  assertEquals( M:getsub( 1,1)        , matrix( {1}          ) )
-  assertEquals( M:getsub( 2,2)        , matrix( {5}          ) )
-  assertEquals( M:getsub({1,2}, 2    ), matrix( {2,5}        ) )
-  assertEquals( M:getsub({1,2},{2,3} ), matrix({{2,3},{5,6}} ) )
-  assertEquals( M:getsub( 1..2, 1..2 ), matrix({{1,2},{4,5}} ) )
-  assertEquals( M:getsub( 1, 1..2 )   , matrix({{1,2}}       ) )
-  assertEquals( M:getsub( 1..3, 3 )   , matrix( {3,6,9}      ) )
-
-  assertEquals( M:getsub( 1   , 1   , {}       ),  {1}         )
-  assertEquals( M:getsub({1,2}, 2   , {}       ),  {2,5}       )
-  assertEquals( M:getsub( 1..2, 1..2, {}       ),  {1,2,4,5}   )
-  assertEquals( M:getsub( 1   , 2   , vector(1)),  vector({2}) )
-  assertEquals( M:getsub( 2   , 1   , vector(1)),  matrix({4}) )
-  assertEquals( M:getsub( 2   , 1   , matrix(1)),  matrix({4}) )
-  assertEquals( M:getsub( 2   , 1   ,cmatrix(1)), cmatrix({4}) )
-  assertEquals( M:getsub( 2   , 1   ,cmatrix(1)), cmatrix({4}) )
-  assertEquals( M:getsub( 2   , 1   , matrix(2)),  matrix({{4,0},{0,0}}) )
-
-  assertEquals( M:getsub(linspace(1,3,3), 3)             , matrix( {3,6,9}) )
-  assertEquals( M:getsub(linspace(1,2,2),linspace(1,2,2)), matrix({{1,2},{4,5}}) )
-  assertEquals( M:getsub(logspace(1,2,2),linspace(1,2,2)), matrix({{1,2},{4,5}}) )
+ -- for i=1,#x do print( x[t](2,2):getsub(1..2, 1..2, t[i]) ) end
 end
-
 --[[
+
 -- conversion -----------------------------------------------------------------o
 
 function TestMatrix:testTosting()
