@@ -29,7 +29,7 @@ local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
 local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log,
-      is_complex, range, nrange, nlogrange, is_cdata, is_table
+      is_complex, range, nrange, nlogrange, is_cdata, is_table, is_nil
       in MAD
 
 -- regression test suite ------------------------------------------------------o
@@ -857,8 +857,10 @@ function TestMatrix:testReshape()
   end end
 end
 
+-- getx, setx -----------------------------------------------------------------o
+
 function TestMatrix:testGetsub()
-  local msg, m, cm = {
+  local msg = {
     "invalid argument #2 (iterable expected)", --is_iterable(ir) --has iparis or number
     "invalid argument #3 (iterable expected)", --is_iterable(jc) --has iparis or number
     "invalid argument #4 (iterable expected)", --is_iterable(r ) --has iparis
@@ -888,73 +890,41 @@ function TestMatrix:testGetsub()
   assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2,2), 1, cvector({1}) )
   assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2,2), cvector({1}), 1 )
 
-  local M = matrix(5,5):fill(1..(5*5))
+  local M ,mRes, mRef, r, r1, t, x, m
+  M = matrix(5,5):fill(1..(5*5))
   assertTrue( is_table (M:getsub(1, 1, {} )) )
   assertTrue( is_vector(M:getsub(1, 1, nil)) )
--- full on test with every possible option, then use this to test othe get
--- making the loop over few inputs starting with rr for example
 
--- ir,jc: number, range, table, matrix
--- ir,jc/y: number/scalar, range, table, matrix
--- x      in { matrix, cmatrix }
--- ir, jc in { n, a..b, {}, vector }
--- rr     in { {}, vector }
-
---*check if with this fucntion you can go from real to complex matrix
-
-  local r, t, x, m
-  t = { nil, {} }
---[[
-  for j=1,#t do
-  for nr=1,5 do
-  for nc=1,5 do
-    x  = {
-       matrix(nr,nc):fill(1..(nr*nc)),
-      cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)
-    }
-    for k=1,#x do
-      for n = 1,nr do
-      for m = 1,nc do
-          r  = { n, 1..n, {1,n}, vector({1,n}) }
-          r1 = { m, 1..m, {1,m}, vector({1,m}) }
-            for i=1,#r do
-            for i1=1,#r1 do
-                print( (x[k]:getsub(r[i], r1[i1], t[j])):size() )
-            end end
-      end end
-    end
-  end end end
-]]
-
- -- by elimination: without cmatrix and tables as start
--- works the same with complex matrix, just needs addapting
-  local mRes, mRef, r, r1
+  --x  = {  matrix(nr,nc):fill(1..(nr*nc)),
+  --       cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)}
 
   t = { nil, {} }
+
   local ref =\i,j,nc => return (i-1)*nc+j end
-  local tab =\x,...  =>  if is_table(x) then return {...}
-                         else                return matrix({...}) end end
 
-  for p=1,#t do
-  for nr=1,5 do
-  for nc=1,5 do
+  local tab =\x,...  =>
+    if     is_table(x) then return {...}
+    elseif is_nil(x)   then
+      local arg = {...}
+      if #arg <= 2 then return matrix({...})
+      else              return matrix({{arg[1], arg[2]}, {arg[3], arg[4]}}) end
+    end
+  end
+
+  for p =1,#t do
+  for nr=1,5  do
+  for nc=1,5  do
     M = matrix(nr,nc):fill(1..(nr*nc))
     for i = 1,nr do
     for j = 1,nc do
       assertEquals( M:getsub( i, j):size(), 1 )
-      assertEquals( M:getsub( i, j, t[p]), tab(t[p], ref(i,j,nc)) )
+      --assertEquals( M:getsub( i, j, t[p]), tab(t[p], ref(i,j,nc)) )
 
       r  = {{1,i}, vector({1,i})}
       r1 = {{1,j}, vector({1,j})}
-      mRef = { ref(1,1,nc), ref(1,j,nc), ref(i,1,nc), ref(i,j,nc)}
-      for i=1,#r do for j=1,#r1 do
-        assertEquals( M:getsub(r[i], r1[j], {}), mRef )
-      end end
-
-      mRef = matrix({{ ref(1,1,nc), ref(1,j,nc)},{ref(i,1,nc), ref(i,j,nc)}})
-      for i=1,#r do for j=1,#r1 do
-        assertEquals( M:getsub(r[i], r1[j]):size(), 4    )
-        assertEquals( M:getsub(r[i], r1[j])       , mRef )
+      for d=1,#r do for e=1,#r1 do
+        mRef = tab(t[p],  ref(1,1,nc), ref(1,j,nc), ref(i,1,nc), ref(i,j,nc))
+        assertEquals( M:getsub(r[d], r1[e], t[p]), mRef )
       end end
 
       for a = 1,i do
@@ -963,8 +933,8 @@ function TestMatrix:testGetsub()
         assertEquals( m:size(), (i-a+1)*(j-b+1) )
 
         if (i-a)+1 > 1 and (j-b)+1 > 1 then
-          mRes = matrix( {{ m:get(1,1), m:get(1,2)  }, {m:get(2,1), m:get(2,2)}} )
-          mRef = matrix( {{ ref(a,b,nc),ref(a,b+1,nc)  }, {ref(a+1,b,nc), ref(a+1,b+1,nc) }} )
+          mRes = matrix( {{ m:get(1,1) , m:get(1,2)  }, {m:get(2,1)   , m:get(2,2)}} )
+          mRef = matrix( {{ ref(a,b,nc),ref(a,b+1,nc)}, {ref(a+1,b,nc), ref(a+1,b+1,nc) }} )
           assertEquals( mRes, mRef )
 
           mRes = matrix( {{m:get( i-a, j-b), m:get( i-a, j-b+1)}, {m:get( i-a+1, j-b), m:get( i-a+1,j-b+1)}} )
@@ -972,19 +942,19 @@ function TestMatrix:testGetsub()
           assertEquals( mRes, mRef )
         elseif (i-a)+1 >  1 and (j-b)+1 == 1 then -- vectors
           mRes = matrix( {{m:get(1,1), m:get(2,1)   }} )
-          mRef = matrix( {{(a-1)*nc+b, (a-1)*nc+b+nc}} )
+          mRef = matrix( {{ref(a,b,nc), ref(a+1,b,nc)}} )
           assertEquals( mRes, mRef )
 
           mRes = matrix( {{ m:get( i-a  ,j-b+1), m:get( i-a+1,j-b+1)}} )
-          mRef = matrix( {{(i-2)*nc+j          , (i-1)*nc+j}         } )
+          mRef = matrix( {{ref(i-1,j,nc), ref(i,j,nc)}         } )
           assertEquals( mRes, mRef )
         elseif (i-a)+1 == 1 and (j-b)+1 >  1 then -- rows
-          mRes = matrix( {{ m:get(1,1), m:get(1,2)  }} )
-          mRef = matrix( {{ (a-1)*nc+b, (a-1)*nc+b+1}} )
+          mRes = matrix( {{ m:get(1,1) , m:get(1,2)   }} )
+          mRef = matrix( {{ ref(a,b,nc),ref(a,b+1,nc) }} )
           assertEquals( mRes, mRef )
 
           mRes = matrix( {{m:get( i-a+1, j-b), m:get( i-a+1,j-b+1)}} )
-          mRef = matrix( {{(i-1)*nc+j-1      , (i-1)*nc+j}         } )
+          mRef = matrix( {{ref(i,j-1,nc)     , ref(i,j,nc)}         } )
           assertEquals( mRes, mRef )
         end
       end end
@@ -993,7 +963,151 @@ function TestMatrix:testGetsub()
   end
 end
 
+
 --[[
+function TestMatrix:testSetsub()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (iterable expected)",
+    "invalid argument #4 (scalar or iterable expected)",
+  }
+end
+
+
+function TestMatrix:testGetv()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (iterable expected)",
+  }
+end
+
+function TestMatrix:testSetv()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+  }
+end
+
+function TestMatrix:testGetdiag()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+  }
+end
+
+function TestMatrix:testSetdiag()
+  local msg = {
+    "invalid argument #2 (scalar or iterable expected)",
+  }
+
+end
+
+function TestMatrix:testGetrow()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (iterable expected)",
+  }
+end
+
+function TestMatrix:testSetrow()
+  local msg = {
+  "invalid argument #2 (iterable expected)",
+  "invalid argument #3 (scalar or iterable expected)",
+  }
+end
+
+function TestMatrix:testGetcol()
+  local msg = {
+  "invalid argument #2 (iterable expected)",
+  "invalid argument #3 (iterable expected)",
+  }
+end
+
+function TestMatrix:testSetcol()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+  }
+end
+
+-- foreach, filter, map, fold, scan -------------------------------------------o
+
+function TestMatrix:testForeach()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+  }
+end
+
+function TestMatrix:testFilter()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (iterable expected)",
+  }
+end
+
+function TestMatrix:testMapat()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (iterable expected)",
+    "invalid argument #4 (iterable expected)",
+  }
+end
+
+function TestMatrix:testMap()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (iterable expected)",
+  }
+end
+
+function TestMatrix:testMap2()
+  local msg = {
+    "invalid argument #2 (scalar or iterable expected)",
+    "invalid argument #3 (callable expected)",
+    "invalid argument #4 (iterable expected)",
+  }
+end
+
+function TestMatrix:testMap3()
+  local msg = {
+    "invalid argument #2 (scalar or iterable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #4 (callable expected)",
+    "invalid argument #5 (iterable expected)",
+  }
+end
+
+function TestMatrix:testFoldl()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #4 ('vec|row|col' expected)",
+  }
+end
+
+function TestMatrix:testFoldr()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #4 ('vec|row|col' expected)",
+  }
+end
+
+function TestMatrix:testScanl()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (iterable expected)",
+    "invalid argument #4 ('vec|row|col' expected)",
+  }
+end
+
+function TestMatrix:testScanr()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+    "invalid argument #3 (iterable expected)",
+    "invalid argument #4 ('vec|row|col' expected)",
+  }
+end
+
 -- conversion -----------------------------------------------------------------o
 
 function TestMatrix:testTosting()
@@ -1001,37 +1115,6 @@ end
 
 function TestMatrix:testTotable()
 end
-
--- getx, setx -----------------------------------------------------------------o
-
-function TestMatrix:testGetv() end
-function TestMatrix:testSetv() end
-function TestMatrix:testGetdiag() end
-function TestMatrix:testSetdiag() end
-
-function TestMatrix:testGetrow() end
-function TestMatrix:testSetrow() end
-
-function TestMatrix:testGetcol() end
-function TestMatrix:testSetcol() end
-
-function TestMatrix:testGetsub() end
-function TestMatrix:testSetsub() end
-
--- foreach, filter, map, fold, scan -------------------------------------------o
-
-function TestMatrix:testForeach() en
-function TestMatrix:testFilter() end
-function TestMatrix:testMapat() end
-function TestMatrix:testMap() end
-function TestMatrix:testMap2() end
-function TestMatrix:testMap3() end
-
-function TestMatrix:testFoldl() end
-function TestMatrix:testFoldr() end
-
-function TestMatrix:testScanl() end
-function TestMatrix:testScanr() end
 
 -- special maps ---------------------------------------------------------------o
 
@@ -1081,8 +1164,19 @@ function TestMatrix:testSum() end
 function TestMatrix:testSumabs() end
 function TestMatrix:testSumsqr() end
 function TestMatrix:testProduct() end
-function TestMatrix:testAll() end
-function TestMatrix:testAny() end
+
+function TestMatrix:testAll()
+  local msg = {
+    "reentrant use of all (not expected)",
+  }
+end
+
+function TestMatrix:testAny()
+  local msg = {
+    "reentrant use of all (not expected)",
+  }
+end
+
 
 -- conjugate, transpose -------------------------------------------------------o
 
@@ -1093,20 +1187,68 @@ function TestMatrix:testTrace() end
 
 -- symplectic matrix ----------------------------------------------------------o
 
-function TestMatrix:testSympinv() end
-function TestCMatrix:testSympinv() end
+function TestMatrix:testSympinv()
+  local msg = {
+   "invalid argument #1 (2n matrix expected)",
+  }
+end
 
-function TestMatrix:testSymperr() end
-function TestCMatrix:testSymperr() end
+function TestCMatrix:testSympinv()
+  local msg = {
+   "invalid argument #1 (2n matrix expected)",
+  }
+end
+
+function TestMatrix:testSymperr()
+  local msg = {
+    "invalid argument #1 (2n matrix expected)",
+    "invalid argument #2 (different matrix expected)",
+  }
+end
+
+function TestCMatrix:testSymperr()
+  local msg = {
+    "invalid argument #1 (2n matrix expected)",
+    "invalid argument #2 (different matrix expected)",
+  }
+end
 
 -- inner, cross, mixed, outer -------------------------------------------------o
 
-function TestMatrix:testInner() end
-function TestCMatrix:testInner() end
+function TestMatrix:testInner()
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+  }
+end
 
-function TestMatrix:testCross() end
-function TestMatrix:testMixed() end
-function TestMatrix:testOuter() end
+function TestCMatrix:testInner()
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+  }
+end
+
+function TestMatrix:testCross()
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+    "invalid matrix sizes",
+  }
+end
+
+function TestMatrix:testMixed()
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+    "invalid argument #3 (matrix expected)",
+    "invalid matrix sizes",
+    "incompatible matrix sizes",
+  }
+end
+
+function TestMatrix:testOuter()
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+    "incompatible matrix sizes",
+  }
+end
 
 -- norm, unit, center, angle (in place) ---------------------------------------o
 
