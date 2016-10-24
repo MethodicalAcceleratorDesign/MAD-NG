@@ -28,8 +28,8 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
 local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
-local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log,
-      is_complex, range, nrange, nlogrange, is_cdata, is_table, is_nil
+local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log, min,
+      is_complex, range, nrange, nlogrange, is_cdata, is_table, is_nil, totable
       in MAD
 
 -- regression test suite ------------------------------------------------------o
@@ -45,7 +45,6 @@ local values = {
 }
 
 local mth = \f,s,... s[f](s,...)
-
 function TestMatrix:testCtorMatrix()
   local m, v
   local msg = {
@@ -67,8 +66,8 @@ function TestMatrix:testCtorMatrix()
   assertErrorMsgContains( msg[2], matrix, 2^15+1 )
   assertErrorMsgContains( msg[2], vector, 2^30+1 )
 
-  assertTrue( is_matrix( vector(2^30)) )
-  assertTrue( is_matrix( matrix(2^15)) )
+  --assertTrue( is_matrix( vector(2^30)) )
+  --assertTrue( is_matrix( matrix(2^15)) )
   for nr=1,5 do
     v = vector(nr)
     assertTrue  ( is_vector(v) )
@@ -82,6 +81,7 @@ function TestMatrix:testCtorMatrix()
       assertEquals( m.nc, nc )
     end end
 end
+
 
 function TestMatrix:testCtorCMatrix()
   local cm, cv
@@ -105,7 +105,7 @@ function TestMatrix:testCtorCMatrix()
   assertErrorMsgContains( msg[2], cmatrix, 2^15   )
   assertErrorMsgContains( msg[2], cvector, 2^29+1 )
 
-  assertTrue( is_cmatrix( cvector(2^29)) )
+  --assertTrue( is_cmatrix( cvector(2^29)) )
   for nr=1,5 do
     cv = cvector(nr)
     assertTrue  ( is_cvector(cv) )
@@ -704,7 +704,7 @@ function TestMatrix:testFill()
 -- generator (functions),    -> few functions with different number of arg
 -- 2D and 1D containters(cmatrices, matrices, tables) -> different size and values,
 --     check if goes from one to the other type
-
+-- can not be used if the size of fill is smaller then the size fo matrix, nil do double convertion
 end
 
 function TestMatrix:testCopy()
@@ -909,25 +909,25 @@ function TestMatrix:testGetsub()
   local newt = \x => if is_table(x) then return {}
                      else                return  x end end
 
+  local val =\i,j,nc   => return (i-1)*nc+j end
   local ref =\x,i,j,nc =>
-    if is_cmatrix(x) then return complex((i-1)*nc+j, (i-1)*nc+j)
-    else                  return (i-1)*nc+j end end
+    if is_cmatrix(x) then return complex( val(i,j,nc), val(i,j,nc))
+    else                  return val(i,j,nc) end end
 
   local tab =\x,m,...  =>
       local arg = {...}
     if     is_table(x) then return {...}
     elseif #arg <= 2 then if is_cmatrix(m) then return cmatrix({...}) else return matrix({...}) end
-      else if is_cmatrix(m) then return cmatrix({{arg[1], arg[2]}, {arg[3], arg[4]}})
-                            else return  matrix({{arg[1], arg[2]}, {arg[3], arg[4]}}) end
+    else if is_cmatrix(m) then return cmatrix({{arg[1], arg[2]}, {arg[3], arg[4]}})
+                          else return  matrix({{arg[1], arg[2]}, {arg[3], arg[4]}}) end
     end
   end
 
   for p =1,#t do
   for nr=1,5  do
   for nc=1,5  do
-    x  = {  matrix(nr,nc):fill(1..(nr*nc)), --> get it out of here with function
+    x  = {  matrix(nr,nc):fill(1..(nr*nc)),
            cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)}
-
     for xi =1,#x do
       for i = 1,nr do
       for j = 1,nc do
@@ -942,6 +942,7 @@ function TestMatrix:testGetsub()
         end
         for a = 1,i do
         for b = 1,j do
+
           m = x[xi]:getsub( a..i, b..j)
           assertEquals( m:size(), (i-a+1)*(j-b+1) )
           if (i-a)+1 > 1 and (j-b)+1 > 1 then
@@ -996,51 +997,55 @@ function TestMatrix:testSetsub()
 end
 
 function TestMatrix:testGetv()
-  local x, m, cm
-  local msg = {
-    "invalid argument #2 (iterable expected)",
-    "invalid argument #3 (iterable expected)",
-    "cannot convert 'nil' to 'double"        ,
-    "invalid range member '1'"               ,
+  local msg, m, cm = {
+    "invalid argument #2 (iterable expected)"    ,
+    "invalid argument #3 (iterable expected)"    ,
+    "cannot convert 'nil' to 'double"            ,
+    "invalid range member '1'"                   ,
+     "attempt to compare 'number' with 'complex'",
   }
   assertErrorMsgContains( msg[1], mth, 'getv', matrix(2,2), '' , 0 , 1 )
   assertErrorMsgContains( msg[1], mth, 'getv', matrix(2,2), NaN, 0 , 1 )
   assertErrorMsgContains( msg[2], mth, 'getv', matrix(2,2), 1  , '')
   assertErrorMsgContains( msg[2], mth, 'getv', matrix(2,2), 1  , 1 )
   assertErrorMsgContains( msg[2], mth, 'getv', matrix(2,2), 1  , complex(1,1))
-  assertErrorMsgContains( msg[3], mth, 'getv', matrix(2,2), 0 )
-  assertErrorMsgContains( msg[4], mth, 'getv', matrix(2,2), 1  , 1..2)
-
-  assertEquals( matrix(2,2):fill(1..4):getv(1,NaN), matrix({1}) )
-  assertEquals( matrix(2,2):fill(1..4):getv(1,nil), matrix({1}) )
-  assertEquals( matrix(2,2):fill(1..4):getv(1,{}) , {1} )
-  assertEquals( matrix(2,2):fill(1..4):getv(1..3) , matrix({1,2,3}) )
-  assertEquals( matrix(2,2):fill(1..4):getv({1,3}), matrix({1,3}) )
+  assertErrorMsgContains( msg[3], mth, 'getv', matrix(2,2), 0  )
+  assertErrorMsgContains( msg[4], mth, 'getv', matrix(2,2), 1  , 1..2  )
+  assertErrorMsgContains( msg[3], mth, 'getv', matrix(2,2), matrix(1)  )
+  assertErrorMsgContains( msg[5], mth, 'getv', matrix(2,2), cmatrix(1) )
+  assertEquals( matrix(2,2):fill(1..4):getv(1,NaN), matrix({1})     )
+  assertEquals( matrix(2,2):fill(1..4):getv(1,nil), matrix({1})     )
 
   for nr=1,5  do
   for nc=1,5  do
     m  =  matrix(nr,nc):fill(1..(nr*nc))
-    cm = cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)
-    for i = 1,nr do --change to go throught full lenghts
-      assertEquals( m :getv(i)              , matrix({i}) )
-      assertEquals( m :getv(i, cmatrix(1,1)), matrix({i}) ) --matrix does not go to cmatrix
-      assertEquals( m :getv(i, {}          ), {i}         )
-      assertEquals( cm:getv(i)              , cmatrix({i+i*1i}) )
-      assertEquals( cm:getv(i, cmatrix(1,1)), cmatrix({i+i*1i}) )
-      assertEquals( cm:getv(i, {}          ), {i+i*1i}          )
-      assertEquals( cm:getv(i, matrix(1,1)) , matrix({i+i*1i})  )
-
-      --print( m :getv(1..i), "\n s", m:getsub(1,i), "\n" )
-    end
+    cm = cmatrix(nr,nc):fill(1..(nr*nc))
+    for i = 1,nr*nc do
+      assertEquals( m :getv( i   )            ,  vector({i})           )
+      assertEquals( m :getv( 1..i)            ,  vector(i):fill(1..i)  )
+      assertEquals( m :getv({1,i})            ,  vector({1,i})         )
+      assertEquals( cm:getv( i   )            ,  cvector({i})          )
+      assertEquals( cm:getv( 1..i)            ,  cvector(i):fill(1..i) )
+      assertEquals( cm:getv({1,i})            ,  cvector({1,i})        )
+      assertEquals( m :getv( i    ,{})        ,  {i}                   )
+      assertEquals( m :getv({1,i} ,{})        ,  {1,i}                 )
+      assertEquals( m :getv( 1..i ,{})        ,  totable(1..i)         )
+      assertEquals( cm:getv( i   , {})        ,  {complex(i,0)}        )
+      assertEquals( cm:getv({1,i}, {})        ,  {complex(1,0),complex(i,0)} )
+      assertEquals( m :getv( i   ,  matrix(2)),  matrix({{i,0},{0,0}}) )
+      assertEquals( m :getv({1,i},  matrix(2)),  matrix({{1,i},{0,0}}) )
+      assertEquals( cm:getv( i   , cmatrix(2)), cmatrix({{i,0},{0,0}}) )      --can be also matrix in assertEq, check further
+      assertEquals( cm:getv({1,i}, cmatrix(2)), cmatrix({{1,i},{0,0}}) )
+      --assertEquals( cm:getv( 1..i, {})       ,  cvector(i):fill(1..i) ) -- needs to be complex
+      end
   end end
-
---all the inputs: vector, table, 1..n, number
---all the r_: matrix, cmatrix, {}
-
+  assertTrue( is_cmatrix(m :getv( 5   , cmatrix(1))) )
+  assertTrue( is_cmatrix(m :getv( 5   , cmatrix(1))) )
+  assertTrue( is_cmatrix(m :getv({1,5}, cmatrix(2))) )
+  assertTrue( is_matrix (cm:getv( 5   ,  matrix(2))) )
+  assertTrue( is_matrix (cm:getv({1,5},  matrix(2))) )
 end
 
-
---[[
 function TestMatrix:testSetv()
   local msg = {
     "invalid argument #2 (iterable expected)",
@@ -1050,9 +1055,31 @@ function TestMatrix:testSetv()
 end
 
 function TestMatrix:testGetdiag()
-  local msg = {
+  local msg, m, cm, diag, cdiag, n = {
     "invalid argument #2 (iterable expected)",
+    "invalid range member '1'"               ,
   }
+  assertErrorMsgContains( msg[1], mth, 'getdiag', matrix(2,2), ''   )
+  assertErrorMsgContains( msg[1], mth, 'getdiag', matrix(2,2), 1    )
+  assertErrorMsgContains( msg[2], mth, 'getdiag', matrix(2,2), 1..2 )
+  assertTrue( is_cmatrix( matrix(2,2):getdiag(cmatrix(2,2))) )
+  assertTrue( is_matrix (cmatrix(2,2):getdiag( matrix(2,2))) )
+
+  for nr=1,5  do
+  for nc=1,5  do
+    m  =  matrix(nr,nc):fill(1..(nr*nc))
+    cm = cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)
+    n  = min(nr,nc)
+    diag, cdiag = {}, {}
+    for i = 1,n do  diag[i] = (1+(i-1)*nc+i-1) end
+    for i = 1,n do cdiag[i] = complex(1+(i-1)*nc+i-1, 1+(i-1)*nc+i-1) end
+    assertEquals( m :getdiag()            ,  vector( diag) )
+    assertEquals( m :getdiag({})          ,  diag          )
+    assertEquals( m :getdiag(cmatrix(n,1)), cvector( diag) )
+    assertEquals( cm:getdiag()            , cvector(cdiag) )
+    assertEquals( cm:getdiag({})          ,  cdiag         )
+    assertEquals( cm:getdiag(matrix(n,1)),   vector(cdiag) )
+  end end
 end
 
 function TestMatrix:testSetdiag()
@@ -1063,10 +1090,30 @@ function TestMatrix:testSetdiag()
 end
 
 function TestMatrix:testGetrow()
-  local msg = {
+  local msg, m, r = {
     "invalid argument #2 (iterable expected)",
     "invalid argument #3 (iterable expected)",
   }
+  assertErrorMsgContains( msg[1], mth, 'getrow', matrix(2,2), ''   )
+  assertErrorMsgContains( msg[1], mth, 'getrow', matrix(2,2), nil  )
+  assertTrue( is_cmatrix( matrix(2,2):getrow(1,cmatrix(2,2))) )
+  assertTrue( is_matrix (cmatrix(2,2):getrow(1, matrix(2,2))) )
+
+  local t = { nil, {} }
+  for nr=1,5 do
+  for nc=1,5 do
+    for ti=1,#t do
+    m = { matrix(nr,nc):fill(1..(nr*nc)),
+         cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i) }
+      for mi=1,#m do
+      for i =1,nr do
+          r = { i, {1,i}, 1..i }
+          for ri=1,#r do
+            assertEquals( m[mi]:getrow(r[ri],t[ti]), m[mi]:getsub(r[ri],1..nc,t[ti]) )
+          end
+      end end
+    end
+  end end
 end
 
 function TestMatrix:testSetrow()
@@ -1081,8 +1128,33 @@ function TestMatrix:testGetcol()
   "invalid argument #2 (iterable expected)",
   "invalid argument #3 (iterable expected)",
   }
+  assertErrorMsgContains( msg[1], mth, 'getrow', matrix(2,2), ''   )
+  assertErrorMsgContains( msg[1], mth, 'getrow', matrix(2,2), nil  )
+  local t={ nil, {} }
+
+  m  =  matrix(5,5):fill(1..25)
+  --print("\n")
+  --print( m, "\n")
+  --print( m:getcol({1}), "\n")
+  --print( m:getcol({1,2}), "\n")
+  --print( m:getcol(1..4), "\n")
+  -- returned values fitted into the shape of original matrix, mess
+
+  for nr=1,5 do
+  for nc=1,5 do
+    m  =  matrix(nr,nc):fill(1..(nr*nc))
+    cm = cmatrix(nr,nc):fill(1..(nr*nc)):fill(\x x+x*1i)
+    for i=1,nc do
+      assertEquals( m:getcol(i), m:getsub(1..nr, i) )
+      --print( m, "\n")
+      --print( m:getcol({1,2}), "\n")
+      --print( m:getsub(1..nr, {1,i}), "\n" )
+      --print( m:getcol(1..i), "\n", m:getsub(1..nr,1..i), "\n" )
+    end
+  end end
 end
 
+--[[
 function TestMatrix:testSetcol()
   local msg = {
     "invalid argument #2 (iterable expected)",
