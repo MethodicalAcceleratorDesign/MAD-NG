@@ -1,3 +1,4 @@
+
 --[=[
  o-----------------------------------------------------------------------------o
  |
@@ -1347,7 +1348,7 @@ end
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
 function TestMatrix:testForeach()
-  local m, cm
+  local m, cm, m1, cm1
   local msg = {
     "invalid argument #2 (callable expected)",
   }
@@ -1362,14 +1363,16 @@ function TestMatrix:testForeach()
   for nc=1,5 do
     m   =  matrix(nr,nc):fill(1..nr*nc)
     cm  = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
-    m1 = m:foreach(log) assertEquals( m1, m )
-    m1 = m:foreach(f)   assertEquals( m1, m )
+    m1  = m :foreach(log) assertEquals( m1 , m  )
+    m1  = m :foreach(f)   assertEquals( m1 , m  )
+    cm1 = cm:foreach(log) assertEquals( cm1, cm )
+    cm1 = cm:foreach(f)   assertEquals( cm1, cm )
   end end
 end
 
 
 function TestMatrix:testFilter()
-  local f, m, cm
+  local f, m, cm, mref
   local msg = {
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (iterable expected)",
@@ -1381,29 +1384,98 @@ function TestMatrix:testFilter()
   assertErrorMsgContains( msg[1], mth, 'filter', matrix(2), { }       )
   assertErrorMsgContains( msg[2], mth, 'filter', matrix(2), \x x, ''  )
   assertErrorMsgContains( msg[2], mth, 'filter', matrix(2), \x x, 1   )
-  --options:
-  --f:  f()
-  --r_: 1..2, {}, matrix(n), cmatrix(n)
+
   for nr=1,5 do
   for nc=1,5 do
     m   =  matrix(nr,nc):fill(1..nr*nc)
     cm  = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
-    f=\x x==1   --assertEquals( m:filter(f), matrix(nr,nc):seti(1,1) )
-    f=\x x>1    --assertEquals( m:filter(f),  )
-    f=\x x<1    --assertEquals( m:filter(f),  )
 
+    f=\x x==1
+    mref = matrix(nr,nc) mref:seti(1,1)
+    assertEquals( {m:filter(f   )}, {mref, 1 } )
+    assertEquals( {m:filter(f,{})}, {{1} , 1 } )
+    mref = vector(25) mref:seti(1,1)
+    assertEquals( {m:filter(f, vector(25))}, {mref, 1} )
+
+    f=\x x==1+1i
+    cmref = cmatrix(nr,nc) cmref:seti(1,1+1i)
+    assertEquals( {cm:filter(f   )}, {cmref , 1 } )
+    assertEquals( {cm:filter(f,{})}, {{1+1i}, 1 } )
+    cmref = cvector(25) cmref:seti(1,1+1i)
+    assertEquals( {cm:filter(f, cvector(25))}, {cmref, 1} )
+
+    f=\x x>1
+    mref = matrix(nr,nc) for i=1,#m-1 do mref:seti(i, m:geti(i+1)) end
+    assertEquals( {m:filter(f)}, {mref, #m-1} )
+    mref = {}            for i=1,#m-1 do mref[i] = m:geti(i+1) end
+    assertEquals( {m:filter(f, {})}, {mref, #m-1} )
+    mref=vector(25) for i=1,25 do if i<=#m-1 then mref:seti(i, m:geti(i+1)) else mref:seti(i,0) end end
+    assertEquals( {m:filter(f, vector(25))}, {mref, #m-1} )
+
+    f=\x x>1+1i
+    --cmref = matrix(nr,nc) for i=1,#cm-1 do cmref:seti(i, cm:geti(i+1)) end
+    --assertEquals( {cm:filter(f)}, {cmref, #cm-1} )
+    --cmref = {}            for i=1,#cm-1 do cmref[i] = cm:geti(i+1) end
+    --assertEquals( {cm:filter(f, {})}, {cmref, #cm-1} )
+    --cmref=cvector(25) for i=1,25 do if i<=#cm-1 then cmref:seti(i, cm:geti(i+1)) else mref:seti(i,0) end end
+    --assertEquals( {cm:filter(f, cvector(25))}, {cmref, #cm-1} )
   end end
-
 end
---[[
 
 function TestMatrix:testMapat()
+  local m, cm, m1, cm1, mref, cmref
   local msg = {
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (iterable expected)",
     "invalid argument #4 (iterable expected)",
+    "invalid range member '1'"               ,
+    "attempt to perform arithmetic on local 'x' (a nil value)",
   }
+  assertErrorMsgContains( msg[1], mth, 'mapat', matrix(2), ''          )
+  assertErrorMsgContains( msg[1], mth, 'mapat', matrix(2), 1..2        )
+  assertErrorMsgContains( msg[1], mth, 'mapat', matrix(2), 1           )
+  assertErrorMsgContains( msg[1], mth, 'mapat', matrix(2), matrix(1)   )
+  assertErrorMsgContains( msg[1], mth, 'mapat', matrix(2), { }         )
+  assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, ''  )
+  assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, nil )
+  assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, NaN )
+  assertErrorMsgContains( msg[3], mth, 'mapat', matrix(2), \x x+1, 1  , ''   )
+  assertErrorMsgContains( msg[4], mth, 'mapat', matrix(2), \x x+1, 1  , 1..2 )
+  assertErrorMsgContains( msg[5], mth, 'mapat', matrix(2):fill(1), \x x+1, matrix(2) )
+
+  f = {}
+
+  r = { nil, {}, 'in' }
+  x = { 1, {1}, 1..2 }
+
+  for nr=1,5 do
+  for nc=1,5 do
+    cm = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
+    m  =  matrix(nr,nc):fill(1..nr*nc)
+
+    mref = matrix(nr,nc) for i=1,#m*1/2 do mref:seti(i, m:geti(i+1)) end
+    assertEquals( m:mapat(\x x+1, 1..#m*1/2), mref )
+    assertEquals( m , matrix(nr,nc):fill(1..nr*nc)   )
+
+    m1 = m:mapat(\x x+1, 1..#m      )  assertEquals( m1, matrix(nr,nc):fill(2..nr*nc+1) )
+
+    m1 = m:mapat(\x x+1,  1         )
+    --print( m1, matrix(nr,nc):seti(1,2) )
+    m1 = m:mapat(\x x+1, {1, nr*nc} )
+
+    m1 = m:mapat(\x x+1,  1        , {} )
+    m1 = m:mapat(\x x+1, {1, nr*nc}, {} )
+    m1 = m:mapat(\x x+1, 1..#m     , {} )
+
+
+    m1 = m:mapat(\x x+1,  1        , 'in' )
+    m1 = m:mapat(\x x+1, {1, nr*nc}, 'in' )
+    m1 = m:mapat(\x x+1, 1..#m     , 'in' )    assertEquals( m , m1   )
+  end end
 end
+
+--[[
+
 
 function TestMatrix:testMap()
   local msg = {
