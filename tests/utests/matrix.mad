@@ -714,7 +714,7 @@ function TestMatrix:testFill() -- TODO: missing 2D table test --in test:order ma
     cm:fill(t)              for i=1,cm:size() do assertEquals( cm:geti(i), complex(i,0) ) end
     cm:fill(vector(nr*nc))  for i=1,cm:size() do assertEquals( cm:geti(i), complex(0,0) ) end
   end end
---check if goes from one to the other type
+--check of types change
   assertTrue( is_cmatrix(cmatrix(5,5):fill(matrix(5,5)) ) )
   assertTrue( is_matrix ( matrix(5,5):fill(complex(1,1))) )
 
@@ -1423,7 +1423,7 @@ function TestMatrix:testFilter()
 end
 
 function TestMatrix:testMapat()
-  local m, cm, m1, cm1, mref, cmref
+  local tref, m, cm, mref, cmref = {}
   local msg = {
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (iterable expected)",
@@ -1439,49 +1439,94 @@ function TestMatrix:testMapat()
   assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, ''  )
   assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, nil )
   assertErrorMsgContains( msg[2], mth, 'mapat', matrix(2), \x x+1, NaN )
-  assertErrorMsgContains( msg[3], mth, 'mapat', matrix(2), \x x+1, 1  , ''   )
-  assertErrorMsgContains( msg[4], mth, 'mapat', matrix(2), \x x+1, 1  , 1..2 )
+  assertErrorMsgContains( msg[3], mth, 'mapat', matrix(2), \x x+1, 1   , ''   )
+  assertErrorMsgContains( msg[4], mth, 'mapat', matrix(2), \x x+1, 1   , 1..2 )
   assertErrorMsgContains( msg[5], mth, 'mapat', matrix(2):fill(1), \x x+1, matrix(2) )
-
-  f = {}
-
-  r = { nil, {}, 'in' }
-  x = { 1, {1}, 1..2 }
+  --print( matrix(5,5):mapat(\x x+1, {1, 2}, {} )) -- to be discussed
+  --print( matrix(5,5):mapat(\x x+1, {1, 3}, {} ))
 
   for nr=1,5 do
   for nc=1,5 do
-    cm = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
-    m  =  matrix(nr,nc):fill(1..nr*nc)
+    m    = matrix(nr,nc):fill(1..nr*nc)
 
-    mref = matrix(nr,nc) for i=1,#m*1/2 do mref:seti(i, m:geti(i+1)) end
-    assertEquals( m:mapat(\x x+1, 1..#m*1/2), mref )
-    assertEquals( m , matrix(nr,nc):fill(1..nr*nc)   )
+    tref = {2}
+    assertEquals( m:mapat(\x x+1, 1     , {}), tref )
+    tref = {} for i=1,#m do tref[i]=i+1 end
+    assertEquals( m:mapat(\x x+1, 1..#m , {}), tref )
+    tref = {2,3}
+    if nr*nc>1 then
+    assertEquals( m:mapat(\x x+1, {1, 2}, {}), tref )
+    end
 
-    m1 = m:mapat(\x x+1, 1..#m      )  assertEquals( m1, matrix(nr,nc):fill(2..nr*nc+1) )
+    mref = matrix(nr,nc) mref:seti(1,2)
+    assertEquals( m:mapat(\x x+1, 1         ), mref )
+    mref = matrix(nr,nc):fill(2..nr*nc+1)
+    assertEquals( m:mapat(\x x+1, 1..#m     ), mref )
+    mref = matrix(nr,nc) mref:seti(1,2)  mref:seti(#m,#m+1)
+    assertEquals( m:mapat(\x x+1, {1, nr*nc}), mref )
 
-    m1 = m:mapat(\x x+1,  1         )
-    --print( m1, matrix(nr,nc):seti(1,2) )
-    m1 = m:mapat(\x x+1, {1, nr*nc} )
-
-    m1 = m:mapat(\x x+1,  1        , {} )
-    m1 = m:mapat(\x x+1, {1, nr*nc}, {} )
-    m1 = m:mapat(\x x+1, 1..#m     , {} )
-
-
-    m1 = m:mapat(\x x+1,  1        , 'in' )
-    m1 = m:mapat(\x x+1, {1, nr*nc}, 'in' )
-    m1 = m:mapat(\x x+1, 1..#m     , 'in' )    assertEquals( m , m1   )
+    mref = matrix(nr,nc):fill(1..nr*nc)  mref:seti(1,2) mref:seti(#m,#m+1)
+    m    = matrix(nr,nc):fill(1..nr*nc)  m:mapat(\x x+1, {1, #m}, 'in' )
+    if #m>1 then assertEquals( m, mref ) end
+    mref = matrix(nr,nc):fill(1..nr*nc)  mref:seti(1,2)
+    m    = matrix(nr,nc):fill(1..nr*nc)  m:mapat(\x x+1,  1     , 'in' )
+    assertEquals( m, mref )
+    mref = matrix(nr,nc):fill(2..nr*nc+1)
+    m    = matrix(nr,nc):fill(1..nr*nc)  m:mapat(\x x+1,  1..#m , 'in' )
+    assertEquals( m , mref )
   end end
 end
 
---[[
-
-
 function TestMatrix:testMap()
+  local m, cm, mref, cmref
+  local tref, ctref = {}, {}
   local msg = {
-    "invalid argument #2 (callable expected)",
-    "invalid argument #3 (iterable expected)",
+    "invalid argument #2 (callable expected)"                 ,
+    "invalid argument #3 (iterable expected)"                 ,
+    "invalid range member '1'"                                ,
+    "attempt to perform arithmetic on local 'x' (a nil value)",
   }
+  assertErrorMsgContains( msg[1], mth, 'map', matrix(2), ''         )
+  assertErrorMsgContains( msg[1], mth, 'map', matrix(2), 1..2       )
+  assertErrorMsgContains( msg[1], mth, 'map', matrix(2), 1          )
+  assertErrorMsgContains( msg[1], mth, 'map', matrix(2), matrix(1)  )
+  assertErrorMsgContains( msg[1], mth, 'map', matrix(2), { }        )
+  assertErrorMsgContains( msg[2], mth, 'map', matrix(2), \x x+1, '' )
+  assertErrorMsgContains( msg[2], mth, 'map', matrix(2), \x x+1, 1  )
+  assertErrorMsgContains( msg[3], mth, 'map', matrix(2), \x x+1, 1..2 )
+  assertEquals( matrix(2):map(\x x+1, matrix(2)), matrix(2):fill(1) )
+  assertEquals( matrix(2):map(\x x+1, NaN      ), matrix(2):fill(1) )
+
+  for nr=1,5 do
+  for nc=1,5 do
+    m    = matrix(nr,nc):fill(1..nr*nc)
+    mref = matrix(nr,nc):fill(2..nr*nc+1)
+    tref = {} for i=1,#m do tref[i]=i+1 end
+
+    m1   = m:map( \x x+1 )
+    assertEquals( m1, mref )
+    assertEquals( m , matrix(nr,nc):fill(1..nr*nc) )
+    m1   = m:map( \x x+1, {} )
+    assertEquals( m1, tref )
+    assertEquals( m , matrix(nr,nc):fill(1..nr*nc) )
+    m1   = m:map( \x x+1, "in" )
+    assertEquals( m1, mref )
+    assertEquals( m , mref )
+
+    cm    = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
+    cmref = cmatrix(nr,nc):fill(2..nr*nc+1):fill(\x x+x*1i)
+    ctref = {} for i=1,#cm do ctref[i]=complex(i+1,i+1) end
+
+    cm1   = cm:map( \x x+1+1i )
+    assertEquals( cm1, cmref )
+    assertEquals( cm , cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i) )
+    cm1   = cm:map( \x x+1+1i, {} )
+    assertEquals( cm1, ctref )
+    assertEquals( cm , cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i) )
+    cm1   = cm:map( \x x+1+1i, "in" )
+    assertEquals( cm1, cmref )
+    assertEquals( cm , cmref )
+  end end
 end
 
 function TestMatrix:testMap2()
@@ -1490,8 +1535,11 @@ function TestMatrix:testMap2()
     "invalid argument #3 (callable expected)",
     "invalid argument #4 (iterable expected)",
   }
+  assertErrorMsgContains( msg[1], mth, 'map2', matrix(2), ''         )
+
 end
 
+--[[
 function TestMatrix:testMap3()
   local msg = {
     "invalid argument #2 (scalar or iterable expected)",
