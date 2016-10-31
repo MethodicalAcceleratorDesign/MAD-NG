@@ -30,8 +30,8 @@ local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
 local complex, infi, tiny, eps, huge, inf, nan, pi, Pi, randomseed, log, min,
-      is_complex, range, nrange, nlogrange, is_cdata, is_table, is_nil, totable
-      in MAD
+      is_complex, range, nrange, nlogrange, is_cdata, is_table, is_nil, totable,
+      is_string  in MAD
 
 -- regression test suite ------------------------------------------------------o
 
@@ -1662,8 +1662,8 @@ function TestMatrix:testMap3()
   assertEquals( m3:map3( m1, m2, \x,y,z -x+y-z ), matrix(4) )
 end
 
-function TestMatrix:testFoldl()
-  local m, mref, cm, cmref
+function TestMatrix:testFoldl() --TODO: recheck the err, possibly different f
+  local m, mref, treg, cm, cmref, ctref
   local msg = {
     "invalid argument #2 (callable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
@@ -1673,82 +1673,171 @@ function TestMatrix:testFoldl()
   assertErrorMsgContains( msg[1], mth, 'foldl', matrix(2), 1    )
   assertErrorMsgContains( msg[1], mth, 'foldl', matrix(2), 1..2 )
   assertErrorMsgContains( msg[1], mth, 'foldl', matrix(2), matrix(2) )
-  assertErrorMsgContains( msg[3], mth, 'foldl', matrix(2), \x x        , "in" )
---possible options:
---m  : cmatrix, matrix
---f  : \x x
---r_ : table, matrix, cmatrix
---d_ : vec, row, column
---x0_:
+  assertErrorMsgContains( msg[1], mth, 'foldl', matrix(2), '' )
+  assertErrorMsgContains( msg[3], mth, 'foldl', matrix(2), \x x, ''  )
 
   for nr=1,5 do
   for nc=1,5 do
-    m1 = matrix(nr,nc):fill(1..nr*nc)
-    assertEquals( m1:foldl(\x x+1)       , m1:geti(#m1)             )
-    assertEquals( m1:foldl(\x x+1, "vec"), m1:geti(nr*nc)           ) --default ()
-    assertEquals( m1:foldl(\x x  )       , 1                        ) -- should it be just one?
-    assertEquals( m1:foldl(\x x  , "col"), matrix(1,nc):fill(1..nc) )
-    mref = vector(nr)  for i=1,#mref do  mref:seti( i, m1:geti((i-1)*nc+1)) end
-    assertEquals( m1:foldl(\x x  , "row"), mref )
-    tref = {}          for i=1,#mref do  tref[i] = (i-1)*nc+1 end
-    assertEquals( m1:foldl(\x x  , {}   ), tref )
-    tref = {}          for i=1,nc do  tref[i] = i end
-    assertEquals( m1:foldl(\x x  , {}   , "col"), tref )
-
-
-    --print( m1, "\n" )
-    --print( m1:foldl(\x x, matrix(2,2)) , "\n" )
+    m = matrix(nr,nc):fill(1..nr*nc)
+    assertEquals( m:foldl(\x x+1)       , m:geti(#m)               )
+    assertEquals( m:foldl(\x x+1, "vec"), m:geti(nr*nc)            )
+    assertEquals( m:foldl(\x x  )       , 1                        )
+    assertEquals( m:foldl(\x x  , "col"), matrix(1,nc):fill(1..nc) )
+    mref = vector(nr)  for i=1,#mref do   mref:seti( i, m:geti((i-1)*nc+1)) end
+    assertEquals( m:foldl(\x x  , "row"), mref )
+    tref = {}          for i=1,#mref do   tref[i] = (i-1)*nc+1 end
+    assertEquals( m:foldl(\x x  , {}   ), tref )
+    tref = {}          for i=1,nc    do   tref[i] = i end
+    assertEquals( m:foldl(\x x  , {}   , "col"), tref )
 
 -- complex
-    assertTrue( is_cmatrix(m1:foldl(\x x, cmatrix(nr,1))) )
+    cm = cmatrix(nr,nc):fill(1..nr*nc)
+    assertEquals( cm:foldl(\x x+1)       , cm:geti(#m)               )
+    assertEquals( cm:foldl(\x x+1, "vec"), cm:geti(nr*nc)            )
+    assertEquals( cm:foldl(\x x  )       , complex(1,0)              )
+    assertEquals( cm:foldl(\x x  , "col"), cmatrix(1,nc):fill(1..nc) )
+    cmref = cvector(nr)  for i=1,#cmref do cmref:seti( i, complex(m:geti((i-1)*nc+1)),0) end
+    assertEquals( cm:foldl(\x x  , "row"), cmref )
+    ctref = {}           for i=1,#cmref do ctref[i] = complex((i-1)*nc+1, 0) end
+    assertEquals( cm:foldl(\x x  , {}   ), ctref )
+    ctref = {}           for i=1,nc     do ctref[i] = complex(i,0) end
+    assertEquals( cm:foldl(\x x  , {}   , "col"), ctref )
+
+-- changing type of matrix
+    assertTrue( is_cmatrix(m :foldl(\x x, cmatrix(nr,1))) )
+    assertTrue( is_matrix (cm:foldl(\x x,  matrix(nr,1))) )
     if nc> 1 then
       cmref = cvector(nr)  for i=1,#cmref do  cmref:seti( i, complex((i-1)*nc+1, (i-1)*nc+1) ) end
-      assertEquals( m1:foldl(\x complex(x,x), cmatrix(nr,1)), cmref )
+      assertEquals( m:foldl(\x complex(x,x), cmatrix(nr,1)), cmref )
     else
+       -- if it's just vector function is not being done on it
       cmref = cvector(nr)  for i=1,#cmref do  cmref:seti( i, complex((i-1)*nc+1, 0) ) end
-      assertEquals( m1:foldl(\x complex(x,x), cmatrix(nr,1)), cmref )
+      assertEquals( m:foldl(\x complex(x,x), cmatrix(nr,1)), cmref )
     end
 
-
+-- sizes test
+    assertEquals( {m:foldl(\x x, matrix(5)):sizes()} , {5,5} )
+    if nc*nr < 5 then assertEquals( {m:foldl(\x x, matrix(2)):sizes()} , {2,2} ) end
   end end
 end
---[[
 
+ --TODO: rethink the test idea: difference between foldl and foldr, full out after
 function TestMatrix:testFoldr()
+  local m, mref, tref
   local msg = {
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (scalar or iterable expected)",
     "invalid argument #4 ('vec|row|col' expected)",
   }
+
+  for nr=1,5 do
+  for nc=1,5 do
+    m = matrix(nr,nc):fill(1..nr*nc)
+    assertEquals( m:foldr(\x x)       , 1 )
+    assertEquals( m:foldr(\x x, "vec"), 1 )
+    assertEquals( m:foldr(\x x, "col"), matrix(1,nc):fill(1..nc) )
+
+    mref = vector(nr)  for i=1,#mref do   mref:seti( i, m:geti((i-1)*nc+1)) end
+    assertEquals( m:foldr(\x x  , "row"), mref )
+    tref = {}          for i=1,#mref do   tref[i] = (i-1)*nc+1 end
+    assertEquals( m:foldr(\x x  , {}   ), tref )
+    tref = {}          for i=1,nc    do   tref[i] = i end
+    assertEquals( m:foldr(\x x  , {}   , "col"), tref )
+    --print( m, "\n")
+  end end
 end
 
+-- line fold, except you store the intermidiet value, so you can keep the size
+  -- output same as in foldl but repeated-> same size
 function TestMatrix:testScanl()
+  local m, cm, mref, cmref
   local msg = {
-    "invalid argument #2 (callable expected)",
-    "invalid argument #3 (iterable expected)",
+    "invalid argument #2 (callable expected)"     ,
+    "invalid argument #3 (iterable expected)"     ,
     "invalid argument #4 ('vec|row|col' expected)",
+    "invalid range member '1'"                    ,
   }
+  assertErrorMsgContains( msg[1], mth, 'scanl', matrix(2), ''  )
+  assertErrorMsgContains( msg[1], mth, 'scanl', matrix(2), nil )
+  assertErrorMsgContains( msg[1], mth, 'scanl', matrix(2), 1   )
+  assertErrorMsgContains( msg[1], mth, 'scanl', matrix(2), matrix(1)  )
+  assertErrorMsgContains( msg[2], mth, 'scanl', matrix(2), \x x, 1    )
+  assertErrorMsgContains( msg[4], mth, 'scanl', matrix(2), \x x, 1..2 )
+  local m, cm
+    for nr=1,5 do
+    for nc=1,5 do
+      m  =  matrix(nr,nc):fill(1..nr*nc)
+      cm = cmatrix(nr,nc):fill(1..nr*nc)
+    assertEquals( {m:scanl(\x x, "vec"):sizes()}, {nc*nr,1} )
+    assertEquals( {m:scanl(\x x, "row"):sizes()}, {nr,nc} )
+    assertEquals( {m:scanl(\x x, "col"):sizes()}, {nr,nc} )
+
+    assertEquals(  m:scanl(\x x), vector(nr*nc):fill(1) )
+    assertEquals(  m:scanl(\x x), m:scanl(\x x, "vec") )
+
+    mref = vector(nr)  for i=1,#mref do   mref:seti( i, m:geti((i-1)*nc+1)) end
+    for i=1,nc do assertEquals( m:scanl(\x x, "row"):getcol(i), mref ) end
+    mref = matrix(1,nc):fill(1..nc)
+    for i=1,nr do assertEquals( m:scanl(\x x, "col"):getrow(i), mref ) end
+
+    tref = {}          for i=1,#mref do   tref[i] = (i-1)*nc+1 end -- 5same, then another 5
+    --print( m:scanl(\x x, {}) )
+    --print( tref )
+
+
+    assertTrue( is_cmatrix(m :scanl(\x x, cmatrix(5))) )
+    assertTrue( is_matrix (cm:scanl(\x x,  matrix(5))) )
+  end end
 end
 
 function TestMatrix:testScanr()
   local msg = {
-    "invalid argument #2 (callable expected)",
-    "invalid argument #3 (iterable expected)",
+    "invalid argument #2 (callable expected)"     ,
+    "invalid argument #3 (iterable expected)"     ,
     "invalid argument #4 ('vec|row|col' expected)",
+    "invalid range member '2'"                    ,
   }
+  assertErrorMsgContains( msg[1], mth, 'scanr', matrix(2), ''  )
+  assertErrorMsgContains( msg[1], mth, 'scanr', matrix(2), nil )
+  assertErrorMsgContains( msg[1], mth, 'scanr', matrix(2), 1   )
+  assertErrorMsgContains( msg[1], mth, 'scanr', matrix(2), matrix(1)  )
+  assertErrorMsgContains( msg[2], mth, 'scanr', matrix(2), \x x, 1    )
+  assertErrorMsgContains( msg[4], mth, 'scanr', matrix(2), \x x, 1..2 )
 end
 
 -- conversion -----------------------------------------------------------------o
 
 function TestMatrix:testTosting()
+  local tostring in MAD
+  local m, cm
+  for nr=1,5 do
+    for nc=1,5 do
+      m  =  matrix(nr,nc):fill(1..nr*nc)
+      cm = cmatrix(nr,nc):fill(1..nr*nc)
+      assertTrue( is_string(tostring(m )) )
+      assertTrue( is_string(tostring(cm)) )
+
+   -- TODO: find way to represents strings and assert them
+      --print( tostring(m )      , "\n" )
+      --print( tostring(m , ''  ), "\n" )
+      --print( tostring(m , "\n"), "\n" )
+      --print( tostring(cm)      , "\n" )
+      --print( tostring(cm, ''  ), "\n" )
+      --print( tostring(cm, "\n"), "\n" )
+  end end
 end
 
 function TestMatrix:testTotable()
+  local totable in MAD
   local msg = {
     "invalid argument #2 (table expected)",
     "invalid argument #2, (table of tables expected)",
   }
+  --assertErrorMsgContains( msg[1], mth, 'totable', matrix(2)  )
 end
+
+
+--[[
 
 -- special maps ---------------------------------------------------------------o
 
