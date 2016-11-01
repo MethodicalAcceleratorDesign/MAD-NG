@@ -2049,10 +2049,8 @@ function TestMatrix:testProduct()
     m    = matrix(nr,nc):fill(1..nr*nc )
     mref = 1 for i=1,nr*nc do mref=i*mref end
     assertEquals( m:product(), mref )
-    m    = matrix(nr,nc):fill(-1..-nr*nc..-1 )
-    if nr*nc>1 then
-      --print( m:product(), mref )
-    end
+    m    = matrix(nr,nc):fill(nr*nc..1..-1 )
+    print(m:product(), m:product() - mref )
 
     cm    = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
     cmref = 1 for i=1,nr*nc do cmref = complex(i,i)*cmref end
@@ -2090,24 +2088,23 @@ local m, cm
 end
 
 function TestMatrix:testTranspose() -- TODO:expand the test
---TODO: 'in' test
   local m1, m2
   for nr=1,5 do
   for nc=1,5 do
     m1 = matrix(nr,nc):fill(1..nr*nc )
     m2 = matrix(nr,nc):fill(1..nr*nc )
-    assertEquals( {m1:t():sizes()}, {nc,nr}  )
-    assertEquals(  m1:t():t(), m1            )
-    assertEquals( (m1+m2):t(), m1:t()+m2:t() )
-    assertEquals( (2*m2) :t(), 2*m2:t()      )
+    assertEquals( {m1:t():sizes()}, {nc,nr}       )
+    assertEquals(  m1:t():t()     , m1            )
+    assertEquals( (m1+m2):t()     , m1:t()+m2:t() )
+    assertEquals( (2*m2) :t()     , 2*m2:t()      )
 
-    --symmetric matrix test
     if nr == nc then
-      assertEquals( (m1*m2):t(), m1:t()*m2:t() )  --if moved belowe setting of symetric, err
-      for i=1,nr do for j=1,nc do
+      assertEquals( (m1*m2):t(), m1:t()*m2:t() )
+      m1:t('in')                                        -- only if nr==nc (size)
+      assertEquals( m1, m2:t() )
+      for i=1,nr do for j=1,nc do     --symmetric matrix test
         if i>j then m1:set(i,j, m1:get(j,i)) end
       end end
-      assertEquals(  m1:t(), m1 )
     end
   end end
 end
@@ -2118,23 +2115,27 @@ function TestCMatrix:testTranspose() --TODO: 'in' test
   for nc=1,5 do
     cm1 = cmatrix(nr,nc):fill(1..nr*nc ):fill(\x x+x*1i)
     cm2 = cmatrix(nr,nc):fill(1..nr*nc )
-    assertEquals( {cm1:t():sizes()}, {nc,nr}     )
-    assertEquals(  cm1:t() :t(), cm1             )
-    assertEquals( (cm1+cm2):t(), cm1:t()+cm2:t() )
-    assertEquals( (2*cm2)  :t(), 2*cm2:t()       )
+    assertEquals( {cm1:t():sizes()}     , {nc,nr}         )
+    assertEquals(  cm1:t() :t()         , cm1             )
+    assertEquals( (cm1+cm2):t()         , cm1:t()+cm2:t() )
+    assertEquals( (2*cm2)  :t()         , 2*cm2:t()       )
+    assertEquals(  cm1:t(false):t(false), cm1                       )
+    assertEquals( (cm1+cm2):t(false)    , cm1:t(false)+cm2:t(false) )
+    assertEquals( (2*cm2)  :t(false)    , 2*cm2:t(false)            )
 
-    --symmetric matrix test
     if nr == nc then
-      for i=1,nr do for j=1,nc do
+      assertEquals( (cm1*cm2):t(), cm1:t()*cm2:t() )
+      cm1:t('in')                                       -- only if nr==nc (size)
+      assertEquals( cm1, cmatrix(nr,nc):fill(1..nr*nc ):fill(\x x+x*1i):t() )
+      cm1:t('in', false)
+      assertEquals( cm1, cmatrix(nr,nc):fill(1..nr*nc ):fill(\x x-x*1i)     )
+      for i=1,nr do for j=1,nc do    --symmetric matrix test
         if i>j then cm1:set(i,j, cm1:get(j,i)) end
-        cm1:conj()
       end end
-      assertEquals(  cm1:t(), cm1:conj() )
-      --assertEquals( (cm1*cm2):t(), cm1:t()*cm2:t() ) --TODO: not equal cause of hidden conj
+      assertEquals(  cm1:t():conj(), cm1 )
     end
   end end
 end
-
 
 function TestMatrix:testTrace()
   local m, cm, x, cx
@@ -2227,7 +2228,7 @@ end
 
 function TestMatrix:testCross()
  --cross prod:  uxv = |u|.|v| sin(u^v) \vec{n}
-  local m1, m2, m3
+  local m1, m2, m3, cm1, cm2, cm3
   local msg = {
     "invalid argument #2 (matrix expected)",
     "invalid matrix sizes"                 ,
@@ -2260,7 +2261,6 @@ function TestMatrix:testCross()
     assertEquals(  matrix(3,nc)              :cross( matrix(3,nc):fill(1..3*nc)), matrix(3,nc) )
     assertEquals(  matrix(3,nc)              :cross( matrix(3,nc))              , matrix(3,nc) )
     assertEquals(  matrix(3,nc)              :cross(cmatrix(3,nc):fill(1..3*nc)), matrix(3,nc) )
-    assertEquals(  matrix(3,nc):fill(1..3*nc):cross( matrix(3,nc))              , matrix(3,nc) )
 
     m1  =  matrix(3,nc):fill(1..3*nc)
     m2  =  matrix(3,nc):fill(3*nc..1..-1)
@@ -2298,24 +2298,22 @@ function TestMatrix:testMixed() --TODO: 'in', r_ + r_ err
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, matrix(3,2), m1 )
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, m1 ,matrix(2,1) )
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, m1 ,matrix(3,2) )
--- x.nr==3
--- y.nr==x.nr, z.nr==x.nr
--- y.nc==x.nc, z.nc==x.nc
+-- x.nr==3, y.nr==x.nr, z.nr==x.nr, y.nc==x.nc, z.nc==x.nc
 
   for nc=1,5 do
     m1 = matrix(3,nc):fill(1..nc*6..2)
     m2 = matrix(3,nc):fill(3*nc..1..-1)
     m3 = matrix(3,nc):fill(1..3*nc)
     -- vector vs number after inner
-
     --print( m1:mixed( m2, m3)     , "\n" )
     --print( m1:cross(m2):inner(m3), "\n" )
     --assertEquals( m1:mixed( m2, m3), m1:cross(m2):inner(m3) )
   end
 end
 
-function TestMatrix:testOuter() --TODO: 'in', r_ + r_ err
+function TestMatrix:testOuter()
   -- x * y:t() without temporary --  outer prod:  u.v' = matrix
+  local m1, m2, cm1, cm2
   local msg = {
     "invalid argument #2 (matrix expected)",
     "incompatible matrix sizes",
@@ -2323,40 +2321,87 @@ function TestMatrix:testOuter() --TODO: 'in', r_ + r_ err
   assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), ''   )
   assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), 1    )
   assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), 1..2 )
-  assertErrorMsgContains( msg[2], mth, 'outer', matrix(2,1), matrix(2,2) )
-  assertErrorMsgContains( msg[2], mth, 'outer', matrix(2,2), matrix(2,1) )
-  --x.nr==1, y.nr==1
-  --y.nc==x.nc,
-  --print(m1:outer(m2))
+  assertErrorMsgContains( msg[2], mth, 'outer', matrix(1,2), matrix(2,2) )
+  assertErrorMsgContains( msg[2], mth, 'outer', matrix(2,2), matrix(1,2) )
 
-  for nc=1,5 do
-    m1 = matrix(2,nc):fill(1..2*nc*2..2)
-    m2 = matrix(2,nc):fill(2*nc..1..-1)
+  for nr=1,5 do
+    m1  =  matrix(nr,1):fill(1..2*nr..2)
+    m2  =  matrix(nr,1):fill(1..nr)
+    cm1 = cmatrix(nr,1):fill(1..2*nr..2):fill(\x x+x*1i)
+    cm2 = cmatrix(nr,1):fill(1..nr):fill(\x x+x*1i)
+    assertEquals(  m1:outer( m2),  m1* m2:t() )
+    assertEquals( cm1:outer(cm2), cm1*cm2:t() )
+    assertEquals( cm1:outer( m2), cm1* m2:t() )
+    assertEquals(  m1:outer(cm2),  m1*cm2:t() )
+
+    if nr==1 then           --size issue, can not be used with anything bigger
+      m1 :outer(m2 , 'in')
+      cm1:outer(cm2, 'in')
+      assertEquals( m1 , m1*m2:t() )
+      assertEquals( cm1, cmatrix(nr,1):fill(1..2*nr..2):fill(\x x+x*1i)*cm2:t() )
+    end
   end
 end
 
---[[
 -- norm, unit, center, angle (in place) ---------------------------------------o
 
 function TestMatrix:testNorm()
-|u| = sqrt(u'.u)
---
+--|u| = sqrt(u'.u)
+  local m
+  for nr=1,5 do
+  for nc=1,5 do
+    m = matrix(nr,nc):fill(1..nr*nc)
+    --print( m:norm()         , "\n")
+    --print( (m*m:t()):sqrt() , "\n")
+    if nr == 1 then
+      assertEquals( m:norm(), (m*m:t()):sqrt():geti(1) )
+    end
+  end end
 end
 
-function TestCMatrix:testNorm() end
+function TestCMatrix:testNorm()
+  local cm
+  for nr=1,5 do
+  for nc=1,5 do
+    cm = cmatrix(nr,nc):fill(1..nr*nc)
+    if nr == 1 then
+      assertEquals( complex(cm:norm(),0), (cm*cm:t()):sqrt():geti(1) )
+    end
+  end end
+end
 
 function TestMatrix:testDistance()
-  local msg = {
+  local msg, m1, m2 = {
     "invalid argument #2 (matrix expected)",
   }
+  assertErrorMsgContains( msg[1], mth, 'distance', matrix(2), 1    )
+  assertErrorMsgContains( msg[1], mth, 'distance', matrix(2), cmatrix(1) )
+
+  for nr=1,5 do
+  for nc=1,5 do
+    m1 = matrix(nr,nc):fill(1..nr*nc)
+    m2 = matrix(nr,nc):fill(nr*nc..1..-1)
+    --print( m1             , "\n")
+    --print( m1:distance(m2), "\n")
+    x=0
+    --for i=1, nr*nc do  x=m1:geti(i) + m2:geti(i) + x   end
+  end end
 end
 
 function TestCMatrix:testDistance()
-  local msg = {
+  local msg, cm = {
     "invalid argument #2 (cmatrix expected)",
   }
+  assertErrorMsgContains( msg[1], mth, 'distance', cmatrix(2,1), 1    )
+  assertErrorMsgContains( msg[1], mth, 'distance', cmatrix(2,1), cmatrix(1) )
+
+  for nr=1,5 do
+  for nc=1,5 do
+    cm = cmatrix(nr,nc):fill(1..nr*nc)
+  end end
 end
 
+--[[
 function TestMatrix:testUnit()
   local msg = {
     "null matrix norm",
