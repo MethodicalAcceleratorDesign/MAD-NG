@@ -679,7 +679,7 @@ function TestMatrix:testFill() -- TODO: missing 2D table test --in test:order ma
     }
   assertErrorMsgContains( msg[1], mth,'fill', matrix(2), true )
   assertErrorMsgContains( msg[1], mth,'fill', matrix(2), nil  )
-  assertErrorMsgContains( msg[2], mth,'fill', matrix(2), {1}  )                 --if the fill is smaller then the size fo matrix
+  assertErrorMsgContains( msg[2], mth,'fill', matrix(2), {1}  )
   for nr=1,5 do
   for nc=1,5 do
     m  =  matrix(nr,nc)
@@ -881,6 +881,7 @@ end
 -- getx, setx -----------------------------------------------------------------o
 
 function TestMatrix:testGetsub() --TODO: cleanup
+  local mRes, mRef, r, ir, jc, x, m
   local msg = {
     "invalid argument #2 (iterable expected)"   ,
     "invalid argument #3 (iterable expected)"   ,
@@ -909,25 +910,20 @@ function TestMatrix:testGetsub() --TODO: cleanup
   assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2), 1, cvector({1})  )
   assertErrorMsgContains( msg[6], mth, 'getsub', matrix(2), cvector({1}), 1  )
 
-  local mRes, mRef, r, ir, jc, x, m
   m = matrix(5,5):fill(1..(5*5))
   assertTrue( is_table (m:getsub(1, 1, {} )) )
   assertTrue( is_vector(m:getsub(1, 1, nil)) )
 
-  local newt = \x => if is_table(x) then return {}
-                     else                return  x end end
+  local newt = \x        => if is_table(x)   then return {}           else return x end end
+  local cpx  = \m,x      => if is_cmatrix(m) then return complex(x,x) else return x end end
+  local mat  = \m,x      => if is_matrix(m)  then return matrix(x)    else return cmatrix(x) end end
+  local ref  = \m,i,j,nc => return cpx(m, (i-1)*nc+j) end
 
-  local val =\i,j,nc   => return (i-1)*nc+j end
-  local ref =\x,i,j,nc =>
-    if is_cmatrix(x) then return complex( val(i,j,nc), val(i,j,nc))
-    else                  return val(i,j,nc) end end
-
-  local tab =\x,m,...  =>
-      local arg = {...}
-    if     is_table(x) then return {...}
-    elseif #arg <= 2 then if is_cmatrix(m) then return cmatrix({...}) else return matrix({...}) end
-    else if is_cmatrix(m) then return cmatrix({{arg[1], arg[2]}, {arg[3], arg[4]}})
-                          else return  matrix({{arg[1], arg[2]}, {arg[3], arg[4]}}) end
+  local tab  = \x,m,...  =>
+    local arg = {...}
+    if     is_table(x) then return arg
+    elseif #arg <= 2   then return mat(m,arg)
+    else                    return mat(m,{{arg[1], arg[2]}, {arg[3], arg[4]}})
     end
   end
 
@@ -980,11 +976,15 @@ function TestMatrix:testGetsub() --TODO: cleanup
       end end
     end
   end end end
-
-  --from real to cmatrix and the other way around test missing
+  m  =  matrix(5,5):fill(1..(5*5))
+  cm = cmatrix(5,5):fill(1..(5*5))
+  assertTrue ( is_matrix (m :setsub(1,2, cmatrix(1) )))
+  assertFalse( is_cmatrix(m :setsub(1,2, cmatrix(1) )))
+  assertFalse( is_matrix (cm:setsub(1,2,  matrix(1) )))
+  assertTrue ( is_cmatrix(cm:setsub(1,2,  matrix(1) )))
 end
 
-function TestMatrix:testSetsub()
+function TestMatrix:testSetsub() --TODO after getsub cleanup
   local msg, m, cm = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (iterable expected)"          ,
@@ -1065,8 +1065,10 @@ function TestMatrix:testGetv()
   assertTrue( is_matrix (cm:getv( 5   ,  matrix(2))) )
   assertTrue( is_matrix (cm:getv({1,5},  matrix(2))) )
 
-  --TODO: "in" option test mssing
-  --print( matrix(2):fill(1..4):getv(1,'in') ) --how to test this feature?
+  m = matrix(4):fill(1..16)
+  --output is still matrix of the original size
+  m:getv(1..5,'in')
+  --print(m)
 end
 
 function TestMatrix:testSetv()
@@ -1124,7 +1126,7 @@ function TestMatrix:testGetdiag()
   assertErrorMsgContains( msg[2], mth, 'getdiag', matrix(2), 1..2 )
   assertTrue( is_cmatrix( matrix(2):getdiag(cmatrix(2))) )
   assertTrue( is_matrix (cmatrix(2):getdiag( matrix(2))) )
---  print( matrix(2):getdiag(NaN) )
+  assertEquals( matrix(2):fill(1..4):getdiag(NaN), matrix(2):fill(1..4):getdiag() )
 
   for nr=1,5  do
   for nc=1,5  do
@@ -1347,7 +1349,7 @@ end
 
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
-function TestMatrix:testForeach()
+function TestMatrix:testForeach() --TODO
   local m, cm, m1, cm1
   local msg = {
     "invalid argument #2 (callable expected)",
@@ -1442,13 +1444,10 @@ function TestMatrix:testMapat()
   assertErrorMsgContains( msg[3], mth, 'mapat', matrix(2), \x x+1, 1   , ''   )
   assertErrorMsgContains( msg[4], mth, 'mapat', matrix(2), \x x+1, 1   , 1..2 )
   assertErrorMsgContains( msg[5], mth, 'mapat', matrix(2):fill(1), \x x+1, matrix(2) )
-  --print( matrix(5,5):mapat(\x x+1, {1, 2}, {} )) -- to be discussed
-  --print( matrix(5,5):mapat(\x x+1, {1, 3}, {} ))
 
   for nr=1,5 do
   for nc=1,5 do
     m    = matrix(nr,nc):fill(1..nr*nc)
-
     tref = {2}
     assertEquals( m:mapat(\x x+1, 1     , {}), tref )
     tref = {} for i=1,#m do tref[i]=i+1 end
@@ -1868,10 +1867,10 @@ function TestMatrix:testTosting()
     assertTrue( is_string(tostring(cm, "\n")) )
 
     c, r = {}, {}
-    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c,' ') end
+    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c,' ')   end
     assertEquals( tostring(m       ), table.concat(r, '\n') )
     assertEquals( tostring(cm      ), table.concat(r, '\n') )
-    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c) end
+    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c)       end
     assertEquals( tostring(m , ''  ), table.concat(r, '\n') )
     assertEquals( tostring(cm, ''  ), table.concat(r, '\n') )
     for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c, "\n") end
@@ -2050,7 +2049,7 @@ function TestMatrix:testProduct()
     mref = 1 for i=1,nr*nc do mref=i*mref end
     assertEquals( m:product(), mref )
     m    = matrix(nr,nc):fill(nr*nc..1..-1 )
-    print(m:product(), m:product() - mref )
+    --print(m:product(), m:product() - mref )
 
     cm    = cmatrix(nr,nc):fill(1..nr*nc):fill(\x x+x*1i)
     cmref = 1 for i=1,nr*nc do cmref = complex(i,i)*cmref end
@@ -2058,21 +2057,31 @@ function TestMatrix:testProduct()
   end end
 end
 
---[[
-function TestMatrix:testAll()
+function TestMatrix:testAll() --TODO: extend
   local msg = {
-    "reentrant use of all (not expected)",
+    "reentrant use of all (not expected)"         ,
+    "attempt to call upvalue 'pred' (a nil value)",
   }
+  assertErrorMsgContains( msg[2], mth, 'all', matrix(2), nil )
+  --print(matrix(2):all())
+  assertFalse( matrix(2)           :all(\x x>2) )
+  assertTrue ( matrix(2):fill(3)   :all(\x x>2) )
+  assertFalse( matrix(3):fill(1..9):all(\x x>2) )
 end
 
-function TestMatrix:testAny()
+function TestMatrix:testAny() --TODO: extend
   local msg = {
-    "reentrant use of all (not expected)",
+    "reentrant use of all (not expected)"         ,
+    "attempt to call upvalue 'pred' (a nil value)",
   }
+  assertErrorMsgContains( msg[2], mth, 'any', matrix(2), nil )
+  --print(matrix(2):all())
+  assertFalse( matrix(2)           :any(\x x>2) )
+  assertTrue ( matrix(2):fill(3)   :any(\x x>2) )
+  assertTrue ( matrix(3):fill(1..9):any(\x x>2) )
 end
-]]
 
--- conjugate, transpose -------------------------------------------------------o
+-- conjugate, transpose ------------------------------------------ -------------o
 
 function TestMatrix:testConjugate()
 local m, cm
@@ -2102,7 +2111,7 @@ function TestMatrix:testTranspose() -- TODO:expand the test
       assertEquals( (m1*m2):t(), m1:t()*m2:t() )
       m1:t('in')                                        -- only if nr==nc (size)
       assertEquals( m1, m2:t() )
-      for i=1,nr do for j=1,nc do     --symmetric matrix test
+      for i=1,nr do for j=1,nc do                       -- symmetric matrix test
         if i>j then m1:set(i,j, m1:get(j,i)) end
       end end
     end
@@ -2129,7 +2138,7 @@ function TestCMatrix:testTranspose() --TODO: 'in' test
       assertEquals( cm1, cmatrix(nr,nc):fill(1..nr*nc ):fill(\x x+x*1i):t() )
       cm1:t('in', false)
       assertEquals( cm1, cmatrix(nr,nc):fill(1..nr*nc ):fill(\x x-x*1i)     )
-      for i=1,nr do for j=1,nc do    --symmetric matrix test
+      for i=1,nr do for j=1,nc do                      -- symmetric matrix test
         if i>j then cm1:set(i,j, cm1:get(j,i)) end
       end end
       assertEquals(  cm1:t():conj(), cm1 )
@@ -2334,7 +2343,7 @@ function TestMatrix:testOuter()
     assertEquals( cm1:outer( m2), cm1* m2:t() )
     assertEquals(  m1:outer(cm2),  m1*cm2:t() )
 
-    if nr==1 then           --size issue, can not be used with anything bigger
+    if nr==1 then            -- size issue, can not be used with anything bigger
       m1 :outer(m2 , 'in')
       cm1:outer(cm2, 'in')
       assertEquals( m1 , m1*m2:t() )
@@ -2393,7 +2402,7 @@ function TestCMatrix:testDistance()
     "invalid argument #2 (cmatrix expected)",
   }
   assertErrorMsgContains( msg[1], mth, 'distance', cmatrix(2,1), 1    )
-  assertErrorMsgContains( msg[1], mth, 'distance', cmatrix(2,1), cmatrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'distance', cmatrix(2,1), matrix(1) )
 
   for nr=1,5 do
   for nc=1,5 do
