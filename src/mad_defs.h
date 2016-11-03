@@ -17,7 +17,7 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - provide some global and portable definitions commonly used in MAD
 
@@ -30,11 +30,13 @@
 // --- includes --------------------------------------------------------------o
 
 #include <stddef.h>
+#include <stdint.h>
 
 // --- types -----------------------------------------------------------------o
 
 typedef const char*      str_t;
-typedef int              idx_t;
+typedef int32_t          idx_t;
+typedef int32_t          ssz_t;
 typedef struct xrange    rng_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
