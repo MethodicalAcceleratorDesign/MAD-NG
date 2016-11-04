@@ -162,7 +162,7 @@ local dbl_sz = ffi.sizeof 'double'
 local cpx_sz = ffi.sizeof 'complex'
 
 -- scalar repeater
-local rep_mt = { __len := 2^31, __index = \s s[1] }
+local rep_mt = { __len := 2^30, __index = \s s[1] }
 local rep    = \x -> setmetatable({x}, rep_mt)
 
 -- types ----------------------------------------------------------------------o
@@ -972,8 +972,8 @@ local sabs = \r,x -> r + abs(x)
 MR.min     = \x,d_,r_ -> x:foldl(min , nil, d_, r_)
 MR.max     = \x,d_,r_ -> x:foldl(max , nil, d_, r_)
 MR.sum     = \x,d_,r_ -> x:foldl(add , nil, d_, r_)
-MR.sumabs  = \x,d_,r_ -> x:foldl(sabs, nil, d_, r_)
-MR.sumsqr  = \x,d_,r_ -> x:foldl(ssqr, nil, d_, r_)
+MR.sumabs  = \x,d_,r_ -> x:foldl(sabs, 0  , d_, r_)
+MR.sumsqr  = \x,d_,r_ -> x:foldl(ssqr, 0  , d_, r_)
 MR.product = \x,d_,r_ -> x:foldl(mul , nil, d_, r_)
 
 local all  = \r,x -> land(r, fun(x))
@@ -998,8 +998,8 @@ local sabs_r = \x,r -> r + abs(x)
 MR.accmin    = \x,d_,r_ -> x:scanl(min , nil, d_, r_)
 MR.accmax    = \x,d_,r_ -> x:scanl(max , nil, d_, r_)
 MR.accsum    = \x,d_,r_ -> x:scanl(add , nil, d_, r_)
-MR.accsumabs = \x,d_,r_ -> x:scanl(sabs, nil, d_, r_)
-MR.accsumsqr = \x,d_,r_ -> x:scanl(ssqr, nil, d_, r_)
+MR.accsumabs = \x,d_,r_ -> x:scanl(sabs,   0, d_, r_)
+MR.accsumsqr = \x,d_,r_ -> x:scanl(ssqr,   0, d_, r_)
 MR.accprod   = \x,d_,r_ -> x:scanl(mul , nil, d_, r_)
 
 MR.accumulate = MR.accsum
@@ -1008,8 +1008,8 @@ MR.accumulate = MR.accsum
 MR.raccmin    = \x,d_,r_ -> x:scanr(min   , nil, d_, r_)
 MR.raccmax    = \x,d_,r_ -> x:scanr(max   , nil, d_, r_)
 MR.raccsum    = \x,d_,r_ -> x:scanr(add   , nil, d_, r_)
-MR.raccsumabs = \x,d_,r_ -> x:scanr(sabs_r, nil, d_, r_)
-MR.raccsumsqr = \x,d_,r_ -> x:scanr(ssqr_r, nil, d_, r_)
+MR.raccsumabs = \x,d_,r_ -> x:scanr(sabs_r,   0, d_, r_)
+MR.raccsumsqr = \x,d_,r_ -> x:scanr(ssqr_r,   0, d_, r_)
 MR.raccprod   = \x,d_,r_ -> x:scanr(mul   , nil, d_, r_)
 
 -- special filters ------------------------------------------------------------o
@@ -1169,10 +1169,10 @@ function MR.mixed (x, y, z, r_)
            conj(geti0(x,0) * geti0(y,1) - geti0(x,1) * geti0(y,0)) * geti0(z,2)
   end
   -- multiple mixed products
+  assert(nr == y :nrow() and nc == y :ncol() and
+         nr == z :nrow() and nc == z :ncol() and (is_nil(r_) or
+         nc == r_:nrow() and 1  == r_:ncol()), "incompatible matrix sizes")
   local r = r_ or x:same(y[1], nc, 1)
-  assert(nr == y:nrow() and nc == y:ncol() and
-         nr == z:nrow() and nc == z:ncol() and
-         nc == r:nrow() and 1  == r:ncol(), "incompatible matrix sizes")
   local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
   for i=0,nc-1 do
     r.data[i] = conj(geti0(x,i1) * geti0(y,i2) - geti0(x,i2) * geti0(y,i1)) * geti0(z,i0) +
@@ -1187,10 +1187,10 @@ function MR.outer (x, y, r_)
   -- x * y:t() without temporary
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
-  assert(x:ncol() == 1 and y:ncol() == 1, "incompatible matrix sizes")
   local nr, nc = x:nrow(), y:nrow()
-  assert(is_nil(r_) or nr == r_:nrow() and nc == r_:ncol(), "incompatible matrix sizes")
-  local r = r_ or x:same(y[1])
+  assert(x:ncol() == 1 and y:ncol() == 1 and
+    (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()), "incompatible matrix sizes")
+  local r = r_ or x:same(y[1], nr, nc)
   for i=0,nr-1 do
   for j=0,nc-1 do set0(r,i,j, geti0(x,i) * conj(geti0(y,j))) end end
   return r
@@ -1742,11 +1742,11 @@ function MC.corr (x, y, r_)
   end
 end
 
-function MR.covar (x, y, r_) -- covariance of random (row) vectors
-  local xc = x:center(x:same(), 'row')
+function MR.covar (x, y, d_, r_)
+  local xc = x:center(x:same(), d_)
   if x.data == y.data
-  then return xc:corr(xc                , r_)
-  else return xc:corr(y:center(y:same()), r_)
+  then return xc:corr(xc                    , r_)
+  else return xc:corr(y:center(y:same(), d_), r_)
   end
 end
 
