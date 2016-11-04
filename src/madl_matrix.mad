@@ -346,47 +346,73 @@ parameters:
   e: element sample for type promotion, nr & nc: sizes
 
 type promotion:
+  x  matrix and e real    returns a  matrix
   x  matrix and e complex returns a cmatrix
-  x cmatrix and e real    returns a  matrix
+  x cmatrix and e real    returns a cmatrix
+  x cmatrix and e complex returns a cmatrix
 
-valid invocation:
-  x:same(), x:same(e), x:same(nr, nc), x:same(e, nr, nc)
+cases:
+  1)  x:same(               )
+  2)  x:same( nil, nr       )
+  3)  x:same( nil, nil, nc  )
+  4)  x:same( nil, nr , nc  )
+  5)  x:same(   e           )
+  6)  x:same(   e, nr       )          --> 4) with e as nr and nr as nc, see 7'
+  7)  x:same(   e, nil, nc  )
+  8)  x:same(   e, nr , nc  )
 
-ambiguous invocation:
-  x:same(e, nr), will be interpreted as x:same(nr, nc) if e is a real >= 1
+cases with left shift:
+  2') x:same( nr            )          <=> 5) with nr as e  (ambiguity)
+  3') x:same( nc            )          <=> 5) with nc as e  (ambiguity)
+  4') x:same( nr, nc        )          --> 4) valid shift
+  7') x:same( e , nc        )          --> 4) with e  as nr (ambiguity)
+  3") x:same( nil, nc       )          <=> 2) with nc as nr (ambiguity)
+  4") x:same( nr, nil, nc   )          <=> 7) with nr as e  (ambiguity)
 ]=]
 
 function MR.same (x, e_, nr_, nc_)
-  if is_nil(e_) then
-    e_ = x.data[0]
-  elseif is_nil(nr_) then
-    -- nothing
-  elseif is_nil(nc_) then
-    nr_, nc_, e_ = e_, nr_, x.data[0]
+  if is_nil(nc_) and is_number(e_) and is_number(nr_) then -- shift right
+    nr_, nc_, e_ = e_, nr_, nil
   end
-  if is_number(e_) then
-    return  matrix(nr_ or x.nr, nc_ or x.nc)
-  elseif is_complex(e_) then
-    return cmatrix(nr_ or x.nr, nc_ or x.nc)
+  if is_nil(e_) or is_number(e_)
+  then return  matrix(nr_ or x.nr, nc_ or x.nc)
+  else return cmatrix(nr_ or x.nr, nc_ or x.nc)
   end
-  error("invalid argument #2 (scalar expected)")
 end
 
--- copy, zeros, ones, eye, symp, circ, fill, reshape (in place) ----------o
+function MC.same (x, e_, nr_, nc_)
+  if is_nil(nc_) and is_number(e_) and is_number(nr_) then -- shift right
+    nr_, nc_, e_ = e_, nr_, nil
+  end
+  -- e_ is ignored because x is a cmatrix
+  return cmatrix(nr_ or x.nr, nc_ or x.nc)
+end
 
-function MR.copy (x, y)
-  assert(is_matrix(y) and x:size() <= y:size(),
-         "invalid argument #1 (matrix with compatible size expected")
-  ffi.copy(x.data, y.data, dbl_sz * x:size())
+-- copy -----------------------------------------------------------------------o
+
+function MR.copy (x, y_)
+  if is_nil(y_) then
+    x, y_ = matrix(x:sizes()), x
+  else
+    assert(is_matrix(y_) and x:size() <= y_:size(),
+           "invalid argument #1 (matrix with compatible type and size expected")
+  end
+  ffi.copy(x.data, y_.data, dbl_sz * x:size())
   return x
 end
 
-function MC.copy (x, y)
-  assert(is_cmatrix(y) and x:size() <= y:size(),
-         "invalid argument #1 (matrix with compatible size expected")
-  ffi.copy(x.data, y.data, cpx_sz * x:size())
+function MC.copy (x, y_)
+  if is_nil(y_) then
+    x, y_ = cmatrix(x:sizes()), x
+  else
+    assert(is_cmatrix(y_) and x:size() <= y_:size(),
+           "invalid argument #1 (matrix with compatible type and size expected")
+  end
+  ffi.copy(x.data, y_.data, cpx_sz * x:size())
   return x
 end
+
+-- zeros, ones, eye, symp, circ, fill, reshape (in place) ---------------------o
 
 function MR.zeros (x)
   ffi.fill(x.data, dbl_sz * x:size())
@@ -693,22 +719,22 @@ default:
    r = scalar ['vec'] or x:same(nr,1) ['row'] or x:same(1,nc) ['col']
 
 cases:
-  1)  fold x, f
-  2)  fold x, f, nil,   d
-  3)  fold x, f, nil, nil, r
-  4)  fold x, f, nil,   d, r
-  5)  fold x, f,  x0
-  6)  fold x, f,  x0,   d
-  7)  fold x, f,  x0, nil, r
-  8)  fold x, f,  x0,   d, r
+  1)  x:fold( f              )
+  2)  x:fold( f, nil,   d    )
+  3)  x:fold( f, nil, nil, r )
+  4)  x:fold( f, nil,   d, r )
+  5)  x:fold( f,  x0         )
+  6)  x:fold( f,  x0,   d    )
+  7)  x:fold( f,  x0, nil, r )
+  8)  x:fold( f,  x0,   d, r )
 
 cases with left shift:
-  2') fold x, f, d                  --> 2)
-  3') fold x, f, r                  <=> 3) with r as x0 (ambiguity)
-  4') fold x, f, d, r               --> 4)
-  7') fold x, f, x0, r              --> 7)
-  3") fold x, f, nil, r             --> 3)
-  4") fold x, f, d, nil, r          --> 4)
+  2') x:fold( f, d           )         --> 2)
+  3') x:fold( f, r           )         <=> 3) with r as x0 (ambiguity)
+  4') x:fold( f, d, r        )         --> 4)
+  7') x:fold( f, x0, r       )         --> 7)
+  3") x:fold( f, nil, r      )         --> 3)
+  4") x:fold( f, d, nil, r   )         --> 4)
 ]]
 
 function MR.foldl (x, f, x0_, d_, r_)
@@ -786,22 +812,22 @@ default:
    r = x:same() ['vec', row', 'col']
 
 cases:
-  1)  scan x, f
-  2)  scan x, f, nil,   d
-  3)  scan x, f, nil, nil, r
-  4)  scan x, f, nil,   d, r
-  5)  scan x, f,  x0
-  6)  scan x, f,  x0,   d
-  7)  scan x, f,  x0, nil, r
-  8)  scan x, f,  x0,   d, r
+  1)  x:scan( f              )
+  2)  x:scan( f, nil,   d    )
+  3)  x:scan( f, nil, nil, r )
+  4)  x:scan( f, nil,   d, r )
+  5)  x:scan( f,  x0         )
+  6)  x:scan( f,  x0,   d    )
+  7)  x:scan( f,  x0, nil, r )
+  8)  x:scan( f,  x0,   d, r )
 
 cases with left shift:
-  2') scan x, f, d                  --> 2)
-  3') scan x, f, r                  <=> 3) with r as x0 (ambiguity)
-  4') scan x, f, d, r               --> 4)
-  7') scan x, f, x0, r              --> 7)
-  3") scan x, f, nil, r             --> 3)
-  4") scan x, f, d, nil, r          --> 4)
+  2') x:scan( f, d           )         --> 2)
+  3') x:scan( f, r           )         <=> 3) with r as x0 (ambiguity)
+  4') x:scan( f, d, r        )         --> 4)
+  7') x:scan( f, x0, r       )         --> 7)
+  3") x:scan( f, nil, r      )         --> 3)
+  4") x:scan( f, d, nil, r   )         --> 4)
 ]]
 
 function MR.scanl (x, f, x0_, d_, r_)
@@ -815,7 +841,7 @@ function MR.scanl (x, f, x0_, d_, r_)
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
   local r, nr, nc, rr = r_ or x:same(), x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- fold as vector
+  if is_nil(d_) or d_ == 'vec' then    -- scan as vector
                        rr = geti(x,1)
     if x0_ ~= nil then rr = f(x0_, rr) end    r[1] = rr
     for i=2,nr*nc   do rr = f(rr, geti(x,i))  r[i] = rr end
@@ -852,7 +878,7 @@ function MR.scanr (x, f, x0_, d_, r_)
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
   local r, nr, nc, rr = r_ or x:same(), x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- fold as vector
+  if is_nil(d_) or d_ == 'vec' then    -- scan as vector
                           rr = geti(x,nr*nc)
     if x0_ ~= nil    then rr = f(rr, x0_) end    r[nr*nc] = rr
     for i=nr*nc-1,1,-1 do rr = f(geti(x,i), rr)  r[i    ] = rr end
@@ -945,10 +971,10 @@ local sabs = \r,x -> r + abs(x)
 
 MR.min     = \x,d_,r_ -> x:foldl(min , nil, d_, r_)
 MR.max     = \x,d_,r_ -> x:foldl(max , nil, d_, r_)
-MR.sum     = \x,d_,r_ -> x:foldl(add , 0  , d_, r_)
-MR.sumabs  = \x,d_,r_ -> x:foldl(sabs, 0  , d_, r_)
-MR.sumsqr  = \x,d_,r_ -> x:foldl(ssqr, 0  , d_, r_)
-MR.product = \x,d_,r_ -> x:foldl(mul , 1  , d_, r_)
+MR.sum     = \x,d_,r_ -> x:foldl(add , nil, d_, r_)
+MR.sumabs  = \x,d_,r_ -> x:foldl(sabs, nil, d_, r_)
+MR.sumsqr  = \x,d_,r_ -> x:foldl(ssqr, nil, d_, r_)
+MR.product = \x,d_,r_ -> x:foldl(mul , nil, d_, r_)
 
 local all  = \r,x -> land(r, fun(x))
 local any  = \r,x -> lor (r, fun(x))
@@ -971,20 +997,20 @@ local sabs_r = \x,r -> r + abs(x)
 -- left accumulation
 MR.accmin    = \x,d_,r_ -> x:scanl(min , nil, d_, r_)
 MR.accmax    = \x,d_,r_ -> x:scanl(max , nil, d_, r_)
-MR.accsum    = \x,d_,r_ -> x:scanl(add , 0  , d_, r_)
-MR.accsumabs = \x,d_,r_ -> x:scanl(sabs, 0  , d_, r_)
-MR.accsumsqr = \x,d_,r_ -> x:scanl(ssqr, 0  , d_, r_)
-MR.accprod   = \x,d_,r_ -> x:scanl(mul , 1  , d_, r_)
+MR.accsum    = \x,d_,r_ -> x:scanl(add , nil, d_, r_)
+MR.accsumabs = \x,d_,r_ -> x:scanl(sabs, nil, d_, r_)
+MR.accsumsqr = \x,d_,r_ -> x:scanl(ssqr, nil, d_, r_)
+MR.accprod   = \x,d_,r_ -> x:scanl(mul , nil, d_, r_)
 
 MR.accumulate = MR.accsum
 
 -- right accumulation
 MR.raccmin    = \x,d_,r_ -> x:scanr(min   , nil, d_, r_)
 MR.raccmax    = \x,d_,r_ -> x:scanr(max   , nil, d_, r_)
-MR.raccsum    = \x,d_,r_ -> x:scanr(add   , 0  , d_, r_)
-MR.raccsumabs = \x,d_,r_ -> x:scanr(sabs_r, 0  , d_, r_)
-MR.raccsumsqr = \x,d_,r_ -> x:scanr(ssqr_r, 0  , d_, r_)
-MR.raccprod   = \x,d_,r_ -> x:scanr(mul   , 1  , d_, r_)
+MR.raccsum    = \x,d_,r_ -> x:scanr(add   , nil, d_, r_)
+MR.raccsumabs = \x,d_,r_ -> x:scanr(sabs_r, nil, d_, r_)
+MR.raccsumsqr = \x,d_,r_ -> x:scanr(ssqr_r, nil, d_, r_)
+MR.raccprod   = \x,d_,r_ -> x:scanr(mul   , nil, d_, r_)
 
 -- special filters ------------------------------------------------------------o
 
@@ -1105,22 +1131,22 @@ function MR.cross (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   local nr, nc = x:sizes()
   assert(nr == 3, "invalid matrix sizes")
-  local r = chksiz(r_,x,y) or is_matrix(x) and is_matrix(y) and matrix(3,nc) or cmatrix(3,nc)
+  local r = chksiz(r_,x,y) or x:same(y[1], 3, nc)
   local r0, r1, r2
   -- single cross product
   if nc == 1 then
-    r0 = x.data[1] * y.data[2] - x.data[2] * y.data[1]
-    r1 = x.data[2] * y.data[0] - x.data[0] * y.data[2]
-    r2 = x.data[0] * y.data[1] - x.data[1] * y.data[0]
-    r.data[0], r.data[1], r.data[2] = r0, r1, r2
+    r0 = geti0(x,1) * geti0(y,2) - geti0(x,2) * geti0(y,1)
+    r1 = geti0(x,2) * geti0(y,0) - geti0(x,0) * geti0(y,2)
+    r2 = geti0(x,0) * geti0(y,1) - geti0(x,1) * geti0(y,0)
+    seti0(r,0,r0) ; seti0(r,1,r1) ; seti0(r,2,r2)
   else
   -- multiple cross products
     local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
     for i=0,nc-1 do
-      r0 = x.data[i1] * y.data[i2] - x.data[i2] * y.data[i1]
-      r1 = x.data[i2] * y.data[i0] - x.data[i0] * y.data[i2]
-      r2 = x.data[i0] * y.data[i1] - x.data[i1] * y.data[i0]
-      r.data[i0], r.data[i1], r.data[i2] = r0, r1, r2
+      r0 = geti0(x,i1) * geti0(y,i2) - geti0(x,i2) * geti0(y,i1)
+      r1 = geti0(x,i2) * geti0(y,i0) - geti0(x,i0) * geti0(y,i2)
+      r2 = geti0(x,i0) * geti0(y,i1) - geti0(x,i1) * geti0(y,i0)
+      seti0(r,i0,r0) ; seti0(r,i1,r1) ; seti0(r,i2,r2)
       i0, i1, i2 = i0+1, i1+1, i2+1
     end
   end
@@ -1138,20 +1164,20 @@ function MR.mixed (x, y, z, r_)
   if nc == 1 then
     assert(nr == y:nrow() and 1 == y:ncol() and
            nr == z:nrow() and 1 == z:ncol(), "incompatible matrix sizes")
-    return conj(x.data[1] * y.data[2] - x.data[2] * y.data[1]) * z.data[0] +
-           conj(x.data[2] * y.data[0] - x.data[0] * y.data[2]) * z.data[1] +
-           conj(x.data[0] * y.data[1] - x.data[1] * y.data[0]) * z.data[2]
+    return conj(geti0(x,1) * geti0(y,2) - geti0(x,2) * geti0(y,1)) * geti0(z,0) +
+           conj(geti0(x,2) * geti0(y,0) - geti0(x,0) * geti0(y,2)) * geti0(z,1) +
+           conj(geti0(x,0) * geti0(y,1) - geti0(x,1) * geti0(y,0)) * geti0(z,2)
   end
   -- multiple mixed products
-  local r = r_ or is_matrix(x) and is_matrix(y) and matrix(nc,1) or cmatrix(nc,1)
+  local r = r_ or x:same(y[1], nc, 1)
   assert(nr == y:nrow() and nc == y:ncol() and
          nr == z:nrow() and nc == z:ncol() and
          nc == r:nrow() and 1  == r:ncol(), "incompatible matrix sizes")
   local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
   for i=0,nc-1 do
-    r.data[i] = conj(x.data[i1] * y.data[i2] - x.data[i2] * y.data[i1]) * z.data[i0] +
-                conj(x.data[i2] * y.data[i0] - x.data[i0] * y.data[i2]) * z.data[i1] +
-                conj(x.data[i0] * y.data[i1] - x.data[i1] * y.data[i0]) * z.data[i2]
+    r.data[i] = conj(geti0(x,i1) * geti0(y,i2) - geti0(x,i2) * geti0(y,i1)) * geti0(z,i0) +
+                conj(geti0(x,i2) * geti0(y,i0) - geti0(x,i0) * geti0(y,i2)) * geti0(z,i1) +
+                conj(geti0(x,i0) * geti0(y,i1) - geti0(x,i1) * geti0(y,i0)) * geti0(z,i2)
     i0, i1, i2 = i0+1, i1+1, i2+1
   end
   return r
@@ -1161,12 +1187,12 @@ function MR.outer (x, y, r_)
   -- x * y:t() without temporary
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
-  local nr, nc = x:nrow(), y:nrow()
   assert(x:ncol() == 1 and y:ncol() == 1, "incompatible matrix sizes")
-  local r = r_ or is_matrix(x) and is_matrix(y) and matrix(nr,nc) or cmatrix(nr,nc)
-  assert(nr == r:nrow() and nc == r:ncol(), "incompatible matrix sizes")
+  local nr, nc = x:nrow(), y:nrow()
+  assert(is_nil(r_) or nr == r_:nrow() and nc == r_:ncol(), "incompatible matrix sizes")
+  local r = r_ or x:same(y[1])
   for i=0,nr-1 do
-  for j=0,nc-1 do set0(r,i,j, x.data[i] * conj(y.data[j])) end end
+  for j=0,nc-1 do set0(r,i,j, geti0(x,i) * conj(geti0(y,j))) end end
   return r
 end
 
@@ -1202,7 +1228,7 @@ function MR.unit (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
-  local r = chksiz(r_,x) or matrix(x:sizes())
+  local r = chksiz(r_,x) or x:same()
   _C.mad_vec_divn (x.data, n, r.data, r:size())
   return r
 end
@@ -1211,29 +1237,27 @@ function MC.unit (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
-  local r = chksiz(r_,x) or cmatrix(x:sizes())
+  local r = chksiz(r_,x) or x:same()
   _C.mad_cvec_divn (x.data, n, r.data, r:size())
   return r
 end
 
 function MR.center (x, d_, r_) -- center vector or matrix row or col on mean
   if is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or matrix(x:sizes())
-  if is_nil(d) or d_ == 'vec' then
-    _C.mad_vec_center(x.data, r.data, x:size())
-  else
-    _C.mad_mat_center(x.data, r.data, x:nrow(), x:ncol(), d_=='col' and 2 or 1)
+  local r = chksiz(r_,x) or x:same()
+  if is_nil(d) or d_ == 'vec'
+  then _C.mad_vec_center(x.data, r.data, x:size())
+  else _C.mad_mat_center(x.data, r.data, x:nrow(), x:ncol(), d_=='col' and 2 or 1)
   end
   return r
 end
 
 function MC.center (x, d_, r_) -- center vector or matrix row or col on mean
   if is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or cmatrix(x:sizes())
-  if is_nil(d) or d_ == 'vec' then
-    _C.mad_cvec_center(x.data, r.data, x:size())
-  else
-    _C.mad_cmat_center(x.data, r.data, x:nrow(), x:ncol(), d_=='col' and 2 or 1)
+  local r = chksiz(r_,x) or x:same()
+  if is_nil(d) or d_ == 'vec'
+  then _C.mad_cvec_center(x.data, r.data, x:size())
+  else _C.mad_cmat_center(x.data, r.data, x:nrow(), x:ncol(), d_=='col' and 2 or 1)
   end
   return r
 end
@@ -1258,10 +1282,7 @@ MR.__pow = \x,y,r_ -> x:map2(y, pow, r_)
 ]]
 
 local cmp_tol = 0
-
-local function cmp_fct (a, b)
-  return abs(a - b) <= cmp_tol
-end
+local cmp_fct = \a,b -> abs(a - b) <= cmp_tol
 
 function MR.__eq (x, y, f_)
   local nr, nc  = x:sizes()
@@ -1539,7 +1560,7 @@ end
 
 function MR.emul (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
-  local r = chksiz(r_,x,y) or is_matrix(y) and matrix(x:sizes()) or cmatrix(x:sizes())
+  local r = chksiz(r_,x,y) or x:same(y[1])
   if is_matrix(y)
   then _C.mad_vec_mul  (x.data, y.data, r.data, r:size())
   else _C.mad_cvec_mulv(y.data, x.data, r.data, r:size())
@@ -1559,7 +1580,7 @@ end
 
 function MR.ediv (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
-  local r = chksiz(r_,x,y) or is_matrix(y) and matrix(x:sizes()) or cmatrix(x:sizes())
+  local r = chksiz(r_,x,y) or x:same(y[1])
   if is_matrix(y)
   then _C.mad_vec_div (x.data, y.data, r.data, r:size())
   else _C.mad_vec_divv(x.data, y.data, r.data, r:size())
@@ -1577,7 +1598,7 @@ function MC.ediv (x, y, r_)
   return r
 end
 
--- linear algebra -------------------------------------------------------------o
+-- solver, svd, eigenvalue, eigenvector ---------------------------------------o
 
 function MR.solve (a, b, rcond_)
   return b:t():div(a:t(), nil, rcond_):t()
@@ -1617,7 +1638,7 @@ function MC.eigen (x)
   return w, vl, vr, info
 end
 
--- FFT, convolution, correlation, covrariance ---------------------------------o
+-- FFT, convolution, correlation, covariance ----------------------------------o
 
 function MR.fft (x, r_)
   local nr, nc = x:sizes()
@@ -1687,7 +1708,7 @@ end
 
  -- convolution theorem
 function MR.conv (x, y, r_)
-  local r = r_ or matrix(x:sizes())
+  local r = r_ or x:same()
   local xf = x:rfft()
   if x.data == y.data
   then return xf:emul(xf      ,xf):irfft(r)
@@ -1696,7 +1717,7 @@ function MR.conv (x, y, r_)
 end
 
 function MC.conv (x, y, r_)
-  local r = r_ or cmatrix(x:sizes())
+  local r = r_ or x:same()
   local xf = x:fft()
   if x.data == y.data
   then return xf:emul(xf     ,xf):ifft(r)
@@ -1706,15 +1727,15 @@ end
 
  -- correlation theorem
 function MR.corr (x, y, r_)
-  local r = r_ or matrix(x:sizes())
+  local r = r_ or x:same()
   local xf, yf = x:rfft()
   if x.data == y.data then return xf:emul(xf:conj(  ),xf):irfft(r)
   else yf = y:rfft()       return xf:emul(yf:conj(yf),xf):irfft(r)
   end
 end
 
-function MC.corr (x, y, r_) -- correlation theorem
-  local r = r_ or cmatrix(x:sizes())
+function MC.corr (x, y, r_)
+  local r = r_ or x:same()
   local xf, yf = x:fft()
   if x.data == y.data then return xf:emul(xf:conj(  ),xf):ifft(r)
   else yf = y:fft()        return xf:emul(yf:conj(yf),xf):ifft(r)
@@ -1722,7 +1743,7 @@ function MC.corr (x, y, r_) -- correlation theorem
 end
 
 function MR.covar (x, y, r_) -- covariance of random (row) vectors
-  local xc = x:center(x:same())
+  local xc = x:center(x:same(), 'row')
   if x.data == y.data
   then return xc:corr(xc                , r_)
   else return xc:corr(y:center(y:same()), r_)
@@ -1733,28 +1754,31 @@ end
 
 MR.__len = MR.size
 
-function MR.__concat (x, y, v_, r_)
+function MR.__concat (x, y, d_, r_)
   assert(isa_matrix(x), "invalid argument #1 (matrix expected)")
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   local nrx, ncx = x:sizes()
   local nry, ncy = y:sizes()
-  if is_nil(v_) or v_ == 'col' then -- concat columns (vectical)
+  if is_nil(d_) or d_ == 'vec' or d_ == 'col' then -- concat columns (vectical)
     local nr, nc = nrx + nry, ncx
-    local r = r_ or is_matrix(x) and is_matrix(y) and matrix(nr,nc) or cmatrix(nr,nc)
-    assert(ncx == ncy and nr == r:nrow() and nc == r:ncol(), "incompatible matrix sizes")
+    assert(ncx == ncy and (is_nil(r_) or nr == r_:nrow() and nc == r:_ncol()),
+           "incompatible matrix sizes")
+    local r = r_ or x:same(y[1],nr,nc)
     local nx, ny = nrx * nc, nry * nc
     for i=0,nx-1 do seti0(r,i   , geti0(x,i)) end
     for i=0,ny-1 do seti0(r,i+nx, geti0(y,i)) end
-  elseif v_ == 'row' then           -- concat rows (horizontal)
+    if d_ == 'vec' then r:reshape(nr*nc) end
+  elseif d_ == 'row' then                          -- concat rows (horizontal)
     local nr, nc = nrx, ncx + ncy
-    local r = r_ or is_matrix(x) and is_matrix(y) and matrix(nr,nc) or cmatrix(nr,nc)
-    assert(nrx == nry and nr == r:nrow() and nc == r:ncol(), "incompatible matrix sizes")
+    assert(nrx == nry and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
+           "incompatible matrix sizes")
+    local r = r_ or x:same(y[1],nr,nc)
     for i=0,nr do
       for j=0,ncx-1 do set0(r,i,j    , get0(x,i,j)) end
       for j=0,ncy-1 do set0(r,i,j+ncx, get0(y,i,j)) end
     end
   else
-    error("invalid argument #3 (string 'row' or 'col' expected)")
+    error("invalid argument #3 (string 'vec', row' or 'col' expected)")
   end
   return r
 end
@@ -1785,11 +1809,14 @@ function MR.__totable (x, r_)
 end
 
 function linspace (start, stop_, size_)
-  assert(is_scalar(start) and abs(start) < inf, "invalid argument #1 (finite scalar expected)")
+  assert(is_scalar(start) and abs(start) < inf,
+         "invalid argument #1 (finite scalar expected)")
   if is_nil(stop_) then start, stop_ = 0, start end
-  assert(is_scalar(stop_) and abs(stop_) < inf, "invalid argument #2 (finite scalar expected)")
+  assert(is_scalar(stop_) and abs(stop_) < inf,
+         "invalid argument #2 (finite scalar expected)")
   if is_nil(size_) then size_ = 100 else size_ = math.ceil(size_) end
-  assert(is_number(size_) and size_ > 0,        "invalid argument #3 (positive number expected)")
+  assert(is_number(size_) and size_ > 0,
+         "invalid argument #3 (positive number expected)")
   local v = (is_complex(start) or is_complex(stop_)) and cvector(size_) or vector(size_)
   local step = size_ > 1 and (stop_-start)/(size_-1) or 0
   for i=0,size_-1 do seti0(v, i, start+step*i) end
@@ -1798,12 +1825,15 @@ end
 
 function logspace (start, stop_, size_)
   assert(is_number(start) and start > 0 and start < inf or
-         is_complex(start) and abs(start) < inf, "invalid argument #1 (positive finite number expected)")
+         is_complex(start) and abs(start) < inf,
+        "invalid argument #1 (positive finite number expected)")
   if is_nil(stop_) then start, stop_ = 1, start end
   assert(is_number(stop_) and stop_ > 0 and stop_ < inf or
-         is_complex(stop_) and abs(stop_) < inf, "invalid argument #2 (positive finite number expected)")
+         is_complex(stop_) and abs(stop_) < inf,
+         "invalid argument #2 (positive finite number expected)")
   if is_nil(size_) then size_ = 100 else size_ = math.ceil(size_) end
-  assert(is_number(size_) and size_ > 0,        "invalid argument #3 (positive number expected)")
+  assert(is_number(size_) and size_ > 0,
+         "invalid argument #3 (positive number expected)")
   local v = (is_complex(start) or is_complex(stop_)) and cvector(size_) or vector(size_)
   local logstart, logstop = log(start), log(stop_)
   local logstep = size_ > 1 and (logstop-logstart)/(size_-1) or 0
