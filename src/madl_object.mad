@@ -28,7 +28,7 @@ local M = {}
 
 local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
       is_metaname in MAD
-local bclr, bset, btst in MAD.operator
+local bset, btst, bclr, bnot in MAD.operator
 local is_callable, is_iterable, is_mappable in MAD.concept
 
 -- implementation -------------------------------------------------------------o
@@ -39,11 +39,13 @@ local Object
 -- metatable of objects
 local MT = {}
 
--- protected keys to object members, true functions, class and readonly flag
-local var, fct, flg = {}, {}, {}, {}
+-- object members,
+local var = {} -- key
 
--- flags (bit num)
-local flg_ro, flg_cl = 0, 1
+-- reserved flags (bits)
+local flg = {} -- key
+local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
+local flg_free = bnot(0x3)  -- free flags (2 - 32)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -53,6 +55,8 @@ local var0 = setmetatable({}, {
 })
 
 -- metatable of 'true functions' proxy
+local fct = {} -- key
+
 local MF = {
   __call      = \s,... -> rawget(s,fct)(...),
   __metatable = false,
@@ -249,24 +253,60 @@ local function get_varkey (self, class, pattern)
   return res
 end
 
+-- flags
+
+local function set_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
+  rawset(self,flg, bset(rawget(self,flg) or 0, n))
+  return self
+end
+
+local function test_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return btst(rawget(self,flg) or 0, n)
+end
+
+local function clear_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
+  rawset(self,flg, bclr(rawget(self,flg) or 0, n))
+  return self
+end
+
+local function reserve_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
+  self.__flg = bset(self.__flg, n)
+  return self
+end
+
 -- environments
+
+local env = {} -- key
 
 local function open_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  self.__prev_env = getfenv(2)
+  assert(rawget(self,env) == nil, "invalid environment (already in use)")
+  rawset(self, env, getfenv(2))
   setfenv(2, self)
   return self
 end
 
+local function used_env (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return rawget(self,env) ~= nil
+end
+
 local function close_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(self.__prev_env ~= nil, "invalid environment (open_env expected in same scope)")
-  setfenv(2, self.__prev_env)
-  self.__prev_env = nil
+  assert(rawget(self,env) ~= nil, "invalid environment (not open)")
+  setfenv(2, rawget(self,env))
+  rawset(self, env, nil)
   return self
 end
 
-local function dump_env (self)
+local function dump_env (self) -- for debug
   for k,v in pairs(self) do
     if is_rawtable(v) then
       for k,v in pairs(v) do
@@ -334,7 +374,12 @@ M.get_variable   = fproxy( get_variable   )
 M.set_variable   = fproxy( set_variable   )
 M.set_function   = fproxy( set_function   )
 M.set_metamethod = fproxy( set_metamethod )
+M.set_flag       = fproxy( set_flag       )
+M.test_flag      = fproxy( test_flag      )
+M.clear_flag     = fproxy( clear_flag     )
+M.reserve_flag   = fproxy( reserve_flag   )
 M.open_env       = fproxy( open_env       )
+M.used_env       = fproxy( used_env       )
 M.close_env      = fproxy( close_env      )
 M.strdump        = fproxy( strdump        )
 
@@ -342,12 +387,15 @@ M.strdump        = fproxy( strdump        )
 M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_varkey,
   M.set_variable, M.set_function, M.set_metamethod
 
+M.fset, M.ftst, M.fclr = M.set_flag, M.test_flag, M.clear_flag
+
 -- Object members
-M.__id   = 'Object'
-M.__par  = parent
-M.__var  = \s rawget(s,var) -- alias
-M.name   = \s s.__id        -- alias
-M.parent = \s s.__par       -- alias
+M.__id     = 'Object'
+M.__flg    = flg_free
+M.__par    = parent
+M.__var    = \s rawget(s,var) -- alias
+M.name     = \s s.__id        -- alias
+M.parent   = \s s.__par       -- alias
 
 -- help
 M.__help = require 'madh_object'
