@@ -289,13 +289,13 @@ local idx0  = \i,j,c   -> ( i   *c +  j   )
 local idx   = \i,j,c   -> ((i-1)*c + (j-1))
 
 local geti0 = \x,i     -> x.data[i]
-local seti0 = \x,i,e   => x.data[i] = e end
+local seti0 = \x,i,e   => x.data[i]=e return x end
 local geti  = \x,i     -> x.data[i-1]
-local seti  = \x,i,e   => x.data[i-1] = e end
+local seti  = \x,i,e   => x.data[i-1]=e return x end
 local get0  = \x,i,j   -> x.data[idx0(i, j, x.nc)]
-local set0  = \x,i,j,e => x.data[idx0(i, j, x.nc)] = e end
+local set0  = \x,i,j,e => x.data[idx0(i, j, x.nc)]=e return x end
 local get   = \x,i,j   -> x.data[idx (i, j, x.nc)]
-local set   = \x,i,j,e => x.data[idx (i, j, x.nc)] = e end
+local set   = \x,i,j,e => x.data[idx (i, j, x.nc)]=e return x end
 
 -- get, set -------------------------------------------------------------------o
 
@@ -315,22 +315,22 @@ MR.get   = \x,i,j -> 1 <= i and i <= x.nr and 1 <= j and j <= x.nc and get (x,i,
 
 function MR.seti0 (x, i, e)
   assert(0 <= i and i < x.nr*x.nc, "0-index out of bounds")
-  seti0(x, i, e)
+  return seti0(x, i, e)
 end
 
 function MR.seti (x, i, e)
   assert(1 <= i and i <= x.nr*x.nc, "1-index out of bounds")
-  seti(x, i, e)
+  return seti(x, i, e)
 end
 
 function MR.set0 (x, i, j, e)
   assert(0 <= i and i < x.nr and 0 <= j and j < x.nc, "0-index out of bounds")
-  set0(x, i, j, e)
+  return set0(x, i, j, e)
 end
 
 function MR.set (x, i, j, e)
   assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
-  set(x, i, j, e)
+  return set(x, i, j, e)
 end
 
 -- size, same -----------------------------------------------------------------o
@@ -487,11 +487,9 @@ function MR.fill (x, a)
   local nr, nc = x:sizes()
   if is_scalar(a) then        -- scalar
     for i=0,nr*nc-1 do seti0(x,i, a) end
-    return x
   elseif is_callable(a) then  -- generator
     for i=1,nr do
     for j=1,nc do set(x,i,j, a(get(x,i,j), i,j)) end end
-    return x
   elseif is_iterable(a) then
     if is_iterable(a[1]) then -- 2D container
       assert(#a >= nr, "container of insufficient size")
@@ -699,6 +697,19 @@ function MR.map3 (x, y, z, f, r_)
   return r
 end
 
+function MR.mapij (x, f, r_)
+  if is_string(f ) then f = opstr[f] end
+  if is_string(r_) and r_ == 'in' then r_ = x end
+  assert(is_callable(f)               , "invalid argument #2 (callable expected)")
+  assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
+  local r, k, nr, nc = r_ or x:same(), 1, x:sizes()
+  for i=1,nr do
+  for j=1,nc do
+    r[k], k = f(get(x,i,j), i,j), k+1
+  end end
+  return r
+end
+
 function MR.mapat (x, f, ij, r_)
   if is_string(f ) then f = opstr[f] end
   if is_number(ij) then ij = {ij} end
@@ -706,7 +717,7 @@ function MR.mapat (x, f, ij, r_)
   assert(is_callable(f )              , "invalid argument #2 (callable expected)")
   assert(is_iterable(ij)              , "invalid argument #3 (iterable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #4 (iterable expected)")
-  local r = r_ or x:same()
+  local r = r_ or x:copy()
   for _,i in ipairs(ij) do r[i] = f(x:geti(i)) end
   return r
 end
@@ -986,13 +997,29 @@ local all  = \r,x -> land(r, fun(x))
 local any  = \r,x -> lor (r, fun(x))
 
 function MR.all (x, p, d_, r_)
-  pushf(p) ; local res = x:foldl(all, true, d_, r_) ; popf()
-  return res
+  assert(is_callable(p), "invalid argument #2 (callable expected)")
+  if is_nil(d_) or d_ == 'vec' then -- process as vector with shortcut
+    for i=0,x:size()-1 do
+      if p(geti0(x,i)) ~= true then return false end
+    end
+    return true
+  else
+    pushf(p) ; local r = x:foldl(all, true, d_, r_) ; popf()
+    return r
+  end
 end
 
 function MR.any (x, p, d_, r_)
-  pushf(p) ; local res = x:foldl(any, false, d_, r_) ; popf()
-  return res
+  assert(is_callable(p), "invalid argument #2 (callable expected)")
+  if is_nil(d_) or d_ == 'vec' then -- process as vector with shortcut
+    for i=0,x:size()-1 do
+      if p(geti0(x,i)) == true then return true end
+    end
+    return false
+  else
+    pushf(p) ; local r = x:foldl(any, false, d_, r_) ; popf()
+    return r
+  end
 end
 
 -- special scans --------------------------------------------------------------o
@@ -1023,8 +1050,9 @@ MR.raccprod   = \x,d_,r_ -> x:scanr(mul   , nil, d_, r_)
 local notf = \x -> not fun(x)
 
 function MR.filter_out (x, p, r_)
-  pushf(p) ; local res = x:filter(notf, r_) ; popf()
-  return res
+  assert(is_callable(p), "invalid argument #2 (callable expected)")
+  pushf(p) ; local r = x:filter(notf, r_) ; popf()
+  return r
 end
 
 -- conjugate, transpose -------------------------------------------------------o
