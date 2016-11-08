@@ -545,7 +545,8 @@ LAPACK is the default method for computing the entire set of singluar values
 and singular vectors. For generalized SVD the routines dgesdd and zgesdd are used.
 
 LAPACK is the default method for computing the entire set of eigenvalues and
-eigenvectors. For generalized eigenvalues the routines dggev and zggev are used.
+eigenvectors. For simple eigenvalues the routines dgeev and zgeev are used. For
+generalized eigenvalues the routines dggev and zggev are used.
 */
 
 // -----
@@ -581,11 +582,11 @@ void zgesdd_ (str_t jobz, const int *m, const int *n, cnum_t A[], const int *lda
 // -----
 // Eigen values/vectors A[n x n]
 // -----
-void dggev_ (str_t jobvl, str_t jobvr, const int *n, num_t A[], const int *lda,
+void dgeev_ (str_t jobvl, str_t jobvr, const int *n, num_t A[], const int *lda,
              num_t WR[], num_t WI[],
              num_t VL[], const int *ldvl, num_t VR[], const int *ldvr,
              num_t work[], int *lwork, int *info);
-void zggev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
+void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
              cnum_t W[], cnum_t VL[], const int *ldvl, cnum_t VR[], const int *ldvr,
              cnum_t work[], int *lwork, num_t rwork[], int *info);
 
@@ -861,7 +862,7 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], ssz_t m, ssz_
 
 // Eigen values and vectors
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
-
+#include <stdio.h>
 int
 mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
 {
@@ -875,9 +876,9 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
   mad_alloc_tmp(num_t, wi, n);
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
-  dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
+  dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
   mad_alloc_tmp(num_t, wk, lwork=sz);
-  dggev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
+  dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
   mad_vec_cvec(wi, wr, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_free_tmp(wi); mad_free_tmp(wr);
@@ -902,9 +903,9 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
   mad_alloc_tmp(num_t, rwk, 2*n);
   mad_alloc_tmp(cnum_t, ra, n*n);
   mad_cmat_trans(x, ra, n, n);
-  zggev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn, &sz, &lwork, rwk, &info); // query
+  zgeev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn, &sz, &lwork, rwk, &info); // query
   mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
-  zggev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn,  wk, &lwork, rwk, &info); // compute
+  zgeev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
   mad_cmat_trans(vl, vl, n, n);
   mad_cmat_trans(vr, vr, n, n);
