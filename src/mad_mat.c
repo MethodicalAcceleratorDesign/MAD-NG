@@ -862,7 +862,7 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], ssz_t m, ssz_
 
 // Eigen values and vectors
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
-#include <stdio.h>
+
 int
 mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
 {
