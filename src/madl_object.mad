@@ -40,10 +40,10 @@ local Object
 local MT = {}
 
 -- object members,
-local var = {} -- key
+local _var = {} -- key
 
 -- reserved flags (bits)
-local flg = {} -- key
+local _flg = {} -- key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
 local flg_free = bnot(0x3)  -- free flags (2 - 32)
 
@@ -55,10 +55,10 @@ local var0 = setmetatable({}, {
 })
 
 -- metatable of 'true functions' proxy
-local fct = {} -- key
+local _fct = {} -- key
 
 local MF = {
-  __call      = \s,... -> rawget(s,fct)(...),
+  __call      = \s,... -> rawget(s,_fct)(...),
   __metatable = false,
 }
 
@@ -74,23 +74,23 @@ local function parent (a)
 end
 
 local function fproxy (f)
-  return setmetatable({[fct]=f}, MF)
+  return setmetatable({[_fct]=f}, MF)
 end
 
 local function fclass (a)
-  return btst(rawget(a,flg) or 0, flg_cl)
+  return btst(rawget(a,_flg) or 0, flg_cl)
 end
 
 local function freadonly (a)
-  return btst(rawget(a,flg) or 0, flg_ro)
+  return btst(rawget(a,_flg) or 0, flg_ro)
 end
 
 local function is_fproxy (a)
-  return is_table(a) and rawget(a,fct) ~= nil
+  return is_table(a) and rawget(a,_fct) ~= nil
 end
 
 local function is_object (a) -- exported
-  return is_table(a) and rawget(a,var) ~= nil
+  return is_table(a) and rawget(a,_var) ~= nil
 end
 
 local function is_class (a) -- exported
@@ -102,7 +102,7 @@ local function is_readonly (a) -- exported
 end
 
 local function set_class (a) -- not exported
-  rawset(a,flg, bset(rawget(a,flg) or 0, flg_cl))
+  rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
   return a
 end
 
@@ -112,21 +112,21 @@ end
 function MT:__call (a, b) -- object constructor (define the object-model)
   if is_string(a) then                                  -- named object
     if is_nil(b) then
-      local obj = {__id=a, [var]=var0, __index=rawget(self,var)} -- proxy
+      local obj = {__id=a, [_var]=var0, __index=rawget(self,_var)} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {[var]=b, __index=rawget(self,var)}   -- proxy
+      local obj = {[_var]=b, __index=rawget(self,_var)} -- proxy
       b.__id=a  setmetatable(b, obj)  set_class(self)   -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
-    if rawget(self,var) == var0 then                    -- finalize named object
+    if rawget(self,_var) == var0 then                   -- finalize named object
       a.__id, self.__id = self.__id
-      rawset(self,var, setmetatable(a, self));          -- set fast inheritance
+      rawset(self,_var, setmetatable(a, self));         -- set fast inheritance
       set_class(parent(self))
       return init(self)
     else                                                -- unnamed object
-      local obj = {[var]=a, __index=rawget(self,var)}   -- proxy
+      local obj = {[_var]=a, __index=rawget(self,_var)} -- proxy
       setmetatable(a, obj)  set_class(self)             -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
@@ -137,7 +137,7 @@ function MT:__call (a, b) -- object constructor (define the object-model)
 end
 
 function MT:__index (k)
-  local v = rawget(self,var)[k]                      -- inheritance of variables
+  local v = rawget(self,_var)[k]                     -- inheritance of variables
   if is_function(v)
   then return v(self)                            -- function with value semantic
   else return v end
@@ -145,19 +145,19 @@ end
 
 function MT:__newindex (k, v)
   assert(not freadonly(self), "forbidden write access to readonly object")
-  rawget(self,var)[k] = v
+  rawget(self,_var)[k] = v
 end
 
 function MT:__len ()
-  return #rawget(self,var)
+  return #rawget(self,_var)
 end
 
 function MT:__pairs ()
- return pairs(rawget(self,var))
+ return pairs(rawget(self,_var))
 end
 
 function MT:__ipairs()
- return ipairs(rawget(self,var))
+ return ipairs(rawget(self,_var))
 end
 
 -- methods
@@ -167,8 +167,8 @@ local function set_readonly (a, b) -- exported
   assert(is_nil(b) or is_boolean(b),
                       "invalid argument #2 (boolean or nil expected)")
   if b ~= false
-  then rawset(a,flg, bset(rawget(a,flg) or 0, flg_ro))
-  else rawset(a,flg, bclr(rawget(a,flg) or 0, flg_ro)) end
+  then rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_ro))
+  else rawset(a,_flg, bclr(rawget(a,_flg) or 0, flg_ro)) end
   return a
 end
 
@@ -180,16 +180,16 @@ local function is_instanceOf (a, b) -- exported
 end
 
 local function get_raw (self, k)
-  return rawget(rawget(self,var),k)    -- no inheritance nor function evaluation
+  return rawget(rawget(self,_var),k)    -- no inheritance nor function evaluation
 end
 
 local function get_variable (self, lst, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
-  local var, res = rawget(self,var), {}
+  local _var, res = rawget(self,_var), {}
   if eval ~= false
   then for _,k in ipairs(lst) do res[k] = self[k] end
-  else for _,k in ipairs(lst) do res[k] = var [k] end
+  else for _,k in ipairs(lst) do res[k] = _var [k] end
   end
   return res
 end
@@ -197,10 +197,10 @@ end
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
-  local var = rawget(self,var)
+  local _var = rawget(self,_var)
   for k,v in pairs(tbl) do
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
-    rawset(var, k, v)
+    assert(is_nil(rawget(_var,k)) or override~=false, "cannot override variable")
+    rawset(_var, k, v)
   end
   return self
 end
@@ -208,11 +208,11 @@ end
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
-  local var = rawget(self,var)
+  local _var = rawget(self,_var)
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
-    rawset(var, k, is_function(f) and fproxy(f) or f)
+    assert(is_nil(rawget(_var,k)) or override~=false, "cannot override function")
+    rawset(_var, k, is_function(f) and fproxy(f) or f)
   end
   return self
 end
@@ -240,7 +240,7 @@ local function get_varkey (self, class, pattern)
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local key = {}
   while self and self ~= class do
-    for k in pairs(rawget(self,var)) do key[k] = k end
+    for k in pairs(rawget(self,_var)) do key[k] = k end
     self = parent(self)
   end
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
@@ -258,19 +258,19 @@ end
 local function set_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
-  rawset(self,flg, bset(rawget(self,flg) or 0, n))
+  rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
 
 local function test_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return btst(rawget(self,flg) or 0, n)
+  return btst(rawget(self,_flg) or 0, n)
 end
 
 local function clear_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
-  rawset(self,flg, bclr(rawget(self,flg) or 0, n))
+  rawset(self,_flg, bclr(rawget(self,_flg) or 0, n))
   return self
 end
 
@@ -283,26 +283,26 @@ end
 
 -- environments
 
-local env = {} -- key
+local _env = {} -- key
 
 local function open_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,env) == nil, "invalid environment (already in use)")
-  rawset(self, env, getfenv(2))
+  assert(rawget(self,_env) == nil, "invalid environment (already in use)")
+  rawset(self, _env, getfenv(2))
   setfenv(2, self)
   return self
 end
 
 local function used_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return rawget(self,env) ~= nil
+  return rawget(self,_env) ~= nil
 end
 
 local function close_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,env) ~= nil, "invalid environment (not open)")
-  setfenv(2, rawget(self,env))
-  rawset(self, env, nil)
+  assert(rawget(self,_env) ~= nil, "invalid environment (not open)")
+  setfenv(2, rawget(self,_env))
+  rawset(self, _env, nil)
   return self
 end
 
@@ -331,7 +331,7 @@ local function strdump (self, class, pattern)
   assert(is_string(pattern), "invalid argument #3 (string expected)")
   local cnt, res, spc, str = {}, {}, ""
   while self and self ~= class do
-    local vars = rawget(self,var)
+    local vars = rawget(self,_var)
     -- header
     str = rawget(vars, '__id') and (" '"..vars.__id.."'") or ""
     res[#res+1] = spc.."+ ["..tostring(vars).."]"..str
@@ -341,7 +341,7 @@ local function strdump (self, class, pattern)
       if is_string(k) and k ~= '__id' and string.find(k, pattern) then
         str = spc .. tostring(k)
             if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
-        elseif is_fproxy(v) then str = str..": ["..tostring(rawget(v,fct)).."]"
+        elseif is_fproxy(v) then str = str..": ["..tostring(rawget(v,_fct)).."]"
         else                     str = str..":  "..tostring(v) end
         if cnt[k]
         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
@@ -358,7 +358,7 @@ local function strdump (self, class, pattern)
 end
 
 -- root Object variables = module
-Object = setmetatable({[var]=M, [flg]=bset(0,flg_ro)},MT)
+Object = setmetatable({[_var]=M, [_flg]=bset(0,flg_ro)},MT)
 
  -- parent link
 setmetatable(M, Object)
@@ -393,7 +393,7 @@ M.fset, M.ftst, M.fclr = M.set_flag, M.test_flag, M.clear_flag
 M.__id     = 'Object'
 M.__flg    = flg_free
 M.__par    = parent
-M.__var    = \s rawget(s,var) -- alias
+M.__var    = \s rawget(s,_var) -- alias
 M.name     = \s s.__id        -- alias
 M.parent   = \s s.__par       -- alias
 
