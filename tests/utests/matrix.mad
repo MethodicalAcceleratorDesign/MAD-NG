@@ -408,6 +408,7 @@ function TestMatrixErr:testSet0()
   assertErrorMsgContains( msg[2], mth, 'set0', errMat, nil  , 1    , 1 )
   assertErrorMsgContains( msg[2], mth, 'set0', errMat, 1    , nil  , 1 )
 end
+
 function TestMatrixSet:testSet0()
   local nr, nc
   for _,m in ipairs(self.empty) do
@@ -458,7 +459,6 @@ function TestMatrixErr:testSame()
 end
 
 function TestMatrixSet:testSame()
-  local nr, nc
   s = m:same( nan)  assertEquals( s:get(1,1), 0 )
   s = m:same( inf)  assertEquals( s:get(1,1), 0 )
   s = m:same( 0  )  assertEquals( s:get(1,1), 0 )
@@ -466,18 +466,14 @@ function TestMatrixSet:testSame()
   assertEquals( s:get(1,1), complex(0,0) )
 
   for _,m in ipairs(self.mat) do
-    nr, nc = m:sizes()
     -- no input
-    s =  m:same( )   assertEquals( {s:sizes()}, {nr, nc} )
-    for i=1,nr do for j=1,nc do assertEquals( s:get(i,j), 0 ) end end
+    s = m:same()    assertEquals( s, matrix(m:sizes()) )
     -- two arg: nr, nc
-    s =  m:same(2,2) assertEquals( {s:sizes()}, {2,2} )
-    s =  m:same(6,6) assertEquals( {s:sizes()}, {6,6} )
-    for i = 1,6  do for j = 1,6  do assertEquals( s:get(i,j), 0 ) end end
+    s = m:same(2,2) assertEquals( s, matrix(2) )
+    s = m:same(6,6) assertEquals( s, matrix(6) )
     -- three arg: e_, nr, nc
-    s = m:same(complex(1,1), 2, 2)
-    assertTrue ( is_cmatrix(s) ) assertEquals( {s:sizes()}, {2,2} )
-    for i = 1,2  do for j = 1,2  do assertEquals( s:get(i,j), complex(0,0) ) end end
+    s = m:same(complex(1,1), 2, 2) assertEquals( s,  matrix(2) ) assertFalse( is_matrix(s) )
+    s = m:same('', 2, 2)           assertEquals( s, cmatrix(2) )
   end
 end
 
@@ -585,12 +581,9 @@ function TestMatrixGet:testGetdiag()
   assertTrue( is_matrix (cm:getdiag( m)) )
   for _,m in ipairs(s.mat) do
     nr, nc = m:sizes()
-    n = min(nr,nc)
-    diag = {}
-    for i = 1,n do  diag[i] = (1+(i-1)*nc+i-1) end
-    assertEquals( m:getdiag()            ,  vector(diag) )
-    assertEquals( m:getdiag({})          ,  diag         )
-    assertEquals( m:getdiag(cmatrix(n,1)), cvector(diag) )
+    diag = {} for i = 1,min(nr,nc) do  diag[i] = (1+(i-1)*nc+i-1) end
+    assertEquals( m:getdiag()  , vector(diag) )
+    assertEquals( m:getdiag({}), diag         )
   end
 end
 
@@ -606,9 +599,9 @@ end
 function TestMatrixSet:testSetdiag()
   local m, n, diag, nr, nc = matrix(2)
     for _,m in ipairs(self.mat) do
-    nr, nc = m:sizes()
-    n  = min(nr, nc)
     diag, ref = {}, {}
+    nr, nc = m:sizes()
+    n = min(nr, nc)
     for i = 1,n do  diag[i] = (1+(i-1)*nc+i-1) end
     for i = 1,n do if i<=3 then ref[i] = i
                    else         ref[i] = diag[i]  end end
@@ -759,7 +752,20 @@ function TestMatrixErr:testRandom()
   assertErrorMsgContains( msg[1], mth, 'same', errMat, 1, nan  )
   assertErrorMsgContains( msg[2], mth, 'same', errMat, 1, {}   )
 end
-function TestMatrixInPlace:testRandom() end
+
+function TestMatrixInPlace:testRandom()
+  local oldVal, val = {}, {}
+  for _,m in ipairs(self.mat) do
+    m:random()
+    for i = 1,m:size() do
+      val[i] = m:geti(i)
+      assertTrue ( val[i] <  1    )
+      assertTrue ( val[i] >= 0    )
+      assertFalse( val[i] == oldVal[i] )
+      oldVal[i] =  val[i]
+    end
+  end
+end
 
 function TestMatrixErr:testFill()
   local msg = {
@@ -788,18 +794,17 @@ function TestMatrixInPlace:testFill()
     m:fill(t)                 for i=1,m:size() do assertEquals( m:geti(i), i   ) end
     m:fill(vector(m :size())) for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
   end
---check of types change
-  assertTrue( is_matrix ( matrix(5,5):fill(complex(1,1))) )
-  m, t =  matrix(5), {}
-  for i=1,5 do t[i] = {} for j=1,5 do t[i][j]=(i-1)*5+j end end
-  m :fill(t)             for i=1,m :size() do assertEquals( m :geti(i), i ) end
+  local m, t = matrix(5), {}
+  for i=1,5 do t[i] = {}      for j=1,5 do t[i][j]=(i-1)*5+j end end
+  m :fill(t)                  for i=1,m :size() do assertEquals( m :geti(i), i ) end
+  assertTrue( is_matrix ( matrix(5,5):fill(complex(1,1))) )  --check of types change
 end
 
 function TestMatrixErr:testCopy()
   local msg = {
     "invalid argument #1 (matrix expected",
   }
-  assertErrorMsgContains( msg[1], mth,'copy', errMat,  1         )
+  assertErrorMsgContains( msg[1], mth,'copy', errMat,  1 )
 end
 
 function TestMatrix:testCopy() --think about puting in one of test-suits
@@ -807,10 +812,6 @@ function TestMatrix:testCopy() --think about puting in one of test-suits
     mcopy = s.empty[i]
     mcopy:copy(m)
     for i=1,m:size() do assertEquals( m:geti(i), mcopy:geti(i) ) end
-
-    mcopy = matrix(1)
-    mcopy:copy(m)
-    for i=1,mcopy:size() do assertEquals( m:geti(i), mcopy:geti(i) ) end
   end
 end
 
@@ -878,6 +879,15 @@ function TestMatrixInPlace:testReshape() end
 
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
+function TestMatrixFun:setUp()
+  self.mat   = {}
+  for nr=1,5 do
+    for nc=1,5 do
+      self.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
+    end
+  end
+end
+
 function TestMatrixErr:testForeach()
   local msg = {
     "invalid argument #2 (callable expected)",
@@ -890,7 +900,19 @@ function TestMatrixErr:testForeach()
   assertErrorMsgContains( msg[1], mth, 'foreach', errMat, { }       )
 end
 
-function TestMatrixFun:testForeach() end
+function TestMatrixFun:testForeach() -- for test need of filled table
+  local nr, nc, f, t
+  f = \x,i,j => t[i][j]=x  end
+
+  for _,m in ipairs(self.mat) do
+    nr, nc = m:sizes()
+    t  = table.new(nr, nc)
+    for i=0,nr-1 do local c = t[i+1] or table.new(nc,0); t[i+1] = c end
+    m:foreach(f)
+
+    for i=1,nr do for j=1,nc do assertEquals( t[i][j], (i-1)*nc+j ) end end
+  end
+end
 
 function TestMatrixErr:testMap()
   local msg = {
@@ -1589,7 +1611,7 @@ function TestMatrixErr:testTotable()
   assertErrorMsgContains( msg[2], totable, errMat, {{},5} )
 end
 
-function TestMatrixConv:testTotable()
+function TestMatrixConv:testTotable() -- to be done with foldl
   local m, tref, nr, nc
   assertTrue( is_table(totable( matrix(2))) )
 
