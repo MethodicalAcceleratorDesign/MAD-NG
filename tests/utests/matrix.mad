@@ -43,16 +43,17 @@ local values = {
           2^63, 2^64, huge },
 }
 
-local s = {} -- name change
+local errMat = matrix(2)
 
-s.mat   = {}
-s.size  = {}
-s.empty = {}
+local g = {}
+g.mat   = {}
+g.size  = {}
+g.empty = {}
 for nr=1,5 do
   for nc=1,5 do
-    s.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
-    s.empty[(nr-1)*5+nc] = matrix(nr,nc)
-    s.size [(nr-1)*5+nc] = {nr,nc}
+    g.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
+    g.empty[(nr-1)*5+nc] = matrix(nr,nc)
+    g.size [(nr-1)*5+nc] = {nr,nc}
   end
 end
 
@@ -73,14 +74,10 @@ TestMatrixSScans = {}
 
 TestMatrixSympl  = {}
 TestMatrixLinAlg = {}
-TestMatrixOp     = {}
+TestMatrixOps    = {}
 TestMatrixLapack = {}
 TestMatrixFFT    = {}
-
-
-function TestMatrixErr:setUp()
-  self.m  = matrix(2)
-end
+TestMatrixConv   = {}
 
 function TestMatrixErr:testCtor()
     local msg = {
@@ -104,16 +101,18 @@ function TestMatrixErr:testCtor()
 end
 
 function TestMatrix:testCtor()
+  local nr, nc
   assertTrue( is_matrix( vector(2^30)) )
   assertTrue( is_matrix( matrix(2^15)) )
-  for i,m in ipairs(s.mat) do
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
     assertTrue  ( is_matrix(m) )
-    if m.nc==1 then
+    if nc==1 then
       assertTrue  ( is_vector(m) )
-      assertEquals( m.nc, 1 )
+      assertEquals( nc, 1 )
     else
-    assertEquals( m.nr, s.size[i][1] )
-    assertEquals( m.nc, s.size[i][2] )
+    assertEquals( nr, g.size[i][1] )
+    assertEquals( nc, g.size[i][2] )
     end
   end
 end
@@ -142,7 +141,7 @@ function TestMatrix:testCtorFromtable() --TODO
 end
 
 function TestMatrix:testCdataType()
-  local m, v, m1 = matrix(2), vector(2), matrix(1)
+  local m, v = matrix(2), vector(2)
   assertTrue ( is_matrix ( m ) )
   assertTrue ( is_matrix ( v ) )
   assertFalse( is_vector ( m ) )
@@ -277,57 +276,6 @@ function TestMatrix:testLogspace()
   end
 end
 
-
-
--- conversion -----------------------------------------------------------------o
-
-function TestMatrix:testTosting()
-  local tostring in MAD
-  local m, c, r = matrix(2)
-  assertTrue( is_string(tostring(m      )) )
-  assertTrue( is_string(tostring(m, ''  )) )
-  assertTrue( is_string(tostring(m, "\n")) )
-
-  for i,m in ipairs(s.mat) do
-    c, r = {}, {}
-    for i=1,m.nr do for j=1,m.nc do c[j]=tostring((i-1)*m.nc+j) end r[i]=table.concat(c, ' ')  end
-    assertEquals( tostring(m      ), table.concat(r, '\n') )
-    for i=1,m.nr do for j=1,m.nc do c[j]=tostring((i-1)*m.nc+j) end r[i]=table.concat(c)       end
-    assertEquals( tostring(m, ''  ), table.concat(r, '\n') )
-    for i=1,m.nr do for j=1,m.nc do c[j]=tostring((i-1)*m.nc+j) end r[i]=table.concat(c, "\n") end
-    assertEquals( tostring(m, '\n'), table.concat(r, '\n') )
-  end
-end
-
-function TestMatrixErr:testTotable()
-  local msg = {
-    "invalid argument #2 (table expected)"          ,
-    "invalid argument #2 (table of tables expected)",
-  }
-  assertErrorMsgContains( msg[1], totable, self.m, ''     )
-  assertErrorMsgContains( msg[1], totable, self.m, 1      )
-  assertErrorMsgContains( msg[1], totable, self.m, true   )
-  assertErrorMsgContains( msg[1], totable, self.m, 1..2   )
-  assertErrorMsgContains( msg[1], totable, self.m, self.m )
-  assertErrorMsgContains( msg[2], totable, self.m, {{},5} )
-end
-
-function TestMatrix:testTotable()
-  local m, tref
-  assertTrue( is_table(totable( matrix(2))) )
-
-  for i,m in ipairs(s.mat) do
-    tref = {}
-    if  m.nc ~=1 then
-      for i=1,m.nr do tref[i]={} for j=1,m.nc do  tref[i][j]=(i-1)*m.nc+j end end
-    else
-      for i=1,m.nr do tref[i]=(i-1)*m.nc+1 end
-    end
-    assertEquals( totable( m)        , tref )
-    assertEquals( matrix(totable(m )), m    )
-  end
-end
-
 -- get, set -------------------------------------------------------------------o
 
 function TestMatrixSet:setUp()
@@ -341,16 +289,18 @@ function TestMatrixSet:setUp()
   end
 end
 
+local ref = \i,j,nc ( (i-1)*nc+j )
+
 function TestMatrixErr:testGeti0()
   local msg = {
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'geti0', self.m, nil )
+  assertErrorMsgContains( msg[1], mth, 'geti0', errMat, nil )
 end
 
 function TestMatrixGet:testGeti0()
-  for _,m in ipairs(s.mat) do
-    for i=1,m.nr*m.nc do assertEquals( m:geti0(i-1), i ) end
+  for _,m in ipairs(g.mat) do
+    for i=1,m:size() do assertEquals( m:geti0(i-1), i ) end
   end
 end
 
@@ -358,12 +308,12 @@ function TestMatrixErr:testGeti()
 local msg = {
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'geti', self.m, nil )
+  assertErrorMsgContains( msg[1], mth, 'geti', errMat, nil )
 end
 
 function TestMatrixGet:testGeti()
-  for _,m in ipairs(s.mat) do
-    for i=1,m.nr*m.nc do assertEquals( m:geti(i), i ) end
+  for _,m in ipairs(g.mat) do
+    for i=1,m:size() do assertEquals( m:geti(i), i ) end
   end
 end
 
@@ -371,15 +321,17 @@ function TestMatrixErr:testGet0()
   local msg = {
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'get0', self.m, 0  , nil )
-  assertErrorMsgContains( msg[1], mth, 'get0', self.m, nil, 0   )
+  assertErrorMsgContains( msg[1], mth, 'get0', errMat, 0  , nil )
+  assertErrorMsgContains( msg[1], mth, 'get0', errMat, nil, 0   )
 end
 
 function TestMatrixGet:testGet0()
-  for _,m in ipairs(s.mat) do
-    for i=1,m.nr do
-    for j=1,m.nc do
-      assertEquals( m:get0(i-1,j-1), (i-1)*m.nc+j )
+  local nr, nc
+  for _,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    for i=1,nr do
+    for j=1,nc do
+      assertEquals( m:get0(i-1,j-1), ref(i,j,nc) )
     end end
   end
 end
@@ -388,15 +340,17 @@ function TestMatrixErr:testGet()
   local msg = {
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'get0', self.m, 1  , nil )
-  assertErrorMsgContains( msg[1], mth, 'get0', self.m, nil, 1   )
+  assertErrorMsgContains( msg[1], mth, 'get0', errMat, 1  , nil )
+  assertErrorMsgContains( msg[1], mth, 'get0', errMat, nil, 1   )
 end
 
 function TestMatrixGet:testGet()
-  for _,m in ipairs(s.mat) do
-    for i=1,m.nr do
-    for j=1,m.nc do
-      assertEquals( m:get(i,j), (i-1)*m.nc+j )
+  local nr, nc
+  for _,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    for i=1,nr do
+    for j=1,nc do
+      assertEquals( m:get(i,j), ref(i,j,nc) )
     end end
   end
 end
@@ -406,15 +360,15 @@ function TestMatrixErr:testSeti0()
     "0-index out of bounds"             ,
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'seti0', self.m, nan  , 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti0', self.m,-1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti0', self.m,-eps  , 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti0', self.m, 4    , 1 )
-  assertErrorMsgContains( msg[2], mth, 'seti0', self.m, nil  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti0', errMat, nan  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti0', errMat,-1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti0', errMat,-eps  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti0', errMat, 4    , 1 )
+  assertErrorMsgContains( msg[2], mth, 'seti0', errMat, nil  , 1 )
 end
 function TestMatrixSet:testSeti0()
   for _,m in ipairs(self.empty) do
-    for i=1,m.nr*m.nc do
+    for i=1,m:size() do
       m:seti0((i-1), i)
       assertEquals( m:geti0(i-1), i )
     end
@@ -426,16 +380,16 @@ function TestMatrixErr:testSeti()
     "1-index out of bounds"             ,
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'seti', self.m, nan  , 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti', self.m, 0    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti', self.m, 1-eps, 1 )
-  assertErrorMsgContains( msg[1], mth, 'seti', self.m, 5    , 1 )
-  assertErrorMsgContains( msg[2], mth, 'seti', self.m, nil  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti', errMat, nan  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti', errMat, 0    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti', errMat, 1-eps, 1 )
+  assertErrorMsgContains( msg[1], mth, 'seti', errMat, 5    , 1 )
+  assertErrorMsgContains( msg[2], mth, 'seti', errMat, nil  , 1 )
 end
 
 function TestMatrixSet:testSeti()
   for _,m in ipairs(self.empty) do
-    for i=1,m.nr*m.nc do
+    for i=1,m:size() do
       m:seti((i), i)
       assertEquals( m:geti(i), i )
     end
@@ -447,21 +401,24 @@ function TestMatrixErr:testSet0()
     "0-index out of bounds"             ,
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m, nan  , 1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m,-1    , 0    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m,-1+eps, 0    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m, 0    ,-1+eps, 1 )
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m, 2    , 1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set0', self.m, 1    , 2    , 1 )
-  assertErrorMsgContains( msg[2], mth, 'set0', self.m, nil  , 1    , 1 )
-  assertErrorMsgContains( msg[2], mth, 'set0', self.m, 1    , nil  , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat, nan  , 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat,-1    , 0    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat,-1+eps, 0    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat, 0    ,-1+eps, 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat, 2    , 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set0', errMat, 1    , 2    , 1 )
+  assertErrorMsgContains( msg[2], mth, 'set0', errMat, nil  , 1    , 1 )
+  assertErrorMsgContains( msg[2], mth, 'set0', errMat, 1    , nil  , 1 )
 end
+
 function TestMatrixSet:testSet0()
+  local nr, nc
   for _,m in ipairs(self.empty) do
-    for i=1,m.nr do
-    for j=1,m.nc do
-      m:set0(i-1,j-1, (i-1)*m.nc+j )
-      assertEquals( m:get0(i-1,j-1), (i-1)*m.nc+j )
+    nr, nc = m:sizes()
+    for i=1,nr do
+    for j=1,nc do
+      m:set0(i-1,j-1, ref(i,j,nc) )
+      assertEquals( m:get0(i-1,j-1), ref(i,j,nc) )
     end end
   end
 end
@@ -471,21 +428,22 @@ function TestMatrixErr:testSet()
     "1-index out of bounds"             ,
     "attempt to compare nil with number",
     }
-  assertErrorMsgContains( msg[1], mth, 'set', self.m, nan  , 1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set', self.m, 0    , 1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set', self.m, 1    , 0    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set', self.m, 1-eps, 1    , 1 )
-  assertErrorMsgContains( msg[1], mth, 'set', self.m, 1    , 1-eps, 1 )
-  assertErrorMsgContains( msg[2], mth, 'set', self.m, nil  , 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set', errMat, nan  , 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set', errMat, 0    , 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set', errMat, 1    , 0    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set', errMat, 1-eps, 1    , 1 )
+  assertErrorMsgContains( msg[1], mth, 'set', errMat, 1    , 1-eps, 1 )
+  assertErrorMsgContains( msg[2], mth, 'set', errMat, nil  , 1    , 1 )
 end
 
 function TestMatrixSet:testSet()
+  local nr, nc
   for _,m in ipairs(self.empty) do
-    for i=1,m.nr do
-    for j=1,m.nc do
-      m:set(i, j, (i-1)*m.nc+j )
-      m:set(i, j, (i-1)*m.nc+j )
-      assertEquals( m:get(i,j), (i-1)*m.nc+j )
+    nr, nc = m:sizes()
+    for i=1,nr do
+    for j=1,nc do
+      m:set(i, j, ref(i,j,nc) )
+      assertEquals( m:get(i,j), ref(i,j,nc) )
     end end
   end
 end
@@ -493,33 +451,33 @@ end
 function TestMatrixErr:testSame()
   local msg, s = {
     "invalid argument #1 or #2 (nrow[,ncol] >=1 or table [of tables] expected)",
-    "invalid argument #1 (non-empty table expected)",
+    "invalid argument #1 (non-empty table expected)"                           ,
+    "invalid argument #2 (nil or scalar expected)"                             ,
   }
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, ''   )
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, nan  )
-  assertErrorMsgContains( msg[2], mth, 'same', self.m, 1, {}   )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1   , ''   )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1   , 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1   , nan  )
+  assertErrorMsgContains( msg[2], mth, 'same', errMat, 1   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'same', errMat, ''  , 2, 2 )
+  assertErrorMsgContains( msg[3], mth, 'same', errMat, 1..2, 2, 2 )
 end
 
 function TestMatrixSet:testSame()
-  s = m:same( nan)  assertEquals( s:get(1,1), 0 )
-  s = m:same( inf)  assertEquals( s:get(1,1), 0 )
-  s = m:same( 0  )  assertEquals( s:get(1,1), 0 )
-  s = m:same( complex(1,1) )
-  assertEquals( s:get(1,1), complex(0,0) )
+  local s
+  s = m:same( nan)          assertEquals( s:get(1,1), 0 )
+  s = m:same( inf)          assertEquals( s:get(1,1), 0 )
+  s = m:same( 0  )          assertEquals( s:get(1,1), 0 )
 
-  for _,m in ipairs(self.mat) do
+  for _,m in ipairs(g.mat) do
     -- no input
-    s =  m:same( )   assertEquals( {s.nr,s.nc}, {m.nr, m.nc} )
-    for i=1,m.nr do for j=1,m.nc do assertEquals( s:get(i,j), 0 ) end end
+    s = m:same()    assertEquals( s, matrix(m:sizes()) )
     -- two arg: nr, nc
-    s =  m:same(2,2) assertEquals( {s.nr,s.nc}, {2,2} )
-    s =  m:same(6,6) assertEquals( {s.nr,s.nc}, {6,6} )
-    for i = 1,6  do for j = 1,6  do assertEquals( s:get(i,j), 0 ) end end
+    s = m:same(2  ,2  ) assertEquals( s, matrix(2) )
+    s = m:same(6  ,6  ) assertEquals( s, matrix(6) )
+    s = m:same(nil,2,2) assertEquals( s, matrix(2) )
     -- three arg: e_, nr, nc
-    s = m:same(complex(1,1), 2, 2)
-    assertTrue ( is_cmatrix(s) ) assertEquals( {s.nr,s.nc}, {2,2} )
-    for i = 1,2  do for j = 1,2  do assertEquals( s:get(i,j), complex(0,0) ) end end
+    s = m:same(complex(1,1), 2, 2) assertEquals( {s:sizes()}, {2,2} ) assertFalse( is_matrix(s) )
+    s = m:same(1, 2, 2)            assertEquals( {s:sizes()}, {2,2} ) assertTrue ( is_matrix(s) )
   end
 end
 
@@ -527,29 +485,66 @@ end
 
 function TestMatrixErr:testGetsub()
   local msg = {
-    "invalid argument #2 (iterable expected)"   ,
-    "invalid argument #3 (iterable expected)"   ,
-    "invalid argument #4 (iterable expected)"   ,
-    "invalid range member '1'"                  ,
-    "cannot convert 'nil' to 'double'"          ,
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (iterable expected)",
+    "invalid argument #4 (iterable expected)",
+    "invalid range member '1'"               ,
+    "cannot convert 'nil' to 'double'"       ,
     }
-  assertErrorMsgContains( msg[1], mth, 'getsub', self.m, nil          )
-  assertErrorMsgContains( msg[1], mth, 'getsub', self.m, ''           )
-  assertErrorMsgContains( msg[1], mth, 'getsub', self.m, \x x         )
-  assertErrorMsgContains( msg[1], mth, 'getsub', self.m, complex(1,1) )
-  assertErrorMsgContains( msg[2], mth, 'getsub', self.m, 1   , nil    )
-  assertErrorMsgContains( msg[2], mth, 'getsub', self.m, 1   , ''     )
-  assertErrorMsgContains( msg[2], mth, 'getsub', self.m, 1   , \x x   )
-  assertErrorMsgContains( msg[5], mth, 'getsub', self.m, 0   , 0      )
-  assertErrorMsgContains( msg[5], mth, 'getsub', self.m, 3   , 1      )
-  assertErrorMsgContains( msg[5], mth, 'getsub', self.m, 1   , 3      )
-  assertErrorMsgContains( msg[5], mth, 'getsub', self.m, 0   , 1      )
-  assertErrorMsgContains( msg[5], mth, 'getsub', self.m, 1   , 0      )
-  assertErrorMsgContains( msg[3], mth, 'getsub', self.m, 0   , 0   , 1    )
-  assertErrorMsgContains( msg[3], mth, 'getsub', self.m, 1   , 1   , \x x )
-  assertErrorMsgContains( msg[4], mth, 'getsub', self.m, 1   , 1   , 1..4 )
+  assertErrorMsgContains( msg[1], mth, 'getsub', errMat, nil          )
+  assertErrorMsgContains( msg[1], mth, 'getsub', errMat, ''           )
+  assertErrorMsgContains( msg[1], mth, 'getsub', errMat, \x x         )
+  assertErrorMsgContains( msg[1], mth, 'getsub', errMat, complex(1,1) )
+  assertErrorMsgContains( msg[2], mth, 'getsub', errMat, 1   , nil    )
+  assertErrorMsgContains( msg[2], mth, 'getsub', errMat, 1   , ''     )
+  assertErrorMsgContains( msg[2], mth, 'getsub', errMat, 1   , \x x   )
+  assertErrorMsgContains( msg[5], mth, 'getsub', errMat, 0   , 0      )
+  assertErrorMsgContains( msg[5], mth, 'getsub', errMat, 3   , 1      )
+  assertErrorMsgContains( msg[5], mth, 'getsub', errMat, 1   , 3      )
+  assertErrorMsgContains( msg[5], mth, 'getsub', errMat, 0   , 1      )
+  assertErrorMsgContains( msg[5], mth, 'getsub', errMat, 1   , 0      )
+  assertErrorMsgContains( msg[3], mth, 'getsub', errMat, 0   , 0   , 1    )
+  assertErrorMsgContains( msg[3], mth, 'getsub', errMat, 1   , 1   , \x x )
+  assertErrorMsgContains( msg[4], mth, 'getsub', errMat, 1   , 1   , 1..4 )
 end
-function TestMatrixGet:testGetsub() end
+
+function TestMatrixGet:testGetsub()
+  local m1, ir, jc, nr, nc
+  for _,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    for i = 1,nr do
+    for j = 1,nc do
+      assertEquals( m:getsub( i, j    ), matrix{ref(i,j,nc)} )
+      assertEquals( m:getsub( i, j, {}), {ref(i,j,nc)}       )
+      for a = 1,i do
+      for b = 1,j do
+        ir = { {a,i}, vector{a,i} }
+        jc = { {b,j}, vector{b,j} }
+        for d=1,#ir do
+          m1 = m:getsub(ir[d], jc[d])
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(1    ,2    ), ref(a  ,j  ,nc) )
+          assertEquals( m1:get(2    ,1    ), ref(i  ,b  ,nc) )
+          assertEquals( m1:get(2    ,2    ), ref(i  ,j  ,nc) )
+        end
+        m1 = m:getsub( a..i, b..j)
+        assertEquals( m1:size(), (i-a+1)*(j-b+1) )
+        if (i-a) >  0 and (j-b) >= 0 then -- vectors
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(2    ,1    ), ref(a+1,b  ,nc) )
+          assertEquals( m1:get(i-a  ,j-b+1), ref(i-1,j  ,nc) )
+          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
+        end
+        if (i-a) >= 0 and (j-b) >  0 then -- rows
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(1    ,2    ), ref(a  ,b+1,nc) )
+          assertEquals( m1:get(i-a+1,j-b  ), ref(i  ,j-1,nc) )
+          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
+        end
+      end end
+    end end
+  end
+end
 
 function TestMatrixErr:testSetsub()
   local msg = {
@@ -558,22 +553,23 @@ function TestMatrixErr:testSetsub()
     "invalid argument #4 (scalar or iterable expected)",
     "1-index out of bounds"                            ,
   }
-  assertErrorMsgContains( msg[1], mth, 'setsub', self.m, nil , 1  , 1  )
-  assertErrorMsgContains( msg[1], mth, 'setsub', self.m, ''  , 1  , 1  )
-  assertErrorMsgContains( msg[1], mth, 'setsub', self.m, NaN , 1  , 1  )
-  assertErrorMsgContains( msg[1], mth, 'setsub', self.m, \x x, 1  , 1  )
-  assertErrorMsgContains( msg[2], mth, 'setsub', self.m, 1             )
-  assertErrorMsgContains( msg[2], mth, 'setsub', self.m, 1   , nil, 1  )
-  assertErrorMsgContains( msg[2], mth, 'setsub', self.m, 1   , '' , 1  )
-  assertErrorMsgContains( msg[2], mth, 'setsub', self.m, 1   , NaN, 1  )
-  assertErrorMsgContains( msg[3], mth, 'setsub', self.m, 1   , 1 , nil )
-  assertErrorMsgContains( msg[3], mth, 'setsub', self.m, 1   , 1 , ''  )
-  assertErrorMsgContains( msg[3], mth, 'setsub', self.m, 1   , 1 , NaN )
-  assertErrorMsgContains( msg[4], mth, 'setsub', self.m, 0   , 1 , 1   )
-  assertErrorMsgContains( msg[4], mth, 'setsub', self.m, 1   , 0 , 1   )
-  assertErrorMsgContains( msg[1], mth, 'setsub', self.m, complex(1,1), 1 , 1 )
-  assertErrorMsgContains( msg[2], mth, 'setsub', self.m, 1 , complex(1,1), 1 )
+  assertErrorMsgContains( msg[1], mth, 'setsub', errMat, nil , 1  , 1  )
+  assertErrorMsgContains( msg[1], mth, 'setsub', errMat, ''  , 1  , 1  )
+  assertErrorMsgContains( msg[1], mth, 'setsub', errMat, NaN , 1  , 1  )
+  assertErrorMsgContains( msg[1], mth, 'setsub', errMat, \x x, 1  , 1  )
+  assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1             )
+  assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1   , nil, 1  )
+  assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1   , '' , 1  )
+  assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1   , NaN, 1  )
+  assertErrorMsgContains( msg[3], mth, 'setsub', errMat, 1   , 1 , nil )
+  assertErrorMsgContains( msg[3], mth, 'setsub', errMat, 1   , 1 , ''  )
+  assertErrorMsgContains( msg[3], mth, 'setsub', errMat, 1   , 1 , NaN )
+  assertErrorMsgContains( msg[4], mth, 'setsub', errMat, 0   , 1 , 1   )
+  assertErrorMsgContains( msg[4], mth, 'setsub', errMat, 1   , 0 , 1   )
+  assertErrorMsgContains( msg[1], mth, 'setsub', errMat, complex(1,1), 1 , 1 )
+  assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1 , complex(1,1), 1 )
 end
+
 function TestMatrixSet:testSetsub() end
 
 function TestMatrixErr:testGetv()
@@ -583,31 +579,48 @@ function TestMatrixErr:testGetv()
     "cannot convert 'nil' to 'double"        ,
     "invalid range member '1'"               ,
   }
-  assertErrorMsgContains( msg[1], mth, 'getv', self.m, nil )
-  assertErrorMsgContains( msg[1], mth, 'getv', self.m, ''  )
-  assertErrorMsgContains( msg[1], mth, 'getv', self.m, NaN )
-  assertErrorMsgContains( msg[2], mth, 'getv', self.m, 1  , ''   )
-  assertErrorMsgContains( msg[2], mth, 'getv', self.m, 1  , 1    )
-  assertErrorMsgContains( msg[2], mth, 'getv', self.m, 1  , \x x )
-  assertErrorMsgContains( msg[3], mth, 'getv', self.m, 0         )
-  assertErrorMsgContains( msg[3], mth, 'getv', self.m, matrix(2) )
-  assertErrorMsgContains( msg[4], mth, 'getv', self.m, 1  , 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'getv', errMat, nil )
+  assertErrorMsgContains( msg[1], mth, 'getv', errMat, ''  )
+  assertErrorMsgContains( msg[1], mth, 'getv', errMat, NaN )
+  assertErrorMsgContains( msg[2], mth, 'getv', errMat, 1  , ''   )
+  assertErrorMsgContains( msg[2], mth, 'getv', errMat, 1  , 1    )
+  assertErrorMsgContains( msg[2], mth, 'getv', errMat, 1  , \x x )
+  assertErrorMsgContains( msg[3], mth, 'getv', errMat, 0         )
+  assertErrorMsgContains( msg[3], mth, 'getv', errMat, matrix(2) )
+  assertErrorMsgContains( msg[4], mth, 'getv', errMat, 1  , 1..2 )
 end
-function TestMatrixGet:testGetv() end
+
+function TestMatrixGet:testGetv()
+  for _,m in ipairs(g.mat) do
+    for i = 1,m:size() do
+      assertEquals( m:getv( i   )         , vector({i})          )
+      assertEquals( m:getv( 1..i)         , vector(i):fill(1..i) )
+      assertEquals( m:getv({1,i})         , vector({1,i})        )
+      assertEquals( m:getv( i    ,{})     , {i}                  )
+      assertEquals( m:getv({1,i} ,{})     , {1,i}                )
+      assertEquals( m:getv( 1..i ,{})     , totable(1..i)        )
+      assertEquals( m:getv( i    , matrix(2)), matrix{{i,0},{0,0}} )
+      assertEquals( m:getv({1,i} , matrix(2)), matrix{{1,i},{0,0}} )
+    end
+  end
+  m = matrix(4):fill(1..16)
+  m:getv(1..5,'in')
+  assertEquals( m, matrix(4):fill(1..16) ) -- same output, info in documentation
+end
 
 function TestMatrixErr:testSetv()
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'setv', self.m, nil , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', self.m, ''  , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', self.m, NaN , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', self.m, \x x, 0    )
-  assertErrorMsgContains( msg[2], mth, 'setv', self.m, 1   , ''   )
-  assertErrorMsgContains( msg[2], mth, 'setv', self.m, 1   , nil  )
-  assertErrorMsgContains( msg[2], mth, 'setv', self.m, 1   , NaN  )
-  assertErrorMsgContains( msg[2], mth, 'setv', self.m, 1   , \x x )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, nil , 0    )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, ''  , 0    )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, NaN , 0    )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, \x x, 0    )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , ''   )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , nil  )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , NaN  )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , \x x )
 end
 function TestMatrixSet:testSetv() end
 
@@ -616,23 +629,19 @@ function TestMatrixErr:testGetdiag()
     "invalid argument #2 (iterable expected)",
     "invalid range member '1'"               ,
   }
-  assertErrorMsgContains( msg[1], mth, 'getdiag', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'getdiag', self.m, \x x )
-  assertErrorMsgContains( msg[1], mth, 'getdiag', self.m, 1    )
-  assertErrorMsgContains( msg[2], mth, 'getdiag', self.m, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'getdiag', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'getdiag', errMat, \x x )
+  assertErrorMsgContains( msg[1], mth, 'getdiag', errMat, 1    )
+  assertErrorMsgContains( msg[2], mth, 'getdiag', errMat, 1..2 )
 end
 
 function TestMatrixGet:testGetdiag()
-  local m, cm, n, diag = matrix(2), cmatrix(2)
-  assertTrue( is_cmatrix( m:getdiag(cm)) )
-  assertTrue( is_matrix (cm:getdiag( m)) )
-  for _,m in ipairs(s.mat) do
-    n = min(m.nr,m.nc)
-    diag = {}
-    for i = 1,n do  diag[i] = (1+(i-1)*m.nc+i-1) end
-    assertEquals( m:getdiag()            ,  vector(diag) )
-    assertEquals( m:getdiag({})          ,  diag         )
-    assertEquals( m:getdiag(cmatrix(n,1)), cvector(diag) )
+  local m, n, diag, nr, nc = matrix(2)
+  for _,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    diag = {} for i = 1,min(nr,nc) do  diag[i] = (1+(i-1)*nc+i-1) end
+    assertEquals( m:getdiag()  , vector(diag) )
+    assertEquals( m:getdiag({}), diag         )
   end
 end
 
@@ -640,20 +649,18 @@ function TestMatrixErr:testSetdiag()
   local msg = {
     "invalid argument #2 (scalar or iterable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'setdiag', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'setdiag', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'setdiag', self.m, \x x )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, \x x )
 end
-function TestMatrixSet:testSetdiag()
-  local m, cm, n, diag = matrix(2), cmatrix(2)
-  assertTrue ( is_cmatrix(cm:setdiag( m)) )
-  assertTrue ( is_matrix ( m:setdiag(cm)) )
-  assertFalse( is_cmatrix( m:setdiag(complex(1,1))) )
 
-  for _,m in ipairs(self.mat) do
-    n  = min(m.nr,m.nc)
+function TestMatrixSet:testSetdiag()
+  local m, n, diag, nr, nc = matrix(2)
+    for _,m in ipairs(self.mat) do
     diag, ref = {}, {}
-    for i = 1,n do  diag[i] = (1+(i-1)*m.nc+i-1) end
+    nr, nc = m:sizes()
+    n = min(nr, nc)
+    for i = 1,n do  diag[i] = (1+(i-1)*nc+i-1) end
     for i = 1,n do if i<=3 then ref[i] = i
                    else         ref[i] = diag[i]  end end
     m:setdiag(1)            assertEquals( m:getdiag(), vector(n):fill(1)    )
@@ -672,37 +679,55 @@ function TestMatrixErr:testGetrow()
     "invalid range member '1'"               ,
     "1-index out of bounds"                  ,
     }
-  assertErrorMsgContains( msg[1], mth, 'getrow', self.m, ''         )
-  assertErrorMsgContains( msg[1], mth, 'getrow', self.m, nil        )
-  assertErrorMsgContains( msg[1], mth, 'getrow', self.m, NaN        )
-  assertErrorMsgContains( msg[1], mth, 'getrow', self.m, \x x       )
-  assertErrorMsgContains( msg[2], mth, 'getrow', self.m, 1   , ''   )
-  assertErrorMsgContains( msg[2], mth, 'getrow', self.m, 1   , 1    )
-  assertErrorMsgContains( msg[3], mth, 'getrow', self.m, 0          )
-  assertErrorMsgContains( msg[3], mth, 'getrow', self.m, 5          )
-  assertErrorMsgContains( msg[4], mth, 'getrow', self.m, 1   , 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'getrow', self.m, 1   , vector(1) )
+  assertErrorMsgContains( msg[1], mth, 'getrow', errMat, ''         )
+  assertErrorMsgContains( msg[1], mth, 'getrow', errMat, nil        )
+  assertErrorMsgContains( msg[1], mth, 'getrow', errMat, NaN        )
+  assertErrorMsgContains( msg[1], mth, 'getrow', errMat, \x x       )
+  assertErrorMsgContains( msg[2], mth, 'getrow', errMat, 1   , ''   )
+  assertErrorMsgContains( msg[2], mth, 'getrow', errMat, 1   , 1    )
+  assertErrorMsgContains( msg[3], mth, 'getrow', errMat, 0          )
+  assertErrorMsgContains( msg[3], mth, 'getrow', errMat, 5          )
+  assertErrorMsgContains( msg[4], mth, 'getrow', errMat, 1   , 1..2 )
+  assertErrorMsgContains( msg[5], mth, 'getrow', errMat, 1   , vector(1) )
 end
-function TestMatrixGet:testGetrow()end
+
+function TestMatrixGet:testGetrow() -- TODO
+  local r, ir, nc, nr
+  assertEquals( matrix(2,2):fill(1..4):getrow(1, vector(3)), vector{1,2,0} )
+
+  r = { nil, {} }
+  for ri=1,#r do
+    for _,m in ipairs(g.mat) do
+      nr, nc = m:sizes()
+      for i =1,nr do
+        ir = { i, {1,i}, 1..i, vector{i} }
+        for j=1,#ir do
+          assertEquals( m:getrow(ir[j],r[ri]), m:getsub(ir[j],1..nc,r[ri]) )
+        end
+      end
+      end
+  end
+end
 
 function TestMatrixErr:testSetrow()
+  local m = matrix(3)
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
     "1-index out of bounds"                            ,
     "cannot convert 'nil' to 'double'"                 ,
   }
-  assertErrorMsgContains( msg[1], mth, 'setrow', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'setrow', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'setrow', self.m, NaN       )
-  assertErrorMsgContains( msg[1], mth, 'setrow', self.m, \x x      )
-  assertErrorMsgContains( msg[2], mth, 'setrow', self.m, 1   , nil )
-  assertErrorMsgContains( msg[2], mth, 'setrow', self.m, 1   , ''  )
-  assertErrorMsgContains( msg[3], mth, 'setrow', self.m, 0   , 1   )
-  assertErrorMsgContains( msg[3], mth, 'setrow', self.m, 3   , 1   )
-  assertErrorMsgContains( msg[4], mth, 'setrow', self.m, 1   , matrix(1) )
-  assertErrorMsgContains( msg[4], mth, 'setrow', matrix(3), 1 ,1..2  )   --CHECK FOR BETTER SOLUTION
-  assertErrorMsgContains( msg[4], mth, 'setrow', matrix(3), 1 ,{1,2} )   --CHECK
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, NaN       )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, \x x      )
+  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , nil )
+  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , ''  )
+  assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 0   , 1   )
+  assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 3   , 1   )
+  assertErrorMsgContains( msg[4], mth, 'setrow', errMat, 1   , matrix(1) )
+  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,1..2   )            --CHECK FOR BETTER SOLUTION
+  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,{1,2}  )
 end
 function TestMatrixSet:testSetrow()end
 
@@ -714,69 +739,86 @@ function TestMatrixErr:testGetcol()
     "invalid range member '1'"               ,
     "1-index out of bounds"                  ,
   }
-  assertErrorMsgContains( msg[1], mth, 'getcol', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'getcol', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'getcol', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'getcol', self.m, \x x )
-  assertErrorMsgContains( msg[2], mth, 'getcol', self.m, 1   , ''   )
-  assertErrorMsgContains( msg[2], mth, 'getcol', self.m, 1   , 1    )
-  assertErrorMsgContains( msg[3], mth, 'getcol', self.m, 0          )
-  assertErrorMsgContains( msg[3], mth, 'getcol', self.m, 3          )
-  assertErrorMsgContains( msg[4], mth, 'getcol', self.m, 1   , 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'getcol', self.m, 1   , vector(1) )
+  assertErrorMsgContains( msg[1], mth, 'getcol', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'getcol', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'getcol', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'getcol', errMat, \x x )
+  assertErrorMsgContains( msg[2], mth, 'getcol', errMat, 1   , ''   )
+  assertErrorMsgContains( msg[2], mth, 'getcol', errMat, 1   , 1    )
+  assertErrorMsgContains( msg[3], mth, 'getcol', errMat, 0          )
+  assertErrorMsgContains( msg[3], mth, 'getcol', errMat, 3          )
+  assertErrorMsgContains( msg[4], mth, 'getcol', errMat, 1   , 1..2 )
+  assertErrorMsgContains( msg[5], mth, 'getcol', errMat, 1   , vector(1) )
 end
-function TestMatrixGet:testGetcol()end
+
+function TestMatrixGet:testGetcol()
+  local r, ir, nc, nr
+  r = { nil, {} }
+
+  for ri=1,#r do
+    for _,m in ipairs(g.mat) do
+      nr, nc = m:sizes()
+      for i =1,nc do
+        ir = { i, {1,i}, 1..i, vector{i} }
+        for j=1,#ir do
+          assertEquals( m:getcol(ir[j],r[ri]) , m:getsub(1..nr,ir[j],r[ri]) )
+        end
+      end
+    end
+  end
+end
 
 function TestMatrixErr:testSetcol()
+  local m = matrix(3)
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
     "1-index out of bounds"                            ,
     "cannot convert 'nil' to 'double'"                 ,
   }
-  assertErrorMsgContains( msg[1], mth, 'setcol', self.m, ''         )
-  assertErrorMsgContains( msg[1], mth, 'setcol', self.m, nil        )
-  assertErrorMsgContains( msg[1], mth, 'setcol', self.m, NaN        )
-  assertErrorMsgContains( msg[1], mth, 'setcol', self.m, \x x       )
-  assertErrorMsgContains( msg[2], mth, 'setcol', self.m, 1   ,  ''  )
-  assertErrorMsgContains( msg[2], mth, 'setcol', self.m, 1   ,  nil )
-  assertErrorMsgContains( msg[3], mth, 'setcol', self.m, 0   ,  1   )
-  assertErrorMsgContains( msg[3], mth, 'setcol', self.m, 3   ,  1   )
-  assertErrorMsgContains( msg[4], mth, 'setcol', self.m, 1   ,  matrix(1) )
-  assertErrorMsgContains( msg[4], mth, 'setcol', matrix(3), 1,  1..2  ) --CHECK
-  assertErrorMsgContains( msg[4], mth, 'setcol', matrix(3), 1,  {1,2} ) --CHECK
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, ''         )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, nil        )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, NaN        )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, \x x       )
+  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  ''  )
+  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  nil )
+  assertErrorMsgContains( msg[3], mth, 'setcol', errMat, 0   ,  1   )
+  assertErrorMsgContains( msg[3], mth, 'setcol', errMat, 3   ,  1   )
+  assertErrorMsgContains( msg[4], mth, 'setcol', errMat, 1   ,  matrix(1) )
+  assertErrorMsgContains( msg[4], mth, 'setcol', m     , 1,  1..2  ) --CHECK
+  assertErrorMsgContains( msg[4], mth, 'setcol', m     , 1,  {1,2} ) --CHECK
 end
-function TestMatrixSet:testSetcol()end
+function TestMatrixSet:testSetcol() end
 
 -- size, same -----------------------------------------------------------------o
 
 function TestMatrix:testNrow()
-  for i,m in ipairs(s.mat) do
-    assertEquals( m:nrow(), s.size[i][1] )
+  for i,m in ipairs(g.mat) do
+    assertEquals( m:nrow(), g.size[i][1] )
   end
 end
 
 function TestMatrix:testNcol()
-  for i,m in ipairs(s.mat) do
-    assertEquals( m:ncol(), s.size[i][2] )
+  for i,m in ipairs(g.mat) do
+    assertEquals( m:ncol(), g.size[i][2] )
   end
 end
 
 function TestMatrix:testSize()
-  for i,m in ipairs(s.mat) do
-    assertEquals( m:size(), s.size[i][1]*s.size[i][2] )
+  for i,m in ipairs(g.mat) do
+    assertEquals( m:size(), g.size[i][1]*g.size[i][2] )
   end
 end
 
 function TestMatrix:testSizes()
-  for i,m in ipairs(s.mat) do
-    assertEquals( {m:sizes()}, s.size[i] )
+  for i,m in ipairs(g.mat) do
+    assertEquals( {m:sizes()}, g.size[i] )
   end
 end
 
 function TestMatrix:testTsizes()
-  for i,m in ipairs(s.mat) do
-    assertEquals( {m:tsizes()}, {s.size[i][2], s.size[i][1]} )
+  for i,m in ipairs(g.mat) do
+    assertEquals( {m:tsizes()}, {g.size[i][2], g.size[i][1]} )
   end
 end
 
@@ -794,14 +836,27 @@ end
 function TestMatrixErr:testRandom()
   local msg, s = {
     "invalid argument #1 or #2 (nrow[,ncol] >=1 or table [of tables] expected)",
-    "invalid argument #1 (non-empty table expected)",
+    "invalid argument #1 (non-empty table expected)"                           ,
   }
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, ''   )
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'same', self.m, 1, nan  )
-  assertErrorMsgContains( msg[2], mth, 'same', self.m, 1, {}   )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1, ''   )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'same', errMat, 1, nan  )
+  assertErrorMsgContains( msg[2], mth, 'same', errMat, 1, {}   )
 end
-function TestMatrixInPlace:testRandom() end
+
+function TestMatrixInPlace:testRandom()
+  local oldVal, val = {}, {}
+  for _,m in ipairs(self.mat) do
+    m:random()
+    for i = 1,m:size() do
+      val[i] = m:geti(i)
+      assertTrue ( val[i] <  1    )
+      assertTrue ( val[i] >= 0    )
+      assertFalse( val[i] == oldVal[i] )
+      oldVal[i] =  val[i]
+    end
+  end
+end
 
 function TestMatrixErr:testFill()
   local msg = {
@@ -809,51 +864,45 @@ function TestMatrixErr:testFill()
     "incompatible container size"                                 ,
     "invalid container (iterable expected)"                       ,
     }
-  assertErrorMsgContains( msg[1], mth,'fill', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth,'fill', self.m, true )
-  assertErrorMsgContains( msg[2], mth,'fill', self.m, {}   )
+  assertErrorMsgContains( msg[1], mth,'fill', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth,'fill', errMat, true )
+  assertErrorMsgContains( msg[2], mth,'fill', errMat, {}   )
 end
 function TestMatrixInPlace:testFill()
   for _,m in ipairs(self.mat) do
     --scalar
-    m:fill(nan)                for i=1,m:size() do assertNaN   ( m:geti(i)      ) end
-    m:fill(inf)                for i=1,m:size() do assertInf   ( m:geti(i)      ) end
-    m:fill(1  )                for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
-    m:fill(complex(1,1))       for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
+    m:fill(nan)               for i=1,m:size() do assertNaN   ( m:geti(i)      ) end
+    m:fill(inf)               for i=1,m:size() do assertInf   ( m:geti(i)      ) end
+    m:fill(1  )               for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
+    m:fill(complex(1,1))      for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
     --generator
-    m:fill(1..#m)              for i=1,m:size() do assertEquals( m:geti(i), i   ) end
-    m:fill\x x^2               for i=1,m:size() do assertEquals( m:geti(i), i^2 ) end
+    m:fill(1..#m)             for i=1,m:size() do assertEquals( m:geti(i), i   ) end
+    m:fill\x x^2              for i=1,m:size() do assertEquals( m:geti(i), i^2 ) end
     --2D container
-    m:fill( matrix(m.nr,m.nc)) for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
-    m:fill(cmatrix(m.nr,m.nc)) for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
+    m:fill( m:same() )        for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
     --1D container
     t={} for i=1,m :size() do t[i]=i end
-    m:fill(t)                  for i=1,m:size() do assertEquals( m:geti(i), i   ) end
-    m:fill(vector(m :size()))  for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
+    m:fill(t)                 for i=1,m:size() do assertEquals( m:geti(i), i   ) end
+    m:fill(vector(m :size())) for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
   end
---check of types change
-  assertTrue( is_matrix ( matrix(5,5):fill(complex(1,1))) )
-  m, t =  matrix(5), {}
-  for i=1,5 do t[i] = {} for j=1,5 do t[i][j]=(i-1)*5+j end end
-  m :fill(t)             for i=1,m :size() do assertEquals( m :geti(i), i ) end
+  local m, t = matrix(5), {}
+  for i=1,5 do t[i] = {}      for j=1,5 do t[i][j]=(i-1)*5+j end end
+  m :fill(t)                  for i=1,m :size() do assertEquals( m :geti(i), i ) end
+  assertTrue( is_matrix ( matrix(5,5):fill(complex(1,1))) )  --check of types change
 end
 
 function TestMatrixErr:testCopy()
   local msg = {
     "invalid argument #1 (matrix expected",
   }
-  assertErrorMsgContains( msg[1], mth,'copy', self.m,  1         )
+  assertErrorMsgContains( msg[1], mth,'copy', errMat,  1 )
 end
 
 function TestMatrix:testCopy() --think about puting in one of test-suits
-  for i,m in ipairs(s.mat) do
-    mcopy = s.empty[i]
+  for i,m in ipairs(g.mat) do
+    mcopy = g.empty[i]
     mcopy:copy(m)
     for i=1,m:size() do assertEquals( m:geti(i), mcopy:geti(i) ) end
-
-    mcopy = matrix(1)
-    mcopy:copy(m)
-    for i=1,mcopy:size() do assertEquals( m:geti(i), mcopy:geti(i) ) end
   end
 end
 
@@ -873,10 +922,12 @@ function TestMatrixInPlace:testOnes()
 end
 
 function TestMatrixInPlace:testEye()
+  local nr, nc
   for i,m in ipairs(self.mat) do
+    nr, nc = m:sizes()
     m:eye()
-    for i=1,m.nr do
-    for j=1,m.nc do
+    for i=1,nr do
+    for j=1,nc do
       if i==j then assertEquals( m:get(i,j), 1 )
       else         assertEquals( m:get(i,j), 0 ) end
     end end
@@ -898,9 +949,9 @@ function TestMatrixErr:testCirc()
   local msg = {
     "invalid argument #2 (iterable expected)",
   }
-  assertErrorMsgContains( msg[1], mth,'circ', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth,'circ', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth,'circ', self.m, \x x )
+  assertErrorMsgContains( msg[1], mth,'circ', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth,'circ', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth,'circ', errMat, \x x )
 end
 
 function TestMatrix:testCirc() end
@@ -909,29 +960,50 @@ function TestMatrixErr:testReshape()
   local msg, m, s = {
     "invalid matrix new sizes",
     }
-  assertErrorMsgContains( msg[1], mth,'reshape', self.m, 3, 3  )
-  assertErrorMsgContains( msg[1], mth,'reshape', self.m, 1, 5  )
-  assertErrorMsgContains( msg[1], mth,'reshape', self.m, 0, 2  )
-  assertErrorMsgContains( msg[1], mth,'reshape', self.m, 1, 0  )
+  assertErrorMsgContains( msg[1], mth,'reshape', errMat, 3, 3  )
+  assertErrorMsgContains( msg[1], mth,'reshape', errMat, 1, 5  )
+  assertErrorMsgContains( msg[1], mth,'reshape', errMat, 0, 2  )
+  assertErrorMsgContains( msg[1], mth,'reshape', errMat, 1, 0  )
 end
 
 function TestMatrixInPlace:testReshape() end
 
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
+function TestMatrixFun:setUp()
+  self.mat   = {}
+  for nr=1,5 do
+    for nc=1,5 do
+      self.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
+    end
+  end
+end
+
 function TestMatrixErr:testForeach()
   local msg = {
     "invalid argument #2 (callable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, 1         )
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, 1..2      )
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, matrix(1) )
-  assertErrorMsgContains( msg[1], mth, 'foreach', self.m, { }       )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'foreach', errMat, { }       )
 end
 
-function TestMatrixFun:testForeach() end
+function TestMatrixFun:testForeach() -- for test need of filled table
+  local nr, nc, f, t
+  f = \x,i,j => t[i][j]=x  end
+
+  for _,m in ipairs(self.mat) do
+    nr, nc = m:sizes()
+    t  = table.new(nr, nc)
+    for i=0,nr-1 do local c = t[i+1] or table.new(nc,0); t[i+1] = c end
+    m:foreach(f)
+
+    for i=1,nr do for j=1,nc do assertEquals( t[i][j], (i-1)*nc+j ) end end
+  end
+end
 
 function TestMatrixErr:testMap()
   local msg = {
@@ -940,14 +1012,14 @@ function TestMatrixErr:testMap()
     "invalid range member '1'"                                ,
     "attempt to perform arithmetic on local 'x' (a nil value)",
   }
-  assertErrorMsgContains( msg[1], mth, 'map', self.m, ''           )
-  assertErrorMsgContains( msg[1], mth, 'map', self.m, 1..2         )
-  assertErrorMsgContains( msg[1], mth, 'map', self.m, 1            )
-  assertErrorMsgContains( msg[1], mth, 'map', self.m, matrix(1)    )
-  assertErrorMsgContains( msg[1], mth, 'map', self.m, { }          )
-  assertErrorMsgContains( msg[2], mth, 'map', self.m, \x x+1, ''   )
-  assertErrorMsgContains( msg[2], mth, 'map', self.m, \x x+1, 1    )
-  assertErrorMsgContains( msg[3], mth, 'map', self.m, \x x+1, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, ''           )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1..2         )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1            )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, matrix(1)    )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, { }          )
+  assertErrorMsgContains( msg[2], mth, 'map', errMat, \x x+1, ''   )
+  assertErrorMsgContains( msg[2], mth, 'map', errMat, \x x+1, 1    )
+  assertErrorMsgContains( msg[3], mth, 'map', errMat, \x x+1, 1..2 )
 end
 
 function TestMatrixFun:testMap() end
@@ -960,22 +1032,22 @@ function TestMatrixErr:testMap2()
     "invalid range member '1'"                                ,
     "attempt to perform arithmetic on local 'y' (a nil value)",
   }
-  assertErrorMsgContains( msg[1], mth, 'map2', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'map2', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'map2', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'map2', self.m, \x x )
-  assertErrorMsgContains( msg[2], mth, 'map2', self.m, matrix(1), nil  )
-  assertErrorMsgContains( msg[2], mth, 'map2', self.m, matrix(1), 1..2 )
-  assertErrorMsgContains( msg[2], mth, 'map2', self.m, matrix(1), 1    )
-  assertErrorMsgContains( msg[3], mth, 'map2', self.m, matrix(1), \x x, 1    )
-  assertErrorMsgContains( msg[4], mth, 'map2', self.m, matrix(1), \x x, 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'map2', self.m, matrix(1), \x,y  x+y  )
+  assertErrorMsgContains( msg[1], mth, 'map2', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'map2', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'map2', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'map2', errMat, \x x )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), nil  )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), 1..2 )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), 1    )
+  assertErrorMsgContains( msg[3], mth, 'map2', errMat, matrix(1), \x x, 1    )
+  assertErrorMsgContains( msg[4], mth, 'map2', errMat, matrix(1), \x x, 1..2 )
+  assertErrorMsgContains( msg[5], mth, 'map2', errMat, matrix(1), \x,y  x+y  )
 end
 
 function TestMatrixFun:testMap2() end
 
 function TestMatrixErr:testMap3()
-  local m = self.m
+  local m = matrix(1)
   local msg = {
     "invalid argument #2 (scalar or iterable expected)"       ,
     "invalid argument #3 (scalar or iterable expected)"       ,
@@ -985,20 +1057,20 @@ function TestMatrixErr:testMap3()
     "attempt to perform arithmetic on local 'y' (a nil value)",
     "attempt to perform arithmetic on local 'z' (a nil value)",
   }
-  assertErrorMsgContains( msg[1], mth, 'map3', m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'map3', m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'map3', m, \x x )
-  assertErrorMsgContains( msg[2], mth, 'map3', m, m    , ''   )
-  assertErrorMsgContains( msg[2], mth, 'map3', m, m    , NaN  )
-  assertErrorMsgContains( msg[2], mth, 'map3', m, m    , \x x )
-  assertErrorMsgContains( msg[3], mth, 'map3', m, m    , m    , nil  )
-  assertErrorMsgContains( msg[3], mth, 'map3', m, m    , m    , 1..2 )
-  assertErrorMsgContains( msg[3], mth, 'map3', m, m    , m    , 1    )
-  assertErrorMsgContains( msg[4], mth, 'map3', m, m    , m    , \x x, 1    )
-  assertErrorMsgContains( msg[5], mth, 'map3', m, m    , m    , \x x, 1..2 )
-  assertErrorMsgContains( msg[6], mth, 'map3', m, matrix(1), m        , \x,y,z x+y+z )
-  assertErrorMsgContains( msg[6], mth, 'map3', m, matrix(1), matrix(1), \x,y,z x+y+z )
-  assertErrorMsgContains( msg[7], mth, 'map3', m, m        , matrix(1), \x,y,z x+y+z )
+  assertErrorMsgContains( msg[1], mth, 'map3', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'map3', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'map3', errMat, \x x )
+  assertErrorMsgContains( msg[2], mth, 'map3', errMat, errMat, ''   )
+  assertErrorMsgContains( msg[2], mth, 'map3', errMat, errMat, NaN  )
+  assertErrorMsgContains( msg[2], mth, 'map3', errMat, errMat, \x x )
+  assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, nil  )
+  assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, 1..2 )
+  assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, 1    )
+  assertErrorMsgContains( msg[4], mth, 'map3', errMat, errMat, errMat, \x x, 1    )
+  assertErrorMsgContains( msg[5], mth, 'map3', errMat, errMat, errMat, \x x, 1..2 )
+  assertErrorMsgContains( msg[6], mth, 'map3', errMat, m     , errMat, \x,y,z x+y+z )
+  assertErrorMsgContains( msg[6], mth, 'map3', errMat, m     , m     , \x,y,z x+y+z )
+  assertErrorMsgContains( msg[7], mth, 'map3', errMat, errMat, m     , \x,y,z x+y+z )
 end
 
 function TestMatrixFun:testMap3() end
@@ -1008,14 +1080,14 @@ function TestMatrixErr:testMapij()
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (iterable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, 1..2      )
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, 1         )
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, matrix(1) )
-  assertErrorMsgContains( msg[1], mth, 'mapij', self.m, { }       )
-  assertErrorMsgContains( msg[2], mth, 'mapij', self.m, \x x+1  , ''   )
-  assertErrorMsgContains( msg[2], mth, 'mapij', self.m, \x x+1  , \x x )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'mapij', errMat, { }       )
+  assertErrorMsgContains( msg[2], mth, 'mapij', errMat, \x x+1  , ''   )
+  assertErrorMsgContains( msg[2], mth, 'mapij', errMat, \x x+1  , \x x )
 end
 
 function TestMatrixFun:testMapij() end
@@ -1028,21 +1100,21 @@ function TestMatrixErr:testMapat()
     "invalid range member '1'"               ,
     "attempt to perform arithmetic on local 'x' (a nil value)",
   }
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, 1..2      )
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, 1         )
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, matrix(1) )
-  assertErrorMsgContains( msg[1], mth, 'mapat', self.m, { }       )
-  assertErrorMsgContains( msg[2], mth, 'mapat', self.m, \x x+1  , ''   )
-  assertErrorMsgContains( msg[2], mth, 'mapat', self.m, \x x+1  , nil  )
-  assertErrorMsgContains( msg[2], mth, 'mapat', self.m, \x x+1  , NaN  )
-  assertErrorMsgContains( msg[2], mth, 'mapat', self.m, \x x+1  , \x x )
-  assertErrorMsgContains( msg[3], mth, 'mapat', self.m, \x x+1  , 1    , ''   )
-  assertErrorMsgContains( msg[3], mth, 'mapat', self.m, \x x+1  , 1    , \x x )
-  assertErrorMsgContains( msg[4], mth, 'mapat', self.m, \x x+1  , 1    , 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'mapat', self.m, \x x+1  , 0    )
-  assertErrorMsgContains( msg[5], mth, 'mapat', self.m, \x x+1  , 5    )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'mapat', errMat, { }       )
+  assertErrorMsgContains( msg[2], mth, 'mapat', errMat, \x x+1  , ''   )
+  assertErrorMsgContains( msg[2], mth, 'mapat', errMat, \x x+1  , nil  )
+  assertErrorMsgContains( msg[2], mth, 'mapat', errMat, \x x+1  , NaN  )
+  assertErrorMsgContains( msg[2], mth, 'mapat', errMat, \x x+1  , \x x )
+  assertErrorMsgContains( msg[3], mth, 'mapat', errMat, \x x+1  , 1    , ''   )
+  assertErrorMsgContains( msg[3], mth, 'mapat', errMat, \x x+1  , 1    , \x x )
+  assertErrorMsgContains( msg[4], mth, 'mapat', errMat, \x x+1  , 1    , 1..2 )
+  assertErrorMsgContains( msg[5], mth, 'mapat', errMat, \x x+1  , 0    )
+  assertErrorMsgContains( msg[5], mth, 'mapat', errMat, \x x+1  , 5    )
 end
 
 function TestMatrixFun:testMapat() end
@@ -1055,23 +1127,23 @@ function TestMatrixErr:testFoldl()
     "invalid range member '1'"                                   ,
   }
   m, cm = matrix(2), cmatrix(2)
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, {}   )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, m    )
-  assertErrorMsgContains( msg[1], mth, 'foldl', self.m, cm   )
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, '')
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, 1 , {}   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, 1 , 1..2 , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, 1 , m    , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, 1 , cm   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldl', self.m, \x x, 1 , ''   , {}   )
-  assertErrorMsgContains( msg[2], mth, 'foldl', self.m, \x x, 1 , "vec", ''   )
-  assertErrorMsgContains( msg[2], mth, 'foldl', self.m, \x x, 1 , "vec", 1    )
-  assertErrorMsgContains( msg[2], mth, 'foldl', self.m, \x x, 1 , "vec", \x x )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, {}   )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, m    )
+  assertErrorMsgContains( msg[1], mth, 'foldl', errMat, cm   )
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, '')
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, 1 , {}   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, 1 , 1..2 , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, 1 , m    , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, 1 , cm   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldl', errMat, \x x, 1 , ''   , {}   )
+  assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", ''   )
+  assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", 1    )
+  assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", \x x )
 end
 
 function TestMatrixFun:testFoldl() end
@@ -1084,23 +1156,23 @@ function TestMatrixErr:testFoldr()
     "invalid range member '1'"                                   ,
   }
   m, cm = matrix(2), cmatrix(2)
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, {}   )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, m    )
-  assertErrorMsgContains( msg[1], mth, 'foldr', self.m, cm   )
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, '')
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, 1 , {}   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, 1 , 1..2 , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, 1 , m    , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, 1 , cm   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'foldr', self.m, \x x, 1 , ''   , {}   )
-  assertErrorMsgContains( msg[2], mth, 'foldr', self.m, \x x, 1 , "vec", ''   )
-  assertErrorMsgContains( msg[2], mth, 'foldr', self.m, \x x, 1 , "vec", 1    )
-  assertErrorMsgContains( msg[2], mth, 'foldr', self.m, \x x, 1 , "vec", \x x )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, {}   )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, m    )
+  assertErrorMsgContains( msg[1], mth, 'foldr', errMat, cm   )
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, '')
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, 1 , {}   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, 1 , 1..2 , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, 1 , m    , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, 1 , cm   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'foldr', errMat, \x x, 1 , ''   , {}   )
+  assertErrorMsgContains( msg[2], mth, 'foldr', errMat, \x x, 1 , "vec", ''   )
+  assertErrorMsgContains( msg[2], mth, 'foldr', errMat, \x x, 1 , "vec", 1    )
+  assertErrorMsgContains( msg[2], mth, 'foldr', errMat, \x x, 1 , "vec", \x x )
 end
 
 function TestMatrixFun:testFoldr() end
@@ -1113,23 +1185,23 @@ function TestMatrixErr:testScanl()
     "invalid range member '1'"                                   ,
   }
   m, cm = matrix(2), cmatrix(2)
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, {}   )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, m    )
-  assertErrorMsgContains( msg[1], mth, 'scanl', self.m, cm   )
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, '')
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, 1 , {}   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, 1 , 1..2 , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, 1 , m    , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, 1 , cm   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanl', self.m, \x x, 1 , ''   , {}   )
-  assertErrorMsgContains( msg[2], mth, 'scanl', self.m, \x x, 1 , "vec", ''   )
-  assertErrorMsgContains( msg[2], mth, 'scanl', self.m, \x x, 1 , "vec", 1    )
-  assertErrorMsgContains( msg[2], mth, 'scanl', self.m, \x x, 1 , "vec", \x x )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, {}   )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, m    )
+  assertErrorMsgContains( msg[1], mth, 'scanl', errMat, cm   )
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, '')
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, 1 , {}   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, 1 , 1..2 , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, 1 , m    , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, 1 , cm   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanl', errMat, \x x, 1 , ''   , {}   )
+  assertErrorMsgContains( msg[2], mth, 'scanl', errMat, \x x, 1 , "vec", ''   )
+  assertErrorMsgContains( msg[2], mth, 'scanl', errMat, \x x, 1 , "vec", 1    )
+  assertErrorMsgContains( msg[2], mth, 'scanl', errMat, \x x, 1 , "vec", \x x )
 end
 
 function TestMatrixFun:testScanl() end
@@ -1142,23 +1214,23 @@ function TestMatrixErr:testScanr()
     "invalid range member '1'"                                   ,
   }
   m, cm = matrix(2), cmatrix(2)
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, NaN  )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, {}   )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, m    )
-  assertErrorMsgContains( msg[1], mth, 'scanr', self.m, cm   )
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, '')
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, 1 , {}   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, 1 , 1..2 , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, 1 , m    , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, 1 , cm   , {}   )
-  assertErrorMsgContains( msg[3], mth, 'scanr', self.m, \x x, 1 , ''   , {}   )
-  assertErrorMsgContains( msg[2], mth, 'scanr', self.m, \x x, 1 , "vec", ''   )
-  assertErrorMsgContains( msg[2], mth, 'scanr', self.m, \x x, 1 , "vec", 1    )
-  assertErrorMsgContains( msg[2], mth, 'scanr', self.m, \x x, 1 , "vec", \x x )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, NaN  )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, {}   )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, m    )
+  assertErrorMsgContains( msg[1], mth, 'scanr', errMat, cm   )
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, '')
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, 1 , {}   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, 1 , 1..2 , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, 1 , m    , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, 1 , cm   , {}   )
+  assertErrorMsgContains( msg[3], mth, 'scanr', errMat, \x x, 1 , ''   , {}   )
+  assertErrorMsgContains( msg[2], mth, 'scanr', errMat, \x x, 1 , "vec", ''   )
+  assertErrorMsgContains( msg[2], mth, 'scanr', errMat, \x x, 1 , "vec", 1    )
+  assertErrorMsgContains( msg[2], mth, 'scanr', errMat, \x x, 1 , "vec", \x x )
 end
 
 function TestMatrixFun:testScanr() end
@@ -1168,15 +1240,15 @@ function TestMatrixErr:testFilter()
     "invalid argument #2 (callable expected)",
     "invalid argument #3 (iterable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, 1..2      )
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, 1         )
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, matrix(1) )
-  assertErrorMsgContains( msg[1], mth, 'filter', self.m, { }       )
-  assertErrorMsgContains( msg[2], mth, 'filter', self.m, \x x     , ''   )
-  assertErrorMsgContains( msg[2], mth, 'filter', self.m, \x x     , 1    )
-  assertErrorMsgContains( msg[2], mth, 'filter', self.m, \x x     , \x x )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'filter', errMat, { }       )
+  assertErrorMsgContains( msg[2], mth, 'filter', errMat, \x x     , ''   )
+  assertErrorMsgContains( msg[2], mth, 'filter', errMat, \x x     , 1    )
+  assertErrorMsgContains( msg[2], mth, 'filter', errMat, \x x     , \x x )
 end
 
 function TestMatrixFun:testFilter() end
@@ -1185,12 +1257,12 @@ function TestMatrixErr:testFilter_out()
   local msg = {
     "invalid argument #2 (callable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, nil       )
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, ''        )
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, 1..2      )
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, 1         )
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, matrix(1) )
-  assertErrorMsgContains( msg[1], mth, 'filter_out', self.m, { }       )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'filter_out', errMat, { }       )
 end
 
 function TestMatrixErr:testFilter_out() end
@@ -1249,79 +1321,88 @@ function TestMatrixSScans:testRaccprod  () end
 -- special folds --------------------------------------------------------------o
 
 function TestMatrixSFolds:testMin()
-  local mref
-  for i,m in ipairs(s.mat) do
+  local mref, nr, nc
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
     assertEquals( m:min()     , 1 )
     assertEquals( m:min("vec"), 1 )
-    assertEquals( m:min("col"), matrix(1,m.nc):fill(1..m.nc) )
-    mref = vector(m.nr) for i=1,m.nr do mref:seti( i, m:geti((i-1)*m.nc+1)) end
+    assertEquals( m:min("col"), matrix(1,nc):fill(1..nc) )
+    mref = vector(nr) for i=1,nr do mref:seti( i, m:geti((i-1)*nc+1)) end
     assertEquals( m:min("row"), mref )
   end
 end
 
 function TestMatrixSFolds:testMax()
-  local mref
-  for i,m in ipairs(s.mat) do
-    assertEquals( m:max()     , m.nr*m.nc )
-    assertEquals( m:max("vec"), m.nr*m.nc )
-    assertEquals( m:max("col"), matrix(1,m.nc):fill((m.nr-1)*m.nc+1..m.nr*m.nc) )
-    mref = vector(m.nr) for i=1,m.nr do mref:seti( i, m:geti(i*m.nc) ) end
+  local mref, nr, nc
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    assertEquals( m:max()     , m:size() )
+    assertEquals( m:max("vec"), m:size() )
+    assertEquals( m:max("col"), matrix(1,nc):fill((nr-1)*nc+1..m:size()) )
+    mref = vector(nr) for i=1,nr do mref:seti( i, m:geti(i*nc) ) end
     assertEquals( m:max("row"), mref )
   end
 end
 
 function TestMatrixSFolds:testSum()
-  local mref, x
-  for i,m in ipairs(s.mat) do
-    mref = 0 for i=1,m.nr*m.nc do mref=i+mref end
+  local mref, x, nr, nc
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+
+    mref = 0 for i=1,m:size() do mref = mref + i end
     assertEquals( m:sum()     , mref )
-    mref = vector(m.nr)   for i=1,m.nr do x=0 for j=1,m.nc do x=(i-1)*m.nc+j + x end mref:seti(i, x) end
+    mref = vector(nr)   for i=1,nr do x=0 for j=1,nc do x=(i-1)*nc+j + x end mref:seti(i, x) end
     assertEquals( m:sum("row"), mref )
-    mref = matrix(1,m.nc) for i=1,m.nc do x=0 for j=1,m.nr do x=(j-1)*m.nc+i + x end mref:seti(i, x) end
+    mref = matrix(1,nc) for i=1,nc do x=0 for j=1,nr do x=(j-1)*nc+i + x end mref:seti(i, x) end
     assertEquals( m:sum("col"), mref )
   end
 end
 
 function TestMatrixSFolds:testSumabs()
-  local mref, x
-  for i,m in ipairs(s.mat) do
-    mref = 0 for i=1,m.nr*m.nc do mref=i+mref end
+  local mref, x, nr, nc
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+
+    mref = 0 for i=1,m:size() do do mref = mref + i end end
     assertEquals( m :sumabs()     ,  mref )
     assertEquals( m :sumabs('vec'),  mref )
-    mref = matrix(1,m.nc) for j=1,m.nc do x=0; for i=1,m.nr do x=x+(i-1)*m.nc+j end mref:seti(j,x) end
+    mref = matrix(1,nc) for j=1,nc do x=0; for i=1,nr do x=x+(i-1)*nc+j end mref:seti(j,x) end
     assertEquals( m :sumabs('col'),  mref )
-    mref = vector(m.nr)   for i=1,m.nr do x=0; for j=1,m.nc do x=x+(i-1)*m.nc+j end mref:seti(i,x) end
+    mref = vector(nr)   for i=1,nr do x=0; for j=1,nc do x=x+(i-1)*nc+j end mref:seti(i,x) end
     assertEquals( m :sumabs('row'),  mref )
   end
 end
 
 function TestMatrixSFolds:testSumsqr()
-  local m, mref, x
-  for i,m in ipairs(s.mat) do
-    mref = 0 for i=1,m.nr*m.nc do mref=i*i+mref end
+  local mref, x, nr, nc
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+
+    mref = 0 for i=1,m:size() do mref=i*i+mref end
     assertEquals( m :sumsqr()     ,  mref )
     assertEquals( m :sumsqr('vec'),  mref )
-    mref = matrix(1,m.nc) for j=1,m.nc do x=0; for i=1,m.nr do x=x+((i-1)*m.nc+j)^2 end mref:seti(j,x) end
+    mref = matrix(1,nc) for j=1,nc do x=0; for i=1,nr do x=x+((i-1)*nc+j)^2 end mref:seti(j,x) end
     assertEquals( m :sumsqr('col'),  mref )
-    mref = vector(m.nr)   for i=1,m.nr do x=0; for j=1,m.nc do x=x+((i-1)*m.nc+j)^2 end mref:seti(i,x) end
+    mref = vector(nr)   for i=1,nr do x=0; for j=1,nc do x=x+((i-1)*nc+j)^2 end mref:seti(i,x) end
     assertEquals( m :sumsqr('row'),  mref )
   end
 end
 
 function TestMatrixSFolds:testProduct()
   local mref, x
-  for i,m in ipairs(s.mat) do
-    mref = 1 for i=1,m.nr*m.nc do mref=i*mref end
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    mref = 1 for i=1,m:size() do mref=i*mref end
     assertEquals( m:product()     , mref )
     assertEquals( m:product('vec'), mref )
-    mref = matrix(1,m.nc) for j=1,m.nc do x=1; for i=1,m.nr do x=x*((i-1)*m.nc+j) end mref:seti(j,x) end
+    mref = matrix(1,nc) for j=1,nc do x=1; for i=1,nr do x=x*((i-1)*nc+j) end mref:seti(j,x) end
     assertEquals( m :product('col'),  mref )
-    mref = vector(m.nr)   for i=1,m.nr do x=1; for j=1,m.nc do x=x*((i-1)*m.nc+j) end mref:seti(i,x) end
+    mref = vector(nr)   for i=1,nr do x=1; for j=1,nc do x=x*((i-1)*nc+j) end mref:seti(i,x) end
     assertEquals( m :product('row'),  mref )
 
-    if not (m.nr==5 and m.nc==5) then
-      m    = matrix(m.nr,m.nc):fill(m.nr*m.nc..1..-1 )
-      mref = 1 for i=1,m.nr*m.nc do mref=i*mref end
+    if not (nr==5 and nc==5) then
+      m    = m:same():fill(m:size()..1..-1 )
+      mref = 1 for i=1,m:size() do mref = mref * i end
       assertAlmostEquals( m:product() - mref, 0, eps )
     end
   end
@@ -1331,33 +1412,33 @@ function TestMatrixErr:testAll()
   local msg = {
     "invalid argument #2 (callable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, nil    )
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, ''     )
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, 1..2   )
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, 1      )
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, self.m )
-  assertErrorMsgContains( msg[1], mth, 'all', self.m, { }    )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, nil    )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, ''     )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, 1..2   )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, 1      )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, errMat )
+  assertErrorMsgContains( msg[1], mth, 'all', errMat, { }    )
 end
 
 function TestMatrixSFolds:testAll()
-  for i,m in ipairs(s.mat) do
-    nr, nc = m.nr, m.nc
-    assertFalse ( m:all  \x x> m.nr*m.nc   )
-    assertTrue  ( m:all  \x x< m.nr*m.nc+1 )
-    assertEquals( m:all( \x x>(m.nr*m.nc)/2, 'vec'), m:all \x x>(m.nr*m.nc)/2 )
-    assertEquals( m:all( \x x< m.nr*m.nc+1 , 'vec'), m:all \x x< m.nr*m.nc+1  )
-    assertEquals( m:all( \x x<m.nr*m.nc+1  , 'col'), matrix(1,m.nc):fill(1) )
-    mref = vector(m.nr)
-    for i=1,nr do if m:geti((i-1)*m.nc+1)>(m.nr*m.nc)/2 then mref:seti(i,1) end end
-    assertEquals( m:all( \x x>(m.nr*m.nc)/2, 'row'), mref )
-    assertEquals( m:all( \x x< m.nr*m.nc+1 , 'row'), vector(nr):fill(1) )
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    assertFalse ( m:all  \x x> m:size()   )
+    assertTrue  ( m:all  \x x< m:size()+1 )
+    assertEquals( m:all( \x x>(m:size())/2, 'vec'), m:all \x x>(m:size())/2 )
+    assertEquals( m:all( \x x< m:size()+1 , 'vec'), m:all \x x< m:size()+1  )
     if nr>1 then
-      assertEquals( m:all( \x x>(m.nr*m.nc)/2, 'col'), matrix(1,m.nc) )
+      assertEquals( m:all( \x x>(m:size())/2, 'col'), matrix(1,nc) )
     else
-      mref = matrix(1,m.nc)
-      for i=1,#mref do  if m:geti(i)>(m.nr*m.nc)/2    then mref:seti(i,1) end end
-      assertEquals( m:all( \x x>(m.nr*m.nc)/2, 'col'), mref )
+      mref = matrix(1,nc)
+      for i=1,#mref do  if m:geti(i)>(m:size())/2    then mref:seti(i,1) end end
+      assertEquals( m:all( \x x>(m:size())/2, 'col'), mref )
     end
+    assertEquals( m:all( \x x<m:size()+1  , 'col'), matrix(1,nc):fill(1) )
+    mref = vector(nr)
+    for i=1,nr do if m:geti((i-1)*nc+1)>(m:size())/2 then mref:seti(i,1) end end
+    assertEquals( m:all( \x x>(m:size())/2, 'row'), mref )
+    assertEquals( m:all( \x x< m:size()+1 , 'row'), vector(nr):fill(1) )
   end
 end
 
@@ -1365,12 +1446,12 @@ function TestMatrixErr:testAny()
     local msg = {
     "invalid argument #2 (callable expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, nil    )
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, ''     )
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, 1..2   )
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, 1      )
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, self.m )
-  assertErrorMsgContains( msg[1], mth, 'any', self.m, { }    )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, nil    )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, ''     )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, 1..2   )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, 1      )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, errMat )
+  assertErrorMsgContains( msg[1], mth, 'any', errMat, { }    )
 end
 
 function TestMatrixSFolds:testAny() end
@@ -1396,34 +1477,35 @@ function TestMatrixErr:testInner()
   local msg = {
     "invalid argument #2 (matrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'inner', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'inner', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'inner', self.m, 1    )
-  assertErrorMsgContains( msg[1], mth, 'inner', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'inner', self.m, {}   )
+  assertErrorMsgContains( msg[1], mth, 'inner', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'inner', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'inner', errMat, 1    )
+  assertErrorMsgContains( msg[1], mth, 'inner', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'inner', errMat, {}   )
 end
 
 function TestMatrixErr:testCross() --TODO: check input(expected size!)
-    local msg = {
+  local m = matrix(3)
+  local msg = {
     "invalid argument #2 (matrix expected)",
     "invalid matrix sizes"                 ,
   }
-  assertErrorMsgContains( msg[1], mth, 'cross', matrix(3), nil  )
-  assertErrorMsgContains( msg[1], mth, 'cross', matrix(3), ''   )
-  assertErrorMsgContains( msg[1], mth, 'cross', matrix(3), 1    )
-  assertErrorMsgContains( msg[1], mth, 'cross', matrix(3), 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'cross', matrix(3), {}   )
-  assertErrorMsgContains( msg[2], mth, 'cross', matrix(2), matrix(3) )
+  assertErrorMsgContains( msg[1], mth, 'cross', m     , nil  )
+  assertErrorMsgContains( msg[1], mth, 'cross', m     , ''   )
+  assertErrorMsgContains( msg[1], mth, 'cross', m     , 1    )
+  assertErrorMsgContains( msg[1], mth, 'cross', m     , 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'cross', m     , {}   )
+  assertErrorMsgContains( msg[2], mth, 'cross', errMat, m    )
 end
 
 function TestMatrixErr:testMixed() --TODO: check input(expected size!)
-  local msg, m1 = {
+  local msg = {
     "invalid argument #2 (matrix expected)",
     "invalid argument #3 (matrix expected)",
     "invalid matrix sizes"                 ,
     "incompatible matrix sizes"            ,
   }
-  m1 = matrix(3,1)
+  local m1 = matrix(3,1)
   assertErrorMsgContains( msg[1], mth, 'mixed', m1, nil  )
   assertErrorMsgContains( msg[1], mth, 'mixed', m1, ''   )
   assertErrorMsgContains( msg[1], mth, 'mixed', m1, 1    )
@@ -1443,17 +1525,17 @@ function TestMatrixErr:testMixed() --TODO: check input(expected size!)
 end
 
 function TestMatrixErr:testOuter() --TODO: check input(expected size!)
+  local m = matrix(2,1)
   local msg = {
     "invalid argument #2 (matrix expected)",
     "incompatible matrix sizes",
   }
-  assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), nil  )
-  assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), ''   )
-  assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), {}   )
-  assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), 1    )
-  assertErrorMsgContains( msg[1], mth, 'outer', matrix(2,1), 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , nil  )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , ''   )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , {}   )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1    )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1..2 )
   assertErrorMsgContains( msg[2], mth, 'outer', matrix(1,2), matrix(2,2) )
-  assertErrorMsgContains( msg[2], mth, 'outer', matrix(2,2), matrix(1,2) )
 end
 
 -- norm, unit, center, angle (in place) ---------------------------------------o
@@ -1468,13 +1550,11 @@ function TestMatrixErr:testDistance()
   local msg = {
     "invalid argument #2 (matrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'distance', self.m, nil  )
-  assertErrorMsgContains( msg[1], mth, 'distance', self.m, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'distance', self.m, ''   )
-  assertErrorMsgContains( msg[1], mth, 'distance', self.m, {}   )
-  assertErrorMsgContains( msg[1], mth, 'distance', self.m, cmatrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'distance', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'distance', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'distance', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'distance', errMat, {}   )
 end
---[[
 
 function TestMatrixErr:testUnit()
   local msg = {
@@ -1490,64 +1570,64 @@ end
 
 -- operators ------------------------------------------------------------------o
 
-function TestMatrixOp:testEq() end
+function TestMatrixOps:testEq() end
 
-function TestMatrixOp:testAddCPx() end
+function TestMatrixOps:testAddCPx() end
 
 function TestMatrixErr:testAdd()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOp:testAdd() end
+function TestMatrixOps:testAdd() end
 
-function TestMatrixOp:testSubCPx() end
+function TestMatrixOps:testSubCPx() end
 
 function TestMatrixErr:testSub()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOp:testSub() end
+function TestMatrixOps:testSub() end
 
-function TestMatrixOp:testMulCPx() end
+function TestMatrixOps:testMulCPx() end
 
 function TestMatrixErr:testMul()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOp:testMul() end
+function TestMatrixOps:testMul() end
 
 function TestMatrixErr:testTmul()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOp:testTmul() end
+function TestMatrixOps:testTmul() end
 
-function TestMatrixOp:testDivCPx() end
+function TestMatrixOps:testDivCPx() end
 
 function TestMatrixErr:testDiv()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOp:testDiv() end
+function TestMatrixOps:testDiv() end
 
 function TestMatrixErr:testEmul()
   local msg = {
     "invalid argument #2 (matrix expected)",
   }
 end
-function TestMatrixOp:testEmul() end
+function TestMatrixOps:testEmul() end
 
 function TestMatrixErr:testEdiv()
   local msg = {
     "invalid argument #2 (matrix expected)",
   }
 end
-function TestMatrixOp:tetEdiv() end
+function TestMatrixOps:tetEdiv() end
 
 -- linear algebra -------------------------------------------------------------o
 
@@ -1588,6 +1668,57 @@ function TestMatrixFFT:testConv() end
 function TestMatrixFFT:testCorr() end
 function TestMatrixFFT:testCovar() end
 
+-- conversion -----------------------------------------------------------------o
+
+function TestMatrixConv:testTosting()
+  local tostring in MAD
+  local m, c, r, nr, nc = matrix(2)
+  assertTrue( is_string(tostring(m      )) )
+  assertTrue( is_string(tostring(m, ''  )) )
+  assertTrue( is_string(tostring(m, "\n")) )
+
+  for i,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    c, r = {}, {}
+    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c, ' ')  end
+    assertEquals( tostring(m      ), table.concat(r, '\n') )
+    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c)       end
+    assertEquals( tostring(m, ''  ), table.concat(r, '\n') )
+    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c, "\n") end
+    assertEquals( tostring(m, '\n'), table.concat(r, '\n') )
+  end
+end
+
+function TestMatrixErr:testTotable()
+  local msg = {
+    "invalid argument #2 (table expected)"          ,
+    "invalid argument #2 (table of tables expected)",
+  }
+  assertErrorMsgContains( msg[1], totable, errMat, ''     )
+  assertErrorMsgContains( msg[1], totable, errMat, 1      )
+  assertErrorMsgContains( msg[1], totable, errMat, true   )
+  assertErrorMsgContains( msg[1], totable, errMat, 1..2   )
+  assertErrorMsgContains( msg[1], totable, errMat, errMat )
+  assertErrorMsgContains( msg[2], totable, errMat, {{},5} )
+end
+
+function TestMatrixConv:testTotable() -- to be done with foldl
+  local m, tref, nr, nc
+  assertTrue( is_table(totable( matrix(2))) )
+
+  for i,m in ipairs(g.mat) do
+    tref = {}
+    nr, nc = m:sizes()
+    if  nc ~=1 then
+      for i=1,nr do tref[i]={} for j=1,nc do  tref[i][j]=(i-1)*nc+j end end
+    else
+      for i=1,nr do tref[i]=(i-1)*nc+1 end
+    end
+    assertEquals( totable( m)        , tref )
+    assertEquals( matrix(totable(m )), m    )
+  end
+end
+
 -- concatenation --------------------------------------------------------------o
 
 function TestMatrixErr:testConcat()
@@ -1601,4 +1732,3 @@ end
 function TestMatrix:testConcat() end
 
 -- end ------------------------------------------------------------------------o
-]]
