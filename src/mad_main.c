@@ -77,14 +77,16 @@ static const char *progname = "mad";
 /* Assume Posix: MacOSX, Linux, Mingw32/64 or Cygwin */
 #include <unistd.h>
 #include <limits.h>
+#include <assert.h>
 #include <time.h>
 #include "lj_def.h"
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
-#define MAD_VERSION "0.0.2"
+#define MAD_VERSION "0.0.3"
 #endif
 
+/* globals */
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
@@ -110,7 +112,7 @@ static int lua_stdin_is_tty (void)
 
 static void print_mad_version (void)
 {
-	const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
+  const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
 	const char *msg =
 	"    ____  __   ______    ______     |   Methodical Accelerator Design\n"
 	"     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
@@ -258,7 +260,7 @@ static char* winexe (char *buf)
 }
 #endif
 
-static void mad_setpaths (lua_State *L, int no_env)
+static void mad_setenv (lua_State *L, int no_env)
 {
 	char prog_name[PATH_MAX+1] = "";
 	char prog_path[PATH_MAX+1] = "";
@@ -321,25 +323,24 @@ found:
 	if (*prog_path && (p=prog_path+strlen(prog_path))[-1] != dsep)
 		p[0] = dsep, p[1] = nul;
 
-	/* set global table 'path' */
-	lua_createtable(L, 0, 5);
-  lua_pushstring(L, "currpath");
-  lua_pushstring(L, curr_path);
-	lua_rawset(L, -3);
-  lua_pushstring(L, "homepath");
-  lua_pushstring(L, home_path);
-	lua_rawset(L, -3);
-  lua_pushstring(L, "progpath");
-  lua_pushstring(L, prog_path);
-	lua_rawset(L, -3);
-  lua_pushstring(L, "progname");
-  lua_pushstring(L, prog_name);
-	lua_rawset(L, -3);
 	buf[0] = dsep, buf[1] = nul;
-  lua_pushstring(L, "dirsep");
-  lua_pushstring(L, buf);
-	lua_rawset(L, -3);
-	lua_setglobal(L, "path");
+	const char *dir_sep = buf;
+
+	/* set global table '_M' */
+	enum { nitem = 8 };
+	const char *list[2][nitem] = {
+	  { "currpath", "homepath", "progpath", "progname", "dirsep",
+	  	"version", "os", "arch" },
+	  { curr_path , home_path , prog_path , prog_name , dir_sep ,
+	  	MAD_VERSION, LJ_OS_NAME, MKSTR(LJ_ARCH_BITS) }
+	};
+	lua_createtable(L, 0, nitem);
+	for (int i = 0; i < nitem; i++) {
+		assert(list[0][i]); lua_pushstring(L, list[0][i]);
+    assert(list[1][i]); lua_pushstring(L, list[1][i]);
+	  lua_rawset(L, -3);
+	}
+	lua_setglobal(L, "_M");
 
 	if (no_env) return;
 
@@ -1023,8 +1024,8 @@ static int pmain(lua_State *L)
 		lua_setfield(L, LUA_REGISTRYINDEX, "LUA_NOENV");
 	}
 
-	/* Set paths _before_ libraries are open. */
-	mad_setpaths(L, flags & FLAGS_NOENV);
+	/* Set MAD env _before_ libraries are open. */
+	mad_setenv(L, flags & FLAGS_NOENV);
 
 	/* Stop collector during library initialization. */
 	lua_gc(L, LUA_GCSTOP, 0);
