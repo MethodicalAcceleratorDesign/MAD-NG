@@ -54,11 +54,16 @@ local var0 = setmetatable({}, {
   __metatable = false,
 })
 
--- metatable of 'true functions' proxy
+-- metatable of functors
 local _fct = {} -- key
 
-local MF = {
+local fct_mt = {
   __call      = \s,... -> rawget(s,_fct)(...),
+  __tostring  = \s -> tostring(rawget(s,_fct)),
+  __index    := error "forbidden access to functor",
+  __newindex := error "forbidden access to functor",
+  __ipairs   := error "forbidden access to functor",
+  __pairs    := error "forbidden access to functor",
   __metatable = false,
 }
 
@@ -73,8 +78,8 @@ local function parent (a)
   return getmetatable(rawget(a,'__index'))
 end
 
-local function fproxy (f)
-  return setmetatable({[_fct]=f}, MF)
+local function functor (f)
+  return setmetatable({[_fct]=f}, fct_mt)
 end
 
 local function fclass (a)
@@ -85,7 +90,7 @@ local function freadonly (a)
   return btst(rawget(a,_flg) or 0, flg_ro)
 end
 
-local function is_fproxy (a)
+local function is_functor (a)
   return is_table(a) and rawget(a,_fct) ~= nil
 end
 
@@ -180,7 +185,7 @@ local function is_instanceOf (a, b) -- exported
 end
 
 local function get_raw (self, k)
-  return rawget(rawget(self,_var),k)    -- no inheritance nor function evaluation
+  return rawget(rawget(self,_var),k)   -- no inheritance nor function evaluation
 end
 
 local function get_variable (self, lst, eval)
@@ -197,6 +202,7 @@ end
 local function set_variable (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
@@ -205,14 +211,32 @@ local function set_variable (self, tbl, override)
   return self
 end
 
+local function clear_array (self)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  local var = rawget(self,_var)
+  for i=1,#var do var[i] = nil end
+  return self
+end
+
+local function clear_variable (self)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  local id, flg = self.__id, self.__flg
+  table.clear(rawget(self,_var))
+  self.__id, self.__flg = id, flg
+  return self
+end
+
 local function set_function (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,f in pairs(tbl) do
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
-    rawset(var, k, is_function(f) and fproxy(f) or f)
+    rawset(var, k, is_function(f) and functor(f) or f)
   end
   return self
 end
@@ -220,6 +244,7 @@ end
 local function set_metamethod (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
     assert(not fclass(self), "invalid metatable (class unexpected)")
@@ -340,9 +365,9 @@ local function strdump (self, class, pattern)
     for k,v in pairs(var) do
       if is_string(k) and k ~= '__id' and string.find(k, pattern) then
         str = spc .. tostring(k)
-            if is_string(v) then str = str..": '"..tostring(v):sub(1,15).."'"
-        elseif is_fproxy(v) then str = str..": ["..tostring(rawget(v,_fct)).."]"
-        else                     str = str..":  "..tostring(v) end
+            if is_string (v) then str = str..": '"..tostring(v):sub(1,15).."'"
+        elseif is_functor(v) then str = str..": ["..tostring(rawget(v,_fct)).."]"
+        else                      str = str..":  "..tostring(v) end
         if cnt[k]
         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
         else cnt[k] = 0 end
@@ -364,38 +389,38 @@ Object = setmetatable({[_var]=M, [_flg]=bset(0,flg_ro)},MT)
 setmetatable(M, Object)
 
 -- methods
-M.is_class       = fproxy( is_class       )
-M.is_readonly    = fproxy( is_readonly    )
-M.is_instanceOf  = fproxy( is_instanceOf  )
-M.set_readonly   = fproxy( set_readonly   )
-M.get_raw        = fproxy( get_raw        )
-M.get_varkey     = fproxy( get_varkey     )
-M.get_variable   = fproxy( get_variable   )
-M.set_variable   = fproxy( set_variable   )
-M.set_function   = fproxy( set_function   )
-M.set_metamethod = fproxy( set_metamethod )
-M.set_flag       = fproxy( set_flag       )
-M.test_flag      = fproxy( test_flag      )
-M.clear_flag     = fproxy( clear_flag     )
-M.reserve_flag   = fproxy( reserve_flag   )
-M.open_env       = fproxy( open_env       )
-M.used_env       = fproxy( used_env       )
-M.close_env      = fproxy( close_env      )
-M.strdump        = fproxy( strdump        )
+M.is_class       = functor( is_class       )
+M.is_readonly    = functor( is_readonly    )
+M.is_instanceOf  = functor( is_instanceOf  )
+M.set_readonly   = functor( set_readonly   )
+M.get_raw        = functor( get_raw        )
+M.get_varkey     = functor( get_varkey     )
+M.get_variable   = functor( get_variable   )
+M.set_variable   = functor( set_variable   )
+M.set_function   = functor( set_function   )
+M.set_metamethod = functor( set_metamethod )
+M.clear_array    = functor( clear_array    )
+M.clear_variable = functor( clear_variable )
+M.set_flag       = functor( set_flag       )
+M.test_flag      = functor( test_flag      )
+M.clear_flag     = functor( clear_flag     )
+M.reserve_flag   = functor( reserve_flag   )
+M.open_env       = functor( open_env       )
+M.used_env       = functor( used_env       )
+M.close_env      = functor( close_env      )
+M.strdump        = functor( strdump        )
 
 -- aliases
-M.get, M.getk, M.set, M.setf, M.setmm = M.get_variable, M.get_varkey,
-  M.set_variable, M.set_function, M.set_metamethod
-
+M.get , M.getk, M.set  = M.get_variable, M.get_varkey, M.set_variable
 M.fset, M.ftst, M.fclr = M.set_flag, M.test_flag, M.clear_flag
 
 -- Object members
 M.__id     = 'Object'
 M.__flg    = flg_free
 M.__par    = parent
-M.__var    = \s rawget(s,_var) -- alias
-M.name     = \s s.__id        -- alias
-M.parent   = \s s.__par       -- alias
+M.__var    = \s -> rawget(s,_var) -- alias
+M.name     = \s -> s.__id         -- alias
+M.parent   = \s -> s.__par        -- alias
 
 -- help
 M.__help = require 'madh_object'
