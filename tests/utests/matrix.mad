@@ -508,7 +508,43 @@ function TestMatrixErr:testGetsub()
   assertErrorMsgContains( msg[4], mth, 'getsub', errMat, 1   , 1   , 1..4 )
 end
 
-function TestMatrixGet:testGetsub() end
+function TestMatrixGet:testGetsub()
+  local m1, ir, jc, nr, nc
+  for _,m in ipairs(g.mat) do
+    nr, nc = m:sizes()
+    for i = 1,nr do
+    for j = 1,nc do
+      assertEquals( m:getsub( i, j    ), matrix{ref(i,j,nc)} )
+      assertEquals( m:getsub( i, j, {}), {ref(i,j,nc)}       )
+      for a = 1,i do
+      for b = 1,j do
+        ir = { {a,i}, vector{a,i} }
+        jc = { {b,j}, vector{b,j} }
+        for d=1,#ir do
+          m1 = m:getsub(ir[d], jc[d])
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(1    ,2    ), ref(a  ,j  ,nc) )
+          assertEquals( m1:get(2    ,1    ), ref(i  ,b  ,nc) )
+          assertEquals( m1:get(2    ,2    ), ref(i  ,j  ,nc) )
+        end
+        m1 = m:getsub( a..i, b..j)
+        assertEquals( m1:size(), (i-a+1)*(j-b+1) )
+        if (i-a) >  0 and (j-b) >= 0 then -- vectors
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(2    ,1    ), ref(a+1,b  ,nc) )
+          assertEquals( m1:get(i-a  ,j-b+1), ref(i-1,j  ,nc) )
+          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
+        end
+        if (i-a) >= 0 and (j-b) >  0 then -- rows
+          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
+          assertEquals( m1:get(1    ,2    ), ref(a  ,b+1,nc) )
+          assertEquals( m1:get(i-a+1,j-b  ), ref(i  ,j-1,nc) )
+          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
+        end
+      end end
+    end end
+  end
+end
 
 function TestMatrixErr:testSetsub()
   local msg = {
@@ -533,6 +569,7 @@ function TestMatrixErr:testSetsub()
   assertErrorMsgContains( msg[1], mth, 'setsub', errMat, complex(1,1), 1 , 1 )
   assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1 , complex(1,1), 1 )
 end
+
 function TestMatrixSet:testSetsub() end
 
 function TestMatrixErr:testGetv()
@@ -562,8 +599,8 @@ function TestMatrixGet:testGetv()
       assertEquals( m:getv( i    ,{})     , {i}                  )
       assertEquals( m:getv({1,i} ,{})     , {1,i}                )
       assertEquals( m:getv( 1..i ,{})     , totable(1..i)        )
-      assertEquals( m:getv( i    , matrix(2)), matrix{{i,0},{0,0}}  )
-      assertEquals( m:getv({1,i} , matrix(2)), matrix{{1,i},{0,0}}  )
+      assertEquals( m:getv( i    , matrix(2)), matrix{{i,0},{0,0}} )
+      assertEquals( m:getv({1,i} , matrix(2)), matrix{{1,i},{0,0}} )
     end
   end
   m = matrix(4):fill(1..16)
@@ -653,7 +690,24 @@ function TestMatrixErr:testGetrow()
   assertErrorMsgContains( msg[4], mth, 'getrow', errMat, 1   , 1..2 )
   assertErrorMsgContains( msg[5], mth, 'getrow', errMat, 1   , vector(1) )
 end
-function TestMatrixGet:testGetrow()end
+
+function TestMatrixGet:testGetrow() -- TODO
+  local r, ir, nc, nr
+  assertEquals( matrix(2,2):fill(1..4):getrow(1, vector(3)), vector{1,2,0} )
+
+  r = { nil, {} }
+  for ri=1,#r do
+    for _,m in ipairs(g.mat) do
+      nr, nc = m:sizes()
+      for i =1,nr do
+        ir = { i, {1,i}, 1..i, vector{i} }
+        for j=1,#ir do
+          assertEquals( m:getrow(ir[j],r[ri]), m:getsub(ir[j],1..nc,r[ri]) )
+        end
+      end
+      end
+  end
+end
 
 function TestMatrixErr:testSetrow()
   local m = matrix(3)
@@ -672,8 +726,8 @@ function TestMatrixErr:testSetrow()
   assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 0   , 1   )
   assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 3   , 1   )
   assertErrorMsgContains( msg[4], mth, 'setrow', errMat, 1   , matrix(1) )
-  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,1..2  )   --CHECK FOR BETTER SOLUTION
-  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,{1,2} )   --CHECK
+  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,1..2   )            --CHECK FOR BETTER SOLUTION
+  assertErrorMsgContains( msg[4], mth, 'setrow', m     , 1 ,{1,2}  )
 end
 function TestMatrixSet:testSetrow()end
 
@@ -696,7 +750,23 @@ function TestMatrixErr:testGetcol()
   assertErrorMsgContains( msg[4], mth, 'getcol', errMat, 1   , 1..2 )
   assertErrorMsgContains( msg[5], mth, 'getcol', errMat, 1   , vector(1) )
 end
-function TestMatrixGet:testGetcol()end
+
+function TestMatrixGet:testGetcol()
+  local r, ir, nc, nr
+  r = { nil, {} }
+
+  for ri=1,#r do
+    for _,m in ipairs(g.mat) do
+      nr, nc = m:sizes()
+      for i =1,nc do
+        ir = { i, {1,i}, 1..i, vector{i} }
+        for j=1,#ir do
+          assertEquals( m:getcol(ir[j],r[ri]) , m:getsub(1..nr,ir[j],r[ri]) )
+        end
+      end
+    end
+  end
+end
 
 function TestMatrixErr:testSetcol()
   local m = matrix(3)
