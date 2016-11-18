@@ -35,6 +35,7 @@ local complex, range, nrange, nlogrange,infi, tiny, eps, huge, inf, nan, pi, Pi,
 -- locals ---------------------------------------------------------------------o
 
 local mth = \f,s,... s[f](s,...)
+local ref = \i,j,nc ( (i-1)*nc+j )
 
 local values = {
   num = { tiny, 2^-64, 2^-63, 2^-53, eps, 2^-52, 2*eps, 2^-32, 2^-31, 1e-9,
@@ -51,9 +52,9 @@ g.size  = {}
 g.empty = {}
 for nr=1,5 do
   for nc=1,5 do
-    g.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
-    g.empty[(nr-1)*5+nc] = matrix(nr,nc)
-    g.size [(nr-1)*5+nc] = {nr,nc}
+    g.mat  [ref(nr,nc,5)] = matrix(nr,nc):fill(1..nr*nc)
+    g.empty[ref(nr,nc,5)] = matrix(nr,nc)
+    g.size [ref(nr,nc,5)] = {nr,nc}
   end
 end
 
@@ -283,13 +284,11 @@ function TestMatrixSet:setUp()
   self.empty = {}
   for nr=1,5 do
     for nc=1,5 do
-      self.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
-      self.empty[(nr-1)*5+nc] = matrix(nr,nc)
+      self.mat  [ref(nr,nc,5)] = matrix(nr,nc):fill(1..nr*nc)
+      self.empty[ref(nr,nc,5)] = matrix(nr,nc)
     end
   end
 end
-
-local ref = \i,j,nc ( (i-1)*nc+j )
 
 function TestMatrixErr:testGeti0()
   local msg = {
@@ -529,21 +528,38 @@ function TestMatrixGet:testGetsub()
         end
         m1 = m:getsub( a..i, b..j)
         assertEquals( m1:size(), (i-a+1)*(j-b+1) )
-        if (i-a) >  0 and (j-b) >= 0 then -- vectors
-          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
-          assertEquals( m1:get(2    ,1    ), ref(a+1,b  ,nc) )
-          assertEquals( m1:get(i-a  ,j-b+1), ref(i-1,j  ,nc) )
-          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
-        end
-        if (i-a) >= 0 and (j-b) >  0 then -- rows
-          assertEquals( m1:get(1    ,1    ), ref(a  ,b  ,nc) )
-          assertEquals( m1:get(1    ,2    ), ref(a  ,b+1,nc) )
-          assertEquals( m1:get(i-a+1,j-b  ), ref(i  ,j-1,nc) )
-          assertEquals( m1:get(i-a+1,j-b+1), ref(i  ,j  ,nc) )
-        end
+      -- ref = \i,j,nc ( (i-1)*nc+j )
+          for ii=1,i-a+1 do
+            assertEquals( m1:get(ii,1)    , ref(a+ii-1,b,nc) )
+            assertEquals( m1:get(ii,j-b+1), ref(a+ii-1,j,nc) )
+          end
+          for jj=1,j-b+1 do
+            assertEquals( m1:get(1,jj)    , ref(a,b+jj-1,nc) )
+            assertEquals( m1:get(i-a+1,jj), ref(i,b+jj-1,nc) )
+          end
+
+        for li = 1,i-a+1 do
+        for lj = 1,j-b+1 do
+
+          m1 = m:getsub( a..i..li, b..j..lj)
+
+          la=(a..i..li):last()
+          lb=(b..j..lj):last()
+          for ii=1,#(a..i..li) do
+            assertEquals( m1:get(ii,1)           , ref(a+li*(ii-1),b ,nc) )
+            assertEquals( m1:get(ii,#( b..j..lj)), ref(a+li*(ii-1),lb,nc) )
+          end
+          for jj=1,#(b..j..lj) do
+            assertEquals( m1:get(1,jj)          , ref(a ,b+(jj-1)*lj,nc) )
+            assertEquals( m1:get(#(a..i..li),jj), ref(la,b+(jj-1)*lj,nc) )
+          end
+        end end
+
       end end
     end end
   end
+
+  for i=1,2,2 do print(i) end
 end
 
 function TestMatrixErr:testSetsub()
@@ -636,12 +652,12 @@ function TestMatrixErr:testGetdiag()
 end
 
 function TestMatrixGet:testGetdiag()
-  local m, n, diag, nr, nc = matrix(2)
   for _,m in ipairs(g.mat) do
-    nr, nc = m:sizes()
-    diag = {} for i = 1,min(nr,nc) do  diag[i] = (1+(i-1)*nc+i-1) end
-    assertEquals( m:getdiag()  , vector(diag) )
-    assertEquals( m:getdiag({}), diag         )
+    local nr, nc = m:sizes()
+    local n, d = min(nr,nc), m:getdiag()
+    assertEquals({d:sizes()}, {n,1})
+    for i=1,n do assertEquals(d[i], m:get(i,i)) end
+    assertEquals(m:getdiag({}), totable(d))
   end
 end
 
@@ -654,12 +670,11 @@ function TestMatrixErr:testSetdiag()
   assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, \x x )
 end
 
-function TestMatrixSet:testSetdiag()
-  local m, n, diag, nr, nc = matrix(2)
-    for _,m in ipairs(self.mat) do
-    diag, ref = {}, {}
-    nr, nc = m:sizes()
-    n = min(nr, nc)
+function TestMatrixSet:testSetdiag() --TODO: clean up
+  for _,m in ipairs(self.mat) do
+    local diag, ref = {}, {}
+    local nr, nc = m:sizes()
+    local n = min(nr, nc)
     for i = 1,n do  diag[i] = (1+(i-1)*nc+i-1) end
     for i = 1,n do if i<=3 then ref[i] = i
                    else         ref[i] = diag[i]  end end
@@ -828,7 +843,7 @@ function TestMatrixInPlace:setUp()
   self.mat   = {}
   for nr=1,5 do
     for nc=1,5 do
-      self.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
+      self.mat[ref(nr,nc,5)] = matrix(nr,nc):fill(1..nr*nc)
     end
   end
 end
@@ -974,7 +989,7 @@ function TestMatrixFun:setUp()
   self.mat   = {}
   for nr=1,5 do
     for nc=1,5 do
-      self.mat  [(nr-1)*5+nc] = matrix(nr,nc):fill(1..nr*nc)
+      self.mat[ref(nr,nc,5)] = matrix(nr,nc):fill(1..nr*nc)
     end
   end
 end
