@@ -537,7 +537,8 @@ function TestMatrixGet:testGetsub()
 end
 
 function TestMatrixSet:testSetsub()
-  local mt
+  --simplyfying needed, look for special cases
+  local mt, r
   for _,m in ipairs(self.empty) do
     local nr, nc = m:sizes()
     for i=1,nr do
@@ -551,24 +552,22 @@ function TestMatrixSet:testSetsub()
         for li=1,i-a+1 do
         for lj=1,j-b+1 do
           local ra, rb = a..i..li, b..j..lj
-          mt = m:getsub( ra, rb) m:setsub( ra, rb, 0  )
-          --print(m, "\n")
-          assertEquals( m:getsub( ra, rb), matrix(#ra,#rb) )
-
-          --check if rest is untouched
-          m:setsub( ra, rb, mt )
           mt = m:getsub( ra, rb)
+          m:setsub( ra, rb, 0  )
+          assertEquals( m:getsub( ra, rb), matrix(#ra,#rb) )
+          m:setsub( ra, rb, mt )
 
-          for ii=1,#ra do
-            assertEquals( mt:get(ii ,1  ), ref(ref(ii,a,li), b           , nc) )
-            assertEquals( mt:get(ii ,#rb), ref(ref(ii,a,li), rb[#rb]     , nc) )
-          end
-          for jj=1,#rb do
-            assertEquals( mt:get(1  ,jj ), ref(a           , ref(jj,b,lj), nc) )
-            assertEquals( mt:get(#ra,jj ), ref(ra[#ra]     , ref(jj,b,lj), nc) )
+          ir = { 1..#ra*#rb, totable(1..#ra*#rb) }
+          for d=1,#ir do
+            m:setsub( ra, rb, ir[d]  )
+            for ii=1,#ra do
+            for jj=1,#rb do
+              assertEquals( m:getsub(ra,rb):get(ii,jj), ref(ii,jj,#rb) )
+            end end
+            m:setsub( ra, rb, mt )
           end
         end end
-        end end
+      end end
     end end
   end
 end
@@ -579,6 +578,7 @@ function TestMatrixErr:testSetsub()
     "invalid argument #3 (iterable expected)"          ,
     "invalid argument #4 (scalar or iterable expected)",
     "1-index out of bounds"                            ,
+    "cannot convert 'nil' to 'double'"                 ,
   }
   assertErrorMsgContains( msg[1], mth, 'setsub', errMat, nil , 1  , 1  )
   assertErrorMsgContains( msg[1], mth, 'setsub', errMat, ''  , 1  , 1  )
@@ -593,8 +593,11 @@ function TestMatrixErr:testSetsub()
   assertErrorMsgContains( msg[3], mth, 'setsub', errMat, 1   , 1 , NaN )
   assertErrorMsgContains( msg[4], mth, 'setsub', errMat, 0   , 1 , 1   )
   assertErrorMsgContains( msg[4], mth, 'setsub', errMat, 1   , 0 , 1   )
+  assertErrorMsgContains( msg[5], mth, 'setsub', errMat, 1..2, 1..2, 1..3 )
+  assertErrorMsgContains( msg[5], mth, 'setsub', errMat, 1..2, 1..2, {1}  )
   assertErrorMsgContains( msg[1], mth, 'setsub', errMat, complex(1,1), 1 , 1 )
   assertErrorMsgContains( msg[2], mth, 'setsub', errMat, 1 , complex(1,1), 1 )
+
 end
 
 function TestMatrixErr:testGetv()
@@ -618,9 +621,9 @@ end
 function TestMatrixGet:testGetv()
   for _,m in ipairs(G.mat) do
     for i=1,m:size() do
-        assertEquals( m:getv(i)          , vector{i}   )
-        assertEquals( m:getv(i,{})       , {i}         )
-        assertEquals( m:getv(i,vector(2)), vector{i,0} )
+      assertEquals( m:getv(i)          , vector{i}   )
+      assertEquals( m:getv(i,{})       , {i}         )
+      assertEquals( m:getv(i,vector(2)), vector{i,0} )
       for a=1,i do
       for li=1,i-a+1 do
         local ra = a..i..li
@@ -650,7 +653,23 @@ function TestMatrixErr:testSetv()
   assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , NaN  )
   assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , \x x )
 end
-function TestMatrixSet:testSetv() end
+
+function TestMatrixSet:testSetv()
+  --setv, getv-> resetv, getv- >switch method
+  for _,m in ipairs(self.empty) do
+    for i=1,m:size() do
+      for a=1,i do
+      for li=1,i-a+1 do
+        local ra = a..i..li
+        local ir = { ra, totable(ra), vector((totable(ra))) }
+        for d=1,#ir do
+          --m:setv(ir[d])
+          --assertEquals( m:getv(ir[d]), vector(#ra):fill(ra) )
+        end
+      end end
+    end
+  end
+end
 
 function TestMatrixErr:testGetdiag()
   local msg = {
