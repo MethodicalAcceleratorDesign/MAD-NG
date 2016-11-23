@@ -991,7 +991,7 @@ function TestMatrixErr:testCopy()
   assertErrorMsgContains( msg[1], mth,'copy', errMat,  1 )
 end
 
-function TestMatrixInPlaceII:testCopy() --different test-suite
+function TestMatrixInPlaceII:testCopy()
   for i,m in ipairs(G.mat) do
     local mcopy = G.empty[i]
     mcopy:copy(m)
@@ -1029,23 +1029,24 @@ function TestMatrixErr:testSymp()
   local msg = {
     "invalid argument #1 (2n matrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth,'symp',  matrix(3)   ) --CHECK
-  assertErrorMsgContains( msg[1], mth,'symp',  vector(2)   ) --CHECK
-  assertErrorMsgContains( msg[1], mth,'symp',  matrix(4,3) ) --CHECK
+  assertErrorMsgContains( msg[1], mth,'symp',  matrix(3)   )
+  assertErrorMsgContains( msg[1], mth,'symp',  vector(2)   )
+  assertErrorMsgContains( msg[1], mth,'symp',  matrix(4,3) )
 end
 
-function TestMatrixInPlaceII:testSymp() --different suite needed; skew-symmetric?
+function TestMatrixInPlaceII:testSymp() --TODO
+  --M' J M = J => M^-1 = J^-1 M'
+  --J^2 = -I, det(J) = +1
+
   for i=2,6,2 do
     local m = matrix(i,i):fill(1..i*i)
+    --local mt = m-m:t() -- can not divide by two for now
+    --print(mt, "\n")
+    --print(mt/2, "\n")
 
-    for ir=1,i do
-    for jc=1,i do
-      m:set(jc,ir, -m:get(ir,jc)) --skew-symmetric
-    end end
-    local s = m:symp()
-    assertTrue( m:t()*s*m   == s )
-    assertTrue( s*m:t()*s*m == -m:eye() )
-  end
+    --print(m:symp()^2)
+    assertTrue( m:symp():t() == -m:symp() )
+   end
 end
 
 function TestMatrixErr:testCirc()
@@ -1057,7 +1058,7 @@ function TestMatrixErr:testCirc()
   assertErrorMsgContains( msg[1], mth,'circ', errMat, \x x )
 end
 
-function TestMatrixInPlaceII:testCirc() --different suite, only square matrices
+function TestMatrixInPlaceII:testCirc()
   for i=1,5 do
     local m = matrix(i)
     local t = {} for j=1,i do t[j]=j end
@@ -1101,7 +1102,7 @@ function TestMatrixErr:testReshape()
   assertErrorMsgContains( msg[1], mth,'reshape', errMat, nil, 2 )
 end
 
-function TestMatrixInPlaceII:testReshape() --\ different suite
+function TestMatrixInPlaceII:testReshape()
   local m
   m = matrix(2,2) assertEquals( {m:reshape() :sizes()}, {4,1} )
   m = matrix(2,2) assertEquals( {m:reshape(1):sizes()}, {1,1} )
@@ -1155,37 +1156,43 @@ end
 function TestMatrixErr:testMap()
   local msg = {
     "invalid argument #2 (callable expected)"                 ,
+    "invalid argument #2 (scalar function expected)"          ,
     "invalid argument #3 (iterable expected)"                 ,
+    "attempt to perform arithmetic on local 'y' (a nil value)",
     "invalid range member '1'"                                ,
-    "attempt to perform arithmetic on local 'x' (a nil value)",
   }
-  assertErrorMsgContains( msg[1], mth, 'map', errMat, ''           )
-  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1..2         )
-  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1            )
-  assertErrorMsgContains( msg[1], mth, 'map', errMat, matrix(1)    )
-  assertErrorMsgContains( msg[1], mth, 'map', errMat, {}           )
-  assertErrorMsgContains( msg[2], mth, 'map', errMat, \x x+1, ''   )
-  assertErrorMsgContains( msg[2], mth, 'map', errMat, \x x+1, 1    )
-  assertErrorMsgContains( msg[3], mth, 'map', errMat, \x x+1, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1..2      )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, 1         )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, matrix(1) )
+  assertErrorMsgContains( msg[1], mth, 'map', errMat, {}        )
+  assertErrorMsgContains( msg[2], mth, 'map', errMat, '!'       )
+  assertErrorMsgContains( msg[4], mth, 'map', errMat, '+'       )
+  assertErrorMsgContains( msg[3], mth, 'map', errMat, \x x+1, ''   )
+  assertErrorMsgContains( msg[3], mth, 'map', errMat, \x x+1, 1    )
+  assertErrorMsgContains( msg[5], mth, 'map', errMat, \x x+1, 1..2 )
 end
 
 function TestMatrixFun:testMap()
   local m1
-  for i,m in ipairs(G.mat) do
-    local nr, nc = m:sizes()
-    --print(m:map('+'))
-    assertEquals( m:map \x x-x    , G.empty[i] )
+  for i,m in ipairs(self.mat) do
+    m1 = m:map '~'        for i=1,#m1 do assertEquals( m1:geti(i),-i ) end
+    m1 = m:map \x x-x     for i=1,#m1 do assertEquals( m1:geti(i), 0 ) end
     --totable test
-    m1 = m:map(\x x+1,{}) for i=1,#m1 do assertEquals( m1[i], i+1 ) end
-    m1 = m:map(\x x-x,{}) for i=1,#m1 do assertEquals( m1[i], 0   ) end
+    m1 = m:map('!'   ,{}) for i=1,#m1 do assertFalse ( m1[i] )    end
+    m1 = m:map(\x x-x,{}) for i=1,#m1 do assertEquals( m1[i], 0 ) end
     --'in' place test
+    m:map('~'   , 'in')   for i=1,#m  do assertEquals( m :geti(i),-i ) end
+    m:map(\x x-x, 'in')   for i=1,#m  do assertEquals( m :geti(i), 0 ) end
   end
 end
 
 function TestMatrixErr:testMap2()
+  local m = matrix(1)
   local msg = {
     "invalid argument #2 (scalar or iterable expected)"       ,
     "invalid argument #3 (callable expected)"                 ,
+    "invalid argument #3 (scalar function expected)"          ,
     "invalid argument #4 (iterable expected)"                 ,
     "invalid range member '1'"                                ,
     "attempt to perform arithmetic on local 'y' (a nil value)",
@@ -1194,35 +1201,39 @@ function TestMatrixErr:testMap2()
   assertErrorMsgContains( msg[1], mth, 'map2', errMat, ''   )
   assertErrorMsgContains( msg[1], mth, 'map2', errMat, NaN  )
   assertErrorMsgContains( msg[1], mth, 'map2', errMat, \x x )
-  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), nil  )
-  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), ''   )
-  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), 1..2 )
-  assertErrorMsgContains( msg[2], mth, 'map2', errMat, matrix(1), 1    )
-  assertErrorMsgContains( msg[3], mth, 'map2', errMat, matrix(1), \x x, 1    )
-  assertErrorMsgContains( msg[4], mth, 'map2', errMat, matrix(1), \x x, 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'map2', errMat, matrix(1), \x,y  x+y  )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, m    , nil  )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, m    , ''   )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, m    , 1..2 )
+  assertErrorMsgContains( msg[2], mth, 'map2', errMat, m    , 1    )
+  assertErrorMsgContains( msg[3], mth, 'map2', errMat, m    , '!'  )
+  assertErrorMsgContains( msg[4], mth, 'map2', errMat, m    , \x x, 1    )
+  assertErrorMsgContains( msg[5], mth, 'map2', errMat, m    , \x x, 1..2 )
+  assertErrorMsgContains( msg[6], mth, 'map2', errMat, m    , \x,y  x+y  )
 end
 
 function TestMatrixFun:testMap2()
+  local mt
   for _,m1 in ipairs(self.mat) do
-    local nr, nc = m1:sizes()
-    local m2   = matrix(nr,nc)
-    local mref = m1:same()
-    m2:copy(m1)
+    mt = m1:same()
+    mt = m1:map2(1 , '+'      )     for i=1,#mt do assertEquals( mt:geti(i), i+1 ) end
+    mt = m1:map2(1 , \x,y x-y )     for i=1,#mt do assertEquals( mt:geti(i), i-1 ) end
+    mt = m1:map2(m1, '~'      )     for i=1,#mt do assertEquals( mt:geti(i),-i   ) end
+    mt = m1:map2(m1, '!'     , {})  for i=1,#mt do assertFalse ( mt[i] )      end
 
-    assertEquals( m1:map2( m2,'-'), mref )
-    assertEquals( m1:map2(-m2,'+'), mref )
-
-    --print(m2)
-    --m1:map2(-m2,'+')
-    --print(m2, "\n")
-
-  --totable
-    --print( m1:map2( m2,'-',{}) ,"\n")
-    --print( m1:map2( m2,'+',{}) )
-  end
-  for _,m1 in ipairs(self.mat) do
-  --'in' place test
+    ir = { m1, 1..#m1, totable(1..#m1) }
+    for d=1,#ir do
+    mt = m1:map2(ir[d], '+'     )   for i=1,#mt do assertEquals( mt:geti(i), i*2 ) end
+    mt = m1:map2(ir[d], \x,y x-y)   for i=1,#mt do assertEquals( mt:geti(i), 0   ) end
+    --totable test
+    mt = m1:map2(ir[d], '<'   , {}) for i=1,#mt do assertFalse ( mt[i] )      end
+    mt = m1:map2(ir[d], '-'   , {}) for i=1,#mt do assertEquals( mt[i], 0   ) end
+    mt = m1:map2(ir[d], \x x+x, {}) for i=1,#mt do assertEquals( mt[i], i*2 ) end
+    end
+    --'in' place test
+    for d=1,#ir do
+      m1:map2(ir[d], '~'  , 'in')   for i=1,#m1 do assertEquals( m1:geti(i), i*(-1)^d ) end
+    end
+      m1:map2(m1, \x,y x-y, 'in')   for i=1,#m1 do assertEquals( m1:geti(i), 0 )        end
   end
 end
 
@@ -1232,6 +1243,7 @@ function TestMatrixErr:testMap3()
     "invalid argument #2 (scalar or iterable expected)"       ,
     "invalid argument #3 (scalar or iterable expected)"       ,
     "invalid argument #4 (callable expected)"                 ,
+    "invalid argument #4 (scalar function expected)"          ,
     "invalid argument #5 (iterable expected)"                 ,
     "invalid range member '1'"                                ,
     "attempt to perform arithmetic on local 'y' (a nil value)",
@@ -1248,14 +1260,37 @@ function TestMatrixErr:testMap3()
   assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, nil  )
   assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, 1..2 )
   assertErrorMsgContains( msg[3], mth, 'map3', errMat, errMat, errMat, 1    )
-  assertErrorMsgContains( msg[4], mth, 'map3', errMat, errMat, errMat, \x x, 1    )
-  assertErrorMsgContains( msg[5], mth, 'map3', errMat, errMat, errMat, \x x, 1..2 )
-  assertErrorMsgContains( msg[6], mth, 'map3', errMat, m     , errMat, \x,y,z x+y+z )
-  assertErrorMsgContains( msg[6], mth, 'map3', errMat, m     , m     , \x,y,z x+y+z )
-  assertErrorMsgContains( msg[7], mth, 'map3', errMat, errMat, m     , \x,y,z x+y+z )
+  assertErrorMsgContains( msg[4], mth, 'map3', errMat, m     , m     , '!'  )
+  assertErrorMsgContains( msg[5], mth, 'map3', errMat, errMat, errMat, \x x, 1    )
+  assertErrorMsgContains( msg[6], mth, 'map3', errMat, errMat, errMat, \x x, 1..2 )
+  assertErrorMsgContains( msg[7], mth, 'map3', errMat, m     , errMat, \x,y,z x+y+z )
+  assertErrorMsgContains( msg[7], mth, 'map3', errMat, m     , m     , \x,y,z x+y+z )
+  assertErrorMsgContains( msg[8], mth, 'map3', errMat, errMat, m     , \x,y,z x+y+z )
 end
 
-function TestMatrixFun:testMap3() end
+function TestMatrixFun:testMap3()
+  local mt
+  for _,m1 in ipairs(self.mat) do
+    local nr, nc = m1:sizes()
+    mt = m1:same()
+    mt = m1:map3(m1, m1, '~'          ) for i=1,#mt do assertEquals( mt:geti(i),-i   ) end
+    mt = m1:map3(m1, m1, '+'          ) for i=1,#mt do assertEquals( mt:geti(i), i*2 ) end
+    mt = m1:map3(m1, m1, \x,y,z x+y+z ) for i=1,#mt do assertEquals( mt:geti(i), i*3 ) end
+    mt = m1:map3(m1, m1, '<'      , {}) for i=1,#mt do assertFalse ( mt[i] )      end
+
+    m2 = { m1, 1..#m1, totable(1..#m1) }
+    m3 = { m1, 1..#m1, totable(1..#m1) }
+    for i=1,#m2 do
+    for j=1,#m3 do
+      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z)     for i=1,#mt do assertEquals( mt:geti(i), i*3 ) end
+      --totable test
+      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z, {}) for i=1,#mt do assertEquals( mt[i]     , i*3 ) end
+    end end
+    --'in' place test
+    m1:map3(m1, m1, '~'         , 'in') for i=1,#m1 do assertEquals( m1:geti(i), -i   ) end
+    m1:map3(m1, m1, \x,y,z x+y+z, 'in') for i=1,#m1 do assertEquals( m1:geti(i), -i*3 ) end
+  end
+end
 
 function TestMatrixErr:testMapij()
   local msg = {
@@ -1273,8 +1308,17 @@ function TestMatrixErr:testMapij()
 end
 
 function TestMatrixFun:testMapij()
-  for i,m in ipairs(G.mat) do
-    assertEquals( m:mapij \x x-x, G.empty[i] )
+  --missing test showing and checking difference in between map anc mapij
+  local m1
+  for i,m in ipairs(self.mat) do
+    m1 = m:mapij '~'        for i=1,#m1 do assertEquals( m1:geti(i),-i ) end
+    m1 = m:mapij \x x-x     for i=1,#m1 do assertEquals( m1:geti(i), 0 ) end
+    --totable test
+    m1 = m:mapij('!'   ,{}) for i=1,#m1 do assertFalse ( m1[i] )    end
+    m1 = m:mapij(\x x-x,{}) for i=1,#m1 do assertEquals( m1[i], 0 ) end
+    --'in' place test
+    m:mapij('~'   , 'in')   for i=1,#m  do assertEquals( m :geti(i),-i ) end
+    m:mapij(\x x-x, 'in')   for i=1,#m  do assertEquals( m :geti(i), 0 ) end
   end
 end
 
@@ -1304,17 +1348,21 @@ function TestMatrixErr:testMapat()
 end
 
 function TestMatrixFun:testMapat()
-  for i,m in ipairs(G.mat) do
-    assertEquals( m:mapij \x x-x, G.empty[i] )
+  -- map test + different sizes and inputs like in get tests
+  local m1
+  for i,m in ipairs(self.mat) do
+    --m1 = m:mapat('~', )        for i=1,#m1 do assertEquals( m1:geti(i),-i ) end
+
   end
 end
 
-function TestMatrixErr:testFoldl()
+function TestMatrixErr:testFoldl() --TODO
   local msg = {
     "invalid argument #2 (callable expected)"                    ,
     "invalid argument #5 (iterable expected)"                    ,
     "invalid argument #4 (string 'vec', 'row' or 'col' expected)",
     "invalid range member '1'"                                   ,
+    "attempt to perform arithmetic on local 'x' (a table value)" ,
   }
   m, cm = matrix(2), cmatrix(2)
   assertErrorMsgContains( msg[1], mth, 'foldl', errMat, nil  )
@@ -1334,6 +1382,7 @@ function TestMatrixErr:testFoldl()
   assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", ''   )
   assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", 1    )
   assertErrorMsgContains( msg[2], mth, 'foldl', errMat, \x x, 1 , "vec", \x x )
+  assertErrorMsgContains( msg[5], mth, 'foldl', errMat, '+' , {} )
 end
 
 --[[
@@ -1375,8 +1424,6 @@ function TestMatrixFun:testFoldl()
     m1 = m:foldl('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end
 
     --3) x:fold( f, nil, nil, r ) and 3')x:fold( f, r ) and  3")x:fold( f, nil, r)
-    --print( m:foldl('+'          , {}) )      -- err
-    --print( m:foldl(\x x         , {}) )      -- empty tables
     assertEquals( m:foldl('+' ,nil      , {}), sum(1..m:size()) )
     assertEquals( m:foldl('+' ,nil, nil , {}), sum(1..m:size()) )
     --7)  x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
