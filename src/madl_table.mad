@@ -1,49 +1,52 @@
 --[=[
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
- | TFS table module
+ | Table module
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
-  
+ o-----------------------------------------------------------------------------o
+
   Purpose:
-  - TODO
-  
- o----------------------------------------------------------------------------o
+  - Provide TFS table objects
+
+ o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = {}, __test = {} }
+local M = { __help = {} }
 
--- module --------------------------------------------------------------------o
+-- help -----------------------------------------------------------------------o
 
-M.__help.self = [[
+M.__help.self = [=[
 NAME
-  tfstable -- TFS table
+  table -- TFS table
 
 SYNOPSIS
-  table = require "tfstable"
   my_tab = table 'mytab' { column_name_list... }
 
 DESCRIPTION
-  The module table creates TFS tables used by MAD. The columns can be
-  accessed by name or by index and their content will grow automatically.
-  If a name of a column is enclosed into a list, then its elements can be
-  used to access the row.
+  The module table creates TFS tables used by MAD. The rows and the columns can
+  be accessed (in this order) by name or by index. If a name of the column name
+  list is itself enclosed into a list, then the name of the elements can be used
+  to access the row. Adding news rows or columns let the table grows
+  automatically.
 
 RETURN VALUE
   The TFS table.
 
+ERRORS
+  TODO
+
 EXAMPLES
-  table = require "tfstable"
+  local table in MAD
   tab = table 'survey' { {'name'}, 'x', 'y', 'z', 'phi', 'theta', 'rho' }
   tab:add{ 'drift', 0.1, 0.2, 0.5, 0, 0, 0 }
   tab:add{ name='mq', x=0.2, y=0.4, z=1, phi=0, theta=0, rho=0 }
@@ -53,311 +56,227 @@ EXAMPLES
 
 SEE ALSO
   sequence, element, beam
-]]
+]=]
 
--- requires ------------------------------------------------------------------o
+-- locals ---------------------------------------------------------------------o
 
-local object = require 'object'
-local utils  = require 'utils'
+local ltable = table
 
--- globals -------------------------------------------------------------------o
+local is_nil, is_number, is_complex, is_string, is_table, is_function,
+      is_matrix, is_cmatrix, isa_matrix, vector, Object, env in MAD
 
-local _G_mt = getmetatable(_G)
-setmetatable(_G, {
-  __index = function(_, n)
-    error("attempt to read to undeclared variable " .. n, 2)
-  end,
-  __newindex = function(_, n)
-    error("attempt to write to undeclared variable " .. n, 2)
-  end
-})
+local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
--- locals --------------------------------------------------------------------o
+local _var, _row, _col, _ref = {}, {}, {}, {} -- special immutable keys
 
-local type, setmetatable = type, setmetatable
-local pairs, ipairs = pairs, ipairs
-local is_list = utils.is_list
+local table = Object 'table' { kind='table', type='', title='', origin=origin }
+local table_mt = getmetatable(table) -- backup original (see metamethods)
 
--- metatable for the root of all tables
-local MT = object {} 
+-- helpers --------------------------------------------------------------------o
 
- -- make the module the root of all tables
-MT (M)
-M.name = 'table'
-M.kind = 'table'
-M.is_table = true
+local size = \s -> s[_var].lastrow
 
--- functions -----------------------------------------------------------------o
-
--- special functions for [row_name][col_name] 'lazy' access and error handling
--- normal access is [col_idx|col_name][row_idx]
-
-local function invalid_row(self, key)
-  error("invalid table access for key '" .. key .. "', invalid row name")
-end
-
-local function invalid_col(self, key)
-  error("invalid table access for key '" .. key .. "', invalid column name")
-end
-
-local function invalid_idx(self, key)
-  error("invalid table access for key '" .. key .. "', invalid column index")
-end
-
-local function invalid_cnt(self, key)
-  error("invalid table access for key '" .. key .. "', missing or invalid count number")
-end
-
-local function invalid_val(self, key)
-  error("invalid table access for key '" .. key .. "', value is a table")
-end
-
-local function invalid_tbl(self, key)
-  error("invalid table access for key '" .. key .. "', value is not a table")
-end
-
-local function invalid_len(self, key)
-  error("invalid table access for row '" .. key .. "', invalid number of values")
-end
-
-local function invalid_key(self, key)
-  error("invalid table access for row '" .. key .. "', invalid column name")
-end
-
--- set values of existing row
-
-local function add_refkey(self, idx)
-  local key = self._refcol[idx]
-  local col = self._refkey
-  local ref = col[key]
-
-      if      ref  ==  nil     then col[key]    = idx         -- not yet registered
-  elseif type(ref) == 'number' then col[key]    = {ref, idx}  -- already one index
-  else                              ref[#ref+1] = idx         -- already many indexes
-  end
-end
-
--- add a new row
-
-local function add_row(self, row)
-  local nrow = #self[1]+1
-
-  if #row > 0 then -- vector of index-value
-    if #row ~= #self then invalid_len(self, nrow) end
-    for i,v in ipairs(row) do rawset(self[i], nrow, v) end
-
-  else              -- vector of key-value
-    local ncol, col = 0
-    for k,v in pairs(row) do
-      col = rawget(self, k)
-      if col == nil then invalid_key(self, nrow) end
-      rawset(col, nrow, v)
-      ncol = ncol + 1
-    end
-    if ncol ~= #self then
-      error("invalid number of key-value parameters in row add")
+local function expand (self)
+  local var, col = self[_var], self[_col]
+  local len = math.ceil(math.max(var.reserve or 0, var.maxrow*1.5))
+  for i=1,var.lastcol do
+    if is_matrix(col[i]) then
+      col[i] =  vector(len):copy(col[i])
+    elseif is_cmatrix(col[i]) then
+      col[i] = cvector(len):copy(col[i])
     end
   end
-
-  if self._refcol then add_refkey(self, nrow) end
+  print('tbl maxrow =', len)
+  var.maxrow = len
 end
 
--- set row values
+local function resize (self, idx)
+  local var, col = self[_var], self[_col]
+  if idx > var.maxrow then expand(self) end
+  for i=1,var.lastcol do
+    if not is_table(col[i]) then col[i]:_reshape(idx) end
+  end
+end
 
-local function set_row(self, idx, val)
-  local n = #val
+local function specialize (self)
+  local var, col, mat = self[_var], self[_col], false
+  local len = math.ceil(math.max(var.reserve or 0, var.maxrow))
+  for i=1,var.lastcol do
+    local val = col[i][1]
+    if is_number(val) then
+      col[i] =  vector(len):seti(1, val) ; mat = true
+    elseif is_complex(val) then
+      col[i] = cvector(len):seti(1, val) ; mat = true
+    end
+  end
+  if mat
+  then var.maxrow, var.resize = len, true
+  else var.maxrow, var.resize = 2^31, nil
+  end
+end
 
-  if n ~= 0 then    -- vector of index-value
-    if n > #self then invalid_idx(self, self._refcol[idx]) end
-    for i,v in ipairs(val) do self[i][idx] = v end
+-- methods --------------------------------------------------------------------o
 
-  else              -- vector of key-value
+local function add_hdrkey (self, key)
+  assert(is_string(key), "invalid argument #2 (string expected)")
+  local hnam = self[_var].hdrnam
+  hnam[#hnam+1] = key
+  return self
+end
+
+local function rem_rowkey (row, idx, key)
+  local ref = row[key]
+
+  if is_number(ref) then
+    assert(ref == idx, "unexpected corrupted index")
+    row[key] = nil        -- one index
+  else for i=1,#ref do    -- many indexes
+    if ref[i] == idx then
+      ltable.remove(ref, i)
+      if #ref == 1 then row[key] = ref[1] end
+      break
+    end end
+  end
+end
+
+local function add_rowkey (row, idx)
+  local key = row[idx]
+  local ref = row[key]
+
+      if is_nil   (ref) then row[key]    = idx         -- not yet registered
+  elseif is_number(ref) then row[key]    = {ref, idx}  -- already one index
+  else                       ref[#ref+1] = idx         -- already many indexes
+  end
+end
+
+local function set_rowkey (row, idx, key)
+  if row[idx] == key then return end
+  rem_rowkey(row, idx, key)
+  add_rowkey(row, idx)
+end
+
+local function set_col (self, key, val)
+  error('NYI')
+end
+
+local function ins_col (self, key, val)
+  error('NYI')
+end
+
+local function add_col (self, key, val)
+  error('NYI')
+end
+
+local function row_totable (self)
+  error('NYI')
+end
+
+local function cpy_row (self, idx, val)
+  local var, col, len = self[_var], self[_col], 0
+  if val[_ref] or #val > 0 then      -- index-value or row ref
+    for i=1,var.lastcol do
+      if is_nil(val[i]) then break end
+      col[i][idx], len = val[i], len+1
+    end
+  else                               -- key-value
     for k,v in pairs(val) do
-      local col = rawget(self, k)
-      if col == nil then invalid_col(self, self._refcol[idx]) end
-      col[idx] = v
+      assert(is_string(k) and col[k], "invalid argument #3 (invalid column name)")
+      col[col[k]][idx], len = v, len+1
     end
   end
+  return len
 end
 
-local function get_refkey_mt(self)
-  return {
-    __len = function(row)
-      local idx = row._idx
-      return type(idx) == 'table' and #idx or 0
-    end,
-
-    __index = function(row, col)
-      local idx = row._idx
-
-      -- print('acc.__index: idx=', idx, ', key=', col)
-
-      if type(idx) == 'number' and type(col) == 'string' then
-        local vec = rawget(self, col) or invalid_col(self, self._refcol[idx])
-        return      rawget(vec,  idx) or invalid_row(self, self._refcol[idx])
-      end
-
-      if type(idx) == 'table' and type(col) == 'number' then
-        row._idx = idx[col] or invalid_cnt(self, self._refcol[idx[1]])
-        return row
-      end
-
-      invalid_cnt(self, self._refcol[type(idx) == 'table' and idx[1] or idx])
-    end,
-
-    __newindex = function(row, col, val)
-      local idx = row._idx
-
-      -- print('acc.__newindex: idx=', idx, ', key=', col, ', val=', val)
-
-      if type(idx) == 'number' and type(col) == 'string' then
-        local vec = rawget(self, col) or invalid_col(self, self._refcol[idx])
-        if type(val) == 'table' then     invalid_val(self, self._refcol[idx]) end
-        rawset(vec, idx, val)
-        return
-      end
-
-      if type(idx) == 'table' and type(col) == 'number' then
-        idx = idx[col] or            invalid_cnt(self, self._refcol[idx[1]])
-        if type(val) ~= 'table' then invalid_tbl(self, self._refcol[idx   ]) end
-        set_row(self, idx, val)
-        return
-      end
-
-      invalid_cnt(self, self._refcol[type(idx) == 'table' and idx[1] or idx])
-    end
-  }
+local function set_row (self, idx, val)
+  assert(is_table(val), "invalid argument #3 (table expected)")
+  local var, row = self[_var], self[_row]
+  assert(idx >= 1 and idx <= var.lastrow, "invalid argument #2 (row index out of bounds)")
+  local key = row[idx]
+  cpy_row(self, idx, val) -- partial cpy allowed (?)
+  if var.refcol then set_rowkey(row, idx, key) end
+  return self
 end
 
-local function clr_refcol(self)
-  self._refcol, self._refidx = nil
-  self._refkey, self._refkey_mt = {}
+local function ins_row (self, idx, val)
+  error('NYI')
 end
 
-local function set_refcol(self, rcol, ridx)
-  self._refcol, self._refidx = rcol, ridx
-  self._refkey, self._refkey_mt = {}, get_refkey_mt(self)
-  for i=1,#rcol do add_refkey(self, i) end
+local function add_row (self, val)
+  assert(is_table(val), "invalid argument #2 (table expected)")
+  local var = self[_var]
+  local idx = var.lastrow+1
+  if var.resize then resize(self, idx) end
+  local len = cpy_row(self, idx, val)
+  assert(len == var.lastcol, "invalid argument #2 (row is missing columns)")
+  if var.refcol then add_rowkey(self[_row], idx) end
+  if idx == 1 then specialize(self) end
+  var.lastrow = idx
+  return self
 end
 
--- initialization
+local function write(self, filename, column_names_, header_names_) -- TODO
+  local var, col = self[_var], self[_col]
+  local hname = header_names_ or var.hdrnam
+  local cname = column_names_ or var.colnam
+  local cols = ltable.new(#cname, 0)
 
-local function init(cols, name)
-  local self = { _header = {}, _colnames = {} }
-  local rcol, ridx = nil
-
-  -- create header
-  M.set_key(self, { name=name })
-  M.set_key(self, { type='no-type' })
-  M.set_key(self, { title='no-title' })
-  M.set_key(self, { origin='no-origin' })
-  M.set_key(self, { date=os.date"%d/%m/%y" })
-  M.set_key(self, { time=os.date"%H:%M:%S" })
-
-  -- create columns
-  for i,v in ipairs(cols) do
-    self[i] = {}
-    if is_list(v) then rcol = self[i] ; ridx = i ; v = v[1] end
-    self[v] = self[i]
-    self._colnames[i] = v
+  -- check and collect columns
+  for i=1,#cname do
+    assert(col[cname[i]], "invalid column name")
+    cols[i] = col[col[cname[i]]]
   end
-
-  if rcol then set_refcol(self, rcol, ridx) else clr_refcol(self) end
-  return self
-end
-
--- methods -------------------------------------------------------------------o
-
-function M:get_key(key)
-  return self._header[key]
-end
-
-function M:set_key(keys)
-  local hdr = self._header
-  for k,v in pairs(keys) do
-    if not hdr[k] then hdr[#hdr+1] = k end
-    hdr[k] = v
-  end
-  return self
-end
-
-function M:get_length()
-  return #self[1]
-end
-
-function M:get_column_names()
-  return self._colnames
-end
-
-function M:clr_refcol()
-  clr_refcol(self)
-  return self
-end
-
-function M:set_refcol(rcol)
-  if not (type(rcol) == 'string' and self[rcol]) then
-    error('invalid reference column name')
-  end
-  set_refcol(self, self[rcol])
-  return self
-end
-
-function M:add_col(name, values)
-  -- todo
-  return self
-end
-
-function M:add_row(row)
-  add_row(self, row)
-  return self
-end
-
-function M:write(filename, columns)
 
   -- open file
   local name = filename or self:get_key'name' or 'tmptable'
-  local file, err = io.open(name .. '.tfs', 'w')
+  if string.sub(name,-4) ~= '.tfs' then name = name .. '.tfs' end
+  local file, err = io.open(name, 'w')
   if not file then
-    error("unable to open file '"..name.."' for writing: "..err) 
+    error("unable to open file '" .. name .. "' for writing: " .. err)
   end
 
   -- dump header
-  local hdr = self._header
-  for i=1,#hdr do
-    local k, v = hdr[i], hdr[hdr[i]]
-    file:write(string.format('@ %-18s %%%02ds "%s"\n', k, #v, v))
+  for i=1,#hname do
+    local k, v = hname[i], self:get_key(hname[i])
+    if is_string(v) then
+      file:write(string.format('@ %-18s %%%02ds "%s"\n', k, #v, v))
+    elseif is_number(v) then
+      file:write(string.format('@ %-18s %%le %s\n', k, tostring(v)))
+    elseif is_complex(v) then
+      file:write(string.format('@ %-18s %%lz %s\n', k, tostring(v)))
+    else
+      file:write(string.format('@ %-18s %%? %s\n', k, tostring(v)))
+    end
   end
 
   -- dump col names
-  local cols = columns or self._colnames
-  local ncol, nrow = #cols, #self[cols[1]]
-
   file:write('*')
-  for icol=1,ncol do
-    file:write(string.format(' %-17s ', cols[icol]))
+  for i=1,#cols do
+    file:write(string.format(' %-17s ', cname[i]))
   end
   file:write('\n')
 
   -- dump col types
   file:write('$')
-  for icol=1,ncol do
-    local fmt = type(self[cols[icol]][1]) == "number" and '%le' or '%s'
+  for i=1,#cols do
+    local v = cols[i][1]
+    local fmt = is_string (v) and '%s'
+             or is_number (v) and '%le'
+             or is_complex(v) and '%lz' or '%?'
     file:write(string.format(' %-17s ', fmt))
   end
   file:write('\n')
 
   -- dump rows
-  for irow=1,nrow do
-  file:write(' ')
-  for icol=1,ncol do
-    local e = self[cols[icol]][irow]
-    if type(e) == "number" then
-      file:write(string.format('% -18.10g ', e))
-    else
-      file:write(string.format('%-18s ', '"'..e..'"'))
+  for j=1,var.lastrow do
+    file:write(' ')
+    for i=1,#cols do
+      local v = cols[i][j]
+      if is_string(v)
+      then file:write(string.format('%-18s ', '"'..v..'"'))
+      else file:write(string.format('%-18s ', tostring(v)))
+      end
     end
-  end
-  file:write('\n')
+    file:write('\n')
   end
 
   -- close file
@@ -365,52 +284,162 @@ function M:write(filename, columns)
   return self
 end
 
--- metamethods ---------------------------------------------------------------o
+-- row proxy metamethods ------------------------------------------------------o
 
--- constructor of lines, can be unamed (inherit its name)
-function MT:__call(a)
-  if type(a) == 'string' then
-    return function(t)
-      if is_list(t) then
-        return setmetatable(init(t, a), self)
+local function get_row_mt(self)
+  local _var, _col = self[_var], self[_col]
+
+  local function iter (row, i)
+    i = i+1
+    if i <= _var.maxcol then return i, _col[i][row[_ref]] end
+  end
+
+  return {
+    __len = function(row)
+      local idx = row[_ref]
+      return is_table(idx) and #idx or 0
+    end,
+
+    __index = function(row, col)
+      local idx = row[_ref]
+      if is_number(idx) then                                        -- row index
+        if is_string(col) then col = _col[col] end           -- col key to index
+        return _col[col] and _col[col][idx]
+      elseif is_table(idx) then                                     -- row array
+        assert(is_number(col), "invalid argument #2 (row count expected)")
+        row[_ref] = idx[col]                               -- row count to index
+        return row
       end
-      error ("invalid table constructor argument, list expected")
-    end
+      return nil
+    end,
+
+    __newindex = function(row, col, val)
+      local idx = row[_ref]
+      if is_number(idx) then                                        -- row index
+        assert(is_string(col) and _col[col], "invalid argument #2 (column key expected)")
+        _col[_col[col]][idx] = val                           -- col key to index
+      elseif is_table(idx) then                                     -- row array
+        assert(is_number(col) and idx[col], "invalid argument #2 (row count expected)")
+        set_row(self, idx[col], val)                       -- row count to index
+      else
+        error("invalid argument #2 (row count or column key expected)")
+      end
+    end,
+
+    __ipairs = function (row)
+      local idx = row[_ref]
+      assert(is_number(idx)                  , "invalid argument #1 (missing row count)")
+      assert(idx >= 1 and idx <= _var.lastrow, "invalid argument #2 (row index out of bounds)")
+      return iter, row, 0
+    end,
+
+    __totable = function (row)
+      local idx = row[_ref]
+      assert(is_number(idx)                  , "invalid argument #1 (missing row count)")
+      assert(idx >= 1 and idx <= _var.lastrow, "invalid argument #2 (row index out of bounds)")
+      local r = ltable.new(_var.maxcol, 0)
+      for i=1,_var.maxcol do t[i] = _col[i] end
+      return r
+    end,
+
+    metatable = false,
+  }
+end
+
+-- table metamethods ----------------------------------------------------------o
+
+local function init_mm (self)
+  local row, col, var = {}, {}, {
+    lastcol = 0, maxcol = 0, lastrow = 0, maxrow = 5,
+    colnam = {},
+    hdrnam = { 'name', 'type', 'title', 'origin', 'date', 'time' },
+  }
+  -- top level set (not in object's variables to avoid lookup)
+  rawset(self, _var, var)
+  rawset(self, _row, row)
+  rawset(self, _col, col)
+
+  for i,v in table_mt.__ipairs(self) do
+    if is_table(v) then var.refcol, v = i, v[1] end
+    assert(is_string(v), "invalid column name (string expected)")
+    col[i], col[v], var.colnam[i] = {}, i, v
   end
+  self:clear_array()
 
-  if is_list(a) then
-    return setmetatable(init(a), self)
+  var.lastcol, var.maxcol = #col, #col
+  var.row_mt = get_row_mt(self)
+  if var.refcol then self[_row] = col[var.refcol] end
+
+  -- other keys are inherited from table
+  self:set_variable { date = os.date'%d/%m/%y', time = os.date'%H:%M:%S' }
+  return self
+end
+
+local function index_mm (self, key)                -- access: tbl.row or tbl.col
+  local idx = is_number(key) and key or self[_row][key]      -- row index or key
+  if is_nil(idx) then
+    idx = self[_col][key]                                    -- col key to index
+    return self[_col][idx] or table_mt.__index(self, key)
+  else
+    return setmetatable({[_ref]=idx}, self[_var].row_mt)   -- row index or array
   end
-  error ("invalid table constructor argument, string or list expected")
 end
 
-function M.__add(self, a)
-  return self:add_row(a)
-end
-
-function M.__index(self, key)
-  local idx = self._refkey[key]
-  if idx == nil then
-    return getmetatable(self)[key] or invalid_row(self, key)
+local function newindex_mm (self, key, val)  -- access: tbl.row or tbl.col = val
+  local idx = is_number(key) and key or self[_row][key]      -- row index or key
+  if is_nil(idx) then
+    table_mt.__newindex(self, key, val)
+  elseif is_number(idx) then                                        -- row index
+    set_row(self, idx, val)
+  else
+    error("invalid argument #2 (row count expected)")
   end
-
-  -- print('tbl.__index: idx=', idx, ', key=', key)
-
-  return setmetatable({_idx=idx}, self._refkey_mt)
 end
 
-function M.__newindex(self, key, val)
-  local idx = self._refkey[key]
-
-  -- print('tbl.__newindex: idx=', idx, ', key=', key, ', val=', val)
-
-  if      idx  ==  nil    then invalid_row(self, key) end
-  if type(idx) == 'table' then invalid_cnt(self, key) end
-  if type(val) ~= 'table' then invalid_tbl(self, key) end
-  set_row(self, idx, val)
+local function iter (row, i)
+  i = i+1
+  if i <= row[_var].lastrow then
+    row[_ref] = i
+    return i, row
+  end
 end
 
--- end -----------------------------------------------------------------------o
-setmetatable(_G, _G_mt) ; _G_mt = nil
+local function ipairs_mm (self)
+  local row = setmetatable({[_ref]=0, [_var]=self[_var]}, self[_var].row_mt)
+  return iter, row, 0
+end
 
-return M
+init_mm(table)
+
+table:set_variable {
+  size   = size,
+  length = size,
+  header_names = \s -> s[_var].hdrnam,
+  column_names = \s -> s[_var].colnam,
+}
+
+table:set_function {
+  add_key = add_hdrkey,
+  get_key = \s,k   -> table_mt.__index(s,k),
+  set_key = \s,k,v => table_mt.__newindex(s,k,v) return s end,
+  reserve = \s,n   => s[_var].reserve = n return s end,
+  write   = write,
+}
+
+table:set_metamethod({
+  __add      = add_row,
+  __len      = size,
+  __init     = init_mm,
+  __index    = index_mm,
+  __newindex = newindex_mm,
+  __ipairs   = ipairs_mm,
+}, true)
+
+table:set_readonly()
+
+-- end ------------------------------------------------------------------------o
+return {
+  table  = table,
+
+  __help = M.__help,
+}
