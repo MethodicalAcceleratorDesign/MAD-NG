@@ -1459,19 +1459,14 @@ end
 parameters:
   f: callable, x0: initial value, d: ['vec', 'row', 'col'], r: iterable
   r:{}, cmatrix(2), matrix(2), 1..2
-default:
-  x0 = x[ 1] or x[., 1] or x[ 1,.] for foldl
-       x[#x] or x[.,nc] or x[nr,.] for foldr
-   d = 'vec'  (r_ is discarded if any)
-   r = scalar ['vec'] or x:same(nr,1) ['row'] or x:same(1,nc) ['col']
 ]]
+
 function TestMatrixFun:testFoldl()
-  local m1
+  local m1, mt
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
     local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
-    local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1)  end
-    local tm={}  for i=1,nc do tm[i]=sub(ref(1,i,nc)..ref(nr,i,nc)..nc) end
+    local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
     --1) x:fold( f )
     assertEquals( m:foldl \x x               , 1 )
     assertEquals( m:foldl '+'                , sum(1..m:size()) )
@@ -1481,33 +1476,31 @@ function TestMatrixFun:testFoldl()
     m1 = m:foldl('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
     m1 = m:foldl('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
     --4) x:fold( f, nil, d, r )   and 4') x:fold( f, d, r) and  4") x:fold( f, d, nil, r )
-    assertEquals( m:foldl('+'     ,'vec', {}), sum(1..m:size()) )
+    assertEquals( m:foldl('+'     , 'vec',{}), sum(1..m:size()) )
     --5) x:fold( f, x0 )
     assertEquals( m:foldl('+' , 0)           , sum(1..m:size()) )
     --6) x:fold( f, x0 , d )
-    assertEquals( m:foldl('+' , 0, 'vec')    , sum(1..m:size()) )
+    assertEquals( m:foldl('+' , 0,  'vec')   , sum(1..m:size()) )
     m1 = m:foldl('+', 0, 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
     m1 = m:foldl('+', 0, 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
     --8) x:fold( f, x0 , d, r )
     m1 = m:foldl('+', 0, 'col',{}) for i=1,nc do assertEquals( m1[i]     , t [i] ) end
     m1 = m:foldl('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end
     --3) x:fold( f, nil, nil, r ) and 3') x:fold( f, r ) and  3") x:fold( f, nil, r)
-    assertEquals( m:foldl('+' ,nil      , {}), sum(1..m:size()) )
-    assertEquals( m:foldl('+' ,nil, nil , {}), sum(1..m:size()) )
+    assertEquals( m:foldl('+' , nil     , {}), sum(1..m:size()) )
+    assertEquals( m:foldl('+' , nil, nil, {}), sum(1..m:size()) )
     --7)  x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
-    assertEquals( m:foldl('+' , 2 , nil , {}), sum(1..m:size())+2 )
-    assertEquals( m:foldl('+' , 2 , nil , {}), sum(1..m:size())+2 )
+    assertEquals( m:foldl('+' , 2  , nil, {}), sum(1..m:size())+2 )
+    assertEquals( m:foldl('+' , 2  , nil, {}), sum(1..m:size())+2 )
 
-  --non-commutative
+  -- non-commutative operations
+    if nr*nc%2 == 0 then assertEquals( m:foldl '~',-1 )
+                    else assertEquals( m:foldl '~', 1 ) end
     assertEquals( m:foldl '-', sub(1..m:size()) )
-    m1 = m:foldl('-', 'col')  for i=1,nc do assertEquals( m1:geti(i), tm[i] ) end
-
-    --print( m:foldl '~' )
+    m1 = m:foldl('-', 'col') for i=1,nc do assertEquals( m1:geti(i), sub(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    m1 = m:foldl('-', 'row') for j=1,nr do assertEquals( m1:geti(j), sub(ref(j,1,nc)..ref(j,nc,nc)..1 ) ) end
   end
-    m1 = matrix(4):fill(1..16)
-    m1:seti(1,-1)
-    --print(m1)
-    --print(m1:scanl '^' , "\n")
+  assertEquals( vector(4):fill(4..1..-1):foldl '^' , (4^3)^2 )
 end
 
 function TestMatrixErr:testFoldr()
@@ -1547,18 +1540,10 @@ function TestMatrixFun:testFoldr() --TODO: clean up, '-' test
     --1) x:fold( f )
     assertEquals( m:foldr \x x               , 1 )
     assertEquals( m:foldr '+'                , sum(1..m:size()) )
-    --print( m:foldr '-'                , m:foldl'-' )
-    --m1 = m:foldr('+'   , 'col')  print(m1, "\n")
-    --m1 = m:foldr('-'   , 'col')  print(m1, "\n")
-    --print( m, "\n" )
-    --m1 = m:foldr('-'   , 'row')  print(m1, "\n")
-
     --2) x:fold( f, nil, d )      and 2') x:fold( f, d )
     assertEquals( m:foldr('+'     , 'vec')   , sum(1..m:size()) )
-    --assertEquals( m:foldr('-'     , 'vec')   , sub(1..m:size()) )
     assertEquals( m:foldr('+', nil, 'vec')   , sum(1..m:size()) )
     m1 = m:foldr('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
-    --m1 = m:foldr('-'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), tm[i] ) end
     m1 = m:foldr('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
     --4) x:fold( f, nil, d, r )   and 4') x:fold( f, d, r) and  4")x:fold( f, d, nil, r )
     assertEquals( m:foldr('+'     ,'vec', {}), sum(1..m:size()) )
@@ -1577,8 +1562,16 @@ function TestMatrixFun:testFoldr() --TODO: clean up, '-' test
     --7)  x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
     assertEquals( m:foldr('+' , 2 , nil , {}), sum(1..m:size())+2 )
     assertEquals( m:foldr('+' , 2 , nil , {}), sum(1..m:size())+2 )
-    --assertEquals( m:foldr('-' , 2       , {}), sub(1..m:size())   )
+
+  -- non-commutative operations
+    if nr*nc == 1 then assertEquals( m:foldr '~', 1 )
+                  else assertEquals( m:foldr '~',-1 ) end
+
+    --print( m:foldr '-', sub(1..m:size()) )
+  --  m1 = m:foldr('-', 'col') for i=1,nc do print( m1:geti(i), sub(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+  --  m1 = m:foldr('-', 'row') for j=1,nr do print( m1:geti(j), sub(ref(j,1,nc)..ref(j,nc,nc)..1 ) ) end
   end
+  assertEquals( vector(4):fill(4..1..-1):foldr '^', 4^(3^2) )
 end
 
 function TestMatrixErr:testScanl()
@@ -1612,39 +1605,43 @@ function TestMatrixFun:testScanl()
   local m1
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
-    local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
-    local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
     --1) x:scan( f )
-    m1 = m:scanl \x x for i=1,#m1 do assertEquals( m1:geti(i), 1         ) end
-    m1 = m:scanl '+'  for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i) ) end
-    m1 = m:scanl '-'  for i=1,#m1 do assertEquals( m1:geti(i), sub(1..i) ) end
+    m1 = m:scanl \x x                for i=1,#m1 do assertEquals( m1:geti(i), 1           ) end
+    m1 = m:scanl '+'                 for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
     --2) x:scan( f, nil, d )      and 2') x:scan( f, d )
-    m1 = m:scanl('+',      'vec') for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i) ) end
-    m1 = m:scanl('-', nil, 'vec') for i=1,#m1 do assertEquals( m1:geti(i), sub(1..i) ) end
-    m1 = m:scanl('+'     , 'col')
+    m1 = m:scanl('+', 'vec')         for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
+    m1 = m:scanl('+', 'col')
     for i=1,nr do for j=1,nc do
       assertEquals( m1:get(i,j), sum(ref(1,j,nc)..ref(i,j,nc)..nc) )
     end end
-    m1 = m:scanl('+'     , 'row')
+    m1 = m:scanl('+', 'row')
     for i=1,nr do for j=1,nc do
       assertEquals( m1:get(i,j), sum(ref(i,1,nc)..ref(i,j,nc)..1 ) )
     end end
-
     --4) x:scan( f, nil, d, r )   and 4') x:scan( f, d, r) and  4")x:scan( f, d, nil, r )
-    m1 = m:scanl('+', 'vec', {})  for i=1,#m1 do assertEquals( m1[i], sum(1..i) ) end
-    --print(m, "\n")
-    --print( m:scanl('+', 'col') )
-    --print( m:scanl('+', 'col', {}) )
-    --print( m:scanl('+', 'row', {}) )
-
+    m1 = m:scanl('+', 'vec', {})     for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
     --5) x:scan( f, x0 )
-    m1 = m:scanl('+' , 0)  for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i) ) end
+    m1 = m:scanl('+', 0    )         for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
     --6) x:scan( f, x0 , d )
-    m1 = m:scanl('+' , 0, 'vec') for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i) ) end
+    m1 = m:scanl('+', 0  ,'vec')     for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
+
     --8) x:scan( f, x0 , d, r )
+    m1 = m:scanl('+', 0  ,'vec', {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
     --3) x:scan( f, nil, nil, r ) and 3') x:scan( f, r ) and  3") x:scan( f, nil, r)
+    m1 = m:scanl('+' ,nil      , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
+    m1 = m:scanl('+' ,nil, nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
     --7) x:scan( f, x0 , nil, r ) and 7') x:scan( f, x0, r )
+    m1 = m:scanl('+' , 2 , nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)+2 ) end
+
+  -- non-commutative operations
+    m1 = m:scanl '-'            for i=1,#m1 do assertEquals( m1:geti(i), sub(1..i) ) end
+    m1 = m:scanl('-', nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sub(1..i) ) end
+    m1 = m:scanl('-', 'row')
+    for i=1,nr do for j=1,nc do
+      assertEquals( m1:get(i,j), sub(ref(i,1,nc)..ref(i,j,nc)..1 ) )
+    end end
   end
+  assertEquals( vector(4):fill(4..1..-1):scanl '^', vector{4, 4^3, (4^3)^2, ((4^3)^2)^1} )
 end
 
 function TestMatrixErr:testScanr()
