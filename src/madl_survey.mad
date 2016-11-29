@@ -1,0 +1,207 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Survey module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - TODO
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = { __help = {} }
+
+-- help -----------------------------------------------------------------------o
+
+M.__help.self = [[
+NAME
+  survey -- Survey
+
+SYNOPSIS
+  TODO
+
+DESCRIPTION
+  The module survey provides...
+
+RETURN VALUES
+  The survey command
+
+SEE ALSO
+  element
+]]
+
+-- locals ---------------------------------------------------------------------o
+
+local Command, element, sequence, table in MAD
+local is_nil, vector, matrix            in MAD
+local cos, sin, atan2, sqrt, round      in MAD
+local twopi                             in MAD.constant
+
+-- implementation -------------------------------------------------------------o
+
+local function rangle (a, ref_a)
+  return a + twopi * round((ref_a - a) / twopi)
+end
+
+local function mangles (W, A)
+  local angle = sqrt( W:get(2,1)^2 + W:get(2,2)^2 )
+  local theta = rangle( atan2( W:get(1,3), W:get(3,3) ), A[1] )
+  local phi   =         atan2( W:get(2,3), angle      )
+  local psi   = rangle( atan2( W:get(2,1), W:get(2,2) ), A[3] )
+  return theta, phi, psi
+end
+
+local function drift (m, l) -- primitive_drift
+  local R = vector {0, 0, l}
+  m.V = m.W * R + m.V
+end
+
+local function empty_survey (elem, m)
+  local l in elem
+  if l ~= 0 then
+    error(string.format(
+          "invalid element %s of kind %s with length %s (zero length expected)",
+          elem.name, elem.kind, tostring(l)))
+  end
+  return 0
+end
+
+local function element_survey (elem, m)
+  local l, angle, tilt in elem
+  local R, S, rho
+
+  if is_nil(angle) or angle == 0 then
+    if l >= 1e-6 then drift(m, l) end
+    return l
+  end
+
+  if l > 0 then
+    rho = l/angle
+    R = vector {rho*(cos(angle)-1), 0, rho*sin(angle)}
+  else
+    R = vector(3)
+  end
+
+  S = matrix(3):roty(-angle)
+
+  if not (is_nil(tilt) or tilt == 0) then
+    local T = matrix(3):rotz(tilt)
+    R, S = T*R, T*S*T:t()
+  end
+
+  m.V = m.W * R + m.V
+  m.W = m.W * S
+  return l
+end
+
+-- load survey maps into elements
+
+element.element:set_function {
+  survey = empty_survey,
+}
+
+element.thin_element:set_function {
+  survey = element_survey,
+}
+
+element.strait_element:set_function {
+  survey = element_survey,
+}
+
+element.curved_element:set_function {
+  survey = element_survey,
+}
+
+-- survey command helpers
+
+local function make_table (n)
+  return table 'survey' { {'name'},
+    's', 'length', 'angle', 'tilt', 'X', 'Y', 'Z',
+    'theta', 'phi', 'psi', 'globaltilt',
+    type = 'survey',
+  } : reserve(n)
+end
+
+local function make_map (info)
+  local X0, A0 in info
+  return {
+    V = vector(X0 or 3),
+    W = A0 and matrix(3):rotmad(A0[1],A0[2],A0[3]) or matrix(3):ones(),
+    A = A0 or {0,0,0},
+  }
+end
+
+local function map2table (tbl, name, m, s, l, a, t)
+  local x, y, z = m.V[1], m.V[2], m.V[3]
+  local theta, phi, psi = mangles(m.W, m.A)
+
+  -- update angles
+  m.A[1], m.A[2], m.A[3] = theta, phi, psi
+
+  -- fill the table
+  tbl = tbl + { name=name, s=s,
+                length=l, angle=a, tilt=t,
+                X=x, Y=y, Z=z, theta=theta, phi=phi, psi=psi,
+                globaltilt=t+psi }
+end
+
+local function exec (self)
+  local seq = assert(self.sequence, "missing sequence")
+  assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+  local dft = self.drift
+  local siz = (dft == true and 2 or 1) * #seq
+  local tbl = make_table(siz)
+  local m   = make_map(self)
+  local n   = 1
+  local s_pos in seq
+
+  -- geometrical tracking
+  local end_pos = 0
+  for i=1,#seq do
+    local elem, s = seq[i], s_pos[i]
+    local ds = s - end_pos
+
+    -- implicit drift
+    if ds < 0 then
+      error(string.format("negative drift %s in %s['%s'] at %s",
+            tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
+    elseif ds >= 1e-6 then
+      drift(m, ds)
+      if dft then map2table(tbl, 'drift_'..n, m, end_pos, ds, 0, 0) end
+      end_pos, n = end_pos+ds, n+1
+    end
+
+    -- sequence element
+    ds = elem:survey(m)
+    map2table(tbl, elem.name, m, end_pos, ds, elem.angle or 0, elem.tilt or 0)
+    end_pos = end_pos + ds
+  end
+  return tbl
+end
+
+-- survey command
+-- survey { sequence=seq, drift=logical, X0={x0,y0,z0}, A0={theta0,phi0,psi0} }
+--> table
+
+local survey = Command 'survey' {
+  drift=true, X0={0,0,0}, A0={0,0,0}, -- default options
+  noexec=true } : set_metamethod({ __exec = exec }, true)
+
+-- end ------------------------------------------------------------------------o
+return {
+  survey = survey,
+
+  __help = M.__help,
+}
