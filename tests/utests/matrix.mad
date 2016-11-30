@@ -1167,7 +1167,7 @@ function TestMatrixErr:testForeach()
   assertErrorMsgContains( msg[1], mth, 'foreach', errMat, { }       )
 end
 
-function TestMatrixFun:testForeach() -- for test need of filled table
+function TestMatrixFun:testForeach()
   local t, nr, nc
   local f = \x,i,j => t[i][j] = x  end
   for _,m in ipairs(self.mat) do
@@ -1457,6 +1457,16 @@ end
 parameters:
   f: callable, x0: initial value, d: ['vec', 'row', 'col'], r: iterable
   r:{}, cmatrix(2), matrix(2), 1..2
+
+fold cases:
+  1) x:fold( f )
+  2) x:fold( f, nil, d )      and 2') x:fold( f, d )
+  3) x:fold( f, nil, nil, r ) and 3') x:fold( f, r ) and  3") x:fold( f, nil, r)
+  4) x:fold( f, nil, d, r )   and 4') x:fold( f, d, r) and  4") x:fold( f, d, nil, r )
+  5) x:fold( f, x0 )
+  6) x:fold( f, x0 , d )
+  7) x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
+  8) x:fold( f, x0 , d, r )
 ]]
 
 local sum = \r =>local x = 0    for i=1,r:size() do x = x + r[i] end return x end
@@ -1466,33 +1476,29 @@ function TestMatrixFun:testFoldl()
   local m1, mt
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
+
+    assertEquals( m:foldl \x x, 1 ) --1)
+    local mRes = {
+      m:foldl '+'                 , -- 1)
+      m:foldl('+'     , 'vec')    , -- 2)
+      m:foldl('+', nil, 'vec')    , -- 2)
+      m:foldl('+'     , 'vec', {}), -- 4)
+      m:foldl('+' , 0)            , -- 5)
+      m:foldl('+' , 0,  'vec')    , -- 6)
+      m:foldl('+' , nil      , {}), -- 3)
+      m:foldl('+' , nil, nil , {}), -- 3)
+    }
+    for j=1,#mRes do assertEquals( mRes[j], sum(1..m:size()) ) end
+
     local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
     local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
-    --1) x:fold( f )
-    assertEquals( m:foldl \x x               , 1 )
-    assertEquals( m:foldl '+'                , sum(1..m:size()) )
-    --2) x:fold( f, nil, d )      and 2') x:fold( f, d )
-    assertEquals( m:foldl('+'     , 'vec')   , sum(1..m:size()) )
-    assertEquals( m:foldl('+', nil, 'vec')   , sum(1..m:size()) )
-    m1 = m:foldl('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
-    m1 = m:foldl('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
-    --4) x:fold( f, nil, d, r )   and 4') x:fold( f, d, r) and  4") x:fold( f, d, nil, r )
-    assertEquals( m:foldl('+'     , 'vec',{}), sum(1..m:size()) )
-    --5) x:fold( f, x0 )
-    assertEquals( m:foldl('+' , 0)           , sum(1..m:size()) )
-    --6) x:fold( f, x0 , d )
-    assertEquals( m:foldl('+' , 0,  'vec')   , sum(1..m:size()) )
-    m1 = m:foldl('+', 0, 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
-    m1 = m:foldl('+', 0, 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
-    --8) x:fold( f, x0 , d, r )
-    m1 = m:foldl('+', 0, 'col',{}) for i=1,nc do assertEquals( m1[i]     , t [i] ) end
-    m1 = m:foldl('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end
-    --3) x:fold( f, nil, nil, r ) and 3') x:fold( f, r ) and  3") x:fold( f, nil, r)
-    assertEquals( m:foldl('+' , nil     , {}), sum(1..m:size()) )
-    assertEquals( m:foldl('+' , nil, nil, {}), sum(1..m:size()) )
-    --7)  x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
-    assertEquals( m:foldl('+' , 2  , nil, {}), sum(1..m:size())+2 )
-    assertEquals( m:foldl('+' , 2  , nil, {}), sum(1..m:size())+2 )
+    m1 = m:foldl('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end -- 2)
+    m1 = m:foldl('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end -- 2)
+    m1 = m:foldl('+', 0, 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end -- 6)
+    m1 = m:foldl('+', 0, 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end -- 6)
+    m1 = m:foldl('+', 0, 'col',{}) for i=1,nc do assertEquals( m1[i]     , t [i] ) end -- 8)
+    m1 = m:foldl('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end -- 8)
+    assertEquals( m:foldl('+' , 2  , nil, {}), sum(1..m:size())+2 )                    -- 7)
 
   -- non-commutative operations
     if nr*nc%2 == 0 then assertEquals( m:foldl '~',-1 )
@@ -1531,38 +1537,34 @@ function TestMatrixErr:testFoldr()
   assertErrorMsgContains( msg[2], mth, 'foldr', errMat, \x x, 1 , "vec", \x x )
 end
 
-function TestMatrixFun:testFoldr() --TODO: clean up, '-' test
+function TestMatrixFun:testFoldr() --TODO: '-' test
   local m1
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
     local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
     local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
-    local tm={}  for i=1,nc do tm[i]=sub(ref(1,i,nc)..ref(nr,i,nc)..nc) end
-    --1) x:fold( f )
-    assertEquals( m:foldr \x x               , 1 )
-    assertEquals( m:foldr '+'                , sum(1..m:size()) )
-    --2) x:fold( f, nil, d )      and 2') x:fold( f, d )
-    assertEquals( m:foldr('+'     , 'vec')   , sum(1..m:size()) )
-    assertEquals( m:foldr('+', nil, 'vec')   , sum(1..m:size()) )
-    m1 = m:foldr('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
-    m1 = m:foldr('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
-    --4) x:fold( f, nil, d, r )   and 4') x:fold( f, d, r) and  4")x:fold( f, d, nil, r )
-    assertEquals( m:foldr('+'     ,'vec', {}), sum(1..m:size()) )
-    --5) x:fold( f, x0 )
-    assertEquals( m:foldr('+' , 0)           , sum(1..m:size()) )
-    --6) x:fold( f, x0 , d )
-    assertEquals( m:foldr('+' , 0, 'vec')    , sum(1..m:size()) )
-    m1 = m:foldr('+', 0, 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end
-    m1 = m:foldr('+', 0, 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end
-    --8) x:fold( f, x0 , d, r )
-    m1 = m:foldr('+', 0, 'col',{}) for i=1,nc do assertEquals( m1[i]     , t [i] ) end
-    m1 = m:foldr('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end
-    --3) x:fold( f, nil, nil, r ) and 3')x:fold( f, r ) and  3")x:fold( f, nil, r)
-    assertEquals( m:foldr('+' ,nil      , {}), sum(1..m:size()) )
-    assertEquals( m:foldr('+' ,nil, nil , {}), sum(1..m:size()) )
-    --7)  x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
-    assertEquals( m:foldr('+' , 2 , nil , {}), sum(1..m:size())+2 )
-    assertEquals( m:foldr('+' , 2 , nil , {}), sum(1..m:size())+2 )
+    assertEquals( m:foldr \x x, 1 ) -- 1)
+    local mRes = {
+      m:foldr '+'                 , -- 1)
+      m:foldr('+'     , 'vec')    , -- 2)
+      m:foldr('+', nil, 'vec')    , -- 2)
+      m:foldr('+'     , 'vec', {}), -- 4)
+      m:foldr('+' , 0 )           , -- 5)
+      m:foldr('+' , 0 , 'vec')    , -- 6)
+      m:foldr('+' , nil      , {}), -- 3)
+      m:foldr('+' , nil, nil , {}), -- 3)
+    }
+    for j=1,#mRes do assertEquals( mRes[j], sum(1..m:size()) ) end
+
+    local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
+    local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
+    m1 = m:foldr('+'   , 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end -- 2)
+    m1 = m:foldr('+'   , 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end -- 2)
+    m1 = m:foldr('+', 0, 'col')    for i=1,nc do assertEquals( m1:geti(i), t [i] ) end -- 6)
+    m1 = m:foldr('+', 0, 'row')    for i=1,nr do assertEquals( m1:geti(i), tr[i] ) end -- 6)
+    m1 = m:foldr('+', 0, 'col',{}) for i=1,nc do assertEquals( m1[i]     , t [i] ) end -- 8)
+    m1 = m:foldr('+', 0, 'row',{}) for i=1,nr do assertEquals( m1[i]     , tr[i] ) end -- 8)
+    assertEquals( m:foldr('+' , 2  , nil, {}), sum(1..m:size())+2 )                    -- 7)
 
   -- non-commutative operations
     if nr*nc == 1 then assertEquals( m:foldr '~', 1 )
@@ -1573,6 +1575,18 @@ function TestMatrixFun:testFoldr() --TODO: clean up, '-' test
   end
   assertEquals( vector(4):fill(4..1..-1):foldr '^', 4^(3^2) )
 end
+
+--[[
+scan cases:
+1) x:scan( f )
+2) x:scan( f, nil, d )      and 2') x:scan( f, d )
+3) x:scan( f, nil, nil, r ) and 3') x:scan( f, r ) and  3") x:scan( f, nil, r)
+4) x:scan( f, nil, d, r )   and 4') x:scan( f, d, r) and  4")x:scan( f, d, nil, r )
+5) x:scan( f, x0 )
+6) x:scan( f, x0 , d )
+7) x:scan( f, x0 , nil, r ) and 7') x:scan( f, x0, r )
+8) x:scan( f, x0 , d, r )
+]]
 
 function TestMatrixErr:testScanl()
   local msg = {
@@ -1605,33 +1619,25 @@ function TestMatrixFun:testScanl()
   local m1
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
-    --1) x:scan( f )
-    m1 = m:scanl \x x                for i=1,#m1 do assertEquals( m1:geti(i), 1           ) end
-    m1 = m:scanl '+'                 for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
-    --2) x:scan( f, nil, d )      and 2') x:scan( f, d )
-    m1 = m:scanl('+', 'vec')         for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
-    m1 = m:scanl('+', 'col')
+    m1 = m:scanl \x x                 for i=1,#m1 do assertEquals( m1:geti(i), 1           ) end -- 1)
+    m1 = m:scanl '+'                  for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end -- 1)
+    m1 = m:scanl('+','vec')           for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end -- 2)
+    m1 = m:scanl('+', 0   )           for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end -- 5)
+    m1 = m:scanl('+', 0   ,'vec')     for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end -- 6)
+    m1 = m:scanl('+','vec', {}  )     for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end -- 4)
+    m1 = m:scanl('+', 0   ,'vec', {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end -- 8)
+    m1 = m:scanl('+', nil       , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end -- 3)
+    m1 = m:scanl('+', nil , nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end -- 3)
+    m1 = m:scanl('+',  2  , nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)+2 ) end -- 7)
+
+    m1 = m:scanl('+', 'col') --2)
     for i=1,nr do for j=1,nc do
       assertEquals( m1:get(i,j), sum(ref(1,j,nc)..ref(i,j,nc)..nc) )
     end end
-    m1 = m:scanl('+', 'row')
+    m1 = m:scanl('+', 'row') --2)
     for i=1,nr do for j=1,nc do
       assertEquals( m1:get(i,j), sum(ref(i,1,nc)..ref(i,j,nc)..1 ) )
     end end
-    --4) x:scan( f, nil, d, r )   and 4') x:scan( f, d, r) and  4")x:scan( f, d, nil, r )
-    m1 = m:scanl('+', 'vec', {})     for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
-    --5) x:scan( f, x0 )
-    m1 = m:scanl('+', 0    )         for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
-    --6) x:scan( f, x0 , d )
-    m1 = m:scanl('+', 0  ,'vec')     for i=1,#m1 do assertEquals( m1:geti(i), sum(1..i)   ) end
-
-    --8) x:scan( f, x0 , d, r )
-    m1 = m:scanl('+', 0  ,'vec', {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
-    --3) x:scan( f, nil, nil, r ) and 3') x:scan( f, r ) and  3") x:scan( f, nil, r)
-    m1 = m:scanl('+' ,nil      , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
-    m1 = m:scanl('+' ,nil, nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)   ) end
-    --7) x:scan( f, x0 , nil, r ) and 7') x:scan( f, x0, r )
-    m1 = m:scanl('+' , 2 , nil , {}) for i=1,#m1 do assertEquals( m1[i]     , sum(1..i)+2 ) end
 
   -- non-commutative operations
     m1 = m:scanl '-'             for i=1,#m1 do assertEquals( m1:geti(i), sub(1..i) ) end
@@ -1675,22 +1681,35 @@ function TestMatrixFun:testScanr()
   local m1
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
-    m1 = m:scanr('+', 'col')
-    --for i=1,nr do for j=1,nc do assertEquals( m1:get(i,j), sum(ref(1,j,nc)..ref(i,j,nc)..nc) ) end end
-    m1 = m:scanl('+', 'row')
-    for i=1,nr do for j=1,nc do assertEquals( m1:get(i,j), sum(ref(i,1,nc)..ref(i,j,nc)..1 ) ) end end
+    m1 = m:scanr \x x                 for i=1,#m1    do assertEquals( m1:geti(i), i               ) end -- 1)
+    m1 = m:scanr '+'                  for i=#m1,1,-1 do assertEquals( m1:geti(i), sum(i..nr*nc)   ) end -- 1)
+    m1 = m:scanr('+','vec')           for i=#m1,1,-1 do assertEquals( m1:geti(i), sum(i..nr*nc)   ) end -- 2)
+    m1 = m:scanr('+', 0   )           for i=#m1,1,-1 do assertEquals( m1:geti(i), sum(i..nr*nc)   ) end -- 5)
+    m1 = m:scanr('+', 0   ,'vec')     for i=#m1,1,-1 do assertEquals( m1:geti(i), sum(i..nr*nc)   ) end -- 6)
+    m1 = m:scanr('+','vec', {})       for i=#m1,1,-1 do assertEquals( m1[i]     , sum(i..nr*nc)   ) end -- 4)
+    m1 = m:scanr('+', 0   ,'vec', {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum(i..nr*nc)   ) end -- 8)
+    m1 = m:scanr('+', nil       , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum(i..nr*nc)   ) end -- 3)
+    m1 = m:scanr('+', nil , nil , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum(i..nr*nc)   ) end -- 3)
+    m1 = m:scanr('+',  2  , nil , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum(i..nr*nc)+2 ) end -- 7)
 
-    m1 = m:scanr \x x                for i=1,#m1    do assertEquals( m1:geti(i), i   ) end
-    m1 = m:scanr '+'                 for i=#m1,1,-1 do assertEquals( m1:geti(i), sum((i..nr*nc))   ) end
-    m1 = m:scanr('+', 'vec')         for i=#m1,1,-1 do assertEquals( m1:geti(i), sum((i..nr*nc))   ) end
-    m1 = m:scanr('+', 'vec', {})     for i=#m1,1,-1 do assertEquals( m1[i]     , sum((i..nr*nc))   ) end
-    m1 = m:scanr('+', 0    )         for i=#m1,1,-1 do assertEquals( m1:geti(i), sum((i..nr*nc))   ) end
-    m1 = m:scanr('+', 0  ,'vec')     for i=#m1,1,-1 do assertEquals( m1:geti(i), sum((i..nr*nc))   ) end
-    m1 = m:scanr('+', 0  ,'vec', {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum((i..nr*nc))   ) end
-    m1 = m:scanr('+' ,nil      , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum((i..nr*nc))   ) end
-    m1 = m:scanr('+' ,nil, nil , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum((i..nr*nc))   ) end
-    m1 = m:scanr('+' , 2 , nil , {}) for i=#m1,1,-1 do assertEquals( m1[i]     , sum((i..nr*nc))+2 ) end
+    m1 = m:scanr('+', 'col')
+    for i=nr,1,-1 do for j=1,nc do
+      assertEquals( m1:get(i,j), sum(ref(nr,j,nc)..ref(i,j,nc)..-nc) )
+    end end
+    m1 = m:scanr('+', 'row')
+    for j=nc,1,-1 do for i=1,nr do
+      assertEquals( m1:get(i,j), sum(ref(i,nc,nc)..ref(i,j,nc)..-1) )
+    end end
+
+    -- non-commutative operations
+    --m1 = m:scanr '-'             for i=1,#m1 do assertEquals( m1:geti(i), sub(1..i) ) end
+    --m1 = m:scanr('-', nil  , {}) for i=1,#m1 do assertEquals( m1[i]     , sub(1..i) ) end
+    --m1 = m:scanr('-', 'row')
+    --for i=1,nr do for j=1,nc do
+    --  assertEquals( m1:get(i,j), sub(ref(i,1,nc)..ref(i,j,nc)..1 ) )
+    --end end
   end
+
   assertEquals( vector(4):fill(4..1..-1):scanr '^', vector{ 4^3^2^1, 3^2^1, 2^1, 1 } )
 end
 
@@ -1846,7 +1865,7 @@ function TestMatrixSFolds:testMin()
   local m1
   for i,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
-    assertEquals( m:min()     , 1 )
+    assertEquals( m:min(), 1 )
     m1 = m:min("col") for i=1,nc do assertEquals( m1:geti(i), i           ) end
     m1 = m:min("row") for i=1,nr do assertEquals( m1:geti(i), ref(i,1,nc) ) end
   end
@@ -1856,83 +1875,53 @@ function TestMatrixSFolds:testMax()
   local m1
   for i,m in ipairs(G.mat) do
     local  nr, nc = m:sizes()
-    assertEquals( m:max()     , m:size() )
+    assertEquals( m:max(), m:size() )
     m1 = m:max("col") for i=1,nc do assertEquals( m1:geti(i), ref(nr,i,nc) ) end
     m1 = m:max("row") for i=1,nr do assertEquals( m1:geti(i), ref(i,nc,nc) ) end
   end
 end
 
 function TestMatrixSFolds:testSum()
-  local mref, x, nr, nc
-
   local m1
   for i,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
-    m1 = m:sum() for i=1,m:size() do assertEquals() end
-    assertEquals()
-
-
-
-
-    --mref = 0 for i=1,m:size() do mref = mref + i end
-    --assertEquals( m:sum()     , mref )
-
-    --mref = vector(nr)   for i=1,nr do x=0 for j=1,nc do x=(i-1)*nc+j + x end mref:seti(i, x) end
-    --assertEquals( m:sum("row"), mref )
-
-
-    --mref = matrix(1,nc) for i=1,nc do x=0 for j=1,nr do x=(j-1)*nc+i + x end mref:seti(i, x) end
-    --assertEquals( m:sum("col"), mref )
+    assertEquals( m:sum(), sum(1..m:size()) )
+    m1 = m:sum('col') for i=1,nc do assertEquals( m1:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    m1 = m:sum('row') for i=1,nr do assertEquals( m1:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
   end
 end
 
 function TestMatrixSFolds:testSumabs()
   local mref, x, nr, nc
-  for i,m in ipairs(G.mat) do
-    nr, nc = m:sizes()
-
-    mref = 0 for i=1,m:size() do do mref = mref + i end end
-    assertEquals( m :sumabs()     ,  mref )
-    assertEquals( m :sumabs('vec'),  mref )
-    mref = matrix(1,nc) for j=1,nc do x=0; for i=1,nr do x=x+(i-1)*nc+j end mref:seti(j,x) end
-    assertEquals( m :sumabs('col'),  mref )
-    mref = vector(nr)   for i=1,nr do x=0; for j=1,nc do x=x+(i-1)*nc+j end mref:seti(i,x) end
-    assertEquals( m :sumabs('row'),  mref )
+  local m1, mres
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    m1 = m:copy():map(\x -x)
+    assertEquals( m1:sumabs(), sum(1..m:size()) )
+    mres = m:sumabs('col') for i=1,nc do assertEquals( mres:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    mres = m:sumabs('row') for i=1,nr do assertEquals( mres:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
   end
 end
 
 function TestMatrixSFolds:testSumsqr()
-  local mref, x, nr, nc
+  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
+  local m1
   for i,m in ipairs(G.mat) do
-    nr, nc = m:sizes()
-
-    mref = 0 for i=1,m:size() do mref=i*i+mref end
-    assertEquals( m :sumsqr()     ,  mref )
-    assertEquals( m :sumsqr('vec'),  mref )
-    mref = matrix(1,nc) for j=1,nc do x=0; for i=1,nr do x=x+((i-1)*nc+j)^2 end mref:seti(j,x) end
-    assertEquals( m :sumsqr('col'),  mref )
-    mref = vector(nr)   for i=1,nr do x=0; for j=1,nc do x=x+((i-1)*nc+j)^2 end mref:seti(i,x) end
-    assertEquals( m :sumsqr('row'),  mref )
+    local nr, nc = m:sizes()
+    assertEquals( m:sumsqr(), sumsqr(1..m:size()) )
+    m1 = m:sumsqr('col') for i=1,nc do assertEquals( m1:geti(i), sumsqr(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    m1 = m:sumsqr('row') for i=1,nr do assertEquals( m1:geti(i), sumsqr(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
   end
 end
 
 function TestMatrixSFolds:testProduct()
-  local mref, x
+  local m1
+  local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
   for i,m in ipairs(G.mat) do
-    nr, nc = m:sizes()
-    mref = 1 for i=1,m:size() do mref=i*mref end
-    assertEquals( m:product()     , mref )
-    assertEquals( m:product('vec'), mref )
-    mref = matrix(1,nc) for j=1,nc do x=1; for i=1,nr do x=x*((i-1)*nc+j) end mref:seti(j,x) end
-    assertEquals( m :product('col'),  mref )
-    mref = vector(nr)   for i=1,nr do x=1; for j=1,nc do x=x*((i-1)*nc+j) end mref:seti(i,x) end
-    assertEquals( m :product('row'),  mref )
-
-    if not (nr==5 and nc==5) then
-      m    = m:same():fill(m:size()..1..-1 )
-      mref = 1 for i=1,m:size() do mref = mref * i end
-      assertAlmostEquals( m:product() - mref, 0, eps )
-    end
+    local nr, nc = m:sizes()
+    assertEquals( m:product(), prod(1..m:size()) )
+    m1 = m:product('col') for i=1,nc do assertEquals( m1:geti(i), prod(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    m1 = m:product('row') for i=1,nr do assertEquals( m1:geti(i), prod(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
   end
 end
 
@@ -1948,30 +1937,34 @@ function TestMatrixErr:testAll()
   assertErrorMsgContains( msg[1], mth, 'all', errMat, { }    )
 end
 
-function TestMatrixSFolds:testAll()
-  for i,m in ipairs(G.mat) do
-    nr, nc = m:sizes()
-    assertFalse ( m:all  \x x> m:size()   )
-    assertTrue  ( m:all  \x x< m:size()+1 )
-    assertEquals( m:all( \x x>(m:size())/2, 'vec'), m:all \x x>(m:size())/2 )
-    assertEquals( m:all( \x x< m:size()+1 , 'vec'), m:all \x x< m:size()+1  )
-    if nr>1 then
-      assertEquals( m:all( \x x>(m:size())/2, 'col'), matrix(1,nc) )
+function TestMatrixSFolds:testAll() --TODO: better 'col' and 'vec' example
+  local m1
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    assertFalse ( m:all \x x> m:size()   )
+    assertTrue  ( m:all \x x< m:size()+1 )
+    m1 = m:all( \x x<16, 'col')
+    if m:size() < 16 then
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
+    elseif m:size() == 16 then
+      for i=1,m1:size()-1 do assertEquals( m1:geti(i) , 1 ) end
+                             assertEquals( m1:geti(nc), 0 )
     else
-      mref = matrix(1,nc)
-      for i=1,#mref do  if m:geti(i)>(m:size())/2    then mref:seti(i,1) end end
-      assertEquals( m:all( \x x>(m:size())/2, 'col'), mref )
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
     end
-    assertEquals( m:all( \x x<m:size()+1  , 'col'), matrix(1,nc):fill(1) )
-    mref = vector(nr)
-    for i=1,nr do if m:geti((i-1)*nc+1)>(m:size())/2 then mref:seti(i,1) end end
-    assertEquals( m:all( \x x>(m:size())/2, 'row'), mref )
-    assertEquals( m:all( \x x< m:size()+1 , 'row'), vector(nr):fill(1) )
+
+    m1 = m:all( \x x<16, 'row')
+    if m:size() < 16 then
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
+    else
+      for i=1,3           do assertEquals( m1:geti(i) , 1 ) end
+      for i=4,nr          do assertEquals( m1:geti(i) , 0 ) end
+    end
   end
 end
 
 function TestMatrixErr:testAny()
-    local msg = {
+  local msg = {
     "invalid argument #2 (callable expected)",
   }
   assertErrorMsgContains( msg[1], mth, 'any', errMat, nil    )
@@ -1982,7 +1975,35 @@ function TestMatrixErr:testAny()
   assertErrorMsgContains( msg[1], mth, 'any', errMat, { }    )
 end
 
-function TestMatrixSFolds:testAny() end
+function TestMatrixSFolds:testAny()
+  local m1
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    assertFalse ( m:any \x x> m:size()   )
+    assertTrue  ( m:any \x x< m:size()+1 )
+
+    m1 = m:any( \x x>16, 'col')
+    if m:size() <= 16 then
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
+    elseif nr == 4 and nc == 5 then
+      for i=2,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
+                             assertEquals( m1:geti(1) , 0 )
+    else
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
+    end
+
+    m1 = m:any( \x x>16, 'row')
+    if m:size() <= 16 then
+      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
+    elseif m:size() == 20 then
+      for i=1,m1:size()-1 do assertEquals( m1:geti(i) , 0 ) end
+                             assertEquals( m1:geti(nr), 1 )
+    else
+      for i=1,3           do assertEquals( m1:geti(i) , 0 ) end
+      for i=4,nr          do assertEquals( m1:geti(i) , 1 ) end
+    end
+  end
+end
 
 -- special scans --------------------------------------------------------------o
 
@@ -2005,20 +2026,60 @@ function TestMatrixSScans:testRaccprod  () end
 
 -- symplectic matrix ----------------------------------------------------------o
 
+function TestMatrixErr:testSympinv()
+  local msg = {
+   "invalid argument #1 (2n matrix expected)",
+  }
+  assertErrorMsgContains( msg[1], mth,'sympinv',  matrix(3)   )
+  assertErrorMsgContains( msg[1], mth,'sympinv',  matrix(4,3) )
+end
+
 function TestMatrixSympl:testSympinv() end
+
+function TestMatrixErr:testSymperr()
+  local msg = {
+    "invalid argument #1 (2n matrix expected)"       ,
+    "invalid argument #2 (different matrix expected)",
+  }
+  assertErrorMsgContains( msg[1], mth,'symperr',  matrix(3)   )
+  assertErrorMsgContains( msg[1], mth,'symperr',  matrix(4,3) )
+  --assertErrorMsgContains( msg[2], mth,'symperr',  matrix(2), matrix(1) )
+end
+
 function TestMatrixSympl:testSymperr() end
 
 -- conjugate, transpose -------------------------------------------------------o
 
-function TestMatrixLinAlg:testTranspose() end
-function TestMatrixLinAlg:testTrace() end
+function TestMatrixLinAlg:testConjugate()
+  for _,m in ipairs(G.mat) do assertEquals( m:conj(), m )  end
+end
+
+function TestMatrixLinAlg:testTranspose()
+  local m1
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    m1 = m:copy()
+    assertEquals( {m:t():sizes()}, {nc,nr}        )
+    assertEquals(  m:t()  :t()   , m              )
+    assertEquals( (m + m1):t()   , m:t() + m1:t() )
+    assertEquals( (2 * m) :t()   , 2 * m:t()      )
+    if nr == nc then assertEquals( (m*m1):t(), m:t()*m1:t() ) end
+    m1 = m:t()
+    for i=1,nr do for j=1,nc do
+      assertEquals( m1:get(i,j), m:get(j,i) )
+    end end
+  end
+end
+
+function TestMatrixLinAlg:testTrace()
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    assertEquals( m:tr(), m:getdiag():sum() )
+  end
+end
 
 -- inner, cross, mixed, outer -------------------------------------------------o
 
-function TestMatrixLinAlg:testInner() end
-function TestMatrixLinAlg:testCross() end
-function TestMatrixLinAlg:testMixed() end
-function TestMatrixLinAlg:testOuter() end
 
 function TestMatrixErr:testInner()
   local msg = {
@@ -2031,7 +2092,15 @@ function TestMatrixErr:testInner()
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, {}   )
 end
 
-function TestMatrixErr:testCross() --TODO: check input(expected size!)
+function TestMatrixLinAlg:testInner()
+  -- inner prod:  u'.v = |u|.|v| cos(u^v)
+  for _,m1 in ipairs(G.mat) do
+    local m2 = m1:copy()
+    assertEquals( m1:inner(m2), (m1:t()*m2):tr() )
+  end
+end
+
+function TestMatrixErr:testCross()
   local m = matrix(3)
   local msg = {
     "invalid argument #2 (matrix expected)",
@@ -2045,7 +2114,38 @@ function TestMatrixErr:testCross() --TODO: check input(expected size!)
   assertErrorMsgContains( msg[2], mth, 'cross', errMat, m    )
 end
 
-function TestMatrixErr:testMixed() --TODO: check input(expected size!)
+function TestMatrixLinAlg:testCross() --TODO: 'in' test
+  -- cross prod:  uxv = |u|.|v| sin(u^v) \vec{n}
+  local m1 = vector {1,2,3}
+  local m2 = vector {3,2,1}
+  local m3 = matrix(3)   -- skew-symmetric matrix
+       :seti( 4, m1:geti(3)) :seti( 2,-m1:geti(3))
+     :seti( 3, m1:geti(2)) :seti( 7,-m1:geti(2))
+     :seti( 8, m1:geti(1)) :seti( 6,-m1:geti(1))
+  assertEquals( m1:cross(m2), m3*m2 )
+
+  local m = matrix(3):fill(0..8)   -- skew-symmetric matrix
+  local m1 = vector {2,-4,2}
+  local m2 = vector {2,-4,2}
+  assertEquals( m1:cross(m2), m*m2 )
+
+  for nc=1,5 do
+    m1, m2 = matrix(3,nc), matrix(3,nc)
+    assertEquals( m1:fill(1..3*nc):cross( m1:fill(1..3*nc)), m2 )
+    assertEquals( m1              :cross( m1:fill(1..3*nc)), m2 )
+    assertEquals( m1              :cross( m1)              , m2 )
+
+    m3 = m2:fill(3*nc..1..-1):copy()
+    assertEquals(    m1 :cross(m2)   ,-m2  :cross( m1)              )
+    assertEquals(    m1 :cross(m2+m3), m1  :cross( m2)+m1:cross(m3) )
+    assertEquals( (2*m1):cross(m2)   , m1  :cross( m2*2)            )
+    assertEquals( (2*m1):cross(m2)   , 2*m1:cross( m2)              )
+    assertEquals( (2*m1):cross(m2)   , 2*m1:cross( m2)              )
+    --assertEquals( m1:cross( m2:cross(m3) ) , m2*(m1*m3)-m3*(m1*m2)  ) -- after multiplication tests
+  end
+end
+
+function TestMatrixErr:testMixed()
   local msg = {
     "invalid argument #2 (matrix expected)",
     "invalid argument #3 (matrix expected)",
@@ -2071,7 +2171,11 @@ function TestMatrixErr:testMixed() --TODO: check input(expected size!)
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, m1 ,matrix(3,2) )
 end
 
-function TestMatrixErr:testOuter() --TODO: check input(expected size!)
+function TestMatrixLinAlg:testMixed()
+  -- x:cross(y):inner(z) without temporary
+end
+
+function TestMatrixErr:testOuter()
   local m = matrix(2,1)
   local msg = {
     "invalid argument #2 (matrix expected)",
@@ -2085,13 +2189,20 @@ function TestMatrixErr:testOuter() --TODO: check input(expected size!)
   assertErrorMsgContains( msg[2], mth, 'outer', matrix(1,2), matrix(2,2) )
 end
 
+function TestMatrixLinAlg:testOuter()--TODO: 'in' test
+  -- x * y:t() without temporary --  outer prod:  u.v' = matrix
+  for nr=1,5 do
+    local m1 = vector(nr):fill(1..2*nr..2)
+    local m2 = vector(nr):fill(1..nr)
+    assertEquals( m1:outer(m2), m1*m2:t() )
+  end
+end
+
 -- norm, unit, center, angle (in place) ---------------------------------------o
 
-function TestMatrixLinAlg:testNorm() end
-function TestMatrixLinAlg:testDistance() end
-function TestMatrixLinAlg:testUnit() end
-function TestMatrixLinAlg:testCenter() end
-function TestMatrixLinAlg:testAngle() end
+function TestMatrixLinAlg:testNorm()
+--|u| = sqrt(u'.u)
+end
 
 function TestMatrixErr:testDistance()
   local msg = {
@@ -2103,17 +2214,25 @@ function TestMatrixErr:testDistance()
   assertErrorMsgContains( msg[1], mth, 'distance', errMat, {}   )
 end
 
+function TestMatrixLinAlg:testDistance() end
+
 function TestMatrixErr:testUnit()
   local msg = {
     "null matrix norm",
   }
 end
 
+function TestMatrixLinAlg:testUnit() end
+
+function TestMatrixLinAlg:testCenter() end
+
 function TestMatrixErr:testAngle()
   local msg = {
     "null vector norm",
   }
 end
+
+function TestMatrixLinAlg:testAngle() end
 
 -- operators ------------------------------------------------------------------o
 
