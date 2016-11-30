@@ -338,6 +338,8 @@ local function formatk(tr, idx, sn)
   elseif t == 21 then -- int64_t
     s = sub(tostring(k), 1, -3)
     if sub(s, 1, 1) ~= "-" then s = "+"..s end
+  elseif sn == 0x1057fff then -- SNAP(1, SNAP_FRAME | SNAP_NORESTORE, REF_NIL)
+    return "----" -- Special case for LJ_FR2 slot 1.
   else
     s = tostring(k) -- For primitives.
   end
@@ -554,7 +556,7 @@ local function dump_trace(what, tr, func, pc, otr, oex)
   if what == "start" then
     if dumpmode.H then out:write('<pre class="ljdump">\n') end
     out:write("---- TRACE ", tr, " ", what)
-    if otr then out:write(" ", otr, "/", oex) end
+    if otr then out:write(" ", otr, "/", oex == -1 and "stitch" or oex) end
     out:write(" ", fmtfunc(func, pc), "\n")
   elseif what == "stop" or what == "abort" then
     out:write("---- TRACE ", tr, " ", what)
