@@ -2291,11 +2291,15 @@ function TestMatrixSympl:testSympinv() -- TODO
 -- -J M' J
 --[[ M' J M = J => M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
      symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B ]]
+  local j  = matrix(2):symp()
+  local m1 = matrix{{0,1},{1,0}}
+  assertEquals( m1:sympinv(), -j*m1:t()*j, "\n" )
+  local m1 = matrix{{0,1},{12,1}}
+  --print( m1:sympinv(), -j*m1:t()*j, "\n" )
+
   for i=2,6,2 do
     local m  = matrix(i):fill(1..i*i)
-    local mt = m-m:t()
     local j  = matrix(i):symp()
-    --print( mt:sympinv(), -j*mt:t()*j, "\n" )
     --print( m :sympinv(), -j*m :t()*j, "\n" )
   end
 end
@@ -2307,13 +2311,15 @@ function TestMatrixErr:testSymperr() --TODO
   }
   assertErrorMsgContains( msg[1], mth,'symperr',  matrix(3)   )
   assertErrorMsgContains( msg[1], mth,'symperr',  matrix(4,3) )
-  --assertErrorMsgContains( msg[2], mth,'symperr',  matrix(2), matrix(1) )
 end
 
 function TestMatrixSympl:testSymperr()-- M' J M - J
+  local j  = matrix(2):symp()
+  local m1 = matrix{{0,1},{1,0}}
+  --print( m1:symperr(), m1:t()*j*m1-j )
+
   for i=2,6,2 do
     local m  = matrix(i):fill(1..i*i)
-    local mt = m-m:t()
     local j  = matrix(i):symp()
     --print( m:symperr(), m:t()*j*m-j )
   end
@@ -2431,7 +2437,7 @@ function TestMatrixErr:testMixed()
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, m1 ,matrix(3,2) )
 end
 
-function TestMatrixLinAlg:testMixed()
+function TestMatrixLinAlg:testMixed() --TODO: afterfix
   -- x:cross(y):inner(z) without temporary
   for nc=1,5 do
     m1 = matrix(3,nc):fill(1..3*nc)
@@ -2518,7 +2524,7 @@ function TestMatrixErr:testAngle()
   assertErrorMsgContains( msg[1], mth, 'angle', errMat   , matrix(2) )
 end
 
-function TestMatrixLinAlg:testAngle()-- TODO: input?
+function TestMatrixLinAlg:testAngle() --TODO: afterfix
 -- angle     :  u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
   for _,m1 in ipairs(G.mat) do
     local m2 = m1:same():fill(m1:size()..1..-1)
@@ -2530,18 +2536,52 @@ end
 
 -- operators ------------------------------------------------------------------o
 
-function TestMatrixOps:testEq() end
-
-function TestMatrixOps:testAddCPx() end
+function TestMatrixOps:testEq()
+  for _,m1 in ipairs(G.mat) do
+    local m2 = m1:copy()
+    local m3 = m1:same()
+    assertTrue ( m1 == m2 )
+    assertFalse( m1 == m3 )
+  end
+end
 
 function TestMatrixErr:testAdd()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
-  }
+    }
 end
-function TestMatrixOps:testAdd() end
 
-function TestMatrixOps:testSubCPx() end
+function TestMatrixOps:testAdd()
+  -- num + mat => num + vec
+  -- mat + num => vec + num
+  -- mat + cpx => vec + cpx
+  -- mat + mat => vec + vec
+  -- mat + cmat => vec + cvec
+  -- mat + ?
+  local mres, m2, cm1
+  for _,m1 in ipairs(G.mat) do
+    local m2  = m1:copy()
+    local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
+    mres = 2  + m1   for i=1,m1:size() do assertEquals( mres:geti(i), i+2 ) end
+    mres = m1 + 2    for i=1,m1:size() do assertEquals( mres:geti(i), i+2 ) end
+    mres = m1 + m2   for i=1,m1:size() do assertEquals( mres:geti(i), i+i ) end
+    mres = m1 + 2i
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), i+2i ) end
+    mres = m1 + cm1
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), 2*i+i*1i ) end
+  end
+end
+
+function TestMatrixOps:testAddCPx()
+  -- cpx + mat => cpx + vec
+  for _,m1 in ipairs(G.mat) do
+    local mres = 2i + m1
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), i+2i ) end
+  end
+end
 
 function TestMatrixErr:testSub()
   local msg = {
@@ -2549,16 +2589,49 @@ function TestMatrixErr:testSub()
   }
 end
 
-function TestMatrixOps:testSub() end
+function TestMatrixOps:testSub()
+  -- num - mat => num - vec
+  -- mat - num => vec + -num
+  -- mat - cpx => vec + -cpx
+  -- mat - mat => vec - vec
+  -- mat - cmat => vec - cvec
+  -- mat - ?
+  local mres, m2, cm1
+  for _,m1 in ipairs(G.mat) do
+    local m2  = m1:copy()
+    local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
+    mres = 2  - m1   for i=1,m1:size() do assertEquals( mres:geti(i), 2-i ) end
+    mres = m1 - 2    for i=1,m1:size() do assertEquals( mres:geti(i), i-2 ) end
+    mres = m1 - m2   for i=1,m1:size() do assertEquals( mres:geti(i), 0   ) end
+    mres = m1 - 2i
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), i-2i ) end
+    mres = m1 - cm1
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), i*1i ) end
+  end
+end
 
-function TestMatrixOps:testMulCPx() end
+function TestMatrixOps:testSubCPx()
+  -- cpx - mat => cpx - vec
+  for _,m1 in ipairs(G.mat) do
+    local mres = 2i + m1
+    assertTrue(is_cmatrix(mres))
+    for i=1,m1:size() do assertEquals( mres:geti(i), i+2i ) end
+  end
+end
 
 function TestMatrixErr:testMul()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
   }
 end
-function TestMatrixOps:testMul() end
+
+function TestMatrixOps:testMul()
+
+end
+
+function TestMatrixOps:testMulCPx() end
 
 function TestMatrixErr:testTmul()
   local msg = {
