@@ -39,7 +39,7 @@ RETURN VALUES
   The survey command
 
 SEE ALSO
-  element
+  element, sequence, track
 ]]
 
 -- locals ---------------------------------------------------------------------o
@@ -49,8 +49,6 @@ local is_nil, is_number, vector, matrix, is_matrix in MAD
 local abs, sin, cos                                in MAD
 
 local minlen, minang = 1e-14, 1e-14
-
-local _tbl = {}
 
 -- implementation -------------------------------------------------------------o
 
@@ -149,6 +147,14 @@ local function fill_table (tbl, name, m, s, l, a, t)
   tbl = tbl + { name, s, l, a, t, x, y, z, th, phi, psi, t+psi }
 end
 
+local function make_map (self)
+  local X0, A0 in self
+  local V = vector(3):fill(X0)
+  local W = matrix(3):rotmad(A0[1],A0[2],A0[3])
+  local A, R, S, T = A0, vector(3), matrix(3), matrix(3)
+  return { V=V, W=W, A=A, R=R, S=S, T=T }
+end
+
 local function make_table (self)
   local seq, dft = self.sequence, self.drift
   local n = (dft == true and 2 or 1) * #seq
@@ -158,32 +164,30 @@ local function make_table (self)
   } : reserve(n)
 end
 
-local function make_map (self)
-  local X0, A0 in self
-  local V = vector(3):fill(X0)
-  local W = matrix(3):rotmad(A0[1],A0[2],A0[3])
-  local A, R, S, T = A0, vector(3), matrix(3), matrix(3)
-  return { V=V, W=W, A=A, R=R, S=S, T=T }
-end
+!local function make_range (self)
+!  local range in self
+!  local start, stop = range[1], range[2]
+!  assert(is_number(start) and is_number(stop), "invalid range")
+!  if start < 0 then start = len+start+1 end
+!  if stop  < 0 then stop  = len+stop +1 end
+!  assert(start >= 1 and start <= len and stop >= 1 and stop <= len,
+!         "range out of sequence")
+!
+!  return start, stop, step
+!end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x0,y0,z0}, A0={theta0,phi0,psi0},
---          drift=logical, range={start,stop} }
+--          drift=logical, range={start,stop}, dir=1, refer='exit' }
 --> table
 
 local function __exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
-  local len, start, stop = #seq, self.range[1], self.range[2]
-  assert(is_number(start) and is_number(stop), "invalid range")
-  if start < 0 then start = len+start+1 end
-  if stop  < 0 then stop  = len+stop +1 end
-  assert(start >= 1 and start <= len and stop >= 1 and stop <= len,
-         "range out of sequence")
-
-  local tbl = self[_tbl] or make_table(self)
   local map = make_map(self)
+  local tbl = make_table(self)
+--   local start, stop = make_range(self)
   local drift in self
   local s_pos in seq
 
@@ -215,8 +219,8 @@ end
 -- survey command template
 
 local survey = Command 'survey' {
-  X0={0,0,0}, A0={0,0,0},             -- default options
-  drift=true, range={1,-1},
+  -- default options
+  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1}, dir=1,
   noexec=true,                        -- make template only
 } : set_metamethod({ __exec = __exec }, true) : set_readonly()
 
