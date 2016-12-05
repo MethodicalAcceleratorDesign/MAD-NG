@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide regression test suites for the object module without extension.
+  - Provide regression test suites for the object model without extension.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -30,11 +30,11 @@ local btst = function (x,n) return band(x, brol( 1, n)) ~= 0 end
 local bclr = function (x,n) return band(x, brol(-2, n))      end
 local bset = function (x,n) return bor (x, brol( 1, n))      end
 
-local metaname = { -- from lj_obj.h + __init
-  '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
-  '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod', '__mode',
-  '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub', '__tostring',
-  '__unm',
+local metaname = { -- from lj_obj.h + __init + __exec + __totable
+  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__index',
+  '__init', '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod',
+  '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
+  '__tostring', '__totable', '__unm',
 }
 for _,v in ipairs(metaname) do metaname[v]=v end -- build dictionary
 
@@ -1264,7 +1264,7 @@ end
 
 -- end ------------------------------------------------------------------------o
 
--- run as a standalone test
+-- run as a standalone test with luajit
 if MAD == nil then
   os.exit( lu.LuaUnit.run() )
 end
