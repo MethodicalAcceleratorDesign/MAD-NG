@@ -1573,9 +1573,14 @@ function TestMatrixFun:testFoldr() --TODO: '-' test
 
     v =  vector( m:size() ):fill(1..m:size()):map(\x => if x%2==0 then x=-x end return x end)
     assertEquals( m:foldr '-', v:foldr('+') )
-
-  --  m1 = m:foldr('-', 'col') for i=1,nc do print( m1:geti(i), sub(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-  --  m1 = m:foldr('-', 'row') for j=1,nr do print( m1:geti(j), sub(ref(j,1,nc)..ref(j,nc,nc)..1 ) ) end
+    m1 = m:foldr('-', 'col')
+    for i=1,nc do
+      assertEquals( m1:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..2*nc) - sum(ref(2,i,nc)..ref(nr,i,nc)..2*nc) )
+    end
+    m1 = m:foldr('-', 'row')
+    for j=1,nr do
+      assertEquals( m1:geti(j), sum(ref(j,1,nc)..ref(j,nc,nc)..2 ) - sum(ref(j,2,nc)..ref(j,nc,nc)..2 ) )
+    end
   end
   assertEquals( vector(4):fill(4..1..-1):foldr '^', 4^(3^2) )
 end
@@ -1706,12 +1711,19 @@ function TestMatrixFun:testScanr()
     -- non-commutative operations
     --m1 = m:scanr '-'             for i=1,#m1 do print( m1:geti(i), sub(1..i) ) end
     --m1 = m:scanr('-', nil  , {}) for i=1,#m1 do assertEquals( m1[i]     , sub(1..i) ) end
-    --m1 = m:scanr('-', 'row')
-    --for i=1,nr do for j=1,nc do
-    --  assertEquals( m1:get(i,j), sub(ref(i,1,nc)..ref(i,j,nc)..1 ) )
-    --end end
+    m1 = m:scanr('-', 'col')
+    --print("\n", m)
+    --print("\n", m1)
+    for i=1,nr do
+    for j=nc,1,-1 do
+      --print( m1:get(i,j), sum(ref(nr,j,nc)..ref(i,j,nc)..-2*nc), sum(ref(nr-1,j,nc)..ref(i,j,nc)..-2*nc) )
+    end end
+    m1 = m:scanr('-', 'row')
+    for i=1,nr do
+    for j=nc,1,-1 do
+      assertEquals( m1:get(i,j), sum(ref(i,j,nc)..ref(i,nc,nc)..2) - sum(ref(i,j+1,nc)..ref(i,nc,nc)..2 ) )
+    end end
   end
-
   assertEquals( vector(4):fill(4..1..-1):scanr '^', vector{ 4^3^2^1, 3^2^1, 2^1, 1 } )
 end
 
@@ -2289,23 +2301,57 @@ function TestMatrixSScans:testRaccsum()
   local m1
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
-    m1 = m:raccsum()      for i=1,m:size()         do assertEquals( m1:geti(i) ,  sum(i..nr*nc)   ) end
+    m1 = m:raccsum()
+    for i=1,m:size()            do assertEquals( m1:geti(i) , sum(i..nr*nc)   ) end
     m1 = m:raccsum("col")
-    for i=1,nr do for j=1,nc do
-      --print( m1:get(i,j), sum(ref(i,j,nc)..ref(1,j,nc)..-nc) )
-    end end
-
-    --m1 = m:raccsum("row") for i=1,nr do for j=1,nc do assertEquals( m1:get(i,j), ref(i,nc,nc) ) end end
+    for i=nr,1,-1 do for j=1,nc do assertEquals( m1:get(i,j), sum(ref(nr,j,nc)..ref(i,j,nc)..-nc) ) end end
+    m1 = m:raccsum("row")
+    for i=1,nr do for j=nc,1,-1 do assertEquals( m1:get(i,j), sum(ref(i,j,nc)..ref(i,nc,nc))      ) end end
   end
 end
 
 function TestMatrixSScans:testRaccsumabs()
+  local m1
+  for _,mg in ipairs(G.mat) do
+    local nr, nc = mg:sizes()
+    m = matrix(nr,nc)
+    m = mg:copy():map(\x -x)
+    m1 = m:raccsumabs()
+    for i=1,m:size()            do assertEquals( m1:geti(i) , sum(i..nr*nc)   ) end
+    m1 = m:raccsumabs("col")
+    for i=nr,1,-1 do for j=1,nc do assertEquals( m1:get(i,j), sum(ref(nr,j,nc)..ref(i,j,nc)..-nc) ) end end
+    m1 = m:raccsumabs("row")
+    for i=1,nr do for j=nc,1,-1 do assertEquals( m1:get(i,j), sum(ref(i,j,nc)..ref(i,nc,nc))      ) end end
+  end
 end
 
 function TestMatrixSScans:testRaccsumsqr()
+  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
+  local m1
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    m1 = m:raccsumsqr()
+    for i=1,m:size()            do assertEquals( m1:geti(i) , sumsqr(i..nr*nc)   ) end
+    m1 = m:raccsumsqr("col")
+    for i=nr,1,-1 do for j=1,nc do assertEquals( m1:get(i,j), sumsqr(ref(nr,j,nc)..ref(i,j,nc)..-nc) ) end end
+    m1 = m:raccsumsqr("row")
+    for i=1,nr do for j=nc,1,-1 do assertEquals( m1:get(i,j), sumsqr(ref(i,j,nc)..ref(i,nc,nc))      ) end end
+  end
 end
 
 function TestMatrixSScans:testRaccprod()
+  local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
+  local m1
+  for _,m in ipairs(G.mat) do
+    local nr, nc = m:sizes()
+    m1 = m:raccprod()
+    --for i=1,m:size()            do print( m1:geti(i), m1:geti(i) - prod(i..nr*nc) ) end
+    --for i=1,m:size()            do assertAlmostEquals( m1:geti(i) - prod(i..nr*nc), 0, eps   ) end
+    --m1 = m:raccprod("col")
+    --for i=nr,1,-1 do for j=1,nc do assertAlmostEquals( m1:get(i,j) - prod(ref(nr,j,nc)..ref(i,j,nc)..-nc), 0, eps ) end end
+    --m1 = m:raccprod("row")
+    --for i=1,nr do for j=nc,1,-1 do assertAlmostEquals( m1:get(i,j) - prod(ref(i,j,nc)..ref(i,nc,nc)), 0, eps ) end end
+  end
 end
 
 -- symplectic matrix ----------------------------------------------------------o
@@ -2555,7 +2601,7 @@ function TestMatrixErr:testAngle()
   assertErrorMsgContains( msg[1], mth, 'angle', errMat   , matrix(2) )
 end
 
-function TestMatrixLinAlg:testAngle() --TODO: afterfix
+function TestMatrixLinAlg:testAngle() --TODO: after fix
 -- angle     :  u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
   for _,m1 in ipairs(G.mat) do
     local m2 = m1:same():fill(m1:size()..1..-1)
@@ -2828,31 +2874,66 @@ function TestMatrix:testConcat() end
 
 Test_Matrix = {}
 
-function Test_Matrix:setUp()
-  self.empty = {}
-  for nr=1,5 do
-  for nc=1,5 do
-    self.empty[ref(nr,nc,5)] = matrix(nr,nc)
-  end end
-end
-
-function Test_Matrix:testFillGen()
+--fill benchmark
+function Test_Matrix:testFillGen2()
+  local m = matrix(2)
+  local r = 1..4
   local t0 = os.clock()
-  for _,m in ipairs(self.empty) do
-    for i=1,9e4 do
-      m:fill(1..#m)             for i=1,m:size() do assertEquals( m:geti(i), i   ) end
-    end
+  for i=1,1e7 do
+    m:fill(r)
   end
   local dt = os.clock() - t0
   assertAlmostEquals( dt, 0.5, 1 )
 end
 
-function Test_Matrix:testFillScal()
+function Test_Matrix:testFillScal2()
+  local m = matrix(2)
   local t0 = os.clock()
-  for _,m in ipairs(self.empty) do
-    for i=1,3.5*10e4 do
-      m:fill(1  )               for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
-    end
+  for i=1,1e7 do
+    m:fill(1)
+  end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt, 0.5, 1 )
+end
+
+function Test_Matrix:testFillTab2()
+  local m = matrix(2)
+  local t = {1,2,3,4}
+  local t0 = os.clock()
+  for i=1,1e7 do
+    m:fill(t)
+  end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt, 0.5, 1 )
+end
+
+function Test_Matrix:testFillGen3()
+  local m = matrix(3)
+  local r = 1..9
+  local t0 = os.clock()
+  for i=1,1e7 do
+    m:fill(r)
+  end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt, 0.5, 1 )
+end
+
+function Test_Matrix:testFillScal3()
+  local m = matrix(3)
+  local t0 = os.clock()
+  for i=1,1e7 do
+    m:fill(1)
+  end
+  local dt = os.clock() - t0
+  assertAlmostEquals( dt, 0.5, 1 )
+end
+
+function Test_Matrix:testFillTab3()
+  local m = matrix(3)
+  local t = {1,2,3,4,5,6,7,8,9}
+  local t0 = os.clock()
+  for i=1,1e7 do
+    m:fill(t)
   end
   local dt = os.clock() - t0
   assertAlmostEquals( dt, 0.5, 1 )
