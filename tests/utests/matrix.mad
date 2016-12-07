@@ -2720,40 +2720,45 @@ function TestMatrixErr:testMul()
     "invalid arguments (unsupported matrix operation)",
     "incompatible matrix sizes"                       ,
   }
-  assertErrorMsgContains( msg[1], mth, 'mul', errMat, ''   )
-  assertErrorMsgContains( msg[1], mth, 'mul', errMat, nil  )
-  assertErrorMsgContains( msg[1], mth, 'mul', errMat, 1..4 )
+  assertErrorMsgContains( msg[1], mth, 'mul', errMat, ''     )
+  assertErrorMsgContains( msg[1], mth, 'mul', errMat, nil    )
+  assertErrorMsgContains( msg[1], mth, 'mul', errMat, 1..4   )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(2,1), matrix(2,1) )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(1,2), matrix(1,1) )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(1,2), matrix(3,1) )
 end
 
 function TestMatrixOps:testMul()
-  local sum = \r =>local x = 0    for i=1,r:size() do x = x + r[i] end return x end
-  local mres, m2, cm1
+  local ref = \m1, m2 ,i ,j => local x = 0 for ii=1,m1:ncol() do   x = x + m1:get(i,ii) * m2:get(ii,j) end return x end
+
+  local mres, m2, cm2
   for _,m1 in ipairs(G.mat) do
     local m2  = m1:copy()
-    local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
     mres = 2  * m1  for i=1,m1:size() do assertEquals( mres:geti(i), 2*i  ) end -- num * mat => num * vec
     mres = m1 * 2   for i=1,m1:size() do assertEquals( mres:geti(i), 2*i  ) end -- mat * num => vec * num
     mres = m1 * 2i  for j=1,m1:size() do assertEquals( mres:geti(j), j*2i ) end -- mat * cpx => vec * cp
     assertTrue( is_cmatrix(mres) )
+  end
+  for _,m1 in ipairs(G.mat) do
+    local nc1 = m1:ncol()
+    for i=1,5 do
+      m2   = matrix(nc1,i):fill(1..nc1*i)
+      mres = m1 * m2  -- mat * mat
+      assertEquals( {mres:sizes()}, {m1:nrow(), m2:ncol()} )
+      for i=1,m1:nrow() do
+      for j=1,m2:ncol() do
+        assertEquals( mres:get(i,j), ref(m1,m2,i,j) )
+      end end
 
-    mres = m1 * m2 :t()   -- mat * mat
-    local nc, nr = mres:sizes()
-    assertEquals( {nr,nc}, {m1:nrow(), m2:t():ncol()} )
-    --print(mres, "\n")
-    for j=1,nc do
-    for i=1,nr do
-      local ref = 0
-      for ii=1,m1:ncol() do
-        --print( m1:get(ii,j), m2:get(i,ii) )
-        --ref = ref + m1:get(ii,j)*m2:get(i,ii)
-      end
-      --print( mres:get(i,j), ref )
-    end end
-    mres = m1 * cm1:t() --for i=1,m1:size() do assertEquals( mres:geti(i), i*1i ) end -- mat * cmat
-    assertTrue( is_cmatrix(mres) )
+      cm2  = cmatrix(nc1,i):fill(1..nc1*i)
+      mres = m1 * cm2 -- mat * cmat
+      assertEquals( {mres:sizes()}, {m1:nrow(), cm2:ncol()} )
+      assertTrue  ( is_cmatrix(mres) )
+      for i=1,m1 :nrow() do
+      for j=1,cm2:ncol() do
+        assertEquals( mres:get(i,j), ref(m1,cm2,i,j) )
+      end end
+    end
   end
 end
 
@@ -2778,22 +2783,31 @@ function TestMatrixErr:testTmul()
 end
 
 function TestMatrixOps:testTmul()
+  local ref = \m1, m2 ,i ,j => local x = 0 for ii=1,m1:ncol() do   x = x + m1:get(i,ii) * m2:get(ii,j) end return x end
   local mres, m2, cm1
+
   for _,m1 in ipairs(G.mat) do
-    local m2  = m1:copy()
-    local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
+    local nr1 = m1:nrow()
+    for i=1,5 do
+      m2   = matrix(nr1,i):fill(1..nr1*i)
+      mres = m1:tmul(m2) -- mat' * mat
+      assertEquals( {mres:sizes()}, {m1:ncol(), m2:ncol()} )
+      for i=1,m1:ncol() do
+      for j=1,m2:ncol() do
+        assertEquals( mres:get(i,j), ref(m1:t(), m2, i, j) )
+      end end
 
-    mres = m1:tmul(m2)
-    --print(mres)
-    --for i=1,m1:size() do assertEquals( mres:geti(i), 0    ) end
-    mres = m1:tmul(cm1)
-    assertTrue( is_cmatrix(mres) )
-
-    --print(mres)
-    --for i=1,m1:size() do assertEquals( mres:geti(i), i*1i ) end
+      cm2  = cmatrix(nr1,i):fill(1..nr1*i)
+      mres = m1:tmul(cm2) -- mat' * cmat
+      assertEquals( {mres:sizes()}, {m1:ncol(), cm2:ncol()} )
+      assertTrue  ( is_cmatrix(mres) )
+      for i=1,m1 :ncol() do
+      for j=1,cm2:ncol() do
+        assertEquals( mres:get(i,j), ref(m1:t(), cm2, i, j) )
+      end end
+    end
   end
 end
-
 
 function TestMatrixErr:testDiv() --TODO
   local msg = {
@@ -2812,7 +2826,13 @@ function TestMatrixOps:testDiv()
   for _,m1 in ipairs(G.mat) do
     local m2  = m1:copy()
     local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
-    --mres = 2  / m1  for i=1,m1:size() do print( mres:geti(i), 2*i  ) end -- num / mat
+    -- X/Y => X * Y^-1 => [m x p] * [p x n] => X:[m x p], Y:[n x p]
+    -- X/Y => X * Y^-1 => (Y'^-1 * X')' => A=Y' and B=X'
+    -- Solving A*X=B => X = A^-1 B = (B'/A')' (col-major!)
+
+
+    mres = 2  / m1
+    --for i=1,m1:size() do print( mres:geti(i), 2/m1:geti(i)  ) end -- num / mat
     --mres = m1 / 2   for i=1,m1:size() do print( mres:geti(i), i/2  ) end -- mat / num => vec / num
     --mres = m1 / 2i  for j=1,m1:size() do print( mres:geti(j), j*2i ) end -- mat / cpx => vec / cpx
 
