@@ -46,17 +46,18 @@
 
 // -----
 
+#if 0
 // [m x n] = [m x p] * [p x n]
 // naive implementation (not vectorized)
-/* #define MMUL \
+#define MMUL { /* mat * mat */ \
   for (ssz_t i=0; i < m; i++) \
-    for (ssz_t j=0; j < n; j++) { \
-      r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
-        r[i*n+j] += x[i*p+k] * y[k*n+j]; \
-    }
-*/
-
+  for (ssz_t j=0; j < n; j++) { \
+    r[i*n+j] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[i*n+j] += x[i*p+k] * y[k*n+j]; \
+  } \
+}
+#else
 // [m x n] = [m x p] * [p x n]
 // portable vectorized general matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
@@ -114,6 +115,7 @@
     } \
   } \
 }
+#endif
 
 // n==1: [m x 1] = [m x p] * [p x 1]
 #define MULV /* mat * vec */ \
@@ -155,17 +157,18 @@
 
 // -----
 
+#if 0
 // [m x n] = [p x m]' * [p x n]
 // naive implementation (not vectorized)
-/* #define TMMUL \
+#define TMMUL { /* mat' * mat */ \
   for (ssz_t i=0; i < m; i++) \
-    for (ssz_t j=0; j < n; j++) { \
-      r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
-        r[i*n+j] += x[k*m+i] * y[k*n+j]; \
-    }
-*/
-
+  for (ssz_t j=0; j < n; j++) { \
+    r[i*n+j] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[i*n+j] += x[k*m+i] * y[k*n+j]; \
+  } \
+}
+#else
 // [m x n] = [p x m]' * [p x n]
 // portable vectorized general transpose matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
@@ -223,6 +226,7 @@
     } \
   } \
 }
+#endif
 
 // n==1: [m x 1] = [p x m]' * [p x 1]
 #define TMULV(C) /* mat * vec */ \
