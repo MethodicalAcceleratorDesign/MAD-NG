@@ -2137,7 +2137,7 @@ function TestMatrixErr:testAll()
   assertErrorMsgContains( msg[1], mth, 'all', errMat, { }    )
 end
 
-function TestMatrixSFolds:testAll() --TODO: better 'col' and 'vec' example
+function TestMatrixSFolds:testAll()
   local m1
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
@@ -2454,6 +2454,29 @@ function TestMatrixLinAlg:testInner()
   end
 end
 
+function TestMatrixErr:testOuter()
+  local m = matrix(2,1)
+  local msg = {
+    "invalid argument #2 (matrix expected)",
+    "incompatible matrix sizes",
+  }
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , nil  )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , ''   )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , {}   )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1    )
+  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1..2 )
+  assertErrorMsgContains( msg[2], mth, 'outer', matrix(1,2), matrix(2,2) )
+end
+
+function TestMatrixLinAlg:testOuter()
+  -- x * y:t() without temporary
+  for nr=1,5 do
+    local m1 = vector(nr):fill(1..2*nr..2)
+    local m2 = vector(nr):fill(1..nr)
+    assertEquals( m1:outer(m2), m1*m2:t() )
+  end
+end
+
 function TestMatrixErr:testCross()
   local m = matrix(3)
   local msg = {
@@ -2521,29 +2544,6 @@ function TestMatrixLinAlg:testMixed() --TODO: afterfix
     m2 = matrix(3,nc):fill(3*nc..1..-1)
     m3 = matrix(3,nc):fill(1)
     --print( m1:mixed(m2,m3), m1:cross(m2):inner(m3) ) -- ?
-  end
-end
-
-function TestMatrixErr:testOuter()
-  local m = matrix(2,1)
-  local msg = {
-    "invalid argument #2 (matrix expected)",
-    "incompatible matrix sizes",
-  }
-  assertErrorMsgContains( msg[1], mth, 'outer', m          , nil  )
-  assertErrorMsgContains( msg[1], mth, 'outer', m          , ''   )
-  assertErrorMsgContains( msg[1], mth, 'outer', m          , {}   )
-  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1    )
-  assertErrorMsgContains( msg[1], mth, 'outer', m          , 1..2 )
-  assertErrorMsgContains( msg[2], mth, 'outer', matrix(1,2), matrix(2,2) )
-end
-
-function TestMatrixLinAlg:testOuter()
-  -- x * y:t() without temporary
-  for nr=1,5 do
-    local m1 = vector(nr):fill(1..2*nr..2)
-    local m2 = vector(nr):fill(1..nr)
-    assertEquals( m1:outer(m2), m1*m2:t() )
   end
 end
 
@@ -2822,27 +2822,40 @@ function TestMatrixErr:testDiv() --TODO
 end
 
 function TestMatrixOps:testDiv()
-  local mres, m2, cm1
-  for _,m1 in ipairs(G.mat) do
-    local m2  = m1:copy()
-    local cm1 = cmatrix(m1:sizes()):fill(1..m1:size()):map(\x x+x*1i)
-    -- X/Y => X * Y^-1 => [m x p] * [p x n] => X:[m x p], Y:[n x p]
-    -- X/Y => X * Y^-1 => (Y'^-1 * X')' => A=Y' and B=X'
-    -- Solving A*X=B => X = A^-1 B = (B'/A')' (col-major!)
+  local mres, mref, m1, m2, cm1
+  for _,m in ipairs(G.mat) do
+    local m1     = m:copy():random(randomseed(2))
 
+    local nr, nc = m:sizes()
 
-    mres = 2  / m1
-    --for i=1,m1:size() do print( mres:geti(i), 2/m1:geti(i)  ) end -- num / mat
-    --mres = m1 / 2   for i=1,m1:size() do print( mres:geti(i), i/2  ) end -- mat / num => vec / num
-    --mres = m1 / 2i  for j=1,m1:size() do print( mres:geti(j), j*2i ) end -- mat / cpx => vec / cpx
+    if nr == nc then
+      mres = m1 * (1/m1)
+      mref = m1:copy():eye()
+      for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, 8*eps ) end
 
-    --mres = m1 / m2     -- mat / mat  => vec / vec
-    --mres = m1 / cm1    -- mat / cmat => vec / cvec
-    --assertTrue( is_cmatrix(mres) )
+      m2 = m:copy()
+      m3 = m1 * m2
+      mres = 1/m1 * m3
+      for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - m2:geti(i), 0, 128*eps ) end
+
+      mres = 1/m2 * 1/m1
+      mref = 1/m3
+      --print(mres, "\n")
+      --print(mref, "\n")
+      --for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, 16*eps ) end
+    end
   end
 end
 
-function TestMatrixOps:testDivCPx() end
+function TestMatrixOps:testDivCPx()
+  for _,m1 in ipairs(G.mat) do
+    --print( {m1:sizes()}, "\n" )
+    local mres = 2i / m1  -- cpx / mat
+    --print( mres, "\n" )
+    --for j=1,m1:size() do print( mres:geti(j), j*2i ) end
+    assertTrue( is_cmatrix(mres) )
+  end
+end
 
 function TestMatrixErr:testEmul()
   local msg = {
@@ -2891,18 +2904,87 @@ end
 -- linear algebra -------------------------------------------------------------o
 
 function TestMatrixLapack:testSolve() end
+
+function TestMatrixErr:testSvd()
+  local msg = {
+    "invalid input argument" ,
+    "SVD failed to converged",
+  }
+end
 function TestMatrixLapack:testSvd() end
 
-function TestMatrixLapack:testEigen() end
+function TestMatrixLapack:testEigen()
+  local w, vl, vr, info, m
+  for i=1,5,1 do
+    m = matrix(i)
+    w, vl, vr, info = m:eigen()
+    assertEquals( w   , cvector(i)      )
+    assertEquals( vl  , matrix(i):eye() )
+    assertEquals( vr  , matrix(i):eye() )
+    assertEquals( info, 0 )
+
+    m:fill(1)
+end
+  -- upper triangle
+  m = matrix(4):setdiag(1..4)
+  w, vl, vr, info = m:eigen()
+  for i=1,m:size() do end
+  --print(m)
+  --print( w   , "\n" )
+  --print( vl  , "\n" )
+  --print( vr  , "\n" )
+  --print( info, "\n" )
+
+
+
+  m = matrix(2):fill(1..4)
+  m = m * m:t()
+  w, vl, vr, info = m:eigen()
+
+  m = matrix(5):eye()
+  w, vl, vr, info = m:eigen()
+
+  m = matrix{{2,1},{1,2}}
+  w, vl, vr, info = m:eigen()
+end
+
 function TestMatrixErr:testEigen()
   local msg = {
-    "matrix must be square",
+    "matrix must be square"                  ,
+    "invalid input argument"                 ,
+    "eigen failed to compute all eigenvalues",
   }
+  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(2,1) )
+  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(1,3) )
 end
 
 -- FFT, convolution, correlation, covrariance ---------------------------------o
 
-function TestMatrixFFT:testFft() end
+--function TestMatrixFFT:setUp()
+--  self.mat   = {}
+--  for nr=1,5 do
+--  for nc=1,5 do
+--    self.mat[ref(nr,nc,5)] = matrix(nr,nc):fill(0..nr*nc-1):fill(\x cos(2*pi*x/(nr*nc)))
+--  end end
+--end
+
+function TestMatrixFFT:testFft()
+  local v   = vector(25):fill(0..24):fill(\x cos(2*pi/25*x))
+  local res = v:fft()
+--  print(res)
+
+  for i=1,res:size() do
+    local x = res:geti(i)
+    if i==2 or i==25 then
+      assertAlmostEquals( x.re - 12.5, 0,   eps)
+      assertAlmostEquals( x.im - 0   , 0, 8*eps)
+    else
+      assertAlmostEquals( x.re - 0   , 0, 8*eps)
+      assertAlmostEquals( x.im - 0   , 0, 8*eps)
+    end
+  end
+end
+
 function TestMatrixFFT:testIfft() end
 
 function TestMatrixErr:testRfft()
@@ -2939,11 +3021,11 @@ function TestMatrixConv:testTosting()
   for i,m in ipairs(G.mat) do
     nr, nc = m:sizes()
     c, r = {}, {}
-    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c, ' ')  end
+    for i=1,nr do for j=1,nc do c[j]=tostring(ref(i,j,nc)) end r[i]=table.concat(c, ' ')  end
     assertEquals( tostring(m      ), table.concat(r, '\n') )
-    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c)       end
+    for i=1,nr do for j=1,nc do c[j]=tostring(ref(i,j,nc)) end r[i]=table.concat(c)       end
     assertEquals( tostring(m, ''  ), table.concat(r, '\n') )
-    for i=1,nr do for j=1,nc do c[j]=tostring((i-1)*nc+j) end r[i]=table.concat(c, "\n") end
+    for i=1,nr do for j=1,nc do c[j]=tostring(ref(i,j,nc)) end r[i]=table.concat(c, "\n") end
     assertEquals( tostring(m, '\n'), table.concat(r, '\n') )
   end
 end
@@ -2961,18 +3043,19 @@ function TestMatrixErr:testTotable()
   assertErrorMsgContains( msg[2], totable, errMat, {{},5} )
 end
 
-function TestMatrixConv:testTotable() -- to be done with foldl
+function TestMatrixConv:testTotable() -- TODO: with foldl
   assertTrue( is_table(totable( matrix(2))) )
   for i,m in ipairs(G.mat) do
-    local tref = {}
     local nr, nc = m:sizes()
+    local tref = totable(m)
     if nc ~=1 then
-      for i=1,nr do tref[i]={} for j=1,nc do  tref[i][j]=(i-1)*nc+j end end
+      for i=1,nr do for j=1,nc do assertEquals( tref[i][j], ref(i,j,nc) ) end end
     else
-      for i=1,nr do tref[i]=(i-1)*nc+1 end
+      for i=1,nr do               assertEquals( tref[i]   , ref(i,1,nc) ) end
     end
-    assertEquals( totable( m)        , tref )
-    assertEquals( matrix(totable(m )), m    )
+
+    assertTrue  ( is_table(totable( m))  )
+    assertEquals( matrix(totable(m )), m )
   end
 end
 
@@ -2980,15 +3063,29 @@ end
 
 function TestMatrixErr:testConcat()
   local msg = {
-    "invalid argument #1 (matrix expected)"               ,
-    "invalid argument #2 (matrix expected)"               ,
-    "incompatible matrix sizes"                           ,
-    "invalid argument #3 (string 'row' or 'col' expected)",
+    "invalid argument #1 (matrix expected)"                     ,
+    "invalid argument #2 (matrix expected)"                     ,
+    "incompatible matrix sizes"                                 ,
+    "invalid argument #3 (string 'vec', row' or 'col' expected)",
   }
+  assertErrorMsgContains( msg[2], mth, 'concat', errMat, ''   )
+  assertErrorMsgContains( msg[2], mth, 'concat', errMat, nil  )
+  assertErrorMsgContains( msg[2], mth, 'concat', errMat, 1..4 )
+  assertErrorMsgContains( msg[3], mth, 'concat', errMat, matrix(1)  )
+  assertErrorMsgContains( msg[3], mth, 'concat', matrix(3), errMat  )
+  assertErrorMsgContains( msg[4], mth, 'concat', errMat, errMat, '' )
+  assertErrorMsgContains( msg[4], mth, 'concat', errMat, errMat, 1  )
 end
 
-function TestMatrix:testConcat() end
+function TestMatrix:testConcat()
+  for _,m1 in ipairs(G.mat) do
+    local m2 = m1:copy()
+    --print(m1:concat(m2))
 
+  end
+
+
+end
 
 -- performance test suite -----------------------------------------------------o
 
