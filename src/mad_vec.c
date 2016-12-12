@@ -154,7 +154,7 @@ void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
 void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 { assert( x && (re || ri) );
   if (re && ri) for (ssz_t i=0; i < n; i++) re[i]=creal(x[i]),
-                                             ri[i]=cimag(x[i]);
+                                            ri[i]=cimag(x[i]);
   else if (re)  for (ssz_t i=0; i < n; i++) re[i]=creal(x[i]);
   else          for (ssz_t i=0; i < n; i++) ri[i]=cimag(x[i]);
 }
