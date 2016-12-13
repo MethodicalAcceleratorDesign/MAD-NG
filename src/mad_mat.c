@@ -726,10 +726,12 @@ mad_mat_det (const num_t x[], ssz_t n)
   if (info < 0) error("invalid input argument");
   if (info > 0) error("unexpect lapack error");
 
+  int perm = 0;
   num_t det = 1;
-  for (int i=0; i < n*n; i+=n+1) det *= a[i];
+  for (int i=0, j=0; i < n; i++, j+=n+1)
+    det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  return det;
+  return perm % 2 ? -det : det;
 }
 
 cnum_t
@@ -745,10 +747,12 @@ mad_cmat_det (const cnum_t x[], ssz_t n)
   if (info < 0) error("invalid input argument");
   if (info > 0) error("unexpect lapack error");
 
+  int perm = 0;
   cnum_t det = 1;
-  for (int i=0; i < n*n; i+=n+1) det *= a[i];
+  for (int i=0, j=0; i < n; i++, j+=n+1)
+    det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  return det;
+  return perm % 2 ? -det : det;
 }
 
 void
