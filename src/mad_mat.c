@@ -663,7 +663,7 @@ generalized eigenvalues the routines dggev and zggev are used.
 */
 
 // -----
-// Decompose A = PLU with A[m x n] (generalized)
+// Decompose A = LU with A[m x n] (generalized)
 // -----
 void dgetrf_ (const int *m, const int *n,  num_t A[], const int *lda,
               int *IPIV, int *info);
@@ -717,8 +717,8 @@ num_t
 mad_mat_det (const num_t x[], ssz_t n)
 {
   CHKX;
-  int info=0, ipiv[n];
   const int nn=n;
+  int info=0, ipiv[n];
   mad_alloc_tmp(num_t, a, n*n);
   mad_vec_copy(x, a, n*n);
   dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
@@ -727,7 +727,7 @@ mad_mat_det (const num_t x[], ssz_t n)
   if (info > 0) error("unexpect lapack error");
 
   num_t det = 1;
-  for (int i=0; i < n; i+=n+1) det *= a[i];
+  for (int i=0; i < n*n; i+=n+1) det *= a[i];
   mad_free_tmp(a);
   return det;
 }
@@ -736,8 +736,8 @@ cnum_t
 mad_cmat_det (const cnum_t x[], ssz_t n)
 {
   CHKX;
-  int info=0, ipiv[n];
   const int nn=n;
+  int info=0, ipiv[n];
   mad_alloc_tmp(cnum_t, a, n*n);
   mad_cvec_copy(x, a, n*n);
   zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
@@ -746,7 +746,7 @@ mad_cmat_det (const cnum_t x[], ssz_t n)
   if (info > 0) error("unexpect lapack error");
 
   cnum_t det = 1;
-  for (int i=0; i < n; i+=n+1) det *= a[i];
+  for (int i=0; i < n*n; i+=n+1) det *= a[i];
   mad_free_tmp(a);
   return det;
 }
