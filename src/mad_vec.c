@@ -1,19 +1,19 @@
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Vector module implementation
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 */
 
 #include <math.h>
@@ -24,7 +24,7 @@
 #include "mad_mem.h"
 #include "mad_vec.h"
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 #define CHKR    assert( r )
 #define CHKX    assert( x )
@@ -154,7 +154,7 @@ void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
 void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 { assert( x && (re || ri) );
   if (re && ri) for (ssz_t i=0; i < n; i++) re[i]=creal(x[i]),
-                                             ri[i]=cimag(x[i]);
+                                            ri[i]=cimag(x[i]);
   else if (re)  for (ssz_t i=0; i < n; i++) re[i]=creal(x[i]);
   else          for (ssz_t i=0; i < n; i++) ri[i]=cimag(x[i]);
 }

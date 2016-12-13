@@ -69,7 +69,7 @@ DESCRIPTION
   rotv, torotv, rotq, torotq,
   sympinv, symperr,
 
-  solve, svd, eigen,
+  solve, svd, det, eigen,
   fft, ifft, rfft, irfft, conv, corr, covar.
 
 RETURN VALUES
@@ -105,8 +105,8 @@ Useful relations of 3D geometry:
   cross prod:  uxv = |u|.|v| sin(u^v) \vec{n}
   mixed prod:  (uxv)'.w = u'.(vxw) = det(u,v,w)
   outer prod:  u.v' = matrix
-  dbl x-prod:  ux(vxw) = (u.w) \vec{v} - (u.v) \vec{w}
-               (uxv)xw = (u.w) \vec{v} - (v.w) \vec{u}
+  dbl x-prod:  ux(vxw) = (u.w) v - (u.v) w
+               (uxv)xw = (u.w) v - (v.w) u
   norm      :  |u| = sqrt(u'.u)
   angle     :  u^v = acos(u'.v / |u|.|v|)  in [0,pi] (or [-pi,pi] if n)
   unit      :  u / |u|
@@ -137,6 +137,13 @@ Useful properties of square matrix:
                J is the block-diagonal non-singular skew-symmetric bilinear form
                J = diag {{0,1},{-1,0}}, J^-1 = J' = -J, J^2 = -I, det(J) = +1
                symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B
+
+Special cases:
+  reflection:  SO(n) with det(M) = -1 and eigenvalue = {-1,1,...,1}
+  rotation  :  SO(n) with det(M) = +1 (even number of reflections ->   proper)
+               SO(n) with det(M) = -1 (odd  number of reflections -> improper)
+  projection:  M^2 = M, oblique: A (B'A)^-1 B', orthognal: A (A'A)^-1 A',
+               eigenvalue = {0,1}*
 ]=]
 
 -- locals ---------------------------------------------------------------------o
@@ -271,6 +278,12 @@ end
 
 local function chksiztm (r, x, y) -- tmul
   assert((is_nil(r) or (r.nr == x.nc and r.nc == y.nc)) and x.nr == y.nr,
+         "incompatible matrix sizes")
+  return r
+end
+
+local function chksizmt (r, x, y) -- mult
+  assert((is_nil(r) or (r.nr == x.nr and r.nc == y.nr)) and x.nc == y.nc,
          "incompatible matrix sizes")
   return r
 end
@@ -1162,28 +1175,51 @@ end
 
 -- inner, cross, mixed, outer -------------------------------------------------o
 
-function MR.inner (x, y)
-  -- (x:t() * y):tr() without temporary
+function MR.inner (x, y, r_)
+  -- (x:t() * y):tr() without temporary, tr is called only if r_ == 'tr'
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   chksiz(x,y)
-  if is_matrix(y)
-  then return _C.mad_mat_dot   (x.data, y.data,       x:ncol(), y:ncol(), x:nrow())
-  else        _C.mad_mat_dotm_r(x.data, y.data, cres, x:ncol(), y:ncol(), x:nrow())
-       return cres[0]
+  local nr, nc = x:sizes()
+  if nc == 1 or is_string(r_) and r_ == 'tr' then
+    if is_matrix(y)
+    then return _C.mad_vec_dot    (x.data, y.data,       nr*nc)
+    else        _C.mad_vec_dotv_r (x.data, y.data, cres, nr*nc) return cres[0]
+    end
+  else
+    assert(is_nil(r_) or r_:nrow() == 1 and r_:ncol() == nc,
+           "incompatible matrix sizes")
+    local r = r_ or x:same(y[1], 1, nc)
+    if is_matrix(y)
+    then _C.mad_mat_dot  (x.data, y.data, r.data, nr, nc)
+    else _C.mad_mat_dotm (x.data, y.data, r.data, nr, nc)
+    end
+    return r
   end
 end
 
 MR.dot = MR.inner -- shortcut
 
-function MC.inner (x, y)
-  -- (x:t() * y):tr() without temporary
+function MC.inner (x, y, r_)
+  -- (x:t() * y):tr() without temporary, tr is called only if r_ == 'tr'
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   chksiz(x,y)
-  if is_matrix(y)
-  then _C.mad_cmat_dotm_r(x.data, y.data, cres, x:ncol(), y:ncol(), x:nrow())
-  else _C.mad_cmat_dot_r (x.data, y.data, cres, x:ncol(), y:ncol(), x:nrow())
+  local nr, nc = x:sizes()
+  if nc == 1 or is_string(r_) and r_ == 'tr' then
+    if is_matrix(y)
+    then return _C.mad_cvec_dotv_r (x.data, y.data, cres, nr*nc)
+    else        _C.mad_cvec_dot_r  (x.data, y.data, cres, nr*nc)
+    end
+    return cres[0]
+  else
+    assert(is_nil(r_) or r_:nrow() == 1 and r_:ncol() == nc,
+           "incompatible matrix sizes")
+    local r = r_ or x:same(1, nc)
+    if is_matrix(y)
+    then _C.mad_cmat_dotm (x.data, y.data, r.data, nr, nc)
+    else _C.mad_cmat_dot  (x.data, y.data, r.data, nr, nc)
+    end
+    return r
   end
-  return cres[0]
 end
 
 MC.dot = MC.inner -- shortcut
@@ -1193,9 +1229,9 @@ function MR.outer (x, y, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   local nr, nc = x:nrow(), y:nrow()
-  assert(x:ncol() == 1 and y:ncol() == 1 and
-    (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()), "incompatible matrix sizes")
-  local r = r_ or x:same(y[1], nr, nc)
+  assert(x :ncol() == 1  and y :ncol() == 1 and (is_nil(r_) or
+         r_:nrow() == nr and r_:ncol() == nc), "incompatible matrix sizes")
+  local r = r_ or x:same(x[1]+y[1], nr, nc)
   for i=0,nr-1 do
   for j=0,nc-1 do set0(r,i,j, geti0(x,i) * conj(geti0(y,j))) end end
   return r
@@ -1206,7 +1242,7 @@ function MR.cross (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   local nr, nc = x:sizes()
   assert(nr == 3, "invalid matrix sizes")
-  local r = chksiz(r_,x,y) or x:same(y[1], 3, nc)
+  local r = chksiz(r_,x,y) or x:same(x[1]+y[1], 3, nc)
   local r0, r1, r2
   -- single cross product
   if nc == 1 then
@@ -1228,26 +1264,25 @@ function MR.cross (x, y, r_)
   return r
 end
 
-function MR.mixed (x, y, z, r_) -- TO REVIEW
-  -- x:inner(y:cross(z)) without temporary
+function MR.mixed (x, y, z, r_)
+  -- diag( (uxv)'.w ) without temporary
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   assert(isa_matrix(z), "invalid argument #3 (matrix expected)")
   local nr, nc = x:sizes()
   assert(nr == 3, "invalid matrix sizes")
-  -- single mixed product (r_ ignored)
+  assert(nr == y:nrow() and nc == y:ncol() and
+         nr == z:nrow() and nc == z:ncol(), "incompatible matrix sizes")
   if nc == 1 then
-    assert(nr == y:nrow() and 1 == y:ncol() and
-           nr == z:nrow() and 1 == z:ncol(), "incompatible matrix sizes")
+  -- single mixed product (r_ ignored)
     return conj(geti0(x,1) * geti0(y,2) - geti0(x,2) * geti0(y,1)) * geti0(z,0) +
            conj(geti0(x,2) * geti0(y,0) - geti0(x,0) * geti0(y,2)) * geti0(z,1) +
            conj(geti0(x,0) * geti0(y,1) - geti0(x,1) * geti0(y,0)) * geti0(z,2)
   end
   -- multiple mixed products
-  assert(nr == y :nrow() and nc == y :ncol() and
-         nr == z :nrow() and nc == z :ncol() and (is_nil(r_) or
-         nc == r_:nrow() and 1  == r_:ncol()), "incompatible matrix sizes")
-  local r = r_ or x:same(y[1], nc, 1)
+  assert(is_nil(r_) or nc == r_:nrow() and 1 == r_:ncol(),
+         "incompatible result matrix sizes")
+  local r = r_ or x:same(x[1]+y[1]+z[1], 1, nc)
   local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
   for i=0,nc-1 do
     r.data[i] = conj(geti0(x,i1) * geti0(y,i2) - geti0(x,i2) * geti0(y,i1)) * geti0(z,i0) +
@@ -1540,7 +1575,7 @@ function MR.tmul (x, y, r)
     r = chksiztm(r,x,y) or matrix(x:ncol(), y:ncol())
     _C.mad_mat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
   elseif is_cmatrix(y) then                     -- mat' * cmat
-    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol()) -- to check
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
     _C.mad_mat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
   elseif has_method(y, '__rtmul_mat') then      -- mat' * ?
     return y:__rtmul_mat(x, r)
@@ -1553,10 +1588,38 @@ function MC.tmul (x, y, r)
     r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
     _C.mad_cmat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
   elseif is_cmatrix(y) then                     -- cmat' * cmat
-    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol()) -- to check
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
     _C.mad_cmat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
   elseif has_method(y, '__rtmul_cmat') then     -- cmat' * ?
     return y:__rtmul_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- mult
+
+function MR.mult (x, y, r)
+  if is_matrix(y) and is_matrix(x) then         -- mat * mat'
+    r = chksizmt(r,x,y) or matrix(x:nrow(), y:nrow())
+    _C.mad_mat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif is_cmatrix(y) then                     -- mat * cmat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_mat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif has_method(y, '__rmult_mat') then      -- mat * ?'
+    return y:__rmult_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.mult (x, y, r)
+  if is_matrix(y) then                          -- cmat * mat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_cmat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif is_cmatrix(y) then                     -- cmat * cmat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_cmat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif has_method(y, '__rmult_cmat') then     -- cmat * ?'
+    return y:__rmult_cmat(x, r)
   end
   error("invalid arguments (unsupported matrix operation)")
 end
@@ -1660,7 +1723,7 @@ function MC.ediv (x, y, r_)
   return r
 end
 
--- solver, svd, eigenvalue, eigenvector ---------------------------------------o
+-- solver, det, svd, eigenvalue, eigenvector ----------------------------------o
 
 function MR.solve (a, b, rcond_)
   return b:t():div(a:t(), nil, rcond_):t()
@@ -1678,6 +1741,18 @@ function MC.svd (x)
   local rs, ru, rv = matrix(min(nr,nc),1), cmatrix(nr,nr), cmatrix(nc,nc)
   local info = _C.mad_cmat_svd(x.data, ru.data, rs.data, rv.data, nr, nc)
   return ru, rs, rv, info
+end
+
+function MR.det (x)
+  local nr, nc = x:sizes()
+  assert(nr == nc, "matrix must be square")
+  return _C.mad_mat_det(x.data, nr)
+end
+
+function MC.det (x)
+  local nr, nc = x:sizes()
+  assert(nr == nc, "matrix must be square")
+  _C.mad_cmat_det_r(x.data, cres, nr) return cres[0]
 end
 
 function MR.eigen (x)
@@ -1822,7 +1897,7 @@ function MR.__concat (x, y, d_, r_)
     local nr, nc = nrx + nry, ncx
     assert(ncx == ncy and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
            "incompatible matrix sizes")
-    local r = r_ or x:same(y[1],nr,nc)
+    local r = r_ or x:same(x[1]+y[1],nr,nc)
     local nx, ny = nrx * nc, nry * nc
     for i=0,nx-1 do seti0(r,i   , geti0(x,i)) end
     for i=0,ny-1 do seti0(r,i+nx, geti0(y,i)) end
@@ -1832,7 +1907,7 @@ function MR.__concat (x, y, d_, r_)
     local nr, nc = nrx, ncx + ncy
     assert(nrx == nry and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
            "incompatible matrix sizes")
-    local r = r_ or x:same(y[1],nr,nc)
+    local r = r_ or x:same(x[1]+y[1],nr,nc)
     for i=0,nr-1 do
       for j=0,ncx-1 do set0(r,i,j    , get0(x,i,j)) end
       for j=0,ncy-1 do set0(r,i,j+ncx, get0(y,i,j)) end
