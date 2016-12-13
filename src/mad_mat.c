@@ -751,6 +751,10 @@ mad_cmat_det (const cnum_t x[], ssz_t n)
   return det;
 }
 
+void
+mad_cmat_det_r (const cnum_t x[], cnum_t *r, ssz_t n)
+{ *r = mad_cmat_det(x, n); }
+
 // -- inverse -----------------------------------------------------------------o
 
 int
