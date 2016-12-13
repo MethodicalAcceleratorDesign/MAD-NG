@@ -1,19 +1,19 @@
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Matrix module implementation
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 */
 
 #include <math.h>
@@ -26,7 +26,7 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 #define CHKR     assert( r )
 #define CHKX     assert( x )
@@ -647,6 +647,9 @@ void mad_cmat_sympinv (const cnum_t x[], cnum_t r[], ssz_t n)
 // -- lapack ------------------------------------------------------------------o
 
 /*
+LAPACK is the default method for computing LU decomposition. When matrix is
+square and nonsinguler the routines dgetrf and zgetrf.
+
 LAPACK is the default method for solving dense numerical matrices. When the
 matrix is square and nonsingular the routines dgesv and zgesv are used
 otherwise routines dgelsy and zgelsy are used.
@@ -658,6 +661,14 @@ LAPACK is the default method for computing the entire set of eigenvalues and
 eigenvectors. For simple eigenvalues the routines dgeev and zgeev are used. For
 generalized eigenvalues the routines dggev and zggev are used.
 */
+
+// -----
+// Decompose A = PLU with A[m x n] (generalized)
+// -----
+void dgetrf_ (const int *m, const int *n,  num_t A[], const int *lda,
+              int *IPIV, int *info);
+void zgetrf_ (const int *m, const int *n, cnum_t A[], const int *lda,
+              int *IPIV, int *info);
 
 // -----
 // Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
@@ -700,7 +711,47 @@ void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
              cnum_t W[], cnum_t VL[], const int *ldvl, cnum_t VR[], const int *ldvr,
              cnum_t work[], int *lwork, num_t rwork[], int *info);
 
-// -- inverse ----------------------------------------------------------------o
+// -- determinant -------------------------------------------------------------o
+
+num_t
+mad_mat_det (const num_t x[], ssz_t n)
+{
+  CHKX;
+  int info=0, ipiv[n];
+  const int nn=n;
+  mad_alloc_tmp(num_t, a, n*n);
+  mad_vec_copy(x, a, n*n);
+  dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) error("unexpect lapack error");
+
+  num_t det = 1;
+  for (int i=0; i < n; i+=n+1) det += a[i];
+  mad_free_tmp(a);
+  return det;
+}
+
+cnum_t
+mad_cmat_det (const cnum_t x[], ssz_t n)
+{
+  CHKX;
+  int info=0, ipiv[n];
+  const int nn=n;
+  mad_alloc_tmp(cnum_t, a, n*n);
+  mad_cvec_copy(x, a, n*n);
+  zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) error("unexpect lapack error");
+
+  cnum_t det = 0;
+  for (int i=0; i < n; i+=n+1) det += a[i];
+  mad_free_tmp(a);
+  return det;
+}
+
+// -- inverse -----------------------------------------------------------------o
 
 int
 mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond)
@@ -760,7 +811,7 @@ int
 mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 { CNUM(x); return mad_cmat_invc(y, x, r, m, n, rcond); }
 
-// -- divide -----------------------------------------------------------------o
+// -- divide ------------------------------------------------------------------o
 
 // note:
 // X/Y => X * Y^-1 => [m x p] * [p x n] => X:[m x p], Y:[n x p]

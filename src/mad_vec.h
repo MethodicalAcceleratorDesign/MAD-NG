@@ -2,31 +2,31 @@
 #define MAD_VEC_H
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Vector module interface
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
   Purpose:
   - wrappers around functions of real and complex vectors for LuaJIT
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include "mad_defs.h"
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 void   mad_vec_fill   (                         num_t x        ,  num_t  r[], ssz_t n); //  num -> vec
 void   mad_vec_copy   (const  num_t x[],                          num_t  r[], ssz_t n); //  vec -> vec
@@ -97,6 +97,6 @@ void   mad_cvec_ifft  (const cnum_t x[],                         cnum_t  r[], ss
 void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], ssz_t n); //  cvec -> vec
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec-<cvec>
 
-// ---------------------------------------------------------------------------o
+// ----------------------------------------------------------------------------o
 
 #endif // MAD_VEC_H
