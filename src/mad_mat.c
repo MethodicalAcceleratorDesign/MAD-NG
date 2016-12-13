@@ -1,19 +1,19 @@
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Matrix module implementation
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2015+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 */
 
 #include <math.h>
@@ -26,7 +26,7 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 #define CHKR     assert( r )
 #define CHKX     assert( x )
@@ -39,8 +39,6 @@
 #define CHKXYRX  assert( x && y && r && x != r )
 #define CHKXYRY  assert( x && y && r && y != r )
 #define CHKXYRXY assert( x && y && r && x != r && y != r )
-
-#define ID(a) a
 
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
@@ -160,12 +158,12 @@
 #if 0
 // [m x n] = [p x m]' * [p x n]
 // naive implementation (not vectorized)
-#define TMMUL { /* mat' * mat */ \
+#define TMMUL(C) { /* mat' * mat */ \
   for (ssz_t i=0; i < m; i++) \
   for (ssz_t j=0; j < n; j++) { \
     r[i*n+j] = 0; \
     for (ssz_t k=0; k < p; k++) \
-      r[i*n+j] += x[k*m+i] * y[k*n+j]; \
+      r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
   } \
 }
 #else
@@ -268,17 +266,122 @@
 
 // -----
 
-// r = trace([p x m]^t * [p x n])
-// Frobenius inner product
+#if 0
+// [m x n] = [m x p] * [n x p]'
+// naive implementation (not vectorized)
+#define MMULT(C) { /* mat * mat' */ \
+  for (ssz_t i=0; i < m; i++) \
+  for (ssz_t j=0; j < n; j++) { \
+    r[i*n+j] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
+  } \
+}
+#else
+// [m x n] = [m x p] * [n x p]'
+// portable vectorized general transpose matrix-matrix multiplication
+// loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
+// get ~ xN speed-up factor compared to dgemm from openblas and lapack...
+#define MMULT(C) { /* mat * mat' */ \
+  for (ssz_t i=0; i < m*n; i++) r[i] = 0; \
+  if (p >= 8) { \
+    for (ssz_t i=0; i < m; i++) { \
+      for (ssz_t j=0; j < n; j++) { \
+        for (ssz_t k=0; k < p-7; k+=8) { \
+          r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+          r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
+          r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
+          r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
+          r[i*n+j] += x[i*p+k+4] * C(y[j*p+k+4]); \
+          r[i*n+j] += x[i*p+k+5] * C(y[j*p+k+5]); \
+          r[i*n+j] += x[i*p+k+6] * C(y[j*p+k+6]); \
+          r[i*n+j] += x[i*p+k+7] * C(y[j*p+k+7]); \
+        } \
+      } \
+    } \
+  } \
+  if (p & 4) { \
+    ssz_t k = p - p%8; \
+    for (ssz_t i=0; i < m; i++) { \
+      for (ssz_t j=0; j < n; j++) { \
+        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
+        r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
+        r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
+      } \
+    } \
+  } \
+  if (p & 2) { \
+    ssz_t k = p - p%4; \
+    for (ssz_t i=0; i < m; i++) { \
+      for (ssz_t j=0; j < n; j++) { \
+        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
+      } \
+    } \
+  } \
+  if (p & 1) { \
+    ssz_t k = p - 1; \
+    for (ssz_t i=0; i < m; i++) { \
+      for (ssz_t j=0; j < n; j++) \
+        r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
+    } \
+  } \
+}
+#endif
+
+// n==1: [m x 1] = [m x p] * [1 x p]'
+#define MULTV(C) /* mat * vec */ \
+  for (ssz_t i=0; i < m; i++) { \
+    r[i] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[i] += x[i*p+k] * C(y[k]); \
+  }
+
+// m==1: [1 x n] = [1 x p]' * [n x p]'
+#define VMULT(C) /* vec * mat */ \
+  for (ssz_t j=0; j < n; j++) { \
+    r[j] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[j] += x[k] * C(y[j*p+k]); \
+  }
+
+// p==1: [m x n] = [m x 1] * [n x 1]'
+#define KMULT(C) /* outer */ \
+  for (ssz_t i=0; i < m; i++) { \
+  for (ssz_t j=0; j < n; j++) \
+    r[i*n+j] = x[i] * C(y[j]); \
+  }
+
+// m==1, n==1: [1 x 1] = [1 x p] * [1 x p]'
+#define VMULTV(C) /* inner */ \
+  { r[0] = 0; \
+    for (ssz_t k=0; k < p; k++) \
+      r[0] += x[k] * C(y[k]); \
+  }
+
+#define MULT(C) { \
+  if (m == 1 && n == 1) VMULTV(C) \
+  else      if (m == 1) VMULT (C) \
+  else      if (n == 1) MULTV (C) \
+  else      if (p == 1) KMULT (C) \
+  else                  MMULT (C) \
+}
+
+// -----
+
+// r = ([m x n] <*> [m x n])
 #define DOT(C) { \
-  if (m == 1 && n == 1) { \
-    for (ssz_t i=0; i < p; i++) \
-      *r += C(x[i]) * y[i]; \
+  if (n == 1) { \
+    r[0] = 0; \
+    for (ssz_t i=0; i < m; i++) \
+      r[0] += C(x[i]) * y[i]; \
   } else { \
-    ssz_t mn = MIN(m,n); \
-    for (ssz_t i=0; i < mn; i++) \
-      for (ssz_t k=0; k < p; k++) \
-        *r += C(x[k*m+i]) * y[k*n+i]; \
+    for (ssz_t j=0; j < n; j++) { \
+      r[j] = 0; \
+      for (ssz_t i=0; i < m; i++) \
+        r[j] += C(x[n*i+j]) * y[n*i+j]; \
+    } \
   } \
 }
 
@@ -343,14 +446,11 @@ void mad_mat_copym(const num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz
 void mad_mat_trans (const num_t x[], num_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(,num_t); }
 
-num_t mad_mat_dot (const num_t x[], const num_t y[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXY; num_t r_=0, *r=&r_; DOT(ID); return *r; }
+void mad_mat_dot (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n)
+{ CHKXYR; DOT(); }
 
-cnum_t mad_mat_dotm (const num_t x[], const cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXY; cnum_t r_=0, *r = &r_; DOT(ID); return *r; }
-
-void mad_mat_dotm_r (const num_t x[], const cnum_t y[], cnum_t *r, ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR; *r=0; DOT(ID); }
+void mad_mat_dotm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
+{ CHKXYR; DOT(); }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYRXY; MUL(); }
@@ -359,10 +459,16 @@ void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t
 { CHKXYRY; MUL(); }
 
 void mad_mat_tmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; TMUL(ID); }
+{ CHKXYRXY; TMUL(); }
 
 void mad_mat_tmulm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRY; TMUL(ID); }
+{ CHKXYRY; TMUL(); }
+
+void mad_mat_mult (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYRXY; MULT(); }
+
+void mad_mat_multm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYRY; MULT(); }
 
 void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
@@ -403,17 +509,11 @@ void mad_cmat_trans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(conj,cnum_t); }
 
-cnum_t mad_cmat_dot (const cnum_t x[], const cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXY; cnum_t r_=0, *r = &r_; DOT(conj); return *r; }
+void mad_cmat_dot (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
+{ CHKXYR; DOT(conj); }
 
-void mad_cmat_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR; *r=0; DOT(conj); }
-
-cnum_t mad_cmat_dotm (const cnum_t x[], const num_t y[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXY; cnum_t r_=0, *r = &r_; DOT(conj); return *r; }
-
-void mad_cmat_dotm_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR; *r=0; DOT(conj); }
+void mad_cmat_dotm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n)
+{ CHKXYR; DOT(conj); }
 
 void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYRXY; MUL(); }
@@ -426,6 +526,12 @@ void mad_cmat_tmul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz
 
 void mad_cmat_tmulm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYRX; TMUL(conj); }
+
+void mad_cmat_mult (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYRXY; MULT(); }
+
+void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYRX; MULT(); }
 
 void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
@@ -541,6 +647,9 @@ void mad_cmat_sympinv (const cnum_t x[], cnum_t r[], ssz_t n)
 // -- lapack ------------------------------------------------------------------o
 
 /*
+LAPACK is the default method for computing LU decomposition. When matrix is
+square and nonsinguler the routines dgetrf and zgetrf.
+
 LAPACK is the default method for solving dense numerical matrices. When the
 matrix is square and nonsingular the routines dgesv and zgesv are used
 otherwise routines dgelsy and zgelsy are used.
@@ -552,6 +661,14 @@ LAPACK is the default method for computing the entire set of eigenvalues and
 eigenvectors. For simple eigenvalues the routines dgeev and zgeev are used. For
 generalized eigenvalues the routines dggev and zggev are used.
 */
+
+// -----
+// Decompose A = LU with A[m x n] (generalized)
+// -----
+void dgetrf_ (const int *m, const int *n,  num_t A[], const int *lda,
+              int *IPIV, int *info);
+void zgetrf_ (const int *m, const int *n, cnum_t A[], const int *lda,
+              int *IPIV, int *info);
 
 // -----
 // Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
@@ -594,7 +711,51 @@ void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
              cnum_t W[], cnum_t VL[], const int *ldvl, cnum_t VR[], const int *ldvr,
              cnum_t work[], int *lwork, num_t rwork[], int *info);
 
-// -- inverse ----------------------------------------------------------------o
+// -- determinant -------------------------------------------------------------o
+
+num_t
+mad_mat_det (const num_t x[], ssz_t n)
+{
+  CHKX;
+  const int nn=n;
+  int info=0, ipiv[n];
+  mad_alloc_tmp(num_t, a, n*n);
+  mad_vec_copy(x, a, n*n);
+  dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) error("unexpect lapack error");
+
+  num_t det = 1;
+  for (int i=0; i < n*n; i+=n+1) det *= a[i];
+  mad_free_tmp(a);
+  return det;
+}
+
+cnum_t
+mad_cmat_det (const cnum_t x[], ssz_t n)
+{
+  CHKX;
+  const int nn=n;
+  int info=0, ipiv[n];
+  mad_alloc_tmp(cnum_t, a, n*n);
+  mad_cvec_copy(x, a, n*n);
+  zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) error("unexpect lapack error");
+
+  cnum_t det = 1;
+  for (int i=0; i < n*n; i+=n+1) det *= a[i];
+  mad_free_tmp(a);
+  return det;
+}
+
+void
+mad_cmat_det_r (const cnum_t x[], cnum_t *r, ssz_t n)
+{ *r = mad_cmat_det(x, n); }
+
+// -- inverse -----------------------------------------------------------------o
 
 int
 mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond)
@@ -654,7 +815,7 @@ int
 mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 { CNUM(x); return mad_cmat_invc(y, x, r, m, n, rcond); }
 
-// -- divide -----------------------------------------------------------------o
+// -- divide ------------------------------------------------------------------o
 
 // note:
 // X/Y => X * Y^-1 => [m x p] * [p x n] => X:[m x p], Y:[n x p]
