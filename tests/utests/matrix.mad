@@ -2440,19 +2440,28 @@ end
 function TestMatrixErr:testInner()
   local msg = {
     "invalid argument #2 (matrix expected)",
+    "incompatible matrix sizes"            ,
   }
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, nil  )
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, ''   )
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, 1    )
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, 1..2 )
   assertErrorMsgContains( msg[1], mth, 'inner', errMat, {}   )
+  assertErrorMsgContains( msg[2], mth, 'inner', errMat, errMat, errMat )
 end
 
 function TestMatrixLinAlg:testInner()
   -- inner prod:  u'.v = |u|.|v| cos(u^v)
   for _,m1 in ipairs(G.mat) do
-    local m2 = m1:copy()
-    assertEquals( m1:inner(m2), (m1:t()*m2):tr() )
+    local m2   = m1:copy()
+    local mres = m1:inner(m2)
+    local mref = (m1:t()*m2):getdiag()
+    local s = mref:size()
+    if s == 1 then    assertEquals( mres        , mref:geti(1) )
+    else for i=1,s do assertEquals( mres:geti(i), mref:geti(i) ) end
+    end
+
+    assertEquals( m1:inner(m2, 'tr'), (m1:t()*m2):tr() )
   end
 end
 
@@ -2493,7 +2502,7 @@ function TestMatrixErr:testCross()
   assertErrorMsgContains( msg[2], mth, 'cross', errMat, m    )
 end
 
-function TestMatrixLinAlg:testCross()
+function TestMatrixLinAlg:testCross() --TODO: check
   -- cross prod:  uxv = |u|.|v| sin(u^v) \vec{n}
   local m1  = matrix(3):fill(0..8)   -- skew-symmetric matrix
   local m2 = vector {2,-4,2}
@@ -2539,13 +2548,13 @@ function TestMatrixErr:testMixed()
   assertErrorMsgContains( msg[4], mth, 'mixed', m1, m1 ,matrix(3,2) )
 end
 
-function TestMatrixLinAlg:testMixed() --TODO: afterfix
+function TestMatrixLinAlg:testMixed() --TODO
   -- x:cross(y):inner(z) without temporary
   for nc=1,5 do
     m1 = matrix(3,nc):fill(1..3*nc)
     m2 = matrix(3,nc):fill(3*nc..1..-1)
     m3 = matrix(3,nc):fill(1)
-    --print( m1:mixed(m2,m3), m1:cross(m2):inner(m3) ) -- ?
+    assertEquals( m1:mixed(m2,m3), m1:cross(m2):inner(m3) )
   end
 end
 
@@ -2794,8 +2803,8 @@ function TestMatrixOps:testTmul()
       m2   = matrix(nr1,i):fill(1..nr1*i)
       mres = m1:tmul(m2) -- mat' * mat
       assertEquals( {mres:sizes()}, {m1:ncol(), m2:ncol()} )
-      for i=1,m1:ncol() do
-      for j=1,m2:ncol() do
+      for i=1,mres:nrow() do
+      for j=1,mres:ncol() do
         assertEquals( mres:get(i,j), ref(m1:t(), m2, i, j) )
       end end
 
@@ -2803,9 +2812,48 @@ function TestMatrixOps:testTmul()
       mres = m1:tmul(cm2) -- mat' * cmat
       assertEquals( {mres:sizes()}, {m1:ncol(), cm2:ncol()} )
       assertTrue  ( is_cmatrix(mres) )
-      for i=1,m1 :ncol() do
-      for j=1,cm2:ncol() do
+      for i=1,mres:nrow() do
+      for j=1,mres:ncol() do
         assertEquals( mres:get(i,j), ref(m1:t(), cm2, i, j) )
+      end end
+    end
+  end
+end
+
+function TestMatrixErr:testMult()
+  local msg = {
+    "invalid arguments (unsupported matrix operation)",
+    "incompatible matrix sizes"                       ,
+  }
+  assertErrorMsgContains( msg[1], mth, 'mult', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'mult', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'mult', errMat, 1..4 )
+  assertErrorMsgContains( msg[2], mth, 'mult', matrix(2,1), matrix(1,2) )
+  assertErrorMsgContains( msg[2], mth, 'mult', matrix(1,2), matrix(3,1) )
+end
+
+function TestMatrixOps:testMult()
+  local mres, m2, cm1
+  local ref = \m1, m2 ,i ,j => local x = 0 for ii=1,m1:ncol() do  x = x + m1:get(i,ii) * m2:get(ii,j)end return x end
+
+  for _,m1 in ipairs(G.mat) do
+    local nr1 = m1:ncol()
+    for i=1,5 do
+      m2   = matrix(i,nr1):fill(1..nr1*i)
+      mres = m1:mult(m2) -- mat * mat'
+      assertEquals( {mres:sizes()}, {m1:nrow(), m2:nrow()} )
+      for i=1,mres:nrow() do
+      for j=1,mres:ncol() do
+        assertEquals( mres:get(i,j), ref(m1, m2:t(), i, j) )
+      end end
+
+      cm2  = cmatrix(i,nr1):fill(1..nr1*i)
+      mres = m1:mult(cm2) -- mat * cmat'
+      assertEquals( {mres:sizes()}, {m1:nrow(), cm2:nrow()} )
+      assertTrue  ( is_cmatrix(mres) )
+      for i=1,mres:nrow() do
+      for j=1,mres:ncol() do
+        assertEquals( mres:get(i,j), ref(m1, cm2:t(), i, j) )
       end end
     end
   end
@@ -2823,7 +2871,7 @@ function TestMatrixErr:testDiv()
   assertErrorMsgContains( msg[2], mth, 'div', matrix(1,2), matrix(3,1) )
 end
 
-function TestMatrixOps:testDiv()
+function TestMatrixOps:testDiv() -- TODO nonsquare
   local mres, mref, m1, cm1
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
@@ -2840,7 +2888,7 @@ function TestMatrixOps:testDiv()
   end
 end
 
-function TestMatrixOps:testDivCPx()
+function TestMatrixOps:testDivCPx() -- TODO
   for _,m1 in ipairs(G.mat) do
     local mres = 2i / m1  -- cpx / mat
     --print( mres, "\n" )
@@ -2905,6 +2953,25 @@ function TestMatrixErr:testSvd()
 end
 function TestMatrixLapack:testSvd() end
 
+function TestMatrixErr:testDet()
+  local msg = {
+    "matrix must be square",
+  }
+  assertErrorMsgContains( msg[1], mth, 'det', matrix(2,1) )
+end
+
+function TestMatrixLapack:testDet() end
+
+function TestMatrixErr:testEigen()
+  local msg = {
+    "matrix must be square"                  ,
+    "invalid input argument"                 ,
+    "eigen failed to compute all eigenvalues",
+  }
+  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(2,1) )
+  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(1,3) )
+end
+
 function TestMatrixLapack:testEigen()
 -- A*V = V*D
   local w, vl, vr, info, m
@@ -2937,23 +3004,13 @@ end
   w, vl, vr, info = m:eigen()
 end
 
-function TestMatrixErr:testEigen()
-  local msg = {
-    "matrix must be square"                  ,
-    "invalid input argument"                 ,
-    "eigen failed to compute all eigenvalues",
-  }
-  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(2,1) )
-  assertErrorMsgContains( msg[1], mth, 'eigen', matrix(1,3) )
-end
-
 -- FFT, convolution, correlation, covrariance ---------------------------------o
 
 function TestMatrixFFT:testFft()
   --vector sizes needed: 1,2,3,4,5,7,11,13,17,19,25
   --matrix sizes needed: (of 2, 5, 7 combinations)
   for _,v in ipairs(dat.fft) do
-    print(v)
+    --print(v)
   end
 
   --for i=1,#dat.fft do
@@ -3005,17 +3062,61 @@ function TestMatrixFFT:testCovar() end
 -- rotations ------------------------------------------------------------------o
 
 function TestMatrixRot:testRot()
-  local m = matrix(2)
-  local f = 0
-  --print( m:rot(f) )
+  for i,v in ipairs(dat.rot.rad) do
+    local res = matrix(2):rot(v)
+    local ref = dat.rot.ref[i]
+    for i=1,res:size() do
+      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
+    end
+  end
 end
 
-function TestMatrixRot:testRotx()  end
-function TestMatrixRot:testRoty()  end
-function TestMatrixRot:testRotz()  end
-function TestMatrixRot:testRotxy() end
-function TestMatrixRot:testRotxz() end
-function TestMatrixRot:testRotyz() end
+function TestMatrixRot:testRotx()
+  for i,v in ipairs(dat.rotx.rad) do
+    local res = matrix(3):rotx(v)
+    local ref = dat.rotx.ref[i]
+    for i=1,res:size() do
+      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
+    end
+  end
+end
+
+function TestMatrixRot:testRoty()
+  for i,v in ipairs(dat.roty.rad) do
+    local res = matrix(3):roty(v)
+    local ref = dat.roty.ref[i]
+    for i=1,res:size() do
+      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
+    end
+  end
+end
+
+function TestMatrixRot:testRotz()
+  for i,v in ipairs(dat.rotz.rad) do
+    local res = matrix(3):rotz(v)
+    local ref = dat.rotz.ref[i]
+    for i=1,res:size() do
+      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
+    end
+  end
+end
+
+function TestMatrixRot:testRotxy()
+  for i,v in ipairs(dat.rotz.rad) do
+    local resx = matrix(3):rotz(v)
+    local resy = matrix(3):rotz(v)
+    --print( resx*resy )
+  end
+end
+
+function TestMatrixRot:testRotxz()
+
+end
+
+function TestMatrixRot:testRotyz()
+
+end
+
 function TestMatrixRot:testRotyx() end
 function TestMatrixRot:testRotzx() end
 function TestMatrixRot:testRotzy() end
