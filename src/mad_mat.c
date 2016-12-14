@@ -380,7 +380,7 @@
     for (ssz_t j=0; j < n; j++) { \
       r[j] = 0; \
       for (ssz_t i=0; i < m; i++) \
-        r[j] += C(x[n*i+j]) * y[n*i+j]; \
+        r[j] += C(x[i*n+j]) * y[i*n+j]; \
     } \
   } \
 }

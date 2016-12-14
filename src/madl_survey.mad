@@ -62,10 +62,42 @@ local function drift_survey (l, m)
   m.V = m.W * m.R + m.V
 end
 
-local function thin_survey (elem, m)
+local function srot_survey(elem, m) -- Rz(angle)
+  m.S:rotz(elem.angle)
+  m.W = m.W * m.S
+  return 0
+end
+
+local function yrot_survey(elem, m) -- Ry(-angle)
+  m.S:roty(elem.angle)
+  m.W = m.W * m.S
+  return 0
+end
+
+local function xrot_survey(elem, m) -- Rx(angle)
+  m.S:rotx(elem.angle)
+  m.W = m.W * m.S
+  return 0
+end
+
+local function tran_survey(elem, m)
+  m.R:fill {elem.dx, elem.dy, elem.ds}
+  m.V = m.W * m.R + m.V
+  return 0
+end
+
+local function patch_survey(elem, m) -- Ry(th).Rx(-phi).Rz(psi)
+  m.R:fill {elem.dx, elem.dy, elem.ds}
+  m.S:rotmad(elem.theta, elem.phi, elem.psi)
+  m.V = m.W * m.R + m.V
+  m.W = m.W * m.S
+  return 0
+end
+
+local function thin_survey (elem, m) -- e.g. multipole
   local l, angle, tilt in elem
 
-  if l ~= 0 then
+  if l >= minlen then -- too long
     error("invalid thin element length: " .. elem.name)
   end
 
@@ -79,13 +111,13 @@ local function thin_survey (elem, m)
 
     m.W = m.W * m.S
   end
-  return 0
+  return l
 end
 
-local function strait_survey (elem, m)
+local function strait_survey (elem, m) -- e.g. rbend, quad
   local l, angle in elem
 
-  if angle ~= 0 then
+  if abs(angle) >= minang then -- too curved
     error("invalid strait element angle: " .. elem.name)
   end
 
@@ -95,25 +127,18 @@ local function strait_survey (elem, m)
   return l
 end
 
-local function curved_survey (elem, m)
+local function curved_survey (elem, m) -- e.g. sbend
   local l, angle, tilt in elem
 
-  if angle == 0 then
+  if l < minlen then -- too short
+    error("invalid curved element length: " .. elem.name)
+  elseif abs(angle) < minang then -- too strait
     error("invalid curved element angle: " .. elem.name)
   end
 
-  if l >= minlen then
-    local rho = l/angle
-    m.R:fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
-  else
-    m.R:zeros()
-  end
-
-  if abs(angle) >= minang then
-    m.S:roty(-angle)
-  else
-    m.S:eye()
-  end
+  local rho = l/angle
+  m.R:fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
+  m.S:roty(-angle)
 
   if abs(tilt) >= minang then
     m.T:rotz(tilt)
@@ -133,6 +158,12 @@ element.thin_element  :set_function { survey = thin_survey    }
 element.strait_element:set_function { survey = strait_survey  }
 element.curved_element:set_function { survey = curved_survey  }
 
+element.patch         :set_function { survey = patch_survey   }
+element.srotation     :set_function { survey = srot_survey    }
+element.xrotation     :set_function { survey = xrot_survey    }
+element.yrotation     :set_function { survey = yrot_survey    }
+element.translate     :set_function { survey = tran_survey    }
+
 -- survey command helpers
 
 local function fill_table (tbl, name, m, s, l, a, t)
@@ -142,17 +173,16 @@ local function fill_table (tbl, name, m, s, l, a, t)
 
   -- update angles
   m.A[1], m.A[2], m.A[3] = th, phi, psi
-
-  -- add table row (order matters!)
+  -- order!
   tbl = tbl + { name, s, l, a, t, x, y, z, th, phi, psi, t+psi }
 end
 
 local function make_map (self)
   local X0, A0 in self
-  local V = vector(3):fill(X0)
-  local W = matrix(3):rotmad(A0[1],A0[2],A0[3])
+  local V = vector(3):fill(X0.x and {X0.x, X0.y, X0.z} or X0)
+  local W = matrix(3):rotmad(A0.theta or A0[1], A0.phi or A0[2], A0.psi or A0[3])
   local A, R, S, T = A0, vector(3), matrix(3), matrix(3)
-  return { V=V, W=W, A=A, R=R, S=S, T=T }
+  return { A=A, V=V, W=W, R=R, S=S, T=T }
 end
 
 local function make_table (self)
@@ -177,7 +207,7 @@ end
 !end
 
 -- survey command exec
--- survey { sequence=seq, X0={x0,y0,z0}, A0={theta0,phi0,psi0},
+-- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
 --          drift=logical, range={start,stop}, dir=1, refer='exit' }
 --> table
 
