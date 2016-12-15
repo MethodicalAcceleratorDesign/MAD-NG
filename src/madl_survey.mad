@@ -63,49 +63,54 @@ local function drift_survey (l, m)
 end
 
 local function srot_survey(elem, m) -- Rz(angle)
-  m.S:rotz(elem.angle)
+  m.S:rotz(elem.angle*m.dir)
   m.W = m.W * m.S
   return 0
 end
 
 local function yrot_survey(elem, m) -- Ry(-angle)
-  m.S:roty(elem.angle)
+  m.S:roty(-elem.angle*m.dir)
   m.W = m.W * m.S
   return 0
 end
 
 local function xrot_survey(elem, m) -- Rx(angle)
-  m.S:rotx(elem.angle)
+  m.S:rotx(elem.angle*m.dir)
   m.W = m.W * m.S
   return 0
 end
 
 local function tran_survey(elem, m)
-  m.R:fill {elem.dx, elem.dy, elem.ds}
+  local dx, dy, ds in elem
+  local dir in m
+  m.R:fill {dx*dir, dy*dir, ds}
   m.V = m.W * m.R + m.V
-  return elem.ds
+  return ds
 end
 
-local function patch_survey(elem, m) -- Ry(th).Rx(-phi).Rz(psi)
-  m.R:fill {elem.dx, elem.dy, elem.ds}
-  m.S:rotmad(elem.theta, elem.phi, elem.psi)
+local function patch_survey(elem, m) -- Rx(th).Ry(-phi).Rz(psi)
+  local dx, dy, ds, theta, phi, psi in elem
+  local dir in m
+  m.R:fill {dx*dir, dy*dir, ds}
+  m.S:rotmad(theta*dir, phi*dir, psi*dir)
   m.V = m.W * m.R + m.V
   m.W = m.W * m.S
-  return elem.ds
+  return ds
 end
 
 local function thin_survey (elem, m) -- e.g. multipole
   local l, angle, tilt in elem
+  local dir in m
 
   if l >= minlen then
     error("invalid thin element length (too long): " .. elem.name)
   end
 
   if abs(angle) >= minang then
-    m.S:roty(-angle)
+    m.S:roty(-angle*dir)
 
     if abs(tilt) >= minang then
-      m.T:rotz(tilt)
+      m.T:rotz(tilt*dir)
       m.S = m.T * m.S * m.T:t()
     end
 
@@ -129,6 +134,8 @@ end
 
 local function curved_survey (elem, m) -- e.g. sbend
   local l, angle, tilt in elem
+  local dir in m
+  local rho
 
   if l < minlen then
     error("invalid curved element length (too short): " .. elem.name)
@@ -136,12 +143,12 @@ local function curved_survey (elem, m) -- e.g. sbend
     error("invalid curved element angle (too strait): " .. elem.name)
   end
 
-  local rho = l/angle
+  angle = angle*dir ; rho = l/angle
   m.R:fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
   m.S:roty(-angle)
 
   if abs(tilt) >= minang then
-    m.T:rotz(tilt)
+    m.T:rotz(tilt*dir)
     m.R = m.T * m.R
     m.S = m.T * m.S * m.T:t()
   end
@@ -166,30 +173,32 @@ element.translate     :set_function { survey = tran_survey    }
 
 -- survey command helpers
 
-local function fill_table (tbl, name, m, s, l, a, t)
-  local x, y, z      = m.V[1], m.V[2], m.V[3]
-  local th, phi, psi = m.A[1], m.A[2], m.A[3]
-  th, phi, psi = m.W:torotmad(th, phi, psi)
+local function fill_table (tbl, name, kind, m, s, l, a, t)
+  local V, W, A, dir in m
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
+  th, phi, psi = W:torotmad(th, phi, psi)
 
   -- update angles
-  m.A[1], m.A[2], m.A[3] = th, phi, psi
+  A[1], A[2], A[3] = th, phi, psi
   -- order!
-  tbl = tbl + { name, s, l, a, t, x, y, z, th, phi, psi, t+psi }
+  tbl = tbl + { name, kind, s, l, a*dir, t*dir, x, y, z, th, phi, psi, t+psi }
 end
 
 local function make_map (self)
-  local X0, A0 in self
+  local X0, A0, sequence in self
   local V = vector(3):fill(X0.x and {X0.x, X0.y, X0.z} or X0)
   local W = matrix(3):rotmad(A0.theta or A0[1], A0.phi or A0[2], A0.psi or A0[3])
   local A, R, S, T = A0, vector(3), matrix(3), matrix(3)
-  return { A=A, V=V, W=W, R=R, S=S, T=T }
+  return { A=A, V=V, W=W, R=R, S=S, T=T, dir=sequence.direction }
 end
 
 local function make_table (self)
-  local seq, dft = self.sequence, self.drift
-  local n = (dft == true and 2 or 1) * #seq
-  return table 'survey' { type = 'survey', title = seq.name,
-    {'name'}, 's', 'length', 'angle', 'tilt',
+  local sequence, drift in self
+  local n = (drift == true and 2 or 1) * #sequence
+  return table 'survey' {
+    type='survey', title=sequence.name, direction=sequence.direction,
+    {'name'}, 'kind', 's', 'length', 'angle', 'tilt',
      'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
   } : reserve(n)
 end
@@ -208,7 +217,7 @@ end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
---          drift=logical, range={start,stop}, dir=1, refer='exit' }
+--          drift=logical, range={start,stop}, refer='exit' }
 --> table
 
 local function __exec (self)
@@ -229,18 +238,21 @@ local function __exec (self)
 
     -- implicit drift
     if ds < 0 then
-      error(string.format("negative drift %s in %s['%s'] at %s",
+      error(string.format("negative implicit drift %s in %s['%s'] at %s",
             tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
     elseif ds >= minlen then
       drift_survey(ds, map)
       end_pos, n = s, n+1
-      if drift then fill_table(tbl, 'DRIFT_'..n, map, end_pos, ds, 0, 0) end
+      if drift then
+        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds, 0, 0)
+      end
     end
 
     -- sequence element
     ds = elem:survey(map)
     end_pos = end_pos + ds
-    fill_table(tbl, elem.name, map, end_pos, ds, elem.angle or 0, elem.tilt or 0)
+    fill_table(tbl, elem.name, elem.kind, map, end_pos, ds,
+               elem.angle or 0, elem.tilt or 0)
   end
 
   return tbl
@@ -250,7 +262,7 @@ end
 
 local survey = Command 'survey' {
   -- default options
-  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1}, dir=1,
+  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1},
   noexec=true,                        -- make template only
 } : set_metamethod({ __exec = __exec }, true) : set_readonly()
 
