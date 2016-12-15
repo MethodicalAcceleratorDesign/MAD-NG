@@ -77,11 +77,12 @@ local method = 2
 
 --[[MODEL: 1 drift-kick-drift, 2 - matrix-kick-matrix)
 ]]
-local model     = 1
+local model      = 1
 
-local nst       = 1
-local direction = 1
-local charge    = 1
+local nst        = 1
+local direction  = 1
+local charge     = 1
+local total_path = 0
 
 --[[TODO:
 -Add charge, direction, mass(?)
@@ -99,10 +100,8 @@ i.e. quad only has k1 and not k0, k2 or???
 -- implementation -------------------------------------------------------------o
 
 local function factorial(n)
-  if n < 1 then return 0 end
-  for i=2,n-1 do
-    n = n*i
-  end
+  if n < 1 then return 1 end
+  for i=2,n-1 do n = n*i end
   return n
 end
 
@@ -112,238 +111,131 @@ local function invalid_track (elem, m)
 end
 
 M.__help['Track drift'] = [[
-[1] Drift Space, ch. 3.1, p.86 eq.(3.13-3.18)
-[3] PTC, Function DRIFTR (file Sh_def_kind.f90, line...), same formula as [1]
+  [1] Drift Space, ch. 3.1, p.86 eq.(3.13-3.18)
+  [3] PTC, Function DRIFTR in file Sh_def_kind.f90, same formula as [1]
 ]]
 
-local function drift_track (l, m)
-
-  local x  = m.V[1]
-  local px = m.V[2]
-  local y  = m.V[3]
-  local py = m.V[4]
-  local t  = m.V[5]
-  local pt = m.V[6]
-  if l > 0 then
+local function drift_track (m, l) -- TODO: check numerical stability
+  if l >= minlen then
+    local x, px, y, py, t, pt in m
     local l_pz = l/sqrt(1 + 2*betai*pt + pt^2 - px^2 - py^2)
-    local pz = sqrt(1 + 2*betai*pt + pt^2 - px^2 - py^2)
-    x  = x + px * l_pz
-    y  = y + py * l_pz
-    t  = t + l_pz*(betai + pt)  - l*betai
+    m.x = x + px * l_pz
+    m.y = y + py * l_pz
+    m.t = t + (betai + pt)*l_pz - l*betai*(1-total_path)
   end
-
-  m.V:fill{x,px,y,py,t,pt}
---[[    m.R:set(1,2,l)
-    m.R:set(3,4,m.R:get(1,2))
-    m.R:set(5,6,l/bg2)
-    ]]
-
-    print("V after adrift = ", m.V)
+  print("V after adrift = ", m.x, m.px, m.y, m.py, m.t, m.pt)
 end
 
-local function kick_mult(elem, m, l_n)
- -- kickexr PTC, E.Forest, Sh_def_kind.f90
-  local n_knl, n_ksl, nmul, knl, kls
+M.__help['Track mutlipole'] = [[
+  [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
+]]
 
-  n_knl = elem.knl and #elem.knl or 0
-  n_ksl = elem.ksl and #elem.ksl or 0
-  nmul = max(n_knl, n_knl)
+local function kick_mult(elem, m, l)
+  local knl, ksl = elem.knl or {}, elem.ksl or {}
+  local nmul = max(#knl, #ksl)
 
-  local bbytwt, bbxtw, bbytwt
+  io.write('tracking kick for ', elem.name, ' (l=', l, ', nmul=', nmul, ')\n')
 
-  local x  = m.V[1]
-  local px = m.V[2]
-  local y  = m.V[3]
-  local py = m.V[4]
-  local t  = m.V[5]
-  local pt = m.V[6]
+ if nmul == 0 then return end
 
-  io.write('tracking kick for ', elem.name, ' (l=', l_n, ', nmul=', nmul, ')\n')
-
-  bbytw = elem.knl and elem.knl[n_knl] or 0
-  bbxtw = elem.ksl and elem.ksl[n_ksl] or 0
+  local x, px, y, py, t, pt in m -- t, pt not used
+  local by = knl[nmul] or 0
+  local bx = ksl[nmul] or 0
+  local byt
 
   for j=nmul-1,1,-1 do
-    io.write(elem.name, ', j= ', j, '\n')
-    bbytwt = x * bbytw - y * bbxtw + (elem.knl and elem.knl[j] or 0)
-    bbxtw  = y * bbytw + x * bbxtw + (elem.ksl and elem.ksl[j] or 0)
-    bbytw  = bbytwt
-   end
-
-  px = px - bbytw
-  py = py + bbxtw
-
-  if elem.knl and elem.knl[1] then
-    px = px + elem.knl[1]
+    byt = x * by - y * bx + (knl[j] or 0)
+    bx  = y * by + x * bx + (ksl[j] or 0)
+    by  = byt
   end
 
-  m.V:fill{x,px,y,py,t,pt}
+  m.px = px - by + (knl[1] or 0)
+  m.py = py + bx
+  -- LD: missing t adjustment? (see slides)
 end
 
-local function kick_track(elem, m, l_n)
- -- kickexr PTC, E.Forest, Sh_def_kind.f90
-  local n_knl, n_ksl, nmul, knl, kls
-  knl = {0, 0, 0, 0, 0}
-  ksl = {0, 0, 0, 0, 0}
-  nmul = 0
-  n_knl = elem.knl and #elem.knl or 0
-  n_ksl = elem.ksl and #elem.ksl or 0
-  nmul = max(n_knl, n_knl)
+M.__help['Track kick'] = [[
+  [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
+]]
 
-  if elem.knl ~= nil then
-     knl = elem.knl
+local function kick_track(elem, m, l)
+  local knl, ksl = elem.knl or {}, elem.ksl or {}
+  local dkn, dks = elem.dkn or {}, elem.dks or {}
+  local kn = { elem.k0 , elem.k1 , elem.k2 , elem.k3  }
+  local ks = { elem.k0s, elem.k1s, elem.k2s, elem.k3s }
+  local nmul = max(#knl, #ksl, #dkn, #dks, #kn, #ks)
+
+  io.write('tracking kick for ', elem.name, ' (l=', l, ', nmul=', nmul, ')\n')
+
+ if nmul == 0 then return end
+
+  for i=1,nmul do
+    kn[i] = (kn[i] or 0) + (knl[i] or 0) + (dkn[i] or 0)
+    ks[i] = (ks[i] or 0) + (ksl[i] or 0) + (dks[i] or 0)
   end
 
-  if elem.ksl ~= nil then
-    ksl = elem.ksl
-  end
-  if nmul == 0 then
-
-    if elem.k0 ~= nil then
-      nmul  = 1
-      n_knl = 1
-      knl[1] = elem.k0
-    elseif elem.k0s ~=nil then
-      nmul  = 1
-      n_ksl = 1
-      ksl[1] = elem.k0s
-    elseif elem.k1 ~= nil then
-      nmul  = 2
-      n_knl = 2
-      knl[2] = elem.k1
-    elseif elem.k1s ~=nil then
-      nmul  = 2
-      n_ksl = 2
-      ksl[2] = elem.k1s
-    elseif elem.k2 ~= nil then
-      nmul  = 3
-      n_knl = 3
-      knl[3] = elem.k2
-    elseif elem.k2s ~=nil then
-      nmul  = 3
-      n_ksl = 3
-      ksl[3] = elem.k2s
-    elseif elem.k3 ~= nil then
-      nmul  = 4
-      n_knl = 4
-      knl[4] = elem.k3
-    elseif elem.k3s ~=nil then
-      nmul  = 4
-      n_ksl = 4
-      ksl[4] = elem.k3s
-    end
-  end
-
-  local bbytwt, bbxtw, bbytwt
-
-  local x  = m.V[1]
-  local px = m.V[2]
-  local y  = m.V[3]
-  local py = m.V[4]
-  local t  = m.V[5]
-  local pt = m.V[6]
-
-  io.write('tracking kick for ', elem.name, ' (l=', l_n, ', nmul=', nmul, ')\n')
-
-  bbytw = knl and knl[n_knl] or 0
-  bbxtw = ksl and ksl[n_ksl] or 0
-
-  if nmul > 1 then
-    bbytw = bbytw/factorial(nmul-1)
-    bbxtw = bbxtw/factorial(nmul-1)
-  end
+  local x, px, y, py, t, pt in m -- t, pt not used
+  local fact = 1/factorial(nmul-1)
+  local by = (kn[nmul]*fact) or 0
+  local bx = (ks[nmul]*fact) or 0
+  local byt
 
   for j=nmul-1,1,-1 do
-    io.write(elem.name, ', j= ', j, '\n')
-    bbytwt = x * bbytw - y * bbxtw + (knl and knl[j] or 0)
-    bbxtw  = y * bbytw + x * bbxtw + (ksl and ksl[j] or 0)
-    bbytw  = bbytwt
+    byt = x * by - y * bx + (kn[j] or 0)
+    bx  = y * by + x * bx + (ks[j] or 0)
+    by  = byt
   end
 
-  px = px - l_n*bbytw
-  py = py + l_n*bbxtw
-
---  if elem.knl and elem.knl[1] then
-  if knl and knl[1] then
---    px = px + elem.knl[1]
-    px = px + knl[1]
-  end
-
-  m.V:fill{x,px,y,py,t,pt}
-
+  m.px = px - by*l + (kn[1] or 0)
+  m.py = py + bx*l
+  -- LD: missing t adjustment? (see slides)
 end
 
-local function sprot(elem, m,l_n)
+local function sprot(elem, m, l) -- check numerical statibility
+  local l, angle, k0 in elem
 
-local l in elem
-local k0 = elem.k0 or 0
-local a, r, pz, ptt
-local xt, pxt, yt, tt = 0, 0, 0, 0
-local x  = m.V[1]
-local px = m.V[2]
-local y  = m.V[3]
-local py = m.V[4]
-local t  = m.V[5]
-local pt = m.V[6]
-
---! add angle
-
-  if k0 ~= nil then
-    a=l_n * k0  -- angle = l/k0
-    r=1/k0      -- rho, curvature
-    pz = sqrt(1 + 2 * betai*pt + pt^2 - px^2 - py^2)
-    ptt = 1 - px * tan(a) / pz
-
-    xt  = (x + r * (2 *  sin(a/2)^2 + px * sin(a)/pz)) / cos(a) / ptt
-    pxt = px * cos(a) + sin(a) * pz
-    yt  = y + py * (x + r) * tan(a) / pz/ ptt
-    tt  = t + (x + r) * tan(a) * (betai + pt) / pz / ptt - l_n * betai
-
-    x  = xt
-    px = pxt
-    y  = yt
-    t  = tt
-
-  else
-
-       drift_track(l_n, m)
+  -- bizarre: angle ~= 0 and k0 == 0 is not a drift...
+  if is_nil(k0) or k0 == 0 then -- to check...
+    drift_track(m, l) return
   end
 
-    m.V:fill{x,px,y,py,t,pt}
+  local x, px, y, py, t, pt in m
+  local a, r, pz, ptt
+  local xt, pxt, yt, tt = 0, 0, 0, 0
 
+  a   = l * k0  -- incorrect in MAD-NG, angle ~= l/k0
+  r   = 1 / k0  -- rho, curvature of what 1/angle or 1/(k0*l) ?
+  pz  = sqrt(1 + 2 * betai*pt + pt^2 - px^2 - py^2)
+  ptt = 1 - px * tan(a) / pz
+
+  xt  = (x + r * (2 *  sin(a/2)^2 + px * sin(a)/pz)) / cos(a) / ptt
+  pxt = px * cos(a) + sin(a) * pz
+  yt  = y + py * (x + r) * tan(a) / pz/ ptt
+  tt  = t + (x + r) * tan(a) * (betai + pt) / pz / ptt - l * betai
+
+  m.x  = xt
+  m.px = pxt
+  m.y  = yt
+  m.t  = tt
 end
 
-local function skick(elem, m, l_n)
+local function skick(elem, m, l)
+  local l, k0, k0s in elem
+  k0, k0s = k0 or 0, k0s or 0
 
-  local l in elem
-  local k0  = elem.k0 or 0
-  local k0s = elem.k0s or 0
-
-
-  local x  = m.V[1]
-  local px = m.V[2]
-  local y  = m.V[3]
-  local py = m.V[4]
-  local t  = m.V[5]
-  local pt = m.V[6]
-
-  local b1 = -k0 * (1 + k0*x ) or 0
-  local b2 =  k0s*(1+k0s*x) or 0
-
-  local dir = direction * charge
+  local x, px, y, py, t, pt in m -- y, t not used
+  local b1 = -k0  * (1 + k0 *x)
+  local b2 =  k0s * (1 + k0s*x)
+  local dir = direction * charge -- from map
 
 --TO ADD    call GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
 
-    px = px + l_n * dir * b1
-    py = py + l_n * dir * b2
-
-    m.V:fill{x,px,y,py,t,pt}
-
+  m.px = px + l * dir * b1
+  m.py = py + l * dir * b2
 end
 
-local function spar(elem, m, l_n)
+local function spar(elem, m, l)
 --[[
-
 model = 2 (matrix-kick-matrix)
 local l_n = l/nstp
 YL = DH = l/2/nstp
@@ -355,10 +247,7 @@ D = l
     KICKEX (elem, m, l_n/2)
    SPAR(elem, m, l_n/2)
   --- SPARr(EL,YL,DL,X,k)
-
     local dir=direction*charge
-
-
       pz = sqrt(1 + 2 * pt*betai + pt^2-px^2 - py^2)
 
        XN(2)=px - l_N/2*DIR*bn1 --(EL%BN(1))
@@ -380,28 +269,19 @@ D = l
        X(2)=XN(2)
        X(3)=XN(3)
        X(6)=XN(6)
-
-
 ]]
 end
 
-
 local function thin_track (elem, m)
-  local l, lrad, angle, tilt in elem
-
-  drift_track(l, m)
-  kick_mult(elem, m, l)
-  drift_track(l, m)
-
+  local l in elem -- l is zero in a thin lens...
+  drift_track(      m, l/2)
+    kick_mult(elem, m, l  )
+  drift_track(      m, l/2)
   return l
 end
 
 local function strait_track (elem, m)
   local l in elem
-
-  --[[if l == 0 then
-    error('STRAIT_TRACK:invalid element length: ' .. elem.name)
-  end]]
 
   io.write('STRAIT_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
 
@@ -411,7 +291,7 @@ local function strait_track (elem, m)
     for i = 1, nst do
       print("slice =", i)
       drift_track(      m, l_n/2)
-      kick_track (elem, m, l_n  )
+       kick_track(elem, m, l_n  )
       drift_track(      m, l_n/2)
     end
   end
@@ -446,7 +326,7 @@ end
 local function curved_track (elem, m)
   local l in elem
 
-  if l == 0 then
+  if l < minlen then
     error('invalid thick element length: ' .. elem.name)
   end
 
@@ -522,7 +402,7 @@ local function __exec (self)
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
             tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
     elseif ds >= minlen then
-      drift_track(ds, map)
+      drift_track(map, ds)
       end_pos, n = s, n+1
       if drift then fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds) end
     end
