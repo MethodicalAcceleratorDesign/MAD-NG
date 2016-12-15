@@ -713,8 +713,8 @@ void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cnum_t A[], const int *lda,
 
 // -- determinant -------------------------------------------------------------o
 
-num_t
-mad_mat_det (const num_t x[], ssz_t n)
+int
+mad_mat_det (const num_t x[], num_t *r, ssz_t n)
 {
   CHKX;
   const int nn=n;
@@ -724,18 +724,18 @@ mad_mat_det (const num_t x[], ssz_t n)
   dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
 
   if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
 
   int perm = 0;
   num_t det = 1;
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  return perm % 2 ? -det : det;
+  *r = perm % 2 ? -det : det;
+  return info;
 }
 
-cnum_t
-mad_cmat_det (const cnum_t x[], ssz_t n)
+int
+mad_cmat_det (const cnum_t x[], cnum_t *r, ssz_t n)
 {
   CHKX;
   const int nn=n;
@@ -745,19 +745,15 @@ mad_cmat_det (const cnum_t x[], ssz_t n)
   zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
 
   if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
 
   int perm = 0;
   cnum_t det = 1;
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  return perm % 2 ? -det : det;
+  *r = perm % 2 ? -det : det;
+  return info;
 }
-
-void
-mad_cmat_det_r (const cnum_t x[], cnum_t *r, ssz_t n)
-{ *r = mad_cmat_det(x, n); }
 
 // -- inverse -----------------------------------------------------------------o
 
