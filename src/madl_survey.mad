@@ -177,29 +177,38 @@ element.translate     :set_function { survey = tran_survey    }
 
 -- survey command helpers
 
-local function fill_table (tbl, name, kind, m, s, l, a, t)
+local function fill_table (tbl, name, kind, m, s, l, ang, til)
   local V, W, A, dir in m
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
+  -- retrieve angles
   th, phi, psi = W:torotmad(th, phi, psi)
-
   -- update angles
-  A[1], A[2], A[3] = th, phi, psi
-  -- order!
-  tbl = tbl + { name, kind, s, l, a*dir, t*dir, x, y, z, th, phi, psi, t+psi }
+  A:fill{th, phi, psi}
+  -- keep order!
+  tbl = tbl + {
+    name, kind, s, l, ang*dir, til*dir, x, y, z, th, phi, psi, psi+til*dir
+  }
 end
 
 local function make_map (self)
-  local X0, A0, sequence in self
-  local V = vector(3):fill(X0.x and {X0.x, X0.y, X0.z} or X0)
-  local W = matrix(3):rotmad(A0.theta or A0[1], A0.phi or A0[2], A0.psi or A0[3])
-  local A, R, S, T = A0, vector(3), matrix(3), matrix(3)
+  local x, y, z, theta, phi, psi, X0, A0 in self
+  x     = x     or X0.x     or X0[1]
+  y     = y     or X0.y     or X0[2]
+  z     = z     or X0.z     or X0[3]
+  theta = theta or A0.theta or A0[1]
+  phi   = phi   or A0.phi   or A0[2]
+  psi   = psi   or A0.psi   or A0[3]
+  local V = vector(3):fill{x,y,z}
+  local W = matrix(3):rotmad(theta, phi, psi)
+  local A = vector(3):fill{theta, phi, psi}
+  local R, S, T = vector(3), matrix(3), matrix(3)
   return { A=A, V=V, W=W, R=R, S=S, T=T, dir=sequence.direction }
 end
 
 local function make_table (self)
   local sequence, drift in self
-  local n = (drift == true and 2 or 1) * #sequence
+  local n = (drift == true and 2 or 1) * #sequence -- TODO: use range...
   return table 'survey' {
     type='survey', title=sequence.name, direction=sequence.direction,
     {'name'}, 'kind', 's', 'length', 'angle', 'tilt',
@@ -209,20 +218,21 @@ end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
---          drift=logical, range={start,stop}, refer='exit' }
---> table
+--          range={start,stop}, refer='exit',
+--          drift=logical, table=tbl, map=map }
+-- return the table
+-- alternate initial conditions (higher precedence):
+-- x=x, y=y, z=z, theta=theta, phi=phi, psi=psi
+-- X0={x=x, y=y, z=z}, A0={theta=theta, phi=phi, psi=psi}
 
-local function __exec (self)
+local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
-  local map = make_map(self)
-  local tbl = make_table(self)
---   local start, stop = make_range(self)
+  local map = self.map   or make_map  (self)
+  local tbl = self.table or make_table(self)
   local drift in self
   local s_pos in seq
-
--- todo: ranges
 
   -- affine tracking
   local n, end_pos = -1, 0
@@ -249,16 +259,15 @@ local function __exec (self)
                elem.angle or 0, elem.tilt or 0)
   end
 
-  return tbl
+  return tbl, map
 end
 
 -- survey command template
 
 local survey = Command 'survey' {
   -- default options
-  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1},
-  noexec=true,                        -- make template only
-} : set_metamethod({ __exec = __exec }, true) : set_readonly()
+  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1}, exec=exec,
+} :set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return {
