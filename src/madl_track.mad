@@ -112,6 +112,7 @@ end
 
 M.__help['Track drift'] = [[
   [1] Drift Space, ch. 3.1, p.86 eq.(3.13-3.18)
+  [2] p.353, ch. 12.1.3
   [3] PTC, Function DRIFTR in file Sh_def_kind.f90, same formula as [1]
 ]]
 
@@ -119,14 +120,16 @@ local function drift_track (m, l) -- TODO: check numerical stability
   if l >= minlen then
     local x, px, y, py, t, pt in m
     local l_pz = l/sqrt(1 + 2*betai*pt + pt^2 - px^2 - py^2)
+    print("V before a drift = ", m.x, m.px, m.y, m.py, m.t, m.pt)
     m.x = x + px * l_pz
     m.y = y + py * l_pz
     m.t = t + (betai + pt)*l_pz - l*betai*(1-total_path)
   end
-  print("V after adrift = ", m.x, m.px, m.y, m.py, m.t, m.pt)
+  print("V after a drift = ", m.x, m.px, m.y, m.py, m.t, m.pt)
 end
 
 M.__help['Track mutlipole'] = [[
+  [2] p.354, ch. 12.1.3 
   [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
 ]]
 
@@ -142,19 +145,24 @@ local function kick_mult(elem, m, l)
   local by = knl[nmul] or 0
   local bx = ksl[nmul] or 0
   local byt
-
   for j=nmul-1,1,-1 do
     byt = x * by - y * bx + (knl[j] or 0)
-    bx  = y * by + x * bx + (ksl[j] or 0)
+    bx  = y * by + x * bx 
     by  = byt
   end
-
   m.px = px - by + (knl[1] or 0)
   m.py = py + bx
+
   -- LD: missing t adjustment? (see slides)
+  if knl[1] ~= 0) or ksl[1] ~= 0 then
+	local pz = sqrt(1 + 2*betai*m.pt + m.pt^2)
+    m.t = t + ((knl[1] or 0) * x - (ksl[1] or 0) * y) * (betai + pt) / pz
+  end
+
 end
 
 M.__help['Track kick'] = [[
+  [2] p. 72, Section K.4.2, 
   [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
 ]]
 
@@ -188,11 +196,24 @@ local function kick_track(elem, m, l)
 
   m.px = px - by*l + (kn[1] or 0)
   m.py = py + bx*l
+ 
+
   -- LD: missing t adjustment? (see slides)
+  if kn[1] ~= 0) or ks[1] ~= 0 then
+	local pz = sqrt(1 + 2*betai*m.pt + m.pt^2)
+    m.t = t + ((kn[1] or 0) * l * x - (ksl[1] or 0) * l * y) * (betai + pt) / pz
+  end
+
 end
 
+M.__help['Track curved drift-kick'] = [[
+  [2] p.358, ch. 12.2.2 Drift-Kick Split, drift in polar coordinates
+  [3] p. 76, PTC, Function SPROTR in file Sh_def_kind.f90)
+]]
+
+
 local function sprot(elem, m, l) -- check numerical statibility
-  local l, angle, k0 in elem
+  local l, k0 in elem
 
   -- bizarre: angle ~= 0 and k0 == 0 is not a drift...
   if is_nil(k0) or k0 == 0 then -- to check...
@@ -219,6 +240,12 @@ local function sprot(elem, m, l) -- check numerical statibility
   m.t  = tt
 end
 
+M.__help['Track curved kick '] = [[
+  [2] p.358, ch. 12.2.2 Drift-Kick Split, kick in polar coordinates
+  [3] p. 76, PTC, Function SKICK in file Sh_def_kind.f90)
+
+]]
+
 local function skick(elem, m, l)
   local l, k0, k0s in elem
   k0, k0s = k0 or 0, k0s or 0
@@ -234,7 +261,13 @@ local function skick(elem, m, l)
   m.py = py + l * dir * b2
 end
 
+M.__help['Track curved bend-kick'] = [[
+  [2] p.360, ch. 12.2.3 Matrix(Bend)-Kick Split
+  [3] p. 76, PTC, Function SPAR in file Sh_def_kind.f90)
+]]
+
 local function spar(elem, m, l)
+
 --[[
 model = 2 (matrix-kick-matrix)
 local l_n = l/nstp
@@ -271,6 +304,20 @@ D = l
        X(6)=XN(6)
 ]]
 end
+M.__help['Track matrix-kick'] = [[
+  [2] p.354, ch. 12.1.4 Matrix-Kick Split
+  [3] p. 75, Section K.4.7, PTC, Function INTEP_TKTF in file Sh_def_kind.f90)
+]]
+
+--[[local function TKTF()
+PUSHTKT7(l/2) (matrix in  GETMAT7)
+KICKPATH(l/2)
+KICKTKT(L)
+KICKPATH(l/2)
+PUSHTKT7(l/2)
+
+end
+]]
 
 local function thin_track (elem, m)
   local l in elem -- l is zero in a thin lens...
@@ -279,6 +326,16 @@ local function thin_track (elem, m)
   drift_track(      m, l/2)
   return l
 end
+
+M.__help['Track straight'] = [[
+  [2] p.352, ch. 12.1
+      DKD: ch 12.1.3, p. 353  
+      MKM: ch 12.1.4, p.354
+  [3] DKD: p. 72, Section K.4.2,
+           PTC, Function INTER_STREX in file Sh_def_kind.f90)
+      MKM: p. 75, Section K.4.7,
+           PTC, Function INTER_TKTF  in file Sh_def_kind.f90)
+]]
 
 local function strait_track (elem, m)
   local l in elem
@@ -322,6 +379,11 @@ FK2 =     =  -2^(1/3)/(2-2^(1/3))         = -1.7024143839193155
 
   return l
 end
+
+M.__help['Track curved'] = [[
+  [2] p.357, ch. 12.2
+  [3] PTC, p. 76, Section K.4.9,Function INTER_TEAPOT in file Sh_def_kind.f90)
+]]
 
 local function curved_track (elem, m)
   local l in elem
