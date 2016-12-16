@@ -73,7 +73,7 @@ local bg2     = beta^2*gamma^2
 4 - Ruth-Neri-Yoshida 4th order, 3 kicks per step
 6 - Yoshida 6th order, 7kicks per step
 ]]
-local method = 2
+local method = 1 -- 1,2,3 for 2,4,6
 
 --[[MODEL: 1 drift-kick-drift, 2 - matrix-kick-matrix)
 ]]
@@ -97,13 +97,12 @@ i.e. quad only has k1 and not k0, k2 or???
 ]]
 -- add patch, rotation + translation
 
--- implementation -------------------------------------------------------------o
+-- helpers --------------------------------------------------------------------o
 
-local function factorial(n)
-  if n < 1 then return 1 end
-  for i=2,n-1 do n = n*i end
-  return n
-end
+local fact = { [0]=1, 1 }
+(\ => for i=2,25 do fact[i] = fact[i-1]*i end end)()
+
+-- implementation -------------------------------------------------------------o
 
 local function invalid_track (elem, m)
   error(string.format("invalid element %s of kind %s with length %s",
@@ -115,7 +114,7 @@ M.__help['Track drift'] = [[
   [3] PTC, Function DRIFTR in file Sh_def_kind.f90, same formula as [1]
 ]]
 
-local function drift_track (m, l) -- TODO: check numerical stability
+local function drift_track (elem, m, l) -- TODO: check numerical stability
   if l >= minlen then
     local x, px, y, py, t, pt in m
     local l_pz = l/sqrt(1 + 2*betai*pt + pt^2 - px^2 - py^2)
@@ -159,39 +158,38 @@ M.__help['Track kick'] = [[
 ]]
 
 local function kick_track(elem, m, l)
+  io.write('tracking kick for ', elem.name, ' (l=', l, ', nmul=', nmul, ')\n')
+
   local knl, ksl = elem.knl or {}, elem.ksl or {}
   local dkn, dks = elem.dkn or {}, elem.dks or {}
   local kn = { elem.k0 , elem.k1 , elem.k2 , elem.k3  }
   local ks = { elem.k0s, elem.k1s, elem.k2s, elem.k3s }
   local nmul = max(#knl, #ksl, #dkn, #dks, #kn, #ks)
 
-  io.write('tracking kick for ', elem.name, ' (l=', l, ', nmul=', nmul, ')\n')
-
- if nmul == 0 then return end
+  if nmul == 0 then return end
 
   for i=1,nmul do
-    kn[i] = (kn[i] or 0) + (knl[i] or 0) + (dkn[i] or 0)
-    ks[i] = (ks[i] or 0) + (ksl[i] or 0) + (dks[i] or 0)
+    kn[i] = ((kn[i] or 0) + (dkn[i] or 0))*l + (knl[i] or 0)
+    ks[i] = ((ks[i] or 0) + (dks[i] or 0))*l + (ksl[i] or 0)
   end
 
   local x, px, y, py, t, pt in m -- t, pt not used
-  local fact = 1/factorial(nmul-1)
-  local by = (kn[nmul]*fact) or 0
-  local bx = (ks[nmul]*fact) or 0
+  local by = kn[nmul] * fact[nmul-1]
+  local bx = ks[nmul] * fact[nmul-1]
   local byt
 
-  for j=nmul-1,1,-1 do
-    byt = x * by - y * bx + (kn[j] or 0)
-    bx  = y * by + x * bx + (ks[j] or 0)
+  for i=nmul-1,1,-1 do
+    byt = x * by - y * bx + kn[i]
+    bx  = y * by + x * bx + ks[i]
     by  = byt
   end
 
-  m.px = px - by*l + (kn[1] or 0)
+  m.px = px - by*l + kn[1] -- l?
   m.py = py + bx*l
   -- LD: missing t adjustment? (see slides)
 end
 
-local function sprot(elem, m, l) -- check numerical statibility
+local function sdrift_track (elem, m, l) -- check numerical statibility
   local l, angle, k0 in elem
 
   -- bizarre: angle ~= 0 and k0 == 0 is not a drift...
@@ -210,7 +208,7 @@ local function sprot(elem, m, l) -- check numerical statibility
 
   xt  = (x + r * (2 *  sin(a/2)^2 + px * sin(a)/pz)) / cos(a) / ptt
   pxt = px * cos(a) + sin(a) * pz
-  yt  = y + py * (x + r) * tan(a) / pz/ ptt
+  yt  = y + py * (x + r) * tan(a) / pz / ptt
   tt  = t + (x + r) * tan(a) * (betai + pt) / pz / ptt - l * betai
 
   m.x  = xt
@@ -219,7 +217,7 @@ local function sprot(elem, m, l) -- check numerical statibility
   m.t  = tt
 end
 
-local function skick(elem, m, l)
+local function skick_track (elem, m, l)
   local l, k0, k0s in elem
   k0, k0s = k0 or 0, k0s or 0
 
@@ -234,111 +232,92 @@ local function skick(elem, m, l)
   m.py = py + l * dir * b2
 end
 
-local function spar(elem, m, l)
---[[
-model = 2 (matrix-kick-matrix)
-local l_n = l/nstp
-YL = DH = l/2/nstp
-DL = DD = l/2/nstp
-D = l
-?????to check if DD and DH is the same!!!
+-- integrator schemes
 
-    SPAR(elem, m, l_n/2)
-    KICKEX (elem, m, l_n/2)
-   SPAR(elem, m, l_n/2)
-  --- SPARr(EL,YL,DL,X,k)
-    local dir=direction*charge
-      pz = sqrt(1 + 2 * pt*betai + pt^2-px^2 - py^2)
-
-       XN(2)=px - l_N/2*DIR*bn1 --(EL%BN(1))
-       ???BN(1) ---
-
-       ptt = sqrt(1 + 2.0 * pt*betai+pt^2-py^2)
-
-       pzs = sqrt(1 + 2 * pt*betai + pt^2 - XN(2)^2 - py^2)
-
-       XN(1) = x + (pzs - pz) / dir / bn1
-
-      ????  XN(3)=(arcsin(px) / ptt - arcsin(XN(2)) / ptt) / dir / b1
-
-       XN(6)= t + XN(3) * (betai + pt ) -  l_n*betai
-
-       XN(3)= y + px * XN(3)
-
-       X(1)=XN(1)
-       X(2)=XN(2)
-       X(3)=XN(3)
-       X(6)=XN(6)
-]]
+local function integrate2 (elem, m, l, drift, kick)
+  drift(elem, m, l/2)
+   kick(elem, m, l  )
+  drift(elem, m, l/2)
 end
 
+--[[
+FD1, FD2, FK1, FK2 are constants related to the 4th order Ruth-Yoshida integrator.
+FD1 = FD4 =  1/2*(2-2^(1/3)              =  0.67560359597982889
+FD2 = FD3 =  (1-2^(1/3))/(2*(2-2^(1/3))) = -0.17560359597982886
+FK1 = FK3 =  1/(2-2^(1/3))               =  1.3512071919596578
+FK2 =     =  -2^(1/3)/(2-2^(1/3))        = -1.7024143839193155
+]]
+
+local fk1, fd1 =  1.3512071919596578,  0.67560359597982889
+local fk2, fd2 = -1.7024143839193155, -0.17560359597982886
+
+local function integrate4 (elem, m, l, drift, kick)
+  drift(elem, m, l * fd1)
+   kick(elem, m, l * fk1)
+  drift(elem, m, l * fd2)
+   kick(elem, m, l * fk2)
+  drift(elem, m, l * fd2)
+   kick(elem, m, l * fk1)
+  drift(elem, m, l * fd1)
+end
+
+local function integrate6 (elem, m, l, drift, kick)
+  error("NYI")
+end
+
+local integrate = { integrate2, integrate4, integrate6 }
+
+-- frame of integration
+
+-- angle == 0 and k0 ~= 0 rbend on
+-- angle == 0 and k0 == 0 rbend off (i.e. drift)
+-- angle ~= 0 and k0 ~= 0 sbend on
+-- angle ~= 0 and k0 == 0 sbend off
+--                  <=> rbend with l = l_arc and k0 = angle, what about errors?
+
 local function thin_track (elem, m)
-  local l in elem -- l is zero in a thin lens...
-  drift_track(      m, l/2)
-    kick_mult(elem, m, l  )
-  drift_track(      m, l/2)
+  io.write('THIN_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
+  local l in elem
+
+  if l >= minlen then
+    error("invalid thin element length (too long): " .. elem.name)
+  end
+
+  local l_n = l/nst
+  for i=1,nst do
+    integrate[method](elem, m, l_n, drift_track, kick_mult)
+  end
   return l
 end
 
 local function strait_track (elem, m)
-  local l in elem
-
   io.write('STRAIT_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
+  local l, angle in elem
+
+  if abs(angle) >= minang then
+    error("invalid strait element angle (too curved): " .. elem.name)
+  end
 
   local l_n = l/nst
-
-  if (method == 2) then
-    for i = 1, nst do
-      print("slice =", i)
-      drift_track(      m, l_n/2)
-       kick_track(elem, m, l_n  )
-      drift_track(      m, l_n/2)
-    end
+  for i=1,nst do
+    integrate[method](elem, m, l_n, drift_track, kick_track)
   end
-
-  if (method == 4) then
-    --[[FD1, FD2, FK1, and FK2 are constants related to
-the fourth order Ruth-Yoshida integrator.
-FD1 = FD4 =  1/2*(2-2^(1/3)              = 0.67560359597982889
-FD2 = FD3 =  (1-2^(1/3))/(2*(2-2^(1/3))) = -0.17560359597982886
-FK1 = FK3 =  1/(2-2^(1/3))               = 1.3512071919596578
-FK2 =     =  -2^(1/3)/(2-2^(1/3))         = -1.7024143839193155
-
-]]
-
-    local fd1, fd2 = 0.67560359597982889, -0.17560359597982886
-    local fk1, fk2 = 1.3512071919596578 , -1.7024143839193155
-    for i = 1 , nst do
-      print("slice =", i)
-      drift_track(      m, l_n * fd1)
-       kick_track(elem, m, l_n * fk1)
-      drift_track(      m, l_n * fd2)
-       kick_track(elem, m, l_n * fk2)
-      drift_track(      m, l_n * fd2)
-       kick_track(elem, m, l_n * fk1)
-      drift_track(      m, l_n * fd1)
-    end
-  end
-
   return l
 end
 
-local function curved_track (elem, m)
+local function curved_track (elem, m) -- e.g. sbend
+  io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
   local l in elem
 
   if l < minlen then
-    error('invalid thick element length: ' .. elem.name)
+    error("invalid curved element length (too short): " .. elem.name)
+  elseif abs(angle) < minang then
+    error("invalid curved element angle (too strait): " .. elem.name)
   end
 
-  io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
-
   local l_n = l/nst
-
   for i=1,nst do
-    print("slice =", i)
-    sprot(elem, m, l_n/2)
-    skick(elem, m, l_n  )
-    sprot(elem, m, l_n/2)
+    integrate[method](elem, m, l_n, sdrift_track, skick_track)
   end
   return l
 end
@@ -353,8 +332,8 @@ element.curved_element:set_function { track =  curved_track }
 -- track command helpers
 
 local function fill_table (tbl, name, kind, m, s, l)
-  -- order!
-  tbl = tbl + { name, kind, s, l, m.x, m.px, m.y, m.py, m.t, m.pt }
+  -- keep order!
+  tbl = tbl + { name, kind, s, l, m.x, m.px, m.y, m.py, m.t, m.pt, m.T }
 end
 
 local function make_map (self)
@@ -431,3 +410,43 @@ return {
 
   __help = M.__help,
 }
+
+
+--[[
+local function spar(elem, m, l)
+model = 2 (matrix-kick-matrix)
+local l_n = l/nstp
+YL = DH = l/2/nstp
+DL = DD = l/2/nstp
+D = l
+?????to check if DD and DH is the same!!!
+
+    SPAR(elem, m, l_n/2)
+    KICKEX (elem, m, l_n/2)
+   SPAR(elem, m, l_n/2)
+  --- SPARr(EL,YL,DL,X,k)
+    local dir=direction*charge
+      pz = sqrt(1 + 2 * pt*betai + pt^2-px^2 - py^2)
+
+       XN(2)=px - l_N/2*DIR*bn1 --(EL%BN(1))
+       ???BN(1) ---
+
+       ptt = sqrt(1 + 2.0 * pt*betai+pt^2-py^2)
+
+       pzs = sqrt(1 + 2 * pt*betai + pt^2 - XN(2)^2 - py^2)
+
+       XN(1) = x + (pzs - pz) / dir / bn1
+
+      ????  XN(3)=(arcsin(px) / ptt - arcsin(XN(2)) / ptt) / dir / b1
+
+       XN(6)= t + XN(3) * (betai + pt ) -  l_n*betai
+
+       XN(3)= y + px * XN(3)
+
+       X(1)=XN(1)
+       X(2)=XN(2)
+       X(3)=XN(3)
+       X(6)=XN(6)
+end
+]]
+
