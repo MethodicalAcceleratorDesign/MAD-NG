@@ -57,7 +57,7 @@ local function invalid_survey (elem, m)
                       elem.name, elem.kind, l and tostring(l) or 0))
 end
 
-local function drift_survey (l, m)
+local function drift_survey (m, l)
   m.R :fill {0, 0, l}
   m.V = m.W * m.R + m.V
 end
@@ -84,7 +84,7 @@ local function tran_survey(elem, m)
   local dx, dy, ds in elem
   local dir in m
 
-  m.R :fill {dx*dir, dy*dir, ds}
+  m.R :fill {dx*dir, dy, ds}
   m.V = m.W * m.R + m.V
   return ds
 end
@@ -93,7 +93,7 @@ local function patch_survey(elem, m) -- Rx(th).Ry(-phi).Rz(psi)
   local dx, dy, ds, theta, phi, psi in elem
   local dir in m
 
-  m.R :fill {dx*dir, dy*dir, ds}
+  m.R :fill {dx*dir, dy, ds}
   m.S :rotmad(theta*dir, phi*dir, psi*dir)
 
   m.V = m.W * m.R + m.V
@@ -130,7 +130,7 @@ local function strait_survey (elem, m) -- e.g. rbend, quad
   end
 
   if l >= minlen then
-    drift_survey(l, m)
+    drift_survey(m, l)
   end
   return l
 end
@@ -186,9 +186,8 @@ local function fill_table (tbl, name, kind, m, s, l, ang, til)
   -- update angles
   A:fill{th, phi, psi}
   -- keep order!
-  tbl = tbl + {
-    name, kind, s, l, ang*dir, til*dir, x, y, z, th, phi, psi, psi+til*dir
-  }
+  ang, til = (ang or 0)*dir, (til or 0)*dir
+  tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
 local function make_range (self)
@@ -228,10 +227,11 @@ local function make_map (self)
 end
 
 local function make_table (self, length)
-  local sequence, drift in self
+  local sequence, drift, refer in self
+  local name, direction in sequence
   local n = (drift == true and 2 or 1) * length
   return table 'survey' {
-    type='survey', title=sequence.name, direction=sequence.direction,
+    type='survey', title=name, direction=direction, refer=refer,
     {'name'}, 'kind', 's', 'length', 'angle', 'tilt',
      'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
   } : reserve(n)
@@ -253,7 +253,7 @@ local function exec (self)
   local start, stop =       make_range(self)
   local map = self.map   or make_map  (self)
   local tbl = self.table or make_table(self, stop-start+1)
-  local drift in self
+  local drift, refer in self
   local s_pos in seq
 
   -- affine tracking
@@ -261,24 +261,32 @@ local function exec (self)
   for i=start,stop do
     local elem, s = seq[i], s_pos[i]
     local ds = s - end_pos
+    local name, kind, angle, tilt in elem
 
     -- implicit drift
     if ds < 0 then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
+            tostring(ds), seq:get_key('name'), name, tostring(s)))
     elseif ds >= minlen then
-      drift_survey(ds, map)
+      if refer == 'entry' and drift == true then
+        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds)
+      end
+      drift_survey(map, ds)
       end_pos, n = s, n+1
-      if drift then
-        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds, 0, 0)
+      if refer == 'exit' and drift == true then
+        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds)
       end
     end
 
     -- sequence element
+    if refer == 'entry' then
+      fill_table(tbl, name, kind, map, end_pos, ds, angle, tilt)
+    end
     ds = elem:survey(map)
     end_pos = end_pos + ds
-    fill_table(tbl, elem.name, elem.kind, map, end_pos, ds,
-               elem.angle or 0, elem.tilt or 0)
+    if refer == 'exit' then
+      fill_table(tbl, name, kind, map, end_pos, ds, angle, tilt)
+    end
   end
 
   return tbl, map
@@ -287,8 +295,7 @@ end
 -- survey command template
 
 local survey = Command 'survey' {
-  -- default options
-  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1}, exec=exec,
+  X0={0,0,0}, A0={0,0,0}, range={1,-1}, drift=true, refer='exit', exec=exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
