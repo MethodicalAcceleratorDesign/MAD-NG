@@ -46,7 +46,8 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_string, is_rawtable, vector, sign in MAD
+local is_nil, is_number, is_string, is_rawtable, vector, sign in MAD
+local is_iterable in MAD.concept
 local element in MAD.element
 
 -- implementation -------------------------------------------------------------o
@@ -76,13 +77,15 @@ end
 
 -- search
 local function find_idx (sequ, elem, start_)
-  local start, stop, step = start_ or 1
-  if start > 0
-  then stop, step = #sequ, 1
-  else stop, step, start = 1, -1, -start
-  end
-  for i=start,stop,step do  -- linear search
-    if sequ[i] == elem then return i end
+  if elem ~= nil then
+    local start, stop, step = start_ or 1
+    if start > 0
+    then stop, step = #sequ, 1
+    else stop, step, start = 1, -1, -start
+    end
+    for i=start,stop,step do  -- linear search
+      if sequ[i] == elem then return i end
+    end
   end
   return nil
 end
@@ -387,6 +390,28 @@ local function tie (seq1, seq2)
   return seq1, { [ident(seq1.name)] = shrd1, [ident(seq2.name)] = shrd2 }
 end
 
+local function range_index (seq, rng)
+  assert(is_number(rng) or is_iterable(rng),
+         "invalid argument #2 (sequence range expected)")
+  local len   = #seq
+  local start = is_number(rng) and rng or rng[1]
+  local stop  = is_number(rng) and rng or rng[2]
+
+  if is_number(start) then
+    if start < 0 then start = len+start+1 end
+    assert(start >= 1 and start <= len, "range start out of bounds")
+  else
+    start = assert(seq:index_of(start), "invalid range start")
+  end
+  if is_number(stop) then
+    if stop < 0 then stop = len+stop+1 end
+    assert(stop >= start and stop <= len, "range stop out of bounds")
+  else
+    stop = assert(seq:index_of(stop, start), "invalid range stop")
+  end
+  return start, stop
+end
+
 -- attributes -----------------------------------------------------------------o
 
 sequence:set_variable {
@@ -396,9 +421,10 @@ sequence:set_variable {
 -- methods --------------------------------------------------------------------o
 
 sequence:set_function {
-  tie      = tie,
-  index_of = \s,e,i -> find_idx(s,s[e],i),
-  spos_of  = \s,e,i -> s.s_pos[is_string(e) and s:index_of(e,i) or find_idx(s,e,i)]
+  tie         = tie,
+  index_of    = \s,e,i -> find_idx(s, is_string(e) and s[e] or e, i),
+  spos_of     = \s,e,i -> s.s_pos[is_number(e) and e or s:index_of(e,i)],
+  range_index = range_index,
 }
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
