@@ -178,22 +178,42 @@ element.translate     :set_function { survey = tran_survey    }
 
 -- survey command helpers
 
-local function fill_table (tbl, name, kind, m, s, l, ang, til)
-  local V, W, A, dir in m
-  local x, y, z      = V[1], V[2], V[3]
+local _surv = {}
+
+local function make_table (self, length)
+  local sequence, drift, save in self
+  if save == 'none' then return nil end
+  local name, dir in sequence
+  local nrow = (drift == true and 2 or 1) * length
+  return table 'survey' { [_surv]=_surv,
+    type='survey', title=name, dir=dir, save=save,
+    {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
+     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
+  } :reserve(nrow)
+end
+
+local function update_angle (m)
+  local A in m
   local th, phi, psi = A[1], A[2], A[3]
   -- retrieve angles
-  th, phi, psi = W:torotmad(th, phi, psi)
+  th, phi, psi = m.W:torotmad(th, phi, psi)
   -- update angles
   A:fill{th, phi, psi}
-  -- keep order!
+end
+
+local function fill_table (tbl, name, kind, m, s, l, ang, til)
+  local V, A, dir in m
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
   ang = ang and ang ~= 0 and ang*dir or 0
   til = til and til ~= 0 and til*dir or 0
+  -- keep order!
   tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
-local function make_map (self)
+local function make_map (self, start)
   local x, y, z, theta, phi, psi, X0, A0, sequence in self
+  local dir, s_pos in sequence
   x     = x     or X0.x     or X0[1]
   y     = y     or X0.y     or X0[2]
   z     = z     or X0.z     or X0[3]
@@ -204,23 +224,13 @@ local function make_map (self)
   local W = matrix(3):rotmad(theta, phi, psi)
   local A = vector(3):fill{theta, phi, psi}
   local R, S, T = vector(3), matrix(3), matrix(3)
-  return { A=A, V=V, W=W, R=R, S=S, T=T, dir=sequence.direction }
-end
-
-local function make_table (self, length)
-  local sequence, drift, save in self
-  local name, direction in sequence
-  local nrow = (drift == true and 2 or 1) * length
-  return table 'survey' {
-    type='survey', title=name, direction=direction, save=save,
-    {'name'}, 'kind', 's', 'length', 'angle', 'tilt',
-     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
-  } :reserve(nrow)
+  return { A=A, V=V, W=W, R=R, S=S, T=T, dir=dir,
+           s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_surv]=_surv }
 end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
---          range={start,stop}, save='exit',
+--          range={start,stop}, save='exit'|'entry'|'none',
 --          drift=logical, table=tbl, map=map }
 -- return the table and the map
 -- alternate initial conditions (higher precedence):
@@ -233,28 +243,33 @@ local function exec (self)
 
   local start, stop = seq:range_index (self.range)
   local tbl = self.table or make_table(self, stop-start+1)
-  local map = self.map   or make_map  (self)
+  local map = self.map   or make_map  (self, start)
+  assert(tbl[_surv] == _surv, "invalid survey table")
+  assert(map[_surv] == _surv, "invalid survey map"  )
+
+  local s_ini, s_end, ndrift in map
   local drift, save in self
   local s_pos in seq
 
+  drift = drift == true and save or 'none'
+
   -- affine tracking
-  local n, end_pos = -1, 0
   for i=start,stop do
     local elem, s = seq[i], s_pos[i]
-    local ds = s - end_pos
     local name, kind, angle, tilt in elem
+    local ds = s - s_end
 
     -- implicit drift
     if ds >= minlen then
-      if save == 'entry' and drift == true then
-        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds)
+      if drift == 'entry' then
+        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
       end
 
       drift_survey(map, ds)
-      end_pos, n = s, n+1
+      s_end, ndrift = s, ndrift+1
 
-      if save == 'exit' and drift == true then
-        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds)
+      if drift == 'exit' then
+        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
       end
     elseif ds < 0 then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
@@ -263,16 +278,18 @@ local function exec (self)
 
     -- sequence element
     if save == 'entry' then
-      fill_table(tbl, name, kind, map, end_pos, ds, angle, tilt)
+      fill_table(tbl, name, kind, map, end_pos-ini_pos, ds, angle, tilt)
     end
 
     ds = elem:survey(map)
-    end_pos = end_pos + ds
+    s_end = s + ds
+    update_angle(map)
 
     if save == 'exit' then
-      fill_table(tbl, name, kind, map, end_pos, ds, angle, tilt)
+      fill_table(tbl, name, kind, map, s_end-s_ini, ds, angle, tilt)
     end
   end
+  map.s_end, map.ndrift = s_end, ndrift
 
   return tbl, map
 end
