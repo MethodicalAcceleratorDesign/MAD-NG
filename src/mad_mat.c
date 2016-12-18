@@ -468,7 +468,7 @@ void mad_mat_mult (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n
 { CHKXYRXY; MULT(); }
 
 void mad_mat_multm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRY; MULT(); }
+{ CHKXYRY; MULT(conj); }
 
 void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
@@ -528,7 +528,7 @@ void mad_cmat_tmulm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz
 { CHKXYRX; TMUL(conj); }
 
 void mad_cmat_mult (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; MULT(); }
+{ CHKXYRXY; MULT(conj); }
 
 void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYRX; MULT(); }
