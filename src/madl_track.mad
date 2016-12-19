@@ -73,7 +73,9 @@ local bg2     = beta^2*gamma^2
 4 - Ruth-Neri-Yoshida 4th order, 3 kicks per step
 6 - Yoshida 6th order, 7kicks per step
 ]]
-local method = 1 -- 1,2,3 for 2,4,6
+local method = 2 -- 2,4,6
+-- local method = 'teapot'
+
 
 --[[MODEL: 1 drift-kick-drift, 2 - matrix-kick-matrix)
 ]]
@@ -100,7 +102,7 @@ i.e. quad only has k1 and not k0, k2 or???
 -- helpers --------------------------------------------------------------------o
 
 local fact = { [0]=1, 1 }
-(\ => for i=2,25 do fact[i] = fact[i-1]*i end end)()
+(function() for i=2,25 do fact[i] = fact[i-1]*i end end)()
 
 -- implementation -------------------------------------------------------------o
 
@@ -127,7 +129,7 @@ local function drift_track (elem, m, l) -- TODO: check numerical stability
 end
 
 M.__help['Track mutlipole'] = [[
-  [2] p.354, ch. 12.1.3 
+  [2] p.354, ch. 12.1.3
   [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
 ]]
 
@@ -156,7 +158,7 @@ local function kick_mult(elem, m, l)
 end
 
 M.__help['Track kick'] = [[
-  [2] p. 72, Section K.4.2, 
+  [2] p. 72, Section K.4.2,
   [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
 ]]
 
@@ -246,12 +248,17 @@ local function skick_track (elem, m, l)
   m.py = py + l * dir * b2
 end
 
--- integrator schemes
+-- integrator schemes ---------------------------------------------------------o
 
-local function integrate2 (elem, m, l, drift, kick)
-  drift(elem, m, l/2)
-   kick(elem, m, l  )
-  drift(elem, m, l/2)
+local function integrate2 (elem, m, drift, kick)
+  local l, nst in elem
+  local l_n = l/(nst or 1)
+
+  for i=1,nst do
+    drift(elem, m, l_n/2)
+     kick(elem, m, l_n  )
+    drift(elem, m, l_n/2)
+  end
 end
 
 --[[
@@ -265,21 +272,124 @@ FK2 =     =  -2^(1/3)/(2-2^(1/3))        = -1.7024143839193155
 local fk1, fd1 =  1.3512071919596578,  0.67560359597982889
 local fk2, fd2 = -1.7024143839193155, -0.17560359597982886
 
-local function integrate4 (elem, m, l, drift, kick)
-  drift(elem, m, l * fd1)
-   kick(elem, m, l * fk1)
-  drift(elem, m, l * fd2)
-   kick(elem, m, l * fk2)
-  drift(elem, m, l * fd2)
-   kick(elem, m, l * fk1)
-  drift(elem, m, l * fd1)
+local function integrate4 (elem, m, drift, kick)
+  local l, nst in elem
+  local l_n = l/(nst or 1)
+
+  for i=1,nst do
+    drift(elem, m, l_n * fd1)
+     kick(elem, m, l_n * fk1)
+    drift(elem, m, l_n * fd2)
+     kick(elem, m, l_n * fk2)
+    drift(elem, m, l_n * fd2)
+     kick(elem, m, l_n * fk1)
+    drift(elem, m, l_n * fd1)
+  end
 end
 
-local function integrate6 (elem, m, l, drift, kick)
+local function integrate6 (elem, m, drift, kick)
   error("NYI")
 end
 
-local integrate = { integrate2, integrate4, integrate6 }
+local function simple (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 1
+  local l_n, l_p = 0, 0
+  local l_nst = l/(2*nst)
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_nst*(2*i-1)
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n    )
+  end
+  drift(elem, m, l-l_n)
+end
+
+local function collim (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 1
+  local l_n, l_p = 0, 0
+  local l_nst = nst>1 and l/(nst-1) or 0
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_nst*(i-1)
+     kick(elem, m, l_p    )
+    drift(elem, m, l_n-l_p)
+  end
+  kick(elem, m, l)
+end
+
+local function teapot (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 1
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = nst>1 and l_2*nst/(1-nst^2) or 0
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_nst*(nst-2*i+1)
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n+l_2)
+  end
+  drift(elem, m, l-l_n)
+end
+
+--[[
+local function simple_test (l,nst)
+  nst = nst or 1
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = l/(2*nst)
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_nst*(2*i-1)
+    print('test_simple_k', i, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+  end
+  l_p, l_n = l_n, l
+  print('test_simple_*', nst, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+end
+
+local function collim_test (l,nst)
+  nst = nst or 1
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = nst>1 and l/(nst-1) or 0
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_nst*(i-1)
+    print('test_collim_k', i, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+  end
+  l_p, l_n = l_n, l
+  print('test_collim_*', nst, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+end
+
+local function teapot_test (l,nst)
+  nst = nst or 1
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = nst>1 and l_2*nst/(1-nst^2) or 0
+
+-- 0.5*l + ((1-2*i+n)*n*0.5*l/(1.0-n*n))
+
+  for i=1,nst do
+    l_p, l_n = l_n, l_2+l_nst*(nst-2*i+1)
+    print('test_teapot_k', i, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+  end
+  l_p, l_n = l_n, l
+  print('test_teapot_*', nst, l_n, (l_n-l_p)/l, (l_n-l_2)/l)
+end
+
+MAD.export('tostring', true)
+
+local fmt = MAD.option.format
+MAD.option.format = "%.5g"
+print('','','i', 'K', '%L', '%')
+for i=1,5 do simple_test(10,i) print() end
+for i=1,5 do collim_test(10,i) print() end
+for i=1,5 do teapot_test(10,i) print() end
+MAD.option.format = fmt
+]]
+
+local integrate = {
+  integrate2, integrate2, integrate4, integrate4, integrate6, integrate6,
+  simple=simple, teapot=teapot, collim=collim,
+}
 
 -- frame of integration
 
@@ -289,7 +399,7 @@ local integrate = { integrate2, integrate4, integrate6 }
 -- angle == 0 and k0 == 0 rbend off (i.e. drift)
 --  DRIFT-TRACK
 
--- angle ~= 0 and k0 ~= 0 sbend on 
+-- angle ~= 0 and k0 ~= 0 sbend on
 -- SBEND, default RBEND:  TEAPOT
 
 -- angle ~= 0 and k0 == 0 sbend off( useless, what kind of element is this? broken sbend?)
@@ -310,16 +420,14 @@ local function thin_track (elem, m)
     error("invalid thin element length (too long): " .. elem.name)
   end
 
-  local l_n = l/nst
-  for i=1,nst do
-    integrate[method](elem, m, l_n, drift_track, kick_mult)
-  end
+  -- in principle it should call only one time kick_mult because l=0
+  integrate[method](elem, m, drift_track, kick_mult)
   return l
 end
 
 M.__help['Track straight'] = [[
   [2] p.352, ch. 12.1
-      DKD: ch 12.1.3, p. 353  
+      DKD: ch 12.1.3, p. 353
       MKM: ch 12.1.4, p.354
   [3] DKD: p. 72, Section K.4.2,
            PTC, Function INTER_STREX in file Sh_def_kind.f90)
@@ -336,10 +444,7 @@ local function strait_track (elem, m)
     error("invalid strait element angle (too curved): " .. elem.name)
   end
 
-  local l_n = l/nst
-  for i=1,nst do
-    integrate[method](elem, m, l_n, drift_track, kick_track)
-  end
+  integrate[method](elem, m, drift_track, kick_track)
   return l
 end
 
@@ -358,10 +463,7 @@ local function curved_track (elem, m) -- e.g. sbend
     error("invalid curved element angle (too strait): " .. elem.name)
   end
 
-  local l_n = l/nst
-  for i=1,nst do
-    integrate[method](elem, m, l_n, sdrift_track, skick_track)
-  end
+  integrate[method](elem, m, sdrift_track, skick_track)
   return l
 end
 
@@ -454,7 +556,7 @@ return {
   __help = M.__help,
 }
 
-
+--[=[
 M.__help['Track matrix-kick'] = [[
   [2] p.354, ch. 12.1.4 Matrix-Kick Split
   [3] p. 75, Section K.4.7, PTC, Function INTEP_TKTF in file Sh_def_kind.f90)
@@ -512,4 +614,4 @@ D = l
        X(6)=XN(6)
 end
 ]]
-
+]=]
