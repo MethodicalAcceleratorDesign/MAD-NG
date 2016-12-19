@@ -44,9 +44,8 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local Command, element, sequence, table            in MAD
-local is_nil, is_number, vector, matrix, is_matrix in MAD
-local abs, sin, cos                                in MAD
+local is_nil, vector, matrix, table in MAD
+local abs, sin, cos, tostring       in MAD
 
 local minlen, minang = 1e-14, 1e-14
 
@@ -57,7 +56,7 @@ local function invalid_survey (elem, m)
                       elem.name, elem.kind, l and tostring(l) or 0))
 end
 
-local function drift_survey (l, m)
+local function drift_survey (m, l)
   m.R :fill {0, 0, l}
   m.V = m.W * m.R + m.V
 end
@@ -84,7 +83,7 @@ local function tran_survey(elem, m)
   local dx, dy, ds in elem
   local dir in m
 
-  m.R :fill {dx*dir, dy*dir, ds}
+  m.R :fill {dx*dir, dy, ds}
   m.V = m.W * m.R + m.V
   return ds
 end
@@ -93,7 +92,7 @@ local function patch_survey(elem, m) -- Rx(th).Ry(-phi).Rz(psi)
   local dx, dy, ds, theta, phi, psi in elem
   local dir in m
 
-  m.R :fill {dx*dir, dy*dir, ds}
+  m.R :fill {dx*dir, dy, ds}
   m.S :rotmad(theta*dir, phi*dir, psi*dir)
 
   m.V = m.W * m.R + m.V
@@ -130,7 +129,7 @@ local function strait_survey (elem, m) -- e.g. rbend, quad
   end
 
   if l >= minlen then
-    drift_survey(l, m)
+    drift_survey(m, l)
   end
   return l
 end
@@ -164,6 +163,8 @@ end
 
 -- load survey maps into elements
 
+local element in MAD
+
 element.element       :set_function { survey = invalid_survey }
 element.thin_element  :set_function { survey = thin_survey    }
 element.strait_element:set_function { survey = strait_survey  }
@@ -177,43 +178,42 @@ element.translate     :set_function { survey = tran_survey    }
 
 -- survey command helpers
 
-local function fill_table (tbl, name, kind, m, s, l, ang, til)
-  local V, W, A, dir in m
-  local x, y, z      = V[1], V[2], V[3]
+local _surv = {}
+
+local function make_table (self, length)
+  local sequence, drift, save in self
+  if save == 'none' then return nil end
+  local name, dir in sequence
+  local nrow = (drift == true and 2 or 1) * length
+  return table 'survey' { [_surv]=_surv,
+    type='survey', title=name, dir=dir, save=save,
+    {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
+     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
+  } :reserve(nrow)
+end
+
+local function update_angle (m)
+  local A in m
   local th, phi, psi = A[1], A[2], A[3]
   -- retrieve angles
-  th, phi, psi = W:torotmad(th, phi, psi)
+  th, phi, psi = m.W:torotmad(th, phi, psi)
   -- update angles
   A:fill{th, phi, psi}
+end
+
+local function fill_table (tbl, name, kind, m, s, l, ang, til)
+  local V, A, dir in m
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
+  ang = ang and ang ~= 0 and ang*dir or 0
+  til = til and til ~= 0 and til*dir or 0
   -- keep order!
-  tbl = tbl + {
-    name, kind, s, l, ang*dir, til*dir, x, y, z, th, phi, psi, psi+til*dir
-  }
+  tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
-local function make_range (self)
-  local seq, rng = self.sequence, self.range
-  local len   = #seq
-  local start = is_number(rng) and rng or rng[1]
-  local stop  = is_number(rng) and rng or rng[2]
-
-  if is_number(start) then
-    if start < 0 then start = len+start+1 end
-    assert(start >= 1 and start <= len, "range start out of bounds")
-  else
-    start = assert(seq:index_of(start), "invalid range start")
-  end
-  if is_number(stop) then
-    if stop < 0 then stop = len+stop+1 end
-    assert(stop >= start and stop <= len, "range stop out of bounds")
-  else
-    stop = assert(seq:index_of(stop, start), "invalid range stop")
-  end
-  return start, stop
-end
-
-local function make_map (self)
-  local x, y, z, theta, phi, psi, X0, A0 in self
+local function make_map (self, start)
+  local x, y, z, theta, phi, psi, X0, A0, sequence in self
+  local dir, s_pos in sequence
   x     = x     or X0.x     or X0[1]
   y     = y     or X0.y     or X0[2]
   z     = z     or X0.z     or X0[3]
@@ -224,22 +224,13 @@ local function make_map (self)
   local W = matrix(3):rotmad(theta, phi, psi)
   local A = vector(3):fill{theta, phi, psi}
   local R, S, T = vector(3), matrix(3), matrix(3)
-  return { A=A, V=V, W=W, R=R, S=S, T=T, dir=sequence.direction }
-end
-
-local function make_table (self, length)
-  local sequence, drift in self
-  local n = (drift == true and 2 or 1) * length
-  return table 'survey' {
-    type='survey', title=sequence.name, direction=sequence.direction,
-    {'name'}, 'kind', 's', 'length', 'angle', 'tilt',
-     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
-  } : reserve(n)
+  return { A=A, V=V, W=W, R=R, S=S, T=T, dir=dir,
+           s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_surv]=_surv }
 end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
---          range={start,stop}, refer='exit',
+--          range={start,stop}, save='exit'|'entry'|'none',
 --          drift=logical, table=tbl, map=map }
 -- return the table and the map
 -- alternate initial conditions (higher precedence):
@@ -250,45 +241,65 @@ local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
-  local start, stop =       make_range(self)
-  local map = self.map   or make_map  (self)
+  local start, stop = seq:range_index (self.range)
   local tbl = self.table or make_table(self, stop-start+1)
-  local drift in self
+  local map = self.map   or make_map  (self, start)
+  assert(tbl[_surv] == _surv, "invalid survey table")
+  assert(map[_surv] == _surv, "invalid survey map"  )
+
+  local s_ini, s_end, ndrift in map
+  local drift, save in self
   local s_pos in seq
 
+  drift = drift == true and save or 'none'
+
   -- affine tracking
-  local n, end_pos = -1, 0
   for i=start,stop do
     local elem, s = seq[i], s_pos[i]
-    local ds = s - end_pos
+    local name, kind, angle, tilt in elem
+    local ds = s - s_end
 
     -- implicit drift
-    if ds < 0 then
-      error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
-    elseif ds >= minlen then
-      drift_survey(ds, map)
-      end_pos, n = s, n+1
-      if drift then
-        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds, 0, 0)
+    if ds >= minlen then
+      if drift == 'entry' then
+        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
       end
+
+      drift_survey(map, ds)
+      s_end, ndrift = s, ndrift+1
+
+      if drift == 'exit' then
+        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
+      end
+    elseif ds < 0 then
+      error(string.format("negative implicit drift %s in %s['%s'] at %s",
+            tostring(ds), seq:get_key('name'), name, tostring(s)))
     end
 
     -- sequence element
+    if save == 'entry' then
+      fill_table(tbl, name, kind, map, end_pos-ini_pos, ds, angle, tilt)
+    end
+
     ds = elem:survey(map)
-    end_pos = end_pos + ds
-    fill_table(tbl, elem.name, elem.kind, map, end_pos, ds,
-               elem.angle or 0, elem.tilt or 0)
+    s_end = s + ds
+    update_angle(map)
+
+    if save == 'exit' then
+      fill_table(tbl, name, kind, map, s_end-s_ini, ds, angle, tilt)
+    end
   end
+  map.s_end, map.ndrift = s_end, ndrift
 
   return tbl, map
 end
 
 -- survey command template
 
+local Command in MAD
+
 local survey = Command 'survey' {
-  -- default options
-  X0={0,0,0}, A0={0,0,0}, drift=true, range={1,-1}, exec=exec,
+  X0={0,0,0}, A0={0,0,0}, range={1,-1}, drift=true, save='exit', exec=exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
