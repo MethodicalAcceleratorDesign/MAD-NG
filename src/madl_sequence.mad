@@ -98,7 +98,7 @@ local function find_idx_s (sequ, s, start_)
       if s_pos[i] >= s then return i end
     end
   elseif start < 0 and -start <= #s_pos then
-    for i=-start,1,-1 do -- linear search
+    for i=-start,1,-1 do     -- linear search
       if s_pos[i] <= s then return i end
     end
   end
@@ -392,22 +392,42 @@ end
 
 local function range_index (seq, rng)
   local len   = #seq
-  local start = is_iterable(rng) and rng[1] or rng
-  local stop  = is_iterable(rng) and rng[2] or rng
+  local start = is_iterable(rng) and rng[1] or rng or 1
+  local stop  = is_iterable(rng) and rng[2] or rng or len
 
   if is_number(start) then
     if start < 0 then start = len+start+1 end
     assert(start >= 1 and start <= len, "range start out of bounds")
+  elseif is_string(start) and (start == '#s' or start == '#S') then
+    start = 1
   else
     start = assert(seq:index_of(start), "invalid range start")
   end
   if is_number(stop) then
     if stop < 0 then stop = len+stop+1 end
     assert(stop >= start and stop <= len, "range stop out of bounds")
+  elseif is_string(stop) and (stop == '#e' or stop == '#E') then
+    stop = len
   else
     stop = assert(seq:index_of(stop, start), "invalid range stop")
   end
   return start, stop
+end
+
+local function foreach (seq, f, rng_)
+  assert(is_callable(f), "invalid argument #2 (callable expected)")
+  local start, stop = range_index(seq, rng_)
+  for i=start,stop do f(seq[i],i) end
+  return seq
+end
+
+local function filter (seq, p, rng_)
+  assert(is_callable(p), "invalid argument #2 (callable expected)")
+  local r, start, stop = {}, range_index(seq, rng_)
+  for i=start,stop do
+    if p(seq[i],i) == true then r[#r+1] = seq[i] end
+  end
+  return r
 end
 
 -- attributes -----------------------------------------------------------------o
@@ -419,10 +439,12 @@ sequence:set_variable {
 -- methods --------------------------------------------------------------------o
 
 sequence:set_function {
-  tie         = tie,
   index_of    = \s,e,i -> find_idx(s, is_string(e) and s[e] or e, i),
   spos_of     = \s,e,i -> s.s_pos[is_number(e) and e or s:index_of(e,i)],
   range_index = range_index,
+  foreach     = foreach,
+  filter      = filter,
+  tie         = tie,
 }
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
