@@ -47,15 +47,15 @@ M.__help['References Track'] = [=[
 [1] A. Wolski,  "Beam Dynamics in High Energy Particle Accelerators".
 [2] E. Forest,  "Beam Dynamics, A New Attitude and Framework".
 [3] E. Forest,  "Introduction to Polymorphic Tracking Code", KEK report 2002-3.
-[4] H. Yoshida, "Construction of higher order symplectic integrators ", 
-    Phys.Let A, Volume 150, number 5,6,7  
+[4] H. Yoshida, "Construction of higher order symplectic integrators ",
+    Phys.Let A, Volume 150, number 5,6,7
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
 local Command, element, sequence, table                                in MAD
 local is_nil, is_number, vector, matrix, is_matrix                     in MAD
-local abs, sin, cos, sqrt, max, tan, atan, arcsin, arccos              in MAD
+local abs, sin, cos, sqrt, max, tan, atan, arcsin, arccos, sinc        in MAD
 
 local minlen, minang = 1e-14, 1e-14
 
@@ -75,7 +75,9 @@ local bg2     = beta^2*gamma^2
 4 - Ruth-Neri-Yoshida 4th order, 3 kicks per step
 6 - Yoshida 6th order, 7kicks per step
 ]]
-local method = 1 -- 1,2,3 for 2,4,6
+local method = 2 -- 2,4,6
+-- local method = 'teapot'
+
 
 --[[MODEL: 1 drift-kick-drift, 2 - matrix-kick-matrix)
 ]]
@@ -103,7 +105,7 @@ i.e. quad only has k1 and not k0, k2 or???
 -- helpers --------------------------------------------------------------------o
 
 local fact = { [0]=1, 1 }
-(\ => for i=2,25 do fact[i] = fact[i-1]*i end end)()
+(function() for i=2,25 do fact[i] = fact[i-1]*i end end)()
 
 -- implementation -------------------------------------------------------------o
 
@@ -203,10 +205,10 @@ M.__help['Track pushtkt'] = [[
 
 local function getM_track(elem)
  local M = matrix(6):eye()
---TODO matrix calculation 
+--TODO matrix calculation
 --[[
-  SUBROUTINE GETMAT7R(EL) in PTC to calculate M matrix 
- 
+  SUBROUTINE GETMAT7R(EL) in PTC to calculate M matrix
+
 ]]
   return M
 end
@@ -215,8 +217,8 @@ local function getRM_track(elem)
  local RM = matrix(6):eye()
 --TODO matrix calculation
 --[[
-  SUBROUTINE GETMAT7R(EL) in PTC to calculate RM matrix 
- 
+  SUBROUTINE GETMAT7R(EL) in PTC to calculate RM matrix
+
 ]]
   return RM
 end
@@ -233,22 +235,22 @@ local function pushtkt_track(elem, m , l)
     local t1, t2, t3, t4 = 0, 0, 0, 0
     local bv  = direction*charge
     local M   =  getM_track(elem)  or matrix(6):eye()
-    local RM  =  getRM_track(elem) or matrix(6):eye() -- case of dir = -1 
+    local RM  =  getRM_track(elem) or matrix(6):eye() -- case of dir = -1
 -- TODO rlx calculated within GETMAT7R!!!!
     local rlx = vector(3):eye()
     if  bv>0  then
 
     	t1 = M(1,1)*m.x +   M(1,2) * px +  M(1,3) * pt / beta
     	t2 = M(2,1)*m.x +   M(2,2) * px +  M(2,3) * pt / beta
-    	t3 = M(1,1)*m.y +   M(1,2) * py 
-    	t4 = M(2,1)*m.y +   M(2,2) * py 
+    	t3 = M(1,1)*m.y +   M(1,2) * py
+    	t4 = M(2,1)*m.y +   M(2,2) * py
     else
-    
+
     	t1 = RM(1,1)*m.x +   RM(1,2) * px +  RM(1,3) * pt / beta
     	t2 = RM(2,1)*m.x +   RM(2,2) * px +  RM(2,3) * pt / beta
-    	t3 = RM(1,1)*m.y +   RM(1,2) * py 
-    	t4 = RM(2,1)*m.y +   RM(2,2) * py 
-        m.t = m.t + rlx[1] * m.x / beta + rlx[2] * m.px / beta + rlx[3] * m.pt 
+    	t3 = RM(1,1)*m.y +   RM(1,2) * py
+    	t4 = RM(2,1)*m.y +   RM(2,2) * py
+        m.t = m.t + rlx[1] * m.x / beta + rlx[2] * m.px / beta + rlx[3] * m.pt
     end
 
     m.x = t1
@@ -264,10 +266,10 @@ local function kickpath_track (elem, m, l)
   m.y = y + l * py * (1/pz - 1)
   m.t = t + l * (betai + pt)/pz - l * (1 -T)*betai
   return l
-end	
+end
 
 local function kicktkt_track(elem, m, l)
-  error("NYI")	
+  error("NYI")
 -- TODO implement
 --[[ PTC KICKTKT7 ]]
   return l
@@ -328,12 +330,17 @@ local function skick_track (elem, m, l)
   m.py = py + l * bv * b2
 end
 
--- integrator schemes
+-- integrator schemes ---------------------------------------------------------o
 
-local function integrate2 (elem, m, l, drift, kick)
-  drift(elem, m, l/2)
-   kick(elem, m, l  )
-  drift(elem, m, l/2)
+local function integrate2 (elem, m, drift, kick)
+  local l, nst in elem
+  local l_n = l/(nst or 1)
+
+  for i=1,nst do
+    drift(elem, m, l_n/2)
+     kick(elem, m, l_n  )
+    drift(elem, m, l_n/2)
+  end
 end
 
 --[[
@@ -380,17 +387,22 @@ FK2 =     =  -2^(1/3)/(2-2^(1/3))        = -1.7024143839193155
 local fk1, fd1 =  1.3512071919596578,  0.67560359597982889
 local fk2, fd2 = -1.7024143839193155, -0.17560359597982886
 
-local function integrate4 (elem, m, l, drift, kick)
-  drift(elem, m, l * fd1)
-   kick(elem, m, l * fk1)
-  drift(elem, m, l * fd2)
-   kick(elem, m, l * fk2)
-  drift(elem, m, l * fd2)
-   kick(elem, m, l * fk1)
-  drift(elem, m, l * fd1)
+local function integrate4 (elem, m, drift, kick)
+  local l, nst in elem
+  local l_n = l/(nst or 1)
+
+  for i=1,nst do
+    drift(elem, m, l_n * fd1)
+     kick(elem, m, l_n * fk1)
+    drift(elem, m, l_n * fd2)
+     kick(elem, m, l_n * fk2)
+    drift(elem, m, l_n * fd2)
+     kick(elem, m, l_n * fk1)
+    drift(elem, m, l_n * fd1)
+  end
 end
 
-local function integrate6 (elem, m, l, drift, kick)
+local function integrate6 (elem, m, drift, kick)
   error("NYI")
 --[[       CASE(6)
           DO I =1,4
@@ -415,7 +427,53 @@ local function integrate6 (elem, m, l, drift, kick)
 
 end
 
-local integrate = { integrate2, integrate4, integrate6 }
+local function simple (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 1
+  local l_n, l_p = 0, 0
+  local l_nst = nst>0 and l/(2*nst) or 0
+
+  for i=1,nst do
+    l_n, l_p = l_nst*(2*i-1), l_n
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n    )
+  end
+  drift(elem, m, l-l_n)
+end
+
+local function collim (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 2
+  assert(nst > 0, "invalid number of integration steps")
+  local l_n, l_p = nst==1 and l/2 or 0, 0
+  local l_nst = nst>2 and l/(nst-1) or l
+
+  for i=2,nst do
+    l_n, l_p = l_nst*(i-1), l_n
+     kick(elem, m, l_p    )
+    drift(elem, m, l_n-l_p)
+  end
+  kick(elem, m, l_n)
+end
+
+local function teapot (elem, m, drift, kick)
+  local l, nst in elem
+  nst = nst or 1
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = nst>1 and l_2*nst/(1-nst^2) or 0
+
+  for i=1,nst do
+    l_n, l_p = l_nst*(nst-2*i+1), l_n
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n+l_2)
+  end
+  drift(elem, m, l-l_n)
+end
+
+local integrate = {
+  integrate2, integrate2, integrate4, integrate4, integrate6, integrate6,
+  simple=simple, teapot=teapot, collim=collim,
+}
 
 -- frame of integration
 
@@ -430,13 +488,10 @@ local integrate = { integrate2, integrate4, integrate6 }
 
 -- angle ~= 0 and k0 == 0 sbend off( useless, what kind of element is this? broken sbend?)
 
-
 --   <=> rbend with l = l_arc and k0 = angle, what about errors?
-
 
 -- angle == 0 abd k0 == 0 but k[n] ~= 0: straight magnet
 -- DKD (model = 1 ): STREX ; MKM (model = 2): TKTF
-
 
 local function thin_track (elem, m)
   io.write('THIN_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
@@ -445,11 +500,10 @@ local function thin_track (elem, m)
   if l >= minlen then
     error("invalid thin element length (too long): " .. elem.name)
   end
-  
-  local l_n = l/nst
-  for i=1,nst do
-    integrate[method](elem, m, l_n, drift_track, kick_mult)
-  end
+
+  -- in principle it should call only one time kick_mult because l=0
+  -- k0=0: kick_mult, k0~=0: kick_mult_malte...
+  integrate[method](elem, m, l, drift_track, kick_mult)
   return l
 end
 
@@ -463,16 +517,13 @@ M.__help['Track straight'] = [[
            PTC, Function INTER_TKTF  in file Sh_def_kind.f90)
 ]]
 
-
-
-
 local function strait_track (elem, m)
 
 -- DKD: model 1, kick_track, drift_track
--- MKM: model 2, l_n = l/nstp; 
+-- MKM: model 2, l_n = l/nstp;
     --  DK2=l/NST
     --   DK=DK2/2
-    -- l_n = l/nstp 
+    -- l_n = l/nstp
     -- pushtkt_track(elem, m, l)
     -- kickpath_track (elem, m, l_n/2)
     -- kicktkt_track(elem, m, l_n)
@@ -480,32 +531,22 @@ local function strait_track (elem, m)
     -- pushtkt_track(elem, m, l)
 
   io.write('STRAIT_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
-  local l, angle in elem
-  local larch = l
-
-  if nst == 0 or nil then 
-  	nst = 1 
-  end
+  local l, angle, k0 in elem
 
   if abs(angle) >= minang then
     error("invalid strait element angle (too curved): " .. elem.name)
   end
 
-  if (angle == 0 and elem.k0 ~= 0) then
-  	local factor = 2 * sin(angle/2)/ angle
-  	      larch  = l * factor 
+  local l_field = l
+  if k0 ~= 0 then
+  	l_field = l * sinc(k0*l/2)
   end
 
-  local l_n = l/nst     -- straight lenght divided by nsteps
-  local l_d = larch/nst -- arch lenght divided by nsteps
+-- k0 >> k1 >> k2 ... -> RBEND DKD
+-- k1 >> k0 >> k2 ... -> QUAD  MKM
+-- k2 >> k0 >> k1 ... -> SEXT  DKD
 
-
-
-
---  local l_d = larch/nst
-  for i=1,nst do
-    integrate[method](elem, m, l_n, drift_track, kick_track)
-  end
+  integrate[method](elem, m, l_field, drift_track, kick_track)
   return l
 end
 
@@ -517,25 +558,14 @@ M.__help['Track curved'] = [[
 local function curved_track (elem, m) -- e.g. sbend
   io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,', nstep=', nst, ')\n')
   local l in elem
--- factor = 2*sin(theta/2)/theta
--- larch = l*factor 
--- k0 = theta/larch
 
   if l < minlen then
     error("invalid curved element length (too short): " .. elem.name)
   elseif abs(angle) < minang then
-  	if elem.k0 ~= 0 then
-      	strait_track (elem, m) return l
-
-    else
-	    error("invalid curved element angle (too strait): " .. elem.name)
-    end
+    error("invalid curved element angle (too strait): " .. elem.name)
   end
 
-  local l_n = l/nst  -- l is arch length is case angle is non-zero
-  for i=1,nst do
-    integrate[method](elem, m, l_n, sdrift_track, skick_track)
-  end
+  integrate[method](elem, m, l, sdrift_track, skick_track)
   return l
 end
 
@@ -627,6 +657,8 @@ return {
 
   __help = M.__help,
 }
+
+--[=[
 --[[
 M.__help['Track matrix-kick'] = [[
   [2] p.354, ch. 12.1.4 Matrix-Kick Split
@@ -679,4 +711,4 @@ D = l
        X(6)=XN(6)
 end
 ]]
-
+]=]
