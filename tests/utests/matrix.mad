@@ -29,13 +29,15 @@ local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
       is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
 
 local complex, range, nrange, nlogrange,infi, tiny, eps, huge, inf, nan, pi, Pi,
-      sqrt, abs, log, exp, min, randomseed, floor,
+      sqrt, abs, log, exp, min, randomseed, floor, round,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
       totable, is_complex, is_cdata, is_table, is_nil, is_string in MAD
 
 -- locals ---------------------------------------------------------------------o
 
-local dat = require 'matrix_rotdat'
+local dat    = require 'matrix_rotdat'
+local fftdat = require 'matrix_fftdat'
+
 local mth = \f,s,... s[f](s,...)
 local ref = \i,j,nc ( (i-1)*nc+j )
 
@@ -3038,29 +3040,15 @@ end
 function TestMatrixFFT:testFft()
   --vector sizes needed: 1,2,3,4,5,7,11,13,17,19,25
   --matrix sizes needed: (of 2, 5, 7 combinations)
-  --for _,v in ipairs(dat.fft) do
-  --  print(v)
-  --end
-
-  --for i=1,#dat.fft do
-  --  print()
-  --end
-
-  local v   = vector(25):fill(0..24):fill(\x cos(2*pi/25*x))
-  local res = v:fft()
-  for i=1,res:size() do
-    local x = res:geti(i)
-    if i==2 or i==25 then
-      assertAlmostEquals( x.re - 12.5, 0,   eps)
-      assertAlmostEquals( x.im - 0   , 0, 8*eps)
-    else
-      assertAlmostEquals( x.re - 0   , 0, 8*eps)
-      assertAlmostEquals( x.im - 0   , 0, 8*eps)
+  for i,v in ipairs(fftdat.fft) do
+    local s = fftdat.s[i]
+    local res = vector(s):fill(1..s):map(\x cos(2*pi*x/s))
+    res:fft()
+    local ref = vector(v)
+    for j=1,res:size() do
+      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, 4*eps )
     end
   end
-  local v   = matrix(5):fill(0..24):fill(\x cos(2*pi/25*x))
-  local res = v:fft()
-
 end
 
 function TestMatrixFFT:testIfft() end
@@ -3296,51 +3284,87 @@ function TestMatrixErr:testRotv()
 end
 
 function TestMatrixRot:testRotv()
-  local m = matrix(3)
-  for i,a in ipairs(dat.rad) do
-    local res = m:rotv(vector{0,0,1},a)
-    local ref = dat.rotz[i]
-    for i=1,res:size() do
-      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
-    end
-    res = m:rotv(vector{0,1,0},a)
-    ref = dat.roty[i]
-    for i=1,res:size() do
-      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
-    end
-    res = m:rotv(vector{1,0,0},a)
-    ref = dat.rotx[i]
-    for i=1,res:size() do
-      assertAlmostEquals( res:geti(i) - ref:geti(i), 0, eps )
-    end
-  end
+  local v = vector{0,0,1}:unit()
+  for _,a in ipairs(dat.rad) do
+    for _,a1 in ipairs(dat.rad) do
+      for _,a2 in ipairs(dat.rad) do
+        local m1  = matrix(3):rotz( a1 )
+        local m2  = matrix(3):roty( a2 )
+        local m3  = matrix(3):rotz( a  )
+        local v1  = m1 * m2 * v
 
-  local function unitVectors(n1, n2, r)
-    local v = {}
-    if is_nil(r) then r=1 end
-    for i = 1, n1 do
-      local a = pi*(i-1)/n1
-      v[i]={}
-      for j = 1, n2 do
-        local b = pi*(j-1)/n2
-        local x = r * cos(a) * sin(b)
-        local y = r * sin(a) * sin(b)
-        local z = r * cos(b)
-        v[i][j] = vector{x,y,z}
+        local res = matrix(3):rotv(v1,a)
+        local ref = m1 * m2 * m3 * ( m1 * m2 ):t()
+        for j=1,res:size() do
+          assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
+        end
       end
     end
-    return v
-  end
-
-  local n, m = 2, 2
-  for i,t in ipairs( unitVectors( m, n ) ) do
-  for j,v in ipairs( t ) do
-
-  end
   end
 end
 
-function TestMatrixRot:testTorotv() end
+function TestMatrixErr:testTorotv()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+  }
+  assertErrorMsgContains( msg[1], mth, 'torotv', matrix(3), 1  )
+end
+
+function TestMatrixRot:testTorotv()
+  local v = vector{0,0,1}:unit()
+  for _,a in ipairs(dat.rad) do
+    for _,a1 in ipairs(dat.rad) do
+      for _,a2 in ipairs(dat.rad) do
+        local m1  = matrix(3):rotz( a1 )
+        local m2  = matrix(3):roty( a2 )
+        local v1  = m1 * m2 * v
+        local res, ares = ( matrix(3):rotv(v1,a) ):torotv()
+        assertAlmostEquals( ares - a, 0, eps )
+
+        for j=1,#res do
+          --print( a/pi, a1/pi, a2/pi,  res[j], v1:geti(j) )
+          --assertAlmostEquals( res[j] - v1:geti(j), 0, eps )
+        end
+      end
+    end
+  end
+end
+
+function TestMatrixErr:testRotpv()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (iterable expected)",
+  }
+  assertErrorMsgContains( msg[1], mth, 'rotpv', matrix(3), 1      , {1,0,0}, 1 )
+  assertErrorMsgContains( msg[2], mth, 'rotpv', matrix(3), {1,1,1}, 1      , 1 )
+end
+
+function TestMatrixRot:testRotpv()
+  local v = vector{0,0,1}:unit()
+  for _,a in ipairs(dat.rad) do
+    for _,a1 in ipairs(dat.rad) do
+      for _,a2 in ipairs(dat.rad) do
+        local p = vector{0,0,0}
+
+        local m1  = matrix(3):rotz( a1 )
+        local m2  = matrix(3):roty( a2 )
+        local m3  = matrix(3):rotz( a  )
+        local v1  = m1 * m2 * v
+        local ref = m1 * m2 * m3 * ( m1 * m2 ):t()
+        local res = matrix(3):rotpv(p, v1, a)
+        --print(ref:round(),"\n")
+        --print(res:round(),"\n---")
+
+        local t_= vector{1,1,1}
+        ref = matrix(3):rotv(v1,a) * p + t_
+        res = matrix(3):rotpv(p, v1, a, t_ )
+        --print(ref:round(),"\n")
+        --print(res:round(),"\n---")
+
+      end
+    end
+  end
+end
 
 function TestMatrixErr:testRotq()
 local msg = {
@@ -3351,9 +3375,46 @@ local msg = {
   assertErrorMsgContains( msg[2], mth, 'rotq', matrix(2,3), {1,0,0,0} )
 end
 
-function TestMatrixRot:testRotq() end
+function TestMatrixRot:testRotq(
+  )
+  local v = vector{0,0,1}:unit()
+  for _,a in ipairs(dat.rad) do
+    for _,a1 in ipairs(dat.rad) do
+      for _,a2 in ipairs(dat.rad) do
+        local m1  = matrix(3):rotz( a1 )
+        local m2  = matrix(3):roty( a2 )
+        local m3  = matrix(3):rotz( a  )
+        local v1  = m1 * m2 * v
+        local ref = matrix(3):rotv(v1,a)
 
-function TestMatrixRot:testTorotq() end
+        local q   = {cos(a/2), v1[1]*sin(a/2), v1[2]*sin(a/2), v1[3]*sin(a/2) }
+        local res = matrix(3):rotq(q)
+        for j=1,res:size() do
+          assertAlmostEquals( res:geti(j) - ref:geti(j), 0,2* eps )
+        end
+      end
+    end
+  end
+end
+
+function TestMatrixRot:testTorotq() -- TODO
+  local v = vector{0,0,1}:unit()
+  for _,a in ipairs(dat.rad) do
+    for _,a1 in ipairs(dat.rad) do
+      for _,a2 in ipairs(dat.rad) do
+        local m1  = matrix(3):rotz( a1 )
+        local m2  = matrix(3):roty( a2 )
+        local v1  = m1 * m2 * v
+
+        local q   = {cos(a/2), v1[1]*sin(a/2), v1[2]*sin(a/2), v1[3]*sin(a/2) }
+        local res = (matrix(3):rotq(q)):torotq()
+        --print(q  )
+        --print(res,"\n --")
+        assertAlmostEquals( res[1] - q[1], 0, eps)
+      end
+    end
+  end
+end
 
 -- concatenation, conversion --------------------------------------------------o
 
