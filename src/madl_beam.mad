@@ -90,12 +90,12 @@ attributes that should not be in beam:
 
 local abs, sqrt in math
 local Object, tostring in MAD
-local is_nil, is_string, is_number, is_positive, is_integer in MAD
+local is_nil, is_string, is_table, is_number, is_positive, is_integer in MAD
 local qelect, eradius, emass, pmass, mumass, clight in MAD.constant
 
 local GeV_c = 1e9/clight
 
-local particle = {
+local particledb = {
   'electron', 'positron', 'proton', 'antiproton', 'muon', 'antimuon',
   electron   = { mass=emass , charge=-1, spin=1/2 },
   positron   = { mass=emass , charge= 1, spin=1/2 },
@@ -116,21 +116,12 @@ for _,v in ipairs(show_order) do show_order[v]=v end -- build keys
 
 -- implementation -------------------------------------------------------------o
 
-local function new_particle (name, mass, charge, spin)
-  assert(is_string(name)   , "invalid argument #1 (string expected)")
-  assert(is_positive(mass) , "invalid argument #2 (positive value expected)")
-  assert(is_integer(charge), "invalid argument #3 (integer value expected)")
-  assert(is_nil(particle[name]), "particle already defined")
-  particle[#particle+1] = name
-  particle[name] = { mass=mass, charge=charge, spin=spin or 1/2 }
-end
-
 local beam = Object 'beam' {
   -- particle
   particle  = 'electron',                              --                   [RW]
-  mass      = \s -> particle[s.particle].mass,         -- GeV (m.c^2)       [RO]
-  charge    = \s -> particle[s.particle].charge,       -- ±n qelect         [RO]
-  spin      = \s -> particle[s.particle].spin,         -- ±n/2              [RO]
+  mass      = particledb.electron.mass,                -- GeV (m.c^2)       [RO]
+  charge    = particledb.electron.charge,              -- ±n qelect         [RO]
+  spin      = particledb.electron.spin,                -- ±n/2              [RO]
   radius    = \s -> emass*eradius * s.charge^2/s.mass, -- m                 [RO]
   -- energy
   energy    = 1,                                       -- GeV               [RW]
@@ -157,20 +148,23 @@ local beam = Object 'beam' {
   radiate   = false,                                   --                   [RW]
 }
 
-local nwidx = rawget(getmetatable(beam),'__newindex')  -- forwarding
+local nwidx = rawget(getmetatable(beam),'__newindex')  -- forward to parent
+local index = \s,k,v => nwidx(s,k,v) end               -- default forward
 
-local index  = \s,k,v => nwidx(s,k,v) end              -- default is to forward
 local update = setmetatable({
   -- particle
-particle = \s,k,v => assert(is_string(v) and particle[v], "invalid particle")
-                     nwidx(s,k,v) end,
-  mass   = \_,k,_ -> error(k.." is readonly, defined a new particle first"),
-  charge = \_,k,_ -> error(k.." is readonly, defined a new particle first"),
-  spin   = \_,k,_ -> error(k.." is readonly, defined a new particle first"),
+particle = \s,_,v => assert(is_string(v) and particledb[v], "invalid particle")
+                     nwidx(s, 'particle', v)
+                     nwidx(s, 'mass'    , particledb[v].mass  )
+                     nwidx(s, 'charge'  , particledb[v].charge)
+                     nwidx(s, 'spin'    , particledb[v].spin  ) end,
+  mass   = \_,k,_ -> error(k.." is readonly, defined a new particle"),
+  charge = \_,k,_ -> error(k.." is readonly, defined a new particle"),
+  spin   = \_,k,_ -> error(k.." is readonly, defined a new particle"),
   radius = \_,k,_ -> error(k.." is readonly"),
   -- energy
-  energy = \s,k,v => assert(v > s.mass, "invalid energy <= mass")
-                     nwidx(s,k,v) end,
+  energy = \s,_,v => assert(v > s.mass, "invalid energy <= mass")
+                     nwidx(s, 'energy', v) end,
   pc     = \s,_,v => nwidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
   beta   = \_,k,_ -> error(k.." is readonly, update energy or mass"),
   gamma  = \_,k,_ -> error(k.." is readonly, update energy or mass"),
@@ -195,6 +189,16 @@ local function show (self, file)
   return self
 end
 
+local function showdb (self, file)
+  file = file or io.stdout
+  for _,k in ipairs(particledb) do
+    local mass, charge, spin in particledb[k]
+    file:write(string.format("%-12s: { mass=%-17s, charge=% -2d, spin=% -.1f }\n",
+               k, tostring(mass), tostring(charge), tostring(spin)))
+  end
+  return self
+end
+
 local function newindex (self, key, val)
   update[key](self,key,val)
 end
@@ -206,14 +210,37 @@ local function init (self)
   return self
 end
 
-beam :set_metamethod({ __init=init, __newindex=newindex }, true)
-     :set_function  ({ show=show })
-     :set_readonly  ()
+local function set (self, tbl)
+  for k,v in pairs(tbl) do
+    newindex(self,k,v)
+  end
+  return self
+end
+
+local function new (self, tbl)
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local particle, mass, charge, spin in tbl
+  assert(is_string(particle), "invalid particle (string expected)")
+  assert(is_positive(mass)  , "invalid mass (positive value expected)")
+  assert(is_integer(charge) , "invalid charge (integer value expected)")
+  assert(is_nil(particledb[particle]), "particle already defined")
+  particledb[#particledb+1] = particle
+  particledb[particle] = { mass=mass, charge=charge, spin=spin or 1/2 }
+  tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
+  return set(self, tbl)
+end
+
+beam :set_function {
+  show=show, showdb=showdb,
+  set=set, set_variable=set, new=new, new_particle=new,
+} :set_metamethod({ __init=init, __newindex=newindex }, true)
+  :set_readonly  ()
+
+MAD.utility.defhelp(M) -- todo: per function help -> 'beam'
 
 -- end ------------------------------------------------------------------------o
 return {
-  new_particle = new_particle,
-  beam         = beam,
+  beam = beam,
 
   __help = M.__help,
 }
