@@ -181,31 +181,35 @@ local function newindex (self, key, val)
   update[key](self,key,val)
 end
 
-local function init (self)
-  for k,v in pairs(self) do
-    newindex(self,k,v)
-  end
-  return self
-end
-
-local function set (self, tbl)
-  for k,v in pairs(tbl) do
-    newindex(self,k,v)
-  end
-  return self
-end
-
-local function new (self, tbl)
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
+local function newparticle (tbl)
+  if is_nil(tbl.mass) then return false end
   local particle, mass, charge, spin in tbl
   assert(is_string(particle), "invalid particle (string expected)")
   assert(is_positive(mass)  , "invalid mass (positive value expected)")
   assert(is_integer(charge) , "invalid charge (integer value expected)")
-  assert(is_nil(particledb[particle]), "particle already defined")
+  assert(is_nil(particledb[particle]), "particle mass and charge already defined")
   particledb[#particledb+1] = particle
   particledb[particle] = { mass=mass, charge=charge, spin=spin or 1/2 }
-  tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
-  return set(self, tbl)
+  return true
+end
+
+local function init (self)
+  if newparticle(self) then
+    newidx(self, 'mass'  , nil)
+    newidx(self, 'charge', nil)
+    newidx(self, 'spin'  , nil)
+  end
+  for k,v in pairs(self) do newindex(self,k,v) end
+  return self
+end
+
+local function set (self, tbl)
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  if newparticle(tbl) then
+    tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
+  end
+  for k,v in pairs(tbl) do newindex(self,k,v) end
+  return self
 end
 
 local function show (self, file)
@@ -233,7 +237,6 @@ end
 
 beam :set_function {
   set=set, set_variable=set,
-  new=new, new_particle=new,
   show=show, showdb=showdb,
 }
 
@@ -244,7 +247,7 @@ MAD.utility.defhelp(M) -- todo: per function help -> 'beam'
 
 -- end ------------------------------------------------------------------------o
 return {
-  beam = beam {}, -- protect reference beam
+  beam = beam,
 
   __help = M.__help,
 }
