@@ -88,13 +88,32 @@ attributes that should not be in beam:
 -- locals ---------------------------------------------------------------------o
 
 local abs, sqrt in math
-local Object, tostring in MAD
-local is_nil, is_string, is_table, is_number, is_positive, is_integer in MAD
+local is_nil, is_string, is_table, is_boolean, is_number, is_positive,
+      is_integer, tostring, Object in MAD
 local qelect, eradius, emass, pmass, mumass, clight in MAD.constant
 
 local GeV_c = 1e9/clight
 local krad_GeV = 1e-16*qelect*clight^2 -- 1e-9/(4pi.epsilon0) qelect
 
+local setkeys = \t => for _,v in ipairs(t) do t[v]=v end return t end
+
+local update_order = setkeys {
+  'particle', 'energy', 'pc',
+}
+
+local update_skip = setkeys {
+  'particle', 'energy', 'pc', 'mass', 'charge', 'spin'
+}
+
+local show_order = setkeys {
+  'name', 'particle', 'mass', 'charge', 'spin', 'radius',
+  'energy', 'pc', 'beta', 'gamma', 'brho',
+  'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
+  'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
+  'bunched', 'radiate',
+}
+
+-- particles database ---------------------------------------------------------o
 
 local particledb = {
   'electron', 'positron', 'proton', 'antiproton', 'muon', 'antimuon',
@@ -106,14 +125,24 @@ local particledb = {
   antimuon   = { mass=mumass, charge= 1, spin=1/2 },
 }
 
-local show_order = {
-  'name', 'particle', 'mass', 'charge', 'spin', 'radius',
-  'energy', 'pc', 'beta', 'gamma', 'brho',
-  'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
-  'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
-  'bunched', 'radiate',
-}
-for _,v in ipairs(show_order) do show_order[v]=v end -- build keys
+local function newparticle (particle, mass, charge, spin)
+  assert(is_nil(particledb[particle]), "particle already in database")
+  assert(is_string(particle), "invalid particle (string expected)")
+  assert(is_positive(mass)  , "invalid mass (positive number expected)")
+  assert(is_integer(charge) , "invalid charge (integer expected)")
+  particledb[#particledb+1] = particle
+  particledb[particle] = { mass=mass, charge=charge, spin=spin or 1/2 }
+end
+
+local function showdb (self, file)
+  file = file or io.stdout
+  for _,k in ipairs(particledb) do
+    local mass, charge, spin in particledb[k]
+    file:write(string.format("%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1f\n",
+               k, tostring(mass), tostring(charge), tostring(spin)))
+  end
+  return self
+end
 
 -- implementation -------------------------------------------------------------o
 
@@ -154,7 +183,7 @@ local index  = \s,k,v => newidx(s,k,v) end             -- default forwards
 
 local update = setmetatable({
   -- particle
-particle = \s,_,v => assert(is_string(v) and particledb[v], "invalid particle")
+particle = \s,_,v => assert(particledb[v], "invalid particle")
                      newidx(s, 'particle', v)
                      newidx(s, 'mass'    , particledb[v].mass  )
                      newidx(s, 'charge'  , particledb[v].charge)
@@ -164,51 +193,64 @@ particle = \s,_,v => assert(is_string(v) and particledb[v], "invalid particle")
   spin   = \_,k,_ -> error(k.." is readonly, define a new particle"),
   radius = \_,k,_ -> error(k.." is readonly"),
   -- energy
-  energy = \s,_,v => assert(v > s.mass, "invalid energy <= mass")
-                     newidx(s, 'energy', v) end,
-  pc     = \s,_,v => newidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
+  energy = \s,_,v => assert(v > s.mass, "invalid energy <= mass") newidx(s, 'energy', v                   ) end,
+  pc     = \s,_,v => assert(is_positive(v), "invalid pc <= 0"   ) newidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
   beta   = \_,k,_ -> error(k.." is readonly, update energy or mass"),
   gamma  = \_,k,_ -> error(k.." is readonly, update energy or mass"),
   brho   = \_,k,_ -> error(k.." is readonly, update energy, mass or charge"),
   -- emittance
-  exn    = \s,_,v => newidx(s, 'ex', v/sqrt(s.gamma^2 - 1)) end,
-  eyn    = \s,_,v => newidx(s, 'ey', v/sqrt(s.gamma^2 - 1)) end,
-  etn    = \s,_,v => newidx(s, 'et', v/sqrt(s.gamma^2 - 1)) end,
-},-- default update
+  ex     = \s,_,v => assert(is_positive(v), "invalid ex <= 0" ) newidx(s, 'ex', v) end,
+  ey     = \s,_,v => assert(is_positive(v), "invalid ey <= 0" ) newidx(s, 'ey', v) end,
+  et     = \s,_,v => assert(is_positive(v), "invalid et <= 0" ) newidx(s, 'et', v) end,
+  exn    = \s,_,v => assert(is_positive(v), "invalid exn <= 0") newidx(s, 'ex', v/sqrt(s.gamma^2 - 1)) end,
+  eyn    = \s,_,v => assert(is_positive(v), "invalid eyn <= 0") newidx(s, 'ey', v/sqrt(s.gamma^2 - 1)) end,
+  etn    = \s,_,v => assert(is_positive(v), "invalid etn <= 0") newidx(s, 'et', v/sqrt(s.gamma^2 - 1)) end,
+  -- bunch
+  nbunch = \s,_,v => assert(is_integer(v) and v > 0, "invalid nbunch <= 0"   ) newidx(s, 'nbunch'   , v) end,
+nparticle= \s,_,v => assert(is_integer(v) and v > 0, "invalid nparticle <= 0") newidx(s, 'nparticle', v) end,
+  sigx   = \s,_,v => assert(is_positive(v), "invalid sigx <= 0") newidx(s, 'sigx', v) end,
+  sigy   = \s,_,v => assert(is_positive(v), "invalid sigy <= 0") newidx(s, 'sigy', v) end,
+  sigt   = \s,_,v => assert(is_positive(v), "invalid sigt <= 0") newidx(s, 'sigt', v) end,
+  sige   = \s,_,v => assert(is_positive(v), "invalid sige <= 0") newidx(s, 'sige', v) end,
+  -- flags
+  bunched= \s,_,v => assert(is_boolean(v), "invalid bunched (boolean expected)") newidx(s, 'bunched', v) end,
+  radiate= \s,_,v => assert(is_boolean(v), "invalid radiate (boolean expected)") newidx(s, 'radiate', v) end,
+},-- default update (no check)
 { __index := index })
 
 local function newindex (self, key, val)
   update[key](self,key,val)
 end
 
-local function newparticle (tbl)
-  if is_nil(tbl.mass) then return false end
-  local particle, mass, charge, spin in tbl
-  assert(is_string(particle), "invalid particle (string expected)")
-  assert(is_positive(mass)  , "invalid mass (positive value expected)")
-  assert(is_integer(charge) , "invalid charge (integer value expected)")
-  assert(is_nil(particledb[particle]), "particle mass and charge already defined")
-  particledb[#particledb+1] = particle
-  particledb[particle] = { mass=mass, charge=charge, spin=spin or 1/2 }
-  return true
-end
-
 local function init (self)
-  if newparticle(self) then
+  if self:get_raw 'mass' then -- new particle definition
+    newparticle(self:get_raw 'particle', self:get_raw 'mass',
+                self:get_raw 'charge'  , self:get_raw 'spin')
     newidx(self, 'mass'  , nil)
     newidx(self, 'charge', nil)
     newidx(self, 'spin'  , nil)
   end
-  for k,v in pairs(self) do newindex(self,k,v) end
+  for i,k in ipairs(update_order) do
+    if self:get_raw(k) then newindex(self, k, self:get_raw(k)) end
+  end
+  for k,v in pairs(self) do
+    if is_nil(update_skip[k]) then newindex(self, k, v) end
+  end
   return self
 end
 
 local function set (self, tbl)
   assert(is_table(tbl), "invalid argument #2 (table expected)")
-  if newparticle(tbl) then
+  if tbl.mass then -- new particle definition
+    newparticle(tbl.particle, tbl.mass, tbl.charge, tbl.spin)
     tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
   end
-  for k,v in pairs(tbl) do newindex(self,k,v) end
+  for i,k in ipairs(update_order) do
+    if tbl[k] then newindex(self, k, tbl[k]) end
+  end
+  for k,v in pairs(tbl) do
+    if is_nil(update_skip[k]) then newindex(self, k, v) end
+  end
   return self
 end
 
@@ -221,16 +263,6 @@ local function show (self, file)
     if is_nil(show_order[k]) then
       file:write(string.format("%-25s  %-25s\n", k, tostring(self[k])))
     end
-  end
-  return self
-end
-
-local function showdb (self, file)
-  file = file or io.stdout
-  for _,k in ipairs(particledb) do
-    local mass, charge, spin in particledb[k]
-    file:write(string.format("%-12s: { mass=%-17s, charge=% -2d, spin=% -.1f }\n",
-               k, tostring(mass), tostring(charge), tostring(spin)))
   end
   return self
 end
