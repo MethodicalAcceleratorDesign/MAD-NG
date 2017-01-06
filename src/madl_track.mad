@@ -51,11 +51,96 @@ M.__help['References Track'] = [=[
     Phys.Let A, Volume 150, number 5,6,7
 ]=]
 
+--[[
+PTC: Which element uses what?
+TYPE     : ELEMENT in a_def_element_fibre_layout.inc
+DISPATCH : TRACKR  in Si_def_element.f90
+INTERFACE: TRACK   in Sh_def_kind.f90  (see below)
+
+-- k0 >> k1 >> k2 ... -> RBEND DKD
+-- k1 >> k0 >> k2 ... -> QUAD  MKM
+-- k2 >> k0 >> k1 ... -> SEXT  DKD
+
+-- integrators
+
+-- QUAD DKD and RBEND DKD & MKM :: EL:STREX, K16, KIND16,KIND20
+INTE_STREX -- interface integrator exact strait K0~=0
+-> INTEEXR                   -- dispatch
+   -> TRACK_SLICE            -- interface
+      -> INTER_STREX         -- integrator
+        DKD:                 -- model
+         -> DRIFT            -- interface
+            -> DRIFTR        -- drift exact strait general
+         -> KICKEX           -- interface
+            -> KICKEXR       -- kick exact strait (not general, k0==0?, rbend?)
+        MKM:                 -- model
+         -> SPAR             -- interface
+            -> SPARR         -- drift thick ? TO BE CLARIFIED
+         -> KICKEX           -- interface
+            -> KICKEXR       -- kick exact strait (not general, k0==0?, rbend?)
+
+-- QUAD MKM :: EL:TKTF, T7, KIND7
+INTTKT7 -- interface integrator exact strait K0==0
+-> INTTKT7R                  -- dispatch
+   -> TRACK_SLICE            -- interface
+      -> INTER_TKTF          -- integrator
+         -> KICKTKT7         -- interface
+            -> KICKTKT7R     -- kick exact strait (not general, k0 ~= 0 and k1 ~= 0)
+         -> KICKPATH         -- interface
+            -> KICKPATHR     -- drift exact strait (-> KICKTKT7R)
+         -> PUSHTKT7         -- interface
+            -> PUSHTKT7R     -- matrix combined (thick?)
+
+-- SBEND DKD & MKM :: EL: TEAPOT, TP10, KIND10
+SSYMPINTR -- interface integrator exact curved k0~=0, angle ~=0 and
+-> SINTE                     -- interface
+   -> SINTER                 -- dispatch
+   -> TRACK_SLICE            -- interface
+      -> INTER_TEAPOT        -- integrator
+         -> SSECH1           -- interface
+            -> SSECH1R       -- dispatch
+            DKD:             -- model
+               -> SPROT      -- interface
+                  -> SPROTR  -- drift (k0~=0 or drift)
+            MKM:             -- model
+               -> SSEC       -- interface
+                  -> SSECR   -- drift (k0~=0)
+         -> SKICK            -- interface
+            -> SKICKR        -- kick sect
+               -> GETELECTRIC -- interface
+                  -> GETELECTRICR -- general multipole? (B & E)
+
+INTERFACE TRACK
+  PROCEDURE:      TYPE:              POINTER:
+  DRIFT_INTER     EL:DRIFT1          EL%D0      ! DRIFT
+  SYMPINTR        EL:DKD2            EL%K2      ! INTEGRATOR
+  KICKTR          EL:KICKT3          EL%K3      ! THIN KICK
+  CAVER           EL:CAV4            EL%C4      ! CAVITY THICK/THIN
+  SYMPINTSOLR     EL:SOL5            EL%S5      ! SOLENOID
+  SYMPINTKTKR     EL:KTK             EL%T6      ! SLOW THICK ELEMENT (SIXTRACK)
+  SYMPINTTKT7R    EL:TKTF            EL%T7      ! FAST THICK ELEMENT
+  PUSH_NSMI_R     EL:NSMI            EL%S8      ! THE THIN NORMAL SMI
+  PUSH_SSMI_R     EL:SSMI            EL%S9      ! THE THIN SKEW SMI
+  SSYMPINTR       EL:TEAPOT          EL%TP10    ! SECTOR (TEAPOT)
+  MONTR           EL:MON             EL%MON14   ! MONITOR AND INSTRUMENT
+  SYMPSEPR        EL:ESEPTUM         EL%SEP15   ! ELECTROSTATIC SEPTUM
+  SYMPINTEXR      EL:STREX           EL%K16     ! EXACT STRAIGHT INTEGRATOR
+  ?? not used     EL:ENGE            EL%ENGE17  ! SOLENOID SIXTRACK STYLE
+  RCOLLIMATORR    EL:RCOL            EL%RCOL18  ! COLLIMATORS
+  ECOLLIMATORR    EL:ECOL            EL%ECOL19  ! COLLIMATORS
+  CAVER_TRAV      EL:CAV_TRAV        EL%CAV21   ! CAVITY TRAVELLING WAVE
+  INTR_HE_TOT     EL:HELICAL_DIPOLE  EL%HE22    ! HELICAL_DIPOLE
+                  EL:SAGAN           EL%WI      ! WIGGLER (USER DEFINED ELEMENT in Sg_sagan_wiggler)
+  INTPANCAKER     EL:PANCAKE         EL%PA      ! PANCAKE (GENERAL B)
+  SUPER_DRIFT_R   EL:SUPERDRIFT1     EL%SDR     ! SUPERDRIFT (GENERAL DRIFT)
+END INTERFACE
+]]
+
 -- locals ---------------------------------------------------------------------o
 
-local Command, element, sequence, table                                in MAD
-local is_nil, is_number, vector, matrix, is_matrix                     in MAD
-local abs, sin, cos, sqrt, max, tan, atan, arcsin, arccos, sinc        in MAD
+local Command, element, sequence, table                            in MAD
+local is_nil, is_number, vector, matrix, is_matrix                 in MAD
+local abs, sqrt, max, sin, cos, tan, asin, acos, atan, sinc        in MAD
 
 local minlen, minang = 1e-14, 1e-14
 
@@ -120,6 +205,7 @@ M.__help['Track drift'] = [[
   [3] PTC, Function DRIFTR in file Sh_def_kind.f90, same formula as [1]
 ]]
 
+-- Drift general exact strait
 local function drift_track (elem, m, l) -- TODO: check numerical stability
   if l >= minlen then
     local x, px, y, py, t, pt in m
@@ -136,6 +222,7 @@ M.__help['Track mutlipole'] = [[
   [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
 ]]
 
+-- Kick general exact strait
 local function kick_mult(elem, m, l)
   local knl, ksl = elem.knl or {}, elem.ksl or {}
   local nmul = max(#knl, #ksl)
@@ -537,15 +624,7 @@ local function strait_track (elem, m)
     error("invalid strait element angle (too curved): " .. elem.name)
   end
 
-  local l_field = l
-  if k0 ~= 0 then
-  	l_field = l * sinc(k0*l/2)
-  end
-
--- k0 >> k1 >> k2 ... -> RBEND DKD
--- k1 >> k0 >> k2 ... -> QUAD  MKM
--- k2 >> k0 >> k1 ... -> SEXT  DKD
-
+	l_field = l*sinc(k0*l/2)
   integrate[method](elem, m, l_field, drift_track, kick_track)
   return l
 end
