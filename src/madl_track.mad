@@ -52,63 +52,24 @@ M.__help['References Track'] = [=[
 ]=]
 
 --[[
+MAD-NG: DKD always where D and K are functions!
+  Angle ~= 0 : D=DRIFT(TEAPOT)=SPROT i.e. SBEND
+  -> K0 ~= 0 : K=SKICK= ?multipole (+Malte)
+  -> K0 == 0 : K=SKICK??
+
+  Angle == 0 : i.e. RBEND and QUAD
+  -> K0 ~= 0, K1 == 0 : D=DRIFT(STREX), K=KICKEXR
+  -> K0 ~= 0, K1 ~= 0 : D=DRIFT(STREX), K=KICKEXR (or SPARR? or Andy's M)
+  -> K0 == 0, K1 == 0 : D=DRIFT(STREX), K=KICKEXR
+  -> K0 == 0, K1 ~= 0 : D=DRIFT(TKTF)=KICKPATHR (MatrixQuad)
+                        K=KICKTKT7R(TKTF) + PUSHTKT7R(TKTF)
+]]
+
+--[[
 PTC: Which element uses what?
 TYPE     : ELEMENT in a_def_element_fibre_layout.inc
 DISPATCH : TRACKR  in Si_def_element.f90
 INTERFACE: TRACK   in Sh_def_kind.f90  (see below)
-
--- k0 >> k1 >> k2 ... -> RBEND DKD
--- k1 >> k0 >> k2 ... -> QUAD  MKM
--- k2 >> k0 >> k1 ... -> SEXT  DKD
-
--- integrators
-
--- QUAD DKD and RBEND DKD & MKM :: EL:STREX, K16, KIND16,KIND20
-INTE_STREX -- interface integrator exact strait K0~=0
--> INTEEXR                   -- dispatch
-   -> TRACK_SLICE            -- interface
-      -> INTER_STREX         -- integrator
-        DKD:                 -- model
-         -> DRIFT            -- interface
-            -> DRIFTR        -- drift exact strait general
-         -> KICKEX           -- interface
-            -> KICKEXR       -- kick exact strait (not general, k0==0?, rbend?)
-        MKM:                 -- model
-         -> SPAR             -- interface
-            -> SPARR         -- drift thick ? TO BE CLARIFIED
-         -> KICKEX           -- interface
-            -> KICKEXR       -- kick exact strait (not general, k0==0?, rbend?)
-
--- QUAD MKM :: EL:TKTF, T7, KIND7
-INTTKT7 -- interface integrator exact strait K0==0
--> INTTKT7R                  -- dispatch
-   -> TRACK_SLICE            -- interface
-      -> INTER_TKTF          -- integrator
-         -> KICKTKT7         -- interface
-            -> KICKTKT7R     -- kick exact strait (not general, k0 ~= 0 and k1 ~= 0)
-         -> KICKPATH         -- interface
-            -> KICKPATHR     -- drift exact strait (-> KICKTKT7R)
-         -> PUSHTKT7         -- interface
-            -> PUSHTKT7R     -- matrix combined (thick?)
-
--- SBEND DKD & MKM :: EL: TEAPOT, TP10, KIND10
-SSYMPINTR -- interface integrator exact curved k0~=0, angle ~=0 and
--> SINTE                     -- interface
-   -> SINTER                 -- dispatch
-   -> TRACK_SLICE            -- interface
-      -> INTER_TEAPOT        -- integrator
-         -> SSECH1           -- interface
-            -> SSECH1R       -- dispatch
-            DKD:             -- model
-               -> SPROT      -- interface
-                  -> SPROTR  -- drift (k0~=0 or drift)
-            MKM:             -- model
-               -> SSEC       -- interface
-                  -> SSECR   -- drift (k0~=0)
-         -> SKICK            -- interface
-            -> SKICKR        -- kick sect
-               -> GETELECTRIC -- interface
-                  -> GETELECTRICR -- general multipole? (B & E)
 
 INTERFACE TRACK
   PROCEDURE:      TYPE:              POINTER:
@@ -119,13 +80,13 @@ INTERFACE TRACK
   SYMPINTSOLR     EL:SOL5            EL%S5      ! SOLENOID
   SYMPINTKTKR     EL:KTK             EL%T6      ! SLOW THICK ELEMENT (SIXTRACK)
   SYMPINTTKT7R    EL:TKTF            EL%T7      ! FAST THICK ELEMENT
-  PUSH_NSMI_R     EL:NSMI            EL%S8      ! THE THIN NORMAL SMI
-  PUSH_SSMI_R     EL:SSMI            EL%S9      ! THE THIN SKEW SMI
+  PUSH_NSMI_R     EL:NSMI            EL%S8      ! THE THIN NORMAL SMI (SIXTRACK)
+  PUSH_SSMI_R     EL:SSMI            EL%S9      ! THE THIN SKEW SMI (SIXTRACK)
   SSYMPINTR       EL:TEAPOT          EL%TP10    ! SECTOR (TEAPOT)
   MONTR           EL:MON             EL%MON14   ! MONITOR AND INSTRUMENT
   SYMPSEPR        EL:ESEPTUM         EL%SEP15   ! ELECTROSTATIC SEPTUM
   SYMPINTEXR      EL:STREX           EL%K16     ! EXACT STRAIGHT INTEGRATOR
-  ?? not used     EL:ENGE            EL%ENGE17  ! SOLENOID SIXTRACK STYLE
+  ?? not used     EL:ENGE            EL%ENGE17  ! SOLENOID (SIXTRACK)
   RCOLLIMATORR    EL:RCOL            EL%RCOL18  ! COLLIMATORS
   ECOLLIMATORR    EL:ECOL            EL%ECOL19  ! COLLIMATORS
   CAVER_TRAV      EL:CAV_TRAV        EL%CAV21   ! CAVITY TRAVELLING WAVE
@@ -134,6 +95,88 @@ INTERFACE TRACK
   INTPANCAKER     EL:PANCAKE         EL%PA      ! PANCAKE (GENERAL B)
   SUPER_DRIFT_R   EL:SUPERDRIFT1     EL%SDR     ! SUPERDRIFT (GENERAL DRIFT)
 END INTERFACE
+
+TEAPOT,TP10,KIND10: (SBEND DKD & MKM, THICK, ANGLE~=0)
+-------------------
+SSYMPINTR (integrator fringe-body(nst)-fringe)
+-> FRINGE_TEAPOTR
+   -> ROT_XZ
+   -> NEWFACER
+   -> FRINGE_DIPOLER
+   -> MULTIPOLE_FRINGE
+   -> FRINGE2QUAD
+   -> WEDGER
+-> SINTE (body-integrator nst)
+   -> INTER_TEAPOT (integrator 1-nst)
+      -> SSECH1R (model dispatch)
+         -> SPROTR (drift DKD)
+         -> SSECR  (drift MDM)
+      -> SKICK (magnetic)
+         -> GETELECTRICR (kick)
+
+      -> RK2_TEAPOTR (electric)
+         -> FEVAL_TEAPOTR
+            -> GETELECTRICR (kick)
+      -> RK4_TEAPOTR (electric)
+         -> FEVAL_TEAPOTR
+            -> GETELECTRICR (kick)
+      -> RK6_TEAPOTR (electric)
+         -> FEVAL_TEAPOTR
+            -> GETELECTRICR (kick)
+ZEROR_TEAPOT (INIT)
+
+STREX,K16,KIND16: (QUAD DKD and RBEND DKD & MKM, ANGLE=0)
+-----------------
+SYMPINTEXR (integrator fringe-body(nst)-fringe)
+-> FRINGE_STREXR
+   :MAD-LIKE
+   -> ROT_XZ
+   -> NEWFACER
+   -> FRINGE_DIPOLER
+   -> WEDGER (RBEND as SBEND)
+   :NOT MAD-LIKE
+   -> EDGE_TRUE_PARALLELR
+      -> ROT_XZ
+      -> NEWFACER
+      -> FRINGE_DIPOLER
+   -> MULTIPOLE_FRINGE
+   -> FRINGE2QUAD
+-> INTEEXR (body-integrator nst)
+   -> INTER_STREX (integrator 1-nst)
+      -> DRIFTR (drift thin)   DKD
+      -> SPARR  (drift-matrix) MKM
+      -> KICKEXR (kick)
+ZEROR_STREX (INIT)
+
+TKTF,T7,KIND7: (QUAD MKM, THICK, ANGLE==0, K0=0)
+--------------
+SYMPINTTKT7R (integrator fringe-body(nst)-fringe)
+-> FRINGE_STRAIGHTR
+   -> EDGER
+      -> ROT_XZ
+      -> NEWFACER
+      -> FRINGE_DIPOLER
+   -> MULTIPOLE_FRINGE
+   -> FRINGE2QUAD
+-> INTTKT7R (body-integrator nst)
+   -> INTER_TKTF (integrator 1-nst)
+      -> GETMAT7R  (matrix init if X(5) changes)
+      -> KICKPATHR (drift)
+      -> KICKTKT7R (kick)
+      -> PUSHTKT7R (matrix)
+ZEROR_TKT7 (INIT)
+
+NOTES:
+------
+B0 [angle] vs BN(1) [field]
+K%TIME: See K.4 eq 36 p.72 (and KICKR eq.)
+true : X(5) is delta_E, X(6) is -cT (time of flight)
+false: X(5) is delta_p, X(6) is -s  (path length)
+
+Special extension for Knobs (ask to Piotr)
+MAKEPOTKNOB_ELEC OR MAKEPOTKNOB
+TRACK_SLICE
+UNMAKEPOTKNOB_ELEC OR UNMAKEPOTKNOB
 ]]
 
 -- locals ---------------------------------------------------------------------o
@@ -369,26 +412,24 @@ M.__help['Track curved drift-kick'] = [[
 ]]
 
 local function sdrift_track (elem, m, l) -- check numerical statibility
-  local l, angle, k0 in elem
+  local l, angle in elem
 
-  -- bizarre: angle ~= 0 and k0 == 0 is not a drift...
   if is_nil(k0) or k0 == 0 then -- to check...
     drift_track(m, l) return
   end
 
   local x, px, y, py, t, pt in m
-  local a, r, pz, ptt
+  local rho, pz, ptt
   local xt, pxt, yt, tt = 0, 0, 0, 0
 
-  a   = l * k0  -- incorrect in MAD-NG, angle ~= l/k0
-  r   = 1 / k0  -- rho, curvature of what 1/angle or 1/(k0*l) ?
+  rho = l/angle
   pz  = sqrt(1 + 2 * betai*pt + pt^2 - px^2 - py^2)
-  ptt = 1 - px * tan(a) / pz
+  ptt = 1 - px * tan(angle) / pz
 
-  xt  = (x + r * (2 *  sin(a/2)^2 + px * sin(a)/pz)) / cos(a) / ptt
-  pxt = px * cos(a) + sin(a) * pz
-  yt  = y + py * (x + r) * tan(a) / pz / ptt
-  tt  = t + (x + r) * tan(a) * (betai + pt) / pz / ptt - l * betai
+  xt  = (x + rho * (2 *  sin(angle/2)^2 + px * sin(angle)/pz)) / cos(angle) / ptt
+  pxt = px * cos(angle) + sin(angle) * pz
+  yt  = y + py * (x + rho) * tan(angle) / pz / ptt
+  tt  = t + (x + rho) * tan(angle) * (betai + pt) / pz / ptt - l * betai
 
   m.x  = xt
   m.px = pxt
@@ -729,6 +770,8 @@ local track = Command 'track' {
   -- default options
   X0={0,0,0,0,0,0}, drift=true, range={1,-1}, exec=exec,
 } :set_readonly()
+
+MAD.utility.defhelp(M) -- todo: per function help -> 'track'
 
 -- end ------------------------------------------------------------------------o
 return {
