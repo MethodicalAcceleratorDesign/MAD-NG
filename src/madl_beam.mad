@@ -44,20 +44,21 @@ SEE ALSO
 
 M.__help['Electromagnetic radius'] = [=[
 Details of computation:
-  r = 1/(4.pi.epsilon0) q^2/(m0.c^2)            (definition from zero potential)
+  r = 1/(4pi.epsilon0) q^2/(m0.c^2)             (definition from zero potential)
   from: E_rest = m0[kg] c^2[m/s] = m0[eV] qelect[C] =>
                  m0[Kg] = m0[GeV].1e9.qelect[C] / c^2[m/s]
-  r = 1/(4.pi/(4.pi.1e-7.c^2)) (charge.qelect)^2 / ((mass.1e9.qelect/c^2).c^2)
+  r = 1/(4pi/(4pi.1e-7.c^2)) (charge.qelect)^2 / ((mass.1e9.qelect/c^2).c^2)
   r = 1e-7.c^2.charge^2.qelect / (mass.1e9)
-  r = 1e-16.qelect.c^2 charge^2/mass
+  r = 1e-16.qelect.c^2 charge^2/mass                       (used in computation)
+  r = 1e-9/(4pi.epsilon0) qelect charge^2/mass
 ]=]
 
 M.__help['Lorentz factor'] = [=[
 Details of computation:
-  gamma      = 1/sqrt(1-beta^2)  = E/m  >= 1
-  beta       = sqrt(1-1/gamma^2) = v/c  <= 1
-  beta gamma = sqrt(gamma^2-1)
   1          = gamma^2 (1-beta^2)
+  gamma      = 1/sqrt(1-beta^2)  = E/m  (>= 1)
+  beta       = sqrt(1-1/gamma^2) = v/c  (<= 1)
+  beta gamma = sqrt(gamma^2-1)
 ]=]
 
 --[[
@@ -89,25 +90,22 @@ Beam2: BEAM, SEQUENCE=LHCB2, ENERGY=533000, PARTICLE=ION,
 -- locals ---------------------------------------------------------------------o
 
 local abs, sqrt in math
-local Object, tostring in MAD
+local Object, is_object, tostring in MAD
 local is_nil, is_boolean, is_string, is_table, is_positive, is_integer in MAD
-local clight, qelect, emass, pmass, mumass in MAD.constant
+local clight, qelect, emass, pmass, mumass, deumass in MAD.constant
+local setkeys, countkeys in MAD.utility
+local is_mappable in MAD.concept
 
 local GeV_c = 1e9/clight
 local krad_GeV = 1e-16*qelect*clight^2 -- 1e-9/(4pi.epsilon0) qelect
 
-local setkeys = \t => for _,v in ipairs(t) do t[v]=v end return t end
-
-local update_order = setkeys {
-  'particle', 'energy', 'pc',
-}
-
 local update_skip = setkeys {
-  'particle', 'energy', 'pc', 'mass', 'charge', 'spin'
+  'particle', 'mass', 'charge', 'spin'
 }
 
 local show_order = setkeys {
-  'name', 'particle', 'mass', 'charge', 'spin', 'radius',
+  'name', 'kind',
+  'particle', 'mass', 'charge', 'spin', 'radius',
   'energy', 'pc', 'beta', 'gamma', 'brho',
   'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
   'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
@@ -116,15 +114,7 @@ local show_order = setkeys {
 
 -- particles database ---------------------------------------------------------o
 
-local particledb = {
-  'electron', 'positron', 'proton', 'antiproton', 'muon', 'antimuon',
-  electron   = { mass=emass , charge=-1, spin=1/2 },
-  positron   = { mass=emass , charge= 1, spin=1/2 },
-  proton     = { mass=pmass , charge= 1, spin=1/2 },
-  antiproton = { mass=pmass , charge=-1, spin=1/2 },
-  muon       = { mass=mumass, charge=-1, spin=1/2 },
-  antimuon   = { mass=mumass, charge= 1, spin=1/2 },
-}
+local particledb = {}
 
 local function newparticle (particle, mass, charge, spin)
   spin = spin or 1/2
@@ -132,24 +122,50 @@ local function newparticle (particle, mass, charge, spin)
   assert(is_string(particle), "invalid particle (string expected)")
   assert(is_positive(mass)  , "invalid mass (positive number expected)")
   assert(is_integer(charge) , "invalid charge (integer expected)")
-  assert(is_integer(2*spin) , "invalid spin (half integer expected)")
+  assert(is_integer(2*spin) and spin >= 0,
+                              "invalid spin (positive half integer expected)")
   particledb[#particledb+1] = particle
   particledb[particle] = { mass=mass, charge=charge, spin=spin }
 end
 
+local function new_particle (self, tbl)
+  if is_nil(tbl) and not is_object(self) then
+    assert(is_table(self) , "invalid argument #1 (table expected)")
+    tbl, self = self, nil -- right shift
+  else
+    assert(is_object(self), "invalid argument #1 (object expected)")
+    assert(is_table(tbl)  , "invalid argument #2 (table expected)")
+  end
+  newparticle(tbl.particle, tbl.mass, tbl.charge, tbl.spin)
+  return self
+end
+
 local function showdb (self, file)
+  if not is_object(self) and is_nil(file) then
+    file, self = self, nil -- right shift
+  end
   file = file or io.stdout
   for _,k in ipairs(particledb) do
     local mass, charge, spin in particledb[k]
-    file:write(string.format("%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1f\n",
+    file:write(string.format("%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1g\n",
                k, tostring(mass), tostring(charge), tostring(spin)))
   end
   return self
 end
 
+-- populate particle database
+new_particle{ particle = 'electron'  , mass = emass  , charge = -1, spin = 1/2 }
+new_particle{ particle = 'positron'  , mass = emass  , charge =  1, spin = 1/2 }
+new_particle{ particle = 'proton'    , mass = pmass  , charge =  1, spin = 1/2 }
+new_particle{ particle = 'antiproton', mass = pmass  , charge = -1, spin = 1/2 }
+new_particle{ particle = 'muon'      , mass = mumass , charge = -1, spin = 1/2 }
+new_particle{ particle = 'antimuon'  , mass = mumass , charge =  1, spin = 1/2 }
+new_particle{ particle = 'deuteron'  , mass = deumass, charge =  1, spin = 1   }
+
 -- implementation -------------------------------------------------------------o
 
 local beam = Object 'beam' {
+  kind      = 'beam',
   -- particle
   particle  = 'electron',                              --                   [RW]
   mass      = particledb.electron.mass,                -- GeV (m.c^2)       [RO]
@@ -186,7 +202,7 @@ local index  = \s,k,v => newidx(s,k,v) end             -- default forwards
 
 local update = setmetatable({
   -- particle
-particle = \s,_,v => assert(particledb[v], "invalid particle")
+particle = \s,_,v => assert(particledb[v], "unknown particle")
                      newidx(s, 'particle', v)
                      newidx(s, 'mass'    , particledb[v].mass  )
                      newidx(s, 'charge'  , particledb[v].charge)
@@ -226,14 +242,13 @@ local function newindex (self, key, val)
 end
 
 local function init (self)
-  if self:get_raw 'mass' then -- include new particle definition
-    newparticle(self:get_raw 'particle', self:get_raw 'mass',
-                self:get_raw 'charge'  , self:get_raw 'spin')
+  local particle, mass, charge =
+        self:get_raw 'particle', self:get_raw 'mass', self:get_raw 'charge'
+  if mass or charge then -- include new particle definition
+    newparticle(particle, mass, charge, self:get_raw 'spin')
     newidx(self,'mass',nil) newidx(self,'charge',nil) newidx(self,'spin',nil)
   end
-  for i,k in ipairs(update_order) do
-    if self:get_raw(k) then newindex(self, k, self:get_raw(k)) end
-  end
+  if particle then newindex(self, 'particle', particle) end
   for k,v in pairs(self) do
     if is_nil(update_skip[k]) then newindex(self, k, v) end
   end
@@ -241,14 +256,13 @@ local function init (self)
 end
 
 local function set (self, tbl)
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
-  if tbl.mass then -- include new particle definition
-    newparticle(tbl.particle, tbl.mass, tbl.charge, tbl.spin)
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  local particle, mass, charge in tbl
+  if mass or charge then -- include new particle definition
+    newparticle(particle, mass, charge, tbl.spin)
     tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
   end
-  for i,k in ipairs(update_order) do
-    if tbl[k] then newindex(self, k, tbl[k]) end
-  end
+  if particle then newindex(self, 'particle', particle) end
   for k,v in pairs(tbl) do
     if is_nil(update_skip[k]) then newindex(self, k, v) end
   end
@@ -269,27 +283,26 @@ local function show (self, file)
 end
 
 do -- sanity checks
-  local beam_n, update_n, show_n = 0, 1, #show_order
-  for _,_ in pairs(beam  ) do beam_n   = beam_n  +1 end
-  for _,_ in pairs(update) do update_n = update_n+1 end
-  -- print(beam_n, show_n, update_n)
-  assert(beam_n == update_n, "inconsistency detected in beam module")
-  assert(beam_n == show_n  , "inconsistency detected in beam module")
+  local bn, un, sn = countkeys(beam), countkeys(update)+2, #show_order
+  -- print(bn, sn, un)
+  assert(bn == un, "inconsistency detected in beam module")
+  assert(bn == sn, "inconsistency detected in beam module")
 end
 
 beam :set_function {
-  set=set, set_variable=set,
+  set=set, set_variable=set, new_particle=new_particle,
   show=show, showdb=showdb,
 }
 
-beam :set_metamethod({ __init=init, __newindex=newindex }, true)
-     :set_readonly()
+beam :set_metamethod ({ __init=init, __newindex=newindex }, true)
+     :set_readonly   ()
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'beam'
 
 -- end ------------------------------------------------------------------------o
 return {
   beam = beam,
+  new_particle = new_particle,
 
   __help = M.__help,
 }
