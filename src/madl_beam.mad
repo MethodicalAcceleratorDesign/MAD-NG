@@ -42,6 +42,39 @@ SEE ALSO
   Object
 ]]
 
+M.__help['Momentum deviation'] = [=[
+  beam0  = beam { particle='proton', energy=7000 } -- ref beam
+  beamdp = beam0 {}                                -- clone
+  for n,deltap in ipairs(0.01..0.03..0.005) do
+    beamdp.pc = beamdp.parent.pc * (1+deltap)
+    print(n, deltap, beamdp.energy, beamdp.pc, beamdp.beta, beamdp.gamma)
+  end
+  beamdp.pc = beamdp.parent.pc * (1 - 1 + eps) -- rest energy
+  print(6, -1, beamdp.energy, beamdp.pc, beamdp.beta, beamdp.gamma)
+
+n  deltap  energy           pc               beta              gamma
+1  0.01    7069.9999987486  7069.9999364887  0.9999999911938   7535.1277515536
+2  0.015   7104.9999981275  7104.9999361743  0.99999999128034  7572.4303635296
+3  0.02    7139.9999975094  7139.9999358599  0.99999999136562  7609.7329755089
+4  0.025   7174.9999968942  7174.9999355455  0.99999999144965  7647.0355874914
+5  0.03    7209.999996282   7209.9999352311  0.99999999153246  7684.3381994769
+6  -1      0.938272081358   0                0                 1
+]=]
+
+M.__help['Energy-momentum'] = [=[
+Details of computation:
+  E0^2 = (p.c)^2 + (m0.c^2)^2
+       = pc^2 [GeV] + mass^2 [Gev]
+]=]
+
+M.__help['Lorentz factor'] = [=[
+Details of computation:
+  1          = gamma^2 (1-beta^2)
+  gamma      = 1/sqrt(1-beta^2)  = E/m  (>= 1)
+  beta       = sqrt(1-1/gamma^2) = v/c  (<= 1)
+  beta gamma = sqrt(gamma^2-1)
+]=]
+
 M.__help['Electromagnetic radius'] = [=[
 Details of computation:
   r = 1/(4pi.epsilon0) q^2/(m0.c^2)             (definition from zero potential)
@@ -53,20 +86,12 @@ Details of computation:
   r = 1e-9/(4pi.epsilon0) qelect charge^2/mass
 ]=]
 
-M.__help['Lorentz factor'] = [=[
-Details of computation:
-  1          = gamma^2 (1-beta^2)
-  gamma      = 1/sqrt(1-beta^2)  = E/m  (>= 1)
-  beta       = sqrt(1-1/gamma^2) = v/c  (<= 1)
-  beta gamma = sqrt(gamma^2-1)
-]=]
-
 --[[
 attributes that should not be in beam:
   circ    -- total path in m
   freq0   -- revolution frequency in Hz
-  dtbyds  -- phase slip factor (eta)
   deltap  -- momentum deviation
+  dtbyds  -- phase slip factor (eta)
   alfac   -- momentum compaction factor (MADX: 1/gamma^2, -dtbyds is missing)
   u0      -- radiation loss in GeV
   qs      -- synchrotron tune
@@ -100,7 +125,7 @@ local GeV_c = 1e9/clight
 local krad_GeV = 1e-16*qelect*clight^2 -- 1e-9/(4pi.epsilon0) qelect
 
 local update_skip = setkeys {
-  'particle', 'mass', 'charge', 'spin'
+  'particle', 'mass', 'charge', 'spin',
 }
 
 local show_order = setkeys {
@@ -109,7 +134,7 @@ local show_order = setkeys {
   'energy', 'pc', 'beta', 'gamma', 'brho',
   'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
   'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
-  'bunched', 'radiate',
+  'radiate',
 }
 
 -- particles database ---------------------------------------------------------o
@@ -181,19 +206,18 @@ local beam = Object 'beam' {
   -- emittance
   ex        = 1,                                       -- rad.m             [RW]
   ey        = 1,                                       -- rad.m             [RW]
-  et        = 0.001,                                   -- rad.m             [RW]
+  et        = 1e-3,                                    -- rad.m             [RW]
   exn       = \s -> sqrt(s.gamma^2 - 1)*s.ex,          -- rad.m             [RU]
   eyn       = \s -> sqrt(s.gamma^2 - 1)*s.ey,          -- rad.m             [RU]
   etn       = \s -> sqrt(s.gamma^2 - 1)*s.et,          -- rad.m             [RU]
   -- bunch
-  nbunch    = 1,                                       --                   [RW]
-  nparticle = 1,                                       -- per bunch         [RW]
+  nbunch    = 0,                                       --                   [RW]
+  nparticle = 0,                                       -- per bunch         [RW]
   sigx      = 1,                                       -- m                 [RW]
   sigy      = 1,                                       -- m                 [RW]
   sigt      = 1,                                       -- m                 [RW]
-  sige      = 0.001,                                   -- GeV               [RW]
+  sige      = 1e-3,                                    -- GeV               [RW]
   -- flags
-  bunched   = true,                                    --                   [RW]
   radiate   = false,                                   --                   [RW]
 }
 
@@ -202,38 +226,36 @@ local index  = \s,k,v => newidx(s,k,v) end             -- default forwards
 
 local update = setmetatable({
   -- particle
-particle = \s,_,v => assert(particledb[v], "unknown particle")
-                     newidx(s, 'particle', v)
-                     newidx(s, 'mass'    , particledb[v].mass  )
-                     newidx(s, 'charge'  , particledb[v].charge)
-                     newidx(s, 'spin'    , particledb[v].spin  ) end,
-  mass   = \_,k,_ -> error(k.." is readonly, define a new particle"),
-  charge = \_,k,_ -> error(k.." is readonly, define a new particle"),
-  spin   = \_,k,_ -> error(k.." is readonly, define a new particle"),
-  radius = \_,k,_ -> error(k.." is readonly"),
+ particle = \s,k,v => assert(particledb[v],"unknown particle") newidx(s,k,v)
+                      newidx(s,'mass'  ,particledb[v].mass  )
+                      newidx(s,'charge',particledb[v].charge)
+                      newidx(s,'spin'  ,particledb[v].spin  ) end,
+  mass   := error(  "mass is readonly, define a new particle"),
+  charge := error("charge is readonly, define a new particle"),
+  spin   := error(  "spin is readonly, define a new particle"),
+  radius := error("radius is readonly"),
   -- energy
-  energy = \s,_,v => assert(v > s.mass, "invalid energy <= mass") newidx(s, 'energy', v                   ) end,
-  pc     = \s,_,v => assert(is_positive(v), "invalid pc <= 0"   ) newidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
-  beta   = \_,k,_ -> error(k.." is readonly, update energy or mass"),
-  gamma  = \_,k,_ -> error(k.." is readonly, update energy or mass"),
-  brho   = \_,k,_ -> error(k.." is readonly, update energy, mass or charge"),
+  energy = \s,k,v => assert(v > s.mass, "invalid energy <= mass") newidx(s,k,v) end,
+  pc     = \s,_,v => assert(is_positive(v), "invalid pc <= 0") newidx(s,'energy',sqrt(v^2+s.mass^2)) end,
+  beta  := error( "beta is readonly, update energy or mass"),
+  gamma := error("gamma is readonly, update energy or mass"),
+  brho  := error( "brho is readonly, update energy, mass or charge"),
   -- emittance
-  ex     = \s,_,v => assert(is_positive(v), "invalid ex <= 0" ) newidx(s, 'ex', v) end,
-  ey     = \s,_,v => assert(is_positive(v), "invalid ey <= 0" ) newidx(s, 'ey', v) end,
-  et     = \s,_,v => assert(is_positive(v), "invalid et <= 0" ) newidx(s, 'et', v) end,
-  exn    = \s,_,v => assert(is_positive(v), "invalid exn <= 0") newidx(s, 'ex', v/sqrt(s.gamma^2 - 1)) end,
-  eyn    = \s,_,v => assert(is_positive(v), "invalid eyn <= 0") newidx(s, 'ey', v/sqrt(s.gamma^2 - 1)) end,
-  etn    = \s,_,v => assert(is_positive(v), "invalid etn <= 0") newidx(s, 'et', v/sqrt(s.gamma^2 - 1)) end,
+  ex     = \s,k,v => assert(is_positive(v),"invalid ex <= 0") newidx(s,k,v) end,
+  ey     = \s,k,v => assert(is_positive(v),"invalid ey <= 0") newidx(s,k,v) end,
+  et     = \s,k,v => assert(is_positive(v),"invalid et <= 0") newidx(s,k,v) end,
+  exn    = \s,_,v => assert(is_positive(v),"invalid exn <= 0") newidx(s,'ex',v/sqrt(s.gamma^2-1)) end,
+  eyn    = \s,_,v => assert(is_positive(v),"invalid eyn <= 0") newidx(s,'ey',v/sqrt(s.gamma^2-1)) end,
+  etn    = \s,_,v => assert(is_positive(v),"invalid etn <= 0") newidx(s,'et',v/sqrt(s.gamma^2-1)) end,
   -- bunch
-  nbunch = \s,_,v => assert(is_integer(v) and v > 0, "invalid nbunch <= 0"   ) newidx(s, 'nbunch'   , v) end,
-nparticle= \s,_,v => assert(is_integer(v) and v > 0, "invalid nparticle <= 0") newidx(s, 'nparticle', v) end,
-  sigx   = \s,_,v => assert(is_positive(v), "invalid sigx <= 0") newidx(s, 'sigx', v) end,
-  sigy   = \s,_,v => assert(is_positive(v), "invalid sigy <= 0") newidx(s, 'sigy', v) end,
-  sigt   = \s,_,v => assert(is_positive(v), "invalid sigt <= 0") newidx(s, 'sigt', v) end,
-  sige   = \s,_,v => assert(is_positive(v), "invalid sige <= 0") newidx(s, 'sige', v) end,
+  nbunch = \s,k,v => assert(is_integer(v) and v>0,"invalid nbunch <= 0") newidx(s,k,v) end,
+nparticle= \s,k,v => assert(is_integer(v) and v>0,"invalid nparticle <= 0") newidx(s,k,v) end,
+  sigx   = \s,k,v => assert(is_positive(v),"invalid sigx <= 0") newidx(s,k,v) end,
+  sigy   = \s,k,v => assert(is_positive(v),"invalid sigy <= 0") newidx(s,k,v) end,
+  sigt   = \s,k,v => assert(is_positive(v),"invalid sigt <= 0") newidx(s,k,v) end,
+  sige   = \s,k,v => assert(is_positive(v),"invalid sige <= 0") newidx(s,k,v) end,
   -- flags
-  bunched= \s,_,v => assert(is_boolean(v), "invalid bunched (boolean expected)") newidx(s, 'bunched', v) end,
-  radiate= \s,_,v => assert(is_boolean(v), "invalid radiate (boolean expected)") newidx(s, 'radiate', v) end,
+ radiate = \s,k,v => assert(is_boolean(v),"invalid radiate (boolean expected)") newidx(s,k,v) end,
 },-- default update (no check)
 { __index := index })
 
@@ -246,7 +268,6 @@ local function init (self)
         self:get_raw 'particle', self:get_raw 'mass', self:get_raw 'charge'
   if mass or charge then -- include new particle definition
     newparticle(particle, mass, charge, self:get_raw 'spin')
-    newidx(self,'mass',nil) newidx(self,'charge',nil) newidx(self,'spin',nil)
   end
   if particle then newindex(self, 'particle', particle) end
   for k,v in pairs(self) do
@@ -260,7 +281,6 @@ local function set (self, tbl)
   local particle, mass, charge in tbl
   if mass or charge then -- include new particle definition
     newparticle(particle, mass, charge, tbl.spin)
-    tbl.mass, tbl.charge, tbl.spin = nil, nil, nil
   end
   if particle then newindex(self, 'particle', particle) end
   for k,v in pairs(tbl) do
