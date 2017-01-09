@@ -185,10 +185,12 @@ local function make_table (self, length)
   if save == 'none' then return nil end
   local name, dir in sequence
   local nrow = (drift == true and 2 or 1) * length
-  return table 'survey' { [_surv]=_surv,
-    type='survey', title=name, dir=dir, save=save,
+
+  return table 'survey' {
+    type='survey', title=name, dir=dir,
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
-     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
+    'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
+    [_surv]=_surv,
   } :reserve(nrow)
 end
 
@@ -230,7 +232,7 @@ end
 
 -- survey command exec
 -- survey { sequence=seq, X0={x,y,z}, A0={theta,phi,psi},
---          range={start,stop}, save='exit'|'entry'|'none',
+--          range={start,stop}, save='exit'|'none',
 --          drift=logical, table=tbl, map=map }
 -- return the table and the map
 -- alternate initial conditions (higher precedence):
@@ -244,8 +246,8 @@ local function exec (self)
   local start, stop = seq:range_index (self.range)
   local tbl = self.table or make_table(self, stop-start+1)
   local map = self.map   or make_map  (self, start)
-  assert(tbl[_surv] == _surv, "invalid survey table")
   assert(map[_surv] == _surv, "invalid survey map"  )
+  assert(is_nil(tbl) or tbl[_surv] == _surv, "invalid survey table")
 
   local s_ini, s_end, ndrift in map
   local drift, save in self
@@ -261,10 +263,6 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      if drift == 'entry' then
-        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
-      end
-
       drift_survey(map, ds)
       s_end, ndrift = s, ndrift+1
 
@@ -277,10 +275,6 @@ local function exec (self)
     end
 
     -- sequence element
-    if save == 'entry' then
-      fill_table(tbl, name, kind, map, end_pos-ini_pos, ds, angle, tilt)
-    end
-
     ds = elem:survey(map)
     s_end = s + ds
     update_angle(map)
