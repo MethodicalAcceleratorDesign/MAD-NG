@@ -196,7 +196,7 @@ gamma = 1/sqrt(1 - beta^2)
 local beta    = 0.99999782628282619
 local betai   = 1/beta
 local gamma   = 1/(sqrt(1 - beta^2))
-local bg2     = beta^2*gamma^2
+local bg2     = beta^2*gamma^2 -- gamma^2-1
 
 --[[ METHOD:
 2 - 2nd order, 1 kick per integration step
@@ -249,7 +249,7 @@ M.__help['Track drift'] = [[
 ]]
 
 -- Drift general exact strait
-local function drift_track (elem, m, l) -- TODO: check numerical stability
+local function drift_track (_, m, l) -- TODO: check numerical stability
   if l >= minlen then
     local x, px, y, py, t, pt in m
     local l_pz = l/sqrt(1 + 2*betai*pt + pt^2 - px^2 - py^2)
@@ -698,9 +698,25 @@ element.curved_element:set_function { track =  curved_track }
 
 -- track command helpers
 
+local _trck = {}
+
+local function make_table (self, length)
+  local sequence, drift, save in self
+  if save == 'none' then return nil end
+  local name, dir in sequence
+  local nrow = (drift == true and 2 or 1) * length
+
+  return table 'track' {
+    type='track', title=name, dir=dir,
+    {'name'}, 'kind', 's', 'l',
+    'x', 'px', 'y', 'py', 't', 'pt',
+    [_trck]=_trck,
+  } : reserve(nrow)
+end
+
 local function fill_table (tbl, name, kind, m, s, l)
   -- keep order!
-  tbl = tbl + { name, kind, s, l, m.x, m.px, m.y, m.py, m.t, m.pt, m.T }
+  tbl = tbl + { name, kind, s, l, m.x, m.px, m.y, m.py, m.t, m.pt }
 end
 
 local function make_map (self)
@@ -711,55 +727,65 @@ local function make_map (self)
   py = py or X0.py or X0[4]
   t  = t  or X0.t  or X0[5]
   pt = pt or X0.pt or X0[6]
-  return { x=x, px=px, y=y, py=py, t=t, pt=pt }
-end
-
-local function make_table (self)
-  local sequence, drift in self
-  local n = (drift == true and 2 or 1) * #sequence
-  return table 'track' {
-    type='track', title=sequence.name, direction=sequence.direction,
-    {'name'}, 'kind', 's', 'length', 'x', 'px', 'y', 'py', 't', 'pt',
-  } : reserve(n)
+  return { x=x, px=px, y=y, py=py, t=t, pt=pt, [_trck]=_trck }
 end
 
 -- track command exec
 -- track { sequence=seq, X0={x,px,y,py,t,pt},
---         drift=logical, range={start,stop}, refer='exit' }
---> table
+--         range={start,stop}, save='exit'|'end'|'none',
+--         drift=logical, table=tbl, map=map  }
+-- return the table and the map
+-- alternate initial conditions (higher precedence):
+-- x=x, px=px, y=y, py=py, t=t, pt=pt
+-- X0={x=x, px=px, y=y, py=py, t=t, pt=pt}
 
 local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+  local beam = assert(self.beam or seq.beam, "missing beam")
+  assert(beam.kind == 'beam', "invalid beam")
 
-  local map = self.map   or make_map  (self)
-  local tbl = self.table or make_table(self)
-  local drift in self
+  local start, stop = seq:range_index (self.range)
+  local tbl = self.table or make_table(self, stop-start+1)
+  local map = self.map   or make_map  (self, start)
+  assert(map[_trck] == _trck, "invalid track map"  )
+  assert(is_nil(tbl) or tbl[_trck] == _trck, "invalid track table")
+
+  local s_ini, s_end, ndrift in map
+  local drift, save in self
   local s_pos in seq
 
+  drift = drift == true and save or 'none'
+  map.beam = beam
+
   -- dynamic tracking
-  local n, end_pos = -1, 0
-  for i=1,#seq do
+  for i=start,stop do
     local elem, s = seq[i], s_pos[i]
-    local ds = s - end_pos
+    local name, kind, angle, tilt, nstep in elem
+    local ds = s - s_end
 
     -- implicit drift
-    if ds < 0 then
-      error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            tostring(ds), seq:get_key('name'), elem.name, tostring(s)))
-    elseif ds >= minlen then
-      drift_track(elem, map, ds)
-      end_pos, n = s, n+1
-      if drift then
-        fill_table(tbl, 'DRIFT_'..n, 'drift', map, end_pos, ds)
+    if ds >= minlen then
+      drift_track(nil, map, ds)
+      s_end, ndrift = s, ndrift+1
+
+      if drift == 'exit' then
+        fill_table(tbl, 'DRIFT_'..n, 'drift', map, s_end-s_ini, ds)
       end
+    elseif ds < 0 then
+      error(string.format("negative implicit drift %s in %s['%s'] at %s",
+            tostring(ds), seq:get_key 'name', name, tostring(s)))
     end
 
     -- sequence element
     ds = elem:track(map)
-    end_pos = end_pos + ds
-    fill_table(tbl, elem.name, elem.kind, map, end_pos, ds)
+    s_end = s + ds
+
+    if save == 'exit' then
+      fill_table(tbl, name, kind, map, s_end-s_ini, ds)
+    end
   end
+  map.s_end, map.ndrift = s_end, ndrift
 
   return tbl, map
 end
@@ -768,7 +794,7 @@ end
 
 local track = Command 'track' {
   -- default options
-  X0={0,0,0,0,0,0}, drift=true, range={1,-1}, exec=exec,
+  X0={0,0,0,0,0,0}, range={1,-1}, drift=true, save='exit', exec=exec,
 } :set_readonly()
 
 MAD.utility.defhelp(M) -- todo: per function help -> 'track'
@@ -779,58 +805,3 @@ return {
 
   __help = M.__help,
 }
-
---[=[
---[[
-M.__help['Track matrix-kick'] = [[
-  [2] p.354, ch. 12.1.4 Matrix-Kick Split
-  [3] p. 75, Section K.4.7, PTC, Function INTEP_TKTF in file Sh_def_kind.f90)
-]]
-
-
---[[
-M.__help['Track curved bend-kick'] = [[
-  [2] p.360, ch. 12.2.3 Matrix(Bend)-Kick Split
-  [3] p. 76, PTC, Function SPAR in file Sh_def_kind.f90)
-]]
-
-
---[[
-
-local function spar(elem, m, l)
-model = 2 (matrix-kick-matrix)
-local l_n = l/nstp
-YL = DH = l/2/nstp
-DL = DD = l/2/nstp
-D = l
-?????to check if DD and DH is the same!!!
-    SPAR(elem, m, l_n/2)
-    KICKEX (elem, m, l_n/2)
-   SPAR(elem, m, l_n/2)
-
-  --- SPARr(EL,YL,DL,X,k)
-    local bv=direction*charge
-      pz = sqrt(1 + 2 * pt*betai + pt^2-px^2 - py^2)
-
-       XN(2)=px - l_N/2*DIR*bn1 --(EL%BN(1))
-       ???BN(1) ---
-
-       ptt = sqrt(1 + 2.0 * pt*betai+pt^2-py^2)
-
-       pzs = sqrt(1 + 2 * pt*betai + pt^2 - XN(2)^2 - py^2)
-
-       XN(1) = x + (pzs - pz) / dir / bn1
-
-      ????  XN(3)=(arcsin(px) / ptt - arcsin(XN(2)) / ptt) / dir / b1
-
-       XN(6)= t + XN(3) * (betai + pt ) -  l_n*betai
-
-       XN(3)= y + px * XN(3)
-
-       X(1)=XN(1)
-       X(2)=XN(2)
-       X(3)=XN(3)
-       X(6)=XN(6)
-end
-]]
-]=]
