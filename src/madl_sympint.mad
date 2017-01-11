@@ -1,0 +1,233 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Symplectic integrators
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a dictionnary of symplectic integrators from 2nd to 8th order
+    Integrators must have the following calling convention:
+      integrate(elem, map, len, drift, kick)
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local tostring in MAD
+
+-- Yoshida schemes ------------------------------------------------------------o
+
+-- [Yoshida90] eq 5.18, eq ... p267
+local function make_yoshida (w)
+  local d, k, n, s = {}, {}, #w+1, 0
+  for i=1,n-1 do k[i] = w[n-i] ; s = s+w[i] end
+  d[1], k[n] = k[1]/2, 1-2*s
+  for i=2,n do d[i] = (k[i]+k[i-1])/2 end
+  -- for i=1,#d do print(i, tostring(d[i]), tostring(k[i])) end
+  return d, k
+end
+
+local yosh4_w = { -- 4nd order (eq. 2.11)
+  A = {  1.35120719195965777 },
+}
+
+local yosh6_w = { -- 6th order (table1)
+  A = { -0.117767998417887E1 ,  0.235573213359357E0 , 0.784513610477560E0 },
+  B = { -0.213228522200144E1 ,  0.426068187079180E-2, 0.143984816797678E1 },
+  C = {  0.152886228424922E-2, -0.214403531630539E1 , 0.144778256239930E1 },
+}
+
+local yosh8_w = { -- 8th order (table2)
+  A = { -0.161582374150097E1 , -0.244699182370524E1, -0.716989419708120E-2,
+         0.244002732616735E1 ,  0.157739928123617E0,  0.182020630970714E1 ,
+         0.104242620869991E1 },
+  B = { -0.169248587770116E-2,  0.289195744315849E1,  0.378039588360192E-2,
+        -0.289688250328827E1 ,  0.289105148970595E1, -0.233864815101035E1 ,
+         0.148819229202922E1 },
+  C = {  0.311790812418427E0 , -0.155946803821447E1, -0.167896928259640E1 ,
+         0.166335809963315E1 , -0.106458714789183E1,  0.136934946416871E1 ,
+         0.629030650210433E0 },
+  D = {  0.102799849391985E0 , -0.196061023297549E1,  0.193813913762276E1 ,
+        -0.158240635368243E0 , -0.144485223686048E1,  0.253693336566229E0 ,
+         0.914844246229740E0 },
+  E = {  0.227738840094906E-1,  0.252778927322839E1, -0.719180053552772E-1,
+         0.536018921307285E-2, -0.204809795887393E1,  0.107990467703699E0 ,
+         0.130300165760014E1 },
+}
+
+local yosh4_d, yosh4_k = make_yoshida(yosh4_w.A)
+local yosh6_d, yosh6_k = make_yoshida(yosh6_w.A)
+local yosh8_d, yosh8_k = make_yoshida(yosh8_w.D)
+
+--[[ for debug and comparison of solutions
+MAD.option.format = "% -.10f"
+print('A4') make_yoshida(yosh4_w.A)
+print('A6') make_yoshida(yosh6_w.A)
+print('B6') make_yoshida(yosh6_w.B)
+print('C6') make_yoshida(yosh6_w.C)
+print('A8') make_yoshida(yosh8_w.A)
+print('B8') make_yoshida(yosh8_w.B)
+print('C8') make_yoshida(yosh8_w.C)
+print('D8') make_yoshida(yosh8_w.D)
+print('E8') make_yoshida(yosh8_w.E)
+--]]
+
+-- Runge-Kutta-Nystrom schemes ------------------------------------------------o
+
+-- TODO...
+
+-- integrators ----------------------------------------------------------------o
+
+local function yoshida2 (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n = l/nst
+
+  for i=1,nst do -- 1 kick (k=2, eq. 2.10)
+    drift(elem, m, l_n/2)
+     kick(elem, m, l_n  ) -- middle
+    drift(elem, m, l_n/2)
+  end
+end
+
+local function yoshida4 (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n = l/nst
+
+  for i=1,nst do -- 3 kicks (k=4)
+    drift(elem, m, l_n * yosh4_d[1])
+     kick(elem, m, l_n * yosh4_k[1])
+    drift(elem, m, l_n * yosh4_d[2])
+     kick(elem, m, l_n * yosh4_k[2]) -- middle
+    drift(elem, m, l_n * yosh4_d[2])
+     kick(elem, m, l_n * yosh4_k[1])
+    drift(elem, m, l_n * yosh4_d[1])
+  end
+end
+
+local function yoshida6 (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n = l/nst
+
+  for i=1,nst do -- 7 kicks (k=8)
+    drift(elem, m, l_n * yosh6_d[1])
+     kick(elem, m, l_n * yosh6_k[1])
+    drift(elem, m, l_n * yosh6_d[2])
+     kick(elem, m, l_n * yosh6_k[2])
+    drift(elem, m, l_n * yosh6_d[3])
+     kick(elem, m, l_n * yosh6_k[3])
+    drift(elem, m, l_n * yosh6_d[4])
+     kick(elem, m, l_n * yosh6_k[4]) -- middle
+    drift(elem, m, l_n * yosh6_d[4])
+     kick(elem, m, l_n * yosh6_k[3])
+    drift(elem, m, l_n * yosh6_d[3])
+     kick(elem, m, l_n * yosh6_k[2])
+    drift(elem, m, l_n * yosh6_d[2])
+     kick(elem, m, l_n * yosh6_k[1])
+    drift(elem, m, l_n * yosh6_d[1])
+  end
+end
+
+local function yoshida8 (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n = l/nst
+
+  for i=1,nst do -- 15 kicks (k=16)
+    drift(elem, m, l_n * yosh8_d[1])
+     kick(elem, m, l_n * yosh8_k[1])
+    drift(elem, m, l_n * yosh8_d[2])
+     kick(elem, m, l_n * yosh8_k[2])
+    drift(elem, m, l_n * yosh8_d[3])
+     kick(elem, m, l_n * yosh8_k[3])
+    drift(elem, m, l_n * yosh8_d[4])
+     kick(elem, m, l_n * yosh8_k[4])
+    drift(elem, m, l_n * yosh8_d[5])
+     kick(elem, m, l_n * yosh8_k[5])
+    drift(elem, m, l_n * yosh8_d[6])
+     kick(elem, m, l_n * yosh8_k[6])
+    drift(elem, m, l_n * yosh8_d[7])
+     kick(elem, m, l_n * yosh8_k[7])
+    drift(elem, m, l_n * yosh8_d[8])
+     kick(elem, m, l_n * yosh8_k[8]) -- middle
+    drift(elem, m, l_n * yosh8_d[8])
+     kick(elem, m, l_n * yosh8_k[7])
+    drift(elem, m, l_n * yosh8_d[7])
+     kick(elem, m, l_n * yosh8_k[6])
+    drift(elem, m, l_n * yosh8_d[6])
+     kick(elem, m, l_n * yosh8_k[5])
+    drift(elem, m, l_n * yosh8_d[5])
+     kick(elem, m, l_n * yosh8_k[4])
+    drift(elem, m, l_n * yosh8_d[4])
+     kick(elem, m, l_n * yosh8_k[3])
+    drift(elem, m, l_n * yosh8_d[3])
+     kick(elem, m, l_n * yosh8_k[2])
+    drift(elem, m, l_n * yosh8_d[2])
+     kick(elem, m, l_n * yosh8_k[1])
+    drift(elem, m, l_n * yosh8_d[1])
+  end
+end
+
+local function simple (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n, l_p = 0, 0
+  local l_nst = nst>0 and l/(2*nst) or 0
+
+  for i=1,nst do
+    l_n, l_p = l_nst*(2*i-1), l_n
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n    )
+  end
+  drift(elem, m, l-l_n)
+end
+
+local function teapot (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  local l_n, l_p, l_2 = 0, 0, l/2
+  local l_nst = nst>1 and l_2*nst/(1-nst^2) or 0
+
+  for i=1,nst do
+    l_n, l_p = l_nst*(nst-2*i+1), l_n
+    drift(elem, m, l_n-l_p)
+     kick(elem, m, l_n+l_2)
+  end
+  drift(elem, m, l-l_n)
+end
+
+local function collim (elem, m, l, drift, kick)
+  local nst in elem
+  nst = nst or m.nst
+  assert(nst > 0, "invalid number of integration steps")
+  local l_n, l_p = nst==1 and l/2 or 0, 0
+  local l_nst = nst>2 and l/(nst-1) or l
+
+  for i=2,nst do
+    l_n, l_p = l_nst*(i-1), l_n
+     kick(elem, m, l_p    )
+    drift(elem, m, l_n-l_p)
+  end
+  kick(elem, m, l_n)
+end
+
+-- end ------------------------------------------------------------------------o
+return { -- dictionnary of integration schemes
+  yoshida2, yoshida2, yoshida4, yoshida4, yoshida6, yoshida6, yoshida8, yoshida8,
+  yoshida2=yoshida2, yoshida4=yoshida4, yoshida6=yoshida6, yoshida8=yoshida8,
+  simple=simple, teapot=teapot, collim=collim,
+}
