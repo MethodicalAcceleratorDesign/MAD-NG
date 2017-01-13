@@ -52,6 +52,8 @@ local element in MAD.element
 
 -- implementation -------------------------------------------------------------o
 
+local _pos = {} -- hidden key
+
 local sequence = element 'sequence' {
    kind='sequence', is_sequence=true, direction=1,
 }
@@ -121,25 +123,28 @@ local function add_uniq_elem (to, elem)
   to[#to+1] = elem        return to                 -- many refs, not yet there
 end
 
+local uninitialized = -1e9
+local ongoing_init  = -2e9
+
 -- compute s positions of sequence elements
 local function elem_spos(sequ, idx)
   local s_pos = sequ.s_pos[idx]
   if s_pos >= 0 then return s_pos end
-  if s_pos == -2e9 then     -- value for 'ongoing'
+  if s_pos == ongoing_init then
     seq_error("cycling dependencies detected", sequ, sequ[idx], idx)
-  elseif s_pos ~= -1e9 then -- value for 'uninitialized'
+  elseif s_pos ~= uninitialized then
     seq_error("corrupted s-position detected", sequ, sequ[idx], idx)
   end
 
-  sequ.s_pos[idx] = -2e9     -- 'ongoing'
+  sequ.s_pos[idx] = ongoing_init
 
   local elem  = sequ[idx]
-  local len   = elem.l     or 0 -- lrad...
+  local len   = elem.l     or 0
   local pos   = elem.at    or 0
   local from  = elem.from  or elem.at and 'start' or idx > 1 and 'prev' or 'start'
   local refer = elem.refer or sequ.refer or 'entry'
 
-      if refer == 'entry'  then ;
+      if refer == 'entry'  then -- nothing
   elseif refer == 'centre' then pos = pos - len/2
   elseif refer == 'exit'   then pos = pos - len
   else seq_error("invalid refer to '" .. refer .. "'", sequ, elem, idx)
@@ -157,22 +162,27 @@ local function elem_spos(sequ, idx)
   return pos
 end
 
-local function sequ_spos (sequ)
-  if is_nil(sequ.__s_pos) then
-    sequ.__s_pos = vector(#sequ):ones(-1e9)
-    for idx=1,#sequ do elem_spos(sequ, idx) end
+local function copy_spos (sequ, sseq, idx)
+  local spos, elem
+  elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
+  spos, sequ[idx] = elem_spos(sequ, idx), elem
+  for i=1,#sseq do
+    sequ.s_pos[idx+i-1] = spos + sseq.s_pos[i]
+    assert(sequ[idx+i-1] == sseq[i], "unexpected corrupted flat sequence")
   end
-  return sequ.__s_pos
 end
 
-local function copy_sequ (sequ, flat, k)
-  for idx,elem in ipairs(sequ) do
-    k, flat[k] = k+1, elem
+local function copy_sequ (sequ, flat, sref, k)
+  local k0 = k
+  for _,elem in ipairs(sequ) do
+    k, flat[k], sref[k] = k+1, elem, false
   end
+   -- keep a link of the subsequence
+  if k ~= k0 then sref[k0] = sequ end
   return k
 end
 
-local function flatten_line (line, flat, k, rev)
+local function flatten_line (line, flat, sref, k, rev)
   local n = (line._rep or 1) * rev
   local start, stop, step, elem
 
@@ -185,11 +195,11 @@ local function flatten_line (line, flat, k, rev)
     for idx = start,stop,step do
       elem = line[idx]
       if is_rawtable(elem) or elem.is_bline == true then
-        k = flatten_line(elem, flat, k, step)
+        k = flatten_line(elem, flat, sref, k, step)
       elseif elem.is_sequence == true then
-        k = copy_sequ(elem, flat, k)
+        k = copy_sequ   (elem, flat, sref, k)
       elseif elem.is_element == true then
-        k, flat[k] = k+1, elem
+        k, flat[k], sref[k] = k+1, elem, false
       else
         seq_error("invalid element detected", line, elem, idx)
       end
@@ -198,21 +208,20 @@ local function flatten_line (line, flat, k, rev)
   return k
 end
 
-local function flatten_sequ (sequ, flat)
-  local k = #flat+1
+local function flatten_sequ (sequ, flat, sref)
+  local k = 1
   for idx,elem in ipairs(sequ) do
     if is_rawtable(elem) or elem.is_bline == true then
-      k = flatten_line(elem, flat, k, 1)
+      k = flatten_line(elem, flat, sref, k, 1)
     elseif elem.is_sequence == true then
-      k = copy_sequ(elem, flat, k)
+      k = copy_sequ   (elem, flat, sref, k)
     elseif elem.is_element == true then
-      k, flat[k] = k+1, elem
+      k, flat[k], sref[k] = k+1, elem, false
     else
       seq_error("invalid element detected", sequ, elem, idx)
     end
   end
-  assert(#sequ+1 <= k, "unexpected sequence fill")
-  return flat, k
+  assert(#sequ+1 <= k and #flat == #sref, "unexpected corrupted flat sequence")
 end
 
 local function build_sequ (sequ, flat)
@@ -222,12 +231,31 @@ local function build_sequ (sequ, flat)
     sequ[ident(name)] = sequ[name]
     sequ[idx] = elem
   end
-  return sequ
+  assert(#sequ == #flat, "unexpected corrupted flat sequence")
+end
+
+local function build_spos (sequ, sref)
+  assert(#sequ == #sref,  "unexpected corrupted flat sequence")
+  rawset(sequ, _pos, vector(#sref):ones(uninitialized))
+  local idx, len = 1, #sref
+  while idx <= len do
+    if sref[idx] == false then
+      elem_spos(sequ, idx)
+      idx = idx + 1
+    else -- subsequence
+      local sseq = sref[idx]
+      copy_spos(sequ, sseq, idx)
+      idx = idx + #sseq
+    end
+  end
+  assert(len+1 == idx, "unexpected corrupted flat sequence")
 end
 
 function init_sequence (sequ)
-  local flat = flatten_sequ(sequ, {})
-  build_sequ(sequ, flat)
+  local flat, sref = {}, {}
+  flatten_sequ (sequ, flat, sref)
+  build_sequ   (sequ, flat)
+  build_spos   (sequ, sref)
   return sequ
 end
 
@@ -303,65 +331,6 @@ function M:show_madx(disp)
 end
 ]]
 
---[[
--- compute s positions of sequence elements
-local function spos_error(self, elem)
-  if elem.s_pos == 'ongoing' then
-    error('cycling dependencies detected in sequence '..self.name..' for element '..elem.name)
-  else
-    error('invalid element detected in sequence '..self.name..' for element '..elem.name)
-  end
-end
-
-local function element_spos(self, elem)
-  local s_pos = elem.s_pos
-  if type(s_pos) == 'number' then return s_pos end
-  if s_pos ~= 'todo' then spos_error(self, elem) end
-
-  elem.s_pos = 'ongoing'
-
-  local len   = self.length
-  local idx   = elem._idx
-  local seq   = elem._seq
-  local pos   = elem._at    or 0
-  local from  = elem._from  or elem._at and 'start' or 'prev'
-  local refer = elem._refer or self.refer           or 'entry'
-
-      if refer == 'entry'   then ;
-  elseif refer == 'centre'  then pos = pos - (seq and seq.length/2 or elem.length/2)
-  elseif refer == 'exit'    then pos = pos - (seq and seq.length   or elem.length)
-  elseif seq and seq[refer] then pos = pos - seq[refer].s_pos
-  else error("invalid refer: "..elem._refer)
-  end
-
-      if from == 'start'       then ;
-  elseif from == 'end' and len then pos = len - pos
-  elseif from == 'prev'        then pos = pos + self[idx-1].s_pos + self[idx-1].length
-  elseif from == 'next'        then pos = pos + element_spos(self, self[idx+1])
-  elseif self[from]            then pos = pos + element_spos(self, self[from])
-  else error("invalid from: "..elem._from)
-  end
-
-  elem.s_pos = pos
-  return pos
-end
-]]
-
---[[
-local function clean_sequence(self)
-  local j=2 -- keep start_marker
-  for i,v in ipairs(self) do
-    if shadow_get(v) ~= start_marker and
-       shadow_get(v) ~= end_marker   and
-      (v.kind ~= 'drift' or v.rigid) then self[j], j = self[i], j+1 end
-  end
-  self[j] = self[#self] -- copy end_marker
-  for i=j+1,#self do self[i] = nil end -- clean remaining slots
-
-  clean_shadow  (self)
-end
-]]
-
 local function tie (seq1, seq2)
   -- e.g. LHCB1:tie(LHCB2)
   assert(seq2.is_sequence == true, "invalid argument #2 (sequence expected)")
@@ -432,7 +401,7 @@ end
 -- attributes -----------------------------------------------------------------o
 
 sequence:set_variable {
-  s_pos = \s -> is_nil(s.__s_pos) and sequ_spos(s) or s.__s_pos
+  s_pos = \s -> s[_pos]
 }
 
 -- methods --------------------------------------------------------------------o
