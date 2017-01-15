@@ -26,8 +26,8 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
-      is_metaname in MAD
+local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
+      is_function, is_metaname in MAD
 local bset, btst, bclr, bnot in MAD.operator
 local is_callable, is_iterable, is_mappable in MAD.concept
 
@@ -323,11 +323,15 @@ end
 
 local _env = {} -- key
 
-local function open_env (self)
+local function open_env (self, level)
+  level = is_function(level) and level or is_number(level) and level+1 or 2
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,_env) == nil, "invalid environment (already in use)")
-  rawset(self, _env, getfenv(2))
-  setfenv(2, self)
+  assert(is_function(level) or is_number(level) and level >= 2,
+                          "invalid argument #2 (level < 1)")
+  assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
+  rawset(self, _env, { lvl=level, env=getfenv(level) })
+  rawset(self, self.__id, self) -- self reference
+  setfenv(level, self)
   return self
 end
 
@@ -338,9 +342,11 @@ end
 
 local function close_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,_env) ~= nil, "invalid environment (not open)")
-  setfenv(2, rawget(self,_env))
+  local env = rawget(self,_env)
+  assert(env ~= nil, "invalid environment (not open)")
+  setfenv(env.lvl, env.env)
   rawset(self, _env, nil)
+  rawset(self, self.__id, nil) -- clear self reference
   return self
 end
 
