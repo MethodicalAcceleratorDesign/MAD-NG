@@ -26,8 +26,8 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_boolean, is_string, is_table, is_rawtable, is_function,
-      is_metaname in MAD
+local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
+      is_function, is_metaname in MAD
 local bset, btst, bclr, bnot in MAD.operator
 local is_callable, is_iterable, is_mappable in MAD.concept
 
@@ -159,11 +159,11 @@ function MT:__len ()
 end
 
 function MT:__pairs ()
- return pairs(rawget(self,_var))
+  return pairs(rawget(self,_var))
 end
 
 function MT:__ipairs()
- return ipairs(rawget(self,_var))
+  return ipairs(rawget(self,_var))
 end
 
 -- methods
@@ -195,6 +195,10 @@ end
 
 local function get_raw (self, k)
   return rawget(rawget(self,_var),k)   -- no inheritance nor function evaluation
+end
+
+local function set_raw (self, k, v)
+  rawset(rawget(self,_var),k,v)        -- no protection
 end
 
 local function get_variable (self, lst, eval)
@@ -250,24 +254,24 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
-local function get_varkey (self, class, pattern)
-  class, pattern = class or Object, pattern or ''
+local function get_varkey (self, class, pattern, exclude)
+  class, pattern, exclude = class or Object, pattern or '', exclude or '^__'
   assert(is_object(self)   , "invalid argument #1 (object expected)")
   assert(is_object(class)  , "invalid argument #2 (object expected)")
   assert(is_string(pattern), "invalid argument #3 (string expected)")
+  assert(is_string(exclude), "invalid argument #4 (string expected)")
   local key = {}
   while self and self ~= class do
-    for k in pairs(rawget(self,_var)) do key[k] = k end
+    for k,v in pairs(rawget(self,_var)) do
+      if is_string(k) and not is_functor(v) and
+         string.find(k, pattern) and not string.find(k, exclude) then
+        key[#key+1] = k
+      end
+    end
     self = parent(self)
   end
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
-  local res = {}
-  for k in pairs(key) do
-    if is_string(k) and string.find(k, pattern) then
-      res[#res+1] = k
-    end
-  end
-  return res
+  return key
 end
 
 local function clear_array (self)
@@ -319,11 +323,15 @@ end
 
 local _env = {} -- key
 
-local function open_env (self)
+local function open_env (self, level)
+  level = is_function(level) and level or is_number(level) and level+1 or 2
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,_env) == nil, "invalid environment (already in use)")
-  rawset(self, _env, getfenv(2))
-  setfenv(2, self)
+  assert(is_function(level) or is_number(level) and level >= 2,
+                          "invalid argument #2 (level < 1)")
+  assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
+  rawset(self, _env, { lvl=level, env=getfenv(level) })
+  rawset(self, self.__id, self) -- self reference
+  setfenv(level, self)
   return self
 end
 
@@ -334,9 +342,11 @@ end
 
 local function close_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(rawget(self,_env) ~= nil, "invalid environment (not open)")
-  setfenv(2, rawget(self,_env))
+  local env = rawget(self,_env)
+  assert(env ~= nil, "invalid environment (not open)")
+  setfenv(env.lvl, env.env)
   rawset(self, _env, nil)
+  rawset(self, self.__id, nil) -- clear self reference
   return self
 end
 
@@ -403,7 +413,6 @@ M.is_readonly    = functor( is_readonly    )
 M.is_instanceOf  = functor( is_instanceOf  )
 M.set_parent     = functor( set_parent     )
 M.set_readonly   = functor( set_readonly   )
-M.get_raw        = functor( get_raw        )
 M.get_varkey     = functor( get_varkey     )
 M.get_variable   = functor( get_variable   )
 M.set_variable   = functor( set_variable   )
@@ -411,6 +420,8 @@ M.set_function   = functor( set_function   )
 M.set_metamethod = functor( set_metamethod )
 M.clear_array    = functor( clear_array    )
 M.clear_variable = functor( clear_variable )
+M.get_raw        = functor( get_raw        )
+M.set_raw        = functor( set_raw        )
 M.set_flag       = functor( set_flag       )
 M.test_flag      = functor( test_flag      )
 M.clear_flag     = functor( clear_flag     )
@@ -421,16 +432,20 @@ M.close_env      = functor( close_env      )
 M.strdump        = functor( strdump        )
 
 -- aliases
-M.get , M.getk, M.set  = M.get_variable, M.get_varkey, M.set_variable
-M.fset, M.ftst, M.fclr = M.set_flag, M.test_flag, M.clear_flag
+M.get    = M.get_variable
+M.set    = M.set_variable
+M.getk   = M.get_varkey
+M.fset   = M.set_flag
+M.ftst   = M.test_flag
+M.fclr   = M.clear_flag
 
 -- Object members
-M.__id     = 'Object'
-M.__flg    = flg_free
-M.__par    = parent
-M.__var    = \s -> rawget(s,_var) -- alias
-M.name     = \s -> s.__id         -- alias
-M.parent   = \s -> s.__par        -- alias
+M.__id   = 'Object'
+M.__flg  = flg_free
+M.__par  = parent
+M.__var  = \s -> rawget(s,_var) -- alias
+M.name   = \s -> s.__id         -- alias
+M.parent = \s -> s.__par        -- alias
 
 -- help
 M.__help = require 'madh_object'

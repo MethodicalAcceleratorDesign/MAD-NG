@@ -32,7 +32,8 @@ NAME
 SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
   is_cdata, is_complex,
-  is_nan, is_inf, is_integer, is_scalar, is_rawtable,          (specializations)
+  is_nan, is_infinite, is_positive, is_negative, is_integer,   (specializations)
+  is_scalar, is_rawtable,
   bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
   bool, logical_not, logical_and, logical_or, is_equal,      (logical operators)
   is_not_equal, is_lesser, is_lesser_or_equal, is_greater, is_greater_or_equal,
@@ -51,7 +52,8 @@ DESCRIPTION
   The utils module provides useful utility functions:
   - is_nil, is_boolean, is_number, is_string, is_function, is_table, is_cdata,
     and is_complex return true if the argument is of expected type,
-  - is_nan and is_inf return true if argument is not-a-number or ±infinity,
+  - is_nan and is_infinite return true if argument is not-a-number or ±infinity,
+  - is_positive and is_negative return true if argument is >0 or <0 respectively,
   - is_integer returns true if the argument is an integer number within the
     interval of [-2^52, 2^52],
   - is_scalar returns true if the argument is a number or a complex,
@@ -132,7 +134,6 @@ local value_t = { -- list of types that cannot be modified
 
 -- aliases
 
-M.load   = require
 --M.resume = coroutine.resume
 --M.yield  = coroutine.yield
 
@@ -239,9 +240,13 @@ M.is_cdata    = \a -> type(a) == 'cdata'
 M.is_complex  = \a -> istype(complex_ctor, a)
 
 local is_number, is_complex, is_table in M
+local inf = 1/0
 
 M.is_nan      = \a -> is_number(a) and a ~= a
-M.is_inf      = \a -> is_number(a) and abs(a) == 1/0
+M.is_infinite = \a -> is_number(a) and abs(a) == inf
+M.is_finite   = \a -> is_number(a) and abs(a) <  inf
+M.is_positive = \a -> is_number(a) and a > 0
+M.is_negative = \a -> is_number(a) and a < 0
 M.is_integer  = \a -> is_number(a) and a >= -2^52 and a <= 2^52 and (a%1) == 0
 M.is_scalar   = \a -> is_number(a) or is_complex(a)
 M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
@@ -349,9 +354,24 @@ M.totable = function (a, ...)
   end
 end
 
--- default help
+-- utilities
+
+local is_iterable, is_mappable in M.concept
 
 M.utility = {}
+
+M.utility.setkeys = function (tbl)
+  assert(is_iterable(tbl), "invalid argument #1 (table expected)")
+  for _,v in ipairs(tbl) do tbl[v] = v end
+  return tbl
+end
+
+M.utility.countkeys = function (tbl)
+  assert(is_mappable(tbl), "invalid argument #1 (table expected)")
+  local n = 0
+  for _ in pairs(tbl) do n = n+1 end
+  return n
+end
 
 M.utility.defhelp = function (m, name)
   local ref = m.__help and m.__help.self

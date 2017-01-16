@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide the reference beam command
+  - Provide beam command
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -25,26 +25,307 @@ local M = { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
-M.__help.self = [=[
+M.__help.self = [[
 NAME
+  beam
 
 SYNOPSIS
+  b = beam 'cmd' {}
 
 DESCRIPTION
+  The module beam provides...
 
 RETURN VALUES
-
-ERRORS
+  The beam object
 
 SEE ALSO
-  None.
+  Object
+]]
+
+M.__help['Momentum deviation'] = [=[
+  beam0  = beam { particle='proton', energy=7000 } -- ref beam
+  beamdp = beam0 {}                                -- clone
+  for n,deltap in irange(-0.02,0.02,5e-3) do
+    beamdp.pc = beamdp.parent.pc * (1+deltap)
+    print(n, deltap, beamdp.energy, beamdp.pc, beamdp.beta, beamdp.gamma)
+  end
+  beamdp.pc = beamdp.parent.pc * (1 - 1 + eps) -- rest energy
+  print(10, -1, beamdp.energy, beamdp.pc, beamdp.beta, beamdp.gamma)
+
+n   deltap  energy           pc               beta              gamma
+1  -0.02    6860.000002541   6859.9999383752  0.99999999064639  7311.3120797671
+2  -0.015   6895.0000019008  6894.9999380608  0.99999999074111  7348.6146917229
+3  -0.01    6930.000001264   6929.9999377464  0.9999999908344   7385.9173036822
+4  -0.005   6965.0000006304  6964.9999374319  0.99999999092628  7423.219915645
+5  0        7000             6999.9999371175  0.99999999101679  7460.5225276112
+6  0.005    7034.9999993727  7034.9999368031  0.99999999110595  7497.8251395807
+7  0.01     7069.9999987486  7069.9999364887  0.9999999911938   7535.1277515536
+8  0.015    7104.9999981275  7104.9999361743  0.99999999128034  7572.4303635296
+9  0.02     7139.9999975094  7139.9999358599  0.99999999136562  7609.7329755089
+10 -1       0.938272081358   0                0                 1
 ]=]
+
+M.__help['Energy-momentum'] = [=[
+  E0^2 = (p.c)^2 + (m0.c^2)^2
+       = pc^2 [GeV^2] + mass^2 [GeV^2]
+  E0   = sqrt(pc^2 + mass^2) [Gev]
+  E    = sqrt((pc.(1+deltap))^2 + mass^2) [Gev], deltap > -1
+]=]
+
+M.__help['Lorentz factor'] = [=[
+  1          = gamma^2 (1-beta^2)
+  gamma      = 1/sqrt(1-beta^2)  = E/m  (>= 1)
+  beta       = sqrt(1-1/gamma^2) = v/c  (<= 1)
+  beta gamma = sqrt(gamma^2-1)
+]=]
+
+M.__help['Electromagnetic radius'] = [=[
+  r = 1/(4pi.epsilon0) q^2/(m0.c^2)             (definition from zero potential)
+  from: E_rest = m0[kg] c^2[m/s] = m0[eV] qelect[C] =>
+                 m0[Kg] = m0[GeV].1e9.qelect[C] / c^2[m/s]
+  r = 1/(4pi/(4pi.1e-7.c^2)) (charge.qelect)^2 / ((mass.1e9.qelect/c^2).c^2)
+  r = 1e-7.c^2.charge^2.qelect / (mass.1e9)
+  r = 1e-16.qelect.c^2 charge^2/mass                       (used in computation)
+  r = 1e-9/(4pi.epsilon0) qelect charge^2/mass
+]=]
+
+--[[
+attributes that should not be in beam:
+  circ    -- total path in m
+  freq0   -- revolution frequency in Hz
+  deltap  -- momentum deviation
+  dtbyds  -- phase slip factor (eta)
+  alfac   -- momentum compaction factor (MADX: 1/gamma^2, -dtbyds is missing)
+  u0      -- radiation loss in GeV
+  qs      -- synchrotron tune
+  pdamp   -- damping partition number
+  n1min   -- min available aperture
+--]]
+
+--[[
+Example from J. Jowett for proton-ion beams
+Beam1: BEAM, SEQUENCE=LHCB1, ENERGY=6500, PARTICLE=PROTON,
+       KBUNCH=588, NPART=3E10,
+       EX=5.413107769764368E-10, EY=5.413107769764368E-10, ET=8.5275E-6,
+       SIGE=0.0001137, SIGT=0.075;
+Beam2: BEAM, SEQUENCE=LHCB2, ENERGY=533000, PARTICLE=ION,
+       MASS=193.68715, CHARGE=82,
+       KBUNCH=702, NPART=1.5E8,
+       EX=5.413107769764368E-10, EY=5.413107769764368E-10, ET=8.5275E-6,
+       SIGE=0.0001137, SIGT=0.075;
+--]]
 
 -- locals ---------------------------------------------------------------------o
 
--- require Command that rely on Object __init (or __exec)
+local abs, sqrt in math
+local Object, is_object, tostring in MAD
+local is_nil, is_boolean, is_string, is_table, is_positive, is_integer in MAD
+local clight, qelect, emass, pmass, mumass, deumass in MAD.constant
+local setkeys, countkeys in MAD.utility
+local is_mappable in MAD.concept
+
+local GeV_c = 1e9/clight
+local krad_GeV = 1e-16*qelect*clight^2 -- 1e-9/(4pi.epsilon0) qelect
+
+local update_skip = setkeys {
+  'particle', 'mass', 'charge', 'spin',
+}
+
+local show_order = setkeys {
+  'name', 'kind',
+  'particle', 'mass', 'charge', 'spin', 'radius',
+  'energy', 'pc', 'beta', 'gamma', 'brho',
+  'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
+  'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
+  'radiate',
+}
+
+-- particles database ---------------------------------------------------------o
+
+local particledb = {}
+
+local function newparticle (particle, mass, charge, spin)
+  spin = spin or 1/2
+  assert(is_nil(particledb[particle]), "particle already in database")
+  assert(is_string(particle), "invalid particle (string expected)")
+  assert(is_positive(mass)  , "invalid mass (positive number expected)")
+  assert(is_integer(charge) , "invalid charge (integer expected)")
+  assert(is_integer(2*spin) and spin >= 0,
+                              "invalid spin (positive half integer expected)")
+  particledb[#particledb+1] = particle
+  particledb[particle] = { mass=mass, charge=charge, spin=spin }
+end
+
+local function new_particle (self, tbl)
+  if is_nil(tbl) and not is_object(self) then
+    assert(is_table(self) , "invalid argument #1 (table expected)")
+    tbl, self = self, nil -- right shift
+  else
+    assert(is_object(self), "invalid argument #1 (object expected)")
+    assert(is_table(tbl)  , "invalid argument #2 (table expected)")
+  end
+  newparticle(tbl.particle, tbl.mass, tbl.charge, tbl.spin)
+  return self
+end
+
+local function showdb (self, file)
+  if not is_object(self) and is_nil(file) then
+    file, self = self, nil -- right shift
+  end
+  file = file or io.stdout
+  for _,k in ipairs(particledb) do
+    local mass, charge, spin in particledb[k]
+    file:write(string.format("%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1g\n",
+               k, tostring(mass), tostring(charge), tostring(spin)))
+  end
+  return self
+end
+
+-- populate particle database
+new_particle{ particle = 'electron'  , mass = emass  , charge = -1, spin = 1/2 }
+new_particle{ particle = 'positron'  , mass = emass  , charge =  1, spin = 1/2 }
+new_particle{ particle = 'proton'    , mass = pmass  , charge =  1, spin = 1/2 }
+new_particle{ particle = 'antiproton', mass = pmass  , charge = -1, spin = 1/2 }
+new_particle{ particle = 'muon'      , mass = mumass , charge = -1, spin = 1/2 }
+new_particle{ particle = 'antimuon'  , mass = mumass , charge =  1, spin = 1/2 }
+new_particle{ particle = 'deuteron'  , mass = deumass, charge =  1, spin = 1   }
 
 -- implementation -------------------------------------------------------------o
 
+local beam = Object 'beam' {
+  kind      = 'beam',
+  -- particle
+  particle  = 'electron',                              --                   [RW]
+  mass      = particledb.electron.mass,                -- GeV (m.c^2)       [RO]
+  charge    = particledb.electron.charge,              -- ±n qelect         [RO]
+  spin      = particledb.electron.spin,                -- ±n/2              [RO]
+  radius    = \s -> krad_GeV * s.charge^2/s.mass,      -- m                 [RO]
+  -- energy
+  energy    = 1,                                       -- GeV               [RW]
+  pc        = \s -> sqrt(s.energy^2 - s.mass^2),       -- GeV               [RU]
+  beta      = \s -> sqrt(1 - (s.mass/s.energy)^2),     --                   [RO]
+  gamma     = \s -> s.energy/s.mass,                   --                   [RO]
+  brho      = \s -> GeV_c * s.pc/abs(s.charge),        -- T.m               [RO]
+  -- emittance
+  ex        = 1,                                       -- rad.m             [RW]
+  ey        = 1,                                       -- rad.m             [RW]
+  et        = 1e-3,                                    -- rad.m             [RW]
+  exn       = \s -> sqrt(s.gamma^2 - 1)*s.ex,          -- rad.m             [RU]
+  eyn       = \s -> sqrt(s.gamma^2 - 1)*s.ey,          -- rad.m             [RU]
+  etn       = \s -> sqrt(s.gamma^2 - 1)*s.et,          -- rad.m             [RU]
+  -- bunch
+  nbunch    = 0,                                       --                   [RW]
+  nparticle = 0,                                       -- per bunch         [RW]
+  sigx      = 1,                                       -- m                 [RW]
+  sigy      = 1,                                       -- m                 [RW]
+  sigt      = 1,                                       -- m                 [RW]
+  sige      = 1e-3,                                    -- GeV               [RW]
+  -- flags
+  radiate   = false,                                   --                   [RW]
+}
+
+local newidx = rawget(getmetatable(beam),'__newindex') -- forward to parent
+local index  = \s,k,v => newidx(s,k,v) end             -- default forwards
+
+local update = setmetatable({
+  -- particle
+ particle = \s,k,v => assert(particledb[v],"unknown particle") newidx(s,k,v)
+                      newidx(s,'mass'  ,particledb[v].mass  )
+                      newidx(s,'charge',particledb[v].charge)
+                      newidx(s,'spin'  ,particledb[v].spin  ) end,
+  mass   := error(  "mass is readonly, define a new particle"),
+  charge := error("charge is readonly, define a new particle"),
+  spin   := error(  "spin is readonly, define a new particle"),
+  radius := error("radius is readonly"),
+  -- energy
+  energy = \s,k,v => assert(v > s.mass, "invalid energy <= mass") newidx(s,k,v) end,
+  pc     = \s,_,v => assert(is_positive(v), "invalid pc <= 0") newidx(s,'energy',sqrt(v^2+s.mass^2)) end,
+  beta  := error( "beta is readonly, update energy or mass"),
+  gamma := error("gamma is readonly, update energy or mass"),
+  brho  := error( "brho is readonly, update energy, mass or charge"),
+  -- emittance
+  ex     = \s,k,v => assert(is_positive(v),"invalid ex <= 0") newidx(s,k,v) end,
+  ey     = \s,k,v => assert(is_positive(v),"invalid ey <= 0") newidx(s,k,v) end,
+  et     = \s,k,v => assert(is_positive(v),"invalid et <= 0") newidx(s,k,v) end,
+  exn    = \s,_,v => assert(is_positive(v),"invalid exn <= 0") newidx(s,'ex',v/sqrt(s.gamma^2-1)) end,
+  eyn    = \s,_,v => assert(is_positive(v),"invalid eyn <= 0") newidx(s,'ey',v/sqrt(s.gamma^2-1)) end,
+  etn    = \s,_,v => assert(is_positive(v),"invalid etn <= 0") newidx(s,'et',v/sqrt(s.gamma^2-1)) end,
+  -- bunch
+  nbunch = \s,k,v => assert(is_integer(v) and v>0,"invalid nbunch <= 0") newidx(s,k,v) end,
+nparticle= \s,k,v => assert(is_integer(v) and v>0,"invalid nparticle <= 0") newidx(s,k,v) end,
+  sigx   = \s,k,v => assert(is_positive(v),"invalid sigx <= 0") newidx(s,k,v) end,
+  sigy   = \s,k,v => assert(is_positive(v),"invalid sigy <= 0") newidx(s,k,v) end,
+  sigt   = \s,k,v => assert(is_positive(v),"invalid sigt <= 0") newidx(s,k,v) end,
+  sige   = \s,k,v => assert(is_positive(v),"invalid sige <= 0") newidx(s,k,v) end,
+  -- flags
+ radiate = \s,k,v => assert(is_boolean(v),"invalid radiate (boolean expected)") newidx(s,k,v) end,
+},-- default update (no check)
+{ __index := index })
+
+local function newindex (self, key, val)
+  update[key](self,key,val)
+end
+
+local function init (self)
+  local particle, mass, charge =
+        self:get_raw 'particle', self:get_raw 'mass', self:get_raw 'charge'
+  if mass or charge then -- include new particle definition
+    newparticle(particle, mass, charge, self:get_raw 'spin')
+  end
+  if particle then newindex(self, 'particle', particle) end
+  for k,v in pairs(self) do
+    if is_nil(update_skip[k]) then newindex(self, k, v) end
+  end
+  return self
+end
+
+local function set (self, tbl)
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  local particle, mass, charge in tbl
+  if mass or charge then -- include new particle definition
+    newparticle(particle, mass, charge, tbl.spin)
+  end
+  if particle then newindex(self, 'particle', particle) end
+  for k,v in pairs(tbl) do
+    if is_nil(update_skip[k]) then newindex(self, k, v) end
+  end
+  return self
+end
+
+local function show (self, file)
+  file = file or io.stdout
+  for i,k in ipairs(show_order) do
+    file:write(string.format("%-25s  %-25s\n", k, tostring(self[k])))
+  end
+  for _,k in ipairs(self:get_varkey()) do
+    if is_nil(show_order[k]) then
+      file:write(string.format("%-25s  %-25s\n", k, tostring(self[k])))
+    end
+  end
+  return self
+end
+
+do -- sanity checks
+  local bn, un, sn = countkeys(beam), countkeys(update)+2, #show_order
+  -- print(bn, un, sn)
+  assert(bn == un, "inconsistency detected in beam module")
+  assert(bn == sn, "inconsistency detected in beam module")
+end
+
+beam :set_function {
+  set=set, set_variable=set, new_particle=new_particle,
+  show=show, showdb=showdb,
+}
+
+beam :set_metamethod ({ __init=init, __newindex=newindex }, true)
+     :set_readonly   ()
+
+MAD.utility.defhelp(M) -- todo: per function help -> 'beam'
+
 -- end ------------------------------------------------------------------------o
-return MAD.utility.defhelp(M) -- todo: per function help -> 'beam'
+return {
+  beam = beam,
+  new_particle = new_particle,
+
+  __help = M.__help,
+}
