@@ -50,7 +50,7 @@ local is_nil, is_number, is_string, is_rawtable, vector, sign in MAD
 local is_iterable in MAD.concept
 local element in MAD.element
 
--- implementation -------------------------------------------------------------o
+-- definition -----------------------------------------------------------------o
 
 local _pos = {} -- hidden key
 
@@ -70,7 +70,7 @@ local function seq_error (msg, sequ, elem, idx)
               .. "' at index "     .. (idx or '?'))
 end
 
--- functions ------------------------------------------------------------------o
+-- implementation -------------------------------------------------------------o
 
 -- identifier
 local function ident (name)
@@ -259,6 +259,125 @@ function init_sequence (sequ)
   return sequ
 end
 
+-- functions ------------------------------------------------------------------o
+
+local function index_of (seq, elem, start_)
+  if is_number(elem) then
+    local len = #seq
+    if elem < 0 then elem = len+elem+1 end
+    assert(elem >= 1 and elem <= len, "index out of bounds")
+    return elem
+  elseif is_string(elem) then
+    local name, cnt = string.match(elem, "([^[]+)%[(%d*)%]")
+    if name ~= nil then
+      elem = assert(seq[name][tonumber(cnt)], "invalid sequence index")
+    else
+      name = string.match(elem, "([^[]+)")
+      if name == '#s' or name == '#S' then return 1 end
+      if name == '#e' or name == '#E' then return #seq end
+      elem = assert(seq[name], "invalid sequence index")
+    end
+  end
+  return assert(find_idx(seq, elem, start_), "invalid sequence index")
+end
+
+local function spos_of (seq, elem, start_)
+  return seq[_pos][index_of(seq, elem, start_)]
+end
+
+local function range_index (seq, rng)
+  local len, start, stop = #seq
+  if is_string(rng) then
+    start, stop = string.match(rng, "([^/]+)/?(.*)")
+  else
+    start = is_iterable(rng) and rng[1] or rng or 1
+    stop  = is_iterable(rng) and rng[2] or rng or len
+  end
+  start = index_of(seq, start)
+  stop  = index_of(seq, stop, start)
+  assert(stop >= start, "range stop out of bounds")
+  return start, stop
+end
+
+local function foreach (seq, f, rng_)
+  assert(is_callable(f), "invalid argument #2 (callable expected)")
+  local start, stop = range_index(seq, rng_)
+  for i=start,stop do f(seq[i],i) end
+  return seq
+end
+
+local function filter (seq, p, rng_)
+  assert(is_callable(p), "invalid argument #2 (callable expected)")
+  local r, start, stop = {}, range_index(seq, rng_)
+  for i=start,stop do
+    if p(seq[i],i) == true then r[#r+1] = seq[i] end
+  end
+  return r
+end
+
+local function tie (seq1, seq2)
+  -- e.g. LHCB1:tie(LHCB2)
+  assert(seq2.is_sequence == true, "invalid argument #2 (sequence expected)")
+  local shrd1, shrd2 = {}, {}
+  for i1,e1 in ipairs(seq1) do
+    local name = e1.name
+    local e2 = seq2[name]
+    if e2 ~= nil then
+      assert(e1.is_element == true, "invalid shared element (must be unique)")
+      assert(e2.is_element == true, "invalid shared element (must be unique)")
+      local i2 = find_idx(seq2, e2, i1) or find_idx(seq2, e2)
+      local id = ident(name)
+      seq1[name] = e1( {at = e1:get_raw 'at', from = e1:get_raw 'from'} )
+      seq2[name] = e1( {at = e2:get_raw 'at', from = e2:get_raw 'from'} )
+      seq1[id] = seq1[name]
+      seq2[id] = seq2[name]
+      seq1[i1] = seq1[name]
+      seq2[i2] = seq2[name]
+      shrd1[name] = e1
+      shrd2[name] = e2
+      e1.at, e1.from = nil, nil
+      e2.at, e2.from = nil, nil
+    end
+  end
+  return seq1, { [ident(seq1.name)] = shrd1, [ident(seq2.name)] = shrd2 }
+end
+
+-- attributes -----------------------------------------------------------------o
+
+sequence:set_variable {
+  s_pos = \s -> s[_pos]
+}
+
+-- methods --------------------------------------------------------------------o
+
+sequence:set_function {
+  range_index = range_index,
+  index_of    = index_of,
+  spos_of     = spos_of,
+  foreach     = foreach,
+  filter      = filter,
+  tie         = tie,
+}
+
+MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
+
+-- sequence and bline are elements
+MAD.element.sequence = sequence
+MAD.element.bline    = sequence
+
+-- end -------------------------------------------------------------------------
+return {
+  sequence = sequence,
+  bline    = sequence,
+
+  __help   = M.__help,
+}
+
+--[=[
+--------------------------------------------------------------------------------
+-- TODO ------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+
 --[[ SEQUENCE
 local function adjust_length (seq)
   local last = seq[#seq]
@@ -330,109 +449,6 @@ function M:show_madx(disp)
   io.write('endsequence;\n')
 end
 ]]
-
-local function tie (seq1, seq2)
-  -- e.g. LHCB1:tie(LHCB2)
-  assert(seq2.is_sequence == true, "invalid argument #2 (sequence expected)")
-  local shrd1, shrd2 = {}, {}
-  for i1,e1 in ipairs(seq1) do
-    local name = e1.name
-    local e2 = seq2[name]
-    if e2 ~= nil then
-      assert(e1.is_element == true, "invalid shared element (must be unique)")
-      assert(e2.is_element == true, "invalid shared element (must be unique)")
-      local i2 = find_idx(seq2, e2, i1) or find_idx(seq2, e2)
-      local id = ident(name)
-      seq1[name] = e1( {at = e1:get_raw 'at', from = e1:get_raw 'from'} )
-      seq2[name] = e1( {at = e2:get_raw 'at', from = e2:get_raw 'from'} )
-      seq1[id] = seq1[name]
-      seq2[id] = seq2[name]
-      seq1[i1] = seq1[name]
-      seq2[i2] = seq2[name]
-      shrd1[name] = e1
-      shrd2[name] = e2
-      e1.at, e1.from = nil, nil
-      e2.at, e2.from = nil, nil
-    end
-  end
-  return seq1, { [ident(seq1.name)] = shrd1, [ident(seq2.name)] = shrd2 }
-end
-
-local function range_index (seq, rng)
-  local len   = #seq
-  local start = is_iterable(rng) and rng[1] or rng or 1
-  local stop  = is_iterable(rng) and rng[2] or rng or len
-
-  if is_number(start) then
-    if start < 0 then start = len+start+1 end
-    assert(start >= 1 and start <= len, "range start out of bounds")
-  elseif is_string(start) and (start == '#s' or start == '#S') then
-    start = 1
-  else
-    start = assert(seq:index_of(start), "invalid range start")
-  end
-  if is_number(stop) then
-    if stop < 0 then stop = len+stop+1 end
-    assert(stop >= start and stop <= len, "range stop out of bounds")
-  elseif is_string(stop) and (stop == '#e' or stop == '#E') then
-    stop = len
-  else
-    stop = assert(seq:index_of(stop, start), "invalid range stop")
-  end
-  return start, stop
-end
-
-local function foreach (seq, f, rng_)
-  assert(is_callable(f), "invalid argument #2 (callable expected)")
-  local start, stop = range_index(seq, rng_)
-  for i=start,stop do f(seq[i],i) end
-  return seq
-end
-
-local function filter (seq, p, rng_)
-  assert(is_callable(p), "invalid argument #2 (callable expected)")
-  local r, start, stop = {}, range_index(seq, rng_)
-  for i=start,stop do
-    if p(seq[i],i) == true then r[#r+1] = seq[i] end
-  end
-  return r
-end
-
--- attributes -----------------------------------------------------------------o
-
-sequence:set_variable {
-  s_pos = \s -> s[_pos]
-}
-
--- methods --------------------------------------------------------------------o
-
-sequence:set_function {
-  index_of    = \s,e,i -> find_idx(s, is_string(e) and s[e] or e, i),
-  spos_of     = \s,e,i -> s.s_pos[is_number(e) and e or s:index_of(e,i)],
-  range_index = range_index,
-  foreach     = foreach,
-  filter      = filter,
-  tie         = tie,
-}
-
-MAD.utility.defhelp(M) -- todo: per function help -> 'sequence'
-
--- sequence and bline are elements
-MAD.element.sequence = sequence
-MAD.element.bline    = sequence
-
--- end -------------------------------------------------------------------------
-return {
-  sequence = sequence,
-  bline    = sequence,
-
-  __help   = M.__help,
-}
-
---[=[
---------------------------------------------------------------------------------
--- TODO ------------------------------------------------------------------------
---------------------------------------------------------------------------------
 
 --[[
 local function flatten(self, name)
