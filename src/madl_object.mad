@@ -45,7 +45,7 @@ local _var = {} -- key
 -- reserved flags (bits)
 local _flg = {} -- key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
-local flg_free = bnot(0x3)  -- free flags (2 - 32)
+local flg_free = flg_cl+1   -- used flags (0-1), free flags (2 - 31)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -285,9 +285,9 @@ end
 local function clear_variable (self)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  local id, flg = self.__id, self.__flg
+  local id = self.__id
   table.clear(rawget(self,_var))
-  self.__id, self.__flg = id, flg
+  self.__id = id
   return self
 end
 
@@ -295,7 +295,7 @@ end
 
 local function set_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
+  assert(n >= flg_free and n <= 31, "invalid flag number")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
@@ -307,15 +307,9 @@ end
 
 local function clear_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
-  rawset(self,_flg, bclr(rawget(self,_flg) or 0, n))
-  return self
-end
-
-local function reserve_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(n > flg_cl and btst(self.__flg, n), "invalid flag (reserved)")
-  self.__flg = bset(self.__flg, n)
+  assert(n >= flg_free and n <= 31, "invalid flag number")
+  local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
+  if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
 end
 
@@ -441,7 +435,6 @@ M.fclr   = M.clear_flag
 
 -- Object members
 M.__id   = 'Object'
-M.__flg  = flg_free
 M.__par  = parent
 M.__var  = \s -> rawget(s,_var) -- alias
 M.name   = \s -> s.__id         -- alias
