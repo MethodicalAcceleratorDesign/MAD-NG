@@ -50,7 +50,7 @@ DESCRIPTION
   zeros, ones, eye, random, perm, symp, circ, fill, reshape,          (in place)
   get, get0, geti, geti0, getv, getdiag, getrow, getcol, getsub,
   set, set0, seti, seti0, setv, setdiag, setrow, setcol, setsub,
-  same, copy, concat,
+  same, copy, resize, concat,
   foreach, map, map2, map3, foldl, foldr, scanl, scanr, filter, mapat,
 
   (minus) -, +, -, *, /, %, ^, ==, #, [], ..,
@@ -407,17 +407,17 @@ function MC.same (x, e_, nr_, nc_)
   return cmatrix(nr_ or x.nr, nc_ or x.nc)
 end
 
--- copy -----------------------------------------------------------------------o
+-- copy, resize ---------------------------------------------------------------o
 
 function MR.copy (x, y_)
   local n
   if is_nil(y_) then
     n, x, y_ = x:size(), matrix(x:sizes()), x
   else
-    assert(is_matrix(y_), "invalid argument #1 (matrix expected")
+    assert(is_matrix(y_), "invalid argument #1 (matrix expected)")
     n = min(x:size(), y_:size())
   end
-  ffi.copy(x.data, y_.data, dbl_sz * n)
+  ffi.copy(x.data, y_.data, dbl_sz*n)
   return x
 end
 
@@ -426,10 +426,38 @@ function MC.copy (x, y_)
   if is_nil(y_) then
     n, x, y_ = x:size(), cmatrix(x:sizes()), x
   else
-    assert(is_cmatrix(y_), "invalid argument #1 (cmatrix expected")
+    assert(is_cmatrix(y_), "invalid argument #1 (cmatrix expected)")
     n = min(x:size(), y_:size())
   end
-  ffi.copy(x.data, y_.data, cpx_sz * n)
+  ffi.copy(x.data, y_.data, cpx_sz*n)
+  return x
+end
+
+function MR.resize (x, nr, nc)
+  local y
+  if is_matrix(nr)
+  then x, y = nr, x
+  else x, y = matrix(nr,nc), x
+  end
+
+  local nr, nc = min(x:nrow(), y:nrow()), min(x:ncol(), y:ncol())
+  for i=0,nr-1 do
+    ffi.copy(x.data+x.nc*i, y.data+y.nc*i, dbl_sz*nc)
+  end
+  return x
+end
+
+function MC.resize (x, nr, nc)
+  local y
+  if is_cmatrix(nr)
+  then x, y = nr, x
+  else x, y = cmatrix(nr,nc), x
+  end
+
+  local nr, nc = min(x:nrow(), y:nrow()), min(x:ncol(), y:ncol())
+  for i=0,nr-1 do
+    ffi.copy(x.data+x.nc*i, y.data+y.nc*i, cpx_sz*nc)
+  end
   return x
 end
 
@@ -1793,7 +1821,7 @@ function MR.fft (x, r_)
   return r
 end
 
-function MR.ifft (x, r_)
+function MC.ifft (x, r_)
   local nr, nc = x:sizes()
   local r = chksiz(r_, x) or cmatrix(nr,nc)
   if nr == 1 or nc == 1
@@ -1802,6 +1830,9 @@ function MR.ifft (x, r_)
   end
   return r
 end
+
+MC.fft  = \ error("N.A.")
+MR.ifft = \ error("N.A.")
 
 function MR.rfft (x, r_)
   local nr, nc = x:sizes()
@@ -1846,18 +1877,7 @@ end
 
  -- convolution theorem
 function MR.conv (x, y, r_)
-  local r
-  if is_string(r_) and r_ == 'full' then
-    local xr, xc = x:sizes()
-    local yr, yc = y:sizes()
-    local nr = max( xr+yr-1, xr, yr )
-    local nc = max( xc+yc-1, xc, yc )
-    local x1 = x:same(nr,nc) for i=1,xr do for j=1,xc do x1:set(i,j,x:get(i,j)) end end -- reshape to bigger size
-    local y1 = y:same(nr,nc) for i=1,yr do for j=1,yc do y1:set(i,j,y:get(i,j)) end end
-    x, y = x1, y1
-    r = x:same(nr,nc)
-  else r = r_ or x:same() end
-
+  local r = r_ or x:same()
   local xf = x:rfft()
   if x.data == y.data
   then return xf:emul(xf      ,xf):irfft(r)
@@ -1877,17 +1897,19 @@ end
  -- correlation theorem
 function MR.corr (x, y, r_)
   local r = r_ or x:same()
-  local xf, yf = x:rfft()
-  if x.data == y.data then return xf:emul(xf:conj(  ),xf):irfft(r)
-  else yf = y:rfft()       return xf:emul(yf:conj(yf),xf):irfft(r)
+  local xf = x:rfft()
+  if x.data == y.data
+  then return xf:emul(xf      :conj(    ),xf):irfft(r)
+  else return xf:emul(y:rfft():conj('in'),xf):irfft(r)
   end
 end
 
 function MC.corr (x, y, r_)
   local r = r_ or x:same()
-  local xf, yf = x:fft()
-  if x.data == y.data then return xf:emul(xf:conj(  ),xf):ifft(r)
-  else yf = y:fft()        return xf:emul(yf:conj(yf),xf):ifft(r)
+  local xf = x:fft()
+  if x.data == y.data
+  then return xf:emul(xf     :conj(    ),xf):ifft(r)
+  else return xf:emul(y:fft():conj('in'),xf):ifft(r)
   end
 end
 
