@@ -180,54 +180,79 @@ local function drift_track (_, m, l) -- DRIFT
   m.x = x + px * l/m.pz
   m.y = y + py * l/m.pz
   m.t = t + (beta_inv + pt)*l/m.pz - (1-T)*l*beta_inv
+
 end
 
 -- Kick general exact strait
 
-local function kick_track(elem, m, l) -- KICKR (TODO: ks)
+local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)(TODO: ks)
 --  io.write('tracking kick for ', elem.name, ' (l=', l, ')\n')
   local beta, charge in m.beam
   local dir in m
+  local direction = dir*charge
   local beta_inv = 1/beta
   local knl , ksl  = elem.knl  or {}, elem.ksl  or {}
   local dknl, dksl = elem.dknl or {}, elem.dksl or {}
   local kn = { elem.k0  or 0, elem.k1  or 0, elem.k2  or 0, elem.k3  }
   local ks = { elem.k0s or 0, elem.k1s or 0, elem.k2s or 0, elem.k3s }
-  local nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
+  local vn = vector(kn)
+  local vs = vector(ks)
+  local nmul = 0
+  local x, px, y, py, t, pt in m
 
-  for i=1,nmul do
-    m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
-    m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
+  if vn:max() == 0 and vs:max() == 0  then
+    nmul = max(#knl, #ksl, #dknl, #dksl) or 0
+  else
+    nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
   end
 
-  local x, px, y, py, t, pt in m
-  m.by = m.knl[nmul] -- * fact[nmul-1]
-  m.bx = m.ksl[nmul] -- * fact[nmul-1]
+  if nmul >= 1 then 
+    for i=1,nmul do
+      m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
+    end
 
-  local byt
-  for i=nmul-1,1,-1 do
-      byt = x * m.by - y * m.bx + m.knl[i]
-    m.bx  = y * m.by + x * m.bx + m.ksl[i]
-    m.by  = byt
+--  m.by = m.knl[nmul] -- * fact[nmul-1]
+--  m.bx = m.ksl[nmul] -- * fact[nmul-1]
+    m.by = m.knl[nmul] / fact[nmul-1]   
+    m.bx = m.ksl[nmul] / fact[nmul-1] 
+
+    local byt
+    for i=nmul-1,1,-1 do
+      byt   = x * m.by - y * m.bx + m.knl[i]
+      m.bx  = y * m.by + x * m.bx + m.ksl[i]
+      m.by  = byt
+    end
+
+  else 
+    m.bx = 0
+    m.by = 0
+
   end
 
   local kn0l = (elem.k0  or 0)*l + (m.knl[1] or 0)
   local ks0l = (elem.k0s or 0)*l + (m.ksl[1] or 0)
 
-  m.px = px - m.by + kn0l
-  m.py = py + m.bx
+--  m.px = px - m.by + kn0l
+--  m.py = py + m.bx
+  m.px = px - direction * m.by + dir * kn0l
+  m.py = py + direction * m.bx
 
---  io.write('m.bx=', m.bx, ', m.by=', m.by, '\n')
+-- PTC KICKTR: 
+-- EL%thin_h_angle  =  kn0l  
+-- EL%thin_v_angle  =  ks0l 
 
   if kn0l ~= 0 or ks0l ~= 0 then
     m.pz = sqrt(1 + 2*beta_inv*pt + pt^2)
-    m.t  = m.t + (kn0l*x - ks0l*y) * (beta_inv+pt)/m.pz
+    m.t  = m.t + direction * (kn0l*x - ks0l*y) * (beta_inv+pt)/m.pz
   end
+ 
 end
 
 -- Drift general exact curved
 
-local function sdrift_track (elem, m, l)
+local function sdrift_track (elem, m, l) --SPROT (comes from SSECH1: either SPROT (DKD) or SSEC)
+--  l = l(sbend) /(2*nstp) 
 --  io.write('tracking sdrift for l=', l, '\n')
   local l, angle, k0 in elem
 
@@ -243,7 +268,7 @@ local function sdrift_track (elem, m, l)
 
   m.pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2)
   m.ptt = 1 - ta*px / m.pz
-  m.xr  = x+rho
+  m.xr  = x+rho  
 
   m.xt  = (x + 4*rho*sa_2^2 + px*sa/m.pz) / (ca*m.ptt)
   m.pxt = ca*px + sa*m.pz
@@ -258,23 +283,22 @@ end
 
 -- Kick general exact curved (TODO)
 
-local function skick_track (elem, m, l) -- TODO
+local function skick_track (elem, m, l) -- TODO -- SKICK 
 --  io.write('tracking skick for ', elem.name, ' (l=', l, ')\n')
+  local charge in m.beam
+  local dir in m
+  local direction = dir*charge
   local l, k0, k0s in elem
-  k0, k0s = k0 or 0, k0s or 0
-
---  io.write("charge=", m.beam.charge, ", dir=", m.dir, '\n')
 
   local x, px, y, py, t, pt, dir in m -- y, t not used
-  local charge in m.beam
-  local b1 = -k0  * (1 + k0 *x)
-  local b2 =  k0s * (1 + k0s*x)
-  local bv = dir * charge -- from map
+  local b1 = -k0  * (1 + k0 * x)
+  local b2 =  k0s * (1 + k0s* x)
 
---TO ADD    call GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
+-- TO CHECK  call GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
 
-  m.px = px + l * bv * b1
-  m.py = py + l * bv * b2
+  m.px = px + l * direction * b1
+  m.py = py + l * direction * b2
+
 end
 
 -- integrator schemes ---------------------------------------------------------o
@@ -291,8 +315,8 @@ local function thin_track (elem, m)
     error("invalid thin element length (too long): " .. elem.name)
   end
 
-  -- TODO: k0?
-  kick_track(elem, m, l) -- kick_mult(elem, m, _) optimized for l=0?
+  kick_track(elem, m, l) 
+
   return l
 end
 
@@ -310,10 +334,14 @@ local function strait_track (elem, m) -- e.g. rbend
 
   local l_field = l
   if k0 and k0 ~= 0 then
-    l_field = l/sinc(k0*l/2) -- TO BE CHECKED
+    l_field = l/sinc(k0*l/2) -- correct
   end
 
   integrate[method or m.method](elem, m, l_field, drift_track, kick_track)
+
+  if elem.name == 'MS.14R2.B1'  or elem.name == 'MBAS2.1L1'  or elem.name =='MCS.A15R2.B1' then
+    print('ELEM: =', elem.name, ' x =', m.x, ' y = ', m.y, ' px =', m.px , ' py =', m.py)
+  end
   return l
 end
 
@@ -330,11 +358,13 @@ local function curved_track (elem, m) -- e.g. sbend
   -- TODO: boundary elements?
 
   local l_field = l
+  
   if k0 and k0 ~= 0 then
-    l_field = l/sinc((k0*l-angle)/2)  -- TO BE CHECKED
+    l_field = l/sinc((k0*l-angle)/2)  -- meaning that l_field = l for LHC
   end
 
   integrate[method or m.method](elem, m, l_field, sdrift_track, skick_track)
+
   return l
 end
 
@@ -463,6 +493,5 @@ MAD.utility.defhelp(M) -- todo: per function help -> 'track'
 -- end ------------------------------------------------------------------------o
 return {
   track = track,
-
   __help = M.__help,
 }
