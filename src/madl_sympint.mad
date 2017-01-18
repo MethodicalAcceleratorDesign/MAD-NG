@@ -90,41 +90,72 @@ print('E8') make_yoshida(yosh8_w.E)
 
 -- integrators ----------------------------------------------------------------o
 
-local function yoshida2 (elem, m, l, drift, kick)
+local function simple (elem, m, l, drift, kick) -- 2nd order (?)
   local nst in elem
   nst = nst or m.nst
   local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  local l_i = l_n/2
 
-  for i=1,nst do -- nst*1 kick (k=2, eq. 2.10)
-    drift(elem, m, l_n/2)
-     kick(elem, m, l_n  ) -- middle
-    drift(elem, m, l_n/2)
+  for i=1,nst do -- nst kicks
+    drift(elem, m, l_i)    l_i = l_n
+     kick(elem, m, l_n)
   end
+    drift(elem, m, l_n/2)
 end
 
-local function yoshida4 (elem, m, l, drift, kick)
+local function collim (elem, m, l, drift, kick) -- 2nd order (?)
   local nst in elem
   nst = nst or m.nst
   local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  local l_i = l_n/2
+
+  for i=1,nst do -- nst drifts
+     kick(elem, m, l_i)    l_i = l_n
+    drift(elem, m, l_n)
+  end
+     kick(elem, m, l_n/2)
+end
+
+-- [Burkhardt13] table 1, p. 946
+local function teapot (elem, m, l, drift, kick) -- 2nd order
+  local nst in elem
+  nst = nst or m.nst
+  local l_n, l_d, l_D = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  if nst > 1 then l_d, l_D = l/(2*(nst+1)), l*nst/(nst^2-1) else l_d = l_n/2 end
+  local l_i = l_d
+
+  for i=1,nst do -- nst kicks
+    drift(elem, m, l_i)    l_i = l_D
+     kick(elem, m, l_n)
+  end
+    drift(elem, m, l_d)
+end
+
+local function yoshida4 (elem, m, l, drift, kick) -- 4th order
+  local nst in elem
+  nst = nst or m.nst
+  local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  local l_i, l_2n = l_n, 2*l_n
 
   for i=1,nst do -- nst*3 kicks (k=4)
-    drift(elem, m, l_n * yosh4_d[1])
+    drift(elem, m, l_i * yosh4_d[1])    l_i = l_2n
      kick(elem, m, l_n * yosh4_k[1])
     drift(elem, m, l_n * yosh4_d[2])
      kick(elem, m, l_n * yosh4_k[2]) -- middle
     drift(elem, m, l_n * yosh4_d[2])
      kick(elem, m, l_n * yosh4_k[1])
-    drift(elem, m, l_n * yosh4_d[1])
   end
+    drift(elem, m, l_n * yosh4_d[1])
 end
 
-local function yoshida6 (elem, m, l, drift, kick)
+local function yoshida6 (elem, m, l, drift, kick) -- 6th order
   local nst in elem
   nst = nst or m.nst
   local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  local l_i, l_2n = l_n, 2*l_n
 
   for i=1,nst do -- nst*7 kicks (k=8)
-    drift(elem, m, l_n * yosh6_d[1])
+    drift(elem, m, l_i * yosh6_d[1])    l_i = l_2n
      kick(elem, m, l_n * yosh6_k[1])
     drift(elem, m, l_n * yosh6_d[2])
      kick(elem, m, l_n * yosh6_k[2])
@@ -138,17 +169,18 @@ local function yoshida6 (elem, m, l, drift, kick)
      kick(elem, m, l_n * yosh6_k[2])
     drift(elem, m, l_n * yosh6_d[2])
      kick(elem, m, l_n * yosh6_k[1])
-    drift(elem, m, l_n * yosh6_d[1])
   end
+    drift(elem, m, l_n * yosh6_d[1])
 end
 
-local function yoshida8 (elem, m, l, drift, kick)
+local function yoshida8 (elem, m, l, drift, kick) -- 8th order
   local nst in elem
   nst = nst or m.nst
   local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
+  local l_i, l_2n = l_n, 2*l_n
 
   for i=1,nst do -- nst*15 kicks (k=16)
-    drift(elem, m, l_n * yosh8_d[1])
+    drift(elem, m, l_i * yosh8_d[1])    l_i = l_2n
      kick(elem, m, l_n * yosh8_k[1])
     drift(elem, m, l_n * yosh8_d[2])
      kick(elem, m, l_n * yosh8_k[2])
@@ -178,57 +210,13 @@ local function yoshida8 (elem, m, l, drift, kick)
      kick(elem, m, l_n * yosh8_k[2])
     drift(elem, m, l_n * yosh8_d[2])
      kick(elem, m, l_n * yosh8_k[1])
+  end
     drift(elem, m, l_n * yosh8_d[1])
-  end
-end
-
-local function simple (elem, m, l, drift, kick)
-  local nst in elem
-  nst = nst or m.nst
-  local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
-  local l_i = l_n/2
-
-  for i=1,nst do -- nst kicks
-    drift(elem, m, l_i)
-     kick(elem, m, l_n)
-    l_i = l_n
-  end
-  drift(elem, m, l_n/2)
-end
-
-local function collim (elem, m, l, drift, kick)
-  local nst in elem
-  nst = nst or m.nst
-  local l_n = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
-  local l_i = l_n/2
-
-  for i=1,nst do -- nst drifts
-     kick(elem, m, l_i)
-    drift(elem, m, l_n)
-    l_i = l_n
-  end
-  kick(elem, m, l_n/2)
-end
-
--- [Burkhardt13] table 1, p. 946
-local function teapot (elem, m, l, drift, kick)
-  local nst in elem
-  nst = nst or m.nst
-  local l_n, l_d, l_D = assert(nst >= 1 and l/nst, "invalid nst (must be >=1)")
-  if nst > 1 then l_d, l_D = l/(2*(nst+1)), l*nst/(nst^2-1) else l_d = l_n/2 end
-  local l_i = l_d
-
-  for i=1,nst do -- nst kicks
-    drift(elem, m, l_i)
-     kick(elem, m, l_n)
-    l_i = l_D
-  end
-  drift(elem, m, l_d)
 end
 
 -- end ------------------------------------------------------------------------o
 return { -- dictionnary of integration schemes
-  yoshida2, yoshida2, yoshida4, yoshida4, yoshida6, yoshida6, yoshida8, yoshida8,
-  yoshida2=yoshida2, yoshida4=yoshida4, yoshida6=yoshida6, yoshida8=yoshida8,
+  simple, teapot, yoshida4, yoshida4, yoshida6, yoshida6, yoshida8, yoshida8,
+  yoshida4=yoshida4, yoshida6=yoshida6, yoshida8=yoshida8,
   simple=simple, teapot=teapot, collim=collim,
 }
