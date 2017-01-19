@@ -252,12 +252,12 @@ local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)(TODO: ks)
     m.t  = m.t + dir * (kn0l*x - ks0l*y) * (beta_inv+pt)/m.pz
   end
 
---TODO: SOLENOID  
+--TODO: SOLENOID
 end
 
 -- Drift general exact curved
 
-local function sdrift_track (elem, m, l) 
+local function sdrift_track (elem, m, l)
 --SPROT (SSECH1: either SPROT(DKD) or SSEC(MKM))
 --  io.write('tracking sdrift for l=', l, '\n')
   local k0 in elem
@@ -268,7 +268,7 @@ local function sdrift_track (elem, m, l)
 
   local beta_inv = 1/m.beam.beta
   local x, px, y, py, t, pt, T in m
-  
+
   local angle = l*k0
   local rho = 1/k0
   local sa, ca, ta, sa_2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
@@ -286,6 +286,19 @@ local function sdrift_track (elem, m, l)
   m.px = m.pxt
   m.y  = m.yt
   m.t  = m.tt
+
+!       A=YL*EL%P%B0
+!       R=1.0_dp/EL%P%B0
+!       if(k%TIME) then
+!          B=EL%P%BETA0
+!          PZ=ROOT(1.0_dp+2.0_dp*x(5)/b+X(5)**2-X(2)**2-X(4)**2)
+!          PT=1.0_dp-X(2)*TAN(A)/PZ
+!          !       XN(1)=(X(1)+R)/COS(A)/PT-R
+!          XN(1)=(X(1)+R*(2.0_dp*sin(a/2.0_dp)**2+X(2)*sin(A)/PZ))/COS(A)/PT
+!          XN(2)=X(2)*COS(A)+SIN(A)*PZ
+!          XN(3)=X(3)+X(4)*(X(1)+R)*TAN(A)/PZ/PT
+!          XN(6)=X(6)+(X(1)+R)*TAN(A)/PZ/PT*(1.0_dp/b+x(5))
+!          XN(6)=XN(6)+(k%TOTALPATH-1)*DL/EL%P%BETA0
 end
 
 -- Kick general exact curved (TODO)
@@ -333,9 +346,42 @@ local function thin_track (elem, m)
   return l
 end
 
+local function thick_track (elem, m, angle, drift, kick)
+  local l, k0, method in elem
+  local integrator = integrate[method or m.method]
+  local l_ratio, n_elem = 1, #elem -- l_field/l
+
+  if k0 and k0 ~= 0 then
+    l_ratio = 1/sinc((k0*l-angle)/2) -- correct
+  end
+
+  if n_elem == 0 then -- no sub-elements
+    integrator(elem, m, l*l_ratio, drift, kick)
+    return l
+  end
+
+  local s, ds, at = 0
+  for i=1,n_elem do
+    at = assert(elem[i].at, "invalid sub-element position (at expected)")
+    ds = at*l - s
+    assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+    if ds >= minlen then
+      integrator(elem, m, ds*l_ratio, drift, kick)
+    end
+    s = s + ds
+    assert(elem[i]:track(map) == 0, "invalid sub-element length (0 expected)")
+  end
+  ds = l-s
+  assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+  if ds >= minlen then
+    integrator(elem, m, ds*l_ratio, drift, kick)
+  end
+  return l
+end
+
 local function strait_track (elem, m) -- e.g. rbend
 --  io.write('STRAIT_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
-  local l, angle, k0, method in elem
+  local l, angle in elem
 
   if abs(angle) >= minang then
     error("invalid strait element angle (too curved): " .. elem.name)
@@ -343,20 +389,14 @@ local function strait_track (elem, m) -- e.g. rbend
 --    error("invalid strait element length (too short): " .. elem.name)
   end
 
-  -- TODO: boundary elements
-
-  local l_field = l
-  if k0 and k0 ~= 0 then
-    l_field = l/sinc(k0*l/2) -- correct
-  end
-
-  integrate[method or m.method](elem, m, l_field, drift_track, kick_track)
+  -- TODO: boundary elements and radiation.
+  l = thick_track (elem, m, 0, drift_track, kick_track)
   return l
 end
 
 local function curved_track (elem, m) -- e.g. sbend
 --  io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
-  local l, angle, k0, method in elem
+  local l, angle in elem
 
   if abs(angle) < minang then
     error("invalid curved element angle (too strait): " .. elem.name)
@@ -364,15 +404,8 @@ local function curved_track (elem, m) -- e.g. sbend
     error("invalid curved element length (too short): " .. elem.name)
   end
 
-  -- TODO: boundary elements?
-
-  local l_field = l
-
-  if k0 and k0 ~= 0 then
-    l_field = l/sinc((k0*l-angle)/2)  -- meaning that l_field = l for LHC
-  end
-
-  integrate[method or m.method](elem, m, l_field, sdrift_track, skick_track)
+  -- TODO: boundary elements and radiation.
+  l = thick_track (elem, m, angle, sdrift_track, skick_track)
   return l
 end
 
