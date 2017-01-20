@@ -1018,7 +1018,7 @@ end
 
 function TestMatrixErr:testCopy()
   local msg = {
-    "invalid argument #1 (matrix expected",
+    "invalid argument #1 (matrix expected)",
   }
   assertErrorMsgContains( msg[1], mth,'copy', errMat,  1 )
 end
@@ -1028,6 +1028,26 @@ function TestMatrixInPlaceII:testCopy()
     local mcopy = matrix(m :sizes() )
     mcopy:copy(m)
     for i=1,m:size() do assertEquals( m:geti(i), mcopy:geti(i) ) end
+  end
+end
+
+function TestMatrixInPlaceII:testResize()
+  for i,m in ipairs(G.mat) do
+    local nr,nc = m:sizes()
+    for ir=1,5 do
+    for ic=1,5 do
+      local mres = m:resize( ir,ic )
+      local minr, minc = min(nr,ir), min(nc,ic)
+      assertEquals( {mres:sizes()}, {ir, ic} )
+      for jr=1     ,minr do for jc=1     ,minc do assertEquals( mres:get(jr,jc), m:get(jr,jc) ) end end
+      for jr=minr+1,ir   do for jc=minc+1,ic   do assertEquals( mres:get(jr,jc), 0            ) end end
+
+      mres = m:resize( matrix(ir,ic) )
+      minr, minc = min(nr,ir), min(nc,ic)
+      for jr=1     ,minr do for jc=1     ,minc do assertEquals( mres:get(jr,jc), m:get(jr,jc) ) end end
+      for jr=minr+1,ir   do for jc=minc+1,ic   do assertEquals( mres:get(jr,jc), 0            ) end end
+    end
+    end
   end
 end
 
@@ -2985,7 +3005,17 @@ function TestMatrixErr:testSvd()
     "SVD failed to converged",
   }
 end
-function TestMatrixLapack:testSvd() end
+
+function TestMatrixLapack:testSvd()
+  local m = matrix(2):eye()
+  local ru, rs, rv, info = m:svd()
+  print("\n")
+  print( ru  , "\n",
+         rs  , "\n",
+         rv  , "\n",
+         info, "\n" )
+
+end
 
 function TestMatrixErr:testDet()
   local msg = {
@@ -3114,8 +3144,8 @@ end
 
 function TestMatrixErr:testIRFFT()
   local msg = {
-    "result matrix must be real",
-    "incompatible matrix sizes" ,
+    "N.A."                     ,
+    "incompatible matrix sizes",
   }
   assertErrorMsgContains( msg[1], mth, 'irfft',  vector(1), cmatrix(2) )
   assertErrorMsgContains( msg[2], mth, 'irfft', cvector(3),  matrix(1) )
@@ -3130,6 +3160,7 @@ function TestMatrixFFT:testIRFFT()
     end
   end
 
+  -- 2D
   for i ,s1 in ipairs(fftdat.sm) do
   for ii,s2 in ipairs(fftdat.sm) do
     local ref = fftdat.fftMIn:getsub(1..s1, 1..s2)
@@ -3138,63 +3169,96 @@ function TestMatrixFFT:testIRFFT()
       assertAlmostEquals( res:geti(j) - ref:geti(j), 0, 2*eps )
     end
   end end
+
+  local m,res
+  m   = matrix{{1,1,0},{1,1,0},{1,1,0}}
+  res = m:rfft():irfft()
+  for j=1,res:size() do assertAlmostEquals( res:geti(j) - m:geti(j), 0, 2*eps ) end
+
+  --output: 3x2 matrix, to be used after changes
+  --[[
+  m   = matrix{{1,1,1},{1,1,1},{0,0,0}}
+  res = m:rfft():irfft()
+  for j=1,res:size() do assertAlmostEquals( res:geti(j) - m:geti(j), 0, 2*eps ) end
+
+  m   = matrix{{1,1,1},{0,0,0},{1,1,1}}
+  res = m:rfft():irfft()
+  for j=1,res:size() do assertAlmostEquals( res:geti(j) - m:geti(j), 0, 2*eps ) end
+
+  m   = matrix(3):eye()
+  res = m:rfft():irfft()
+  for j=1,res:size() do assertAlmostEquals( res:geti(j) - m:geti(j), 0, 2*eps ) end
+  ]]
+end
+
+function TestMatrixErr:testConv()
+  local msg = {
+    "incompatible matrix sizes",
+  }
+  assertErrorMsgContains( msg[1], mth, 'conv',  vector(1), vector(2) )
+  assertErrorMsgContains( msg[1], mth, 'conv',  matrix(1), matrix(2) )
+end
+
+-- pascal triangle helpers
+local pasVal = \x   => local y = 1 for i=1,x do y = y * i end return y end
+local function pasVec(x, s)
+  local v = vector(x)
+  for z=1,x do v:seti(z, pasVal(x-1) / (pasVal(z-1) * pasVal(x-z))) end
+  return v
 end
 
  -- convolution theorem
 function TestMatrixFFT:testConv()
-  -- pascal triangle helpers
-  local pasVal = \x   => local y = 1 for i=1,x do y = y * i end return y end
-  local pasVec = \x,s => if is_nil(s) then s = x end
-    local v = vector(s)
-    for z=1,x do v:seti(z, pasVal(x-1) / (pasVal(z-1) * pasVal(x-z))) end return v end
-
-  for i=3,25 do
-    local s = i-1 + i-2 - 1
-    local v1  = pasVec(i-1, s)
-    local v2  = pasVec(i-2, s)
+  -- HELP - to get full conv: nr, nc = xr+yr-1, xc+yc-1
+  for i=3,8 do
+    local s = (i-1)+(i-2) - 1
+    local v1 = pasVec(i-1):resize(s,1)
+    local v2 = pasVec(i-2):resize(s,1)
     local ref = pasVec(s)
     local res = v1:conv(v2)
     assertEquals( res, v2:conv(v1) )
     for j=1,s do
-      assertAlmostEquals( res:geti(j)-res:geti(j), 0, eps )
-    end
-
-    local v1  = pasVec(i-1)
-    local v2  = pasVec(i-2)
-    local ref = pasVec(s)
-    local res = v1:conv(v2, 'full')
-     for j=1,s do
-      assertAlmostEquals( res:geti(j)-res:geti(j), 0, eps )
+      assertAlmostEquals( res:geti(j)-ref:geti(j), 0, 51*eps )
     end
   end
-
-  local v1 = vector{1,2,1,3,0,0}
-  local v2 = vector{2,0,1,0,0,0}
---  print(v1:conv(v2), "\n")
-
-  local v1 = vector{1,2,1,3}
-  local v2 = vector{2,0,1}
---  print(v1:conv(v2, 'full'))
 end
 
  -- correlation theorem
-function TestMatrixFFT:testCorr() -- change inputs
-  for i,s in ipairs(fftdat.sv) do
-    local v1 = fftdat.fftVIn:getsub(1..s, 1):fft()
-    local v2 = fftdat.fftVIn:getsub(1..s, 1):fft()
-    assertEquals( v1:corr(v2), v2:corr(v1) )
+function TestMatrixFFT:testCorr() -- shift needed
+  for i=3,5 do
+    local s = (i-1)+(i-2) - 1
+    local v1 = pasVec(i-1):resize(s,1)
+    local v2 = pasVec(i-2):resize(s,1)
     local res = v1:corr(v2)
-    --print(res, "\n")
+    local ref = pasVec(s)
+
+    local n = s/2+1
+    for j=1  ,n do assertAlmostEquals( res:geti(j) - ref:geti(j + n-2), 0, 4*eps ) end
+    for j=n+1,s do assertAlmostEquals( res:geti(j) - ref:geti(j - n  ), 0,   eps ) end
+    --assertEquals( v1:corr(v2), v2:corr(v1) )
   end
+  local v1 = vector{0,0,1,0,0,0}
+  local v2 = vector{0,0,0,0,1,0}
+  --print( v2:corr(v1) )
+
+  local v1 = vector{1,2,3,4,5}
+  --print( v1, "\n" )
+  for i=1,4 do
+    --print( v1:shift(i,0), "\n" )
+  end
+
+  local m1 = matrix{{1,2},{3,4}}
+  --print( m1           , "\n" )
+  --print( m1:shift(1,0), "\n" )
+  --print( m1:shift(0,1), "\n" )
 end
 
 function TestMatrixFFT:testCovar()
   for i,s in ipairs(fftdat.sv) do
     local v1 = fftdat.fftVIn:getsub(1..s, 1):fft()
     local v2 = fftdat.fftVIn:getsub(1..s, 1):fft()
-    assertEquals( v1:covar(v2), v2:covar(v1) )
-
-    local res = v1:covar(v2)
+    --assertEquals( v1:covar(v2), v2:covar(v1) )
+    --local res = v1:covar(v2)
   end
 end
 
