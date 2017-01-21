@@ -2998,7 +2998,27 @@ end
 
 -- linear algebra -------------------------------------------------------------o
 
-function TestMatrixLapack:testSolve() end
+function TestMatrixLapack:testSolve()
+  local m1, m2, m3
+  m1 = matrix(3):eye()
+  m2 = matrix(3):fill(1..9)
+  assertEquals( m1:solve(m2), m2 )
+
+  m1 = matrix{{1,1, 1},{2,3,5},{4,0,5}}
+  m2 = matrix {5,8, 2}
+  m3 = matrix {3,4,-2}
+  for i=1,m2:size() do assertAlmostEquals( m1:solve(m2):geti(i) - m3:geti(i), 0, 2*eps ) end
+
+  --m1 = matrix{{1,2,-3},{6,3,-9},{7,14,-21}}
+  --m2 = matrix {2,6,13}
+  --m3 = matrix {2,-6,-1}
+  --for i=1,m2:size() do assertAlmostEquals( m1:solve(m2):geti(i) - m3:geti(i), 0, 2*eps ) end
+
+  m1 = matrix{{1,1,2,0},{2,-1,0,1},{1,-1,-1,-2},{2,-1,2,-1}}
+  m2 = matrix {1,-2,4,0}
+  m3 = matrix {1,2,-1,-2}
+  for i=1,m2:size() do assertAlmostEquals( m1:solve(m2):geti(i) - m3:geti(i), 0, 2*eps ) end
+end
 
 function TestMatrixErr:testSvd()
   local msg = {
@@ -3008,14 +3028,20 @@ function TestMatrixErr:testSvd()
 end
 
 function TestMatrixLapack:testSvd()
-  local m = matrix(2):eye()
-  local ru, rs, rv, info = m:svd()
---  print("\n")
---  print( ru  , "\n",
---         rs  , "\n",
---         rv  , "\n",
---         info, "\n" )
+  local ru, rs, rv, info
+  for i,m in ipairs(lindat.svdIn) do
+    local refU = lindat.svdU[i]
+    local refS = lindat.svdS[i]:getdiag()
+    local refV = lindat.svdV[i]
+    ru, rs, rv, info = m:svd()
+    for j=1,ru:size() do assertAlmostEquals( ru:geti(j) - refU:geti(j), 0,  3*eps ) end
+    for j=1,rs:size() do assertAlmostEquals( rs:geti(j) - refS:geti(j), 0, 64*eps ) end
+    for j=1,rv:size() do assertAlmostEquals( rv:geti(j) - refV:geti(j), 0,  3*eps ) end
 
+    -- M = U*S*V'
+    local m1 = ru * matrix(m:sizes()):setdiag(rs) * rv:t()
+    for j=1,m1:size() do assertAlmostEquals( m1:geti(j) - m:geti(j)   , 0, 32*eps ) end
+  end
 end
 
 function TestMatrixErr:testDet()
@@ -3025,7 +3051,19 @@ function TestMatrixErr:testDet()
   assertErrorMsgContains( msg[1], mth, 'det', matrix(2,1) )
 end
 
-function TestMatrixLapack:testDet() end
+function TestMatrixLapack:testDet()
+  assertEquals( matrix(2):symp():det(), 1 )
+  assertEquals( matrix(2):eye() :det(), 1 )
+
+  local M = {}
+  for i=1,5 do M[i] = matrix(i):random() end
+  for i,m in ipairs(M) do
+    assertEquals( matrix(i):t():det(), matrix(i):det() )
+    assertEquals( (1/matrix(i)):det(), matrix(i):det() )
+    assertEquals( 2*matrix(i)  :det(), matrix(i):det()*(2^i) )
+    --print( m:det() )
+  end
+end
 
 function TestMatrixErr:testEigen()
   local msg = {
@@ -3038,6 +3076,9 @@ function TestMatrixErr:testEigen()
 end
 
 function TestMatrixLapack:testEigen()
+-- sum of eigen values and the trace should be the same (sum of diag should be
+-- euqal to the sum of eigen, sum of the product should be euqal to det )
+
 -- A*V = V*D
   local w, vl, vr, info, m
   for i=1,5,1 do
@@ -3050,7 +3091,6 @@ function TestMatrixLapack:testEigen()
   end
   -- upper triangle
   m = matrix{{2,1},{1,2}}
-  w, vl, vr, info = m:eigen()
   m = matrix{{1,1,1,1},{0,2,2,2},{0,0,3,3},{0,0,0,4}}
   w, vl, vr, info = m:eigen()
   --print( m  , "\n" )
@@ -3060,31 +3100,19 @@ function TestMatrixLapack:testEigen()
 
   for i,m in ipairs(lindat.eigenIn) do
     w, vl, vr, info = m:eigen()
-    local ref = lindat.eigenD[i]:getdiag()
-    --print( w  , "\n" )
-    --print( ref, "\n" )
-    for j=1,w :size() do
-      --print( w:geti(j), ref:geti(j), w:geti(j) - ref:geti(j) )
-      assertAlmostEquals( w:geti(j).im - ref:geti(j), 0, 32*eps )
-    end
-
-    ref = lindat.eigenW[i]
-    --print( vl , "\n" )
-    --print( ref, "\n" )
-    for j=1,vl:size() do
-      --print( vl:geti(j), ref:geti(j), vl:geti(j) - ref:geti(j) )
-      assertAlmostEquals( vl:geti(j) - ref:geti(j), 0, 2*eps )
-    end
-
-    ref = lindat.eigenV[i]
-    --print( vr , "\n" )
-    --print( ref, "\n" )
+    local refD = lindat.eigenD[i]:getdiag()
+    local refW = lindat.eigenW[i]
+    local refV = lindat.eigenV[i]
+    --assertEquals( w   :sum(), m:tr() )
+    --assertEquals( refD:sum(), m:tr() )
+    for j=1,w :size() do assertAlmostEquals( w :geti(j).im - refD:geti(j), 0, 32*eps ) end -- im of res, re of ref
+    for j=1,vl:size() do assertAlmostEquals( vl:geti(j)    - refW:geti(j), 0,  2*eps ) end
     for j=1,vr:size() do
-      --print( vr:geti(j), ref:geti(j), vr:geti(j) - ref:geti(j) )
-      --print( vr:geti(j) - ref:geti(j) )
+      --print( vr:geti(j), refV:geti(j), vr:geti(j) - refV:geti(j) )
+      --print( vr:geti(j) - refV:geti(j) )
     end
-  end
 
+  end
 end
 
 -- FFT, convolution, correlation, covrariance ---------------------------------o
