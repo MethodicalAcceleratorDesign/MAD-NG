@@ -291,27 +291,40 @@ end
 -- Kick general exact curved (TODO)
 
 local function skick_track (elem, m, l) -- SKICK
+-- TO DO: GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
 --  io.write('tracking skick for ', elem.name, ' (l=', l, ')\n')
   local charge, beta in m.beam
   local dir in m
-  local l in elem
   local k0, k0s = elem.k0 or 0, elem.k0s or 0
-  local x, px, y, py, t, pt, dir in m -- y, t not used
+  local x, px, y, py, t, pt, dir in m 
+  local knl , ksl  = elem.knl  or {}, elem.ksl  or {}
+  local dknl, dksl = elem.dknl or {}, elem.dksl or {}
+  local kn = { elem.k0  or 0,  elem.k1  or 0, elem.k2  or 0, elem.k3  }
+  local ks = { elem.k0s or 0,  elem.k1s or 0, elem.k2s or 0, elem.k3s }
+  local nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
 
-  local b1 = -k0  * (1 + k0 * x)
-  local b2 =  k0s * (1 + k0s* x)
-
--- NOT NEEDED FOR SBEND, but TOCHECK: GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
   dir = dir*charge
 
-  m.px = px + l * dir * b1
-  m.py = py + l * dir * b2
-
---[[ TO ADD
-  if ( not DKD (i.e. if MKM))
-       m.py = py + l * dir * k0 * (1 + x * beta)
+  for i=1,nmul do
+    m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
+    m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
   end
-  ]]
+
+  m.by = m.knl[nmul] / fact[nmul-1]
+  m.bx = m.ksl[nmul] / fact[nmul-1]
+
+  local byt
+  for i=nmul-1,1,-1 do
+    byt   = x * m.by - y * m.bx + m.knl[i]
+    m.bx  = y * m.by + x * m.bx + m.ksl[i]
+    m.by  = byt
+  end
+
+  local b1 = -m.by*(1 + k0*x)
+  local b2 =  m.bx*(1 + k0*x)
+
+  m.px = px + dir*b1
+  m.py = py + dir*b2 
 
 end
 
@@ -392,6 +405,7 @@ local function curved_track (elem, m) -- e.g. sbend
   end
 
   -- TODO: boundary elements and radiation.
+--  l = thick_track (elem, m, angle, sdrift_track, kick_track)
   l = thick_track (elem, m, angle, sdrift_track, skick_track)
   return l
 end
@@ -441,7 +455,7 @@ local function make_map (self, start)
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt,
-           knl={}, ksl={},
+           kn={}, ks={}, knl={}, ksl={},
            dir=direction, nst=nst, method=method, T=T,
            s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_trck]=_trck }
 end
