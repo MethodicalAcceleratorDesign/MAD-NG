@@ -1044,7 +1044,7 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
   dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
   mad_alloc_tmp(num_t, wk, lwork=sz);
   dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
-  mad_vec_cvec(wi, wr, w, n);
+  mad_vec_cvec(wr, wi, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_free_tmp(wi); mad_free_tmp(wr);
   mad_mat_trans(vl, vl, n, n);
