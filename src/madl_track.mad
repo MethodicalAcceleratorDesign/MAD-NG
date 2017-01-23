@@ -252,7 +252,6 @@ local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)(TODO: ks)
     m.t  = m.t + dir * (kn0l*x - ks0l*y) * (beta_inv+pt)/m.pz
   end
 
---TODO: SOLENOID
 end
 
 -- Drift general exact curved
@@ -328,6 +327,103 @@ local function skick_track (elem, m, l) -- SKICK
 
 end
 
+-- Drift solenoid exact 
+
+local function drift_sol (elem, m, l) -- DRIFT SOLENOID
+--  io.write('tracking solenoid drift for ', elem.name, ' (l=', l, ')\n')
+  local charge, beta in m.beam
+  local ks  = elem.ks or 0
+  local x, px, y, py, t, pt, dir, T in m 
+  local beta_inv = 1/m.beam.beta
+
+  local bsol = ks*charge
+  local xp = px + bsol*y/2 
+  local yp = py - bsol*x/2  
+
+  local h  = sqrt(1 +  2 * pt * beta_inv + pt^2 - xp^2 - yp^2)
+  local yh = l/h or 0
+  local c  = cos(yh*bsol/2) 
+  --??? to add check for (yh*bsol/2)??? needed for sinc
+  local sh = sinc(yh*bsol/2)
+
+  m.xt  = c*x  + yh*sh*px
+  m.pxt = c*px - yh*bsol^2*sh*x/4
+  m.yt  = c*y  + yh*sh*py
+  m.pyt = c*py - yh*bsol^2*sh*y/4
+
+  x  = m.xt
+  px = m.pxt
+  y  = m.yt
+  py = m.pyt
+
+  local angle = yh*ks*charge/2
+
+  c  = cos(angle) or 0
+  sh = sin(angle) or 0
+  
+  m.xt  = c*x  + sh*y
+  m.pxt = c*px + sh*py
+  m.yt  = c*y  - sh*x
+  m.pyt = c*py - sh*px
+
+  m.x  = m.xt
+  m.px = m.pxt
+  m.y  = m.yt
+  m.py = m.pyt
+  m.t  = t + l*(beta_inv+pt)/h - (1-T)*l*beta_inv
+end
+
+-- Kick solenoid exact , normal kick_track can be used in place!!!! 
+
+local function kick_sol (elem, m, l) -- KICK SOLENOID
+--  io.write('tracking solenoid kick for ', elem.name, ' (l=', l, ')\n')
+
+  local charge, beta in m.beam
+  local dir in m
+  local ks_sol  = elem.ks or 0
+  local x, px, y, py, t, pt, dir in m 
+  local beta_inv = 1/m.beam.beta
+
+  local knl , ksl  = elem.knl  or {}, elem.ksl  or {}
+  local dknl, dksl = elem.dknl or {}, elem.dksl or {}
+  local kn = { elem.k0  or 0,  elem.k1  or 0, elem.k2  or 0, elem.k3  }
+  local ks = { elem.k0s or 0,  elem.k1s or 0, elem.k2s or 0, elem.k3s }
+  local nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
+
+
+  dir = dir*charge
+
+  m.xt = x
+  m.yt = y 
+
+  --  if nmul >= 1 then
+    for i=1,nmul do
+      m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
+    end
+
+    m.by = m.knl[nmul] / fact[nmul-1]
+    m.bx = m.ksl[nmul] / fact[nmul-1]
+
+    local byt = 0
+    for i=nmul-1,1,-1 do
+      byt   = x * m.by - y * m.bx + m.knl[i]
+      m.bx  = y * m.by + x * m.bx + m.ksl[i]
+      m.by  = byt
+    end
+--  else
+--    m.bx = 0
+--    m.by = 0
+--  end
+ 
+   local b1 = m.bx or 0
+   local b2 = m.by or 0
+   local b3 = elem.ks
+
+  px= px -l*dir*b2
+  py= py +l*dir*b1
+
+end
 -- integrator schemes ---------------------------------------------------------o
 
 local integrate = require 'madl_sympint'
@@ -390,8 +486,14 @@ local function strait_track (elem, m) -- e.g. rbend
   end
 
   -- TODO: boundary elements and radiation.
-  l = thick_track (elem, m, 0, drift_track, kick_track)
-  return l
+ if elem.kind == 'solenoid' then
+    -- TRACK SOLENOID 
+    l = thick_track (elem, m, 0, drift_sol,   kick_track)
+ else 
+    l = thick_track (elem, m, 0, drift_track, kick_track)
+ end  
+
+ return l
 end
 
 local function curved_track (elem, m) -- e.g. sbend
