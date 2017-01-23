@@ -65,7 +65,7 @@ local function windex (s, k)
   return 0
 end
 
--- load -----------------------------------------------------------------------o
+-- implementation -------------------------------------------------------------o
 
 local cmt = { ['//'] = '--', ['/*'] = '--[[', ['*/'] = ']]', }
 
@@ -101,6 +101,10 @@ local function convert_from (str)
   return string.gsub(str, "[Ff][Rr][Oo][Mm]%s*=%s*([%a_][%w%._$]*)", "from = '%1'")
 end
 
+-- variable -------------------------------------------------------------------o
+-- var = expr;
+-- var := expr;
+
                --   [1]  [2]             [3]  [4]  [5]  [6]
 local variable = "^(%s*)([%a_][%w%._$]*)(%s*)(:?=)(%s*)([^;]*);"
 
@@ -116,6 +120,10 @@ local function convert_variable (env, line, cap)
   end
   return table.concat( cap )
 end
+
+-- command --------------------------------------------------------------------o
+-- cmd attr-list;
+-- cmd, attr-list;
 
               --   [1]  [2]             [3]       [4]
 local command = "^(%s*)([%a_][%w%._$]*)([^,;%a_]*)()"
@@ -149,15 +157,20 @@ local function convert_command (env, line, cap)
       if env.wrn then
         warn("element update inside sequence " .. env[env.cur] .. ": " .. cmd)
       end
-      pfx = env.cls[cmd] -- .. " '" .. cap[2] .. "' "
+      pfx = env.cls[cmd] .. " '" .. cap[2] .. "' "
       opn, cap[3], clo = '{ ', convert_names(convert_from(cap[3] or '')), ' },'
     end
-    return string.format("%s%s%s%s%s%s", cap[1],pfx, opn,spc or '',cap[3],clo)
+    return string.format("%s%s %s%s%s%s", cap[1],pfx, opn,spc or '',cap[3],clo)
   else                                    -- command, ignored
     line = '-- ' .. line
   end
   return line
 end
+
+-- element --------------------------------------------------------------------o
+-- elem:class attr-list;
+-- elem:class, attr-list;
+
               --   [1]  [2]                    [3]             [4]       [5]
 local element = "^(%s*)([%a_][%w%._$]*)%s*:%s*([%a_][%w%._$]*)([^,=;%a_]*)()"
 local element_attr = "(%s*)([^;]*);"
@@ -198,7 +211,7 @@ local function convert_element (env, line, cap)
   if c == ',' or c == ';' then
     cap[5] = cap[5]+1
   end
-  if c == '=' then -- line
+  if c == '=' then -- line -- TODO: line arguments
     assert(cmd == 'line', "line definition expected")
     spc, cap[4] = string.match(line, element_line, cap[5])
     cap[4] = convert_names(convert_line(cap[4] or ''))
@@ -212,6 +225,8 @@ local function convert_element (env, line, cap)
   return string.format("%s%s%s '%s' %s{ %s%s",
                        cap[1], pfx, cmd, cap[2], spc or '', cap[4], clo)
 end
+
+-- statement ------------------------------------------------------------------o
 
 local capf = \i,j,... -> {...}
 local function convert_statements (env, line)
@@ -228,11 +243,11 @@ end
 --[[
   env content:
   ------------
-  [id]     = seq_name        (list of sequences)
-  cur      = seq_id          (0 -> not in seq def)
-  elm[str] = seq_id   of elm (0 -> elm is a class)
-  seq[str] = seq_id   of seq
-  cls[elm] = cls_name of elm
+  [idx]    = seq_name : list of sequences
+  cur      = seq_idx  : current sequence index (0 -> not in seq)
+  elm[str] = seq_idx  : element sequence index (0 -> elm is a class)
+  seq[str] = seq_idx  : sequence index         (from name)
+  cls[elm] = cls_name : class of element
 ]]--
 
 local function load_file (madx, file_in, file_out)
@@ -319,9 +334,9 @@ MADX:set_variable(MAD.constant)
 MADX:set_variable(MAD.element)
 
 -- aliases (not in MAD)
-MADX.tkicker     = MAD.element.kicker
-MADX.rcollimator = MAD.element.collimator
-MADX.ecollimator = MAD.element.collimator
+MADX.tkicker     = MAD.element.kicker     'tkicker'     {}
+MADX.rcollimator = MAD.element.collimator 'rcollimator' {}
+MADX.ecollimator = MAD.element.collimator 'ecollimator' {}
 
 -- identifier as strings (should be detected by parser)
 do

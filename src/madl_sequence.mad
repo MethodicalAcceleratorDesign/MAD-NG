@@ -52,10 +52,10 @@ local element in MAD.element
 
 -- definition -----------------------------------------------------------------o
 
-local _pos = {} -- hidden key
+local _spos, _epos = {}, {} -- hidden keys
 
 local sequence = element 'sequence' {
-   kind='sequence', is_sequence=true, direction=1,
+   kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
 }
 
 local init_sequence -- forward declaration
@@ -92,21 +92,6 @@ local function find_idx (sequ, elem, start_)
   return nil
 end
 
-local function find_idx_s (sequ, s, start_)
-  local s_pos = sequ.s_pos
-  local start = start_ or 1
-  if start > 0 then
-    for i=start,#s_pos do    -- linear search
-      if s_pos[i] >= s then return i end
-    end
-  elseif start < 0 and -start <= #s_pos then
-    for i=-start,1,-1 do     -- linear search
-      if s_pos[i] <= s then return i end
-    end
-  end
-  return nil
-end
-
 -- collect
 local function add_mult_elem (to, elem)
   if is_nil(to)    then return  elem      end  -- no ref yet
@@ -114,66 +99,57 @@ local function add_mult_elem (to, elem)
   to[#to+1] = elem      return  to             -- many refs
 end
 
-local function add_uniq_elem (to, elem)
-  if is_nil(to) or to == elem then return elem end  -- no ref yet or equal ref
-  if to.is_element then return {to, elem} end       -- one ref
-  for i=1,#to do
-    if to[i] == elem then return to end             -- many refs, already there
-  end
-  to[#to+1] = elem        return to                 -- many refs, not yet there
-end
-
 local uninitialized = -1e9
 local ongoing_init  = -2e9
 
 -- compute s positions of sequence elements
-local function elem_spos(sequ, idx)
-  local s_pos = sequ.s_pos[idx]
-  if s_pos >= 0 then return s_pos end
-  if s_pos == ongoing_init then
+local function elem_pos(sequ, idx)
+  local pos = sequ.e_pos[idx]
+  if pos >= 0 then return pos end
+  if pos == ongoing_init then
     seq_error("cycling dependencies detected", sequ, sequ[idx], idx)
-  elseif s_pos ~= uninitialized then
+  elseif pos ~= uninitialized then
     seq_error("corrupted s-position detected", sequ, sequ[idx], idx)
   end
 
-  sequ.s_pos[idx] = ongoing_init
+  sequ.e_pos[idx] = ongoing_init
 
   local elem  = sequ[idx]
-  local len   = elem.l     or 0
-  local pos   = elem.at    or 0
-  local from  = elem.from  or elem.at and 'start' or idx > 1 and 'prev' or 'start'
-  local refer = elem.refer or sequ.refer or 'entry'
+  local from  = elem.from  or elem.at and 'start' or 'prev'
+  local refer = elem.refer or sequ.refer or 'centre'
 
-      if refer == 'entry'  then -- nothing
-  elseif refer == 'centre' then pos = pos - len/2
-  elseif refer == 'exit'   then pos = pos - len
+  pos = elem.at or 0
+
+  local rpos = 0
+      if refer == 'entry'  then rpos =  elem.l/2
+  elseif refer == 'centre' then -- nothing
+  elseif refer == 'exit'   then rpos = -elem.l/2
   else seq_error("invalid refer to '" .. refer .. "'", sequ, elem, idx)
   end
 
-      if from == 'start'   then ;
+  pos = pos + rpos
+
+      if from == 'start'   then -- nothing
   elseif from == 'end'     then pos = sequ.l - pos
-  elseif from == 'prev'    then pos = pos + (idx > 0 and sequ.s_pos[idx-1]+(sequ[idx-1].l or 0) or 0)
-  elseif from == 'next'    then pos = pos + elem_spos(sequ, idx+1)
-  elseif sequ[from]        then pos = pos + elem_spos(sequ, find_idx(sequ, sequ[from], -sign(elem.at)*idx))
+  elseif from == 'prev'    then pos = pos + (idx > 1     and elem_pos(sequ, idx-1) or 0     )
+  elseif from == 'next'    then pos = pos + (idx < #sequ and elem_pos(sequ, idx+1) or sequ.l)
+  elseif sequ[from]        then pos = pos + elem_pos(sequ, find_idx(sequ, sequ[from], -sign(elem.at)*idx))
   else seq_error("invalid from of '" .. from .. "'", sequ, elem, idx)
   end
 
-  sequ.s_pos[idx] = pos
+  sequ.e_pos[idx] = pos
+  sequ.s_pos[idx] = pos - rpos - elem.l/2
   return pos
 end
 
-local function copy_spos (sequ, sseq, idx)
-  local spos, elem
+local function copy_pos (sequ, sseq, idx)
+  local pos, elem
   elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
-  spos, sequ[idx] = elem_spos(sequ, idx), elem
-  if sseq.refpos ~= nil then
-    print("refpos:", sseq.refpos, sseq.refpos.name, sseq[sseq.refpos.name].name, sseq:index_of(sseq.refpos))
-    local idxref = assert(sseq:index_of(sseq.refpos.name), "invalid sequence refpos")
-    spos = spos - sseq.s_pos[idxref]
-  end
+  pos , sequ[idx] = elem_pos(sequ, idx), elem
   for i=1,#sseq do
-    sequ.s_pos[idx+i-1] = spos + sseq.s_pos[i]
-    assert(sequ[idx+i-1] == sseq[i], "unexpected corrupted flat sequence")
+    sequ.e_pos[i+idx-1] = sseq.e_pos[i] + pos
+    sequ.s_pos[i+idx-1] = sseq.s_pos[i] + pos
+    assert(sequ[i+idx-1] == sseq[i], "unexpected corrupted flat sequence")
   end
 end
 
@@ -239,28 +215,48 @@ local function build_sequ (sequ, flat)
   assert(#sequ == #flat, "unexpected corrupted flat sequence")
 end
 
-local function build_spos (sequ, sref)
+local function build_pos (sequ, sref)
   assert(#sequ == #sref,  "unexpected corrupted flat sequence")
-  rawset(sequ, _pos, vector(#sref):ones(uninitialized))
-  local idx, len = 1, #sref
+  rawset(sequ, _epos, vector(#sref):ones(uninitialized))
+  rawset(sequ, _spos, vector(#sref))
+  local idx, len, pos = 1, #sref, 0
   while idx <= len do
     if sref[idx] == false then
-      elem_spos(sequ, idx)
+      elem_pos(sequ, idx)
       idx = idx + 1
     else -- subsequence
       local sseq = sref[idx]
-      copy_spos(sequ, sseq, idx)
+      copy_pos(sequ, sseq, idx)
       idx = idx + #sseq
     end
   end
   assert(len+1 == idx, "unexpected corrupted flat sequence")
 end
 
+local function adjust_pos (sequ)
+  local rpos = sequ.refpos
+  if rpos ~= nil then
+    local idx = sequ:index_of(rpos)
+    local pos = sequ.e_pos[idx]
+    local elem = sequ[idx]
+    sequ.e_pos:sub(pos,sequ.e_pos)
+    sequ.s_pos:sub(pos,sequ.s_pos)
+  end
+end
+
+local function adjust_len (sequ)
+  local idx = #sequ
+  local len = sequ.s_pos[idx] + sequ[idx].l - sequ.s_pos[1]
+  if sequ.l < len then sequ.l = len end
+end
+
 function init_sequence (sequ)
   local flat, sref = {}, {}
   flatten_sequ (sequ, flat, sref)
   build_sequ   (sequ, flat)
-  build_spos   (sequ, sref)
+  build_pos    (sequ, sref)
+  adjust_pos   (sequ)
+  adjust_len   (sequ)
   return sequ
 end
 
@@ -292,18 +288,26 @@ local function index_of (seq, elem, start_)
     if name == '#e' or name == '#E' then return #seq end
     local name, cnt = string.match(elem, "([^[/]+)%[(%d*)%]")
     if name ~= nil and cnt ~= nil then
-      elem = seq[name][tonumber(cnt)]
+      elem = seq[name][tonumber(cnt)] -- TODO: loop?
     else
       elem = seq[string.match(elem, "([^[/]+)")]
     end
+  else
+    elem = seq[elem.name]
   end
   return find_idx(seq, elem, start_)
+end
+
+local function epos_of (seq, elem, start_)
+  local idx = index_of(seq, elem, start_)
+  assert(is_number(idx), "invalid argument #2 (valid key expected)")
+  return seq[_epos][idx]
 end
 
 local function spos_of (seq, elem, start_)
   local idx = index_of(seq, elem, start_)
   assert(is_number(idx), "invalid argument #2 (valid key expected)")
-  return seq[_pos][idx]
+  return seq[_spos][idx]
 end
 
 local function range_index (seq, rng)
@@ -344,7 +348,7 @@ local function select (seq, p, rng_)
   for i=start,stop do
     local elem = seq[i]
     local flag = p(elem,i)
-        if flag == true  then elem:select()
+        if flag == true  then elem:  select()
     elseif flag == false then elem:deselect() end
   end
   return seq
@@ -377,10 +381,39 @@ local function tie (seq1, seq2)
   return seq1, { [ident(seq1.name)] = shrd1, [ident(seq2.name)] = shrd2 }
 end
 
+--[[
+local function show_fields(t, lst)
+  local a, k, s
+  lst = lst or sequence_fields
+  for _,v in ipairs(lst) do
+    if is_list(v) then k, s = v[1], v[2] else k, s = v, v end
+    a = t[k]
+    if a then io.write(', ', s, '= ', tostring(a)) end
+  end
+end
+
+function M:show(disp)
+  io.write("sequence '", self.name,"' { ")
+  show_list(self, disp)
+  io.write(' }\n')
+  for _,v in ipairs(self) do v:show(disp) end
+  io.write('endsequence\n')
+end
+
+function M:show_madx(disp)
+  io.write("'", self.name, "': sequence, ")
+  show_list(self, disp)
+  io.write(';\n')
+  for _,v in ipairs(self) do v:show_madx(disp) end
+  io.write('endsequence;\n')
+end
+]]
+
 -- attributes -----------------------------------------------------------------o
 
 sequence:set_variable {
-  s_pos = \s -> s[_pos]
+  s_pos = \s -> s[_spos],
+  e_pos = \s -> s[_epos],
 }
 
 -- methods --------------------------------------------------------------------o
@@ -388,6 +421,7 @@ sequence:set_variable {
 sequence:set_function {
   range_index  = range_index,
   index_of     = index_of,
+  epos_of      = epos_of,
   spos_of      = spos_of,
   foreach      = foreach,
   filter       = filter,
@@ -417,17 +451,33 @@ return {
 --------------------------------------------------------------------------------
 
 --[[ SEQUENCE
-local function adjust_length (seq)
-  local last = seq[#seq]
-  if not seq.length or seq.length < last.s_pos + last.length then
-    seq.length = last.s_pos + last.length
+
+local function add_uniq_elem (to, elem)
+  if is_nil(to) or to == elem then return elem end  -- no ref yet or equal ref
+  if to.is_element then return {to, elem} end       -- one ref
+  for i=1,#to do
+    if to[i] == elem then return to end             -- many refs, already there
   end
+  to[#to+1] = elem        return to                 -- many refs, not yet there
 end
 
----  if elem:get_raw('sequence') ~= nil then
---    seq_error("already assigned element detected", seq, elem, idx)
---  end
---  elem.sequence = seq
+
+local function find_idx_s (sequ, s, start_)
+  local s_pos = sequ.s_pos
+  local start = start_ or 1
+  if start > 0 then
+    for i=start,#s_pos do    -- linear search
+      if s_pos[i] >= s then return i end
+    end
+  elseif start < 0 and -start <= #s_pos then
+    for i=-start,1,-1 do     -- linear search
+      if s_pos[i] <= s then return i end
+    end
+  end
+  return nil
+end
+
+-- OLD CODE
 
 -- concatenation
 function M.__add(sequ, a)
@@ -487,27 +537,6 @@ function M:show_madx(disp)
   io.write('endsequence;\n')
 end
 ]]
-
---[[
-local function flatten(self, name)
-  local t = { name=name or self.name }
-
-  for i,v in ipairs(self) do
-    if type(v) == 'function' then v = v() end
-    if v.is_sequence then
-      add_sequence(t, v)
-    elseif v.is_element then
-      add_element(t, v)
-    elseif v.is_line then
-      add_line(t, v)
-    else
-      error('invalid sequence element at slot '..i)
-    end
-  end
-
-  return localise(t)
-end
---]]
 
 -- geometry -- TODO: at, from, refer
 local function localise(self, start)
