@@ -172,27 +172,16 @@ local function invalid_track (elem, m)
                       elem.name, elem.kind, l and tostring(l) or 0))
 end
 
--- Simple drift
+-- Drift general exact strait
 
-local function idrift_track (m, l) -- IMPLICIT DRIFT
+local function drift_track (elem, m, l)
 --  io.write('tracking drift for l=', l, '\n')
   local beta_inv = 1/m.beam.beta
   local x, px, y, py, t, pt, T in m
   local l_pz = l/sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2)
   m.x = x + px * l_pz
   m.y = y + py * l_pz
-  m.t = t + (beta_inv + pt)*l_pz - (1-T)*l*beta_inv
-end
-
--- Simple kick (l=0)
-
---TODO
-
--- Drift general exact strait
-
-local function drift_track (elem, m, l) -- DRIFT
---  io.write('tracking drift for l=', l, '\n')
-  idrift_track (m, l)
+  m.t = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
 end
 
 -- Kick general exact strait
@@ -305,48 +294,37 @@ end
 
 -- Drift solenoid exact
 
-local function drift_sol (elem, m, l) -- DRIFT SOLENOID
+local function solenoid_drift_track (elem, m, l)
 --  io.write('tracking solenoid drift for ', elem.name, ' (l=', l, ')\n')
-  local charge, beta in m.beam
-  local ks  = elem.ks or 0
-  local x, px, y, py, t, pt, dir, T in m
+  local x, px, y, py, t, pt, T in m
   local beta_inv = 1/m.beam.beta
+  local dir = m.dir * m.beam.charge
+  local ks in elem
 
-  local bsol = ks*charge
-  local xp = px + bsol*y/2
-  local yp = py - bsol*x/2
+  if is_nil(ks) or ks == 0 then
+    return drift_track(elem, m, l)
+  end
 
-  local h  = sqrt(1 +  2 * pt * beta_inv + pt^2 - xp^2 - yp^2)
-  local yh = l/h or 0
-  local c  = cos(yh*bsol/2)
-  --??? to add check for (yh*bsol/2)??? needed for sinc
-  local sh = sinc(yh*bsol/2)
+  local bsol = dir*ks/2
+  local xp = px + bsol*y
+  local yp = py - bsol*x
 
-  m.xt  = c*x  + yh*sh*px
-  m.pxt = c*px - yh*bsol^2*sh*x/4
-  m.yt  = c*y  + yh*sh*py
-  m.pyt = c*py - yh*bsol^2*sh*y/4
+  local l_pz  = l/sqrt(1 + 2*beta_inv*pt + pt^2 - xp^2 - yp^2)
+  local angle = l_pz*bsol
 
-  x  = m.xt
-  px = m.pxt
-  y  = m.yt
-  py = m.pyt
+  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
 
-  local angle = yh*ks*charge/2
+  local xt  = ca*x  + l_pz*sc*px
+  local pxt = ca*px - l_pz*sc*x *bsol^2
+  local yt  = ca*y  + l_pz*sc*py
+  local pyt = ca*py - l_pz*sc*y *bsol^2
 
-  c  = cos(angle) or 0
-  sh = sin(angle) or 0
+  m.x  = ca*xt  + sa*yt
+  m.px = ca*pxt + sa*pyt
+  m.y  = ca*yt  - sa*xt
+  m.py = ca*pyt - sa*pxt
 
-  m.xt  = c*x  + sh*y
-  m.pxt = c*px + sh*py
-  m.yt  = c*y  - sh*x
-  m.pyt = c*py - sh*px
-
-  m.x  = m.xt
-  m.px = m.pxt
-  m.y  = m.yt
-  m.py = m.pyt
-  m.t  = t + l*(beta_inv+pt)/h - (1-T)*l*beta_inv
+  m.t  = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
 end
 
 -- integrator schemes ---------------------------------------------------------o
@@ -411,14 +389,8 @@ local function strait_track (elem, m) -- e.g. rbend
   end
 
   -- TODO: boundary elements and radiation.
- if elem.kind == 'solenoid' then
-    -- track solenoid
-    l = thick_track (elem, m, 0, drift_sol, kick_track)
- else
-    l = thick_track (elem, m, 0, drift_track, kick_track)
- end
-
- return l
+  l = thick_track (elem, m, 0, drift_track, kick_track)
+  return l
 end
 
 local function curved_track (elem, m) -- e.g. sbend
@@ -437,12 +409,30 @@ local function curved_track (elem, m) -- e.g. sbend
   return l
 end
 
--- load track maps into elements
+-- specialisations ------------------------------------------------------------o
 
-element.element       :set_function { track = invalid_track }
-element.thin_element  :set_function { track =    thin_track }
-element.strait_element:set_function { track =  strait_track }
-element.curved_element:set_function { track =  curved_track }
+local function solenoid_track (elem, m)
+--  io.write('SOL_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
+  local l, angle in elem
+
+  if abs(angle) >= minang then
+    error("invalid strait element angle (too curved): " .. elem.name)
+  elseif l < minlen then
+    error("invalid strait element length (too short): " .. elem.name)
+  end
+
+  -- TODO: boundary elements and radiation.
+  l = thick_track (elem, m, 0, solenoid_drift_track, kick_track)
+  return l
+end
+
+-- load track maps into elements ----------------------------------------------o
+
+element.element       :set_function { track =  invalid_track }
+element.thin_element  :set_function { track =     thin_track }
+element.strait_element:set_function { track =   strait_track }
+element.curved_element:set_function { track =   curved_track }
+element.solenoid      :set_function { track = solenoid_track }
 
 -- track command --------------------------------------------------------------o
 
@@ -524,7 +514,7 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      idrift_track(map, ds)
+      drift_track(nil, map, ds)
       s_end, ndrift = s, ndrift+1
 
       if drift == 'exit' and elem:is_selected() then
