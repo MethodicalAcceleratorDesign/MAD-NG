@@ -140,7 +140,7 @@ i.e. quad only has k1 and not k0, k2 or???
 -- locals ---------------------------------------------------------------------o
 
 local Command, element, sequence, table, load                      in MAD
-local is_nil, is_number, vector, matrix, is_matrix                 in MAD
+local is_nil, is_number, vector, matrix, is_matrix, factorial      in MAD
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, sinc        in MAD
 
 local minlen, minang = 1e-14, 1e-14
@@ -159,12 +159,6 @@ local minlen, minang = 1e-14, 1e-14
 -- total_path = 0
 -- direction  = 1 -- copied from sequence
 
--- helpers --------------------------------------------------------------------o
-
--- TODO: move to gmath? do binomial?
-local fact = { [0]=1, 1 }
-(function() for i=2,25 do fact[i] = fact[i-1]*i end end)()
-
 -- implementation -------------------------------------------------------------o
 
 local function invalid_track (elem, m)
@@ -172,81 +166,56 @@ local function invalid_track (elem, m)
                       elem.name, elem.kind, l and tostring(l) or 0))
 end
 
+-- Put element multipoles in mflow
+
+local function get_mult (elem, m, l)
+  local k0 , k1 , k2 , k3  in elem
+  local k0s, k1s, k2s, k3s in elem
+  local nkn = k3  and 4 or k2  and 3 or k1  and 2 or k0  and 1 or 0
+  local nks = k3s and 4 or k2s and 3 or k1s and 2 or k0s and 1 or 0
+  local knl, dknl = elem.knl or {}, elem.dknl or {}
+  local ksl, dksl = elem.ksl or {}, elem.dksl or {}
+  local nmul = max(#knl, #ksl, #dknl, #dksl, nkn, nks)
+
+  if nmul >= 1 then
+    local kn = { k0 , k1 , k2 , k3  }
+    local ks = { k0s, k1s, k2s, k3s }
+    for i=1,nmul do
+      m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
+    end
+  end
+  return nmul
+end
+
 -- Drift general exact strait
 
 local function drift_track (elem, m, l)
 --  io.write('tracking drift for l=', l, '\n')
-  local beta_inv = 1/m.beam.beta
   local x, px, y, py, t, pt, T in m
+  local beta_inv = 1/m.beam.beta
   local l_pz = l/sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2)
+
   m.x = x + px * l_pz
   m.y = y + py * l_pz
   m.t = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
 end
 
--- Kick general exact strait
-
-local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)(TODO: ks)
---  io.write('tracking kick for ', elem.name, ' (l=', l, ')\n')
-  local x, px, y, py, t, pt in m
-  local knl , ksl  = elem.knl  or {}, elem.ksl  or {}
-  local dknl, dksl = elem.dknl or {}, elem.dksl or {}
-  local kn = { elem.k0  or 0, elem.k1  or 0, elem.k2  or 0, elem.k3  }
-  local ks = { elem.k0s or 0, elem.k1s or 0, elem.k2s or 0, elem.k3s }
-  local nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
-  local dir = m.dir * m.beam.charge
-
---  if nmul >= 1 then
-  for i=1,nmul do
-    m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
-    m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
-  end
-
-  local byt
-  local by = m.knl[nmul] / fact[nmul-1]
-  local bx = m.ksl[nmul] / fact[nmul-1]
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + m.knl[i]
-    bx  = y*by + x*bx + m.ksl[i]
-    by  = byt
-  end
---  else
---    bx = 0
---    by = 0
---  end
-
-  local kn0l = m.knl[1] -- (elem.k0  or 0)*l + (m.knl[1] or 0) -- BUG: twice k0?
-  local ks0l = m.ksl[1] -- (elem.k0s or 0)*l + (m.ksl[1] or 0) -- BUG: twice k0s?
-
-  m.px = px - dir*by + dir*kn0l
-  m.py = py + dir*bx
-
--- PTC KICKTR:
--- EL%thin_h_angle  =  kn0l
--- EL%thin_v_angle  =  ks0l
--- We don't have px and py update as in PTC (hightly illegal addition by F.S)
-  if kn0l ~= 0 or ks0l ~= 0 then
-    local beta_inv = 1/m.beam.beta
-    local pz = sqrt(1 + 2*beta_inv*pt + pt^2)
-    m.t  = m.t + dir*(kn0l*x - ks0l*y) * (beta_inv+pt)/pz
-  end
-end
-
 -- Drift general exact curved
 
-local function sdrift_track (elem, m, l)
---SPROT (SSECH1: either SPROT(DKD) or SSEC(MKM))
+local function sdrift_track (elem, m, l) --SPROT (SSECH1: either SPROT(DKD) or SSEC(MKM))
 --  io.write('tracking sdrift for l=', l, '\n')
   local k0 in elem
 
-  if is_nil(k0) or k0 == 0 then -- to check...
+  if is_nil(k0) or k0 == 0 then
     return drift_track(elem, m, l)
   end
 
-  local beta_inv = 1/m.beam.beta
   local x, px, y, py, t, pt, T in m
+  local beta_inv = 1/m.beam.beta
+  local dir = m.dir * m.beam.charge
 
-  local angle, rho = l*k0, 1/k0
+  local angle, rho = dir*l*k0, dir/k0
   local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
 
   local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2)
@@ -260,50 +229,19 @@ local function sdrift_track (elem, m, l)
   m.t  = t + ta*xr*pz_*(beta_inv+pt) / ptt - (1-T)*l*beta_inv
 end
 
--- Kick general exact curved (TODO)
-
-local function skick_track (elem, m, l) -- SKICK
--- TO DO: GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
---  io.write('tracking skick for ', elem.name, ' (l=', l, ')\n')
-  local x, px, y, py, t, pt, dir in m
-  local knl , ksl  = elem.knl  or {}, elem.ksl  or {}
-  local dknl, dksl = elem.dknl or {}, elem.dksl or {}
-  local kn = { elem.k0  or 0, elem.k1  or 0, elem.k2  or 0, elem.k3  }
-  local ks = { elem.k0s or 0, elem.k1s or 0, elem.k2s or 0, elem.k3s }
-  local nmul = max(#knl, #ksl, #dknl, #dksl, #kn, #ks)
-  local dir = m.dir * m.beam.charge
-
-  for i=1,nmul do
-    m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
-    m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
-  end
-
-  local byt
-  local by = m.knl[nmul] / fact[nmul-1]
-  local bx = m.ksl[nmul] / fact[nmul-1]
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + m.knl[i]
-    bx  = y*by + x*bx + m.ksl[i]
-    by  = byt
-  end
-
-  local k0, k0s = elem.k0 or 0, elem.k0s or 0 -- Why retrieve k0s?
-  m.px = px - dir*by*(1 + k0*x)
-  m.py = py + dir*bx*(1 + k0*x)
-end
-
 -- Drift solenoid exact
 
 local function solenoid_drift_track (elem, m, l)
 --  io.write('tracking solenoid drift for ', elem.name, ' (l=', l, ')\n')
-  local x, px, y, py, t, pt, T in m
-  local beta_inv = 1/m.beam.beta
-  local dir = m.dir * m.beam.charge
   local ks in elem
 
   if is_nil(ks) or ks == 0 then
     return drift_track(elem, m, l)
   end
+
+  local x, px, y, py, t, pt, T in m
+  local beta_inv = 1/m.beam.beta
+  local dir = m.dir * m.beam.charge
 
   local bsol = dir*ks/2
   local xp = px + bsol*y
@@ -325,6 +263,60 @@ local function solenoid_drift_track (elem, m, l)
   m.py = ca*pyt - sa*pxt
 
   m.t  = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
+end
+
+-- Kick general exact strait
+
+local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)
+--  io.write('tracking kick for ', elem.name, ' (l=', l, ')\n')
+  local nmul = get_mult(elem, m, l)
+  if nmul == 0 then return end
+
+  local x, px, y, py, knl, ksl in m
+  local dir = m.dir * m.beam.charge
+
+  local byt
+  local by = knl[nmul] / factorial(nmul-1)
+  local bx = ksl[nmul] / factorial(nmul-1)
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + knl[i]
+    bx  = y*by + x*bx + ksl[i]
+    by  = byt
+  end
+
+  m.px = px - dir*by + dir*knl[1] -- why not (1 + knl[1]*x) like in skick ?
+  m.py = py + dir*bx
+
+  if knl[1] ~= 0 or ksl[1] ~= 0 then
+    local t, pt in m
+    local beta_inv = 1/m.beam.beta
+    local pz = sqrt(1 + 2*beta_inv*pt + pt^2)
+    m.t = t + dir*(knl[1]*x - ksl[1]*y) * (beta_inv+pt)/pz
+  end
+end
+
+-- Kick general exact curved
+-- TODO: GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
+
+local function skick_track (elem, m, l) -- SKICK
+--  io.write('tracking skick for ', elem.name, ' (l=', l, ')\n')
+  local nmul = get_mult(elem, m, l)
+  if nmul == 0 then return end
+
+  local x, px, y, py, knl, ksl in m
+  local dir = m.dir * m.beam.charge
+
+  local byt
+  local by = knl[nmul] / factorial(nmul-1)
+  local bx = ksl[nmul] / factorial(nmul-1)
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + knl[i]
+    bx  = y*by + x*bx + ksl[i]
+    by  = byt
+  end
+
+  m.px = px - dir*by*(1 + knl[1]*x)
+  m.py = py + dir*bx*(1 + knl[1]*x)
 end
 
 -- integrator schemes ---------------------------------------------------------o
@@ -428,11 +420,11 @@ end
 
 -- load track maps into elements ----------------------------------------------o
 
-element.element       :set_function { track =  invalid_track }
-element.thin_element  :set_function { track =     thin_track }
-element.strait_element:set_function { track =   strait_track }
-element.curved_element:set_function { track =   curved_track }
-element.solenoid      :set_function { track = solenoid_track }
+element.element        :set_function { track =  invalid_track }
+element.thin_element   :set_function { track =     thin_track }
+element.strait_element :set_function { track =   strait_track }
+element.curved_element :set_function { track =   curved_track }
+element.solenoid       :set_function { track = solenoid_track }
 
 -- track command --------------------------------------------------------------o
 
