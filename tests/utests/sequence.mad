@@ -28,11 +28,41 @@ local assertNil, assertTrue, assertEquals in require 'luaunit'
 local sequence, bline in MAD
 local drift, sbend, quadrupole in MAD.element
 
+-- helpers --------------------------------------------------------------------o
+
+local function dumpseq (seq)
+  local fmt = MAD.option.format
+  MAD.option.format = "%.5g"
+  print()
+  print('sequence:', seq.name)
+  print('i', 'name', 'L', 'S (s)', 'S (e)')
+  seq:foreach \e,i => print(i, e.name, e.l, seq.s_pos[i], seq.e_pos[i]) end
+  MAD.option.format = fmt
+end
+
 -- regression test suite ------------------------------------------------------o
 
 TestSequence = {}
 
-function TestSequence:testSPSDefinition()
+function TestSequence:testSimple01()
+  local marker, quadrupole, sequence in MAD.element
+  local ip = marker 'ip' {}
+  local qf = quadrupole 'qf' { l=6 }
+  local lcell = 10
+
+  local seq = sequence 'simple01' {
+    l = lcell, direction=1, refer = 'entry',
+    ip 'IP1' { at = 0 },
+    qf 'QF1' { at = 0 },
+    ip 'IP2' { at = lcell },
+  }
+
+  -- dumpseq(seq)
+  assertEquals(#seq, 3)
+  assertEquals(seq.s_pos[#seq], lcell)
+end
+
+function TestSequence:testSPSDef()
   local ds = drift      'ds' {}
   local dl = drift      'dl' {}
   local dm = drift      'dm' {}
@@ -52,7 +82,7 @@ function TestSequence:testSPSDefinition()
   local SPS = sequence 'SPS' {6*super}                -- # = 1188 (6*198)
 
   assertEquals(#SPS, 1188)
---  print(SPS.s_pos[#SPS])
+  assertEquals(SPS.s_pos[#SPS], 0)
 end
 
 function TestSequence:testConvertFiveCell2File()
@@ -62,13 +92,32 @@ function TestSequence:testConvertFiveCell2File()
 
   require 'fivecell_gen'
 
+  local fivecell, ins in MADX
+--  dumpseq(ins)
+--  dumpseq(fivecell)
+  assertEquals(#fivecell, 79)
+  assertEquals(fivecell.s_pos[#fivecell], 534.6)
+end
+
+function TestSequence:testConvertFiveCell2Mem()
+  MADX.option.warn = false
+  MADX:load("../share/fivecell/fivecell.seq")
+  MADX.option.warn = true
+
+  local fivecell in MADX
+  assertEquals(#fivecell, 79)
+  assertEquals(fivecell.s_pos[#fivecell], 534.6)
+end
+
+function TestSequence:testLoadFiveCell()
+  require 'fivecell_gen'
+
   local fivecell in MADX
   assertEquals(#fivecell, 79)
   assertEquals(fivecell.s_pos[#fivecell], 534.6)
 end
 
 function TestSequence:testConvertLHC2Files()
-  -- print("loader: convert LHC madx sequence to file and load to memory")
   MADX.option.warn = false
   MADX:load("../share/LHC/lhc_as-built.seq", "lhc_as-built_gen.mad")
   MADX:load("../share/LHC/opt_inj.madx"    , "opt_inj_gen.mad"     )
@@ -80,12 +129,11 @@ function TestSequence:testConvertLHC2Files()
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
---  print(lhcb1.s_pos[#lhcb1])
---  print(lhcb2.s_pos[#lhcb2])
+  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
+  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
 end
 
 function TestSequence:testConvertLHC2Mem()
-  -- print("loader: convert LHC madx sequence to memory")
   MADX.option.warn = false
   MADX:load("../share/LHC/lhc_as-built.seq")
   MADX:load("../share/LHC/opt_inj.madx"    )
@@ -94,16 +142,19 @@ function TestSequence:testConvertLHC2Mem()
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
+  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
+  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
 end
 
 function TestSequence:testLoadLHC()
-  -- print("loader: load LHC mad sequence to memory")
   require 'lhc_as-built_gen'
-  require 'lhc_as-built_set'
+  require 'opt_inj_gen'
 
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
+  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
+  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
 end
 
 -- end ------------------------------------------------------------------------o
