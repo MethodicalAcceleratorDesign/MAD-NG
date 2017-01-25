@@ -17,6 +17,7 @@
 */
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include <complex.h>
 #include <assert.h>
@@ -489,6 +490,39 @@ void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
     }
 }
 
+void
+mad_mat_shift (num_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
+{ CHKX; mshft %= m; nshft %= n;
+  ssz_t nm = n*m, msz = n*abs(mshft), nsz = abs(nshft);
+  ssz_t sz = msz > nsz ? msz : nsz;
+  mad_alloc_tmp(num_t, a, sz);
+  if (mshft > 0) {
+    mad_vec_copy (x+nm-msz, a    ,    msz); // end of x to a
+    mad_vec_rcopy(x       , x+msz, nm-msz); // shift x down
+    mad_vec_copy (a       , x    ,    msz); // a to beginning of x
+  } else
+  if (mshft < 0) {
+    mad_vec_copy (x    , a       ,    msz); // beginning of x to a
+    mad_vec_copy (x+msz, x       , nm-msz); // shift x up
+    mad_vec_copy (a    , x+nm-msz,    msz); // a to end of x
+  }
+  if (nshft > 0) {
+    for (ssz_t i=0; i < nm; i += n) {
+      mad_vec_copy (x+i+n-nsz, a      ,   nsz); // end of x to a
+      mad_vec_rcopy(x+i      , x+i+nsz, n-nsz); // shift x right
+      mad_vec_copy (a        , x+i    ,   nsz); // a to beginning of x
+    }
+  } else
+  if (nshft < 0) {
+    for (ssz_t i=0; i < nm; i += n) {
+      mad_vec_copy (x+i    , a        ,   nsz); // beginning of x to a
+      mad_vec_copy (x+i+nsz, x+i      , n-nsz); // shift x left
+      mad_vec_copy (a      , x+i+n-nsz,   nsz); // a to end of x
+    }
+  }
+  mad_free_tmp(a);
+}
+
 // -- cmat
 
 void mad_cmat_ident(cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
@@ -550,6 +584,12 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
       mu /= m;
       for (ssz_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
     }
+}
+
+void
+mad_cmat_shift (cnum_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
+{
+  mad_mat_shift((num_t*)x, m, 2*n, mshft, 2*nshft);
 }
 
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
