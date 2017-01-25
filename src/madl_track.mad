@@ -145,20 +145,6 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, sinc        in MAD
 
 local minlen, minang = 1e-14, 1e-14
 
--- From beam:
--- energy  = 450 -- GeV
--- beta    = 0.99999782628282619
--- betai   = 1/beta
--- gamma   = 1/(sqrt(1 - beta^2))
--- bg2     = beta^2*gamma^2 = gamma^2-1 (better)
--- charge  = 1
-
--- from map or element
--- method     = 2 -- index/key of integrate table
--- nst        = 1
--- total_path = 0
--- direction  = 1 -- copied from sequence
-
 -- implementation -------------------------------------------------------------o
 
 local function invalid_track (elem, m)
@@ -296,8 +282,8 @@ local function kick_track(elem, m, l)
     by  = byt
   end
 
-  m.px = px - dir*by + dir*knl[1] -- why not (1 + knl[1]*x) like in skick ?
-  m.py = py + dir*bx              -- why not (1 + knl[1]*x) like in skick ?
+  m.px = px - dir*by + dir*knl[1] -- why not like in skick ?
+  m.py = py + dir*bx
 
   if knl[1] ~= 0 or ksl[1] ~= 0 then
     local t, pt in m
@@ -326,8 +312,9 @@ local function skick_track (elem, m, l) --
     by  = byt
   end
 
-  m.px = px - dir*by*(1 + knl[1]*x) -- BUG: should be k0*x
-  m.py = py + dir*bx*(1 + knl[1]*x) -- BUG: should be k0*x
+  local k0 in elem
+  m.px = px - dir*by*(1 + k0*x)
+  m.py = py + dir*bx*(1 + k0*x)
 end
 
 -- integrator schemes ---------------------------------------------------------o
@@ -349,26 +336,22 @@ local function thin_track (elem, m)
 end
 
 local function thick_track (elem, m, angle, drift, kick)
-  local l, k0, method in elem
+  local l, method in elem
   local integrator = integrate[method or m.method]
-  local l_ratio, n_elem = 1, #elem -- l_field/l
-
-  if k0 and k0 ~= 0 then
-    l_ratio = 1/sinc((k0*l-angle)/2) -- correct?
-  end
+  local n_elem = #elem
 
   if n_elem == 0 then -- no sub-elements
-    integrator(elem, m, l*l_ratio, drift, kick)
+    integrator(elem, m, l, drift, kick)
     return l
   end
 
   local s, ds, at = 0
-  for i=1,n_elem do
+  for i=1,n_elem do   -- n_elem sub-elements
     at = assert(elem[i].at, "invalid sub-element position (at expected)")
     ds = at*l - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
-      integrator(elem, m, ds*l_ratio, drift, kick)
+      integrator(elem, m, ds, drift, kick)
     end
     s = s + ds
     assert(elem[i]:track(m) == 0, "invalid sub-element length (0 expected)")
@@ -376,7 +359,7 @@ local function thick_track (elem, m, angle, drift, kick)
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
   if ds >= minlen then
-    integrator(elem, m, ds*l_ratio, drift, kick)
+    integrator(elem, m, ds, drift, kick)
   end
   return l
 end
@@ -392,8 +375,7 @@ local function strait_track (elem, m) -- e.g. rbend
   end
 
   -- TODO: boundary elements and radiation.
-  l = thick_track (elem, m, 0, drift_track, kick_track)
-  return l
+  return thick_track (elem, m, 0, drift_track, kick_track)
 end
 
 local function curved_track (elem, m) -- e.g. sbend
@@ -408,8 +390,7 @@ local function curved_track (elem, m) -- e.g. sbend
 
   -- TODO: boundary elements and radiation.
 --  l = thick_track (elem, m, angle, sdrift_track, kick_track)
-  l = thick_track (elem, m, angle, sdrift_track, skick_track)
-  return l
+  return thick_track (elem, m, angle, sdrift_track, skick_track)
 end
 
 -- specialisations ------------------------------------------------------------o
@@ -425,8 +406,7 @@ local function solenoid_track (elem, m)
   end
 
   -- TODO: boundary elements and radiation.
-  l = thick_track (elem, m, 0, solenoid_drift_track, kick_track)
-  return l
+  return thick_track (elem, m, 0, solenoid_drift_track, kick_track)
 end
 
 -- load track maps into elements ----------------------------------------------o

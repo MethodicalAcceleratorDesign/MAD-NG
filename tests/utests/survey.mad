@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertNil, assertTrue, assertEquals in require 'luaunit'
+local assertNil, assertTrue, assertEquals, assertErrorMsgContains in require 'luaunit'
 local is_nil, survey, option in MAD
 
 local lhcb1, lhcb2
@@ -125,5 +125,354 @@ function TestSurvey:testSurveyRangeIterLHC2()
   end
   tbl:write('survey_lhcb2_range_iter')
 end
+
+--irina
+
+function TestSurvey:testNDrift()
+  print("NEGATIVE DRIFT SURVEY TEST")
+
+  local drift, marker, quadrupole, sequence  in MAD.element
+  local lcell  = 10
+  local lquad  = 6
+
+--marker
+  local ip   = marker     'ip'{}
+
+--quads
+  local kqf  =  1.4631475E-02
+  local kqd  = -1.4643443E-02
+  local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf, tilt=0.3}
+  local qd   = quadrupole 'qd'{ l=lquad, k1:= kdf }
+
+-- to check negative drift error
+  local seq = sequence 'fodo1' {l = lcell, direction=1, refer = 'entry', 
+    ip 'IP1' { at = 0     },
+    qf 'QF1' { at = 0},
+    qd 'QD1' { at = 4},
+    ip 'IP2' { at = lcell },
+ }
+
+-- local ttt 
+-- assertErrorMsgContains( 'negative implicit drift', ttt = survey { sequence=seq,  X0={0, 0, 0}, A0={0, 0, 0}})
+
+  local tbl = survey { sequence=seq,  X0={0, 0, 0}, A0={0, 0, 0}}
+-- gives an errro (see below), maybe check with assertErrorMsgContains( 'negative implicit drift', XXX)
+
+-- ERROR
+-- /Users/shreyber/new_mad/MAD/src/madl_survey.mad:277: negative implicit drift -2 in fodo1['QD1'] at 4                
+  option.format = "%-18.16g" 
+  tbl:write('ndrift')
+
+end
+
+function TestSurvey:testFODO_01()
+  print("FODO SURVEY TEST")
+  local lu = require 'luaunit'
+  local assertAllEquals = lu.assertAllEquals
+
+
+
+  local drift, marker, quadrupole, sequence  in MAD.element
+  local lcell  = 20
+  local lquad  = 5
+
+--marker
+  local ip   = marker     'ip'{}
+
+--quads
+  local kqf  =  1.4631475E-02
+  local kqd  = -1.4643443E-02
+  local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf, tilt = 4e-6 }
+  local qd   = quadrupole 'qd'{ l=lquad, k1:= kdf }
+
+  local seq = sequence 'fodo1' {l = lcell, refer = 'entry', 
+    ip 'IP1' { at = 0     },
+    qf 'QF1' { at = 0},
+    qd 'QD1' { at = 15},
+    ip 'IP2' { at = lcell },
+ }
+  assertEquals(seq.direction, 1)
+  local tbl = survey { sequence=seq, X0={-1e-4, 2e-6, 0}, A0={0, 0, 3e-7}}
+--[[  option.format = "%-18.16g" 
+  tbl:write('fodo_1')
+]]
+
+--check quad 'QF1'
+  actual   = { tbl.angle['QF1'], tbl.tilt ['QF1'], tbl.x['QF1'], tbl.y['QF1'], tbl.z['QF1'], tbl.theta['QF1'], tbl.phi['QF1'], tbl.psi['QF1'], tbl.globaltilt['QF1']}
+  expected = { 0               , 4e-6            , -1e-4       , 2e-6        , 5           , 0               , 0             , 3e-7          , 3e-7}
+  margin   = { 0               , 0               , 1e-15       , 1e-15       , 0           , 0               , 0             , 0             , 0}
+  assertAllEquals (actual, expected, margin)   
+--check the whole cell
+  actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl], tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl], tbl.phi[#tbl], tbl.psi[#tbl], tbl.globaltilt[#tbl]}
+  expected = { 0              , 0              , -1e-4      , 2e-6       , lcell      , 0              , 0            , 3e-7         , 3e-7}
+  margin   = { 0              , 0              , 1e-15      , 1e-15      , 0          , 0              , 0            , 0            , 0}
+  assertAllEquals (actual, expected, margin)   
+
+
+end  
+
+function TestSurvey:testFODO_02()
+  print("FODO DIRECTION SURVEY TEST")
+
+  local drift, marker, quadrupole, sequence  in MAD.element
+  local lcell  = 20
+  local lquad  = 5
+
+--marker
+  local ip   = marker     'ip'{}
+
+--quads
+  local kqf  =  1.4631475E-02
+  local kqd  = -1.4643443E-02
+  local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf, tilt=0.3}
+  local qd   = quadrupole 'qd'{ l=lquad, k1:= kdf }
+
+  local seq = sequence 'fodo1' {l = lcell, refer = 'entry', 
+    ip 'IP1' { at = 0     },
+    qf 'QF1' { at = 0},
+    qd 'QD1' { at = 15},
+    ip 'IP2' { at = lcell },
+ }
+  assertEquals(seq.direction, 1)
+  local tbl = survey { sequence=seq, X0={0, 0, 0}, A0={0, 0, 0}}
+  option.format = "%-18.16g" 
+  tbl:write('fodo_p1')
+  seq.direction = -1
+  assertEquals(seq.direction, -1)
+  option.format = "%-18.16g" 
+  tbl:write('fodo_m1')
+
+end  
+
+function TestSurvey:testFODO_03()
+  print("FODO PATCH SURVEY TEST")
+
+  local lu = require 'luaunit'
+  local assertAllEquals = lu.assertAllEquals
+
+
+  local drift, marker, quadrupole, patch, srotation, sequence  in MAD.element
+  local lcell  = 20
+  local lquad  = 5
+
+--marker
+  local ip   = marker     'ip'{}
+
+--quads
+  local kqf  =  1.4631475E-02
+  local kqd  = -1.4643443E-02
+  local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf, tilt=0.3}
+  local qd   = quadrupole 'qd'{ l=lquad, k1:= kdf }
+--patch
+  local sr   = srotation{tilt = 0.03}
+
+--sequence
+  local seq = sequence 'fodo1' {l = lcell, refer = 'entry', 
+    ip 'IP1' { at = 0 },
+    sr 'SR1' { at = 0 },
+    qf 'QF1' { at = 0 },
+    qd 'QD1' { at = 15},
+    ip 'IP2' { at = lcell },
+ }
+
+  assertEquals(seq.direction, 1)
+ 
+  local tbl = survey { sequence=seq, X0={0.01, -0.02, 0}, A0={0, 0, 0}}
+ 
+ --[[option.format = "%-18.16g" 
+  tbl:write('fodo_patch_p1')
+]]
+  local actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl], tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl], tbl.phi[#tbl], tbl.psi[#tbl], tbl.globaltilt[#tbl]}
+  local expected = { 0              , 0              , 0.01       , -0.02      , lcell      , 0              , 0            , 0            , 0}
+  local margin   = { 0              , 0              , 1e-15      , 1e-15      , 0          , 0              , 0            , 0            , 0}
+  assertAllEquals (actual, expected, margin)   
+
+--dir =-1
+  seq.direction = -1
+  assertEquals(seq.direction, -1)
+  actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl], tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl], tbl.phi[#tbl], tbl.psi[#tbl], tbl.globaltilt[#tbl]}
+  expected = { 0              , 0              , 0.01       , -0.02      , lcell      , 0              , 0            , 0            , 0}
+  margin   = { 0              , 0              , 1e-15      , 1e-15      , 0          , 0              , 0            , 0            , 0}
+  assertAllEquals (actual, expected, margin)   
+  
+
+end  
+
+
+function TestSurvey:testSPSLine()
+  print("SPS SURVEY TEST")
+  local pi in MAD
+
+  local lu = require 'luaunit'
+  local assertAllEquals = lu.assertAllEquals
+
+
+  local marker, drift, monitor, hkicker, vkicker, multipole in MAD.element
+  local sbend, quadrupole,  sextupole, patch, sequence      in MAD.element
+
+-- total length
+  local circum = 6912.0
+-- number of cells and therefore cell length
+  local ncell  = 108
+  local lcell  = circum/ncell
+--lengths of elements and half lengths
+  local lsb    = 3.       -- arc length of dipole
+  local lquad  = 3.085
+  local lquad2 = lquad/2.
+  local lsex   = 1.0
+--marker
+  local ip  = marker     'ip'{}
+--drift (just to check if it works and gives the same results)
+  local dr = drift      'dr'{}
+--sbend
+--  local asb = 0.010    -- angle
+  local asb = 2.0*pi/(8*108)
+--  local sb  = sbend     'sb'{ l:=lsb, angle = asb }
+  local sb  = multipole     'sb'{ knl = asb }
+--quads
+  local kqf  =  1.4631475E-02
+  local kqd  = -1.4643443E-02
+  local qf  = quadrupole 'qf'{ l=lquad, k1:= kqf }
+  local qd  = quadrupole 'qd'{ l=lquad, k1:= kdf }
+--sextupole
+  local ksf =  2.0284442E-02
+  local ksd = -3.8394267E-02
+  local sf  = sextupole 'sf' {l=lsex,  k2:=ksf}
+  local sd  = sextupole 'sd' {l=lsex,  k2:=ksd}
+-- orbit correctors and beam position monitors
+  local bpm = monitor 'bpm'  {l=0.1}
+  local ch  = hkicker 'ch'   {l=0.1}
+  local cv  = vkicker 'vh'   {l=0.1}
+--sequence
+  local seq = sequence 'fodo1' {l = lcell, dir =1, refer = 'centre', 
+      ip  'IP1'  { at = 0        },
+      qf  'QF1'  { at = lquad2},
+      sf  'SF1'  { at = lquad2   +  2.5},
+      ch  'CH1'  { at = lquad2   +  3.1},
+      bpm 'BPM1' { at = lquad2   +  3.2},
+      sb  'SB1'  { at = lquad2   +  3.5},
+      sb  'SB2'  { at = lquad2   +  9.9},
+      sb  'SB3'  { at = lquad2   +  22.1},
+      sb  'SB4'  { at = lquad2   +  28.5},
+      qd  'QD1'  { at = lquad2   +  32},
+      sd  'SD1'  { at = lquad2   +  34.5},
+      cv  'CV1'  { at = lquad2   +  35.1},
+      bpm 'BPM2' { at = lquad2   +  35.2},
+      sb  'SB1'  { at = lquad2   +  35.5},
+      sb  'SB2'  { at = lquad2   +  41.9},
+      sb  'SB3'  { at = lquad2   +  54.1},
+      sb  'SB4'  { at = lquad2   +  60.5},
+      ip  'IP2'  { at = lcell    },
+      
+}
+  local tbl = survey { sequence=seq,  X0={0, 0, 0}, A0={0, 0, 0}}
+  option.format = "%-18.16g" 
+  tbl:write('sps_cell1')
+
+
+  seq.dir = -1
+  tbl = survey { sequence=seq, X0={0, 0, 0}, A0={0, 0, 0}}
+  option.format = "%-18.16g" 
+  tbl:write('sps_cell2')
+
+  local actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl], tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl], tbl.phi[#tbl], tbl.psi[#tbl], tbl.globaltilt[#tbl]}
+  local expected = { 0              , 0              , 0          , 0          , lcell      , 0              , 0            , 0            , 0}
+  local margin   = { 0              , 0              , 1e-15      , 1e-15      , 0          , 0              , 0            , 0            , 0}
+  assertAllEquals (actual, expected, margin)   
+
+
+end
+
+----  playing around , testing, not for real tests
+function TestSurvey:testFODO()
+  print("FODO SURVEY TEST")
+  local pi in MAD
+
+  local marker, drift, quadrupole, sbend, patch, sequence in MAD.element
+
+--marker
+  local ip  = marker     'ip'{}
+--drift (just to check if it works and gives the same results)
+  local  dr = drift      'dr'{}
+--quads
+  local qf  = quadrupole 'qf'{ l=2.7, k1 =  0.5, tilt = 0.3}
+  local qd  = quadrupole 'qd'{ l=2.7, k1 := -qf.k1 }
+--sbend
+  local lsb = 3.       -- arc length of dipole
+  local asb = 0.010    -- angle
+  local sb  = sbend     'sb'{ l:=lsb, angle = asb }
+
+  local seq = sequence      'fodo1'   {l=15, dir =1,  ip{}, qf{},      qd{},    ip{}}
+  local tbl = survey { sequence=seq,  X0={0, 0, 0}, A0={0, 0, 0}}
+  option.format = "%-18.16g" 
+  tbl:write('fodo')
+
+  print('#fodo_tbl=', #tbl)
+  print('#fodo=', #seq)
+  print("fodo.l=" , seq.l)
+
+  local seq_dr = sequence   'fodo_dr' {l=15, dir =1,  ip{}, qf{}, dr{},qd{}, dr{}, sb{}, ip{}}
+  tbl:write('fodo_dr')
+
+--[[ TODO 
+   - skew quad = defoc quad titled by 45 {track)
+   - small ring with bends to close (LHC doesn't arrive to zero)
+
+]]
+end
+
+
+function TestSurvey:testDrift()
+  print("DRIFT SURVEY TEST")
+  local pi in MAD
+  local sequence, drift in MAD.element
+  local lu = require 'luaunit'
+  local assertAllEquals = lu.assertAllEquals
+
+  local drift, quadrupole, sequence in MAD.element
+  local dr = drift      'dr' { l=1.3 }
+
+  local seq = sequence  'drift01' { dr{} }
+  local tbl = survey { sequence=seq,  X0={-1,-2.5,3}, A0={pi/3, 0, -pi/3}}
+
+  option.format = "%-18.16g" 
+  tbl:write('drift01')
+
+  local actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl]     , tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl]   , tbl.phi[#tbl], tbl.psi[#tbl]}
+  local expected = { 0              , 0              , 0.12583302491977, -2.5       , 3.65       , 1.0471975511965976, 0            , -1.0471975511965976}
+  local margin   = { 0              , 0              ,   1e-15         , 1e-15      , 1e-15      , 1e-15             , 1e-15            , 1e-15             }
+  assertAllEquals (actual, expected, margin)   
+ 
+end
+
+
+function TestSurvey:testLHC_B1()
+  print("LHC_B1 SURVEY TEST")
+  local pi in MAD
+
+  local lu = require 'luaunit'
+  local assertAllEquals = lu.assertAllEquals
+
+  local tbl = survey { sequence=lhcb1, X0={0,0,0}, A0={0, 0, 0}}
+  option.format = "%-18.10g" 
+  tbl:write('lhc_b1')
+  print('#lhc_b1=', #tbl)
+  print('#lhcb1=', #lhcb1)
+  print("lhcb1.l=" , lhcb1.l)
+  assertEquals(#tbl                  , 13267)
+  assertEquals(#lhcb1                , 6675)
+  assertEquals(tbl['IP1.L1'].s       , 26658.8832) 
+  assertEquals(tbl.s[#tbl]           , 26658.8832)
+  local actual   = { tbl.angle[#tbl], tbl.tilt [#tbl], tbl.x[#tbl], tbl.y[#tbl], tbl.z[#tbl], tbl.theta[#tbl], tbl.phi[#tbl], tbl.psi[#tbl]}
+--  local expected = { 0              , 0              , 0          , 0          , 0          , 0              , 0            , 0}
+  local expected = { 0              , 0              , 0.00012170470257155          , 0          , -7.969006809e-05          , -6.2831853071796              , 0            , 0}
+  local margin   = { 0              , 0              , 1e-15      , 1e-15      , 1e-15      , 1e-10          , 1e-15        , 1e-15             }
+  assertAllEquals (actual, expected, margin)   
+  
+
+end
+
+
+-- end ------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o
