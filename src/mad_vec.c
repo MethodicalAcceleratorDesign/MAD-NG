@@ -44,6 +44,9 @@ void mad_vec_fill (num_t x, num_t r[], ssz_t n)
 void mad_vec_copy (const num_t x[], num_t r[], ssz_t n)
 { CHKXR; if (x != r) for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
 
+void mad_vec_rcopy (const num_t x[], num_t r[], ssz_t n)
+{ CHKXR; if (x != r) for (ssz_t i=0; i < n; i++) r[n-1-i] = x[n-1-i]; }
+
 void mad_vec_copyv (const num_t x[], cnum_t r[], ssz_t n)
 { CHKXR; for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
 
@@ -150,6 +153,9 @@ void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
 { mad_vec_copy((const num_t*)x, (num_t*)r, 2*n); }
+
+void mad_cvec_rcopy (const cnum_t x[], cnum_t r[], ssz_t n)
+{ mad_vec_rcopy((const num_t*)x, (num_t*)r, 2*n); }
 
 void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 { assert( x && (re || ri) );
