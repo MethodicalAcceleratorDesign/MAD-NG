@@ -30,6 +30,7 @@
 
 void   mad_mat_ident   (                                           num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); // ident-> mat
 void   mad_mat_fill    (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  num -> mat
+void   mad_mat_shift   (       num_t x[],                                      ssz_t m, ssz_t n, int mshft, int nshft); //  mat -> mat
 void   mad_mat_copy    (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  mat -> mat
 void   mad_mat_copym   (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  mat ->cmat
 void   mad_mat_trans   (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n);                       //  mat.t()
@@ -58,6 +59,7 @@ num_t  mad_mat_symperr (const  num_t x[],                          num_t  r[],  
 void   mad_cmat_ident  (                                          cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  ident->cmat
 void   mad_cmat_fill   (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat
 void   mad_cmat_fill_r (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat
+void   mad_cmat_shift  (      cnum_t x[],                                      ssz_t m, ssz_t n, int mshft, int nshft); //  cmat ->cmat
 void   mad_cmat_copy   (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  cmat ->cmat
 void   mad_cmat_trans  (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat.t()
 void   mad_cmat_ctrans (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat.ct()
