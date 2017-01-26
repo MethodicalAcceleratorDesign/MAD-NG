@@ -1419,26 +1419,42 @@ MR.__pow = \x,y,r_ -> x:map2(y, pow, r_)
   mexp, mlog, msqrt, mpow using Padé Approximants
 ]]
 
+-- equal
+
 local cmp_tol = 0
 local cmp_fct = \a,b -> abs(a - b) <= cmp_tol
 
-function MR.__eq (x, y, f_)
-  local nr, nc  = x:sizes()
-  if is_number(f_) then cmp_tol, f_ = f_, cmp_fct end
-  local f = f_ or is_eq
-  if is_scalar(y) then
-    for i=0,nr*nc-1 do
-      if not f(geti0(x,i), y) then return false end
-    end
-    return true
-  end
-  if not isa_matrix(y) or nr ~= y:nrow() or nc ~= y:ncol() then
-    return false
-  end
-  for i=0,nr*nc-1 do
-    if not f(geti0(x,i), geti0(y,i)) then return false end
+function MR.__req_cpx (y, x, f)                  -- cpx == mat
+  for i=1,y:size() do
+    if f(x, geti(y,i), i) ~= true then return false end
   end
   return true
+end
+
+function MR.__eq (x, y, f_)
+  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and is_eq or cmp_fct end
+  local f = f_ or is_eq
+  assert(is_callable(f), "invalid argument #3 (callable expected)")
+  if is_number(x) then
+    for i=1,y:size() do
+      if f(x, geti(y,i), i) ~= true then return false end
+    end
+    return true
+  elseif is_scalar(y) then
+    for i=1,x:size() do
+      if f(geti(x,i), y, i) ~= true then return false end
+    end
+    return true
+  elseif is_matrix(x) and isa_matrix(y) then
+    if x:nrow() ~= y:nrow() or x:ncol() ~= y:ncol() then return false end
+    for i=1,x:size() do
+      if f(geti(x,i), geti(y,i), i) ~= true then return false end
+    end
+    return true
+  elseif has_method(y, '__req_mat') then
+    return y:__req_mat(x, f_)
+  end
+  error("invalid arguments (unsupported matrix operation)")
 end
 
 -- add
