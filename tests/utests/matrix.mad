@@ -1146,11 +1146,9 @@ end
 
 function TestMatrixInPlaceII:testShift()
   local m = matrix(2):fill(1..4)
-  --check for over the bounds adn minus
-  assertEquals( m:shift(0,0), m )
- -- print( m:shift(-1,0), "\n" )
- -- print( m:shift( 3,0), "\n" )
-
+  assertEquals( m:shift( 0,0), m )
+  assertEquals( m:shift( 3,0), m )
+  assertEquals( m:shift(-3,0), m )
   for nr=1,5 do
   for nc=1,5 do
     m = matrix(nr,nc):fill(1..nr*nc)
@@ -1166,7 +1164,6 @@ function TestMatrixInPlaceII:testShift()
       end end
       m:shift(-inr,-inc)
     end end
-
   end end
 end
 
@@ -2950,32 +2947,34 @@ function TestMatrixErr:testDiv()
 end
 
 function TestMatrixOps:testDiv() -- TODO
+  local mres, mref, mc, cm
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
+    mc = m:copy():random(randomseed(2))
+    if nr == nc then
+      mres = mc * (1/mc)      -- num / mat
+      mref = mc:copy():eye()
+      for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, 5*eps ) end
+    end
     mres = m:div(2)  for i=1,mres:size() do assertEquals( mres:geti(i)       , i/2 ) end  -- mat / num
     mres = m:div(2i) for i=1,mres:size() do assertEquals( mres:geti(i):imag(),-i/2 ) end  -- mat / cpx
-
-    m1 = m:copy():random(randomseed(2))
-    if nr == nc then
-      mres = m1 * (1/m1) -- mat / mat
-      mref = m1:copy():eye()
-      for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, 8*eps ) end
-
-      local m2 = m:copy()
-      mres = 1/m1 * m1 * m2 -- mat / mat
-      for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - m2:geti(i), 0, 128*eps ) end
-
-      mres = m1 * (1/m1) -- mat / mat
-    end
+    mres = m:copy() / m       -- mat / mat
+    mref = m:copy() * 1/m
+    for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, eps ) end
+    cm = cmatrix(nr,nc):fill(1i)
+    mres = m:copy() / m      -- mat / cmat
+    mref = m:copy() * 1/m
+    for i=1,mres:size() do assertAlmostEquals( mres:geti(i) - mref:geti(i), 0, eps ) end
   end
 end
 
 function TestMatrixOps:testDivCPx() -- TODO
-  for _,m1 in ipairs(G.mat) do
-    local mres = 2i / m1  -- cpx / mat
-    --print( mres, "\n" )
-    --for j=1,m1:size() do print( mres:geti(j), j*2i ) end
+  for _,m in ipairs(G.mat) do
+    local mres = 2i / m
+    local mref = 2i * 1/m
     assertTrue( is_cmatrix(mres) )
+    for j=1,m:size() do assertAlmostEquals( mres:geti(j).re - mref:geti(j).re, 0, eps )
+                        assertAlmostEquals( mres:geti(j).im - mref:geti(j).im, 0, eps ) end
   end
 end
 
@@ -3255,14 +3254,14 @@ end
 
 -- pascal triangle helpers
 local pasVal = \x   => local y = 1 for i=1,x do y = y * i end return y end
-local function pasVec(x, s)
+local function pasVec(x)
   local v = vector(x)
   for z=1,x do v:seti(z, pasVal(x-1) / (pasVal(z-1) * pasVal(x-z))) end
   return v
 end
 
  -- convolution theorem
-function TestMatrixFFT:testConv()
+function TestMatrixFFT:testConv() -- matrix test
   -- HELP - to get full conv: nr, nc = xr+yr-1, xc+yc-1
   for i=3,8 do
     local s = (i-1)+(i-2) - 1
@@ -3275,44 +3274,38 @@ function TestMatrixFFT:testConv()
       assertAlmostEquals( res:geti(j)-ref:geti(j), 0, 51*eps )
     end
   end
+
+  local m1 = matrix(2):fill( pasVec(4) ):resize(3)
+  local m2 = matrix(3):fill( pasVec(9) )
+
+  local m1 = matrix(2):fill(1):resize(3,3)
+  local m2 = matrix(2):fill(1..4):resize(3,3)
+  print( m1         , "\n" )
+  print( m1:conv(m2), "\n" )
 end
 
  -- correlation theorem
-function TestMatrixFFT:testCorr() -- shift needed
-  for i=3,5 do
+function TestMatrixFFT:testCorr() -- matrix test
+  for i=3,6 do
+    local s = (i-1)+(i-2) - 1
+    local v1   = pasVec(i-1):resize(s,1)
+    local v2   = pasVec(i-2):resize(s,1)
+    local res  = v1:corr(v2)
+    local res2 = v2:corr(v1):shift(1,0)
+    local ref  = pasVec(s):shift(s/2+1,0)
+    for j=1,s do assertAlmostEquals( res:geti(j) - ref :geti(j), 0, 16*eps ) end
+    for j=1,s do assertAlmostEquals( res:geti(j) - res2:geti(j), 0, 16*eps ) end
+  end
+end
+
+function TestMatrixFFT:testCovar() -- matrix test
+for i=3,6 do
     local s = (i-1)+(i-2) - 1
     local v1 = pasVec(i-1):resize(s,1)
     local v2 = pasVec(i-2):resize(s,1)
-    local res = v1:corr(v2)
-    local ref = pasVec(s)
-
-    local n = s/2+1
-    for j=1  ,n do assertAlmostEquals( res:geti(j) - ref:geti(j + n-2), 0, 4*eps ) end
-    for j=n+1,s do assertAlmostEquals( res:geti(j) - ref:geti(j - n  ), 0,   eps ) end
-    --assertEquals( v1:corr(v2), v2:corr(v1) )
-  end
-  local v1 = vector{0,0,1,0,0,0}
-  local v2 = vector{0,0,0,0,1,0}
-  --print( v2:corr(v1) )
-
-  local v1 = vector{1,2,3,4,5}
-  --print( v1, "\n" )
-  for i=1,4 do
-    --print( v1:shift(i,0), "\n" )
-  end
-
-  local m1 = matrix{{1,2},{3,4}}
-  --print( m1           , "\n" )
-  --print( m1:shift(1,0), "\n" )
-  --print( m1:shift(0,1), "\n" )
-end
-
-function TestMatrixFFT:testCovar()
-  for i,s in ipairs(fftdat.sv) do
-    local v1 = fftdat.fftVIn:getsub(1..s, 1):fft()
-    local v2 = fftdat.fftVIn:getsub(1..s, 1):fft()
-    --assertEquals( v1:covar(v2), v2:covar(v1) )
-    --local res = v1:covar(v2)
+    local res = v1:covar(v2)
+    local ref = v1:corr(v2):center()
+    for j=1,s do assertAlmostEquals( res:geti(j) - ref:geti(j), 0, 16*eps ) end
   end
 end
 
@@ -3482,9 +3475,42 @@ function TestMatrixRot:testRotzyx()
   end
 end
 
-function TestMatrixRot:testRotpitch() end
-function TestMatrixRot:testRotyaw() end
-function TestMatrixRot:testRotroll() end
+
+function TestMatrixRot:testRotpitch()
+  local m = matrix(3)
+  for i,ax in ipairs(dat.rad) do
+    local res = m:rotpitch(-ax)
+    local ref = dat.rotx[i]
+    assertEquals( res:t()*res, matrix(3):eye() )
+    for j=1,res:size() do
+      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
+    end
+  end
+end
+
+function TestMatrixRot:testRotyaw()
+  local m = matrix(3)
+  for i,ay in ipairs(dat.rad) do
+    local res = m:rotyaw(-ay)
+    local ref = dat.roty[i]
+    assertEquals( res:t()*res, matrix(3):eye() )
+    for j=1,res:size() do
+      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
+    end
+  end
+end
+
+function TestMatrixRot:testRotroll()
+  local m = matrix(3)
+  for i,az in ipairs(dat.rad) do
+    local res = m:rotroll(-az)
+    local ref = dat.rotz[i]
+    assertEquals( res:t()*res, matrix(3):eye() )
+    for j=1,res:size() do
+      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
+    end
+  end
+end
 
 function TestMatrixRot:testRotmad()
   for i,th in ipairs(dat.rad) do
