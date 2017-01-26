@@ -1819,16 +1819,19 @@ end
 function MR.fft (x, r_)
   local nr, nc = x:sizes()
   local r = chksiz(r_, x) or cmatrix(nr,nc)
-  if nr == 1 or nc == 1 then -- 1D FFT
-    if is_matrix(x)
-    then _C.mad_vec_fft (x.data, r.data, x:size())
-    else _C.mad_cvec_fft(x.data, r.data, x:size())
-    end
-  else                       -- 2D FFT
-    if is_matrix(x)
-    then _C.mad_mat_fft (x.data, r.data, x:sizes())
-    else _C.mad_cmat_fft(x.data, r.data, x:sizes())
-    end
+  if nr == 1 or nc == 1 then
+  then _C.mad_vec_fft(x.data, r.data, x:size())  -- 1D FFT
+  else _C.mad_mat_fft(x.data, r.data, x:sizes()) -- 2D FFT
+  end
+  return r
+end
+
+function MC.fft (x, r_)
+  local nr, nc = x:sizes()
+  local r = chksiz(r_, x) or cmatrix(nr,nc)
+  if nr == 1 or nc == 1
+  then _C.mad_cvec_fft(x.data, r.data, x:size())  -- 1D FFT
+  else _C.mad_cmat_fft(x.data, r.data, x:sizes()) -- 2D FFT
   end
   return r
 end
@@ -1847,8 +1850,7 @@ MC.fft  = \ error("N.A.")
 MR.ifft = \ error("N.A.")
 
 function MR.rfft (x, r_)
-  local nr, nc = x:sizes()
-  local r
+  local nr, nc, r = x:sizes()
   if nr == 1 or nc == 1 then -- 1D FFT
     nr, nc = floor(nr/2+1), floor(nc/2+1)
     r = r_ or cmatrix(nr,nc)
@@ -1863,25 +1865,19 @@ function MR.rfft (x, r_)
   return r
 end
 
-MC.rfft  = \ error("N.A.")
-MR.irfft = \ error("N.A.")
+MC.rfft  = \ error("invalid argument #1 (matrix expected)")
+MR.irfft = \ error("invalid argument #1 (cmatrix expected)")
 
-function MC.irfft (x, r_) -- r_ can be the length
-  assert(not r_ or is_matrix(r_), "result matrix must be real")
-  local nr, nc = x:sizes()
-  local r
-  if nr == 1 or nc == 1 then -- 1D FFT (check imag(Nyquist))
-    local oddnr = nc == 1 and imag(x[nr]) == 0 and 0 or 1
-    local oddnc = nr == 1 and imag(x[nc]) == 0 and 0 or 1
-    nr, nc = max(1,(nr-1)*2+oddnr), max(1,(nc-1)*2+oddnc)
-    r = r_ or matrix(nr,nc)
-    assert(nr == r:nrow() and nc == r:ncol(), "incompatible matrix sizes")
+function MC.irfft (x, r)
+  assert(is_matrix(r), "invalid argument #2 (matrix expected)")
+  local nr, nc = r:sizes()
+  if nr == 1 or nc == 1 then -- 1D FFT
+    nr, nc = floor(nr/2+1), floor(nc/2+1)
+    assert(nr == x:nrow() and nc == x:ncol(), "incompatible matrix sizes")
     _C.mad_cvec_irfft(x.data, r.data, r:size())
   else                       -- 2D FFT
-    local oddnc = imag(x:get(1,nc)) == 0 and 0 or 1
-    nc = (nc-1)*2+oddnc
-    r = r_ or matrix(nr,nc)
-    assert(nr == r:nrow() and nc == r:ncol(), "incompatible matrix sizes")
+    nc = floor(nc/2+1)
+    assert(nr == x:nrow() and nc == x:ncol(), "incompatible matrix sizes")
     _C.mad_cmat_irfft(x.data, r.data, r:sizes())
   end
   return r
@@ -2030,17 +2026,17 @@ function logspace (start, stop_, size_)
   return v
 end
 
-local factorial_ = vector(171) -- cache
+local fact_ = vector(171) -- cache
 
-local function factorial (n)
+local function fact (n)
   assert(n >= 0, "invalid argument #1 (positive integer expected)")
-  return n <= 170 and geti0(factorial_, n) or inf
+  return n <= 170 and geti0(fact_, n) or inf
 end
 
 do -- fill on load
   local a = 1
-  for i=1,170 do a = a*i ; seti0(factorial_, i, a) end
-  seti0(factorial_, 0, 1)
+  for i=1,170 do a = a*i ; seti0(fact_, i, a) end
+  seti0(fact_, 0, 1)
 end
 
 -- metamethods ----------------------------------------------------------------o
@@ -2105,8 +2101,7 @@ return {
 
   linspace   = linspace,
   logspace   = logspace,
-
-  factorial  = factorial,
+  fact       = fact,
 
   __help     = MR.__help
 }
