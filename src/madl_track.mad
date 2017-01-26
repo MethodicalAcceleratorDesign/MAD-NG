@@ -144,20 +144,7 @@ local is_nil, is_number, vector, matrix, is_matrix, factorial      in MAD
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, sinc        in MAD
 
 local minlen, minang = 1e-14, 1e-14
-
--- From beam:
--- energy  = 450 -- GeV
--- beta    = 0.99999782628282619
--- betai   = 1/beta
--- gamma   = 1/(sqrt(1 - beta^2))
--- bg2     = beta^2*gamma^2 = gamma^2-1 (better)
--- charge  = 1
-
--- from map or element
--- method     = 2 -- index/key of integrate table
--- nst        = 1
--- total_path = 0
--- direction  = 1 -- copied from sequence
+local maxmul = 15
 
 -- implementation -------------------------------------------------------------o
 
@@ -168,7 +155,19 @@ end
 
 -- Put element multipoles in mflow
 
-local function get_mult (elem, m, l)
+local function get_mult0 (elem, m) -- l=0
+  local knl, dknl = elem.knl or {}, elem.dknl or {}
+  local ksl, dksl = elem.ksl or {}, elem.dksl or {}
+  local nmul = max(#knl, #ksl, #dknl, #dksl)
+
+  for i=1,nmul do
+    m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
+    m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+  end
+  return nmul
+end
+
+local function get_mult (elem, m, l) -- general
   local k0 , k1 , k2 , k3  in elem
   local k0s, k1s, k2s, k3s in elem
   local nkn = k3  and 4 or k2  and 3 or k1  and 2 or k0  and 1 or 0
@@ -201,9 +200,9 @@ local function drift_track (elem, m, l)
   m.t = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
 end
 
--- Drift general exact curved
+-- Drift general exact curved       [PTC SSECH1: either SPROT(DKD) or SSEC(MKM)]
 
-local function sdrift_track (elem, m, l) --SPROT (SSECH1: either SPROT(DKD) or SSEC(MKM))
+local function sdrift_track (elem, m, l)
 --  io.write('tracking sdrift for l=', l, '\n')
   local k0 in elem
 
@@ -213,9 +212,9 @@ local function sdrift_track (elem, m, l) --SPROT (SSECH1: either SPROT(DKD) or S
 
   local x, px, y, py, t, pt, T in m
   local beta_inv = 1/m.beam.beta
---  local dir = m.dir * m.beam.charge
+  local dir = m.dir * m.beam.charge
 
-  local angle, rho = l*k0, 1/k0 -- dir*l*k0, dir/k0
+  local angle, rho = dir*l*k0, dir/k0
   local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
 
   local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2)
@@ -265,9 +264,9 @@ local function solenoid_drift_track (elem, m, l)
   m.t  = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
 end
 
--- Kick general exact strait
+-- Kick general exact strait                 [PTC KICKEXR: KICKR + KICKTR(mult)]
 
-local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)
+local function kick_track(elem, m, l)
 --  io.write('tracking kick for ', elem.name, ' (l=', l, ')\n')
   local nmul = get_mult(elem, m, l)
   if nmul == 0 then return end
@@ -284,8 +283,8 @@ local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)
     by  = byt
   end
 
-  m.px = px - dir*by + dir*knl[1] -- why not (1 + knl[1]*x) like in skick ?
-  m.py = py + dir*bx              -- why not (1 + knl[1]*x) like in skick ?
+  m.px = px - dir*by + dir*knl[1] -- why not like in skick ?
+  m.py = py + dir*bx
 
   if knl[1] ~= 0 or ksl[1] ~= 0 then
     local t, pt in m
@@ -295,10 +294,9 @@ local function kick_track(elem, m, l) -- KICKEXR, KICKR + KICKTR(mult)
   end
 end
 
--- Kick general exact curved
--- TODO: GETELECTRIC(EL,E,phi,B,VM,X,kick=my_true)
+-- Kick general exact curved                      [PTC SKICK, TODO: GETELECTRIC]
 
-local function skick_track (elem, m, l) -- SKICK
+local function skick_track (elem, m, l) --
 --  io.write('tracking skick for ', elem.name, ' (l=', l, ')\n')
   local nmul = get_mult(elem, m, l)
   if nmul == 0 then return end
@@ -315,8 +313,9 @@ local function skick_track (elem, m, l) -- SKICK
     by  = byt
   end
 
-  m.px = px - dir*by*(1 + knl[1]*x)
-  m.py = py + dir*bx*(1 + knl[1]*x)
+  local k0 in elem
+  m.px = px - dir*by*(1 + k0*x)
+  m.py = py + dir*bx*(1 + k0*x)
 end
 
 -- integrator schemes ---------------------------------------------------------o
@@ -338,26 +337,22 @@ local function thin_track (elem, m)
 end
 
 local function thick_track (elem, m, angle, drift, kick)
-  local l, k0, method in elem
+  local l, method in elem
   local integrator = integrate[method or m.method]
-  local l_ratio, n_elem = 1, #elem -- l_field/l
-
-  if k0 and k0 ~= 0 then
-    l_ratio = 1/sinc((k0*l-angle)/2) -- correct
-  end
+  local n_elem = #elem
 
   if n_elem == 0 then -- no sub-elements
-    integrator(elem, m, l*l_ratio, drift, kick)
+    integrator(elem, m, l, drift, kick)
     return l
   end
 
   local s, ds, at = 0
-  for i=1,n_elem do
+  for i=1,n_elem do   -- n_elem sub-elements
     at = assert(elem[i].at, "invalid sub-element position (at expected)")
     ds = at*l - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
-      integrator(elem, m, ds*l_ratio, drift, kick)
+      integrator(elem, m, ds, drift, kick)
     end
     s = s + ds
     assert(elem[i]:track(m) == 0, "invalid sub-element length (0 expected)")
@@ -365,7 +360,7 @@ local function thick_track (elem, m, angle, drift, kick)
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
   if ds >= minlen then
-    integrator(elem, m, ds*l_ratio, drift, kick)
+    integrator(elem, m, ds, drift, kick)
   end
   return l
 end
@@ -381,8 +376,7 @@ local function strait_track (elem, m) -- e.g. rbend
   end
 
   -- TODO: boundary elements and radiation.
-  l = thick_track (elem, m, 0, drift_track, kick_track)
-  return l
+  return thick_track (elem, m, 0, drift_track, kick_track)
 end
 
 local function curved_track (elem, m) -- e.g. sbend
@@ -397,8 +391,7 @@ local function curved_track (elem, m) -- e.g. sbend
 
   -- TODO: boundary elements and radiation.
 --  l = thick_track (elem, m, angle, sdrift_track, kick_track)
-  l = thick_track (elem, m, angle, sdrift_track, skick_track)
-  return l
+  return thick_track (elem, m, angle, sdrift_track, skick_track)
 end
 
 -- specialisations ------------------------------------------------------------o
@@ -414,8 +407,7 @@ local function solenoid_track (elem, m)
   end
 
   -- TODO: boundary elements and radiation.
-  l = thick_track (elem, m, 0, solenoid_drift_track, kick_track)
-  return l
+  return thick_track (elem, m, 0, solenoid_drift_track, kick_track)
 end
 
 -- load track maps into elements ----------------------------------------------o
@@ -464,7 +456,7 @@ local function make_map (self, start)
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt,
-           knl={}, ksl={},
+           knl=vector(maxmul), ksl=vector(maxmul),
            dir=direction, nst=nst, method=method, T=T,
            s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_trck]=_trck }
 end
