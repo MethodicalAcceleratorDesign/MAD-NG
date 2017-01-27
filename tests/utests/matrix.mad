@@ -117,6 +117,7 @@ function TestMatrix:testCtor()
   local nr, nc
   assertTrue( is_matrix( vector(2^(30-1))) )
   assertTrue( is_matrix( matrix(2^(15-1))) )
+  collectgarbage()
   for i,m in ipairs(G.mat) do
     nr, nc = m:sizes()
     assertTrue  ( is_matrix(m) )
@@ -964,18 +965,16 @@ end
 
 function TestMatrixInPlaceII:testPerm()
   local oldV = {}
-  local fact = \n => for i=1,n-1 do n=n*i end return n end
-  for j=1,5 do
-    local v = vector(j):fill(1..j)
-    for i=1,fact(j) do
-      v = v:perm()
-      assertFalse( v == oldV[i] )
-      for is=1,v:size() do
-        assertTrue( v:geti(is) <= j )
-        assertTrue( v:geti(is) >= 1 )
-      end
-      oldV[i] = v
+  local v = vector(25):fill(1..25)
+  oldV[0] = 0
+  for i=1,10 do
+    v = v:perm()
+    for is=1,v:size() do
+      assertTrue( v:geti(is) <= 25 )
+      assertTrue( v:geti(is) >= 1  )
     end
+    assertFalse( v == oldV[i-1] )
+    oldV[i] = v:copy()
   end
 end
 
@@ -1028,6 +1027,7 @@ function TestMatrixInPlaceII:testCopy()
 end
 
 function TestMatrixInPlaceII:testResize()
+  -- get subsets of both(the one within the limits and compare that as whole matrices)
   for i,m in ipairs(G.mat) do
     local nr,nc = m:sizes()
     for ir=1,5 do
@@ -1248,14 +1248,16 @@ end
 function TestMatrixFun:testMap()
   local m1
   for i,m in ipairs(self.mat) do
-    m1 = m:map '~'        for i=1,#m1 do assertEquals( m1:geti(i),-i ) end
-    m1 = m:map \x x-x     for i=1,#m1 do assertEquals( m1:geti(i), 0 ) end
+    local nr, nc = m:sizes()
+    m1 = m:map '~'        assertEquals( m1, matrix(nr,nc):fill(-1..-#m1..-1) )
+    m1 = m:map \x x-x     assertEquals( m1, matrix(nr,nc) )
     --totable test
-    m1 = m:map('!'   ,{}) for i=1,#m1 do assertFalse ( m1[i] )    end
-    m1 = m:map(\x x-x,{}) for i=1,#m1 do assertEquals( m1[i], 0 ) end
+    m1 = m:map(\x x-x,{}) assertTrue  ( matrix(m1) == 0 )
+    m1 = m:map('!'   ,{}) for i=1,#m1 do assertFalse( m1[i] ) end
     --'in' place test
-    m:map('~'   , 'in')   for i=1,#m  do assertEquals( m :geti(i),-i ) end
-    m:map(\x x-x, 'in')   for i=1,#m  do assertEquals( m :geti(i), 0 ) end
+    m:map('~'   , 'in')   assertEquals( m, matrix(nr,nc):fill(-1..-nr*nc..-1) )
+    m:map(\x x-x, 'in')   assertEquals( m, matrix(nr,nc) )
+
   end
 end
 
@@ -1286,26 +1288,28 @@ end
 function TestMatrixFun:testMap2()
   local mt
   for _,m1 in ipairs(self.mat) do
+    local nr, nc = m1:sizes()
     mt = m1:same()
-    mt = m1:map2(1 , '+'      )     for i=1,#mt do assertEquals( mt:geti(i), i+1 ) end
-    mt = m1:map2(1 , \x,y x-y )     for i=1,#mt do assertEquals( mt:geti(i), i-1 ) end
-    mt = m1:map2(m1, '~'      )     for i=1,#mt do assertEquals( mt:geti(i),-i   ) end
-    mt = m1:map2(m1, '!'     , {})  for i=1,#mt do assertFalse ( mt[i] )      end
+    mt = m1:map2(1 , '+'      )     assertEquals( mt, matrix(nr,nc):fill(2..nr*nc+1) )
+    mt = m1:map2(1 , \x,y x-y )     assertEquals( mt, matrix(nr,nc):fill(0..nr*nc-1) )
+    mt = m1:map2(m1, '~'      )     assertEquals( mt, matrix(nr,nc):fill(-1..-nr*nc..-1) )
 
     ir = { m1, 1..#m1, totable(1..#m1) }
     for d=1,#ir do
-    mt = m1:map2(ir[d], '+'     )   for i=1,#mt do assertEquals( mt:geti(i), i*2 ) end
-    mt = m1:map2(ir[d], \x,y x-y)   for i=1,#mt do assertEquals( mt:geti(i), 0   ) end
+    mt = m1:map2(ir[d], '+'     )   assertEquals( mt, matrix(nr,nc):fill(2..2*nr*nc..2) )
+    mt = m1:map2(ir[d], \x,y x-y)   assertEquals( mt, matrix(nr,nc) )
     --totable test
-    mt = m1:map2(ir[d], '<'   , {}) for i=1,#mt do assertFalse ( mt[i] )      end
-    mt = m1:map2(ir[d], '-'   , {}) for i=1,#mt do assertEquals( mt[i], 0   ) end
-    mt = m1:map2(ir[d], \x x+x, {}) for i=1,#mt do assertEquals( mt[i], i*2 ) end
+    mt = m1:map2(ir[d], '-'   , {}) assertTrue  ( matrix(mt) == 0 )
+    mt = m1:map2(ir[d], \x x+x, {}) assertEquals( matrix(mt), matrix(nr*nc,1):fill(2..2*nr*nc..2) )
+    mt = m1:map2(ir[d], '<'   , {}) for i=1,#mt do assertFalse ( mt[i] ) end
+    mt = m1:map2(m1   , '!'   , {}) for i=1,#mt do assertFalse ( mt[i] ) end
     end
     --'in' place test
     for d=1,#ir do
-      m1:map2(ir[d], '~'  , 'in')   for i=1,#m1 do assertEquals( m1:geti(i), i*(-1)^d ) end
+      m1:map2(ir[d], '~'  , 'in')
+      for i=1,#m1 do assertEquals( m1:geti(i), i*(-1)^d ) end
     end
-      m1:map2(m1, \x,y x-y, 'in')   for i=1,#m1 do assertEquals( m1:geti(i), 0 )        end
+      m1:map2(m1, \x,y x-y, 'in')   assertEquals( m1, matrix(nr,nc) )
   end
 end
 
@@ -1345,21 +1349,21 @@ function TestMatrixFun:testMap3()
   for _,m1 in ipairs(self.mat) do
     local nr, nc = m1:sizes()
     mt = m1:same()
-    mt = m1:map3(m1, m1, '~'          ) for i=1,#mt do assertEquals( mt:geti(i),-i   ) end
-    mt = m1:map3(m1, m1, '+'          ) for i=1,#mt do assertEquals( mt:geti(i), i*2 ) end
-    mt = m1:map3(m1, m1, \x,y,z x+y+z ) for i=1,#mt do assertEquals( mt:geti(i), i*3 ) end
+    mt = m1:map3(m1, m1, '~'          ) assertEquals( mt, matrix(nr,nc):fill(-1..-nr*nc..-1) )
+    mt = m1:map3(m1, m1, '+'          ) assertEquals( mt, matrix(nr,nc):fill(2..2*nr*nc..2)  )
+    mt = m1:map3(m1, m1, \x,y,z x+y+z ) assertEquals( mt, matrix(nr,nc):fill(3..3*nr*nc..3)  )
     mt = m1:map3(m1, m1, '<'      , {}) for i=1,#mt do assertFalse ( mt[i] )      end
 
     m2 = { m1, 1..#m1, totable(1..#m1) }
     m3 = { m1, 1..#m1, totable(1..#m1) }
     for i=1,#m2 do
     for j=1,#m3 do
-      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z)     for i=1,#mt do assertEquals( mt:geti(i), i*3 ) end
-      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z, {}) for i=1,#mt do assertEquals( mt[i]     , i*3 ) end      --totable test
+      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z)     assertEquals( mt        , matrix(nr   ,nc):fill(3..3*nr*nc..3) )
+      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z, {}) assertEquals( matrix(mt), matrix(nr*nc,1 ):fill(3..3*nr*nc..3) )    --totable test
     end end
     --'in' place test
-    m1:map3(m1, m1, '~'         , 'in') for i=1,#m1 do assertEquals( m1:geti(i), -i   ) end
-    m1:map3(m1, m1, \x,y,z x+y+z, 'in') for i=1,#m1 do assertEquals( m1:geti(i), -i*3 ) end
+    m1:map3(m1, m1, '~'         , 'in') assertEquals( m1, matrix(nr,nc):fill(-1..  -nr*nc..-1) )
+    m1:map3(m1, m1, \x,y,z x+y+z, 'in') assertEquals( m1, matrix(nr,nc):fill(-3..-3*nr*nc..-3) )
   end
 end
 
@@ -1382,8 +1386,8 @@ function TestMatrixFun:testMapij() --recheck
   local m1
   for i,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
-    m1 = m:mapij '~'        for i=1,#m1 do assertEquals( m1:geti(i),-i ) end
-    m1 = m:mapij \x x-x     for i=1,#m1 do assertEquals( m1:geti(i), 0 ) end
+    m1 = m:mapij '~'        assertEquals( m1, matrix(nr,nc):fill(-1..-nr*nc..-1) )
+    m1 = m:mapij \x x-x     assertEquals( m1, matrix(nr,nc) )
     m1 = m:mapij \x,i,j i+j
     for i=1,nr do
     for j=1,nc do
@@ -1404,8 +1408,8 @@ function TestMatrixFun:testMapij() --recheck
                else assertEquals( m1[ref(i,j,nc)], ref(i,j,nc) ) end
     end end
     --'in' place test
-    m:mapij('~'   , 'in')   for i=1,#m  do assertEquals( m :geti(i),-i ) end
-    m:mapij(\x x-x, 'in')   for i=1,#m  do assertEquals( m :geti(i), 0 ) end
+    m:mapij('~'   , 'in')   assertEquals( m, matrix(nr,nc):fill(-1..-nr*nc..-1) )
+    m:mapij(\x x-x, 'in')   assertEquals( m, matrix(nr,nc) )
   end
 end
 
@@ -2710,32 +2714,50 @@ function TestMatrixOps:testPow()
 end
 
 function TestMatrixErr:testEq()
-  local errMat = matrix(2)
+  local errMat = matrix(2):fill(1..4)
   local msg = {
   "invalid arguments (unsupported matrix operation)",
   "invalid argument #3 (callable expected)"         ,
   }
   assertErrorMsgContains( msg[1], mth, 'eq', errMat, {} )
   assertErrorMsgContains( msg[1], mth, 'eq', errMat, '' )
+  assertErrorMsgContains( msg[1], mth, 'eq', errMat, 1..4 )
   assertErrorMsgContains( msg[2], mth, 'eq', errMat, matrix(1), '' )
   assertErrorMsgContains( msg[2], mth, 'eq', errMat, matrix(1), {} )
 end
 
 function TestMatrixOps:testEq()
   for _,m1 in ipairs(G.mat) do
-    local m2 = m1:copy()
-    local m2 = m1:same()
-    assertTrue ( m1 == m2 )
-    assertFalse( m1 == m3 )
+    local m2  = m1:copy()
+    local m3  = m1:same()
+    local cm1 = m1:map(\x complex(x,0))
+    assertTrue ( m1  == m2  ) -- mat == mat
+    assertFalse( m1  == m3  )
+    assertTrue ( m1  == cm1 ) -- mat == cmat
+    assertTrue ( cm1 == m2  ) -- cmat == mat
+    -- f defined
+    assertTrue ( m1:eq( m2, nil) )
+    assertTrue ( m1:eq( m2, 0  ) )
+    local m2 = m1:map(\x x+eps)
+    local m3 = m1:map(\x x+2*eps)
+    assertTrue ( m1:eq( m2, eps) )
+    assertFalse( m1:eq( m3, eps) )
+    -- f as function
+    local f = \x,y  x/y < eps
+    --print( matrix(2):fill(1):eq( matrix(2):fill(eps), f) )
   end
-  assertTrue(  matrix(2):eq(cmatrix(2)) )
-  assertTrue( cmatrix(2):eq( matrix(2)) )
-  assertTrue(  matrix(2):eq( matrix(2), 0  ) )
-  assertTrue(  matrix(2):eq( matrix(2), nil) )
-  assertTrue(  matrix(2):eq( 0 ) )
-
-
-  assertTrue( 0 == matrix(2) )
+  assertTrue ( 0    ==  matrix(2) ) -- num  == mat
+  assertFalse( 0    ==  matrix(2):fill(1) )
+  assertTrue ( 0    == cmatrix(2) ) -- num  == cmat
+  assertFalse( 0    == cmatrix(2):fill(1) )
+  assertTrue ( 0+0i ==  matrix(2) ) -- cpx  == mat
+  assertFalse( 1+0i ==  matrix(2) )
+  assertTrue ( 0+0i == cmatrix(2) ) -- cpx  == cmat
+  assertFalse( 0+1i == cmatrix(2) )
+  assertTrue (  matrix(2) == 0 )    -- mat  == num
+  assertTrue ( cmatrix(2) == 0 )    -- cmat == num
+  assertTrue (  matrix(2) == 0+0i ) -- mat  == cpx
+  assertTrue ( cmatrix(2) == 0+0i ) -- cmat == cpx
 end
 
 function TestMatrixErr:testAdd()
@@ -3600,8 +3622,8 @@ function TestMatrixRot:testTorotv()
   local fmt = MAD.option.format
   MAD.option.format = "%.5e"
   MAD.export('tostring', true)
-  print()
-  print('a/pi', '', 'a1/pi', '', 'a2/pi', '', '|res|', '', '|v1|', '', 'res-v1')
+  --print()
+  --print('a/pi', '', 'a1/pi', '', 'a2/pi', '', '|res|', '', '|v1|', '', 'res-v1')
   local v = vector{0,0,1}:unit()
   for _,a in ipairs(dat.rad) do
     for _,a1 in ipairs(dat.rad) do
@@ -3611,8 +3633,8 @@ function TestMatrixRot:testTorotv()
         local v1  = m1 * m2 * v
         local res, ares = matrix(3):rotv(v1,a):torotv()
         assertAlmostEquals( ares - a, 0, eps )
-        print( a/pi, a1/pi, a2/pi,
-               res[1]-v1:geti(1), res[2]-v1:geti(2), res[3]-v1:geti(3))
+        --print( a/pi, a1/pi, a2/pi,
+        --       res[1]-v1:geti(1), res[2]-v1:geti(2), res[3]-v1:geti(3))
           --assertAlmostEquals( res[j] - v1:geti(j), 0, eps )
       end
     end
