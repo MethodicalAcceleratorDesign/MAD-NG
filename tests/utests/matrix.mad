@@ -1254,11 +1254,9 @@ function TestMatrixFun:testMap()
     --totable test
     m1 = m:map(\x x-x,{}) assertTrue  ( matrix(m1) == 0 )
     m1 = m:map('!'   ,{}) assertEquals( m1, rep(false, #m1) )
-
     --'in' place test
     m:map('~'   , 'in')   assertEquals( m, matrix(nr,nc):fill(-1..-nr*nc..-1) )
     m:map(\x x-x, 'in')   assertEquals( m, matrix(nr,nc) )
-
   end
 end
 
@@ -1302,8 +1300,9 @@ function TestMatrixFun:testMap2()
     --totable test
     mt = m1:map2(ir[d], '-'   , {}) assertTrue  ( matrix(mt) == 0 )
     mt = m1:map2(ir[d], \x x+x, {}) assertEquals( matrix(mt), matrix(nr*nc,1):fill(2..2*nr*nc..2) )
-    mt = m1:map2(ir[d], '<'   , {}) for i=1,#mt do assertFalse ( mt[i] ) end
-    mt = m1:map2(m1   , '!'   , {}) for i=1,#mt do assertFalse ( mt[i] ) end
+    mt = m1:map2(ir[d], '<'   , {}) assertEquals( mt, rep(false, #m1) )
+    mt = m1:map2(m1   , '!'   , {}) assertEquals( mt, rep(false, #m1) )
+
     end
     --'in' place test
     for d=1,#ir do
@@ -1353,7 +1352,7 @@ function TestMatrixFun:testMap3()
     mt = m1:map3(m1, m1, '~'          ) assertEquals( mt, matrix(nr,nc):fill(-1..-nr*nc..-1) )
     mt = m1:map3(m1, m1, '+'          ) assertEquals( mt, matrix(nr,nc):fill(2..2*nr*nc..2)  )
     mt = m1:map3(m1, m1, \x,y,z x+y+z ) assertEquals( mt, matrix(nr,nc):fill(3..3*nr*nc..3)  )
-    mt = m1:map3(m1, m1, '<'      , {}) for i=1,#mt do assertFalse ( mt[i] )      end
+    mt = m1:map3(m1, m1, '<'      , {}) assertEquals( mt, rep(false, #m1) )
 
     m2 = { m1, 1..#m1, totable(1..#m1) }
     m3 = { m1, 1..#m1, totable(1..#m1) }
@@ -1389,28 +1388,21 @@ function TestMatrixFun:testMapij() --recheck
     local nr, nc = m:sizes()
     m1 = m:mapij '~'        assertEquals( m1, matrix(nr,nc):fill(-1..-nr*nc..-1) )
     m1 = m:mapij \x x-x     assertEquals( m1, matrix(nr,nc) )
-    m1 = m:mapij \x,i,j i+j
-    for i=1,nr do
-    for j=1,nc do
-      assertEquals( m1:get(i,j), i+j )
-    end end
-    m1 = m:mapij \x,i,j x+i+j
-    for i=1,nr do
-    for j=1,nc do
-      assertEquals( m1:get(i,j), ref(i,j,nc)+i+j )
-    end end
+    m1 = m:mapij \x,i,j i+j for i=1,nr do for j=1,nc do assertEquals( m1:get(i,j), i+j ) end end
     --totable test
-    m1 = m:mapij('!'   ,{}) for i=1,#m1 do assertFalse ( m1[i] )    end
-    m1 = m:mapij(\x x-x,{}) for i=1,#m1 do assertEquals( m1[i], 0 ) end
-    m1 = m:mapij( \x,i,j => if j>3 then x=3 end return x end, {} )
+    m1 = m:mapij('!'   ,{}) assertEquals( m1, rep(false, #m1) )
+    m1 = m:mapij(\x x-x,{}) assertEquals( m1, rep(0    , #m1) )
+    --'in' place test
+    m:mapij('~'   , 'in')   assertEquals( m, matrix(nr,nc):fill(-1..-nr*nc..-1) )
+    m:mapij(\x x-x, 'in')   assertEquals( m, matrix(nr,nc) )
+
+    m1 = m :fill(1..nr*nc)
+    m1 = m1:mapij( \x,i,j => if j>3 then x=3 end return x end, {} )
     for i=1,nr do
     for j=1,nc do
       if j > 3 then assertEquals( m1[ref(i,j,nc)], 3           )
                else assertEquals( m1[ref(i,j,nc)], ref(i,j,nc) ) end
     end end
-    --'in' place test
-    m:mapij('~'   , 'in')   assertEquals( m, matrix(nr,nc):fill(-1..-nr*nc..-1) )
-    m:mapij(\x x-x, 'in')   assertEquals( m, matrix(nr,nc) )
   end
 end
 
@@ -1442,38 +1434,23 @@ function TestMatrixErr:testMapat()
 end
 
 function TestMatrixFun:testMapat()
-  local mt, m
+  local mt, mres
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
-    for j=1,m:size() do
-      assertEquals( m:getv(j), vector{j} )
-    end
     for li=1,nr do
       local vi = G.vi[li]:copy()
       for j=1,li do vi[j] = math.random(1,nc*nr) end
       vi:perm()
-      mt = m:mapat('~',vi)
-      assertEquals( mt:getv(vi), vector(#vi):fill(-vi) )
-      mt = m:mapat('!',vi)
-      assertEquals( mt:getv(vi), vector(#vi):fill(0)   )
+      mt = m:mapat('~',vi) assertEquals( mt:getv(vi), vector(#vi):fill(-vi) )
+      mt = m:mapat('!',vi) assertEquals( mt:getv(vi), vector(#vi):fill( 0)  )
     end
   end
   m  = self.mat[5]
-  mt = m:mapat('~',vector{1,2,3})
-  for i=1,#mt do
-    if i<=3 then assertEquals(mt:geti(i),-i )
-            else assertEquals(mt:geti(i), i ) end
-  end
-  mt = m:mapat('~',vector{1,2,3}, {})
-  for i=1,#mt do
-    if i<=3 then assertEquals(mt[i],-i )
-            else assertEquals(mt[i], i ) end
-  end
-  m:mapat(\x x+1,vector{1,2,3}, 'in')
-  for i=1,#m do
-    if i<=3 then assertEquals(m:geti(i), i+1 )
-            else assertEquals(m:geti(i), i   ) end
-  end
+  mres = {-1,-2,-3, 4, 5}
+  mt = m:mapat('~',vector{1,2,3})     assertEquals( mt, vector(mres):t() )
+  mt = m:mapat('~',vector{1,2,3}, {}) assertAllEquals( mt, mres )
+  mres = { 2, 3, 4, 4, 5}
+  m:mapat(\x x+1,vector{1,2,3}, 'in') assertEquals( m, vector(mres):t() )
 end
 
 function TestMatrixErr:testFoldl()
@@ -1787,14 +1764,13 @@ end
 function TestMatrixFun:testFilter()
  for _,m in ipairs(self.mat) do
     local m1
-    assertEquals( m:filter(\x x==1, vector(25)), vector(1):seti(1,1) )
-    m1 = m:filter(\x x==1    ) for i=1,#m1   do assertEquals( m1:geti(i), 1   ) end
-    m1 = m:filter(\x x==1, {}) for i=1,#m1   do assertEquals( m1[i]     , 1   ) end
-    m1 = m:filter(\x x>1 , {}) for i=1,#m1-1 do assertEquals( m1[i]     , i+1 ) end
+    m1 = m:filter(\x x==1, vector(25)) assertEquals( m1, vector(1):seti(1,1) )
+    m1 = m:filter(\x x==1    )         assertEquals( m1, matrix(m1:sizes()):fill(1) )
+    m1 = m:filter(\x x>1 , {})         assertEquals( m1, totable(2..#m1+1) )
+    m1 = m:filter(\x x==1, {})         assertEquals( m1, rep(1,#m1) )
     m1 = m:filter(\x x<5)
     local nr, nc = m1:sizes()
-    assertEquals( {m1:sizes()}, {ref(nr,nc,nc),1} )
-    for i=1,ref(nr,nc,nc) do assertEquals( m1:geti(i), i ) end
+    assertEquals( m1, matrix(nr,nc):fill(1..ref(nr,nc,nc)) )
   end
 end
 
@@ -1811,16 +1787,15 @@ function TestMatrixErr:testFilter_out()
 end
 
 function TestMatrixFun:testFilter_out()
- for _,m in ipairs(self.mat) do
-  local m1
-    assertEquals( m:filter(\x x==1, vector(25)), vector(1):seti(1,1) )
-    m1 = m:filter_out(\x x~=1    ) for i=1,#m1   do assertEquals( m1:geti(i), 1   ) end
-    m1 = m:filter_out(\x x~=1, {}) for i=1,#m1   do assertEquals( m1[i]     , 1   ) end
-    m1 = m:filter_out(\x x<=1, {}) for i=1,#m1-1 do assertEquals( m1[i]     , i+1 ) end
+  for _,m in ipairs(self.mat) do
+    local m1
+    m1 = m:filter(\x x==1, vector(25)) assertEquals( m1, vector(1):seti(1,1) )
+    m1 = m:filter_out(\x x~=1    )     assertEquals( m1, matrix(m1:sizes()):fill(1) )
+    m1 = m:filter_out(\x x<=1, {})     assertEquals( m1, totable(2..#m1+1) )
+    m1 = m:filter_out(\x x~=1, {})     assertEquals( m1, rep(1,#m1) )
     m1 = m:filter_out(\x x>=5)
     local nr, nc = m1:sizes()
-    assertEquals( {m1:sizes()}, {ref(nr,nc,nc),1} )
-    for i=1,ref(nr,nc,nc) do assertEquals( m1:geti(i), i ) end
+    assertEquals( m1, matrix(nr,nc):fill(1..ref(nr,nc,nc)) )
   end
 end
 
@@ -1846,23 +1821,23 @@ end
 function TestMatrixSMapsI:testCeil ()
   for _,m in ipairs(self.empty) do
     local r  = nrange(0.01, 1, m:size())
-    m = m:fill(r):ceil()
-    for i=1,#m do assertEquals( m:geti(i), 1 ) end
+    m:fill(r):ceil('in')
+    assertEquals( m, matrix(m:sizes()):fill(1) )
   end
 end
 
 function TestMatrixSMapsI:testFloor()
   for _,m in ipairs(self.empty) do
     local r  = nrange(0, 1-0.01, m:size())
-    m = m:fill(r):floor()
-    for i=1,#m do assertEquals( m:geti(i), 0 ) end
+    m:fill(r):floor('in')
+    assertEquals( m, matrix(m:sizes()) )
   end
 end
 
 function TestMatrixSMapsI:testFrac ()
   for _,m in ipairs(self.empty) do
     local r  = range(0.1,(m:size())/10,0.1)
-    m = m:fill(r):frac()
+    m:fill(r):frac('in')
     for i=1,#m do
       if     r[i] < 1 then assertAlmostEquals( m:geti(i) -i/10  , 0, eps )
       elseif r[i] < 2 then assertEquals      ( m:geti(i), i/10-1 )
@@ -1874,7 +1849,7 @@ end
 function TestMatrixSMapsI:testTrunc()
   for _,m in ipairs(self.empty) do
     local r  = nrange(0, 3-0.01, m:size())
-    m = m:fill(r):trunc()
+    m:fill(r):trunc('in')
     for i=1,#m do
       if     r[i] < 1 then assertEquals( m:geti(i), 0 )
       elseif r[i] < 2 then assertEquals( m:geti(i), 1 )
@@ -1886,7 +1861,7 @@ end
 function TestMatrixSMapsI:testRound()
   for _,m in ipairs(self.empty) do
     local r = nrange(0, 1, m:size())
-    m = m:fill(r):round()
+    m:fill(r):round('in')
     for i=1,#m do
     if r[i] < 0.5 then assertEquals( m:geti(i), 0 )
                   else assertEquals( m:geti(i), 1 ) end
@@ -1896,95 +1871,102 @@ end
 
 function TestMatrixSMapsI:testAbs()
   for _,m in ipairs(self.empty) do
-    local r  = nrange(-3,3, m:size())
-    m = m:fill(r):abs()
-    for i=1,#m do
-      assertTrue( m:geti(i) >= 0 )
-    end
+    local r = nrange(-3, 3, m:size())
+    m:fill(r):abs('in')
+    m = m:map(\x x>=0, {})
+    assertEquals( m, rep(true, #m) )
   end
 end
 
 function TestMatrixSMapsII:testSqrt()
   for _,m in ipairs(self.mat) do
+    local nr, nc = m:sizes()
+    m = m:map(\x x*x)
     m:sqrt('in')
-    for i=1,#m do assertAlmostEquals( m:geti(i)*m:geti(i) - i, 0, 16*eps ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testExp()
   for _,m in ipairs(self.mat) do
+    local nr, nc = m:sizes()
     m:exp('in')
-    for i=1,#m do assertEquals( log(m:geti(i)), i )  end
+    m = m:map(log)
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testLog()
   for _,m in ipairs(self.mat) do
-    local r = 1..m:size()
+    local nr, nc = m:sizes()
+    local r = 1..nr*nc
     m:log('in')
-    for i=1,#m do assertAlmostEquals( exp(m:geti(i)) / i, 1, eps ) end
+    m = m:map(\x exp(x) )
+    assertTrue( m:eq(matrix(nr,nc):fill(r), 8*eps) )
   end
 end
 
 function TestMatrixSMapsII:testLog10()
   for _,m in ipairs(self.mat) do
+    local nr, nc = m:sizes()
+    local mres = m:copy():map(\x log(x)/log(10) )
     m:log10('in')
-    for i=1,#m do assertAlmostEquals( m:geti(i) - log(i)/log(10), 0, eps ) end
+    assertTrue( m:eq(mres, eps) )
   end
 end
 
 function TestMatrixSMapsI:testSin()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):sin()
-    for i=1,#m do assertEquals( m:geti(i), -sin(-r[i]) ) end
+    local r, m1 = nrange(1, pi/2, m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertEquals( m:sin(), m1:map(\x -sin(-x)) )
   end
 end
 
 function TestMatrixSMapsI:testCos()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):cos()
-    for i=1,#m do assertEquals      ( m:geti(i),  cos(-r[i])  )
-                  assertAlmostEquals( m:geti(i) - sin(pi/2-r[i]), 0, eps ) end
+    local r, m1 = nrange(1, pi/2, m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertEquals( m:cos(),   m1:map(\x cos(-x    ))       )
+    assertTrue  ( m:cos():eq(m1:map(\x sin(pi/2-x)), eps) )
   end
 end
 
 function TestMatrixSMapsI:testTan()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):tan()
-    for i=1,#m do
-      assertAlmostEquals( m:geti(i) - sin(r[i])/cos(r[i]), 0, 32*eps )
-    end
+    local r, m1 = nrange(1,pi/2,m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertTrue( m:tan():eq(m1:map(\x sin(x)/cos(x)), 32*eps) )
   end
 end
 
 function TestMatrixSMapsI:testSinh()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):sinh()
-    for i=1,#m do
-     assertAlmostEquals( m:geti(i) / (2*sinh(r[i]/2)*cosh(r[i]/2)), 1, eps )
-    end
+    local r, m1 = nrange(1,pi/2,m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertTrue( m:sinh():eq(m1:map(\x 2*sinh(x/2)*cosh(x/2)), 2*eps) )
   end
 end
 
 function TestMatrixSMapsI:testCosh()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):cosh()
-    for i=1,#m do
-      assertAlmostEquals( m:geti(i) / (1 + 2*sinh(r[i]/2)^2) - 1, 0, 2*eps )
-    end
+    local r, m1 = nrange(1,pi/2,m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertTrue( m:cosh():eq(m1:map(\x 2*sinh(x/2)^2 + 1), 2*eps) )
   end
 end
 
 function TestMatrixSMapsI:testTanh()
   for _,m in ipairs(self.empty) do
-    local r = nrange(1,pi/2,m:size())
-    m = m:fill(r):tanh()
-    for i=1,#m do assertAlmostEquals( m:geti(i) - sinh(r[i])/cosh(r[i]), 0, eps ) end
+    local r, m1 = nrange(1,pi/2,m:size())
+    m  = m:fill(r)
+    m1 = m:copy()
+    assertTrue( m:tanh():eq(m1:map(\x sinh(x)/cosh(x)), eps) )
   end
 end
 
@@ -1992,7 +1974,7 @@ function TestMatrixSMapsI:testAsin()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):sin():asin()
-    for i=1,#m do assertAlmostEquals( m:geti(i) - r[i], 0, 16*eps ) end
+    assertTrue( m:eq(m:same():fill(r), 2*eps) )
   end
 end
 
@@ -2000,7 +1982,7 @@ function TestMatrixSMapsI:testAcos()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):cos():acos()
-    for i=1,#m do assertAlmostEquals( m:geti(i) / r[i] - 1, 0, eps ) end
+    assertTrue( m:eq(m:same():fill(r), eps) )
   end
 end
 
@@ -2008,7 +1990,7 @@ function TestMatrixSMapsI:testAtan()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):tan():atan()
-    for i=1,#m do assertEquals( m:geti(i), r[i] ) end
+    assertTrue( m:eq(m:same():fill(r), eps) )
   end
 end
 
@@ -2016,7 +1998,7 @@ function TestMatrixSMapsI:testAsinh()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):asinh():sinh()
-    for i=1,#m do assertAlmostEquals( m:geti(i) / r[i] - 1, 0, eps ) end
+    assertTrue( m:eq(m:same():fill(r), eps) )
   end
 end
 
@@ -2024,7 +2006,7 @@ function TestMatrixSMapsI:testAcosh()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):acosh():cosh()
-    for i=1,#m do assertAlmostEquals( m:geti(i) / r[i] - 1, 0, eps ) end
+    assertTrue( m:eq(m:same():fill(r), eps) )
   end
 end
 
@@ -2032,7 +2014,7 @@ function TestMatrixSMapsI:testAtanh()
   for _,m in ipairs(self.empty) do
     local r = nrange(1,pi/2,m:size())
     m = m:fill(r):tanh():atanh()
-    for i=1,#m do assertAlmostEquals( m:geti(i) / r[i] - 1, 0, eps ) end
+    assertTrue( m:eq(m:same():fill(r), 2*eps) )
   end
 end
 
@@ -2041,95 +2023,95 @@ end
 --function TestMatrixSMaps:testLgamma() end
 
 function TestMatrixSMapsII:testCarg()
-  for i,m in ipairs(self.mat) do
+  for _,m in ipairs(self.mat) do
     m:carg('in')
-    for i=1,#m do assertEquals( m:geti(i), 0 ) end
+    assertEquals( m, matrix(m:sizes()) )
   end
 end
 
 function TestMatrixSMapsII:testReal()
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m:real('in')
-    for i=1,#m do assertEquals( m:geti(i), i ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testImag()
   for i,m in ipairs(self.mat) do
     m:imag('in')
-    for i=1,#m do assertEquals( m:geti(i), 0 ) end
-end
+    assertEquals( m, matrix(m:sizes()) )
+  end
 end
 
 function TestMatrixSMapsII:testConj()
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m:conj('in')
-    for i=1,#m do assertEquals( m:geti(i), i ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testProj() -- complex values, cmatrix
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m = m:proj()
-    assertFalse( is_matrix(m) )
-    for i=1,#m do assertEquals( m:geti(i), i+0i ) end
+    assertEquals( m, cmatrix(nr,nc):fill(1..nr*nc) )
   end
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m:proj('in')
-    assertTrue( is_matrix(m) )
-    for i=1,#m do assertEquals( m:geti(i), i ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testRect()
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m:rect('in')
-    for i=1,#m do assertEquals( m:geti(i), i ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 function TestMatrixSMapsII:testPolar() -- complex values, cmatrix
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m = m:polar()
-    assertFalse( is_matrix(m) )
-    for i=1,#m do assertEquals( m:geti(i), i+0i ) end
+    assertEquals( m, cmatrix(nr,nc):fill(1..nr*nc) )
   end
   for _,m in ipairs(self.mat) do
+    local nr,nc = m:sizes()
     m:polar('in')
-    assertTrue( is_matrix(m) )
-    for i=1,#m do assertEquals( m:geti(i), i ) end
+    assertEquals( m, matrix(nr,nc):fill(1..nr*nc) )
   end
 end
 
 -- special folds --------------------------------------------------------------o
 
 function TestMatrixSFolds:testMin()
-  local m1
   for _,m in ipairs(G.mat) do
-    local nr, nc = m:sizes()
+    local nr, nc, m1 = m:sizes()
     assertEquals( m:min(), 1 )
-    m1 = m:min("col") for i=1,nc do assertEquals( m1:geti(i), i           ) end
-    m1 = m:min("row") for i=1,nr do assertEquals( m1:geti(i), ref(i,1,nc) ) end
+    m1 = m:min("col") assertEquals( m1, matrix(1 ,nc):fill(1..nc) )
+    m1 = m:min("row") assertEquals( m1, matrix(nr,1 ):fill(1..ref(nr,1,nc)..nc) )
   end
 end
 
 function TestMatrixSFolds:testMax()
-  local m1
   for _,m in ipairs(G.mat) do
-    local  nr, nc = m:sizes()
+    local nr, nc, m1 = m:sizes()
     assertEquals( m:max(), m:size() )
-    m1 = m:max("col") for i=1,nc do assertEquals( m1:geti(i), ref(nr,i,nc) ) end
-    m1 = m:max("row") for i=1,nr do assertEquals( m1:geti(i), ref(i,nc,nc) ) end
+    m1 = m:max("col") assertEquals( m1, matrix(1 ,nc):fill(ref(nr,1,nc)..ref(nr,nc,nc)..1 ) )
+    m1 = m:max("row") assertEquals( m1, matrix(nr,1 ):fill(ref(1,nc,nc)..ref(nr,nc,nc)..nc) )
   end
 end
 
-function TestMatrixSFolds:testSum()
-  local m1
+function TestMatrixSFolds:testSum() -- TODO: cleanup
   for _,m in ipairs(G.mat) do
-    local nr, nc = m:sizes()
+    local nr, nc, m1 = m:sizes()
     assertEquals( m:sum(), sum(1..m:size()) )
-    m1 = m:sum('col') for i=1,nc do assertEquals( m1:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    m1 = m:sum('row') for i=1,nr do assertEquals( m1:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
+    m1 = m:sum('col') for i=1,nc do  assertEquals( m1:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
+    m1 = m:sum('row') for i=1,nr do  assertEquals( m1:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
   end
 end
 
@@ -2739,10 +2721,14 @@ function TestMatrixOps:testEq()
     -- f defined
     assertTrue ( m1:eq( m2, nil) )
     assertTrue ( m1:eq( m2, 0  ) )
-    local m2 = m1:map(\x x+eps)
-    local m3 = m1:map(\x x+2*eps)
+
+    m2 = m1:map(\x x+eps)
+    m3 = m1:map(\x x+2*eps)
     assertTrue ( m1:eq( m2, eps) )
     assertFalse( m1:eq( m3, eps) )
+
+    m2 = m1:map(\x x+eps):seti(1,3*eps)
+    assertFalse( m1:eq( m2, eps) )
     -- f as function
     local f = \x,y  x/y < eps
     --print( matrix(2):fill(1):eq( matrix(2):fill(eps), f) )
@@ -3371,9 +3357,7 @@ function TestMatrixRot:testRot()
   for i,a in ipairs(dat.rad) do
     local res = m:rot(a)
     local ref = dat.rot[i]
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue( res:eq(ref, eps) )
   end
 end
 
@@ -3383,9 +3367,7 @@ function TestMatrixRot:testRotx()
     local res = m:rotx(ax)
     local ref = dat.rotx[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3395,9 +3377,7 @@ function TestMatrixRot:testRoty()
     local res = m:roty(ay)
     local ref = dat.roty[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3407,9 +3387,7 @@ function TestMatrixRot:testRotz()
     local res = m:rotz(az)
     local ref = dat.rotz[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3418,9 +3396,7 @@ function TestMatrixRot:testRotxy()
     for ii,ay in ipairs(dat.rad) do
       local res = matrix(3):rotxy(ax,ay)
       local ref = matrix(3):roty(ay)*matrix(3):rotx(ax)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3430,9 +3406,7 @@ function TestMatrixRot:testRotxz()
     for ii,az in ipairs(dat.rad) do
       local res = matrix(3):rotxz(ax,az)
       local ref = matrix(3):rotz(az)*matrix(3):rotx(ax)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3442,9 +3416,7 @@ function TestMatrixRot:testRotyz()
     for ii,az in ipairs(dat.rad) do
       local res = matrix(3):rotyz(ay,az)
       local ref = matrix(3):rotz(az)*matrix(3):roty(ay)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3454,9 +3426,7 @@ function TestMatrixRot:testRotyx()
     for ii,ax in ipairs(dat.rad) do
       local res = matrix(3):rotyx(ay,ax)
       local ref = matrix(3):rotx(ax)*matrix(3):roty(ay)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3466,9 +3436,7 @@ function TestMatrixRot:testRotzx()
     for ii,ax in ipairs(dat.rad) do
       local res = matrix(3):rotzx(az,ax)
       local ref = matrix(3):rotx(ax)*matrix(3):rotz(az)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3478,9 +3446,7 @@ function TestMatrixRot:testRotzy()
     for ii,ay in ipairs(dat.rad) do
       local res = matrix(3):rotzy(az,ay)
       local ref = matrix(3):roty(ay)*matrix(3):rotz(az)
-      for j=1,res:size() do
-        assertEquals( res:geti(j), ref:geti(j) )
-      end
+      assertTrue( res:eq(ref, eps) )
     end
   end
 end
@@ -3491,9 +3457,7 @@ function TestMatrixRot:testRotxyz()
       for iii,az in ipairs(dat.rad) do
         local res = matrix(3):rotxyz(ax,ay,az)
         local ref = matrix(3):rotz(az)*matrix(3):roty(ay)*matrix(3):rotx(ax)
-        for j=1,res:size() do
-          assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-        end
+        assertTrue( res:eq(ref, eps) )
       end
     end
   end
@@ -3505,14 +3469,11 @@ function TestMatrixRot:testRotzyx()
       for iii,az in ipairs(dat.rad) do
         local res = matrix(3):rotzyx(ax,ay,az)
         local ref = matrix(3):rotx(ax)*matrix(3):roty(ay)*matrix(3):rotz(az)
-        for j=1,res:size() do
-          assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-        end
+        assertTrue( res:eq(ref, eps) )
       end
     end
   end
 end
-
 
 function TestMatrixRot:testRotpitch()
   local m = matrix(3)
@@ -3520,9 +3481,7 @@ function TestMatrixRot:testRotpitch()
     local res = m:rotpitch(-ax)
     local ref = dat.rotx[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3532,9 +3491,7 @@ function TestMatrixRot:testRotyaw()
     local res = m:rotyaw(-ay)
     local ref = dat.roty[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3544,9 +3501,7 @@ function TestMatrixRot:testRotroll()
     local res = m:rotroll(-az)
     local ref = dat.rotz[i]
     assertEquals( res:t()*res, matrix(3):eye() )
-    for j=1,res:size() do
-      assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-    end
+    assertTrue  ( res:eq(ref, eps) )
   end
 end
 
@@ -3556,9 +3511,7 @@ function TestMatrixRot:testRotmad()
       for iii,psi in ipairs(dat.rad) do
         local res = matrix(3):rotmad(th,phi,psi)
         local ref = matrix(3):roty(th)*matrix(3):rotx(-phi)*matrix(3):rotz(psi)
-        for j=1,res:size() do
-          assertAlmostEquals( res:geti(j) - ref:geti(j), 0, 2*eps )
-        end
+        assertTrue( res:eq(ref, eps) )
       end
     end
   end
@@ -3601,12 +3554,9 @@ function TestMatrixRot:testRotv()
         local m2  = matrix(3):roty( a2 )
         local m3  = matrix(3):rotz( a  )
         local v1  = m1 * m2 * v
-
         local res = matrix(3):rotv(v1,a)
         local ref = m1 * m2 * m3 * ( m1 * m2 ):t()
-        for j=1,res:size() do
-          assertAlmostEquals( res:geti(j) - ref:geti(j), 0, eps )
-        end
+        assertTrue( res:eq(ref, eps) )
       end
     end
   end
@@ -3663,12 +3613,9 @@ function TestMatrixRot:testRotq(
         local m3  = matrix(3):rotz( a  )
         local v1  = m1 * m2 * v
         local ref = matrix(3):rotv(v1,a)
-
         local q   = {cos(a/2), v1[1]*sin(a/2), v1[2]*sin(a/2), v1[3]*sin(a/2) }
         local res = matrix(3):rotq(q)
-        for j=1,res:size() do
-          assertAlmostEquals( res:geti(j) - ref:geti(j), 0,2* eps )
-        end
+        assertTrue( res:eq(ref, 2*eps) )
       end
     end
   end
