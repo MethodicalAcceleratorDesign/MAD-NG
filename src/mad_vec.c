@@ -18,6 +18,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <complex.h>
 #include <assert.h>
 
@@ -338,46 +339,83 @@ mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)
   mad_vec_muln(r, 1.0/n, r, n);
 }
 
-// -- NFFT --------------------------------------------------------------------o
+/* -- NFFT --------------------------------------------------------------------o
+[1] J. Keiner, S. Kunis and D. Potts, "Using NFFT 3 — A Software Library for
+    Various Nonequispaced Fast Fourier Transforms", ACM Transactions on
+    Mathematical Software, Vol. 36, No. 4, Article 19, Pub. date: August 2009.
+[2] J. Keiner, S. Kunis and D. Potts, "NFFT 3.0 - Tutorial",
+    http://www.tu-chemnitz.de/~potts/nfft
+[3] S. Kunis and D. Potts, "Time and memory requirements of the Nonequispaced
+    FFT", report, 2006.
+[4] L. Kammerer, S. Kunis, I. Melzer, D. Potts, and T. Volkmer, "Computational
+    Methods for the Fourier Analysis of Sparse High-Dimensional Functions",
+    Springer Lecture Notes 102, 2014.
+[5] http://github.com/NFFT/nfft
+*/
 
-void // x [m] -> r [n]
-mad_vec_nfft (const num_t x[], const num_t r_node[], cnum_t r[], ssz_t nx, ssz_t nr)
+#include <nfft3.h>
+
+static nfft_plan p;
+static ssz_t p_n, p_m;
+
+void
+mad_vec_nfft (const num_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
 {
   CHKX;
-  mad_alloc_tmp(cnum_t, cx, nx);
-  mad_vec_copyv(x, cx, nx);
-  mad_cvec_nfft(cx, r_node, r, nx, nr);
+  mad_alloc_tmp(cnum_t, cx, n);
+  mad_vec_copyv(x, cx, n);
+  mad_cvec_nfft(cx, x_node, r, n, nr);
   mad_free_tmp(cx);
 }
 
-void
-mad_cvec_nfft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t nx, ssz_t nr)
+void // time to frequency
+mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
 {
-  nfft_plan p;
-  assert( x && r_node && r );
-  nfft_init_1d(&p, nx, nr);
-  mad_vec_copy(r_node, p.x, nr);
-  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  assert( x && r );
+  int precomp = 0;
+  if (n != p_n || nr != p_m) {
+    nfft_finalize(&p);
+    nfft_init_1d (&p, n, nr);
+    p_n = n, p_m = nr, precomp = 1;
+  }
+  if (x_node || precomp) {
+    mad_vec_copy(x_node, p.x, n);
+    if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  }
+  mad_cvec_copy(x, p.f, n);
+  const char *error_str = nfft_check(&p);
+  if (error_str) error(error_str);
+  nfft_adjoint(&p); // nfft_adjoint_direct(&p);
+  mad_cvec_copy(p.f_hat, r, nr);
+}
+
+void // frequency to time
+mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz_t nx)
+{
+  assert( x && r );
+  int precomp = 0;
+  if (n != p_n || nx != p_m) {
+    nfft_finalize(&p);
+    nfft_init_1d (&p, n, nx);
+    p_n = n, p_m = nx, precomp = 1;
+  }
+  if (r_node || precomp) {
+    mad_vec_copy(r_node, p.x, n);
+    if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  }
   mad_cvec_copy(x, p.f_hat, nx);
   const char *error_str = nfft_check(&p);
   if (error_str) error(error_str);
-  nfft_trafo(&p);
-  mad_cvec_copy(p.f, r, nr);
-  nfft_finalize(&p);
+  nfft_trafo(&p); // nfft_trafo_direct(&p);
+  mad_cvec_copy(p.f, r, n);
+  mad_cvec_muln(r, 1.0/n, r, n);
 }
 
+// -- CLEANUP -----------------------------------------------------------------o
+
 void
-mad_cvec_infft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t nx, ssz_t nr)
+mad_vec_cleanup(void)
 {
-  nfft_plan p;
-  assert( x && x_node && r );
-  nfft_init_1d(&p, nx, nr);
-  mad_vec_copy(x_node, p.x, nx);
-  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
-  mad_cvec_copy(x, p.f, nx);
-  const char *error_str = nfft_check(&p);
-  if (error_str) error(error_str);
-  nfft_adjoint(&p);
-  mad_cvec_copy(p.f_hat, r, nr);
-  nfft_finalize(&p);
+  nfft_finalize(&p);  memset(&p, 0, sizeof p);
+  fftw_cleanup();
 }

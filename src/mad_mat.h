@@ -52,6 +52,7 @@ int    mad_mat_svd     (const  num_t x[], num_t u[], num_t s[],    num_t  v[], s
 int    mad_mat_eigen   (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],          ssz_t n);                       //  w, vl, vr
 void   mad_mat_fft     (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  mat ->cmat
 void   mad_mat_rfft    (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  mat ->cmat
+void   mad_mat_nfft    (const  num_t x[], const num_t x_node[]  , cnum_t  r[], ssz_t m, ssz_t n, ssz_t nr);
 void   mad_mat_center  (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, int d);                //  mat -> mat-<mat>_r
 void   mad_mat_sympinv (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_mat_symperr (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  M' J M - J
@@ -80,11 +81,15 @@ int    mad_cmat_divm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], s
 int    mad_cmat_svd    (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], ssz_t m, ssz_t n);                       // u * s * v.t
 int    mad_cmat_eigen  (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],          ssz_t n);                       // w, vl, vr
 void   mad_cmat_fft    (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat ->cmat
+void   mad_cmat_nfft   (const cnum_t x[], const num_t x_node[]   ,cnum_t  r[], ssz_t m, ssz_t n, ssz_t nr);
 void   mad_cmat_ifft   (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat ->cmat
 void   mad_cmat_irfft  (const cnum_t x[],                          num_t  r[], ssz_t m, ssz_t n);                       //  cmat -> mat
+void   mad_cmat_infft  (const cnum_t x[], const num_t r_node[]   ,cnum_t  r[], ssz_t m, ssz_t n, ssz_t nx);
 void   mad_cmat_center (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, int d);                //  cmat ->cmat-<cmat>_r
 void   mad_cmat_sympinv(const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_cmat_symperr(const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  M' J M - J
+
+void   mad_mat_cleanup (void);
 
 // ----------------------------------------------------------------------------o
 
