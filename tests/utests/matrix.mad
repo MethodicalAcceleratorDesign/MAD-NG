@@ -1027,12 +1027,13 @@ function TestMatrixInPlaceII:testCopy()
 end
 
 function TestMatrixInPlaceII:testResize()
+  local mres, minr, minc
   for i,m in ipairs(G.mat) do
     local nr,nc = m:sizes()
     for ic=nc+1,nc+3 do
     for ir=nr+1,nr+3 do
-      local mres       = m:resize(ir, ic)
-      local minr, minc = min(nr,ir), min(nc,ic)
+      mres       = m:resize(ir, ic)
+      minr, minc = min(nr,ir), min(nc,ic)
       assertEquals( {mres:sizes()}, {ir, ic} )
       assertEquals( mres:getsub(1..minr   ,1..minc   ), m:getsub(1..minr,1..minc) )
       assertEquals( mres:getsub(minr+1..ir,1..minc   ), matrix(ir-minr, minc   ) )
@@ -1041,8 +1042,8 @@ function TestMatrixInPlaceII:testResize()
     end
     for ic=1,nc do
     for ir=1,nr do
-      local mres       = m:resize(ir, ic)
-      local minr, minc = min(nr,ir), min(nc,ic)
+      mres       = m:resize(ir, ic)
+      minr, minc = min(nr,ir), min(nc,ic)
       assertEquals( {mres:sizes()}, {ir, ic} )
       assertEquals( mres, m:getsub(1..minr,1..minc) )
     end
@@ -1179,7 +1180,7 @@ function TestMatrixErr:testReshape()
   }
   assertErrorMsgContains( msg[1], mth,'reshape', errMat, nil, 2 )
   assertErrorMsgContains( msg[1], mth,'reshape', errMat, 0  , 1 )
-   assertErrorMsgContains( msg[1], mth,'reshape', errMat, 1  , 0 )
+  assertErrorMsgContains( msg[1], mth,'reshape', errMat, 1  , 0 )
   assertErrorMsgContains( msg[1], mth,'reshape', errMat, 3  , 2 )
   assertErrorMsgContains( msg[1], mth,'reshape', errMat, 1  , 5 )
 end
@@ -1368,7 +1369,7 @@ function TestMatrixFun:testMap3()
     for i=1,#m2 do
     for j=1,#m3 do
       mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z)     assertEquals( mt        , matrix(nr   ,nc):fill(3..3*nr*nc..3) )
-      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z, {}) assertEquals( matrix(mt), matrix(nr*nc,1 ):fill(3..3*nr*nc..3) )    --totable test
+      mt = m1:map3(m2[i],m3[j], \x,y,z x+y+z, {}) assertEquals( matrix(mt), matrix(nr*nc,1 ):fill(3..3*nr*nc..3) ) -- totable test
     end end
     --'in' place test
     m1:map3(m1, m1, '~'         , 'in') assertEquals( m1, matrix(nr,nc):fill(-1..  -nr*nc..-1) )
@@ -2115,7 +2116,7 @@ function TestMatrixSFolds:testMax()
   end
 end
 
-function TestMatrixSFolds:testSum() -- TODO: cleanup
+function TestMatrixSFolds:testSum()
   for _,m in ipairs(G.mat) do
     local nr, nc, m1 = m:sizes()
     assertEquals( m:sum(), sum(1..m:size()) )
@@ -2170,29 +2171,20 @@ function TestMatrixErr:testAll()
 end
 
 function TestMatrixSFolds:testAll()
-  local m1
   for _,m in ipairs(G.mat) do
-    local nr, nc = m:sizes()
+    local nr, nc, mref = m:sizes()
     assertFalse ( m:all \x x> m:size()   )
     assertTrue  ( m:all \x x< m:size()+1 )
-    m1 = m:all( \x x<16, 'col')
-    if m:size() < 16 then
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
-    elseif m:size() == 16 then
-      for i=1,m1:size()-1 do assertEquals( m1:geti(i) , 1 ) end
-                             assertEquals( m1:geti(nc), 0 )
-    else
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
-    end
 
-    m1 = m:all( \x x<16, 'row')
-    if m:size() < 16 then
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
-    else
-      for i=1,3           do assertEquals( m1:geti(i) , 1 ) end
-      for i=4,nr          do assertEquals( m1:geti(i) , 0 ) end
-    end
-  end
+    mref = matrix(1,nc)
+    if     m:size() <  16 then mref:setrow(1,1)
+    elseif m:size() == 16 then mref:setrow(1,1):seti(nc, 0) end
+    assertEquals( m:all( \x x<16, 'col'), mref )
+
+    mref = matrix(nr,1):setcol(1,1)
+    if m:size() >= 16 then for i=4,nr do mref:seti(i,0) end end
+    assertEquals( m:all( \x x<16, 'row'), mref )
+ end
 end
 
 function TestMatrixErr:testAny()
@@ -2208,32 +2200,21 @@ function TestMatrixErr:testAny()
 end
 
 function TestMatrixSFolds:testAny()
-  local m1
   for _,m in ipairs(G.mat) do
-    local nr, nc = m:sizes()
+    local nr, nc, mref = m:sizes()
     assertFalse ( m:any \x x> m:size()   )
     assertTrue  ( m:any \x x< m:size()+1 )
 
-    m1 = m:any( \x x>16, 'col')
-    if m:size() <= 16 then
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
-    elseif nr == 4 and nc == 5 then
-      for i=2,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
-                             assertEquals( m1:geti(1) , 0 )
-    else
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 1 ) end
-    end
+    mref = matrix(1,nc)
+    if nr == 4 and nc == 5 then for i=2,nc do mref:seti  (i,1) end
+    elseif m:size() > 16   then               mref:setrow(1,1) end
+    assertEquals( m:any( \x x>16, 'col'), mref )
 
-    m1 = m:any( \x x>16, 'row')
-    if m:size() <= 16 then
-      for i=1,m1:size()   do assertEquals( m1:geti(i) , 0 ) end
-    elseif m:size() == 20 then
-      for i=1,m1:size()-1 do assertEquals( m1:geti(i) , 0 ) end
-                             assertEquals( m1:geti(nr), 1 )
-    else
-      for i=1,3           do assertEquals( m1:geti(i) , 0 ) end
-      for i=4,nr          do assertEquals( m1:geti(i) , 1 ) end
-    end
+
+    mref = matrix(nr,1)
+    if     m:size() == 20 then               mref:seti(nr,1)
+    elseif m:size() >  16 then for i=4,nr do mref:seti(i ,1) end end
+    assertEquals( m:any( \x x>16, 'row'), mref )
   end
 end
 
