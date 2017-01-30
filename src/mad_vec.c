@@ -340,56 +340,6 @@ mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)
 
 // -- NFFT --------------------------------------------------------------------o
 
-#include <stdio.h>
-#include <float.h>
-
-#define NFFT_PRECISION_DOUBLE
-
-#include <nfft3mp.h>
-
-void simple_test_nfft_1d(void);
-void simple_test_nfft_1d(void)
-{
-  NFFT(plan) p;
-  int N = 14, M = 19; // time size, freq size
-  const char *error_str;
-  /** init an one dimensional plan */
-  NFFT(init_1d)(&p, N, M);
-  printf("N=%d, p.N_total=%td, M=%d, p.M_total=%td\n", N, p.N_total, M, p.M_total);
-  /** init pseudo random nodes in [-0.5, 0.5] */
-  NFFT(vrand_shifted_unit_double)(p.x, p.M_total);
-  /** precompute psi, the entries of the matrix B */
-  if (p.flags & PRE_ONE_PSI) NFFT(precompute_one_psi)(&p);
-  /** init pseudo random Fourier coefficients and show them */
-  NFFT(vrand_unit_complex)(p.f_hat,p.N_total);
-
-  NFFT(vpr_complex)(p.f_hat, p.N_total, "given Fourier coefficients, vector p.f_hat");
-
-  /** check for valid parameters before calling any trafo/adjoint method */
-  error_str = NFFT(check)(&p);
-  if (error_str != 0) {
-    printf("Error in nfft module: %s\n", error_str);
-    return;
-  }
-
-  /** direct trafo and show the result */
-  NFFT(trafo_direct)(&p);
-  NFFT(vpr_complex)(p.f,p.M_total,"ndft, vector f");
-  /** approx. trafo and show the result */
-  NFFT(trafo)(&p);
-
-  NFFT(vpr_double) (p.x,p.M_total,"nfft, vector p.x");
-  NFFT(vpr_complex)(p.f,p.M_total,"nfft, vector p.f");
-  /** approx. adjoint and show the result */
-  NFFT(adjoint_direct)(&p);
-  NFFT(vpr_complex)(p.f_hat,p.N_total,"adjoint ndft, vector f_hat");
-  /** approx. adjoint and show the result */
-  NFFT(adjoint)(&p);
-  NFFT(vpr_complex)(p.f_hat,p.N_total,"adjoint nfft, vector f_hat");
-  /** finalise the one dimensional plan */
-  NFFT(finalize)(&p);
-}
-
 void // x [m] -> r [n]
 mad_vec_nfft (const num_t x[], const num_t r_node[], cnum_t r[], ssz_t nx, ssz_t nr)
 {
