@@ -534,6 +534,9 @@ void mad_cmat_fill(cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 void mad_cmat_fill_r(num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; CNUM(x); SET(); }
 
+void mad_cmat_shift (cnum_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
+{ mad_mat_shift((num_t*)x, m, 2*n, mshft, 2*nshft); }
+
 void mad_cmat_copy(const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
 
@@ -584,12 +587,6 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
       mu /= m;
       for (ssz_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
     }
-}
-
-void
-mad_cmat_shift (cnum_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
-{
-  mad_mat_shift((num_t*)x, m, 2*n, mshft, 2*nshft);
 }
 
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
