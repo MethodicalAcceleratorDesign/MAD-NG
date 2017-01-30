@@ -17,6 +17,7 @@
 */
 
 #include <math.h>
+#include <stdlib.h>
 #include <complex.h>
 #include <assert.h>
 
@@ -143,6 +144,24 @@ void mad_vec_center (const num_t x[], num_t r[], ssz_t n)
   for (ssz_t i=0; i < n; i++) r[i] = x[i] - mu;
 }
 
+void
+mad_vec_shift (num_t x[], ssz_t n, int nshft)
+{ CHKX; nshft %= n;
+  ssz_t nsz = abs(nshft);
+  mad_alloc_tmp(num_t, a, nsz);
+  if (nshft > 0) {
+    mad_vec_copy (x+n-nsz, a    ,   nsz); // end of x to a
+    mad_vec_rcopy(x      , x+nsz, n-nsz); // shift x down (or right)
+    mad_vec_copy (a      , x    ,   nsz); // a to beginning of x
+  } else
+  if (nshft < 0) {
+    mad_vec_copy (x    , a      ,   nsz); // beginning of x to a
+    mad_vec_copy (x+nsz, x      , n-nsz); // shift x up (or left)
+    mad_vec_copy (a    , x+n-nsz,   nsz); // a to end of x
+  }
+  mad_free_tmp(a);
+}
+
 // --- cvec
 
 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
@@ -150,6 +169,9 @@ void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
 
 void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
 { mad_cvec_fill(CNUM(x_re,x_im), r, n); }
+
+void mad_cvec_shift (cnum_t x[], ssz_t n, int nshft)
+{ mad_vec_shift((num_t*)x, 2*n, 2*nshft); }
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
 { mad_vec_copy((const num_t*)x, (num_t*)r, 2*n); }
@@ -318,46 +340,44 @@ mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)
 
 // -- NFFT --------------------------------------------------------------------o
 
-#if 0
-#include <nfft3.h>
+void // x [m] -> r [n]
+mad_vec_nfft (const num_t x[], const num_t r_node[], cnum_t r[], ssz_t nx, ssz_t nr)
+{
+  CHKX;
+  mad_alloc_tmp(cnum_t, cx, nx);
+  mad_vec_copyv(x, cx, nx);
+  mad_cvec_nfft(cx, r_node, r, nx, nr);
+  mad_free_tmp(cx);
+}
 
 void
-mad_cvec_nfft (const cnum_t x[], const num_t x_pos[], cnum_t r[], ssz_t n, ssz_t n_pos)
+mad_cvec_nfft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t nx, ssz_t nr)
 {
-  assert( x && x_pos && r );
   nfft_plan p;
-  nfft_init_1d(&p, n, n_pos);
-  memcpy(p.x, x_pos, p.M_total * sizeof *x_pos); // TODO:  resample from n_pos to p.M_total?
-  if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
-  memcpy(p.f_hat, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total?
+  assert( x && r_node && r );
+  nfft_init_1d(&p, nx, nr);
+  mad_vec_copy(r_node, p.x, nr);
+  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  mad_cvec_copy(x, p.f_hat, nx);
+  const char *error_str = nfft_check(&p);
+  if (error_str) error(error_str);
   nfft_trafo(&p);
-  memcpy(r, p.f, p.N_total * sizeof *r); // TODO: resample from p.N_total to n?
+  mad_cvec_copy(p.f, r, nr);
   nfft_finalize(&p);
 }
 
 void
-mad_cvec_infft (const cnum_t x[], const num_t x_pos[], cnum_t r[], ssz_t n, ssz_t n_pos)
+mad_cvec_infft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t nx, ssz_t nr)
 {
-  assert( x && x_pos && r );
   nfft_plan p;
-  nfft_init_1d(&p, n, n_pos);
-  memcpy(p.x, x_pos, p.M_total * sizeof *x_pos); // TODO:  resample from n_pos to p.M_total
-  if(p.nfft_flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
-  memcpy(p.f, x, p.N_total * sizeof *x); // TODO: resample from n to p.N_total
+  assert( x && x_node && r );
+  nfft_init_1d(&p, nx, nr);
+  mad_vec_copy(x_node, p.x, nx);
+  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
+  mad_cvec_copy(x, p.f, nx);
+  const char *error_str = nfft_check(&p);
+  if (error_str) error(error_str);
   nfft_adjoint(&p);
-  memcpy(r, p.f_hat, p.N_total * sizeof *r); // TODO: resample from p.N_total to n?
+  mad_cvec_copy(p.f_hat, r, nr);
   nfft_finalize(&p);
 }
-
-void
-mad_cvec_nnfft (const cnum_t x[], const num_t x_pos[], const num_t f_pos[], cnum_t r[], ssz_t n, ssz_t n_pos)
-{
-  assert( x && x_pos && f_pos && r );
-}
-
-void
-mad_cvec_innfft (const cnum_t x[], const num_t x_pos[], const num_t f_pos[], cnum_t r[], ssz_t n, ssz_t n_pos)
-{
-  assert( x && x_pos && f_pos && r );
-}
-#endif
