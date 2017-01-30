@@ -384,7 +384,7 @@ mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_
   }
   mad_cvec_copy(x, p.f, n);
   const char *error_str = nfft_check(&p);
-  if (error_str) error(error_str);
+  if (error_str) error("%s", error_str);
   nfft_adjoint(&p); // nfft_adjoint_direct(&p);
   mad_cvec_copy(p.f_hat, r, nr);
 }
@@ -405,7 +405,7 @@ mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz
   }
   mad_cvec_copy(x, p.f_hat, nx);
   const char *error_str = nfft_check(&p);
-  if (error_str) error(error_str);
+  if (error_str) error("%s", error_str);
   nfft_trafo(&p); // nfft_trafo_direct(&p);
   mad_cvec_copy(p.f, r, n);
   mad_cvec_muln(r, 1.0/n, r, n);
