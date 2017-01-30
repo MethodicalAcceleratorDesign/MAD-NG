@@ -565,13 +565,19 @@ end
 
 function MR.shift (x, ns_, ms_)
   local nr, nc = x:sizes()
-  _C.mad_mat_shift(x.data, nr, nc, ns_ or 0, ms_ or 0)
+  if is_nil(ms_) and (nr == 1 or nc == 1)
+  then _C.mad_vec_shift(x.data, nr*nc , ns_ or 0)
+  else _C.mad_mat_shift(x.data, nr, nc, ns_ or 0, ms_ or 0)
+  end
   return x
 end
 
 function MC.shift (x, ns_, ms_)
   local nr, nc = x:sizes()
-  _C.mad_cmat_shift(x.data, nr, nc, ns_ or 0, ms_ or 0)
+  if is_nil(ms_) and (nr == 1 or nc == 1)
+  then _C.mad_cvec_shift(x.data, nr*nc , ns_ or 0)
+  else _C.mad_cmat_shift(x.data, nr, nc, ns_ or 0, ms_ or 0)
+  end
   return x
 end
 
@@ -1942,6 +1948,52 @@ function MR.covar (x, y, d_, r_)
   then return xc:corr(xc                    , r_)
   else return xc:corr(y:center(y:same(), d_), r_)
   end
+end
+
+-- NFFT -----------------------------------------------------------------------o
+
+--[[
+  MAD.option.format="%.4g"
+  m = MAD.vector{{1,2,3,4,5,6,7,8,9,0}}
+  p = MAD.vector{{0,1,2,3,4,-5,-4,-3,-2,-1}}/#m       -- nodes
+  =( m:nfft(p):conj():shift(#m/2) - m:fft() ):norm()  -- ??
+  print 6.4631152920485e-14
+  =( m:nfft(p):infft(p) - m ):norm()
+  print 4.3685929641517e-14
+]]
+function MR.nfft (x, p_, r_)
+  local nr, nc = (p_ and chksiz(x,p_) or x):sizes()
+  local r = r_ or cmatrix(nr,nc)
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  if nr == 1 or nc == 1
+  then _C.mad_vec_nfft(x.data, p_ and p_.data, r.data, nr*nc , r:size()) -- 1D NFFT
+  else _C.mad_mat_nfft(x.data, p_ and p_.data, r.data, nr, nc, r:size()) -- 2D NFFT
+  end
+  return r
+end
+
+function MC.nfft (x, p_, r_)
+  local nr, nc = (p_ and chksiz(x,p_) or x):sizes()
+  local r = r_ or cmatrix(nr,nc)
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  if nr == 1 or nc == 1
+  then _C.mad_cvec_nfft(x.data, p_ and p_.data, r.data, nr*nc , r:size()) -- 1D NFFT
+  else _C.mad_cmat_nfft(x.data, p_ and p_.data, r.data, nr, nc, r:size()) -- 2D NFFT
+  end
+  return r
+end
+
+MR.infft = \ error("invalid argument #1 (cmatrix expected)")
+
+function MC.infft (x, p_, r_)
+  local r = p_ and (chksiz(r_, p_) or cmatrix(p_:sizes())) or r_
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  local nr, nc = r:sizes()
+  if nr == 1 or nc == 1
+  then _C.mad_cvec_infft(x.data, p_ and p_.data, r.data, nr*nc , x:size()) -- 1D NFFT
+  else _C.mad_cmat_infft(x.data, p_ and p_.data, r.data, nr, nc, x:size()) -- 2D NFFT
+  end
+  return r
 end
 
 -- concatenation, conversion --------------------------------------------------o
