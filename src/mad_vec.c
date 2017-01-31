@@ -352,8 +352,7 @@ mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)
     Springer Lecture Notes 102, 2014.
 [5] http://github.com/NFFT/nfft
 
-Notations: X=f_hat, Y=f
-In [1]
+Notations vs [1]: X=f_hat, Y=f
 eq. 2.1 (forward DFT, i.e. time to frequency):
 Y_j = sum_{k=0}^{N-1} X_k e^{-2\pi i k j/N},  (j=0,…,N-1)
 
@@ -367,6 +366,23 @@ if M = N and x_j = j/N, eq. 2.3 becomes eq. 2.1
 eq. 2.4 (adjoint NDFT, i.e. frequency to time):
 X_k = sum_{j=0}^{M-1} Y_j e^{+2\pi i k j/N},  (k=0,…,N-1)
 if M = N and x_j = j/N, eq. 2.4 becomes eq. 2.2
+
+Expected use:
+eq. 2.3 (forward NDFT, i.e. time to frequency):
+Y_k = sum_{j=0}^{M-1} X_j e^{-2\pi i k x_j},  (k=0,…,N-1)
+if M = N and x_j = j/N, eq. 2.3 becomes eq. 2.1
+
+eq. 2.4 (adjoint NDFT, i.e. frequency to time):
+X_j = sum_{k=0}^{N-1} Y_k e^{+2\pi i k x_j},  (j=0,…,M-1)
+if M = N and x_j = j/N, eq. 2.4 becomes eq. 2.2
+
+Application of NFFT3 (with FFTW3 compatibility):
+forward NFFT, i.e. time to frequency:
+  - Use nfft_adjoint with negated input time nodes and shifted output frequency
+    indexes by length/2.
+backward NFFT, i.e. frequency to time:
+  - Use nfft_trafo with negated input time nodes and shifted input frequency
+    indexes by length/2, and normalized output signal by 1/length.
 */
 
 #include <nfft3.h>
@@ -395,14 +411,16 @@ mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_
     p_n = n, p_m = nr, precomp = 1;
   }
   if (x_node || precomp) {
-    mad_vec_copy(x_node, p.x, n);
+    for (ssz_t i=0; i < n; i++)  // adjoint transform needs -x_node
+      p.x[i] = x_node[i] == -0.5 ? 0.4999999999999999 : -x_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
   mad_cvec_copy(x, p.f, n);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_adjoint(&p); // nfft_adjoint_direct(&p);
-  mad_cvec_copy(p.f_hat, r, nr);
+  mad_cvec_copy(p.f_hat+nr/2, r, nr/2); // for compatibility with FFTW
+  mad_cvec_copy(p.f_hat, r+nr/2, nr/2);
 }
 
 void // frequency to time
@@ -416,10 +434,12 @@ mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz
     p_n = n, p_m = nx, precomp = 1;
   }
   if (r_node || precomp) {
-    mad_vec_copy(r_node, p.x, n);
+    for (ssz_t i=0; i < n; i++) // forward transform needs -r_node
+      p.x[i] = r_node[i] == -0.5 ? 0.4999999999999999 : -r_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  mad_cvec_copy(x, p.f_hat, nx);
+  mad_cvec_copy(x+nx/2, p.f_hat, nx/2); // for compatibility with FFTW
+  mad_cvec_copy(x, p.f_hat+nx/2, nx/2);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_trafo(&p); // nfft_trafo_direct(&p);
@@ -435,98 +455,3 @@ mad_vec_cleanup(void)
   nfft_finalize(&p);  memset(&p, 0, sizeof p);
   fftw_cleanup();
 }
-
-// -- simple NFFT tests -------------------------------------------------------o
-
-#if 0
-void disp_vec (double x[], int n, const char *str);
-void disp_vec (double x[], int n, const char *str)
-{
-  printf("%s:\n", str);
-  for (int i=0; i < n; i++) printf("%.2g ", x[i]);
-  printf("\n");
-}
-
-void disp_cvec (_Complex double x[], int n, const char *str);
-void disp_cvec (_Complex double x[], int n, const char *str)
-{
-  printf("%s:\n", str);
-  for (int i=0; i < n; i++) printf("%.2g%+.2gi ", creal(x[i]), cimag(x[i]));
-  printf("\n");
-}
-
-void simple_nfft1 (void);
-void simple_nfft1 (void)
-{
-  enum { N=10, M=10 };
-  double x[M] = {0,0.1,0.2,0.3,0.4,-0.5,-0.4,-0.3,-0.2,-0.1};
-  _Complex double f_hat[N] = {10,9,8,7,6,5,4,3,2,1};
-
-  nfft_plan p;
-  nfft_init_1d (&p, N, M);
-  memcpy(p.x, x, M*sizeof x[0]);
-  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
-  memcpy(p.f_hat, f_hat, N*sizeof f_hat[0]);
-  const char *error_str = nfft_check(&p);
-  if (error_str) error("%s", error_str);
-
-  nfft_trafo(&p); // nfft_trafo_direct(&p);
-
-  disp_vec (p.x    ,p.M_total,"x");
-  disp_cvec(p.f_hat,p.N_total,"f");
-
-  _Complex double f[M];
-  memcpy(f, p.f, M*sizeof f[0]);
-
-  fftw_plan p2 = fftw_plan_dft_1d(N, p.f_hat, p.f, FFTW_FORWARD, FFTW_ESTIMATE);
-  fftw_execute(p2);
-  fftw_destroy_plan(p2);
-
-  disp_cvec(p.f,p.M_total,"f_hat (fftw)");
-  disp_cvec(  f,  M      ,"f_hat (nfft)");
-  for(int j=0; j<M; j++) p.f[j] -= f[j];
-  printf("|fftw-nfft|\n");
-  for(int j=0; j<M; j++) printf("%.2g ", cabs(p.f[j]));
-  printf("\n");
-
-  nfft_finalize(&p);
-}
-
-void simple_nfft2 (void);
-void simple_nfft2 (void)
-{
-  enum { N=10, M=10 };
-  double x[M] = {0,0.1,0.2,0.3,0.4,-0.5,-0.4,-0.3,-0.2,-0.1};
-  _Complex double f[M] = {10,9,8,7,6,5,4,3,2,1};
-
-  nfft_plan p;
-  nfft_init_1d (&p, N, M);
-  memcpy(p.x, x, M*sizeof x[0]);
-  if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
-  memcpy(p.f, f, M*sizeof f[0]);
-  const char *error_str = nfft_check(&p);
-  if (error_str) error("%s", error_str);
-
-  nfft_adjoint(&p);
-
-  disp_vec (p.x,p.M_total,"x");
-  disp_cvec(p.f,p.M_total,"f");
-
-  _Complex double f_hat[N];
-  memcpy(f_hat, p.f_hat+N/2, N/2*sizeof f_hat[0]);
-  memcpy(f_hat+N/2, p.f_hat, N/2*sizeof f_hat[0]);
-
-  fftw_plan p2 = fftw_plan_dft_1d(N, p.f, p.f_hat, FFTW_FORWARD, FFTW_ESTIMATE);
-  fftw_execute(p2);
-  fftw_destroy_plan(p2);
-
-  disp_cvec(p.f_hat,p.N_total,"f_hat (fftw)");
-  disp_cvec(  f_hat,  N      ,"f_hat (nfft shifted)");
-  for(int j=0; j<N; j++) p.f_hat[j] -= conj(f_hat[j]);
-  printf("|fftw-nfft^*|\n");
-  for(int j=0; j<N; j++) printf("%.2g ", cabs(p.f_hat[j]));
-  printf("\n");
-
-  nfft_finalize(&p);
-}
-#endif
