@@ -1175,17 +1175,7 @@ mad_cmat_irfft (const cnum_t x[], num_t r[], ssz_t m, ssz_t n)
 }
 
 /* -- NFFT --------------------------------------------------------------------o
-[1] J. Keiner, S. Kunis and D. Potts, "Using NFFT 3 — A Software Library for
-    Various Nonequispaced Fast Fourier Transforms", ACM Transactions on
-    Mathematical Software, Vol. 36, No. 4, Article 19, Pub. date: August 2009.
-[2] J. Keiner, S. Kunis and D. Potts, "NFFT 3.0 - Tutorial",
-    http://www.tu-chemnitz.de/~potts/nfft
-[3] S. Kunis and D. Potts, "Time and memory requirements of the Nonequispaced
-    FFT", report, 2006.
-[4] L. Kammerer, S. Kunis, I. Melzer, D. Potts, and T. Volkmer, "Computational
-    Methods for the Fourier Analysis of Sparse High-Dimensional Functions",
-    Springer Lecture Notes 102, 2014.
-[5] http://github.com/NFFT/nfft
+  see mad_vec.c for details
 */
 
 #include <nfft3.h>
@@ -1214,14 +1204,17 @@ mad_cmat_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_
     p_n1 = m, p_n2 = n, p_m = nr, precomp = 1;
   }
   if (x_node || precomp) {
-    mad_vec_copy(x_node, p.x, m*n);
+    for (ssz_t i=0; i < m*n; i++)  // adjoint transform needs -x_node
+      p.x[i] = x_node[i] == -0.5 ? 0.4999999999999999 : -x_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
   mad_cvec_copy(x, p.f, m*n);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_adjoint(&p); // nfft_adjoint_direct(&p);
-  mad_cvec_copy(p.f_hat, r, nr);
+//  mad_cvec_copy(p.f_hat, r, nr);
+  mad_cvec_copy(p.f_hat+nr/2, r, nr/2); // for compatibility with FFTW ?? (TBC)
+  mad_cvec_copy(p.f_hat, r+nr/2, nr/2);
 }
 
 void // frequency to space
@@ -1235,10 +1228,13 @@ mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz
     p_n1 = m, p_n2 = n, p_m = nx, precomp = 1;
   }
   if (r_node || precomp) {
-    mad_vec_copy(r_node, p.x, m*n);
+    for (ssz_t i=0; i < m*n; i++) // forward transform needs -r_node
+      p.x[i] = r_node[i] == -0.5 ? 0.4999999999999999 : -r_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  mad_cvec_copy(x, p.f_hat, nx);
+  // mad_cvec_copy(x, p.f_hat, nx);
+  mad_cvec_copy(x+nx/2, p.f_hat, nx/2); // for compatibility with FFTW ?? (TBC)
+  mad_cvec_copy(x, p.f_hat+nx/2, nx/2);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_trafo(&p); // nfft_trafo_direct(&p);
