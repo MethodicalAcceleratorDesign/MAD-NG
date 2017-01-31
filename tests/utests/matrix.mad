@@ -1522,8 +1522,8 @@ function TestMatrixFun:testFoldl()
     assertEquals   ( m:foldl('+' , nil      , {}), sum(1..m:size())   ) -- 3)
     assertEquals   ( m:foldl('+' , nil, nil , {}), sum(1..m:size())   ) -- 3)
 
-    local t ={}  for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
-    local tr={}  for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
+    local t ={} for i=1,nc do t [i]=sum(ref(1,i,nc)..ref(nr,i,nc)..nc) end
+    local tr={} for i=1,nr do tr[i]=sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) end
     assertEquals   ( m:foldl('+'   , 'col')      , matrix(t ):t() )     -- 2)
     assertEquals   ( m:foldl('+'   , 'row')      , matrix(tr)     )     -- 2)
     assertEquals   ( m:foldl('+', 0, 'col')      , matrix(t ):t() )     -- 6)
@@ -1532,8 +1532,8 @@ function TestMatrixFun:testFoldl()
     assertAllEquals( m:foldl('+', 0, 'row',{})   , tr )                 -- 8)
 
   -- non-commutative operations
-    local mrefC = matrix(1 ,nc) for i=1,nc do mrefC:seti(i, sub(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    local mrefR = matrix(nr,1 ) for j=1,nr do mrefR:seti(j, sub(ref(j,1,nc)..ref(j,nc,nc)..1 ) ) end
+    local mrefC = matrix(1 ,nc):mapij\x,i,j sub(ref(1,j,nc)..ref(nr,j,nc)..nc)
+    local mrefR = matrix(nr,1 ):mapij\x,i,j sub(ref(i,1,nc)..ref(i,nc,nc)..1 )
     if nr*nc%2 == 0 then assertEquals( m:foldl '~',-1 )
                     else assertEquals( m:foldl '~', 1 ) end
     assertEquals( m:foldl '-'        , sub(1..m:size()) )
@@ -1593,9 +1593,8 @@ function TestMatrixFun:testFoldr()
 
   -- non-commutative operations
     local v = vector( m:size() ):fill(1..m:size()):map(\x => if x%2==0 then x=-x end return x end)
-    local mrefC, mrefR = matrix(1,nc), matrix(nr,1)
-    for j=1,nr do mrefR:seti(j, sum(ref(j,1,nc)..ref(j,nc,nc)..2 )   - sum(ref(j,2,nc)..ref(j,nc,nc)..2   ) ) end
-    for i=1,nc do mrefC:seti(i, sum(ref(1,i,nc)..ref(nr,i,nc)..2*nc) - sum(ref(2,i,nc)..ref(nr,i,nc)..2*nc) ) end
+    local mrefR = matrix(nr,1 ):mapij\x,i,j sum(ref(i,1,nc)..ref(i,nc,nc)..2 )   - sum(ref(i,2,nc)..ref(i,nc,nc)..2   )
+    local mrefC = matrix(1 ,nc):mapij\x,i,j sum(ref(1,j,nc)..ref(nr,j,nc)..2*nc) - sum(ref(2,j,nc)..ref(nr,j,nc)..2*nc)
     if nr*nc == 1 then assertEquals( m:foldr '~', 1 )
                   else assertEquals( m:foldr '~',-1 ) end
     assertEquals( m:foldr '-'        , v:foldr('+') )
@@ -1657,14 +1656,14 @@ function TestMatrixFun:testScanl()
     assertAllEquals( m:scanl('+', nil , nil , {}), t     )            -- 3)
     assertAllEquals( m:scanl('+', 0   , nil , {}), t     )            -- 7)
 
-    for i=1,nr do for j=1,nc do mref :set(i,j, sum(ref(1,j,nc)..ref(i,j,nc)..nc) ) end end
-    for i=1,nr do for j=1,nc do mref2:set(i,j, sum(ref(i,1,nc)..ref(i,j,nc)..1 ) ) end end
+    mref  = m:copy():mapij\x,i,j sum(ref(1,j,nc)..ref(i,j,nc)..nc)
+    mref2 = m:copy():mapij\x,i,j sum(ref(i,1,nc)..ref(i,j,nc)..1 )
     assertEquals( m:scanl('+', 'col'), mref  ) -- 2)
     assertEquals( m:scanl('+', 'row'), mref2 ) -- 2)
 
   -- non-commutative operations
-    mref = m:same():fill(1..nr*nc):map(\x sub(1..x))
-    for i=1,nr do for j=1,nc do mref2:set(i,j, sub(ref(i,1,nc)..ref(i,j,nc)..1 ) ) end end
+    mref  = m:same():fill(1..nr*nc):map(\x sub(1..x))
+    mref2 = m:copy():mapij\x,i,j sub(ref(i,1,nc)..ref(i,j,nc)..1 )
     assertEquals( m:scanl '-'        , mref  )
     assertEquals( m:scanl('-', 'row'), mref2 )
   end
@@ -1707,7 +1706,6 @@ function TestMatrixFun:testScanr()
     return x
   end
 
-  local m1
   for _,m in ipairs(self.mat) do
     local nr, nc = m:sizes()
     local mref  = m:same():fill(1..nr*nc):map(\x sum(x..nr*nc))
@@ -1724,20 +1722,14 @@ function TestMatrixFun:testScanr()
     assertAllEquals( m:scanr('+', nil , nil , {}), t     )                   -- 3)
     assertAllEquals( m:scanr('+', 0   , nil , {}), t     )                   -- 7)
 
-    for i=nr,1,-1 do for j=1,nc do mref :set(i,j, sum(ref(nr,j,nc)..ref(i,j,nc)..-nc) ) end end
-    for j=nc,1,-1 do for i=1,nr do mref2:set(i,j, sum(ref(i,nc,nc)..ref(i,j,nc)..-1 ) ) end end
+    mref  = m:copy():mapij\x,i,j sum(ref(nr,j,nc)..ref(i,j,nc)..-nc)
+    mref2 = m:copy():mapij\x,i,j sum(ref(i,nc,nc)..ref(i,j,nc)..-1 )
     assertEquals( m:scanr('+', 'col'), mref  )
     assertEquals( m:scanr('+', 'row'), mref2 )
 
     -- non-commutative operations
-    for i=nr,1,-1 do
-    for j=1 ,nc   do
-      mref:set(i,j,sum(ref(i,j,nc)..ref(nr,j,nc)..2*nc)-sum(ref(i+1,j,nc)..ref(nr,j,nc)..2*nc) )
-    end end
-    for i=1 ,nr   do
-    for j=nc,1,-1 do
-      mref2:set(i,j,sum(ref(i,j,nc)..ref(i,nc,nc)..2)-sum(ref(i,j+1,nc)..ref(i,nc,nc)..2 ) )
-    end end
+    mref  = m:copy():mapij\x,i,j sum(ref(i,j,nc)..ref(nr,j,nc)..2*nc)-sum(ref(i+1,j,nc)..ref(nr,j,nc)..2*nc)
+    mref2 = m:copy():mapij\x,i,j sum(ref(i,j,nc)..ref(i,nc,nc)..2   )-sum(ref(i,j+1,nc)..ref(i,nc,nc)..2   )
     assertEquals   ( m:scanr('-')          , m:same():fill(subR(1..nr*nc)) )
     assertAllEquals( m:scanr('-', nil , {}), subR(1..nr*nc) )
     assertEquals   ( m:scanr('-','col')    , mref  )
@@ -2091,61 +2083,58 @@ end
 
 function TestMatrixSFolds:testMin()
   for _,m in ipairs(G.mat) do
-    local nr, nc, m1 = m:sizes()
-    assertEquals( m:min(), 1 )
-    m1 = m:min("col") assertEquals( m1, matrix(1 ,nc):fill(1..nc) )
-    m1 = m:min("row") assertEquals( m1, matrix(nr,1 ):fill(1..ref(nr,1,nc)..nc) )
+    local nr, nc = m:sizes()
+    assertEquals( m:min()     , 1 )
+    assertEquals( m:min("col"), matrix(1 ,nc):fill(1..nc) )
+    assertEquals( m:min("row"), matrix(nr,1 ):fill(1..ref(nr,1,nc)..nc) )
   end
 end
 
 function TestMatrixSFolds:testMax()
   for _,m in ipairs(G.mat) do
-    local nr, nc, m1 = m:sizes()
-    assertEquals( m:max(), m:size() )
-    m1 = m:max("col") assertEquals( m1, matrix(1 ,nc):fill(ref(nr,1,nc)..ref(nr,nc,nc)..1 ) )
-    m1 = m:max("row") assertEquals( m1, matrix(nr,1 ):fill(ref(1,nc,nc)..ref(nr,nc,nc)..nc) )
+    local nr, nc = m:sizes()
+    assertEquals( m:max()     , m:size() )
+    assertEquals( m:max("col"), matrix(1 ,nc):fill(ref(nr,1,nc)..ref(nr,nc,nc)..1 ) )
+    assertEquals( m:max("row"), matrix(nr,1 ):fill(ref(1,nc,nc)..ref(nr,nc,nc)..nc) )
   end
 end
 
 function TestMatrixSFolds:testSum()
   for _,m in ipairs(G.mat) do
-    local nr, nc, m1 = m:sizes()
-    assertEquals( m:sum(), sum(1..m:size()) )
-    m1 = m:sum('col') for i=1,nc do  assertEquals( m1:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    m1 = m:sum('row') for i=1,nr do  assertEquals( m1:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
+    local nr, nc = m:sizes()
+    assertEquals( m:sum()     , sum(1..m:size()) )
+    assertEquals( m:sum('col'), matrix(1 ,nc):mapij\x,i,j sum(ref(1,j,nc)..ref(nr,j,nc)..nc) )
+    assertEquals( m:sum('row'), matrix(nr,1 ):mapij\x,i,j sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) )
   end
 end
 
 function TestMatrixSFolds:testSumabs()
-  local m1, mres
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
-    m1 = m:copy():map(\x -x)
+    local m1 = m:copy():map(\x -x)
     assertEquals( m1:sumabs(), sum(1..m:size()) )
-    mres = m:sumabs('col') for i=1,nc do assertEquals( mres:geti(i), sum(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    mres = m:sumabs('row') for i=1,nr do assertEquals( mres:geti(i), sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
+    assertEquals( m1:sumabs('col'), matrix(1 ,nc):mapij\x,i,j sum(ref(1,j,nc)..ref(nr,j,nc)..nc) )
+    assertEquals( m1:sumabs('row'), matrix(nr,1 ):mapij\x,i,j sum(ref(i,1,nc)..ref(i,nc,nc)..1 ) )
   end
 end
 
 function TestMatrixSFolds:testSumsqr()
   local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
-  local m1
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
-    assertEquals( m:sumsqr(), sumsqr(1..m:size()) )
-    m1 = m:sumsqr('col') for i=1,nc do assertEquals( m1:geti(i), sumsqr(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    m1 = m:sumsqr('row') for i=1,nr do assertEquals( m1:geti(i), sumsqr(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
+    assertEquals( m:sumsqr()     , sumsqr(1..m:size()) )
+    assertEquals( m:sumsqr('col'), matrix(1 ,nc):mapij\x,i,j sumsqr(ref(1,j,nc)..ref(nr,j,nc)..nc) )
+    assertEquals( m:sumsqr('row'), matrix(nr,1 ):mapij\x,i,j sumsqr(ref(i,1,nc)..ref(i,nc,nc)..1 ) )
   end
 end
 
 function TestMatrixSFolds:testProduct()
   local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
-  local m1
   for _,m in ipairs(G.mat) do
     local nr, nc = m:sizes()
     assertEquals( m:product(), prod(1..m:size()) )
-    m1 = m:product('col') for i=1,nc do assertEquals( m1:geti(i), prod(ref(1,i,nc)..ref(nr,i,nc)..nc) ) end
-    m1 = m:product('row') for i=1,nr do assertEquals( m1:geti(i), prod(ref(i,1,nc)..ref(i,nc,nc)..1 ) ) end
+    assertEquals( m:product('col'), matrix(1 ,nc):mapij\x,i,j prod(ref(1,j,nc)..ref(nr,j,nc)..nc) )
+    assertEquals( m:product('row'), matrix(nr,1 ):mapij\x,i,j prod(ref(i,1,nc)..ref(i,nc,nc)..1 ) )
   end
 end
 
