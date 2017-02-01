@@ -47,18 +47,19 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_number, is_string, is_rawtable, vector in MAD
-local is_iterable, is_callable in MAD.concept
-local element in MAD.element
+local is_iterable, is_callable                          in MAD.concept
+local element                                           in MAD.element
+local minlen                                            in MAD.constant
 
 -- definition -----------------------------------------------------------------o
 
  -- hidden keys for:
  -- elements positions, elements entry positions, refpos element position.
-local _epos, _spos, _rpos = {}, {}, {}
+local _epos, _spos = {}, {}
 
 local sequence = element 'sequence' {
    kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
-   [_epos]=nil, [_spos]=nil, [_rpos]=0,
+   [_epos]=nil, [_spos]=nil,
 }
 
 local sequence_init, sequ_len -- forward declaration
@@ -75,6 +76,9 @@ local function seq_error (msg, sequ, idx)
 end
 
 -- implementation -------------------------------------------------------------o
+
+local uninitialized = -1e9
+local ongoing_init  = -2e9
 
 -- identifier
 local function ident (name)
@@ -96,15 +100,20 @@ local function find_idx (sequ, elem, start_)
   return nil
 end
 
+-- refpos
+local function find_rpos (sequ)
+  local rpos = sequ.refpos
+  if rpos == nil then return 0 end
+  local idx = sequ:index_of(rpos)
+  return sequ.e_pos[idx]
+end
+
 -- collect
 local function add_mult_elem (to, elem)
   if is_nil(to)    then return  elem      end  -- no ref yet
   if to.is_element then return {to, elem} end  -- one ref
   to[#to+1] = elem      return  to             -- many refs
 end
-
-local uninitialized = -1e9
-local ongoing_init  = -2e9
 
 -- compute s positions of sequence elements
 local function elem_pos(sequ, idx)
@@ -139,20 +148,20 @@ local function elem_pos(sequ, idx)
       if refer == 'entry'  then rpos = 0
   elseif refer == 'centre' then rpos = elem.l/2
   elseif refer == 'exit'   then rpos = elem.l
-  elseif refer == 'refpos' then rpos = elem[_rpos]
+  elseif refer == 'refpos' then rpos = find_rpos(elem)
   else seq_error("invalid refer to '" .. refer .. "'", sequ, idx)
   end
 
   sequ.e_pos[idx] = pos
   sequ.s_pos[idx] = pos - rpos
-  return pos
+  return pos, rpos
 end
 
 local function sequ_pos (sequ, sseq, idx)
-  local pos, elem
+  local elem, pos, rpos
   elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
-  pos , sequ[idx] = elem_pos(sequ, idx), elem
-  pos = pos - sseq[_rpos]           -- shift by subsequence refpos
+  sequ[idx], pos, rpos = elem, elem_pos(sequ, idx)
+  pos = pos - rpos                  -- shift by subsequence refpos
   for i=1,#sseq do
     sequ.e_pos[i+idx-1] = sseq.e_pos[i] + pos
     sequ.s_pos[i+idx-1] = sseq.s_pos[i] + pos
@@ -229,19 +238,19 @@ local function build_pos (sequ, sref)
   sequ[_spos] = vector(#sref)
   local idx, len, pos = 1, #sref, 0
   while idx <= len do
-    if sref[idx] == false then
+    if sref[idx] == false then    -- element
       elem_pos(sequ, idx)
-      if pos > sequ.s_pos[idx] then
+      if pos-minlen > sequ.s_pos[idx] then
         seq_error(string.format(
           "invalid element position at s = %.6gm (negative drift %.6gm)",
           sequ.s_pos[idx], sequ.s_pos[idx]-pos), sequ, idx)
       end
       pos = sequ.s_pos[idx] + sequ[idx].l
       idx = idx + 1
-    else -- subsequence
+    else                          -- subsequence
       local sseq = sref[idx]
       sequ_pos(sequ, sseq, idx)
-      if pos > sequ.s_pos[idx] then
+      if pos-minlen > sequ.s_pos[idx] then
         seq_error(string.format(
           "invalid subsequence position at s = %.6gm (negative drift %.6gm)",
           sequ.s_pos[idx], sequ.s_pos[idx]-pos), sequ, idx)
@@ -251,14 +260,6 @@ local function build_pos (sequ, sref)
     end
   end
   assert(len+1 == idx, "unexpected corrupted flat sequence")
-end
-
-local function set_refpos (sequ)
-  local rpos = sequ.refpos
-  if rpos ~= nil then
-    local idx = sequ:index_of(rpos)
-    sequ[_rpos] = sequ.e_pos[idx]
-  end
 end
 
 local function adjust_len (sequ)
@@ -287,7 +288,6 @@ function sequence_init (sequ)
   flatten_sequ (sequ, flat, sref)
   build_sequ   (sequ, flat)
   build_pos    (sequ, sref)
-  set_refpos   (sequ)
   adjust_len   (sequ)
   return sequ
 end
