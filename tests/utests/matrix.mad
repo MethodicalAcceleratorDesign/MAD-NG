@@ -567,7 +567,7 @@ end
 
   --assertErrorMsgContains( msg[5], mth, 'setsub', errMat, 1..2, 1..2, 1..3 )
   --assertErrorMsgContains( msg[5], mth, 'setsub', errMat, 1..2, 1..2, {1}  )
-function TestMatrixSet:testSetsub()
+function TestMatrixSet:testSetsub() -- TODO
   local mt = matrix(5)
   mt:setsub( 1..5, 1, {1,1,1,1,1})
   for i=1,5 do
@@ -628,14 +628,14 @@ function TestMatrixGet:testGetv()
   assertEquals( m1:getv{1,2}            , vector(2):fill(1..2) )
 
   for _,m in ipairs(G.matidx) do
-    local nr, nc = m:sizes()
+    local mn, nr, nc = m:size(), m:sizes()
     for j=1,m:size() do
       assertEquals( m:getv(j), vector{j} )
     end
     for li=1,nr do
       local vi = G.vi[li]:copy()
       for j=1,li do
-        vi[j] = random(1,nc*nr)
+        vi[j] = random(1,mn)
       end -- TODO
       vi:perm()
       assertEquals( m:getv(vi), vector(#vi):fill(vi) )
@@ -1028,7 +1028,7 @@ function TestMatrixInPlaceII:testResize()
     for ir=nr+1,nr+3 do
       mres       = m:resize(ir, ic)
       minr, minc = min(nr,ir), min(nc,ic)
-      assertEquals( {mres:sizes()}, {ir, ic} )
+      assertEquals( {mres:sizes()}                    , {ir, ic}                    )
       assertEquals( mres:getsub(1..minr   ,1..minc   ), m:getsub(1..minr ,1..minc ) )
       assertEquals( mres:getsub(minr+1..ir,1..minc   ), m:same(_, ir-minr, minc   ) )
       assertEquals( mres:getsub(1..minr   ,minc+1..ic), m:same(_, minr   , ic-minc) )
@@ -1038,8 +1038,8 @@ function TestMatrixInPlaceII:testResize()
     for ir=1,nr do
       mres       = m:resize(ir, ic)
       minr, minc = min(nr,ir), min(nc,ic)
-      assertEquals( {mres:sizes()}, {ir, ic} )
-      assertEquals( mres, m:getsub(1..minr,1..minc) )
+      assertEquals( {mres:sizes()}, {ir, ic}                  )
+      assertEquals( mres          , m:getsub(1..minr,1..minc) )
     end
     end
   end
@@ -2613,6 +2613,26 @@ function TestMatrixErr:testEq()
 end
 
 function TestMatrixOps:testEq()
+  for _,m1 in ipairs(G.matidx) do
+    local cm1 = m1:map(\x complex(x,0))
+    assertTrue ( m1  == m1:copy() ) -- mat  == mat
+    assertFalse( m1  == m1:same() )
+    assertTrue ( m1  == cm1       ) -- mat  == cmat
+    assertTrue ( cm1 == m1:copy() ) -- cmat == mat
+    -- f defined
+    assertTrue (  m1       :eq(  m1:copy()                       ,   0  ) )
+    assertTrue (  m1       :eq(  m1:map(\x x+  eps)              ,   eps) )
+    assertFalse(  m1       :eq(  m1:map(\x x+2*eps)              ,   eps) )
+    assertFalse(  m1       :eq(  m1:map(\x x+  eps):seti(1,3*eps),   eps) )
+    assertTrue ( cm1       :eq( cm1:map(\x x+eps*1i    )         ,   eps) )
+    assertTrue ( cm1       :eq( cm1:map(\x x+eps*(1+1i))         , 2*eps) )
+    assertTrue ( cm1:imag():eq( cm1:map(\x x+eps*1i    ):imag()  ,   eps) )
+    assertTrue ( cm1:real():eq( cm1:map(\x x+eps*1i    ):real()  ,   eps) )
+  end
+  -- f as function
+  local m = matrix(2)
+  assertTrue ( m:fill(1):eq( m:same():fill(eps), \x,y x/y>eps) )
+  assertFalse( m:fill(1):eq( m:same():fill(eps), \x,y x/y<eps) )
   assertTrue (  0         ==  matrix(2)         ) -- num  == mat
   assertFalse(  0         ==  matrix(2):fill(1) )
   assertTrue (  0         == cmatrix(2)         ) -- num  == cmat
@@ -2625,26 +2645,6 @@ function TestMatrixOps:testEq()
   assertTrue ( cmatrix(2) == 0                  ) -- cmat == num
   assertTrue (  matrix(2) == 0+0i               ) -- mat  == cpx
   assertTrue ( cmatrix(2) == 0+0i               ) -- cmat == cpx
-
-  for _,m1 in ipairs(G.matidx) do
-    local cm1 = m1:map(\x complex(x,0))
-    assertTrue ( m1  == m1:copy() ) -- mat  == mat
-    assertFalse( m1  == m1:same() )
-    assertTrue ( m1  == cm1       ) -- mat  == cmat
-    assertTrue ( cm1 == m1:copy() ) -- cmat == mat
-    -- f defined
-    assertTrue ( m1:eq( m1:copy()                       , 0  ) )
-    assertTrue ( m1:eq( m1:map(\x x+  eps)              , eps) )
-    assertFalse( m1:eq( m1:map(\x x+2*eps)              , eps) )
-    assertFalse( m1:eq( m1:map(\x x+  eps):seti(1,3*eps), eps) )
-    -- f as function
-    assertTrue ( matrix(2):fill(1):eq( matrix(2):fill(eps)       , \x,y x/y>eps) )
-    assertFalse( matrix(2):fill(1):eq( matrix(2):fill(eps)       , \x,y x/y<eps) )
-    assertTrue (  cm1        :eq( cm1:map(\x x+eps*1i    )       ,   eps)        )
-    assertTrue (  cm1        :eq( cm1:map(\x x+eps*(1+1i))       , 2*eps)        )
-    assertTrue ( (cm1:imag()):eq( cm1:map(\x x+eps*1i    ):imag(),   eps)        )
-    assertTrue ( (cm1:real()):eq( cm1:map(\x x+eps*1i    ):real(),   eps)        )
-  end
 end
 
 function TestMatrixErr:testAdd()
@@ -2832,7 +2832,7 @@ function TestMatrixErr:testDiv()
   assertErrorMsgContains( msg[2], mth, 'div', matrix(1,2), matrix(3,1) )
 end
 
-function TestMatrixOps:testDiv()
+function TestMatrixOps:testDiv() -- TODO
 --  local m = matrix(3,2):fill(2)
 --  print(1/m)
 
@@ -2987,8 +2987,8 @@ function TestMatrixLapack:testEigen()
     assertTrue( w         :eq( refD               , 16*eps) )
     assertTrue( vr        :eq( refV               ,  4*eps) )
     assertTrue( vl        :eq( refW               ,  4*eps) )
-    assertTrue( (m * vr)  :eq( vr    * diagW      , 64*eps) ) -- A*V - V*D
-    assertTrue( (vl:t()*m):eq( diagW * vl:t()     , 64*eps) ) -- W'*A - D*W'
+    assertTrue( (m * vr)  :eq( vr    * diagW      , 64*eps) ) -- A * V - V * D
+    assertTrue( (vl:t()*m):eq( diagW * vl:t()     , 64*eps) ) -- W'* A - D * W'
     assertAlmostEquals( w:sum():real() - m:tr(), 0, 64*eps  )
   end
 end
@@ -3103,7 +3103,7 @@ function TestMatrixErr:testConv()
 end
 
 -- pascal triangle helpers
-local pasVal = \x   => local y=1 for i=1,x do y=y*i end return y end
+local pasVal = \x => local y=1 for i=1,x do y=y*i end return y end
 local function pasVec(x)
   local v = vector(x)
   for z=1,x do v:seti(z, pasVal(x-1)/( pasVal(z-1)*pasVal(x-z) )) end
@@ -3315,8 +3315,8 @@ function TestMatrixRot:testRotzyx()
   for i,ax in ipairs(dat.rad) do
     for ii,ay in ipairs(dat.rad) do
       for iii,az in ipairs(dat.rad) do
-        local res = matrix(3):rotzyx(ax,ay,az)
-        local ref = matrix(3):rotx(ax)*matrix(3):roty(ay)*matrix(3):rotz(az)
+        local res = m:same():rotzyx(ax,ay,az)
+        local ref = m:same():rotx(ax)*m:same():roty(ay)*m:same():rotz(az)
         assertTrue( res:eq( ref, eps ) )
       end
     end
@@ -3513,7 +3513,7 @@ end
 function TestMatrix:testConcat()
   for _,m in ipairs(G.matidx) do
     local mn, nr, nc, _ = m:size(), m:sizes()
-    local mref1 = m:same(_,2*nr,nc):setsub(1..nr, 1..nc, 1..mn):setsub(1+nr..2*nr, 1   ..nc  , 1..mn)
+    local mref1 = m:same(_,2*nr,nc):setsub(1..nr, 1..nc, 1..mn):setsub(1+nr..2*nr, 1   ..  nc, 1..mn)
     local mref2 = m:same(_,nr,2*nc):setsub(1..nr, 1..nc, 1..mn):setsub(1   ..  nr, 1+nc..2*nc, 1..mn)
     local mref3 = m:same(_,2*mn,1):setsub( 1..mn, 1    , 1..mn):setsub(1+mn..2*mn, 1         , 1..mn)
     assertEquals( m:concat( m       ), mref1 )
