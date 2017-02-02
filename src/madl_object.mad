@@ -60,6 +60,7 @@ local _fct = {} -- key
 local fct_mt = {
   __call      = \s,... -> rawget(s,_fct)(...),
   __tostring  = \s -> tostring(rawget(s,_fct)),
+  __len      := error "forbidden access to functor",
   __index    := error "forbidden access to functor",
   __newindex := error "forbidden access to functor",
   __ipairs   := error "forbidden access to functor",
@@ -77,10 +78,6 @@ end
 
 local function parent (a)
   return getmetatable(rawget(a,'__index'))
-end
-
-local function functor (f)
-  return setmetatable({[_fct]=f}, fct_mt)
 end
 
 local function fclass (a)
@@ -105,6 +102,11 @@ end
 
 local function is_readonly (a) -- exported
   return is_table(a) and freadonly(a)
+end
+
+local function functor (f) -- exported
+  assert(is_function(f), "invalid argument #1 (function expected)")
+  return setmetatable({[_fct]=f}, fct_mt)
 end
 
 local function set_class (a) -- not exported
@@ -193,6 +195,10 @@ local function is_instanceOf (a, b) -- exported
   return a == b
 end
 
+local function len_raw (self)
+  return #rawget(self,_var)            -- no inheritance
+end
+
 local function get_raw (self, k)
   return rawget(rawget(self,_var),k)   -- no inheritance nor function evaluation
 end
@@ -254,24 +260,22 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
-local function get_varkey (self, class, pattern, exclude)
-  class, pattern, exclude = class or Object, pattern or '', exclude or '^__'
-  assert(is_object(self)   , "invalid argument #1 (object expected)")
-  assert(is_object(class)  , "invalid argument #2 (object expected)")
-  assert(is_string(pattern), "invalid argument #3 (string expected)")
-  assert(is_string(exclude), "invalid argument #4 (string expected)")
-  local key = {}
+local function get_varkey (self, class)
+  class = class or Object
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_object(class), "invalid argument #2 (object expected)")
+  local lst, key = {}, {}
   while self and self ~= class do
     for k,v in pairs(rawget(self,_var)) do
-      if is_string(k) and not is_functor(v) and
-         string.find(k, pattern) and not string.find(k, exclude) then
-        key[#key+1] = k
+      if is_string(k) and not is_functor(v) and not key[k] and
+         string.sub(k,1,2) ~= '__' then
+        lst[#lst+1], key[k] = k, k
       end
     end
     self = parent(self)
   end
   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
-  return key
+  return lst
 end
 
 local function clear_array (self)
@@ -414,8 +418,9 @@ M.set_function   = functor( set_function   )
 M.set_metamethod = functor( set_metamethod )
 M.clear_array    = functor( clear_array    )
 M.clear_variable = functor( clear_variable )
-M.get_raw        = functor( get_raw        )
-M.set_raw        = functor( set_raw        )
+M.rawlen         = functor( len_raw        )
+M.rawget         = functor( get_raw        )
+M.rawset         = functor( set_raw        )
 M.set_flag       = functor( set_flag       )
 M.test_flag      = functor( test_flag      )
 M.clear_flag     = functor( clear_flag     )
@@ -446,6 +451,7 @@ MAD.utility.defhelp(M, 'object')
 -- end ------------------------------------------------------------------------o
 return {
   Object        = Object,
+  functor       = functor,
   is_class      = is_class,
   is_object     = is_object,
   is_functor    = is_functor,

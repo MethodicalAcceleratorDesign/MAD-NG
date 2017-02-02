@@ -139,12 +139,12 @@ i.e. quad only has k1 and not k0, k2 or???
 
 -- locals ---------------------------------------------------------------------o
 
-local Command, element, sequence, table, load                     in MAD
-local is_nil, is_number, vector, matrix, is_matrix                in MAD
-local abs, sqrt, max, sin, cos, tan, asin, acos, atan, sinc, fact in MAD
-
-local minlen, minang = 1e-14, 1e-14
+local is_nil, is_number, vector, matrix, is_matrix                       in MAD
+local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2, sinc, fact in MAD
+local minlen, minang in MAD.constant
 local maxmul = 20
+
+local ptccompat = true
 
 -- implementation -------------------------------------------------------------o
 
@@ -164,6 +164,7 @@ local function get_mult0 (elem, m) -- l=0
     m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
     m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
   end
+  m.nmul = nmul
   return nmul
 end
 
@@ -184,6 +185,7 @@ local function get_mult (elem, m, l) -- general
       m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
     end
   end
+  m.nmul = nmul
   return nmul
 end
 
@@ -208,9 +210,8 @@ end
 local function curved_drift_track (elem, m, l)
   m.in_action(elem, m, l, 'curved_drift_track')
 
-  local x, px, y, py, t, pt, T in m
+  local x, px, y, py, t, pt, T, dir in m
   local beta_inv = 1/m.beam.beta
-  local dir = m.dir * m.beam.charge
   local rho = elem.l/elem.angle
   local angle = l/rho
 
@@ -237,14 +238,13 @@ local function solenoid_drift_track (elem, m, l)
   local ks in elem
 
   if is_nil(ks) or ks == 0 then
-    return drift_track(elem, m, l)
+    strait_drift_track(elem, m, l) return
   end
 
-  local x, px, y, py, t, pt, T in m
+  local x, px, y, py, t, pt, T, dir in m
   local beta_inv = 1/m.beam.beta
-  local dir = m.dir * m.beam.charge
 
-  local bsol = m.beam.charge*ks/2
+  local bsol = m.beam.charge*ks/2 -- why not dir?
   local xp = px + bsol*y
   local yp = py - bsol*x
 
@@ -273,12 +273,7 @@ end
 local function thin_kick_track(elem, m, l)
   m.in_action(elem, m, l, 'thin_kick_track')
 
-  local nmul = get_mult0(elem, m)
-  if nmul == 0 then return end
-
-  local x, px, y, py, knl, ksl in m
-  local dir = m.dir * m.beam.charge
-
+  local x, px, y, py, dir, nmul, knl, ksl in m
   local byt
   local by = knl[nmul] / fact(nmul-1)
   local bx = ksl[nmul] / fact(nmul-1)
@@ -306,11 +301,7 @@ end
 local function strait_kick_track(elem, m, l)
   m.in_action(elem, m, l, 'strait_kick_track')
 
-  local nmul = l >= minlen and get_mult(elem, m, l) or get_mult0(elem, m)
-  if nmul == 0 then return end
-
-  local x, px, y, py, knl, ksl in m
-  local dir = m.dir * m.beam.charge
+  local x, px, y, py, dir, nmul, knl, ksl in m
 
   local byt
   local by = knl[nmul] / fact(nmul-1)
@@ -321,16 +312,9 @@ local function strait_kick_track(elem, m, l)
     by  = byt
   end
 
-  m.px = px - dir*by + dir*knl[1] -- why not like in skick ?
-  m.py = py + dir*bx - dir*ksl[1]
+  m.px = px - dir*by
+  m.py = py + dir*bx
 
-  if knl[1] ~= 0 or ksl[1] ~= 0 then
-    local t, pt in m
-    local beta_inv = 1/m.beam.beta
-    local pz = sqrt(1 + 2*beta_inv*pt + pt^2)
-    m.t = t + dir*(knl[1]*x - ksl[1]*y) * (beta_inv+pt)/pz
-  end
---add mult solenoid
   m.out_action(elem, m, l, 'strait_kick_track')
 end
 
@@ -339,12 +323,7 @@ end
 local function curved_kick_track (elem, m, l) --
   m.in_action(elem, m, l, 'curved_kick_track')
 
-  local nmul = get_mult(elem, m, l)
-  if nmul == 0 then return end
-
-  local x, px, y, py, knl, ksl in m
-  local dir = m.dir * m.beam.charge
-
+  local x, px, y, py, dir, nmul, knl, ksl in m
   local byt
   local by = knl[nmul] / fact(nmul-1)
   local bx = ksl[nmul] / fact(nmul-1)
@@ -367,64 +346,67 @@ local integrate = require 'madl_sympint'
 
 -- frame kinds ----------------------------------------------------------------o
 
-local function thick_track (elem, m, angle, drift, kick)
-  local l, method in elem
-  local integrator = integrate[method or m.method]
-  local n_elem = #elem
+local function thick_track (elem, m, drift, kick)
+  local l, angle, subelem, method in elem
+  local ns = is_nil(subelem) and 0 or #subelem
+  local nmul = abs(l) <= minlen and get_mult0(elem, m) or get_mult(elem, m, l)
+  local integrator = nmul == 0 and drift or integrate[method or m.method]
 
-  if n_elem == 0 then -- no sub-elements
-    integrator(elem, m, l, drift, kick)
-    return l
+  if ns == 0 then -- no sub-elements
+    integrator(elem, m, l, drift, kick) return
   end
 
   local s, ds, at = 0
-  for i=1,n_elem do   -- n_elem sub-elements
-    at = assert(elem[i].at, "invalid sub-element position (at expected)")
+  for i=1,ns do   -- sub-elements
+    local selem = subelem[i]
+    at = assert(selem.at, "invalid sub-element position (at expected)")
     ds = at*l - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
       integrator(elem, m, ds, drift, kick)
     end
     s = s + ds
-    assert(elem[i]:track(m) == 0, "invalid sub-element length (0 expected)")
+    assert(selem.l == 0, "invalid sub-element length (0 expected)")
+    selem:track(m)
   end
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
   if ds >= minlen then
     integrator(elem, m, ds, drift, kick)
   end
-  return l
 end
 
 local function drift_track (elem, m)
-  local l in elem
-  local n_elem = #elem
+  local l, subelem in elem
+  local ns = is_nil(subelem) and 0 or #subelem
 
-  if n_elem == 0 then -- no sub-elements
-    strait_drift_track(elem, m, l)
-    return l
+  m.nmul = 0 -- for sanity checks
+
+  if ns == 0 then -- no sub-elements
+    strait_drift_track(elem, m, l) return
   end
 
   local s, ds, at = 0
-  for i=1,n_elem do   -- n_elem sub-elements
-    at = assert(elem[i].at, "invalid sub-element position (at expected)")
+  for i=1,ns do   -- sub-elements
+    local selem = subelem[i]
+    at = assert(selem.at, "invalid sub-element position (at expected)")
     ds = at*l - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
       strait_drift_track(elem, m, ds)
     end
     s = s + ds
-    assert(elem[i]:track(m) == 0, "invalid sub-element length (0 expected)")
+    assert(selem.l == 0, "invalid sub-element length (0 expected)")
+    selem:track(m)
   end
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
   if ds >= minlen then
     strait_drift_track(elem, m, ds)
   end
-  return l
 end
 
-local function thin_track (elem, m)
+local function thin_track (elem, m) -- e.g. multipole
 --  io.write('THIN_TRACK: for ', elem.name, ' (l=', elem.l, ')\n')
   local l in elem
 
@@ -432,8 +414,14 @@ local function thin_track (elem, m)
     error("invalid thin element length (too long): " .. elem.name)
   end
 
-  thin_kick_track(elem, m, 0)
-  return l
+  local nmul = get_mult0(elem, m)
+  if nmul == 0 then return end
+
+  if ptccompat == true then
+    thin_kick_track  (elem, m, 0)
+  else
+    strait_kick_track(elem, m, 0)
+  end
 end
 
 local function strait_track (elem, m) -- e.g. rbend
@@ -446,8 +434,8 @@ local function strait_track (elem, m) -- e.g. rbend
 --    error("invalid strait element length (too short): " .. elem.name)
   end
 
-  -- TODO: boundary elements and radiation.
-  return thick_track (elem, m, 0, strait_drift_track, strait_kick_track)
+  -- TODO: boundary elements, radiation and aperture checks.
+  thick_track (elem, m, strait_drift_track, strait_kick_track)
 end
 
 local function curved_track (elem, m) -- e.g. sbend
@@ -461,7 +449,7 @@ local function curved_track (elem, m) -- e.g. sbend
   end
 
   -- TODO: boundary elements and radiation.
-  return thick_track (elem, m, angle, curved_drift_track, curved_kick_track)
+  thick_track (elem, m, curved_drift_track, curved_kick_track)
 end
 
 -- specialisations ------------------------------------------------------------o
@@ -476,20 +464,24 @@ local function solenoid_track (elem, m)
     error("invalid strait element length (too short): " .. elem.name)
   end
 
-  -- TODO: boundary elements and radiation.
-  return thick_track (elem, m, 0, solenoid_drift_track, strait_kick_track)
+  -- TODO: boundary elements, radiation and aperture checks.
+  thick_track (elem, m, solenoid_drift_track, strait_kick_track)
 end
 
 -- load track maps into elements ----------------------------------------------o
 
+local element in MAD
+
 element.element        :set_function { track =  invalid_track }
-element.drift_element  :set_function { track =    drift_track }
 element.thin_element   :set_function { track =     thin_track }
+element.drift_element  :set_function { track =    drift_track }
 element.strait_element :set_function { track =   strait_track }
 element.curved_element :set_function { track =   curved_track }
 element.solenoid       :set_function { track = solenoid_track }
 
 -- track command --------------------------------------------------------------o
+
+local table, Command in MAD
 
 local _trck = {}
 
@@ -528,7 +520,7 @@ local function make_map (self, start)
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt,
            knl=vector(maxmul), ksl=vector(maxmul),
-           dir=direction, nst=nst, method=method, T=T,
+           direction=direction, nst=nst, method=method, T=T,
            in_action=in_action, out_action=out_action,
            s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_trck]=_trck }
 end
@@ -560,12 +552,13 @@ local function exec (self)
   local s_pos in seq
 
   drift = drift == true and save or 'none'
+  map.dir  = map.direction * beam.charge
   map.beam = beam
 
   -- dynamic tracking
   for i=start,stop do
     local elem, s = seq[i], s_pos[i]
-    local name, kind, angle, tilt, nstep in elem
+    local name, kind, l in elem
     local ds = s - s_end
 
     -- implicit drift
@@ -576,17 +569,17 @@ local function exec (self)
       if drift == 'exit' and elem:is_selected() then
         fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
       end
-    elseif ds < 0 then
+    elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
             tostring(ds), seq.name, name, tostring(s)))
     end
 
     -- sequence element
-    ds = elem:track(map)
-    s_end = s + ds
+    elem:track(map)
+    s_end = s + l
 
     if save == 'exit' and elem:is_selected() then
-      fill_table(tbl, name, kind, map, s_end-s_ini, ds)
+      fill_table(tbl, name, kind, map, s_end-s_ini, l)
     end
   end
   map.s_end, map.ndrift = s_end, ndrift
@@ -612,5 +605,6 @@ MAD.utility.defhelp(M) -- todo: per function help -> 'track'
 -- end ------------------------------------------------------------------------o
 return {
   track = track,
+
   __help = M.__help,
 }
