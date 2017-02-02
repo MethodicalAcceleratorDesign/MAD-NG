@@ -202,7 +202,7 @@ function TestGmath:testCeil()
   assertEquals( ceil(-huge) , -huge )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/ceil(-  0 ) , -inf ) -- check for -0
+  assertEquals( 1/ceil(-  0 ) , -inf ) -- check for -0  :: jit -> inf [BUG]
   assertEquals( 1/ceil(   0 ) ,  inf ) -- check for +0
   assertEquals(   ceil(- inf) , -inf )
   assertEquals(   ceil(  inf) ,  inf )
@@ -230,7 +230,7 @@ function TestGmath:testFloor()
   assertEquals( floor(-huge) , -huge )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/floor(- 0 ) , -inf ) -- check for -0
+  assertEquals( 1/floor(- 0 ) , -inf ) -- check for -0 :: jit(rand) -> inf [BUG]
   assertEquals( 1/floor(  0 ) ,  inf ) -- check for +0
   assertEquals(   floor(-inf) , -inf )
   assertEquals(   floor( inf) ,  inf )
@@ -263,7 +263,6 @@ function TestGmath:testFrac()
   assertEquals( frac(  1.5) ,   0.5 )
   assertEquals( frac(  1.7) ,   0.7 )
   assertEquals( frac( huge) ,     0 )
-!  assertEquals( frac(  inf) ,     0 ) -- get nan, pb with modf and jit
   assertEquals( frac(-   0) , -   0 )
   assertEquals( frac(-tiny) , -tiny )
   assertEquals( frac(- 0.1) , - 0.1 )
@@ -273,12 +272,19 @@ function TestGmath:testFrac()
   assertEquals( frac(- 1.5) , - 0.5 )
   assertEquals( frac(- 1.7) , - 0.7 )
   assertEquals( frac(-huge) , -   0 )
-!  assertTrue  ( frac(- inf) ,     0 ) -- get nan, pb with modf and jit
 
   assertAlmostEquals( frac( 1.1)-0.1, 0, eps/2 )
   assertAlmostEquals( frac(-1.1)+0.1, 0, eps/2 )
 
   assertNaN( frac(nan) )
+
+  if false then -- expected
+    assertEquals( frac(  inf) , 0 ) -- interpreter -> nan, pb with modf [BUG]
+    assertEquals( frac(- inf) , 0 ) -- interpreter -> nan, pb with modf [BUG]
+  else          -- actual [BUG]
+    assertNaN( frac(  inf) )        -- jit ->  0 [CORRECT]
+    assertNaN( frac(- inf) )        -- jit -> -0 [CORRECT]
+  end
 end
 
 function TestGmath:testTrunc()
@@ -345,7 +351,7 @@ function TestGmath:testRound()
   assertEquals( round(-huge) , -huge )
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/round(-  0 ) , -inf ) -- check for -0
+  assertEquals( 1/round(-  0 ) , -inf ) -- check for -0 :: jit(rand) -> inf [BUG]
   assertEquals( 1/round(   0 ) ,  inf ) -- check for +0
   assertEquals(   round(- inf) , -inf )
   assertEquals(   round(  inf) ,  inf )
@@ -1147,7 +1153,7 @@ function TestGmath:testRect()
   assertEquals(   rect(    1) ,     1 )
   assertEquals(   rect( huge) ,  huge )
   assertEquals(   rect(  inf) ,   inf )
-  assertEquals( 1/rect(-   0) , - inf ) -- check for -0
+  assertEquals( 1/rect(-   0) , - inf ) -- check for -0 :: jit(rand) -> inf [BUG]
   assertEquals(   rect(-tiny) , -tiny )
   assertEquals(   rect(- 0.1) , - 0.1 )
   assertEquals(   rect(-   1) , -   1 )
@@ -1552,17 +1558,17 @@ function TestGmath:testFMod()
   assertAlmostEquals( fmod( 5.1,  3.1) -  2  , 0, 2*eps)
 
   -- Check for IEEE:IEC 60559 compliance
-  assertEquals( 1/fmod(- 0,  0.5), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0,  0.5), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0,  0.5),  inf) -- check for +0
-  assertEquals( 1/fmod(- 0, -0.5), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0, -0.5), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0, -0.5),  inf) -- check for +0
-  assertEquals( 1/fmod(- 0,  1  ), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0,  1  ), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0,  1  ),  inf) -- check for +0
-  assertEquals( 1/fmod(- 0, -1  ), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0, -1  ), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0, -1  ),  inf) -- check for +0
-  assertEquals( 1/fmod(- 0,  10 ), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0,  10 ), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0,  10 ),  inf) -- check for +0
-  assertEquals( 1/fmod(- 0, -10 ), -inf) -- check for -0
+  assertEquals( 1/fmod(- 0, -10 ), -inf) -- check for -0 :: jit -> inf [BUG]
   assertEquals( 1/fmod(  0, -10 ),  inf) -- check for +0
 
   assertEquals(  fmod( 0.5,  inf),  0.5)
@@ -1689,15 +1695,21 @@ function TestGmath:testMax()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( max(nan, -inf), -inf )
   assertEquals( max(nan,   0 ),   0  )
---  assertEquals( max(0  ,  nan),   0  )
   assertEquals( max(nan,  inf),  inf )
   assertEquals( max(nan, 0, 1),   1  )
   assertEquals( max(nan,nan,0),   0  )
---  assertEquals( max(nan,0,nan),   0  )
---  assertEquals( max(0,nan,nan),   0  )
   assertNaN   ( max(nan)         )
   assertNaN   ( max(nan,nan)     )
   assertNaN   ( max(nan,nan,nan) )
+  if false then -- expected
+    assertEquals( max(0  ,  nan), 0 )
+    assertEquals( max(nan,0,nan), 0 )
+    assertEquals( max(0,nan,nan), 0 )
+  else          -- actual [BUG]
+    assertNaN ( max(0  ,  nan) )
+    assertNaN ( max(nan,0,nan) )
+    assertNaN ( max(0,nan,nan) )
+  end
 end
 
 function TestGmath:testMin()
@@ -1721,15 +1733,22 @@ function TestGmath:testMin()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( min(nan, -inf), -inf )
   assertEquals( min(nan,   0 ),   0  )
---  assertEquals( min(0  ,  nan),   0  )
   assertEquals( min(nan,  inf),  inf )
   assertEquals( min(nan, 0,-1), - 1  )
   assertEquals( min(nan,nan,0),   0  )
---  assertEquals( min(nan,0,nan),   0  )
---  assertEquals( min(0,nan,nan),   0  )
   assertNaN   ( min(nan)         )
   assertNaN   ( min(nan,nan)     )
   assertNaN   ( min(nan,nan,nan) )
+
+  if false then -- expected
+    assertEquals( min(0  ,  nan),   0  )
+    assertEquals( min(nan,0,nan),   0  )
+    assertEquals( min(0,nan,nan),   0  )
+  else          -- actual [BUG]
+    assertNaN ( min(0  ,  nan) )
+    assertNaN ( min(nan,0,nan) )
+    assertNaN ( min(0,nan,nan) )
+  end
 end
 
 function TestGmath:testDeg()
