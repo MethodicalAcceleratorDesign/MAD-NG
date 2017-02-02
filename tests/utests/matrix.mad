@@ -513,27 +513,24 @@ function TestMatrixErr:testGetsub()
 end
 
 function TestMatrixGet:testGetsub() --TODO
-  local nr, nc, r
-  local m = G.matidx[25]
+  local m, r = G.matidx[25]
   assertEquals( m:getsub(2,2          ):geti(1) , m:get(2,2) )
   assertEquals( m:getsub(2,2,{}       )[1]      , m:get(2,2) )
   assertEquals( m:getsub(2,2,vector(2)):get(1,1), m:get(2,2) )
   assertEquals( m:getsub(2,2,vector(2)):get(2,1), 0          )
-  r = m:getsub( 1..2, 1..3)   nr, nc = r:sizes()
-  for i=1,nr do for j=1,nc do assertEquals( r:get(i,j), m:get(i, j) ) end end
-  r = m:getsub({1}  ,{1,2})   nr, nc = r:sizes()
-  for i=1,nr do for j=1,nc do assertEquals( r:get(i,j), idx(i,j,nc) ) end end
+  r = m:getsub( 1..2, 1..3) for i=1,2 do for j=1,3 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
+  r = m:getsub({1}  ,{1,2}) for i=1,1 do for j=1,2 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
 
   for _,m in ipairs(G.matidx) do    -- 25  (all shapes over 5x5)
     local nr, nc = m:sizes()
-    for li=1,nr do               -- 625 (all sub-shapes over 5x5)
+    for li=1,nr do                  -- 625 (all sub-shapes over 5x5)
     for lj=1,nc do
       local vi, vj = G.vi[li], G.vj[lj]
       vi:perm(); vj:perm()
       local r = m:getsub(vi, vj)
       for i=1,li do
       for j=1,lj do
-        assertEquals(r:get(i,j), m:get(vi[i], vj[j]))
+        assertEquals( r:get(i,j), m:get(vi[i], vj[j]) )
       end end
     end end
   end
@@ -621,27 +618,22 @@ function TestMatrixErr:testGetv()
 end
 
 function TestMatrixGet:testGetv()
-  local m1 = matrix(4):fill(1..16)
-  assertEquals( m1:getv(1   , {} )      , {1}                  )
-  assertEquals( m1:getv(1   , vector(2)), vector{1,0}          )
-  assertEquals( m1:getv(1..2)           , vector(2):fill(1..2) )
-  assertEquals( m1:getv{1,2}            , vector(2):fill(1..2) )
+  local m = matrix(4):fill(1..16)
+  assertEquals( m:getv(1   , {}       ), {1}                  )
+  assertEquals( m:getv(1   , vector(2)), vector{1,0}          )
+  assertEquals( m:getv(1..2           ), vector(2):fill(1..2) )
+  assertEquals( m:getv({1,2}          ), vector(2):fill(1..2) )
 
   for _,m in ipairs(G.matidx) do
     local mn, nr, nc = m:size(), m:sizes()
-    for j=1,m:size() do
-      assertEquals( m:getv(j), vector{j} )
-    end
+    for j=1,mn do assertEquals( m:getv(j), vector{j} ) end
     for li=1,nr do
       local vi = G.vi[li]:copy()
-      for j=1,li do
-        vi[j] = random(1,mn)
-      end -- TODO
-      vi:perm()
-      assertEquals( m:getv(vi), vector(#vi):fill(vi) )
+      vi:random( \x random(1,mn)):perm()
+      assertEquals( m:getv(vi), vi )
     end
   end
-  m1:getv(1..5,'in') assertEquals( m1, matrix(4):fill(1..16) ) -- same output - to documentation
+  m:getv(1..5,'in') assertEquals( m, matrix(4):fill(1..16) ) -- same output - to documentation
 end
 
 function TestMatrixErr:testSetv()
@@ -747,17 +739,16 @@ end
 
 function TestMatrixGet:testGetrow()
   local m = G.matidx[25]
-  assertEquals( m:getrow{1,2}            , m:getsub({1,2},1..5   ) )
-  assertEquals( m:getrow(vector{1,2})    , m:getsub({1,2},1..5   ) )
-  assertEquals( m:getrow(vector{1,2}, {}), m:getsub({1,2},1..5,{}) )
-
+  assertEquals( m:getrow({1,2}          ), m:getsub({1,2}, 1..5    ) )
+  assertEquals( m:getrow(vector{1,2}    ), m:getsub({1,2}, 1..5    ) )
+  assertEquals( m:getrow(vector{1,2}, {}), m:getsub({1,2}, 1..5, {}) )
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     for i=1,nr do
     for a=1,i  do
       for li=1,i-a+1 do
         local ra = a..i..li
-        assertEquals( m:getrow(ra), m:getsub(ra,1..nc) )
+        assertEquals( m:getrow(ra), m:getsub(ra, 1..nc) )
       end
     end end
   end
@@ -830,8 +821,10 @@ end
 
 function TestMatrixGet:testGetcol()
   local m = G.matidx[25]
-  assertEquals( m:getcol{1,2}            , m:getsub(1..5,{1,2}   ) )
-  assertEquals( m:getcol(vector{1,2})    , m:getsub(1..5,{1,2}   ) )
+  assertEquals( m:getcol({1,2}          ), m:getsub(1..5,{1,2}    ) )
+  assertEquals( m:getcol(vector{1,2}    ), m:getsub(1..5,{1,2}    ) )
+  assertEquals( m:getcol(vector{1}  , {}), m:getsub(1..5,{1}  , {}) )
+
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     for j=1,nc do
@@ -945,13 +938,19 @@ end
 function TestMatrixInPlace:testRandom()
   local oldVal, val = {}, {}
   for _,m in ipairs(G.matidx) do
+    local mn = m:size()
     m:random()
-    for i = 1,m:size() do
+    for i = 1,mn do
       val[i] = m:geti(i)
       assertTrue ( val[i] <  1    )
       assertTrue ( val[i] >= 0    )
       assertFalse( val[i] == oldVal[i] )
       oldVal[i] =  val[i]
+    end
+  m:random( \x random(1,mn))
+  for i = 1,mn do
+      assertTrue ( m:geti(i) <= mn  )
+      assertTrue ( m:geti(i) >= 1    )
     end
   end
 end
