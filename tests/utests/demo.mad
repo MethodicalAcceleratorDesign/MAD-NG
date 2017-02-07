@@ -1,0 +1,123 @@
+-- Build (shell)
+make clean
+make -j9
+
+-- Build with scripts (shell + Makefile)
+make cleanobj
+make -j9
+
+-- Command line option (shell)
+./mad -help
+
+-- onliner (shell)
+./mad -q -e 'print("hello world", os.date())'
+
+-- Command line interactive (shell)
+rlwrap ./mad
+
+-- Environmnent (interactive)
+for k,v in pairs(MAD.env) do print(k,v) end
+
+-- Arguments (interactive)
+for k,v in pairs(MAD.env.arg) do print(k,v) end
+
+-- Performance (interactive)
+do
+  local f = \z -> z^2 + (1+1i)*z - 1                -- map (complex)
+  local z = 0.1                                     -- initial conditions
+  local t0 = os.clock()
+  for i in ipairs(1..1e8) do z = f(z) end           -- fix point
+  print('time [s] =',os.clock()-t0, 'val =', z)
+end
+
+-- numerical stability (interactive)
+a=0 for _,v in ipairs(1..1e8..0.1) do a = v end     -- stable
+print(a)
+
+a=0 for v = 1,1e8,0.1 do a = v end                  -- unstable
+print(a)
+
+-- local 'in' table (interactive)
+do
+  local sin, cos, tan, pi = math.cos, math.sin, math.tan, math.pi
+  print('cos(pi/2)=', cos(pi/2))
+end
+
+do
+  local sin, cos, tan, pi in math
+  print('cos(pi/2)=', cos(pi/2))
+end
+
+-- convert LHC sequences (shell)
+./mad -e 'MADX:load("../share/LHC/lhc_as-built.seq", "lhc_as-built_gen.mad")'
+./mad -e 'MADX:load("../share/LHC/opt_inj.madx", "opt_inj_gen.mad")'
+
+-- load LHC sequence and check (shell)
+./mad -e 'require "lhc_as-built_gen" lhcb1=MADX.lhcb1' \
+      -e 'print("tilt=",lhcb1.mbxwt_1l2.tilt)' \
+      -e 'print("kick=",lhcb1.mbxwt_1l2.kick)'
+
+-- Example of unit test
+./mad all.mad -v -p TestSequence.testConvertLHC2Files
+
+-- deferred expressions (interactive)
+quad = MAD.element.quadrupole       -- kind
+mq   = quad { l  = 2.10 }           -- class
+qf   = mq   { k1 = 0.05 }           -- circuit
+qd   = mq   { k1 := -qf.k1*0.98 }   -- circuit (deferred expression)
+qd1  = qd   {}                      -- element
+print(qd1.k1)
+qf.k1 = 0.06
+print(qd1.k1)
+qd1.k1l = \s -> s.k1*s.l
+print(qd1.k1l)
+a=0 for v = 1,1e9 do a = a + qd1.k1l end -- performance
+print(a)
+
+-- deferred expressions (interactive)
+require "lhc_as-built_gen" ; lhcb1 = MADX.lhcb1
+a=0 for v = 1,1e9 do a = a + lhcb1.mbxwt_1l2.tilt end -- performance
+print(a)
+
+-- deferred expressions and arrays (interactive)
+print(lhcb1.mco_8r1_b1.knl[4])
+MADX.kco_a12b1 = 1e-6
+print(lhcb1.mco_8r1_b1.knl[4])
+a=0 for v = 1,1e9 do a = a + lhcb1.mco_8r1_b1.knl[4] end -- performance
+print(a)
+
+-- Linear algebra (interactive)
+MAD.export 'help'
+help '3D Geometry'
+help 'Matrix properties'
+
+-- Linear algebra performance (interactive)
+MAD.option.format="%.4g"
+MAD.export('tostring', true)
+
+do
+  local I = MAD.matrix(6):eye()
+  local f = \z -> z^2 + (1+1i)*z - I                -- map (complex matrix)
+  local z = I*0.1                                   -- initial conditions
+  local t0 = os.clock()
+  for _ in ipairs(1..1e6) do z = f(z) end           -- fix point
+  print('time [s] =',os.clock()-t0)
+  print('val =') print(z)
+end
+
+do
+  local I, r = MAD.matrix(6):eye(), MAD.cmatrix(6)
+  function f(z)
+    z:mul(z, r)
+    return z:mul(1+1i,z):sub(I,z):add(r,z)
+  end
+
+  local z = MAD.cmatrix(6):eye(0.1)
+  local t0 = os.clock()
+  for _ in ipairs(1..1e6) do
+    z = f(z)
+  end
+  print('time [s] =',os.clock()-t0)
+  print('val =') print(z)
+end
+

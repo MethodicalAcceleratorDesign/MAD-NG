@@ -189,6 +189,51 @@ local function get_mult (elem, m, l) -- general
   return nmul
 end
 
+-- S-rotation (roll, tilt)
+
+local function srot_track (elem, m, angle)
+  local sa, ca = sin(angle), cos(angle)
+  local x, px, y, py in m
+
+  m.x  = ca*x  + sa*y
+  m.y  = ca*y  - sa*x
+  m.px = ca*px + sa*py
+  m.py = ca*py - sa*px
+end
+
+-- Y-rotation (yaw)
+
+local function yrot_track (elem, m, angle) -- XZ rot
+  local sa, ca, ta = sin(angle), cos(angle), tan(angle)
+  local x, px, y, py, t, pt in m
+  local beta_inv = 1/m.beam.beta
+  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local pz_ = 1/pz_
+  local ptt = 1 - ta*px*pz_
+
+  m.x  = x/(ca*ptt)
+  m.px = ca*px + sa*pz
+  m.y  = y + ta*x*py*pz_/ptt
+  m.t  = t + ta*x*pz_*(beta_inv+pt) / ptt
+end
+
+-- X-rotation (pitch)
+
+local function xrot_track (elem, m, angle) -- YZ rot
+  local sa, ca, ta = sin(angle), cos(angle), tan(angle)
+  local x, px, y, py, t, pt in m
+  local beta_inv = 1/m.beam.beta
+  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local pz_ = 1/pz_
+  local ptt = 1 - ta*px*pz_
+
+  -- same as yrot with x <-> y and px <-> py
+  m.x  = x + ta*y*px*pz_/ptt
+  m.y  = y/(ca*ptt)
+  m.py = ca*py + sa*pz
+  m.t  = t + ta*y*pz_*(beta_inv+pt) / ptt
+end
+
 -- Drift general exact strait
 
 local function strait_drift_track (elem, m, l)
@@ -425,21 +470,27 @@ end
 
 local function strait_track (elem, m) -- e.g. rbend
 --  io.write('STRAIT_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
-  local l, angle in elem
+  local l, angle, tilt in elem
 
   if abs(angle) >= minang then
     error("invalid strait element angle (too curved): " .. elem.name)
 --  elseif l < minlen then
 --    error("invalid strait element length (too short): " .. elem.name)
   end
-
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, tilt)
+  end
   -- TODO: boundary elements, radiation and aperture checks.
   thick_track (elem, m, strait_drift_track, strait_kick_track)
+
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, -tilt)
+  end
 end
 
 local function curved_track (elem, m) -- e.g. sbend
 --  io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
-  local l, angle in elem
+  local l, angle, tilt in elem
 
   if abs(angle) < minang then
     error("invalid curved element angle (too strait): " .. elem.name)
@@ -447,15 +498,23 @@ local function curved_track (elem, m) -- e.g. sbend
     error("invalid curved element length (too short): " .. elem.name)
   end
 
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, tilt)
+  end
+
   -- TODO: boundary elements and radiation.
   thick_track (elem, m, curved_drift_track, curved_kick_track)
+
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, -tilt)
+  end
 end
 
 -- specialisations ------------------------------------------------------------o
 
 local function solenoid_track (elem, m)
 --  io.write('SOL_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
-  local l, angle in elem
+  local l, angle, tilt in elem
 
   if abs(angle) >= minang then
     error("invalid strait element angle (too curved): " .. elem.name)
@@ -463,8 +522,16 @@ local function solenoid_track (elem, m)
     error("invalid strait element length (too short): " .. elem.name)
   end
 
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, tilt)
+  end
+
   -- TODO: boundary elements, radiation and aperture checks.
   thick_track (elem, m, solenoid_drift_track, strait_kick_track)
+
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, -tilt)
+  end
 end
 
 -- load track maps into elements ----------------------------------------------o

@@ -83,7 +83,7 @@ static const char *progname = "mad";
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
-#define MAD_VERSION "0.0.3"
+#define MAD_VERSION "0.2.0"
 #endif
 
 /* globals */
@@ -866,7 +866,8 @@ static int dobytecode(lua_State *L, char **argv)
 	}
 	for (argv++; *argv != NULL; narg++, argv++)
 		lua_pushstring(L, *argv);
-	return report(L, lua_pcall(L, narg, 0, 0));
+	report(L, lua_pcall(L, narg, 0, 0));
+	return -1;
 }
 
 /* check that argument has no extra characters at the end */
@@ -971,9 +972,7 @@ static int runargs(lua_State *L, char **argv, int argn)
 				return 1;
 			break;
 		case 'b':  /* LuaJIT extension. */
-			if (dobytecode(L, argv+i))
-				return 1;
-		  break;
+			return dobytecode(L, argv+i);
 		default: break;
 		}
 	}
@@ -1042,7 +1041,8 @@ static int pmain(lua_State *L)
 
 	/* MAD section. */
 	mad_regfunc(L);
-	if ((flags & FLAGS_MADENV)) dolibrary(L, "madl_main");
+	if ((flags & FLAGS_MADENV))
+		dolibrary(L, "madl_main");
 	if (!(flags & FLAGS_NOENV)) {
 		s->status = handle_madinit(L);
 		if (s->status != 0) return 0;
@@ -1086,6 +1086,6 @@ int main(int argc, char **argv)
 	status = lua_cpcall(L, pmain, NULL);
 	report(L, status);
 	lua_close(L);
-	return (status || smain.status) ? EXIT_FAILURE : EXIT_SUCCESS;
+	return (status || smain.status > 0) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
