@@ -48,6 +48,7 @@ local errCMat = cmatrix(2)
 local G   = {}
 G.cmatidx = {}
 G.cmattmp = {}
+G.matidx  = {}
 G.size    = {}
 G.vi      = {}
 G.vj      = {}
@@ -58,6 +59,7 @@ for nr=1,5 do
   for nc=1,5 do
     G.cmatidx[#G.cmatidx+1] = cmatrix(nr,nc):fill(1..nr*nc):map(\x x+x*1i)
     G.cmattmp[#G.cmattmp+1] = cmatrix(nr,nc)
+    G.matidx [#G.matidx+1]  =  matrix(nr,nc):fill(1..nr*nc)
     G.size   [#G.size+1]   = {nr,nc}
   end
 end
@@ -167,11 +169,13 @@ end
 function TestCMatrixSet:setUp()
   for _,cm in ipairs(G.cmattmp) do cm:zeros() end
   for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()) end
+  for _,m  in ipairs(G.matidx)  do m :fill(1..m:size())  end
 end
 
 function TestCMatrixSet:tearDown()
   for _,cm in ipairs(G.cmattmp) do cm:zeros() end
   for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()) end
+  for _,m  in ipairs(G.matidx)  do m :fill(1..m:size())  end
 end
 
 function TestCMatrixErr:testGeti0()
@@ -443,44 +447,48 @@ function TestCMatrixErr:testSetsub()
   assertErrorMsgContains( msg[2], mth, 'setsub', errCMat, 1   , C  , 1i  )
 end
 
- --[[
 function TestCMatrixSet:testSetsub()
 -- add test: set only real, set only imaginary, set complex <- plus the same test
--- on real matrix start
 
-  local m = G.cmattmp[25]
-  m:setsub( 1..5, 1, {1,1,1,1,1}) assertEquals( m:getsub( 1..5, 1   ), m:same(5,1):fill(1)    )
-                                  assertEquals( m:getsub( 1..5, 2..5), m:same(5,4)            )
-  m:setsub( 1..5, 1, 1..5       ) assertEquals( m:getsub( 1..5, 1   ), m:same(5,1):fill(1..5) )
-                                  assertEquals( m:getsub( 1..5, 2..5), m:same(5,4)            )
-  m:setsub( 1..5, 1..5, 1       ) assertEquals( m:getsub( 1..5, 1..5), m:same(5,5):fill(1)    )
-  m:zeros()
+  local cm = G.cmattmp[25]
+  cm:setsub( 1..5, 1, {1,1,1,1,1}) assertEquals( cm:getsub( 1..5, 1   ), cm:same(5,1):fill(1)    )
+                                   assertEquals( cm:getsub( 1..5, 2..5), cm:same(5,4)            )
+  cm:setsub( 1..5, 1, 1..5       ) assertEquals( cm:getsub( 1..5, 1   ), cm:same(5,1):fill(1..5) )
+                                   assertEquals( cm:getsub( 1..5, 2..5), cm:same(5,4)            )
+  cm:setsub( 1..5, 1..5, 1       ) assertEquals( cm:getsub( 1..5, 1..5), cm:same(5,5):fill(1)    )
+  cm:zeros()
 -- recycling
-  m:setsub( 1..5, 1   , {1,1}) assertEquals( m:getsub( 1..5, 1   ), m:same(5,1):fill(1)    )
-                               assertEquals( m:getsub( 1..5, 2..5), m:same(5,4)            )
-  m:setsub( 1..5, 1   , 1..3 ) assertEquals( m:getsub( 1..3, 1   ), m:same(3,1):fill(1..3) )
-                               assertEquals( m:getsub( 4..5, 1   ), m:same(2,1):fill(1..2) )
-                               assertEquals( m:getsub( 1..5, 2..5), m:same(5,4)            )
-  m:setsub( 1..5, 1..5, 1..5 )
-  for i =1,5 do assertEquals( m:getsub( i, 1..5), m:same(1,5):fill(1..5) ) end
+  cm:setsub( 1..5, 1   , {1i} ) assertEquals( cm:getsub( 1..5, 1   ), cm:same(5,1):fill(1):map\x x*1i )
+                                assertEquals( cm:getsub( 1..5, 2..5), cm:same(5,4)            )
+  cm:setsub( 1..5, 1   , 1..3 ) assertEquals( cm:getsub( 1..3, 1   ), cm:same(3,1):fill(1..3) )
+                                assertEquals( cm:getsub( 4..5, 1   ), cm:same(2,1):fill(1..2) )
+                                assertEquals( cm:getsub( 1..5, 2..5), cm:same(5,4)            )
+  cm:setsub( 1..5, 1..5, 1..5 )
+  for i =1,5 do assertEquals( cm:getsub( i, 1..5), cm:same(1,5):fill(1..5) ) end
 
-  for i,m in ipairs(G.cmattmp) do
-    local nr, nc = m:sizes()
+  for i,cm in ipairs(G.cmattmp) do
+    local nr, nc = cm:sizes()
     for li=1,nr do
     for lj=1,nc do
       local vi, vj = G.vi[li], G.vj[lj]
+      cm:zeros()
       vi:perm(); vj:perm()
-      local mt = m:getsub(vi, vj)
-      m:setsub(vi,vj,1..#vi*#vj)
-      local r  = m:getsub(vi, vj)
+      local cmtemp = cmatrix(#vi,#vj):fill(1..#vi*#vj):map(\x x+x*1i)
+      cm:setsub(vi,vj,cmtemp)
+      if     #vi ~= nr and #vj ~= nc then  assertEquals( cm:getsub(1    ..nr, #vj+1..nc), cm:same(nr    , nc-#vj) )
+                                           assertEquals( cm:getsub(#vi+1..nr, 1    ..nc), cm:same(nr-#vi, nc    ) )
+      elseif #vi == nr and #vj ~= nc then  assertEquals( cm:getsub(1    ..nr, #vj+1..nc), cm:same(nr    , nc-#vj) )
+      elseif #vi ~= nr and #vj == nc then  assertEquals( cm:getsub(#vi+1..nr, 1    ..nc), cm:same(nr-#vi, nc    ) ) end
+
+      local rset  = cm:getsub(vi, vj)
       for i=1,li do
       for j=1,lj do
-        assertEquals( r:get(i,j), idx(i,j,lj) )
+        assertEquals( rset:get(i,j), idxC(i,j,lj) )
       end end
-      m:setsub(vi,vj,mt)
     end end
   end
 end
+ --[[
 
 function TestCMatrixErr:testGetv()
   local msg = {
