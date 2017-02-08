@@ -43,9 +43,6 @@ M.VERBOSITY_LOW     = 1
 M.VERBOSITY_QUIET   = 0
 M.VERBOSITY_VERBOSE = 20
 
--- count assertions
-M.ASSERTCOUNT = 0
-
 -- set EXPORT_ASSERT_TO_GLOBALS to have all asserts visible as global values
 -- EXPORT_ASSERT_TO_GLOBALS = true
 
@@ -81,6 +78,8 @@ Options:
 --                 general utility functions
 --
 ----------------------------------------------------------------
+
+local assertCount = 0
 
 local crossTypeOrdering = {
     number = 1,
@@ -654,7 +653,7 @@ local function errorMsgEquality(actual, expected)
 end
 
 function M.assertError(f, ...)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- assert that calling f with the arguments will raise an error
     -- example: assertError( f, 1, 2 ) => f(1,2) should generate an error
     if pcall( f, ... ) then
@@ -663,77 +662,77 @@ function M.assertError(f, ...)
 end
 
 function M.assertIf(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if not value then
         failure("expected: not false or nil, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIf(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if value then
         failure("expected: false or nil, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertTrue(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if value ~= true then
         failure("expected: true, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertFalse(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if value ~= false then
         failure("expected: false, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertIsNil(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if value ~= nil then
         failure("expected: nil, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIsNil(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if value == nil then
         failure("expected non nil value, received nil", 2)
     end
 end
 
 function M.assertIsNaN(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(value) ~= "number" or value == value then
         failure("expected: nan, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIsNaN(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(value) == "number" and value ~= value then
         failure("expected non nan value, received nan", 2)
     end
 end
 
 function M.assertIsInf(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(value) ~= "number" or math.abs(value) ~= 1/0 then
         failure("expected: inf, actual: " ..prettystr(value), 2)
     end
 end
 
 function M.assertNotIsInf(value)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(value) == "number" and math.abs(value) == 1/0 then
         failure("expected non inf value, received ±inf", 2)
     end
 end
 
 function M.assertEquals(actual, expected)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(actual) == 'table' and type(expected) == 'table' then
         if not _is_table_equals(actual, expected) then
             failure( errorMsgEquality(actual, expected), 2 )
@@ -749,7 +748,7 @@ end
 -- may not work. We need to give a default margin; EPSILON defines the
 -- default value to use for this:
 function M.almostEquals( actual, expected, margin )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(actual) ~= 'number' or type(expected) ~= 'number' or type(margin) ~= 'number' then
         error_fmt(3, 'almostEquals: must supply only number arguments.\nArguments supplied: %s, %s, %s',
             prettystr(actual), prettystr(expected), prettystr(margin))
@@ -761,7 +760,7 @@ function M.almostEquals( actual, expected, margin )
 end
 
 function M.assertAlmostEquals( actual, expected, margin )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- check that two floats are close by margin
     margin = margin or M.EPSILON
     if not M.almostEquals(actual, expected, margin) then
@@ -774,7 +773,7 @@ function M.assertAlmostEquals( actual, expected, margin )
 end
 
 function M.assertNotEquals(actual, expected)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if type(actual) ~= type(expected) then
         return
     end
@@ -790,7 +789,7 @@ function M.assertNotEquals(actual, expected)
 end
 
 function M.assertNotAlmostEquals( actual, expected, margin )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- check that two floats are not close by margin
     margin = margin or M.EPSILON
     if M.almostEquals(actual, expected, margin) then
@@ -803,7 +802,7 @@ function M.assertNotAlmostEquals( actual, expected, margin )
 end
 
 function M.assertStrContains( str, sub, useRe )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- this relies on lua string.find function
     -- a string always contains the empty string
     if not string.find(str, sub, 1, not useRe) then
@@ -814,7 +813,7 @@ function M.assertStrContains( str, sub, useRe )
 end
 
 function M.assertStrIContains( str, sub )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- this relies on lua string.find function
     -- a string always contains the empty string
     if not string.find(str:lower(), sub:lower(), 1, true) then
@@ -825,7 +824,7 @@ function M.assertStrIContains( str, sub )
 end
 
 function M.assertNotStrContains( str, sub, useRe )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- this relies on lua string.find function
     -- a string always contains the empty string
     if string.find(str, sub, 1, not useRe) then
@@ -836,7 +835,7 @@ function M.assertNotStrContains( str, sub, useRe )
 end
 
 function M.assertNotStrIContains( str, sub )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- this relies on lua string.find function
     -- a string always contains the empty string
     if string.find(str:lower(), sub:lower(), 1, true) then
@@ -847,7 +846,7 @@ function M.assertNotStrIContains( str, sub )
 end
 
 function M.assertStrMatches( str, pattern, start, final )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- Verify a full match for the string
     -- for a partial match, simply use assertStrContains with useRe set to true
     if not strMatch( str, pattern, start, final ) then
@@ -858,7 +857,7 @@ function M.assertStrMatches( str, pattern, start, final )
 end
 
 function M.assertErrorMsgEquals( expectedMsg, func, ... )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- assert that calling f with the arguments will raise an error
     -- example: assertError( f, 1, 2 ) => f(1,2) should generate an error
     local no_error, error_msg = pcall( func, ... )
@@ -873,7 +872,7 @@ function M.assertErrorMsgEquals( expectedMsg, func, ... )
 end
 
 function M.assertErrorMsgContains( partialMsg, func, ... )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- assert that calling f with the arguments will raise an error
     -- example: assertError( f, 1, 2 ) => f(1,2) should generate an error
     local no_error, error_msg = pcall( func, ... )
@@ -888,7 +887,7 @@ function M.assertErrorMsgContains( partialMsg, func, ... )
 end
 
 function M.assertErrorMsgMatches( expectedMsg, func, ... )
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- assert that calling f with the arguments will raise an error
     -- example: assertError( f, 1, 2 ) => f(1,2) should generate an error
     local no_error, error_msg = pcall( func, ... )
@@ -919,7 +918,7 @@ for _, funcName in ipairs(
                    or error("bad function name '"..funcName.."' for type assertion")
 
     M[funcName] = function(value)
-        M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+        assertCount = assertCount + 1
         if type(value) ~= typeExpected then
             fail_fmt(2, 'Expected: a %s value, actual: type %s, value %s',
                      typeExpected, type(value), prettystrPadded(value))
@@ -960,7 +959,7 @@ for _, funcName in ipairs(
                    or error("bad function name '"..funcName.."' for type assertion")
 
     M[funcName] = function(value)
-        M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+        assertCount = assertCount + 1
         if type(value) == typeUnexpected then
             fail_fmt(2, 'Not expected: a %s type, actual: value %s',
                      typeUnexpected, prettystrPadded(value))
@@ -969,7 +968,7 @@ for _, funcName in ipairs(
 end
 
 function M.assertIs(actual, expected)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if actual ~= expected then
         if not M.ORDER_ACTUAL_EXPECTED then
             actual, expected = expected, actual
@@ -981,7 +980,7 @@ function M.assertIs(actual, expected)
 end
 
 function M.assertNotIs(actual, expected)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     if actual == expected then
         if not M.ORDER_ACTUAL_EXPECTED then
             expected = actual
@@ -992,7 +991,7 @@ function M.assertNotIs(actual, expected)
 end
 
 function M.assertItemsEquals(actual, expected)
-    M.ASSERTCOUNT = M.ASSERTCOUNT + 1
+    assertCount = assertCount + 1
     -- checks that the items of table expected
     -- are contained in table actual. Warning, this function
     -- is at least O(n^2)
@@ -1840,17 +1839,16 @@ end
     end
 
     function M.LuaUnit.statusLine(result)
-        local ch, cnt = '', M.ASSERTCOUNT
-        if cnt > 1000 then cnt, ch = cnt/1000, 'K' end
-        if cnt > 1000 then cnt, ch = cnt/1000, 'M' end
-
+        local chr, cnt = '', assertCount
+        if cnt > 1000 then cnt, chr = cnt/1000, 'K' end
+        if cnt > 1000 then cnt, chr = cnt/1000, 'M' end
+        assertCount = 0
         -- return status line string according to results
         local s = {
             string.format('Ran %d tests (%d%s asserts) in %0.3f seconds',
-                          result.runCount, cnt, ch, result.duration),
+                          result.runCount, cnt, chr, result.duration),
             conditional_plural(result.passedCount, 'success'),
         }
-        M.ASSERTCOUNT = 0
         if result.notPassedCount > 0 then
             if result.failureCount > 0 then
                 table.insert(s, conditional_plural(result.failureCount, 'failure'))
