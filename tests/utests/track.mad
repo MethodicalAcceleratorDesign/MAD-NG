@@ -24,11 +24,16 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertNotNil, assertTrue, assertEquals in require 'luaunit'
-local is_nil, track, beam, option in MAD
+local is_nil, track, beam, functor, option in MAD
 
 -- regression test suite ------------------------------------------------------o
 
 TestTrack = {}
+
+local function pinfo (e,m,l,s)
+  io.write(string.format("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g\n",
+          e and e.name or '', s,    l,  m.x, m.px,  m.y, m.py ))
+end
 
 local function loadFiveCell()
   assertNotNil(require 'fivecell_gen'     )
@@ -64,27 +69,17 @@ function TestTrack:tearDown ()
   end
 end
 
-function TestTrack:testTrackFiveCell()
-  local fivecell = loadFiveCell()
-  local beam = beam { particle='proton', energy=450 }
-  local tbl = track { sequence=fivecell, beam=beam }
-  assertEquals(#tbl, 141)
-  tbl:write('track_fivecell') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
- end
-
 function TestTrack:testTrackLHC1()
   local lhcb1, lhcb2 = loadLHC()
   local beam = beam { particle='proton', energy=450 }
-  lhcb1:deselect()
-  lhcb1[#lhcb1]:select()
-  MADX.option.rbarc = true
-  local tbl, map = track { sequence=lhcb1, beam=beam, method='simple', nst=1 } --, save='none' }
+  lhcb1:deselect()[#lhcb1]:select()
+  local tbl, map = track { sequence=lhcb1, beam=beam } -- , out_action=functor(pinfo) } --, save='none' }
 --  assertEquals(#tbl, 13267)
 --  local t0 = os.clock()
 --  for i=1,9 do track { sequence=lhcb1, beam=beam, table=tbl } end
 --  local t1 = os.clock()
-   tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
--- 10 turns with save = 'none' takes 1.52 sec 0.15 sec/turn
+  tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
+-- 10 turns with save = 'none' takes 1.52 sec -> 0.15 sec/turn
 --  print('LHC track time', t1-t0)
   option.format = fmt
  end
@@ -115,14 +110,13 @@ function TestTrack:testTrackQUADY6()
  local fmt = MAD.option.format
  MAD.option.format = "%-18.12g" -- MAD-X default output
  local beam = beam { particle='proton', energy=450 }
-
  local seq = sequence 'seq' { refer = 'entry',
    quadrupole 'qf' { l=3, k1 := kqf }
  }
  for k=-10,10, 1 do
    kqf = k*0.1
    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=3, X0= {-1e-3, 2e-4 ,3e-3, 0,-1e-3, 5e-3}}
---  local n = #tbl
+--   local n = #tbl
 --   for i=1,n do
 --     print('\n MADNG_QUAD', tbl.s[i], kqf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
@@ -154,47 +148,24 @@ end
 function TestTrack:testTrackSBEND()
 
  local sbend, sequence  in MAD.element
- local abs  in MAD
- local beam in MAD
+ local abs, beam in MAD
  local fmt = MAD.option.format
  MAD.option.format = "%-18.12g"
  local beam = beam { particle='proton', energy=450 }
+ local ksb
  local seq = sequence 'seq' { refer = 'entry',
    sbend 'sb' { l=3, angle := ksb, k0 := ksb/3 }
  }
  for k=-1,1,0.15 do
     ksb = k
-    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=5, X0= {-1e-3, 3e-3,7e-5,-3e-4, 1e-3, 0}}
+    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=5, X0= {-1e-3, 3e-3,7e-5,-3e-4, 0, 0}}
 --    local n = #tbl
---    for i=1,n do     
---      print('\n MADNG_SBEND', tbl.s[i], k,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
+--    for i=1,n do
+--    print('\n MADNG_SBEND', tbl.s[i], ksb,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --    end
  end
  option.format = fmt
 end
-
-function TestTrack:testTrackXSBEND()
-
- local sbend, sequence  in MAD.element
- local abs  in MAD
- local beam in MAD
- local fmt = MAD.option.format
- MAD.option.format = "%-18.12g"
- local beam = beam { particle='proton', energy=450 }
- local seq = sequence 'seq' { refer = 'entry',
-   sbend 'sb' { l=3, angle := ksb, k0 := ksb/3 }
- }
- for k=-1,1,0.15 do
-    ksb = 0.05
-    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=5, X0= {k*0.001, 3e-3,7e-5,-3e-4, 1e-3, 0}}
---   local n = #tbl
---    for i=1,n do     
---    print('\n MADNG_SBEND', tbl.s[i], k*0.001,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---    end
- end
- option.format = fmt
-end
-
 
 function TestTrack:testTrackMULT()
 
@@ -284,5 +255,13 @@ function TestTrack:testTrackMKICK()
   end
   option.format = fmt
 end
+
+-- function TestTrack:testTrackFiveCell()
+--   local fivecell = loadFiveCell()
+--   local beam = beam { particle='proton', energy=450 }
+--   local tbl = track { sequence=fivecell, beam=beam }
+--   assertEquals(#tbl, 141)
+--   tbl:write('track_fivecell') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
+-- end
 
 -- end ------------------------------------------------------------------------o
