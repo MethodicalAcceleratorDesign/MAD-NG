@@ -964,20 +964,23 @@ function TestCMatrixInPlace:testOnes()
     cm:ones(1+1i) assertEquals( cm, cm:same():fill(1+1i) )
   end
 end
---[[
 
 function TestCMatrixInPlace:testEye()
-  for i,m in ipairs(G.cmatidx) do
-    local nr, nc = m:sizes()
-    m:eye()
+  for i,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    local min = min(nr,nc)
+    cm:eye()
+    assertEquals( cm:getdiag(), cm:same(min,1):fill(1) )
     for i=1,nr do
     for j=1,nc do
-      if i==j then assertEquals( m:get(i,j), 1 )
-      else         assertEquals( m:get(i,j), 0 ) end
+      if i~=j then assertEquals( cm:get(i,j), 0+0i ) end
     end end
+    cm:eye(2 ) assertEquals( cm:getdiag(), cm:same(min,1):fill(2 ) )
+    cm:eye(1i) assertEquals( cm:getdiag(), cm:same(min,1):fill(1i) )
   end
 end
 
+--[[
 function TestCMatrixErr:testSymp()
   local msg = {
     "invalid argument #1 (2n matrix expected)",
@@ -1045,32 +1048,33 @@ function TestCMatrixInPlaceII:testCirc()
                    assertEquals( m:get(j  ,j+3), 4   ) end
   end
 end
+]]
 
-function TestCMatrixInPlaceII:testShift() --TODO: recheck InPlaceII
-  local m = vector(4):fill(1..4)
-  assertEquals( m:shift( 0, 0), m )
-  assertEquals( m:shift( 4, 0), m )
-  assertEquals( m:shift( 0, 1), m )
-  assertEquals( m:shift( 0, 2), m )
-  m = matrix(2):fill(1..4)
-  assertEquals( m:shift( 0, 0), m )
-  assertEquals( m:shift( 3, 0), m )
-  assertEquals( m:shift(-3, 0), m )
+function TestCMatrixInPlaceII:testShift()
+  local cm = cvector(4):fill(1..4)
+  assertEquals( cm:shift( 0, 0), cm )
+  assertEquals( cm:shift( 4, 0), cm )
+  assertEquals( cm:shift( 0, 1), cm )
+  assertEquals( cm:shift( 0, 2), cm )
+  cm = cmatrix(2):fill(1..4)
+  assertEquals( cm:shift( 0, 0), cm )
+  assertEquals( cm:shift( 3, 0), cm )
+  assertEquals( cm:shift(-3, 0), cm )
 
   for nr=1,5 do
   for nc=1,5 do
-    m = matrix(nr,nc):fill(1..nr*nc)
+    cm = cmatrix(nr,nc):fill(1..nr*nc):map(\x x+x*1i)
     for inc=0,nc do
     for inr=0,nr do
-      m:shift(inr,inc)
+      cm:shift(inr,inc)
       for jnr=1,nr do
       for jnc=1,nc do
-        if     jnc<=inc and jnr<=inr then assertEquals( m:get(jnr,jnc), idx(jnr+(nr-inr),jnc+(nc-inc),nc) )
-        elseif jnc<=inc and jnr> inr then assertEquals( m:get(jnr,jnc), idx(jnr-inr     ,jnc+(nc-inc),nc) )
-        elseif jnc> inc and jnr<=inr then assertEquals( m:get(jnr,jnc), idx(jnr+(nr-inr),jnc- inc    ,nc) )
-        else                              assertEquals( m:get(jnr,jnc), idx(jnr-inr     ,jnc- inc    ,nc) ) end
+        if     jnc<=inc and jnr<=inr then assertEquals( cm:get(jnr,jnc), idxC(jnr+(nr-inr),jnc+(nc-inc),nc) )
+        elseif jnc<=inc and jnr> inr then assertEquals( cm:get(jnr,jnc), idxC(jnr-inr     ,jnc+(nc-inc),nc) )
+        elseif jnc> inc and jnr<=inr then assertEquals( cm:get(jnr,jnc), idxC(jnr+(nr-inr),jnc- inc    ,nc) )
+        else                              assertEquals( cm:get(jnr,jnc), idxC(jnr-inr     ,jnc- inc    ,nc) ) end
       end end
-      m:shift(-inr,-inc)
+      cm:shift(-inr,-inc)
     end end
   end end
 end
@@ -1087,17 +1091,17 @@ function TestCMatrixErr:testReshape()
 end
 
 function TestCMatrixInPlaceII:testReshape()
-  local m
-  m = matrix(2,2) assertEquals( {m:reshape() :sizes()}, {4,1} )
-  m = matrix(2,2) assertEquals( {m:reshape(1):sizes()}, {1,1} )
+  local cm
+  cm = matrix(2,2) assertEquals( {cm:reshape() :sizes()}, {4,1} )
+  cm = matrix(2,2) assertEquals( {cm:reshape(1):sizes()}, {1,1} )
   for nr=1,5 do
   for nc=1,5 do
     for i=1,nr do
     for j=1,nc do
-      m = matrix(nr,nc):fill(1..nr*nc)
-      m:reshape(i,j)
-      assertEquals( {m:sizes()}, {i,j}                    )
-      assertEquals( m          , matrix(i,j):fill(1..i*j) )
+      cm = matrix(nr,nc):fill(1..nr*nc)
+      cm:reshape(i,j)
+      assertEquals( {cm:sizes()}, {i,j}                    )
+      assertEquals( cm          , cmatrix(i,j):fill(1..i*j) )
     end end
   end end
 end
@@ -1125,15 +1129,16 @@ function TestCMatrixErr:testForeach()
 end
 
 function TestCMatrixFun:testForeach()
-  for _,m in ipairs(G.cmatidx) do
-    local t = table.new(m:sizes())
-    local f = \x,i,j => t[i][j] = x  end
-    local nr, nc = m:sizes()
+  for _,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    local t = table.new(nr,nc)
+    local f = \x,i,j => t[i][j] = x+x*1i  end
     for i=0,nr-1 do local c = t[i+1] or table.new(nc,0); t[i+1] = c end
-    m:foreach(f)
-    for i=1,nr do for j=1,nc do assertEquals( t[i][j], idx(i,j,nc) ) end end
+    cm:foreach(f)
+    for i=1,nr do for j=1,nc do assertEquals( t[i][j], idxC(i,j,nc) ) end end
   end
 end
+--[[
 
 function TestCMatrixErr:testMap()
   local msg = {
