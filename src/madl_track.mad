@@ -660,13 +660,13 @@ local function make_map (self, start)
   pt = pt or X0.pt or X0[6]
 
   local s_pos, direction in sequence
-  local nst, method, total_path, in_action, out_action in self
+  local nturn, nst, method, total_path, in_action, out_action in self
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt,
            knl=vector(maxmul), ksl=vector(maxmul),
            direction=direction, nst=nst, method=method, T=T,
-           in_action=in_action, out_action=out_action,
+           iturn=0, nturn=nturn, in_action=in_action, out_action=out_action,
            s_ini=s_pos[start], s_end=s_pos[start], ndrift=-1, [_trck]=_trck }
 end
 
@@ -692,42 +692,56 @@ local function exec (self)
   assert(map[_trck] == _trck, "invalid track map"  )
   assert(is_nil(tbl) or tbl[_trck] == _trck, "invalid track table")
 
-  local s_ini, s_end, ndrift in map
-  local drift, save in self
+  local nturn, drift, save in self
   local s_pos in seq
 
   drift = drift == true and save or 'none'
+  map.beam  = beam
   map.chg   = beam.charge
   map.dir   = map.direction
   map.dirch = map.direction * beam.charge
-  map.beam  = beam
 
-  -- dynamic tracking
-  for i=start,stop do
-    local elem, s = seq[i], s_pos[i]
-    local is_sel = elem:is_selected()
-    local name, kind, l in elem
-    local ds = s - s_end
+  local s_ini, s_end, ndrift
 
-    -- implicit drift
-    if ds >= minlen then
-      strait_drift_track(nil, map, ds)
-      s_end, ndrift = s, ndrift+1
+  -- turns loop
+  for iturn=1,nturn do
+    local s_ini, s_end, ndrift = map.s_ini, map.s_end, map.ndrift
+    map.iturn = iturn
 
-      if drift == 'exit' and is_sel then
-        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
+    -- dynamic tracking
+    for i=start,stop do
+      local elem, s = seq[i], s_pos[i]
+      local is_sel = elem:is_selected()
+      local name, kind, l in elem
+      local ds = s - s_end
+
+      -- implicit drift
+      if ds >= minlen then
+        strait_drift_track(nil, map, ds)
+        s_end, ndrift = s, ndrift+1
+
+        if drift == 'exit' and is_sel then
+          fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
+        end
+      elseif ds <= -minlen then
+        error(string.format("negative implicit drift %s in %s['%s'] at %s",
+              tostring(ds), seq.name, name, tostring(s)))
       end
-    elseif ds <= -minlen then
-      error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            tostring(ds), seq.name, name, tostring(s)))
+
+      -- sequence element
+      elem:track(map)
+      s_end = s + l
+
+      if save == 'exit' and is_sel then
+        fill_table(tbl, name, kind, map, s_end-s_ini, l)
+      end
     end
 
-    -- sequence element
-    elem:track(map)
-    s_end = s + l
-
-    if save == 'exit' and is_sel then
-      fill_table(tbl, name, kind, map, s_end-s_ini, l)
+    -- final implicit drift
+    local ds = seq.l - s_end
+    if stop == #s_pos and ds >= minlen then
+      strait_drift_track(nil, map, ds)
+      s_end, ndrift = seq.l, ndrift+1
     end
   end
   map.s_end, map.ndrift = s_end, ndrift
@@ -741,7 +755,7 @@ local no_action = \ ()
 
 local track = Command 'track' {
   -- default options
-  X0={0,0,0,0,0,0}, range={1,-1},
+  X0={0,0,0,0,0,0}, range={1,-1}, nturn=1,
   drift=true, save='exit', nst=1, method='simple', total_path=false,
   exec=exec,
 } :set_function {
