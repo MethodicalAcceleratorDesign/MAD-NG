@@ -67,7 +67,7 @@ DESCRIPTION
     wrapping other operators (i.e. -n, +, -, *, /, %, ^, [], []=, #, .., ()),
   - is_ismetaname returns true if the argument is a valid metamethod name,
   - has_metatable returns true is the argument has a metatable,
-  - get_metatable is an extended version of getmetatable that works also with
+  - get_metatable is a generic version of getmetatable that works also with
     cdata,
   - has_length, is_iterable, is_mappable, is_indexable, is_callable,
     is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
@@ -100,11 +100,9 @@ SEE ALSO
 local ffi, bit = require 'ffi', require 'bit'
 local istype                                   in ffi
 local format                                   in string
-local abs                                      in math
+local abs, inf                                 in math
 local bnot, band, bor, bxor, rol, tobit, tohex in bit
 local type, getmetatable, tostring = type, getmetatable, tostring
-
-local complex_ctor = ffi.typeof 'complex'
 
 -- implementation -------------------------------------------------------------o
 
@@ -112,7 +110,10 @@ local complex_ctor = ffi.typeof 'complex'
 
 assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
 
-local cdata_mt = \a -> ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
+local function get_meta (a)
+  return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
+         or getmetatable(a)
+end
 
 -- metamethods
 
@@ -132,11 +133,6 @@ local value_t = { -- list of types that cannot be modified
   ['function'] = true, thread = true,
 }
 
--- aliases
-
---M.resume = coroutine.resume
---M.yield  = coroutine.yield
-
 -- options
 
 M.option = {
@@ -149,8 +145,7 @@ M.option = {
 
 M.operator = {
 
--- bits operators
-
+  -- bits operators
   bnot  = bnot,
   band  = band,
   bor   = bor,
@@ -162,8 +157,7 @@ M.operator = {
   btst = \x,n -> band(x, rol( 1, n)) ~= 0,
   bclr = \x,n -> band(x, rol(-2, n)),
 
--- logical operators
-
+  -- logical operators
   bool  = \x   -> not not x,
   lnot  = \x   -> not x,
   land  = \x,y -> not not (x and y),
@@ -185,8 +179,7 @@ M.operator = {
   is_greater          = M.is_gt,
   is_greater_or_equal = M.is_ge,
 
--- math operators
-
+  -- math operators
   unm  = \x   -> -x,
   sqr  = \x   ->  x * x,
   add  = \x,y ->  x + y,
@@ -196,8 +189,7 @@ M.operator = {
   mod  = \x,y ->  x % y,
   pow  = \x,y ->  x ^ y,
 
--- object operators
-
+  -- object operators
   get  = \x,k   -> x[k],
   set  = \x,k,v => x[k]=v end,
   len  = \x     -> #x,
@@ -206,70 +198,75 @@ M.operator = {
 }
 
 M.operator.opstr = {
-    ['~' ] = M.operator.unm,
-    ['+' ] = M.operator.add,
-    ['-' ] = M.operator.sub,
-    ['*' ] = M.operator.mul,
-    ['/' ] = M.operator.div,
-    ['%' ] = M.operator.mod,
-    ['^' ] = M.operator.pow,
-    ['#' ] = M.operator.len,
-    ['..'] = M.operator.cat,
-    ['<' ] = M.operator.is_lt,
-    ['>' ] = M.operator.is_gt,
-    ['<='] = M.operator.is_le,
-    ['>='] = M.operator.is_ge,
-    ['~='] = M.operator.is_ne,
-    ['!='] = M.operator.is_ne,
-    ['=='] = M.operator.is_eq,
-    ['!' ] = M.operator.lnot,
-    ['&&'] = M.operator.land,
-    ['||'] = M.operator.lor,
-    ['!!'] = M.operator.bool,
+  ['~' ] = M.operator.unm,
+  ['+' ] = M.operator.add,
+  ['-' ] = M.operator.sub,
+  ['*' ] = M.operator.mul,
+  ['/' ] = M.operator.div,
+  ['%' ] = M.operator.mod,
+  ['^' ] = M.operator.pow,
+  ['#' ] = M.operator.len,
+  ['..'] = M.operator.cat,
+  ['<' ] = M.operator.is_lt,
+  ['>' ] = M.operator.is_gt,
+  ['<='] = M.operator.is_le,
+  ['>='] = M.operator.is_ge,
+  ['~='] = M.operator.is_ne,
+  ['!='] = M.operator.is_ne,
+  ['=='] = M.operator.is_eq,
+  ['!' ] = M.operator.lnot,
+  ['&&'] = M.operator.land,
+  ['||'] = M.operator.lor,
+  ['!!'] = M.operator.bool,
 }
 
 -- types
 
-M.is_nil      = \a -> type(a) == 'nil'
-M.is_boolean  = \a -> type(a) == 'boolean'
-M.is_number   = \a -> type(a) == 'number'
-M.is_string   = \a -> type(a) == 'string'
-M.is_function = \a -> type(a) == 'function'
-M.is_table    = \a -> type(a) == 'table'
-M.is_cdata    = \a -> type(a) == 'cdata'
-M.is_complex  = \a -> istype(complex_ctor, a)
+local complex = ffi.typeof 'complex'
 
-local is_number, is_complex, is_table in M
-local inf = 1/0
+M.typeid = {
 
-M.is_nan      = \a -> is_number(a) and a ~= a
-M.is_infinite = \a -> is_number(a) and abs(a) == inf
-M.is_finite   = \a -> is_number(a) and abs(a) <  inf
-M.is_positive = \a -> is_number(a) and a > 0
-M.is_negative = \a -> is_number(a) and a < 0
-M.is_integer  = \a -> is_number(a) and a >= -2^52 and a <= 2^52 and (a%1) == 0
-M.is_scalar   = \a -> is_number(a) or is_complex(a)
-M.is_rawtable = \a -> is_table(a)  and getmetatable(a) == nil
+  -- primitive types
+  is_nil      = \a -> type(a) == 'nil',
+  is_boolean  = \a -> type(a) == 'boolean',
+  is_number   = \a -> type(a) == 'number',
+  is_string   = \a -> type(a) == 'string',
+  is_function = \a -> type(a) == 'function',
+  is_table    = \a -> type(a) == 'table',
+  is_cdata    = \a -> type(a) == 'cdata',
+  is_complex  = \a -> istype(complex, a),
+
+  -- specialisations
+  is_nan      = \a -> type(a) == 'number' and a ~= a,
+  is_infinite = \a -> type(a) == 'number' and abs(a) == inf,
+  is_finite   = \a -> type(a) == 'number' and abs(a) <  inf,
+  is_positive = \a -> type(a) == 'number' and a > 0,
+  is_negative = \a -> type(a) == 'number' and a < 0,
+  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
+  is_rawtable = \a -> type(a) == 'table'  and getmetatable(a) == nil,
+
+  -- comparison
+  is_same     = \a,b -> type(a) == type(b) and get_meta(a) == get_meta(b),
+
+  -- valid metamethods names
+  is_metaname = \a -> metaname[a] == a,
+
+}
 
 -- metamethods
 
-local is_cdata in M
-
-M.is_metaname   = \a -> metaname[a] == a
-M.get_metatable = \a -> is_cdata(a) and cdata_mt(a) or getmetatable(a)
-
-local get_metatable in M
-
-M.has_metatable = \a -> get_metatable(a) ~= nil
-
-M.has_metamethod = function (a, f, f2)
-  local mt = get_metatable(a)
-  return mt and (mt[f] or mt[f2]) ~= nil or false
-end
+M.get_metatable = get_meta
 
 -- concepts
 
-local is_string, is_function, has_metamethod in M
+local is_number, is_complex, is_string, is_table, is_rawtable, is_function
+      in M.typeid
+
+local has_metamethod = function (a, f, f2)
+  local mt = get_meta(a)
+  return mt and (mt[f] or mt[f2]) ~= nil or false
+end
 
 M.concept = {
 
@@ -289,37 +286,25 @@ M.concept = {
   is_modulable     = \a -> is_number(a)   or has_metamethod(a, '__mod'   ),
   is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   ),
 
-  is_comparable = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
-  is_ordered    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__le', '__lt'),
+  is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
+  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__le', '__lt'),
 
-  has_length    = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
+  has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
+  has_metatable    = \a -> get_meta(a) ~= nil,
+  has_constructor  = \a -> has_metamethod(a,'__new'),
+  is_collectable   = \a -> has_metamethod(a,'__gc' ),
 
 }
 
--- members
-
 local is_indexable, is_callable in M.concept
 
-M.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
-M.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
-
--- same
-
-local is_rawtable, has_method in M
-
-M.is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b)
-
-M.same = function (a, ...)
-  if     value_t[type(a)] or is_complex(a) then return a
-  elseif is_rawtable(a)                    then return {}
-  elseif has_method(a, 'same')             then return a:same(...)
-  end
-  error("invalid argument #1 (clonable object expected)")
-end
+M.concept.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
+M.concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
+M.concept.has_metamethod = has_metamethod
 
 -- extensions
 
-local is_stringable, is_tablable in M.concept
+local is_stringable, is_tablable, has_method in M.concept
 local option in M
 
 local function tbl2str(t)
@@ -341,7 +326,7 @@ M.tostring = function (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return string.format(option.format, a)
   elseif is_rawtable(a)   then return tbl2str(a)
-  elseif is_stringable(a) then return get_metatable(a).__tostring(a, ...)
+  elseif is_stringable(a) then return get_meta(a).__tostring(a, ...)
   else                         return tostring(a) -- builtin
   end
 end
@@ -349,9 +334,17 @@ end
 M.totable = function (a, ...)
   if     is_table(a)    then return a
   elseif is_string(a)   then return str2tbl(a)
-  elseif is_tablable(a) then return get_metatable(a).__totable(a, ...)
+  elseif is_tablable(a) then return get_meta(a).__totable(a, ...)
   else                       return {a} -- encapsulate
   end
+end
+
+M.same = function (a, ...)
+  if     value_t[type(a)] or is_complex(a) then return a
+  elseif is_rawtable(a)                    then return {}
+  elseif has_method(a, 'same')             then return a:same(...)
+  end
+  error("invalid argument #1 (clonable object expected)")
 end
 
 -- utilities
@@ -372,7 +365,7 @@ local rep_mt = {
   __metatable = false,
 }
 
-M.utility.rep = function (x, n_) -- scalar repeater
+M.utility.rep = function (x, n_) -- repeater
   return setmetatable({[rep_x]=x, [rep_n]=n_ or 2^30}, rep_mt)
 end
 
@@ -404,15 +397,24 @@ M.utility.defhelp = function (m, name)
 end
 
 -- todo help
+M.__help.same          = ''
+M.__help.totable       = ''
+M.__help.tostring      = ''
+M.__help.get_metatable = ''
+
+M.__help.option = {
+}
+
 M.__help.operator = {
+}
+
+M.__help.typeid = {
 }
 
 M.__help.concept = {
 }
 
- -- no help
 M.__help.utility = {
-  defhelp = '',
 }
 
 M.utility.defhelp(M) -- todo: per function help -> 'utils'
