@@ -26,14 +26,16 @@ local assertEquals, assertAlmostEquals, assertInf, assertFalse, assertNotEquals,
       assertErrorMsgContains, assertNil, assertNaN, assertIsString, assertTrue,
       assertAllEquals in require 'luaunit'
 
-local vector, cvector, matrix, cmatrix, is_vector, is_matrix, is_cvector,
-      is_cmatrix, isa_vector, isa_matrix, linspace, logspace in MAD
+local complex, range, nrange, nlogrange, vector, cvector, matrix, cmatrix,
+      linspace, logspace in MAD
+local is_vector, is_matrix, is_cvector, is_cmatrix, isa_vector, isa_matrix,
+      is_complex, is_cdata, is_table, is_nil, is_string in MAD.typeid
 
-local complex, range, nrange, nlogrange,infi, tiny, eps, huge, inf, nan, pi, Pi,
-      sqrt, abs, log, exp, min, random, randomseed, floor, round,
-      sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh, acosh, atanh,
-      totable, is_complex, is_cdata, is_table, is_nil, is_string,
-      concat, tostring in MAD
+local infi, tiny, eps, huge, inf, nan, pi, sqrt, abs, log, exp, min, random,
+      randomseed, floor, round, sin, cos, tan, sinh, cosh, tanh, asin, acos,
+      atan, asinh, acosh, atanh in MAD.gmath
+local totable, tostring in MAD
+local concat in MAD
 
 local rep in MAD.utility
 
@@ -349,7 +351,7 @@ function TestCMatrixSet:testSame()
   assertEquals( cm:same( nan), cmatrix(cm:sizes()) )
   assertEquals( cm:same( inf), cmatrix(cm:sizes()) )
   assertEquals( cm:same( 0  ), cmatrix(cm:sizes()) )
-  for _,cm in ipairs(G.cmatidx) do
+  for i,cm in ipairs(G.cmatidx) do
     -- no input
     assertEquals( cm:same()        , cmatrix(cm:sizes()) )
     -- two arg: nr, nc
@@ -359,9 +361,9 @@ function TestCMatrixSet:testSame()
     -- three arg: e_, nr, nc -> does nothing in cmatrix case
     assertEquals( cm:same(0i, 2, 2), cmatrix(2)   )
     assertEquals( cm:same(1 , 2, 2), cmatrix(2)   )
-    -- one size defined
-    --print( cm:same(_ , 1   ), cmatrix(1        , cm:ncol()) ) -- different output then matrix, is_nil(e_)
-    --print( cm:same(_ , _, 1), cmatrix(cm:nrow(), 1        ) ) -- different output then matrix, is_nil(e_)
+    -- one sizse defined
+    assertEquals( cm:same(_ , 1   ), cmatrix(1        , cm:ncol()) )
+    assertEquals( cm:same(_ , _, 1), cmatrix(cm:nrow(), 1        ) )
   end
 end
 
@@ -827,7 +829,6 @@ end
 function TestCMatrixInPlace:tearDown()
   for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()):map(\x x+x*1i, 'in') end
 end
- --[[
 
 function TestCMatrixErr:testRandom()
   local msg, s = {
@@ -842,36 +843,46 @@ end
 
 function TestCMatrixInPlace:testRandom()
   local oldVal, val = {}, {}
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:random()
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    local oldVal, val = table.new(mn,0), table.new(mn,0)
+    cm:random()
+    oldVal[0] = complex(1,1)
     for i = 1,mn do
-      val[i] = m:geti(i)
-      assertTrue ( val[i] <  1    )
-      assertTrue ( val[i] >= 0    )
-      assertFalse( val[i] == oldVal[i] )
-      oldVal[i] =  val[i]
+      val[i] = cm:geti(i)
+      assertTrue ( val[i]:imag() <  1             )
+      assertTrue ( val[i]:real() <  1             )
+      assertTrue ( val[i]:imag() >= 0             )
+      assertTrue ( val[i]:real() >= 0             )
+      assertTrue ( val[i]:imag() ~= val[i]:real() )
+      assertFalse( val[i]:imag() == oldVal[i-1]:imag() )
+      assertFalse( val[i]:real() == oldVal[i-1]:real() )
+      oldVal[i] = val[i]
     end
-    m:random(nil,1,mn)
+    cm:random(nil,1,mn)
     for i = 1,mn do
-      assertTrue ( m:geti(i) <= mn )
-      assertTrue ( m:geti(i) >= 1  )
+      assertTrue ( cm:geti(i):imag() <= mn )
+      assertTrue ( cm:geti(i):real() <= mn )
+      assertTrue ( cm:geti(i):imag() >= 1  )
+      assertTrue ( cm:geti(i):real() >= 1  )
     end
   end
 end
 
 function TestCMatrixInPlaceII:testPerm()
-  local oldV = {}
-  local v = vector(25):fill(1..25)
-  oldV[0] = 0
+  local oldCV = {}
+  local cv = cvector(25):fill(1..25):map(\x x+x*1i)
+  oldCV[0] = 0
   for i=1,10 do
-    v = v:perm()
-    for is=1,v:size() do
-      assertTrue( v:geti(is) <= 25 )
-      assertTrue( v:geti(is) >= 1  )
+    cv = cv:perm()
+    for is=1,cv:size() do
+      assertTrue( cv:geti(is):imag() <= 25 )
+      assertTrue( cv:geti(is):real() <= 25 )
+      assertTrue( cv:geti(is):imag() >= 1  )
+      assertTrue( cv:geti(is):real() >= 1  )
     end
-    assertFalse( v == oldV[i-1] )
-    oldV[i] = v:copy()
+    assertFalse( cv == oldCV[i-1] )
+    oldCV[i] = cv:copy()
   end
 end
 
@@ -886,69 +897,74 @@ function TestCMatrixErr:testFill()
   assertErrorMsgContains( msg[1], mth,'fill', errCMat, ''   )
   assertErrorMsgContains( msg[2], mth,'fill', errCMat, {}   )
 end
+
 function TestCMatrixInPlace:testFill()
-  for _,m in ipairs(G.cmatidx) do
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
     --scalar
-    m:fill(nan)               for i=1,m:size() do assertNaN   ( m:geti(i)      ) end
-    m:fill(inf)               for i=1,m:size() do assertInf   ( m:geti(i)      ) end
-    m:fill(1  )               for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
-    m:fill(complex(1,1))      for i=1,m:size() do assertEquals( m:geti(i), 1   ) end
+    cm:fill(nan   )                  for j=1,mn do assertNaN   ( cm:geti(j):real()      )
+                                                   assertEquals( cm:geti(j):imag(), 0   ) end
+    cm:fill(nan*1i)                  for j=1,mn do assertNaN   ( cm:geti(j):real()      )
+                                                   assertNaN   ( cm:geti(j):imag()      ) end
+    cm:fill(inf)                     for j=1,mn do assertEquals( cm:geti(j), inf + 0i   ) end
+    cm:fill(1  )                     for j=1,mn do assertEquals( cm:geti(j), 1   + 0i   ) end
+    cm:fill(2i )                     for j=1,mn do assertEquals( cm:geti(j), 0   + 2i   ) end
+    cm:fill(complex(1,1))            for j=1,mn do assertEquals( cm:geti(j), 1   + 1i   ) end
     --generator
-    m:fill(1..#m)             for i=1,m:size() do assertEquals( m:geti(i), i   ) end
-    m:fill\x x^2              for i=1,m:size() do assertEquals( m:geti(i), i^2 ) end
+    cm:fill(1..mn)                   for j=1,mn do assertEquals( cm:geti(j), j   + 0i   ) end
+    cm:fill(1..mn):fill\x  x*1i      for j=1,mn do assertEquals( cm:geti(j), 0   + 1i*j ) end
+    cm:fill(1..mn):fill\x (x^2)      for j=1,mn do assertEquals( cm:geti(j), j^2 + 0i   ) end
+    cm:fill(1..mn):fill\x ((x*1i)^2) for j=1,mn do assertEquals( cm:geti(j),-j^2 + 0i   ) end
     --2D container
-    m:fill( m:same() )        for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
+    cm:fill( cm:same() )             for j=1,mn do assertEquals( cm:geti(j), 0   + 0i   ) end
     --1D container
-    t={} for i=1,m :size() do t[i]=i end
-    m:fill(t)                 for i=1,m:size() do assertEquals( m:geti(i), i   ) end
-    m:fill(vector(m :size())) for i=1,m:size() do assertEquals( m:geti(i), 0   ) end
+    t={} for i=1,mn do t[i]=i end
+    cm:fill(t)                       for j=1,mn do assertEquals( cm:geti(j), j   + 0i   ) end
+    cm:fill(vector(mn))              for j=1,mn do assertEquals( cm:geti(j), 0   + 0i   ) end
   end
-  local m, t = matrix(5), {}
-  for i=1,5 do t[i] = {}      for j=1,5 do t[i][j]=(i-1)*5+j end end
-  m :fill(t)                  for i=1,m:size() do assertEquals( m:geti(i), i ) end
-  assertTrue ( is_matrix( m:same():fill(complex(1,1))) ) -- no matrix types change
 end
 
 function TestCMatrixErr:testCopy()
   local msg = {
-    "invalid argument #1 (matrix expected)",
+    "invalid argument #1 (cmatrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth,'copy', errCMat, 1 )
+  assertErrorMsgContains( msg[1], mth,'copy', errCMat, 1         )
+  assertErrorMsgContains( msg[1], mth,'copy', errCMat, matrix(2) )
 end
 
 function TestCMatrixInPlaceII:testCopy()
-  for i,m in ipairs(G.cmatidx) do
-    local mcopy = matrix( m:sizes() )
-    mcopy:copy(m)
-    assertEquals( m, mcopy )
+  for i,cm in ipairs(G.cmatidx) do
+    local cmcopy = cmatrix( cm:sizes() )
+    cmcopy:copy(cm)
+    assertEquals( cm, cmcopy )
   end
 end
 
 function TestCMatrixInPlaceII:testResize()
-  local mres, minr, minc, _
-  for i,m in ipairs(G.cmatidx) do
-    local nr,nc = m:sizes()
+  local cmres, minr, minc, _
+  for i,cm in ipairs(G.cmatidx) do
+    local nr,nc = cm:sizes()
     for ic=nc+1,nc+3 do
     for ir=nr+1,nr+3 do
-      mres       = m:resize(ir, ic)
+      cmres      = cm:resize(ir, ic)
       minr, minc = min(nr,ir), min(nc,ic)
-      assertEquals( {mres:sizes()}                    , {ir, ic}                    )
-      assertEquals( mres:getsub(1..minr   ,1..minc   ), m:getsub(1..minr ,1..minc ) )
-      assertEquals( mres:getsub(minr+1..ir,1..minc   ), m:same(_, ir-minr, minc   ) )
-      assertEquals( mres:getsub(1..minr   ,minc+1..ic), m:same(_, minr   , ic-minc) )
+      assertEquals( {cmres:sizes()}                    , {ir, ic}                     )
+      assertEquals( cmres:getsub(1..minr   ,1..minc   ), cm:getsub(1..minr ,1..minc ) )
+      assertEquals( cmres:getsub(minr+1..ir,1..minc   ), cm:same(_, ir-minr, minc   ) )
+      assertEquals( cmres:getsub(1..minr   ,minc+1..ic), cm:same(_, minr   , ic-minc) )
     end
     end
     for ic=1,nc do
     for ir=1,nr do
-      mres       = m:resize(ir, ic)
+      cmres      = cm:resize(ir, ic)
       minr, minc = min(nr,ir), min(nc,ic)
-      assertEquals( {mres:sizes()}, {ir, ic}                  )
-      assertEquals( mres          , m:getsub(1..minr,1..minc) )
+      assertEquals( {cmres:sizes()}, {ir, ic}                   )
+      assertEquals( cmres          , cm:getsub(1..minr,1..minc) )
     end
     end
   end
 end
-]]
+
 function TestCMatrixInPlace:testZeros()
   for _,cm in ipairs(G.cmatidx) do
     cm:zeros()
@@ -1139,14 +1155,13 @@ function TestCMatrixFun:testForeach()
   end
 end
 
---[[
 function TestCMatrixErr:testMap()
   local msg = {
-    "invalid argument #2 (callable expected)"                 ,
-    "invalid argument #2 (scalar function expected)"          ,
-    "invalid argument #3 (iterable expected)"                 ,
-    "attempt to perform arithmetic on local 'y' (a nil value)",
-    "invalid range member '1'"                                ,
+    "invalid argument #2 (callable expected)"          ,
+    "invalid argument #2 (scalar function expected)"   ,
+    "invalid argument #3 (iterable expected)"          ,
+    "invalid arguments (unsupported complex operation)",
+    "invalid range member '1'"                         ,
   }
   assertErrorMsgContains( msg[1], mth, 'map', errCMat, ''              )
   assertErrorMsgContains( msg[1], mth, 'map', errCMat, 1..2            )
@@ -1161,18 +1176,19 @@ function TestCMatrixErr:testMap()
 end
 
 function TestCMatrixFun:testMap()
-  for i,m in ipairs(G.cmatidx) do
-    local mn, nr, nc = m:size(), m:sizes()
-    assertEquals( m:map('~'      ), m:same():fill(-1..-mn..-1) )
-    assertEquals( m:map(\x x-x   ), m:same()                   )
+  for i,cm in ipairs(G.cmatidx) do
+    local mn, nr, nc = cm:size(), cm:sizes()
+    assertEquals( cm:map('~'      ), cm:same():fill(-1..-mn..-1):fill(\x x+x*1i) )
+    assertEquals( cm:map(\x x-x   ), cm:same() )
     --totable test
-    assertEquals( m:map(\x x-x,{}), rep(0    , mn) )
-    assertEquals( m:map('!'   ,{}), rep(false, mn) )
+    assertEquals( cm:map(\x x-x,{}), rep(0+0i , mn) )
+    assertEquals( cm:map('!'   ,{}), rep(false, mn) )
     --'in' place test
-    m:map('~'   , 'in') assertEquals( m, m:same():fill(-1..-mn..-1) )
-    m:map(\x x-x, 'in') assertEquals( m, m:same()                   )
+    --cm:map('~'   , 'in') assertEquals( m, cm:same():fill(-1..-mn..-1) )
+    --cm:map(\x x-x, 'in') assertEquals( m, cm:same()                   )
   end
 end
+--[[
 
 function TestCMatrixErr:testMap2()
   local m = matrix(1)
@@ -2502,7 +2518,6 @@ end
 function TestCMatrixOps:testMod()
   for _,cm in ipairs(G.cmatidx) do
     local m = matrix(cm:sizes()):fill(3)
-
     assertEquals( cm%cm:copy()                             , cm:same()            )
     assertEquals( cm:same():fill(4   )%cm:same():fill(3   ), cm:same():fill(1   ) )
     assertEquals( cm:same():fill(4+4i)%cm:same():fill(3+3i), cm:same():fill(1+1i) )
@@ -2536,7 +2551,7 @@ function TestCMatrixErr:testEq()
   assertErrorMsgContains( msg[2], mth, 'eq', errCMat, cmatrix(1), {} )
 end
 
-function TestCMatrixOps:testEq()
+function TestCMatrixOps:testEq() --TODO: cleanup between real and complex test
   for _,cm in ipairs(G.cmatidx) do
     local m = matrix(cm:sizes())
     assertTrue ( m         == cm:same() ) -- mat  == cmat
@@ -2577,14 +2592,15 @@ end
 
 function TestCMatrixOps:testAdd()
   for _,cm in ipairs(G.cmatidx) do
-    local mn = cm:size()
+    local mn  = cm:size()
     local cmc = cm:copy()
-    local m = matrix(cm:sizes()):fill(1..mn)
-    --assertEquals( 2 + cm , cm:same():fill(3..mn+2) ) -- num  + cmat => num  + cvec
-    --assertEquals( cm + 2 , cm:same():fill(3..mn+2    ) ) -- cmat + num  => cvec + num
-    --assertEquals( cm + cmc, cm:copy():map(\x x*2      ) ) -- cmat + cmat => cvec + cvec
-    --assertEquals( cm + 2i, cm:copy():map(\x x+2i     ) ) -- cmat + cpx  => cvec + cpx
-    --assertEquals( cm + m , cm:copy():map(\x x*(2+1i) ) ) -- cmat + mat  => cvec + vec
+    local m   = matrix(cm:sizes()):fill(1..mn)
+    assertEquals( 2  + cm        , cmc:map(\x x+2       ) ) -- num  + cmat => num  + cvec
+    assertEquals( cm + 2         , cmc:map(\x x+2       ) ) -- cmat + num  => cvec + num
+    assertEquals( cm + cmc       , cmc:map(\x x*2       ) ) -- cmat + cmat => cvec + cvec
+    assertEquals( cm + cmc:imag(), cmc:map(\x x+x:imag()) )
+    assertEquals( cm + 2i        , cmc:map(\x x+2i      ) ) -- cmat + cpx  => cvec + cpx
+    assertEquals( cm + m         , cmc:map(\x x+x:real()) ) -- cmat + mat  => cvec + vec
   end
 end
 
@@ -2595,7 +2611,6 @@ function TestCMatrixOps:testAddCPx()
   end
 end
 
---[[
 function TestCMatrixErr:testSub()
   local msg = {
     "invalid arguments (unsupported matrix operation)",
@@ -2609,25 +2624,23 @@ function TestCMatrixErr:testSub()
 end
 
 function TestCMatrixOps:testSub()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    local mc = m:copy()
-    local cm = m:same(0i):fill(1..mn):map(\x x*(1+1i))
-    assertEquals( m - mc, m:same()                ) -- mat - mat  => vec - vec
-    assertEquals( 2 - m , m:copy():map(\x 2-x )   ) -- num - mat  => num - vec
-    assertEquals( m - 2 , m:same():fill(-1..mn-2) ) -- mat - num  => vec + -num
-    assertEquals( m - 2i, m:copy():map(\x x-2i)   ) -- mat - cpx  => vec + -cpx
-    assertEquals( m - cm, m:copy():map(\x x*1i)   ) -- mat - cmat => vec - cvec
-    assertTrue  ( is_cmatrix(m - 2i) )
-    assertTrue  ( is_cmatrix(m - cm) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn  = cm:size()
+    local cmc = cm:copy()
+    local m   = matrix(cm:sizes()):fill(1..mn)
+    assertEquals( cm - cmc          , cm:same()               ) -- cmat - cmat => cvec - cvec
+    assertEquals( cm - cmc:imag()*1i, cmc:map(\x x:real()   ) )
+    assertEquals( 2  - cm           , cmc:map(\x 2-x        ) ) -- num  - cmat => num  - cvec
+    assertEquals( cm - 2            , cmc:map(\x x-2        ) ) -- cmat - num  => cvec + -num
+    assertEquals( cm - 2i           , cmc:map(\x x-2i       ) ) -- cmat - cpx  => cvec + -cpx
+    assertEquals( cm - m            , cmc:map(\x x:imag()*1i) ) -- cmat - mat  => cvec -  vec
   end
 end
 
 function TestCMatrixOps:testSubCPx()
-  for _,m in ipairs(G.cmatidx) do
-    local mres = 2i + m
-    assertEquals( mres, m:copy():map(\x x+2i) ) -- cpx - mat => cpx - vec
-    assertTrue  ( is_cmatrix(mres) )
+  for _,cm in ipairs(G.cmatidx) do
+    local cmres = 2i + cm
+    assertEquals( cmres, cm:copy():map(\x x+2i) ) -- cpx - cmat => cpx - cvec
   end
 end
 
@@ -2636,14 +2649,15 @@ function TestCMatrixErr:testMul()
     "invalid arguments (unsupported matrix operation)",
     "incompatible matrix sizes"                       ,
   }
-  assertErrorMsgContains( msg[1], mth, 'mul', errCMat     , ''          )
-  assertErrorMsgContains( msg[1], mth, 'mul', errCMat     , nil         )
-  assertErrorMsgContains( msg[1], mth, 'mul', errCMat     , 1..4        )
+  assertErrorMsgContains( msg[1], mth, 'mul', errCMat    , ''          )
+  assertErrorMsgContains( msg[1], mth, 'mul', errCMat    , nil         )
+  assertErrorMsgContains( msg[1], mth, 'mul', errCMat    , 1..4        )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(2,1), matrix(2,1) )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(1,2), matrix(1,1) )
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(1,2), matrix(3,1) )
 end
 
+--[[
 local function refMul(m1, m2, i, j )
   local mref = matrix(m1:nrow(), m2:ncol())
   for i=1,m1:nrow() do
@@ -2772,27 +2786,27 @@ function TestCMatrixOps:testDivCPx()
     assertTrue( is_cmatrix(mref) )
   end
 end
+]]
 
 function TestCMatrixErr:testEmul()
   local msg = {
     "invalid argument #2 (matrix expected)",
     "incompatible matrix sizes"            ,
   }
-  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, ''        )
-  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, nil       )
-  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, 1..4      )
-  assertErrorMsgContains( msg[2], mth, 'emul', errCMat, matrix(1) )
-  assertErrorMsgContains( msg[2], mth, 'emul', errCMat, matrix(3) )
+  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, ''         )
+  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, nil        )
+  assertErrorMsgContains( msg[1], mth, 'emul', errCMat, 1..4       )
+  assertErrorMsgContains( msg[2], mth, 'emul', errCMat, cmatrix(1) )
+  assertErrorMsgContains( msg[2], mth, 'emul', errCMat, cmatrix(3) )
 end
 
 function TestCMatrixOps:testEmul()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    local mc = m:copy()
-    local cm = m:same(0i):fill(1..mn):map(\x x+x*1i)
-    assertEquals( m:emul(mc), m:map2(mc, '*') )
-    assertEquals( m:emul(cm), m:map2(cm, '*') )
-    assertTrue  ( is_cmatrix(m:emul(cm)) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn  = cm:size()
+    local cmc = cm:copy()
+    local m   = matrix(cm:sizes()):fill(1..mn)
+    assertEquals( cm:emul(cmc), cm:map2(cmc, '*') )
+    assertEquals( cm:emul(m  ), cm:map2(m  , '*') )
   end
 end
 
@@ -2808,17 +2822,17 @@ function TestCMatrixErr:testEdiv()
   assertErrorMsgContains( msg[2], mth, 'ediv', errCMat, matrix(3) )
 end
 
-function TestCMatrixOps:tetEdiv()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    local mc = m:copy()
-    local cm = m:same(0i):fill(1..mn):map(\x x+x*1i)
-    assertEquals( m:ediv(mc), m:map2(mc, '/') )
-    assertEquals( m:ediv(cm), m:map2(cm, '/') )
-    assertTrue  ( is_cmatrix(m:ediv(cm)) )
+function TestCMatrixOps:testEdiv()
+  for _,cm in ipairs(G.cmatidx) do
+    local mn  = cm:size()
+    local cmc = cm:copy()
+    local m   = matrix(cm:sizes()):fill(1..mn)
+    assertEquals( cm:ediv(cmc), cm:map2(cmc, '/') )
+    assertEquals( cm:ediv(m  ), cm:map2(m  , '/') )
    end
 end
 
+--[[
 -- linear algebra -------------------------------------------------------------o
 
 function TestCMatrixLapack:testSolve()
@@ -3355,7 +3369,7 @@ function TestCMatrixRot:testTorotq() -- TODO
 end
 
 -- concatenation, conversion --------------------------------------------------o
-
+]]
 function TestCMatrixErr:testConcat()
   local msg = {
     "invalid argument #1 (matrix expected)"                     ,
@@ -3364,44 +3378,44 @@ function TestCMatrixErr:testConcat()
     "invalid argument #3 (string 'vec', row' or 'col' expected)",
     "incompatible matrix sizes"                                 ,
   }
-  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , ''                            )
-  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , nil                           )
-  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , 1..4                          )
-  assertErrorMsgContains( msg[3], mth, 'concat', errCMat     , matrix(1)                     )
-  assertErrorMsgContains( msg[3], mth, 'concat', matrix(3)  , errCMat                        )
-  assertErrorMsgContains( msg[4], mth, 'concat', errCMat     , errCMat     , ''               )
-  assertErrorMsgContains( msg[4], mth, 'concat', errCMat     , errCMat     , 1                )
-  assertErrorMsgContains( msg[5], mth, 'concat', matrix(1,2), matrix(3,2), 'row'            )
-  assertErrorMsgContains( msg[5], mth, 'concat', matrix(2,3), matrix(2,2), 'col'            )
-  assertErrorMsgContains( msg[5], mth, 'concat', errCMat     , errCMat     , 'col', matrix(3) )
+  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , ''                              )
+  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , nil                             )
+  assertErrorMsgContains( msg[2], mth, 'concat', errCMat     , 1..4                            )
+  assertErrorMsgContains( msg[3], mth, 'concat', errCMat     , cmatrix(1)                      )
+  assertErrorMsgContains( msg[3], mth, 'concat', cmatrix(3)  , errCMat                         )
+  assertErrorMsgContains( msg[4], mth, 'concat', errCMat     , errCMat     , ''                )
+  assertErrorMsgContains( msg[4], mth, 'concat', errCMat     , errCMat     , 1                 )
+  assertErrorMsgContains( msg[5], mth, 'concat', cmatrix(1,2), cmatrix(3,2), 'row'             )
+  assertErrorMsgContains( msg[5], mth, 'concat', cmatrix(2,3), cmatrix(2,2), 'col'             )
+  assertErrorMsgContains( msg[5], mth, 'concat', errCMat     , errCMat     , 'col', cmatrix(3) )
 end
 
 function TestCMatrix:testConcat()
-  for _,m in ipairs(G.cmatidx) do
-    local mn, nr, nc, _ = m:size(), m:sizes()
-    local mref1 = m:same(_,2*nr,nc):setsub(1..nr, 1..nc, 1..mn):setsub(1+nr..2*nr, 1   ..  nc, 1..mn)
-    local mref2 = m:same(_,nr,2*nc):setsub(1..nr, 1..nc, 1..mn):setsub(1   ..  nr, 1+nc..2*nc, 1..mn)
-    local mref3 = m:same(_,2*mn,1):setsub( 1..mn, 1    , 1..mn):setsub(1+mn..2*mn, 1         , 1..mn)
-    assertEquals( m:concat( m       ), mref1 )
-    assertEquals( m:concat( m, 'col'), mref1 )
-    assertEquals( m:concat( m, 'row'), mref2 )
-    assertEquals( m:concat( m, 'vec'), mref3 )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn, nr, nc, _ = cm:size(), cm:sizes()
+    local cmref1 = cm:same(_,2*nr,  nc):setsub(1..nr, 1..nc, 1..mn):setsub(1+nr..2*nr, 1   ..  nc, 1..mn):map(\x x+x*1i)
+    local cmref2 = cm:same(_,  nr,2*nc):setsub(1..nr, 1..nc, 1..mn):setsub(1   ..  nr, 1+nc..2*nc, 1..mn):map(\x x+x*1i)
+    local cmref3 = cm:same(_,2*mn,  1 ):setsub(1..mn, 1    , 1..mn):setsub(1+mn..2*mn, 1         , 1..mn):map(\x x+x*1i)
+    assertEquals( cm:concat( cm       ), cmref1 )
+    assertEquals( cm:concat( cm, 'col'), cmref1 )
+    assertEquals( cm:concat( cm, 'row'), cmref2 )
+    assertEquals( cm:concat( cm, 'vec'), cmref3 )
   end
 end
 
 function TestCMatrixConv:testTosting()
-  local m = matrix(2)
-  assertTrue( is_string(tostring(m      )) )
-  assertTrue( is_string(tostring(m, ''  )) )
-  assertTrue( is_string(tostring(m, "\n")) )
-  for i,m in ipairs(G.cmatidx) do
-    local c, nr, nc = {}, m:sizes()
-    local ref1 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idx(i,j,nc)) end ref1[i]=table.concat(c, ' ' ) end
-    local ref2 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idx(i,j,nc)) end ref2[i]=table.concat(c      ) end
-    local ref3 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idx(i,j,nc)) end ref3[i]=table.concat(c, "\n") end
-    assertEquals( tostring(m      ), table.concat(ref1, '\n') )
-    assertEquals( tostring(m, ''  ), table.concat(ref2, '\n') )
-    assertEquals( tostring(m, '\n'), table.concat(ref3, '\n') )
+  local cm = cmatrix(2)
+  assertTrue( is_string(tostring(cm      )) )
+  assertTrue( is_string(tostring(cm, ''  )) )
+  assertTrue( is_string(tostring(cm, "\n")) )
+  for i,cm in ipairs(G.cmatidx) do
+    local c, nr, nc = {}, cm:sizes()
+    local ref1 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idxC(i,j,nc)) end ref1[i]=table.concat(c, ' ' ) end
+    local ref2 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idxC(i,j,nc)) end ref2[i]=table.concat(c      ) end
+    local ref3 = {} for i=1,nr do for j=1,nc do c[j]=tostring(idxC(i,j,nc)) end ref3[i]=table.concat(c, "\n") end
+    assertEquals( tostring(cm      ), table.concat(ref1, '\n') )
+    assertEquals( tostring(cm, ''  ), table.concat(ref2, '\n') )
+    assertEquals( tostring(cm, '\n'), table.concat(ref3, '\n') )
   end
 end
 
@@ -3410,43 +3424,44 @@ function TestCMatrixErr:testTotable()
     "invalid argument #2 (table expected)"          ,
     "invalid argument #2 (table of tables expected)",
   }
-  assertErrorMsgContains( msg[1], totable, errCMat, ''     )
-  assertErrorMsgContains( msg[1], totable, errCMat, 1      )
-  assertErrorMsgContains( msg[1], totable, errCMat, true   )
-  assertErrorMsgContains( msg[1], totable, errCMat, 1..2   )
+  assertErrorMsgContains( msg[1], totable, errCMat, ''      )
+  assertErrorMsgContains( msg[1], totable, errCMat, 1       )
+  assertErrorMsgContains( msg[1], totable, errCMat, true    )
+  assertErrorMsgContains( msg[1], totable, errCMat, 1..2    )
   assertErrorMsgContains( msg[1], totable, errCMat, errCMat )
-  assertErrorMsgContains( msg[2], totable, errCMat, {{},5} )
+  assertErrorMsgContains( msg[2], totable, errCMat, {{},5}  )
 end
 
 function TestCMatrixConv:testTotable()
-  for i,m in ipairs(G.cmatidx) do
-    local nr, nc = m:sizes()
-    local tref   = totable(m)
-    if nc ~=1 then for i=1,nr do for j=1,nc do assertEquals( tref[i][j], idx(i,j,nc) ) end end
-              else for i=1,nr do               assertEquals( tref[i]   , idx(i,1,nc) )     end end
-    assertTrue  ( is_table(totable(m))    )
-    assertEquals( matrix  (totable(m)), m )
+  for i,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    local tref   = totable(cm)
+    if nc ~=1 then for i=1,nr do for j=1,nc do assertEquals( tref[i][j], idxC(i,j,nc) ) end end
+              else for i=1,nr do               assertEquals( tref[i]   , idxC(i,1,nc) )     end end
+    assertTrue  ( is_table(totable(cm))     )
+    assertEquals( cmatrix  (totable(cm)), cm )
   end
 end
 
 TestCMatrixZ = {}
 
 function TestCMatrixZ:testGMatixCheck()
-  for i,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    assertEquals( G.size[i], {m:sizes()}           )
-    assertEquals( m        ,  m:same():fill(1..mn) )
+  for i,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    assertEquals( G.size[i], {cm:sizes()}                          )
+    assertEquals( cm       ,  cm:same():fill(1..mn):map(\x x+x*1i) )
   end
-  for i,m in ipairs(G.cmattmp) do
-    assertEquals( G.size[i], {m:sizes()} )
-    assertEquals( m        ,  m:same()   )
+  for i,cm in ipairs(G.cmattmp) do
+    assertEquals( G.size[i], {cm:sizes()} )
+    assertEquals( cm       ,  cm:same()   )
   end
 end
 
 -- performance test suite -----------------------------------------------------o
 
+--[[
 Test_Matrix = {}
+]]
 
 -- end ------------------------------------------------------------------------o
-]]
 
