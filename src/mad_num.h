@@ -61,11 +61,11 @@ void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *
 
 void  mad_cnum_ipow_r  (num_t x_re, num_t x_im, long long y, cnum_t *r);
 
-void  mad_cnum_w_r     (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erf_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfc_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfi_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
+void  mad_cnum_erfw_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
+void  mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_dawson_r(num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 
 // ----------------------------------------------------------------------------o
