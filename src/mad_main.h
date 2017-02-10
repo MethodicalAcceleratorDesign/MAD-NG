@@ -17,7 +17,7 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o----------------------------------------------------------------------------o
-  
+
   Purpose:
   - Frontend (main) of the MAD application.
 
@@ -30,14 +30,14 @@
 
 // --- interface -------------------------------------------------------------o
 
-void mad_error (const char *fname, const char *fmt, ...);
-void mad_warn  (const char *fname, const char *fmt, ...);
-void mad_trace (const char *fname, const char *fmt, ...);
+void mad_error (     const char *fname, const char *fmt, ...);
+void mad_warn  (     const char *fname, const char *fmt, ...);
+void mad_trace (int, const char *fname, const char *fmt, ...);
 
 #ifdef LUALIB_API // Only valid in a Lua environment
-LUALIB_API int luaL_error (lua_State *L, const char *fmt, ...);
-LUALIB_API int luaL_warn  (lua_State *L, const char *fmt, ...);
-LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...);
+LUALIB_API int luaL_error (lua_State *L,      const char *fmt, ...);
+LUALIB_API int luaL_warn  (lua_State *L,      const char *fmt, ...);
+LUALIB_API int luaL_trace (lua_State *L, int, const char *fmt, ...);
 #endif
 
 // --- globals ---------------------------------------------------------------o
