@@ -154,12 +154,12 @@ LUALIB_API int luaL_warn (lua_State *L, const char *fmt, ...)
 	return 0;
 }
 
-LUALIB_API int luaL_trace (lua_State *L, const char *fmt, ...)
+LUALIB_API int luaL_trace (lua_State *L, int lvl, const char *fmt, ...)
 {
-	if (mad_trace_level) {
+	if (lvl >= mad_trace_level) {
 		va_list va;
 		va_start(va, fmt);
-		fprintf(stderr, "trace: %s\n", logmsg(L, NULL, fmt, va));
+		fprintf(stderr, "trace%d: %s\n", lvl, logmsg(L, NULL, fmt, va));
 		va_end(va);
 		fflush(stderr);
 	}
@@ -189,12 +189,12 @@ LJ_NOINLINE void (mad_warn) (const char *fname, const char *fmt, ...)
 	fflush(stderr);
 }
 
-LJ_NOINLINE void (mad_trace) (const char *fname, const char *fmt, ...)
+LJ_NOINLINE void (mad_trace) (int lvl, const char *fname, const char *fmt, ...)
 {
-	if (mad_trace_level) {
+	if (lvl >= mad_trace_level) {
 		va_list va;
 		va_start(va, fmt);
-		fprintf(stderr, "trace: %s\n", logmsg(globalL, fname, fmt, va));
+		fprintf(stderr, "trace%d: %s\n", lvl, logmsg(globalL, fname, fmt, va));
 		va_end(va);
 		fflush(stderr);
 	}
@@ -208,10 +208,7 @@ static int mad_luawarn (lua_State *L)
 static int mad_luatrace (lua_State *L)
 {
   /* Should also be checked on Lua side to avoid spurious call */
-	if (mad_trace_level)
-		return luaL_trace(L, "%s", luaL_checkstring(L, 1));
-	else
-		return 0;
+  return luaL_trace(L, luaL_checknumber(L, 1), "%s", luaL_checkstring(L, 2));
 }
 
 static int mad_luatracelevel (lua_State *L)
