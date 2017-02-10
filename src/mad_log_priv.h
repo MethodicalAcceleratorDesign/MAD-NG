@@ -24,7 +24,7 @@
 #define mad_trace(l,...)   mad_logchkfun(l,(mad_trace)(l,__func__, __VA_ARGS__))
 #define mad_ensure(c,...)  mad_logtstfun(c,(mad_error)(  __func__, __VA_ARGS__))
 
-#define mad_logchkfun(l,f) ((void)(mad_trace_level <= (l) && (f,0)))
+#define mad_logchkfun(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
 #define mad_logtstfun(c,f) ((void)(                  !(c) && (f,0)))
 
 void (mad_error) (    str_t,str_t,...) __attribute__((format(printf,2,3),noreturn));
