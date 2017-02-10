@@ -88,20 +88,20 @@ void mad_cnum_ipow_r (num_t x_re, num_t x_im, long long y, cnum_t *r)
 
 #include "Faddeeva.h"
 
-void mad_cnum_w_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
-
 void mad_cnum_erf_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_erf (CNUM(x), relerr); }
 
 void mad_cnum_erfc_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_erfc (CNUM(x), relerr); }
 
-void mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_erfcx (CNUM(x), relerr); }
-
 void mad_cnum_erfi_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_erfi (CNUM(x), relerr); }
+
+void mad_cnum_erfw_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+{ CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
+
+void mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+{ CHKR; *r = Faddeeva_erfcx (CNUM(x), relerr); }
 
 void mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_Dawson (CNUM(x), relerr); }
