@@ -30,6 +30,7 @@ NAME
   gfunc -- provide generic functions for functional programming
 
 SYNOPSIS
+  functor, is_functor,
   ident, first, second, swap, repeater, compose, compose_bottom,
   foreach, map, map2, map3, foldl, foldr, filter.
 
@@ -48,15 +49,18 @@ RETURN VALUES
   These utility functions.
 
 ERRORS
-  None.
+  Functors constructor trigs an error if the argument #1 is not a function.
 
 SEE ALSO
-  None.
+  Object.
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
-local is_callable in MAD.concept
+local tostring = tostring
+
+local is_function, is_table  in MAD.typeid
+local is_callable            in MAD.concept
 
 -- notes ----------------------------------------------------------------------o
 
@@ -117,10 +121,20 @@ and, or, any, all, sum, product, max, min,
 
 -- implementation -------------------------------------------------------------o
 
+-- composition
+
 local ident   = \... -> ...
 local compose = \f,g\... -> f(g(...))
+local compose_bottom = setmetatable({ident}, {
+    __call = \g,... g[1](...),
+    __pow  = \f,g setmetatable(
+      { compose(assert(is_callable(f) and f), g[1]) }, getmetatable(g))
+  })
 
 M.gfunc = {
+
+  -- functor
+  functor = functor,
 
   -- helper
 
@@ -130,14 +144,10 @@ M.gfunc = {
   second  = \a,b -> (b),
   swap    = \a,b -> (b,a),
 
-  -- functional composition
+  -- composition
 
-  compose = compose,
-  compose_bottom = setmetatable({ident}, {
-    __call = \g,... g[1](...),
-    __pow  = \f,g setmetatable(
-      { compose(assert(is_callable(f) and f), g[1]) }, getmetatable(g))
-  }),
+  compose        = compose,
+  compose_bottom = compose_bottom,
 
 }
 
@@ -151,6 +161,75 @@ local sid = setmetatable({ n=0 }, {
   __newindex := error("invalid write access"),
 })
 ]]
+
+-- functors
+
+local _fct = {} -- hidden key
+
+local fct_mt = {
+  __call      = \s,... -> rawget(s,_fct)(...),
+  __tostring  = \s -> tostring(rawget(s,_fct)),
+  __len      := error "forbidden access to functor",
+  __index    := error "forbidden access to functor",
+  __newindex := error "forbidden access to functor",
+  __ipairs   := error "forbidden access to functor",
+  __pairs    := error "forbidden access to functor",
+  __metatable = false,
+}
+
+local function is_functor (a)
+  return is_table(a) and rawget(a,_fct) ~= nil
+end
+
+function M.gfunc.functor (f) -- exported
+  assert(is_function(f), "invalid argument #1 (function expected)")
+  return setmetatable({[_fct]=f}, fct_mt)
+end
+
+M.__help.functor = [=[
+NAME
+  functor           -- encapsulate a function into a functor
+  is_functor        -- check if the argument is a functor
+
+SYNOPSIS
+  functor(func)
+  is_functor(val)
+
+DESCRIPTION
+  The functor function is a constructor that encapsulates true functions into
+  functors (i.e. some special readonly objects that behaves like functions). It
+  is used by the object model (i.e. set_function) to avoid the default
+  function-as-value semantic. The is_functor function checks if a value is a
+  functor.
+
+RETURN VALUES
+  The functor function returns the functor object that encapsulates the function
+  func. The is_functor function returns true if val is a functor, false
+  otherwise.
+
+ERRORS
+  The functor function trigs an error if argument #1 is not a valid function.
+
+EXAMPLES
+  local obj = Object {}
+    : set_variable { hello := print"hello" }
+    : set_function { world := print"world" }
+  print( is_functor(obj.hello) )               -- false (print "hello" too)
+  print( is_functor(obj.world) )               -- true  (no extra print)
+  a = obj.hello                                -- print "hello"
+  obj.world()                                  -- print "world"
+  obj.hello = functor \ print"hello"           -- set variable with a functor
+  print( is_functor(obj.hello) )               -- true  (no extra print)
+  obj.hello()                                  -- print "hello"
+
+SEE ALSO
+  Object.
+]=]
+M.__help.is_functor = M.__help.functor
+
+-- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_functor = is_functor
 
 -- end ------------------------------------------------------------------------o
 return M
