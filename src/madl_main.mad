@@ -82,10 +82,20 @@ M.env.arg   = arg             -- backup of arg
 M[_hlp]     = {}              -- storage for help
 _M          = nil
 
--- trace update: make pre-check before calling C (gain x10 in speed)
+-- warning, info, trace
 local ctrace = trace
-trace    = \l,... -> _C.mad_trace_level >= l and ctrace(l,...)
-traceout = \l     -> _C.mad_trace_level >= l
+
+trace      = \l,s -> _C.mad_trace_level >= l and ctrace(l,s)
+tracelevel = \l   -> _C.mad_trace_level >= l
+infolevel  = \l   -> _C.mad_info_level  >= l
+warncount  = \    -> _C.mad_warn_count
+
+info_setlevel     = \l => local lvl = _C.mad_info_level
+                                      _C.mad_info_level     = l return lvl end
+trace_setlevel    = \l => local lvl = _C.mad_trace_level
+                                      _C.mad_trace_level    = l return lvl end
+trace_setlocation = \l => local lvl = _C.mad_trace_location
+                                      _C.mad_trace_location = l return lvl end
 
 -- import
 
@@ -104,7 +114,7 @@ function M.import (self, a, override)
   local obj = {}
   for k,v in pairs(a) do
     if string.sub(k,1,2) ~= '__' then
-      if traceout(3) then
+      if tracelevel(3) then
         trace(3, string.format('import: %-25s %-25s',k,v) )
       end
       assert(is_nil(M[k]) or override == true,
@@ -156,7 +166,7 @@ function M.export (self, pattern, a, override)
   for _,k in ipairs(pattern) do
     local v = self[k]
     if v then
-      if traceout(3) then
+      if tracelevel(3) then
         trace(3, string.format('export: %-25s %-25s',k,v) )
       end
       assert(is_nil(a[k]) or override == true,
@@ -176,6 +186,7 @@ local function gethelp (a)
   local mt = get_metatable(a)
   return (mt and is_rawtable(mt.__help) and mt.__help)        -- 1st metamethod
     or (is_indexable(a) and is_rawtable(a.__help) and a.__help)   -- 2nd member
+    or nil
 end
 
 function help (a, _chk)
@@ -183,8 +194,14 @@ function help (a, _chk)
   assert(is_string(a), "invalid argument #1 (string expected)")
 
   print('help known for:')
-  for k,v in pairs(M)       do print(k, gethelp(v)) end
-  for k,v in pairs(M[_hlp]) do print(k)             end
+  for k,v in pairs(M[_hlp]) do
+    io.write(tostring(k),"\n")
+  end
+  for k,v in pairs(M) do
+    io.write(tostring(k),":  ")
+    io.write(tostring(gethelp(v)),"\n")
+  end
+  print('end of known help')
 
   -- search for help
   local hlp

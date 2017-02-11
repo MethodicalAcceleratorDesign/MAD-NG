@@ -47,7 +47,13 @@
 
 // --- implementation (private) ----------------------------------------------o
 
-#include "mad_log_priv.h"
+#define mad_error(...)                     (mad_error)(  __func__, __VA_ARGS__)
+#define mad_warn(...)                      (mad_warn )(  __func__, __VA_ARGS__)
+#define mad_trace(l,...)   mad_logchkfun(l,(mad_trace)(l,__func__, __VA_ARGS__))
+#define mad_ensure(c,...)  mad_logtstfun(c,(mad_error)(  __func__, __VA_ARGS__))
+
+#define mad_logchkfun(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
+#define mad_logtstfun(c,f) ((void)(                  !(c) && (f,0)))
 
 // ---------------------------------------------------------------------------o
 
