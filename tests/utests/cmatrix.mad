@@ -33,7 +33,7 @@ local is_vector, is_matrix, is_cvector, is_cmatrix, isa_vector, isa_matrix,
 
 local infi, tiny, eps, huge, inf, nan, pi, sqrt, abs, log, exp, min, random,
       randomseed, floor, round, sin, cos, tan, sinh, cosh, tanh, asin, acos,
-      atan, asinh, acosh, atanh in MAD.gmath
+      atan, asinh, acosh, atanh, atan2, hypot in MAD.gmath
 local totable, tostring in MAD
 local concat in MAD
 
@@ -1735,205 +1735,217 @@ end
 
 -- special maps ---------------------------------------------------------------o
 
---[[
 function TestCMatrixSMaps:setUp()
-  for _,cm in ipairs(G.cmattmp) do cm:zeros() end
-  for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()) end
+  for _,cm in ipairs(G.cmattmp) do cm:zeros()           :map( toC, 'in') end
+  for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()):map( toC, 'in') end
 end
 
 function TestCMatrixSMaps:tearDown()
-  for _,cm in ipairs(G.cmattmp) do cm:zeros() end
-  for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()) end
+  for _,cm in ipairs(G.cmattmp) do cm:zeros()           :map( toC, 'in') end
+  for _,cm in ipairs(G.cmatidx) do cm:fill(1..cm:size()):map( toC, 'in') end
 end
 
 function TestCMatrixSMaps:testCeil ()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(0.01, 1, m:size())
-    m:fill(r):ceil('in')
-    assertEquals( m, m:same():fill(1) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(0.01, 1, cm:size())
+    cm:fill(r):map(toC,'in'):ceil('in')
+    assertEquals( cm, cm:same():fill(1):map(toC) )
   end
 end
 
 function TestCMatrixSMaps:testFloor()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(0, 1-0.01, m:size())
-    m:fill(r):floor('in')
-    assertEquals( m, m:same() )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(0, 1-0.01, cm:size())
+    cm:fill(r):map(toC,'in'):floor('in')
+    assertEquals( cm, cm:same():map(toC) )
   end
 end
 
 function TestCMatrixSMaps:testFrac()
-  for _,m in ipairs(G.cmattmp) do
-    local r  = range(0.1,(m:size())/10,0.1)
-    local mn = m:size()
-    m:fill(r):frac('in')
+  for _,cm in ipairs(G.cmattmp) do
+    local mn = cm:size()
+    local r  = range(0.1,(mn)/10,0.1)
+    cm:fill(r):map(toC,'in'):frac('in')
     for i=1,mn do
-      if     r[i] < 1 then assertAlmostEquals( m:geti(i) -  i/10   , 0,   eps )
-      elseif r[i] < 2 then assertAlmostEquals( m:geti(i) - (i/10-1), 0,   eps )
-                      else assertAlmostEquals( m:geti(i) - (i/10-2), 0, 2*eps ) end
+      if     r[i] < 1 then assertAlmostEquals( cm:geti(i):real() -  i/10   , 0,   eps )
+                           assertAlmostEquals( cm:geti(i):imag() -  i/10   , 0,   eps )
+      elseif r[i] < 2 then assertAlmostEquals( cm:geti(i):real() - (i/10-1), 0,   eps )
+                           assertAlmostEquals( cm:geti(i):real() - (i/10-1), 0,   eps )
+                      else assertAlmostEquals( cm:geti(i):real() - (i/10-2), 0, 2*eps )
+                           assertAlmostEquals( cm:geti(i):real() - (i/10-2), 0, 2*eps ) end
     end
   end
 end
 
 function TestCMatrixSMaps:testTrunc()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(0, 3-0.01, m:size())
-    m:fill(r):trunc('in')
-    for i=1,#m do
-      if     r[i] < 1 then assertEquals( m:geti(i), 0 )
-      elseif r[i] < 2 then assertEquals( m:geti(i), 1 )
-                      else assertEquals( m:geti(i), 2 ) end
+  for _,cm in ipairs(G.cmattmp) do
+    local mn = cm:size()
+    local r = nrange(0, 3-0.01, mn)
+    cm:fill(r):map(toC,'in'):trunc('in')
+    for i=1,mn do
+      if     r[i] < 1 then assertEquals( cm:geti(i), 0+0i )
+      elseif r[i] < 2 then assertEquals( cm:geti(i), 1+1i )
+                      else assertEquals( cm:geti(i), 2+2i ) end
     end
   end
 end
 
 function TestCMatrixSMaps:testRound()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(0, 1, m:size())
-    m:fill(r):round('in')
-    for i=1,#m do
-    if r[i] < 0.5 then assertEquals( m:geti(i), 0 )
-                  else assertEquals( m:geti(i), 1 ) end
+  for _,cm in ipairs(G.cmattmp) do
+    local mn = cm:size()
+    local r = nrange(0, 1, mn)
+    cm:fill(r):map(toC,'in'):round('in')
+    for i=1,mn do
+    if r[i] < 0.5 then assertEquals( cm:geti(i), 0+0i )
+                  else assertEquals( cm:geti(i), 1+1i ) end
     end
   end
 end
 
 function TestCMatrixSMaps:testAbs()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(-3, 3, m:size())
-    m:fill(r):abs('in')
-    local res = m:map(\x x>=0, {})
-    assertEquals( res, rep(true, #m) )
+  for _,cm in ipairs(G.cmattmp) do
+    local mn, res = cm:size()
+    local r = nrange(-3, 3, mn)
+    cm:fill(r):map(toC,'in'):abs('in')
+    res = cm:map(\x x:real()>=0, {})  assertEquals( res, rep(true, mn) )
+    res = cm:map(\x x:imag()>=0, {})  assertEquals( res, rep(true, mn) )
   end
 end
 
 function TestCMatrixSMaps:testSqrt()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:map(\x x*x):sqrt('in')
-    assertEquals( m, m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    cm:map(\x x*x):map(toC,'in'):sqrt('in')
+    assertEquals( cm, cm:same():fill(1..mn):map(toC) )
   end
 end
 
 function TestCMatrixSMaps:testExp()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:exp('in')
-    assertEquals( m:map(log), m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    local cref = cm:copy()
+    cm:exp('in')
+    assertEquals( cm, cref:map(\x exp(x:real()) * complex(cos(x:imag()), sin(x:imag()))) )
   end
 end
 
 function TestCMatrixSMaps:testLog()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:log('in')
-    local res = m:map(\x exp(x) )
-    assertTrue( res:eq( m:same():fill(1..mn), 16*eps ) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    cm:map(toC,'in'):log('in')
+    local res = cm:map(\x exp(x), 'in' )
+    assertTrue( res:eq( cm:same():fill(1..mn):map(toC,'in'), 58*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testLog10()
-  for _,m in ipairs(G.cmatidx) do
-    local mres = m:copy():map(\x log(x)/log(10) )
-    m:log10('in')
-    assertTrue( m:eq( mres, eps) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mres = cm:copy():map(\x log(x)/log(10) )
+    cm:map(toC,'in'):log10('in')
+    assertTrue( cm:eq( mres, eps) )
   end
 end
 
 function TestCMatrixSMaps:testSin()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1, pi/2, m:size())
-    m:fill(r)
-    assertEquals( m:sin(), m:copy():map(\x -sin(-x)) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1, pi/2, cm:size())
+    cm:fill(r):map(toC,'in')
+    assertEquals( cm:sin(), cm:copy():map(\x -sin(-x)) )
   end
 end
 
 function TestCMatrixSMaps:testCos()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1, pi/2, m:size())
-    m:fill(r)
-    assertEquals( m:cos(),    m:copy():map(\x cos(-x    ))        )
-    assertTrue  ( m:cos():eq( m:copy():map(\x sin(pi/2-x)), eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1, pi/2, cm:size())
+    cm:fill(r):map(toC,'in')
+    assertEquals( cm:cos(),    cm:copy():map(\x cos(-x    ))          )
+    assertTrue  ( cm:cos():eq( cm:copy():map(\x sin(pi/2-x)), 3*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testTan()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:tan():eq( m:copy():map(\x sin(x)/cos(x)), 32*eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    assertTrue( cm:tan():eq( cm:copy():map(\x sin(x)/cos(x)), 32*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testSinh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:sinh():eq( m:copy():map(\x 2*sinh(x/2)*cosh(x/2)), 2*eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    assertTrue( cm:sinh():eq( cm:copy():map(\x 2*sinh(x/2)*cosh(x/2)), 5*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testCosh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:cosh():eq( m:copy():map(\x 2*sinh(x/2)^2 + 1), 2*eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    assertTrue( cm:cosh():eq( cm:copy():map(\x 2*sinh(x/2)^2 + 1), 5*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testTanh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:tanh():eq( m:copy():map(\x sinh(x)/cosh(x)), eps) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    assertTrue( cm:tanh():eq( cm:copy():map(\x sinh(x)/cosh(x)), 3*eps) )
   end
 end
 
 function TestCMatrixSMaps:testAsin()
-  for _,m in ipairs(G.cmatidx) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:sin():asin('in'):eq( m:copy(), 8*eps) ) -- linux err: 6*eps
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:sin():asin('in'):eq( cref, 8*eps) ) -- linux err: 6*eps
   end
 end
 
 function TestCMatrixSMaps:testAcos()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:cos():acos('in'):eq( m:copy(), eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:cos():acos('in'):eq( cref, eps ) )
   end
 end
 
 function TestCMatrixSMaps:testAtan()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:tan():atan('in'):eq( m:same():fill(r), eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:tan():atan('in'):eq( cref, 9*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testAsinh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:asinh():sinh('in'):eq( m:copy(), 2*eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:asinh():sinh('in'):eq( cref, 3*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testAcosh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:acosh():cosh('in'):eq( m:copy(), eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:acosh():cosh('in'):eq( cref, 3*eps ) )
   end
 end
 
 function TestCMatrixSMaps:testAtanh()
-  for _,m in ipairs(G.cmattmp) do
-    local r = nrange(1,pi/2,m:size())
-    m:fill(r)
-    assertTrue( m:tanh():atanh('in'):eq( m:copy(), 2*eps ) )
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,cm:size())
+    cm:fill(r):map(toC,'in')
+    local cref = cm:copy()
+    assertTrue( cm:tanh():atanh('in'):eq( cref, 9*eps ) )
   end
 end
 
@@ -1942,65 +1954,72 @@ end
 --function TestCMatrixSMaps:testLgamma() end
 
 function TestCMatrixSMaps:testCarg()
-  for _,m in ipairs(G.cmatidx) do
-    m:carg('in')
-    assertEquals( m, m:same() )
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(1,pi/2,cm:size())
+    local cref = cm:fill(r):map(toC,'in'):copy()
+    cm:carg('in')
+    assertEquals( cm, cref:copy():map(\x atan2(x:imag(),x:real())) )
   end
 end
 
 function TestCMatrixSMaps:testReal()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:real('in')
-    assertEquals( m, m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    cm:real('in')
+    assertEquals( cm, cm:same():fill(1..mn) )
   end
 end
 
 function TestCMatrixSMaps:testImag()
-  for i,m in ipairs(G.cmatidx) do
-    m:imag('in')
-    assertEquals( m, m:same() )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    cm:imag('in')
+    assertEquals( cm, cm:same():fill(1..mn) )
   end
 end
 
 function TestCMatrixSMaps:testConj()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:conj('in')
-    assertEquals( m, m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    cm:conj('in')
+    assertEquals( cm, cm:same():fill(1..mn):map(\x x-x*1i) )
   end
 end
 
 function TestCMatrixSMaps:testProj()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    assertEquals( m:proj(), m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    assertEquals( cm:proj(), cm:same():fill(1..mn):map(toC) )
   end
 end
 
 function TestCMatrixSMaps:testRect()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    m:rect('in')
-    assertEquals( m, m:same():fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    local cref = cm:copy():map(\x x:real()*cos(x:imag())+ x:real()*sin(x:imag())*1i )
+    cm:rect('in')
+    assertEquals( cm, cref )
   end
 end
 
 function TestCMatrixSMaps:testPolar()
-  for _,m in ipairs(G.cmatidx) do
-    local mn = m:size()
-    assertEquals( m:polar(), m:same(0i):fill(1..mn) )
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = cm:size()
+    local cref = cm:copy():map(\x hypot(x:real(),x:imag()) + atan2( x:real(),x:imag())*1i )
+    cm:polar('in')
+    assertEquals( cm, cref )
   end
 end
 
 -- special folds --------------------------------------------------------------o
 
+--[[
 function TestCMatrixSFolds:testMin()
   for _,m in ipairs(G.cmatidx) do
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:min()     , 1                                         )
-    assertEquals( m:min('col'), m:same(_,1 ,nc):fill(1..nc)               )
-    assertEquals( m:min('row'), m:same(_,nr,1 ):fill(1..idx(nr,1,nc)..nc) )
+    local nr,nc,_ = cm:sizes()
+    assertEquals( cm:min()     , 1                                         )
+    assertEquals( cm:min('col'), cm:same(_,1 ,nc):fill(1..nc)               )
+    assertEquals( cm:min('row'), cm:same(_,nr,1 ):fill(1..idx(nr,1,nc)..nc) )
   end
 end
 
