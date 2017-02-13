@@ -25,7 +25,7 @@ local M = { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
-M.__help.self = [=[
+M.__help.element = [=[
 NAME
   element -- define MAD elements
 
@@ -37,13 +37,13 @@ DESCRIPTION
 RETURN VALUES
 
 EXAMPLES
-  local quadrupole in MAD.elements
+  local quadrupole in MAD.element
   mq = quadrupole 'mq' {}
   qf = mq { k1  =  0.1   } -- focusing quadrupole
   qd = mq { k1 := -qf.k1 } -- defocusing quadrupole
 
 SEE ALSO
-  sequence, line, beam, object
+  sequence, bline, beam, object
 ]=]
 
 -- locals ---------------------------------------------------------------------o
@@ -81,92 +81,89 @@ end
 
 -- taxonomy -------------------------------------------------------------------o
 
-local E = {}
+-- Root
 
--- elements
+M.Element = Object 'Element' { kind='element', is_element=true }
 
-E.element = Object 'element' { kind='element', is_element=true }
-
-E.element:set_metamethod {
+M.Element :set_metamethod {
   -- concatenation
-  __add = \a,b -> E.__bline { a, b },
+  __add = \a,b -> M.bline { a, b },
   -- repetition
   __mul = \a,b => if is_number(b) then a,b = b,a end
-                  return E.__bline { _rep=a, b } end,
+                  return M.bline { __rep=a, b } end,
   -- reflection
-  __unm = \a -> E.__bline { _rep=-1, a },
+  __unm = \a -> M.bline { __rep=-1, a },
+
 }
 
-E.element:set_function {
+-- frames
+
+M.  thin_element = M.Element 'thin_element'   { is_thin  =true, l=0, angle=0, tilt=0 }
+M. drift_element = M.Element 'drift_element'  { is_drift =true, l=0, angle=0, tilt=0 }
+M.strait_element = M.Element 'strait_element' { is_strait=true, l=0, angle=0, tilt=0 }
+M.curved_element = M.Element 'curved_element' { is_curved=true, l=0, angle=0, tilt=0 }
+
+-- special elements
+
+M.assembly    = M.Element 'assembly' { kind='assembly', is_assembly=true }
+M.bline       = M.Element 'bline'    { kind='bline'   , is_bline   =true }
+
+M.marker      = M.thin_element 'marker' { kind='marker', is_marker=true }
+M.patch       = M.thin_element 'patch'  { kind='patch' , is_patch =true }
+M.slink       = M.thin_element 'slink'  { kind='slink' , is_slink =true }
+M.spause      = M.thin_element 'spause' { kind='spause', is_spause=true }
+
+-- factory
+
+M.drift       = M.drift_element  'drift'       { kind='drift'       }
+M.collimator  = M.drift_element  'collimator'  { kind='collimator'  }
+M.instrument  = M.drift_element  'instrument'  { kind='instrument'  }
+M.placeholder = M.drift_element  'placeholder' { kind='placeholder' }
+M.monitor     = M.drift_element  'monitor'     { kind='monitor'     }
+
+M.sbend       = M.curved_element 'sbend'       { kind='sbend'       }
+
+M.rbend       = M.strait_element 'rbend'       { kind='rbend'       }
+M.quadrupole  = M.strait_element 'quadrupole'  { kind='quadrupole'  }
+M.sextupole   = M.strait_element 'sextupole'   { kind='sextupole'   }
+M.octupole    = M.strait_element 'octupole'    { kind='octupole'    }
+M.decapole    = M.strait_element 'decapole'    { kind='decapole'    }
+M.dodecapole  = M.strait_element 'dodecapole'  { kind='dodecapole'  }
+M.kicker      = M.strait_element 'kicker'      { kind='kicker'      }
+M.solenoid    = M.strait_element 'solenoid'    { kind='solenoid'    }
+M.wiggler     = M.strait_element 'wiggler'     { kind='wiggler'     }
+M.elseparator = M.strait_element 'elseparator' { kind='elseparator' }
+M.rfcavity    = M.strait_element 'rfcavity'    { kind='rfcavity'    }
+
+M.multipole   = M.  thin_element 'multipole'   { kind='multipole'   }
+M.rfmultipole = M.  thin_element 'rfmultipole' { kind='rfmultipole' }
+
+-- specializations
+
+M.srotation   = M.patch          'srotation'   { kind='srotation'   }
+M.xrotation   = M.patch          'xrotation'   { kind='xrotation'   }
+M.yrotation   = M.patch          'yrotation'   { kind='yrotation'   }
+M.translate   = M.patch          'translate'   { kind='translate'   }
+
+M.twcavity    = M.rfcavity       'twcavity'    { kind='twcavity'    }
+M.crabcavity  = M.rfmultipole    'crabcavity'  { kind='crabcavity'  }
+
+M.hkicker     = M.kicker         'hkicker'     { kind='hkicker'     }
+M.vkicker     = M.kicker         'vkicker'     { kind='vkicker'     }
+
+M.hmonitor    = M.monitor        'hmonitor'    { kind='hmonitor'    }
+M.vmonitor    = M.monitor        'vmonitor'    { kind='vmonitor'    }
+
+M.bpm         = M.monitor        'bpm'         { kind='bpm'         }
+M.blm         = M.monitor        'blm'         { kind='blm'         }
+
+-- members --------------------------------------------------------------------o
+
+M.Element:set_function {
   is_selected = \s -> s: test_flag(3) == false,
   select      = \s -> s:clear_flag(3),
   deselect    = \s -> s:  set_flag(3),
 }
 
--- special elements
-
-E.__bline  = E.element '__bline'  { kind='__bline' , is_bline   =true }
-E.assembly = E.element 'assembly' { kind='assembly', is_assembly=true }
-
--- frames
-
-E.  thin_element = E.element 'thin_element'   { is_thin  =true, l=0, angle=0, tilt=0 }
-E. drift_element = E.element 'drift_element'  { is_drift =true, l=0, angle=0, tilt=0 }
-E.strait_element = E.element 'strait_element' { is_strait=true, l=0, angle=0, tilt=0 }
-E.curved_element = E.element 'curved_element' { is_curved=true, l=0, angle=0, tilt=0 }
-
--- special
-
-E.marker         = E.thin_element 'marker'    { kind='marker', is_marker=true }
-E.patch          = E.thin_element 'patch'     { kind='patch' , is_patch =true }
-E.slink          = E.thin_element 'slink'     { kind='slink' , is_slink =true }
-E.spause         = E.thin_element 'spause'    { kind='spause', is_spause=true }
-
--- factory
-
-E.drift          = E.drift_element  'drift'       { kind='drift'       }
-E.sbend          = E.curved_element 'sbend'       { kind='sbend'       }
-E.rbend          = E.strait_element 'rbend'       { kind='rbend'       }
-E.quadrupole     = E.strait_element 'quadrupole'  { kind='quadrupole'  }
-E.sextupole      = E.strait_element 'sextupole'   { kind='sextupole'   }
-E.octupole       = E.strait_element 'octupole'    { kind='octupole'    }
-E.decapole       = E.strait_element 'decapole'    { kind='decapole'    }
-E.dodecapole     = E.strait_element 'dodecapole'  { kind='dodecapole'  }
-E.multipole      = E.  thin_element 'multipole'   { kind='multipole'   }
-E.kicker         = E.strait_element 'kicker'      { kind='kicker'      }
-E.solenoid       = E.strait_element 'solenoid'    { kind='solenoid'    }
-E.wiggler        = E.strait_element 'wiggler'     { kind='wiggler'     }
-E.elseparator    = E.strait_element 'elseparator' { kind='elseparator' }
-E.rfcavity       = E.strait_element 'rfcavity'    { kind='rfcavity'    }
-E.rfmultipole    = E.strait_element 'rfmultipole' { kind='rfmultipole' }
-E.collimator     = E.drift_element  'collimator'  { kind='collimator'  }
-E.instrument     = E.drift_element  'instrument'  { kind='instrument'  }
-E.placeholder    = E.drift_element  'placeholder' { kind='placeholder' }
-E.monitor        = E.drift_element  'monitor'     { kind='monitor'     }
-
--- specializations
-
-E.srotation      = E.patch          'srotation'   { kind='srotation'   }
-E.xrotation      = E.patch          'xrotation'   { kind='xrotation'   }
-E.yrotation      = E.patch          'yrotation'   { kind='yrotation'   }
-E.translate      = E.patch          'translate'   { kind='translate'   }
-
-E.twcavity       = E.rfcavity       'twcavity'    { kind='twcavity'    }
-E.crabcavity     = E.rfmultipole    'crabcavity'  { kind='crabcavity'  }
-
-E.hkicker        = E.kicker         'hkicker'     { kind='hkicker'     }
-E.vkicker        = E.kicker         'vkicker'     { kind='vkicker'     }
-
-E.hmonitor       = E.monitor        'hmonitor'    { kind='hmonitor'    }
-E.vmonitor       = E.monitor        'vmonitor'    { kind='vmonitor'    }
-
-E.bpm            = E.monitor        'bpm'         { kind='bpm'         }
-E.blm            = E.monitor        'blm'         { kind='blm'         }
-
--- hook
-M.element = E
-
-MAD.utility.defhelp(M) -- todo: per function help -> 'element'
-
 -- end ------------------------------------------------------------------------o
-return M
+return { element = M }

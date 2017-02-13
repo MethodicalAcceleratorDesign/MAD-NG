@@ -22,22 +22,17 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = {}
+local M = { __help = require 'madh_main' }
 
 -- modules --------------------------------------------------------------------o
 
 -- list of modules to import in MAD, order matters!
 local modules = {
   'regex', -- from LPEG
-  'utils', 'gfunc', 'gmath', 'range', 'complex',
-  'object', 'constant', 'matrix',
-  'element', 'sequence', 'table',
-  'madx',
-  'command', 'beam',
--- 'mono', 'tpsa', 'ctpsa',
--- 'mflow',
-   'survey', 'track',
--- 'gplot',
+  'gutil', 'gfunc', 'gmath', 'range', 'complex', 'matrix', -- 'tpsa',
+  'object', 'constant', 'mtable', 'element', 'sequence', 'beam', -- 'mflow',
+  'command', 'survey', 'track',
+  'madx', -- 'plot',
 }
 
 -- constants ------------------------------------------------------------------o
@@ -58,15 +53,16 @@ math.raddeg = math.pi/180
 -- locals ---------------------------------------------------------------------o
 
 local _C    = require 'madl_cmad'
-local utils = require 'madl_utils'
+local gutil = require 'madl_gutil'
 
-local is_nil, is_boolean, is_string, is_rawtable in utils.typeid
-local is_iterable, is_indexable                  in utils.concept
+local get_metatable                              in gutil
+local is_nil, is_boolean, is_string, is_rawtable in gutil.typeid
+local is_mappable, is_indexable                  in gutil.concept
 
 require 'table.new'   -- load new   in table (side effect)
 require 'table.clear' -- load clear in table (side effect)
 
--- globals -------------------------------------------------------------------o
+-- globals --------------------------------------------------------------------o
 
 -- uncomment to check invalid use of globals
 --local _G_mt = getmetatable(_G)
@@ -77,148 +73,211 @@ require 'table.clear' -- load clear in table (side effect)
 
 -- implementation -------------------------------------------------------------o
 
--- special MAD environment
-_M.arg   = arg             -- backup of arg
-_M.path  = package.path    -- backup of path
-_M.cpath = package.cpath   -- backup of cpath
+local _hlp = {} -- hidden key
 
--- special global fields and backup
-M._C     = _C     -- C access
-M.env    = _M     -- M environment
-M.warn   = warn
-M.trace  = trace
-M.trace_setlevel    = trace_setlevel
-M.trace_setlocation = trace_setlocation
+-- special MAD environment
+M._C        = _C              -- C symbol access
+M.env       = _M              -- M preloaded environment
+M.env.arg   = arg             -- backup of arg
+M[_hlp]     = {}              -- storage for help
+_M          = nil
+
+-- warning, info, trace
+local ctrace = trace
+
+trace      = \l,s -> _C.mad_trace_level >= l and ctrace(l,s)
+tracelevel = \l   -> _C.mad_trace_level >= l
+infolevel  = \l   -> _C.mad_info_level  >= l
+warncount  = \    -> _C.mad_warn_count
+
+info_setlevel     = \l => local lvl = _C.mad_info_level
+                                      _C.mad_info_level     = l return lvl end
+trace_setlevel    = \l => local lvl = _C.mad_trace_level
+                                      _C.mad_trace_level    = l return lvl end
+trace_setlocation = \l => local lvl = _C.mad_trace_location
+                                      _C.mad_trace_location = l return lvl end
 
 -- import
 
-function M.import (a, override)
-  assert(is_string(a) or is_rawtable(a),
-                           "invalid argument #1 (string or raw table expected)")
-  local tbl = is_string(a) and (require('madl_'..a) or require(a)) or a
-  assert(tbl ~= nil, "module not found: " .. tostring(a))
-  if not is_rawtable(tbl) then tbl = {a=tbl} end -- simplify further processing
+function M.import (self, a, override)
+  assert(self == MAD, "invalid argument #1 (MAD expected)")
+  if is_string(a) then
+    local s = a
+    a = require('madl_'..a) or require(a)
+    assert(a ~= nil, "module not found: " .. tostring(s))
+  end
+  override = override or false
+  assert(is_rawtable(a)      , "invalid argument #2 (raw table expected)")
+  assert(is_boolean(override), "invalid argument #3 (boolean expected)"  )
 
-  -- collect and check
-  local obj, hlp = {}, {} -- make a local copies first in case of error
-  for k,v in pairs(tbl) do
-    if k == '__help' then hlp[a] = v
-    else
+  -- collect and check first (make a copy in case of error)
+  local obj = {}
+  for k,v in pairs(a) do
+    if string.sub(k,1,2) ~= '__' then
+      if tracelevel(3) then
+        trace(3, string.format('import: %-25s %-25s',k,v) )
+      end
       assert(is_nil(M[k]) or override == true,
              "cannot override definition for " .. tostring(k))
       obj[k] = v
-      if is_indexable(v) and v.__help then
-        hlp[k] = v.__help
-      end
+    end
+  end
+  local hlp = {}
+  if is_mappable(a.__help) then
+    for k,v in pairs(a.__help) do
+      assert(is_nil(M[_hlp][k]) or override == true,
+             "cannot override definition for " .. tostring(k))
+      hlp[k] = v
     end
   end
 
   -- finalize the import
-  for k,v in pairs(obj) do M[k] = v end
-  for k,v in pairs(hlp) do M.__help[k] = v end
+  for k,v in pairs(obj) do M      [k] = v  end
+  for k,v in pairs(hlp) do M[_hlp][k] = v  end
+  return self
 end
 
 -- export
 
-function M.export (pattern, context, override)
-  if is_boolean(context) then
-    override, context = context -- shift args right
+function M.export (self, pattern, a, override)
+  assert(self == MAD, "invalid argument #1 (MAD expected)")
+  if is_boolean(a) then
+    override, a = a -- shift args right
   end
-  pattern, context = pattern or '', context or _G -- default
+  pattern, a = pattern or '', a or _G -- default
   assert(is_string(pattern) or is_rawtable(pattern),
-                           "invalid argument #1 (string or raw table expected)")
-  assert(is_indexable(context),"invalid argument #2 (indexable expected)")
-  local tbl = is_string(pattern) and {} or pattern
+                         "invalid argument #2 (string or raw table expected)")
+  assert(is_indexable(a),"invalid argument #3 (indexable expected)")
 
    -- record matching keys
   if is_string(pattern) then
+    local lst = {}
     for k in pairs(M) do
-      if is_string(k) and string.find(k, pattern) then
-        tbl[#tbl+1] = k
+      if is_string(k) and string.sub (k,1,2) ~= '__'
+                      and string.find(k, pattern) then
+        lst[#lst+1] = k
       end
+    end
+    pattern = lst
+  end
+
+  -- collect and check first (make a copy in case of error)
+  local obj = {}
+  for _,k in ipairs(pattern) do
+    local v = self[k]
+    if v then
+      if tracelevel(3) then
+        trace(3, string.format('export: %-25s %-25s',k,v) )
+      end
+      assert(is_nil(a[k]) or override == true,
+             "cannot override definition for " .. tostring(k))
+      obj[k] = v
     end
   end
 
-  -- process export
-  for _,k in ipairs(tbl) do
-    if M[k] then
-      assert(context[k] == nil or override == true,
-             "cannot override definition for " .. tostring(k))
-      context[k] = M[k]
-    end
-  end
-  return context
+  -- finalize the export
+  for k,v in pairs(obj) do a[k] = v end
+  return self
 end
 
 -- help
 
-function M.help (a)
-  assert(is_nil(a) or is_string(a), "invalid argument #1 (string expected)")
-  local ref, str
+local function gethelp (a)
+  local mt = get_metatable(a)
+  return (mt and is_rawtable(mt.__help) and mt.__help)        -- 1st metamethod
+    or (is_indexable(a) and is_rawtable(a.__help) and a.__help)   -- 2nd member
+    or nil
+end
+
+function help (a, _chk)
+  a = a or 'MAD'
+  assert(is_string(a), "invalid argument #1 (string expected)")
+
+  print('help known for:')
+  for k,v in pairs(M[_hlp]) do
+    io.write(tostring(k),"\n")
+  end
+  for k,v in pairs(M) do
+    io.write(tostring(k),":  ")
+    io.write(tostring(gethelp(v)),"\n")
+  end
+  print('end of known help')
 
   -- search for help
-  if is_nil(a) or a == 'MAD' or a == 'self' then
-    ref, str = MAD.__help, MAD.__help.self
-  else
-    local dot = string.find(a, '.', 1, true)
-    local mod = dot and string.sub(a, 1, dot-1) or a
-    local fun = dot and string.sub(a, dot+1) or 'self'
-
-    for m,mv in pairs(MAD.__help) do
-      if m == mod then
-        if is_string(mv) then ref, str = MAD.__help, mv break end
-        if is_indexable(mv) and mv[fun] then ref, str = mv, mv[fun] break end
-      end
-      if not dot then
-        if is_indexable(mv) and mv[mod] then ref, str = mv, mv[mod] break end
-      end
+  local hlp
+  for s in string.gmatch(a, "%s*([^.]+)%s*[.]?") do
+    print(s)
+    hlp = not hlp and (M[_hlp][s] or gethelp(M[s], s) or '') or hlp[s]
+    if not hlp or hlp == '' then
+      io.write("  No help found for '" .. a .. "'.\n")
+      return
     end
   end
-  if not ref or ref == '' then
-    io.write("  No help found for '" .. a .. "'.\n")
-    return
-  end
-  io.write(str);
+  io.write(hlp);
+
+--  local dot = string.find(a, '.', 1, true)
+--  local mod = dot and string.sub(a, 1, dot-1) or a
+--  local fun = dot and string.sub(a, dot+1) or 'self'
+--  for k,v in pairs(MAD[_hlp]) do
+--    if k == mod then
+--      if is_string(v) then ref, str = MAD[_hlp], v break end
+--      if is_indexable(v) and v[fun] then ref, str = v, v[fun] break end
+--    end
+--    if not dot then
+--      if is_indexable(v) and v[mod] then ref, str = v, v[mod] break end
+--    end
+--  end
 
   -- find related topics, sort items, and wrap output at 80 columns
-  local sub = {}
-  for k,v in pairs(ref) do
-    if k ~= 'self' and v ~= str and v ~= '' then
-      sub[#sub+1] = k
-    end
-  end
-  table.sort(sub)
-  local len = 2 -- tab
-  for i,v in ipairs(sub) do
-    len = len + #v + 2 -- sep
-    if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
-  end
-  str = table.concat(sub, ', ')
-  if str ~= '' then
-    io.write("\nRelated topics:\n  ", str, '.\n')
-  end
+--  local sub = {}
+--  for k,v in pairs(ref) do
+--    if k ~= 'self' and v ~= str and v ~= '' then
+--      sub[#sub+1] = k
+--    end
+--  end
+--  table.sort(sub)
+--  local len = 2 -- tab
+--  for i,v in ipairs(sub) do
+--    len = len + #v + 2 -- sep
+--    if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
+--  end
+--  str = table.concat(sub, ', ')
+--  if str ~= '' then
+--    io.write("\nRelated topics:\n  ", str, '.\n')
+--  end
 end
 
--- help
-M.__help = require 'madh_main'
-utils.utility.defhelp(M, 'MAD')
+function checkhelp (a)
+  local ref = a.__help and a.__help.self
+  assert(ref, "missing help for module "..tostring(a))
+  for k in pairs(a) do
+    if k ~= '__help' and a.__help[k] == nil then
+      io.write('defhelp: no help found for '..a..' item: ',tostring(k),'\n')
+    else
+      a.__help[k] = ref
+    end
+  end
+  return a
+end
 
 -- environment ----------------------------------------------------------------o
 
+M.help = help
+
 -- protect MAD environment (foolproof protection, no more)
-local mad = setmetatable({},{
-    __index     =  M,
-    __newindex  =\ error "MAD is readonly",
-    __pairs     =\ (next, M, nil),
-    __metatable =  false,
+MAD = setmetatable({},{
+    __index     = M,
+    __newindex := error "MAD is readonly",
+    __len      := #M,
+    __pairs    := pairs(M),
+    __ipairs   := ipairs(M),
+    __metatable = false,
   })
 
--- set global
-MAD = mad
-
--- load MAD modules
+-- load MAD and modules
+MAD:import { MAD = MAD }
 for _,m in ipairs(modules) do
-  M.import(m)
+  MAD:import(m)
 end
 
 -- end ------------------------------------------------------------------------o

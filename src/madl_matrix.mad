@@ -22,11 +22,11 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local MR, MC = { __help = {} }, {}
+local MR, MC = { __help = {} }, { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
-MR.__help.self = [=[
+MR.__help.matrix = [=[
 NAME
   matrix -- real and complex vectors and matrices
 
@@ -101,6 +101,7 @@ EXAMPLES
 SEE ALSO
   gmath, gfunc, complex
 ]=]
+MC.__help.cmatrix = MR.__help.matrix
 
 -- documentation --------------------------------------------------------------o
 
@@ -601,12 +602,6 @@ function MR._reshape (x, nr_, nc_)
   x.nr, x.nc = nr, nc
   return x
 end
-
--- rotations (in place) -------------------------------------------------------o
-
-local mrot = require 'madl_matrot'
-
-for k,v in pairs(mrot) do MR[k] = v end
 
 -- getx, setx -----------------------------------------------------------------o
 
@@ -1766,7 +1761,7 @@ function MC.emul (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   local r = chksiz(r_,x,y) or cmatrix(x:sizes())
   if is_matrix(y)
-  then _C.mad_cvec_mulv(y.data, x.data, r.data, r:size())
+  then _C.mad_cvec_mulv(x.data, y.data, r.data, r:size())
   else _C.mad_cvec_mul (x.data, y.data, r.data, r:size())
   end
   return r
@@ -2154,21 +2149,30 @@ function MR.__newindex (s, i, x)
   end
 end
 
--- matrices -------------------------------------------------------------------o
+-- MR -> MC -------------------------------------------------------------------o
 
 for k,v in pairs(MR) do
   if is_nil(MC[k]) then MC[k] = v end
 end
 
-MAD.utility.defhelp(MR) -- todo: per function help ->  'matrix'
-MAD.utility.defhelp(MC) -- todo: per function help -> 'cmatrix'
+for k,v in pairs(MR.__help) do
+  if is_nil(MC.__help[k]) then MC.__help[k] = v end
+end
 
-ffi.metatype( matrix_ctor, MR)
-ffi.metatype(cmatrix_ctor, MC)
+-- only MR
+
+local MROT = require 'madl_matrot' -- rotation matrices (in place)
+
+for k,v in pairs(MROT) do
+  if is_nil(MR[k]) then MR[k] = v end
+end
+
+for k,v in pairs(MROT.__help) do
+  if is_nil(MR.__help[k]) then MR.__help[k] = v end
+end
 
 -- env ------------------------------------------------------------------------o
 
-math.fact      = fact
 MAD.gmath.fact = fact
 
 MAD.typeid.is_vector  = is_vector
@@ -2178,15 +2182,17 @@ MAD.typeid.is_cmatrix = is_cmatrix
 MAD.typeid.isa_vector = isa_vector
 MAD.typeid.isa_matrix = isa_matrix
 
+-- metatables -----------------------------------------------------------------o
+
+ffi.metatype( matrix_ctor, MR)
+ffi.metatype(cmatrix_ctor, MC)
+
 -- end ------------------------------------------------------------------------o
 return {
   vector   = vector,
   matrix   = matrix,
   cvector  = cvector,
   cmatrix  = cmatrix,
-
   linspace = linspace,
   logspace = logspace,
-
-  __help   = MR.__help,
 }

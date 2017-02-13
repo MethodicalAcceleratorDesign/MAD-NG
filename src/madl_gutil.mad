@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Utils module
+ | Generic utility module
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide a set of utility functions
+  - Provide a set of generic utilities
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -25,9 +25,9 @@ local M = { __help = {} }
 
 -- help -----------------------------------------------------------------------o
 
-M.__help.self = [=[
+M.__help.gutil = [=[
 NAME
-  utils -- provide some utility functions
+  gutil -- provide some utility functions
 
 SYNOPSIS
   is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
@@ -94,8 +94,20 @@ ERRORS
 SEE ALSO
   None.
 ]=]
+M.__help.option        = M.__help.gutil
+M.__help.typeid        = M.__help.gutil
+M.__help.concept       = M.__help.gutil
+M.__help.utility       = M.__help.gutil
+M.__help.operator      = M.__help.gutil
+M.__help.same          = M.__help.gutil
+M.__help.totable       = M.__help.gutil
+M.__help.tostring      = M.__help.gutil
+M.__help.get_metatable = M.__help.gutil
 
 -- locals ---------------------------------------------------------------------o
+
+-- Note: this module is used by MAD env,
+--       hence it cannot rely on MAD env.
 
 local ffi, bit = require 'ffi', require 'bit'
 local istype                                   in ffi
@@ -118,11 +130,11 @@ end
 -- metamethods
 
 local metaname = {
-  -- list of metanames from lj_obj.h + __init + __exec + __totable
-  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__index',
-  '__init', '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod',
-  '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
-  '__tostring', '__totable', '__unm',
+  -- list of metanames from lj_obj.h + __init + __exec + __totable + __help
+  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__help',
+  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+  '__sub', '__tostring', '__totable', '__unm',
 }
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
@@ -302,7 +314,7 @@ M.concept.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
 M.concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 M.concept.has_metamethod = has_metamethod
 
--- extensions
+-- extensions (conversion, factory)
 
 local is_stringable, is_tablable, has_method in M.concept
 local option in M
@@ -322,7 +334,7 @@ local function str2tbl(s)
   return r
 end
 
-M.tostring = function (a, ...)
+function M.tostring (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return string.format(option.format, a)
   elseif is_rawtable(a)   then return tbl2str(a)
@@ -331,7 +343,7 @@ M.tostring = function (a, ...)
   end
 end
 
-M.totable = function (a, ...)
+function M.totable (a, ...)
   if     is_table(a)    then return a
   elseif is_string(a)   then return str2tbl(a)
   elseif is_tablable(a) then return get_meta(a).__totable(a, ...)
@@ -339,7 +351,7 @@ M.totable = function (a, ...)
   end
 end
 
-M.same = function (a, ...)
+function M.same (a, ...)
   if     value_t[type(a)] or is_complex(a) then return a
   elseif is_rawtable(a)                    then return {}
   elseif has_method(a, 'same')             then return a:same(...)
@@ -365,59 +377,29 @@ local rep_mt = {
   __metatable = false,
 }
 
-M.utility.rep = function (x, n_) -- repeater
+function M.utility.rep (x, n_) -- repeater
   return setmetatable({[rep_x]=x, [rep_n]=n_ or 2^30}, rep_mt)
 end
 
-M.utility.setkeys = function (tbl)
+function M.utility.setkeys (tbl)
   assert(is_iterable(tbl), "invalid argument #1 (table expected)")
   for _,v in ipairs(tbl) do tbl[v] = v end
   return tbl
 end
 
-M.utility.countkeys = function (tbl)
+function M.utility.countkeys (tbl)
   assert(is_mappable(tbl), "invalid argument #1 (table expected)")
   local n = 0
   for _ in pairs(tbl) do n = n+1 end
   return n
 end
 
-M.utility.defhelp = function (m, name)
-  local ref = m.__help and m.__help.self
-  assert(ref, "missing help for module "..tostring(m))
-  for k in pairs(m) do
-    if k ~= '__help' and m.__help[k] == nil then
-      if name then
-        io.write('defhelp: no help found for '..name..' item: ',tostring(k),'\n')
-      end
-      m.__help[k] = ref
-    end
-  end
-  return m
+function M.utility.fileexists (name)
+  assert(is_string(name), "invalid argument #1 (string expected)")
+  local file = io.open(name)
+  io.close(file)
+  return file ~= nil
 end
-
--- todo help
-M.__help.same          = ''
-M.__help.totable       = ''
-M.__help.tostring      = ''
-M.__help.get_metatable = ''
-
-M.__help.option = {
-}
-
-M.__help.operator = {
-}
-
-M.__help.typeid = {
-}
-
-M.__help.concept = {
-}
-
-M.__help.utility = {
-}
-
-M.utility.defhelp(M) -- todo: per function help -> 'utils'
 
 -- end ------------------------------------------------------------------------o
 return M
