@@ -55,9 +55,9 @@ math.raddeg = math.pi/180
 local _C    = require 'madl_cmad'
 local gutil = require 'madl_gutil'
 
-local get_metatable                              in gutil
-local is_nil, is_boolean, is_string, is_rawtable in gutil.typeid
-local is_mappable, is_indexable                  in gutil.concept
+local get_metatable                                         in gutil
+local is_nil, is_boolean, is_number, is_string, is_rawtable in gutil.typeid
+local is_mappable, is_indexable                             in gutil.concept
 
 require 'table.new'   -- load new   in table (side effect)
 require 'table.clear' -- load clear in table (side effect)
@@ -99,85 +99,81 @@ trace_setlocation = \l => local lvl = _C.mad_trace_location
 
 -- import
 
-function M.import (self, a, override)
-  assert(self == MAD, "invalid argument #1 (MAD expected)")
-  if is_string(a) then
-    local s = a
-    a = require('madl_'..a) or require(a)
-    assert(a ~= nil, "module not found: " .. tostring(s))
+function M.import (to, from, override)
+  if to ~= MAD and is_nil(override) then -- right shift
+    to, from, override = MAD, to, from
   end
   override = override or false
-  assert(is_rawtable(a)      , "invalid argument #2 (raw table expected)")
-  assert(is_boolean(override), "invalid argument #3 (boolean expected)"  )
+  assert(to == MAD           , "invalid argument #1 (MAD expected)")
+  assert(is_indexable(from)  , "invalid argument #2 (indexable expected)")
+  assert(is_boolean(override), "invalid argument #3 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
   local obj = {}
-  for k,v in pairs(a) do
-    if string.sub(k,1,2) ~= '__' then
+  for k,v in pairs(from) do
+    if is_string(k) and string.sub(k,1,2) ~= '__' then
       if tracelevel(3) then
         trace(3, string.format('import: %-25s %-25s',k,v) )
       end
-      assert(is_nil(M[k]) or override == true,
+      assert(is_nil(MAD[k]) or MAD[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
       obj[k] = v
     end
   end
   local hlp = {}
-  if is_mappable(a.__help) then
-    for k,v in pairs(a.__help) do
-      assert(is_nil(M[_hlp][k]) or override == true,
+  if is_mappable(from.__help) then
+    for k,v in pairs(from.__help) do
+      assert(is_nil(MAD[_hlp][k]) or MAD[_hlp][k] == v or override == true,
              "cannot override definition for " .. tostring(k))
       hlp[k] = v
     end
   end
 
   -- finalize the import
-  for k,v in pairs(obj) do M      [k] = v  end
-  for k,v in pairs(hlp) do M[_hlp][k] = v  end
-  return self
+  for k,v in pairs(obj) do M      [k] = v end
+  for k,v in pairs(hlp) do M[_hlp][k] = v end
+  return MAD
 end
 
 -- export
 
-function M.export (self, pattern, a, override)
-  assert(self == MAD, "invalid argument #1 (MAD expected)")
-  if is_boolean(a) then
-    override, a = a -- shift args right
+function M.export (from, what, to, override)
+  if from ~= MAD and is_nil(override) then -- right shift
+    from, what, to, override = MAD, from, what, to
   end
-  pattern, a = pattern or '', a or _G -- default
-  assert(is_string(pattern) or is_rawtable(pattern),
-                         "invalid argument #2 (string or raw table expected)")
-  assert(is_indexable(a),"invalid argument #3 (indexable expected)")
-
-   -- record matching keys
-  if is_string(pattern) then
-    local lst = {}
-    for k in pairs(M) do
-      if is_string(k) and string.sub (k,1,2) ~= '__'
-                      and string.find(k, pattern) then
-        lst[#lst+1] = k
-      end
-    end
-    pattern = lst
+  if (is_nil(what) or is_boolean(what)) and is_nil(override) then -- right shift
+    what, override = MAD, what
   end
+  if (is_nil(to) or is_boolean(to)) and is_nil(override) then -- right shift
+    to, override = _G, to
+  end
+  what     = is_string(what) and {what} or what or MAD
+  to       = to       or _G
+  override = override or false
+  assert(from == MAD         , "invalid argument #1 (MAD expected)")
+  assert(is_indexable(what)  , "invalid argument #2 (indexable expected)")
+  assert(is_indexable(to)    , "invalid argument #3 (indexable expected)")
+  assert(is_boolean(override), "invalid argument #4 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
   local obj = {}
-  for _,k in ipairs(pattern) do
-    local v = self[k]
-    if v then
-      if tracelevel(3) then
+  for k,v in pairs(what) do
+    if is_number(k) and is_string(v) then
+      k, v = v, MAD[v]
+    end
+    if is_string(k) and string.sub(k,1,2) ~= '__' then
+      if tracelevel(2) then
         trace(3, string.format('export: %-25s %-25s',k,v) )
       end
-      assert(is_nil(a[k]) or override == true,
+      assert(is_nil(to[k]) or to[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
       obj[k] = v
     end
   end
 
   -- finalize the export
-  for k,v in pairs(obj) do a[k] = v end
-  return self
+  for k,v in pairs(obj) do to[k] = v end
+  return MAD
 end
 
 -- help
@@ -189,27 +185,31 @@ local function gethelp (a)
     or nil
 end
 
-function help (a, _chk)
-  a = a or 'MAD'
-  assert(is_string(a), "invalid argument #1 (string expected)")
+function M.help (from, what, _chk)
+  assert(is_indexable(from), "invalid argument #1 (indexable expected)")
+  assert(is_string(what)   , "invalid argument #2 (string expected)")
 
   print('help known for:')
-  for k,v in pairs(M[_hlp]) do
-    io.write(tostring(k),"\n")
-  end
-  for k,v in pairs(M) do
+--  for k,v in pairs(from[_hlp]) do
+--    io.write(tostring(k),"\n")
+--  end
+  for k,v in pairs(from) do
     io.write(tostring(k),":  ")
-    io.write(tostring(gethelp(v)),"\n")
+    if from[_hlp][k] ~= nil then
+      io.write(tostring(v),"\n")
+    else
+      io.write(tostring(gethelp(v)),"\n")
+    end
   end
   print('end of known help')
 
   -- search for help
   local hlp
-  for s in string.gmatch(a, "%s*([^.]+)%s*[.]?") do
+  for s in string.gmatch(what, "%s*([^.]+)%s*[.]?") do
     print(s)
-    hlp = not hlp and (M[_hlp][s] or gethelp(M[s], s) or '') or hlp[s]
+    hlp = not hlp and (from[_hlp][s] or gethelp(from[s], s) or '') or hlp[s]
     if not hlp or hlp == '' then
-      io.write("  No help found for '" .. a .. "'.\n")
+      io.write("  No help found for '" .. what .. "'.\n")
       return
     end
   end
@@ -262,7 +262,10 @@ end
 
 -- environment ----------------------------------------------------------------o
 
-M.help = help
+-- useful as globals
+help   = M.help
+import = M.import
+export = M.export
 
 -- protect MAD environment (foolproof protection, no more)
 MAD = setmetatable({},{
@@ -275,9 +278,9 @@ MAD = setmetatable({},{
   })
 
 -- load MAD and modules
-MAD:import { MAD = MAD }
+MAD:import { MAD = MAD }            -- import as a self reference and build help
 for _,m in ipairs(modules) do
-  MAD:import(m)
+  MAD:import( require('madl_'..m) )
 end
 
 -- end ------------------------------------------------------------------------o
