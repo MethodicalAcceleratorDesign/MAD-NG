@@ -1636,11 +1636,12 @@ end
 
 function TestCMatrixFun:testScanr()
   local function subR(r)
-    local x = table.new(r:size(),1)
-    x[r:size()] = r[r:size()]
+    local s = r:size()
+    local x = table.new(s,1)
+    x[s] = toC(r[s])
     for i=r:size()-1,1,-1 do
-      if i%2 == 0 then x[i]= -(x[i+1] - r[i])
-                  else x[i]= - x[i+1] + r[i]  end
+      if i%2 == 0 then x[i]= -(x[i+1] - toC(r[i]))
+                  else x[i]= - x[i+1] + toC(r[i] ) end
     end
     return x
   end
@@ -1660,27 +1661,28 @@ function TestCMatrixFun:testScanr()
     assertAllEquals( cm:scanr('+', nil , nil , {}) , t                              ) -- 3)
     assertAllEquals( cm:scanr('+', 0   , nil , {}) , t                              ) -- 7)
 
-    --cmref  = cm:copy():mapij\x,i,j sum(idx(nr,j,nc)..idx(i,j,nc)..-nc):map(toC)
-    --cmref2 = cm:copy():mapij\x,i,j sum(idx(i,nc,nc)..idx(i,j,nc)..-1 ):map(toC)
-    --assertEquals( cm:scanr('+', 'col'), cmref  )
-    --assertEquals( cm:scanr('+', 'row'), cmref2 )
-
+    cmref  = cm:copy():mapij(\x,i,j sum(idx(nr,j,nc)..idx(i,j,nc)..-nc)):map(toC)
+    cmref2 = cm:copy():mapij(\x,i,j sum(idx(i,nc,nc)..idx(i,j,nc)..-1 )):map(toC)
+    assertEquals( cm:scanr('+', 'col'), cmref  )
+    assertEquals( cm:scanr('+', 'row'), cmref2 )
     -- non-commutative operations
-    cmref  = cm:copy():mapij\x,i,j sum(idx(i,j,nc)..idx(nr,j,nc)..2*nc)-sum(idx(i+1,j,nc)..idx(nr,j,nc)..2*nc)
-    cmref2 = cm:copy():mapij\x,i,j sum(idx(i,j,nc)..idx(i,nc,nc)..2   )-sum(idx(i,j+1,nc)..idx(i,nc,nc)..2   )
-    --assertEquals   ( cm:scanr('-'          ) , cm:same():fill(subR(1..mn)) )
-    --assertAllEquals( cm:scanr('-', nil , {}) , subR(1..mn) )
-    --assertEquals   ( cm:scanr('-','col'    ) , cmref        )
-    --assertEquals   ( cm:scanr('-','row'    ) , cmref2       )
+    cmref  = cm:copy():mapij(\x,i,j sum(idx(i,j,nc)..idx(nr,j,nc)..2*nc)-sum(idx(i+1,j,nc)..idx(nr,j,nc)..2*nc)):map(toC)
+    cmref2 = cm:copy():mapij(\x,i,j sum(idx(i,j,nc)..idx(i,nc,nc)..2   )-sum(idx(i,j+1,nc)..idx(i,nc,nc)..2   )):map(toC)
+    assertEquals   ( cm:scanr('-'          ) , cm:same():fill(subR(1..mn)):map(toC) )
+    assertAllEquals( cm:scanr('-', nil , {}) , subR(1..mn)  )
+    assertEquals   ( cm:scanr('-','col'    ) , cmref        )
+    assertEquals   ( cm:scanr('-','row'    ) , cmref2       )
   end
   --assertEquals( cvector(4):fill(4..1..-1):scanr '^', cvector{ 4^3^2^1, 3^2^1, 2^1, 1 } )
 end
 
 function TestCMatrixErr:testFilter()
   local msg = {
-    "invalid argument #2 (callable expected)",
-    "invalid argument #3 (iterable expected)",
-    "invalid matrix new sizes"               ,
+    "invalid argument #2 (callable expected)"    ,
+    "invalid argument #3 (iterable expected)"    ,
+    "invalid matrix new sizes"                   ,
+    "attempt to compare 'number' with 'complex'" ,
+    "attempt to compare 'complex' with 'complex'",
   }
   assertErrorMsgContains( msg[1], mth, 'filter', errCMat   , nil              )
   assertErrorMsgContains( msg[1], mth, 'filter', errCMat   , ''               )
@@ -1692,24 +1694,25 @@ function TestCMatrixErr:testFilter()
   assertErrorMsgContains( msg[2], mth, 'filter', errCMat   , \x x      , 1    )
   assertErrorMsgContains( msg[2], mth, 'filter', errCMat   , \x x      , \x x )
   assertErrorMsgContains( msg[3], mth, 'filter', matrix{1}, \x x~=1           )
+  assertErrorMsgContains( msg[4], mth, 'filter', errCMat   , \x x>1           )
+  assertErrorMsgContains( msg[5], mth, 'filter', errCMat   , \x x>1+1i        )
 end
 
 function TestCMatrixFun:testFilter()
  for _,cm in ipairs(G.cmatidx) do
     local mn = cm:size()
-    --assertEquals( cm:filter(\x x==1    )         , vector(1) :fill(1)     )
-    --assertEquals( cm:filter(\x x~=0    )         , vector(mn):fill(1..mn) )
-    --assertEquals( cm:filter(\x x>1 , {})         , totable(2..mn)         )
-    --assertEquals( cm:filter(\x x==1, {})         , {1}                    )
-    --assertEquals( cm:filter(\x x==1, vector(25)) , vector(1):seti(1,1)    )
-    --if mn>=5 then assertEquals( cm:filter(\x x<6), cm:same(5 ,1):fill(1..idx(5 ,1,1)) )
-    --         else assertEquals( cm:filter(\x x<6), cm:same(mn,1):fill(1..idx(mn,1,1)) )  end
+    assertEquals( cm:filter(\x x==1+1i             ), cvector(1) :fill(1+1i)           )
+    assertEquals( cm:filter(\x x~=0+0i             ), cvector(mn):fill(1..mn):map(toC) )
+    assertEquals( cm:filter(\x x==1+1i, {}         ), {1+1i}                           )
+    assertEquals( cm:filter(\x x==1+1i, cvector(25)), cvector(1):seti(1,1+1i)          )
   end
 end
 
 function TestCMatrixErr:testFilter_out()
   local msg = {
-    "invalid argument #2 (callable expected)",
+    "invalid argument #2 (callable expected)"    ,
+    "attempt to compare 'number' with 'complex'" ,
+    "attempt to compare 'complex' with 'complex'",
   }
   assertErrorMsgContains( msg[1], mth, 'filter_out', errCMat, nil        )
   assertErrorMsgContains( msg[1], mth, 'filter_out', errCMat, ''         )
@@ -1717,16 +1720,16 @@ function TestCMatrixErr:testFilter_out()
   assertErrorMsgContains( msg[1], mth, 'filter_out', errCMat, 1          )
   assertErrorMsgContains( msg[1], mth, 'filter_out', errCMat, cmatrix(1) )
   assertErrorMsgContains( msg[1], mth, 'filter_out', errCMat, {}         )
+  assertErrorMsgContains( msg[2], mth, 'filter_out', errCMat, \x x>1     )
+  assertErrorMsgContains( msg[3], mth, 'filter_out', errCMat, \x x>1+1i  )
 end
 
 function TestCMatrixFun:testFilter_out()
   for _,cm in ipairs(G.cmatidx) do
     local mn = cm:size()
-    --assertEquals( cm:filter_out(\x x~=1    ), cm:filter(\x x==1    ) )
-    --assertEquals( cm:filter_out(\x x==0    ), cm:filter(\x x~=0    ) )
-    --assertEquals( cm:filter_out(\x x>=6    ), cm:filter(\x x<6     ) )
-    --assertEquals( cm:filter_out(\x x<=1, {}), cm:filter(\x x>1 , {}) )
-    --assertEquals( cm:filter_out(\x x~=1, {}), cm:filter(\x x==1, {}) )
+    assertEquals( cm:filter_out(\x x~=1+1i    ), cm:filter(\x x==1+1i    ) )
+    assertEquals( cm:filter_out(\x x==0+0i    ), cm:filter(\x x~=0+0i    ) )
+    assertEquals( cm:filter_out(\x x~=1+1i, {}), cm:filter(\x x==1+1i, {}) )
   end
 end
 
