@@ -30,18 +30,17 @@
 
 // --- interface -------------------------------------------------------------o
 
-void mad_error (     const char *fname, const char *fmt, ...);
-void mad_warn  (     const char *fname, const char *fmt, ...);
-void mad_trace (int, const char *fname, const char *fmt, ...);
-
-#ifdef LUALIB_API // Only valid in a Lua environment
-LUALIB_API int luaL_error (lua_State *L,      const char *fmt, ...);
-LUALIB_API int luaL_warn  (lua_State *L,      const char *fmt, ...);
-LUALIB_API int luaL_trace (lua_State *L, int, const char *fmt, ...);
+#ifndef LUALIB_API // Only valid in a Lua environment
+#define LUALIB_API
 #endif
+
+LUALIB_API void mad_error (     const char *fn, const char *fmt, ...);
+LUALIB_API void mad_warn  (     const char *fn, const char *fmt, ...);
+LUALIB_API void mad_trace (int, const char *fn, const char *fmt, ...);
 
 // --- globals ---------------------------------------------------------------o
 
+extern int mad_info_level;
 extern int mad_trace_level;
 extern int mad_trace_location;
 
