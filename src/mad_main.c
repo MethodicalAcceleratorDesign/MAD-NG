@@ -87,8 +87,6 @@ static const char *progname = "mad";
 #endif
 
 /* globals */
-int mad_warn_count     = 0;
-int mad_info_level     = 0;
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
@@ -132,66 +130,115 @@ static void print_mad_version (void)
 }
 
 static const char*
-msgstr (const char *fn, const char *fmt, va_list va)
+logmsg (lua_State *L, const char *fname, const char *fmt, va_list va)
 {
-	assert( globalL );
 	if (mad_trace_location) {
-		luaL_where(globalL, 1);
-		if (fn) lua_pushfstring(globalL, "%s: ", fn);
-		lua_pushvfstring(globalL, fmt, va);
-		lua_concat(globalL, fn ? 3 : 2);
+		int n = 2;
+		luaL_where(L, 1);
+		if (fname) lua_pushfstring(L, "%s: ", fname), ++n;
+		lua_pushvfstring(L, fmt, va);
+		lua_concat(L, n);
 	} else
-		lua_pushvfstring(globalL, fmt, va);
+		lua_pushvfstring(L, fmt, va);
 
-	return lua_tostring(globalL, -1);
+	return lua_tostring(L, -1);
 }
 
-LUALIB_API void (mad_error) (const char *fn, const char *fmt, ...)
+LUALIB_API int luaL_warn (lua_State *L, const char *fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	const char *msg = msgstr(fn, fmt, va);
+	fprintf(stderr, "warning: %s\n", logmsg(L, NULL, fmt, va));
 	va_end(va);
+	fflush(stderr);
+	return 0;
+}
+
+LUALIB_API int luaL_trace (lua_State *L, int lvl, const char *fmt, ...)
+{
+	if (mad_trace_level >= lvl) {
+		va_list va;
+		va_start(va, fmt);
+		fprintf(stderr, "trace%d: %s\n", lvl, logmsg(L, NULL, fmt, va));
+		va_end(va);
+		fflush(stderr);
+	}
+	return 0;
+}
+
+LJ_NOINLINE void (mad_error) (const char *fname, const char *fmt, ...)
+{
+	char msg[256];
+	int n = 0;
+	va_list va;
+	va_start(va, fmt);
+	if (fname) n = snprintf(msg, 255, "%s:", fname);
+	vsnprintf(msg+n, 255-n, fmt, va);
+	va_end(va);
+	msg[255] = '\0';
 	luaL_error(globalL, msg);
 	exit(EXIT_FAILURE); /* never reached */
 }
 
-LUALIB_API void (mad_warn) (const char *fn, const char *fmt, ...)
+LJ_NOINLINE void (mad_warn) (const char *fname, const char *fmt, ...)
 {
-	++mad_warn_count;
 	va_list va;
 	va_start(va, fmt);
-	fprintf(stderr, "warning: %s\n", msgstr(fn, fmt, va));
+	fprintf(stderr, "warning: %s\n", logmsg(globalL, fname, fmt, va));
 	va_end(va);
 	fflush(stderr);
 }
 
-LUALIB_API void (mad_trace) (int lvl, const char *fn, const char *fmt, ...)
+LJ_NOINLINE void (mad_trace) (int lvl, const char *fname, const char *fmt, ...)
 {
-	if (mad_trace_level < lvl) return;
-  va_list va;
-  va_start(va, fmt);
-  fprintf(stderr, "trace%d: %s\n", lvl, msgstr(fn, fmt, va));
-  va_end(va);
-  fflush(stderr);
+	if (mad_trace_level >= lvl) {
+		va_list va;
+		va_start(va, fmt);
+		fprintf(stderr, "trace%d: %s\n", lvl, logmsg(globalL, fname, fmt, va));
+		va_end(va);
+		fflush(stderr);
+	}
 }
 
 static int mad_luawarn (lua_State *L)
 {
-	(mad_warn)(NULL, "%s", luaL_checkstring(L,1));
-	return 0;
+	return luaL_warn(L, "%s", luaL_checkstring(L, 1));
 }
 
 static int mad_luatrace (lua_State *L)
 {
-	(mad_trace)(luaL_checknumber(L,1), NULL, "%s", luaL_checkstring(L,2));
-	return 0;
+  /* Also checked on Lua side to avoid spurious call */
+  int lvl = luaL_checknumber(L, 1);
+  if (mad_trace_level >= lvl)
+  	return luaL_trace(L, lvl, "%s", luaL_checkstring(L, 2));
+  else
+  	return 0;
 }
 
-static void mad_regfunc (void)
+static int mad_luatracelevel (lua_State *L)
 {
-	lua_register(globalL, "warn" , mad_luawarn );
-	lua_register(globalL, "trace", mad_luatrace);
+	int level = mad_trace_level;
+	if (lua_gettop(L) == 1)
+		mad_trace_level = luaL_checknumber(L, 1);
+	lua_pushnumber(L, level);
+	return 1;
+}
+
+static int mad_luatracelocation (lua_State *L)
+{
+	int location = mad_trace_location;
+	if (lua_gettop(L) == 1)
+		mad_trace_location = luaL_checknumber(L, 1);
+	lua_pushnumber(L, location);
+	return 1;
+}
+
+static void mad_regfunc (lua_State *L)
+{
+	lua_register(L, "warn"			 				, mad_luawarn );
+	lua_register(L, "trace"			 				, mad_luatrace);
+	lua_register(L, "trace_setlevel"		, mad_luatracelevel);
+	lua_register(L, "trace_setlocation"	, mad_luatracelocation);
 }
 
 /* Windows: not declared by any mean but provided by libgettextlib */
@@ -994,7 +1041,7 @@ static int pmain(lua_State *L)
 	}
 
 	/* MAD section. */
-	mad_regfunc();
+	mad_regfunc(L);
 	if ((flags & FLAGS_MADENV))
 		dolibrary(L, "madl_main");
 	if (!(flags & FLAGS_NOENV)) {
