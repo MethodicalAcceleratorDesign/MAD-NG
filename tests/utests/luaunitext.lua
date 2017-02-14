@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Luaunit extension for test suites
+ | Luaunit extension test suites
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,51 +16,18 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide some extensions to luaunit
+  - Test extensions of luaunit
 
  o-----------------------------------------------------------------------------o
 ]=]
 
-local lu = require 'luaunit'
-local assertEquals, assertAlmostEquals = lu.assertEquals, lu.assertAlmostEquals
-
-lu.assertAllEquals = function (actual, expected, margin)
-  assert(type(actual) == 'table', "invalid argument #1 (table expected)")
-
-  if type(expected) ~= 'table' then
-    local value = expected
-    expected = {}
-    for k in pairs(actual) do
-      expected[k] = value
-    end
-  end
-
-  if type(margin) ~= 'table' then
-    local value = margin or 0
-    margin = {}
-    for k in pairs(actual) do
-      margin[k] = value
-    end
-  end
-
-  for k,v in pairs(actual) do
-    if type(v) == 'number' and margin[k] ~= 0 then
-      assertAlmostEquals (v, expected[k], margin[k])
-    else
-      assertEquals (v, expected[k])
-    end
-  end
-end
-
--- tests ----------------------------------------------------------------------o
-
-local assertAllEquals = lu.assertAllEquals
-local assertErrorMsgContains = lu.assertErrorMsgContains
+local assertEquals, assertAlmostEquals, assertAllEquals, assertErrorMsgContains
+      in MAD.utest
 
 TestLuaUnitExt = {}
 
 function TestLuaUnitExt:testAllEqualError()
-  local errmsg = "invalid argument #1 (table expected)"
+  local errmsg = "assertAllEquals: must supply only number or table arguments."
   local actual, expected = 0, 0
   assertErrorMsgContains(errmsg, assertAllEquals, actual, expected)
 end
