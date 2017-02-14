@@ -21,60 +21,60 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local assertEquals, assertAlmostEquals, assertAllEquals, assertErrorMsgContains
+local assertEquals, assertAlmostEquals, assertAllAlmostEquals, assertErrorMsgContains
       in MAD.utest
 
 TestLuaUnitExt = {}
 
 function TestLuaUnitExt:testAllEqualError()
-  local errmsg = "assertAllEquals: must supply only number or table arguments."
+  local errmsg = "assertAllAlmostEquals: must supply only number or table arguments."
   local actual, expected = 0, 0
-  assertErrorMsgContains(errmsg, assertAllEquals, actual, expected)
+  assertErrorMsgContains(errmsg, assertAllAlmostEquals, actual, expected)
 end
 
 function TestLuaUnitExt:testAllEqualNumbers()
   local actual   = { -1.1*2, 0*2, 1.1*2 }
   local expected = { -2.2  , 0  , 2.2   }
-  assertAllEquals (actual, expected)
+  assertAllAlmostEquals (actual, expected)
 end
 
 function TestLuaUnitExt:testAllEqualNumbers2()
   local actual   = { -1.1-1e-15, -1.1, 0-1e-15, 0, 0+1e-15, 1.1, 1.1+1e-15 }
   local expected = { -1.1      , -1.1, 0      , 0, 0      , 1.1, 1.1       }
   local margin   = {      2e-15,    0,   1e-15, 0,   1e-15,   0,     2e-15 }
-  assertAllEquals (actual, expected, margin)
+  assertAllAlmostEquals (actual, expected, margin)
 end
 
 function TestLuaUnitExt:testAllEqualMixed()
   local actual   = { -1.1-1e-15, {}, 0-1e-15, 0, 0+1e-15, {}, 1.1+1e-15 }
   local expected = { -1.1      , {}, 0      , 0, 0      , {}, 1.1       }
   local margin   = {      2e-15, {},   1e-15, 0,   1e-15, {},     2e-15 }
-  assertAllEquals (actual, expected, margin)
+  assertAllAlmostEquals (actual, expected, margin)
 end
 
 function TestLuaUnitExt:testAllEqualKeyNumbers()
   local actual   = { x=-1.1*2, y=0*2, z=1.1*2 }
   local expected = { x=-2.2  , y=0  , z=2.2   }
-  assertAllEquals (actual, expected)
+  assertAllAlmostEquals (actual, expected)
 end
 
 function TestLuaUnitExt:testAllEqualKeyNumbers2()
   local actual   = { a=-1.1-1e-15, b=-1.1, c=0-1e-15, d=0, e=0+1e-15, f=1.1, g=1.1+1e-15 }
   local expected = { a=-1.1      , b=-1.1, c=0      , d=0, e=0      , f=1.1, g=1.1       }
   local margin   = { a=     2e-15, b=   0, c=  1e-15, d=0, e=  1e-15, f=  0, g=    2e-15 }
-  assertAllEquals (actual, expected, margin)
+  assertAllAlmostEquals (actual, expected, margin)
 end
 
 function TestLuaUnitExt:testAllEqualKeyMixed()
   local actual   = { a=-1.1-1e-15, b={}, c=0-1e-15, d=0, e=0+1e-15, f={}, g=1.1+1e-15 }
   local expected = { a=-1.1      , b={}, c=0      , d=0, e=0      , f={}, g=1.1       }
   local margin   = { a=     2e-15, b={}, c=  1e-15, d=0, e=  1e-15, f={}, g=    2e-15 }
-  assertAllEquals (actual, expected, margin)
+  assertAllAlmostEquals (actual, expected, margin)
 end
 
 function TestLuaUnitExt:testAllEqualMixedMixed()
   local actual   = { a=-1.1-1e-15, b={}, 0-1e-15, d=0, e=0+1e-15, {}, g=1.1+1e-15 }
   local expected = { a=-1.1      , b={}, 0      , d=0, e=0      , {}, g=1.1       }
   local margin   = { a=     2e-15, b={},   1e-15, d=0, e=  1e-15, {}, g=    2e-15 }
-  assertAllEquals (actual, expected, margin)
+  assertAllAlmostEquals (actual, expected, margin)
 end
