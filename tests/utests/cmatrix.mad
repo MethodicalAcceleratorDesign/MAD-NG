@@ -2668,9 +2668,8 @@ function TestCMatrixErr:testMul()
   assertErrorMsgContains( msg[2], mth, 'mul', matrix(1,2), matrix(3,1) )
 end
 
---[[
 local function refMul(m1, m2, i, j )
-  local mref = matrix(m1:nrow(), m2:ncol())
+  local mref = cmatrix(m1:nrow(), m2:ncol())
   for i=1,m1:nrow() do
   for j=1,m2:ncol() do
     local x = 0
@@ -2684,27 +2683,23 @@ end
 
 function TestCMatrixOps:testMul()
   for _,cm in ipairs(G.cmatidx) do
-    local mn, nr, nc, _ = m:size(), m:sizes()
+    local mn, nr, nc, _ = cm:size(), cm:sizes()
     for j=1,5 do
-      local m2 = m:same(_ ,nc,j):fill(1..nc*j)
-      local cm = m:same(0i,nc,j):fill(1..nc*j)
-      assertEquals( j * m   , m:same():fill(j..mn*j..j) ) -- num * mat  => num * vec
-      assertEquals( m * j   , m:same():fill(j..mn*j..j) ) -- mat * num  => vec * num
-      assertEquals( m * j*1i, m:copy():map(\x x*j*1i  ) ) -- mat * cpx  => vec * cp
-
-      assertEquals( m * m2  , refMul(m,m2)              ) -- cmat * mat
-      assertEquals( m * cm  , refMul(m,cm)              ) -- mat * cmat
-      assertTrue  ( is_cmatrix(m * 2i) )
-      assertTrue  ( is_cmatrix(m * cm) )
+      local cm2 = cm:same(_ ,nc,j):fill(1..nc*j):map(toC)
+      local m   = matrix(nc,j)    :fill(1..nc*j)
+      assertEquals( j  * cm  , cm:same():fill(j..mn*j..j):map(toC) ) -- num  * cmat  => num * cvec
+      assertEquals( cm * j   , cm:same():fill(j..mn*j..j):map(toC) ) -- cmat * num  => cvec * num
+      assertEquals( cm * j*1i, cm:copy():map(\x x*j*1i  ) ) -- cmat * cpx  => cvec * cpx
+      assertEquals( cm * cm2 , refMul(cm,cm2)             ) -- cmat * cmat
+      assertEquals( cm * m   , refMul(cm,m  )             ) -- cmat * mat
     end
   end
 end
 
 function TestCMatrixOps:testMulCPx()
   for _,cm in ipairs(G.cmatidx) do
-    local mref = 2i * m
-    assertEquals( mref, m:copy():map(\x x*2i) )
-    assertTrue  ( is_cmatrix(mref) )
+    local mref = 2i * cm
+    assertEquals( mref, cm:copy():map(\x x*2i) )
   end
 end
 
@@ -2713,21 +2708,22 @@ function TestCMatrixErr:testTmul()
     "invalid arguments (unsupported matrix operation)",
     "incompatible matrix sizes"                       ,
   }
-  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , ''          )
-  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , nil         )
-  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , 1..4        )
-  assertErrorMsgContains( msg[2], mth, 'tmul', matrix(2,1), matrix(1,2) )
-  assertErrorMsgContains( msg[2], mth, 'tmul', matrix(1,2), matrix(3,1) )
+  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , ''           )
+  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , nil          )
+  assertErrorMsgContains( msg[1], mth, 'tmul', errCMat     , 1..4         )
+  assertErrorMsgContains( msg[2], mth, 'tmul', cmatrix(2,1), cmatrix(1,2) )
+  assertErrorMsgContains( msg[2], mth, 'tmul', cmatrix(1,2), cmatrix(3,1) )
 end
 
+--[[
 function TestCMatrixOps:testTmul()
   for _,cm in ipairs(G.cmatidx) do
-    local nr, _ = m:nrow()
+    local nr, _ = cm:nrow()
     for i=1,5 do
-      local m2 = m:same(_ ,nr,i):fill(1..nr*i)
-      local cm = m:same(0i,nr,i):fill(1..nr*i)
-      assertEquals( m:tmul(m2), refMul(m:t(),m2) ) -- mat' * mat
-      assertEquals( m:tmul(cm), refMul(m:t(),cm) ) -- mat' * cmat
+      local m2 = cm:same(_ ,nr,i):fill(1..nr*i)
+      local cm = cm:same(0i,nr,i):fill(1..nr*i)
+      assertEquals( cm:tmul(m2), refMul(cm:t(),m2) ) -- mat' * mat
+      assertEquals( cm:tmul(cm), refMul(cm:t(),cm) ) -- mat' * cmat
       assertTrue  ( is_cmatrix(m:tmul(cm)) )
     end
   end
