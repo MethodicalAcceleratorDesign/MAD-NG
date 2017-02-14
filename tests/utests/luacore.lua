@@ -23,8 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local lu = require 'luaunit'
-local assertEquals, assertAlmostEquals = lu.assertEquals, lu.assertAlmostEquals
+local assertEquals, assertAlmostEquals in MAD.utest
 
 -- regression test suite ------------------------------------------------------o
 

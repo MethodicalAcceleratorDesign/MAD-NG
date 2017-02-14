@@ -28,7 +28,7 @@ local M = { __help = require 'madh_main' }
 
 -- list of modules to import in MAD, order matters!
 local modules = {
-  'regex', -- from LPEG
+  'utest', 'regex',  -- from LuaUnit and LPEG
   'gutil', 'gfunc', 'gmath', 'range', 'complex', 'matrix', -- 'tpsa',
   'object', 'constant', 'mtable', 'element', 'sequence', 'beam', -- 'mflow',
   'command', 'survey', 'track',
@@ -37,27 +37,14 @@ local modules = {
 
 -- constants ------------------------------------------------------------------o
 
-local complex = require'ffi'.typeof'complex'
-
-math.inf    = 1/0
-math.nan    = 0/0
-math.eps    = 2.2204460492503130e-16
-math.huge   = 1.7976931348623158e+308
-math.tiny   = 2.2250738585072012e-308
-math.infi   = complex(0,1/0)
-math.nani   = complex(0,0/0)
-math.twopi  = 2*math.pi
-math.degrad = 180/math.pi
-math.raddeg = math.pi/180
-
 -- locals ---------------------------------------------------------------------o
 
 local _C    = require 'madl_cmad'
 local gutil = require 'madl_gutil'
 
-local get_metatable                                         in gutil
-local is_nil, is_boolean, is_number, is_string, is_rawtable in gutil.typeid
-local is_mappable, is_indexable                             in gutil.concept
+local get_metamethod                                     in gutil
+local is_nil, is_boolean, is_number, is_string, is_table in gutil.typeid
+local is_mappable, is_indexable                          in gutil.concept
 
 require 'table.new'   -- load new   in table (side effect)
 require 'table.clear' -- load clear in table (side effect)
@@ -178,42 +165,49 @@ end
 
 -- help
 
-local function gethelp (a)
-  local mt = get_metatable(a)
-  return (mt and is_rawtable(mt.__help) and mt.__help)        -- 1st metamethod
-    or (is_indexable(a) and is_rawtable(a.__help) and a.__help)   -- 2nd member
-    or nil
+function gethelp (a)
+  return get_metamethod(a, '__help') or (is_table(a) and a.__help) or nil
 end
 
 function M.help (from, what, _chk)
-  assert(is_indexable(from), "invalid argument #1 (indexable expected)")
-  assert(is_string(what)   , "invalid argument #2 (string expected)")
+  if from ~= MAD and is_nil(what) then -- right shift
+    from, what = MAD, from
+  end
+  what = is_string(what) and {what} or what
+  assert(from == MAD       , "invalid argument #1 (MAD expected)")
+  assert(is_indexable(what), "invalid argument #2 (indexable expected)")
 
   print('help known for:')
 --  for k,v in pairs(from[_hlp]) do
 --    io.write(tostring(k),"\n")
 --  end
   for k,v in pairs(from) do
-    io.write(tostring(k),":  ")
-    if from[_hlp][k] ~= nil then
-      io.write(tostring(v),"\n")
-    else
-      io.write(tostring(gethelp(v)),"\n")
+    if is_string(k) and string.sub(k,1,2) ~= '__' then
+      io.write(string.format("%-25s: ", tostring(k)))
+      local hlp1, hlp2 = gethelp(v), from[_hlp][k]
+      if hlp1 ~= nil then
+        io.write("meta ", tostring(hlp1))
+      elseif hlp2 ~= nil then
+        io.write("help ", is_string(hlp) and ' ' or tostring(hlp))
+      else
+        io.write("none nil")
+      end
+      io.write(" ", tostring(v), "\n")
     end
   end
   print('end of known help')
 
   -- search for help
-  local hlp
-  for s in string.gmatch(what, "%s*([^.]+)%s*[.]?") do
-    print(s)
-    hlp = not hlp and (from[_hlp][s] or gethelp(from[s], s) or '') or hlp[s]
-    if not hlp or hlp == '' then
-      io.write("  No help found for '" .. what .. "'.\n")
-      return
-    end
-  end
-  io.write(hlp);
+--  local hlp
+--  for s in string.gmatch(what, "%s*([^.]+)%s*[.]?") do
+--    print(s)
+--    hlp = not hlp and (from[_hlp][s] or gethelp(from[s], s) or '') or hlp[s]
+--    if not hlp or hlp == '' then
+--      io.write("  No help found for '" .. what .. "'.\n")
+--      return
+--    end
+--  end
+--  io.write(hlp);
 
 --  local dot = string.find(a, '.', 1, true)
 --  local mod = dot and string.sub(a, 1, dot-1) or a
@@ -247,7 +241,7 @@ function M.help (from, what, _chk)
 --  end
 end
 
-function checkhelp (a)
+local function checkhelp (a) -- TODO
   local ref = a.__help and a.__help.self
   assert(ref, "missing help for module "..tostring(a))
   for k in pairs(a) do

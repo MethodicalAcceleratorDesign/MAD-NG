@@ -368,12 +368,8 @@ M.parent = function(s) return s.__par end       -- alias
 
 -- end of object model --------------------------------------------------------o
 
-local lu = require 'luaunit'
 local assertEquals, assertAlmostEquals, assertErrorMsgContains, assertNil,
-      assertTrue, assertFalse, assertNotEquals, assertStrContains =
-      lu.assertEquals, lu.assertAlmostEquals, lu.assertErrorMsgContains,
-      lu.assertNil, lu.assertTrue, lu.assertFalse, lu.assertNotEquals,
-      lu.assertStrContains
+      assertTrue, assertFalse, assertNotEquals, assertStrContains in MAD.utest
 
 -- regression test suite ------------------------------------------------------o
 

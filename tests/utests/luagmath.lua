@@ -114,11 +114,8 @@ local tanh  = function (x) return is_number(x) and tanh (x)  or x:tanh () end
 
 -- locals ---------------------------------------------------------------------o
 
-local lu = require 'luaunit'
 local assertFalse, assertTrue, assertEquals, assertNotEquals,
-      assertAlmostEquals, assertNaN =
-      lu.assertFalse, lu.assertTrue, lu.assertEquals, lu.assertNotEquals,
-      lu.assertAlmostEquals, lu.assertNaN
+      assertAlmostEquals, assertNaN in MAD.utest
 
 -- regression test suite ------------------------------------------------------o
 
