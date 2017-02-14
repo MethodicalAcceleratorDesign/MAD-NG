@@ -94,15 +94,16 @@ ERRORS
 SEE ALSO
   None.
 ]=]
-M.__help.option        = M.__help.gutil
-M.__help.typeid        = M.__help.gutil
-M.__help.concept       = M.__help.gutil
-M.__help.utility       = M.__help.gutil
-M.__help.operator      = M.__help.gutil
-M.__help.same          = M.__help.gutil
-M.__help.totable       = M.__help.gutil
-M.__help.tostring      = M.__help.gutil
-M.__help.get_metatable = M.__help.gutil
+M.__help.option         = M.__help.gutil
+M.__help.typeid         = M.__help.gutil
+M.__help.concept        = M.__help.gutil
+M.__help.utility        = M.__help.gutil
+M.__help.operator       = M.__help.gutil
+M.__help.same           = M.__help.gutil
+M.__help.totable        = M.__help.gutil
+M.__help.tostring       = M.__help.gutil
+M.__help.get_metatable  = M.__help.gutil
+M.__help.get_metamethod = M.__help.gutil
 
 -- locals ---------------------------------------------------------------------o
 
@@ -118,14 +119,31 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- implementation -------------------------------------------------------------o
 
--- metatables
+-- metatables & metamethods
 
 assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
 
-local function get_meta (a)
+local function get_metatable (a)
   return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
          or getmetatable(a)
 end
+
+local function get_metamethod (a, f)
+  local mt = get_metatable(a)
+  return mt and rawget(mt,f)
+end
+
+local function has_metamethod (a, f)
+  return get_metamethod(a,f) ~= nil or false
+end
+
+local function has_metamethod2 (a, f, f2)
+  local mt = get_metatable(a)
+  return mt and (rawget(mt,f) or rawget(mt,f2)) ~= nil or false
+end
+
+M.get_metatable  = get_metatable
+M.get_metamethod = get_metamethod
 
 -- metamethods
 
@@ -259,26 +277,17 @@ M.typeid = {
   is_rawtable = \a -> type(a) == 'table'  and getmetatable(a) == nil,
 
   -- comparison
-  is_same     = \a,b -> type(a) == type(b) and get_meta(a) == get_meta(b),
+  is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
 
   -- valid metamethods names
   is_metaname = \a -> metaname[a] == a,
 
 }
 
--- metamethods
-
-M.get_metatable = get_meta
-
 -- concepts
 
 local is_number, is_complex, is_string, is_table, is_rawtable, is_function
       in M.typeid
-
-local has_metamethod = function (a, f, f2)
-  local mt = get_meta(a)
-  return mt and (mt[f] or mt[f2]) ~= nil or false
-end
 
 M.concept = {
 
@@ -299,20 +308,22 @@ M.concept = {
   is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   ),
 
   is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
-  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__le', '__lt'),
+  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a, '__le', '__lt'),
 
   has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
-  has_metatable    = \a -> get_meta(a) ~= nil,
+  has_metatable    = \a -> get_metatable(a) ~= nil,
+  has_metamethod   =       has_metamethod,
   has_constructor  = \a -> has_metamethod(a,'__new'),
   is_collectable   = \a -> has_metamethod(a,'__gc' ),
 
 }
 
+-- methods
+
 local is_indexable, is_callable in M.concept
 
 M.concept.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
 M.concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
-M.concept.has_metamethod = has_metamethod
 
 -- extensions (conversion, factory)
 
@@ -338,7 +349,7 @@ function M.tostring (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return string.format(option.format, a)
   elseif is_rawtable(a)   then return tbl2str(a)
-  elseif is_stringable(a) then return get_meta(a).__tostring(a, ...)
+  elseif is_stringable(a) then return rawget(get_metatable(a),'__tostring')(a, ...)
   else                         return tostring(a) -- builtin
   end
 end
@@ -346,7 +357,7 @@ end
 function M.totable (a, ...)
   if     is_table(a)    then return a
   elseif is_string(a)   then return str2tbl(a)
-  elseif is_tablable(a) then return get_meta(a).__totable(a, ...)
+  elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
   else                       return {a} -- encapsulate
   end
 end
