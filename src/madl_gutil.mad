@@ -21,11 +21,11 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = {} }
+local __help = {}
 
 -- help -----------------------------------------------------------------------o
 
-M.__help.gutil = [=[
+__help.gutil = [=[
 NAME
   gutil -- provide some utility functions
 
@@ -94,16 +94,14 @@ ERRORS
 SEE ALSO
   None.
 ]=]
-M.__help.option         = M.__help.gutil
-M.__help.typeid         = M.__help.gutil
-M.__help.concept        = M.__help.gutil
-M.__help.utility        = M.__help.gutil
-M.__help.operator       = M.__help.gutil
-M.__help.same           = M.__help.gutil
-M.__help.totable        = M.__help.gutil
-M.__help.tostring       = M.__help.gutil
-M.__help.get_metatable  = M.__help.gutil
-M.__help.get_metamethod = M.__help.gutil
+__help.option   = __help.gutil
+__help.typeid   = __help.gutil
+__help.concept  = __help.gutil
+__help.utility  = __help.gutil
+__help.operator = __help.gutil
+__help.totable  = __help.gutil
+__help.tostring = __help.gutil
+__help.same     = __help.gutil -- move to gfunc
 
 -- locals ---------------------------------------------------------------------o
 
@@ -123,9 +121,22 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
 
+local metaname = {
+  -- list of metanames from lj_obj.h + __init + __exec + __totable + __help
+  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__help',
+  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+  '__sub', '__tostring', '__totable', '__unm',
+}
+for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
+
 local function get_metatable (a)
   return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
          or getmetatable(a)
+end
+
+local function has_metatable (a)
+  return not not get_metatable(a)
 end
 
 local function get_metamethod (a, f)
@@ -142,20 +153,6 @@ local function has_metamethod2 (a, f, f2)
   return not not (mt and (rawget(mt,f) or rawget(mt,f2)))
 end
 
-M.get_metatable  = get_metatable
-M.get_metamethod = get_metamethod
-
--- metamethods
-
-local metaname = {
-  -- list of metanames from lj_obj.h + __init + __exec + __totable + __help
-  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__help',
-  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
-  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
-  '__sub', '__tostring', '__totable', '__unm',
-}
-for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
-
 -- values
 
 local value_t = { -- list of types that cannot be modified
@@ -165,7 +162,7 @@ local value_t = { -- list of types that cannot be modified
 
 -- options
 
-M.option = {
+local option = {
 
   format = "%.16g",
 
@@ -173,7 +170,7 @@ M.option = {
 
 -- operators
 
-M.operator = {
+local operator = {
 
   -- bits operators
   bnot  = bnot,
@@ -199,16 +196,6 @@ M.operator = {
   is_gt = \x,y -> x >  y,
   is_ge = \x,y -> x >= y,
 
-  logical_not         = M.lnot,
-  logical_and         = M.land,
-  logical_or          = M.lor,
-  is_equal            = M.is_eq,
-  is_not_equal        = M.is_ne,
-  is_lesser           = M.is_lt,
-  is_lesser_or_equal  = M.is_le,
-  is_greater          = M.is_gt,
-  is_greater_or_equal = M.is_ge,
-
   -- math operators
   unm  = \x   -> -x,
   sqr  = \x   ->  x * x,
@@ -227,34 +214,34 @@ M.operator = {
   call = \x,... -> x(...),
 }
 
-M.operator.opstr = {
-  ['~' ] = M.operator.unm,
-  ['+' ] = M.operator.add,
-  ['-' ] = M.operator.sub,
-  ['*' ] = M.operator.mul,
-  ['/' ] = M.operator.div,
-  ['%' ] = M.operator.mod,
-  ['^' ] = M.operator.pow,
-  ['#' ] = M.operator.len,
-  ['..'] = M.operator.cat,
-  ['<' ] = M.operator.is_lt,
-  ['>' ] = M.operator.is_gt,
-  ['<='] = M.operator.is_le,
-  ['>='] = M.operator.is_ge,
-  ['~='] = M.operator.is_ne,
-  ['!='] = M.operator.is_ne,
-  ['=='] = M.operator.is_eq,
-  ['!' ] = M.operator.lnot,
-  ['&&'] = M.operator.land,
-  ['||'] = M.operator.lor,
-  ['!!'] = M.operator.bool,
+operator.opstr = {
+  ['~' ] = operator.unm,
+  ['+' ] = operator.add,
+  ['-' ] = operator.sub,
+  ['*' ] = operator.mul,
+  ['/' ] = operator.div,
+  ['%' ] = operator.mod,
+  ['^' ] = operator.pow,
+  ['#' ] = operator.len,
+  ['..'] = operator.cat,
+  ['<' ] = operator.is_lt,
+  ['>' ] = operator.is_gt,
+  ['<='] = operator.is_le,
+  ['>='] = operator.is_ge,
+  ['~='] = operator.is_ne,
+  ['!='] = operator.is_ne,
+  ['=='] = operator.is_eq,
+  ['!' ] = operator.lnot,
+  ['&&'] = operator.land,
+  ['||'] = operator.lor,
+  ['!!'] = operator.bool,
 }
 
 -- types
 
 local complex = ffi.typeof 'complex'
 
-M.typeid = {
+local typeid = {
 
   -- primitive types
   is_nil      = \a -> type(a) == 'nil',
@@ -287,9 +274,14 @@ M.typeid = {
 -- concepts
 
 local is_number, is_complex, is_string, is_table, is_rawtable, is_function
-      in M.typeid
+      in typeid
 
-M.concept = {
+local concept = {
+
+  get_metatable    = get_metatable,
+  has_metatable    = has_metatable,
+  get_metamethod   = get_metamethod,
+  has_metamethod   = has_metamethod,
 
   is_stringable    = \a -> has_metamethod(a, '__tostring'),
   is_tablable      = \a -> has_metamethod(a, '__totable' ),
@@ -311,8 +303,6 @@ M.concept = {
   is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a, '__le', '__lt'),
 
   has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
-  has_metatable    = \a -> not not get_metatable(a),
-  has_metamethod   =       has_metamethod,
   has_constructor  = \a -> has_metamethod(a,'__new'),
   is_collectable   = \a -> has_metamethod(a,'__gc' ),
 
@@ -320,61 +310,16 @@ M.concept = {
 
 -- methods
 
-local is_indexable, is_callable in M.concept
+local is_indexable, is_callable in concept
 
-M.concept.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
-M.concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
-
--- extensions (conversion, factory)
-
-local is_stringable, is_tablable, has_method in M.concept
-local option in M
-
-local function tbl2str(t)
-  if #t == 0 then return '{}' end
-  local r = table.new(#t+2,0)
-  r[1] = '{'
-  for i=1,#t do r[i+1] = M.tostring(t[i]) end
-  r[#r+1] = '}'
-  return table.concat(r, ', ')
-end
-
-local function str2tbl(s)
-  local r = table.new(#s,0)
-  for i=1,#s do r[i] = s:sub(i,i) end
-  return r
-end
-
-function M.tostring (a, ...)
-  if     is_string(a)     then return a
-  elseif is_number(a)     then return string.format(option.format, a)
-  elseif is_rawtable(a)   then return tbl2str(a)
-  elseif is_stringable(a) then return rawget(get_metatable(a),'__tostring')(a, ...)
-  else                         return tostring(a) -- builtin
-  end
-end
-
-function M.totable (a, ...)
-  if     is_table(a)    then return a
-  elseif is_string(a)   then return str2tbl(a)
-  elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
-  else                       return {a} -- encapsulate
-  end
-end
-
-function M.same (a, ...)
-  if     value_t[type(a)] or is_complex(a) then return a
-  elseif is_rawtable(a)                    then return {}
-  elseif has_method(a, 'same')             then return a:same(...)
-  end
-  error("invalid argument #1 (clonable object expected)")
-end
+concept.has_member = \a,f -> is_indexable(a) and a[f] ~= nil       or false
+concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 
 -- utilities
 
-local is_iterable, is_mappable in M.concept
+local is_iterable, is_mappable, is_stringable, is_tablable, has_method in concept
 
-M.utility = {}
+local utility = {}
 
 local rep_x, rep_n = {}, {}
 
@@ -388,29 +333,93 @@ local rep_mt = {
   __metatable = false,
 }
 
-function M.utility.rep (x, n_) -- repeater
+function utility.rep (x, n_) -- repeater
   return setmetatable({[rep_x]=x, [rep_n]=n_ or 2^30}, rep_mt)
 end
 
-function M.utility.setkeys (tbl)
-  assert(is_iterable(tbl), "invalid argument #1 (table expected)")
-  for _,v in ipairs(tbl) do tbl[v] = v end
-  return tbl
+function utility.setkeys (a)
+  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
+  for _,v in ipairs(a) do a[v] = v end
+  return a
 end
 
-function M.utility.countkeys (tbl)
-  assert(is_mappable(tbl), "invalid argument #1 (table expected)")
+function utility.countkeys (a)
+  assert(is_mappable(a), "invalid argument #1 (mappable expected)")
   local n = 0
-  for _ in pairs(tbl) do n = n+1 end
+  for _ in pairs(a) do n = n+1 end
   return n
 end
 
-function M.utility.fileexists (name)
-  assert(is_string(name), "invalid argument #1 (string expected)")
-  local file = io.open(name)
+function utility.fileexists (fname)
+  assert(is_string(fname), "invalid argument #1 (string expected)")
+  local file = io.open(fname)
   io.close(file)
   return file ~= nil
 end
 
+local tostring_ -- forward ref
+
+function utility.tbl2str(tbl, sep_)
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  if #tbl == 0 then return '{}' end
+  local r = table.new(#tbl+2,0)
+  r[1] = '{'
+  for i=1,#tbl do r[i+1] = tostring_(tbl[i]) end
+  r[#r+1] = '}'
+  return table.concat(r, sep_ or ', ')
+end
+
+function utility.str2tbl(str, match_, init_)
+  assert(is_string(str), "invalid argument #1 (string expected)")
+  local r
+  if is_string(match_) then
+    r = {}
+    for s in string.gmatch(str, match_, init_) do r[#r+1] = s end
+  else
+    r = table.new(#str,0)
+    for i=1,#str do r[i] = str:sub(i,i) end
+  end
+  return r
+end
+
+-- extensions (conversion, factory)
+
+local function totable (a, ...)
+  if     is_table(a)    then return a
+  elseif is_string(a)   then return utility.str2tbl(a,...) -- table.concat^-1
+  elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
+  else                       return {a} -- encapsulate
+  end
+end
+
+function tostring_ (a, ...)
+  if     is_string(a)     then return a
+  elseif is_number(a)     then return string.format(option.format, a)
+  elseif is_rawtable(a)   then return utility.tbl2str(a,...) -- table.concat
+  elseif is_stringable(a) then return rawget(get_metatable(a),'__tostring')(a, ...)
+  else                         return tostring(a) -- builtin
+  end
+end
+
+local function same (a, ...)
+  if     value_t[type(a)] or is_complex(a) then return a
+  elseif is_rawtable(a)                    then return {}
+  elseif has_method(a, 'same')             then return a:same(...)
+  end
+  error("invalid argument #1 (clonable object expected)")
+end
+
 -- end ------------------------------------------------------------------------o
-return M
+return {
+  option   = option,
+  typeid   = typeid,
+  concept  = concept,
+  utility  = utility,
+  operator = operator,
+
+  same     = same,
+  totable  = totable,
+  tostring = tostring_,
+
+  __help   = __help,
+}
