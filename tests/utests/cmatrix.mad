@@ -2615,7 +2615,7 @@ function TestCMatrixOps:testAdd()
   end
 end
 
-function TestCMatrixOps:testAddCPx()
+function TestCMatrixOps:testAddCpx()
   for _,cm in ipairs(G.cmatidx) do
     local cmres = 2i + cm
     assertEquals( cmres, cm:copy():map(\x x+2i) ) -- cpx + cmat => cpx + cvec
@@ -2648,10 +2648,10 @@ function TestCMatrixOps:testSub()
   end
 end
 
-function TestCMatrixOps:testSubCPx()
+function TestCMatrixOps:testSubCpx()
   for _,cm in ipairs(G.cmatidx) do
-    local cmres = 2i + cm
-    assertEquals( cmres, cm:copy():map(\x x+2i) ) -- cpx - cmat => cpx - cvec
+    local cmres = 2i - cm
+    assertEquals( cmres, cm:copy():map(\x 2i-x) ) -- cpx - cmat => cpx - cvec
   end
 end
 
@@ -2696,7 +2696,7 @@ function TestCMatrixOps:testMul()
   end
 end
 
-function TestCMatrixOps:testMulCPx()
+function TestCMatrixOps:testMulCpx()
   for _,cm in ipairs(G.cmatidx) do
     local mref = 2i * cm
     assertEquals( mref, cm:copy():map(\x x*2i) )
@@ -2715,16 +2715,14 @@ function TestCMatrixErr:testTmul()
   assertErrorMsgContains( msg[2], mth, 'tmul', cmatrix(1,2), cmatrix(3,1) )
 end
 
---[[
 function TestCMatrixOps:testTmul()
   for _,cm in ipairs(G.cmatidx) do
     local nr, _ = cm:nrow()
     for i=1,5 do
-      local m2 = cm:same(_ ,nr,i):fill(1..nr*i)
-      local cm = cm:same(0i,nr,i):fill(1..nr*i)
-      assertEquals( cm:tmul(m2), refMul(cm:t(),m2) ) -- mat' * mat
-      assertEquals( cm:tmul(cm), refMul(cm:t(),cm) ) -- mat' * cmat
-      assertTrue  ( is_cmatrix(m:tmul(cm)) )
+      local m   =  matrix(nr,i   ):fill(1..nr*i)
+      local cm2 = cm:same(0i,nr,i):fill(1..nr*i):map(toC)
+      assertEquals( cm:tmul(m  ), refMul(cm:t(),m  ) ) -- cmat' * mat
+      assertEquals( cm:tmul(cm2), refMul(cm:t(),cm2) ) -- cmat' * cmat
     end
   end
 end
@@ -2734,22 +2732,21 @@ function TestCMatrixErr:testMult()
     "invalid arguments (unsupported matrix operation)",
     "incompatible matrix sizes"                       ,
   }
-  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , ''          )
-  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , nil         )
-  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , 1..4        )
-  assertErrorMsgContains( msg[2], mth, 'mult', matrix(2,1), matrix(1,2) )
-  assertErrorMsgContains( msg[2], mth, 'mult', matrix(1,2), matrix(3,1) )
+  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , ''           )
+  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , nil          )
+  assertErrorMsgContains( msg[1], mth, 'mult', errCMat     , 1..4         )
+  assertErrorMsgContains( msg[2], mth, 'mult', cmatrix(2,1), cmatrix(1,2) )
+  assertErrorMsgContains( msg[2], mth, 'mult', cmatrix(1,2), cmatrix(3,1) )
 end
 
 function TestCMatrixOps:testMult()
   for _,cm in ipairs(G.cmatidx) do
-    local nr, _ = m:ncol()
+    local nr, _ = cm:ncol()
     for i=1,5 do
-      local m2 = m:same(_ ,i,nr):fill(1..nr*i)
-      local cm = m:same(0i,i,nr):fill(1..nr*i)
-      assertEquals( m:mult(m2), refMul(m, m2:t()) ) -- mat * mat'
-      assertEquals( m:mult(cm), refMul(m, cm:t()) ) -- mat * cmat'
-      assertTrue  ( is_cmatrix(m:mult(cm)) )
+      local m   =  matrix(i ,nr   ):fill(1..nr*i)
+      local cm2 = cm:same(0i,i ,nr):fill(1..nr*i)
+      assertEquals( cm:mult(m  ), refMul(cm, m  :t()) ) -- cmat * mat'
+      assertEquals( cm:mult(cm2), refMul(cm, cm2:t()) ) -- cmat * cmat'
     end
   end
 end
@@ -2759,42 +2756,43 @@ function TestCMatrixErr:testDiv()
     "invalid arguments (unsupported matrix operation)",
     "incompatible matrix sizes"                       ,
   }
-  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , ''          )
-  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , nil         )
-  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , 1..4        )
-  assertErrorMsgContains( msg[2], mth, 'div', matrix(2,1), matrix(1,2) )
-  assertErrorMsgContains( msg[2], mth, 'div', matrix(1,2), matrix(3,1) )
+  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , ''           )
+  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , nil          )
+  assertErrorMsgContains( msg[1], mth, 'div', errCMat     , 1..4         )
+  assertErrorMsgContains( msg[2], mth, 'div', cmatrix(2,1), cmatrix(1,2) )
+  assertErrorMsgContains( msg[2], mth, 'div', cmatrix(1,2), cmatrix(3,1) )
 end
 
+--[[
 function TestCMatrixOps:testDiv() -- TODO
 --  local m = matrix(3,2):fill(2)
 --  print(1/m)
   for _,cm in ipairs(G.cmatidx) do
-    local mn, nr, nc = m:size(), m:sizes()
-    local mc = m:copy():random(randomseed(2))
-    local cm = m:same(0i):fill(1..mn):map\x x+x*1i
+    local mn, nr, nc = cm:size(), cm:sizes()
+    local cmc = cm:copy():random(randomseed(2))
+    local m   = matrix(nr,nc):fill(1..mn)
     if nr == nc then
-      assertTrue( (mc * (1/mc)):eq( mc:copy():eye(), 5*eps) )  -- num / mat
+      --assertTrue( (cmc * (1/cmc)):eq( cmc:copy():eye(), 5*eps) )  -- num / cmat
     else--TODO
       --print( 1/mc,"\n" )
       --print( mc,"\n" )
       --print( mc:t() * (1/mc),"\n" )  -- num / mat
     end
-    assertEquals(  m / 2 , m:copy():map(\x  x/2   )         ) -- mat / num
-    assertEquals(  m / 2i, m:copy():map(\x -x/2*1i)         ) -- mat / cpx
-    assertTrue  ( (m / m  ):eq(m:copy()*1/m        ,   eps) ) -- mat / mat
-    assertTrue  ( (m / cm ):eq(m:copy()*1/cm       , 2*eps) ) -- mat / mat
-  end
-end
-
-function TestCMatrixOps:testDivCPx()
-  for _,cm in ipairs(G.cmatidx) do
-    local mref = 2i / m
-    assertTrue( mref:eq( 2i*1/m, 2*eps) )
-    assertTrue( is_cmatrix(mref) )
+    --assertEquals(  cm / 2 , cm:copy():map(\x  x/2   )         ) -- cmat / num
+    --assertEquals(  cm / 2i, cm:copy():map(\x -x/2*1i)         ) -- cmat / cpx
+    --assertTrue  ( (cm / cm ):eq(m:copy()*1/cm        ,   eps) ) -- cmat / cmat
+    --assertTrue  ( (cm / m ):eq(m:copy()*1/m       , 2*eps) )    -- cmat / mat
   end
 end
 ]]
+
+function TestCMatrixOps:testDivCpx()
+  for _,cm in ipairs(G.cmatidx) do
+    local mref = 2i / cm
+    assertTrue( mref:eq( 2i*1/cm, 2*eps) )
+    assertTrue( is_cmatrix(mref) )
+  end
+end
 
 function TestCMatrixErr:testEmul()
   local msg = {
