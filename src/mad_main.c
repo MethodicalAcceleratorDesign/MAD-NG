@@ -194,6 +194,31 @@ static void mad_regfunc (void)
 	lua_register(globalL, "trace", mad_luatrace);
 }
 
+/* Handle signals */
+
+static const int   sig_i[] = { SIGABRT , SIGBUS , SIGFPE , SIGILL , SIGSEGV };
+static const str_t sig_s[] = {"SIGABRT","SIGBUS","SIGFPE","SIGILL","SIGSEGV"};
+static const int   sig_n   = sizeof sig_i / sizeof *sig_i;
+
+static void sig_handler(int sig)
+{
+	int i;
+	for (i=0; i < sig_n; i++)
+		if (sig_i[i] == sig) break;
+
+	if (i < sig_n)
+  	(mad_error)(NULL, "signal %s caught!", sig_s[i]);
+}
+
+static void mad_setsig (void)
+{
+	for (int i=0; i<sig_n; i++)
+		ensure(signal(sig_i[i], sig_handler) != SIG_ERR,
+					 "unable to set signal hanlder %s", sig_s[i]);
+}
+
+/* Handle paths */
+
 /* Windows: not declared by any mean but provided by libgettextlib */
 extern char *realpath (const char *restrict fname, char *restrict rname);
 
@@ -330,6 +355,8 @@ found:
 						/* MAD modules (relative) */
 						"%s../share/mad/?.mad;"										// MAD_PATH		(1)
 						"%s../share/mad/?.lua;"										// MAD_PATH		(1)
+						"%s../lib/mad/?.mad;"									    // MAD_PATH		(1)
+						"%s../lib/mad/?.lua;"						    			// MAD_PATH		(1)
 						/* From Lua unofficial uFAQ (relative) */
 						"%s../share/lua/5.1/?.lua;"								// MAD_PATH		(1)
 						"%s../share/lua/5.1/?/init.lua;"					// MAD_PATH		(1)
@@ -345,7 +372,7 @@ found:
 						"/usr/local/share/lua/5.1/?/init.lua;"
 						"/usr/local/lib/lua/5.1/?.lua;"
 						"/usr/local/lib/lua/5.1/?/init.lua;",
-		marg = 4+6,
+		marg = 4+8,
 #endif
 		mlen = strlen(mpath)-(2*marg)
 					 + 2*strlen(home_path) + (marg-2)*strlen(prog_path);
@@ -411,10 +438,11 @@ found:
 
 	/* LUA_PATH = $MAD_PATH;$LUA_PATH */
 	char env[(mlen>clen?mlen:clen) + strlen(lpath ? lpath : "") + 1];
-	ensure(marg == 10, "invalid number of path argument");
+	ensure(marg == 10 || marg == 12, "invalid number of path argument");
 	len = snprintf(env, sizeof env, mpath, /* next args discarded without %s */
 					 				home_path, home_path, prog_path, prog_path, prog_path,
-					 				prog_path, prog_path, prog_path, prog_path, prog_path);
+					 				prog_path, prog_path, prog_path, prog_path, prog_path,
+					 				prog_path, prog_path);
 	if (lpath) strcat(env, lpath); else if (len>0) env[len-1] = nul;
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 	winpath(env); /* canonize */
@@ -994,7 +1022,9 @@ static int pmain(lua_State *L)
 	}
 
 	/* MAD section. */
+	mad_setsig();
 	mad_regfunc();
+
 	if ((flags & FLAGS_MADENV))
 		dolibrary(L, "madl_main");
 	if (!(flags & FLAGS_NOENV)) {
