@@ -18,7 +18,7 @@
 # project
 PRJ     := mad
 
-# c/lua/mad modules to NOT embed
+# lua/mad modules to NOT embed
 NOT    	:= $(wildcard *.mad)
 
 # setup
@@ -26,6 +26,7 @@ CC      := gcc
 DIR     := build
 LIB     := ../lib
 OSLIB   := $(LIB)/linux
+AR      := ar -ruv
 LJ      := $(firstword $(wildcard ./mad $(LIB)/luajit/bin/luajit))
 
 # depend
@@ -59,11 +60,11 @@ LDFLAGS += $(OSLIB)/libluajit.a $(OSLIB)/liblpeg.a \
 LDFLAGS += -Wl,-Bdynamic -lm -ldl
 
 # files setup
-JSRC    := $(wildcard ljit_*.lua)
-RSRC    := $(filter-out $(JSRC),$(NOT))
-CSRC    := $(filter-out $(RSRC),$(wildcard *.c sse/*.c))
-LSRC    := $(filter-out $(RSRC),$(wildcard *.lua))
-MSRC    := $(filter-out $(RSRC),$(wildcard *.mad))
+ASRC    := $(wildcard *.mad *.lua *.c sse/*.c)      # all sources
+RSRC    := $(filter-out $(NOT),$(ASRC))             # retained sources
+CSRC    := $(filter %.c,$(RSRC))                    # C sources
+LSRC    := $(filter %.lua,$(RSRC))                  # lua sources
+MSRC    := $(filter %.mad,$(RSRC))                  # mad sources
 
 DEP     := $(patsubst %.c,%.d,$(filter-out mad_main.c,$(CSRC)))
 DEP     := $(addprefix $(DIR)/,$(DEP))
@@ -82,22 +83,26 @@ $(DIR)/mad_mat.o:  CFLAGS += -I$(LIB)/fftw3/api -I$(LIB)/nfft3/include
 $(DIR)/mad_opt.o:  CFLAGS += -I$(LIB)/nlopt2/api
 
 # rules
-$(PRJ): $(OBJ)
-	$(CC) $(CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
+$(PRJ): $(firstword $(wildcard lib$(PRJ).a $(OSLIB)/lib$(PRJ).a) lib$(PRJ).a)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
-$(DIR)/%.d: %.c
-	$(CC) $(DFLAGS) $< > $@
-	@sed -i.bak -e 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' $@
-	@rm $@.bak
-
-$(DIR)/%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+lib$(PRJ).a: $(OBJ)
+	$(AR) $@ $(OBJ)
+	cp -f $@ $(OSLIB)/$@
 
 $(DIR)/%.c: %.mad
 	$(LJ) $(LFLAGS) -bg $< $@
 
 $(DIR)/%.c: %.lua
 	$(LJ) $(LFLAGS) -bg $< $@
+
+$(DIR)/%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(DIR)/%.d: %.c
+	$(CC) $(DFLAGS) $< > $@
+	@sed -i.bak -e 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' $@
+	@rm $@.bak
 
 dep:
 	ldd $(PRJ)
@@ -107,13 +112,18 @@ cleanbin:
 
 cleanobj:
 	rm -rf $(DIR)
+	rm -rf lib$(PRJ).a
 
-clean: cleanbin cleanobj
+cleanlib:
+	rm -rf $(OSLIB)/lib$(PRJ).a
+
+clean cleanall: cleanbin cleanlib cleanobj
 
 # default rule
 .DEFAULT_GOAL := $(PRJ)
 
 # include dependencies
-ifeq ($(filter-out $(PRJ),$(MAKECMDGOALS)),)
+BUILDGOALS := $(PRJ) lib$(PRJ).a $(OSLIB)/lib$(PRJ).a
+ifneq ($(filter $(BUILDGOALS),$(MAKECMDGOALS)),)
 -include $(DEP)
 endif
