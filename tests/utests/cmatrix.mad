@@ -2844,17 +2844,18 @@ function TestCMatrixOps:testEdiv()
    end
 end
 
---[[
 -- linear algebra -------------------------------------------------------------o
 
 function TestCMatrixLapack:testSolve()
   for i,m1 in ipairs(dat.solveIn1) do
-    local m2 = dat.solveIn2[i]
-    local m3 = dat.solveOut[i]
-    assertTrue( m1:solve(m2):eq(m3, 2*eps) )
+    local mc = m1:copy()      :map(toC)
+    local m2 = dat.solveIn2[i]:map(toC)
+    local m3 = dat.solveOut[i]:map(\x x+0i)
+    assertTrue( (mc):solve(m2):eq(m3, 2*eps) )
   end
 end
 
+--[[
 function TestCMatrixErr:testSvd() --TODO
   local msg = {
     "invalid input argument" ,
@@ -2863,38 +2864,48 @@ function TestCMatrixErr:testSvd() --TODO
 end
 
 function TestCMatrixLapack:testSvd()
-  for i,cm in ipairs(dat.svdIn) do
-    local refU = dat.svdU[i]
-    local refS = dat.svdS[i]:getdiag()
-    local refV = dat.svdV[i]
-    local ru, rs, rv, info = m:svd()
-    local m1   = ru * m:same():setdiag(rs) * rv:t() -- M = U*S*V'
-    assertTrue( ru:eq(refU,  3*eps) )
-    assertTrue( rs:eq(refS, 64*eps) )
-    assertTrue( rv:eq(refV,  3*eps) )
-    assertTrue( m1:eq(m   , 32*eps) )
+  for i,m in ipairs(dat.svdIn) do
+    local cm   = m:copy()             :map(toC)
+    local refU = dat.svdU[i]          :map(toC)
+    local refS = dat.svdS[i]:getdiag():map(toC)
+    local refV = dat.svdV[i]          :map(toC)
+    local ru, rs, rv, info = cm:svd()
+    local cm1  = ru * cm:same():setdiag(rs) * rv:t() -- M = U*S*V'
+    --assertTrue( ru :eq(refU,  3*eps) )
+    --assertTrue( rs :eq(refS, 64*eps) )
+    --assertTrue( rv :eq(refV,  3*eps) )
+    --assertTrue( cm1:eq(cm   , 32*eps) )
+
+    print( ru  , "\n" )
+    print( refU, "\n" )
   end
 end
+]]
 
 function TestCMatrixErr:testDet()
   local msg = {
     "matrix must be square",
   }
-  assertErrorMsgContains( msg[1], mth, 'det', matrix(2,1) )
+  assertErrorMsgContains( msg[1], mth, 'det', cmatrix(2,1) )
 end
 
 function TestCMatrixLapack:testDet()
-  local M = {}
-  for i=1,5 do M[i] = matrix(i):random() end
-  assertEquals( matrix(2):symp():det(), 1 )
-  assertEquals( matrix(2):eye() :det(), 1 )
-  for i,cm in ipairs(M) do
-    local m1 = m:same():random()
-    assertAlmostEquals( (m*m1):det() - m:det()*m1:det(), 0, 3*eps )
-    assertAlmostEquals(  m:t():det() - m:det()         , 0, 2*eps )
-    assertAlmostEquals( (2*m) :det() - m:det()*(2^i)   , 0,   eps )
+  local CM = {}
+  for i=1,5 do CM[i] = cmatrix(i):random() end
+  assertEquals( cmatrix(2):symp():det(), 1+0i )
+  assertEquals( cmatrix(2):eye() :det(), 1+0i )
+  for i,cm in ipairs(CM) do
+    local cm1 = cm:same():random()
+    assertAlmostEquals( ((cm*cm1):det() - cm:det()*cm1:det()):real()       , 0,32*eps )
+    assertAlmostEquals( ((cm*cm1):det() - cm:det()*cm1:det()):imag()       , 0,32*eps )
+    assertAlmostEquals( ((2*cm)  :det() - cm:det()*(2^i)    ):real()       , 0,   eps )
+    assertAlmostEquals( ((2*cm)  :det() - cm:det()*(2^i)    ):imag()       , 0,   eps )
+    assertAlmostEquals( ( cm:t():conj() :det() - cm:det()          ):real(), 0,16*eps )
+    assertAlmostEquals( ( cm:t():conj() :det() - cm:det()          ):imag(), 0,16*eps )
   end
 end
+
+--[[
 
 function TestCMatrixErr:testEigen()
   local msg = {
