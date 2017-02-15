@@ -41,7 +41,8 @@ local rep in MAD.utility
 
 -- locals ---------------------------------------------------------------------o
 
-local dat  = require 'cmatrix_dat'
+local datC = require 'cmatrix_dat'
+local dat  = require 'matrix_dat'
 local mth  = \f,s,... s[f](s,...)
 local idx  = \i,j,nc ( (i-1)*nc+j )
 local toC  = \x complex(x,x)
@@ -1962,16 +1963,20 @@ end
 function TestCMatrixSMaps:testReal()
   for _,cm in ipairs(G.cmatidx) do
     local mn = cm:size()
+    local m  = matrix(cm:sizes())
     cm:real('in')
-    assertEquals( cm, cm:same():fill(1..mn) )
+    assertEquals( cm          , cm:same():fill(1..mn) )
+    assertEquals( cm:real( m ),  m:same():fill(1..mn) )
   end
 end
 
 function TestCMatrixSMaps:testImag()
   for _,cm in ipairs(G.cmatidx) do
     local mn = cm:size()
+    local m  = matrix(cm:sizes())
     cm:imag('in')
-    assertEquals( cm, cm:same():fill(1..mn) )
+    assertEquals( cm          , cm:same():fill(1..mn) )
+    assertEquals( cm:real( m ),  m:same():fill(1..mn) )
   end
 end
 
@@ -2563,6 +2568,7 @@ function TestCMatrixErr:testEq()
 end
 
 function TestCMatrixOps:testEq() --TODO: cleanup between real and complex test
+  -- possibly high eps difference test
   for _,cm in ipairs(G.cmatidx) do
     local m = matrix(cm:sizes())
     assertTrue ( m         == cm:same() ) -- mat  == cmat
@@ -2639,8 +2645,8 @@ function TestCMatrixOps:testSub()
     local mn  = cm:size()
     local cmc = cm:copy()
     local m   = matrix(cm:sizes()):fill(1..mn)
-    assertEquals( cm - cmc          , cm:same()               ) -- cmat - cmat => cvec - cvec
-    assertEquals( cm - cmc:imag()*1i, cmc:map(\x x:real()   ) )
+    assertEquals( cm - cmc          , cm :same()              ) -- cmat - cmat => cvec - cvec
+    assertEquals( cm - cmc:imag()*1i, cmc:real()              )
     assertEquals( 2  - cm           , cmc:map(\x 2-x        ) ) -- num  - cmat => num  - cvec
     assertEquals( cm - 2            , cmc:map(\x x-2        ) ) -- cmat - num  => cvec + -num
     assertEquals( cm - 2i           , cmc:map(\x x-2i       ) ) -- cmat - cpx  => cvec + -cpx
@@ -2923,29 +2929,46 @@ function TestCMatrixLapack:testEigen()
     assertAlmostEquals( w:sum():real() - m:tr(), 0, 64*eps  )
   end
 end
-
+]]
 -- FFT, convolution, correlation, covrariance ---------------------------------o
   --vector sizes: 1,2,3,4,5,7,11,13,17,19,25
   --matrix sizes: (of 2,5,7 combinations)
 
 function TestCMatrixFFT:testFFT()
-  for i,s in ipairs(dat.sv) do -- 1D
-    local ref = dat.fftVOut[i]
-    local res = dat.fftVIn:getsub(1..s, 1):fft()
+  for i,s in ipairs(datC.sv) do -- 1D
+    local ref = datC.fftVOut[i]
+    local res = datC.fftVIn:getsub(1..s, 1):fft()
+    local ms = matrix(res:sizes())
+    local mf = matrix(res:sizes())
     assertTrue( res:real():eq( ref:real(), 16*eps ) )
-    assertTrue( res:imag():eq( ref:imag(), 16*eps ) ) -- linux err: 12eps
+    assertTrue( res:imag():eq( ref:imag(), 16*eps ) ) -- linux err: 16eps
   end
-  for i ,s1 in ipairs(dat.sm) do -- 2D
-  for ii,s2 in ipairs(dat.sm) do
-    local ref = dat.fftMOut[idx(i,ii,3)]
-    local res = dat.fftMIn:getsub(1..s1, 1..s2):fft()
-    assertTrue( res:real():eq( ref:real(), 16*eps ) )
+  for i ,s1 in ipairs(datC.sm) do -- 2D
+  for ii,s2 in ipairs(datC.sm) do
+    local ref = datC.fftMOut[idx(i,ii,3)]
+    local res = datC.fftMIn:getsub(1..s1, 1..s2):fft()
+    assertTrue( res:real():eq( ref:real(), 32*eps ) )
     assertTrue( res:imag():eq( ref:imag(), 16*eps ) )
   end end
 end
 
 function TestCMatrixFFT:testIFFT()
-  for i,s in ipairs(dat.sv) do -- 1D
+  -- FFT on cmatrix input
+  for i,s in ipairs(datC.sv) do -- 1D
+    local ref = datC.fftVIn:getsub(1..s, 1)
+    local res = ref:fft():ifft()
+    assertTrue( res:real():eq( ref:real(), 4*eps ) )
+    assertTrue( res:imag():eq( ref:imag(), 2*eps ) )
+  end
+  for i ,s1 in ipairs(datC.sm) do -- 2D
+  for ii,s2 in ipairs(datC.sm) do
+    local ref = dat.fftMIn:getsub(1..s1, 1..s2)
+    local res = ref:fft():ifft()
+    assertTrue( res:real():eq( ref:real(), 2*eps ) )
+    assertTrue( res:imag():eq( ref:imag(), 2*eps ) )
+  end end
+  -- FFT on  matrix input
+    for i,s in ipairs(dat.sv) do -- 1D
     local ref = dat.fftVIn:getsub(1..s, 1)
     local res = ref:fft():ifft()
     assertTrue( res:real():eq( ref:real(), 4*eps ) )
@@ -2960,21 +2983,45 @@ function TestCMatrixFFT:testIFFT()
   end end
 end
 
-function TestCMatrixErr:testRFFT()
+function TestCMatrixFFT:testRFFT()
   local msg = {
-    "incompatible matrix sizes",
+    "invalid argument #1 (matrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'rfft', vector(1), matrix(2) )
-  assertErrorMsgContains( msg[1], mth, 'rfft', matrix(3), vector(2) )
+  assertErrorMsgContains( msg[1], mth, 'rfft', cmatrix(1) )
 end
 
-function TestCMatrixErr:testIRFFT()
+function TestCMatrixFFT:testIRFFT()
   local msg = {
-    "invalid argument #1 (cmatrix expected)",
     "invalid argument #2 (matrix expected)" ,
     "incompatible matrix sizes"             ,
   }
-  assertErrorMsgContains( msg[1], mth, 'irfft',  vector(1), cmatrix(2) )
+  assertErrorMsgContains( msg[1], mth, 'irfft', cvector(3), nil        )
+  assertErrorMsgContains( msg[2], mth, 'irfft', cvector(3), matrix(1)  )
+end
+
+function TestMatrixFFT:testIRFFT()
+  for i,s in ipairs(dat.sv) do   -- 1D
+    local ref = dat.fftVIn:getsub(1..s, 1)
+    local res = ref:rfft():irfft(ref:same())
+    assertTrue( res:eq( ref, 2*eps ) )
+  end
+  for i ,s1 in ipairs(dat.sm) do -- 2D
+  for ii,s2 in ipairs(dat.sm) do
+    local ref = dat.fftMIn:getsub(1..s1, 1..s2)
+    local res = ref:rfft():irfft(ref:same())
+    assertTrue( res:eq( ref, 2*eps ) )
+  end end
+
+  local ref = {
+    matrix{{1,1,0},{1,1,0},{1,1,0}},
+    matrix{{1,1,1},{1,1,1},{0,0,0}},
+    matrix{{1,1,1},{0,0,0},{1,1,1}},
+    matrix(3):eye()                ,
+  }
+  for _,ref in ipairs(ref) do
+    local res = ref:rfft():irfft(matrix(3))
+    assertTrue( res:eq( ref, 2*eps ) )
+  end
 end
 
 --function TestCMatrixFFT:testNFFT() end
@@ -2984,8 +3031,8 @@ function TestCMatrixErr:testConv()
   local msg = {
     "incompatible matrix sizes",
   }
-  assertErrorMsgContains( msg[1], mth, 'conv',  vector(1), vector(2) )
-  assertErrorMsgContains( msg[1], mth, 'conv',  matrix(1), matrix(2) )
+  assertErrorMsgContains( msg[1], mth, 'conv',  cvector(1), cvector(2) )
+  assertErrorMsgContains( msg[1], mth, 'conv',  cmatrix(1), cmatrix(2) )
 end
 
 -- pascal triangle helpers
@@ -2996,6 +3043,7 @@ local function pasVec(x)
   return v
 end
 
+--[[
  -- convolution theorem
 function TestCMatrixFFT:testConv()
   -- HELP - to get full conv: nr, nc = xr+yr-1, xc+yc-1
