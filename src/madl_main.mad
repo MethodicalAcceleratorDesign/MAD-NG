@@ -22,7 +22,7 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = { __help = require 'madh_main' }
+local M = {}
 
 -- modules --------------------------------------------------------------------o
 
@@ -34,8 +34,6 @@ local modules = {
   'command', 'survey', 'track',
   'madx', -- 'plot',
 }
-
--- constants ------------------------------------------------------------------o
 
 -- locals ---------------------------------------------------------------------o
 
@@ -59,13 +57,10 @@ require 'table.clear' -- load clear in table (side effect)
 
 -- implementation -------------------------------------------------------------o
 
-local _hlp = {} -- hidden key
-
 -- special MAD environment
 M._C        = _C              -- C symbol access
 M.env       = _M              -- M preloaded environment
 M.env.arg   = arg             -- backup of arg
-M[_hlp]     = {}              -- storage for help
 _M          = nil
 
 -- warning, info, trace
@@ -84,6 +79,8 @@ trace_setlocation = \l => local lvl = _C.mad_trace_location
                                       _C.mad_trace_location = l return lvl end
 
 -- import
+
+local hlp, chk = {}, {}
 
 function M.import (to, from, override)
   if to ~= MAD and is_nil(override) then -- right shift
@@ -106,18 +103,11 @@ function M.import (to, from, override)
       obj[k] = v
     end
   end
-  local hlp = {}
-  if is_mappable(from.__help) then
-    for k,v in pairs(from.__help) do
-      assert(is_nil(MAD[_hlp][k]) or MAD[_hlp][k] == v or override == true,
-             "cannot override definition for " .. tostring(k))
-      hlp[k] = v
-    end
-  end
+  if is_mappable(from.__help ) then hlp[from.__help ] = from.__help  end
+  if is_mappable(from.__check) then chk[from.__check] = from.__check end
 
   -- finalize the import
-  for k,v in pairs(obj) do M      [k] = v end
-  for k,v in pairs(hlp) do M[_hlp][k] = v end
+  for k,v in pairs(obj) do M[k] = v end
   return MAD
 end
 
@@ -164,8 +154,15 @@ end
 
 -- help
 
-function gethelp (a)
-  return get_metamethod(a, '__help') or (is_table(a) and a.__help) or nil
+local function collect(tt)
+  local lst = {}
+  for _,t in pairs(tt) do
+    for k,v in pairs(t) do
+      lst[#lst+1], lst[k] = k, v
+    end
+  end
+  table.sort(lst)
+  return lst
 end
 
 function M.help (from, what, _chk)
@@ -177,26 +174,13 @@ function M.help (from, what, _chk)
   assert(is_indexable(what), "invalid argument #2 (indexable expected)")
 
   if _chk == 'check' then
-    checkhelp(from, what) return
+    checkhelp(from, what) return -- TODO
   end
 
   print('help known for:')
---  for k,v in pairs(from[_hlp]) do
---    io.write(tostring(k),"\n")
---  end
-  for k,v in pairs(from) do
-    if is_string(k) and string.sub(k,1,2) ~= '__' then
-      io.write(string.format("%-25s: ", tostring(k)))
-      local hlp1, hlp2 = gethelp(v), from[_hlp][k]
-      if hlp1 ~= nil then
-        io.write("meta ", tostring(hlp1))
-      elseif hlp2 ~= nil then
-        io.write("help ", is_string(hlp) and ' ' or tostring(hlp))
-      else
-        io.write("none nil")
-      end
-      io.write(" ", tostring(v), "\n")
-    end
+  local lst = collect(hlp)
+  for _,k in ipairs(lst) do
+    io.write(tostring(k),"\n")
   end
   print('end of known help')
 
@@ -274,8 +258,13 @@ MAD = setmetatable({},{
     __metatable = false,
   })
 
--- load MAD and modules
-MAD:import { MAD = MAD }            -- import as a self reference and build help
+-- import MAD as a self reference and build help
+MAD:import {
+  MAD    = MAD,
+  __help = require 'madh_main',
+}
+
+-- load MAD modules
 for _,m in ipairs(modules) do
   MAD:import( require('madl_'..m) )
 end
