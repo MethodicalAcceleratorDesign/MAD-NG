@@ -57,10 +57,14 @@ require 'table.clear' -- load clear in table (side effect)
 
 -- implementation -------------------------------------------------------------o
 
+local _hlp, _chk = {}, {} -- hidden keys
+
 -- special MAD environment
 M._C        = _C              -- C symbol access
 M.env       = _M              -- M preloaded environment
 M.env.arg   = arg             -- backup of arg
+M[_hlp]     = {}              -- backup for help
+M[_chk]     = {}              -- backup for check
 _M          = nil
 
 -- warning, info, trace
@@ -79,8 +83,6 @@ trace_setlocation = \l => local lvl = _C.mad_trace_location
                                       _C.mad_trace_location = l return lvl end
 
 -- import
-
-local hlp, chk = {}, {}
 
 function M.import (to, from, override)
   if to ~= MAD and is_nil(override) then -- right shift
@@ -103,8 +105,8 @@ function M.import (to, from, override)
       obj[k] = v
     end
   end
-  if is_mappable(from.__help ) then hlp[from.__help ] = from.__help  end
-  if is_mappable(from.__check) then chk[from.__check] = from.__check end
+  if is_mappable(from.__help ) then M[_hlp][from.__help ] = from.__help  end
+  if is_mappable(from.__check) then M[_chk][from.__check] = from.__check end
 
   -- finalize the import
   for k,v in pairs(obj) do M[k] = v end
@@ -158,87 +160,53 @@ local function collect(tt)
   local lst = {}
   for _,t in pairs(tt) do
     for k,v in pairs(t) do
-      lst[#lst+1], lst[k] = k, v
+      assert(is_nil(lst[k]), "unexpected duplicated data for "..k)
+      assert(is_string(v)  , "unexpected data for "..k.." (string expected)")
+      lst[k] = v
     end
   end
-  table.sort(lst)
   return lst
 end
 
-function M.help (from, what, _chk)
-  if from ~= MAD and is_nil(what) then -- right shift
-    from, what = MAD, from
+local function format(tt, n)
+  local len = 2 -- tab
+  for i,v in ipairs(tt) do
+    len = len + #v + 2 -- sep
+    if len > n then tt[i] = '\n  '..v ; len = #v + 2 end
   end
-  what = is_string(what) and {what} or what
-  assert(from == MAD       , "invalid argument #1 (MAD expected)")
-  assert(is_indexable(what), "invalid argument #2 (indexable expected)")
-
-  if _chk == 'check' then
-    checkhelp(from, what) return -- TODO
-  end
-
-  print('help known for:')
-  local lst = collect(hlp)
-  for _,k in ipairs(lst) do
-    io.write(tostring(k),"\n")
-  end
-  print('end of known help')
-
-  -- search for help
---  local hlp
---  for s in string.gmatch(what, "%s*([^.]+)%s*[.]?") do
---    print(s)
---    hlp = not hlp and (from[_hlp][s] or gethelp(from[s], s) or '') or hlp[s]
---    if not hlp or hlp == '' then
---      io.write("  No help found for '" .. what .. "'.\n")
---      return
---    end
---  end
---  io.write(hlp);
-
---  local dot = string.find(a, '.', 1, true)
---  local mod = dot and string.sub(a, 1, dot-1) or a
---  local fun = dot and string.sub(a, dot+1) or 'self'
---  for k,v in pairs(MAD[_hlp]) do
---    if k == mod then
---      if is_string(v) then ref, str = MAD[_hlp], v break end
---      if is_indexable(v) and v[fun] then ref, str = v, v[fun] break end
---    end
---    if not dot then
---      if is_indexable(v) and v[mod] then ref, str = v, v[mod] break end
---    end
---  end
-
-  -- find related topics, sort items, and wrap output at 80 columns
---  local sub = {}
---  for k,v in pairs(ref) do
---    if k ~= 'self' and v ~= str and v ~= '' then
---      sub[#sub+1] = k
---    end
---  end
---  table.sort(sub)
---  local len = 2 -- tab
---  for i,v in ipairs(sub) do
---    len = len + #v + 2 -- sep
---    if len > 80 then sub[i] = '\n  '..v ; len = #v + 2 end
---  end
---  str = table.concat(sub, ', ')
---  if str ~= '' then
---    io.write("\nRelated topics:\n  ", str, '.\n')
---  end
+  return table.concat(tt, ', ')
 end
 
-local function checkhelp (a) -- TODO
-  local ref = a.__help and a.__help.self
-  assert(ref, "missing help for module "..tostring(a))
-  for k in pairs(a) do
-    if k ~= '__help' and a.__help[k] == nil then
-      io.write('defhelp: no help found for '..a..' item: ',tostring(k),'\n')
-    else
-      a.__help[k] = ref
-    end
+function M.help (from, pattern, _chk)
+  if from ~= MAD and is_nil(pattern) then -- right shift
+    from, pattern = MAD, from
   end
-  return a
+  pattern = pattern or "^([%w_]+)$"
+  assert(from == MAD       , "invalid argument #1 (MAD expected)")
+  assert(is_string(pattern), "invalid argument #2 (string expected)")
+
+  local hlp, sel = collect(MAD[_hlp]), {}
+  for k,v in pairs(hlp) do
+    if string.match(k, pattern) then sel[#sel+1] = k end
+  end
+
+--  if _chk == true then
+--    checkhelp(from, pattern) return -- TODO
+--  end
+
+  table.sort(sel)
+  if #sel == 0 then
+    io.write("  No help found for '" .. pattern .. "'.")
+  elseif sel[1] == pattern then
+    io.write(hlp[sel[1]])
+    table.remove(sel,1)
+  end
+
+  local str = format(sel, 80)
+  if str ~= '' then
+    io.write("\nRelated topics:\n  ", str, ".\n")
+  end
+  io.write("\n")
 end
 
 -- environment ----------------------------------------------------------------o
