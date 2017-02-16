@@ -29,11 +29,11 @@
 
 #ifndef MAD_MEM_STD
 
-#define mad_malloc(s)    mad_malloc (__func__, s)  
+#define mad_malloc(s)    mad_malloc (__func__, s)
 #define mad_calloc(c,s)  mad_calloc (__func__, c,s)
 #define mad_realloc(p,s) mad_realloc(__func__, p,s)
-#define mad_free(p)      mad_free   (__func__, p)  
-#define mad_msize(p)     mad_msize  (__func__, p)  
+#define mad_free(p)      mad_free   (__func__, p)
+#define mad_msize(p)     mad_msize  (__func__, p)
 
 #else
 
@@ -55,9 +55,9 @@ void*  (mad_mcheck)   (str_t, void*)          __attribute__((hot,const));
 
 #undef  mad_alloc_tmp
 #define mad_alloc_tmp(T,NAME,L) \
-  T NAME##_local_tmp__[8192/sizeof(T)]; \
-  T *NAME = ((size_t)(L) > (8192/sizeof(T)) ? \
-            mad_malloc((size_t)(L) * sizeof(T)) : NAME##_local_tmp__)
+  T NAME##_local_tmp__[sizeof(T)*(L) < 8192 ? (L) : 1]; \
+  T *NAME = (sizeof(T)*(L) >= 8192 ? \
+            mad_malloc(sizeof(T)*(L)) : NAME##_local_tmp__)
 
 #undef  mad_free_tmp
 #define mad_free_tmp(NAME) \
