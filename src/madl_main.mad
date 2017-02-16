@@ -161,7 +161,6 @@ local function collect(tt)
   for _,t in pairs(tt) do
     for k,v in pairs(t) do
       assert(is_nil(lst[k]), "unexpected duplicated data for "..k)
-      assert(is_string(v)  , "unexpected data for "..k.." (string expected)")
       lst[k] = v
     end
   end
@@ -177,31 +176,52 @@ local function format(tt, n)
   return table.concat(tt, ', ')
 end
 
+local function checkhelp(hlp, sel, key)
+  io.write("Checking help consistency...\n")
+  local chk = collect(MAD[_chk])
+  table.sort(sel)
+  for _,k in ipairs(sel) do
+    io.write(string.format("+ %-25s", k))
+    local ctx = MAD
+    for w, d, r in string.gmatch(k, "([%w_]+)([:.]?)([%g]+)") do
+      print(w, d, r)
+      if w and ctx[w] then
+        print(w, d, ctx[w])
+        ctx = ctx[w]
+      end
+    end
+  end
+end
+
 function M.help (from, pattern, _chk)
-  if from ~= MAD and is_nil(pattern) then -- right shift
-    from, pattern = MAD, from
+  if from ~= MAD and (is_nil(pattern) or is_boolean(pattern) and is_nil(_chk)) then -- right shift
+    from, pattern, _chk = MAD, from, pattern
   end
   pattern = pattern or "^([%w_]+)$"
   assert(from == MAD       , "invalid argument #1 (MAD expected)")
   assert(is_string(pattern), "invalid argument #2 (string expected)")
 
-  local hlp, sel = collect(MAD[_hlp]), {}
+  local hlp, sel, key = collect(MAD[_hlp]), {}, nil
   for k,v in pairs(hlp) do
-    if string.match(k, pattern) then sel[#sel+1] = k end
+    assert(is_string(v), "invalid data for "..k.." (string expected)")
+    if k == pattern then
+      key = k
+    elseif string.match(k, pattern) then
+      sel[#sel+1] = k
+    end
   end
 
---  if _chk == true then
---    checkhelp(from, pattern) return -- TODO
---  end
+  if _chk == true then
+    checkhelp(hlp, sel, key) return
+  end
+
+  if #sel == 0 and is_nil(key) then
+    io.write("  No help found for '" .. pattern .. "'.")
+  elseif key ~= nil then
+    io.write(hlp[key])
+  end
 
   table.sort(sel)
-  if #sel == 0 then
-    io.write("  No help found for '" .. pattern .. "'.")
-  elseif sel[1] == pattern then
-    io.write(hlp[sel[1]])
-    table.remove(sel,1)
-  end
-
   local str = format(sel, 80)
   if str ~= '' then
     io.write("\nRelated topics:\n  ", str, ".\n")
