@@ -256,4 +256,5 @@ local re = {
 
 if version == "Lua 5.1" then _G.re = re end
 
-return { regex = re }
+-- return re
+return { regex = re } -- MAD

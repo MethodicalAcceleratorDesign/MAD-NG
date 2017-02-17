@@ -172,7 +172,7 @@ local random, carg, real, imag, conj, norm, proj, rect, polar,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
       acosh, atanh, erf, tgamma, lgamma, min, max, inf          in MAD.gmath
 local is_callable, is_iterable, is_indexable, has_method        in MAD.concept
-local unm, add, mul, mod, pow, land, lor, is_eq, opstr          in MAD.operator
+local unm, add, mul, mod, pow, bool, land, lor, eq, opstr       in MAD.operator
 local rep                                                       in MAD.utility
 
 -- tmp for returned values
@@ -549,13 +549,18 @@ function MR.circ (x, v)
   return x
 end
 
-function MR.fill (x, a)
+function MR.fill (x, a, p_, s_)
   local nr, nc = x:sizes()
   if is_scalar(a) then        -- scalar
     for i=0,nr*nc-1 do seti0(x,i, a) end
   elseif is_callable(a) then  -- generator
-    for i=1,nr do
-    for j=1,nc do set(x,i,j, a(get(x,i,j), i,j)) end end
+    if is_nil(p_) or is_nil(s_) then
+      for i=1,nr do
+      for j=1,nc do set(x,i,j, a(get(x,i,j), i,j)) end end
+    else                      -- stateless iterator
+      local v
+      for i=0,nr*nc-1 do s_,v = a(p_,s_) ; seti0(x,i,v) end
+    end
   elseif is_iterable(a) then
     if is_iterable(a[1]) then -- 2D container
       assert(#a == nr, "incompatible container size")
@@ -620,13 +625,19 @@ function MR.getv (x, ij, r_)
   return r
 end
 
-function MR.setv (x, ij, y)
+function MR.setv (x, ij, y, p_, s_)
   if is_number(ij) then ij = {ij} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
-  assert(is_iterable(y ), "invalid argument #3 (scalar or iterable expected)")
-  local k, nk = 1, #y
-  for _,ii in ipairs(ij) do x:seti(ii, y[k]) ; k=k%nk+1 end
+  if is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
+    local k, nk = 1, #y
+    for _,ii in ipairs(ij) do x:seti(ii, y[k]) ; k=k%nk+1 end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
+    local v
+    for _,ii in ipairs(ij) do s_,v = y(p_,s_) ; x:seti(ii,v) end
+  end
   return x
 end
 
@@ -638,11 +649,18 @@ function MR.getdiag (x, r_)
   return r
 end
 
-function MR.setdiag (x, y)
+function MR.setdiag (x, y, p_, s_)
+  local n = min(x:sizes())
   if is_scalar(y) then y = rep(y) end
-  assert(is_iterable(y), "invalid argument #2 (scalar or iterable expected)")
-  local k, nk, n = 1, #y, min(x:sizes())
-  for i=1,n do set(x,i,i, y[k]) ; k=k%nk+1 end
+  if is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #2 (scalar or iterable expected)")
+    local k, nk = 1, #y
+    for i=1,n do set(x,i,i, y[k]) ; k=k%nk+1 end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #2 (scalar or iterator expected)")
+    local v
+    for i=1,n do s_,v = y(p_,s_) ; set(x,i,i, v) end
+  end
   return x
 end
 
@@ -657,14 +675,20 @@ function MR.getrow (x, ir, r_)
   return r
 end
 
-function MR.setrow (x, ir, y)
+function MR.setrow (x, ir, y, p_, s_)
   if is_number(ir) then ir = {ir} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
-  assert(is_iterable(y ), "invalid argument #3 (scalar or iterable expected)")
-  local k, nk, nc = 1, #y, x:ncol()
-  for _,i in ipairs(ir) do
-  for j=1,nc do x:set(i,j, y[k]) ; k=k%nk+1 end end
+  if is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
+    local k, nk = 1, #y
+    for _,i in ipairs(ir) do
+    for j=1,x:ncol()      do x:set(i,j, y[k]) ; k=k%nk+1 end end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
+    for _,i in ipairs(ir) do local v
+    for j=1,x:ncol()      do s_,v = y(p_,s_) ; x:set(i,j,v) end end
+  end
   return x
 end
 
@@ -675,11 +699,11 @@ function MR.getcol (x, jc, r_)
   local k, nr = 1, x:nrow()
   local r = r_ or x:same(nr,#jc)
   if isa_matrix(r) and r:ncol() > 1 then
-    for i=1,nr do
+    for i=1,nr            do
     for _,j in ipairs(jc) do r[k] = x:get(i,j) ; k=k+1 end end
   else
     for _,j in ipairs(jc) do
-    for i=1,nr do r[k] = x:get(i,j) ; k=k+1 end end
+    for i=1,nr            do r[k] = x:get(i,j) ; k=k+1 end end
   end
   return r
 end
@@ -688,14 +712,19 @@ function MR.setcol (x, jc, y)
   if is_number(jc) then jc = {jc} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(jc), "invalid argument #2 (iterable expected)")
-  assert(is_iterable(y ), "invalid argument #3 (scalar or iterable expected)")
-  local k, nk, nr = 1, #y, x:nrow()
   if isa_matrix(y) and y:ncol() > 1 then
-    for i=1,nr do
+    local k, nk = 1, #y
+    for i=1,x:nrow()      do
     for _,j in ipairs(jc) do x:set(i,j, y[k]) ; k=k%nk+1 end end
-  else
+  elseif is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
+    local k, nk = 1, #y
     for _,j in ipairs(jc) do
-    for i=1,nr do x:set(i,j, y[k]) ; k=k%nk+1 end end
+    for i=1,x:nrow()      do x:set(i,j, y[k]) ; k=k%nk+1 end end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
+    for _,j in ipairs(jc) do local v
+    for i=1,x:nrow()      do s_,v = y(p_,s_) ; x:set(i,j,v) end end
   end
   return x
 end
@@ -712,16 +741,22 @@ function MR.getsub (x, ir, jc, r_)
   return r
 end
 
-function MR.setsub (x, ir, jc, y)
+function MR.setsub (x, ir, jc, y, p_, s_)
   if is_number(ir) then ir = {ir} end
   if is_number(jc) then jc = {jc} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
   assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
-  assert(is_iterable(y ), "invalid argument #4 (scalar or iterable expected)")
-  local k, nk = 1, #y
-  for _,i in ipairs(ir) do
-  for _,j in ipairs(jc) do x:set(i,j, y[k]) ; k=k%nk+1 end end
+  if is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #4 (scalar or iterable expected)")
+    local k, nk = 1, #y
+    for _,i in ipairs(ir) do
+    for _,j in ipairs(jc) do x:set(i,j, y[k]) ; k=k%nk+1 end end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #4 (scalar or iterator expected)")
+    for _,i in ipairs(ir) do local v
+    for _,j in ipairs(jc) do s_,v = y(p_,s_) ; x:set(i,j,v) end end
+  end
   return x
 end
 
@@ -1084,8 +1119,8 @@ MR.sumabs  = \x,d_,r_ -> x:foldl(sabs, 0  , d_, r_)
 MR.sumsqr  = \x,d_,r_ -> x:foldl(ssqr, 0  , d_, r_)
 MR.product = \x,d_,r_ -> x:foldl(mul , nil, d_, r_)
 
-local all  = \r,x -> land(r, fun(x))
-local any  = \r,x -> lor (r, fun(x))
+local all  = \r,x -> bool(land(r, fun(x)))
+local any  = \r,x -> bool(lor (r, fun(x)))
 
 function MR.all (x, p, d_, r_)
   assert(is_callable(p), "invalid argument #2 (callable expected)")
@@ -1434,8 +1469,8 @@ local cmp_tol = 0
 local cmp_fct = \a,b -> abs(a - b) <= cmp_tol
 
 function MR.__req_cpx (y, x, f_)                  -- cpx == mat
-  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and is_eq or cmp_fct end
-  local f = f_ or is_eq
+  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and eq or cmp_fct end
+  local f = f_ or eq
   assert(is_callable(f), "invalid argument #3 (callable expected)")
   for i=1,y:size() do
     if f(x, geti(y,i), i) ~= true then return false end
@@ -1444,8 +1479,8 @@ function MR.__req_cpx (y, x, f_)                  -- cpx == mat
 end
 
 function MR.__eq (x, y, f_)
-  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and is_eq or cmp_fct end
-  local f = f_ or is_eq
+  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and eq or cmp_fct end
+  local f = f_ or eq
   assert(is_callable(f), "invalid argument #3 (callable expected)")
   if is_number(x) then
     for i=1,y:size() do
