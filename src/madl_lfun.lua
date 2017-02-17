@@ -1064,23 +1064,23 @@ methods.op = operator
 --------------------------------------------------------------------------------
 
 -- a special syntax sugar to export all functions to the global table
-setmetatable(exports, {
-    __call = function(t, override)
-        for k, v in pairs(t) do
-            if _G[k] ~= nil then
-                local msg = 'function ' .. k .. ' already exists in global scope.'
-                if override then
-                    _G[k] = v
-                    print('WARNING: ' .. msg .. ' Overwritten.')
-                else
-                    print('NOTICE: ' .. msg .. ' Skipped.')
-                end
-            else
-                _G[k] = v
-            end
-        end
-    end,
-})
+-- setmetatable(exports, {
+--     __call = function(t, override)
+--         for k, v in pairs(t) do
+--             if _G[k] ~= nil then
+--                 local msg = 'function ' .. k .. ' already exists in global scope.'
+--                 if override then
+--                     _G[k] = v
+--                     print('WARNING: ' .. msg .. ' Overwritten.')
+--                 else
+--                     print('NOTICE: ' .. msg .. ' Skipped.')
+--                 end
+--             else
+--                 _G[k] = v
+--             end
+--         end
+--     end,
+-- })
 
 -- return exports
 return { fun = exports } -- MAD
