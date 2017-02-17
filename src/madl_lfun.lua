@@ -1033,7 +1033,7 @@ local operator = {
     end,
     mod = function(a, b) return a % b end,
     mul = function(a, b) return a * b end,
-    neq = function(a) return -a end,
+    neg = function(a) return -a end,
     unm = function(a) return -a end, -- an alias
     pow = function(a, b) return a ^ b end,
     sub = function(a, b) return a - b end,
@@ -1054,10 +1054,10 @@ local operator = {
     lnot = function(a) return not a end,
     truth = function(a) return not not a end,
 }
-exports.operator = operator
-methods.operator = operator
-exports.op = operator
-methods.op = operator
+-- exports.operator = operator
+-- methods.operator = operator
+-- exports.op = operator
+-- methods.op = operator
 
 --------------------------------------------------------------------------------
 -- module definitions
