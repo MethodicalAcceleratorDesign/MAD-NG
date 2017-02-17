@@ -16,13 +16,17 @@ local unpack = rawget(table, "unpack") or unpack
 -- MAD extensions
 --------------------------------------------------------------------------------
 
+local get_metatable, has_length, is_indexable = getmetatable
+
 local ffi = require 'ffi'
 
-assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
+if ffi.miscmap ~= nil then
 
-local function get_metatable (a)
-    return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
-        or getmetatable(a)
+    function get_metatable (a)
+        return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
+            or getmetatable(a)
+    end
+
 end
 
 local function get_metamethod (a, f)
@@ -30,17 +34,8 @@ local function get_metamethod (a, f)
     return mt and rawget(mt,f)
 end
 
-local function has_metamethod (a, f)
-    return not not get_metamethod(a,f)
-end
-
-local function had_length(a)
-    return has_metamethod(a, '__len')
-end
-
-local function is_indexable(a)
-    return has_metamethod(a, '__index')
-end
+function has_length  (a) return not not get_metamethod(a, '__len'  ) end
+function is_indexable(a) return not not get_metamethod(a, '__index') end
 
 --------------------------------------------------------------------------------
 -- Tools
@@ -329,15 +324,15 @@ exports.rands = rands
 
 local nth = function(n, gen_x, param_x, state_x)
     assert(n > 0, "invalid first argument to nth")
-    -- An optimization for arrays and strings
-    if gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
-        return param_x[n]
-    elseif gen_x == string_gen then
+    -- An optimization for strings and arrays
+    if gen_x == string_gen then
         if n <= #param_x then
             return string.sub(param_x, n, n)
         else
             return nil
         end
+    elseif gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
+        return param_x[n]
     end
     for i=1,n-1,1 do
         state_x = gen_x(param_x, state_x)
@@ -1087,4 +1082,5 @@ setmetatable(exports, {
     end,
 })
 
-return { fun = exports }
+-- return exports
+return { fun = exports } -- MAD
