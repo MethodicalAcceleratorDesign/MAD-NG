@@ -50,7 +50,9 @@ local PD = {
   max_y   = 10 ,
   label_x = "x",
   label_y = "y",
+  gtitle  = "no-title",
 }
+
 -- implementation -------------------------------------------------------------o
 
 local function plotter_gen(data_src, output, keys)
@@ -64,17 +66,12 @@ local function plotter_gen(data_src, output, keys)
 end
 
 -- PD
-local function scale(data_src, key)
-  local min = data_src[key]:min()
-  local max = data_src[key]:max()
-  return min, max
-end
-
-local function range_scale(data_src, keys)
+local function scale(data_src, keys)
   local s = #keys
   local vmin, vmax = vector(s), vector(s)
   for i,key in ipairs(keys) do
-    local min, max = scale( data_src, key )
+    local min = data_src[key]:min()
+    local max = data_src[key]:max()
     vmin:seti(i, min)
     vmax:seti(i, max)
   end
@@ -97,13 +94,6 @@ local function temp_fill(temp, src)
         temp[i] = tline:gsub( key, src[key] )
       end
     end
-  end
-  --return temp
-end
-
-local function temp_fill_all(temp, srcs) --TO remove if PD inside GP
-  for i,src in ipairs(srcs) do
-    temp_fill(temp, src)
   end
   --return temp
 end
@@ -132,6 +122,7 @@ local template = {
     "set output 'gp_output'\n",
     -- plot data setting
     "set grid \n",
+    "set title 'gtitle' \n",
     "set xlabel 'label_x' \n",
     "set ylabel 'label_y' \n",
 
@@ -144,25 +135,26 @@ local template = {
 
 -- plotting funtion -----------------------------------------------------------o
 
-function M.plot(data_src, keys, inp_k, out_k)
+function M.plot(data_src, inp_k, out_k)
   local printer = io.open(GP.script   , "w")
   local gp_file = io.open(GP.plot_data, "w")
   local tofill  = {GP, PD}
 
+  local keys = {}
+  for i,k in ipairs(inp_k) do keys[i] = k          end
+  for i,k in ipairs(out_k) do keys[i + #inp_k] = k end
+
   print("ploting file: "..GP.gp_output.."\n")
-  PD.min_x, PD.max_x = range_scale( data_src, inp_k )
-  PD.min_y, PD.max_y = range_scale( data_src, out_k )
+  PD.min_x  , PD.max_x   = scale   ( data_src, inp_k )
+  PD.min_y  , PD.max_y   = scale   ( data_src, out_k )
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
 
   plotter_gen   ( data_src, gp_file, keys )
-  temp_fill_all ( template, tofill  )
+  temp_fill     ( template, GP      )
+  temp_fill     ( template, PD      )
   temp_multiplot( template, out_k   )
   temp_print    ( template, printer )
-
   os.execute("gnuplot "..GP.script)
-  --for i,t in ipairs(template) do
-  --  print(t)
-  --end
 end
 
 -- end ------------------------------------------------------------------------o
