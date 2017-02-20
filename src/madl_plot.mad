@@ -31,6 +31,7 @@ local __help = {}
 -- locals ---------------------------------------------------------------------o
 local dat = require 'madl_plotdat'
 local range, nrange, vector in MAD
+local min, max              in MAD.gmath
 
 local GP = {
   gp_output      = 'test.eps'      ,
@@ -78,7 +79,7 @@ local function scale(data_src, keys)
   return vmin:min(), vmax:max()
 end
 
-local function axis_titles( inp_k, out_k )
+local function axis_titles(inp_k, out_k)
   local label_x ,label_y = "",""
   for _,key in pairs(inp_k) do label_x = label_x..key.." " end
   for _,key in pairs(out_k) do label_y = label_y..key.." " end
@@ -106,7 +107,7 @@ local function temp_multiplot(temp, keys)
   if lnr then
     for i=0,s-1 do temp[lnr+i]=temp[lnr] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' ,tostring(i+2)) end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('ytitle',keys[i+1]) end
+    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('ytitle',keys[i+1]    ) end
   end
 end
 
@@ -135,7 +136,7 @@ local template = {
 
 -- plotting funtion -----------------------------------------------------------o
 
-function M.plot(data_src, inp_k, out_k)
+function M.plot(data_src, inp_k, out_k, rng)
   local printer = io.open(GP.script   , "w")
   local gp_file = io.open(GP.plot_data, "w")
   local tofill  = {GP, PD}
@@ -145,11 +146,20 @@ function M.plot(data_src, inp_k, out_k)
   for i,k in ipairs(out_k) do keys[i + #inp_k] = k end
 
   print("ploting file: "..GP.gp_output.."\n")
-  PD.min_x  , PD.max_x   = scale   ( data_src, inp_k )
-  PD.min_y  , PD.max_y   = scale   ( data_src, out_k )
-  PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
+  local d_src = {}
 
-  plotter_gen   ( data_src, gp_file, keys )
+  local lenght = #data_src[keys[1]]
+  local start, stop = 1, lenght
+  if rng and rng:size() <= lenght then start, stop = rng.start, rng.stop end
+  for j,k in ipairs(keys) do
+    d_src[k]= data_src[k]:getv(start..stop)
+  end
+
+  PD.min_x  , PD.max_x   = scale( d_src, inp_k )
+  PD.min_y  , PD.max_y   = scale( d_src, out_k )
+  PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
+  plotter_gen( d_src, gp_file, keys )
+
   temp_fill     ( template, GP      )
   temp_fill     ( template, PD      )
   temp_multiplot( template, out_k   )
