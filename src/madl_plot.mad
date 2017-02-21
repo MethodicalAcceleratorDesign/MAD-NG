@@ -30,7 +30,7 @@ local __help = {}
 
 -- locals ---------------------------------------------------------------------o
 local dat = require 'madl_plotdat'
-local range, nrange, vector in MAD
+local range, nrange, vector, element in MAD
 local min, max              in MAD.gmath
 
 local GP = {
@@ -205,15 +205,16 @@ local template_kind = {
     "set size 1,0.15 \n",
     "set origin 0,0.85 \n",
     "set yrange [-1:1] \n",
-    --"plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
+    "plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
 }
 
 -- plotting funtion -----------------------------------------------------------o
 
+--layout
 local function layout_find(data_src, str)
   local kind = {}
-  for i=1,#data_src.kind do
-    kind[i] = data_src.kind[i]
+  for i=1,#data_src do
+    kind[i] = data_src[i]
   end
   for i,line in ipairs(kind) do
     if line:find(str)then
@@ -225,27 +226,60 @@ local function layout_find(data_src, str)
   return kind
 end
 
+local function layout_table(x_src, lay_src, keys, size)
+  local layout = { x=vector(size) }
+  for j=1,size do (layout.x):seti(j, x_src[j]) end
+  for i,k in ipairs(keys) do
+    layout[k] = vector(size)
+    local temp = layout_find(lay_src, tostring(k))
+    for j=1,size do
+      layout[k]:seti(j, temp [j])
+    end
+  end
+  return layout
+end
+
+local function remove_dupl(lay_src)
+  local hash = {}
+  local res = {}
+  for _,v in ipairs(lay_src) do
+    if not hash[v] then
+      res[#res+1] = v
+      hash[v] = true
+    end
+  end
+  return res
+end
+
 function M.plot(data_src, inp_k, out_k, rng, layout)
   local gp_script   = io.open(GP.script     , "w")
   local plot_data   = io.open(GP.plot_data  , "w")
   local layout_data = io.open(GP.layout_data, "w")
-
   local temp
-  local keys_plot = mkkeys(inp_k, out_k   )
-  local keys_lay  = mkkeys(inp_k, {'kind'})
 
-  --layout_find(data_src, 'marker')
+  local keys_plot = mkkeys(inp_k, out_k)
   local d_src = scale_src(data_src, keys_plot, rng)
 
+  --local keys = {'marker'} -- for testing after scale
+  local keys = remove_dupl(d_src.kind)
 
-  print("ploting file: "..GP.gp_output.."\n")
+  local keys_lay = mkkeys({'x'}, keys)
+
+  local s = d_src[inp_k[1]]:size()
+  local l = layout_table(d_src[inp_k[1]], d_src.kind, keys, s)
+
+  print(l.x         , "\n")
+  print(l.marker    , "\n")
+  print(l.quadrupole, "\n")
+
+  --print("ploting file: "..GP.gp_output.."\n")
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
 
   if layout then
     temp = shallowcopy(template_kind)
-    --plotter_gen   ( d_src, plot_data, keys_lay )
+    plotter_gen   ( l, layout_data, keys_lay ) -- not d_src, other table
   else
     temp = shallowcopy(template)
   end
