@@ -112,7 +112,9 @@ local function temp_multiplot(temp, keys)
 end
 
 local function temp_print(temp, printer)
-  for i =1,#temp do printer:write(temp[i]) end
+  for i =1,#temp do
+    printer:write(temp[i])
+  end
   printer:close()
 end
 
@@ -134,21 +136,40 @@ local template = {
     "'plot_data' using 1:count every 1::0 w lines lc count title 'ytitle',\\\n"
 }
 
+local function mkkeys(inp_k, out_k)
+  local keys = {}
+  for i,k in ipairs(inp_k) do keys[i] = k          end
+  for i,k in ipairs(out_k) do keys[i + #inp_k] = k end
+  return keys
+end
+
+function shallowcopy(orig)
+  local orig_type = type(orig)
+  local copy
+  if orig_type == 'table' then
+    copy = {}
+    for orig_key, orig_value in pairs(orig) do
+      copy[orig_key] = orig_value
+    end
+  else -- number, string, boolean, etc
+    copy = orig
+  end
+  return copy
+end
+
+
 -- plotting funtion -----------------------------------------------------------o
 
 function M.plot(data_src, inp_k, out_k, rng)
   local printer = io.open(GP.script   , "w")
   local gp_file = io.open(GP.plot_data, "w")
   local tofill  = {GP, PD}
-
-  local keys = {}
-  for i,k in ipairs(inp_k) do keys[i] = k          end
-  for i,k in ipairs(out_k) do keys[i + #inp_k] = k end
-
-  print("ploting file: "..GP.gp_output.."\n")
   local d_src = {}
-
+  print("ploting file: "..GP.gp_output.."\n")
+  local keys   = mkkeys(inp_k, out_k)
   local lenght = #data_src[keys[1]]
+  local temp = shallowcopy(template)
+
   local start, stop = 1, lenght
   if rng and rng:size() <= lenght then start, stop = rng.start, rng.stop end
   for j,k in ipairs(keys) do
@@ -157,13 +178,13 @@ function M.plot(data_src, inp_k, out_k, rng)
 
   PD.min_x  , PD.max_x   = scale( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale( d_src, out_k )
+
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
   plotter_gen( d_src, gp_file, keys )
-
-  temp_fill     ( template, GP      )
-  temp_fill     ( template, PD      )
-  temp_multiplot( template, out_k   )
-  temp_print    ( template, printer )
+  temp_fill     ( temp, GP      )
+  temp_fill     ( temp, PD      )
+  temp_multiplot( temp, out_k   )
+  temp_print    ( temp, printer )
   os.execute("gnuplot "..GP.script)
 end
 
