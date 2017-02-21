@@ -34,14 +34,17 @@ local range, nrange, vector in MAD
 local min, max              in MAD.gmath
 
 local GP = {
-  gp_output      = 'test.eps'      ,
-  plot_data      = "datatoplot.dat",
-  script         = "plotter.gp"    ,
-  terminal_type  = "postscript eps",
-  font_type      = "Times-Roman"   ,
-  font_size      = 22              ,
-  xsize          = 27              ,
-  ysize          = 17              ,
+  gp_output     = 'test.eps'      ,
+  plot_data     = "datatoplot.dat",
+  layout_data   = "datalayout.dat",
+  script        = "plotter.gp"    ,
+  terminal_type = "postscript eps",
+  font_type     = "Times-Roman"   ,
+  font_size     = 22 ,
+  xsize         = 27 ,
+  ysize         = 17 ,
+  l_margin      = 0.1,
+  r_margin      = 0.9,
 }
 --plot default values
 local PD = {
@@ -86,11 +89,11 @@ local function scale_axis(data_src, keys)
   return vmin:min(), vmax:max()
 end
 
-local function scale(data_src, keys, rng)
+local function scale_src(data_src, keys, rng)
   local s = data_src[keys[1]]:size()
   local start, stop = 1, s
   if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  for j,k in ipairs(keys) do data_src[k]:getv(start..stop, 'in') end
+  for j,k in ipairs(keys) do data_src[k]:getv(start..stop, 'in'   ) end
   return data_src
 end
 
@@ -152,6 +155,8 @@ local template = {
     "set output 'gp_output'\n"   ,
     -- plot data setting
     "set grid \n"                ,
+    "set lmargin at screen l_margin \n",
+    "set rmargin at screen r_margin \n",
     "set title 'gtitle' \n"      ,
     "set xlabel 'label_x' \n"    ,
     "set ylabel 'label_y' \n"    ,
@@ -162,25 +167,76 @@ local template = {
     "'plot_data' using 1:count every 1::0 w lines lc count title 'ytitle',\\\n"
 }
 
+local template_kind = {
+    -- general settings
+    "reset\n"                     ,
+    "set terminal terminal_type size xsize cm, ysize cm color font 'font_type, font_size'\n",
+    "set output 'gp_output'\n"    ,
+    -- plot data setting
+    "set multiplot \n"            ,
+    "set grid \n"                 ,
+    "set lmargin at screen l_margin \n",
+    "set rmargin at screen r_margin \n",
+    "set size 1,0.85 \n"          ,
+
+    "set title 'gtitle' \n"       ,
+    "set xlabel 'label_x' \n"     ,
+    "set ylabel 'label_y' \n"     ,
+    "set xrange [min_x:max_x] \n" ,
+    "set yrange [min_y:max_y] \n" ,
+    -- plot data
+    "plot ",
+    "'plot_data' using 1:count every 1::0 w lines lc count title 'ytitle',\\\n",
+
+    "\n",
+    "unset tmargin \n",
+    "unset bmargin \n",
+    "unset title  \n",
+    "unset arrow \n",
+    "unset ylabel \n",
+    "unset xlabel \n",
+    "unset xtics \n",
+    "unset ytics \n",
+    "unset y2tics \n",
+    "unset y2label \n",
+    "unset key \n",
+    "set xzeroaxis \n",
+    "set border 0 \n",
+    "set size 1,0.15 \n",
+    "set origin 0,0.85 \n",
+    "set yrange [-1:1] \n",
+    --"plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
+}
+
 -- plotting funtion -----------------------------------------------------------o
 
-function M.plot(data_src, inp_k, out_k, rng)
-  local printer = io.open(GP.script   , "w")
-  local gp_file = io.open(GP.plot_data, "w")
+function M.plot(data_src, inp_k, out_k, rng, layout)
+  local gp_script = io.open(GP.script   , "w")
+  local plot_data = io.open(GP.plot_data, "w")
+  local layout_data = io.open(GP.layout_data, "w")
   local keys  = mkkeys(inp_k, out_k)
-  local temp  = shallowcopy(template)
-  local d_src = scale(data_src, keys, rng)
+  local temp
+  local d_src = scale_src(data_src, keys, rng)
 
   print("ploting file: "..GP.gp_output.."\n")
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
 
-  plotter_gen   ( d_src, gp_file, keys )
-  temp_fill     ( temp , GP      )
-  temp_fill     ( temp , PD      )
-  temp_multiplot( temp , out_k   )
-  temp_print    ( temp , printer )
+
+
+  if layout then
+    temp = shallowcopy(template_kind)
+    plotter_gen( d_src, layout_data, {'kind'} )
+  else
+    temp = shallowcopy(template)
+  end
+
+  plotter_gen   ( d_src, plot_data, keys )
+  temp_fill     ( temp , GP        )
+  temp_fill     ( temp , PD        )
+  temp_multiplot( temp , out_k     )
+  temp_print    ( temp , gp_script )
 
   os.execute("gnuplot "..GP.script)
 end
