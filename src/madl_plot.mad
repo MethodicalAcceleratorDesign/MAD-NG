@@ -208,40 +208,55 @@ local template_kind = {
     "plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
 }
 
--- plotting funtion -----------------------------------------------------------o
-
 --layout
-local function layout_find(data_src, str)
-  local kind = {}
-  for i=1,#data_src do
-    kind[i] = data_src[i]
+
+local xadjst = \x,l,s -> (x * l + s - l)
+local yadjst = \y,h   -> (y * h        )
+
+local function layout_vec(x_sh, y_sh, l, s)
+  local size = x_sh:size()
+  local x1, y1 = vector(size), vector(size)
+  for i=1,size do
+    x1:seti(i, xadjst(x_sh:geti(i), l, s) )
+    y1:seti(i, yadjst(y_sh:geti(i), 1   ) )
   end
-  for i,line in ipairs(kind) do
-    if line:find(str)then
-      kind[i] = 1
-    else
-      kind[i] = 0
-    end
-  end
-  return kind
+  return x1, y1
 end
 
-local function layout_table(x_src, lay_src, keys, size)
-  local layout = { x=vector(size) }
-  for j=1,size do (layout.x):seti(j, x_src[j]) end
-  for i,k in ipairs(keys) do
-    layout[k] = vector(size)
-    local temp = layout_find(lay_src, tostring(k))
-    for j=1,size do
-      layout[k]:seti(j, temp [j])
+local function get_sh(shape)  --possibly just change of format of input shapes( way to overcomplicated by now )
+  local x_sh, y_sh = {}, {}
+  local s = #shape
+  local cx, cy = 1, 1
+  for i=1,s,2 do x_sh[cx] = shape[i]; cx=cx+1 end
+  for i=2,s,2 do y_sh[cy] = shape[i]; cy=cy+1 end
+  x_sh, y_sh = vector(x_sh), vector(y_sh)
+  return x_sh, y_sh
+end
+
+local function elem_indx(kinds, str)
+  local indx, c = {}, 1
+  for i,line in ipairs(kinds) do
+    if line:find(str)then indx[c] = i; c=c+1 end
+  end
+  return indx
+end
+
+local function create_layout(len, pos, kinds, keys)
+  local xl, yl = {}, {}
+  local size = #keys
+  for i,key in ipairs(keys) do
+    local x, y = get_sh( dat[key].shape )
+    local indx = elem_indx( kinds, key  )
+    for j,v in ipairs(indx) do
+      local l, s = len[v], pos[v]
+      xl[(j-1)*size+i], yl[(j-1)*size+i] = layout_vec(x, y, l, s)
     end
   end
-  return layout
+  return {x = xl, y = yl}
 end
 
 local function remove_dupl(lay_src)
-  local hash = {}
-  local res = {}
+  local hash, res = {}, {}
   for _,v in ipairs(lay_src) do
     if not hash[v] then
       res[#res+1] = v
@@ -251,35 +266,40 @@ local function remove_dupl(lay_src)
   return res
 end
 
+local function plotter_lay(data_src, output, keys) -- to be merged as one classic plotter later
+  for i=1,#data_src[keys[1]] do
+    for ii=1,#data_src[keys[1]][i] do
+      for j,k in ipairs(keys) do
+        output:write(data_src[k][i][ii]," ")
+      end
+      output:write("\n")
+    end
+    output:write("\n")
+  end
+  output:close()
+end
+
+-- plotting funtion -----------------------------------------------------------o
+
 function M.plot(data_src, inp_k, out_k, rng, layout)
   local gp_script   = io.open(GP.script     , "w")
   local plot_data   = io.open(GP.plot_data  , "w")
   local layout_data = io.open(GP.layout_data, "w")
-  local temp
 
   local keys_plot = mkkeys(inp_k, out_k)
-  local d_src = scale_src(data_src, keys_plot, rng)
+  local d_src     = scale_src(data_src, keys_plot, rng)
 
-  --local keys = {'marker'} -- for testing after scale
-  local keys = remove_dupl(d_src.kind)
-
-  local keys_lay = mkkeys({'x'}, keys)
-
-  local s = d_src[inp_k[1]]:size()
-  local l = layout_table(d_src[inp_k[1]], d_src.kind, keys, s)
-
-  print(l.x         , "\n")
-  print(l.marker    , "\n")
-  print(l.quadrupole, "\n")
-
-  --print("ploting file: "..GP.gp_output.."\n")
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
 
+  local lay_kinds = remove_dupl(d_src.kind)
+  local L = create_layout(d_src.l, d_src.s, d_src.kind, lay_kinds )
+
+  local temp
   if layout then
     temp = shallowcopy(template_kind)
-    plotter_gen   ( l, layout_data, keys_lay ) -- not d_src, other table
+    plotter_lay( L, layout_data, {'x', 'y'} )
   else
     temp = shallowcopy(template)
   end
@@ -289,7 +309,6 @@ function M.plot(data_src, inp_k, out_k, rng, layout)
   temp_fill     ( temp , PD        )
   temp_multiplot( temp , out_k     )
   temp_print    ( temp , gp_script )
-
   os.execute("gnuplot "..GP.script)
 end
 
