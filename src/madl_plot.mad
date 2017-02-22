@@ -55,6 +55,11 @@ local PD = {
   label_x = "x",
   label_y = "y",
   gtitle  = "no-title",
+  size_p  = 1,
+}
+
+--template default values ( TODO )
+local TD = {
 }
 
 -- implementation -------------------------------------------------------------o
@@ -90,11 +95,12 @@ local function scale_axis(data_src, keys)
 end
 
 local function scale_src(data_src, keys, rng)
+  local d_src = {}
   local s = data_src[keys[1]]:size()
   local start, stop = 1, s
   if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  for j,k in ipairs(keys) do data_src[k]:getv(start..stop, 'in'   ) end
-  return data_src
+  for j,k in ipairs(keys) do d_src[k] = data_src[k]:getv(start..stop ) end
+  return d_src
 end
 
 local function axis_titles(inp_k, out_k)
@@ -154,9 +160,12 @@ local template = {
     "set terminal terminal_type size xsize cm, ysize cm color font 'font_type, font_size'\n",
     "set output 'gp_output'\n"   ,
     -- plot data setting
+    "set multiplot \n"           ,
     "set grid \n"                ,
     "set lmargin at screen l_margin \n",
     "set rmargin at screen r_margin \n",
+    "set size 1,size_p \n"       ,
+
     "set title 'gtitle' \n"      ,
     "set xlabel 'label_x' \n"    ,
     "set ylabel 'label_y' \n"    ,
@@ -177,7 +186,7 @@ local template_kind = {
     "set grid \n"                 ,
     "set lmargin at screen l_margin \n",
     "set rmargin at screen r_margin \n",
-    "set size 1,0.85 \n"          ,
+    "set size 1,size_p \n"          ,
 
     "set title 'gtitle' \n"       ,
     "set xlabel 'label_x' \n"     ,
@@ -209,7 +218,6 @@ local template_kind = {
 }
 
 --layout
-
 local xadjst = \x,l,s -> (x * l + s - l)
 local yadjst = \y,h   -> (y * h        )
 
@@ -286,23 +294,26 @@ function M.plot(data_src, inp_k, out_k, rng, layout)
   local plot_data   = io.open(GP.plot_data  , "w")
   local layout_data = io.open(GP.layout_data, "w")
 
+
   local keys_plot = mkkeys(inp_k, out_k)
   local d_src     = scale_src(data_src, keys_plot, rng)
+  local lay_src   = scale_src(data_src, keys_plot, rng)
+
+  local temp, lay_kinds, L
+  if layout then
+    lay_kinds = remove_dupl(data_src.kind)
+    L = create_layout(data_src.l, data_src.s, data_src.kind, lay_kinds )
+    PD.size_p = 0.85
+    plotter_lay( L, layout_data, {'x','y'} )
+
+    temp = shallowcopy(template_kind)
+  else
+    temp = shallowcopy(template)
+  end
 
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
   PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
-
-  local lay_kinds = remove_dupl(d_src.kind)
-  local L = create_layout(d_src.l, d_src.s, d_src.kind, lay_kinds )
-
-  local temp
-  if layout then
-    temp = shallowcopy(template_kind)
-    plotter_lay( L, layout_data, {'x', 'y'} )
-  else
-    temp = shallowcopy(template)
-  end
 
   plotter_gen   ( d_src, plot_data, keys_plot )
   temp_fill     ( temp , GP        )
