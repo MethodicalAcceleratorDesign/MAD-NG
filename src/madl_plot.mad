@@ -29,8 +29,10 @@ local M = {}
 local __help = {}
 
 -- locals ---------------------------------------------------------------------o
+
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element in MAD
+local range, nrange, vector, element   in MAD
+local isa_matrix, is_matrix, is_number in MAD.typeid
 local min, max              in MAD.gmath
 
 local GP = {
@@ -94,12 +96,26 @@ local function scale_axis(data_src, keys)
   return vmin:min(), vmax:max()
 end
 
-local function scale_src(data_src, keys, rng)
-  local d_src = {}
-  local s = data_src[keys[1]]:size()
+local function scale_temp(data_src, keys, rng) --to be merged with scale src
+  local s = #data_src
   local start, stop = 1, s
   if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  for j,k in ipairs(keys) do d_src[k] = data_src[k]:getv(start..stop ) end
+  if is_number(keys) then
+    d_src={}; for i=1,stop do d_src[i] = data_src[i] end
+  end
+  return d_src
+end
+
+local function scale_src(data_src, keys, rng)
+  local d_src = {}
+  local s = #data_src[keys[1]]
+  local start, stop = 1, s
+  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
+  for j,k in ipairs(keys) do
+    if isa_matrix(data_src[k]) then d_src[k]=data_src[k]:getv(start..stop )
+                               else d_src[k]={}; for i=1,stop do d_src[k][i] = data_src[k][i]  end
+    end
+  end
   return d_src
 end
 
@@ -135,48 +151,12 @@ local function temp_multiplot(temp, keys)
   end
 end
 
-local function shallowcopy(orig)
-  local orig_type = type(orig)
-  local copy
-  if orig_type == 'table' then
-    copy = {}
-    for orig_key, orig_value in pairs(orig) do
-      copy[orig_key] = orig_value
-    end
-  else -- number, string, boolean, etc
-    copy = orig
-  end
-  return copy
-end
-
 local function temp_print(temp, printer)
   for i =1,#temp do printer:write(temp[i]) end
   printer:close()
 end
 
 local template = {
-    -- general settings
-    "reset\n"                    ,
-    "set terminal terminal_type size xsize cm, ysize cm color font 'font_type, font_size'\n",
-    "set output 'gp_output'\n"   ,
-    -- plot data setting
-    "set multiplot \n"           ,
-    "set grid \n"                ,
-    "set lmargin at screen l_margin \n",
-    "set rmargin at screen r_margin \n",
-    "set size 1,size_p \n"       ,
-
-    "set title 'gtitle' \n"      ,
-    "set xlabel 'label_x' \n"    ,
-    "set ylabel 'label_y' \n"    ,
-    "set xrange [min_x:max_x] \n",
-    "set yrange [min_y:max_y] \n",
-    -- plot data
-    "plot ",
-    "'plot_data' using 1:count every 1::0 w lines lc count title 'ytitle',\\\n"
-}
-
-local template_kind = {
     -- general settings
     "reset\n"                     ,
     "set terminal terminal_type size xsize cm, ysize cm color font 'font_type, font_size'\n",
@@ -297,18 +277,18 @@ function M.plot(data_src, inp_k, out_k, rng, layout)
 
   local keys_plot = mkkeys(inp_k, out_k)
   local d_src     = scale_src(data_src, keys_plot, rng)
-  local lay_src   = scale_src(data_src, keys_plot, rng)
 
-  local temp, lay_kinds, L
+  local temp, lay_kinds, L, lay_src
   if layout then
-    lay_kinds = remove_dupl(data_src.kind)
-    L = create_layout(data_src.l, data_src.s, data_src.kind, lay_kinds )
+    lay_src   = scale_src(data_src, {'s', 'l', 'kind'}, rng)
+    lay_kinds = remove_dupl(lay_src.kind)
+    L = create_layout(lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
     PD.size_p = 0.85
     plotter_lay( L, layout_data, {'x','y'} )
-
-    temp = shallowcopy(template_kind)
+    temp = scale_temp(template, 1, nil)
   else
-    temp = shallowcopy(template)
+    PD.size_p = 1
+    temp = scale_temp(template, 1, 1..15)
   end
 
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
