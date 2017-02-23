@@ -48,8 +48,11 @@ local GP = {
   l_margin      = 0.1,
   r_margin      = 0.9,
 }
---plot default values
-local PD = {
+
+local PV = {
+  w_lines = "w lines",
+  size_p  = 1  ,
+
   min_x   = 0  ,
   max_x   = 10 ,
   min_y   = 0  ,
@@ -57,33 +60,75 @@ local PD = {
   label_x = "x",
   label_y = "y",
   gtitle  = "no-title",
-  size_p  = 1,
-}
-
---template default values ( TODO )
-local TD = {
 }
 
 -- implementation -------------------------------------------------------------o
 
 local function mkkeys(inp_k, out_k)
   local keys = {}
-  for i,k in ipairs(inp_k) do keys[i] = k          end
-  for i,k in ipairs(out_k) do keys[i + #inp_k] = k end
+  for i,k in ipairs(inp_k) do keys[i]        = k end
+  for i,k in ipairs(out_k) do keys[i+#inp_k] = k end
   return keys
 end
 
-local function plotter_gen(data_src, output, keys)
-  for i=1,#data_src[keys[1]] do
+local function rm_dupl(src)
+  local hash, res = {}, {}
+  for _,v in ipairs(src) do
+    if not hash[v] then
+      res [#res+1] = v
+      hash[v]      = true
+    end
+  end
+  return res
+end
+
+local function plotter_gen(src, output, keys)
+  for i=1,#src[keys[1]] do
     for j,k in ipairs(keys) do
-      output:write(data_src[k][i]," ")
+      output:write(src[k][i]," ")
     end
     output:write("\n")
   end
     output:close()
 end
 
+local function plotter_lay(src, output, keys) -- to be merged as one classic plotter later
+  for i=1,#src[keys[1]] do
+    for ii=1,#src[keys[1]][i] do
+      for j,k in ipairs(keys) do
+        output:write(src[k][i][ii]," ")
+      end
+      output:write("\n")
+    end
+    output:write("\n")
+  end
+  output:close()
+end
+
 -- PD
+local function scale_temp(src, keys, rng) --to be merged with scale src
+  local s = #src
+  local start, stop = 1, s
+  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
+  if is_number(keys) then
+    d_src={}; for i=1,stop do d_src[i] = src[i] end
+  end
+  return d_src
+end
+
+local function scale_src(src, keys, rng)
+  local d_src = {}
+  local s = #src[keys[1]]
+  local start, stop = 1, s
+  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
+  for j,k in ipairs(keys) do
+    if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
+                          else d_src[k]={}; for i=1,stop do d_src[k][i] = src[k][i]  end
+    end
+  end
+  return d_src
+end
+
 local function scale_axis(src, keys)
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
@@ -95,29 +140,6 @@ local function scale_axis(src, keys)
   return vmin:min(), vmax:max()
 end
 
-local function scale_temp(data_src, keys, rng) --to be merged with scale src
-  local s = #data_src
-  local start, stop = 1, s
-  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  if is_number(keys) then
-    d_src={}; for i=1,stop do d_src[i] = data_src[i] end
-  end
-  return d_src
-end
-
-local function scale_src(data_src, keys, rng)
-  local d_src = {}
-  local s = #data_src[keys[1]]
-  local start, stop = 1, s
-  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  for j,k in ipairs(keys) do
-    if isa_matrix(data_src[k]) then d_src[k]=data_src[k]:getv(start..stop )
-                               else d_src[k]={}; for i=1,stop do d_src[k][i] = data_src[k][i]  end
-    end
-  end
-  return d_src
-end
-
 local function axis_titles(inp_k, out_k)
   local label_x ,label_y = "",""
   for _,key in pairs(inp_k) do label_x = label_x..key.." " end
@@ -126,143 +148,109 @@ local function axis_titles(inp_k, out_k)
 end
 
 --layout
+local function sh_get(sh)
+  local x_sh, y_sh = {}, {}
+  local cx  , cy   = 1 , 1
+  for i=1,#sh,2 do x_sh[cx] = sh[i]; cx=cx+1 end
+  for i=2,#sh,2 do y_sh[cy] = sh[i]; cy=cy+1 end
+  return vector(x_sh), vector(y_sh)
+end
+
 local xadjst = \x,l,s -> (x * l + s - l)
 local yadjst = \y,h   -> (y * h        )
 
-local function layout_vec(x_sh, y_sh, l, s)
+local function sh_vec(x_sh, y_sh, l, s) -- h to be added
   local size = x_sh:size()
   local x1, y1 = vector(size), vector(size)
   for i=1,size do
-    x1:seti(i, xadjst(x_sh:geti(i), l, s) )
-    y1:seti(i, yadjst(y_sh:geti(i), 1   ) )
+    x1:seti( i, xadjst(x_sh:geti(i), l, s) )
+    y1:seti( i, yadjst(y_sh:geti(i), 1   ) )
   end
   return x1, y1
 end
 
-local function get_sh(shape)  --possibly just change of format of input shapes( way to overcomplicated by now )
-  local x_sh, y_sh = {}, {}
-  local s = #shape
-  local cx, cy = 1, 1
-  for i=1,s,2 do x_sh[cx] = shape[i]; cx=cx+1 end
-  for i=2,s,2 do y_sh[cy] = shape[i]; cy=cy+1 end
-  x_sh, y_sh = vector(x_sh), vector(y_sh)
-  return x_sh, y_sh
-end
-
-local function elem_indx(kinds, str)
+local function sh_find(kinds, str)
   local indx, c = {}, 1
   for i,line in ipairs(kinds) do
-    if line:find(str)then indx[c] = i; c=c+1 end
+    if line:find(str) then indx[c] = i; c=c+1 end
   end
   return indx
 end
 
-local function create_layout(len, pos, kinds, keys)
-  local xl, yl = {}, {}
-  local size = #keys
-  local c=1
+local function layout(l, s, kinds, keys)
+  local xl, yl, c = {}, {}, 1
   for i,key in ipairs(keys) do
-    local x, y = get_sh( dat[key].shape )
-    local indx = elem_indx( kinds, key  )
+    local x, y = sh_get (dat[key].shape )
+    local indx = sh_find(kinds, key     )
     for j,v in ipairs(indx) do
-      local l, s = len[v], pos[v]
-      xl[c], yl[c] = layout_vec(x, y, l, s)
+      xl[c], yl[c] = sh_vec(x, y, l[v], s[v])
       c=c+1
     end
   end
   return {x = xl, y = yl}
 end
 
-local function remove_dupl(lay_src)
-  local hash, res = {}, {}
-  for _,v in ipairs(lay_src) do
-    if not hash[v] then
-      res[#res+1] = v
-      hash[v] = true
-    end
-  end
-  return res
-end
-
-local function plotter_lay(data_src, output, keys) -- to be merged as one classic plotter later
-  for i=1,#data_src[keys[1]] do
-    for ii=1,#data_src[keys[1]][i] do
-      for j,k in ipairs(keys) do
-        output:write(data_src[k][i][ii]," ")
-      end
-      output:write("\n")
-    end
-    output:write("\n")
-  end
-  output:close()
-end
-
--- template operations
+-- template
 local function temp_fill(temp, src)
   for key,v in pairs(src) do
     local key = tostring(key)
-    for i,tline in ipairs(temp) do -- regular loop might be better
-      if tline:find(key)then
-        temp[i] = tline:gsub( key, src[key] )
+    for i,line in ipairs(temp) do
+      if line:find(key)then
+        temp[i] = line:gsub( key, src[key] )
       end
     end
   end
 end
 
-  local function temp_multiplot(temp, keys) -- should move the ongoing lines
-    local s, lnr = #keys
-    for i,tline in ipairs(temp) do
-      if tline:find('count') then lnr = i end
-    end
-    if lnr then
-      for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
-      for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
-      for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' , tostring(i+2))
-                     temp[lnr+i]=temp[lnr+i]:gsub('ytitle', keys[i+1]    )   end
-    end
+local function temp_multiplot(temp, keys)
+  local s, lnr = #keys
+  for i,line in ipairs(temp) do if line:find('count') then lnr = i end end
+  if lnr then
+    for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
+    for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
+    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' , tostring(i+2))
+                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', keys[i+1]    ) end
   end
+end
 
-local function temp_print(temp, printer)
+local function temp_print(temp, printer) -- maybe connect to plotter
   for i =1,#temp do printer:write(temp[i]) end
   printer:close()
 end
 
 local template = {
     -- general settings
-    "reset\n"                     ,
+    "reset\n"                          ,
     "set terminal terminal_type size xsize cm, ysize cm color font 'font_type, font_size'\n",
-    "set output 'gp_output'\n"    ,
-    -- plot data setting
-    "set multiplot \n"            ,
-    "set grid \n"                 ,
+    "set output 'gp_output'\n"         ,
+    -- plot data
+    "set multiplot \n"                 ,
+    "set grid \n"                      ,
     "set lmargin at screen l_margin \n",
     "set rmargin at screen r_margin \n",
-    "set size 1,size_p \n"          ,
-
-    "set title 'gtitle' \n"       ,
-    "set xlabel 'label_x' \n"     ,
-    "set ylabel 'label_y' \n"     ,
-    "set xrange [min_x:max_x] \n" ,
-    "set yrange [min_y:max_y] \n" ,
-    -- plot data
+    "set size 1,size_p \n"             ,
+    "set title 'gtitle' \n"            ,
+    "set xlabel 'label_x' \n"          ,
+    "set ylabel 'label_y' \n"          ,
+    "set xrange [min_x:max_x] \n"      ,
+    "set yrange [min_y:max_y] \n"      ,
     "plot ",
-    "'plot_data' using 1:count every 1::0 w lines lc count title 'ytitle',\\\n",
-
-    "\n",
-    "unset tmargin \n",
-    "unset bmargin \n",
-    "unset title  \n",
-    "unset arrow \n",
-    "unset ylabel \n",
-    "unset xlabel \n",
-    "unset xtics \n",
-    "unset ytics \n",
-    "unset y2tics \n",
-    "unset y2label \n",
-    "unset key \n",
-    "set xzeroaxis \n",
-    "set border 0 \n",
-    "set size 1,0.15 \n",
+    "'plot_data' using 1:count every 1::0 w_lines lc count title 'ytitle',\\\n",
+    -- layout
+    "\nunset tmargin \n"  ,
+    "unset bmargin \n"    ,
+    "unset title  \n"     ,
+    "unset arrow \n"      ,
+    "unset ylabel \n"     ,
+    "unset xlabel \n"     ,
+    "unset xtics \n"      ,
+    "unset ytics \n"      ,
+    "unset y2tics \n"     ,
+    "unset y2label \n"    ,
+    "unset key \n"        ,
+    "set xzeroaxis \n"    ,
+    "set border 0 \n"     ,
+    "set size 1,0.15 \n"  ,
     "set origin 0,0.85 \n",
     "set yrange [-1:1] \n",
     "plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
@@ -270,37 +258,35 @@ local template = {
 
 -- plotting funtion -----------------------------------------------------------o
 
-function M.plot(data_src, inp_k, out_k, layout, rng)
-  local gp_script   = io.open(GP.script     , "w")
-  local plot_data   = io.open(GP.plot_data  , "w")
-  local layout_data = io.open(GP.layout_data, "w")
-
+function M.plot(src, inp_k, out_k, lay, rng)
+  local gp_script = io.open(GP.script     , "w")
+  local plot_data = io.open(GP.plot_data  , "w")
+  local lay_data  = io.open(GP.layout_data, "w")
+  -- checkout if inp_k and out_k are actually a part of src
   local keys_plot = mkkeys(inp_k, out_k)
-  local d_src     = scale_src(data_src, keys_plot, rng)
-
+  local d_src     = scale_src(src, keys_plot, rng)
   local temp_size
-  if layout then
-    local lay_src   = scale_src(data_src, {'s', 'l', 'kind'}, rng)
-    local lay_kinds = remove_dupl(lay_src.kind)
-    --for i,v  in ipairs(lay_kinds) do print(i,v) end
-    local L         = create_layout(lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
-    plotter_lay( L, layout_data, {'x','y'} )
 
-    PD.size_p = 0.85
+  if lay then
+    local lay_src   = scale_src(src, {'s', 'l', 'kind'}, rng)
+    local lay_kinds = rm_dupl  (lay_src.kind)
+    local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
+    plotter_lay( L, lay_data, {'x','y'} )
+    PV.size_p = 0.85
     temp_size = nil
   else
-    PD.size_p = 1
+    PV.size_p = 1
     temp_size = 1..15
   end
   temp = scale_temp(template, 1, temp_size)
-
-  PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
-  PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
-  PD.label_x, PD.label_y = axis_titles( inp_k, out_k )
+  PV.w_lines = ""
+  PV.min_x  , PV.max_x   = scale_axis ( d_src, inp_k )
+  PV.min_y  , PV.max_y   = scale_axis ( d_src, out_k )
+  PV.label_x, PV.label_y = axis_titles( inp_k, out_k )
 
   plotter_gen   ( d_src, plot_data, keys_plot )
   temp_fill     ( temp , GP        )
-  temp_fill     ( temp , PD        )
+  temp_fill     ( temp , PV        )
   temp_multiplot( temp , out_k     )
   temp_print    ( temp , gp_script )
   os.execute("gnuplot "..GP.script)
