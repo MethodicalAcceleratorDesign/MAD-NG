@@ -84,12 +84,11 @@ local function plotter_gen(data_src, output, keys)
 end
 
 -- PD
-local function scale_axis(data_src, keys)
-  local s = #keys
-  local vmin, vmax = vector(s), vector(s)
+local function scale_axis(src, keys)
+  local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
-    local min = data_src[key]:min()
-    local max = data_src[key]:max()
+    local min = src[key]:min()
+    local max = src[key]:max()
     vmin:seti(i, min)
     vmax:seti(i, max)
   end
@@ -126,6 +125,78 @@ local function axis_titles(inp_k, out_k)
   return label_x ,label_y
 end
 
+--layout
+local xadjst = \x,l,s -> (x * l + s - l)
+local yadjst = \y,h   -> (y * h        )
+
+local function layout_vec(x_sh, y_sh, l, s)
+  local size = x_sh:size()
+  local x1, y1 = vector(size), vector(size)
+  for i=1,size do
+    x1:seti(i, xadjst(x_sh:geti(i), l, s) )
+    y1:seti(i, yadjst(y_sh:geti(i), 1   ) )
+  end
+  return x1, y1
+end
+
+local function get_sh(shape)  --possibly just change of format of input shapes( way to overcomplicated by now )
+  local x_sh, y_sh = {}, {}
+  local s = #shape
+  local cx, cy = 1, 1
+  for i=1,s,2 do x_sh[cx] = shape[i]; cx=cx+1 end
+  for i=2,s,2 do y_sh[cy] = shape[i]; cy=cy+1 end
+  x_sh, y_sh = vector(x_sh), vector(y_sh)
+  return x_sh, y_sh
+end
+
+local function elem_indx(kinds, str)
+  local indx, c = {}, 1
+  for i,line in ipairs(kinds) do
+    if line:find(str)then indx[c] = i; c=c+1 end
+  end
+  return indx
+end
+
+local function create_layout(len, pos, kinds, keys)
+  local xl, yl = {}, {}
+  local size = #keys
+  local c=1
+  for i,key in ipairs(keys) do
+    local x, y = get_sh( dat[key].shape )
+    local indx = elem_indx( kinds, key  )
+    for j,v in ipairs(indx) do
+      local l, s = len[v], pos[v]
+      xl[c], yl[c] = layout_vec(x, y, l, s)
+      c=c+1
+    end
+  end
+  return {x = xl, y = yl}
+end
+
+local function remove_dupl(lay_src)
+  local hash, res = {}, {}
+  for _,v in ipairs(lay_src) do
+    if not hash[v] then
+      res[#res+1] = v
+      hash[v] = true
+    end
+  end
+  return res
+end
+
+local function plotter_lay(data_src, output, keys) -- to be merged as one classic plotter later
+  for i=1,#data_src[keys[1]] do
+    for ii=1,#data_src[keys[1]][i] do
+      for j,k in ipairs(keys) do
+        output:write(data_src[k][i][ii]," ")
+      end
+      output:write("\n")
+    end
+    output:write("\n")
+  end
+  output:close()
+end
+
 -- template operations
 local function temp_fill(temp, src)
   for key,v in pairs(src) do
@@ -136,20 +207,19 @@ local function temp_fill(temp, src)
       end
     end
   end
-  --return temp
 end
 
-local function temp_multiplot(temp, keys)
-  local s, lnr = #keys
-  for i,tline in ipairs(temp) do
-    if tline:find('count') then lnr = i end
+  local function temp_multiplot(temp, keys) -- should move the ongoing lines
+    local s, lnr = #keys
+    for i,tline in ipairs(temp) do
+      if tline:find('count') then lnr = i end
+    end
+    if lnr then
+      for i=0,s-1 do temp[lnr+i]=temp[lnr] end
+      for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' ,tostring(i+2)) end
+      for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('ytitle',keys[i+1]    ) end
+    end
   end
-  if lnr then
-    for i=0,s-1 do temp[lnr+i]=temp[lnr] end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' ,tostring(i+2)) end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('ytitle',keys[i+1]    ) end
-  end
-end
 
 local function temp_print(temp, printer)
   for i =1,#temp do printer:write(temp[i]) end
@@ -197,99 +267,30 @@ local template = {
     "plot 'layout_data' u 1:2 w lines ls 1 lc rgb 'black' \n",
 }
 
---layout
-local xadjst = \x,l,s -> (x * l + s - l)
-local yadjst = \y,h   -> (y * h        )
-
-local function layout_vec(x_sh, y_sh, l, s)
-  local size = x_sh:size()
-  local x1, y1 = vector(size), vector(size)
-  for i=1,size do
-    x1:seti(i, xadjst(x_sh:geti(i), l, s) )
-    y1:seti(i, yadjst(y_sh:geti(i), 1   ) )
-  end
-  return x1, y1
-end
-
-local function get_sh(shape)  --possibly just change of format of input shapes( way to overcomplicated by now )
-  local x_sh, y_sh = {}, {}
-  local s = #shape
-  local cx, cy = 1, 1
-  for i=1,s,2 do x_sh[cx] = shape[i]; cx=cx+1 end
-  for i=2,s,2 do y_sh[cy] = shape[i]; cy=cy+1 end
-  x_sh, y_sh = vector(x_sh), vector(y_sh)
-  return x_sh, y_sh
-end
-
-local function elem_indx(kinds, str)
-  local indx, c = {}, 1
-  for i,line in ipairs(kinds) do
-    if line:find(str)then indx[c] = i; c=c+1 end
-  end
-  return indx
-end
-
-local function create_layout(len, pos, kinds, keys)
-  local xl, yl = {}, {}
-  local size = #keys
-  for i,key in ipairs(keys) do
-    local x, y = get_sh( dat[key].shape )
-    local indx = elem_indx( kinds, key  )
-    for j,v in ipairs(indx) do
-      local l, s = len[v], pos[v]
-      xl[(j-1)*size+i], yl[(j-1)*size+i] = layout_vec(x, y, l, s)
-    end
-  end
-  return {x = xl, y = yl}
-end
-
-local function remove_dupl(lay_src)
-  local hash, res = {}, {}
-  for _,v in ipairs(lay_src) do
-    if not hash[v] then
-      res[#res+1] = v
-      hash[v] = true
-    end
-  end
-  return res
-end
-
-local function plotter_lay(data_src, output, keys) -- to be merged as one classic plotter later
-  for i=1,#data_src[keys[1]] do
-    for ii=1,#data_src[keys[1]][i] do
-      for j,k in ipairs(keys) do
-        output:write(data_src[k][i][ii]," ")
-      end
-      output:write("\n")
-    end
-    output:write("\n")
-  end
-  output:close()
-end
-
 -- plotting funtion -----------------------------------------------------------o
 
-function M.plot(data_src, inp_k, out_k, rng, layout)
+function M.plot(data_src, inp_k, out_k, layout, rng)
   local gp_script   = io.open(GP.script     , "w")
   local plot_data   = io.open(GP.plot_data  , "w")
   local layout_data = io.open(GP.layout_data, "w")
 
-
   local keys_plot = mkkeys(inp_k, out_k)
   local d_src     = scale_src(data_src, keys_plot, rng)
 
-  local temp, lay_kinds, L, lay_src
+  local temp_size
   if layout then
-    lay_src   = scale_src(data_src, {'s', 'l', 'kind'}, rng)
-    lay_kinds = remove_dupl(lay_src.kind)
-    L = create_layout(lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
-    PD.size_p = 0.85
+    local lay_src   = scale_src(data_src, {'s', 'l', 'kind'}, rng)
+    local lay_kinds = remove_dupl(lay_src.kind)
+    local L         = create_layout(lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
     plotter_lay( L, layout_data, {'x','y'} )
-    temp = scale_temp(template, 1, nil)
+
+    PD.size_p = 0.85
+    temp_size = nil
   else
     PD.size_p = 1
-    temp = scale_temp(template, 1, 1..15)
+    temp_size = 1..15
   end
+  temp = scale_temp(template, 1, temp_size)
 
   PD.min_x  , PD.max_x   = scale_axis ( d_src, inp_k )
   PD.min_y  , PD.max_y   = scale_axis ( d_src, out_k )
