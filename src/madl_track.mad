@@ -289,21 +289,96 @@ local function wedge_track(elem, m, e)
   m.t  = t + yt*(beta_inv + pt)
 end
 
+local function fringe_dipole(elem, m, pos)
+--  TODO:  to add kill_fringe?
+--  TODO: FINT and FINTX to have different FINT at entrance /exit
+  local x, px, y, py, t, pt, T, dir in m
+  local k0   = elem.k0 or 0
+  local beta_inv = 1/m.beam.beta
+-- soft edge 
+  local fint = elem.fint or 0  -- fringe field integral at entrance and exit of the bend
+  local hgap = elem.hgap or 0  -- half gap of the magnet 
+  local fsad = 0
+
+  if fint*hgap ~= 0.0 then  -- soft edge 
+      fsad = 1/(fint*hgap*2)/36
+  end
+ 
+  local b  = m.chg*pos*k0
+  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local time_fac = beta_inv + pt
+  local rel_p    = sqrt(1 + 2*beta_inv*pt + pt^2)
+
+  local c3=b^2*fsad/rel_p
+
+  local xp, yp = px/pz or 0, py/pz or 0
+
+  local d  = matrix(6,6):zeros()
+  d:set(1,1,(1 + xp^2) / pz)
+  d:set(2,2,(1 + yp^2) / pz)
+  d:set(2,1, xp*yp     / pz)
+  d:set(1,2, xp*yp     / pz)
+  d:set(3,1,-xp)
+  d:set(3,2,-yp)
+  d:set(1,3,-time_fac*xp /pz^2)
+  d:set(2,3,-time_fac*yp /pz^2)
+  d:set(3,3,time_fac     /pz  )
+
+  local  fi0 = atan((xp/(1 + yp^2)))-2*b*fint*hgap*(1 + xp^2*(2 + yp^2))*pz
+  local  co2 = b/cos(fi0)^2
+  local  co1 = co2/(1 + (xp/(1 + yp^2))^2)
+
+  local fi = {0, 0, 0}
+  fi[1] =    co1 /       (1 + yp^2) - 2*co2*b*fint*hgap*       (2*xp*(2 + yp^2)*pz)
+  fi[2] =-2*co1*xp*yp/(1 + yp^2)^2  - 2*co2*b*fint*hgap*       (2*xp^2*yp)*pz
+  fi[3] =                           - 2*co2*b*fint*hgap*   (1 + xp^2*(2 + yp^2))
+
+  fi0=b*tan(fi0)
+
+  b=0
+  do i=1,3
+    b=fi[i]*d:get(i,2) + b
+  end
+    
+  m.y  = 2*y/(1 + sqrt(1 - 2 *b*y ))
+  m.py = py - fi0*y
+
+  b=0
+  do i=1,3
+    b=fi[i]*d:get(i,1) + b
+  end
+  m.x = x+0.5*b*m.y^2
+
+  b=0
+  do i=1,3
+    b=fi[i]*d:get(i,3) + b
+  end
+  m.t  = t    - 0.5*b*m.y^2
+  -- soft edge 
+  m.py = m.py - 4*c3*m.y^3
+  m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
+end
+
 local function sfringe_track(elem, m, e, h, pos)
-  if pos == 1 then
+  --TODO: to add dir == -1
+  if pos == 1 then 
     if e and abs(e) >= minang then
-     yrot_track (elem, m,  e)
-     face_track (elem, m,  h)
-     wedge_track(elem, m, -e)
+     yrot_track   (elem, m,  e)
+     face_track   (elem, m,  h)
+     fringe_dipole(elem, m,  1)
+     wedge_track  (elem, m, -e)
     else
       face_track (elem, m, h)
+      fringe_dipole(elem, m,  1)
     end
   else
     if e and abs(e) >= minang then
      wedge_track(elem, m, -e)
+     fringe_dipole(elem, m,  -1)
      face_track (elem, m,  h)
      yrot_track (elem, m,  e)
     else
+      fringe_dipole(elem, m, -1)
       face_track (elem, m, h)
     end
   end
