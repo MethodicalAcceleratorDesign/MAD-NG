@@ -31,9 +31,9 @@ local __help = {}
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element   in MAD
-local isa_matrix, is_matrix, is_number in MAD.typeid
-local min, max              in MAD.gmath
+local isa_matrix, is_matrix, is_number, is_table, is_vector in MAD.typeid
+local range, nrange, vector, element in MAD
+local min, max in MAD.gmath
 
 local GP = {
   gp_output     = 'test.eps'      ,
@@ -82,23 +82,20 @@ local function rm_dupl(src)
   return res
 end
 
-local function plotter_gen(src, output, keys)
+local function plotter(src, output, keys) --REDO
+  local is_vector in MAD.typeid
   for i=1,#src[keys[1]] do
-    for j,k in ipairs(keys) do
-      output:write(src[k][i]," ")
-    end
-    output:write("\n")
-  end
-    output:close()
-end
-
-local function plotter_lay(src, output, keys) -- to be merged as one classic plotter later
-  for i=1,#src[keys[1]] do
-    for ii=1,#src[keys[1]][i] do
-      for j,k in ipairs(keys) do
-        output:write(src[k][i][ii]," ")
+    if is_vector(src[keys[1]][i]) then
+      for ii=1,#src[keys[1]][i] do
+        for j,k in ipairs(keys) do
+          output:write(src[k][i][ii]," ")
+        end
+        output:write("\n")
       end
-      output:write("\n")
+    else
+      for j,k in ipairs(keys) do
+        output:write(src[k][i]," ")
+      end
     end
     output:write("\n")
   end
@@ -106,29 +103,30 @@ local function plotter_lay(src, output, keys) -- to be merged as one classic plo
 end
 
 -- PD
-local function scale_temp(src, keys, rng) --to be merged with scale src
-  local s = #src
-  local start, stop = 1, s
-  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  if is_number(keys) then
-    d_src={}; for i=1,stop do d_src[i] = src[i] end
-  end
-  return d_src
+local function scale_tbl(tbl, start, stop)
+  local r = {}
+  for j=1,stop do r[j] = tbl[start+j] end
+  return r
 end
 
-local function scale_src(src, keys, rng)
+local function scale_dat(src, keys, rng) -- TODO
   local d_src = {}
-  local s = #src[keys[1]]
-  local start, stop = 1, s
-  if rng and rng:size() <= s then start, stop = rng.start, rng.stop end
-  for j,k in ipairs(keys) do
-    if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
-                          else d_src[k]={}; for i=1,stop do d_src[k][i] = src[k][i]  end
+  if is_table(src[1]) then
+    local start, stop = 1, #src[keys[1]]
+    if rng and rng:size() <= stop then start, stop = rng.start, rng.stop end
+    for j,k in ipairs(keys) do
+      if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
+                            else d_src[k]=scale_tbl(src[k],start,stop) end
     end
+  else
+    local start, stop = 1, #src
+    if rng and rng:size() <= stop then start, stop = rng.start, rng.stop end
+    d_src = scale_tbl(src, start, stop)
   end
   return d_src
 end
 
+-- axis
 local function scale_axis(src, keys)
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
@@ -264,27 +262,28 @@ function M.plot(src, inp_k, out_k, lay, rng)
   local lay_data  = io.open(GP.layout_data, "w")
   -- checkout if inp_k and out_k are actually a part of src
   local keys_plot = mkkeys(inp_k, out_k)
-  local d_src     = scale_src(src, keys_plot, rng)
+  local d_src     = scale_dat(src, keys_plot, rng)
   local temp_size
 
   if lay then
-    local lay_src   = scale_src(src, {'s', 'l', 'kind'}, rng)
+    local lay_src   = scale_dat(src, {'s', 'l', 'kind'}, rng)
     local lay_kinds = rm_dupl  (lay_src.kind)
     local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
-    plotter_lay( L, lay_data, {'x','y'} )
+    plotter( L, lay_data, {'x','y'} )
     PV.size_p = 0.85
     temp_size = nil
   else
     PV.size_p = 1
     temp_size = 1..15
   end
-  temp = scale_temp(template, 1, temp_size)
+  temp = scale_dat(template, 1, temp_size)
+
   PV.w_lines = ""
   PV.min_x  , PV.max_x   = scale_axis ( d_src, inp_k )
   PV.min_y  , PV.max_y   = scale_axis ( d_src, out_k )
   PV.label_x, PV.label_y = axis_titles( inp_k, out_k )
 
-  plotter_gen   ( d_src, plot_data, keys_plot )
+  plotter   ( d_src, plot_data, keys_plot )
   temp_fill     ( temp , GP        )
   temp_fill     ( temp , PV        )
   temp_multiplot( temp , out_k     )
