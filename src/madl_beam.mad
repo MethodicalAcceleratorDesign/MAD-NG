@@ -118,10 +118,10 @@ Beam2: BEAM, SEQUENCE=LHCB2, ENERGY=533000, PARTICLE=ION,
 
 local abs, sqrt                                                in math
 local Object, tostring                                         in MAD
+local setkeys, countkeys, fprintf                              in MAD.utility
 local is_object, is_nil, is_boolean, is_string, is_table,
-      is_positive, is_integer                                  in MAD.typeid
+      is_function, is_positive, is_integer                     in MAD.typeid
 local clight, qelect, emass, pmass, mumass, deumass            in MAD.constant
-local setkeys, countkeys                                       in MAD.utility
 local is_mappable                                              in MAD.concept
 
 local GeV_c = 1e9/clight
@@ -175,8 +175,8 @@ local function showdb (self, file)
   file = file or io.stdout
   for _,k in ipairs(particledb) do
     local mass, charge, spin in particledb[k]
-    file:write(string.format("%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1g\n",
-               k, tostring(mass), tostring(charge), tostring(spin)))
+    fprintf(file,"%-12s: mass = %-17s [GeV], charge = % -4d, spin = % -.1g\n",
+                      k,         mass,               charge,          spin)
   end
   return self
 end
@@ -224,41 +224,42 @@ local beam = Object 'beam' {
   radiate   = false,                                   --                   [RW]
 }
 
-local newidx = getmetatable(beam).__newindex -- forward to parent
-local index  = \s,k,v => newidx(s,k,v) end   -- default forwards
+local newidx = getmetatable(beam).__newindex         -- forward to parent
+local index  = \s,k,v => newidx(s,k,v) end           -- default forwards
+local eval   = \s,v -> is_function(v) and v(s) or v  -- for proper assertion
 
 local update = setmetatable({
   -- particle
- particle = \s,k,v => assert(particledb[v],"unknown particle") newidx(s,k,v)
-                      newidx(s,'mass'  ,particledb[v].mass  )
-                      newidx(s,'charge',particledb[v].charge)
-                      newidx(s,'spin'  ,particledb[v].spin  ) end,
+ particle = \s,k,v => assert(particledb[eval(s,v)],"unknown particle") newidx(s,k,v)
+                      newidx(s,'mass'  ,particledb[eval(s,v)].mass  )
+                      newidx(s,'charge',particledb[eval(s,v)].charge)
+                      newidx(s,'spin'  ,particledb[eval(s,v)].spin  ) end,
   mass   := error(  "mass is readonly, define a new particle"),
   charge := error("charge is readonly, define a new particle"),
   spin   := error(  "spin is readonly, define a new particle"),
   radius := error("radius is readonly"),
   -- energy
-  energy = \s,k,v => assert(v > s.mass, "invalid energy <= mass") newidx(s,k,v) end,
-  pc     = \s,_,v => assert(is_positive(v), "invalid pc <= 0") newidx(s,'energy',sqrt(v^2+s.mass^2)) end,
+  energy = \s,k,v => assert(eval(s,v) > s.mass, "invalid energy <= mass") newidx(s,k,v) end,
+  pc     = \s,_,v => assert(is_positive(eval(s,v)), "invalid pc <= 0") newidx(s,'energy',sqrt(eval(s,v)^2+s.mass^2)) end,
   beta  := error( "beta is readonly, update energy or mass"),
   gamma := error("gamma is readonly, update energy or mass"),
   brho  := error( "brho is readonly, update energy, mass or charge"),
   -- emittance
-  ex     = \s,k,v => assert(is_positive(v),"invalid ex <= 0")  newidx(s,k,v) end,
-  ey     = \s,k,v => assert(is_positive(v),"invalid ey <= 0")  newidx(s,k,v) end,
-  et     = \s,k,v => assert(is_positive(v),"invalid et <= 0")  newidx(s,k,v) end,
-  exn    = \s,_,v => assert(is_positive(v),"invalid exn <= 0") newidx(s,'ex',v/sqrt(s.gamma^2-1)) end,
-  eyn    = \s,_,v => assert(is_positive(v),"invalid eyn <= 0") newidx(s,'ey',v/sqrt(s.gamma^2-1)) end,
-  etn    = \s,_,v => assert(is_positive(v),"invalid etn <= 0") newidx(s,'et',v/sqrt(s.gamma^2-1)) end,
+  ex     = \s,k,v => assert(is_positive(eval(s,v)),"invalid ex <= 0")  newidx(s,k,v) end,
+  ey     = \s,k,v => assert(is_positive(eval(s,v)),"invalid ey <= 0")  newidx(s,k,v) end,
+  et     = \s,k,v => assert(is_positive(eval(s,v)),"invalid et <= 0")  newidx(s,k,v) end,
+  exn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid exn <= 0") newidx(s,'ex',eval(s,v)/sqrt(s.gamma^2-1)) end,
+  eyn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid eyn <= 0") newidx(s,'ey',eval(s,v)/sqrt(s.gamma^2-1)) end,
+  etn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid etn <= 0") newidx(s,'et',eval(s,v)/sqrt(s.gamma^2-1)) end,
   -- bunch
-  nbunch = \s,k,v => assert(is_integer(v) and v>0,"invalid nbunch <= 0")    newidx(s,k,v) end,
-nparticle= \s,k,v => assert(is_integer(v) and v>0,"invalid nparticle <= 0") newidx(s,k,v) end,
-  sigx   = \s,k,v => assert(is_positive(v),"invalid sigx <= 0") newidx(s,k,v) end,
-  sigy   = \s,k,v => assert(is_positive(v),"invalid sigy <= 0") newidx(s,k,v) end,
-  sigt   = \s,k,v => assert(is_positive(v),"invalid sigt <= 0") newidx(s,k,v) end,
-  sige   = \s,k,v => assert(is_positive(v),"invalid sige <= 0") newidx(s,k,v) end,
+  nbunch = \s,k,v => assert(is_integer(eval(s,v)) and eval(s,v)>0,"invalid nbunch <= 0")    newidx(s,k,v) end,
+nparticle= \s,k,v => assert(is_integer(eval(s,v)) and eval(s,v)>0,"invalid nparticle <= 0") newidx(s,k,v) end,
+  sigx   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigx <= 0") newidx(s,k,v) end,
+  sigy   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigy <= 0") newidx(s,k,v) end,
+  sigt   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigt <= 0") newidx(s,k,v) end,
+  sige   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sige <= 0") newidx(s,k,v) end,
   -- flags
- radiate = \s,k,v => assert(is_boolean(v),"invalid radiate (boolean expected)") newidx(s,k,v) end,
+ radiate = \s,k,v => assert(is_boolean(eval(s,v)),"invalid radiate (boolean expected)") newidx(s,k,v) end,
 },-- default update (no check)
 { __index := index })
 
@@ -295,11 +296,11 @@ end
 local function show (self, file)
   file = file or io.stdout
   for i,k in ipairs(show_order) do
-    file:write(string.format("%-25s  %-25s\n", k, tostring(self[k])))
+    fprintf(file, "%-25s  %-25s\n", k, tostring(self[k]))
   end
   for _,k in ipairs(self:get_varkey()) do
     if is_nil(show_order[k]) then
-      file:write(string.format("%-25s  %-25s\n", k, tostring(self[k])))
+      fprintf(file, "%-25s  %-25s\n", k, tostring(self[k]))
     end
   end
   return self
