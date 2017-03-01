@@ -8,13 +8,6 @@ local function substitute(template, context)
   return ({template:gsub("$([_%a][_%w]*)", \x -> tostring(context[x]))})[1]
 end
 
-local function run(command, input)
-  -- TODO: redirect output
-  local f = assert(io.popen(command, "w"))
-  f:write(input)
-  f:close()
-end
-
 local function read_file(name)
    local f = assert(io.open(name, "rb"))
    local contents = assert(f:read("*a"))
@@ -22,13 +15,20 @@ local function read_file(name)
    return contents
 end
 
+local function save_file(name, contents)
+  local f = assert(io.open(name, "wb"))
+  assert(f:write(contents))
+  f:close()
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
 
-local function run_all(engines, context)
-  for name, data in pairs(engines) do
-    run(data.command, substitute(data.template, context))
+local function substitute_all(templates, context)
+  for name, template in pairs(templates) do
+    save_file(context.output .. '.' .. name,
+              substitute(template, context))
   end
 end
 
@@ -51,19 +51,10 @@ local DEFAULTS = MAD.Object {
 
 local function main()
 
-  local engines = {
-    madx = {
-      command = 'madx',
-      template = read_file('madx_track.madx'),
-    },
-    ptc = {
-      command = 'madx',
-      template = read_file('ptc_track.madx'),
-    },
-    mad = {
-      command = 'mad',
-      template = read_file('mad_track.mad'),
-    },
+  local templates = {
+    madx = read_file('madx_track.madx'),
+    ptc = read_file('ptc_track.madx'),
+    mad = read_file('mad_track.mad'),
   }
 
   local context = DEFAULTS {
@@ -75,7 +66,7 @@ local function main()
 
   -- benchmark with varying initial conditions independently
   for _, col in ipairs({'x', 'px', 'y', 'py', 't', 'pt'}) do
-    run_all(engines, context {
+    substitute_all(templates, context {
         output = context.prefix .. col,
         [col]  = 'linrange',
     })
