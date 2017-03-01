@@ -1,0 +1,93 @@
+
+------------------------------------------
+-- Generic utility functions
+------------------------------------------
+
+-- Expand a template pattern
+local function substitute(template, tab)
+  return ({template:gsub("$([_%a][_%w]*)", \x -> tostring(tab[x]))})[1]
+end
+
+local function derive(base, tab)
+  return setmetatable(tab, {__index = base})
+end
+
+local function run(command, input)
+  -- TODO: redirect output
+  local f = assert(io.popen(command, "w"))
+  f:write(input)
+  f:close()
+end
+
+local function read_file(name)
+   local f = assert(io.open(name, "rb"))
+   local contents = assert(f:read("*a"))
+   f:close()
+   return contents
+end
+
+------------------------------------------
+-- Config
+------------------------------------------
+
+local function run_all_with_settings(engines, replacements)
+  for name, data in pairs(engines) do
+    run(data.command, substitute(data.template, replacements))
+  end
+end
+
+local function run_all(engines, base_settings)
+  -- benchmark with varying initial conditions independently
+  for _, col in ipairs({'x', 'px', 'y', 'py', 't', 'pt'}) do
+    run_all_with_settings(engines, derive(base_settings, {
+        output = base_settings.prefix .. col,
+        [col]  = 'linrange',
+    }))
+  end
+end
+
+
+local DEFAULTS = {
+    -- sequence
+    seq_name  = "seq",
+    el_name   = "el",
+    seq_args  = [[refer=entry, l=1]],
+    beam_args = [[particle="proton", energy=2]],
+    -- range:
+    start     = 0,
+    stop      = 0.5,
+    count     = 20,
+    -- particle:
+    x = 0, px = 0,
+    y = 0, py = 0,
+    t = 0, pt = 0,
+}
+
+local function main()
+
+  local engines = {
+    madx = {
+      command = 'madx',
+      template = read_file('madx_track.madx'),
+    },
+    ptc = {
+      command = 'madx',
+      template = read_file('ptc_track.madx'),
+    },
+    mad = {
+      command = 'mad',
+      template = read_file('mad_track.mad'),
+    },
+  }
+
+  local replacements = derive(DEFAULTS, {
+    el_type   = "quadrupole",
+    el_args   = [[k1=0.1, l=1, at=0]],
+    -- output:
+    prefix    = 'quadrupole/',
+  })
+
+  run_all(engines, replacements)
+end
+
+main()
