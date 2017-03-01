@@ -49,40 +49,12 @@ local isa_matrix, is_range, is_table, is_vector, is_nil, is_string in MAD.typeid
 local range, nrange, vector, element, totable in MAD
 local min, max  in MAD.gmath
 
-local GP = {
-  gpoutput     = "test.eps"      ,
-  plotdata     = "dataplot.dat"  ,
-  layoutdata   = "datalayout.dat",
-  script        = "plotter.gp"   ,
-  terminaltype = "postscript eps",
-  fonttype     = "Times-Roman"   ,
-  fontsize     = 22 ,
-  xsize         = 27 ,
-  ysize         = 17 ,
-  lmargin      = 0.1,
-  rmargin      = 0.9,
-}
-
-local PV = {
-  sizeplot = 1  ,
-  xmin     = 0  ,
-  xmax     = 10 ,
-  ymin     = 0  ,
-  ymax     = 10 ,
-  xlabel   = "x",
-  ylabel   = "y",
-  gtitle   = "no-title",
-  date     = "no-date" ,
-  time     = "no-time" ,
-  wlines   = "w lines" ,
-}
-
 -- implementation -------------------------------------------------------------o
 
-local function mkkeys(inp_k, out_k)
+local function mkkeys(k1, k2)
   local keys = {}
-  for i,k in ipairs(inp_k) do keys[i]        = k end
-  for i,k in ipairs(out_k) do keys[i+#inp_k] = k end
+  for i,k in ipairs(k1) do keys[i]     = k end
+  for i,k in ipairs(k2) do keys[i+#k1] = k end
   return keys
 end
 
@@ -153,10 +125,10 @@ local function scale_axis(src, keys)
 end
 
 local function axis_titles(inp_k, out_k)
-  local label_x ,label_y = "",""
-  for _,key in pairs(inp_k) do label_x = label_x..key.." " end
-  for _,key in pairs(out_k) do label_y = label_y..key.." " end
-  return label_x ,label_y
+  local xlabel ,ylabel = "",""
+  for _,key in pairs(inp_k) do xlabel = xlabel..key.." " end
+  for _,key in pairs(out_k) do ylabel = ylabel..key.." " end
+  return xlabel ,ylabel
 end
 
 --layout
@@ -232,7 +204,7 @@ local template = {
     -- general settings
     "reset\n"                          ,
     "set terminal $terminaltype size $xsize cm, $ysize cm color font '$fonttype, $fontsize'\n",
-    "set output '$gpoutput'\n"         ,
+    "set output '$filename'\n"         ,
     -- plot data
     "set multiplot \n"                 ,
     "set grid \n"                      ,
@@ -245,7 +217,7 @@ local template = {
     "set xrange [$xmin:$xmax] \n"      ,
     "set yrange [$ymin:$ymax] \n"      ,
     "plot ",
-    "'$plotdata' using 1:count every 1::0 $wlines lc count title 'ytitle',\\\n",
+    "'$plotdata' using 1:count every 1::0 $interpolate lc count title 'ytitle',\\\n",
     -- layout
     "\nunset tmargin \n"  ,
     "unset bmargin \n"    ,
@@ -271,85 +243,80 @@ local template = {
 local mtable, Command in MAD
 
 function exec(self)
-  local src   = self.src
-  local inp_k = self.inp_k
-  local out_k = self.out_k
-  local lay   = self.lay
-  local rng   = self.rng
-  if is_string(inp_k) then inp_k = totable(inp_k) end
-  if is_string(out_k) then out_k = totable(out_k) end
-  if is_range (lay  ) then rng, lay = lay, false  end
-  assert(is_range(rng) or is_nil(rng), "invalid argument #5 (range or nil expected)")
+  local gp_script = io.open(self.script    , "w")
+  local plot_data = io.open(self.plotdata  , "w")
+  local lay_data  = io.open(self.layoutdata, "w")
 
-  local gp_script = io.open(GP.script     , "w")
-  local plot_data = io.open(GP.plotdata  , "w")
-  local lay_data  = io.open(GP.layoutdata, "w")
-  local keys_plot = mkkeys(inp_k, out_k)
+  local src = self.src
+  local inp = self.inp
+  local out = self.out
+  if is_string(inp) then inp = totable(inp) end
+  if is_string(out) then out = totable(out) end
+
+  local keys_plot = mkkeys(inp, out)
   local d_src     = scale_dat(src, keys_plot, rng)
-  local temp_size
 
-  if lay then
+  local temp_size
+  if self.sequence then
     local lay_src   = scale_dat(src, {'s', 'l', 'kind'}, rng)
     local lay_kinds = rm_dupl  (lay_src.kind)
     local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
     plotter( L, lay_data, {'x','y'} )
-    PV.sizeplot = 0.85
+    self.sizeplot = 0.85
     temp_size = nil
   else
-    PV.sizeplot = 1
     temp_size = 1..15
   end
   temp = scale_dat(template, 1, temp_size)
 
-  PV.gtitle = src.title
-  PV.date = src.date
-  PV.time = src.time
+  self.gtitle = src.title
+  self.date   = src.date
+  self.time   = src.time
+  self.interpolate = ""
+  self.xmin  , self.xmax   = scale_axis ( d_src, inp )
+  self.ymin  , self.ymax   = scale_axis ( d_src, out )
+  self.xlabel, self.ylabel = axis_titles( inp  , out )
 
-  PV.wlines = ""
-  PV.xmin  , PV.xmax   = scale_axis ( d_src, inp_k )
-  PV.ymin  , PV.ymax   = scale_axis ( d_src, out_k )
-  PV.xlabel, PV.ylabel = axis_titles( inp_k, out_k )
   plotter       ( d_src, plot_data, keys_plot )
-
-  local temp
-  temp = temp_fill( template, GP        )
-  temp = temp_fill( temp    , PV        )
-  temp_multiplot  ( temp    , out_k     )
+  local temp = temp_fill( template, self )
+  temp_multiplot  ( temp    , out       )
   temp_print      ( temp    , gp_script )
-  os.execute("gnuplot "..GP.script)
+  os.execute("gnuplot "..self.script)
 end
 
 local plot = Command 'plot' {
-  --range = {1,-1},
---[[
-HAXIS   = string, -- 's'
-VAXIS  = { string1, ..., stringn, },
-VAXIS2 = { string1, ..., stringn, },
-VAXIS3 = { string1, ..., stringn, },
-VAXIS4 = { string1, ..., stringn, },
-HMINMAX = { real , real  },
-VMINMAX = { reals, reals },
-TITLE=string,
-BARS=integer,
-STYLE=integer,
-COLOUR=integer,
-SYMBOL=integer,
-INTERPOLATE=logical,
-ZERO SUPPR=logical,
-NOVERSION=logical,
-NOLINE=logical,
-NOTITLE=logical,
-MARKER PLOT=logical,
-RANGE PLOT=logical,
-RANGE=range,
-TABLE=tabname,
-PARTICLE={particle1, particle2, ..., particlen,},
-MULTIPLE=logical,
-FILE=file name start,
-TRACKFILE=basename,
-PTC=logical,
-PTC TABLE=tabname;
-]]
+  lay      = false,
+  table    = false,
+  sequence = false,
+
+  inp = 'x'   ,
+  out = 'y'   ,
+  range = 1..100,   --range = {1,-1},
+
+  filename     = "test.eps"      ,
+  plotdata     = "dataplot.dat"  ,
+  layoutdata   = "datalayout.dat",
+  script       = "plotter.gp"    ,
+  terminaltype = "postscript eps",
+  fonttype     = "Times-Roman"   ,
+  fontsize     = 22 ,
+  xsize        = 27 ,
+  ysize        = 17 ,
+  lmargin      = 0.1,
+  rmargin      = 0.9,
+
+  sizeplot     = 1  ,
+
+  xmin         = 0  ,
+  xmax         = 10 ,
+  ymin         = 0  ,
+  ymax         = 10 ,
+  xlabel       = "x",
+  ylabel       = "y",
+  gtitle       = "no-title",
+  date         = "no-date" ,
+  time         = "no-time" ,
+  interpolate  = "w lines" ,
   exec = exec,
 } :set_readonly()
 
