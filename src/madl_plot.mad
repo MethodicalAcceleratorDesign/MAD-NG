@@ -51,11 +51,11 @@ local min, max  in MAD.gmath
 
 -- implementation -------------------------------------------------------------o
 
-local function mkkeys(k1, k2)
-  local keys = {}
-  for i,k in ipairs(k1) do keys[i]     = k end
-  for i,k in ipairs(k2) do keys[i+#k1] = k end
-  return keys
+local function mk_tbl(t1, t2)
+  local tbl = {}
+  for i,k in ipairs(t1) do tbl[i]     = k end
+  for i,k in ipairs(t2) do tbl[i+#t1] = k end
+  return tbl
 end
 
 local function rm_dupl(src)
@@ -89,36 +89,43 @@ local function plotter(src, output, keys) -- REDO
 end
 
 -- PD
-local function chksize(rng, start, stop) -- add rng table option
-  if is_range(rng) and rng:size() <= stop then start, stop = rng.start, rng.stop end
+local function chksize(rng, start, stop)
+  if rng:size() <= stop then start, stop = rng.start, rng.stop end
   return start, stop
 end
 
 local function scale_vec(src, rng)
   local start, stop = 1, #src
   start, stop = chksize(rng, start, stop)
-  return src:getv(start..stop )
+  return src:getv(start..stop)
+end
+
+local function scale_range(src, rng)
+  if is_range(rng) then return rng
+  elseif is_table(rng) then
+    local start , stop  = 1, #src
+    local rstart, rstop = rng[1], rng[2]
+    local vmin, vmax, c = {}, {}
+    c=1; src:mapij(\x,i,j => if x>rstart then vmin[c]=i; c=c+1  end end, {})
+    c=1; src:mapij(\x,i,j => if x>rstop  then vmax[c]=i; c=c+1  end end, {})
+    start, stop = vmin[1], vmax[1]-1
+    return start..stop
+  end
 end
 
 local function scale_tbl(tbl, start, stop)
   local r = {}
-  for j=1,stop do r[j] = tbl[start+j] end
+  for j=1,stop-start do r[j] = tbl[start+j] end
   return r
 end
 
-local function scale_dat(src, keys, rng) -- TODO
+local function scale_dat(src, keys, rng)
   local d_src = {}
-  if is_table(src[1]) then
-    local start, stop = 1, #src[keys[1]]
-    start, stop = chksize(rng, start, stop)
-    for j,k in ipairs(keys) do
-      if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
-                            else d_src[k]=scale_tbl(src[k],start,stop) end
-    end
-  else
-    local start, stop = 1, #src
-    start, stop = chksize(rng, start, stop)
-    d_src = scale_tbl(src, start, stop)
+  local start, stop = 1, #src[keys[1]]
+  start, stop = chksize(rng, start, stop)
+  for j,k in ipairs(keys) do
+    if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
+                          else d_src[k]=scale_tbl(src[k],start,stop) end
   end
   return d_src
 end
@@ -221,9 +228,9 @@ local template = {
     -- plot data
     "set multiplot \n"                 ,
     "set grid \n"                      ,
-    --"set ytics \n",
-    --"set y2tics \n",
-    --"set y2label '$ylabel' \n"          ,
+    --"set ytics \n"                   ,
+    --"set y2tics \n"                  ,
+    --"set y2label '$ylabel' \n"       ,
     "set lmargin at screen $lmargin \n",
     "set rmargin at screen $rmargin \n",
     "set size 1,$sizeplot \n"          ,
@@ -235,6 +242,9 @@ local template = {
     --"set y2range [$ymax:$ymin] \n"      ,
     "plot ",
     "'$plotdata' using 1:count every 1::0 $interpolate lc count  title 'ytitle',\\\n",
+}
+
+local temp_lay = {
     -- layout
     "\nunset tmargin \n"  ,
     "unset bmargin \n"    ,
@@ -254,52 +264,9 @@ local template = {
     "set yrange [-1:1] \n",
     "plot '$layoutdata' u 1:2 w lines ls 1 lc rgb 'black' \n",
 }
-
 -- plotting command -----------------------------------------------------------o
 
 local mtable, Command in MAD
---[[
-function exec(self)
-  local gp_script = io.open(self.script    , "w")
-  local plot_data = io.open(self.plotdata  , "w")
-  local lay_data  = io.open(self.layoutdata, "w")
-  local src = self.src
-  local out = self.out
-  local inp = self.inp
-  if is_string(inp) then inp = totable(inp) end
-  if is_string(out) then out = totable(out) end
-
-  print(is_vector(inp))
-
-  local keys_plot = mkkeys(inp, out)
-  local d_src     = scale_dat(src, keys_plot, self.range)
-
-  local temp_size
-  if self.sequence then
-    local lay_src   = scale_dat(src, {'s', 'l', 'kind'}, self.range)
-    local lay_kinds = rm_dupl  (lay_src.kind)
-    local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
-    plotter( L, lay_data, {'x','y'} )
-    self.sizeplot = 0.85
-  else
-    temp_size = 1..15
-  end
-
-  self.gtitle = src.title
-  self.date   = src.date
-  self.time   = src.time
-  self.hlimit[1]  , self.hlimit[2]   = scale_axis ( d_src, inp )
-  self.ymin  , self.ymax   = scale_axis ( d_src, out )
-  self.xlabel, self.ylabel = axis_titles( inp  , out )
-
-  plotter       ( d_src, plot_data, keys_plot )
-  temp = scale_dat(template, 1, temp_size)
-  local temp = temp_fill( temp, self )
-  temp_multiplot( temp    , out       )
-  temp_print    ( temp    , gp_script )
-  os.execute("gnuplot "..self.script)
-end
-]]
 
 function exec(self)
   -- file openers
@@ -307,31 +274,31 @@ function exec(self)
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
 
-  -- plotters generation
-  local temp_size
+  -- plotters generations
+  local temp
   if self.sequence then
-    local lay_src   = scale_dat(self.src, {'s', 'l', 'kind'}, self.range)
-    local lay_kinds = rm_dupl  (lay_src.kind)
-    local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
+    local lay_kinds = rm_dupl  (self.src.kind)
+    local lay_src   = scale_dat(self.src , {'s','l','kind'}, self.rng)
+    local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds)
     plotter( L, lay_data, {'x','y'} )
     self.sizeplot = 0.85
+    temp = mk_tbl(template, temp_lay)
   else
-    temp_size = 1..15
+    temp = template
   end
 
   local inpK, outK = self.inpK, self.outK
   if is_string(inpK) then inpK = totable(inpK) end
   if is_string(outK) then outK = totable(outK) end
-  local keys_plot = mkkeys(inpK, outK)
+  local keys_plot = mk_tbl(inpK, outK)
   local d_src = {x = self.inp, y = self.out}
+  --for i,v in ipairs(d_src.x) do print(i,v) end
   plotter( d_src, plot_data, keys_plot )
 
   -- template operations
-  local temp = scale_dat(template, 1, temp_size)
   temp = temp_fill( temp, self )
   temp_multiplot( temp, outK      )
   temp_print    ( temp, gp_script )
-
   os.execute("gnuplot "..self.script)
 end
 
@@ -339,13 +306,14 @@ local plot = Command 'plot' {
   table    = nil,
   sequence = nil,
 
-  range = 1..100,
   inpraw = vector(10):fill(1..10),
   outraw = vector(10):fill(1..10),
-  inp = \s scale_vec(s.inpraw, s.range),
-  out = \s scale_vec(s.outraw, s.range),
-  inpK = 'x',
-  outK = 'y',
+  range = 1..100,
+  rng   = \s scale_range(s.inpraw, s.range),
+  inp   = \s scale_vec  (s.inpraw, s.rng  ),
+  out   = \s scale_vec  (s.outraw, s.rng  ),
+  inpK  = 'x',
+  outK  = 'y',
 
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
@@ -362,15 +330,15 @@ local plot = Command 'plot' {
 
   hlimit = \s { scale_axisV( s.inp ) },
   vlimit = \s { scale_axisV( s.out ) },
-  xmin = \s s.hlimit[1],  xmax = \s s.hlimit[2],
-  ymin = \s s.vlimit[1],  ymax = \s s.vlimit[2],
+  xmin   = \s s.hlimit[1],  xmax = \s s.hlimit[2],
+  ymin   = \s s.vlimit[1],  ymax = \s s.vlimit[2],
 
-  xlabel       = \s axis_title( totable(s.inpK) ),
-  ylabel       = \s axis_title( totable(s.outK) ),
-  title       = \s s.src.title,
-  date         = \s s.src.date ,
-  time         = \s s.src.time ,
-  interpolate  = "w lines" ,
+  xlabel = \s axis_title( totable(s.inpK) ),
+  ylabel = \s axis_title( totable(s.outK) ),
+  title  = \s s.src.title,
+  date   = \s s.src.date,
+  time   = \s s.src.time,
+  interpolate = "",
   exec = exec,
 } :set_readonly()
 
