@@ -89,6 +89,17 @@ local function plotter(src, output, keys) -- REDO
 end
 
 -- PD
+local function chksize(rng, start, stop) -- add rng table option
+  if is_range(rng) and rng:size() <= stop then start, stop = rng.start, rng.stop end
+  return start, stop
+end
+
+local function scale_vec(src, rng)
+  local start, stop = 1, #src
+  start, stop = chksize(rng, start, stop)
+  return src:getv(start..stop )
+end
+
 local function scale_tbl(tbl, start, stop)
   local r = {}
   for j=1,stop do r[j] = tbl[start+j] end
@@ -99,14 +110,14 @@ local function scale_dat(src, keys, rng) -- TODO
   local d_src = {}
   if is_table(src[1]) then
     local start, stop = 1, #src[keys[1]]
-    if rng and rng:size() <= stop then start, stop = rng.start, rng.stop end
+    start, stop = chksize(rng, start, stop)
     for j,k in ipairs(keys) do
       if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
                             else d_src[k]=scale_tbl(src[k],start,stop) end
     end
   else
     local start, stop = 1, #src
-    if rng and rng:size() <= stop then start, stop = rng.start, rng.stop end
+    start, stop = chksize(rng, start, stop)
     d_src = scale_tbl(src, start, stop)
   end
   return d_src
@@ -116,19 +127,22 @@ end
 local function scale_axis(src, keys)
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
-    local min = src[key]:min()
-    local max = src[key]:max()
+    local min = src[i]:min()
+    local max = src[i]:max()
     vmin:seti(i, min)
     vmax:seti(i, max)
   end
   return vmin:min(), vmax:max()
 end
 
-local function axis_titles(inp, out)
-  local xlabel ,ylabel = "",""
-  for _,key in pairs(inp) do xlabel = xlabel..key.." " end
-  for _,key in pairs(out) do ylabel = ylabel..key.." " end
-  return xlabel ,ylabel
+local function scale_axisV(src)
+  return src:min(), src:max()
+end
+
+local function axis_title(src)
+  local label = ""
+  for _,key in pairs(src) do label = label..key.." " end
+  return label
 end
 
 --layout
@@ -209,13 +223,13 @@ local template = {
     "set grid \n"                      ,
     --"set ytics \n",
     --"set y2tics \n",
+    --"set y2label '$ylabel' \n"          ,
     "set lmargin at screen $lmargin \n",
     "set rmargin at screen $rmargin \n",
     "set size 1,$sizeplot \n"          ,
-    "set title '$gtitle, MAD, $date $time'  \n",
+    "set title '$title, MAD, $date $time'  \n",
     "set xlabel '$xlabel' \n"          ,
     "set ylabel '$ylabel' \n"          ,
-    "set y2label '$ylabel' \n"          ,
     "set xrange [$xmin:$xmax] \n"      ,
     "set yrange [$ymin:$ymax] \n"      ,
     --"set y2range [$ymax:$ymin] \n"      ,
@@ -244,17 +258,18 @@ local template = {
 -- plotting command -----------------------------------------------------------o
 
 local mtable, Command in MAD
-
+--[[
 function exec(self)
   local gp_script = io.open(self.script    , "w")
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
-
   local src = self.src
-  local inp = self.inp
   local out = self.out
+  local inp = self.inp
   if is_string(inp) then inp = totable(inp) end
   if is_string(out) then out = totable(out) end
+
+  print(is_vector(inp))
 
   local keys_plot = mkkeys(inp, out)
   local d_src     = scale_dat(src, keys_plot, self.range)
@@ -269,30 +284,68 @@ function exec(self)
   else
     temp_size = 1..15
   end
-  temp = scale_dat(template, 1, temp_size)
 
   self.gtitle = src.title
   self.date   = src.date
   self.time   = src.time
-  self.interpolate = ""
-  self.xmin  , self.xmax   = scale_axis ( d_src, inp )
+  self.hlimit[1]  , self.hlimit[2]   = scale_axis ( d_src, inp )
   self.ymin  , self.ymax   = scale_axis ( d_src, out )
   self.xlabel, self.ylabel = axis_titles( inp  , out )
 
   plotter       ( d_src, plot_data, keys_plot )
-  local temp = temp_fill( template, self )
-  temp_multiplot  ( temp    , out       )
-  temp_print      ( temp    , gp_script )
+  temp = scale_dat(template, 1, temp_size)
+  local temp = temp_fill( temp, self )
+  temp_multiplot( temp    , out       )
+  temp_print    ( temp    , gp_script )
+  os.execute("gnuplot "..self.script)
+end
+]]
+
+function exec(self)
+  -- file openers
+  local gp_script = io.open(self.script    , "w")
+  local plot_data = io.open(self.plotdata  , "w")
+  local lay_data  = io.open(self.layoutdata, "w")
+
+  -- plotters generation
+  local temp_size
+  if self.sequence then
+    local lay_src   = scale_dat(self.src, {'s', 'l', 'kind'}, self.range)
+    local lay_kinds = rm_dupl  (lay_src.kind)
+    local L         = layout   (lay_src.l, lay_src.s, lay_src.kind, lay_kinds )
+    plotter( L, lay_data, {'x','y'} )
+    self.sizeplot = 0.85
+  else
+    temp_size = 1..15
+  end
+
+  local inpK, outK = self.inpK, self.outK
+  if is_string(inpK) then inpK = totable(inpK) end
+  if is_string(outK) then outK = totable(outK) end
+  local keys_plot = mkkeys(inpK, outK)
+  local d_src = {x = self.inp, y = self.out}
+  plotter( d_src, plot_data, keys_plot )
+
+  -- template operations
+  local temp = scale_dat(template, 1, temp_size)
+  temp = temp_fill( temp, self )
+  temp_multiplot( temp, outK      )
+  temp_print    ( temp, gp_script )
+
   os.execute("gnuplot "..self.script)
 end
 
 local plot = Command 'plot' {
-  table    = false,
-  sequence = false,
+  table    = nil,
+  sequence = nil,
 
-  inp = 'x'   ,
-  out = 'y'   ,
-  range = 1..100,   --range = {1,-1},
+  range = 1..100,
+  inpraw = vector(10):fill(1..10),
+  outraw = vector(10):fill(1..10),
+  inp = \s scale_vec(s.inpraw, s.range),
+  out = \s scale_vec(s.outraw, s.range),
+  inpK = 'x',
+  outK = 'y',
 
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
@@ -306,15 +359,17 @@ local plot = Command 'plot' {
   lmargin      = 0.1,
   rmargin      = 0.9,
   sizeplot     = 1  ,
-  xmin         = 0  ,
-  xmax         = 10 ,
-  ymin         = 0  ,
-  ymax         = 10 ,
-  xlabel       = "x",
-  ylabel       = "y",
-  gtitle       = "no-title",
-  date         = "no-date" ,
-  time         = "no-time" ,
+
+  hlimit = \s { scale_axisV( s.inp ) },
+  vlimit = \s { scale_axisV( s.out ) },
+  xmin = \s s.hlimit[1],  xmax = \s s.hlimit[2],
+  ymin = \s s.vlimit[1],  ymax = \s s.vlimit[2],
+
+  xlabel       = \s axis_title( totable(s.inpK) ),
+  ylabel       = \s axis_title( totable(s.outK) ),
+  title       = \s s.src.title,
+  date         = \s s.src.date ,
+  time         = \s s.src.time ,
   interpolate  = "w lines" ,
   exec = exec,
 } :set_readonly()
