@@ -24,11 +24,19 @@ local function save_file(name, contents)
   f:close()
 end
 
+local function run(command, stdin, stdout)
+  -- TODO: use pcall
+  if stdin then command = command .. " <" .. stdin end
+  if stdout then command = command .. " >" .. stdout end
+  os.execute(command)
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
 
 local function substitute_all(context, templates)
+  local results = {}
   -- benchmark with varying initial conditions independently
   for _, study in ipairs(context.studies:get_varkey()) do
     local overrides = context.studies[study]
@@ -39,11 +47,15 @@ local function substitute_all(context, templates)
         study   = study,
       } (overrides)
       for engine, template in pairs(templates) do
-        save_file(substitute(context.madfile, context),
-                  substitute(template, context))
+        local context = context { engine=engine }
+        local input = substitute(template, context)
+        local madfile = substitute(context.madfile, context)
+        save_file(madfile, input)
+        table.insert(results, {context, engine, madfile})
       end
     end
   end
+  return results
 end
 
 
@@ -79,7 +91,16 @@ DEFAULTS = MAD.Object {
     -- output:
     madfile = "${prefix}.${engine}",
     tfsfile = "${prefix}.${engine}.tfs",
+    logfile = "${prefix}.${engine}.log",
 }
+
+local function run_madx(madfile, logfile)
+  run("madx", madfile, logfile)
+end
+
+local function run_mad(madfile, logfile)
+  run("mad " .. madfile, nil, logfile)
+end
 
 local function main(args)
 
@@ -104,8 +125,24 @@ local function main(args)
     mad = read_file('mad_track.mad'),
   }
 
+  local runners = {
+    madx = run_madx,
+    ptc = run_madx,
+    mad = run_mad,
+  }
+
+  -- first write+exec mad files
   for _, filename in ipairs(opts) do
-    substitute_all(dofile(filename), templates)
+    local context = dofile(filename)
+    local studies = substitute_all(context, templates)
+
+    if opts['run'] then
+      for _, study in ipairs(studies) do
+        local context, engine, madfile = unpack(study)
+        local logfile = substitute(context.logfile, context)
+        runners[engine](madfile, logfile)
+      end
+    end
   end
 end
 
