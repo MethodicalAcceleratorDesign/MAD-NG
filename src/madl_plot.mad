@@ -51,8 +51,16 @@ local min, max  in MAD.gmath
 
 -- implementation -------------------------------------------------------------o
 
-local function table(src)
+local function to_table(src)
   if is_string(src) then return totable(src) else return src end
+end
+
+local function keys_tbl(t1, t2, keys)
+  local table = {}
+  for j,k in ipairs(keys) do
+    table[k] = t1[k] or t2[k]
+  end
+  return table
 end
 
 local function mk_tbl(t1, t2)
@@ -92,13 +100,8 @@ local function plotter(src, output, keys) -- REDO
   output:close()
 end
 
--- PD
-local function chksize(rng, start, stop)
-  if rng:size() <= stop then start, stop = rng.start, rng.stop end
-  return start, stop
-end
-
-local function scale_range(src, rng)
+--scalling
+local function scale_rng(src, rng)
   if     is_range(rng) then return rng
   elseif is_table(rng) then
     local start , stop  = 1, #src
@@ -110,6 +113,11 @@ local function scale_range(src, rng)
     if rng[2] == -1 then stop = #src end
     return start..stop
   end
+end
+
+local function chksize(rng, start, stop)
+  if rng:size() <= stop then start, stop = rng.start, rng.stop end
+  return start, stop
 end
 
 local function scale_tbl(tbl, start, stop)
@@ -129,7 +137,6 @@ local function scale_dat(src, keys, rng)
   return d_src
 end
 
--- axis
 local function scale_axis(src, keys)
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
@@ -141,6 +148,7 @@ local function scale_axis(src, keys)
   return vmin:min(), vmax:max()
 end
 
+--titles
 local function axis_title(src)
   local label = ""
   for _,key in pairs(src) do label = label..key.." " end
@@ -154,6 +162,17 @@ local function mktitle(title, notitle, name, date, time)
 end
 
 --layout
+local function keys(seq)
+  local kinds, c = {}, 1
+  local vkeys = seq:get_varkey()
+  for _,k in ipairs(vkeys) do
+    if is_table(seq[k]) then
+      kinds[c] = k:lower(); c=c+1
+    end
+  end
+  return kinds
+end
+
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
   local cx  , cy   = 1 , 1
@@ -196,17 +215,6 @@ local function layout(seq, keys, tbl, inp, rng )
   return {x=xl, y=yl}
 end
 
-local function keys(seq)
-  local kinds, c = {}, 1
-  local vkeys = seq:get_varkey()
-  for _,k in ipairs(vkeys) do
-    if is_table(seq[k]) then
-      kinds[c] = k:lower(); c=c+1
-    end
-  end
-  return kinds
-end
-
 -- template
 local function temp_fill(temp, src)
   local templ = {}
@@ -243,16 +251,15 @@ local template = {
     --"set ytics \n"                   ,
     --"set y2tics \n"                  ,
     --"set y2label '$ylabel' \n"       ,
+    --"set y2range [$ymax:$ymin] \n"   ,
     "set lmargin at screen $lmargin \n",
     "set rmargin at screen $rmargin \n",
     "set size 1,$sizeplot \n"          ,
-    --"set title '$title, MAD, $date $time'  \n",
     "set title '$mktitle'  \n",
     "set xlabel '$xlabel' \n"          ,
     "set ylabel '$ylabel' \n"          ,
     "set xrange [$xmin:$xmax] \n"      ,
     "set yrange [$ymin:$ymax] \n"      ,
-    --"set y2range [$ymax:$ymin] \n"      ,
     "plot ",
     "'$plotdata' using 1:count every 1::0 $interpolate lc count  title 'ytitle',\\\n",
 }
@@ -277,7 +284,6 @@ local temp_lay = {
     "plot '$layoutdata' u 1:2 w lines ls 1 lc rgb 'black' \n",
 }
 -- plotting command -----------------------------------------------------------o
-
 local mtable, Command in MAD
 
 function exec(self)
@@ -286,20 +292,14 @@ function exec(self)
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
-
   if self.sequence then
     local keys = rm_dupl( keys(self.sequence) )
-    local L    = layout ( self.sequence, keys, self.table, self.inp, self.rng )
+    local L    = layout ( self.sequence, keys, self.tbl, self.inp, self.rng )
     plotter( L, lay_data, {'x','y'} )
-
     self.sizeplot = 0.85
     temp = mk_tbl(template, temp_lay)
   end
-
-  local keys_plot = mk_tbl   (self.inp  , self.out)
-  local d_src     = scale_dat(self.table, keys_plot, self.rng)
-  plotter( d_src, plot_data, keys_plot )
-
+  plotter( self.src, plot_data, self.keys )
   -- template operations
   temp = temp_fill( temp, self      )
   temp_multiplot  ( temp, self.out  )
@@ -313,10 +313,9 @@ local plot = Command 'plot' {
   sequence = nil,
   HAXIS = 'x',
   VAXIS = 'y',
-  inp   = \s table(s.HAXIS),
-  out   = \s table(s.VAXIS),
-  range = \s 1..#s.table[s.inp[1]],
-  rng   = \s scale_range(s.table[s.inp[1]], s.range),
+  inp   = \s to_table(s.HAXIS),
+  out   = \s to_table(s.VAXIS),
+  range = \s 1..#s.tbl[s.inp[1]],
 
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
@@ -331,18 +330,22 @@ local plot = Command 'plot' {
   rmargin      = 0.9,
   sizeplot     = 1  ,
 
-  hlimit = \s { scale_axis( s.table, s.inp ) },
-  vlimit = \s { scale_axis( s.table, s.out ) },
+  hlimit = \s { scale_axis( s.src, s.inp ) },
+  vlimit = \s { scale_axis( s.src, s.out ) },
   xmin   = \s s.hlimit[1],  xmax = \s s.hlimit[2],
   ymin   = \s s.vlimit[1],  ymax = \s s.vlimit[2],
-
   xlabel  = \s axis_title( s.inp ),
   ylabel  = \s axis_title( s.out ),
   notitle = nil,
   title   = nil,
-  mktitle = \s mktitle(s.title, s.notitle, s.table.title, s.table.date, s.table.time),
-
   interpolate = "",
+
+  mktitle = \s mktitle(s.title, s.notitle, s.table.title, s.table.date, s.table.time),
+  rng   = \s scale_rng(s.tbl[s.inp[1]], s.range),
+  keys  = \s mk_tbl   (s.inp  , s.out          ),
+  tbl   = \s keys_tbl (s.table, s.data, s.keys ),
+  src   = \s scale_dat(s.tbl  , s.keys, s.rng  ),
+
   exec = exec,
 } :set_readonly()
 
