@@ -31,6 +31,12 @@ local function run(command, stdin, stdout)
   os.execute(command)
 end
 
+local function titlecase(name)
+  return name:gsub("%s*(%S)(%S*)%s*", function(first, rest)
+    return string.upper(first) .. rest
+  end)
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
@@ -102,6 +108,22 @@ local function run_mad(madfile, logfile)
   run("mad " .. madfile, nil, logfile)
 end
 
+-- TODO: create test matrix in memory
+-- TODO: compare by columns using assertAllAlmostEquals
+local function test(template, context, expected, actual)
+  local suite = titlecase(context.study .. ' ' .. context.engine)
+  local test = substitute(template, {
+    suite = suite,
+    margin = 1e-1,
+    expected = expected,
+    actual = actual,
+    varname = context.varname,
+  })
+  -- print(test)
+  -- os.exit()
+  assert(load(test, suite))()
+end
+
 local function main(args)
 
   -- handle command line
@@ -119,6 +141,8 @@ local function main(args)
     end
   end
 
+  local test_template = read_file('test_suite.mad')
+
   local templates = {
     madx = read_file('madx_track.madx'),
     ptc = read_file('ptc_track.madx'),
@@ -130,6 +154,8 @@ local function main(args)
     ptc = run_madx,
     mad = run_mad,
   }
+
+  local all_tests = {}
 
   -- first write+exec mad files
   for _, filename in ipairs(opts) do
@@ -143,6 +169,27 @@ local function main(args)
         runners[engine](madfile, logfile)
       end
     end
+
+    if opts['test'] then
+      table.insert(all_tests, studies)
+    end
+  end
+
+  -- run tests separately
+  for _, studies in ipairs(all_tests) do
+    for _, study in ipairs(studies) do
+      local context, engine, madfile = unpack(study)
+      if engine ~= 'mad' then
+        local reffile = context.prefix .. '.mad.tfs'
+        local tfsfile = substitute(context.tfsfile, context)
+        test(test_template, context, reffile, tfsfile)
+      end
+    end
+  end
+  if opts['test'] then
+    -- control the display of custom objects during tests
+    MAD:export('tostring', true)
+    os.exit( MAD.utest.LuaUnit.run('-v') )
   end
 end
 
