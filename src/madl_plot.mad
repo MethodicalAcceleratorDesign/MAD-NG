@@ -161,16 +161,8 @@ local function mktitle(title, notitle, name, date, time)
 end
 
 --layout
-local function keys(seq)
-  local kinds, c = {}, 1
-  local vkeys = seq:get_varkey()
-  for _,k in ipairs(vkeys) do
-    if is_table(seq[k]) then
-      kinds[c] = k:lower(); c=c+1
-    end
-  end
-  return kinds
-end
+local xadjst = \x,l,s -> (x * l + s - l)
+local yadjst = \y,h   -> (y * h        )
 
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
@@ -180,35 +172,18 @@ local function sh_get(sh)
   return vector(x_sh), vector(y_sh)
 end
 
-local xadjst = \x,l,s -> (x * l + s - l)
-local yadjst = \y,h   -> (y * h        )
-
-local function sh_vec(x_sh, y_sh, l, s, h)
-  local size = x_sh:size()
-  local x1, y1 = vector(size), vector(size)
-  for i=1,size do
-    x1:seti( i, xadjst(x_sh:geti(i), l, s) )
-    y1:seti( i, yadjst(y_sh:geti(i), h   ) )
-  end
-  return x1, y1
-end
-
-local function layout(seq, keys, tbl, inp, rng )
+local function layout(seq, lim)
   local xl, yl, c = {}, {}, 1
-  for i,k in ipairs( keys ) do
-    local s    = seq[k].at
-    local l    = seq[k].l
-    local kind = seq[k].kind
-    local lim  = tbl[inp[1]][rng.stop]
+  local s_pos in seq
+  for i=1,#s_pos do
+    local elem, s = seq[i]   , s_pos[i]
+    local kind, l = elem.kind, elem.l
     if s and l and s<lim then
-      local h = seq[k][dat[kind].str_k]
       local x, y = sh_get(dat[kind].shape)
-      if h then
-        xl[c], yl[c] = sh_vec(x, y, l, s, h)
-      else
-        xl[c], yl[c] = sh_vec(x, y, l, s, 1)
-      end
-      c=c+1
+      local h    = elem[dat[elem.kind].str_k] or 1
+      xl[c] = x:map(\x xadjst(x, l, s))
+      yl[c] = y:map(\y yadjst(y, h   ))
+      c = c+1
     end
   end
   return {x=xl, y=yl}
@@ -306,17 +281,17 @@ function exec(self)
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
   if self.sequence then
-    local keys = rm_dupl( keys(self.sequence) )
-    local L    = layout ( self.sequence, keys, self.tbl, self.inp, self.rng )
+  --local start, stop = self.sequence:range_index (self.range)
+    local seq = assert(self.sequence, "missing sequence")
+    local lim = self.tbl[self.inp[1]][self.rng.stop]
+    local L   = layout( seq, lim )
     plotter( L, lay_data, {'x','y'} )
     self.sizeplot = 0.85
     temp = mk_tbl(template, temp_lay)
   end
-
   if self.vlimit2[1] then
     temp = temp_multiaxis(temp, temp_multi)
   end
-
 
   plotter( self.src, plot_data, self.keys )
   -- template operations
