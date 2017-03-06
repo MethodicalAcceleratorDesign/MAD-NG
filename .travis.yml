@@ -18,8 +18,14 @@ addons:
     packages:
     - gfortran
 
+env:
+  global:
+    - PREFIX=$TRAVIS_BUILD_DIR/install
+    - PATH=$PREFIX/bin:$PATH
+
 # Build dependencies:
 before_install:
+  - env
   - source .travis/build_common.sh
 # Although the archives are included, need some dev files for now:
   - SILENT .travis/build_luajit.sh
@@ -35,11 +41,24 @@ install:
   - make -f Makefile.linux
   - cd ..
 
+  # These should be before_install, but we can't install them until we have 'mad':
+  - SILENT .travis/build_luarocks.sh
+  - SILENT luarocks install luacov
+  - SILENT luarocks install luacov-coveralls
+
 # Run tests:
 script:
   - cd tests/utests
   - ../../src/mad all.mad
+  # Run coverage on subset:
+  - export LUA_PATH=$PREFIX/share/lua/5.1/?.lua
+  - ../../src/mad -lluacov all.mad -p 'Test[^_]' -x LHC
 
 # Submit coverage report, etc:
 after_success:
-  - true
+  # Make pathes relative to root directory and submit from there - for best
+  # integration with coveralls.io:
+  - sed -rn -e "/[0-9]+:\//{s#:$TRAVIS_BUILD_DIR/#:#;p;n;p}" -i luacov.stats.out
+  - mv luacov.stats.out ../..
+  - cd ../..
+  - luacov-coveralls
