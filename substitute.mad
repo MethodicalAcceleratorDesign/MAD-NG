@@ -41,30 +41,6 @@ end
 -- Config
 ------------------------------------------
 
-local function substitute_all(context, templates)
-  local results = {}
-  -- benchmark with varying initial conditions independently
-  for _, study in ipairs(context.studies:get_varkey()) do
-    local overrides = context.studies[study]
-    if overrides then
-      local context = context {
-        prefix  = context.prefix .. study,
-        [study] = "${varname}", -- usually study is the varied attribute name
-        study   = study,
-      } (overrides)
-      for engine, template in pairs(templates) do
-        local context = context { engine=engine }
-        local input = substitute(template, context)
-        local madfile = substitute(context.madfile, context)
-        save_file(madfile, input)
-        table.insert(results, {context, engine, madfile})
-      end
-    end
-  end
-  return results
-end
-
-
 -- GLOBAL:
 DEFAULTS = MAD.Object {
     -- sequence
@@ -118,18 +94,16 @@ end
 
 -- TODO: create test matrix in memory
 -- TODO: compare by columns using assertAllAlmostEquals
-local function test(template, context, expected, actual)
-  local suite = titlecase(context.study .. ' ' .. context.engine)
-  local test = substitute(template, {
-    suite = suite,
+local function load_test(template, ctx)
+  local input = substitute(template, {
+    madx_file = substitute(ctx.runs.madx.tfsfile, ctx.runs.madx),
+    mad_file = substitute(ctx.runs.mad.tfsfile, ctx.runs.mad),
+    ptc_file = substitute(ctx.runs.ptc.tfsfile, ctx.runs.ptc),
+    suite = ctx.study,
     margin = 1e-14,
-    expected = expected,
-    actual = actual,
-    varname = context.varname,
+    varname = ctx.varname,
   })
-  -- print(test)
-  -- os.exit()
-  assert(load(test, suite))()
+  assert(load(input, suite))()
 end
 
 local function main(args)
@@ -168,13 +142,39 @@ local function main(args)
   -- first write+exec mad files
   for _, filename in ipairs(opts) do
     local context = dofile(filename)
-    local studies = substitute_all(context, templates)
+    local studies = {}
 
+    -- derive a context for every study
+    for _, study in ipairs(context.studies:get_varkey()) do
+      local overrides = context.studies[study]
+      if overrides then
+        table.insert(studies, context {
+          prefix  = context.prefix .. study,
+          [study] = "${varname}", -- usually study is the varied attribute name
+          study   = study,
+        } (overrides))
+      end
+    end
+
+    -- substitute a template for each engine
+    for _, study in ipairs(studies) do
+      study.runs = {}
+      for engine, template in pairs(templates) do
+        local context = study { engine=engine }
+        local input = substitute(template, context)
+        context.madfile = substitute(context.madfile, context)
+        save_file(context.madfile, input)
+        study.runs[engine] = context
+      end
+    end
+
+    -- run test for each engine
     if opts['run'] then
       for _, study in ipairs(studies) do
-        local context, engine, madfile = unpack(study)
-        local logfile = substitute(context.logfile, context)
-        runners[engine](madfile, logfile)
+        for engine, context in pairs(study.runs) do
+          local logfile = substitute(context.logfile, context)
+          runners[engine](context.madfile, logfile)
+        end
       end
     end
 
@@ -186,12 +186,7 @@ local function main(args)
   -- run tests separately
   for _, studies in ipairs(all_tests) do
     for _, study in ipairs(studies) do
-      local context, engine, madfile = unpack(study)
-      if engine ~= 'mad' then
-        local reffile = context.prefix .. '.mad.tfs'
-        local tfsfile = substitute(context.tfsfile, context)
-        test(test_template, context, reffile, tfsfile)
-      end
+      load_test(test_template, study)
     end
   end
   if opts['test'] then
