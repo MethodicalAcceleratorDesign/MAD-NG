@@ -57,9 +57,8 @@ end
 
 local function keys_tbl(t1, t2, keys)
   local table = {}
-  for j,k in ipairs(keys) do
-    table[k] = t1[k] or t2[k]
-  end
+  if   t1 then for j,k in ipairs(keys) do table[k] = t1[k] or t2[k] end
+  else         for j,k in ipairs(keys) do table[k] = t2[k]          end end
   return table
 end
 
@@ -235,10 +234,15 @@ local function temp_multiplot(temp, keys)
   end
 end
 
-local function temp_maxis(temp, inp)
-  --local s, lnr = #keys
-  --for i,line in ipairs(temp) do if line:find('title') then lnr = i end end
-
+local function temp_multiaxis(temp, inp)
+  local template = mk_tbl(temp,{})
+  local s, lnr = #inp
+  for i,line in ipairs(temp) do if line:find('mktitle') then lnr = i end end
+  if lnr then
+    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]   end
+    for i=0,s-1        do template[lnr+i]=inp [i+1] end
+  end
+  return template
 end
 
 local function temp_print(temp, printer) -- maybe connect to plotter
@@ -266,10 +270,10 @@ local template = {
   "'$plotdata' using 1:count every 1::0 $interpolate lc count  title 'ytitle',\\\n",
 }
 
-local temp_v2 = {
+local temp_multi = {
   "set ytics \n"                  ,
   "set y2tics \n"                 ,
-  "set y2label '$ylabel' \n"      ,
+  "set y2label '$ylabel2' \n"     ,
   "set y2range [$ymin2:$ymax2] \n",
 }
 
@@ -308,27 +312,29 @@ function exec(self)
     self.sizeplot = 0.85
     temp = mk_tbl(template, temp_lay)
   end
-  if self.vlimit2 then
 
+  if self.vlimit2[1] then
+    temp = temp_multiaxis(temp, temp_multi)
   end
+
+
   plotter( self.src, plot_data, self.keys )
   -- template operations
   temp = temp_fill( temp, self      )
   temp_multiplot  ( temp, self.out  )
   temp_print      ( temp, gp_script )
   os.execute("gnuplot "..self.script)
+
 end
 
 local plot = Command 'plot' {
   table    = nil,
   data     = nil,
   sequence = nil,
-  HAXIS  = 'x',
-  VAXIS  = 'y',
-  VAXIS2 = nil,
-  inp   = \s to_table(s.HAXIS),
-  out   = \s to_table(s.VAXIS),
-  range = \s 1..#s.tbl[s.inp[1]],
+  HAXIS    = 'x',
+  VAXIS    = 'y',
+  VAXIS2   = nil,
+  range    = \s 1..#s.tbl[s.inp[1]],
 
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
@@ -343,13 +349,14 @@ local plot = Command 'plot' {
   rmargin      = 0.9,
   sizeplot     = 1  ,
 
-  hlimit  = \s { scale_axis( s.src, s.inp ) },
-  vlimit  = \s { scale_axis( s.src, s.out ) },
+  hlimit  = \s { scale_axis( s.src, s.inp ) }    ,
+  vlimit  = \s { scale_axis( s.src, s.out ) }    ,
   xmin    = \s s.hlimit[1], xmax = \s s.hlimit[2],
   ymin    = \s s.vlimit[1], ymax = \s s.vlimit[2],
 
-  vlimit2 = vlimit,
+  vlimit2 = {nil,nil},
   ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
+  ylabel2 = "",
 
   xlabel  = \s axis_title( s.inp ),
   ylabel  = \s axis_title( s.out ),
@@ -358,17 +365,19 @@ local plot = Command 'plot' {
   interpolate = "",
 
 -- not-user option
+  inp     = \s to_table(s.HAXIS),
+  out     = \s to_table(s.VAXIS),
   mktitle = \s mktitle(s.title, s.notitle, s.table.title, s.table.date, s.table.time),
-  rng   = \s scale_rng(s.tbl[s.inp[1]], s.range),
-  keys  = \s mk_tbl   (s.inp  , s.out          ),
-  tbl   = \s keys_tbl (s.table, s.data, s.keys ),
-  src   = \s scale_dat(s.tbl  , s.keys, s.rng  ),
+  rng     = \s scale_rng(s.tbl[s.inp[1]], s.range),
+  keys    = \s mk_tbl   (s.inp  , s.out          ),
+  tbl     = \s keys_tbl (s.table, s.data, s.keys ),
+  src     = \s scale_dat(s.tbl  , s.keys, s.rng  ),
 
   exec = exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return {
-  plot = plot,
+  plot   = plot  ,
   __help = __help,
 }
