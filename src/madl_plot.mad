@@ -157,7 +157,7 @@ end
 local function mktitle(title, notitle, name, date, time)
   if     notitle == true  then return ""
   elseif is_string(title) then return title
-  else                         return name..", MAD"..date..time end
+  else                         return name..", MAD "..date..time end
 end
 
 --layout
@@ -172,13 +172,13 @@ local function sh_get(sh)
   return vector(x_sh), vector(y_sh)
 end
 
-local function layout(seq, lim)
+local function layout(seq, start, stop)
   local xl, yl, c = {}, {}, 1
   local s_pos in seq
-  for i=1,#s_pos do
+  for i=start,stop do
     local elem, s = seq[i]   , s_pos[i]
     local kind, l = elem.kind, elem.l
-    if s and l and s<lim then
+    if s and l then
       local x, y = sh_get(dat[kind].shape)
       local h    = elem[dat[elem.kind].str_k] or 1
       xl[c] = x:map(\x xadjst(x, l, s))
@@ -220,7 +220,7 @@ local function temp_multiaxis(temp, inp)
   return template
 end
 
-local function temp_print(temp, printer) -- maybe connect to plotter
+local function temp_print(temp, printer) -- connect to plotter
   for i =1,#temp do printer:write(temp[i]) end
   printer:close()
 end
@@ -236,7 +236,7 @@ local template = {
   "set lmargin at screen $lmargin \n",
   "set rmargin at screen $rmargin \n",
   "set size 1,$sizeplot \n"          ,
-  "set title '$mktitle'  \n",
+  "set title '$gtitle'  \n",
   "set xlabel '$xlabel' \n"          ,
   "set ylabel '$ylabel' \n"          ,
   "set xrange [$xmin:$xmax] \n"      ,
@@ -275,31 +275,37 @@ local temp_lay = {
 local mtable, Command in MAD
 
 function exec(self)
-  -- file openers
   local gp_script = io.open(self.script    , "w")
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
-  if self.sequence then
-  --local start, stop = self.sequence:range_index (self.range)
-    local seq = assert(self.sequence, "missing sequence")
-    local lim = self.tbl[self.inp[1]][self.rng.stop]
-    local L   = layout( seq, lim )
-    plotter( L, lay_data, {'x','y'} )
-    self.sizeplot = 0.85
-    temp = mk_tbl(template, temp_lay)
-  end
-  if self.vlimit2[1] then
-    temp = temp_multiaxis(temp, temp_multi)
+
+  if self.table then
+    local title, date, time in self.table
+    self.gtitle =  mktitle(self.title, self.notitle, title, date, time)
+  else
+    self.gtitle = " "
   end
 
+  if self.sequence then
+    local seq = self.sequence
+    assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+    local start, stop = seq:range_index (self.range)
+    local lay = layout( seq, start, stop )
+    self.sizeplot = 0.85
+    self.datrange = {1,-1}
+    temp = mk_tbl(template, temp_lay)
+    plotter( lay, lay_data, {'x','y'} )
+  end
+
+  if self.vlimit2[1] then temp = temp_multiaxis(temp, temp_multi) end
   plotter( self.src, plot_data, self.keys )
+
   -- template operations
   temp = temp_fill( temp, self      )
   temp_multiplot  ( temp, self.out  )
   temp_print      ( temp, gp_script )
   os.execute("gnuplot "..self.script)
-
 end
 
 local plot = Command 'plot' {
@@ -309,8 +315,6 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
-  range    = \s 1..#s.tbl[s.inp[1]],
-
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
@@ -324,31 +328,28 @@ local plot = Command 'plot' {
   rmargin      = 0.9,
   sizeplot     = 1  ,
 
-  hlimit  = \s { scale_axis( s.src, s.inp ) }    ,
-  vlimit  = \s { scale_axis( s.src, s.out ) }    ,
-  xmin    = \s s.hlimit[1], xmax = \s s.hlimit[2],
-  ymin    = \s s.vlimit[1], ymax = \s s.vlimit[2],
-
-  vlimit2 = {nil,nil},
-  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  ylabel2 = "",
-
-  xlabel  = \s axis_title( s.inp ),
-  ylabel  = \s axis_title( s.out ),
-  notitle = nil,
-  title   = nil,
+  range    = {1,-1},
+  datrange = \s 1..#s.ktbl[s.inp[1]],
+  hlimit   = \s { scale_axis( s.src, s.inp ) }       ,
+  vlimit   = \s { scale_axis( s.src, s.out ) }       ,
+  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
+  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
+  xlabel   = \s axis_title( s.inp ),
+  ylabel   = \s axis_title( s.out ),
+  vlimit2  = {nil, nil},
+  ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
+  ylabel2  = "",
+  notitle  = nil,
+  title    = nil,
   interpolate = "",
 
--- not-user option
-  inp     = \s to_table(s.HAXIS),
-  out     = \s to_table(s.VAXIS),
-  mktitle = \s => if s.table then  return mktitle(s.title, s.notitle, s.table.title, s.table.date, s.table.time)
-                             else  return " " end end,
-  rng     = \s scale_rng(s.tbl[s.inp[1]], s.range),
-  keys    = \s mk_tbl   (s.inp  , s.out          ),
-  tbl     = \s keys_tbl (s.table, s.data, s.keys ),
-  src     = \s scale_dat(s.tbl  , s.keys, s.rng  ),
-
+-- non-user option
+  inp  = \s to_table (s.HAXIS),
+  out  = \s to_table (s.VAXIS),
+  keys = \s mk_tbl   (s.inp   , s.out             ),
+  ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
+  drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
+  src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
   exec = exec,
 } :set_readonly()
 
