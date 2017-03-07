@@ -250,6 +250,19 @@ local function xrot_track (elem, m, angle) -- YZ rot
   m.t  = t + ta*y*pz_*(beta_inv+pt) / ptt
 end
 
+--translation
+local function trans_track (elem, m, d) --d(3) - displacement
+  local x, px, y, py, t, pt in m
+  local beta_inv = 1/m.beam.beta
+  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local pz_ = 1/pz_
+
+  x   = x - d[1]
+  y   = x - d[2]
+  m.x = x + d[3]*px*pz_
+  m.y = y + d[3]*py*pz_
+  m.t = t + d[3]*(beta_inv+pt)*pz_
+end
 -- Fringe fields
 
 local function face_track(elem, m, h)
@@ -307,8 +320,8 @@ end
 local function fringe_dipole(elem, m, pos)
 --  TODO:  to add kill_fringe?
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
-  if elem.kill_fringe_ent == 1 then return end
-  if elem.kill_fringe_ext == 1 then return end
+  if elem.kill_ent_fringe == 1 then return end
+  if elem.kill_ext_fringe == 1 then return end
   if elem.kill_fringe     == 1 then return end 
 
   local x, px, y, py, t, pt, T, dir in m
@@ -433,7 +446,8 @@ local function curved_drift_track (elem, m, l)
   local pz_ = 1/pz
   local ptt = 1 - ta*px*pz_
   local xr  = x+rho
-
+--[[ Geometric integration for particle accelerators, E.Forest, 
+ J.Phys. A: Math.Gen. 39 (2006) 5321-5377, p.5365, eq. 127]]
   m.x  = (x + rho*(2*sa2^2 + sa*px*pz_)) / (ca*ptt)
   m.px = ca*px + sa*pz
   m.y  = y + ta*xr*pz_*py/ptt
@@ -441,6 +455,29 @@ local function curved_drift_track (elem, m, l)
 
   m.out_action(elem, m, l, 'curved_drift_track')
 end
+
+local function patch_drift_track (elem, m, l)
+  local angle = elem.angle or 0
+  local d  = elem.d or {}
+  if m.dir == 1 then
+    xrot_track (elem, m, angle)
+    yrot_track (elem, m, angle)
+    srot_track (elem, m, angle)
+    trans_track(elem, m, d)
+  else
+    d[1]  = -d[1]
+    d[1]  = -d[2]
+    angle = -angle
+    trans_track(elem, m, d)
+    srot_track (elem, m, angle)
+    yrot_track (elem, m, angle)
+    xrot_track (elem, m, angle)
+    d[1]  = -d[1]
+    d[1]  = -d[2]
+    angle = -angle
+
+  end  
+end  
 
 -- Drift solenoid exact
 
@@ -553,7 +590,7 @@ local function curved_kick_track (elem, m, l) --
 
   local k0 in elem
   m.px = px - dirch*by*(1 + k0*x) -- only angle
-  m.py = py + dirch*bx*(1 + k0*x) -- k0s*y???
+  m.py = py + dirch*bx*(1 + k0*x) -- k0s*y?????? Ripken
 
   m.out_action(elem, m, l, 'curved_kick_track')
 end
