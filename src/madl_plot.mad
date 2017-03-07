@@ -194,13 +194,13 @@ local function find_key(inp, key)
   return indx
 end
 
-local function temp_multiplot(temp, inp)
-  local s, lnr = #inp, find_key(temp, 'count')
+local function temp_multiplot(temp, inp, key, n)
+  local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' , tostring(i+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]     ) end
+    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key     , tostring(i+n+2))
+                   temp[lnr+i]=temp[lnr+i]:gsub('$ytitle', inp[i+1]       ) end
   end
 end
 
@@ -208,10 +208,10 @@ local function temp_add(temp, inp, key, start)
   local template = mk_tbl(temp, {})
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
-    for i=start,s-1    do template[lnr+i]=inp[i+1] end
+    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]   end
+    for i=start,s-1    do template[i+lnr]=inp [i+1] end
   end
-  return template
+  return template, lnr
 end
 
 local function temp_print(temp, printer) -- connect to plotter
@@ -247,8 +247,8 @@ local temp_multi = {
   "set y2range [$ymin2:$ymax2] \n",
 }
 local temp_sub = {
-  "'$plotdata' using 1:count every 1::0 $interpolate lc count title 'ytitle' axes x1y1,\\\n",
-  "'$plotdata' using 1:$diff  every 1::0 $interpolate lc $difn title '$ytitledif' axes x1y2 \n",
+  "'$plotdata' using 1:count  every 1::0 $interpolate lc count title  '$ytitle' axes x1y1,\\\n",
+  "'$plotdata' using 1:count2 every 1::0 $interpolate lc count2 title '$ytitle' axes x1y2,\\\n",
 }
 
 local temp_lay = {
@@ -297,23 +297,23 @@ function exec(self)
     plotter( lay, lay_data, {'x','y'} )
   end
 
-  if self.vlimit2[1] then
-    temp = temp_add(temp, temp_multi, 'gtitle', 1)
-  end
-  if self.VAXIS2[1]     then
-    temp = temp_add(temp, temp_sub, 'plot', 0)
-    local t = { x=find_key(self.VAXIS, self.VAXIS2[1])+1,
-                y=find_key(self.VAXIS, self.VAXIS2[2])+1 }
-    self.difn = 7
-    self.diff  = string.gsub( "($$x-$$y)", "%$(%w+)", t )
-    self.ytitle2 = " "
+  if self.VAXIS2 then
+    local out2 = to_table (self.VAXIS2)
+    self.keys  = mk_tbl   (self.keys  , out2 )
+    self.ylabel2 = axis_title( out2 )
+    self.vlimit2 = { scale_axis( self.src, out2 ) }
+    temp = temp_add(temp, temp_multi, "gtitle", 1        )
+    temp = temp_add(temp, temp_sub  , "plot"  , 0        )
+    temp_multiplot (temp, out2      , "count2", #self.out)
+    --temp = temp_add(temp, out2      , "count2", 0        )
+    --fill_multiplot (temp, out2      , "count2", #self.out)
   end
   plotter( self.src, plot_data, self.keys )
 
   -- template operations
-  temp = temp_fill( temp, self      )
-  temp_multiplot  ( temp, self.out  )
-  temp_print      ( temp, gp_script )
+  temp_multiplot  ( temp, self.out , "count", 0)
+  temp = temp_fill( temp, self     )
+  temp_print      ( temp, gp_script)
   os.execute("gnuplot "..self.script)
 end
 
@@ -324,6 +324,7 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
+
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
@@ -345,13 +346,13 @@ local plot = Command 'plot' {
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-  vlimit2  = {nil, nil},
-  ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  ylabel2  = "",
   notitle  = nil,
   title    = nil,
   interpolate = "",
-  VAXIS2 = {nil, nil},
+
+  vlimit2  = {nil, nil},
+  ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
+  ylabel2  = "",
 
 -- non-user option
   version = MAD.env.version,
@@ -361,6 +362,7 @@ local plot = Command 'plot' {
   ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
   drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
   src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
+
   exec = exec,
 } :set_readonly()
 
