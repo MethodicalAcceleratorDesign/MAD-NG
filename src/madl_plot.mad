@@ -51,6 +51,7 @@ local min, max  in MAD.gmath
 
 -- implementation -------------------------------------------------------------o
 
+-- check luafun
 local function to_table(src)
   if is_string(src) then return totable(src) else return src end
 end
@@ -146,7 +147,7 @@ end
 local function mktitle(title, notitle, name, date, time)
   if     notitle == true  then return ""
   elseif is_string(title) then return title
-  else                         return name..", MAD "..date..time end
+  else                         return name..", MAD $version, "..date..time end
 end
 
 --layout
@@ -187,35 +188,28 @@ local function temp_fill(temp, src)
   return templ
 end
 
-local function temp_multiplot(temp, keys)
-  local s, lnr = #keys
-  for i,line in ipairs(temp) do if line:find('count') then lnr = i end end
+local function find_key(inp, key)
+  local indx
+  for i,line in ipairs(inp) do if line:find(key) then indx = i end end
+  return indx
+end
+
+local function temp_multiplot(temp, inp)
+  local s, lnr = #inp, find_key(temp, 'count')
   if lnr then
     for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
     for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub('count' , tostring(i+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', keys[i+1]    ) end
+                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]     ) end
   end
 end
 
-local function temp_multiaxis(temp, inp)
-  local template = mk_tbl(temp,{})
-  local s, lnr = #inp
-  for i,line in ipairs(temp) do if line:find('gtitle') then lnr = i end end
+local function temp_add(temp, inp, key, start)
+  local template = mk_tbl(temp, {})
+  local s, lnr = #inp, find_key(temp, key)
   if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]   end
-    for i=1,s-1        do template[lnr+i]=inp [i+1] end
-  end
-  return template
-end
-
-local function temp_substr(temp, temp_inp)
-  local template = mk_tbl(temp,{})
-  local s, lnr = #temp_inp
-  for i,line in ipairs(temp) do if line:find('plot') then lnr = i end end
-  if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp    [i]   end
-    for i=0,s-1        do template[lnr+i]=temp_inp[i+1] end
+    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
+    for i=start,s-1    do template[lnr+i]=inp[i+1] end
   end
   return template
 end
@@ -228,7 +222,7 @@ end
 local template = {
   -- general settings
   "reset\n"                          ,
-  "set terminal $terminaltype size $xsize cm, $ysize cm color font '$fonttype, $fontsize'\n",
+  "set terminal $terminaltype size $xsize cm, $ysize cm enh col font '$fonttype, $fontsize'\n",
   "set output '$filename'\n"         ,
   -- plot data
   "set multiplot \n"                 ,
@@ -246,9 +240,10 @@ local template = {
 }
 
 local temp_multi = {
-  "set ytics \n"                  ,
+  "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
-  "set y2label '$ylabel2' \n"     ,
+  "set tics out \n"               ,
+    "set y2label '$ylabel2' \n"   ,
   "set y2range [$ymin2:$ymax2] \n",
 }
 local temp_sub = {
@@ -302,12 +297,16 @@ function exec(self)
     plotter( lay, lay_data, {'x','y'} )
   end
 
-  if self.vlimit2[1] then temp = temp_multiaxis(temp, temp_multi) end
-  if self.dif[1]     then
-    temp = temp_substr(temp, temp_sub  )
-    self.diff = "($2-$3)"
+  if self.vlimit2[1] then
+    temp = temp_add(temp, temp_multi, 'gtitle', 1)
+  end
+  if self.VAXIS2[1]     then
+    temp = temp_add(temp, temp_sub, 'plot', 0)
+    local t = { x=find_key(self.VAXIS, self.VAXIS2[1])+1,
+                y=find_key(self.VAXIS, self.VAXIS2[2])+1 }
     self.difn = 7
-    self.ytitledif = tostring(self.dif[1].." - "..self.dif[2])
+    self.diff  = string.gsub( "($$x-$$y)", "%$(%w+)", t )
+    self.ytitle2 = " "
   end
   plotter( self.src, plot_data, self.keys )
 
@@ -352,13 +351,10 @@ local plot = Command 'plot' {
   notitle  = nil,
   title    = nil,
   interpolate = "",
-
-  dif  = {nil, nil},
-  diff = "",
-  difn = "",
-  ytitledif = "",
+  VAXIS2 = {nil, nil},
 
 -- non-user option
+  version = MAD.env.version,
   inp  = \s to_table (s.HAXIS),
   out  = \s to_table (s.VAXIS),
   keys = \s mk_tbl   (s.inp   , s.out             ),
@@ -373,3 +369,4 @@ return {
   plot   = plot  ,
   __help = __help,
 }
+--  self:set_variable { date = os.date'%d/%m/%y', time = os.date'%H:%M:%S' }
