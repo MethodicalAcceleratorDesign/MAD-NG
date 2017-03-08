@@ -151,7 +151,7 @@ local function axis_title(src)
 end
 
 local function mktitle(title, notitle, name, date, time)
-  local ver = MAD.env.version
+  local ver = tostring(MAD.env.version)
   if     notitle == true  then return ""
   elseif is_string(title) then return title
   else                         return name..", MAD "..ver..", "..date.." "..time end
@@ -163,10 +163,11 @@ local yadjst = \y,h   -> (y * h        )
 
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
-  local cx  , cy   = 1 , 1
-  for i=1,#sh,2 do x_sh[cx] = sh[i]; cx=cx+1 end
-  for i=2,#sh,2 do y_sh[cy] = sh[i]; cy=cy+1 end
-  return vector(x_sh), vector(y_sh)
+  if is_table(sh.x[1]) then for i=1,#sh.x do x_sh[i] = vector(sh.x[i])
+                                             y_sh[i] = vector(sh.y[i])  end
+  else x_sh, y_sh = {vector(sh.x)}, {vector(sh.y)}
+  end
+  return  x_sh, y_sh
 end
 
 local function layout(seq, start, stop)
@@ -176,11 +177,17 @@ local function layout(seq, start, stop)
     local elem, s = seq[i]   , s_pos[i]
     local kind, l = elem.kind, elem.l
     if s and l then
-      local x, y = sh_get(dat[kind].shape)
-      local h    = elem[dat[elem.kind].str_k] or 1
-      xl[c] = x:map(\x xadjst(x, l, s))
-      yl[c] = y:map(\y yadjst(y, h   ))
-      c = c+1
+      local h,sh = elem[dat[kind].str_k] or 1
+      if     dat[kind].shape then sh = dat[kind].shape
+      elseif h>0             then sh = dat[kind].shape_f
+                             else sh = dat[kind].shape_d end
+      local x_sh, y_sh = sh_get(sh)
+      for j=1,#x_sh do
+        local x, y = x_sh[j], y_sh[j]
+        xl[c] = x:map(\x xadjst(x, l, s))
+        yl[c] = y:map(\y yadjst(y, 1   ))
+        c = c+1
+      end
     end
   end
   return {x=xl, y=yl}
@@ -212,7 +219,7 @@ local function temp_multiplot(temp, inp, key, start)
 end
 
 local function temp_add(temp, inp, key, start)
-  local template = duplicate(temp)
+  local template = chain_tbl(temp, {})
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
@@ -254,8 +261,8 @@ local temp_multi = {
   "set y2range [$ymin2:$ymax2] \n",
 }
 local temp_sub = {
-  "'$plotdata' using 1:count  every 1::0 $interpolate lc count title  '$ytitle' axes x1y1,\\\n",
-  "'$plotdata' using 1:count2 every 1::0 $interpolate lc count2 title '$ytitle' axes x1y2,\\\n",
+  "'$plotdata' using 1:count  every 1::0 $interpolate lc count title  'ytitle' axes x1y1,\\\n",
+  "'$plotdata' using 1:count2 every 1::0 $interpolate lc count2 title 'ytitle' axes x1y2,\\\n",
 }
 
 local temp_lay = {
@@ -281,7 +288,7 @@ local temp_lay = {
 local mtable, Command in MAD
 
 function exec(self)
-  --print(self.filename)
+  print(self.filename)
   local gp_script = io.open(self.script    , "w")
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
@@ -301,16 +308,16 @@ function exec(self)
     local lay = layout( seq, start, stop )
     self.sizeplot = 0.85
     self.datrange = {1,-1}
-    temp = chain(template, temp_lay)
+    temp = chain_tbl(template, temp_lay)
     plotter( lay, lay_data, {'x','y'} )
   end
 
   if self.VAXIS2 then
-    local out2 = to_table (self.VAXIS2)
-    self.keys = chain_tbl(self.keys  , out2 )
+    local out2   = to_table (self.VAXIS2)
+    self.keys    = chain_tbl(self.keys  , out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add(temp, temp_multi, "gtitle", 0        )
+    temp = temp_add(temp, temp_multi, "gtitle", 1        )
     temp = temp_add(temp, temp_sub  , "plot"  , 0        )
     temp_multiplot (temp, out2      , "count2", #self.out)
   end
