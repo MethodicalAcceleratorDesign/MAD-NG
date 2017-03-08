@@ -48,10 +48,10 @@ local dat = require 'madl_plotdat'
 local isa_matrix, is_range, is_table, is_vector, is_nil, is_string in MAD.typeid
 local range, nrange, vector, element, totable in MAD
 local min, max  in MAD.gmath
+local chain, duplicate in MAD.fun
 
 -- implementation -------------------------------------------------------------o
 
--- check luafun
 local function to_table(src)
   if is_string(src) then return totable(src) else return src end
 end
@@ -68,6 +68,12 @@ local function mk_tbl(t1, t2)
   for i,k in ipairs(t1) do tbl[i]     = k end
   for i,k in ipairs(t2) do tbl[i+#t1] = k end
   return tbl
+end
+
+local function chain_tbl(t1, t2)
+  local keys = {}
+  for _it, k, v in chain(t1, t2) do table.insert(keys, k) end
+  return keys
 end
 
 local function plotter(src, output, keys) -- REDO
@@ -145,9 +151,10 @@ local function axis_title(src)
 end
 
 local function mktitle(title, notitle, name, date, time)
+  local ver = MAD.env.version
   if     notitle == true  then return ""
   elseif is_string(title) then return title
-  else                         return name..", MAD $version, "..date..time end
+  else                         return name..", MAD "..ver..", "..date.." "..time end
 end
 
 --layout
@@ -194,24 +201,24 @@ local function find_key(inp, key)
   return indx
 end
 
-local function temp_multiplot(temp, inp, key, n)
+local function temp_multiplot(temp, inp, key, start)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key     , tostring(i+n+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('$ytitle', inp[i+1]       ) end
+    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key    , tostring(i+start+2))
+                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           ) end
   end
 end
 
 local function temp_add(temp, inp, key, start)
-  local template = mk_tbl(temp, {})
+  local template = duplicate(temp)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]   end
-    for i=start,s-1    do template[i+lnr]=inp [i+1] end
+    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
+    for i=start,s-1    do template[lnr+i]=inp[i+1] end
   end
-  return template, lnr
+  return template
 end
 
 local function temp_print(temp, printer) -- connect to plotter
@@ -274,6 +281,7 @@ local temp_lay = {
 local mtable, Command in MAD
 
 function exec(self)
+  --print(self.filename)
   local gp_script = io.open(self.script    , "w")
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
@@ -293,26 +301,23 @@ function exec(self)
     local lay = layout( seq, start, stop )
     self.sizeplot = 0.85
     self.datrange = {1,-1}
-    temp = mk_tbl(template, temp_lay)
+    temp = chain(template, temp_lay)
     plotter( lay, lay_data, {'x','y'} )
   end
 
   if self.VAXIS2 then
     local out2 = to_table (self.VAXIS2)
-    self.keys  = mk_tbl   (self.keys  , out2 )
+    self.keys = chain_tbl(self.keys  , out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add(temp, temp_multi, "gtitle", 1        )
+    temp = temp_add(temp, temp_multi, "gtitle", 0        )
     temp = temp_add(temp, temp_sub  , "plot"  , 0        )
     temp_multiplot (temp, out2      , "count2", #self.out)
-    --temp = temp_add(temp, out2      , "count2", 0        )
-    --fill_multiplot (temp, out2      , "count2", #self.out)
   end
   plotter( self.src, plot_data, self.keys )
 
-  -- template operations
-  temp_multiplot  ( temp, self.out , "count", 0)
   temp = temp_fill( temp, self     )
+  temp_multiplot  ( temp, self.out , 'count', 0)
   temp_print      ( temp, gp_script)
   os.execute("gnuplot "..self.script)
 end
@@ -355,10 +360,9 @@ local plot = Command 'plot' {
   ylabel2  = "",
 
 -- non-user option
-  version = MAD.env.version,
   inp  = \s to_table (s.HAXIS),
   out  = \s to_table (s.VAXIS),
-  keys = \s mk_tbl   (s.inp   , s.out             ),
+  keys = \s mk_tbl   (s.inp   , s.out             ), -- chain_tbl does not work
   ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
   drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
   src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
@@ -371,4 +375,3 @@ return {
   plot   = plot  ,
   __help = __help,
 }
---  self:set_variable { date = os.date'%d/%m/%y', time = os.date'%H:%M:%S' }
