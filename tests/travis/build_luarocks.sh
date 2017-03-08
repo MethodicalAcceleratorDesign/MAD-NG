@@ -1,7 +1,7 @@
 #! /bin/bash
 set -ex
 
-MAD_ROOT=$(readlink -f "$(dirname $BASH_SOURCE)"/..)
+MAD_ROOT=$(readlink -f "$(dirname $BASH_SOURCE)"/../..)
 LUA_ROOT=$MAD_ROOT/lib/luajit
 
 cd lib
