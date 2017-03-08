@@ -14,8 +14,9 @@ tar -xzf $LUAROCKS.tar.gz
 # build
 cd $LUAROCKS
 ./configure --prefix=${PREFIX-$MAD_ROOT/install} \
-            --with-lua-bin=$MAD_ROOT/.travis \
+            --with-lua-bin=$LUA_ROOT/bin \
             --with-lua-include=$LUA_ROOT/include/luajit-2.1 \
-            --with-lua=$LUA_ROOT
+            --with-lua=$LUA_ROOT \
+            --lua-suffix=jit
 make build
 make install
