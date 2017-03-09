@@ -44,7 +44,7 @@ SEE ALSO
 __help['track: references'] = [=[
 [Wolski14]    A. Wolski,  "Beam Dynamics in High Energy Particle Accelerators".
 [Forest98]    E. Forest,  "Beam Dynamics, A New Attitude and Framework".
-[MADX PTC]    MAD-X PTC Code, rev. 6099 
+[MADX PTC]    MAD-X PTC Code, rev. 6099
 [Forest02]    E. Forest,  "Introduction to Polymorphic Tracking Code",
               KEK report 2002-3.
 [Yoshida90]   H. Yoshida, "Construction of higher order symplectic integrators",
@@ -250,20 +250,20 @@ local function xrot_track (elem, m, angle) -- YZ rot
   m.t  = t + ta*y*pz_*(beta_inv+pt) / ptt
 end
 
---translation
-local function trans_track (elem, m, d) --d(3) - displacement (drift)
+-- XYZ-Translation (dz treated as drift length)
+
+local function trans_track (elem, m, d) -- drift + XY trans
   local x, px, y, py, t, pt in m
   local beta_inv = 1/m.beam.beta
   local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local pz_ = 1/pz_
 
-  x   = x - d[1]
-  y   = x - d[2]
-  m.x = x + d[3]*px*pz_
-  m.y = y + d[3]*py*pz_
-  m.t = t + d[3]*(beta_inv+pt)*pz_
+  m.x = x-d[1] + d[3]*px*pz_
+  m.y = y-d[2] + d[3]*py*pz_
+  m.t = t-d[3] * (beta_inv+pt)*pz_
 end
--- Fringe fields
+
+-- Fringe fields (dipole)
 
 local function face_track(elem, m, h)
   local x, px, y, py, t, pt, dir in m
@@ -317,80 +317,76 @@ local function wedge_track(elem, m, e)
   m.t  = t + yt*(beta_inv + pt)
 end
 
-local function fringe_dipole(elem, m, pos) --Lee-Whiting formula, Etienne 
+local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
   if elem.kill_ent_fringe == 1 then return end
   if elem.kill_ext_fringe == 1 then return end
-  if elem.kill_fringe     == 1 then return end 
+  if elem.kill_fringe     == 1 then return end
 
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elem.k0 or 0
   local beta_inv = 1/m.beam.beta
--- soft edge 
+-- soft edge
   local fint = elem.fint or 0  -- fringe field integral at entrance and exit of the bend
-  local hgap = elem.hgap or 0  -- half gap of the magnet 
+  local hgap = elem.hgap or 0  -- half gap of the magnet
   local fsad = 0
 
-  if fint*hgap ~= 0.0 then  -- soft edge 
+  if fint*hgap ~= 0.0 then  -- soft edge
       fsad = 1/(fint*hgap*2)/36
   end
-  
-  local b  = m.chg*pos*k0 
+
+  local b  = m.chg*pos*k0
   local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local time_fac = beta_inv + pt
   local rel_p    = sqrt(1 + 2*beta_inv*pt + pt^2)
 
   local c3=b^2*fsad/rel_p
-  
-  local xp, yp = px/pz or 0, py/pz or 0
-  local d  = matrix(6,6):zeros()
-  d:set(1,1,(1 + xp^2) / pz)
-  d:set(2,2,(1 + yp^2) / pz)
-  d:set(2,1, xp*yp     / pz)
-  d:set(1,2, xp*yp     / pz)
-  d:set(3,1,-xp)
-  d:set(3,2,-yp)
-  d:set(1,3,-time_fac*xp /pz^2)
-  d:set(2,3,-time_fac*yp /pz^2)
-  d:set(3,3,time_fac     /pz  )
 
-  local  fi0 = atan((xp/(1 + yp^2)))-2*b*fint*hgap*(1 + xp^2*(2 + yp^2))*pz
-  local  co2 = b/cos(fi0)^2
-  local  co1 = co2/(1 + (xp/(1 + yp^2))^2)
+  local xp, yp = px/pz or 0, py/pz or 0
+  local d  = matrix {
+    { (1+xp^2) / pz, xp*yp    / pz, -time_fac*xp /pz^2 },
+    {  xp*yp   / pz, (1+yp^2) / pz, -time_fac*yp /pz^2 },
+    { -xp          ,   -yp        ,  time_fac    /pz   },
+  }
+
+  local fi0 = atan((xp/(1 + yp^2)))-2*b*fint*hgap*(1 + xp^2*(2 + yp^2))*pz
+  local co2 = b/cos(fi0)^2
+  local co1 = co2/(1 + (xp/(1 + yp^2))^2)
 
   local fi = {0, 0, 0}
-  fi[1] =    co1 /       (1 + yp^2) - 2*co2*b*fint*hgap*       (2*xp*(2 + yp^2)*pz)
-  fi[2] =-2*co1*xp*yp/(1 + yp^2)^2  - 2*co2*b*fint*hgap*       (2*xp^2*yp)*pz
-  fi[3] =                           - 2*co2*b*fint*hgap*   (1 + xp^2*(2 + yp^2))
+  fi[1] =    co1 /       (1 + yp^2) - 2*co2*b*fint*hgap* (2*xp*(2 + yp^2)*pz)
+  fi[2] =-2*co1*xp*yp/(1 + yp^2)^2  - 2*co2*b*fint*hgap* (2*xp^2*yp)*pz
+  fi[3] =                           - 2*co2*b*fint*hgap* (1 + xp^2*(2 + yp^2))
 
   fi0=b*tan(fi0)
 
   b=0
-  for i=1,3 do
+  for i=1,3 do -- y column
     b=fi[i]*d:get(i,2) + b
   end
   m.y  = 2*m.y/(1 + sqrt(1 - 2*b*m.y))
   m.py = py - fi0*m.y
 
   b=0
-  for i=1,3 do
+  for i=1,3 do -- x column
     b=fi[i]*d:get(i,1) + b
   end
   m.x = m.x+0.5*b*m.y^2
 
   b=0
-  for i=1,3 do
+  for i=1,3 do -- z column
     b=fi[i]*d:get(i,3) + b
   end
-  m.t  = t    - 0.5*b*m.y^2
-  -- soft edge 
+  m.t = t - 0.5*b*m.y^2
+
+  -- soft edge
   m.py = m.py - 4*c3*m.y^3
   m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
 end
 
-local function sfringe_track(elem, m, e, h, pos)
+local function sfringe_track(elem, m, e, h, pos) -- dipole fringe field
   --TODO: to add dir == -1
-  if pos == 1 then 
+  if pos == 1 then
     if e and abs(e) >= minang then
      yrot_track   (elem, m,  e)
      face_track   (elem, m,  h)
@@ -432,7 +428,7 @@ end
 -- Drift general exact curved       [PTC SSECH1: either SPROT(DKD) or SSEC(MKM)]
 
 local function curved_drift_track (elem, m, l)
---[[ Geometric integration for particle accelerators, E.Forest, 
+--[[ Geometric integration for particle accelerators, E.Forest,
  J.Phys. A: Math.Gen. 39 (2006) 5321-5377, p.5365, eq. 127]]
 
   m.in_action(elem, m, l, 'curved_drift_track')
@@ -478,8 +474,8 @@ local function patch_drift_track (elem, m, l)
     d[1]  = -d[2]
     angle = -angle
 
-  end  
-end  
+  end
+end
 
 -- Drift solenoid exact
 
@@ -495,7 +491,7 @@ local function solenoid_drift_track (elem, m, l)
   local x, px, y, py, t, pt, T in m
   local beta_inv = 1/m.beam.beta
 
-  local bsol = m.dirch*ks/2 
+  local bsol = m.dirch*ks/2
   local xp = px + bsol*y
   local yp = py - bsol*x
 
@@ -519,7 +515,7 @@ local function solenoid_drift_track (elem, m, l)
   m.out_action(elem, m, l, 'solenoid_drift_track')
 end
 
--- Kick thin 
+-- Kick thin
 
 local function thin_kick_track(elem, m, l) -- l == 0
   local lrad = elem.lrad or 0
@@ -539,7 +535,7 @@ local function thin_kick_track(elem, m, l) -- l == 0
 
   m.px = px - dirch*by + dirch*knl1
   m.py = py + dirch*bx - dirch*ksl1
-  
+
   if knl1 ~= 0 or ksl1 ~= 0 then
     local t, pt in m
     local beta_inv = 1/m.beam.beta
@@ -547,7 +543,7 @@ local function thin_kick_track(elem, m, l) -- l == 0
     if lrad ~=0 then -- dipole focusing and deltap
       m.px = m.px - knl1^2*x/lrad + dirch*knl1*(pz-1)
       m.py = m.py - ksl1^2*y/lrad + dirch*ksl1*(pz-1)
-    end  
+    end
     m.t = t + dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
   end
 
@@ -590,9 +586,9 @@ local function curved_kick_track (elem, m, l) --
     by  = byt
   end
 
-  local angle, k0 in elem 
+  local angle, k0 in elem
   m.px = px - dirch*by*(1 + angle/elem.l*x) -- only angle
-  m.py = py + dirch*bx*(1 + angle/elem.l*x) 
+  m.py = py + dirch*bx*(1 + angle/elem.l*x)
 
   m.out_action(elem, m, l, 'curved_kick_track')
 end
