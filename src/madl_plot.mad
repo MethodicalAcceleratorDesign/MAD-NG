@@ -70,9 +70,9 @@ local function mk_tbl(t1, t2)
   return tbl
 end
 
-local function chain_tbl(t1, t2)
+local function chain_tbl(t1, t2, ...)
   local keys = {}
-  for _it, k, v in chain(t1, t2) do table.insert(keys, k) end
+  for _it, k, v in chain(t1, t2, ...) do table.insert(keys, k) end
   return keys
 end
 
@@ -191,7 +191,7 @@ local function layout(seq, start, stop)
       end
     end
   end
-  return {x=xl, y=yl}
+  return { x=xl, y=yl }
 end
 
 -- template
@@ -225,7 +225,7 @@ local function temp_add(temp, inp, key, start)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
-    for i=start,s-1    do template[lnr+i]=inp[i+1] end
+    for i=start,s-1    do template[lnr+i]=inp[i] end
   end
   return template
 end
@@ -247,8 +247,10 @@ local template = {
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
-  "'$plotdata' using 1:count every 1::0 $interpolate linewidth 1 linecolor rgb 'colors' title 'ytitle',\\\n",
+  "'$plotdata' using 1:count  every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
+
+local templ_nocopy = { "set terminal x11 persist \n" }
 
 local templ_hardcopy = {
   "reset \n"                          ,
@@ -256,17 +258,24 @@ local templ_hardcopy = {
   "set output '$filename'  \n"         ,
 }
 
-local temp_multi = {
+local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
   "set tics out \n"               ,
-    "set y2label '$ylabel2' \n"   ,
+  "set y2label '$ylabel2' \n"     ,
   "set y2range [$ymin2:$ymax2] \n",
 }
-local temp_sub = {
-  "'$plotdata' using 1:count  every 1::0 $interpolate linewidth 1 linecolor 'colors' title  'ytitle' axes x1y1,\\\n",
-  "'$plotdata' using 1:count2 every 1::0 $interpolate linewidth 1 linecolor 'colors' title 'ytitle' axes x1y2,\\\n",
+local temp_multih = {
+  "set xtics nomirror \n"         ,
+  "set x2tics \n"                 ,
+  "set tics out \n"               ,
+  "set x2label '$xlabel2' \n"     ,
+  "set x2range [$ymin2:$ymax2] \n",
 }
+
+local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
+local temp_hvaxis2 = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
+--local temp_haxis2  = "'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"
 
 local temp_lay = {
   "\nunset tmargin \n"  ,
@@ -297,9 +306,8 @@ function exec(self)
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
 
-  if self.hardcopy then
-    temp = mk_tbl(templ_hardcopy, temp)
-  end
+  if self.hardcopy then temp = mk_tbl(templ_hardcopy, temp)
+                   else temp = mk_tbl(templ_nocopy  , temp) end
 
   if self.table then
     local title, date, time in self.table
@@ -312,7 +320,7 @@ function exec(self)
     local seq = self.sequence
     assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
     local start, stop = seq:range_index (self.range)
-    local lay = layout( seq, start, stop )
+    local lay         = layout( seq, start, stop )
     self.sizeplot = 0.85
     self.datrange = {1,-1}
     temp = chain_tbl(temp, temp_lay)
@@ -326,17 +334,36 @@ function exec(self)
     end
   end
 
-  if self.VAXIS2 then
+  if self.VAXIS2 and self.HAXIS2 then
+    local inp2, out2 = to_table (self.HAXIS2), to_table (self.VAXIS2)
+    self.keys    = chain_tbl(self.inp, inp2, self.out, out2)
+    self.ylabel2, self.xlabel2 = axis_title( out2 ), axis_title( inp2 )
+    self.vlimit2 = { scale_axis( self.src, out2 ) }
+    self.hlimit2 = { scale_axis( self.src, inp2 ) }
+    temp = temp_add(temp, temp_multih , "gtitle", 1 )
+    temp = temp_add(temp, temp_multiv , "gtitle", 1 )
+    --for i,v in ipairs (temp) do print(i,v) end
+    temp = chain_tbl(temp, temp_hvaxis2)
+    --for i,v in ipairs (temp) do print(i,v) end
+    temp_multiplot (temp, out2       , self.colors, "count2", #self.out)
+  elseif self.VAXIS2 then
     local out2   = to_table (self.VAXIS2)
-    self.keys    = chain_tbl(self.keys  , out2 )
+    self.keys    = chain_tbl(self.keys, out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add(temp, temp_multi, "gtitle", 1 )
-    temp = temp_add(temp, temp_sub  , "plot"  , 0 )
-    temp_multiplot (temp, out2      , self.colors, "count2", #self.out)
+    temp = temp_add(temp, temp_multiv, "gtitle", 1 )
+    temp = chain_tbl(temp, temp_vaxis2)
+    temp_multiplot (temp, out2       , self.colors, "count2", #self.out)
+  elseif self.HAXIS2 then
+    local inp2   = to_table (self.HAXIS2)
+    self.keys    = chain_tbl(self.inp , inp2 )
+    self.keys    = chain_tbl(self.keys, self.out )
+    self.xlabel2 = axis_title( inp2 )
+    self.hlimit2 = { scale_axis( self.src, inp2 ) }
+    temp = temp_add(temp, temp_multih, "gtitle", 1 )
   end
-  plotter( self.src, plot_data, self.keys )
 
+  plotter( self.src, plot_data, self.keys )
   temp = temp_fill( temp, self     )
   temp_multiplot  ( temp, self.out , self.colors, 'count', 0)
   temp_print      ( temp, gp_script)
@@ -382,10 +409,15 @@ local plot = Command 'plot' {
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
   ylabel2  = "",
 
-  color = {},
-  colors = { "red", "purple", "dark-red", "brown", "yellow", "turquoise",
-  "grey50", "gold", "green", "blue", "orange", "violet", "orangered4", "brown4",
-  "pink", "greenyellow", "gray", "light-gray", "dark-grey" },
+  xlimit2  = {nil, nil},
+  xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
+  xlabel2  = "",
+
+  linewidth = 1,
+  color  = {},
+  colors = { "red", "purple",  "brown", "yellow", "turquoise", "green", "blue",
+             "orange", "violet", "pink", "greenyellow", "gray", "dark-grey",
+             "dark-red",  "gold", "orangered4", "brown4" },
 
 -- non-user option
   inp  = \s to_table (s.HAXIS),
