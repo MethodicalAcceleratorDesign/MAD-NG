@@ -209,13 +209,14 @@ local function find_key(inp, key)
   return indx
 end
 
-local function temp_multiplot(temp, inp, key, start)
+local function temp_multiplot(temp, inp, color, key, start)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
     for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key    , tostring(i+start+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           ) end
+                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           )
+                   temp[lnr+i]=temp[lnr+i]:gsub('colors', color[i+1]         ) end
   end
 end
 
@@ -235,11 +236,6 @@ local function temp_print(temp, printer) -- connect to plotter
 end
 
 local template = {
-  -- general settings
-  "reset\n"                          ,
-  "set terminal $terminaltype size $xsize cm, $ysize cm enh col font '$fonttype, $fontsize'\n",
-  "set output '$filename'\n"         ,
-  -- plot data
   "set multiplot \n"                 ,
   "set grid \n"                      ,
   "set lmargin at screen $lmargin \n",
@@ -251,7 +247,13 @@ local template = {
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
-  "'$plotdata' using 1:count every 1::0 $interpolate linewidth 1 linecolor count  title 'ytitle',\\\n",
+  "'$plotdata' using 1:count every 1::0 $interpolate linewidth 1 linecolor rgb 'colors' title 'ytitle',\\\n",
+}
+
+local templ_hardcopy = {
+  "reset \n"                          ,
+  "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color font '$fonttype, $fontsize'\n",
+  "set output '$filename'  \n"         ,
 }
 
 local temp_multi = {
@@ -262,8 +264,8 @@ local temp_multi = {
   "set y2range [$ymin2:$ymax2] \n",
 }
 local temp_sub = {
-  "'$plotdata' using 1:count  every 1::0 $interpolate linewidth 1 linecolor count title  'ytitle' axes x1y1,\\\n",
-  "'$plotdata' using 1:count2 every 1::0 $interpolate linewidth 1 linecolor count2 title 'ytitle' axes x1y2,\\\n",
+  "'$plotdata' using 1:count  every 1::0 $interpolate linewidth 1 linecolor 'colors' title  'ytitle' axes x1y1,\\\n",
+  "'$plotdata' using 1:count2 every 1::0 $interpolate linewidth 1 linecolor 'colors' title 'ytitle' axes x1y2,\\\n",
 }
 
 local temp_lay = {
@@ -295,6 +297,10 @@ function exec(self)
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
 
+  if self.hardcopy then
+    temp = mk_tbl(templ_hardcopy, temp)
+  end
+
   if self.table then
     local title, date, time in self.table
     self.gtitle =  mktitle(self.title, self.notitle, title, date, time)
@@ -309,8 +315,15 @@ function exec(self)
     local lay = layout( seq, start, stop )
     self.sizeplot = 0.85
     self.datrange = {1,-1}
-    temp = chain_tbl(template, temp_lay)
+    temp = chain_tbl(temp, temp_lay)
     plotter( lay, lay_data, {'x','y'} )
+  end
+
+  if self.color then
+    for k,v in pairs(self.color) do
+      local indx = find_key(self.keys, k)
+      if indx then self.colors[indx] = v end
+    end
   end
 
   if self.VAXIS2 then
@@ -318,14 +331,14 @@ function exec(self)
     self.keys    = chain_tbl(self.keys  , out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add(temp, temp_multi, "gtitle", 1        )
-    temp = temp_add(temp, temp_sub  , "plot"  , 0        )
-    temp_multiplot (temp, out2      , "count2", #self.out)
+    temp = temp_add(temp, temp_multi, "gtitle", 1 )
+    temp = temp_add(temp, temp_sub  , "plot"  , 0 )
+    temp_multiplot (temp, out2      , self.colors, "count2", #self.out)
   end
   plotter( self.src, plot_data, self.keys )
 
   temp = temp_fill( temp, self     )
-  temp_multiplot  ( temp, self.out , 'count', 0)
+  temp_multiplot  ( temp, self.out , self.colors, 'count', 0)
   temp_print      ( temp, gp_script)
   os.execute("gnuplot "..self.script)
 end
@@ -338,6 +351,7 @@ local plot = Command 'plot' {
   VAXIS    = 'y',
   VAXIS2   = nil,
 
+  hardcopy = nil,
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
@@ -361,11 +375,17 @@ local plot = Command 'plot' {
   ylabel   = \s axis_title( s.out ),
   notitle  = nil,
   title    = nil,
-  interpolate = "",
+  noversion   = nil,
+  interpolate = "" ,
 
   vlimit2  = {nil, nil},
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
   ylabel2  = "",
+
+  color = {},
+  colors = { "red", "purple", "dark-red", "brown", "yellow", "turquoise",
+  "grey50", "gold", "green", "blue", "orange", "violet", "orangered4", "brown4",
+  "pink", "greenyellow", "gray", "light-gray", "dark-grey" },
 
 -- non-user option
   inp  = \s to_table (s.HAXIS),
@@ -383,3 +403,5 @@ return {
   plot   = plot  ,
   __help = __help,
 }
+
+
