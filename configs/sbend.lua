@@ -8,7 +8,7 @@ return DEFAULTS {
   -- output:
   prefix = 'sbend/',
   studies = DEFAULTS.studies {
-    angle = {stop = 3.141592653589793/4, start=0.01},
-    tilt  = {stop = 3.141592653589793/4},
+    angle = {stop = pi/4, start=0.01},
+    tilt  = {stop = pi/4},
   },
 }
