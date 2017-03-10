@@ -7,9 +7,7 @@ pi = MAD.gmath.pi
 
 -- Expand a template pattern
 local function substitute(template, context)
-  return ({template:gsub("${([_%a][_%w]*)}",
-           -- recursive substitutions:
-           \x -> substitute(tostring(context[x]), context))})[1]
+  return (template:gsub("${([_%a][_%w]*)}", \x -> tostring(context[x])))
 end
 
 local function read_file(name)
@@ -42,16 +40,21 @@ end
 -- Config
 ------------------------------------------
 
+-- GLOBAL
+L  = read_file                            -- load a file
+T  = \s -> (\ctx -> substitute(s, ctx))   -- specify a template by string
+LT = \s -> T (L (s))                      -- specify a template by filename
+
 -- GLOBAL:
 DEFAULTS = MAD.Object {
     -- sequence
-    madx_sequence  = [[
+    madx_sequence  = T[[
 ${seq_name}: sequence, refer=entry, l=${seq_len};
     ${el_name}: ${el_type}, ${el_args};
 endsequence;
     ]],
-    ptc_sequence = "${madx_sequence}",
-    mad_sequence = [[
+    ptc_sequence = T"${madx_sequence}",
+    mad_sequence = T[[
 local sequence = MAD.sequence "${seq_name}" {
   refer="entry", l=${seq_len},
   MAD.element.${el_type} "${el_name}" { ${el_args} },
@@ -59,8 +62,8 @@ local sequence = MAD.sequence "${seq_name}" {
     ]],
     seq_name  = "seq",
     el_name   = "el",
-    beam_args = [[particle="proton", energy=${energy}]],
-    observe   = "${el_name}",
+    beam_args = T[[particle="proton", energy=${energy}]],
+    observe   = T"${el_name}",
     seq_len   = 1,
     -- loop:
     varname   = "loop_value",
@@ -85,9 +88,9 @@ local sequence = MAD.sequence "${seq_name}" {
     },
     nst = 1,
     -- output:
-    madfile = "${prefix}.${engine}",
-    tfsfile = "${prefix}.${engine}.tfs",
-    logfile = "${prefix}.${engine}.log",
+    madfile = T"${prefix}.${engine}",
+    tfsfile = T"${prefix}.${engine}.tfs",
+    logfile = T"${prefix}.${engine}.log",
 }
 
 local function wrap_context(obj)
@@ -110,9 +113,9 @@ end
 -- TODO: compare by columns using assertAllAlmostEquals
 local function load_test(template, ctx)
   local input = substitute(template, {
-    madx_file = substitute(ctx.runs.madx.tfsfile, ctx.runs.madx),
-    mad_file = substitute(ctx.runs.mad.tfsfile, ctx.runs.mad),
-    ptc_file = substitute(ctx.runs.ptc.tfsfile, ctx.runs.ptc),
+    madx_file = ctx.runs.madx.tfsfile,
+    mad_file = ctx.runs.mad.tfsfile,
+    ptc_file = ctx.runs.ptc.tfsfile,
     suite = ctx.study,
     margin = 1e-14,
     varname = ctx.varname,
@@ -126,9 +129,9 @@ local function create_plots(ctx)
   local loadtxt = require('loadtxt')
 
   local files = {
-    madx = substitute(ctx.runs.madx.tfsfile, ctx.runs.madx),
-    mad  = substitute(ctx.runs.mad.tfsfile,  ctx.runs.mad),
-    ptc  = substitute(ctx.runs.ptc.tfsfile,  ctx.runs.ptc),
+    madx = ctx.runs.madx.tfsfile,
+    mad  = ctx.runs.mad.tfsfile,
+    ptc  = ctx.runs.ptc.tfsfile,
   }
 
   local data = {
@@ -215,7 +218,7 @@ local function main(args)
       if overrides then
         table.insert(studies, context {
           prefix  = context.prefix .. study,
-          [study] = "${varname}", -- usually study is the varied attribute name
+          [study] = T"${varname}", -- usually study is the varied attribute name
           study   = study,
         } (overrides))
       end
@@ -227,7 +230,6 @@ local function main(args)
       for engine, template in pairs(templates) do
         local context = wrap_context( study { engine=engine } )
         local input = substitute(template, context)
-        context.madfile = substitute(context.madfile, context)
         save_file(context.madfile, input)
         study.runs[engine] = context
       end
@@ -237,8 +239,7 @@ local function main(args)
     if opts['run'] then
       for _, study in ipairs(studies) do
         for engine, context in pairs(study.runs) do
-          local logfile = substitute(context.logfile, context)
-          runners[engine](context.madfile, logfile)
+          runners[engine](context.madfile, context.logfile)
         end
       end
     end

@@ -1,5 +1,5 @@
 return DEFAULTS {
-  mad_sequence = [[
+  mad_sequence = T[[
 local sequence = MAD.sequence "${seq_name}" {
   refer="entry", l=${seq_len},
   MAD.element.drift "dr" {l=0.5, at=0},
