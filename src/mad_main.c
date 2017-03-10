@@ -292,7 +292,10 @@ found:
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 	winexe(winpath(prog_path));  /* canonize */
 #endif
-  if ((p=strrchr(prog_path, dsep)) && !strcmp(p+1, prog_name)) *p = nul;
+	if ((p=strrchr(prog_path, dsep))) {
+		*p = nul;
+		if (p[1]) strcpy(prog_name, p+1);
+	}
 
 	/* add trailing dir separator */
 	if (*curr_path && (p=curr_path+strlen(curr_path))[-1] != dsep)
