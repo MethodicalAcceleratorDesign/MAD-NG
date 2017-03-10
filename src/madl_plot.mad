@@ -45,16 +45,14 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
+local range, nrange, vector, element, totable                      in MAD
 local isa_matrix, is_range, is_table, is_vector, is_nil, is_string in MAD.typeid
-local range, nrange, vector, element, totable in MAD
-local min, max  in MAD.gmath
-local chain, duplicate in MAD.fun
+local min, max                                                     in MAD.gmath
+local chain, duplicate                                             in MAD.fun
 
 -- implementation -------------------------------------------------------------o
 
-local function to_table(src)
-  if is_string(src) then return totable(src) else return src end
-end
+local to_tbl = \x => if is_string(x) then return totable(x) else return x end end
 
 local function keys_tbl(t1, t2, keys)
   local table = {}
@@ -71,15 +69,16 @@ local function mk_tbl(t1, t2)
 end
 
 local function chain_tbl(t1, t2, ...)
-  local keys = {}
-  for _it, k, v in chain(t1, t2, ...) do table.insert(keys, k) end
-  return keys
+  local t = {}
+  for _it, k, v in chain(t1, t2, ...) do table.insert(t, k) end
+  return t
 end
 
-local function plotter(src, output, keys) -- REDO
-  for i=1,#src[keys[1]] do
-    if is_vector(src[keys[1]][i]) then
-      for ii=1,#src[keys[1]][i] do
+local function plotter(src, output, keys) -- TODO
+  local s = src[keys[1]]
+  for i=1,#s do
+    if is_vector(s[i]) then
+      for ii=1,#s[i] do
         for j,k in ipairs(keys) do
           output:write(src[k][i][ii]," ")
         end
@@ -99,14 +98,14 @@ end
 local function scale_rng(src, rng)
   if     is_range(rng) then return rng
   elseif is_table(rng) then
-    local start , stop  = 1, #src
+    local  start,  stop = 1     , #src
     local rstart, rstop = rng[1], rng[2]
     local vmin, vmax, c = {}, {}
     c=1; src:mapij(\x,i,j => if x>rstart then vmin[c]=i; c=c+1 end end, {})
     c=1; src:mapij(\x,i,j => if x>rstop  then vmax[c]=i; c=c+1 end end, {})
     start = vmin[1]
-    if vmax[1] then stop = vmax[1]-1 end                                        -- add WARNING(bigger then data)
-    if rng[2] == -1 then stop = #src end
+    if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
+    if rng [2] == -1 then stop = #src      end
     return start..stop
   end
 end
@@ -116,7 +115,7 @@ local function chksize(rng, start, stop)
   return start, stop
 end
 
-local function scale_tbl(tbl, start, stop)
+local function scale_tbl(tbl, start, stop) -- check luafun usage
   local r = {}
   for j=1,stop-start do r[j] = tbl[start+j] end
   return r
@@ -133,7 +132,7 @@ local function scale_dat(src, keys, rng) -- check luafun usage
   return d_src
 end
 
-local function scale_axis(src, keys) --add posisiblitie of boundries
+local function scale_axis(src, keys) --add margin option
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
     local min = src[key]:min()
@@ -166,8 +165,7 @@ local function sh_get(sh)
   local x_sh, y_sh = {}, {}
   if is_table(sh.x[1]) then for i=1,#sh.x do x_sh[i] = vector(sh.x[i])
                                              y_sh[i] = vector(sh.y[i])  end
-  else x_sh, y_sh = {vector(sh.x)}, {vector(sh.y)}
-  end
+                       else x_sh, y_sh = {vector(sh.x)}, {vector(sh.y)}     end
   return  x_sh, y_sh
 end
 
@@ -180,7 +178,7 @@ local function layout(seq, start, stop)
     if s and l then
       local h,sh = elem[dat[kind].str_k] or 1
       if     dat[kind].shape then sh = dat[kind].shape
-      elseif h>0             then sh = dat[kind].shape_f
+      elseif h > 0           then sh = dat[kind].shape_f
                              else sh = dat[kind].shape_d end
       local x_sh, y_sh = sh_get(sh)
       for j=1,#x_sh do
@@ -220,11 +218,11 @@ local function temp_multiplot(temp, inp, key, start)
 end
 
 local function temp_add(temp, inp, key, start)
-  local template = chain_tbl(temp, {})
-  local s, lnr = #inp, find_key(temp, key)
+  local template = chain_tbl(temp, {} )
+  local lnr, s   = find_key (temp, key), #inp
   if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
-    for i=start,s      do template[lnr+i]=inp[i] end
+    for i=#temp,lnr,-1 do template[i+s-1]=temp[i] end
+    for i=start,s      do template[lnr+i]=inp [i] end
   end
   return template
 end
@@ -237,14 +235,14 @@ local function temp_colors(temp, color)
   end
 end
 
-local function temp_print(temp, printer) -- connect to plotter
+local function temp_print(temp, printer)
   for i =1,#temp do printer:write(temp[i]) end
   printer:close()
 end
 
 local template = {
   "set multiplot \n"                 ,
-  "set grid \n"                      ,
+  "set $grid \n"                     ,
   "set lmargin at screen $lmargin \n",
   "set rmargin at screen $rmargin \n",
   "set size 1,$sizeplot \n"          ,
@@ -254,15 +252,15 @@ local template = {
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
-  "'$plotdata' using 1:count  every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  "'$plotdata' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
+local temp_preamble = { "#$preamble \n" }
 local temp_nocopy   = { "set terminal x11 persist \n" }
 local temp_hardcopy = {
-  "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color font '$fonttype, $fontsize'\n",
+  "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color \n",
   "set output '$filename'  \n",
 }
-
 local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
@@ -277,12 +275,9 @@ local temp_multih = {
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-
-local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
-local temp_hvaxis2 = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
+local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
+local temp_hvaxis2 = {"'$plotdata' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
 --local temp_haxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
-
-local temp_preamble = { "#$preamble \n" }
 local temp_lay = {
   "\nunset tmargin \n"  ,
   "unset bmargin \n"    ,
@@ -342,7 +337,7 @@ function exec(self)
   end
 
   if self.VAXIS2 and self.HAXIS2 then
-    local inp2, out2 = to_table (self.HAXIS2), to_table (self.VAXIS2)
+    local inp2, out2 = to_tbl (self.HAXIS2), to_tbl (self.VAXIS2)
     self.keys    = chain_tbl(self.inp, inp2, self.out, out2)
     self.ylabel2, self.xlabel2 = axis_title( out2 ), axis_title( inp2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
@@ -353,7 +348,7 @@ function exec(self)
     temp_multiplot  ( temp, out2       , "count2", #inp2+#self.out )
     temp_multiplot  ( temp, self.out   , 'count' , #inp2           )
   elseif self.VAXIS2 then
-    local out2   = to_table (self.VAXIS2)
+    local out2   = to_tbl (self.VAXIS2)
     self.keys    = chain_tbl(self.keys, out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
@@ -361,7 +356,7 @@ function exec(self)
     temp = temp_add ( temp, temp_multiv, "gtitle", 1         )
     temp_multiplot  ( temp, out2       , "count2", #self.out )
   elseif self.HAXIS2 then
-    local inp2   = to_table (self.HAXIS2)
+    local inp2   = to_tbl (self.HAXIS2)
     self.keys    = chain_tbl(self.inp , inp2, self.keys )
     self.xlabel2 = axis_title( inp2 )
     self.hlimit2 = { scale_axis( self.src, inp2 ) }
@@ -386,12 +381,11 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
-
-  filename     = "test.eps"      ,
+  filename     = "test.pdf"      ,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
   script       = "plotter.gp"    ,
-  terminaltype = "postscript eps", --"pdf"
+  terminaltype = "pdf"           , --"postscript eps",
   fonttype     = "Times-Roman"   ,
   fontsize     = 22 ,
   xsize        = 27 ,
@@ -412,6 +406,7 @@ local plot = Command 'plot' {
   title    = nil,
   noversion   = nil,
   interpolate = "" ,
+  grid = 'grid',
 
   vlimit2  = {nil, nil},
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
@@ -421,19 +416,20 @@ local plot = Command 'plot' {
   xlabel2  = "",
 
   linewidth = 1,
+  --linestyle = 1,
+  linetype = 1,
   color  = {},
-  colors = { "red"        , "purple", "brown"    , "yellow " , "turquoise",
+  colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
              "orangered4" , "brown4" },
 -- non-user option
-  inp  = \s to_table (s.HAXIS),
-  out  = \s to_table (s.VAXIS),
+  inp  = \s to_tbl (s.HAXIS),
+  out  = \s to_tbl (s.VAXIS),
   keys = \s mk_tbl   (s.inp   , s.out             ), -- chain_tbl does not work
   ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
   drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
   src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
-
   exec = exec,
 } :set_readonly()
 
