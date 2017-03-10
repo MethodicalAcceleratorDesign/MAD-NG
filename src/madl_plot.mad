@@ -209,14 +209,13 @@ local function find_key(inp, key)
   return indx
 end
 
-local function temp_multiplot(temp, inp, color, key, start)
+local function temp_multiplot(temp, inp, key, start)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
     for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
     for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key    , tostring(i+start+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           )
-                   temp[lnr+i]=temp[lnr+i]:gsub('colors', color[i+1]         ) end
+                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           ) end
   end
 end
 
@@ -225,9 +224,17 @@ local function temp_add(temp, inp, key, start)
   local s, lnr = #inp, find_key(temp, key)
   if lnr then
     for i=#temp,lnr,-1 do template[i+s-1]=temp[i]  end
-    for i=start,s-1    do template[lnr+i]=inp[i] end
+    for i=start,s      do template[lnr+i]=inp[i] end
   end
   return template
+end
+
+local function temp_colors(temp, color)
+  local c = 1
+  for i,line in ipairs(temp) do
+    temp[i], n = string.gsub( line, "colors", color[c] )
+    if n == 1 then c=c+1 end
+  end
 end
 
 local function temp_print(temp, printer) -- connect to plotter
@@ -250,12 +257,11 @@ local template = {
   "'$plotdata' using 1:count  every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
-local templ_nocopy = { "set terminal x11 persist \n" }
-
+local templ_nocopy   = { "set terminal x11 persist \n" }
 local templ_hardcopy = {
-  "reset \n"                          ,
+  "reset \n",
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color font '$fonttype, $fontsize'\n",
-  "set output '$filename'  \n"         ,
+  "set output '$filename'  \n",
 }
 
 local temp_multiv = {
@@ -270,7 +276,7 @@ local temp_multih = {
   "set x2tics \n"                 ,
   "set tics out \n"               ,
   "set x2label '$xlabel2' \n"     ,
-  "set x2range [$ymin2:$ymax2] \n",
+  "set x2range [$xmin2:$xmax2] \n",
 }
 
 local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
@@ -340,20 +346,19 @@ function exec(self)
     self.ylabel2, self.xlabel2 = axis_title( out2 ), axis_title( inp2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
     self.hlimit2 = { scale_axis( self.src, inp2 ) }
-    temp = temp_add(temp, temp_multih , "gtitle", 1 )
-    temp = temp_add(temp, temp_multiv , "gtitle", 1 )
-    --for i,v in ipairs (temp) do print(i,v) end
+    temp = temp_add (temp, temp_multih , "gtitle", 1 )
+    temp = temp_add (temp, temp_multiv , "gtitle", 1 )
     temp = chain_tbl(temp, temp_hvaxis2)
-    --for i,v in ipairs (temp) do print(i,v) end
-    temp_multiplot (temp, out2       , self.colors, "count2", #self.out)
+    temp_multiplot  (temp, out2     , "count2", #self.out+#inp2)
+    temp_multiplot  (temp, self.out , 'count', #inp2)
   elseif self.VAXIS2 then
     local out2   = to_table (self.VAXIS2)
     self.keys    = chain_tbl(self.keys, out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add(temp, temp_multiv, "gtitle", 1 )
+    temp = temp_add (temp, temp_multiv, "gtitle", 1 )
     temp = chain_tbl(temp, temp_vaxis2)
-    temp_multiplot (temp, out2       , self.colors, "count2", #self.out)
+    temp_multiplot (temp, out2       , "count2", #self.out)
   elseif self.HAXIS2 then
     local inp2   = to_table (self.HAXIS2)
     self.keys    = chain_tbl(self.inp , inp2 )
@@ -361,12 +366,15 @@ function exec(self)
     self.xlabel2 = axis_title( inp2 )
     self.hlimit2 = { scale_axis( self.src, inp2 ) }
     temp = temp_add(temp, temp_multih, "gtitle", 1 )
+    temp_multiplot  ( temp, self.out , 'count', #inp2)
   end
 
   plotter( self.src, plot_data, self.keys )
-  temp = temp_fill( temp, self     )
-  temp_multiplot  ( temp, self.out , self.colors, 'count', 0)
-  temp_print      ( temp, gp_script)
+  temp = temp_fill( temp, self       )
+  temp_multiplot  ( temp, self.out , 'count', 0)
+  temp_colors     ( temp, self.colors)
+  temp_print      ( temp, gp_script  )
+
   os.execute("gnuplot "..self.script)
 end
 
@@ -418,7 +426,6 @@ local plot = Command 'plot' {
   colors = { "red", "purple",  "brown", "yellow", "turquoise", "green", "blue",
              "orange", "violet", "pink", "greenyellow", "gray", "dark-grey",
              "dark-red",  "gold", "orangered4", "brown4" },
-
 -- non-user option
   inp  = \s to_table (s.HAXIS),
   out  = \s to_table (s.VAXIS),
