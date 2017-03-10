@@ -9,7 +9,7 @@ return DEFAULTS {
   studies = DEFAULTS.studies {
     k1   = {stop = 0.01, k1s = 0},
     k1s  = {stop = 0.01, k1 = 0},
-    tilt = {stop = pi/4},
+    tilt = {stop = "pi/4"},
     -- TODO: l
   },
 }
