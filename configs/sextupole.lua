@@ -1,3 +1,4 @@
+local DEFAULTS = R 'defaults'
 return DEFAULTS {
   el_type = "sextupole",
   el_args = T[[k2:=${k2}, k2s:=${k2s}, l=1, at=0]],

@@ -1,3 +1,4 @@
+local DEFAULTS = R 'defaults'
 return DEFAULTS {
   mad_sequence = T[[
 local sequence = MAD.sequence "${seq_name}" {

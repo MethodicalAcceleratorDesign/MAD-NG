@@ -1,3 +1,4 @@
+local DEFAULTS = R 'defaults'
 return DEFAULTS {
   el_type = "drift",
   el_args = [[l=1, at=0]],
