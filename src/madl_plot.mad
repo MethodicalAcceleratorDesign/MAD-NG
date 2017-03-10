@@ -122,7 +122,7 @@ local function scale_tbl(tbl, start, stop)
   return r
 end
 
-local function scale_dat(src, keys, rng)
+local function scale_dat(src, keys, rng) -- check luafun usage
   local d_src = {}
   local start, stop = 1, #src[keys[1]]
   start, stop = chksize(rng, start, stop)
@@ -133,7 +133,7 @@ local function scale_dat(src, keys, rng)
   return d_src
 end
 
-local function scale_axis(src, keys)
+local function scale_axis(src, keys) --add posisiblitie of boundries
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
     local min = src[key]:min()
@@ -257,9 +257,8 @@ local template = {
   "'$plotdata' using 1:count  every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
-local templ_nocopy   = { "set terminal x11 persist \n" }
-local templ_hardcopy = {
-  "reset \n",
+local temp_nocopy   = { "set terminal x11 persist \n" }
+local temp_hardcopy = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color font '$fonttype, $fontsize'\n",
   "set output '$filename'  \n",
 }
@@ -281,8 +280,9 @@ local temp_multih = {
 
 local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
 local temp_hvaxis2 = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
---local temp_haxis2  = "'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"
+--local temp_haxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 
+local temp_preamble = { "#$preamble \n" }
 local temp_lay = {
   "\nunset tmargin \n"  ,
   "unset bmargin \n"    ,
@@ -312,8 +312,9 @@ function exec(self)
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
 
-  if self.hardcopy then temp = mk_tbl(templ_hardcopy, temp)
-                   else temp = mk_tbl(templ_nocopy  , temp) end
+  if self.hardcopy then temp = mk_tbl(temp_hardcopy, temp)
+                   else temp = mk_tbl(temp_nocopy  , temp) end
+  if self.preamble then temp = mk_tbl(temp_preamble, temp) end
 
   if self.table then
     local title, date, time in self.table
@@ -346,27 +347,26 @@ function exec(self)
     self.ylabel2, self.xlabel2 = axis_title( out2 ), axis_title( inp2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
     self.hlimit2 = { scale_axis( self.src, inp2 ) }
-    temp = temp_add (temp, temp_multih , "gtitle", 1 )
-    temp = temp_add (temp, temp_multiv , "gtitle", 1 )
-    temp = chain_tbl(temp, temp_hvaxis2)
-    temp_multiplot  (temp, out2     , "count2", #self.out+#inp2)
-    temp_multiplot  (temp, self.out , 'count', #inp2)
+    temp = chain_tbl( temp, temp_hvaxis2 )
+    temp = temp_add ( temp, temp_multih, "gtitle", 1 )
+    temp = temp_add ( temp, temp_multiv, "gtitle", 1 )
+    temp_multiplot  ( temp, out2       , "count2", #inp2+#self.out )
+    temp_multiplot  ( temp, self.out   , 'count' , #inp2           )
   elseif self.VAXIS2 then
     local out2   = to_table (self.VAXIS2)
     self.keys    = chain_tbl(self.keys, out2 )
     self.ylabel2 = axis_title( out2 )
     self.vlimit2 = { scale_axis( self.src, out2 ) }
-    temp = temp_add (temp, temp_multiv, "gtitle", 1 )
-    temp = chain_tbl(temp, temp_vaxis2)
-    temp_multiplot (temp, out2       , "count2", #self.out)
+    temp = chain_tbl( temp, temp_vaxis2 )
+    temp = temp_add ( temp, temp_multiv, "gtitle", 1         )
+    temp_multiplot  ( temp, out2       , "count2", #self.out )
   elseif self.HAXIS2 then
     local inp2   = to_table (self.HAXIS2)
-    self.keys    = chain_tbl(self.inp , inp2 )
-    self.keys    = chain_tbl(self.keys, self.out )
+    self.keys    = chain_tbl(self.inp , inp2, self.keys )
     self.xlabel2 = axis_title( inp2 )
     self.hlimit2 = { scale_axis( self.src, inp2 ) }
-    temp = temp_add(temp, temp_multih, "gtitle", 1 )
-    temp_multiplot  ( temp, self.out , 'count', #inp2)
+    temp = temp_add ( temp, temp_multih, "gtitle", 1     )
+    temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
   end
 
   plotter( self.src, plot_data, self.keys )
@@ -374,11 +374,12 @@ function exec(self)
   temp_multiplot  ( temp, self.out , 'count', 0)
   temp_colors     ( temp, self.colors)
   temp_print      ( temp, gp_script  )
-
-  os.execute("gnuplot "..self.script)
+  os.execute("gnuplot "..self.script )
 end
 
 local plot = Command 'plot' {
+  preamble = nil,
+  hardcopy = nil,
   table    = nil,
   data     = nil,
   sequence = nil,
@@ -386,7 +387,6 @@ local plot = Command 'plot' {
   VAXIS    = 'y',
   VAXIS2   = nil,
 
-  hardcopy = nil,
   filename     = "test.eps"      ,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
@@ -416,16 +416,16 @@ local plot = Command 'plot' {
   vlimit2  = {nil, nil},
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
   ylabel2  = "",
-
   xlimit2  = {nil, nil},
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   xlabel2  = "",
 
   linewidth = 1,
   color  = {},
-  colors = { "red", "purple",  "brown", "yellow", "turquoise", "green", "blue",
-             "orange", "violet", "pink", "greenyellow", "gray", "dark-grey",
-             "dark-red",  "gold", "orangered4", "brown4" },
+  colors = { "red"        , "purple", "brown"    , "yellow " , "turquoise",
+             "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
+             "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
+             "orangered4" , "brown4" },
 -- non-user option
   inp  = \s to_table (s.HAXIS),
   out  = \s to_table (s.VAXIS),
