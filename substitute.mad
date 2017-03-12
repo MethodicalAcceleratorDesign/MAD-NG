@@ -6,9 +6,7 @@
 
 -- Expand a template pattern
 local function substitute(template, context)
-  return ({template:gsub("${([_%a][_%w]*)}",
-           -- recursive substitutions:
-           \x -> substitute(tostring(context[x]), context))})[1]
+  return (template:gsub("${([_%a][_%w]*)}", \x -> tostring(context[x])))
 end
 
 local function read_file(name)
@@ -41,76 +39,21 @@ end
 -- Config
 ------------------------------------------
 
-local function substitute_all(context, templates)
-  local results = {}
-  -- benchmark with varying initial conditions independently
-  for _, study in ipairs(context.studies:get_varkey()) do
-    local overrides = context.studies[study]
-    if overrides then
-      local context = context {
-        prefix  = context.prefix .. study,
-        [study] = "${varname}", -- usually study is the varied attribute name
-        study   = study,
-      } (overrides)
-      for engine, template in pairs(templates) do
-        local context = context { engine=engine }
-        local input = substitute(template, context)
-        local madfile = substitute(context.madfile, context)
-        save_file(madfile, input)
-        table.insert(results, {context, engine, madfile})
-      end
-    end
-  end
-  return results
+-- GLOBAL
+pi = MAD.gmath.pi
+L  = read_file                              -- load a file
+T  = \str -> (\ctx -> substitute(str, ctx)) -- specify a template by string
+LT = \str -> T(L(str))                      -- specify a template by filename
+R  = \str -> require('configs.'..str)
+
+
+local function wrap_context(obj)
+  return obj {
+    varname = \s -> (s.engine == 'mad' and
+                      obj.varname:gsub('->', '.') or
+                      obj.varname)
+  }
 end
-
-
--- GLOBAL:
-DEFAULTS = MAD.Object {
-    -- sequence
-    madx_sequence  = [[
-${seq_name}: sequence, refer=entry, l=${seq_len};
-    ${el_name}: ${el_type}, ${el_args};
-endsequence;
-    ]],
-    ptc_sequence = "${madx_sequence}",
-    mad_sequence = [[
-local sequence = MAD.sequence "${seq_name}" {
-  refer="entry", l=${seq_len},
-  MAD.element.${el_type} "${el_name}" { ${el_args} },
-}
-    ]],
-    seq_name  = "seq",
-    el_name   = "el",
-    beam_args = [[particle="proton", energy=${energy}]],
-    observe   = "${el_name}",
-    -- loop:
-    varname   = "loop_value",
-    varfunc   = "linrange",
-    start     = 0,
-    stop      = 0.5,
-    count     = 20,
-    -- particle:
-    x = 0, px = 0,
-    y = 0, py = 0,
-    t = 0, pt = 0,
-    energy = 2,
-    seq_len = 1,
-    studies = MAD.Object {
-      x = {}, px = {},
-      y = {}, py = {},
-      t = {}, pt = {},
-      energy = {
-        varfunc = "logrange",
-        start   = 2,
-        stop    = 2000,
-      },
-    },
-    -- output:
-    madfile = "${prefix}.${engine}",
-    tfsfile = "${prefix}.${engine}.tfs",
-    logfile = "${prefix}.${engine}.log",
-}
 
 local function run_madx(madfile, logfile)
   run("madx", madfile, logfile)
@@ -122,19 +65,68 @@ end
 
 -- TODO: create test matrix in memory
 -- TODO: compare by columns using assertAllAlmostEquals
-local function test(template, context, expected, actual)
-  local suite = titlecase(context.study .. ' ' .. context.engine)
-  local test = substitute(template, {
-    suite = suite,
+local function load_test(template, ctx)
+  local input = substitute(template, {
+    madx_file = ctx.runs.madx.tfsfile,
+    mad_file = ctx.runs.mad.tfsfile,
+    ptc_file = ctx.runs.ptc.tfsfile,
+    suite = ctx.study,
     margin = 1e-14,
-    expected = expected,
-    actual = actual,
-    varname = context.varname,
+    varname = ctx.varname,
   })
-  -- print(test)
-  -- os.exit()
-  assert(load(test, suite))()
+  assert(load(input, suite))()
 end
+
+
+local function create_plots(ctx)
+  local plot, vector in MAD
+  local loadtxt = require('loadtxt')
+
+  local files = {
+    madx = ctx.runs.madx.tfsfile,
+    mad  = ctx.runs.mad.tfsfile,
+    ptc  = ctx.runs.ptc.tfsfile,
+  }
+
+  local data = {
+    mad  = loadtxt(io.lines(files.mad)),
+    ptc  = loadtxt(io.lines(files.ptc)),
+    madx = loadtxt(io.lines(files.madx)),
+  }
+
+  for _, var in ipairs({"x", "px", "y", "py", "t", "pt"}) do
+    local data = {
+      x    = vector(data.mad[ctx.varname]),
+      mad  = vector(data.mad[var]),
+      ptc  = vector(data.ptc[var]),
+      madx = vector(data.madx[var]),
+    }
+    -- absolute values
+    plot {
+      filename = ctx.prefix .. "_" .. var .. "_abs.eps",
+      data  = data,
+      HAXIS = 'x',
+      VAXIS = {'mad', 'ptc', 'madx'},
+      xlabel = "initial " .. ctx.study,
+      ylabel = "final " .. var,
+    }
+    -- differences
+    plot {
+      filename = ctx.prefix .. "_" .. var .. "_diff.eps",
+      data  = {
+        x = data.x,
+        ["mad-ptc"] = data.mad - data.ptc,
+        ["mad-madx"] = data.mad - data.madx,
+      },
+      HAXIS = 'x',
+      VAXIS = {'mad-ptc'},
+      VAXIS2 = {'mad-madx'},
+      xlabel = "initial " .. ctx.study,
+      ylabel = "final " .. var,
+    }
+  end
+end
+
 
 local function main(args)
 
@@ -172,13 +164,43 @@ local function main(args)
   -- first write+exec mad files
   for _, filename in ipairs(opts) do
     local context = dofile(filename)
-    local studies = substitute_all(context, templates)
+    local studies = {}
 
+    -- derive a context for every study
+    for _, study in ipairs(context.studies:get_varkey()) do
+      local overrides = context.studies[study]
+      if overrides then
+        table.insert(studies, context {
+          prefix  = context.prefix .. study,
+          [study] = T"${varname}", -- usually study is the varied attribute name
+          study   = study,
+        } (overrides))
+      end
+    end
+
+    -- substitute a template for each engine
+    for _, study in ipairs(studies) do
+      study.runs = {}
+      for engine, template in pairs(templates) do
+        local context = wrap_context( study { engine=engine } )
+        local input = substitute(template, context)
+        save_file(context.madfile, input)
+        study.runs[engine] = context
+      end
+    end
+
+    -- run test for each engine
     if opts['run'] then
       for _, study in ipairs(studies) do
-        local context, engine, madfile = unpack(study)
-        local logfile = substitute(context.logfile, context)
-        runners[engine](madfile, logfile)
+        for engine, context in pairs(study.runs) do
+          runners[engine](context.madfile, context.logfile)
+        end
+      end
+    end
+
+    if opts['plot'] then
+      for _, study in ipairs(studies) do
+        create_plots(study)
       end
     end
 
@@ -190,12 +212,7 @@ local function main(args)
   -- run tests separately
   for _, studies in ipairs(all_tests) do
     for _, study in ipairs(studies) do
-      local context, engine, madfile = unpack(study)
-      if engine ~= 'mad' then
-        local reffile = context.prefix .. '.mad.tfs'
-        local tfsfile = substitute(context.tfsfile, context)
-        test(test_template, context, reffile, tfsfile)
-      end
+      load_test(test_template, study)
     end
   end
   if opts['test'] then
