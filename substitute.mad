@@ -35,16 +35,24 @@ local function titlecase(name)
   end)
 end
 
+function table.clone(orig)
+  local clone = {}
+  for k, v in pairs(orig) do clone[k] = v end
+  return clone
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
 
 -- GLOBAL
 pi = MAD.gmath.pi
-L  = read_file                              -- load a file
+L  = \str -> read_file('templates/'..str)   -- load a file
 T  = \str -> (\ctx -> substitute(str, ctx)) -- specify a template by string
 LT = \str -> T(L(str))                      -- specify a template by filename
 R  = \str -> require('configs.'..str)
+_G.save_file = save_file
+_G.run = run
 
 
 local function wrap_context(obj)
@@ -53,14 +61,6 @@ local function wrap_context(obj)
                       obj.varname:gsub('->', '.') or
                       obj.varname)
   }
-end
-
-local function run_madx(madfile, logfile)
-  run("madx", madfile, logfile)
-end
-
-local function run_mad(madfile, logfile)
-  run("mad " .. madfile, nil, logfile)
 end
 
 -- TODO: create test matrix in memory
@@ -147,12 +147,6 @@ local function main(args)
 
   local test_template = read_file('templates/test_basic_track.mad')
 
-  local templates = {
-    madx = read_file('templates/basic_track.madx'),
-    ptc = read_file('templates/basic_track.ptc'),
-    mad = read_file('templates/basic_track.mad'),
-  }
-
   local runners = {
     madx = run_madx,
     ptc = run_madx,
@@ -181,10 +175,9 @@ local function main(args)
     -- substitute a template for each engine
     for _, study in ipairs(studies) do
       study.runs = {}
-      for engine, template in pairs(templates) do
-        local context = wrap_context( study { engine=engine } )
-        local input = substitute(template, context)
-        save_file(context.madfile, input)
+      for engine, overrides in pairs(study.engines) do
+        local context = wrap_context( study { engine=engine } (table.clone(overrides)) )
+        context:_generate()
         study.runs[engine] = context
       end
     end
@@ -193,7 +186,7 @@ local function main(args)
     if opts['run'] then
       for _, study in ipairs(studies) do
         for engine, context in pairs(study.runs) do
-          runners[engine](context.madfile, context.logfile)
+          context:_run()
         end
       end
     end

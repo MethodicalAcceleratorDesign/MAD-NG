@@ -1,4 +1,13 @@
 return MAD.Object {
+    -- methods
+    _generate = \ctx\ save_file(ctx.madfile, ctx.whole),
+    _run      = \ctx\ run(ctx.command, ctx.madfile, ctx.logfile),
+    -- engines
+    engines = MAD.Object {
+      madx = { whole = LT'basic_track.madx', command = 'madx' },
+      ptc =  { whole = LT'basic_track.ptc',  command = 'madx' },
+      mad =  { whole = LT'basic_track.mad',  command = 'mad'  },
+    },
     -- sequence
     madx_sequence  = T[[
 ${seq_name}: sequence, refer=entry, l=${seq_len};
