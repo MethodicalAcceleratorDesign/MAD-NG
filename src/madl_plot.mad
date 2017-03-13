@@ -239,7 +239,6 @@ end
 
 local function temp_print(temp, printer)
   for i =1,#temp do printer:write(temp[i]) end
-  printer:close()
 end
 
 local template = {
@@ -255,14 +254,16 @@ local template = {
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
   "'$plotdata' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  "\n unset multiplot \n",
 }
 
 local temp_preamble = { "#$preamble \n" }
 local temp_nocopy   = { "set terminal x11 persist \n" }
 local temp_hardcopy = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color \n",
-  "set output '$filename'  \n",
+  "set output '|ps2pdf - $filename'  \n",
 }
+local temp_unmult = {  "\n unset multiplot \n" }
 local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
@@ -299,7 +300,11 @@ local temp_lay = {
   "set yrange [-1:1] \n",
   "plot '$layoutdata' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
+
+local temp_save = {}
+
 -- plotting command -----------------------------------------------------------o
+local gp = io.popen("gnuplot", "w")
 local mtable, Command in MAD
 
 function exec(self)
@@ -309,8 +314,9 @@ function exec(self)
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
 
-  if self.hardcopy then temp = mk_tbl(temp_hardcopy, temp)
-                   else temp = mk_tbl(temp_nocopy  , temp) end
+  if     self.noterminal then
+  elseif self.hardcopy   then temp = mk_tbl(temp_hardcopy, temp)
+                         else temp = mk_tbl(temp_nocopy  , temp) end
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
 
   if self.table then
@@ -370,11 +376,26 @@ function exec(self)
   temp = temp_fill( temp, self       )
   temp_multiplot  ( temp, self.out , 'count', 0)
   temp_colors     ( temp, self.colors)
-  temp_print      ( temp, gp_script  )
-  os.execute("gnuplot "..self.script )
+
+  temp_save = chain_tbl(temp_save, temp)
+  temp_print( temp_save, gp_script )
+
+  temp_print( temp     , gp        )
+  for i,v in ipairs(temp) do print(i,v) end
+
+  if self.hardcopy then
+  else
+    --temp_print( temp     , gp        )
+  end
+
+  if self.close then
+    gp:close()
+  end
 end
 
 local plot = Command 'plot' {
+  pipe = nil,
+  close = nil,
   preamble = nil,
   hardcopy = nil,
   table    = nil,
@@ -387,7 +408,8 @@ local plot = Command 'plot' {
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
   script       = "plotter.gp"    ,
-  terminaltype = "pdf"           , --"postscript eps",
+  --terminaltype = "pdf"           ,
+  terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
   fontsize     = 22 ,
   xsize        = 27 ,
@@ -426,6 +448,7 @@ local plot = Command 'plot' {
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
              "orangered4" , "brown4" },
+  noterminal = nil,
 -- non-user option
   inp  = \s to_tbl (s.HAXIS),
   out  = \s to_tbl (s.VAXIS),
