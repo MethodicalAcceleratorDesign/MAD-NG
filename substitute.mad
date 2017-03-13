@@ -154,62 +154,58 @@ local function main(args)
     mad = run_mad,
   }
 
-  local all_tests = {}
+  if #(opts) ~= 1 then
+    print("Usage: " .. args[0] .. " CONFIG [--run] [--plot] [--test]")
+    os.exit(1)
+  end
 
   -- first write+exec mad files
-  for _, filename in ipairs(opts) do
-    local context = dofile(filename)
-    local studies = {}
+  local filename = opts[1]
+  local context = dofile(filename)
+  local studies = {}
 
-    -- derive a context for every study
-    for _, study in ipairs(context.studies:get_varkey()) do
-      local overrides = context.studies[study]
-      if overrides then
-        table.insert(studies, context {
-          prefix  = context.prefix .. study,
-          [study] = T"${varname}", -- usually study is the varied attribute name
-          study   = study,
-        } (overrides))
-      end
-    end
-
-    -- substitute a template for each engine
-    for _, study in ipairs(studies) do
-      study.runs = {}
-      for engine, overrides in pairs(study.engines) do
-        local context = wrap_context( study { engine=engine } (table.clone(overrides)) )
-        context:_generate()
-        study.runs[engine] = context
-      end
-    end
-
-    -- run test for each engine
-    if opts['run'] then
-      for _, study in ipairs(studies) do
-        for engine, context in pairs(study.runs) do
-          context:_run()
-        end
-      end
-    end
-
-    if opts['plot'] then
-      for _, study in ipairs(studies) do
-        create_plots(study)
-      end
-    end
-
-    if opts['test'] then
-      table.insert(all_tests, studies)
+  -- derive a context for every study
+  for _, study in ipairs(context.studies:get_varkey()) do
+    local overrides = context.studies[study]
+    if overrides then
+      table.insert(studies, context {
+        prefix  = context.prefix .. study,
+        [study] = T"${varname}", -- usually study is the varied attribute name
+        study   = study,
+      } (overrides))
     end
   end
 
-  -- run tests separately
-  for _, studies in ipairs(all_tests) do
+  -- substitute a template for each engine
+  for _, study in ipairs(studies) do
+    study.runs = {}
+    for engine, overrides in pairs(study.engines) do
+      local context = wrap_context( study { engine=engine } (table.clone(overrides)) )
+      context:_generate()
+      study.runs[engine] = context
+    end
+  end
+
+  -- run test for each engine
+  if opts['run'] then
+    for _, study in ipairs(studies) do
+      for engine, context in pairs(study.runs) do
+        context:_run()
+      end
+    end
+  end
+
+  if opts['plot'] then
+    for _, study in ipairs(studies) do
+      create_plots(study)
+    end
+  end
+
+  -- run tests last
+  if opts['test'] then
     for _, study in ipairs(studies) do
       load_test(test_template, study)
     end
-  end
-  if opts['test'] then
     -- control the display of custom objects during tests
     MAD:export('tostring', true)
     os.exit( MAD.utest.LuaUnit.run('-v') )
