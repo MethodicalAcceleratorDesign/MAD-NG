@@ -10,7 +10,7 @@ return MAD.Object {
     },
     -- sequence
     madx_sequence  = T[[
-${seq_name}: sequence, refer=entry, l=${seq_len};
+${seq_name}: sequence, refer=center, l=${seq_len};
     ${el_name}: ${el_type}, ${el_args};
 endsequence;
     ]],
