@@ -4,7 +4,7 @@ return MAD.Object {
     _run      = \ctx\ run(ctx.command, ctx.madfile, ctx.logfile),
     -- engines
     engines = MAD.Object {
-      madx = { whole = LT'basic_track.madx', command = 'madx' },
+      madx = { whole = LT'basic_track.madx', command = 'madx', makethin=1 },
       ptc =  { whole = LT'basic_track.ptc',  command = 'madx' },
       mad =  { whole = LT'basic_track.mad',  command = 'mad'  },
     },
