@@ -133,24 +133,24 @@
   }
 
 // p==1: [m x n] = [m x 1] * [1 x n]
-#define KMUL /* outer */ \
+#define OMUL /* outer */ \
   for (ssz_t i=0; i < m; i++) { \
   for (ssz_t j=0; j < n; j++) \
     r[i*n+j] = x[i] * y[j]; \
   }
 
 // m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
-#define VMULV /* inner */ \
+#define IMUL /* inner */ \
   { r[0] = 0; \
     for (ssz_t k=0; k < p; k++) \
       r[0] += x[k] * y[k]; \
   }
 
 #define MUL() { \
-  if (m == 1 && n == 1) VMULV \
+  if (m == 1 && n == 1) IMUL \
   else      if (m == 1) VMUL \
   else      if (n == 1) MULV \
-  else      if (p == 1) KMUL \
+  else      if (p == 1) OMUL \
   else                  MMUL \
 }
 
@@ -244,24 +244,24 @@
   }
 
 // p==1: [m x n] = [1 x m]' * [1 x n]
-#define TKMUL(C) /* outer */ \
+#define TOMUL(C) /* outer */ \
   for (ssz_t i=0; i < m; i++) { \
   for (ssz_t j=0; j < n; j++) \
     r[i*n+j] = C(x[i]) * y[j]; \
   }
 
 // m==1, n==1: [1 x 1] = [p x 1]' * [p x 1]
-#define TVMULV(C) /* inner */ \
+#define TIMUL(C) /* inner */ \
   { r[0] = 0; \
     for (ssz_t k=0; k < p; k++) \
       r[0] += C(x[k]) * y[k]; \
   }
 
 #define TMUL(C) { \
-  if (m == 1 && n == 1) TVMULV(C) \
+  if (m == 1 && n == 1) TIMUL (C) \
   else      if (m == 1) TVMUL (C) \
   else      if (n == 1) TMULV (C) \
-  else      if (p == 1) TKMUL (C) \
+  else      if (p == 1) TOMUL (C) \
   else                  TMMUL (C) \
 }
 
@@ -348,24 +348,24 @@
   }
 
 // p==1: [m x n] = [m x 1] * [n x 1]'
-#define KMULT(C) /* outer */ \
+#define OMULT(C) /* outer */ \
   for (ssz_t i=0; i < m; i++) { \
   for (ssz_t j=0; j < n; j++) \
     r[i*n+j] = x[i] * C(y[j]); \
   }
 
 // m==1, n==1: [1 x 1] = [1 x p] * [1 x p]'
-#define VMULTV(C) /* inner */ \
+#define IMULT(C) /* inner */ \
   { r[0] = 0; \
     for (ssz_t k=0; k < p; k++) \
       r[0] += x[k] * C(y[k]); \
   }
 
 #define MULT(C) { \
-  if (m == 1 && n == 1) VMULTV(C) \
+  if (m == 1 && n == 1) IMULT (C) \
   else      if (m == 1) VMULT (C) \
   else      if (n == 1) MULTV (C) \
-  else      if (p == 1) KMULT (C) \
+  else      if (p == 1) OMULT (C) \
   else                  MMULT (C) \
 }
 
