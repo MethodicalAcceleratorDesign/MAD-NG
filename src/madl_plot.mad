@@ -254,7 +254,6 @@ local template = {
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
   "'$plotdata' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
-  "\n unset multiplot \n",
 }
 
 local temp_preamble = { "#$preamble \n" }
@@ -263,7 +262,7 @@ local temp_hardcopy = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
   "set output '$filename'  \n",
 }
-local temp_unmult = {  "\n unset multiplot \n", "refresh \n",  }
+local temp_unmult = {"\nunset multiplot \n" }
 local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
@@ -301,27 +300,30 @@ local temp_lay = {
   "plot '$layoutdata' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
 
-local temp_save = {}
-
 -- plotting command -----------------------------------------------------------o
-local gp = io.popen("gnuplot", "w")
 local mtable, Command in MAD
+local gp = io.popen("gnuplot", "w")
+local name = nil
+local temp_save = {}
+local flag = 0
 
 function exec(self)
-  print(self.filename)
+
   local gp_script = io.open(self.script    , "w")
   local plot_data = io.open(self.plotdata  , "w")
   local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
-
-  if     self.noterminal then
+  if     self.filename == name then
   elseif self.filename   then temp = mk_tbl(temp_hardcopy, temp)
-                         else temp = mk_tbl(temp_nocopy  , temp)
-                         gp = io.popen("gnuplot -persist", "w")
+  else                        temp = mk_tbl(temp_nocopy  , temp)
+                              temp_save = {}
+                              gp = io.popen("gnuplot -persist", "w")
   end
+  name = self.filename
+  print( self.filename )
+  print( self.filename == name )
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
-
   if self.table then
     local title, date, time in self.table
     self.gtitle =  mktitle(self.title, self.notitle, title, date, time)
@@ -374,38 +376,35 @@ function exec(self)
     temp = temp_add ( temp, temp_multih, "gtitle", 1     )
     temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
   end
-
   plotter( self.src, plot_data, self.keys )
+
+  temp = chain_tbl(temp, temp_unmult)
   temp = temp_fill( temp, self       )
   temp_multiplot  ( temp, self.out , 'count', 0)
   temp_colors     ( temp, self.colors)
 
+  temp_save = chain_tbl( temp_save, temp )
   temp_print( temp_save, gp_script )
   temp_print( temp     , gp        )
+  sleep(0.1)
+  gp_script:close()
   gp:flush()
 
-  if self.close then
-    gp       :write("unset output \n")
-    gp_script:write("unset output \n")
-  end
-  gp_script:close()
 end
 
 local plot = Command 'plot' {
   close = nil,
   preamble = nil,
-  hardcopy = nil,
   table    = nil,
   data     = nil,
   sequence = nil,
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
-  filename     = "test.pdf"      ,
+  filename     = nil,
   plotdata     = "dataplot.dat"  ,
   layoutdata   = "datalayout.dat",
   script       = "plotter.gp"    ,
-  --terminaltype = "pdf"           ,
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
   fontsize     = 22 ,
@@ -418,8 +417,8 @@ local plot = Command 'plot' {
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
-  hlimit   = \s { scale_axis( s.src, s.inp , s.margin ) }       ,
-  vlimit   = \s { scale_axis( s.src, s.out , s.margin ) }       ,
+  hlimit   = \s { scale_axis( s.src, s.inp , s.margin ) },
+  vlimit   = \s { scale_axis( s.src, s.out , s.margin ) },
   xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
@@ -445,7 +444,6 @@ local plot = Command 'plot' {
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
              "orangered4" , "brown4" },
-  noterminal = nil,
 -- non-user option
   inp  = \s to_tbl (s.HAXIS),
   out  = \s to_tbl (s.VAXIS),
