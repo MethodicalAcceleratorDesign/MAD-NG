@@ -44,6 +44,7 @@ void   mad_vec_add    (const  num_t x[], const  num_t y[]      ,  num_t  r[], ss
 void   mad_vec_addn   (const  num_t x[],        num_t y        ,  num_t  r[], ssz_t n); //  vec +  num
 void   mad_vec_addc   (const  num_t x[],       cnum_t y        , cnum_t  r[], ssz_t n); //  vec +  cpx
 void   mad_vec_addc_r (const  num_t x[], num_t y_re, num_t y_im, cnum_t  r[], ssz_t n); //  vec +  cpx
+void   mad_vec_kadd   (int k, const num_t a[], const num_t *x[],  num_t  r[], ssz_t n); //  sum_k ax
 void   mad_vec_sub    (const  num_t x[], const  num_t y[]      ,  num_t  r[], ssz_t n); //  vec -  vec
 void   mad_vec_subv   (const  num_t x[], const cnum_t y[]      , cnum_t  r[], ssz_t n); //  vec - cvec
 void   mad_vec_subn   (const  num_t y[],        num_t x        ,  num_t  r[], ssz_t n); //  num -  vec
@@ -82,6 +83,7 @@ void   mad_cvec_addv  (const cnum_t x[], const  num_t y[]      , cnum_t  r[], ss
 void   mad_cvec_addn  (const cnum_t x[],        num_t y        , cnum_t  r[], ssz_t n); //  cvec +  num
 void   mad_cvec_addc  (const cnum_t x[],       cnum_t y        , cnum_t  r[], ssz_t n); //  cvec +  cpx
 void   mad_cvec_addc_r(const cnum_t x[], num_t y_re, num_t y_im, cnum_t  r[], ssz_t n); //  cvec +  cpx
+void   mad_cvec_kadd  (int k, const cnum_t a[],const cnum_t *x[],cnum_t  r[], ssz_t n); //  sum_k ax
 void   mad_cvec_sub   (const cnum_t x[], const cnum_t y[]      , cnum_t  r[], ssz_t n); //  cvec - cvec
 void   mad_cvec_subv  (const cnum_t x[], const  num_t y[]      , cnum_t  r[], ssz_t n); //  cvec -  vec
 void   mad_cvec_subn  (const cnum_t y[],        num_t x        , cnum_t  r[], ssz_t n); //  num  - cvec

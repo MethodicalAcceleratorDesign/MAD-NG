@@ -1672,62 +1672,6 @@ function MC.__mul (x, y, r)
   error("invalid arguments (unsupported matrix operation)")
 end
 
--- tmul
-
-function MR.tmul (x, y, r)
-  if is_matrix(y) and is_matrix(x) then         -- mat' * mat
-    r = chksiztm(r,x,y) or matrix(x:ncol(), y:ncol())
-    _C.mad_mat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
-  elseif is_cmatrix(y) then                     -- mat' * cmat
-    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
-    _C.mad_mat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
-  elseif has_method(y, '__rtmul_mat') then      -- mat' * ?
-    return y:__rtmul_mat(x, r)
-  end
-  error("invalid arguments (unsupported matrix operation)")
-end
-
-function MC.tmul (x, y, r)
-  if is_matrix(y) then                          -- cmat' * mat
-    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
-    _C.mad_cmat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
-  elseif is_cmatrix(y) then                     -- cmat' * cmat
-    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
-    _C.mad_cmat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
-  elseif has_method(y, '__rtmul_cmat') then     -- cmat' * ?
-    return y:__rtmul_cmat(x, r)
-  end
-  error("invalid arguments (unsupported matrix operation)")
-end
-
--- mult
-
-function MR.mult (x, y, r)
-  if is_matrix(y) and is_matrix(x) then         -- mat * mat'
-    r = chksizmt(r,x,y) or matrix(x:nrow(), y:nrow())
-    _C.mad_mat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
-  elseif is_cmatrix(y) then                     -- mat * cmat'
-    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
-    _C.mad_mat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
-  elseif has_method(y, '__rmult_mat') then      -- mat * ?'
-    return y:__rmult_mat(x, r)
-  end
-  error("invalid arguments (unsupported matrix operation)")
-end
-
-function MC.mult (x, y, r)
-  if is_matrix(y) then                          -- cmat * mat'
-    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
-    _C.mad_cmat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
-  elseif is_cmatrix(y) then                     -- cmat * cmat'
-    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
-    _C.mad_cmat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
-  elseif has_method(y, '__rmult_cmat') then     -- cmat * ?'
-    return y:__rmult_cmat(x, r)
-  end
-  error("invalid arguments (unsupported matrix operation)")
-end
-
 -- div
 
 function MR.__rdiv_cpx (y, x, r, rcond_)          -- cpx / mat
@@ -1781,6 +1725,100 @@ function MC.__div (x, y, r, rcond_)
     _C.mad_cmat_div(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol(), rcond_ or -1) return r
   elseif has_method(y, '__rdiv_cmat') then       -- cmat / ?
     return y:__rdiv_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- kadd
+
+local kmax = 20
+local kr   = ffi.new(      'double  [?]', kmax)
+local kc   = ffi.new(      'complex [?]', kmax)
+local krd  = ffi.new('const double* [?]', kmax)
+local kcd  = ffi.new('const complex*[?]', kmax)
+
+function MR.kadd (a, x, r)
+  local n = #x
+  assert(n <= kmax, "too many matrices")
+  for i=1,n-1 do
+    assert(is_matrix(x[i]), "incompatible matrix type")
+    assert(x[i]:nrow() == x[i+1]:nrow() and
+           x[i]:ncol() == x[i+1]:ncol(), "incompatible matrix size")
+    kr[i-1], krd[i-1] = a[i], x[i].data
+  end
+  assert(is_matrix(x[n]), "incompatible matrix type")
+  kr[n-1], krd[n-1] = a[n], x[n].data
+  r = chksiz(r,x[1]) or matrix(x[1]:sizes())
+  _C.mad_vec_kadd(n, kr, krd, r.data, r:size()) return r
+end
+
+function MC.kadd (a, x, r)
+  local n = #x
+  assert(n <= kmax, "too many matrices")
+  for i=1,n-1 do
+    assert(is_cmatrix(x[i]), "incompatible matrix type")
+    assert(x[i]:nrow() == x[i+1]:nrow() and
+           x[i]:ncol() == x[i+1]:ncol(), "incompatible matrix size")
+    kc[i-1], kcd[i-1] = a[i], x[i].data
+  end
+  assert(is_cmatrix(x[n]), "incompatible matrix type")
+  kc[n-1], kcd[n-1] = a[n], x[n].data
+  r = chksiz(r,x) or cmatrix(x[1]:sizes())
+  _C.mad_cvec_kadd(n, kc, kcd, r.data, r:size()) return r
+end
+
+-- tmul
+
+function MR.tmul (x, y, r)
+  if is_matrix(y) and is_matrix(x) then         -- mat' * mat
+    r = chksiztm(r,x,y) or matrix(x:ncol(), y:ncol())
+    _C.mad_mat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif is_cmatrix(y) then                     -- mat' * cmat
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
+    _C.mad_mat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif has_method(y, '__rtmul_mat') then      -- mat' * ?
+    return y:__rtmul_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.tmul (x, y, r)
+  if is_matrix(y) then                          -- cmat' * mat
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
+    _C.mad_cmat_tmulm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif is_cmatrix(y) then                     -- cmat' * cmat
+    r = chksiztm(r,x,y) or cmatrix(x:ncol(), y:ncol())
+    _C.mad_cmat_tmul(x.data, y.data, r.data, r:nrow(), r:ncol(), x:nrow()) return r
+  elseif has_method(y, '__rtmul_cmat') then     -- cmat' * ?
+    return y:__rtmul_cmat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+-- mult
+
+function MR.mult (x, y, r)
+  if is_matrix(y) and is_matrix(x) then         -- mat * mat'
+    r = chksizmt(r,x,y) or matrix(x:nrow(), y:nrow())
+    _C.mad_mat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif is_cmatrix(y) then                     -- mat * cmat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_mat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif has_method(y, '__rmult_mat') then      -- mat * ?'
+    return y:__rmult_mat(x, r)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.mult (x, y, r)
+  if is_matrix(y) then                          -- cmat * mat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_cmat_multm(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif is_cmatrix(y) then                     -- cmat * cmat'
+    r = chksizmt(r,x,y) or cmatrix(x:nrow(), y:nrow())
+    _C.mad_cmat_mult(x.data, y.data, r.data, r:nrow(), r:ncol(), x:ncol()) return r
+  elseif has_method(y, '__rmult_cmat') then     -- cmat * ?'
+    return y:__rmult_cmat(x, r)
   end
   error("invalid arguments (unsupported matrix operation)")
 end

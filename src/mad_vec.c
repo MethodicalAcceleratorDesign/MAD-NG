@@ -163,6 +163,54 @@ mad_vec_shift (num_t x[], ssz_t n, int nshft)
   mad_free_tmp(a);
 }
 
+void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
+{ assert(a && x && r);
+  if (k == 0) return;
+  int j = k%8;
+  switch(j) {
+  case 1:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i];
+    break;
+  case 2:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i];
+    break;
+  case 3:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
+    break;
+  case 4:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
+    break;
+  case 5:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
+           + a[4]*x[4][i];
+    break;
+  case 6:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
+           + a[4]*x[4][i] + a[5]*x[5][i];
+    break;
+  case 7:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
+           + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i];
+    break;
+  case 0: j = 8;
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
+           + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i] + a[7]*x[7][i];
+  }
+  for(; j < k; j+=8) {
+    for (ssz_t i=0; i < n; i++)
+      r[i] += a[j+0]*x[j+0][i] + a[j+1]*x[j+1][i] + a[j+2]*x[j+2][i] + a[j+3]*x[j+3][i]
+            + a[j+4]*x[j+4][i] + a[j+5]*x[j+5][i] + a[j+6]*x[j+6][i] + a[j+7]*x[j+7][i];
+  }
+}
+
 // --- cvec
 
 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
@@ -281,6 +329,33 @@ void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n)
   for (ssz_t i=0; i < n; i++) mu += x[i];
   mu /= n;
   for (ssz_t i=0; i < n; i++) r[i] = x[i] - mu;
+}
+
+void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n)
+{ assert(a && x && r);
+  if (k == 0) return;
+  int j = k%4;
+  switch(j) {
+  case 1:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i];
+    break;
+  case 2:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i];
+    break;
+  case 3:
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
+    break;
+  case 0: j = 4;
+    for (ssz_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
+  }
+  for(; j < k; j+=4) {
+    for (ssz_t i=0; i < n; i++)
+      r[i] += a[j+0]*x[j+0][i] + a[j+1]*x[j+1][i] + a[j+2]*x[j+2][i] + a[j+3]*x[j+3][i];
+  }
 }
 
 // -- FFT ---------------------------------------------------------------------o
