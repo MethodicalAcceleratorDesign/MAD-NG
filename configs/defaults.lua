@@ -6,7 +6,8 @@ return MAD.Object {
     engines = MAD.Object {
       madx = { whole = LT'basic_track.madx', command = 'madx', makethin=1 },
       ptc =  { whole = LT'basic_track.ptc',  command = 'madx' },
-      mad =  { whole = LT'basic_track.mad',  command = 'mad'  },
+      mad =  { whole = LT'basic_track.mad',  command = 'mad',
+               varname = \ctx -> ctx.parent.varname:gsub('->', '.'), }
     },
     -- sequence
     madx_sequence  = T[[
