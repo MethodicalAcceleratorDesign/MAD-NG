@@ -7,4 +7,4 @@ make clean
 make amalg PREFIX=`pwd`
 make install PREFIX=`pwd`
 mv bin/luajit{-2.1.0-beta2,}
-cp src/libluajit.a ../linux
+cp src/libluajit.a ../../bin/linux

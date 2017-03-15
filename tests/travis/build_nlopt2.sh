@@ -7,4 +7,4 @@ mv nlopt-2.4.2 nlopt2
 cd nlopt2
 ./configure --disable-shared
 make
-cp .libs/libnlopt.a ../linux/libnlopt2.a
+cp .libs/libnlopt.a ../../bin/linux/libnlopt2.a

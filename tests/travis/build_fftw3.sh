@@ -7,4 +7,4 @@ mv fftw-3.3.4 fftw3
 cd fftw3
 ./configure --disable-shared
 make
-cp .libs/libfftw3.a ../linux
+cp .libs/libfftw3.a ../../bin/linux

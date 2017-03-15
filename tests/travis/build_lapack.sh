@@ -5,4 +5,4 @@ cd lib/lapack
 cp make.inc.example make.inc
 make clean
 make lapack_install lapacklib blaslib
-cp liblapack.a librefblas.a ../linux
+cp liblapack.a librefblas.a ../../bin/linux

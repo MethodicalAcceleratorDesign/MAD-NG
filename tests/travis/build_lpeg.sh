@@ -3,4 +3,4 @@
 set -ex
 cd lib/lpeg
 make
-cp liblpeg.a ../linux
+cp liblpeg.a ../../bin/linux

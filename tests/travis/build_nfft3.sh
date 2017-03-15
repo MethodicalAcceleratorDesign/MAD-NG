@@ -10,4 +10,4 @@ cd nfft3
             --with-fftw3-libdir=`pwd`/../fftw3/.libs \
             --with-fftw3-includedir=`pwd`/../fftw3/api
 make
-cp .libs/libnfft3.a ../linux
+cp .libs/libnfft3.a ../../bin/linux
