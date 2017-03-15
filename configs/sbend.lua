@@ -1,7 +1,7 @@
 local DEFAULTS = R 'defaults'
 return DEFAULTS {
   el_type = "sbend",
-  el_args = T[[angle:=${angle}, k0:=${k0}, tilt:=${tilt}, l=${el_len}, at=0]],
+  el_args = T[[angle:=${angle}, k0:=${k0}, tilt:=${tilt}, l=${el_len}, at=0.5]],
   angle   = 0.1,
   tilt    = 0.0,
   k0      = T"${angle}/${el_len}",

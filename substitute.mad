@@ -1,4 +1,5 @@
 #! /usr/bin/env mad
+local tostring, vector, plot, gmath, utest in MAD
 
 ------------------------------------------
 -- Generic utility functions
@@ -35,33 +36,39 @@ local function titlecase(name)
   end)
 end
 
+function table.clone(orig)
+  local clone = {}
+  for k, v in pairs(orig) do clone[k] = v end
+  return clone
+end
+
+local function next_all(s, var)
+  local k
+  s.var, k = s.f(s.s, s.var)
+  return k, s.t[k]
+end
+
+local function pairs_all(t, p)
+  if t.get_varkey then
+    local f, s, var = ipairs(t:get_varkey(p))
+    return next_all, {t=t, f=f, s=s, var=var}, nil
+  else
+    return pairs(t)
+  end
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
 
 -- GLOBAL
-pi = MAD.gmath.pi
-L  = read_file                              -- load a file
+pi = gmath.pi
+L  = \str -> read_file('templates/'..str)   -- load a file
 T  = \str -> (\ctx -> substitute(str, ctx)) -- specify a template by string
 LT = \str -> T(L(str))                      -- specify a template by filename
 R  = \str -> require('configs.'..str)
-
-
-local function wrap_context(obj)
-  return obj {
-    varname = \s -> (s.engine == 'mad' and
-                      obj.varname:gsub('->', '.') or
-                      obj.varname)
-  }
-end
-
-local function run_madx(madfile, logfile)
-  run("madx", madfile, logfile)
-end
-
-local function run_mad(madfile, logfile)
-  run("mad " .. madfile, nil, logfile)
-end
+_G.save_file = save_file
+_G.run = run
 
 -- TODO: create test matrix in memory
 -- TODO: compare by columns using assertAllAlmostEquals
@@ -71,7 +78,8 @@ local function load_test(template, ctx)
     mad_file = ctx.runs.mad.tfsfile,
     ptc_file = ctx.runs.ptc.tfsfile,
     suite = ctx.study,
-    margin = 1e-14,
+    ptc_margin = 1e-14,
+    madx_margin = 1e-13,
     varname = ctx.varname,
   })
   assert(load(input, suite))()
@@ -79,24 +87,17 @@ end
 
 
 local function create_plots(ctx)
-  local plot, vector in MAD
-  local loadtxt = require('loadtxt')
-
-  local files = {
-    madx = ctx.runs.madx.tfsfile,
-    mad  = ctx.runs.mad.tfsfile,
-    ptc  = ctx.runs.ptc.tfsfile,
-  }
+  local loadtxt = require('loadtxt').loadtxt
 
   local data = {
-    mad  = loadtxt(io.lines(files.mad)),
-    ptc  = loadtxt(io.lines(files.ptc)),
-    madx = loadtxt(io.lines(files.madx)),
+    mad  = loadtxt(ctx.runs.mad.tfsfile),
+    ptc  = loadtxt(ctx.runs.ptc.tfsfile),
+    madx = loadtxt(ctx.runs.madx.tfsfile),
   }
 
   for _, var in ipairs({"x", "px", "y", "py", "t", "pt"}) do
     local data = {
-      x    = vector(data.mad[ctx.varname]),
+      x    = vector(data.mad.var),
       mad  = vector(data.mad[var]),
       ptc  = vector(data.ptc[var]),
       madx = vector(data.madx[var]),
@@ -147,78 +148,66 @@ local function main(args)
 
   local test_template = read_file('templates/test_basic_track.mad')
 
-  local templates = {
-    madx = read_file('templates/basic_track.madx'),
-    ptc = read_file('templates/basic_track.ptc'),
-    mad = read_file('templates/basic_track.mad'),
-  }
-
   local runners = {
     madx = run_madx,
     ptc = run_madx,
     mad = run_mad,
   }
 
-  local all_tests = {}
+  if #(opts) ~= 1 then
+    print("Usage: " .. args[0] .. " CONFIG [--run] [--plot] [--test]")
+    os.exit(1)
+  end
 
   -- first write+exec mad files
-  for _, filename in ipairs(opts) do
-    local context = dofile(filename)
-    local studies = {}
+  local filename = opts[1]
+  local context = dofile(filename)
+  local studies = {}
 
-    -- derive a context for every study
-    for _, study in ipairs(context.studies:get_varkey()) do
-      local overrides = context.studies[study]
-      if overrides then
-        table.insert(studies, context {
-          prefix  = context.prefix .. study,
-          [study] = T"${varname}", -- usually study is the varied attribute name
-          study   = study,
-        } (overrides))
-      end
-    end
-
-    -- substitute a template for each engine
-    for _, study in ipairs(studies) do
-      study.runs = {}
-      for engine, template in pairs(templates) do
-        local context = wrap_context( study { engine=engine } )
-        local input = substitute(template, context)
-        save_file(context.madfile, input)
-        study.runs[engine] = context
-      end
-    end
-
-    -- run test for each engine
-    if opts['run'] then
-      for _, study in ipairs(studies) do
-        for engine, context in pairs(study.runs) do
-          runners[engine](context.madfile, context.logfile)
-        end
-      end
-    end
-
-    if opts['plot'] then
-      for _, study in ipairs(studies) do
-        create_plots(study)
-      end
-    end
-
-    if opts['test'] then
-      table.insert(all_tests, studies)
+  -- derive a context for every study
+  for study, overrides in pairs_all(context.studies) do
+    if overrides then
+      table.insert(studies, context {
+        prefix  = context.prefix .. study,
+        [study] = T"${varname}", -- usually study is the varied attribute name
+        study   = study,
+      } (overrides))
     end
   end
 
-  -- run tests separately
-  for _, studies in ipairs(all_tests) do
+  -- substitute a template for each engine
+  for _, study in ipairs(studies) do
+    study.runs = {}
+    for engine, overrides in pairs_all(study.engines) do
+      local context = study { engine=engine } (table.clone(overrides))
+      context:_generate()
+      study.runs[engine] = context
+    end
+  end
+
+  -- run test for each engine
+  if opts['run'] then
+    for _, study in ipairs(studies) do
+      for engine, context in pairs(study.runs) do
+        context:_run()
+      end
+    end
+  end
+
+  if opts['plot'] then
+    for _, study in ipairs(studies) do
+      create_plots(study)
+    end
+  end
+
+  -- run tests last
+  if opts['test'] then
     for _, study in ipairs(studies) do
       load_test(test_template, study)
     end
-  end
-  if opts['test'] then
     -- control the display of custom objects during tests
     MAD:export('tostring', true)
-    os.exit( MAD.utest.LuaUnit.run('-v') )
+    os.exit( utest.LuaUnit.run('-v') )
   end
 end
 
