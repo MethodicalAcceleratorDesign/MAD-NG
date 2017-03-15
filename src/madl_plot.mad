@@ -46,7 +46,7 @@ SEE ALSO
 
 local dat = require 'madl_plotdat'
 local range, nrange, vector, element, totable                      in MAD
-local isa_matrix, is_range, is_table, is_vector, is_nil, is_string in MAD.typeid
+local isa_matrix, is_range, is_table, is_number, is_string         in MAD.typeid
 local min, max                                                     in MAD.gmath
 local chain, duplicate                                             in MAD.fun
 
@@ -152,9 +152,13 @@ local function scale_axis(src, keys, margin) --add margin option
     vmin:seti(i, min)
     vmax:seti(i, max)
   end
-  if margin then return 0.9*vmin:min(), 1.1*vmax:max() end
+  if margin then
+    local x = 0.1
+    if is_number(margin) then x = margin end
+    local marg = x*vmax:max()
+    return vmin:min()-marg, vmax:max()+marg
+  end
   return vmin:min(), vmax:max()
-
 end
 
 --titles
@@ -240,11 +244,18 @@ local function temp_add(temp, inp, key, start)
   return template
 end
 
-local function temp_style(temp, inp, key)
+local function temp_style(temp, inp, key) -- name
   local c = 1
   for i,line in ipairs(temp) do
     temp[i], n = string.gsub( line, key, inp[c] )
     if n == 1 then c=c+1 end
+  end
+end
+
+local function match_style(inp, out, keys) -- name
+  for k,v in pairs(inp) do
+    local indx = find_key(keys, k)
+    if indx then out[indx] = v end
   end
 end
 
@@ -258,17 +269,14 @@ local template = {
   "set lmargin at screen $lmargin \n",
   "set rmargin at screen $rmargin \n",
   "set size 1,$sizeplot \n"          ,
-  "set title '$gtitle'  \n",
-  "set key $key \n",
-
+  "set title '$gtitle'  \n"          ,
+  "set key $key \n"                  ,
   "set xlabel '$xlabel' \n"          ,
   "set ylabel '$ylabel' \n"          ,
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
   "'-' using 1:count  every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
-  --"'-' using 1:count  every 1::0 with points pointtype ptt linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
- -- "'-' using 1:count  every 1::0 with lines  dashtype  dtt linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
 local temp_preamble = { "#$preamble \n" }
@@ -293,8 +301,8 @@ local temp_multih = {
   "set x2range [$xmin2:$xmax2] \n",
 }
 
-local temp_vaxis2  = {"'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
-local temp_hvaxis2 = {"'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
+local temp_vaxis2  = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n" }
+local temp_hvaxis2 = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x2y2,\\\n" }
 --local temp_haxis2  = {"'-' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 local temp_lay = {
   "\nunset tmargin \n"  ,
@@ -338,33 +346,12 @@ function exec(self)
     else                     self.gtitle = " " end
   else self.gtitle = " " end
 
-  if self.color then
-    for k,v in pairs(self.color) do
-      local indx = find_key(self.keys, k)
-      if indx then self.colors[indx] = v end
-    end
-  end
-
-  if self.pointtype then
-    for k,v in pairs(self.pointtype) do
-      local indx = find_key(self.keys, k)
-      if indx then self.pointtypes[indx] = v end
-    end
-  end
-
-  if self.dashtype then
-    for k,v in pairs(self.dashtype) do
-      local indx = find_key(self.keys, k)
-      if indx then self.dashtypes[indx] = v end
-    end
-  end
-
   if self.VAXIS2 and self.HAXIS2 then
     local inp2, out2 = to_tbl (self.HAXIS2), to_tbl (self.VAXIS2)
     self.keys    = chain_tbl(self.inp, inp2, self.out, out2)
     self.ylabel2, self.xlabel2 = axis_title( out2 ), axis_title( inp2 )
-    self.vlimit2 = { scale_axis( self.src, out2, self.margin ) }
-    self.hlimit2 = { scale_axis( self.src, inp2, self.margin ) }
+    self.vlimit2 = { scale_axis( self.src, out2, self.vmargin ) }
+    self.hlimit2 = { scale_axis( self.src, inp2, self.hmargin ) }
     temp = chain_tbl( temp, temp_hvaxis2 )
     temp = temp_add ( temp, temp_multih, "gtitle", 1 )
     temp = temp_add ( temp, temp_multiv, "gtitle", 1 )
@@ -374,7 +361,7 @@ function exec(self)
     local out2   = to_tbl (self.VAXIS2)
     self.keys    = chain_tbl(self.keys, out2 )
     self.ylabel2 = axis_title( out2 )
-    self.vlimit2 = { scale_axis( self.src, out2, self.margin ) }
+    self.vlimit2 = { scale_axis( self.src, out2, self.vmargin ) }
     temp = chain_tbl( temp, temp_vaxis2 )
     temp = temp_add ( temp, temp_multiv, "gtitle", 1         )
     temp_multiplot  ( temp, out2       , "count2", #self.out )
@@ -382,18 +369,18 @@ function exec(self)
     local inp2   = to_tbl (self.HAXIS2)
     self.keys    = chain_tbl(self.inp , inp2, self.keys )
     self.xlabel2 = axis_title( inp2 )
-    self.hlimit2 = { scale_axis( self.src, inp2, self.margin ) }
+    self.hlimit2 = { scale_axis( self.src, inp2, self.hmargin ) }
     temp = temp_add ( temp, temp_multih, "gtitle", 1     )
     temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
   end
 
   if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
-                      else self.interpolate = "with points pointtype ptt"    end
+                      else self.interpolate = "with points pointtype ptt" end
 
   local s = #self.keys-1
   if self.HAXIS2 then s = #self.keys-2 end
   local t1 = plotter( self.src, self.keys )
-  for i = 1,s do temp = chain_tbl(temp, t1) end -- FIX has to be size of VAXIS only (HAXIS2 err)
+  for i = 1,s do temp = chain_tbl(temp, t1) end
 
   if self.sequence then
     local seq = self.sequence
@@ -408,7 +395,10 @@ function exec(self)
 
   temp = chain_tbl( temp, temp_unmult)
   temp = temp_fill( temp, self       )
-  temp_multiplot  ( temp, self.out , 'count', 0)
+  temp_multiplot  ( temp, self.out , "count", 0)
+  if self.color     then match_style(self.color    , self.colors    , self.keys) end
+  if self.pointtype then match_style(self.pointtype, self.pointtypes, self.keys) end
+  if self.dashtype  then match_style(self.dashtype , self.dashtypes , self.keys) end
   temp_style( temp, self.colors    , "colors")
   temp_style( temp, self.pointtypes, "ptt"   )
   temp_style( temp, self.dashtypes , "dtt"   )
@@ -431,7 +421,6 @@ local plot = Command 'plot' {
   VAXIS    = 'y',
   VAXIS2   = nil,
   key = "left top",
-
   filename     = nil,
   hardcopy     = nil,
   script       = "plotter.gp"    ,
@@ -443,12 +432,13 @@ local plot = Command 'plot' {
   lmargin      = 0.1,
   rmargin      = 0.9,
   sizeplot     = 1  ,
-  margin = true,
+  hmargin = false,
+  vmargin = true,
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
-  hlimit   = \s { scale_axis( s.src, s.inp , s.margin ) },
-  vlimit   = \s { scale_axis( s.src, s.out , s.margin ) },
+  hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
+  vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
   xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
@@ -465,11 +455,10 @@ local plot = Command 'plot' {
   xlimit2  = {nil, nil},
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   xlabel2  = "",
-
   linewidth = 1,
-  color     = {},
-  pointtype = {},
-  dashtype  = {},
+  color     = nil,
+  pointtype = nil,
+  dashtype  = nil,
   colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
