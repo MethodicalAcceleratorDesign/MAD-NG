@@ -164,11 +164,10 @@ local function axis_title(src)
   return label
 end
 
-local function mktitle(title, notitle, name, date, time)
+local function mktitle(title, name, date, time)
   local ver = tostring(MAD.env.version)
-  if     notitle == true  then return ""
-  elseif is_string(title) then return title
-  else                         return name..", MAD "..ver..", "..date.." "..time end
+  if   is_string(title) then return title
+  else                       return name..", MAD "..ver..", "..date.." "..time end
 end
 
 --layout
@@ -241,10 +240,10 @@ local function temp_add(temp, inp, key, start)
   return template
 end
 
-local function temp_colors(temp, color)
+local function temp_style(temp, inp, key)
   local c = 1
   for i,line in ipairs(temp) do
-    temp[i], n = string.gsub( line, "colors", color[c] )
+    temp[i], n = string.gsub( line, key, inp[c] )
     if n == 1 then c=c+1 end
   end
 end
@@ -260,12 +259,16 @@ local template = {
   "set rmargin at screen $rmargin \n",
   "set size 1,$sizeplot \n"          ,
   "set title '$gtitle'  \n",
+  "set key $key \n",
+
   "set xlabel '$xlabel' \n"          ,
   "set ylabel '$ylabel' \n"          ,
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
-  "'-' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  "'-' using 1:count  every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  --"'-' using 1:count  every 1::0 with points pointtype ptt linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+ -- "'-' using 1:count  every 1::0 with lines  dashtype  dtt linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
 local temp_preamble = { "#$preamble \n" }
@@ -289,8 +292,9 @@ local temp_multih = {
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-local temp_vaxis2  = {"'-' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
-local temp_hvaxis2 = {"'-' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
+
+local temp_vaxis2  = {"'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
+local temp_hvaxis2 = {"'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
 --local temp_haxis2  = {"'-' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 local temp_lay = {
   "\nunset tmargin \n"  ,
@@ -330,15 +334,28 @@ function exec(self)
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
   if self.table then
     local title, date, time in self.table
-    self.gtitle =  mktitle(self.title, self.notitle, title, date, time)
-  else
-    self.gtitle = " "
-  end
+    if not self.notitle then self.gtitle =  mktitle(self.title, title, date, time)
+    else                     self.gtitle = " " end
+  else self.gtitle = " " end
 
   if self.color then
     for k,v in pairs(self.color) do
       local indx = find_key(self.keys, k)
       if indx then self.colors[indx] = v end
+    end
+  end
+
+  if self.pointtype then
+    for k,v in pairs(self.pointtype) do
+      local indx = find_key(self.keys, k)
+      if indx then self.pointtypes[indx] = v end
+    end
+  end
+
+  if self.dashtype then
+    for k,v in pairs(self.dashtype) do
+      local indx = find_key(self.keys, k)
+      if indx then self.dashtypes[indx] = v end
     end
   end
 
@@ -370,8 +387,13 @@ function exec(self)
     temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
   end
 
+  if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
+                      else self.interpolate = "with points pointtype ptt"    end
+
+  local s = #self.keys-1
+  if self.HAXIS2 then s = #self.keys-2 end
   local t1 = plotter( self.src, self.keys )
-  for i = 1,#self.keys-1 do temp = chain_tbl(temp, t1 )  end -- FIX has to be size of VAXIS only (HAXIS2 err)
+  for i = 1,s do temp = chain_tbl(temp, t1) end -- FIX has to be size of VAXIS only (HAXIS2 err)
 
   if self.sequence then
     local seq = self.sequence
@@ -387,9 +409,10 @@ function exec(self)
   temp = chain_tbl( temp, temp_unmult)
   temp = temp_fill( temp, self       )
   temp_multiplot  ( temp, self.out , 'count', 0)
-  temp_colors     ( temp, self.colors)
-  temp_print( temp     , gp          )
-
+  temp_style( temp, self.colors    , "colors")
+  temp_style( temp, self.pointtypes, "ptt"   )
+  temp_style( temp, self.dashtypes , "dtt"   )
+  temp_print( temp, gp          )
   gp:flush()
 
   if self.hardcopy then
@@ -400,7 +423,6 @@ function exec(self)
 end
 
 local plot = Command 'plot' {
-  close = nil,
   preamble = nil,
   table    = nil,
   data     = nil,
@@ -408,6 +430,7 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
+  key = "left top",
 
   filename     = nil,
   hardcopy     = nil,
@@ -433,7 +456,7 @@ local plot = Command 'plot' {
   notitle  = nil,
   title    = nil,
   noversion   = nil,
-  interpolate = "" ,
+  interpolate = nil ,
   grid = 'grid',
 
   vlimit2  = {nil, nil},
@@ -444,13 +467,16 @@ local plot = Command 'plot' {
   xlabel2  = "",
 
   linewidth = 1,
-  --linestyle = 1,
-  linetype = 1,
-  color  = {},
+  color     = {},
+  pointtype = {},
+  dashtype  = {},
   colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
              "orangered4" , "brown4" },
+  pointtypes = {1,2,3,4,5,6,7,8,9,10,11,12,13},
+  dashtypes  = {"solid", "solid", "solid", "solid", "solid", "solid", "solid",
+                "solid", "solid", "solid", "solid","'-'"},
 -- non-user option
   inp  = \s to_tbl (s.HAXIS),
   out  = \s to_tbl (s.VAXIS),
