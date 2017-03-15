@@ -1,8 +1,9 @@
 #! /bin/bash
 set -ex
-git clone http://github.com/MethodicalAcceleratorDesign/LuaJIT.git lib/luajit
+[[ -e lib/luajit ]] || git clone http://github.com/MethodicalAcceleratorDesign/LuaJIT.git lib/luajit
 cd lib/luajit
 git checkout mad-patch
+git pull
 make clean
 make amalg PREFIX=`pwd`
 make install PREFIX=`pwd`
