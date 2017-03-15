@@ -5,8 +5,7 @@ local sequence = MAD.sequence "${seq_name}" {
   refer="entry", l=${seq_len},
   MAD.element.drift "dr" {l=0.5, at=0.25},
   MAD.element.${el_type} "${el_name}" { ${el_args} },
-}
-  ]],
+}]],
   el_type = "multipole",
   el_args = [[knl:={k0l, k1l, k2l}, at=0.5]],
   k0l     = 0,
