@@ -83,41 +83,59 @@ end
 local function create_plots(ctx)
   local loadtxt = require('loadtxt').loadtxt
 
-  local data = {
-    mad  = loadtxt(ctx.runs.mad.tfsfile),
-    ptc  = loadtxt(ctx.runs.ptc.tfsfile),
-    madx = loadtxt(ctx.runs.madx.tfsfile),
-  }
+  local filename = ctx.prefix .. ".pdf"
+
+  local alldata = {}
+  for engine, context in pairs(ctx.runs) do
+    alldata[engine] = loadtxt(context.tfsfile)
+  end
 
   for _, var in ipairs({"x", "px", "y", "py", "t", "pt"}) do
-    local data = {
-      x    = vector(data.mad.var),
-      mad  = vector(data.mad[var]),
-      ptc  = vector(data.ptc[var]),
-      madx = vector(data.madx[var]),
-    }
+
+    local VAXIS = {}
+    local data = {}
+    for k, v in pairs(alldata) do
+      table.insert(VAXIS, k)
+      data[k] = v and vector(v[var])
+    end
+    table.sort(VAXIS)
+    data.x = vector(alldata[VAXIS[1]].var)
+
+    local VAXIS2 = {}
+    local data2 = {}
+    local ref_k = VAXIS[1]
+    local ref_v = data[ref_k]
+    for _, k in ipairs(VAXIS), VAXIS, 1 do
+      table.insert(VAXIS2, k.."-"..ref_k)
+      data2[k.."-"..ref_k] = data[k] - ref_v
+    end
+    table.sort(VAXIS2)
+    data2.x = data.x
+
     -- absolute values
     plot {
-      filename = ctx.prefix .. "_" .. var .. "_abs.eps",
+      filename = filename,
       data  = data,
       HAXIS = 'x',
-      VAXIS = {'mad', 'ptc', 'madx'},
+      VAXIS = VAXIS,
       xlabel = "initial " .. ctx.study,
       ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      title = "Change in " .. var .. " due to varying " .. ctx.study,
     }
+
     -- differences
     plot {
-      filename = ctx.prefix .. "_" .. var .. "_diff.eps",
-      data  = {
-        x = data.x,
-        ["mad-ptc"] = data.mad - data.ptc,
-        ["mad-madx"] = data.mad - data.madx,
-      },
+      filename = filename,
+      data = data2,
       HAXIS = 'x',
-      VAXIS = {'mad-ptc'},
-      VAXIS2 = {'mad-madx'},
+      VAXIS = VAXIS2,
       xlabel = "initial " .. ctx.study,
       ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      title = "Discrepancies in " .. var .. " when varying " .. ctx.study,
     }
   end
 end
