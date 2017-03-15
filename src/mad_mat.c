@@ -692,7 +692,8 @@ matrix is square and nonsingular the routines dgesv and zgesv are used
 otherwise routines dgelsy and zgelsy are used.
 
 LAPACK is the default method for computing the entire set of singluar values
-and singular vectors. For generalized SVD the routines dgesdd and zgesdd are used.
+and singular vectors. For generalized SVD the routines dgesdd and zgesdd are
+used.
 
 LAPACK is the default method for computing the entire set of eigenvalues and
 eigenvectors. For simple eigenvalues the routines dgeev and zgeev are used. For
