@@ -22,8 +22,9 @@ local sequence = MAD.sequence "${seq_name}" {
   MAD.element.${el_type} "${el_name}" { ${el_args} },
 }
     ]],
-    seq_name  = "seq",
-    el_name   = "el",
+    seq_name  = "SEQ",          -- must be uppercase for SAD
+    el_name   = "EL",
+    mass      = 0.9382720813,   -- particle mass (proton), needed for SAD
     beam_args = T[[particle="proton", energy=${energy}]],
     observe   = T"${el_name}",
     seq_len   = 1,
