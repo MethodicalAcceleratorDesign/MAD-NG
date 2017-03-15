@@ -74,24 +74,36 @@ local function chain_tbl(t1, t2, ...)
   return t
 end
 
-local function plotter(src, output, keys) -- TODO
+local function plotter(src, keys)
   local s = src[keys[1]]
-  for i=1,#s do
-    if is_vector(s[i]) then
-      for ii=1,#s[i] do
-        for j,k in ipairs(keys) do
-          output:write(src[k][i][ii]," ")
-        end
-        output:write("\n")
-      end
-    else
-      for j,k in ipairs(keys) do
-        output:write(src[k][i]," ")
-      end
+  local t = {"\n"}
+  for i=2,#s+1 do
+    for j,k in ipairs(keys) do
+      if t[i] then t[i] = t[i]..src[k][i-1].." "
+              else t[i] =       src[k][i-1].." " end
     end
-    output:write("\n")
+    t[i] = t[i].."\n"
   end
-  output:close()
+  t[#s+2] = "e"
+  return t
+end
+
+local function plotterL(src, keys)
+  local s = src[keys[1]]
+  local t = {"\n"}
+  local c = 2
+  for i=1,#s do
+    for ii=1,#s[i] do
+      for j,k in ipairs(keys) do
+        if t[c] then t[c] = t[c]..src[k][i][ii].." "
+                else t[c] =       src[k][i][ii].." " end
+      end
+      t[c] = t[c].."\n"; c=c+1
+    end
+    t[c] = "\n"; c=c+1
+  end
+  t[c] = "e"
+  return t
 end
 
 --scalling
@@ -253,7 +265,7 @@ local template = {
   "set xrange [$xmin:$xmax] \n"      ,
   "set yrange [$ymin:$ymax] \n"      ,
   "plot ",
-  "'$plotdata' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  "'-' using 1:count  every 1::0 $interpolate  linetype $linetype linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
 local temp_preamble = { "#$preamble \n" }
@@ -277,9 +289,9 @@ local temp_multih = {
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-local temp_vaxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
-local temp_hvaxis2 = {"'$plotdata' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
---local temp_haxis2  = {"'$plotdata' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
+local temp_vaxis2  = {"'-' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x1y2,\\\n"}
+local temp_hvaxis2 = {"'-' using 1:count2 every 1::0 $interpolate linetype $linetype linecolor 'colors' title 'ytitle' axes x2y2,\\\n"}
+--local temp_haxis2  = {"'-' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 local temp_lay = {
   "\nunset tmargin \n"  ,
   "unset bmargin \n"    ,
@@ -297,21 +309,15 @@ local temp_lay = {
   "set size 1,0.15 \n"  ,
   "set origin 0,0.85 \n",
   "set yrange [-1:1] \n",
-  "plot '$layoutdata' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
+  "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
 local gp = io.popen("gnuplot", "w")
 local name = nil
-local temp_save = {}
-local flag = 0
 
 function exec(self)
-
-  local gp_script = io.open(self.script    , "w")
-  local plot_data = io.open(self.plotdata  , "w")
-  local lay_data  = io.open(self.layoutdata, "w")
   local temp = template
   if     self.filename == name then
   elseif self.filename   then temp = mk_tbl(temp_hardcopy, temp)
@@ -320,8 +326,6 @@ function exec(self)
                               gp = io.popen("gnuplot -persist", "w")
   end
   name = self.filename
-  print( self.filename )
-  print( self.filename == name )
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
   if self.table then
@@ -329,17 +333,6 @@ function exec(self)
     self.gtitle =  mktitle(self.title, self.notitle, title, date, time)
   else
     self.gtitle = " "
-  end
-
-  if self.sequence then
-    local seq = self.sequence
-    assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-    local start, stop = seq:range_index (self.range)
-    local lay         = layout( seq, start, stop )
-    self.sizeplot = 0.85
-    self.datrange = {1,-1}
-    temp = chain_tbl(temp, temp_lay)
-    plotter( lay, lay_data, {'x','y'} )
   end
 
   if self.color then
@@ -376,20 +369,34 @@ function exec(self)
     temp = temp_add ( temp, temp_multih, "gtitle", 1     )
     temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
   end
-  plotter( self.src, plot_data, self.keys )
 
-  temp = chain_tbl(temp, temp_unmult)
+  local t1 = plotter( self.src, self.keys )
+  for i = 1,#self.keys-1 do temp = chain_tbl(temp, t1 )  end -- FIX has to be size of VAXIS only (HAXIS2 err)
+
+  if self.sequence then
+    local seq = self.sequence
+    assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+    local start, stop = seq:range_index (self.range)
+    local lay         = layout( seq, start, stop )
+    local t           = plotterL( lay, {'x','y'} )
+    temp = chain_tbl(temp, temp_lay, t )
+    self.sizeplot = 0.85
+    self.datrange = {1,-1}
+  end
+
+  temp = chain_tbl( temp, temp_unmult)
   temp = temp_fill( temp, self       )
   temp_multiplot  ( temp, self.out , 'count', 0)
   temp_colors     ( temp, self.colors)
+  temp_print( temp     , gp          )
 
-  temp_save = chain_tbl( temp_save, temp )
-  temp_print( temp_save, gp_script )
-  temp_print( temp     , gp        )
-  sleep(0.1)
-  gp_script:close()
   gp:flush()
 
+  if self.hardcopy then
+    local gp_script = io.open(self.script, "w")
+    temp_print( temp, gp_script )
+    gp_script:close()
+  end
 end
 
 local plot = Command 'plot' {
@@ -401,9 +408,9 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = nil,
+
   filename     = nil,
-  plotdata     = "dataplot.dat"  ,
-  layoutdata   = "datalayout.dat",
+  hardcopy     = nil,
   script       = "plotter.gp"    ,
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
