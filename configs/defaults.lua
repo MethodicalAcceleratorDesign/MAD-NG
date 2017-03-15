@@ -22,12 +22,10 @@ local sequence = MAD.sequence "${seq_name}" {
 }]],
   seq_name  = "SEQ",          -- must be uppercase for SAD
   el_name   = "EL",
-  mass      = 0.9382720813,   -- particle mass (proton), needed for SAD
-  beam_args = T[[particle="proton", energy=${energy}]],
   observe   = T"${el_name}",
   seq_len   = 1,
   -- loop:
-  varname   = "loop_value",
+  varname   = "loopvalue",    -- no underscores in SAD!
   varfunc   = "linrange",
   start     = 0,
   stop      = 0.5,
@@ -37,6 +35,10 @@ local sequence = MAD.sequence "${seq_name}" {
   y = 0, py = 0,
   t = 0, pt = 0,
   energy = 450,
+  beam_args = T[[particle="proton", energy=${energy}]],
+  -- needed for SAD:
+  mass      = 0.9382720813,   -- particle mass (proton)
+  momentum  = \ctx -> ((ctx.energy^2-ctx.mass^2)^0.5),
   -- control
   studies = MAD.Object {
     x = {}, px = {},
