@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide sequences to define lattices
+  - Provide sequence object to define lattices
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -26,7 +26,7 @@ local M = {}
 -- module ---------------------------------------------------------------------o
 
 local __help = {}
-__help.sequence = [[
+__help.sequence = [=[
 NAME
   sequence -- build sequences
 
@@ -43,7 +43,47 @@ EXAMPLE
 
 SEE ALSO
   element.
-]]
+]=]
+
+__help["sequence: seqedit"] = [=[
+Sequence edition:
+-----------------
+  seqedit:    n/a
+  flatten:    n/a
+  cycle:      n/a
+  endedit:    n/a
+
+  seq:insert  { elem1, elem2, ..., deep=true }
+  seq:remove  { name1, name2, ..., range=range|'selected' }
+  seq:move    { name1, name2, ..., range=range|'selected', by=ds }
+  seq:replace { name1=elem1, name2=elem2, ... }
+  seq:extract { range=range|'selected' }    (return a table, not a sequence)
+
+  seq:reflect()
+  seq:save()
+  seq:dump()
+
+  remove from s1 to s2:
+  - select elements with s1 <= s_pos <= s2
+  - remove selected
+]=]
+
+__help["sequence: indexes and ranges"] = [=[
+Indexes:
+--------
+  - idx (number)
+  - negative idx, as idx but starts from end (i.e. #seq-idx+1)
+  - name (string)
+  - name[count] (case of multiple occurences)
+  - element (object)
+  - #s or #S (idx=1), #e or #E (idx=#seq)
+Ranges:
+-------
+  - idx (i.e. {idx,idx})
+  - "start_index/stop_index"
+  - {start_index, stop_index}
+  - requires start_index <= stop_index
+]=]
 
 -- locals ---------------------------------------------------------------------o
 
@@ -53,7 +93,7 @@ local is_iterable, is_callable                          in MAD.concept
 local Element                                           in MAD.element
 local minlen                                            in MAD.constant
 
--- definition -----------------------------------------------------------------o
+-- definitions ----------------------------------------------------------------o
 
 -- hidden keys: elements indexes, elements positions, elements entry positions.
 local _eidx, _epos, _spos = {}, {}, {}
@@ -81,29 +121,29 @@ local function seq_error (msg, sequ, idx)
               .. "' at index "     .. (idx or '?'))
 end
 
--- implementation -------------------------------------------------------------o
+-- helpers --------------------------------------------------------------------o
 
--- dict
+-- dictionnary { key=nil|val|[val1,...] }
 local function add_to (to, a)
-  if is_nil(to)          then return      a  end  -- no yet
-  if not is_rawtable(to) then return {to, a} end  -- one
-  to[#to+1] = a               return  to          -- many
+  if is_nil(to)          then return      a  end  -- none -> element
+  if not is_rawtable(to) then return {to, a} end  -- one  -> table
+  to[#to+1] = a               return  to          -- many -> append
 end
 
 local function repl_by (to, a, b)
-  if not is_rawtable(to) then  return b  end  -- none or one
+  if not is_rawtable(to) then  return b  end      -- none or one
   for i=1,#to do
-    if to[i] == a then to[i]=b return to end  -- many + found
+    if to[i] == a then to[i]=b return to end      -- many -> replace
   end
-  to[#to+1] = b                return to      -- many + not found
+  to[#to+1] = b                return to          -- many -> append
 end
 
--- search position (linear)
-local function sfind_idx (sequ, s, start_)
-  local s_pos = sequ.s_pos
+-- get position index (linear)
+local function sfind_idx (seq, s, start_)
+  local s_pos = seq.s_pos
   local start, stop, step = start_ or 1
   if start > 0
-  then stop, step = #sequ, 1
+  then stop, step = #seq, 1
   else stop, step, start = 1, -1, -start
   end
   local smin = maximum_dist
@@ -115,31 +155,88 @@ local function sfind_idx (sequ, s, start_)
   return stop
 end
 
--- search element (linear)
-local function efind_idx (sequ, e, start_)
+-- get element index (linear)
+local function efind_idx (seq, e, start_)
   if e ~= nil then
     local start, stop, step = start_ or 1
     if start > 0
-    then stop, step = #sequ, 1
+    then stop, step = #seq, 1
     else stop, step, start = 1, -1, -start
     end
     for i=start,stop,step do  -- linear search
-      if sequ[i] == e then return i end
+      if seq[i] == e then return i end
     end
   end
   return nil
 end
 
 -- get element index (direct)
-local function find_idx (sequ, elem, cnt_)
-  local idx = sequ[_eidx][elem]
+local function find_idx (seq, e, cnt_)
+  local idx = seq[_eidx][e]
   if is_nil(cnt_)     then return idx       end
   if is_rawtable(idx) then return idx[cnt_] end
   return nil
 end
 
--- refpos
-local function find_rpos (sequ)
+-- get index from relative index, strings or element
+local function index_of (seq, a, cnt_)
+  if is_number(a) then
+    local idx, len = a, #seq
+    if idx < 0 then idx = len+idx+1 end
+    if idx < 1 or idx > len then return nil end
+    return idx
+  elseif is_string(a) then
+    local s = a
+    a = seq[s] -- common case 1st
+    if is_nil(a) then
+      if s == '#s' or s == '#S' then return 1    end
+      if s == '#e' or s == '#E' then return #seq end
+      local _, i2, name = string.find(s, "([^[/]+)")
+      if name ~= nil then
+        a = seq[name]
+        local _, _, cnt = string.find(s, "%[(%d+)%]", i2+1)
+        if cnt ~= nil then cnt_ = tonumber(cnt) end
+      end
+    end
+  else
+    local e = a
+    a = seq[e.name]
+  end
+  return find_idx(seq, a, cnt_)
+end
+
+-- get spos and epos from relative index, strings or element
+local function position_of (seq, a, cnt_)
+  if is_number(a) then
+    local idx, len = a, #seq
+    if idx < 0 then idx = len+idx+1 end
+    if idx < 1 or idx > len then return nil end
+    return seq.s_pos[idx], seq.e_pos[idx]
+  elseif is_string(a) then
+    local s = a
+    a = seq[s] -- common case 1st
+    if is_nil(a) then
+      if s == '#s' or s == '#S' then return 1    end
+      if s == '#e' or s == '#E' then return #seq end
+      local _, i2, name = string.find(s, "([^[/]+)")
+      if name ~= nil then
+        a = seq[name]
+        local _, _, cnt = string.find(s, "%[(%d+)%]", i2+1)
+        if cnt ~= nil then cnt_ = tonumber(cnt) end
+      end
+    end
+  else
+    local e = a
+    a = seq[e.name]
+  end
+  local idx = find_idx(seq, a, cnt_)
+  return seq.s_pos[idx], seq.e_pos[idx]
+end
+
+-- build helper ---------------------------------------------------------------o
+
+-- refpos (sequence)
+local function sequ_rpos (sequ)
   local rpos = sequ.refpos
   if rpos == nil then return 0 end
   local idx = sequ:index_of(rpos)
@@ -167,7 +264,7 @@ local function elem_pos (sequ, idx)
   elseif from == 'end'   then pos = sequ.l - pos
   elseif from == 'prev'  then pos = pos + (idx  > 1     and elem_pos(sequ,idx-1)+sequ[idx-1].l or 0)
   elseif from == 'next'  then pos = pos + (fidx < #sequ and elem_pos(sequ,fidx) or sequ.l)
-  elseif sequ[from]      then pos = pos + elem_pos(sequ, sequ:index_of(from)) -- , elem.at<0 and fidx or -(idx-1)))
+  elseif sequ[from]      then pos = pos + elem_pos(sequ, sequ:index_of(from))
   else seq_error("invalid from of '" .. from .. "'", sequ, idx)
   end
 
@@ -179,7 +276,7 @@ local function elem_pos (sequ, idx)
       if refer == 'entry'  then rpos = 0
   elseif refer == 'centre' then rpos = elem.l/2
   elseif refer == 'exit'   then rpos = elem.l
-  elseif refer == 'refpos' then rpos = find_rpos(elem)
+  elseif refer == 'refpos' then rpos = sequ_rpos(elem)
   else seq_error("invalid refer to '" .. refer .. "'", sequ, idx)
   end
 
@@ -188,6 +285,7 @@ local function elem_pos (sequ, idx)
   return pos, rpos
 end
 
+-- compute s positions of sub sequence elements
 local function sequ_pos (sequ, sseq, idx)
   local elem, pos, rpos
   elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
@@ -201,6 +299,7 @@ local function sequ_pos (sequ, sseq, idx)
   return pos
 end
 
+-- copy sub sequence
 local function copy_sequ (sequ, flat, sref, k)
   local k0 = k
   for i=1,#sequ do
@@ -210,6 +309,7 @@ local function copy_sequ (sequ, flat, sref, k)
   return k
 end
 
+-- flatten lines and sub sequence
 local function flatten_line (line, flat, sref, k, rev)
   local n = (line.__rep or 1) * rev
   local start, stop, step, elem
@@ -236,6 +336,7 @@ local function flatten_line (line, flat, sref, k, rev)
   return k
 end
 
+-- flatten sequence
 local function flatten_sequ (sequ, flat, sref)
   local k, n = 1, #sequ
   for i=1,n do
@@ -253,6 +354,7 @@ local function flatten_sequ (sequ, flat, sref)
   assert(n+1 <= k and #flat == #sref, "unexpected corrupted flat sequence")
 end
 
+-- build sequence and dictionnaries
 local function build_sequ (sequ, flat)
   local eidx = {}
   for idx,elem in ipairs(flat) do
@@ -265,6 +367,7 @@ local function build_sequ (sequ, flat)
   assert(#sequ == #flat, "unexpected corrupted flat sequence")
 end
 
+-- compute elements positions
 local function build_pos (sequ, sref)
   assert(#sequ == #sref,  "unexpected corrupted flat sequence")
   sequ[_epos] = vector(#sref):ones(uninitialized)
@@ -295,6 +398,7 @@ local function build_pos (sequ, sref)
   assert(len+1 == idx, "unexpected corrupted flat sequence")
 end
 
+-- extend sequence length (if needed)
 local function adjust_len (sequ)
   local idx = #sequ
   local len = sequ.s_pos[idx] + sequ[idx].l
@@ -313,9 +417,10 @@ function sequence_len (sequ)
   return 0
 end
 
+-- sequence init (build)
 function sequence_init (sequ)
   assert(#sequ > 0, "invalid argument #1 (non-empty sequence expected)")
-  if sequ:rawlen() == 0 then return sequ end -- only for inheritance
+  if sequ:rawlen() == 0 then return sequ end -- inheritance (already built)
 
   local flat, sref = {}, {}
   flatten_sequ (sequ, flat, sref)
@@ -325,46 +430,7 @@ function sequence_init (sequ)
   return sequ:set_readonly()
 end
 
--- functions ------------------------------------------------------------------o
-
-__help["sequence: indexes and ranges"] = [=[
-Indexes:
-  - idx (number)
-  - negative idx, as idx but starts from end (i.e. #seq-idx+1)
-  - name (string)
-  - name[count] (case of multiple occurences)
-  - element (object)
-  - #s or #S (idx=1), #e or #E (idx=#seq)
-Ranges:
-  - idx (i.e. {idx,idx})
-  - "start_index/stop_index"
-  - {start_index, stop_index}
-  requires start_index <= stop_index
-]=]
-
-local function index_of (seq, elem, cnt_)
-  if is_number(elem) then
-    local n, len = elem, #seq
-    if n < 0 then n = len+n+1 end
-    return n >= 1 and n <= len and n or nil
-  end
-  if is_string(elem) then
-    local s = elem
-    elem = seq[s] -- common case...
-    if is_nil(elem) then
-      if s == '#s' or s == '#S' then return 1    end
-      if s == '#e' or s == '#E' then return #seq end
-      local i1, i2, name, cnt = string.find(s, "([^[/]+)")
-      if name ~= nil then
-        i1, i2, cnt = string.find(s, "%[(%d+)%]", i2+1)
-      end
-      elem, cnt_ = seq[name], tonumber(cnt)
-    end
-  else
-    elem = seq[elem.name]
-  end
-  return find_idx(seq, elem, cnt_)
-end
+-- methods --------------------------------------------------------------------o
 
 local function range_index (seq, rng)
   local start, stop
@@ -423,16 +489,6 @@ local function select (seq, p, rng_)
 end
 
 -- Note: functions below need to update dicts...
-
--- local function identifier (seq, cvt_)
---   local cvt = cvt_ or \s -> string.gsub(string.lower(s), '[^%l%d_]', '_')
---   for i=1,#seq do
---     local name = seq[i].name
---     local knam = cvt(name)
---     if name ~= knam then sequ[knam] = sequ[name] end
---   end
---   return seq
--- end
 
 local function unique (seq)
   seq:set_readonly(false)
@@ -551,40 +607,15 @@ function M:show_madx(disp)
   for _,v in ipairs(self) do v:show_madx(disp) end
   io.write('endsequence;\n')
 end
-]]
 
---[[ SEQUENCE
-
--- OLD CODE
-
--- concatenation
-function M.__add(sequ, a)
-  return sequ:add(a)
-end
-
--- methods
-function M:add(a, at, from, refer)
-  if at or not a.at then add_item(self, a, at, from, refer)                 -- positional params
-  elseif is_list(a) then add_item(self, a.item or a[1], a.at, a.from, a.refer)   -- named params
-  else error("invalid set of parameters in incremental construction of sequence '"..self.name.."'")
+local function identifier (seq, cvt_)
+  local cvt = cvt_ or \s -> string.gsub(string.lower(s), '[^%l%d_]', '_')
+  for i=1,#seq do
+    local name = seq[i].name
+    local knam = cvt(name)
+    if name ~= knam then sequ[knam] = sequ[name] end
   end
-  return self
-end
-
-function M:set(a)
-  self[1] = nil -- clear sequence
-  copy_fields(self, a, sequence_fields)
-  add_element(self, start_marker, 0)
-  add_list   (self, a)
-  return self:done()
-end
-
-function M:done()
-  add_element   (self, end_marker, self.length)
-  sequence_spos (self)
-  adjust_length (self)
-  clean_sequence(self)
-  return self
+  return seq
 end
 ]]
 
@@ -615,40 +646,6 @@ function M:show_madx(disp)
   io.write('endsequence;\n')
 end
 ]]
-
--- geometry -- TODO: at, from, refer
-local function localise(self, start)
-  local s_pos = start and v[start].s_pos or 0
-  for i=start or 1,#self do
-    self[i].s_pos = s_pos
-    if self[i].length then s_pos = s_pos + self[i].length end
-  end
-  if not self.length then self.length = s_pos end
-  return self
-end
-
-local function insert_element_key(self, elem)
-  local name = elem.name              -- dict part
-  local ref = self[name]
-  if ref == nil then                  -- not yet registered
-    self[name] = elem
-  elseif ref.is_element then          -- already one element
-    self[name] = ref.i_pos < elem.i_pos and {ref, elem} or {elem, ref}
-  else                                -- already many elements
-    table.insert(ref, find_index_by_idx(ref, elem.i_pos), elem)
-  end
-end
-
-local function remove_element_key(self, elem)
-  local name = elem.name              -- dict part
-  local ref = self[name]
-  if ref.is_element then              -- single element
-    self[name] = nil
-  else                                -- list of elements
-    table.remove(ref, find_index_by_ref(ref, elem))
-    if #ref == 1 then self[name] = ref[1] end -- was a pair
-  end
-end
 
 -- edition -- TODO: check s_pos and length
 local function insert_element(self, elem, before)
@@ -688,23 +685,5 @@ local function swap_elements(self, elem1, elem2, update_key)
     insert_element_key(self, elem1)
     insert_element_key(self, elem2)
   end
-end
-
-function M:remove(a, count) -- TODO
-  if type(a) == 'string' then
-    a = self[a]
-    if is_list(a) then a = a[count or 1] end
-  end
-  remove_element(self, a)
-end
-
-function M:insert(a, at, count) -- TODO
-  if type(at) == 'string' then
-    at = self[at]
-    if is_list(at) then at = at[count or 1] end
-  elseif type(at) == 'number' then
-    at = self[find_index_by_pos(self, at)]
-  end
-  insert_element(self, a, at)
 end
 --]=]
