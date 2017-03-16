@@ -1,5 +1,7 @@
 #! /usr/bin/env mad
 local tostring, vector, plot, gmath, utest in MAD
+local map, zip, max, totable, sum in MAD.fun
+local loadtxt = require('loadtxt').loadtxt
 
 ------------------------------------------
 -- Generic utility functions
@@ -51,6 +53,52 @@ local function pairs_all(t, p)
   end
 end
 
+-- functools
+local function length(a) return #a end
+local function transpose(gen, param, state)
+  return zip(unpack(totable(gen, param, state)))
+end
+
+-- Columnate tables
+local function columnate(rows, col_align, sep)
+  local sep = sep or "  "
+  local format_col = function(align, ...)
+    local dat = {...}
+    local len = max(map(length, dat))
+    local fmt = '%' .. (align == 'l' and "-" or "") .. tostring(len) .. 's'
+    return map(\s -> fmt:format(s), dat)
+  end
+  local format_row = function(...)
+    return table.concat({...}, sep)
+  end
+  return table.concat(totable(    -- join rows
+    map(format_row, transpose(    -- format rows
+      map(format_col,             -- format cols
+        zip(col_align,
+            unpack(rows)))))),    -- transpose
+    "\n")
+end
+
+-- String with fake length
+local function fakelen(s, l)
+  return setmetatable({}, {
+    __tostring = function() return s end,
+    __len = function() return l end,
+  })
+end
+
+-- Colorize string in terminal:
+local COLORS = {
+  reset  = '\27[0m',
+  red    = '\27[31m',
+  green  = '\27[32m',
+  yellow = '\27[33m',
+}
+
+local function term_colorize(s, color)
+  return fakelen(COLORS[color] .. s .. COLORS.reset, #s)
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
@@ -64,24 +112,51 @@ R  = \str -> require('configs.'..str)
 _G.save_file = save_file
 _G.run = run
 
--- TODO: create test matrix in memory
--- TODO: compare by columns using assertAllAlmostEquals
-local function load_test(template, ctx)
-  local input = substitute(template, {
-    madx_file = ctx.runs.madx.tfsfile,
-    mad_file = ctx.runs.mad.tfsfile,
-    ptc_file = ctx.runs.ptc.tfsfile,
-    suite = ctx.study,
-    ptc_margin = 1e-14,
-    madx_margin = 1e-13,
-    varname = ctx.varname,
-  })
-  assert(load(input, suite))()
+
+-- compare results of codes against each other, print table
+local function check_results(ctx)
+  local exitcode = 0
+
+  local absdiff = \a,b -> math.abs(a-b)
+  local maxdiff = \a,b -> max(map(absdiff, zip(a, b)))
+  local fmtnum  = \n   -> string.format("%1.0e", n)
+  local fmtdiff = function(n)
+    local color = n > 1e-10 and 'red' or n > 1e-14 and 'yellow' or 'reset'
+    return term_colorize(fmtnum(n), color)
+  end
+
+  local ref_eng = "mad"
+  local ref_dat = loadtxt(ctx.runs[ref_eng].tfsfile)
+
+  local cols = {"x", "px", "y", "py", "t", "pt"}
+  local rows = {}
+  table.insert(rows, {"Change in: ", table.unpack(cols)})
+
+  for engine, run in pairs(ctx.runs) do
+    if engine ~= ref_eng then
+      local dat = loadtxt(run.tfsfile)
+      local row = {ref_eng .. "-" .. engine .. ":"}
+      for _, var in ipairs(cols) do
+        local diff = maxdiff(ref_dat[var], dat[var])
+        table.insert(row, fmtdiff(diff))
+        if diff >= 1e-14 then
+          exitcode = 1
+        end
+      end
+      table.insert(rows, row)
+    end
+  end
+
+  local text = columnate(rows, "lrrrrrr")
+  local width = (text:find('\n') or 1+#text) - 1
+  local title = '------------ Study: ' .. ctx.study .. ' '
+  title = title .. ('-'):rep(width - #title)
+  print("\n" .. title .. "\n" .. text)
+
+  return exitcode
 end
 
-
 local function create_plots(ctx)
-  local loadtxt = require('loadtxt').loadtxt
 
   local filename = ctx.prefix .. ".pdf"
 
@@ -138,6 +213,8 @@ local function create_plots(ctx)
       title = "Discrepancies in " .. var .. " when varying " .. ctx.study,
     }
   end
+
+  -- TODO: summary plot
 end
 
 
@@ -157,8 +234,6 @@ local function main(args)
       table.insert(opts, v)
     end
   end
-
-  local test_template = read_file('templates/test_basic_track.mad')
 
   local runners = {
     madx = run_madx,
@@ -214,12 +289,7 @@ local function main(args)
 
   -- run tests last
   if opts['test'] then
-    for _, study in ipairs(studies) do
-      load_test(test_template, study)
-    end
-    -- control the display of custom objects during tests
-    MAD:export('tostring', true)
-    os.exit( utest.LuaUnit.run('-v') )
+    os.exit(max(map(check_results, studies)))
   end
 end
 
