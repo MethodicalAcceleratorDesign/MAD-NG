@@ -1,5 +1,6 @@
 local DEFAULTS = R 'defaults'
 return DEFAULTS {
+  prefix = 'sbend/',
   el_type = "sbend",
   el_args = T[[angle:=${angle}, k0:=${k0}, tilt:=${tilt}, l=${el_len}, at=0.5]],
   angle   = 0.1,
@@ -7,7 +8,6 @@ return DEFAULTS {
   k0      = T"${angle}/${el_len}",
   el_len  = 1,
   -- output:
-  prefix = 'sbend/',
   studies = DEFAULTS.studies {
     angle = {stop = "pi/4", start=0.01},
     tilt  = {stop = "pi/4"},
