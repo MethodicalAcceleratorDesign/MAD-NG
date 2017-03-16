@@ -3,6 +3,8 @@ return DEFAULTS {
   prefix = 'multipole/',
   el_type = "multipole",
   el_args = [[knl:={k0l, k1l, k2l}, at=0.5]],
+  sad_el_type = 'MULT',
+  sad_el_args = T'L=1 K0=${k0l} K1=${k1l} K2=${k2l}',
   mad_sequence = T[[
 local sequence = MAD.sequence "${seq_name}" {
   refer="entry", l=${seq_len},
@@ -15,8 +17,8 @@ local sequence = MAD.sequence "${seq_name}" {
   observe = '#e',
   -- output:
   studies = DEFAULTS.studies {
-    k0l = {stop=0.01, px=0.001},
-    k1l = {stop=0.01, px=0.001},
-    k2l = {stop=0.01, px=0.001},
+    k0l = {stop=0.01, px=0.001, sad_attr='K0'},
+    k1l = {stop=0.01, px=0.001, sad_attr='K1'},
+    k2l = {stop=0.01, px=0.001, sad_attr='K2'},
   },
 }
