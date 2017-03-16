@@ -314,6 +314,7 @@ concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 
 -- utilities
 
+local is_nil in typeid
 local is_iterable, is_mappable, is_stringable, is_tablable, has_method in concept
 
 local utility = {}
@@ -327,7 +328,6 @@ local rep_mt = {
   __newindex = \    -> error("invalid write access to readonly object"),
   __pairs    = \s   -> (rep_it, s, 0),
   __ipairs   = \s   -> (rep_it, s, 0),
-  __metatable = false,
 }
 
 function utility.rep (x, n_) -- repeater
@@ -413,6 +413,35 @@ local function same (a, ...)
   end
   error("invalid argument #1 (clonable object expected)")
 end
+
+-- string interpolation
+
+local interp_var
+
+local function interp_fun (tag)
+  local key, e = tag, ''
+  if key:sub(-1,-1) == '}' then
+    if key:sub(1,1) == '{'
+    then key    = key:sub(2, -2)      -- remove {}
+    else key, e = key:sub(1, -2), '}' -- remove  }
+    end
+  end
+  local num = tonumber(key) -- cases $n or ${n}
+  return (interp_var[num or key] or tag) .. e
+end
+
+function utility.strinterp(str, var)
+  if is_nil(var) then return str end
+  if is_table(var) then
+    interp_var = var
+    str = str:gsub('$({?[%w_]+}?)', interp_fun)
+    interp_var = nil
+  end
+  return str
+end
+
+string.interp          = utility.strinterp
+getmetatable("").__mod = utility.strinterp
 
 -- end ------------------------------------------------------------------------o
 return {
