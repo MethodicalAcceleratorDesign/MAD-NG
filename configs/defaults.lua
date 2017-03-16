@@ -1,5 +1,6 @@
 return MAD.Object {
   -- methods
+  _prepare  = \ctx\ make_dirs(dirname(ctx.madfile)),
   _generate = \ctx\ save_file(ctx.madfile, ctx.whole),
   _run      = \ctx\ run(ctx.command, ctx.madfile, ctx.logfile),
   -- engines
