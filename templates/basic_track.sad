@@ -1,0 +1,67 @@
+pi = PI;
+clight = 2.99792458e8;
+${varname} = ${start};
+${sad_sequence}
+
+FFS;
+USE ${seq_name};
+INS;
+
+IntToStr[i_] := StandardForm[$FORM="4.0";
+                    StringReplace[ToString[i], "  "->""]];
+FltToStr[f_] := StandardForm[$FORM="E22.15"; StringReplace[
+                    StringReplace[ToString[f], "D"->"e"], " "->"+"]];
+
+linrange[i_] := (${start})*(1-i/(${count}-1)) + (${stop})*(i/(${count}-1));
+logrange[i_] := (${start})^(1-i/(${count}-1)) * (${stop})^(i/(${count}-1));
+
+! print header
+output = OpenWrite["${tfsfile}"];
+WriteString[output, "# i var s x px y py t pt energy beta\n"];
+
+i = 0;
+While [i < ${count},
+    ${sad_var} = ${varfunc}[i];
+
+    ! update energy
+    MASS     = ${mass} * 1e9;           ! GeV/c² -> eV/c²
+    energy   = ${energy} * 1e9;         ! GeV    -> eV
+    moment   = (energy^2-MASS^2)^0.5;   ! NEEDED intermediate value
+    MOMENTUM = moment;                  ! cannot assign expression directly!
+
+    ! convert: (t,pt) -> (z,pz)
+    M0 = MASS*1e-9;
+    P0 = MOMENTUM*1e-9;
+    E0 = (M0^2 + P0^2)^0.5;
+    E1 = E0 + ${pt} * P0;
+    P1 = (E1^2 - M0^2)^0.5;
+    beta0 = P0 / E0;
+    beta1 = P1 / E1;
+    Z  = ${t} * beta1;
+    PZ = (P1-P0)/P0;
+
+    ! TODO: check definition of px, py, t, pt…
+    ! …should be mostly fine, except for t -> z
+    binit = {1, {{${x}}, {${px}}, {${y}}, {${py}}, {Z}, {PZ}, {1}}};
+    bexit = TrackParticles[binit, 1];
+    v     = Flatten[bexit[2]];
+
+    ! convert: (z,pz) -> (t,pt)
+    P1 = P0 + v[6]*P0;
+    E1 = (M0^2 + P1^2)^0.5;
+    beta0 = P0 / E0;
+    beta1 = P1 / E1;
+    T  = v[5] / beta1;
+    PT = (E1-E0)/P0;
+
+    WriteString[output,
+        IntToStr[i],      " ", FltToStr[${sad_var}], " ", FltToStr[1],    " ",
+        FltToStr[v[1]],   " ", FltToStr[v[2]],       " ", FltToStr[v[3]], " ",
+        FltToStr[v[4]],   " ", FltToStr[T],          " ", FltToStr[PT],   " ",
+        FltToStr[E0],     " ", FltToStr[beta0],      "\n"];
+
+    i = i + 1;
+];
+
+Close[output];
+abort;
