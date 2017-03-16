@@ -1,5 +1,7 @@
 #! /usr/bin/env mad
-local tostring, vector, plot, gmath, utest in MAD
+local tostring, vector, plot, gmath, utest, env in MAD
+local map, zip, max, totable, sum, each in MAD.fun
+local loadtxt = require('loadtxt').loadtxt
 
 ------------------------------------------
 -- Generic utility functions
@@ -30,10 +32,12 @@ local function run(command, stdin, stdout)
   os.execute(command)
 end
 
-local function titlecase(name)
-  return name:gsub("%s*(%w)(%w*)%s*", function(first, rest)
-    return string.upper(first) .. rest
-  end)
+local function make_dirs(dirname)
+  os.execute(("mkdir -p %q"):format(dirname))
+end
+
+local function dirname(path)
+  return path:gsub(env.dirsep .. '[^' .. env.dirsep .. ']*$', '')
 end
 
 function table.clone(orig)
@@ -57,6 +61,52 @@ local function pairs_all(t, p)
   end
 end
 
+-- functools
+local function length(a) return #a end
+local function transpose(gen, param, state)
+  return zip(unpack(totable(gen, param, state)))
+end
+
+-- Columnate tables
+local function columnate(rows, col_align, sep)
+  local sep = sep or "  "
+  local format_col = function(align, ...)
+    local dat = {...}
+    local len = max(map(length, dat))
+    local fmt = '%' .. (align == 'l' and "-" or "") .. tostring(len) .. 's'
+    return map(\s -> fmt:format(s), dat)
+  end
+  local format_row = function(...)
+    return table.concat({...}, sep)
+  end
+  return table.concat(totable(    -- join rows
+    map(format_row, transpose(    -- format rows
+      map(format_col,             -- format cols
+        zip(col_align,
+            unpack(rows)))))),    -- transpose
+    "\n")
+end
+
+-- String with fake length
+local function fakelen(s, l)
+  return setmetatable({}, {
+    __tostring = function() return s end,
+    __len = function() return l end,
+  })
+end
+
+-- Colorize string in terminal:
+local COLORS = {
+  reset  = '\27[0m',
+  red    = '\27[31m',
+  green  = '\27[32m',
+  yellow = '\27[33m',
+}
+
+local function term_colorize(s, color)
+  return fakelen(COLORS[color] .. s .. COLORS.reset, #s)
+end
+
 ------------------------------------------
 -- Config
 ------------------------------------------
@@ -69,63 +119,112 @@ LT = \str -> T(L(str))                      -- specify a template by filename
 R  = \str -> require('configs.'..str)
 _G.save_file = save_file
 _G.run = run
+_G.dirname = dirname
+_G.make_dirs = make_dirs
 
--- TODO: create test matrix in memory
--- TODO: compare by columns using assertAllAlmostEquals
-local function load_test(template, ctx)
-  local input = substitute(template, {
-    madx_file = ctx.runs.madx.tfsfile,
-    mad_file = ctx.runs.mad.tfsfile,
-    ptc_file = ctx.runs.ptc.tfsfile,
-    suite = ctx.study,
-    ptc_margin = 1e-14,
-    madx_margin = 1e-13,
-    varname = ctx.varname,
-  })
-  assert(load(input, suite))()
+
+-- compare results of codes against each other, print table
+local function check_results(ctx)
+  local exitcode = 0
+
+  local absdiff = \a,b -> math.abs(a-b)
+  local maxdiff = \a,b -> max(map(absdiff, zip(a, b)))
+  local fmtnum  = \n   -> string.format("%1.0e", n)
+  local fmtdiff = function(n)
+    local color = n > 1e-10 and 'red' or n > 1e-14 and 'yellow' or 'reset'
+    return term_colorize(fmtnum(n), color)
+  end
+
+  local ref_eng = "mad"
+  local ref_dat = loadtxt(ctx.runs[ref_eng].tfsfile)
+
+  local cols = {"x", "px", "y", "py", "t", "pt"}
+  local rows = {}
+  table.insert(rows, {"Change in: ", table.unpack(cols)})
+
+  for engine, run in pairs(ctx.runs) do
+    if engine ~= ref_eng then
+      local dat = loadtxt(run.tfsfile)
+      local row = {ref_eng .. "-" .. engine .. ":"}
+      for _, var in ipairs(cols) do
+        local diff = maxdiff(ref_dat[var], dat[var])
+        table.insert(row, fmtdiff(diff))
+        if diff >= 1e-14 then
+          exitcode = 1
+        end
+      end
+      table.insert(rows, row)
+    end
+  end
+
+  local text = columnate(rows, "lrrrrrr")
+  local width = (text:find('\n') or 1+#text) - 1
+  local title = '------------ Study: ' .. ctx.study .. ' '
+  title = title .. ('-'):rep(width - #title)
+  print("\n" .. title .. "\n" .. text)
+
+  return exitcode
 end
 
-
 local function create_plots(ctx)
-  local loadtxt = require('loadtxt').loadtxt
 
-  local data = {
-    mad  = loadtxt(ctx.runs.mad.tfsfile),
-    ptc  = loadtxt(ctx.runs.ptc.tfsfile),
-    madx = loadtxt(ctx.runs.madx.tfsfile),
-  }
+  local filename = ctx.prefix .. ".pdf"
+
+  local alldata = {}
+  for engine, context in pairs(ctx.runs) do
+    alldata[engine] = loadtxt(context.tfsfile)
+  end
 
   for _, var in ipairs({"x", "px", "y", "py", "t", "pt"}) do
-    local data = {
-      x    = vector(data.mad.var),
-      mad  = vector(data.mad[var]),
-      ptc  = vector(data.ptc[var]),
-      madx = vector(data.madx[var]),
-    }
+
+    local VAXIS = {}
+    local data = {}
+    for k, v in pairs(alldata) do
+      table.insert(VAXIS, k)
+      data[k] = v and vector(v[var])
+    end
+    table.sort(VAXIS)
+    data.x = vector(alldata[VAXIS[1]].var)
+
+    local VAXIS2 = {}
+    local data2 = {}
+    local ref_k = VAXIS[1]
+    local ref_v = data[ref_k]
+    for _, k in ipairs(VAXIS), VAXIS, 1 do
+      table.insert(VAXIS2, k.."-"..ref_k)
+      data2[k.."-"..ref_k] = data[k] - ref_v
+    end
+    table.sort(VAXIS2)
+    data2.x = data.x
+
     -- absolute values
     plot {
-      filename = ctx.prefix .. "_" .. var .. "_abs.eps",
+      filename = filename,
       data  = data,
       HAXIS = 'x',
-      VAXIS = {'mad', 'ptc', 'madx'},
+      VAXIS = VAXIS,
       xlabel = "initial " .. ctx.study,
       ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      title = "Change in " .. var .. " due to varying " .. ctx.study,
     }
+
     -- differences
     plot {
-      filename = ctx.prefix .. "_" .. var .. "_diff.eps",
-      data  = {
-        x = data.x,
-        ["mad-ptc"] = data.mad - data.ptc,
-        ["mad-madx"] = data.mad - data.madx,
-      },
+      filename = filename,
+      data = data2,
       HAXIS = 'x',
-      VAXIS = {'mad-ptc'},
-      VAXIS2 = {'mad-madx'},
+      VAXIS = VAXIS2,
       xlabel = "initial " .. ctx.study,
       ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      title = "Discrepancies in " .. var .. " when varying " .. ctx.study,
     }
   end
+
+  -- TODO: summary plot
 end
 
 
@@ -145,14 +244,6 @@ local function main(args)
       table.insert(opts, v)
     end
   end
-
-  local test_template = read_file('templates/test_basic_track.mad')
-
-  local runners = {
-    madx = run_madx,
-    ptc = run_madx,
-    mad = run_mad,
-  }
 
   if #(opts) ~= 1 then
     print("Usage: " .. args[0] .. " CONFIG [--run] [--plot] [--test]")
@@ -179,9 +270,12 @@ local function main(args)
   for _, study in ipairs(studies) do
     study.runs = {}
     for engine, overrides in pairs_all(study.engines) do
-      local context = study { engine=engine } (table.clone(overrides))
-      context:_generate()
-      study.runs[engine] = context
+      if overrides then
+        local context = study { engine=engine } (table.clone(overrides))
+        context:_prepare()
+        context:_generate()
+        study.runs[engine] = context
+      end
     end
   end
 
@@ -195,19 +289,12 @@ local function main(args)
   end
 
   if opts['plot'] then
-    for _, study in ipairs(studies) do
-      create_plots(study)
-    end
+    each(create_plots, studies)
   end
 
   -- run tests last
   if opts['test'] then
-    for _, study in ipairs(studies) do
-      load_test(test_template, study)
-    end
-    -- control the display of custom objects during tests
-    MAD:export('tostring', true)
-    os.exit( utest.LuaUnit.run('-v') )
+    os.exit(max(map(check_results, studies)))
   end
 end
 
