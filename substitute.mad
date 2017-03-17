@@ -19,7 +19,7 @@ Available engines depend on the config file. By default:
 ]]
 
 local tostring, vector, plot, gmath, utest, env in MAD
-local map, zip, max, totable, sum, each in MAD.fun
+local map, zip, max, totable, sum, each, reduce, range in MAD.fun
 local loadtxt = require('loadtxt').loadtxt
 
 ------------------------------------------
@@ -122,6 +122,22 @@ local function columnate(rows, col_align, sep)
     "\n")
 end
 
+local function make_table_title(title, text, left_fill, right_fill)
+  local width = (text:find('\n') or 1+#text) - 1
+  local space = width - #title
+  if right_fill and left_fill then
+    local s = math.floor(space/2)
+    local r = math.fmod(space, 2)
+    return left_fill:rep(s+r) .. title .. right_fill:rep(s)
+  elseif right_fill then
+    return title .. right_fill:rep(space)
+  elseif left_fill then
+    return left_fill:rep(space) .. title
+  else
+    return title
+  end
+end
+
 -- String with fake length
 local function fakelen(s, l)
   return setmetatable({}, {
@@ -160,7 +176,7 @@ _G.make_dirs = make_dirs
 
 -- compare results of codes against each other, print table
 local function check_results(ctx, ref, color)
-  local exitcode = 0
+  local alldiffs = {}
 
   local absdiff = \a,b -> math.abs(a-b)
   local maxdiff = \a,b -> max(map(absdiff, zip(a, b)))
@@ -185,10 +201,17 @@ local function check_results(ctx, ref, color)
       local dat = loadtxt(run.tfsfile)
       local row = {ref_eng .. "-" .. engine .. ":"}
       for _, var in ipairs(cols) do
-        local diff = maxdiff(ref_dat[var], dat[var])
-        table.insert(row, fmtdiff(diff))
-        if diff >= 1e-14 then
-          exitcode = 1
+        local diffs = totable(map(absdiff, zip(ref_dat[var], dat[var])))
+        local delta = max(diffs)
+        table.insert(row, fmtdiff(delta))
+        if delta >= 1e-14 then
+          local idx = reduce(\i,j -> (diffs[i] > diffs[j] and i or j),
+                             1, range(2, #ref_dat[var]))
+          table.insert(alldiffs, {
+            ctx=ctx, var=var,
+            ref=ref_eng, ref_val=ref_dat[var][idx],
+            eng=engine,  eng_val=    dat[var][idx],
+          })
         end
       end
       table.insert(rows, row)
@@ -196,12 +219,29 @@ local function check_results(ctx, ref, color)
   end
 
   local text = columnate(rows, "lrrrrrrr")
-  local width = (text:find('\n') or 1+#text) - 1
-  local title = '------------ Study: ' .. ctx.study .. ' '
-  title = title .. ('-'):rep(width - #title)
+  local title = make_table_title('------------ Study: ' .. ctx.study .. ' ', text, nil, '-')
   print("\n" .. title .. "\n" .. text)
+  return alldiffs
+end
 
-  return exitcode
+-- print absolute values at point of max difference
+local function diff_summary(diffs)
+  local fmt = "%+.15e"
+  local rows = {}
+  table.insert(rows, {'study', 'var', 'engine', 'value at max diff'})
+  for _, diff in ipairs(diffs) do
+    local ref_val, eng_val = diff.ref_val, diff.eng_val
+    table.extend(rows, {
+      {'',              '',       '',       ''                          },
+      {diff.ctx.study,  diff.var, diff.ref, fmt:format(ref_val)         },
+      {'',              '',       diff.eng, fmt:format(eng_val)         },
+      {'',              '',       'delta',  fmt:format(ref_val-eng_val) },
+    })
+  end
+
+  local text = columnate(rows, "lllr")
+  local title = make_table_title(' ABSOLUTE DIFFS ', text, '=', '=')
+  return "\n" .. title .. "\n" .. text
 end
 
 local function create_plots(ctx)
@@ -296,6 +336,7 @@ local function main(args)
     h='help',
     e='engines',
     c='color',
+    s='summary',
   })
 
   if #(opts) ~= 1 or opts['help'] then
@@ -358,7 +399,11 @@ local function main(args)
   local color = opts['color'] or opts['color'] == nil
   local check_results = \ctx check_results(ctx, opts['ref'], color)
   if opts['test'] then
-    os.exit(max(map(check_results, studies)))
+    local diffs = reduce(table.extend, {}, map(check_results, studies))
+    if opts['summary'] then
+      print(diff_summary(diffs))
+    end
+    os.exit(#diffs)
   end
 end
 
