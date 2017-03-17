@@ -163,9 +163,11 @@ end
 
 --titles
 local function axis_title(src)
-  local label = ""
-  for _,key in pairs(src) do label = label..key.." " end
-  return label
+  if src then
+    local label = ""
+    for _,key in pairs(src) do label = label..key.." " end
+    return label
+  end
 end
 
 local function mktitle(name, ver, date, time)
@@ -259,9 +261,12 @@ local function temp_style(temp, inp, key) -- name
 end
 
 local function match_style(inp, out, keys) -- name
-  for k,v in pairs(inp) do
-    local indx = find_key(keys, k)
-    if indx then out[indx] = v end
+  if inp then
+    for k,v in pairs(inp) do
+      local indx = find_key(keys, k) - 1
+      if indx then out[indx] = v end
+      return out
+    end
   end
 end
 
@@ -349,37 +354,27 @@ function exec(self)
   if self.filename ~= name then
     if self.filename then temp = mk_tbl(temp_filecopy, temp)
                      else temp = mk_tbl(temp_nocopy  , temp)
-                           temp_save = {}                     end
+                          temp_save = {}                     end
   end
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
 
-  if self.VAXIS2 and self.HAXIS2 then
-    local inp2, out2           = to_tbl (self.HAXIS2), to_tbl (self.VAXIS2)
-    self.ylabel2, self.xlabel2 = axis_title( out2 )  , axis_title( inp2 )
-    self.keys    = chain_tbl(self.inp, inp2, self.out, out2)
-    self.vlimit2 = { scale_axis( self.src, out2, self.vmargin ) }
-    self.hlimit2 = { scale_axis( self.src, inp2, self.hmargin ) }
+  if self.vaxis2 and self.haxis2 then
+    self.keys = chain_tbl(self.inp, self.inp2, self.out, self.out2)
     temp = chain_tbl( temp, temp_hvaxis2 )
     temp = temp_add ( temp, temp_multih, "gtitle", 1 )
     temp = temp_add ( temp, temp_multiv, "gtitle", 1 )
-    temp_multiplot  ( temp, out2       , "count2", #inp2+#self.out )
-    temp_multiplot  ( temp, self.out   , 'count' , #inp2           )
-  elseif self.VAXIS2 then
-    local out2   = to_tbl (self.VAXIS2)
-    self.keys    = chain_tbl(self.keys, out2 )
-    self.ylabel2 = axis_title( out2 )
-    self.vlimit2 = { scale_axis( self.src, out2, self.vmargin ) }
+    temp_multiplot  ( temp, self.out2  , "count2", #self.inp2+#self.out )
+    temp_multiplot  ( temp, self.out   , 'count' , #self.inp2           )
+  elseif self.vaxis2 then
+    self.keys = chain_tbl(self.keys, self.out2 )
     temp = chain_tbl( temp, temp_vaxis2 )
     temp = temp_add ( temp, temp_multiv, "gtitle", 1         )
-    temp_multiplot  ( temp, out2       , "count2", #self.out )
-  elseif self.HAXIS2 then
-    local inp2   = to_tbl (self.HAXIS2)
-    self.keys    = chain_tbl(self.inp , inp2, self.keys )
-    self.xlabel2 = axis_title( inp2 )
-    self.hlimit2 = { scale_axis( self.src, inp2, self.hmargin ) }
+    temp_multiplot  ( temp, self.out2       , "count2", #self.out )
+  elseif self.haxis2 then
+    self.keys = chain_tbl(self.inp , self.inp2, self.keys )
     temp = temp_add ( temp, temp_multih, "gtitle", 1     )
-    temp_multiplot  ( temp, self.out   , 'count' , #inp2 )
+    temp_multiplot  ( temp, self.out   , 'count' , #self.inp2 )
   end
 
   if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
@@ -403,9 +398,11 @@ function exec(self)
   temp = chain_tbl( temp, temp_unmult)
   temp = temp_fill( temp, self       )
   temp_multiplot  ( temp, self.out , "count", 0)
-  if self.color     then match_style(self.color    , self.colors    , self.keys) end
-  if self.pointtype then match_style(self.pointtype, self.pointtypes, self.keys) end
-  if self.dashtype  then match_style(self.dashtype , self.dashtypes , self.keys) end
+
+  self.colors     = match_style(self.color    , self.colors    , self.keys)
+  self.pointtypes = match_style(self.pointtype, self.pointtypes, self.keys)
+  self.dashtypes  = match_style(self.dashtype , self.dashtypes , self.keys)
+
   temp_style( temp, self.colors    , "colors")
   temp_style( temp, self.pointtypes, "ptt"   )
   temp_style( temp, self.dashtypes , "dtt"   )
@@ -429,9 +426,10 @@ local plot = Command 'plot' {
   table    = false,
   data     = false,
   sequence = false,
-  HAXIS    = 'x',
-  VAXIS    = 'y',
-  VAXIS2   = false,
+  haxis    = 'x',
+  vaxis    = 'y',
+  vaxis2   = false,
+  haxis2   = false,
   filename     = false,
   filecopy     = false,
   script       = \s mk_script(s.filename),
@@ -465,6 +463,15 @@ local plot = Command 'plot' {
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   xlabel2  = "",
 
+  inp2    = \s => if s.haxis2 then return to_tbl(s.haxis2) end end,
+  out2    = \s => if s.vaxis2 then return to_tbl(s.vaxis2) end end,
+  ylabel2 = \s => if s.out2   then return axis_title( s.out2 ) end end,
+  xlabel2 = \s => if s.inp2   then return axis_title( s.inp2 ) end end,
+  vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
+  hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
+
+
+
   linewidth = 1,
   color     = false,
   pointtype = false,
@@ -483,8 +490,8 @@ local plot = Command 'plot' {
   date = \s => if s.table then return s.table.date  end end,
   time = \s => if s.table then return s.table.time  end end,
 -- non-user option
-  inp  = \s to_tbl (s.HAXIS),
-  out  = \s to_tbl (s.VAXIS),
+  inp  = \s to_tbl (s.haxis),
+  out  = \s to_tbl (s.vaxis),
   keys = \s mk_tbl   (s.inp   , s.out             ),
   ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
   drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
