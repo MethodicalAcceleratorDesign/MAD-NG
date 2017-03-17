@@ -169,8 +169,10 @@ local function axis_title(src)
 end
 
 local function mktitle(name, ver, date, time)
-  local src = { name = name, ver  = ver , date = date, time = time, }
-  return string.gsub( "$name MAD $ver, $date, $time", "%$(%w+)", src )
+  local src, out = { name = name, ver  = ver , date = date, time = time, }
+  if date then out = string.gsub( "$name MAD $ver, $date, $time", "%$(%w+)", src )
+          else out = string.gsub( "$name MAD $ver"              , "%$(%w+)", src ) end
+  return out
 end
 
 --layout
@@ -280,7 +282,7 @@ local template = {
 
 local temp_preamble = { "#$preamble \n" }
 local temp_nocopy   = { "set terminal x11 persist \n" }
-local temp_hardcopy = {
+local temp_filecopy = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
   "set output '$filename'  \n",
 }
@@ -322,24 +324,28 @@ local temp_lay = {
   "set yrange [-1:1] \n",
   "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
+temp_lay_off= {
+  "\nset border \n"     ,
+  "set origin 0,0 \n",
+  "set xtics \n"     ,
+  "set ytics \n"     ,
+}
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
 local gp = io.popen("gnuplot", "w")
-local name = nil
+local name, temp_save = nil, {}
 
 function exec(self)
   local temp = template
   if     self.filename == name then
-  elseif self.filename   then temp = mk_tbl(temp_hardcopy, temp)
-  else                        temp = mk_tbl(temp_nocopy  , temp)
-                              temp_save = {}
-                              gp = io.popen("gnuplot -persist", "w")
+  elseif self.filename         then temp = mk_tbl(temp_filecopy, temp)
+  else                              temp = mk_tbl(temp_nocopy  , temp)
+                                    temp_save = {}
+                                    gp = io.popen("gnuplot -persist", "w")
   end
-  name = self.filename
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
-
   if self.VAXIS2 and self.HAXIS2 then
     local inp2, out2 = to_tbl (self.HAXIS2), to_tbl (self.VAXIS2)
     self.keys    = chain_tbl(self.inp, inp2, self.out, out2)
@@ -370,7 +376,6 @@ function exec(self)
 
   if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
                       else self.interpolate = "with points pointtype ptt" end
-
   local s = #self.keys-1
   if self.HAXIS2 then s = #self.keys-2 end
   local t1 = plotter( self.src, self.keys )
@@ -382,7 +387,7 @@ function exec(self)
     local start, stop = seq:range_index (self.range)
     local lay         = layout( seq, start, stop )
     local t           = plotterL( lay, {'x','y'} )
-    temp = chain_tbl(temp, temp_lay, t )
+    temp = chain_tbl(temp, temp_lay, t, temp_lay_off )
     self.sizeplot = 0.85
     self.datrange = {1,-1}
   end
@@ -399,11 +404,13 @@ function exec(self)
   temp_print( temp, gp )
   gp:flush()
 
-  if self.hardcopy then
+  if self.filename == name then temp_save = chain_tbl(temp_save, temp) end
+  if self.filecopy then
     local gp_script = io.open(self.script, "w")
-    temp_print( temp, gp_script )
+    temp_print( temp_save, gp_script )
     gp_script:close()
   end
+  name = self.filename
   return self
 end
 
@@ -415,9 +422,8 @@ local plot = Command 'plot' {
   HAXIS    = 'x',
   VAXIS    = 'y',
   VAXIS2   = false,
-  key = "left top",
   filename     = false,
-  hardcopy     = false,
+  filecopy     = false,
   script       = "plotter.gp"    ,
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
@@ -429,6 +435,7 @@ local plot = Command 'plot' {
   sizeplot     = 1  ,
   hmargin = false,
   vmargin = true,
+  key = "left top",
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
@@ -438,8 +445,6 @@ local plot = Command 'plot' {
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-  title    = false,
-  noversion   = false,
   interpolate = false ,
   grid = 'grid',
 
