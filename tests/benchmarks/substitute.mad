@@ -1,0 +1,428 @@
+#! /usr/bin/env mad
+local usage = [[
+Usage:
+    ]]..arg[0]..[[ CONIFG [-g] [-r] [-p] [-t] [-c] [--ref=REF] [--engines=ENG]
+
+Options:
+    -g, --generate      Regenerate scripts
+    -r, --run           Run scripts
+    -p, --plot          Create plots
+    -t, --test          Compare results against each other
+    --ref=REF           Set the reference for comparisons
+    --engines=ENG       Use only these engines (comma separated list)
+
+Available engines depend on the config file. By default:
+    madx      MAD-X thin tracking, i.e. using MAKETHIN
+    thick     MAD-X thick tracking
+    ptc       MAD-X PTC track
+    mad       MAD-NG track
+    sad       SAD
+]]
+
+local tostring, vector, plot, gmath, utest, env in MAD
+local map, zip, max, totable, sum, each, reduce, range in MAD.fun
+local loadtxt = require('loadtxt').loadtxt
+
+------------------------------------------
+-- Generic utility functions
+------------------------------------------
+
+-- Expand a template pattern
+local function substitute(template, context)
+  return (template:gsub("${([_%a][_%w]*)}", \x -> tostring(context[x])))
+end
+
+local function read_file(name)
+  local f = assert(io.open(name, "rb"))
+  local contents, message = f:read("*a")
+  f:close()
+  return (assert(contents, message))
+end
+
+local function save_file(name, contents)
+  local f = assert(io.open(name, "wb"))
+  local ret, message = f:write(contents)
+  f:close()
+  assert(ret, message)
+end
+
+local function shell_quote(str)
+  return "'" .. str:gsub("'", "'\\''"):gsub("\n", "'$'\\n''") .. "'"
+end
+
+local function run(command, stdin, stdout)
+  -- TODO: use pcall
+  if stdin then command = command .. " <" .. shell_quote(stdin) end
+  if stdout then command = command .. " >" .. shell_quote(stdout) end
+  os.execute(command)
+end
+
+local function make_dirs(dirname)
+  -- FIXME: platform dependent. race condition.
+  os.execute("mkdir -p " .. shell_quote(dirname))
+end
+
+local function dirname(path)
+  return path:gsub(env.dirsep .. '[^' .. env.dirsep .. ']*$', '')
+end
+
+function table.extend(tab, ext, s)
+  for j=(s or 1),#ext do
+    table.insert(tab, ext[j])
+  end
+  return tab
+end
+
+function table.clone(orig)
+  local clone = {}
+  for k, v in pairs(orig) do clone[k] = v end
+  return clone
+end
+
+-- iterate over all key,value pairs in a MAD.Object:
+local function next_all(s, var)
+  -- NOTE: for simplicity this is a one-time iterator, i.e. it makes no use of
+  -- 'var' but stores the current iterator state in 's' instead
+  local k
+  s.var, k = s.f(s.s, s.var)
+  return k, s.t[k]
+end
+
+local function pairs_all(t, p)
+  if t.get_varkey then
+    local f, s, var = ipairs(t:get_varkey(p))
+    return next_all, {t=t, f=f, s=s, var=var}, nil
+  else
+    return pairs(t)
+  end
+end
+
+-- functools
+local function length(a) return #a end
+local function transpose(gen, param, state)
+  return zip(unpack(totable(gen, param, state)))
+end
+
+-- Columnate tables
+local function columnate(rows, col_align, sep)
+  local sep = sep or "  "
+  local format_col = function(align, ...)
+    local dat = {...}
+    local len = max(map(length, dat))
+    local fmt = '%' .. (align == 'l' and "-" or "") .. tostring(len) .. 's'
+    return map(\s -> fmt:format(s), dat)
+  end
+  local format_row = function(...)
+    return table.concat({...}, sep)
+  end
+  return table.concat(totable(    -- join rows
+    map(format_row, transpose(    -- format rows
+      map(format_col,             -- format cols
+        zip(col_align,
+            unpack(rows)))))),    -- transpose
+    "\n")
+end
+
+local function make_table_title(title, text, left_fill, right_fill)
+  local width = (text:find('\n') or 1+#text) - 1
+  local space = width - #title
+  if right_fill and left_fill then
+    local s = math.floor(space/2)
+    local r = math.fmod(space, 2)
+    return left_fill:rep(s+r) .. title .. right_fill:rep(s)
+  elseif right_fill then
+    return title .. right_fill:rep(space)
+  elseif left_fill then
+    return left_fill:rep(space) .. title
+  else
+    return title
+  end
+end
+
+-- String with fake length
+local function fakelen(s, l)
+  return setmetatable({}, {
+    __tostring = function() return s end,
+    __len = function() return l end,
+  })
+end
+
+-- Colorize string in terminal:
+local COLORS = {
+  reset  = '\27[0m',
+  red    = '\27[31m',
+  green  = '\27[32m',
+  yellow = '\27[33m',
+}
+
+local function term_colorize(s, color)
+  return fakelen(COLORS[color] .. s .. COLORS.reset, #s)
+end
+
+------------------------------------------
+-- Config
+------------------------------------------
+
+-- GLOBAL for use in configs
+pi = gmath.pi
+T  = \str -> (\ctx -> substitute(str, ctx))   -- specify a template by string
+LT = \str -> T(read_file('templates/'..str))  -- specify a template by filename
+R  = \str -> require('configs.'..str)
+_G.read_file = read_file
+_G.save_file = save_file
+_G.run = run
+_G.dirname = dirname
+_G.make_dirs = make_dirs
+
+
+-- compare results of codes against each other, print table
+local function check_results(ctx, ref, color)
+  local alldiffs = {}
+
+  local absdiff = \a,b -> math.abs(a-b)
+  local maxdiff = \a,b -> max(map(absdiff, zip(a, b)))
+  local fmtnum  = \n   -> string.format("%1.0e", n)
+  local fmtdiff = fmtnum
+  if color then
+    fmtdiff = function(n)
+      local color = n > 1e-10 and 'red' or n > 1e-14 and 'yellow' or 'reset'
+      return term_colorize(fmtnum(n), color)
+    end
+  end
+
+  local ref_eng = ref or (ctx.runs.mad and "mad" or next(ctx.runs))
+  local ref_dat = loadtxt(ctx.runs[ref_eng].tfsfile)
+
+  local cols = {"s", "x", "px", "y", "py", "t", "pt"}
+  local rows = {}
+  table.insert(rows, {"Change in: ", table.unpack(cols)})
+
+  for engine, run in pairs(ctx.runs) do
+    if engine ~= ref_eng then
+      local dat = loadtxt(run.tfsfile)
+      local row = {ref_eng .. "-" .. engine .. ":"}
+      for _, var in ipairs(cols) do
+        local diffs = totable(map(absdiff, zip(ref_dat[var], dat[var])))
+        local delta = max(diffs)
+        table.insert(row, fmtdiff(delta))
+        if delta >= 1e-14 then
+          local idx = reduce(\i,j -> (diffs[i] > diffs[j] and i or j),
+                             1, range(2, #ref_dat[var]))
+          table.insert(alldiffs, {
+            ctx=ctx, var=var,
+            ref=ref_eng, ref_val=ref_dat[var][idx],
+            eng=engine,  eng_val=    dat[var][idx],
+          })
+        end
+      end
+      table.insert(rows, row)
+    end
+  end
+
+  local text = columnate(rows, "lrrrrrrr")
+  local title = make_table_title('------------ Study: ' .. ctx.study .. ' ', text, nil, '-')
+  print("\n" .. title .. "\n" .. text)
+  return alldiffs
+end
+
+-- print absolute values at point of max difference
+local function diff_summary(diffs)
+  local fmt = "%+.15e"
+  local rows = {}
+  table.insert(rows, {'study', 'var', 'engine', 'value at max diff'})
+  for _, diff in ipairs(diffs) do
+    local ref_val, eng_val = diff.ref_val, diff.eng_val
+    table.extend(rows, {
+      {'',              '',       '',       ''                          },
+      {diff.ctx.study,  diff.var, diff.ref, fmt:format(ref_val)         },
+      {'',              '',       diff.eng, fmt:format(eng_val)         },
+      {'',              '',       'delta',  fmt:format(ref_val-eng_val) },
+    })
+  end
+
+  local text = columnate(rows, "lllr")
+  local title = make_table_title(' ABSOLUTE DIFFS ', text, '=', '=')
+  return "\n" .. title .. "\n" .. text
+end
+
+local function create_plots(ctx)
+
+  local filename = ctx.prefix .. ".pdf"
+
+  local alldata = {}
+  for engine, context in pairs(ctx.runs) do
+    alldata[engine] = loadtxt(context.tfsfile)
+  end
+
+  for _, var in ipairs({"x", "px", "y", "py", "t", "pt"}) do
+
+    local VAXIS = {}
+    local data = {}
+    for k, v in pairs(alldata) do
+      table.insert(VAXIS, k)
+      data[k] = v and vector(v[var])
+    end
+    table.sort(VAXIS)
+    data.x_var = vector(alldata[VAXIS[1]].var)
+
+    local VAXIS2 = {}
+    local data2 = {}
+    local ref_k = VAXIS[1]
+    local ref_v = data[ref_k]
+    for _, k in ipairs(VAXIS), VAXIS, 1 do
+      table.insert(VAXIS2, k.."-"..ref_k)
+      data2[k.."-"..ref_k] = data[k] - ref_v
+    end
+    table.sort(VAXIS2)
+    data2.x_var = data.x_var
+
+    -- absolute values
+    plot {
+      filename = filename,
+      data  = data,
+      HAXIS = {'x_var'},
+      VAXIS = VAXIS,
+      xlabel = "initial " .. ctx.study,
+      ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      gtitle = "Change in " .. var .. " due to varying " .. ctx.study,
+    }
+
+    -- differences
+    plot {
+      filename = filename,
+      data = data2,
+      HAXIS = {'x_var'},
+      VAXIS = VAXIS2,
+      xlabel = "initial " .. ctx.study,
+      ylabel = "final " .. var,
+      interpolate = "w lines",
+      grid = "nogrid",
+      gtitle = "Discrepancies in " .. var .. " when varying " .. ctx.study,
+    }
+  end
+
+  -- TODO: summary plot
+end
+
+local function process_opts(args, short)
+  -- handle command line
+  local opts = {}
+  for i, v in ipairs(args) do
+    local key, val = v:match('%-%-([^=]*)=(.*)')
+    if key then
+      opts[key] = val
+    elseif v:match('^%-%-$') then
+      return table.extend(opts, args, i+1)
+    elseif v:match('^%-%-no%-') then
+      opts[v:sub(6)] = false
+    elseif v:match('^%-%-') then
+      opts[v:sub(3)] = true
+    elseif v:match('^%-%l$') then
+      opts[short[v:sub(2)]] = true
+    else
+      table.insert(opts, v)
+    end
+  end
+  return opts
+end
+
+local function main(args)
+
+  opts = process_opts(args, {
+    g='generate',
+    r='run',
+    p='plot',
+    t='test',
+    h='help',
+    e='engines',
+    c='color',
+    s='summary',
+  })
+
+  if #(opts) ~= 1 or opts.help then
+    print(usage)
+    os.exit(1)
+  end
+
+  -- get list of engines, if specified
+  local engines = nil
+  if opts.engines then
+    engines = {}
+    for engine in opts.engines:gmatch("[%l_]+") do
+      engines[engine] = true
+    end
+  end
+
+  -- first write+exec mad files
+  local filename = opts[1]
+  local context = dofile(filename)
+  local studies = {}
+
+  -- derive a context for every study
+  for study, overrides in pairs_all(context.studies) do
+    if overrides then
+      table.insert(studies, context {
+        prefix  = context.prefix .. study,
+        [study] = T"${varname}", -- usually study is the varied attribute name
+        study   = study,
+      } (overrides))
+    end
+  end
+
+  -- substitute a template for each engine
+  for _, study in ipairs(studies) do
+    study.runs = {}
+    for engine, overrides in pairs_all(study.engines) do
+      if overrides and (not engines or engines[engine]) then
+        study.runs[engine] = study { engine=engine } (table.clone(overrides))
+      end
+    end
+  end
+
+  -- regenerate text
+  opts.generate = opts.generate or opts.generate == nil and opts.run
+  if opts.generate then
+    for _, study in ipairs(studies) do
+      for engine, context in pairs(study.runs) do
+        context:_prepare()
+        context:_generate()
+      end
+    end
+  end
+
+  -- run test for each engine
+  if opts.run then
+    for _, study in ipairs(studies) do
+      for engine, context in pairs(study.runs) do
+        context:_run()
+      end
+    end
+  end
+
+  if opts.plot then
+    each(create_plots, studies)
+  end
+
+  -- run tests last
+  local color = opts.color or opts.color == nil
+  local check_results = \ctx check_results(ctx, opts.ref, color)
+  if opts.test then
+    local diffs = reduce(table.extend, {}, map(check_results, studies))
+    if opts.summary then
+      print(diff_summary(diffs))
+    end
+    return #diffs
+  end
+
+  return 0
+end
+
+if debug.getinfo(3) == nil then
+  os.exit(main(arg))
+end
+
+return {
+  main = main,
+}
