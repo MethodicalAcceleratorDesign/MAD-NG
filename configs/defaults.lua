@@ -14,7 +14,7 @@ return MAD.Object {
     sad   = { whole = LT'basic_track.sad',  command = 'sad',              },
   },
   -- sequence
-  madx_sequence  = T[[
+  madx_sequence = T[[
 ${seq_name}: sequence, refer=center, l=${seq_len};
   ${el_name}: ${el_type}, ${el_args};
   exit_marker: MARKER, at=${at_exit};

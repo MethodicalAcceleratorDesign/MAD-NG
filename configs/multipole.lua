@@ -1,20 +1,13 @@
-local DEFAULTS = R 'defaults'
+local DEFAULTS = R 'thinelement'
 return DEFAULTS {
   prefix = 'multipole/',
   el_type = "multipole",
-  el_args = T[[knl:={${k0l}, ${k1l}, ${k2l}}, at=0.5]],
+  el_args = T'knl:={${k0l}, ${k1l}, ${k2l}}, at=${at}',
   sad_el_type = 'MULT',
-  sad_el_args = T'L=1 K0=${k0l} K1=${k1l} K2=${k2l}',
-  mad_sequence = T[[
-local sequence = MAD.sequence "${seq_name}" {
-  refer="entry", l=${seq_len},
-  MAD.element.drift "dr" {l=0.5, at=0},
-  MAD.element.${el_type} "${el_name}" { ${el_args} },
-}]],
+  sad_el_args = T'K0=${k0l} K1=${k1l} K2=${k2l} L=0',
   k0l     = 0,
   k1l     = 0,
   k2l     = 0,
-  observe = '#e',
   -- output:
   studies = DEFAULTS.studies {
     k0l = {stop=0.01, px=0.001, sad_attr='K0'},
