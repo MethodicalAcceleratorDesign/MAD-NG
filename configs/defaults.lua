@@ -6,16 +6,18 @@ return MAD.Object {
   -- engines
   engines = MAD.Object {
     thick = { whole = LT'basic_track.madx', command = 'madx', makethin=0  },
-    madx  = { whole = LT'basic_track.madx', command = 'madx', makethin=1  },
+    madx  = { whole = LT'basic_track.madx', command = 'madx', makethin=1,
+              el_exit = 'exit_marker',                                    },
     ptc   = { whole = LT'basic_track.ptc',  command = 'madx'              },
     mad   = { whole = LT'basic_track.mad',  command = 'mad',
               varname = \ctx -> ctx.parent.varname:gsub('->', '.'),       },
-    sad   = { whole = LT'basic_track.sad',  command = 'sad'               },
+    sad   = { whole = LT'basic_track.sad',  command = 'sad',              },
   },
   -- sequence
   madx_sequence  = T[[
 ${seq_name}: sequence, refer=center, l=${seq_len};
   ${el_name}: ${el_type}, ${el_args};
+  exit_marker: MARKER, at=${at_exit};
 endsequence;]],
   ptc_sequence = T"${madx_sequence}",
   mad_sequence = T[[
@@ -29,8 +31,10 @@ ${sad_el_type} ${el_name} = (${sad_el_args});
 LINE ${seq_name} = (M1 EL);]],
   seq_name  = "SEQ",          -- must be uppercase for SAD
   el_name   = "EL",
-  observe   = T"${el_name}",
+  el_exit   = T"${el_name}",  -- downstream end of element
+  observe   = T"${el_exit}",  -- cannot use ${el_name} with MAKETHIN
   seq_len   = 1,
+  at_exit   = 1,
   -- loop:
   varname   = "loopvalue",    -- no underscores in SAD!
   varfunc   = "linrange",
