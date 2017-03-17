@@ -144,21 +144,21 @@ local function scale_dat(src, keys, rng) -- check luafun usage
   return d_src
 end
 
-local function scale_axis(src, keys, margin) --add margin option
+local function scale_axis(src, keys, margin)
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
-    local min = src[key]:min()
-    local max = src[key]:max()
+    local min, max = src[key]:min(), src[key]:max()
     vmin:seti(i, min)
     vmax:seti(i, max)
   end
+  local min, max, x = vmin:min(), vmax:max()
   if margin then
-    local x = 0.1
-    if is_number(margin) then x = margin end
-    local marg = x*vmax:max()
-    return vmin:min()-marg, vmax:max()+marg
+    if is_number(margin) then x = margin else x=0.1 end
+    local marg = x*(max-min)
+    if marg == 0 then marg = x end
+    return min-marg, max+marg
   end
-  return vmin:min(), vmax:max()
+  return min, max
 end
 
 --titles
@@ -168,10 +168,9 @@ local function axis_title(src)
   return label
 end
 
-local function mktitle(title, name, date, time)
-  local ver = tostring(MAD.env.version)
-  if   is_string(title) then return title
-  else                       return name..", MAD "..ver..", "..date.." "..time end
+local function mktitle(name, ver, date, time)
+  local src = { name = name, ver  = ver , date = date, time = time, }
+  return string.gsub( "$name MAD $ver, $date, $time", "%$(%w+)", src )
 end
 
 --layout
@@ -340,11 +339,6 @@ function exec(self)
   name = self.filename
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
-  if self.table then
-    local title, date, time in self.table
-    if not self.notitle then self.gtitle =  mktitle(self.title, title, date, time)
-    else                     self.gtitle = " " end
-  else self.gtitle = " " end
 
   if self.VAXIS2 and self.HAXIS2 then
     local inp2, out2 = to_tbl (self.HAXIS2), to_tbl (self.VAXIS2)
@@ -402,7 +396,7 @@ function exec(self)
   temp_style( temp, self.colors    , "colors")
   temp_style( temp, self.pointtypes, "ptt"   )
   temp_style( temp, self.dashtypes , "dtt"   )
-  temp_print( temp, gp          )
+  temp_print( temp, gp )
   gp:flush()
 
   if self.hardcopy then
@@ -410,19 +404,20 @@ function exec(self)
     temp_print( temp, gp_script )
     gp_script:close()
   end
+  return self
 end
 
 local plot = Command 'plot' {
-  preamble = nil,
-  table    = nil,
-  data     = nil,
-  sequence = nil,
+  preamble = false,
+  table    = false,
+  data     = false,
+  sequence = false,
   HAXIS    = 'x',
   VAXIS    = 'y',
-  VAXIS2   = nil,
+  VAXIS2   = false,
   key = "left top",
-  filename     = nil,
-  hardcopy     = nil,
+  filename     = false,
+  hardcopy     = false,
   script       = "plotter.gp"    ,
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
@@ -443,10 +438,9 @@ local plot = Command 'plot' {
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-  notitle  = nil,
-  title    = nil,
-  noversion   = nil,
-  interpolate = nil ,
+  title    = false,
+  noversion   = false,
+  interpolate = false ,
   grid = 'grid',
 
   vlimit2  = {nil, nil},
@@ -456,9 +450,16 @@ local plot = Command 'plot' {
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   xlabel2  = "",
   linewidth = 1,
-  color     = nil,
-  pointtype = nil,
-  dashtype  = nil,
+  color     = false,
+  pointtype = false,
+  dashtype  = false,
+
+  gtitle = \s mktitle(s.name, s.ver, s.date, s.time),
+  ver  = tostring(MAD.env.version),
+  name = \s => if s.table then return s.table.title end end,
+  date = \s => if s.table then return s.table.date  end end,
+  time = \s => if s.table then return s.table.time  end end,
+
   colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
              "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
              "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
@@ -469,7 +470,7 @@ local plot = Command 'plot' {
 -- non-user option
   inp  = \s to_tbl (s.HAXIS),
   out  = \s to_tbl (s.VAXIS),
-  keys = \s mk_tbl   (s.inp   , s.out             ), -- chain_tbl does not work
+  keys = \s mk_tbl   (s.inp   , s.out             ),
   ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
   drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
   src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
