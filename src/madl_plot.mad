@@ -175,6 +175,11 @@ local function mktitle(name, ver, date, time)
   return out
 end
 
+local function mk_script(filename)
+  if filename then return string.match(filename, "(%w+)%.")..".gp"
+              else return "script.gp"                              end
+end
+
 --layout
 local xadjst = \x,l,s -> (x * l + s - l)
 local yadjst = \y,h   -> (y * h        )
@@ -333,16 +338,16 @@ temp_lay_off= {
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
-local gp = io.popen("gnuplot", "w")
-local name, temp_save = nil, {}
+local gp, temp_save, name = {}, {}, nil
+get_gp = \ io.popen("gnuplot", "w")
 
 function exec(self)
   local temp = template
-  if     self.filename == name then
-  elseif self.filename         then temp = mk_tbl(temp_filecopy, temp)
-  else                              temp = mk_tbl(temp_nocopy  , temp)
-                                    temp_save = {}
-                                    gp = io.popen("gnuplot -persist", "w")
+  if self.filename ~= name then
+    gp[self.id] = io.popen("gnuplot -persist", "w")
+    if self.filename then temp = mk_tbl(temp_filecopy, temp)
+                     else temp = mk_tbl(temp_nocopy  , temp)
+                           temp_save = {}                     end
   end
 
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
@@ -402,10 +407,11 @@ function exec(self)
   temp_style( temp, self.colors    , "colors")
   temp_style( temp, self.pointtypes, "ptt"   )
   temp_style( temp, self.dashtypes , "dtt"   )
-  temp_print( temp, gp )
-  gp:flush()
+  temp_print( temp, gp[self.id] )
+  gp[self.id]:flush()
 
-  if self.filename == name then temp_save = chain_tbl(temp_save, temp) end
+  if self.filename == name then temp_save = chain_tbl(temp_save, temp)
+    else  temp_save = temp end
   if self.filecopy then
     local gp_script = io.open(self.script, "w")
     temp_print( temp_save, gp_script )
@@ -416,6 +422,7 @@ function exec(self)
 end
 
 local plot = Command 'plot' {
+  id = 1,
   preamble = false,
   table    = false,
   data     = false,
@@ -425,7 +432,7 @@ local plot = Command 'plot' {
   VAXIS2   = false,
   filename     = false,
   filecopy     = false,
-  script       = "plotter.gp"    ,
+  script       = \s mk_script(s.filename),
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
   fontsize     = 22 ,
