@@ -4,7 +4,7 @@ return DEFAULTS {
   el_type = "sbend",
   el_args = T[[angle:=${angle}, k0:=${k0}, tilt:=${tilt}, l=${el_len}, at=0.5]],
   sad_el_type = 'BEND',
-  sad_el_args = T'ANGLE=${angle} L=1 ROTATE=${tilt}',
+  sad_el_args = T'ANGLE=${angle} L=${el_len} ROTATE=${tilt}',
   angle   = 0.1,
   tilt    = 0.0,
   k0      = T"${angle}/${el_len}",
