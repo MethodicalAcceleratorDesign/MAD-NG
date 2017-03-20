@@ -84,7 +84,7 @@ local function plotter(src, keys)
     end
     t[i] = t[i].."\n"
   end
-  t[#s+2] = "e"
+  t[#s+2] = "e\n"
   return t
 end
 
@@ -102,7 +102,7 @@ local function plotterL(src, keys)
     end
     t[c] = "\n"; c=c+1
   end
-  t[c] = "e"
+  t[c] = "e\n"
   return t
 end
 
@@ -138,8 +138,8 @@ local function scale_dat(src, keys, rng) -- check luafun usage
   local start, stop = 1, #src[keys[1]]
   start, stop = chksize(rng, start, stop)
   for j,k in ipairs(keys) do
-    if isa_matrix(src[k]) then d_src[k]=src[k]:getv(start..stop )
-                          else d_src[k]=scale_tbl(src[k],start,stop) end
+    if isa_matrix(src[k]) then d_src[k] = src[k]:getv(start..stop )
+                          else d_src[k] = scale_tbl(src[k],start,stop) end
   end
   return d_src
 end
@@ -153,7 +153,8 @@ local function scale_axis(src, keys, margin)
   end
   local min, max, x = vmin:min(), vmax:max()
   if margin then
-    if is_number(margin) then x = margin else x=0.1 end
+    if is_number(margin) then x = margin
+                         else x = 0.1    end
     local marg = x*(max-min)
     if marg == 0 then marg = x end
     return min-marg, max+marg
@@ -170,11 +171,11 @@ local function axis_title(src)
   end
 end
 
-local function mktitle(name, ver, date, time)
+local function mk_title(name, ver, date, time)
   local src, out = { name = name, ver  = ver , date = date, time = time, }
-  if date then out = string.gsub( "$name MAD $ver, $date, $time", "%$(%w+)", src )
-          else out = string.gsub( "$name MAD $ver"              , "%$(%w+)", src ) end
-  return out
+  if date then out = "$name MAD $ver, $date, $time" % src
+          else out = "$name MAD $ver"               % src end
+    return out
 end
 
 local function mk_script(filename)
@@ -219,11 +220,9 @@ end
 
 -- template
 local function temp_fill(temp, src)
-  local templ = {}
   for i,line in ipairs(temp) do
-    templ[i] = line % src -- interpolate strings
+    temp[i] = line % src      -- interpolate strings
   end
-  return templ
 end
 
 local function find_key(inp, key)
@@ -240,16 +239,6 @@ local function temp_multiplot(temp, inp, key, start)
     for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key    , tostring(i+start+2))
                    temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           ) end
   end
-end
-
-local function temp_add(temp, inp, key, start)
-  local template = chain_tbl(temp, {} )
-  local lnr, s   = find_key (temp, key), #inp
-  if lnr then
-    for i=#temp,lnr,-1 do template[i+s-1]=temp[i] end
-    for i=start,s      do template[lnr+i]=inp [i] end
-  end
-  return template
 end
 
 local function temp_style(temp, inp, key) -- name
@@ -283,20 +272,23 @@ local template = {
   "set title '$gtitle'  \n"          ,
 }
 local temp_end = {
-  "set key $key \n"                  ,
-  "set xlabel '$xlabel' \n"          ,
-  "set ylabel '$ylabel' \n"          ,
-  "set xrange [$xmin:$xmax] \n"      ,
-  "set yrange [$ymin:$ymax] \n"      ,
+  "set key $key \n"            ,
+  "set xlabel '$xlabel' \n"    ,
+  "set ylabel '$ylabel' \n"    ,
+  "set xrange [$xmin:$xmax] \n",
+  "set yrange [$ymin:$ymax] \n",
+}
+
+local temp_plot = {
   "plot ",
-  "'-' using 1:count  every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
+  "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
 }
 
 local temp_preamble = { "#$preamble \n" }
 local temp_nocopy   = { "set terminal x11 persist \n" }
 local temp_filecopy = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
-  "set output '$filename'  \n",
+  "set output '$filename' \n",
 }
 local temp_unmult = {"\nunset multiplot \n" }
 local temp_multiv = {
@@ -318,7 +310,7 @@ local temp_vaxis2  = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'co
 local temp_hvaxis2 = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x2y2,\\\n" }
 --local temp_haxis2  = {"'-' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 local temp_lay = {
-  "\nunset tmargin \n"  ,
+  "unset tmargin \n"    ,
   "unset bmargin \n"    ,
   "unset title  \n"     ,
   "unset arrow \n"      ,
@@ -337,7 +329,7 @@ local temp_lay = {
   "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
 temp_lay_off= {
-  "\nset border \n"  ,
+  "set border \n"    ,
   "set origin 0,0 \n",
   "set xtics \n"     ,
   "set ytics \n"     ,
@@ -353,9 +345,10 @@ local gp = setmetatable({},{
 
 function exec(self)
   local temp = template
+
   if self.filename ~= name then
-    if self.filename then temp = mk_tbl(temp_filecopy, temp)
-                     else temp = mk_tbl(temp_nocopy  , temp)
+    if self.filename then temp = mk_tbl(temp_unmult, temp_filecopy, temp)
+                     else temp = mk_tbl(temp_nocopy, temp               )
                           temp_save = {}                     end
   end
 
@@ -363,23 +356,30 @@ function exec(self)
 
   if self.vaxis2 and self.haxis2 then
     self.keys = chain_tbl(self.inp, self.inp2, self.out, self.out2)
-    temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_hvaxis2 )
+    temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_plot, temp_hvaxis2 )
     temp_multiplot  ( temp, self.out2  , "count2", #self.inp2+#self.out )
     temp_multiplot  ( temp, self.out   , 'count' , #self.inp2           )
   elseif self.vaxis2 then
     self.keys = chain_tbl(self.keys, self.out2 )
-    temp = chain_tbl( temp, temp_multiv, temp_end, temp_vaxis2 )
-    temp_multiplot  ( temp, self.out2  , "count2", #self.out  )
+    temp = chain_tbl( temp, temp_multiv, temp_end, temp_plot, temp_vaxis2 )
+    --for i,v in ipairs(temp) do print(i,v) end
+    temp_multiplot  ( temp, self.out2  , "count2", #self.out   )
   elseif self.haxis2 then
     self.keys = chain_tbl(self.inp , self.inp2, self.keys )
-    temp = chain_tbl( temp, temp_multih, temp_end )
+    temp = chain_tbl( temp, temp_multih, temp_end, temp_plot  )
     temp_multiplot  ( temp, self.out   , 'count' , #self.inp2 )
   else
-    temp = chain_tbl( temp, temp_end )
+    temp = chain_tbl( temp, temp_end, temp_plot )
   end
+
+  if self.continue then temp = temp_plot end
+
+  temp_multiplot  ( temp, self.out, "count", 0          )
+  --for i,v in ipairs(temp) do print(i,v) end
 
   if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
                       else self.interpolate = "with points pointtype ptt" end
+
   local s  = #self.keys-1
   local t1 = plotter( self.src, self.keys )
   if self.HAXIS2 then s = #self.keys-2 end
@@ -391,27 +391,23 @@ function exec(self)
     local start, stop = seq:range_index (self.range)
     local lay         = layout( seq, start, stop )
     local t           = plotterL( lay, {'x','y'} )
-    temp = chain_tbl(temp, temp_lay, t, temp_lay_off )
-    self.sizeplot = 0.85
+    temp = chain_tbl(temp_unmult, temp, temp_lay, t, temp_lay_off )
     self.datrange = {1,-1}
   end
 
-  temp = chain_tbl( temp, temp_unmult)
-  temp = temp_fill( temp, self       )
-  temp_multiplot  ( temp, self.out , "count", 0)
-
+  temp_fill( temp, self )
   self.colors     = match_style(self.color    , self.colors    , self.keys)
   self.pointtypes = match_style(self.pointtype, self.pointtypes, self.keys)
   self.dashtypes  = match_style(self.dashtype , self.dashtypes , self.keys)
-
   temp_style( temp, self.colors    , "colors")
   temp_style( temp, self.pointtypes, "ptt"   )
   temp_style( temp, self.dashtypes , "dtt"   )
+
   temp_print( temp, gp[self.id] )
   gp[self.id]:flush()
 
   if self.filename == name then temp_save = chain_tbl(temp_save, temp)
-    else  temp_save = temp end
+                           else temp_save = temp                       end
   if self.filecopy then
     local gp_script = io.open(self.script, "w")
     temp_print( temp_save, gp_script )
@@ -422,7 +418,8 @@ function exec(self)
 end
 
 local plot = Command 'plot' {
-  id = 1,
+  continue = false,
+  id       = 1,
   preamble = false,
   table    = false,
   data     = false,
@@ -431,20 +428,21 @@ local plot = Command 'plot' {
   vaxis    = 'y',
   vaxis2   = false,
   haxis2   = false,
-  filename     = false,
-  filecopy     = false,
-  script       = \s mk_script(s.filename),
+  filename = false,
+  filecopy = false,
+  script   = \s mk_script(s.filename),
   terminaltype = "postscript eps",
   fonttype     = "Times-Roman"   ,
-  fontsize     = 22 ,
-  xsize        = 27 ,
-  ysize        = 17 ,
-  lmargin      = 0.1,
-  rmargin      = 0.9,
-  sizeplot     = 1  ,
-  hmargin = false,
-  vmargin = true,
-  key = "left top",
+  fontsize = 22 ,
+  xsize    = 27 ,
+  ysize    = 17 ,
+  lmargin  = 0.1,
+  rmargin  = 0.9,
+  hmargin  = false,
+  vmargin  = true,
+  key      = "left top",
+  grid     = 'grid',
+  sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
@@ -455,23 +453,19 @@ local plot = Command 'plot' {
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
   interpolate = false ,
-  grid = 'grid',
 
   vlimit2  = {nil, nil},
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  ylabel2  = "",
   xlimit2  = {nil, nil},
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
+  ylabel2  = "",
   xlabel2  = "",
-
-  inp2    = \s => if s.haxis2 then return to_tbl(s.haxis2) end end,
-  out2    = \s => if s.vaxis2 then return to_tbl(s.vaxis2) end end,
+  inp2    = \s => if s.haxis2 then return to_tbl    (s.haxis2) end end,
+  out2    = \s => if s.vaxis2 then return to_tbl    (s.vaxis2) end end,
   ylabel2 = \s => if s.out2   then return axis_title( s.out2 ) end end,
   xlabel2 = \s => if s.inp2   then return axis_title( s.inp2 ) end end,
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
-
-
 
   linewidth = 1,
   color     = false,
@@ -485,7 +479,7 @@ local plot = Command 'plot' {
   dashtypes  = {"solid", "solid", "solid", "solid", "solid", "solid", "solid",
                 "solid", "solid", "solid", "solid","'-'"},
 
-  gtitle = \s mktitle(s.name, s.ver, s.date, s.time),
+  gtitle = \s mk_title(s.name, s.ver, s.date, s.time),
   ver  = tostring(MAD.env.version),
   name = \s => if s.table then return s.table.title end end,
   date = \s => if s.table then return s.table.date  end end,
