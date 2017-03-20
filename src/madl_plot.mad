@@ -230,9 +230,9 @@ local function temp_style(inp, out, keys)
     for k,v in pairs(inp) do
       local indx = find_key(keys, k) - 1
       if indx then out[indx] = v end
-      return out
     end
   end
+  return out
 end
 
 local function temp_fill(temp, src)
@@ -270,8 +270,7 @@ local temp_end = {
 }
 
 local temp_plot     = { "plot " }
-local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n" }
-local temp_vaxis2   = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n" }
+local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes setaxes,\\\n" }
 
 local temp_preamble = { "#$preamble \n" }
 local temp_window   = { "set terminal x11 persist \n" }
@@ -330,13 +329,19 @@ local gp = setmetatable({},{
 })
 
 function exec(self)
-  local temp
+  local dashtypes  = { "solid", "solid", "solid", "solid", "solid", "solid",
+                       "solid", "solid", "solid", "solid", "solid","'-'"}
+  local colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
+                   "green"      , "blue"  , "orange"   , "violet"  , "pink",
+                   "greenyellow", "gray"  , "dark-grey", "dark-red", "gold",
+                   "orangered4" , "brown4" }
+  local axes, temp = {}
   if     self.filename == name then temp = chain_tbl( {}        ,              template)
   elseif self.filename         then temp = chain_tbl(temp_unmult, temp_tofile, template)
   else                              temp = chain_tbl(temp_window,              template)
                                     temp_save = {}
   end
-  if self.preamble then temp = mk_tbl(temp_preamble, temp) end
+  if self.preamble    then temp = mk_tbl(temp_preamble, temp) end
   if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
   else                     self.interpolate = "with points pointtype ptt"
   end
@@ -347,13 +352,16 @@ function exec(self)
   end
 
   if self.continue then temp = temp_plot end
-  if self.out  then for i=1,#self.out  do temp = chain_tbl( temp, temp_vaxis  ) end end
-  if self.inp2 then self.keys = chain_tbl(self.inp , self.inp2, self.out ) end
-  if self.out2 then self.keys = chain_tbl(self.keys, self.out2           )
-                    self.out  = chain_tbl(self.out , self.out2           )
-                    for i=1,#self.out2 do temp = chain_tbl( temp, temp_vaxis2 ) end
+  local s, s2 = #self.out, #self.out2
+  if self.out  then for i=1,s do temp    = chain_tbl( temp, temp_vaxis  )
+                                 axes[i] = "x1y1"                           end
   end
-
+  if self.inp2 then self.keys = chain_tbl(self.inp , self.inp2, self.out  ) end
+  if self.out2 then self.keys = chain_tbl(self.keys, self.out2            )
+                    self.out  = chain_tbl(self.out , self.out2            )
+                    for i=1,s2   do temp    = chain_tbl( temp, temp_vaxis ) end
+                    for i=s,s+s2 do axes[i] = "x1y2"                        end
+  end
   local data_temp = data_to_temp( self.src, self.keys )
   for i = 1,#self.out do temp = chain_tbl(temp, data_temp) end
 
@@ -367,16 +375,20 @@ function exec(self)
     temp = chain_tbl( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off )
   end
 
-  self.colors     = temp_style( self.color    , self.colors    , self.keys )
-  self.pointtypes = temp_style( self.pointtype, self.pointtypes, self.keys )
-  self.dashtypes  = temp_style( self.dashtype , self.dashtypes , self.keys )
-  temp_fill    ( temp, self            )
-  temp_fill_tbl( temp, self.colors     , "colors" )
-  temp_fill_tbl( temp, self.pointtypes , "ptt"    )
-  temp_fill_tbl( temp, self.dashtypes  , "dtt"    )
-  temp_fill_tbl( temp, self.out        , "ytitle" )
-  temp_fill_tbl( temp, 2..(#self.out)+1, "count"  )
-  temp_print( temp, gp[self.id] )
+  local count = 2..(#self.out)+1
+  local pointtypes = totable(1..(#self.out))
+  axes       = temp_style( self.axes      , axes      , self.keys )
+  colors     = temp_style( self.colors    , colors    , self.keys )
+  pointtypes = temp_style( self.pointtypes, pointtypes, self.keys )
+  dashtypes  = temp_style( self.dashtypes , dashtypes , self.keys )
+  temp_fill    ( temp, self        )
+  temp_fill_tbl( temp, colors      , "colors"  )
+  temp_fill_tbl( temp, axes        , "setaxes" )
+  temp_fill_tbl( temp, pointtypes  , "ptt"     )
+  temp_fill_tbl( temp, dashtypes   , "dtt"     )
+  temp_fill_tbl( temp, self.out    , "ytitle"  )
+  temp_fill_tbl( temp, count       , "count"   )
+  temp_print   ( temp, gp[self.id] )
   gp[self.id]:flush()
 
   if self.filename == name then temp_save = chain_tbl(temp_save, temp)
@@ -442,23 +454,17 @@ local plot = Command 'plot' {
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
 
-  linewidth = 1,
-  color     = false,
-  pointtype = false,
-  dashtype  = false,
-  colors    = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
-                "green"      , "blue"  , "orange"   , "violet"  , "pink"     ,
-                "greenyellow", "gray"  , "dark-grey", "dark-red", "gold"     ,
-                "orangered4" , "brown4" },
-  pointtypes = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
-  dashtypes  = {"solid", "solid", "solid", "solid", "solid", "solid", "solid",
-                "solid", "solid", "solid", "solid","'-'"},
+  axes       = false,
+  linewidth  = 1    ,
+  colors     = false,
+  pointtypes = false,
+  dashtypes  = false,
 
-  title = \s mk_title(s.name, s.ver, s.date, s.time),
+  title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
-  name = \s => if s.table then return s.table.title end end,
-  date = \s => if s.table then return s.table.date  end end,
-  time = \s => if s.table then return s.table.time  end end,
+  name    = \s => if s.table then return s.table.title end end,
+  date    = \s => if s.table then return s.table.date  end end,
+  time    = \s => if s.table then return s.table.time  end end,
 -- non-user option
   inp  = \s to_tbl (s.haxis),
   out  = \s to_tbl (s.vaxis),
