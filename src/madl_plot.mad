@@ -68,60 +68,13 @@ local function mk_tbl(t1, t2)
   return tbl
 end
 
-local function chain_tbl(t1, t2, ...)
+local function chain_tbl(t1, ...)
   local t = {}
-  for _it, k, v in chain(t1, t2, ...) do table.insert(t, k) end
-  return t
-end
-
-local function plotter(src, keys)
-  local s = src[keys[1]]
-  local t = {"\n"}
-  for i=2,#s+1 do
-    for j,k in ipairs(keys) do
-      if t[i] then t[i] = t[i]..src[k][i-1].." "
-              else t[i] =       src[k][i-1].." " end
-    end
-    t[i] = t[i].."\n"
-  end
-  t[#s+2] = "e\n"
-  return t
-end
-
-local function plotterL(src, keys)
-  local s = src[keys[1]]
-  local t = {"\n"}
-  local c = 2
-  for i=1,#s do
-    for ii=1,#s[i] do
-      for j,k in ipairs(keys) do
-        if t[c] then t[c] = t[c]..src[k][i][ii].." "
-                else t[c] =       src[k][i][ii].." " end
-      end
-      t[c] = t[c].."\n"; c=c+1
-    end
-    t[c] = "\n"; c=c+1
-  end
-  t[c] = "e\n"
+  for _it, k, v in chain(t1, ...) do table.insert(t, k) end
   return t
 end
 
 --scalling
-local function scale_rng(src, rng)
-  if     is_range(rng) then return rng
-  elseif is_table(rng) then
-    local  start,  stop = 1     , #src
-    local rstart, rstop = rng[1], rng[2]
-    local vmin, vmax, c = {}, {}
-    c=1; src:mapij(\x,i,j => if x>rstart then vmin[c]=i; c=c+1 end end, {})
-    c=1; src:mapij(\x,i,j => if x>rstop  then vmax[c]=i; c=c+1 end end, {})
-    start = vmin[1]
-    if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
-    if rng [2] == -1 then stop = #src      end
-    return start..stop
-  end
-end
-
 local function chksize(rng, start, stop)
   if rng:size() <= stop then start, stop = rng.start, rng.stop end
   return start, stop
@@ -162,6 +115,21 @@ local function scale_axis(src, keys, margin)
   return min, max
 end
 
+local function scale_rng(src, rng)
+  if     is_range(rng) then return rng
+  elseif is_table(rng) then
+    local  start,  stop = 1     , #src
+    local rstart, rstop = rng[1], rng[2]
+    local vmin, vmax, c = {}, {}
+    c=1; src:mapij(\x,i,j => if x>rstart then vmin[c]=i; c=c+1 end end, {})
+    c=1; src:mapij(\x,i,j => if x>rstop  then vmax[c]=i; c=c+1 end end, {})
+    start = vmin[1]
+    if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
+    if rng [2] == -1 then stop = #src      end
+    return start..stop
+  end
+end
+
 --titles
 local function axis_title(src)
   if src then
@@ -172,9 +140,9 @@ local function axis_title(src)
 end
 
 local function mk_title(name, ver, date, time)
-  local src, out = { name = name, ver  = ver , date = date, time = time, }
-  if date then out = "$name MAD $ver, $date, $time" % src
-          else out = "$name MAD $ver"               % src end
+  local src, out = { name = name, version = version , date = date, time = time, }
+  if date then out = "$name MAD $version, $date, $time" % src
+          else out = "$name MAD $version"               % src end
     return out
 end
 
@@ -218,38 +186,46 @@ local function layout(seq, start, stop)
   return { x=xl, y=yl }
 end
 
--- template
-local function temp_fill(temp, src)
-  for i,line in ipairs(temp) do
-    temp[i] = line % src      -- interpolate strings
+local function data_to_temp(src, keys)
+  local s = src[keys[1]]
+  local t = {"\n"}
+  for i=2,#s+1 do
+    for j,k in ipairs(keys) do
+      if t[i] then t[i] = t[i]..src[k][i-1].." "
+              else t[i] =       src[k][i-1].." " end
+    end
+    t[i] = t[i].."\n"
   end
+  t[#s+2] = "e\n"
+  return t
 end
 
+local function layout_to_temp(src, keys)
+  local s = src[keys[1]]
+  local t = {"\n"}
+  local c = 2
+  for i=1,#s do
+    for ii=1,#s[i] do
+      for j,k in ipairs(keys) do
+        if t[c] then t[c] = t[c]..src[k][i][ii].." "
+                else t[c] =       src[k][i][ii].." " end
+      end
+      t[c] = t[c].."\n"; c=c+1
+    end
+    t[c] = "\n"; c=c+1
+  end
+  t[c] = "e\n"
+  return t
+end
+
+-- template
 local function find_key(inp, key)
   local indx
   for i,line in ipairs(inp) do if line:find(key) then indx = i end end
   return indx
 end
 
-local function temp_multiplot(temp, inp, key, start)
-  local s, lnr = #inp, find_key(temp, key)
-  if lnr then
-    for i=#temp,lnr,-1 do temp[i+s-1]=temp[i] end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr]      end
-    for i=0,s-1 do temp[lnr+i]=temp[lnr+i]:gsub( key    , tostring(i+start+2))
-                   temp[lnr+i]=temp[lnr+i]:gsub('ytitle', inp[i+1]           ) end
-  end
-end
-
-local function temp_style(temp, inp, key) -- name
-  local c = 1
-  for i,line in ipairs(temp) do
-    temp[i], n = string.gsub( line, key, inp[c] )
-    if n == 1 then c=c+1 end
-  end
-end
-
-local function match_style(inp, out, keys) -- name
+local function temp_style(inp, out, keys)
   if inp then
     for k,v in pairs(inp) do
       local indx = find_key(keys, k) - 1
@@ -259,8 +235,22 @@ local function match_style(inp, out, keys) -- name
   end
 end
 
-local function temp_print(temp, printer)
-  for i =1,#temp do printer:write(temp[i]) end
+local function temp_fill(temp, src)
+  for i,line in ipairs(temp) do
+    temp[i] = line % src      -- interpolate strings
+  end
+end
+
+local function temp_fill_tbl(temp, inp, key)
+  local c, n = 1
+  for i,line in ipairs(temp) do
+    temp[i], n = string.gsub( line, key, inp[c] )
+    if n == 1 and c < #inp then c=c+1 end
+  end
+end
+
+local function temp_print(temp, pipe)
+  for i =1,#temp do pipe:write(temp[i]) end
 end
 
 local template = {
@@ -269,7 +259,7 @@ local template = {
   "set lmargin at screen $lmargin \n",
   "set rmargin at screen $rmargin \n",
   "set size 1,$sizeplot \n"          ,
-  "set title '$gtitle'  \n"          ,
+  "set title '$title'  \n"           ,
 }
 local temp_end = {
   "set key $key \n"            ,
@@ -279,14 +269,13 @@ local temp_end = {
   "set yrange [$ymin:$ymax] \n",
 }
 
-local temp_plot = {
-  "plot ",
-  "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n",
-}
+local temp_plot     = { "plot " }
+local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y1,\\\n" }
+local temp_vaxis2   = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n" }
 
 local temp_preamble = { "#$preamble \n" }
-local temp_nocopy   = { "set terminal x11 persist \n" }
-local temp_filecopy = {
+local temp_window   = { "set terminal x11 persist \n" }
+local temp_tofile   = {
   "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
   "set output '$filename' \n",
 }
@@ -306,9 +295,6 @@ local temp_multih = {
   "set x2range [$xmin2:$xmax2] \n",
 }
 
-local temp_vaxis2  = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x1y2,\\\n" }
-local temp_hvaxis2 = { "'-' using 1:count2 every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes x2y2,\\\n" }
---local temp_haxis2  = {"'-' using 1:count2 every 1::0 $interpolate linewidth $linewidth linecolor 'colors' title 'ytitle' axes x2y1,\\\n"}
 local temp_lay = {
   "unset tmargin \n"    ,
   "unset bmargin \n"    ,
@@ -344,70 +330,59 @@ local gp = setmetatable({},{
 })
 
 function exec(self)
-  local temp = template
-
-  if self.filename ~= name then
-    if self.filename then temp = mk_tbl(temp_unmult, temp_filecopy, temp)
-                     else temp = mk_tbl(temp_nocopy, temp               )
-                          temp_save = {}                     end
+  local temp
+  if     self.filename == name then temp = chain_tbl( {}        ,              template)
+  elseif self.filename         then temp = chain_tbl(temp_unmult, temp_tofile, template)
+  else                              temp = chain_tbl(temp_window,              template)
+                                    temp_save = {}
   end
-
   if self.preamble then temp = mk_tbl(temp_preamble, temp) end
-
-  if self.vaxis2 and self.haxis2 then
-    self.keys = chain_tbl(self.inp, self.inp2, self.out, self.out2)
-    temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_plot, temp_hvaxis2 )
-    temp_multiplot  ( temp, self.out2  , "count2", #self.inp2+#self.out )
-    temp_multiplot  ( temp, self.out   , 'count' , #self.inp2           )
-  elseif self.vaxis2 then
-    self.keys = chain_tbl(self.keys, self.out2 )
-    temp = chain_tbl( temp, temp_multiv, temp_end, temp_plot, temp_vaxis2 )
-    --for i,v in ipairs(temp) do print(i,v) end
-    temp_multiplot  ( temp, self.out2  , "count2", #self.out   )
-  elseif self.haxis2 then
-    self.keys = chain_tbl(self.inp , self.inp2, self.keys )
-    temp = chain_tbl( temp, temp_multih, temp_end, temp_plot  )
-    temp_multiplot  ( temp, self.out   , 'count' , #self.inp2 )
-  else
-    temp = chain_tbl( temp, temp_end, temp_plot )
+  if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
+  else                     self.interpolate = "with points pointtype ptt"
+  end
+  if     self.vaxis2 and self.haxis2 then temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_plot )
+  elseif self.vaxis2                 then temp = chain_tbl( temp, temp_multiv,              temp_end, temp_plot )
+  elseif self.haxis2                 then temp = chain_tbl( temp, temp_multih,              temp_end, temp_plot )
+  else                                    temp = chain_tbl( temp,                           temp_end, temp_plot )
   end
 
   if self.continue then temp = temp_plot end
+  if self.out  then for i=1,#self.out  do temp = chain_tbl( temp, temp_vaxis  ) end end
+  if self.inp2 then self.keys = chain_tbl(self.inp , self.inp2, self.out ) end
+  if self.out2 then self.keys = chain_tbl(self.keys, self.out2           )
+                    self.out  = chain_tbl(self.out , self.out2           )
+                    for i=1,#self.out2 do temp = chain_tbl( temp, temp_vaxis2 ) end
+  end
 
-  temp_multiplot  ( temp, self.out, "count", 0          )
-  --for i,v in ipairs(temp) do print(i,v) end
-
-  if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
-                      else self.interpolate = "with points pointtype ptt" end
-
-  local s  = #self.keys-1
-  local t1 = plotter( self.src, self.keys )
-  if self.HAXIS2 then s = #self.keys-2 end
-  for i = 1,s do temp = chain_tbl(temp, t1) end
+  local data_temp = data_to_temp( self.src, self.keys )
+  for i = 1,#self.out do temp = chain_tbl(temp, data_temp) end
 
   if self.sequence then
     local seq = self.sequence
     assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-    local start, stop = seq:range_index (self.range)
-    local lay         = layout( seq, start, stop )
-    local t           = plotterL( lay, {'x','y'} )
-    temp = chain_tbl(temp_unmult, temp, temp_lay, t, temp_lay_off )
     self.datrange = {1,-1}
+    local start, stop = seq:range_index(self.range)
+    local lay     = layout        ( seq, start, stop )
+    local lay_dat = layout_to_temp( lay, {'x','y'}   )
+    temp = chain_tbl( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off )
   end
 
-  temp_fill( temp, self )
-  self.colors     = match_style(self.color    , self.colors    , self.keys)
-  self.pointtypes = match_style(self.pointtype, self.pointtypes, self.keys)
-  self.dashtypes  = match_style(self.dashtype , self.dashtypes , self.keys)
-  temp_style( temp, self.colors    , "colors")
-  temp_style( temp, self.pointtypes, "ptt"   )
-  temp_style( temp, self.dashtypes , "dtt"   )
-
+  self.colors     = temp_style( self.color    , self.colors    , self.keys )
+  self.pointtypes = temp_style( self.pointtype, self.pointtypes, self.keys )
+  self.dashtypes  = temp_style( self.dashtype , self.dashtypes , self.keys )
+  temp_fill    ( temp, self            )
+  temp_fill_tbl( temp, self.colors     , "colors" )
+  temp_fill_tbl( temp, self.pointtypes , "ptt"    )
+  temp_fill_tbl( temp, self.dashtypes  , "dtt"    )
+  temp_fill_tbl( temp, self.out        , "ytitle" )
+  temp_fill_tbl( temp, 2..(#self.out)+1, "count"  )
   temp_print( temp, gp[self.id] )
   gp[self.id]:flush()
 
   if self.filename == name then temp_save = chain_tbl(temp_save, temp)
-                           else temp_save = temp                       end
+  else                          temp_save = temp
+  end
+
   if self.filecopy then
     local gp_script = io.open(self.script, "w")
     temp_print( temp_save, gp_script )
@@ -460,10 +435,10 @@ local plot = Command 'plot' {
   xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   ylabel2  = "",
   xlabel2  = "",
-  inp2    = \s => if s.haxis2 then return to_tbl    (s.haxis2) end end,
-  out2    = \s => if s.vaxis2 then return to_tbl    (s.vaxis2) end end,
-  ylabel2 = \s => if s.out2   then return axis_title( s.out2 ) end end,
-  xlabel2 = \s => if s.inp2   then return axis_title( s.inp2 ) end end,
+  inp2    = \s => if s.haxis2 then return to_tbl      ( s.haxis2 ) end end,
+  out2    = \s => if s.vaxis2 then return to_tbl      ( s.vaxis2 ) end end,
+  ylabel2 = \s => if s.out2   then return axis_title  ( s.out2   ) end end,
+  xlabel2 = \s => if s.inp2   then return axis_title  ( s.inp2   ) end end,
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
 
@@ -479,8 +454,8 @@ local plot = Command 'plot' {
   dashtypes  = {"solid", "solid", "solid", "solid", "solid", "solid", "solid",
                 "solid", "solid", "solid", "solid","'-'"},
 
-  gtitle = \s mk_title(s.name, s.ver, s.date, s.time),
-  ver  = tostring(MAD.env.version),
+  title = \s mk_title(s.name, s.ver, s.date, s.time),
+  version = tostring(MAD.env.version),
   name = \s => if s.table then return s.table.title end end,
   date = \s => if s.table then return s.table.date  end end,
   time = \s => if s.table then return s.table.time  end end,
@@ -499,5 +474,3 @@ return {
   plot   = plot  ,
   __help = __help,
 }
-
-
