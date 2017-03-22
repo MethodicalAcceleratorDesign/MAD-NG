@@ -97,9 +97,7 @@ __help['track: curved drift map'] = [[
 __help['track: curved kick map'] = [[
   [2] p.358-361, ch. 12.2.2 Drift-Kick Split, kick in polar coordinates, eq. (12.18a-12.18f)
   [3] p. 76, PTC, Function SKICK in file Sh_def_kind.f90
-  [7] Bending magnet, ch.4.3 p. 22, eq.(4.12) and its solution
-  [8] Thin Dipole, ch.3.2.2, eq. (48-50)
-
+  
 ]]
 
 __help['track: kick'] = [[
@@ -335,7 +333,11 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
       fsad = 1/(fint*hgap*2)/36
   end
 
-  local b  = m.chg*pos*k0
+  local b  = m.chg*k0
+  if pos == 'exit' then
+     b = -b
+  end  
+
   local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local time_fac = beta_inv + pt
   local rel_p    = sqrt(1 + 2*beta_inv*pt + pt^2)
@@ -377,11 +379,11 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
   for i=1,3 do -- z column
     b=fi[i]*d:get(i,3) + b
   end
-  m.t = t - 0.5*b*m.y^2
+  m.t = t + 0.5*b*m.y^2
 
   -- soft edge
   m.py = m.py - 4*c3*m.y^3
-  m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
+  m.t  = m.t  -   c3*m.y^4/rel_p^2*time_fac
 end
 
 local function sfringe_track(elem, m, pos) -- dipole fringe field
@@ -392,21 +394,21 @@ local function sfringe_track(elem, m, pos) -- dipole fringe field
     if e and abs(e) >= minang then
       yrot_track    (elem, m,  e)
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  1)
+      fringe_dipole (elem, m,  'entry')
       wedge_track   (elem, m, -e)
     else
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  1)
+      fringe_dipole (elem, m,  'entry')
     end
   elseif pos == 'exit' then
     local e, h = elem.e2 or 0, elem.h2 or 0
     if e and abs(e) >= minang then
       wedge_track   (elem, m, -e)
-      fringe_dipole (elem, m, -1)
+      fringe_dipole (elem, m, 'exit')
       face_track    (elem, m,  h)
       yrot_track    (elem, m,  e)
     else
-      fringe_dipole (elem, m, -1)
+      fringe_dipole (elem, m, 'exit')
       face_track    (elem, m,  h)
     end
   end
@@ -450,7 +452,7 @@ local function curved_drift_track (elem, m, l)
   m.x  = (x + rho*(2*sa2^2 + sa*px*pz_)) / (ca*ptt)
   m.px = ca*px + sa*pz
   m.y  = y + ta*xr*pz_*py/ptt
-  m.t  = t + ta*xr*pz_*(beta_inv+pt) / ptt - (1-T)*l*beta_inv
+  m.t  = t - ta*xr*pz_*(beta_inv+pt) / ptt + (1-T)*l*beta_inv
 
   m.out_action(elem, m, l, 'curved_drift_track')
 end
@@ -590,8 +592,11 @@ local function curved_kick_track (elem, m, l) --
   end
 
   local angle, k0 in elem
-  m.px = px - dirch*by*(1 + angle/elem.l*x) -- only angle
-  m.py = py + dirch*bx*(1 + angle/elem.l*x)
+--  m.px = px - dirch*by*(1 + angle/elem.l*x) -- only angle
+--  m.py = py + dirch*bx*(1 + angle/elem.l*x)
+-- stability problem???? differences with a simple test 
+  m.px = px - dirch*by*(1 + k0*x) -- only angle
+  m.py = py + dirch*bx*(1 + k0*x)
 
   m.out_action(elem, m, l, 'curved_kick_track')
 end
@@ -713,7 +718,6 @@ local function curved_track (elem, m) -- e.g. sbend
   if abs(tilt) >= minang  then
     srot_track(elem, m, tilt)
   end
-
   sfringe_track(elem, m, 'entry')
   thick_track  (elem, m, curved_drift_track, curved_kick_track)
   sfringe_track(elem, m, 'exit')
