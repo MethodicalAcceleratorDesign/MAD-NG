@@ -23,12 +23,14 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertFalse, assertNil, assertNotNil, assertEquals, assertStrContains
-      in MAD.utest
+local assertFalse, assertNil, assertNotNil, assertEquals, assertStrContains,
+      assertErrorMsgContains      in MAD.utest
 
 local drift, marker, sbend, quadrupole, sequence, bline in MAD.element
 
 -- helpers --------------------------------------------------------------------o
+
+local mth = \f,s,... s[f](s,...)
 
 local function dumpseq (seq)
   local fmt = MAD.option.format
@@ -176,26 +178,164 @@ end
 
 -- forwarded meta-functions ---------------------------------------------------o
 
-function TestSequence:testSequence_len() end
-function TestSequence:testSequence_init() end
+
+local ip = marker     'ip' {}
+local qf = quadrupole 'qf' { l=1 }
+local ds = drift      'ds' {}
+local b1 = sbend      'b1' {}
+local seq = sequence 'seq' {
+  l = lcell, direction=1, refer = 'entry',
+  ip 'IP1' { at = 0 },
+  qf 'QF1' { at = 0 },
+  ip 'IP2' { at = lcell },
+  ds 'ds1' { from = 3},
+  b1 'b11' { from = 3},
+}
+
+local seq2 = sequence 'seq' {
+  l = lcell, direction=1, refer = 'entry',
+  ip 'IP1' { at = 0 },
+  qf 'QF1' { at = 0 },
+  ip 'IP2' { at = lcell },
+  ds 'ds1' { at = 3},
+  ip 'IP1' { at = 4 },
+  b1 'b11' { at = 5},
+}
+
+
+function TestSequence:testSequence_init()
+  local msg = {
+    "invalid argument #1 (non-empty sequence expected)",
+  }
+  assertErrorMsgContains( msg[1], sequence,      {}    )
+  assertErrorMsgContains( msg[1], sequence, 's', {}    )
+  assertErrorMsgContains( msg[1], sequence, 's', {l=0} )
+  local def, s = {
+    kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
+  }
+  s = sequence 's'
+  s = sequence 's' { marker }                  assertEquals( s.refer, 'centre')
+  for k,v in pairs(def) do assertEquals( v, s[k] ) end
+
+  s = sequence 's' { refer='entry', marker }   assertEquals( s.refer, 'entry' )
+  s = sequence 's' { refer='exit' , marker }   assertEquals( s.refer, 'exit'  )
+end
+
+function TestSequence:testSequence_len()
+
+
+end
+
 
 -- helpers --------------------------------------------------------------------o
 
-function TestSequence:testIndex_of() end
-function TestSequence:testSfind_index() end
-function TestSequence:testLfind_index() end
+function TestSequence:testSfind_index()
+  local s_pos in seq
+  for i=1,#s_pos do
+    local s = s_pos[i]
+    --print( seq:sfind_index(s) )
+  end
+end
+
+function TestSequence:testLfind_index()
+  for i=1,#seq do
+    local name = seq[i].kind
+    --print( seq:lfind_index() )
+  end
+end
+
+function TestSequence:testIndex_of()
+  -- idx (number)
+  -- negative idx, as idx but starts from end (i.e. #seq-idx+1)
+  -- name (string)
+  -- name[count] (case of multiple occurences)
+  -- element (object)
+  -- #s or #S (idx=1), #e or #E (idx=#seq)
+
+  --print( seq:index_of( 1) )
+  --print( seq:index_of(-1) )
+  --print( seq:index_of('IP1') )
+
+  --print( seq:index_of('marker') ) -- > nil, TBC
+  --print( seq2:index_of('IP1'  ) ) -- > nil, TBC
+  for i=1,#seq do
+    local name = seq[i].name
+    assertEquals( seq:index_of(name), i )
+  end
+end
 
 -- methods --------------------------------------------------------------------o
 
-function TestSequence:testRange_index() end
-function TestSequence:testEpos_of() end
-function TestSequence:testSpos_of() end
-function TestSequence:testForeach() end
-function TestSequence:testFilter() end
-function TestSequence:testSelect() end
-function TestSequence:testUnique() end
-function TestSequence:testTie() end
+function TestSequence:testRange_index()
+  local msg = {
+    "invalid range, start > stop",
+    "invalid range start"        ,
+    "invalid range stop"         ,
+  }
+  assertErrorMsgContains( msg[1], mth, 'range_index', seq, {-1,1} )
+  assertErrorMsgContains( msg[1], mth, 'range_index', seq, { 2,1} )
+  assertErrorMsgContains( msg[1], mth, 'range_index', seq,  '2/1' )
+
+  assertEquals( {seq:range_index( 1,5 )}, {1,1   } )
+  assertEquals( {seq:range_index( 1   )}, {1,1   } )
+
+  assertEquals( {seq:range_index()     }, {1,#seq} )
+  assertEquals( {seq:range_index('1/5')}, {1,#seq} )
+  assertEquals( {seq:range_index({1,5})}, {1,#seq} )
+end
+
+function TestSequence:testEpos_of() -- based on index_of
+  local msg = {
+    "attempt to index local 'e' (a nil value)",
+    "invalid argument #2 (valid key expected)",
+  }
+  assertErrorMsgContains( msg[1], mth, 'epos_of', seq, nil )
+  --assertErrorMsgContains( msg[2], mth, 'epos_of', seq, nil )
+
+--  print( seq:epos_of(1) )
+end
+
+function TestSequence:testSpos_of()
+  local msg = {
+
+    "invalid argument #2 (valid key expected)",
+  }
+end
+
+function TestSequence:testForeach()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+  }
+end
+
+function TestSequence:testFilter()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+  }
+end
+
+function TestSequence:testSelect()
+  local msg = {
+    "invalid argument #2 (callable expected)",
+  }
+end
+
+function TestSequence:testUnique()
+  local msg = {
+    "unexpected corrupted dictionnary",
+  }
+end
+
+function TestSequence:testTie()
+local msg = {
+  "invalid argument #2 (sequence expected)",
+  "invalid shared element (must be unique)",
+}
+end
+
+
 function TestSequence:testDeselect() end
+
 function TestSequence:testIs_selected() end
 
 -- end ------------------------------------------------------------------------o
