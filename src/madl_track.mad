@@ -318,8 +318,8 @@ end
 local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
   if elem.kill_fringe     == 1               or
-     elem.kill_ent_fringe == 1 and pos ==  1 or
-     elem.kill_ext_fringe == 1 and pos == -1 then return end
+     elem.kill_ent_fringe == 1 and pos ==  'entry' or
+     elem.kill_ext_fringe == 1 and pos ==  'exit' then return end
 
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elem.k0 or 0
@@ -413,7 +413,121 @@ local function sfringe_track(elem, m, pos) -- dipole fringe field
     end
   end
 end
+---Cavity
+local function cav_track_thin (elem, m, l) -- tracking thin rf mult
+  m.in_action(elem, m, l, 'cav_track_thin')
+  local x, px, y, py, t, pt, nmul, dirch in m
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ff, ph = elem.f or {}, elem.ph or {}
+  local a, r = elem.a or  0, elem.r or 0
+-- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end
 
+  local pc = beam.pc
+  local volt =elem.volt
+  local volt_c = 1.0e-3
+  local omega = twopi*freq / clight
+
+  do ko=1, nf -- over modes
+
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
+
+  local lw, byt = elem.l>0 and l/elem.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+  
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.t = t + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  end    --over modes
+  m.out_action(elem, m, l, 'cav_track_thin')
+end
+
+local function adjust_time_cav4(elem, m, pos)
+  local x, px, y, py, t, pt, T, dir in m 
+  local beta_inv = 1/m.beam.beta
+
+  local delta_e = elem.delta_e or 0
+  if pos == 'entry' then
+    delta_e = pt
+    if 'nocavity' and (not 'always_on') then return end
+
+    if elem.l < minlen then
+          cav_track_thin(elem, m)
+          delta_e=(m.pt - delta_e)*beam.pc
+          return
+    end
+
+    else
+        if elem.l < minlen then return end
+          t = t + elem.l*beta_inv -- TO CHECK
+          delta_e = (pt - delta_e)*beam.pc
+  end
+
+end
+
+local function fringe_cav4(elem, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  if('nocavity'  and( not 'always_on')) then return end
+  if elem.kill_fringe     == 1               or
+   elem.kill_ent_fringe == 1 and pos ==  'entry' or
+   elem.kill_ext_fringe == 1 and pos ==  'exit' then return 
+  end
+   
+  if not ('fringe' or elem.nbessel == -1 ) then return end
+
+  if elem.l < minlen then return end
+
+  local kbmad = 0
+  if elem.nbessel == -1 then
+      kbmad = 1
+  end
+
+  local z = 0
+  if pos == 'entry' then
+    z=elem.l
+  end
+  local freq, volt = elem.freg or 0, elem.volt or 0
+  local volt_c = 1.0e-3   
+  local pc = beam.pc
+  local omega = twopi*freq / clight
+  local vl    = m.dirch*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ph = elem.f or {}, elem.ph or {}
+  local nf = elem.nf or 1
+   do ko=1, nf   -- over modes
+    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
+    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
+    m.px = m.px + 0.5*vl*s1*m.x
+    m.py = m.py + 0.5*vl*s1*m.y
+    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+
+   end
+
+end  
 -- Drift general exact strait
 
 local function strait_drift_track (elem, m, l)
