@@ -178,61 +178,115 @@ end
 
 -- forwarded meta-functions ---------------------------------------------------o
 
-
 local ip = marker     'ip' {}
 local qf = quadrupole 'qf' { l=1 }
 local ds = drift      'ds' {}
 local b1 = sbend      'b1' {}
+local bl = sbend + drift
+
 local seq = sequence 'seq' {
+  direction=1, refer = 'entry',
+  ip 'IP1' { at = 0 },
+  qf 'QF1' { at = 0 },
+  ip 'IP2' { at = lcell },
+  ds 'DS1' { from = 3},
+  b1 'B11' { from = 3},
+}
+
+local seq2 = sequence 'seq2' {
   l = lcell, direction=1, refer = 'entry',
   ip 'IP1' { at = 0 },
   qf 'QF1' { at = 0 },
   ip 'IP2' { at = lcell },
-  ds 'ds1' { from = 3},
-  b1 'b11' { from = 3},
+  ds 'DS1' { at = 3},
+  b1 'B11' { at = 5},
 }
-
-local seq2 = sequence 'seq' {
-  l = lcell, direction=1, refer = 'entry',
-  ip 'IP1' { at = 0 },
-  qf 'QF1' { at = 0 },
-  ip 'IP2' { at = lcell },
-  ds 'ds1' { at = 3},
-  ip 'IP1' { at = 4 },
-  b1 'b11' { at = 5},
-}
-
 
 function TestSequence:testSequence_init()
+  local def, s = {
+    kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
+  }
   local msg = {
     "invalid argument #1 (non-empty sequence expected)",
   }
   assertErrorMsgContains( msg[1], sequence,      {}    )
   assertErrorMsgContains( msg[1], sequence, 's', {}    )
   assertErrorMsgContains( msg[1], sequence, 's', {l=0} )
-  local def, s = {
-    kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
-  }
   s = sequence 's'
   s = sequence 's' { marker }                  assertEquals( s.refer, 'centre')
   for k,v in pairs(def) do assertEquals( v, s[k] ) end
-
   s = sequence 's' { refer='entry', marker }   assertEquals( s.refer, 'entry' )
   s = sequence 's' { refer='exit' , marker }   assertEquals( s.refer, 'exit'  )
 end
 
-function TestSequence:testSequence_len()
+function TestSequence:testFlatten_sequ ()
+  local vector in MAD
+  local msg = {
+    "unexpected corrupted flat sequence",
+  }
+  assertErrorMsgContains( msg[1], sequence, {bl {at=0}} )
+  assertErrorMsgContains( msg[1], sequence, {ip, {}}    )
 
+  local seqbl = sequence 'seq' {
+    l = lcell, direction=1, refer = 'entry',
+    ip 'IP1' { at = 0 },
+    qf 'QF1' { at = 0 },
+    ip 'IP2' { at = lcell },
+    ds 'DS1' { at = 3},
+    ip 'IP1' { at = 4},
+    b1 'B11' { at = 5},
+  }
+  local seqs = sequence 'seq' {
+    l = lcell, direction=1, refer = 'entry',
+    ip 'IP1' {at=0},
+    seq2     {at=0},
+  }
 
+  local bl = sbend + drift + vector(3)
+  --local seq3 =  sequence {refer = 'entry', ip, qf, vector{1} } -- 351 line no indx in flatten_sequ
+  --local seq3 =  sequence {refer = 'entry', ip, qf, bl        } -- 332 -> seq_err again
 end
 
+function TestSequence:testAdjust_len ()
+  assertEquals( sequence { l= 2, ds {at=3}}.l, 3 )
+  assertEquals( sequence { l=-1, ds {at=3}}.l, 3 )
+  assertEquals( sequence { l= 5, ds {at=3}}.l, 5 )
+  assertEquals( sequence {       ip       }.l, 0 )
+  assertEquals( seq2     { l=2            }.l, 2 )
+end
+
+function TestSequence:testSequence_len()
+  assertEquals( sequence {ip}.l, 0 )
+  assertEquals( seq      {  }.l, 1 )
+  assertEquals( seq2     {  }.l, 5 )
+end
 
 -- helpers --------------------------------------------------------------------o
 
+function TestSequence:testIndex_of()
+  -- name[count] (case of multiple occurences)
+  -- #s or #S (idx=1), #e or #E (idx=#seq)
+  local s = sequence {  refer = 'entry', ip 'IP1' {}, ds, qf, ds }
+  assertEquals( s:index_of('IP1'), 1   )
+  assertEquals( s:index_of( 1   ), 1   )
+  assertEquals( s:index_of(-1   ), #s  )
+  assertEquals( s:index_of(ip   ), nil )
+  assertEquals( s:index_of(qf   ), 3   )
+  assertEquals( s:index_of(ds   ), nil ) -- (case of multiple occurences) tbf
+  --assertEquals( s:index_of(ds[1]), nil   )
+  --print( s[ds.name] )
+  --print( s:index_of(ds[1]) )
+  for i=1,#seq do
+    local name = seq[i].name
+    assertEquals( seq:index_of( name), i        )
+    assertEquals( seq:index_of( i   ), i        )
+    assertEquals( seq:index_of(-i   ), #seq-i+1 )
+  end
+end
+
 function TestSequence:testSfind_index()
-  local s_pos in seq
   for i=1,#s_pos do
-    local s = s_pos[i]
+    local s = seq.s_pos[i]
     --print( seq:sfind_index(s) )
   end
 end
@@ -241,26 +295,6 @@ function TestSequence:testLfind_index()
   for i=1,#seq do
     local name = seq[i].kind
     --print( seq:lfind_index() )
-  end
-end
-
-function TestSequence:testIndex_of()
-  -- idx (number)
-  -- negative idx, as idx but starts from end (i.e. #seq-idx+1)
-  -- name (string)
-  -- name[count] (case of multiple occurences)
-  -- element (object)
-  -- #s or #S (idx=1), #e or #E (idx=#seq)
-
-  --print( seq:index_of( 1) )
-  --print( seq:index_of(-1) )
-  --print( seq:index_of('IP1') )
-
-  --print( seq:index_of('marker') ) -- > nil, TBC
-  --print( seq2:index_of('IP1'  ) ) -- > nil, TBC
-  for i=1,#seq do
-    local name = seq[i].name
-    assertEquals( seq:index_of(name), i )
   end
 end
 
