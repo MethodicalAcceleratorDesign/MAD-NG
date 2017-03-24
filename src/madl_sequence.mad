@@ -97,6 +97,7 @@ local minlen                                            in MAD.constant
 
 -- hidden keys: elements indexes, elements positions, elements entry positions.
 local _eidx, _epos, _spos = {}, {}, {}
+local _lastfrom, _lastfrompos = {}, {}
 
 -- special numerical value for elements positions.
 local uninitialized = -1e9
@@ -108,7 +109,7 @@ local sequence = Element 'sequence' {
   kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
 }
 
-local sequence_init, sequence_len -- forward declarations
+local sequence_init, sequence_len, elem_pos -- forward declarations
 
 sequence:set_metamethod({
   __init = \s -> sequence_init(s),
@@ -178,6 +179,10 @@ local function find_idx (seq, e, cnt_)
   return nil
 end
 
+local function from_pos (seq, from)
+  return elem_pos(seq, seq:index_of(from))
+end
+
 -- get index from relative index, strings or element
 local function index_of (seq, a, cnt_)
   if is_number(a) then
@@ -205,34 +210,6 @@ local function index_of (seq, a, cnt_)
   return find_idx(seq, a, cnt_)
 end
 
--- get spos and epos from relative index, strings or element
-local function position_of (seq, a, cnt_)
-  if is_number(a) then
-    local idx, len = a, #seq
-    if idx < 0 then idx = len+idx+1 end
-    if idx < 1 or idx > len then return nil end
-    return seq.s_pos[idx], seq.e_pos[idx]
-  elseif is_string(a) then
-    local s = a
-    a = seq[s] -- common case 1st
-    if is_nil(a) then
-      if s == '#s' or s == '#S' then return 1    end
-      if s == '#e' or s == '#E' then return #seq end
-      local _, i2, name = string.find(s, "([^[/]+)")
-      if name ~= nil then
-        a = seq[name]
-        local _, _, cnt = string.find(s, "%[(%d+)%]", i2+1)
-        if cnt ~= nil then cnt_ = tonumber(cnt) end
-      end
-    end
-  else
-    local e = a
-    a = seq[e.name]
-  end
-  local idx = find_idx(seq, a, cnt_)
-  return seq.s_pos[idx], seq.e_pos[idx]
-end
-
 -- build helper ---------------------------------------------------------------o
 
 -- refpos (sequence)
@@ -244,7 +221,7 @@ local function sequ_rpos (sequ)
 end
 
 -- compute s positions of sequence elements
-local function elem_pos (sequ, idx)
+function elem_pos (sequ, idx)
   local pos = sequ.e_pos[idx]
   if pos >= 0 then return pos end
   if pos == ongoing_init then
@@ -264,7 +241,7 @@ local function elem_pos (sequ, idx)
   elseif from == 'end'   then pos = sequ.l - pos
   elseif from == 'prev'  then pos = pos + (idx  > 1     and elem_pos(sequ,idx-1)+sequ[idx-1].l or 0)
   elseif from == 'next'  then pos = pos + (fidx < #sequ and elem_pos(sequ,fidx) or sequ.l)
-  elseif sequ[from]      then pos = pos + elem_pos(sequ, sequ:index_of(from))
+  elseif sequ[from]      then pos = pos + from_pos(sequ, from)
   else seq_error("invalid from of '" .. from .. "'", sequ, idx)
   end
 
@@ -289,7 +266,7 @@ end
 local function sequ_pos (sequ, sseq, idx)
   local elem, pos, rpos
   elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
-  sequ[idx], pos, rpos = elem, elem_pos(sequ, idx)
+  sequ[idx], pos, rpos = elem, elem_pos(sequ, idx) -- TODO: cleaner approach
   pos = pos - rpos                  -- shift by subsequence refpos
   for i=1,#sseq do
     sequ.e_pos[i+idx-1] = sseq.e_pos[i] + pos
@@ -404,8 +381,6 @@ local function adjust_len (sequ)
   local len = sequ.s_pos[idx] + sequ[idx].l
   if sequ.l < len then sequ.l = len end
 end
-
-local _lastfrom, _lastfrompos = {}, {}
 
 local function cleanup_sequ (sequ)
   sequ[_lastfrom], sequ[_lastfrompos] = nil, nil
