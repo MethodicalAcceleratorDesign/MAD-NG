@@ -417,24 +417,34 @@ end
 -- string interpolation
 
 local function interp_fun (tbl, tag)
-  local key, e = tag, ''
-  if key:sub(-1,-1) == '}' then
-    if key:sub(1,1) == '{'
-    then key    = key:sub(2, -2)      -- remove {}
-    else key, e = key:sub(1, -2), '}' -- remove  }
-    end
+  local s, e = tag:sub(1,1), tag:sub(-1, -1)
+  local key, suffix = tag, ''
+  if s == '$' then return tag end
+  if s == '{' and e == '}' then
+    key         = key:sub(2, -2)
+  elseif s ~= '{' and e == '}' then
+    key, suffix = key:sub(1, -2), '}'
+  elseif s == '{' and e ~= '}' then
+    error(string.format("Unclosed brace: %q", '$'..tag))
+  end
+  if key == '' then
+    error(string.format("Missing key: %q", '$'..tag))
   end
   local num = tonumber(key) -- cases $n or ${n}
-  return (tbl[num or key] or tag) .. e
+  local val = tbl[num or key]
+  if val == nil then
+    error(string.format("Undefined key: %q", '$'..tag))
+  end
+  return tostring_(val) .. suffix
 end
 
 function utility.strinterp(str, var)
-  if is_nil(var) then return str end
-  if is_table(var) then
-    local bind1st in MAD.gfunc
-    str = str:gsub('%$({?[%w_]+}?)', bind1st(interp_fun, var))
+  local bind1st in MAD.gfunc
+  -- FIXME: handle cdata, remove typecheck altogether (duck typing)?
+  if not is_table(var) then
+    error("invalid argument #2 (table expected)")
   end
-  return str
+  return str:gsub('%$([{%$]?[%w_]*}?)', bind1st(interp_fun, var))
 end
 
 string.interp          = utility.strinterp

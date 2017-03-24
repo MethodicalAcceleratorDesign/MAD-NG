@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals,
-      assertAlmostEquals, assertErrorMsgContains in MAD.utest
+      assertAlmostEquals, assertErrorMsgContains, assertError in MAD.utest
 
 local compose                           in MAD.gfunc
 local pi, log, eps                      in MAD.gmath
@@ -80,6 +80,15 @@ local function assertTypes (tkey, tfunc, tskip, ...)
       end
     end
   end
+end
+
+function TestUtils:setUp()
+  self.saved_format = option.format
+end
+
+function TestUtils:tearDown()
+  -- clean up after failed tests:
+  option.format = self.saved_format
 end
 
 function TestUtils:testBtst()
@@ -507,7 +516,6 @@ function TestUtils:testSame()
 end
 
 function TestUtils:testToString()
-  local format in option -- save
   option.format = '%.10f'
   assertEquals ( tostring(1/3 ), '0.3333333333')
   assertEquals ( tostring(1/3i), '0.0000000000-0.3333333333i')
@@ -517,7 +525,6 @@ function TestUtils:testToString()
   option.format = '%-2.4e'
   assertEquals ( tostring(1/(0.5+3i)), '5.4054e-02-3.2432e-01i')
   assertEquals ( tostring(0.5+ 1/3i ), '5.0000e-01-3.3333e-01i')
-  option.format = format
 end
 
 function TestUtils:testToTable()
@@ -531,6 +538,53 @@ function TestUtils:testToTable()
   assertAlmostEquals ( t[3]/100   - 1, 0, 2*eps )
   assertAlmostEquals ( t[4]/1000  - 1, 0, 3*eps )
   assertAlmostEquals ( t[5]/10000 - 1, 0, 4*eps )
+end
+
+function TestUtils:testStrInterp()
+  -- basic tests:
+  assertEquals("$2 $3 $1" % {4, 5, 6},    "5 6 4" )
+  assertEquals("$foo"     % {foo="bar"},  "bar"   )
+  assertEquals("${foo}"   % {foo="bar"},  "bar"   )
+  assertEquals("${2}"     % {0, 1},       "1"     )
+  assertEquals("{$foo}"   % {foo="bar"},  "{bar}" )
+  assertEquals("$T"       % {T=true},     "true"  )
+  assertEquals("$F"       % {F=false},    "false" )
+
+  -- can control format:
+  option.format = '%+.2e'
+  assertEquals("$num"     % {num=1.23e4}, "+1.23e+04")
+  -- cancel side effects on following tests:
+  option.format = self.saved_format
+
+  -- handles sparse tables:
+  assertEquals("$1"       % {[1]=0},      "0"     )
+  assertEquals("$2"       % {[2]=1},      "1"     )   -- #{[2]=1}   = 0
+  assertEquals("$3"       % {[3]=2},      "2"     )   -- #{[3]=2}   = 0
+  assertEquals("$3"       % {0,nil,2},    "2"     )   -- #{0,nil,2) = 1
+
+  -- dollar insertion:
+  assertEquals("$$"       % {},           "$"     )
+  assertEquals("$$foo"    % {},           "$foo"  )
+  assertEquals("$$foo"    % {foo="bar"},  "$foo"  )
+
+  -- invalid argument:
+  assertError(\ "$foo" % nil                      )
+  assertError(\ "$foo" % 0                        )
+  assertError(\ ""     % nil                      )
+  assertError(\ ""     % 0                        )
+
+  -- no '$' without key:
+  local tricky = {['']='A', ['{']='B', ['}']='C', ['{foo']='D', ['foo}']='E'}
+  assertError(\"${}"      % tricky                )
+  assertError(\"$"        % tricky                )
+  assertError(\"$}"       % tricky                )
+  assertErrorMsgContains("Unclosed brace", \"${"    % tricky)
+  assertErrorMsgContains("Unclosed brace", \"${foo" % tricky)
+
+  -- undefined keys:
+  assertErrorMsgContains("Undefined key", \"$1"    % {})
+  assertErrorMsgContains("Undefined key", \"$foo"  % {})
+  assertErrorMsgContains("Undefined key", \"$foo}" % {})
 end
 
 -- end ------------------------------------------------------------------------o
