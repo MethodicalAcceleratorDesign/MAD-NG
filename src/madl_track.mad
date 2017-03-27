@@ -414,7 +414,7 @@ local function sfringe_track(elem, m, pos) -- dipole fringe field
   end
 end
 ---Cavity
-local function cav_track_thin (elem, m, l) -- tracking thin rf mult
+local function cav_track_thin (elem, m, l) -- for tracking thin rf mult
   m.in_action(elem, m, l, 'cav_track_thin')
   local x, px, y, py, t, pt, nmul, dirch in m
   local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
@@ -464,7 +464,7 @@ local function cav_track_thin (elem, m, l) -- tracking thin rf mult
   m.out_action(elem, m, l, 'cav_track_thin')
 end
 
-local function adjust_time_cav4(elem, m, pos)
+local function adjust_time_cav(elem, m, pos)
   local x, px, y, py, t, pt, T, dir in m 
   local beta_inv = 1/m.beam.beta
 
@@ -474,20 +474,20 @@ local function adjust_time_cav4(elem, m, pos)
     if 'nocavity' and (not 'always_on') then return end
 
     if elem.l < minlen then
-          cav_track_thin(elem, m)
-          delta_e=(m.pt - delta_e)*beam.pc
+      cav_track_thin(elem, m)
+      delta_e=(m.pt - delta_e)*beam.pc
           return
     end
 
-    else
-        if elem.l < minlen then return end
-          t = t + elem.l*beta_inv -- TO CHECK
-          delta_e = (pt - delta_e)*beam.pc
+  else
+    if elem.l < minlen then return end
+      t = t + elem.l*beta_inv -- TO CHECK
+      delta_e = (pt - delta_e)*beam.pc
   end
 
 end
 
-local function fringe_cav4(elem, m, pos)
+local function fringe_cav(elem, m, pos)
   local x, px, y, py, t, pt, T, dir in m
   if('nocavity'  and( not 'always_on')) then return end
   if elem.kill_fringe     == 1               or
@@ -714,9 +714,9 @@ local function curved_kick_track (elem, m, l) --
   m.out_action(elem, m, l, 'curved_kick_track')
 end
 
--- Thck Cavity 
-local function cav_drift_track(elem, m, l, z0) --cavity drift
-  m.in_action(elem, m, l, 'cav_drift_track')
+-- TW Cavity 
+local function twcav_drift_track(elem, m, l, z0) --tw cavity tracking, rk2_cavr
+  m.in_action(elem, m, l, 'twcav_drift_track')
 
   local x, px, y, py, dirch, dir, charge, nmul, knl, ksl in m
   local beta_inv = 1/m.beam.beta
@@ -766,12 +766,12 @@ local function cav_drift_track(elem, m, l, z0) --cavity drift
   f[5] = -(f[1]*m.x+f[3]*m.y)*ad[2]+a[3]
   f[6] = (beta_inv + m.pt)*pz_ - (1-T)*beta_inv -- change the sign???? 
 
-  m.out_action(elem, m, l, 'cav_drift_track')
+  m.out_action(elem, m, l, 'twcav_drift_track')
 
   return {f, a, ad}
 end
 
-local function cav_track(elem, m, l, j) --thick cavity
+local function twcav_track(elem, m, l, j) --thick twcavity
   m.in_action(elem, m, l, 'cav_track')
   local x, px, y, py, t, pt, dirch in m
   local z0, tt = 0, 0
@@ -782,7 +782,7 @@ local function cav_track(elem, m, l, j) --thick cavity
     z0=elem.l+(j-1)*d1
   end
 
-  local f  = cav_drift_track(elem, m, l, z0) or {}
+  local f  = twcav_drift_track(elem, m, l, z0) or {}
   do  i=1,6 
     a[i]=d1*f[i]
   end
@@ -796,7 +796,7 @@ local function cav_track(elem, m, l, j) --thick cavity
   
   tt=z0+d1/2
    
-  f = cav_drift_track(elem, m, l, tt)
+  f = twcav_drift_track(elem, m, l, tt)
   
   do  i=1,6
     b[i]=d1*f[i]
@@ -810,12 +810,12 @@ local function cav_track(elem, m, l, j) --thick cavity
   m.pt = pt + b[6]
  
   z0=z0+d1
-  m.in_action(elem, m, l, 'cav_track')
+  m.in_action(elem, m, l, 'twcav_track')
 
 end
 
--- Thin Cavity kick
-local function thin_cav_kick_track (elem, m, l) --cav4, thin rf mult
+-- Cavity kick 
+local function cav_kick_track (elem, m, l) --RF CAV, CRAB, RFMULT with l>0 kick
   m.in_action(elem, m, l, 'rfcav_drift_track')
   local x, px, y, py, t, pt, nmul, dirch in m
   local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
@@ -1010,7 +1010,7 @@ local function curved_track (elem, m) -- e.g. sbend
   end
 end
 
-local function thin_cavity_track (elem, m)  -- thin rf mult
+local function cavity_track (elem, m)  -- thin rf mult
   local l, angle, tilt in elem
 
   if abs(angle) >= minang then
@@ -1020,17 +1020,19 @@ local function thin_cavity_track (elem, m)  -- thin rf mult
     srot_track(elem, m, tilt)
   end
 
---    ADJUST_TIME_CAV4(EL,X,k,1)
---   FRINGECAV(EL,X,k,1)
-   thick_track (elem, m, strait_drift_track, thin_cav_kick_track)
--- FRINGECAV(EL,X,k,2)
---  ADJUST_TIME_CAV4(EL,X,k,2)
+     adjust_time_cav(elem, m, 'entry')
+     fringe_cav     (elem, m, 'entry')
+     if if l >= minlen then
+      thick_track (elem, m, strait_drift_track, cav_kick_track)
+     end
+     fringe_cav     (elem, m, 'exit')
+     adjust_time_cav(elem, m, 'exit')
   if abs(tilt) >= minang  then
     srot_track(elem, m, -tilt)
   end
 end
 
-local function thick_cavity_track (elem, m)  --cav_trav
+local function tw_cavity_track (elem, m)  --cav_trav
   local l, angle, tilt in elem
 
   if abs(angle) >= minang then
@@ -1040,10 +1042,10 @@ local function thick_cavity_track (elem, m)  --cav_trav
     srot_track(elem, m, tilt)
   end
 
---   FRINGE_CAV_TRAV(EL,X,k,1)
+--   FRINGE_CAV_TRAV(EL,X,k,1) -fringe_cav_trav
    thick_track (elem, m, cav_kick_track)
 --  FRINGECAV(EL,X,k,2)
---  ADJUST_TIME_CAV_TRAV_OUT(EL,X,k,2)
+--  ADJUST_TIME_CAV_TRAV_OUT(EL,X,k,2) 
   if abs(tilt) >= minang  then
     srot_track(elem, m, -tilt)
   end
