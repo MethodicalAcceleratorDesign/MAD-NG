@@ -68,30 +68,14 @@ Sequence edition:
   - remove selected
 ]=]
 
-__help["sequence: indexes and ranges"] = [=[
-Indexes:
---------
-  - idx (number)
-  - negative idx, as idx but starts from end (i.e. #seq-idx+1)
-  - name (string)
-  - name[count] (case of multiple occurences)
-  - element (object)
-  - #s or #S (idx=1), #e or #E (idx=#seq)
-Ranges:
--------
-  - idx (i.e. {idx,idx})
-  - "start_index/stop_index"
-  - {start_index, stop_index}
-  - requires start_index <= stop_index
-]=]
-
 -- locals ---------------------------------------------------------------------o
 
-local vector                                            in MAD
-local is_nil, is_number, is_string, is_rawtable         in MAD.typeid
-local is_iterable, is_callable                          in MAD.concept
-local Element                                           in MAD.element
-local minlen                                            in MAD.constant
+local abs                                                  in math
+local vector                                               in MAD
+local is_nil, is_number, is_string, is_rawtable, is_object in MAD.typeid
+local is_iterable, is_callable                             in MAD.concept
+local Element                                              in MAD.element
+local minlen                                               in MAD.constant
 
 -- definitions ----------------------------------------------------------------o
 
@@ -102,7 +86,7 @@ local _lastfrom, _lastfrompos = {}, {}
 -- special numerical value for elements positions.
 local uninitialized = -1e9
 local ongoing_init  = -2e9
-local maximum_dist  =  2e9
+local maximum_dist  =  2e9 -- to find the closest
 
 -- default sequence
 local sequence = Element 'sequence' {
@@ -124,7 +108,11 @@ end
 
 -- helpers --------------------------------------------------------------------o
 
--- dictionnary { key=nil|val|[val1,...] }
+local function is_element(a)
+  return is_object(a) and a.is_element == true
+end
+
+-- dictionnary { key=nil|val|{val1,...} }
 local function add_to (to, a)
   if is_nil(to)          then return      a  end  -- none -> element
   if not is_rawtable(to) then return {to, a} end  -- one  -> table
@@ -149,11 +137,11 @@ local function sfind_idx (seq, s, start_)
   end
   local smin = maximum_dist
   for i=start,stop,step do  -- linear search
-    local d = math.abs(s_pos[i]-s)
+    local d = abs(s_pos[i]-s)
     if d > smin then return i-1 end
     smin = d
   end
-  return stop
+  return nil
 end
 
 -- get element index (linear)
@@ -180,34 +168,57 @@ local function find_idx (seq, e, cnt_)
 end
 
 local function from_pos (seq, from)
+  -- TODO: check for memoized from...
   return elem_pos(seq, seq:index_of(from))
 end
 
+__help["sequence: indexes and ranges"] = [=[
+Indexes:
+--------
+  - index   (number), index<0 means starts from end (i.e. #seq-idx+1)
+  - element (object) & idx_ (optional count or start index?)
+  - name    (string) & idx_ (optional count or start index?)
+    + name[count]    & idx_ (occurences count optionaly starting from idx_)
+    + name[]         & idx_ (closest occurrence starting from idx_)
+    + name           & idx_ (exact or closest occurrence starting from idx_)
+    + #s or #S (index=1), #e or #E (index=-1)
+
+Ranges:
+-------
+  - index
+  - {start,stop}
+  - "start/stop"
+  - requires start <= stop (?)
+]=]
+
 -- get index from relative index, strings or element
-local function index_of (seq, a, cnt_)
-  if is_number(a) then
+local function index_of (seq, a, idx_)
+  if is_number(a) then -- (relative) index
     local idx, len = a, #seq
-    if idx < 0 then idx = len+idx+1 end
+    if idx < 0 then idx = len+idx+1 end -- reflect
     if idx < 1 or idx > len then return nil end
     return idx
-  elseif is_string(a) then
-    local s = a
-    a = seq[s] -- common case 1st
-    if is_nil(a) then
-      if s == '#s' or s == '#S' then return 1    end
-      if s == '#e' or s == '#E' then return #seq end
-      local _, i2, name = string.find(s, "([^[/]+)")
-      if name ~= nil then
-        a = seq[name]
-        local _, _, cnt = string.find(s, "%[(%d+)%]", i2+1)
-        if cnt ~= nil then cnt_ = tonumber(cnt) end
+  end
+
+  if is_string(a) then
+    local i, j, name = string.find(a, "([^[/]+)")
+    local elem = seq[name]
+    if is_nil(elem) then return nil end
+    local i, j, cnt = string.find(a, "%[(%d*)%]", j+1)
+    if i ~= nil and j ~= nil then
+      if is_nil(cnt) then                 -- case "name[]"
+        return efind_idx(seq, elem, idx_) -- linear search with start=idx_
+      else
+        cnt = assert(tonumber(cnt), "invalid count format (number expected)")
+        return find_idx(seq, elem, cnt) -- direct search with [cnt]
       end
     end
-  else
-    local e = a
-    a = seq[e.name]
+    assert(is_nil(i), "invalid count format (unbalanced brackets)")
+    return find_idx(seq, elem, idx_) -- direct search with cnt=idx_
   end
-  return find_idx(seq, a, cnt_)
+
+  assert(is_element(a), "invalid argument #2 (index, string or element expected)")
+  return find_idx(seq, seq[a.name], idx_) -- direct search with cnt=idx_
 end
 
 -- build helper ---------------------------------------------------------------o
@@ -375,14 +386,18 @@ local function build_pos (sequ, sref)
   assert(len+1 == idx, "unexpected corrupted flat sequence")
 end
 
--- extend sequence length (if needed)
-local function adjust_len (sequ)
-  local idx = #sequ
-  local len = sequ.s_pos[idx] + sequ[idx].l
-  if sequ.l < len then sequ.l = len end
-end
+local function finish_sequ (sequ)
+  local n = sequ:rawlen()
 
-local function cleanup_sequ (sequ)
+  -- aliases for 1st and last element
+  sequ['#s'], sequ['#S'] = sequ[1], sequ[1]
+  sequ['#e'], sequ['#E'] = sequ[n], sequ[n]
+
+  -- adjust length
+  local len = sequ.s_pos[n] + sequ[n].l
+  if sequ.l < len then sequ.l = len end
+
+  -- clear from cache
   sequ[_lastfrom], sequ[_lastfrompos] = nil, nil
 end
 
@@ -407,8 +422,7 @@ function sequence_init (sequ)
   flatten_sequ (sequ, flat, sref)
   build_sequ   (sequ, flat)
   build_pos    (sequ, sref)
-  adjust_len   (sequ)
-  cleanup_sequ (sequ)
+  finish_sequ  (sequ)
   return sequ:set_readonly()
 end
 
