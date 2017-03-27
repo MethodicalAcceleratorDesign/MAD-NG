@@ -97,9 +97,7 @@ __help['track: curved drift map'] = [[
 __help['track: curved kick map'] = [[
   [2] p.358-361, ch. 12.2.2 Drift-Kick Split, kick in polar coordinates, eq. (12.18a-12.18f)
   [3] p. 76, PTC, Function SKICK in file Sh_def_kind.f90
-  [7] Bending magnet, ch.4.3 p. 22, eq.(4.12) and its solution
-  [8] Thin Dipole, ch.3.2.2, eq. (48-50)
-
+  
 ]]
 
 __help['track: kick'] = [[
@@ -320,8 +318,8 @@ end
 local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
   if elem.kill_fringe     == 1               or
-     elem.kill_ent_fringe == 1 and pos ==  1 or
-     elem.kill_ext_fringe == 1 and pos == -1 then return end
+     elem.kill_ent_fringe == 1 and pos ==  'entry' or
+     elem.kill_ext_fringe == 1 and pos ==  'exit' then return end
 
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elem.k0 or 0
@@ -335,7 +333,11 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
       fsad = 1/(fint*hgap*2)/36
   end
 
-  local b  = m.chg*pos*k0
+  local b  = m.chg*k0
+  if pos == 'exit' then
+     b = -b
+  end  
+
   local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local time_fac = beta_inv + pt
   local rel_p    = sqrt(1 + 2*beta_inv*pt + pt^2)
@@ -377,11 +379,11 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
   for i=1,3 do -- z column
     b=fi[i]*d:get(i,3) + b
   end
-  m.t = t - 0.5*b*m.y^2
+  m.t = t + 0.5*b*m.y^2
 
   -- soft edge
   m.py = m.py - 4*c3*m.y^3
-  m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
+  m.t  = m.t  -   c3*m.y^4/rel_p^2*time_fac
 end
 
 local function sfringe_track(elem, m, pos) -- dipole fringe field
@@ -392,26 +394,140 @@ local function sfringe_track(elem, m, pos) -- dipole fringe field
     if e and abs(e) >= minang then
       yrot_track    (elem, m,  e)
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  1)
+      fringe_dipole (elem, m,  'entry')
       wedge_track   (elem, m, -e)
     else
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  1)
+      fringe_dipole (elem, m,  'entry')
     end
   elseif pos == 'exit' then
     local e, h = elem.e2 or 0, elem.h2 or 0
     if e and abs(e) >= minang then
       wedge_track   (elem, m, -e)
-      fringe_dipole (elem, m, -1)
+      fringe_dipole (elem, m, 'exit')
       face_track    (elem, m,  h)
       yrot_track    (elem, m,  e)
     else
-      fringe_dipole (elem, m, -1)
+      fringe_dipole (elem, m, 'exit')
       face_track    (elem, m,  h)
     end
   end
 end
+---Cavity
+local function cav_track_thin (elem, m, l) -- for tracking thin rf mult
+  m.in_action(elem, m, l, 'cav_track_thin')
+  local x, px, y, py, t, pt, nmul, dirch in m
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ff, ph = elem.f or {}, elem.ph or {}
+  local a, r = elem.a or  0, elem.r or 0
+-- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end
 
+  local pc = beam.pc
+  local volt =elem.volt
+  local volt_c = 1.0e-3
+  local omega = twopi*freq / clight
+
+  do ko=1, nf -- over modes
+
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
+
+  local lw, byt = elem.l>0 and l/elem.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+  
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.t = t + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  end    --over modes
+  m.out_action(elem, m, l, 'cav_track_thin')
+end
+
+local function adjust_time_cav(elem, m, pos)
+  local x, px, y, py, t, pt, T, dir in m 
+  local beta_inv = 1/m.beam.beta
+
+  local delta_e = elem.delta_e or 0
+  if pos == 'entry' then
+    delta_e = pt
+    if 'nocavity' and (not 'always_on') then return end
+
+    if elem.l < minlen then
+      cav_track_thin(elem, m)
+      delta_e=(m.pt - delta_e)*beam.pc
+          return
+    end
+
+  else
+    if elem.l < minlen then return end
+      t = t + elem.l*beta_inv -- TO CHECK
+      delta_e = (pt - delta_e)*beam.pc
+  end
+
+end
+
+local function fringe_cav(elem, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  if('nocavity'  and( not 'always_on')) then return end
+  if elem.kill_fringe     == 1               or
+   elem.kill_ent_fringe == 1 and pos ==  'entry' or
+   elem.kill_ext_fringe == 1 and pos ==  'exit' then return 
+  end
+   
+  if not ('fringe' or elem.nbessel == -1 ) then return end
+
+  if elem.l < minlen then return end
+
+  local kbmad = 0
+  if elem.nbessel == -1 then
+      kbmad = 1
+  end
+
+  local z = 0
+  if pos == 'entry' then
+    z=elem.l
+  end
+  local freq, volt = elem.freg or 0, elem.volt or 0
+  local volt_c = 1.0e-3   
+  local pc = beam.pc
+  local omega = twopi*freq / clight
+  local vl    = m.dirch*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ph = elem.f or {}, elem.ph or {}
+  local nf = elem.nf or 1
+   do ko=1, nf   -- over modes
+    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
+    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
+    m.px = m.px + 0.5*vl*s1*m.x
+    m.py = m.py + 0.5*vl*s1*m.y
+    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+
+   end
+
+end  
 -- Drift general exact strait
 
 local function strait_drift_track (elem, m, l)
@@ -450,7 +566,7 @@ local function curved_drift_track (elem, m, l)
   m.x  = (x + rho*(2*sa2^2 + sa*px*pz_)) / (ca*ptt)
   m.px = ca*px + sa*pz
   m.y  = y + ta*xr*pz_*py/ptt
-  m.t  = t + ta*xr*pz_*(beta_inv+pt) / ptt - (1-T)*l*beta_inv
+  m.t  = t - ta*xr*pz_*(beta_inv+pt) / ptt + (1-T)*l*beta_inv
 
   m.out_action(elem, m, l, 'curved_drift_track')
 end
@@ -547,7 +663,8 @@ local function thin_kick_track(elem, m, l) -- l == 0
       m.px = m.px - knl1^2*x/lrad + dirch*knl1*(pz-1)
       m.py = m.py - ksl1^2*y/lrad + dirch*ksl1*(pz-1)
     end
-    m.t = t + dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
+--    m.t = t + dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
+    m.t = t - dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
   end
 
   m.out_action(elem, m, l, 'thin_kick_track')
@@ -575,7 +692,6 @@ local function strait_kick_track(elem, m, l)
 end
 
 -- Kick general exact curved        [PTC SKICK, TODO: GETELECTRIC]
-
 local function curved_kick_track (elem, m, l) --
   m.in_action(elem, m, l, 'curved_kick_track')
 
@@ -590,11 +706,184 @@ local function curved_kick_track (elem, m, l) --
   end
 
   local angle, k0 in elem
-  m.px = px - dirch*by*(1 + angle/elem.l*x) -- only angle
-  m.py = py + dirch*bx*(1 + angle/elem.l*x)
+--  m.px = px - dirch*by*(1 + angle/elem.l*x) -- only angle
+--  m.py = py + dirch*bx*(1 + angle/elem.l*x)
+-- stability problem???? differences with a simple test SBEND
+  m.px = px - dirch*by*(1 + k0*x) -- only angle
+  m.py = py + dirch*bx*(1 + k0*x)
 
   m.out_action(elem, m, l, 'curved_kick_track')
 end
+
+-- TW Cavity 
+local function twcav_drift_track(elem, m, l, z0) --tw cavity tracking, rk2_cavr
+  m.in_action(elem, m, l, 'twcav_drift_track')
+
+  local x, px, y, py, dirch, dir, charge, nmul, knl, ksl in m
+  local beta_inv = 1/m.beam.beta
+  local d,a, ad  = {}, {}, {}
+ 
+  local freq,  dphas  = elem.freq or 0, elem.dhas or 0
+  local phase, phase0 = elem.phase or 0, elem.phase0 or 0
+  local omega = twopi*freq / clight
+  local volt_c = 1.0e-3
+
+  local volt, dvds = elem.volt or 0, elem.dvds or 0
+  local psi = elem.psi or 0
+  local c1, c2, s1, s2, vl = 0, 0, 0, 0, 0
+  c1 = cos(omega*(t-z0) + phas + phase0)
+  c2 = cos(omega*(t+z0) + phas + phase0 + dphas)
+  s1 = sin(omega*(t-z0) + phas + phase0)
+  s2 = sin(omega*(t+z0) + phas + phase0 + dphas)
+  vl = charge*(volt - dvds*z0)*volt_c/pc
+  ad[1] = 0.5*vl*(cos(psi)*s1-sin(psi)*s2)
+  ad[2] = omega*0.5*vl*(cos(psi)*c1-sin(psi)*c2)
+  ad[3] = omega*0.5*vl*(-cos(psi)*c1-sin(psi)*c2)
+  a[1]  = ad[1]*m.x
+  a[2]  = ad[1]*m.y
+  a[3]  = -dir*vl*(cos(psi)*s1+sin(psi)*s2)
+
+  if elem.b  then
+  elem.b[1] = -ad(3)*m.y/charge
+  elem.b[2] =  ad(3)*m.x/charge
+  elem.b[3] = 0
+  end
+
+  if elem.e then
+  elem.e[1] =     -ad(2)*m.x/charge
+  elem.e[2] =     -ad(2)*m.y/charge
+  elem.e[3] =  dir*ad(3)    /charge
+  end
+
+  m.px = px - a[1]
+  m.py = py - a[1]
+
+  local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local pz_ = 1/pz
+  f[1] = m.px*pz_
+  f[3] = m.py*pz_
+  f[2] = f[1]*ad[1]
+  f[4] = f[3]*ad[1]
+  f[5] = -(f[1]*m.x+f[3]*m.y)*ad[2]+a[3]
+  f[6] = (beta_inv + m.pt)*pz_ - (1-T)*beta_inv -- change the sign???? 
+
+  m.out_action(elem, m, l, 'twcav_drift_track')
+
+  return {f, a, ad}
+end
+
+local function twcav_track(elem, m, l, j) --thick twcavity
+  m.in_action(elem, m, l, 'cav_track')
+  local x, px, y, py, t, pt, dirch in m
+  local z0, tt = 0, 0
+  local d1 = dirch*l or 0
+  if dirch == 1  then
+    z0=(j-1)*d1
+  else
+    z0=elem.l+(j-1)*d1
+  end
+
+  local f  = twcav_drift_track(elem, m, l, z0) or {}
+  do  i=1,6 
+    a[i]=d1*f[i]
+  end
+
+  m.x  = x  + a[1]/2
+  m.px = px + a[2]/2
+  m.y  = y  + a[3]/2
+  m.py = py + a[4]/2
+  m.t  = t  + a[5]/2  --sign to check?
+  m.pt = pt + a[6]/2
+  
+  tt=z0+d1/2
+   
+  f = twcav_drift_track(elem, m, l, tt)
+  
+  do  i=1,6
+    b[i]=d1*f[i]
+  end
+
+  m.x  = x  + b[1]
+  m.px = px + b[2]
+  m.y  = y  + b[3]
+  m.py = py + b[4]
+  m.t  = t  + b[5]  --sign to check? 
+  m.pt = pt + b[6]
+ 
+  z0=z0+d1
+  m.in_action(elem, m, l, 'twcav_track')
+
+end
+
+-- Cavity kick 
+local function cav_kick_track (elem, m, l) --RF CAV, CRAB, RFMULT with l>0 kick
+  m.in_action(elem, m, l, 'rfcav_drift_track')
+  local x, px, y, py, t, pt, nmul, dirch in m
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ff, ph = elem.f or {}, elem.ph or {}
+  local a, r = elem.a or  0, elem.r or 0
+-- nocavity.and.(.not.always_on)  return
+
+  local pc = beam.pc
+  local volt_c = 1.0e-3
+  local freq, harm, volt, lag = elem.freq or 0, elem.harm or 0, elem.volt or 0, elem.lag or 0
+  local nbessel, nf = elem.nbessel or  0, elem.nf or 1
+  if freq == 0 and harm == 0 then
+    error("either frequency or harmonic number has to be defined for RF Cavity " .. elem.name)
+  end
+
+local omega = twopi*freq / clight
+local vl    = m.dirch*l*volt*volt_c/pc
+local df, f, r2 = 0, 1, 1
+
+do ko=1, nf -- over modes
+  do i=1,nbessel
+    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+    dr2 =  r2*i
+    df  =  df + 2*dr2
+    r2  =  r2*(x^2+y^2)
+    f   =  f + r2
+  end
+
+  if nbessel > 0 then
+    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+  end
+  
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+
+  local lw, byt = elem.l>0 and l/elem.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+  
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.t = t + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  end    --over modes
+  m.out_action(elem, m, l, 'rfcav_drift_track')
+end
+
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -713,7 +1002,6 @@ local function curved_track (elem, m) -- e.g. sbend
   if abs(tilt) >= minang  then
     srot_track(elem, m, tilt)
   end
-
   sfringe_track(elem, m, 'entry')
   thick_track  (elem, m, curved_drift_track, curved_kick_track)
   sfringe_track(elem, m, 'exit')
@@ -723,6 +1011,48 @@ local function curved_track (elem, m) -- e.g. sbend
   end
 end
 
+local function cavity_track (elem, m)  -- thin rf mult
+  local l, angle, tilt in elem
+
+  if abs(angle) >= minang then
+    error("invalid strait element angle (too curved): " .. elem.name)
+  end
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, tilt)
+  end
+
+     adjust_time_cav(elem, m, 'entry')
+     fringe_cav     (elem, m, 'entry')
+     if l >= minlen then
+      thick_track (elem, m, strait_drift_track, cav_kick_track)
+     end
+     fringe_cav     (elem, m, 'exit')
+     adjust_time_cav(elem, m, 'exit')
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, -tilt)
+  end
+end
+
+local function tw_cavity_track (elem, m)  --cav_trav
+  local l, angle, tilt in elem
+
+  if abs(angle) >= minang then
+    error("invalid strait element angle (too curved): " .. elem.name)
+  end
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, tilt)
+  end
+
+--   FRINGE_CAV_TRAV(EL,X,k,1) -fringe_cav_trav
+   thick_track (elem, m, cav_kick_track)
+--  FRINGECAV(EL,X,k,2)
+--  ADJUST_TIME_CAV_TRAV_OUT(EL,X,k,2) 
+  if abs(tilt) >= minang  then
+    srot_track(elem, m, -tilt)
+  end
+
+
+end  
 -- specialisations ------------------------------------------------------------o
 
 local function solenoid_track (elem, m)
