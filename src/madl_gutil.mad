@@ -105,11 +105,12 @@ __help.same     = __help.gutil -- move to gfunc
 -- Note: this module is used by MAD env,
 --       hence it cannot rely on MAD env.
 
-local ffi, bit = require 'ffi', require 'bit'
+local ffi, bit, fun = require 'ffi', require 'bit', require 'madl_lfun'
 local istype                                   in ffi
 local format                                   in string
 local abs, huge                                in math
 local bnot, band, bor, bxor, rol, tobit, tohex in bit
+local totable, iter                            in fun
 local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- implementation -------------------------------------------------------------o
@@ -325,7 +326,7 @@ local rep_it = \s,i => if i < s[rep_n] then return i+1, s[rep_x] end end
 local rep_mt = {
   __len      = \s   -> s[rep_n],
   __index    = \s,i => if 1 <= i and i <= s[rep_n] then return s[rep_x] end end,
-  __newindex = \    -> error("invalid write access to readonly object"),
+  __newindex = \    -> error("invalid write access to readonly object", 2),
   __pairs    = \s   -> (rep_it, s, 0),
   __ipairs   = \s   -> (rep_it, s, 0),
 }
@@ -389,11 +390,13 @@ end
 
 -- extensions (conversion, factory)
 
-local function totable (a, ...)
+local function totable_ (a, ...)
   if     is_table(a)    then return a
   elseif is_string(a)   then return utility.str2tbl(a,...) -- table.concat^-1
+  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
+                        then return {a}
   elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
-  else                       return {a} -- encapsulate
+  else                       return totable(iter(a,...)) -- iterator from lfun
   end
 end
 
@@ -416,35 +419,34 @@ end
 
 -- string interpolation
 
-local function interp_fun (tbl, tag)
-  local s, e = tag:sub(1,1), tag:sub(-1, -1)
+local function interp_fun (var, st_, tag)
   local key, suffix = tag, ''
+  local s = tag:sub( 1, 1)
   if s == '$' then return tag end
+  local e = tag:sub(-1,-1)
   if s == '{' and e == '}' then
     key         = key:sub(2, -2)
   elseif s ~= '{' and e == '}' then
     key, suffix = key:sub(1, -2), '}'
   elseif s == '{' and e ~= '}' then
-    error(string.format("Unclosed brace: %q", '$'..tag))
+    error("Unclosed brace: $"..tag, 2)
   end
   if key == '' then
-    error(string.format("Missing key: %q", '$'..tag))
+    error("Missing key: $"..tag, 2)
   end
   local num = tonumber(key) -- cases $n or ${n}
-  local val = tbl[num or key]
-  if val == nil then
-    error(string.format("Undefined key: %q", '$'..tag))
+  local val = var[num or key]
+  if is_nil(val) then
+    if st_ == false then return nil end -- non strict -> leave it unchanged
+    error("Undefined key: $"..tag, 2)
   end
   return tostring_(val) .. suffix
 end
 
-function utility.strinterp(str, var)
-  local bind1st in MAD.gfunc
-  -- FIXME: handle cdata, remove typecheck altogether (duck typing)?
-  if not is_table(var) then
-    error("invalid argument #2 (table expected)")
-  end
-  return str:gsub('%$([{%$]?[%w_]*}?)', bind1st(interp_fun, var))
+function utility.strinterp(str, var, st_)
+  assert(is_indexable(var), "invalid argument #2 (indexable expected)")
+  local bind2st in MAD.gfunc
+  return str:gsub('%$([{$]?[%w_]*}?)', bind2st(interp_fun, var, st_))
 end
 
 string.interp          = utility.strinterp
@@ -459,7 +461,7 @@ return {
   operator = operator,
 
   same     = same,
-  totable  = totable,
+  totable  = totable_,
   tostring = tostring_,
 
   __help   = __help,
