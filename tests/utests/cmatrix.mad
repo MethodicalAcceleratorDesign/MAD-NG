@@ -36,6 +36,7 @@ local infi, tiny, eps, huge, inf, nan, pi, sqrt, abs, log, exp, min, random,
       atan, asinh, acosh, atanh, atan2, hypot in MAD.gmath
 local totable, tostring in MAD
 local concat in MAD
+local chain, duplicate                                            in MAD.fun
 
 local rep in MAD.utility
 
@@ -477,6 +478,8 @@ function TestCMatrixSet:testSetsub()
       local vi, vj = G.vi[li], G.vj[lj]
       cm:zeros()
       vi:perm(); vj:perm()
+      cm:setsub(vi,vj,duplicate(2i))
+      assertEquals( cm:getsub(vi,vj), cmatrix(#vi,#vj):fill(2i) )
       local cmtemp = cm:same(#vi,#vj):fill(1..#vi*#vj):map(toC)
       cm:setsub(vi,vj,cmtemp)
       if     #vi ~= nr and #vj ~= nc then  assertEquals( cm:getsub(1    ..nr, #vj+1..nc), cm:same(nr    , nc-#vj) )
@@ -571,6 +574,8 @@ function TestCMatrixSet:testSetv()
       local cmt = cm:getv(vi)
       cm:setv(vi, 1..li)
       assertEquals( cm:getv(vi), vi:same(li):fill(1..li) )
+      cm:setv(vi, duplicate(li*1i) )
+      assertEquals( cm:getv(vi), vi:same(li):fill(li):map(\x x*1i) )
       cm:setv(vi, cmt   )
     end
   end
@@ -615,7 +620,9 @@ function TestCMatrixSet:testSetdiag()
       local d = cm:getdiag()
       assertEquals( {cm:getdiag():sizes()}, {n,1} )
       for i=1,n do assertEquals( d[i], cm:get(i,i) ) end
-    end
+      cm:setdiag(duplicate(2))
+      assertEquals( cm:getdiag(), cvector(n):fill(2):map\x x*1 )
+     end
   end
   local cm = G.cmattmp[25]
   cm:setdiag(1..3) assertEquals( cm:getdiag(), cvector{1,2,3,1,2} )
@@ -697,6 +704,10 @@ function TestCMatrixSet:testSetrow()
         for jj=1,nc  do
           assertEquals( cm:getrow(ra):get(ii,jj), idx(ii,jj,nc)+0i )
         end end
+        cm:setrow(ra,duplicate(2i))
+        for ii=1,#ra do
+          assertEquals( cm:getrow(ra[ii]), cvector(nc):fill(2):map(\x x*1i):t(false) )
+        end
         cm:setrow(ra,0)
       end
     end end
@@ -781,6 +792,10 @@ function TestCMatrixSet:testSetcol()
         for jj=1,#rb do
           assertEquals( cm:getcol(rb):get(ii,jj), idx(jj,ii,nr)+0i )
         end end
+        cm:setcol(rb,duplicate(2i))
+        for ii=1,#rb do
+          assertEquals( cm:getcol(rb[ii]), vector(nr):fill(2):map(\x x*1i) )
+        end
         cm:setcol(rb,0)
       end
     end end
@@ -920,6 +935,7 @@ function TestCMatrixInPlace:testFill()
     t={} for i=1,mn do t[i]=i end
     cm:fill(t)                       for j=1,mn do assertEquals( cm:geti(j), j   + 0i   ) end
     cm:fill(vector(mn))              for j=1,mn do assertEquals( cm:geti(j), 0   + 0i   ) end
+    cm:fill(duplicate(2i))           for j=1,mn do assertEquals( cm:geti(j),       2i   ) end
   end
 end
 
@@ -2237,6 +2253,16 @@ function TestCMatrixSympl:testSympinv()
 -- -J M' J
 --[[ M' J M = J => M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
      symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B ]]
+  local cmat = { cmatrix(2):fill(1..2*2):map(\x x+x*1i),
+                 cmatrix(4):fill(1..4*4):map(\x x+x*1i),
+                 cmatrix(6):fill(1..6*6):map(\x x+x*1i), }
+  for _,cm1 in ipairs(cmat) do
+    local cm =  1/2 * (cm1-cm1:t())
+    local j  = cm:same():symp()
+    --assertEquals( cm:sympinv(), ((1/j)*cm:t()*j) )
+    --print( cm:sympinv()    ,"\n" )
+    --print( ((1/j)*cm:t()*j),"\n" )
+  end
   local cmat = cmatrix(2)
   local j    = cmatrix(2):symp()
   local cm1  = { cmatrix{{1,0},{0,1}},
@@ -2259,19 +2285,23 @@ function TestCMatrixErr:testSymperr()
 end
 
 function TestCMatrixSympl:testSymperr()
-  -- M' J M - J
-  --assertEquals( cm:symperr(), cm:t()*j*cm-j )
+  local cmat = { cmatrix(2):fill(1..2*2):map(\x x+x*1i),
+                 cmatrix(4):fill(1..4*4):map(\x x+x*1i),
+                 cmatrix(6):fill(1..6*6):map(\x x+x*1i), }
+  for _,cm in ipairs(cmat) do
+    local cmres = 1/2 * (cm-cm:t(false))
+    local j    = cm:same():symp()
+    --assertEquals( cmres:symperr(), (cmres:t()*j*cmres-j):norm() ) -- M' J M - J
+    --print( cmres:symperr() )
+    --print( (cmres:t()*j*cmres-j):norm() ) -- M' J M - J
+  end
+
   local j  = cmatrix(2):symp()
   local cm1 = { cmatrix{{1,0},{0,1}},
                 cmatrix{{1,0},{1,1}},
                 cmatrix{{1,1},{0,1}}, }
   for _,cm in ipairs(cm1) do
     assertEquals( cm:map(toC):symperr(), 2 )
-  end
-  local cm1 = { cmatrix{{0,0},{0,1}},
-                cmatrix{{0,1},{0,1}}, }
-  for _,cm in ipairs(cm1) do
-    assertTrue( cm:map(toC):symperr() ~= 0 )
   end
 end
 
@@ -2771,28 +2801,29 @@ function TestCMatrixErr:testDiv()
   assertErrorMsgContains( msg[2], mth, 'div', cmatrix(1,2), cmatrix(3,1) )
 end
 
---[[
-function TestCMatrixOps:testDiv() -- TODO
---  local m = matrix(3,2):fill(2)
---  print(1/m)
+function TestCMatrixOps:testDiv()
   for _,cm in ipairs(G.cmatidx) do
     local mn, nr, nc = cm:size(), cm:sizes()
     local cmc = cm:copy():random(randomseed(2))
     local m   = matrix(nr,nc):fill(1..mn)
     if nr == nc then
-      --assertTrue( (cmc * (1/cmc)):eq( cmc:copy():eye(), 5*eps) )  -- num / cmat
-    else--TODO
-      --print( 1/mc,"\n" )
-      --print( mc,"\n" )
-      --print( mc:t() * (1/mc),"\n" )  -- num / mat
+      assertTrue( (cmc * (1/cmc)):eq( cmc:copy():eye(), 7*eps) )  -- num / cmat
+    else
+      local ru, rs, rv, info = cmc:svd()
+      rs = cmc:same():setdiag( rs:map(\x 1/x) ):t(false)
+      local ref = rv * rs * ru:t() -- M = V*S: reciprocal():t()*U'
+      local res = 1/cmc
+      for i=1,#res do
+        assertAlmostEquals( (res:geti(i) - ref:geti(i)).re, 0, 32*eps )
+        assertAlmostEquals( (res:geti(i) - ref:geti(i)).im, 0, 32*eps )
+      end
     end
-    --assertEquals(  cm / 2 , cm:copy():map(\x  x/2   )         ) -- cmat / num
-    --assertEquals(  cm / 2i, cm:copy():map(\x -x/2*1i)         ) -- cmat / cpx
-    --assertTrue  ( (cm / cm ):eq(m:copy()*1/cm        ,   eps) ) -- cmat / cmat
-    --assertTrue  ( (cm / m ):eq(m:copy()*1/m       , 2*eps) )    -- cmat / mat
+    assertEquals(  cm / 2 , cm:copy():map(\x  x/2   )       ) -- cmat / num
+    assertEquals(  cm / 2i, cm:copy():map(\x -x/2*1i)       ) -- cmat / cpx
+    assertTrue  ( (cm / cm):eq(cm:copy()*1/cm        , eps) ) -- cmat / cmat
+    assertTrue  ( (cm / m ):eq(cm:copy()*1/m         , eps) ) -- cmat / mat
   end
 end
-]]
 
 function TestCMatrixOps:testDivCpx()
   for _,cm in ipairs(G.cmatidx) do
