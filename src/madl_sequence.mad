@@ -68,6 +68,27 @@ Sequence edition:
   - remove selected
 ]=]
 
+__help["sequence: indexes and ranges"] = [=[
+Indexes:
+--------
+  - element (object)
+    + element.name & count
+  - index (number)
+    + number <0 means starts from end (i.e. #seq-idx+1)
+  - name (string)
+    + name                (exact)
+    + name[count]         (exact with occurences count)
+    + name{count} & index (closest with occurences count starting from index)
+    + #s or #S (index=1), #e or #E (index=-1)
+
+Ranges:
+-------
+  - index                 (single, equivalent to {index,index})
+  - {start,stop}
+  - "start/stop"
+  - support start > stop
+]=]
+
 -- locals ---------------------------------------------------------------------o
 
 local abs                                                  in math
@@ -127,33 +148,20 @@ local function repl_by (to, a, b)
   to[#to+1] = b                return to          -- many -> append
 end
 
--- get position index (linear)
-local function sfind_idx (seq, s, start_)
-  local s_pos = seq.s_pos
-  local start, stop, step = start_ or 1
-  if start > 0
-  then stop, step = #seq, 1
-  else stop, step, start = 1, -1, -start
-  end
-  local smin = maximum_dist
-  for i=start,stop,step do  -- linear search
-    local d = abs(s_pos[i]-s)
-    if d > smin then return i-1 end
-    smin = d
-  end
-  return nil
-end
-
 -- get element index (linear)
-local function efind_idx (seq, e, start_)
+local function efind_idx (seq, e, idx_, cnt_)
   if e ~= nil then
-    local start, stop, step = start_ or 1
+    local start, stop, step = idx_ or 1
     if start > 0
     then stop, step = #seq, 1
     else stop, step, start = 1, -1, -start
     end
+    local cnt = cnt_ or 1
     for i=start,stop,step do  -- linear search
-      if seq[i] == e then return i end
+      if seq[i] == e then
+        if cnt == 1 then return i end
+        cnt = cnt - 1
+      end
     end
   end
   return nil
@@ -162,63 +170,70 @@ end
 -- get element index (direct)
 local function find_idx (seq, e, cnt_)
   local idx = seq[_eidx][e]
-  if is_nil(cnt_)     then return idx       end
   if is_rawtable(idx) then return idx[cnt_] end
+  return idx
+end
+
+local function index_of_num (seq, n)
+  local len = #seq
+  if n < 0 then n = len+n+1 end -- reflect
+  if n < 1 or n > len then return nil end
+  return n
+end
+
+local function index_of_str (seq, s, idx_)
+  local i, j, name, del = string.find(s, "([^[{/]+)([[{]?)")
+  assert(name ~= nil and i == 1, "invalid format (name expected)")
+  local elem = seq[name]                           -- get element
+  if is_nil(elem) then return nil end              -- not found
+  if del == '' then return find_idx(seq, elem) end -- index of "name"
+  local rel, cnt
+  if del == '['                                    -- get count
+  then i, j, cnt = string.find(s, "[(%d+)]", j)
+  else i, j, cnt = string.find(s, "{(%d+)}", j) ; rel = true
+  end
+  cnt = assert(tonumber(cnt), "invalid count format (bracketed integer expected)")
+  if not rel
+  then return  find_idx(seq, elem,       cnt)      -- index of "name[n]"
+  else return efind_idx(seq, elem, idx_, cnt)      -- index of "name{n}"
+  end
+end
+
+-- get index from signed index, strings or element
+local function index_of (seq, a, idx_)
+  if is_number(a) then
+    return index_of_num(seq, a)
+  end
+  if is_string(a) then
+    return index_of_str(seq, a, idx_)
+  end
+  assert(is_element(a), "invalid argument #2 (index, string or element expected)")
+  return find_idx(seq, seq[a.name], idx_)
+end
+
+-- get closest index from s position (linear)
+local function sindex_of (seq, s, idx_)
+  local s_pos = seq.s_pos
+  local start, stop, step = idx_ or 1
+  if start > 0
+  then stop, step = #seq, 1
+  else stop, step, start = 1, -1, -start
+  end
+  local smin = maximum_dist
+  for i=start,stop,step do
+    local d = abs(s_pos[i]-s)
+    if d > smin then return i-1 end
+    smin = d
+  end
   return nil
 end
 
-local function from_pos (seq, from)
-  -- TODO: check for memoized from...
-  return elem_pos(seq, seq:index_of(from))
-end
-
-__help["sequence: indexes and ranges"] = [=[
-Indexes:
---------
-  - index   (number), index<0 means starts from end (i.e. #seq-idx+1)
-  - element (object) & idx_ (optional count or start index?)
-  - name    (string) & idx_ (optional count or start index?)
-    + name[count]    & idx_ (occurences count optionaly starting from idx_)
-    + name[]         & idx_ (closest occurrence starting from idx_)
-    + name           & idx_ (exact or closest occurrence starting from idx_)
-    + #s or #S (index=1), #e or #E (index=-1)
-
-Ranges:
--------
-  - index
-  - {start,stop}
-  - "start/stop"
-  - requires start <= stop (?)
-]=]
-
--- get index from relative index, strings or element
-local function index_of (seq, a, idx_)
-  if is_number(a) then -- (relative) index
-    local idx, len = a, #seq
-    if idx < 0 then idx = len+idx+1 end -- reflect
-    if idx < 1 or idx > len then return nil end
-    return idx
+local function from_pos (seq, from, idx_)
+  if seq[_lastfrom] ~= from then -- TODO: from should be unique?
+    seq[_lastfrom   ] = from
+    seq[_lastfrompos] = elem_pos(seq, index_of(seq, from, idx_))
   end
-
-  if is_string(a) then
-    local i, j, name = string.find(a, "([^[/]+)")
-    local elem = seq[name]
-    if is_nil(elem) then return nil end
-    local i, j, cnt = string.find(a, "%[(%d*)%]", j+1)
-    if i ~= nil and j ~= nil then
-      if is_nil(cnt) then                 -- case "name[]"
-        return efind_idx(seq, elem, idx_) -- linear search with start=idx_
-      else
-        cnt = assert(tonumber(cnt), "invalid count format (number expected)")
-        return find_idx(seq, elem, cnt) -- direct search with [cnt]
-      end
-    end
-    assert(is_nil(i), "invalid count format (unbalanced brackets)")
-    return find_idx(seq, elem, idx_) -- direct search with cnt=idx_
-  end
-
-  assert(is_element(a), "invalid argument #2 (index, string or element expected)")
-  return find_idx(seq, seq[a.name], idx_) -- direct search with cnt=idx_
+  return seq[_lastfrompos]
 end
 
 -- build helper ---------------------------------------------------------------o
@@ -232,9 +247,9 @@ local function sequ_rpos (sequ)
 end
 
 -- compute s positions of sequence elements
-function elem_pos (sequ, idx)
+function elem_pos (sequ, idx, elem_)
   local pos = sequ.e_pos[idx]
-  if pos >= 0 then return pos end
+  if pos >= 0 and is_nil(elem_) then return pos end
   if pos == ongoing_init then
     seq_error("cycling dependencies detected", sequ, idx)
   elseif pos ~= uninitialized then
@@ -242,7 +257,7 @@ function elem_pos (sequ, idx)
   end
 
   sequ.e_pos[idx] = ongoing_init
-  local elem = sequ[idx]
+  local elem = elem_ or sequ[idx]
   pos = elem.at or 0
 
   local from = elem.from or elem.at and 'start' or 'prev'
@@ -549,12 +564,11 @@ sequence:set_variable {
   e_pos = \s -> s[_epos],
 
 } :set_function {
-  sfind_index  = sfind_idx,
-  lfind_index  = lfind_idx,
-  range_index  = range_index,
-  index_of     = index_of,
-  epos_of      = epos_of,
+  pos_of       = pos_of,
   spos_of      = spos_of,
+  index_of     = index_of,
+  sindex_of    = sindex_of,
+  range_index  = range_index,
   foreach      = foreach,
   filter       = filter,
   select       = select,
