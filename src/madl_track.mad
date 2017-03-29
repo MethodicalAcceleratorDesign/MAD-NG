@@ -97,8 +97,8 @@ __help['track: curved drift map'] = [[
 __help['track: curved kick map'] = [[
   [2] p.358-361, ch. 12.2.2 Drift-Kick Split, kick in polar coordinates, eq. (12.18a-12.18f)
   [3] p. 76, PTC, Function SKICK in file Sh_def_kind.f90
-  [7] Bending magnet, ch.4.3 p. 22, eq.(4.12) and its solution
-  [8] Thin Dipole, ch.3.2.2, eq. (48-50)
+  [7] Bending magnet, ch.4.3 p. 22, eq.(4.12) and its solution --not PTC map
+  [8] Thin Dipole, ch.3.2.2, eq. (48-50) - not PTC map
 ]]
 
 __help['track: kick'] = [[
@@ -228,7 +228,7 @@ local function yrot_track (elem, m, angle) -- XZ rot (aka Dragt's PROT)
   m.x  = x/(ca*ptt)
   m.px = ca*px + sa*pz
   m.y  = y + ta*x*py*pz_/ ptt
-  m.t  = t + ta*x*pz_*(beta_inv+pt) / ptt
+  m.t  = t - ta*x*pz_*(beta_inv+pt) / ptt 
 
 end
 
@@ -246,7 +246,7 @@ local function xrot_track (elem, m, angle) -- YZ rot
   m.x  = x + ta*y*px*pz_/ptt
   m.y  = y/(ca*ptt)
   m.py = ca*py + sa*pz
-  m.t  = t + ta*y*pz_*(beta_inv+pt) / ptt
+  m.t  = t - ta*y*pz_*(beta_inv+pt) / ptt
 end
 
 -- XYZ-Translation (dz treated as drift length)
@@ -291,6 +291,7 @@ local function face_track(elem, m, h)
   m.px = px
   m.py = py
   m.t  = t
+  
 end
 
 local function wedge_track(elem, m, e)
@@ -313,14 +314,11 @@ local function wedge_track(elem, m, e)
   m.x  = x*ca + (x*px*sa2 + sa^2*(2*x*pz-b1*x^2)) / (pzs+pz*ca-px*sa)
   m.px = pxt
   m.y  = y + py * yt
-  m.t  = t + yt*(beta_inv + pt)
+  m.t  = t - yt*(beta_inv + pt)
 end
 
 local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
-  if elem.kill_fringe     == 1               or
-     elem.kill_ent_fringe == 1 and pos ==  'entry' or
-     elem.kill_ext_fringe == 1 and pos ==  'exit' then return end
 
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elem.k0 or 0
@@ -384,12 +382,17 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
 
   -- soft edge
   m.py = m.py - 4*c3*m.y^3
-  m.t  = m.t  -   c3*m.y^4/rel_p^2*time_fac
+  m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
+
 end
 
 local function sfringe_track(elem, m, pos) -- dipole fringe field
   --TODO: to add dir == -1
   -- e: edge angle
+  if elem.kill_fringe     == 1               or
+     elem.kill_ent_fringe == 1 and pos ==  'entry' or
+     elem.kill_ext_fringe == 1 and pos ==  'exit' then return end
+
   if pos == 'entry' then
     local e, h = elem.e1 or 0, elem.h1 or 0
     if e and abs(e) >= minang then
@@ -460,7 +463,7 @@ local function cav_track_thin (elem, m, l) -- for tracking thin rf mult
   bx  = y*by + x*bx
   by  = byt
 
-  m.t = t + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  m.t = t - ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
   end    --over modes
   m.out_action(elem, m, l, 'cav_track_thin')
 end
@@ -482,7 +485,7 @@ local function adjust_time_cav(elem, m, pos)
 
   else
     if elem.l < minlen then return end
-      t = t + elem.l*beta_inv -- TO CHECK
+      t = t - elem.l*beta_inv -- TO CHECK
       delta_e = (pt - delta_e)*beam.pc
   end
 
@@ -607,7 +610,7 @@ local function solenoid_drift_track (elem, m, l)
   if is_nil(ks) or ks == 0 then
     strait_drift_track(elem, m, l) return
   end
-
+  
   local x, px, y, py, t, pt, T in m
   local beta_inv = 1/m.beam.beta
 
@@ -630,7 +633,7 @@ local function solenoid_drift_track (elem, m, l)
   m.y  = ca*yt  - sa*xt
   m.py = ca*pyt - sa*pxt
 
-  m.t  = t + (beta_inv+pt)*l_pz - (1-T)*l*beta_inv
+  m.t  = t - (beta_inv+pt)*l_pz + (1-T)*l*beta_inv
 
   m.out_action(elem, m, l, 'solenoid_drift_track')
 end
@@ -700,6 +703,7 @@ local function curved_kick_track (elem, m, l) --
   local lw, byt = l/elem.l
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
+
   for i=nmul-1,1,-1 do
     byt = x*by - y*bx + lw*knl[i] / fact(i-1)
     bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
@@ -773,7 +777,7 @@ local function twcav_drift_track(elem, m, l, z0) --tw cavity tracking, rk2_cavr
   return {f, a, ad}
 end
 
-local function twcav_track(elem, m, l, j) --thick twcavity
+local function twcav_track(elem, m, l, j) --thick twcavity (inter_cav_trav+rk2_cav)
   m.in_action(elem, m, l, 'cav_track')
   local x, px, y, py, t, pt, dirch in m
   local z0, tt = 0, 0
@@ -793,7 +797,7 @@ local function twcav_track(elem, m, l, j) --thick twcavity
   m.px = px + a[2]/2
   m.y  = y  + a[3]/2
   m.py = py + a[4]/2
-  m.t  = t  + a[5]/2  --sign to check?
+  m.t  = t  - a[5]/2  --sign to check?
   m.pt = pt + a[6]/2
 
   tt=z0+d1/2
@@ -808,7 +812,7 @@ local function twcav_track(elem, m, l, j) --thick twcavity
   m.px = px + b[2]
   m.y  = y  + b[3]
   m.py = py + b[4]
-  m.t  = t  + b[5]  --sign to check?
+  m.t  = t  - b[5]  --sign to check? 
   m.pt = pt + b[6]
 
   z0=z0+d1
@@ -817,7 +821,7 @@ local function twcav_track(elem, m, l, j) --thick twcavity
 end
 
 -- Cavity kick
-local function cav_kick_track (elem, m, l) --RF CAV, CRAB, RFMULT with l>0 kick
+local function cav_kick_track (elem, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   m.in_action(elem, m, l, 'rfcav_drift_track')
   local x, px, y, py, t, pt, nmul, dirch in m
   local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
@@ -880,7 +884,7 @@ do ko=1, nf -- over modes
   bx  = y*by + x*bx
   by  = byt
 
-  m.t = t + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  m.pt = m.pt + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
   end    --over modes
   m.out_action(elem, m, l, 'rfcav_drift_track')
 end
@@ -993,23 +997,23 @@ end
 local function curved_track (elem, m) -- e.g. sbend
 --  io.write('CURVED_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
   local l, angle, tilt in elem
-
   if abs(angle) < minang then
     error("invalid curved element angle (too strait): " .. elem.name)
   elseif l < minlen then
     error("invalid curved element length (too short): " .. elem.name)
   end
 
+--  if m.t ~=0 then m.t= -m.t end 
   if abs(tilt) >= minang  then
     srot_track(elem, m, tilt)
   end
   sfringe_track(elem, m, 'entry')
   thick_track  (elem, m, curved_drift_track, curved_kick_track)
   sfringe_track(elem, m, 'exit')
-
   if abs(tilt) >= minang  then
     srot_track(elem, m, -tilt)
   end
+--  m.t =-m.t
 end
 
 local function cavity_track (elem, m)  -- thin rf mult
@@ -1059,7 +1063,6 @@ end
 local function solenoid_track (elem, m)
 --  io.write('SOL_TRACK: for ', elem.name, ' (l=', elem.l,')\n')
   local l, angle, tilt in elem
-
   if abs(angle) >= minang then
     error("invalid strait element angle (too curved): " .. elem.name)
   elseif l < minlen then
