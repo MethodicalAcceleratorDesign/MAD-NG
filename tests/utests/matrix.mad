@@ -34,9 +34,9 @@ local is_vector, is_matrix, is_cvector, is_cmatrix, isa_vector, isa_matrix,
 local infi, tiny, eps, huge, inf, nan, pi, sqrt, abs, log, exp, min, random,
       randomseed, floor, round, sin, cos, tan, sinh, cosh, tanh, asin, acos,
       atan, asinh, acosh, atanh in MAD.gmath
-local totable, tostring in MAD
-local concat in MAD
+local totable, tostring, concat in MAD
 
+local chain, duplicate                                            in MAD.fun
 local rep in MAD.utility
 
 -- locals ---------------------------------------------------------------------o
@@ -612,12 +612,13 @@ function TestMatrixSet:testSetsub()
       local vi, vj = G.vi[li], G.vj[lj]
       m:zeros()
       vi:perm(); vj:perm()
-      m:setsub(vi,vj,1..#vi*#vj)
+      m:setsub(vi,vj,duplicate(2))
+      assertEquals( m:getsub(vi,vj), matrix(#vi,#vj):fill(2) )
+      m:setsub(vi,vj,1..#vi*#vj  )
       if     #vi ~= nr and #vj ~= nc then  assertEquals( m:getsub(1    ..nr, #vj+1..nc), m:same(nr    , nc-#vj) )
                                            assertEquals( m:getsub(#vi+1..nr, 1    ..nc), m:same(nr-#vi, nc    ) )
       elseif #vi == nr and #vj ~= nc then  assertEquals( m:getsub(1    ..nr, #vj+1..nc), m:same(nr    , nc-#vj) )
       elseif #vi ~= nr and #vj == nc then  assertEquals( m:getsub(#vi+1..nr, 1    ..nc), m:same(nr-#vi, nc    ) ) end
-
       local rset  = m:getsub(vi, vj)
       for i=1,li do
       for j=1,lj do
@@ -668,15 +669,17 @@ function TestMatrixErr:testSetv()
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #3 (scalar or iterator expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'setv', errMat, nil , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', errMat, ''  , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', errMat, NaN , 0    )
-  assertErrorMsgContains( msg[1], mth, 'setv', errMat, \x x, 0    )
-  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , ''   )
-  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , nil  )
-  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , NaN  )
-  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , \x x )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, nil , 0          )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, ''  , 0          )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, NaN , 0          )
+  assertErrorMsgContains( msg[1], mth, 'setv', errMat, \x x, 0          )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , ''         )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , nil        )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , NaN        )
+  assertErrorMsgContains( msg[2], mth, 'setv', errMat, 1   , \x x       )
+  assertErrorMsgContains( msg[3], mth, 'setv', errMat, 1   , nil , 1, 1 )
 end
 
 function TestMatrixSet:testSetv()
@@ -704,6 +707,8 @@ function TestMatrixSet:testSetv()
       local mt = m:getv(vi)
       m:setv(vi, 1..li)
       assertEquals( m:getv(vi), vi:same(li):fill(1..li) )
+      m:setv(vi, duplicate(li) )
+      assertEquals( m:getv(vi), vi:same(li):fill(li) )
       m:setv(vi, mt   )
     end
   end
@@ -732,10 +737,12 @@ end
 function TestMatrixErr:testSetdiag()
   local msg = {
     "invalid argument #2 (scalar or iterable expected)",
+    "invalid argument #2 (scalar or iterator expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, nil  )
-  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, ''   )
-  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, \x x )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, nil       )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, ''        )
+  assertErrorMsgContains( msg[1], mth, 'setdiag', errMat, \x x      )
+  assertErrorMsgContains( msg[2], mth, 'setdiag', errMat, nil, 1, 1 )
 end
 
 function TestMatrixSet:testSetdiag()
@@ -749,10 +756,13 @@ function TestMatrixSet:testSetdiag()
       assertEquals( {m:getdiag():sizes()}, {n,1} )
       for i=1,n do assertEquals( d[i], m:get(i,i) ) end
     end
+    m:setdiag(duplicate(2))
+    assertEquals( m:getdiag(), vector(n):fill(2) )
   end
   local m = G.mattmp[25]
-  m:setdiag(1..3) assertEquals( m:getdiag(), vector{1,2,3,1,2} )
-  m:setdiag(1..6) assertEquals( m:getdiag(), vector{1,2,3,4,5} )
+  m:setdiag(1..3)                 assertEquals( m:getdiag(), vector{1,2,3,1,2} ) -- recycling
+  m:setdiag(1..6)                 assertEquals( m:getdiag(), vector{1,2,3,4,5} ) -- recycling
+  m:setdiag(chain({3,1},{5,4,3})) assertEquals( m:getdiag(), vector{3,1,5,4,3} )
 end
 
 function TestMatrixErr:testGetrow()
@@ -793,17 +803,19 @@ function TestMatrixErr:testSetrow()
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #3 (scalar or iterator expected)",
     "1-index out of bounds"                            ,
     "cannot convert 'nil' to 'double'"                 ,
   }
-  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, ''         )
-  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, nil        )
-  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, NaN        )
-  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, \x x       )
-  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , nil  )
-  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , ''   )
-  assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 0   , 1    )
-  assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 3   , 1    )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, ''               )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, nil              )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, NaN              )
+  assertErrorMsgContains( msg[1], mth, 'setrow', errMat, \x x             )
+  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , nil        )
+  assertErrorMsgContains( msg[3], mth, 'setrow', errMat, 1   , nil, 1, 1  )
+  assertErrorMsgContains( msg[2], mth, 'setrow', errMat, 1   , ''         )
+  assertErrorMsgContains( msg[4], mth, 'setrow', errMat, 0   , 1          )
+  assertErrorMsgContains( msg[4], mth, 'setrow', errMat, 3   , 1          )
 end
 
 function TestMatrixSet:testSetrow()
@@ -830,6 +842,10 @@ function TestMatrixSet:testSetrow()
         for jj=1,nc  do
           assertEquals( m:getrow(ra):get(ii,jj), idx(ii,jj,nc) )
         end end
+        m:setrow(ra,duplicate(2))
+        for ii=1,#ra do
+          assertEquals( m:getrow(ra[ii]), vector(nc):fill(2):t() )
+        end
         m:setrow(ra,0)
       end
     end end
@@ -878,17 +894,19 @@ function TestMatrixErr:testSetcol()
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
     "invalid argument #3 (scalar or iterable expected)",
+    "invalid argument #3 (scalar or iterator expected)",
     "1-index out of bounds"                            ,
     "cannot convert 'nil' to 'double'"                 ,
   }
-  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, ''         )
-  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, nil        )
-  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, NaN        )
-  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, \x x       )
-  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  ''  )
-  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  nil )
-  assertErrorMsgContains( msg[3], mth, 'setcol', errMat, 0   ,  1   )
-  assertErrorMsgContains( msg[3], mth, 'setcol', errMat, 3   ,  1   )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, ''               )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, nil              )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, NaN              )
+  assertErrorMsgContains( msg[1], mth, 'setcol', errMat, \x x             )
+  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  ''        )
+  assertErrorMsgContains( msg[2], mth, 'setcol', errMat, 1   ,  nil       )
+  assertErrorMsgContains( msg[3], mth, 'setcol', errMat, 1   ,  nil, 1, 1 )
+  assertErrorMsgContains( msg[4], mth, 'setcol', errMat, 0   ,  1         )
+  assertErrorMsgContains( msg[4], mth, 'setcol', errMat, 3   ,  1         )
 end
 
 function TestMatrixSet:testSetcol()
@@ -914,6 +932,10 @@ function TestMatrixSet:testSetcol()
         for jj=1,#rb do
           assertEquals( m:getcol(rb):get(ii,jj), idx(jj,ii,nr) )
         end end
+        m:setcol(rb,duplicate(2))
+        for ii=1,#rb do
+          assertEquals( m:getcol(rb[ii]), vector(nr):fill(2) )
+        end
         m:setcol(rb,0)
       end
     end end
@@ -1037,7 +1059,8 @@ function TestMatrixInPlace:testFill()
     --1D container
     t={} for i=1,mn do t[i]=i end
     m:fill(t)                 for i=1,mn do assertEquals( m:geti(i), i   ) end
-    m:fill(vector(mn)) for i=1,mn do assertEquals( m:geti(i), 0   ) end
+    m:fill(vector(mn))        for i=1,mn do assertEquals( m:geti(i), 0   ) end
+    m:fill(duplicate(2))      for i=1,mn do assertEquals( m:geti(i), 2   ) end
   end
   local m, t = matrix(5), {}
   for i=1,5 do t[i] = {}      for j=1,5 do t[i][j]=(i-1)*5+j end end
@@ -2361,18 +2384,23 @@ function TestMatrixErr:testSympinv()
 end
 
 function TestMatrixSympl:testSympinv()
--- -J M' J
---[[ M' J M = J => M^-1 = J^-1 M'      det(M)  = ±1 (i.e. Sp(n))
-     symp M = {{A,B},{C,D}} <=> A'D - C'B = 1, A'C = C'A, B'D = D'B ]]
-  local mat = matrix(2)
-  local j   = matrix(2):symp()
-  local m1  = { matrix{{1,0},{0,1}},
-                matrix{{1,0},{1,1}},
-                matrix{{1,1},{0,1}}, }
+  local j  = matrix(2):symp()
+  local m1 = {
+    matrix{{1,1},{0,1}},
+    matrix{{1,0},{0,1}},
+    matrix{{1,0},{1,1}},
+  }
+  local mat = {
+    matrix{{0,1},{1,0}},
+    matrix{{0,1},{1,1}},
+    matrix{{1,1},{1,0}},
+  }
   for _,m in ipairs(m1) do
-    assertEquals( m:t()*j*m      , j         )
-    assertEquals( m:sympinv()   , -j*m:t()*j )
-    assertEquals( m:sympinv(mat), -j*m:t()*j )
+    assertEquals( m:t()*j*m  , j          )
+    assertEquals( m:sympinv(), -j*m:t()*j ) -- -J M' J
+  end
+  for _,m in ipairs(mat) do
+    assertEquals( m:sympinv(), -j*m:t()*j ) -- -J M' J
   end
 end
 
@@ -2386,32 +2414,19 @@ function TestMatrixErr:testSymperr()
 end
 
 function TestMatrixSympl:testSymperr()
-  -- M' J M - J
-  --assertEquals( m:symperr(), m:t()*j*m-j )
-  --local j  = matrix(2):symp()
---[[
- local mat = {
-    matrix(2):fill(1..2*2),
-    matrix(4):fill(1..4*4),
-    matrix(6):fill(1..6*6),
-  }
+ local mat = { matrix(2):fill(1..2*2),
+               matrix(4):fill(1..4*4),
+               matrix(6):fill(1..6*6), }
   for _,m in ipairs(mat) do
-    local nr, nc = m:sizes()
-    local j  = matrix(nr):symp()
-    print( m:symperr()  , "\n" )
-    print( (1/m*j*(m-j)):sum(), "\n" )
+    local mres = 1/2 * (m-m:t())
+    local j    = m:same():symp()
+    assertEquals( mres:symperr(), (mres:t()*j*mres-j):norm() ) -- M' J M - J
   end
-]]
   local m1 = { matrix{{1,0},{0,1}},
                matrix{{1,0},{1,1}},
                matrix{{1,1},{0,1}}, }
   for _,m in ipairs(m1) do
-    assertEquals( m:symperr(), 0 )
-  end
-  local m1 = { matrix{{0,0},{0,1}},
-               matrix{{0,1},{0,1}}, }
-  for _,m in ipairs(m1) do
-    assertTrue( m:symperr() ~= 0 )
+    assertEquals( m:symperr()   , 0 )
   end
 end
 
@@ -2922,10 +2937,11 @@ function TestMatrixOps:testDiv()
     if nr == nc then
       assertTrue( (mc * (1/mc)):eq( mc:copy():eye(), 5*eps) ) -- num / mat
     else
-    --TODO
-      --print( 1/mc ,"\n" )
-      --print( mc   ,"\n" )
-      --print( mc:t() * (1/mc),"\n" )  -- num / mat
+      local ru, rs, rv, info = mc:svd()
+      rs = mc:same():setdiag( rs:map(\x 1/x) ):t()
+      local ref = rv * rs * ru:t() -- M = V*S: reciprocal():t()*U'
+      local res = 1/mc
+      for i=1,#res do assertAlmostEquals( res:geti(i) - ref:geti(i), 0, 32*eps ) end -- different sizes(same values)
     end
     assertEquals(  m / 2 , m:copy():map(\x  x/2   )         ) -- mat / num
     assertEquals(  m / 2i, m:copy():map(\x -x/2*1i)         ) -- mat / cpx
@@ -2939,6 +2955,43 @@ function TestMatrixOps:testDivCpx()
     local mref = 2i / m
     assertTrue( mref:eq( 2i*1/m, 2*eps) )
     assertTrue( is_cmatrix(mref) )
+  end
+end
+
+function TestMatrixErr:testKadd()
+  local msg = {
+    "incompatible number of coefficients",
+    "incompatible matrix type",
+    "incompatible matrix size",
+    "too many matrices",
+    "invalid argument #1 (indexable expected)",
+    "invalid argument #2 (table expected)",
+  }
+  local t = {} for i=1,21 do t[i]=matrix(2) end
+  assertErrorMsgContains( msg[1], mth, 'kadd', matrix(2), vector(2), { matrix(2)            } )
+  assertErrorMsgContains( msg[2], mth, 'kadd', matrix(2), vector(2), { matrix(2),cmatrix(3) } )
+  assertErrorMsgContains( msg[3], mth, 'kadd', matrix(2), vector(2), { matrix(2), matrix(3) } )
+  assertErrorMsgContains( msg[4], mth, 'kadd', matrix(2), vector(2), t                        )
+  assertErrorMsgContains( msg[5], mth, 'kadd', matrix(2),        3 , vector(2)                )
+  assertErrorMsgContains( msg[6], mth, 'kadd', matrix(2),       {3}, vector(2)                )
+end
+
+function TestMatrixOps:testKadd()
+  local m =  matrix(2):fill(1..4)
+  local t = {
+    m:copy(),
+    m:copy(),
+    m:copy(),
+  }
+  --print( t        , "\n" )
+  --print( m        , "\n" )
+  --print( m:kadd(t), "\n" )
+  for _,m in ipairs(G.matidx) do
+    local t = {}
+    for i=1,2 do t[i] = m:copy() end
+    --print( t        , "\n" )
+    --print( m        , "\n" )
+    --print( m:kadd(t), "\n" )
   end
 end
 
@@ -3134,8 +3187,43 @@ function TestMatrixFFT:testIRFFT()
   assertErrorMsgContains( msg[1], mth, 'irfft',  vector(1), cmatrix(2) )
 end
 
---function TestMatrixFFT:testNFFT() end
---function TestMatrixFFT:testINFFT() end
+function TestMatrixFFT:testNFFT()
+  for i,s in ipairs(dat.sv) do
+    local ref = dat.fftVOut[i]
+    local res = dat.fftVIn:getsub(1..s, 1)
+  end
+
+  local m = vector(10):fill(1..10):t()
+  local p = vector{{0,1,2,3,4,-5,-4,-3,-2,-1}}/#m
+
+  assertAlmostEquals( (m:nfft(p) - m:fft()  ):norm(), 0, 512*eps )
+  assertAlmostEquals( (m:nfft(p):infft() - m):norm(), 0, 512*eps )
+  m = vector(10):fill(10..1..-1):t()
+  assertAlmostEquals( (m:nfft(p) - m:fft()  ):norm(), 0, 512*eps )
+  assertAlmostEquals( (m:nfft(p):infft() - m):norm(), 0, 512*eps )
+
+  m = vector(10):fill(11..20):t()
+  p = vector{{0,1,2,3,4,-5,-4,-3,-2,-1}}/#m
+  --print( (m:nfft(p) - m:fft()  ):norm() )
+  m = vector(8):fill(1..8):t()
+  p = vector{{0,1,2,3,-4,-3,-2,-1}}/#m
+  --print( (m:nfft(p) - m:fft()  ):norm() )
+end
+
+function TestMatrixFFT:testINFFT()
+local msg = {
+    "polynomial degree N has to be even"           ,
+    "Polynomial degree N is smaller than cut-off m",
+  }
+  assertErrorMsgContains( msg[1], mth, 'nfft',  vector(1), vector(3) )
+end
+
+function TestMatrixFFT:testINFFT()
+local msg = {
+    "invalid argument #1 (cmatrix expected)",
+  }
+  assertErrorMsgContains( msg[1], mth, 'infft',  vector(1), cmatrix(2) )
+end
 
 function TestMatrixErr:testConv()
   local msg = {

@@ -76,38 +76,45 @@ local gfunc = {
 
 -- functors
 
-local _key, _key2, _nk2, _arg, _idx = {}, {}, {}, {}, {} -- hidden keys
-local fct_mt, fct_mt2, fct_mtb, fct_mb1, fct_mtb2        -- forward declarations
+-- hidden keys
+local _fun, _fun2, _arg, _arg2, _nab, _ini, _idx = {}, {}, {}, {}, {}, {}, {}
+-- forward declarations
+local fct_mt, fct_mtc, fct_mtb, fct_mb1, fct_mtb2, fct_mtb12
 
 function gfunc.functor (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_key]=f}, fct_mt)
+  return setmetatable({[_fun]=f}, fct_mt)
 end
 
 function gfunc.compose (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  return setmetatable({[_key]=f, [_key2]=g}, fct_mt2)
+  return setmetatable({[_fun]=f, [_fun2]=g}, fct_mtc)
 end
 
 function gfunc.bind (f, ...)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   local n = select('#',...)
-  return setmetatable({[_key]=f, [_key2]={...}, [_arg]=table.new(n,0),
-                       [_nk2]=n}, fct_mtb)
+  return setmetatable({[_fun]=f, [_arg]={...}, [_ini]=table.new(n,0),
+                       [_nab]=n}, fct_mtb)
 end
 function gfunc.bind1st (f, a)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_key]=f, [_key2]=a}, fct_mtb1)
+  return setmetatable({[_fun]=f, [_arg]=a}, fct_mtb1)
 end
 
 function gfunc.bind2nd (f, a)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_key]=f, [_key2]=a}, fct_mtb2)
+  return setmetatable({[_fun]=f, [_arg]=a}, fct_mtb2)
+end
+
+function gfunc.bind2st (f, a, b)
+  assert(is_callable(f), "invalid argument #1 (callable expected)")
+  return setmetatable({[_fun]=f, [_arg]=a, [_arg2]=b}, fct_mtb12)
 end
 
 function gfunc.is_functor (a)
-  return is_table(a) and rawget(a,_key) ~= nil
+  return is_table(a) and rawget(a,_fun) ~= nil
 end
 
 function gfunc.is_placeholder (a)
@@ -115,19 +122,19 @@ function gfunc.is_placeholder (a)
 end
 
 local str = \s -> string.format("<functor> %p", s)
-local err = \  -> error "forbidden access to functor"
+local err = \  -> error("forbidden access to functor", 2)
 
 fct_mt = {
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_key)(...),
+  __call      = \s,... -> rawget(s,_fun)(...),
   __index     = \s,k -> s(k),
   __tostring  = str,
   __len = err, __newindex = err, __ipairs = err, __pairs = err,
 }
 
-fct_mt2 = {
+fct_mtc = {
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_key)(rawget(s,_key2)(...)),
+  __call      = \s,... -> rawget(s,_fun)(rawget(s,_fun2)(...)),
   __index     = \s,k -> s(k),
   __tostring  = str,
   __len = err, __newindex = err, __ipairs = err, __pairs = err,
@@ -135,7 +142,7 @@ fct_mt2 = {
 
 fct_mtb1 = {
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_key)(rawget(s,_key2), ...),
+  __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), ...),
   __index     = \s,k -> s(k),
   __tostring  = str,
   __len = err, __newindex = err, __ipairs = err, __pairs = err,
@@ -143,7 +150,15 @@ fct_mtb1 = {
 
 fct_mtb2 = {
   __pow       = gfunc.compose,
-  __call      = \s,a,... -> rawget(s,_key)(a, rawget(s,_key2), ...),
+  __call      = \s,a,... -> rawget(s,_fun)(a, rawget(s,_arg), ...),
+  __index     = \s,k -> s(k),
+  __tostring  = str,
+  __len = err, __newindex = err, __ipairs = err, __pairs = err,
+}
+
+fct_mtb12 = {
+  __pow       = gfunc.compose,
+  __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), rawget(s,_arg2), ...),
   __index     = \s,k -> s(k),
   __tostring  = str,
   __len = err, __newindex = err, __ipairs = err, __pairs = err,
@@ -162,16 +177,16 @@ gfunc._9 = {[_idx]=9}
 local is_placeholder in gfunc
 
 local function bindcall(s, ...) -- slow (faster solution?)
-  local nb , argb = rawget(s,_nk2), rawget(s,_key2)
-  local arg, argc = rawget(s,_arg), {...}
-  for i=1,nb do
+  local nab, argb = rawget(s,_nab), rawget(s,_arg)
+  local arg, argc = rawget(s,_ini), {...}
+  for i=1,nab do
     if is_placeholder(argb[i]) then
       arg[i] = argc[argb[i][_idx]]
     else
       arg[i] = argb[i]
     end
   end
-  return rawget(s,_key)(unpack(arg, 1, nb))
+  return rawget(s,_fun)(unpack(arg, 1, nab))
 end
 
 fct_mtb = {
@@ -190,8 +205,9 @@ NAME
   functor           -- encapsulate a callable into a functor
   compose           -- compose two callables into a functor
   bind              -- bind a callable non placeholder arguments into a functor
-  bind1st           -- bind a callable 1st argument into a functor
-  bind2nd           -- bind a callable 2nd argument into a functor
+  bind1st           -- bind a callable first argument into a functor
+  bind2nd           -- bind a callable second argument into a functor
+  bind2st           -- bind a callable two first arguments into a functor
   bottom or _       -- functor that trigs chain of composition
   is_functor        -- check if the argument is a functor
   is_placeholder    -- check if the argument is a placeholder
@@ -200,9 +216,10 @@ NAME
 SYNOPSIS
   functor(fun)
   compose(fun1, fun2)
-  bind(fun, arg|_N)
+  bind(fun, [arg|_N]+)
   bind1st(fun, arg)
   bind2nd(fun, arg)
+  bind2st(fun, arg1, arg2)
   is_functor(val)
   is_placeholder(val)
 
@@ -240,6 +257,7 @@ __help['gfunc.compose']         = __help['gfunc.functor']
 __help['gfunc.bind']            = __help['gfunc.functor']
 __help['gfunc.bind1st']         = __help['gfunc.functor']
 __help['gfunc.bind2nd']         = __help['gfunc.functor']
+__help['gfunc.bind2st']         = __help['gfunc.functor']
 __help['gfunc.bottom']          = __help['gfunc.functor']
 __help['gfunc.is_functor']      = __help['gfunc.functor']
 __help['gfunc.is_placeholder']  = __help['gfunc.functor']
