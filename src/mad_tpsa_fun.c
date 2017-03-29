@@ -20,6 +20,7 @@
 #include <math.h>
 #include <assert.h>
 
+#include "mad_cst.h"
 #include "mad_log.h"
 #include "mad_desc_impl.h"
 
@@ -720,7 +721,7 @@ FUN(acoth) (const T *a, T *c)
 void
 FUN(erf) (const T *a, T *c)
 {
-  // ERF(X) is the integral from 0 to x from [2/sqrt(PI) * exp(-x*x)]
+  // ERF(X) is the integral from 0 to x from [2/sqrt(pi) * exp(-x*x)]
   assert(a && c);
   ensure(a->d == c->d);
 
