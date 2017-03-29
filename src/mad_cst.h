@@ -19,7 +19,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide a unique place to defined constants.
+  - Provide a unique place to define constants.
 
  o-----------------------------------------------------------------------------o
  */
@@ -46,24 +46,25 @@
 
 // --- Physics constants ------------------------------------------------------o
 
-#ifndef P_CLIGHT
-#define P_CLIGHT    299792458.0                        // m/s
-#define P_MU0       (4e-7*M_PI)                        // T.m/A (or N/A^2)
-#define P_EPSILON0  (1/(4e-7*M_PI*P_CLIGHT*P_CLIGHT))  // F/m
-#define P_QELECT    1.602176620898e-19                 // C
-#define P_HBAR      6.58211951440e-25                  // GeV.s
-#define P_EMASS     0.510998946131e-3                  // GeV
-#define P_PMASS     0.938272081358                     // GeV
-#define P_NMASS     0.939565413358                     // GeV
-#define P_MUMASS    0.105658374524                     // GeV
-#define P_DEUMASS   1.87561292812                      // GeV
-#define P_ERADIUS   2.817940322719e-15                 // m (elec. mag. radius)
+#ifndef P_CLIGHT                           // Source: CODATA 2014
+#define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
+#define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
+#define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
+#define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
+#define P_QELECT    1.602176620898e-19     // [C]     Elementary electric charge
+#define P_HBAR      6.58211951440e-25      // [GeV.s] Reduced Plack's constant
+#define P_EMASS     5.10998946131e-4       // [GeV]   Electron mass
+#define P_PMASS     0.938272081358         // [GeV]   Proton mass
+#define P_NMASS     0.939565413358         // [GeV]   Neutron mass
+#define P_MUMASS    0.105658374524         // [GeV]   Muon mass
+#define P_DEUMASS   1.87561292812          // [GeV]   Deuteron mass
+#define P_ERADIUS   2.817940322719e-15     // [m]     Classical electron radius
 #endif
 
 // --- interface --------------------------------------------------------------o
 
-extern const num_t mad_cst_minlen  ;  // m   minimum length tolerance
-extern const num_t mad_cst_minang  ;  // rad minimum angle  tolerance
+extern const num_t mad_cst_minlen  ;  // [m]   Minimum length tolerance
+extern const num_t mad_cst_minang  ;  // [rad] Minimum angle  tolerance
 
 extern const num_t mad_cst_E       ;  // e
 extern const num_t mad_cst_LOG2E   ;  // log_2 e
@@ -79,17 +80,17 @@ extern const num_t mad_cst_2_SQRTPI;  // 2/sqrt(pi)
 extern const num_t mad_cst_SQRT2   ;  // sqrt(2)
 extern const num_t mad_cst_1_SQRT2 ;  // 1/sqrt(2)
 
-extern const num_t mad_cst_CLIGHT  ;  // m/s
-extern const num_t mad_cst_MU0     ;  // T.m/A (or N/A^2)
-extern const num_t mad_cst_EPSILON0;  // F/m
-extern const num_t mad_cst_QELECT  ;  // C
-extern const num_t mad_cst_HBAR    ;  // GeV.s
-extern const num_t mad_cst_EMASS   ;  // GeV
-extern const num_t mad_cst_PMASS   ;  // GeV
-extern const num_t mad_cst_NMASS   ;  // GeV
-extern const num_t mad_cst_MUMASS  ;  // GeV
-extern const num_t mad_cst_DEUMASS ;  // GeV
-extern const num_t mad_cst_ERADIUS ;  // m (elec. mag. radius)
+extern const num_t mad_cst_CLIGHT  ;  // [m/s]
+extern const num_t mad_cst_MU0     ;  // [T.m/A] or [N/A^2] or [V.s/(A.m)]
+extern const num_t mad_cst_EPSILON0;  // [F/m]
+extern const num_t mad_cst_QELECT  ;  // [C]
+extern const num_t mad_cst_HBAR    ;  // [GeV.s]
+extern const num_t mad_cst_EMASS   ;  // [GeV]
+extern const num_t mad_cst_PMASS   ;  // [GeV]
+extern const num_t mad_cst_NMASS   ;  // [GeV]
+extern const num_t mad_cst_MUMASS  ;  // [GeV]
+extern const num_t mad_cst_DEUMASS ;  // [GeV]
+extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // ----------------------------------------------------------------------------o
 
