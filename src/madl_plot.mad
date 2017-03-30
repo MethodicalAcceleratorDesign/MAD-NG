@@ -45,7 +45,7 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element, totable                      in MAD
+local range, nrange, vector, element, totable, same                in MAD
 local isa_matrix, is_range, is_table, is_number, is_string         in MAD.typeid
 local min, max                                                     in MAD.gmath
 local chain, duplicate                                             in MAD.fun
@@ -271,7 +271,7 @@ local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'co
 local temp_preamble = { "#$preamble \n" }
 local temp_window   = { "set terminal x11 persist \n" }
 local temp_tofile   = {
-  "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
+  "set terminal $terminaltype size $xsize cm, $ysize cm font '$fontname, $fontsize' enhanced color\n",
   "set output '$filename' \n",
 }
 local temp_unmult = {"\nunset multiplot \n" }
@@ -327,10 +327,9 @@ local gp = setmetatable({},{
 function exec(self)
   local dashtypes  = { "solid", "solid", "solid", "solid", "solid", "solid",
                        "solid", "solid", "solid", "solid", "solid","'-'"}
-  local colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
-                   "green"      , "blue"  , "orange"   , "violet"  , "pink",
-                   "greenyellow", "gray"  , "dark-grey", "dark-red", "gold",
-                   "orangered4" , "brown4" }
+  local colors = { "red"  , "blue"     , "green"    , "orange", "yellow", "purple",
+                   "pink" , "brown"    , "turquoise", "violet", "greenyellow",
+                   "gray" , "dark-grey", "dark-red" , "gold" }
   local axes, temp = {}
   if     self.filename == name then temp = chain_tbl( {}        ,              template)
   elseif self.filename         then temp = chain_tbl(temp_unmult, temp_tofile, template)
@@ -339,8 +338,10 @@ function exec(self)
   end
 
   if self.preamble    then temp = chain_tbl(temp_preamble, temp) end
-  if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
-  else                     self.interpolate = "with points pointtype ptt"
+
+  if     self.interpolate == 'lines'       then self.interpolate = "with lines       dashtype  dtt"
+  elseif self.interpolate == 'linespoints' then self.interpolate = "with linespoints pointtype ptt pointsize pts"
+  elseif self.interpolate == 'points'      then self.interpolate = "with points      pointtype ptt pointsize pts"
   end
 
   if     self.vaxis2 and self.haxis2 then temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_plot )
@@ -374,18 +375,24 @@ function exec(self)
     temp = chain_tbl( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off )
   end
 
-  local count = 2..(#self.out)+1
+  local count      = 2..(#self.out)+1
   local pointtypes = totable(1..(#self.out))
+  local pointsizes = totable(vector(#self.out):fill(1) )
   axes       = temp_style( self.axes      , axes      , self.keys )
   colors     = temp_style( self.colors    , colors    , self.keys )
   pointtypes = temp_style( self.pointtypes, pointtypes, self.keys )
+  pointtypes = temp_style( self.pointsizes, pointsizes, self.keys )
   dashtypes  = temp_style( self.dashtypes , dashtypes , self.keys )
+
+  local ytitle = temp_style( self.lkeys     , same(self.out)  , self.keys )
+
   temp_interp( temp, self        )
   temp_fill  ( temp, colors      , "colors"  )
   temp_fill  ( temp, axes        , "setaxes" )
   temp_fill  ( temp, pointtypes  , "ptt"     )
+  temp_fill  ( temp, pointsizes  , "pts"     )
   temp_fill  ( temp, dashtypes   , "dtt"     )
-  temp_fill  ( temp, self.out    , "ytitle"  )
+  temp_fill  ( temp, ytitle      , "ytitle"  )
   temp_fill  ( temp, count       , "count"   )
   temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
@@ -410,16 +417,16 @@ local plot = Command 'plot' {
   table    = false,
   data     = false,
   sequence = false,
+  filename = false,
+  filecopy = false,
   haxis    = 'x',
   vaxis    = 'y',
   vaxis2   = false,
   haxis2   = false,
-  filename = false,
-  filecopy = false,
   script   = \s mk_script(s.filename),
   terminaltype = "postscript eps",
-  fonttype     = "Times-Roman"   ,
-  fontsize = 22 ,
+  fontname     = "Times-Roman"   ,
+  fontsize = 28 ,
   xsize    = 27 ,
   ysize    = 17 ,
   lmargin  = 0.1,
@@ -438,7 +445,7 @@ local plot = Command 'plot' {
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-  interpolate = false ,
+  interpolate = 'points',
 
   vlimit2  = {nil, nil},
   ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
@@ -453,11 +460,13 @@ local plot = Command 'plot' {
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
 
-  axes       = false,
   linewidth  = 1    ,
+  axes       = false,
   colors     = false,
   pointtypes = false,
+  pointsizes = false,
   dashtypes  = false,
+  lkeys      = false,
 
   title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
