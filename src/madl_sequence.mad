@@ -150,7 +150,7 @@ end
 
 -- get element index (linear)
 local function efind_idx (seq, e, idx_, cnt_)
-  if e ~= nil then
+  if not is_nil(e) then
     local start, stop, step = idx_ or 1
     if start > 0
     then stop, step = #seq, 1
@@ -211,7 +211,7 @@ local function index_of (seq, a, idx_)
   return find_idx(seq, seq[a.name], idx_)
 end
 
--- get closest index from s position (linear)
+-- get closest index from 's' position (linear)
 local function sindex_of (seq, s, idx_)
   local s_pos = seq.s_pos
   local start, stop, step = idx_ or 1
@@ -228,10 +228,20 @@ local function sindex_of (seq, s, idx_)
   return nil
 end
 
+-- get 'from' position, memoize result if not relative
 local function from_pos (seq, from, idx_)
-  if seq[_lastfrom] ~= from then -- TODO: from should be unique?
-    seq[_lastfrom   ] = from
-    seq[_lastfrompos] = elem_pos(seq, index_of(seq, from, idx_))
+  assert(is_string(from), "invalid argument #2 (string expected)")
+  if seq[_lastfrom] ~= from then             -- memoized?
+    local idx = index_of_str(seq, from, idx_)
+    if is_nil(idx) then                      -- not found
+      seq_error("invalid from of '" .. from .. "'", sequ, idx_)
+    end
+    seq[_lastfrompos] = elem_pos(seq, idx)
+    if string.sub(from, -1) ~= '}' then
+      seq[_lastfrom] = from                  -- not relative: memoize
+    else
+      seq[_lastfrom] = nil                   -- relative: do not memoize
+    end
   end
   return seq[_lastfrompos]
 end
@@ -241,8 +251,8 @@ end
 -- refpos (sequence)
 local function sequ_rpos (sequ)
   local rpos = sequ.refpos
-  if rpos == nil then return 0 end
-  local idx = sequ:index_of(rpos)
+  if is_nil(rpos) then return 0 end
+  local idx = index_of(sequ, rpos)
   return sequ.e_pos[idx]
 end
 
@@ -267,8 +277,7 @@ function elem_pos (sequ, idx, elem_)
   elseif from == 'end'   then pos = sequ.l - pos
   elseif from == 'prev'  then pos = pos + (idx  > 1     and elem_pos(sequ,idx-1)+sequ[idx-1].l or 0)
   elseif from == 'next'  then pos = pos + (fidx < #sequ and elem_pos(sequ,fidx) or sequ.l)
-  elseif sequ[from]      then pos = pos + from_pos(sequ, from)
-  else seq_error("invalid from of '" .. from .. "'", sequ, idx)
+  else                        pos = pos + from_pos(sequ, from, idx)
   end
 
   local refer, rpos
@@ -290,10 +299,8 @@ end
 
 -- compute s positions of sub sequence elements
 local function sequ_pos (sequ, sseq, idx)
-  local elem, pos, rpos
-  elem, sequ[idx] = sequ[idx], sseq -- find subsequence position
-  sequ[idx], pos, rpos = elem, elem_pos(sequ, idx) -- TODO: cleaner approach
-  pos = pos - rpos                  -- shift by subsequence refpos
+  local pos, rpos = elem_pos(sequ, idx, sseq)
+  pos = pos - rpos  -- shift by subsequence refpos
   for i=1,#sseq do
     sequ.e_pos[i+idx-1] = sseq.e_pos[i] + pos
     sequ.s_pos[i+idx-1] = sseq.s_pos[i] + pos
@@ -412,7 +419,7 @@ local function finish_sequ (sequ)
   local len = sequ.s_pos[n] + sequ[n].l
   if sequ.l < len then sequ.l = len end
 
-  -- clear from cache
+  -- clear memoization
   sequ[_lastfrom], sequ[_lastfrompos] = nil, nil
 end
 
@@ -529,7 +536,7 @@ local function tie (seq1, seq2) -- e.g. lhcb1:tie(lhcb2)
     local e1 = seq1[i1]
     local name = e1.name
     local e2 = seq2[name]
-    if e2 ~= nil then
+    if not is_nil(e2) then
       assert(e1.is_element == true, "invalid shared element (must be unique)")
       assert(e2.is_element == true, "invalid shared element (must be unique)")
       local i2 = find_idx(seq2, e2)
