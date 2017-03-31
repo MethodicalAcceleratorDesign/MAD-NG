@@ -91,46 +91,39 @@ Ranges:
 
 -- locals ---------------------------------------------------------------------o
 
-local abs                                                  in math
-local vector                                               in MAD
-local is_nil, is_number, is_string, is_rawtable, is_object in MAD.typeid
-local is_iterable, is_callable                             in MAD.concept
-local Element                                              in MAD.element
-local minlen                                               in MAD.constant
+local abs                                                   in math
+local vector                                                in MAD
+local is_nil, is_number, is_string, is_rawtable, is_element in MAD.typeid
+local is_iterable, is_callable                              in MAD.concept
+local Element                                               in MAD.element
+local minlen                                                in MAD.constant
 
 -- definitions ----------------------------------------------------------------o
 
 -- hidden keys: elements indexes, elements positions, elements entry positions.
 local _eidx, _epos, _spos = {}, {}, {}
-local _lastfrom, _lastfrompos = {}, {}
+local _lastfrom, _lastfrompos = {}, {} -- temporaries
 
 -- special numerical value for elements positions.
 local uninitialized = -1e9
 local ongoing_init  = -2e9
 local maximum_dist  =  2e9 -- to find the closest
 
+ -- forward declarations
+local elem_pos
+
 -- default sequence
 local sequence = Element 'sequence' {
   kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
 }
 
-local sequence_init, sequence_len, elem_pos -- forward declarations
-
-sequence:set_metamethod({
-  __init = \s -> sequence_init(s),
-  __len  = \s -> sequence_len (s),
-}, true)
-
-local function seq_error (msg, sequ, idx, elem)
-    error(msg .. " in sequence '"  .. sequ.name
-              .. "' for element '" .. (elem and elem.name or sequ[idx].name)
-              .. "' at index "     .. (idx or '?'))
-end
-
 -- helpers --------------------------------------------------------------------o
 
-local function is_element(a)
-  return is_object(a) and a.is_element == true
+local function seq_error (msg, sequ, idx, elem)
+  local ename = elem and elem.name or sequ[idx] and sequ[idx].name
+  error(msg .. " in sequence '"  .. (sequ.name or '?')
+            .. "' for element '" .. (ename     or '?')
+            .. "' at index "     .. (idx       or '?'), 2)
 end
 
 -- dictionnary { key=nil|val|{val1,...} }
@@ -207,8 +200,10 @@ local function index_of (seq, a, idx_)
   if is_string(a) then
     return index_of_str(seq, a, idx_)
   end
-  assert(is_element(a), "invalid argument #2 (index, string or element expected)")
-  return find_idx(seq, seq[a.name], idx_)
+  if is_element(a) then
+    return find_idx(seq, seq[a.name], idx_)
+  end
+  error("invalid argument #2 (index, string or element expected)")
 end
 
 -- get closest index from 's' position (linear)
@@ -230,7 +225,7 @@ end
 
 -- get 'from' position, memoize result if not relative
 local function from_pos (seq, from, idx_)
-  assert(is_string(from), "invalid argument #2 (string expected)")
+  assert(is_string(from), "invalid from (string expected)")
   if seq[_lastfrom] ~= from then             -- memoized?
     local idx = index_of_str(seq, from, idx_)
     if is_nil(idx) then                      -- not found
@@ -289,7 +284,7 @@ function elem_pos (sequ, idx, elem_)
   elseif refer == 'centre' then rpos = elem.l/2
   elseif refer == 'exit'   then rpos = elem.l
   elseif refer == 'refpos' then rpos = sequ_rpos(elem)
-  else seq_error("invalid refer to '" .. refer .. "'", sequ, idx)
+  else seq_error("invalid refer to '" .. refer .. "'", sequ, idx, elem_)
   end
 
   sequ.e_pos[idx] = pos
@@ -321,25 +316,28 @@ end
 
 -- flatten lines and sub sequence
 local function flatten_line (line, flat, sref, k, rev)
-  local n = (line.__rep or 1) * rev
-  local start, stop, step, elem
-
-  if n < 0
-  then n, start, stop, step = -n, #line,     1, -1
-  else n, start, stop, step =  n, 1    , #line,  1
+  local len, n = #line, (line.__rep or 1) * rev
+  if len == 0 then
+    seq_error("invalid empty line detected", line, k)
   end
 
-  for i = 1,n do
-    for idx = start,stop,step do
-      elem = line[idx]
-      if is_rawtable(elem) or elem.is_bline == true then
+  local start, stop, step
+  if n < 0
+  then n, start, stop, step = -n, len,   1, -1
+  else n, start, stop, step =  n, 1  , len,  1
+  end
+
+  for i=1,n do
+    for j=start,stop,step do
+      local elem = line[j]
+      if not (is_element(elem) or is_rawtable(elem)) then
+        seq_error("invalid element detected", line, j)
+      elseif elem.is_bline == true or is_rawtable(elem) then
         k = flatten_line(elem, flat, sref, k, step)
       elseif elem.is_sequence == true then
         k = copy_sequ   (elem, flat, sref, k)
-      elseif elem.is_element == true then
+      else -- other elements
         k, flat[k], sref[k] = k+1, elem, false
-      else
-        seq_error("invalid element detected", line, idx)
       end
     end
   end
@@ -351,14 +349,14 @@ local function flatten_sequ (sequ, flat, sref)
   local k, n = 1, #sequ
   for i=1,n do
     local elem = sequ[i]
-    if is_rawtable(elem) or elem.is_bline == true then
+    if not (is_element(elem) or is_rawtable(elem)) then
+      seq_error("invalid element detected", sequ, i)
+    elseif elem.is_bline == true or is_rawtable(elem) then
       k = flatten_line(elem, flat, sref, k, 1)
     elseif elem.is_sequence == true then
       k = copy_sequ   (elem, flat, sref, k)
-    elseif elem.is_element == true then
+    else -- other elements
       k, flat[k], sref[k] = k+1, elem, false
-    else
-      seq_error("invalid element detected", sequ, idx)
     end
   end
   assert(n+1 <= k and #flat == #sref, "unexpected corrupted flat sequence")
@@ -423,17 +421,7 @@ local function finish_sequ (sequ)
   sequ[_lastfrom], sequ[_lastfrompos] = nil, nil
 end
 
--- forwarded meta-functions ---------------------------------------------------o
-
-function sequence_len (sequ)
-  local len = 0
-  while sequ ~= sequence do
-    len = sequ:rawlen()
-    if len ~= 0 then return len end
-    sequ = sequ.parent
-  end
-  return 0
-end
+-- metamethods ----------------------------------------------------------------o
 
 -- sequence init (build)
 function sequence_init (sequ)
@@ -447,6 +435,10 @@ function sequence_init (sequ)
   finish_sequ  (sequ)
   return sequ:set_readonly()
 end
+
+sequence:set_metamethod {
+  __init = sequence_init,
+}
 
 -- methods --------------------------------------------------------------------o
 
@@ -580,7 +572,7 @@ sequence:set_variable {
   filter       = filter,
   select       = select,
   deselect     = \s,r -> s:select(ffalse, r),
-  is_selected := error("invalid sequence operation"),
+  is_selected := error("invalid sequence operation", 2),
 --  identifier   = identifier,
   unique       = unique,
   tie          = tie,
