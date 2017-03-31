@@ -93,12 +93,13 @@ Ranges:
 
 -- locals ---------------------------------------------------------------------o
 
-local abs                                                   in math
-local vector, tostring                                      in MAD
-local is_nil, is_number, is_string, is_rawtable, is_element in MAD.typeid
-local is_iterable, is_callable                              in MAD.concept
-local Element                                               in MAD.element
-local minlen                                                in MAD.constant
+local abs, min                  in math
+local vector, tostring          in MAD
+local is_iterable, is_callable  in MAD.concept
+local Element                   in MAD.element
+local minlen                    in MAD.constant
+local is_nil, is_number, is_string, is_rawtable, is_range, is_element
+                                in MAD.typeid
 
 -- definitions ----------------------------------------------------------------o
 
@@ -145,12 +146,12 @@ end
 
 -- get closest s_pos index (linear), exported
 local function sindex_of (seq, s, idx_)
-  local start, stop, step = idx_ or 1
+  local len, start, stop, step = #seq, idx_ or 1
   assert(is_number(s    ), "invalid argument #2 (number expected)")
   assert(is_number(start), "invalid argument #3 (index expected)")
   if start > 0
-  then stop, step = #seq, 1
-  else stop, step, start = 1, -1, -start
+  then stop, step = len, 1
+  else stop, step, start = 1, -1, min(-start, len)
   end
   local smin, s_pos = maximum_dist, seq.s_pos
   for i=start,stop,step do  -- linear search
@@ -164,11 +165,11 @@ end
 -- get closest element index (linear)
 local function efind_idx (seq, elm, idx_, cnt_)
   if is_nil(elm) then return nil end
-  local start, stop, step = idx_ or 1
+  local len, start, stop, step = #seq, idx_ or 1
   assert(is_number(start), "invalid argument #3 (index expected)")
   if start > 0
-  then stop, step = #seq, 1
-  else stop, step, start = 1, -1, -start
+  then stop, step = len, 1
+  else stop, step, start = 1, -1, min(-start, len)
   end
   local cnt = cnt_ or 1
   assert(is_number(cnt), "invalid argument #4 (count expected)")
@@ -204,7 +205,7 @@ local function index_of_str (seq, s, idx_)
   local i, j, name, del = string.find(s, "([^[{/]+)([[{]?)")
   assert(name ~= nil and i == 1, "invalid argument #2 (name expected)")
   local elm, cnt, rel = seq[name]                            -- get element
-  if is_nil(elm)   then return nil                           -- not found
+  if is_nil(elm)    then return nil                          -- not found
   elseif del == ''  then return index_of_elm(seq, elm)       -- index of "name"
   elseif del == '[' then i, j, cnt = string.find(s, "[(%d+)]", j) -- get count
   else                   i, j, cnt = string.find(s, "{(%d+)}", j) ; rel = true
@@ -228,11 +229,14 @@ end
 -- get 'from' element position, memoize result if count is not relative
 local function from_epos (seq, from, idx)
   if seq[_lastfrom] ~= from then             -- memoized?
-    if is_element(from) then from = from.name end
-    assert(is_string(from), "invalid from (string or element expected)")
-    idx = index_of_str(seq, from, idx)
+    local idx, name
+    if is_string(from) then
+      idx, name = index_of_str(seq, from, idx), from
+    elseif is_element(from) then
+      idx, name = index_of_elm(seq, from), from.name
+    end
     if is_nil(idx) then                      -- not found
-      seq_error("invalid from of '" .. from .. "'", seq, idx)
+      seq_error("invalid from of '" .. name .. "'", seq, idx)
     end
     seq[_lastfrompos] = elem_pos(seq, idx)
     if string.sub(from, -1) ~= '}'
@@ -259,12 +263,16 @@ end
 
 -- refpos (sequence)
 local function sequ_rpos (seq)
-  local rpos = seq.refpos
+  local rpos, idx, name = seq.refpos
       if is_nil    (rpos) then return 0
-  elseif is_element(rpos) then rpos = rpos.name
+  elseif is_string (rpos) then
+    idx, name = index_of_str(seq, rpos), from
+  elseif is_element(rpos) then
+    idx, name = index_of_elm(seq, rpos), rpos.name
   end
-  assert(is_string(rpos), "invalid refpos (string or element expected)")
-  local idx = index_of_str(seq, rpos)
+  if is_nil(idx) then                      -- not found
+    seq_error("invalid from of '" .. name .. "'", seq, idx)
+  end
   return seq.e_pos[idx]
 end
 
@@ -288,8 +296,8 @@ end
 -- compute s positions of sequence elements
 function elem_pos (seq, idx, elm_)
   local epos = seq.e_pos[idx]
-  if epos >= 0 then return epos end
-  if epos == ongoing_init then
+      if epos >= 0 then return epos
+  elseif epos == ongoing_init then
     seq_error("cycling dependencies detected", seq, idx, elm_)
   elseif epos ~= uninitialized then
     seq_error("corrupted s-position detected", seq, idx, elm_)
@@ -321,15 +329,13 @@ end
 
 -- copy sub sequence
 local function copy_sequ (seq, flat, sref, k)
-  local k0 = k
-  for i=1,#seq do
-    k, flat[k], sref[k] = k+1, seq[i], false
-  end
-  if k ~= k0 then sref[k0] = seq end -- keep a link of the subsequence
-  return k
+  local len = #seq
+  for i=1,len do flat[k-1+i] = seq[i] end
+  sref[k] = seq -- keep a link of the subsequence
+  return k+len
 end
 
--- flatten lines and sub sequence
+-- flatten lines and subsequence
 local function flatten_line (line, flat, sref, k, rev)
   local len, n = #line, (line.__rep or 1) * rev
   if len == 0 then
@@ -352,7 +358,7 @@ local function flatten_line (line, flat, sref, k, rev)
     elseif elm.is_sequence == true then
       k = copy_sequ   (elm, flat, sref, k)
     else -- other elements
-      k, flat[k], sref[k] = k+1, elm, false
+      k, flat[k] = k+1, elm
     end
   end end
   return k
@@ -360,7 +366,7 @@ end
 
 -- flatten sequence
 local function flatten_sequ (seq, flat, sref)
-  local k, n = 1, #seq
+  local k, n = 1, seq:rawlen()
   for i=1,n do
     local elm = seq[i]
     if not (is_element(elm) or is_rawtable(elm)) then
@@ -370,10 +376,10 @@ local function flatten_sequ (seq, flat, sref)
     elseif elm.is_sequence == true then
       k = copy_sequ   (elm, flat, sref, k)
     else -- other elements
-      k, flat[k], sref[k] = k+1, elm, false
+      k, flat[k] = k+1, elm
     end
   end
-  assert(n+1 <= k and #flat == #sref, "unexpected corrupted flat sequence")
+  assert(n <= k-1, "unexpected corrupted flat sequence")
 end
 
 -- build sequence and dictionnaries
@@ -386,38 +392,39 @@ local function build_sequ (seq, flat)
     eidx[elm] = add_to(eidx[elm], idx )     -- dict elem->index
   end
   seq[_eidx] = eidx
-  assert(#seq == #flat, "unexpected corrupted flat sequence")
+  assert(seq:rawlen() == #flat, "unexpected corrupted flat sequence")
 end
 
 -- compute elements positions
+local function build_pos_err(typ, seq, idx, pos)
+  seq_error(string.format(
+    "invalid %s position at s = %.6gm (negative drift %.6gm)",
+    typ, seq.s_pos[idx], seq.s_pos[idx]-pos), seq, idx)
+end
+
 local function build_pos (seq, sref)
-  assert(#seq == #sref,  "unexpected corrupted flat sequence")
-  local idx, len, pos = 1, #seq, 0
+  local idx, len, pos = 1, seq:rawlen(), 0
   seq[_epos] = vector(len):ones(uninitialized)
   seq[_spos] = vector(len)
   while idx <= len do
-    if sref[idx] == false then    -- element
+    local sseq = sref[idx]
+    if is_nil(sseq) then     -- element
       elem_pos(seq, idx)
       if pos-minlen > seq.s_pos[idx] then
-        seq_error(string.format(
-          "invalid element position at s = %.6gm (negative drift %.6gm)",
-          seq.s_pos[idx], seq.s_pos[idx]-pos), seq, idx)
+        build_pos_err('element', seq, idx, pos)
       end
       pos = seq.s_pos[idx] + seq[idx].l
       idx = idx + 1
-    else                          -- subsequence
-      local sseq = sref[idx]
+    else                     -- subsequence
       sequ_pos(seq, sseq, idx)
       if pos-minlen > seq.s_pos[idx] then
-        seq_error(string.format(
-          "invalid subsequence position at s = %.6gm (negative drift %.6gm)",
-          seq.s_pos[idx], seq.s_pos[idx]-pos), seq, idx)
+        build_pos_err('subsequence', seq, idx, pos)
       end
       pos = seq.s_pos[idx] - sseq.s_pos[1] + sseq.l
       idx = idx + #sseq
     end
   end
-  assert(len+1 == idx, "unexpected corrupted flat sequence")
+  assert(len == idx-1, "unexpected corrupted flat sequence")
 end
 
 local function finish_sequ (seq)
@@ -460,55 +467,66 @@ sequence:set_metamethod {
 local function range_index (seq, rng)
   local start, stop
   if is_string(rng) then
-    local s1, s2  = string.match(rng, "([^/]+)/?(.*)")
+    local s1, s2 = string.match(rng, "([^/]+)/?(.*)")
     start, stop = tonumber(s1) or s1, tonumber(s2) or s2
+  elseif is_range(rng) then
+    assert(not rng:is_empty(), "invalid empty range")
+    start, stop = rng:ranges()
   else
-    start = is_iterable(rng) and rng[1] or rng or 1
-    stop  = is_iterable(rng) and rng[2] or rng or #seq
+    start = is_rawtable(rng) and rng[1] or rng or  1
+    stop  = is_rawtable(rng) and rng[2] or rng or -1
   end
   start = assert(index_of(seq, start), "invalid range start")
   stop  = assert(index_of(seq, stop ), "invalid range stop" )
-  assert(start <= stop, "invalid range, start > stop")
-  return start, stop
+  if start <= stop then
+    return start, stop, nil
+  else
+    return start, #seq, stop
+  end
 end
 
 local function pos_of (seq, elm, start_)
-  local idx = index_of(seq, elm, start_)
-  assert(is_number(idx), "invalid argument #2 (valid key expected)")
-  return seq[_epos][idx]
+  return seq[_epos][index_of(seq, elm, start_)]
 end
 
 local function spos_of (seq, elm, start_)
-  local idx = index_of(seq, elm, start_)
-  assert(is_number(idx), "invalid argument #2 (valid key expected)")
-  return seq[_spos][idx]
+  return seq[_spos][index_of(seq, elm, start_)]
 end
 
 local function foreach (seq, f, rng_)
   assert(is_callable(f), "invalid argument #2 (callable expected)")
-  local start, stop = range_index(seq, rng_)
-  for i=start,stop do f(seq[i],i) end
+  local start, stop, stop2 = range_index(seq, rng_)
+  repeat
+    for i=start,stop do f(seq[i],i) end
+    start, stop = 1, stop2
+  until is_nil(stop)
   return seq
 end
 
 local function filter (seq, p, rng_)
   assert(is_callable(p), "invalid argument #2 (callable expected)")
-  local r, start, stop = {}, range_index(seq, rng_)
-  for i=start,stop do
-    if p(seq[i],i) == true then r[#r+1] = seq[i] end
-  end
+  local r, start, stop, stop2 = {}, range_index(seq, rng_)
+  repeat
+    for i=start,stop do
+      if p(seq[i],i) == true then r[#r+1] = seq[i] end
+    end
+    start, stop = 1, stop2
+  until is_nil(stop)
   return r
 end
 
 local function select (seq, p, rng_)
   assert(is_callable(p), "invalid argument #2 (callable expected)")
-  local start, stop = range_index(seq, rng_)
-  for i=start,stop do
-    local elm = seq[i]
-    local flag = p(elm,i)
-        if flag == true  then elm:  select()
-    elseif flag == false then elm:deselect() end
-  end
+  local start, stop, stop2 = range_index(seq, rng_)
+  repeat
+    for i=start,stop do
+      local elm = seq[i]
+      local flag = p(elm,i)
+          if flag == true  then elm:  select()
+      elseif flag == false then elm:deselect() end
+    end
+    start, stop = 1, stop2
+  until is_nil(stop)
   return seq
 end
 
