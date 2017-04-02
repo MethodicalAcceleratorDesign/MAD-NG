@@ -38,7 +38,7 @@ local function dumpseq (seq)
   print()
   print('sequence:', seq.name)
   print('i', 'name', 'L', 'S (s)', 'S (e)')
-  seq:foreach \e,i => print(i, e.name, e.l, seq.s_pos[i], seq.e_pos[i]) end
+  seq:foreach \e,i => print(i, e.name, e.l, seq:s_pos(i), seq:e_pos(i)) end
   MAD.option.format = fmt
 end
 
@@ -68,7 +68,7 @@ function TestSequence:testSimple01()
   local lcell = 10
 
   local seq = sequence 'simple01' {
-    l = lcell, direction=1, refer = 'entry',
+    l = lcell, refer = 'entry',
     ip 'IP1' { at = 0 },
     qf 'QF1' { at = 0 },
     ip 'IP2' { at = lcell },
@@ -76,7 +76,22 @@ function TestSequence:testSimple01()
 
   -- dumpseq(seq)
   assertEquals(#seq, 3)
-  assertEquals(seq.s_pos[#seq], lcell)
+  assertEquals(seq:s_pos(#seq), lcell)
+end
+
+function TestSequence:testSimple02()
+  local marker, quadrupole, sequence in MAD.element
+  local mk = marker     'mk' {}
+  local mq = quadrupole 'mq' { l=3 }
+
+  local seq = sequence 's02' {
+    refer = 'entry',
+    mk 'mk' { at = 0 },
+    mq 'mq' { at = 0 },
+    mk 'mk' { at = mq.l },
+  }
+  assertEquals(#seq, 3)
+  assertEquals(seq:s_pos(#seq), mq.l)
 end
 
 function TestSequence:testSPSDef()
@@ -99,7 +114,7 @@ function TestSequence:testSPSDef()
   local SPS = sequence 'SPS' {6*super}                -- # = 1188 (6*198)
 
   assertEquals(#SPS, 1188)
-  assertEquals(SPS.s_pos[#SPS], 0)
+  assertEquals(SPS:s_pos(#SPS), 0)
 end
 
 function TestSequence:testConvertFiveCell2File()
@@ -113,7 +128,7 @@ function TestSequence:testConvertFiveCell2File()
 --  dumpseq(ins)
 --  dumpseq(fivecell)
   assertEquals(#fivecell, 79)
-  assertEquals(fivecell.s_pos[#fivecell], 534.6)
+  assertEquals(fivecell:s_pos(#fivecell), 534.6)
 end
 
 function TestSequence:testConvertFiveCell2Mem()
@@ -123,7 +138,7 @@ function TestSequence:testConvertFiveCell2Mem()
 
   local fivecell in MADX
   assertEquals(#fivecell, 79)
-  assertEquals(fivecell.s_pos[#fivecell], 534.6)
+  assertEquals(fivecell:s_pos(#fivecell), 534.6)
 end
 
 function TestSequence:testLoadFiveCell()
@@ -131,7 +146,7 @@ function TestSequence:testLoadFiveCell()
 
   local fivecell in MADX
   assertEquals(#fivecell, 79)
-  assertEquals(fivecell.s_pos[#fivecell], 534.6)
+  assertEquals(fivecell:s_pos(#fivecell), 534.6)
 end
 
 function TestSequence:testConvertLHC2Files()
@@ -146,8 +161,8 @@ function TestSequence:testConvertLHC2Files()
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
-  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
-  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
+  assertEquals(lhcb1:s_pos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:s_pos(#lhcb2), 26658.8832)
 end
 
 function TestSequence:testConvertLHC2Mem()
@@ -159,8 +174,8 @@ function TestSequence:testConvertLHC2Mem()
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
-  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
-  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
+  assertEquals(lhcb1:s_pos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:s_pos(#lhcb2), 26658.8832)
 end
 
 function TestSequence:testLoadLHC()
@@ -172,8 +187,8 @@ function TestSequence:testLoadLHC()
   local lhcb1, lhcb2 in MADX
   assertEquals(#lhcb1, 6675)
   assertEquals(#lhcb2, 6674)
-  assertEquals(lhcb1.s_pos[#lhcb1], 26658.8832)
-  assertEquals(lhcb2.s_pos[#lhcb2], 26658.8832)
+  assertEquals(lhcb1:s_pos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:s_pos(#lhcb2), 26658.8832)
 end
 
 -- forwarded meta-functions ---------------------------------------------------o
@@ -261,6 +276,28 @@ function TestSequence:testSequence_len()
   assertEquals( sequence {ip}.l, 0 )
   assertEquals( seq      {  }.l, 1 )
   assertEquals( seq2     {  }.l, 5 )
+end
+
+function TestSequence:testWriteAccess() -- same as simple02
+  local msg = {
+    "forbidden write access to readonly object 'seq'",
+    "forbidden write access to counts",
+  }
+  local marker, quadrupole, sequence in MAD.element
+  local mk = marker     'mk' {}
+  local mq = quadrupole 'mq' { l=3 }
+  local seq = sequence 'seq' { refer='entry',
+    mk 'mk' { at = 0 },
+    mq 'mq' { at = 0 },
+    mk 'mk' { at = mq.l },
+  }
+  local set = \s,k,v => s[k]=v end
+  assertErrorMsgContains( msg[1], set, seq   , 1   , mk )
+  assertErrorMsgContains( msg[1], set, seq   , 10  , mk )
+  assertErrorMsgContains( msg[1], set, seq   , 'mq', mq )
+  assertErrorMsgContains( msg[1], set, seq   , 'mk', mk )
+  assertErrorMsgContains( msg[2], set, seq.mk, 1   , mk )
+  assertErrorMsgContains( msg[2], set, seq.mk, 10  , mk )
 end
 
 -- helpers --------------------------------------------------------------------o
