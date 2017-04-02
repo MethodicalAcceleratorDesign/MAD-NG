@@ -129,7 +129,9 @@ function MT:__index (k)
 end
 
 function MT:__newindex (k, v)
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    error("forbidden write access to readonly object '"..(self.name or '?').."'",2)
+  end
   rawget(self,_var)[k] = v
 end
 
@@ -156,7 +158,9 @@ end
 local function set_parent (self, p) -- exported
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_object(p)   , "invalid argument #2 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    error("forbidden write access to readonly object '"..(self.name or '?').."'",2)
+  end
   rawset(self,'__index', rawget(p,_var))
   return self
 end
@@ -179,15 +183,19 @@ local function is_instanceOf (a, b) -- exported
 end
 
 local function len_raw (self)
-  return rawlen(rawget(self,_var))     -- no inheritance
+  return rawlen(rawget(self,_var))    -- no inheritance
+end
+
+local function var_raw (self, k)
+  return rawget(self,_var)[k]         -- no function evaluation (w inheritance)
 end
 
 local function get_raw (self, k)
-  return rawget(rawget(self,_var),k)   -- no inheritance nor function evaluation
+  return rawget(rawget(self,_var),k)  -- no inheritance nor function evaluation
 end
 
 local function set_raw (self, k, v)
-  rawset(rawget(self,_var),k,v)        -- no protection
+  rawset(rawget(self,_var),k,v)       -- no protection
 end
 
 local function get_variable (self, lst, eval)
@@ -406,6 +414,10 @@ local function strdump (self, class, pattern)
   return table.concat(res, '\n')
 end
 
+-- members
+M.__id  = 'Object'
+M.__par = parent
+
 -- methods
 M.is_class       = functor( is_class       )
 M.is_readonly    = functor( is_readonly    )
@@ -421,6 +433,7 @@ M.set_metamethod = functor( set_metamethod )
 M.clear_array    = functor( clear_array    )
 M.clear_variable = functor( clear_variable )
 M.rawlen         = functor( len_raw        )
+M.rawvar         = functor( var_raw        )
 M.rawget         = functor( get_raw        )
 M.rawset         = functor( set_raw        )
 M.set_flag       = functor( set_flag       )
@@ -433,21 +446,15 @@ M.close_env      = functor( close_env      )
 M.strdump        = functor( strdump        )
 
 -- aliases
-M.get  = M.get_variable
-M.set  = M.set_variable
-M.wrap = M.wrap_variable
-M.getk = M.get_varkey
-M.fset = M.set_flag
-M.ftst = M.test_flag
-M.fclr = M.clear_flag
-
--- Object members
-M.__id     = 'Object'
-M.__par    = parent
-M.__var    = \s -> rawget(s,_var) -- alias
-M.name     = \s -> s.__id         -- alias
-M.parent   = \s -> s.__par        -- alias
-M.variable = \s -> s.__var        -- alias
+M.name   = \s -> s.__id
+M.parent = parent
+M.get    = M.get_variable
+M.set    = M.set_variable
+M.wrap   = M.wrap_variable
+M.getk   = M.get_varkey
+M.fset   = M.set_flag
+M.ftst   = M.test_flag
+M.fclr   = M.clear_flag
 
 -- env ------------------------------------------------------------------------o
 
