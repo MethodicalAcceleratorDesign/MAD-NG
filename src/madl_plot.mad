@@ -74,6 +74,27 @@ local function chain_tbl(t1, ...)
   return t
 end
 
+--titles
+local function axis_title(src)
+  if src then
+    local label = ""
+    for _,key in pairs(src) do label = label..key.." " end
+    return label
+  end
+end
+
+local function mk_title(name, version, date, time)
+  local src, out = { name = name, version = version , date = date, time = time, }
+  if date then out = "$name MAD $version, $date, $time" % src
+          else out = "$name MAD $version"               % src end
+    return out
+end
+
+local function mk_script(filename)
+  if filename then return string.match(filename, "(%w+)%.")..".gp"
+              else return "script.gp"                              end
+end
+
 --scalling
 local function chksize(rng, start, stop)
   if rng:size() <= stop then start, stop = rng.start, rng.stop end
@@ -130,27 +151,6 @@ local function scale_rng(src, rng)
   end
 end
 
---titles
-local function axis_title(src)
-  if src then
-    local label = ""
-    for _,key in pairs(src) do label = label..key.." " end
-    return label
-  end
-end
-
-local function mk_title(name, ver, date, time)
-  local src, out = { name = name, version = version , date = date, time = time, }
-  if date then out = "$name MAD $version, $date, $time" % src
-          else out = "$name MAD $version"               % src end
-    return out
-end
-
-local function mk_script(filename)
-  if filename then return string.match(filename, "(%w+)%.")..".gp"
-              else return "script.gp"                              end
-end
-
 --layout
 local xadjst = \x,l,s -> x*l + s-l
 local yadjst = \y,h   -> y*h
@@ -171,7 +171,7 @@ end
 local function layout(seq, start, stop)
   local xl, yl, c = {}, {}, 1
   for i=start,stop do
-    local elem, s = seq[i]   , seq:s_pos(i)
+    local elem, s = seq[i]   , seq.s_pos[i]
     local kind, l = elem.kind, elem.l
     if s and l then
       local h,sh = elem[dat[kind].str_k] or 1
@@ -190,6 +190,7 @@ local function layout(seq, start, stop)
   return { x=xl, y=yl }
 end
 
+-- saving to template
 local function data_to_temp(src, keys)
   local s = src[keys[1]]
   local t = {"\n"}
@@ -241,13 +242,13 @@ local function temp_style(inp, out, keys)
   return out
 end
 
-local function temp_fill(temp, src)
+local function temp_interp(temp, src)
   for i,line in ipairs(temp) do
     temp[i] = line % src      -- interpolate strings
   end
 end
 
-local function temp_fill_tbl(temp, inp, key)
+local function temp_fill(temp, inp, key)
   local c, n = 1
   for i,line in ipairs(temp) do
     temp[i], n = string.gsub( line, key, inp[c] )
@@ -387,14 +388,14 @@ function exec(self)
   colors     = temp_style( self.colors    , colors    , self.keys )
   pointtypes = temp_style( self.pointtypes, pointtypes, self.keys )
   dashtypes  = temp_style( self.dashtypes , dashtypes , self.keys )
-  temp_fill    ( temp, self        )
-  temp_fill_tbl( temp, colors      , "colors"  )
-  temp_fill_tbl( temp, axes        , "setaxes" )
-  temp_fill_tbl( temp, pointtypes  , "ptt"     )
-  temp_fill_tbl( temp, dashtypes   , "dtt"     )
-  temp_fill_tbl( temp, self.out    , "ytitle"  )
-  temp_fill_tbl( temp, count       , "count"   )
-  temp_print   ( temp, gp[self.id] )
+  temp_interp( temp, self        )
+  temp_fill  ( temp, colors      , "colors"  )
+  temp_fill  ( temp, axes        , "setaxes" )
+  temp_fill  ( temp, pointtypes  , "ptt"     )
+  temp_fill  ( temp, dashtypes   , "dtt"     )
+  temp_fill  ( temp, self.out    , "ytitle"  )
+  temp_fill  ( temp, count       , "count"   )
+  temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
 
   if self.filename == name then temp_save = chain_tbl(temp_save, temp)
@@ -468,9 +469,11 @@ local plot = Command 'plot' {
 
   title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
-  name    = \s => if s.table then return s.table.title end end,
-  date    = \s => if s.table then return s.table.date  end end,
-  time    = \s => if s.table then return s.table.time  end end,
+  name    = \s => if s.table then return s.table.title else return "name" end end,
+  date    = \s => if s.table then return s.table.date  else end end,
+  time    = \s => if s.table then return s.table.time  else end end,
+  title   = \s mk_title(s.name, s.version, s.date, s.time),
+
 -- non-user option
   inp  = \s to_tbl (s.haxis),
   out  = \s to_tbl (s.vaxis),
