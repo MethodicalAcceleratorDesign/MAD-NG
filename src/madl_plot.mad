@@ -85,7 +85,7 @@ local function mk_title(name, version, date, time)
     return out
 end
 
-local function mk_script(filename)
+local function script_name(filename)
   if filename then return string.match(filename, "(%w+)%.")..".gp"
               else return "script.gp"                              end
 end
@@ -332,40 +332,44 @@ local gp = setmetatable({},{
 
 function exec(self)
   local axes, temp, ytitle = {}
-  if     self.filename == name then temp = table_concat( {}        ,              template)
-  elseif self.filename         then temp = table_concat(temp_unmult, temp_tofile, template)
-  else                              temp = table_concat(temp_window,              template)
-                                    temp_save = {}
-  end
-
-  if self.preamble    then temp = table_concat(temp_preamble, temp) end
-
   if     self.interpolate == 'lines'       then self.interpolate = "with lines       dashtype  dtt"
   elseif self.interpolate == 'linespoints' then self.interpolate = "with linespoints pointtype ptt pointsize pts"
   elseif self.interpolate == 'points'      then self.interpolate = "with points      pointtype ptt pointsize pts"
   end
 
-  if     self.vaxis2 and self.haxis2 then temp = table_concat( temp, temp_multih, temp_multiv, temp_end, temp_plot )
-  elseif self.vaxis2                 then temp = table_concat( temp, temp_multiv,              temp_end, temp_plot )
-  elseif self.haxis2                 then temp = table_concat( temp, temp_multih,              temp_end, temp_plot )
-  else                                    temp = table_concat( temp,                           temp_end, temp_plot )
-  end
+  -- template operations
+  if     self.filename == name       then temp = table_concat( {}           ,              template )
+  elseif self.filename               then temp = table_concat( temp_unmult  , temp_tofile, template )
+  else                                    temp = table_concat(                temp_window, template )
+                                          temp_save = {}                                                                      end
+  if     self.preamble               then temp = table_concat( temp_preamble, temp                                          ) end
+  if     self.vaxis2 and self.haxis2 then temp = table_concat( temp         , temp_multih, temp_multiv, temp_end, temp_plot )
+  elseif self.vaxis2                 then temp = table_concat( temp         , temp_multiv,              temp_end, temp_plot )
+  elseif self.haxis2                 then temp = table_concat( temp         , temp_multih,              temp_end, temp_plot )
+  else                                    temp = table_concat( temp         ,                           temp_end, temp_plot ) end
+  if     self.continue               then temp = temp_plot                                                                    end
 
-  if self.continue then temp = temp_plot end
-  local s, s2 = #self.out, #self.out2
-  if self.out  then for i=1,s do temp    = chain_tbl( temp, temp_vaxis  )
-                                 axes[i] = "x1y1"                           end
+  -- multiple axes
+  local s, s2
+  if self.out  then
+    s = #self.out
+    for i=1,s do temp, axes[i] = table_concat( temp, temp_vaxis  ), "x1y1" end
   end
-  if self.inp2 then self.keys = chain_tbl(self.inp , self.inp2, self.out  ) end
-  if self.out2 then self.keys = chain_tbl(self.keys, self.out2            )
-                    self.out  = chain_tbl(self.out , self.out2            )
-                    for i=1,s2   do temp    = chain_tbl( temp, temp_vaxis ) end
-                    for i=s,s+s2 do axes[i] = "x1y2"                        end
-
+  if self.inp2 then
+    self.keys = table_concat(self.inp , self.inp2, self.out  )
   end
+  if self.out2 then
+    s2 = #self.out2
+    self.keys = table_concat(self.keys, self.out2            )
+    self.out  = table_concat(self.out , self.out2            )
+    for i=1,s2   do temp    = table_concat( temp, temp_vaxis ) end
+    for i=s,s+s2 do axes[i] = "x1y2"                           end
+  end
+  -- data to template
   local data_temp = data_to_temp( self.src, self.keys )
   for i = 1,#self.out do temp = table_concat(temp, data_temp) end
 
+  -- sequence plot
   if self.sequence then
     local seq = self.sequence
     assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
@@ -373,9 +377,10 @@ function exec(self)
     local start, stop = seq:range_indexes(self.range)
     local lay     = layout        ( seq, start, stop )
     local lay_dat = layout_to_temp( lay, {'x','y'}   )
-    temp = table_concat( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off )
+    temp = table_concat( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off, temp_unmult )
   end
 
+  -- style of plots
   local dashtypes, colors in dat
   local count      = 2..(#self.out)+1
   local pointtypes = totable(1..(#self.out))
@@ -426,7 +431,7 @@ local plot = Command 'plot' {
   vaxis    = 'y',
   vaxis2   = false,
   haxis2   = false,
-  script   = \s mk_script(s.filename),
+  script   = \s script_name(s.filename),
   terminaltype = "postscript eps",
   fontname     = "Times-Roman"   ,
   fontsize = 28 ,
@@ -473,7 +478,11 @@ local plot = Command 'plot' {
 
   title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
+<<<<<<< HEAD
   namei   = \s => if s.table then return s.table.title else return "name" end end,
+=======
+  namei   = \s => if s.table then return s.table.title else return s.name end end, -- update with name of self plot
+>>>>>>> cleanup, names
   date    = \s => if s.table then return s.table.date  else end end,
   time    = \s => if s.table then return s.table.time  else end end,
   title   = \s mk_title(s.namei, s.version, s.date, s.time),
@@ -482,13 +491,13 @@ local plot = Command 'plot' {
   inp  = \s totable  (s.haxis),
   out  = \s totable  (s.vaxis),
   keys = \s table_concat(s.inp   , s.out             ),
-  ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
-  drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
-  src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
+  ktbl = \s keys_tbl    (s.table , s.data, s.keys    ),
+  drng = \s scale_rng   (s.ktbl[s.inp[1]], s.datrange),
+  src  = \s scale_dat   (s.ktbl  , s.keys, s.drng    ),
   exec = exec,
 } :set_readonly()
 
--- end ------------------------------------------------------------------------o
+-- end ---------------- o
 return {
   plot   = plot  ,
   __help = __help,
