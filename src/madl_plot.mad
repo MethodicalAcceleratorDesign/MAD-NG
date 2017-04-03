@@ -45,10 +45,10 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element, totable, same                in MAD
-local isa_matrix, is_range, is_table, is_number, is_string         in MAD.typeid
-local min, max                                                     in MAD.gmath
-local chain, duplicate                                             in MAD.fun
+local range, nrange, vector, element, totable, same              in MAD
+local isa_matrix, is_range, is_table, is_number, is_string       in MAD.typeid
+local min, max, abs, exp                                         in MAD.gmath
+local pow      																									 in MAD.operator
 
 -- implementation -------------------------------------------------------------o
 
@@ -163,8 +163,6 @@ local function sh_get(sh)
   return x_sh, y_sh
 end
 
-local abs, exp in MAD.gmath
-local pow      in MAD.operator
 
 local hadjst  = \y,h -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
 
@@ -283,12 +281,18 @@ local temp_plot     = { "plot " }
 local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
 local temp_preamble = { "#$preamble \n" }
 local temp_unmult   = {"\nunset multiplot \n" }
-local temp_window   = { "set terminal x11 persist font '$fontname, $fontsize'\n" }
+local temp_window   = { "set terminal x11 persist $window font '$fontname, $fontsize'\n" }
 local temp_tofile   = {
-  "set terminal $terminaltype font '$fontname, $fontsize' enhanced color\n",
+  "set terminal $terminaltype $window font '$fontname, $fontsize' enhanced color\n",
   "set output '|ps2pdf - $filename' \n",
 }
 local temp_unmult = {"\nunset multiplot \n" }
+local temp_unaxes = {
+	"unset x2label \n",
+	"unset x2tics \n",
+	"unset y2tics \n",
+	"unset y2label \n",
+}
 local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
@@ -334,31 +338,33 @@ temp_lay_off= {
 local mtable, Command in MAD
 local temp_save, name = {}, {}
 
-local gp = setmetatable({},{
-  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
-})
 
-function exec(self)
-  local axes, temp, vkeys = {}
-  if     self.interpolate == 'lines'       then self.interpolate = "with lines       dashtype  dtt"
-  elseif self.interpolate == 'linespoints' then self.interpolate = "with linespoints pointtype ptt pointsize pts"
-  elseif self.interpolate == 'points'      then self.interpolate = "with points      pointtype ptt pointsize pts"
-  end
-
-  -- template operations
+local function temp_operations(self, name)
+	local temp = {}
   if     self.filename == name       then temp = table_concat( {}           ,              template )
   elseif self.filename               then temp = table_concat( temp_unmult  , temp_tofile, template )
-  else                                    temp = table_concat(                temp_window, template )
-					  temp_save = {}                                                                      end
+  else                                    temp = table_concat( temp_unmult  , temp_window, template )
+																	 			  temp_save = {}                                                                      end
   if     self.preamble               then temp = table_concat( temp_preamble, temp                                          ) end
   if     self.vaxis2 and self.haxis2 then temp = table_concat( temp         , temp_multih, temp_multiv, temp_end, temp_plot )
   elseif self.vaxis2                 then temp = table_concat( temp         , temp_multiv,              temp_end, temp_plot )
   elseif self.haxis2                 then temp = table_concat( temp         , temp_multih,              temp_end, temp_plot )
   else                                    temp = table_concat( temp         ,                           temp_end, temp_plot ) end
   if     self.continue               then temp = temp_plot                                                                    end
+  return temp, temp_save
+end
 
--- multiple axes
-  local s, s2
+local function interpol(str)
+	local out
+	if     str == 'lines'       then out = "with lines       dashtype  dtt"
+  elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
+  elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
+  end
+  return out
+end
+
+local function multi_axes(self, temp)
+	local axes, s, s2 = {}
   if self.out  then
     s = #self.out
     for i=1,s do temp, axes[i] = table_concat( temp, temp_vaxis  ), "x1y1" end
@@ -373,19 +379,37 @@ function exec(self)
     for i=1,s2   do temp    = table_concat( temp, temp_vaxis ) end
     for i=s,s+s2 do axes[i] = "x1y2"                           end
   end
+  return temp, axes
+end
+
+local function sequ(self, template)
+	local seq = self.sequence
+  assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+  local start, stop = seq:range_index(self.range)
+  local lay     = layout        ( seq, start, stop )
+  local lay_dat = layout_to_temp( lay, {'x','y'}   )
+  self.datrange = {lay.x[1][1], lay.x[#lay.x][1]}
+  return table_concat( temp_unmult, template, temp_lay, lay_dat, temp_lay_off, temp_unmult )
+end
+
+local gp = setmetatable({},{
+  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
+})
+
+function exec(self)
+  local temp, vkeys, axes
+	local temp, temp_save = temp_operations(self, name)
+  self.interpolate = interpol(self.interpolate)
+  -- multiple axes
+	temp, axes = multi_axes(self, temp)
   -- data to template
   local data_temp = data_to_temp( self.src, self.keys )
   for i = 1,#self.out do temp = table_concat(temp, data_temp) end
-
   -- sequence plot
-  if self.sequence then
-    local seq = self.sequence
-    assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-    local start, stop = seq:range_index(self.range)
-    local lay     = layout        ( seq, start, stop )
-    self.datrange = {lay.x[1][1], lay.x[#lay.x][1]}
-    local lay_dat = layout_to_temp( lay, {'x','y'}   )
-    temp = table_concat( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off, temp_unmult )
+  if self.sequence then	temp = sequ(self, temp) end
+
+  if not self.continue and self.out2 or self.inp2 then
+		temp = table_concat(temp, temp_unaxes)
   end
 
   -- style of plots
@@ -436,6 +460,7 @@ local plot = Command 'plot' {
   filename = false,
   filecopy = false,
   vaxis2   = false,
+  window   = " ",
   haxis2   = false,
   vaxis    = 'y',
   haxis    = 'x',
