@@ -59,8 +59,8 @@ local function keys_tbl(t1, t2, keys)
   return t
 end
 
-local function table_concat(...) -- add t as first argument
-  local t = {}
+local function table_concat(t, ...)
+  local t = t or {}
   local n = select('#', ...)
   for i=1,n do
     local elem = select(i, ...)
@@ -87,7 +87,7 @@ end
 
 local function script_name(filename)
   if filename then return string.match(filename, "(%w+)%.")..".gp"
-	      else return "script.gp"                              end
+	else             return "script.gp"                              end
 end
 
 --scalling
@@ -149,6 +149,7 @@ end
 --layout
 local xadjst = \x,l,s -> x*l + s-l
 local yadjst = \y,h   -> y*h
+local hadjst = \y,h   -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
 
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
@@ -162,9 +163,6 @@ local function sh_get(sh)
   end
   return x_sh, y_sh
 end
-
-
-local hadjst  = \y,h -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
 
 local function layout(seq, start, stop)
   local xl, yl, c = {}, {}, 1
@@ -215,8 +213,8 @@ local function layout_to_temp(src, keys)
   for i=1,#s do
     for ii=1,#s[i] do
       for j,k in ipairs(keys) do
-	if t[c] then t[c] = t[c]..src[k][i][ii].." "
-		else t[c] =       src[k][i][ii].." " end
+	      if t[c] then t[c] = t[c]..src[k][i][ii].." "
+		    else         t[c] =       src[k][i][ii].." " end
       end
       t[c] = t[c].."\n"; c=c+1
     end
@@ -233,15 +231,21 @@ local function find_key(inp, key)
   return indx
 end
 
+local function copy(tbl)
+  local out = {}
+  for k,v in pairs(tbl) do out[k] = v end
+  return out
+end
+
 local function temp_style(inp, out, keys) -- TO CLEAN, no overwrite
-	--local r = same(out)
+	local r = copy(out)
 	if inp then
     for k,v in pairs(inp) do
       local indx = find_key(keys, k) - 1
-      if indx then out[indx] = v end
+      if indx then r[indx] = v end
     end
   end
-  return out
+  return r
 end
 
 local function temp_interp(temp, src)
@@ -277,7 +281,6 @@ local temp_end = {
   "set xrange [$xmin:$xmax] \n",
   "set yrange [$ymin:$ymax] \n",
 }
-
 local temp_plot     = { "plot " }
 local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
 local temp_preamble = { "#$preamble \n" }
@@ -308,7 +311,6 @@ local temp_multih = {
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-
 local temp_lay = {
   "unset tmargin \n"    ,
   "unset bmargin \n"    ,
@@ -328,7 +330,7 @@ local temp_lay = {
   "set yrange [-1:1] \n",
   "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
-temp_lay_off= {
+local temp_lay_off = {
   "set border \n"    ,
   "set origin 0,0 \n",
   "set xtics \n"     ,
@@ -341,16 +343,16 @@ local temp_save, name = {}, {}
 
 local function temp_operations(self, name)
 	local temp = {}
-  if     self.filename == name       then temp = table_concat( {}           ,              template )
-  elseif self.filename               then temp = table_concat( temp_unmult  , temp_tofile, template )
-  else                                    temp = table_concat( temp_unmult  , temp_window, template )
+  if     self.filename == name       then temp = table_concat( {}  ,                             template )
+  elseif self.filename               then temp = table_concat( {}  , temp_unmult  , temp_tofile, template )
+  else                                    temp = table_concat( {}  , temp_unmult  , temp_window, template )
 																	 			  temp_save = {}                                                                      end
-  if     self.preamble               then temp = table_concat( temp_preamble, temp                                          ) end
-  if     self.vaxis2 and self.haxis2 then temp = table_concat( temp         , temp_multih, temp_multiv, temp_end, temp_plot )
-  elseif self.vaxis2                 then temp = table_concat( temp         , temp_multiv,              temp_end, temp_plot )
-  elseif self.haxis2                 then temp = table_concat( temp         , temp_multih,              temp_end, temp_plot )
-  else                                    temp = table_concat( temp         ,                           temp_end, temp_plot ) end
-  if     self.continue               then temp = temp_plot                                                                    end
+  if     self.preamble               then temp = table_concat( {}  , temp_preamble, temp                                          ) end
+  if     self.vaxis2 and self.haxis2 then temp = table_concat( temp, temp_multih  , temp_multiv, temp_end, temp_plot )
+  elseif self.vaxis2                 then temp = table_concat( temp, temp_multiv  ,              temp_end, temp_plot )
+  elseif self.haxis2                 then temp = table_concat( temp, temp_multih  ,              temp_end, temp_plot )
+  else                                    temp = table_concat( temp,                             temp_end, temp_plot ) end
+  if     self.continue               then temp = temp_plot                                                                     end
   return temp, temp_save
 end
 
@@ -389,10 +391,10 @@ local function sequ(self, template)
   local lay     = layout        ( seq, start, stop )
   local lay_dat = layout_to_temp( lay, {'x','y'}   )
   self.datrange = {lay.x[1][1], lay.x[#lay.x][1]}
-  return table_concat( temp_unmult, template, temp_lay, lay_dat, temp_lay_off, temp_unmult )
+  return table_concat( {}, temp_unmult, template, temp_lay, lay_dat, temp_lay_off, temp_unmult )
 end
 
-local function temp_styles(self, temp, axes)
+local function style_plots(self, temp, axes)
   local dashtypes, colors in dat
   local count      = 2..(#self.out)+1
   local pointtypes = totable(1..(#self.out))
@@ -431,7 +433,7 @@ function exec(self)
   if not self.continue and self.out2 or self.inp2 then
 		temp = table_concat(temp, temp_unaxes)
   end
-	temp = temp_styles(self, temp, axes)									    -- style of plots
+	temp = style_plots(self, temp, axes)									    -- style of plots
   temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
 
