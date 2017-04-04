@@ -189,11 +189,11 @@ local mtable, Command in MAD
 
 local _surv = {}
 
-local function make_table (self, length)
+local function make_table (self)
   local sequence, drift, save in self
   if save == 'none' then return nil end
   local name, direction in sequence
-  local nrow = (drift == true and 2 or 1) * length
+  local nrow = (drift == true and 2 or 1) * 128
 
   return mtable 'survey' {
     type='survey', title=name, direction=direction,
@@ -229,8 +229,10 @@ local function make_map (self)
   local A = vector(3):fill{theta, phi, psi}
   local R, S, T = vector(3), matrix(3), matrix(3)
 
+  local nturn in self
   return { A=A, V=V, W=W, R=R, S=S, T=T,
            s=0, dir=direction,
+           iturn=0, nturn=nturn,
            ndrift=-1, [_surv]=_surv }
 end
 
@@ -247,20 +249,19 @@ local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
-  local map = self.map or make_map(self)
-  local first = is_nil(self.map) and true or false
-  local iter, state, start = seq:iter(self.range, 1, true)
-  local tbl = self.table or make_table(self, state.size)
+  local map = self.map   or make_map  (self)
+  local tbl = self.table or make_table(self)
 
   assert(is_nil(tbl) or tbl[_surv] == _surv, "invalid survey table")
   assert(               map[_surv] == _surv, "invalid survey map"  )
 
-  local drift, save in self
-  local s, ndrift in map
-  drift = drift == true and save or 'none'
+  local save, range in self
+  local s, nturn, ndrift in map
+  local first = is_nil(self.map) and true or false
+  local drift = self.drift == true and save or 'none'
 
   -- affine tracking
-  for i,elem,stop in iter, state, start do
+  for i,elem,stop in seq:iter(range, nturn, true) do
     local name, l in elem
     local ds
     if i == 1 or first == true
