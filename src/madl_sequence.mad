@@ -576,28 +576,7 @@ local function setvar (seq, key, val)
   assert(is_nil(seq[_eidx][key]), "invalid argument #2 (variable expected)")
   seq:set_readonly(false)
   seq[key] = val
-  return s:set_readonly()
-end
-
-local function range_indexes (seq, rng_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local start, stop
-  if is_nil(rng_) then
-    start = seq.start_at or 1
-    stop  = seq.start_at or #seq
-  elseif is_string(rng_) then
-    local s1, s2 = string.match(rng_, "([^/]+)/?(.*)")
-    start, stop = tonumber(s1) or s1, tonumber(s2) or s2
-  elseif is_range(rng_) then
-    start, stop = rng_:bounds()
-  elseif is_rawtable(rng_) then
-    start, stop = rng_[1], rng_[2]
-  else
-    error("invalid range format (string, range or table expected)")
-  end
-  start = assert(index_of(seq, start), "invalid range start")
-  stop  = assert(index_of(seq, stop ), "invalid range stop" )
-  return start, stop
+  return seq:set_readonly()
 end
 
 local function pos_of (seq, elm, start_)
@@ -608,14 +587,11 @@ local function spos_of (seq, elm, start_)
   return seq[_spos][index_of(seq, elm, start_)]
 end
 
-local function foreach (seq, f, rng_)
+local function foreach (seq, f, rng_, trn_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(f)  , "invalid argument #2 (callable expected)")
-  local n, i, stop = #seq, range_indexes(seq, rng_)
-  while true do
-    f(seq[i],i)
-    if i == stop then break end
-    i = (i >= n and 0 or i)+1
+  for i,e in seq:iter(rng_, trn_) do
+    f(e,i)
   end
   return seq
 end
@@ -623,11 +599,8 @@ end
 local function filter (seq, p, rng_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
-  local r, n, i, stop = {}, #seq, range_indexes(seq, rng_)
-  while true do
-    if p(seq[i],i) == true then r[#r+1] = seq[i] end
-    if i == stop then break end
-    i = (i >= n and 0 or i)+1
+  for i,e in seq:iter(rng_) do
+    if p(e,i) == true then r[#r+1] = e end
   end
   return r
 end
@@ -635,23 +608,17 @@ end
 local function select (seq, p, rng_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
-  local n, i, stop = #seq, range_indexes(seq, rng_)
-  while true do
-    local elm = seq[i]
-    local flag = p(elm,i)
-        if flag == true  then elm:  select()
-    elseif flag == false then elm:deselect() end
-    if i == stop then break end
-    i = (i >= n and 0 or i)+1
+  for i,e in seq:iter(rng_) do
+    local  flag = p(e,i)
+        if flag == true  then e:  select()
+    elseif flag == false then e:deselect() end
   end
   return seq
 end
 
 local function cycle (seq, elm)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local idx = assert(index_of(seq, elm), "invalid cycle reference")
-  assert(seq[idx].kind == 'marker' and seq[idx].is_marker == true,
-         "invalid argument #2 (marker expected)")
+  assert(is_sequence(seq)  , "invalid argument #1 (sequence expected)")
+  assert(index_of(seq, elm), "invalid argument #2 (reference expected)")
   setvar(seq, 'start_at', elm)
   return seq
 end
@@ -712,6 +679,67 @@ local function tie (seq1, seq2) -- e.g. lhcb1:tie(lhcb2)
   return seq1
 end
 
+-- iterator -------------------------------------------------------------------o
+
+local function seqitr (state, i)
+  if i == state.stop then
+    if state.turn == 0 then
+      if state.drift == true then
+        state.drift = false
+        return i, state.seq[i], true
+      end
+      return nil
+    end
+    state.turn = state.turn - 1
+  end
+  if i == state.len then
+    return 1, state.seq[  1]
+  end
+  return i+1, state.seq[i+1]
+end
+
+local function mkseqitr (seq, start, stop, turn, drift)
+  local len = #seq
+  local size = stop-start + 1
+  if size < 0 then size = size + len end
+  size = size + len*turn
+  return seqitr,
+         {seq=seq, len=len, stop=stop, turn=turn, drift=drift, size=size},
+         start-1
+end
+
+local function sequ_iter (seq, rng_, trn_, dft_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  if is_number(rng_) and is_nil(trn_) then
+    rng_, trn_ = nil, rng_ -- shift right
+  end
+  local start, stop, turn
+  if is_nil(rng_) then
+    turn = trn_ or 1
+    assert(is_number(turn) and turn >= 1,
+           "invalid argument #3 (positive number expected)")
+    if is_nil(seq.start_at) then
+      return mkseqitr(seq, 1, #seq, turn-1, false)
+    else
+      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      return mkseqitr(seq, start, start-(dft_ and 0 or -1), turn, true)
+    end
+  elseif is_string(rng_) then
+    local s1, s2 = string.match(rng_, "([^/]+)/?(.*)")
+    start, stop = tonumber(s1) or s1, tonumber(s2) or s2
+  elseif is_range(rng_) then
+    start, stop = rng_:bounds()
+  elseif is_rawtable(rng_) then
+    start, stop = rng_[1], rng_[2]
+  else
+    error("invalid argument #2 (string, range or table expected)")
+  end
+  start = assert(index_of(seq, start), "invalid range start")
+  stop  = assert(index_of(seq, stop ), "invalid range stop" )
+  turn  = start == stop+1 and 1 or 0
+  return mkseqitr(seq, start, stop, turn, false)
+end
+
 -- env ------------------------------------------------------------------------o
 
 MAD.element.sequence = sequence
@@ -727,7 +755,7 @@ sequence :set_function {
   spos_of       = spos_of,
   index_of      = index_of,
   sindex_of     = sindex_of,
-  range_indexes = range_indexes,
+  iter          = sequ_iter,
   setvar        = setvar,
   foreach       = foreach,
   filter        = filter,
