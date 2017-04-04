@@ -151,6 +151,15 @@ local xadjst = \x,l,s -> x*l + s-l
 local yadjst = \y,h   -> y*h
 local hadjst = \y,h   -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
 
+local function delta(refer, l)
+	local d
+	if     refer == 'exit'   then d = 0
+	elseif refer == 'entry'  then d = l
+	elseif refer == 'center' then d = l/2
+	end
+	return d
+end
+
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
   if is_table(sh.x[1]) then
@@ -164,12 +173,17 @@ local function sh_get(sh)
   return x_sh, y_sh
 end
 
-local function layout(seq, start, stop)
+local D
+local function layout(seq, start, stop, refer)
   local xl, yl, c = {}, {}, 1
+  local del = {}
   for i=start,stop do
+
     local elem, s = seq[i]   , seq:s_pos(i)
     local kind, l = elem.kind, elem.l
     if s and l then
+    	del[i] = delta(refer, l)
+    	s = s + del[start]
       local h,sh = elem[dat[kind].str_k] or 1
       if dat[kind].shape then sh = dat[kind].shape
       elseif h > 0       then sh = dat[kind].shape_f
@@ -178,7 +192,7 @@ local function layout(seq, start, stop)
       for j=1,#x_sh do
         local x, y = x_sh[j], y_sh[j]
       	xl[c] = x:map( \x xadjst(x+1, l, s) )
-        yl[c] = y:map( \y yadjst(y, 1   ) )
+        yl[c] = y:map( \y yadjst(y, 1     ) )
         --if     h ~= 1 and h > 0 then yl[c] = hadjst(yl[c], h)
         --elseif h ~= 1           then yl[c] =-hadjst(yl[c], h)
       	--end
@@ -186,6 +200,7 @@ local function layout(seq, start, stop)
       end
     end
   end
+  D = del[start]
   return { x=xl, y=yl }
 end
 
@@ -237,7 +252,7 @@ local function copy(tbl)
   return out
 end
 
-local function temp_style(inp, out, keys) -- TO CLEAN, no overwrite
+local function temp_style(inp, out, keys)
 	local r = copy(out)
 	if inp then
     for k,v in pairs(inp) do
@@ -296,6 +311,7 @@ local temp_unaxes = {
 	"unset x2tics \n",
 	"unset y2tics \n",
 	"unset y2label \n",
+	"unset xzeroaxis \n",
 }
 local temp_multiv = {
   "set ytics nomirror \n"         ,
@@ -384,14 +400,24 @@ local function multi_axes(self, temp)
   return temp, axes
 end
 
-local function sequ(self, template)
+local function sequ(self, template, refer)
 	local seq = self.sequence
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
   local start, stop = seq:range_index(self.range)
-  local lay     = layout        ( seq, start, stop )
+  local s    = self.table.s[1]
+  local spos = seq:s_pos(start)
+  local l    = seq[start].l
+  local d    = spos+l-s
+
+  local lay     = layout        ( seq, start, stop, refer )
   local lay_dat = layout_to_temp( lay, {'x','y'}   )
-  self.datrange = {lay.x[1][1], lay.x[#lay.x][1]}
-  return table_concat( {}, temp_unmult, template, temp_lay, lay_dat, temp_lay_off, temp_unmult )
+ 	local min = lay.x[1]     :min()
+ 	local max = lay.x[#lay.x]:max()
+ 	self.datrange = {lay.x[1]:min(), lay.x[#lay.x]:max()}
+ 	self.xmin = min
+ 	self.xmax = max
+  --return lay_dat, d
+  return table_concat(temp_lay, lay_dat, temp_lay_off, temp_unmult ), d
 end
 
 local function style_plots(self, temp, axes)
@@ -418,18 +444,23 @@ local gp = setmetatable({},{
 })
 
 function exec(self)
-  local vkeys, axes, data_temp
+  local temp_sequence = {}
+  local vkeys, axes, data_temp, lay_dat, d
 	local temp, temp_save = temp_operations(self, name)
   self.interpolate = interpol    ( self.interpolate)
-	temp, axes       = multi_axes  ( self    , temp      ) 		-- multiple axes
-  data_temp        = data_to_temp( self.src, self.keys ) 		-- data to template
+	temp, axes       = multi_axes  ( self    , temp  )     		                   -- multiple axes
+
+  if self.sequence then 	temp_sequence, d = sequ(self, temp, self.refer) end  -- sequence plot
+
+  data_temp = data_to_temp( self.src, self.keys )                    	         -- data to template
   for i = 1,#self.out do temp = table_concat({}, temp, data_temp) end
 
-  if     self.sequence then	temp = sequ(self, temp) end     -- sequence plot
+	temp = table_concat(temp, temp_sequence)
+
   if not self.continue and self.out2 or self.inp2 then
 		temp = table_concat(temp, temp_unaxes)
   end
-	temp = style_plots(self, temp, axes)									    -- style of plots
+	temp = style_plots(self, temp, axes)									            -- style of plots
   temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
 
@@ -453,6 +484,7 @@ local plot = Command 'plot' {
   table    = false,
   data     = false,
   sequence = false,
+  refer    = 'exit',
   filename = false,
   filecopy = false,
   vaxis2   = false,
