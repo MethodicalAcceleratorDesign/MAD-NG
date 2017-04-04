@@ -138,7 +138,7 @@ local function scale_rng(src, rng)
     local rstart, rstop = rng[1], rng[2]
     local vmin, vmax, c = {}, {}
     c=1; src:mapij(\x,i,j => if x>=rstart then vmin[c]=i; c=c+1 end end, {})
-    c=1; src:mapij(\x,i,j => if x>=rstop  then vmax[c]=i; c=c+1 end end, {})
+    c=1; src:mapij(\x,i,j => if x> rstop  then vmax[c]=i; c=c+1 end end, {})
     start = vmin[1]
     if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
     if rng [2] == -1 then stop = #src      end
@@ -173,18 +173,20 @@ local function sh_get(sh)
   return x_sh, y_sh
 end
 
-local D
-local function layout(seq, start, stop, refer)
+local function layout(seq, range, refer)
   local xl, yl, c = {}, {}, 1
   local del = {}
-  for i=start,stop do
-
-    local elem, s = seq[i]   , seq:s_pos(i)
+  local flag, start = true
+  --for i=start,stop do
+  for i,elem in seq:iter(range) do
+    local s = seq:s_pos(i)
     local kind, l = elem.kind, elem.l
     if s and l then
     	del[i] = delta(refer, l)
+    	if flag == true then start=i; flag=false  end
     	s = s + del[start]
-      local h,sh = elem[dat[kind].str_k] or 1
+    	print(del[start+1])
+    	local h,sh = elem[dat[kind].str_k] or 1
       if dat[kind].shape then sh = dat[kind].shape
       elseif h > 0       then sh = dat[kind].shape_f
       else                    sh = dat[kind].shape_d end
@@ -200,7 +202,6 @@ local function layout(seq, start, stop, refer)
       end
     end
   end
-  D = del[start]
   return { x=xl, y=yl }
 end
 
@@ -403,20 +404,21 @@ end
 local function sequ(self, template, refer)
 	local seq = self.sequence
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-  local start, stop = seq:range_index(self.range)
-  local s    = self.table.s[1]
-  local spos = seq:s_pos(start)
-  local l    = seq[start].l
-  local d    = spos+l-s
+  --local iter, state, start = seq:iter(self.range)
+  --local s    = self.table.s[1]
+  --local spos = seq:s_pos(start)
+  --local l    = seq[start].l
+  --local d    = spos+l-s
 
-  local lay     = layout        ( seq, start, stop, refer )
-  local lay_dat = layout_to_temp( lay, {'x','y'}   )
+  local lay     = layout        ( seq, self.range, refer )
+  local lay_dat = layout_to_temp( lay, {'x','y'}  )
  	local min = lay.x[1]     :min()
  	local max = lay.x[#lay.x]:max()
+ 	print(min, max)
  	self.datrange = {min, max}
  	self.xmin = min
  	self.xmax = max
-  return table_concat(temp_lay, lay_dat, temp_lay_off, temp_unmult ), d
+  return table_concat(temp_lay, lay_dat, temp_lay_off, temp_unmult )
 end
 
 local function style_plots(self, temp, axes)
@@ -444,15 +446,15 @@ local gp = setmetatable({},{
 
 function exec(self)
   local temp_sequence = {}
-  local vkeys, axes, data_temp, lay_dat, d
+  local vkeys, axes, data_temp, lay_dat
 	local temp, temp_save = temp_operations(self, name)
   self.interpolate = interpol    ( self.interpolate)
 	temp, axes       = multi_axes  ( self    , temp  )     		                 -- multiple axes
 
-  if self.sequence then temp_sequence, d = sequ(self, temp, self.refer) end  -- sequence plot
+  if self.sequence then temp_sequence = sequ(self, temp, self.refer) end     -- sequence plot
 
   data_temp = data_to_temp( self.src, self.keys )                    	       -- data to template
-  for i = 1,#self.out do temp = table_concat({}, temp, data_temp) end
+  for i = 1,#self.out do temp = table_concat( temp, data_temp) end
 
 	temp = table_concat(temp, temp_sequence)
 
