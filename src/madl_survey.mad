@@ -76,19 +76,16 @@ end
 local function srot_survey(elem, m) -- Rz(angle)
   m.S :rotz(elem.angle*m.dir)
   m.W = m.W * m.S
-  return 0
 end
 
 local function yrot_survey(elem, m) -- Ry(-angle)
   m.S :roty(-elem.angle*m.dir)
   m.W = m.W * m.S
-  return 0
 end
 
 local function xrot_survey(elem, m) -- Rx(angle)
   m.S :rotx(elem.angle*m.dir)
   m.W = m.W * m.S
-  return 0
 end
 
 local function tran_survey(elem, m)
@@ -97,7 +94,6 @@ local function tran_survey(elem, m)
 
   m.R :fill {dx*dir, dy, ds}
   m.V = m.W * m.R + m.V
-  return ds
 end
 
 local function patch_survey(elem, m) -- Rx(th).Ry(-phi).Rz(psi)
@@ -109,7 +105,6 @@ local function patch_survey(elem, m) -- Rx(th).Ry(-phi).Rz(psi)
 
   m.V = m.W * m.R + m.V
   m.W = m.W * m.S
-  return ds
 end
 
 -- frame kinds ----------------------------------------------------------------o
@@ -132,7 +127,6 @@ local function thin_survey (elem, m) -- e.g. multipole
 
     m.W = m.W * m.S
   end
-  return l
 end
 
 local function strait_survey (elem, m) -- e.g. rbend, quad
@@ -145,7 +139,6 @@ local function strait_survey (elem, m) -- e.g. rbend, quad
   if l >= minlen then
     drift_surv(m, l)
   end
-  return l
 end
 
 local function curved_survey (elem, m) -- e.g. sbend
@@ -172,7 +165,6 @@ local function curved_survey (elem, m) -- e.g. sbend
 
   m.V = m.W * m.R + m.V
   m.W = m.W * m.S
-  return l
 end
 
 -- load survey maps into elements ---------------------------------------------o
@@ -221,7 +213,7 @@ local function fill_table (tbl, name, kind, m, s, l, ang, til)
   tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
-local function make_map (self, start)
+local function make_map (self)
   local x, y, z, theta, phi, psi, X0, A0, sequence in self
 
   x     = x     or X0.x     or X0[1]
@@ -238,8 +230,7 @@ local function make_map (self, start)
   local R, S, T = vector(3), matrix(3), matrix(3)
 
   return { A=A, V=V, W=W, R=R, S=S, T=T,
-           dir=direction,
-           s_ini=sequence:s_pos(start), s_end=sequence:s_pos(start),
+           s=0, dir=direction,
            ndrift=-1, [_surv]=_surv }
 end
 
@@ -256,46 +247,54 @@ local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
-  local start, stop = seq:range_index (self.range)
-  local tbl = self.table or make_table(self, stop-start+1)
-  local map = self.map   or make_map  (self, start)
-  assert(map[_surv] == _surv, "invalid survey map"  )
-  assert(is_nil(tbl) or tbl[_surv] == _surv, "invalid survey table")
+  local map = self.map or make_map(self)
+  local iter, state, start = seq:iter(self.range, 1, true)
+  local tbl = self.table or make_table(self, state.size)
 
-  local s_ini, s_end, ndrift in map
+  assert(is_nil(tbl) or tbl[_surv] == _surv, "invalid survey table")
+  assert(               map[_surv] == _surv, "invalid survey map"  )
+
   local drift, save in self
+  local s, ndrift in map
 
   drift = drift == true and save or 'none'
 
   -- affine tracking
-  for i=start,stop do
-    local elem, s = seq[i], seq:s_pos(i)
-    local name, kind, angle, tilt, nstep in elem
-    local ds = s - s_end
+  for i,elem,stop in iter, state, start do
+    local name, l in elem
+    local ds
+    if i == 1
+    then ds = 0
+    else ds = seq:s_pos(i) - (seq:s_pos(i-1) + seq[i-1].l)
+    end
 
     -- implicit drift
     if ds >= minlen then
       drift_surv(map, ds)
-      s_end, ndrift = s, ndrift+1
+      s, ndrift = s+ds, ndrift+1
 
       if drift == 'exit' and elem:is_selected() then
-        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s_end-s_ini, ds)
+        fill_table(tbl, 'DRIFT_'..ndrift, 'drift', map, s, ds)
       end
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            tostring(ds), seq.name, name, tostring(s)))
+            tostring(ds), seq.name, name, tostring(seq:s_pos(i))))
     end
 
+    -- final implicit drift, quit
+    if stop == true then break end
+
     -- sequence element
-    ds = elem:survey(map)
-    s_end = s + ds
+    elem:survey(map)
+    s = s+l
     update_angle(map)
 
     if save == 'exit' and elem:is_selected() then
-      fill_table(tbl, name, kind, map, s_end-s_ini, ds, angle, tilt)
+      local kind, angle, tilt in elem
+      fill_table(tbl, name, kind, map, s, l, angle, tilt)
     end
   end
-  map.s_end, map.ndrift = s_end, ndrift
+  map.s, map.ndrift = s, ndrift
 
   return tbl, map
 end
@@ -303,7 +302,7 @@ end
 -- survey command template
 
 local survey = Command 'survey' {
-  X0={0,0,0}, A0={0,0,0}, range={1,-1}, drift=true, save='exit', exec=exec,
+  X0={0,0,0}, A0={0,0,0}, drift=true, save='exit', exec=exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
