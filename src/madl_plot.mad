@@ -81,13 +81,13 @@ end
 local function mk_title(name, version, date, time)
   local src, out = { name = name, version = version , date = date, time = time, }
   if date then out = "$name MAD $version, $date, $time" % src
-          else out = "$name MAD $version"               % src end
+	  else out = "$name MAD $version"               % src end
     return out
 end
 
 local function script_name(filename)
   if filename then return string.match(filename, "(%w+)%.")..".gp"
-              else return "script.gp"                              end
+	      else return "script.gp"                              end
 end
 
 --scalling
@@ -123,7 +123,7 @@ local function scale_axis(src, keys, margin)
   local min, max, x = vmin:min(), vmax:max()
   if margin then
     if is_number(margin) then x = margin
-                         else x = 0.1    end
+			 else x = 0.1    end
     local marg = x*(max-min)
     if marg == 0 then marg = x end
     return min-marg, max+marg
@@ -209,8 +209,8 @@ local function layout_to_temp(src, keys)
   for i=1,#s do
     for ii=1,#s[i] do
       for j,k in ipairs(keys) do
-        if t[c] then t[c] = t[c]..src[k][i][ii].." "
-                else t[c] =       src[k][i][ii].." " end
+	if t[c] then t[c] = t[c]..src[k][i][ii].." "
+		else t[c] =       src[k][i][ii].." " end
       end
       t[c] = t[c].."\n"; c=c+1
     end
@@ -272,13 +272,13 @@ local temp_end = {
 }
 
 local temp_plot     = { "plot " }
-local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes setaxes,\\\n" }
-
+local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
 local temp_preamble = { "#$preamble \n" }
-local temp_window   = { "set terminal x11 persist \n" }
+local temp_unmult   = {"\nunset multiplot \n" }
+local temp_window   = { "set terminal x11 persist font '$fontname, $fontsize'\n" }
 local temp_tofile   = {
   "set terminal $terminaltype size $xsize cm, $ysize cm font '$fontname, $fontsize' enhanced color\n",
-  "set output '$filename' \n",
+  "set output '|ps2pdf - $filename' \n",
 }
 local temp_unmult = {"\nunset multiplot \n" }
 local temp_multiv = {
@@ -331,7 +331,7 @@ local gp = setmetatable({},{
 })
 
 function exec(self)
-  local axes, temp, ytitle = {}
+  local axes, temp, vkeys = {}
   if     self.interpolate == 'lines'       then self.interpolate = "with lines       dashtype  dtt"
   elseif self.interpolate == 'linespoints' then self.interpolate = "with linespoints pointtype ptt pointsize pts"
   elseif self.interpolate == 'points'      then self.interpolate = "with points      pointtype ptt pointsize pts"
@@ -341,7 +341,7 @@ function exec(self)
   if     self.filename == name       then temp = table_concat( {}           ,              template )
   elseif self.filename               then temp = table_concat( temp_unmult  , temp_tofile, template )
   else                                    temp = table_concat(                temp_window, template )
-                                          temp_save = {}                                                                      end
+					  temp_save = {}                                                                      end
   if     self.preamble               then temp = table_concat( temp_preamble, temp                                          ) end
   if     self.vaxis2 and self.haxis2 then temp = table_concat( temp         , temp_multih, temp_multiv, temp_end, temp_plot )
   elseif self.vaxis2                 then temp = table_concat( temp         , temp_multiv,              temp_end, temp_plot )
@@ -349,7 +349,7 @@ function exec(self)
   else                                    temp = table_concat( temp         ,                           temp_end, temp_plot ) end
   if     self.continue               then temp = temp_plot                                                                    end
 
-  -- multiple axes
+-- multiple axes
   local s, s2
   if self.out  then
     s = #self.out
@@ -373,9 +373,9 @@ function exec(self)
   if self.sequence then
     local seq = self.sequence
     assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-    self.datrange = {1,-1}
-    local start, stop = seq:range_indexes(self.range)
+    local start, stop = seq:range_index(self.range)
     local lay     = layout        ( seq, start, stop )
+    self.datrange = {lay.x[1][1], lay.x[#lay.x][1]}
     local lay_dat = layout_to_temp( lay, {'x','y'}   )
     temp = table_concat( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off, temp_unmult )
   end
@@ -385,23 +385,23 @@ function exec(self)
   local count      = 2..(#self.out)+1
   local pointtypes = totable(1..(#self.out))
   local pointsizes = totable(vector(#self.out):fill(1) )
-  local yout = table_concat(self.out)
+  local yout       = table_concat(self.out)
 
   axes       = temp_style( self.axes      , axes          , self.keys )
   colors     = temp_style( self.colors    , colors        , self.keys )
   pointtypes = temp_style( self.pointtypes, pointtypes    , self.keys )
   pointsizes = temp_style( self.pointsizes, pointsizes    , self.keys )
   dashtypes  = temp_style( self.dashtypes , dashtypes     , self.keys )
-  ytitle     = temp_style( self.lkeys     , yout          , self.keys )
+  vkeys      = temp_style( self.vkeys     , yout          , self.keys )
 
-  temp_interp( temp, self        )
-  temp_fill  ( temp, colors      , "colors"  )
-  temp_fill  ( temp, axes        , "setaxes" )
-  temp_fill  ( temp, pointtypes  , "ptt"     )
-  temp_fill  ( temp, pointsizes  , "pts"     )
-  temp_fill  ( temp, dashtypes   , "dtt"     )
-  temp_fill  ( temp, ytitle      , "ytitle"  )
-  temp_fill  ( temp, count       , "count"   )
+  temp_interp( temp, self      )
+  temp_fill  ( temp, colors    , "colors"  )
+  temp_fill  ( temp, axes      , "setaxes" )
+  temp_fill  ( temp, pointtypes, "ptt"     )
+  temp_fill  ( temp, pointsizes, "pts"     )
+  temp_fill  ( temp, dashtypes , "dtt"     )
+  temp_fill  ( temp, vkeys     , "vkeys"   )
+  temp_fill  ( temp, count     , "count"   )
   temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
 
@@ -419,48 +419,48 @@ function exec(self)
 end
 
 local plot = Command 'plot' {
-  continue = false,
   id       = 1,
   preamble = false,
+  continue = false,
   table    = false,
   data     = false,
   sequence = false,
   filename = false,
   filecopy = false,
-  haxis    = 'x',
-  vaxis    = 'y',
   vaxis2   = false,
   haxis2   = false,
+  vaxis    = 'y',
+  haxis    = 'x',
   script   = \s script_name(s.filename),
   terminaltype = "postscript eps",
   fontname     = "Times-Roman"   ,
   fontsize = 28 ,
-  xsize    = 27 ,
-  ysize    = 17 ,
+  xsize    = 20,
+  ysize    = 10.5,
   lmargin  = 0.1,
   rmargin  = 0.9,
-  hmargin  = false,
-  vmargin  = true,
   key      = "left top",
   grid     = 'grid',
+  hmargin  = false,
+  vmargin  = true ,
   sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
   hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
   vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
-  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
-  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
+  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
+  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   interpolate = 'points',
 
-  vlimit2  = {nil, nil},
-  ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  xlimit2  = {nil, nil},
-  xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
-  ylabel2  = "",
-  xlabel2  = "",
+  vlimit2 = {nil, nil},
+  xlimit2 = {nil, nil},
+  ylabel2 = "",
+  xlabel2 = "",
+  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
+  xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
   inp2    = \s => if s.haxis2 then return totable     ( s.haxis2 ) end end,
   out2    = \s => if s.vaxis2 then return totable     ( s.vaxis2 ) end end,
   ylabel2 = \s => if s.out2   then return axis_title  ( s.out2   ) end end,
@@ -468,23 +468,18 @@ local plot = Command 'plot' {
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
 
-  linewidth  = 1    ,
   axes       = false,
   colors     = false,
   pointtypes = false,
   pointsizes = false,
   dashtypes  = false,
-  lkeys      = false,
+  vkeys      = false,
 
   title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
-<<<<<<< HEAD
-  namei   = \s => if s.table then return s.table.title else return "name" end end,
-=======
-  namei   = \s => if s.table then return s.table.title else return s.name end end, -- update with name of self plot
->>>>>>> cleanup, names
-  date    = \s => if s.table then return s.table.date  else end end,
-  time    = \s => if s.table then return s.table.time  else end end,
+  namei   = \s => if s.table then return s.table.title else return s.name end end,
+  date    = \s => if s.table then return s.table.date  else               end end,
+  time    = \s => if s.table then return s.table.time  else               end end,
   title   = \s mk_title(s.namei, s.version, s.date, s.time),
 
 -- non-user option
@@ -497,7 +492,7 @@ local plot = Command 'plot' {
   exec = exec,
 } :set_readonly()
 
--- end ---------------- o
+-- end ------------------------------------------------------------------------o
 return {
   plot   = plot  ,
   __help = __help,
