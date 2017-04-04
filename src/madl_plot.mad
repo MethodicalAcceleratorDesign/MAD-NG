@@ -45,33 +45,49 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element, totable                      in MAD
-local isa_matrix, is_range, is_table, is_number, is_string         in MAD.typeid
-local min, max                                                     in MAD.gmath
-local chain, duplicate                                             in MAD.fun
+local range, nrange, vector, element, totable, same              in MAD
+local isa_matrix, is_range, is_table, is_number, is_string       in MAD.typeid
+local min, max, abs, exp                                         in MAD.gmath
+local pow      																									 in MAD.operator
 
 -- implementation -------------------------------------------------------------o
 
-local to_tbl = \x => if is_string(x) then return totable(x) else return x end end
-
 local function keys_tbl(t1, t2, keys)
-  local table = {}
-  if   t1 then for j,k in ipairs(keys) do table[k] = t1[k] or t2[k] end
-  else         for j,k in ipairs(keys) do table[k] = t2[k]          end end
-  return table
-end
-
-local function mk_tbl(t1, t2)
-  local tbl = {}
-  for i,k in ipairs(t1) do tbl[i]     = k end
-  for i,k in ipairs(t2) do tbl[i+#t1] = k end
-  return tbl
-end
-
-local function chain_tbl(t1, ...)
   local t = {}
-  for _it, k, v in chain(t1, ...) do table.insert(t, k) end
+  if   t1 then for j,k in ipairs(keys) do t[k] = t1[k] or t2[k] end
+  else         for j,k in ipairs(keys) do t[k] = t2[k]          end end
   return t
+end
+
+local function table_concat(t, ...)
+  local t = t or {}
+  local n = select('#', ...)
+  for i=1,n do
+    local elem = select(i, ...)
+    for j=1,#elem do table.insert(t, elem[j]) end
+  end
+  return t
+end
+
+--titles
+local function axis_title(src)
+  if src then
+    local label = ""
+    for _,key in pairs(src) do label = label..key.." " end
+    return label
+  end
+end
+
+local function mk_title(name, version, date, time)
+  local src, out = { name = name, version = version , date = date, time = time, }
+  if date then out = "$name MAD $version, $date, $time" % src
+	  else out = "$name MAD $version"               % src end
+    return out
+end
+
+local function script_name(filename)
+  if filename then return string.match(filename, "(%w+)%.")..".gp"
+	else             return "script.gp"                              end
 end
 
 --scalling
@@ -107,7 +123,7 @@ local function scale_axis(src, keys, margin)
   local min, max, x = vmin:min(), vmax:max()
   if margin then
     if is_number(margin) then x = margin
-                         else x = 0.1    end
+			 else x = 0.1    end
     local marg = x*(max-min)
     if marg == 0 then marg = x end
     return min-marg, max+marg
@@ -121,8 +137,8 @@ local function scale_rng(src, rng)
     local  start,  stop = 1     , #src
     local rstart, rstop = rng[1], rng[2]
     local vmin, vmax, c = {}, {}
-    c=1; src:mapij(\x,i,j => if x>rstart then vmin[c]=i; c=c+1 end end, {})
-    c=1; src:mapij(\x,i,j => if x>rstop  then vmax[c]=i; c=c+1 end end, {})
+    c=1; src:mapij(\x,i,j => if x>=rstart then vmin[c]=i; c=c+1 end end, {})
+    c=1; src:mapij(\x,i,j => if x> rstop  then vmax[c]=i; c=c+1 end end, {})
     start = vmin[1]
     if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
     if rng [2] == -1 then stop = #src      end
@@ -130,30 +146,19 @@ local function scale_rng(src, rng)
   end
 end
 
---titles
-local function axis_title(src)
-  if src then
-    local label = ""
-    for _,key in pairs(src) do label = label..key.." " end
-    return label
-  end
-end
-
-local function mk_title(name, ver, date, time)
-  local src, out = { name = name, version = version , date = date, time = time, }
-  if date then out = "$name MAD $version, $date, $time" % src
-          else out = "$name MAD $version"               % src end
-    return out
-end
-
-local function mk_script(filename)
-  if filename then return string.match(filename, "(%w+)%.")..".gp"
-              else return "script.gp"                              end
-end
-
 --layout
 local xadjst = \x,l,s -> x*l + s-l
 local yadjst = \y,h   -> y*h
+local hadjst = \y,h   -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
+
+local function delta(refer, l)
+	local d
+	if     refer == 'exit'   then d = 0
+	elseif refer == 'entry'  then d = l
+	elseif refer == 'center' then d = l/2
+	end
+	return d
+end
 
 local function sh_get(sh)
   local x_sh, y_sh = {}, {}
@@ -168,21 +173,31 @@ local function sh_get(sh)
   return x_sh, y_sh
 end
 
-local function layout(seq, start, stop)
+local function layout(seq, range, refer)
   local xl, yl, c = {}, {}, 1
-  for i=start,stop do
-    local elem, s = seq[i]   , seq:s_pos(i)
+  local del = {}
+  local flag, start = true
+  --for i=start,stop do
+  for i,elem in seq:iter(range) do
+    local s = seq:s_pos(i)
     local kind, l = elem.kind, elem.l
     if s and l then
-      local h,sh = elem[dat[kind].str_k] or 1
+    	del[i] = delta(refer, l)
+    	if flag == true then start=i; flag=false  end
+    	s = s + del[start]
+    	print(del[start+1])
+    	local h,sh = elem[dat[kind].str_k] or 1
       if dat[kind].shape then sh = dat[kind].shape
       elseif h > 0       then sh = dat[kind].shape_f
       else                    sh = dat[kind].shape_d end
       local x_sh, y_sh = sh_get(sh)
       for j=1,#x_sh do
         local x, y = x_sh[j], y_sh[j]
-        xl[c] = x:map \x xadjst(x, l, s)
-        yl[c] = y:map \y yadjst(y, 1   )
+      	xl[c] = x:map( \x xadjst(x+1, l, s) )
+        yl[c] = y:map( \y yadjst(y, 1     ) )
+        --if     h ~= 1 and h > 0 then yl[c] = hadjst(yl[c], h)
+        --elseif h ~= 1           then yl[c] =-hadjst(yl[c], h)
+      	--end
         c = c+1
       end
     end
@@ -190,6 +205,7 @@ local function layout(seq, start, stop)
   return { x=xl, y=yl }
 end
 
+-- saving to template
 local function data_to_temp(src, keys)
   local s = src[keys[1]]
   local t = {"\n"}
@@ -213,8 +229,8 @@ local function layout_to_temp(src, keys)
   for i=1,#s do
     for ii=1,#s[i] do
       for j,k in ipairs(keys) do
-        if t[c] then t[c] = t[c]..src[k][i][ii].." "
-                else t[c] =       src[k][i][ii].." " end
+	      if t[c] then t[c] = t[c]..src[k][i][ii].." "
+		    else         t[c] =       src[k][i][ii].." " end
       end
       t[c] = t[c].."\n"; c=c+1
     end
@@ -231,23 +247,30 @@ local function find_key(inp, key)
   return indx
 end
 
-local function temp_style(inp, out, keys)
-  if inp then
-    for k,v in pairs(inp) do
-      local indx = find_key(keys, k) - 1
-      if indx then out[indx] = v end
-    end
-  end
+local function copy(tbl)
+  local out = {}
+  for k,v in pairs(tbl) do out[k] = v end
   return out
 end
 
-local function temp_fill(temp, src)
+local function temp_style(inp, out, keys)
+	local r = copy(out)
+	if inp then
+    for k,v in pairs(inp) do
+      local indx = find_key(keys, k) - 1
+      if indx then r[indx] = v end
+    end
+  end
+  return r
+end
+
+local function temp_interp(temp, src)
   for i,line in ipairs(temp) do
     temp[i] = line % src      -- interpolate strings
   end
 end
 
-local function temp_fill_tbl(temp, inp, key)
+local function temp_fill(temp, inp, key)
   local c, n = 1
   for i,line in ipairs(temp) do
     temp[i], n = string.gsub( line, key, inp[c] )
@@ -274,17 +297,23 @@ local temp_end = {
   "set xrange [$xmin:$xmax] \n",
   "set yrange [$ymin:$ymax] \n",
 }
-
 local temp_plot     = { "plot " }
-local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'ytitle' axes setaxes,\\\n" }
-
+local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
 local temp_preamble = { "#$preamble \n" }
-local temp_window   = { "set terminal x11 persist \n" }
+local temp_unmult   = {"\nunset multiplot \n" }
+local temp_window   = { "set terminal x11 persist $window font '$fontname, $fontsize'\n" }
 local temp_tofile   = {
-  "set terminal $terminaltype size $xsize cm, $ysize cm enhanced color\n",
-  "set output '$filename' \n",
+  "set terminal $terminaltype $window font '$fontname, $fontsize' enhanced color\n",
+  "set output '|ps2pdf - $filename' \n",
 }
 local temp_unmult = {"\nunset multiplot \n" }
+local temp_unaxes = {
+	"unset x2label \n",
+	"unset x2tics \n",
+	"unset y2tics \n",
+	"unset y2label \n",
+	"unset xzeroaxis \n",
+}
 local temp_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
@@ -299,7 +328,6 @@ local temp_multih = {
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-
 local temp_lay = {
   "unset tmargin \n"    ,
   "unset bmargin \n"    ,
@@ -319,7 +347,7 @@ local temp_lay = {
   "set yrange [-1:1] \n",
   "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
-temp_lay_off= {
+local temp_lay_off = {
   "set border \n"    ,
   "set origin 0,0 \n",
   "set xtics \n"     ,
@@ -328,76 +356,116 @@ temp_lay_off= {
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
-local temp_save, name = {}, {}, nil
+local temp_save, name = {}, {}
+
+local function temp_operations(self, name)
+	local temp = {}
+  if     self.filename and self.filename == name       then temp = table_concat( {}  ,                             template )
+  elseif self.filename               then temp = table_concat( {}  , temp_unmult  , temp_tofile, template )
+  else                                    temp = table_concat( {}  , temp_unmult  , temp_window, template )
+																	 			  temp_save = {}                                                               end
+  if     self.preamble               then temp = table_concat( {}  , temp_preamble, temp                             ) end
+  if     self.vaxis2 and self.haxis2 then temp = table_concat( temp, temp_multih  , temp_multiv, temp_end, temp_plot )
+  elseif self.vaxis2                 then temp = table_concat( temp, temp_multiv  ,              temp_end, temp_plot )
+  elseif self.haxis2                 then temp = table_concat( temp, temp_multih  ,              temp_end, temp_plot )
+  else                                    temp = table_concat( temp,                             temp_end, temp_plot ) end
+  if     self.continue               then temp = temp_plot                                                             end
+  return temp, temp_save
+end
+
+local function interpol(str)
+	local out
+	if     str == 'lines'       then out = "with lines       dashtype  dtt"
+  elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
+  elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
+  end
+  return out
+end
+
+local function multi_axes(self, temp)
+	local axes, s, s2 = {}
+  if self.out  then
+    s = #self.out
+    for i=1,s do temp, axes[i] = table_concat( temp, temp_vaxis  ), "x1y1" end
+  end
+  if self.inp2 then
+    self.keys = table_concat(self.inp , self.inp2, self.out  )
+  end
+  if self.out2 then
+    s2 = #self.out2
+    self.keys = table_concat(self.keys, self.out2            )
+    self.out  = table_concat(self.out , self.out2            )
+    for i=1,s2   do temp    = table_concat( temp, temp_vaxis ) end
+    for i=s,s+s2 do axes[i] = "x1y2"                           end
+  end
+  return temp, axes
+end
+
+local function sequ(self, template, refer)
+	local seq = self.sequence
+  assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
+  --local iter, state, start = seq:iter(self.range)
+  --local s    = self.table.s[1]
+  --local spos = seq:s_pos(start)
+  --local l    = seq[start].l
+  --local d    = spos+l-s
+
+  local lay     = layout        ( seq, self.range, refer )
+  local lay_dat = layout_to_temp( lay, {'x','y'}  )
+ 	local min = lay.x[1]     :min()
+ 	local max = lay.x[#lay.x]:max()
+ 	print(min, max)
+ 	self.datrange = {min, max}
+ 	self.xmin = min
+ 	self.xmax = max
+  return table_concat(temp_lay, lay_dat, temp_lay_off, temp_unmult )
+end
+
+local function style_plots(self, temp, axes)
+  local dashtypes, colors in dat
+  local pointtypes = totable(1..(#self.out))
+  local pointsizes = totable(vector(#self.out):fill(1) )
+  local yout       = table_concat(self.out)
+  temp_interp( temp, self      )
+	local tbl  = {
+    vkeys   = temp_style( self.vkeys     , yout          , self.keys ),
+    colors  = temp_style( self.colors    , colors        , self.keys ),
+    dtt     = temp_style( self.dashtypes , dashtypes     , self.keys ),
+    setaxes = temp_style( self.axes      , axes          , self.keys ),
+    ptt     = temp_style( self.pointtypes, pointtypes    , self.keys ),
+    pts     = temp_style( self.pointsizes, pointsizes    , self.keys ),
+    count   = 2..(#self.out)+1,
+	}
+	for k,v in pairs(tbl) do temp_fill( temp, v, k ) end
+ 	return temp
+end
 
 local gp = setmetatable({},{
   __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
 })
 
 function exec(self)
-  local dashtypes  = { "solid", "solid", "solid", "solid", "solid", "solid",
-                       "solid", "solid", "solid", "solid", "solid","'-'"}
-  local colors = { "red"        , "purple", "brown"    , "yellow"  , "turquoise",
-                   "green"      , "blue"  , "orange"   , "violet"  , "pink",
-                   "greenyellow", "gray"  , "dark-grey", "dark-red", "gold",
-                   "orangered4" , "brown4" }
-  local axes, temp = {}
-  if     self.filename == name then temp = chain_tbl( {}        ,              template)
-  elseif self.filename         then temp = chain_tbl(temp_unmult, temp_tofile, template)
-  else                              temp = chain_tbl(temp_window,              template)
-                                    temp_save = {}
-  end
-  if self.preamble    then temp = mk_tbl(temp_preamble, temp) end
-  if self.interpolate then self.interpolate = "with lines  dashtype  dtt"
-  else                     self.interpolate = "with points pointtype ptt"
-  end
-  if     self.vaxis2 and self.haxis2 then temp = chain_tbl( temp, temp_multih, temp_multiv, temp_end, temp_plot )
-  elseif self.vaxis2                 then temp = chain_tbl( temp, temp_multiv,              temp_end, temp_plot )
-  elseif self.haxis2                 then temp = chain_tbl( temp, temp_multih,              temp_end, temp_plot )
-  else                                    temp = chain_tbl( temp,                           temp_end, temp_plot )
-  end
+  local temp_sequence = {}
+  local vkeys, axes, data_temp, lay_dat
+	local temp, temp_save = temp_operations(self, name)
+  self.interpolate = interpol    ( self.interpolate)
+	temp, axes       = multi_axes  ( self    , temp  )     		                 -- multiple axes
 
-  if self.continue then temp = temp_plot end
-  local s, s2 = #self.out, #self.out2
-  if self.out  then for i=1,s do temp    = chain_tbl( temp, temp_vaxis  )
-                                 axes[i] = "x1y1"                           end
-  end
-  if self.inp2 then self.keys = chain_tbl(self.inp , self.inp2, self.out  ) end
-  if self.out2 then self.keys = chain_tbl(self.keys, self.out2            )
-                    self.out  = chain_tbl(self.out , self.out2            )
-                    for i=1,s2   do temp    = chain_tbl( temp, temp_vaxis ) end
-                    for i=s,s+s2 do axes[i] = "x1y2"                        end
-  end
-  local data_temp = data_to_temp( self.src, self.keys )
-  for i = 1,#self.out do temp = chain_tbl(temp, data_temp) end
+  if self.sequence then temp_sequence = sequ(self, temp, self.refer) end     -- sequence plot
 
-  if self.sequence then
-    local seq = self.sequence
-    assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-    self.datrange = {1,-1}
-    local start, stop = seq:range_indexes(self.range)
-    local lay     = layout        ( seq, start, stop )
-    local lay_dat = layout_to_temp( lay, {'x','y'}   )
-    temp = chain_tbl( temp_unmult, temp, temp_lay, lay_dat, temp_lay_off )
-  end
+  data_temp = data_to_temp( self.src, self.keys )                    	       -- data to template
+  for i = 1,#self.out do temp = table_concat( temp, data_temp) end
 
-  local count = 2..(#self.out)+1
-  local pointtypes = totable(1..(#self.out))
-  axes       = temp_style( self.axes      , axes      , self.keys )
-  colors     = temp_style( self.colors    , colors    , self.keys )
-  pointtypes = temp_style( self.pointtypes, pointtypes, self.keys )
-  dashtypes  = temp_style( self.dashtypes , dashtypes , self.keys )
-  temp_fill    ( temp, self        )
-  temp_fill_tbl( temp, colors      , "colors"  )
-  temp_fill_tbl( temp, axes        , "setaxes" )
-  temp_fill_tbl( temp, pointtypes  , "ptt"     )
-  temp_fill_tbl( temp, dashtypes   , "dtt"     )
-  temp_fill_tbl( temp, self.out    , "ytitle"  )
-  temp_fill_tbl( temp, count       , "count"   )
-  temp_print   ( temp, gp[self.id] )
+	temp = table_concat(temp, temp_sequence)
+
+  if not self.continue and self.out2 or self.inp2 then
+		temp = table_concat(temp, temp_unaxes)
+  end
+	temp = style_plots(self, temp, axes)									            -- style of plots
+  temp_print ( temp, gp[self.id] )
   gp[self.id]:flush()
 
-  if self.filename == name then temp_save = chain_tbl(temp_save, temp)
+  if self.filename == name then temp_save = table_concat(temp_save, temp)
   else                          temp_save = temp
   end
 
@@ -411,73 +479,78 @@ function exec(self)
 end
 
 local plot = Command 'plot' {
-  continue = false,
   id       = 1,
   preamble = false,
+  continue = false,
   table    = false,
   data     = false,
   sequence = false,
-  haxis    = 'x',
-  vaxis    = 'y',
-  vaxis2   = false,
-  haxis2   = false,
+  refer    = 'exit',
   filename = false,
   filecopy = false,
-  script   = \s mk_script(s.filename),
-  terminaltype = "postscript eps",
-  fonttype     = "Times-Roman"   ,
-  fontsize = 22 ,
-  xsize    = 27 ,
-  ysize    = 17 ,
+  vaxis2   = false,
+  window   = " ",
+  haxis2   = false,
+  vaxis    = 'y',
+  haxis    = 'x',
+  script   = \s script_name(s.filename),
+  terminaltype = "postscript",
+  fontname     = "Times-Roman",
+  fontsize = 18 ,
+  xsize    = 20,
+  ysize    = 10.5,
   lmargin  = 0.1,
   rmargin  = 0.9,
-  hmargin  = false,
-  vmargin  = true,
   key      = "left top",
   grid     = 'grid',
+  hmargin  = false,
+  vmargin  = true ,
   sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
 
   range    = {1,-1},
   datrange = \s 1..#s.ktbl[s.inp[1]],
   hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
   vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
-  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
-  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-  interpolate = false ,
+  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
+  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
+  interpolate = 'points',
 
-  vlimit2  = {nil, nil},
-  ymin2    = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  xlimit2  = {nil, nil},
-  xmin2    = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
-  ylabel2  = "",
-  xlabel2  = "",
-  inp2    = \s => if s.haxis2 then return to_tbl      ( s.haxis2 ) end end,
-  out2    = \s => if s.vaxis2 then return to_tbl      ( s.vaxis2 ) end end,
+  vlimit2 = {nil, nil},
+  xlimit2 = {nil, nil},
+  ylabel2 = "",
+  xlabel2 = "",
+  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
+  xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
+  inp2    = \s => if s.haxis2 then return totable     ( s.haxis2 ) end end,
+  out2    = \s => if s.vaxis2 then return totable     ( s.vaxis2 ) end end,
   ylabel2 = \s => if s.out2   then return axis_title  ( s.out2   ) end end,
   xlabel2 = \s => if s.inp2   then return axis_title  ( s.inp2   ) end end,
   vlimit2 = \s => if s.out2   then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2   then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
 
   axes       = false,
-  linewidth  = 1    ,
   colors     = false,
   pointtypes = false,
+  pointsizes = false,
   dashtypes  = false,
+  vkeys      = false,
 
   title   = \s mk_title(s.name, s.ver, s.date, s.time),
   version = tostring(MAD.env.version),
-  name    = \s => if s.table then return s.table.title end end,
-  date    = \s => if s.table then return s.table.date  end end,
-  time    = \s => if s.table then return s.table.time  end end,
+  namei   = \s => if s.table then return s.table.title else return s.name end end,
+  date    = \s => if s.table then return s.table.date  else               end end,
+  time    = \s => if s.table then return s.table.time  else               end end,
+  title   = \s mk_title(s.namei, s.version, s.date, s.time),
+
 -- non-user option
-  inp  = \s to_tbl (s.haxis),
-  out  = \s to_tbl (s.vaxis),
-  keys = \s mk_tbl   (s.inp   , s.out             ),
-  ktbl = \s keys_tbl (s.table , s.data, s.keys    ),
-  drng = \s scale_rng(s.ktbl[s.inp[1]], s.datrange),
-  src  = \s scale_dat(s.ktbl  , s.keys, s.drng    ),
+  inp  = \s totable  (s.haxis),
+  out  = \s totable  (s.vaxis),
+  keys = \s table_concat(s.inp   , s.out             ),
+  ktbl = \s keys_tbl    (s.table , s.data, s.keys    ),
+  drng = \s scale_rng   (s.ktbl[s.inp[1]], s.datrange),
+  src  = \s scale_dat   (s.ktbl  , s.keys, s.drng    ),
   exec = exec,
 } :set_readonly()
 
