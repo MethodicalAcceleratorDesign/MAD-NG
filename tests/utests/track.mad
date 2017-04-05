@@ -24,28 +24,28 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertNil, assertNotNil, assertTrue, assertEquals, assertAllAlmostEquals in MAD.utest
-local functor in MAD.gfunc
 local printf in MAD.utility
 local track, beam, option in MAD
+local sequence in MAD.element
 
 -- regression test suite ------------------------------------------------------o
 
-TestTrack = {}
+TestTrack, Test_Track = {}, {}
 
 local function pinfo (e,m,l,s)
   printf("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g\n",
    e and e.name or 'drift', s, l, m.x, m.px, m.y, m.py)
 end
 
-local function loadFiveCell()
-  assertNotNil(require 'fivecell_gen'     )
-  assertNotNil(require 'fivecell_set'     ) -- side effect from LHC...
-  assertNotNil(require 'fivecell_undefvar')
-  local fivecell in MADX
-  assertEquals(#fivecell, 79)
-  assertEquals(fivecell.mb[1].kind, 'sbend')
-  return fivecell
-end
+!local function loadFiveCell()
+!  assertNotNil(require 'fivecell_gen'     )
+!  assertNotNil(require 'fivecell_set'     ) -- side effect from LHC...
+!  assertNotNil(require 'fivecell_undefvar')
+!  local fivecell in MADX
+!  assertEquals(#fivecell, 81)
+!  assertEquals(fivecell.mb[1].kind, 'rbend')
+!  return fivecell
+!end
 
 local function loadLHC()
   assertNotNil(require 'lhc_as-built_gen')
@@ -71,26 +71,55 @@ function TestTrack:tearDown ()
   end
 end
 
+function Test_Track:setUp ()
+  self.fmt = option.format
+  option.format = "%-18.11g" -- MAD-X default output
+end
+
+function Test_Track:tearDown ()
+  option.format = self.fmt
+  if MADX:is_open_env() == true then
+    MADX:reset_env()
+  end
+end
+
+function TestTrack:testTrackFiveCell()
+  local fivecell = loadFiveCell()
+  local beam = beam { particle='proton', energy=450 }
+  local tbl = track { sequence=fivecell, beam=beam }
+  assertEquals(#tbl, 143)
+  tbl:write('track_fivecell') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
+end
+
 function TestTrack:testTrackLHC1()
-  local lhcb1, lhcb2 = loadLHC()
+  local lhcb1 = loadLHC()
   local beam = beam { particle='proton', energy=450 }
   lhcb1:deselect()[#lhcb1]:select()
-  local tbl, map = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} } --, out_action=functor(pinfo) } --, save='none' }
---  assertEquals(#tbl, 13267)
---  local t0 = os.clock()
---  for i=1,9 do track { sequence=lhcb1, beam=beam, table=tbl } end
---  local t1 = os.clock()
+  local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
+  assertEquals(#tbl, 1) --13267)
+  tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
+ end
+
+function Test_Track:testTrackLHC1() -- Performance
+  -- ./mad -Oloopunroll=2 all.mad -v -p Test_Track.testTrackLHC1
+  local lhcb1 = loadLHC()
+  local beam = beam { particle='proton', energy=450 }
+  lhcb1:deselect()[#lhcb1]:select()
+  local n = 20
+  local t0 = os.clock()
+  local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
+  for i=1,n-1 do
+    tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0}, table=tbl }
+  end
+  local t1 = os.clock()
+  assertEquals(#tbl, n)
   tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
 -- 10 turns with save = 'none' takes 1.52 sec -> 0.15 sec/turn
---  print('LHC track time', t1-t0)
-  option.format = fmt
+  printf('LHC track time per turn = %g sec ... ', (t1-t0)/n)
  end
 
 function TestTrack:testTrackQUADY2()
- local quadrupole, sequence in MAD.element
- local beam in MAD
- local fmt = MAD.option.format
- MAD.option.format = "%-18.12g" -- MAD-X default output
+ local quadrupole in MAD.element
  local beam = beam { particle='proton', energy=450 }
  local seq = sequence 'seq' { refer = 'entry',
    quadrupole 'qf' { l=3, k1 := kqf }
@@ -103,14 +132,10 @@ function TestTrack:testTrackQUADY2()
 --     print('\n MADNG_QUAD', tbl.s[i], kqf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
  end
- option.format = fmt
 end
 
 function TestTrack:testTrackQUADY6()
- local quadrupole, sequence in MAD.element
- local beam in MAD
- local fmt = MAD.option.format
- MAD.option.format = "%-18.12g" -- MAD-X default output
+ local quadrupole in MAD.element
  local beam = beam { particle='proton', energy=450 }
  local seq = sequence 'seq' { refer = 'entry',
    quadrupole 'qf' { l=3, k1 := kqf }
@@ -123,15 +148,10 @@ function TestTrack:testTrackQUADY6()
 --     print('\n MADNG_QUAD', tbl.s[i], kqf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
  end
- option.format = fmt
 end
 
 function TestTrack:testTrackSEXT()
-
- local sextupole, sequence in MAD.element
- local beam in MAD
- local fmt = MAD.option.format
- MAD.option.format = "%-18.12g" -- MAD-X default output
+ local sextupole in MAD.element
  local beam = beam { particle='proton', energy=450 }
  local seq = sequence 'seq' { refer = 'entry',
    sextupole 'sf' { l=3, k2 := ksf }
@@ -144,15 +164,10 @@ function TestTrack:testTrackSEXT()
 --    print('\n MADNG_SEXT', tbl.s[i], ksf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
  end
- option.format = fmt
 end
 
 function TestTrack:testTrackSBEND()
-
- local sbend, sequence  in MAD.element
- local abs, beam in MAD
- local fmt = MAD.option.format
- MAD.option.format = "%-18.12g"
+ local sbend in MAD.element
  local beam = beam { particle='proton', energy=450 }
  local ksb
  local seq = sequence 'seq' { refer = 'entry',
@@ -168,17 +183,11 @@ function TestTrack:testTrackSBEND()
 --  print('\n MADNG_SBEND', tbl.s[i], ksb,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --  end
  end
- option.format = fmt
 end
 
 function TestTrack:testTrackMULT1()
-
-  local multipole, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
+  local multipole in MAD.element
   local beam = beam { particle='proton', energy=450 }
-
   local seq = sequence 'seq' {l=1, refer = 'entry',
     multipole 'mlt' { knl = { 0.01,0.02,0.03, 0.04},  ksl= {-0.01, 0.05}, dknl={0.008, 3e-8}, dksl={-3e-7, 5e-6}, lrad=1 }
   }
@@ -187,18 +196,11 @@ function TestTrack:testTrackMULT1()
   expected = { 0.001       ,-0.012970095016667, 0.001      , 7.3635043333334e-05 , -2.0000043474438e-05, 0      }
   margin   = { 1e-14       , 1e-14            , 1e-14      , 1e-14               , 1e-14               , 1e-14  }
   assertAllAlmostEquals (actual, expected, margin)
-
-  option.format = fmt
 end
 
 function TestTrack:testTrackMULT2()
-
-  local multipole, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
+ local multipole in MAD.element
  local beam = beam { particle='proton', energy=450 }
-
  local seq = sequence 'seq' {l=1, refer = 'entry',
      multipole 'qfm' { knl = { 0.05, knl1, 0.07, 0.09},  ksl= {0.01, -0.03, ksl2} }
  }
@@ -212,64 +214,46 @@ function TestTrack:testTrackMULT2()
 --     print('\n MADNG_MULT', tbl.s[i], knl1,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
  end
- option.format = fmt
 end
 
 function TestTrack:testTrackSOLD()
-
-  local solenoid, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
-  beam = beam { particle='proton', energy=450 }
-
- local seq = sequence 'seq' {l=3, refer = 'entry',
-       solenoid 'SL'  {l=3, ks := msol }
- }
- for k=-1, 1, 0.1 do
-   msol = k*0.01
-   local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=7, X0= {-1e-3, 2e-4, 3e-3, 0, -1.1, 1e-6}}
+  local solenoid in MAD.element
+  local beam = beam { particle='proton', energy=450 }
+  local seq = sequence 'seq' {l=3, refer = 'entry',
+    solenoid 'SL'  {l=3, ks := msol }
+  }
+  for k=-1, 1, 0.1 do
+    msol = k*0.01
+    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=7, X0= {-1e-3, 2e-4, 3e-3, 0, -1.1, 1e-6}}
 --   local n = #tbl
 --  for i=1,n do
 --    print('\n MADNG_SOLD', tbl.s[i], msol ,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
- end
- option.format = fmt
+  end
 end
 
 function TestTrack:testTrackVKICK()
-
-  local lhcb1, lhcb2 = loadLHC()
-  local vkicker, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
+  local vkicker in MAD.element
   local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' {l=3, refer = 'entry',
-     vkicker 'vk' { l=3, kick :=kk }
- }
+  local seq = sequence 'seq' { l=3, refer = 'entry',
+     vkicker 'vk' { l=3, kick:=kk }
+  }
   for k=-1, 1, 0.1 do
-   kk = k*0.03
-   local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=6, X0= {-1e-3, 2e-4, 3e-3, 0, 1.1, 1e-6}}
+    kk = k*0.03
+    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=6, X0= {-1e-3, 2e-4, 3e-3, 0, 1.1, 1e-6}}
 --   local n = #tbl
 --    for i=1,n do
 --     print('\n MADNG_HKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
   end
- option.format = fmt
 end
 
 function TestTrack:testTrackHKICK()
-
-  local lhcb1, lhcb2 = loadLHC()
-  local hkicker, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
+  local hkicker in MAD.element
   local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' {l=3, refer = 'entry',
+  local seq = sequence 'seq' { l=3, refer = 'entry',
      hkicker 'hk' { l=3, kick :=kk }
- }
+  }
   for k=-1, 1, 0.1 do
    kk = k*0.03
    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=6, X0= {-1e-3, 2e-4, 3e-3, 0, 0, 1e-6}}
@@ -278,16 +262,10 @@ function TestTrack:testTrackHKICK()
 --     print('\n MADNG_HKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --   end
   end
- option.format = fmt
 end
 
 function TestTrack:testTrackMKICK()
-
-  local lhcb1, lhcb2 = loadLHC()
-  local hkicker, sequence  in MAD.element
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.12g" -- MAD-X default output
+  local hkicker in MAD.element
   local beam = beam { particle='proton', energy=450 }
   local seq = sequence 'seq' {l=3, refer = 'entry',
      hkicker 'hk' { kick :=kk, lrad = 1.5 }
@@ -300,18 +278,13 @@ function TestTrack:testTrackMKICK()
 --      print('\n MADNG_MHKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --    end
   end
-  option.format = fmt
 end
 
 function TestTrack:testTrackSPSLine()
   local pi in math
   local marker, drift, monitor, hkicker, vkicker, multipole in MAD.element
-  local sbend, quadrupole,  sextupole, patch, sequence      in MAD.element
-
-  local beam in MAD
-  local fmt = MAD.option.format
-  MAD.option.format = "%-18.14g" -- MAD-X default output
-  beam = beam { particle='proton', energy=450 }
+  local sbend, quadrupole, sextupole, patch                 in MAD.element
+  local beam = beam { particle='proton', energy=450 }
 
 -- total length
   local circum = 6912.0
@@ -324,19 +297,19 @@ function TestTrack:testTrackSPSLine()
   local lquad2 = lquad/2.
   local lsex   = 1.0
 --marker
-  local ip  = marker     'ip'{}
+  local ip  = marker 'ip' {}
 --drift (just to check if it works and gives the same results)
-  local dr = drift      'dr'{}
+  local dr = drift 'dr' {}
 --sbend
 --  local asb = 0.010    -- angle
   local asb = 2.0*pi/(8*108)
 --  local sb  = sbend     'sb'{ l:=lsb, angle = asb }
-  local sb  = multipole     'sb'{ knl = {asb} }
+  local sb  = multipole 'sb' { knl = {asb} }
 --quads
   local kqf  =  1.4631475E-02
   local kqd  = -1.4643443E-02
-  local qf  = quadrupole 'qf'{ l=lquad, k1:= kqf }
-  local qd  = quadrupole 'qd'{ l=lquad, k1:= kqd }
+  local qf  = quadrupole 'qf' { l=lquad, k1:= kqf }
+  local qd  = quadrupole 'qd' { l=lquad, k1:= kqd }
 --sextupole
   local ksf =  2.0284442E-02
   local ksd = -3.8394267E-02
@@ -348,7 +321,7 @@ function TestTrack:testTrackSPSLine()
   local cv  = vkicker 'vh'   {l=0.1}
 --sequence
   local seq = sequence 'sps_cell1' {l = lcell, dir =1, refer = 'centre',
-      ip  'IP1'  { at = 0        },
+      ip  'IP1'  { at = 0     },
       qf  'QF1'  { at = lquad2},
       sf  'SF1'  { at = lquad2   +  2.5},
       ch  'CH1'  { at = lquad2   +  3.1},
@@ -367,24 +340,13 @@ function TestTrack:testTrackSPSLine()
       sb  'SB3'  { at = lquad2   +  54.1},
       sb  'SB4'  { at = lquad2   +  60.5},
       ip  'IP2'  { at = lcell    },
-
-}
+  }
   local tbl = track { sequence=seq,  beam=beam, metod='yoshida4', nst=5000, X0= {-1e-3, 3e-3,7e-5,-3e-4, 1e-3, 0}}
 --    local n = #tbl
 --    for i=1,n do
 --     print('\n MADNG_SPSLine', tbl.s[i], tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
 --    end
-  option.format = "%-18.16g"
   tbl:write('sps_cell1')
-
 end
-
--- function TestTrack:testTrackFiveCell()
---   local fivecell = loadFiveCell()
---   local beam = beam { particle='proton', energy=450 }
---   local tbl = track { sequence=fivecell, beam=beam }
---   assertEquals(#tbl, 141)
---   tbl:write('track_fivecell') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
--- end
 
 -- end ------------------------------------------------------------------------o
