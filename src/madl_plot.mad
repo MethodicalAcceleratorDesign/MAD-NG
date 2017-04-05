@@ -52,6 +52,12 @@ local pow                                                        in MAD.operator
 
 -- implementation -------------------------------------------------------------o
 
+local function copy(tbl)
+  local out = {}
+  for k,v in pairs(tbl) do out[k] = v end
+  return out
+end
+
 local function keys_tbl(t1, t2, keys)
   local t = {}
   if   t1 then for j,k in ipairs(keys) do t[k] = t1[k] or t2[k] end
@@ -69,25 +75,10 @@ local function tbl_concat(t, ...)
   return t
 end
 
---titles
-local function axis_title(src)
-  if src then
-    local label = ""
-    for _,key in pairs(src) do label = label..key.." " end
-    return label
-  end
-end
-
-local function mk_title(name, version, date, time)
-  local src, out = { name = name, version = version , date = date, time = time, }
-  if date then out = "$name MAD $version, $date, $time" % src
-    else out = "$name MAD $version"               % src end
-    return out
-end
-
-local function script_name(filename)
-  if filename then return string.match(filename, "(%w+)%.")..".gp"
-  else             return "script.gp"                              end
+local function find_key(inp, key)
+  local indx
+  for i,line in ipairs(inp) do if line:find(key) then indx = i end end
+  return indx
 end
 
 --scalling
@@ -203,6 +194,48 @@ local function layout(seq, range, refer)
   return { x=xl, y=yl }
 end
 
+-- plot options
+local function axis_title(src)
+  if src then
+    local label = ""
+    for _,key in pairs(src) do label = label..key.." " end
+    return label
+  end
+end
+
+local function mk_title(name, version, date, time)
+  local src, out = { name = name, version = version , date = date, time = time, }
+  if date then out = "$name MAD $version, $date, $time" % src
+  else 				 out = "$name MAD $version"               % src
+  end
+    return out
+end
+
+local function script_name(filename)
+  if   filename then return string.match(filename, "(%w+)%.")..".gp"
+  else               return "script.gp"                              end
+end
+
+local function interpol(str)
+  local out
+  if     str == 'lines'       then out = "with lines       dashtype  dtt"
+  elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
+  elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
+  end
+  return out
+end
+
+local function temp_style(inp, out, keys)
+  local r = copy(out)
+  if inp then
+    for k,v in pairs(inp) do
+      local indx = find_key(keys, k) - 1
+      if indx then r[indx] = v end
+    end
+  end
+  return r
+end
+
 -- saving to template
 local function data_to_temp(src, keys)
   local s = src[keys[1]]
@@ -239,28 +272,6 @@ local function layout_to_temp(src, keys)
 end
 
 -- template
-local function find_key(inp, key)
-  local indx
-  for i,line in ipairs(inp) do if line:find(key) then indx = i end end
-  return indx
-end
-
-local function copy(tbl)
-  local out = {}
-  for k,v in pairs(tbl) do out[k] = v end
-  return out
-end
-
-local function temp_style(inp, out, keys)
-  local r = copy(out)
-  if inp then
-    for k,v in pairs(inp) do
-      local indx = find_key(keys, k) - 1
-      if indx then r[indx] = v end
-    end
-  end
-  return r
-end
 
 local function temp_interp(temp, src)
   for i,line in ipairs(temp) do
@@ -306,10 +317,10 @@ local temp_tofile   = {
 }
 local temp_unmult = {"\nunset multiplot \n" }
 local temp_unaxes = {
-  "unset x2label \n",
-  "unset x2tics \n",
-  "unset y2tics \n",
-  "unset y2label \n",
+  "unset x2label \n"  ,
+  "unset x2tics \n"   ,
+  "unset y2tics \n"   ,
+  "unset y2label \n"  ,
   "unset xzeroaxis \n",
 }
 local temp_multiv = {
@@ -356,6 +367,10 @@ local temp_lay_off = {
 local mtable, Command in MAD
 local temp_save, name = {}, {}
 
+local gp = setmetatable({},{
+  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
+})
+
 local function temp_operations(self, name)
   local filename, preamble, vaxis2, vaxis2, haxis2, continue, window in self
   local temp = {}
@@ -371,15 +386,6 @@ local function temp_operations(self, name)
   else                               temp = tbl_concat( temp,                             temp_end, temp_plot ) end
   if     continue               then temp = temp_plot                                                           end
   return temp, temp_save
-end
-
-local function interpol(str)
-  local out
-  if     str == 'lines'       then out = "with lines       dashtype  dtt"
-  elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
-  elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
-  end
-  return out
 end
 
 local function multi_axes(self, temp)
@@ -438,10 +444,6 @@ local function style_plots(self, temp, axes)
   return temp
 end
 
-local gp = setmetatable({},{
-  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
-})
-
 function exec(self)
   local sequence, keys, refer, src, inp, out, out2, id, filename, script in self
   local temp_sequ = {}
@@ -449,7 +451,9 @@ function exec(self)
   local temp, temp_save = temp_operations(self, name)
   self.interpolate = interpol  ( self.interpolate)
   temp, axes       = multi_axes( self, temp      )           -- multiple axes
+
   if sequence then  temp_sequ = sequ(self, temp, refer) end  -- sequence plot
+
   data_temp = data_to_temp( src, keys )                      -- data to plot
   for i = 1,#out do temp = tbl_concat( temp, data_temp) end
   temp = tbl_concat(temp, temp_sequ)
