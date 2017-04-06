@@ -107,7 +107,8 @@ local _C in MAD
 local second in MAD.gfunc
 local is_nil, is_number in MAD.typeid
 
-local complex = require'ffi'.typeof'complex'
+local ffi = require'ffi'
+local complex = ffi.typeof'complex'
 
 -- t={}; for k in pairs(math) do t[#t+1]=k end;
 -- table.sort(t); print(table.concat(t,', '))
@@ -209,15 +210,34 @@ end
 
 -- random number generators ---------------------------------------------------o
 
+-- RNG XorShift1024* -- see mad_num.c
+ffi.cdef [[
+typedef struct rng_state { u64_t s[16]; int p; } rng_state_t;
+]]
+local rng = ffi.new 'rng_state_t[1]'
+
+-- randn spare value
 local randn_spare_x1 = nil
 
-gmath.randomseed = \x => randn_spare_x1=nil ; randomseed(x) end
+-- MAD XorShift1024* (Marsaglia’s xorshift generator)
+-- generates 64 pseudo-random bits in [0,ULLONG_MAX]
+-- generates 52 pseudo-random bits in [0,1)
+-- period is 2^1024 for single stream, or 2^512 streams of 2^512 (i.e. jump)
+gmath.random     = \  -> _C.mad_num_rand    (rng)
+gmath.irandom    = \  -> _C.mad_num_irand   (rng)
+gmath.randomseed = \x => _C.mad_num_randseed(rng, x)   ; randn_spare_x1=nil end
+gmath.randomjump = \  => _C.mad_num_randjump(rng, nil) ; randn_spare_x1=nil end
+gmath.randomseed(0) -- init
 
 -- LuaJIT Tausworthe PRNG with period 2^223
 -- generates 52 pseudo-random bits in [0,1)
-gmath.random = random
+-- gmath.random     = \  ->                      math.random    ()
+-- gmath.randomseed = \x => randn_spare_x1=nil ; math.randomseed(x) end
+-- gmath.randomjump = \x => randn_spare_x1=nil ;                    end -- TODO
 
--- Box-Muller transformation (Marsaglia polar form)
+local random in gmath
+
+-- Box-Muller transformation (Marsaglia's polar form)
 -- generates pseudo-random gaussian numbers
 local function randn ()
   local x1, x2, w
