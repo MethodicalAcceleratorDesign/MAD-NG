@@ -21,6 +21,7 @@
 #include <assert.h>
 
 #include "mad_num.h"
+#include "mad_cst.h"
 
 // --- implementation ---------------------------------------------------------o
 
