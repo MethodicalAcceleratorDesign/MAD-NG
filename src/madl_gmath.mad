@@ -107,7 +107,8 @@ local _C in MAD
 local second in MAD.gfunc
 local is_nil, is_number in MAD.typeid
 
-local complex = require'ffi'.typeof'complex'
+local ffi = require'ffi'
+local complex = ffi.typeof'complex'
 
 -- t={}; for k in pairs(math) do t[#t+1]=k end;
 -- table.sort(t); print(table.concat(t,', '))
@@ -177,24 +178,27 @@ gmath = {
   polar = \x -> is_number(x) and abs(x)+gmath.carg(x)*1i         or x:polar(),
 
   -- non-generic functions
-  hypot = _C.hypot,
-  atan2 = atan2,
-  ldexp = ldexp,
-  frexp = frexp,
-  fpow  = pow,
-  fmod  = fmod,
-  modf  = modf,
-  max   = max,
-  min   = min,
-  deg   = deg,
-  rad   = rad,
+  hypot  = _C.hypot,
+  atan2  = atan2,
+  ldexp  = ldexp,
+  frexp  = frexp,
+  fpow   = pow,
+  fmod   = fmod,
+  modf   = modf,
+  max    = max,
+  min    = min,
+  deg    = deg,
+  rad    = rad,
 
-  sign  = \x -> x>=0 and 1 or x<0 and -1 or x,
-  step  = \x -> x>=0 and 1 or x<0 and  0 or x,
-  sinc  = \x -> abs(x)<1e-10 and 1 or sin(x)/x,
+  sign   = \x -> x>=0 and 1 or x<0 and -1 or x,
+  step   = \x -> x>=0 and 1 or x<0 and  0 or x,
+  sinc   = \x -> abs(x)<1e-10 and 1 or sin(x)/x,
 
   hypot3 = \x,y,z -> _C.hypot(_C.hypot(x,y),z),
 
+  -- default uniform RNG
+  random     = random,
+  randomseed = randomseed,
 }
 
 do
@@ -209,61 +213,109 @@ end
 
 -- random number generators ---------------------------------------------------o
 
-local randn_spare_x1 = nil
+local is_nan in MAD.typeid
+local nan    in gmath
 
-gmath.randomseed = \x => randn_spare_x1=nil ; randomseed(x) end
-
--- LuaJIT Tausworthe PRNG with period 2^223
+-- MAD XorShift1024* (improved Marsaglia’s xorshift generator) -- see mad_num.c
+-- generates 64 pseudo-random bits in [0,ULLONG_MAX]
 -- generates 52 pseudo-random bits in [0,1)
-gmath.random = random
+-- period is 2^1024 for single stream, or 2^512 streams of 2^512 (i.e. jump)
 
--- Box-Muller transformation (Marsaglia polar form)
+ffi.cdef [[
+struct rng_state {
+  u64_t s[16];
+  int   p;
+  num_t x;
+};
+]]
+
+local rand     = \r    -> _C.mad_num_rand (r)
+local irand    = \r    -> _C.mad_num_irand(r)
+local randseed = \r,x  => _C.mad_num_randseed(r, x or 0); r.x=nan; return r end
+local randjump = \r,r_ => _C.mad_num_randjump(r, r_)    ; r.x=nan; return r end
+
+local gref = randseed(ffi.new 'rng_state_t') -- streams reference
+local grng = randseed(ffi.new 'rng_state_t') -- global generator
+
+local function randstream ()
+  local rng = ffi.new 'rng_state_t'
+  ffi.copy(gref, randjump(rng, gref), ffi.sizeof 'rng_state_t')
+  return rng
+end
+
+gmath.rand     = \    -> grng:rand()
+gmath.irand    = \    -> grng:irand()
+gmath.randseed = \x   -> grng:randseed(x)
+
+gmath.randn    = \    -> grng:randn ()
+gmath.randp    = \lmb -> grng:randp (lmb)
+gmath.randtn   = \cut -> grng:randtn(cut)
+
+gmath.randstream = randstream
+
+-- Box-Muller transformation (Marsaglia's polar form)
 -- generates pseudo-random gaussian numbers
-local function randn ()
+local function randn (rng)
   local x1, x2, w
-  if randn_spare_x1 then
-    x1, randn_spare_x1 = randn_spare_x1, nil
+  if not is_nan(rng.x) then
+    x1, rng.x = rng.x, nan
     return x1
   end
   repeat
-    x1 = 2*random() - 1
-    x2 = 2*random() - 1
+    x1 = 2*rand(rng) - 1
+    x2 = 2*rand(rng) - 1
     w = x1*x1 + x2*x2
   until w < 1
   w = sqrt( -2 * log(w) / w )
-  randn_spare = x2*w
+  rng.x = x2*w
   return x1*w
+end
+
+-- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
+local function randtn (rng, cut_)
+  if is_nil(cut_) then return randn(rng) end
+  local c, r = abs(cut_)
+  repeat r = randn(rng) until abs(r) <= c
+  return r
 end
 
 -- Inverse transform sampling (for 'small' lamdba in O(lambda))
 -- Discrete Univariate Distributions, L. Devroye, p505
-local function randp (l)
-  assert(is_number(l) and l > 0 and l < 30,
+local function randp (rng, lmb_)
+  local lmb = lmb_ or 1
+  assert(is_number(lmb) and lmb > 0 and lmb < 30,
          "invalid argument #1 (0 < lambda < 30 expected)")
-  local x, p = 0, exp(-l)
-  local s, u = p, random()
+  local x, p = 0, exp(-lmb)
+  local s, u = p, rand(rng)
   while u > s do
     x = x + 1
-    p = p * l/x
+    p = p * lmb/x
     s = s + p
   end
   return x
 end
 
-local function tgauss (c_)
-  if is_nil(c_) then return randn() end
-  local c, r = abs(c_)
-  repeat r = randn() until abs(r) <= c
-  return r
+-- RNG as an infinite stream
+local function iter (rng, i)
+  return i+1, rng:rand()
 end
 
-gmath.ranf    = random
-gmath.randf   = random
-gmath.randn   = randn
-gmath.randp   = randp
-gmath.gauss   = randn
-gmath.tgauss  = tgauss
-gmath.poisson = randp
+local rng_mt = {
+  __index = {
+    rand     = \r     -> rand    (r),
+    irand    = \r     -> irand   (r),
+    randseed = \r,x   -> randseed(r, x),
+
+    randn    = \r     -> randn (r),
+    randp    = \r,lmb -> randp (r, lmb),
+    randtn   = \r,cut -> randtn(r, cut),
+  },
+
+  __ipairs   = \r -> (iter, r, 0),
+  __tostring = \r -> string.format("<rng> %p", r),
+}
+
+ffi.metatype('rng_state_t', rng_mt)
 
 -- end ------------------------------------------------------------------------o
 return {

@@ -37,6 +37,7 @@
 typedef const char*      str_t;
 typedef int32_t          idx_t;
 typedef int32_t          ssz_t;
+typedef uint64_t         u64_t;
 typedef struct xrange    rng_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
