@@ -143,9 +143,10 @@ num_t mad_num_rand (rng_state_t *restrict st)
 void mad_num_randseed (rng_state_t *restrict st, num_t seed)
 {
   u64_t *s = st->s;
-  const union numbit n = { .d = seed ? seed : M_PI };
-  for (int i = 0; i < N; i++)
-    s[i] = n.u * 33;
+  const union numbit n = { .d = seed ? seed : M_PI }; // avoid zero
+  s[0] = n.u * 33;
+  for (int i = 1; i < N; i++)
+    s[i] = s[i-1] * 33;
   for (int i = 0; i < N; i++)
     mad_num_irand(st);
 }

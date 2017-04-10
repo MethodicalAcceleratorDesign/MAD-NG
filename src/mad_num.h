@@ -70,7 +70,7 @@ void  mad_cnum_dawson_r(num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 
 // --- RNG --------------------------------------------------------------------o
 
-typedef struct rng_state rng_state_t; // mad_num.c
+typedef struct rng_state rng_state_t; // ADT in mad_num.c
 
 num_t mad_num_rand     (rng_state_t*);             // [0.,1.)
 u64_t mad_num_irand    (rng_state_t*);             // [0,ULLONG_MAX]
