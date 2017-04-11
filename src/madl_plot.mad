@@ -22,26 +22,6 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.plot = [[
-NAME
-  plot -- Plot
-
-SYNOPSIS
-  TODO
-
-DESCRIPTION
-  The module plot provides...
-
-RETURN VALUES
-  The plot command
-
-SEE ALSO
-  element, sequence, track
-]]
-
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
@@ -215,8 +195,8 @@ local function mk_title(name, version, date, time)
   return out
 end
 
-local function script_name(filename)
-  if   filename then return string.match(filename, "(%w+)%.")..".gp"
+local function script_name(pdfname)
+  if   pdfname then return string.match(pdfname, "(%w+)%.")..".gp"
   else               return "script.gp"                              end
 end
 
@@ -230,7 +210,7 @@ local function interpol(str)
   return out
 end
 
-local function temp_style(inp, out, keys)
+local function templ_style(inp, out, keys)
   local r = copy(out)
   if inp then
     for k,v in pairs(inp) do
@@ -242,7 +222,7 @@ local function temp_style(inp, out, keys)
 end
 
 -- saving to template
-local function data_to_temp(src, keys)
+local function data_to_templ(src, keys)
   local s = src[keys[1]]
   local t = {"\n"}
   for i=2,#s+1 do
@@ -257,7 +237,7 @@ local function data_to_temp(src, keys)
   return t
 end
 
-local function layout_to_temp(src, keys)
+local function layout_to_templ(src, keys)
   local s = src[keys[1]]
   local t = {"\n"}
   local c = 2
@@ -278,13 +258,13 @@ end
 
 -- template
 
-local function temp_interp(temp, src)
+local function templ_interp(temp, src)
   for i,line in ipairs(temp) do
     temp[i] = line % src      -- interpolate strings
   end
 end
 
-local function temp_fill(temp, inp, key)
+local function templ_fill(temp, inp, key)
   local c, n = 1
   for i,line in ipairs(temp) do
     temp[i], n = string.gsub( line, key, inp[c] )
@@ -292,7 +272,7 @@ local function temp_fill(temp, inp, key)
   end
 end
 
-local function temp_print(temp, pipe)
+local function templ_print(temp, pipe)
   for i =1,#temp do pipe:write(temp[i]) end
 end
 
@@ -304,45 +284,44 @@ local template = {
   "set size 1,$sizeplot \n"          ,
   "set title '$title'  \n"           ,
 }
-local temp_end = {
+local templ_end = {
   "set key $key \n"            ,
   "set xlabel '$xlabel' \n"    ,
   "set ylabel '$ylabel' \n"    ,
   "set xrange [$xmin:$xmax] \n",
   "set yrange [$ymin:$ymax] \n",
 }
-local temp_plot     = { "plot " }
-local temp_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
-local temp_preamble = { "#$preamble \n" }
-local temp_unmult   = {"\nunset multiplot \n" }
-local temp_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
-local temp_tofile   = {
+local templ_plot     = { "plot " }
+local templ_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
+local templ_preamble = { "#$preamble \n" }
+local templ_unmult   = {"\nunset multiplot \n" }
+local templ_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
+local templ_tofile   = {
   "set terminal $terminaltype $window font '$fontname, $fontsize' enhanced color\n",
-  "set output '|ps2pdf - $filename' \n",
+  "set output '|ps2pdf - $pdfname' \n",
 }
-local temp_unmult = {"\nunset multiplot \n" }
-local temp_unaxes = {
+local templ_unaxes = {
   "unset x2label \n"  ,
   "unset x2tics \n"   ,
   "unset y2tics \n"   ,
   "unset y2label \n"  ,
   "unset xzeroaxis \n",
 }
-local temp_multiv = {
+local templ_multiv = {
   "set ytics nomirror \n"         ,
   "set y2tics \n"                 ,
   "set tics out \n"               ,
   "set y2label '$ylabel2' \n"     ,
   "set y2range [$ymin2:$ymax2] \n",
 }
-local temp_multih = {
+local templ_multih = {
   "set xtics nomirror \n"         ,
   "set x2tics \n"                 ,
   "set tics out \n"               ,
   "set x2label '$xlabel2' \n"     ,
   "set x2range [$xmin2:$xmax2] \n",
 }
-local temp_lay = {
+local templ_lay = {
   "unset tmargin \n"    ,
   "unset bmargin \n"    ,
   "unset title  \n"     ,
@@ -361,7 +340,7 @@ local temp_lay = {
   "set yrange [-1:1] \n",
   "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
 }
-local temp_lay_off = {
+local templ_lay_off = {
   "set border \n"    ,
   "set origin 0,0 \n",
   "set xtics \n"     ,
@@ -370,36 +349,36 @@ local temp_lay_off = {
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
-local temp_save, name = {}, {}
+local templ_save, name = {}, {}
 
 local gp = setmetatable({},{
   __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
 })
 
 local function temp_operations(self, name)
-  local filename, preamble, vaxis2, vaxis2, haxis2, continue, window in self
-  local temp = {}
-  if     filename and filename == name then temp = tbl_concat( {}  ,                             template )
-  elseif filename                      then temp = tbl_concat( {}  , temp_unmult  , temp_tofile, template )
-  else                                      temp = tbl_concat( {}  , temp_unmult  , temp_window, template )
-                                            temp_save = {}                                                      end
-                                            if not window then window = "size 800, 500" end
-  if     preamble               then temp = tbl_concat( {}  , temp_preamble, temp                             ) end
-  if     vaxis2 and haxis2      then temp = tbl_concat( temp, temp_multih  , temp_multiv, temp_end, temp_plot )
-  elseif vaxis2                 then temp = tbl_concat( temp, temp_multiv  ,              temp_end, temp_plot )
-  elseif haxis2                 then temp = tbl_concat( temp, temp_multih  ,              temp_end, temp_plot )
-  else                               temp = tbl_concat( temp,                             temp_end, temp_plot ) end
-  if     continue               then temp = tbl_concat( {}, temp_plot )
-  																	 self.continue = false 																										  end
-  return temp, temp_save
+  local pdfname, preamble, vaxis2, vaxis2, haxis2, multiplot, window in self
+  local templ = {}
+  if     pdfname and pdfname == name  then templ = tbl_concat( {}  ,                               template )
+  elseif pdfname                      then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
+  else                                     templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
+                                           templ_save = {}                                                      end
+                                           if not window then window = "size 800, 500" end
+  if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                               ) end
+  if     vaxis2 and haxis2      then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end, templ_plot )
+  elseif vaxis2                 then templ = tbl_concat( templ, templ_multiv  ,               templ_end, templ_plot )
+  elseif haxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end, templ_plot )
+  else                               templ = tbl_concat( templ,                               templ_end, templ_plot ) end
+  if     multiplot               then templ = tbl_concat( {}, templ_plot )
+  																	 self.multiplot = false 																										  end
+  return templ, templ_save
 end
 
-local function multi_axes(self, temp)
+local function multi_axes(self, templ)
   local keys, inp, out, inp2, ou2 in self
   local axes, s, s2 = {}
   if out then
     s = #out
-    for i=1,s do temp, axes[i] = tbl_concat( temp, temp_vaxis  ), "x1y1" end
+    for i=1,s do templ, axes[i] = tbl_concat( templ, templ_vaxis  ), "x1y1" end
   end
   if inp2 then
     keys = tbl_concat({}, inp , inp2, out)
@@ -408,77 +387,79 @@ local function multi_axes(self, temp)
     s2 = #out2
     keys = tbl_concat( keys, out2     )
     out  = tbl_concat( out , out2     )
-    for i=1,s2   do temp    = tbl_concat( temp, temp_vaxis ) end
-    for i=s,s+s2 do axes[i] = "x1y2"                         end
+    for i=1,s2   do templ    = tbl_concat( templ, templ_vaxis ) end
+    for i=s,s+s2 do axes[i] = "x1y2"                            end
   end
-  return temp, axes
+  return templ, axes
 end
 
 local function sequ(self, template, refer)
-  local temp = {}
+  local templ = {}
   local seq = self.sequence
   assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
 
   local lay     = layout        ( seq, self.range, refer )
-  local lay_dat = layout_to_temp( lay, {'x','y'}  )
+  local lay_dat = layout_to_templ( lay, {'x','y'}  )
   local min = lay.x[1]     :min()
   local max = lay.x[#lay.x]:max()
   self.datrange = {min, max}
   self.xmin = min
   self.xmax = max
-  temp = tbl_concat( {}, temp_lay, lay_dat, temp_lay_off, temp_unmult )
-  return temp
+  templ = tbl_concat( {}, templ_lay, lay_dat, templ_lay_off, templ_unmult )
+  return templ
 end
 
-local function style_plots(self, temp, axes)
+local function style_plots(self, templ, axes)
   local out, keys in self
   local dashtypes, colors in dat
   local ptt  = totable(1..(#out))
   local pts  = totable(vector(#out):fill(1))
   local yout = tbl_concat(out)
-  temp_interp( temp, self )
   local style  = {
-    vkeys   = temp_style( self.vkeys     , yout     , keys ),
-    colors  = temp_style( self.colors    , colors   , keys ),
-    dtt     = temp_style( self.dashtypes , dashtypes, keys ),
-    setaxes = temp_style( self.axes      , axes     , keys ),
-    ptt     = temp_style( self.pointtypes, ptt      , keys ),
-    pts     = temp_style( self.pointsizes, pts      , keys ),
+    vkeys   = templ_style( self.vkeys     , yout     , keys ),
+    colors  = templ_style( self.colors    , colors   , keys ),
+    dtt     = templ_style( self.dashtypes , dashtypes, keys ),
+    setaxes = templ_style( self.axes      , axes     , keys ),
+    ptt     = templ_style( self.pointtypes, ptt      , keys ),
+    pts     = templ_style( self.pointsizes, pts      , keys ),
     count   = 2..(#self.out)+1,
   }
-  for k,v in pairs(style) do temp_fill( temp, v, k ) end
-  return temp
+  for k,v in pairs(style) do templ_fill( templ, v, k ) end
+  return templ
 end
 
 function exec(self)
-  local sequence, keys, refer, src, inp, out, out2, id, filename, script in self
-  local temp_sequ = {}
+  local sequence, keys, refer, src, inp, out, out2, id, pdfname, script in self
+  local templ_sequ = {}
   local vkeys, axes, data_temp, lay_dat
-  local temp, temp_save = temp_operations(self, name)
+  local templ, templ_save = temp_operations(self, name)
   self.interpolate = interpol  ( self.interpolate)
-  temp, axes       = multi_axes( self, temp      )           -- multiple axes
+  templ, axes      = multi_axes( self, templ      )           -- multiple axes
 
-  if sequence then  temp_sequ = sequ(self, temp, refer) end  -- sequence plot
+  if sequence then  templ_sequ = sequ(self, templ, refer) end  -- sequence plot
 
-  data_temp = data_to_temp( src, keys )                      -- data to plot
-  for i = 1,#out do temp = tbl_concat( temp, data_temp) end
-  temp = tbl_concat(temp, temp_sequ)
+  data_temp = data_to_templ( src, keys )                      -- data to plot
+  for i = 1,#out do templ = tbl_concat( templ, data_temp) end
+  templ = tbl_concat(templ, templ_sequ)
 
-  if not continue and out2 or inp2 then temp = tbl_concat(temp, temp_unaxes) end
-  temp = style_plots(self, temp, axes)                       -- style of plots
-  temp_print( temp, gp[id] )
+  if not multiplot and out2 or inp2 then templ = tbl_concat(templ, templ_unaxes) end
+
+  templ_interp( templ, self )
+
+  templ = style_plots(self, templ, axes)                       -- style of plots
+  templ_print( templ, gp[id] )
   gp[id]:flush()
 
-  if filename == name then temp_save = tbl_concat(temp_save, temp)
-  else                     temp_save = temp
+  if pdfname == name then templ_save = tbl_concat(templ_save, templ)
+  else                    templ_save = templ
   end
 
   if filecopy then
-    local gp_script = io.open(script, "w")
-    temp_print( temp_save, gp_script )
-    gp_script:close()
+    local fp = io.open(script, "w")
+    templ_print( templ_save, fp )
+    fp:close()
   end
-  name = filename
+  name = pdfname
 
   return self
 end
@@ -487,19 +468,23 @@ local plot = Command 'plot' {
   -- gnuplot setup
   terminaltype = "postscript",
   fontname     = "Times-Roman",
-  key      = "left top",
-  grid     = 'grid',
-  window   = " ",
   fontsize = 18 ,
+
+  key      = "left top",
+  grid     = 'grid', -- on/of
+  window   = " ",
+
   xsize    = 20,
   ysize    = 10.5,
+
   lmargin  = 0.1,
-  rmargin  = 0.9,
+  rmargin  = 0.9, -- global margins = {left = .. ,}
+
   sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
 
   id       = 1,
   preamble = false,
-  continue = false,
+  multiplot = false,
 
   -- input
   table    = false,
@@ -515,9 +500,9 @@ local plot = Command 'plot' {
   range    = {1,-1},
 
   -- saving to file
-  filename = false,
+  pdfname = false,
   filecopy = false,
-  script   = \s script_name(s.filename),
+  script   = \s script_name(s.pdfname),
 
   -- inp operations
   hmargin  = false,
@@ -557,6 +542,8 @@ local plot = Command 'plot' {
   date    = \s => if s.table then return s.table.date  else               end end,
   time    = \s => if s.table then return s.table.time  else               end end,
   title   = \s mk_title(s.namei, s.version, s.date, s.time),
+
+  title = " ",
 
   -- non-user operations
   inp  = \s totable  (s.haxis),
