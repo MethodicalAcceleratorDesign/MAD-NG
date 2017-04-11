@@ -389,7 +389,8 @@ local function temp_operations(self, name)
   elseif vaxis2                 then temp = tbl_concat( temp, temp_multiv  ,              temp_end, temp_plot )
   elseif haxis2                 then temp = tbl_concat( temp, temp_multih  ,              temp_end, temp_plot )
   else                               temp = tbl_concat( temp,                             temp_end, temp_plot ) end
-  if     continue               then temp = temp_plot                                                           end
+  if     continue               then temp = tbl_concat( {}, temp_plot )
+  																	 self.continue = false 																										  end
   return temp, temp_save
 end
 
@@ -401,12 +402,12 @@ local function multi_axes(self, temp)
     for i=1,s do temp, axes[i] = tbl_concat( temp, temp_vaxis  ), "x1y1" end
   end
   if inp2 then
-    keys = tbl_concat(inp , inp2, out)
+    keys = tbl_concat({}, inp , inp2, out)
   end
   if out2 then
     s2 = #out2
-    keys = tbl_concat(keys, out2     )
-    out  = tbl_concat(out , out2     )
+    keys = tbl_concat( keys, out2     )
+    out  = tbl_concat( out , out2     )
     for i=1,s2   do temp    = tbl_concat( temp, temp_vaxis ) end
     for i=s,s+s2 do axes[i] = "x1y2"                         end
   end
@@ -478,61 +479,71 @@ function exec(self)
     gp_script:close()
   end
   name = filename
+
   return self
 end
 
 local plot = Command 'plot' {
-  id       = 1,
-  preamble = false,
-  continue = false,
-  table    = false,
-  data     = false,
-  sequence = false,
-  refer    = 'exit',
-  filename = false,
-  filecopy = false,
-  vaxis2   = false,
-  window   = " ",
-  haxis2   = false,
-  vaxis    = 'y',
-  haxis    = 'x',
-  script   = \s script_name(s.filename),
+  -- gnuplot setup
   terminaltype = "postscript",
   fontname     = "Times-Roman",
+  key      = "left top",
+  grid     = 'grid',
+  window   = " ",
   fontsize = 18 ,
   xsize    = 20,
   ysize    = 10.5,
   lmargin  = 0.1,
   rmargin  = 0.9,
-  key      = "left top",
-  grid     = 'grid',
-  hmargin  = false,
-  vmargin  = true ,
   sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
 
+  id       = 1,
+  preamble = false,
+  continue = false,
+
+  -- input
+  table    = false,
+  data     = false,
+  vaxis    = 'y',
+  haxis    = 'x',
+  vaxis2   = false,
+  haxis2   = false,
+
+  -- seq input
+  sequence = false,
+  refer    = 'exit',
   range    = {1,-1},
+
+  -- saving to file
+  filename = false,
+  filecopy = false,
+  script   = \s script_name(s.filename),
+
+  -- inp operations
+  hmargin  = false,
+  vmargin  = true ,
+  interpolate = 'linespoints',
   datrange = \s 1..#s.ktbl[s.inp[1]],
-  hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
-  vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
+
+  -- x1y1 options
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
+
+  hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
+  vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
   xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
   ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
-  interpolate = 'linespoints',
 
-  vlimit2 = {nil, nil},
-  hlimit2 = {nil, nil},
-  ylabel2 = "",
-  xlabel2 = "",
-  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-  xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
-  inp2    = \s -> is_table(s.haxis2) and s.haxis2 or {s.haxis2},
-  out2    = \s -> is_table(s.vaxis2) and s.vaxis2 or {s.vaxis2},
-  ylabel2 = \s => if s.out2 then return axis_title  ( s.out2   ) end end,
-  xlabel2 = \s => if s.inp2 then return axis_title  ( s.inp2   ) end end,
+  -- x2y2 options
+  ylabel2 = \s => if s.out2 then return axis_title( s.out2 ) end end,
+  xlabel2 = \s => if s.inp2 then return axis_title( s.inp2 ) end end,
+
   vlimit2 = \s => if s.out2 then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2 then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
+  xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
+  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
 
+  -- plot style
   axes       = false,
   colors     = false,
   pointtypes = false,
@@ -540,16 +551,18 @@ local plot = Command 'plot' {
   dashtypes  = false,
   vkeys      = false,
 
-  title   = \s mk_title(s.name, s.ver, s.date, s.time),
+  -- title
   version = tostring(MAD.env.version),
   namei   = \s => if s.table then return s.table.title else return s.name end end,
   date    = \s => if s.table then return s.table.date  else               end end,
   time    = \s => if s.table then return s.table.time  else               end end,
   title   = \s mk_title(s.namei, s.version, s.date, s.time),
 
--- non-user option
+  -- non-user operations
   inp  = \s totable  (s.haxis),
   out  = \s totable  (s.vaxis),
+  inp2 = \s -> is_table(s.haxis2) and s.haxis2 or {s.haxis2},
+  out2 = \s -> is_table(s.vaxis2) and s.vaxis2 or {s.vaxis2},
   keys = \s tbl_concat(s.inp   , s.out             ),
   ktbl = \s keys_tbl  (s.table , s.data, s.keys    ),
   drng = \s scale_rng (s.ktbl[s.inp[1]], s.datrange),
