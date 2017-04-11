@@ -113,7 +113,7 @@ void mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 
 struct rng_state {
   u64_t s[N];
-  int   p;
+  int p;
 };
 
 union numbit {
@@ -150,6 +150,8 @@ void mad_num_randseed (rng_state_t *restrict st, num_t seed)
     s[i] = s[i-1] * 33;
   for (int i = 0; i < N; i++)
     mad_num_irand(st);
+
+  mad_num_randjump(st,0);
 }
 
 void mad_num_randjump (      rng_state_t *restrict st,
