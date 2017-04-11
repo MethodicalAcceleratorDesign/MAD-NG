@@ -133,10 +133,10 @@ local update_skip = setkeys {
 
 local show_order = setkeys {
   'name', 'kind',
-  'particle', 'mass', 'charge', 'spin', 'radius',
-  'energy', 'pc', 'beta', 'gamma', 'brho',
+  'particle', 'mass', 'charge', 'spin', 'emrad',
+  'energy', 'pc', 'beta', 'gamma', 'betgam', 'brho',
   'ex', 'ey', 'et', 'exn', 'eyn', 'etn',
-  'nbunch', 'nparticle', 'sigx', 'sigy', 'sigt', 'sige',
+  'nbunch', 'npart', 'sigx', 'sigy', 'sigt', 'sige',
   'radiate',
 }
 
@@ -199,13 +199,14 @@ local beam = Object 'beam' {
   mass      = particledb.electron.mass,                -- GeV (m.c^2)       [RO]
   charge    = particledb.electron.charge,              -- ±n qelect         [RO]
   spin      = particledb.electron.spin,                -- ±n/2              [RO]
-  radius    = \s -> krad_GeV * s.charge^2/s.mass,      -- m                 [RO]
+  emrad     = \s -> krad_GeV * s.charge^2/s.mass,      -- m                 [RO]
   -- energy
   energy    = 1,                                       -- GeV               [RW]
   pc        = \s -> sqrt(s.energy^2 - s.mass^2),       -- GeV               [RU]
-  beta      = \s -> sqrt(1 - (s.mass/s.energy)^2),     --                   [RO]
-  gamma     = \s -> s.energy/s.mass,                   --                   [RO]
-  brho      = \s -> GeV_c * s.pc/abs(s.charge),        -- T.m               [RO]
+  beta      = \s -> sqrt(1 - (s.mass/s.energy)^2),     --                   [RU]
+  gamma     = \s -> s.energy/s.mass,                   --                   [RU]
+  betgam    = \s -> sqrt(s.gamma^2-1),                 --                   [RU]
+  brho      = \s -> GeV_c * s.pc/abs(s.charge),        -- T.m               [RU]
   -- emittance
   ex        = 1,                                       -- rad.m             [RW]
   ey        = 1,                                       -- rad.m             [RW]
@@ -215,7 +216,7 @@ local beam = Object 'beam' {
   etn       = \s -> sqrt(s.gamma^2 - 1)*s.et,          -- rad.m             [RU]
   -- bunch
   nbunch    = 0,                                       --                   [RW]
-  nparticle = 0,                                       -- per bunch         [RW]
+  npart     = 0,                                       -- per bunch         [RW]
   sigx      = 1,                                       -- m                 [RW]
   sigy      = 1,                                       -- m                 [RW]
   sigt      = 1,                                       -- m                 [RW]
@@ -230,36 +231,53 @@ local eval   = \s,v -> is_function(v) and v(s) or v  -- for proper assertion
 
 local update = setmetatable({
   -- particle
- particle = \s,k,v => assert(particledb[eval(s,v)],"unknown particle") newidx(s,k,v)
-                      newidx(s,'mass'  ,particledb[eval(s,v)].mass  )
-                      newidx(s,'charge',particledb[eval(s,v)].charge)
-                      newidx(s,'spin'  ,particledb[eval(s,v)].spin  ) end,
+  particle = \s,_,v => v = eval(s,v)
+                       assert(particledb[v],"unknown particle")
+                       newidx(s,'particle',v)
+                       newidx(s,'mass'    ,particledb[eval(s,v)].mass  )
+                       newidx(s,'charge'  ,particledb[eval(s,v)].charge)
+                       newidx(s,'spin'    ,particledb[eval(s,v)].spin  ) end,
   mass   := error(  "mass is readonly, define a new particle"),
   charge := error("charge is readonly, define a new particle"),
   spin   := error(  "spin is readonly, define a new particle"),
-  radius := error("radius is readonly"),
+  emrad  := error( "emrad is readonly, define a new particle"),
   -- energy
-  energy = \s,k,v => assert(eval(s,v) > s.mass, "invalid energy <= mass") newidx(s,k,v) end,
-  pc     = \s,_,v => assert(is_positive(eval(s,v)), "invalid pc <= 0") newidx(s,'energy',sqrt(eval(s,v)^2+s.mass^2)) end,
-  beta  := error( "beta is readonly, update energy or mass"),
-  gamma := error("gamma is readonly, update energy or mass"),
-  brho  := error( "brho is readonly, update energy, mass or charge"),
+  energy = \s,_,v => v = eval(s,v)
+                     assert(v > s.mass, "invalid energy (mass < energy expected)")
+                     newidx(s, 'energy', v) end,
+  pc     = \s,_,v => v = eval(s,v)
+                     assert(is_positive(v), "invalid pc (pc >0 expected)")
+                     newidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
+  beta   = \s,_,v => v = eval(s,v)
+                     assert(is_positive(v) and v<0.9, "invalid beta (0< beta <0.9 expected)")
+                     newidx(s, 'energy', sqrt(s.mass^2 / (1-v^2))) end,
+  gamma  = \s,_,v => v = eval(s,v)
+                     assert(is_positive(v) and v>1, "invalid gamma (gamma >1 expected)")
+                     newidx(s, 'energy', v * s.mass) end,
+  betgam = \s,_,v => v = eval(s,v)
+                     assert(is_positive(v) and v>0.1, "invalid betgam (betgam >0.1 expected)")
+                     newidx(s, 'energy', sqrt((v^2+1) * s.mass^2)) end,
+  brho   = \s,_,v => v = eval(s,v)
+                     assert(is_positive(v), "invalid Brho (Brho >0 expected)")
+                     newidx(s, 'energy', sqrt((v*abs(s.charge)/GeV_c)^2 + s.mass^2)) end,
   -- emittance
-  ex     = \s,k,v => assert(is_positive(eval(s,v)),"invalid ex <= 0")  newidx(s,k,v) end,
-  ey     = \s,k,v => assert(is_positive(eval(s,v)),"invalid ey <= 0")  newidx(s,k,v) end,
-  et     = \s,k,v => assert(is_positive(eval(s,v)),"invalid et <= 0")  newidx(s,k,v) end,
-  exn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid exn <= 0") newidx(s,'ex',eval(s,v)/sqrt(s.gamma^2-1)) end,
-  eyn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid eyn <= 0") newidx(s,'ey',eval(s,v)/sqrt(s.gamma^2-1)) end,
-  etn    = \s,_,v => assert(is_positive(eval(s,v)),"invalid etn <= 0") newidx(s,'et',eval(s,v)/sqrt(s.gamma^2-1)) end,
+  ex     = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid ex <= 0" ) newidx(s,'ex',v) end,
+  ey     = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid ey <= 0" ) newidx(s,'ey',v) end,
+  et     = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid et <= 0" ) newidx(s,'et',v) end,
+  exn    = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid exn <= 0") newidx(s,'ex',v/sqrt(s.gamma^2-1)) end,
+  eyn    = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid eyn <= 0") newidx(s,'ey',v/sqrt(s.gamma^2-1)) end,
+  etn    = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid etn <= 0") newidx(s,'et',v/sqrt(s.gamma^2-1)) end,
   -- bunch
-  nbunch = \s,k,v => assert(is_integer(eval(s,v)) and eval(s,v)>0,"invalid nbunch <= 0")    newidx(s,k,v) end,
-nparticle= \s,k,v => assert(is_integer(eval(s,v)) and eval(s,v)>0,"invalid nparticle <= 0") newidx(s,k,v) end,
-  sigx   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigx <= 0") newidx(s,k,v) end,
-  sigy   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigy <= 0") newidx(s,k,v) end,
-  sigt   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sigt <= 0") newidx(s,k,v) end,
-  sige   = \s,k,v => assert(is_positive(eval(s,v)),"invalid sige <= 0") newidx(s,k,v) end,
+  nbunch = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid nbunch <= 0") newidx(s,k,v) end,
+  npart  = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid npart <= 0" ) newidx(s,k,v) end,
+  sigx   = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid sigx <= 0"  ) newidx(s,k,v) end,
+  sigy   = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid sigy <= 0"  ) newidx(s,k,v) end,
+  sigt   = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid sigt <= 0"  ) newidx(s,k,v) end,
+  sige   = \s,k,v => v=eval(s,v) assert(is_positive(v),"invalid sige <= 0"  ) newidx(s,k,v) end,
   -- flags
- radiate = \s,k,v => assert(is_boolean(eval(s,v)),"invalid radiate (boolean expected)") newidx(s,k,v) end,
+ radiate = \s,k,v => v = eval(s,v)
+                     assert(is_boolean(v),"invalid radiate (boolean expected)")
+                     newidx(s,k,v) end,
 },-- default update (no check)
 { __index := index })
 
