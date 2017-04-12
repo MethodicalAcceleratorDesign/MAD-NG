@@ -292,7 +292,7 @@ local templ_end = {
   "set yrange [$ymin:$ymax] \n",
 }
 local templ_plot     = { "plot " }
-local templ_vaxis    = { "'-' using 1:count every 1::0 $interpolate linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
+local templ_vaxis    = { "'-' using 1:count every 1::0 $plotstyle linecolor 'colors' title 'vkeys' axes setaxes,\\\n" }
 local templ_preamble = { "#$preamble \n" }
 local templ_unmult   = {"\nunset multiplot \n" }
 local templ_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
@@ -349,16 +349,16 @@ local templ_lay_off = {
 
 -- plotting command -----------------------------------------------------------o
 local mtable, Command in MAD
-local templ_save, name = {}, {}
+local templ_save, pdfonefile = {}, {}
 
 local gp = setmetatable({},{
   __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
 })
 
-local function temp_operations(self, name)
+local function temp_operations(self, pdfonefile)
   local pdfname, preamble, vaxis2, vaxis2, haxis2, multiplot, window in self
   local templ = {}
-  if     pdfname and pdfname == name  then templ = tbl_concat( {}  ,                               template )
+  if     pdfname and pdfname == pdfonefile  then templ = tbl_concat( {}  ,                               template )
   elseif pdfname                      then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
   else                                     templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
                                            templ_save = {}                                                      end
@@ -432,8 +432,8 @@ function exec(self)
   local sequence, keys, refer, src, inp, out, out2, id, pdfname, script in self
   local templ_sequ = {}
   local vkeys, axes, data_temp, lay_dat
-  local templ, templ_save = temp_operations(self, name)
-  self.interpolate = interpol  ( self.interpolate)
+  local templ, templ_save = temp_operations(self, pdfonefile)
+  self.plotstyle = interpol  ( self.plotstyle)
   templ, axes      = multi_axes( self, templ      )           -- multiple axes
 
   if sequence then  templ_sequ = sequ(self, templ, refer) end  -- sequence plot
@@ -444,22 +444,70 @@ function exec(self)
 
   if not multiplot and out2 or inp2 then templ = tbl_concat(templ, templ_unaxes) end
 
-  templ_interp( templ, self )
+  -- values set up for interpolation, for further cleanup
+  local version = tostring(MAD.env.version)
+  local name, date, time = "", "", ""
+  if self.table then name = self.table.title
+                     date = self.table.date
+                     time = self.table.time
+  else               name = self.name
+  end
+  self.title = mk_title(name, version, date, time)
+  local sizeplot
+  if sequence then sizeplot = 0.85 else  sizeplot = 1 end
+
+  local xlabel2, ylabel2 = "", ""
+  --if self.out2 then ylabel2 = axis_title( self.out2 ) end
+  --if self.inp2 then xlabel2 = axis_title( self.inp2 ) end
+
+  local to_interpolate = {
+    grid     = self.grid,
+    lmargin  = self.lmargin,
+    rmargin  = self.rmargin,
+    sizeplot = sizeplot,
+    title    = self.title,
+    key      = self.key,
+    -- x1y1 options
+    xlabel = self.xlabel,
+    ylabel = self.ylabel,
+    xmin   = self.xmin,
+    xmax   = self.xmax,
+    ymin   = self.ymin,
+    ymax   = self.ymax,
+    plotstyle = self.plotstyle,
+    preamble  = self.preamble,
+    fontname     = self.fontname,
+    fontsize     = self.fontsize,
+    terminaltype = self.terminaltype,
+    pdfname = self.pdfname,
+    window  = self.window,
+    xsize   = self.xsize,
+    ysize   = self.ysize,
+    -- x2y2 options
+    --ylabel2 = self.ylabel2,
+    --xlabel2 = self.xlabel2,
+    --xmax2 = self.xmax2,
+    --ymax2 = self.ymax2,
+    --xmin2   = self.xmin2,
+    --ymin2   = self.ymin2,
+  }
+  templ_interp( templ, to_interpolate )
+
 
   templ = style_plots(self, templ, axes)                       -- style of plots
   templ_print( templ, gp[id] )
   gp[id]:flush()
 
-  if pdfname == name then templ_save = tbl_concat(templ_save, templ)
+  if pdfname == pdfonefile then templ_save = tbl_concat(templ_save, templ)
   else                    templ_save = templ
   end
 
-  if filecopy then
+  if gpcopy then
     local fp = io.open(script, "w")
     templ_print( templ_save, fp )
     fp:close()
   end
-  name = pdfname
+  pdfonefile = pdfname
 
   return self
 end
@@ -469,19 +517,13 @@ local plot = Command 'plot' {
   terminaltype = "postscript",
   fontname     = "Times-Roman",
   fontsize = 18 ,
-
   key      = "left top",
   grid     = 'grid', -- on/of
   window   = " ",
-
   xsize    = 20,
   ysize    = 10.5,
-
   lmargin  = 0.1,
   rmargin  = 0.9, -- global margins = {left = .. ,}
-
-  sizeplot = \s => if s.sequence then return 0.85 else return 1 end end,
-
   id       = 1,
   preamble = false,
   multiplot = false,
@@ -501,19 +543,18 @@ local plot = Command 'plot' {
 
   -- saving to file
   pdfname = false,
-  filecopy = false,
+  gpcopy = false,
   script   = \s script_name(s.pdfname),
 
   -- inp operations
   hmargin  = false,
   vmargin  = true ,
-  interpolate = 'linespoints',
+  plotstyle = 'linespoints',
   datrange = \s 1..#s.ktbl[s.inp[1]],
 
   -- x1y1 options
   xlabel   = \s axis_title( s.inp ),
   ylabel   = \s axis_title( s.out ),
-
   hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
   vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
   xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
@@ -522,7 +563,6 @@ local plot = Command 'plot' {
   -- x2y2 options
   ylabel2 = \s => if s.out2 then return axis_title( s.out2 ) end end,
   xlabel2 = \s => if s.inp2 then return axis_title( s.inp2 ) end end,
-
   vlimit2 = \s => if s.out2 then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
   hlimit2 = \s => if s.inp2 then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
   xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
@@ -537,13 +577,7 @@ local plot = Command 'plot' {
   vkeys      = false,
 
   -- title
-  version = tostring(MAD.env.version),
-  namei   = \s => if s.table then return s.table.title else return s.name end end,
-  date    = \s => if s.table then return s.table.date  else               end end,
-  time    = \s => if s.table then return s.table.time  else               end end,
-  title   = \s mk_title(s.namei, s.version, s.date, s.time),
-
-  title = " ",
+  title   = "",
 
   -- non-user operations
   inp  = \s totable  (s.haxis),
