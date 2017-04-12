@@ -42,20 +42,20 @@ SEE ALSO
 ]=]
 
 __help['track: references'] = [=[
-[Wolski14]    A. Wolski,  "Beam Dynamics in High Energy Particle Accelerators".
-[Forest98]    E. Forest,  "Beam Dynamics, A New Attitude and Framework".
-[MADX PTC]    MAD-X PTC Code, rev. 6099
-[Forest02]    E. Forest,  "Introduction to Polymorphic Tracking Code",
+[Wolski14]    1.A. Wolski,  "Beam Dynamics in High Energy Particle Accelerators".
+[Forest98]    2. E. Forest,  "Beam Dynamics, A New Attitude and Framework".
+[MADX PTC]    3. MAD-X PTC Code, rev. 6099
+[Forest02]    4. E. Forest,  "Introduction to Polymorphic Tracking Code",
               KEK report 2002-3.
-[Yoshida90]   H. Yoshida, "Construction of higher order symplectic integrators",
+[Yoshida90]   5. H. Yoshida, "Construction of higher order symplectic integrators",
               Phys.Let A, Volume 150, number 5,6,7.
-[Burkhardt13] H. Burkhardt et al., "Improved Teapot Method and Tracking with
+[Burkhardt13] 6. H. Burkhardt et al., "Improved Teapot Method and Tracking with
               Thick Quadrupoles for the LHC and its Upgrade", IPAC 2013.
-[Ripken1995]  K. Heinemann, G. Ripken, and F. Schmidt. "Construction of nonlinear
+[Ripken1995]  7. K. Heinemann, G. Ripken, and F. Schmidt. "Construction of nonlinear
               symplectic six-dimensional thin-lens maps by exponentiation.""  Technical
               Report 95-189, DESY, 1995
-[SixTrackPG]  R. De. Maria et al., "SixTrack Physics Manual", CERN, September,2016.
-
+[SixTrackPG]  8. R. De. Maria et al., "SixTrack Physics Manual", CERN, September,2016.
+[LeeWhiting]  9. G.E. Lee-Whiting, Nucl. Instr. and Meth. 83 (1970) 232
 ]=]
 
 __help['track: straight drift map'] = [[
@@ -113,6 +113,27 @@ __help['track: multipole kick map'] = [[
   [3] PTC, Function KICKTR in file Sh_def_kind.f90
 ]]
 
+__help['track: multipole kick map'] = [[
+  [7] Thin Lens Transport Map, ch. 4.6.2, p.26, eq.(4.23) and its solution
+  [8] Thin multipole, ch. 3.5 , eq. (91-94)
+  [3] PTC, Function KICKTR in file Sh_def_kind.f90
+]]
+
+__help['fringe: fringe_map'] = [[
+  [2] Lee-Whiting formula, ch. 13.2.3, eq 13.33
+  [3] PTC, Function fringe_TEAPOTr in file Sh_def_kind.f90
+  [4] Fringe fields, p. 5370-5372, ch. 5.5, eq. 148-154
+  [9] Lee-Whiting formula soft and hard edge
+]]
+
+__help['rfcavity: rfcavity_map'] = [[
+  [3] PTC, Function CAVER in file Sh_def_kind.f90
+  [4] The electric elements and non-symplectic radiation, p. 5368-5372, ch. 5.4, eq. 138-140, 143
+]]
+
+__help['twcavity: twcavity_map'] = [[
+  [3] PTC, Function CAVER_TRAV in file Sh_def_kind.f90
+]]
 
 
 --[[TODO:
@@ -123,7 +144,6 @@ k1,k1s, k2 etc to knl,ksl)
 -????KICKEX: add a check for thick element that there is only one strength,
 i.e. quad only has k1 and not k0, k2 or???
 ]]
--- add patch, rotation + translation
 
 --[[ METHOD:
 2 - 2nd order, 1 kick per integration step
@@ -262,8 +282,7 @@ local function trans_track (elem, m, d) -- drift + XY trans
   m.t = t-d[3] * (beta_inv+pt)*pz_
 end
 
--- Fringe fields (dipole)
-
+-- Fringe fields 
 local function face_track(elem, m, h)
   local x, px, y, py, t, pt, dir in m
   local k0 = elem.k0 or 0
@@ -317,7 +336,8 @@ local function wedge_track(elem, m, e)
   m.t  = t - yt*(beta_inv + pt)
 end
 
-local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
+local function fringe(elem, m, pos) 
+-- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
 
   local x, px, y, py, t, pt, T, dir in m
@@ -386,7 +406,7 @@ local function fringe_dipole(elem, m, pos) -- Lee-Whiting formula, E. Forest ch 
 
 end
 
-local function sfringe_track(elem, m, pos) -- dipole fringe field
+local function sfringe_track(elem, m, pos) -- fringe field
   --TODO: to add dir == -1
   -- e: edge angle
   if elem.kill_fringe     == 1               or
@@ -398,25 +418,69 @@ local function sfringe_track(elem, m, pos) -- dipole fringe field
     if e and abs(e) >= minang then
       yrot_track    (elem, m,  e)
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  'entry')
+      fringe        (elem, m,  'entry')
       wedge_track   (elem, m, -e)
     else
       face_track    (elem, m,  h)
-      fringe_dipole (elem, m,  'entry')
+      fringe        (elem, m,  'entry')
     end
   elseif pos == 'exit' then
     local e, h = elem.e2 or 0, elem.h2 or 0
     if e and abs(e) >= minang then
       wedge_track   (elem, m, -e)
-      fringe_dipole (elem, m, 'exit')
+      fringe        (elem, m, 'exit')
       face_track    (elem, m,  h)
       yrot_track    (elem, m,  e)
     else
-      fringe_dipole (elem, m, 'exit')
+      fringe        (elem, m, 'exit')
       face_track    (elem, m,  h)
     end
   end
 end
+
+
+local function fringe_cav(elem, m, pos)  --fringe cavity
+  local x, px, y, py, t, pt, T, dir in m
+  if('nocavity'  and( not 'always_on')) then return end
+  if elem.kill_fringe     == 1               or
+   elem.kill_ent_fringe == 1 and pos ==  'entry' or
+   elem.kill_ext_fringe == 1 and pos ==  'exit' then return
+  end
+
+  if not ('fringe' or elem.nbessel == -1 ) then return end
+
+  if elem.l < minlen then return end
+
+  local kbmad = 0
+  if elem.nbessel == -1 then
+      kbmad = 1
+  end
+
+  local z = 0
+  if pos == 'entry' then
+    z=elem.l
+  end
+  local freq, volt = elem.freg or 0, elem.volt or 0
+  local volt_c = 1.0e-3
+  local pc = beam.pc
+  local omega = twopi*freq / clight
+  local vl    = m.dirch*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
+  local ph = elem.f or {}, elem.ph or {}
+  local nf = elem.nf or 1
+   do ko=1, nf   -- over modes
+    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
+    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
+    m.px = m.px + 0.5*vl*s1*m.x
+    m.py = m.py + 0.5*vl*s1*m.y
+    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+
+   end
+
+end
+
 ---Cavity
 local function cav_track_thin (elem, m, l) -- for tracking thin rf mult
   m.in_action(elem, m, l, 'cav_track_thin')
@@ -488,48 +552,6 @@ local function adjust_time_cav(elem, m, pos)
       t = t - elem.l*beta_inv -- TO CHECK
       delta_e = (pt - delta_e)*beam.pc
   end
-
-end
-
-local function fringe_cav(elem, m, pos)
-  local x, px, y, py, t, pt, T, dir in m
-  if('nocavity'  and( not 'always_on')) then return end
-  if elem.kill_fringe     == 1               or
-   elem.kill_ent_fringe == 1 and pos ==  'entry' or
-   elem.kill_ext_fringe == 1 and pos ==  'exit' then return
-  end
-
-  if not ('fringe' or elem.nbessel == -1 ) then return end
-
-  if elem.l < minlen then return end
-
-  local kbmad = 0
-  if elem.nbessel == -1 then
-      kbmad = 1
-  end
-
-  local z = 0
-  if pos == 'entry' then
-    z=elem.l
-  end
-  local freq, volt = elem.freg or 0, elem.volt or 0
-  local volt_c = 1.0e-3
-  local pc = beam.pc
-  local omega = twopi*freq / clight
-  local vl    = m.dirch*volt*volt_c/pc
-  if pos == 'exit' then vl = -vl end
-
-  local tt, phase, phase0 = elem.tt or 0, elem.phase or 0, elem.phase0 or 0
-  local ph = elem.f or {}, elem.ph or {}
-  local nf = elem.nf or 1
-   do ko=1, nf   -- over modes
-    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
-    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
-    m.px = m.px + 0.5*vl*s1*m.x
-    m.py = m.py + 0.5*vl*s1*m.y
-    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
-
-   end
 
 end
 
