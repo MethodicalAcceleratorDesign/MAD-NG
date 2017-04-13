@@ -42,7 +42,7 @@ local function keys_tbl(t1, t2, keys)
   local t = {}
   if   t1 then for j,k in ipairs(keys) do t[k] = t1[k] or t2[k] end
   else         for j,k in ipairs(keys) do t[k] = t2[k]          end
-	end
+  end
   return t
 end
 
@@ -190,7 +190,7 @@ end
 local function mk_title(name, version, date, time)
   local src, out = { name = name, version = version , date = date, time = time, }
   if date then out = "$name MAD $version, $date, $time" % src
-  else 				 out = "$name MAD $version"               % src
+  else         out = "$name MAD $version"               % src
   end
   return out
 end
@@ -205,7 +205,7 @@ local function interpol(str)
   if     str == 'lines'       then out = "with lines       dashtype  dtt"
   elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
   elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
-  else   													 out = str
+  else                             out = str
   end
   return out
 end
@@ -228,7 +228,7 @@ local function data_to_templ(src, keys)
   for i=2,#s+1 do
     for j,k in ipairs(keys) do
       if t[i] then t[i] = t[i]..src[k][i-1].." "
-      else 				 t[i] =       src[k][i-1].." "
+      else         t[i] =       src[k][i-1].." "
       end
     end
     t[i] = t[i].."\n"
@@ -369,7 +369,7 @@ local function temp_operations(self, pdfonefile)
   elseif haxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end, templ_plot )
   else                               templ = tbl_concat( templ,                               templ_end, templ_plot ) end
   if     multiplot               then templ = tbl_concat( {}, templ_plot )
-  																	 self.multiplot = false 																										  end
+                                     self.multiplot = false                                                       end
   return templ, templ_save
 end
 
@@ -409,8 +409,8 @@ local function sequ(self, template, refer)
   return templ
 end
 
-local function style_plots(self, templ, axes)
-  local out, keys in self
+local function style_plots(self, out, keys, templ, axes)
+  --local out, keys in self
   local dashtypes, colors in dat
   local ptt  = totable(1..(#out))
   local pts  = totable(vector(#out):fill(1))
@@ -422,19 +422,29 @@ local function style_plots(self, templ, axes)
     setaxes = templ_style( self.axes      , axes     , keys ),
     ptt     = templ_style( self.pointtypes, ptt      , keys ),
     pts     = templ_style( self.pointsizes, pts      , keys ),
-    count   = 2..(#self.out)+1,
+    count   = 2..(#out)+1,
   }
   for k,v in pairs(style) do templ_fill( templ, v, k ) end
   return templ
 end
 
 function exec(self)
-  local sequence, keys, refer, src, inp, out, out2, id, pdfname, script in self
+  local sequence, refer, id, pdfname, datrange in self
+  local inp  = totable (self.haxis)
+  local out  = totable (self.vaxis)
+  --local inp2 =  => if s.haxis2 then totable (s.haxis2) end end
+  --local out2 =  => if s.vaxis2 then totable (s.vaxis2) end end
+  local keys = tbl_concat(inp   , out             )
+  local ktbl = keys_tbl  (self.table , self.data, keys    )
+  local drng = scale_rng (ktbl[inp[1]], datrange)
+  local src  = scale_dat (ktbl  , keys, drng    )
+  self.datrange = \s 1..#ktbl[inp[1]]
+
   local templ_sequ = {}
   local vkeys, axes, data_temp, lay_dat
   local templ, templ_save = temp_operations(self, pdfonefile)
   self.plotstyle = interpol  ( self.plotstyle)
-  templ, axes      = multi_axes( self, templ      )           -- multiple axes
+  templ, axes    = multi_axes( self, templ      )           -- multiple axes
 
   if sequence then  templ_sequ = sequ(self, templ, refer) end  -- sequence plot
 
@@ -454,11 +464,29 @@ function exec(self)
   end
   self.title = mk_title(name, version, date, time)
   local sizeplot
-  if sequence then sizeplot = 0.85 else  sizeplot = 1 end
+  if sequence then sizeplot = 0.85 else sizeplot = 1 end
 
-  local xlabel2, ylabel2 = "", ""
-  --if self.out2 then ylabel2 = axis_title( self.out2 ) end
-  --if self.inp2 then xlabel2 = axis_title( self.inp2 ) end
+  self.xlabel = axis_title( inp )
+  self.ylabel = axis_title( out )
+  local hlimit = { scale_axis( src, inp , self.hmargin ) }
+  local vlimit = { scale_axis( src, out , self.vmargin ) }
+  self.xmin = hlimit[1]
+  self.xmax = hlimit[2]
+  self.ymin = vlimit[1]
+  self.ymax = vlimit[2]
+
+  self.xlabel2 = axis_title( inp2 )
+  self.ylabel2 = axis_title( out2 )
+  if inp2 then
+    local hlimit2 = { scale_axis( src, inp2 , self.hmargin ) }
+    self.xmin2 = hlimit2[1]
+    self.xmax2 = hlimit2[2]
+  end
+  if out2 then
+    local vlimit2 = { scale_axis( src, out2 , self.vmargin ) }
+    self.ymin2 = vlimit2[1]
+    self.ymax2 = vlimit2[2]
+  end
 
   local to_interpolate = {
     grid     = self.grid,
@@ -484,17 +512,17 @@ function exec(self)
     xsize   = self.xsize,
     ysize   = self.ysize,
     -- x2y2 options
-    --ylabel2 = self.ylabel2,
-    --xlabel2 = self.xlabel2,
-    --xmax2 = self.xmax2,
-    --ymax2 = self.ymax2,
-    --xmin2   = self.xmin2,
-    --ymin2   = self.ymin2,
+    ylabel2 = self.ylabel2,
+    xlabel2 = self.xlabel2,
+    xmax2 = self.xmax2,
+    ymax2 = self.ymax2,
+    xmin2   = self.xmin2,
+    ymin2   = self.ymin2,
   }
   templ_interp( templ, to_interpolate )
 
 
-  templ = style_plots(self, templ, axes)                       -- style of plots
+  templ = style_plots(self, out, keys, templ, axes)                       -- style of plots
   templ_print( templ, gp[id] )
   gp[id]:flush()
 
@@ -503,6 +531,7 @@ function exec(self)
   end
 
   if gpcopy then
+    local script = script_name(self.pdfname)
     local fp = io.open(script, "w")
     templ_print( templ_save, fp )
     fp:close()
@@ -544,30 +573,23 @@ local plot = Command 'plot' {
   -- saving to file
   pdfname = false,
   gpcopy = false,
-  script   = \s script_name(s.pdfname),
 
   -- inp operations
   hmargin  = false,
   vmargin  = true ,
   plotstyle = 'linespoints',
-  datrange = \s 1..#s.ktbl[s.inp[1]],
+  datrange =  1..100,
 
   -- x1y1 options
-  xlabel   = \s axis_title( s.inp ),
-  ylabel   = \s axis_title( s.out ),
-  hlimit   = \s { scale_axis( s.src, s.inp , s.hmargin ) },
-  vlimit   = \s { scale_axis( s.src, s.out , s.vmargin ) },
-  xmin     = \s s.hlimit[1] , xmax  = \s s.hlimit[2] ,
-  ymin     = \s s.vlimit[1] , ymax  = \s s.vlimit[2] ,
-
+  xlabel = "",
+  ylabel = "",
+  xmin = 1, xmax = 1,
+  ymin = 1, ymax = 1,
   -- x2y2 options
-  ylabel2 = \s => if s.out2 then return axis_title( s.out2 ) end end,
-  xlabel2 = \s => if s.inp2 then return axis_title( s.inp2 ) end end,
-  vlimit2 = \s => if s.out2 then return { scale_axis( s.src, s.out2, s.vmargin ) } end end,
-  hlimit2 = \s => if s.inp2 then return { scale_axis( s.src, s.inp2, s.hmargin ) } end end,
-  xmin2   = \s s.hlimit2[1], xmax2 = \s s.hlimit2[2],
-  ymin2   = \s s.vlimit2[1], ymax2 = \s s.vlimit2[2],
-
+  xlabel2 = "",
+  ylabel2 = "",
+  xmin2 = 1, xmax2 = 1,
+  ymin2 = 1, ymax2 = 1,
   -- plot style
   axes       = false,
   colors     = false,
@@ -575,19 +597,9 @@ local plot = Command 'plot' {
   pointsizes = false,
   dashtypes  = false,
   vkeys      = false,
-
-  -- title
   title   = "",
 
   -- non-user operations
-  inp  = \s totable  (s.haxis),
-  out  = \s totable  (s.vaxis),
-  inp2 = \s -> is_table(s.haxis2) and s.haxis2 or {s.haxis2},
-  out2 = \s -> is_table(s.vaxis2) and s.vaxis2 or {s.vaxis2},
-  keys = \s tbl_concat(s.inp   , s.out             ),
-  ktbl = \s keys_tbl  (s.table , s.data, s.keys    ),
-  drng = \s scale_rng (s.ktbl[s.inp[1]], s.datrange),
-  src  = \s scale_dat (s.ktbl  , s.keys, s.drng    ),
   exec = exec,
 } :set_readonly()
 
