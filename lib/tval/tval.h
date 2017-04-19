@@ -1,12 +1,41 @@
 #ifndef TVAL_H
 #define TVAL_H
 
+/*
+ o-----------------------------------------------------------------------------o
+ |
+ | Tagged values module (single header only)
+ |
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  - Small and simple module to manipulate Tagged Values (i.e. NaN): API for
+    identification, boxing and unboxing TV, plus few other useful functions.
+
+  - Provides support for few types (can be changed or extended easily):
+    + nil       (special)
+    + logical   (boolean, false and true)
+    + integer   (46 bit signed integer)
+    + number    (double precision floating point)
+    + function  (generic function pointer)
+    + pointer   (generic void pointer)
+    + string    (constant, '\0' terminated)
+    + array     (array of TV, opt. nil terminated)
+    + object    (user defined objects with common header)
+    + reference (reference to TV)
+
+ o-----------------------------------------------------------------------------o
+*/
+
 #include <stdbool.h>
 #include <stdint.h>
-
-// ----------------------------------------------------------------------------o
-// --- Tagged value module (header only) --------------------------------------o
-// ----------------------------------------------------------------------------o
 
 // function name mangling
 #ifndef FN
@@ -29,8 +58,8 @@ typedef struct obj obj_t;
 typedef union tval val_t;
 
 // identity
-static bool FN(tvisnan)  (val_t);
-static bool FN(tvisnul)  (val_t);
+static bool FN(tvisnan)  (val_t); // numerical NaN
+static bool FN(tvisnul)  (val_t); // 0, +0.0, NULL
 static bool FN(tvisnil)  (val_t);
 static bool FN(tvisfalse)(val_t);
 static bool FN(tvistrue) (val_t);
@@ -347,8 +376,6 @@ inline u64_t FN(bittv) (val_t v)
 #undef FN
 #endif
 
-// ----------------------------------------------------------------------------o
 // --- end --------------------------------------------------------------------o
-// ----------------------------------------------------------------------------o
 
 #endif // TVAL_H
