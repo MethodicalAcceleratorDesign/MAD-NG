@@ -26,10 +26,10 @@
 -- locals ---------------------------------------------------------------------o
 
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element, totable, same              in MAD
-local isa_matrix, is_range, is_table, is_number, is_string       in MAD.typeid
-local min, max, abs, exp                                         in MAD.gmath
-local pow                                                        in MAD.operator
+local range, nrange, vector, element, totable, same                in MAD
+local isa_matrix, is_range, is_table, is_number, is_string, is_nil in MAD.typeid
+local min, max, abs, exp                                           in MAD.gmath
+local pow                                                          in MAD.operator
 
 -- implementation -------------------------------------------------------------o
 
@@ -88,6 +88,7 @@ local function scale_dat(src, keys, rng)
 end
 
 local function scale_axis(src, keys, margin)
+  if is_nil(keys) then return 0,0 end
   local vmin, vmax = vector(#keys), vector(#keys)
   for i,key in ipairs(keys) do
     local min, max = src[key]:min(), src[key]:max()
@@ -201,7 +202,7 @@ end
 
 local function script_name(pdfname)
   if   pdfname then return string.match(pdfname, "(%w+)%.")..".gp"
-  else               return "script.gp"                              end
+  else              return "script.gp"                              end
 end
 
 local function interpol(str)
@@ -358,13 +359,14 @@ local gp = setmetatable({},{
   __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
 })
 
-local function temp_operations(self, pdfonefile)
-  local pdfname, preamble, vaxis2, vaxis2, haxis2, multiplot, window in self
+local function templ_operations(self, pdfonefile, templ_sequ, templ_data, templ_multiaxes, out)
+  local pdfname, preamble, haxis, vaxis, vaxis2, haxis2, multiplot, window,
+        multiplot                                                        in self
   local templ = {}
-  if     pdfname and pdfname == pdfonefile  then templ = tbl_concat( {}  ,                               template )
-  elseif pdfname                      then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
-  else                                     templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
-                                           templ_save = {}                                                      end
+  if     pdfname and pdfname == pdfonefile then templ = tbl_concat( {}  ,                               template )
+  elseif pdfname                           then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
+  else                                          templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
+                                                templ_save = {}                                                       end
                                            if not window then window = "size 800, 500" end
   if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                               ) end
   if     vaxis2 and haxis2      then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end, templ_plot )
@@ -372,35 +374,38 @@ local function temp_operations(self, pdfonefile)
   elseif haxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end, templ_plot )
   else                               templ = tbl_concat( templ,                               templ_end, templ_plot ) end
   if     multiplot              then templ = tbl_concat( {}, templ_plot )
-                                     self.multiplot = false                                                       end
+                                     multiplot = false                                                       end
+  templ = tbl_concat( templ, templ_multiaxes )
+  for i = 1,#out do templ = tbl_concat( templ, templ_data ) end
+  templ = tbl_concat( templ, templ_sequ )
+  if not multiplot and vaxis2 or haxis2 then templ = tbl_concat( templ, templ_unaxes ) end
   return templ, templ_save
 end
 
-local function multi_axes(self, keys, inp, out, inp2, out2, templ)
-  local axes, s, s2 = {}
+local function multi_axes(self, keys, inp, out, inp2, out2)
+  local axes, templ, s, s2 = {}, {}
   if out then
     s = #out
-    for i=1,s do templ, axes[i] = tbl_concat( templ, templ_vaxis  ), "x1y1" end
+    for i=1,s do templ, axes[i] = tbl_concat( templ, templ_vaxis ), "x1y1" end
   end
   if inp2 then
-    keys = tbl_concat({}, inp , inp2, out)
+    keys = tbl_concat( {}, inp , inp2, out )
   end
   if out2 then
     s2 = #out2
-    keys = tbl_concat( keys, out2     )
-    out  = tbl_concat( out , out2     )
-    for i=1,s2   do templ    = tbl_concat( templ, templ_vaxis ) end
-    for i=s,s+s2 do axes[i] = "x1y2"                            end
+    keys = tbl_concat( keys, out2 )
+    out  = tbl_concat( out , out2 )
+    for i=1,s2   do templ   = tbl_concat( templ, templ_vaxis ) end
+    for i=s,s+s2 do axes[i] = "x1y2"                           end
   end
   return templ, axes
 end
 
-local function sequ(self, template, refer)
+local function sequ(self)
+  local sequence, range, refer in self
   local templ = {}
-  local seq = self.sequence
-  assert(seq.kind == 'sequence' and seq.is_sequence == true, "invalid sequence")
-
-  local lay     = layout        ( seq, self.range, refer )
+  assert(sequence.kind == 'sequence' and sequence.is_sequence == true, "invalid sequence")
+  local lay     = layout         ( sequence, range, refer )
   local lay_dat = layout_to_templ( lay, {'x','y'}  )
   local min = lay.x[1]     :min()
   local max = lay.x[#lay.x]:max()
@@ -429,88 +434,68 @@ local function style_plots(self, out, keys, templ, axes)
   return templ
 end
 
+local function creat_gpcopy(templ, name)
+  local script = script_name(name)
+  local fp = io.open(script, "w")
+  templ_print( templ, fp )
+  fp:close()
+end
 
 function exec(self)
-  self.title = mk_title(self)
-  --local inp2 = \s => if s.haxis2 then totable (s.haxis2) end end,
-  --local out2 = \s => if s.vaxis2 then totable (s.vaxis2) end end,
-  local inp  = totable   (self.haxis)
-  local out  = totable   (self.vaxis)
-  local keys = tbl_concat({}, inp, out)
-  local ktbl = keys_tbl  (self.table , self.data, keys)
-  self.datrange = 1..#ktbl[inp[1]]
-  local drng = scale_rng (ktbl[inp[1]], self.datrange )
-  local src  = scale_dat (ktbl  , keys, drng)
-
-  local hlimit = { scale_axis( src, inp, self.hmargin ) }
-  local vlimit = { scale_axis( src, out, self.vmargin ) }
-  self.xmin = hlimit[1]; self.xmax = hlimit[2]
-  self.ymin = vlimit[1]; self.ymax = vlimit[2]
-  if inp2 then
-    local hlimit2 = { scale_axis( src, self.inp2 , self.hmargin ) }
-    self.xmin2 = hlimit2[1]
-    self.xmax2 = hlimit2[2]
-  end
-  if out2 then
-    local vlimit2 = { scale_axis( src, self.out2 , self.vmargin ) }
-    self.ymin2 = vlimit2[1]
-    self.ymax2 = vlimit2[2]
-  end
+  -- data scalling
+  local inp = totable( self.haxis )
+  local out = totable( self.vaxis )
+  local inp2, out2
+  if self.haxis2 then inp2 = totable( self.haxis2 ) end
+  if self.vaxis2 then out2 = totable( self.vaxis2 ) end
+  local keys = tbl_concat( {}, inp, out )
+  local ktbl = keys_tbl  ( self.table , self.data, keys )
+  self.datrange = 1..#ktbl[inp[1]]  --self.datrange = self.datrange or 1..#ktbl[inp[1]]
+  local drng = scale_rng( ktbl[inp[1]], self.datrange )
+  local src  = scale_dat( ktbl  , keys, drng          )
 
   -- template operations
-  local templ_sequ, axes = {}
-  local id, pdfname in self
-  local templ, templ_save = temp_operations(self, pdfonefile[id])
-  templ, axes = multi_axes(self, keys, inp, out, inp2, out2, templ) -- multiple axes
+  local id in self
+  local templ_data = data_to_templ( src, keys )                                       -- data to plot
+  local templ_sequ = self.sequence and sequ( self, self.refer ) or {}                 -- sequence plot
+  local templ_multiaxes, axes = multi_axes( self, keys, inp, out, inp2, out2, templ ) -- multiple axes
+  local templ, templ_save = templ_operations( self, pdfonefile[id], templ_sequ, templ_data, templ_multiaxes, out )
 
-  local sizeplot
-  local sequence, refer in self
-  if sequence then                                                  -- sequence plot
-    templ_sequ = sequ(self, templ, refer)
-    sizeplot = 0.85 else sizeplot = 1
-  end
-
-  local data_temp = data_to_templ( src, keys )                      -- data to plot
-  for i = 1,#out do templ = tbl_concat( templ, data_temp) end
-  templ = tbl_concat(templ, templ_sequ)
-
-  if not multiplot and out2 or inp2 then
-    templ = tbl_concat(templ, templ_unaxes)
-  end
-
-  -- template interpolation and plot styling
+  local hlimit  = { scale_axis( src, inp , self.hmargin ) }
+  local vlimit  = { scale_axis( src, out , self.vmargin ) }
+  local hlimit2 = { scale_axis( src, inp2, self.hmargin ) }
+  local vlimit2 = { scale_axis( src, out2, self.vmargin ) }
+  -- template interpolation
   local to_interpolate = {
     terminaltype = self.terminaltype,
-    --window    = self.window~="" and self.window or "size $xsize, $ysize",
-    window    = self.window, -- merge with xsize, ysize
+    window    = self.window, -- merge with xsize, ysize -- self.window or "size $xsize, $ysize",
     xsize     = self.size.x,
     ysize     = self.size.y,
     pdfname   = self.pdfname,
     grid      = self.grid,
     lmargin   = self.margins.left,
     rmargin   = self.margins.right,
-    sizeplot  = sizeplot,
     sizeplot  = self.sequence and 0.85 or 1,
-    title     = self.title,
+    title     = mk_title(self),
     legendpos = self.legendpos,
-    preamble  = self.preamble,
+    preamble  = self.preamble ,
     fontname  = self.font.name,
     fontsize  = self.font.size,
     -- x1y1 options
     xlabel = self.xlabel~="" and self.xlabel or axis_title(inp),
     ylabel = self.ylabel~="" and self.ylabel or axis_title(out),
-    xmin   = self.xmin,
-    xmax   = self.xmax,
-    ymin   = self.ymin,
-    ymax   = self.ymax,
+    xmin   = self.xmin or hlimit[1],
+    xmax   = self.xmax or hlimit[2],
+    ymin   = self.ymin or vlimit[1],
+    ymax   = self.ymax or vlimit[2],
     plotstyle = interpol(self.plotstyle),
     --x2y2 options
     ylabel2 = self.ylabel2~="" and self.ylabel2 or axis_title(inp2),
     xlabel2 = self.xlabel2~="" and self.xlabel2 or axis_title(out2),
-    xmax2   = self.xmax2,
-    ymax2   = self.ymax2,
-    xmin2   = self.xmin2,
-    ymin2   = self.ymin2,
+    xmax2   = self.xmax2 or hlimit2[1],
+    ymax2   = self.ymax2 or hlimit2[2],
+    xmin2   = self.xmin2 or vlimit2[1],
+    ymin2   = self.ymin2 or vlimit2[2],
   }
   templ_interp( templ, to_interpolate )
   templ = style_plots(self, out, keys, templ, axes)  -- style of plots
@@ -519,17 +504,11 @@ function exec(self)
   templ_print( templ, gp[id] )
   gp[id]:flush()
   -- save in same pdf
+  local pdfname in self
   if pdfname == pdfonefile[id] then templ_save = tbl_concat(templ_save, templ)
   else                              templ_save = templ
   end
-  -- gpcopy
-  if gpcopy then
-    local script = script_name(self.pdfname)
-    local fp = io.open(script, "w")
-    templ_print( templ_save, fp )
-    fp:close()
-  end
-
+  if self.gpcopy then  creat_gpcopy(templ_save, self.pdfname) end  -- save .gp
   pdfonefile[id] = pdfname
   return self
 end
@@ -561,23 +540,23 @@ local plot = Command 'plot' {
   range    = {1,-1},
   -- saving to file
   pdfname = false,
-  gpcopy = false,
+  gpcopy  = false,
   -- inp operations
   hmargin  = false,
   vmargin  = true ,
-  datrange =  1..100,
+  datrange = false, -- 1..100,
   -- x1y1 options
   xlabel  = "",
   ylabel  = "",
-  xmin = 1, xmax = 1,
-  ymin = 1, ymax = 1,
+  xmin = false, xmax = false,
+  ymin = false, ymax = false,
   -- x2y2 options
   xlabel2 = "",
   ylabel2 = "",
   ylabel3 = "",
   ylabel4 = "",
-  xmin2 = 1, xmax2 = 1,
-  ymin2 = 1, ymax2 = 1,
+  xmin2 = false, xmax2 = false,
+  ymin2 = false, ymax2 = false,
   -- plot style
   plotstyle = 'linespoints',
   axes       = false,
