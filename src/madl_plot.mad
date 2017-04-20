@@ -1,4 +1,3 @@
-
 --[=[
  o-----------------------------------------------------------------------------o
  |
@@ -219,6 +218,14 @@ local function interpol(str)
   return out
 end
 
+local function multi_axes(self, out, out2)
+  local axes = {}
+  local s, s2 = #out, #out2
+  if out  then for i=1  ,s    do axes[i] = "x1y1" end end
+  if out2 then for i=1+s,s+s2 do axes[i] = "x1y2" end end
+  return axes
+end
+
 local function templ_style(inp, out, keys)
   local r = copy(out)
   if inp then
@@ -364,41 +371,32 @@ local gp = setmetatable({},{
   __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
 })
 
-local function templ_operations(self, pdfonefile, templ_sequ, templ_data, templ_multiaxes, out)
-  local pdfname, preamble, haxis, vaxis, vaxis2, haxis2, multiplot, window,
-        multiplot                                                        in self
+local function templ_multiaxes(self, size)
   local templ = {}
+  for i=1,size do templ = tbl_concat( templ, templ_vaxis ) end
+  return templ
+end
+
+local function templ_operations(self, pdfonefile, templ_input, size)
+  local pdfname, preamble, haxis, vaxis, vaxis2, haxis2, multiplot, window, multiplot in self
+  local templ, templ_dat = {}
   if     pdfname and pdfname == pdfonefile then templ = tbl_concat( {}  ,                               template )
   elseif pdfname                           then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
   else                                          templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
                                                 templ_save = {}                                                       end
-                                           if not window then window = "size 800, 500" end
+  if not window then window = "size 800, 500" end
   if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                               ) end
   if     vaxis2 and haxis2      then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end, templ_plot )
   elseif vaxis2                 then templ = tbl_concat( templ, templ_multiv  ,               templ_end, templ_plot )
   elseif haxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end, templ_plot )
   else                               templ = tbl_concat( templ,                               templ_end, templ_plot ) end
   if     multiplot              then templ = tbl_concat( {}, templ_plot )
-                                     multiplot = false                                                       end
-  templ = tbl_concat( templ, templ_multiaxes )
-  for i = 1,#out do templ = tbl_concat( templ, templ_data ) end
-  templ = tbl_concat( templ, templ_sequ )
+                                     multiplot = false                                                                end
+  for i = 1,size do templ_dat = tbl_concat( templ_dat, templ_input.data ) end
+  templ = tbl_concat( templ, templ_input.multiaxes, templ_dat, templ_input.sequ )
   if not multiplot and vaxis2 or haxis2 then templ = tbl_concat( templ, templ_unaxes ) end
-  return templ, templ_save
-end
 
-local function multi_axes(self, keys, inp, out, inp2, out2)
-  local axes, templ, s, s2 = {}, {}
-  if out then
-    s = #out
-    for i=1,s do templ, axes[i] = tbl_concat( templ, templ_vaxis ), "x1y1" end
-  end
-  if out2 then
-    s2 = #out2
-    for i=1  ,s2   do templ   = tbl_concat( templ, templ_vaxis ) end
-    for i=s+1,s2+s do axes[i] = "x1y2"                           end
-  end
-  return templ, axes
+  return templ, templ_save
 end
 
 local function sequ(self)
@@ -417,10 +415,10 @@ local function sequ(self)
 end
 
 local function style_plots(self, out, keys, templ, axes)
-  local size = #self.vaxis + #self.vaxis2
+  --local size = #self.vaxis + #self.vaxis2
   local dashtypes, colors in dat
-  local ptt  = totable(1..(size))
-  local pts  = totable(vector(size):fill(1))
+  local ptt  = totable(1..(#out))
+  local pts  = totable(vector(#out):fill(1))
   local yout = tbl_concat({}, out)
   local style  = {
     vkeys   = templ_style( self.vkeys     , yout     , keys ),
@@ -457,10 +455,13 @@ function exec(self)
 
   -- template operations
   local id in self
-  local templ_data = data_to_templ( src, keys )                                         -- data to plot
-  local templ_sequ = self.sequence and sequ ( self, self.refer ) or {}                  -- sequence plot
-  local templ_multiaxes, axes = multi_axes  ( self, keys, inp, out, inp2, out2, templ ) -- multiple axes
-  local templ, templ_save = templ_operations( self, pdfonefile[id], templ_sequ, templ_data, templ_multiaxes, out )
+  local size = #out + #out2
+  local templ_input = {
+    data      = data_to_templ  ( src , keys )                   ,  -- data to plot
+    multiaxes = templ_multiaxes( self, size )                   ,  -- multiple axes
+    sequ      = self.sequence and sequ( self, self.refer ) or {},  -- sequence plot
+  }
+  local templ, templ_save = templ_operations( self, pdfonefile[id], templ_input, size )
 
   local hlimit  = { scale_axis( src, inp , self.hmargin ) }
   local vlimit  = { scale_axis( src, out , self.vmargin ) }
@@ -500,7 +501,8 @@ function exec(self)
   }
   templ_interp( templ, to_interpolate )
   local output = tbl_concat(out, out2)
-  templ = style_plots(self, output, keys, templ, axes)  -- style of plots
+  local axes   = multi_axes ( self, out, out2 )        -- multiple axes
+  templ = style_plots(self, output, keys, templ, axes) -- style of plots
   -- pipe
   templ_print( templ, gp[id] )
   gp[id]:flush()
