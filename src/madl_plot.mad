@@ -299,17 +299,10 @@ end
 local function templ_print(temp, pipe)
   for i = 1,#temp do
     pipe:write(temp[i])
-    --print(temp[i])
+    print(temp[i])
   end
 end
 
--- TO BE REMOVED, gpplot
-
---local templ_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
---local templ_tofile   = {
---  "set terminal $terminaltype $window font '$fontname, $fontsize' enhanced color\n",
---  "set output '|ps2pdf - $filename' \n",
---}
 
 local template = {
   "set multiplot \n"                 ,
@@ -326,6 +319,7 @@ local templ_end = {
   "set xrange [$xmin:$xmax] \n",
   "set yrange [$ymin:$ymax] \n",
 }
+local templ_tofile   = { "set font '$fontname, $fontsize' \n", }
 local templ_plot     = { "plot " }
 local templ_yaxis    = { "'$DATA' using 1:count every 1::0 $styles linecolor 'colors' title 'legendname' axes setaxes,\\\n" }
 local templ_preamble = { "#$preamble \n" }
@@ -382,25 +376,29 @@ local mtable, Command in MAD
 local templ_save, pdfonefile = {}, {}
 
 --- Gnuplot object
-
 local gp_default = {
-  x11        = { "set terminal x11 size 800, 500\n" },
-  postscript = {
-    "set terminal postscript size 20 cm, 10.5 cm \n",
-    "set output '|ps2pdf - $filename' \n",
+  wxt        = {
+    "unset multiplot\n"               ,
+    "set terminal wxt size 800, 500\n",
+   },
+  x11        = {
+    "unset multiplot\n"               ,
+    "set terminal x11 size 800, 500\n",
+   },
+    postscript = {
+    "unset multiplot\n"                       ,
+    "set terminal postscript enhanced color\n",
+    "set output '|ps2pdf - $filename' \n"     ,
   },
 }
 
 local function gp_setterm (gp, term, keep_setup_)
-  --print(gp_default[term])
-  --for _,cmd in ipairs(gp_default[term]) do
-  --  print(cmd)
-  --end
   if is_nil(keep_setup_) or is_nil(gp_default[term]) then
+  --for _,cmd in ipairs(gp_default[term]) do print(cmd) end
     for _,cmd in ipairs(gp_default[term]) do
       gp:write(cmd)
     end
-    gp_default[term] = true
+    gp_default[term] = {}
   end
 end
 
@@ -423,24 +421,20 @@ local function templ_multiaxes(self, size)
 end
 
 local function templ_operations(self, pdfonefile, templ_input, size)
-  local filename, preamble, xaxis, yaxis, yaxis2, xaxis2, multiplot, window, multiplot in self
+  local preamble, xaxis, yaxis, yaxis2, xaxis2, multiplot, window in self
   local templ, templ_dat = {}
   templ = tbl_concat( {}, template )
-  if     filename and filename == pdfonefile then --templ = tbl_concat( {}  ,                               template )
-  elseif filename                            then --templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
-  else                                            --templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
-                                                  templ_save = {}                                                     end
-  --if not window then window = "size 800, 500" end
-  if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                   ) end
-  if     yaxis2 and xaxis2      then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end )
-  elseif yaxis2                 then templ = tbl_concat( templ, templ_multiv  ,               templ_end )
-  elseif xaxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end )
-  else                               templ = tbl_concat( templ,                               templ_end ) end
-  if     multiplot              then templ, multiplot = {}, false                 end
+  if     preamble          then templ = tbl_concat( {}   , templ_preamble, templ                   ) end
+  if     yaxis2 and xaxis2 then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end )
+  elseif yaxis2            then templ = tbl_concat( templ, templ_multiv  ,               templ_end )
+  elseif xaxis2            then templ = tbl_concat( templ, templ_multih  ,               templ_end )
+  else                          templ = tbl_concat( templ,                               templ_end ) end
+  if     multiplot         then templ, multiplot = {}, false                 end
+
   templ_dat = tbl_concat( {}, {"\n$DATA << EOD"}, templ_input.data, {"EOD\n"} )
   templ     = tbl_concat( templ, templ_dat, templ_plot, templ_input.multiaxes ,{"\n"}, templ_input.sequ )
-  if not multiplot and yaxis2 or xaxis2 then templ = tbl_concat( templ, templ_unaxes ) end
 
+  if not multiplot and yaxis2 or xaxis2 then templ = tbl_concat( templ, templ_unaxes ) end
   return templ, templ_save
 end
 
@@ -528,7 +522,7 @@ function exec(self)
     rmargin      = self.margins.right,
 
     title        = mk_title(self),
-    grid         = self.grid   ,
+    grid         = self.grid     ,
     legendpos    = self.legendpos,
     preamble     = self.preamble ,
     fontname     = self.font.name,
@@ -553,8 +547,12 @@ function exec(self)
   templ = style_plots( self, out, out2, keys, templ ) -- style of plots
   -- pipe
 
-  if pdfname then gp_setterm(gp[id], 'postscript') end
-
+  if self.filename then
+    if filename == pdfonefile[id] then
+      templ_interp( gp_default.postscript, to_interpolate )
+    end
+    gp_setterm  ( gp[id]               , 'postscript'   )
+  end
 
   templ_print( templ, gp[id] )
   gp[id]:flush()
@@ -564,7 +562,7 @@ function exec(self)
   then templ_save = tbl_concat(templ_save, templ)
   else templ_save = templ
   end
-  if self.scrdump then creat_scrdump(templ_save, self.filename) end -- save .gp
+  --if self.scrdump then creat_scrdump(templ_save, self.filename) end -- save .gp
 
   pdfonefile[id] = filename
   return self
@@ -578,18 +576,13 @@ local plot = Command 'plot' {
   vmargin  = true ,  -- to be removed
   axes     = false,  -- axespairs
 
-  -- gnuplot setup -- TO BE MOVED TO GP
-  terminaltype = "postscript",
-  window    = "", --"size $xsize, $ysize",
-  size      = {x = 20, y =10.5},
-  margins   = {left = 0.1, right = 0.9},
- -------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
 
   -- stream id
-  id          = 1, -- stream id (process) ***sid
+  id          = 1,      -- stream id (process) ***sid
 
   -- plot setup
-  wid         = 1, -- window id (it not file...)
+  wid         = 1,      -- window id (it not file...)
   multiplot   = false,
 
   -- table or data input
@@ -599,8 +592,8 @@ local plot = Command 'plot' {
 
   -- sequence input
   sequence    = false,
-  seqrange    = {1,-1},
-  selected    = false,
+  seqrange    = {1,-1},   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
+  selected    = false,    -- selected elements, if false all selected
   refer       = 'exit',
 
   -- decoration
@@ -612,7 +605,7 @@ local plot = Command 'plot' {
   grid        = 'grid',
 
   -- files
-  filename    = false,
+  filename    = false,            -- 'filename.pdf'
   scrdump     = false,            -- dumpfilename or true and (filename.gp or script.gp)
 
   -- axis selection (and names)
@@ -625,8 +618,8 @@ local plot = Command 'plot' {
   axespairs   = false,            -- { xaxis = {'yaxis', 'yaxis3'}, xaxis2 = {'yaxis2', 'yaxis4'} }
 
   -- axis labels
-  xlabel      = false,
-  xlabel2     = false,            -- { betx = 'Beta x' }
+  xlabel      = false,            -- { betx = 'Beta x' }
+  xlabel2     = false,
   ylabel      = false,
   ylabel2     = false,
   ylabel3     = false,
@@ -648,7 +641,12 @@ local plot = Command 'plot' {
   linetypes   = false,
   linewidths  = false,
 
-  -- plot style
+-- gnuplot setup -> GP object
+  --termtype    = "wxt",
+  margins     = {left = 0.1, right = 0.9, top = 0.1, bottom = 0.9},
+  size        = {x = 20, y =10.5},             -- >> wsize?
+
+  -- build the command (do not execute)
   exec = exec,
 } :set_readonly()
 
