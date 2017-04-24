@@ -223,6 +223,16 @@ local function multi_axes(self, out, out2)
   return axes
 end
 
+--[[
+cases:
+1) x1 y1       -> x1 y1
+2) x1 y1 y2    -> x1 y1
+3) x2 y1 y2    -> x2 y2
+4) x1 x2 y1 y2 -> x1 y1 & x2 y2
+5) x2 y1       -> x2 y2
+6) x2 y2       -> x2 y2
+]]
+
 local function templ_style(inp, out, keys)
   local r = copy(out)
   if inp then
@@ -287,17 +297,19 @@ local function templ_fill(temp, inp, key)
 end
 
 local function templ_print(temp, pipe)
-  for i =1,#temp do pipe:write(temp[i]) end
+  for i = 1,#temp do
+    pipe:write(temp[i])
+    --print(temp[i])
+  end
 end
 
 -- TO BE REMOVED, gpplot
 
-local templ_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
+--local templ_window   = { "set terminal x11 $window font '$fontname, $fontsize'\n" }
 local templ_tofile   = {
   "set terminal $terminaltype $window font '$fontname, $fontsize' enhanced color\n",
   "set output '|ps2pdf - $filename' \n",
 }
-
 
 local template = {
   "set multiplot \n"                 ,
@@ -369,8 +381,43 @@ local templ_lay_off = {
 local mtable, Command in MAD
 local templ_save, pdfonefile = {}, {}
 
-local gp = setmetatable({},{
-  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
+--local gp = setmetatable({},{
+--  __index = \gp,id => gp[id] = io.popen("gnuplot", "w") ; return gp[id] end
+--})
+
+--- Gnuplot object
+
+local gp_default = {
+  x11        = { "set terminal x11 size 800, 500\n" },
+  postscript = {
+    "set terminal postscript size 20 cm, 10.5 cm font 'Times-Roman, 18' enhanced color\n",
+    "set output '|ps2pdf - $filename' \n",
+  },
+}
+
+local function gp_setterm (gp, term, keep_setup_)
+  --print(gp_default[term])
+  --for _,cmd in ipairs(gp_default[term]) do
+  --  print(cmd)
+  --end
+  if is_nil(keep_setup_) or is_nil(gp_default[term]) then
+    for _,cmd in ipairs(gp_default[term]) do
+      gp:write(cmd)
+    end
+    gp_default[term] = true
+  end
+end
+
+local function gp_create (gp, id)
+  --gp[id] = assert(io.popen('gnuplot', 'w')):setvbuf 'line'
+  gp[id] = assert(io.popen('gnuplot', 'w'))
+  gp_setterm(gp[id], 'x11') -- platform dependent
+  return gp[id]
+end
+
+local gp = setmetatable({}, {
+  __index = gp_create,
+  __call  = \gp,cmd -> gp[1]:write(cmd)
 })
 
 local function templ_multiaxes(self, size)
@@ -384,17 +431,15 @@ local function templ_operations(self, pdfonefile, templ_input, size)
   local templ, templ_dat = {}
   if     filename and filename == pdfonefile then templ = tbl_concat( {}  ,                               template )
   elseif filename                            then templ = tbl_concat( {}  , templ_unmult  , templ_tofile, template )
-  else                                            templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
+  else                                            --templ = tbl_concat( {}  , templ_unmult  , templ_window, template )
                                                   templ_save = {}                                                     end
-  if not window then window = "sze 800, 500" end
-  if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                               ) end
+  --if not window then window = "size 800, 500" end
+  if     preamble               then templ = tbl_concat( {}   , templ_preamble, templ                   ) end
   if     yaxis2 and xaxis2      then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end )
   elseif yaxis2                 then templ = tbl_concat( templ, templ_multiv  ,               templ_end )
   elseif xaxis2                 then templ = tbl_concat( templ, templ_multih  ,               templ_end )
   else                               templ = tbl_concat( templ,                               templ_end ) end
-  if     multiplot              then templ = tbl_concat( {}, templ_plot )
-                                     multiplot = false                                                                end
-  --for i = 1,size do templ_dat = tbl_concat( templ_dat, templ_input.data ) end
+  if     multiplot              then templ, multiplot = {}, false                 end
   templ_dat = tbl_concat( {}, {"\n$DATA << EOD"}, templ_input.data, {"EOD\n"} )
   templ     = tbl_concat( templ, templ_dat, templ_plot, templ_input.multiaxes ,{"\n"}, templ_input.sequ )
   if not multiplot and yaxis2 or xaxis2 then templ = tbl_concat( templ, templ_unaxes ) end
@@ -452,7 +497,7 @@ function exec(self)
   if self.xaxis2 then inp2 = totable( self.xaxis2 ) else inp2 = {} end
   if self.yaxis2 then out2 = totable( self.yaxis2 ) else out2 = {} end
   local keys        = tbl_concat( {}, inp, inp2, out, out2 )
-  local keysVectors = keys_tbl  ( self.table , self.data, keys )
+  local keysVectors = keys_tbl  ( self.data, self.table, keys )
   local datasize    = #keysVectors[inp[1]]
   self.datrange     = 1..datasize
   --self.datrange = self.datrange or 1..datasize
@@ -469,10 +514,10 @@ function exec(self)
   }
   local templ, templ_save = templ_operations( self, pdfonefile[id], templ_input, size )
 
-  local hlimit  = { scale_axis( src, inp , self.hmargin ) }
-  local vlimit  = { scale_axis( src, out , self.vmargin ) }
-  local hlimit2 = { scale_axis( src, inp2, self.hmargin ) }
-  local vlimit2 = { scale_axis( src, out2, self.vmargin ) }
+  local xlimit  = { scale_axis( src, inp , self.hmargin ) }
+  local ylimit  = { scale_axis( src, out , self.vmargin ) }
+  local xlimit2 = { scale_axis( src, inp2, self.hmargin ) }
+  local ylimit2 = { scale_axis( src, out2, self.vmargin ) }
   -- template interpolation
   local to_interpolate = {
     DATA = "$DATA",
@@ -497,14 +542,14 @@ function exec(self)
     ylabel2      = self.ylabel2~="" and self.ylabel2 or axis_title(inp2),
     xlabel2      = self.xlabel2~="" and self.xlabel2 or axis_title(out2),
 
-    xmin         = self.xrange  and self.xrange [1] or hlimit[1],
-    xmax         = self.xrange  and self.xrange [2] or hlimit[2],
-    ymin         = self.yrange  and self.yrange [1] or vlimit[1],
-    ymax         = self.yrange  and self.yrange [2] or vlimit[2],
-    xmin2        = self.xrange2 and self.xrange2[1] or hlimit[1],
-    xmax2        = self.xrange2 and self.xrange2[2] or hlimit[2],
-    ymin2        = self.yrange2 and self.yrange2[1] or vlimit[1],
-    ymax2        = self.yrange2 and self.yrange2[2] or vlimit[2],
+    xmin         = self.xrange  and self.xrange [1] or xlimit[1],
+    xmax         = self.xrange  and self.xrange [2] or xlimit[2],
+    ymin         = self.yrange  and self.yrange [1] or ylimit[1],
+    ymax         = self.yrange  and self.yrange [2] or ylimit[2],
+    xmin2        = self.xrange2 and self.xrange2[1] or xlimit[1],
+    xmax2        = self.xrange2 and self.xrange2[2] or xlimit[2],
+    ymin2        = self.yrange2 and self.yrange2[1] or ylimit[1],
+    ymax2        = self.yrange2 and self.yrange2[2] or ylimit[2],
     styles       = interpol(self.styles),
   }
   templ_interp( templ, to_interpolate )
@@ -540,7 +585,7 @@ local plot = Command 'plot' {
  -------------------------------------------------------------------------------
 
   -- stream id
-  id          = 1, -- stream id (process) ***
+  id          = 1, -- stream id (process) ***sid
 
   -- plot setup
   wid         = 1, -- window id (it not file...)
@@ -608,6 +653,8 @@ local plot = Command 'plot' {
 
 -- end ------------------------------------------------------------------------o
 return {
-  plot   = plot  ,
+  plot   = plot ,
+  gplot  = gplot,
+
   __help = __help,
 }
