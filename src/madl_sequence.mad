@@ -50,14 +50,14 @@ Sequence edition:
 -----------------
   seqedit:    n/a
   flatten:    n/a
-  cycle:      n/a
   endedit:    n/a
 
+  seq:cycle   (index)                                (set start_at used by iter)
+  seq:move    { name1, name2, ..., range=range, selected=logical, by=ds }
   seq:insert  { elem1, elem2, ..., deep=true }
   seq:remove  { name1, name2, ..., range=range|'selected' }
-  seq:move    { name1, name2, ..., range=range|'selected', by=ds }
   seq:replace { name1=elem1, name2=elem2, ... }
-  seq:extract { range=range|'selected' }    (return a table, not a sequence)
+  seq:extract { range=range|'selected' }        (return a table, not a sequence)
 
   seq:reflect()
   seq:save()
@@ -587,31 +587,35 @@ local function spos_of (seq, elm, start_)
   return seq[_spos][index_of(seq, elm, start_)]
 end
 
-local function foreach (seq, f, rng_, trn_)
+local function foreach (seq, f, rng_, sel_, trn_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(f)  , "invalid argument #2 (callable expected)")
   for i,e in seq:iter(rng_, trn_) do
-    f(e,i)
+    if not sel_ or e:is_selected() then
+      f(e,i)
+    end
   end
   return seq
 end
 
-local function filter (seq, p, rng_)
+local function filter (seq, p, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
   for i,e in seq:iter(rng_) do
-    if p(e,i) == true then r[#r+1] = e end
+    if not sel_ or e:is_selected() then
+      if p(e,i) == true then r[#r+1] = e end
+    end
   end
   return r
 end
 
-local function select (seq, p, rng_)
+local function select (seq, p, rng_, flg_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
   for i,e in seq:iter(rng_) do
-    local  flag = p(e,i)
-        if flag == true  then e:  select()
-    elseif flag == false then e:deselect() end
+    local  sel = p(e,i,flg_)
+        if sel == true  then e:  select(flg_)
+    elseif sel == false then e:deselect(flg_) end
   end
   return seq
 end
@@ -700,7 +704,7 @@ end
 
 local function mkseqitr (seq, start, stop, turn, drift)
   local len = #seq
-  local size = stop-start + 1
+  local size = stop - start + 1
   if size < 0 then size = size + len end
   size = size + len*turn
   return seqitr,
@@ -746,7 +750,7 @@ MAD.element.sequence = sequence
 
 -- members --------------------------------------------------------------------o
 
-local ffalse =\ false
+local ffalse in MAD.gfunc
 
 sequence :set_function {
   s_pos         = \s,i -> s[_spos][i],
