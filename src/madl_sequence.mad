@@ -104,12 +104,24 @@ Iterators:
 local abs, min                                                  in math
 local vector, tostring                                          in MAD
 local ffalse, ftrue, bind2nd                                    in MAD.gfunc
-local sub                                                       in MAD.operator
+local bool, sub                                                 in MAD.operator
 local is_iterable, is_callable                                  in MAD.concept
-local Element, marker                                           in MAD.element
+local extra_element, marker                                     in MAD.element
 local minlen                                                    in MAD.constant
-local is_nil, is_number, is_string, is_table, is_rawtable,
-      is_range, is_element                                      in MAD.typeid
+local is_nil, is_number, is_positive, is_string, is_table,
+      is_rawtable, is_range, is_element                         in MAD.typeid
+
+-- root object ----------------------------------------------------------------o
+
+local _seq = {}
+
+local sequence = extra_element 'sequence' { kind='sequence', [_seq]=true }
+
+local function is_sequence(a)
+  return is_table(a) and not is_nil(a[_seq])
+end
+
+sequence:set { direction=1, refer='centre', l=0 }
 
 -- definitions ----------------------------------------------------------------o
 
@@ -125,16 +137,6 @@ local maximum_dist  =  2e9 -- to find the closest
 
  -- forward declarations
 local elem_pos
-
--- default sequence
-local sequence = Element 'sequence' {
-  kind='sequence', is_sequence=true, direction=1, refer='centre', l=0,
-}
-
--- safer kind check
-local function is_sequence(seq)
-  return is_table(seq) and not is_nil(seq[_spos])
-end
 
 -- start and end markers
 local mkstart = marker '$start' { at=0 } : set_readonly()
@@ -303,13 +305,13 @@ local function index_of_str (seq, s, idx_)
   local elm, cnt, rel = seq[name]                            -- get element
   if is_nil(elm)    then return nil                          -- not found
   elseif del == ''  then return index_of_elm(seq, elm)       -- index of "name"
-  elseif del == '[' then i, j, cnt = string.find(s, "[(%d+)]", j) -- get count
-  else                   i, j, cnt = string.find(s, "{(%d+)}", j) ; rel = true
+  elseif del == '[' then i, j, cnt = string.find(s, "(%d+)]", j+1) -- get count
+  else                   i, j, cnt = string.find(s, "(%d+)}", j+1) ; rel = true
   end
   cnt = assert(tonumber(cnt), "invalid argument #3 (count expected)")
   if not rel
-  then return index_of_elm(seq, elm,       cnt) -- index of "name[n]"
-  else return efind_idx   (seq, elm, idx_, cnt) -- index of "name{n}"
+  then return index_of_elm(seq, elm[cnt],       cnt) -- index of "name[n]"
+  else return efind_idx   (seq, elm[cnt], idx_, cnt) -- index of "name{n}"
   end
 end
 
@@ -594,7 +596,9 @@ end
 local function range_of (seq, rng, start_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local start, stop
-  if is_string(rng) then
+  if is_number(rng) then
+    start, stop = rng, rng
+  elseif is_string(rng) then
     local s1, s2 = string.match(rng, "([^/]+)/?(.*)")
     start, stop = tonumber(s1) or s1, tonumber(s2) or s2
   elseif is_range(rng) then
@@ -607,6 +611,12 @@ local function range_of (seq, rng, start_)
   start = index_of(seq, start, start_)
   stop  = index_of(seq, stop , start_ or start)
   return start, stop
+end
+
+local function length_of(seq, rng_, trn_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local siz = rng_ and -sub(range_of(seq, rng_))+1 or -1
+  return siz + #seq * ((trn_ or 0) + (siz < 0 and 1 or 0))
 end
 
 local function setvar (seq, key, val)
@@ -627,7 +637,7 @@ end
 local function foreach (seq, f, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(f)  , "invalid argument #2 (callable expected)")
-  for i,e in seq:iter(rng_ or {1,-1}) do
+  for i,e in seq:iter(rng_) do
     if not sel_ or e:is_selected() then f(e,i) end
   end
   return seq
@@ -637,7 +647,7 @@ local function filter (seq, p, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
   local res, idx, n = {}, {}, 1
-  for i,e in seq:iter(rng_ or {1,-1}) do
+  for i,e in seq:iter(rng_) do
     if not sel_ or e:is_selected() then
       if p(e,i) then res[n], idx[n], n = e, i, n+1 end
     end
@@ -648,7 +658,7 @@ end
 local function select (seq, p, rng_, flg_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(p)  , "invalid argument #2 (callable expected)")
-  for i,e in seq:iter(rng_ or {1,-1}) do
+  for i,e in seq:iter(rng_) do
     if p(e,i,flg_) then e:select(flg_) else e:deselect(flg_) end
   end
   return seq
@@ -710,91 +720,89 @@ end
 
 -- extraction, edition --------------------------------------------------------o
 
--- seq:move   { index1, ..., range=range, selected=bool, pattern=string, by=ds }
--- seq:remove { index1, ..., range=range, selected=bool, pattern=string }
--- seq:insert { elem1, elem2, ... }
-
--- seq:extract { range=range, selected=logical, pattern=string } (return a table)
+-- seq:extract { range=range, selected=logical, pattern=string }
 local function extract (seq, sel_)
   local sel = sel_ or {}
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_table(sel)   , "invalid argument #2 (selection expected)")
   local range, selected, pattern in sel -- default: extract nothing
   if is_nil(range) and is_nil(selected) and is_nil(pattern) then
-    return {}, {}
+    return {}
   end
   local p = pattern and bind2nd(string.match, pattern) or ftrue
   return filter(seq, p, range, selected)
 end
 
--- seq:move { name1, name2, ..., +extract }
+-- seq:move { index1, index2, ..., by=ds, +extract }
 local function move (seq, sel)
+  if is_string(sel) then sel = {sel} end
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_table(sel)   , "invalid argument #2 (selection expected)")
   local mov, idx = extract(seq, sel)
   for i=1,#sel do
-    mov[#mov+1], idx[#idx+1] = sel[i], index_of(seq, sel[i])
+    local ipos = index_of(seq, sel[i])
+    mov[#mov+1], idx[#idx+1] = seq[ipos], ipos
   end
-  if #mov == 0 then return seq end
+  if #mov == 0 then return seq end -- nothing to do
+  local ds = sel.ds or 0
   local spos = vector(#mov)
+  local smov = vector(#mov)
   for i=1,#mov do
-    spos[i] = elem_pos(seq, idx[i], mov[i])
+    spos[i] = seq:s_pos(i)                      -- cur position
+    smov[i] = elem_pos(seq, idx[i], mov[i])+ds  -- new position
   end
   -- TODO...
+  return spos, smov
 end
+
+-- seq:remove { index1, ..., range=range, selected=bool, pattern=string }
+-- seq:insert { elem1, elem2, ... }
 
 -- iterator -------------------------------------------------------------------o
 
 local function seqiter (state, i)
   if i == state.stop then
     if state.turn == 0 then
-      if state.drift == true then
-        state.drift = false
-        return i, state.seq[i], true
-      end
       return nil
     end
-    state.turn = state.turn - 1
+    state.turn = state.turn-1
   end
   if i == state.len then
-    return 1, state.seq[  1]
+    return 1, state.seq[1]
+  else
+    return i+1, state.seq[i+1]
   end
-  return i+1, state.seq[i+1]
 end
 
-local function mkiter (seq, start, stop, turn, drift)
-  local len = #seq
-  local size = stop - start + 1
-  if size < 0 then size = size + len end
-  size = size + len*turn
-  return seqiter,
-         {seq=seq, len=len, stop=stop, turn=turn, drift=drift, size=size},
-         start-1
+local function mkiter (seq, start, stop, turn)
+  if start == stop+1 then turn = turn+1 end
+  return seqiter, {seq=seq, len=#seq, stop=stop, turn=turn}, start-1
 end
 
-local function iter (seq, rng_, trn_, dft_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  if is_number(rng_) then
-    rng_, trn_, dft_ = nil, rng_, trn_ -- shift right
-  end
+local function iter (seq, rng_, trn_)
+  local turn = trn_ or 0
+  assert(is_sequence(seq)           , "invalid argument #1 (sequence expected)")
+  assert(is_number(turn) and turn >= 0, "invalid argument #3 (number expected)")
+  local start, stop
   if is_nil(rng_) then
-    local turn = trn_ or 1
-    assert(is_number(turn) and turn >= 1, "invalid argument #3 (positive number expected)")
     if is_nil(seq.start_at) then
-      return mkiter(seq, 1, #seq, turn-1, false)
+      start, stop = 1, #seq
+    else
+      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      stop  = start == 1 and #seq or start-1
     end
-    local start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
-    return mkiter(seq, start, start-(dft_ and 0 or -1), turn, true)
+  else
+    start, stop = seq:range_of(rng_)
+    assert(is_number(start), "invalid range start")
+    assert(is_number(stop ), "invalid range stop" )
   end
-  local start, stop = seq:range_of(rng_)
-  assert(is_number(start), "invalid range start")
-  assert(is_number(stop ), "invalid range stop" )
-  return mkiter(seq, start, stop, start == stop+1 and 1 or 0, false)
+  return mkiter(seq, start, stop, turn)
 end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.element.sequence = sequence
+MAD.element.sequence   = sequence
+MAD.typeid.is_sequence = is_sequence
 
 -- members --------------------------------------------------------------------o
 
@@ -806,6 +814,7 @@ sequence :set_function {
   index_of  = index_of,
   sindex_of = sindex_of,
   range_of  = range_of,
+  length_of = length_of,
   iter      = iter,
   setvar    = setvar,
   cycle     = cycle,
