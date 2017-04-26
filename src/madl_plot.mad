@@ -40,7 +40,7 @@ end
 
 local function keys_tbl(t1, t2, keys)
   local t = {}
-  if   t1
+  if t1
   then for j,k in ipairs(keys) do t[k] = t1[k] or t2[k] end
   else for j,k in ipairs(keys) do t[k] = t2[k]          end
   end
@@ -215,34 +215,46 @@ local function interpol(str)
   return out
 end
 
-  --x1 y1       -> x1y1
-  --x1 y1 y2    -> x1y1
-  --x1 x2 y1 y2 -> x1y1 & x2y2
-  --x2 y1 y2    -> x2y2
-  --x2 y1       -> x2y2
-  --x2 y2       -> x2y2
-
-local function multi_axes(self, inp, inp2, out, out2)
+local function multi_axes(x1, x2, y1, y2)
   local axes = {}
-  local s, s2 = #out, #out2
-  if out  then for i=1  ,s    do axes[i] = "x1y1" end end
-  if out2 then for i=1+s,s+s2 do axes[i] = "x1y2" end end
-
-  if     inp and out then 'x1y1'
-  elseif
-
+  local s, s2 = y1 and #y1, y2 and #y2
+  if     x1 and x2 and y1 and y2 then
+    for i=1  ,s    do axes[i] = "x1y1" end
+    for i=1+s,s+s2 do axes[i] = "x2y2" end
+  elseif x1        and y1 and y2 then
+    for i=1  ,s    do axes[i] = "x1y1" end
+    for i=1+s,s+s2 do axes[i] = "x1y2" end
+  elseif x2        and y1 and y2 then
+    for i=1  ,s    do axes[i] = "x2y1" end
+    for i=1+s,s+s2 do axes[i] = "x2y2" end
+  elseif x1 and y1 then
+    for i=1  ,s    do axes[i] = "x1y1" end
+  elseif x1 and y2 then
+    for i=1  ,s2   do axes[i] = "x1y2" end
+  elseif x2 and y1 then
+    for i=1  ,s2   do axes[i] = "x2y1" end
+  elseif x2 and y2 then
+    for i=1  ,s2   do axes[i] = "x2y2" end
+  end
   return axes
 end
 
 local function templ_style(inp, out, keys)
-  local r = copy(out)
+  local r = copy( out )
   if inp then
     for k,v in pairs(inp) do
-      local indx = find_key(keys, k) - 1
-      if indx then r[indx] = v end
+      local indx = find_key(keys, k)
+      if indx then r[indx-1] = v end
     end
   end
   return r
+end
+
+local function creat_scrdump(templ, name)
+  local script = script_name(name)
+  local fp = io.open(script, "w")
+  templ_print( templ, fp )
+  fp:close()
 end
 
 -- saving to template
@@ -282,7 +294,7 @@ local function layout_to_templ(src, keys)
   return t
 end
 
--- template
+-- template operations
 
 local function templ_interp(temp, src)
   for i,line in ipairs(temp) do
@@ -456,6 +468,7 @@ local function default_term()
 end
 
 -- Gnuplot object
+
 local function gp_setterm (gp, term, keep_setup_)
   if is_nil(keep_setup_) or is_nil(gp_default[term]) then
     for _,cmd in ipairs(gp_default[term]) do
@@ -483,6 +496,8 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
   __index = gp_get,
   __call  = \gp,cmd -> gp[_gpd][gp[_gpd].__cur_id]:write(cmd)
 })
+
+-- execution functions
 
 local function templ_multiaxes(self, size)
   local templ = {}
@@ -521,13 +536,12 @@ end
 
 local function style_plots(self, out, out2, keys, templ)
   local dashtypes, colors in dat
-  local output = tbl_concat( out, out2 )
-  --local axes   = multi_axes( self, out, out2 )
-  local axes   = multi_axes( self, inp, inp2, out, out2 )       -- multiple axes
-  local ptt    = totable(1..(#output))
-  local pts    = totable(vector(#output):fill(1))
-  local yout   = tbl_concat({}, output)
-
+  local xaxis, xaxis2, yaxis, yaxis2 in self
+  local output = tbl_concat( {}, out, out2 )
+  local axes   = multi_axes( xaxis, xaxis2, yaxis, yaxis2 )       -- multiple axes
+  local ptt    = totable   ( 1..(#output) )
+  local pts    = totable   ( vector(#output):fill(1) )
+  local yout   = tbl_concat( {}, output )
   local style  = {
     legendname = templ_style( self.legendname, yout     , keys ),
     colors     = templ_style( self.colors    , colors   , keys ),
@@ -539,13 +553,6 @@ local function style_plots(self, out, out2, keys, templ)
   }
   for k,v in pairs(style) do templ_fill( templ, v, k ) end
   return templ
-end
-
-local function creat_scrdump(templ, name)
-  local script = script_name(name)
-  local fp = io.open(script, "w")
-  templ_print( templ, fp )
-  fp:close()
 end
 
 function exec(self)
@@ -596,20 +603,20 @@ function exec(self)
     fontname     = self.font.name,
     fontsize     = self.font.size,
 
-    xlabel       = self.xlabel ~="" and self.xlabel  or axis_title(inp) ,
+    xlabel       = self.xlabel ~="" and self.xlabel  or axis_title(inp ),
     xlabel2      = self.xlabel2~="" and self.xlabel2 or axis_title(out2),
-    ylabel       = self.ylabel ~="" and self.ylabel  or axis_title(out) ,
+    ylabel       = self.ylabel ~="" and self.ylabel  or axis_title(out ),
     ylabel2      = self.ylabel2~="" and self.ylabel2 or axis_title(inp2),
     --ylabel3      = false,
     --ylabel4      = false,
-    xmin         = self.xrange  and self.xrange [1] or xlimit[1],
-    xmax         = self.xrange  and self.xrange [2] or xlimit[2],
-    xmin2        = self.xrange2 and self.xrange2[1] or xlimit[1],
-    xmax2        = self.xrange2 and self.xrange2[2] or xlimit[2],
-    ymin         = self.yrange  and self.yrange [1] or ylimit[1],
-    ymax         = self.yrange  and self.yrange [2] or ylimit[2],
-    ymin2        = self.yrange2 and self.yrange2[1] or ylimit[1],
-    ymax2        = self.yrange2 and self.yrange2[2] or ylimit[2],
+    xmin         = self.xrange  and self.xrange [1] or xlimit [1],
+    xmax         = self.xrange  and self.xrange [2] or xlimit [2],
+    xmin2        = self.xrange2 and self.xrange2[1] or xlimit2[1],
+    xmax2        = self.xrange2 and self.xrange2[2] or xlimit2[2],
+    ymin         = self.yrange  and self.yrange [1] or ylimit [1],
+    ymax         = self.yrange  and self.yrange [2] or ylimit [2],
+    ymin2        = self.yrange2 and self.yrange2[1] or ylimit2[1],
+    ymax2        = self.yrange2 and self.yrange2[2] or ylimit2[2],
     --ymin3        = self.yrange3 and self.yrange3[1] or ylimit[1],
     --ymax3        = self.yrange3 and self.yrange3[2] or ylimit[2],
     --ymin4        = self.yrange4 and self.yrange4[1] or ylimit[1],
@@ -617,14 +624,17 @@ function exec(self)
     styles       = interpol(self.styles),
   }
   templ_interp( templ, to_interpolate )
-  templ = style_plots( self, out, out2, keys, templ ) -- style of plots
+  templ = style_plots(self, out, out2, keys, templ)
 
   -- to pdf operation
   if self.filename then
-    if filename == pdfonefile[id] then
+    --print(self.filename, pdfonefile[id], self.filename ~= pdfonefile[id])
+    if filename ~= pdfonefile[id] then
+      id = id+1
+      --print(id)
       templ_interp( gp_default.postscript, to_interpolate )
+      gp_setterm  ( gplot[id], 'postscript' )
     end
-    gp_setterm( gplot[id], 'postscript' )
   end
 
   -- pipe print and flush
@@ -632,7 +642,7 @@ function exec(self)
   gplot[id]:flush()
 
   --if self.scrdump then creat_scrdump(templ_save, self.filename) end -- save .gp
-  pdfonefile[id] = filename
+  pdfonefile[id] = self.filename
   return self
 end
 
