@@ -30,25 +30,24 @@ NAME
 
 SYNOPSIS
   functor, is_functor,
-  ident, first, second, swap, repeater, compose, compose_bottom,
-  foreach, map, map2, map3, foldl, foldr, filter.
+  ident, forget, first, second, swap, swapv, compose, compose_bottom,
+  bind1st, bind2nd, bind2st.
 
 DESCRIPTION
   The gfunc module provides useful utility functions:
+  - ffalse and ftrue return false and true respectively.
   - ident is the identity function.
+  - forget drop its arguments.
   - first, second and swap return arguments #1, #2 and #2 #1 respectively
-    (i.e. #1 #2 swapped).
-  - gen TODO
-  - rep returns a sequence holding the same element n-times (or inf).
+    (i.e. #1 #2 swapped). swapv is identical to swap but keep the extra
+    arguments.
   - compose composes two callable objects.
   - compose_bottom allows to compose (right to left) callable objects using ^.
-  - TODO
-
-RETURN VALUES
-  These utility functions.
+  - bind1st, bind2nd, bind2st allow to bind 1st, 2nd or both arguments to a
+    callable. It is faster than creating a new closure with bounded upvalues.
 
 ERRORS
-  Functors constructor trigs an error if the argument #1 is not a function.
+  Functors constructor trigs an error if the argument #1 is not a callable.
 
 SEE ALSO
   Object.
@@ -65,21 +64,23 @@ local is_callable                   in MAD.concept
 
 local gfunc = {
 
-  ident   = \...     -> ...,
-  forget  = \        -> (),
-  first   = \a       -> (a),
-  second  = \a,b     -> (b),
-  swap    = \a,b     -> (b,a),
-  swapv   = \a,b,... -> (b,a,...),
+  ffalse  = \        -> false,       -- functional false
+  ftrue   = \        -> true,        -- functional true
+  ident   = \...     -> ...,         -- identity
+  forget  = \        -> (),          -- forget argument(s)
+  first   = \a       -> (a),         -- 1st argument only
+  second  = \a,b     -> (b),         -- 2nd argument only
+  swap    = \a,b     -> (b,a),       -- swap #1 and #2 arguments, discard others
+  swapv   = \a,b,... -> (b,a,...),   -- swap #1 and #2 arguments, keep others
 
 }
 
 -- functors
 
 -- hidden keys
-local _fun, _fun2, _arg, _arg2, _nab, _ini, _idx = {}, {}, {}, {}, {}, {}, {}
+local _fun, _fun2, _arg, _arg2 = {}, {}, {}, {}
 -- forward declarations
-local fct_mt, fct_mtc, fct_mtb, fct_mb1, fct_mtb2, fct_mtb12
+local fct_mt, fct_mtc, fct_mb1, fct_mtb2, fct_mtb12
 
 function gfunc.functor (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
@@ -92,12 +93,6 @@ function gfunc.compose (f, g)
   return setmetatable({[_fun]=f, [_fun2]=g}, fct_mtc)
 end
 
-function gfunc.bind (f, ...)
-  assert(is_callable(f), "invalid argument #1 (callable expected)")
-  local n = select('#',...)
-  return setmetatable({[_fun]=f, [_arg]={...}, [_ini]=table.new(n,0),
-                       [_nab]=n}, fct_mtb)
-end
 function gfunc.bind1st (f, a)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   return setmetatable({[_fun]=f, [_arg]=a}, fct_mtb1)
@@ -115,10 +110,6 @@ end
 
 function gfunc.is_functor (a)
   return is_table(a) and not is_nil(rawget(a,_fun))
-end
-
-function gfunc.is_placeholder (a)
-  return is_table(a) and not is_nil(rawget(a,_idx))
 end
 
 local str = \s -> string.format("<functor> %p", s)
@@ -164,71 +155,33 @@ fct_mtb12 = {
   __len = err, __newindex = err, __ipairs = err, __pairs = err,
 }
 
-gfunc._1 = {[_idx]=1}
-gfunc._2 = {[_idx]=2}
-gfunc._3 = {[_idx]=3}
-gfunc._4 = {[_idx]=4}
-gfunc._5 = {[_idx]=5}
-gfunc._6 = {[_idx]=6}
-gfunc._7 = {[_idx]=7}
-gfunc._8 = {[_idx]=8}
-gfunc._9 = {[_idx]=9}
-
-local is_placeholder in gfunc
-
-local function bindcall(s, ...) -- slow (faster solution?)
-  local nab, argb = rawget(s,_nab), rawget(s,_arg)
-  local arg, argc = rawget(s,_ini), {...}
-  for i=1,nab do
-    if is_placeholder(argb[i]) then
-      arg[i] = argc[argb[i][_idx]]
-    else
-      arg[i] = argb[i]
-    end
-  end
-  return rawget(s,_fun)(unpack(arg, 1, nab))
-end
-
-fct_mtb = {
-  __pow       = gfunc.compose,
-  __call      = bindcall,
-  __index     = \s,k -> s(k),
-  __tostring  = str,
-  __len = err, __newindex = err, __ipairs = err, __pairs = err,
-}
-
 gfunc.bottom = gfunc.functor(gfunc.ident)
-gfunc._      = gfunc.bottom
+gfunc._      = gfunc.bottom -- alias
 
 __help['gfunc.functor'] = [=[
 NAME
+  is_functor        -- check if the argument is a functor
   functor           -- encapsulate a callable into a functor
   compose           -- compose two callables into a functor
-  bind              -- bind a callable non placeholder arguments into a functor
   bind1st           -- bind a callable first argument into a functor
   bind2nd           -- bind a callable second argument into a functor
   bind2st           -- bind a callable two first arguments into a functor
   bottom or _       -- functor that trigs chain of composition
-  is_functor        -- check if the argument is a functor
-  is_placeholder    -- check if the argument is a placeholder
-  _1,_2,...,_9      -- placeholders
 
 SYNOPSIS
+  is_functor(val)
   functor(fun)
   compose(fun1, fun2)
-  bind(fun, [arg|_N]+)
   bind1st(fun, arg)
   bind2nd(fun, arg)
   bind2st(fun, arg1, arg2)
-  is_functor(val)
-  is_placeholder(val)
 
 DESCRIPTION
   The functor function is a constructor that encapsulates true functions into
   functors (i.e. some special readonly objects that behaves like functions). It
   is used by the object model (i.e. set_function) to avoid the default
-  function-as-value semantic. The is_functor function checks if a value is a
-  functor.
+  function-as-value semantic of the object model. The is_functor function checks
+  if a value is a functor.
 
 RETURN VALUES
   The functor function returns the functor object that encapsulates the function
@@ -253,31 +206,18 @@ EXAMPLES
 SEE ALSO
   Object.
 ]=]
+__help['typeid.is_functor']     = __help['gfunc.functor']
+__help['gfunc.is_functor']      = __help['gfunc.functor']
 __help['gfunc.compose']         = __help['gfunc.functor']
-__help['gfunc.bind']            = __help['gfunc.functor']
 __help['gfunc.bind1st']         = __help['gfunc.functor']
 __help['gfunc.bind2nd']         = __help['gfunc.functor']
 __help['gfunc.bind2st']         = __help['gfunc.functor']
 __help['gfunc.bottom']          = __help['gfunc.functor']
-__help['gfunc.is_functor']      = __help['gfunc.functor']
-__help['gfunc.is_placeholder']  = __help['gfunc.functor']
-__help['typeid.is_functor']     = __help['gfunc.functor']
-__help['typeid.is_placeholder'] = __help['gfunc.functor']
 __help['gfunc._']               = __help['gfunc.functor']
-__help['gfunc._1']              = __help['gfunc.functor']
-__help['gfunc._2']              = __help['gfunc.functor']
-__help['gfunc._3']              = __help['gfunc.functor']
-__help['gfunc._4']              = __help['gfunc.functor']
-__help['gfunc._5']              = __help['gfunc.functor']
-__help['gfunc._6']              = __help['gfunc.functor']
-__help['gfunc._7']              = __help['gfunc.functor']
-__help['gfunc._8']              = __help['gfunc.functor']
-__help['gfunc._9']              = __help['gfunc.functor']
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_functor     = gfunc.is_functor
-MAD.typeid.is_placeholder = gfunc.is_placeholder
+MAD.typeid.is_functor = gfunc.is_functor
 
 -- end ------------------------------------------------------------------------o
 return {
