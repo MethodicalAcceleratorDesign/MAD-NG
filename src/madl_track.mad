@@ -153,12 +153,11 @@ i.e. quad only has k1 and not k0, k2 or???
 -- locals ---------------------------------------------------------------------o
 
 local vector, matrix                                             in MAD
-local is_nil, is_number, is_matrix, is_sequence, is_beam         in MAD.typeid
+local is_nil, is_number, is_sequence, is_beam                    in MAD.typeid
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
       sinc, fact                                                 in MAD.gmath
 local minlen, minang                                             in MAD.constant
 
-local maxmult   = 20
 local ptccompat = true
 
 -- implementation -------------------------------------------------------------o
@@ -171,9 +170,9 @@ end
 local function empty_track ()
 end
 
--- Put element multipoles in mflow
+-- Load element multipoles in mflow
 
-local function get_mult0 (elm, m) -- l=0
+local function get_mult (elm, m) -- l=0
   local knl, dknl = elm.knl or {}, elm.dknl or {}
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl)
@@ -186,7 +185,9 @@ local function get_mult0 (elm, m) -- l=0
   return nmul
 end
 
-local function get_mult (elm, m, l) -- general
+-- Load element strengths and multipoles in mflow
+
+local function get_kmult (elm, m, l) -- l>0
   local k0 , k1 , k2 , k3  in elm
   local k0s, k1s, k2s, k3s in elm
   local nkn = k3  and 4 or k2  and 3 or k1  and 2 or k0  and 1 or 0
@@ -441,6 +442,7 @@ local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
   local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
   m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
 
+  -- BUG: knl, ksl never retrieved
   local lw, byt = elm.l>0 and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
@@ -646,11 +648,11 @@ end
 
 local function thin_kick_track(elm, m, l) -- l == 0
   local lrad = elm.lrad or 0
-  local knlt, kslt = elm.knl or {}, elm.ksl or {}
+  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
   local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
   m.in_action(elm, m, l, 'thin_kick_track')
 
-  local x, px, y, py, dirch, nmul, knl, ksl in m
+  local x, px, y, py, dirch, nmul, knl, ksl in m -- BUG: nmul set by last getmul
   local byt
   local by = knl[nmul] / fact(nmul-1)
   local bx = ksl[nmul] / fact(nmul-1)
@@ -902,7 +904,7 @@ local integrate = require 'madl_sympint'
 
 local function thick_track (elm, m, drift, kick)
   local l, angle, method in elm
-  local nmul = abs(l) <= minlen and get_mult0(elm, m) or get_mult(elm, m, l)
+  local nmul = abs(l) <= minlen and get_mult(elm, m) or get_kmult(elm, m, l)
   local integrator = nmul == 0 and drift or integrate[method or m.method]
   local ns = #elm
 
@@ -968,7 +970,7 @@ local function thin_track (elm, m) -- e.g. multipole
     error("invalid thin element length (too long): " .. elm.name)
   end
 
-  local nmul = get_mult0(elm, m)
+  local nmul = get_mult(elm, m)
   if nmul == 0 then return end
 
   if ptccompat == true then
@@ -1147,7 +1149,7 @@ local function make_map (self)
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,
-           knl=vector(maxmult), ksl=vector(maxmult),
+           knl={}, ksl={},
            s=0, ds=0, len=len, dir=dir, ndrift=0, nst=nst,
            method=method, in_action=in_action, out_action=out_action,
            [_trk]=_trk }
@@ -1200,7 +1202,7 @@ local function exec (self)
       fill_table(tbl, name, kind, map, s+l, l)
     end
     s  = s+l
-    ds = i < len and seq:s_pos(i+1) - (seq:s_pos(i)+l) or 0
+    ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0
   end
   map.s, map.ds, map.ndrift = s, ds, ndrift
 

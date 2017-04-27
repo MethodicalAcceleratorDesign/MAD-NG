@@ -115,7 +115,7 @@ static ptr_t* FN(hextv) (val_t); // ptr representation
 static u64_t  FN(bittv) (val_t); // bit representation
 
 // typeid
-enum { TVNUM, TVNIL, TVLOG, TVINT, TVXXX, TVFUN,
+enum { TVNUM, TVNIL, TVLOG, TVINT, TVOPS, TVFUN,
        TVPTR, TVSTR, TVARR, TVOBJ, TVYYY, TVREF };
 
 // ----------------------------------------------------------------------------o
