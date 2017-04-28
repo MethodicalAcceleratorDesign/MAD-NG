@@ -20,16 +20,17 @@
     identification, boxing and unboxing TV, plus few other useful functions.
 
   - Provides support for few types (can be changed or extended easily):
-    + nil       (special)
-    + logical   (boolean, false and true)
-    + integer   (46 bit signed integer)
-    + number    (double precision floating point)
-    + function  (generic function pointer)
-    + pointer   (generic void pointer)
-    + string    (constant, '\0' terminated)
-    + array     (array of TV, opt. nil terminated)
-    + object    (user defined objects with common header)
-    + reference (reference to TV)
+    + nil         (special)
+    + logical     (boolean, false and true)
+    + integer     (46 bit signed integer)
+    + number      (double precision floating point)
+    + function    (generic function pointer)
+    + pointer     (generic void pointer)
+    + string      (constant, '\0' terminated)
+    + array       (array of TV, opt. nil terminated)
+    + object      (user defined objects with common header)
+    + reference   (reference to TV)
+    + instruction (46 bit encoded instruction)
 
  o-----------------------------------------------------------------------------o
 */
@@ -67,6 +68,7 @@ static bool FN(tvistrue) (val_t);
 static bool FN(tvislog) (val_t);
 static bool FN(tvisint) (val_t); // 46 bit signed int
 static bool FN(tvisnum) (val_t); // tv num
+static bool FN(tvisins) (val_t); // 46 bit instruction
 static bool FN(tvisfun) (val_t); // tv fun
 static bool FN(tvisptr) (val_t); // tv ptr (!log !int !num !fun)
 static bool FN(tvisstr) (val_t);
@@ -85,6 +87,7 @@ static val_t FN(tvtrue) (void);
 static val_t FN(tvlog) (log_t);
 static val_t FN(tvint) (i64_t); // 46 bit signed int
 static val_t FN(tvnum) (num_t);
+static val_t FN(tvins) (u64_t); // 46 bit instruction
 static val_t FN(tvfun) (fun_t*);
 static val_t FN(tvptr) (ptr_t*);
 static val_t FN(tvstr) (str_t*);
@@ -96,6 +99,7 @@ static val_t FN(tvref) (val_t*);
 static log_t  FN(logtv) (val_t);
 static i64_t  FN(inttv) (val_t); // 46 bit signed int
 static num_t  FN(numtv) (val_t);
+static u64_t  FN(instv) (val_t); // 46 bit instruction
 static fun_t* FN(funtv) (val_t);
 static ptr_t* FN(ptrtv) (val_t);
 static str_t* FN(strtv) (val_t);
@@ -115,8 +119,8 @@ static ptr_t* FN(hextv) (val_t); // ptr representation
 static u64_t  FN(bittv) (val_t); // bit representation
 
 // typeid
-enum { TVNUM, TVNIL, TVLOG, TVINT, TVOPS, TVFUN,
-       TVPTR, TVSTR, TVARR, TVOBJ, TVYYY, TVREF };
+enum { TVNUM, TVNIL, TVLOG, TVINT, TVINS, TVFUN,
+       TVPTR, TVSTR, TVARR, TVOBJ, TVXXX, TVREF };
 
 // ----------------------------------------------------------------------------o
 // --- implementation ---------------------------------------------------------o
@@ -140,7 +144,7 @@ enum { TVNUM, TVNIL, TVLOG, TVINT, TVOPS, TVFUN,
 #define DEF_TVNIL    (DEF_TVAL | 0ULL << DEF_TVSHT)  // value
 #define DEF_TVLOG    (DEF_TVAL | 1ULL << DEF_TVSHT)  // value
 #define DEF_TVINT    (DEF_TVAL | 2ULL << DEF_TVSHT)  // value
-#define DEF_TVYYY    (DEF_TVAL | 3ULL << DEF_TVSHT)  // value (unused)
+#define DEF_TVINS    (DEF_TVAL | 3ULL << DEF_TVSHT)  // value (instruction)
 #define DEF_TVMSK    (DEF_TMSK | 3ULL << DEF_TVSHT)  // mask  (value mask)
 #define DEF_TVSHT    (DEF_TSHT-2)                    // shift (value size)
 
@@ -157,12 +161,14 @@ enum { TVNUM, TVNIL, TVLOG, TVINT, TVOPS, TVFUN,
 
 #define TVISLOG(v)   (((v).__u & DEF_TVMSK) == DEF_TVLOG)
 #define TVISINT(v)   (((v).__u & DEF_TVMSK) == DEF_TVINT)
+#define TVISINS(v)   (((v).__u & DEF_TVMSK) == DEF_TVINS)
 #define TVISNUM(v)   (((v).__u & DEF_TNAN ) != DEF_TNAN )
 #define TVISFUN(v)   (((v).__u & DEF_TMSK ) == DEF_TFUN )
 #define TVISPTR(v)   (((v).__u & DEF_TMSK ) >= DEF_TPTR )
 #define TVISSTR(v)   (((v).__u & DEF_TMSK ) == DEF_TSTR )
 #define TVISARR(v)   (((v).__u & DEF_TMSK ) == DEF_TARR )
 #define TVISOBJ(v)   (((v).__u & DEF_TMSK ) == DEF_TOBJ )
+#define TVISXXX(v)   (((v).__u & DEF_TMSK ) == DEF_TXXX )
 #define TVISREF(v)   (((v).__u & DEF_TMSK ) == DEF_TREF )
 #define TVISVAL(v)   (((v).__u & DEF_TMSK ) == DEF_TVAL )
 #define TVISHEX(v)   (((v).__u & DEF_TMSK ) >= DEF_TFUN )
@@ -199,6 +205,7 @@ inline bool FN(tvistrue) (val_t v) { return TVISTRUE(v);  }
 inline bool FN(tvislog)  (val_t v) { return TVISLOG(v); }
 inline bool FN(tvisint)  (val_t v) { return TVISINT(v); }
 inline bool FN(tvisnum)  (val_t v) { return TVISNUM(v); }
+inline bool FN(tvisins)  (val_t v) { return TVISINS(v); }
 inline bool FN(tvisfun)  (val_t v) { return TVISFUN(v); }
 inline bool FN(tvisptr)  (val_t v) { return TVISPTR(v); }
 inline bool FN(tvisstr)  (val_t v) { return TVISSTR(v); }
@@ -226,6 +233,11 @@ inline val_t FN(tvint) (i64_t i)
     return (val_t){ (-i & ~DEF_TVMSK >> 1) | DEF_TVINT | 1ULL << (DEF_TVSHT-1)};
   else
     return (val_t){ ( i & ~DEF_TVMSK >> 1) | DEF_TVINT };
+}
+
+inline val_t FN(tvins) (u64_t i)
+{
+  return (val_t){ ( i & ~DEF_TVMSK) | DEF_TVINS };
 }
 
 inline val_t FN(tvnum) (num_t d)
@@ -299,6 +311,11 @@ inline num_t FN(numtv) (val_t v)
   return v.__d;
 }
 
+inline u64_t FN(instv) (val_t v)
+{
+  return TVISINS(v) ? v.__u & ~DEF_TVMSK : 0;
+}
+
 inline fun_t* FN(funtv) (val_t v)
 {
   return TVISFUN(v) ? (val_t){ v.__u & ~DEF_TMSK } .__f : 0;
@@ -351,8 +368,8 @@ inline str_t* FN(namtv) (val_t v)
   int id = FN(typtv)(v);
   assert(0 <= id && id <= 11);
   return (str_t*[12]){
-    "tvnum", "tvnil", "tvlog", "tvint", "tvxxx", "tvfun",
-    "tvptr", "tvstr", "tvarr", "tvobj", "tvyyy", "tvref" } [id];
+    "tvnum", "tvnil", "tvlog", "tvint", "tvins", "tvfun",
+    "tvptr", "tvstr", "tvarr", "tvobj", "tvxxx", "tvref" } [id];
 }
 
 // --- debugging, display -----------------------------------------------------o
