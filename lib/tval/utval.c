@@ -22,6 +22,7 @@ prttv (val_t v, const str_t *s_)
   if (tvislog(v)) printf("log: %s\n"  , logtv(v) ? "true" : "false");
   if (tvisint(v)) printf("int: %lld\n", inttv(v));
   if (tvisnum(v)) printf("num: %g\n"  , numtv(v));
+  if (tvisins(v)) printf("ins: %llu\n", instv(v));
   if (tvisfun(v)) printf("fun: %p\n"  , hextv(v));
   if (tvisptr(v)) printf("ptr: %p\n"  , ptrtv(v));
   if (tvisstr(v)) printf("str: %p\n"  , ptrtv(v));
@@ -58,6 +59,10 @@ int main(int argc, char *argv[])
   v = tvint(  0);                                prttv(v, "0i");
   v = tvint( 10);                                prttv(v, "10i");
   v = tvint(-10);                                prttv(v, "-10i");
+
+  v = tvins(  0);                                prttv(v, "0ins");
+  v = tvins( 10);                                prttv(v, "10ins");
+  v = tvins(-10);                                prttv(v, "-10ins");
 
   printf("\n** numbers **\n");
 
@@ -120,6 +125,7 @@ int main(int argc, char *argv[])
   gcc (MacPorts gcc6 6.3.0_2) 6.3.0
   ** performance (conversions) **
   int->tv->int: 1392290332 iter/sec
+  ins->tv->ins:        inf iter/sec
   num->tv->num:        inf iter/sec
   str->tv->str: 1415418150 iter/sec
   ref->..->int:  816827963 iter/sec
@@ -127,6 +133,7 @@ int main(int argc, char *argv[])
   gcc (MacPorts gcc48 4.8.5_1) 4.8.5
   ** performance (conversions) **
   int->tv->int:  904562341 iter/sec
+  ins->tv->ins:        inf iter/sec
   num->tv->num:        inf iter/sec
   str->tv->str: 1214975300 iter/sec
   ref->..->int:  848547795 iter/sec
@@ -144,7 +151,17 @@ int main(int argc, char *argv[])
     assert(inttv(tvint(i)) == i);
   t1 = clock();
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
   printf("int->tv->int: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
+
+  // check for compiler optimization (~0.8 sec)
+  t0 = clock();
+  for (u64_t i=0; i<N; i++)
+    assert(instv(tvins(i)) == i);
+  t1 = clock();
+  dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
+  printf("ins->tv->ins: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
 
   // check for compiler optimization (~0 sec)
   t0 = clock();
@@ -152,6 +169,7 @@ int main(int argc, char *argv[])
     assert(numtv(tvnum(i)) == i);
   t1 = clock();
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
   printf("num->tv->num: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
 
   // check for compiler optimization (~0.8 sec)
@@ -160,6 +178,7 @@ int main(int argc, char *argv[])
     assert(strtv(tvstr(s)) == s);
   t1 = clock();
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
   printf("str->tv->str: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
 
   // check for compiler optimization (~1.2 sec)
@@ -168,6 +187,7 @@ int main(int argc, char *argv[])
     assert(inttv(tvget(tvref(vp[i & 3]))) == 100);
   t1 = clock();
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
   printf("ref->..->int: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
 
   return 0;
