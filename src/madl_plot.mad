@@ -215,9 +215,17 @@ local function interpol(str)
   return out
 end
 
-local function multi_axes(x1, x2, y1, y2)
-  local axes = {}
+local function multi_axes(axespairs, x1, x2, y1, y2)
   local s, s2 = y1 and #y1, y2 and #y2
+  local axes  = {}
+  if axespairs then -- TODO
+    local axes1 = {}
+    for k,v in pairs(axespairs) do
+      for i,vv in ipairs(v) do
+        axes1[i] = k..vv
+      end
+    end
+  end
   if     x1 and x2 and y1 and y2 then
     for i=1  ,s    do axes[i] = "x1y1" end
     for i=1+s,s+s2 do axes[i] = "x2y2" end
@@ -411,8 +419,8 @@ local gp_default = {
     "set terminal x11 size 800, 500\n",
   },
   windows     = {
-    "unset multiplot\n"               ,
-    "set terminal x11 size 800, 500\n",
+    "unset multiplot\n"     ,
+    "set terminal windows\n",
   },
     postscript = {
     "unset multiplot\n"                       ,
@@ -461,7 +469,7 @@ local function default_term()
     end
   elseif os == 'Windows' then
     if     gnuplothasterm('windows') then return 'windows'
-    else error("gnuplot missing default terminals")
+    else error("gnuplot missing default terminals for"..os)
     end
   else   error("unsupported operating system")
   end
@@ -505,7 +513,7 @@ local function templ_multiaxes(self, size)
   return templ
 end
 
-local function templ_operations(self, pdfonefile, templ_input)
+local function templ_setup(self, pdfonefile, templ_input)
   local preamble, yaxis2, xaxis2, multiplot  in self
   local templ = tbl_concat( {}, template )
   if     preamble          then templ = tbl_concat( {}   , templ_preamble, templ                   ) end
@@ -515,7 +523,7 @@ local function templ_operations(self, pdfonefile, templ_input)
   else                          templ = tbl_concat( templ,                               templ_end ) end
   if     multiplot         then templ, multiplot = {}, false                                         end
 
-  templ = tbl_concat( templ, templ_input.data, templ_plot, templ_input.multiaxes ,{"\n"}, templ_input.sequ )
+  templ = tbl_concat( templ, templ_input.data, templ_plot, templ_input.multiaxes, {"\n"}, templ_input.sequ )
   if not multiplot and yaxis2 or xaxis2 then templ = tbl_concat( templ, templ_unaxes ) end
   return templ
 end
@@ -538,17 +546,17 @@ local function style_plots(self, out, out2, keys, templ)
   local dashtypes, colors in dat
   local xaxis, xaxis2, yaxis, yaxis2 in self
   local output = tbl_concat( {}, out, out2 )
-  local axes   = multi_axes( xaxis, xaxis2, yaxis, yaxis2 )       -- multiple axes
+  local axes   = multi_axes( self.axespairs, xaxis, xaxis2, yaxis, yaxis2 )     -- multiple axes
   local ptt    = totable   ( 1..(#output) )
   local pts    = totable   ( vector(#output):fill(1) )
   local yout   = tbl_concat( {}, output )
   local style  = {
     legendname = templ_style( self.legendname, yout     , keys ),
     colors     = templ_style( self.colors    , colors   , keys ),
-    dtt        = templ_style( self.dashtypes , dashtypes, keys ),
+    dtt        = templ_style( self.dashtypes , dashtypes, keys ), -- dashtype
     setaxes    = templ_style( self.axes      , axes     , keys ),
-    ptt        = templ_style( self.pointtypes, ptt      , keys ),
-    pts        = templ_style( self.pointsizes, pts      , keys ),
+    ptt        = templ_style( self.pointtypes, ptt      , keys ), -- pointtype
+    pts        = templ_style( self.pointsizes, pts      , keys ), -- pointsize
     count      = 2..(#output)+1,
   }
   for k,v in pairs(style) do templ_fill( templ, v, k ) end
@@ -556,42 +564,42 @@ local function style_plots(self, out, out2, keys, templ)
 end
 
 function exec(self)
-  -- data scalling
+  -- tables of keys for data operations
   local inp = totable( self.xaxis )
   local out = totable( self.yaxis )
   local inp2, out2
   if self.xaxis2 then inp2 = totable( self.xaxis2 ) else inp2 = {} end
   if self.yaxis2 then out2 = totable( self.yaxis2 ) else out2 = {} end
+  local keys     = tbl_concat( {}, inp, inp2, out, out2 )
+  -- table with data to plot creation and scaling
+  local dataSrc  = keys_tbl  ( self.data, self.table, keys )
+  local datasize = #dataSrc[inp[1]]
+  self.datrange  = self.datrange or 1..datasize
 
-  local keys        = tbl_concat( {}, inp, inp2, out, out2 )
-  local keysVectors = keys_tbl  ( self.data, self.table, keys )
-  local datasize    = #keysVectors[inp[1]]
-  self.datrange     = 1..datasize
-  --self.datrange = self.datrange or 1..datasize
-  local drng        = scale_rng( datasize   , self.datrange )
-  local src         = scale_dat( keysVectors, keys, drng    )
+  local scaledDatrange = scale_rng( datasize, self.datrange        )
+  local scaledData     = scale_dat( dataSrc , keys, scaledDatrange )
 
   -- template operations
   local id in self
   local size = #out + #out2
   local templ_input = {
-    data      = data_to_templ  ( src , keys )                   ,  -- data to plot
-    multiaxes = templ_multiaxes( self, size )                   ,  -- multiple axes
-    sequ      = self.sequence and sequ( self, self.refer ) or {},  -- sequence plot
+    data      = data_to_templ  ( scaledData, keys )             , -- data to plot
+    multiaxes = templ_multiaxes( self      , size )             , -- multiple axes
+    sequ      = self.sequence and sequ( self, self.refer ) or {}, -- sequence plot
   }
-  local templ = templ_operations( self, pdfonefile[id], templ_input )
+  local templ = templ_setup( self, pdfonefile[id], templ_input )
 
-  local xlimit  = { scale_axis( src, inp , self.hmargin ) }
-  local ylimit  = { scale_axis( src, out , self.vmargin ) }
-  local xlimit2 = { scale_axis( src, inp2, self.hmargin ) }
-  local ylimit2 = { scale_axis( src, out2, self.vmargin ) }
+  local xlimit  = { scale_axis( scaledData, inp , self.hmargin ) }
+  local ylimit  = { scale_axis( scaledData, out , self.vmargin ) }
+  local xlimit2 = { scale_axis( scaledData, inp2, self.hmargin ) }
+  local ylimit2 = { scale_axis( scaledData, out2, self.vmargin ) }
   -- template interpolation
   local to_interpolate = {
     DATA = "$DATA",
     terminaltype = self.terminaltype,
     filename     = self.filename,
-    xsize        = self.size.x  ,
-    ysize        = self.size.y  ,
+    xsize        = self.wsize.x  ,
+    ysize        = self.wsize.y  ,
     sizeplot     = self.sequence and 0.85 or 1,
     lmargin      = self.margins.left ,
     rmargin      = self.margins.right,
@@ -627,13 +635,12 @@ function exec(self)
   templ = style_plots(self, out, out2, keys, templ)
 
   -- to pdf operation
-  if self.filename then
-    --print(self.filename, pdfonefile[id], self.filename ~= pdfonefile[id])
+ if self.filename then
     if filename ~= pdfonefile[id] then
-      id = id+1
-      --print(id)
+    --local pdf = { "set output '|ps2pdf - $filename' \n", }                    -- possible alternative to send this local through GP
+    --templ_interp( pdf      , to_interpolate )                                 -- + send command
       templ_interp( gp_default.postscript, to_interpolate )
-      gp_setterm  ( gplot[id], 'postscript' )
+      gp_setterm  ( gplot[id], 'postscript'   )
     end
   end
 
@@ -652,7 +659,6 @@ local plot = Command 'plot' {
   font = {name = "Times-Roman", size = 18}, -- switch into multiple font choices
   hmargin  = false,                         -- to be removed
   vmargin  = true ,                         -- to be removed
-  axes     = false,                         -- axespairs
 
   ------------------------------------------------------------------------------
 
@@ -666,19 +672,19 @@ local plot = Command 'plot' {
   -- table or data input
   table       = false,
   data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
-  datrange    = {1,-1}, -- 1..100,
+  datrange    = false, -- 1..100,
 
   -- sequence input
   sequence    = false,
   seqrange    = {1,-1},   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
-  selected    = false,    -- selected elements, if false all selected
+  selected    = false,    -- selected elements, if false all selected           -- TODO
   refer       = 'exit',
 
   -- decoration
   title       = "$name MAD $version, $date, $time",
-  titlefont   = {name = "Times-Roman", size = 18},
+  titlefont   = {name = "Times-Roman", size = 18},                              -- TODO
   legendname  = false,            -- { y = 'distance' }
-  legendfont  = {name = "Times-Roman", size = 18},
+  legendfont  = {name = "Times-Roman", size = 18},                              -- TODO
   legendpos   = "left top",
   grid        = 'grid',
 
@@ -693,7 +699,7 @@ local plot = Command 'plot' {
   yaxis2      = false,
   yaxis3      = false,
   yaxis4      = false,
-  axespairs   = false,            -- { xaxis = {'yaxis', 'yaxis3'}, xaxis2 = {'yaxis2', 'yaxis4'} }
+  axespairs   = false,            -- { x1 = {'y1', 'y2'} }
 
   -- axis labels
   xlabel      = false,            -- { betx = 'Beta x' }
@@ -721,7 +727,7 @@ local plot = Command 'plot' {
 
 -- gnuplot setup -> GP object
   margins     = {left = 0.1, right = 0.9, top = 0.1, bottom = 0.9},
-  size        = {x = 20, y =10.5},             -- >> wsize?
+  wsize       = {x = 20, y =10.5},
 
   -- build the command (do not execute)
   exec = exec,
