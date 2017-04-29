@@ -203,6 +203,7 @@ end
 
 local function set_raw (self, k, v)
   rawset(rawget(self,_var),k,v)       -- no protection
+  return self
 end
 
 local function get_variable (self, lst, eval)
@@ -295,6 +296,27 @@ local function get_varkey (self, class)
   return lst
 end
 
+local function insert_array (self, pos, val)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  table.insert(rawget(self,_var), pos, val)
+  return self
+end
+
+local function remove_array (self, pos)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  return table.remove(rawget(self,_var), pos)
+end
+
+local function sort_array (self, comp)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_nil(comp) or
+         is_callable(comp), "invalid argument #2 (callable expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  return table.sort(rawget(self,_var), comp)
+end
+
 local function clear_array (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
@@ -306,9 +328,27 @@ end
 local function clear_variable (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  local id = self.__id
-  table.clear(rawget(self,_var))
-  self.__id = id
+  local var = rawget(self,_var)
+  local id, len = var.__id, #var
+  if len == 0 then
+    table.clear(var)
+  else
+    local bak = table.new(len,0) -- unfortunately, Lua doesn't provide kpairs.
+    for i=1,len do bak[i] = var[i] end
+    table.clear(var)
+    for i=1,len do var[i] = bak[i] end
+  end
+  var.__id = id
+  return self
+end
+
+local function clear_all (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  local var = rawget(self,_var)
+  local id = var.__id
+  table.clear(var)
+  var.__id = id
   return self
 end
 
@@ -442,8 +482,12 @@ M.set_variable   = functor( set_variable   )
 M.wrap_variable  = functor( wrap_variable  )
 M.set_function   = functor( set_function   )
 M.set_metamethod = functor( set_metamethod )
+M.sort_array     = functor( sort_array     )
+M.insert_array   = functor( insert_array   )
+M.remove_array   = functor( remove_array   )
 M.clear_array    = functor( clear_array    )
 M.clear_variable = functor( clear_variable )
+M.clear_all      = functor( clear_all      )
 M.rawlen         = functor( len_raw        )
 M.rawvar         = functor( var_raw        )
 M.rawget         = functor( get_raw        )
