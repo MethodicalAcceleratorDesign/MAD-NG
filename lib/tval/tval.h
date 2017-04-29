@@ -107,6 +107,9 @@ static arr_t* FN(arrtv) (val_t);
 static obj_t* FN(objtv) (val_t);
 static val_t* FN(reftv) (val_t);
 
+// coercion
+static num_t  FN(tv2num) (val_t); // coerce log and int to num, other to NaN
+
 // dereference
 static val_t  FN(tvget) (val_t); // tv ref resolution
 
@@ -344,6 +347,15 @@ inline obj_t* FN(objtv) (val_t v)
 inline val_t* FN(reftv) (val_t v)
 {
   return TVISREF(v) ? (val_t){ v.__u & ~DEF_TMSK } .__r : 0;
+}
+
+// --- coercion ---------------------------------------------------------------o
+
+inline num_t FN(tv2num) (val_t v)
+{
+  return v.__d == v.__d ? v.__d    :
+         TVISINT(v)     ? inttv(v) :
+         TVISLOG(v)     ? logtv(v) : v.__d;
 }
 
 // --- dereference ------------------------------------------------------------o
