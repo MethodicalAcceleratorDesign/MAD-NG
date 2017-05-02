@@ -9,6 +9,40 @@
 
 #include "tval.h"
 
+typedef bool (cmp_t)(val_t, val_t);
+
+static inline bool
+less_than (val_t a, val_t b)
+{
+  num_t aa = numtv(a);
+  num_t bb = numtv(b);
+  return aa < bb;
+}
+
+static inline bool
+iless_than (val_t a, val_t b)
+{
+  i64_t aa = inttv(a);
+  i64_t bb = inttv(b);
+  return aa < bb;
+}
+
+static int
+bfind (val_t *arr, int n, val_t val, cmp_t *cmp)
+{
+  assert(arr && cmp);
+  int low = 0, cnt = n;
+  while (cnt > 0) {
+    int stp = cnt >> 1;
+    int mid = low+stp;
+    if (cmp(arr[mid], val))
+      low = mid+1, cnt -= stp+1;
+    else
+      cnt = stp;
+  }
+  return low; // tbl[low] <= val
+}
+
 static void
 prttv (val_t v, const str_t *s_)
 {
@@ -59,6 +93,13 @@ int main(int argc, char *argv[])
   v = tvint(  0);                                prttv(v, "0i");
   v = tvint( 10);                                prttv(v, "10i");
   v = tvint(-10);                                prttv(v, "-10i");
+
+  v = tvint(( 1LL<<44)-1);                       prttv(v, "2^44-1i");
+  v = tvint((-1LL<<44)+1);                       prttv(v, "-2^44+1i");
+  v = tvint(( 1LL<<45)-1);                       prttv(v, "2^45-1i");
+  v = tvint((-1LL<<45)+1);                       prttv(v, "-2^45+1i");
+  v = tvint(( 1LL<<46)-1);                       prttv(v, "2^46-1i");
+  v = tvint((-1LL<<46)+1);                       prttv(v, "-2^46+1i");
 
   v = tvins(  0);                                prttv(v, "0ins");
   v = tvins( 10);                                prttv(v, "10ins");
@@ -189,6 +230,30 @@ int main(int argc, char *argv[])
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
   if (N/dt > 1e100) dt = 0;
   printf("ref->..->int: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
+
+  printf("\n** performance (bfind) **\n\n");
+
+  enum { an=8, AL=20 };
+  int idx[an] = {0,1,1,1,4,4,4,7};
+  val_t arr[an] = { tvnum( 5),tvnum(10),tvnum(10),tvnum(10),
+                    tvnum(20),tvnum(20),tvnum(20),tvnum(30) };
+  t0 = clock();
+  for (i64_t i=0; i<N/AL; i++) // 50000000
+    assert(bfind(arr, an, arr[i&(an-1)], less_than) == idx[i&(an-1)]);
+  t1 = clock();
+  dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/AL/dt > 1e100) dt = 0;
+  printf("bfind(num): %*.f iter/sec (%.2f sec)\n", L, N/AL/dt, dt);
+
+  val_t iarr[an] = { tvint( 5),tvint(10),tvint(10),tvint(10),
+                     tvint(20),tvint(20),tvint(20),tvint(30) };
+  t0 = clock();
+  for (i64_t i=0; i<N/AL; i++) // 50000000
+    assert(bfind(iarr, an, iarr[i&(an-1)], iless_than) == idx[i&(an-1)]);
+  t1 = clock();
+  dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/AL/dt > 1e100) dt = 0;
+  printf("bfind(int): %*.f iter/sec (%.2f sec)\n", L, N/AL/dt, dt);
 
   return 0;
 }
