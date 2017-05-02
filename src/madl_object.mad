@@ -28,9 +28,10 @@ local M = {}
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname      in MAD.typeid
-local bset, btst, bclr, bnot                    in MAD.operator
+local bset, btst, bclr, bnot, lt                in MAD.operator
 local is_callable, is_iterable, is_mappable     in MAD.concept
-local functor                                   in MAD.gfunc
+local functor, bind2st                          in MAD.gfunc
+local bsearch                                   in MAD.algorithm
 
 -- implementation -------------------------------------------------------------o
 
@@ -296,6 +297,12 @@ local function get_varkey (self, class)
   return lst
 end
 
+local function remove_array (self, pos)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  return table.remove(rawget(self,_var), pos)
+end
+
 local function insert_array (self, pos, val)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
@@ -303,18 +310,24 @@ local function insert_array (self, pos, val)
   return self
 end
 
-local function remove_array (self, pos)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+local function sort_array (self, cmp_)
+  local cmp = cmp_ or lt
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  return table.remove(rawget(self,_var), pos)
+  table.sort(rawget(self,_var), \a,b => -- see __index
+               if is_function(a) then a = a(self) end
+               if is_function(b) then b = b(self) end
+               return cmp(a, b)
+             end)
+  return self
 end
 
-local function sort_array (self, comp)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(comp) or
-         is_callable(comp), "invalid argument #2 (callable expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
-  return table.sort(rawget(self,_var), comp)
+local function bsearch_array (self, val, cmp_)
+  local cmp = cmp_ or lt
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_callable(cmp), "invalid argument #3 (callable expected)")
+  return bsearch(self, val, cmp_)
 end
 
 local function clear_array (self)
@@ -482,9 +495,10 @@ M.set_variable   = functor( set_variable   )
 M.wrap_variable  = functor( wrap_variable  )
 M.set_function   = functor( set_function   )
 M.set_metamethod = functor( set_metamethod )
-M.sort_array     = functor( sort_array     )
 M.insert_array   = functor( insert_array   )
 M.remove_array   = functor( remove_array   )
+M.sort_array     = functor( sort_array     )
+M.bsearch_array  = functor( bsearch_array  )
 M.clear_array    = functor( clear_array    )
 M.clear_variable = functor( clear_variable )
 M.clear_all      = functor( clear_all      )
