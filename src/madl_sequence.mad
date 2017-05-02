@@ -58,13 +58,9 @@ Sequence edition:
   seq:remove  { index1, ..., range=range, selected=bool, pattern=string }
   seq:insert  { elem1, elem2, ... }
 
-  seq:reflect()
-  seq:save()
-  seq:dump()
-
-  remove from s1 to s2:
-  - select elements with s1 <= spos <= s2
-  - remove selected
+  seq:reflect() -- to be defined
+  seq:save()    -- to be defined
+  seq:dump()    -- to be defined
 ]=]
 
 __help["sequence: indexes, ranges and iterators"] = [=[
@@ -230,7 +226,7 @@ end
 
 local function rem_it (seq, idx, elm)
   local ei, nam = seq[_eidx], elm.name
-  seq:remove_array(idx)
+  assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
   if ei[nam] == idx then            -- one  -> replace
     assert(seq[nam] == elm, "unexpected corrupted dictionnary")
     seq[nam], ei[nam] = nil, nil ; return
@@ -300,25 +296,6 @@ local function chck_dict (seq) -- for debug
 end
 
 -- helpers --------------------------------------------------------------------o
-
--- get closest spos index (linear), exported, TODO: use binary search wo idx_
-local function sindex_of (seq, s, idx_)
-  local n, start, stop, step = #seq, idx_ or 1
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_number(s)    , "invalid argument #2 (number expected)"  )
-  assert(is_number(start), "invalid argument #3 (index expected)"   )
-  if start > 0
-  then stop, step = n, 1
-  else stop, step, start = 1, -1, min(-start, n)
-  end
-  local smin, spos = maximum_dist, seq[_epos]
-  for i=start,stop,step do  -- linear search
-    local d = abs(spos[i]-s)
-    if d > smin then return i-step end
-    smin = d
-  end
-  return nil
-end
 
 -- get closest element index (linear)
 local function efind_idx (seq, elm, idx_, cnt_)
@@ -642,6 +619,24 @@ local function index_of (seq, a, n_)
   end
 end
 
+local function sindex_of (seq, s, n_) -- linear, see also efind
+  local n, start, stop, step = #seq, n_ or 1
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  assert(is_number(s)    , "invalid argument #2 (number expected)"  )
+  assert(is_number(start), "invalid argument #3 (index expected)"   )
+  if start > 0
+  then stop, step = n, 1
+  else stop, step, start = 1, -1, min(-start, n)
+  end
+  local smin, spos = maximum_dist, seq[_epos]
+  for i=start,stop,step do  -- linear search
+    local d = abs(spos[i]-s)
+    if d > smin then return i-step end
+    smin = d
+  end
+  return nil
+end
+
 local function range_of (seq, rng, start_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local start, stop
@@ -658,6 +653,26 @@ local function range_of (seq, rng, start_)
   end
   start = index_of(seq, start, start_)
   stop  = stop and index_of(seq, stop, start_ or start) or start
+  return start, stop
+end
+
+local function srange_of (seq, rng, start_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local start, stop
+  if is_number(rng) then
+    start = rng
+  elseif is_string(rng) then
+    local s1, s2 = string.match(rng, "([^/]+)/?(.*)")
+    start = tonumber(s1) or s1 and seq:epos_of(s1, start_)
+    stop  = tonumber(s2) or s2 and seq:epos_of(s2, start_)
+  elseif is_range(rng) then
+    start, stop = rng:bounds()
+  elseif is_table(rng) then
+    start, stop = rng[1], rng[2]
+  else error("invalid argument #2 (index, string, range or table expected)")
+  end
+  start = sindex_of(seq, start, start_)
+  stop  = stop and sindex_of(seq, stop, start_ or start) or start
   return start, stop
 end
 
@@ -789,41 +804,41 @@ end
 local function remove (seq, sel)
   assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
   assert(is_table(sel)        , "invalid argument #2 (selection expected)")
-  local _, idx = extract(seq, sel)   -- indexes of elements to remove
-  for i=1,#sel do                    -- complete with user listed cases
+  local _,idx = extract(seq, sel)         -- indexes of elements to remove
+  for i=1,#sel do                         -- complete with user listed cases
     idx[#idx+1] = index_of(seq, sel[i])
   end
   local n = #idx
   assert(n > 0, "invalid remove selection (empty)")
-  for i=2,n do -- sort by increasing indexes
-    for j=i,2,-1 do
-      if idx[j] >= idx[j-1] then break end
-      idx[j], idx[j-1] = idx[j-1], idx[j]
-    end
-  end
+  table.sort(idx) -- sort by increasing indexes
+  local rmv = table.new(n,0)
   for i=n,1,-1 do -- remove by decreasing indexes
-    rem_it(seq, idx[i], seq:get_raw(idx[i]))
+    local elm = seq:get_raw(idx[i])
+    rem_it(seq, idx[i], elm)
     table.remove(seq[_epos],idx[i])
     table.remove(seq[_spos],idx[i])
+    rmv[i] = elm
   end
   seq[_eidx] = {} -- rebuild indexes
   for idx,elm in ipairs(seq) do
     addi_to(seq, idx, elm)
   end
-  chck_dict(seq)
+  chck_dict(seq)  -- sanity check
+  return rmv      -- return removed elements
 end
 
 -- seq:insert { elem1, elem2, ... }
 local function insert (seq, sel)
   assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
   assert(is_table(sel)        , "invalid argument #2 (selection expected)")
-  local ins, idx, pos, rpos = {}, {}, {}, {}
-  for i=1,#sel do
+  local n = #sel
+  assert(n > 0, "invalid insert selection (empty)")
+  local ins, idx  = table.new(n), table.new(n)
+  local pos, rpos = table.new(n), table.new(n)
+  for i=1,n do
     pos[i], rpos[i] = elem_pos(seq, 1, sel[i])
     ins[i], idx [i] = sel[i], sindex_of(seq, pos[i])
   end
-  local n = #idx
-  assert(n > 0, "invalid move selection (empty)")
   for i=2,n do -- sort by increasing indexes
     for j=i,2,-1 do
       if idx[j] >= idx[j-1] then break end
@@ -840,7 +855,15 @@ local function insert (seq, sel)
   for idx,elm in ipairs(seq) do
     addi_to(seq, idx, elm)
   end
-  chck_dict(seq)
+  chck_dict(seq) -- sanity check
+  return seq
+end
+
+-- seq:move { index1, index2, ..., +extract }
+local function move (seq, sel)
+  local rmv = seq:remove(sel) -- use index to select elements
+  seq:insert(rmv)             -- use {at,from} to insert elements
+  return rmv
 end
 
 -- iterator -------------------------------------------------------------------o
@@ -897,8 +920,9 @@ sequence :set_function {
   spos_of   = \s,e,i -> s[_spos][index_of(s,e,i)],
   epos_of   = \s,e,i -> s[_epos][index_of(s,e,i)],
   index_of  = index_of,
-  sindex_of = sindex_of,
   range_of  = range_of,
+  sindex_of = sindex_of,
+  srange_of = srange_of,
   length_of = length_of,
   setvar    = setvar,
   cycle     = cycle,
