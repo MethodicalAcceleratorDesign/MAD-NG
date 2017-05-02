@@ -67,15 +67,14 @@ static bool FN(tvistrue) (val_t);
 
 static bool FN(tvislog) (val_t);
 static bool FN(tvisint) (val_t); // 46 bit signed int
-static bool FN(tvisnum) (val_t); // tv num
 static bool FN(tvisins) (val_t); // 46 bit instruction
+static bool FN(tvisnum) (val_t); // tv num
 static bool FN(tvisfun) (val_t); // tv fun
 static bool FN(tvisptr) (val_t); // tv ptr (!log !int !num !fun)
 static bool FN(tvisstr) (val_t);
 static bool FN(tvisarr) (val_t);
 static bool FN(tvisobj) (val_t);
 static bool FN(tvisref) (val_t); // tv ref (val_t*)
-static bool FN(tvisval) (val_t); // tv val (log int)
 
 // boxing
 static val_t FN(tvnan)  (void);
@@ -86,8 +85,8 @@ static val_t FN(tvtrue) (void);
 
 static val_t FN(tvlog) (log_t);
 static val_t FN(tvint) (i64_t); // 46 bit signed int
-static val_t FN(tvnum) (num_t);
 static val_t FN(tvins) (u64_t); // 46 bit instruction
+static val_t FN(tvnum) (num_t);
 static val_t FN(tvfun) (fun_t*);
 static val_t FN(tvptr) (ptr_t*);
 static val_t FN(tvstr) (str_t*);
@@ -98,17 +97,14 @@ static val_t FN(tvref) (val_t*);
 // unboxing
 static log_t  FN(logtv) (val_t);
 static i64_t  FN(inttv) (val_t); // 46 bit signed int
-static num_t  FN(numtv) (val_t);
 static u64_t  FN(instv) (val_t); // 46 bit instruction
+static num_t  FN(numtv) (val_t);
 static fun_t* FN(funtv) (val_t);
 static ptr_t* FN(ptrtv) (val_t);
 static str_t* FN(strtv) (val_t);
 static arr_t* FN(arrtv) (val_t);
 static obj_t* FN(objtv) (val_t);
 static val_t* FN(reftv) (val_t);
-
-// coercion
-static num_t  FN(tv2num) (val_t); // coerce log and int to num, other to NaN
 
 // dereference
 static val_t  FN(tvget) (val_t); // tv ref resolution
@@ -173,7 +169,6 @@ enum { TVNUM, TVNIL, TVLOG, TVINT, TVINS, TVFUN,
 #define TVISOBJ(v)   (((v).__u & DEF_TMSK ) == DEF_TOBJ )
 #define TVISXXX(v)   (((v).__u & DEF_TMSK ) == DEF_TXXX )
 #define TVISREF(v)   (((v).__u & DEF_TMSK ) == DEF_TREF )
-#define TVISVAL(v)   (((v).__u & DEF_TMSK ) == DEF_TVAL )
 #define TVISHEX(v)   (((v).__u & DEF_TMSK ) >= DEF_TFUN )
 
 // taggeg value representation
@@ -207,15 +202,14 @@ inline bool FN(tvistrue) (val_t v) { return TVISTRUE(v);  }
 
 inline bool FN(tvislog)  (val_t v) { return TVISLOG(v); }
 inline bool FN(tvisint)  (val_t v) { return TVISINT(v); }
-inline bool FN(tvisnum)  (val_t v) { return TVISNUM(v); }
 inline bool FN(tvisins)  (val_t v) { return TVISINS(v); }
+inline bool FN(tvisnum)  (val_t v) { return TVISNUM(v); }
 inline bool FN(tvisfun)  (val_t v) { return TVISFUN(v); }
 inline bool FN(tvisptr)  (val_t v) { return TVISPTR(v); }
 inline bool FN(tvisstr)  (val_t v) { return TVISSTR(v); }
 inline bool FN(tvisarr)  (val_t v) { return TVISARR(v); }
 inline bool FN(tvisobj)  (val_t v) { return TVISOBJ(v); }
 inline bool FN(tvisref)  (val_t v) { return TVISREF(v); }
-inline bool FN(tvisval)  (val_t v) { return TVISVAL(v); }
 
 // --- boxing -----------------------------------------------------------------o
 
@@ -347,15 +341,6 @@ inline obj_t* FN(objtv) (val_t v)
 inline val_t* FN(reftv) (val_t v)
 {
   return TVISREF(v) ? (val_t){ v.__u & ~DEF_TMSK } .__r : 0;
-}
-
-// --- coercion ---------------------------------------------------------------o
-
-inline num_t FN(tv2num) (val_t v)
-{
-  return v.__d == v.__d ? v.__d    :
-         TVISINT(v)     ? inttv(v) :
-         TVISLOG(v)     ? logtv(v) : v.__d;
 }
 
 // --- dereference ------------------------------------------------------------o
