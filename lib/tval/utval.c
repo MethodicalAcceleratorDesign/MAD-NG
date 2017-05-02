@@ -27,6 +27,14 @@ iless_than (val_t a, val_t b)
   return aa < bb;
 }
 
+static inline bool
+rless_than (val_t a, val_t b)
+{
+  num_t aa = numtv(tvget(a));
+  num_t bb = numtv(tvget(b));
+  return aa < bb;
+}
+
 static int
 bfind (val_t *arr, int n, val_t val, cmp_t *cmp)
 {
@@ -235,6 +243,7 @@ int main(int argc, char *argv[])
 
   enum { an=8, AL=20 };
   int idx[an] = {0,1,1,1,4,4,4,7};
+
   val_t arr[an] = { tvnum( 5),tvnum(10),tvnum(10),tvnum(10),
                     tvnum(20),tvnum(20),tvnum(20),tvnum(30) };
   t0 = clock();
@@ -254,6 +263,16 @@ int main(int argc, char *argv[])
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
   if (N/AL/dt > 1e100) dt = 0;
   printf("bfind(int): %*.f iter/sec (%.2f sec)\n", L, N/AL/dt, dt);
+
+  val_t rarr[an] = { tvref(arr+0),tvref(arr+1),tvref(arr+2),tvref(arr+3),
+                     tvref(arr+4),tvref(arr+5),tvref(arr+6),tvref(arr+7) };
+  t0 = clock();
+  for (i64_t i=0; i<N/AL; i++) // 50000000
+    assert(bfind(rarr, an, arr[i&(an-1)], rless_than) == idx[i&(an-1)]);
+  t1 = clock();
+  dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/AL/dt > 1e100) dt = 0;
+  printf("bfind(ref): %*.f iter/sec (%.2f sec)\n", L, N/AL/dt, dt);
 
   return 0;
 }
