@@ -30,7 +30,7 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname      in MAD.typeid
 local bset, btst, bclr, bnot, lt                in MAD.operator
 local is_callable, is_iterable, is_mappable     in MAD.concept
-local functor, bind2st                          in MAD.gfunc
+local functor                                   in MAD.gfunc
 local bsearch                                   in MAD.algorithm
 
 -- implementation -------------------------------------------------------------o
@@ -39,10 +39,10 @@ local bsearch                                   in MAD.algorithm
 local Object
 
 -- object members
-local _var = {} -- key
+local _var = {} -- hidden key
 
 -- reserved flags (bits)
-local _flg = {} -- key
+local _flg = {} -- hidden key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
 local flg_free = flg_cl+1   -- used flags (0-1), free flags (2 - 31)
 
@@ -127,7 +127,7 @@ end
 
 function MT:__index (k)
   local v = rawget(self,_var)[k]                     -- inheritance of variables
-  if is_function(v)
+  if not is_number(k) and is_function(v)
   then return v(self)                            -- function with value semantic
   else return v end
 end
@@ -207,7 +207,7 @@ local function set_raw (self, k, v)
   return self
 end
 
-local function get_variable (self, lst, eval)
+local function get_variables (self, lst, eval)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
   local var, res = rawget(self,_var), {}
@@ -218,7 +218,7 @@ local function get_variable (self, lst, eval)
   return res
 end
 
-local function set_variable (self, tbl, override)
+local function set_variables (self, tbl, override)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
@@ -230,7 +230,7 @@ local function set_variable (self, tbl, override)
   return self
 end
 
-local function wrap_variable (self, tbl)
+local function wrap_variables (self, tbl)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
@@ -249,12 +249,13 @@ local function wrap_variable (self, tbl)
   return self
 end
 
-local function set_function (self, tbl, override, strict)
+local function set_functions (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,f in pairs(tbl) do
+    assert(not is_number(k), "invalid number key (function name expected)")
     assert(is_callable(f) or strict==false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
     rawset(var, k, is_function(f) and functor(f) or f)
@@ -262,7 +263,7 @@ local function set_function (self, tbl, override, strict)
   return self
 end
 
-local function set_metamethod (self, tbl, override, strict)
+local function set_metamethods (self, tbl, override, strict)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
@@ -279,7 +280,7 @@ local function set_metamethod (self, tbl, override, strict)
   return setmetatable(self, sm)
 end
 
-local function get_varkey (self, class)
+local function get_varkeys (self, class)
   class = class or Object
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_object(class), "invalid argument #2 (object expected)")
@@ -311,47 +312,40 @@ local function insert_array (self, pos, val)
 end
 
 local function sort_array (self, cmp_)
-  local cmp = cmp_ or lt
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_nil(cmp_) or is_callable(cmp_), "invalid argument #2 (callable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  table.sort(rawget(self,_var), \a,b => -- see __index
-               if is_function(a) then a = a(self) end
-               if is_function(b) then b = b(self) end
-               return cmp(a, b)
-             end)
+  table.sort(rawget(self,_var), cmp_)
   return self
 end
 
 local function bsearch_array (self, val, cmp_)
-  local cmp = cmp_ or lt
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_callable(cmp), "invalid argument #3 (callable expected)")
-  return bsearch(self, val, cmp_)
+  return bsearch(rawget(self,_var), val, cmp_)
 end
 
 local function clear_array (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  for i=1,#var do var[i] = nil end
+  for i=1,#var do rawset(var, i, nil) end
   return self
 end
 
-local function clear_variable (self)
+local function clear_variables (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local id, len = var.__id, #var
+  local id, len = rawget(var, '__id'), rawlen(var)
   if len == 0 then
     table.clear(var)
   else
     local bak = table.new(len,0) -- unfortunately, Lua doesn't provide kpairs.
-    for i=1,len do bak[i] = var[i] end
+    for i=1,len do bak[i] = rawget(var, i) end
     table.clear(var)
-    for i=1,len do var[i] = bak[i] end
+    for i=1,len do rawset(var, i, bak[i]) end
   end
-  var.__id = id
+  rawset(var, '__id', id)
   return self
 end
 
@@ -359,9 +353,9 @@ local function clear_all (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local id = var.__id
+  local id = rawget(var, '__id')
   table.clear(var)
-  var.__id = id
+  rawset(var, '__id', id)
   return self
 end
 
@@ -484,44 +478,44 @@ M.__id  = 'Object'
 M.__par = parent
 
 -- methods
-M.is_class       = functor( is_class       )
-M.is_readonly    = functor( is_readonly    )
-M.is_instanceOf  = functor( is_instanceOf  )
-M.set_parent     = functor( set_parent     )
-M.set_readonly   = functor( set_readonly   )
-M.get_varkey     = functor( get_varkey     )
-M.get_variable   = functor( get_variable   )
-M.set_variable   = functor( set_variable   )
-M.wrap_variable  = functor( wrap_variable  )
-M.set_function   = functor( set_function   )
-M.set_metamethod = functor( set_metamethod )
-M.insert_array   = functor( insert_array   )
-M.remove_array   = functor( remove_array   )
-M.sort_array     = functor( sort_array     )
-M.bsearch_array  = functor( bsearch_array  )
-M.clear_array    = functor( clear_array    )
-M.clear_variable = functor( clear_variable )
-M.clear_all      = functor( clear_all      )
-M.rawlen         = functor( len_raw        )
-M.rawvar         = functor( var_raw        )
-M.rawget         = functor( get_raw        )
-M.rawset         = functor( set_raw        )
-M.set_flag       = functor( set_flag       )
-M.test_flag      = functor( test_flag      )
-M.clear_flag     = functor( clear_flag     )
-M.open_env       = functor( open_env       )
-M.is_open_env    = functor( is_open_env    )
-M.reset_env      = functor( reset_env      )
-M.close_env      = functor( close_env      )
-M.strdump        = functor( strdump        )
+M.is_class        = functor( is_class        )
+M.is_readonly     = functor( is_readonly     )
+M.is_instanceOf   = functor( is_instanceOf   )
+M.set_parent      = functor( set_parent      )
+M.set_readonly    = functor( set_readonly    )
+M.get_varkeys     = functor( get_varkeys     )
+M.get_variables   = functor( get_variables   )
+M.set_variables   = functor( set_variables   )
+M.wrap_variables  = functor( wrap_variables  )
+M.set_functions   = functor( set_functions   )
+M.set_metamethods = functor( set_metamethods )
+M.insert_array    = functor( insert_array    )
+M.remove_array    = functor( remove_array    )
+M.sort_array      = functor( sort_array      )
+M.bsearch_array   = functor( bsearch_array   )
+M.clear_array     = functor( clear_array     )
+M.clear_variables = functor( clear_variables )
+M.clear_all       = functor( clear_all       )
+M.rawlen          = functor( len_raw         )
+M.rawvar          = functor( var_raw         )
+M.rawget          = functor( get_raw         )
+M.rawset          = functor( set_raw         )
+M.set_flag        = functor( set_flag        )
+M.test_flag       = functor( test_flag       )
+M.clear_flag      = functor( clear_flag      )
+M.open_env        = functor( open_env        )
+M.is_open_env     = functor( is_open_env     )
+M.reset_env       = functor( reset_env       )
+M.close_env       = functor( close_env       )
+M.strdump         = functor( strdump         )
 
 -- aliases
 M.name   = \s -> s.__id
 M.parent = parent
-M.get    = M.get_variable
-M.set    = M.set_variable
-M.wrap   = M.wrap_variable
-M.getk   = M.get_varkey
+M.get    = M.get_variables
+M.set    = M.set_variables
+M.wrap   = M.wrap_variables
+M.getk   = M.get_varkeys
 M.fset   = M.set_flag
 M.ftst   = M.test_flag
 M.fclr   = M.clear_flag
