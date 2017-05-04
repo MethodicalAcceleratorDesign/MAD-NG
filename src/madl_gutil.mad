@@ -109,7 +109,7 @@ local ffi, bit, fun = require 'ffi', require 'bit', require 'madl_lfun'
 local istype                                   in ffi
 local format                                   in string
 local abs, huge                                in math
-local bnot, band, bor, bxor, rol, tobit, tohex in bit
+local band, bor, rol, rshift                   in bit
 local totable, iter                            in fun
 local type, getmetatable, tostring = type, getmetatable, tostring
 
@@ -170,46 +170,52 @@ local option = {
 
 local operator = {
 
-  -- bits operators
-  bnot  = bnot,
-  band  = band,
-  bor   = bor,
-  bxor  = bxor,
-  tobit = tobit,
-  tohex = tohex,
+  -- bits operators (see http://bitop.luajit.org/api.html)
+  tobit   = bit.tobit,
+  tohex   = bit.tohex,
+  bnot    = bit.bnot,
+  bor     = bit.bor,
+  band    = bit.band,
+  bxor    = bit.bxor,
+  lshift  = bit.lshift,
+  rshift  = bit.rshift,
+  arshift = bit.arshift,
+  rol     = bit.rol,
+  ror     = bit.ror,
+  bswap   = bit.bswap,
 
-  bset = \x,n -> bor (x, rol( 1, n)),
-  btst = \x,n -> band(x, rol( 1, n)) ~= 0,
-  bclr = \x,n -> band(x, rol(-2, n)),
+  bset    = \x,n -> bor (x, rol( 1, n)),
+  btst    = \x,n -> band(x, rol( 1, n)) ~= 0,
+  bclr    = \x,n -> band(x, rol(-2, n)),
 
   -- logical operators
-  bool = \x   -> not not x,
-  lnot = \x   -> not x,
-  land = \x,y -> x and y,
-  lor  = \x,y -> x or  y,
-  eq   = \x,y -> x == y,
-  ne   = \x,y -> x ~= y,
-  lt   = \x,y -> x <  y,
-  le   = \x,y -> x <= y,
-  gt   = \x,y -> x >  y,
-  ge   = \x,y -> x >= y,
+  bool    = \x   -> not not x,
+  lnot    = \x   -> not x,
+  land    = \x,y -> x and y,
+  lor     = \x,y -> x or y,
+  eq      = \x,y -> x == y,
+  ne      = \x,y -> x ~= y,
+  lt      = \x,y -> x <  y,
+  le      = \x,y -> x <= y,
+  gt      = \x,y -> x >  y,
+  ge      = \x,y -> x >= y,
 
   -- math operators
-  unm  = \x   -> -x,
-  sqr  = \x   ->  x * x,
-  add  = \x,y ->  x + y,
-  sub  = \x,y ->  x - y,
-  mul  = \x,y ->  x * y,
-  div  = \x,y ->  x / y,
-  mod  = \x,y ->  x % y,
-  pow  = \x,y ->  x ^ y,
+  unm     = \x   -> -x,
+  sqr     = \x   -> x * x,
+  add     = \x,y -> x + y,
+  sub     = \x,y -> x - y,
+  mul     = \x,y -> x * y,
+  div     = \x,y -> x / y,
+  mod     = \x,y -> x % y,
+  pow     = \x,y -> x ^ y,
 
   -- object operators
-  get  = \x,k   -> x[k],
-  set  = \x,k,v => x[k]=v end,
-  len  = \x     -> #x,
-  cat  = \x,y   -> x..y,
-  call = \x,... -> x(...),
+  get     = \x,k   -> x[k],
+  set     = \x,k,v => x[k]=v end,
+  len     = \x     -> #x,
+  cat     = \x,y   -> x..y,
+  call    = \x,... -> x(...),
 }
 
 operator.opstr = {
@@ -378,15 +384,13 @@ end
 
 function utility.str2tbl(str, match_, init_)
   assert(is_string(str), "invalid argument #1 (string expected)")
-  local r
   if is_string(match_) then
-    r = {}
+    local r = {}
     for s in string.gmatch(str, match_, init_) do r[#r+1] = s end
+    return r
   else
-    r = table.new(#str,0)
-    for i=1,#str do r[i] = str:sub(i,i) end
+    return {str}
   end
-  return r
 end
 
 -- extensions (conversion, factory)
@@ -420,12 +424,12 @@ end
 
 -- string interpolation
 
-local function interp_fun (var, st_, tag)
+local function interp_fun (var, strict_, tag)
   local key, suffix = tag, ''
   local s = tag:sub( 1, 1)
   if s == '$' then return tag end
   local e = tag:sub(-1,-1)
-  if s == '{' and e == '}' then
+      if s == '{' and e == '}' then
     key         = key:sub(2, -2)
   elseif s ~= '{' and e == '}' then
     key, suffix = key:sub(1, -2), '}'
@@ -435,35 +439,56 @@ local function interp_fun (var, st_, tag)
   if key == '' then
     error("Missing key: $"..tag, 2)
   end
-  local num = tonumber(key) -- cases $n or ${n}
-  local val = var[num or key]
+  key = tonumber(key) or key -- cases $n or ${n}
+  local val = var[key]
   if is_nil(val) then
-    if st_ == false then return nil end -- non strict -> leave it unchanged
+    if strict_ == false then return nil end -- leave it unchanged
     error("Undefined key: $"..tag, 2)
   end
   return tostring_(val) .. suffix
 end
 
-function utility.strinterp(str, var, st_)
+function utility.strinterp(str, var, strict_)
   assert(is_indexable(var), "invalid argument #2 (indexable expected)")
   local bind2st in MAD.gfunc
-  return (str:gsub('%$([{$]?[%w_]*}?)', bind2st(interp_fun, var, st_)))
+  return (str:gsub('%$([{$]?[%w_]*}?)', bind2st(interp_fun, var, strict_)))
 end
 
 string.interp          = utility.strinterp
 getmetatable("").__mod = utility.strinterp
 
+-- algorithms
+
+local algorithm = {}
+
+function algorithm.bsearch (tbl, val, cmp_)
+  local cmp = cmp_ or operator.lt -- cmp must be the same used by table.sort
+  assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
+  assert(is_callable(cmp), "invalid argument #3 (callable expected)")
+  local low, cnt = 1, #tbl
+  local mid, stp, tst
+  while cnt > 0 do
+    stp = rshift(cnt,1)
+    mid = low+stp
+    tst = cmp(tbl[mid], val)
+    low = tst and mid+1 or low
+    cnt = tst and rshift(cnt-1,1) or stp
+  end
+  return low -- tbl[low] <= val
+end
+
 -- end ------------------------------------------------------------------------o
 return {
-  option   = option,
-  typeid   = typeid,
-  concept  = concept,
-  utility  = utility,
-  operator = operator,
+  option    = option,
+  typeid    = typeid,
+  concept   = concept,
+  utility   = utility,
+  operator  = operator,
+  algorithm = algorithm,
 
-  same     = same,
-  totable  = totable_,
-  tostring = tostring_,
+  same      = same,
+  totable   = totable_,
+  tostring  = tostring_,
 
   __help   = __help,
 }

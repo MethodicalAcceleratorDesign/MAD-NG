@@ -52,48 +52,21 @@ SEE ALSO
 local Object                      in MAD
 local is_nil, is_number, is_table in MAD.typeid
 
--- select flags
-
+-- flags
 local flg_sel = 3
 
--- functions ------------------------------------------------------------------o
-
---[[ To move in Object or element:set_function(...) ?
-local function show_inheritance(self, depth, sep)
-  show_list(self, element_fields, sep)
-  if depth > 0 and not rawget(self:class(), 'kind') then
-    show_inheritance(self:class(), depth-1)
-  end
-end
-
-local function show_properties(self, disp, sep)
-  local show = type(disp) == 'number' and show_inheritance or show_list
-  show(self, disp, sep)
-end
-
-local printf in MAD.utility
-
-function MT:show(disp)
-  printf("   %-25s '%s' { at= %g, ", self:class().name ...)
-  show_properties(self, disp)
-  io.write(' },\n')
-end
-
-function MT:show_madx(disp)
-  printf("  %-25s:%s, at= %g, ", self.name, self:class().name, self.s_pos)
-  show_properties(self, disp, {'= ', ', '})
-  io.write(';\n')
-end
-]]
-
--- taxonomy -------------------------------------------------------------------o
+-- root object ----------------------------------------------------------------o
 
 local _elm = {}
 
--- Root of all elements
-Element = Object 'Element' { kind='element', is_element=true, [_elm]=true }
+local Element = Object 'Element' {
+   kind='element', [_elm]=true, l=0, angle=0, tilt=0 }
 
-Element :set_metamethod {
+local function is_element (a)
+  return is_table(a) and not is_nil(a[_elm])
+end
+
+Element :set_metamethods {
   -- concatenation
   __add = \a,b -> M.bline { a, b },
   -- repetition
@@ -103,30 +76,28 @@ Element :set_metamethod {
   __unm = \a -> M.bline { __rep=-1, a },
 }
 
-local function is_element (a)
-  return is_table(a) and not is_nil(a[_elm])
-end
-
--- root
-
-M.Element = Element
+-- taxonomy -------------------------------------------------------------------o
 
 -- frames
 
-M.  thin_element = Element 'thin_element'   { is_thin  =true, l=0, angle=0, tilt=0 }
-M. drift_element = Element 'drift_element'  { is_drift =true, l=0, angle=0, tilt=0 }
-M.strait_element = Element 'strait_element' { is_strait=true, l=0, angle=0, tilt=0 }
-M.curved_element = Element 'curved_element' { is_curved=true, l=0, angle=0, tilt=0 }
+M.   thin_element = Element 'thin_element'     { is_thin   =true    }
+M.  patch_element = Element 'patch_element'    { is_patch  =true    }
+M.  drift_element = Element 'drift_element'    { is_drift  =true    }
+M. strait_element = Element 'strait_element'   { is_strait =true    }
+M. curved_element = Element 'curved_element'   { is_curved =true    }
+M.special_element = Element 'special_element'  { is_special=true    }
+M.  extra_element = Element 'extra_element'    { is_extra  =true    }
+
+-- assembler elements
+
+M.assembly    = M.extra_element   'assembly'   { kind='assembly'    }
+M.bline       = M.extra_element   'bline'      { kind='bline'       }
 
 -- special elements
 
-M.assembly    = Element 'assembly' { kind='assembly', is_assembly=true }
-M.bline       = Element 'bline'    { kind='bline'   , is_bline   =true }
-
-M.marker      = M.thin_element 'marker' { kind='marker', is_marker=true }
-M.patch       = M.thin_element 'patch'  { kind='patch' , is_patch =true }
-M.slink       = M.thin_element 'slink'  { kind='slink' , is_slink =true }
-M.spause      = M.thin_element 'spause' { kind='spause', is_spause=true }
+M.marker      = M.special_element 'marker'     { kind='marker'      }
+M.slink       = M.special_element 'slink'      { kind='slink'       }
+M.spause      = M.special_element 'spause'     { kind='spause'      }
 
 -- factory
 
@@ -150,15 +121,15 @@ M.wiggler     = M.strait_element 'wiggler'     { kind='wiggler'     }
 M.elseparator = M.strait_element 'elseparator' { kind='elseparator' }
 M.rfcavity    = M.strait_element 'rfcavity'    { kind='rfcavity'    }
 
-M.multipole   = M.  thin_element 'multipole'   { kind='multipole'   }
-M.rfmultipole = M.  thin_element 'rfmultipole' { kind='rfmultipole' }
+M.multipole   = M.thin_element   'multipole'   { kind='multipole'   }
+M.rfmultipole = M.thin_element   'rfmultipole' { kind='rfmultipole' }
+
+M.srotation   = M.patch_element  'srotation'   { kind='srotation'   }
+M.xrotation   = M.patch_element  'xrotation'   { kind='xrotation'   }
+M.yrotation   = M.patch_element  'yrotation'   { kind='yrotation'   }
+M.translate   = M.patch_element  'translate'   { kind='translate'   }
 
 -- specializations
-
-M.srotation   = M.patch          'srotation'   { kind='srotation'   }
-M.xrotation   = M.patch          'xrotation'   { kind='xrotation'   }
-M.yrotation   = M.patch          'yrotation'   { kind='yrotation'   }
-M.translate   = M.patch          'translate'   { kind='translate'   }
 
 M.twcavity    = M.rfcavity       'twcavity'    { kind='twcavity'    }
 M.crabcavity  = M.rfmultipole    'crabcavity'  { kind='crabcavity'  }
@@ -172,14 +143,21 @@ M.vmonitor    = M.monitor        'vmonitor'    { kind='vmonitor'    }
 M.bpm         = M.monitor        'bpm'         { kind='bpm'         }
 M.blm         = M.monitor        'blm'         { kind='blm'         }
 
+-- build is_xxx keys
+do
+  for k,v in pairs(M) do
+    if is_element(v) then v['is_'..k] = true end
+  end
+end
+
 -- members --------------------------------------------------------------------o
 
-Element:set_function {
+Element :set_functions {
   -- reversed logic, that is elements are selected by default.
   is_selected = \s,f -> s: test_flag(f or flg_sel) == false,
   select      = \s,f -> s:clear_flag(f or flg_sel),
   deselect    = \s,f -> s:  set_flag(f or flg_sel),
-}
+}:set_readonly()
 
 -- env ------------------------------------------------------------------------o
 
@@ -190,3 +168,35 @@ return {
   element = M,
   __help  = __help,
 }
+
+-- TODO?
+--[[ To move in Object or element:set_function(...) ?
+local function show_inheritance(self, depth, sep)
+  show_list(self, element_fields, sep)
+  if depth > 0 and not rawget(self:class(), 'kind') then
+    show_inheritance(self:class(), depth-1)
+  end
+end
+
+local function show_properties(self, disp, sep)
+  local show = type(disp) == 'number' and show_inheritance or show_list
+  show(self, disp, sep)
+end
+
+local printf in MAD.utility
+
+function MT:show(disp)
+  printf("   %-25s '%s' { at= %g, ", self:class().name ...)
+  show_properties(self, disp)
+  io.write(' },\n')
+end
+
+function MT:show_madx(disp)
+  printf("  %-25s:%s, at= %g, ", self.name, self:class().name, self.spos)
+  show_properties(self, disp, {'= ', ', '})
+  io.write(';\n')
+end
+]]
+
+
+
