@@ -23,63 +23,77 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertNil, assertTrue, assertEquals, assertAllAlmostEquals,
+local assertNotNil, assertEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains in MAD.utest
 
-local survey, option in MAD
+local survey, option  in MAD
+local observe         in MAD.element.flags
 
 -- regression test suite ------------------------------------------------------o
 
 TestSurvey = {}
 
-function TestSurvey:setUp ()
-  -- local rbarc=MADX.option.rbarc
-  -- MADX.option.rbarc=true
-  require 'lhc_as-built_gen'
-  require 'lhc_as-built_set'
-  require 'lhc_undefvar'
-  require 'opt_inj_gen'
-  -- MADX.option.rbarc=rbarc
-  assertEquals(#MADX.lhcb1, 6677)
-  assertEquals(#MADX.lhcb2, 6676)
+local function loadLHC()
+  if TestSurvey.LHC ~= 'loaded' then
+    assertNotNil(require 'lhc_as-built_gen')
+    assertNotNil(require 'lhc_as-built_set')
+    assertNotNil(require 'lhc_undefvar'    )
+    assertNotNil(require 'opt_inj_gen'     )
 
-  self.fmt = option.format
-  option.format = "%-18.10g" -- MAD-X default output
+    local lhcb1, lhcb2 in MADX
+    assertEquals(#lhcb1, 6677)
+    assertEquals(#lhcb2, 6676)
+
+    lhcb1:select(observe)
+    lhcb2:select(observe)
+
+    TestSurvey.LHC = 'loaded'
+  end
+  return MADX.lhcb1, MADX.lhcb2
+end
+
+function TestSurvey:setUp ()
+  self.optfmt = option.format
+  option.format = "%-18.11g"
 end
 
 function TestSurvey:tearDown ()
-  option.format = self.fmt
+  option.format = self.optfmt
   if MADX:is_open_env() == true then
     MADX:reset_env()
   end
 end
 
 function TestSurvey:testSurveyLHC1()
-  local tbl = survey { sequence=MADX.lhcb1 }
+  local lhcb1 = loadLHC()
+  local tbl = survey { sequence=lhcb1 }
   assertEquals(#tbl, 13269)
   tbl:write 'survey_lhcb1'
 end
 
 function TestSurvey:testSurveyLHC2()
-  local tbl = survey { sequence=MADX.lhcb2 }
+  local _, lhcb2 = loadLHC()
+  local tbl = survey { sequence=lhcb2 }
   assertEquals(#tbl, 13267)
   tbl:write 'survey_lhcb2'
 end
 
 function TestSurvey:testSurveyNoDriftLHC1()
-  local tbl = survey { sequence=MADX.lhcb1, drift=false }
+  local lhcb1 = loadLHC()
+  local tbl = survey { sequence=lhcb1, drift=false }
   assertEquals(#tbl, 6677)
   tbl:write 'survey_lhcb1_nd'
 end
 
 function TestSurvey:testSurveyNoDriftLHC2()
-  local tbl = survey { sequence=MADX.lhcb2, drift=false }
+  local _, lhcb2 = loadLHC()
+  local tbl = survey { sequence=lhcb2, drift=false }
   assertEquals(#tbl, 6676)
   tbl:write 'survey_lhcb2_nd'
 end
 
 function TestSurvey:testSurveyIterLHC1()
-  local lhcb1 in MADX
+  local lhcb1 = loadLHC()
   local tbl, map
   for i=1,#lhcb1 do
     tbl, map = survey { sequence=lhcb1, range=i, table=tbl, map=map }
@@ -89,7 +103,7 @@ function TestSurvey:testSurveyIterLHC1()
  end
 
 function TestSurvey:testSurveyIterLHC2()
-  local lhcb2 in MADX
+  local _, lhcb2 = loadLHC()
   local tbl, map
   for i=1,#lhcb2 do
     tbl, map = survey { sequence=lhcb2, range=i, table=tbl, map=map }
@@ -99,17 +113,19 @@ function TestSurvey:testSurveyIterLHC2()
  end
 
 function TestSurvey:testSurveyRangeLHC1()
-  local tbl = survey { sequence=MADX.lhcb1, range={'IP2','IP3'} }
+  local lhcb1 = loadLHC()
+  local tbl = survey { sequence=lhcb1, range={'IP2','IP3'} }
   tbl:write 'survey_lhcb1_range'
 end
 
 function TestSurvey:testSurveyRangeLHC2()
-  local tbl = survey { sequence=MADX.lhcb2, range={'IP2','IP3'} }
+   local _, lhcb2 = loadLHC()
+ local tbl = survey { sequence=lhcb2, range={'IP2','IP3'} }
   tbl:write 'survey_lhcb2_range'
 end
 
 function TestSurvey:testSurveyRangeSetLHC1()
-  local lhcb1 in MADX
+  local lhcb1 = loadLHC()
   local survey_ip23 = survey { sequence=lhcb1, range={'IP2','IP3'}, exec=false }
   lhcb1:set_readonly(false):set { survey_ip23 := survey_ip23 {} }
   local tbl = lhcb1.survey_ip23
@@ -118,7 +134,7 @@ function TestSurvey:testSurveyRangeSetLHC1()
 end
 
 function TestSurvey:testSurveyRangeSetLHC2()
-  local lhcb2 in MADX
+  local _, lhcb2 = loadLHC()
   local survey_ip23 = survey { sequence=lhcb2, range={'IP2','IP3'}, exec=false }
   lhcb2:set_readonly(false):set { survey_ip23 := survey_ip23 {} }
   local tbl = lhcb2.survey_ip23
@@ -127,7 +143,7 @@ function TestSurvey:testSurveyRangeSetLHC2()
 end
 
 function TestSurvey:testSurveyRangeIterLHC1()
-  local lhcb1 in MADX
+  local lhcb1 = loadLHC()
   local tbl, map
   for i in lhcb1:iter{'IP2','IP3'} do
     tbl, map = survey { sequence=lhcb1, range={i,i}, table=tbl, map=map }
@@ -136,7 +152,7 @@ function TestSurvey:testSurveyRangeIterLHC1()
 end
 
 function TestSurvey:testSurveyRangeIterLHC2()
-  local lhcb2 in MADX
+  local _, lhcb2 = loadLHC()
   local tbl, map
   for i in lhcb2:iter{'IP2','IP3'} do
     tbl, map = survey { sequence=lhcb2, range={i,i}, table=tbl, map=map }

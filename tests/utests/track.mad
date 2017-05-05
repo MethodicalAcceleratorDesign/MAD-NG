@@ -23,61 +23,77 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertNil, assertNotNil, assertTrue, assertEquals, assertAllAlmostEquals in MAD.utest
-local printf in MAD.utility
-local track, beam, option in MAD
-local sequence in MAD.element
+local assertNotNil, assertTrue, assertEquals,
+      assertAllAlmostEquals in MAD.utest
+local printf                in MAD.utility
+local sequence              in MAD.element
+local observe               in MAD.element.flags
+local track, beam, option   in MAD
 
 -- regression test suite ------------------------------------------------------o
 
 TestTrack, Test_Track = {}, {}
 
-local function pinfo (e,m,l,s)
+local function prtinfo (elm,m,l,s) -- for debug
   printf("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g\n",
-   e and e.name or 'drift', s, l, m.x, m.px, m.y, m.py)
+   elm and elm.name or 'drift', s, l, m.x, m.px, m.y, m.py)
 end
 
 local function loadFiveCell()
-  assertNotNil(require 'fivecell_gen'     )
-  assertNotNil(require 'fivecell_set'     ) -- side effect from LHC...
-  assertNotNil(require 'fivecell_undefvar')
-  local fivecell in MADX
-  assertEquals(#fivecell, 81)
-  assertEquals(fivecell.mb[1].kind, 'rbend')
-  return fivecell
+  if TestTrack.FiveCell ~= 'loaded' then
+    assertNotNil(require 'fivecell_gen'     )
+    assertNotNil(require 'fivecell_set'     ) -- side effect from LHC...
+    assertNotNil(require 'fivecell_undefvar')
+
+    local fivecell in MADX
+    assertEquals(#fivecell, 81)
+    assertEquals(fivecell.mb[1].kind, 'rbend')
+
+    fivecell:deselect(observe) ['#e']:select(observe)
+
+    TestTrack.FiveCell = 'loaded'
+  end
+  return MADX.fivecell
 end
 
 local function loadLHC()
-  assertNotNil(require 'lhc_as-built_gen')
-  assertNotNil(require 'lhc_as-built_set')
-  assertNotNil(require 'lhc_undefvar'    )
-  assertNotNil(require 'opt_inj_gen'     )
+  if TestTrack.LHC ~= 'loaded' then
+    assertNotNil(require 'lhc_as-built_gen')
+    assertNotNil(require 'lhc_as-built_set')
+    assertNotNil(require 'lhc_undefvar'    )
+    assertNotNil(require 'opt_inj_gen'     )
 
-  local lhcb1, lhcb2 in MADX
-  assertEquals(#lhcb1, 6677)
-  assertEquals(#lhcb2, 6676)
-  return lhcb1, lhcb2
+    local lhcb1, lhcb2 in MADX
+    assertEquals(#lhcb1, 6677)
+    assertEquals(#lhcb2, 6676)
+
+    lhcb1:deselect(observe) ['#e']:select(observe)
+    lhcb2:deselect(observe) ['#e']:select(observe)
+
+    TestTrack.LHC = 'loaded'
+  end
+  return MADX.lhcb1, MADX.lhcb2
 end
 
 function TestTrack:setUp ()
-  self.fmt = option.format
-  option.format = "%-18.11g" -- MAD-X default output
+  self.optfmt = option.format
+  option.format = "%-18.11g"
 end
 
 function TestTrack:tearDown ()
-  option.format = self.fmt
+  option.format = self.optfmt
   if MADX:is_open_env() == true then
     MADX:reset_env()
   end
 end
 
 function Test_Track:setUp ()
-  self.fmt = option.format
-  option.format = "%-18.11g" -- MAD-X default output
+  self.optfmt = option.format
+  option.format = "%-18.11g"
 end
 
 function Test_Track:tearDown ()
-  option.format = self.fmt
+  option.format = self.optfmt
   if MADX:is_open_env() == true then
     MADX:reset_env()
   end
@@ -86,7 +102,6 @@ end
 function TestTrack:testTrackLHC1()
   local lhcb1 = loadLHC()
   local beam = beam { particle='proton', energy=450 }
-  lhcb1:deselect()[#lhcb1]:select()
   local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
   assertEquals(#tbl, 1) --13267)
   tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
@@ -97,7 +112,6 @@ function Test_Track:testTrackLHC1() -- Performance
   jit.opt.start("loopunroll=2")
   local lhcb1 = loadLHC()
   local beam = beam { particle='proton', energy=450 }
-  lhcb1:deselect()[#lhcb1]:select()
   local n = 20
   local t0 = os.clock()
   local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
@@ -184,6 +198,7 @@ function TestTrack:testTrackMULT1()
   local seq = sequence 'seq' {l=1, refer = 'entry',
     multipole 'mlt' { knl = { 0.01,0.02,0.03, 0.04},  ksl= {-0.01, 0.05}, dknl={0.008, 3e-8}, dksl={-3e-7, 5e-6}, lrad=1 }
   }
+  seq.mlt:select(observe)
   local tbl = track { sequence=seq, beam=beam, method='simple', nst=1, X0= {1e-3, -5e-3, 1e-3, 4e-6, 0, 0}}
   actual   = { tbl.mlt.x, tbl.mlt.px, tbl.mlt.y, tbl.mlt.py, tbl.mlt.t, tbl.mlt.pt }
   expected = { 0.001       ,-0.012970095016667, 0.001      , 7.3635043333334e-05 , -2.0000043474438e-05, 0      }

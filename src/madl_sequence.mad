@@ -106,11 +106,11 @@ local abs, min, max                                            in math
 local ftrue                                                    in MAD.gfunc
 local bool, sub                                                in MAD.operator
 local is_iterable, is_callable                                 in MAD.concept
-local extra_element, marker                                    in MAD.element
+local extra_element, marker, flags                             in MAD.element
 local minlen                                                   in MAD.constant
 local bsearch                                                  in MAD.algorithm
-local is_nil, is_number, is_positive, is_string, is_table,
-      is_rawtable, is_range, is_element                        in MAD.typeid
+local is_nil, is_boolean, is_number, is_positive, is_string,
+      is_table, is_rawtable, is_range, is_element, is_flag     in MAD.typeid
 
 -- root object ----------------------------------------------------------------o
 
@@ -527,7 +527,7 @@ end
 -- flatten sequence
 local function flatten_sequ (seq, flat, sref)
   local n, idx = seq:rawlen(), 2
-  flat[1] = mkstart
+  flat[1] = mkstart {}
   for i=1,n do
     local elm = seq[i]
     if not (is_element(elm) or is_rawtable(elm)) then
@@ -540,7 +540,7 @@ local function flatten_sequ (seq, flat, sref)
       idx, flat[idx] = idx+1, elm
     end
   end
-  flat[idx] = mkend
+  flat[idx] = mkend {}
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
@@ -587,7 +587,6 @@ local function build_pos (seq, sref)
   assert(n == idx-1, "unexpected corrupted flat sequence")
 
   -- adjust sequence length or end marker position
-  check_sequ(seq)
   local len = seq[_spos][n]
   if   seq.l < len
   then seq.l = len
@@ -605,6 +604,9 @@ local function finish_sequ (seq)
   -- clear memoization
   rawset(seq, _lastfrom   , nil)
   rawset(seq, _lastfrompos, nil)
+
+  -- sanity checks
+  check_sequ(seq)
 end
 
 -- metamethods ----------------------------------------------------------------o
@@ -644,15 +646,15 @@ local function name_of (seq, idx)
   error("unexpected corrupted dictionnary")
 end
 
-local function index_of (seq, a, n_)
+local function index_of (seq, a, ref_)
       if is_number (a) then return index_of_num(seq, a)
-  elseif is_string (a) then return index_of_str(seq, a, n_)
-  elseif is_element(a) then return index_of_nam(seq, a.name, n_)
+  elseif is_string (a) then return index_of_str(seq, a, ref_)
+  elseif is_element(a) then return index_of_nam(seq, a.name, ref_)
   end
   error("invalid argument #2 (number, string or element expected)")
 end
 
-local function range_of (seq, rng, start_)
+local function range_of (seq, rng, ref_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local start, stop
   if is_number(rng) then
@@ -667,15 +669,15 @@ local function range_of (seq, rng, start_)
     start, stop = rng[1], rng[2]
   else error("invalid argument #2 (index, string, range or table expected)")
   end
-  start = index_of(seq, start, start_)
-  stop  = stop and index_of(seq, stop, start_ or start) or start
+  start = index_of(seq, start, ref_)
+  stop  = stop and index_of(seq, stop, ref_ or start) or start
   return start, stop
 end
 
-local function length_of (seq, rng_, trn_)
+local function length_of (seq, rng_, nturn_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local siz = rng_ and 1-sub(range_of(seq, rng_)) or 0
-  return siz + #seq * ((trn_ or 0) + (siz <= 0 and 1 or 0))
+  return siz + #seq * ((nturn_ or 0) + (siz <= 0 and 1 or 0))
 end
 
 local function setvar (seq, key, val)
@@ -693,25 +695,58 @@ local function cycle (seq, elm)
   return seq
 end
 
-local function foreach (seq, f, rng_, sel_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(f)  , "invalid argument #2 (callable expected)")
+local function select_ (typ)
+  return \seq, p_, rng_, flg_ =>
+    if is_nil(flg_) and not is_callable(p_) then
+      p_, rng_, flg_ = nil, p_, rng_               -- right shift
+    end
+    if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
+      rng_, flg_ = nil, rng_                       -- right shift
+    end
+    if flg_ == true then flg_ = flags.select end   -- default flag
+    p_ = p_ or ftrue
+    assert(is_sequence(seq)             , "invalid argument #1 (sequence expected)")
+    assert(is_callable(p_)              , "invalid argument #2 (callable expected)")
+    assert(is_nil(flg_) or is_flag(flg_), "invalid argument #4 (flag expected)")
+    for i,e in seq:iter(rng_) do
+      if p_(e,i,flg_) then e[typ](e, flg_) end
+    end
+    return seq
+  end
+end
+
+local select   = select_('select'  )
+local deselect = select_('deselect')
+
+local function foreach (seq, f, rng_, flg_)
+  if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
+    rng_, flg_ = nil, rng_                       -- right shift
+  end
+  if flg_ == true then flg_ = flags.select end   -- default flag
+  assert(is_sequence(seq)             , "invalid argument #1 (sequence expected)")
+  assert(is_callable(f)               , "invalid argument #2 (callable expected)")
+  assert(is_nil(flg_) or is_flag(flg_), "invalid argument #4 (flag expected)")
   for i,e in seq:iter(rng_) do
-    if not sel_ or e:is_selected() then f(e,i) end
+    if not flg_ or e:is_selected(flg_) then f(e,i) end
   end
   return seq
 end
 
-local function filter (seq, p, rng_, sel_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(p)  , "invalid argument #2 (callable expected)")
-  local res, idx, n = {}, {}, 1
+local function filter (seq, p, rng_, flg_)
+  if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
+    rng_, flg_ = nil, rng_                       -- right shift
+  end
+  if flg_ == true then flg_ = flags.select end   -- default flag
+  assert(is_sequence(seq)             , "invalid argument #1 (sequence expected)")
+  assert(is_callable(p)               , "invalid argument #2 (callable expected)")
+  assert(is_nil(flg_) or is_flag(flg_), "invalid argument #4 (flag expected)")
+  local elm, idx, n = {}, {}, 1
   for i,e in seq:iter(rng_) do
-    if not sel_ or e:is_selected() then
-      if p(e,i) then res[n], idx[n], n = e, i, n+1 end
+    if not flg_ or e:is_selected(flg_) then
+      if p(e,i) then elm[n], idx[n], n = e, i, n+1 end
     end
   end
-  return res, idx
+  return elm, idx
 end
 
 -- seq:extract { range=range, selected=logical, pattern=string }
@@ -723,28 +758,8 @@ local function extract (seq, sel_)
   if is_nil(range) and is_nil(selected) and is_nil(pattern) then
     return {}, {}
   end
-  local p = (pattern and \e -> string.match(e.name, pattern)) or ftrue
-  return filter(seq, p, range, selected)
-end
-
-local function select (seq, p_, rng_, flg_)
-  p_ = p_ or ftrue
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(p_) , "invalid argument #2 (callable expected)")
-  for i,e in seq:iter(rng_) do
-    if p_(e,i,flg_) then e:select(flg_) end
-  end
-  return seq
-end
-
-local function deselect (seq, p_, rng_, flg_)
-  p_ = p_ or ftrue
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(p_) , "invalid argument #2 (callable expected)")
-  for i,e in seq:iter(rng_) do
-    if p_(e,i,flg_) then e:deselect(flg_) end
-  end
-  return seq
+  local pred = (pattern and \e -> string.match(e.name, pattern)) or ftrue
+  return filter(seq, pred, range, selected)
 end
 
 -- methods (read/write, update dict) ------------------------------------------o
@@ -766,6 +781,7 @@ local function unique (seq)
       assert(is_nil(indx_of(seq, elm)), "unexpected corrupted dictionnary")
     end
   end
+  finish_sequ(seq)
   return seq:set_readonly()
 end
 
@@ -775,7 +791,7 @@ local function share (seq1, seq2) -- e.g. lhcb1:share(lhcb2)
   check_sequ(seq1) check_sequ(seq2)
   seq1:set_readonly(false) seq2:set_readonly(false)
   local eidx1, eidx2 = seq1[_eidx], seq2[_eidx]
-  for i=1,#seq1 do
+  for i=2,#seq1-1 do
     local nam = seq1[i].name   -- share by name
     if eidx2[nam] then         -- element name found in seq2
       local e1, i1 = seq1[nam], eidx1[nam]
@@ -786,13 +802,16 @@ local function share (seq1, seq2) -- e.g. lhcb1:share(lhcb2)
       assert(seq1[i1] == e1, "unexpected corrupted dictionnary")
       assert(seq2[i2] == e2, "unexpected corrupted dictionnary")
       -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
-      local c1 = e1 { at=e1:rawget'at', from=e1:rawget'from', from=e1:rawget'refpos' }
-      local c2 = e1 { at=e2:rawget'at', from=e2:rawget'from', from=e2:rawget'refpos' }
+      local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
+      local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
+      assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
+             "invalid shared element (incompatible positions)")
       -- update dictionnaries and arrays
       replace_by(seq1, i1, c1)
       replace_by(seq2, i2, c2)
     end
   end
+  finish_sequ(seq1) finish_sequ(seq2)
   return seq1:set_readonly(), seq2:set_readonly()
 end
 
@@ -942,15 +961,15 @@ local function seqiter (state, i)
   end
 end
 
-local function mkiter (seq, start, stop, turn)
-  if start == stop+1 then turn = turn+1 end
-  return seqiter, {seq=seq, len=#seq, stop=stop, turn=turn}, start-1
+local function mkiter (seq, start, stop, nturn)
+  if start == stop+1 then nturn = nturn+1 end
+  return seqiter, {seq=seq, len=#seq, stop=stop, turn=nturn}, start-1
 end
 
-local function iter (seq, rng_, trn_)
-  local turn = trn_ or 0
-  assert(is_sequence(seq)           , "invalid argument #1 (sequence expected)")
-  assert(is_number(turn) and turn >= 0, "invalid argument #3 (number expected)")
+local function iter (seq, rng_, nturn_)
+  local nturn = nturn_ or 0
+  assert(is_sequence(seq)             , "invalid argument #1 (sequence expected)")
+  assert(is_number(nturn) and nturn >= 0, "invalid argument #3 (number expected)")
   local start, stop
   if is_nil(rng_) then
     if is_nil(seq.start_at) then
@@ -964,7 +983,7 @@ local function iter (seq, rng_, trn_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end
-  return mkiter(seq, start, stop, turn)
+  return mkiter(seq, start, stop, nturn)
 end
 
 -- env ------------------------------------------------------------------------o
@@ -984,21 +1003,21 @@ sequence :set_functions {
   range_of  = range_of,
   length_of = length_of,
   setvar    = setvar,
-  cycle     = cycle,
+  select    = select,
+  deselect  = deselect,
   foreach   = foreach,
   filter    = filter,
   extract   = extract,
-  select    = select,
-  deselect  = deselect,
   share     = share,
   unique    = unique,
   move      = move,
   insert    = insert,
   remove    = remove,
+  cycle     = cycle,
   iter      = iter,
 
   -- disabled methods
-  is_selected  := error("invalid sequence operation", 2),
+  is_selected := error("invalid sequence operation", 2),
 } :set_readonly()
 
 -- end -------------------------------------------------------------------------

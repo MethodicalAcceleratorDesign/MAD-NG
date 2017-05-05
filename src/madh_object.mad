@@ -33,31 +33,35 @@ SYNOPSIS
 DESCRIPTION
   The object module implements the necessary machinery to support prototype-
   based programming with value semantic for functions and further extensions:
-  - On read, the lookup of values and functions follows the inheritance down to
-    Object. If the retrieved value is a function, it is called with self passed
-    as argument #1 (can be ignored) and the result is returned (i.e. function
-    with value semantic).
+  - On read, the lookup of object members follows the inheritance down to
+    Object. If the retrieved value is a function and the key is a string, it is
+    called with object (i.e. self) passed as argument #1 (can be ignored) and
+    the result is returned (i.e. function with value semantic).
   - On write, the value is simply stored in the current object (no lookup)
-    unless it is readonly. To override these behaviors, just (re)defined the
-    __newindex metamethod using set_metamethod with overriding allowed (use with
-    care!).
+    unless it is set as readonly.
   - On build, the new instance is connected to its parent (inheritance). If the
     new instance has a defined __init metamethod (shared), it will be called on
-    the new instance and non-nil result or the new instance will be returned.
+    the new instance and return non-nil result or itself.
   - To set:
-    + variables, use set_variable.
-    + functions n-arity or avoid value semantic, use set_function.
-    + metamethods (shared), use set_metamethod.
-    + set is an alias for set_variable.
+    + a variable use obj.key = var
+    + a list of variables, use set_variables.
+    + functions n-arity or avoid value semantic, use set_functions.
+    + metamethods (shared), use set_metamethods.
+    + set is an alias for set_variables.
   - To get:
-    + variables (inherited), use get_variable.
-    + the list of all variables keys, including inherited ones, use get_varkey.
-    + get and getk are aliases for get_variable and get_varkey.
+    + a variable use var = obj.key
+    + a list of variables (inherited), use get_variables.
+    + the list of all variables keys, including inherited ones, use get_varkeys.
+    + get and getk are aliases for get_variables and get_varkeys.
+  - To change behaviors:
+    + to add new behaviors, use set_metamethods.
+    + to change default behaviors, use set_metamethods with override=true (use
+    with care).
+    + behaviors must be changed before any instance (i.e. child) is created.
   - Root 'Object' defines the following variables:
-    + 'name'   points to 'self' name unless overridden (alias)
-    + 'parent' points to 'self' parent unless overridden (alias)
+    + 'name'   points to 'self' name unless overridden (alias to __id)
+    + 'parent' points to 'self' parent unless overridden
     + '__id'   holds 'self' name if provided (variable)
-    + '__par'  points to 'self' parent unless overridden (alias)
 
 RETURN VALUE
   Object, the root constructor of objects. This module also extends the typeid
@@ -125,7 +129,7 @@ Catching creation:
   Example how to count the number of objects created
 
   local count = 0
-  local set_counter = \s s:set_metamethod { __init =\=> count=count+1 end }
+  local set_counter = \s s:set_metamethods { __init =\=> count=count+1 end }
   set_counter(MAD.Object) -- count children creation
 
 Catching writes:
@@ -138,7 +142,7 @@ Catching writes:
       trace(s,k,v) -- logging
       nwidx(s,k,v) -- forward, mandatory!
     end
-    self:set_metamethod({__newindex = mm}, true) -- override!
+    self:set_metamethods({__newindex = mm}, true) -- override!
   end
   set_notification(MAD.Object) -- notify writes to any children
 
@@ -148,7 +152,7 @@ Forwarding to parent:
 
   local ro_obj = Object {} :set_readonly(true) -- set status
   local parent = ro_obj.parent
-  ro_obj:set_function {
+  ro_obj:set_functions {
     set_readonly = \s,f =>                     -- block any changes for ro_obj
       assert(s ~= ro_obj, "invalid argument #1 (forbidden access to 'ro_obj')")
       return parent.set_readonly(s,f)          -- forward to parent for children
@@ -159,16 +163,17 @@ Copying status to children:
 ---------------------------
   Example how to make children of ro_obj readonly by default (but modifiable)
 
-  ro_obj:set_metamethod {__init = \s -> s:set_readonly(true) }
+  ro_obj:set_metamethods {__init = \s -> s:set_readonly() }
 ]=]
 
 __help['object: example of variables usage'] = [=[
+
 Running through variables:
 --------------------------
   local keys = { 'foo', 'bar' }
   for _,k in ipairs(keys) do dosomething(obj[k]) end
 
-  local keys = elem:get_varkey(Element)
+  local keys = elem:get_varkeys(Element)
   for _,k in ipairs(keys) do dosomething(elem[k]) end
 
 Semantic of variables access:
@@ -178,8 +183,7 @@ Semantic of variables access:
   self:rawget'var' -> NO inheritence + NO function as value.
 
   obj1.var = obj2.var         -- copy values, i.e. keep functor as functor
-  obj1.var = obj2:rawvar'var' -- true copy with inheritance
-                              -- i.e. keep function as function
+  obj1.var = obj2:rawvar'var' -- true copy,   i.e. keep function as function
 ]=]
 
 -- object methods

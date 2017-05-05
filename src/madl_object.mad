@@ -44,7 +44,7 @@ local _var = {} -- hidden key
 -- reserved flags (bits)
 local _flg = {} -- hidden key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
-local flg_free = flg_cl+1   -- used flags (0-1), free flags (2 - 31)
+local flg_used = flg_cl     -- last used flags (0-1), free flags (2 - 31)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -127,8 +127,8 @@ end
 
 function MT:__index (k)
   local v = rawget(self,_var)[k]                     -- inheritance of variables
-  if not is_number(k) and is_function(v)
-  then return v(self)                            -- function with value semantic
+  if is_string(k) and is_function(v)
+  then return v(self)                 -- string key with value semantic function
   else return v end
 end
 
@@ -361,24 +361,29 @@ end
 
 -- flags
 
+local function is_flag (n)
+  return is_number(n) and n > flg_used and n < 32
+end
+
 local function set_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(n >= flg_free and n <= 31, "invalid flag number")
+  assert(is_flag(n)     , "invalid argument #2 (flag expected)")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
+  return self
+end
+
+local function clear_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_flag(n)     , "invalid argument #2 (flag expected)")
+  local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
+  if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
 end
 
 local function test_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_flag(n)     , "invalid argument #2 (flag expected)")
   return btst(rawget(self,_flg) or 0, n)
-end
-
-local function clear_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(n >= flg_free and n <= 31, "invalid flag number")
-  local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
-  if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
-  return self
 end
 
 -- environments
@@ -522,6 +527,7 @@ M.fclr   = M.clear_flag
 
 -- env ------------------------------------------------------------------------o
 
+MAD.typeid.is_flag       = is_flag
 MAD.typeid.is_class      = is_class
 MAD.typeid.is_object     = is_object
 MAD.typeid.is_readonly   = is_readonly
