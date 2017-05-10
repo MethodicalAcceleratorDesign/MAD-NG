@@ -42,20 +42,22 @@ SEE ALSO
 ]=]
 
 __help['track: references'] = [=[
-[Wolski14]    A. Wolski,  "Beam Dynamics in High Energy Particle Accelerators".
-[Forest98]    E. Forest,  "Beam Dynamics, A New Attitude and Framework".
-[MADX PTC]    MAD-X PTC Code, rev. 6099
-[Forest02]    E. Forest,  "Introduction to Polymorphic Tracking Code",
+[Wolski14]    A. Wolski, "Beam Dynamics in High Energy Particle Accelerators".
+[Forest98]    E. Forest, "Beam Dynamics, A New Attitude and Framework".
+[Forest02]    E. Forest, "Introduction to Polymorphic Tracking Code",
               KEK report 2002-3.
+[Forest06]    E. Forest, "Geometric Integration for Particle Accelerators",
+              J.Phys. A, Math.Gen. 39 (2006) 5321-5377.
 [Yoshida90]   H. Yoshida, "Construction of higher order symplectic integrators",
-              Phys.Let A, Volume 150, number 5,6,7.
+              Phys.Let. A, Volume 150, number 5,6,7.
 [Burkhardt13] H. Burkhardt et al., "Improved Teapot Method and Tracking with
               Thick Quadrupoles for the LHC and its Upgrade", IPAC 2013.
-[Ripken1995]  K. Heinemann, G. Ripken, and F. Schmidt. "Construction of nonlinear
-              symplectic six-dimensional thin-lens maps by exponentiation.""  Technical
-              Report 95-189, DESY, 1995
-[SixTrackPG]  R. De. Maria et al., "SixTrack Physics Manual", CERN, September,2016.
-
+[Ripken95]    K. Heinemann, G. Ripken, and F. Schmidt. "Construction of
+              Nonlinear Symplectic Six-dimensional Thin-lens Maps by
+              Exponentiation", Technical Report 95-189, DESY, 1995.
+[SixTrackPG]  R. De. Maria et al., "SixTrack Physics Manual", CERN,
+              September, 2016.
+[MADX PTC]    MAD-X PTC Code, rev. 6099
 ]=]
 
 __help['track: straight drift map'] = [[
@@ -152,23 +154,28 @@ i.e. quad only has k1 and not k0, k2 or???
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix                                             in MAD
+local vector, matrix, element                                    in MAD
 local is_nil, is_number, is_sequence, is_beam                    in MAD.typeid
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
       sinc, fact                                                 in MAD.gmath
 local minlen, minang                                             in MAD.constant
 
-local ptccompat = true
+local ptc_compat  = true
+local madx_compat = true
 
--- implementation -------------------------------------------------------------o
+-- special --------------------------------------------------------------------o
+
+local function empty_track () end
 
 local function invalid_track (elm)
   error(string.format("invalid element %s of kind %s with length %s",
                       elm.name, elm.kind, elm.l))
 end
 
-local function empty_track ()
-end
+element.special_element :set_functions { track =   empty_track }
+element.  extra_element :set_functions { track = invalid_track }
+
+-- strengths retrieval --------------------------------------------------------o
 
 -- Load element multipoles in mflow
 
@@ -208,11 +215,15 @@ local function get_kmult (elm, m, l) -- l>0
   return nmul
 end
 
+-- patches --------------------------------------------------------------------o
+
 -- S-rotation (roll, tilt)
 
-local function srot_track (elm, m, angle)
-  local sa, ca = sin(angle), cos(angle)
-  local x, px, y, py in m
+local function srotation (_, m, angle)   -- XYrot <-> Rz(-angle)?
+  if abs(angle) < minang then return end
+
+  local x, px, y, py, dir in m
+  local sa, ca = sin(angle*dir), cos(angle*dir)
 
   m.x  = ca*x  + sa*y
   m.y  = ca*y  - sa*x
@@ -222,64 +233,227 @@ end
 
 -- Y-rotation (yaw)
 
-local function yrot_track (elm, m, angle) -- XZ rot (aka Dragt's PROT)
-  local sa, ca, ta = sin(angle), cos(angle), tan(angle)
-  local x, px, y, py, t, pt in m
-  local beta_inv = 1/m.beam.beta
-  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local pz_ = 1/pz
-  local ptt = 1 - ta*px*pz_
+local function yrotation (_, m, angle)   -- XZrot (Dragt's PROT) <-> Ry(angle)
+  if abs(angle) < minang then return end
+
+  local x, px, y, py, t, pt, dir in m
+  local sa, ca, ta = sin(angle*dir), cos(angle*dir), tan(angle*dir)
+  local _beta = 1/m.beam.beta
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local _pz = 1/pz
+  local ptt = 1 - ta*px*_pz
 
   m.x  = x/(ca*ptt)
   m.px = ca*px + sa*pz
-  m.y  = y + ta*x*py*pz_/ ptt
-  m.t  = t - ta*x*pz_*(beta_inv+pt) / ptt
-
+  m.y  = y + ta*x*py*_pz/ptt
+  m.t  = t - ta*x*_pz*(_beta+pt)/ptt
 end
 
 -- X-rotation (pitch)
 
-local function xrot_track (elm, m, angle) -- YZ rot
-  local sa, ca, ta = sin(angle), cos(angle), tan(angle)
-  local x, px, y, py, t, pt in m
-  local beta_inv = 1/m.beam.beta
-  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local pz_ = 1/pz_
-  local ptt = 1 - ta*px*pz_
+local function xrotation (_, m, angle)   -- YZrot <-> Rx(angle)
+  if abs(angle) < minang then return end -- XZrot with x,px <-> y,py)
 
-  -- same as yrot with x <-> y and px <-> py
-  m.x  = x + ta*y*px*pz_/ptt
+  local x, px, y, py, t, pt, dir in m
+  local sa, ca, ta = sin(angle*dir), cos(angle*dir), tan(angle*dir)
+  local _beta = 1/m.beam.beta
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local _pz = 1/pz
+  local ptt = 1 - ta*py*_pz
+
   m.y  = y/(ca*ptt)
   m.py = ca*py + sa*pz
-  m.t  = t - ta*y*pz_*(beta_inv+pt) / ptt
+  m.x  = x + ta*y*px*_pz/ptt
+  m.t  = t - ta*y*_pz*(_beta+pt)/ptt
 end
 
--- XYZ-Translation (dz treated as drift length)
+-- Translation (dz treated as drift length)
 
-local function trans_track (elm, m, d) -- drift + XY trans
-  local x, px, y, py, t, pt in m
-  local beta_inv = 1/m.beam.beta
-  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local pz_ = 1/pz_
+local function translate (_, m, dx, dy, dz)
+  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
 
-  m.x = x-d[1] + d[3]*px*pz_
-  m.y = y-d[2] + d[3]*py*pz_
-  m.t = t-d[3] * (beta_inv+pt)*pz_
+  local x, px, y, py, t, pt, dir in m
+  local _beta = 1/m.beam.beta
+  local l_pz = dz/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+
+  m.x = x + px*l_pz - dx*dir
+  m.y = y + py*l_pz - dy*dir
+  m.t = t - (_beta+pt)*l_pz -- + (1-T)*dz*_beta ?? see drift
 end
 
--- Fringe fields (dipole)
+-- Changeref/Forward/Backward patches
+
+local function changeref (elm, m)
+  local x, y, z, theta, phi, psi in elm
+  xrotation(elm, m, phi   or 0)                    -- phi  : Elevation angle.
+  yrotation(elm, m, theta or 0)                    -- theta: Azimuthal angle.
+  srotation(elm, m, psi   or 0)                    -- psi  : Roll      angle.
+  translate(elm, m, x or 0, y or 0, z or 0)
+end
+
+local function forward_patch (elm, m)
+  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
+  xrotation(elm, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+  yrotation(elm, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  srotation(elm, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  translate(elm, m, (x or 0)+(dx or 0),
+                    (y or 0)+(dy or 0),
+                    (z or 0)+(dz or 0) )
+end
+
+local function backward_patch (elm, m)
+  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
+  translate(elm, m, (x or 0)+(dx or 0),
+                    (y or 0)+(dy or 0),
+                    (z or 0)+(dz or 0) )
+  srotation(elm, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  yrotation(elm, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  xrotation(elm, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+end
+
+-- patch_element(s)
+
+element.srotation :set_functions {
+  track = \e,m -> srotation(e, m, e.psi or e.angle),
+}
+
+element.yrotation :set_functions {
+  track = \e,m -> yrotation(e, m, e.theta or e.angle),
+}
+
+element.xrotation :set_functions {
+  track = \e,m -> xrotation(e, m, e.phi or e.angle),
+}
+
+element.translation :set_functions {
+  track = \e,m -> translate(e, m, e.dx or 0, e.dy or 0, e.dz or 0),
+}
+
+element.changeref :set_functions {
+  track = \e,m -> changeref(e, m),
+}
+
+element.patch_element :set_functions {
+  track = \e,m -> invalid_track (e), -- enforce definition for new children
+}
+
+-- drifts ---------------------------------------------------------------------o
+
+local function straight_drift (_, m, l) -- exact
+  if l < minlen then return end
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+
+  m.x = x + px*l_pz
+  m.y = y + py*l_pz
+  m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+local function polar_drift (elm, m, l) -- [Forest06] p.5365, eq. 127, exact
+  local angle in elm                   -- [PTC] SSECH1: SPROT(DKD) or SSEC(MKM)
+  if abs(angle) < minang then return straight_drift(_,m,l) end
+
+  local rho = elm.l/(angle*m.dir)
+  local angle = l/rho
+  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local _pz = 1/pz
+  local ptt = 1 - ta*px*_pz
+  local xr  = (x+rho)*ta*_pz
+
+  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
+  m.px = ca*px + sa*pz
+  m.y  = y + xr*py/ptt
+  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
+end
+
+-- kicks ----------------------------------------------------------------------o
+
+local function thin_kick (elm, m, l) -- l=0 (ignored)   TO REVIEW!!!
+  local l = elm.lrad or l
+  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
+  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
+
+  local x, px, y, py, dirch, nmul, knl, ksl in m -- BUG: nmul set by last getmul
+  local byt
+  local by = knl[nmul] / fact(nmul-1)
+  local bx = ksl[nmul] / fact(nmul-1)
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + knl[i] / fact(i-1)
+    bx  = y*by + x*bx + ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = px - dirch*by + dirch*knl1
+  m.py = py + dirch*bx - dirch*ksl1
+
+  if knl1 ~= 0 or ksl1 ~= 0 then
+    local t, pt in m
+    local _beta = 1/m.beam.beta
+    local pz = sqrt(1 + 2*_beta*pt + pt^2)
+    if lrad ~=0 then -- dipole focusing and deltap
+      m.px = m.px - knl1^2*x/lrad + dirch*knl1*(pz-1)
+      m.py = m.py - ksl1^2*y/lrad + dirch*ksl1*(pz-1)
+    end
+--    m.t = t + dirch*(knl1*x - ksl1*y) * (_beta+pt)/pz
+    m.t = t - dirch*(knl1*x - ksl1*y) * (_beta+pt)/pz
+  end
+end
+
+local function straight_kick (elm, m, l) -- [PTC] KICKEXR: KICKR + KICKTR(mult)
+  local x, px, y, py, dirch, nmul, knl, ksl in m
+  local lw, byt = elm.l>0 and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = px - dirch*by
+  m.py = py + dirch*bx
+end
+
+local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
+  local x, px, y, py, dirch, nmul, knl, ksl in m
+  local lw, byt = l/elm.l
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  local angle, k0 in elm
+--  m.px = px - dirch*by*(1 + angle/elm.l*x) -- only angle
+--  m.py = py + dirch*bx*(1 + angle/elm.l*x)
+-- stability problem???? differences with a simple test SBEND
+  m.px = px - dirch*by*(1 + k0*x) -- only angle
+  m.py = py + dirch*bx*(1 + k0*x)
+end
+
+-- sbend fringe ---------------------------------------------------------------o
 
 local function face_track(elm, m, h)
   local x, px, y, py, t, pt, dir in m
   local k0 = elm.k0 or 0
-  local beta_inv = 1/m.beam.beta
+  local _beta = 1/m.beam.beta
 
   if dir == 1 then -- to insure reversal symmetry ; horizontal wedge (only dir)
     px = px +(dir*k0*h/2)*x^2
   end
 
-  local ptt =     sqrt(1 + 2*pt*beta_inv + pt^2 - px^2)
-  local xi  = dir*sqrt(1 + 2*pt*beta_inv + pt^2)*k0*h/ptt^2
+  local ptt =     sqrt(1 + 2*pt*_beta + pt^2 - px^2)
+  local xi  = dir*sqrt(1 + 2*pt*_beta + pt^2)*k0*h/ptt^2
   local dxi_px   =  2*px*xi/ptt^2
   local dxi_ddel = -2*xi*(1 + pt)/ptt^2
 
@@ -296,13 +470,12 @@ local function face_track(elm, m, h)
   m.px = px
   m.py = py
   m.t  = t
-
 end
 
 local function wedge_track(elm, m, e)
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elm.k0 or 0
-  local beta_inv = 1/m.beam.beta
+  local _beta = 1/m.beam.beta
   local b1 = dir*k0
   local sa, ca, sa2 = sin(e), cos(e), sin(2*e)
 
@@ -310,16 +483,16 @@ local function wedge_track(elm, m, e)
     yrot_track (elm, m, e) return
   end
 
-  local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local pxt = px*ca + (pz - b1*x)*sa
-  local ptt = sqrt(1 +2*pt*beta_inv + pt^2 - py^2)         -- TODO: stability
-  local pzs = sqrt(1 +2*pt*beta_inv + pt^2 - py^2 - pxt^2) -- TODO: stability
+  local ptt = sqrt(1 +2*pt*_beta + pt^2 - py^2)         -- TODO: stability
+  local pzs = sqrt(1 +2*pt*_beta + pt^2 - py^2 - pxt^2) -- TODO: stability
   local yt  = (e + asin(px/ptt) - asin(pxt/ptt)) / b1
 
   m.x  = x*ca + (x*px*sa2 + sa^2*(2*x*pz-b1*x^2)) / (pzs+pz*ca-px*sa)
   m.px = pxt
   m.y  = y + py * yt
-  m.t  = t - yt*(beta_inv + pt)
+  m.t  = t - yt*(_beta + pt)
 end
 
 local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
@@ -327,7 +500,7 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
 
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elm.k0 or 0
-  local beta_inv = 1/m.beam.beta
+  local _beta = 1/m.beam.beta
 -- soft edge
   local fint = elm.fint or 0  -- fringe field integral at entrance and exit of the bend
   local hgap = elm.hgap or 0  -- half gap of the magnet
@@ -342,9 +515,9 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
      b = -b
   end
 
-  local pz = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local time_fac = beta_inv + pt
-  local rel_p    = sqrt(1 + 2*beta_inv*pt + pt^2)
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local time_fac = _beta + pt
+  local rel_p    = sqrt(1 + 2*_beta*pt + pt^2)
 
   local c3=b^2*fsad/rel_p
 
@@ -391,7 +564,7 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
 
 end
 
-local function sfringe_track(elm, m, pos) -- dipole fringe field
+local function sfringe_track(elm, m, pos) -- sbend fringe field
   --TODO: to add dir == -1
   -- e: edge angle
   if elm.kill_fringe     == 1               or
@@ -422,413 +595,10 @@ local function sfringe_track(elm, m, pos) -- dipole fringe field
     end
   end
 end
----Cavity
-local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
-  m.in_action(elm, m, l, 'cav_track_thin')
-  local x, px, y, py, t, pt, nmul, dirch in m
-  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
-  local ff, ph = elm.f or {}, elm.ph or {}
-  local a, r = elm.a or  0, elm.r or 0
--- nocavity.and.(.not.always_on)  return
-  if 'nocavity' and (not 'always_on') then return end
 
-  local pc = beam.pc
-  local volt =elm.volt
-  local volt_c = 1.0e-3
-  local omega = twopi*freq / clight
+-- cavities -------------------------------------------------------------------o
 
-  do ko=1, nf -- over modes
-
-  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
-
-  -- BUG: knl, ksl never retrieved
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
-
-  by = -lw*knl[nmul] / fact(nmul-1) / nmul
-  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
-
-  for i=nmul,2,-1 do
-    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
-    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
-    by  = byt
-  end
-
-  byt = x*by - y*bx
-  bx  = y*by + x*bx
-  by  = byt
-
-  m.t = t - ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
-  end    --over modes
-  m.out_action(elm, m, l, 'cav_track_thin')
-end
-
-local function adjust_time_cav(elm, m, pos)
-  local x, px, y, py, t, pt, T, dir in m
-  local beta_inv = 1/m.beam.beta
-
-  local delta_e = elm.delta_e or 0
-  if pos == 'entry' then
-    delta_e = pt
-    if 'nocavity' and (not 'always_on') then return end
-
-    if elm.l < minlen then
-      cav_track_thin(elm, m)
-      delta_e=(m.pt - delta_e)*beam.pc
-          return
-    end
-
-  else
-    if elm.l < minlen then return end
-      t = t - elm.l*beta_inv -- TO CHECK
-      delta_e = (pt - delta_e)*beam.pc
-  end
-
-end
-
-local function fringe_cav(elm, m, pos)
-  local x, px, y, py, t, pt, T, dir in m
-  if('nocavity'  and( not 'always_on')) then return end
-  if elm.kill_fringe     == 1               or
-   elm.kill_ent_fringe == 1 and pos ==  'entry' or
-   elm.kill_ext_fringe == 1 and pos ==  'exit' then return
-  end
-
-  if not ('fringe' or elm.nbessel == -1 ) then return end
-
-  if elm.l < minlen then return end
-
-  local kbmad = 0
-  if elm.nbessel == -1 then
-      kbmad = 1
-  end
-
-  local z = 0
-  if pos == 'entry' then
-    z=elm.l
-  end
-  local freq, volt = elm.freg or 0, elm.volt or 0
-  local volt_c = 1.0e-3
-  local pc = beam.pc
-  local omega = twopi*freq / clight
-  local vl    = m.dirch*volt*volt_c/pc
-  if pos == 'exit' then vl = -vl end
-
-  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
-  local ph = elm.f or {}, elm.ph or {}
-  local nf = elm.nf or 1
-   do ko=1, nf   -- over modes
-    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
-    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
-    m.px = m.px + 0.5*vl*s1*m.x
-    m.py = m.py + 0.5*vl*s1*m.y
-    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
-
-   end
-
-end
-
--- Drift general exact strait
-
-local function strait_drift_track (elm, m, l)
-  m.in_action(elm, m, l, 'strait_drift_track')
-
-  local x, px, y, py, t, pt, T in m
-  local beta_inv = 1/m.beam.beta
-  local l_pz = l/sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-
-  m.x = x + px*l_pz
-  m.y = y + py*l_pz
-  m.t = t - (beta_inv+pt)*l_pz + (1-T)*l*beta_inv
-
-  m.out_action(elm, m, l, 'strait_drift_track')
-end
-
--- Drift general exact curved       [PTC SSECH1: either SPROT(DKD) or SSEC(MKM)]
-
-local function curved_drift_track (elm, m, l)
--- Geometric integration for particle accelerators, E.Forest,
--- J.Phys. A: Math.Gen. 39 (2006) 5321-5377, p.5365, eq. 127
-  m.in_action(elm, m, l, 'curved_drift_track')
-
-  local x, px, y, py, t, pt, T in m
-  local beta_inv = 1/m.beam.beta
-  local rho = elm.l/elm.angle
-  local angle = l/rho
-
-  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
-
-  local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local pz_ = 1/pz
-  local ptt = 1 - ta*px*pz_
-  local xr  = x+rho
-  m.x  = (x + rho*(2*sa2^2 + sa*px*pz_)) / (ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + ta*xr*pz_*py/ptt
-  m.t  = t - ta*xr*pz_*(beta_inv+pt) / ptt + (1-T)*l*beta_inv
-
-  m.out_action(elm, m, l, 'curved_drift_track')
-end
-
-local function patch_drift_track (elm, m, l)
---[[ rotation + translation (drift) ]]
-
-  local angle = elm.angle or 0
-  local d  = elm.d or {}
-  if m.dir == 1 then
-    xrot_track (elm, m, angle)
-    yrot_track (elm, m, angle)
-    srot_track (elm, m, angle)
-    trans_track(elm, m, d)
-  else
-    d[1]  = -d[1]
-    d[1]  = -d[2]
-    angle = -angle
-    trans_track(elm, m, d)
-    srot_track (elm, m, angle)
-    yrot_track (elm, m, angle)
-    xrot_track (elm, m, angle)
-    d[1]  = -d[1]
-    d[1]  = -d[2]
-    angle = -angle
-
-  end
-end
-
--- Drift solenoid exact
-
-local function solenoid_drift_track (elm, m, l)
-  m.in_action(elm, m, l, 'solenoid_drift_track')
-
-  local ks in elm
-
-  if is_nil(ks) or ks == 0 then
-    strait_drift_track(elm, m, l) return
-  end
-
-  local x, px, y, py, t, pt, T in m
-  local beta_inv = 1/m.beam.beta
-
-  local bsol = m.dirch*ks/2
-  local xp = px + bsol*y
-  local yp = py - bsol*x
-
-  local l_pz  = l/sqrt(1 + 2*beta_inv*pt + pt^2 - xp^2 - yp^2) -- TODO: stability
-  local angle = l_pz*bsol
-
-  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
-
-  local xt  = ca*x  + l_pz*sc*px
-  local pxt = ca*px - l_pz*sc*x *bsol^2
-  local yt  = ca*y  + l_pz*sc*py
-  local pyt = ca*py - l_pz*sc*y *bsol^2
-
-  m.x  = ca*xt  + sa*yt
-  m.px = ca*pxt + sa*pyt
-  m.y  = ca*yt  - sa*xt
-  m.py = ca*pyt - sa*pxt
-
-  m.t  = t - (beta_inv+pt)*l_pz + (1-T)*l*beta_inv
-
-  m.out_action(elm, m, l, 'solenoid_drift_track')
-end
-
--- Kick thin
-
-local function thin_kick_track(elm, m, l) -- l == 0
-  local lrad = elm.lrad or 0
-  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
-  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
-  m.in_action(elm, m, l, 'thin_kick_track')
-
-  local x, px, y, py, dirch, nmul, knl, ksl in m -- BUG: nmul set by last getmul
-  local byt
-  local by = knl[nmul] / fact(nmul-1)
-  local bx = ksl[nmul] / fact(nmul-1)
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + knl[i] / fact(i-1)
-    bx  = y*by + x*bx + ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = px - dirch*by + dirch*knl1
-  m.py = py + dirch*bx - dirch*ksl1
-
-  if knl1 ~= 0 or ksl1 ~= 0 then
-    local t, pt in m
-    local beta_inv = 1/m.beam.beta
-    local pz = sqrt(1 + 2*beta_inv*pt + pt^2)
-    if lrad ~=0 then -- dipole focusing and deltap
-      m.px = m.px - knl1^2*x/lrad + dirch*knl1*(pz-1)
-      m.py = m.py - ksl1^2*y/lrad + dirch*ksl1*(pz-1)
-    end
---    m.t = t + dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
-    m.t = t - dirch*(knl1*x - ksl1*y) * (beta_inv+pt)/pz
-  end
-
-  m.out_action(elm, m, l, 'thin_kick_track')
-end
-
--- Kick general exact strait                 [PTC KICKEXR: KICKR + KICKTR(mult)]
-
-local function strait_kick_track(elm, m, l)
-  m.in_action(elm, m, l, 'strait_kick_track')
-
-  local x, px, y, py, dirch, nmul, knl, ksl in m
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = px - dirch*by
-  m.py = py + dirch*bx
-
-  m.out_action(elm, m, l, 'strait_kick_track')
-end
-
--- Kick general exact curved        [PTC SKICK, TODO: GETELECTRIC]
-local function curved_kick_track (elm, m, l) --
-  m.in_action(elm, m, l, 'curved_kick_track')
-
-  local x, px, y, py, dirch, nmul, knl, ksl in m
-  local lw, byt = l/elm.l
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  local angle, k0 in elm
---  m.px = px - dirch*by*(1 + angle/elm.l*x) -- only angle
---  m.py = py + dirch*bx*(1 + angle/elm.l*x)
--- stability problem???? differences with a simple test SBEND
-  m.px = px - dirch*by*(1 + k0*x) -- only angle
-  m.py = py + dirch*bx*(1 + k0*x)
-
-  m.out_action(elm, m, l, 'curved_kick_track')
-end
-
--- TW Cavity
-local function twcav_drift_track(elm, m, l, z0) --tw cavity tracking, rk2_cavr
-  m.in_action(elm, m, l, 'twcav_drift_track')
-
-  local x, px, y, py, dirch, dir, charge, nmul, knl, ksl in m
-  local beta_inv = 1/m.beam.beta
-  local d,a, ad  = {}, {}, {}
-
-  local freq,  dphas  = elm.freq or 0, elm.dhas or 0
-  local phase, phase0 = elm.phase or 0, elm.phase0 or 0
-  local omega = twopi*freq / clight
-  local volt_c = 1.0e-3
-
-  local volt, dvds = elm.volt or 0, elm.dvds or 0
-  local psi = elm.psi or 0
-  local c1, c2, s1, s2, vl = 0, 0, 0, 0, 0
-  c1 = cos(omega*(t-z0) + phas + phase0)
-  c2 = cos(omega*(t+z0) + phas + phase0 + dphas)
-  s1 = sin(omega*(t-z0) + phas + phase0)
-  s2 = sin(omega*(t+z0) + phas + phase0 + dphas)
-  vl = charge*(volt - dvds*z0)*volt_c/pc
-  ad[1] = 0.5*vl*(cos(psi)*s1-sin(psi)*s2)
-  ad[2] = omega*0.5*vl*(cos(psi)*c1-sin(psi)*c2)
-  ad[3] = omega*0.5*vl*(-cos(psi)*c1-sin(psi)*c2)
-  a[1]  = ad[1]*m.x
-  a[2]  = ad[1]*m.y
-  a[3]  = -dir*vl*(cos(psi)*s1+sin(psi)*s2)
-
-  if elm.b  then
-  elm.b[1] = -ad(3)*m.y/charge
-  elm.b[2] =  ad(3)*m.x/charge
-  elm.b[3] = 0
-  end
-
-  if elm.e then
-  elm.e[1] =     -ad(2)*m.x/charge
-  elm.e[2] =     -ad(2)*m.y/charge
-  elm.e[3] =  dir*ad(3)    /charge
-  end
-
-  m.px = px - a[1]
-  m.py = py - a[1]
-
-  local pz  = sqrt(1 + 2*beta_inv*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local pz_ = 1/pz
-  f[1] = m.px*pz_
-  f[3] = m.py*pz_
-  f[2] = f[1]*ad[1]
-  f[4] = f[3]*ad[1]
-  f[5] = -(f[1]*m.x+f[3]*m.y)*ad[2]+a[3]
-  f[6] = (beta_inv + m.pt)*pz_ - (1-T)*beta_inv -- change the sign????
-
-  m.out_action(elm, m, l, 'twcav_drift_track')
-
-  return {f, a, ad}
-end
-
-local function twcav_track(elm, m, l, j) --thick twcavity (inter_cav_trav+rk2_cav)
-  m.in_action(elm, m, l, 'cav_track')
-  local x, px, y, py, t, pt, dirch in m
-  local z0, tt = 0, 0
-  local d1 = dirch*l or 0
-  if dirch == 1  then
-    z0=(j-1)*d1
-  else
-    z0=elm.l+(j-1)*d1
-  end
-
-  local f  = twcav_drift_track(elm, m, l, z0) or {}
-  do  i=1,6
-    a[i]=d1*f[i]
-  end
-
-  m.x  = x  + a[1]/2
-  m.px = px + a[2]/2
-  m.y  = y  + a[3]/2
-  m.py = py + a[4]/2
-  m.t  = t  - a[5]/2  --sign to check?
-  m.pt = pt + a[6]/2
-
-  tt=z0+d1/2
-
-  f = twcav_drift_track(elm, m, l, tt)
-
-  do  i=1,6
-    b[i]=d1*f[i]
-  end
-
-  m.x  = x  + b[1]
-  m.px = px + b[2]
-  m.y  = y  + b[3]
-  m.py = py + b[4]
-  m.t  = t  - b[5]  --sign to check?
-  m.pt = pt + b[6]
-
-  z0=z0+d1
-  m.in_action(elm, m, l, 'twcav_track')
-
-end
-
--- Cavity kick
 local function cav_kick_track (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
-  m.in_action(elm, m, l, 'rfcav_drift_track')
   local x, px, y, py, t, pt, nmul, dirch in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
@@ -892,15 +662,237 @@ do ko=1, nf -- over modes
 
   m.pt = m.pt + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
   end    --over modes
-  m.out_action(elm, m, l, 'rfcav_drift_track')
 end
 
+local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
+  local x, px, y, py, t, pt, nmul, dirch in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a, r = elm.a or  0, elm.r or 0
+-- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end
+
+  local pc = beam.pc
+  local volt =elm.volt
+  local volt_c = 1.0e-3
+  local omega = twopi*freq / clight
+
+  do ko=1, nf -- over modes
+
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
+
+  -- BUG: knl, ksl never retrieved
+  local lw, byt = elm.l>0 and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.t = t - ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  end    --over modes
+end
+
+local function adjust_time_cav(elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  local _beta = 1/m.beam.beta
+
+  local delta_e = elm.delta_e or 0
+  if pos == 'entry' then
+    delta_e = pt
+    if 'nocavity' and (not 'always_on') then return end
+
+    if elm.l < minlen then
+      cav_track_thin(elm, m)
+      delta_e=(m.pt - delta_e)*beam.pc
+          return
+    end
+
+  else
+    if elm.l < minlen then return end
+      t = t - elm.l*_beta -- TO CHECK
+      delta_e = (pt - delta_e)*beam.pc
+  end
+
+end
+
+local function fringe_cav(elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  if('nocavity'  and( not 'always_on')) then return end
+  if elm.kill_fringe     == 1               or
+   elm.kill_ent_fringe == 1 and pos ==  'entry' or
+   elm.kill_ext_fringe == 1 and pos ==  'exit' then return
+  end
+
+  if not ('fringe' or elm.nbessel == -1 ) then return end
+
+  if elm.l < minlen then return end
+
+  local kbmad = 0
+  if elm.nbessel == -1 then
+      kbmad = 1
+  end
+
+  local z = 0
+  if pos == 'entry' then
+    z=elm.l
+  end
+  local freq, volt = elm.freg or 0, elm.volt or 0
+  local volt_c = 1.0e-3
+  local pc = beam.pc
+  local omega = twopi*freq / clight
+  local vl    = m.dirch*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ph = elm.f or {}, elm.ph or {}
+  local nf = elm.nf or 1
+   do ko=1, nf   -- over modes
+    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
+    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
+    m.px = m.px + 0.5*vl*s1*m.x
+    m.py = m.py + 0.5*vl*s1*m.y
+    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+   end
+end
+
+local function cavity_track (elm, m)  -- thin rf mult
+  local l, angle, tilt in elm
+
+  if abs(angle) >= minang then
+    error("invalid straight element angle (too curved): " .. elm.name)
+  end
+
+  if abs(tilt) >= minang  then
+    srot_track(elm, m, tilt)
+  end
+
+  adjust_time_cav(elm, m, 'entry')
+  fringe_cav     (elm, m, 'entry')
+
+  if l >= minlen then
+   thick_track (elm, m, straight_drift_track, cav_kick_track)
+  end
+
+  fringe_cav     (elm, m, 'exit')
+  adjust_time_cav(elm, m, 'exit')
+
+  if abs(tilt) >= minang  then
+    srot_track(elm, m, -tilt)
+  end
+end
+
+-- solenoid -------------------------------------------------------------------o
+
+local function solenoid_drift_track (elm, m, l)
+  local ks in elm
+
+  if is_nil(ks) or ks == 0 then
+    straight_drift_track(elm, m, l) return
+  end
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+
+  local bsol = m.dirch*ks/2
+  local xp = px + bsol*y
+  local yp = py - bsol*x
+
+  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2) -- TODO: stability
+  local angle = l_pz*bsol
+
+  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
+
+  local xt  = ca*x  + l_pz*sc*px
+  local pxt = ca*px - l_pz*sc*x *bsol^2
+  local yt  = ca*y  + l_pz*sc*py
+  local pyt = ca*py - l_pz*sc*y *bsol^2
+
+  m.x  = ca*xt  + sa*yt
+  m.px = ca*pxt + sa*pyt
+  m.y  = ca*yt  - sa*xt
+  m.py = ca*pyt - sa*pxt
+
+  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+local function solenoid_track (elm, m)
+  local l, angle, tilt in elm
+  if abs(angle) >= minang then
+    error("invalid straight element angle (too curved): " .. elm.name)
+  elseif l < minlen then
+    error("invalid straight element length (too short): " .. elm.name)
+  end
+
+  if abs(tilt) >= minang  then
+    srot_track(elm, m, tilt)
+  end
+
+  -- TODO: boundary elements, radiation and aperture checks.
+  thick_track (elm, m, solenoid_drift_track, straight_kick_track)
+
+  if abs(tilt) >= minang  then
+    srot_track(elm, m, -tilt)
+  end
+end
+
+element.solenoid :set_functions { track = solenoid_track } -- TODO
 
 -- integrator schemes ---------------------------------------------------------o
 
 local integrate = require 'madl_sympint'
 
 -- frame kinds ----------------------------------------------------------------o
+
+local function drift_track (elm, m)
+  local l in elm
+  local ns = #elm
+
+  m.nmul = 0 -- for sanity checks
+
+  if ns == 0 then -- no sub-elements
+    straight_drift_track(elm, m, l) return
+  end
+
+  local s, ds, at = 0
+  for i=1,ns do   -- sub-elements
+    local selem = elm[i]
+    at = assert(selem.at, "invalid sub-element position (at expected)")
+    ds = at*l - s
+    assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+    if ds >= minlen then
+      straight_drift_track(elm, m, ds)
+    end
+    s = s + ds
+    assert(selem.l == 0, "invalid sub-element length (0 expected)")
+    selem:track(m)
+  end
+  ds = l-s
+  assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+  if ds >= minlen then
+    straight_drift_track(elm, m, ds)
+  end
+end
 
 local function thick_track (elm, m, drift, kick)
   local l, angle, method in elm
@@ -932,38 +924,9 @@ local function thick_track (elm, m, drift, kick)
   end
 end
 
-local function drift_track (elm, m)
-  local l in elm
-  local ns = #elm
-
-  m.nmul = 0 -- for sanity checks
-
-  if ns == 0 then -- no sub-elements
-    strait_drift_track(elm, m, l) return
-  end
-
-  local s, ds, at = 0
-  for i=1,ns do   -- sub-elements
-    local selem = elm[i]
-    at = assert(selem.at, "invalid sub-element position (at expected)")
-    ds = at*l - s
-    assert(ds >= 0, "invalid sub-element position (positive ds expected)")
-    if ds >= minlen then
-      strait_drift_track(elm, m, ds)
-    end
-    s = s + ds
-    assert(selem.l == 0, "invalid sub-element length (0 expected)")
-    selem:track(m)
-  end
-  ds = l-s
-  assert(ds >= 0, "invalid sub-element position (positive ds expected)")
-  if ds >= minlen then
-    strait_drift_track(elm, m, ds)
-  end
-end
+-- frame kinds ----------------------------------------------------------------o
 
 local function thin_track (elm, m) -- e.g. multipole
---  io.write('THIN_TRACK: for ', elm.name, ' (l=', elm.l, ')\n')
   local l in elm
 
   if l >= minlen then
@@ -973,27 +936,27 @@ local function thin_track (elm, m) -- e.g. multipole
   local nmul = get_mult(elm, m)
   if nmul == 0 then return end
 
-  if ptccompat == true then
+  if ptc_compat == true then
     thin_kick_track  (elm, m, 0)
   else
-    strait_kick_track(elm, m, 0)
+    straight_kick_track(elm, m, 0)
   end
 end
 
-local function strait_track (elm, m) -- e.g. rbend
---  io.write('STRAIT_TRACK: for ', elm.name, ' (l=', elm.l,')\n')
+local function straight_track (elm, m) -- e.g. rbend
   local l, angle, tilt in elm
 
   if abs(angle) >= minang then
-    error("invalid strait element angle (too curved): " .. elm.name)
---  elseif l < minlen then
---    error("invalid strait element length (too short): " .. elm.name)
+    error("invalid straight element angle (too curved): " .. elm.name)
+  elseif not madx_compat and l < minlen then
+    error("invalid straight element length (too short): " .. elm.name)
   end
   if abs(tilt) >= minang  then
     srot_track(elm, m, tilt)
   end
+
   -- TODO: boundary elements, radiation and aperture checks.
-  thick_track (elm, m, strait_drift_track, strait_kick_track)
+  thick_track(elm, m, straight_drift_track, straight_kick_track)
 
   if abs(tilt) >= minang  then
     srot_track(elm, m, -tilt)
@@ -1001,110 +964,32 @@ local function strait_track (elm, m) -- e.g. rbend
 end
 
 local function curved_track (elm, m) -- e.g. sbend
---  io.write('CURVED_TRACK: for ', elm.name, ' (l=', elm.l,')\n')
   local l, angle, tilt in elm
   if abs(angle) < minang then
-    error("invalid curved element angle (too strait): " .. elm.name)
+    error("invalid curved element angle (too straight): " .. elm.name)
   elseif l < minlen then
     error("invalid curved element length (too short): " .. elm.name)
   end
 
---  if m.t ~=0 then m.t= -m.t end
   if abs(tilt) >= minang  then
     srot_track(elm, m, tilt)
   end
+
   sfringe_track(elm, m, 'entry')
+  -- TODO: boundary elements, radiation and aperture checks.
   thick_track  (elm, m, curved_drift_track, curved_kick_track)
   sfringe_track(elm, m, 'exit')
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, -tilt)
-  end
---  m.t =-m.t
-end
-
-local function cavity_track (elm, m)  -- thin rf mult
-  local l, angle, tilt in elm
-
-  if abs(angle) >= minang then
-    error("invalid strait element angle (too curved): " .. elm.name)
-  end
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, tilt)
-  end
-
-     adjust_time_cav(elm, m, 'entry')
-     fringe_cav     (elm, m, 'entry')
-     if l >= minlen then
-      thick_track (elm, m, strait_drift_track, cav_kick_track)
-     end
-     fringe_cav     (elm, m, 'exit')
-     adjust_time_cav(elm, m, 'exit')
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, -tilt)
-  end
-end
-
-local function tw_cavity_track (elm, m)  --cav_trav
-  local l, angle, tilt in elm
-
-  if abs(angle) >= minang then
-    error("invalid strait element angle (too curved): " .. elm.name)
-  end
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, tilt)
-  end
-
---   FRINGE_CAV_TRAV(EL,X,k,1) -fringe_cav_trav
-   thick_track (elm, m, cav_kick_track)
---  FRINGECAV(EL,X,k,2)
---  ADJUST_TIME_CAV_TRAV_OUT(EL,X,k,2)
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, -tilt)
-  end
-
-
-end
--- specialisations ------------------------------------------------------------o
-
-local function solenoid_track (elm, m)
---  io.write('SOL_TRACK: for ', elm.name, ' (l=', elm.l,')\n')
-  local l, angle, tilt in elm
-  if abs(angle) >= minang then
-    error("invalid strait element angle (too curved): " .. elm.name)
-  elseif l < minlen then
-    error("invalid strait element length (too short): " .. elm.name)
-  end
-
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, tilt)
-  end
-
-  -- TODO: boundary elements, radiation and aperture checks.
-  thick_track (elm, m, solenoid_drift_track, strait_kick_track)
 
   if abs(tilt) >= minang  then
     srot_track(elm, m, -tilt)
   end
 end
+
+element.     thin_element :set_functions { track =     thin_track }
+element.    drift_element :set_functions { track =    drift_track }
+element.    thick_element :set_functions { track =    thick_track }
 
 -- load track maps into elements ----------------------------------------------o
-
-local element in MAD
-
-element.    thin_element :set_functions { track =     thin_track }
-element.   patch_element :set_functions { track =    patch_track }
-element.   drift_element :set_functions { track =    drift_track }
-element.  strait_element :set_functions { track =   strait_track }
-element.  curved_element :set_functions { track =   curved_track }
-element. special_element :set_functions { track =    empty_track }
-element.   extra_element :set_functions { track =  invalid_track }
-
-element.       srotation :set_functions { track =     srot_track }
-element.       xrotation :set_functions { track =     xrot_track }
-element.       yrotation :set_functions { track =     yrot_track }
-element.       translate :set_functions { track =     tran_track }
-
-element.        solenoid :set_functions { track = solenoid_track }
 
 -- track command --------------------------------------------------------------o
 
@@ -1146,12 +1031,11 @@ local function make_map (self)
   local seq = self.sequence
   local len, dir = #seq, seq.direction
 
-  local nst, method, total_path, in_action, out_action in self
+  local nst, method, total_path in self
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T, knl={}, ksl={},
            s=0, ds=0, len=len, dir=dir, ndft=0, nst=nst, method=method,
-           in_action=in_action, out_action=out_action,
            [_trk]=_trk }
 end
 
@@ -1184,7 +1068,7 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      strait_drift_track(nil, map, ds)
+      straight_drift_track(nil, map, ds)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
         fill_table(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
@@ -1215,8 +1099,6 @@ local track = Command 'track' {
   X0={0,0,0,0,0,0}, nturn=0, drift=true, save=true,
   nst=1, method='simple', total_path=false,
   exec=exec, [_trk]=true,
-} :set_functions {
-  in_action=\ (), out_action=\ ()
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
