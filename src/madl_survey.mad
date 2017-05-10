@@ -57,8 +57,9 @@ local function invalid_survey (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-element.special_element :set_functions { survey =   empty_survey }
-element.  extra_element :set_functions { survey = invalid_survey }
+element.  patch_element :set_functions { survey = invalid_survey } -- no default
+element.  extra_element :set_functions { survey = invalid_survey } -- not valid
+element.special_element :set_functions { survey =   empty_survey } -- default
 
 -- angles adjustment ----------------------------------------------------------o
 
@@ -153,10 +154,6 @@ element.changeref :set_functions {
   survey = \e,m -> changeref(e, m),
 }
 
-element.patch_element :set_functions {
-  survey = \e,m -> invalid_survey(e), -- enforce definition for new children
-}
-
 -- drifts ---------------------------------------------------------------------o
 
 local function straight_drift (_, m, l)
@@ -167,7 +164,7 @@ local function straight_drift (_, m, l)
 end
 
 element.drift_element :set_functions {
-  survey = \e,m -> straight_drift(e, m, e.l)
+  survey = \e,m -> straight_drift(nil, m, e.l)
 }
 
 -- frame kinds ----------------------------------------------------------------o
@@ -196,7 +193,7 @@ local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
 
   local angle in elm
   if abs(angle) < minang then
-    return straight_drift(elm, m, l)
+    return straight_drift(nil, m, l)
   end
 
   local dir in m
@@ -226,22 +223,23 @@ local observe in MAD.element.flags
 
 local _srv = {}
 
-local function make_table (self)
-  if not self.save then return nil end
-  local seq = self.sequence
-  local name, direction in seq
-  local drift, range, nturn in self
-  local nrow = seq:length_of(range, nturn) * (drift and 2 or 1)
+local function make_mtable (self)
+  if self.mtable then return self.mtable end -- already built
+  if not self.save then return nil end       -- nothing to build
+
+  local sequence, drift, range, nturn in self
+  local name, direction in sequence
+  local nrow = sequence:length_of(range, nturn) * (drift and 2 or 1)
 
   return mtable 'survey' {
     type='survey', title=name, direction=direction,
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
     [_srv]=_srv,
-  } :reserve(nrow < 2e5 and nrow or 2e5)
+  } :reserve(math.min(nrow, 1e5))
 end
 
-local function fill_table (tbl, name, kind, m, s, l, ang, til)
+local function fill_mtable (tbl, name, kind, m, s, l, ang, til)
   local V, A, dir in m
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
@@ -251,9 +249,18 @@ local function fill_table (tbl, name, kind, m, s, l, ang, til)
   tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
-local function make_map (self)
-  local x, y, z, theta, phi, psi, X0, A0 in self
+local function make_mflow (self)
+  local sequence, mflow in self
 
+  if not is_nil(mflow) then
+    if sequence ~= mflow.seq then -- new sequence -> update
+      local len, dir = #sequence, sequence.direction
+      mflow.ds, mflow.len, mflow.dir, mflow.seq = 0, len, dir, sequence
+    end
+    return mflow
+  end
+
+  local x, y, z, theta, phi, psi, X0, A0 in self
   x     = x     or X0.x     or X0[1] or 0
   y     = y     or X0.y     or X0[2] or 0
   z     = z     or X0.z     or X0[3] or 0
@@ -261,34 +268,33 @@ local function make_map (self)
   phi   = phi   or A0.phi   or A0[2] or 0
   psi   = psi   or A0.psi   or A0[3] or 0
 
+  local save, drift in self
+  local len, dir = #sequence, sequence.direction
   local V   = vector(3):fill{x,y,z}
   local W   = matrix(3):rotmad(theta, phi, psi)
   local A   = vector(3):fill{theta, phi, psi}
   local R, S, T = vector(3), matrix(3), matrix(3)
 
-  local seq = self.sequence
-  local len, dir = #seq, seq.direction
-
-  return { A=A, V=V, W=W, R=R, S=S, T=T,
-           s=0, ds=0, len=len, dir=dir, ndft=0,
+  return { A=A, V=V, W=W,                                   -- initial vars
+           R=R, S=S, T=T,                                   -- internal vars
+           s=0, ds=0, len=len, dir=dir, ndft=0,             -- internal status
+           seq=sequence, save=save, drift=save and drift,   -- user status
            [_srv]=_srv }
 end
 
--- survey command exec
 local function exec (self)
   assert(self[_srv], "invalid argument #1 (survey expected)")
   local seq = assert(self.sequence, "missing sequence")
   assert(is_sequence(seq), "invalid sequence")
 
-  local map = self.map   or make_map  (self)
-  local tbl = self.table or make_table(self)
+  local map = make_mflow (self)
+  local tbl = make_mtable(self)
 
-  assert(is_nil(tbl) or tbl[_srv] == _srv, "invalid survey table")
-  assert(               map[_srv] == _srv, "invalid survey map"  )
+  assert(is_nil(tbl) or tbl[_srv] == _srv, "invalid survey mtable")
+  assert(               map[_srv] == _srv, "invalid survey mflow" )
 
-  local s, ds, len, ndft in map
-  local save, range, nturn in self
-  local drift = save and self.drift
+  local s, ds, len, ndft, save, drift in map
+  local range, nturn in self
 
   -- affine tracking
   for i,elm in seq:iter(range, nturn) do
@@ -296,10 +302,10 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      straight_drift(elm, map, ds)
+      straight_drift(nil, map, ds)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
-        fill_table(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
+        fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
       end
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
@@ -308,10 +314,14 @@ local function exec (self)
     s = s+ds
 
     -- sequence element
-    elm:survey(map) ; update_angles(map)
+    do
+      local tbl, map = elm:survey(map)
+      if tbl then return tbl, map end -- stop (e.g. slink)
+    end
+    update_angles(map)
     if save and elm:is_selected(observe) then
       local name, kind, angle, tilt in elm
-      fill_table(tbl, name, kind, map, s+l, l, angle, tilt)
+      fill_mtable(tbl, name, kind, map, s+l, l, angle, tilt)
     end
     s  = s+l
     ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0

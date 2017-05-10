@@ -172,8 +172,9 @@ local function invalid_track (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-element.special_element :set_functions { track =   empty_track }
-element.  extra_element :set_functions { track = invalid_track }
+element.  patch_element :set_functions { track = invalid_track } -- no default
+element.  extra_element :set_functions { track = invalid_track } -- not valid
+element.special_element :set_functions { track =   empty_track } -- default
 
 -- strengths retrieval --------------------------------------------------------o
 
@@ -272,13 +273,13 @@ end
 local function translate (_, m, dx, dy, dz)
   if abs(dx)+abs(dy)+abs(dz) < minlen then return end
 
-  local x, px, y, py, t, pt, dir in m
+  local x, px, y, py, t, pt, T, dir in m
   local _beta = 1/m.beam.beta
   local l_pz = dz/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
 
   m.x = x + px*l_pz - dx*dir
   m.y = y + py*l_pz - dy*dir
-  m.t = t - (_beta+pt)*l_pz -- + (1-T)*dz*_beta ?? see drift
+  m.t = t - (_beta+pt)*l_pz + (1-T)*dz*_beta -- ?? see drift
 end
 
 -- Changeref/Forward/Backward patches
@@ -333,10 +334,6 @@ element.changeref :set_functions {
   track = \e,m -> changeref(e, m),
 }
 
-element.patch_element :set_functions {
-  track = \e,m -> invalid_track (e), -- enforce definition for new children
-}
-
 -- drifts ---------------------------------------------------------------------o
 
 local function straight_drift (_, m, l) -- exact
@@ -379,7 +376,7 @@ local function thin_kick (elm, m, l) -- l=0 (ignored)   TO REVIEW!!!
   local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
   local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
 
-  local x, px, y, py, dirch, nmul, knl, ksl in m -- BUG: nmul set by last getmul
+  local x, px, y, py, dirchg, nmul, knl, ksl in m -- BUG: nmul set by last getmul
   local byt
   local by = knl[nmul] / fact(nmul-1)
   local bx = ksl[nmul] / fact(nmul-1)
@@ -389,24 +386,24 @@ local function thin_kick (elm, m, l) -- l=0 (ignored)   TO REVIEW!!!
     by  = byt
   end
 
-  m.px = px - dirch*by + dirch*knl1
-  m.py = py + dirch*bx - dirch*ksl1
+  m.px = px - dirchg*by + dirchg*knl1
+  m.py = py + dirchg*bx - dirchg*ksl1
 
   if knl1 ~= 0 or ksl1 ~= 0 then
     local t, pt in m
     local _beta = 1/m.beam.beta
     local pz = sqrt(1 + 2*_beta*pt + pt^2)
     if lrad ~=0 then -- dipole focusing and deltap
-      m.px = m.px - knl1^2*x/lrad + dirch*knl1*(pz-1)
-      m.py = m.py - ksl1^2*y/lrad + dirch*ksl1*(pz-1)
+      m.px = m.px - knl1^2*x/lrad + dirchg*knl1*(pz-1)
+      m.py = m.py - ksl1^2*y/lrad + dirchg*ksl1*(pz-1)
     end
---    m.t = t + dirch*(knl1*x - ksl1*y) * (_beta+pt)/pz
-    m.t = t - dirch*(knl1*x - ksl1*y) * (_beta+pt)/pz
+--    m.t = t + dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
+    m.t = t - dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
   end
 end
 
 local function straight_kick (elm, m, l) -- [PTC] KICKEXR: KICKR + KICKTR(mult)
-  local x, px, y, py, dirch, nmul, knl, ksl in m
+  local x, px, y, py, dirchg, nmul, knl, ksl in m
   local lw, byt = elm.l>0 and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
@@ -417,12 +414,12 @@ local function straight_kick (elm, m, l) -- [PTC] KICKEXR: KICKR + KICKTR(mult)
     by  = byt
   end
 
-  m.px = px - dirch*by
-  m.py = py + dirch*bx
+  m.px = px - dirchg*by
+  m.py = py + dirchg*bx
 end
 
 local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
-  local x, px, y, py, dirch, nmul, knl, ksl in m
+  local x, px, y, py, dirchg, nmul, knl, ksl in m
   local lw, byt = l/elm.l
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
@@ -434,11 +431,11 @@ local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
   end
 
   local angle, k0 in elm
---  m.px = px - dirch*by*(1 + angle/elm.l*x) -- only angle
---  m.py = py + dirch*bx*(1 + angle/elm.l*x)
+--  m.px = px - dirchg*by*(1 + angle/elm.l*x) -- only angle
+--  m.py = py + dirchg*bx*(1 + angle/elm.l*x)
 -- stability problem???? differences with a simple test SBEND
-  m.px = px - dirch*by*(1 + k0*x) -- only angle
-  m.py = py + dirch*bx*(1 + k0*x)
+  m.px = px - dirchg*by*(1 + k0*x) -- only angle
+  m.py = py + dirchg*bx*(1 + k0*x)
 end
 
 -- sbend fringe ---------------------------------------------------------------o
@@ -510,7 +507,7 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
       fsad = 1/(fint*hgap*2)/36
   end
 
-  local b  = m.chg*k0
+  local b  = m.beam.charge*k0
   if pos == 'exit' then
      b = -b
   end
@@ -599,7 +596,7 @@ end
 -- cavities -------------------------------------------------------------------o
 
 local function cav_kick_track (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
-  local x, px, y, py, t, pt, nmul, dirch in m
+  local x, px, y, py, t, pt, nmul, dirchg in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
   local a, r = elm.a or  0, elm.r or 0
@@ -614,7 +611,7 @@ local function cav_kick_track (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (
   end
 
 local omega = twopi*freq / clight
-local vl    = m.dirch*l*volt*volt_c/pc
+local vl    = m.dirchg*l*volt*volt_c/pc
 local df, f, r2 = 0, 1, 1
 
 do ko=1, nf -- over modes
@@ -644,8 +641,8 @@ do ko=1, nf -- over modes
     by  = byt
   end
 
-  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
 
   by = -lw*knl[nmul] / fact(nmul-1) / nmul
   bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
@@ -660,12 +657,12 @@ do ko=1, nf -- over modes
   bx  = y*by + x*bx
   by  = byt
 
-  m.pt = m.pt + ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
   end    --over modes
 end
 
 local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
-  local x, px, y, py, t, pt, nmul, dirch in m
+  local x, px, y, py, t, pt, nmul, dirchg in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
   local a, r = elm.a or  0, elm.r or 0
@@ -680,7 +677,7 @@ local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
   do ko=1, nf -- over modes
 
   local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt - dirch*volt_c*ff[ko]*volt*sin(arg)/pc
+  m.pt = m.pt - dirchg*volt_c*ff[ko]*volt*sin(arg)/pc
 
   -- BUG: knl, ksl never retrieved
   local lw, byt = elm.l>0 and l/elm.l or 1
@@ -693,8 +690,8 @@ local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
     by  = byt
   end
 
-  m.px = m.px - ff[ko]*dirch*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirch*bx/pc*(a + r*cos(arg))
+  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
 
   by = -lw*knl[nmul] / fact(nmul-1) / nmul
   bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
@@ -709,7 +706,7 @@ local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
   bx  = y*by + x*bx
   by  = byt
 
-  m.t = t - ff[ko]*(ko*omega)*dirch*by/pc * r *sin(arg)
+  m.t = t - ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
   end    --over modes
 end
 
@@ -761,7 +758,7 @@ local function fringe_cav(elm, m, pos)
   local volt_c = 1.0e-3
   local pc = beam.pc
   local omega = twopi*freq / clight
-  local vl    = m.dirch*volt*volt_c/pc
+  local vl    = m.dirchg*volt*volt_c/pc
   if pos == 'exit' then vl = -vl end
 
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
@@ -814,7 +811,7 @@ local function solenoid_drift_track (elm, m, l)
   local x, px, y, py, t, pt, T in m
   local _beta = 1/m.beam.beta
 
-  local bsol = m.dirch*ks/2
+  local bsol = m.dirchg*ks/2
   local xp = px + bsol*y
   local yp = py - bsol*x
 
@@ -876,16 +873,16 @@ local function drift_track (elm, m)
 
   local s, ds, at = 0
   for i=1,ns do   -- sub-elements
-    local selem = elm[i]
-    at = assert(selem.at, "invalid sub-element position (at expected)")
-    ds = at*l - s
+    local selm = elm[i]
+    at = assert(selm.at, "invalid sub-element position (at expected)")
+    ds = at - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
       straight_drift_track(elm, m, ds)
     end
     s = s + ds
-    assert(selem.l == 0, "invalid sub-element length (0 expected)")
-    selem:track(m)
+    assert(selm.l == 0, "invalid sub-element length (0 expected)")
+    selm:track(m)
   end
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
@@ -906,16 +903,16 @@ local function thick_track (elm, m, drift, kick)
 
   local s, ds, at = 0
   for i=1,ns do   -- sub-elements
-    local selem = elm[i]
-    at = assert(selem.at, "invalid sub-element position (at expected)")
-    ds = at*l - s
+    local selm = elm[i]
+    at = assert(selm.at, "invalid sub-element position (at expected)")
+    ds = at - s
     assert(ds >= 0, "invalid sub-element position (positive ds expected)")
     if ds >= minlen then
       integrator(elm, m, ds, drift, kick)
     end
     s = s + ds
-    assert(selem.l == 0, "invalid sub-element length (0 expected)")
-    selem:track(m)
+    assert(selm.l == 0, "invalid sub-element length (0 expected)")
+    selm:track(m)
   end
   ds = l-s
   assert(ds >= 0, "invalid sub-element position (positive ds expected)")
@@ -985,11 +982,9 @@ local function curved_track (elm, m) -- e.g. sbend
   end
 end
 
-element.     thin_element :set_functions { track =     thin_track }
-element.    drift_element :set_functions { track =    drift_track }
-element.    thick_element :set_functions { track =    thick_track }
-
--- load track maps into elements ----------------------------------------------o
+element. thin_element :set_functions { track =  thin_track }
+element.drift_element :set_functions { track = drift_track }
+element.thick_element :set_functions { track = thick_track }
 
 -- track command --------------------------------------------------------------o
 
@@ -998,29 +993,42 @@ local observe in MAD.element.flags
 
 local _trk = {}
 
-local function make_table (self)
-  if not self.save then return nil end
-  local seq = self.sequence
-  local name, direction in seq
-  local drift, range, nturn in self
-  local nrow = seq:length_of(range, nturn) * (drift and 2 or 1)
+local function make_mtable (self)
+  if self.mtable then return self.mtable end -- already built
+  if not self.save then return nil end       -- nothing to build
+
+  local sequence, drift, range, nturn in self
+  local name, direction in sequence
+  local nrow = sequence:length_of(range, nturn) * (drift and 2 or 1)
 
   return mtable 'track' {
     type='track', title=name, direction=direction,
     {'name'}, 'kind', 's', 'l',
     'x', 'px', 'y', 'py', 't', 'pt',
     [_trk]=_trk,
-  } : reserve(nrow < 2e5 and nrow or 2e5)
+  } : reserve(math.min(nrow, 1e5))
 end
 
-local function fill_table (tbl, name, kind, m, s, l)
+local function fill_mtable (tbl, name, kind, m, s, l)
   -- keep order!
   tbl = tbl + { name, kind, s, l, m.x, m.px, m.y, m.py, m.t, m.pt }
 end
 
-local function make_map (self)
-  local x, px, y, py, t, pt, X0 in self
+local function make_mflow (self)
+  local sequence, beam, mflow in self
 
+  if not is_nil(mflow) then
+    if sequence ~= mflow.seq then -- new sequence -> update
+      local len, dir = #sequence, sequence.direction
+      mflow.seq, mflow.ds, mflow.len, mflow.dir = sequence, 0, len, dir
+    end
+    if beam ~= mflow.beam then -- new beam -> update
+      mflow.beam, mflow.dirchg = beam, mflow.dir*beam.charge
+    end
+    return mflow
+  end
+
+  local x, px, y, py, t, pt, X0 in self
   x  = x  or X0.x  or X0[1] or 0
   px = px or X0.px or X0[2] or 0
   y  = y  or X0.y  or X0[3] or 0
@@ -1028,39 +1036,34 @@ local function make_map (self)
   t  = t  or X0.t  or X0[5] or 0
   pt = pt or X0.pt or X0[6] or 0
 
-  local seq = self.sequence
-  local len, dir = #seq, seq.direction
-
-  local nst, method, total_path in self
+  local nst, method, total_path, save, drift in self
+  local len, dir = #sequence, sequence.direction
   local T = total_path == true and 1 or 0
 
-  return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T, knl={}, ksl={},
-           s=0, ds=0, len=len, dir=dir, ndft=0, nst=nst, method=method,
+  return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,           -- initial vars
+           nmul=0, knl={}, ksl={},                            -- internal vars
+           s=0, ds=0, len=len, dir=dir, ndft=0,               -- internal status
+           nst=nst, method=method,                            -- user setup
+           seq=sequence, save=save, drift=save and drift,     -- user status
+           beam=beam, dirchg = dir*beam.charge,               -- user beam
            [_trk]=_trk }
 end
 
 local function exec (self)
   assert(self[_trk], "invalid argument #1 (survey expected)")
-  local seq = assert(self.sequence, "missing sequence")
+  local seq  = assert(self.sequence, "missing sequence")
+  local beam = assert(self.beam    , "missing beam")
   assert(is_sequence(seq), "invalid sequence")
+  assert(is_beam(beam)   , "invalid beam")
 
-  local beam = assert(self.beam or seq.beam, "missing beam")
-  assert(is_beam(beam), "invalid beam")
-
-  local map = self.map   or make_map  (self)
-  local tbl = self.table or make_table(self)
+  local map = make_mflow (self)
+  local tbl = make_mtable(self)
 
   assert(is_nil(tbl) or tbl[_trk] == _trk, "invalid track table")
   assert(               map[_trk] == _trk, "invalid track map"  )
 
-  -- hook beam
-  map.beam  = beam
-  map.chg   = beam.charge
-  map.dirch = map.dir * beam.charge
-
-  local s, ds, len, ndft in map
-  local save, range, nturn in self
-  local drift = save and self.drift
+  local s, ds, len, ndft, save, drift in map
+  local range, nturn in self
 
   -- dynamic tracking
   for i,elm in seq:iter(range, nturn) do
@@ -1068,10 +1071,10 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      straight_drift_track(nil, map, ds)
+      straight_drift(nil, map, ds)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
-        fill_table(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
+        fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
       end
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
@@ -1080,10 +1083,13 @@ local function exec (self)
     s = s+ds
 
     -- sequence element
-    elm:track(map)
+    do
+      local tbl, map = elm:track(map)
+      if tbl then return tbl, map end -- stop (e.g. slink)
+    end
     if save and elm:is_selected(observe) then
       local name, kind in elm
-      fill_table(tbl, name, kind, map, s+l, l)
+      fill_mtable(tbl, name, kind, map, s+l, l)
     end
     s  = s+l
     ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0
