@@ -48,23 +48,17 @@ __help['track: references'] = [=[
               KEK report 2002-3.
 [Forest06]    E. Forest, "Geometric Integration for Particle Accelerators",
               J.Phys. A, Math.Gen. 39 (2006) 5321-5377.
+[Ripken95]    K. Heinemann, G. Ripken, and F. Schmidt. "Construction of
+              Nonlinear Symplectic Six-dimensional Thin-lens Maps by
+              Exponentiation", Technical Report 95-189, DESY, 1995.
+[SixTrack]    R. De. Maria et al., "SixTrack Physics Manual", CERN,
+              http://cern.ch/SixTrack/doc/physics_manual/sixphys.pdf, Sep. 2016.
 [Yoshida90]   H. Yoshida, "Construction of higher order symplectic integrators",
               Phys.Let. A, Volume 150, number 5,6,7.
 [Burkhardt13] H. Burkhardt et al., "Improved Teapot Method and Tracking with
               Thick Quadrupoles for the LHC and its Upgrade", IPAC 2013.
-[Ripken95]    K. Heinemann, G. Ripken, and F. Schmidt. "Construction of
-              Nonlinear Symplectic Six-dimensional Thin-lens Maps by
-              Exponentiation", Technical Report 95-189, DESY, 1995.
-[SixTrackPG]  R. De. Maria et al., "SixTrack Physics Manual", CERN,
-              September, 2016.
-[MADX PTC]    MAD-X PTC Code, rev. 6099
+[MADX-PTC]    MAD-X PTC Code, rev. 6099
 ]=]
-
-__help['track: straight drift map'] = [[
-  [1] Drift Space, ch. 3.1, p.86, eq.(3.13-3.18)
-  [2] Drift, ch. 10.4.3.1, eq. (10.23a-10.23c)
-  [3] PTC, Function DRIFTR in file Sh_def_kind.f90, same formula as [1]
-]]
 
 __help['track: straight maps'] = [[
   [2] p.352, ch. 12.1
@@ -90,32 +84,6 @@ __help['track: straight matrix-kick'] = [[
   [2] p.358, ch. 12.2.2 Drift-Kick Split, drift in polar coordinates
   [3] p. 76, PTC, Function SPROTR in file Sh_def_kind.f90)
 ]]
-
-__help['track: curved drift map'] = [[
-  [2] p.358-361, ch. 12.2.2 Drift-Kick Split, drift in polar coordinates
-  [3] p. 76, PTC, Function SPROTR in file Sh_def_kind.f90)
-]]
-
-__help['track: curved kick map'] = [[
-  [2] p.358-361, ch. 12.2.2 Drift-Kick Split, kick in polar coordinates, eq. (12.18a-12.18f)
-  [3] p. 76, PTC, Function SKICK in file Sh_def_kind.f90
-  [7] Bending magnet, ch.4.3 p. 22, eq.(4.12) and its solution --not PTC map
-  [8] Thin Dipole, ch.3.2.2, eq. (48-50) - not PTC map
-]]
-
-__help['track: kick'] = [[
-  [2] p.354, ch. 12.1.3
-  [2] p. 72, Section K.4.2,
-  [3] PTC, Function KICKEXR in file Sh_def_kind.f90)
-  [3] PTC, Function KICKR in file Sh_def_kind.f90)
-]]
-__help['track: multipole kick map'] = [[
-  [7] Thin Lens Transport Map, ch. 4.6.2, p.26, eq.(4.23) and its solution
-  [8] Thin multipole, ch. 3.5 , eq. (91-94)
-  [3] PTC, Function KICKTR in file Sh_def_kind.f90
-]]
-
-
 
 --[[TODO:
 -Add charge, direction, mass(?)
@@ -216,6 +184,144 @@ local function get_kmult (elm, m, l) -- l>0
   return nmul
 end
 
+-- drifts ---------------------------------------------------------------------o
+
+__help['track: exact straight drift'] = [[
+  [Wolski14] p.86, ch. 3.1, eq. 3.13-3.18
+  [Forest98] p.306, ch. 10.4.3.1, eq. 10.23a-10.23c
+  [MADX-PTC] Function DRIFTR in file Sh_def_kind.f90
+]]
+
+local function straight_drift (_, m, l) -- exact
+  if abs(l) < minlen then return end
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+
+  m.x = x + px*l_pz
+  m.y = y + py*l_pz
+  m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+__help['track: exact polar drift'] = [[
+  [Forest02] p.76, ch. K.4.9, (general explaination)
+  [Forest06] p.5365, eq. 127, exact drift
+  [MADX-PTC] Function SPROTR in file Sh_def_kind.f90
+]]
+
+local function polar_drift (elm, m, l) -- exact
+  local angle in elm
+  if abs(angle) < minang then return straight_drift(_,m,l) end
+
+  local rho = elm.l/(angle*m.dir)
+  local angle = l/rho
+  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  local _pz = 1/pz
+  local ptt = 1 - ta*px*_pz
+  local xr  = (x+rho)*ta*_pz
+
+  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
+  m.px = ca*px + sa*pz
+  m.y  = y + xr*py/ptt
+  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
+end
+
+-- kicks ----------------------------------------------------------------------o
+
+__help['track: generic thin kick'] = [[
+  [MADX-PTC] Function KICKTR in file Sh_def_kind.f90
+]]
+
+-- Special case TO BE REVIEWED !!!
+local function thin_kick (elm, m, _) -- l=0 (ignored)
+  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
+  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
+
+  local x, px, y, py, dirchg, nmul, knl, ksl in m -- BUG: nmul set by last getmul
+  local byt
+  local by = knl[nmul] / fact(nmul-1)
+  local bx = ksl[nmul] / fact(nmul-1)
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + knl[i] / fact(i-1)
+    bx  = y*by + x*bx + ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = px - dirchg*by + dirchg*knl1
+  m.py = py + dirchg*bx - dirchg*ksl1
+
+  if knl1 ~= 0 or ksl1 ~= 0 then
+    local t, pt in m
+    local _beta = 1/m.beam.beta
+    local pz = sqrt(1 + 2*_beta*pt + pt^2)
+
+    local l = elm.lrad or 0
+    if l ~= 0 then -- dipole focusing and deltap
+      m.px = m.px - knl1^2*x/l + dirchg*knl1*(pz-1)
+      m.py = m.py - ksl1^2*y/l + dirchg*ksl1*(pz-1)
+    end
+--    m.t = t + dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
+    m.t = t - dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
+  end
+end
+
+__help['track: straight kick'] = [[
+  [Forest98] p.354, ch. 12.1.3, eq. 12.6
+  [MADX-PTC] Function KICKEXR in file Sh_def_kind.f90
+  [SixTrack] p.12, ch. 3.5 (thin multipole), eq. 91-94
+  [Ripken95] p.26, ch. 4.6.2, eq. 4.23 (and solution)
+]]
+
+local function straight_kick (elm, m, l) -- l>0
+  local x, px, y, py, nmul, knl, ksl, dirchg in m
+  local lw, byt = elm.l>minlen and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = px - dirchg*by
+  m.py = py + dirchg*bx
+end
+
+__help['track: polar kick'] = [[
+  [Forest98] p. 358-361, ch. 12.2.2, eq. 12.18a-12.18f
+  [Forest02] p. 76
+  [Forest06] ??
+  [MADX-PTC] Function SKICKR in file Sh_def_kind.f90
+  [Ripken95] p. 22, ch. 4.3 (bending magnet) eq. 4.12 (and solution)
+  [SixTrack] Thin Dipole, ch. 3.2.2, eq. 48-50
+]]
+
+local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
+  local x, px, y, py, nmul, knl, ksl, dirchg in m
+  local lw, byt = elm.l>minlen and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  local angle, k0 in elm
+--  m.px = px - dirchg*by*(1 + angle/elm.l*x) -- only angle
+--  m.py = py + dirchg*bx*(1 + angle/elm.l*x)
+-- stability problem???? differences with a simple test SBEND
+  m.px = px - dirchg*by*(1 + k0*x) -- only angle
+  m.py = py + dirchg*bx*(1 + k0*x)
+end
+
 -- patches --------------------------------------------------------------------o
 
 -- S-rotation (roll, tilt)
@@ -271,15 +377,11 @@ end
 -- Translation (dz treated as drift length)
 
 local function translate (_, m, dx, dy, dz)
-  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
+  local dir in m
 
-  local x, px, y, py, t, pt, T, dir in m
-  local _beta = 1/m.beam.beta
-  local l_pz = dz/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
-
-  m.x = x + px*l_pz - dx*dir
-  m.y = y + py*l_pz - dy*dir
-  m.t = t - (_beta+pt)*l_pz + (1-T)*dz*_beta -- ?? see drift
+  straight_drift(_, m, dz)
+  m.x = m.x - dx*dir
+  m.y = m.y - dy*dir
 end
 
 -- Changeref/Forward/Backward patches
@@ -334,113 +436,16 @@ element.changeref :set_functions {
   track = \e,m -> changeref(e, m),
 }
 
--- drifts ---------------------------------------------------------------------o
+-- sbend ----------------------------------------------------------------------o
 
-local function straight_drift (_, m, l) -- exact
-  if l < minlen then return end
+__help['track: exact sbend'] = [[
+  [Forest98] p.360, ch. 12.2.3
+  [Forest02] p.76 (general explaination)
+  [Forest06] p.5365, eq. 126, exact drift
+  [MADX-PTC] Function SPROTR in file Sh_def_kind.f90
+]]
 
-  local x, px, y, py, t, pt, T in m
-  local _beta = 1/m.beam.beta
-  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
-
-  m.x = x + px*l_pz
-  m.y = y + py*l_pz
-  m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-end
-
-local function polar_drift (elm, m, l) -- [Forest06] p.5365, eq. 127, exact
-  local angle in elm                   -- [PTC] SSECH1: SPROT(DKD) or SSEC(MKM)
-  if abs(angle) < minang then return straight_drift(_,m,l) end
-
-  local rho = elm.l/(angle*m.dir)
-  local angle = l/rho
-  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
-
-  local x, px, y, py, t, pt, T in m
-  local _beta = 1/m.beam.beta
-  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local _pz = 1/pz
-  local ptt = 1 - ta*px*_pz
-  local xr  = (x+rho)*ta*_pz
-
-  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + xr*py/ptt
-  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
-end
-
--- kicks ----------------------------------------------------------------------o
-
-local function thin_kick (elm, m, l) -- l=0 (ignored)   TO REVIEW!!!
-  local l = elm.lrad or l
-  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
-  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
-
-  local x, px, y, py, dirchg, nmul, knl, ksl in m -- BUG: nmul set by last getmul
-  local byt
-  local by = knl[nmul] / fact(nmul-1)
-  local bx = ksl[nmul] / fact(nmul-1)
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + knl[i] / fact(i-1)
-    bx  = y*by + x*bx + ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = px - dirchg*by + dirchg*knl1
-  m.py = py + dirchg*bx - dirchg*ksl1
-
-  if knl1 ~= 0 or ksl1 ~= 0 then
-    local t, pt in m
-    local _beta = 1/m.beam.beta
-    local pz = sqrt(1 + 2*_beta*pt + pt^2)
-    if lrad ~=0 then -- dipole focusing and deltap
-      m.px = m.px - knl1^2*x/lrad + dirchg*knl1*(pz-1)
-      m.py = m.py - ksl1^2*y/lrad + dirchg*ksl1*(pz-1)
-    end
---    m.t = t + dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
-    m.t = t - dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
-  end
-end
-
-local function straight_kick (elm, m, l) -- [PTC] KICKEXR: KICKR + KICKTR(mult)
-  local x, px, y, py, dirchg, nmul, knl, ksl in m
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = px - dirchg*by
-  m.py = py + dirchg*bx
-end
-
-local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
-  local x, px, y, py, dirchg, nmul, knl, ksl in m
-  local lw, byt = l/elm.l
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  local angle, k0 in elm
---  m.px = px - dirchg*by*(1 + angle/elm.l*x) -- only angle
---  m.py = py + dirchg*bx*(1 + angle/elm.l*x)
--- stability problem???? differences with a simple test SBEND
-  m.px = px - dirchg*by*(1 + k0*x) -- only angle
-  m.py = py + dirchg*bx*(1 + k0*x)
-end
-
--- sbend fringe ---------------------------------------------------------------o
-
-local function face_track(elm, m, h)
+local function sbend_face (elm, m, h)
   local x, px, y, py, t, pt, dir in m
   local k0 = elm.k0 or 0
   local _beta = 1/m.beam.beta
@@ -469,9 +474,9 @@ local function face_track(elm, m, h)
   m.t  = t
 end
 
-local function wedge_track(elm, m, e)
+local function sbend_wedge (elm, m, e)
   local x, px, y, py, t, pt, T, dir in m
-  local k0   = elm.k0 or 0
+  local k0 = elm.k0 or 0
   local _beta = 1/m.beam.beta
   local b1 = dir*k0
   local sa, ca, sa2 = sin(e), cos(e), sin(2*e)
@@ -492,9 +497,9 @@ local function wedge_track(elm, m, e)
   m.t  = t - yt*(_beta + pt)
 end
 
-local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
+local function sbend_fringe_field (elm, m, pos)
+-- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
 --  TODO: FINT and FINTX to have different FINT at entrance /exit
-
   local x, px, y, py, t, pt, T, dir in m
   local k0   = elm.k0 or 0
   local _beta = 1/m.beam.beta
@@ -507,7 +512,7 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
       fsad = 1/(fint*hgap*2)/36
   end
 
-  local b  = m.beam.charge*k0
+  local b = m.beam.charge*k0
   if pos == 'exit' then
      b = -b
   end
@@ -558,38 +563,35 @@ local function fringe_dipole(elm, m, pos) -- Lee-Whiting formula, E. Forest ch 1
   -- soft edge
   m.py = m.py - 4*c3*m.y^3
   m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
-
 end
 
-local function sfringe_track(elm, m, pos) -- sbend fringe field
-  --TODO: to add dir == -1
-  -- e: edge angle
-  if elm.kill_fringe     == 1               or
-     elm.kill_ent_fringe == 1 and pos ==  'entry' or
-     elm.kill_ext_fringe == 1 and pos ==  'exit' then return end
+local function sbend_fringe (elm, m, pos)
+  if elm.kill_fringe then return end
 
-  if pos == 'entry' then
+  if pos == 'entry' and not elm.kill_ent_fringe then
     local e, h = elm.e1 or 0, elm.h1 or 0
-    if e and abs(e) >= minang then
-      yrot_track    (elm, m,  e)
-      face_track    (elm, m,  h)
-      fringe_dipole (elm, m,  'entry')
-      wedge_track   (elm, m, -e)
+    if abs(e) < minang then
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'entry')
     else
-      face_track    (elm, m,  h)
-      fringe_dipole (elm, m,  'entry')
+      yrotation          (elm, m,  e)
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'entry')
+      sbend_wedge        (elm, m, -e)
     end
-  elseif pos == 'exit' then
+
+  elseif pos == 'exit' and not elm.kill_exi_fringe then
     local e, h = elm.e2 or 0, elm.h2 or 0
-    if e and abs(e) >= minang then
-      wedge_track   (elm, m, -e)
-      fringe_dipole (elm, m, 'exit')
-      face_track    (elm, m,  h)
-      yrot_track    (elm, m,  e)
+    if abs(e) < minang then
+      sbend_fringe_field (elm, m, 'exit')
+      sbend_face         (elm, m,  h)
     else
-      fringe_dipole (elm, m, 'exit')
-      face_track    (elm, m,  h)
+      sbend_wedge        (elm, m, -e)
+      sbend_fringe_field (elm, m, 'exit')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
     end
+  else error("invalid argument #3 ('entry' or 'exit' expected")
   end
 end
 
@@ -1036,14 +1038,14 @@ local function make_mflow (self)
   t  = t  or X0.t  or X0[5] or 0
   pt = pt or X0.pt or X0[6] or 0
 
-  local nst, method, total_path, save, drift in self
+  local nstep, nslice, method, total_path, save, drift in self
   local len, dir = #sequence, sequence.direction
   local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,           -- initial vars
            nmul=0, knl={}, ksl={},                            -- internal vars
            s=0, ds=0, len=len, dir=dir, ndft=0,               -- internal status
-           nst=nst, method=method,                            -- user setup
+           nst=nstep, nsl=nslice, method=method,              -- user setup
            seq=sequence, save=save, drift=save and drift,     -- user status
            beam=beam, dirchg = dir*beam.charge,               -- user beam
            [_trk]=_trk }
@@ -1103,7 +1105,7 @@ end
 
 local track = Command 'track' {
   X0={0,0,0,0,0,0}, nturn=0, drift=true, save=true,
-  nst=1, method='simple', total_path=false,
+  nstep=1, nslice=2, method='simple', total_path=false,
   exec=exec, [_trk]=true,
 } :set_readonly()
 
