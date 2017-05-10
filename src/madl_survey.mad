@@ -44,116 +44,168 @@ SEE ALSO
 -- locals ---------------------------------------------------------------------o
 
 local abs, sin, cos            in math
-local vector, matrix           in MAD
+local vector, matrix, element  in MAD
 local is_nil, is_sequence      in MAD.typeid
 local minlen, minang           in MAD.constant
 
--- implementation -------------------------------------------------------------o
+-- special --------------------------------------------------------------------o
+
+local function empty_survey () end
 
 local function invalid_survey (elm)
   error(string.format("invalid element %s of kind %s with length %s",
                       elm.name, elm.kind, elm.l))
 end
 
-local function empty_survey ()
-end
+element.special_element :set_functions { survey =   empty_survey }
+element.  extra_element :set_functions { survey = invalid_survey }
 
--- Update adjusted angles
+-- angles adjustment ----------------------------------------------------------o
 
 local function update_angles (m)
-  local A in m
-  A[1], A[2], A[3] = m.W:torotmad(A[1], A[2], A[3])
+  local A, W in m
+  A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
 end
 
--- drift
+-- patches --------------------------------------------------------------------o
 
-local function drift_surv (m, l)
+-- S-rotation (roll, tilt)
+
+local function srotation (_, m, angle) -- Rz(angle)
+  if abs(angle) < minang then return end
+
+  m.S :rotz(angle*m.dir)
+  m.W = m.W * m.S
+end
+
+-- Y-rotation (yaw)
+
+local function yrotation (_, m, angle) -- Ry(-angle)
+  if abs(angle) < minang then return end
+
+  m.S :roty(-angle*m.dir)
+  m.W = m.W * m.S
+end
+
+-- X-rotation (pitch)
+
+local function xrotation (_, m, angle) -- Rx(-angle)
+  if abs(angle) < minang then return end
+
+  m.S :rotx(-angle*m.dir)
+  m.W = m.W * m.S
+end
+
+-- Translation (ds treated as drift length)
+
+local function translate (_, m, dx, dy, dz)
+  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
+
+  m.R :fill {dx*m.dir, dy*m.dir, dz}
+  m.V = m.W * m.R + m.V
+end
+
+-- Changeref/Forward/Backward patches
+
+local function changeref (elm, m)
+  local x, y, z, theta, phi, psi in elm
+  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
+  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
+  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
+  translate(elm, m, x or 0, y or 0, z or 0)
+end
+
+local function forward_patch (elm, m)
+  local x, y, z, theta, phi, psi in elm
+  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
+  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
+  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
+  translate(elm, m, x     or 0, y or 0, z or 0)
+end
+
+local function backward_patch (elm, m)
+  local x, y, z, theta, phi, psi in elm
+  translate(elm, m, x     or 0, y or 0, z or 0)
+  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
+  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
+  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
+end
+
+-- patch_element(s)
+
+element.srotation :set_functions {
+  survey = \e,m -> srotation(e, m, e.psi or e.angle),
+}
+
+element.yrotation :set_functions {
+  survey = \e,m -> yrotation(e, m, e.theta or e.angle),
+}
+
+element.xrotation :set_functions {
+  survey = \e,m -> xrotation(e, m, e.phi or e.angle),
+}
+
+element.translation :set_functions {
+  survey = \e,m -> translate(e, m, e.dx or 0, e.dy or 0, e.dz or 0),
+}
+
+element.changeref :set_functions {
+  survey = \e,m -> changeref(e, m),
+}
+
+element.patch_element :set_functions {
+  survey = \e,m -> invalid_survey(e), -- enforce definition for new children
+}
+
+-- drifts ---------------------------------------------------------------------o
+
+local function straight_drift (_, m, l)
+  if l < minlen then return end
+
   m.R :fill {0, 0, l}
   m.V = m.W * m.R + m.V
 end
 
--- patches
-
-local function srot_survey(elm, m) -- Rz(angle)
-  m.S :rotz(elm.angle * m.dir)
-  m.W = m.W * m.S
-end
-
-local function yrot_survey(elm, m) -- Ry(-angle)
-  m.S :roty(-elm.angle * m.dir)
-  m.W = m.W * m.S
-end
-
-local function xrot_survey(elm, m) -- Rx(angle)
-  m.S :rotx(elm.angle * m.dir)
-  m.W = m.W * m.S
-end
-
-local function tran_survey(elm, m)
-  local dx, dy, ds in elm
-  local dir in m
-
-  m.R :fill {dx*dir, dy, ds}
-  m.V = m.W * m.R + m.V
-end
-
-local function patch_survey(elm, m) -- Ry(th).Rx(-phi).Rz(psi)
-  local dx, dy, ds, theta, phi, psi in elm         -- phi  : Elevation angle.
-  local dir in m                                   -- theta: Azimuthal angle.
-                                                   -- psi  : Roll      angle.
-  m.R :fill {dx*dir, dy, ds}
-  m.S :rotmad(theta*dir, phi*dir, psi*dir)
-
-  m.V = m.W * m.R + m.V
-  m.W = m.W * m.S
-end
+element.drift_element :set_functions {
+  survey = \e,m -> straight_drift(e, m, e.l)
+}
 
 -- frame kinds ----------------------------------------------------------------o
 
 local function thin_survey (elm, m) -- e.g. multipole
-  local angle, tilt in elm
+  local angle in elm
+  if abs(angle) < minang then return end
+
   local dir in m
+  m.S :roty(-angle * dir)
 
-  if abs(angle) >= minang then
-    m.S :roty(-angle * dir)
-
-    if abs(tilt) >= minang then
-      m.T :rotz(tilt * dir)
-      m.S = m.T * m.S * m.T:t()
-    end
-
-    m.W = m.W * m.S
+  local tilt in elm
+  if abs(tilt) >= minang then
+    m.T :rotz(tilt * dir)
+    m.S = m.T * m.S * m.T:t()
   end
+
+  m.W = m.W * m.S
 end
 
-local function strait_survey (elm, m) -- e.g. rbend, quadrupole
-  local l, angle in elm
-
-  if abs(angle) >= minang then
-    error("invalid strait element angle (too curved): " .. elm.name)
-  end
-
-  if l >= minlen then
-    drift_surv(m, l)
-  end
-end
-
-local function curved_survey (elm, m) -- e.g. sbend
-  local l, angle, tilt in elm
-  local dir in m
-  local rho
-
+local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
+  local l in elm
   if l < minlen then
-    error("invalid curved element length (too short): " .. elm.name)
-  elseif abs(angle) < minang then
-    error("invalid curved element angle (too strait): " .. elm.name)
+    return thin_survey(elm, m)
   end
 
+  local angle in elm
+  if abs(angle) < minang then
+    return straight_drift(elm, m, l)
+  end
+
+  local dir in m
   angle = angle*dir
-  rho   = l/angle
+  local rho = l/angle
   m.R :fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
   m.S :roty(-angle)
 
+  local tilt in elm
   if abs(tilt) >= minang then
     m.T :rotz(tilt*dir)
     m.R = m.T * m.R
@@ -164,24 +216,8 @@ local function curved_survey (elm, m) -- e.g. sbend
   m.W = m.W * m.S
 end
 
--- load survey maps into elements ---------------------------------------------o
-
-local element in MAD
-
-element.    thin_element :set_functions { survey =    thin_survey }
-element.   patch_element :set_functions { survey =   patch_survey }
-element.   drift_element :set_functions { survey =  strait_survey }
-element.  strait_element :set_functions { survey =  strait_survey }
-element.  curved_element :set_functions { survey =  curved_survey }
-element. special_element :set_functions { survey =   empty_survey }
-element.   extra_element :set_functions { survey = invalid_survey }
-
--- specializations
-
-element.       srotation :set_functions { survey =    srot_survey }
-element.       xrotation :set_functions { survey =    xrot_survey }
-element.       yrotation :set_functions { survey =    yrot_survey }
-element.     translation :set_functions { survey =    tran_survey }
+element. thin_element :set_functions { survey =  thin_survey }
+element.thick_element :set_functions { survey = thick_survey }
 
 -- survey command -------------------------------------------------------------o
 
@@ -260,7 +296,7 @@ local function exec (self)
 
     -- implicit drift
     if ds >= minlen then
-      drift_surv(map, ds)
+      straight_drift(elm, map, ds)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
         fill_table(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
@@ -295,3 +331,4 @@ return {
   survey = survey,
   __help = __help,
 }
+
