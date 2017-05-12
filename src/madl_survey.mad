@@ -43,10 +43,12 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local abs, sin, cos            in math
-local vector, matrix, element  in MAD
-local is_nil, is_sequence      in MAD.typeid
-local minlen, minang           in MAD.constant
+local vector, matrix, element, mtable, Command                  in MAD
+local is_nil, is_sequence                                       in MAD.typeid
+local minlen, minang                                            in MAD.constant
+local observe                                                   in element.flags
+
+local abs, sin, cos                                             in math
 
 -- special --------------------------------------------------------------------o
 
@@ -71,15 +73,11 @@ end
 -- drifts ---------------------------------------------------------------------o
 
 local function straight_drift (_, m, l)
-  if l < minlen then return end
+  if abs(l) < minlen then return end
 
   m.R :fill {0, 0, l}
   m.V = m.W * m.R + m.V
 end
-
-element.drift_element :set_functions {
-  survey = \e,m -> straight_drift(nil, m, e.l)
-}
 
 -- patches --------------------------------------------------------------------o
 
@@ -185,13 +183,15 @@ local function thin_survey (elm, m) -- e.g. multipole
   m.W = m.W * m.S
 end
 
+local function drift_survey (elm, m) -- e.g. monitor
+  straight_drift(nil, m, elm.l)
+end
+
 local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  local l in elm
-  if l < minlen then
+  local l, angle in elm
+  if abs(l) < minlen then
     return thin_survey(elm, m)
   end
-
-  local angle in elm
   if abs(angle) < minang then
     return straight_drift(nil, m, l)
   end
@@ -214,12 +214,10 @@ local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
 end
 
 element. thin_element :set_functions { survey =  thin_survey }
+element.drift_element :set_functions { survey = drift_survey }
 element.thick_element :set_functions { survey = thick_survey }
 
 -- survey command -------------------------------------------------------------o
-
-local mtable, Command in MAD
-local observe in MAD.element.flags
 
 local _srv = {}
 
@@ -239,14 +237,13 @@ local function make_mtable (self)
   } :reserve(math.min(nrow, 1e5))
 end
 
-local function fill_mtable (tbl, name, kind, m, s, l, ang, til)
-  local V, A, dir in m
+local function fill_mtable (tbl, name, kind, m, l, ang, til)
+  local V, A, s, dir in m
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
-  ang = ang and ang ~= 0 and ang*dir or 0
-  til = til and til ~= 0 and til*dir or 0
+  ang, til = (ang or 0)*dir, (til or 0)*dir
   -- keep order!
-  tbl = tbl + { name, kind, s, l, ang, til, x, y, z, th, phi, psi, psi+til }
+  tbl = tbl + { name, kind, s+l, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
 local function make_mflow (self)
@@ -293,40 +290,40 @@ local function exec (self)
   assert(is_nil(tbl) or tbl[_srv] == _srv, "invalid survey mtable")
   assert(               map[_srv] == _srv, "invalid survey mflow" )
 
-  local s, ds, len, ndft, save, drift in map
+  local len, ndft, save, drift in map
   local range, nturn in self
 
   -- affine tracking
   for i,elm in seq:iter(range, nturn) do
-    local l in elm
 
     -- implicit drift
+    local ds in map
     if ds >= minlen then
       straight_drift(nil, map, ds)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
-        fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, s+ds, ds)
+        fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, ds)
       end
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            ds, seq.name, elm.name, s))
+            ds, seq.name, elm.name, map.s))
     end
-    s = s+ds
+    map.s, map.ds = map.s+ds, 0
 
     -- sequence element
+    local l in elm
     do
       local tbl, map = elm:survey(map)
       if tbl then return tbl, map end -- stop (e.g. slink)
     end
     update_angles(map)
     if save and elm:is_selected(observe) then
-      local name, kind, angle, tilt in elm
-      fill_mtable(tbl, name, kind, map, s+l, l, angle, tilt)
+      fill_mtable(tbl, elm.name, elm.kind, map, l, elm.angle, elm.tilt)
     end
-    s  = s+l
-    ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0
+    map.s = map.s+l
+    map.ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0 -- patch z+dz?
   end
-  map.s, map.ds, map.ndft = s, ds, ndft
+  map.ndft = ndft
 
   return tbl, map
 end
