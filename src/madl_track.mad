@@ -120,6 +120,63 @@ i.e. quad only has k1 and not k0, k2 or???
  DKD (model = 1 ): STREX ; MKM (model = 2): TKTF
 ]]
 
+__help['track: classification of drift-kick models versus thick elements'] = [=[
+              drift kind        kick kind        fringe kind
+- angle~=0
+  sbend:      sbend_drift       polar_kick       sbend_fringe       sbend
+  combined:   combined_drift    combined_kick    sbend_fringe       KTK, TKTF
+
+- angle=0
+  default:    solenoid_drift    cavity_kick      straight_fringe
+  rbend:      rbend_drift       cavity_kick      straight_fringe
+  quad:       quad_drift        quad_kick        straight_fringe
+  cav:        solenoid_drift    cavity_kick      cavity_fringe
+  twcav:      twcav_drift       twcav_kick       twcavity_fringe
+
+- fallbacks:
+  sbend(ang=0)             => rbend
+  combined(ang=0)          => rbend
+
+  solenoid_drift(ks=0)     => rbend_drift
+  sbend_drift(k0=ang)      => polar_drift
+  rbend_drift(k0=0)        => straight_drift
+  quad_drift(k1=0)         => straight_drift
+  straight_drift(l=0)      => none
+
+  quad_kick(k1=0)          => cavity_kick
+  cavity_kick(v=0)         => straight_kick
+
+- remarks:
+  quad_drift  = quad matrix (linear!)
+  quad_kick   = ?? (straight + k1*(nonlinear - linear))
+  no solution for combined ang, k0 and ks ??
+]=]
+
+__help['track: drift-kick models and references'] = [=[
+                   PTC KIND                         References
+straight_drift:    DRIFT{R/P}
+rbend_drift:       SPAR{R/P}
+polar_drift:       SPROT{R/P}
+sbend_drift:       SSEC{R/P}
+quad_drift:        PUSHTKT7{R/P}
+combined_drift:    PUSHTKT7{R/P} ?                  KTK, TKTF
+solenoid_drift:    KICK_SOL{R/P}
+
+straight_kick:     KICKEX{R/P}
+combined_kick:     KICKPATH{R/P}+KICKTKT7{R/P}
+quad_kick:         KICKPATH{R/P}+KICKTKT7{R/P}
+polar_kick:        SKICK{R/P} (GETELECTRIC)
+cavity_kick:       KICK_CAV{R/P}
+
+twcavity:          CAVE{R/P}_TRAV => RK{2,4,6}_CAV{R/P}+...
+
+straight_fringe:   FRINGE_STRAIGHT{R/P}
+sbend_fringe:      FRINGE_TEAPOT{R/P}
+solenoid_fringe:   FRINGE_SOL{R/P}
+cavity_fringe:     FRINGECAV{R/P}
+twcavity_fringe:   FRINGE_CAV_TRAV{R/P}
+]=]
+
 -- locals ---------------------------------------------------------------------o
 
 local vector, matrix, element, mtable, Command                  in MAD
@@ -145,7 +202,22 @@ element.  patch_element :set_functions { track = invalid_track } -- no default
 element.  extra_element :set_functions { track = invalid_track } -- not valid
 element.special_element :set_functions { track =   empty_track } -- default
 
--- strengths retrieval --------------------------------------------------------o
+-- strengths and phases retrieval ---------------------------------------------o
+
+-- Load element phases in mflow
+
+local function get_phas (elm, m) -- l=0 (or ignored)
+  local nmul in m
+
+  if nmul >= 1 then
+    local pnl, dpnl = elm.pnl or {}, elm.dpnl or {}
+    local psl, dpsl = elm.psl or {}, elm.dpsl or {}
+    for i=1,nmul do
+      m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
+      m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
+    end
+  end
+end
 
 -- Load element multipoles in mflow
 
@@ -154,12 +226,16 @@ local function get_mult (elm, m) -- l=0 (or ignored)
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl)
 
-  for i=1,nmul do
-    m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
-    m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+  if nmul >= 1 then
+    m.nmul = nmul
+    for i=1,nmul do
+      m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+    end
+  else
+    m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
-  m.nmul = nmul
-  return nmul
+  m.ksi = (elm.ksi or 0) + (elm.dksi or 0)
 end
 
 -- Load element strengths and multipoles in mflow
@@ -178,37 +254,18 @@ local function get_kmult (elm, m, l) -- l~=0
   if nmul >= 1 then
     local kn = { k0 , k1 , k2 , k3  }
     local ks = { k0s, k1s, k2s, k3s }
+    m.nmul = nmul
     for i=1,nmul do
       m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
       m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
     end
+  else
+    m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
-  m.nmul = nmul
-  return nmul
+  m.ksi = (elm.ks or 0)*l + (elm.ksi or 0) + (elm.dksi or 0)
 end
 
 -- drifts ---------------------------------------------------------------------o
-
-__help['track: classification of drift-kick models versus elements'] = [=[
-                  drift kind        kick kind        fringe kind
-- angle~=0
-  sbend k0=ang:   polar_drift       polar_kick       sbend_fringe
-  sbend k0~ang:   sbend_drift       polar_kick       sbend_fringe
-
-- angle=0
-  default:        straight_drift    straight_kick
-  default ks:     solenoid_drift    straight_kick    solenoid_fringe ?
-  rbend k0:       rbend_drift       straight_kick    rbend_fringe    ?
-  quad k1:        quad_drift        quad_kick        quad_fringe     ?
-  cavity:         solenoid_drift    cavity_kick      cavity_fringe   ?
-
-- remarks:
-  rbend_drift = ?? (STREX, SPAR)
-  quad_drift  = quad matrix (linear!)
-  quad_kick   = ?? (straight + k1*(nonlinear - linear))
-  solenoid_drift with ks=0 => straight_drift
-  no solution for combined k0 and ks
-]=]
 
 __help['track: exact straight drift'] = [=[
   [Wolski14] p.86, ch. 3.1, eq. 3.13-3.18
@@ -228,24 +285,37 @@ local function straight_drift (_, m, l) -- exact, l~=0
   m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
 end
 
+__help['track: exact rbend drift'] = [=[
+Ref??
+]=]
+
+local function rbend_drift (elm, m, l)
+  local knl in m
+  if abs(knl[1]) < minang then
+    return straight_drift(nil,m,l)
+  end
+  error("NYI")
+end
+
 __help['track: exact solenoid drift'] = [=[
 Ref??
 ]=]
 
 local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
-  local ks in elm
-  if is_nil(ks) or ks == 0 then
-    return straight_drift(nil,m,l)
+  local ksi in m
+  if abs(ksi) < minang then
+    return rbend_drift(elm,m,l)
   end
 
-  local x, px, y, py, t, pt, T, dirchg in m
+  local x, px, y, py, t, pt, T, dirchg in m      -- USE KSI not KS.
   local _beta = 1/m.beam.beta
 
-  local bsol = dirchg*ks/2
-  local spx = px + bsol*y
-  local spy = py - bsol*x
+  local lw = abs(elm.l) > minlen and l/elm.l or 1
+  local bsol = dirchg*ksi*lw/2
+  local xp = px + bsol*y  -- ?? was not depending on l before, how is it possible?
+  local yp = py - bsol*x  -- ?? was not depending on l before, how is it possible?
 
-  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - spx^2 - spy^2) -- TODO: stability
+  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2) -- TODO: stability
   local angle = l_pz*bsol
 
   local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
@@ -276,8 +346,8 @@ local function polar_drift (elm, m, l) -- exact, l~=0, k0=angle
   end
 
   local rho = elm.l/(angle*m.dir)
-  local angle = l/rho
-  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
+  local ang = l/rho
+  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
 
   local x, px, y, py, t, pt, T in m
   local _beta = 1/m.beam.beta
@@ -298,25 +368,27 @@ __help['track: exact sbend drift'] = [=[
 
 local function sbend_drift (elm, m, l) -- exact, l~=0, k0~=angle
   local angle in elm
-  if abs(angle) < minang then
-    return straight_drift(nil,m,l)
+  local knl in m
+  if abs(angle - knl[1]) < minang then
+    return polar_drift(elm, m, l)
   end
+  error("NYI")
+end
 
-  local rho = elm.l/(angle*m.dir)
-  local angle = l/rho
-  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
+local function quad_drift (elm, m, l) -- better for fast tunes convergence
+  local knl in m
+  if abs(knl[2]) < minang then
+    return rbend_drift(nil,m,l)
+  end
+  error("NYI")
+end
 
-  local x, px, y, py, t, pt, T in m
-  local _beta = 1/m.beam.beta
-  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  local _pz = 1/pz
-  local ptt = 1 - ta*px*_pz
-  local xr  = (x+rho)*ta*_pz
-
-  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + xr*py/ptt
-  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
+local function combined_drift (elm, m, l) -- angle, k0, k1 (tunes)
+  local angle in elm
+  if abs(angle) < minang then
+    return rbend_drift(elm,m,l)
+  end
+  error("NYI")
 end
 
 -- kicks ----------------------------------------------------------------------o
@@ -365,7 +437,7 @@ __help['track: straight kick'] = [[
   [Ripken95] p.26, ch. 4.6.2, eq. 4.23 (and solution)
 ]]
 
-local function straight_kick (elm, m, l) -- l>=0
+local function straight_kick (elm, m, l) -- l~=0
   local x, px, y, py, nmul, knl, ksl, dirchg in m
   local lw, byt = abs(elm.l)>minlen and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
@@ -930,8 +1002,7 @@ end
 -- frame kinds ----------------------------------------------------------------o
 
 local function thin_track (elm, m) -- e.g. multipole
-  local nmul = get_mult(elm, m)
-  if nmul == 0 then return end
+  get_mult(elm, m)
 
   if ptc_compat == true then
     thin_kick_track  (elm, m, 0)
@@ -1052,7 +1123,8 @@ local function make_mflow (self)
   if not is_nil(mflow) then
     if sequence ~= mflow.seq then -- new sequence -> update
       local len, dir = #sequence, sequence.direction
-      mflow.seq, mflow.ds, mflow.len, mflow.dir = sequence, 0, len, dir
+      mflow.ds, mflow.iturn, mflow.dir, mflow.nlen = 0, 0, dir, len
+      mflow.seq = sequence
     end
     if beam ~= mflow.beam then -- new beam -> update
       mflow.beam, mflow.dirchg = beam, mflow.dir*beam.charge
@@ -1068,13 +1140,14 @@ local function make_mflow (self)
   t  = t  or X0.t  or X0[5] or 0
   pt = pt or X0.pt or X0[6] or 0
 
-  local nstep, nslice, method, total_path, save, drift in self
+  local save, drift, nstep, nslice, method, total_path in self
   local len, dir = #sequence, sequence.direction
-  local T = total_path == true and 1 or 0
+  local T = total_path == true and 0 or 1
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,           -- initial vars
-           nmul=0, knl={}, ksl={}, nelm=0, elm={},            -- internal vars
-           s=0, ds=0, len=len, dir=dir, ndft=0,               -- internal status
+           nmul=0, knl={}, ksl={}, pnl={}, psl={},            -- internal vars
+           s=0, ds=0, iturn=0, dir=dir, nlen=len, ndft=0,     -- internal status
+           nelm=0, elm={},                                    -- subelem stack
            nst=nstep, nsl=nslice, method=method,              -- user setup
            seq=sequence, save=save, drift=save and drift,     -- user status
            beam=beam, dirchg = dir*beam.charge,               -- user beam
@@ -1094,7 +1167,7 @@ local function exec (self)
   assert(is_nil(tbl) or tbl[_trk] == _trk, "invalid track table")
   assert(               map[_trk] == _trk, "invalid track map"  )
 
-  local len, ndft, save, drift in map
+  local nlen, ndft, save, drift in map
   local range, nturn in self
 
   -- dynamic tracking
@@ -1124,7 +1197,11 @@ local function exec (self)
       fill_mtable(tbl, elm.name, elm.kind, map, l)
     end
     map.s = map.s+l
-    map.ds = i < len and seq:spos(i+1) - (seq:spos(i)+l) or 0 -- patch z+dz?
+    if i < len then
+      map.ds = seq:spos(i+1) - (seq:spos(i)+l) -- patch z+dz?
+    else
+      map.ds, map.iturn = 0, map.iturn+1
+    end
   end
   map.ndft = ndft
 
