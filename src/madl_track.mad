@@ -122,34 +122,43 @@ i.e. quad only has k1 and not k0, k2 or???
 
 __help['track: classification of drift-kick models versus thick elements'] = [=[
               drift kind        kick kind        fringe kind
-- angle~=0
-  sbend:      sbend_drift       polar_kick       sbend_fringe       sbend
-  combined:   combined_drift    combined_kick    sbend_fringe       KTK, TKTF
-
 - angle=0
   default:    solenoid_drift    cavity_kick      straight_fringe
   rbend:      rbend_drift       cavity_kick      straight_fringe
   quad:       quad_drift        quad_kick        straight_fringe
+  solenoid:   solenoid_drift    cavity_kick      solenoid_fringe
   cav:        solenoid_drift    cavity_kick      cavity_fringe
   twcav:      twcav_drift       twcav_kick       twcavity_fringe
+- angle~=0
+  sbend:      sbend_drift       polar_kick       sbend_fringe       sbend
+  combined:   combined_drift    combined_kick    sbend_fringe       KTK, TKTF
 
 - fallbacks:
-  sbend(ang=0)             => rbend
-  combined(ang=0)          => rbend
-
-  solenoid_drift(ks=0)     => rbend_drift
-  sbend_drift(k0=ang)      => polar_drift
+  straight_drift(l=0)      => (none)
   rbend_drift(k0=0)        => straight_drift
-  quad_drift(k1=0)         => straight_drift
-  straight_drift(l=0)      => none
+  solenoid_drift(ks=0)     => rbend_drift
+  quad_drift(k1=0)         => solenoid_drift
 
-  quad_kick(k1=0)          => cavity_kick
+  polar_drift(ang=0)       => solenoid_drift
+  sbend_drift(k0=ang)      => polar_drift
+  combined_drift(k1=0)     => sbend_drift
+
+  straight_kick(nmul=0)    => (none)
   cavity_kick(v=0)         => straight_kick
+  quad_kick(k1=0)          => cavity_kick
+
+  polar_kick(ang=0)        => cavity_kick
+  combined_kick(k1=0)      => polar_kick
+
+  straight_fringe(nmul=0)  => (none)
+  solenoid_fringe(ks=0)    => straight_fringe
+  cavity_fringe(v=0)       => straight_fringe
+  sbend_fringe(ang=0)      => straight_fringe
 
 - remarks:
   quad_drift  = quad matrix (linear!)
   quad_kick   = ?? (straight + k1*(nonlinear - linear))
-  no solution for combined ang, k0 and ks ??
+  no solution for combined ang and/or k0 and ks ??
 ]=]
 
 __help['track: drift-kick models and references'] = [=[
@@ -168,7 +177,7 @@ quad_kick:         KICKPATH{R/P}+KICKTKT7{R/P}
 polar_kick:        SKICK{R/P} (GETELECTRIC)
 cavity_kick:       KICK_CAV{R/P}
 
-twcavity:          CAVE{R/P}_TRAV => RK{2,4,6}_CAV{R/P}+...
+twcavity(drift+kick): CAVE{R/P}_TRAV => RK{2,4,6}_CAV{R/P}+...
 
 straight_fringe:   FRINGE_STRAIGHT{R/P}
 sbend_fringe:      FRINGE_TEAPOT{R/P}
@@ -186,6 +195,8 @@ local observe, ismoved                                          in element.flags
 
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
       sinc, fact                                                in MAD.gmath
+
+local minvolt = 1e-6
 
 local ptc_compat  = true
 
@@ -217,6 +228,8 @@ local function get_phas (elm, m) -- l=0 (or ignored)
       m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
     end
   end
+
+  m.v = elm.v or 0
 end
 
 -- Load element multipoles in mflow
@@ -348,6 +361,18 @@ local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
   m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
 end
 
+__help['track: pseudo-exact quad drift'] = [=[
+Ref??
+]=]
+
+local function quad_drift (elm, m, l) -- better for fast tunes convergence
+  local knl in m
+  if abs(knl[2]) < minang then
+    return solenoid_drift(elm,m,l)
+  end
+  error("NYI")
+end
+
 __help['track: exact polar drift'] = [=[
   [Forest02] p.76, ch. K.4.9, (general explaination)
   [Forest06] p.5365, eq. 127, exact drift -- WRONG: this is yrotation
@@ -357,7 +382,7 @@ __help['track: exact polar drift'] = [=[
 local function polar_drift (elm, m, l) -- exact, l~=0, k0=angle
   local angle in elm
   if abs(angle) < minang then
-    return straight_drift(nil,m,l)
+    return solenoid_drift(elm,m,l)
   end
 
   local rho = elm.l/(angle*m.dir)
@@ -385,23 +410,19 @@ local function sbend_drift (elm, m, l) -- exact, l~=0, k0~=angle
   local angle in elm
   local knl in m
   if abs(angle - knl[1]) < minang then
-    return polar_drift(elm, m, l)
+    return polar_drift(elm,m,l)
   end
   error("NYI")
 end
 
-local function quad_drift (elm, m, l) -- better for fast tunes convergence
-  local knl in m
-  if abs(knl[2]) < minang then
-    return rbend_drift(nil,m,l)
-  end
-  error("NYI")
-end
+__help['track: pseudo-exact combined drift'] = [=[
+Ref??
+]=]
 
 local function combined_drift (elm, m, l) -- angle, k0, k1 (tunes)
-  local angle in elm
-  if abs(angle) < minang then
-    return rbend_drift(elm,m,l)
+  local knl in m
+  if abs(knl[2]) < minang then
+    return sbend_drift(elm,m,l)
   end
   error("NYI")
 end
@@ -453,7 +474,10 @@ __help['track: straight kick'] = [[
 ]]
 
 local function straight_kick (elm, m, l) -- l~=0
-  local x, px, y, py, nmul, knl, ksl, dirchg in m
+  local nmul in m
+  if nmul == 0 then return end
+
+  local x, px, y, py, knl, ksl, dirchg in m
   local lw, byt = abs(elm.l)>minlen and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
@@ -468,6 +492,18 @@ local function straight_kick (elm, m, l) -- l~=0
   m.py = py + dirchg*bx
 end
 
+__help['track: exact cavity kick'] = [=[
+Ref??
+]=]
+
+local function cavity_kick (elm, m, l)
+  local v in m
+  if abs(v) < minvolt then
+    return straight_kick(elm,m,l)
+  end
+  error("NYI")
+end
+
 __help['track: polar kick'] = [[
   [Forest98] p. 358-361, ch. 12.2.2, eq. 12.18a-12.18f
   [Forest02] p. 76
@@ -478,6 +514,11 @@ __help['track: polar kick'] = [[
 ]]
 
 local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
+  local angle in elm
+  if abs(angle) < minang then
+    return cavity_kick(elm,m,l)
+  end
+
   local x, px, y, py, nmul, knl, ksl, dirchg in m
   local lw, byt = elm.l>minlen and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
@@ -489,12 +530,70 @@ local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
     by  = byt
   end
 
-  local angle, k0 in elm
---  m.px = px - dirchg*by*(1 + angle/elm.l*x) -- only angle
---  m.py = py + dirchg*bx*(1 + angle/elm.l*x)
--- stability problem???? differences with a simple test SBEND
-  m.px = px - dirchg*by*(1 + k0*x) -- only angle
-  m.py = py + dirchg*bx*(1 + k0*x)
+  -- TODO: modified, should be rechecked
+  local ang = lw*angle
+  m.px = px - dirchg*by*(1 + ang*x) -- was k0...
+  m.py = py + dirchg*bx*(1 + ang*x)
+end
+
+__help['track: pseudo-exact combined kick'] = [=[
+Ref??
+]=]
+
+local function combined_kick (elm, m, l) -- angle, k0, k1 (tunes)
+  local knl in m
+  if abs(knl[2]) < minang then
+    return polar_kick(elm,m,l)
+  end
+  error("NYI")
+end
+
+-- fringes --------------------------------------------------------------------o
+
+__help['track: straight fringe'] = [=[
+Ref??
+]=]
+
+local function straight_fringe (elm, m, l)
+  local nmul in m
+  if nmul == 0 then return end
+  error("NYI")
+end
+
+__help['track: solenoid fringe'] = [=[
+Ref??
+]=]
+
+local function solenoid_fringe (elm, m, l)
+  local ksi in m
+  if abs(ksi) < minang then
+    return straight_fringe(elm,m,l)
+  end
+  error("NYI")
+end
+
+__help['track: cavity fringe'] = [=[
+Ref??
+]=]
+
+local function cavity_fringe (elm, m, l)
+  local v in m
+  if abs(v) < minvolt then
+    return straight_fringe(elm,m,l)
+  end
+  error("NYI")
+end
+
+__help['track: sbend fringe'] = [=[
+Ref??
+]=]
+
+local function sbend_fringe (elm, m, l)
+  local angle in elm
+  if abs(angle) < minang then
+    return straight_fringe(elm,m,l)
+  end
+  error("NYI")
 end
 
 -- patches --------------------------------------------------------------------o
@@ -774,7 +873,7 @@ end
 
 -- cavities -------------------------------------------------------------------o
 
-local function cav_kick_track (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+local function cav_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   local x, px, y, py, t, pt, nmul, dirchg in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
