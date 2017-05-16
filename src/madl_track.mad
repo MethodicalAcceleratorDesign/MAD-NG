@@ -257,8 +257,10 @@ local function get_mult (elm, m) -- l=0 (or ignored)
   else
     m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
-  m.ksi = (elm.ksi or 0) + (elm.dksi or 0)
-  m.v   =  elm.v   or 0
+
+  m.ksi = (elm.ksi or 0) + (elm.dksi or 0) -- solenoid
+  m.krf = (elm.krf or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
+  m.v   = (elm.v   or 0) + (elm.dv   or 0) -- rf volts
 end
 
 -- Load element strengths, multipoles and volts in mflow
@@ -285,8 +287,10 @@ local function get_kmult (elm, m, l) -- l~=0
   else
     m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
+
   m.ksi = (elm.ks or 0)*l + (elm.ksi or 0) + (elm.dksi or 0)
-  m.v   =  elm.v  or 0
+  m.krf =                   (elm.krf or 0) + (elm.dkrf or 0)
+  m.v   =                   (elm.v   or 0) + (elm.dv   or 0)
 end
 
 -- drifts ---------------------------------------------------------------------o
@@ -333,7 +337,7 @@ local function rbend_drift (elm, m, l)
   m.x  = x + (ps-pz)/k0
   m.px = xp
   m.y  = y + py*xs                           -- SIGN??
-  m.t  = t + (_beta+pt)*xs + (1-T)*l*_beta   -- SIGN??
+  m.t  = t - (_beta+pt)*xs + (1-T)*l*_beta   -- SIGN??
 end
 
 __help['track: exact solenoid drift'] = [=[
@@ -386,7 +390,7 @@ end
 
 __help['track: exact polar drift'] = [=[
   [Forest02] p.76, ch. K.4.9, (general explaination)
-  [Forest06] p.5365, eq. 127, exact drift -- WRONG: this is yrotation
+  [Forest06] p.5365, eq. 127, exact drift -- WRONG: ref is an yrotation
   [MADX-PTC] Function SPROTR in file Sh_def_kind.f90
 ]=]
 
@@ -506,6 +510,8 @@ end
 __help['track: exact cavity kick'] = [=[
 Ref??
 ]=]
+
+-- local foward_names (remove local in definition)
 
 local function cavity_kick (elm, m, l)
   local v in m
@@ -1190,17 +1196,16 @@ end
 local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   local l, tilt, method in elm
 
---  if abs(l) < minlen then -- is it correct ??
---    return thin_track(elm, m)
---  end
-
   local drift_track, kick_track in elm
   local integrate = integrators[elm.method or m.method]
-  local has_patch = elm:test_flag(ismoved)
 
-  get_kmult(elm, m, l) -- load multipoles
+  if elm.shielded == true then
+    get_kmult(elm, m, l) -- load multipoles
+  else
+    add_kmult(elm, m, l)
+  end
 
-  if has_patch then
+  if has_patch(elm) then
     patch_track(elm, m, 'entry')
   end
 
@@ -1220,7 +1225,7 @@ local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
     srotation(elm, m, -tilt)
   end
 
-  if has_patch then
+  if has_patch(elm) then
     patch_track(elm, m, 'exit')
   end
 end
