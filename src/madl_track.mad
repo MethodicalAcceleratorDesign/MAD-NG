@@ -386,7 +386,7 @@ local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
   local lw = l/elm.l
 
 --  local bsol = ksi*lw*dirchg/2
-  local bsol = ks/elm.l*dirchg/2
+  local bsol = ks/elm.l*dirchg/2 -- to discuss
   local xp = px + bsol*y  -- ?? was not depending on l before, how is it possible?
   local yp = py - bsol*x  -- ?? was not depending on l before, how is it possible?
 
@@ -571,29 +571,127 @@ local function straight_kick (elm, m, l) -- l~=0
 end
 
 __help['track: exact cavity kick'] = [=[
-Ref??
+[MADX-PTC] Function KICCAVR in file Sh_def_kind.f90
 ]=]
 
 -- local foward_names (remove local in definition)
 
-local function cavity_kick (elm, m, l)
+local function cavity_kick (elm, m, l)--RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   local v in m
   if abs(v) < minvolt then
     return straight_kick(elm,m,l)
   end
-  error("NYI")
+
+  local x, px, y, py, t, pt, nmul, dirchg in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a , r  = elm.a or  0, elm.r or 0
+
+  local pc     = beam.pc
+  local volt_c = 1.0e-3
+  local freq, harm = elm.freq or 0, elm.harm or 0,
+  local volt, lag  = elm.volt or 0, elm.lag or 0
+  local nbessel    = elm.nbessel or  0
+
+  if freq == 0 and harm == 0 then
+    error("either frequency or harmonic number has to be defined for RF Cavity " .. elm.name)
+  end
+
+  local omega = twopi*freq / clight
+  local vl    = m.dirchg*l*volt*volt_c/pc
+  local df, f, r2 = 0, 1, 1
+
+  do i=1,nbessel
+    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+    dr2 =  r2*i
+    df  =  df + 2*dr2
+    r2  =  r2*(x^2+y^2)
+    f   =  f + r2
+  end
+
+  if nbessel > 0 then
+    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+  end
+
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+
+  local lw, byt = elm.l>0 and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
 end
 
 __help['track: pseudo-exact quad kick'] = [=[
-Ref??
+  [Forest98] p.354, ch. 12.1.3, eq. 12.6
+  [MADX-PTC] Function KICKPATHR+KICKTKT7R in file Sh_def_kind.f90
+
 ]=]
+local function quad_kickpath (elm, m, l)
+  local x, px, y, py, t, pt, dirchg, T in m
+  local _beta = 1/m.beam.beta
+
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  m.x  = x + l*px*(1/pz-1)
+  m.y  = y + l*py*(1/pz-1)                           
+  m.t  = t - l*(_beta+pt)/pz + (1-T)*l*_beta   
+
+end
 
 local function quad_kick (elm, m, l)
   local knl in m
   if abs(knl[2]) < minang then -- should never occur due to precedences
     return cavity_kick(elm,m,l)
   end
-  -- TODO: CEXACT/2 (KICKPATH) + KICKTKT7R + CEXACT/2 (KICKPATH)
+
+-- kickpath (c exact) 
+    quad_kickpath (elm, m, l/2)
+-- kicktkt7r
+  local x, px, y, py, t, pt, dirchg, T in m
+  local _beta = 1/m.beam.beta
+
+  local pz = sqrt(1 + 2*_beta*pt + pt^2) - 1 -- TODO: stability
+
+  m.px = px + lw*knl[1]*(pz - pt)*_beta
+  m.t  = t  - lw*knl[1]*((pt + _beta)/(1 + pz) - _beta)*x
+ 
+  local lw, byt = abs(elm.l)>minlen and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+   m.px = m.px - dirch*(by- lw*knl[1] - lw*knl[2]*x)
+   m.py = p.py + dirch*(bx-lw*knl[2]*y)
 end
 
 __help['track: polar kick'] = [[
@@ -642,7 +740,7 @@ end
 -- fringes --------------------------------------------------------------------o
 
 __help['track: straight fringe'] = [=[
-Ref??
+  [Forest98] p. 389, ch. 13.2.3, eq. 13.33a-13.33f
 ]=]
 
 local function straight_fringe (elm, m, l)
@@ -652,7 +750,7 @@ local function straight_fringe (elm, m, l)
 end
 
 __help['track: solenoid fringe'] = [=[
-Ref??
+
 ]=]
 
 local function solenoid_fringe (elm, m, l)
