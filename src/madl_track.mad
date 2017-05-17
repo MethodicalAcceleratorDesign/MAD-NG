@@ -270,9 +270,9 @@ local function get_mult (elm, m) -- l=0 (or ignored)
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl)
 
-  m.ksi = (elm.ksi or 0) + (elm.dksi or 0) -- solenoid
-  m.krf = (elm.krf or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
-  m.v   = (elm.v   or 0) + (elm.dv   or 0) -- rf volts
+  m.ksi = (elm.ksi  or 0) + (elm.dksi or 0) -- solenoid
+  m.krf = (elm.krf  or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
+  m.vrf = (elm.volt or 0) + (elm.dvrf or 0) -- rf volts
 
   if nmul >= 1 then
     for i=1,nmul do
@@ -302,9 +302,9 @@ local function get_kmult (elm, m, l) -- l~=0
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl, nkn, nks)
 
-  m.ksi = (elm.ks or 0)*l + (elm.ksi or 0) + (elm.dksi or 0)
-  m.krf =                   (elm.krf or 0) + (elm.dkrf or 0)
-  m.v   =                   (elm.v   or 0) + (elm.dv   or 0)
+  m.ksi = (elm.ks or 0)*l + (elm.ksi  or 0) + (elm.dksi or 0)
+  m.krf =                   (elm.krf  or 0) + (elm.dkrf or 0)
+  m.vrf =                   (elm.volt or 0) + (elm.dvrf or 0)
 
   if nmul >= 1 then
     local kn = { k0 , k1 , k2 , k3  }
@@ -395,14 +395,13 @@ local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
     return rbend_drift(elm,m,l)
   end
 
-  local x, px, y, py, t, pt, T, dirchg in m      -- USE KSI not KS.
+  local x, px, y, py, t, pt, T, dirchg in m
   local _beta = 1/m.beam.beta
-  local lw = l/elm.l
+  local _el = 1/elm.l
 
---  local bsol = ksi*lw*dirchg/2
-  local bsol = ksi/elm.l*dirchg/2 -- to discuss
-  local xp = px + bsol*y  -- ?? was not depending on l before, how is it possible?
-  local yp = py - bsol*x  -- ?? was not depending on l before, how is it possible?
+  local bsol = ksi*_el*dirchg/2
+  local xp = px + bsol*y
+  local yp = py - bsol*x
 
   local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2) -- TODO: stability
   local angle = l_pz*bsol
@@ -551,11 +550,11 @@ local function thin_kick (elm, m) -- l=0 (ignored)
 
     local l = elm.lrad or 0
     if l ~= 0 then -- dipole focusing and deltap
-      m.px = m.px - knl1^2*x/l + dirchg*knl1*(pz-1)
-      m.py = m.py - ksl1^2*y/l + dirchg*ksl1*(pz-1)
+      m.px = m.px - knl[1]^2*x/l + dirchg*knl[1]*(pz-1)
+      m.py = m.py - ksl[1]^2*y/l + dirchg*ksl[1]*(pz-1)
     end
 --    m.t = t + dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
-    m.t = t - dirchg*(knl1*x - ksl1*y) * (_beta+pt)/pz
+    m.t = t - dirchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
   end
 end
 
@@ -591,9 +590,9 @@ __help['track: exact cavity kick'] = [=[
 
 -- local foward_names (remove local in definition)
 
-local function cavity_kick (elm, m, l)--RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
-  local v in m
-  if abs(v) < minvolt then
+local function cavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+  local vrf in m
+  if abs(vrf) < minvolt then
     return straight_kick(elm,m,l)
   end
 
@@ -602,7 +601,7 @@ local function cavity_kick (elm, m, l)--RF CAV, CRAB, RFMULT with l>0 kick (kick
   local ff, ph = elm.f or {}, elm.ph or {}
   local a , r  = elm.a or  0, elm.r or 0
 
-  local pc     = beam.pc
+  local pc     = m.beam.pc
   local volt_c = 1.0e-3
   local freq, harm = elm.freq or 0, elm.harm or 0
   local volt, lag  = elm.volt or 0, elm.lag or 0
@@ -667,24 +666,23 @@ __help['track: pseudo-exact quad kick'] = [=[
 ]=]
 
 local function quad_kick (elm, m, l) -- includes a drift !! (not commutative)
-  local knl in m
-  if abs(knl[2]) < minang then -- should never occur due to precedences
+  if abs(m.knl[2]) < minang then -- should never occur due to precedences
     return cavity_kick(elm,m,l)
   end
 
--- kickpath (c exact)
-    quadkick_drift (nil, m, l/2)
+  quadkick_drift (nil, m, l/2) -- kickpath (c exact)
 
 -- kicktkt7r
   local x, px, y, py, t, pt, dirchg, T in m
   local _beta = 1/m.beam.beta
+  local nmul, knl, ksl in m
 
   local pz = sqrt(1 + 2*_beta*pt + pt^2) - 1 -- TODO: stability
 
+  local lw, byt = l/elm.l
   m.px = px + lw*knl[1]*(pz - pt)*_beta
   m.t  = t  - lw*knl[1]*((pt + _beta)/(1 + pz) - _beta)*x
 
-  local lw, byt = abs(elm.l)>minlen and l/elm.l or 1
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
 
@@ -695,9 +693,9 @@ local function quad_kick (elm, m, l) -- includes a drift !! (not commutative)
   end
 
    m.px = m.px - dirchg*(by - lw*knl[1] - lw*knl[2]*x)
-   m.py = p.py + dirchg*(bx             - lw*knl[2]*y)
+   m.py = m.py + dirchg*(bx             - lw*knl[2]*y)
 
-   quadkick_drift (nil, m, l/2)
+   quadkick_drift (nil, m, l/2) -- kickpath (c exact)
 end
 
 __help['track: polar kick'] = [[
@@ -1069,12 +1067,13 @@ local function rfcavity_kick (elm, m, l) -- RF CAV, CRAB, RFMULT with l>0 kick (
   -- nocavity.and.(.not.always_on)  return
   if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
 
-  local pc = beam.pc
+  local pc = m.beam.pc
   local volt_c = 1.0e-3
   local freq, harm, volt, lag = elm.freq or 0, elm.harm or 0, elm.volt or 0, elm.lag or 0
   local nbessel, nf = elm.nbessel or  0, elm.nf or 1
   if freq == 0 and harm == 0 then
-    error("either frequency or harmonic number has to be defined for RF Cavity " .. elm.name)
+    error("either frequency or harmonic number has to be defined for RF Cavity "
+          .. elm.name)
   end
 
   local omega = twopi*freq / clight
