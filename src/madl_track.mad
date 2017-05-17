@@ -120,13 +120,40 @@ i.e. quad only has k1 and not k0, k2 or???
  DKD (model = 1 ): STREX ; MKM (model = 2): TKTF
 ]]
 
+--[[
+  Documentation....
+
+  List of top level frame_track methods:
+  --------------------------------------
+
+  - patch_frame
+  - drift_frame
+    + l = 0 -> sub element only
+  - thin_frame ignore l and angle but not patch and tilt
+    + nmul == 0 and #elm > 0 -> drift_frame
+  - thick_frames (all-in-one)
+    + l = 0 -> thin_frame
+    + nmul = 0 -> drift_frame
+    + l > 0 and nmul > 0 and angle == 0 -> strait_frame
+    + l > 0 and nmul > 0 and angle ~= 0 -> curved_frame
+
+  - do we need curved and strait differenciation?
+  - decompose entry and exit in more steps?
+  - do we perform radiation and aperture check after each nst?
+    + what about thin lens?
+
+  - no more guards about lengths in thin, allow to store non-zero length
+  - no more guards about lengths in thick, allow to be compatible with madx
+  - check for angle and length to switch between integration schemes
+]]
+
 __help['track: classification of drift-kick models versus thick elements'] = [=[
               drift kind        kick kind        fringe kind
 - angle=0
   rbend:      rbend_drift       cavity_kick      straight_fringe
   quad:       quad_drift        quad_kick        straight_fringe
   solenoid:   solenoid_drift    cavity_kick      solenoid_fringe
-  cav:        solenoid_drift    cavity_kick      cavity_fringe
+  rfcav:      solenoid_drift    cavity_kick      cavity_fringe
   twcav:      twcav_drift       twcav_kick       twcavity_fringe
 - angle~=0
   sbend:      sbend_drift       polar_kick       sbend_fringe       sbend
@@ -220,7 +247,6 @@ local function invalid_track (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-element.  patch_element :set_functions { track = invalid_track } -- no default
 element.  extra_element :set_functions { track = invalid_track } -- not valid
 element.special_element :set_functions { track =   empty_track } -- default
 
@@ -228,16 +254,12 @@ element.special_element :set_functions { track =   empty_track } -- default
 
 -- Load element phases in mflow
 
-local function get_phas (elm, m) -- l=0 (or ignored)
-  local nmul in m
-
-  if nmul >= 1 then
-    local pnl, dpnl = elm.pnl or {}, elm.dpnl or {}
-    local psl, dpsl = elm.psl or {}, elm.dpsl or {}
-    for i=1,nmul do
-      m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
-      m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
-    end
+local function get_phas (elm, m, nmul) -- l=0 (or ignored)
+  local pnl, dpnl = elm.pnl or {}, elm.dpnl or {}
+  local psl, dpsl = elm.psl or {}, elm.dpsl or {}
+  for i=1,nmul do
+    m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
+    m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
   end
 end
 
@@ -248,19 +270,23 @@ local function get_mult (elm, m) -- l=0 (or ignored)
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl)
 
+  m.ksi = (elm.ksi or 0) + (elm.dksi or 0) -- solenoid
+  m.krf = (elm.krf or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
+  m.v   = (elm.v   or 0) + (elm.dv   or 0) -- rf volts
+
   if nmul >= 1 then
-    m.nmul = nmul
     for i=1,nmul do
       m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
       m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
     end
+    if abs(m.krf) >= minang then
+      get_phas(elm, m, nmul)
+    end
+    m.nmul = nmul
   else
     m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
 
-  m.ksi = (elm.ksi or 0) + (elm.dksi or 0) -- solenoid
-  m.krf = (elm.krf or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
-  m.v   = (elm.v   or 0) + (elm.dv   or 0) -- rf volts
 end
 
 -- Load element strengths, multipoles and volts in mflow
@@ -276,21 +302,24 @@ local function get_kmult (elm, m, l) -- l~=0
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl, nkn, nks)
 
+  m.ksi = (elm.ks or 0)*l + (elm.ksi or 0) + (elm.dksi or 0)
+  m.krf =                   (elm.krf or 0) + (elm.dkrf or 0)
+  m.v   =                   (elm.v   or 0) + (elm.dv   or 0)
+
   if nmul >= 1 then
     local kn = { k0 , k1 , k2 , k3  }
     local ks = { k0s, k1s, k2s, k3s }
-    m.nmul = nmul
     for i=1,nmul do
       m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
       m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
     end
+    if abs(m.krf) >= minang then
+      get_phas(elm, m, nmul)
+    end
+    m.nmul = nmul
   else
     m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
   end
-
-  m.ksi = (elm.ks or 0)*l + (elm.ksi or 0) + (elm.dksi or 0)
-  m.krf =                   (elm.krf or 0) + (elm.dkrf or 0)
-  m.v   =                   (elm.v   or 0) + (elm.dv   or 0)
 end
 
 -- drifts ---------------------------------------------------------------------o
@@ -483,7 +512,7 @@ __help['track: generic thin kick'] = [[
 ]]
 
 -- Special case TO BE REVIEWED !!!
-local function thin_kick (elm, m, _) -- l=0 (ignored)
+local function thin_kick (elm, m) -- l=0 (ignored)
 --  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
 --  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
 
@@ -607,7 +636,7 @@ local function combined_kick (elm, m, l) -- angle, k0, k1 (tunes)
   if abs(knl[2]) < minang then
     return polar_kick(elm,m,l)
   end
-  error("NYI")
+  -- error("NYI") -- TODO
 end
 
 -- fringes --------------------------------------------------------------------o
@@ -619,7 +648,7 @@ Ref??
 local function straight_fringe (elm, m, l)
   local nmul in m
   if nmul == 0 then return end
-  error("NYI")
+  -- error("NYI") -- TODO
 end
 
 __help['track: solenoid fringe'] = [=[
@@ -631,31 +660,35 @@ local function solenoid_fringe (elm, m, l)
   if abs(ksi) < minang then -- should never occur due to precedences
     return straight_fringe(elm,m,l)
   end
-  error("NYI")
+  -- error("NYI") -- TODO
 end
 
-__help['track: cavity fringe'] = [=[
+__help['track: rfcavity fringe'] = [=[
 Ref??
 ]=]
 
-local function cavity_fringe (elm, m, l)
+local rfcavity_fringe_ptc
+
+local function rfcavity_fringe (elm, m, l)
   local v in m
   if abs(v) < minvolt then -- should never occur due to precedences
     return straight_fringe(elm,m,l)
   end
-  error("NYI")
+  -- rfcavity_fringe_ptc(elm, m, l) -- TODO
 end
 
 __help['track: sbend fringe'] = [=[
 Ref??
 ]=]
 
+local sbend_fringe_ptc
+
 local function sbend_fringe (elm, m, l)
   local angle in elm
   if abs(angle) < minang then -- should never occur due to precedences
     return straight_fringe(elm,m,l)
   end
-  error("NYI")
+  -- sbend_fringe_ptc(elm, m, l) -- TODO
 end
 
 -- patches --------------------------------------------------------------------o
@@ -724,53 +757,38 @@ end
 
 local function changeref (elm, m)
   local x, y, z, theta, phi, psi in elm
-  xrotation(elm, m, phi   or 0)                    -- phi  : Elevation angle.
-  yrotation(elm, m, theta or 0)                    -- theta: Azimuthal angle.
-  srotation(elm, m, psi   or 0)                    -- psi  : Roll      angle.
-  translate(elm, m, x or 0, y or 0, z or 0)
+  xrotation(nil, m, phi   or 0)                    -- phi  : Elevation angle.
+  yrotation(nil, m, theta or 0)                    -- theta: Azimuthal angle.
+  srotation(nil, m, psi   or 0)                    -- psi  : Roll      angle.
+  translate(nil, m, x or 0, y or 0, z or 0)
 end
 
 local function forward_patch (elm, m)
   local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
-  xrotation(elm, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
-  yrotation(elm, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  srotation(elm, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  translate(elm, m, (x or 0)+(dx or 0),
+  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
                     (z or 0)+(dz or 0) )
 end
 
 local function backward_patch (elm, m)
   local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
-  translate(elm, m, (x or 0)+(dx or 0),
+  translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
                     (z or 0)+(dz or 0) )
-  srotation(elm, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  yrotation(elm, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  xrotation(elm, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
 end
 
--- patch_element(s)
-
-element.srotation :set_functions {
-  track = \e,m -> srotation(e, m, e.psi or e.angle),
-}
-
-element.yrotation :set_functions {
-  track = \e,m -> yrotation(e, m, e.theta or e.angle),
-}
-
-element.xrotation :set_functions {
-  track = \e,m -> xrotation(e, m, e.phi or e.angle),
-}
-
-element.translation :set_functions {
-  track = \e,m -> translate(e, m, e.dx or 0, e.dy or 0, e.dz or 0),
-}
-
-element.changeref :set_functions {
-  track = \e,m -> changeref(e, m),
-}
+local function patch_track (elm, m, pos)
+  if pos == 'entry'
+  then forward_patch (elm, m)
+  else backward_patch(elm, m) -- not correct, need local survey patch
+  end
+end
 
 -- sbend ----------------------------------------------------------------------o
 
@@ -901,7 +919,7 @@ local function sbend_fringe_field (elm, m, pos)
   m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
 end
 
-local function sbend_fringe (elm, m, pos)
+local function sbend_fringe_ptc (elm, m, pos)
   if elm.kill_fringe then return end
 
   if pos == 'entry' and not elm.kill_ent_fringe then
@@ -933,14 +951,19 @@ local function sbend_fringe (elm, m, pos)
   end
 end
 
+element.sbend:set_functions {   kick_track = rfcavity_kick,
+                              fringe_track = sbend_fringe }
+
 -- cavities -------------------------------------------------------------------o
 
-local function cav_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+local function rfcavity_kick (elm, m, l) -- RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   local x, px, y, py, t, pt, nmul, dirchg in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
   local a, r = elm.a or  0, elm.r or 0
--- nocavity.and.(.not.always_on)  return
+
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
 
   local pc = beam.pc
   local volt_c = 1.0e-3
@@ -950,104 +973,103 @@ local function cav_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickca
     error("either frequency or harmonic number has to be defined for RF Cavity " .. elm.name)
   end
 
-local omega = twopi*freq / clight
-local vl    = m.dirchg*l*volt*volt_c/pc
-local df, f, r2 = 0, 1, 1
+  local omega = twopi*freq / clight
+  local vl    = m.dirchg*l*volt*volt_c/pc
+  local df, f, r2 = 0, 1, 1
 
-do ko=1, nf -- over modes
-  do i=1,nbessel
-    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
-    dr2 =  r2*i
-    df  =  df + 2*dr2
-    r2  =  r2*(x^2+y^2)
-    f   =  f + r2
-  end
+  for ko=1,nf do -- over modes
+    for i=1,nbessel do
+      r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+      dr2 =  r2*i
+      df  =  df + 2*dr2
+      r2  =  r2*(x^2+y^2)
+      f   =  f + r2
+    end
 
-  if nbessel > 0 then
-    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
-    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
-  end
+    if nbessel > 0 then
+      m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+      m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    end
 
-  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt -ff[ko]*f*vl*sin(arg)
 
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
 
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
+
+    m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
+      bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
     by  = byt
-  end
 
-  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
-
-  by = -lw*knl[nmul] / fact(nmul-1) / nmul
-  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
-
-  for i=nmul,2,-1 do
-    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
-    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
-    by  = byt
-  end
-
-  byt = x*by - y*bx
-  bx  = y*by + x*bx
-  by  = byt
-
-  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
-  end    --over modes
+    m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
+  end --over modes
 end
 
-local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
+local function rfcavity_thin_kick (elm, m, l) -- for tracking thin rf mult
   local x, px, y, py, t, pt, nmul, dirchg in m
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ff, ph = elm.f or {}, elm.ph or {}
   local a, r = elm.a or  0, elm.r or 0
--- nocavity.and.(.not.always_on)  return
-  if 'nocavity' and (not 'always_on') then return end
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
 
   local pc = beam.pc
   local volt =elm.volt
   local volt_c = 1.0e-3
   local omega = twopi*freq / clight
 
-  do ko=1, nf -- over modes
+  for ko=1,nf do -- over modes
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt - dirchg*volt_c*ff[ko]*volt*sin(arg)/pc
 
-  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt - dirchg*volt_c*ff[ko]*volt*sin(arg)/pc
+    -- BUG: knl, ksl never retrieved
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
 
-  -- BUG: knl, ksl never retrieved
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
 
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul,2,-1 do
+      byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+      bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
     by  = byt
-  end
 
-  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
-
-  by = -lw*knl[nmul] / fact(nmul-1) / nmul
-  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
-
-  for i=nmul,2,-1 do
-    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
-    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
-    by  = byt
-  end
-
-  byt = x*by - y*bx
-  bx  = y*by + x*bx
-  by  = byt
-
-  m.t = t - ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
-  end    --over modes
+    m.t = t - ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
+  end --over modes
 end
 
 local function adjust_time_cav(elm, m, pos)
@@ -1057,215 +1079,232 @@ local function adjust_time_cav(elm, m, pos)
   local delta_e = elm.delta_e or 0
   if pos == 'entry' then
     delta_e = pt
-    if 'nocavity' and (not 'always_on') then return end
+    if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
 
     if elm.l < minlen then
-      cav_track_thin(elm, m)
-      delta_e=(m.pt - delta_e)*beam.pc
-          return
+      rfcavity_thin_kick(elm, m)
+      delta_e=(m.pt - delta_e)*m.beam.pc -- side effects?
     end
-
   else
     if elm.l < minlen then return end
-      t = t - elm.l*_beta -- TO CHECK
-      delta_e = (pt - delta_e)*beam.pc
+    t = t - elm.l*_beta -- TO CHECK      -- side effects?
+    delta_e = (pt - delta_e)*m.beam.pc   -- side effects?
   end
-
 end
 
-local function fringe_cav(elm, m, pos)
+local function rfcavity_fringe_ptc (elm, m, pos)
   local x, px, y, py, t, pt, T, dir in m
-  if('nocavity'  and( not 'always_on')) then return end
-  if elm.kill_fringe     == 1               or
-   elm.kill_ent_fringe == 1 and pos ==  'entry' or
-   elm.kill_ext_fringe == 1 and pos ==  'exit' then return
-  end
 
-  if not ('fringe' or elm.nbessel == -1 ) then return end
+  if ('nocavity' and (not 'always_on')) then return end -- non-sense!!!
 
+  if elm.kill_fringe     == 1                     or
+     elm.kill_ent_fringe == 1 and pos ==  'entry' or
+     elm.kill_ext_fringe == 1 and pos ==  'exit' then return end
+
+  adjust_time_cav(elm, m, 'entry')
+
+  if not ('fringe' or elm.nbessel == -1) then return end
   if elm.l < minlen then return end
 
   local kbmad = 0
-  if elm.nbessel == -1 then
-      kbmad = 1
-  end
+  if elm.nbessel == -1 then kbmad = 1 end
 
   local z = 0
-  if pos == 'entry' then
-    z=elm.l
-  end
+  if pos == 'entry' then z = elm.l end
   local freq, volt = elm.freg or 0, elm.volt or 0
   local volt_c = 1.0e-3
-  local pc = beam.pc
+  local pc = m.beam.pc
   local omega = twopi*freq / clight
-  local vl    = m.dirchg*volt*volt_c/pc
+  local vl = m.dirchg*volt*volt_c/pc
   if pos == 'exit' then vl = -vl end
 
   local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local ph = elm.f or {}, elm.ph or {}
   local nf = elm.nf or 1
-   do ko=1, nf   -- over modes
-    s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t + tt) + phas + phase0 + ph[ko])
-    c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+  tt) + phas + phase0 + ph[ko])
-    m.px = m.px + 0.5*vl*s1*m.x
-    m.py = m.py + 0.5*vl*s1*m.y
-    m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
-   end
-end
 
-local function cavity_track (elm, m)  -- thin rf mult
-  local l, angle, tilt in elm
-
-  if abs(angle) >= minang then
-    error("invalid straight element angle (too curved): " .. elm.name)
+  for ko=1,nf do   -- over modes
+   s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   m.px = m.px + 0.5*vl*s1*m.x
+   m.py = m.py + 0.5*vl*s1*m.y
+   m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
   end
 
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, tilt)
-  end
-
-  adjust_time_cav(elm, m, 'entry')
-  fringe_cav     (elm, m, 'entry')
-
-  if l >= minlen then
-   thick_track (elm, m, straight_drift_track, cav_kick_track)
-  end
-
-  fringe_cav     (elm, m, 'exit')
   adjust_time_cav(elm, m, 'exit')
-
-  if abs(tilt) >= minang  then
-    srot_track(elm, m, -tilt)
-  end
 end
 
 -- integrator schemes ---------------------------------------------------------o
 
 local integrators = require 'madl_sympint'
 
--- frame kinds ----------------------------------------------------------------o
+-- sub element kind tracking --------------------------------------------------o
 
-local function sub_drift_track (elm, m)
-  local l in elm
-  local ns = #elm
-
-  m.nmul = 0 -- for sanity checks
-
-  if ns == 0 then -- no sub-elements
-    straight_drift_track(elm, m, l) return
-  end
-
-  local s, ds, at = 0
-  for i=1,ns do   -- sub-elements
-    local selm = elm[i]
-    at = assert(selm.at, "invalid sub-element position (at expected)")
-    ds = at - s
-    assert(ds >= 0, "invalid sub-element position (positive ds expected)")
-    if ds >= minlen then
-      straight_drift_track(elm, m, ds)
-    end
-    s = s + ds
-    assert(selm.l == 0, "invalid sub-element length (0 expected)")
-    selm:track(m)
-  end
-  ds = l-s
-  assert(ds >= 0, "invalid sub-element position (positive ds expected)")
-  if ds >= minlen then
-    straight_drift_track(elm, m, ds)
-  end
-end
-
--- frame kinds ----------------------------------------------------------------o
-
-local function thin_track (elm, m) -- e.g. multipole
-  get_mult(elm, m)
-
-  if ptc_compat == true then
-    thin_kick_track  (elm, m, 0)
-  else
-    straight_kick_track(elm, m, 0)
-  end
-end
-
-local function drift_track (elm, m) -- e.g. monitor
-  local l, tilt in elm
-
-  if abs(l) < minlen then
-    return thin_track(elm, m)
-  end
-
-  if abs(tilt) >= minang  then
-    srotation(elm, m, tilt)
-  end
-
-  if abs(tilt) >= minang  then
-    srotation(elm, m, -tilt)
-  end
-end
-
-local function subelm_track (elm, m, drift, kick, integrate)
-  local l in elm
+local function subdft_track (elm, m, l)
   local s, ds, at = 0
 
   for i=1,#elm do   -- sub-elements
     local selm = elm[i]
     at = assert(selm.at, "invalid sub-element position (at expected)")
+
+    -- implicit drift
     ds = at - s
-    assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+    assert(ds >= 0, "invalid sub-element position (negative drift)")
     if ds >= minlen then
-      integrator(elm, m, ds, drift, kick)
+      straight_drift(nil, m, ds)
     end
     s = s + ds
-    assert(selm.l == 0, "invalid sub-element length (0 expected)")
+
+    -- subelement
     selm:track(m)
+    s = s + selm.l
   end
+
+  -- implicit drift
   ds = l-s
-  assert(ds >= 0, "invalid sub-element position (positive ds expected)")
+  assert(ds >= 0, "invalid sub-element position (negative drift)")
   if ds >= minlen then
-    integrator(elm, m, ds, drift, kick)
+    straight_drift(nil, m, ds)
   end
+end
+
+local function subelm_track (elm, m, l)
+  local integrator = integrators[elm.method or m.method]
+  local drift_track, kick_track in elm
+  local s, ds, at = 0
+
+  table.insert(m.selm, selm)
+
+  for i=1,#elm do   -- sub-elements
+    local selm = elm[i]
+    at = assert(selm.at, "invalid sub-element position (at expected)")
+
+    -- implicit drift
+    ds = at - s
+    assert(ds >= 0, "invalid sub-element position (negative drift)")
+    if ds >= minlen then
+      integrator(elm, m, ds, drift_track, kick_track)
+    end
+    s = s + ds
+
+    -- subelement
+    selm:track(m)
+    s = s + selm.l
+  end
+
+  -- implicit drift
+  ds = l-s
+  assert(ds >= 0, "invalid sub-element position (negative drift)")
+  if ds >= minlen then
+    integrator(elm, m, ds, drift_track, kick_track)
+  end
+
+  table.remove(m.selm)
+end
+
+-- element kind tracking ------------------------------------------------------o
+
+local function thin_track (elm, m) -- e.g. multipole
+  get_mult (elm, m) -- load strengths in map
+
+  local tilt in elm
+  patch_track (elm, m, 'entry')
+  srotation   (elm, m,  tilt  )
+  thin_kick   (elm, m         )
+  srotation   (elm, m, -tilt  )
+  patch_track (elm, m, 'exit' )
+end
+
+local function drift_track (elm, m) -- e.g. monitor
+  local l in elm
+
+  if #elm == 0 and #m.selm == 0 then -- no sub-elements, no surrounding elements
+    return straight_drift(nil, m, l)
+  end
+
+  local tilt in elm
+  patch_track (elm, m, 'entry')
+  srotation   (elm, m,  tilt  )
+  if #m.selm == 0 -- any surrounding elements?
+  then subdft_track(elm, m, l)
+  else subelm_track(elm, m, l)
+  end
+  srotation   (elm, m, -tilt  )
+  patch_track (elm, m, 'exit' )
 end
 
 local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  local l, tilt, method in elm
+  local l, tilt in elm
 
-  local drift_track, kick_track in elm
-  local integrate = integrators[elm.method or m.method]
-
-  if elm.shielded == true then
-    get_kmult(elm, m, l) -- load multipoles
+  if #m.selm == 0 then -- any surrounding elements?
+    get_kmult(elm, m, l) -- load strengths in map
   else
-    add_kmult(elm, m, l) -- TODO load and add multipoles
+    -- TODO
   end
 
-  if has_patch(elm) then -- TODO check for moves of misalignment (inheritance)
-    patch_track(elm, m, 'entry')
-  end
-
-  if abs(tilt) >= minang  then
-    srotation(elm, m, tilt)
-  end
-
+  patch_track(elm, m, 'entry')
+  srotation  (elm, m,  tilt  )
   elm:fringe_track(m, 'entry')
-  if #elm == 0 then -- no sub-elements
-    integrate(elm, m, l, drift_track, kick_track)
+
+  if #elm == 0 then -- any sub-elements ?
+    local integrator = integrators[elm.method or m.method]
+    local drift_track, kick_track in elm
+    integrator  (elm, m, l, drift_track, kick_track)
   else
-    subelm_track(elm, m, drift_track, kick_track, integrate)
+    subelm_track(elm, m, l)
   end
+
   elm:fringe_track(m, 'exit')
-
-  if abs(tilt) >= minang  then
-    srotation(elm, m, -tilt)
-  end
-
-  if has_patch(elm) then
-    patch_track(elm, m, 'exit')
-  end
+  srotation  (elm, m, -tilt )
+  patch_track(elm, m, 'exit')
 end
 
-element. thin_element :set_functions { track =  thin_track }
-element.drift_element :set_functions { track = drift_track }
-element.thick_element :set_functions { track = thick_track }
+-- load maps into elements ----------------------------------------------------o
+
+local patch_element, thin_element, drift_element, thick_element,
+      sbend, combined, rbend, quadrupole, solenoid, rfcavity, twcavity,
+      xrotation, yrotation, srotation, translation, changeref in element
+
+ thin_element :set_functions {    track =  thin_track }
+drift_element :set_functions {    track = drift_track }
+patch_element :set_functions {    track = patch_track }
+thick_element :set_functions {    track = thick_track,
+                            drift_track = straight_drift,
+                             kick_track = straight_kick,
+                           fringe_track = straight_fringe }
+
+sbend :set_functions {      drift_track = sbend_drift,
+                             kick_track = polar_kick,
+                           fringe_track = sbend_fringe }
+
+combined :set_functions {   drift_track = combined_drift,
+                             kick_track = combined_kick,
+                           fringe_track = sbend_fringe }
+
+rbend :set_functions {      drift_track = rbend_drift,
+                             kick_track = rfcavity_kick,
+                           fringe_track = straight_fringe }
+
+quadrupole :set_functions { drift_track = quad_drift,
+                             kick_track = quad_kick,
+                           fringe_track = straight_fringe }
+
+solenoid :set_functions {   drift_track = solenoid_drift,
+                             kick_track = rfcavity_kick,
+                           fringe_track = solenoid_fringe }
+
+rfcavity :set_functions {   drift_track = solenoid_drift,
+                             kick_track = rfcavity_kick,
+                           fringe_track = rfcavity_fringe }
+
+twcavity :set_functions {   drift_track = twcavity_drift,
+                             kick_track = twcavity_kick,
+                           fringe_track = twcavity_fringe }
+
+srotation   :set_functions { track = \_,m -> srotation(nil, m, e.angle) }
+yrotation   :set_functions { track = \_,m -> yrotation(nil, m, e.angle) }
+xrotation   :set_functions { track = \_,m -> xrotation(nil, m, e.angle) }
+translation :set_functions { track = \_,m -> translate(nil, m, e.dx or 0,
+                                                    e.dy or 0, e.dz or 0) }
 
 -- track command --------------------------------------------------------------o
 
@@ -1319,13 +1358,13 @@ local function make_mflow (self)
   local len, dir = #sequence, sequence.direction
   local T = total_path == true and 0 or 1
 
-  return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,           -- initial vars
-           nmul=0, knl={}, ksl={}, pnl={}, psl={},            -- internal vars
-           s=0, ds=0, iturn=0, dir=dir, nlen=len, ndft=0,     -- internal status
-           nelm=0, elm={},                                    -- subelem stack
-           nst=nstep, nsl=nslice, method=method,              -- user setup
-           seq=sequence, save=save, drift=save and drift,     -- user status
-           beam=beam, dirchg = dir*beam.charge,               -- user beam
+  return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,         -- initial vars
+           nmul=0, knl={}, ksl={}, pnl={}, psl={},          -- internal vars
+           s=0, ds=0, iturn=0, dir=dir, nlen=len, ndft=0,   -- internal status
+           selm={},                                         -- subelement stack
+           nst=nstep, nsl=nslice, method=method,            -- user setup
+           seq=sequence, save=save, drift=save and drift,   -- user status
+           beam=beam, dirchg = dir*beam.charge,             -- user beam
            [_trk]=_trk }
 end
 
@@ -1336,12 +1375,14 @@ local function exec (self)
   assert(is_sequence(seq), "invalid sequence")
   assert(is_beam(beam)   , "invalid beam")
 
+  -- build or update mflow and mtable
   local map = make_mflow (self)
   local tbl = make_mtable(self)
 
   assert(is_nil(tbl) or tbl[_trk] == _trk, "invalid track table")
   assert(               map[_trk] == _trk, "invalid track map"  )
 
+  -- retrieve information
   local nlen, ndft, save, drift in map
   local range, nturn in self
 
@@ -1356,30 +1397,30 @@ local function exec (self)
         ndft = ndft+1
         fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, ds)
       end
+      map.s, map.ds = map.s+ds, 0
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
             ds, seq.name, elm.name, map.s))
     end
-    map.s, map.ds = map.s+ds, 0
 
     -- sequence element
     local l in elm
-    do
-      local tbl, map = elm:track(map)
-      if tbl then return tbl, map end -- stop (e.g. slink)
-    end
+    local tbl2, map2 = elm:track(map, tbl)
+    if tbl2 then return tbl2, map2 end -- stop (e.g. slink)
     if save and elm:is_selected(observe) then
       fill_mtable(tbl, elm.name, elm.kind, map, l)
     end
-    map.s = map.s+l
-    if i < len then
+
+    -- update map s, ds, iturn
+    if i < nlen then
       map.ds = seq:spos(i+1) - (seq:spos(i)+l) -- patch z+dz?
     else
       map.ds, map.iturn = 0, map.iturn+1
     end
+    map.s = map.s+l
   end
-  map.ndft = ndft
 
+  map.ndft = ndft
   return tbl, map
 end
 
