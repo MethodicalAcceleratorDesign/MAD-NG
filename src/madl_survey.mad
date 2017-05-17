@@ -285,12 +285,14 @@ local function exec (self)
   local seq = assert(self.sequence, "missing sequence")
   assert(is_sequence(seq), "invalid sequence")
 
+  -- build or update mflow and mtable
   local map = make_mflow (self)
   local tbl = make_mtable(self)
 
   assert(is_nil(tbl) or tbl[_srv] == _srv, "invalid survey mtable")
   assert(               map[_srv] == _srv, "invalid survey mflow" )
 
+  -- retrieve information
   local nlen, ndft, save, drift in map
   local range, nturn in self
 
@@ -305,31 +307,31 @@ local function exec (self)
         ndft = ndft+1
         fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, ds)
       end
+      map.s, map.ds = map.s+ds, 0
     elseif ds <= -minlen then
       error(string.format("negative implicit drift %s in %s['%s'] at %s",
             ds, seq.name, elm.name, map.s))
     end
-    map.s, map.ds = map.s+ds, 0
 
     -- sequence element
     local l in elm
-    do
-      local tbl, map = elm:survey(map)
-      if tbl then return tbl, map end -- stop (e.g. slink)
-    end
+    local tbl2, map2 = elm:survey(map, tbl)
+    if tbl2 then return tbl2, map2 end -- stop (e.g. slink)
     update_angles(map)
     if save and elm:is_selected(observe) then
       fill_mtable(tbl, elm.name, elm.kind, map, l, elm.angle, elm.tilt)
     end
-    map.s = map.s+l
-    if i < len then
+
+    -- update map s, ds, iturn
+    if i < nlen then
       map.ds = seq:spos(i+1) - (seq:spos(i)+l) -- patch z+dz?
     else
       map.ds, map.iturn = 0, map.iturn+1
     end
+    map.s = map.s+l
   end
-  map.ndft = ndft
 
+  map.ndft = ndft
   return tbl, map
 end
 
