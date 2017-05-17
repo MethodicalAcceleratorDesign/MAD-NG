@@ -542,17 +542,79 @@ local function straight_kick (elm, m, l) -- l~=0
 end
 
 __help['track: exact cavity kick'] = [=[
-Ref??
+[MADX-PTC] Function KICCAVR in file Sh_def_kind.f90
 ]=]
 
 -- local foward_names (remove local in definition)
 
-local function cavity_kick (elm, m, l)
+local function cavity_kick (elm, m, l)--RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   local v in m
   if abs(v) < minvolt then
     return straight_kick(elm,m,l)
   end
-  error("NYI")
+
+  local x, px, y, py, t, pt, nmul, dirchg in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a , r  = elm.a or  0, elm.r or 0
+
+  local pc     = beam.pc
+  local volt_c = 1.0e-3
+  local freq, harm = elm.freq or 0, elm.harm or 0,
+  local volt, lag  = elm.volt or 0, elm.lag or 0
+  local nbessel    = elm.nbessel or  0
+
+  if freq == 0 and harm == 0 then
+    error("either frequency or harmonic number has to be defined for RF Cavity " .. elm.name)
+  end
+
+  local omega = twopi*freq / clight
+  local vl    = m.dirchg*l*volt*volt_c/pc
+  local df, f, r2 = 0, 1, 1
+
+  do i=1,nbessel
+    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+    dr2 =  r2*i
+    df  =  df + 2*dr2
+    r2  =  r2*(x^2+y^2)
+    f   =  f + r2
+  end
+
+  if nbessel > 0 then
+    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+  end
+
+  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+
+  local lw, byt = elm.l>0 and l/elm.l or 1
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+
+  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
+
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+  for i=nmul,2,-1 do
+    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+
+  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
 end
 
 __help['track: pseudo-exact quad kick'] = [=[
@@ -972,72 +1034,6 @@ local function sbend_fringe (elm, m, pos)
 end
 
 -- cavities -------------------------------------------------------------------o
-
-local function cav_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
-  local x, px, y, py, t, pt, nmul, dirchg in m
-  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
-  local ff, ph = elm.f or {}, elm.ph or {}
-  local a, r = elm.a or  0, elm.r or 0
--- nocavity.and.(.not.always_on)  return
-
-  local pc = beam.pc
-  local volt_c = 1.0e-3
-  local freq, harm, volt, lag = elm.freq or 0, elm.harm or 0, elm.volt or 0, elm.lag or 0
-  local nbessel, nf = elm.nbessel or  0, elm.nf or 1
-  if freq == 0 and harm == 0 then
-    error("either frequency or harmonic number has to be defined for RF Cavity " .. elm.name)
-  end
-
-local omega = twopi*freq / clight
-local vl    = m.dirchg*l*volt*volt_c/pc
-local df, f, r2 = 0, 1, 1
-
-do ko=1, nf -- over modes
-  do i=1,nbessel
-    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
-    dr2 =  r2*i
-    df  =  df + 2*dr2
-    r2  =  r2*(x^2+y^2)
-    f   =  f + r2
-  end
-
-  if nbessel > 0 then
-    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
-    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
-  end
-
-  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
-
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
-
-  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
-
-  by = -lw*knl[nmul] / fact(nmul-1) / nmul
-  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
-
-  for i=nmul,2,-1 do
-    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
-    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
-    by  = byt
-  end
-
-  byt = x*by - y*bx
-  bx  = y*by + x*bx
-  by  = byt
-
-  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
-  end    --over modes
-end
 
 local function cav_track_thin (elm, m, l) -- for tracking thin rf mult
   local x, px, y, py, t, pt, nmul, dirchg in m
