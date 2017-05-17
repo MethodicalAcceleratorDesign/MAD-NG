@@ -346,7 +346,7 @@ __help['track: drift to correct pseudo-exact quad kick'] = [=[
 Ref??
 ]=]
 
-local function quadkick_drift (_, m, l) -- drift attached to quad_kick
+local function quadkick_drift (_, m, l) -- l~=0, drift attached to quad_kick
   local x, px, y, py, t, pt, T in m
   local _beta = 1/m.beam.beta
 
@@ -886,13 +886,6 @@ local function backward_patch (elm, m)
   xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
 end
 
-local function patch_track (elm, m, pos)
-  if pos == 'entry'
-  then forward_patch (elm, m)
-  else backward_patch(elm, m) -- not correct, need local survey patch
-  end
-end
-
 -- sbend ----------------------------------------------------------------------o
 
 __help['track: exact sbend'] = [[
@@ -1307,6 +1300,13 @@ end
 
 -- element kind tracking ------------------------------------------------------o
 
+local function patch_track (elm, m, pos)
+  if pos == 'entry'
+  then forward_patch (elm, m)
+  else backward_patch(elm, m) -- not correct, need local survey patch
+  end
+end
+
 local function thin_track (elm, m) -- e.g. multipole
   get_mult (elm, m) -- load strengths in map
 
@@ -1364,51 +1364,49 @@ end
 
 -- load maps into elements ----------------------------------------------------o
 
-local patch_element, thin_element, drift_element, thick_element,
-      sbend, combined, rbend, quadrupole, solenoid, rfcavity, twcavity,
-      xrotation, yrotation, srotation, translation, changeref in element
+local E = element
 
- thin_element :set_functions {    track =  thin_track }
-drift_element :set_functions {    track = drift_track }
-patch_element :set_functions {    track = patch_track }
-thick_element :set_functions {    track = thick_track,
-                            drift_track = straight_drift,
-                             kick_track = straight_kick,
-                           fringe_track = straight_fringe }
+E. thin_element :set_functions    { track =  thin_track }
+E.drift_element :set_functions    { track = drift_track }
+E.patch_element :set_functions    { track = patch_track }
+E.thick_element :set_functions    { track = thick_track,
+                              drift_track = straight_drift,
+                               kick_track = straight_kick,
+                             fringe_track = straight_fringe }
 
-sbend :set_functions {      drift_track = sbend_drift,
-                             kick_track = polar_kick,
-                           fringe_track = sbend_fringe }
+E.sbend :set_functions      { drift_track = sbend_drift,
+                               kick_track = polar_kick,
+                             fringe_track = sbend_fringe }
 
-combined :set_functions {   drift_track = combined_drift,
-                             kick_track = combined_kick,
-                           fringe_track = sbend_fringe }
+E.combined :set_functions   { drift_track = combined_drift,
+                               kick_track = combined_kick,
+                             fringe_track = sbend_fringe }
 
-rbend :set_functions {      drift_track = rbend_drift,
-                             kick_track = rfcavity_kick,
-                           fringe_track = straight_fringe }
+E.rbend :set_functions      { drift_track = rbend_drift,
+                               kick_track = rfcavity_kick,
+                             fringe_track = straight_fringe }
 
-quadrupole :set_functions { drift_track = quad_drift,
-                             kick_track = quad_kick,
-                           fringe_track = straight_fringe }
+E.quadrupole :set_functions { drift_track = quad_drift,
+                               kick_track = quad_kick,
+                             fringe_track = straight_fringe }
 
-solenoid :set_functions {   drift_track = solenoid_drift,
-                             kick_track = rfcavity_kick,
-                           fringe_track = solenoid_fringe }
+E.solenoid :set_functions   { drift_track = solenoid_drift,
+                               kick_track = rfcavity_kick,
+                             fringe_track = solenoid_fringe }
 
-rfcavity :set_functions {   drift_track = solenoid_drift,
-                             kick_track = rfcavity_kick,
-                           fringe_track = rfcavity_fringe }
+E.rfcavity :set_functions   { drift_track = solenoid_drift,
+                               kick_track = rfcavity_kick,
+                             fringe_track = rfcavity_fringe }
 
-twcavity :set_functions {   drift_track = twcavity_drift,
-                             kick_track = twcavity_kick,
-                           fringe_track = twcavity_fringe }
+E.twcavity :set_functions   { drift_track = twcavity_drift,
+                               kick_track = twcavity_kick,
+                             fringe_track = twcavity_fringe }
 
-srotation   :set_functions { track = \_,m -> srotation(nil, m, e.angle) }
-yrotation   :set_functions { track = \_,m -> yrotation(nil, m, e.angle) }
-xrotation   :set_functions { track = \_,m -> xrotation(nil, m, e.angle) }
-translation :set_functions { track = \_,m -> translate(nil, m, e.dx or 0,
-                                                    e.dy or 0, e.dz or 0) }
+E.srotation   :set_functions { track = \e,m -> srotation(nil, m, e.angle) }
+E.yrotation   :set_functions { track = \e,m -> yrotation(nil, m, e.angle) }
+E.xrotation   :set_functions { track = \e,m -> xrotation(nil, m, e.angle) }
+E.translation :set_functions { track = \e,m -> translate(nil, m, e.dx or 0,
+                                                      e.dy or 0, e.dz or 0) }
 
 -- track command --------------------------------------------------------------o
 
@@ -1508,20 +1506,19 @@ local function exec (self)
     end
 
     -- sequence element
-    local l in elm
-    local tbl2, map2 = elm:track(map, tbl)
+    local tbl2, map2 = elm:track(map)
     if tbl2 then return tbl2, map2 end -- stop (e.g. slink)
     if save and elm:is_selected(observe) then
-      fill_mtable(tbl, elm.name, elm.kind, map, l)
+      fill_mtable(tbl, elm.name, elm.kind, map, elm.l)
     end
 
     -- update map s, ds, iturn
     if i < nlen then
-      map.ds = seq:spos(i+1) - (seq:spos(i)+l) -- patch z+dz?
+      map.ds = seq:spos(i+1) - (seq:spos(i)+elm.l) -- patch z+dz?
     else
       map.ds, map.iturn = 0, map.iturn+1
     end
-    map.s = map.s+l
+    map.s = map.s+elm.l
   end
 
   map.ndft = ndft

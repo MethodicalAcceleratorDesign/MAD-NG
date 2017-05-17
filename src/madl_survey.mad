@@ -43,12 +43,12 @@ SEE ALSO
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix, element, mtable, Command                  in MAD
-local is_nil, is_sequence                                       in MAD.typeid
-local minlen, minang                                            in MAD.constant
-local observe                                                   in element.flags
+local vector, matrix, element, mtable, Command               in MAD
+local is_nil, is_sequence                                    in MAD.typeid
+local minlen, minang                                         in MAD.constant
+local observe                                                in element.flags
 
-local abs, sin, cos                                             in math
+local abs, sin, cos                                          in math
 
 -- special --------------------------------------------------------------------o
 
@@ -59,7 +59,6 @@ local function invalid_survey (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-element.  patch_element :set_functions { survey = invalid_survey } -- no default
 element.  extra_element :set_functions { survey = invalid_survey } -- not valid
 element.special_element :set_functions { survey =   empty_survey } -- default
 
@@ -121,51 +120,36 @@ end
 
 local function changeref (elm, m)
   local x, y, z, theta, phi, psi in elm
-  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
-  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
-  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
-  translate(elm, m, x or 0, y or 0, z or 0)
+  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
+  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
+  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
+  translate(nil, m, x or 0, y or 0, z or 0)
 end
 
 local function forward_patch (elm, m)
   local x, y, z, theta, phi, psi in elm
-  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
-  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
-  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
-  translate(elm, m, x     or 0, y or 0, z or 0)
+  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
+  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
+  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
+  translate(nil, m, x     or 0, y or 0, z or 0)
 end
 
 local function backward_patch (elm, m)
   local x, y, z, theta, phi, psi in elm
-  translate(elm, m, x     or 0, y or 0, z or 0)
-  srotation(elm, m, psi   or 0)    -- psi  : Roll      angle.
-  yrotation(elm, m, theta or 0)    -- theta: Azimuthal angle.
-  xrotation(elm, m, phi   or 0)    -- phi  : Elevation angle.
+  translate(nil, m, x     or 0, y or 0, z or 0)
+  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
+  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
+  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
 end
 
--- patch_element(s)
+-- element kind tracking ------------------------------------------------------o
 
-element.srotation :set_functions {
-  survey = \e,m -> srotation(e, m, e.psi or e.angle),
-}
-
-element.yrotation :set_functions {
-  survey = \e,m -> yrotation(e, m, e.theta or e.angle),
-}
-
-element.xrotation :set_functions {
-  survey = \e,m -> xrotation(e, m, e.phi or e.angle),
-}
-
-element.translation :set_functions {
-  survey = \e,m -> translate(e, m, e.dx or 0, e.dy or 0, e.dz or 0),
-}
-
-element.changeref :set_functions {
-  survey = \e,m -> changeref(e, m),
-}
-
--- frame kinds ----------------------------------------------------------------o
+local function patch_survey (elm, m, pos)
+  if pos == 'entry'
+  then forward_patch (elm, m)
+  else backward_patch(elm, m) -- not correct, need local survey patch
+  end
+end
 
 local function thin_survey (elm, m) -- e.g. multipole
   local angle in elm
@@ -213,9 +197,20 @@ local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   m.W = m.W * m.S
 end
 
-element. thin_element :set_functions { survey =  thin_survey }
-element.drift_element :set_functions { survey = drift_survey }
-element.thick_element :set_functions { survey = thick_survey }
+-- load maps into elements ----------------------------------------------------o
+
+local E = element
+
+E. thin_element :set_functions { survey =  thin_survey }
+E.drift_element :set_functions { survey = drift_survey }
+E.patch_element :set_functions { survey = patch_survey }
+E.thick_element :set_functions { survey = thick_survey }
+
+E.srotation   :set_functions { survey = \e,m -> srotation(nil, m, e.angle) }
+E.yrotation   :set_functions { survey = \e,m -> yrotation(nil, m, e.angle) }
+E.xrotation   :set_functions { survey = \e,m -> xrotation(nil, m, e.angle) }
+E.translation :set_functions { survey = \e,m -> translate(nil, m, e.dx or 0,
+                                                       e.dy or 0, e.dz or 0) }
 
 -- survey command -------------------------------------------------------------o
 
@@ -314,21 +309,20 @@ local function exec (self)
     end
 
     -- sequence element
-    local l in elm
-    local tbl2, map2 = elm:survey(map, tbl)
+    local tbl2, map2 = elm:survey(map)
     if tbl2 then return tbl2, map2 end -- stop (e.g. slink)
     update_angles(map)
     if save and elm:is_selected(observe) then
-      fill_mtable(tbl, elm.name, elm.kind, map, l, elm.angle, elm.tilt)
+      fill_mtable(tbl, elm.name, elm.kind, map, elm.l, elm.angle, elm.tilt)
     end
 
     -- update map s, ds, iturn
     if i < nlen then
-      map.ds = seq:spos(i+1) - (seq:spos(i)+l) -- patch z+dz?
+      map.ds = seq:spos(i+1) - (seq:spos(i)+elm.l) -- patch z+dz?
     else
       map.ds, map.iturn = 0, map.iturn+1
     end
-    map.s = map.s+l
+    map.s = map.s+elm.l
   end
 
   map.ndft = ndft
