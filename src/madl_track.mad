@@ -176,17 +176,17 @@ __help['track: drift-kick models and references'] = [=[
                    PTC KIND                         References
 straight_drift:    DRIFT{R/P}
 rbend_drift:       SPAR{R/P}
+solenoid_drift:    KICK_SOL{R/P}
 polar_drift:       SPROT{R/P}
 sbend_drift:       SSEC{R/P}
 quad_drift:        PUSHTKT7{R/P}
 combined_drift:    PUSHTKT7{R/P} ?                  KTK, TKTF
-solenoid_drift:    KICK_SOL{R/P}
 
 straight_kick:     KICKEX{R/P}
-combined_kick:     KICKPATH{R/P}+KICKTKT7{R/P}
-quad_kick:         KICKPATH{R/P}+KICKTKT7{R/P}
-polar_kick:        SKICK{R/P} (GETELECTRIC)
 cavity_kick:       KICK_CAV{R/P}
+polar_kick:        SKICK{R/P} (GETELECTRIC)
+quad_kick:         KICKPATH{R/P}+KICKTKT7{R/P}
+combined_kick:     KICKPATH{R/P}+KICKTKT7{R/P}
 
 twcavity(drift+kick): CAVE{R/P}_TRAV => RK{2,4,6}_CAV{R/P}+...
 
@@ -205,7 +205,7 @@ local minlen, minang                                            in MAD.constant
 local observe, ismoved                                          in element.flags
 
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
-      sinc, fact                                                in MAD.gmath
+      sinh, cosh, sinc, fact                                    in MAD.gmath
 
 local minvolt = 1e-6
 
@@ -326,12 +326,12 @@ local function rbend_drift (elm, m, l)
 
   local x, px, y, py, t, pt, dirchg, T in m
   local _beta = 1/m.beam.beta
-  local lw = abs(elm.l) > minlen and l/elm.l or 1
-  local k0 = dirch*knl[1]
+  local lw = l/elm.l
+  local k0 = dirch*lw*knl[1]
 
   local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
   local pt = sqrt(1 + 2*_beta*pt + pt^2 - py^2)
-  local xp = px - lw*k0
+  local xp = px - k0
   local ps = sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - py^2)
   local xs = (asin(px/pt) - asin(xp/pt))/k0
 
@@ -354,7 +354,7 @@ local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
 
   local x, px, y, py, t, pt, T, dirchg in m      -- USE KSI not KS.
   local _beta = 1/m.beam.beta
-  local lw = abs(elm.l) > minlen and l/elm.l or 1
+  local lw = l/elm.l
 
 --  local bsol = ksi*lw*dirchg/2
   local bsol = ks/elm.l*dirchg/2 -- to discuss, no lenght for sol and lenght for all other comp.??
@@ -388,7 +388,38 @@ local function quad_drift (elm, m, l) -- better for fast tunes convergence
   if abs(knl[2]) < minang then
     return rbend_drift(elm,m,l)
   end
-  error("NYI")
+
+  local x, px, y, py, t, pt, dirchg, T in m -- TODO check dirchg
+  local _beta = 1/m.beam.beta
+  local l_beta_gam2 = l/(m.beam.gamma^2-1)
+  local _el = 1/elm.l
+
+  local lw = l*_el
+  local h  = lw*angle
+  local hbar = h*_beta
+
+  local k0, k1 = knl[1]*_el, knl[2]*_el
+  local hk0pk1 = h*k0+k1
+  local wx2, wy2 = abs(hk0pk1), abs(k1)
+  local wx , wy  = sqrt(wx2), sqrt(wy2)
+
+  local cx, sx, cy, sy
+  if hk0pk1 < 0 -- check wx == 0 ?
+  then cx, sx = cosh(wx*l), sinh(wx*l)/wx
+  else cx, sx = cos (wx*l), sin (wx*l)/wx
+  end
+  if k1 < 0
+  then cy, sy = cosh(wy*l), sinh(wy*l)/wy
+  else cy, sy = cos (wy*l), sin (wy*l)/wy
+  end
+
+  local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2)
+
+  m.x  =      cx*x + sx*px + hbar*m16*pt + (h-k0)*m16
+  m.px = -wx2*sx*x + cx*px + hbar*sx*pt  + (h-k0)*sx
+  m.y  =      cy*y + sy*py
+  m.py =  wy2*sy*y + cy*py
+  m.t  = t - hbar*(sx*x+m16*px) + (l_beta_gam2-m56)*pt + (1-T)*l*_beta
 end
 
 __help['track: exact polar drift'] = [=[
@@ -533,7 +564,7 @@ local function quad_kick (elm, m, l)
   if abs(knl[2]) < minang then -- should never occur due to precedences
     return cavity_kick(elm,m,l)
   end
-  error("NYI")
+  -- TODO: CEXACT/2 (KICKPATH) + KICKTKT7R + CEXACT/2 (KICKPATH)
 end
 
 __help['track: polar kick'] = [[
@@ -551,7 +582,7 @@ local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
   end
 
   local x, px, y, py, nmul, knl, ksl, dirchg in m
-  local lw, byt = elm.l>minlen and l/elm.l or 1
+  local lw, byt = l/elm.l
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
 
@@ -562,9 +593,9 @@ local function polar_kick (elm, m, l) -- [PTC] SKICK, TODO: GETELECTRIC
   end
 
   -- TODO: modified, should be rechecked
-  local ang = lw*angle
-  m.px = px - dirchg*by*(1 + ang*x) -- was k0...
-  m.py = py + dirchg*bx*(1 + ang*x)
+  local h = lw*angle
+  m.px = px - dirchg*by*(1 + h*x) -- was k0...
+  m.py = py + dirchg*bx*(1 + h*x)
 end
 
 __help['track: pseudo-exact combined kick'] = [=[
@@ -1204,10 +1235,10 @@ local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   if elm.shielded == true then
     get_kmult(elm, m, l) -- load multipoles
   else
-    add_kmult(elm, m, l)
+    add_kmult(elm, m, l) -- TODO load and add multipoles
   end
 
-  if has_patch(elm) then
+  if has_patch(elm) then -- TODO check for moves of misalignment (inheritance)
     patch_track(elm, m, 'entry')
   end
 
