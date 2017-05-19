@@ -228,15 +228,13 @@ twcavity_fringe:   FRINGE_CAV_TRAV{R/P}
 
 local vector, matrix, element, mtable, Command                  in MAD
 local is_nil, is_number, is_sequence, is_beam                   in MAD.typeid
-local minlen, minang                                            in MAD.constant
+local minlen, minang, clight                                    in MAD.constant
 local observe, ismoved                                          in element.flags
 
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
-      sinh, cosh, sinc, fact                                    in MAD.gmath
+      sinh, cosh, sinc, fact, twopi                             in MAD.gmath
 
-local minvolt = 1e-6
-
-local ptc_compat  = true
+local minvolt, volt_c = 1e-6, 1e-3
 
 -- special --------------------------------------------------------------------o
 
@@ -318,8 +316,25 @@ local function get_kmult (elm, m, l) -- l~=0
     end
     m.nmul = nmul
   else
-    m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
+    m.nmul, m.knl[1], m.knl[2] = 0, 0, 0
   end
+end
+
+-- multipoles -----------------------------------------------------------------o
+
+local function get_bxby (nmul, knl, ksl, x, y, lw)
+  if nmul == 0 then return 0, 0 end
+
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+  local byt
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+  return bx, by
 end
 
 -- drifts ---------------------------------------------------------------------o
@@ -340,20 +355,6 @@ local function straight_drift (_, m, l) -- exact, l~=0
   m.x = x + px*l_pz
   m.y = y + py*l_pz
   m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-end
-
-__help['track: drift to correct pseudo-exact quad kick'] = [=[
-Ref??
-]=]
-
-local function quadkick_drift (_, m, l) -- l~=0, drift attached to quad_kick
-  local x, px, y, py, t, pt, T in m
-  local _beta = 1/m.beam.beta
-
-  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
-  m.x  = x + px*(l_pz-l)
-  m.y  = y + py*(l_pz-l)
-  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
 end
 
 __help['track: exact rbend drift'] = [=[
@@ -421,22 +422,74 @@ local function solenoid_drift (elm, m, l) -- exact, l~=0          TO BE REVIEWED
   m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
 end
 
+__help['track: drift to correct pseudo-exact quad kick'] = [=[
+Ref??
+]=]
+
+local function quadadj_drift (_, m, l) -- l~=0, adjust quad drift
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+
+  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2) -- TODO: stability
+  m.x  = x + px*(l_pz-l)
+  m.y  = y + py*(l_pz-l)
+  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
 __help['track: pseudo-exact quad drift'] = [=[
   [MADX-PTC] Function PUSHTKT7 in file Sh_def_kind.f90
 ]=]
 
-local function quad_drift (elm, m, l) -- better for fast tunes convergence
-  local knl in m
-  if abs(knl[2]) < minang then
-    return rbend_drift(elm,m,l)
+local function quad_drift (elm, m, l)
+  local _beta = 1/m.beam.beta
+  local _el   = 1/elm.l
+  local l_bet2_gam2 = l/(m.beam.gamma^2-1)
+
+  local k0, k1 = knl[1]*_el, knl[2]*_el
+  local w2 = abs(k1)
+  local w  = sqrt(w2)
+
+  local ca, sa = cos (w*l), sin (w*l)/w
+  local ch, sh = cosh(w*l), sinh(w*l)/w
+
+  if k1 < 0 then
+    cw, sw, ch, sh = ch, sh, cw, sw
   end
 
-  local x, px, y, py, t, pt, dirchg, T in m -- TODO check dirchg
+  local pos in m
+  if is_nil(pos) or pos == 'exit' then
+    local dl = is_nil(pos) and l/2 or l
+    quadadj_drift(_, m, dl)
+  end
+
+  local x, px, y, py, t, pt, dirchg, T, knl in m
+
+  local m16 = (1-cx)/w2
+  m.x  =    cw*x + sw*px -k0*m16
+  m.px = -w*sw*x + cw*px -k0*sw
+  m.y  =    ch*y + sh*py
+  m.py =  w*sh*y + ch*py
+  m.t  = t + l_bet2_gam2*pt
+
+  if is_nil(pos) or pos == 'entry' then
+    local dl = is_nil(pos) and l/2 or l
+    quadadj_drift(_, m, l)
+  end
+  m.pos = nil
+end
+
+__help['track: pseudo-exact combined drift'] = [=[
+  [MADX-PTC] Function PUSHTKT7 in file Sh_def_kind.f90
+]=]
+
+local function comb_drift (elm, m, l)
+  local x, px, y, py, t, pt, dirchg, T, knl in m -- TODO check dirchg
+
   local _beta = 1/m.beam.beta
   local l_bet2_gam2 = l/(m.beam.gamma^2-1)
   local _el = 1/elm.l
 
-  local angle = elm.angle or 0
+  local angle = elm.angle
   local lw = l*_el
   local h  = lw*angle
   local hbar = h*_beta
@@ -512,11 +565,19 @@ __help['track: pseudo-exact combined drift'] = [=[
 ]=]
 
 local function combined_drift (elm, m, l) -- angle, k0, k1 (tunes)
-  local knl in m
-  if abs(knl[2]) < minang then
-    return sbend_drift(elm,m,l)
+  if abs(m.knl[2]) < minang then
+    if abs(angle) < minang then
+      return rbend_drift(elm,m,l)
+    else
+      return sbend_drift(elm,m,l)
+    end
+  else
+    if abs(angle) < minang then
+      return quad_drift(elm,m,l)
+    else
+      return comb_drift(elm,m,l)
+    end
   end
-  error("NYI")
 end
 
 -- kicks ----------------------------------------------------------------------o
@@ -527,28 +588,24 @@ __help['track: generic thin kick'] = [[
 
 -- Special case TO BE REVIEWED !!!
 local function thin_kick (elm, m) -- l=0 (ignored)
+  local nmul in m
+  if nmul == 0 then return end
+
 --  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
 --  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
 
-  local x, px, y, py, dirchg, nmul, knl, ksl in m -- BUG: nmul set by last getmul
-  local byt
-  local by = knl[nmul] / fact(nmul-1)
-  local bx = ksl[nmul] / fact(nmul-1)
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + knl[i] / fact(i-1)
-    bx  = y*by + x*bx + ksl[i] / fact(i-1)
-    by  = byt
-  end
+  local x, px, y, py, dirchg, knl, ksl in m
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, 1)
 
-  m.px = px - dirchg*by + dirchg*knl[1]
-  m.py = py + dirchg*bx - dirchg*ksl[1]
+  m.px = px - dirchg(by + knl[1])
+  m.py = py + dirchg(bx - ksl[1])
 
   if knl1 ~= 0 or ksl1 ~= 0 then
     local t, pt in m
     local _beta = 1/m.beam.beta
     local pz = sqrt(1 + 2*_beta*pt + pt^2)
 
-    local l = elm.lrad or 0
+    local l = elm.lrad or 0 -- TODO: check if lrad or l?
     if l ~= 0 then -- dipole focusing and deltap
       m.px = m.px - knl[1]^2*x/l + dirchg*knl[1]*(pz-1)
       m.py = m.py - ksl[1]^2*y/l + dirchg*ksl[1]*(pz-1)
@@ -570,15 +627,8 @@ local function straight_kick (elm, m, l) -- l~=0
   if nmul == 0 then return end
 
   local x, px, y, py, knl, ksl, dirchg in m
-  local lw, byt = abs(elm.l)>minlen and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
-
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
+  local lw = abs(elm.l)>minlen and l/elm.l or 1
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
 
   m.px = px - dirchg*by
   m.py = py + dirchg*bx
@@ -593,27 +643,19 @@ __help['track: exact cavity kick'] = [=[
 local function cavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
   local vrf in m
   if abs(vrf) < minvolt then
-    return straight_kick(elm,m,l)
+    return straight_kick(elm,m,l) -- correct?
   end
 
   local x, px, y, py, t, pt, nmul, dirchg in m
-  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
-  local ff, ph = elm.f or {}, elm.ph or {}
-  local a , r  = elm.a or  0, elm.r or 0
+  local volt, freq, lag, nbessel in elm
 
-  local pc     = m.beam.pc
-  local volt_c = 1.0e-3
-  local freq, harm = elm.freq or 0, elm.harm or 0
-  local volt, lag  = elm.volt or 0, elm.lag or 0
-  local nbessel    = elm.nbessel or  0
-
-  if freq == 0 and harm == 0 then
-    error("either frequency or harmonic number has to be defined for RF Cavity "
-          .. elm.name)
+  if freq == 0 then
+    error("Frequency number has to be defined for RF Cavity (i.e. harmon NYI) " .. elm.name)
   end
 
+  local pc = m.beam.pc
   local omega = twopi*freq / clight
-  local vl    = m.dirchg*l*volt*volt_c/pc
+  local vl    = dirchg*l*volt*volt_c/pc
   local df, f, r2 = 0, 1, 1
 
   do i=1,nbessel
@@ -624,54 +666,50 @@ local function cavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kic
     f   =  f + r2
   end
 
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a , r  = elm.a or  0, elm.r or 0
+
   if nbessel > 0 then
     m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
     m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
   end
 
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
   local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
   m.pt = m.pt -ff[ko]*f*vl*sin(arg)
 
-  local lw, byt = elm.l>0 and l/elm.l or 1
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
+  local lw = elm.l>0 and l/elm.l or 1
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
 
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
-    by  = byt
-  end
+  m.px = m.px - ff[ko]*           dirchg*by/pc*(a + r*cos(arg))
+  m.py = m.py + ff[ko]*           dirchg*bx/pc*(a + r*cos(arg))
+  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc*     r*sin(arg)
 
-  m.px = m.px - ff[ko]*dirchg*by/pc*(a + r*cos(arg))
-  m.py = m.py + ff[ko]*dirchg*bx/pc*(a + r*cos(arg))
-
+--[[ useful???
   by = -lw*knl[nmul] / fact(nmul-1) / nmul
   bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
 
-  for i=nmul,2,-1 do
-    byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
-    bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
+    bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
     by  = byt
   end
 
   byt = x*by - y*bx
   bx  = y*by + x*bx
   by  = byt
-
-  m.pt = m.pt + ff[ko]*(ko*omega)*dirchg*by/pc * r *sin(arg)
+]]
 end
 
-__help['track: pseudo-exact quad kick'] = [=[
+__help['track: exact quad kick'] = [=[
   [Forest98] p.354, ch. 12.1.3, eq. 12.6
   [MADX-PTC] Function KICKPATHR+KICKTKT7R in file Sh_def_kind.f90
 ]=]
 
-local function quad_kick (elm, m, l) -- includes a drift !! (not commutative)
+local function quad_kick (elm, m, l)
   if abs(m.knl[2]) < minang then -- should never occur due to precedences
     return cavity_kick(elm,m,l)
   end
-
-  quadkick_drift (nil, m, l/2) -- kickpath (c exact)
 
 -- kicktkt7r
   local x, px, y, py, t, pt, dirchg, T in m
@@ -695,8 +733,6 @@ local function quad_kick (elm, m, l) -- includes a drift !! (not commutative)
 
    m.px = m.px - dirchg*(by - lw*knl[1] - lw*knl[2]*x)
    m.py = m.py + dirchg*(bx             - lw*knl[2]*y)
-
-   quadkick_drift (nil, m, l/2) -- kickpath (c exact)
 end
 
 __help['track: polar kick'] = [[
@@ -1453,7 +1489,7 @@ local function make_mflow (self)
 
   local save, drift, nstep, nslice, method, total_path in self
   local len, dir = #sequence, sequence.direction
-  local T = total_path == true and 0 or 1
+  local T = total_path == true and 1 or 0
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,         -- initial vars
            nmul=0, knl={}, ksl={}, pnl={}, psl={},          -- internal vars
