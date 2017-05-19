@@ -645,6 +645,16 @@ local function cavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kic
   if abs(vrf) < minvolt then
     return straight_kick(elm,m,l) -- correct?
   end
+-- tt
+--phase
+--phase0
+--ff
+--ph
+--a
+--r
+--nbessel
+--freq
+--volt, lag
 
   local x, px, y, py, t, pt, nmul, dirchg in m
   local volt, freq, lag, nbessel in elm
@@ -668,15 +678,14 @@ local function cavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kic
 
   local ff, ph = elm.f or {}, elm.ph or {}
   local a , r  = elm.a or  0, elm.r or 0
+  local arg = omega*(t + tt) + phasе + ph + phase0
 
   if nbessel > 0 then
-    m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
-    m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    m.px = px-x*ff[ko]* df * vl * cos(arg)/(omega)
+    m.py = py-y*ff[ko]* df * vl * cos(arg)/(omega)
   end
 
-  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
-  local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
-  m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+  m.pt = m.pt -ff*f*vl*sin(arg)
 
   local lw = elm.l>0 and l/elm.l or 1
   local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
@@ -784,10 +793,89 @@ __help['track: straight fringe'] = [=[
   [Forest98] p. 389, ch. 13.2.3, eq. 13.33a-13.33f
 ]=]
 
+local function mult_fringe_field (elm, m, pos)
+--TO ADD
+end
+
+
+local function straight_fringe_field (elm, m, pos)
+-- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
+	if elm.kill_fringe then return end
+
+	local x, px, y, py, t, pt, T, dirchg in m
+    local k0   = elm.k0 or 0
+    local _beta = 1/m.beam.beta
+-- soft edge
+    local fint = elm.fint or 0  -- fringe field integral at entrance and exit of the bend
+    local hgap = elm.hgap or 0  -- half gap of the magnet
+
+	if                    elm.kill_fringe     then return end
+	if pos == 'entry' and elm.kill_ent_fringe then return end
+	if pos == 'exit'  and elm.kill_exi_fringe then return end
+
+  	local pz  = sqrt(1 + 2*_beta*pt + pt^2 ) -- TODO: stability
+  	local _pz = 1/pz
+    local time_fac = (_beta + pt)*_pz
+
+    local a2, b2 = elm.ksl[2]/elm.l or 0, elm.knl[2]/elm.l or 0
+    local b  = sqrt(b2^2 + a2^2)
+
+    local f1 = -dirchg*fint*abs(fint)*b*_pz/24.0
+    local f2 =  hgap*b*_pz
+
+    local ang=-atan2(a2,b2)/2
+
+    srotation(nil, m, -ang   or 0)
+
+    m.t = t - time_fac*(f1*x + f2*(1+f1/2)*px*_pz*exp(-f1))*px*_pz
+            + time_fac*(f1*y + f2*(1-f1/2)*py*_pz*exp( f1))*py*_pz
+
+    m.x = x*exp(f1 ) + px*f2*_pz
+    m.y = y*exp(-f1) - py*f2*_pz
+
+    m.px = px*exp(-f1)
+    m.py = py*exp(f1)
+
+    srotation(nil, m, -ang   or 0)
+end
+
 local function straight_fringe (elm, m, l)
+-- ADD DIRECTION
   local nmul in m
   if nmul == 0 then return end
-  -- error("NYI") -- TODO
+  if pos == 'entry'  then
+	local e, h = elm.e1 or 0, elm.h1 or 0
+  	if dir == 1 then
+  	  yrotation          (elm, m,  e)
+  	  sbend_face         (elm, m,  h)
+  	  sbend_fringe_field (elm, m,  'entry')
+
+	else
+      sbend_fringe_field (elm, m,  'entry')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
+    end
+      mult_fringe_field     (elm, m,  'entry')
+      straight_fringe_field (elm, m,  'entry')
+     return
+  end
+
+  if pos == 'exit'  then
+    local e, h = elm.e2 or 0, elm.h2 or 0
+      straight_fringe_field (elm, m,  'exit')
+      mult_fringe_field     (elm, m,  'exit')
+  	if dir == 1 then
+      sbend_fringe_field (elm, m,  'exit')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
+	else
+  	  yrotation          (elm, m,  e)
+  	  sbend_face         (elm, m,  h)
+  	  sbend_fringe_field (elm, m,  'exit')
+    end
+     return
+  end
+
 end
 
 __help['track: solenoid fringe'] = [=[
