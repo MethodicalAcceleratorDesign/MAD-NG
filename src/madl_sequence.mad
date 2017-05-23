@@ -470,26 +470,59 @@ function elem_pos (seq, idx, elm_)
 end
 
 -- compute s-positions of sub sequence elements
-local function sequ_pos (seq, sseq, idx)
+local function sequ_pos (seq, sseq, idx, dir)
   check_sequ(sseq)
   local pos = sub(elem_pos(seq, idx, sseq)) -- shift by subsequence refpos
+
+  if seq.direction ~= sseq.direction then -- changedir patch
+    seq[_epos][idx] = sseq[_epos][1] + pos
+    seq[_spos][idx] = sseq[_spos][1] + pos
+    idx = idx + 1
+  end
+
   local n = #sseq
-  for i=2,n-1 do
-    seq[_epos][idx-2+i] = sseq[_epos][i] + pos
-    seq[_spos][idx-2+i] = sseq[_spos][i] + pos
-    assert(seq[idx-2+i] == sseq[i], "unexpected corrupted flat sequence")
+  if dir > 0 then
+    for i=2,n-1 do
+      seq[_epos][idx-2+i] = sseq[_epos][i] + pos
+      seq[_spos][idx-2+i] = sseq[_spos][i] + pos
+      assert(seq[idx-2+i] == sseq[i], "unexpected corrupted flat sequence")
+    end
+  else
+    local l = sseq.l
+    for i=2,n-1 do
+      local sp, el = sseq[_spos][n+1-i], sseq[n+1-i].l
+      seq[_epos][idx-2+i] = l - (sp + el - (sseq[_epos][n+1-i] - sp)) + pos
+      seq[_spos][idx-2+i] = l - (sp + el                            ) + pos
+      assert(seq[idx-2+i] == sseq[n+1-i], "unexpected corrupted flat sequence")
+    end
+  end
+
+  if seq.direction ~= sseq.direction then -- changedir patch
+    seq[_epos][idx+n] = sseq[_epos][n] + pos
+    seq[_spos][idx+n] = sseq[_spos][n] + pos
   end
   return pos
 end
 
--- copy sub sequence -- TODO: manage direction
-local function copy_sequ (seq, flat, sref, idx)
+-- copy sub sequence
+local function copy_sequ (seq, flat, sref, idx, dir)
   check_sequ(seq)
-  local n = #seq
-  for i=2,n-1 do
-    flat[idx-2+i] = seq[i]
+  sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
+
+  if sref.dir ~= seq.direction then -- insert changedir patch
+    idx, flat[idx] = idx+1, changedir(seq.name, {})
   end
-  sref[idx] = seq -- keep a link of the subsequence
+
+  local n = #seq
+  if dir > 0 then
+    for i=2,n-1 do flat[idx-2+i] = seq[i] end
+  else
+    for i=2,n-1 do flat[idx-2+i] = seq[n+1-i] end
+  end
+
+  if sref.dir ~= seq.direction then
+    idx, flat[idx-2+n] = idx+1, flat[idx-1] -- share changedir patch
+  end
   return idx-2+n
 end
 
@@ -514,7 +547,7 @@ local function flatten_line (line, flat, sref, idx, dir)
     elseif elm.is_bline == true or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, step)
     elseif not is_nil(sref) and is_sequence(elm) then
-      idx = copy_sequ   (elm, flat, sref, idx)
+      idx = copy_sequ   (elm, flat, sref, idx, step)
     else -- other elements
       idx, flat[idx] = idx+1, elm
     end
@@ -533,7 +566,7 @@ local function flatten_sequ (seq, flat, sref)
     elseif elm.is_bline == true or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, 1)
     elseif is_sequence(elm) then
-      idx = copy_sequ   (elm, flat, sref, idx)
+      idx = copy_sequ   (elm, flat, sref, idx, 1)
     else -- other elements
       idx, flat[idx] = idx+1, elm
     end
@@ -574,7 +607,7 @@ local function build_pos (seq, sref)
       pos = seq[_spos][idx] + seq[idx].l
       idx = idx + 1
     else                     -- subsequence
-      sequ_pos(seq, sseq, idx)
+      sequ_pos(seq, sseq, idx, sref.sdir[idx])
       if pos-minlen > seq[_spos][idx] then
         build_pos_err('subsequence', seq, idx, pos)
       end
@@ -615,7 +648,7 @@ function sequence_init (seq)
   assert(n > 0, "invalid argument #1 (non-empty sequence expected)")
   if seq:rawlen() == 0 then return seq end -- inheritance (already built)
 
-  local flat, sref = table.new(n+2,0), {}
+  local flat, sref = table.new(n+2,0), { dir=seq.direction, sdir={} }
   flatten_sequ (seq, flat, sref)
   build_sequ   (seq, flat)
   build_pos    (seq, sref)
@@ -940,9 +973,9 @@ local function move (seq, sel)
   return rmv
 end
 
--- iterator -------------------------------------------------------------------o
+-- iterators ------------------------------------------------------------------o
 
-local function seqiter (state, i)
+local function seqfwditer (state, i)
   if i == state.stop then
     if state.turn == 0 then
       return nil
@@ -956,15 +989,34 @@ local function seqiter (state, i)
   end
 end
 
-local function mkiter (seq, start, stop, nturn)
-  if start == stop+1 then nturn = nturn+1 end
-  return seqiter, {seq=seq, len=#seq, stop=stop, turn=nturn}, start-1
+local function seqbwditer (state, i)
+  if i == state.stop then
+    if state.turn == 0 then
+      return nil
+    end
+    state.turn = state.turn-1
+  end
+  if i == 1 then
+    return state.len, state.seq[state.len]
+  else
+    return i-1, state.seq[i-1]
+  end
 end
 
-local function iter (seq, rng_, nturn_)
+local function mkfwditer (seq, start, stop, nturn)
+  if start == stop+1 then nturn = nturn+1 end
+  return seqfwditer, {seq=seq, len=#seq, stop=stop, turn=nturn}, start-1
+end
+
+local function mkbwditer (seq, start, stop, nturn)
+  if start == stop-1 then nturn = nturn+1 end
+  return seqbwditer, {seq=seq, len=#seq, stop=stop, turn=nturn}, start+1
+end
+
+local function fwditer (seq, rng_, nturn_)
   local nturn = nturn_ or 0
-  assert(is_sequence(seq)             , "invalid argument #1 (sequence expected)")
-  assert(is_number(nturn) and nturn >= 0, "invalid argument #3 (number expected)")
+  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
+  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
   local start, stop
   if is_nil(rng_) then
     if is_nil(seq.start_at) then
@@ -978,7 +1030,34 @@ local function iter (seq, rng_, nturn_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end
-  return mkiter(seq, start, stop, nturn)
+  return mkfwditer(seq, start, stop, nturn)
+end
+
+local function bwditer (seq, rng_, nturn_)
+  local nturn = nturn_ or 0
+  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
+  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
+  local start, stop
+  if is_nil(rng_) then
+    if is_nil(seq.start_at) then
+      start, stop = #seq, 1
+    else
+      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      stop  = start == #seq and 1 or start+1
+    end
+  else
+    start, stop = seq:range_of(rng_)
+    assert(is_number(start), "invalid range start")
+    assert(is_number(stop ), "invalid range stop" )
+  end
+  return mkbwditer(seq, start, stop, nturn)
+end
+
+local function iter (seq, rng_, nturn_, dir_)
+  local dir = dir_ or 1
+  if dir ==  1 then return fwditer(seq, rng_, nturn_) end
+  if dir == -1 then return bwditer(seq, rng_, nturn_) end
+  error("invalid argument #4 (direction number expected)")
 end
 
 -- env ------------------------------------------------------------------------o
@@ -1010,6 +1089,8 @@ sequence :set_functions {
   remove    = remove,
   cycle     = cycle,
   iter      = iter,
+  fwditer   = fwditer,
+  bwditer   = bwditer,
 
   -- disabled methods
   is_selected := error("invalid sequence operation", 2),
