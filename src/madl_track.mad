@@ -1570,7 +1570,8 @@ local _trk = {}
 
 local function fill_mtable (name, kind, m, l)
   -- keep order!
-  m.mtable = m.mtable + {name, kind, m.s+l, l, m.x, m.px, m.y, m.py, m.t, m.pt}
+  m.mtable = m.mtable +
+             { name, kind, m.s+m.mdir*l, l, m.x, m.px, m.y, m.py, m.t, m.pt }
 end
 
 local function make_mtable (self)
@@ -1661,7 +1662,7 @@ local function exec (self)
   local seq = map.sequence
 
   -- retrieve information
-  local nlen, ndft, save, drift, mdir in map
+  local save, drift, nlen, mdir in map
   local range, nturn in self
 
   -- dynamic tracking
@@ -1669,14 +1670,14 @@ local function exec (self)
 
     -- implicit drift
     local ds in map
-    if mdir*ds >= minlen then
+    if ds >= minlen then
       straight_drift(nil, map, ds)
       if drift and elm:is_selected(observe) then
-        ndft = ndft+1
-        fill_mtable('DRIFT_'..ndft, 'drift', map, ds)
+        map.ndft = map.ndft+1
+        fill_mtable('DRIFT_'..map.ndft, 'drift', map, ds)
       end
-      map.s, map.ds = map.s+ds, 0
-    elseif mdir*ds <= -minlen then
+      map.s, map.ds = map.s + mdir*ds, 0 -- update s
+    elseif ds <= -minlen then
       error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
             ds, seq.name, elm.name, map.s))
     end
@@ -1688,22 +1689,18 @@ local function exec (self)
       fill_mtable(elm.name, elm.kind, map, elm.l)
     end
 
-    -- update map s, ds
-    if mdir == 1 then
-      if i == nlen
-      then map.ds = 0
-      else map.ds = seq:spos(i+1) - (seq:spos(i)+elm.l) -- ds patch?
-      end
+    -- update s and ds
+    local di = i+mdir
+    map.s = map.s + mdir*elm.l -- update s
+    if di < 1 or di > nlen then
+      map.ds = 0
+    elseif mdir == 1 then
+      map.ds = seq:spos(di) - (seq:spos( i)+elm.l    ) -- ds patch?
     else
-      if i == 1
-      then map.ds = 0
-      else map.ds = seq:spos(i-1)+elm.l - seq:spos(i)   -- ds patch?
-      end
+      map.ds = seq:spos( i) - (seq:spos(di)+seq[di].l) -- ds patch?
     end
-    map.s = map.s + mdir*elm.l
   end
 
-  map.ndft = ndft
   return map.mtable, map
 end
 
