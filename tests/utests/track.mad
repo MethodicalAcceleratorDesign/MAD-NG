@@ -17,355 +17,60 @@
 
   Purpose:
   - Provide regression test suites for the track module.
+  - Test single element maps.
 
  o-----------------------------------------------------------------------------o
 ]=]
 
 -- locals ---------------------------------------------------------------------o
 
-local assertNotNil, assertTrue, assertEquals,
-      assertAllAlmostEquals in MAD.utest
-local printf                in MAD.utility
-local sequence              in MAD.element
-local observe               in MAD.element.flags
-local track, beam, option   in MAD
+local assertTrue, assertEquals, assertAllAlmostEquals in MAD.utest
+local printf                                          in MAD.utility
+local track, beam, element, sequence, option          in MAD
+local drift                                           in element
+local observe                                         in element.flags
 
--- regression test suite ------------------------------------------------------o
+-- helpers --------------------------------------------------------------------o
 
-TestTrack, Test_Track = {}, {}
-
-local function prtinfo (elm,m,l,s) -- for debug
-  printf("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g\n",
-   elm and elm.name or 'drift', s, l, m.x, m.px, m.y, m.py)
+local function prtinfo (tbl) -- for debug
+  printf("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g, %.8g, %.8g, %.8g\n",
+         tbl.name or 'drift', tbl.kind,
+         tbl.s, tbl.l, tbl.x, tbl.px, tbl.y, tbl.py, tbl.t, tbl.pt)
 end
 
-local function loadFiveCell()
-  if TestTrack.FiveCell ~= 'loaded' then
-    assertNotNil(require 'fivecell_gen'     )
-    assertNotNil(require 'fivecell_set'     ) -- side effect from LHC...
-    assertNotNil(require 'fivecell_undefvar')
+-- Drift ----------------------------------------------------------------------o
 
-    local fivecell in MADX
-    assertEquals(#fivecell, 81)
-    assertEquals(fivecell.mb[1].kind, 'rbend')
+TestTrackDrift = {}
 
-    fivecell:deselect(observe) ['#e']:select(observe)
-
-    TestTrack.FiveCell = 'loaded'
-  end
-  return MADX.fivecell
-end
-
-local function loadLHC()
-  if TestTrack.LHC ~= 'loaded' then
-    assertNotNil(require 'lhc_as-built_gen')
-    assertNotNil(require 'lhc_as-built_set')
-    assertNotNil(require 'lhc_undefvar'    )
-    assertNotNil(require 'opt_inj_gen'     )
-
-    local lhcb1, lhcb2 in MADX
-    assertEquals(#lhcb1, 6677)
-    assertEquals(#lhcb2, 6676)
-
-    lhcb1:deselect(observe) ['#e']:select(observe)
-    lhcb2:deselect(observe) ['#e']:select(observe)
-
-    TestTrack.LHC = 'loaded'
-  end
-  return MADX.lhcb1, MADX.lhcb2
-end
-
-function TestTrack:setUp ()
+function TestTrackDrift:setUp ()
   self.optfmt = option.format
   option.format = "%-18.11g"
 end
 
-function TestTrack:tearDown ()
+function TestTrackDrift:tearDown ()
   option.format = self.optfmt
-  if MADX:is_open_env() == true then
-    MADX:reset_env()
-  end
 end
 
-function Test_Track:setUp ()
-  self.optfmt = option.format
-  option.format = "%-18.11g"
+function TestTrackDrift:testTrackDrift()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1 } }
+  seq:select(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, -0.5, 0.1} }
+  assertEquals(#tbl, 3)
+  print()
+  tbl:write(io.stdout)
 end
 
-function Test_Track:tearDown ()
-  option.format = self.optfmt
-  if MADX:is_open_env() == true then
-    MADX:reset_env()
-  end
-end
+function TestTrackDrift:testTrackDriftNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nst=10 } }
+  seq:select(observe)
 
-function TestTrack:testTrackLHC1()
-  local lhcb1 = loadLHC()
-  local beam = beam { particle='proton', energy=450 }
-  local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
-  assertEquals(#tbl, 1) --13267)
-  tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
- end
-
-function Test_Track:testTrackLHC1() -- Performance
-  -- ./mad -Oloopunroll=2 all.mad -v -p Test_Track.testTrackLHC1
-  jit.opt.start("loopunroll=2")
-  local lhcb1 = loadLHC()
-  local beam = beam { particle='proton', energy=450 }
-  local n = 20
-  local t0 = os.clock()
-  local tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0} }
-  for i=1,n-1 do
-    tbl = track { sequence=lhcb1, beam=beam, X0={-1e-3, 0, 0, -1.7e-4, 0, 0}, mtable=tbl }
-  end
-  local t1 = os.clock()
-  assertEquals(#tbl, n)
-  tbl:write('track_lhcb1') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
--- 10 turns with save = 'none' takes 1.52 sec -> 0.15 sec/turn
---  printf('LHC track time per turn = %g sec ... ', (t1-t0)/n)
- end
-
-function TestTrack:testTrackQUADY2()
- local quadrupole in MAD.element
- local beam = beam { particle='proton', energy=450 }
- local seq = sequence 'seq' { refer = 'entry',
-   quadrupole 'qf' { l=3, k1 := kqf }
- }
- for k=-10,10, 1 do
-   kqf = k*0.1
-   local tbl = track { sequence=seq, beam=beam, method='simple', nst=5, X0= {-1e-3, 2e-4 ,3e-3, 0,0.1, 5e-3}}
---   local n = #tbl
---  for i=1,n do
---     print('\n MADNG_QUAD', tbl.s[i], kqf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
- end
-end
-
-function TestTrack:testTrackQUADY6()
- local quadrupole in MAD.element
- local beam = beam { particle='proton', energy=450 }
- local seq = sequence 'seq' { refer = 'entry',
-   quadrupole 'qf' { l=3, k1 := kqf }
- }
- for k=-10,10, 1 do
-   kqf = k*0.1
-   local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=3, X0= {-1e-3, 2e-4 ,3e-3, 0,-1e-3, 5e-3}}
---   local n = #tbl
---   for i=1,n do
---     print('\n MADNG_QUAD', tbl.s[i], kqf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
- end
-end
-
-function TestTrack:testTrackSEXT()
- local sextupole in MAD.element
- local beam = beam { particle='proton', energy=450 }
- local seq = sequence 'seq' { refer = 'entry',
-   sextupole 'sf' { l=3, k2 := ksf }
- }
- for k=-1,1,0.1 do
-   ksf = k
-   local tbl = track { sequence=seq, beam=beam, method='yoshida4', nst=100, X0= {-1e-3, 2e-4 ,3e-3, 7e-8,0, 5e-3}}
---   local n = #tbl
---  for i=1,n do
---    print('\n MADNG_SEXT', tbl.s[i], ksf,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
- end
-end
-
-function TestTrack:testTrackSBEND()
- local sbend in MAD.element
- local beam = beam { particle='proton', energy=450 }
- local ksb
- local seq = sequence 'seq' { refer = 'entry',
---   sbend 'sb' { l=3, angle := ksb, k0 := ksb/3, e1=0.3, e2=0.4, k1 =0.001, kill_fringe=1 }
-   sbend 'sb' { l=3, angle := ksb, k0 := ksb/3, k1 =0.000, kill_fringe=1 }
- }
- for k=-1,1,0.15 do
-    ksb = k
---    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=15, X0= {-1e-1, 3e-2,7e-1,-3e-4, 1.1, -5e-6}}
-    local tbl = track { sequence=seq, beam=beam, method='simple', nst=1, X0= {-1e-1, 3e-2,7e-1,-3e-4, 0, -5e-6}}
---    local n = #tbl
---    for i=1,n do
---  print('\n MADNG_SBEND', tbl.s[i], ksb,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---  end
- end
-end
-
-function TestTrack:testTrackMULT1()
-  local multipole in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' { l=1, refer = 'entry',
-      multipole 'mlt' { knl={ 0.01, 0.02, 0.03, 0.04}, dknl={0.008, 3e-8},
-                        ksl={-0.01, 0.05},             dksl={-3e-7, 5e-6},
-                        lrad=1 }
-    }
-  seq.mlt:select(observe)
-  local tbl = track { sequence=seq, beam=beam, method='simple', nst=1,
-                      X0= {0.001, -0.005, 0.001, 4e-6, 0, 0} }
-
-  actual   = { tbl.mlt.x, tbl.mlt.px, tbl.mlt.y, tbl.mlt.py, tbl.mlt.t, tbl.mlt.pt }
-  expected = { 0.001,-0.012970095016667, 0.001, 7.3635043333334e-05, -2.0000043474438e-05, 0 }
---  assertAllAlmostEquals (actual, expected, 1e-14)
-end
-
-function TestTrack:testTrackMULT2()
- local multipole in MAD.element
- local beam = beam { particle='proton', energy=450 }
- local seq = sequence 'seq' {l=1, refer = 'entry',
-     multipole 'qfm' { knl = { 0.05, knl1, 0.07, 0.09},  ksl= {0.01, -0.03, ksl2} }
- }
- for k=-1, 1, 0.1 do
-   knl1 = k
-   ksl2 = k*0.1
-  local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=5, X0= {-1e-3, 3e-3,7e-5,-3e-4, 1e-3, 0}}
---   local tbl = track { sequence=seq, beam=beam, method='simple', nst=1, X0= {-1e-3, 3e-3,7e-5,-3e-4, 1e-3, 0}}
---  local n = #tbl
---     for i=1,n do
---     print('\n MADNG_MULT', tbl.s[i], knl1,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
- end
-end
-
-function TestTrack:testTrackSOLD()
-  local solenoid in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' {l=3, refer = 'entry',
-    solenoid 'SL'  {l=3, ks := msol }
-  }
-  for k=-1, 1, 0.1 do
-    msol = k*0.01
-    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=7, X0= {-1e-3, 2e-4, 3e-3, 0, -1.1, 1e-6}}
---   local n = #tbl
---  for i=1,n do
---    print('\n MADNG_SOLD', tbl.s[i], msol ,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
-  end
-end
-
-function TestTrack:testTrackVKICK()
-  local vkicker in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' { l=3, refer = 'entry',
-     vkicker 'vk' { l=3, kick:=kk }
-  }
-  for k=-1, 1, 0.1 do
-    kk = k*0.03
-    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=6, X0= {-1e-3, 2e-4, 3e-3, 0, 1.1, 1e-6}}
---   local n = #tbl
---    for i=1,n do
---     print('\n MADNG_HKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
-  end
-end
-
-function TestTrack:testTrackHKICK()
-  local hkicker in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' { l=3, refer = 'entry',
-     hkicker 'hk' { l=3, kick :=kk }
-  }
-  for k=-1, 1, 0.1 do
-   kk = k*0.03
-   local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=6, X0= {-1e-3, 2e-4, 3e-3, 0, 0, 1e-6}}
---   local n = #tbl
---    for i=1,n do
---     print('\n MADNG_HKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---   end
-  end
-end
-
-function TestTrack:testTrackMKICK()
-  local hkicker in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-  local seq = sequence 'seq' {l=3, refer = 'entry',
-     hkicker 'hk' { kick :=kk, lrad = 1.5 }
-  }
-  for k=-1, 1, 0.1 do
-    kk = k*0.5
-    local tbl = track { sequence=seq, beam=beam, method='yoshida6', nst=10, X0= {-1e-3, 2e-4, 3e-3, 0, 0, 1e-6}}
---    local n = #tbl
---    for i=1,n do
---      print('\n MADNG_MHKICK', tbl.s[i], kk,tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---    end
-  end
-end
-
-!function TestTrack:testTrackFiveCell()
-!  local fivecell = loadFiveCell()
-!  local beam = beam { particle='proton', energy=450 }
-!  local tbl = track { sequence=fivecell, beam=beam }
-!  assertEquals(#tbl, 143)
-!  tbl:write('track_fivecell') -- , {'name', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt'})
-!end
-
-function TestTrack:testTrackSPSLine()
-  local pi in math
-  local marker, drift, monitor, hkicker, vkicker, multipole in MAD.element
-  local sbend, quadrupole, sextupole, patch                 in MAD.element
-  local beam = beam { particle='proton', energy=450 }
-
--- total length
-  local circum = 6912.0
--- number of cells and therefore cell length
-  local ncell  = 108
-  local lcell  = circum/ncell
---lengths of elements and half lengths
-  local lsb    = 3.       -- arc length of dipole
-  local lquad  = 3.085
-  local lquad2 = lquad/2.
-  local lsex   = 1.0
---marker
-  local ip  = marker 'ip' {}
---drift (just to check if it works and gives the same results)
-  local dr = drift 'dr' {}
---sbend
---  local asb = 0.010    -- angle
-  local asb = 2.0*pi/(8*108)
---  local sb  = sbend     'sb'{ l:=lsb, angle = asb }
-  local sb  = multipole 'sb' { knl = {asb} }
---quads
-  local kqf  =  1.4631475E-02
-  local kqd  = -1.4643443E-02
-  local qf  = quadrupole 'qf' { l=lquad, k1:= kqf }
-  local qd  = quadrupole 'qd' { l=lquad, k1:= kqd }
---sextupole
-  local ksf =  2.0284442E-02
-  local ksd = -3.8394267E-02
-  local sf  = sextupole 'sf' {l=lsex,  k2:=ksf}
-  local sd  = sextupole 'sd' {l=lsex,  k2:=ksd}
--- orbit correctors and beam position monitors
-  local bpm = monitor 'bpm'  {l=0.1}
-  local ch  = hkicker 'ch'   {l=0.1}
-  local cv  = vkicker 'vh'   {l=0.1}
---sequence
-  local seq = sequence 'sps_cell1' {l = lcell, dir =1, refer = 'centre',
-      ip  'IP1'  { at = 0     },
-      qf  'QF1'  { at = lquad2},
-      sf  'SF1'  { at = lquad2   +  2.5},
-      ch  'CH1'  { at = lquad2   +  3.1},
-      bpm 'BPM1' { at = lquad2   +  3.2},
-      sb  'SB1'  { at = lquad2   +  3.5},
-      sb  'SB2'  { at = lquad2   +  9.9},
-      sb  'SB3'  { at = lquad2   +  22.1},
-      sb  'SB4'  { at = lquad2   +  28.5},
-      ip  'IPM'  { at = 32        },
-      qd  'QD1'  { at = lquad2   +  32},
-      sd  'SD1'  { at = lquad2   +  34.5},
-      cv  'CV1'  { at = lquad2   +  35.1},
-      bpm 'BPM2' { at = lquad2   +  35.2},
-      sb  'SB1'  { at = lquad2   +  35.5},
-      sb  'SB2'  { at = lquad2   +  41.9},
-      sb  'SB3'  { at = lquad2   +  54.1},
-      sb  'SB4'  { at = lquad2   +  60.5},
-      ip  'IP2'  { at = lcell    },
-  }
-  local tbl = track { sequence=seq,  beam=beam, metod='yoshida4', nst=5000, X0= {-1e-3, 3e-3,7e-5,-3e-4, 1e-3, 0}}
---    local n = #tbl
---    for i=1,n do
---     print('\n MADNG_SPSLine', tbl.s[i], tbl.x[i],tbl.px[i],tbl.y[i],tbl.py[i],tbl.t[i],tbl.pt[i])
---    end
-  tbl:write('sps_cell1')
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, -0.5, 0.1} }
+  assertEquals(#tbl, 3)
+  print()
+  tbl:write(io.stdout)
 end
 
 -- end ------------------------------------------------------------------------o
