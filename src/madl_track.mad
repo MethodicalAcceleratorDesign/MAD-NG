@@ -235,6 +235,8 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 local minvolt, volt_c = 1e-6, 1e-3
 
+local E = element
+
 -- special --------------------------------------------------------------------o
 
 local function empty_track () end
@@ -244,8 +246,10 @@ local function invalid_track (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-element.  extra_element :set_functions { track = invalid_track } -- not valid
-element.special_element :set_functions { track =   empty_track } -- default
+E.  extra_element :set_functions { track = invalid_track,
+                               backtrack = invalid_track } -- not valid
+E.special_element :set_functions { track =   empty_track,
+                               backtrack =   empty_track } -- default
 
 -- strengths and phases -------------------------------------------------------o
 
@@ -267,9 +271,10 @@ local function get_mult (elm, m) -- l=0 (or ignored)
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl)
 
-  m.ksi = (elm.ksi  or 0) + (elm.dksi or 0) -- solenoid
-  m.krf = (elm.krf  or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
-  m.vrf = (elm.volt or 0) + (elm.dvrf or 0) -- rf volts
+  m.ksi  = (elm.ksi  or 0) + (elm.dksi or 0) -- solenoid
+  m.krf  = (elm.krf  or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
+  m.vrf  = (elm.volt or 0) + (elm.dvrf or 0) -- rf volts
+  m.ktot = nmul + abs(m.ksi) + abs(m.krf) + abs(m.vrf)
 
   if nmul >= 1 then
     for i=1,nmul do
@@ -281,13 +286,14 @@ local function get_mult (elm, m) -- l=0 (or ignored)
     end
     m.nmul = nmul
   else
-    m.nmul, m.knl[1], m.ksl[1] = 0, 0, 0
+    m.nmul, m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0, 0
   end
 end
 
 -- Load element strengths, multipoles and volts in mflow
 
-local function get_kmult (elm, m, l) -- l~=0
+local function get_kmult (elm, m) -- l~=0
+  local l in elm
   if abs(l) < minlen then return get_mult(elm, m) end
 
   local k0 , k1 , k2 , k3  in elm
@@ -298,9 +304,10 @@ local function get_kmult (elm, m, l) -- l~=0
   local ksl, dksl = elm.ksl or {}, elm.dksl or {}
   local nmul = max(#knl, #ksl, #dknl, #dksl, nkn, nks)
 
-  m.ksi = (elm.ks or 0)*l + (elm.ksi  or 0) + (elm.dksi or 0)
-  m.krf =                   (elm.krf  or 0) + (elm.dkrf or 0)
-  m.vrf =                   (elm.volt or 0) + (elm.dvrf or 0)
+  m.ksi  = (elm.ks or 0)*l + (elm.ksi  or 0) + (elm.dksi or 0)
+  m.krf  =                   (elm.krf  or 0) + (elm.dkrf or 0)
+  m.vrf  =                   (elm.volt or 0) + (elm.dvrf or 0)
+  m.ktot = nmul + abs(m.ksi) + abs(m.krf) + abs(m.vrf)
 
   if nmul >= 1 then
     local kn = { k0 , k1 , k2 , k3  }
@@ -314,7 +321,7 @@ local function get_kmult (elm, m, l) -- l~=0
     end
     m.nmul = nmul
   else
-    m.nmul, m.knl[1], m.knl[2] = 0, 0, 0
+    m.nmul, m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0, 0
   end
 end
 
@@ -999,8 +1006,8 @@ end
 function srotation (_, m, angle)   -- XYrot <-> Rz(-angle)?
   if abs(angle) < minang then return end
 
-  local x, px, y, py, sdir in m
-  local sa, ca = sin(angle*bdir), cos(angle*sdir)
+  local x, px, y, py, bdir in m
+  local sa, ca = sin(angle*bdir), cos(angle*bdir)
 
   m.x  = ca*x  + sa*y
   m.y  = ca*y  - sa*x
@@ -1013,7 +1020,7 @@ end
 function translate (_, m, dx, dy, dz)
   local bdir in m
 
-  straight_drift(_, m, dz)
+  straight_drift(nil, m, dz)
   m.x = m.x - dx*bdir
   m.y = m.y - dy*bdir
 end
@@ -1035,20 +1042,25 @@ function changeref (elm, m)
   translate(nil, m, x or 0, y or 0, z or 0)
 end
 
--- Forward/Backward patches
+-- Entry/Exit patches
 
-function forward_patch (elm, m)
-  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
+ -- not correct, need local survey patch
+function entry_patch (elm, m)
+  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi, tilt in elm
+  -- TODO: mdir, survey m.S (mdir = -1)
   xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
   yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
   srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
   translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
                     (z or 0)+(dz or 0) )
+  srotation(nil, m, tilt)
 end
 
-function backward_patch (elm, m)
-  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi in elm
+function exit_patch (elm, m)
+  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi, tilt in elm
+  -- TODO: mdir, survey m.S (mdir = 1)
+  srotation(nil, m, -tilt)
   translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
                     (z or 0)+(dz or 0) )
@@ -1403,133 +1415,304 @@ end
 
 local integrators = require 'madl_sympint'
 
--- sub element kind tracking --------------------------------------------------o
+-- sub element tracking -------------------------------------------------------o
 
-local function subdft_track (elm, m, l)
-  local s, ds, at = 0
-
-  for i=1,#elm do   -- sub-elements
-    local selm = elm[i]
-    at = assert(selm.at, "invalid sub-element position (at expected)")
-
-    -- implicit drift
-    ds = at - s
-    assert(ds >= 0, "invalid sub-element position (negative drift)")
-    if ds >= minlen then
-      straight_drift(nil, m, ds)
-    end
-    s = s + ds
-
-    -- subelement
-    selm:track(m)
-    s = s + selm.l
-  end
-
-  -- implicit drift
-  ds = l-s
-  assert(ds >= 0, "invalid sub-element position (negative drift)")
-  if ds >= minlen then
-    straight_drift(nil, m, ds)
-  end
-end
-
-local function subelm_track (elm, m, l)
-  local integrator = integrators[elm.method or m.method]
+local function subelm_track (elm, m, integrator)
   local drift_track, kick_track in elm
-  local s, ds, at = 0
+  local selm, selm_s in m
 
-  table.insert(m.selm, selm)
+  -- save current sub-element and sub-position
+  local nselm = #selm
+  selm[nselm], selm_s[nselm] = elm, 0
 
-  for i=1,#elm do   -- sub-elements
-    local selm = elm[i]
-    at = assert(selm.at, "invalid sub-element position (at expected)")
-
+  -- sub-tracking
+  local n = #elm
+  for i=1,n do
     -- implicit drift
-    ds = at - s
-    assert(ds >= 0, "invalid sub-element position (negative drift)")
-    if ds >= minlen then
-      integrator(elm, m, ds, drift_track, kick_track)
+    local dl = elm:spos(i) - selm_s[nselm]
+    if dl >= minlen then
+      integrator(elm, m, dl, drift_track, kick_track)
+      selm_s[nelm] = selm_s[nelm] + dl
+    elseif dl <= -minlen then
+      error(string.format("invalid sub-element %s['%s'] relative position at %sm",
+            m.sequence.name, elm[i].name, dl))
     end
-    s = s + ds
 
-    -- subelement
-    selm:track(m)
-    s = s + selm.l
+    -- sub-element
+    elm[i]:track(m)
+    selm_s[nelm] = selm_s[nelm] + elm[i].l
   end
 
-  -- implicit drift
-  ds = l-s
-  assert(ds >= 0, "invalid sub-element position (negative drift)")
-  if ds >= minlen then
-    integrator(elm, m, ds, drift_track, kick_track)
+  -- last implicit drift (if any)
+  local dl = elm.l - elm:spos(n)
+  if dl >= minlen then
+    integrator(elm, m, dl, drift_track, kick_track)
+  elseif dl <= -minlen then
+    error(string.format("invalid sub-element %s['%s'] relative position at %sm",
+          m.sequence.name, elm[n].name, dl))
   end
 
-  table.remove(m.selm)
+  -- remove current sub-element
+  selm[nselm] = nil
 end
 
--- element kind forward tracking ----------------------------------------------o
+-- sub element backtracking ---------------------------------------------------o
+
+local function subelm_backtrack (elm, m, integrator)
+  local drift_track, kick_track in elm
+  local selm, selm_s in m
+
+  -- save current sub-element and sub-position
+  local nselm = #selm
+  selm[nselm], selm_s[nselm] = elm, 0
+
+  -- sub-tracking
+  local n = #elm
+  for i=n,1,-1 do
+    -- implicit drift
+    local dl = selm_s[nselm] - (elm:spos(i) + elm[i].l)
+    if dl <= -minlen then
+      integrator(elm, m, dl, drift_track, kick_track)
+      selm_s[nelm] = selm_s[nelm] + dl
+    elseif dl >= minlen then
+      error(string.format("invalid sub-element %s['%s'] relative position at %sm",
+            m.sequence.name, elm[i].name, dl))
+    end
+
+    -- sub-element
+    elm[i]:backtrack(m)
+    selm_s[nelm] = selm_s[nelm] - elm[i].l
+  end
+
+  -- last implicit drift (if any)
+  local dl = -elm:spos(1)
+  if dl <= -minlen then
+    integrator(elm, m, dl, drift_track, kick_track)
+  elseif dl <= -minlen then
+    error(string.format("invalid sub-element %s['%s'] relative position at %sm",
+          m.sequence.name, elm[n].name, dl))
+  end
+
+  -- remove current sub-element
+  selm[nselm] = nil
+end
+
+-- element tracking -----------------------------------------------------------o
 
 local function patch_track (elm, m, pos)
   if pos == 'entry'
-  then forward_patch (elm, m)
-  else backward_patch(elm, m) -- not correct, need local survey patch
+  then entry_patch(elm, m)
+  else  exit_patch(elm, m)
   end
 end
 
 local function thin_track (elm, m) -- e.g. multipole
-  get_mult    (elm, m)          -- load strengths in map
-  patch_track (elm, m, 'entry') -- TODO: add tilt to psi
-  thin_kick   (elm, m         )
-  patch_track (elm, m, 'exit' ) -- TODO: add tilt to psi
+  get_mult(elm, m) -- load strengths in map
+
+  if m.ktot == 0 then return end
+
+  patch_track (elm, m, 'entry')
+  thin_kick   (elm, m)
+  patch_track (elm, m, 'exit' )
 end
 
 local function drift_track (elm, m) -- e.g. monitor
-  local l in elm
-
   if #elm == 0 and #m.selm == 0 then -- any sub or surrounding elements?
-    return straight_drift(nil, m, l)
+    return straight_drift(nil, m, m.el)
   end
 
-  local tilt in elm
-  patch_track (elm, m, 'entry') -- TODO: add tilt to psi
-  if #m.selm == 0               -- any surrounding elements?
-  then subdft_track(elm, m, l)
-  else subelm_track(elm, m, l)
-  end
-  patch_track (elm, m, 'exit') -- TODO: add tilt to psi
+  patch_track (elm, m, 'entry')
+  subelm_track(elm, m, straight_drift)
+  patch_track (elm, m, 'exit' )
 end
 
 local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  local l in elm
+  get_kmult(elm, m)   -- load strengths in map
 
-  get_kmult  (elm, m, l )      -- load strengths in map
-  patch_track(elm, m, 'entry') -- TODO: add tilt to psi
+  if m.ktot == 0 then -- no strengths in elm
+    return drift_track(elm, m)
+  end
+
+  patch_track(elm, m, 'entry')
   elm:fringe_track(m, 'entry')
 
-  if #elm == 0 then -- any sub-elements ?
-    local integrator = integrators[elm.method or m.method]
-    integrator  (elm, m, l, elm.drift_track, elm.kick_track)
+  local integrator = integrators[elm.method or m.method]
+  if #elm == 0 then   -- any sub-elements?
+    integrator  (elm, m, m.el, elm.drift_track, elm.kick_track)
   else
-    subelm_track(elm, m, l)
+    subelm_track(elm, m, integrator)
   end
 
   elm:fringe_track(m, 'exit')
-  patch_track(elm, m, 'exit') -- TODO: add tilt to psi
+  patch_track(elm, m, 'exit')
+end
+
+-- element back tracking ------------------------------------------------------o
+
+local patch_backtrack = patch_track
+
+local function thin_backtrack (elm, m) -- e.g. multipole
+  get_mult(elm, m) -- load strengths in map
+
+  if m.ktot == 0 then return end
+
+  patch_backtrack(elm, m, 'exit' )
+  thin_kick      (elm, m)
+  patch_backtrack(elm, m, 'entry')
+end
+
+local function drift_backtrack (elm, m) -- e.g. monitor
+  if #elm == 0 and #m.selm == 0 then -- any sub or surrounding elements?
+    return straight_drift(nil, m, m.el)
+  end
+
+   patch_backtrack(elm, m, 'exit' )
+  subdft_backtrack(elm, m, m.el   )
+   patch_backtrack(elm, m, 'entry')
+end
+
+local function thick_backtrack (elm, m) -- e.g. sbend, rbend, quadrupole, ...
+  get_kmult(elm, m)   -- load strengths in map
+
+  if m.ktot == 0 then -- no strengths in elm
+    return drift_backtrack(elm, m)
+  end
+
+  patch_backtrack(elm, m, 'exit')
+  elm:fringe_track    (m, 'exit')
+
+  local integrator = integrators[elm.method or m.method]
+  if #elm == 0 then   -- any sub-elements ?
+    integrator      (elm, m, m.el, elm.drift_track, elm.kick_track)
+  else
+    subelm_backtrack(elm, m, integrator)
+  end
+
+  elm:fringe_track    (m, 'entry')
+  patch_backtrack(elm, m, 'entry')
+end
+
+-- sequence tracking ----------------------------------------------------------o
+
+local dft = E.drift {}
+
+local function sequ_track (seq, map, rng_, ntrn_)
+  local tbl = map.mtable
+
+  -- retrieve information
+  local save, drift, nlen in map
+
+  -- dynamic tracking
+  for i,elm in seq:iter(rng_, ntrn_, 1) do
+
+    -- implicit drift
+    local dl in map
+    if dl >= minlen then
+      straight_drift(nil, map, dl)
+      if drift and elm:is_selected(observe) then
+        map.ndft = map.ndft+1
+        dft.name = 'DRIFT_'..map.ndft
+        tbl:fill(dft, map, dl)
+      end
+      map.s, map.dl = map.s + dl, 0 -- update s
+    elseif dl <= -minlen then
+      error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
+            dl, seq.name, elm.name, map.s))
+    end
+
+    -- sequence element
+    map.el = elm.l
+    local stop = elm:track(map)
+    if stop then return tbl, map end -- stop (e.g. slink)
+
+    local el in map
+    if save and elm:is_selected(observe) then
+      tbl:fill(elm, map, el)
+    end
+    map.s = map.s + el -- update s
+
+    -- update dl
+    if i == nlen
+    then map.dl = 0
+    else map.dl = seq:spos(i+1) - (seq:spos(i) + el) -- patch and dl?
+    end
+  end
+
+  return tbl, map
+end
+
+-- sequence backtracking ------------------------------------------------------o
+
+local function sequ_backtrack (seq, map, rng_, ntrn_)
+  local tbl = map.mtable
+
+  -- retrieve information
+  local save, drift, nlen in map
+
+  -- dynamic tracking
+  for i,elm in seq:iter(rng_, ntrn_, -1) do
+
+    -- implicit drift
+    local dl in map
+    if dl <= -minlen then
+      straight_drift(nil, map, dl)
+      if drift and elm:is_selected(observe) then
+        map.ndft = map.ndft+1
+        dft.name = 'DRIFT_'..map.ndft
+        tbl:fill(dft, map, dl)
+      end
+      map.s, map.dl = map.s + dl, 0 -- update s
+    elseif dl >= minlen then
+      error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
+            dl, seq.name, elm.name, map.s))
+    end
+
+    -- sequence element
+    map.el = -elm.l
+    local stop = elm:backtrack(map)
+    if stop then return tbl, map end -- stop (e.g. slink)
+
+    local el in map
+    if save and elm:is_selected(observe) then
+      tbl:fill(elm, map, el)
+    end
+    map.s = map.s + el -- update s
+
+    -- update dl
+    if i == 1
+    then map.dl = 0
+    else map.dl = seq:spos(i-1) + seq[i-1].l - seq:spos(i) -- patch and dl?
+    end
+  end
+
+  return tbl, map
 end
 
 -- load maps into elements ----------------------------------------------------o
 
-local E = element
+E.patch_element :set_functions {    track = patch_track,
+                                backtrack = patch_backtrack }
 
-E. thin_element :set_functions    { track =  thin_track }
-E.drift_element :set_functions    { track = drift_track }
-E.patch_element :set_functions    { track = patch_track }
-E.thick_element :set_functions    { track = thick_track,
+E. thin_element :set_functions {    track = thin_track,
+                                backtrack = thin_backtrack }
+
+E.drift_element :set_functions {    track = drift_track,
+                                backtrack = drift_backtrack }
+
+E.thick_element :set_functions {    track = thick_track,
+                                backtrack = thick_backtrack,
                               drift_track = straight_drift,
                                kick_track = straight_kick,
                              fringe_track = straight_fringe }
 
-E.sbend :set_functions      { drift_track = sbend_drift,
+E.sequence :set_readonly(false)
+           :set_functions {         track = sequ_track,
+                                backtrack = sequ_backtrack }
+           :set_readonly()
+
+-- specialized maps
+
+E.sbend :set_functions {      drift_track = sbend_drift,
                                kick_track = polar_kick,
                              fringe_track = sbend_fringe }
 
@@ -1564,14 +1747,13 @@ E.xrotation   :set_functions { track = \e,m -> xrotation(nil, m, e.angle) }
 E.translation :set_functions { track = \e,m -> translate(nil, m, e.dx or 0,
                                                       e.dy or 0, e.dz or 0) }
 
--- track command --------------------------------------------------------------o
+-- track helper ---------------------------------------------------------------o
 
 local _trk = {}
 
-local function fill_mtable (name, kind, m, l)
+local function fill_mtable (self, elm, m, l)
   -- keep order!
-  m.mtable = m.mtable +
-             { name, kind, m.s+l, l, m.x, m.px, m.y, m.py, m.t, m.pt }
+  self = self+{ elm.name, elm.kind, m.s+l, l, m.x, m.px, m.y, m.py, m.t, m.pt }
 end
 
 local function make_mtable (self)
@@ -1588,6 +1770,7 @@ local function make_mtable (self)
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
     [_trk]=_trk,
   } : reserve(math.min(nrow, 1e5))
+    : set_functions { fill = fill_mtable }
 end
 
 local function update_mflow (self)
@@ -1605,11 +1788,11 @@ local function update_mflow (self)
   if sequence and sequence ~= mflow.sequence then -- new sequence -> update
     assert(is_sequence(sequence), "invalid sequence")
     local len, sdir = #sequence, sequence.direction
-    mflow.ds, mflow.sdir, mflow.nlen = 0, sdir, len
+    mflow.dl, mflow.sdir, mflow.nlen = 0, sdir, len
     mflow.sequence, mflow.bdir = sequence, sdir*mflow.beam.charge
   end
   if direction and direction ~= mflow.mdir then -- new direction -> update
-    mflow.mdir, mflow.ds = direction, 0
+    mflow.dl, mflow.mdir = 0, direction
   end
   if beam and beam ~= mflow.beam then -- new beam -> update
     assert(is_beam(beam), "invalid beam")
@@ -1645,8 +1828,8 @@ local function make_mflow (self)
 
   return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,          -- initial vars
            nmul=0, knl={}, ksl={}, pnl={}, psl={},           -- internal vars
-           s=s, ds=0, nlen=nlen, ndft=0,                     -- internal states
-           selm={},                                          -- subelement stack
+           s=s, dl=0, el=0, nlen=nlen, ndft=0,               -- internal states
+           selm={}, selm_s={},                               -- subelement stack
            nst=nstep, nsl=nslice, method=method,             -- user setup
            save=save, drift=save and drift,                  -- user status
            sdir=sdir, mdir=mdir, bdir=sdir*mdir*beam.charge, -- directions
@@ -1654,57 +1837,17 @@ local function make_mflow (self)
            [_trk]=_trk }                                     -- tag
 end
 
+-- track command --------------------------------------------------------------o
+
 local function exec (self)
   assert(self[_trk], "invalid argument #1 (track expected)")
+  local map = make_mflow(self)                          -- build mflow
+  local range, nturn in self                            -- range of tracking
 
-  -- build mflow
-  local map = make_mflow(self)
-  local seq = map.sequence
-
-  -- retrieve information
-  local save, drift, nlen, mdir in map
-  local range, nturn in self
-
-  -- dynamic tracking
-  for i,elm in seq:iter(range, nturn, mdir) do
-
-    -- implicit drift
-    local ds in map
-    if mdir*ds <= -minlen then
-      error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
-            ds, seq.name, elm.name, map.s))
-    end
-    if mdir*ds >= minlen then
-      straight_drift(nil, map, ds)
-      if drift and elm:is_selected(observe) then
-        map.ndft = map.ndft+1
-        fill_mtable('DRIFT_'..map.ndft, 'drift', map, ds)
-      end
-      map.s, map.ds = map.s + ds, 0 -- update s
-    end
-
-    -- sequence element
-    local m = elm:track(map)
-    if m then return m.mtable, m end -- stop (e.g. slink)
-
-    local dl = mdir*elm.l
-    if save and elm:is_selected(observe) then
-      fill_mtable(elm.name, elm.kind, map, dl)
-    end
-    map.s = map.s + dl -- update s
-
-    -- update ds
-    local di = i+mdir
-    if di < 1 or di > nlen then
-      map.ds = 0
-    elseif mdir == 1 then
-      map.ds = seq:spos(di) - (seq:spos(i) + dl)       -- patch and ds?
-    else
-      map.ds = seq:spos(di) + seq[di].l - seq:spos(i)  -- patch and ds?
-    end
+  if map.mdir == 1
+  then return map.sequence:    track(map, range, nturn) --     track sequence
+  else return map.sequence:backtrack(map, range, nturn) -- backtrack sequence
   end
-
-  return map.mtable, map
 end
 
 -- track command template
