@@ -112,6 +112,8 @@ local bsearch                                                  in MAD.algorithm
 local is_nil, is_boolean, is_number, is_positive, is_string,
       is_table, is_rawtable, is_range, is_element, is_flag     in MAD.typeid
 
+local table_insert, table_remove = table.insert, table.remove
+
 -- root object ----------------------------------------------------------------o
 
 local _seq = {}
@@ -146,7 +148,7 @@ local function check_sequ (seq)
   local n = #seq
       if seq[1].__id ~= mkstart.__id or seq[1].is_marker ~= true then
     error("invalid sequence first element ($start expected)", 2)
-  elseif seq[n].__id ~= mkend.  __id or seq[n].is_marker ~= true then
+  elseif seq[n].__id ~= mkend  .__id or seq[n].is_marker ~= true then
     error("invalid sequence last element ($end expected)", 2)
   end
 end
@@ -158,7 +160,7 @@ end
 
 -- debug ----------------------------------------------------------------------o
 
---[[
+--[=[
 local function dumpseq (seq)
   local fmt = MAD.option.format
   MAD.option.format = "%.5g"
@@ -168,7 +170,7 @@ local function dumpseq (seq)
   seq:foreach \e,i => print(i, e.name, e.l, seq:spos(i), seq:epos(i)) end
   MAD.option.format = fmt
 end
-]]
+]=]
 
 local function seq_error (msg, seq, idx, elm)
   local nam = elm and elm.name or seq[idx] and seq[idx].name
@@ -188,40 +190,39 @@ local dct_mt = {
   __newindex := error("forbidden write access to counts", 2),
 }
 
-local function add_to_idx (seq, idx, elm)
-  local ei, nam = seq[_eidx], elm.name
-  if is_nil(ei[nam]) then           -- none -> elem, index
-    ei[nam] = idx
-  elseif is_number(ei[nam]) then    -- one  -> create array
-    ei[nam] = { ei[nam], idx}
-  else                              -- many -> append
-    table.insert(ei[nam], idx)
+--[=[
+  helpers:      used by:        remarks:
+  --------------------------------------
+  find_1st      unique
+  replace_it    unique, share
+  insert_it     insert          no index update, build_dict required!
+  remove_it     remove          no index update, build_dict required!
+]=]
+
+local function find_1st (seq, elm)
+  local er, nam = seq[elm.name], elm.name
+  if er == elm then                 -- one  -> idx
+    return seq[_eidx][nam]
+  elseif is_table(er) then
+    for i=1,#er do                  -- many -> search & idx
+      if er[i] == elm then
+        return seq[_eidx][nam][i]
+      end
+    end
   end
 end
 
-local function append_to (seq, idx, elm)
+local function replace_it (seq, idx, elm)
   local ei, nam = seq[_eidx], elm.name
-  seq[idx] = elm                    -- set in sequence
-  if is_nil(ei[nam]) then           -- none -> elem, index
-    seq[nam], ei[nam] = elm, idx
-  elseif is_number(ei[nam]) then    -- one  -> create array
-    seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt)
-    ei [nam] =                      { ei[nam], idx}
-  else                              -- many -> append
-    table.insert(seq[nam][_dct], elm)
-    table.insert(ei [nam]      , idx)
-  end
-end
-
-local function replace_by (seq, idx, elm)
-  local ei, nam = seq[_eidx][elm.name], elm.name
-  seq[idx] = elm                    -- set in sequence
-  if ei == idx then                 -- one  -> replace
+  if ei[nam] == idx then            -- one  -> replace
+    seq[idx] = elm
     seq[nam] = elm ; return
-  end
-  for i=1,#ei do                    -- many -> search & replace
-    if ei[i] == idx then
-      seq[nam][_dct][i] = elm ; return
+  elseif is_table(ei[nam]) then
+    for i=1,#ei[nam] do             -- many -> search & replace
+      if ei[nam][i] == idx then
+        seq[idx]          = elm
+        seq[nam][_dct][i] = elm ; return
+      end
     end
   end
   error("unexpected corrupted dictionnary")
@@ -229,21 +230,23 @@ end
 
 local function remove_it (seq, idx, elm)
   local ei, nam = seq[_eidx], elm.name
-  assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
   if ei[nam] == idx then            -- one  -> replace
     assert(seq[nam] == elm, "unexpected corrupted dictionnary")
-    seq[nam], ei[nam] = nil, nil ; return
-  end
-  for i=1,#ei[nam] do               -- many -> search & replace
-    if ei[nam][i] == idx then
-      assert(seq[nam][i] == elm, "unexpected corrupted dictionnary")
-      if #ei[nam] == 2 then
-        seq[nam], ei[nam] = elm, idx
-      else
-        table.remove(ei[ nam]      , i)
-        table.remove(seq[nam][_dct], i)
+    assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
+    ei [nam] = nil
+    seq[nam] = nil ; return
+  elseif is_table(ei[nam]) then
+    for i=1,#ei[nam] do             -- many -> search & replace
+      if ei[nam][i] == idx then
+        assert(seq[nam][i] == elm, "unexpected corrupted dictionnary")
+        assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
+        table_remove(ei [nam]      , i)
+        table_remove(seq[nam][_dct], i)
+        if #ei[nam] == 1 then
+          ei [nam] = ei [nam][1]
+          seq[nam] = seq[nam][1]
+        end ; return
       end
-      return
     end
   end
   error("unexpected corrupted dictionnary")
@@ -252,51 +255,42 @@ end
 local function insert_it (seq, idx, elm)
   local ei, nam = seq[_eidx], elm.name
   seq:insert_array(idx, elm)
-  if is_nil(ei[nam]) then                             -- none -> elem, index
-    seq[nam], ei[nam] = elm, idx ; return
-  elseif is_number(ei[nam]) then                      -- one  -> create array
-    if ei[nam] < idx then
-      seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt)
-      ei [nam] =                      { ei[nam], idx}
+  if is_nil(ei[nam]) then           -- none -> elem, index
+    ei [nam] = idx
+    seq[nam] = elm ; return
+  elseif is_number(ei[nam]) then    -- one  -> create array
+    if ei[nam] >= idx then
+      assert(ei[nam] ~= idx, "unexpected duplicated indexes")
+      ei [nam] = {idx, ei[nam]}
+      seq[nam] = setmetatable({[_dct]={elm, seq[nam]}}, dct_mt) ; return
     else
-      seq[nam] = setmetatable({[_dct]={elm, seq[nam]}}, dct_mt)
-      ei [nam] =                      {idx,  ei[nam]}
+      ei [nam] = {ei[nam], idx}
+      seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt) ; return
     end
-    return
-  end
-  for i=1,#ei[nam] do                               -- many -> search & insert
-    if ei[nam][i] == idx then
-      table.insert(ei[ nam]      , i, idx)
-      table.insert(seq[nam][_dct], i, elm)
-      return
+  elseif is_table(ei[nam]) then
+    for i=1,#ei[nam] do             -- many -> search & insert
+      if ei[nam][i] >= idx then
+        assert(ei[nam][i] ~= idx, "unexpected duplicated indexes")
+        table_insert(ei [nam]      , i, idx)
+        table_insert(seq[nam][_dct], i, elm) ; return
+      end
     end
   end
   error("unexpected corrupted dictionnary")
-end
-
-local function indx_of (seq, elm)
-  local er, nam = seq[elm.name], elm.name
-  if er == elm then                 -- one  -> idx
-    return seq[_eidx][nam]
-  end
-  for i=1,#er do                    -- many -> search & idx
-    if er[i] == elm then
-      return seq[_eidx][nam][i]
-    end
-  end
-  return nil
 end
 
 local function chck_dict (seq) -- for debug
   for en,ei in pairs(seq[_eidx]) do
     if is_number(ei) then
       assert(seq[ei] == seq[en]        , "unexpected corrupted dictionnary")
-    else
+    elseif is_table(ei) then
       assert(seq[ei[1]] == seq[en][1]  , "unexpected corrupted dictionnary")
       for i=2,#ei do
         assert(ei[i-1] < ei[i]         , "unexpected corrupted dictionnary")
         assert(seq[ei[i]] == seq[en][i], "unexpected corrupted dictionnary")
       end
+    else
+      error("unexpected corrupted dictionnary")
     end
   end
 end
@@ -356,16 +350,16 @@ local function index_of_str (seq, s, idx_)
   if is_nil(seq[nam]) then return nil                    -- not found
   elseif del == ''    then return index_of_nam(seq, nam) -- index of "name"
   elseif del == '['
-  then i, j, cnt = string.find(s,      "(%d+)]", j+1)       -- get count
+  then i, j, cnt = string.find(s,      "(%d+)]", j+1)    -- get count
   else i, j, cnt = string.find(s, "([-+]?%d+)}", j+1) ; rel = true end
   cnt = assert(tonumber(cnt), "invalid argument #2 (count expected)")
+  if not rel then
+    return index_of_nam(seq, nam, cnt)                   -- index of "name[n]"
+  end
   if cnt < 0 then
     cnt, idx_ = -cnt, -assert(idx_, "invalid argument #3 (index expected)")
   end
-  if not rel
-  then return index_of_nam(seq, nam,       cnt) -- index of "name[n]"
-  else return efind_idx   (seq, nam, idx_, cnt) -- index of "name{n}"
-  end
+  return efind_idx(seq, nam, idx_, cnt)                  -- index of "name{n}"
 end
 
 -- position helpers -----------------------------------------------------------o
@@ -575,13 +569,41 @@ local function flatten_sequ (seq, flat, sref)
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
+-- build sequence dictionnary
+local function build_dict (seq)
+  local ei = {}
+  for idx,elm in ipairs(seq) do
+    local nam = elm.name
+    if is_nil(ei[nam]) then           -- none -> elem, index
+      ei[nam] = idx
+    elseif is_number(ei[nam]) then    -- one  -> create array
+      ei[nam] = { ei[nam], idx }
+    else                              -- many -> append
+      table_insert(ei[nam], idx)
+    end
+  end
+  seq[_eidx] = ei
+end
+
 -- build sequence and dictionnaries
 local function build_sequ (seq, flat)
-  seq[_eidx] = {}
+  local ei = {}
   for idx,elm in ipairs(flat) do
-    append_to(seq, idx, elm)
+    seq[idx] = elm                    -- set in sequence
+    local nam = elm.name
+    if is_nil(ei[nam]) then           -- none -> elem, index
+      ei [nam] = idx
+      seq[nam] = elm
+    elseif is_number(ei[nam]) then    -- one  -> create array
+      ei [nam] = { ei[nam], idx}
+      seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt)
+    else                              -- many -> append
+      table_insert(ei [nam]      , idx)
+      table_insert(seq[nam][_dct], elm)
+    end
   end
   assert(seq:rawlen() == #flat, "unexpected corrupted flat sequence")
+  seq[_eidx] = ei
 end
 
 -- compute elements positions
@@ -802,11 +824,11 @@ local function unique (seq)
   for elm,cnt in pairs(lst) do
     if cnt > 1 then
       for i=1,cnt do
-        local idx = indx_of(seq, elm)
+        local idx = find_1st(seq, elm)
         assert(seq[idx] == elm, "unexpected corrupted dictionnary")
-        replace_by(seq, idx, elm {}) -- replace by a child
+        replace_it(seq, idx, elm {}) -- replace by a child
       end
-      assert(is_nil(indx_of(seq, elm)), "unexpected corrupted dictionnary")
+      assert(is_nil(find_1st(seq, elm)), "unexpected corrupted dictionnary")
     end
   end
   finish_sequ(seq)
@@ -835,8 +857,8 @@ local function share (seq1, seq2) -- e.g. lhcb1:share(lhcb2)
       assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
              "invalid shared element (incompatible positions)")
       -- update dictionnaries and arrays
-      replace_by(seq1, i1, c1)
-      replace_by(seq2, i2, c2)
+      replace_it(seq1, i1, c1)
+      replace_it(seq2, i2, c2)
     end
   end
   finish_sequ(seq1) finish_sequ(seq2)
@@ -863,19 +885,14 @@ local function remove (seq, sel)
   for i=n,1,-1 do
     local elm = seq:rawget(idx[i])
     remove_it(seq, idx[i], elm)
-    table.remove(seq[_epos],idx[i])
-    table.remove(seq[_spos],idx[i])
+    table_remove(seq[_epos],idx[i])
+    table_remove(seq[_spos],idx[i])
     rmv[i] = elm
   end
   finish_sequ(seq)
-
-  -- rebuild dict of indexes
-  seq[_eidx] = {}
+  build_dict (seq)
+  chck_dict  (seq)  -- sanity check
   seq:set_readonly()
-  for idx,elm in ipairs(seq) do
-    add_to_idx(seq, idx, elm)
-  end
-  chck_dict(seq)  -- sanity check
   return rmv      -- return removed elements
 end
 
@@ -925,25 +942,20 @@ local function insert (seq, sel)
       local sseq, pos = ins[i], sub(elem_pos(seq, ridx, ins[i]))
       for j=#sseq-1,2,-1 do -- see sequ_pos
         insert_it(seq, idx[i], sseq[j])
-        table.insert(seq[_epos], idx[i], sseq:epos(j) + pos)
-        table.insert(seq[_spos], idx[i], sseq:spos(j) + pos)
+        table_insert(seq[_epos], idx[i], sseq:epos(j) + pos)
+        table_insert(seq[_spos], idx[i], sseq:spos(j) + pos)
         assert(seq[idx[i]] == sseq[j], "unexpected corrupted sequence insert")
       end
     else
       insert_it(seq, idx[i], ins[i])
-      table.insert(seq[_epos], idx[i], uninitialized)
-      table.insert(seq[_spos], idx[i], uninitialized)
+      table_insert(seq[_epos], idx[i], uninitialized)
+      table_insert(seq[_spos], idx[i], uninitialized)
     end
   end
   finish_sequ(seq)
-
-  -- rebuild dict of indexes
-  seq[_eidx] = {}
+  build_dict (seq)
+  chck_dict  (seq) -- sanity check
   seq:set_readonly()
-  for idx,elm in ipairs(seq) do
-    add_to_idx(seq, idx, elm)
-  end
-  chck_dict(seq) -- sanity check
 
   -- update positions of inserted elements, check for negative drifts
   local sht = 0
