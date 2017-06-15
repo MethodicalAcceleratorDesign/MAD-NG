@@ -279,22 +279,6 @@ local function insert_it (seq, idx, elm)
   error("unexpected corrupted dictionnary")
 end
 
-local function chck_dict (seq) -- for debug
-  for en,ei in pairs(seq[_eidx]) do
-    if is_number(ei) then
-      assert(seq[ei] == seq[en]        , "unexpected corrupted dictionnary")
-    elseif is_table(ei) then
-      assert(seq[ei[1]] == seq[en][1]  , "unexpected corrupted dictionnary")
-      for i=2,#ei do
-        assert(ei[i-1] < ei[i]         , "unexpected corrupted dictionnary")
-        assert(seq[ei[i]] == seq[en][i], "unexpected corrupted dictionnary")
-      end
-    else
-      error("unexpected corrupted dictionnary")
-    end
-  end
-end
-
 -- index helpers --------------------------------------------------------------o
 
 -- get closest element index (linear)
@@ -434,7 +418,7 @@ local function refer_pos (seq, elm, idx)
   end
 end
 
--- build helpers --------------------------------------------------------------o
+-- build positions ------------------------------------------------------------o
 
 -- compute s positions of an elements
 function elem_pos (seq, idx, elm_)
@@ -569,43 +553,6 @@ local function flatten_sequ (seq, flat, sref)
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
--- build sequence dictionnary
-local function build_dict (seq)
-  local ei = {}
-  for idx,elm in ipairs(seq) do
-    local nam = elm.name
-    if is_nil(ei[nam]) then           -- none -> elem, index
-      ei[nam] = idx
-    elseif is_number(ei[nam]) then    -- one  -> create array
-      ei[nam] = { ei[nam], idx }
-    else                              -- many -> append
-      table_insert(ei[nam], idx)
-    end
-  end
-  seq[_eidx] = ei
-end
-
--- build sequence and dictionnaries
-local function build_sequ (seq, flat)
-  local ei = {}
-  for idx,elm in ipairs(flat) do
-    seq[idx] = elm                    -- set in sequence
-    local nam = elm.name
-    if is_nil(ei[nam]) then           -- none -> elem, index
-      ei [nam] = idx
-      seq[nam] = elm
-    elseif is_number(ei[nam]) then    -- one  -> create array
-      ei [nam] = { ei[nam], idx}
-      seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt)
-    else                              -- many -> append
-      table_insert(ei [nam]      , idx)
-      table_insert(seq[nam][_dct], elm)
-    end
-  end
-  assert(seq:rawlen() == #flat, "unexpected corrupted flat sequence")
-  seq[_eidx] = ei
-end
-
 -- compute elements positions
 local function build_pos_err(typ, seq, idx, pos)
   seq_error(string.format(
@@ -646,6 +593,64 @@ local function build_pos (seq, sref)
   else seq[_spos][n], seq[_epos][n] = seq.l, seq.l
   end
 end
+
+-- build dictionnaries --------------------------------------------------------o
+
+-- check sequence dictionnaries
+local function check_dict (seq) -- for debug only
+  for en,ei in pairs(seq[_eidx]) do
+    if is_number(ei) then
+      assert(seq[ei] == seq[en]        , "unexpected corrupted dictionnary")
+    elseif is_table(ei) then
+      assert(seq[ei[1]] == seq[en][1]  , "unexpected corrupted dictionnary")
+      for i=2,#ei do
+        assert(ei[i-1] < ei[i]         , "unexpected corrupted dictionnary")
+        assert(seq[ei[i]] == seq[en][i], "unexpected corrupted dictionnary")
+      end
+    else
+      error("unexpected corrupted dictionnary")
+    end
+  end
+end
+
+-- build sequence dictionnary
+local function build_dict (seq)
+  local ei = {}
+  for idx,elm in ipairs(seq) do
+    local nam = elm.name
+    if is_nil(ei[nam]) then           -- none -> elem, index
+      ei[nam] = idx
+    elseif is_number(ei[nam]) then    -- one  -> create array
+      ei[nam] = {ei[nam], idx}
+    else                              -- many -> append
+      table_insert(ei[nam], idx)
+    end
+  end
+  seq[_eidx] = ei
+end
+
+-- build sequence and dictionnaries
+local function build_sequ (seq, flat)
+  local ei = {}
+  for idx,elm in ipairs(flat) do
+    seq[idx] = elm                    -- set in sequence
+    local nam = elm.name
+    if is_nil(ei[nam]) then           -- none -> elem, index
+      ei [nam] = idx
+      seq[nam] = elm
+    elseif is_number(ei[nam]) then    -- one  -> create array
+      ei [nam] = {ei[nam], idx}
+      seq[nam] = setmetatable({[_dct]={seq[nam], elm}}, dct_mt)
+    else                              -- many -> append
+      table_insert(ei [nam]      , idx)
+      table_insert(seq[nam][_dct], elm)
+    end
+  end
+  assert(seq:rawlen() == #flat, "unexpected corrupted flat sequence")
+  seq[_eidx] = ei
+end
+
+-- finalizer ------------------------------------------------------------------o
 
 local function finish_sequ (seq)
   local n = seq:rawlen()
@@ -736,9 +741,7 @@ end
 local function setvar (seq, key, val)
   assert(is_sequence(seq)       , "invalid argument #1 (sequence expected)")
   assert(is_nil(seq[_eidx][key]), "invalid argument #2 (variable expected)")
-  seq:set_readonly(false)
-  seq[key] = val
-  return seq:set_readonly()
+  return seq:rawset(key, val)
 end
 
 local function cycle (seq, elm)
@@ -748,7 +751,7 @@ local function cycle (seq, elm)
   return seq
 end
 
-local function select_ (typ)
+local function select_ (typ) -- build closures
   return \seq, p_, rng_, flg_ =>
     if is_nil(flg_) and not is_callable(p_) then
       p_, rng_, flg_ = nil, p_, rng_   -- right shift
@@ -812,57 +815,15 @@ local function extract (seq, sel_)
   return filter(seq, pred, range, selected)
 end
 
--- methods (read/write, update dict) ------------------------------------------o
+-- methods (R/W, update dict) -------------------------------------------------o
 
-local function unique (seq)
-  assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
-  local lst = table.new(0, #seq)
-  for _,elm in ipairs(seq) do
-    lst[elm] = (lst[elm] or 0) + 1
-  end
-  seq:set_readonly(false)
-  for elm,cnt in pairs(lst) do
-    if cnt > 1 then
-      for i=1,cnt do
-        local idx = find_1st(seq, elm)
-        assert(seq[idx] == elm, "unexpected corrupted dictionnary")
-        replace_it(seq, idx, elm {}) -- replace by a child
-      end
-      assert(is_nil(find_1st(seq, elm)), "unexpected corrupted dictionnary")
-    end
-  end
-  finish_sequ(seq)
-  return seq:set_readonly()
-end
-
-local function share (seq1, seq2) -- e.g. lhcb1:share(lhcb2)
-  assert(is_orig_sequence(seq1), "invalid argument #1 (true sequence expected)")
-  assert(is_orig_sequence(seq2), "invalid argument #2 (true sequence expected)")
-  check_sequ(seq1) check_sequ(seq2)
-  seq1:set_readonly(false) seq2:set_readonly(false)
-  local eidx1, eidx2 = seq1[_eidx], seq2[_eidx]
-  for i=2,#seq1-1 do
-    local nam = seq1[i].name   -- share by name
-    if eidx2[nam] then         -- element name found in seq2
-      local e1, i1 = seq1[nam], eidx1[nam]
-      local e2, i2 = seq2[nam], eidx2[nam]
-      -- ensure that elements are unique in both sequences
-      assert(is_number(i1), "invalid shared element (must be unique)")
-      assert(is_number(i2), "invalid shared element (must be unique)")
-      assert(seq1[i1] == e1, "unexpected corrupted dictionnary")
-      assert(seq2[i2] == e2, "unexpected corrupted dictionnary")
-      -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
-      local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
-      local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
-      assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
-             "invalid shared element (incompatible positions)")
-      -- update dictionnaries and arrays
-      replace_it(seq1, i1, c1)
-      replace_it(seq2, i2, c2)
-    end
-  end
-  finish_sequ(seq1) finish_sequ(seq2)
-  return seq1:set_readonly(), seq2:set_readonly()
+-- seq:move { index1, index2, ..., +extract, +insert }
+local function move (seq, sel)
+  local rmv = seq:remove(sel)
+  rmv.at, rmv.from = sel.at, sel.from
+  seq:insert(rmv)
+  rmv.at, rmv.from = nil, nil
+  return rmv
 end
 
 -- seq:remove { index1, index2, ..., +extract }
@@ -891,7 +852,7 @@ local function remove (seq, sel)
   end
   finish_sequ(seq)
   build_dict (seq)
-  chck_dict  (seq)  -- sanity check
+--check_dict (seq)  -- sanity check
   seq:set_readonly()
   return rmv      -- return removed elements
 end
@@ -954,8 +915,7 @@ local function insert (seq, sel)
   end
   finish_sequ(seq)
   build_dict (seq)
-  chck_dict  (seq) -- sanity check
-  seq:set_readonly()
+--check_dict (seq) -- sanity check
 
   -- update positions of inserted elements, check for negative drifts
   local sht = 0
@@ -973,16 +933,62 @@ local function insert (seq, sel)
       build_pos_err(typ, seq, j, seq:spos(j))
     end
   end
-  return seq
+  return seq:set_readonly()
 end
 
--- seq:move { index1, index2, ..., +extract, +insert }
-local function move (seq, sel)
-  local rmv = seq:remove(sel)
-  rmv.at, rmv.from = sel.at, sel.from
-  seq:insert(rmv)
-  rmv.at, rmv.from = nil, nil
-  return rmv
+-- seq:unique()
+local function unique (seq)
+  assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
+  local lst = table.new(0, #seq)
+  for _,elm in ipairs(seq) do
+    lst[elm] = (lst[elm] or 0) + 1
+  end
+  seq:set_readonly(false)
+  for elm,cnt in pairs(lst) do
+    if cnt > 1 then
+      for i=1,cnt do
+        local idx = find_1st(seq, elm)
+        assert(seq[idx] == elm, "unexpected corrupted dictionnary")
+        replace_it(seq, idx, elm {}) -- replace by a child
+      end
+      assert(is_nil(find_1st(seq, elm)), "unexpected corrupted dictionnary")
+    end
+  end
+  finish_sequ(seq)
+-- check_dict(seq)  -- sanity check
+  return seq:set_readonly()
+end
+
+-- seq1:share(seq2)
+local function share (seq1, seq2)
+  assert(is_orig_sequence(seq1), "invalid argument #1 (true sequence expected)")
+  assert(is_orig_sequence(seq2), "invalid argument #2 (true sequence expected)")
+  check_sequ(seq1) check_sequ(seq2)
+  seq1:set_readonly(false) seq2:set_readonly(false)
+  local eidx1, eidx2 = seq1[_eidx], seq2[_eidx]
+  for i=2,#seq1-1 do
+    local nam = seq1[i].name   -- share by name
+    if eidx2[nam] then         -- element name found in seq2
+      local e1, i1 = seq1[nam], eidx1[nam]
+      local e2, i2 = seq2[nam], eidx2[nam]
+      -- ensure that elements are unique in both sequences
+      assert(is_number(i1), "invalid shared element (must be unique)")
+      assert(is_number(i2), "invalid shared element (must be unique)")
+      assert(seq1[i1] == e1, "unexpected corrupted dictionnary")
+      assert(seq2[i2] == e2, "unexpected corrupted dictionnary")
+      -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
+      local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
+      local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
+      assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
+             "invalid shared element (incompatible positions)")
+      -- update dictionnaries and arrays
+      replace_it(seq1, i1, c1)
+      replace_it(seq2, i2, c2)
+    end
+  end
+  finish_sequ(seq1) finish_sequ(seq2)
+-- check_dict(seq1)  check_dict(seq2) -- sanity check
+  return seq1:set_readonly(), seq2:set_readonly()
 end
 
 -- iterators ------------------------------------------------------------------o
@@ -1090,17 +1096,17 @@ sequence :set_functions {
   range_of  = range_of,
   length_of = length_of,
   setvar    = setvar,
+  cycle     = cycle,
   select    = select,
   deselect  = deselect,
   foreach   = foreach,
   filter    = filter,
   extract   = extract,
+  move      = move,
+  remove    = remove,
+  insert    = insert,
   share     = share,
   unique    = unique,
-  move      = move,
-  insert    = insert,
-  remove    = remove,
-  cycle     = cycle,
   iter      = iter,
   fwditer   = fwditer,
   bwditer   = bwditer,
