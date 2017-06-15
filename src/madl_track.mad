@@ -466,8 +466,8 @@ function quadrupole_drift (elm, m, l) -- comb_drift with angle == 0
     cw, sw, ch, sh = ch, sh, cw, sw
   end
 
-  local pos in m
-  if is_nil(pos) or pos == 'exit' then
+  local npos in m
+  if is_nil(npos) or npos == 'last' then
     local dl = is_nil(pos) and l/2 or l
     combadj_drift(_, m, dl)
   end
@@ -481,11 +481,11 @@ function quadrupole_drift (elm, m, l) -- comb_drift with angle == 0
   m.py =  w*sh*y + ch*py
   m.t  = t + l_bet2_gam2*pt
 
-  if is_nil(pos) or pos == 'entry' then
+  if is_nil(npos) or npos == 'first' then
     local dl = is_nil(pos) and l/2 or l
     combadj_drift(_, m, l)
   end
-  m.pos = nil
+  m.npos = nil
 end
 
 __help['track: pseudo-exact combined drift'] = [=[
@@ -518,8 +518,8 @@ function combined_drift (elm, m, l)
   else cy, sy = cos (wy*l), sin (wy*l)/wy -- check wy == 0
   end
 
-  local pos in m
-  if is_nil(pos) or pos == 'exit' then
+  local npos in m
+  if is_nil(npos) or npos == 'last' then
     local dl = is_nil(pos) and l/2 or l
     combadj_drift(_, m, dl)
   end
@@ -533,11 +533,11 @@ function combined_drift (elm, m, l)
   m.py =  wy2*sy*y + cy*py
   m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
 
-  if is_nil(pos) or pos == 'entry' then
+  if is_nil(npos) or npos == 'first' then
     local dl = is_nil(pos) and l/2 or l
     combadj_drift(_, m, l)
   end
-  m.pos = nil
+  m.npos = nil
 end
 
 __help['track: exact polar drift'] = [=[
@@ -1046,24 +1046,28 @@ end
 
  -- not correct, need local survey patch
 function entry_patch (elm, m)
-  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi, tilt in elm
-  -- TODO: mdir, survey m.S (mdir = -1)
+  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
+  local x, y, z, dx, dy, dz in elm
+  local mdir in m
+  -- TODO: survey m.S (mdir = -1)
   xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
   yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
   srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
   translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
-                    (z or 0)+(dz or 0) )
+                   ((z or 0)+(dz or 0))*mdir )
   srotation(nil, m, tilt)
 end
 
 function exit_patch (elm, m)
-  local x, y, z, theta, phi, psi, dx, dy, dz, dtheta, dphi, dpsi, tilt in elm
-  -- TODO: mdir, survey m.S (mdir = 1)
+  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
+  local x, y, z, dx, dy, dz in elm
+  local mdir in m
+  -- TODO: survey m.S (mdir = 1)
   srotation(nil, m, -tilt)
   translate(nil, m, (x or 0)+(dx or 0),
                     (y or 0)+(dy or 0),
-                    (z or 0)+(dz or 0) )
+                   ((z or 0)+(dz or 0))*mdir )
   srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
   yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
   xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
@@ -1511,19 +1515,25 @@ local function thin_track (elm, m) -- e.g. multipole
 
   if m.ktot == 0 then return end
 
-  patch_track (elm, m, 'entry')
-  thin_kick   (elm, m)
-  patch_track (elm, m, 'exit' )
+  patch_track(elm, m, 'entry')
+  thin_kick  (elm, m)
+  patch_track(elm, m, 'exit' )
 end
 
 local function drift_track (elm, m) -- e.g. monitor
-  if #elm == 0 and #m.selm == 0 then -- any sub or surrounding elements?
-    return straight_drift(nil, m, m.el)
+  local no_selm = #m.selm == 0
+
+  patch_track(elm, m, 'entry')
+
+  if no_selm and #elm == 0 then -- any surrounding or sub-elements?
+    integrators.thick(elm, m, m.el, straight_drift)
+  elseif no_selm then
+    subelm_track(elm, m, straight_drift)
+  else
+    subelm_track(elm, m, integrators[elm.method or m.mth])
   end
 
-  patch_track (elm, m, 'entry')
-  subelm_track(elm, m, straight_drift)
-  patch_track (elm, m, 'exit' )
+  patch_track(elm, m, 'exit')
 end
 
 local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
@@ -1536,7 +1546,7 @@ local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   patch_track(elm, m, 'entry')
   elm:fringe_track(m, 'entry')
 
-  local integrator = integrators[elm.method or m.method]
+  local integrator = integrators[elm.method or m.mth]
   if #elm == 0 then   -- any sub-elements?
     integrator  (elm, m, m.el, elm.drift_track, elm.kick_track)
   else
@@ -1562,14 +1572,21 @@ local function thin_backtrack (elm, m) -- e.g. multipole
 end
 
 local function drift_backtrack (elm, m) -- e.g. monitor
-  if #elm == 0 and #m.selm == 0 then -- any sub or surrounding elements?
-    return straight_drift(nil, m, m.el)
+  local no_selm = #m.selm == 0
+
+  patch_backtrack(elm, m, 'exit')
+
+  if no_selm and #elm == 0 then -- any surrounding or sub-elements?
+    integrators.thick(elm, m, m.el, straight_drift)
+  elseif no_selm then
+    subelm_backtrack(elm, m, straight_drift)
+  else
+    subelm_backtrack(elm, m, integrators[elm.method or m.mth])
   end
 
-   patch_backtrack(elm, m, 'exit' )
-  subdft_backtrack(elm, m, m.el   )
-   patch_backtrack(elm, m, 'entry')
+  patch_backtrack (elm, m, 'entry')
 end
+
 
 local function thick_backtrack (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   get_kmult(elm, m)   -- load strengths in map
@@ -1581,7 +1598,7 @@ local function thick_backtrack (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   patch_backtrack(elm, m, 'exit')
   elm:fringe_track    (m, 'exit')
 
-  local integrator = integrators[elm.method or m.method]
+  local integrator = integrators[elm.method or m.mth]
   if #elm == 0 then   -- any sub-elements ?
     integrator      (elm, m, m.el, elm.drift_track, elm.kick_track)
   else
@@ -1771,8 +1788,7 @@ local function make_mtable (self)
     type='track', title=sequence.name, direction=direction,
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
     [_trk]=_trk,
-  } : reserve(math.min(nrow, 1e5))
-    : set_functions { fill = fill_mtable }
+  } : reserve(nrow) : set_functions { fill=fill_mtable }
 end
 
 local function update_mflow (self)
@@ -1822,7 +1838,7 @@ local function make_mflow (self)
   t  = t  or X0.t  or X0[5] or 0
   pt = pt or X0.pt or X0[6] or 0
 
-  local save, drift, nstep, nslice, method, total_path in self
+  local save, drift, nstep, nslice, naction, method, total_path in self
   local nlen, sdir, mdir = #sequence, sequence.direction, self.direction
   local T = total_path == true and 1 or 0
 
@@ -1832,7 +1848,7 @@ local function make_mflow (self)
            nmul=0, knl={}, ksl={}, pnl={}, psl={},           -- internal vars
            s=s, dl=0, el=0, nlen=nlen, ndft=0,               -- internal states
            selm={}, selm_s={},                               -- subelement stack
-           nst=nstep, nsl=nslice, method=method,             -- user setup
+           nst=nstep, nsl=nslice, nact=naction, mth=method,  -- user setup
            save=save, drift=save and drift,                  -- user status
            sdir=sdir, mdir=mdir, bdir=sdir*mdir*beam.charge, -- directions
            sequence=sequence, beam=beam, mtable=mtable,      -- attached objects
@@ -1855,10 +1871,11 @@ end
 -- track command template
 
 local track = Command 'track' {
-  nturn=0, direction=1, drift=true, save=true,
-  nstep=1, nslice=2, method='simple', total_path=false,
+  nturn=0, direction=1, total_path=false, drift=true, save=true,
+  nstep=1, nslice=2, method='simple',
   exec=exec, [_trk]=true,
-} :set_readonly()
+} :set_functions { naction=empty_track }
+  :set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return {
