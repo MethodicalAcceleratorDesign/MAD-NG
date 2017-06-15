@@ -35,6 +35,7 @@
 // --- types -----------------------------------------------------------------o
 
 typedef const char*      str_t;
+typedef const void*      ptr_t;
 typedef int32_t          idx_t;
 typedef int32_t          ssz_t;
 typedef uint64_t         u64_t;
