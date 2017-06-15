@@ -194,7 +194,7 @@ local dct_mt = {
   helpers:      used by:        remarks:
   --------------------------------------
   find_1st      unique
-  replace_it    unique, share
+  replace_it    unique, share   no need to update indexes
   insert_it     insert          no index update, build_dict required!
   remove_it     remove          no index update, build_dict required!
 ]=]
@@ -212,34 +212,14 @@ local function find_1st (seq, elm)
   end
 end
 
-local function replace_it (seq, idx, elm)
-  local ei, nam = seq[_eidx], elm.name
+local function remove_it (seq, idx)
+  local ei, nam = seq[_eidx], seq[idx].name
   if ei[nam] == idx then            -- one  -> replace
-    seq[idx] = elm
-    seq[nam] = elm ; return
-  elseif is_table(ei[nam]) then
-    for i=1,#ei[nam] do             -- many -> search & replace
-      if ei[nam][i] == idx then
-        seq[idx]          = elm
-        seq[nam][_dct][i] = elm ; return
-      end
-    end
-  end
-  error("unexpected corrupted dictionnary")
-end
-
-local function remove_it (seq, idx, elm)
-  local ei, nam = seq[_eidx], elm.name
-  if ei[nam] == idx then            -- one  -> replace
-    assert(seq[nam] == elm, "unexpected corrupted dictionnary")
-    assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
     ei [nam] = nil
     seq[nam] = nil ; return
   elseif is_table(ei[nam]) then
     for i=1,#ei[nam] do             -- many -> search & replace
       if ei[nam][i] == idx then
-        assert(seq[nam][i] == elm, "unexpected corrupted dictionnary")
-        assert(seq:remove_array(idx) == elm, "unexpected corrupted sequence")
         table_remove(ei [nam]      , i)
         table_remove(seq[nam][_dct], i)
         if #ei[nam] == 1 then
@@ -254,7 +234,6 @@ end
 
 local function insert_it (seq, idx, elm)
   local ei, nam = seq[_eidx], elm.name
-  seq:insert_array(idx, elm)
   if is_nil(ei[nam]) then           -- none -> elem, index
     ei [nam] = idx
     seq[nam] = elm ; return
@@ -273,6 +252,25 @@ local function insert_it (seq, idx, elm)
         assert(ei[nam][i] ~= idx, "unexpected duplicated indexes")
         table_insert(ei [nam]      , i, idx)
         table_insert(seq[nam][_dct], i, elm) ; return
+      end
+    end
+  end
+  error("unexpected corrupted dictionnary")
+end
+
+local function replace_it (seq, idx, elm)
+  local old = seq[idx]
+  if old.name ~= elm.name then
+    remove_it(seq, idx)
+    insert_it(seq, idx, elm) ; return
+  end
+  local ei, nam = seq[_eidx], elm.name
+  if ei[nam] == idx then            -- one  -> replace
+    seq[nam] = elm ; return
+  elseif is_table(ei[nam]) then
+    for i=1,#ei[nam] do             -- many -> search & replace
+      if ei[nam][i] == idx then
+        seq[nam][_dct][i] = elm ; return
       end
     end
   end
@@ -802,69 +800,88 @@ local function filter (seq, p, rng_, flg_)
   return elm, idx
 end
 
--- seq:extract { range=range, selected=logical, pattern=string }
+-- seq:extract { index1, index2, ..., range=range, selected=logical, pattern=string }
 local function extract (seq, sel_)
   local sel = sel_ or {}
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_table(sel)   , "invalid argument #2 (selection expected)")
-  local range, selected, pattern in sel -- default: extract nothing
+  local range, selected, pattern in sel
+  local elm, idx
   if is_nil(range) and is_nil(selected) and is_nil(pattern) then
-    return {}, {}
+    elm, idx = {}, {} -- default: extract nothing
+  else
+    local pred = (pattern and \e -> string.match(e.name, pattern)) or ftrue
+    elm, idx = filter(seq, pred, range, selected)
   end
-  local pred = (pattern and \e -> string.match(e.name, pattern)) or ftrue
-  return filter(seq, pred, range, selected)
+  if #sel > 0 then -- add further selection
+    local j, n = 1, #elm
+    for i=1,#sel do
+      local si = index_of(seq, sel[i])
+      if si then elm[n+j], idx[n+j], j = seq[si], si, j+1 end
+    end
+  end
+  return elm, idx
 end
 
 -- methods (R/W, update dict) -------------------------------------------------o
 
--- seq:move { index1, index2, ..., +extract, +insert }
-local function move (seq, sel)
-  local rmv = seq:remove(sel)
-  rmv.at, rmv.from = sel.at, sel.from
-  seq:insert(rmv)
-  rmv.at, rmv.from = nil, nil
-  return rmv
-end
-
--- seq:remove { index1, index2, ..., +extract }
+-- seq:remove { +extract }
 local function remove (seq, sel)
   assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
   assert(is_table(sel)        , "invalid argument #2 (selection expected)")
 
   -- collect indexes of elements to remove
   local _,idx = extract(seq, sel)
-  for i=1,#sel do
-    idx[#idx+1] = index_of(seq, sel[i])
-  end
-  local n = #idx
-  assert(n > 0, "invalid remove selection (empty)")
+  if #idx == 0 then return {} end
 
   -- remove elements by decreasing indexes
-  local rmv = table.new(n,0)
   table.sort(idx)
   seq:set_readonly(false)
-  for i=n,1,-1 do
-    local elm = seq:rawget(idx[i])
-    remove_it(seq, idx[i], elm)
-    table_remove(seq[_epos],idx[i])
-    table_remove(seq[_spos],idx[i])
-    rmv[i] = elm
+  for i=#idx,1,-1 do
+    local ii = idx[i]
+    remove_it(seq, ii)
+    seq:remove_array(ii)
+    table_remove(seq[_epos], ii)
+    table_remove(seq[_spos], ii)
   end
-  finish_sequ(seq)
   build_dict (seq)
 --check_dict (seq)  -- sanity check
-  seq:set_readonly()
-  return rmv      -- return removed elements
+  finish_sequ(seq)
+  return seq:set_readonly()
 end
 
--- seq:insert { elem1, elem2, ..., at=pos, from=ref }
+-- seq:replace { index1=elm1, index2=elem2, ... }
+local function replace (seq, sel)
+  assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
+  assert(is_table(sel)        , "invalid argument #2 (selection expected)")
+
+  seq:set_readonly(false)
+  for idx,elm in pairs(sel) do
+    local i = index_of(seq, idx)
+    if i then
+      assert(is_element(elm), "invalid element replacement")
+      replace_it(seq, i, elm)
+      seq[i] = elm
+       -- check for negative drift
+      local pos = seq:spos(i)+seq[i].l
+      if pos-minlen > seq:spos(i+1) then
+        build_pos_err('element', seq, i+1, pos)
+      end
+    end
+  end
+--check_dict (seq)  -- sanity check
+  finish_sequ(seq)
+  return seq:set_readonly()
+end
+
+-- seq:insert { elem1, elem2, ..., at=pos, from=index }
 local function insert (seq, sel)
   assert(is_orig_sequence(seq), "invalid argument #1 (true sequence expected)")
   assert(is_table(sel)        , "invalid argument #2 (selection expected)")
   assert(#sel > 0             , "invalid insert selection (empty)")
 
   -- collect elements and subsequences to insert
-  local ins = {}
+  local ins = {} -- no sref -> keep subsequence as-is
   flatten_line(sel, ins, nil, 1, 1)
 
   -- compute reference index using a dummy marker
@@ -899,25 +916,29 @@ local function insert (seq, sel)
   -- insert by decreasing indexes
   seq:set_readonly(false)
   for i=n,1,-1 do
+    local ii = idx[i]
     if is_sequence(ins[i]) then
       local sseq, pos = ins[i], sub(elem_pos(seq, ridx, ins[i]))
       for j=#sseq-1,2,-1 do -- see sequ_pos
-        insert_it(seq, idx[i], sseq[j])
-        table_insert(seq[_epos], idx[i], sseq:epos(j) + pos)
-        table_insert(seq[_spos], idx[i], sseq:spos(j) + pos)
-        assert(seq[idx[i]] == sseq[j], "unexpected corrupted sequence insert")
+        insert_it(seq, ii, sseq[j])
+        seq:insert_array(ii, sseq[j])
+        table_insert(seq[_epos], ii, sseq:epos(j) + pos)
+        table_insert(seq[_spos], ii, sseq:spos(j) + pos)
+        assert(seq[ii] == sseq[j], "unexpected corrupted sequence insert")
       end
     else
-      insert_it(seq, idx[i], ins[i])
-      table_insert(seq[_epos], idx[i], uninitialized)
-      table_insert(seq[_spos], idx[i], uninitialized)
+      insert_it(seq, ii, ins[i])
+      seq:insert_array(ii, ins[i])
+      table_insert(seq[_epos], ii, uninitialized)
+      table_insert(seq[_spos], ii, uninitialized)
     end
   end
-  finish_sequ(seq)
-  build_dict (seq)
---check_dict (seq) -- sanity check
 
-  -- update positions of inserted elements, check for negative drifts
+  -- rebuild dictionnary before next elem_pos
+  build_dict(seq)
+--check_dict(seq) -- sanity check
+
+  -- update positions of inserted elements
   local sht = 0
   for i=1,n do
     local j = idx[i]+sht
@@ -928,11 +949,14 @@ local function insert (seq, sel)
       elem_pos(seq, j)
       sht = sht + 1
     end
-    if seq:spos(j-1)+seq[j-1].l > seq:spos(j)+minlen then
+    -- check for negative drift
+    local pos = seq:spos(j-1)+seq[j-1].l
+    if pos-minlen > seq:spos(j) then
       local typ = is_sequence(ins[i]) and 'subsequence' or 'element'
-      build_pos_err(typ, seq, j, seq:spos(j))
+      build_pos_err(typ, seq, j, pos)
     end
   end
+  finish_sequ(seq)
   return seq:set_readonly()
 end
 
@@ -949,13 +973,14 @@ local function unique (seq)
       for i=1,cnt do
         local idx = find_1st(seq, elm)
         assert(seq[idx] == elm, "unexpected corrupted dictionnary")
-        replace_it(seq, idx, elm {}) -- replace by a child
+        local c = elm {}
+        replace_it(seq, idx, c) ; seq[idx] = c -- replace by a child
       end
       assert(is_nil(find_1st(seq, elm)), "unexpected corrupted dictionnary")
     end
   end
+--check_dict (seq)  -- sanity check
   finish_sequ(seq)
--- check_dict(seq)  -- sanity check
   return seq:set_readonly()
 end
 
@@ -982,12 +1007,12 @@ local function share (seq1, seq2)
       assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
              "invalid shared element (incompatible positions)")
       -- update dictionnaries and arrays
-      replace_it(seq1, i1, c1)
-      replace_it(seq2, i2, c2)
+      replace_it(seq1, i1, c1) ; seq1[i1] = c1
+      replace_it(seq2, i2, c2) ; seq2[i2] = c2
     end
   end
+--check_dict (seq1) check_dict (seq2) -- sanity check
   finish_sequ(seq1) finish_sequ(seq2)
--- check_dict(seq1)  check_dict(seq2) -- sanity check
   return seq1:set_readonly(), seq2:set_readonly()
 end
 
@@ -1102,8 +1127,8 @@ sequence :set_functions {
   foreach   = foreach,
   filter    = filter,
   extract   = extract,
-  move      = move,
   remove    = remove,
+  replace   = replace,
   insert    = insert,
   share     = share,
   unique    = unique,
