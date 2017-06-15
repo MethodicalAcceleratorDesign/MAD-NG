@@ -2,7 +2,7 @@
 #define MAD_TPSA_H
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Truncated Power Series Algebra module interface
  |
@@ -12,23 +12,23 @@
  |          C. Tomoiaga
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
-  
+ o-----------------------------------------------------------------------------o
+
   Purpose:
   - provide a full feathered Generalized TPSA package
- 
+
   Information:
   - parameters ending with an underscope can be null.
 
   Errors:
   - TODO
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include <stdio.h>
@@ -36,18 +36,18 @@
 #include "mad_mono.h"
 #include "mad_desc.h"
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 struct ctpsa;
 typedef struct tpsa tpsa_t;
 
-// --- globals ---------------------------------------------------------------o
+// --- globals ----------------------------------------------------------------o
 
 extern const ord_t mad_tpsa_default;
 extern const ord_t mad_tpsa_same;
 extern       int   mad_tpsa_strict;
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 // ctors, dtor
 tpsa_t* mad_tpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
@@ -160,6 +160,6 @@ void    mad_tpsa_debug    (const tpsa_t *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
 
-// ---------------------------------------------------------------------------o
+// ----------------------------------------------------------------------------o
 
 #endif // MAD_TPSA_H
