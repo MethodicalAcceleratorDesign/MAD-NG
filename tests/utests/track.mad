@@ -26,16 +26,35 @@
 
 local assertTrue, assertEquals, assertAllAlmostEquals in MAD.utest
 local printf                                          in MAD.utility
-local track, beam, element, sequence, option          in MAD
+local track, beam, element, sequence, option, totable in MAD
 local drift                                           in element
 local observe                                         in element.flags
 
 -- helpers --------------------------------------------------------------------o
 
-local function prtinfo (tbl) -- for debug
+local function prt_tbl_info (t) -- for debug
   printf("%s:%s: %.8g, %.8g, %.8g, %.8g, %.8g, %.8g, %.8g, %.8g\n",
-         tbl.name or 'drift', tbl.kind,
-         tbl.s, tbl.l, tbl.x, tbl.px, tbl.y, tbl.py, tbl.t, tbl.pt)
+         t.name or 'drift', t.kind, t.s, t.l, t.x, t.px, t.y, t.py, t.t, t.pt)
+end
+
+local function prt_map_info (elm, m, l, i)
+  io.write(elm.name, "[", i, "]: ", m.x, ", ", m.y, ", ", m.t, "\n")
+end
+
+local function fill_tbl (elm, m, l, i)
+  local mtable in m
+  -- keep order!
+  mtable = mtable + { elm.name..'..'..i, elm.kind,
+                      m.s+l*i, l, m.x, m.px, m.y, m.py, m.t, m.pt }
+end
+
+local function fill_tbl_1000 (elm, m, l, i)
+  local mtable in m
+  -- keep order!
+  if i % 1000 == 0 then
+    mtable = mtable + { elm.name..'..'..i, elm.kind,
+                        m.s+l*i, l, m.x, m.px, m.y, m.py, m.t, m.pt }
+  end
 end
 
 -- Drift ----------------------------------------------------------------------o
@@ -51,24 +70,148 @@ function TestTrackDrift:tearDown ()
   option.format = self.optfmt
 end
 
-function TestTrackDrift:testTrackDrift()
+function TestTrackDrift:testSimple()
   local seq = sequence 'seq' { refer='entry', drift 'df' { l=1 } }
   seq:select(observe)
 
   local beam = beam { particle='proton', energy=100 }
-  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, -0.5, 0.1} }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
   assertEquals(#tbl, 3)
---  print()
---  tbl:write(io.stdout)
+  print()
+  tbl:write(io.stdout)
 end
 
-function TestTrackDrift:testTrackDriftNST()
-  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nst=10 } }
+function TestTrackDrift:testBacktrack()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1 } }
   seq:select(observe)
 
   local beam = beam { particle='proton', energy=100 }
-  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, -0.5, 0.1} }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1}, direction=-1 }
   assertEquals(#tbl, 3)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBackAndForth()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1 } }
+  seq:select(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl, map = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
+  track { direction=-1, mtable=tbl, mflow=map }
+  assertEquals(#tbl, 3*2)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=10 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
+  assertEquals(#tbl, 3+seq.df.nstep)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBacktrackNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=10 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1}, direction=-1 }
+  assertEquals(#tbl, 3+seq.df.nstep)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBackAndForthNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=10 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl, map = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
+  track { direction=-1, mtable=tbl, mflow=map }
+  assertEquals(#tbl, (3+seq.df.nstep)*2)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testManyNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=1e4 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl_1000 }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
+  assertEquals(#tbl, 3+seq.df.nstep/1e3)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBacktrackManyNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=1e4 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl_1000 }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1}, direction=-1 }
+  assertEquals(#tbl, 3+seq.df.nstep/1e3)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBackAndForthManyNST()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=1e4 }}
+  seq:select(observe)
+  seq.df:set_functions { naction=fill_tbl_1000 }
+  seq.df:deselect(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl, map = track { sequence=seq, beam=beam, X0={1, 0.1, -1, -0.1, 0, 0.1} }
+  track { direction=-1, mtable=tbl, mflow=map }
+  assertEquals(#tbl, (3+seq.df.nstep/1e3)*2)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testBackAndForthAccuracy()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=10 } }
+  seq.df:select(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local tbl, map = track { sequence=seq, beam=beam, X0={1e-3, 1e-8, -1e-3, -1e-8, 0, 1e-8} }
+  for i=1,999 do
+    track { direction=-map.mdir, mtable=tbl, mflow=map }
+  end
+  assertEquals(#tbl, 1000)
+  print()
+  tbl:write(io.stdout)
+end
+
+function TestTrackDrift:testManyTurnsBackAndForthAccuracy()
+  local seq = sequence 'seq' { refer='entry', drift 'df' { l=1, nstep=10 } }
+  seq.df:select(observe)
+
+  local beam = beam { particle='proton', energy=100 }
+  local X0 = {1e-3, 1e-9, -1e-3, -1e-9, 0, 1e-6}
+  local tbl, map = track { sequence=seq, beam=beam, X0=X0, nturn=999 }
+  track { direction=-1, mtable=tbl, mflow=map, nturn=999 }
+  assertEquals(#tbl, 2000)
+  local res = tbl[-1]
+  print()
+  for i=1,#res do print('res:',i,res[i]) end
+
+  assertAllAlmostEquals(tbl[-1], X0, 1e-14)
 --  print()
 --  tbl:write(io.stdout)
 end
