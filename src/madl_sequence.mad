@@ -119,20 +119,24 @@ local table_insert, table_remove = table.insert, table.remove
 
 -- root object ----------------------------------------------------------------o
 
-local _seq = {}
+-- hidden keys: elements indexes, positions and entry positions.
+local _eidx, _epos, _spos = {}, {}, {}
 
-sequence :set { direction=1, refer='centre', l=0, [_seq]=true }
+-- defined in elements
+sequence :set { direction=1, refer='centre', l=0 }
 
 local function is_sequence(a)
-  return is_table(a) and not is_nil(a[_seq])
+  return is_table(a) and not is_nil(a[_eidx])
+end
+
+local function is_orig_sequence(seq)
+  return is_sequence(seq) and not is_nil(seq:rawget(_eidx))
 end
 
 -- definitions ----------------------------------------------------------------o
 
--- hidden keys: elements indexes, positions and entry positions.
-local _eidx, _epos, _spos = {}, {}, {}
-local _lastfrom, _lastfrompos = {}, {} -- temporaries
-local _vecmaxlen = {}
+ -- temporaries to cache 'from' lookup
+local _lastfrom, _lastfrompos = {}, {}
 
 -- special numerical value for elements positions.
 local uninitialized = -1e9
@@ -154,11 +158,6 @@ local function check_sequ (seq)
   elseif seq[n].__id ~= mkend  .__id or seq[n].is_marker ~= true then
     error("invalid sequence last element ($end expected)", 2)
   end
-end
-
--- check if sequence is the orignal one.
-local function is_orig_sequence(seq)
-  return is_sequence(seq) and seq:rawlen() == #seq
 end
 
 -- debug ----------------------------------------------------------------------o
@@ -616,7 +615,8 @@ end
 
 -- build sequence dictionnary
 local function build_dict (seq)
-  local ei = {}
+  local ei = seq[_eidx]
+  table.clear(ei)                     -- reuse main storage
   for idx,elm in ipairs(seq) do
     local nam = elm.name
     if is_nil(ei[nam]) then           -- none -> elem, index
@@ -627,12 +627,11 @@ local function build_dict (seq)
       table_insert(ei[nam], idx)
     end
   end
-  seq[_eidx] = ei
 end
 
 -- build sequence and dictionnaries
 local function build_sequ (seq, flat)
-  local ei = {}
+  local ei = table.new(0,#flat)       -- assume unique names
   for idx,elm in ipairs(flat) do
     seq[idx] = elm                    -- set in sequence
     local nam = elm.name
@@ -1109,8 +1108,9 @@ end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.element.sequence   = sequence
-MAD.typeid.is_sequence = is_sequence
+MAD.element.sequence        = sequence
+MAD.typeid.is_sequence      = is_sequence
+MAD.typeid.is_orig_sequence = is_orig_sequence
 
 -- members --------------------------------------------------------------------o
 
