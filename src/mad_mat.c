@@ -491,29 +491,29 @@ void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
 }
 
 void
-mad_mat_shift (num_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
-{ CHKX; mshft %= m; nshft %= n;
-  ssz_t nm = n*m, msz = n*abs(mshft), nsz = abs(nshft);
+mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+{ CHKX; mroll %= m; nroll %= n;
+  ssz_t nm = n*m, msz = n*abs(mroll), nsz = abs(nroll);
   ssz_t sz = msz > nsz ? msz : nsz;
   mad_alloc_tmp(num_t, a, sz);
-  if (mshft > 0) {
+  if (mroll > 0) {
     mad_vec_copy (x+nm-msz, a    ,    msz); // end of x to a
     mad_vec_rcopy(x       , x+msz, nm-msz); // shift x down
     mad_vec_copy (a       , x    ,    msz); // a to beginning of x
   } else
-  if (mshft < 0) {
+  if (mroll < 0) {
     mad_vec_copy (x    , a       ,    msz); // beginning of x to a
     mad_vec_copy (x+msz, x       , nm-msz); // shift x up
     mad_vec_copy (a    , x+nm-msz,    msz); // a to end of x
   }
-  if (nshft > 0) {
+  if (nroll > 0) {
     for (ssz_t i=0; i < nm; i += n) {
       mad_vec_copy (x+i+n-nsz, a      ,   nsz); // end of x to a
       mad_vec_rcopy(x+i      , x+i+nsz, n-nsz); // shift x right
       mad_vec_copy (a        , x+i    ,   nsz); // a to beginning of x
     }
   } else
-  if (nshft < 0) {
+  if (nroll < 0) {
     for (ssz_t i=0; i < nm; i += n) {
       mad_vec_copy (x+i    , a        ,   nsz); // beginning of x to a
       mad_vec_copy (x+i+nsz, x+i      , n-nsz); // shift x left
@@ -534,8 +534,8 @@ void mad_cmat_fill(cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 void mad_cmat_fill_r(num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; CNUM(x); SET(); }
 
-void mad_cmat_shift (cnum_t x[], ssz_t m, ssz_t n, int mshft, int nshft)
-{ mad_mat_shift((num_t*)x, m, 2*n, mshft, 2*nshft); }
+void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+{ mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
 
 void mad_cmat_copy(const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
