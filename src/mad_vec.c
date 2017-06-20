@@ -146,14 +146,13 @@ void mad_vec_center (const num_t x[], num_t r[], ssz_t n)
 }
 
 void
-mad_vec_shift (num_t x[], ssz_t ni, ssz_t n, int nshft)
+mad_vec_shift (num_t x[], ssz_t n, int nshft)
 { CHKX;
-  ssz_t nis = ni+nshft;
   if (nshft > 0) {
-    mad_vec_rcopy(x+ni, x+nis, n-nis); // shift x down (or right)
+    mad_vec_rcopy(x, x+nshft, n-nshft); // shift x down (or right)
   } else
   if (nshft < 0) {
-    mad_vec_copy (x-nshft,  x, 1+nis); // shift x up (or left)
+    mad_vec_copy (x-nshft, x, n+nshft); // shift x up (or left)
   }
 }
 
@@ -231,8 +230,8 @@ void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
 void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
 { mad_cvec_fill(CNUM(x_re,x_im), r, n); }
 
-void mad_cvec_shift (cnum_t x[], ssz_t ni, ssz_t n, int nshft)
-{ mad_vec_shift((num_t*)x, 2*ni, 2*n, 2*nshft); }
+void mad_cvec_shift (cnum_t x[], ssz_t n, int nshft)
+{ mad_vec_shift((num_t*)x, 2*n, 2*nshft); }
 
 void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
 { mad_vec_roll((num_t*)x, 2*n, 2*nroll); }
