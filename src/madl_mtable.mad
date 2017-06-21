@@ -241,23 +241,79 @@ local function cpy_row (tbl, idx, val)
       col[i][idx], len = v, len+1
     end
   end
+  tbl[_sel][idx] = true -- select row
   return len
+end
+
+local function sht_row (tbl, idx, dir)
+  local col = tbl[_col]
+  if dir > 0 then
+    for i=1,tbl[_var].lastcol do
+      if is_table(col[i]) then
+        table_insert(col[i], idx, 0)
+      else
+        col[i]:shiftv(idx, 1)
+      end
+    end
+    table_insert(tbl[_sel], idx, true) -- select row
+  elseif dir < 0 then
+    for i=1,tbl[_var].lastcol do
+      if is_table(col[i]) then
+        table_remove(col[i], idx)
+      else
+        col[i]:shiftv(idx, -1)
+      end
+    end
+    table_remove(tbl[_sel], idx)
+  end
 end
 
 local function add_row (tbl, val) -- exposed
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(is_table(val) , "invalid argument #2 (table expected)")
   local var = tbl[_var]
-  local idx = var.lastrow+1
-  if var.lastvec then resize(tbl, idx) end
+  local rsz = var.lastrow+1
+  if var.lastvec then resize(tbl, rsz) end
+  local len = cpy_row(tbl, rsz, val)
+  if len ~= var.lastcol then
+    error(string.format(
+      "invalid argument #2 (missing %d columns in row add)", var.lastcol-len))
+  end
+  if rsz == 1 then specialize(tbl) end
+  var.lastrow = rsz
+  var.valid = nil -- invalidate the dict
+  return tbl
+end
+
+local function ins_row (tbl, idx, val) -- exposed
+  idx = index_of(tbl, idx)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_number(idx), "invalid argument #2 (row index expected)")
+  assert(is_table(val), "invalid argument #2 (table expected)")
+  local var = tbl[_var]
+  local rsz = var.lastrow+1
+  if var.lastvec then resize(tbl, rsz) end
+  sht_row(tbl, idx, 1)
   local len = cpy_row(tbl, idx, val)
   if len ~= var.lastcol then
     error(string.format(
       "invalid argument #2 (missing %d columns in row add)", var.lastcol-len))
   end
-  if idx == 1 then specialize(tbl) end
-  tbl[_sel][idx] = true -- select row
-  var.lastrow = idx
+  var.lastrow = rsz
+  var.valid = nil -- invalidate the dict
+  return tbl
+end
+
+local function rem_row (tbl, idx, val) -- exposed
+  idx = index_of(tbl, idx)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_number(idx), "invalid argument #2 (row index expected)")
+  assert(is_table(val), "invalid argument #2 (table expected)")
+  local var = tbl[_var]
+  local rsz = var.lastrow-1
+  sht_row(tbl, idx, -1)
+  if var.lastvec then resize(tbl, rsz) end
+  var.lastrow = rsz
   var.valid = nil -- invalidate the dict
   return tbl
 end
@@ -267,10 +323,9 @@ local function set_row (tbl, idx, val) -- exposed
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(is_number(idx), "invalid argument #2 (row index expected)")
   assert(is_table(val) , "invalid argument #3 (table expected)")
-  local var, row = tbl[_var], tbl[_row]
-  if idx < 0 then idx = idx + var.lastrow + 1 end -- mirror negative row index
-  assert(idx >= 1 and idx <= var.lastrow, "invalid argument #2 (row index out of bounds)")
+  assert(idx >= 1 and idx <= tbl[_var].lastrow, "invalid argument #2 (row index out of bounds)")
   cpy_row(tbl, idx, val)
+  var.valid = nil -- invalidate the dict
   return tbl
 end
 
@@ -280,11 +335,8 @@ local function swp_rows (tbl, idx1, idx2) -- exposed
   assert(is_number(idx1), "invalid argument #2 (row index expected)")
   assert(is_number(idx2), "invalid argument #3 (row index expected)")
   swp_row(tbl, idx1, idx2)
-end
-
-local function ins_rows (tbl, idx, val) -- exposed
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  assert(is_table(val), "invalid argument #2 (table expected)")
+  var.valid = nil -- invalidate the dict
+  return tbl
 end
 
 -- manipulate columns ---------------------------------------------------------o
