@@ -1081,27 +1081,71 @@ function TestCMatrixInPlaceII:testCirc()
   end
 end
 
-function TestCMatrixInPlaceII:testShift()
+function TestCMatrixErr:testShiftv()
+  local msg = {
+    "index out of bound",
+    "index+shift out of bound",
+  }
+  local v = cvector(4)
+
+  assertErrorMsgContains( msg[1], mth, 'shiftv', v, 0,  0 )
+  assertErrorMsgContains( msg[1], mth, 'shiftv', v, 0, -5 )
+  assertErrorMsgContains( msg[1], mth, 'shiftv', v, 0,  5 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 1, -4 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 1,  4 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 2, -3 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 2,  3 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 3, -2 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 3,  2 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 4, -1 )
+  assertErrorMsgContains( msg[2], mth, 'shiftv', v, 4,  1 )
+  assertErrorMsgContains( msg[1], mth, 'shiftv', v, 5,  0 )
+end
+
+function TestCMatrixInPlaceII:testShiftv()
+  for n=1,6 do
+    for i=1,n do
+      for j=0,n-i do
+        -- left shift
+        local v = cvector(n):fill(1..n)/2i
+        local w = cvector(n):fill(1..n)/2i
+        v:shiftv(i,-j)
+        w:setv(i..n-j, w:getv(i+j..n) )
+        assertAllAlmostEquals(totable(v:real()), totable(w:real()))
+        assertAllAlmostEquals(totable(v:imag()), totable(w:imag()))
+        -- right shift
+        local v = cvector(n):fill(1..n)/2i
+        local w = cvector(n):fill(1..n)/2i
+        v:shiftv(i,+j)
+        w:setv(i+j..n, w:getv(i..n-j) )
+        assertAllAlmostEquals(totable(v:real()), totable(w:real()))
+        assertAllAlmostEquals(totable(v:imag()), totable(w:imag()))
+      end
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testRoll()
   local cm = cvector(4):fill(1..4)
-  assertEquals( cm:shift( 0  , 0  ), cm )
-  assertEquals( cm:shift( 4  , 0  ), cm )
-  assertEquals( cm:shift( 0  , 1  ), cm )
-  assertEquals( cm:shift( 0  , 2  ), cm )
-  assertEquals( cm:shift( nil, 0  ), cm )
-  assertEquals( cm:shift( 0  , nil), cm )
-  assertEquals( cm:shift( nil, nil), cm )
+  assertEquals( cm:roll( 0  , 0  ), cm )
+  assertEquals( cm:roll( 4  , 0  ), cm )
+  assertEquals( cm:roll( 0  , 1  ), cm )
+  assertEquals( cm:roll( 0  , 2  ), cm )
+  assertEquals( cm:roll( nil, 0  ), cm )
+  assertEquals( cm:roll( 0  , nil), cm )
+  assertEquals( cm:roll( nil, nil), cm )
 
   cm = cmatrix(2):fill(1..4)
-  assertEquals( cm:shift( 0  , 0  ), cm )
-  assertEquals( cm:shift( 3  , 0  ), cm )
-  assertEquals( cm:shift(-3  , 0  ), cm )
+  assertEquals( cm:roll( 0  , 0  ), cm )
+  assertEquals( cm:roll( 3  , 0  ), cm )
+  assertEquals( cm:roll(-3  , 0  ), cm )
 
   for nr=1,5 do
   for nc=1,5 do
     cm = cmatrix(nr,nc):fill(1..nr*nc):map(toC)
     for inc=0,nc do
     for inr=0,nr do
-      cm:shift(inr,inc)
+      cm:roll(inr,inc)
       for jnr=1,nr do
       for jnc=1,nc do
         if     jnc<=inc and jnr<=inr then assertEquals( cm:get(jnr,jnc), idxC(jnr+(nr-inr),jnc+(nc-inc),nc) )
@@ -1109,7 +1153,7 @@ function TestCMatrixInPlaceII:testShift()
         elseif jnc> inc and jnr<=inr then assertEquals( cm:get(jnr,jnc), idxC(jnr+(nr-inr),jnc- inc    ,nc) )
         else                              assertEquals( cm:get(jnr,jnc), idxC(jnr-inr     ,jnc- inc    ,nc) ) end
       end end
-      cm:shift(-inr,-inc)
+      cm:roll(-inr,-inc)
     end end
   end end
 end
@@ -3129,7 +3173,7 @@ function TestCMatrixFFT:testConv()
     local outs = i+2
     local cm = dat.fftMIn:getsub(1+j..i+j, 1+j..i+j):resize(outs):map(toC)
     local k  = matrix{{0,0,0},{0,1,0},{0,0,0}}      :resize(outs):map(toC)
-    local mres = cm:conv(k):shift(-1,-1)
+    local mres = cm:conv(k):roll(-1,-1)
     assertTrue( mres:getsub(1..i     ,1..i     ):eq( cm:getsub(1..i, 1..i  ):map(\x ((x:real()+x:imag())*1i) ), 3*eps) )
     assertTrue( mres:getsub(i+1..outs,1..i     ):eq( cmatrix(outs-i, i     )                                  , 2*eps) )
     assertTrue( mres:getsub(1..i     ,i+1..outs):eq( cmatrix(i     , outs-i)                                  , 2*eps) )
@@ -3143,16 +3187,16 @@ function TestCMatrixFFT:testCorr()
     local v1  = pasVec(i-1):resize(outs,1):map(toC)
     local v2  = pasVec(i-2):resize(outs,1):map(toC)
     local res = v1:corr(v2)
-    assertTrue( res:eq( pasVec(outs):shift(outs/2+1,0):map(\x 2*x+0i), 32*eps ) )
-    assertTrue( res:eq( v2:corr(v1) :shift(1       ,0)               , 32*eps ) )
+    assertTrue( res:eq( pasVec(outs):roll(outs/2+1,0):map(\x 2*x+0i), 32*eps ) )
+    assertTrue( res:eq( v2:corr(v1) :roll(1       ,0)               , 32*eps ) )
   end
   for i=3,5 do
   for j=0,2 do
     local outs = i+2
     local m = dat.fftMIn:getsub(1+j..i+j, 1+j..i+j):resize(outs):map(toC)
     local k = matrix{{0,0,0},{0,1,0},{0,0,0}}      :resize(outs):map(toC)
-    local mref = m:conv(k):shift(-1,-1):map(\x complex(x:imag(), x:real()) )
-    local mres = m:corr(k):shift( 1 ,1)
+    local mref = m:conv(k):roll(-1,-1):map(\x complex(x:imag(), x:real()) )
+    local mres = m:corr(k):roll( 1 ,1)
     assertTrue( mref:eq( mres, 4*eps ) )
   end end
 end
@@ -3170,8 +3214,8 @@ for i=3,6 do
     local outs = i+2
     local m = dat.fftMIn:getsub(1..i, 1..i)  :resize(outs):map(toC)
     local k = matrix{{0,0,0},{0,1,0},{0,0,0}}:resize(outs):map(toC)
-    local mref = m:corr (k):shift(1,1):center()
-    local mres = m:covar(k):shift(1,1)
+    local mref = m:corr (k):roll(1,1):center()
+    local mres = m:covar(k):roll(1,1)
     assertTrue( mref:eq( mres, 4*eps ) )
   end
 end
