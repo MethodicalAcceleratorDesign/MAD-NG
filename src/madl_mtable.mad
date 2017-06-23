@@ -85,44 +85,7 @@ end
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 local mtable_mt = getmetatable(mtable) -- backup original (see metamethods)
 
--- header keys (I/O) ----------------------------------------------------------o
-
--- remove keys from the list of keys to display in the header
-local function rem_keys (tbl, keys)
-  if is_string(keys) then keys = {keys} end
-  assert(is_table(keys), "invalid argument #2 ([list of] strings expected)")
-  local list = tbl[_var].hrdnam
-  for i=1,#keys do
-  for j=1,#list do -- cubic, should be fast enough for most cases.
-    if list[j] == keys[i] then
-      table_remove(list, j) ; break
-    end
-  end end
-  return tbl
-end
-
--- add keys to the list of keys to display in the header
-local function ins_keys (tbl, keys)
-  assert(is_table(keys),
-    "invalid argument #2 (set of new_key_to_ins[=where_to_ins_key] expected)")
-  local list = tbl[_var].hrdnam
-  for nk,k in pairs(keys) do
-    if is_number(nk) then
-      assert(is_string(k), "invalid header key (string expected)")
-      table_insert(list, k)
-    else -- quadratic, should be fast enough for most cases.
-      assert(is_string(nk), "invalid header key (string expected)")
-      for j=1,#list do -- search for position to insert
-        if list[j] == k then
-          table_insert(list, j, nk) ; break
-        end
-      end
-    end
-  end
-  return tbl
-end
-
--- rows bookkeeping -----------------------------------------------------------o
+-- memory bookkeeping ---------------------------------------------------------o
 
 -- set the amount of rows allocated on first expand.
 local function reserve (tbl, nrow)
@@ -148,18 +111,6 @@ local function resize (tbl, idx)
   if idx > var.maxrow then expand(tbl, idx) end
   for i=1,var.lastvec do
     vec[i]:_reshape(idx)
-  end
-end
-
--- ensure that enough rows are available for insertion (i.e. vectors).
-local function insert (tbl, idx)
-  local var = tbl[_var]
-  local vec = var.colvec
-  local len = var.lastrow+1
-  if len > var.maxrow then expand(tbl, len) end
-  for i=1,var.lastvec do
-    vec[i]:_reshape(idx)
-    vec[i]:shift()
   end
 end
 
@@ -209,15 +160,70 @@ local function build_dict (tbl)
   end
 end
 
--- manipulate rows ------------------------------------------------------------o
+-- row index helpers ----------------------------------------------------------o
 
-local function index_of (tbl, idx)
-  if is_number(idx) then        -- mirror negative row index
-    return idx >= 0 and idx or idx+tbl[_var].lastrow+1
-  elseif is_string(idx) then    -- string to index (or array of index)
-    return tbl[_row][idx]
+-- see sequence module for similarities
+
+-- get closest row index (linear)
+local function efind_idx (tbl, nam, idx_, cnt_)
+  if is_nil(nam) then return nil end
+  local n, start, stop, step = #tbl, idx_ or 1
+  assert(is_number(start), "invalid argument #3 (index expected)")
+  if start > 0
+  then stop, step = n, 1
+  else stop, step, start = 1, -1, min(-start, n)
   end
+  local cnt = cnt_ or 1
+  assert(is_number(cnt) and cnt >= 1, "invalid argument #4 (count expected)")
+  local ref = tbl[_row][_col]
+  for i=start,stop,step do  -- linear search
+    if ref[i] == nam then
+      if cnt == 1 then return i end
+      cnt = cnt - 1
+    end
+  end
+  return nil
 end
+
+-- get index from signed index (direct)
+local function index_of_idx (tbl, num)
+  local n = #tbl
+  if num < 0 then num = n+num+1 end -- reflect
+  if num < 1 or num > n then return nil end
+  return num
+end
+
+-- get index from name (direct)
+local function index_of_nam (tbl, nam, cnt_)
+  local idx = tbl[_row][nam]
+  if is_table(idx) then
+    assert(is_number(cnt_), "invalid argument #3 (count expected)")
+    return idx[cnt_]
+  end
+  return idx
+end
+
+-- get index from string (direct or linear)
+local function index_of_str (tbl, s, idx_)
+  local i, j, nam, del = string.find(s, "([^[{/]+)([[{]?)")
+  assert(nam ~= nil and i == 1, "invalid argument #2 (name expected)")
+  local cnt, rel                                         -- get row
+  if is_nil(tbl[nam]) then return nil                    -- not found
+  elseif del == ''    then return index_of_nam(tbl, nam) -- index of "name"
+  elseif del == '['
+  then i, j, cnt = string.find(s,      "(%d+)]", j+1)    -- get count
+  else i, j, cnt = string.find(s, "([-+]?%d+)}", j+1) ; rel = true end
+  cnt = assert(tonumber(cnt), "invalid argument #2 (count expected)")
+  if not rel then
+    return index_of_nam(tbl, nam, cnt)                   -- index of "name[n]"
+  end
+  if cnt < 0 then
+    cnt, idx_ = -cnt, -assert(idx_, "invalid argument #3 (index expected)")
+  end
+  return efind_idx(tbl, nam, idx_, cnt)                  -- index of "name{n}"
+end
+
+-- manipulate rows ------------------------------------------------------------o
 
 local function swp_row (tbl, idx1, idx2)
   local col = tbl[_col]
@@ -241,7 +247,7 @@ local function cpy_row (tbl, idx, val)
       col[i][idx], len = v, len+1
     end
   end
-  tbl[_sel][idx] = true -- select row
+  tbl[_sel][idx] = true                              -- select row
   return len
 end
 
@@ -255,7 +261,7 @@ local function sht_row (tbl, idx, dir)
         col[i]:shiftv(idx, 1)
       end
     end
-    table_insert(tbl[_sel], idx, true)
+    table_insert(tbl[_sel], idx, true)               -- select row
   elseif dir < 0 then
     for i=1,tbl[_var].lastcol do
       if is_table(col[i]) then
@@ -266,6 +272,14 @@ local function sht_row (tbl, idx, dir)
     end
     table_remove(tbl[_sel], idx)
   end
+end
+
+local function get_row (tbl, idx) -- exposed
+  idx = index_of(tbl, idx)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_table(idx) or is_number(idx),
+                        "invalid argument #2 (row index expected)")
+  return setmetatable({[_row]=idx}, tbl[_var].row_mt)
 end
 
 local function add_row (tbl, val) -- exposed
@@ -348,7 +362,15 @@ end
 
 -- manipulate columns ---------------------------------------------------------o
 
-local function set_col (self, key, val)
+local function get_col (self, key)
+  error('NYI')
+end
+
+local function rem_col (self, key)
+  error('NYI')
+end
+
+local function add_col (self, key, val)
   error('NYI')
 end
 
@@ -356,7 +378,11 @@ local function ins_col (self, key, val)
   error('NYI')
 end
 
-local function add_col (self, key, val)
+local function set_col (self, key, val)
+  error('NYI')
+end
+
+local function swp_cols (self, key1, key2)
   error('NYI')
 end
 
@@ -432,6 +458,78 @@ local function get_row_mt(self)
 
     metatable = false,
   }
+end
+
+-- methods (readonly) ---------------------------------------------------------o
+
+
+local function index_of (tbl, idx, cnt_)
+  if is_number(idx) then        -- mirror negative row index
+    return idx >= 0 and idx or idx+tbl[_var].lastrow+1
+  elseif is_string(idx) then    -- string to index (or array of index)
+    return tbl[_row][idx]
+  end
+end
+
+-- header and column keys (I/O) -----------------------------------------------o
+
+-- add keys to the list of keys to display.
+local function ins_keys (list, keys)
+  for nk,k in pairs(keys) do
+    if is_number(nk) then
+      assert(is_string(k), "invalid header key (string expected)")
+      table_insert(list, k)
+    else -- quadratic, should be fast enough for most cases.
+      assert(is_string(nk), "invalid header key (string expected)")
+      for j=1,#list do -- search for position to insert
+        if list[j] == k then
+          table_insert(list, j, nk) ; break
+        end
+      end
+    end
+  end
+end
+
+-- remove keys from the list of keys to display.
+local function rem_keys (list, keys)
+  for i=1,#keys do
+  for j=1,#list do -- cubic, should be fast enough for most cases.
+    if list[j] == keys[i] then
+      table_remove(list, j) ; break
+    end
+  end end
+end
+
+-- add keys to the list of keys to display in the header.
+local function ins_hkeys (tbl, keys)
+  assert(is_table(keys),
+    "invalid argument #2 (set of new_key_to_ins[=where_to_ins_key] expected)")
+  ins_keys(tbl[_var].hrdnam, keys)
+  return tbl
+end
+
+-- remove keys from the list of keys to display in the header
+local function rem_hkeys (tbl, keys)
+  if is_string(keys) then keys = {keys} end
+  assert(is_table(keys), "invalid argument #2 ([list of] strings expected)")
+  rem_keys(tbl[_var].hrdnam, keys)
+  return tbl
+end
+
+-- add keys to the list of keys to display in the columns.
+local function ins_ckeys (tbl, keys)
+  assert(is_table(keys),
+    "invalid argument #2 (set of new_key_to_ins[=where_to_ins_key] expected)")
+  ins_keys(tbl[_var].colnam, keys)
+  return tbl
+end
+
+-- remove keys from the list of keys to display in the columns.
+local function rem_ckeys (tbl, keys)
+  if is_string(keys) then keys = {keys} end
+  assert(is_table(keys), "invalid argument #2 ([list of] strings expected)")
+  rem_keys(tbl[_var].colnam, keys)
+  return tbl
 end
 
 -- mtable I/O -----------------------------------------------------------------o
@@ -644,11 +742,21 @@ init_mm(mtable, 'nocheck')
   header_names = \s -> s[_var].hdrnam,
   column_names = \s -> s[_var].colnam,
 } : set_functions {
-  add_keys = add_keys,
-  get_key  = \s,k   -> mtable_mt.__index(s,k),
-  set_key  = \s,k,v => mtable_mt.__newindex(s,k,v) return s end,
-  reserve  = reserve,
-  write    = write,
+  add_keys    = add_keys,
+  get_key     = \s,k   -> mtable_mt.__index(s,k),
+  set_key     = \s,k,v => mtable_mt.__newindex(s,k,v) return s end,
+  add_row     = add_row,
+  set_row     = set_row,
+  insert_row  = ins_row,
+  remove_row  = rem_row,
+  swap_rows   = swp_rows,
+  add_col     = add_col,
+  set_col     = set_col,
+  insert_col  = ins_col,
+  remove_col  = rem_col,
+  swap_cols   = swp_cols,
+  reserve     = reserve,
+  write       = write,
 } : set_metamethods ({
   __add      = add_row,
   __len      = len_mm,
