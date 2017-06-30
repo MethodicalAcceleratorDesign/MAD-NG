@@ -439,6 +439,21 @@ end
 
 -- manipulate columns ---------------------------------------------------------o
 
+local function coliter (s, i)
+  i = i+1
+  if i <= s[_var].lastrow then return i, s[_col](i) end
+end
+
+local str = \s -> string.format("<column> %p", s)
+local err = \  -> error("forbidden access to column", 2)
+
+local col_mt = {
+  __index    = \s,k -> s[_col](k),
+  __len      = \s   -> s[_var].lastrow,
+  __ipairs   = \s   -> (coliter, s, 0),
+  __tostring = str, __newindex = err, __pairs = err,
+}
+
 local function get_col (tbl, idx)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   if is_string(idx) then idx = tbl[_col][idx] end
@@ -446,28 +461,39 @@ local function get_col (tbl, idx)
   return tbl[_col][idx]
 end
 
-local function add_col (tbl, idx, val)
+local function add_col (tbl, nam, val)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-end
+  assert(is_string(nam), "invalid argument #2 (string expected)")
+  local var, col, idx = tbl[_var], tbl[_col]
+  assert(is_nil(col[nam]), "invalid argument #2 (column name already in use)")
+  if is_callable(val) then     -- generator
+    val = setmetatable({ [_var]=var, [_col]=val }, col_mt)
+    idx = var.maxcol+1         -- append
+  elseif is_iterable(val) then -- table or vector
+    assert(#val >= var.lastrow, "invalid argument #2 (longer iterable expected)")
+    if is_number(val[1]) then  -- add a vector
+      local len
+      if var.colvec then
+        len = var.maxrow
+      else                     -- first vector in the table
+        len = max(var.reserve, var.lastrow)
+        var.maxrow, var.colvec = len, {}
+      end
+      val = vector(len):fill(val)
+      table_insert(var.colvec, val)
+    end
+    idx = var.lastcol+1        -- insert
+    var.lastcol = idx
+    for k,v in pairs(col) do   -- shift index of generator key-index by one
+      if is_string(k) and v >= idx then
+        col[k] = v+1
+      end
+    end
+  end
 
-local function ins_col (tbl, idx, val)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  error('NYI')
-end
-
-local function rem_col (tbl, idx)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  error('NYI')
-end
-
-local function set_col (tbl, idx, val)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  error('NYI')
-end
-
-local function swp_cols (tbl, idx1, idx2)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  error('NYI')
+  col[nam] = idx
+  table_insert(col, idx, val)
+  var.maxcol = var.maxcol+1
 end
 
 -- row proxy metamethods ------------------------------------------------------o
