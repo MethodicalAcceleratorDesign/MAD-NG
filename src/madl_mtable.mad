@@ -139,7 +139,7 @@ local function expand (tbl, idx)
   assert(j == #vec, "unexpected corrupted list of vectors")
 end
 
--- ensure that enough vectors are long enough.
+-- ensure that vectors are long enough.
 local function resize (tbl, idx)
   local var = tbl[_var]
   local vec = var.colvec
@@ -157,23 +157,32 @@ local function specialize (tbl)
          "invalid reference column (column of strings expected)")
 
   local len = max(var.reserve, var.maxrow)
-  local j, vec, refidx , refcol= 0, {}, 0, row[_col]
+  local j, vec, refidx , refcol = 0, {}, 0, row[_col]
+
+  -- specialized column of numbers to vectors, preallocate tables.
   for i=1,var.lastcol do
     local v = col[i][1]
-    if is_number(v) then
+    if is_number(v) then -- column of numbers
       col[i], j = vector(len):seti(1, v), j+1
       vec[j] = col[i]
-    else
+    else                 -- table of whatever
       if col[i] == refcol then refidx = i end -- reference column
       col[i] = table.new(len,0)
       col[i][1] = v
     end
   end
+
+  -- row selection
+  var.rowsel = table.new(len,0)
+  var.rowsel[1] = true
+
+  -- row dictionnary
   if refidx > 0 then
-    tbl[_row] = table.new(len,len)
+    tbl[_row] = table.new(0,len)
     tbl[_row][_col] = col[refidx]
-    tbl[_row][1] = true
   end
+
+  -- length and direct access to vectors for resize
   if j > 0 then
     var.colvec  = vec
     var.maxrow  = len
@@ -297,16 +306,16 @@ end
 -- rows manipulation ----------------------------------------------------------o
 
 local function swp_row (tbl, idx1, idx2)
-  local row, col = tbl[_row], tbl[_col]
-  for i=1,tbl[_var].lastcol do
+  local var, col = tbl[_var], tbl[_col]
+  for i=1,var.lastcol do
     col[i][idx1], col[i][idx2] = col[i][idx2], col[i][idx1]
   end
-  row[idx1], row[idx2] = row[idx2], row[idx1]
+  var.rowsel[idx1], var.rowsel[idx2] = var.rowsel[idx2], var.rowsel[idx1]
 end
 
 local function cpy_row (tbl, idx, val)
-  local col = tbl[_col]
-  local len = min(#val, tbl[_var].lastcol)
+  local var, col = tbl[_var], tbl[_col]
+  local len = min(#val, var.lastcol)
   if len > 0 then                                    -- index-value copy
     for i=1,len do
       col[i][idx] = val[i]
@@ -318,30 +327,30 @@ local function cpy_row (tbl, idx, val)
       col[i][idx], len = v, len+1
     end
   end
-  tbl[_row][idx] = true                              -- select row
+  var.rowsel[idx] = true                             -- select row
   return len
 end
 
 local function sht_row (tbl, idx, dir)
-  local col = tbl[_col]
+  local var, col = tbl[_var], tbl[_col]
   if dir > 0 then
-    for i=1,tbl[_var].lastcol do
+    for i=1,var.lastcol do
       if is_table(col[i]) then
         table_insert(col[i], idx, 0)
       else
         col[i]:shiftv(idx, 1)
       end
     end
-    table_insert(tbl[_row], idx, true)               -- select row
+    table_insert(var.rowsel, idx, true)              -- select row
   elseif dir < 0 then
-    for i=1,tbl[_var].lastcol do
+    for i=1,var.lastcol do
       if is_table(col[i]) then
         table_remove(col[i], idx)
       else
         col[i]:shiftv(idx, -1)
       end
     end
-    table_remove(tbl[_row], idx)
+    table_remove(var.rowsel, idx)
   end
 end
 
@@ -466,6 +475,7 @@ local function add_col (tbl, nam, val)
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local var, col, idx = tbl[_var], tbl[_col]
   assert(is_nil(col[nam]), "invalid argument #2 (column name already in use)")
+
   if is_callable(val) then     -- generator
     val = setmetatable({ [_var]=var, [_col]=val }, col_mt)
     idx = var.maxcol+1         -- append
@@ -638,8 +648,8 @@ local function write(self, filename_, colnames_, hdrnames_)
     filename_, colnames_, hdrnames_ = nil, filename_, colnames_
   end
   local var, col = self[_var], self[_col]
-  local hname = hdrnames_ or var.hdrnam
-  local cname = colnames_ or var.colnam
+  local hname = hdrnames_ or var.hdrsel
+  local cname = colnames_ or var.colsel
   local cols = table.new(#cname, 0)
 
   -- check and collect columns
@@ -727,8 +737,9 @@ end
     + invalid: non-nil if dictionnary exists and is invalid.
     + reserve: floor for first vector allocation.
     + colvec: list of column vectors (if any) for direct access in resize.
-    + hdrnam: list of ordered header key names for I/O (i.e. variable names).
-    + colnam: list of ordered column names for I/O.
+    + hdrsel: list of ordered header key names for I/O (i.e. variable).
+    + colsel: list of ordered column names for I/O.
+    + rowsel: list of selected rows for I/O (true means selected).
     + row_mt: metatable for row proxies, captures mtable and hidden keys.
 
   - Hidden tbl[_col]:
@@ -742,7 +753,6 @@ end
       - logical: %l (true, false).
 
   - Hidden tbl[_row]:
-    + list of selected rows for I/O (true means selected).
     + dict of key-row_index or key-row_index_list (i.e. repeated key).
     + direct access to reference column (if any) through tbl[_row][_col].
 
@@ -761,8 +771,8 @@ local function init_mm (tbl, nocheck)
   local row, col, var = {}, {}, {
     lastrow=0, maxrow=1, lastcol=0, maxcol=0, reserve=8,
     colvec=nil, invalid=nil, row_mt=nil,
-    hdrnam = { 'name', 'type', 'title', 'origin', 'date', 'time' },
-    colnam = {},
+    hdrsel = { 'name', 'type', 'title', 'origin', 'date', 'time' },
+    colsel = {}, rowsel = {},
   }
   -- top level variables to avoid lookup recursion
   rawset(tbl, _var, var)
@@ -838,8 +848,8 @@ end
 
 init_mm(mtable, 'nocheck')
   : set_variables {
-  header_names = \s -> s[_var].hdrnam,
-  column_names = \s -> s[_var].colnam,
+  header_names = \s -> s[_var].hdrsel,
+  column_names = \s -> s[_var].colsel,
 } : set_functions {
   add_keys    = add_keys,
   get_key     = \s,k   -> mtable_mt.__index(s,k),
