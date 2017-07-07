@@ -411,6 +411,7 @@ FUN(sinc) (const T *a, T *c)
 }
 
 // --- The following functions are manually expanded up to order 5
+// --- TODO: remove the limitation by taking the real part of complex series
 
 enum { MANUAL_EXPANSION_ORD = 5 };
 
