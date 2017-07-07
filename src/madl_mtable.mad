@@ -74,8 +74,8 @@ local table_clear, table_insert, table_remove =
 
 -- root object ----------------------------------------------------------------o
 
--- hidden keys: internals, row dictionnary, columns array, selected rows.
-local _var, _row, _col = {}, {}, {}
+-- hidden keys: internal variables, row dictionnary, columns array, array length.
+local _var, _row, _col, _len = {}, {}, {}, {}
 
 local mtable = Object 'mtable' {
   kind='mtable', type='', title='', origin=origin
@@ -88,27 +88,31 @@ end
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 local mtable_mt = getmetatable(mtable) -- backup original (see metamethods)
 
--- rows dictionnary -----------------------------------------------------------o
+-- rows dictionnary helpers ---------------------------------------------------o
 
 local function build_dict (tbl)
-  local var, row, col = tbl[_var], tbl[_row], tbl[_row][_col]
+  local var, row, col = tbl[_var], tbl[_row], tbl[_col]
   table_clear(row)                    -- clear content
-  row[_col] = col                     -- restore link to refcol
-  for idx,key in ipairs(col) do
-    if is_nil(row[key]) then          -- none -> key, index
+
+  row[_col] = col[var.refcol]         -- restore direct link to refcol
+  var.invalid = nil                   -- dict is valid
+
+  for idx,key in ipairs(row[_col]) do
+    local val = row[key]
+    if is_nil(val) then               -- none -> key, index
       row[key] = idx
-    elseif is_number(row[key]) then   -- one  -> create array
-      row[key] = {row[key], idx}
+    elseif is_number(val) then        -- one  -> create array
+      row[key] = {val, idx, [_len]=2}
     else                              -- many -> append
-      table_insert(row[key], idx)
+      val[_len] = val[_len] + 1
+      val[val[_len]] = idx
     end
   end
-  var.invalid = nil                   -- dict is valid
 end
 
 local function clr_dict (tbl)
   -- invalid is non-nil if dict exists, i.e. if reference column exists
-  tbl[_var].invalid = tbl[_row][_col]
+  tbl[_var].invalid = tbl[_var].refcol
 end
 
 local function get_dict (tbl)
@@ -122,7 +126,7 @@ local function get_refcol (tbl)
   return tbl[_row][_col] -- dict can remain invalid
 end
 
--- memory bookkeeping ---------------------------------------------------------o
+-- memory bookkeeping helpers -------------------------------------------------o
 
 -- allocated more memory for vectors.
 local function expand (tbl, idx)
@@ -144,7 +148,7 @@ local function resize (tbl, idx)
   local var = tbl[_var]
   local vec = var.colvec
   if idx > var.maxrow then expand(tbl, idx) end
-  for i=1,#vec do
+  for i=1,vec[_len] do
     vec[i]:_reshape(idx)
   end
 end
@@ -184,6 +188,7 @@ local function specialize (tbl)
 
   -- length and direct access to vectors for resize
   if j > 0 then
+    vec[_len] = j
     var.colvec  = vec
     var.maxrow  = len
   else
@@ -191,7 +196,15 @@ local function specialize (tbl)
   end
 end
 
--- index for rows (same as sequence) ------------------------------------------o
+-- record the number of rows foreseen
+local function reserve (tbl, nrow) -- exposed
+  assert(is_mtable(tbl)   , "invalid argument #1 (mtable expected)")
+  assert(is_positive(nrow), "invalid argument #2 (number expects)")
+  tbl[_var].reserve = ceil(min(nrow, 1e5))
+  return tbl
+end
+
+-- index for rows helpers (same as sequence) ----------------------------------o
 
 -- get closest row index (linear)
 local function efind_idx (tbl, nam, idx_, cnt_)
@@ -215,10 +228,11 @@ local function efind_idx (tbl, nam, idx_, cnt_)
 end
 
 -- get index from signed index (direct)
-local function index_of_idx (tbl, num)
+local function index_of_idx (tbl, num, ext_)
+  ext_ = ext_ or 0
   local n = #tbl
   if num < 0 then num = n+num+1 end -- reflect
-  if num < 1 or num > n then return nil end
+  if num < 1 or num > n+ext_ then return nil end
   return num
 end
 
@@ -261,7 +275,7 @@ local function name_of (tbl, idx) -- exposed
   local nam = row[_col][idx]
   local ri = row[nam] -- use dict
   if ri == idx then return nam end
-  for i=1,#ri do
+  for i=1,ri[_len] do
     if ri[i] == idx then
       return string.format("%s[%d]", nam, i)
     end
@@ -271,7 +285,7 @@ end
 
 local function index_of (tbl, a, ref_) -- exposed
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-      if is_number(a) then return index_of_idx(tbl, a)
+      if is_number(a) then return index_of_idx(tbl, a, ref_)
   elseif is_string(a) then return index_of_str(tbl, a, ref_)
   end
   error("invalid argument #2 (number or string expected)")
@@ -310,6 +324,7 @@ local function swp_row (tbl, idx1, idx2)
   for i=1,var.lastcol do
     col[i][idx1], col[i][idx2] = col[i][idx2], col[i][idx1]
   end
+  -- swap selection
   var.rowsel[idx1], var.rowsel[idx2] = var.rowsel[idx2], var.rowsel[idx1]
 end
 
@@ -355,7 +370,6 @@ local function sht_row (tbl, idx, dir)
 end
 
 local function get_row (tbl, idx, ref_) -- exposed
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   idx = index_of(tbl, idx, ref_)
   assert(is_number(idx), "invalid argument #2 (valid row index expected)")
   return setmetatable({[_row]=idx}, tbl[_var].row_mt)
@@ -379,14 +393,12 @@ local function add_row (tbl, val) -- exposed
 end
 
 local function ins_row (tbl, idx, val) -- exposed
-  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  idx = index_of(tbl, idx)
-  assert(is_number(idx)  , "invalid argument #2 (row index expected)")
+  idx = index_of(tbl, idx, 1)
+  assert(is_number(idx)  , "invalid argument #2 (valid row index expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   local var = tbl[_var]
   local rsz = var.lastrow+1
   if idx == rsz then return add_row(tbl, val) end
-  assert(idx >= 1 and idx < rsz, "invalid argument #2 (row index out of bounds)")
   if var.colvec then resize(tbl, rsz) end
   sht_row(tbl, idx, 1) -- shift row from idx by one row down
   local len = cpy_row(tbl, idx, val)
@@ -401,27 +413,25 @@ end
 
 local function rem_row (tbl, idx) -- exposed
   idx = index_of(tbl, idx)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  assert(is_number(idx), "invalid argument #2 (row index expected)")
+  assert(is_number(idx), "invalid argument #2 (valid row index expected)")
   local var = tbl[_var]
-  local rsz = var.lastrow
-  assert(idx >= 1 and idx <= rsz, "invalid argument #2 (row index out of bounds)")
-  if rsz >= 1 then
-    rsz = rsz - 1
+  local rsz = var.lastrow-1
+  if rsz == 0 then
+    for i=1,var.lastcol do tbl[_col][i] = {} end
+    var.colvec = nil
+  else
     sht_row(tbl, idx, -1) -- shift row from idx by one row up
     if var.colvec then resize(tbl, rsz) end
-    var.lastrow = rsz
-    clr_dict(tbl)
   end
+  var.lastrow = rsz
+  clr_dict(tbl)
   return tbl
 end
 
 local function set_row (tbl, idx, val) -- exposed
   idx = index_of(tbl, idx)
-  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  assert(is_number(idx)  , "invalid argument #2 (row index expected)")
+  assert(is_number(idx)  , "invalid argument #2 (valid row index expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
-  assert(idx >= 1 and idx <= tbl[_var].lastrow, "invalid argument #2 (row index out of bounds)")
   cpy_row(tbl, idx, val)
   clr_dict(tbl)
   return tbl
@@ -429,20 +439,10 @@ end
 
 local function swp_rows (tbl, idx1, idx2) -- exposed
   idx1, idx2 = index_of(tbl, idx1), index_of(tbl, idx2)
-  assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
-  assert(is_number(idx1), "invalid argument #2 (row index expected)")
-  assert(is_number(idx2), "invalid argument #3 (row index expected)")
-  assert(idx1 >= 1 and idx1 <= tbl[_var].lastrow, "invalid argument #2 (row index out of bounds)")
-  assert(idx2 >= 1 and idx2 <= tbl[_var].lastrow, "invalid argument #3 (row index out of bounds)")
+  assert(is_number(idx1), "invalid argument #2 (valid row index expected)")
+  assert(is_number(idx2), "invalid argument #3 (valid row index expected)")
   swp_row(tbl, idx1, idx2)
   clr_dict(tbl)
-  return tbl
-end
-
-local function reserve (tbl, nrow) -- exposed
-  assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
-  assert(is_number(nrow), "invalid argument #2 (number expects)")
-  tbl[_var].reserve = ceil(min(nrow, max(nrow,1), 1e5))
   return tbl
 end
 
@@ -736,6 +736,7 @@ end
     + maxcol>=lastcol: extra column 'generators' added by user (e.g. functors).
     + invalid: non-nil if dictionnary exists and is invalid.
     + reserve: floor for first vector allocation.
+    + refcol: index of the reference column used for rows dictionnary.
     + colvec: list of column vectors (if any) for direct access in resize.
     + hdrsel: list of ordered header key names for I/O (i.e. variable).
     + colsel: list of ordered column names for I/O.
@@ -770,7 +771,7 @@ end
 local function init_mm (tbl, nocheck)
   local row, col, var = {}, {}, {
     lastrow=0, maxrow=1, lastcol=0, maxcol=0, reserve=8,
-    colvec=nil, invalid=nil, row_mt=nil,
+    refcol=nil, colvec=nil, invalid=nil, row_mt=nil,
     hdrsel = { 'name', 'type', 'title', 'origin', 'date', 'time' },
     colsel = {}, rowsel = {},
   }
@@ -782,15 +783,12 @@ local function init_mm (tbl, nocheck)
   assert(nocheck or tbl.parent == mtable,
          "invalid mtable instance (inheritance not allowed)")
 
-  local refcol
   for i,v in mtable_mt.__ipairs(tbl) do
-    if is_table(v) then refcol, v = i, v[1] end      -- col is the dict
+    if is_table(v) then var.refcol, v = i, v[1] end      -- col is the dict
     assert(is_string(v), "invalid column name (string expected)")
     col[i], col[v], var.colnam[i] = {}, i, v         -- data, key2idx, idx2key
   end
   tbl:clear_array()
-
-  if refcol then row[_col] = col[refcol] end         -- direct access to ref col
   var.lastcol, var.maxcol = #col, #col               -- current #col
   var.row_mt = get_row_mt(tbl)                       -- row proxy metatable
 
