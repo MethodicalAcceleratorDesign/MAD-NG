@@ -33,11 +33,11 @@ SYNOPSIS
   my_tab = mtable 'mytab' { column_name_list... }
 
 DESCRIPTION
-  The module table creates TFS tables used by MAD. The rows and the columns can
-  be accessed (in this order) by name or by index. If a name of the column name
-  list is itself enclosed into a list, then the name of the elements can be used
-  to access the row. Adding news rows or columns let the table grows
-  automatically.
+  The module table creates TFS tables used by MAD. The columns and the rows can
+  be accessed (in this order) by name or by index (rows only). If a name of the
+  column name list is itself enclosed into a list (i.e. bracketed), then the
+  name of the rows (i.e. strings) can be used to have direct access to the rows.
+  Adding news rows or columns let the table grows automatically.
 
 RETURN VALUE
   The TFS table.
@@ -48,8 +48,8 @@ ERRORS
 EXAMPLES
   local mtable in MAD
   tbl = mtable 'survey' { {'name'}, 'x', 'y', 'z', 'phi', 'theta', 'rho' }
-  tbl:add{ 'dft', 0.1, 0.2, 0.5, 0, 0, 0 }
-  tbl:add{ name='mq', x=0.2, y=0.4, z=1 }
+  tbl:add_row { 'dft', 0.1, 0.2, 0.5, 0, 0, 0 }
+  tbl:add_row { name='mq', x=0.2, y=0.4, z=1 }
   tbl = tbl + { name='mq', x=0.2, y=0.4, z=2 }
   print(tbl.x[2])     -- x of 'mq[1]' using col-then-row access
   print(tbl.mq[1].x)  -- x of 'mq[1]' using row-then-col access
@@ -67,6 +67,7 @@ local fprintf                                                    in MAD.utility
 local sub                                                        in MAD.operator
 local is_nil, is_number, is_positive, is_string, is_table,
       is_function, is_file, is_matrix                            in MAD.typeid
+local is_iterable, is_callable                                   in MAD.concept
 
 local min, max, ceil in math
 local table_clear, table_insert, table_remove =
@@ -74,40 +75,39 @@ local table_clear, table_insert, table_remove =
 
 -- root object ----------------------------------------------------------------o
 
--- hidden keys: internal variables, row dictionnary, columns array, array length.
+-- hidden keys: internal variables, row dictionnary, columns list, list length.
 local _var, _row, _col, _len = {}, {}, {}, {}
 
-local mtable = Object 'mtable' {
-  kind='mtable', type='', title='', origin=origin
+local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
+
+local mtable = Object '' {
+  type='', title='', origin=origin, kind='mtable',
 }
+
+local mtable_mt = getmetatable(mtable) -- backup original (see metamethods)
 
 local function is_mtable(a)
   return is_table(a) and not is_nil(a[_var])
 end
-
-local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
-local mtable_mt = getmetatable(mtable) -- backup original (see metamethods)
 
 -- rows dictionnary helpers ---------------------------------------------------o
 
 local function build_dict (tbl)
   local var, row, col = tbl[_var], tbl[_row], tbl[_col]
   table_clear(row)                    -- clear content
-
   row[_col] = col[var.refcol]         -- restore direct link to refcol
-  var.invalid = nil                   -- dict is valid
-
   for idx,key in ipairs(row[_col]) do
     local val = row[key]
     if is_nil(val) then               -- none -> key, index
       row[key] = idx
-    elseif is_number(val) then        -- one  -> create array
+    elseif is_number(val) then        -- one  -> create list
       row[key] = {val, idx, [_len]=2}
     else                              -- many -> append
       val[_len] = val[_len] + 1
       val[val[_len]] = idx
     end
   end
+  var.invalid = nil                   -- dict is valid
 end
 
 local function clr_dict (tbl)
@@ -239,11 +239,11 @@ end
 -- get index from name (direct)
 local function index_of_nam (tbl, nam, cnt_)
   local idx = get_dict(tbl)[nam] -- use dict
-  if is_table(idx) then
-    assert(is_number(cnt_), "invalid argument #3 (count expected)")
+  if is_table(idx) and is_number(cnt_) then
     return idx[cnt_]
+  else
+    return idx
   end
-  return idx
 end
 
 -- get index from string (direct or linear)
@@ -428,8 +428,8 @@ local function rem_row (tbl, idx) -- exposed
   return tbl
 end
 
-local function set_row (tbl, idx, val) -- exposed
-  idx = index_of(tbl, idx)
+local function set_row (tbl, key, val) -- exposed
+  local idx = index_of(tbl, key)
   assert(is_number(idx)  , "invalid argument #2 (valid row index expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   cpy_row(tbl, idx, val)
@@ -437,8 +437,8 @@ local function set_row (tbl, idx, val) -- exposed
   return tbl
 end
 
-local function swp_rows (tbl, idx1, idx2) -- exposed
-  idx1, idx2 = index_of(tbl, idx1), index_of(tbl, idx2)
+local function swp_rows (tbl, key1, key2) -- exposed
+  local idx1, idx2 = index_of(tbl, key1), index_of(tbl, key2)
   assert(is_number(idx1), "invalid argument #2 (valid row index expected)")
   assert(is_number(idx2), "invalid argument #3 (valid row index expected)")
   swp_row(tbl, idx1, idx2)
@@ -506,10 +506,25 @@ local function add_col (tbl, nam, val)
   var.maxcol = var.maxcol+1
 end
 
--- row proxy metamethods ------------------------------------------------------o
+-- proxy metamethods ----------------------------------------------------------o
 
-local function get_row_mt(self)
-  local var_, col_ = self[_var], self[_col]
+--[=[
+  Notes about mtable row proxy data structure:
+  - Proxies are tables that store a mtable row_index or row_index_list.
+    + provides pairs and ipairs row iterators and row length.
+    + the mtable and the hidden keys are captured in the proxy metatable.
+
+  - Hidden pxy[_row]:
+    + row_index or row_index_list.
+    + for row_index_list, the proxy expects a count to convert the list into a
+      row_index and update pxy[_row] before use.
+]=]
+
+local str = \s -> string.format("<mtable proxy> %p", s)
+local err = \  -> error("forbidden access to mtable proxy", 2)
+
+local function get_row_mt(tbl)
+  local var_, col_ = tbl[_var], tbl[_col]
 
   local function idxiter (row, i)
     i = i+1
@@ -533,10 +548,10 @@ local function get_row_mt(self)
 
     __index = function(row, col)
       local idx = row[_row]
-      if is_number(idx) then                                        -- row index
-        if is_string(col) then col = col_[col] end           -- col key to index
+      if is_number(idx) then                               -- row index
+        if is_string(col) then col = col_[col] end         -- col key to index
         return col_[col] and col_[col][idx]
-      elseif is_table(idx) then                                     -- row array
+      elseif is_table(idx) then                            -- row list
         assert(is_number(col), "invalid argument #2 (row count expected)")
         row[_row] = idx[col]                               -- row count to index
         return row
@@ -546,12 +561,12 @@ local function get_row_mt(self)
 
     __newindex = function(row, col, val)
       local idx = row[_row]
-      if is_number(idx) then                                        -- row index
+      if is_number(idx) then                               -- row index
         assert(is_string(col) and col_[col], "invalid argument #2 (column key expected)")
-        col_[col_[col]][idx] = val                           -- col key to index
-      elseif is_table(idx) then                                     -- row array
+        col_[col_[col]][idx] = val                         -- col key to index
+      elseif is_table(idx) then                            -- row list
         assert(is_number(col) and idx[col], "invalid argument #2 (row count expected)")
-        set_row(self, idx[col], val)                       -- row count to index
+        set_row(tbl, idx[col], val)                       -- row count to index
       else
         error("invalid argument #2 (row count or column key expected)")
       end
@@ -576,7 +591,7 @@ local function get_row_mt(self)
       return keyiter, row, nil
     end,
 
-    metatable = false,
+    __tostring = str,
   }
 end
 
@@ -643,11 +658,11 @@ end
 
 -- mtable I/O -----------------------------------------------------------------o
 
-local function write(self, filename_, colnames_, hdrnames_)
+local function write(tbl, filename_, colnames_, hdrnames_)
   if is_table(filename_) and is_nil(hdrnames_) then
     filename_, colnames_, hdrnames_ = nil, filename_, colnames_
   end
-  local var, col = self[_var], self[_col]
+  local var, col = tbl[_var], tbl[_col]
   local hname = hdrnames_ or var.hdrsel
   local cname = colnames_ or var.colsel
   local cols = table.new(#cname, 0)
@@ -664,7 +679,7 @@ local function write(self, filename_, colnames_, hdrnames_)
     file = filename_
     assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
   else
-    local fname = filename_ or self:get_key'name' or 'tmptable'
+    local fname = filename_ or tbl:get_key'name' or 'tmptable'
     assert(is_string(fname), "invalid argument #2 (string expected)")
     if string.sub(fname,-4) ~= '.tfs' then fname = fname .. '.tfs' end
     local handle, err = io.open(fname, 'w')
@@ -676,7 +691,7 @@ local function write(self, filename_, colnames_, hdrnames_)
 
   -- dump header
   for i=1,#hname do
-    local k, v = hname[i], self:get_key(hname[i])
+    local k, v = hname[i], tbl:get_key(hname[i])
     if is_string(v) then
       fprintf(file, '@ %-18s %%%02ds %q\n', k, #v, v)
     elseif is_number(v) then
@@ -718,75 +733,68 @@ local function write(self, filename_, colnames_, hdrnames_)
 
   -- close file
   file:close()
-  return self
+  return tbl
 end
 
--- table metamethods ----------------------------------------------------------o
+-- mtable metamethods ---------------------------------------------------------o
 
 --[=[
   Notes about mtable data structure:
   - Mtables are Objects
-    + list of column names before init, cleared by init (empty).
+    + list of column names before init, list part is cleared by init (empty).
     + dict of user variables (as any object)
       mtable provides name, type, title, origin, date and time by inheritance.
 
   - Hidden tbl[_var]:
     + lastrow, lastcol: last valid row/column.
     + maxrow>=lastrow: vectors capacity (see resize and expand).
-    + maxcol>=lastcol: extra column 'generators' added by user (e.g. functors).
+    + maxcol>=lastcol: extra column 'generators' added by user (e.g. callables).
     + invalid: non-nil if dictionnary exists and is invalid.
     + reserve: floor for first vector allocation.
     + refcol: index of the reference column used for rows dictionnary.
     + colvec: list of column vectors (if any) for direct access in resize.
-    + hdrsel: list of ordered header key names for I/O (i.e. variable).
+    + hdrsel: list of ordered variable names for I/O (i.e. header keys).
     + colsel: list of ordered column names for I/O.
     + rowsel: list of selected rows for I/O (true means selected).
     + row_mt: metatable for row proxies, captures mtable and hidden keys.
 
   - Hidden tbl[_col]:
-    + list of the columns data ordered like in colnam.
+    + list of the columns _data_ ordered like in colsel.
     + dict of the columns key-col_index.
     + after the first row is stored, colunms are specialized by element types
       numbers are stored in vectors, others in lists.
-    + supported formats are (numerics are formated by MAD.option.format):
-      - string:  %s, %q (double quotes)
-      - number:  %f, %d (e.g. 1.0, 1, -1) (+MAD-X %le)
+    + supported column formats are (numerics are formated by MAD.option.format):
+      - string:  %s (quoted, internally %q)
+      - number:  %f (e.g. 1.0, 1, -1) (+MAD-X %le)
       - logical: %l (true, false).
 
   - Hidden tbl[_row]:
     + dict of key-row_index or key-row_index_list (i.e. repeated key).
-    + direct access to reference column (if any) through tbl[_row][_col].
-
-  Notes about mtable row proxy:
-  - Proxies are tables that store a mtable row_index or row_index_list.
-    + provides pairs and ipairs row iterators and row length.
-    + the mtable (i.e. self and hidden keys) is captured in the proxy metatable.
-
-  - Hidden pxy[_row]:
-    + row_index or row_index_list.
-    + for row_index_list, the proxy expects a count to convert the list into a
-      row_index and update pxy[_row] before use.
+    + direct access to reference column (if any) through tbl[_row][_col],
+      equivalent to tbl[_col][tbl[_var].refcol]
 ]=]
 
-local function init_mm (tbl, nocheck)
+local function init_mm (tbl)
   local row, col, var = {}, {}, {
-    lastrow=0, maxrow=1, lastcol=0, maxcol=0, reserve=8,
-    refcol=nil, colvec=nil, invalid=nil, row_mt=nil,
+    lastrow=0, lastcol=0, maxrow=0, maxcol=0, reserve=8,
+--  invalid=nil, refcol=nil, colvec=nil, rowsel=nil, row_mt=nil,
     hdrsel = { 'name', 'type', 'title', 'origin', 'date', 'time' },
-    colsel = {}, rowsel = {},
+    rowsel = {}, colsel = {},
   }
+
   -- top level variables to avoid lookup recursion
   rawset(tbl, _var, var)
   rawset(tbl, _row, row)
   rawset(tbl, _col, col)
 
-  assert(nocheck or tbl.parent == mtable,
+  -- protect against inheritance
+  assert(tbl.parent == mtable or tbl == mtable,
          "invalid mtable instance (inheritance not allowed)")
 
   for i,v in mtable_mt.__ipairs(tbl) do
-    if is_table(v) then var.refcol, v = i, v[1] end      -- col is the dict
+    if is_table(v) then var.refcol, v = i, v[1] end  -- this column is the dict
     assert(is_string(v), "invalid column name (string expected)")
-    col[i], col[v], var.colnam[i] = {}, i, v         -- data, key2idx, idx2key
+    col[i], col[v], var.colsel[i] = {}, i, v         -- data, key2idx, idx2key
   end
   tbl:clear_array()
   var.lastcol, var.maxcol = #col, #col               -- current #col
@@ -797,41 +805,33 @@ local function init_mm (tbl, nocheck)
   return tbl
 end
 
--- TODO: update with new dict API
-
 local function len_mm (tbl)
   return tbl[_var].lastrow
 end
 
-local function index_mm (tbl, key)                 -- access: tbl.row or tbl.col
-  local idx = is_number(key) and key or tbl[_row][key]    -- row index or key
-  if is_nil(idx) then                                     -- col key
-    idx = tbl[_col][key]                                  -- col key to index
-    if is_nil(idx) then                                   -- not col key
-      return mtable_mt.__index(tbl, key)                  -- forward
-    else
-      return tbl[_col][idx]                               -- get full col
-    end
-  else
-    return setmetatable({[_row]=idx}, tbl[_var].row_mt)   -- get full row (pxy)
+ -- access precedence: rows, columns, variables
+local function index_mm (tbl, key)
+  local idx = index_of(tbl, key)
+  if idx then                                           -- row index or key
+    return setmetatable({[_row]=idx}, tbl[_var].row_mt) -- row proxy
   end
+  idx = tbl[_col][key]
+  if is_number(idx) then                                -- column key
+    return tbl[_col][idx]                               -- full column
+  end
+  return mtable_mt.__index(tbl, key)                    -- forward (variable)
 end
 
-local function newindex_mm (self, key, val)  -- access: tbl.row or tbl.col = val
-  local idx = is_number(key) and key or self[_row][key]    -- row index or key
-  if is_nil(idx) then                                      -- col key
-    idx = self[_col][key]                                  -- col key to index
-    if is_nil(idx) then                                    -- not col key
-      mtable_mt.__newindex(self, key, val)                 -- forward
-    else
-      set_col(self, idx, val)                              -- set full col
-    end
-  else
-    set_row(self, idx, val)                                -- set full row
+ -- access precedence: rows, variables
+local function newindex_mm (tbl, key, val)
+  local idx = index_of(tbl, key)
+  if idx then                                           -- row index or key
+    set_row(tbl, idx, val)
   end
+  mtable_mt.__newindex(tbl, key, val)                   -- forward (variable)
 end
 
-local function iter (row, i)
+local function rowiter (row, i)
   i = i+1
   if i <= row[_var].lastrow then
     rawset(row, _row, i)
@@ -839,16 +839,12 @@ local function iter (row, i)
   end
 end
 
-local function ipairs_mm (self)
-  local row = setmetatable({[_row]=0, [_var]=self[_var]}, self[_var].row_mt)
-  return iter, row, 0
+local function ipairs_mm (tbl)
+  local row = setmetatable({[_row]=0, [_var]=tbl[_var]}, tbl[_var].row_mt)
+  return rowiter, row, 0
 end
 
-init_mm(mtable, 'nocheck')
-  : set_variables {
-  header_names = \s -> s[_var].hdrsel,
-  column_names = \s -> s[_var].colsel,
-} : set_functions {
+init_mm(mtable): set_functions {
   add_keys    = add_keys,
   get_key     = \s,k   -> mtable_mt.__index(s,k),
   set_key     = \s,k,v => mtable_mt.__newindex(s,k,v) return s end,
