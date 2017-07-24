@@ -5,7 +5,6 @@ cd lib
 [[ -e nlopt2             ]] || (tar xzf nlopt-2.4.2.tar.gz && \
                                 mv nlopt-2.4.2 nlopt2)
 cd nlopt2
-./configure --disable-shared
-make clean
+[[ -e Makefile           ]] || ./configure --disable-shared
 make
 cp .libs/libnlopt.a ../../bin/linux/libnlopt2.a

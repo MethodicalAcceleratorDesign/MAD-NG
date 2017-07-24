@@ -5,7 +5,6 @@ cd lib
 [[ -e fftw3             ]] || (tar xzf fftw-3.3.4.tar.gz && \
                                mv fftw-3.3.4 fftw3)
 cd fftw3
-./configure --disable-shared
-make clean
+[[ -e Makefile          ]] || ./configure --disable-shared
 make
 cp .libs/libfftw3.a ../../bin/linux

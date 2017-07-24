@@ -13,6 +13,7 @@ LUAROCKS=luarocks-2.4.2
 
 # build
 cd $LUAROCKS
+[[ -e Makefile         ]] | \
 ./configure --prefix=${PREFIX-$MAD_ROOT/install} \
             --with-lua-bin=$LUA_ROOT/bin \
             --with-lua-include=$LUA_ROOT/include/luajit-2.1 \

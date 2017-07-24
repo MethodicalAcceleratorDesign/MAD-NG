@@ -5,6 +5,5 @@ HERE=$(readlink -f "$(dirname $BASH_SOURCE)")
 cd lib/lapack
 cp make.inc.example make.inc
 patch -p0 <${HERE}/patch_lapack.diff
-make clean
 make lapack_install lapacklib blaslib
 cp liblapack.a librefblas.a ../../bin/linux
