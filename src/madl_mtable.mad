@@ -85,8 +85,8 @@ local mtable = Object '' {
 }
 
 local mtable_mt = getmetatable(mtable) -- backup original (see metamethods)
-local rawvar, getvar, setvar =
-      mtable.rawvar, mtable_mt.__index, mtable_mt.__newindex
+local rawvar, evalvar, getvar, setvar =
+      mtable.rawvar, mtable.evalvar, mtable_mt.__index, mtable_mt.__newindex
 
 local function is_mtable(a)
   return is_table(a) and not is_nil(rawget(a,_var))
@@ -95,8 +95,7 @@ end
 -- rows dictionnary helpers ---------------------------------------------------o
 
 local function build_dict (tbl)
-  print('building dict:',tbl[_var].invalid)
-
+--  print('building dict:',tbl[_var].invalid)
   local var, row, col = tbl[_var], tbl[_row], tbl[_col]
   table_clear(row)                    -- clear content
   row[_col] = col[var.refcol]         -- restore direct link to refcol
@@ -243,7 +242,7 @@ end
 -- get index from name (direct)
 local function index_of_nam (tbl, nam, cnt_)
   local idx = get_dict(tbl)[nam] -- use dict
-  if is_table(idx) and is_number(cnt_) then
+  if is_number(cnt_) and is_table(idx) then
     return idx[cnt_]
   else
     return idx
@@ -555,24 +554,26 @@ local function get_row_mt(tbl)
       if is_number(idx) then                               -- row index
         if is_string(col) then col = col_[col] end         -- col key to index
         return col_[col] and col_[col][idx]
-      elseif is_table(idx) then                            -- row list
-        assert(is_number(col), "invalid argument #2 (row count expected)")
-        row[_row] = idx[col]                               -- row count to index
-        return row
       end
+      assert(is_number(col), "invalid argument #2 (row count expected)")
+      idx = idx[col]
+      row[_row] = idx
+      return idx and row
     end,
 
-    __newindex = function(row, col, val)
+    __newindex = function(row, col, val) -- TODO!
       local idx = row[_row]
       if is_number(idx) then                               -- row index
-        assert(is_string(col) and col_[col], "invalid argument #2 (column key expected)")
-        col_[col_[col]][idx] = val                         -- col key to index
+        if is_string(col) then col = col_[col] end         -- col key to index
+        if col then
+          col_[col][idx] = val                             -- col key to index
+          return
+        end
       elseif is_table(idx) then                            -- row list
-        assert(is_number(col) and idx[col], "invalid argument #2 (row count expected)")
+        assert(is_number(col), "invalid argument #2 (row count expected)")
         set_row(tbl, idx[col], val)                       -- row count to index
-      else
-        error "invalid argument #2 (row count or column key expected)"
       end
+      error "invalid argument #2 (row count or column key expected)"
     end,
 
     __ipairs = function (row)
@@ -682,7 +683,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
     file = filnam_
     assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
   else
-    local fname = filenam_ or tbl:get_key'name' or 'tmptable'
+    local fname = filenam_ or tbl:get_var'name' or 'tmptable'
     assert(is_string(fname), "invalid argument #2 (string expected)")
     if string.sub(fname,-4) ~= '.tfs' then fname = fname .. '.tfs' end
     local handle, err = io.open(fname, 'w')
@@ -694,7 +695,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
 
   -- dump header
   for i=1,#hname do
-    local k, v = hname[i], tbl:get_key(hname[i])
+    local k, v = hname[i], tbl:get_var(hname[i])
     if is_string(v) then
       fprintf(file, '@ %-18s %%%02ds %q\n', k, #v, v)
     elseif is_number(v) then
@@ -816,7 +817,7 @@ local function len_mm (tbl)
 end
 
 --[[ 'High level table access is very slow!
-code:
+code A:
 t0=os.clock()
 do
   local a, t = 0, MAD.mtable 'mytable' { {'name'}, 'x', 'y', 'z' }
@@ -825,70 +826,83 @@ do
   print('a=',a)
 end
 print('time=',os.clock()-t0)
+time= 1.14
 
-output:
+code B:
+t0=os.clock()
+do
+  local a, t = 0, MAD.mtable 'mytable' { {'name'}, 'x', 'y', 'z' }
+  t=t+{'A', 1.1,1.2,1.3}+{'B', 2.1,2.2,2.3}+{'A', 3.1,3.2,3.3}
+  for i=1,1e7 do a=a+t.x[2] end
+  print('a=',a)
+end
+print('time=',os.clock()-t0)
+time= 1.14
+
+Output code A:
 building dict:  1
 a=  21000000.000896
-time= 6.5
+time= 1.14
 changing t.B.x by t[2].x
-time= 3.4
+time= 1.14
 changing t.B.x by t.x[2]
-time= 2.5
-moving variables check at the end of index gives (reorder precedence)
-time= 0.015
+time= 0.012
 ]]
 
- -- read access precedence: rows indexes, columns keys, variables, rows keys
+ -- read access precedence: rows indexes, rows keys, columns keys, variables.
 local function index_mm (tbl, key)
-  local idx
   -- rows indexes
   if is_number(key) then                                  -- row index
-    idx = index_of_idx(tbl, key)
+    local idx = index_of_idx(tbl, key)
     if idx then
       return setmetatable({[_row]=idx}, tbl[_var].row_mt) -- row proxy
     end
-    return nil
-  end
-  -- columns keys
-  idx = tbl[_col][key]
-  if is_number(idx) then                                  -- column key
-    idx = index_of_idx(tbl, idx)
-    return tbl[_col][idx]                                 -- full column
+    return
   end
   -- variables
-  local res = rawvar(tbl, key)
-  if res then
-    return getvar(tbl, key)                               -- forward (variable)
+  local var = rawvar(tbl, key)
+  if var then
+    return evalvar(tbl, key, var)
   end
   -- rows keys
-  idx = index_of_str(tbl, key)                            -- row key
+  local idx = index_of_nam(tbl, key)                      -- row key
   if idx then
     return setmetatable({[_row]=idx}, tbl[_var].row_mt)   -- row proxy
   end
+  -- columns keys
+  idx = tbl[_col][key]
+  if idx then                                             -- column key
+    return tbl[_col][idx]                                 -- full column
+  end
+  -- return getvar(tbl, key)                                 -- get variable
 end
 
--- write access precedence: rows indexes, variables, rows keys, new variables
+-- write access precedence: rows indexes, rows keys, (new) variables
 local function newindex_mm (tbl, key, val)
-  local idx
   -- rows indexes
   if is_number(key) then                                  -- row index
     set_row(tbl, key, val)
     return
   end
   -- variables
-  local res = rawvar(tbl, key)
-  if res then
-    setvar(tbl, key, val)                                 -- forward (variable)
+  local var = rawvar(tbl, key)
+  if var then
+    setvar(tbl, key, val)                                 -- update variable
     return
   end
   -- rows keys
-  idx = index_of_str(tbl, key)                            -- row key
-  if is_number(idx) then
+  local idx = index_of_nam(tbl, key)                      -- row key
+  if idx then
     set_row(tbl, idx, val)
     return
   end
+  -- columns keys
+  idx = tbl[_col][key]
+  if idx then                                             -- column key
+    error("invalid column write access")
+  end
   -- new variables
-  setvar(tbl, key, val)                                   -- forward (variable)
+  setvar(tbl, key, val)                                   -- set variable
 end
 
 -- iterator over rows
@@ -915,8 +929,8 @@ init_mm(mtable): set_functions {
   remove_colnames = rem_ckeys,
 
   -- variables access (for disambiguation)
-  get_var         = \s,k   -> mtable_mt.__index(s,k),
-  set_var         = \s,k,v => mtable_mt.__newindex(s,k,v) return s end,
+  get_var         = getvar,
+  set_var         = setvar,
 
   -- rows manipulation
   add_row         = add_row,
@@ -929,6 +943,13 @@ init_mm(mtable): set_functions {
   -- columns manipulation (cannot be reordered because of raw copy)
   add_col         = add_col,  -- accept callable (i.e. generator)
   get_col         = get_col,  -- for disambiguation
+                 -- set_col, overcomplicated due to specialization?
+
+  -- row indexing (see sequence)
+  name_of         = name_of,
+  index_of        = index_of,
+  range_of        = range_of,
+  length_of       = length_of,
 
   -- others
   reserve         = reserve,
