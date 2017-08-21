@@ -655,6 +655,8 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
 
 // -- Symplectic inverse, compute -J M' J -------------------------------------o
 
+// M = [A B ; C D] => M^-1 = [D' -B' ; -C' A']
+
 void mad_mat_sympinv (const num_t x[], num_t r[], ssz_t n)
 { CHKXR; assert(n % 2 == 0);
   num_t t;
