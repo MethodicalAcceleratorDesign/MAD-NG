@@ -139,6 +139,7 @@ int
 mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
+//  return memcmp(a, b, n) <= 0
   for (int i=0; i < n; ++i)
     if (a[i] > b[i]) return 0;
   return 1;
