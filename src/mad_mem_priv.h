@@ -56,8 +56,8 @@ void*  (mad_mcheck)   (str_t, void*)          __attribute__((hot,const));
 #undef  mad_alloc_tmp
 #define mad_alloc_tmp(T,NAME,L) \
   T NAME##_local_tmp__[sizeof(T)*(L) < 8192 ? (L) : 1]; \
-  T *NAME = (sizeof(T)*(L) >= 8192 ? \
-            mad_malloc(sizeof(T)*(L)) : NAME##_local_tmp__)
+  T *NAME = (sizeof(T)*(L) < 8192 ? \
+             NAME##_local_tmp__ : mad_malloc(sizeof(T)*(L)) )
 
 #undef  mad_free_tmp
 #define mad_free_tmp(NAME) \
