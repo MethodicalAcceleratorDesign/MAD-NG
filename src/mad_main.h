@@ -2,7 +2,7 @@
 #define MAD_MAIN_H
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | MAD frontend
  |
@@ -11,12 +11,12 @@
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
   Purpose:
   - Frontend (main) of the MAD application.
@@ -25,10 +25,10 @@
   - MAD is embedding the LuaJIT library and frontend developped by Mike Pall
     modified for the purpose of MAD. See COPYRIGHT.luajit in the lib/patches
     directory.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 #ifndef LUALIB_API // Only valid in a Lua environment
 #define LUALIB_API
@@ -38,12 +38,18 @@ LUALIB_API void mad_error (     const char *fn, const char *fmt, ...);
 LUALIB_API void mad_warn  (     const char *fn, const char *fmt, ...);
 LUALIB_API void mad_trace (int, const char *fn, const char *fmt, ...);
 
-// --- globals ---------------------------------------------------------------o
+// --- globals ----------------------------------------------------------------o
 
 extern int mad_info_level;
 extern int mad_trace_level;
 extern int mad_trace_location;
 
-// ---------------------------------------------------------------------------o
+// ----------------------------------------------------------------------------o
+// --- implementation (private) -----------------------------------------------o
+// ----------------------------------------------------------------------------o
+
+LUALIB_API void mad_error(const char*,const char*,...) __attribute((noreturn));
+
+// ----------------------------------------------------------------------------o
 
 #endif // MAD_MAIN_H
