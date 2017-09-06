@@ -1,5 +1,5 @@
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | MAD frontend
  |
@@ -8,12 +8,12 @@
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
 	Purpose:
 	- Frontend (main) of the MAD application.
@@ -22,7 +22,7 @@
 	- MAD is embedding the LuaJIT library and frontend developped by Mike Pall
 		modified for the purpose of MAD. See COPYRIGHT.luajit in the lib/patches
 		directory.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 /*

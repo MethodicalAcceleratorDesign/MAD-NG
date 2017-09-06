@@ -2,7 +2,7 @@
 #define MAD_LOG_H
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | Logging module interface
  |
@@ -11,12 +11,12 @@
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
 
   Purpose:
   - MAD log handlers: mad_(error, warn, trace, ensure)
@@ -32,7 +32,7 @@
     >0 location is traced by error, warn and trace
      0 location is traced by error (only)
 
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include "mad_defs.h"
