@@ -118,22 +118,14 @@ end
 local ipairs_gen = ipairs({}) -- get the generating function from ipairs
 
 local pairs_gen = pairs({ a = 0 }) -- get the generating function from pairs
-
 local map_gen = function(tab, key)
     local key, value = pairs_gen(tab, key)
     return key, key, value
 end
 
 local rawiter = function(obj, param, state)
-    assert(type(obj) ~= nil, "invalid iterator")
-    if type(obj) == "function" then
-        return obj, param, state
-    elseif type(obj) == "string" then
-        if #obj == 0 then
-            return nil_gen, nil, nil
-        end
-        return string_gen, obj, 0
-    else -- MAD
+    assert(obj ~= nil, "invalid iterator")
+    if type(obj) == "table" or type(obj) == "cdata" then
         local mt = get_metatable(obj);
         if mt ~= nil then
             if mt == iterator_mt then
@@ -153,6 +145,13 @@ local rawiter = function(obj, param, state)
               return map_gen, obj, nil
           end
         end
+    elseif type(obj) == "function" then
+        return obj, param, state
+    elseif type(obj) == "string" then
+        if #obj == 0 then
+            return nil_gen, nil, nil
+        end
+        return string_gen, obj, 0
     end
     error(string.format('object %s of type "%s" is not iterable',
           obj, type(obj)))
@@ -327,15 +326,15 @@ exports.rands = rands
 
 local nth = function(n, gen_x, param_x, state_x)
     assert(n > 0, "invalid first argument to nth")
-    -- An optimization for strings and arrays
-    if gen_x == string_gen then
+    -- An optimization for arrays and strings
+    if gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
+        return param_x[n]
+    elseif gen_x == string_gen then
         if n <= #param_x then
             return string.sub(param_x, n, n)
         else
             return nil
         end
-    elseif gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
-        return param_x[n]
     end
     for i=1,n-1,1 do
         state_x = gen_x(param_x, state_x)
@@ -1093,33 +1092,33 @@ local operator = {
     lnot = function(a) return not a end,
     truth = function(a) return not not a end,
 }
--- exports.operator = operator
--- methods.operator = operator
--- exports.op = operator
--- methods.op = operator
+exports.operator = operator
+methods.operator = operator
+exports.op = operator
+methods.op = operator
 
 --------------------------------------------------------------------------------
 -- module definitions
 --------------------------------------------------------------------------------
 
 -- a special syntax sugar to export all functions to the global table
--- setmetatable(exports, {
---     __call = function(t, override)
---         for k, v in pairs(t) do
---             if _G[k] ~= nil then
---                 local msg = 'function ' .. k .. ' already exists in global scope.'
---                 if override then
---                     _G[k] = v
---                     print('WARNING: ' .. msg .. ' Overwritten.')
---                 else
---                     print('NOTICE: ' .. msg .. ' Skipped.')
---                 end
---             else
---                 _G[k] = v
---             end
---         end
---     end,
--- })
+setmetatable(exports, {
+    __call = function(t, override)
+        for k, v in pairs(t) do
+            if rawget(_G, k) ~= nil then
+                local msg = 'function ' .. k .. ' already exists in global scope.'
+                if override then
+                    rawset(_G, k, v)
+                    print('WARNING: ' .. msg .. ' Overwritten.')
+                else
+                    print('NOTICE: ' .. msg .. ' Skipped.')
+                end
+            else
+                rawset(_G, k, v)
+            end
+        end
+    end,
+})
 
 -- return exports
 return { fun = exports } -- MAD
