@@ -132,13 +132,6 @@
       r[j] += x[k] * y[k*n+j]; \
   }
 
-// p==1: [m x n] = [m x 1] * [1 x n]
-#define OMUL /* outer */ \
-  for (ssz_t i=0; i < m; i++) { \
-  for (ssz_t j=0; j < n; j++) \
-    r[i*n+j] = x[i] * y[j]; \
-  }
-
 // m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
 #define IMUL /* inner */ \
   { r[0] = 0; \
@@ -146,12 +139,12 @@
       r[0] += x[k] * y[k]; \
   }
 
+// [m x n] = [m x p] * [p x n]
 #define MUL() { \
-  if (m == 1 && n == 1) IMUL \
-  else      if (m == 1) VMUL \
-  else      if (n == 1) MULV \
-  else      if (p == 1) OMUL \
-  else                  MMUL \
+  if (m > 1 && n > 1) MMUL \
+  else    if (n == 1) MULV \
+  else    if (m == 1) VMUL \
+  else                IMUL \
 }
 
 // -----
@@ -243,13 +236,6 @@
       r[j] += C(x[k]) * y[k*n+j]; \
   }
 
-// p==1: [m x n] = [1 x m]' * [1 x n]
-#define TOMUL(C) /* outer */ \
-  for (ssz_t i=0; i < m; i++) { \
-  for (ssz_t j=0; j < n; j++) \
-    r[i*n+j] = C(x[i]) * y[j]; \
-  }
-
 // m==1, n==1: [1 x 1] = [p x 1]' * [p x 1]
 #define TIMUL(C) /* inner */ \
   { r[0] = 0; \
@@ -257,12 +243,12 @@
       r[0] += C(x[k]) * y[k]; \
   }
 
+// [m x n] = [p x m]' * [p x n]
 #define TMUL(C) { \
-  if (m == 1 && n == 1) TIMUL (C) \
-  else      if (m == 1) TVMUL (C) \
-  else      if (n == 1) TMULV (C) \
-  else      if (p == 1) TOMUL (C) \
-  else                  TMMUL (C) \
+  if (m > 1 && n > 1) TMMUL(C) \
+  else    if (n == 1) TMULV(C) \
+  else    if (m == 1) TVMUL(C) \
+  else                TIMUL(C) \
 }
 
 // -----
@@ -332,7 +318,7 @@
 #endif
 
 // n==1: [m x 1] = [m x p] * [1 x p]'
-#define MULTV(C) /* mat * vec */ \
+#define MULVT(C) /* mat * vec */ \
   for (ssz_t i=0; i < m; i++) { \
     r[i] = 0; \
     for (ssz_t k=0; k < p; k++) \
@@ -347,13 +333,6 @@
       r[j] += x[k] * C(y[j*p+k]); \
   }
 
-// p==1: [m x n] = [m x 1] * [n x 1]'
-#define OMULT(C) /* outer */ \
-  for (ssz_t i=0; i < m; i++) { \
-  for (ssz_t j=0; j < n; j++) \
-    r[i*n+j] = x[i] * C(y[j]); \
-  }
-
 // m==1, n==1: [1 x 1] = [1 x p] * [1 x p]'
 #define IMULT(C) /* inner */ \
   { r[0] = 0; \
@@ -361,12 +340,12 @@
       r[0] += x[k] * C(y[k]); \
   }
 
+// [m x n] = [m x p] * [n x p]'
 #define MULT(C) { \
-  if (m == 1 && n == 1) IMULT (C) \
-  else      if (m == 1) VMULT (C) \
-  else      if (n == 1) MULTV (C) \
-  else      if (p == 1) OMULT (C) \
-  else                  MMULT (C) \
+  if (m > 1 && n > 1) MMULT(C) \
+  else    if (n == 1) MULVT(C) \
+  else    if (m == 1) VMULT(C) \
+  else                IMULT(C) \
 }
 
 // -----
