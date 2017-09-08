@@ -4,7 +4,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | SSE2, AVX & AVX2 interface
+ | SSE2 interface
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch

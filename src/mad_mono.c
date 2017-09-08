@@ -113,8 +113,7 @@ mad_mono_print (int n, const ord_t m[n])
 // --- optimized versions ----------------------------------------------------o
 
 #if   defined(__AVX2__)
-#  include "sse/mad_mono_sse.tc"
-// NYI -> #  include "avx/mad_mono_avx.tc"
+#  include "sse/mad_mono_avx.tc"
 #elif defined(__SSE2__)
 #  include "sse/mad_mono_sse.tc"
 #else
@@ -136,22 +135,21 @@ mad_mono_sub (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
 }
 
 int
-mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-//  return memcmp(a, b, n) <= 0
-  for (int i=0; i < n; ++i)
-    if (a[i] > b[i]) return 0;
-  return 1;
-}
-
-int
 mad_mono_ord (int n, const ord_t a[n])
 {
   assert(a);
   int s = 0;
   for (int i=0; i < n; ++i) s += a[i];
   return s;
+}
+
+int
+mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (int i=0; i < n; ++i)
+    if (a[i] > b[i]) return 0;
+  return 1;
 }
 
 #endif // __SSE2__ || __AVX2__
