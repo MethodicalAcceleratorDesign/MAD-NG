@@ -1,0 +1,123 @@
+#ifndef MAD_MONO_AVX_TC
+#define MAD_MONO_AVX_TC
+
+/*
+ o----------------------------------------------------------------------------o
+ |
+ | AVX/AVX2 optimization for monimials
+ |
+ | Methodical Accelerator Design - Copyright CERN 2015
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o----------------------------------------------------------------------------o
+ */
+
+#include "mad_avx.h"
+
+void
+mad_mono_add (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
+{
+  assert(a && b && r);
+  __m256i ra, rb, rr, rm;
+  int i=0, nn=MAD_AVX_CRND(n), nm=MAD_AVX_CMOD(n);
+
+  for (; i < nn; i+=MAD_AVX_CSIZ) {
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rb = _mm256_loadu_si256((__m256i*)&b[i]);
+    rr = _mm256_adds_epi8(ra,rb);
+    _mm256_storeu_si256((__m256i*)&r[i],rr);
+  }
+
+  if (nm) {
+    rm = _mm256_load_si256 ((__m256i*)mad_avx_msk2[nm]);
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rb = _mm256_loadu_si256((__m256i*)&b[i]);
+    rr = _mm256_adds_epi8(ra,rb);
+    _mm256_maskmoveu_si256(rr, rm, (char*)&r[i]);
+  }
+}
+
+void
+mad_mono_sub (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
+{
+  assert(a && b && r);
+  __m256i ra, rb, rr, rm;
+  int i=0, nn=MAD_AVX_CRND(n), nm=MAD_AVX_CMOD(n);
+
+  for (; i < nn; i+=MAD_AVX_CSIZ) {
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rb = _mm256_loadu_si256((__m256i*)&b[i]);
+    rr = _mm256_subs_epi8(ra,rb);
+    _mm256_storeu_si256((__m256i*)&r[i],rr);
+  }
+
+  if (nm) {
+    rm = _mm256_load_si256 ((__m256i*)mad_avx_msk2[nm]);
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rb = _mm256_loadu_si256((__m256i*)&b[i]);
+    rr = _mm256_subs_epi8(ra,rb);
+    _mm256_maskmoveu_si256(rr, rm, (char*)&r[i]);
+  }
+}
+
+int
+mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  __m256i ra, rb, rr, rm;
+  int i=0, nn=MAD_AVX_CRND(n), nm=MAD_AVX_CMOD(n);
+
+  for (; i < nn; i+=MAD_AVX_CSIZ) {
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rb = _mm256_loadu_si256((__m256i*)&b[i]);
+    rr = _mm256_cmpgt_epi8(ra,rb);
+    if (_mm256_movemask_epi8(rr)) return 0;
+  }
+
+  if (nm) {
+    rm = _mm256_load_si256((__m256i*)mad_avx_msk2[nm]);
+    ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[i]));
+    rb = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&b[i]));
+    rr = _mm256_cmpgt_epi8(ra,rb);
+    if (_mm256_movemask_epi8(rr)) return 0;
+  }
+
+  return 1;
+}
+
+int
+mad_mono_ord (int n, const ord_t a[n])
+{
+  assert(a);
+  __m256i ra, rs, rm, zero = _mm256_setzero_si256();
+  int i=0, s=0, nn=MAD_AVX_CRND(n), nm=MAD_AVX_CMOD(n);
+
+  for (; i < nn; i+=MAD_AVX_CSIZ) {
+    ra = _mm256_loadu_si256((__m256i*)&a[i]);
+    rs = _mm256_sad_epu8(ra, zero);
+    s += _mm256_cvtsi256_si32(_mm256_srli_si256(rs,MAD_AVX_CSIZ/2));
+    s += _mm256_cvtsi256_si32(rs);
+  }
+
+  if (nm) {
+    rm = _mm256_load_si256((__m256i*)mad_avx_msk2[nm]);
+    ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[i]));
+    rs = _mm256_sad_epu8(ra, zero);
+    s += _mm256_cvtsi256_si32(_mm256_srli_si256(rs,MAD_AVX_CSIZ/2));
+    s += _mm256_cvtsi256_si32(rs);
+  }
+
+  return s;
+}
+
+// ---------------------------------------------------------------------------o
+
+#endif // MAD_MONO_AVX_TC
+
