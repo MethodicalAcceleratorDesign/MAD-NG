@@ -58,7 +58,30 @@ mad_mono_concat (int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
   assert(a && b && r);
   int i, j;
   for (i=0; i < n; ++i) r[i  ] = a[i];
-  for (j=0; j < m; ++j) r[i+j] = b[i];
+  for (j=0; j < m; ++j) r[i+j] = b[j];
+}
+
+void
+mad_mono_add (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
+{
+  assert(a && b && r);
+  for (int i=0; i < n; ++i) r[i] = a[i] + b[i];
+}
+
+void
+mad_mono_sub (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
+{
+  assert(a && b && r);
+  for (int i=0; i < n; ++i) r[i] = a[i] - b[i];
+}
+
+int
+mad_mono_ord (int n, const ord_t a[n])
+{
+  assert(a);
+  int s = 0;
+  for (int i=0; i < n; ++i) s += a[i];
+  return s;
 }
 
 ord_t
@@ -110,38 +133,9 @@ mad_mono_print (int n, const ord_t m[n])
   printf("]");
 }
 
-// --- optimized versions ----------------------------------------------------o
-
-#if   defined(__AVX2__)
-#  include "sse/mad_mono_avx.tc"
-#elif defined(__SSE2__)
-#  include "sse/mad_mono_sse.tc"
-#else
+#ifndef __SSE2__
 
 // --- default versions ------------------------------------------------------o
-
-void
-mad_mono_add (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
-{
-  assert(a && b && r);
-  for (int i=0; i < n; ++i) r[i] = a[i] + b[i];
-}
-
-void
-mad_mono_sub (int n, const ord_t a[n], const ord_t b[n], ord_t r[n])
-{
-  assert(a && b && r);
-  for (int i=0; i < n; ++i) r[i] = a[i] - b[i];
-}
-
-int
-mad_mono_ord (int n, const ord_t a[n])
-{
-  assert(a);
-  int s = 0;
-  for (int i=0; i < n; ++i) s += a[i];
-  return s;
-}
 
 int
 mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
@@ -152,4 +146,12 @@ mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
   return 1;
 }
 
-#endif // __SSE2__ || __AVX2__
+// --- optimized versions ----------------------------------------------------o
+
+#elif defined(__AVX512F__) && defined(AVX512BW)
+#  include "sse/mad_mono_avx512.tc"
+#elif defined(__AVX2__)
+#  include "sse/mad_mono_avx.tc"
+#else
+#  include "sse/mad_mono_sse.tc"
+#endif // __SSE2__ || __AVX2__ || __AVX512F__

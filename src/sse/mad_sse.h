@@ -4,7 +4,7 @@
 /*
  o----------------------------------------------------------------------------o
  |
- | SSE2 interface
+ | SSE & AVX & AVX512 interface
  |
  | Methodical Accelerator Design - Copyright CERN 2015
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -22,6 +22,8 @@
 #include <immintrin.h>
 
 // --- macros ----------------------------------------------------------------o
+
+// -- SSE2 ---
 
 // char
 #define MAD_SSE_CSIZ 16
@@ -44,6 +46,46 @@
 #ifdef __SSE3__
 #define _mm_loadu_si128(a) _mm_lddqu_si128(a)
 #endif
+
+// -- AVX2 ---
+
+// char
+#define MAD_AVX_CSIZ 32
+#define MAD_AVX_CMSK            (MAD_AVX_CSIZ-1)
+#define MAD_AVX_CRND(n) ((n) & ~(MAD_AVX_CSIZ-1))
+#define MAD_AVX_CMOD(n) ((n) &  (MAD_AVX_CSIZ-1))
+
+// int
+#define MAD_AVX_ISIZ 8
+#define MAD_AVX_IMSK            (MAD_AVX_ISIZ-1)
+#define MAD_AVX_IRND(n) ((n) & ~(MAD_AVX_ISIZ-1))
+#define MAD_AVX_IMOD(n) ((n) &  (MAD_AVX_ISIZ-1))
+
+// double
+#define MAD_AVX_DSIZ 4
+#define MAD_AVX_DMSK            (MAD_AVX_DSIZ-1)
+#define MAD_AVX_DRND(n) ((n) & ~(MAD_AVX_DSIZ-1))
+#define MAD_AVX_DMOD(n) ((n) &  (MAD_AVX_DSIZ-1))
+
+// -- AVX5 ---
+
+// char
+#define MAD_AVX512_CSIZ 64
+#define MAD_AVX512_CMSK            (MAD_AVX512_CSIZ-1)
+#define MAD_AVX512_CRND(n) ((n) & ~(MAD_AVX512_CSIZ-1))
+#define MAD_AVX512_CMOD(n) ((n) &  (MAD_AVX512_CSIZ-1))
+
+// int
+#define MAD_AVX512_ISIZ 16
+#define MAD_AVX512_IMSK            (MAD_AVX512_ISIZ-1)
+#define MAD_AVX512_IRND(n) ((n) & ~(MAD_AVX512_ISIZ-1))
+#define MAD_AVX512_IMOD(n) ((n) &  (MAD_AVX512_ISIZ-1))
+
+// double
+#define MAD_AVX512_DSIZ 8
+#define MAD_AVX512_DMSK            (MAD_AVX512_DSIZ-1)
+#define MAD_AVX512_DRND(n) ((n) & ~(MAD_AVX512_DSIZ-1))
+#define MAD_AVX512_DMOD(n) ((n) &  (MAD_AVX512_DSIZ-1))
 
 // --- globals ---------------------------------------------------------------o
 
