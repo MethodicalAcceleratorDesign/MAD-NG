@@ -149,9 +149,9 @@ mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
 // --- optimized versions ----------------------------------------------------o
 
 #elif defined(__AVX512F__) && defined(AVX512BW)
-#  include "sse/mad_mono_avx512.tc"
+#include "sse/mad_mono_avx512.tc"
 #elif defined(__AVX2__)
-#  include "sse/mad_mono_avx.tc"
+#include "sse/mad_mono_avx.tc"
 #else
-#  include "sse/mad_mono_sse.tc"
+#include "sse/mad_mono_sse.tc"
 #endif // __SSE2__ || __AVX2__ || __AVX512F__
