@@ -92,6 +92,9 @@
 extern const unsigned char mad_sse_msk1[16][16];
 extern const unsigned char mad_sse_msk2[16][16];
 
+extern const unsigned char mad_avx_msk1[32][32];
+extern const unsigned char mad_avx_msk2[32][32];
+
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_SSE_H
