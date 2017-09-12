@@ -196,8 +196,8 @@ static void mad_regfunc (void)
 
 /* Handle signals */
 
-static const int   sig_i[] = { SIGABRT , SIGBUS , SIGFPE , SIGILL , SIGSEGV };
-static const str_t sig_s[] = {"SIGABRT","SIGBUS","SIGFPE","SIGILL","SIGSEGV"};
+static const int   sig_i[] = { SIGABRT , SIGFPE , SIGILL , SIGSEGV };
+static const str_t sig_s[] = {"SIGABRT","SIGFPE","SIGILL","SIGSEGV"};
 static const int   sig_n   = sizeof sig_i / sizeof *sig_i;
 
 static void sig_handler(int sig)
