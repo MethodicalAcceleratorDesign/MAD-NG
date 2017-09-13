@@ -6,5 +6,5 @@ git checkout mad-patch
 make clean
 make amalg PREFIX=`pwd`
 make install PREFIX=`pwd`
-mv bin/luajit{-2.1.0-beta2,}
+mv bin/luajit{-2.1.0-beta3,}
 cp src/libluajit.a ../../bin/linux
