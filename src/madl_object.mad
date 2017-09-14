@@ -106,18 +106,18 @@ function MT:__call (a, b) -- object constructor (define the object-model)
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
       local obj = {[_var]=b, __index=rawget(self,_var)} -- proxy
-      b.__id=a  setmetatable(b, obj)  set_class(self)   -- set fast inheritance
+      b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
     if rawget(self,_var) == var0 then                   -- finalize named object
-      a.__id, self.__id = self.__id
+      a.__id, self.__id = self.__id, nil
       rawset(self,_var, setmetatable(a, self));         -- set fast inheritance
       set_class(parent(self))
       return init(self)
     else                                                -- unnamed object
       local obj = {[_var]=a, __index=rawget(self,_var)} -- proxy
-      setmetatable(a, obj)  set_class(self)             -- set fast inheritance
+      setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
@@ -125,37 +125,41 @@ function MT:__call (a, b) -- object constructor (define the object-model)
                   or  "invalid argument #2 (raw table expected)", 2)
 end
 
-local function len_raw (self)
+local function raw_len (self)
   return rawlen(rawget(self,_var))    -- no inheritance
 end
 
-local function get_raw (self, k)
+local function raw_get (self, k)
   return rawget(rawget(self,_var),k)  -- no inheritance nor function evaluation
 end
 
-local function set_raw (self, k, v)
+local function raw_set (self, k, v)
   rawget(self,_var)[k] = v            -- no protection
 end
 
 local function var_raw (self, k)
-  return rawget(self,_var)[k]         -- no function evaluation (w inheritance)
+  return rawget(self,_var)[k]         -- no function evaluation with inheritance
 end
 
-local function var_eval (self, k, v)
+local function var_val (self, k, v)
   if is_string(k) and is_function(v)  -- string key with value function
   then return v(self)
   else return v end
 end
 
+local function var_get (self, k)
+  return var_val(self,k, var_raw(self,k))
+end
+
 function MT:__index (k)
-  return var_eval(self,k, var_raw(self,k))
+  return var_get(self, k)
 end
 
 function MT:__newindex (k, v)
   if freadonly(self) then
     error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
   end
-  set_raw(self,k,v)
+  raw_set(self, k, v)
 end
 
 function MT:__len ()
@@ -390,17 +394,17 @@ end
 
 -- environments
 
-local _env = {} -- key
+local _env = {} -- hidden key
 
-local function open_env (self, level)
-  level = is_function(level) and level or is_number(level) and level+1 or 2
+local function open_env (self, ctx)
+  ctx = is_function(ctx) and ctx or is_number(ctx) and ctx+1 or 2
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_function(level) or is_number(level) and level >= 2,
-                          "invalid argument #2 (level < 1)")
+  assert(is_function(ctx) or is_number(ctx) and ctx >= 2,
+                          "invalid argument #2 (not a function or < 1)")
   assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
-  rawset(self, _env, { lvl=level, env=getfenv(level) })
+  rawset(self, _env, { ctx=ctx, env=getfenv(ctx) })
   rawset(self, self.__id, self) -- self reference
-  setfenv(level, self)
+  setfenv(ctx, self)
   return self
 end
 
@@ -420,7 +424,7 @@ local function close_env (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   local env = rawget(self,_env)
   assert(not is_nil(env), "invalid environment (not open)")
-  setfenv(env.lvl, env.env)
+  setfenv(env.ctx, env.env)
   return reset_env(self)
 end
 
@@ -488,33 +492,43 @@ M.__par = parent
 M.is_class        = functor( is_class        )
 M.is_readonly     = functor( is_readonly     )
 M.is_instanceOf   = functor( is_instanceOf   )
+
 M.set_parent      = functor( set_parent      )
 M.set_readonly    = functor( set_readonly    )
+
 M.get_varkeys     = functor( get_varkeys     )
 M.get_variables   = functor( get_variables   )
 M.set_variables   = functor( set_variables   )
 M.wrap_variables  = functor( wrap_variables  )
+
 M.set_functions   = functor( set_functions   )
 M.set_metamethods = functor( set_metamethods )
+
 M.insert_array    = functor( insert_array    )
 M.remove_array    = functor( remove_array    )
-M.sort_array      = functor( sort_array      )
 M.bsearch_array   = functor( bsearch_array   )
+M.sort_array      = functor( sort_array      )
 M.clear_array     = functor( clear_array     )
 M.clear_variables = functor( clear_variables )
 M.clear_all       = functor( clear_all       )
-M.rawlen          = functor( len_raw         )
-M.rawget          = functor( get_raw         )
-M.rawset          = functor( set_raw         )
-M.rawvar          = functor( var_raw         )
-M.evalvar         = functor( var_eval        )
+
+M.raw_len         = functor( raw_len         )
+M.raw_get         = functor( raw_get         )
+M.raw_set         = functor( raw_set         )
+
+M.var_raw         = functor( var_raw         )
+M.var_val         = functor( var_val         )
+M.var_get         = functor( var_get         )
+
 M.set_flag        = functor( set_flag        )
 M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
+
 M.open_env        = functor( open_env        )
 M.is_open_env     = functor( is_open_env     )
 M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
+
 M.strdump         = functor( strdump         )
 
 -- aliases
