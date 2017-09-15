@@ -27,10 +27,10 @@
     + function    (generic function pointer)
     + pointer     (generic void pointer)
     + string      (constant, '\0' terminated)
-    + array       (array of TV, opt. nil terminated)
+    + array       (array of TV, optionally nil terminated)
     + object      (user defined objects with common header)
-    + reference   (reference to TV)
     + instruction (46 bit encoded instruction)
+    + reference   (reference to TV)
 
  o-----------------------------------------------------------------------------o
 */
