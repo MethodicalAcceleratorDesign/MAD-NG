@@ -30,8 +30,8 @@ iless_than (val_t a, val_t b)
 static inline bool
 rless_than (val_t a, val_t b)
 {
-  num_t aa = numtv(tvget(a));
-  num_t bb = numtv(tvget(b));
+  num_t aa = numtvr(a);
+  num_t bb = numtvr(b);
   return aa < bb;
 }
 
@@ -103,11 +103,12 @@ prttv (val_t v, const str_t *s_)
   }
 }
 
-int main(int argc, char *argv[])
+static void
+checktv (void)
 {
   const num_t inf = 1.0/0.0;
   const num_t nan = 0.0/0.0;
-  val_t v;
+  val_t  v;
 
   printf("\n** constants **\n");
 
@@ -158,7 +159,7 @@ int main(int argc, char *argv[])
   printf("\n** pointers **\n");
 
   char c1, c2;
-  fun_t* f = (fun_t*)main;
+  fun_t* f = (fun_t*)checktv;
   void *p1 = &c1, *p2 = &c2;
 
   v = tvfun(0);                                  prttv(v, "&f");
@@ -190,29 +191,11 @@ int main(int argc, char *argv[])
   v = tvref(vp[1]);                              prttv(v, "&r2");
   v = tvref(vp[2]);                              prttv(v, "&r3");
   v = tvref(vp[3]);                              prttv(v, "&r4");
+}
 
-  if (argc > 1 && !strcmp(argv[1],"noperf")) return 0;
-
-/*
-  Intel i5 2.3 GHz 2 cores (early 2011)
-
-  gcc (MacPorts gcc6 6.3.0_2) 6.3.0
-  ** performance (conversions) **
-  int->tv->int: 1392290332 iter/sec
-  ins->tv->ins:        inf iter/sec
-  num->tv->num:        inf iter/sec
-  str->tv->str: 1415418150 iter/sec
-  ref->..->int:  816827963 iter/sec
-
-  gcc (MacPorts gcc48 4.8.5_1) 4.8.5
-  ** performance (conversions) **
-  int->tv->int:  904562341 iter/sec
-  ins->tv->ins:        inf iter/sec
-  num->tv->num:        inf iter/sec
-  str->tv->str: 1214975300 iter/sec
-  ref->..->int:  848547795 iter/sec
-*/
-
+static void
+perftv (void)
+{
   printf("\n** performance (conversions) **\n\n");
 
   enum { N = 1000000000, L=10 };
@@ -256,9 +239,22 @@ int main(int argc, char *argv[])
   printf("str->tv->str: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
 
   // check for compiler optimization (~1.2 sec)
+  val_t  va[4] = { tvint(100), tvint(101), tvint(102), tvint(103) };
+  val_t *vp[4] = { va+0, va+1, va+2, va+3 };
+
   t0 = clock();
   for (i64_t i=0; i<N/4; i++)
-    assert(inttv(tvget(tvref(vp[i & 3]))) == 100);
+    assert(inttvr(tvref(vp[i & 3])) == 100 + (i&3));
+  t1 = clock();
+  dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
+  if (N/dt > 1e100) dt = 0;
+  printf("ref->tv->int: %*.f iter/sec (%.2f sec)\n", L, N/dt, dt);
+
+  // check for compiler optimization (~1.2 sec)
+  for (int i=1; i<4; i++) va[i] = tvref(&va[i-1]); // chain va's
+  t0 = clock();
+  for (i64_t i=0; i<N/4; i++)
+    assert(inttvr(tvref(vp[i & 3])) == 100);
   t1 = clock();
   dt = (num_t)(t1-t0)/CLOCKS_PER_SEC;
   if (N/dt > 1e100) dt = 0;
@@ -317,6 +313,38 @@ int main(int argc, char *argv[])
     assert(bfind(iarr, an, tvint( 0), iless_than) == 0);
     assert(bfind(iarr, an, tvint(41), iless_than) == 9);
   }
+}
 
+/*
+  Intel i5 2.3 GHz 2 cores (early 2011)
+
+  gcc (MacPorts gcc7 7.2.0)
+  ** performance (conversions) **
+  int->tv->int: 1339559606 iter/sec (0.75 sec)
+  ins->tv->ins:        inf iter/sec (0.00 sec)
+  num->tv->num:        inf iter/sec (0.00 sec)
+  str->tv->str:        inf iter/sec (0.00 sec)
+  ref->tv->int: 1532292294 iter/sec (0.65 sec)
+  ref->..->int:  748938567 iter/sec (1.34 sec)
+
+  gcc (MacPorts gcc48 4.8.5_2)
+  ** performance (conversions) **
+  int->tv->int:  856162185 iter/sec (1.17 sec)
+  ins->tv->ins:        inf iter/sec (0.00 sec)
+  num->tv->num:        inf iter/sec (0.00 sec)
+  str->tv->str: 1173075570 iter/sec (0.85 sec)
+  ref->tv->int: 1253016638 iter/sec (0.80 sec)
+  ref->..->int:  875523344 iter/sec (1.14 sec)
+*/
+
+int main(int argc, char *argv[])
+{
+  if (argc == 1) {
+    checktv(); perftv();
+  } else
+  for (int n=1; n < argc; n++) {
+    if (!strcmp(argv[n], "check")) checktv();
+    if (!strcmp(argv[n], "perf" )) perftv();
+  }
   return 0;
 }

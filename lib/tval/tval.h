@@ -106,8 +106,19 @@ static arr_t* FN(arrtv) (val_t);
 static obj_t* FN(objtv) (val_t);
 static val_t* FN(reftv) (val_t);
 
+// unboxing dereferences
+static log_t  FN(logtvr) (val_t);
+static i64_t  FN(inttvr) (val_t); // 46 bit signed int
+static u64_t  FN(instvr) (val_t); // 46 bit instruction
+static num_t  FN(numtvr) (val_t);
+static fun_t* FN(funtvr) (val_t);
+static ptr_t* FN(ptrtvr) (val_t);
+static str_t* FN(strtvr) (val_t);
+static arr_t* FN(arrtvr) (val_t);
+static obj_t* FN(objtvr) (val_t);
+
 // dereference
-static val_t  FN(tvget) (val_t); // tv ref resolution
+static val_t  FN(tvget) (val_t); // tv with dereference resolution
 
 // typeid, typename
 static int    FN(typtv) (val_t); // type id
@@ -124,6 +135,8 @@ enum { TVNUM, TVNIL, TVLOG, TVINT, TVINS, TVFUN,
 // ----------------------------------------------------------------------------o
 // --- implementation ---------------------------------------------------------o
 // ----------------------------------------------------------------------------o
+
+#include <assert.h>
 
 // tags (!= typeid)
 #define DEF_NINF     (      0x7FF0ULL << DEF_TSHT )  // num canonical Inf
@@ -188,43 +201,39 @@ union tval {
 enum { Unsupported_architecture_IEEE_754_required =
        1/(sizeof(val_t) == sizeof(num_t)) };
 
-// local inlined functions
-#undef  inline
-#define inline static inline
-
 // --- introspection ----------------------------------------------------------o
 
-inline bool FN(tvisnan)  (val_t v) { return TVISNAN(v);   }
-inline bool FN(tvisnul)  (val_t v) { return TVISNUL(v);   }
-inline bool FN(tvisnil)  (val_t v) { return TVISNIL(v);   }
-inline bool FN(tvisfalse)(val_t v) { return TVISFALSE(v); }
-inline bool FN(tvistrue) (val_t v) { return TVISTRUE(v);  }
+static inline bool FN(tvisnan)  (val_t v) { return TVISNAN(v);   }
+static inline bool FN(tvisnul)  (val_t v) { return TVISNUL(v);   }
+static inline bool FN(tvisnil)  (val_t v) { return TVISNIL(v);   }
+static inline bool FN(tvisfalse)(val_t v) { return TVISFALSE(v); }
+static inline bool FN(tvistrue) (val_t v) { return TVISTRUE(v);  }
 
-inline bool FN(tvislog)  (val_t v) { return TVISLOG(v); }
-inline bool FN(tvisint)  (val_t v) { return TVISINT(v); }
-inline bool FN(tvisins)  (val_t v) { return TVISINS(v); }
-inline bool FN(tvisnum)  (val_t v) { return TVISNUM(v); }
-inline bool FN(tvisfun)  (val_t v) { return TVISFUN(v); }
-inline bool FN(tvisptr)  (val_t v) { return TVISPTR(v); }
-inline bool FN(tvisstr)  (val_t v) { return TVISSTR(v); }
-inline bool FN(tvisarr)  (val_t v) { return TVISARR(v); }
-inline bool FN(tvisobj)  (val_t v) { return TVISOBJ(v); }
-inline bool FN(tvisref)  (val_t v) { return TVISREF(v); }
+static inline bool FN(tvislog)  (val_t v) { return TVISLOG(v); }
+static inline bool FN(tvisint)  (val_t v) { return TVISINT(v); }
+static inline bool FN(tvisins)  (val_t v) { return TVISINS(v); }
+static inline bool FN(tvisnum)  (val_t v) { return TVISNUM(v); }
+static inline bool FN(tvisfun)  (val_t v) { return TVISFUN(v); }
+static inline bool FN(tvisptr)  (val_t v) { return TVISPTR(v); }
+static inline bool FN(tvisstr)  (val_t v) { return TVISSTR(v); }
+static inline bool FN(tvisarr)  (val_t v) { return TVISARR(v); }
+static inline bool FN(tvisobj)  (val_t v) { return TVISOBJ(v); }
+static inline bool FN(tvisref)  (val_t v) { return TVISREF(v); }
 
 // --- boxing -----------------------------------------------------------------o
 
-inline val_t FN(tvnan)  (void) { return (val_t){ DEF_NNAN    }; }
-inline val_t FN(tvnul)  (void) { return (val_t){ DEF_TVNUL   }; }
-inline val_t FN(tvnil)  (void) { return (val_t){ DEF_TVNIL   }; }
-inline val_t FN(tvfalse)(void) { return (val_t){ DEF_TVFALSE }; }
-inline val_t FN(tvtrue) (void) { return (val_t){ DEF_TVTRUE  }; }
+static inline val_t FN(tvnan)  (void) { return (val_t){ DEF_NNAN    }; }
+static inline val_t FN(tvnul)  (void) { return (val_t){ DEF_TVNUL   }; }
+static inline val_t FN(tvnil)  (void) { return (val_t){ DEF_TVNIL   }; }
+static inline val_t FN(tvfalse)(void) { return (val_t){ DEF_TVFALSE }; }
+static inline val_t FN(tvtrue) (void) { return (val_t){ DEF_TVTRUE  }; }
 
-inline val_t FN(tvlog) (log_t l)
+static inline val_t FN(tvlog) (log_t l)
 {
   return (val_t){ DEF_TVLOG | l };
 }
 
-inline val_t FN(tvint) (i64_t i)
+static inline val_t FN(tvint) (i64_t i)
 {
   if (i < 0)
     return (val_t){ (-i & ~DEF_TVMSK >> 1) | DEF_TVINT | 1ULL << (DEF_TVSHT-1)};
@@ -232,52 +241,52 @@ inline val_t FN(tvint) (i64_t i)
     return (val_t){ ( i & ~DEF_TVMSK >> 1) | DEF_TVINT };
 }
 
-inline val_t FN(tvins) (u64_t i)
+static inline val_t FN(tvins) (u64_t i)
 {
   return (val_t){ ( i & ~DEF_TVMSK) | DEF_TVINS };
 }
 
-inline val_t FN(tvnum) (num_t d)
+static inline val_t FN(tvnum) (num_t d)
 {
   return d == d ? (val_t){ .__d = d } : (val_t){ DEF_NNAN };
 }
 
-inline val_t FN(tvfun) (fun_t* f)
+static inline val_t FN(tvfun) (fun_t* f)
 {
   val_t v = (val_t){ .__f = f };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TFUN;
   return v;
 }
 
-inline val_t FN(tvptr) (ptr_t* p)
+static inline val_t FN(tvptr) (ptr_t* p)
 {
   val_t v = (val_t){ .__p = p };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TPTR;
   return v;
 }
 
-inline val_t FN(tvstr) (str_t* s)
+static inline val_t FN(tvstr) (str_t* s)
 {
   val_t v = (val_t){ .__s = s };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TSTR;
   return v;
 }
 
-inline val_t FN(tvarr) (arr_t* a)
+static inline val_t FN(tvarr) (arr_t* a)
 {
   val_t v = (val_t){ .__a = a };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TARR;
   return v;
 }
 
-inline val_t FN(tvobj) (obj_t* o)
+static inline val_t FN(tvobj) (obj_t* o)
 {
   val_t v = (val_t){ .__o = o };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TOBJ;
   return v;
 }
 
-inline val_t FN(tvref) (val_t* r)
+static inline val_t FN(tvref) (val_t* r)
 {
   val_t v = (val_t){ .__r = r };
   v.__u = (v.__u & ~DEF_TMSK) | DEF_TREF;
@@ -286,15 +295,13 @@ inline val_t FN(tvref) (val_t* r)
 
 // --- unboxing ---------------------------------------------------------------o
 
-#include <assert.h>
-
-inline log_t FN(logtv) (val_t v)
+static inline log_t FN(logtv) (val_t v)
 {
   assert( TVISLOG(v) );
   return v.__u & 1;
 }
 
-inline i64_t FN(inttv) (val_t v)
+static inline i64_t FN(inttv) (val_t v)
 {
   assert( TVISINT(v) );
   if ( v.__u & 1ULL << (DEF_TVSHT-1) )
@@ -303,64 +310,111 @@ inline i64_t FN(inttv) (val_t v)
     return   v.__i & (~DEF_TVMSK >> 1) ;
 }
 
-inline num_t FN(numtv) (val_t v)
+static inline num_t FN(numtv) (val_t v)
 {
   return v.__d;
 }
 
-inline u64_t FN(instv) (val_t v)
+static inline u64_t FN(instv) (val_t v)
 {
   return TVISINS(v) ? v.__u & ~DEF_TVMSK : 0;
 }
 
-inline fun_t* FN(funtv) (val_t v)
+static inline fun_t* FN(funtv) (val_t v)
 {
   return TVISFUN(v) ? (val_t){ v.__u & ~DEF_TMSK } .__f : 0;
 }
 
-inline ptr_t* FN(ptrtv) (val_t v)
+static inline ptr_t* FN(ptrtv) (val_t v)
 {
   return TVISPTR(v) ? (val_t){ v.__u & ~DEF_TMSK } .__p : 0;
 }
 
-inline str_t* FN(strtv) (val_t v)
+static inline str_t* FN(strtv) (val_t v)
 {
   return TVISSTR(v) ? (val_t){ v.__u & ~DEF_TMSK } .__s : 0;
 }
 
-inline arr_t* FN(arrtv) (val_t v)
+static inline arr_t* FN(arrtv) (val_t v)
 {
   return TVISARR(v) ? (val_t){ v.__u & ~DEF_TMSK } .__a : 0;
 }
 
-inline obj_t* FN(objtv) (val_t v)
+static inline obj_t* FN(objtv) (val_t v)
 {
   return TVISOBJ(v) ? (val_t){ v.__u & ~DEF_TMSK } .__o : 0;
 }
 
-inline val_t* FN(reftv) (val_t v)
+static inline val_t* FN(reftv) (val_t v)
 {
   return TVISREF(v) ? (val_t){ v.__u & ~DEF_TMSK } .__r : 0;
 }
 
 // --- dereference ------------------------------------------------------------o
 
-inline val_t FN(tvget) (val_t v)
+static inline val_t FN(tvget) (val_t v)
 {
   while ( TVISREF(v) ) v = *FN(reftv)(v);
   return v;
 }
 
+// --- unboxing with dereference ----------------------------------------------o
+
+static inline log_t FN(logtvr) (val_t v)
+{
+  return FN(logtv)(FN(tvget)(v));
+}
+
+static inline i64_t FN(inttvr) (val_t v)
+{
+  return FN(inttv)(FN(tvget)(v));
+}
+
+static inline num_t FN(numtvr) (val_t v)
+{
+  return FN(numtv)(FN(tvget)(v));
+}
+
+static inline u64_t FN(instvr) (val_t v)
+{
+  return FN(instv)(FN(tvget)(v));
+}
+
+static inline fun_t* FN(funtvr) (val_t v)
+{
+  return FN(funtv)(FN(tvget)(v));
+}
+
+static inline ptr_t* FN(ptrtvr) (val_t v)
+{
+  return FN(ptrtv)(FN(tvget)(v));
+}
+
+static inline str_t* FN(strtvr) (val_t v)
+{
+  return FN(strtv)(FN(tvget)(v));
+}
+
+static inline arr_t* FN(arrtvr) (val_t v)
+{
+  return FN(arrtv)(FN(tvget)(v));
+}
+
+static inline obj_t* FN(objtvr) (val_t v)
+{
+  return FN(objtv)(FN(tvget)(v));
+}
+
 // --- typeid, typename -------------------------------------------------------o
 
-inline int FN(typtv) (val_t v)
+static inline int FN(typtv) (val_t v)
 {
   return TVISNUM(v) ? 0 :                            // num: not a tv
          TVISHEX(v) ? ((v.__u >> DEF_TSHT ) & 7)+4 : // decode pointer
                       ((v.__u >> DEF_TVSHT) & 3)+1 ; // decode value
 }
 
-inline str_t* FN(namtv) (val_t v)
+static inline str_t* FN(namtv) (val_t v)
 {
   int id = FN(typtv)(v);
   assert(0 <= id && id <= 11);
@@ -371,19 +425,17 @@ inline str_t* FN(namtv) (val_t v)
 
 // --- debugging, display -----------------------------------------------------o
 
-inline ptr_t* FN(hextv) (val_t v)
+static inline ptr_t* FN(hextv) (val_t v)
 {
   return (val_t){ v.__u & ~DEF_TMSK } .__p;
 }
 
-inline u64_t FN(bittv) (val_t v)
+static inline u64_t FN(bittv) (val_t v)
 {
   return v.__u;
 }
 
 // --- cleanup ----------------------------------------------------------------o
-
-#undef inline
 
 #ifdef FN_UNDEF
 #undef FN_UNDEF
