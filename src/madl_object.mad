@@ -28,10 +28,10 @@ local M = {}
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname      in MAD.typeid
-local bset, btst, bclr, bnot, lt                in MAD.operator
+local bset, btst, bclr, bnot, lshift, lt        in MAD.operator
 local is_callable, is_iterable, is_mappable     in MAD.concept
-local functor                                   in MAD.gfunc
 local bsearch                                   in MAD.algorithm
+local functor                                   in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
 
@@ -44,7 +44,7 @@ local _var = {} -- hidden key
 -- reserved flags (bits)
 local _flg = {} -- hidden key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
-local flg_used = flg_cl     -- last used flags (0-1), free flags (2 - 31)
+local flg_free = 2          -- last used flags (0-1), free flags (2 - 31)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -367,29 +367,45 @@ end
 
 -- flags
 
-local function is_flag (n)
-  return is_number(n) and n > flg_used and n < 32
+local function is_valid_flag (self, n)
+  return is_number(n) and n >= flg_free and n <= 31
 end
 
 local function set_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_object(self)      , "invalid argument #1 (object expected)")
+  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
 
 local function clear_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_object(self)      , "invalid argument #1 (object expected)")
+  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
   local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
   if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
 end
 
 local function test_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_object(self)      , "invalid argument #1 (object expected)")
+  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
   return btst(rawget(self,_flg) or 0, n)
+end
+
+local flg_mask = lshift(-1, flg_free)
+local flg_notmask = bnot(flg_mask)
+
+local function get_flags(self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return band(rawget(self,_flg) or 0, flg_mask)
+end
+
+local function set_flags(self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  local flg = band(rawget(self, _flg) or 0, flg_notmask)
+  rawset(self,_flg, bor(flg, band(flags, flg_mask)))
+  return self
 end
 
 -- environments
@@ -487,6 +503,7 @@ end
 -- members
 M.__id  = 'Object'
 M.__par = parent
+M.first_free_flag = flg_free
 
 -- methods
 M.is_class        = functor( is_class        )
@@ -520,9 +537,12 @@ M.var_raw         = functor( var_raw         )
 M.var_val         = functor( var_val         )
 M.var_get         = functor( var_get         )
 
+M.is_valid_flag   = functor( is_valid_flag   )
 M.set_flag        = functor( set_flag        )
 M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
+M.get_flags       = functor( get_flags       )
+M.set_flags       = functor( set_flags       )
 
 M.open_env        = functor( open_env        )
 M.is_open_env     = functor( is_open_env     )
@@ -540,7 +560,6 @@ M.getk   = M.get_varkeys
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_flag       = is_flag
 MAD.typeid.is_class      = is_class
 MAD.typeid.is_object     = is_object
 MAD.typeid.is_readonly   = is_readonly
