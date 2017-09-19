@@ -27,11 +27,11 @@ local M = {}
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
-      is_function, is_functor, is_metaname      in MAD.typeid
-local bset, btst, bclr, bnot, lt                in MAD.operator
-local is_callable, is_iterable, is_mappable     in MAD.concept
-local functor                                   in MAD.gfunc
-local bsearch                                   in MAD.algorithm
+      is_function, is_functor, is_metaname           in MAD.typeid
+local bset, btst, bclr, bnot, lt, lshift, band, bor  in MAD.operator
+local is_callable, is_iterable, is_mappable          in MAD.concept
+local bsearch                                        in MAD.algorithm
+local functor                                        in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
 
@@ -77,6 +77,15 @@ local function freadonly (a)
   return btst(rawget(a,_flg) or 0, flg_ro)
 end
 
+local function set_class (a)
+  rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
+  return a
+end
+
+local function is_flag (n)
+  return is_number(n) and n > flg_used and n < 32
+end
+
 local function is_object (a) -- exported
   return is_table(a) and not is_nil(rawget(a,_var))
 end
@@ -87,11 +96,6 @@ end
 
 local function is_readonly (a) -- exported
   return is_table(a) and freadonly(a)
-end
-
-local function set_class (a) -- not exported
-  rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
-  return a
 end
 
 -- metamethods
@@ -367,28 +371,40 @@ end
 
 -- flags
 
-local function is_flag (n)
-  return is_number(n) and n > flg_used and n < 32
-end
-
 local function set_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_flag(n)     , "invalid argument #2 (valid flag id expected)")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
 
 local function clear_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_flag(n)     , "invalid argument #2 (valid flag id expected)")
   local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
   if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
 end
 
+local function set_flags(self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  local mask = lshift(-1, flg_used + 1)
+  local flg = band(rawget(self, _flg) or 0, bnot(mask))
+  flags = band(flags, mask)
+  rawset(self, _flg, bor(flg,flags))
+  return self
+end
+
+local function get_flags(self)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  local mask = lshift(-1, flg_used + 1)
+  return band(rawget(self, _flg) or 0, mask)
+end
+
 local function test_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_flag(n)     , "invalid argument #2 (flag id expected)")
+  assert(is_flag(n)     , "invalid argument #2 (valid flag id expected)")
   return btst(rawget(self,_flg) or 0, n)
 end
 
@@ -502,6 +518,7 @@ M.set_variables   = functor( set_variables   )
 M.wrap_variables  = functor( wrap_variables  )
 
 M.set_functions   = functor( set_functions   )
+
 M.set_metamethods = functor( set_metamethods )
 
 M.insert_array    = functor( insert_array    )
@@ -521,8 +538,10 @@ M.var_val         = functor( var_val         )
 M.var_get         = functor( var_get         )
 
 M.set_flag        = functor( set_flag        )
-M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
+M.set_flags       = functor( set_flags       )
+M.get_flags       = functor( get_flags       )
+M.test_flag       = functor( test_flag       )
 
 M.open_env        = functor( open_env        )
 M.is_open_env     = functor( is_open_env     )
@@ -540,7 +559,6 @@ M.getk   = M.get_varkeys
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_flag       = is_flag
 MAD.typeid.is_class      = is_class
 MAD.typeid.is_object     = is_object
 MAD.typeid.is_readonly   = is_readonly
