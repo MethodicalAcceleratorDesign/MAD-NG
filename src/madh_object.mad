@@ -215,7 +215,7 @@ DESCRIPTION
 RETURN VALUES
   is_object and is_instanceOf return true if obj inherits from Object or class
   respectively. is_readonly and is_class return true if obj is read only or was
-  already used as a constructor, respectively.
+  already used as a constructor respectively.
 
 ERRORS
   is_instanceOf trigs an error if the argument #2 (class) is not a valid object.
@@ -240,32 +240,35 @@ __help['typeid.is_class'     ] = __help['typeid.is_object']
 __help['typeid.is_readonly'  ] = __help['typeid.is_object']
 __help['typeid.is_instanceOf'] = __help['typeid.is_object']
 
-
-
 -- object methods
 
 __help['object:set_readonly' ] = [=[
 NAME
-  set_readonly
+  set_readonly, set_parent
 
 SYNOPSIS
   obj:set_readonly(boolean or nil)
+  obj:set_parent(p)
 
 DESCRIPTION
   The method set_readonly protects or unprotects against write access
-  (weak protection). The default value is true.
+  (weak protection). The default value is true. set_parent change the parent of
+  the object.
 
 RETURN VALUES
-  It returns the object itself.
+  they return the object itself.
 
 ERRORS
-  It trigs an error if the argument #2 is not a boolean or nil or if
-  argument #1 is Object itself.
+  set_readonly trigs an error if the argument #1 is not a boolean or nil or if
+  obj is Object itself. set_parent trigs an error if argument #1 is not an
+  object and if obj is readonly.
 
 EXAMPLES
   Object {} :set_readonly(true).a = 2         -- error
   Object {} :set_readonly().a = 2             -- error
   Object {} :set_readonly(false).a = 2        -- ok
+  obj1 = Object {} :set_parent(Object {a = 2})
+  print(obj1.a)                               -- 2
 
 SEE ALSO
   None.
@@ -273,47 +276,58 @@ SEE ALSO
 
 __help['object:set_flag' ] = [=[
 NAME
-  set_flag, clear_flag, set_flags, get_flags, test_flag
+  is_valid_flag, set_flag, clear_flag, set_flags,
+  get_flags, test_flag, first_free_flag
 
 SYNOPSIS
-  obj:set_flag  (n)
-  obj:clear_flag(n)
-  obj:set_flags (flags)
-  obj:get_flags (flags)
-  obj:test_flag (n)
+  obj:is_valid_flag(n)
+  obj:set_flag     (n)
+  obj:clear_flag   (n)
+  obj:set_flags    (flags)
+  obj:get_flags    (flags)
+  obj:test_flag    (n)
+
+  obj.first_free_flag
 
 DESCRIPTION
-  The methods set_flag, clear_flag and test_flag allow respectively to set, 
-  clear and test a specific bit in a 32-bit pattern. Be aware that Object 
-  reserve a few of them (currently 2). set_flags and get_flags act on the entire
-  pattern at once.
+  The methods set_flag, clear_flag and test_flag allow respectively to set,
+  clear and test a specific bit in a 32-bit pattern. Be aware that Object
+  reserve a few of them (currently 2). is_valid_flag return true if the index
+  is within the 32-bit range and is not reserved by Object. set_flags and
+  get_flags act on the entire pattern at once. first_free_flag return the first
+  available index.
 
 RETURN VALUES
   set_flag, clear_flag, set_flags return the object itself.
   get_flags returns the 32-bit pattern.
-  test_flag returns a boolean.
+  is_valid_flag and test_flag return a boolean.
+  first_free_flag returns a number.
 
 ERRORS
-  All these methods trig an error if argument #1 is not a valid object
-  set_flag, clear_flag, test_flag trig an error if argument #2 is not a valid 
+  set_flag, clear_flag, test_flag trig an error if argument #2 is not a valid
   flag id. set_flags trig an error if argument #2 is not a number.
 
 EXAMPLES
   local obj1 = Object {} 
+  print(obj1.first_free_flag)   -- 2
+  print(obj1:is_valid_flag(15)) -- true
+  print(obj1:is_valid_flag(32)) -- false
   obj1:set_flag(2)
-  print(obj1:test_flag(2))     -- true
+  print(obj1:test_flag(2))      -- true
   obj1:clear_flag(2)
-  print(obj1:test_flag(2))     -- false
+  print(obj1:test_flag(2))      -- false
   obj1:set_flags(12)
-  print(obj1:get_flags())      -- 12
+  print(obj1:get_flags())       -- 12
 
 SEE ALSO
   None.
 ]=]
-__help['object:clear_flag'] = __help['object:set_flag']
-__help['object:set_flags' ] = __help['object:set_flag']
-__help['object:get_flags' ] = __help['object:set_flag']
-__help['object:test_flag' ] = __help['object:set_flag']
+__help['object.first_free_flag'] = __help['object:set_flag']
+__help['object:is_valid_flag'  ] = __help['object:set_flag']
+__help['object:clear_flag'     ] = __help['object:set_flag']
+__help['object:set_flags'      ] = __help['object:set_flag']
+__help['object:get_flags'      ] = __help['object:set_flag']
+__help['object:test_flag'      ] = __help['object:set_flag']
 
 __help['object.iterator'] = [=[
 NAME
@@ -384,50 +398,171 @@ __help['object.ipairs'] = __help['object.iterator']
 
 __help['object:get'] = [=[
 NAME
-  get_variables, get_varkeys, set_variables, set_functions, set_metamethods,
-  get, set, getk, clear_array, clear_variable.
+  get_variables, get_varkeys, set_variables, wrap_variables
+  get, set, getk.
 
 SYNOPSIS
-  obj:get_variables  ({...} [, eval])
-  obj:set_variables  ({...} [, override])
-  obj:set_functions  ({...} [, override [, strict]])
-  obj:set_metamethods({...} [, override [, strict]])
+  obj:get_variables  (lst [, noeval])
   obj:get_varkeys    ([class])
-  obj:clear_array    ()
-  obj:clear_variables()
+  obj:set_variables  (tbl [, override])
+  obj:wrap_variables (tbl)
 
 DESCRIPTION
   The get_variables method gets values from a list of strings used as keys,
-  following the value semantic of functions unless eval is 'false'. The
+  following the value semantic of functions unless noeval is 'true'. The
   get_varkeys method collects all the variables names of an object iterating
   through inheritance up to class (excluded). The set_variables method sets or
-  updates values from a mappable. The clear_array and clear_variables remove all
-  variables from the array part of the object and from the dictionary part
-  respectively, but it does not affect its parent link nor its metamethods. The
-  set_functions method sets or updates functions from a mappable in a special
-  way that bypasses the value semantic of functions in the object model and
-  enforces the call semantic. The set_metamethods method sets metamethods from a
-  mappable that are shared by children (see the object model scheme). The
-  methods get, getk and set are aliases for get_variables, get_varkeys and
-  set_variables respectively. The default value for override is 'true' for
-  set_variables and set_functions and 'false' for set_metamethods. The default
-  value for eval and strict is 'true'. The default value for class is Object.
+  updates values from a mappable. The methods get, getk and set are aliases for
+  get_variables, get_varkeys and set_variables respectively. wrap_variables 
+  encapsulate values from obj with functions from tbl matching the same keys. 
+  The default values are 'true' for override, 'false' for noeval and Object for 
+  class.
 
 RETURN VALUES
   A table containing the key-value pairs for the specified keys for the method
-  get_variables, a table containing all the variables names for the method
-  get_varkeys, and the object itself for other methods.
+  get_variables, a table containing all the variables names with inheritance up 
+  to class for the method get_varkeys, and the object itself for the other 
+  methods.
 
 ERRORS
-  All these methods trig an error if argument #1 is not a valid object and if
-  argument #2 is not an iterable item for get_variables or a mappable item for
-  others. The method set_functions trig an error if values in the mappable item
-  (argument #2) are not callable. All these methods except get_variables trig an
-  error if keys in the mappable (argument #2) already exist and overriding is
-  not allowed by argument #3. The components for set_functions must be callable,
-  unless strict is 'false'. The metamethods names for set_metamethods must be
-  one of the supported metamethod name (i.e. is_metaname returns true) unless
-  strict is 'false'.
+  Errors are triggered if lst is not iterable, tbl not mappable and class not an
+  object. get_varkeys trigs an error if class is not a parent of obj.
+  set_variables trigs an error if keys in tbl already exist and overriding is
+  not allowed by argument #2. wrap_variables trigs an error if values in tbl are
+  not callable and if no values in obj match a key of tbl. obj must not be 
+  readonly.
+
+EXAMPLES
+  Point = Object {}                    -- point is an instance of Object
+  p1 = Point { x=2, y=2 }              -- p1 is an instance of Point
+  p1:set { x=1, z=3 }                  -- update p1.x and set p1.z
+  p1:set { z2=\s 2*s.z }               -- set p1.z2 = 2*p1.z
+  p1.z3=\s 3*s.z                       -- set p1.z3 = 3*p1.z
+  print(p1.x, p1.y, p1.z, p1.z2, p1.z3)
+    1       2       3       6       9
+  t = p1:get(p1:getk(Point))           -- get variables values of all keys
+  print(t.x, t.y, t.z, t.z2, t.z3)
+    1       2       3       6       9
+  p1:wrap_variables({x=\e e()+2, y =\e e()^3})
+  print(p1.x, p1.y)
+    3       8
+
+SEE ALSO
+  None.
+]=]
+__help['object:getk'           ] = __help['object:get']
+__help['object:get_varkeys'    ] = __help['object:get']
+__help['object:get_variables'  ] = __help['object:get']
+__help['object:set'            ] = __help['object:get']
+__help['object:set_variables'  ] = __help['object:get']
+__help['object:wrap_variables' ] = __help['object:get']
+
+__help['object:set_functions'  ] = [=[
+NAME
+  set_functions
+
+SYNOPSIS
+  obj:set_functions  (tbl [, override [, strict]])
+
+DESCRIPTION
+  The set_functions method sets or updates functions from a mappable (tbl) in a 
+  special way that bypasses the value semantic of functions in the object model 
+  and enforces the call semantic. The default value for override and strict is
+  'true'.
+
+RETURN VALUES
+  It returns the object itself.
+
+ERRORS
+  set_functions trigs an error, if argument #1 is not a mappable, if tbl
+  contains an array part or if keys of tbl already exist in obj and overriding
+  is not allowed by argument #2. The values in tbl must be callable, unless
+  strict is 'false'. obj must not be readonly.
+
+EXAMPLES
+  obj1 = Object {}
+  obj1:set_functions { x=\n n*2, y=\ 3 }
+  obj1.z =\ 3
+  print(obj1.x(4))
+    8
+  print(obj1.y())
+    3
+  print(obj1.y)                             -- call semantic enforced
+    <functor> 0x[...]
+  print(obj1.z)                             -- value semantic
+    3
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:set_metamethods'] = [=[
+NAME
+  set_metamethods
+
+SYNOPSIS
+  obj:set_metamethods(tbl [, override [, strict]])
+
+DESCRIPTION
+  The set_metamethods method sets metamethods from a mappable (tbl). Those new 
+  metamethods will be shared with children (see the object model scheme).
+  The default values are 'false' for override and 'true' for strict.
+
+RETURN VALUES
+  It returns the object itself.
+
+ERRORS
+  set_metamethods trigs an error, if argument #1 is not a mappable, if obj
+  already has children (is a class) or if keys of tbl already exist in the
+  metatable of obj and overriding is not allowed by argument #2. The metamethods
+  names must be one of the supported ones (i.e. is_metaname returns
+  true) unless strict is 'false'. obj must not be readonly.
+
+EXAMPLES
+  obj1 = Object 'obj1' { e = 3 }
+  obj1:set_metamethods({ __pow = \s,p s.e^p })
+  print(obj1^3)
+    27
+  obj1:set_metamethods({ __tostring =\s s.name .. " has e = " .. s.e }, true)
+  print(obj1)
+    obj1 has e = 3
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:insert_array'] = [=[
+NAME
+  insert_array, remove_array, bsearch_array, sort_array,
+  clear_array, clear_variables, clear_all.
+
+SYNOPSIS
+  obj:insert_array    (pos, val)
+  obj:remove_array    (pos)
+  obj:bsearch_array   (val [, cmp_])
+  obj:sort_array      ([cmp_])
+  obj:clear_array     ()
+  obj:clear_variables ()
+  obj:clear_all       ()
+
+DESCRIPTION
+  insert_array insert the value 'val' at the position 'pos' in the array part of
+  obj. remove_array remove the element at the position 'pos' of the array part
+  of obj. bsearch_array do a binary search on the array part of obj using the
+  value 'val' and the optional comparator 'cmp_'. sort_array sort the array part
+  of obj using a default comparator or 'cmp_' if provided. clear_array and
+  clear_variables remove all variables from the array part of the object and
+  from the dictionary part respectively, but it does not affect its parent
+  variables nor its metamethods.
+
+RETURN VALUES
+  They all return the object itself except remove_array and bsearch_array which
+  return the value removed and found respectively.
+
+ERRORS
+  sort_array and bsearch_array return an error if cmp_ is not callable.
+  insert_array, remove_array return an error if pos is not a number.
+  obj must not be readonly.
 
 EXAMPLES
   Point = MAD.Object {}                -- point is an instance of Object
@@ -445,15 +580,12 @@ EXAMPLES
 SEE ALSO
   None.
 ]=]
-__help['object:getk'           ] = __help['object:get']
-__help['object:get_varkeys'    ] = __help['object:get']
-__help['object:get_variables'  ] = __help['object:get']
-__help['object:set'            ] = __help['object:get']
-__help['object:set_variables'  ] = __help['object:get']
-__help['object:set_functions'  ] = __help['object:get']
-__help['object:set_metamethods'] = __help['object:get']
-__help['object:clear_array'    ] = __help['object:get']
-__help['object:clear_variables'] = __help['object:get']
+__help['object:remove_array'   ] = __help['object:insert_array']
+__help['object:bsearch_array'  ] = __help['object:insert_array']
+__help['object:sort_array'     ] = __help['object:insert_array']
+__help['object:clear_array'    ] = __help['object:insert_array']
+__help['object:clear_variables'] = __help['object:insert_array']
+__help['object:clear_all'      ] = __help['object:insert_array']
 
 __help['object:raw_get'] = [=[
 NAME
