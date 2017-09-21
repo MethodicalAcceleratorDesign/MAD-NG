@@ -1158,21 +1158,32 @@ function TestObject:testRemoveArray()
 end
 
 function TestObject:testBsearchArray()
-  local p0 = Object 'p0' { 1, 2, 3, 4, 5 }
-  local p1 = p0 'p1' { }
-  local p2 = p0 'p2' {}:set_readonly()
-  local p3 = Object 'p0' { 1, 22, 33, 44, 55 }
+  local p0 = Object 'p0' { 1, 2, 2, 2, 3, 4, 5 }
+
+  local lt, le, gt, ge in MAD.operator
 
   local msg = {
     "invalid argument #1 (object expected)"
   }
-  -- print()
-  for i,_ in ipairs(1..100)  do
-    -- assertEquals(p0:bsearch_array(i), i)
-    -- assertEquals(p3:bsearch_array(i*10), i)
-    -- s=p3:bsearch_array(i)
-    -- print("s=", s, "i=", i, "v=", p3[s])
+
+  local res, resEq = {}, {}
+  for i,_ in ipairs(1..7)  do
+    res[i]   = p0:bsearch_array(i, lt)
+    resEq[i] = p0:bsearch_array(i, le)
   end
+
+  assertEquals(res  , {1, 2, 5, 6, 7, 8, 8})
+  assertEquals(resEq, {2, 5, 6, 7, 8, 8, 8})
+
+  res, resEq = {}, {}
+  p0:sort_array(gt)
+  for i,_ in ipairs(1..7)  do
+    res[i]   = p0:bsearch_array(i, gt)
+    resEq[i] = p0:bsearch_array(i, ge)
+  end
+
+  assertEquals(res  , {7, 4, 3, 2, 1, 1, 1})
+  assertEquals(resEq, {8, 7, 4, 3, 2, 1, 1})
 
   assertErrorMsgContains(msg[1], p0.bsearch_array, 0)
   assertErrorMsgContains(msg[1], p0.bsearch_array, nil)
@@ -1358,6 +1369,279 @@ function TestObject:testClearAll()
 
   assertErrorMsgContains(msg[2], Object.clear_all, Object)
   assertErrorMsgContains(msg[2], p2.clear_all, p2)
+end
+
+function TestObject:testRawLen()
+  local p0 = Object 'p0' { 1, 2, 3, 4 }
+  local p1 = p0 'p1' { x=true, y=true }
+  local p2 = p0 'p2' { 1, 2, 3 }
+
+  assertEquals(#p0, 4)
+  assertEquals(p0:raw_len(), 4)
+
+  assertEquals(#p1, 4)
+  assertEquals(p1:raw_len(), 0)
+
+  assertEquals(#p2, 3)
+  assertEquals(p2:raw_len(), 3)
+end
+
+function TestObject:testRawGetSet()
+  local p0 = Object 'p0' { 1, 2, 3, 4 }
+  local p1 = p0 'p1' {42, x=true, y:=true }
+  local p2 = p0 'p2' {}:set_readonly()
+
+  local msg = {
+    "forbidden write access to readonly object"
+  }
+
+  p2:raw_set("x", true)
+  assertTrue(p2.x)
+  assertErrorMsgContains(msg[1], \p2 => p2.x=false end, p2)
+
+  assertEquals(p1:raw_get(1), 42)
+  assertEquals(p1:raw_get("x"), true)
+  assertTrue  (is_function(p1:raw_get("y")))
+  assertFalse (is_function(p1.y))
+  assertNil   (p1:raw_get(2))
+  assertNil   (p1:raw_get(3))
+end
+
+function TestObject:testVarRawGet()
+  local p0 = Object 'p0' { 1, 2, 3, 4, z=\ 5 }
+  local p1 = p0 'p1' {42, x=true, y:=true }
+  local p2 = p0 'p2' {}:set_readonly()
+
+  local msg = {
+    "forbidden write access to readonly object"
+  }
+
+  assertEquals(p1:var_raw(1), 42)
+  assertEquals(p1:var_raw(2), 2)
+  assertEquals(p1:var_raw(3), 3)
+  assertEquals(p1:var_raw("x"), true)
+  assertTrue  (is_function(p1:var_raw("y")))
+  assertFalse (is_function(p1.y))
+  assertTrue  (is_function(p1:var_raw("z")))
+  assertEquals(p1.z, 5)
+
+  assertEquals(p1:var_get(1), 42)
+  assertEquals(p1:var_get(2), 2)
+  assertEquals(p1:var_get(3), 3)
+  assertEquals(p1:var_get("x"), true)
+  assertFalse (is_function(p1: var_get("y")))
+  assertTrue  (p1:var_get("y"))
+  assertFalse (is_function(p1:var_get("z")))
+  assertEquals(p1:var_get("z"), 5)
+end
+
+function TestObject:testEnvInput()
+  local p0 = Object 'p0' { }
+
+  local msg = {
+    "invalid argument #1 (object expected)",
+    "invalid argument #2 (not a function or < 1)",
+    "invalid environment (already open)",
+    "invalid environment (not open)"
+  }
+
+  assertErrorMsgContains(msg[1], p0.open_env, 0)
+  assertErrorMsgContains(msg[1], p0.open_env, nil)
+  assertErrorMsgContains(msg[1], p0.open_env, true)
+  assertErrorMsgContains(msg[1], p0.open_env, "")
+  assertErrorMsgContains(msg[1], p0.open_env, {})
+  assertErrorMsgContains(msg[1], p0.open_env, \ ())
+
+  assertErrorMsgContains(msg[1], p0.is_open_env, 0)
+  assertErrorMsgContains(msg[1], p0.is_open_env, nil)
+  assertErrorMsgContains(msg[1], p0.is_open_env, true)
+  assertErrorMsgContains(msg[1], p0.is_open_env, "")
+  assertErrorMsgContains(msg[1], p0.is_open_env, {})
+  assertErrorMsgContains(msg[1], p0.is_open_env, \ ())
+
+  assertErrorMsgContains(msg[1], p0.reset_env, 0)
+  assertErrorMsgContains(msg[1], p0.reset_env, nil)
+  assertErrorMsgContains(msg[1], p0.reset_env, true)
+  assertErrorMsgContains(msg[1], p0.reset_env, "")
+  assertErrorMsgContains(msg[1], p0.reset_env, {})
+  assertErrorMsgContains(msg[1], p0.reset_env, \ ())
+
+  assertErrorMsgContains(msg[1], p0.close_env, 0)
+  assertErrorMsgContains(msg[1], p0.close_env, nil)
+  assertErrorMsgContains(msg[1], p0.close_env, true)
+  assertErrorMsgContains(msg[1], p0.close_env, "")
+  assertErrorMsgContains(msg[1], p0.close_env, {})
+  assertErrorMsgContains(msg[1], p0.close_env, \ ())
+
+  assertErrorMsgContains(msg[2], p0.open_env, p0, 0)
+  assertErrorMsgContains(msg[2], p0.open_env, p0, -1)
+  assertErrorMsgContains(msg[2], p0.open_env, p0, true)
+  assertErrorMsgContains(msg[2], p0.open_env, p0, "")
+  assertErrorMsgContains(msg[2], p0.open_env, p0, {})
+
+  p0:open_env()
+  assertErrorMsgContains(msg[3], p0.open_env, p0)
+
+  p0:close_env()
+  assertErrorMsgContains(msg[4], p0.close_env, p0)
+end
+
+function TestObject:testEnvSimple()
+  local p0 = Object 'p0' { }
+  local p1 = p0 'p1' { }
+
+  local oCtx, nCtx = getfenv(1), {}
+  local setfenv = setfenv
+
+  local res = {a=2, b="test", c={a=2, b="test"}, d=3}
+
+  setfenv(1, nCtx)
+    p0:open_env()
+      a = 2
+      b = "test"
+      c = {a=a, b=b}
+      d =\s s.a+1
+    p0:close_env()
+    e = 4
+  setfenv(1, oCtx)
+
+  assertEquals(nCtx, {e=4})
+  assertEquals(p0:get{"a", "b", "c", "d", "e"}, res)
+end
+
+function TestObject:testEnvInheritance()
+  local p0 = Object 'p0' { }
+  local p1 = p0 'p1' { }
+
+  assertFalse(p0:is_open_env())
+  assertFalse(p1:is_open_env())
+
+  p0:open_env()
+  assertTrue (p0:is_open_env())
+  assertFalse(p1:is_open_env())
+
+  p0:close_env()
+  assertFalse(p0:is_open_env())
+  assertFalse(p1:is_open_env())
+
+end
+
+function TestObject:testEnvNested()
+  local p0 = Object 'p0' { }
+  local p1 = p0 'p1' { }
+
+  local oCtx, nCtx = getfenv(1), {}
+  local setfenv = setfenv
+
+  local names = {"a", "a0", "a1", "b0", "b"}
+
+  setfenv(1, nCtx)
+    p0:clear_all()
+    p1:clear_all()
+    a = true
+    p0:open_env()
+      a0 = true
+      p1:open_env()
+        a1= true
+      p1:close_env()
+      b0 = true
+    p0:close_env()
+    b = true
+  setfenv(1, oCtx)
+
+  assertEquals(nCtx, {a=true, b=true})
+  assertEquals(p0:get(names), {a0=true, b0=true})
+  assertEquals(p1:get(names), {a0=true, a1=true, b0=true})
+  assertNil(p1:raw_get("a0"))
+  assertTrue(p1:raw_get("a1"))
+  assertNil(p1:raw_get("b0"))
+end
+
+function TestObject:testEnvFunc()
+  local p0 = Object 'p0' { }
+
+  local oCtx, nCtx = getfenv(1), {}
+  local setfenv = setfenv
+
+  setfenv(1, nCtx)
+    local function func()
+      a=1
+      b=true
+      assertTrue(p0:is_open_env())
+    end
+
+    p0:open_env(func)
+    func()
+  setfenv(1, oCtx)
+
+  assertEquals(p0:get{"a","b"}, {a=1, b=true})
+  assertEquals(nCtx, {})
+end
+
+function TestObject:testEnvMultLvl()
+
+  local p0 = Object 'p0' { }
+
+  local oCtx, nCtx = getfenv(1), {}
+  local setfenv = setfenv
+
+  setfenv(1, nCtx)
+    local function func1()
+      a = true
+
+      local function func2()
+        b = true
+
+        local function func3()
+          c = true
+          p0:open_env(func1)
+          assertTrue(p0:is_open_env())
+          d = true
+          assertEquals({c,d}, {true,true})
+        end
+
+        func3()
+        e = true
+        assertTrue(p0:is_open_env())
+        assertEquals({b,e}, {true,true})
+
+      end
+
+      func2()
+      f = true
+      assertTrue(p0:is_open_env())
+      assertEquals({a,f}, {nil,true})
+      p0:close_env()
+    end
+    func1()
+  setfenv(1, oCtx)
+
+  assertEquals(p0:get{"a","b","c","d","e","f"}, {f=true})
+
+end
+
+function TestObject:testEnvReset()
+  local p0 = Object 'p0' { }
+
+  local oCtx, nCtx = getfenv(1), {}
+  local setfenv = setfenv
+
+  setfenv(1, nCtx)
+    a = true
+    p0:open_env()
+
+      b = true
+      c = true
+      assertEquals({a,b,c}, {nil, true, true})
+      assertEquals(p0:get{"a","b","c"}, {b=true, c=true})  
+
+    p0:reset_env()
+    assertFalse(p0:is_open_env())
+  setfenv(1, oCtx)
+
+  assertEquals(nCtx, {a=true})
+  -- missing test here
+  -- assertEquals(p0:get{"a","b","c"}, {})
 end
 
 function TestObject:testStrDump()
