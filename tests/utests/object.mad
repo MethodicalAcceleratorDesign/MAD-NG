@@ -849,6 +849,7 @@ function TestObject:testWrapVariables()
     "invalid variable (nil value)"
   }
 
+  -- very simple example
   p0:wrap_variables({x=\e e()+2, y =\e e()^3})
   assertEquals(p0:get({'x', 'y'}), {x=3, y=8})
 
@@ -857,6 +858,15 @@ function TestObject:testWrapVariables()
   assertEquals(p1.z  , f)
   assertEquals(p1.z(), 3)
 
+  -- concrete example: change angle
+  local rbend in MAD.element
+  local sinc, eps in MAD.gmath
+  local ksb = 0.85
+  local r1 = rbend 'r1' {angle := ksb, h=3, length=\s 2*s.h }
+  r1:wrap_variables { length = \l\s l(s)/sinc(s.angle) }
+  assertAlmostEquals(r1.length, 6.78841077859289577, eps)
+
+  -- test input
   assertErrorMsgContains(msg[1], p0.wrap_variables, 0)
   assertErrorMsgContains(msg[1], p0.wrap_variables, nil)
   assertErrorMsgContains(msg[1], p0.wrap_variables, true)
@@ -1407,6 +1417,33 @@ function TestObject:testRawGetSet()
   assertNil   (p1:raw_get(3))
 end
 
+function TestObject:testVarRawVal()
+  local p0 = Object 'p0' { }
+
+  -- eval
+  assertFalse (is_function(p0:var_val("k", \ 2)))
+  assertEquals(p0:var_val("k", \ 2), 2)
+
+  -- eval with self
+  p0.x = 3
+  assertFalse (is_function(p0:var_val("k", \s s.x*2)))
+  assertEquals(p0:var_val("k", \s s.x*2), 6)
+
+  -- no eval key not a strings
+  assertTrue  (is_function(p0:var_val(1   , \ 2)))
+  assertTrue  (is_function(p0:var_val(true, \ 2)))
+  assertTrue  (is_function(p0:var_val({}  , \ 2)))
+  assertTrue  (is_function(p0:var_val(\ (), \ 2)))
+  assertTrue  (is_function(p0:var_val(p0  , \ 2)))
+
+  -- no eval value not a function
+  assertEquals(p0:var_val("k", 1   ), 1   )
+  assertEquals(p0:var_val("k", ""  ), ""  )
+  assertEquals(p0:var_val("k", true), true)
+  assertEquals(p0:var_val("k", {}  ), {})
+
+end
+
 function TestObject:testVarRawGet()
   local p0 = Object 'p0' { 1, 2, 3, 4, z=\ 5 }
   local p1 = p0 'p1' {42, x=true, y:=true }
@@ -1507,6 +1544,7 @@ function TestObject:testEnvSimple()
 
   assertEquals(nCtx, {e=4})
   assertEquals(p0:get{"a", "b", "c", "d", "e"}, res)
+
 end
 
 function TestObject:testEnvInheritance()
@@ -1620,63 +1658,116 @@ function TestObject:testEnvMultLvl()
 
 end
 
+function TestObject:testEnvSelfRef()
+  local p0 = Object 'p0' { }
+
+  p0:open_env()
+
+    assertTrue  (p0:is_open_env())
+    assertTrue  (is_object(p0.p0))
+    assertEquals(p0.p0, p0)
+
+  p0:close_env()
+
+  assertFalse (p0:is_open_env())
+  assertFalse (is_object(p0.p0))
+  assertEquals(p0.p0)
+
+end
+
 function TestObject:testEnvReset()
   local p0 = Object 'p0' { }
 
-  local oCtx, nCtx = getfenv(1), {}
-  local setfenv = setfenv
+  local error = error
 
-  setfenv(1, nCtx)
-    a = true
+  local func = \ =>
     p0:open_env()
+    error("throw error")
+  end
 
-      b = true
-      c = true
-      assertEquals({a,b,c}, {nil, true, true})
-      assertEquals(p0:get{"a","b","c"}, {b=true, c=true})  
+  local status, msg = pcall(func)
+  assertEquals(status, false)
+  assertEquals(string.gsub(msg, ':[0-9]+:', ''), "./object.mad throw error")
+  p0:reset_env()
+  assertFalse(p0:is_open_env())
+  assertNil(p0.p0)
 
-    p0:reset_env()
-    assertFalse(p0:is_open_env())
-  setfenv(1, oCtx)
-
-  assertEquals(nCtx, {a=true})
-  -- missing test here
-  -- assertEquals(p0:get{"a","b","c"}, {})
 end
 
 function TestObject:testStrDump()
   local p0 = Object 'p0' { x=1, y=2, z:=3 }
-  local p1 = p0 'p1' { x=-1, y={} }
+  local p1 = p0 'p1' {}
+  local p2 = p0 'p2' { x=-1, y={}, z2="", z3=\s s.x, z4=p1}
+
   local msg = {
     "invalid argument #1 (object expected)",
     "invalid argument #2 (object expected)",
     "invalid argument #2 (parent of argument #1 expected)",
     "invalid argument #3 (string expected)",
   }
-  local str_p0 =[[
+
+  local str_p0 = [[
 + 'p0' <object>
    y :  2
    x :  1
    z := 3
 ]]
-  local str_p1 =[[
-+ 'p1' <object>
-   y :  {}
+  local str_p1 = [[
++ 'p2' <object>
    x :  -1
+   y :  {}
+   z4 :  'p1' <object>
+   z2 : ''
+   z3 := -1
    + 'p0' <object>
       y :  2 (*)
       x :  1 (*)
       z := 3
 ]]
+  local str_p1_np0 = [[
++ 'p2' <object>
+   x :  -1
+   y :  {}
+   z4 :  'p1' <object>
+   z2 : ''
+   z3 := -1
+]]
+  local str_p1_pattern = [[
++ 'p2' <object>
+   z4 :  'p1' <object>
+   z2 : ''
+   z3 := -1
+   + 'p0' <object>
+      z := 3
+]]
 
-  assertEquals(string.gsub(p0:strdump(), '%s0x%x+', ''), str_p0)
-  assertEquals(string.gsub(p1:strdump(), '%s0x%x+', ''), str_p1)
+  assertEquals(string.gsub(p0:strdump()  , '%s0x%x+' , ''), str_p0)
+  assertEquals(string.gsub(p2:strdump()  , '%s0x%x+' , ''), str_p1)
+  assertEquals(string.gsub(p2:strdump(p0), '%s0x%x+' , ''), str_p1_np0)
+  assertEquals(string.gsub(p2:strdump(nil, "z[0-9]?"), '%s0x%x+', ''),
+                str_p1_pattern)
 
-  assertErrorMsgContains(msg[1], p0.strdump, 1)
-  assertErrorMsgContains(msg[1], p0.strdump, 1, Object)
-  assertErrorMsgContains(msg[2], p0.strdump, p0, 1)
+  assertErrorMsgContains(msg[1], p0.strdump, 0)
+  assertErrorMsgContains(msg[1], p0.strdump, nil)
+  assertErrorMsgContains(msg[1], p0.strdump, true)
+  assertErrorMsgContains(msg[1], p0.strdump, "")
+  assertErrorMsgContains(msg[1], p0.strdump, {})
+  assertErrorMsgContains(msg[1], p0.strdump, \ ())
+
+  assertErrorMsgContains(msg[2], p0.strdump, p0, 0)
+  assertErrorMsgContains(msg[2], p0.strdump, p0, true)
+  assertErrorMsgContains(msg[2], p0.strdump, p0, "")
+  assertErrorMsgContains(msg[2], p0.strdump, p0, {})
+  assertErrorMsgContains(msg[2], p0.strdump, p0, \ ())
+
   assertErrorMsgContains(msg[3], p0.strdump, p0, p1)
-  assertErrorMsgContains(msg[4], p0.strdump, p0, nil, 1)
+
+  assertErrorMsgContains(msg[4], p0.strdump, p0, Object, 0)
+  assertErrorMsgContains(msg[4], p0.strdump, p0, Object, true)
+  assertErrorMsgContains(msg[4], p0.strdump, p0, Object, {})
+  assertErrorMsgContains(msg[4], p0.strdump, p0, Object, \ ())
+  assertErrorMsgContains(msg[4], p0.strdump, p0, Object, Object)
+
 end
 
 -- examples test suite --------------------------------------------------------o
