@@ -23,8 +23,10 @@
 
 -- expected from other modules ------------------------------------------------o
 
--- operators
+require 'table.clear'
+require 'table.new'
 
+-- operators
 local bit = require 'bit'
 local tobit = bit.tobit
 local bnot, band, bor, rol = bit.bnot, bit.band, bit.bor, bit.rol
@@ -585,43 +587,42 @@ local function close_env (self)
   return reset_env(self)
 end
 
-local function strdump (self, class, pattern)
-  class, pattern = class or Object, pattern or ''
-  assert(is_object(self)   , "invalid argument #1 (object expected)")
-  assert(is_object(class)  , "invalid argument #2 (object expected)")
-  assert(is_string(pattern), "invalid argument #3 (string expected)")
-  local tostring in MAD
-  local cnt, res, spc, str = {}, {}, ""
-  while self and self ~= class do
-    local var = rawget(self,_var)
-    -- header
-    str = rawget(var, '__id') and (" '"..var.__id.."'") or ""
-    res[#res+1] = spc.."+ "..tostring(self)
-    spc = spc .. "   "
-    -- variables
-    for k,v in pairs(var) do
-      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k, pattern) then
-        str = spc .. tostring(k)
-        if is_string(v) then
-          str = str.." : '"..tostring(v):sub(1,15).."'"
-        elseif is_function(v) then
-          str = str.." := "..tostring(v(self))
-        else
-          str = str.." :  "..tostring(v)
-        end
-        if cnt[k]
-        then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
-        else cnt[k] = 0 end
-        cnt[k] = cnt[k] + 1
-        res[#res+1] = str
-      end
-    end
-    self = parent(self)
-  end
-  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
-  res[#res+1] = ''
-  return table.concat(res, '\n')
-end
+-- local function strdump (self, class, pattern)
+--   class, pattern = class or Object, pattern or ''
+--   assert(is_object(self)   , "invalid argument #1 (object expected)")
+--   assert(is_object(class)  , "invalid argument #2 (object expected)")
+--   assert(is_string(pattern), "invalid argument #3 (string expected)")
+--   local cnt, res, spc, str = {}, {}, ""
+--   while self and self ~= class do
+--     local var = rawget(self,_var)
+--     -- header
+--     str = rawget(var, '__id') and (" '"..var.__id.."'") or ""
+--     res[#res+1] = spc.."+ "..tostring(self)
+--     spc = spc .. "   "
+--     -- variables
+--     for k,v in pairs(var) do
+--       if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k, pattern) then
+--         str = spc .. tostring(k)
+--         if is_string(v) then
+--           str = str.." : '"..tostring(v):sub(1,15).."'"
+--         elseif is_function(v) then
+--           str = str.." := "..tostring(v(self))
+--         else
+--           str = str.." :  "..tostring(v)
+--         end
+--         if cnt[k]
+--         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
+--         else cnt[k] = 0 end
+--         cnt[k] = cnt[k] + 1
+--         res[#res+1] = str
+--       end
+--     end
+--     self = parent(self)
+--   end
+--   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+--   res[#res+1] = ''
+--   return table.concat(res, '\n')
+-- end
 
 -- members
 M.__id  = 'Object'
@@ -673,8 +674,6 @@ M.is_open_env     = functor( is_open_env     )
 M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
 
-M.strdump         = functor( strdump         )
-
 -- aliases
 M.parent = parent
 M.name   = function(s) return s.__id end
@@ -690,8 +689,21 @@ setmetatable(M, Object)
 
 -- end of object model --------------------------------------------------------o
 
-local assertEquals, assertAlmostEquals, assertErrorMsgContains, assertNil,
-      assertTrue, assertFalse, assertNotEquals, assertStrContains in MAD.utest
+if MAD == nil then
+  utest = require("Luaunit")
+else
+  utest = MAD.utest
+end
+
+local assertEquals = utest.assertEquals
+local assertAlmostEquals = utest.assertAlmostEquals
+local assertErrorMsgContains = utest.assertErrorMsgContains
+local assertNil = utest.assertNil
+local assertTrue = utest.assertTrue
+local assertFalse = utest.assertFalse
+local assertNotEquals = utest.assertNotEquals
+local assertNotNil = utest.assertNotNil
+local assertStrContains = utest.assertStrContains
 
 -- regression test suite ------------------------------------------------------o
 
@@ -2230,81 +2242,10 @@ function TestLuaObject:testEnvReset()
 
   local status, msg = pcall(func)
   assertEquals(status, false)
-  assertEquals(string.gsub(msg, ':[0-9]+:', ''), "./luaobject.lua throw error")
+  assertNotNil(string.find(msg, "throw error"))
   p0:reset_env()
   assertFalse(p0:is_open_env())
   assertNil(p0.p0)
-end
-
-function TestLuaObjectErr:testStrDump()
-  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
-  local p1 = p0 'p1' {}
-  local msg = {
-    "invalid argument #2 (parent of argument #1 expected)",
-    "invalid argument #3 (string expected)"
-  }
-
-  for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.strdump, objectErr[i])
-  end
-  assertErrorMsgContains(_msg[2], p0.strdump, p0, 0)
-  assertErrorMsgContains(_msg[2], p0.strdump, p0, true)
-  assertErrorMsgContains(_msg[2], p0.strdump, p0, "")
-  assertErrorMsgContains(_msg[2], p0.strdump, p0, {})
-  assertErrorMsgContains(_msg[2], p0.strdump, p0, myFunc)
-
-  assertErrorMsgContains(msg[1], p0.strdump, p0, p1)
-
-  assertErrorMsgContains(msg[2], p0.strdump, p0, Object, 0)
-  assertErrorMsgContains(msg[2], p0.strdump, p0, Object, true)
-  assertErrorMsgContains(msg[2], p0.strdump, p0, Object, {})
-  assertErrorMsgContains(msg[2], p0.strdump, p0, Object, myFunc)
-  assertErrorMsgContains(msg[2], p0.strdump, p0, Object, Object)
-end
-
-function TestLuaObject:testStrDump()
-  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
-  local p1 = p0 'p1' {}
-  local p2 = p0 'p2' { x=-1, y={}, z2="", z3=function(s) return s.x end, z4=p1}
-  local str_p0 = [[
-+ 'p0' <object>
-   y :  2
-   x :  1
-   z := 3
-]]
-  local str_p1 = [[
-+ 'p2' <object>
-   x :  -1
-   y :  {}
-   z4 :  'p1' <object>
-   z2 : ''
-   z3 := -1
-   + 'p0' <object>
-      y :  2 (*)
-      x :  1 (*)
-      z := 3
-]]
-  local str_p1_np0 = [[
-+ 'p2' <object>
-   x :  -1
-   y :  {}
-   z4 :  'p1' <object>
-   z2 : ''
-   z3 := -1
-]]
-  local str_p1_pattern = [[
-+ 'p2' <object>
-   z4 :  'p1' <object>
-   z2 : ''
-   z3 := -1
-   + 'p0' <object>
-      z := 3
-]]
-  assertEquals(string.gsub(p0:strdump()  , '%s0x%x+' , ''), str_p0)
-  assertEquals(string.gsub(p2:strdump()  , '%s0x%x+' , ''), str_p1)
-  assertEquals(string.gsub(p2:strdump(p0), '%s0x%x+' , ''), str_p1_np0)
-  assertEquals(string.gsub(p2:strdump(nil, "z[0-9]?"), '%s0x%x+', ''),
-                str_p1_pattern)
 end
 
 -- examples test suite --------------------------------------------------------o
@@ -2443,7 +2384,7 @@ function Test_LuaObject:testDuplicates()
       for i=1,#s do s[i]=nil end
       return s
     end
-  }print("=============")
+  }
 
   local inp = DupFinder {'b','a','c','c','e','a','c','d','c','d'}
   local out = DupFinder {'a','c','d'}
@@ -2483,5 +2424,5 @@ end
 
 -- run as a standalone test with luajit
 if MAD == nil then
-  os.exit( lu.LuaUnit.run() )
+  os.exit( utest.LuaUnit.run() )
 end
