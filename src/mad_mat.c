@@ -82,7 +82,7 @@
     } \
   } \
   if (n & 4) { \
-    ssz_t j = n - n%8; \
+    ssz_t j = n - (n & 7); \
     for (ssz_t i=0; i < m; i++) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
@@ -95,7 +95,7 @@
     } \
   } \
   if (n & 2) { \
-    ssz_t j = n - n%4; \
+    ssz_t j = n - (n & 3); \
     for (ssz_t i=0; i < m; i++) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
       for (ssz_t k=0; k < p; k++) { \
@@ -186,7 +186,7 @@
     } \
   } \
   if (n & 4) { \
-    ssz_t j = n - n%8; \
+    ssz_t j = n - (n & 7); \
     for (ssz_t i=0; i < m; i++) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
@@ -199,7 +199,7 @@
     } \
   } \
   if (n & 2) { \
-    ssz_t j = n - n%4; \
+    ssz_t j = n - (n & 3); \
     for (ssz_t i=0; i < m; i++) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
       for (ssz_t k=0; k < p; k++) { \
@@ -287,7 +287,7 @@
     } \
   } \
   if (p & 4) { \
-    ssz_t k = p - p%8; \
+    ssz_t k = p - (p & 7); \
     for (ssz_t i=0; i < m; i++) { \
       for (ssz_t j=0; j < n; j++) { \
         r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
@@ -298,7 +298,7 @@
     } \
   } \
   if (p & 2) { \
-    ssz_t k = p - p%4; \
+    ssz_t k = p - (p & 3); \
     for (ssz_t i=0; i < m; i++) { \
       for (ssz_t j=0; j < n; j++) { \
         r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
@@ -571,7 +571,7 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
 
 num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
-{ CHKX; assert(x != r && n % 2 == 0);
+{ CHKX; assert(x != r && !(n & 1));
   num_t s=0, s0, s1, s2, s3;
   for (ssz_t i = 0; i < n-1; i += 2) {
     // i == j
@@ -602,7 +602,7 @@ num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
 }
 
 num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKX; assert(x != r && n % 2 == 0);
+{ CHKX; assert(x != r && !(n & 1));
   cnum_t s=0, s0, s1, s2, s3;
   for (ssz_t i = 0; i < n-1; i += 2) {
     // i == j
@@ -637,7 +637,7 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
 // M = [A B ; C D] => M^-1 = [D' -B' ; -C' A']
 
 void mad_mat_sympinv (const num_t x[], num_t r[], ssz_t n)
-{ CHKXR; assert(n % 2 == 0);
+{ CHKXR; assert(!(n & 1));
   num_t t;
   for (ssz_t i = 0; i < n-1; i += 2)
   for (ssz_t j = 0; j < n-1; j += 2) {
@@ -650,7 +650,7 @@ void mad_mat_sympinv (const num_t x[], num_t r[], ssz_t n)
 }
 
 void mad_cmat_sympinv (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKXR; assert(n % 2 == 0);
+{ CHKXR; assert(!(n & 1));
   cnum_t t;
   for (ssz_t i = 0; i < n-1; i += 2)
   for (ssz_t j = 0; j < n-1; j += 2) {
@@ -749,7 +749,7 @@ mad_mat_det (const num_t x[], num_t *r, ssz_t n)
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  *r = perm % 2 ? -det : det;
+  *r = perm & 1 ? -det : det;
   return info;
 }
 
@@ -770,7 +770,7 @@ mad_cmat_det (const cnum_t x[], cnum_t *r, ssz_t n)
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
   mad_free_tmp(a);
-  *r = perm % 2 ? -det : det;
+  *r = perm & 1 ? -det : det;
   return info;
 }
 
