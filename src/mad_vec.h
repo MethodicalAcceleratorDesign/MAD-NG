@@ -28,6 +28,7 @@
 
 // --- interface --------------------------------------------------------------o
 
+void   mad_vec_zero   (                                           num_t  r[], ssz_t n); //  0   -> vec
 void   mad_vec_fill   (                         num_t x        ,  num_t  r[], ssz_t n); //  num -> vec
 void   mad_vec_shift  (       num_t x[],                                      ssz_t n, int nshft);
 void   mad_vec_roll   (       num_t x[],                                      ssz_t n, int nroll);
@@ -65,6 +66,7 @@ void   mad_vec_rfft   (const  num_t x[],                         cnum_t  r[], ss
 void   mad_vec_nfft   (const  num_t x[], const num_t x_node[]  , cnum_t  r[], ssz_t n, ssz_t nr);
 void   mad_vec_center (const  num_t x[],                          num_t  r[], ssz_t n); //  vec -> vec-<vec>
 
+void   mad_cvec_zero  (                                          cnum_t  r[], ssz_t n); //  0    ->cvec
 void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], ssz_t n); //  cnum ->cvec
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t n); //  cnum ->cvec
 void   mad_cvec_shift (      cnum_t x[],                                      ssz_t n, int nshft);

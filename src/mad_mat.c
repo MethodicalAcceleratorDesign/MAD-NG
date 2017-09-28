@@ -45,307 +45,119 @@
 
 // -----
 
-#if 0
 // [m x n] = [m x p] * [p x n]
-// naive implementation (not vectorized)
+// portable vectorized matrix-matrix multiplication
 #define MMUL { /* mat * mat */ \
+  for (ssz_t ij=0; ij < m*n; ij++) \
+    r[ij] = 0; \
   for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i*n+j] += x[i*p+k] * y[k*n+j]; \
-  } \
+  for (ssz_t j=0; j < p; j++) \
+  for (ssz_t k=0; k < n; k++) \
+    r[i*n+k] += x[i*p+j] * y[j*n+k]; \
 }
-#else
-// [m x n] = [m x p] * [p x n]
-// portable vectorized general matrix-matrix multiplication
-// loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
-// get xN speed-up factor compared to dgemm from openblas and lapack...
-#define MMUL { /* mat * mat */ \
-  if (n >= 8) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n-7; j+=8) { \
-        r[i*n+j  ] = r[i*n+j+1] = \
-        r[i*n+j+2] = r[i*n+j+3] = \
-        r[i*n+j+4] = r[i*n+j+5] = \
-        r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (ssz_t k=0; k < p; k++) { \
-          r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
-          r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
-          r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
-          r[i*n+j+3] += x[i*p+k] * y[k*n+j+3]; \
-          r[i*n+j+4] += x[i*p+k] * y[k*n+j+4]; \
-          r[i*n+j+5] += x[i*p+k] * y[k*n+j+5]; \
-          r[i*n+j+6] += x[i*p+k] * y[k*n+j+6]; \
-          r[i*n+j+7] += x[i*p+k] * y[k*n+j+7]; \
-        } \
-      } \
-    } \
-  } \
-  if (n & 4) { \
-    ssz_t j = n - n%8; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j  ] = r[i*n+j+1] = \
-      r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
-        r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
-        r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
-        r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
-        r[i*n+j+3] += x[i*p+k] * y[k*n+j+3]; \
-      } \
-    } \
-  } \
-  if (n & 2) { \
-    ssz_t j = n - n%4; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j] = r[i*n+j+1] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
-        r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
-        r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
-      } \
-    } \
-  } \
-  if (n & 1) { \
-    ssz_t j = n - 1; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
-        r[i*n+j] += x[i*p+k] * y[k*n+j]; \
-    } \
-  } \
-}
-#endif
 
-// n==1: [m x 1] = [m x p] * [p x 1]
+// n=1: [m x 1] = [m x p] * [p x 1]
+// portable vectorized matrix-vector multiplication
 #define MULV /* mat * vec */ \
   for (ssz_t i=0; i < m; i++) { \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i] += x[i*p+k] * y[k]; \
+    for (ssz_t j=0; j < p; j++) \
+      r[i] += x[i*p+j] * y[j]; \
   }
 
-// m==1: [1 x n] = [1 x p] * [p x n]
-#define VMUL /* vec * mat */ \
-  for (ssz_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[j] += x[k] * y[k*n+j]; \
-  }
-
-// m==1, n==1: [1 x 1] = [1 x p] * [p x 1]
-#define IMUL /* inner */ \
-  { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[0] += x[k] * y[k]; \
-  }
+// m=1: [1 x n] = [1 x p] * [p x n]
+// portable vectorized vector-matrix multiplication
+#define VMUL { /* vec * mat */ \
+  for (ssz_t k=0; k < n; k++) \
+    r[k] = 0; \
+  for (ssz_t j=0; j < p; j++) \
+  for (ssz_t k=0; k < n; k++) \
+    r[k] += x[j] * y[j*n+k]; \
+}
 
 // [m x n] = [m x p] * [p x n]
 #define MUL() { \
-  if (m > 1 && n > 1) MMUL \
-  else    if (n == 1) MULV \
-  else    if (m == 1) VMUL \
-  else                IMUL \
+  if (m >= 2 && n >= 2) MMUL \
+  else      if (n == 1) MULV \
+  else                  VMUL \
 }
 
 // -----
 
-#if 0
 // [m x n] = [p x m]' * [p x n]
-// naive implementation (not vectorized)
+// portable vectorized transposed matrix-matrix multiplication
 #define TMMUL(C) { /* mat' * mat */ \
+  for (ssz_t ij=0; ij < m*n; ij++) \
+    r[ij] = 0; \
+  for (ssz_t j=0; j < p; j++) \
   for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
-  } \
+  for (ssz_t k=0; k < n; k++) \
+    r[i*n+k] += C(x[j*m+i]) * y[j*n+k]; \
 }
-#else
-// [m x n] = [p x m]' * [p x n]
-// portable vectorized general transpose matrix-matrix multiplication
-// loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
-// get ~ xN speed-up factor compared to dgemm from openblas and lapack...
-#define TMMUL(C) { /* mat' * mat */ \
-  if (n >= 8) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n-7; j+=8) { \
-        r[i*n+j  ] = r[i*n+j+1] = \
-        r[i*n+j+2] = r[i*n+j+3] = \
-        r[i*n+j+4] = r[i*n+j+5] = \
-        r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (ssz_t k=0; k < p; k++) { \
-          r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
-          r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
-          r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
-          r[i*n+j+3] += C(x[k*m+i]) * y[k*n+j+3]; \
-          r[i*n+j+4] += C(x[k*m+i]) * y[k*n+j+4]; \
-          r[i*n+j+5] += C(x[k*m+i]) * y[k*n+j+5]; \
-          r[i*n+j+6] += C(x[k*m+i]) * y[k*n+j+6]; \
-          r[i*n+j+7] += C(x[k*m+i]) * y[k*n+j+7]; \
-        } \
-      } \
-    } \
-  } \
-  if (n & 4) { \
-    ssz_t j = n - n%8; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j  ] = r[i*n+j+1] = \
-      r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
-        r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
-        r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
-        r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
-        r[i*n+j+3] += C(x[k*m+i]) * y[k*n+j+3]; \
-      } \
-    } \
-  } \
-  if (n & 2) { \
-    ssz_t j = n - n%4; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j] = r[i*n+j+1] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
-        r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
-        r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
-      } \
-    } \
-  } \
-  if (n & 1) { \
-    ssz_t j = n - 1; \
-    for (ssz_t i=0; i < m; i++) { \
-      r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
-        r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
-    } \
-  } \
-}
-#endif
 
-// n==1: [m x 1] = [p x m]' * [p x 1]
-#define TMULV(C) /* mat * vec */ \
-  for (ssz_t i=0; i < m; i++) { \
+// n=1: [m x 1] = [p x m]' * [p x 1]
+// portable vectorized transposed matrix-vector multiplication
+#define TMULV(C) { /* mat' * vec */ \
+  for (ssz_t i=0; i < m; i++) \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i] += C(x[k*m+i]) * y[k]; \
-  }
+  for (ssz_t j=0; j < p; j++) \
+  for (ssz_t i=0; i < m; i++) \
+    r[i] += C(x[j*m+i]) * y[j]; \
+}
 
-// m==1: [1 x n] = [p x 1]' * [p x n]
-#define TVMUL(C) /* vec * mat */ \
-  for (ssz_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[j] += C(x[k]) * y[k*n+j]; \
-  }
-
-// m==1, n==1: [1 x 1] = [p x 1]' * [p x 1]
-#define TIMUL(C) /* inner */ \
-  { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[0] += C(x[k]) * y[k]; \
-  }
+// m=1: [1 x n] = [p x 1]' * [p x n]
+// portable vectorized transposed vector-matrix multiplication
+#define TVMUL(C) { /* vec' * mat */ \
+  for (ssz_t k=0; k < n; k++) \
+    r[k] = 0; \
+  for (ssz_t j=0; j < p; j++) \
+  for (ssz_t k=0; k < n; k++) \
+    r[k] += C(x[j]) * y[j*n+k]; \
+}
 
 // [m x n] = [p x m]' * [p x n]
 #define TMUL(C) { \
-  if (m > 1 && n > 1) TMMUL(C) \
-  else    if (n == 1) TMULV(C) \
-  else    if (m == 1) TVMUL(C) \
-  else                TIMUL(C) \
+  if (m >= 2 && n >= 2) TMMUL(C) \
+  else      if (n == 1) TMULV(C) \
+  else                  TVMUL(C) \
 }
 
 // -----
 
-#if 0
 // [m x n] = [m x p] * [n x p]'
-// naive implementation (not vectorized)
+// portable vectorized matrix-matrix transposed multiplication
 #define MMULT(C) { /* mat * mat' */ \
+  for (ssz_t ij=0; ij < m*n; ij++) \
+    r[ij] = 0; \
   for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
-  } \
+  for (ssz_t k=0; k < n; k++) \
+  for (ssz_t j=0; j < p; j++) \
+    r[i*n+k] += x[i*p+j] * C(y[k*p+j]); \
 }
-#else
-// [m x n] = [m x p] * [n x p]'
-// portable vectorized general transpose matrix-matrix multiplication
-// loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
-// get ~ xN speed-up factor compared to dgemm from openblas and lapack...
-#define MMULT(C) { /* mat * mat' */ \
-  for (ssz_t i=0; i < m*n; i++) r[i] = 0; \
-  if (p >= 8) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
-        for (ssz_t k=0; k < p-7; k+=8) { \
-          r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-          r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-          r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
-          r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
-          r[i*n+j] += x[i*p+k+4] * C(y[j*p+k+4]); \
-          r[i*n+j] += x[i*p+k+5] * C(y[j*p+k+5]); \
-          r[i*n+j] += x[i*p+k+6] * C(y[j*p+k+6]); \
-          r[i*n+j] += x[i*p+k+7] * C(y[j*p+k+7]); \
-        } \
-      } \
-    } \
-  } \
-  if (p & 4) { \
-    ssz_t k = p - p%8; \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
-        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-        r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
-        r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
-      } \
-    } \
-  } \
-  if (p & 2) { \
-    ssz_t k = p - p%4; \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
-        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-      } \
-    } \
-  } \
-  if (p & 1) { \
-    ssz_t k = p - 1; \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) \
-        r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
-    } \
-  } \
-}
-#endif
 
-// n==1: [m x 1] = [m x p] * [1 x p]'
-#define MULVT(C) /* mat * vec */ \
+// n=1: [m x 1] = [m x p] * [1 x p]'
+// portable vectorized matrix-vector transposed multiplication
+#define MULVT(C) /* mat * vec' */ \
   for (ssz_t i=0; i < m; i++) { \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[i] += x[i*p+k] * C(y[k]); \
+    for (ssz_t j=0; j < p; j++) \
+      r[i] += x[i*p+j] * C(y[j]); \
   }
 
-// m==1: [1 x n] = [1 x p]' * [n x p]'
-#define VMULT(C) /* vec * mat */ \
-  for (ssz_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[j] += x[k] * C(y[j*p+k]); \
-  }
-
-// m==1, n==1: [1 x 1] = [1 x p] * [1 x p]'
-#define IMULT(C) /* inner */ \
-  { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
-      r[0] += x[k] * C(y[k]); \
+// m=1: [1 x n] = [1 x p] * [n x p]'
+// portable vectorized vector-matrix transposed multiplication
+#define VMULT(C) /* vec * mat' */ \
+  for (ssz_t k=0; k < n; k++) { \
+    r[k] = 0; \
+    for (ssz_t j=0; j < p; j++) \
+    r[k] += x[j] * C(y[k*p+j]); \
   }
 
 // [m x n] = [m x p] * [n x p]'
 #define MULT(C) { \
-  if (m > 1 && n > 1) MMULT(C) \
-  else    if (n == 1) MULVT(C) \
-  else    if (m == 1) VMULT(C) \
-  else                IMULT(C) \
+  if (m >= 2 && n >= 2) MMULT(C) \
+  else      if (n == 1) MULVT(C) \
+  else                  VMULT(C) \
 }
 
 // -----
@@ -387,7 +199,8 @@
     for (ssz_t i=0; i < m; i++) \
     for (ssz_t j=0; j < n; j++) \
       t[j*m+i] = C(x[i*n+j]); \
-    memcpy(r, t, m*n*sizeof(T)); \
+    for (ssz_t ij=0; ij < m*n; ij++) \
+      r[ij] = t[ij]; \
     mad_free_tmp(t); \
   } \
 }

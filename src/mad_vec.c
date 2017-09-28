@@ -40,6 +40,9 @@
 
 // --- vec
 
+void mad_vec_zero (num_t r[], ssz_t n)
+{ CHKR; for (ssz_t i=0; i < n; i++) r[i] = 0; }
+
 void mad_vec_fill (num_t x, num_t r[], ssz_t n)
 { CHKR; for (ssz_t i=0; i < n; i++) r[i] = x; }
 
@@ -224,23 +227,26 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
 
 // --- cvec
 
+void mad_cvec_zero (cnum_t r[], ssz_t n)
+{ CHKR; for (ssz_t i=0; i < n; i++) r[i] = 0; }
+
 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
 { CHKR; for (ssz_t i=0; i < n; i++) r[i] = x; }
 
 void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
 { mad_cvec_fill(CNUM(x_re,x_im), r, n); }
 
+void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
+{ CHKXR; if (x != r) for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
+
+void mad_cvec_rcopy (const cnum_t x[], cnum_t r[], ssz_t n)
+{ CHKXR; if (x != r) for (ssz_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
+
 void mad_cvec_shift (cnum_t x[], ssz_t n, int nshft)
 { mad_vec_shift((num_t*)x, 2*n, 2*nshft); }
 
 void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
 { mad_vec_roll((num_t*)x, 2*n, 2*nroll); }
-
-void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
-{ mad_vec_copy((const num_t*)x, (num_t*)r, 2*n); }
-
-void mad_cvec_rcopy (const cnum_t x[], cnum_t r[], ssz_t n)
-{ mad_vec_rcopy((const num_t*)x, (num_t*)r, 2*n); }
 
 void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 { assert( x && (re || ri) );
