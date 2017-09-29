@@ -61,7 +61,8 @@
 // portable vectorized general matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 #define MMUL() { /* mat * mat */ \
-  if (n >= 8) { \
+  assert(m>0 && n>0 && p>0); \
+  if (n & ~7) { \
     for (ssz_t i=0; i < m; i++) { \
       for (ssz_t j=0; j < n-7; j+=8) { \
         r[i*n+j  ] = r[i*n+j+1] = \
@@ -165,7 +166,8 @@
 // portable vectorized general transpose matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 #define TMMUL(C) { /* mat' * mat */ \
-  if (n >= 8) { \
+  assert(m>0 && n>0 && p>0); \
+  if (n & ~7) { \
     for (ssz_t i=0; i < m; i++) { \
       for (ssz_t j=0; j < n-7; j+=8) { \
         r[i*n+j  ] = r[i*n+j+1] = \
@@ -269,8 +271,9 @@
 // portable vectorized general transpose matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 #define MMULT(C) { /* mat * mat' */ \
+  assert(m>0 && n>0 && p>0); \
   for (ssz_t i=0; i < m*n; i++) r[i] = 0; \
-  if (p >= 8) { \
+  if (n & ~7) { \
     for (ssz_t i=0; i < m; i++) { \
       for (ssz_t j=0; j < n; j++) { \
         for (ssz_t k=0; k < p-7; k+=8) { \
