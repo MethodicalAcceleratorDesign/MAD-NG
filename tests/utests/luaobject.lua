@@ -286,12 +286,18 @@ local function var_val (self, k, v)
   else return v end
 end
 
-local function var_get (self, k)
-  return var_val(self,k, var_raw(self,k))
+local function var_get (self, k)      -- reusing var_raw and var_val kills the inlining
+  local v = rawget(self,_var)[k]
+  if is_string(k) and is_function(v)
+  then return v(self)
+  else return v end
 end
 
-function MT:__index (k)
-  return var_get(self, k)
+function MT:__index (k)               -- reusing var_raw and var_val kills the inlining
+  local v = rawget(self,_var)[k]
+  if is_string(k) and is_function(v)
+  then return v(self)
+  else return v end
 end
 
 function MT:__newindex (k, v)
@@ -2417,6 +2423,47 @@ function Test_LuaObject:testLinkedList()
   for i=1,n do s = s + find(l, 'x') end
   local dt = os.clock() - t0
   assertEquals( s, n )
+  assertAlmostEquals( dt, 0.5, 1 )
+end
+
+function Test_LuaObject:testSlides()
+  local Point = Object 'Point' { }
+  local p1 = Point 'p1' { x=3, y=2, z=1 }
+  local p2 = p1 'p2' { x=2, y=1 }
+  local p3 = p2 'p3' { x=1 }
+  local p4 = p3 'p4' { }
+  local s, t0, dt
+
+  s = 0
+  t0 = os.clock()
+  for i=1,5e8 do
+    s = p1.z + p2.z + p3.z + p4.z + s
+  end
+  dt = os.clock() - t0
+  assertEquals( s, 2000000000 )
+  assertAlmostEquals( dt, 0.5, 1 )
+
+  p1.getz = function(s) return s.z end
+
+  s=0
+  t0 = os.clock()
+  for i=1,5e8 do
+    s = p1.getz + p2.getz + p3.getz + p4.getz + s
+  end
+  dt = os.clock() - t0
+  assertEquals( s, 2000000000 )
+  assertAlmostEquals( dt, 0.5, 1 )
+
+  p1.getz = nil
+  p1:set_functions { getz = function(s) return s.z end }
+
+  s=0
+  t0 = os.clock()
+  for i=1,5e8 do
+    s = p1:getz() + p2:getz() + p3:getz() + p4:getz() + s
+  end
+  dt = os.clock() - t0
+  assertEquals( s, 2000000000 )
   assertAlmostEquals( dt, 0.5, 1 )
 end
 
