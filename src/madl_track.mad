@@ -235,7 +235,30 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 local minvolt, volt_c = 1e-6, 1e-3
 
-local E = element
+-- forward declarations -------------------------------------------------------o
+
+-- patches
+local entry_patch, exit_patch                                     -- patches
+local xrotation, yrotation, srotation                             -- rotations
+local translate, changedir, changeref                             -- specials
+
+-- drifts
+local straight_drift , rbend_drift, quadrupole_drift              -- straight
+local polar_drift    , sbend_drift, combined_drift                -- curved
+local solenoid_drift                                              -- solenoid
+local twcavity_drift                                              -- cavities
+
+-- kicks
+local thin_kick                                                   -- thin
+local straight_kick  , quadrupole_kick                            -- straight
+local polar_kick     , combined_kick                              -- curved
+local rfcavity_kick  , twcavity_kick                              -- cavities
+
+-- fringes
+local straight_fringe                                             -- straight
+local polar_fringe   , sbend_fringe                               -- curved
+local solenoid_fringe                                             -- solenoid
+local rfcavity_fringe, twcavity_fringe                            -- cavities
 
 -- special --------------------------------------------------------------------o
 
@@ -246,10 +269,122 @@ local function invalid_track (elm)
                       elm.name, elm.kind, elm.l))
 end
 
-E.  extra_element :set_functions { track = invalid_track,
-                               backtrack = invalid_track } -- not valid
-E.special_element :set_functions { track =   empty_track,
-                               backtrack =   empty_track } -- default
+element.  extra_element :set_functions { track = invalid_track,
+                                     backtrack = invalid_track } -- not valid
+element.special_element :set_functions { track =   empty_track,
+                                     backtrack =   empty_track } -- default
+
+-- patches --------------------------------------------------------------------o
+
+-- X-rotation (pitch)
+
+function xrotation (_, m, angle)   -- ROT_YZR <-> Rx(angle)
+  if abs(angle) < minang then return end -- XZrot with x,px <-> y,py)
+
+  local x, px, y, py, t, pt, sdir in m
+  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
+  local _beta = 1/m.beam.beta
+  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local   _pz = 1/pz
+  local   ptt = 1 - ta*py*_pz
+  local  _ptt = 1/ptt
+
+  m.y  = y/(ca*ptt)
+  m.py = ca*py + sa*pz
+  m.x  = x + ta*y*px*_pz*_ptt
+  m.t  = t - ta*y   *_pz*_ptt*(_beta+pt)
+end
+
+-- Y-rotation (yaw)
+
+function yrotation (_, m, angle)   -- ROT_XZR (Dragt's PROT) <-> Ry(angle)
+  if abs(angle) < minang then return end
+
+  local x, px, y, py, t, pt, sdir in m
+  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
+  local _beta = 1/m.beam.beta
+  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local   _pz = 1/pz
+  local   ptt = 1 - ta*px*_pz
+  local  _ptt = 1/ptt
+
+  m.x  = x/(ca*ptt)
+  m.px = ca*px + sa*pz
+  m.y  = y + ta*x*py*_pz*_ptt
+  m.t  = t - ta*x   *_pz*_ptt*(_beta+pt)
+end
+
+-- S-rotation (roll, tilt)
+
+function srotation (_, m, angle)   -- XYrot <-> Rz(-angle)?
+  if abs(angle) < minang then return end
+
+  local x, px, y, py, bdir in m
+  local sa, ca = sin(angle*bdir), cos(angle*bdir)
+
+  m.x  = ca*x  + sa*y
+  m.y  = ca*y  - sa*x
+  m.px = ca*px + sa*py
+  m.py = ca*py - sa*px
+end
+
+-- Translation (dz treated as drift length)
+
+function translate (_, m, dx, dy, dz)
+  local bdir in m
+
+  straight_drift(nil, m, dz)
+  m.x = m.x - dx*bdir
+  m.y = m.y - dy*bdir
+end
+
+-- Changedir (reverse x and angles)
+
+function changedir(_, m)
+  m.sdir = -m.sdir
+  m.bdir = -m.bdir
+end
+
+-- Changeref (change reference frame)
+
+function changeref (elm, m)
+  local x, y, z, theta, phi, psi in elm
+  xrotation(nil, m, phi   or 0)                    -- phi  : Elevation angle.
+  yrotation(nil, m, theta or 0)                    -- theta: Azimuthal angle.
+  srotation(nil, m, psi   or 0)                    -- psi  : Roll      angle.
+  translate(nil, m, x or 0, y or 0, z or 0)
+end
+
+-- Entry/Exit patches
+
+ -- not correct, need local survey patch
+function entry_patch (elm, m)
+  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
+  local x, y, z, dx, dy, dz in elm
+  local mdir in m
+  -- TODO: survey m.S (mdir = -1)
+  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  translate(nil, m, (x or 0)+(dx or 0),
+                    (y or 0)+(dy or 0),
+                   ((z or 0)+(dz or 0))*mdir )
+  srotation(nil, m, tilt)
+end
+
+function exit_patch (elm, m)
+  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
+  local x, y, z, dx, dy, dz in elm
+  local mdir in m
+  -- TODO: survey m.S (mdir = 1)
+  srotation(nil, m, -tilt)
+  translate(nil, m, (x or 0)+(dx or 0),
+                    (y or 0)+(dy or 0),
+                   ((z or 0)+(dz or 0))*mdir )
+  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
+  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
+  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
+end
 
 -- strengths and phases -------------------------------------------------------o
 
@@ -343,11 +478,6 @@ local function get_bxby (nmul, knl, ksl, x, y, lw)
 end
 
 -- drifts ---------------------------------------------------------------------o
-
--- forward declarations
-local straight_drift, rbend_drift, quadrupole_drift   -- straight
-local polar_drift   , sbend_drift, combined_drift     -- curved
-local solenoid_drift                                  -- solenoid
 
 __help['track: exact straight drift'] = [=[
   [Wolski14] p.86, ch. 3.1, eq. 3.13-3.18
@@ -601,11 +731,6 @@ __help['track: pseudo-exact combined drift'] = [=[
 
 -- kicks ----------------------------------------------------------------------o
 
--- forward delarations
-local straight_kick, quadrupole_kick   -- straight
-local polar_kick   , combined_kick     -- curved
-local thin_kick    , rfcavity_kick     -- thin, cavity
-
 __help['track: generic thin kick'] = [[
   [MADX-PTC] Function KICKTR in file Sh_def_kind.f90
 ]]
@@ -786,10 +911,6 @@ end
 
 -- fringes --------------------------------------------------------------------o
 
--- forward declarations
-local straight_fringe, sbend_fringe     -- straight, curved
-local solenoid_fringe, rfcavity_fringe  -- solenoid, cavity
-
 __help['track: straight fringe'] = [=[
   [Forest98] p. 389, ch. 13.2.2, eq. 13.31a-13.31f
 ]=]
@@ -957,121 +1078,6 @@ function sbend_fringe (elm, m, l)
     return straight_fringe(elm,m,l)
   end
   sbend_fringe_ptc(elm, m, l)
-end
-
--- patches --------------------------------------------------------------------o
-
--- forward declarations
-
-local xrotation, yrotation, srotation, translate, changedir, changeref
-local forward_patch, backward_patch
-
--- X-rotation (pitch)
-
-function xrotation (_, m, angle)   -- YZrot <-> Rx(angle)
-  if abs(angle) < minang then return end -- XZrot with x,px <-> y,py)
-
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
-  local _beta = 1/m.beam.beta
-  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local _pz = 1/pz
-  local ptt = 1 - ta*py*_pz
-
-  m.y  = y/(ca*ptt)
-  m.py = ca*py + sa*pz
-  m.x  = x + ta*y*px*_pz/ptt
-  m.t  = t - ta*y*_pz*(_beta+pt)/ptt
-end
-
--- Y-rotation (yaw)
-
-function yrotation (_, m, angle)   -- XZrot (Dragt's PROT) <-> Ry(angle)
-  if abs(angle) < minang then return end
-
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
-  local _beta = 1/m.beam.beta
-  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local _pz = 1/pz
-  local ptt = 1 - ta*px*_pz
-
-  m.x  = x/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + ta*x*py*_pz/ptt
-  m.t  = t - ta*x*_pz*(_beta+pt)/ptt
-end
-
--- S-rotation (roll, tilt)
-
-function srotation (_, m, angle)   -- XYrot <-> Rz(-angle)?
-  if abs(angle) < minang then return end
-
-  local x, px, y, py, bdir in m
-  local sa, ca = sin(angle*bdir), cos(angle*bdir)
-
-  m.x  = ca*x  + sa*y
-  m.y  = ca*y  - sa*x
-  m.px = ca*px + sa*py
-  m.py = ca*py - sa*px
-end
-
--- Translation (dz treated as drift length)
-
-function translate (_, m, dx, dy, dz)
-  local bdir in m
-
-  straight_drift(nil, m, dz)
-  m.x = m.x - dx*bdir
-  m.y = m.y - dy*bdir
-end
-
--- Changedir (reverse x and angles)
-
-function changedir(_, m)
-  m.sdir = -m.sdir
-  m.bdir = -m.bdir
-end
-
--- Changeref (change reference frame)
-
-function changeref (elm, m)
-  local x, y, z, theta, phi, psi in elm
-  xrotation(nil, m, phi   or 0)                    -- phi  : Elevation angle.
-  yrotation(nil, m, theta or 0)                    -- theta: Azimuthal angle.
-  srotation(nil, m, psi   or 0)                    -- psi  : Roll      angle.
-  translate(nil, m, x or 0, y or 0, z or 0)
-end
-
--- Entry/Exit patches
-
- -- not correct, need local survey patch
-function entry_patch (elm, m)
-  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
-  local x, y, z, dx, dy, dz in elm
-  local mdir in m
-  -- TODO: survey m.S (mdir = -1)
-  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
-  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  translate(nil, m, (x or 0)+(dx or 0),
-                    (y or 0)+(dy or 0),
-                   ((z or 0)+(dz or 0))*mdir )
-  srotation(nil, m, tilt)
-end
-
-function exit_patch (elm, m)
-  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
-  local x, y, z, dx, dy, dz in elm
-  local mdir in m
-  -- TODO: survey m.S (mdir = 1)
-  srotation(nil, m, -tilt)
-  translate(nil, m, (x or 0)+(dx or 0),
-                    (y or 0)+(dy or 0),
-                   ((z or 0)+(dz or 0))*mdir )
-  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
 end
 
 -- sbend ----------------------------------------------------------------------o
@@ -1612,7 +1618,7 @@ end
 
 -- sequence tracking ----------------------------------------------------------o
 
-local dft = E.drift {}
+local dft = element.drift {}
 
 local function sequ_track (seq, map, rng_, ntrn_)
   local tbl = map.mtable
@@ -1708,6 +1714,8 @@ end
 
 -- load maps into elements ----------------------------------------------------o
 
+local E = element
+
 E.patch_element :set_functions {    track = patch_track,
                                 backtrack = patch_backtrack }
 
@@ -1721,9 +1729,8 @@ E.thick_element :set_functions {    track = thick_track,
                                 backtrack = thick_backtrack }
 
 E.sequence :set_readonly(false)
-           :set_functions {         track = sequ_track,
-                                backtrack = sequ_backtrack }
-           :set_readonly()
+                :set_functions {    track = sequ_track,
+                                backtrack = sequ_backtrack } :set_readonly()
 
 -- specialized maps
 
