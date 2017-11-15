@@ -1,0 +1,304 @@
+
+local dat = require 'madl_plotdat'
+local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
+local Command                                                 in MAD
+local strinterp                                               in MAD.utility
+
+-- gplot ----------------------------------------------------------------------o
+
+local _gpd = {}
+
+local function gp_create(gp, id_)
+  local gnuplot = assert(io.popen('gnuplot', 'w'))
+  if is_number(id_) then gp[_gpd][id_] = gnuplot end
+  return gnuplot
+end
+
+local function gp_get (gp, id)
+  local dat = gp[_gpd]
+  if is_nil( dat[id] ) then gp_create( gp, id ) end
+  if id ~= '__cur_id'  then dat.__cur_id = id end
+  return dat[id]
+end
+
+local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
+  __index = gp_get,
+  __call  = \gp,cmd -> gp[gp[_gpd].__cur_id]:write(cmd)
+})
+
+-- layout ---------------------------------------------------------------------o
+
+local setup_layout = [[
+unset tmargin
+unset bmargin
+unset title
+unset arrow
+unset ylabel
+unset xlabel
+unset xtics
+unset ytics
+unset y2tics
+unset y2label
+unset key
+set xzeroaxis
+set border 0
+set yrange [-1:1]
+plot '-' using 1:2 with lines linestyle 1 linecolor rgb 'black'
+]]
+
+local teardown_layout = [[
+set xrange [$min:$max]
+set xtics
+set ytics
+set border 15
+set autoscale y
+]]
+
+local xadjust = \x,l,s -> x*l + s -- correct ??? (x+1)*l + s-l
+
+-- return the shape of an element in x and y
+local function eShap(elem)
+  local shape = dat[elem.kind]
+  local h     = elem[shape.str_k] or 1
+
+  local sh
+  if     shape.shape then sh = shape.shape
+  elseif h > 0       then sh = shape.shape_f
+  else                    sh = shape.shape_d
+  end
+
+  local x_sh, y_sh
+  if is_table(sh.x[1]) then x_sh, y_sh = sh.x, sh.y
+  else                      x_sh, y_sh = {sh.x}, {sh.y}
+  end
+  return x_sh, y_sh
+end
+
+-- stream layout data
+local function layout_data(param)
+  local plotter, sequence, seqrange in param
+  for i,elem in sequence:iter(seqrange) do
+    local s = sequence:spos(i)
+    local l = elem.l
+    param.min = param.min or s
+    param.max = s
+    -- test if s or l are nil                                 -- TODO needed ???
+    local x_sh, y_sh = eShap(elem)
+    for j=1,#x_sh do
+      local xj, yj = x_sh[j], y_sh[j]
+      for k=1,#xj do
+        local xk = xadjust(xj[k], l, s)
+        local yk = yj[k]
+        plotter:write(xk .. " " .. yk .. "\n")
+      end
+      plotter:write("\n")
+    end
+  end
+  plotter:write("e\n")
+end
+
+-- main layout function
+local function layout(param)
+  param.plotter:write(setup_layout)
+  layout_data(param)
+  param.plotter:write(teardown_layout % param)
+end
+
+-- plot -----------------------------------------------------------------------o
+
+local setup_plot = [[
+set grid
+set border 15
+set title 'plot MAD 0.2.0, 07/11/17, 17:13:11'
+set key left top
+set xlabel 's '
+set ylabel 'x y '
+]]
+
+local teardown_plot = [[
+
+]]
+
+-- get vector from label
+local function getv(data, tbl, label)
+  if label then
+    return data and data[label] or tbl[label]
+  end
+  return nil
+end
+
+-- parse input axis and apply func to each label
+local function parse_axis(param, func)
+  local _axis = {'x1y1', 'x1y2', 'x2y1', 'x2y2'}
+  for _,axis_name in ipairs(_axis) do
+    local axis = param[axis_name]
+    if is_string(axis) then                  -- e.g. x1y1 = 'y1'
+      func(param, nil, axis, axis_name)
+    elseif is_table(axis) and axis[1] then   -- e.g. x1y1 = {'y1', 'y2'}
+      for i,y in ipairs(axis) do
+        func(param, nil, y, axis_name)
+      end
+    elseif is_table(axis) then
+      for x,y in pairs(axis) do
+        if is_string(y) then                 -- e.g. x1y1 = { x1 = 'y1' }
+          func(param, x, y, axis_name)
+        elseif is_table(y) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+          for _,yi in pairs(y) do
+            func(param, x, yi, axis_name)
+          end
+        end
+      end
+    end
+  end
+end
+
+-- stream one plot data
+local function plot_data(param, xlbl, ylbl)
+  local x = getv(param.data, param.table, xlbl)
+  local y = getv(param.data, param.table, ylbl)
+  local plotter = param.plotter
+  for i=1,#x do
+    local x = x and x[i] or i -- use index if x is nil
+    plotter:write(x .. " " .. y[i] .. "\n")
+  end
+  plotter:write("e\n")
+end
+
+-- stream the gnuplot 'plot' command
+local function plot_cmd(param, _, _, axis)
+  local cmd = strinterp("$cmd using 1:2 with \z
+                linespoints pointtype 1 pointsize 0.1 \z
+                linecolor 'red' title 'z' axes $axis,\\\n",
+                { axis=axis }, false) % param
+  param.cmd = "     '' "               -- only the first command need "plot '-'"
+  param.plotter:write(cmd)
+end
+
+-- main plot function
+local function plot(param)
+  param.cmd = "plot '-'",
+  param.plotter:write(setup_plot)
+  parse_axis(param, plot_cmd)
+  param.plotter:write("\n")
+  parse_axis(param, plot_data)
+  param.plotter:write(teardown_plot)
+end
+
+-- command --------------------------------------------------------------------o
+
+local function multiplot(param)
+    param.plotter:write("set multiplot layout 1,2 downwards \n")
+    param.plotter:write([[
+set lmargin at screen 0.1
+set rmargin at screen 0.9
+set size 1,0.15
+set origin 0,0.85
+]])
+    layout(param)
+    param.plotter:write([[
+set origin 0,0
+set size 1,0.85
+]]);
+    plot(param)
+    param.plotter:write("unset multiplot\n")
+end
+
+local function exec(self)
+
+  local plotter = io.open("script.txt", "w")
+
+  local param = {
+    plotter = plotter,
+  }
+  setmetatable(param, {__index=self})
+
+  if self.sequence and (self.table or self.data) then
+    multiplot(param)
+  else
+    if is_sequence(self.sequence) then
+      layout(param)
+    end
+    if self.table or self.data then
+      plot(param)
+    end
+  end
+  return self
+end
+
+local plot = Command 'plot' {
+ ----TO BE CLEANED -------------------------------------------------------------
+
+  font = {name = "Times-Roman", size = 18}, -- switch into multiple font choices
+  hmargin  = false,                         -- to be removed
+  vmargin  = true ,                         -- to be removed
+
+  ------------------------------------------------------------------------------
+
+  -- stream id
+  sid         = 1,      -- stream id
+
+  -- plot setup
+  wid         = 1,      -- window id (it not file...)
+
+  -- table or data input
+  data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
+  table       = false,
+  datrange    = false, -- 1..100,                           -- TODO ???
+
+  -- sequence input
+  sequence    = false,
+  seqrange    = {1,-1},   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
+                          -- TODO selected elements, if false all selected
+
+  -- decoration
+  title       = "$name MAD $version, $date, $time",
+  titlefont   = {name = "Times-Roman", size = 18},                              -- TODO
+  legendname  = false,            -- { y = 'distance' }
+  legendfont  = {name = "Times-Roman", size = 18},                              -- TODO
+  legendpos   = "left top",
+  grid        = 'grid',
+
+  -- files
+  filename    = false,            -- 'filename.pdf'
+  scrdump     = false,            -- dumpfilename or true and (filename.gp or script.gp)
+
+  -- axis selection (and names)
+  x1y1        = false,
+  x1y2        = false,
+  x2y1        = false,
+  x2y2        = false,
+
+  -- axis labels
+  xlabel      = false,            -- { betx = 'Beta x' }
+  x2label     = false,
+  ylabel      = false,
+  y2label     = false,
+
+  -- axis ranges and margin (bounding box)
+  xrange      = false,            -- { min, max }
+  x2range     = false,            -- { min, max }
+  yrange      = false,            -- { min, max }
+  y2range     = false,            -- { min, max }
+
+  -- plot style
+  styles      = 'linespoints',    -- { y = 'lines' }
+  colors      = false,            -- { y = 'green' }
+  pointtypes  = false,
+  pointsizes  = false,
+  linetypes   = false,
+  linewidths  = false,
+
+-- gnuplot setup -> GP object
+  margins     = {left = 0.1, right = 0.9, top = 0.1, bottom = 0.9},
+  wsize       = {x = 20, y =10.5},
+
+  -- build the command (do not execute)
+  exec = exec,
+} :set_readonly()
+
+-- end ------------------------------------------------------------------------o
+
+return {
+  nplot = plot,
+  ngplot = gplot
+}
