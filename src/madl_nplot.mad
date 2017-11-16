@@ -26,6 +26,50 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
   __call  = \gp,cmd -> gp[gp[_gpd].__cur_id]:write(cmd)
 })
 
+-- stream proxy ---------------------------------------------------------------o
+
+local function swrite(self, data)
+  for _,s in ipairs(self) do
+    s:write(data)
+  end
+end
+
+local function sclose(self)
+  for _,s in ipairs(self) do
+    s:close()
+  end
+end
+
+local function sflush(self)
+  for _,s in ipairs(self)  do
+    s:flush()
+  end
+end
+
+local function create_sproxy(param)
+  local s = { write=swrite, close=sclose, flush=sflush }
+  local windows, filename, scrdump in param
+  if windows then
+    local p = assert(io.popen('gnuplot', 'w'))
+    p:write("set term $term $wid size $wsizex, $wsizey\n" % param)
+    s[#s+1] = p
+  end
+
+  if filename then
+    local p = assert(io.popen('gnuplot', 'w'))
+    local filename = is_string(filename) and filename or "plot"
+    p:write("set term pdfcairo\n")
+    p:write("set out '" .. filename .. ".pdf'\n")     -- TODO unset out on close
+    s[#s+1] = p
+  end
+
+  if scrdump  then
+    local filename = is_string(scrdump) and scrdump or "plot"
+    s[#s+1] = io.open(filename .. ".gp", "w")
+  end
+  return s
+end
+
 -- layout ---------------------------------------------------------------------o
 
 local setup_layout = [[
@@ -111,8 +155,6 @@ set grid
 set border 15
 set title 'plot MAD 0.2.0, 07/11/17, 17:13:11'
 set key left top
-set xlabel 's '
-set ylabel 'x y '
 ]]
 
 local teardown_plot = [[
@@ -122,7 +164,7 @@ local teardown_plot = [[
 -- get vector from label
 local function getv(data, tbl, label)
   if label then
-    return data and data[label] or tbl[label]
+    return data and data[label] or tbl[label] or error("invalid label")
   end
   return nil
 end
@@ -174,39 +216,76 @@ local function plot_cmd(param, _, _, axis)
   param.plotter:write(cmd)
 end
 
+-- set the range command for all axis
+local function set_ranges(param)
+  local plotter in param
+  local names = {'x2range', 'yrange', 'y2range'}
+  for _,rname in ipairs(names) do
+    local range = param[rname]
+    if range then
+      local min, max = range[1], range[2]
+      local cmd = string.format("set %s [%f:%f]\n", rname, min, max)
+      plotter:write(cmd)
+    end
+  end
+  if not param.seqrange and param.xrange then
+    local xrange in param
+    local min, max = xrange[1], xrange[2]
+    local cmd = string.format("set xrange [%f:%f]\n", min, max)
+    plotter:write(cmd)
+  end
+end
+
+local function set_label(param)
+  local plotter in param
+  local names = {'xlabel', 'x2label', 'ylabel', 'y2label'}
+  for _,lname in ipairs(names) do
+    local label = param[lname]
+    if label then
+      local cmd = string.format("set %s '%s'\n", lname, label)
+      plotter:write(cmd)
+    end
+  end
+end
+
 -- main plot function
 local function plot(param)
-  param.cmd = "plot '-'",
-  param.plotter:write(setup_plot)
+  local plotter in param
+  set_ranges(param)
+  set_label(param)
+  param.cmd = "plot '-'"
+  plotter:write(setup_plot)
   parse_axis(param, plot_cmd)
-  param.plotter:write("\n")
+  plotter:write("\n")
   parse_axis(param, plot_data)
-  param.plotter:write(teardown_plot)
+  plotter:write(teardown_plot)
 end
 
 -- command --------------------------------------------------------------------o
 
+
+-- create a graph with both the layout and the plot part
 local function multiplot(param)
-    param.plotter:write("set multiplot layout 1,2 downwards \n")
-    param.plotter:write([[
+  local plotter in param
+  plotter:write("set multiplot layout 1,2 downwards \n")
+  plotter:write([[
 set lmargin at screen 0.1
 set rmargin at screen 0.9
 set size 1,0.15
 set origin 0,0.85
 ]])
-    layout(param)
-    param.plotter:write([[
+  layout(param)
+  plotter:write([[
 set origin 0,0
 set size 1,0.85
 ]]);
-    plot(param)
-    param.plotter:write("unset multiplot\n")
+  plot(param)
+  plotter:write("unset multiplot\n")
 end
 
 local function exec(self)
 
-  local plotter = io.open("script.txt", "w")
-
+  local plotter = create_sproxy(self)
   local param = {
     plotter = plotter,
   }
@@ -222,6 +301,7 @@ local function exec(self)
       plot(param)
     end
   end
+  plotter:flush()
   return self
 end
 
@@ -237,13 +317,17 @@ local plot = Command 'plot' {
   -- stream id
   sid         = 1,      -- stream id
 
-  -- plot setup
+  -- windows setup
+  windows     = true,
   wid         = 1,      -- window id (it not file...)
+  term        = 'wxt',
+  wsizex      = 800,
+  wsizey      = 500,
 
   -- table or data input
   data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
   table       = false,
-  datrange    = false, -- 1..100,                           -- TODO ???
+  datrange    = false, -- 1..100,                                    -- TODO ???
 
   -- sequence input
   sequence    = false,
@@ -252,33 +336,33 @@ local plot = Command 'plot' {
 
   -- decoration
   title       = "$name MAD $version, $date, $time",
-  titlefont   = {name = "Times-Roman", size = 18},                              -- TODO
+  titlefont   = {name = "Times-Roman", size = 18},                    -- TODO
   legendname  = false,            -- { y = 'distance' }
-  legendfont  = {name = "Times-Roman", size = 18},                              -- TODO
+  legendfont  = {name = "Times-Roman", size = 18},                    -- TODO
   legendpos   = "left top",
   grid        = 'grid',
 
   -- files
-  filename    = false,            -- 'filename.pdf'
-  scrdump     = false,            -- dumpfilename or true and (filename.gp or script.gp)
+  filename    = false,            -- pdf name or true (filename.pdf or plot.pdf)
+  scrdump     = false,            -- script name or true (scrdump.gp or plot.gp)
 
   -- axis selection (and names)
-  x1y1        = false,
-  x1y2        = false,
-  x2y1        = false,
-  x2y2        = false,
-
+  x1y1        = false,    -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
+  x1y2        = false,    -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+  x2y1        = false,    -- e.g. x1y1 = { x1 = 'y1'}
+  x2y2        = false,    -- e.g. x1y1 = {'y1', 'y2'}
+                          -- e.g. x1y1 = 'y1'
   -- axis labels
-  xlabel      = false,            -- { betx = 'Beta x' }
+  xlabel      = false,            -- strings
   x2label     = false,
   ylabel      = false,
   y2label     = false,
 
   -- axis ranges and margin (bounding box)
   xrange      = false,            -- { min, max }
-  x2range     = false,            -- { min, max }
-  yrange      = false,            -- { min, max }
-  y2range     = false,            -- { min, max }
+  x2range     = false,
+  yrange      = false,
+  y2range     = false,
 
   -- plot style
   styles      = 'linespoints',    -- { y = 'lines' }
@@ -288,9 +372,11 @@ local plot = Command 'plot' {
   linetypes   = false,
   linewidths  = false,
 
--- gnuplot setup -> GP object
-  margins     = {left = 0.1, right = 0.9, top = 0.1, bottom = 0.9},
-  wsize       = {x = 20, y =10.5},
+  -- setup
+  lmargin = 0.1,
+  rmargin = 0.9,
+  tmargin = 0.1,
+  bmargin = 0.9,
 
   -- build the command (do not execute)
   exec = exec,
