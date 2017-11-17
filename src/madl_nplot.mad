@@ -4,13 +4,26 @@ local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
 local Command                                                 in MAD
 local strinterp                                               in MAD.utility
 
+-- global default -------------------------------------------------------------o
+
+local _dflt = {
+  color    = 'red',
+  style    = 'linespoints',
+  dashtype = 'solid',
+  filename = "plot",
+}
+
 -- gplot ----------------------------------------------------------------------o
 
 local _gpd = {}
 
-local function gp_create(gp, id_)
+local function has_plotter(gp, id)
+  return not not gp[_gpd][id]
+end
+
+local function gp_create(gp, id)
   local gnuplot = assert(io.popen('gnuplot', 'w'))
-  if is_number(id_) then gp[_gpd][id_] = gnuplot end
+  gp[_gpd][id] = gnuplot
   return gnuplot
 end
 
@@ -23,52 +36,8 @@ end
 
 local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
   __index = gp_get,
-  __call  = \gp,cmd -> gp[gp[_gpd].__cur_id]:write(cmd)
+  __call  = \gp,... -> gp[gp[_gpd].__cur_id]:write(...)
 })
-
--- stream proxy ---------------------------------------------------------------o
-
-local function swrite(self, data)
-  for _,s in ipairs(self) do
-    s:write(data)
-  end
-end
-
-local function sclose(self)
-  for _,s in ipairs(self) do
-    s:close()
-  end
-end
-
-local function sflush(self)
-  for _,s in ipairs(self)  do
-    s:flush()
-  end
-end
-
-local function create_sproxy(param)
-  local s = { write=swrite, close=sclose, flush=sflush }
-  local windows, filename, scrdump in param
-  if windows then
-    local p = assert(io.popen('gnuplot', 'w'))
-    p:write("set term $term $wid size $wsizex, $wsizey\n" % param)
-    s[#s+1] = p
-  end
-
-  if filename then
-    local p = assert(io.popen('gnuplot', 'w'))
-    local filename = is_string(filename) and filename or "plot"
-    p:write("set term pdfcairo\n")
-    p:write("set out '" .. filename .. ".pdf'\n")     -- TODO unset out on close
-    s[#s+1] = p
-  end
-
-  if scrdump  then
-    local filename = is_string(scrdump) and scrdump or "plot"
-    s[#s+1] = io.open(filename .. ".gp", "w")
-  end
-  return s
-end
 
 -- layout ---------------------------------------------------------------------o
 
@@ -77,11 +46,13 @@ unset tmargin
 unset bmargin
 unset title
 unset arrow
-unset ylabel
-unset xlabel
 unset xtics
+unset x2tics
+unset xlabel
+unset x2label
 unset ytics
 unset y2tics
+unset ylabel
 unset y2label
 unset key
 set xzeroaxis
@@ -92,10 +63,7 @@ plot '-' using 1:2 with lines linestyle 1 linecolor rgb 'black'
 
 local teardown_layout = [[
 set xrange [$min:$max]
-set xtics
-set ytics
-set border 15
-set autoscale y
+set yrange [*:*]
 ]]
 
 local xadjust = \x,l,s -> x*l + s -- correct ??? (x+1)*l + s-l
@@ -126,14 +94,13 @@ local function layout_data(param)
     local l = elem.l
     param.min = param.min or s
     param.max = s
-    -- test if s or l are nil                                 -- TODO needed ???
     local x_sh, y_sh = eShap(elem)
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
       for k=1,#xj do
         local xk = xadjust(xj[k], l, s)
         local yk = yj[k]
-        plotter:write(xk .. " " .. yk .. "\n")
+        plotter:write(xk, " ", yk, "\n")
       end
       plotter:write("\n")
     end
@@ -143,23 +110,13 @@ end
 
 -- main layout function
 local function layout(param)
-  param.plotter:write(setup_layout)
+  local plotter in param
+  plotter:write(setup_layout)
   layout_data(param)
-  param.plotter:write(teardown_layout % param)
+  plotter:write(teardown_layout % param)
 end
 
 -- plot -----------------------------------------------------------------------o
-
-local setup_plot = [[
-set grid
-set border 15
-set title 'plot MAD 0.2.0, 07/11/17, 17:13:11'
-set key left top
-]]
-
-local teardown_plot = [[
-
-]]
 
 -- get vector from label
 local function getv(data, tbl, label)
@@ -194,24 +151,33 @@ local function parse_axis(param, func)
   end
 end
 
--- stream one plot data
+-- stream one plot data (used in parse_axis)
 local function plot_data(param, xlbl, ylbl)
   local x = getv(param.data, param.table, xlbl)
   local y = getv(param.data, param.table, ylbl)
   local plotter = param.plotter
   for i=1,#x do
     local x = x and x[i] or i -- use index if x is nil
-    plotter:write(x .. " " .. y[i] .. "\n")
+    plotter:write(x, " ", y[i], "\n")
   end
   plotter:write("e\n")
 end
 
--- stream the gnuplot 'plot' command
-local function plot_cmd(param, _, _, axis)
+-- stream the gnuplot 'plot' command (used in parse_axis)
+local function plot_cmd(param, _, y, axis)
+  local colors, styles, dashtypes in param
+  local values = {
+    color    = is_table(colors)    and (colors[y]    or _dflt.color)    or colors,
+    style    = is_table(styles)    and (styles[y]    or _dflt.style)    or styles,
+    dashtype = is_table(dashtypes) and (dashtypes[y] or _dflt.dashtype) or dashtypes,
+    title    = y,
+    axis     = axis,
+  }                                         -- TODO pointtype 1 pointsize 0.1
   local cmd = strinterp("$cmd using 1:2 with \z
-                linespoints pointtype 1 pointsize 0.1 \z
-                linecolor 'red' title 'z' axes $axis,\\\n",
-                { axis=axis }, false) % param
+                $style \z
+                dashtype $dashtype \z
+                linecolor '$color' title '$title' axes $axis,\\\n",
+                values, false) % param
   param.cmd = "     '' "               -- only the first command need "plot '-'"
   param.plotter:write(cmd)
 end
@@ -236,6 +202,7 @@ local function set_ranges(param)
   end
 end
 
+-- set label command for each axis
 local function set_label(param)
   local plotter in param
   local names = {'xlabel', 'x2label', 'ylabel', 'y2label'}
@@ -248,26 +215,47 @@ local function set_label(param)
   end
 end
 
+-- set tics for each used axis
+local function set_tics(param)
+  local cmd = ""
+  if param.x1y1 or param.x1y2 then cmd = cmd .. "set xtics nomirror \n"  end
+  if param.x2y1 or param.x2y2 then cmd = cmd .. "set x2tics nomirror \n" end
+  if param.x1y1 or param.x2y1 then cmd = cmd .. "set ytics nomirror \n"  end
+  if param.x1y2 or param.x2y2 then cmd = cmd .. "set y2tics nomirror \n" end
+  param.plotter:write(cmd)
+end
+
+local function set_misc(param)
+  local grid, border, title, legendpos, plotter in param
+  local wrt = \s,... => plotter:write(string.format(s,...) % param) end
+  if grid      then wrt("set %s\n", grid)          end
+  if border    then wrt("set border %s\n", border) end
+  if title     then wrt("set title '%s'\n", title) end
+  if legendpos then wrt("set key %s\n", legendpos) end
+end
+
 -- main plot function
 local function plot(param)
   local plotter in param
   set_ranges(param)
   set_label(param)
-  param.cmd = "plot '-'"
-  plotter:write(setup_plot)
+  set_tics(param)
+  set_misc(param)
+  param.cmd = "plot '-'" -- first plot command initialization
   parse_axis(param, plot_cmd)
   plotter:write("\n")
   parse_axis(param, plot_data)
-  plotter:write(teardown_plot)
 end
 
 -- command --------------------------------------------------------------------o
 
-
 -- create a graph with both the layout and the plot part
 local function multiplot(param)
-  local plotter in param
-  plotter:write("set multiplot layout 1,2 downwards \n")
+  local plotter, multiplot in param
+  if not multiplot then
+    plotter:write("set multiplot\n")
+    plotter:write("unset mouse\n")
+  end
   plotter:write([[
 set lmargin at screen 0.1
 set rmargin at screen 0.9
@@ -280,15 +268,46 @@ set origin 0,0
 set size 1,0.85
 ]]);
   plot(param)
-  plotter:write("unset multiplot\n")
+  if not multiplot then
+    plotter:write("unset multiplot\n")
+  end
+end
+
+-- setup the stream between the three possibilities : pdffile, windows, scrdump
+local function set_stream(self)
+  if has_plotter(gplot, self.sid) then return gplot[self.sid] end
+  local filename, scrdump, windows in self
+  local plotter = gplot[self.sid]
+  if filename then
+    plotter:write("set term pdfcairo\n")
+    plotter:write("set out '" .. filename .. ".pdf'\n")
+  elseif windows then
+    plotter:write("set term $term $wid size $wsizex, $wsizey\n" % self)
+  end
+
+  if scrdump then
+    scrdump = is_string(scrdump) and scrdump or _dflt.filename
+    local script = io.open(scrdump .. ".gp", "w")
+    local p = {
+      write = \s,... => plotter:write(...); script:write(...) end,
+      flush = \s,... => plotter:flush(...); script:flush(...) end,
+      close = \s,... => plotter:close(...); script:close(...) end,
+    }
+    return p
+  end
+  return plotter
 end
 
 local function exec(self)
 
-  local plotter = create_sproxy(self)
   local param = {
-    plotter = plotter,
+    version = tostring(MAD.env.version),
+    name    = self.name or is_table(table) and self.table.title or "",
+    date    = self.date or is_table(table) and self.table.date  or "",
+    time    = self.time or is_table(table) and self.table.time  or "",
+    plotter = set_stream(self, plotter),
   }
+
   setmetatable(param, {__index=self})
 
   if self.sequence and (self.table or self.data) then
@@ -301,7 +320,7 @@ local function exec(self)
       plot(param)
     end
   end
-  plotter:flush()
+  param.plotter:flush()
   return self
 end
 
@@ -311,15 +330,14 @@ local plot = Command 'plot' {
   font = {name = "Times-Roman", size = 18}, -- switch into multiple font choices
   hmargin  = false,                         -- to be removed
   vmargin  = true ,                         -- to be removed
-
   ------------------------------------------------------------------------------
-
-  -- stream id
   sid         = 1,      -- stream id
+
+  multiplot   = false,  -- user sent multiplot cmd himself
 
   -- windows setup
   windows     = true,
-  wid         = 1,      -- window id (it not file...)
+  wid         = 1,
   term        = 'wxt',
   wsizex      = 800,
   wsizey      = 500,
@@ -327,20 +345,20 @@ local plot = Command 'plot' {
   -- table or data input
   data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
   table       = false,
-  datrange    = false, -- 1..100,                                    -- TODO ???
+  datrange    = false,  -- 1..100,                                        -- TODO
 
   -- sequence input
   sequence    = false,
-  seqrange    = {1,-1},   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
-                          -- TODO selected elements, if false all selected
+  seqrange    = {1,-1}, -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
 
   -- decoration
   title       = "$name MAD $version, $date, $time",
-  titlefont   = {name = "Times-Roman", size = 18},                    -- TODO
-  legendname  = false,            -- { y = 'distance' }
-  legendfont  = {name = "Times-Roman", size = 18},                    -- TODO
+  titlefont   = {name = "Times-Roman", size = 18},                       -- TODO
+  legendname  = false,            -- { y = 'distance' }                  -- TODO
+  legendfont  = {name = "Times-Roman", size = 18},                       -- TODO
   legendpos   = "left top",
   grid        = 'grid',
+  border      = 15,
 
   -- files
   filename    = false,            -- pdf name or true (filename.pdf or plot.pdf)
@@ -358,25 +376,26 @@ local plot = Command 'plot' {
   ylabel      = false,
   y2label     = false,
 
-  -- axis ranges and margin (bounding box)
+  -- axis ranges
   xrange      = false,            -- { min, max }
   x2range     = false,
   yrange      = false,
   y2range     = false,
 
   -- plot style
-  styles      = 'linespoints',    -- { y = 'lines' }
-  colors      = false,            -- { y = 'green' }
-  pointtypes  = false,
-  pointsizes  = false,
-  linetypes   = false,
-  linewidths  = false,
+  styles      = 'lines',          -- { y = 'lines' }                     -- TODO
+  dashtypes   = 'solid',          -- { y = '..-- ' }
+  colors      = 'red',            -- { y = 'green' }
+  pointtypes  = false,                                                   -- TODO
+  pointsizes  = false,                                                   -- TODO
+  linetypes   = false,                                                   -- TODO
+  linewidths  = false,                                                   -- TODO
 
   -- setup
-  lmargin = 0.1,
-  rmargin = 0.9,
-  tmargin = 0.1,
-  bmargin = 0.9,
+  lmargin = 0.1,                                                         -- TODO
+  rmargin = 0.9,                                                         -- TODO
+  tmargin = 0.1,                                                         -- TODO
+  bmargin = 0.9,                                                         -- TODO
 
   -- build the command (do not execute)
   exec = exec,
