@@ -19,6 +19,13 @@ local _dflt = {
   bmargin   = 0.9,
 }
 
+-- used to position the layout (e.g. top, bottom, etc...)
+local layout_pos = {
+  top    = { bmargin = 0.75, origin = 0.85  },
+  middle = {                 origin = 0.425 },
+  bottom = { tmargin = 0.2,  origin = 0     },
+}
+
 -- gplot ----------------------------------------------------------------------o
 
 local _gpd = {}
@@ -65,11 +72,6 @@ set xzeroaxis
 set border 0
 set yrange [-1:1]
 plot '-' using 1:2 with lines linestyle 1 linecolor rgb 'black'
-]]
-
-local teardown_layout = [[
-set xrange [$min:$max]
-set yrange [*:*]
 ]]
 
 local xadjust = \x,l,s -> x*l + s
@@ -119,7 +121,6 @@ local function layout(param)
   local plotter in param
   plotter:write(setup_layout)
   layout_data(param)
-  plotter:write(teardown_layout % param)
 end
 
 -- plot -----------------------------------------------------------------------o
@@ -292,18 +293,30 @@ end
 
 -- create a graph with both the layout and the plot part
 local function multiplot(param)
-  local plotter, multiplot in param
+  local plotter, multiplot, sequence, seqrange, seqpos in param
   if not multiplot then
     plotter:write("set multiplot\n")
     plotter:write("unset mouse\n")
   end
+  local min, max = sequence:range_of(seqrange)
+  min = sequence:spos(min)
+  max = sequence:spos(max)
+  plotter:write(string.format("set xrange [%s:%s]\n", min, max))
+  -- select default margins or specific ones for layout position
+  local margins = margins
+  if is_string(seqpos) then
+    margins = strinterp(margins, layout_pos[seqpos], false)
+  end
   plotter:write(margins % _dflt)
-  plotter:write("set size 1,0.15\n")
-  plotter:write("set origin 0,0.85\n")
-  layout(param)
-  plotter:write("set origin 0,0\n")
+  plotter:write("set origin 0,0.0\n")
   plotter:write("set size 1,0.85\n")
   plot(param)
+  plotter:write("set size 1,0.15\n")
+  -- change origin to place the layout on the plot (top, bottom etc...)
+  local pos = is_string(seqpos) and layout_pos[seqpos] or { origin=seqpos }
+  plotter:write("set origin 0,$origin\n" % pos)
+  layout(param)
+
   if not multiplot then
     plotter:write("unset multiplot\n")
   end
@@ -387,6 +400,7 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   seqrange    = {1,-1},  -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
+  seqpos      = "top",   -- top|bottom|middle|0<x<1
 
   -- decoration
   font        = "Times New Roman",
