@@ -1,4 +1,3 @@
-
 local dat = require 'madl_plotdat'
 local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
 local Command                                                 in MAD
@@ -7,10 +6,17 @@ local strinterp                                               in MAD.utility
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  color    = 'red',
-  style    = 'linespoints',
-  dashtype = 'solid',
-  filename = "plot",
+  color     = 'red',
+  style     = 'linespoints',
+  dashtype  = 'solid',
+  linewidth = 1,
+  pointsize = 1,
+  pointtype = 1,
+  filename  = "plot",
+  lmargin   = 0.1,
+  rmargin   = 0.9,
+  tmargin   = 0.1,
+  bmargin   = 0.9,
 }
 
 -- gplot ----------------------------------------------------------------------o
@@ -66,7 +72,7 @@ set xrange [$min:$max]
 set yrange [*:*]
 ]]
 
-local xadjust = \x,l,s -> x*l + s -- correct ??? (x+1)*l + s-l
+local xadjust = \x,l,s -> x*l + s
 
 -- return the shape of an element in x and y
 local function eShap(elem)
@@ -118,12 +124,18 @@ end
 
 -- plot -----------------------------------------------------------------------o
 
+local margins = [[
+set lmargin at screen $lmargin
+set rmargin at screen $rmargin
+set bmargin at screen $bmargin
+set tmargin at screen $tmargin
+]]
+
 -- get vector from label
 local function getv(data, tbl, label)
   if label then
-    return data and data[label] or tbl[label] or error("invalid label")
+    return data and data[label] or tbl[label],"tbl"  or error("invalid label")
   end
-  return nil
 end
 
 -- parse input axis and apply func to each label
@@ -153,31 +165,49 @@ end
 
 -- stream one plot data (used in parse_axis)
 local function plot_data(param, xlbl, ylbl)
-  local x = getv(param.data, param.table, xlbl)
-  local y = getv(param.data, param.table, ylbl)
-  local plotter = param.plotter
-  for i=1,#x do
+  local plotter, tablerange, data, table in param
+  local x      = getv(data, table, xlbl)
+  local y,tbl  = getv(data, table, ylbl)
+  local min    = tbl and tablerange and tablerange[1] or 1
+  local max    = tbl and tablerange and tablerange[2] or #y
+  for i=min,max do
     local x = x and x[i] or i -- use index if x is nil
     plotter:write(x, " ", y[i], "\n")
   end
   plotter:write("e\n")
 end
 
+
+local function parse_dash(dashtypes, y)
+  local dash = is_table(dashtypes) and
+    (dashtypes[y] or _dflt.dashtype) or dashtypes
+  if string.match(dash, "[.%-_ ]+") then return "'" .. dash .. "'" end
+  return dash
+end
+
 -- stream the gnuplot 'plot' command (used in parse_axis)
 local function plot_cmd(param, _, y, axis)
-  local colors, styles, dashtypes in param
+  local colors, styles, dashtypes,
+    pointsizes, pointtypes, linewidths, legendnames in param
   local values = {
-    color    = is_table(colors)    and (colors[y]    or _dflt.color)    or colors,
-    style    = is_table(styles)    and (styles[y]    or _dflt.style)    or styles,
-    dashtype = is_table(dashtypes) and (dashtypes[y] or _dflt.dashtype) or dashtypes,
-    title    = y,
-    axis     = axis,
-  }                                         -- TODO pointtype 1 pointsize 0.1
-  local cmd = strinterp("$cmd using 1:2 with \z
-                $style \z
-                dashtype $dashtype \z
-                linecolor '$color' title '$title' axes $axis,\\\n",
-                values, false) % param
+    color     = is_table(colors) and (colors[y] or _dflt.color) or colors,
+    style     = is_table(styles) and (styles[y] or _dflt.style) or styles,
+    dashtype  = parse_dash(dashtypes, y),
+    pointsize = is_table(pointsizes)  and (pointsizes[y] or _dflt.pointsize) or pointsizes,
+    pointtype = is_table(pointtypes)  and (pointtypes[y] or _dflt.pointtype) or pointtypes,
+    linewidth = is_table(linewidths)  and (linewidths[y] or _dflt.linewidth) or linewidths,
+    title     = is_table(legendnames) and legendnames[y] or y,
+    axis      = axis,
+  }
+  local cmd = "$cmd using 1:2 with $style "
+  if string.match(values.style, "lines") then
+    cmd = cmd .. "dashtype $dashtype linewidth $linewidth "
+  end
+  if string.match(values.style, "points") then
+    cmd = cmd .. "pointsize $pointsize pointtype $pointtype "
+  end
+  cmd = cmd .. "linecolor '$color' title '$title' axes $axis,\\\n"
+  cmd = strinterp(cmd, values, false) % param
   param.cmd = "     '' "               -- only the first command need "plot '-'"
   param.plotter:write(cmd)
 end
@@ -230,8 +260,18 @@ local function set_misc(param)
   local wrt = \s,... => plotter:write(string.format(s,...) % param) end
   if grid      then wrt("set %s\n", grid)          end
   if border    then wrt("set border %s\n", border) end
-  if title     then wrt("set title '%s'\n", title) end
-  if legendpos then wrt("set key %s\n", legendpos) end
+  if title     then
+    local font = param.titlefont or ""
+    local size = param.titlesize or ""
+    local cmd = "set title '%s' font '%s,%s'\n"
+    wrt(cmd, title, font, size)
+  end
+  if legendpos     then
+    local font = param.legendfont or ""
+    local size = param.legendsize or ""
+    local cmd = "set key %s font '%s,%s'\n"
+    wrt(cmd, legendpos, font, size)
+  end
 end
 
 -- main plot function
@@ -256,17 +296,12 @@ local function multiplot(param)
     plotter:write("set multiplot\n")
     plotter:write("unset mouse\n")
   end
-  plotter:write([[
-set lmargin at screen 0.1
-set rmargin at screen 0.9
-set size 1,0.15
-set origin 0,0.85
-]])
+  plotter:write(margins % _dflt)
+  plotter:write("set size 1,0.15\n")
+  plotter:write("set origin 0,0.85\n")
   layout(param)
-  plotter:write([[
-set origin 0,0
-set size 1,0.85
-]]);
+  plotter:write("set origin 0,0\n")
+  plotter:write("set size 1,0.85\n")
   plot(param)
   if not multiplot then
     plotter:write("unset multiplot\n")
@@ -275,14 +310,14 @@ end
 
 -- setup the stream between the three possibilities : pdffile, windows, scrdump
 local function set_stream(self)
-  if has_plotter(gplot, self.sid) then return gplot[self.sid] end
+  -- if has_plotter(gplot, self.sid) then return gplot[self.sid] end
   local filename, scrdump, windows in self
   local plotter = gplot[self.sid]
   if filename then
     plotter:write("set term pdfcairo\n")
     plotter:write("set out '" .. filename .. ".pdf'\n")
   elseif windows then
-    plotter:write("set term $term $wid size $wsizex, $wsizey\n" % self)
+    plotter:write("set term $term $wid size $wsizex,$wsizey enhanced font \'$font,$fontsize\'\n" % self)
   end
 
   if scrdump then
@@ -302,9 +337,9 @@ local function exec(self)
 
   local param = {
     version = tostring(MAD.env.version),
-    name    = self.name or is_table(table) and self.table.title or "",
-    date    = self.date or is_table(table) and self.table.date  or "",
-    time    = self.time or is_table(table) and self.table.time  or "",
+    name    = self.name or is_table(self.table) and self.table.title or "",
+    date    = self.date or is_table(self.table) and self.table.date  or "",
+    time    = self.time or is_table(self.table) and self.table.time  or "",
     plotter = set_stream(self, plotter),
   }
 
@@ -313,11 +348,12 @@ local function exec(self)
   if self.sequence and (self.table or self.data) then
     multiplot(param)
   else
+    param.plotter:write(margins % param)
     if is_sequence(self.sequence) then
       layout(param)
     end
     if self.table or self.data then
-      plot(param)
+      plot_only(param)
     end
   end
   param.plotter:flush()
@@ -325,15 +361,10 @@ local function exec(self)
 end
 
 local plot = Command 'plot' {
- ----TO BE CLEANED -------------------------------------------------------------
 
-  font = {name = "Times-Roman", size = 18}, -- switch into multiple font choices
-  hmargin  = false,                         -- to be removed
-  vmargin  = true ,                         -- to be removed
-  ------------------------------------------------------------------------------
-  sid         = 1,      -- stream id
+  sid         = 1,       -- stream id
 
-  multiplot   = false,  -- user sent multiplot cmd himself
+  multiplot   = false,   -- user sent multiplot cmd himself
 
   -- windows setup
   windows     = true,
@@ -343,59 +374,62 @@ local plot = Command 'plot' {
   wsizey      = 500,
 
   -- table or data input
-  data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
+  data        = false,   -- { x=tbl.x, y=vec } (precedence over table)
   table       = false,
-  datrange    = false,  -- 1..100,                                        -- TODO
+  tablerange  = false,   -- { min, max }
 
   -- sequence input
   sequence    = false,
-  seqrange    = {1,-1}, -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
+  seqrange    = {1,-1},  -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
 
   -- decoration
+  font        = "Times New Roman",
+  fontsize    = 14,
   title       = "$name MAD $version, $date, $time",
-  titlefont   = {name = "Times-Roman", size = 18},                       -- TODO
-  legendname  = false,            -- { y = 'distance' }                  -- TODO
-  legendfont  = {name = "Times-Roman", size = 18},                       -- TODO
+  titlefont   = false,
+  titlesize   = false,
+  legendnames = false,   -- { y = 'distance' }
+  legendfont  = false,
+  legendsize  = false,
   legendpos   = "left top",
   grid        = 'grid',
   border      = 15,
 
   -- files
-  filename    = false,            -- pdf name or true (filename.pdf or plot.pdf)
-  scrdump     = false,            -- script name or true (scrdump.gp or plot.gp)
+  filename    = false,   -- pdf name or true (filename.pdf or plot.pdf)
+  scrdump     = false,   -- script name or true (scrdump.gp or plot.gp)
 
   -- axis selection (and names)
-  x1y1        = false,    -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
-  x1y2        = false,    -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
-  x2y1        = false,    -- e.g. x1y1 = { x1 = 'y1'}
-  x2y2        = false,    -- e.g. x1y1 = {'y1', 'y2'}
-                          -- e.g. x1y1 = 'y1'
+  x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
+  x1y2        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+  x2y1        = false,   -- e.g. x1y1 = { x1 = 'y1'}
+  x2y2        = false,   -- e.g. x1y1 = {'y1', 'y2'}
+                         -- e.g. x1y1 = 'y1'
   -- axis labels
-  xlabel      = false,            -- strings
+  xlabel      = false,   -- strings
   x2label     = false,
   ylabel      = false,
   y2label     = false,
 
   -- axis ranges
-  xrange      = false,            -- { min, max }
+  xrange      = false,   -- { min, max }
   x2range     = false,
   yrange      = false,
   y2range     = false,
 
   -- plot style
-  styles      = 'lines',          -- { y = 'lines' }                     -- TODO
-  dashtypes   = 'solid',          -- { y = '..-- ' }
-  colors      = 'red',            -- { y = 'green' }
-  pointtypes  = false,                                                   -- TODO
-  pointsizes  = false,                                                   -- TODO
-  linetypes   = false,                                                   -- TODO
-  linewidths  = false,                                                   -- TODO
+  styles      = 'lines', -- { y = 'lines' }
+  colors      = 'red',   -- { y = 'green' }
+  dashtypes   = 'solid', -- { y = '..-- ' }
+  linewidths  = 1,       -- { y = 2.3     }
+  pointtypes  = 1,       -- { y = 2       }
+  pointsizes  = 1,       -- { y = 2.3     }
 
-  -- setup
-  lmargin = 0.1,                                                         -- TODO
-  rmargin = 0.9,                                                         -- TODO
-  tmargin = 0.1,                                                         -- TODO
-  bmargin = 0.9,                                                         -- TODO
+  -- margins
+  lmargin     = 0.1,
+  rmargin     = 0.9,
+  tmargin     = 0.1,
+  bmargin     = 0.9,
 
   -- build the command (do not execute)
   exec = exec,
