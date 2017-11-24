@@ -1,4 +1,4 @@
-local dat = require 'madl_plotdat'
+local dat = require 'madl_plotdat2'
 local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
 local Command                                                 in MAD
 local strinterp                                               in MAD.utility
@@ -54,27 +54,8 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
 
 -- layout ---------------------------------------------------------------------o
 
-local setup_layout = [[
-unset tmargin
-unset bmargin
-unset title
-unset arrow
-unset xtics
-unset x2tics
-unset xlabel
-unset x2label
-unset ytics
-unset y2tics
-unset ylabel
-unset y2label
-unset key
-set xzeroaxis
-set border 0
-set yrange [-1:1]
-plot '-' using 1:2 with lines linestyle 1 linecolor rgb 'black'
-]]
-
 local xadjust = \x,l,s -> x*l + s
+local yadjust = \y -> 0.05*y + 0.9
 
 -- return the shape of an element in x and y
 local function eShap(elem)
@@ -86,6 +67,7 @@ local function eShap(elem)
   elseif h > 0       then sh = shape.shape_f
   else                    sh = shape.shape_d
   end
+  if is_nil(sh) then return end
 
   local x_sh, y_sh
   if is_table(sh.x[1]) then x_sh, y_sh = sh.x, sh.y
@@ -97,29 +79,39 @@ end
 -- stream layout data
 local function layout_data(param)
   local plotter, sequence, seqrange in param
+  local o = 1
   for i,elem in sequence:iter(seqrange) do
     local s = sequence:spos(i)
     local l = elem.l
+    if l == 0 then print(elem.kind) end
     param.min = param.min or s
     param.max = s
     local x_sh, y_sh = eShap(elem)
-    for j=1,#x_sh do
-      local xj, yj = x_sh[j], y_sh[j]
-      for k=1,#xj do
-        local xk = xadjust(xj[k], l, s)
-        local yk = yj[k]
-        plotter:write(xk, " ", yk, "\n")
+    if not is_nil(x_sh) then
+      for j=1,#x_sh do
+        local xj, yj = x_sh[j], y_sh[j]
+        plotter:write(string.format("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black'  \\\n", o))
+        local cmd = "from"
+        for k=1,#xj do
+          local xk = xadjust(xj[k], l, s)
+          local yk = yadjust(yj[k])
+          local next = k == #xj and "" or "\\"
+          plotter:write(string.format("  %s %f, screen %f %s\n", cmd, xk, yk, next))
+          cmd = "to"
+        end
+        o = o + 1
       end
-      plotter:write("\n")
     end
+    plotter:write("\n")
   end
-  plotter:write("e\n")
+  plotter:write(string.format("set object %d rectangle behind noclip dashtype solid \\\n\z
+    from first %f, screen 0.8999 to first %f, screen 0.901\n", o + 1, param.min, param.max))
 end
 
 -- main layout function
 local function layout(param)
   local plotter in param
-  plotter:write(setup_layout)
+  -- plotter:write(setup_layout)
   layout_data(param)
 end
 
@@ -294,32 +286,19 @@ end
 -- create a graph with both the layout and the plot part
 local function multiplot(param)
   local plotter, multiplot, sequence, seqrange, seqpos in param
-  if not multiplot then
-    plotter:write("set multiplot\n")
-    plotter:write("unset mouse\n")
-  end
-  local min, max = sequence:range_of(seqrange)
-  min = sequence:spos(min)
-  max = sequence:spos(max)
-  plotter:write(string.format("set xrange [%s:%s]\n", min, max))
   -- select default margins or specific ones for layout position
   local margins = margins
   if is_string(seqpos) then
     margins = strinterp(margins, layout_pos[seqpos], false)
   end
   plotter:write(margins % _dflt)
+  layout(param)
+  local min, max in param
+  plotter:write(string.format("set xrange [%s:%s]\n", min, max))
   plotter:write("set origin 0,0.0\n")
   plotter:write("set size 1,0.85\n")
   plot(param)
-  plotter:write("set size 1,0.15\n")
   -- change origin to place the layout on the plot (top, bottom etc...)
-  local pos = is_string(seqpos) and layout_pos[seqpos] or { origin=seqpos }
-  plotter:write("set origin 0,$origin\n" % pos)
-  layout(param)
-
-  if not multiplot then
-    plotter:write("unset multiplot\n")
-  end
 end
 
 -- setup the stream between the three possibilities : pdffile, windows, scrdump
