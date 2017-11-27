@@ -62,19 +62,23 @@ local function eShap(elem)
   local shape = dat[elem.kind]
   local h     = elem[shape.str_k] or 1
   local el    = shape.ellipse
+  local dash  = shape.dashtype
 
   local sh
   if     shape.shape then sh = shape.shape
   elseif h > 0       then sh = shape.shape_f
   else                    sh = shape.shape_d
   end
-  if is_nil(sh) then return el end
+
+  sh = sh and elem.l == 0 and dat.default.shape or sh
+
+  if not is_table(sh) then return el, dash end
 
   local x_sh, y_sh
   if is_table(sh.x[1]) then x_sh, y_sh = sh.x, sh.y
   else                      x_sh, y_sh = {sh.x}, {sh.y}
   end
-  return el, x_sh, y_sh
+  return el, dash, x_sh, y_sh
 end
 
 -- stream layout data
@@ -84,26 +88,28 @@ local function layout_data(param)
   for i,elem in sequence:iter(range) do
     local s, l = sequence:spos(i), elem.l
     param.min, param.max = param.min or s, s
-    local el, x_sh, y_sh = eShap(elem)
-    if not is_nil(el) then
+    local el, dash, x_sh, y_sh = eShap(elem)
+    if not is_nil(el) and l ~= 0 then
       -- TODO 0.5 -> 0 when centered
       local cx, cy = xadjust(0.5, l, s), yadjust(0   )
       local sx, sy = xadjust(1  , l, 0), yadjust(1, 0)
-      fpwrite("set object %d ellipse at %f, screen %f \\\n\z
-        size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black'  \n",
-        o, cx, cy, sx, sy)--dashtype '.. '
+      local dashtype = dash or ""
+      fpwrite("set object %d ellipse at %g, screen %g \\\n\z
+        size %g, screen %g front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
+        o, cx, cy, sx, sy, dashtype)
       o = o + 1
     end
     if not is_nil(x_sh) then
       for j=1,#x_sh do
         local xj, yj = x_sh[j], y_sh[j]
-        fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black'  \\\n", o)
+        local dashtype = dash and "dashtype '" .. dash .. "'" or ""
+        fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \\\n", o, dashtype)
         local cmd = "from"
         for k=1,#xj do
           local xk = xadjust(xj[k], l, s)
           local yk = yadjust(yj[k])
           local next = k == #xj and "" or "\\"
-          fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
+          fpwrite("  %s %g, screen %g %s\n", cmd, xk, yk, next)
           cmd = "to"
         end
         o = o + 1
@@ -112,7 +118,7 @@ local function layout_data(param)
     end
   end
   fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
-    from first %f, screen 0.8999 to first %f, screen 0.901\n", o + 1, param.min, param.max)
+    from first %g, screen 0.8999 to first %g, screen 0.901\n", o + 1, param.min, param.max)
 end
 
 -- main layout function
@@ -246,15 +252,14 @@ end
 
 -- set remaining parameters (miscellaneous)
 local function set_misc(param)
-  local grid, border, title, legendpos, fpwrite in param
-  local wrt = \s,... => fpwrite(s % param,...) end
+  local grid, border, title, legendpos, plotter in param
+  local wrt = \s,... => plotter:write(string.format(s,...) % param) end
   if grid      then wrt("set %s\n", grid)          end
   if border    then wrt("set border %s\n", border) end
   if title     then
     local font = param.titlefont or ""
     local size = param.titlesize or ""
-    local cmd = "set title '%s' font '%s,%s'\n"
-    wrt(cmd, title, font, size)
+    wrt("set title '%s' font '%s,%s'\n", title, font, size)
   end
   if legendpos     then
     local font = param.legendfont or ""
