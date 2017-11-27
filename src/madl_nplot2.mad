@@ -79,48 +79,44 @@ end
 
 -- stream layout data
 local function layout_data(param)
-  local plotter, sequence, range, oshft in param
+  local fpwrite, sequence, range, oshft in param
   local o = oshft
   for i,elem in sequence:iter(range) do
-    local s = sequence:spos(i)
-    local l = elem.l
-    param.min = param.min or s
-    param.max = s
+    local s, l = sequence:spos(i), elem.l
+    param.min, param.max = param.min or s, s
     local el, x_sh, y_sh = eShap(elem)
     if not is_nil(el) then
       -- TODO 0.5 -> 0 when centered
       local cx, cy = xadjust(0.5, l, s), yadjust(0   )
       local sx, sy = xadjust(1  , l, 0), yadjust(1, 0)
-      plotter:write(string.format("set object %d ellipse at %f, screen %f \\\n  \z
+      fpwrite("set object %d ellipse at %f, screen %f \\\n\z
         size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black'  \n",
-        o, cx, cy, sx, sy))--dashtype '.. '
+        o, cx, cy, sx, sy)--dashtype '.. '
       o = o + 1
     end
     if not is_nil(x_sh) then
       for j=1,#x_sh do
         local xj, yj = x_sh[j], y_sh[j]
-        plotter:write(string.format("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black'  \\\n", o))
+        fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black'  \\\n", o)
         local cmd = "from"
         for k=1,#xj do
           local xk = xadjust(xj[k], l, s)
           local yk = yadjust(yj[k])
           local next = k == #xj and "" or "\\"
-          plotter:write(string.format("  %s %f, screen %f %s\n", cmd, xk, yk, next))
+          fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
           cmd = "to"
         end
         o = o + 1
       end
-      plotter:write("\n")
+      fpwrite("\n")
     end
   end
-  plotter:write(string.format("set object %d rectangle behind noclip dashtype solid \\\n\z
-    from first %f, screen 0.8999 to first %f, screen 0.901\n", o + 1, param.min, param.max))
+  fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
+    from first %f, screen 0.8999 to first %f, screen 0.901\n", o + 1, param.min, param.max)
 end
 
 -- main layout function
 local function layout(param)
-  local plotter in param
-  -- plotter:write(setup_layout)
   layout_data(param)
 end
 
@@ -167,16 +163,16 @@ end
 
 -- stream one plot data (used in parse_axis)
 local function plot_data(param, xlbl, ylbl)
-  local plotter, tablerange, data, table in param
+  local pwrite, tablerange, data, table in param
   local x      = getv(data, table, xlbl)
   local y,tbl  = getv(data, table, ylbl)
   local min    = tbl and tablerange and tablerange[1] or 1
   local max    = tbl and tablerange and tablerange[2] or #y
   for i=min,max do
     local x = x and x[i] or i -- use index if x is nil
-    plotter:write(x, " ", y[i], "\n")
+    pwrite(x, " ", y[i], "\n")
   end
-  plotter:write("e\n")
+  pwrite("e\n")
 end
 
 -- parse dashtypes and add '' if it is a pattern : e.g.: ".-- "
@@ -189,7 +185,7 @@ end
 
 -- stream the gnuplot 'plot' command (used in parse_axis)
 local function plot_cmd(param, _, y, axis)
-  local colors, styles, dashtypes, pointsizes,
+  local pwrite, colors, styles, dashtypes, pointsizes,
     pointtypes, linewidths, legendnames in param
   local values = {
     color     = is_table(colors) and (colors[y] or _dflt.color) or colors,
@@ -211,39 +207,30 @@ local function plot_cmd(param, _, y, axis)
   cmd = cmd .. "linecolor '$color' title '$title' axes $axis,\\\n"
   cmd = strinterp(cmd, values, false) % param
   param.cmd = "     '' "               -- only the first command need "plot '-'"
-  param.plotter:write(cmd)
+  pwrite(cmd)
 end
 
 -- set the range command for all axis
 local function set_ranges(param)
-  local plotter in param
+  local fpwrite in param
   local names = {'x2range', 'yrange', 'y2range'}
   for _,rname in ipairs(names) do
     local range = param[rname]
-    if range then
-      local min, max = range[1], range[2]
-      local cmd = string.format("set %s [%f:%f]\n", rname, min, max)
-      plotter:write(cmd)
-    end
+    if range then fpwrite("set %s [%f:%f]\n", rname, range[1], range[2]) end
   end
   if not param.range and param.xrange then
     local xrange in param
-    local min, max = xrange[1], xrange[2]
-    local cmd = string.format("set xrange [%f:%f]\n", min, max)
-    plotter:write(cmd)
+    fpwrite("set xrange [%f:%f]\n", xrange[1], xrange[2])
   end
 end
 
 -- set label command for each axis
 local function set_label(param)
-  local plotter in param
+  local fpwrite in param
   local names = {'xlabel', 'x2label', 'ylabel', 'y2label'}
   for _,lname in ipairs(names) do
     local label = param[lname]
-    if label then
-      local cmd = string.format("set %s '%s'\n", lname, label)
-      plotter:write(cmd)
-    end
+    if label then fpwrite("set %s '%s'\n", lname, label) end
   end
 end
 
@@ -254,13 +241,13 @@ local function set_tics(param)
   if param.x2y1 or param.x2y2 then cmd = cmd .. "set x2tics nomirror \n" end
   if param.x1y1 or param.x2y1 then cmd = cmd .. "set ytics nomirror \n"  end
   if param.x1y2 or param.x2y2 then cmd = cmd .. "set y2tics nomirror \n" end
-  param.plotter:write(cmd)
+  param.pwrite(cmd)
 end
 
 -- set remaining parameters (miscellaneous)
 local function set_misc(param)
-  local grid, border, title, legendpos, plotter in param
-  local wrt = \s,... => plotter:write(string.format(s,...) % param) end
+  local grid, border, title, legendpos, fpwrite in param
+  local wrt = \s,... => fpwrite(s % param,...) end
   if grid      then wrt("set %s\n", grid)          end
   if border    then wrt("set border %s\n", border) end
   if title     then
@@ -279,14 +266,13 @@ end
 
 -- main plot function
 local function plot(param)
-  local plotter in param
   set_ranges(param)
   set_label(param)
   set_tics(param)
   set_misc(param)
   param.cmd = "plot '-'" -- first plot command initialization
   parse_axis(param, plot_cmd)
-  plotter:write("\n")
+  param.pwrite("\n")
   parse_axis(param, plot_data)
 end
 
@@ -294,18 +280,18 @@ end
 
 -- create a graph with both the layout and the plot part
 local function multiplot(param)
-  local plotter, multiplot, sequence, range, seqpos in param
+  local fpwrite, pwrite, multiplot, sequence, range, seqpos in param
   -- select default margins or specific ones for layout position
   local margins = margins
   if is_string(seqpos) then
     margins = strinterp(margins, layout_pos[seqpos], false)
   end
-  plotter:write(margins % _dflt)
+  pwrite(margins % _dflt)
   layout(param)
   local min, max in param
-  plotter:write(string.format("set xrange [%s:%s]\n", min, max))
-  plotter:write("set origin 0,0.0\n")
-  plotter:write("set size 1,0.85\n")
+  fpwrite("set xrange [%s:%s]\n", min, max)
+  pwrite("set origin 0,0.0\n")
+  pwrite("set size 1,0.85\n")
   plot(param)
   -- change origin to place the layout on the plot (top, bottom etc...)
 end
@@ -341,12 +327,15 @@ end
 
 local function exec(self)
 
+  local plotter = set_stream(self, plotter)
   local param = {
     version = tostring(MAD.env.version),
     name    = self.name or is_table(self.table) and self.table.title or "",
     date    = self.date or is_table(self.table) and self.table.date  or "",
     time    = self.time or is_table(self.table) and self.table.time  or "",
-    plotter = set_stream(self, plotter),
+    plotter = plotter,
+    fpwrite = \... -> plotter:write(string.format(...)),
+    pwrite = \... -> plotter:write(...)
   }
 
   setmetatable(param, {__index=self})
