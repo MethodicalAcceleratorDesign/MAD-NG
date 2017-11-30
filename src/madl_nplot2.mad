@@ -52,6 +52,48 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
   __call  = \gp,... -> gp[gp[_gpd].__cur_id]:write(...)
 })
 
+-- stream ---------------------------------------------------------------------o
+
+local init_stream = [[
+MAD_MIN = 1000000
+MAD_MAX = -1
+MAD_RESET_OBJECT = 'unset for [i=MAD_MIN:MAD_MAX] object i'
+]]
+
+-- setup the stream between the three possibilities : pdffile, windows, scrdump
+local function set_stream(self)
+  local filename, scrdump, windows in self
+
+  local has_plotter = has_plotter(gplot, self.sid)
+  if has_plotter and filename or not windows then
+    return gplot[self.sid]
+  end
+
+  local plotter = gplot[self.sid]
+  if filename then
+    filename = is_string(filename) and filename or _dflt.filename
+    plotter:write("set term pdfcairo\n")
+    plotter:write("set out '" .. filename .. ".pdf'\n")
+  elseif windows then
+    plotter:write("set term $term $wid size $wsizex,$wsizey \z
+      enhanced font \'$font,$fontsize\'\n" % self)
+  end
+
+  if not has_plotter then plotter:write(init_stream)end
+
+  if scrdump then
+    scrdump = is_string(scrdump) and scrdump or _dflt.filename
+    local script = io.open(scrdump .. ".gp", "w")
+    local p = {
+      write = \s,... => plotter:write(...); script:write(...) end,
+      flush = \s,... => plotter:flush(...); script:flush(...) end,
+      close = \s,... => plotter:close(...); script:close(...) end,
+    }
+    return p
+  end
+  return plotter
+end
+
 -- layout ---------------------------------------------------------------------o
 
 local function xycpy(xfrom, yfrom, ysym, yscl, yshft, xto_, yto_)
@@ -141,6 +183,7 @@ local function layout_data(param)
   end
   fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
     from first %g, screen 0.8999 to first %g, screen 0.901\n", o + 1, param.min, param.max)
+  fpwrite("MAD_MAX = %g\n", o)
 end
 
 -- main layout function
@@ -306,7 +349,7 @@ end
 -- command --------------------------------------------------------------------o
 
 -- create a graph with both the layout and the plot part
-local function multiplot(param)
+local function composed_plot(param)
   local fpwrite, pwrite, multiplot, sequence, range, seqpos in param
   -- select default margins or specific ones for layout position
   local margins = margins
@@ -323,38 +366,10 @@ local function multiplot(param)
   -- change origin to place the layout on the plot (top, bottom etc...)
 end
 
--- setup the stream between the three possibilities : pdffile, windows, scrdump
-local function set_stream(self)
-  local filename, scrdump, windows in self
-  if has_plotter(gplot, self.sid) and filename or not windows then
-    return gplot[self.sid]
-  end
-  local plotter = gplot[self.sid]
-  if filename then
-    filename = is_string(filename) and filename or _dflt.filename
-    plotter:write("set term pdfcairo\n")
-    plotter:write("set out '" .. filename .. ".pdf'\n")
-  elseif windows then
-    plotter:write("set term $term $wid size $wsizex,$wsizey \z
-      enhanced font \'$font,$fontsize\'\n" % self)
-  end
-
-  if scrdump then
-    scrdump = is_string(scrdump) and scrdump or _dflt.filename
-    local script = io.open(scrdump .. ".gp", "w")
-    local p = {
-      write = \s,... => plotter:write(...); script:write(...) end,
-      flush = \s,... => plotter:flush(...); script:flush(...) end,
-      close = \s,... => plotter:close(...); script:close(...) end,
-    }
-    return p
-  end
-  return plotter
-end
-
 local function exec(self)
-
   local plotter = set_stream(self, plotter)
+  if self.sequence ~= "keep" then plotter:write("@MAD_RESET_OBJECT\n") end
+
   local param = {
     version = tostring(MAD.env.version),
     name    = self.name or is_table(self.table) and self.table.title or "",
@@ -362,32 +377,28 @@ local function exec(self)
     time    = self.time or is_table(self.table) and self.table.time  or "",
     plotter = plotter,
     fpwrite = \... -> plotter:write(string.format(...)),
-    pwrite = \... -> plotter:write(...)
+    pwrite  = \... -> plotter:write(...)
   }
-
   setmetatable(param, {__index=self})
 
-  if self.sequence and (self.table or self.data) then
-    multiplot(param)
-  else
-    param.plotter:write(margins % param)
+  if self.table or is_table(self.data) then
     if is_sequence(self.sequence) then
-      layout(param)
-    end
-    if self.table or self.data then
+      composed_plot(param)
+    elseif self.sequence == "keep" then
+      plot(param)
+    else
+      param.plotter:write(margins % param)
       plot(param)
     end
   end
-  param.plotter:flush()
-  -- param.plotter:close()
+  plotter:flush()
   return self
 end
 
 local plot = Command 'plot' {
 
-  sid         = 1,       -- stream id
-
-  multiplot   = false,   -- user sent multiplot cmd himself
+  -- stream id
+  sid         = 1,
 
   -- windows setup
   windows     = true,
