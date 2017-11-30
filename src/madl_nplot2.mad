@@ -66,7 +66,7 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { @MAD_NEW_TERM; MAD_OLD_TE
 
 -- setup the stream between the three possibilities : pdffile, windows, scrdump
 local function set_stream (self)
-  local output, scrdump, windows in self
+  local output, scrdump in self
 
   local has_plotter = has_plotter(gplot, self.sid)
   local plotter = gplot[self.sid]
@@ -99,100 +99,92 @@ end
 
 -- layout ---------------------------------------------------------------------o
 
-local function xycpy (xfrom, yfrom, ysym, yscl, yshft, xto_, yto_)
-  local size = #xfrom
-  local xnew = xto_ or table.new(size, 0)
-  local ynew = yto_ or table.new(size, 0)
-  for i = 1,size do
-    local xi, yi = xfrom[i], yfrom[i]
-    local sxi, syi = #xi, #yi
-    local xn, yn = table.new(sxi, 0), table.new(syi, 0)
-    for j=1,sxi do
-      table.insert(xn, xi[j])
-    end
-    for j=1,syi do
-      table.insert(yn, (yi[j]*ysym+yshft)*yscl)
-    end
-    table.insert(xnew, xn)
-    table.insert(ynew, yn)
-  end
-  return xnew, ynew
-end
-
 local xadjust = \x,l,s -> x*l + s
 local yadjust = \y,s -> 0.05*y + (s or 0.9)
 
 -- return the shape of an element in x and y
 local function eShap (elem)
   local shape = dat[elem.kind]
-  local el    = shape.ellipse
-  local dash  = shape.dashtype
+  local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
 
-  local sh = shape.shape
   sh = sh and elem.l == 0 and elem.kind ~= "marker" and dat.default.shape or sh
-
+  -- if only a circle
   if not is_table(sh) then return el, dash end
 
-  local x_sh, y_sh = sh.x, sh.y
-  local x_sh2, y_sh2 = {}, {}
-  local ysym  = shape.ysym
-  local yscl  = shape.yscl or 1
+  local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
   local yshft = shape.yshft and sign(elem[shape.yshft]) or 0
-  if is_number(ysym) then
-    x_sh2, y_sh2 = xycpy(x_sh, y_sh, 1   , yscl, yshft               )
-    x_sh2, y_sh2 = xycpy(x_sh, y_sh,-1   , yscl, yshft, x_sh2, y_sh2 )
+  if is_number(ysym) then -- for symmetric shapes
+    func = {
+      \y -> ((   y + yshft)*yscl),
+      \y -> ((-1*y + yshft)*yscl),
+    }
   else
     ysym = sign(elem[ysym] or 1)
-    x_sh2, y_sh2 = xycpy(x_sh, y_sh, ysym, yscl, yshft               )
+    func = {\y -> ((ysym*y + yshft)*yscl) }
   end
-
-  return el, dash, x_sh2, y_sh2
+  return el, dash, sh.x, sh.y, func
 end
 
--- stream layout data
-local function layout_data (param)
-  local fpwrite, sequence, range, oshft in param
-  range = param.range or _dflt.range
-  local o = oshft
-  for i,elem in sequence:iter(range) do
-    local s, l = sequence:spos(i), elem.l
-    param.min, param.max = param.min or s, s
-    local el, dash, x_sh, y_sh = eShap(elem)
-    if not is_nil(el) and l ~= 0 then
-      local cx, cy = xadjust(0.5, l, s), yadjust(0   )
-      local sx, sy = xadjust(1  , l, 0), yadjust(el, 0)
-      local dashtype = dash or ""
-      fpwrite("set object %d ellipse at %f, screen %f \\\n\z
-        size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
-        o, cx, cy, sx, sy, dashtype)
+-- stream polygon data
+local function layout_poly (fpwrite, len, s, o, x_sh, y_sh, dash, func)
+  for i=1,#func do
+    for j=1,#x_sh do
+      local xj, yj = x_sh[j], y_sh[j]
+      local dashtype = dash and "dashtype '" .. dash .. "'" or ""
+      fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 \z
+        border rgb 'black' %s \\\n", o, dashtype)
+      local cmd = "from"
+
+      for k=1,#xj do
+        local xk, yk = xj[k], func[i](yj[k])
+        xk, yk = xadjust(xk, len, s), yadjust(yk)
+        local next = (k == #xj) and "" or "\\"
+        fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
+        cmd = "to"
+      end
       o = o + 1
     end
-    if not is_nil(x_sh) then
-      for j=1,#x_sh do
-        local xj, yj = x_sh[j], y_sh[j]
-        local dashtype = dash and "dashtype '" .. dash .. "'" or ""
-        fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \\\n", o, dashtype)
-        local cmd = "from"
-        for k=1,#xj do
-          local xk = xadjust(xj[k], l, s)
-          local yk = yadjust(yj[k])
-          local next = k == #xj and "" or "\\"
-          fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
-          cmd = "to"
-        end
-        o = o + 1
-      end
-      fpwrite("\n")
-    end
   end
-  fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
-    from first %f, screen 0.8999 to first %f, screen 0.901\n", o + 1, param.min, param.max)
-  fpwrite("MAD_MAX = %f\n", o)
+  fpwrite("\n")
+  return o
 end
+
+-- stream ellipse data
+local function layout_ellipse (fpwrite, len, el, s, o, dash)
+  local cx, cy = xadjust(0.5, len, s), yadjust(0    )
+  local sx, sy = xadjust(1  , len, 0), yadjust(el, 0)
+  local dashtype = dash or ""
+  fpwrite("set object %d ellipse at %f, screen %f \\\n\z
+    size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
+    o, cx, cy, sx, sy, dashtype)
+end
+
 
 -- main layout function
 local function layout (param)
-  layout_data(param)
+  local fpwrite, sequence, range, oshft in param
+  range = param.range or _dflt.range
+  local o = oshft
+
+  for i,elem in sequence:iter(range) do
+    local s, len = sequence:spos(i), elem.l
+    param.min, param.max = param.min or s, s
+    local el, dash, x_sh, y_sh, func  = eShap(elem)
+
+    if not is_nil(el) and len ~= 0 then
+      layout_ellipse(fpwrite, len, el, s, o, dash)
+      o = o + 1
+    end
+
+    if not is_nil(x_sh) then
+      o = layout_poly(fpwrite, len, s, o, x_sh, y_sh, dash, func)
+    end
+
+  end
+  fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
+    from first %f, screen 0.8999 to first %f, screen 0.901\n",
+    o + 1, param.min, param.max)
+  fpwrite("MAD_MAX = %f\n", o + 1)
 end
 
 -- plot -----------------------------------------------------------------------o
