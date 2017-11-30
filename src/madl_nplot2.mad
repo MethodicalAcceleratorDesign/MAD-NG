@@ -55,31 +55,32 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
 -- stream ---------------------------------------------------------------------o
 
 local init_stream = [[
-MAD_MIN = 1000000
+MAD_MIN = $oshft
 MAD_MAX = -1
-MAD_RESET_OBJECT = 'unset for [i=MAD_MIN:MAD_MAX] object i'
+MAD_RESET_OBJECT = "unset for [i=MAD_MIN:MAD_MAX] object i"
+MAD_OLD_TERM = ""
+MAD_NEW_TERM = ""
+MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { @MAD_NEW_TERM; MAD_OLD_TERM = MAD_NEW_TERM }"
 ]]
 
 -- setup the stream between the three possibilities : pdffile, windows, scrdump
 local function set_stream(self)
-  local filename, scrdump, windows in self
+  local output, scrdump, windows in self
 
   local has_plotter = has_plotter(gplot, self.sid)
-  if has_plotter and filename or not windows then
-    return gplot[self.sid]
-  end
-
   local plotter = gplot[self.sid]
-  if filename then
-    filename = is_string(filename) and filename or _dflt.filename
-    plotter:write("set term pdfcairo\n")
-    plotter:write("set out '" .. filename .. ".pdf'\n")
-  elseif windows then
-    plotter:write("set term $term $wid size $wsizex,$wsizey \z
-      enhanced font \'$font,$fontsize\'\n" % self)
+  if not has_plotter then plotter:write(init_stream % self) end
+
+  if is_number(output) then
+    plotter:write("MAD_NEW_TERM = \"set term $term $output size $wsizex,$wsizey \z
+      enhanced font '$font,$fontsize'\"\n" % self)
+  elseif output then
+    local filename = is_string(output) and output or _dflt.filename
+    plotter:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
+      .. filename .. ".pdf'\"\n")
   end
 
-  if not has_plotter then plotter:write(init_stream)end
+  plotter:write("@MAD_SET_TERM\n")
 
   if scrdump then
     scrdump = is_string(scrdump) and scrdump or _dflt.filename
@@ -91,6 +92,7 @@ local function set_stream(self)
     }
     return p
   end
+
   return plotter
 end
 
@@ -401,11 +403,13 @@ local plot = Command 'plot' {
   sid         = 1,
 
   -- windows setup
-  windows     = true,
-  wid         = 1,
   term        = 'wxt',
   wsizex      = 800,
   wsizey      = 500,
+
+  -- output
+  output       = 1,      -- ("filename"|true) -> pdf | number -> wid
+  scrdump     = false,   -- ("filename"|true)
 
   -- table or data input
   data        = false,   -- { x=tbl.x, y=vec } (precedence over table)
@@ -416,23 +420,6 @@ local plot = Command 'plot' {
   sequence    = false,
   range       = {1,-1},  -- {13240, 13250}
   seqpos      = "top",   -- top|bottom|middle|0<x<1
-
-  -- decoration
-  font        = "Times New Roman",
-  fontsize    = 14,
-  title       = "$name MAD $version, $date, $time",
-  titlefont   = false,
-  titlesize   = false,
-  legendnames = false,   -- { y = 'distance' }
-  legendfont  = false,
-  legendsize  = false,
-  legendpos   = "left top",
-  grid        = 'grid',
-  border      = 15,
-
-  -- files
-  filename    = false,   -- pdf name or true (filename.pdf or plot.pdf)
-  scrdump     = false,   -- script name or true (scrdump.gp or plot.gp)
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
@@ -452,6 +439,12 @@ local plot = Command 'plot' {
   yrange      = false,
   y2range     = false,
 
+  -- margins
+  lmargin     = 0.1,
+  rmargin     = 0.9,
+  tmargin     = 0.1,
+  bmargin     = 0.9,
+
   -- plot style
   styles      = 'lines', -- { y = 'lines' }
   colors      = 'red',   -- { y = 'green' }
@@ -460,17 +453,24 @@ local plot = Command 'plot' {
   pointtypes  = 1,       -- { y = 2       }
   pointsizes  = 1,       -- { y = 2.3     }
 
-  -- margins
-  lmargin     = 0.1,
-  rmargin     = 0.9,
-  tmargin     = 0.1,
-  bmargin     = 0.9,
+  -- decoration
+  font        = "Times New Roman",
+  fontsize    = 14,
+  title       = "$name MAD $version, $date, $time",
+  titlefont   = false,
+  titlesize   = false,
+  legendnames = false,   -- { y = 'distance' }
+  legendfont  = false,
+  legendsize  = false,
+  legendpos   = "left top",
+  grid        = 'grid',
+  border      = 15,
 
   -- object shift
-  oshft = 1000000,
+  oshft       = 1000000,
 
   -- build the command (do not execute)
-  exec = exec,
+  exec        = exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
