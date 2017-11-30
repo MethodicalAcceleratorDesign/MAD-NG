@@ -22,9 +22,9 @@ local _dflt = {
 
 -- used to position the layout (e.g. top, bottom, etc...)
 local layout_pos = {
-  top    = { bmargin = 0.75, origin = 0.85  },
-  middle = {                 origin = 0.425 },
-  bottom = { tmargin = 0.2,  origin = 0     },
+  top    = { bmargin = 0.75, origin = 0.9  },
+  middle = {                 origin = 0.5  },
+  bottom = { tmargin = 0.25, origin = 0.1 },
 }
 
 -- gplot ----------------------------------------------------------------------o
@@ -100,7 +100,7 @@ end
 -- layout ---------------------------------------------------------------------o
 
 local xadjust = \x,l,s -> x*l + s
-local yadjust = \y,s -> 0.05*y + (s or 0.9)
+local yadjust = \sp -> \y,s -> 0.05*y + (s or sp)
 
 -- return the shape of an element in x and y
 local function eShap (elem)
@@ -126,7 +126,8 @@ local function eShap (elem)
 end
 
 -- stream polygon data
-local function layout_poly (fpwrite, len, s, o, x_sh, y_sh, dash, func)
+local function layout_poly (param, len, s, o, x_sh, y_sh, dash, func)
+  local fpwrite, xadjust, yadjust in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
@@ -150,7 +151,8 @@ local function layout_poly (fpwrite, len, s, o, x_sh, y_sh, dash, func)
 end
 
 -- stream ellipse data
-local function layout_ellipse (fpwrite, len, el, s, o, dash)
+local function layout_ellipse (param, len, el, s, o, dash)
+  local fpwrite, xadjust, yadjust in param
   local cx, cy = xadjust(0.5, len, s), yadjust(0    )
   local sx, sy = xadjust(1  , len, 0), yadjust(el, 0)
   local dashtype = dash or ""
@@ -162,9 +164,11 @@ end
 
 -- main layout function
 local function layout (param)
-  local fpwrite, sequence, range, oshft in param
+  local fpwrite, sequence, range, oshft, yseq in param
   range = param.range or _dflt.range
   local o = oshft
+  param.xadjust = xadjust
+  param.yadjust = yadjust(yseq)
 
   for i,elem in sequence:iter(range) do
     local s, len = sequence:spos(i), elem.l
@@ -172,18 +176,18 @@ local function layout (param)
     local el, dash, x_sh, y_sh, func  = eShap(elem)
 
     if not is_nil(el) and len ~= 0 then
-      layout_ellipse(fpwrite, len, el, s, o, dash)
+      layout_ellipse(param, len, el, s, o, dash)
       o = o + 1
     end
 
     if not is_nil(x_sh) then
-      o = layout_poly(fpwrite, len, s, o, x_sh, y_sh, dash, func)
+      o = layout_poly(param, len, s, o, x_sh, y_sh, dash, func)
     end
 
   end
-  fpwrite("set object %d rectangle behind noclip dashtype solid \\\n\z
-    from first %f, screen 0.8999 to first %f, screen 0.901\n",
-    o + 1, param.min, param.max)
+  fpwrite("set object %d polygon behind noclip dashtype solid \\\n\z
+    from first %f, screen %f to first %f, screen %f\n",
+    o + 1, param.min, yseq, param.max, yseq)
   fpwrite("MAD_MAX = %f\n", o + 1)
 end
 
@@ -342,20 +346,21 @@ end
 
 -- create a graph with both the layout and the plot part
 local function composed_plot (param)
-  local fpwrite, pwrite, xrange, seqpos in param
+  local fpwrite, pwrite, xrange, seqpos, size in param
   -- select default margins or specific ones for layout position
   local margins = margins
   if is_string(seqpos) then
     margins = strinterp(margins, layout_pos[seqpos], false)
+    param.yseq = layout_pos[seqpos].origin
+  else
+    param.yseq = seqpos
   end
   pwrite(margins % _dflt)
   layout(param)
   local min, max in param
   if not xrange then fpwrite("set xrange [%s:%s]\n", min, max) end
-  pwrite("set origin 0,0.0\n")
-  pwrite("set size 1,0.85\n")
+  fpwrite("set size %f,%f\n", size[1], size[2])
   plot(param)
-  -- change origin to place the layout on the plot (top, bottom etc...)
 end
 
 local function exec (self)
@@ -441,6 +446,7 @@ local plot = Command 'plot' {
   bmargin     = 0.9,
 
   -- plot style
+  size        = {1, 0.85},
   styles      = 'lines', -- { y = 'lines' }
   colors      = 'red',   -- { y = 'green' }
   dashtypes   = 'solid', -- { y = '..-- ' }
