@@ -50,7 +50,12 @@ end
 
 local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
   __index = gp_get,
-  __call  = \gp,... -> gp[gp[_gpd].__cur_id]:write(...)
+  __call  = \gp,... =>
+    local p = gp[gp[_gpd].__cur_id]
+    p:write(...)
+    p:flush()
+  end
+
 })
 
 -- stream ---------------------------------------------------------------------o
@@ -70,6 +75,19 @@ local function set_stream (self)
 
   local has_plotter = has_plotter(gplot, self.sid)
   local plotter = gplot[self.sid]
+
+  if scrdump then
+    scrdump = is_string(scrdump) and scrdump or _dflt.filename
+    local script = io.open(scrdump .. ".gp", "w")
+    local p = plotter
+    local np = {
+      write = \s,... => p:write(...); script:write(...) end,
+      flush = \s,... => p:flush(...); script:flush(...) end,
+      close = \s,... => p:close(...); script:close(...) end,
+    }
+    plotter = np
+  end
+
   if not has_plotter then plotter:write(init_stream % self) end
 
   if is_number(output) then
@@ -82,17 +100,6 @@ local function set_stream (self)
   end
 
   plotter:write("@MAD_SET_TERM\n")
-
-  if scrdump then
-    scrdump = is_string(scrdump) and scrdump or _dflt.filename
-    local script = io.open(scrdump .. ".gp", "w")
-    local p = {
-      write = \s,... => plotter:write(...); script:write(...) end,
-      flush = \s,... => plotter:flush(...); script:flush(...) end,
-      close = \s,... => plotter:close(...); script:close(...) end,
-    }
-    return p
-  end
 
   return plotter
 end
