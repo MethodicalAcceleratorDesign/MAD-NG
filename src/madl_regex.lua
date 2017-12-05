@@ -1,5 +1,8 @@
 -- $Id: re.lua,v 1.44 2013/03/26 20:11:40 roberto Exp $
 
+-- Documentation:
+-- http://www.inf.puc-rio.br/~roberto/lpeg/re.html
+
 -- imported functions and modules
 local tonumber, type, print, error = tonumber, type, print, error
 local setmetatable = setmetatable
@@ -254,7 +257,7 @@ local re = {
   updatelocale = updatelocale,
 }
 
-if version == "Lua 5.1" then _G.re = re end
+if version == "Lua 5.1" then _G.regex = re end
 
 -- return re
 return { regex = re } -- MAD
