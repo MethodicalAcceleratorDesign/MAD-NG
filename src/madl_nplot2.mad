@@ -1,19 +1,20 @@
 local dat = require 'madl_plotdat2'
 local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
 local Command                                                 in MAD
-local strinterp                                               in MAD.utility
+local strinterp, fileexists                                   in MAD.utility
 local sign                                                    in MAD.gmath
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  range     = {1,-1},
+  range     = {1, -1},
   color     = 'red',
   style     = 'linespoints',
   dashtype  = 'solid',
   linewidth = 1,
   pointsize = 1,
   pointtype = 1,
-  filename  = "plot",
+  filename  = "plot.pdf",
+  scrdump   = "plot.gp",
   lmargin   = 0.1,
   rmargin   = 0.9,
   tmargin   = 0.1,
@@ -58,50 +59,94 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
 
 })
 
--- stream ---------------------------------------------------------------------o
 
-local init_stream = [[
-MAD_MIN = $oshft
-MAD_MAX = -1
-MAD_RESET_OBJECT = "unset for [i=MAD_MIN:MAD_MAX] object i"
-MAD_OLD_TERM = ""
-MAD_NEW_TERM = ""
-MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { @MAD_NEW_TERM; MAD_OLD_TERM = MAD_NEW_TERM }"
+-- TMP -------------------------------------------------------------------------
+
+local ffi = require("ffi")
+
+ffi.cdef[[
+void Sleep(int ms);
+int poll(struct pollfd *fds, unsigned long nfds, int timeout);
 ]]
 
--- setup the stream between the three possibilities : pdffile, windows, scrdump
-local function set_stream (self)
-  local output, scrdump in self
+local sleep
+if ffi.os == "Windows" then sleep = \s -> ffi.C.Sleep(s)
+else                        sleep = \s -> ffi.C.poll(nil, 0, s)
+end
 
-  local has_plotter = has_plotter(gplot, self.sid)
-  local plotter = gplot[self.sid]
+local function lock_file (name)
+  local waited    = 0
+  local lock_name =  name .. ".lock"
+  while fileexists(lock_name) do
+    sleep(100)
+    waited = waited + 100
+    if waited > 3000 then
+      os.remove(lock_name)
+      error("Script file hasn't been properly unlocked : try again")
+    end
+  end
+  io.open(lock_name, "w"):close()
+end
+
+-- stream ---------------------------------------------------------------------o
+
+local init_cmd = [[
+#== initialization =============================================================
+if (!(exist("MAD_MIN") && exist("MAD_MAX"))) {
+  MAD_MIN = $oshft;
+  MAD_MAX = -1;
+}
+MAD_RESET_OBJECT = "unset for [i=MAD_MIN:MAD_MAX] object i"
+if (!(exist("MAD_OLD_TERM") && exist("MAD_NEW_TERM"))) {
+  MAD_OLD_TERM = "";
+  MAD_NEW_TERM = "";
+}
+MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
+  @MAD_NEW_TERM; \
+  MAD_OLD_TERM = MAD_NEW_TERM; \
+}"
+#===============================================================================
+
+]]
+
+-- open files and gnuplot and set terminal when necessary
+local function setup_cmd (self)
+  local output, scrdump in self
+  local gp = gplot[self.sid]
+  local file, name
 
   if scrdump then
-    scrdump = is_string(scrdump) and scrdump or _dflt.filename
-    local script = io.open(scrdump .. ".gp", "w")
-    local p = plotter
-    local np = {
-      write = \s,... => p:write(...); script:write(...) end,
-      flush = \s,... => p:flush(...); script:flush(...) end,
-      close = \s,... => p:close(...); script:close(...) end,
-    }
-    plotter = np
+    name = is_string(scrdump) and scrdump or _dflt.scrdump
+    lock_file(name)
+  else
+    name = os.tmpname()
   end
+  file = io.open(name, "w")
 
-  if not has_plotter then plotter:write(init_stream % self) end
+  file:write(init_cmd % self)
 
   if is_number(output) then
-    plotter:write("MAD_NEW_TERM = \"set term $term $output size $wsizex,$wsizey \z
+    file:write("MAD_NEW_TERM = \"set term $term $output size $wsizex,$wsizey \z
       enhanced font '$font,$fontsize'\"\n" % self)
   elseif output then
     local filename = is_string(output) and output or _dflt.filename
-    plotter:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
-      .. filename .. ".pdf'\"\n")
+    file:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
+      .. filename .. "'\"\n")
   end
 
-  plotter:write("@MAD_SET_TERM\n")
+  file:write("@MAD_SET_TERM\n")
 
-  return plotter
+  return file, name, gp
+end
+
+local function teardown_cmd (self, file, name, gp)
+  file:close()
+  gp:write("load('" .. name .. "')\n")
+  if self.scrdump then name = name .. ".lock" end
+  if jit.os == "Windows" then gp:write("system 'del " .. name .. "'\n")
+  else                        gp:write("system 'rm "  .. name .. "'\n" )
+  end
+  gp:flush()
 end
 
 -- layout ---------------------------------------------------------------------o
@@ -371,9 +416,9 @@ local function composed_plot (param)
 end
 
 local function exec (self)
-  local plotter = set_stream(self, plotter)
+  local file, name, gp = setup_cmd(self)
   if self.sequence ~= "keep" then
-    plotter:write("@MAD_RESET_OBJECT\n")
+    file:write("@MAD_RESET_OBJECT\n")
   elseif self.range then
     print("MAD Plot Warning : sequence=\"keep\" and range is \z
       provided - range is ignored")
@@ -384,9 +429,9 @@ local function exec (self)
     name    = self.name or is_table(self.table) and self.table.title or "",
     date    = self.date or is_table(self.table) and self.table.date  or "",
     time    = self.time or is_table(self.table) and self.table.time  or "",
-    plotter = plotter,
-    fpwrite = \... -> plotter:write(string.format(...)),
-    pwrite  = \... -> plotter:write(...)
+    plotter = file,
+    fpwrite = \... -> file:write(string.format(...)),
+    pwrite  = \... -> file:write(...)
   }
   setmetatable(param, {__index=self})
 
@@ -400,7 +445,7 @@ local function exec (self)
       plot(param)
     end
   end
-  plotter:flush()
+  teardown_cmd(self, file, name, gp)
   return self
 end
 
