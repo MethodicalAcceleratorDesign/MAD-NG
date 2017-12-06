@@ -94,7 +94,7 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
 
 })
 
--- stream ---------------------------------------------------------------------o
+-- initialization -------------------------------------------------------------o
 
 local init_cmd = [[
 #== initialization =============================================================
@@ -115,6 +115,8 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 
 ]]
 
+local tmpfile = os.tmpname()
+
 -- open files and gnuplot and set terminal when necessary
 local function setup_cmd (self)
   local output, scrdump in self
@@ -123,10 +125,10 @@ local function setup_cmd (self)
 
   if scrdump then
     name = is_string(scrdump) and scrdump or _dflt.scrdump
-    lock_file(name, 100, 4000)
   else
-    name = os.tmpname()
+    name = tmpfile
   end
+  lock_file(name, 100, 4000)
   file = io.open(name, "w")
 
   file:write(init_cmd % self)
@@ -145,13 +147,17 @@ local function setup_cmd (self)
   return file, name, gp
 end
 
-local function teardown_cmd (self, file, name, gp)
-  file:close()
-  gp:write("load('" .. name .. "')\n")
-  if self.scrdump then name = name .. ".lock" end
+local function gnuplot_rm(gp, name)
   if jit.os == "Windows" then gp:write("system 'del " .. name .. "'\n")
   else                        gp:write("system 'rm "  .. name .. "'\n" )
   end
+end
+
+local function teardown_cmd (self, file, name, gp)
+  file:close()
+  gp:write("load('" .. name .. "')\n")
+  if not self.scrdump then gnuplot_rm(gp, tmpfile) end
+  gnuplot_rm(gp, name .. ".lock")
   gp:flush()
 end
 
