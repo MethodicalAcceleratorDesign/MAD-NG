@@ -42,11 +42,12 @@ mad_str_split (str_t str, ssz_t len[4], str_t sep)
 
   while (i < len[1] && str[len[0]+i] != *sep) ++i;
 
-  if (i == len[1]) {
-    len[2] = len[3] = 0; // not found
+  if (i == len[1]) { // not found
+    len[2] = len[3] = 0;
+    mad_str_trim(str, len);
   } else {
-    len[3] = len[1]-i-1;
-    len[2] = len[0]+i+1;
+    len[3] = len[1]-(i+1);
+    len[2] = len[0]+(i+1);
     len[1] = i;
     mad_str_trim(str, len);
     mad_str_trim(str, len+2);
