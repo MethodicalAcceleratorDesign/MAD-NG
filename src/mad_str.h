@@ -28,7 +28,8 @@
 
 // --- interface --------------------------------------------------------------o
 
-const char* mad_str_trim (const char *str, ssz_t *len);
+str_t mad_str_trim  (str_t str, ssz_t len[2]);
+str_t mad_str_split (str_t str, ssz_t len[4], str_t sep);
 
 // ----------------------------------------------------------------------------o
 
