@@ -42,7 +42,7 @@ mad_str_split (str_t str, ssz_t len[4], str_t sep)
 
   while (i < len[1] && str[len[0]+i] != *sep) ++i;
 
-  if (i == len[1]) { // not found
+  if (i == len[1]) { // sep not found
     len[2] = len[3] = 0;
     mad_str_trim(str, len);
   } else {
