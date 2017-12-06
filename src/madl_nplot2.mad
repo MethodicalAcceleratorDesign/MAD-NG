@@ -3,6 +3,35 @@ local is_nil, is_number, is_table, is_string, is_sequence     in MAD.typeid
 local Command                                                 in MAD
 local strinterp, fileexists                                   in MAD.utility
 local sign                                                    in MAD.gmath
+
+-- Utility --------------------------------------------------------------------o
+
+local ffi = require("ffi")
+
+ffi.cdef[[
+void Sleep(int ms);
+int poll(struct pollfd *fds, unsigned long nfds, int timeout);
+]]
+
+local sleep
+if ffi.os == "Windows" then sleep = \s -> ffi.C.Sleep(s)
+else                        sleep = \s -> ffi.C.poll(nil, 0, s)
+end
+
+local function lock_file (name, time, timeout)
+  local waited    = 0
+  local lock_name =  name .. ".lock"
+  while fileexists(lock_name) do
+    sleep(time)
+    waited = waited + time
+    if waited > timeout then
+      os.remove(lock_name)
+      error("Script file hasn't been properly unlocked : try again")
+    end
+  end
+  io.open(lock_name, "w"):close()
+end
+
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
@@ -59,35 +88,6 @@ local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
 
 })
 
-
--- TMP -------------------------------------------------------------------------
-
-local ffi = require("ffi")
-
-ffi.cdef[[
-void Sleep(int ms);
-int poll(struct pollfd *fds, unsigned long nfds, int timeout);
-]]
-
-local sleep
-if ffi.os == "Windows" then sleep = \s -> ffi.C.Sleep(s)
-else                        sleep = \s -> ffi.C.poll(nil, 0, s)
-end
-
-local function lock_file (name)
-  local waited    = 0
-  local lock_name =  name .. ".lock"
-  while fileexists(lock_name) do
-    sleep(100)
-    waited = waited + 100
-    if waited > 3000 then
-      os.remove(lock_name)
-      error("Script file hasn't been properly unlocked : try again")
-    end
-  end
-  io.open(lock_name, "w"):close()
-end
-
 -- stream ---------------------------------------------------------------------o
 
 local init_cmd = [[
@@ -117,7 +117,7 @@ local function setup_cmd (self)
 
   if scrdump then
     name = is_string(scrdump) and scrdump or _dflt.scrdump
-    lock_file(name)
+    lock_file(name, 100, 4000)
   else
     name = os.tmpname()
   end
@@ -205,8 +205,8 @@ end
 -- stream ellipse data
 local function layout_ellipse (param, len, el, s, o, dash)
   local fpwrite, xadjust, yadjust in param
-  local cx, cy = xadjust(0.5, len, s), yadjust(0    )
-  local sx, sy = xadjust(1  , len, 0), yadjust(el, 0)
+  local cx, cy = xadjust(0, len, s), yadjust(0    )
+  local sx, sy = xadjust(1, len, 0), yadjust(el, 0)
   local dashtype = dash or ""
   fpwrite("set object %d ellipse at %f, screen %f \\\n\z
     size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
@@ -224,16 +224,19 @@ local function layout (param)
 
   for i,elem in sequence:iter(range) do
     local s, len = sequence:spos(i), elem.l
+    local xorig  = s + len / 2
+    local sh_l   = len / 2
     param.min, param.max = param.min or s, s
     local el, dash, x_sh, y_sh, func  = eShap(elem)
 
+
     if not is_nil(el) and len ~= 0 then
-      layout_ellipse(param, len, el, s, o, dash)
+      layout_ellipse(param, len, el, xorig, o, dash)
       o = o + 1
     end
 
     if not is_nil(x_sh) then
-      o = layout_poly(param, len, s, o, x_sh, y_sh, dash, func)
+      o = layout_poly(param, sh_l, xorig, o, x_sh, y_sh, dash, func)
     end
 
   end
