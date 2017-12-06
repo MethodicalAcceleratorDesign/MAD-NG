@@ -26,7 +26,7 @@ local function lock_file (name, time, timeout)
     waited = waited + time
     if waited > timeout then
       os.remove(lock_name)
-      error("Script file hasn't been properly unlocked : try again")
+      error("lock file \"" .. lock_name .. "\" prevent us from proceeding")
     end
   end
   io.open(lock_name, "w"):close()
@@ -216,30 +216,31 @@ end
 
 -- main layout function
 local function layout (param)
-  local fpwrite, sequence, range, oshft, yseq in param
-  range = param.range or _dflt.range
+  local fpwrite, sequence, range, oshft, yseq, seqminlen, seqkind in param
+  range   = param.range or _dflt.range
   local o = oshft
   param.xadjust = xadjust
   param.yadjust = yadjust(yseq)
 
   for i,elem in sequence:iter(range) do
-    local s, len = sequence:spos(i), elem.l
-    local xorig  = s + len / 2
-    local sh_l   = len / 2
-    param.min, param.max = param.min or s, s
-    local el, dash, x_sh, y_sh, func  = eShap(elem)
+    local s, len, kind = sequence:spos(i), elem.l, elem.kind
+    if len >= seqminlen and (not seqkind or seqkind[kind]) then
+      local xorig  = s + len / 2
+      local sh_l   = len / 2
+      param.min, param.max = param.min or s, s
+      local el, dash, x_sh, y_sh, func  = eShap(elem)
 
+      if not is_nil(el) and len ~= 0 then
+        layout_ellipse(param, len, el, xorig, o, dash)
+        o = o + 1
+      end
 
-    if not is_nil(el) and len ~= 0 then
-      layout_ellipse(param, len, el, xorig, o, dash)
-      o = o + 1
+      if not is_nil(x_sh) then
+        o = layout_poly(param, sh_l, xorig, o, x_sh, y_sh, dash, func)
+      end
     end
-
-    if not is_nil(x_sh) then
-      o = layout_poly(param, sh_l, xorig, o, x_sh, y_sh, dash, func)
-    end
-
   end
+  print(param.min)
   fpwrite("set object %d polygon behind noclip dashtype solid \\\n\z
     from first %f, screen %f to first %f, screen %f to first %f, screen %f\n",
     o + 1, param.min, yseq, param.max, yseq, param.min, yseq)
@@ -483,6 +484,8 @@ local plot = Command 'plot' {
   sequence    = false,
   range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10} (spos)
   seqpos      = "top",   -- top|bottom|middle|0<x<1
+  seqminlen   = 0,
+  seqkind     = false,   -- { quadrupole = true, sbend = true }
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
