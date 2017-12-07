@@ -641,7 +641,7 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
       }
     }
   }
-  return cabs(s);
+  return sqrt(cabs(s));
 }
 
 // -- Symplectic conjugate, compute \bar{M} = -J M' J -------------------------o
