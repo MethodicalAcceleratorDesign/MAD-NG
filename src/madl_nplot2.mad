@@ -63,6 +63,31 @@ local layout_pos = {
   bottom = { tmargin = 0.25, origin = 0.1 },
 }
 
+-- GC -------------------------------------------------------------------------o
+
+local gcf = {}
+
+ffi.cdef[[
+typedef struct { int x; } plotgc_t;
+]]
+
+local plotgc = ffi.metatype("plotgc_t",
+  { __gc = \ =>
+      for i=1,#gcf do
+        os.remove(gcf[i])
+      end
+    end
+  }
+)
+
+local gc = plotgc(0)
+
+local function gc_file(fname, lock)
+  table.insert(gcf, fname)
+  if lock then table.insert(gcf, fname .. ".lock") end
+  return fname
+end
+
 -- gplot ----------------------------------------------------------------------o
 
 local _gpd, _tmpf = {}, {}
@@ -70,7 +95,7 @@ local _gpd, _tmpf = {}, {}
 local function gp_create (gplot, id)
   local gnuplot = assert(io.popen('gnuplot', 'w'))
   gplot[_gpd ][id] = gnuplot
-  gplot[_tmpf][id] = os.tmpname()
+  gplot[_tmpf][id] = gc_file(os.tmpname(), true)
   return gnuplot
 end
 
@@ -88,7 +113,7 @@ local function gp_getlock (gplot, id)
 end
 
 local gplot = setmetatable(
-  { [_tmpf]= {}, [_gpd] = {__cur_id=1} },
+  { [{}] = gc, [_tmpf] = {}, [_gpd] = {__cur_id=1} },
   {
     __index = gp_get,
     __call  = \gplot,... =>
@@ -128,6 +153,7 @@ local function setup_cmd (self)
 
   if scrdump then
     fname = is_string(scrdump) and scrdump or _dflt.scrdump
+    gc_file(fname .. ".lock")
   else
     fname = streamf
   end
@@ -151,8 +177,8 @@ local function setup_cmd (self)
 end
 
 local function gnuplot_rm(gp, fname)
-  if jit.os == "Windows" then gp:write("system 'del " .. fname .. "'\n")
-  else                        gp:write("system 'rm "  .. fname .. "'\n" )
+  if jit.os == "Windows" then gp:write("system 'del "  ..fname.." >nul 2>&1'\n")
+  else                        gp:write("system 'rm -f "..fname.."'\n")
   end
 end
 
