@@ -42,7 +42,7 @@ SYNOPSIS
   is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
   is_modulable, is_powerable, has_member, has_method, has_metamethod,
   is_same, same,                                              (types comparison)
-  strtrim, strsplit, strsplits,                           (strings manipulation)
+  strtrim, strsplit, strsplitbra, strsplitall,            (strings manipulation)
   tostring, totable,                                                (extensions)
   option { format='%.16g' }.                                             (setup)
 
@@ -467,7 +467,7 @@ getmetatable("").__mod = utility.strinterp
 
 -- string triming and splitting
 
-local slen = ffi.new 'ssz_t[4]'
+local slen = ffi.new 'ssz_t[6]'
 
 function utility.strtrim (str)
   assert(is_string(str), "invalid argument #1 (string expected)")
@@ -482,29 +482,46 @@ function utility.strsplit (str, sep)
   slen[0], slen[1] = 0, #str
   local ptr = _C.mad_str_split(str, slen, sep)
   local str1, str2
-  str1 = ffi.string(ptr+slen[0], slen[1])
-  if slen[2] > 0 then -- found sep
+  if slen[4] >= 0 then -- found sep
+    str1 = ffi.string(ptr+slen[0], slen[1])
     str2 = ffi.string(ptr+slen[2], slen[3])
   end
   return str1, str2
 end
 
-function utility.strsplits (str, sep, res)
+function utility.strsplitbra (str)
+  assert(is_string(str), "invalid argument #1 (string expected)")
+  slen[0], slen[1] = 0, #str
+  local ptr = _C.mad_str_split_bracket(str, slen)
+  assert(slen[4] < 0 or slen[5] > slen[4], "invalid pair of brackets")
+  local str1, str2, brac
+  if slen[4] >= 0 then
+    str1 = ffi.string(ptr+slen[0], slen[1])
+    str2 = ffi.string(ptr+slen[2], slen[3])
+    brac = ffi.string(ptr+slen[4], 1)
+  end
+  return str1, str2, brac
+end
+
+function utility.strsplitall (str, sep, res_)
   assert(is_string(str), "invalid argument #1 (string expected)")
   assert(is_string(sep), "invalid argument #2 (string expected)")
   slen[0], slen[1] = 0, #str
-  local res, n = res or {}, 1
-  while true do
+  local res, n = res_ or {}, 1
+  while slen[1] > 0 do
     local ptr = _C.mad_str_split(str, slen, sep)
-    if slen[1] <= 0 then return res end
-    res[n] = ffi.string(ptr+slen[0], slen[1])
-    n, slen[0], slen[1] = n+1, slen[2], slen[3]
+    if slen[1] > 0 then
+      res[n] = ffi.string(ptr+slen[0], slen[1])
+      n, slen[0], slen[1] = n+1, slen[2], slen[3]
+    end
   end
+  return res
 end
 
-string.trim   = utility.strtrim
-string.split  = utility.strsplit
-string.splits = utility.strsplits
+string.trim     = utility.strtrim
+string.split    = utility.strsplit
+string.splitall = utility.strsplitall
+string.splitbra = utility.strsplitbra
 
 -- algorithms
 

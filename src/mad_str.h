@@ -28,8 +28,9 @@
 
 // --- interface --------------------------------------------------------------o
 
-str_t mad_str_trim  (str_t str, ssz_t len[2]);
-str_t mad_str_split (str_t str, ssz_t len[4], str_t sep);
+str_t mad_str_trim          (str_t str, ssz_t len[2]);
+str_t mad_str_split         (str_t str, ssz_t len[5], str_t sep);
+str_t mad_str_split_bracket (str_t str, ssz_t len[6]);
 
 // ----------------------------------------------------------------------------o
 

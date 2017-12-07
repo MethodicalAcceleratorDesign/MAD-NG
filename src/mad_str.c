@@ -35,23 +35,52 @@ mad_str_trim (str_t str, ssz_t len[2])
 }
 
 str_t
-mad_str_split (str_t str, ssz_t len[4], str_t sep)
+mad_str_split (str_t str, ssz_t len[5], str_t sep)
 {
   assert(str && len && sep);
-  ssz_t i = 0;
 
-  while (i < len[1] && str[len[0]+i] != *sep) ++i;
+  ssz_t i = len[0], k = len[0]+len[1];
+  while (i < k && str[i] != *sep) ++i;
 
-  if (i == len[1]) { // sep not found
-    len[2] = len[3] = 0;
-    mad_str_trim(str, len);
-  } else {
-    len[3] = len[1]-(i+1);
-    len[2] = len[0]+(i+1);
-    len[1] = i;
-    mad_str_trim(str, len);
+  if (i == k) // sep not found
+    len[2] = len[3] = len[4] = -1;
+  else {
+    len[1] = i-len[0];
+    len[2] = i+1;
+    len[3] = k-(i+1);
+    len[4] = i;
     mad_str_trim(str, len+2);
   }
 
-  return str;
+  return mad_str_trim(str, len);
+}
+
+str_t
+mad_str_split_bracket (str_t str, ssz_t len[6])
+{
+  assert(str && len);
+
+  ssz_t i = len[0], k = len[0]+len[1];
+  while (i < k && str[i] != '[' && str[i] != '{'
+               && str[i] != ']' && str[i] != '}') ++i;
+
+  ssz_t j = i+1;
+       if (str[i] == '[') while (j < k && str[j] != ']') ++j;
+  else if (str[i] == '{') while (j < k && str[j] != '}') ++j;
+  else j = k;
+
+       if (i == k) // no bracket found
+    len[2] = len[3] = len[4] = len[5] = -1;
+  else if (j == k) // bad pairs of brackets
+    len[2] = len[3] = len[5] = -1, len[4] = i;
+  else {
+    len[1] = i-len[0];
+    len[2] = i+1;
+    len[3] = j-(i+1);
+    len[4] = i;
+    len[5] = j;
+    mad_str_trim(str, len+2);
+  }
+
+  return mad_str_trim(str, len);
 }
