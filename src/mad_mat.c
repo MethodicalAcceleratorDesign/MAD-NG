@@ -571,6 +571,15 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
     }
 }
 
+// -- Symplectic matrices -----------------------------------------------------o
+
+// M[2n x 2n] accessed as n blocks of [a b ; c d]
+
+#define a_(x,i,j) x[ i   *n+j  ]
+#define b_(x,i,j) x[ i   *n+j+1]
+#define c_(x,i,j) x[(i+1)*n+j  ]
+#define d_(x,i,j) x[(i+1)*n+j+1]
+
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
 
 num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
@@ -580,24 +589,24 @@ num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
     // i == j
     s1 = -1, s2 = 1;
     for (ssz_t k = 0; k < n-1; k += 2) {
-      s1 += x[k*n+i  ] * x[(k+1)*n+i+1] - x[(k+1)*n+i  ] * x[k*n+i+1];
-      s2 += x[k*n+i+1] * x[(k+1)*n+i  ] - x[(k+1)*n+i+1] * x[k*n+i  ];
+      s1 += a_(x,k,i) * d_(x,k,i) - b_(x,k,i) * c_(x,k,i);
+      s2 += b_(x,k,i) * c_(x,k,i) - a_(x,k,i) * d_(x,k,i);
     }
     s += s1*s1 + s2*s2;
-    if (r) r[i*n+i+1] = s1, r[(i+1)*n+i] = s2, r[i*n+i] = r[(i+1)*n+i+1] = 0;
+    if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
     // i < j
     for (ssz_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
       for (ssz_t k = 0; k < n-1; k += 2) {
-        s0 += x[k*n+i  ] * x[(k+1)*n+j  ] - x[(k+1)*n+i  ] * x[k*n+j  ];
-        s1 += x[k*n+i  ] * x[(k+1)*n+j+1] - x[(k+1)*n+i  ] * x[k*n+j+1];
-        s2 += x[k*n+i+1] * x[(k+1)*n+j  ] - x[(k+1)*n+i+1] * x[k*n+j  ];
-        s3 += x[k*n+i+1] * x[(k+1)*n+j+1] - x[(k+1)*n+i+1] * x[k*n+j+1];
+        s0 += a_(x,k,i) * c_(x,k,j) - a_(x,k,j) * c_(x,k,i);
+        s1 += a_(x,k,i) * d_(x,k,j) - b_(x,k,j) * c_(x,k,i);
+        s2 += b_(x,k,i) * c_(x,k,j) - a_(x,k,j) * d_(x,k,i);
+        s3 += b_(x,k,i) * d_(x,k,j) - b_(x,k,j) * d_(x,k,i);
       }
       s += 2*(s0*s0 + s1*s1 + s2*s2 + s3*s3);
       if (r) {
-        r[i*n+j] =  s0, r[i*n+j+1] =  s1, r[(i+1)*n+j] =  s2, r[(i+1)*n+j+1] =  s3;
-        r[j*n+i] = -s0, r[j*n+i+1] = -s2, r[(j+1)*n+i] = -s1, r[(j+1)*n+i+1] = -s3;
+        a_(r,i,j) =  s0, b_(r,i,j) =  s1, c_(r,i,j) =  s2, d_(r,i,j) =  s3;
+        a_(r,j,i) = -s0, b_(r,j,i) = -s2, c_(r,j,i) = -s1, d_(r,j,i) = -s3;
       }
     }
   }
@@ -611,59 +620,68 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
     // i == j
     s1 = -1, s2 = 1;
     for (ssz_t k = 0; k < n-1; k += 2) {
-      s1 += conj(x[k*n+i  ]) * x[(k+1)*n+i+1] - conj(x[(k+1)*n+i  ]) * x[k*n+i+1];
-      s2 += conj(x[k*n+i+1]) * x[(k+1)*n+i  ] - conj(x[(k+1)*n+i+1]) * x[k*n+i  ];
+      s1 += conj(a_(x,k,i)) * d_(x,k,i) - b_(x,k,i) * conj(c_(x,k,i));
+      s2 += conj(b_(x,k,i)) * c_(x,k,i) - a_(x,k,i) * conj(d_(x,k,i));
     }
     s += s1*s1 + s2*s2;
-    if (r) r[i*n+i+1] = s1, r[(i+1)*n+i] = s2, r[i*n+i] = r[(i+1)*n+i+1] = 0;
+    if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
     // i < j
     for (ssz_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
       for (ssz_t k = 0; k < n-1; k += 2) {
-        s0 += conj(x[k*n+i  ]) * x[(k+1)*n+j  ] - conj(x[(k+1)*n+i  ]) * x[k*n+j  ];
-        s1 += conj(x[k*n+i  ]) * x[(k+1)*n+j+1] - conj(x[(k+1)*n+i  ]) * x[k*n+j+1];
-        s2 += conj(x[k*n+i+1]) * x[(k+1)*n+j  ] - conj(x[(k+1)*n+i+1]) * x[k*n+j  ];
-        s3 += conj(x[k*n+i+1]) * x[(k+1)*n+j+1] - conj(x[(k+1)*n+i+1]) * x[k*n+j+1];
+        s0 += conj(a_(x,k,i)) * c_(x,k,j) - a_(x,k,j) * conj(c_(x,k,i));
+        s1 += conj(a_(x,k,i)) * d_(x,k,j) - b_(x,k,j) * conj(c_(x,k,i));
+        s2 += conj(b_(x,k,i)) * c_(x,k,j) - a_(x,k,j) * conj(d_(x,k,i));
+        s3 += conj(b_(x,k,i)) * d_(x,k,j) - b_(x,k,j) * conj(d_(x,k,i));
       }
       s += 2*(s0*s0 + s1*s1 + s2*s2 + s3*s3);
       if (r) {
-        r[i*n+j] =  s0, r[i*n+j+1] =  s1, r[(i+1)*n+j] =  s2, r[(i+1)*n+j+1] =  s3;
-        r[j*n+i] = -s0, r[j*n+i+1] = -s2, r[(j+1)*n+i] = -s1, r[(j+1)*n+i+1] = -s3;
+        a_(r,i,j) =  s0, b_(r,i,j) =  s1, c_(r,i,j) =  s2, d_(r,i,j) =  s3;
+        a_(r,j,i) = -s0, b_(r,j,i) = -s2, c_(r,j,i) = -s1, d_(r,j,i) = -s3;
       }
     }
   }
-  return cabs(s);
+  return sqrt(cabs(s));
 }
 
-// -- Symplectic inverse, compute -J M' J -------------------------------------o
+// -- Symplectic conjugate, compute \bar{M} = -J M' J -------------------------o
 
-// M = [A B ; C D] => M^-1 = [D' -B' ; -C' A']
-
-void mad_mat_sympinv (const num_t x[], num_t r[], ssz_t n)
+void mad_mat_sympconj (const num_t x[], num_t r[], ssz_t n)
 { CHKXR; assert(!(n & 1));
   num_t t;
-  for (ssz_t i = 0; i < n-1; i += 2)
-  for (ssz_t j = 0; j < n-1; j += 2) {
-    t              =  x[ i   *n+j  ];
-    r[ i   *n+j  ] =  x[(i+1)*n+j+1];
-    r[ i   *n+j+1] = -x[ i   *n+j+1];
-    r[(i+1)*n+j  ] = -x[(i+1)*n+j  ];
-    r[(i+1)*n+j+1] = t;
+  for (ssz_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
+    t = a_(x,i,i),  a_(r,i,i) =  d_(x,i,i),  d_(r,i,i) = t;
+    b_(r,i,i) = -b_(x,i,i),  c_(r,i,i) = -c_(x,i,i);
+
+    for (ssz_t j = i+2; j < n-1; j += 2) { // 2x2 blocks off diagonal
+      t = a_(x,i,j),  a_(r,i,j) =  d_(x,j,i),  d_(r,j,i) =  t;
+      t = b_(x,i,j),  b_(r,i,j) = -b_(x,j,i),  b_(r,j,i) = -t;
+      t = c_(x,i,j),  c_(r,i,j) = -c_(x,j,i),  c_(r,j,i) = -t;
+      t = d_(x,i,j),  d_(r,i,j) =  a_(x,j,i),  a_(r,j,i) =  t;
+    }
   }
 }
 
-void mad_cmat_sympinv (const cnum_t x[], cnum_t r[], ssz_t n)
+void mad_cmat_sympconj (const cnum_t x[], cnum_t r[], ssz_t n)
 { CHKXR; assert(!(n & 1));
   cnum_t t;
-  for (ssz_t i = 0; i < n-1; i += 2)
-  for (ssz_t j = 0; j < n-1; j += 2) {
-    t              =  conj(x[ i   *n+j  ]);
-    r[ i   *n+j  ] =  conj(x[(i+1)*n+j+1]);
-    r[ i   *n+j+1] = -conj(x[ i   *n+j+1]);
-    r[(i+1)*n+j  ] = -conj(x[(i+1)*n+j  ]);
-    r[(i+1)*n+j+1] = t;
+  for (ssz_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
+    t = a_(x,i,i),  a_(r,i,i) =  conj(d_(x,i,i)),  d_(r,i,i) = conj(t);
+    b_(r,i,i) = -conj(b_(x,i,i)),  c_(r,i,i) = -conj(c_(x,i,i));
+
+    for (ssz_t j = i+2; j < n-1; j += 2) {   // 2x2 blocks off diagonal
+      t = a_(x,i,j),  a_(r,i,j) =  conj(d_(x,j,i)),  d_(r,j,i) =  conj(t);
+      t = b_(x,i,j),  b_(r,i,j) = -conj(b_(x,j,i)),  b_(r,j,i) = -conj(t);
+      t = c_(x,i,j),  c_(r,i,j) = -conj(c_(x,j,i)),  c_(r,j,i) = -conj(t);
+      t = d_(x,i,j),  d_(r,i,j) =  conj(a_(x,j,i)),  a_(r,j,i) =  conj(t);
+    }
   }
 }
+
+#undef a_
+#undef b_
+#undef c_
+#undef d_
 
 // -- lapack ------------------------------------------------------------------o
 
