@@ -68,7 +68,7 @@ local layout_pos = {
 local gcf = {}
 
 ffi.cdef[[
-typedef struct { int x; } plotgc_t;
+  typedef struct { int x; } plotgc_t;
 ]]
 
 local plotgc = ffi.metatype("plotgc_t",
@@ -99,30 +99,46 @@ local function gp_create (gplot, id)
   return gnuplot
 end
 
-local function gp_get (gplot, id)
+local function gp_isBusy (gplot, id)
+  return fileexists(gplot[_tmpf][id] .. ".lock")
+end
+
+local function gp_get (gplot, id, curr)
   local dat = gplot[_gpd]
-  if is_nil( dat[id] ) then gp_create( gplot, id ) end
-  if id ~= '__cur_id'  then dat.__cur_id = id      end
+  if is_nil( dat[id] )             then gp_create( gplot, id ) end
+  if id ~= '__cur_id' and not curr then dat.__cur_id = id      end
   return dat[id]
 end
 
 local function gp_getlock (gplot, id)
-  local gnuplot = gp_get(gplot, id)
+  local gnuplot = gp_get(gplot, id, true)
   local file    = gplot[_tmpf][id]
   return gnuplot, file
 end
 
-local gplot = setmetatable(
-  { [{}] = gc, [_tmpf] = {}, [_gpd] = {__cur_id=1} },
-  {
-    __index = gp_get,
-    __call  = \gplot,... =>
-      local p = gplot[gplot[_gpd].__cur_id]
-      p:write(...)
-      p:flush()
-    end
-  }
-)
+local function gp_call (gplot, id, ...)
+  local gnuplot
+  if is_number(id) then
+    gnuplot = gp_get(gplot, id)
+    gnuplot:write(...)
+  else
+    gnuplot = gp_get(gplot, gplot.__cur_id)
+    gnuplot:write(id, ...)
+  end
+  gnuplot:flush()
+end
+
+local gplot = {
+  is_busy = gp_isBusy,
+  [{}]    = gc,
+  [_tmpf] = { },
+  [_gpd]  = { __cur_id = 1 },
+}
+
+setmetatable(gplot, {
+  __index = gp_get,
+  __call  = gp_call,
+})
 
 -- initialization -------------------------------------------------------------o
 
@@ -178,7 +194,7 @@ end
 
 local function gnuplot_rm(gp, fname)
   if jit.os == "Windows" then gp:write("system 'del "  ..fname.." >nul 2>&1'\n")
-  else                        gp:write("system 'rm -f "..fname.."'\n")
+  else                        gp:write("system '\\rm -f "..fname.."'\n")
   end
 end
 
