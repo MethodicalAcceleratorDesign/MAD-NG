@@ -18,21 +18,21 @@ if ffi.os == "Windows" then sleep = \s -> ffi.C.Sleep(s)
 else                        sleep = \s -> ffi.C.poll(nil, 0, s)
 end
 
-local function lock_file (name, time, timeout)
-  local waited    = 0
-  local lock_name =  name .. ".lock"
-  while fileexists(lock_name) do
+local function lock_file (fname, time, timeout)
+  local waited = 0
+  local lock   = fname .. ".lock"
+  while fileexists(lock) do
     sleep(time)
     waited = waited + time
     if waited > timeout then
-      os.remove(lock_name)
-      error("lock file \"" .. lock_name .. "\" prevent us from proceeding")
+      os.remove(lock)
+      error("lock file \"" .. lock .. "\" prevent us from proceeding")
     end
   end
-  io.open(lock_name, "w"):close()
+  io.open(lock, "w"):close()
 end
 
-local unlock_file = \name -> os.remove(name .. ".lock")
+local unlock_file = \fname -> os.remove(fname .. ".lock")
 
 MAD.utility.sleep       = sleep
 MAD.utility.lock_file   = lock_file
@@ -65,34 +65,39 @@ local layout_pos = {
 
 -- gplot ----------------------------------------------------------------------o
 
-local _gpd = {}
+local _gpd, _tmpf = {}, {}
 
-local function has_plotter (gp, id)
-  return not not gp[_gpd][id]
-end
-
-local function gp_create (gp, id)
+local function gp_create (gplot, id)
   local gnuplot = assert(io.popen('gnuplot', 'w'))
-  gp[_gpd][id] = gnuplot
+  gplot[_gpd ][id] = gnuplot
+  gplot[_tmpf][id] = os.tmpname()
   return gnuplot
 end
 
-local function gp_get (gp, id)
-  local dat = gp[_gpd]
-  if is_nil( dat[id] ) then gp_create( gp, id ) end
-  if id ~= '__cur_id'  then dat.__cur_id = id end
+local function gp_get (gplot, id)
+  local dat = gplot[_gpd]
+  if is_nil( dat[id] ) then gp_create( gplot, id ) end
+  if id ~= '__cur_id'  then dat.__cur_id = id      end
   return dat[id]
 end
 
-local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
-  __index = gp_get,
-  __call  = \gp,... =>
-    local p = gp[gp[_gpd].__cur_id]
-    p:write(...)
-    p:flush()
-  end
+local function gp_getlock (gplot, id)
+  local gnuplot = gp_get(gplot, id)
+  local file    = gplot[_tmpf][id]
+  return gnuplot, file
+end
 
-})
+local gplot = setmetatable(
+  { [_tmpf]= {}, [_gpd] = {__cur_id=1} },
+  {
+    __index = gp_get,
+    __call  = \gplot,... =>
+      local p = gplot[gplot[_gpd].__cur_id]
+      p:write(...)
+      p:flush()
+    end
+  }
+)
 
 -- initialization -------------------------------------------------------------o
 
@@ -115,21 +120,19 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 
 ]]
 
-local tmpfile = os.tmpname()
-
 -- open files and gnuplot and set terminal when necessary
 local function setup_cmd (self)
   local output, scrdump in self
-  local gp = gplot[self.sid]
-  local file, name
+  local gp, streamf = gp_getlock(gplot,self.sid)
+  local file, fname
 
   if scrdump then
-    name = is_string(scrdump) and scrdump or _dflt.scrdump
+    fname = is_string(scrdump) and scrdump or _dflt.scrdump
   else
-    name = tmpfile
+    fname = streamf
   end
-  lock_file(name, 100, 4000)
-  file = io.open(name, "w")
+  lock_file(streamf, 100, 4000)
+  file = io.open(fname, "w")
 
   file:write(init_cmd % self)
 
@@ -144,20 +147,20 @@ local function setup_cmd (self)
 
   file:write("@MAD_SET_TERM\n")
 
-  return file, name, gp
+  return gp, file, streamf, fname
 end
 
-local function gnuplot_rm(gp, name)
-  if jit.os == "Windows" then gp:write("system 'del " .. name .. "'\n")
-  else                        gp:write("system 'rm "  .. name .. "'\n" )
+local function gnuplot_rm(gp, fname)
+  if jit.os == "Windows" then gp:write("system 'del " .. fname .. "'\n")
+  else                        gp:write("system 'rm "  .. fname .. "'\n" )
   end
 end
 
-local function teardown_cmd (self, file, name, gp)
+local function teardown_cmd (self, gp, file, streamf, fname)
   file:close()
-  gp:write("load('" .. name .. "')\n")
-  if not self.scrdump then gnuplot_rm(gp, tmpfile) end
-  gnuplot_rm(gp, name .. ".lock")
+  gp:write("load('" .. fname .. "')\n")
+  if not self.scrdump then gnuplot_rm(gp, streamf) end
+  gnuplot_rm(gp, streamf .. ".lock")
   gp:flush()
 end
 
@@ -431,7 +434,7 @@ local function composed_plot (param)
 end
 
 local function exec (self)
-  local file, name, gp = setup_cmd(self)
+  local gp, file, streamf, fname = setup_cmd(self)
   if self.sequence ~= "keep" then
     file:write("@MAD_RESET_OBJECT\n")
   elseif self.range then
@@ -464,7 +467,7 @@ local function exec (self)
   end
 
   if self.epilog then file:write(self.epilog) end
-  teardown_cmd(self, file, name, gp)
+  teardown_cmd(self, gp, file, streamf, fname)
   return self
 end
 
