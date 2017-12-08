@@ -107,7 +107,7 @@ Iterators: (iter)
 
 -- locals ---------------------------------------------------------------------o
 
-local ftrue                                                    in MAD.gfunc
+local ftrue, second                                            in MAD.gfunc
 local sub                                                      in MAD.operator
 local is_iterable, is_callable                                 in MAD.concept
 local sequence, marker, flags                                  in MAD.element
@@ -138,25 +138,26 @@ end
 
 -- definitions ----------------------------------------------------------------o
 
- -- temporaries to cache 'from' lookup
-local _lastfrom, _lastfrompos = {}, {}
+-- forward declarations
+local elem_pos
 
-local function clear_memoize (seq)
-  rawset(seq, _lastfrom   , nil)
-  rawset(seq, _lastfrompos, nil)
-end
+-- temporaries to cache 'from' lookup
+local _lastfrom, _lastfrompos = {}, {}
 
 -- special numerical value for elements positions.
 local uninitialized = -1e9
 local ongoing_init  = -2e9
 local maximum_dist  =  2e9 -- to find the closest
 
- -- forward declarations
-local elem_pos
-
 -- start and end markers
 local mkstart = marker '$start' { at=0 } : set_readonly()
 local mkend   = marker '$end'   {      } : set_readonly()
+
+-- clear memoization
+local function clear_memoize (seq)
+  rawset(seq, _lastfrom   , nil)
+  rawset(seq, _lastfrompos, nil)
+end
 
 -- check sequence $start and $stop integrity
 local function check_sequ (seq)
@@ -343,15 +344,19 @@ local function index_of_rnam (seq, nam, cnt_, idx_)
 end
 
 -- get index from [mangled] name (direct or linear)
-local function index_of_nam (seq, nam, idx_)
+local function index_of_mnam (seq, nam, idx_)
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local nam, cnt, bra = strsplitbra(nam)
   cnt = tonumber(cnt) or cnt
   if is_nil(idx_) or bra ~= '{' then
-    return index_of_cnam(seq, nam, cnt)
+    return index_of_cnam(seq, nam, cnt      ), bra
   else
-    return index_of_rnam(seq, nam, cnt, idx_)
+    return index_of_rnam(seq, nam, cnt, idx_), bra
   end
+end
+
+local function index_of_nam (seq, nam, idx_)
+  return (index_of_mnam(seq, nam, idx_))
 end
 
 -- get index from element (linear)
@@ -408,14 +413,14 @@ end
 
 -- position helpers -----------------------------------------------------------o
 
--- get 'from' element position, memoize result if count is not relative
+-- return e-position of 'from', memoize result if count is not relative
 local function from_epos (seq, from, idx)
   if rawget(seq, _lastfrom) ~= from then             -- memoized?
-    local idx, bra = index_of_nam(seq, from, idx)
+    local idx, bra = index_of_mnam(seq, from, idx)
     if is_nil(idx) then                              -- not found
       seq_error("invalid from of '" .. from .. "'", seq)
     end
-    rawset(seq, _lastfrompos, elem_pos(seq, idx))    -- epos
+    rawset(seq, _lastfrompos, second(elem_pos(seq, idx)))
     if bra ~= '{'
     then rawset(seq, _lastfrom, from)                -- not relative: memoize
     else rawset(seq, _lastfrom, nil )                -- relative: do not memoize
@@ -424,17 +429,17 @@ local function from_epos (seq, from, idx)
   return rawget(seq, _lastfrompos)                   -- epos
 end
 
+-- return e-position of 'refpos'
+local function refpos_epos (seq)
+  local rpos = seq.refpos
+  if is_nil(rpos) then return 0 end
+  return from_epos(seq, rpos)
+end
+
 -- forward index
 -- return (#elm-1)+1 because seq[idx] == sseq[2] (see copy_sequ and sequ_pos).
 local function fidx (elm)
   return is_sequence(elm) and #elm or 1
-end
-
--- compute s-position of 'refpos'
-local function refpos_pos (seq)
-  local rpos = seq.refpos
-  if is_nil(rpos) then return 0 end
-  return from_epos(seq, rpos)
 end
 
 -- return s-position of 'from'
@@ -443,8 +448,8 @@ local function from_pos (seq, elm, idx)
   local from = elm.from or elm.at and 'start' or 'prev'
 
       if from == 'start' then return pos
-  elseif from == 'prev'  then return pos + sub(elem_pos(seq,idx-1))+seq[idx-1].l
-  elseif from == 'next'  then return pos + elem_pos(seq,idx+fidx(elm))
+  elseif from == 'prev'  then return pos + elem_pos(seq,idx-1)+seq[idx-1].l
+  elseif from == 'next'  then return pos + second(elem_pos(seq,idx+fidx(elm)))
   elseif from == 'end'   then return seq.l - pos
   else                        return pos + from_epos(seq, from, idx)
   end
@@ -460,7 +465,7 @@ local function refer_pos (seq, elm, idx)
       if refer == 'entry'  then return 0
   elseif refer == 'centre' then return elm.l/2
   elseif refer == 'exit'   then return elm.l
-  elseif refer == 'refpos' then return refpos_pos(elm)
+  elseif refer == 'refpos' then return refpos_epos(elm)
   else seq_error("invalid refer to '" .. refer .. "'", seq, idx, elm)
   end
 end
@@ -469,62 +474,63 @@ end
 
 -- set s-positions at index or return element s-positions
 function elem_pos (seq, idx, elm_)
-  local epos = seq[_epos][idx]
-  if is_nil(epos) then
+  local spos = seq[_spos][idx]
+  if is_nil(spos) then
     seq_error("invalid index or reference detected", seq, idx, elm_)
   elseif is_nil(elm_) then
-    if epos >= 0 then
-      return epos, epos - seq[_spos][idx]
-    elseif epos == ongoing_init then
+    if spos >= 0 then
+      return spos, seq[_epos][idx]
+    elseif spos == ongoing_init then
       seq_error("cycling dependencies detected", seq, idx)
-    elseif epos ~= uninitialized then
+    elseif spos ~= uninitialized then
       seq_error("corrupted s-position detected", seq, idx)
     end
-    seq[_epos][idx] = ongoing_init
+    seq[_spos][idx] = ongoing_init
   end
 
   local elm  = elm_ or seq[idx]
-  local pos  = from_pos (seq, elm, idx)
+  local epos = from_pos (seq, elm, idx)
   local rpos = refer_pos(seq, elm, idx)
+  spos = epos - rpos
 
   if is_nil(elm_) then
-    seq[_epos][idx] = pos
-    seq[_spos][idx] = pos - rpos
+    seq[_spos][idx] = spos
+    seq[_epos][idx] = epos
   end
-  return pos, rpos -- epos = pos, spos = pos - rpos
+  return spos, epos
 end
 
 -- set s-positions of elements from their sub sequence
 local function sequ_pos (seq, sseq, idx, dir)
   check_sequ(sseq)
-  local pos = sub(elem_pos(seq, idx, sseq)) -- shift by subsequence refpos
+  local pos = elem_pos(seq, idx, sseq)    -- shift by subsequence refpos
 
   if seq.direction ~= sseq.direction then -- changedir patch
-    seq[_epos][idx] = sseq[_epos][1] + pos
     seq[_spos][idx] = sseq[_spos][1] + pos
+    seq[_epos][idx] = sseq[_epos][1] + pos
     idx = idx + 1
   end
 
   local n = #sseq
   if dir > 0 then
     for i=2,n-1 do
-      seq[_epos][idx-2+i] = sseq[_epos][i] + pos
       seq[_spos][idx-2+i] = sseq[_spos][i] + pos
+      seq[_epos][idx-2+i] = sseq[_epos][i] + pos
       assert(seq[idx-2+i] == sseq[i], "unexpected corrupted flat sequence")
     end
   else
     local l = sseq.l
     for i=2,n-1 do
       local sp, el = sseq[_spos][n+1-i], sseq[n+1-i].l
-      seq[_epos][idx-2+i] = l - (sp + el - (sseq[_epos][n+1-i] - sp)) + pos
       seq[_spos][idx-2+i] = l - (sp + el                            ) + pos
+      seq[_epos][idx-2+i] = l - (sp + el - (sseq[_epos][n+1-i] - sp)) + pos
       assert(seq[idx-2+i] == sseq[n+1-i], "unexpected corrupted flat sequence")
     end
   end
 
   if seq.direction ~= sseq.direction then -- changedir patch
-    seq[_epos][idx+n] = sseq[_epos][n] + pos
     seq[_spos][idx+n] = sseq[_spos][n] + pos
+    seq[_epos][idx+n] = sseq[_epos][n] + pos
   end
 end
 
@@ -608,9 +614,9 @@ end
 
 local function build_pos (seq, sref)
   local n, idx, pos = seq:raw_len(), 1, 0
-  seq[_epos], seq[_spos] = table.new(n,0), table.new(n,0)
+  seq[_spos], seq[_epos] = table.new(n,0), table.new(n,0)
   for i=1,n do
-    seq[_epos][i], seq[_spos][i] = uninitialized, uninitialized
+    seq[_spos][i], seq[_epos][i] = uninitialized, uninitialized
   end
   while idx <= n do
     local sseq = sref[idx]
@@ -886,8 +892,8 @@ local function remove (seq, sel)
     local ii = idx[i]
     remove_it(seq, ii)
     seq:remove_array(ii)
-    table_remove(seq[_epos], ii)
     table_remove(seq[_spos], ii)
+    table_remove(seq[_epos], ii)
   end
   build_dict (seq)
 --check_dict (seq)  -- sanity check
@@ -933,7 +939,7 @@ local function insert (seq, sel)
   local ridx, len = 2, #seq
   if not (is_nil(sel.at) or is_nil(sel.from)) then
     local mkr = marker { at=sel.at, from=sel.from }
-    local pos = sub(elem_pos(seq, 1, mkr))
+    local pos = elem_pos(seq, 1, mkr)
     ridx = min(max(index_of(seq, pos), 2), len-1)
   end
 
@@ -944,7 +950,7 @@ local function insert (seq, sel)
     if is_nil(ins[i].at) and is_nil(ins[i].from) then
       idx[i] = ridx
     else
-      local pos = sub(elem_pos(seq, ridx, ins[i]))
+      local pos = elem_pos(seq, ridx, ins[i])
       idx[i] = min(max(index_of(seq, pos), 2), len-1)
     end
   end
@@ -963,19 +969,19 @@ local function insert (seq, sel)
   for i=n,1,-1 do
     local ii = idx[i]
     if is_sequence(ins[i]) then
-      local sseq, pos = ins[i], sub(elem_pos(seq, ridx, ins[i]))
+      local sseq, pos = ins[i], elem_pos(seq, ridx, ins[i])
       for j=#sseq-1,2,-1 do -- see sequ_pos
         insert_it(seq, ii, sseq[j])
         seq:insert_array(ii, sseq[j])
-        table_insert(seq[_epos], ii, sseq:epos(j) + pos)
         table_insert(seq[_spos], ii, sseq:spos(j) + pos)
+        table_insert(seq[_epos], ii, sseq:epos(j) + pos)
         assert(seq[ii] == sseq[j], "unexpected corrupted sequence insert")
       end
     else
       insert_it(seq, ii, ins[i])
       seq:insert_array(ii, ins[i])
-      table_insert(seq[_epos], ii, uninitialized)
       table_insert(seq[_spos], ii, uninitialized)
+      table_insert(seq[_epos], ii, uninitialized)
     end
   end
 
@@ -1049,7 +1055,7 @@ local function share (seq1, seq2)
       -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
       local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
       local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
-      assert(sub(elem_pos(seq2, i2, c2)) == seq2:spos(i2),
+      assert(elem_pos(seq2, i2, c2) == seq2:spos(i2),
              "invalid shared element (incompatible positions)")
       -- update dictionnaries and arrays
       replace_it(seq1, i1, c1) ; seq1[i1] = c1
