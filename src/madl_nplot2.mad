@@ -39,6 +39,16 @@ MAD.utility.sleep       = sleep
 MAD.utility.lock_file   = lock_file
 MAD.utility.unlock_file = unlock_file
 
+local function px2per (param, px, py)
+  local x = is_nil(px) and 0 or px/param.wsizex
+  local y = is_nil(py) and 0 or py/param.wsizey
+  if is_nil(px) and is_nil(py) then return
+  elseif is_nil(px)            then return y
+  elseif is_nil(py)            then return x
+  else                              return x, y
+  end
+end
+
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
@@ -51,17 +61,15 @@ local _dflt = {
   pointtype = 1,
   filename  = "plot.pdf",
   scrdump   = "plot.gp",
-  lmargin   = 0.1,
-  rmargin   = 0.9,
-  tmargin   = 0.1,
-  bmargin   = 0.9,
+  originx     = 0,
+  originy     = 0,
 }
 
 -- used to position the layout (e.g. top, bottom, etc...)
 local layout_pos = {
-  top    = { bmargin = 0.75, origin = 0.9 },
-  middle = {                 origin = 0.5 },
-  bottom = { tmargin = 0.25, origin = 0.1 },
+  top    = { origin = 0.9, psizey = 0.85 },
+  middle = { origin = 0.5,               },
+  bottom = { origin = 0.1, psizey = 0.85 },
 }
 
 -- GC -------------------------------------------------------------------------o
@@ -205,7 +213,7 @@ end
 local flg = MAD.element.flags.sel_angle
 
 local xadjust = \x,l,s -> x*l + s
-local yadjust = \sp -> \y,s -> 0.05*y + (s or sp)
+local yadjust = \size,sp -> \y,s -> size*y + (s or sp)
 
 -- return the shape of an element in x and y
 local function eShap (elem, dir)
@@ -268,22 +276,24 @@ local function layout_ellipse (param, len, el, s, dash)
 end
 
 -- main layout function
-local function layout (param, seq, deltaY, multi)
-  local fpwrite, range, srange, oshft, yseq, seqminlen, seqkind in param
+local function layout (param, seq, multi)
+  local fpwrite, range, yseq, seqminlen, seqkind, elemsize in param
   local dir = seq.direction
+  local ysize = px2per(param, nil, elemsize)
   param.xadjust = xadjust
-  param.yadjust = yadjust(yseq)
+  param.yadjust = yadjust(ysize, yseq)
 
-  local bline = { x={seq:spos(range[1])}, y={yseq+deltaY} }
-  local prevS = 0
-  local angle = 0
+  local bline  = { x={ seq:spos(range[1]) }, y={ yseq } }
+  local prevS  = 0
+  local angle  = 0
+  local deltaY = 0
   for i=range[1],range[2] do
     local elem = seq[i]
     local s, len, kind = seq:spos(i), elem.l, elem.kind
 
     if multi then
       deltaY = deltaY - tan(dir*angle)*(s-prevS)
-      param.yadjust = yadjust(yseq + deltaY)
+      param.yadjust = yadjust(ysize, yseq + deltaY)
       prevS  = s
       if elem:is_selected(flg) then
         angle = angle + elem.angle
@@ -329,7 +339,7 @@ end
 local function single_layout (param)
   local sequence, oshft, fpwrite in param
   set_seqrange(param, sequence)
-  layout(param, sequence, 0)
+  layout(param, sequence)
   fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
@@ -338,19 +348,12 @@ local function multi_layout (param)
   local sequence, fpwrite, oshft in param
   local seq1, seq2 = sequence[1], sequence[2]
   set_seqrange(param, seq1)
-  layout(param, seq1, -0.194, true)
-  layout(param, seq2, -0.194, true)
+  layout(param, seq1, true)
+  layout(param, seq2, true)
   fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
 -- plot -----------------------------------------------------------------------o
-
-local margins = [[
-set lmargin at screen $lmargin
-set rmargin at screen $rmargin
-set bmargin at screen $bmargin
-set tmargin at screen $tmargin
-]]
 
 -- get vector from label
 local function getv (data, tbl, label)
@@ -465,7 +468,8 @@ end
 
 -- set remaining parameters (miscellaneous)
 local function set_misc (param)
-  local grid, border, title, legendpos, plotter in param
+  local psizex, psizey, originx, originy, wsizex, wsizey,
+    grid, border, title, legendpos, plotter               in param
   local wrt = \s,... => plotter:write(string.format(s,...) % param) end
   if grid      then wrt("set %s\n", grid)          end
   if border    then wrt("set border %s\n", border) end
@@ -479,6 +483,14 @@ local function set_misc (param)
     local size = param.legendsize or ""
     local cmd = "set key %s font '%s,%s'\n"
     wrt(cmd, legendpos, font, size)
+  end
+  if psizey or psizex  then
+    psizex, psizey = psizex or wsizex, psizey or wsizey
+    wrt("set size %f, %f\n", px2per(param, psizex, psizey))
+  end
+  if originy or originx then
+    originx, originy = originx or 0, originy or 0
+    wrt("set origin %f, %f\n", px2per(param, originx, originy))
   end
 end
 
@@ -498,16 +510,20 @@ end
 
 -- create a graph with both the layout and the plot part
 local function composed_plot (param)
-  local fpwrite, pwrite, xrange, seqpos, size, sequence in param
-  -- select default margins or specific ones for layout position
-  local margins = margins
+  local fpwrite, xrange, seqpos, sequence, elemsize,
+    wsizex, wsizey, psizex, psizey, originx, originy in param
+
+  -- set layout position
   if is_string(seqpos) then
-    margins = strinterp(margins, layout_pos[seqpos], false)
-    param.yseq = layout_pos[seqpos].origin
+    param.yseq    = layout_pos[seqpos].origin
+    param.psizex  = psizex or wsizex
+    local dflt_py = layout_pos[seqpos].psizey
+    param.psizey  = psizey or dflt_py and dflt_py * wsizey or wsizey
+    param.originx = originx or _dflt.originx
+    param.originy = originy or seqpos=="bottom" and 4*elemsize or _dflt.originy
   else
-    param.yseq = seqpos
+    param.yseq = px2per(param, nil, seqpos)
   end
-  pwrite(margins % _dflt)
 
   if is_sequence(sequence) then single_layout(param)
   else                           multi_layout(param)
@@ -515,7 +531,6 @@ local function composed_plot (param)
 
   local srange in param
   if not xrange then fpwrite("set xrange [%s:%s]\n", srange[1], srange[2]) end
-  fpwrite("set size %f,%f\n", size[1], size[2])
   plot(param)
 end
 
@@ -584,10 +599,11 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10} (spos)
-  seqdist     = false,   -- x>=0
-  seqpos      = "top",   -- top|bottom|middle|0<x<1
+  -- seqdist     = false,   -- x>=0
+  seqpos      = "top",   -- top|bottom|middle|0<x (pixel)
   seqminlen   = 0,
   seqkind     = false,   -- { quadrupole = true, sbend = true }
+  elemsize    = 25,        -- size of element in pixel
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
@@ -607,14 +623,11 @@ local plot = Command 'plot' {
   yrange      = false,
   y2range     = false,
 
-  -- margins
-  lmargin     = 0.1,
-  rmargin     = 0.9,
-  tmargin     = 0.1,
-  bmargin     = 0.9,
-
   -- plot style
-  size        = {1, 0.85},
+  originx     = false,
+  originy     = false,
+  psizex      = false,
+  psizey      = false,
   styles      = 'lines', -- { y = 'lines' }
   colors      = 'red',   -- { y = 'green' }
   dashtypes   = 'solid', -- { y = '..-- ' }
