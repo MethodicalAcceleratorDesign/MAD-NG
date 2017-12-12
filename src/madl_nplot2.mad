@@ -3,7 +3,7 @@ local is_nil, is_number, is_table, is_mtable, is_string,
   is_sequence                                                 in MAD.typeid
 local Command                                                 in MAD
 local strinterp, fileexists                                   in MAD.utility
-local sign                                                    in MAD.gmath
+local sign, tan                                               in MAD.gmath
 
 -- Utility --------------------------------------------------------------------o
 
@@ -42,7 +42,7 @@ MAD.utility.unlock_file = unlock_file
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  range     = {1, -1},
+  range     = {0, -0.1},
   color     = 'red',
   style     = 'linespoints',
   dashtype  = 'solid',
@@ -69,7 +69,6 @@ local layout_pos = {
 local gcf = {}
 
 local plotgc = ffi.gc(ffi.new("int*"), \ =>
-    print "gc works"
     for i=1,#gcf do
       os.remove(gcf[i])
     end
@@ -202,11 +201,14 @@ end
 
 -- layout ---------------------------------------------------------------------o
 
+-- flag for multi_layout
+local flg = MAD.element.flags.sel_angle
+
 local xadjust = \x,l,s -> x*l + s
 local yadjust = \sp -> \y,s -> 0.05*y + (s or sp)
 
 -- return the shape of an element in x and y
-local function eShap (elem)
+local function eShap (elem, dir)
   local shape = dat[elem.kind]
   local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
 
@@ -222,21 +224,22 @@ local function eShap (elem)
       \y -> ((-1*y + yshft)*yscl),
     }
   else
-    ysym = sign(elem[ysym] or 1)
+    local fv = sign(elem[ysym] or 1)
+    ysym = (ysym == "angle") and fv*dir or fv
     func = {\y -> ((ysym*y + yshft)*yscl) }
   end
   return el, dash, sh.x, sh.y, func
 end
 
 -- stream polygon data
-local function layout_poly (param, len, s, o, x_sh, y_sh, dash, func)
+local function layout_poly (param, len, s, x_sh, y_sh, dash, func)
   local fpwrite, xadjust, yadjust in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
       local dashtype = dash and "dashtype '" .. dash .. "'" or ""
       fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 \z
-        border rgb 'black' %s \\\n", o, dashtype)
+        border rgb 'black' %s \\\n", param.oid, dashtype)
       local cmd = "from"
 
       for k=1,#xj do
@@ -246,55 +249,98 @@ local function layout_poly (param, len, s, o, x_sh, y_sh, dash, func)
         fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
         cmd = "to"
       end
-      o = o + 1
+      param.oid = param.oid + 1
     end
   end
   fpwrite("\n")
-  return o
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, s, o, dash)
+local function layout_ellipse (param, len, el, s, dash)
   local fpwrite, xadjust, yadjust in param
   local cx, cy = xadjust(0, len, s), yadjust(0    )
   local sx, sy = xadjust(1, len, 0), yadjust(el, 0)
   local dashtype = dash or ""
   fpwrite("set object %d ellipse at %f, screen %f \\\n\z
     size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
-    o, cx, cy, sx, sy, dashtype)
+    param.oid, cx, cy, sx, sy, dashtype)
+  param.oid = param.oid + 1
 end
 
-
 -- main layout function
-local function layout (param)
-  local fpwrite, sequence, range, oshft, yseq, seqminlen, seqkind in param
-  range   = param.range or _dflt.range
-  local o = oshft
+local function layout (param, seq, deltaY, multi)
+  local fpwrite, range, srange, oshft, yseq, seqminlen, seqkind in param
+  local dir = seq.direction
   param.xadjust = xadjust
   param.yadjust = yadjust(yseq)
 
-  for i,elem in sequence:iter(range) do
-    local s, len, kind = sequence:spos(i), elem.l, elem.kind
+  local bline = { x={seq:spos(range[1])}, y={yseq+deltaY} }
+  local prevS = 0
+  local angle = 0
+  for i=range[1],range[2] do
+    local elem = seq[i]
+    local s, len, kind = seq:spos(i), elem.l, elem.kind
+
+    if multi then
+      deltaY = deltaY - tan(dir*angle)*(s-prevS)
+      param.yadjust = yadjust(yseq + deltaY)
+      prevS  = s
+      if elem:is_selected(flg) then
+        angle = angle + elem.angle
+        table.insert(bline.x, s)
+        table.insert(bline.y, yseq + deltaY)
+      end
+    end
+
     if len >= seqminlen and (not seqkind or seqkind[kind]) then
       local xorig  = s + len / 2
       local sh_l   = len / 2
-      param.min, param.max = param.min or s, s
-      local el, dash, x_sh, y_sh, func  = eShap(elem)
+      local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, xorig, o, dash)
-        o = o + 1
+        layout_ellipse(param, len, el, xorig, dash)
       end
 
       if not is_nil(x_sh) then
-        o = layout_poly(param, sh_l, xorig, o, x_sh, y_sh, dash, func)
+        layout_poly(param, sh_l, xorig, x_sh, y_sh, dash, func)
       end
     end
   end
-  fpwrite("set object %d polygon behind noclip dashtype solid \\\n\z
-    from first %f, screen %f to first %f, screen %f to first %f, screen %f\n",
-    o + 1, param.min, yseq, param.max, yseq, param.min, yseq)
-  fpwrite("MAD_MAX = %f\n", o + 1)
+  table.insert(bline.x, seq:spos(range[2]))
+  table.insert(bline.y, yseq + deltaY)
+  local prevX, prevY = bline.x[1], bline.y[1]
+  for i=2,#bline.y do
+    local xi, yi = bline.x[i], bline.y[i]
+    fpwrite("set object %d polygon behind noclip dashtype solid \\\n\z
+      from first %f, screen %f to first %f, screen %f to first %f, screen %f\n",
+      param.oid, prevX, prevY, xi, yi, prevX, prevY)
+    param.oid = param.oid + 1
+    prevX, prevY = xi, yi
+  end
+end
+
+local function set_seqrange (param, seq)
+  local r1, r2 = seq:range_of(param.range or _dflt.range)
+  param.srange = { seq:spos(r1), seq:spos(r2) }
+  param.range  = {          r1 ,          r2  }
+end
+
+-- preparation for single-layout
+local function single_layout (param)
+  local sequence, oshft, fpwrite in param
+  set_seqrange(param, sequence)
+  layout(param, sequence, 0)
+  fpwrite("MAD_MAX = %f\n", param.oid)
+end
+
+-- preparation for multi-layout
+local function multi_layout (param)
+  local sequence, fpwrite, oshft in param
+  local seq1, seq2 = sequence[1], sequence[2]
+  set_seqrange(param, seq1)
+  layout(param, seq1, -0.194, true)
+  layout(param, seq2, -0.194, true)
+  fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
 -- plot -----------------------------------------------------------------------o
@@ -452,7 +498,7 @@ end
 
 -- create a graph with both the layout and the plot part
 local function composed_plot (param)
-  local fpwrite, pwrite, xrange, seqpos, size in param
+  local fpwrite, pwrite, xrange, seqpos, size, sequence in param
   -- select default margins or specific ones for layout position
   local margins = margins
   if is_string(seqpos) then
@@ -462,9 +508,13 @@ local function composed_plot (param)
     param.yseq = seqpos
   end
   pwrite(margins % _dflt)
-  layout(param)
-  local min, max in param
-  if not xrange then fpwrite("set xrange [%s:%s]\n", min, max) end
+
+  if is_sequence(sequence) then single_layout(param)
+  else                           multi_layout(param)
+  end
+
+  local srange in param
+  if not xrange then fpwrite("set xrange [%s:%s]\n", srange[1], srange[2]) end
   fpwrite("set size %f,%f\n", size[1], size[2])
   plot(param)
 end
@@ -486,16 +536,17 @@ local function exec (self)
     date    = self.date or is_table(self.table) and self.table.date  or "",
     time    = self.time or is_table(self.table) and self.table.time  or "",
     plotter = file,
+    oid     = self.oshft,
     fpwrite = \... -> file:write(string.format(...)),
     pwrite  = \... -> file:write(...)
   }
   setmetatable(param, {__index=self})
 
   if is_mtable(self.table) or is_table(self.data) then
-    if is_sequence(self.sequence) then
-      composed_plot(param)
-    elseif self.sequence == "keep" then
+    if self.sequence == "keep" then
       plot(param)
+    elseif self.sequence then
+      composed_plot(param)
     else
       param.plotter:write(margins % param)
       plot(param)
@@ -533,6 +584,7 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10} (spos)
+  seqdist     = false,   -- x>=0
   seqpos      = "top",   -- top|bottom|middle|0<x<1
   seqminlen   = 0,
   seqkind     = false,   -- { quadrupole = true, sbend = true }
