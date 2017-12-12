@@ -1,7 +1,7 @@
 local dat = require 'madl_plotdat2'
 local is_nil, is_number, is_table, is_mtable, is_string,
   is_sequence                                                 in MAD.typeid
-local Command                                                 in MAD
+local Command, fun                                            in MAD
 local strinterp, fileexists                                   in MAD.utility
 local sign, tan                                               in MAD.gmath
 
@@ -540,17 +540,7 @@ local function composed_plot (param)
   plot(param)
 end
 
-local function exec (self)
-  local gp, file, streamf, fname = setup_cmd(self)
-  if self.sequence ~= "keep" then
-    file:write("@MAD_RESET_OBJECT\n")
-  elseif self.range then
-    print("MAD Plot Warning : sequence=\"keep\" and range is \z
-      provided - range is ignored")
-  end
-
-  if self.prolog then file:write(self.prolog) end
-
+local function init_param(self, file)
   local param = {
     version = tostring(MAD.env.version),
     name    = self.name or is_table(self.table) and self.table.title or "",
@@ -561,7 +551,27 @@ local function exec (self)
     fpwrite = \... -> file:write(string.format(...)),
     pwrite  = \... -> file:write(...)
   }
+  if self.seqkind then -- build dictionary
+    param.seqkind = {}
+    fun.foreach(\e => param.seqkind[e] = true end, self.seqkind)
+  end
+
   setmetatable(param, {__index=self})
+  return param
+end
+
+local function exec (self)
+  local gp, file, streamf, fname = setup_cmd(self)
+
+  if self.sequence ~= "keep" then
+    file:write("@MAD_RESET_OBJECT\n")
+  elseif self.range then
+    print("MAD Plot Warning : sequence=\"keep\" and range is \z
+      provided - range is ignored")
+  end
+
+  if self.prolog then file:write(self.prolog) end
+  local param = init_param(self, file)
 
   if is_mtable(self.table) or is_table(self.data) then
     if self.sequence == "keep" then
