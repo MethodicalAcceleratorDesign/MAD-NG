@@ -3,7 +3,7 @@ local is_nil, is_number, is_table, is_mtable, is_string,
   is_sequence                                                 in MAD.typeid
 local Command, fun, vector                                    in MAD
 local strinterp, fileexists                                   in MAD.utility
-local sign, tan                                               in MAD.gmath
+local sign, tan, min, max, abs                                in MAD.gmath
 
 -- Utility --------------------------------------------------------------------o
 
@@ -60,15 +60,16 @@ local _dflt = {
   pointtype = 1,
   filename  = "plot.pdf",
   scrdump   = "plot.gp",
-  originx     = 0,
-  originy     = 0,
+  originx   = 0,
+  originy   = 0,
+  seqbbox   = 0.15
 }
 
 -- used to position the layout (e.g. top, bottom, etc...)
 local layout_pos = {
-  top    = { origin = 0.9, psizey = 0.85 },
+  top    = { origin = 0.875, psizey = 0.875 },
   middle = { origin = 0.5,               },
-  bottom = { origin = 0.1, psizey = 0.85 },
+  bottom = { origin = 0.125, psizey = 0.875 },
 }
 
 -- GC -------------------------------------------------------------------------o
@@ -288,27 +289,30 @@ local function layout_bline (param, bline)
   end
 end
 
-local function layout_process(param, seq, mode)
-  local range, yseq in param
-  local seqsize = range[2] - range[1] + 1
-  local shift   = range[1] - 1
-  local xs, ys  = vector(seqsize), vector(seqsize)
-  local bline   = { x={ seq:spos(range[1]) }, y={ yseq } }
-  local deltaY  = 0
+local function layout_process(pseq, mode)
+  local range, seq, dist  in pseq
+  local seqsize    = range[2] - range[1] + 1
+  local shift      = range[1] - 1
+  local xs, ys     = vector(seqsize), vector(seqsize)
+  local bline      = { x={ seq:spos(range[1]) }, y={ dist } }
+  local deltaY     = dist
+  pseq.ymin, pseq.ymax = dist, dist
 
   if mode == "multi" then
     local prevS, angle, j, dir, s, elem = 0, 0, 1, seq.direction
     for i=range[1],range[2] do
       s, elem, len = seq:spos(i), seq[i], seq[i].l
       deltaY       = deltaY - tan(dir*angle)*(s-prevS)
-      xs[j], ys[j] = s + len/2, deltaY + yseq
+      pseq.ymin    = min(pseq.ymin, deltaY)
+      pseq.ymax    = max(pseq.ymax, deltaY)
+      xs[j], ys[j] = s + len/2, deltaY
       prevS        = s
       if elem:is_selected(flg) then
         angle = angle + elem.angle
-        table.insert(bline.x, s)
-        table.insert(bline.y, yseq + deltaY)
+        table.insert(bline.x, s)         -- TODO s + len/2 ???
+        table.insert(bline.y, deltaY)
       end
-      j = j+1
+      j = j + 1
     end
   else
     xs:fill \_,i =>
@@ -316,29 +320,28 @@ local function layout_process(param, seq, mode)
       local x = seq:spos(j) + seq[j].l/2
       return x
     end
-    ys:fill(yseq)
   end
   table.insert(bline.x, seq:spos(range[2]))
-  table.insert(bline.y, yseq + deltaY)
-  return xs, ys, bline
+  table.insert(bline.y, deltaY)
+  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
 end
 
--- main layout function
-local function layout (param, seq, mode)
-  local fpwrite, range, seqminlen, seqkind, elemsize in param
+-- stream a signle layout
+local function layout (param, pseq)
+  local seqminlen, seqkind, elemsize in param
+  local seq, range, xs, ys, bline    in pseq
   local dir     = seq.direction
   local ysize   = px2per(param, nil, elemsize)
   param.xadjust = xadjust
   param.yadjust = yadjust(ysize)
 
-  local xsorig, ysorig, bline = layout_process(param, seq, mode)
   for i=range[1],range[2] do
     local elem = seq[i]
     local s, len, kind = seq:spos(i), elem.l, elem.kind
-    local xorig, yorig = xsorig[i], ysorig[i]
+    local xorig, yorig = xs[i], ys[i]
 
     if len >= seqminlen and (not seqkind or seqkind[kind]) then
-      local sh_l   = len / 2
+      local sh_l = len / 2
       local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
 
       if not is_nil(el) and len ~= 0 then
@@ -353,30 +356,41 @@ local function layout (param, seq, mode)
   layout_bline(param, bline)
 end
 
-local function set_seqrange (param, seq, range)
+-- set the index and spos range of a sequence
+local function set_seqrange (pseq, range)
+  local seq in pseq
   local r1, r2 = range and seq:range_of(range) or 1,#seq
-  param.srange = { seq:spos(r1), seq:spos(r2) }
-  param.range  = {          r1 ,          r2  }
+  pseq.srange  = { seq:spos(r1), seq:spos(r2) }
+  pseq.range   = {          r1 ,          r2  }
 end
 
--- preparation for single-layout
-local function single_layout (param)
-  local sequence, fpwrite, range in param
-  set_seqrange(param, sequence, range)
-  layout(param, sequence)
-  fpwrite("MAD_MAX = %f\n", param.oid)
-end
-
--- preparation for multi-layout
+-- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range in param
-  local seq1, seq2     = sequence[1], sequence[2]
-  local range1 = is_table(range) and range[1] or false
-  local range2 = is_table(range) and range[2] or false
-  set_seqrange(param, seq1, range1)
-  layout(param, seq1, "multi")
-  set_seqrange(param, seq2, range2)
-  layout(param, seq2, "multi")
+  local sequence, fpwrite, range, seqdist, elemsize, yseq in param
+  local ymin, ymax = 0, 0
+  local pseqs = {}
+  local seqs = is_sequence(sequence) and {sequence} or sequence
+  for i=1,#seqs do
+    local dist = (i~=1) and (is_table(seqdist) and seqdist[i-1] or seqdist) or 0
+    local rg   = is_table(range) and range[i] or false
+    local pseq = { seq = seqs[i], dist = dist }
+    set_seqrange(pseq, rg)
+    layout_process(pseq, "multi")
+    table.insert(pseqs, pseq)
+    ymin = min(ymin, pseq.ymin)
+    ymax = max(ymax, pseq.ymax)
+  end
+  local ybbox   = (abs(ymax - ymin) + 2 * px2per(param, nil, elemsize))
+  local yfactor = _dflt.seqbbox / ybbox
+  for i=1,#pseqs do
+    local pseq = pseqs[i]
+    local xs, ys, bline in pseq
+    pseq.ys      =  ys:map(\e -> e*yfactor + yseq)
+    pseq.bline.y = fun.map(\e -> e*yfactor + yseq, bline.y):totable()
+    layout(param, pseq)
+  end
+
+  param.pseqs = pseqs
   fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
@@ -551,16 +565,14 @@ local function composed_plot (param)
   else
     param.yseq = px2per(param, nil, seqpos)
   end
+  multi_layout(param)
 
-  if is_sequence(sequence) then single_layout(param)
-  else                           multi_layout(param)
-  end
-
-  local srange in param
+  local srange in param.pseqs[1]
   if not xrange then fpwrite("set xrange [%s:%s]\n", srange[1], srange[2]) end
   plot(param)
 end
 
+-- initialize the table of parameters
 local function init_param(self, file)
   local param = {
     version = tostring(MAD.env.version),
@@ -635,11 +647,11 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10} (spos)
-  -- seqdist     = false,   -- x>=0
+  seqdist     = false,   -- x>=0
   seqpos      = "top",   -- top|bottom|middle|0<x (pixel)
   seqminlen   = 0,
   seqkind     = false,   -- { quadrupole = true, sbend = true }
-  elemsize    = 25,        -- size of element in pixel
+  elemsize    = 20,        -- size of element in pixel
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
