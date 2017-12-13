@@ -39,16 +39,6 @@ MAD.utility.sleep       = sleep
 MAD.utility.lock_file   = lock_file
 MAD.utility.unlock_file = unlock_file
 
-local function px2per (param, px, py)
-  local x = is_nil(px) and 0 or px/param.wsizex
-  local y = is_nil(py) and 0 or py/param.wsizey
-  if is_nil(px) and is_nil(py) then return
-  elseif is_nil(px)            then return y
-  elseif is_nil(py)            then return x
-  else                              return x, y
-  end
-end
-
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
@@ -62,14 +52,10 @@ local _dflt = {
   scrdump   = "plot.gp",
   originx   = 0,
   originy   = 0,
-  seqbbox   = 0.15
-}
-
--- used to position the layout (e.g. top, bottom, etc...)
-local layout_pos = {
-  top    = { origin = 0.875, psizey = 0.875 },
-  middle = { origin = 0.5,               },
-  bottom = { origin = 0.125, psizey = 0.875 },
+  psizey    = 1,
+  laysize   = 0.15,
+  elemsize  = 0.07,
+  padding   = 0.025
 }
 
 -- GC -------------------------------------------------------------------------o
@@ -299,7 +285,7 @@ local function layout_process(pseq, mode)
   pseq.ymin, pseq.ymax = dist, dist
 
   if mode == "multi" then
-    local prevS, angle, j, dir, s, elem = 0, 0, 1, seq.direction
+    local prevS, angle, j, dir, s, elem, len = 0, 0, 1, seq.direction
     for i=range[1],range[2] do
       s, elem, len = seq:spos(i), seq[i], seq[i].l
       deltaY       = deltaY - tan(dir*angle)*(s-prevS)
@@ -330,19 +316,18 @@ end
 
 -- stream a signle layout
 local function layout (param, pseq)
-  local seqminlen, seqkind, elemsize in param
+  local elemminlen, elemkind, elemsize in param
   local seq, range, xs, ys, bline    in pseq
   local dir     = seq.direction
-  local ysize   = px2per(param, nil, elemsize)
   param.xadjust = xadjust
-  param.yadjust = yadjust(ysize)
+  param.yadjust = yadjust(elemsize)
 
   for i=range[1],range[2] do
     local elem = seq[i]
     local s, len, kind = seq:spos(i), elem.l, elem.kind
     local xorig, yorig = xs[i], ys[i]
 
-    if len >= seqminlen and (not seqkind or seqkind[kind]) then
+    if len >= elemminlen and (not elemkind or elemkind[kind]) then
       local sh_l = len / 2
       local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
 
@@ -368,7 +353,7 @@ end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range, seqdist, elemsize, yseq in param
+  local sequence, fpwrite, range, seqdist, elemsize, laypos, laysize in param
   local ymin, ymax = 0, 0
   local pseqs = {}
   local seqs = is_sequence(sequence) and {sequence} or sequence
@@ -382,13 +367,18 @@ local function multi_layout (param)
     ymin = min(ymin, pseq.ymin)
     ymax = max(ymax, pseq.ymax)
   end
-  local ybbox   = (abs(ymax - ymin) + 2 * px2per(param, nil, elemsize))
-  local yfactor = _dflt.seqbbox / ybbox
+  local pad = _dflt.padding
+  local ybbox   = abs(ymax - ymin) + 2*elemsize + 2*pad
+  local yfactor = laysize / ybbox
+  param.elemsize = elemsize * yfactor
+  local hsize   = ymax*yfactor + param.elemsize + pad
+  if laypos == "top"    then laypos = 1 - hsize end
+  if laypos == "bottom" then laypos =     hsize end
   for i=1,#pseqs do
     local pseq = pseqs[i]
     local xs, ys, bline in pseq
-    pseq.ys      =  ys:map(\y -> y*yfactor + yseq)
-    pseq.bline.y = fun.map(\y -> y*yfactor + yseq, bline.y):totable()
+    pseq.ys      =  ys:map(\y -> y*yfactor + laypos)
+    pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
     layout(param, pseq)
   end
 
@@ -511,8 +501,8 @@ end
 
 -- set remaining parameters (miscellaneous)
 local function set_misc (param)
-  local psizex, psizey, originx, originy, wsizex, wsizey,
-    grid, border, title, legendpos, plotter               in param
+  local psizex, psizey, originx, originy, grid, border,
+    title, legendpos, plotter                             in param
   local wrt = \s,... => plotter:write(string.format(s,...) % param) end
   if grid      then wrt("set %s\n", grid)          end
   if border    then wrt("set border %s\n", border) end
@@ -528,12 +518,12 @@ local function set_misc (param)
     wrt(cmd, legendpos, font, size)
   end
   if psizey or psizex  then
-    psizex, psizey = psizex or wsizex, psizey or wsizey
-    wrt("set size %f, %f\n", px2per(param, psizex, psizey))
+    psizex, psizey = psizex or 1, psizey or 1
+    wrt("set size %f, %f\n", psizex, psizey)
   end
   if originy or originx then
     originx, originy = originx or 0, originy or 0
-    wrt("set origin %f, %f\n", px2per(param, originx, originy))
+    wrt("set origin %f, %f\n", originx, originy)
   end
 end
 
@@ -553,23 +543,21 @@ end
 
 -- create a graph with both the layout and the plot part
 local function composed_plot (param)
-  local fpwrite, xrange, seqpos, sequence, elemsize,
-    wsizex, wsizey, psizex, psizey, originx, originy in param
+  local fpwrite, xrange, laypos, elemsize,
+    psizey, originx, originy, laysize          in param
 
-  -- set layout position
-  if is_string(seqpos) then
-    param.yseq    = layout_pos[seqpos].origin
-    param.psizex  = psizex or wsizex
-    local dflt_py = layout_pos[seqpos].psizey
-    param.psizey  = psizey or dflt_py and dflt_py * wsizey or wsizey
-    param.originx = originx or _dflt.originx
-    param.originy = originy or seqpos=="bottom" and 4*elemsize or _dflt.originy
-  else
-    param.yseq = px2per(param, nil, seqpos)
-  end
+  param.elemsize = elemsize or _dflt.elemsize
+  param.laysize  = laysize  or _dflt.laysize
+
   multi_layout(param)
 
+  local laysize in param
   local srange in param.pseqs[1]
+  param.psizey  = psizey  or _dflt.psizey - laysize
+  param.originx = originx or _dflt.originx
+  param.originy = originy or laypos=="bottom" and laysize
+                          or _dflt.originy
+
   if not xrange then fpwrite("set xrange [%s:%s]\n", srange[1], srange[2]) end
   plot(param)
 end
@@ -586,9 +574,9 @@ local function init_param(self, file)
     fpwrite = \... -> file:write(string.format(...)),
     pwrite  = \... -> file:write(...)
   }
-  if self.seqkind then -- build dictionary
-    param.seqkind = {}
-    fun.foreach(\e => param.seqkind[e] = true end, self.seqkind)
+  if self.elemkind then -- build dictionary
+    param.elemkind = {}
+    fun.foreach(\e => param.elemkind[e] = true end, self.elemkind)
   end
 
   setmetatable(param, {__index=self})
@@ -648,12 +636,15 @@ local plot = Command 'plot' {
 
   -- sequence input
   sequence    = false,
-  range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10} (spos)
+  range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
   seqdist     = false,   -- x>=0
-  seqpos      = "top",   -- top|bottom|middle|0<x (pixel)
-  seqminlen   = 0,
-  seqkind     = false,   -- { quadrupole = true, sbend = true }
-  elemsize    = 20,        -- size of element in pixel
+
+  -- layout style
+  laypos      = "top",   -- top|bottom|middle|0<x<1
+  laysize     = false,
+  elemkind    = false,   -- { "quadrupole", "sbend" }
+  elemminlen  = 0,
+  elemsize    = false,      -- size of element in pixel
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
