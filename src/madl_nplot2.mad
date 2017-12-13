@@ -1,7 +1,7 @@
 local dat = require 'madl_plotdat2'
 local is_nil, is_number, is_table, is_mtable, is_string,
   is_sequence                                                 in MAD.typeid
-local Command, fun                                            in MAD
+local Command, fun, vector                                    in MAD
 local strinterp, fileexists                                   in MAD.utility
 local sign, tan                                               in MAD.gmath
 
@@ -52,7 +52,6 @@ end
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  range     = {0, -0.1},
   color     = 'red',
   style     = 'linespoints',
   dashtype  = 'solid',
@@ -212,8 +211,8 @@ end
 -- flag for multi_layout
 local flg = MAD.element.flags.sel_angle
 
-local xadjust = \x,l,s -> x*l + s
-local yadjust = \size,sp -> \y,s -> size*y + (s or sp)
+local xadjust = \xs,l,x -> xs*l + x
+local yadjust = \size   -> \ys,y -> size*ys + y
 
 -- return the shape of an element in x and y
 local function eShap (elem, dir)
@@ -240,7 +239,7 @@ local function eShap (elem, dir)
 end
 
 -- stream polygon data
-local function layout_poly (param, len, s, x_sh, y_sh, dash, func)
+local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, func)
   local fpwrite, xadjust, yadjust in param
   for i=1,#func do
     for j=1,#x_sh do
@@ -252,7 +251,7 @@ local function layout_poly (param, len, s, x_sh, y_sh, dash, func)
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
-        xk, yk = xadjust(xk, len, s), yadjust(yk)
+        xk, yk = xadjust(xk, len, xorig), yadjust(yk, yorig)
         local next = (k == #xj) and "" or "\\"
         fpwrite("  %s %f, screen %f %s\n", cmd, xk, yk, next)
         cmd = "to"
@@ -264,10 +263,10 @@ local function layout_poly (param, len, s, x_sh, y_sh, dash, func)
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, s, dash)
+local function layout_ellipse (param, len, el, xorig, yorig, dash)
   local fpwrite, xadjust, yadjust in param
-  local cx, cy = xadjust(0, len, s), yadjust(0    )
-  local sx, sy = xadjust(1, len, 0), yadjust(el, 0)
+  local cx, cy = xadjust(0, len, xorig), yadjust(0, yorig)
+  local sx, sy = xadjust(1, len, 0    ), yadjust(el, 0)
   local dashtype = dash or ""
   fpwrite("set object %d ellipse at %f, screen %f \\\n\z
     size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
@@ -289,73 +288,95 @@ local function layout_bline (param, bline)
   end
 end
 
--- main layout function
-local function layout (param, seq, multi)
-  local fpwrite, range, yseq, seqminlen, seqkind, elemsize in param
-  local dir = seq.direction
-  local ysize = px2per(param, nil, elemsize)
-  param.xadjust = xadjust
-  param.yadjust = yadjust(ysize, yseq)
+local function layout_process(param, seq, mode)
+  local range, yseq in param
+  local seqsize = range[2] - range[1] + 1
+  local shift   = range[1] - 1
+  local xs, ys  = vector(seqsize), vector(seqsize)
+  local bline   = { x={ seq:spos(range[1]) }, y={ yseq } }
+  local deltaY  = 0
 
-  local bline  = { x={ seq:spos(range[1]) }, y={ yseq } }
-  local prevS  = 0
-  local angle  = 0
-  local deltaY = 0
-  for i=range[1],range[2] do
-    local elem = seq[i]
-    local s, len, kind = seq:spos(i), elem.l, elem.kind
-
-    if multi then
-      deltaY = deltaY - tan(dir*angle)*(s-prevS)
-      param.yadjust = yadjust(ysize, yseq + deltaY)
-      prevS  = s
+  if mode == "multi" then
+    local prevS, angle, j, dir, s, elem = 0, 0, 1, seq.direction
+    for i=range[1],range[2] do
+      s, elem, len = seq:spos(i), seq[i], seq[i].l
+      deltaY       = deltaY - tan(dir*angle)*(s-prevS)
+      xs[j], ys[j] = s + len/2, deltaY + yseq
+      prevS        = s
       if elem:is_selected(flg) then
         angle = angle + elem.angle
         table.insert(bline.x, s)
         table.insert(bline.y, yseq + deltaY)
       end
+      j = j+1
     end
+  else
+    xs:fill \_,i =>
+      local j= shift + i
+      local x = seq:spos(j) + seq[j].l/2
+      return x
+    end
+    ys:fill(yseq)
+  end
+  table.insert(bline.x, seq:spos(range[2]))
+  table.insert(bline.y, yseq + deltaY)
+  return xs, ys, bline
+end
+
+-- main layout function
+local function layout (param, seq, mode)
+  local fpwrite, range, seqminlen, seqkind, elemsize in param
+  local dir     = seq.direction
+  local ysize   = px2per(param, nil, elemsize)
+  param.xadjust = xadjust
+  param.yadjust = yadjust(ysize)
+
+  local xsorig, ysorig, bline = layout_process(param, seq, mode)
+  for i=range[1],range[2] do
+    local elem = seq[i]
+    local s, len, kind = seq:spos(i), elem.l, elem.kind
+    local xorig, yorig = xsorig[i], ysorig[i]
 
     if len >= seqminlen and (not seqkind or seqkind[kind]) then
-      local xorig  = s + len / 2
       local sh_l   = len / 2
       local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, xorig, dash)
+        layout_ellipse(param, len, el, xorig, yorig, dash)
       end
 
       if not is_nil(x_sh) then
-        layout_poly(param, sh_l, xorig, x_sh, y_sh, dash, func)
+        layout_poly(param, sh_l, xorig, yorig, x_sh, y_sh, dash, func)
       end
     end
   end
-  table.insert(bline.x, seq:spos(range[2]))
-  table.insert(bline.y, yseq + deltaY)
   layout_bline(param, bline)
 end
 
-local function set_seqrange (param, seq)
-  local r1, r2 = seq:range_of(param.range or _dflt.range)
+local function set_seqrange (param, seq, range)
+  local r1, r2 = range and seq:range_of(range) or 1,#seq
   param.srange = { seq:spos(r1), seq:spos(r2) }
   param.range  = {          r1 ,          r2  }
 end
 
 -- preparation for single-layout
 local function single_layout (param)
-  local sequence, oshft, fpwrite in param
-  set_seqrange(param, sequence)
+  local sequence, fpwrite, range in param
+  set_seqrange(param, sequence, range)
   layout(param, sequence)
   fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
 -- preparation for multi-layout
 local function multi_layout (param)
-  local sequence, fpwrite, oshft in param
-  local seq1, seq2 = sequence[1], sequence[2]
-  set_seqrange(param, seq1)
-  layout(param, seq1, true)
-  layout(param, seq2, true)
+  local sequence, fpwrite, range in param
+  local seq1, seq2     = sequence[1], sequence[2]
+  local range1 = is_table(range) and range[1] or false
+  local range2 = is_table(range) and range[2] or false
+  set_seqrange(param, seq1, range1)
+  layout(param, seq1, "multi")
+  set_seqrange(param, seq2, range2)
+  layout(param, seq2, "multi")
   fpwrite("MAD_MAX = %f\n", param.oid)
 end
 
@@ -579,7 +600,6 @@ local function exec (self)
     elseif self.sequence then
       composed_plot(param)
     else
-      param.plotter:write(margins % param)
       plot(param)
     end
   end
