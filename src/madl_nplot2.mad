@@ -276,21 +276,23 @@ local function layout_bline (param, bline)
 end
 
 local function layout_process(param, pseq)
-  local range, seq, dist  in pseq
+  local seqshift in param
+  local range, seq, disty, distx  in pseq
   local seqsize    = seq:length_of(range)
   local xs, ys     = vector(seqsize), vector(seqsize)
   local bline      = { x = { }, y={ } }
-  local deltaY     = dist
-  pseq.ymin, pseq.ymax = dist, dist
+  local deltaY     = disty
+  pseq.ymin, pseq.ymax = disty, disty
 
-  local prevS, angle, j, dir, s, elem, len = 0, 0, 1, seq.direction
+  local prevS, angle, j, dir = 0, 0, 1, seq.direction
   for i, elem in seq:iter(range) do
-    s, len       = seq:spos(i), elem.l
-    deltaY       = deltaY - tan(dir*angle)*(s-prevS)
+    local s, len = seq:spos(i), elem.l
+    local s_sh   = s + len/2
+    deltaY       = deltaY - tan(dir*angle)*(s_sh-prevS)
     pseq.ymin    = min(pseq.ymin, deltaY)
     pseq.ymax    = max(pseq.ymax, deltaY)
-    xs[j], ys[j] = s + len/2, deltaY
-    prevS        = s
+    xs[j], ys[j] = s_sh + distx + seqshift, deltaY
+    prevS        = s_sh
     if elem:is_selected(flg) then
       angle = angle + elem.angle
       table.insert(bline.x, xs[j])
@@ -338,14 +340,16 @@ end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range, seqdist, elemsize, laypos, laysize in param
+  local sequence, fpwrite, range, seqdistx, seqdisty,
+    elemsize, laypos, laysize                           in param
   local ymin, ymax = 0, 0
   local pseqs = { }
   local seqs = is_sequence(sequence) and {sequence} or sequence
   for i=1,#seqs do
-    local dist = (i~=1) and (is_table(seqdist) and seqdist[i-1] or seqdist) or 0
+    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
+    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
     local rg   = is_table(range) and range[i] or nil
-    local pseq = { seq = seqs[i], dist = dist, range=rg }
+    local pseq = { seq = seqs[i], distx = distx, disty = disty, range=rg }
     layout_process(param, pseq)
     pseqs[i] = pseq
     ymin     = min(ymin, pseq.ymin)
@@ -623,7 +627,9 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   range       = nil,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
-  seqdist     = false,   -- x>=0
+  seqdisty    = 0,     -- x >= 0 or { x1, x2, ... }
+  seqdistx    = 0,     -- x >= 0 or { x1, x2, ... }
+  seqshift    = 0,     -- x > =0
 
   -- layout style
   laypos      = "top",   -- top | bottom | middle |0 < x < 1
