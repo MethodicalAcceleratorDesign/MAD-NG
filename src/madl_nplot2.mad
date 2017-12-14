@@ -4,7 +4,6 @@ local is_nil, is_number, is_table, is_mtable, is_string,
 local Command, fun, vector                                    in MAD
 local strinterp, fileexists                                   in MAD.utility
 local sign, tan, min, max, abs                                in MAD.gmath
-
 -- Utility --------------------------------------------------------------------o
 
 local ffi = require("ffi")
@@ -199,8 +198,8 @@ end
 -- flag for multi_layout
 local flg = MAD.element.flags.sel_angle
 
-local xadjust = \xs,l,x -> xs*l + x
-local yadjust = \size   -> \ys,y -> size*ys + y
+local xadjust = \xs,l,xp -> xs*l + xp
+local yadjust = \size    -> \ys,yp -> size*ys + yp
 
 -- return the shape of an element in x and y
 local function eShap (elem, dir)
@@ -276,10 +275,10 @@ local function layout_bline (param, bline)
   end
 end
 
-local function layout_process(pseq, mode)
+local function layout_process(param, pseq, mode)
   local range, seq, dist  in pseq
-  local seqsize    = range[2] - range[1] + 1
-  local shift      = range[1] - 1
+  local seqsize    = seq:length_of(range)
+  local shift      = range and (seq:range_of(range))-1 or 1 -- TODO use iterator for multi-turn
   local xs, ys     = vector(seqsize), vector(seqsize)
   local bline      = { x = { }, y={ } }
   local deltaY     = dist
@@ -287,8 +286,8 @@ local function layout_process(pseq, mode)
 
   if mode == "multi" then
     local prevS, angle, j, dir, s, elem, len = 0, 0, 1, seq.direction
-    for i=range[1],range[2] do
-      s, elem, len = seq:spos(i), seq[i], seq[i].l
+    for i, elem in seq:iter(range) do
+      s, len       = seq:spos(i), elem.l
       deltaY       = deltaY - tan(dir*angle)*(s-prevS)
       pseq.ymin    = min(pseq.ymin, deltaY)
       pseq.ymax    = max(pseq.ymax, deltaY)
@@ -302,7 +301,7 @@ local function layout_process(pseq, mode)
       j = j + 1
     end
   else
-    xs:fill \_,i =>
+    xs:fill \_,i => -- TODO use iterator for multi-turn
       local j= shift + i
       local x = seq:spos(j) + seq[j].l/2
       return x
@@ -313,18 +312,19 @@ local function layout_process(pseq, mode)
   table.insert(bline.y, ys[#ys])
   table.insert(bline.y, 1, ys[1])
   pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+  param.smin = min(param.smin or 0, xs[1])
+  param.smax = max(param.smax or 0, xs[#xs])
 end
 
 -- stream a signle layout
 local function layout (param, pseq)
   local elemminlen, elemkind, elemsize in param
-  local seq, range, xs, ys, bline    in pseq
+  local seq, range, xs, ys, bline      in pseq
   local dir     = seq.direction
   param.xadjust = xadjust
   param.yadjust = yadjust(elemsize)
 
-  for i=range[1],range[2] do
-    local elem = seq[i]
+  for i, elem in seq:iter(range) do
     local s, len, kind = seq:spos(i), elem.l, elem.kind
     local xorig, yorig = xs[i], ys[i]
 
@@ -344,35 +344,27 @@ local function layout (param, pseq)
   layout_bline(param, bline)
 end
 
--- set the index and spos range of a sequence
-local function set_seqrange (pseq, range)
-  local seq in pseq
-  local r1, r2 = range and seq:range_of(range) or 1,#seq
-  pseq.srange  = { seq:spos(r1), seq:spos(r2) }
-  pseq.range   = {          r1 ,          r2  }
-end
-
 -- main layout function
 local function multi_layout (param)
   local sequence, fpwrite, range, seqdist, elemsize, laypos, laysize in param
   local ymin, ymax = 0, 0
-  local pseqs = {}
+  local pseqs = { }
   local seqs = is_sequence(sequence) and {sequence} or sequence
   for i=1,#seqs do
     local dist = (i~=1) and (is_table(seqdist) and seqdist[i-1] or seqdist) or 0
-    local rg   = is_table(range) and range[i] or false
-    local pseq = { seq = seqs[i], dist = dist }
-    set_seqrange(pseq, rg)
-    layout_process(pseq, "multi")
-    table.insert(pseqs, pseq)
-    ymin = min(ymin, pseq.ymin)
-    ymax = max(ymax, pseq.ymax)
+    local rg   = is_table(range) and range[i] or nil
+    local pseq = { seq = seqs[i], dist = dist, range=rg }
+    layout_process(param, pseq, "multi")
+    pseqs[i] = pseq
+    ymin     = min(ymin, pseq.ymin)
+    ymax     = max(ymax, pseq.ymax)
   end
-  local pad = _dflt.padding
-  local ybbox   = abs(ymax - ymin) + 2*elemsize + 2*pad
-  local yfactor = laysize / ybbox
+
+  local pad      = _dflt.padding
+  local ybbox    = abs(ymax - ymin) + 2*elemsize + 2*pad
+  local yfactor  = laysize / ybbox
   param.elemsize = elemsize * yfactor
-  local hsize   = ymax*yfactor + param.elemsize + pad
+  local hsize    = ymax*yfactor + param.elemsize + pad
   if laypos == "top"    then laypos = 1 - hsize end
   if laypos == "bottom" then laypos =     hsize end
   for i=1,#pseqs do
@@ -554,14 +546,13 @@ local function composed_plot (param)
 
   multi_layout(param)
 
-  local laysize in param
-  local srange in param.pseqs[1]
+  local laysize, smin, smax in param
   param.psizey  = psizey  or _dflt.psizey - laysize
   param.originx = originx or _dflt.originx
   param.originy = originy or laypos=="bottom" and laysize
                           or _dflt.originy
 
-  if not xrange then fpwrite("set xrange [%s:%s]\n", srange[1], srange[2]) end
+  if not xrange then fpwrite("set xrange [%s:%s]\n", smin, smax) end
   plot(param)
 end
 
@@ -639,15 +630,15 @@ local plot = Command 'plot' {
 
   -- sequence input
   sequence    = false,
-  range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
+  range       = nil,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
   seqdist     = false,   -- x>=0
 
   -- layout style
-  laypos      = "top",   -- top|bottom|middle|0<x<1
-  laysize     = false,
+  laypos      = "top",   -- top | bottom | middle |0 < x < 1
+  laysize     = false,   -- 0 < x < 1
+  elemsize    = false,   -- size of element in pixel
   elemkind    = false,   -- { "quadrupole", "sbend" }
-  elemminlen  = 0,
-  elemsize    = false,      -- size of element in pixel
+  elemminlen  = 0,       -- x > 0
 
   -- axis selection (and names)
   x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
@@ -668,10 +659,10 @@ local plot = Command 'plot' {
   y2range     = false,
 
   -- plot style
-  originx     = false,
-  originy     = false,
-  psizex      = false,
-  psizey      = false,
+  originx     = false,   -- 0 < x < 1
+  originy     = false,   -- 0 < x < 1
+  psizex      = false,   -- 0 < x < 1
+  psizey      = false,   -- 0 < x < 1
   styles      = 'lines', -- { y = 'lines' }
   colors      = 'red',   -- { y = 'green' }
   dashtypes   = 'solid', -- { y = '..-- ' }
