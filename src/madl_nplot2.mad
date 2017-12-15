@@ -1,6 +1,6 @@
 local dat = require 'madl_plotdat2'
 local is_nil, is_number, is_table, is_mtable, is_string,
-  is_sequence                                                 in MAD.typeid
+  is_sequence, is_rawtable                                    in MAD.typeid
 local Command, fun, vector                                    in MAD
 local strinterp, fileexists                                   in MAD.utility
 local sign, tan, min, max, abs                                in MAD.gmath
@@ -51,6 +51,7 @@ local _dflt = {
   scrdump   = "plot.gp",
   originx   = 0,
   originy   = 0,
+  psizex    = 1,
   psizey    = 1,
   laysize   = 0.15,
   multisize = 0.05,
@@ -343,7 +344,13 @@ end
 -- main layout function
 local function multi_layout (param)
   local sequence, fpwrite, range, seqdistx, seqdisty,
-    elemsize, laypos, laysize                           in param
+    elemscale, laypos, xrange                         in param
+
+  param.elemsize = _dflt.elemsize * (elemscale or 1)
+  param.laysize  = param.laysize  or
+    not is_sequence(sequence) and _dflt.laysize + _dflt.multisize*#sequence
+    or _dflt.laysize
+
   local ymin, ymax = 0, 0
   local pseqs = { }
   local seqs = is_sequence(sequence) and {sequence} or sequence
@@ -359,9 +366,9 @@ local function multi_layout (param)
   end
 
   local pad      = _dflt.padding
-  local ybbox    = abs(ymax - ymin) + 2*elemsize + 2*pad
-  local yfactor  = laysize / ybbox
-  param.elemsize = elemsize * yfactor
+  local ybbox    = abs(ymax - ymin) + 2*param.elemsize + 2*pad
+  local yfactor  = param.laysize / ybbox
+  param.elemsize = param.elemsize * yfactor
   if laypos == "top"    then laypos =1-(ymax*yfactor + param.elemsize + pad) end
   if laypos == "bottom" then laypos =  -ymin*yfactor + param.elemsize + pad  end
   if laypos == "middle" then laypos = _dflt.middle end
@@ -375,6 +382,7 @@ local function multi_layout (param)
 
   param.pseqs = pseqs
   fpwrite("MAD_MAX = %f\n", param.oid)
+  if not xrange then fpwrite("set xrange [%s:%s]\n", param.smin, param.smax) end
 end
 
 -- plot -----------------------------------------------------------------------o
@@ -509,11 +517,11 @@ local function set_misc (param)
     wrt(cmd, legendpos, font, size)
   end
   if psizey or psizex  then
-    psizex, psizey = psizex or 1, psizey or 1
+    psizex, psizey = psizex or _dflt.psizex, psizey or _dflt.psizey
     wrt("set size %f, %f\n", psizex, psizey)
   end
   if originy or originx then
-    originx, originy = originx or 0, originy or 0
+    originx, originy = originx or _dflt.originx, originy or _dflt.originy
     wrt("set origin %f, %f\n", originx, originy)
   end
 end
@@ -534,26 +542,15 @@ end
 
 -- create a graph with both the layout and the plot part
 local function composed_plot (param)
-  local fpwrite, xrange, laypos, elemscale, sequence,
-    psizey, originx, originy, laysize                in param
-
-  param.elemsize = _dflt.elemsize * (elemscale or 1)
-  param.laysize  = laysize  or
-    not is_sequence(sequence) and _dflt.laysize + _dflt.multisize*#sequence
-    or _dflt.laysize
-
+  local laypos, psizey, originy in param
   multi_layout(param)
 
-  local laysize, smin, smax in param
+  local laysize in param
   if laypos == "top" or laypos == "bottom" then
     param.psizey = psizey or _dflt.psizey - laysize
   end
-  param.psizey  = param.psizey  or _dflt.psizey
-  param.originx = originx or _dflt.originx
   param.originy = originy or laypos=="bottom" and laysize
                           or _dflt.originy
-
-  if not xrange then fpwrite("set xrange [%s:%s]\n", smin, smax) end
   plot(param)
 end
 
@@ -578,6 +575,13 @@ local function init_param(self, file)
   return param
 end
 
+local layout_only = [[
+unset key
+unset tics
+unset border
+plot [*:*] [-1:1] 0 lc 'white'
+]]
+
 local function exec (self)
   local gp, file, streamf, fname = setup_cmd(self)
 
@@ -591,14 +595,15 @@ local function exec (self)
   if self.prolog then file:write(self.prolog) end
   local param = init_param(self, file)
 
-  if is_mtable(self.table) or is_table(self.data) then
-    if self.sequence == "keep" then
-      plot(param)
-    elseif self.sequence then
-      composed_plot(param)
-    else
-      plot(param)
-    end
+  local has_plot   = is_mtable(self.table) or is_table(self.data)
+  local has_layout = is_rawtable(self.sequence) or is_sequence(self.sequence)
+  if has_plot and has_layout then
+    composed_plot(param)
+  elseif has_plot then
+    plot(param)
+  elseif has_layout then
+    multi_layout(param)
+    param.fpwrite(layout_only)
   end
 
   if self.epilog then file:write(self.epilog) end
