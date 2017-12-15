@@ -107,15 +107,16 @@ Iterators: (iter)
 
 -- locals ---------------------------------------------------------------------o
 
-local ftrue, second                                            in MAD.gfunc
-local sub                                                      in MAD.operator
+local second, bind2nd, bind2st                                 in MAD.gfunc
+local sub, ltrue                                               in MAD.operator
 local is_iterable, is_callable                                 in MAD.concept
 local sequence, marker, flags                                  in MAD.element
 local minlen                                                   in MAD.constant
 local strsplit, strsplitbra                                    in MAD.utility
 local bsearch                                                  in MAD.algorithm
 local is_nil, is_boolean, is_number, is_positive, is_string,
-      is_table, is_rawtable, is_range, is_element              in MAD.typeid
+      is_table, is_rawtable, is_range,
+      is_element, is_class, is_instanceOf                      in MAD.typeid
 
 local abs, min, max in math
 local table_insert, table_remove = table.insert, table.remove
@@ -798,78 +799,93 @@ local function cycle (seq, elm)
   return seq
 end
 
-local function select_ (typ) -- build closures
-  return \seq, p_, rng_, flg_ =>
-    if is_nil(flg_) and not is_callable(p_) then
-      p_, rng_, flg_ = nil, p_, rng_   -- right shift
-    end
-    if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
-      rng_, flg_ = nil, rng_           -- right shift
-    end
-    p_ = p_ or ftrue
-    assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-    assert(is_callable(p_) , "invalid argument #2 (callable expected)")
-    assert(is_nil(flg_) or seq:is_valid_flag(flg_),
-                             "invalid argument #4 (valid flag id expected)")
-    for idx,elm in seq:iter(rng_) do
-      if p_(elm, idx, flg_) then elm[typ](elm,flg_) end
-    end
-    return seq
+-- functional methods ---------------------------------------------------------o
+
+-- seq:foreach {
+--   range=range,
+--   action=function,
+--   flag=flag, pattern=string, class=element, select=predicate
+-- }
+
+local pcls = is_instanceOf
+local psel = marker.is_selected
+local pnam = \e,pat -> string.match(e.name, pat)
+local pand = \p1,p2,e,i -> p1(e,i) and p2(e,i)
+
+local function foreach (seq, f, r_, p_) -- action, range, select
+  local p
+  if is_rawtable(f) and is_nil(r_) and is_nil(p_) then
+    f , r_ = f.action, f     -- extract action + right shift
   end
-end
-
-local select   = select_('select'  ) --   select(seq, p_, rng_, flg_)
-local deselect = select_('deselect') -- deselect(seq, p_, rng_, flg_)
-
-local function foreach (seq, f, rng_, flg_)
-  if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
-    rng_, flg_ = nil, rng_             -- right shift
+  if is_rawtable(r_) and is_nil(r_[1]) and is_nil(p_) then
+    r_, p_ = r_.range, r_    -- extract range  + right shift
+  end
+  if is_rawtable(p_) then
+    p = ltrue     -- compose all selections
+    if p_.flag    then p = bind2st(pand, p, bind2nd(psel, p_.flag   )) end
+    if p_.pattern then p = bind2st(pand, p, bind2nd(pmat, p_.pattern)) end
+    if p_.class   then p = bind2st(pand, p, bind2nd(pcls, p_.class  )) end
+    if p_.select  then p = bind2st(pand, p,               p_.select  ) end
+  else            -- build the selection
+    p = is_nil    (p_) and ltrue             or
+        is_boolean(p_) and psel              or
+        is_number (p_) and bind2nd(psel, p_) or
+        is_string (p_) and bind2nd(pmat, p_) or
+        is_element(p_) and bind2nd(pcls, p_) or p_
   end
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_callable(f)  , "invalid argument #2 (callable expected)")
-  assert(is_nil(flg_) or seq:is_valid_flag(flg_),
-                           "invalid argument #4 (valid flag id expected)")
+  assert(is_callable(p)  , "invalid argument #4 (flag or callable expected)")
+
   for idx,elm in seq:iter(rng_) do
-    if not flg_ or elm:is_selected(flg_) then f(elm,idx) end
+    if p(elm,idx) then f(elm,idx) end
   end
   return seq
 end
 
-local function filter (seq, p, rng_, flg_)
-  if is_nil(flg_) and (is_boolean(rng_) or is_number(rng_)) then
-    rng_, flg_ = nil, rng_             -- right shift
-  end
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(p)  , "invalid argument #2 (callable expected)")
-  assert(is_nil(flg_) or seq:is_valid_flag(flg_),
-                           "invalid argument #4 (valid flag id expected)")
-  local elm, idx, n = {}, {}, 1
-  for i,e in seq:iter(rng_) do
-    if not flg_ or e:is_selected(flg_) then
-      if p(e,i) then elm[n], idx[n], n = e, i, n+1 end
-    end
-  end
+local do_select = marker.select
+
+local function select (seq, flg_, rng_, p_)
+  local f = bind2nd(do_select, flg_)
+  return seq:foreach(f, rng_, p_)
+end
+
+local do_deselect = marker.deselect
+
+local function deselect (seq, flg_, rng_, p_)
+  local f = bind2nd(do_deselect, flg_)
+  return seq:foreach(f, rng_, p_)
+end
+
+local do_filter = \elm,idx,e,i => local j = #elm+1 ; elm[j],idx[j] = e,i end
+
+local function filter (seq, p, rng_)
+  local elm, idx = {}, {}
+  local f = bind2st(do_filter, elm, idx)
+  seq:foreach(f, rng_, p)
   return elm, idx
 end
 
--- seq:extract { index1, index2, ..., range=range, selected=logical, pattern=string }
 local function extract (seq, sel_)
   local sel = sel_ or {}
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_table(sel)   , "invalid argument #2 (selection expected)")
-  local range, selected, pattern in sel
+  local range, select, pattern, predicate in sel
   local elm, idx
-  if is_nil(range) and is_nil(selected) and is_nil(pattern) then
+  if is_nil(range) and is_nil(select) and is_nil(pattern) and is_nil(predicate)
+  then
     elm, idx = {}, {} -- default: extract nothing
   else
-    local pred = (pattern and \e -> string.match(e.name, pattern)) or ftrue
-    elm, idx = filter(seq, pred, range, selected)
+    local pred1, pred2
+    pred1 = pattern   and (\e -> string.match(e.name, pattern)) or ltrue
+    pred2 = predicate and (\e -> pred1(e) and predicate(e)) or pred1
+    elm, idx = filter(seq, pred2, range, select)
   end
   if #sel > 0 then -- add further selection
-    local j, n = 1, #elm
+    local j = #elm+1
     for i=1,#sel do
       local si = index_of(seq, sel[i])
-      if si then elm[n+j], idx[n+j], j = seq[si], si, j+1 end
+      if si then elm[j], idx[j], j = seq[si], si, j+1 end
     end
   end
   return elm, idx
