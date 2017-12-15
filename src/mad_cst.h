@@ -51,14 +51,14 @@
 #define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
 #define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
 #define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
-#define P_QELECT    1.602176620898e-19     // [C]     Elementary electric charge
-#define P_HBAR      6.58211951440e-25      // [GeV.s] Reduced Plack's constant
-#define P_EMASS     5.10998946131e-4       // [GeV]   Electron mass
-#define P_PMASS     0.938272081358         // [GeV]   Proton mass
-#define P_NMASS     0.939565413358         // [GeV]   Neutron mass
-#define P_MUMASS    0.105658374524         // [GeV]   Muon mass
-#define P_DEUMASS   1.87561292812          // [GeV]   Deuteron mass
-#define P_ERADIUS   2.817940322719e-15     // [m]     Classical electron radius
+#define P_QELECT    1.6021766208e-19       // [C]     Elementary electric charge
+#define P_HBAR      6.582119514e-25        // [GeV.s] Reduced Plack's constant
+#define P_EMASS     5.109989461e-4         // [GeV]   Electron mass
+#define P_PMASS     0.9382720813           // [GeV]   Proton mass
+#define P_NMASS     0.9395654133           // [GeV]   Neutron mass
+#define P_MUMASS    0.1056583745           // [GeV]   Muon mass
+#define P_DEUMASS   1.875612928            // [GeV]   Deuteron mass
+#define P_ERADIUS   2.8179403227e-15       // [m]     Classical electron radius
 #endif
 
 // --- interface --------------------------------------------------------------o
