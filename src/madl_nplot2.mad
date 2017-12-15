@@ -138,6 +138,7 @@ if (!(exist("MAD_MIN") && exist("MAD_MAX"))) {
   MAD_MAX = -1;
 }
 MAD_RESET_OBJECT = "unset for [i=MAD_MIN:MAD_MAX] object i"
+MAD_RESET_LABEL  = "unset for [i=MAD_MIN:MAD_MAX] label i"
 if (!(exist("MAD_OLD_TERM") && exist("MAD_NEW_TERM"))) {
   MAD_OLD_TERM = "";
   MAD_NEW_TERM = "";
@@ -257,10 +258,17 @@ local function layout_ellipse (param, len, el, xorig, yorig, dash)
   local cx, cy = xadjust(0, len, xorig), yadjust(0, yorig)
   local sx, sy = xadjust(1, len, 0    ), yadjust(el, 0)
   local dashtype = dash or ""
-  fpwrite("set object %d ellipse at %f, screen %f \\\n\z
+  fpwrite("set object %d ellipse front at %f, screen %f \\\n\z
     size %f, screen %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
     param.oid, cx, cy, sx, sy, dashtype)
   param.oid = param.oid + 1
+end
+
+-- stream element label data
+local function layout_label(param, name, xorig, yorig)
+  local fpwrite, oid in param
+  fpwrite("set label %d back at %f, screen %f '%s' hypertext \z
+    point pt 4 ps 1 lc 'white'\n", oid, xorig, yorig, name)
 end
 
 -- stream beam line data
@@ -269,7 +277,7 @@ local function layout_bline (param, bline)
   local prevX, prevY = bline.x[1], bline.y[1]
   for i=2,#bline.y do
     local xi, yi = bline.x[i], bline.y[i]
-    fpwrite("set object %d polygon behind noclip dashtype solid \\\n\z
+    fpwrite("set object %d polygon front noclip dashtype solid \\\n\z
       from first %f, screen %f to first %f, screen %f to first %f, screen %f\n",
       param.oid, prevX, prevY, xi, yi, prevX, prevY)
     param.oid = param.oid + 1
@@ -314,11 +322,13 @@ end
 
 -- stream a signle layout
 local function layout (param, pseq)
-  local elemminlen, elemkind, elemsize in param
+  local elemminlen, elemkind, elemsize, elemname in param
   local seq, range, xs, ys, bline      in pseq
   local dir, j  = seq.direction, 1
   param.xadjust = xadjust
   param.yadjust = yadjust(elemsize)
+
+  layout_bline(param, bline)
 
   for i, elem in seq:iter(range) do
     local s, len, kind = seq:spos(i), elem.l, elem.kind
@@ -327,6 +337,8 @@ local function layout (param, pseq)
     if len >= elemminlen and (not elemkind or elemkind[kind]) then
       local sh_l = len / 2
       local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
+
+      if elemname  then layout_label(param, elem.name, xorig, yorig) end
 
       if not is_nil(el) and len ~= 0 then
         layout_ellipse(param, len, el, xorig, yorig, dash)
@@ -338,7 +350,6 @@ local function layout (param, pseq)
     end
     j = j + 1
   end
-  layout_bline(param, bline)
 end
 
 -- main layout function
@@ -587,6 +598,7 @@ local function exec (self)
 
   if self.sequence ~= "keep" then
     file:write("@MAD_RESET_OBJECT\n")
+    file:write("@MAD_RESET_LABEL\n")
   elseif self.range then
     print("MAD Plot Warning : sequence=\"keep\" and range is \z
       provided - range is ignored")
@@ -644,6 +656,7 @@ local plot = Command 'plot' {
   -- layout style
   laypos      = "top",   -- top | bottom | middle | in | 0 < x < 1
   laysize     = false,   -- 0 < x < 1
+  elemname    = false,
   elemscale   = false,   -- multiplier or default size
   elemkind    = false,   -- { "quadrupole", "sbend" }
   elemminlen  = 0,       -- x > 0
