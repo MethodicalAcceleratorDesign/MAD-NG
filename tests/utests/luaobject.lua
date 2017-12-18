@@ -352,9 +352,8 @@ local function set_readonly (a, b) -- exported
 end
 
 local function is_instanceOf (a, b) -- exported
-  assert(is_object(b), "invalid argument #2 (object expected)")
-  if not is_object(a) then return false end
-  while a and a ~= b do a = parent(a) end
+  if not (is_object(a) and is_class(b) and a ~= b) then return false end
+  repeat a = parent(a) until not a or a == b
   return a == b
 end
 
@@ -518,20 +517,20 @@ end
 
 -- flags
 
-local function is_valid_flag (self, n)
+local function is_valid_flag (n)
   return is_number(n) and n >= flg_free and n <= 31
 end
 
 local function set_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
 
 local function clear_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
   if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
@@ -539,7 +538,7 @@ end
 
 local function test_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   return btst(rawget(self,_flg) or 0, n)
 end
 
@@ -668,7 +667,6 @@ M.var_raw         = functor( var_raw         )
 M.var_val         = functor( var_val         )
 M.var_get         = functor( var_get         )
 
-M.is_valid_flag   = functor( is_valid_flag   )
 M.set_flag        = functor( set_flag        )
 M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
@@ -988,10 +986,10 @@ function TestLuaObject:testIsInstanceOf()
   local p3 = p1 { }
   local p4 = p3 { }
 
-  assertTrue ( Object:is_instanceOf(Object) )
+  assertFalse( Object:is_instanceOf(Object) )
 
   assertTrue ( p0:is_instanceOf(Object) )
-  assertTrue ( p0:is_instanceOf(p0) )
+  assertFalse( p0:is_instanceOf(p0) )
   assertFalse( p0:is_instanceOf(p1) )
   assertFalse( p0:is_instanceOf(p2) )
   assertFalse( p0:is_instanceOf(p3) )
@@ -999,7 +997,7 @@ function TestLuaObject:testIsInstanceOf()
 
   assertTrue ( p1:is_instanceOf(Object) )
   assertTrue ( p1:is_instanceOf(p0) )
-  assertTrue ( p1:is_instanceOf(p1) )
+  assertFalse( p1:is_instanceOf(p1) )
   assertFalse( p1:is_instanceOf(p2) )
   assertFalse( p1:is_instanceOf(p3) )
   assertFalse( p1:is_instanceOf(p4) )
@@ -1007,7 +1005,7 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p2:is_instanceOf(Object) )
   assertTrue ( p2:is_instanceOf(p0) )
   assertTrue ( p2:is_instanceOf(p1) )
-  assertTrue ( p2:is_instanceOf(p2) )
+  assertFalse( p2:is_instanceOf(p2) )
   assertFalse( p2:is_instanceOf(p3) )
   assertFalse( p2:is_instanceOf(p4) )
 
@@ -1015,7 +1013,7 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p3:is_instanceOf(p0) )
   assertTrue ( p3:is_instanceOf(p1) )
   assertFalse( p3:is_instanceOf(p2) )
-  assertTrue ( p3:is_instanceOf(p3) )
+  assertFalse( p3:is_instanceOf(p3) )
   assertFalse( p3:is_instanceOf(p4) )
 
   assertTrue ( p4:is_instanceOf(Object) )
@@ -1023,34 +1021,24 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p4:is_instanceOf(p1) )
   assertFalse( p4:is_instanceOf(p2) )
   assertTrue ( p4:is_instanceOf(p3) )
-  assertTrue ( p4:is_instanceOf(p4) )
+  assertFalse( p4:is_instanceOf(p4) )
 
   assertFalse( is_instanceOf(0 , p0) )
   assertFalse( is_instanceOf('', p0) )
   assertFalse( is_instanceOf({}, p0) )
 end
 
-function TestLuaObjectErr:testIsInstanceOf()
-  local p0 = Object {}
-  for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[2], is_instanceOf, p0, objectErr[i])
-  end
-end
-
 function TestLuaObject:testIsValidFlag()
   local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
 
-  assertTrue(p0:is_valid_flag(2))
-  assertTrue(p1:is_valid_flag(2))
-  assertTrue(p2:is_valid_flag(2))
-  assertFalse(p0:is_valid_flag(0))
-  assertFalse(p0:is_valid_flag(1))
+  assertFalse(is_valid_flag(0))
+  assertFalse(is_valid_flag(1))
+  assertTrue (is_valid_flag(2))
   for i=2, 31 do
-    assertTrue(p2:is_valid_flag(i), p3)
+    assertTrue(is_valid_flag(i))
   end
-  assertFalse(p0:is_valid_flag(33), p3)
+  assertFalse(is_valid_flag(33))
+
   assertEquals(p0.first_free_flag, 2)
 end
 
