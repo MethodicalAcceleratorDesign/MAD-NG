@@ -317,8 +317,18 @@ function MT:__len ()
   return rawlen(var)
 end
 
+local function pairs_iter (var, key) -- scan only strings
+  local k, v = next(var, key)
+  while not (is_nil(k) or is_string(k)) do
+    k, v = next(var, k)
+  end
+  return k, v
+end
+
 function MT:__pairs ()
-  return pairs(rawget(self,_var))
+  local var = rawget(self,_var)
+  local n = rawlen(var) -- skip array part
+  return pairs_iter, var, n > 0 and n or nil
 end
 
 function MT:__ipairs()
@@ -440,9 +450,8 @@ local function get_varkeys (self, class)
   assert(is_object(class), "invalid argument #2 (object expected)")
   local lst, key = {}, {}
   while self and self ~= class do
-    for k,v in pairs(rawget(self,_var)) do
-      if is_string(k) and not is_functor(v) and not key[k] and
-         string.sub(k,1,2) ~= '__' then
+    for k,v in pairs(self) do
+      if not (key[k] or is_functor(v)) and string.sub(k,1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
     end
@@ -484,7 +493,7 @@ local function clear_array (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  for i=1,#var do rawset(var, i, nil) end
+  for i in ipairs(self) do rawset(var, i, nil) end
   return self
 end
 
@@ -492,15 +501,8 @@ local function clear_variables (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local id, len = rawget(var, '__id'), rawlen(var)
-  if len == 0 then
-    table.clear(var)
-  else
-    local bak = table.new(len,0) -- unfortunately, Lua doesn't provide kpairs.
-    for i=1,len do bak[i] = rawget(var, i) end
-    table.clear(var)
-    for i=1,len do rawset(var, i, bak[i]) end
-  end
+  local id  = rawget(var,'__id')
+  for k in pairs(self) do rawset(var, k, nil) end
   rawset(var, '__id', id)
   return self
 end
@@ -1331,9 +1333,9 @@ function TestLuaObject:testIterators()
 
   -- bypass function evaluation, v may be a function but loops get same length
   c=0 for k,v in  pairs(p0) do c=c+1 assertEquals(p0:var_raw(k), v) end
-  assertEquals(c , 7)
+  assertEquals(c , 4)
   c=0 for k,v in  pairs(p1) do c=c+1 assertEquals(p1:var_raw(k), v) end
-  assertEquals(c , 5)
+  assertEquals(c , 3)
   c=0 for i,v in ipairs(p0) do c=c+1 assertEquals(p0:var_raw(i), v) end
   assertEquals(c , 3)
   c=0 for i,v in ipairs(p1) do c=c+1 assertEquals(p1:var_raw(i), v) end
@@ -1596,27 +1598,27 @@ function TestLuaObject:testSetMetamethod()
   local tostr = function(s)
       local str = ''
       for k,v in pairs(s) do str = str .. tostring(k) .. ', ' end
-      return str
+      return str .. '#=' .. tostring(#s)
     end
 
   local p00 = Object 'p00' { 1, 2, z=function() return 3 end }
   -- clone metatable shared with Object
   p00:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p00), '1, 2, z, __id, ') -- tostring -> tostr
-  assertNotEquals   (tostring(p1), '__id, ')           -- builtin tostring
+  assertEquals      (tostring(p00), 'z, __id, #=2')    -- tostring -> tostr
+  assertNotEquals   (tostring(p1), '__id, #=2')        -- builtin tostring
   assertStrContains (tostring(p1), '<object>')         -- builtin tostring
 
   -- p1 child of p0 and not yet a class
   -- clone metatable shared with Object
   p1:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p1), '__id, ')           -- tostring -> tostr
+  assertEquals      (tostring(p1), '__id, #=2')        -- tostring -> tostr
 
   local p01 = p00 'p01' {} -- fresh p1
   p01:set_metamethods({ __tostring = tostr }, true)    -- clone need override
-  assertEquals      (tostring(p01), '__id, ')          -- tostring -> tostr
+  assertEquals      (tostring(p01), '__id, #=2')       -- tostring -> tostr
   p01:set_functions { x=function() return 2 end, y =function(s) return function(n) return s.z*n end end}
   p01.z =function() return 3 end
-  assertEquals      (tostring(p01), 'y, x, __id, z, ') -- tostring -> tostr
+  assertEquals      (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
 
   -- example of the help
   local obj1 = Object 'obj1' { e = 3 }
