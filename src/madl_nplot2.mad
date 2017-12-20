@@ -202,7 +202,7 @@ end
 local flg = MAD.element.flags.sel_angle
 
 local xadjust    = \xs,ys,base,l -> xs*l + base
-local yadjust    = \size    -> \xs,ys,base -> size*ys + base
+local yadjust    = \size  -> \xs,ys,base -> size*ys + base
 local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
 local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
 
@@ -379,15 +379,13 @@ local function layout_process_in(param, pseq)
   pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
 end
 
-local function layout_in (param, pseq)
+-- stream a signle layout
+local function layout (param, pseq)
   local elemminlen, elemkind, elemsize, elemname in param
-  local seq, range, xs, ys, bline      in pseq
+  local seq, range, xs, ys, bline                in pseq
   local dir, j  = seq.direction, 1
-  param.xadjust = xadjust_in(elemsize)
-  param.yadjust = yadjust_in(elemsize)
 
   layout_bline(param, bline)
-
   for i, elem in seq:iter(range) do
     local s, len, kind = seq:spos(i), elem.l, elem.kind
     local xorig, yorig = xs[j], ys[j]
@@ -410,44 +408,14 @@ local function layout_in (param, pseq)
   end
 end
 
--- stream a signle layout
-local function layout (param, pseq)
-  local elemminlen, elemkind, elemsize, elemname in param
-  local seq, range, xs, ys, bline      in pseq
-  local dir, j  = seq.direction, 1
-  param.xadjust = xadjust
-  param.yadjust = yadjust(elemsize)
-
-  layout_bline(param, bline)
-
-  for i, elem in seq:iter(range) do
-    local s, len, kind = seq:spos(i), elem.l, elem.kind
-    local xorig, yorig = xs[j], ys[j]
-
-    if len >= elemminlen and (not elemkind or elemkind[kind]) then
-      local sh_l = len / 2
-      local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
-
-      if elemname  then layout_label(param, elem.name, xorig, yorig) end
-
-      if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, xorig, yorig, dash, elemsize)
-      end
-
-      if not is_nil(x_sh) then
-        layout_poly(param, sh_l, xorig, yorig, x_sh, y_sh, dash, func)
-      end
-    end
-    j = j + 1
-  end
-end
-
 local function multi_layout_in (param)
   local sequence, fpwrite, range, seqdistx, seqdisty,
     elemscale, laypos, xrange                         in param
 
   param.ref = ""
   param.elemsize = _dflt.elemsize * (elemscale or 1)
+  param.xadjust = xadjust_in(param.elemsize)
+  param.yadjust = yadjust_in(param.elemsize)
 
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
   local pseqs = { }
@@ -468,7 +436,7 @@ local function multi_layout_in (param)
 
   for i=1,#pseqs do
     local pseq = pseqs[i]
-    layout_in(param, pseq)
+    layout(param, pseq)
   end
 
   param.pseqs = pseqs
@@ -509,6 +477,10 @@ local function multi_layout (param)
   if laypos == "top"    then laypos =1-(ymax*yfactor + param.elemsize + pad) end
   if laypos == "bottom" then laypos =  -ymin*yfactor + param.elemsize + pad  end
   if laypos == "middle" then laypos = _dflt.middle end
+
+  param.xadjust = xadjust
+  param.yadjust = yadjust(param.elemsize)
+
   for i=1,#pseqs do
     local pseq = pseqs[i]
     local xs, ys, bline in pseq
