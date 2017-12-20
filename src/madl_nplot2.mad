@@ -392,71 +392,11 @@ local function layout (param, pseq)
   end
 end
 
-local function multi_layout_in (param)
-  local sequence, fpwrite, range, seqdistx, seqdisty,
-    elemscale, laypos, xrange                         in param
-
-  param.ref = ""
-  param.elemsize = _dflt.elemsize * (elemscale or 1)
-  param.xadjust = xadjust_in(param.elemsize)
-  param.yadjust = yadjust_in(param.elemsize)
-
-  local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
-  local pseqs = { }
-  local seqs = is_sequence(sequence) and {sequence} or sequence
-  for i=1,#seqs do
-    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
-    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
-    local rg   = is_table(range) and range[i] or nil
-    local pseq = {
-      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
-      seq = seqs[i], distx = distx, disty = disty, range=rg
-    }
-    layout_process_in(param, pseq)
-    xmin, xmax = min(xmin, pseq.xmin), max(xmax, pseq.xmax)
-    ymin, ymax = min(ymin, pseq.ymin), max(ymax, pseq.ymax)
-    pseqs[i] = pseq
-  end
-
-  for i=1,#pseqs do
-    local pseq = pseqs[i]
-    layout(param, pseq)
-  end
-
-  param.pseqs = pseqs
-  fpwrite("MAD_MAX = %f\n", param.oid)
-  if not xrange then fpwrite("set xrange [%s:%s]\n", xmin, xmax) end
-  if not yrange then fpwrite("set yrange [%s:%s]\n", ymin, ymax) end
-end
-
--- main layout function
-local function multi_layout (param)
-  local sequence, fpwrite, range, seqdistx, seqdisty,
-    elemscale, laypos, xrange                         in param
-
-  param.ref = "screen"
-  param.elemsize = _dflt.elemsize * (elemscale or 1)
+local function layout_bbox(param, pseqs, ymin, ymax)
+  local sequence, laypos in param
   param.laysize  = param.laysize  or
     not is_sequence(sequence) and _dflt.laysize + _dflt.multisize*#sequence
     or _dflt.laysize
-
-  local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
-  local pseqs = { }
-  local seqs = is_sequence(sequence) and {sequence} or sequence
-  for i=1,#seqs do
-    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
-    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
-    local rg   = is_table(range) and range[i] or nil
-    local pseq = {
-      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
-      seq = seqs[i], distx = distx, disty = disty, range=rg
-    }
-    layout_process(param, pseq)
-    pseqs[i] = pseq
-    xmin, xmax = min(xmin, pseq.xmin), max(xmax, pseq.xmax)
-    ymin, ymax = min(ymin, pseq.ymin), max(ymax, pseq.ymax)
-  end
-
   local pad      = _dflt.padding
   local ybbox    = abs(ymax - ymin) + 2*param.elemsize + 2*pad
   local yfactor  = param.laysize / ybbox
@@ -464,21 +404,53 @@ local function multi_layout (param)
   if laypos == "top"    then laypos =1-(ymax*yfactor + param.elemsize + pad) end
   if laypos == "bottom" then laypos =  -ymin*yfactor + param.elemsize + pad  end
   if laypos == "middle" then laypos = _dflt.middle end
-
-  param.xadjust = xadjust
-  param.yadjust = yadjust(param.elemsize)
-
   for i=1,#pseqs do
     local pseq = pseqs[i]
     local xs, ys, bline in pseq
     pseq.ys      =  ys:map(\y -> y*yfactor + laypos)
     pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
+  end
+end
+
+local function multi_layout (param)
+  local sequence, fpwrite, range, seqdistx, seqdisty,
+    elemscale, laypos, xrange                         in param
+
+  local is_in = (laypos == "in")
+  param.ref = is_in and "" or "screen"
+  param.elemsize = _dflt.elemsize * (elemscale or 1)
+
+  local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
+  local pseqs = { }
+  local seqs = is_sequence(sequence) and {sequence} or sequence
+  for i=1,#seqs do
+    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
+    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
+    local rg    = (#seqs > 1) and (is_table(range) and range[i] or nil) or range
+    local pseq  = {
+      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+      seq = seqs[i], distx = distx, disty = disty, range=rg
+    }
+    if is_in then layout_process_in(param, pseq)
+    else          layout_process(param, pseq)
+    end
+    xmin, xmax = min(xmin, pseq.xmin), max(xmax, pseq.xmax)
+    ymin, ymax = min(ymin, pseq.ymin), max(ymax, pseq.ymax)
+    pseqs[i]   = pseq
+  end
+
+  if not is_in then layout_bbox(param, pseqs, ymin, ymax) end
+  param.xadjust  = is_in and xadjust_in(param.elemsize) or xadjust
+  param.yadjust  = is_in and yadjust_in(param.elemsize) or yadjust(param.elemsize)
+
+  for i=1,#pseqs do
+    local pseq = pseqs[i]
     layout(param, pseq)
   end
 
-  param.pseqs = pseqs
   fpwrite("MAD_MAX = %f\n", param.oid)
-  if not xrange then fpwrite("set xrange [%s:%s]\n", xmin, xmax) end
+  if not xrange           then fpwrite("set xrange [%s:%s]\n", xmin, xmax) end
+  if not yrange and is_in then fpwrite("set yrange [%s:%s]\n", ymin, ymax) end
 end
 
 -- plot -----------------------------------------------------------------------o
@@ -640,9 +612,7 @@ end
 local function composed_plot (param)
   local laypos, psizey, originy in param
 
-  if laypos == "in" then   multi_layout_in(param)
-  else                     multi_layout(param)
-  end
+  multi_layout(param)
 
   local laysize in param
   if laypos == "top" or laypos == "bottom" then
