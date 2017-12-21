@@ -41,25 +41,25 @@ MAD.utility.unlock_file = unlock_file
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  color     = 'red',
-  style     = 'linespoints',
-  dashtype  = 'solid',
-  linewidth = 1,
-  pointsize = 1,
-  pointtype = 1,
-  filename  = "plot.pdf",
-  scrdump   = "plot.gp",
-  originx   = 0,
-  originy   = 0,
-  psizex    = 1,
-  psizey    = 1,
-  laysize   = 0.15,
-  multisize = 0.05,
-  elemwidth = 0.07,
-  elemscale = 1,
-  padding   = 0.025,
-  middle    = 0.5,
-  layonly   = 1,
+  color        = 'red',
+  style        = 'linespoints',
+  dashtype     = 'solid',
+  linewidth    = 1,
+  pointsize    = 1,
+  pointtype    = 1,
+  filename     = "plot.pdf",
+  scrdump      = "plot.gp",
+  originx      = 0,
+  originy      = 0,
+  psizex       = 1,
+  psizey       = 1,
+  laysize      = 0.15,
+  multisize    = 0.05,
+  elemwidth    = 0.07,
+  elemwidth_in = 1,
+  padding      = 0.025,
+  middle       = 0.5,
+  layonly      = 1,
 }
 
 -- GC -------------------------------------------------------------------------o
@@ -398,19 +398,23 @@ local function layout (param, pseq)
 end
 
 -- compute bounding box and scale data accordingly
-local function layout_bbox(param, pseqs, ymin, ymax)
-  local sequence, laypos, layonly in param
+-- post processing for "out of plot" layout
+local function layout_post(param, pseqs, ymin, ymax)
+  local sequence, laypos, layonly, elemwidth in param
   param.laysize  = param.laysize
     or (layonly and _dflt.layonly)
     or (not is_sequence(sequence) and _dflt.laysize + _dflt.multisize*#sequence)
     or _dflt.laysize
-  local pad       = _dflt.padding
-  local ybbox     = abs(ymax - ymin) + 2*param.elemwidth + 2*pad
-  local yfactor   = param.laysize / ybbox
-  param.elemwidth = param.elemwidth * yfactor
-  if laypos == "top"    then laypos =1-(ymax*yfactor + param.elemwidth + pad) end
-  if laypos == "bottom" then laypos =  -ymin*yfactor + param.elemwidth + pad  end
+  elemwidth     = (elemwidth or _dflt.elemwidth) * elemscale
+  local pad     = _dflt.padding
+  local ybbox   = abs(ymax - ymin) + 2*elemwidth + 2*pad
+  local yfactor = param.laysize / ybbox
+  elemwidth     = elemwidth * yfactor
+  if laypos == "top"    then laypos =1-(ymax*yfactor + elemwidth + pad) end
+  if laypos == "bottom" then laypos =  -ymin*yfactor + elemwidth + pad  end
   if laypos == "middle" then laypos = _dflt.middle end
+  param.elemwidth = elemwidth
+
   for i=1,#pseqs do
     local pseq = pseqs[i]
     local ys, bline in pseq
@@ -419,18 +423,23 @@ local function layout_bbox(param, pseqs, ymin, ymax)
   end
 end
 
+-- post processing for "in plot" layout
+local function layout_post_in(param, ymin, ymax)
+  local elemwidth, elemscale in param
+  elemwidth       = elemwidth or (abs(ymax - ymin) * _dflt.elemwidth_in / 100)
+  param.elemwidth = elemwidth * elemscale
+end
+
 -- main layout function
 local function multi_layout (param)
   local sequence, fpwrite, range, seqdistx, seqdisty,
     elemwidth, elemscale, laypos, xrange                  in param
-
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
-  param.elemwidth = (elemwidth or _dflt.elemwidth) * (elemscale or _dflt.elemscale)
-
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
   local pseqs = { }
   local seqs = is_sequence(sequence) and {sequence} or sequence
+
   for i=1,#seqs do
     local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
     local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
@@ -447,7 +456,9 @@ local function multi_layout (param)
     pseqs[i]   = pseq
   end
 
-  if not is_in then layout_bbox(param, pseqs, ymin, ymax) end
+  if is_in then layout_post_in(param, ymin, ymax)
+  else          layout_post(param, pseqs, ymin, ymax)
+  end
   param.xadjust = is_in and xadjust_in(param.elemwidth) or xadjust
   param.yadjust = is_in and yadjust_in(param.elemwidth) or yadjust(param.elemwidth)
 
