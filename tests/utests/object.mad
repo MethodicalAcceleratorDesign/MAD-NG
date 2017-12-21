@@ -943,17 +943,15 @@ function TestObject:testGetVarKeys()
   local p0 = Object 'p0' { x=1, y=2, z:=3 }
   local p1 = p0 'p1' { x=-1, y={} }
 
-  local t = Object:getk() assertEquals ( t, {} ) -- Object is excluded
-  t = p0:getk()             table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p0:getk(Object)       table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p0:getk(Object.__par) table.sort(t) assertEquals (t, {'x','y','z'})
+  local t = Object:get_varkeys() assertEquals ( t, {} ) -- Object is excluded
+  t = p0:get_varkeys()             table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p0:get_varkeys(Object)       table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p0:get_varkeys(Object.__par) table.sort(t) assertEquals (t, {'x','y','z'})
 
-  t = p1:getk()             table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p1:getk(p0.__par)     table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p1:getk(p0)           table.sort(t) assertEquals (t, {'x','y'})
-  t = p1:getk(p1.__par)     table.sort(t) assertEquals (t, {'x','y'})
-
-  assertEquals(Object.getk, Object.get_varkeys)
+  t = p1:get_varkeys()             table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p1:get_varkeys(p0.__par)     table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p1:get_varkeys(p0)           table.sort(t) assertEquals (t, {'x','y'})
+  t = p1:get_varkeys(p1.__par)     table.sort(t) assertEquals (t, {'x','y'})
 end
 
 function TestObjectErr:testGetVarKeys()
@@ -964,15 +962,15 @@ function TestObjectErr:testGetVarKeys()
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.getk, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.get_varkeys, objectErr[i])
   end
-  assertErrorMsgContains(_msg[2], p0.getk, p0, 0)
-  assertErrorMsgContains(_msg[2], p0.getk, p0, true)
-  assertErrorMsgContains(_msg[2], p0.getk, p0, "")
-  assertErrorMsgContains(_msg[2], p0.getk, p0, {})
-  assertErrorMsgContains(_msg[2], p0.getk, p0, \ ())
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, 0)
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, true)
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, "")
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, {})
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, \ ())
 
-  assertErrorMsgContains(msg[1], p0.getk, p0, p1)
+  assertErrorMsgContains(msg[1], p0.get_varkeys, p0, p1)
 end
 
 function TestObject:testInsertArray()
@@ -1745,6 +1743,42 @@ function Test_Object:testDuplicates()
   local inp = DupFinder {'b','a','c','c','e','a','c','d','c','d'}
   local out = DupFinder {'a','c','d'}
   local res = DupFinder {}
+
+  local t0 = os.clock()
+  for i=1,5e5 do inp:find_duplicates(res:clear()) end
+  local dt = os.clock() - t0
+  assertEquals( res, out )
+  assertAlmostEquals( dt , 0.5, 1 ) -- fails very often
+end
+
+function Test_Object:testDuplicates2()
+  local DupFinder = Object {}
+  local _len = {}
+
+  DupFinder:set_functions {
+    find_duplicates = \s,res =>
+      for _,v in ipairs(s) do
+        res[v] = (res[v] or 0) + 1
+      end
+      for _,v in ipairs(s) do
+        if res[v] and res[v] > 1 then
+          local len = res[_len]+1
+          res[len], res[_len] = v, len
+        end
+        res[v] = nil
+      end
+    end,
+
+    clear = \s =>
+      for i=1,s[_len] do s[i]=nil end
+      s[_len] = 0
+      return s
+    end
+  }
+
+  local inp = DupFinder {'b','a','c','c','e','a','c','d','c','d'}
+  local out = DupFinder {'a','c','d'}
+  local res = DupFinder { [_len]=0 }
 
   local t0 = os.clock()
   for i=1,5e5 do inp:find_duplicates(res:clear()) end
