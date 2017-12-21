@@ -42,7 +42,7 @@ mad_str_split (str_t str, ssz_t len[5], str_t sep)
   ssz_t i = len[0], k = len[0]+len[1];
   while (i < k && str[i] != *sep) ++i;
 
-  if (i == k) // sep not found
+  if (i == k) // no sep found
     len[2] = len[3] = len[4] = -1;
   else {
     len[1] = i-len[0];
@@ -64,14 +64,14 @@ mad_str_split_bracket (str_t str, ssz_t len[6])
   while (i < k && str[i] != '[' && str[i] != '{'
                && str[i] != ']' && str[i] != '}') ++i;
 
-  ssz_t j = i+1;
-       if (str[i] == '[') while (j < k && str[j] != ']') ++j;
-  else if (str[i] == '{') while (j < k && str[j] != '}') ++j;
-  else j = k;
+  ssz_t j = k-1;
+       if (str[i] == '[') while (j > i && str[j] != ']') --j;
+  else if (str[i] == '{') while (j > i && str[j] != '}') --j;
+  else j = i;
 
        if (i == k) // no bracket found
     len[2] = len[3] = len[4] = len[5] = -1;
-  else if (j == k) // bad pairs of brackets
+  else if (i == j) // bad pairs of brackets
     len[2] = len[3] = len[5] = -1, len[4] = i;
   else {
     len[1] = i-len[0];

@@ -29,7 +29,7 @@ local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
 
 local Object in MAD
 local is_number, is_function, is_table, is_object, is_instanceOf, is_readonly,
-      is_class, is_functor in MAD.typeid
+      is_class, is_functor, is_valid_flag in MAD.typeid
 
 
 -- regression test suite ------------------------------------------------------o
@@ -309,10 +309,10 @@ function TestObject:testIsInstanceOf()
   local p3 = p1 { }
   local p4 = p3 { }
 
-  assertTrue ( Object:is_instanceOf(Object) )
+  assertFalse( Object:is_instanceOf(Object) )
 
   assertTrue ( p0:is_instanceOf(Object) )
-  assertTrue ( p0:is_instanceOf(p0) )
+  assertFalse( p0:is_instanceOf(p0) )
   assertFalse( p0:is_instanceOf(p1) )
   assertFalse( p0:is_instanceOf(p2) )
   assertFalse( p0:is_instanceOf(p3) )
@@ -320,7 +320,7 @@ function TestObject:testIsInstanceOf()
 
   assertTrue ( p1:is_instanceOf(Object) )
   assertTrue ( p1:is_instanceOf(p0) )
-  assertTrue ( p1:is_instanceOf(p1) )
+  assertFalse( p1:is_instanceOf(p1) )
   assertFalse( p1:is_instanceOf(p2) )
   assertFalse( p1:is_instanceOf(p3) )
   assertFalse( p1:is_instanceOf(p4) )
@@ -328,7 +328,7 @@ function TestObject:testIsInstanceOf()
   assertTrue ( p2:is_instanceOf(Object) )
   assertTrue ( p2:is_instanceOf(p0) )
   assertTrue ( p2:is_instanceOf(p1) )
-  assertTrue ( p2:is_instanceOf(p2) )
+  assertFalse( p2:is_instanceOf(p2) )
   assertFalse( p2:is_instanceOf(p3) )
   assertFalse( p2:is_instanceOf(p4) )
 
@@ -336,7 +336,7 @@ function TestObject:testIsInstanceOf()
   assertTrue ( p3:is_instanceOf(p0) )
   assertTrue ( p3:is_instanceOf(p1) )
   assertFalse( p3:is_instanceOf(p2) )
-  assertTrue ( p3:is_instanceOf(p3) )
+  assertFalse( p3:is_instanceOf(p3) )
   assertFalse( p3:is_instanceOf(p4) )
 
   assertTrue ( p4:is_instanceOf(Object) )
@@ -344,34 +344,24 @@ function TestObject:testIsInstanceOf()
   assertTrue ( p4:is_instanceOf(p1) )
   assertFalse( p4:is_instanceOf(p2) )
   assertTrue ( p4:is_instanceOf(p3) )
-  assertTrue ( p4:is_instanceOf(p4) )
+  assertFalse( p4:is_instanceOf(p4) )
 
   assertFalse( is_instanceOf(0 , p0) )
   assertFalse( is_instanceOf('', p0) )
   assertFalse( is_instanceOf({}, p0) )
 end
 
-function TestObjectErr:testIsInstanceOf()
-  local p0 = Object {}
-  for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[2], is_instanceOf, p0, objectErr[i])
-  end
-end
-
 function TestObject:testIsValidFlag()
   local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
 
-  assertTrue(p0:is_valid_flag(2))
-  assertTrue(p1:is_valid_flag(2))
-  assertTrue(p2:is_valid_flag(2))
-  assertFalse(p0:is_valid_flag(0))
-  assertFalse(p0:is_valid_flag(1))
+  assertFalse(is_valid_flag(0))
+  assertFalse(is_valid_flag(1))
+  assertTrue (is_valid_flag(2))
   for i=2, 31 do
-    assertTrue(p2:is_valid_flag(i), p3)
+    assertTrue(is_valid_flag(i))
   end
-  assertFalse(p0:is_valid_flag(33), p3)
+  assertFalse(is_valid_flag(33))
+
   assertEquals(p0.first_free_flag, 2)
 end
 
@@ -665,9 +655,9 @@ function TestObject:testIterators()
 
   -- bypass function evaluation, v may be a function but loops get same length
   c=0 for k,v in  pairs(p0) do c=c+1 assertEquals(p0:var_raw(k), v) end
-  assertEquals(c , 7)
+  assertEquals(c , 4)
   c=0 for k,v in  pairs(p1) do c=c+1 assertEquals(p1:var_raw(k), v) end
-  assertEquals(c , 5)
+  assertEquals(c , 3)
   c=0 for i,v in ipairs(p0) do c=c+1 assertEquals(p0:var_raw(i), v) end
   assertEquals(c , 3)
   c=0 for i,v in ipairs(p1) do c=c+1 assertEquals(p1:var_raw(i), v) end
@@ -922,27 +912,27 @@ function TestObject:testSetMetamethod()
   local tostr = \s =>
       local str = ''
       for k,v in pairs(s) do str = str .. tostring(k) .. ', ' end
-      return str
+      return str .. '#=' .. tostring(#s)
     end
 
   local p00 = Object 'p00' { 1, 2, z:=3 }
   -- clone metatable shared with Object
   p00:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p00), '1, 2, z, __id, ') -- tostring -> tostr
-  assertNotEquals   (tostring(p1), '__id, ')           -- builtin tostring
+  assertEquals      (tostring(p00), 'z, __id, #=2')    -- tostring -> tostr
+  assertNotEquals   (tostring(p1), '__id, #=2')        -- builtin tostring
   assertStrContains (tostring(p1), '<object>')         -- builtin tostring
 
   -- p1 child of p0 and not yet a class
   -- clone metatable shared with Object
   p1:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p1), '__id, ')           -- tostring -> tostr
+  assertEquals      (tostring(p1), '__id, #=2')        -- tostring -> tostr
 
   local p01 = p00 'p01' {} -- fresh p1
   p01:set_metamethods({ __tostring = tostr }, true)    -- clone need override
-  assertEquals      (tostring(p01), '__id, ')          -- tostring -> tostr
+  assertEquals      (tostring(p01), '__id, #=2')       -- tostring -> tostr
   p01:set_functions { x:=\ 2, y =\s\n s.z*n }
   p01.z =\ 3
-  assertEquals      (tostring(p01), 'y, x, __id, z, ') -- tostring -> tostr
+  assertEquals      (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
 
   -- example of the help
   local obj1 = Object 'obj1' { e = 3 }

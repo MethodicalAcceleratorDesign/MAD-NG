@@ -317,8 +317,18 @@ function MT:__len ()
   return rawlen(var)
 end
 
+local function pairs_iter (var, key) -- scan only strings
+  local k, v = next(var, key)
+  while not (is_nil(k) or is_string(k)) do
+    k, v = next(var, k)
+  end
+  return k, v
+end
+
 function MT:__pairs ()
-  return pairs(rawget(self,_var))
+  local var = rawget(self,_var)
+  local n = rawlen(var) -- skip array part
+  return pairs_iter, var, n > 0 and n or nil
 end
 
 function MT:__ipairs()
@@ -352,9 +362,8 @@ local function set_readonly (a, b) -- exported
 end
 
 local function is_instanceOf (a, b) -- exported
-  assert(is_object(b), "invalid argument #2 (object expected)")
-  if not is_object(a) then return false end
-  while a and a ~= b do a = parent(a) end
+  if not (is_object(a) and is_class(b) and a ~= b) then return false end
+  repeat a = parent(a) until not a or a == b
   return a == b
 end
 
@@ -441,9 +450,8 @@ local function get_varkeys (self, class)
   assert(is_object(class), "invalid argument #2 (object expected)")
   local lst, key = {}, {}
   while self and self ~= class do
-    for k,v in pairs(rawget(self,_var)) do
-      if is_string(k) and not is_functor(v) and not key[k] and
-         string.sub(k,1,2) ~= '__' then
+    for k,v in pairs(self) do
+      if not (key[k] or is_functor(v)) and string.sub(k,1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
     end
@@ -485,7 +493,7 @@ local function clear_array (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  for i=1,#var do rawset(var, i, nil) end
+  for i in ipairs(self) do rawset(var, i, nil) end
   return self
 end
 
@@ -493,15 +501,8 @@ local function clear_variables (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local id, len = rawget(var, '__id'), rawlen(var)
-  if len == 0 then
-    table.clear(var)
-  else
-    local bak = table.new(len,0) -- unfortunately, Lua doesn't provide kpairs.
-    for i=1,len do bak[i] = rawget(var, i) end
-    table.clear(var)
-    for i=1,len do rawset(var, i, bak[i]) end
-  end
+  local id  = rawget(var,'__id')
+  for k in pairs(self) do rawset(var, k, nil) end
   rawset(var, '__id', id)
   return self
 end
@@ -518,20 +519,20 @@ end
 
 -- flags
 
-local function is_valid_flag (self, n)
+local function is_valid_flag (n)
   return is_number(n) and n >= flg_free and n <= 31
 end
 
 local function set_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
   return self
 end
 
 local function clear_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
   if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
   return self
@@ -539,7 +540,7 @@ end
 
 local function test_flag (self, n)
   assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(self,n), "invalid argument #2 (valid flag id expected)")
+  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
   return btst(rawget(self,_flg) or 0, n)
 end
 
@@ -668,7 +669,6 @@ M.var_raw         = functor( var_raw         )
 M.var_val         = functor( var_val         )
 M.var_get         = functor( var_get         )
 
-M.is_valid_flag   = functor( is_valid_flag   )
 M.set_flag        = functor( set_flag        )
 M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
@@ -988,10 +988,10 @@ function TestLuaObject:testIsInstanceOf()
   local p3 = p1 { }
   local p4 = p3 { }
 
-  assertTrue ( Object:is_instanceOf(Object) )
+  assertFalse( Object:is_instanceOf(Object) )
 
   assertTrue ( p0:is_instanceOf(Object) )
-  assertTrue ( p0:is_instanceOf(p0) )
+  assertFalse( p0:is_instanceOf(p0) )
   assertFalse( p0:is_instanceOf(p1) )
   assertFalse( p0:is_instanceOf(p2) )
   assertFalse( p0:is_instanceOf(p3) )
@@ -999,7 +999,7 @@ function TestLuaObject:testIsInstanceOf()
 
   assertTrue ( p1:is_instanceOf(Object) )
   assertTrue ( p1:is_instanceOf(p0) )
-  assertTrue ( p1:is_instanceOf(p1) )
+  assertFalse( p1:is_instanceOf(p1) )
   assertFalse( p1:is_instanceOf(p2) )
   assertFalse( p1:is_instanceOf(p3) )
   assertFalse( p1:is_instanceOf(p4) )
@@ -1007,7 +1007,7 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p2:is_instanceOf(Object) )
   assertTrue ( p2:is_instanceOf(p0) )
   assertTrue ( p2:is_instanceOf(p1) )
-  assertTrue ( p2:is_instanceOf(p2) )
+  assertFalse( p2:is_instanceOf(p2) )
   assertFalse( p2:is_instanceOf(p3) )
   assertFalse( p2:is_instanceOf(p4) )
 
@@ -1015,7 +1015,7 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p3:is_instanceOf(p0) )
   assertTrue ( p3:is_instanceOf(p1) )
   assertFalse( p3:is_instanceOf(p2) )
-  assertTrue ( p3:is_instanceOf(p3) )
+  assertFalse( p3:is_instanceOf(p3) )
   assertFalse( p3:is_instanceOf(p4) )
 
   assertTrue ( p4:is_instanceOf(Object) )
@@ -1023,34 +1023,24 @@ function TestLuaObject:testIsInstanceOf()
   assertTrue ( p4:is_instanceOf(p1) )
   assertFalse( p4:is_instanceOf(p2) )
   assertTrue ( p4:is_instanceOf(p3) )
-  assertTrue ( p4:is_instanceOf(p4) )
+  assertFalse( p4:is_instanceOf(p4) )
 
   assertFalse( is_instanceOf(0 , p0) )
   assertFalse( is_instanceOf('', p0) )
   assertFalse( is_instanceOf({}, p0) )
 end
 
-function TestLuaObjectErr:testIsInstanceOf()
-  local p0 = Object {}
-  for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[2], is_instanceOf, p0, objectErr[i])
-  end
-end
-
 function TestLuaObject:testIsValidFlag()
   local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
 
-  assertTrue(p0:is_valid_flag(2))
-  assertTrue(p1:is_valid_flag(2))
-  assertTrue(p2:is_valid_flag(2))
-  assertFalse(p0:is_valid_flag(0))
-  assertFalse(p0:is_valid_flag(1))
+  assertFalse(is_valid_flag(0))
+  assertFalse(is_valid_flag(1))
+  assertTrue (is_valid_flag(2))
   for i=2, 31 do
-    assertTrue(p2:is_valid_flag(i), p3)
+    assertTrue(is_valid_flag(i))
   end
-  assertFalse(p0:is_valid_flag(33), p3)
+  assertFalse(is_valid_flag(33))
+
   assertEquals(p0.first_free_flag, 2)
 end
 
@@ -1343,9 +1333,9 @@ function TestLuaObject:testIterators()
 
   -- bypass function evaluation, v may be a function but loops get same length
   c=0 for k,v in  pairs(p0) do c=c+1 assertEquals(p0:var_raw(k), v) end
-  assertEquals(c , 7)
+  assertEquals(c , 4)
   c=0 for k,v in  pairs(p1) do c=c+1 assertEquals(p1:var_raw(k), v) end
-  assertEquals(c , 5)
+  assertEquals(c , 3)
   c=0 for i,v in ipairs(p0) do c=c+1 assertEquals(p0:var_raw(i), v) end
   assertEquals(c , 3)
   c=0 for i,v in ipairs(p1) do c=c+1 assertEquals(p1:var_raw(i), v) end
@@ -1608,27 +1598,27 @@ function TestLuaObject:testSetMetamethod()
   local tostr = function(s)
       local str = ''
       for k,v in pairs(s) do str = str .. tostring(k) .. ', ' end
-      return str
+      return str .. '#=' .. tostring(#s)
     end
 
   local p00 = Object 'p00' { 1, 2, z=function() return 3 end }
   -- clone metatable shared with Object
   p00:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p00), '1, 2, z, __id, ') -- tostring -> tostr
-  assertNotEquals   (tostring(p1), '__id, ')           -- builtin tostring
+  assertEquals      (tostring(p00), 'z, __id, #=2')    -- tostring -> tostr
+  assertNotEquals   (tostring(p1), '__id, #=2')        -- builtin tostring
   assertStrContains (tostring(p1), '<object>')         -- builtin tostring
 
   -- p1 child of p0 and not yet a class
   -- clone metatable shared with Object
   p1:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p1), '__id, ')           -- tostring -> tostr
+  assertEquals      (tostring(p1), '__id, #=2')        -- tostring -> tostr
 
   local p01 = p00 'p01' {} -- fresh p1
   p01:set_metamethods({ __tostring = tostr }, true)    -- clone need override
-  assertEquals      (tostring(p01), '__id, ')          -- tostring -> tostr
+  assertEquals      (tostring(p01), '__id, #=2')       -- tostring -> tostr
   p01:set_functions { x=function() return 2 end, y =function(s) return function(n) return s.z*n end end}
   p01.z =function() return 3 end
-  assertEquals      (tostring(p01), 'y, x, __id, z, ') -- tostring -> tostr
+  assertEquals      (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
 
   -- example of the help
   local obj1 = Object 'obj1' { e = 3 }

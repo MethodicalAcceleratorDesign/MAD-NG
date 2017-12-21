@@ -34,7 +34,8 @@ SYNOPSIS
   is_nan, is_infinite, is_positive, is_negative, is_integer,   (specializations)
   is_scalar, is_rawtable, is_file,
   bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
-  lnot, land, lor, bool, eq, ne, lt, le, gt, ge,             (logical operators)
+  ltrue, lfalse, lbool, lnot, land, lor, eq, ne, lt, le, gt, ge,
+                                                             (logical operators)
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
   is_metaname, has_metatable, get_metatable,                       (metamethods)
   has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
@@ -58,9 +59,10 @@ DESCRIPTION
   - is_rawtable returns true if the argument is a table without metatable,
   - bnot, band, bor, bxor, tobit and tohex imported are from the bit module,
   - bclr, bset and btst respectively clear, set and test bit 0..31 of an int32,
-  - bool, logical_not, logical_and, logical_or, is_equal, is_not_equal,
-    is_lesser, is_lesser_or_equal, is_greater and is_greater_or_equal are
-    functions wrapping logical operators,
+  - logical_false, logical_true, logical_bool, logical_not, logical_and,
+    logical_or, is_equal, is_not_equal, is_lesser, is_lesser_or_equal,
+    is_greater and is_greater_or_equal are functions wrapping logical values and
+    operators,
   - unm, add, sub, mul, div, mod, pow, get, set, len, cat, call are functions
     wrapping other operators (i.e. -n, +, -, *, /, %, ^, [], []=, #, .., ()),
   - is_ismetaname returns true if the argument is a valid metamethod name,
@@ -111,7 +113,7 @@ local bit, fun = require 'bit', require 'madl_lfun'
 
 local istype                                   in ffi
 local format                                   in string
-local abs, huge                                in math
+local abs, huge, min, max                      in math
 local band, bor, rol, rshift                   in bit
 local totable, iter                            in fun
 local type, getmetatable, tostring = type, getmetatable, tostring
@@ -192,7 +194,9 @@ local operator = {
   bclr    = \x,n -> band(x, rol(-2, n)),
 
   -- logical operators
-  bool    = \x   -> not not x,
+  lfalse  = \    -> false,
+  ltrue   = \    -> true,
+  lbool   = \x   -> not not x,
   lnot    = \x   -> not x,
   land    = \x,y -> x and y,
   lor     = \x,y -> x or y,
@@ -241,7 +245,7 @@ operator.opstr = {
   ['!' ] = operator.lnot,
   ['&&'] = operator.land,
   ['||'] = operator.lor,
-  ['!!'] = operator.bool,
+  ['!!'] = operator.lbool,
 }
 
 -- types
@@ -251,24 +255,24 @@ local complex = ffi.typeof 'complex'
 local typeid = {
 
   -- primitive types
-  is_nil      = \a -> type(a) == 'nil',
   is_boolean  = \a -> type(a) == 'boolean',
   is_number   = \a -> type(a) == 'number',
   is_string   = \a -> type(a) == 'string',
   is_function = \a -> type(a) == 'function',
   is_table    = \a -> type(a) == 'table',
   is_cdata    = \a -> type(a) == 'cdata',
-  is_complex  = \a -> istype(complex, a),
 
   -- specialisations
-  is_true     = \a -> type(a) == 'boolean' and a == true,
-  is_false    = \a -> type(a) == 'boolean' and a == false,
+  is_nil      = \a -> rawequal(a, nil  ),
+  is_true     = \a -> rawequal(a, true ),
+  is_false    = \a -> rawequal(a, false),
   is_finite   = \a -> type(a) == 'number'  and abs(a) <  huge,
   is_infinite = \a -> type(a) == 'number'  and abs(a) == huge,
   is_nan      = \a -> type(a) == 'number'  and a ~= a,
   is_positive = \a -> type(a) == 'number'  and a > 0,
   is_negative = \a -> type(a) == 'number'  and a < 0,
   is_integer  = \a -> type(a) == 'number'  and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_complex  = \a ->                          istype(complex, a),
   is_scalar   = \a -> type(a) == 'number'  or  istype(complex, a),
   is_rawtable = \a -> type(a) == 'table'   and type(getmetatable(a)) == 'nil',
 
@@ -481,9 +485,8 @@ function utility.strsplit (str, sep)
   assert(is_string(sep), "invalid argument #2 (string expected)")
   slen[0], slen[1] = 0, #str
   local ptr = _C.mad_str_split(str, slen, sep)
-  local str1, str2
+  local str1, str2 = ffi.string(ptr+slen[0], slen[1])
   if slen[4] >= 0 then -- found sep
-    str1 = ffi.string(ptr+slen[0], slen[1])
     str2 = ffi.string(ptr+slen[2], slen[3])
   end
   return str1, str2
@@ -494,13 +497,12 @@ function utility.strsplitbra (str)
   slen[0], slen[1] = 0, #str
   local ptr = _C.mad_str_split_bracket(str, slen)
   assert(slen[4] < 0 or slen[5] > slen[4], "invalid pair of brackets")
-  local str1, str2, brac
+  local str1, str2, bra = ffi.string(ptr+slen[0], slen[1])
   if slen[4] >= 0 then
-    str1 = ffi.string(ptr+slen[0], slen[1])
     str2 = ffi.string(ptr+slen[2], slen[3])
-    brac = ffi.string(ptr+slen[4], 1)
+    bra  = ffi.string(ptr+slen[4], 1)
   end
-  return str1, str2, brac
+  return str1, str2, bra
 end
 
 function utility.strsplitall (str, sep, res_)
@@ -527,12 +529,18 @@ string.splitbra = utility.strsplitbra
 
 local algorithm = {}
 
-function algorithm.bsearch (tbl, val, cmp_)
-  local cmp = cmp_ or operator.lt -- cmp must be the same used by table.sort
+function algorithm.bsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
-  assert(is_callable(cmp), "invalid argument #3 (callable expected)")
-  local low, cnt = 1, #tbl
-  local mid, stp, tst
+  if is_number(cmp_) and is_nil(high_) then
+    low_, high_, cmp_ = cmp_, low_ -- right shift
+  end
+  if not (is_nil(cmp_) or is_callable(cmp_)) then
+    error("invalid argument #3 (callable expected)")
+  end
+  local cmp  = cmp_ or operator.lt -- cmp must be the same used by table.sort
+  local low  = is_number(low_ ) and max(low_ , 1   ) or 1
+  local high = is_number(high_) and min(high_, #tbl) or #tbl
+  local cnt, mid, stp, tst = high-low+1
   while cnt > 0 do
     stp = rshift(cnt,1)
     mid = low+stp
