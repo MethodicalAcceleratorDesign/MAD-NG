@@ -7,6 +7,7 @@
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  |          A.Z. Teska, aleksandra.teska at cern.ch
+ |          A. Bloch, aurelien.bloch at cern.ch
  | Contrib: F.R. Leiro
  |
  o-----------------------------------------------------------------------------o
@@ -17,728 +18,816 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provides ploting
+  - Provides plotting
 
  o-----------------------------------------------------------------------------o
 ]=]
 
--- locals ---------------------------------------------------------------------o
-
 local dat = require 'madl_plotdat'
-local range, nrange, vector, element, totable, same              in MAD
-local is_nil, is_number, is_string, is_range, is_table,
-      is_sequence, isa_matrix                                    in MAD.typeid
-local min, max, abs, exp                                         in MAD.gmath
-local pow                                                        in MAD.operator
+local is_nil, is_number, is_table, is_mtable, is_string,
+  is_sequence, is_rawtable                                    in MAD.typeid
+local Command, fun, vector, survey                            in MAD
+local strinterp, fileexists                                   in MAD.utility
+local sign, tan, min, max, abs, sqrt, inf, pi                 in MAD.gmath
+local lshift in MAD.operator
 
--- implementation -------------------------------------------------------------o
+-- Utility --------------------------------------------------------------------o
 
-local function copy(tbl)
-  local out = {}
-  for k,v in pairs(tbl) do out[k] = v end
-  return out
+local ffi = require("ffi")
+
+ffi.cdef[[
+void Sleep(int ms);
+int poll(struct pollfd *fds, unsigned long nfds, int timeout);
+]]
+
+local sleep
+if ffi.os == "Windows" then sleep = \s -> ffi.C.Sleep(s)
+else                        sleep = \s -> ffi.C.poll(nil, 0, s)
 end
 
-local function keys_tbl(t1, t2, keys)
-  local t = {}
-  if t1
-  then for j,k in ipairs(keys) do t[k] = t1[k] or t2[k] end
-  else for j,k in ipairs(keys) do t[k] = t2[k]          end
-  end
-  return t
-end
-
-local function tbl_concat(t, ...)
-  local t = t or {}
-  local n = select('#', ...)
-  for i=1,n do
-    local elem = select(i, ...)
-    for j=1,#elem do table.insert(t, elem[j]) end
-  end
-  return t
-end
-
-local function find_key(inp, key)
-  local indx
-  for i,line in ipairs(inp) do if line:find(key) then indx = i end end
-  return indx
-end
-
---scalling
-local function chksize(rng, start, stop)
-  if rng:size() <= stop then start, stop = rng.start, rng.stop end
-  return start, stop
-end
-
-local function scale_tbl(tbl, start, stop)
-  local r = {}
-  for j=1,stop-start do r[j] = tbl[start+j] end
-  return r
-end
-
-local function scale_dat(src, keys, rng)
-  local d_src = {}
-  local start, stop = 1, #src[keys[1]]
-  start, stop = chksize(rng, start, stop)
-  for j,k in ipairs(keys) do
-    if isa_matrix(src[k])
-    then d_src[k] = src[k]:getv(start..stop )
-    else d_src[k] = scale_tbl(src[k],start,stop)
+local function lock_file (fname, time, timeout)
+  local waited = 0
+  local lock   = fname .. ".lock"
+  while fileexists(lock) do
+    sleep(time)
+    waited = waited + time
+    if timeout and waited > timeout then
+      os.remove(lock)
+      error("lock file \"" .. lock .. "\" prevent us from proceeding")
     end
   end
-  return d_src
+  io.open(lock, "w"):close()
 end
 
-local function scale_axis(src, keys, margin)
-  if is_nil(keys[1]) then return 0,0 end
-  local vmin, vmax = vector(#keys), vector(#keys)
-  for i,key in ipairs(keys) do
-    local min, max = src[key]:min(), src[key]:max()
-    vmin:seti(i, min)
-    vmax:seti(i, max)
-  end
-  local min, max, x = vmin:min(), vmax:max()
-  if margin then
-    if is_number(margin)
-    then x = margin
-    else x = 0.1
-    end
-    local marg = x*(max-min)
-    if marg == 0 then marg = x end
-    return min-marg, max+marg
-  end
-  return min, max
-end
+local unlock_file = \fname -> os.remove(fname .. ".lock")
 
-local function scale_rng(src, rng)
-  if     is_range(rng) then return rng
-  elseif is_table(rng) then
-    local  start,  stop = 1     , #src
-    local rstart, rstop = rng[1], rng[2]
-    local vmin, vmax, c = {}, {}
-    c=1; src:mapij(\x,i,j => if x>=rstart then vmin[c]=i; c=c+1 end end, {})
-    c=1; src:mapij(\x,i,j => if x> rstop  then vmax[c]=i; c=c+1 end end, {})
-    start = vmin[1]
-    if vmax[1]       then stop = vmax[1]-1 end                                  -- add WARNING(bigger then data)
-    if rng [2] == -1 then stop = #src      end
-    return start..stop
-  end
-end
+MAD.utility.sleep       = sleep
+MAD.utility.lock_file   = lock_file
+MAD.utility.unlock_file = unlock_file
 
---layout
-local xadjst = \x,l,s -> x*l + s-l
-local yadjst = \y,h   -> y*h
-local hadjst = \y,h   -> y*(1-exp(-0.2*( pow(abs(h), 1/4)) ))
+-- global default -------------------------------------------------------------o
 
-local function delta(refer, l)
-  local d
-  if     refer == 'exit'   then d = 0
-  elseif refer == 'entry'  then d = l
-  elseif refer == 'center' then d = l/2
-  else                          d = 0
-  end
-  return d
-end
-
-local function sh_get(sh)
-  local x_sh, y_sh = {}, {}
-  if is_table(sh.x[1]) then
-    for i=1,#sh.x do
-      x_sh[i] = vector(sh.x[i])
-      y_sh[i] = vector(sh.y[i])
-    end
-  else
-    x_sh, y_sh = {vector(sh.x)}, {vector(sh.y)}
-  end
-  return x_sh, y_sh
-end
-
-local function layout(seq, range, refer)
-  local xl, yl, c = {}, {}, 1
-  local del = {}
-  local flag, start = true
-  for i,elem in seq:iter(range) do
-    local s = seq:spos(i)
-    local kind, l = elem.kind, elem.l
-    if s and l then
-      del[i] = delta(refer, l)
-      if flag == true then start=i; flag=false  end
-      s = s + del[start]
-      local h,sh = elem[dat[kind].str_k] or 1
-      if     dat[kind].shape then sh = dat[kind].shape
-      elseif h > 0           then sh = dat[kind].shape_f
-      else                        sh = dat[kind].shape_d
-      end
-      local x_sh, y_sh = sh_get(sh)
-      for j=1,#x_sh do
-        local x, y = x_sh[j], y_sh[j]
-        xl[c] = x:map( \x xadjst(x+1, l, s) )
-        yl[c] = y:map( \y yadjst(y, 1     ) )
-        c = c+1
-      end
-    end
-  end
-  return { x=xl, y=yl }
-end
-
--- plot options
-local function axis_title(src)
-  if src then
-    local label = ""
-    for _,key in pairs(src) do label = label..key.." " end
-    return label
-  end
-end
-
-local function mk_title(self)
-  local table, title in self
-  local src = {
-    version = tostring(MAD.env.version),
-    name    = self.name or is_table(table) and self.table.title or "",
-    date    = self.date or is_table(table) and self.table.date  or "",
-    time    = self.time or is_table(table) and self.table.time  or "",
-  }
-  return title % src
-end
-
-local function script_name(filename)
-  if   filename then return string.match(filename, "(%w+)%.")..".gp"
-  else               return "script.gp"                              end
-end
-
-local function interpol(str)
-  local out
-  if     str == 'lines'       then out = "with lines       dashtype  dtt"
-  elseif str == 'linespoints' then out = "with linespoints pointtype ptt pointsize pts"
-  elseif str == 'points'      then out = "with points      pointtype ptt pointsize pts"
-  else                             out = str
-  end
-  return out
-end
-
-local function multi_axes(axespairs, x1, x2, y1, y2)
-  local s, s2 = y1 and #y1, y2 and #y2
-  local axes  = {}
-  if axespairs then -- TODO
-    local axes1 = {}
-    for k,v in pairs(axespairs) do
-      for i,vv in ipairs(v) do
-        axes1[i] = k..vv
-      end
-    end
-  end
-  if     x1 and x2 and y1 and y2 then
-    for i=1  ,s    do axes[i] = "x1y1" end
-    for i=1+s,s+s2 do axes[i] = "x2y2" end
-  elseif x1        and y1 and y2 then
-    for i=1  ,s    do axes[i] = "x1y1" end
-    for i=1+s,s+s2 do axes[i] = "x1y2" end
-  elseif x2        and y1 and y2 then
-    for i=1  ,s    do axes[i] = "x2y1" end
-    for i=1+s,s+s2 do axes[i] = "x2y2" end
-  elseif x1 and y1 then
-    for i=1  ,s    do axes[i] = "x1y1" end
-  elseif x1 and y2 then
-    for i=1  ,s2   do axes[i] = "x1y2" end
-  elseif x2 and y1 then
-    for i=1  ,s2   do axes[i] = "x2y1" end
-  elseif x2 and y2 then
-    for i=1  ,s2   do axes[i] = "x2y2" end
-  end
-  return axes
-end
-
-local function templ_style(inp, out, keys)
-  local r = copy( out )
-  if inp then
-    for k,v in pairs(inp) do
-      local indx = find_key(keys, k)
-      if indx then r[indx-1] = v end
-    end
-  end
-  return r
-end
-
-local function creat_scrdump(templ, name)
-  local script = script_name(name)
-  local fp = io.open(script, "w")
-  templ_print( templ, fp )
-  fp:close()
-end
-
--- saving to template
-
-local function data_to_templ(src, keys)
-  local s = src[keys[1]]
-  local t = {"\n$DATA << EOD\n"}
-  for i=2,#s+1 do
-    for j,k in ipairs(keys) do
-      if t[i] then t[i] = t[i]..src[k][i-1].." "
-      else         t[i] =       src[k][i-1].." "
-      end
-    end
-    t[i] = t[i].."\n"
-  end
-  t[#s+2] = "EOD\n"
-  return t
-end
-
-local function layout_to_templ(src, keys)
-  local s = src[keys[1]]
-  local t = {"\n"}
-  local c = 2
-  for i=1,#s do
-    for ii=1,#s[i] do
-      for j,k in ipairs(keys) do
-        if t[c]
-        then t[c] = t[c]..src[k][i][ii].." "
-        else t[c] =       src[k][i][ii].." "
-        end
-      end
-      t[c] = t[c].."\n"; c=c+1
-    end
-    t[c] = "\n"; c=c+1
-  end
-  t[c] = "e\n"
-  return t
-end
-
--- template operations
-
-local function templ_interp(temp, src)
-  for i,line in ipairs(temp) do
-    temp[i] = line % src      -- interpolate strings
-  end
-end
-
-local function templ_fill(temp, inp, key)
-  local c, n = 1
-  for i,line in ipairs(temp) do
-    temp[i], n = string.gsub( line, key, inp[c] )
-    if n == 1 and c < #inp then c=c+1 end
-  end
-end
-
-local function templ_print(temp, pipe)
-  for i = 1,#temp do
-    pipe:write(temp[i])
-  end
-end
-
-local templ_preamble = { "#$preamble \n" }
-local templ_font     = { "set font '$fontname, $fontsize' \n", }
-
-local template = {
-  "set multiplot \n"                 ,
-  "set $grid \n"                     ,
-  "set lmargin at screen $lmargin \n",
-  "set rmargin at screen $rmargin \n",
-  "set size 1,$sizeplot \n"          ,
-  "set title '$title'  \n"           ,
+local _dflt = {
+  color        = 'red',
+  style        = 'linespoints',
+  dashtype     = 'solid',
+  linewidth    = 1,
+  pointsize    = 1,
+  pointtype    = 1,
+  filename     = "plot.pdf",
+  scrdump      = "plot.gp",
+  originx      = 0,
+  originy      = 0,
+  psizex       = 1,
+  psizey       = 1,
+  laysize      = 0.15,
+  multisize    = 0.05,
+  elemwidth    = 0.07,
+  elemwidth_in = 1,
+  padding      = 0.025,
+  middle       = 0.5,
+  layonly      = 1,
 }
 
-local templ_end = {
-  "set key $legendpos \n"      ,
-  "set xlabel '$xlabel' \n"    ,
-  "set ylabel '$ylabel' \n"    ,
-  "set xrange [$xmin:$xmax] \n",
-  "set yrange [$ymin:$ymax] \n",
-}
-local templ_plot     = { "plot " }
-local templ_yaxis    = { "'$DATA' using 1:count every 1::0 $styles linecolor 'colors' title 'legendname' axes setaxes,\\\n" }
+-- GC -------------------------------------------------------------------------o
 
--- optional templates :
-local templ_multiv = {
-  "set ytics nomirror \n"         ,
-  "set y2tics \n"                 ,
-  "set tics out \n"               ,
-  "set y2label '$ylabel2' \n"     ,
-  "set y2range [$ymin2:$ymax2] \n",
-}
-local templ_multih = {
-  "set xtics nomirror \n"         ,
-  "set x2tics \n"                 ,
-  "set tics out \n"               ,
-  "set x2label '$xlabel2' \n"     ,
-  "set x2range [$xmin2:$xmax2] \n",
-}
-local templ_unaxes = {
-  "unset x2label \n"  ,
-  "unset x2tics \n"   ,
-  "unset y2tics \n"   ,
-  "unset y2label \n"  ,
-  "unset xzeroaxis \n",
-}
--- sequence layout template
-local templ_lay = {
-  "unset tmargin \n"    ,
-  "unset bmargin \n"    ,
-  "unset title  \n"     ,
-  "unset arrow \n"      ,
-  "unset ylabel \n"     ,
-  "unset xlabel \n"     ,
-  "unset xtics \n"      ,
-  "unset ytics \n"      ,
-  "unset y2tics \n"     ,
-  "unset y2label \n"    ,
-  "unset key \n"        ,
-  "set xzeroaxis \n"    ,
-  "set border 0 \n"     ,
-  "set size 1,0.15 \n"  ,
-  "set origin 0,0.85 \n",
-  "set yrange [-1:1] \n",
-  "plot '-' u 1:2 w lines linestyle 1 linecolor rgb 'black' \n",
-}
-local templ_lay_off = {
-  "set border \n"    ,
-  "set origin 0,0 \n",
-  "set xtics \n"     ,
-  "set ytics \n"     ,
-}
-local templ_unmult  = {"\nunset multiplot \n" }
+local gcf = {}
 
--- plotting command -----------------------------------------------------------o
-local mtable, Command in MAD
-local templ_save, pdfonefile, _gpd = {}, {}, {}
-local default_terminal = nil
-
-local gp_default = {
-  aqua       = {
-    "unset multiplot\n"                ,
-    "set terminal aqua size 800, 500\n",
-  },
-  qt         = {
-    "unset multiplot\n"               ,
-    "set terminal wxt size 800, 500\n",
-  },
-  wxt        = {
-    "unset multiplot\n"               ,
-    "set terminal wxt size 800, 500\n",
-  },
-  x11        = {
-    "unset multiplot\n"               ,
-    "set terminal x11 size 800, 500\n",
-  },
-  windows     = {
-    "unset multiplot\n"     ,
-    "set terminal windows\n",
-  },
-    postscript = {
-    "unset multiplot\n"                       ,
-    "set terminal postscript enhanced color\n",
-    "set output '|ps2pdf - $filename' \n"     ,
-  },
-}
-
-local function gnuplothasterm(term) -- from torch
-  local tfni = os.tmpname()
-  local tfno = os.tmpname()
-  local fi = io.open(tfni,'w')
-  fi:write('set terminal\n\n')
-  fi:close()
-  os.execute('gnuplot < '..tfni.. ' > '..tfno..' 2>&1 ')
-  os.remove(tfni)
-  local tf = io.open(tfno,'r')
-  local s = tf:read('*l')
-  while s do
-    if s:match('^.*%s+  '..term..' ') then
-      tf:close()
-      os.remove(tfno)
-      return true
+local plotgc = ffi.gc(ffi.new("int*"), \ =>
+    for i=1,#gcf do
+      os.remove(gcf[i])
     end
-    s = tf:read('*l')
   end
-  tf:close()
-  os.remove(tfno)
-  return false
+)
+
+local function gc_file(fname, lock)
+  table.insert(gcf, fname)
+  if lock then table.insert(gcf, fname .. ".lock") end
+  return fname
 end
 
-local function default_term()
-  local os = jit.os
-  if     os == 'Linux'   then
-    if     gnuplothasterm('wxt') then return 'x11'
-    elseif gnuplothasterm('qt' ) then return 'qt'
-    elseif gnuplothasterm('x11') then return 'x11'
-    else error("gnuplot missing default terminals")
-    end
-  elseif os == 'OSX'     then
-    if     gnuplothasterm('aqua') then return 'aqua'
-    elseif gnuplothasterm('wxt' ) then return 'wxt'
-    elseif gnuplothasterm('qt'  ) then return 'qt'
-    elseif gnuplothasterm('x11' ) then return 'x11'
-    else error("gnuplot missing default terminals")
-    end
-  elseif os == 'Windows' then
-    if     gnuplothasterm('windows') then return 'windows'
-    else error("gnuplot missing default terminals for"..os)
-    end
-  else   error("unsupported operating system")
-  end
+-- gplot ----------------------------------------------------------------------o
+
+local _gpd, _tmpf = {}, {}
+
+local function gp_create (gplot, id)
+  local gnuplot = assert(io.popen('gnuplot', 'w'))
+  gnuplot:setvbuf("line")
+  gplot[_gpd ][id] = gnuplot
+  gplot[_tmpf][id] = gc_file(os.tmpname(), true)
+  return gnuplot
 end
 
--- Gnuplot object
-
-local function gp_setterm (gp, term, keep_setup_)
-  if is_nil(keep_setup_) or is_nil(gp_default[term]) then
-    for _,cmd in ipairs(gp_default[term]) do
-      gp:write(cmd)
-    end
-    gp_default[term] = {}
-  end
+local function gp_isBusy (gplot, id)
+  return fileexists(gplot[_tmpf][id] .. ".lock")
 end
 
-local function gp_create (gp)
-  if is_nil(default_terminal) then default_terminal = default_term() end
-  gp = assert(io.popen('gnuplot', 'w')) -- :setvbuf 'line'
-  gp_setterm(gp, default_terminal)                         -- platform dependent
-  return gp
-end
-
-local function gp_get (gp, id)
-  local dat = gp[_gpd]
-  if is_nil( dat[id] ) then dat[id] = gp_create( gp, id ) end
-  if id ~= '__cur_id'  then dat.__cur_id = id end
+local function gp_get (gplot, id, curr)
+  local dat = gplot[_gpd]
+  if is_nil( dat[id] )             then gp_create( gplot, id ) end
+  if id ~= '__cur_id' and not curr then dat.__cur_id = id      end
   return dat[id]
 end
 
-local gplot = setmetatable({ [_gpd] = {__cur_id=1} },  {
+local function gp_getlock (gplot, id)
+  local gnuplot = gp_get(gplot, id, true)
+  local file    = gplot[_tmpf][id]
+  return gnuplot, file
+end
+
+local function gp_call (gplot, id, ...)
+  local gnuplot
+  if is_number(id) then
+    gnuplot = gp_get(gplot, id)
+    gnuplot:write(..., "\n")
+  else
+    gnuplot = gp_get(gplot, gplot.__cur_id)
+    gnuplot:write(id, ..., "\n")
+  end
+end
+
+local gplot = {
+  is_busy = gp_isBusy,
+  [{}]    = plotgc,
+  [_tmpf] = { },
+  [_gpd]  = { __cur_id = 1 },
+}
+
+setmetatable(gplot, {
   __index = gp_get,
-  __call  = \gp,cmd -> gp[_gpd][gp[_gpd].__cur_id]:write(cmd)
+  __call  = gp_call,
 })
 
--- execution functions
+-- initialization -------------------------------------------------------------o
 
-local function templ_multiaxes(self, size)
-  local templ = {}
-  for i=1,size do templ = tbl_concat( templ, templ_yaxis ) end
-  return templ
-end
+local init_cmd = [[
+#== initialization =============================================================
+if (!(exist("MAD_MIN") && exist("MAD_MAX"))) {
+  MAD_MIN = $oshft;
+  MAD_MAX = -1;
+}
+MAD_RESET_OBJECT = "unset for [i=MAD_MIN:MAD_MAX] object i"
+MAD_RESET_LABEL  = "unset for [i=MAD_MIN:MAD_MAX] label i"
+if (!(exist("MAD_OLD_TERM") && exist("MAD_NEW_TERM"))) {
+  MAD_OLD_TERM = "";
+  MAD_NEW_TERM = "";
+}
+MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
+  @MAD_NEW_TERM; \
+  MAD_OLD_TERM = MAD_NEW_TERM; \
+}"
+#===============================================================================
 
-local function templ_setup(self, pdfonefile, templ_input)
-  local preamble, yaxis2, xaxis2, multiplot  in self
-  local templ = tbl_concat( {}, template )
-  if     preamble          then templ = tbl_concat( {}   , templ_preamble, templ                   ) end
-  if     yaxis2 and xaxis2 then templ = tbl_concat( templ, templ_multih  , templ_multiv, templ_end )
-  elseif yaxis2            then templ = tbl_concat( templ, templ_multiv  ,               templ_end )
-  elseif xaxis2            then templ = tbl_concat( templ, templ_multih  ,               templ_end )
-  else                          templ = tbl_concat( templ,                               templ_end ) end
-  if     multiplot         then templ, multiplot = {}, false                                         end
+]]
 
-  templ = tbl_concat( templ, templ_input.data, templ_plot, templ_input.multiaxes, {"\n"}, templ_input.sequ )
-  if not multiplot and yaxis2 or xaxis2 then templ = tbl_concat( templ, templ_unaxes ) end
-  return templ
-end
+-- open files and gnuplot and set terminal when necessary
+local function setup_cmd (self)
+  local output, scrdump in self
+  local gp, streamf = gp_getlock(gplot,self.sid)
+  local file, fname
 
-local function sequ(self)
-  local sequence, seqrange, refer in self
-  local templ   = {}
-  assert(is_sequence(sequence), "invalid sequence")
-  local lay     = layout         ( sequence, seqrange, refer )
-  local lay_dat = layout_to_templ( lay, {'x','y'}  )
-  local min     = lay.x[1]     :min()
-  local max     = lay.x[#lay.x]:max()
-  self.datrange = {min, max}
-  self.xrange   = {min, max}
-  templ = tbl_concat( {}, templ_lay, lay_dat, templ_lay_off, templ_unmult )
-  return templ
-end
+  if scrdump then
+    fname = is_string(scrdump) and scrdump or _dflt.scrdump
+    gc_file(fname .. ".lock")
+  else
+    fname = streamf
+  end
+  lock_file(streamf, 100)
+  file = io.open(fname, "w")
 
-local function style_plots(self, out, out2, keys, templ)
-  local dashtypes, colors in dat
-  local xaxis, xaxis2, yaxis, yaxis2 in self
-  local output = tbl_concat( {}, out, out2 )
-  local axes   = multi_axes( self.axespairs, xaxis, xaxis2, yaxis, yaxis2 )     -- multiple axes
-  local ptt    = totable   ( 1..(#output) )
-  local pts    = totable   ( vector(#output):fill(1) )
-  local yout   = tbl_concat( {}, output )
-  local style  = {
-    legendname = templ_style( self.legendname, yout     , keys ),
-    colors     = templ_style( self.colors    , colors   , keys ),
-    dtt        = templ_style( self.dashtypes , dashtypes, keys ), -- dashtype
-    setaxes    = templ_style( self.axes      , axes     , keys ),
-    ptt        = templ_style( self.pointtypes, ptt      , keys ), -- pointtype
-    pts        = templ_style( self.pointsizes, pts      , keys ), -- pointsize
-    count      = 2..(#output)+1,
-  }
-  for k,v in pairs(style) do templ_fill( templ, v, k ) end
-  return templ
-end
+  file:write(init_cmd % self)
 
-function exec(self)
-  -- tables of keys for data operations
-  local inp = totable( self.xaxis )
-  local out = totable( self.yaxis )
-  local inp2, out2
-  if self.xaxis2 then inp2 = totable( self.xaxis2 ) else inp2 = {} end
-  if self.yaxis2 then out2 = totable( self.yaxis2 ) else out2 = {} end
-  local keys     = tbl_concat( {}, inp, inp2, out, out2 )
-
-  -- table with data to plot creation and scaling
-  local dataSrc  = keys_tbl  ( self.data, self.table, keys )
-  local datasize = #dataSrc[inp[1]]
-  self.datrange  = self.datrange or 1..datasize
-
-  local scaledDatrange = scale_rng( datasize, self.datrange        )
-  local scaledData     = scale_dat( dataSrc , keys, scaledDatrange )
-
-  -- template operations
-  local id in self
-  local size = #out + #out2
-  local templ_input = {
-    data      = data_to_templ  ( scaledData, keys )             , -- data to plot
-    multiaxes = templ_multiaxes( self      , size )             , -- multiple axes
-    sequ      = self.sequence and sequ( self, self.refer ) or {}, -- sequence plot
-  }
-  local templ = templ_setup( self, pdfonefile[id], templ_input )
-
-  local xlimit  = { scale_axis( scaledData, inp , self.hmargin ) }
-  local ylimit  = { scale_axis( scaledData, out , self.vmargin ) }
-  local xlimit2 = { scale_axis( scaledData, inp2, self.hmargin ) }
-  local ylimit2 = { scale_axis( scaledData, out2, self.vmargin ) }
-  -- template interpolation
-  local to_interpolate = {
-    DATA = "$DATA",
-    terminaltype = self.terminaltype,
-    filename     = self.filename,
-    xsize        = self.wsize.x  ,
-    ysize        = self.wsize.y  ,
-    sizeplot     = self.sequence and 0.85 or 1,
-    lmargin      = self.margins.left ,
-    rmargin      = self.margins.right,
-
-    title        = mk_title(self),
-    grid         = self.grid     ,
-    legendpos    = self.legendpos,
-    preamble     = self.preamble ,
-    fontname     = self.font.name,
-    fontsize     = self.font.size,
-
-    xlabel       = self.xlabel ~="" and self.xlabel  or axis_title(inp ),
-    xlabel2      = self.xlabel2~="" and self.xlabel2 or axis_title(out2),
-    ylabel       = self.ylabel ~="" and self.ylabel  or axis_title(out ),
-    ylabel2      = self.ylabel2~="" and self.ylabel2 or axis_title(inp2),
-    --ylabel3      = false,
-    --ylabel4      = false,
-    xmin         = self.xrange  and self.xrange [1] or xlimit [1],
-    xmax         = self.xrange  and self.xrange [2] or xlimit [2],
-    xmin2        = self.xrange2 and self.xrange2[1] or xlimit2[1],
-    xmax2        = self.xrange2 and self.xrange2[2] or xlimit2[2],
-    ymin         = self.yrange  and self.yrange [1] or ylimit [1],
-    ymax         = self.yrange  and self.yrange [2] or ylimit [2],
-    ymin2        = self.yrange2 and self.yrange2[1] or ylimit2[1],
-    ymax2        = self.yrange2 and self.yrange2[2] or ylimit2[2],
-    --ymin3        = self.yrange3 and self.yrange3[1] or ylimit[1],
-    --ymax3        = self.yrange3 and self.yrange3[2] or ylimit[2],
-    --ymin4        = self.yrange4 and self.yrange4[1] or ylimit[1],
-    --ymax4        = self.yrange4 and self.yrange4[2] or ylimit[2],
-    styles       = interpol(self.styles),
-  }
-  templ_interp( templ, to_interpolate )
-  templ = style_plots(self, out, out2, keys, templ)
-
-  -- to pdf operation
- if self.filename then
-    if filename ~= pdfonefile[id] then
-    --local pdf = { "set output '|ps2pdf - $filename' \n", }                    -- possible alternative to send this local through GP
-    --templ_interp( pdf      , to_interpolate )                                 -- + send command
-      templ_interp( gp_default.postscript, to_interpolate )
-      gp_setterm  ( gplot[id], 'postscript'   )
-    end
+  if is_number(output) then
+    file:write("MAD_NEW_TERM = \"set term $term $output size $wsizex,$wsizey \z
+      enhanced font '$font,$fontsize'\"\n" % self)
+  elseif output then
+    local filename = is_string(output) and output or _dflt.filename
+    file:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
+      .. filename .. "'\"\n")
   end
 
-  -- pipe print and flush
-  templ_print( templ, gplot[id] )
-  gplot[id]:flush()
+  file:write("@MAD_SET_TERM\n")
 
-  --if self.scrdump then creat_scrdump(templ_save, self.filename) end -- save .gp
-  pdfonefile[id] = self.filename
+  return gp, file, streamf, fname
+end
+
+local function gnuplot_rm(gp, fname)
+  if jit.os == "Windows" then gp:write("system 'del "  ..fname.." >nul 2>&1'\n")
+  else                        gp:write("system '\\rm -f "..fname.."'\n")
+  end
+end
+
+local function teardown_cmd (self, gp, file, streamf, fname)
+  file:close()
+  gp:write("load('" .. fname .. "')\n")
+  if not self.scrdump then gnuplot_rm(gp, streamf) end
+  gnuplot_rm(gp, streamf .. ".lock")
+  gp:flush()
+end
+
+-- layout ---------------------------------------------------------------------o
+
+-- element flag for layout
+local flayangle = MAD.element.flags.layangle
+local flayout   = MAD.element.flags.layout
+local flays     = lshift(1, flayangle) + lshift(1, flayout)
+
+--  adjust "out of plot" layout coordinate
+local xadjust    = \xs,ys,base,l -> xs*l + base
+local yadjust    = \size  -> \xs,ys,base -> size*ys + base
+--  adjust "in plot" layout coordinate
+local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
+local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
+
+-- return the shape of an element in x and y
+local function eShap (elem, dir)
+  local shape = dat[elem.kind]
+  local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
+
+  sh = sh and elem.l == 0 and elem.kind ~= "marker" and dat.default.shape or sh
+  -- if only a ellipse
+  if not is_table(sh) then return el, dash end
+
+  local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
+  local yshft = shape.yshft and sign(elem[shape.yshft]) or 0
+  if is_number(ysym) then -- for symmetric shapes
+    func = {
+      \y -> ((   y + yshft)*yscl),
+      \y -> ((-1*y + yshft)*yscl),
+    }
+  else
+    local fv = sign(elem[ysym] or 1)
+    ysym = (ysym == "angle") and fv*dir or fv
+    func = {\y -> ((ysym*y + yshft)*yscl) }
+  end
+  return el, dash, sh.x, sh.y, func
+end
+
+-- stream polygon data
+local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, func)
+  local fpwrite, xadjust, yadjust, ref in param
+  for i=1,#func do
+    for j=1,#x_sh do
+      local xj, yj = x_sh[j], y_sh[j]
+      local dashtype = dash and "dashtype '" .. dash .. "'" or ""
+      fpwrite("set object %d polygon front fc rgb 'white' fs solid 1.0 \z
+        border rgb 'black' %s \\\n", param.oid, dashtype)
+      local cmd = "from"
+
+      for k=1,#xj do
+        local xk, yk = xj[k], func[i](yj[k])
+        xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig)
+        local next = (k == #xj) and "" or "\\"
+        fpwrite("  %s %f, %s %f %s\n", cmd, xk, ref, yk, next)
+        cmd = "to"
+      end
+      param.oid = param.oid + 1
+    end
+  end
+  fpwrite("\n")
+end
+
+-- stream ellipse data
+local function layout_ellipse (param, len, el, xorig, yorig, dash, size)
+  local fpwrite, xadjust, yadjust, ref in param
+  local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig)
+  local sx, sy = len, el*size
+  local dashtype = dash or ""
+  fpwrite("set object %d ellipse front at %f, %s %f \\\n\z
+    size %f, %s %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
+    param.oid, cx, ref, cy, sx, ref, sy, dashtype)
+  param.oid = param.oid + 1
+end
+
+-- stream element label data
+local function layout_label(param, name, kind, xorig, yorig)
+  local fpwrite, oid, ref, xadjust, yadjust in param
+  local x, y = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig)
+  label = name .. " [" .. kind .. "]"
+  fpwrite("set label %d back at %f, %s %f '%s' hypertext \z
+    point pt 4 ps 1 lc 'white'\n", oid, x, ref, y, label)
+end
+
+-- stream beam line data
+local function layout_bline (param, bline)
+  local fpwrite, ref in param
+  local prevX, prevY = bline.x[1], bline.y[1]
+  for i=2,#bline.y do
+    local xi, yi = bline.x[i], bline.y[i]
+    fpwrite("set object %d polygon front dashtype solid \\\n\z
+      from first %f, %s %f to first %f, %s %f to first %f, %s %f\n",
+      param.oid, prevX, ref, prevY, xi, ref, yi, prevX, ref, prevY)
+    param.oid = param.oid + 1
+    prevX, prevY = xi, yi
+  end
+end
+
+-- process data for "out of plot" layout
+local function layout_process(param, pseq)
+  local seqshift, nturn in param
+  local range, seq, disty, distx  in pseq
+  local size    = nturn*seq:length_of(range)
+  local xs, ys  = table.new(size, 0), table.new(size, 0)
+  local bline   = { x = { }, y={ } }
+  local deltaY  = disty
+  local prevs_sh, angle, j, dir = 0, 0, 1, seq.direction
+  for i, elem, s in seq:iter(range, nturn) do
+    local s_sh   = s + elem.l/2
+    deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
+    xs[j], ys[j] = s_sh + distx + seqshift, deltaY
+    prevs_sh     = s_sh
+    pseq.xmin, pseq.xmax = min(pseq.xmin, xs[j]), max(pseq.xmax, xs[j])
+    pseq.ymin, pseq.ymax = min(pseq.ymin, ys[j]), max(pseq.ymax, ys[j])
+    if elem:is_selected(flayangle) then
+      angle = angle + elem.angle
+      table.insert(bline.x, xs[j]); table.insert(bline.y, ys[j])
+    end
+    j = j + 1
+  end
+  table.insert(bline.x, xs[#xs]); table.insert(bline.x, 1, xs[1])
+  table.insert(bline.y, ys[#ys]); table.insert(bline.y, 1, ys[1])
+  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+end
+
+-- process data "in plot" layout
+local function layout_process_in(param, pseq)
+  local seqlabel, nturn, A0, X0 in param
+  local range, seq    in pseq
+  local size       = nturn*seq:length_of(range)
+  local xs, ys     = table.new(size, 0), table.new(size, 0)
+  local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
+  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0 }
+  local idx, j     = 0, 1
+  local labx, laby = seqlabel[1], seqlabel[2]
+
+  for i, elem in seq:iter(range, nturn) do
+    local line_idx = srv:index_of(elem.name, idx)
+    if is_table(line_idx) then line_idx = line_idx[1] end
+    idx = line_idx
+    local line     = srv:get_row(line_idx)
+    local prevLine, x1, y1, xas, yas, xbs, ybs
+
+    repeat
+      prevLine = (line_idx~=1) and srv:get_row(line_idx-1) or { x=0, y=0, z=0 }
+      x1, y1   = prevLine[labx], prevLine[laby]
+      x2, y2   = line[labx], line[laby]
+      xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
+      line_idx = line_idx - 1
+    until xas ~= 0 or yas ~= 0 or line_idx <= 1
+
+    if xas == 0 and yas == 0 then
+      xbs, ybs   = 0, 1
+    else
+      local xx, yy = (x1 - x2), (y2 - y1)
+      local sqrt_  = 1 / sqrt( yy^2 + xx^2 )
+      xbs, ybs = yy*sqrt_, xx*sqrt_
+    end
+
+    if elem.l == 0 then xshft, yshft = x2, y2
+    else                xshft, yshft = x1 + xas, y1 + yas
+    end
+
+    xs[j], ys[j]         = {xas, xbs, xshft}, {yas, ybs, yshft}
+    pseq.xmin, pseq.xmax = min(pseq.xmin, xshft), max(pseq.xmax, xshft)
+    pseq.ymin, pseq.ymax = min(pseq.ymin, yshft), max(pseq.ymax, yshft)
+    table.insert(bline.x, xshft); table.insert(bline.y, yshft)
+    j = j + 1
+  end
+  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+end
+
+-- stream a signle layout
+local function layout (param, pseq)
+  local elemminlen, elemkind, elemwidth, elemname, nturn in param
+  local seq, range, xs, ys, bline                in pseq
+  local dir, j  = seq.direction, 1
+
+  layout_bline(param, bline)
+  for i, elem, s in seq:iter(range, nturn) do
+    local len, kind    = elem.l, elem.kind
+    local is_flagged   = elem:test_flags(flays)
+    local is_vkind     = not elemkind or elemkind[kind]
+    local xorig, yorig = xs[j], ys[j]
+
+    if is_flagged or (len >= elemminlen and is_vkind) then
+      local sh_l = len / 2
+      local el, dash, x_sh, y_sh, func  = eShap(elem, dir)
+
+      if elemname  then layout_label(param, elem.name, kind, xorig, yorig) end
+
+      if not is_nil(el) and len ~= 0 then
+        layout_ellipse(param, len, el, xorig, yorig, dash, elemwidth)
+      end
+
+      if not is_nil(x_sh) then
+        layout_poly(param, sh_l, xorig, yorig, x_sh, y_sh, dash, func)
+      end
+    end
+    j = j + 1
+  end
+end
+
+-- compute bounding box and scale data accordingly
+-- post processing for "out of plot" layout
+local function layout_post(param, pseqs, ymin, ymax)
+  local sequence, laypos, layonly, elemwidth, elemscale in param
+  param.laysize  = param.laysize
+    or (layonly and _dflt.layonly)
+    or (not is_sequence(sequence) and _dflt.laysize + _dflt.multisize*#sequence)
+    or _dflt.laysize
+  elemwidth     = (elemwidth or _dflt.elemwidth) * elemscale
+  local pad     = _dflt.padding
+  local ybbox   = abs(ymax - ymin) + 2*elemwidth + 2*pad
+  local yfactor = param.laysize / ybbox
+  elemwidth     = elemwidth * yfactor
+  if laypos == "top"    then laypos =1-(ymax*yfactor + elemwidth + pad) end
+  if laypos == "bottom" then laypos =  -ymin*yfactor + elemwidth + pad  end
+  if laypos == "middle" then laypos = _dflt.middle end
+  param.elemwidth = elemwidth
+
+  for i=1,#pseqs do
+    local pseq = pseqs[i]
+    local ys, bline in pseq
+    pseq.ys      = fun.map(\y -> y*yfactor + laypos, ys):totable()
+    pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
+  end
+end
+
+-- post processing for "in plot" layout
+local function layout_post_in(param, ymin, ymax)
+  local elemwidth, elemscale in param
+  elemwidth       = elemwidth or (abs(ymax - ymin) * _dflt.elemwidth_in / 100)
+  param.elemwidth = elemwidth * elemscale
+end
+
+-- main layout function
+local function multi_layout (param)
+  local sequence, fpwrite, range, seqdistx, seqdisty,
+    elemwidth, elemscale, laypos, xrange                  in param
+  local is_in = (laypos == "in")
+  param.ref = is_in and "" or "screen"
+  local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
+  local pseqs = { }
+  local seqs = is_sequence(sequence) and {sequence} or sequence
+
+  for i=1,#seqs do
+    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
+    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
+    local rg    = (#seqs > 1) and is_table(range) and range[i] or range or nil
+    local pseq  = {
+      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+      seq = seqs[i], distx = distx, disty = disty, range=rg
+    }
+    if is_in then layout_process_in(param, pseq)
+    else          layout_process(param, pseq)
+    end
+    xmin, xmax = min(xmin, pseq.xmin), max(xmax, pseq.xmax)
+    ymin, ymax = min(ymin, pseq.ymin), max(ymax, pseq.ymax)
+    pseqs[i]   = pseq
+  end
+
+  if is_in then layout_post_in(param, ymin, ymax)
+  else          layout_post(param, pseqs, ymin, ymax)
+  end
+  param.xadjust = is_in and xadjust_in(param.elemwidth) or xadjust
+  param.yadjust = is_in and yadjust_in(param.elemwidth) or yadjust(param.elemwidth)
+
+  for i=1,#pseqs do
+    local pseq = pseqs[i]
+    layout(param, pseq)
+  end
+
+  fpwrite("MAD_MAX = %f\n", param.oid)
+  xmin, xmax = xmin - param.elemwidth, xmax + param.elemwidth
+  ymin, ymax = ymin - param.elemwidth, ymax + param.elemwidth
+  if not xrange           then fpwrite("set xrange [%s:%s]\n", xmin, xmax) end
+  if not yrange and is_in then fpwrite("set yrange [%s:%s]\n", ymin, ymax) end
+end
+
+-- plot -----------------------------------------------------------------------o
+
+-- get vector from label
+local function getv (data, tbl, label)
+  if label then
+    return data and data[label] or tbl[label],"tbl"  or error("invalid label")
+  end
+end
+
+-- parse input axis and apply func to each label
+local function parse_axis (param, func)
+  local _axis = {'x1y1', 'x1y2', 'x2y1', 'x2y2'}
+  for _,axis_name in ipairs(_axis) do
+    local axis = param[axis_name]
+    if is_string(axis) then                  -- e.g. x1y1 = 'y1'
+      func(param, nil, axis, axis_name)
+    elseif is_table(axis) and axis[1] then   -- e.g. x1y1 = {'y1', 'y2'}
+      for i,y in ipairs(axis) do
+        func(param, nil, y, axis_name)
+      end
+    elseif is_table(axis) then
+      for x,y in pairs(axis) do
+        if is_string(y) then                 -- e.g. x1y1 = { x1 = 'y1' }
+          func(param, x, y, axis_name)
+        elseif is_table(y) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+          for _,yi in pairs(y) do
+            func(param, x, yi, axis_name)
+          end
+        end
+      end
+    end
+  end
+end
+
+-- stream one plot data (used in parse_axis)
+local function plot_data (param, xlbl, ylbl)
+  local pwrite, tablerange, data, table in param
+  local x      = getv(data, table, xlbl)
+  local y,tbl  = getv(data, table, ylbl)
+  local min    = tbl and tablerange and tablerange[1] or 1
+  local max    = tbl and tablerange and tablerange[2] or #y
+  for i=min,max do
+    local x = x and x[i] or i -- use index if x is nil
+    pwrite(x, " ", y[i], "\n")
+  end
+  pwrite("e\n")
+end
+
+-- parse dashtypes and add '' if it is a pattern : e.g.: ".-- "
+local function parse_dash (dashtypes, y)
+  local dash = is_table(dashtypes) and
+    (dashtypes[y] or _dflt.dashtype) or dashtypes
+  if string.match(dash, "[.%-_ ]+") then return "'" .. dash .. "'" end
+  return dash
+end
+
+-- stream the gnuplot 'plot' command (used in parse_axis)
+local function plot_cmd (param, _, y, axis)
+  local pwrite, colors, styles, dashtypes, pointsizes,
+    pointtypes, linewidths, legendnames in param
+  local values = {
+    color     = is_table(colors) and (colors[y] or _dflt.color) or colors,
+    style     = is_table(styles) and (styles[y] or _dflt.style) or styles,
+    dashtype  = parse_dash(dashtypes, y),
+    pointsize = is_table(pointsizes)  and (pointsizes[y] or _dflt.pointsize) or pointsizes,
+    pointtype = is_table(pointtypes)  and (pointtypes[y] or _dflt.pointtype) or pointtypes,
+    linewidth = is_table(linewidths)  and (linewidths[y] or _dflt.linewidth) or linewidths,
+    title     = is_table(legendnames) and legendnames[y] or y,
+    axis      = axis,
+  }
+  local cmd = "$cmd using 1:2 with $style "
+  if string.match(values.style, "lines") then
+    cmd = cmd .. "dashtype $dashtype linewidth $linewidth "
+  end
+  if string.match(values.style, "points") then
+    cmd = cmd .. "pointsize $pointsize pointtype $pointtype "
+  end
+  cmd = cmd .. "linecolor '$color' title '$title' axes $axis,\\\n"
+  cmd = strinterp(cmd, values, false) % param
+  param.cmd = "     '' "               -- only the first command need "plot '-'"
+  pwrite(cmd)
+end
+
+-- set the range command for all axis
+local function set_ranges (param)
+  local fpwrite in param
+  local names = {'xrange', 'x2range', 'yrange', 'y2range'}
+  for _,rname in ipairs(names) do
+    local range = param[rname]
+    if range then fpwrite("set %s [%f:%f]\n", rname, range[1], range[2]) end
+  end
+end
+
+-- set label command for each axis
+local function set_label (param)
+  local fpwrite in param
+  local names = {'xlabel', 'x2label', 'ylabel', 'y2label'}
+  for _,lname in ipairs(names) do
+    local label = param[lname]
+    if label then fpwrite("set %s '%s'\n", lname, label) end
+  end
+end
+
+-- set tics for each used axis
+local function set_tics (param)
+  local cmd = ""
+  if param.x1y1 or param.x1y2 then cmd = cmd .. "set xtics nomirror \n"  end
+  if param.x2y1 or param.x2y2 then cmd = cmd .. "set x2tics nomirror \n" end
+  if param.x1y1 or param.x2y1 then cmd = cmd .. "set ytics nomirror \n"  end
+  if param.x1y2 or param.x2y2 then cmd = cmd .. "set y2tics nomirror \n" end
+  param.pwrite(cmd)
+end
+
+-- set remaining parameters (miscellaneous)
+local function set_misc (param)
+  local psizex, psizey, originx, originy, grid, border,
+    title, legendpos, plotter                             in param
+  local wrt = \s,... => plotter:write(string.format(s,...) % param) end
+  if grid      then wrt("set %s\n", grid)          end
+  if border    then wrt("set border %s\n", border) end
+  if title     then
+    local font = param.titlefont or ""
+    local size = param.titlesize or ""
+    wrt("set title '%s' font '%s,%s'\n", title, font, size)
+  end
+  if legendpos     then
+    local font = param.legendfont or ""
+    local size = param.legendsize or ""
+    local cmd  = "set key %s font '%s,%s'\n"
+    wrt(cmd, legendpos, font, size)
+  end
+  if psizey or psizex  then
+    psizex, psizey = psizex or _dflt.psizex, psizey or _dflt.psizey
+    wrt("set size %f, %f\n", psizex, psizey)
+  end
+  if originy or originx then
+    originx, originy = originx or _dflt.originx, originy or _dflt.originy
+    wrt("set origin %f, %f\n", originx, originy)
+  end
+end
+
+-- main plot function
+local function plot (param)
+  set_ranges(param)
+  set_label(param)
+  set_tics(param)
+  set_misc(param)
+  param.cmd = "plot '-'" -- first plot command initialization
+  parse_axis(param, plot_cmd)
+  param.pwrite("\n")
+  parse_axis(param, plot_data)
+end
+
+-- command --------------------------------------------------------------------o
+
+-- create a graph with both the layout and the plot part
+local function composed_plot (param)
+  local laypos, psizey, originy in param
+
+  multi_layout(param)
+
+  local laysize in param
+  if laypos == "top" or laypos == "bottom" then
+    param.psizey = psizey or _dflt.psizey - laysize
+  end
+  param.originy = originy or laypos == "bottom" and laysize
+                          or _dflt.originy
+  plot(param)
+end
+
+-- initialize the table of parameters
+local function init_param(self, file)
+  local param = {
+    version = tostring(MAD.env.version),
+    name    = self.name or is_table(self.table) and self.table.title or "",
+    date    = self.date or is_table(self.table) and self.table.date  or "",
+    time    = self.time or is_table(self.table) and self.table.time  or "",
+    plotter = file,
+    oid     = self.oshft,
+    fpwrite = \... -> file:write(string.format(...)),
+    pwrite  = \... -> file:write(...)
+  }
+  if self.elemkind then -- build dictionary
+    param.elemkind = {}
+    fun.foreach(\e => param.elemkind[e] = true end, self.elemkind)
+  end
+
+  setmetatable(param, {__index=self})
+  return param
+end
+
+local layout_only = [[
+unset key
+unset tics
+unset border
+plot x lc 'white'
+]]
+
+local function exec (self)
+  local gp, file, streamf, fname = setup_cmd(self)
+
+  if self.sequence ~= "keep" then
+    file:write("@MAD_RESET_OBJECT\n")
+    file:write("@MAD_RESET_LABEL\n")
+  elseif self.range then
+    print("MAD Plot Warning : sequence=\"keep\" and range is \z
+      provided - range is ignored")
+  end
+
+  if self.prolog then file:write(self.prolog) end
+  local param = init_param(self, file)
+
+  local has_plot   = is_mtable(self.table) or is_table(self.data)
+  local has_layout = is_rawtable(self.sequence) or is_sequence(self.sequence)
+  if has_plot and has_layout then
+    composed_plot(param)
+  elseif has_plot then
+    plot(param)
+  elseif has_layout then
+    param.layonly = true
+    multi_layout(param)
+    param.fpwrite(layout_only)
+  end
+
+  if self.epilog then file:write(self.epilog) end
+  teardown_cmd(self, gp, file, streamf, fname)
   return self
 end
 
 local plot = Command 'plot' {
- ----TO BE CLEANED -------------------------------------------------------------
-
-  font = {name = "Times-Roman", size = 18}, -- switch into multiple font choices
-  hmargin  = false,                         -- to be removed
-  vmargin  = true ,                         -- to be removed
-
-  ------------------------------------------------------------------------------
 
   -- stream id
-  id          = 1,      -- stream id (process) *** !!sid!!
+  sid         = 1,
 
-  -- plot setup
-  wid         = 1,      -- window id (it not file...)
-  multiplot   = false,  -- true -> continue plotting on same window
+  -- user command
+  prolog      = false,   -- string
+  epilog      = false,   -- string
+
+  -- windows setup
+  term        = 'wxt',
+  wsizex      = 800,
+  wsizey      = 500,
+
+  -- output
+  output      = 1,       -- ("filename"|true) -> pdf | number -> wid
+  scrdump     = false,   -- ("filename"|true)
 
   -- table or data input
+  data        = false,   -- { x=tbl.x, y=vec } (precedence over table)
   table       = false,
-  data        = false,  -- { x=tbl.x, y=vec } (precedence over table)
-  datrange    = false, -- 1..100,
+  tablerange  = false,   -- { min, max }
 
   -- sequence input
   sequence    = false,
-  seqrange    = {1,-1},   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {1,10}
-  selected    = false,    -- selected elements                                  -- TODO??
-  refer       = 'exit',   -- useful, ambiguous?
-
-  -- decoration
-  title       = "$name MAD $version, $date, $time",
-  titlefont   = {name = "Times-Roman", size = 18},                              -- TODO
-  legendname  = false,            -- { y = 'distance' }
-  legendfont  = {name = "Times-Roman", size = 18},                              -- TODO
-  legendpos   = "left top",
-  grid        = 'grid',
-
-  -- files
-  filename    = false,            -- 'filename.pdf'
-  scrdump     = false,            -- dumpfilename or true and (filename.gp or script.gp)
+  range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
+  seqdisty    = 0,     -- x >= 0 or { x1, x2, ... }
+  seqdistx    = 0,     -- x >= 0 or { x1, x2, ... }
+  seqshift    = 0,     -- x > =0
+  seqlabel    = { 'x', 'z' },
+  nturn       = 0,
+  X0          = { 0, 0, 0 },
+  A0          = { 0, 0, 0 },
+  -- layout style
+  laypos      = "top",   -- top | bottom | middle | in | 0 < x < 1
+  laysize     = false,   -- 0 < x < 1
+  elemname    = true,
+  elemwidth   = false,   -- unsigned size of element before elemscale
+  elemscale   = 1,       -- multiplier or default size
+  elemkind    = false,   -- { "quadrupole", "sbend" }
+  elemminlen  = 0,       -- x > 0
 
   -- axis selection (and names)
-  xaxis       = 'x',
-  xaxis2      = false,            -- 'x2' or { 'x2', 'x3' }
-  yaxis       = 'y',              -- {'betx', 'bety', etc...}
-  yaxis2      = false,
-  yaxis3      = false,
-  yaxis4      = false,
-  axespairs   = false,            -- { x1 = {'y1', 'y2'} }
-
+  x1y1        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}
+  x1y2        = false,   -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+  x2y1        = false,   -- e.g. x1y1 = { x1 = 'y1'}
+  x2y2        = false,   -- e.g. x1y1 = {'y1', 'y2'}
+                         -- e.g. x1y1 = 'y1'
   -- axis labels
-  xlabel      = false,            -- { betx = 'Beta x' }
-  xlabel2     = false,
+  xlabel      = false,   -- strings
+  x2label     = false,
   ylabel      = false,
-  ylabel2     = false,
-  ylabel3     = false,
-  ylabel4     = false,
+  y2label     = false,
 
-  -- axis ranges and margin (bounding box)
-  xrange      = false,            -- { min, max }
-  xrange2     = false,            -- { min, max }
-  yrange      = false,            -- { min, max }
-  yrange2     = false,            -- { min, max }
-  yrange3     = false,            -- { min, max }
-  yrange4     = false,            -- { min, max }
+  -- axis ranges
+  xrange      = false,   -- { min, max }
+  x2range     = false,
+  yrange      = false,
+  y2range     = false,
 
   -- plot style
-  styles      = 'linespoints',    -- { y = 'lines' }
-  colors      = false,            -- { y = 'green' }
-  pointtypes  = false,
-  pointsizes  = false,
-  linetypes   = false,
-  linewidths  = false,
+  originx     = false,   -- 0 < x < 1
+  originy     = false,   -- 0 < x < 1
+  psizex      = false,   -- 0 < x < 1
+  psizey      = false,   -- 0 < x < 1
+  styles      = 'lines', -- { y = 'lines' }
+  colors      = 'red',   -- { y = 'green' }
+  dashtypes   = 'solid', -- { y = '..-- ' }
+  linewidths  = 1,       -- { y = 2.3     }
+  pointtypes  = 1,       -- { y = 2       }
+  pointsizes  = 1,       -- { y = 2.3     }
 
-  -- gnuplot setup -> GP object
-  margins     = {left = 0.1, right = 0.9, top = 0.1, bottom = 0.9},
-  wsize       = {x = 20, y =10.5},
+  -- decoration
+  font        = "Times New Roman",
+  fontsize    = 14,
+  title       = "$name MAD $version, $date, $time",
+  titlefont   = false,
+  titlesize   = false,
+  legendnames = false,   -- { y = 'distance' }
+  legendfont  = false,
+  legendsize  = false,
+  legendpos   = "left top",
+  grid        = 'grid',
+  border      = 15,
+
+  -- object shift
+  oshft       = 1000000,
 
   -- build the command (do not execute)
-  exec = exec,
+  exec        = exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
-return {
-  plot   = plot ,
-  gplot  = gplot,
 
-  __help = __help,
+return {
+  plot  = plot,
+  gplot = gplot
 }
