@@ -39,7 +39,7 @@ SYNOPSIS
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
   is_metaname, has_metatable, get_metatable,                       (metamethods)
   has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
-  is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+  is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
   is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
   is_modulable, is_powerable, has_member, has_method, has_metamethod,
   is_same, same,                                              (types comparison)
@@ -71,11 +71,11 @@ DESCRIPTION
   - get_metatable is a generic version of getmetatable that works also with
     cdata,
   - has_length, is_iterable, is_mappable, is_indexable, is_callable,
-    is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+    is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
     is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
     is_modulable, is_powerable, has_member, has_method and has_metamethod return
     true if the argument fulfills the concept requirements,
-  - is_stringable and is_tablable check only if the argument supports
+  - is_stringable and is_tableable check only if the argument supports
     respectively the __tostring and the __totable metamethods because objects
     are always stringable and tableable in MAD,
   - has_member, has_method and has_metamethod returns true if argument #1 has
@@ -126,11 +126,11 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
 
 local metaname = {
-  -- list of metanames from lj_obj.h + __init + __exec + __totable
-  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__index',
-  '__init', '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod',
-  '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
-  '__tostring', '__totable', '__unm',
+  -- list of metanames from lj_obj.h + init + exec + copy + totable
+  '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
+  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+  '__same', '__sub', '__tostring', '__totable', '__unm',
 }
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
@@ -169,6 +169,7 @@ local value_t = { -- list of types that cannot be modified
 local option = {
 
   format = "%.16g",
+  debug  = false,
 
 }
 
@@ -302,7 +303,7 @@ local concept = {
   has_metamethod   = has_metamethod,
 
   is_stringable    = \a -> has_metamethod(a, '__tostring'),
-  is_tablable      = \a -> has_metamethod(a, '__totable' ),
+  is_tableable     = \a -> has_metamethod(a, '__totable' ),
 
   is_callable      = \a -> is_function(a) or has_metamethod(a, '__call'  ),
   is_iterable      = \a -> is_table(a)    or has_metamethod(a, '__ipairs'),
@@ -323,11 +324,13 @@ local concept = {
   has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
   has_constructor  = \a -> has_metamethod(a,'__new'),
   is_collectable   = \a -> has_metamethod(a,'__gc' ),
+  is_copiable      = \a -> has_metamethod(a,'__copy'),
+  is_sameable      = \a -> has_metamethod(a,'__same'),
 
 }
 
 local is_indexable, is_iterable, is_mappable, is_callable, is_stringable,
-      is_tablable in concept
+      is_tableable, is_copiable, is_sameable in concept
 
 -- methods
 
@@ -409,16 +412,6 @@ end
 
 -- extensions (conversion, factory)
 
-local function totable_ (a, ...)
-  if     is_table(a)    then return a
-  elseif is_string(a)   then return utility.str2tbl(a,...) -- table.concat^-1
-  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
-                        then return {a}
-  elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
-  else                       return totable(iter(a,...)) -- iterator from lfun
-  end
-end
-
 function tostring_ (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return (string.format(option.format, a))
@@ -428,12 +421,53 @@ function tostring_ (a, ...)
   end
 end
 
-local function same (a, ...)
-  if     value_t[type(a)] or is_complex(a) then return a
-  elseif is_rawtable(a)                    then return {}
-  elseif has_method(a, 'same')             then return a:same(...)
+local function totable_ (a, ...)
+  if     is_table(a)     then return a
+  elseif is_string(a)    then return utility.str2tbl(a,...) -- table.concat^-1
+  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
+                         then return {a}
+  elseif is_tableable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
+  else                        return totable(iter(a,...)) -- iterator from lfun
   end
-  error("invalid argument #1 (clonable object expected)")
+end
+
+local function same (a, ...)
+  if    value_t[type(a)] then return a
+  elseif is_sameable(a)  then return rawget(get_metatable(a),'__same')(a, ...)
+  elseif is_table(a)     then return setmetatable({}, getmetatable(a))
+  end
+  error("invalid argument #1 (sameable object expected)")
+end
+
+function table_copy (a, mt_)
+  local na = {}
+  for k,v in next, a do na[k] = v end -- shallow copy
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+local copy -- forward declaration
+
+function table_deepcopy (a, mt_, xr_)
+  local na = {}
+  xr_ = xr_ or {}
+  xr_[a] = na
+  for k,v in next, a do -- deep copy, keep track of self-ref and xref
+    na[xr_[k] or k] = xr_[v] or copy(v, mt_, xr_)
+  end
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+table.copy     = table_copy
+table.deepcopy = table_deepcopy
+
+function copy (a, ...)
+  if    value_t[type(a)] then return a
+  elseif is_copiable(a)  then return rawget(get_metatable(a),'__copy')(a, ...)
+  elseif is_table(a)     then return table_deepcopy(a, ...)
+  end
+  error("invalid argument #1 (copiable object expected)")
 end
 
 -- string interpolation
@@ -532,8 +566,13 @@ string.splitbra = utility.strsplitbra
 local algorithm = {}
 
 function algorithm.kpairs (tbl)
-  local len = rawlen(tbl) -- skip array part
-  return next, tbl, len > 0 and len or nil
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  local init, iter = nil, pairs(tbl)
+  if is_iterable(tbl) then -- skip the iterable part
+    init = #tbl
+    if init == 0 then init = nil end
+  end
+  return iter, tbl, init
 end
 
 _G.kpairs = algorithm.kpairs
@@ -587,6 +626,7 @@ return {
   algorithm = algorithm,
 
   same      = same,
+  copy      = copy,
   totable   = totable_,
   tostring  = tostring_,
 
