@@ -3,7 +3,7 @@ local is_nil, is_number, is_table, is_mtable, is_string,
   is_sequence, is_rawtable                                    in MAD.typeid
 local Command, fun, vector, survey                            in MAD
 local strinterp, fileexists                                   in MAD.utility
-local sign, tan, min, max, abs, sqrt, inf                     in MAD.gmath
+local sign, tan, min, max, abs, sqrt, inf, pi                 in MAD.gmath
 -- Utility --------------------------------------------------------------------o
 
 local ffi = require("ffi")
@@ -24,7 +24,7 @@ local function lock_file (fname, time, timeout)
   while fileexists(lock) do
     sleep(time)
     waited = waited + time
-    if waited > timeout then
+    if timeout and waited > timeout then
       os.remove(lock)
       error("lock file \"" .. lock .. "\" prevent us from proceeding")
     end
@@ -165,7 +165,7 @@ local function setup_cmd (self)
   else
     fname = streamf
   end
-  lock_file(streamf, 100, 4000)
+  lock_file(streamf, 100)
   file = io.open(fname, "w")
 
   file:write(init_cmd % self)
@@ -323,13 +323,14 @@ end
 
 -- process data "in plot" layout
 local function layout_process_in(param, pseq)
-  local nturn in param
-  local range, seq  in pseq
-  local size    = nturn*seq:length_of(range)
-  local xs, ys  = table.new(size, 0), table.new(size, 0)
-  local bline   = { x = table.new(size, 0), y = table.new(size, 0) }
-  local srv     = survey { sequence = seq, range = range }
-  local idx, j  = 0, 1
+  local seqlabel, nturn, A0, X0 in param
+  local range, seq    in pseq
+  local size       = nturn*seq:length_of(range)
+  local xs, ys     = table.new(size, 0), table.new(size, 0)
+  local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
+  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0 }
+  local idx, j     = 0, 1
+  local labx, laby = seqlabel[1], seqlabel[2]
 
   for i, elem in seq:iter(range, nturn) do
     local line_idx = srv:index_of(elem.name, idx)
@@ -340,8 +341,8 @@ local function layout_process_in(param, pseq)
 
     repeat
       prevLine = (line_idx~=1) and srv:get_row(line_idx - 1) or { x=0, z=0 }
-      x1, y1   = prevLine.x, prevLine.z
-      x2, y2   = line.x, line.z
+      x1, y1   = prevLine[labx], prevLine[laby]
+      x2, y2   = line[labx], line[laby]
       xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
       line_idx = line_idx - 1
     until xas ~= 0 or yas ~= 0 or line_idx <= 1
@@ -733,7 +734,10 @@ local plot = Command 'plot' {
   seqdisty    = 0,     -- x >= 0 or { x1, x2, ... }
   seqdistx    = 0,     -- x >= 0 or { x1, x2, ... }
   seqshift    = 0,     -- x > =0
+  seqlabel    = { 'x', 'z' },
   nturn       = 0,
+  X0          = { 0, 0, 0 },
+  A0          = { 0, 0, 0 },
   -- layout style
   laypos      = "top",   -- top | bottom | middle | in | 0 < x < 1
   laysize     = false,   -- 0 < x < 1
