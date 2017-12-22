@@ -27,11 +27,11 @@ local M = {}
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
-      is_function, is_functor, is_metaname           in MAD.typeid
-local bset, btst, bclr, bnot, band, bor, lshift, lt  in MAD.operator
-local is_callable, is_iterable, is_mappable          in MAD.concept
-local bsearch                                        in MAD.algorithm
-local functor                                        in MAD.gfunc
+      is_function, is_functor, is_metaname                      in MAD.typeid
+local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
+local is_callable, is_iterable, is_mappable                     in MAD.concept
+local bsearch, lsearch                                          in MAD.algorithm
+local functor                                                   in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
 
@@ -44,7 +44,7 @@ local _var = {} -- hidden key
 -- reserved flags (bits)
 local _flg = {} -- hidden key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
-local flg_free = 2          -- last used flags (0-1), free flags (2 - 31)
+local flg_free = 2          -- used flags (0 - 1), free flags (2 - 31)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -134,7 +134,7 @@ local function raw_get (self, k)
 end
 
 local function raw_set (self, k, v)
-  rawget(self,_var)[k] = v            -- no protection
+  rawset(rawget(self,_var), k, v)     -- no protection
 end
 
 local function var_raw (self, k)
@@ -147,14 +147,14 @@ local function var_val (self, k, v)
   else return v end
 end
 
-local function var_get (self, k)      -- reusing var_raw and var_val kills the inlining
+local function var_get (self, k) -- reusing var_raw and var_val kills the inlining
   local v = rawget(self,_var)[k]
   if is_string(k) and is_function(v)
   then return v(self)
   else return v end
 end
 
-function MT:__index (k)               -- reusing var_raw and var_val kills the inlining
+function MT:__index (k)         -- reusing var_raw and var_val kills the inlining
   local v = rawget(self,_var)[k]
   if is_string(k) and is_function(v)
   then return v(self)
@@ -165,7 +165,7 @@ function MT:__newindex (k, v)
   if freadonly(self) then
     error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
   end
-  raw_set(self, k, v)
+  rawget(self,_var)[k] = v      -- warning: must use [k] for var0
 end
 
 function MT:__len ()
@@ -178,7 +178,7 @@ function MT:__len ()
   return rawlen(var)
 end
 
-local function pairs_iter (var, key) -- scan only strings
+local function pairs_iter_ (var, key) -- scan only strings
   local k, v = next(var, key)
   while not (is_nil(k) or is_string(k)) do
     k, v = next(var, k)
@@ -186,15 +186,18 @@ local function pairs_iter (var, key) -- scan only strings
   return k, v
 end
 
-function MT:__pairs ()
+local function pairs_iter (self)
   local var = rawget(self,_var)
   local n = rawlen(var) -- skip array part
-  return pairs_iter, var, n > 0 and n or nil
+  return pairs_iter_, var, n > 0 and n or nil
 end
 
-function MT:__ipairs()
+local function ipairs_iter (self)
   return ipairs(rawget(self,_var))
 end
+
+MT.__pairs  =  pairs_iter
+MT.__ipairs = ipairs_iter
 
 function MT:__tostring()
   return string.format("'%s' <object> %p", name(self), self)
@@ -202,7 +205,15 @@ end
 
 -- methods
 
-local function set_parent (self, p) -- exported
+local function is_instanceOf (a, b) -- also exported as standalone
+  if rawequal(a,b) or not (is_object(a) and is_class(b)) then
+    return false
+  end
+  repeat a = parent(a) until not a or rawequal(a,b)
+  return rawequal(a,b)
+end
+
+local function set_parent (self, p)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_object(p)   , "invalid argument #2 (object expected)")
   if freadonly(self) then
@@ -212,54 +223,45 @@ local function set_parent (self, p) -- exported
   return self
 end
 
-local function set_readonly (a, b) -- exported
-  assert(a ~= Object, "invalid argument #1 (forbidden access to 'Object')")
-  assert(is_nil(b) or is_boolean(b),
-                      "invalid argument #2 (boolean or nil expected)")
-  if b ~= false
-  then rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_ro))
-  else rawset(a,_flg, bclr(rawget(a,_flg) or 0, flg_ro)) end
-  return a
+local function set_readonly (self, set_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  if set_ ~= false
+  then rawset(self, _flg, bset(rawget(self,_flg) or 0, flg_ro))
+  else rawset(self, _flg, bclr(rawget(self,_flg) or 0, flg_ro))
+  end
+  return self
 end
 
-local function is_instanceOf (a, b) -- exported
-  if not (is_object(a) and is_class(b) and a ~= b) then return false end
-  repeat a = parent(a) until not a or a == b
-  return a == b
-end
-
-local function get_variables (self, lst, noeval)
+local function get_variables (self, lst, noeval_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
-  local var, res = rawget(self,_var), {}
-  if noeval
-  then for _,k in ipairs(lst) do res[k] = var [k] end
-  else for _,k in ipairs(lst) do res[k] = self[k] end
-  end
-  return res
+  local res = table.new(0,#lst)
+  local get = noeval_ == true and var_raw or var_get
+  for _,k in ipairs(lst) do res[k] = get(self, k) end
+  return res -- key -> val
 end
 
-local function set_variables (self, tbl, override)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_variables (self, tbl, override_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,v in pairs(tbl) do
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
+    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable")
     rawset(var, k, v)
   end
   return self
 end
 
 local function wrap_variables (self, tbl)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,f in pairs(tbl) do
     local v, newv = var[k]
-    assert(is_callable(f), "invalid wrapper (callable expected)")
     assert(not is_nil(v) , "invalid variable (nil value)")
+    assert(is_callable(f), "invalid wrapper (callable expected)")
     if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
       newv = functor(newv)                   -- newv must maintain v's semantic.
@@ -269,23 +271,23 @@ local function wrap_variables (self, tbl)
   return self
 end
 
-local function set_functions (self, tbl, override, strict)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_functions (self, tbl, override_, strict_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   for k,f in pairs(tbl) do
     assert(is_string(k), "invalid key (function name expected)")
-    assert(is_callable(f) or strict==false, "invalid value (callable expected)")
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
+    assert(is_callable(f) or strict_ == false, "invalid value (callable expected)")
+    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override function")
     rawset(var, k, is_function(f) and functor(f) or f)
   end
   return self
 end
 
-local function set_metamethods (self, tbl, override, strict)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_metamethods (self, tbl, override_, strict_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
@@ -293,146 +295,149 @@ local function set_metamethods (self, tbl, override, strict)
     sm={} for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
-    assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
-    assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
+    assert(is_metaname(k) or strict_ == false, "invalid key (metamethod expected)")
+    assert(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod")
     rawset(sm, k, mm)
   end
   return setmetatable(self, sm)
 end
 
-local function get_varkeys (self, class)
-  class = class or Object
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_object(class), "invalid argument #2 (object expected)")
+local function get_varkeys (self, class_)
+  class_ = class_ or Object
+  assert(is_object(self)  , "invalid argument #1 (object expected)")
+  assert(is_object(class_), "invalid argument #2 (object expected)")
   local lst, key = {}, {}
-  while self and self ~= class do
-    for k,v in pairs(self) do
+  while self and not rawequal(self, class_) do
+    for k,v in pairs_iter(self) do
       if not (key[k] or is_functor(v)) and string.sub(k,1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
     end
     self = parent(self)
   end
-  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
   return lst
 end
 
-local function remove_array (self, pos)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(pos), "invalid argument #2 (number expected)")
+local function remove_array (self, idx_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  return table.remove(rawget(self,_var), pos)
+  return table.remove(rawget(self,_var), idx_)
 end
 
-local function insert_array (self, pos, val)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(pos), "invalid argument #2 (number expected)")
+local function insert_array (self, idx_, val)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  table.insert(rawget(self,_var), pos, val)
+  table.insert(rawget(self,_var), idx_, val)
   return self
 end
 
 local function sort_array (self, cmp_)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(cmp_) or is_callable(cmp_), "invalid argument #2 (callable expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   table.sort(rawget(self,_var), cmp_)
   return self
 end
 
-local function bsearch_array (self, val, cmp_)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  return bsearch(rawget(self,_var), val, cmp_)
+local function lsearch_array (self, val, equ_, low_, high_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return lsearch(rawget(self,_var), val, equ_, low_, high_)
+end
+
+local function bsearch_array (self, val, cmp_, low_, high_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return bsearch(rawget(self,_var), val, cmp_, low_, high_)
 end
 
 local function clear_array (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local len = rawlen(var)
-  for i=1,len do rawset(var, i, nil) end
+  for i in ipairs_iter(self) do rawset(var, i, nil) end
   return self
 end
 
 local function clear_variables (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local len = rawlen(var) -- skip array part
   local id  = rawget(var,'__id')
-  for k in pairs_iter, var, len > 0 and len or nil do
-    rawset(var, k, nil)
-  end
+  for k in pairs_iter(self) do rawset(var, k, nil) end
   rawset(var, '__id', id)
   return self
 end
 
 local function clear_all (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  table.clear(var)
+  for i in ipairs_iter(self) do rawset(var, i, nil) end
+  for k in  pairs_iter(self) do rawset(var, k, nil) end
+  -- table.clear(var) would destroy hidden keys
   rawset(var, '__id', id)
   return self
 end
 
 -- flags
 
-local function is_valid_flag (n)
-  return is_number(n) and n >= flg_free and n <= 31
-end
-
-local function set_flag (self, n)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
-  return self
-end
-
-local function clear_flag (self, n)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
-  if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
-  return self
-end
-
-local function test_flag (self, n)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  return btst(rawget(self,_flg) or 0, n)
-end
-
 local flg_mask = lshift(-1, flg_free)
 local flg_notmask = bnot(flg_mask)
 
-local function get_flags(self)
+local function clear_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  local flg = rawget(self,_flg) or 0
+  rawset(self, _flg, bor(band(flg, flg_notmask), bclr(flg, n)))
+  return self
+end
+
+local function set_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  local flg = rawget(self,_flg) or 0
+  rawset(self, _flg, bor(flg, band(bset(flg, n), flg_mask)))
+  return self
+end
+
+local function set_flags (self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  local flg = rawget(self, _flg) or 0
+  rawset(self, _flg, bor(flg, band(flags, flg_mask)))
+  return self
+end
+
+local function get_flags (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
   return band(rawget(self,_flg) or 0, flg_mask)
 end
 
-local function set_flags(self, flags)
+local function test_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  return btst(rawget(self,_flg) or 0, n)
+end
+
+local function test_flags (self, flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  local flg = band(rawget(self, _flg) or 0, flg_notmask)
-  rawset(self,_flg, bor(flg, band(flags, flg_mask)))
-  return self
+  return band(rawget(self,_flg) or 0, band(flags, flg_mask)) ~= 0
 end
 
 -- environments
 
 local _env = {} -- hidden key
 
-local function open_env (self, ctx)
+local function open_env (self, ctx_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(ctx) or is_function(ctx) or is_number(ctx) and ctx >= 1,
+  assert(is_nil(ctx_) or is_function(ctx_) or is_number(ctx_) and ctx_ >= 1,
                           "invalid argument #2 (not a function or < 1)")
-  ctx = is_function(ctx) and ctx or is_number(ctx) and ctx+1 or 2
+  ctx_ = is_function(ctx_) and ctx_ or is_number(ctx_) and ctx_+1 or 2
   assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
-  rawset(self, _env, { ctx=ctx, env=getfenv(ctx) })
+  rawset(self, _env, { ctx=ctx_, env=getfenv(ctx_) })
   rawset(self, self.__id, self) -- self reference
-  setfenv(ctx, self)
+  setfenv(ctx_, self)
   return self
 end
 
@@ -457,7 +462,7 @@ local function close_env (self)
 end
 
 local function dump_env (self) -- for debug
-  for k,v in pairs(self) do
+  for k,v in pairs(rawget(self,_var)) do
     if is_rawtable(v) then
       for k,v in pairs(v) do
         print(k,'=',v)
@@ -474,40 +479,42 @@ end
 
 -- debug
 
-local function strdump (self, class, pattern)
-  class, pattern = class or Object, pattern or ''
-  assert(is_object(self)   , "invalid argument #1 (object expected)")
-  assert(is_object(class)  , "invalid argument #2 (object expected)")
-  assert(is_string(pattern), "invalid argument #3 (string expected)")
+local function strdump (self, class_, pattern_)
+  class_, pattern_ = class_ or Object, pattern_ or ''
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(class_)  , "invalid argument #2 (object expected)")
+  assert(is_string(pattern_), "invalid argument #3 (string expected)")
   local tostring in MAD
   local cnt, res, spc, str = {}, {}, ""
-  while self and self ~= class do
+  while self and not rawequal(self, class_) do
     local var = rawget(self,_var)
     -- header
-    str = rawget(var, '__id') and (" '"..var.__id.."'") or ""
-    res[#res+1] = spc.."+ "..tostring(self)
+    local id = rawget(var, '__id')
+    str = id and (" '" .. id .. "'") or ""
+    res[#res+1] = spc .. "+ " .. tostring(self)
     spc = spc .. "   "
     -- variables
-    for k,v in pairs(var) do
-      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k, pattern) then
+    for k,v in pairs_iter(self) do
+      if string.sub(k,1,2) ~= '__' and string.find(k, pattern_) then
         str = spc .. tostring(k)
         if is_string(v) then
-          str = str.." : '"..tostring(v):sub(1,15).."'"
+          str = str .. " : '" .. tostring(v):sub(1,15) .. "'"
         elseif is_function(v) then
-          str = str.." := "..tostring(v(self))
+          str = str .. " := " .. tostring(v(self))
         else
-          str = str.." :  "..tostring(v)
+          str = str .. " :  " .. tostring(v)
         end
         if cnt[k]
-        then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
-        else cnt[k] = 0 end
+        then str = str .. " (" .. string.rep('*', cnt[k]) .. ")" -- mark overrides
+        else cnt[k] = 0
+        end
         cnt[k] = cnt[k] + 1
         res[#res+1] = str
       end
     end
     self = parent(self)
   end
-  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
   res[#res+1] = ''
   return table.concat(res, '\n')
 end
@@ -531,12 +538,12 @@ M.set_variables   = functor( set_variables   )
 M.wrap_variables  = functor( wrap_variables  )
 
 M.set_functions   = functor( set_functions   )
-
 M.set_metamethods = functor( set_metamethods )
 
 M.insert_array    = functor( insert_array    )
 M.remove_array    = functor( remove_array    )
 M.bsearch_array   = functor( bsearch_array   )
+M.lsearch_array   = functor( lsearch_array   )
 M.sort_array      = functor( sort_array      )
 M.clear_array     = functor( clear_array     )
 M.clear_variables = functor( clear_variables )
@@ -555,6 +562,7 @@ M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
 M.get_flags       = functor( get_flags       )
 M.set_flags       = functor( set_flags       )
+M.test_flags      = functor( test_flags      )
 
 M.open_env        = functor( open_env        )
 M.is_open_env     = functor( is_open_env     )
@@ -568,15 +576,12 @@ M.parent = parent
 M.name   = \s -> s.__id
 M.set    = M.set_variables
 M.get    = M.get_variables
-M.getk   = M.get_varkeys
 
 -- env ------------------------------------------------------------------------o
 
 MAD.typeid.is_class      = is_class
 MAD.typeid.is_object     = is_object
-MAD.typeid.is_readonly   = is_readonly
 MAD.typeid.is_instanceOf = is_instanceOf
-MAD.typeid.is_valid_flag = is_valid_flag
 
 -- metatables -----------------------------------------------------------------o
 
