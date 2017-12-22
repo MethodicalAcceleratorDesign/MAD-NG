@@ -127,7 +127,7 @@ local sequence_mt = getmetatable(sequence)
 local var_raw, var_val = sequence.var_raw, sequence.var_val
 local get_var, set_var = sequence_mt.__index, sequence_mt.__newindex
 
--- root object ----------------------------------------------------------------o -- UPDATED
+-- root object ----------------------------------------------------------------o
 
 -- hidden keys: elem array, (name,index) dict and positions.
 local _elem, _eidx, _epos, _spos = {}, {}, {}, {}
@@ -144,7 +144,7 @@ local function is_orig_sequence(a)
   return is_sequence(a) and not is_nil(a:raw_get(_eidx))
 end
 
--- definitions ----------------------------------------------------------------o -- UPDATED
+-- definitions ----------------------------------------------------------------o
 
 -- forward declarations
 local elem_pos
@@ -161,7 +161,7 @@ local maximum_dist  =  2e9 -- to find the closest
 local mkstart = marker '$start' { at=0 } : set_readonly()
 local mkend   = marker '$end'   {      } : set_readonly()
 
--- sanity checks --------------------------------------------------------------o -- UPDATED
+-- sanity checks --------------------------------------------------------------o
 
 local function seq_error (msg, seq, idx, nam)
   error(msg .. " in sequence '"  .. (seq.name or '?')
@@ -227,7 +227,7 @@ local function dumpseq (seq)
 end
 ]=]
 
--- helper for mangled names and elements indexes (same as mtable) -------------o -- UPDATED
+-- helper for mangled names and elements indexes (same as mtable) -------------o
 
 -- get index from signed index (direct)
 local function index_of_idx (seq, idx)
@@ -354,7 +354,7 @@ local function name_of_idx (seq, idx)
   error("unexpected corrupted dictionnary")
 end
 
--- position helpers -----------------------------------------------------------o -- UPDATED
+-- position helpers -----------------------------------------------------------o
 
 -- hidden keys for temporaries of 'from' lookup
 local _lastfrom, _lastfrompos = {}, {}
@@ -417,9 +417,10 @@ local function refer_pos (seq, elm, idx)
   end
 end
 
--- build positions ------------------------------------------------------------o -- UPDATED
+-- build positions ------------------------------------------------------------o
 
 -- set s-positions at index or return element s-positions
+-- already declared for forward use, must not be local
 function elem_pos (seq, idx, elm_)
   local spos = seq[_spos][idx]
   if is_nil(spos) then
@@ -518,7 +519,7 @@ local function build_pos (seq, sref)
   end
 end
 
--- flatten sequence -----------------------------------------------------------o -- UPDATED
+-- flatten sequence -----------------------------------------------------------o
 
 -- copy sub sequence
 local function copy_sequ (seq, flat, sref, idx, dir)
@@ -591,7 +592,7 @@ local function flatten_sequ (seq, flat, sref)
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
--- build sequence -------------------------------------------------------------o -- UPDATED
+-- build sequence -------------------------------------------------------------o
 
 -- build dictionnary name -> idx
 local function build_index (seq)    -- must be very fast
@@ -630,7 +631,7 @@ local function finish_sequ (seq)
 end
 
 -- sequence init (build)
-function sequence_init (seq)
+local function sequence_init (seq)
   local n = seq:raw_len()
   if n == 0 then return seq end -- empty
 
@@ -648,16 +649,40 @@ function sequence_init (seq)
   return seq
 end
 
--- sequence metamethods -------------------------------------------------------o -- UPDATED
+-- copy -----------------------------------------------------------------------o
+
+local function sequence_copy (seq, name_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local cpy = seq:copy(name_)
+  if not is_orig_sequence(seq) then return cpy end
+
+  local n, elem1, epos1, spos1 = #seq, seq[_elem], seq[_epos], seq[_spos]
+  local elem2, epos2, spos2 = table.new(n,0), table.new(n,0), table.new(n,0)
+  for i=1,n do
+    elem2[i], epos2[i], spos2[i] = elem1[i], epos1[i], spos1[i]
+  end
+  cpy[_elem], cpy[_epos], cpy[_spos], cpy[_eidx] = elem2, epos2, spos2, table.new(0,n)
+  build_index(cpy)
+  finish_sequ(cpy)
+  return cpy
+end
+
+-- sequence metamethods -------------------------------------------------------o
 
 -- dict count proxy
 local _dct = {}
+
+local function dct_iter (s, i)
+  i = i + 1
+  local ei = s[_dct][i]
+  if ei then return i, s[_elem][ei] end
+end
+
 local dct_mt = {
   __len       =\s   -> s[_dct][_len],
-  __index     =\s,i -> s[_elem][rawget(s[_dct], i)],
-
-  __pairs    := error("forbidden read access to counts" , 2),
-  __ipairs   := error("forbidden read access to counts" , 2),
+  __index     =\s,i -> s[_elem][s[_dct][i]],
+  __pairs     =\s   -> dct_iter, s, 0,
+  __ipairs    =\s   -> dct_iter, s, 0,
   __newindex := error("forbidden write access to counts", 2),
 }
 
@@ -687,7 +712,7 @@ local function index_mm (seq, key)
   if is_table(idx) then
     return setmetatable({[_dct]=idx, [_elem]=seq[_elem]}, dct_mt) -- dict proxy
   end
-  return seq[_elem][idx]                                         -- elem or nil
+  return seq[_elem][idx]                                          -- elem or nil
 end
 
 local function newindex_mm (seq, key, val)
@@ -699,7 +724,7 @@ local function newindex_mm (seq, key, val)
   set_var(seq, key, val)
 end
 
--- methods (readonly) ---------------------------------------------------------o -- UPDATED
+-- methods (readonly) ---------------------------------------------------------o
 
 local function name_of (seq, a, ref_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
@@ -744,7 +769,7 @@ local function length_of (seq, rng_, ntrn_)
   return siz + #seq * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
 end
 
--- functional methods ---------------------------------------------------------o -- UPDATED
+-- functional methods ---------------------------------------------------------o
 
 --[=[
 programming model:
@@ -853,7 +878,7 @@ local function filter (seq, rng_, sel_, not_)
   return elm, idx
 end
 
--- methods (R/W, update dict) -------------------------------------------------o -- UPDATED
+-- methods (R/W, update dict) -------------------------------------------------o
 
 local function remove (seq, rng_, sel_)
   assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
@@ -986,7 +1011,7 @@ local function insert (seq, elm, rng_, sel_)
   return seq
 end
 
--- flags ----------------------------------------------------------------------o -- UPDATED
+-- flags ----------------------------------------------------------------------o
 
 local function cycle (seq, elm)
   assert(is_sequence(seq)  , "invalid argument #1 (sequence expected)")
@@ -1073,7 +1098,7 @@ local function unique_name (seq, fmt_) -- to unify with unique
   return seq
 end
 
--- flags ----------------------------------------------------------------------o -- UPDATED
+-- flags ----------------------------------------------------------------------o
 
 local _flgs = {} -- hidden key
 
@@ -1100,7 +1125,7 @@ local function restore_flags (seq)
   seq[_flgs][#seq[_flgs]] = nil
 end
 
--- iterators ------------------------------------------------------------------o -- UPDATED
+-- iterators ------------------------------------------------------------------o
 
 local function seqfwditer (state, i)
   if i == state.stop then
@@ -1222,13 +1247,14 @@ sequence :set_functions {
   unique        = unique,
 
   iter          = iter,
+  copy          = sequence_copy,
 
   save_flags    = save_flags,
   drop_flags    = drop_flags,
   restore_flags = restore_flags,
 
   -- disabled methods
-  is_selected := error("invalid sequence operation", 2),
+  is_selected  := error("invalid sequence operation", 2),
 
 } : set_metamethods ({
   __len      = len_mm,
@@ -1236,6 +1262,7 @@ sequence :set_functions {
   __newindex = newindex_mm,
   __ipairs   = ipairs_mm,
 
+  __copy     = sequence_copy,
   __init     = sequence_init,
 }, true) :set_readonly()
 
