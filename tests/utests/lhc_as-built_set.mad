@@ -1,7 +1,10 @@
-local assert    in _G
-local fun       in MAD
-local layangle in MAD.element.flags
+local assert   in _G
+local fun      in MAD
+local bind2st  in MAD.gfunc
+local element  in MAD
+local layangle in element.flags
 
+-- open MADX workspace
 MADX:open_env()
 
 -- share lhcb1 with lhcb2
@@ -31,61 +34,53 @@ mbxw :set_parent(sbend) :set{ e1=eface, e2=eface }
 lhcb1:foreach \e -> assert(e.kind ~= 'rbend', "unexpected rbend")
 lhcb2:foreach \e -> assert(e.kind ~= 'rbend', "unexpected rbend")
 
--- Mark Angle ------------------------------------------------------------------
-
-local lhc_mark_angle = {
-  -- IP1 --
+-- mark angle for layout
+local lhc_layout_angle = {
+  "MBRC.4L1.B1","MBRC.4L1.B2",
   "MBXW.F4L1","MBXW.E4L1","MBXW.D4L1","MBXW.C4L1","MBXW.B4L1","MBXW.A4L1",
+  -- IP1
   "MBXW.F4R1","MBXW.E4R1","MBXW.D4R1","MBXW.C4R1","MBXW.B4R1","MBXW.A4R1",
-  -- IP2 --
-  "MBX.4L2","MBX.4R2",
-  -- IP5 --
+  "MBRC.4R1.B1","MBRC.4R1.B2",
+  --
+  "MBRC.4L2.B1","MBRC.4L2.B2",
+  "MBX.4L2",
+  -- IP2
+  "MBX.4R2",
+  "MBRC.4R2.B1","MBRC.4R2.B2",
+  --
+  "MBRC.4L5.B1","MBRC.4L5.B2",
   "MBXW.F4L5","MBXW.E4L5","MBXW.D4L5","MBXW.C4L5","MBXW.B4L5","MBXW.A4L5",
+  -- IP5
   "MBXW.F4R5","MBXW.E4R5","MBXW.D4R5","MBXW.C4R5","MBXW.B4R5","MBXW.A4R5",
-  -- IP8 --
-  "MBX.4L8","MBX.4R8",
+  "MBRC.4R5.B1","MBRC.4R5.B2",
+  --
+  "MBRC.4L8.B1","MBRC.4L8.B2",
+  "MBX.4L8",
+  -- IP8
+  "MBX.4R8",
+  "MBRC.4R8.B1","MBRC.4R8.B2",
 }
 
-local lhcb1_mark_angle = {
-  "MBRC.4L1.B1","MBRC.4R1.B1", -- IP1
-  "MBRC.4L2.B1","MBRC.4R2.B1", -- IP2
-  "MBRC.4L5.B1","MBRC.4R5.B1", -- IP5
-  "MBRC.4L8.B1","MBRC.4R8.B1", -- IP8
-}
+local setangl = \seq,sel,name => local e=seq[name] if e then e[sel](e,layangle) end end
 
-local lhcb2_mark_angle = {
-  "MBRC.4L1.B2","MBRC.4R1.B2", -- IP1
-  "MBRC.4L2.B2","MBRC.4R2.B2", -- IP2
-  "MBRC.4L5.B2","MBRC.4R5.B2", -- IP5
-  "MBRC.4L8.B2","MBRC.4R8.B2", -- IP8
-}
-
-local function get_selangle(lhc, lhcb)
-  return \seq, sel =>
-    local func
-    if sel == false then func = \name => seq[name]:deselect(layangle) end
-    else                 func = \name => seq[name]:select(layangle) end
-    end
-    fun.foreach(func, lhc)
-    fun.foreach(func, lhcb)
-  end
+local function set_layangle(seq, sel_)
+  local sel = sel_ == false and 'deselect' or 'select'
+  fun.foreach(bind2st(setangl,seq,sel), lhc_layout_angle)
+  return seq
 end
 
-lhcb1:set_functions{ selangle = get_selangle(lhc_mark_angle, lhcb1_mark_angle) }
-lhcb2:set_functions{ selangle = get_selangle(lhc_mark_angle, lhcb2_mark_angle) }
+lhcb1:set_functions{ set_layangle=set_layangle }:set_layangle()
+lhcb2:set_functions{ set_layangle=set_layangle }:set_layangle()
 
--- mechanical separation -------------------------------------------------------
-local function get_mech(seq)
-  return \e, idx =>
-    if e.kind == "marker" then
-      e.mech_sep = (seq[idx+1] or seq[idx-1]).mech_sep
-    end
+-- set mechanical separation for layout
+local set_mech_sep = \seq -> \e,i =>
+    if not e.mech_sep then e.mech_sep = (seq[i+1] or seq[i-1]).mech_sep end
   end
-end
 
-lhcb1:foreach(get_mech(lhcb1))
-lhcb2:foreach(get_mech(lhcb2))
+lhcb1:foreach( set_mech_sep(lhcb1) )
+lhcb2:foreach( set_mech_sep(lhcb2) )
 
+-- close MADX workspace
 MADX:close_env()
 
 -- kickers compatibilty (to be reviewed)
