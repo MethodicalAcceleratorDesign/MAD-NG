@@ -164,7 +164,7 @@ local mkend   = marker '$end'   {      } : set_readonly()
 -- sanity checks --------------------------------------------------------------o
 
 local function seq_error (msg, seq, idx, nam)
-  error(msg .. " in sequence '"  .. (seq.name or '?')
+  error(msg .. " in sequence '"  .. (seq.__id or '?')
             .. "' for element '" .. (nam      or '?')
             .. "' at index "     .. (idx      or '?'), 2)
 end
@@ -172,7 +172,7 @@ end
 local function seq_poserr (typ, seq, idx, pos)
   seq_error(string.format(
     "invalid %s position at s = %.6gm (negative drift %.6gm)",
-    typ, seq[_spos][idx], seq[_spos][idx]-pos), seq, idx, seq[idx].name)
+    typ, seq[_spos][idx], seq[_spos][idx]-pos), seq, idx, seq[idx].__id)
 end
 
 -- check sequence $start and $stop integrity
@@ -202,12 +202,12 @@ local function check_dict (seq)
   eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E'] = nil
   for en,ei in pairs(eidx) do        -- name -> index or table of indexes
     if is_number(ei) then
-      assert(elem[ei].name == en     , "unexpected corrupted dictionnary")
+      assert(elem[ei].__id == en     , "unexpected corrupted dictionnary")
     elseif is_table(ei) then
-      assert(elem[ei[1]].name == en  , "unexpected corrupted dictionnary")
+      assert(elem[ei[1]].__id == en  , "unexpected corrupted dictionnary")
       for i=2,ei[_len] do
         assert(ei[i-1] < ei[i]       , "unexpected corrupted dictionnary")
-        assert(elem[ei[i]].name == en, "unexpected corrupted dictionnary")
+        assert(elem[ei[i]].__id == en, "unexpected corrupted dictionnary")
       end
     else
       error("unexpected corrupted dictionnary")
@@ -222,7 +222,7 @@ local function dumpseq (seq)
   print()
   print('sequence:', seq.name, 'l=', seq.l)
   print('i', 'name', 'L', 'S (s)', 'S (e)')
-  seq:foreach \e,i -> print(i, e.name, e.l, seq[_spos][i], seq[_epos][i])
+  seq:foreach \e,i -> print(i, e.__id, e.l, seq[_spos][i], seq[_epos][i])
   MAD.option.format = fmt
 end
 ]=]
@@ -302,7 +302,7 @@ end
 -- get index from element (linear)
 local function index_of_elm (seq, elm, idx_)
   assert(is_element(elm), "invalid argument #2 (element expected)")
-  local nam = elm.name
+  local nam = elm.__id
   local ei = var_raw(seq,_eidx)[nam]
   if is_nil(ei) then return nil end
   idx_ = idx_ and index_of_idx(seq, idx_) or 1
@@ -320,7 +320,7 @@ end
 -- get [mangled] name from element (linear)
 local function name_of_elm (seq, elm, idx_)
   assert(is_element(elm), "invalid argument #2 (element expected)")
-  local nam = elm.name
+  local nam = elm.__id
   local ei = var_raw(seq,_eidx)[nam]
   if is_nil(ei) then return nil end
   idx_ = index_of_idx(seq, idx_ or 1)
@@ -341,7 +341,7 @@ end
 local function name_of_idx (seq, idx)
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
-  local nam = var_raw(seq,_elem)[idx].name
+  local nam = var_raw(seq,_elem)[idx].__id
   local ei = var_raw(seq,_eidx)[nam]
   if is_number(ei) then
     assert(ei == idx, "unexpected corrupted dictionnary")
@@ -531,7 +531,7 @@ local function copy_sequ (seq, flat, sref, idx, dir)
   sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
 
   if sref.dir ~= seq.direction then -- insert changedir patch
-    idx, flat[idx] = idx+1, changedir(seq.name, {})
+    idx, flat[idx] = idx+1, changedir(seq.__id, {})
   end
 
   if dir > 0 then
@@ -600,7 +600,7 @@ local function build_index (seq)    -- must be very fast
   local ei = seq[_eidx]
   table.clear(ei)                   -- reuse main storage
   for idx,elm in ipairs(seq[_elem]) do
-    local nam = elm.name
+    local nam = elm.__id
     local val = ei[nam]
     if is_nil(val) then             -- none: name -> idx
       ei[nam] = idx
@@ -795,7 +795,7 @@ without any selection criterium:
 
 local pcls   = is_instanceOf
 local psel   = marker.is_selected
-local pnam   = \e,pat -> not is_nil(string.match(e.name, pat))
+local pnam   = \e,pat -> not is_nil(string.match(e.__id, pat))
 local pand   = \p,p2,e,i -> p(e,i) and p2(e,i)
 local ptrue  = \p,_ ,e,i -> p(e,i) and true
 local pfalse = \p,_ ,e,i -> p(e,i) or false
@@ -925,7 +925,7 @@ local function replace (seq, elm, rng_, sel_)
   -- check elements
   for i=1,ne do
     if is_element(elm[i]) and not is_sequence(elm[i]) then
-      error("invalid element '"..(elm[i].name or '?').."' replacement at index "..i)
+      error("invalid element '"..(elm[i].__id or '?').."' replacement at index "..i)
     end
   end
 
@@ -975,7 +975,7 @@ local function insert (seq, elm, rng_, sel_)
   local ns = 0
   for i=1,ne do
     if is_element(elm[i]) and not is_sequence(elm[i]) then
-      error("invalid element '"..(elm[i].name or '?').."' insertion at index "..i)
+      error("invalid element '"..(elm[i].__id or '?').."' insertion at index "..i)
     end
     if elm[i].from == 'selected' then ns = ns + 1 end
   end
@@ -1033,13 +1033,13 @@ local function share (seq1, seq2)
   local elem1, eidx1 = seq1[_elem], seq1[_eidx]
   local elem2, eidx2 = seq2[_elem], seq2[_eidx]
   for i=2,#elem1-1 do
-    local nam = elem1[i].name   -- share by (unique) name
+    local nam = elem1[i].__id   -- share by (unique) name
     if eidx2[nam] then          -- element name found in seq2
       local i1, i2 = eidx1[nam], eidx2[nam]
       -- ensure that elements are unique in both sequences
       assert(is_number(i1) and is_number(i2), "invalid shared element (must be unique)")
       local e1, e2 = elem1[i1], elem2[i2]
-      assert(e1.name == nam and e2.name == nam, "unexpected corrupted dictionnary")
+      assert(e1.__id == nam and e2.__id == nam, "unexpected corrupted dictionnary")
       -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
       local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
       local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
@@ -1064,7 +1064,7 @@ local function unique (seq)
   end
   for elm,cnt in pairs(lst) do
     if cnt > 1 then
-      local ei = eidx[elm.name]
+      local ei = eidx[elm.__id]
       for i=1,cnt do
         local idx = index_of_elm(seq, elm)
         assert(elem[idx] == elm, "unexpected corrupted dictionnary")
@@ -1291,7 +1291,7 @@ local function show_fields(t, lst)
 end
 
 function M:show(disp)
-  io.write("sequence '", self.name,"' { ")
+  io.write("sequence '", self.__id,"' { ")
   show_list(self, disp)
   io.write(' }\n')
   for _,v in ipairs(self) do v:show(disp) end
@@ -1299,7 +1299,7 @@ function M:show(disp)
 end
 
 function M:show_madx(disp)
-  io.write("'", self.name, "': sequence, ")
+  io.write("'", self.__id, "': sequence, ")
   show_list(self, disp)
   io.write(';\n')
   for _,v in ipairs(self) do v:show_madx(disp) end
