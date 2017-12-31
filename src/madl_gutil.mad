@@ -452,7 +452,7 @@ function table_deepcopy (a, mt_, xr_)
   local na = {}
   xr_ = xr_ or {}
   xr_[a] = na
-  for k,v in next, a do -- deep copy, keep track of self-ref and xref
+  for k,v in next, a do -- deep copy, keep track of self-xref
     na[xr_[k] or k] = xr_[v] or copy(v, mt_, xr_)
   end
   if mt_ == true then setmetatable(na, getmetatable(a)) end
@@ -505,61 +505,108 @@ end
 string.interp          = utility.strinterp
 getmetatable("").__mod = utility.strinterp
 
--- string triming and splitting
+-- string fast specialized manipulation
 
-local slen = ffi.new 'ssz_t[6]'
+local sarg = ffi.new 'ssz_t[6]'
 
-function utility.strtrim (str)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_trim(str, slen)
-  return (ffi.string(ptr+slen[0], slen[1]))
-end
-
-function utility.strsplit (str, sep)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  assert(is_string(sep), "invalid argument #2 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_split(str, slen, sep)
-  local str1, str2 = ffi.string(ptr+slen[0], slen[1])
-  if slen[4] >= 0 then -- found sep
-    str2 = ffi.string(ptr+slen[2], slen[3])
+function utility.strtrim (str, ini_) -- remove leading and trailing spaces
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_trim(str, sarg)                             -- sarg[0]: index  of str
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str
+  elseif sarg[1] == len then str1 = str -- unchanged
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1])
   end
-  return str1, str2
+  return str1
 end
 
-function utility.strsplitbra (str)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_split_bracket(str, slen)
-  assert(slen[4] < 0 or slen[5] > slen[4], "invalid pair of brackets")
-  local str1, str2, bra = ffi.string(ptr+slen[0], slen[1])
-  if slen[4] >= 0 then
-    str2 = ffi.string(ptr+slen[2], slen[3])
-    bra  = ffi.string(ptr+slen[4], 1)
+function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_quote(str, sarg)                            -- sarg[0]: index  of str (trimmed)
+  assert(ptr ~= nil, "invalid pair of quotes")                       -- sarg[1]: length of str
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing quote or -1
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[3]: type   of quotes
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) --          0: none, 1: "", 2: ''
   end
-  return str1, str2, bra
+  return str1, sarg[2]+1, sarg[3]
 end
 
-function utility.strsplitall (str, sep, res_)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  assert(is_string(sep), "invalid argument #2 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local res, n = res_ or {}, 1
-  while slen[1] > 0 do
-    local ptr = _C.mad_str_split(str, slen, sep)
-    if slen[1] > 0 then
-      res[n] = ffi.string(ptr+slen[0], slen[1])
-      n, slen[0], slen[1] = n+1, slen[2], slen[3]
+function utility.strsplit (str, seps, ini_) -- split at seps (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_string(seps), "invalid argument #2 (string expected)")
+  assert(is_number(ini_), "invalid argument #3 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), #seps
+  local ptr = _C.mad_str_split(str, sarg, seps)                      -- sarg[0]: index  of str (trimmed)
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str (trimmed if sep)
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[2]: index  of sep or -1
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) -- sarg[3]: index  of sep in seps or -1
+  end
+  return str1, sarg[2]+1, sarg[3]+1
+end
+
+function utility.strsplitall (str, seps, ini_, res_)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_string(seps), "invalid argument #2 (string expected)")
+  assert(is_number(ini_), "invalid argument #3 (number expected)")
+  seps = '"'.."'"..seps -- add quotes to seps
+  local res, n = res_ or {}, res_ and #res_+1 or 1
+  local len, lsep, ptr = #str, #seps
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), 1
+  while sarg[2] > 0 do
+    ptr = _C.mad_str_quote(str, sarg)             -- try quotes
+    assert(ptr ~= nil, "invalid pair of quotes")
+    if sarg[2] == -1 then                         -- no quotes
+      sarg[2] = lsep
+      ptr = _C.mad_str_split(str, sarg, seps)     -- try seps
+      if sarg[2] > 0 and sarg[3] < 2 then         -- sep is a quote
+        sarg[2] = sarg[2]-1
+      end
     end
+    if sarg[1] == 0
+    then res[n] = ''  -- empty
+    else res[n] = ffi.string(ptr+sarg[0], sarg[1])
+    end
+    n, sarg[0], sarg[1] = n+1, sarg[2]+1, len-(sarg[2]+1)
   end
+  if res[n-1] == '' then table.remove(res) end
   return res
 end
 
+function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1, str2 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_bracket(str, sarg)                          -- sarg[0]: index  of name (trimmed)
+  assert(ptr ~= nil, "invalid pair of brackets")                     -- sarg[1]: length of name (trimmed if brackets)
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing bracket or -1
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[3]: index  of count (trimmed)
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) -- sarg[4]: length of count (trimmed)
+  end                                                                -- sarg[5]: type   of brackets
+  if sarg[2] > 0 then                                                --          0: none, 1: [], 2: {}
+      if sarg[4] == 0   then str2 = '' -- empty
+      else                   str2 = ffi.string(ptr+sarg[3], sarg[4])
+      end
+  end
+  return str1, str2, sarg[2]+1, sarg[5]
+end
+
 string.trim     = utility.strtrim
+string.quote    = utility.strquote
 string.split    = utility.strsplit
+string.bracket  = utility.strbracket
 string.splitall = utility.strsplitall
-string.splitbra = utility.strsplitbra
 
 -- algorithms
 

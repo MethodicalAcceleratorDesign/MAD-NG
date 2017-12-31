@@ -114,7 +114,7 @@ local sub, ltrue, lfalse                                       in MAD.operator
 local is_iterable, is_callable                                 in MAD.concept
 local sequence, marker, flags                                  in MAD.element
 local minlen                                                   in MAD.constant
-local strsplit, strsplitbra                                    in MAD.utility
+local strtrim, strsplit, strbracket                            in MAD.utility
 local bsearch                                                  in MAD.algorithm
 local is_nil, is_boolean, is_number, is_positive, is_string,
       is_table, is_rawtable, is_range, is_element, is_class,
@@ -125,7 +125,7 @@ local table_insert, table_remove = table.insert, table.remove
 
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val = sequence.var_raw, sequence.var_val
-local get_var, set_var = sequence_mt.__index, sequence_mt.__newindex
+local var_get, var_set = sequence_mt.__index, sequence_mt.__newindex
 
 -- root object ----------------------------------------------------------------o
 
@@ -241,14 +241,15 @@ end
 -- get index from s-position (binary)
 local function index_of_num (seq, num)
   assert(is_number(num), "invalid argument #2 (number expected)")
-  if num < 0 then num = seq.l+num end -- reflect
-  if num < 0 or num > seq.l then return nil end
-  return bsearch(seq[_spos], num)
+  local l = seq.l
+  if num < 0 then num = l+num end -- reflect
+  if num < 0 or num > l then return nil end
+  return bsearch(var_raw(seq,_spos), num)
 end
 
 -- get index from name [with count] (direct)
 local function index_of_cnam (seq, nam, cnt_)
-  local ei = seq[_eidx][nam]
+  local ei = var_raw(seq,_eidx)[nam]
   if is_table(ei) then
     cnt_ = cnt_ or 1
     assert(is_number(cnt_), "invalid argument #3 (count expected)")
@@ -262,7 +263,7 @@ end
 local function index_of_rnam (seq, nam, cnt_, idx_)
   cnt_ = cnt_ or 1
   assert(is_number(cnt_), "invalid argument #3 (count expected)")
-  local ei = seq[_eidx][nam]
+  local ei = var_raw(seq,_eidx)[nam]
   if is_nil(ei) then return nil end
   idx_ = index_of_idx(seq, idx_ or 1)
   if is_nil(idx_) then return nil end
@@ -285,9 +286,9 @@ end
 -- get index from [mangled] name (direct or linear)
 local function index_of_mnam (seq, nam, idx_)
   assert(is_string(nam), "invalid argument #2 (string expected)")
-  local nam, cnt, bra = strsplitbra(nam)
+  local nam, cnt, _, bra = strbracket(nam)
   cnt = tonumber(cnt) or cnt
-  if is_nil(idx_) or bra ~= '{' then
+  if is_nil(idx_) or bra ~= 2 then
     return index_of_cnam(seq, nam, cnt      ), bra
   else
     return index_of_rnam(seq, nam, cnt, idx_), bra
@@ -302,10 +303,10 @@ end
 local function index_of_elm (seq, elm, idx_)
   assert(is_element(elm), "invalid argument #2 (element expected)")
   local nam = elm.name
-  local ei = seq[_eidx][nam]
+  local ei = var_raw(seq,_eidx)[nam]
   if is_nil(ei) then return nil end
   idx_ = idx_ and index_of_idx(seq, idx_) or 1
-  local elem = seq[_elem]
+  local elem = var_raw(seq,_elem)
   if is_number(ei) then
     return ei >= idx_ and elem[ei] == elm and ei or nil
   end
@@ -320,10 +321,10 @@ end
 local function name_of_elm (seq, elm, idx_)
   assert(is_element(elm), "invalid argument #2 (element expected)")
   local nam = elm.name
-  local ei = seq[_eidx][nam]
+  local ei = var_raw(seq,_eidx)[nam]
   if is_nil(ei) then return nil end
   idx_ = index_of_idx(seq, idx_ or 1)
-  local elem = seq[_elem]
+  local elem = var_raw(seq,_elem)
   if is_number(ei) then
     return ei >= idx_ and elem[ei] == elm and nam or nil
   end
@@ -340,8 +341,8 @@ end
 local function name_of_idx (seq, idx)
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
-  local nam = seq[_elem][idx].name
-  local ei = seq[_eidx][nam]
+  local nam = var_raw(seq,_elem)[idx].name
+  local ei = var_raw(seq,_eidx)[nam]
   if is_number(ei) then
     assert(ei == idx, "unexpected corrupted dictionnary")
     return nam
@@ -367,7 +368,7 @@ local function from_epos (seq, from, idx)
       seq_error("invalid from of '" .. from .. "'", seq)
     end
     rawset(seq, _lastfrompos, second(elem_pos(seq, idx)))
-    if bra ~= '{'
+    if bra ~= 2
     then rawset(seq, _lastfrom, from)                -- not relative: memoize
     else rawset(seq, _lastfrom, nil )                -- relative: do not memoize
     end
@@ -394,7 +395,7 @@ local function from_pos (seq, elm, idx)
   local from = elm.from or elm.at and 'start' or 'prev'
 
       if from == 'start'    then return pos
-  elseif from == 'prev'     then return pos + elem_pos(seq,idx-1)+seq[_elem][idx-1].l
+  elseif from == 'prev'     then return pos + elem_pos(seq,idx-1)+var_raw(seq,_elem)[idx-1].l
   elseif from == 'next'     then return pos + second(elem_pos(seq,idx+fidx(elm)))
   elseif from == 'end'      then return seq.l - pos
   elseif from == 'selected' then return pos + elem_pos(seq,idx)
@@ -422,28 +423,28 @@ end
 -- set s-positions at index or return element s-positions
 -- already declared for forward use, must not be local
 function elem_pos (seq, idx, elm_)
-  local spos = seq[_spos][idx]
+  local spos = var_raw(seq,_spos)[idx]
   if is_nil(spos) then
     seq_error("invalid index or reference detected", seq, idx, elm_)
   elseif is_nil(elm_) then
     if spos >= 0 then
-      return spos, seq[_epos][idx]
+      return spos, var_raw(seq,_epos)[idx]
     elseif spos == ongoing_init then
       seq_error("cycling dependencies detected", seq, idx)
     elseif spos ~= uninitialized then
       seq_error("corrupted s-position detected", seq, idx)
     end
-    seq[_spos][idx] = ongoing_init
+    var_raw(seq,_spos)[idx] = ongoing_init
   end
 
-  local elm  = elm_ or seq[_elem][idx]
+  local elm  = elm_ or var_raw(seq,_elem)[idx]
   local epos = from_pos (seq, elm, idx)
   local rpos = refer_pos(seq, elm, idx)
   spos = epos - rpos
 
   if is_nil(elm_) then
-    seq[_spos][idx] = spos
-    seq[_epos][idx] = epos
+    var_raw(seq,_spos)[idx] = spos
+    var_raw(seq,_epos)[idx] = epos
   end
   return spos, epos
 end
@@ -700,7 +701,7 @@ end
 local function index_mm (seq, key)
   -- element index
   if is_number(key) then
-    return seq[_elem][key]
+    return var_raw(seq,_elem)[key]
   end
   -- variable
   local var = var_raw(seq, key)
@@ -708,20 +709,24 @@ local function index_mm (seq, key)
     return var_val(seq, key, var)
   end
   -- element name
-  local idx = seq[_eidx][key]
-  if is_table(idx) then
-    return setmetatable({[_dct]=idx, [_elem]=seq[_elem]}, dct_mt) -- dict proxy
+  local idx = var_raw(seq,_eidx)[key]
+  if idx then
+    local elm = var_raw(seq,_elem)
+    if is_number(idx) then
+      return elm[idx]                                        -- elem
+    else
+      return setmetatable({[_dct]=idx, [_elem]=elm}, dct_mt) -- dict proxy
+    end
   end
-  return seq[_elem][idx]                                          -- elem or nil
 end
 
 local function newindex_mm (seq, key, val)
   -- element index or name
-  if is_number(key) or seq[_eidx][key] then
+  if is_number(key) or var_raw(seq,_eidx)[key] then
     error("invalid sequence write access (use replace method)")
   end
   -- variable
-  set_var(seq, key, val)
+  var_set(seq, key, val)
 end
 
 -- methods (readonly) ---------------------------------------------------------o
@@ -750,7 +755,8 @@ local function range_of (seq, rng, ref_)
     start = index_of_idx(seq, rng)
     return start, start
   elseif is_string(rng) then
-    local s1, s2 = strsplit(rng, "/")
+    local s1, i2 = strsplit(rng, "/" )
+    local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
     start, stop = tonumber(s1) or s1, tonumber(s2) or s2
   elseif is_table(rng) then
     start, stop = rng[1], rng[2]
