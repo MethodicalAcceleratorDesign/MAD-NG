@@ -126,6 +126,7 @@ local table_insert, table_remove = table.insert, table.remove
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val = sequence.var_raw, sequence.var_val
 local var_get, var_set = sequence_mt.__index, sequence_mt.__newindex
+local sequ_copy = sequence.copy
 
 -- root object ----------------------------------------------------------------o
 
@@ -384,7 +385,7 @@ local function refpos_epos (seq)
 end
 
 -- forward index
--- return (#elm-1)+1 because seq[idx] == sseq[2] (see copy_sequ and sequ_pos).
+-- return (#elm-1)+1 because seq[idx] == sseq[2] (see copy_ssequ and sequ_pos).
 local function fidx (elm)
   return is_sequence(elm) and #elm or 1
 end
@@ -523,7 +524,7 @@ end
 -- flatten sequence -----------------------------------------------------------o
 
 -- copy sub sequence
-local function copy_sequ (seq, flat, sref, idx, dir)
+local function copy_ssequ (seq, flat, sref, idx, dir)
   check_mark(seq)
   local n = #seq
   if n <= 2 then return idx end
@@ -565,7 +566,7 @@ local function flatten_line (line, flat, sref, idx, dir)
     elseif elm.is_bline == true or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, step)
     elseif not is_nil(sref) and is_sequence(elm) then
-      idx = copy_sequ   (elm, flat, sref, idx, step)
+      idx = copy_ssequ  (elm, flat, sref, idx, step)
     else -- other elements
       idx, flat[idx] = idx+1, elm
     end
@@ -584,7 +585,7 @@ local function flatten_sequ (seq, flat, sref)
     elseif elm.is_bline == true or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, 1)
     elseif is_sequence(elm) then
-      idx = copy_sequ   (elm, flat, sref, idx, 1)
+      idx = copy_ssequ  (elm, flat, sref, idx, 1)
     else -- other elements
       idx, flat[idx] = idx+1, elm
     end
@@ -654,7 +655,7 @@ end
 
 local function sequence_copy (seq, name_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local cpy = seq:copy(name_)
+  local cpy = sequ_copy(seq, name_)
   if not is_orig_sequence(seq) then return cpy end
 
   local n, elem1, epos1, spos1 = #seq, seq[_elem], seq[_epos], seq[_spos]
@@ -1055,49 +1056,33 @@ local function share (seq1, seq2)
   return seq1, seq2
 end
 
-local function unique (seq)
+local function unique (seq, fmt_)
   assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
-  local elem, eidx = seq[_elem], seq[_eidx]
-  local lst = table.new(0, #elem)
-  for _,elm in ipairs(elem) do
-    lst[elm] = (lst[elm] or 0) + 1
-  end
-  for elm,cnt in pairs(lst) do
-    if cnt > 1 then
-      local ei = eidx[elm.__id]
-      for i=1,cnt do
-        local idx = index_of_elm(seq, elm)
-        assert(elem[idx] == elm, "unexpected corrupted dictionnary")
-        -- replace by a child
-        elem[idx] = elm {} :set_flag(flags.shared)
-      end
-      assert(is_nil(index_of_elm(seq, elm)), "unexpected corrupted dictionnary")
-    end
-  end
-  finish_sequ(seq)
-  return seq
-end
-
-local function unique_name (seq, fmt_) -- to unify with unique
-  assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
-  local fmt = fmt_ or "%s:%d"
-  if is_string(fmt) then fmt = bind1st(string.format, fmt) end
-  assert(is_callable(fmt), "invalid argument #2 (callable expected)")
-  local elem, eidx, lst = seq[_elem], seq[_eidx], table.new(0,10)
+  if is_string(fmt_) then fmt_ = bind1st(string.format, fmt_) end
+  assert(is_callable(fmt_), "invalid argument #2 (callable expected)")
+  local elem, eidx, lst = seq[_elem], seq[_eidx], table.new(0,100)
   for en,ei in pairs(eidx) do
     if is_table(ei) then
       table.clear(lst)
       for i=1,ei[_len] do
-        local elm, nam = elem[ei[i]], fmt(en,i)
-        if not is_nil(lst[elm]) then
-          error("cannot rename element '"..nam.."' (not unique)")
-        end
-        if not is_nil(eidx[nam]) then
-          error("cannot rename element '"..nam.."' (mangled name exists)")
-        end
-        eidx[nam], elem[ei[1]].__id = ei[i], nam -- rename unique element
+        local elm = elem[ei[i]]
+        lst[elm] = (lst[elm] or 0)+1
       end
-      eidx[en] = nil
+      for i=1,ei[_len] do
+        local elm = elem[ei[i]]
+        if lst[elm] > 1 then
+          elem[ei[i]] = elm {}   -- replaced by unique child
+        end
+        if fmt_ then
+          local nam = fmt_(elm.__id, i, ei[i])
+          if eidx[nam] ~= nil then
+            error("cannot name uniquely element '"..nam.."' (already in use)")
+          end
+          elem[ei[i]].__id = nam -- set a unique name
+          eidx[nam] = ei[i]
+        end
+      end
+      if fmt_ then eidx[en] = nil end
     end
   end
   finish_sequ(seq)
