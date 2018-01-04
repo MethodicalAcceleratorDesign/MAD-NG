@@ -116,42 +116,45 @@ local sequence, marker, flags                                  in MAD.element
 local minlen                                                   in MAD.constant
 local strtrim, strsplit, strbracket                            in MAD.utility
 local bsearch                                                  in MAD.algorithm
-local is_nil, is_boolean, is_number, is_positive, is_string,
-      is_table, is_rawtable, is_range, is_element, is_class,
-      is_instanceOf                                            in MAD.typeid
+local is_nil, is_boolean, is_number, is_string, is_table,
+      is_rawtable, is_range, is_element, is_instanceOf         in MAD.typeid
 
-local abs, min, max in math
-local table_insert, table_remove = table.insert, table.remove
+local table_new, table_clear, table_insert, table_remove =
+      table.new, table.clear, table.insert, table.remove
 
+-- backup original methods and metamethods
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val = sequence.var_raw, sequence.var_val
 local var_get, var_set = sequence_mt.__index, sequence_mt.__newindex
-local sequ_copy = sequence.copy
+local raw_get, seq_cpy = sequence.raw_get, sequence.copy
 
 -- root object ----------------------------------------------------------------o
 
--- hidden keys: elem array, (name,index) dict and positions.
-local _elem, _eidx, _epos, _spos = {}, {}, {}, {}
+-- hidden keys: elem array, (name,index) dict, positions, length.
+local _elem, _eidx, _epos, _spos, _len = {}, {}, {}, {}, {}
 
 -- defined in elements
 sequence :set { direction=1, refer='centre', l=0,
                 [_elem]={}, [_eidx]={}, [_epos]={}, [_spos]={} }
 
-local function is_sequence(a)
-  return is_table(a) and not is_nil(a[_eidx])
+local function is_sequence (a)
+  return is_table(a) and var_raw(a, _elem) ~= nil
 end
 
-local function is_orig_sequence(a)
-  return is_sequence(a) and not is_nil(a:raw_get(_eidx))
+local function is_orig_sequence (a)
+  return is_table(a) and raw_get(a, _elem) ~= nil
+end
+
+local function original (a)
+  while raw_get(a, _elem) == nil do a = a.parent end
+  assert(a ~= sequence, "no original sequence found")
+  return a
 end
 
 -- definitions ----------------------------------------------------------------o
 
 -- forward declarations
 local elem_pos
-
--- hidden key to store array length
-local _len = {}
 
 -- special numerical value for elements positions.
 local uninitialized = -1e9
@@ -655,7 +658,7 @@ end
 
 local function sequence_copy (seq, name_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local cpy = sequ_copy(seq, name_)
+  local cpy = seq_cpy(seq, name_)
   if not is_orig_sequence(seq) then return cpy end
 
   local n, elem1, epos1, spos1 = #seq, seq[_elem], seq[_epos], seq[_spos]
@@ -671,38 +674,38 @@ end
 
 -- sequence metamethods -------------------------------------------------------o
 
--- dict count proxy
-local _dct = {}
-
-local function dct_iter (s, i)
+-- count proxy
+local function cnt_iter (s, i)
   i = i + 1
-  local ei = s[_dct][i]
+  local ei = s[_eidx][i]
   if ei then return i, s[_elem][ei] end
 end
 
-local dct_mt = {
-  __len       =\s   -> s[_dct][_len],
-  __index     =\s,i -> s[_elem][s[_dct][i]],
-  __pairs     =\s   -> dct_iter, s, 0,
-  __ipairs    =\s   -> dct_iter, s, 0,
+local cnt_mt = {
+  __len       =\s   -> s[_eidx][_len],
+  __index     =\s,i -> s[_elem][s[_eidx][i]],
+  __pairs     =\s   -> cnt_iter, s, 0,
+  __ipairs    =\s   -> cnt_iter, s, 0,
   __newindex := error("forbidden write access to counts", 2),
 }
 
 -- iterator over elements
 local function ipairs_mm (seq)
-  return ipairs(seq[_elem])
+  return ipairs(var_raw(seq,_elem))
 end
 
 -- number of elements
 local function len_mm (seq)
-  return #seq[_elem]
+  return rawlen(var_raw(seq,_elem))
 end
 
 -- read access precedence: element index, variable key, element name.
 local function index_mm (seq, key)
   -- element index
   if is_number(key) then
-    return var_raw(seq,_elem)[key]
+    local elm = var_raw(seq,_elem)
+    if key < 0 then key = rawlen(elm) + key end
+    return elm[key]
   end
   -- variable
   local var = var_raw(seq, key)
@@ -711,13 +714,10 @@ local function index_mm (seq, key)
   end
   -- element name
   local idx = var_raw(seq,_eidx)[key]
-  if idx then
-    local elm = var_raw(seq,_elem)
-    if is_number(idx) then
-      return elm[idx]                                        -- elem
-    else
-      return setmetatable({[_dct]=idx, [_elem]=elm}, dct_mt) -- dict proxy
-    end
+  if is_number(idx) then
+    return var_raw(seq,_elem)[idx]
+  elseif is_table(idx) then
+    return setmetatable({[_eidx]=idx, [_elem]=var_raw(seq,_elem)}, cnt_mt)
   end
 end
 
@@ -796,7 +796,7 @@ without any selection criterium:
 
 local pcls   = is_instanceOf
 local psel   = marker.is_selected
-local pnam   = \e,pat -> not is_nil(string.match(e.__id, pat))
+local pnam   = \e,pat -> string.match(e.__id, pat) ~= nil
 local pand   = \p,p2,e,i -> p(e,i) and p2(e,i)
 local ptrue  = \p,_ ,e,i -> p(e,i) and true
 local pfalse = \p,_ ,e,i -> p(e,i) or false
@@ -887,6 +887,13 @@ end
 
 -- methods (R/W, update dict) -------------------------------------------------o
 
+local function rebuild_index (seq)
+  assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
+  build_index(seq)
+  finish_sequ(seq)
+  return seq
+end
+
 local function remove (seq, rng_, sel_)
   assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
 
@@ -905,9 +912,7 @@ local function remove (seq, rng_, sel_)
     table_remove(epos, ii)
   end
 
-  -- rebuild dict
-  build_index(seq)
-  finish_sequ(seq)
+  rebuild_index(seq)
   return elm_r, idx_r
 end
 
@@ -944,9 +949,7 @@ local function replace (seq, elm, rng_, sel_)
     elem_pos(seq, ii) -- recompute the positions
   end
 
-  -- rebuild dict
-  build_index(seq)
-  finish_sequ(seq)
+  rebuild_index(seq)
   return elm_r, idx_r
 end
 
@@ -1012,9 +1015,7 @@ local function insert (seq, elm, rng_, sel_)
     end
   end
 
-  -- rebuild dict
-  build_index(seq)
-  finish_sequ(seq)
+  rebuild_index(seq)
   return seq
 end
 
@@ -1171,7 +1172,7 @@ local function fwditer (seq, rng_, ntrn_)
       stop  = start == 1 and #seq or start-1
     end
   else
-    start, stop = seq:range_of(rng_)
+    start, stop = range_of(seq, rng_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end
@@ -1191,7 +1192,7 @@ local function bwditer (seq, rng_, ntrn_)
       stop  = start == #seq and 1 or start+1
     end
   else
-    start, stop = seq:range_of(rng_)
+    start, stop = range_of(seq, rng_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end
@@ -1208,11 +1209,12 @@ end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.element.sequence            = sequence
 MAD.typeid.is_sequence          = is_sequence
 MAD.typeid.is_original_sequence = is_orig_sequence
 
 -- members --------------------------------------------------------------------o
+
+sequence.original = original
 
 sequence :set_functions {
   elem          = \s,i -> s[_elem][i],
@@ -1232,11 +1234,10 @@ sequence :set_functions {
   remove        = remove,
   replace       = replace,
   insert        = insert,
-
-  cycle         = cycle,
   share         = share,
   unique        = unique,
 
+  cycle         = cycle,
   iter          = iter,
   copy          = sequence_copy,
 
@@ -1244,17 +1245,21 @@ sequence :set_functions {
   drop_flags    = drop_flags,
   restore_flags = restore_flags,
 
+  -- debug
+  rebuild_index = rebuild_index,
+
   -- disabled methods
   is_selected  := error("invalid sequence operation", 2),
 
 } : set_metamethods ({
-  __len      = len_mm,
-  __index    = index_mm,
-  __newindex = newindex_mm,
-  __ipairs   = ipairs_mm,
+  __len         = len_mm,
+  __index       = index_mm,
+  __newindex    = newindex_mm,
+  __ipairs      = ipairs_mm,
 
-  __copy     = sequence_copy,
-  __init     = sequence_init,
+  __copy        = sequence_copy,
+  __init        = sequence_init,
+
 }, true) :set_readonly()
 
 -- end -------------------------------------------------------------------------
