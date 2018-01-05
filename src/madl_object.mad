@@ -30,7 +30,7 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname                      in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
 local is_callable, is_iterable, is_mappable                     in MAD.concept
-local bsearch, lsearch                                          in MAD.algorithm
+local bsearch, lsearch                                          in MAD.utility
 local functor                                                   in MAD.gfunc
 
 local strsub = string.sub
@@ -182,7 +182,11 @@ function MT:__len ()
   return rawlen(var)
 end
 
-local function pairs_iter_ (var, key) -- scan only strings
+local function ipairs_iter (self)
+  return ipairs(rawget(self,_var))
+end
+
+local function kpairs_iter_ (var, key) -- scan only strings
   local k, v = next(var, key)
   while not (is_nil(k) or is_string(k)) do
     k, v = next(var, k)
@@ -190,18 +194,15 @@ local function pairs_iter_ (var, key) -- scan only strings
   return k, v
 end
 
-local function pairs_iter (self)
+local function kpairs_iter (self)
   local var = rawget(self,_var)
   local n = rawlen(var) -- skip array part
-  return pairs_iter_, var, n > 0 and n or nil
+  return kpairs_iter_, var, n > 0 and n or nil
 end
 
-local function ipairs_iter (self)
-  return ipairs(rawget(self,_var))
-end
-
-MT.__pairs  =  pairs_iter
 MT.__ipairs = ipairs_iter
+MT.__kpairs = kpairs_iter
+MT.__pairs  = kpairs_iter
 
 function MT:__tostring()
   return string.format("'%s' <object> %p", name(self), self)
@@ -312,7 +313,7 @@ local function get_varkeys (self, class_)
   assert(is_object(class_), "invalid argument #2 (object expected)")
   local lst, key = {}, {}
   while self and not rawequal(self, class_) do
-    for k,v in pairs_iter(self) do
+    for k,v in kpairs_iter(self) do
       if not (key[k] or is_functor(v)) and strsub(k,1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
@@ -366,7 +367,7 @@ local function clear_variables (self)
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  for k in pairs_iter(self) do rawset(var, k, nil) end
+  for k in kpairs_iter(self) do rawset(var, k, nil) end
   rawset(var, '__id', id)
   return self
 end
@@ -377,7 +378,7 @@ local function clear_all (self)
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for i in ipairs_iter(self) do rawset(var, i, nil) end
-  for k in  pairs_iter(self) do rawset(var, k, nil) end
+  for k in kpairs_iter(self) do rawset(var, k, nil) end
   -- table.clear(var) would destroy hidden keys
   rawset(var, '__id', id)
   return self
@@ -406,7 +407,7 @@ local function copy (self, name_)
   local var = rawget(cpy,_var)
   local id  = rawget(var,'__id')
   for i,v in ipairs_iter(self) do rawset(var, i, v) end
-  for k,v in  pairs_iter(self) do rawset(var, k, v) end
+  for k,v in kpairs_iter(self) do rawset(var, k, v) end
   rawset(var, '__id', id)
   return cpy
 end
@@ -529,7 +530,7 @@ local function strdump (self, class_, pattern_)
     res[#res+1] = spc .. "+ " .. tostring(self)
     spc = spc .. "   "
     -- variables
-    for k,v in pairs_iter(self) do
+    for k,v in kpairs_iter(self) do
       if strsub(k,1,2) ~= '__' and string.find(k, pattern_) then
         str = spc .. tostring(k)
         if is_string(v) then
