@@ -123,10 +123,10 @@ local function gp_isBusy (gplot, id)
   return fileexists(gplot[_tmpf][id] .. ".lock")
 end
 
-local function gp_get (gplot, id, curr)
+local function gp_get (gplot, id, curr_)
   local dat = gplot[_gpd]
-  if is_nil( dat[id] )             then gp_create( gplot, id ) end
-  if id ~= '__cur_id' and not curr then dat.__cur_id = id      end
+  if is_nil( dat[id] )              then gp_create( gplot, id ) end
+  if id ~= '__cur_id' and not curr_ then dat.__cur_id = id      end
   return dat[id]
 end
 
@@ -184,7 +184,8 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 -- open files and gnuplot and set terminal when necessary
 local function setup_cmd (self)
   local output, scrdump in self
-  local gp, streamf = gp_getlock(gplot,self.sid)
+  local gp, streamf = output and gp_getlock(gplot, self.sid)
+                              or nil, gc_file(os.tmpname(), true)
   local file, fname
 
   if scrdump then
@@ -222,13 +223,21 @@ end
 
 local function teardown_cmd (self, gp, file, streamf, fname)
   file:close()
-  gp:write("load('" .. fname .. "')\n")
-  if self.scrdump
-  then gnuplot_rm(gp, fname .. ".lock")
-  else gnuplot_rm(gp, streamf)
+  if self.output then
+    gp:write("load('" .. fname .. "')\n")
+    if self.scrdump
+    then gnuplot_rm(gp, fname .. ".lock")
+    else gnuplot_rm(gp, streamf)
+    end
+    gnuplot_rm(gp, streamf .. ".lock")
+    gp:flush()
+  else
+    if self.scrdump
+    then os.remove(fname .. ".lock")
+    else os.remove(streamf)
+    end
+    os.remove(streamf .. ".lock")
   end
-  gnuplot_rm(gp, streamf .. ".lock")
-  gp:flush()
 end
 
 -- layout ---------------------------------------------------------------------o
