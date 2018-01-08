@@ -33,7 +33,7 @@ local is_callable, is_iterable, is_mappable                     in MAD.concept
 local bsearch, lsearch                                          in MAD.utility
 local functor                                                   in MAD.gfunc
 
-local strsub = string.sub
+local strsub, strrep = string.sub, string.rep
 
 -- implementation -------------------------------------------------------------o
 
@@ -86,15 +86,19 @@ local function set_class (a)
 end
 
 local function is_object (a) -- exported
-  return is_table(a) and not is_nil(rawget(a,_var))
+  return is_table(a) and rawget(a,_var) ~= nil
 end
 
 local function is_class (a) -- exported
   return is_table(a) and fclass(a)
 end
 
-local function is_readonly (a) -- exported
-  return is_table(a) and freadonly(a)
+local function is_instanceOf (a, b) -- exported
+  if is_object(a) and is_class(b) then
+    repeat a = parent(a) until not a or rawequal(a,b)
+    return not not a
+  end
+  return false
 end
 
 -- metamethods
@@ -210,22 +214,9 @@ end
 
 -- methods
 
-local function is_instanceOf (a, b) -- also exported as standalone
-  if rawequal(a,b) or not (is_object(a) and is_class(b)) then
-    return false
-  end
-  repeat a = parent(a) until not a or rawequal(a,b)
-  return rawequal(a,b)
-end
-
-local function set_parent (self, p)
+local function is_readonly (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_object(p)   , "invalid argument #2 (object expected)")
-  if freadonly(self) then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
-  end
-  rawset(self,'__index', rawget(p,_var))
-  return self
+  return freadonly(self)
 end
 
 local function set_readonly (self, set_)
@@ -384,6 +375,18 @@ local function clear_all (self)
   return self
 end
 
+-- inheritance
+
+local function set_parent (self, p)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(p)   , "invalid argument #2 (object expected)")
+  if freadonly(self) then
+    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  end
+  rawset(self,'__index', rawget(p,_var))
+  return self
+end
+
 -- copy
 
 local function same (self, name_)
@@ -420,45 +423,55 @@ MT.__copy = copy
 local flg_mask = lshift(-1, flg_free)
 local flg_notmask = bnot(flg_mask)
 
-local function clear_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(n)   , "invalid argument #2 (number expected)")
-  local flg = rawget(self,_flg) or 0
-  rawset(self, _flg, bor(band(flg, flg_notmask), bclr(flg, n)))
-  return self
-end
-
-local function set_flag (self, n)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(n)   , "invalid argument #2 (number expected)")
-  local flg = rawget(self,_flg) or 0
-  rawset(self, _flg, bor(flg, band(bset(flg, n), flg_mask)))
-  return self
-end
-
-local function set_flags (self, flags)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_number(flags), "invalid argument #2 (number expected)")
-  local flg = rawget(self, _flg) or 0
-  rawset(self, _flg, bor(flg, band(flags, flg_mask)))
-  return self
-end
-
-local function get_flags (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  return band(rawget(self,_flg) or 0, flg_mask)
-end
-
 local function test_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   return btst(rawget(self,_flg) or 0, n)
 end
 
+local function set_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  if n >= flg_free then
+    rawset(self, _flg, bset(rawget(self,_flg) or 0, n))
+  end
+  return self
+end
+
+local function clear_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  if n >= flg_free then
+    rawset(self, _flg, bclr(rawget(self,_flg) or 0, n))
+  end
+  return self
+end
+
+local function get_flags (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return rawget(self,_flg) or 0
+end
+
 local function test_flags (self, flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  return band(rawget(self,_flg) or 0, band(flags, flg_mask)) ~= 0
+  return band(rawget(self,_flg) or 0, flags) ~= 0
+end
+
+local function set_flags (self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  flags = band(flags, flg_mask)
+  rawset(self, _flg, bor(rawget(self, _flg) or 0, flags))
+  return self
+end
+
+local function clear_flags (self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  flags = band(flags, flg_mask)
+  rawset(self, _flg, band(rawget(self, _flg) or 0, bnot(flags)))
+  return self
 end
 
 -- environments
@@ -521,13 +534,13 @@ local function strdump (self, class_, pattern_)
   assert(is_object(class_)  , "invalid argument #2 (object expected)")
   assert(is_string(pattern_), "invalid argument #3 (string expected)")
   local tostring in MAD
-  local cnt, res, spc, str = {}, {}, ""
+  local n, cnt, res, spc, str = 0, {}, {}, ""
   while self and not rawequal(self, class_) do
     local var = rawget(self,_var)
     -- header
     local id = rawget(var, '__id')
-    str = id and (" '" .. id .. "'") or ""
-    res[#res+1] = spc .. "+ " .. tostring(self)
+    n, str = n+1, id and (" '" .. id .. "'") or ""
+    res[n] = spc .. "+ " .. tostring(self)
     spc = spc .. "   "
     -- variables
     for k,v in kpairs_iter(self) do
@@ -541,17 +554,17 @@ local function strdump (self, class_, pattern_)
           str = str .. " :  " .. tostring(v)
         end
         if cnt[k]
-        then str = str .. " (" .. string.rep('*', cnt[k]) .. ")" -- mark overrides
+        then str = str .. " (" .. strrep('*', cnt[k]) .. ")" -- mark overrides
         else cnt[k] = 0
         end
-        cnt[k] = cnt[k] + 1
-        res[#res+1] = str
+        cnt[k], n = cnt[k]+1, n+1
+        res[n] = str
       end
     end
     self = parent(self)
   end
   assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
-  res[#res+1] = ''
+  res[n+1] = ''
   return table.concat(res, '\n')
 end
 
@@ -602,6 +615,7 @@ M.clear_flag      = functor( clear_flag      )
 M.get_flags       = functor( get_flags       )
 M.set_flags       = functor( set_flags       )
 M.test_flags      = functor( test_flags      )
+M.clear_flags     = functor( clear_flags     )
 
 M.open_env        = functor( open_env        )
 M.is_open_env     = functor( is_open_env     )
