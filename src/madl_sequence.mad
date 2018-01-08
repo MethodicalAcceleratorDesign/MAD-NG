@@ -1018,7 +1018,8 @@ local function insert (seq, elm, rng_, sel_)
 end
 
 local function copy (seq, name_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  assert(not rawequal(seq, sequence), "invalid argument #1 (cannot copy sequence)")
+  assert(is_sequence(seq)           , "invalid argument #1 (sequence expected)")
   local cpy = seq_cpy(seq, name_)
   if not is_orig_sequence(seq) then return cpy end
 
@@ -1027,7 +1028,8 @@ local function copy (seq, name_)
   for i=1,n do
     elem2[i], epos2[i], spos2[i] = elem1[i], epos1[i], spos1[i]
   end
-  cpy[_elem], cpy[_epos], cpy[_spos], cpy[_eidx] = elem2, epos2, spos2, table.new(0,n)
+  cpy[_elem], cpy[_eidx] = elem2, table.new(0,n)
+  cpy[_epos], cpy[_spos] = epos2, spos2
 
   rebuild_index(cpy)
   return cpy
@@ -1035,10 +1037,10 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function cycle (seq, elm)
+local function cycle (seq, ref)
   assert(is_sequence(seq)  , "invalid argument #1 (sequence expected)")
-  assert(index_of(seq, elm), "invalid argument #2 (reference expected)")
-  seq.start_at = elm
+  assert(index_of(seq, ref), "invalid argument #2 (reference expected)")
+  seq.start_at = ref
   return seq
 end
 
@@ -1106,6 +1108,88 @@ local function unique (seq, fmt_)
   return seq
 end
 
+-- iterators ------------------------------------------------------------------o
+
+local function seqfwditer (state, i)
+  if i == state.stop then
+    if state.turn == 0 then return nil end
+    state.turn = state.turn-1
+  end
+  if i < state.n then
+    i = i+1
+  else
+    i, state.soff = 1, state.soff+state.l
+  end
+  return i, state.elem[i], state.spos[i]+state.soff
+end
+
+local function seqbwditer (state, i)
+  if i == state.stop then
+    if state.turn == 0 then return nil end
+    state.turn = state.turn-1
+  end
+  if i > 1 then
+    i = i-1
+  else
+    i, state.soff = state.n, state.soff-state.l
+  end
+  return i, state.elem[i], state.spos[i]+state.elem[i].l-state.soff
+end
+
+local function fwditer (seq, rng_, ntrn_)
+  local nturn = ntrn_ or 0
+  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
+  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
+  local start, stop
+  if is_nil(rng_) then
+    if is_nil(seq.start_at) then
+      start, stop = 1, #seq
+    else
+      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      stop  = start == 1 and #seq or start-1
+    end
+  else
+    start, stop = range_of(seq, rng_)
+    assert(is_number(start), "invalid range start")
+    assert(is_number(stop ), "invalid range stop" )
+  end
+  local elem, spos = seq[_elem], seq[_spos]
+  if start == stop+1 then nturn = nturn+1 end
+  return seqfwditer, { elem=elem, spos=spos, soff=-spos[start],
+                       l=seq.l, n=#seq, stop=stop, turn=nturn }, start-1
+end
+
+local function bwditer (seq, rng_, ntrn_)
+  local nturn = ntrn_ or 0
+  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
+  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
+  local start, stop
+  if is_nil(rng_) then
+    if is_nil(seq.start_at) then
+      start, stop = #seq, 1
+    else
+      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      stop  = start == #seq and 1 or start+1
+    end
+  else
+    start, stop = range_of(seq, rng_)
+    assert(is_number(start), "invalid range start")
+    assert(is_number(stop ), "invalid range stop" )
+  end
+  local elem, spos = seq[_elem], seq[_spos]
+  if start == stop-1 then nturn = nturn+1 end
+  return seqbwditer, { elem=elem, spos=spos, soff=spos[start]+elem[start].l,
+                       l=seq.l, n=#seq, stop=stop, turn=nturn}, start+1
+end
+
+local function iter (seq, rng_, ntrn_, dir_)
+  local dir = dir_ or 1
+  assert(is_number(dir), "invalid argument #4 (number expected)")
+  if dir ==  1 then return fwditer(seq, rng_, ntrn_) end
+  if dir == -1 then return bwditer(seq, rng_, ntrn_) end
+  error("invalid argument #4 (direction number expected)")
+end
+
 -- flags ----------------------------------------------------------------------o
 
 local _flgs = {} -- hidden key
@@ -1131,96 +1215,6 @@ local function restore_flags (seq)
   local flgs = seq[_flgs][#seq[_flgs]]
   for i=1,#seq do seq[i]:set_flags(flgs[i]) end
   seq[_flgs][#seq[_flgs]] = nil
-end
-
--- iterators ------------------------------------------------------------------o
-
-local function seqfwditer (state, i)
-  if i == state.stop then
-    if state.turn == 0 then return nil end
-    state.turn = state.turn-1
-  end
-  if i < state.n then
-    i = i+1
-  else
-    i, state.soff = 1, state.soff+state.l
-  end
-  return i, state.elem[i], state.spos[i]+state.soff
-end
-
-local function mkfwditer (seq, start, stop, nturn)
-  local elem, spos = seq[_elem], seq[_spos]
-  if start == stop+1 then nturn = nturn+1 end
-  return seqfwditer, { elem=elem, spos=spos, soff=-spos[start],
-                       l=seq.l, n=#seq, stop=stop, turn=nturn }, start-1
-end
-
-local function seqbwditer (state, i)
-  if i == state.stop then
-    if state.turn == 0 then return nil end
-    state.turn = state.turn-1
-  end
-  if i > 1 then
-    i = i-1
-  else
-    i, state.soff = state.n, state.soff-state.l
-  end
-  return i, state.elem[i], state.spos[i]+state.elem[i].l-state.soff
-end
-
-local function mkbwditer (seq, start, stop, nturn)
-  local elem, spos = seq[_elem], seq[_spos]
-  if start == stop-1 then nturn = nturn+1 end
-  return seqbwditer, { elem=elem, spos=spos, soff=spos[start]+elem[start].l,
-                       l=seq.l, n=#seq, stop=stop, turn=nturn}, start+1
-end
-
-local function fwditer (seq, rng_, ntrn_)
-  local nturn = ntrn_ or 0
-  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
-  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
-  local start, stop
-  if is_nil(rng_) then
-    if is_nil(seq.start_at) then
-      start, stop = 1, #seq
-    else
-      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
-      stop  = start == 1 and #seq or start-1
-    end
-  else
-    start, stop = range_of(seq, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
-  end
-  return mkfwditer(seq, start, stop, nturn)
-end
-
-local function bwditer (seq, rng_, ntrn_)
-  local nturn = ntrn_ or 0
-  assert(is_sequence(seq)            , "invalid argument #1 (sequence expected)")
-  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
-  local start, stop
-  if is_nil(rng_) then
-    if is_nil(seq.start_at) then
-      start, stop = #seq, 1
-    else
-      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
-      stop  = start == #seq and 1 or start+1
-    end
-  else
-    start, stop = range_of(seq, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
-  end
-  return mkbwditer(seq, start, stop, nturn)
-end
-
-local function iter (seq, rng_, ntrn_, dir_)
-  local dir = dir_ or 1
-  assert(is_number(dir), "invalid argument #4 (number expected)")
-  if dir ==  1 then return fwditer(seq, rng_, ntrn_) end
-  if dir == -1 then return bwditer(seq, rng_, ntrn_) end
-  error("invalid argument #4 (direction number expected)")
 end
 
 -- env ------------------------------------------------------------------------o
@@ -1252,9 +1246,9 @@ sequence :set_functions {
   insert        = insert,
   copy          = copy,
 
+  cycle         = cycle,
   share         = share,
   unique        = unique,
-  cycle         = cycle,
 
   iter          = iter,
 
@@ -1268,7 +1262,7 @@ sequence :set_functions {
   write        := error("NYI", 2), -- TODO
 
   -- debug
-  rebuild_index = rebuild_index,
+  rebuild_index = rebuild_index, -- debug
 
   -- disabled methods
   is_selected  := error("invalid sequence operation", 2),
