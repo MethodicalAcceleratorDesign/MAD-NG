@@ -7,6 +7,7 @@
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  |          A.Z. Teska, aleksandra.teska at cern.ch
+ |          A. Bloch, aurelien.bloch at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -17,11 +18,11 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local beam, survey, track, option, plot in MAD
-local observe in MAD.element.flags
-local nofile = true
+local mtable, plot, gplot in MAD
+local observe             in MAD.element.flags
 
--- LHC
+-- Initialization --------------------------------------------------------------
+
 local function loadLHC()
   assert( require 'lhc_as-built_gen' )
   assert( require 'lhc_as-built_set' )
@@ -35,92 +36,173 @@ local function loadLHC()
   lhcb1:select(observe)
   lhcb2:select(observe)
 
+  MADX.option.warn = false
+
   return lhcb1, lhcb2
 end
 
 -- load LHC
 local lhcb1, lhcb2 = loadLHC()
+local lhc = {lhcb1, lhcb2}
 
--- set JIT optimisation for LHC
-jit.opt.start("loopunroll=2")
+-- Examples --------------------------------------------------------------------
 
--- survey LHC B1
-lhcb1_suv = survey { sequence=lhcb1 }
-lhcb2_suv = survey { sequence=lhcb2 }
+-- Dummy mtable
+local mtbl = mtable { {'name'}, 'x', 'y', 'z' }
+for i=0, 25000 do
+  mtbl = mtbl + {'A' .. i, i, i, 2*i+100 }
+end
 
--- 450 GeV proton beam
-local beam450 = beam  { particle='proton', energy=450 }
-
--- LHC B1 injection setup (?)
-MADX:set {
-  on_x1    = 0; on_x2   = 0; on_x5   = 0; on_x8   = 0;
---  on_sep1  = 0; on_sep2 = 0; on_sep5 = 0; on_sep8 = 0;
-  on_alice = 0; on_lhcb = 0;
+-- default cmd
+local myplot = plot {
+  table    = mtbl,
+  x1y1     = { x = 'y'},
+  exec     = false,
 }
 
-local x_ip1, px_ip1, y_ip1, py_ip1 in MADX
+local sid = 0
+local function newid()
+  sid = sid + 1
+  return sid
+end
 
--- track LHC B1
-lhcb1_trk = track { sequence=lhcb1, beam=beam450,
-                    X0={x_ip1, px_ip1, y_ip1, py_ip1} }
-
--- save tables
-lhcb1_suv:write 'lhcb1_suv.tfs'
-lhcb2_suv:write 'lhcb2_suv.tfs'
-lhcb1_trk:write 'lhcb1_trk.tfs'
-
--- plot to display
-
-plot { -- survey
-  table = lhcb1_suv,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  xlabel = 'x [m]',
-  ylabel = 'z [m]',
-  hmargin = 0.3,
-  pointsizes = {z=0.1},
-  xrange = {-86,-74},
-  yrange = {-1020,-1060},
+-- Many plot options used
+local options = plot {
+    sid         = newid(),
+    sequence    = lhcb1,
+    range       = { 'E.DS.L5.B1', 'S.DS.R5.B1' },
+    table       = mtbl,
+    x1y1        = { x = { 'y', 'z' } },
+    tablerange  = { 100, 400 },
+    yrange      = { 40, 1000 },
+    colors      = { y = 'red',   z = 'green' },
+    styles      = { y = "lines", z = "linespoints" },
+    dashtypes   = { y = "..   ", z = "--  " },
+    pointtypes  = 4,
+    legendfont  = "Times New Roman",
+    legendsize  = 21,
+    legendpos   = "top right",
+    legendnames = {y = "{/Symbol b} + \u{03b2}", z = "{/Symbol B} + \u{0392}"},
+    xlabel      = "Absise label",
+    ylabel      = "Ordinate label",
 }
 
-plot { -- survey
-  table = lhcb2_suv,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  colors = {z='blue'},
-  hmargin = 0.3,
-  pointsizes = {z=0.1},
-  multiplot =  true,
+-- pdf multiplot
+local multi1 = options {
+    sid      = newid(),
+    prolog   = "set multiplot",
+    output   = "plot-multi.pdf",
+    psizey   = 0.4,
+}
+local multi2 = myplot {
+  sid        = multi1.sid,
+  sequence   = "keep",
+  originy    = 0.4,
+  psizey     = 0.4,
+  psizex     = 0.5,
+  output     = "plot-multi.pdf",
+}
+multi2 {
+  epilog     = "unset multiplot",
+  originx    = 0.5,
 }
 
---do return end
-
-plot { -- track
+-- flat lhcb1
+myplot {
+  sid      = newid(),
   sequence = lhcb1,
-  table = lhcb1_trk,
-  xaxis = 's',
-  yaxis = {'x','y'},
-  seqrange = {'E.DS.L5.B1','S.DS.R5.B1'},
-  id = 3,
+  title    = "Flat lhcb1",
 }
 
--- plot to filenames
-plot { -- survey
-  id = 2,
-  table = lhcb1_suv,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  hmargin = 0.3,
-  pointsizes = {z=0.1},
-  filename = "lhcb1_IP5.pdf",
+-- two flat beam
+myplot {
+  sid      = newid(),
+  sequence = lhc,
+  seqdisty = 0.20,
+  title    = "Two flat beam",
 }
 
-plot { -- track
-  id = 2,
-  sequence = lhcb1,
-  table = lhcb1_trk,
-  xaxis = 's',
-  yaxis = {'x','y'},
-  seqrange = {'E.DS.L5.B1','S.DS.R5.B1'},
-  filename = "lhcb1_IP5.pdf",
+-- Two angled beam
+lhcb1:selangle()
+lhcb2:selangle()
+myplot {
+  sid      = newid(),
+  sequence = lhc,
+  title    = "Two angled beam",
 }
+
+-- Bottom two angled beam
+myplot {
+  sid      = newid(),
+  sequence = lhc,
+  laypos   = "bottom",
+  title    = "Bottom two angled beam",
+}
+
+-- 1-turn two angled beam
+myplot {
+  sid      = newid(),
+  sequence = lhc,
+  nturn    = 1,
+  title    = "1-turn two angled beam",
+}
+
+-- IP1-IP5 two angled beam
+local ip1_ip5 = myplot {
+  sid      = newid(),
+  sequence = { lhcb1, lhcb2,lhcb1, lhcb2},
+  range    = {
+    {"E.DS.L1.B1", "S.DS.R1.B1"},{"E.DS.L1.B2", "S.DS.R1.B2"},
+    {"E.DS.L5.B1", "S.DS.R5.B1"},{"E.DS.L5.B2", "S.DS.R5.B2"},
+  },
+  seqdisty = {
+    lhcb2["E.DS.L1.B2"].mech_sep,
+    -0.4,
+    -0.4 + lhcb2['E.DS.L5.B2'].mech_sep
+  },
+  title    = "IP1-IP5 two angled beam",
+}
+
+-- IP1-IP5 two angled beam bigger
+ip1_ip5 {
+  sid     = newid(),
+  laysize = 0.5,
+  title   = "IP1-IP5 two angled beam bigger",
+}
+
+-- IP1-IP5 two angled beam layout only
+ip1_ip5 {
+  sid   = newid(),
+  table = false,
+}
+
+-- IP1-IP5 two angled beam with script dump
+ip1_ip5 {
+  sid     = newid(),
+  scrdump = true,
+  title   = "IP1-IP5 two angled beam with script dump",
+}
+
+-- IP1-IP5 two angled beam in pdf
+ip1_ip5 {
+  sid    = newid(),
+  output = "plot.pdf",
+  title  = "IP1-IP5 two angled beam in pdf",
+}
+
+-- Layout in plot
+local in_plot = myplot {
+  sid      = newid(),
+  sequence = lhc,
+  laypos   = "in",
+  title    = "Layout in plot",
+}
+
+-- Layout in plot only
+in_plot {
+  sid   = newid(),
+  table = false,
+}
+
+print("press enter to terminate...")
+io.read()
