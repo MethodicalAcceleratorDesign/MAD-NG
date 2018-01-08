@@ -39,7 +39,7 @@ SYNOPSIS
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
   is_metaname, has_metatable, get_metatable,                       (metamethods)
   has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
-  is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+  is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
   is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
   is_modulable, is_powerable, has_member, has_method, has_metamethod,
   is_same, same,                                              (types comparison)
@@ -71,11 +71,11 @@ DESCRIPTION
   - get_metatable is a generic version of getmetatable that works also with
     cdata,
   - has_length, is_iterable, is_mappable, is_indexable, is_callable,
-    is_comparable, is_ordered, is_concatenable, is_stringable, is_tablable,
+    is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
     is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
     is_modulable, is_powerable, has_member, has_method and has_metamethod return
     true if the argument fulfills the concept requirements,
-  - is_stringable and is_tablable check only if the argument supports
+  - is_stringable and is_tableable check only if the argument supports
     respectively the __tostring and the __totable metamethods because objects
     are always stringable and tableable in MAD,
   - has_member, has_method and has_metamethod returns true if argument #1 has
@@ -126,11 +126,11 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
 
 local metaname = {
-  -- list of metanames from lj_obj.h + __init + __exec + __totable
-  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__index',
-  '__init', '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod',
-  '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
-  '__tostring', '__totable', '__unm',
+  -- list of metanames from lj_obj.h + init + exec + copy + kpairs + totable
+  '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
+  '__index', '__init', '__ipairs', '__kpairs', '__le', '__len', '__lt',
+  '__metatable', '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs',
+  '__pow', '__same', '__sub', '__tostring', '__totable', '__unm',
 }
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
@@ -169,6 +169,7 @@ local value_t = { -- list of types that cannot be modified
 local option = {
 
   format = "%.16g",
+  debug  = false,
 
 }
 
@@ -302,10 +303,11 @@ local concept = {
   has_metamethod   = has_metamethod,
 
   is_stringable    = \a -> has_metamethod(a, '__tostring'),
-  is_tablable      = \a -> has_metamethod(a, '__totable' ),
+  is_tableable     = \a -> has_metamethod(a, '__totable' ),
 
   is_callable      = \a -> is_function(a) or has_metamethod(a, '__call'  ),
   is_iterable      = \a -> is_table(a)    or has_metamethod(a, '__ipairs'),
+  is_keyrable      = \a -> is_table(a)    or has_metamethod(a, '__kpairs'),
   is_mappable      = \a -> is_table(a)    or has_metamethod(a, '__pairs' ),
   is_indexable     = \a -> is_table(a)    or has_metamethod(a, '__index' ),
   is_concatenable  = \a -> is_string(a)   or has_metamethod(a, '__concat'),
@@ -318,16 +320,18 @@ local concept = {
   is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   ),
 
   is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
-  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a, '__le', '__lt'),
+  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a,'__le','__lt'),
 
   has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
-  has_constructor  = \a -> has_metamethod(a,'__new'),
-  is_collectable   = \a -> has_metamethod(a,'__gc' ),
+  has_constructor  = \a -> has_metamethod(a,'__new' ),
+  is_collectable   = \a -> has_metamethod(a,'__gc'  ),
+  is_copiable      = \a -> has_metamethod(a,'__copy'),
+  is_sameable      = \a -> has_metamethod(a,'__same'),
 
 }
 
 local is_indexable, is_iterable, is_mappable, is_callable, is_stringable,
-      is_tablable in concept
+      is_tableable, is_copiable, is_sameable in concept
 
 -- methods
 
@@ -409,16 +413,6 @@ end
 
 -- extensions (conversion, factory)
 
-local function totable_ (a, ...)
-  if     is_table(a)    then return a
-  elseif is_string(a)   then return utility.str2tbl(a,...) -- table.concat^-1
-  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
-                        then return {a}
-  elseif is_tablable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
-  else                       return totable(iter(a,...)) -- iterator from lfun
-  end
-end
-
 function tostring_ (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return (string.format(option.format, a))
@@ -428,12 +422,51 @@ function tostring_ (a, ...)
   end
 end
 
-local function same (a, ...)
-  if     value_t[type(a)] or is_complex(a) then return a
-  elseif is_rawtable(a)                    then return {}
-  elseif has_method(a, 'same')             then return a:same(...)
+local function totable_ (a, ...)
+  if     is_table(a)     then return a
+  elseif is_string(a)    then return utility.str2tbl(a,...) -- table.concat^-1
+  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
+                         then return {a}
+  elseif is_tableable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
+  else                        return totable(iter(a,...)) -- iterator from lfun
   end
-  error("invalid argument #1 (clonable object expected)")
+end
+
+function utility.same (a, ...)
+  if    value_t[type(a)] then return a
+  elseif is_sameable(a)  then return rawget(get_metatable(a),'__same')(a, ...)
+  elseif is_table(a)     then return setmetatable({}, getmetatable(a))
+  end
+  error("invalid argument #1 (sameable object expected)")
+end
+
+function table_copy (a, mt_)
+  local na = {}
+  for k,v in next, a do na[k] = v end -- shallow copy
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+function table_deepcopy (a, mt_, xr_)
+  local na = {}
+  xr_ = xr_ or {}
+  xr_[a] = na
+  for k,v in next, a do -- deep copy, keep track of self-xref
+    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
+  end
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+table.copy     = table_copy
+table.deepcopy = table_deepcopy
+
+function utility.copy (a, ...)
+  if    value_t[type(a)] then return a
+  elseif is_copiable(a)  then return rawget(get_metatable(a),'__copy')(a, ...)
+  elseif is_table(a)     then return table_deepcopy(a, ...)
+  end
+  error("invalid argument #1 (copiable object expected)")
 end
 
 -- string interpolation
@@ -471,74 +504,124 @@ end
 string.interp          = utility.strinterp
 getmetatable("").__mod = utility.strinterp
 
--- string triming and splitting
+-- string fast specialized manipulation
 
-local slen = ffi.new 'ssz_t[6]'
+local sarg = ffi.new 'ssz_t[6]'
 
-function utility.strtrim (str)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_trim(str, slen)
-  return (ffi.string(ptr+slen[0], slen[1]))
-end
-
-function utility.strsplit (str, sep)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  assert(is_string(sep), "invalid argument #2 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_split(str, slen, sep)
-  local str1, str2 = ffi.string(ptr+slen[0], slen[1])
-  if slen[4] >= 0 then -- found sep
-    str2 = ffi.string(ptr+slen[2], slen[3])
+function utility.strtrim (str, ini_) -- remove leading and trailing spaces
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_trim(str, sarg)                             -- sarg[0]: index  of str
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str
+  elseif sarg[1] == len then str1 = str -- unchanged
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1])
   end
-  return str1, str2
+  return str1
 end
 
-function utility.strsplitbra (str)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local ptr = _C.mad_str_split_bracket(str, slen)
-  assert(slen[4] < 0 or slen[5] > slen[4], "invalid pair of brackets")
-  local str1, str2, bra = ffi.string(ptr+slen[0], slen[1])
-  if slen[4] >= 0 then
-    str2 = ffi.string(ptr+slen[2], slen[3])
-    bra  = ffi.string(ptr+slen[4], 1)
+function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_quote(str, sarg)                            -- sarg[0]: index  of str (trimmed)
+  assert(ptr ~= nil, "invalid pair of quotes")                       -- sarg[1]: length of str
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing quote or -1
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[3]: type   of quotes
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) --          0: none, 1: "", 2: ''
   end
-  return str1, str2, bra
+  return str1, sarg[2]+1, sarg[3]
 end
 
-function utility.strsplitall (str, sep, res_)
-  assert(is_string(str), "invalid argument #1 (string expected)")
-  assert(is_string(sep), "invalid argument #2 (string expected)")
-  slen[0], slen[1] = 0, #str
-  local res, n = res_ or {}, 1
-  while slen[1] > 0 do
-    local ptr = _C.mad_str_split(str, slen, sep)
-    if slen[1] > 0 then
-      res[n] = ffi.string(ptr+slen[0], slen[1])
-      n, slen[0], slen[1] = n+1, slen[2], slen[3]
+function utility.strsplit (str, seps, ini_) -- split at seps (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_string(seps), "invalid argument #2 (string expected)")
+  assert(is_number(ini_), "invalid argument #3 (number expected)")
+  local len, str1 = #str
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), #seps
+  local ptr = _C.mad_str_split(str, sarg, seps)                      -- sarg[0]: index  of str (trimmed)
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str (trimmed if sep)
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[2]: index  of sep or -1
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) -- sarg[3]: index  of sep in seps or -1
+  end
+  return str1, sarg[2]+1, sarg[3]+1
+end
+
+function utility.strsplitall (str, seps, ini_, res_)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_string(seps), "invalid argument #2 (string expected)")
+  assert(is_number(ini_), "invalid argument #3 (number expected)")
+  seps = '"'.."'"..seps -- add quotes to seps
+  local res, n = res_ or {}, res_ and #res_+1 or 1
+  local len, lsep, ptr = #str, #seps
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), 1
+  while sarg[2] > 0 do
+    ptr = _C.mad_str_quote(str, sarg)             -- try quotes
+    assert(ptr ~= nil, "invalid pair of quotes")
+    if sarg[2] == -1 then                         -- no quotes
+      sarg[2] = lsep
+      ptr = _C.mad_str_split(str, sarg, seps)     -- try seps
+      if sarg[2] > 0 and sarg[3] < 2 then         -- sep is a quote
+        sarg[2] = sarg[2]-1
+      end
     end
+    if sarg[1] == 0
+    then res[n] = ''  -- empty
+    else res[n] = ffi.string(ptr+sarg[0], sarg[1])
+    end
+    n, sarg[0], sarg[1] = n+1, sarg[2]+1, len-(sarg[2]+1)
   end
+  if res[n-1] == '' then table.remove(res) end
   return res
 end
 
-string.trim     = utility.strtrim
-string.split    = utility.strsplit
-string.splitall = utility.strsplitall
-string.splitbra = utility.strsplitbra
-
--- algorithms
-
-local algorithm = {}
-
-function algorithm.kpairs (tbl)
-  local len = rawlen(tbl) -- skip array part
-  return next, tbl, len > 0 and len or nil
+function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  local len, str1, str2 = #str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  local ptr = _C.mad_str_bracket(str, sarg)                          -- sarg[0]: index  of name (trimmed)
+  assert(ptr ~= nil, "invalid pair of brackets")                     -- sarg[1]: length of name (trimmed if brackets)
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing bracket or -1
+  elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[3]: index  of count (trimmed)
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) -- sarg[4]: length of count (trimmed)
+  end                                                                -- sarg[5]: type   of brackets
+  if sarg[2] > 0 then                                                --          0: none, 1: [], 2: {}
+      if sarg[4] == 0   then str2 = '' -- empty
+      else                   str2 = ffi.string(ptr+sarg[3], sarg[4])
+      end
+  end
+  return str1, str2, sarg[2]+1, sarg[5]
 end
 
-_G.kpairs = algorithm.kpairs
+string.trim     = utility.strtrim
+string.quote    = utility.strquote
+string.split    = utility.strsplit
+string.bracket  = utility.strbracket
+string.splitall = utility.strsplitall
 
-function algorithm.bsearch (tbl, val, cmp_, low_, high_)
+-- iterator
+
+function utility.kpairs (tbl)
+  local init, iter = get_metamethod(tbl, '__kpairs')
+  if iter then return iter(tbl) end
+  init, iter = #tbl, pairs(tbl) -- follow __len and __pairs
+  if init == 0 then init = nil end
+  return iter, tbl, init
+end
+
+_G.kpairs = utility.kpairs
+
+-- searching
+
+function utility.bsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(cmp_) and is_nil(high_) then
     low_, high_, cmp_ = cmp_, low_ -- right shift
@@ -560,7 +643,7 @@ function algorithm.bsearch (tbl, val, cmp_, low_, high_)
   return low -- tbl[low] <= val
 end
 
-function algorithm.lsearch (tbl, val, equ_, low_, high_)
+function utility.lsearch (tbl, val, equ_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(equ_) and is_nil(high_) then
     low_, high_, equ_ = equ_, low_ -- right shift
@@ -584,9 +667,7 @@ return {
   concept   = concept,
   utility   = utility,
   operator  = operator,
-  algorithm = algorithm,
 
-  same      = same,
   totable   = totable_,
   tostring  = tostring_,
 

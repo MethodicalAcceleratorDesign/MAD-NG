@@ -30,8 +30,10 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname                      in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
 local is_callable, is_iterable, is_mappable                     in MAD.concept
-local bsearch, lsearch                                          in MAD.algorithm
+local bsearch, lsearch                                          in MAD.utility
 local functor                                                   in MAD.gfunc
+
+local strsub = string.sub
 
 -- implementation -------------------------------------------------------------o
 
@@ -56,7 +58,8 @@ local var0 = setmetatable({}, {
 -- helpers
 
 local function name (a)
-  return rawget(rawget(a,_var),'__id') or ('? <: ' .. a.name)
+  local var = rawget(a,_var)
+  return rawget(var,'__id') or ('? <: ' .. var.__id)
 end
 
 local function init (a)
@@ -100,13 +103,13 @@ local MT = {}
 
 -- objects are proxies controlling variables access and inheritance
 function MT:__call (a, b) -- object constructor (define the object-model)
-  if is_string(a) then                                  -- named object
+  if is_string(a) or is_nil(a) then                     -- [un]named object
     if is_nil(b) then
       local obj = {__id=a, [_var]=var0, __index=rawget(self,_var)} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
       local obj = {[_var]=b, __index=rawget(self,_var)} -- proxy
-      b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
+      b.__id=a ; setmetatable(b, obj) ; set_class(self)-- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
@@ -162,8 +165,9 @@ function MT:__index (k)         -- reusing var_raw and var_val kills the inlinin
 end
 
 function MT:__newindex (k, v)
-  if freadonly(self) then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  if freadonly(self) or is_string(k) and strsub(k,1,2) == '__' then
+    error("forbidden write access to '" .. name(self) ..
+          "' (readonly object or variable)", 2)
   end
   rawget(self,_var)[k] = v      -- warning: must use [k] for var0
 end
@@ -178,7 +182,11 @@ function MT:__len ()
   return rawlen(var)
 end
 
-local function pairs_iter_ (var, key) -- scan only strings
+local function ipairs_iter (self)
+  return ipairs(rawget(self,_var))
+end
+
+local function kpairs_iter_ (var, key) -- scan only strings
   local k, v = next(var, key)
   while not (is_nil(k) or is_string(k)) do
     k, v = next(var, k)
@@ -186,18 +194,15 @@ local function pairs_iter_ (var, key) -- scan only strings
   return k, v
 end
 
-local function pairs_iter (self)
+local function kpairs_iter (self)
   local var = rawget(self,_var)
   local n = rawlen(var) -- skip array part
-  return pairs_iter_, var, n > 0 and n or nil
+  return kpairs_iter_, var, n > 0 and n or nil
 end
 
-local function ipairs_iter (self)
-  return ipairs(rawget(self,_var))
-end
-
-MT.__pairs  =  pairs_iter
 MT.__ipairs = ipairs_iter
+MT.__kpairs = kpairs_iter
+MT.__pairs  = kpairs_iter
 
 function MT:__tostring()
   return string.format("'%s' <object> %p", name(self), self)
@@ -308,8 +313,8 @@ local function get_varkeys (self, class_)
   assert(is_object(class_), "invalid argument #2 (object expected)")
   local lst, key = {}, {}
   while self and not rawequal(self, class_) do
-    for k,v in pairs_iter(self) do
-      if not (key[k] or is_functor(v)) and string.sub(k,1,2) ~= '__' then
+    for k,v in kpairs_iter(self) do
+      if not (key[k] or is_functor(v)) and strsub(k,1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
     end
@@ -362,7 +367,7 @@ local function clear_variables (self)
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  for k in pairs_iter(self) do rawset(var, k, nil) end
+  for k in kpairs_iter(self) do rawset(var, k, nil) end
   rawset(var, '__id', id)
   return self
 end
@@ -373,11 +378,42 @@ local function clear_all (self)
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for i in ipairs_iter(self) do rawset(var, i, nil) end
-  for k in  pairs_iter(self) do rawset(var, k, nil) end
+  for k in kpairs_iter(self) do rawset(var, k, nil) end
   -- table.clear(var) would destroy hidden keys
   rawset(var, '__id', id)
   return self
 end
+
+-- copy
+
+local function same (self, name_)
+  assert(is_object(self),"invalid argument #1 (object expected)")
+ -- same shares the same parent
+  local par = parent(self)
+  local sam = par(name_, {})
+  -- metatable
+  local sm, pm = getmetatable(self), getmetatable(par)
+  if sm ~= pm then -- copy metatable
+    local cm={} for k,v in pairs(sm) do cm[k] = v end
+    setmetatable(sam, cm)
+  end
+  return sam
+end
+
+local function copy (self, name_)
+  assert(is_object(self),"invalid argument #1 (object expected)")
+  local cpy = same(self, name_)
+  -- data
+  local var = rawget(cpy,_var)
+  local id  = rawget(var,'__id')
+  for i,v in ipairs_iter(self) do rawset(var, i, v) end
+  for k,v in kpairs_iter(self) do rawset(var, k, v) end
+  rawset(var, '__id', id)
+  return cpy
+end
+
+MT.__same = same
+MT.__copy = copy
 
 -- flags
 
@@ -494,8 +530,8 @@ local function strdump (self, class_, pattern_)
     res[#res+1] = spc .. "+ " .. tostring(self)
     spc = spc .. "   "
     -- variables
-    for k,v in pairs_iter(self) do
-      if string.sub(k,1,2) ~= '__' and string.find(k, pattern_) then
+    for k,v in kpairs_iter(self) do
+      if strsub(k,1,2) ~= '__' and string.find(k, pattern_) then
         str = spc .. tostring(k)
         if is_string(v) then
           str = str .. " : '" .. tostring(v):sub(1,15) .. "'"
@@ -548,6 +584,9 @@ M.sort_array      = functor( sort_array      )
 M.clear_array     = functor( clear_array     )
 M.clear_variables = functor( clear_variables )
 M.clear_all       = functor( clear_all       )
+
+M.same            = functor( same            )
+M.copy            = functor( copy            )
 
 M.raw_len         = functor( raw_len         )
 M.raw_get         = functor( raw_get         )
