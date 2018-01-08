@@ -134,19 +134,19 @@ local _elem, _eidx, _epos, _spos, _len = {}, {}, {}, {}, {}
 
 -- defined in elements
 sequence :set { direction=1, refer='centre', l=0,
-                [_elem]={}, [_eidx]={}, [_epos]={}, [_spos]={} }
+                [_elem]={}, [_eidx]={}, [_epos]={}, [_spos]={}, [_len]=0 }
 
 local function is_sequence (a)
-  return is_table(a) and var_raw(a, _elem) ~= nil
+  return is_table(a) and a[_elem] ~= nil
 end
 
 local function is_orig_sequence (a)
-  return is_table(a) and raw_get(a, _elem) ~= nil
+  return is_sequence(a) and raw_get(a, _elem) ~= nil
 end
 
 local function original (a)
   while raw_get(a, _elem) == nil do a = a.__par end
-  assert(a ~= sequence, "no original sequence found")
+  assert(not rawequal(a,sequence), "no original sequence found")
   return a
 end
 
@@ -235,7 +235,7 @@ end
 -- get index from signed index (direct)
 local function index_of_idx (seq, idx)
   assert(is_number(idx), "invalid argument #2 (index expected)")
-  local n = #seq
+  local n = var_raw(seq,_len)
   if idx < 0 then idx = n+idx+1 end -- reflect
   if idx < 1 or idx > n then return nil end
   return idx
@@ -596,25 +596,27 @@ local function flatten_sequ (seq, flat, sref)
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
--- build sequence -------------------------------------------------------------o
+-- dict helper ----------------------------------------------------------------o
 
 -- build dictionnary name -> idx
 local function build_index (seq)    -- must be very fast
-  local ei = seq[_eidx]
+  local ei = var_raw(seq,_eidx)
   table.clear(ei)                   -- reuse main storage
-  for idx,elm in ipairs(seq[_elem]) do
+  for idx,elm in ipairs(var_raw(seq,_elem)) do
     local nam = elm.__id
     local val = ei[nam]
-    if is_nil(val) then             -- none: name -> idx
+    if is_nil(val) then             -- none: scalar
       ei[nam] = idx
-    elseif is_number(val) then      -- one : create array
+    elseif is_number(val) then      -- one : scalar to array
       ei[nam] = {val, idx, [_len]=2}
     else                            -- many: append
-      local len = val[_len]+1
-      val[len], val[_len] = idx, len
+      local n = val[_len]+1
+      val[n], val[_len] = idx, n
     end
   end
 end
+
+-- build sequence -------------------------------------------------------------o
 
 -- finalize sequence
 local function finish_sequ (seq)
@@ -623,19 +625,24 @@ local function finish_sequ (seq)
   rawset(seq, _lastfrompos, nil)
 
   -- sanity checks
-  if MAD.option.debug then
+  if (MAD.option.debug or 0) >= 2 then
     check_mark(seq)
     check_spos(seq)
     check_dict(seq) -- remove $start/$end marker aliases
   end
 
+  -- set sequence length
+  local n = #var_raw(seq,_elem)
+  seq[_len] = n
+
   -- $start/$end markers aliases
-  seq[_eidx]['#s'], seq[_eidx]['#S'] = 1, 1
-  seq[_eidx]['#e'], seq[_eidx]['#E'] = #seq, #seq
+  local ei = var_raw(seq,_eidx)
+  ei['#s'], ei['#S'] = 1, 1
+  ei['#e'], ei['#E'] = n, n
 end
 
 -- sequence init (build)
-local function sequence_init (seq)
+local function sequ_init (seq)
   local n = seq:raw_len()
   if n == 0 then return seq end -- empty
 
@@ -643,39 +650,22 @@ local function sequence_init (seq)
   flatten_sequ(seq, flat, sref)
   seq:clear_array()
 
-  seq[_elem], seq[_eidx] = flat, table.new(#flat,0)
+  local ne = #flat
+  seq[_elem], seq[_eidx] = flat, table.new(ne,0)
   build_index(seq, flat)
 
-  seq[_epos], seq[_spos] = table.new(#seq,0), table.new(#seq,0)
+  seq[_epos], seq[_spos] = table.new(ne,0), table.new(ne,0)
   build_pos(seq, sref)
 
   finish_sequ(seq)
   return seq
 end
 
--- copy -----------------------------------------------------------------------o
-
-local function sequence_copy (seq, name_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local cpy = seq_cpy(seq, name_)
-  if not is_orig_sequence(seq) then return cpy end
-
-  local n, elem1, epos1, spos1 = #seq, seq[_elem], seq[_epos], seq[_spos]
-  local elem2, epos2, spos2 = table.new(n,0), table.new(n,0), table.new(n,0)
-  for i=1,n do
-    elem2[i], epos2[i], spos2[i] = elem1[i], epos1[i], spos1[i]
-  end
-  cpy[_elem], cpy[_epos], cpy[_spos], cpy[_eidx] = elem2, epos2, spos2, table.new(0,n)
-  build_index(cpy)
-  finish_sequ(cpy)
-  return cpy
-end
-
 -- sequence metamethods -------------------------------------------------------o
 
 -- count proxy
 local function cnt_iter (s, i)
-  i = i + 1
+  i = i+1
   local ei = s[_eidx][i]
   if ei then return i, s[_elem][ei] end
 end
@@ -685,7 +675,11 @@ local cnt_mt = {
   __index     =\s,i -> s[_elem][s[_eidx][i]],
   __pairs     =\s   -> cnt_iter, s, 0,
   __ipairs    =\s   -> cnt_iter, s, 0,
-  __newindex := error("forbidden write access to counts", 2),
+  __tostring  =\s   -> string.format("<sequence count> %p", s),
+
+  __newindex := error("forbidden write access to counts"  , 2),
+  __kpairs   := error("invalid use of counts (use ipairs)", 2),
+  __pairs    := error("invalid use of counts (use ipairs)", 2),
 }
 
 -- iterator over elements
@@ -695,28 +689,25 @@ end
 
 -- number of elements
 local function len_mm (seq)
-  return rawlen(var_raw(seq,_elem))
+  return var_raw(seq,_len)
 end
 
 -- read access precedence: element index, variable key, element name.
 local function index_mm (seq, key)
   -- element index
-  if is_number(key) then
-    local elm = var_raw(seq,_elem)
-    if key < 0 then key = rawlen(elm) + key end
-    return elm[key]
+  if is_number(key) then                              -- see index_of_idx
+    if key < 0 then key = var_raw(seq,_len)+key+1 end -- reflect
+    return var_raw(seq,_elem)[key]
   end
   -- variable
   local var = var_raw(seq, key)
-  if var then
-    return var_val(seq, key, var)
-  end
+  if var then return var_val(seq, key, var) end
   -- element name
-  local idx = var_raw(seq,_eidx)[key]
+  local elm, idx = var_raw(seq,_elem), var_raw(seq,_eidx)[key]
   if is_number(idx) then
-    return var_raw(seq,_elem)[idx]
+    return elm[idx]
   elseif is_table(idx) then
-    return setmetatable({[_eidx]=idx, [_elem]=var_raw(seq,_elem)}, cnt_mt)
+    return setmetatable({[_eidx]=idx, [_elem]=elm}, cnt_mt)
   end
 end
 
@@ -875,16 +866,20 @@ local function deselect (seq, flg_, rng_, sel_, not_)
   return seq:foreach(f, rng_, sel_, not_)
 end
 
-local do_filter = \elm,idx,e,i => local j = #elm+1 ; elm[j],idx[j] = e,i end
+local do_filter = \idx,_,i => local n = idx[_len]+1
+                              idx[n], idx[_len] = i, n
+                              end
 
 local function filter (seq, rng_, sel_, not_)
-  local elm, idx = {}, {}
-  local f = bind2st(do_filter, elm, idx)
+  local idx = table_new(16,1)
+  local f = bind1st(do_filter, idx)
+  idx[_len] = 0
   seq:foreach(f, rng_, sel_, not_)
-  return elm, idx
+  idx[_len] = nil
+  return idx
 end
 
--- methods (R/W, update dict) -------------------------------------------------o
+-- methods (R/W, rebuild dict) ------------------------------------------------o
 
 local function rebuild_index (seq)
   assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
@@ -896,16 +891,18 @@ end
 local function remove (seq, rng_, sel_)
   assert(is_orig_sequence(seq), "invalid argument #1 (original sequence expected)")
 
-  -- collect elements and indexes to remove
-  local elm_r, idx_r = filter(seq, rng_, sel_, true)
+  -- collect indexes of elements to remove
+  local idx_r = filter(seq, rng_, sel_, true)
   local nr = #idx_r
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- remove elements by decreasing indexes
+  local elm_r = table_new(nr,0)
   local elem, spos, epos = seq[_elem], seq[_spos], seq[_epos]
   for i=nr,1,-1 do
     local ii = idx_r[i]
+    elm_r[i] = elem[ii] -- backup
     table_remove(elem, ii)
     table_remove(spos, ii)
     table_remove(epos, ii)
@@ -934,16 +931,18 @@ local function replace (seq, elm, rng_, sel_)
     end
   end
 
-  -- collect elements and indexes to replace
-  local elm_r, idx_r = filter(seq, rng_, sel_, true)
+  -- collect indexes of elements to replace
+  local idx_r = filter(seq, rng_, sel_, true)
   local nr = #idx_r
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- replace elements
+  local elm_r = table_new(nr,0)
   local elem, spos, epos = seq[_elem], seq[_spos], seq[_epos]
   for i=1,nr do
     local ii, ie = idx_r[i], (i-1)%ne+1   -- recycle list of elements
+    elm_r[i] = elem[ii] -- backup
     elem[ii], spos[ii], epos[ii] = elm[ie], uninitialized, uninitialized
     elem_pos(seq, ii) -- recompute the positions
   end
@@ -964,8 +963,8 @@ local function insert (seq, elm, rng_, sel_)
   local ne = #elm
   if ne == 0 then return end
 
-  -- collect reference indexes where to insert
-  local _, idx_r = filter(seq, rng_, sel_, true)
+  -- collect indexes of reference where to insert
+  local idx_r = filter(seq, rng_, sel_, true)
   local nr = #idx_r
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
@@ -1018,7 +1017,23 @@ local function insert (seq, elm, rng_, sel_)
   return seq
 end
 
--- flags ----------------------------------------------------------------------o
+local function copy (seq, name_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local cpy = seq_cpy(seq, name_)
+  if not is_orig_sequence(seq) then return cpy end
+
+  local n, elem1, epos1, spos1 = #seq, seq[_elem], seq[_epos], seq[_spos]
+  local elem2, epos2, spos2 = table.new(n,0), table.new(n,0), table.new(n,0)
+  for i=1,n do
+    elem2[i], epos2[i], spos2[i] = elem1[i], epos1[i], spos1[i]
+  end
+  cpy[_elem], cpy[_epos], cpy[_spos], cpy[_eidx] = elem2, epos2, spos2, table.new(0,n)
+
+  rebuild_index(cpy)
+  return cpy
+end
+
+-- special --------------------------------------------------------------------o
 
 local function cycle (seq, elm)
   assert(is_sequence(seq)  , "invalid argument #1 (sequence expected)")
@@ -1235,16 +1250,22 @@ sequence :set_functions {
   remove        = remove,
   replace       = replace,
   insert        = insert,
+  copy          = copy,
+
   share         = share,
   unique        = unique,
-
   cycle         = cycle,
-  iter          = iter,
-  copy          = sequence_copy,
 
+  iter          = iter,
+
+  -- flags
   save_flags    = save_flags,
   drop_flags    = drop_flags,
   restore_flags = restore_flags,
+
+  -- read/write
+  read         := error("NYI", 2), -- TODO (possible?)
+  write        := error("NYI", 2), -- TODO
 
   -- debug
   rebuild_index = rebuild_index,
@@ -1258,8 +1279,8 @@ sequence :set_functions {
   __newindex    = newindex_mm,
   __ipairs      = ipairs_mm,
 
-  __copy        = sequence_copy,
-  __init        = sequence_init,
+  __copy        = copy,
+  __init        = sequ_init,
 
 }, true) :set_readonly()
 
