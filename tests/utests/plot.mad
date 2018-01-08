@@ -1,12 +1,12 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Plot module regression tests and demo
+ | Plot module regression tests
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          A.Z. Teska, aleksandra.teska at cern.ch
+ |          A. Bloch, aurelien.bloch at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -22,318 +22,82 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local plot in MAD
-
 -- locals ---------------------------------------------------------------------o
 
-local pi in math
-local track, beam, functor, option, survey, vector             in MAD
-local assertNil, assertNotNil, assertTrue, assertEquals        in MAD.utest
-local drift, marker, quadrupole, sequence, monitor, hkicker,
-      vkicker, multipole,  sbend, sextupole, patch, collimator in MAD.element
+local plot in MAD
 
--- plotting -------------------------------------------------------------------o
---[[
--- LHC
+-- helpers --------------------------------------------------------------------o
+
+local saveDump   = false
+local lhc        = false
+local refFolder  = "./PlotTests/"
+local testFolder = "./PlotTestsGen/"
+
 local function loadLHC()
-  assertNotNil(require 'lhc_as-built_gen')
-  assertNotNil(require 'lhc_as-built_set')
-  assertNotNil(require 'lhc_undefvar'    )
-  assertNotNil(require 'opt_inj_gen'     )
+  if lhc then
+    assertNotNil(require 'lhc_as-built_gen')
+    assertNotNil(require 'lhc_as-built_set')
+    assertNotNil(require 'lhc_undefvar'    )
+    assertNotNil(require 'opt_inj_gen'     )
 
-  local lhcb1, lhcb2 in MADX
-  assertEquals(#lhcb1, 6677)
-  assertEquals(#lhcb2, 6676)
-  return lhcb1, lhcb2
+    local lhcb1, lhcb2 in MADX
+    assertEquals(#lhcb1, 6677)
+    assertEquals(#lhcb2, 6676)
+
+    lhcb1:select(observe)
+    lhcb2:select(observe)
+
+    lhc = true
+  end
+  return MADX.lhcb1, MADX.lhcb2
 end
 
-local lhcb1, lhcb2 = loadLHC()
-local beam = beam { particle='proton', energy=450 }
-local tblLHC  = track  { sequence=lhcb1, beam=beam }
-local tblLHC1 = survey { sequence=lhcb1 }
-local tblLHC2 = survey { sequence=lhcb2 }
+local function assertFiles(name)
+  local ref  = io.open(refFolder  .. name)
+  local test = io.open(testFolder .. name)
+  local line = 1
+  while true do
+    local refline  = ref:read("*line")
+    local testline = test:read("*line")
+    if refline == nil or testline == nil then break end
+    if refline ~= testline then
+      error(
+        "expected: '" .. refline ..
+        "', actual: '" .. testline ..
+        "' at line: " .. line
+      )
+    end
+    line = line + 1
+  end
+  if not saveDump then os.remove(testFolder .. name) end
+end
 
-plot {
-  filename = "lhcIP5.pdf",
-  scrdump = true,
-  table = tblLHC,
-  sequence = lhcb1,
-  range = {'E.DS.L5.B1','S.DS.R5.B1'},
-  xaxis = 's',
-  yaxis = {'x','y'},
-  plotstyle = 'linespoints',
-}
+local function getMyPlot(name)
+  return plot { output = false, scrdump = testFolder .. name, exec = false}
+end
 
-plot 'sps' {
-  window = "size 800, 800",
-  table = tblLHC1,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  --pointsizes = {z=0.1},
-  --key = "off",
-}
+-- regression test suite ------------------------------------------------------o
 
-plot {
-  continue = true,
-  table  = tblLHC2,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  colors = {z = 'green'},
-  pointsizes = {z=0.1},
-  key = "off",
-}
-]]
+TestPlot = {}
 
---[[
-plot {
-  scrdump = true,
-  filename = "lhcIP5survey.pdf",
-  window = "size 20 cm, 20 cm",
-  table = tblLHC1,
-  data = LHC,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  pointsizes = {z=0.1},
-  --xaxis2 = 'y',
-  --yaxis2 = 'd',
-  --axes = { d="x2y2" },
-  --plotstyle = 'points',
-}
-]]
+-- TODO Cleaner + cross platform
+function TestPlot:setUp ()
+  os.execute("mkdir -p " .. testFolder)
+end
 
-local lcell  = 20
-local lquad  = 5
-local ip   = marker     'ip'{}
-local kqf  =  1.4631475E-02
-local kqd  = -1.4643443E-02
-local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf }
-local qd   = quadrupole 'qd'{ l=lquad, k1:= kqd }
-local seq = sequence 'fodo1' {l = lcell, refer = 'entry',
-  --ip 'IP1' { at = 0 },
-  qf 'QF1' { at = 0 },
-  qd 'QD1' { at = 15},
-  --ip 'IP2' { at = lcell },
-}
-local tbl = survey { sequence=seq, X0={-1e-4, 2e-6, 0}, A0={0, 0, 3e-7}}
---[[
-plot {
-  scrdump = true,
-  filename = "testlayout.pdf",
-  table    = tbl,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  plotstyle = 'linespoints',
-  sequence = seq,
-  range = {'QF1','QD1' },
-  --range = {'QD1','IP2' },
-  --hlimit = {0,20},
-  --refer = 'entry',
-  refer = 'center',
-}
-]]
+function TestPlot:tearDown ()
+  if not saveDump then
+    os.remove(testFolder)
+  end
+end
 
---SPS line
-local circum = 6912.0
-local ncell  = 108
-local lcell  = circum/ncell
-local lsb    = 3.
-local lquad  = 3.085
-local lquad2 = lquad/2.
-local lsex   = 1.0
-local ip  = marker     'ip'{}
-local dr = drift      'dr'{}
-local asb = 2.0*pi/(8*108)
-local sb  = multipole     'sb'{ knl = asb }
-local kqf  =  1.4631475E-02
-local kqd  = -1.4643443E-02
-local qf  = quadrupole 'qf'{ l=lquad, k1:= kqf }
-local qd  = quadrupole 'qd'{ l=lquad, k1:= kdf }
-local ksf =  2.0284442E-02
-local ksd = -3.8394267E-02
-local sf  = sextupole 'sf' {l=lsex,  k2:=ksf}
-local sd  = sextupole 'sd' {l=lsex,  k2:=ksd}
-local bpm = collimator 'bpm'  {l=0.1}
-local ch  = hkicker 'ch'   {l=0.1}
-local cv  = vkicker 'vh'   {l=0.1}
-local seq = sequence 'fodo1' {l = lcell, dir =1, refer = 'centre',
-  ip  'IP1'  { at = 0        },
-  qf  'QF1'  { at = lquad2},
-  sf  'SF1'  { at = lquad2   +  2.5},
-  ch  'CH1'  { at = lquad2   +  3.1},
-  bpm 'BPM1' { at = lquad2   +  3.2},
-  sb  'SB1'  { at = lquad2   +  3.5},
-  sb  'SB2'  { at = lquad2   +  9.9},
-  sb  'SB3'  { at = lquad2   +  22.1},
-  sb  'SB4'  { at = lquad2   +  28.5},
-  qd  'QD1'  { at = lquad2   +  32},
-  sd  'SD1'  { at = lquad2   +  34.5},
-  cv  'CV1'  { at = lquad2   +  35.1},
-  bpm 'BPM2' { at = lquad2   +  35.2},
-  sb  'SB1'  { at = lquad2   +  35.5},
-  sb  'SB2'  { at = lquad2   +  41.9},
-  sb  'SB3'  { at = lquad2   +  54.1},
-  sb  'SB4'  { at = lquad2   +  60.5},
-  ip  'IP2'  { at = lcell    },
-}
+function TestPlot:testEmptyPlot()
+  local name   = "testEmptyPlot"
+  local myplot = getMyPlot(name)
+  myplot { }
+  assertFiles(name)
+end
 
-local tblSPS = survey { sequence=seq, X0={-1e-4, 2e-6, 0}, A0={1, 2, 3e-7}}
 
---DEMO
--- x11 termial + name from plot
-plot 'sps' {
-
-  --scrdump = true,
-  table = tblSPS,
-  xaxis = 's',
-  yaxis = {'x','y'},
-  key   = "off",
-  plotstyle = 'linespoints',
-  ymax   = 200,
-  yrange = {-20,100},
-  title  = "$name MAD $version",
-  xlabel = "s [m]",
-  datrange  = 1..20,
-  axespairs = { x1 = {'y1', 'y2'} },
-}
--- continue plotting + point style choice
-plot {
-  scrdump   = true,
-  multiplot = true,
-  key = "off",
-  data   = {s = vector(20):fill(1..20),
-            z = vector(20):fill(1..20)},
-  xaxis = 's',
-
-  yaxis = 'z',
-  colors     = {z="green"},
-  pointtypes = {z=10},
-  pointsizes = {z=2 },
-}
-
--- save to file + save script +  sequence
-plot {
-  --scrdump = true,
-  filename = "test.pdf",
-  table    = tblSPS,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  vkeys    = { x = 'm'},
-  plotstyle = 'linespoints',
-  sequence = seq,
-}
--- data src only + continue saving to pdf
-plot  'data'{
-  --scrdump = true,
-  filename = "test.pdf",
-  title  = "$name MAD $version",
-  data  = {x = vector(20):fill(1..20),
-           y = vector(20):fill(1..20):map\x x^2},
-  xaxis = 'x',
-  yaxis = 'y',
-  plotstyle = 'lines',
-}
-
-plot {
-  filename = "x1x2.pdf",
-  scrdump = true,
-  data = {x = vector(20):fill(1..20 ),
-          d = vector(20):fill(21..40),
-          y = vector(20):fill(1..20):map\x x*2,
-          z = vector(20):fill(1..20):map\x x^2},
-  xaxis  = 'x',
-  xaxis2 = 'd',                                    --different to table for that('x1' -> {'x', '1'})
-  yaxis  = 'z',
-  yaxis2 = 'y',
-  pointtypes = { z=10 },
-  plotstyle  = "linespoints",
-  colors     = { z='pink' } ,
-}
---[[
-
-plot {
-  filename = "test.pdf",
-  table = tblSPS,
-  sequence = seq,
-  xaxis = 's',
-  yaxis = {'x','y','z'},
-  plotstyle = "lines",
-  dashtypes = { x = "'-'" },
-  vmargin   = 0.2,
-  scrdump  = true,
-}
-
--- table and data
-plot {
-  filename = "test.pdf",
-  table = tblSPS,
-  data  = {d = tblSPS.x:map\x x^2},
-  xaxis = 's',
-  yaxis = {'x','y','d'},
-  pointtype = { x = 10 },
-}
-
--- vertical multiaxes
-plot {
-  filename = "test.pdf",
-  table   = tblSPS,
-  xaxis   = 's',
-  yaxis   = {'x', 'z'},
-  yaxis2  = {'y'},
-  vlimit  = {-100,70},
-  --vlimit2 = {-5 ,5 },
-}
-
--- horizontal multiaxes
-plot {
-  filename = "test.pdf",
-  table   = tblSPS,
-  xaxis   = 's',
-  xaxis2  = 's',
-  yaxis   = 'x',
-  yaxis2  = 'z',
-  title   = "TITLE",
-}
-
--- change of axis names and size + change of title, no title option
-plot {
-  preamble = "test plot",
-  filename = "test.pdf",
-  table    = tblSPS,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  hlimit = {0, 50},
-  vlimit = {-10, 100},
-  key = "right top",
-  xlabel  = "x limited",
-  ylabel  = "y limited",
-  grid = 'nogrid',
-  title   = " ",
-  hmargin = true,
-  vmargin = 0.3,
-}
-
-plot 'sps' {
-  id =2 ,
-  scrdump = true,
-  window = "size 800, 800",
---  hmargin = true,
-  table = tblLHC1,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  pointsizes = {z=0.1},
-  key = "off",
-}
-]]
---[[
-plot {
-  filename = "testrng.pdf",
-  table = tblSPS,
-  xaxis = 's',
-  yaxis = 'y',
-  --datrange = {0 ,50},
-  --datrange = {1,-1 },
-  --datrange = 1..10,
-}
-]]
 
 -- end ------------------------------------------------------------------------o
