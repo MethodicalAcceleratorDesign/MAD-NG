@@ -77,9 +77,11 @@ local table_new, table_clear, table_insert, table_remove =
 
 -- root object ----------------------------------------------------------------o
 
--- hidden keys: data (columns), (row_name,index) dict, selected rows,
---              reference column for dict, nrow, ncol, #data or #ridx[key].
-local _data, _ridx, _rsel, _cref, _rlen, _clen, _len = {},{},{},{},{},{},{}
+-- hidden keys: data (columns), (row_name,index) dict, selected rows.
+local _data, _ridx, _rsel = {},{},{}
+
+-- hidden keys: reference column, nrow, ncol, #data or #ridx[key].
+local _cref, _rlen, _clen, _len = {},{},{},{}
 
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
@@ -114,15 +116,15 @@ end
 
 -- check dictionnary of name -> idx
 local function check_dict (tbl)
-  local cref = var_raw(tbl,_data)[_cref]
-  if is_nil(cref) then return end
   local ridx = var_raw(tbl,_ridx)
+  local cref = ridx[_cref]
+  if is_nil(cref) then return end
   for rn,ri in pairs(ridx) do   -- name -> index or table of indexes
     if is_number(ri) then
       assert(cref[ri] == rn     , "unexpected corrupted dictionnary")
     elseif is_table(ri) then
       assert(cref[ri[1]] == rn  , "unexpected corrupted dictionnary")
-      for i=2,ri[_len] do
+      for i=2,ri.n do
         assert(ri[i-1] < ri[i]  , "unexpected corrupted dictionnary")
         assert(cref[ri[i]] == rn, "unexpected corrupted dictionnary")
       end
@@ -149,7 +151,7 @@ local function index_of_cnam (tbl, nam, cnt_)
   if is_table(ri) then
     cnt_ = cnt_ or 1
     assert(is_number(cnt_), "invalid argument #3 (count expected)")
-    if cnt_ < 0 then cnt_ = ri[_len]+cnt_+1 end -- reflect
+    if cnt_ < 0 then cnt_ = ri.n+cnt_+1 end -- reflect
     return ri[cnt_]
   end
   return ri
@@ -168,11 +170,11 @@ local function index_of_rnam (tbl, nam, cnt_, idx_)
            (cnt_ == -1 and ri <= idx_ and ri) or nil
   end
   if cnt_ > 0 then
-    for i=1,ri[_len] do
+    for i=1,ri.n do
       if ri[i] >= idx_ then return ri[i+cnt_-1] end
     end
   elseif cnt_ < 0 then
-    for i=1,ri[_len] do
+    for i=1,ri.n do
       if ri[i] >  idx_ then return ri[i+cnt_  ] end
     end
   end
@@ -195,15 +197,16 @@ end
 local function name_of_idx (tbl, idx)
   idx = index_of_idx(tbl, idx)
   if is_nil(idx) then return nil end
-  local cref = var_raw(tbl,_data)[_cref]
+  local ridx = var_raw(tbl,_ridx)
+  local cref = ridx[_cref]
   assert(cref, "no reference column found")
   local nam = cref[idx]
-  local ri = var_raw(tbl,_ridx)[nam]
+  local ri = ridx[nam]
   if is_number(ri) then
     assert(ri == idx, "unexpected corrupted dictionnary")
     return nam
   end
-  for i=1,ri[_len] do
+  for i=1,ri.n do
     if ri[i] == idx then
       return string.format("%s[%d]", nam, i)
     end
@@ -214,60 +217,60 @@ end
 -- dict helpers ---------------------------------------------------------------o
 
 -- insert to dictionnary name -> idx (warning: indexes are not shifted)
-local function ins_index (tbl_, nam, idx, ridx_)
-  local ri  = ridx_ or var_raw(tbl_,_ridx)
-  local val = ri[nam]
+local function ins_idx (ridx, idx)
+  local nam = ridx[_cref][idx]
+  local val = ridx[nam]
   if is_nil(val) then             -- none: scalar
-    ri[nam] = idx
+    ridx[nam] = idx
   elseif is_number(val) then      -- one : scalar to array
-    ri[nam] = val > idx and {idx, val, [_len]=2} or {val, idx, [_len]=2}
+    ridx[nam] = val > idx and {idx, val, n=2} or {val, idx, n=2}
   else                            -- many: insert
-    local i, n = 1, val[_len]
+    local i, n = 1, val.n
     while i <= n and idx <= val[i] do i = i+1 end
-    table_insert(val, i, idx)
-    val[_len] = n+1
+    while i <= n do val[i], idx, i = idx, val[i], i+1 end
+    val.n, val[i] = i, idx
   end
 end
 
 -- remove from dictionnary name -> idx (warning: indexes are not shifted)
-local function rem_index (tbl_, nam, idx, ridx_)
-  local ri  = ridx_ or var_raw(tbl_,_ridx)
-  local val = ri[nam]
+local function rem_idx (ridx, idx)
+  local nam = ridx[_cref][idx]
+  local val = ridx[nam]
   if is_number(val) then          -- one : delete
-    ri[nam] = nil
-  elseif val[_len] == 2 then      -- two : array to scalar
-    ri[nam] = val[1] == idx and val[2] or val[1]
+    ridx[nam] = nil
+  elseif val.n == 2 then          -- two : array to scalar
+    ridx[nam] = val[1] == idx and val[2] or val[1]
   else                            -- many: remove
-    local i, n = 1, val[_len]
-    while i <= n and idx <= val[i] do i = i+1 end
-    table_remove(val, i)
-    val[_len] = n-1
+    local i, n = 1, val.n
+    while idx < val[i] do i = i+1 end
+    assert(idx == val[i], "unexpected corrupted dictionnary")
+    while i < n do val[i], i = val[i+1], i+1 end
+    val.n, val[i] = i-1, nil
   end
 end
 
 -- add to dictionnary name -> idx (warning: indexes are not shifted)
-local function add_index (tbl_, nam, idx, ridx_)
-  local ri  = ridx_ or var_raw(tbl_,_ridx)
-  local val = ri[nam]
+local function add_idx (ridx, idx)
+  local nam = ridx[_cref][idx]
+  local val = ridx[nam]
   if is_nil(val) then             -- none: scalar
-    ri[nam] = idx
+    ridx[nam] = idx
   elseif is_number(val) then      -- one : scalar to array
-    ri[nam] = {val, idx, [_len]=2}
+    ridx[nam] = {val, idx, n=2}
   else                            -- many: append
-    local n = val[_len]+1
-    val[n], val[_len] = idx, n
+    local n = val.n+1
+    val[n], val.n = idx, n
   end
 end
 
 -- build dictionnary name -> idx
-local function build_index (tbl)  -- must be very fast (see add_index)
-  local cref = var_raw(tbl,_data)[_cref]
-  if is_nil(cref) then return end
-  local ri = var_raw(tbl,_ridx)
-  table.clear(ri)                 -- reuse main storage
-  for idx,nam in ipairs(cref) do
-    add_index(nil, nam, idx, ri)
-  end
+local function build_idx (tbl)    -- must be very fast (see add_index)
+  local ridx = var_raw(tbl, _ridx)
+  local cref = ridx[_cref]
+  if is_nil(cref) then return end -- no reference column
+  local rlen = var_raw(tbl, _rlen)
+  table_clear(ridx)               -- BUG/TODO (inheritance!)
+  for i=1,rlen do add_idx(ridx, i) end
 end
 
 -- build mtable ---------------------------------------------------------------o
@@ -278,10 +281,6 @@ local function finish_mtbl (tbl)
   if (MAD.option.debug or 0) >= 2 then
     check_dict(tbl)
   end
-
-  -- set mtable length
-  local n = #var_raw(tbl,_data)[1]
-  tbl[_rlen] = n
 end
 
 -- mtable initialization
@@ -289,19 +288,20 @@ local function mtbl_init (tbl)
   local n = tbl:raw_len()
   if n == 0 then return tbl end -- empty
 
-  local data, cols, nrow = table_new(n,n+2), table_new(n,0), tbl.reserve
+  local data, ridx, rsel = table_new(n,n+2), {}, {}
+  local cols, nrow = table_new(n,0), tbl.reserve
   for i=1,n do
     data[i] = table_new(nrow,0)
     local col = raw_get(tbl,i)                               -- column key
     if is_rawtable(col) and #col == 1 then                   -- ref: { key }
-      data[_cref], col = data[i], col[1]
+      ridx[_cref], col = data[i], col[1]
     end
     assert(is_string(col), "invalid column name (string expected)")
     data[col], cols[i] = i, col
   end
   tbl:clear_array() -- clear list of column names
-  tbl[_data], tbl[_rlen], data[_clen], data[_len] = data, 0, n, n
-  tbl[_ridx], tbl[_rsel] = {}, {}
+  data[_clen], data[_len] = n, n
+  tbl[_data], tbl[_ridx], tbl[_rsel], tbl[_rlen] = data, ridx, rsel, 0
 
   -- extra keys
   tbl.column, tbl.date, tbl.time = cols, os.date'%d/%m/%y', os.date'%H:%M:%S'
@@ -532,12 +532,11 @@ local function add_row (tbl, val, ini_)
   assert(is_iterable(val), "invalid argument #2 (iterable expected)")
   assert(is_number(ini_) , "invalid argument #3 (number expected)")
   local data = var_raw(tbl, _data)
+  local ridx = var_raw(tbl, _ridx)
   local idx  = var_raw(tbl, _rlen)+1
   cpy_row(data, idx, val, ini_-1)
+  add_idx(ridx, idx)
   tbl[_rlen] = idx
-  if data[_cref] then
-    add_index(tbl, data[_cref][idx], idx)
-  end
   return tbl
 end
 
@@ -549,12 +548,10 @@ local function set_row (tbl, key, val, ini_)
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(is_number(ini_) , "invalid argument #4 (number expected)")
   local data = var_raw(tbl, _data)
-  local nam = data[_cref] and data[_cref][idx] or nil
+  local ridx = var_raw(tbl, _ridx)
+  rem_idx(ridx, idx)
   cpy_row(data, idx, val, ini_-1)
-  if data[_cref] then
-    rem_index(tbl, nam             , idx)
-    ins_index(tbl, data[_cref][idx], idx)
-  end
+  ins_idx(ridx, idx)
   return tbl
 end
 
@@ -565,16 +562,13 @@ local function swp_row (tbl, key1, key2)
   assert(is_number(idx2), "invalid argument #3 (valid row expected)")
   if idx1 == idx2 then return tbl end
   local data = var_raw(tbl, _data)
+  local ridx = var_raw(tbl, _ridx)
   local ncol = data[_clen]
+  rem_idx(ridx, idx1) ; rem_idx(ridx, idx2)
   for i=1,ncol do
     data[i][idx1], data[i][idx2] = data[i][idx2], data[i][idx1]
   end
-  if data[_cref] then
-    rem_index(tbl, data[_cref][idx2], idx1)
-    rem_index(tbl, data[_cref][idx1], idx2)
-    ins_index(tbl, data[_cref][idx1], idx1)
-    ins_index(tbl, data[_cref][idx2], idx2)
-  end
+  ins_idx(ridx, idx1) ; ins_idx(ridx, idx2)
   return tbl
 end
 
@@ -701,7 +695,7 @@ local function rebuild_index (tbl, key_)
     if is_number(data[key_]) then key_ = data[key_] end
     data[_cref] = data[key_]
   end
-  build_index(tbl)
+  build_idx  (tbl)
   finish_mtbl(tbl)
   return tbl
 end
@@ -771,30 +765,44 @@ local function copy (tbl, name_)
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy mtable)")
   assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
   local cpy = tbl_cpy(tbl, name_)
-  if not is_orig_mtable(tbl) then return cpy end
 
-  local data = var_raw(tbl,_data)
-  local nrow, ncol, n = var_raw(tbl,_rlen), data[_clen], data[_len]
-  local cdat, cref = table_new(n,n+2), data[_cref]
+  local data = raw_get(tbl,_data)
+  local ridx = raw_get(tbl,_ridx)
+  local rsel = raw_get(tbl,_rsel)
+  local nrow = var_raw(tbl,_rlen)
+  local cidx
 
-  for i=1,ncol do   -- copy columns
-    cdat[i] = table_new(nrow,0)
-    for j=1,nrow do cdat[i][j] = data[i][j] end
-    if cref == data[i] then cdat[_cref] = cdat[i] end
+  if data then -- copy data
+    local ncol, ndat = data[_clen], data[_len]
+    local cdat, cref = table_new(n,n+2), ridx and ridx[_cref]
+
+    for i=1,ncol do               -- copy columns
+      cdat[i] = table_new(nrow,0)
+      for j=1,nrow do cdat[i][j] = data[i][j] end
+      if cref == data[i] then cidx = i end
+    end
+    for i=ncol+1,ndat do          -- copy generators
+      local val = data[i][_cref]
+      cdat[i] = setmetatable({ [_data]=cpy, [_rlen]=0, [_cref]=val }, gen_mt)
+    end
+    for k,i in kpairs(data) do    -- copy column names
+      if not cdat[k] then cdat[k] = i end
+    end
+    cpy[_data], cpy[_rlen], cdat[_clen], cdat[_len] = cdat, nrow, ncol, ndat
   end
-  for i=ncol+1,n do -- copy generators
-    local val = data[i][_cref]
-    cdat[i] = setmetatable({ [_data]=cpy, [_rlen]=0, [_cref]=val }, gen_mt)
+
+  if cidx or ridx then -- rebuild index
+    cpy[_ridx] = { [_cref] = cidx and cdat[cidx] or ridx[_cref] }
+    rebuild_index(cpy)
   end
 
-  cpy[_data], cpy[_rlen], cdat[_clen], cdat[_len] = cdat, nrow, ncol, n
-  cpy[_ridx], cpy[_rsel] = {}, {}
-
-  for k,i in kpairs(data) do -- copy column names
-    if not cdat[k] then cdat[k] = i end
+  if rsel then -- copy selection
+    local len = #sel
+    local sel = table_new(len,0)
+    for i=1,len do sel[i] = rsel[i] end
+    cpy[_rsel] = sel
   end
 
-  rebuild_index(cpy)
   return cpy
 end
 
@@ -809,76 +817,52 @@ end
 
 -- iterators ------------------------------------------------------------------o
 
-local function tblfwditer (state, i)
+local function fwditer (state, i)
   if i == state.stop then
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
   i = i < state.n and i+1 or 1
   state.row[_ridx] = i
-  return i, state.row -- row proxy
+  return i, state.row
 end
 
-local function tblbwditer (state, i)
+local function bwditer (state, i)
   if i == state.stop then
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
   i = i > 1 and i-1 or state.n
   state.row[_ridx] = i
-  return i, state.row -- row proxy
-end
-
-local function fwditer (tbl, rng_, ntrn_)
-  local nturn = ntrn_ or 0
-  assert(is_mtable(tbl)                 ,"invalid argument #1 (mtable expected)")
-  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
-  local start, stop
-  if is_nil(rng_) then
-    if is_nil(tbl.start_at) then
-      start, stop = 1, #tbl
-    else
-      start = assert(index_of(tbl, tbl.start_at), "invalid cycle reference")
-      stop  = start == 1 and #tbl or start-1
-    end
-  else
-    start, stop = range_of(tbl, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
-  end
-  local row = setmetatable({[_ridx]=0, [_data]=var_raw(tbl,_data)}, row_mt)
-  if start == stop+1 then nturn = nturn+1 end
-  return tblfwditer, { row=row, n=#tbl, stop=stop, turn=nturn }, start-1
-end
-
-local function bwditer (tbl, rng_, ntrn_)
-  local nturn = ntrn_ or 0
-  assert(is_mtable(tbl)                 ,"invalid argument #1 (mtable expected)")
-  assert(is_number(nturn) and nturn >= 0,"invalid argument #3 (number expected)")
-  local start, stop
-  if is_nil(rng_) then
-    if is_nil(tbl.start_at) then
-      start, stop = #tbl, 1
-    else
-      start = assert(index_of(tbl, tbl.start_at), "invalid cycle reference")
-      stop  = start == #tbl and 1 or start+1
-    end
-  else
-    start, stop = range_of(tbl, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
-  end
-  local row = setmetatable({[_ridx]=0, [_data]=var_raw(tbl,_data)}, row_mt)
-  if start == stop-1 then nturn = nturn+1 end
-  return tblbwditer, { row=row, n=#tbl, stop=stop, turn=nturn}, start+1
+  return i, state.row
 end
 
 local function iter (tbl, rng_, ntrn_, dir_)
-  local dir = dir_ or 1
-  assert(is_number(dir), "invalid argument #4 (number expected)")
-  if dir ==  1 then return fwditer(tbl, rng_, ntrn_) end
-  if dir == -1 then return bwditer(tbl, rng_, ntrn_) end
-  error("invalid argument #4 (direction number expected)")
+  local nturn, dir = ntrn_ or 0, dir_ or 1
+  assert(is_mtable(tbl)                  ,"invalid argument #1 (mtable expected)")
+  assert(is_number(nturn) and nturn >= 0 ,"invalid argument #3 (number expected)")
+  assert(is_number(dir) and abs(dir) == 1,"invalid argument #4 (direction expected)")
+
+  local start, stop
+  if is_nil(rng_) then
+    local s0, sn = 1, #tbl
+    if dir < 0 then s0, sn = sn, s0 end
+    if is_nil(tbl.start_at) then
+      start, stop = s0, sn
+    else
+      start = assert(index_of(seq, tbl.start_at), "invalid cycle reference")
+      stop  = start == s0 and sn or start-dir
+    end
+  else
+    start, stop = range_of(tbl, rng_)
+    assert(is_number(start), "invalid range start")
+    assert(is_number(stop ), "invalid range stop" )
+  end
+  if start == stop+dir then nturn = nturn+1 end
+
+  local row = setmetatable({[_ridx]=0, [_data]=var_raw(tbl,_data)}, row_mt)
+  return dir > 0 and fwditer or bwditer,
+         { row=row, n=#tbl, stop=stop, turn=nturn }, start-dir
 end
 
 -- I/O methods ----------------------------------------------------------------o
@@ -891,13 +875,14 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   local hnam = hdrnam_ or tbl.header
   local data = var_raw(tbl,_data)
   local nrow = tbl[_rlen]
-  local ncol = data[_len]
+  local ncol = #cnam
   local cols = table_new(ncol, 0)
 
   -- collect column indexes
   for i=1,ncol do
-    cols[i] = data[data[cnam[i]]]
-    assert(is_table(cols[i]), "invalid column name")
+    local col = assert(data[cnam[i]], "invalid column name")
+    if is_number(col) then col = data[col] end
+    cols[i] = col
   end
 
   -- open file
