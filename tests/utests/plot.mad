@@ -24,37 +24,50 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local plot in MAD
+local assertNotNil, assertEquals                            in MAD.utest
+local plot, gplot, mtable                                   in MAD
+local observe                                               in MAD.element.flags
 
 -- helpers --------------------------------------------------------------------o
 
-local saveDump   = false
-local lhc        = false
+local generate   = false
 local refFolder  = "./PlotTests/"
 local testFolder = "./PlotTestsGen/"
+local lhc, bmtbl, lmtbl
 
-local function loadLHC()
-  if lhc then
-    assertNotNil(require 'lhc_as-built_gen')
-    assertNotNil(require 'lhc_as-built_set')
-    assertNotNil(require 'lhc_undefvar'    )
-    assertNotNil(require 'opt_inj_gen'     )
+local function loadLHC ()
+  assertNotNil(require 'lhc_as-built_gen')
+  assertNotNil(require 'lhc_as-built_set')
+  assertNotNil(require 'lhc_undefvar'    )
+  assertNotNil(require 'opt_inj_gen'     )
 
-    local lhcb1, lhcb2 in MADX
-    assertEquals(#lhcb1, 6677)
-    assertEquals(#lhcb2, 6676)
+  local lhcb1, lhcb2 in MADX
+  assertEquals(#lhcb1, 6677)
+  assertEquals(#lhcb2, 6676)
 
-    lhcb1:select(observe)
-    lhcb2:select(observe)
+  lhcb1:select(observe)
+  lhcb2:select(observe)
 
-    lhc = true
-  end
-  return MADX.lhcb1, MADX.lhcb2
+  MADX.option.warn = false
+
+  lhc = { lhcb1, lhcb2 }
 end
 
-local function assertFiles(name)
-  local ref  = io.open(refFolder  .. name)
-  local test = io.open(testFolder .. name)
+local function createTbl ()
+  bmtbl = mtable { {'name'}, 'x', 'y', 'z' }
+  lmtbl = mtable { {'name'}, 'x1', 'x2', 'y1', 'y2', 'y3', 'y4' }
+  for i=0, 25000 do
+    bmtbl = bmtbl + {'A' .. i, i, i, 2*i+100 }
+  end
+  for i=0, 25 do
+    lmtbl = lmtbl + {'A' .. i, i, i+10, i, i+10, i+20, i+30 }
+  end
+end
+
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refFolder  .. name, "r"))
+  local test = assert(io.open(testFolder .. name, "r"))
   local line = 1
   while true do
     local refline  = ref:read("*line")
@@ -69,35 +82,99 @@ local function assertFiles(name)
     end
     line = line + 1
   end
-  if not saveDump then os.remove(testFolder .. name) end
+  if not generate then os.remove(testFolder .. name) end
 end
 
-local function getMyPlot(name)
-  return plot { output = false, scrdump = testFolder .. name, exec = false}
+local function getEmptyPlot (name)
+  return plot {
+    title   = name,
+    output  = false,
+    scrdump = testFolder .. name,
+    exec    = false,
+  }
+end
+
+local function execTest (name, param)
+  getEmptyPlot(name)(param)
+  assertFiles(name)
 end
 
 -- regression test suite ------------------------------------------------------o
 
 TestPlot = {}
 
--- TODO Cleaner + cross platform
 function TestPlot:setUp ()
-  os.execute("mkdir -p " .. testFolder)
+  loadLHC()
+  createTbl()
+  os.execute("mkdir -p " .. testFolder)         -- TODO Cleaner + cross platform
 end
 
 function TestPlot:tearDown ()
-  if not saveDump then
+  if not generate then
     os.remove(testFolder)
   end
+  collectgarbage("collect")
 end
 
-function TestPlot:testEmptyPlot()
-  local name   = "testEmptyPlot"
-  local myplot = getMyPlot(name)
-  myplot { }
-  assertFiles(name)
+function TestPlot:testEmptyPlot ()
+  local param = { }
+  execTest("testEmptyPlot", param)
 end
 
+function TestPlot:testPrologEpilog ()
+  local param = {
+    prolog = "set multi",
+    epilog = "unset multi \nunset out",
+  }
+  execTest("testPrologEpilog", param)
+end
 
+function TestPlot:testAxisName ()
+  local param1 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}}
+  local param2 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}, x2 = 'y3'}        }
+  local param3 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}},                  }
+  local param4 = {table = lmtbl, x1y1 = { x1 = 'y1'},                          }
+  local param5 = {table = lmtbl, x1y1 = {'y1', 'y2'},                          }
+  local param6 = {table = lmtbl, x1y1 =  'y1',                                 }
 
+  execTest("testAxisName1", param1)
+  execTest("testAxisName2", param2)
+  execTest("testAxisName3", param3)
+  execTest("testAxisName4", param4)
+  execTest("testAxisName5", param5)
+  execTest("testAxisName6", param6)
+end
+
+function TestPlot:testAxisSelection ()
+  local param1 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x1y2 = { x1 = 'y2' } }
+  local param2 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y1 = { x2 = 'y2' } }
+  local param3 = { table = lmtbl, x1y2 = { x1 = 'y1' }, x2y1 = { x2 = 'y2' } }
+  local param4 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' } }
+  local param5 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' },
+                                  x1y2 = { x1 = 'y3' }, x2y1 = { x2 = 'y4' } }
+
+  execTest("testAxisSelection1", param1)
+  execTest("testAxisSelection2", param2)
+  execTest("testAxisSelection3", param3)
+  execTest("testAxisSelection4", param4)
+  execTest("testAxisSelection5", param5)
+end
+
+function TestPlot:testLHC()
+  local param = {
+    sequence = lhc,
+    table    = bmtbl,
+    x1y1     = { x = 'y' },
+    title    = "testLHC",
+  }
+  execTest("testLHC", param)
+end
+
+function TestPlot:testLHCInPlot ()
+  local param = {
+    sequence = lhc,
+    laypos   = "in",
+  }
+  execTest("testLHCInPlot", param)
+end
 -- end ------------------------------------------------------------------------o
