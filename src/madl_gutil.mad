@@ -112,7 +112,7 @@ __help.same     = __help.gutil -- move to gfunc
 local ffi, _C  = require 'ffi', require 'madl_cmad'
 local bit, fun = require 'bit', require 'madl_lfun'
 
-local istype                                   in ffi
+local istype, typeof, miscmap                  in ffi
 local format                                   in string
 local abs, huge, min, max                      in math
 local band, bor, rol, rshift                   in bit
@@ -123,7 +123,7 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- metatables & metamethods
 
-assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
+assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
 local metaname = {
   -- list of metanames from lj_obj.h + init + exec + copy + kpairs + totable
@@ -135,8 +135,7 @@ local metaname = {
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
 local function get_metatable (a)
-  return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
-         or getmetatable(a)
+  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
 end
 
 local function has_metatable (a)
@@ -149,12 +148,13 @@ local function get_metamethod (a, f)
 end
 
 local function has_metamethod (a, f)
-  return not not get_metamethod(a,f)
+  local mt = get_metatable(a)
+  return (mt and rawget(mt,f)) ~= nil
 end
 
 local function has_metamethod2 (a, f, f2)
   local mt = get_metatable(a)
-  return not not (mt and (rawget(mt,f) or rawget(mt,f2)))
+  return (mt and (rawget(mt,f) or rawget(mt,f2))) ~= nil
 end
 
 -- values
@@ -252,7 +252,7 @@ operator.opstr = {
 
 -- types
 
-local complex = ffi.typeof 'complex'
+local complex = typeof 'complex'
 
 local typeid = {
 
@@ -290,8 +290,7 @@ local typeid = {
 
 }
 
-local is_nil, is_number, is_complex, is_string, is_table, is_rawtable,
-      is_function in typeid
+local is_nil, is_number, is_complex, is_string, is_table, is_rawtable in typeid
 
 -- concepts
 
@@ -305,19 +304,19 @@ local concept = {
   is_stringable    = \a -> has_metamethod(a, '__tostring'),
   is_tableable     = \a -> has_metamethod(a, '__totable' ),
 
-  is_callable      = \a -> is_function(a) or has_metamethod(a, '__call'  ),
-  is_iterable      = \a -> is_table(a)    or has_metamethod(a, '__ipairs'),
-  is_keyrable      = \a -> is_table(a)    or has_metamethod(a, '__kpairs'),
-  is_mappable      = \a -> is_table(a)    or has_metamethod(a, '__pairs' ),
-  is_indexable     = \a -> is_table(a)    or has_metamethod(a, '__index' ),
-  is_concatenable  = \a -> is_string(a)   or has_metamethod(a, '__concat'),
-  is_negatable     = \a -> is_number(a)   or has_metamethod(a, '__unm'   ),
-  is_addable       = \a -> is_number(a)   or has_metamethod(a, '__add'   ),
-  is_substractable = \a -> is_number(a)   or has_metamethod(a, '__sub'   ),
-  is_multiplicable = \a -> is_number(a)   or has_metamethod(a, '__mul'   ),
-  is_dividable     = \a -> is_number(a)   or has_metamethod(a, '__div'   ),
-  is_modulable     = \a -> is_number(a)   or has_metamethod(a, '__mod'   ),
-  is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   ),
+  is_callable      = \a -> type(a) == 'function' or has_metamethod(a, '__call'  ),
+  is_iterable      = \a -> type(a) == 'table'    or has_metamethod(a, '__ipairs'),
+  is_keyrable      = \a -> type(a) == 'table'    or has_metamethod(a, '__kpairs'),
+  is_mappable      = \a -> type(a) == 'table'    or has_metamethod(a, '__pairs' ),
+  is_indexable     = \a -> type(a) == 'table'    or has_metamethod(a, '__index' ),
+  is_concatenable  = \a -> type(a) == 'string'   or has_metamethod(a, '__concat'),
+  is_negatable     = \a -> type(a) == 'number'   or has_metamethod(a, '__unm'   ),
+  is_addable       = \a -> type(a) == 'number'   or has_metamethod(a, '__add'   ),
+  is_substractable = \a -> type(a) == 'number'   or has_metamethod(a, '__sub'   ),
+  is_multiplicable = \a -> type(a) == 'number'   or has_metamethod(a, '__mul'   ),
+  is_dividable     = \a -> type(a) == 'number'   or has_metamethod(a, '__div'   ),
+  is_modulable     = \a -> type(a) == 'number'   or has_metamethod(a, '__mod'   ),
+  is_powerable     = \a -> type(a) == 'number'   or has_metamethod(a, '__pow'   ),
 
   is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
   is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a,'__le','__lt'),
