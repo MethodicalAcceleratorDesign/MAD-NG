@@ -268,16 +268,16 @@ local typeid = {
   is_nil      = \a -> rawequal(a, nil  ),
   is_true     = \a -> rawequal(a, true ),
   is_false    = \a -> rawequal(a, false),
-  is_finite   = \a -> type(a) == 'number'  and abs(a) <  huge,
-  is_infinite = \a -> type(a) == 'number'  and abs(a) == huge,
-  is_nan      = \a -> type(a) == 'number'  and a ~= a,
-  is_positive = \a -> type(a) == 'number'  and a > 0,
-  is_negative = \a -> type(a) == 'number'  and a < 0,
-  is_integer  = \a -> type(a) == 'number'  and a >= -2^52 and a <= 2^52 and (a%1) == 0,
-  is_complex  = \a ->                          istype(complex, a),
-  is_scalar   = \a -> type(a) == 'number'  or  istype(complex, a),
-  is_rawtable = \a -> type(a) == 'table'   and rawequal(getmetatable(a), nil),
-  is_empty    = \a -> type(a) == 'table'   and rawequal(next        (a), nil),
+  is_finite   = \a -> type(a) == 'number' and abs(a) <  huge,
+  is_infinite = \a -> type(a) == 'number' and abs(a) == huge,
+  is_nan      = \a -> type(a) == 'number' and a ~= a,
+  is_positive = \a -> type(a) == 'number' and a > 0,
+  is_negative = \a -> type(a) == 'number' and a < 0,
+  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_complex  = \a ->                         istype(complex, a),
+  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
+  is_rawtable = \a -> type(a) == 'table'  and rawequal(getmetatable(a), nil),
+  is_empty    = \a -> type(a) == 'table'  and rawequal(next        (a), nil),
 
   -- file handle (open or closed)
   is_file     = \a -> io.type(a) ~= nil,
@@ -412,6 +412,27 @@ end
 
 -- extensions (conversion, factory)
 
+function utility.tblcpy (a, mt_, na_)
+  local na = na_ or {}
+  for k,v in next, a do na[k] = v end -- shallow copy
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+function utility.tbldeepcpy (a, mt_, xr_, na_)
+  local na = na_ or {}
+  xr_ = xr_ or {}
+  xr_[a] = na
+  for k,v in next, a do -- deep copy, keep track of self-xref
+    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
+  end
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+table.copy     = utility.tblcpy
+table.deepcopy = utility.tbldeepcpy
+
 function tostring_ (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return (string.format(option.format, a))
@@ -439,31 +460,10 @@ function utility.same (a, ...)
   error("invalid argument #1 (sameable object expected)")
 end
 
-function table_copy (a, mt_, na_)
-  local na = na_ or {}
-  for k,v in next, a do na[k] = v end -- shallow copy
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-function table_deepcopy (a, mt_, xr_)
-  local na = {}
-  xr_ = xr_ or {}
-  xr_[a] = na
-  for k,v in next, a do -- deep copy, keep track of self-xref
-    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
-  end
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-table.copy     = table_copy
-table.deepcopy = table_deepcopy
-
 function utility.copy (a, ...)
   if    value_t[type(a)] then return a
   elseif is_copiable(a)  then return rawget(get_metatable(a),'__copy')(a, ...)
-  elseif is_table(a)     then return table_deepcopy(a, ...)
+  elseif is_table(a)     then return utility.tbldeepcpy(a, ...)
   end
   error("invalid argument #1 (copiable object expected)")
 end
