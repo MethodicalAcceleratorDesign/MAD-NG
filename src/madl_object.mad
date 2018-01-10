@@ -34,6 +34,8 @@ local bsearch, lsearch                                          in MAD.utility
 local functor                                                   in MAD.gfunc
 
 local strsub, strrep = string.sub, string.rep
+local table_new, table_insert, table_remove, table_sort, table_concat =
+      table.new, table.insert, table.remove, table.sort, table.concat
 
 -- implementation -------------------------------------------------------------o
 
@@ -190,7 +192,7 @@ local function ipairs_iter (self)
   return ipairs(rawget(self,_var))
 end
 
-local function kpairs_iter_ (var, key) -- scan only strings
+local function kiter (var, key) -- scan only strings
   local k, v = next(var, key)
   while type(k) ~= 'string' and k do
     k, v = next(var, k)
@@ -201,7 +203,7 @@ end
 local function kpairs_iter (self)
   local var = rawget(self,_var)
   local n = rawlen(var) -- skip array part
-  return kpairs_iter_, var, n > 0 and n or nil
+  return kiter, var, n > 0 and n or nil
 end
 
 MT.__ipairs = ipairs_iter
@@ -231,9 +233,10 @@ end
 local function get_variables (self, lst, noeval_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
-  local res = table.new(0,#lst)
+  local n   = #lst
+  local res = table_new(0,n)
   local get = noeval_ == true and var_raw or var_get
-  for _,k in ipairs(lst) do res[k] = get(self, k) end
+  for i=1,n do res[lst[i]] = get(self, lst[i]) end
   return res -- key -> val
 end
 
@@ -244,7 +247,7 @@ local function set_variables (self, tbl, override_)
   local var = rawget(self,_var)
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable")
-    rawset(var, k, v)
+    var[k] = v
   end
   return self
 end
@@ -262,7 +265,7 @@ local function wrap_variables (self, tbl)
     if is_functor(v) and not is_functor(newv) then
       newv = functor(newv)                   -- newv must maintain v's semantic.
     end
-    rawset(var, k, newv)
+    var[k] = newv
   end
   return self
 end
@@ -276,7 +279,7 @@ local function set_methods (self, tbl, override_, strict_)
     assert(is_string(k), "invalid key (function name expected)")
     assert(is_callable(f) or strict_ == false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override function")
-    rawset(var, k, is_function(f) and functor(f) or f)
+    var[k] = is_function(f) and functor(f) or f
   end
   return self
 end
@@ -288,12 +291,12 @@ local function set_metamethods (self, tbl, override_, strict_)
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
     assert(not fclass(self), "invalid metatable (class unexpected)")
-    sm={} for k,v in pairs(pm) do sm[k] = v end
+    sm=table_new(0,8) for k,v in pairs(pm) do sm[k] = v end
   end
   for k,mm in pairs(tbl) do
     assert(is_metaname(k) or strict_ == false, "invalid key (metamethod expected)")
     assert(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod")
-    rawset(sm, k, mm)
+    sm[k] = mm
   end
   return setmetatable(self, sm)
 end
@@ -302,54 +305,64 @@ local function get_varkeys (self, class_)
   class_ = class_ or Object
   assert(is_object(self)  , "invalid argument #1 (object expected)")
   assert(is_object(class_), "invalid argument #2 (object expected)")
-  local lst, key = {}, {}
+  local lst, key = table_new(8,1), table_new(0,8) ; lst.n = 0
   while self and not rawequal(self, class_) do
     for k,v in kpairs_iter(self) do
       if not (key[k] or is_functor(v)) and strsub(k,1,2) ~= '__' then
-        lst[#lst+1], key[k] = k, k
+        lst[lst.n+1], key[k], lst.n = k, k, lst.n+1
       end
     end
     self = parent(self)
   end
-  assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
+  assert(rawequal(self, class_),
+         "invalid argument #2 (parent of argument #1 expected)")
   return lst
 end
 
-local function remove_array (self, idx_)
+local function insert (self, idx_, val)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  return table.remove(rawget(self,_var), idx_)
-end
-
-local function insert_array (self, idx_, val)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
-  table.insert(rawget(self,_var), idx_, val)
+  table_insert(rawget(self,_var), idx_, val)
   return self
 end
 
-local function sort_array (self, cmp_)
+local function remove (self, idx_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  table.sort(rawget(self,_var), cmp_)
+  return table_remove(rawget(self,_var), idx_)
+end
+
+local function move (self, idx1, idx2, idxto, dest_)
+  dest_ = dest_ or self
+  assert(is_object(self)     , "invalid argument #1 (object expected)")
+  assert(is_object(dest_)    , "invalid argument #2 (object expected)")
+  assert(not freadonly(dest_), "forbidden write access to readonly object")
+  table_move(rawget(self,_var), idx1, idx2, idxto, rawget(dest_,_var))
+  return dest_
+end
+
+local function sort (self, cmp_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  table_sort(rawget(self,_var), cmp_)
   return self
 end
 
-local function lsearch_array (self, val, equ_, low_, high_)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  return lsearch(rawget(self,_var), val, equ_, low_, high_)
-end
-
-local function bsearch_array (self, val, cmp_, low_, high_)
+local function bsearch_ (self, val, cmp_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   return bsearch(rawget(self,_var), val, cmp_, low_, high_)
+end
+
+local function lsearch_ (self, val, equ_, low_, high_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return lsearch(rawget(self,_var), val, equ_, low_, high_)
 end
 
 local function clear_array (self)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  for i in ipairs_iter(self) do rawset(var, i, nil) end
+  for i=1,rawlen(var) do var[i]=nil end
   return self
 end
 
@@ -358,8 +371,8 @@ local function clear_variables (self)
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  for k in kpairs_iter(self) do rawset(var, k, nil) end
-  rawset(var, '__id', id)
+  for k in kpairs_iter(self) do var[k]=nil end
+  var.__id = id
   return self
 end
 
@@ -368,10 +381,9 @@ local function clear_all (self)
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  for i in ipairs_iter(self) do rawset(var, i, nil) end
-  for k in kpairs_iter(self) do rawset(var, k, nil) end
-  -- table.clear(var) would destroy hidden keys
-  rawset(var, '__id', id)
+  for i=1,rawlen(var) do var[i]=nil end
+  for k in kpairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
+  var.__id = id
   return self
 end
 
@@ -399,7 +411,7 @@ local function same (self, name_)
   -- metatable
   local sm, pm = getmetatable(self), getmetatable(par)
   if sm ~= pm then -- copy metatable
-    local cm={} for k,v in pairs(sm) do cm[k] = v end
+    local cm=table_new(0,8) for k,v in pairs(sm) do cm[k] = v end
     setmetatable(sam, cm)
   end
   return sam
@@ -409,13 +421,13 @@ local function copy (self, name_)
   assert(is_object(self),"invalid argument #1 (object expected)")
   local cpy = same(self)
   -- data
-  local var = rawget(cpy,_var)
-  for i,v in ipairs_iter(self) do rawset(var, i, v) end
-  for k,v in kpairs_iter(self) do rawset(var, k, v) end
+  local var, cvar = rawget(self,_var), rawget(cpy,_var)
+  for i=1,rawlen(var) do cvar[i] = var[i] end
+  for k,v in kpairs_iter(self) do var[k] = v end
   -- name, protect against special args from utility.copy
   local id = raw_get(self,'__id')
   name_ = is_string(name_) and name_ or id and id..'_copy' or nil
-  rawset(var, '__id', name_)
+  var.__id = name_
   return cpy
 end
 
@@ -569,7 +581,7 @@ local function strdump (self, class_, pattern_)
   end
   assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
   res[n+1] = ''
-  return table.concat(res, '\n')
+  return table_concat(res, '\n')
 end
 
 -- members
@@ -590,14 +602,15 @@ M.get_variables   = functor( get_variables   )
 M.set_variables   = functor( set_variables   )
 M.wrap_variables  = functor( wrap_variables  )
 
-M.set_methods   = functor( set_methods   )
+M.set_methods     = functor( set_methods     )
 M.set_metamethods = functor( set_metamethods )
 
-M.insert_array    = functor( insert_array    )
-M.remove_array    = functor( remove_array    )
-M.bsearch_array   = functor( bsearch_array   )
-M.lsearch_array   = functor( lsearch_array   )
-M.sort_array      = functor( sort_array      )
+M.insert          = functor( insert          )
+M.remove          = functor( remove          )
+M.move            = functor( move            )
+M.sort            = functor( sort            )
+M.bsearch         = functor( bsearch_        )
+M.lsearch         = functor( lsearch_        )
 M.clear_array     = functor( clear_array     )
 M.clear_variables = functor( clear_variables )
 M.clear_all       = functor( clear_all       )
@@ -622,9 +635,9 @@ M.test_flags      = functor( test_flags      )
 M.clear_flags     = functor( clear_flags     )
 
 M.open_env        = functor( open_env        )
-M.is_open_env     = functor( is_open_env     )
 M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
+M.is_open_env     = functor( is_open_env     )
 
 M.strdump         = functor( strdump         )
 
