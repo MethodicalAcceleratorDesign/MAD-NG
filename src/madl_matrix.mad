@@ -280,7 +280,7 @@ end
 local  vector = \n ->  matrix(n, 1)
 local cvector = \n -> cmatrix(n, 1)
 
--- helpers --------------------------------------------------------------------o
+-- checkers -------------------------------------------------------------------o
 
 local function chksiz (r, x, y) -- add, sub
   assert((is_nil(r) or (r.nr == x.nr and r.nc == x.nc)) and
@@ -319,11 +319,7 @@ local function chksizt (r, x) -- transpose
   return r
 end
 
-local nrow   = \x -> x.nr
-local ncol   = \x -> x.nc
-local size   = \x -> x.nr * x.nc
-local sizes  = \x -> (x.nr, x.nc)
-local tsizes = \x -> (x.nc, x.nr)
+-- get, set -------------------------------------------------------------------o
 
 local idx0   = \i,j,c   -> ( i   *c +  j   )
 local idx    = \i,j,c   -> ((i-1)*c + (j-1))
@@ -332,13 +328,37 @@ local geti0  = \x,i     -> x.data[i]
 local seti0  = \x,i,e   => x.data[i]=e return x end
 local geti   = \x,i     -> x.data[i-1]
 local seti   = \x,i,e   => x.data[i-1]=e return x end
-local get0   = \x,i,j   -> x.data[idx0(i, j, x.nc)]
-local set0   = \x,i,j,e => x.data[idx0(i, j, x.nc)]=e return x end
-local get    = \x,i,j   -> x.data[idx (i, j, x.nc)]
-local set    = \x,i,j,e => x.data[idx (i, j, x.nc)]=e return x end
+local get0   = \x,i,j   -> x.data[ i   *x.nc +  j   ]
+local set0   = \x,i,j,e => x.data[ i   *x.nc +  j   ]=e return x end
+local get    = \x,i,j   -> x.data[(i-1)*x.nc + (j-1)]
+local set    = \x,i,j,e => x.data[(i-1)*x.nc + (j-1)]=e return x end
 
--- get, set -------------------------------------------------------------------o
+geti0_s = \x,i   -> 0 <= i and i <  x.nr*x.nc                     and geti0(x, i) or nil
+geti_s  = \x,i   -> 1 <= i and i <= x.nr*x.nc                     and geti (x, i) or nil
+get0_s  = \x,i,j -> 0 <= i and i <  x.nr and 0 <= j and j <  x.nc and get0(x,i,j) or nil
+get_s   = \x,i,j -> 1 <= i and i <= x.nr and 1 <= j and j <= x.nc and get (x,i,j) or nil
 
+local function seti0_s (x, i, e)
+  assert(0 <= i and i < x.nr*x.nc, "0-index out of bounds")
+  return seti0(x, i, e)
+end
+
+local function seti_s (x, i, e)
+  assert(1 <= i and i <= x.nr*x.nc, "1-index out of bounds")
+  return seti(x, i, e)
+end
+
+local function set0_s (x, i, j, e)
+  assert(0 <= i and i < x.nr and 0 <= j and j < x.nc, "0-index out of bounds")
+  return set0(x, i, j, e)
+end
+
+local function set_s (x, i, j, e)
+  assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
+  return set(x, i, j, e)
+end
+
+-- unsafe
 MR._geti0 = geti0
 MR._seti0 = seti0
 MR._geti  = geti
@@ -348,32 +368,23 @@ MR._set0  = set0
 MR._get   = get
 MR._set   = set
 
-MR.geti0 = \x,i   -> 0 <= i and i <  x.nr*x.nc                     and geti0(x, i) or nil
-MR.geti  = \x,i   -> 1 <= i and i <= x.nr*x.nc                     and geti (x, i) or nil
-MR.get0  = \x,i,j -> 0 <= i and i <  x.nr and 0 <= j and j <  x.nc and get0(x,i,j) or nil
-MR.get   = \x,i,j -> 1 <= i and i <= x.nr and 1 <= j and j <= x.nc and get (x,i,j) or nil
-
-function MR.seti0 (x, i, e)
-  assert(0 <= i and i < x.nr*x.nc, "0-index out of bounds")
-  return seti0(x, i, e)
-end
-
-function MR.seti (x, i, e)
-  assert(1 <= i and i <= x.nr*x.nc, "1-index out of bounds")
-  return seti(x, i, e)
-end
-
-function MR.set0 (x, i, j, e)
-  assert(0 <= i and i < x.nr and 0 <= j and j < x.nc, "0-index out of bounds")
-  return set0(x, i, j, e)
-end
-
-function MR.set (x, i, j, e)
-  assert(1 <= i and i <= x.nr and 1 <= j and j <= x.nc, "1-index out of bounds")
-  return set(x, i, j, e)
-end
+-- safe
+MR.geti0  = geti0_s
+MR.geti   = geti_s
+MR.get0   = get0_s
+MR.get    = get_s
+MR.seti0  = seti0_s
+MR.seti   = seti_s
+MR.set0   = set0_s
+MR.set    = set_s
 
 -- size, same -----------------------------------------------------------------o
+
+local nrow   = \x -> x.nr
+local ncol   = \x -> x.nc
+local size   = \x -> x.nr * x.nc
+local sizes  = \x -> (x.nr, x.nc)
+local tsizes = \x -> (x.nc, x.nr)
 
 MR.nrow   = nrow
 MR.ncol   = ncol
@@ -655,7 +666,7 @@ function MR.getv (x, ij, r_)
   assert(is_iterable(ij)              , "invalid argument #2 (iterable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
   local r = r_ or x:same(#ij,1)
-  for i,ii in ipairs(ij) do r[i] = x:geti(ii) end
+  for i,ii in ipairs(ij) do r[i] = geti_s(x,ii) end
   return r
 end
 
@@ -666,11 +677,11 @@ function MR.setv (x, ij, y, p_, s_)
   if is_nil(p_) or is_nil(s_) then
     assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
     local k, nk = 1, #y
-    for _,ii in ipairs(ij) do x:seti(ii, y[k]) ; k=k%nk+1 end
+    for _,ii in ipairs(ij) do seti_s(x,ii,y[k]) ; k=k%nk+1 end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
     local v
-    for _,ii in ipairs(ij) do s_,v = y(p_,s_) ; x:seti(ii,v) end
+    for _,ii in ipairs(ij) do s_,v = y(p_,s_) ; seti_s(x,ii,v) end
   end
   return x
 end
@@ -705,7 +716,7 @@ function MR.getrow (x, ir, r_)
   local k, nc = 1, x:ncol()
   local r = r_ or x:same(#ir,nc)
   for _,i in ipairs(ir) do
-  for j=1,nc do r[k] = x:get(i,j) ; k=k+1 end end
+  for j=1,nc do r[k] = get_s(x,i,j) ; k=k+1 end end
   return r
 end
 
@@ -717,11 +728,11 @@ function MR.setrow (x, ir, y, p_, s_)
     assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
     local k, nk = 1, #y
     for _,i in ipairs(ir) do
-    for j=1,x:ncol()      do x:set(i,j, y[k]) ; k=k%nk+1 end end
+    for j=1,x:ncol()      do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
     for _,i in ipairs(ir) do local v
-    for j=1,x:ncol()      do s_,v = y(p_,s_) ; x:set(i,j,v) end end
+    for j=1,x:ncol()      do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
   end
   return x
 end
@@ -734,10 +745,10 @@ function MR.getcol (x, jc, r_)
   local r = r_ or x:same(nr,#jc)
   if isa_matrix(r) and r:ncol() > 1 then
     for i=1,nr            do
-    for _,j in ipairs(jc) do r[k] = x:get(i,j) ; k=k+1 end end
+    for _,j in ipairs(jc) do r[k] = get_s(x,i,j) ; k=k+1 end end
   else
     for _,j in ipairs(jc) do
-    for i=1,nr            do r[k] = x:get(i,j) ; k=k+1 end end
+    for i=1,nr            do r[k] = get_s(x,i,j) ; k=k+1 end end
   end
   return r
 end
@@ -749,16 +760,16 @@ function MR.setcol (x, jc, y, p_, s_)
   if isa_matrix(y) and y:ncol() > 1 then
     local k, nk = 1, #y
     for i=1,x:nrow()      do
-    for _,j in ipairs(jc) do x:set(i,j, y[k]) ; k=k%nk+1 end end
+    for _,j in ipairs(jc) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
   elseif is_nil(p_) or is_nil(s_) then
     assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
     local k, nk = 1, #y
     for _,j in ipairs(jc) do
-    for i=1,x:nrow()      do x:set(i,j, y[k]) ; k=k%nk+1 end end
+    for i=1,x:nrow()      do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #3 (scalar or iterator expected)")
     for _,j in ipairs(jc) do local v
-    for i=1,x:nrow()      do s_,v = y(p_,s_) ; x:set(i,j,v) end end
+    for i=1,x:nrow()      do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
   end
   return x
 end
@@ -771,7 +782,7 @@ function MR.getsub (x, ir, jc, r_)
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #4 (iterable expected)")
   local r, k = r_ or x:same(#ir,#jc), 1
   for _,i in ipairs(ir) do
-  for _,j in ipairs(jc) do r[k] = x:get(i,j) ; k=k+1 end end
+  for _,j in ipairs(jc) do r[k] = get_s(x,i,j) ; k=k+1 end end
   return r
 end
 
@@ -785,11 +796,11 @@ function MR.setsub (x, ir, jc, y, p_, s_)
     assert(is_iterable(y), "invalid argument #4 (scalar or iterable expected)")
     local k, nk = 1, #y
     for _,i in ipairs(ir) do
-    for _,j in ipairs(jc) do x:set(i,j, y[k]) ; k=k%nk+1 end end
+    for _,j in ipairs(jc) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #4 (scalar or iterator expected)")
     for _,i in ipairs(ir) do local v
-    for _,j in ipairs(jc) do s_,v = y(p_,s_) ; x:set(i,j,v) end end
+    for _,j in ipairs(jc) do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
   end
   return x
 end
@@ -873,10 +884,10 @@ function MR.mapat (x, f, ij, r_)
   assert(is_iterable(ij)              , "invalid argument #3 (iterable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #4 (iterable expected)")
   local r = r_ or x:copy()
-  for _,i in ipairs(ij) do r[i] = f(x:geti(i)) end
+  for _,i in ipairs(ij) do r[i] = f(geti_s(x,i)) end
   if is_table(r) then -- complete the fill
     for i=1,x:size() do
-      if is_nil(r[i]) then r[i] = x:geti(i) end
+      if is_nil(r[i]) then r[i] = geti_s(x,i) end
     end
   end
   return r
@@ -2225,16 +2236,16 @@ end
 MR.__ipairs = \s -> (iter, s, 0)
 
 function MR.__index (s, i)
-  if is_number(i) then return MR.geti(s,i) else return MR[i] end
+  if type(i) == 'number' then return geti_s(s,i) else return MR[i] end
 end
 
 function MC.__index (s, i)
-  if is_number(i) then return MC.geti(s,i) else return MC[i] end
+  if type(i) == 'number' then return geti_s(s,i) else return MC[i] end
 end
 
 function MR.__newindex (s, i, x)
-  if is_number(i)
-  then MR.seti(s, i, x)
+  if type(i) == 'number'
+  then seti_s(s, i, x)
   else error("invalid matrix member '"..tostring(i).."'")
   end
 end
