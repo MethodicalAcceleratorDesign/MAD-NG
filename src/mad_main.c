@@ -97,10 +97,6 @@ static int dofile   (lua_State *L, str_t name);
 static int dostring (lua_State *L, str_t s, str_t name);
 static int report   (lua_State *L, int status);
 
-/* MAD run flags */
-#define FLAGS_MADFINI 256
-static int mad_flags = 0;
-
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <sys/stat.h>
 
@@ -136,28 +132,15 @@ static void print_mad_version (void)
 	printf(msg, ver, buf);
 }
 
-static str_t
-msgstr (str_t fn, str_t fmt, va_list va)
-{
-	assert( globalL );
-	if (mad_trace_location) {
-		luaL_where(globalL, 1);
-		if (fn) lua_pushfstring(globalL, "%s: ", fn);
-		lua_pushvfstring(globalL, fmt, va);
-		lua_concat(globalL, fn ? 3 : 2);
-	} else
-		lua_pushvfstring(globalL, fmt, va);
-
-	return lua_tostring(globalL, -1);
-}
-
 LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	str_t msg = msgstr(fn, fmt, va);
+	 fprintf(stderr, fn ? "error: %s: " : "error: ", fn);
+  vfprintf(stderr, fmt, va);
 	va_end(va);
-	luaL_error(globalL, msg);
+  fputc('\n', stderr);
+	luaL_error(globalL,""); // NOT SAFE! (but let's try...)
 	exit(EXIT_FAILURE); /* never reached */
 }
 
@@ -166,9 +149,10 @@ LUALIB_API void (mad_warn) (str_t fn, str_t fmt, ...)
 	++mad_warn_count;
 	va_list va;
 	va_start(va, fmt);
-	fprintf(stderr, "warning: %s\n", msgstr(fn, fmt, va));
+	 fprintf(stderr, fn ? "warning: %s: " : "warning: ", fn);
+  vfprintf(stderr, fmt, va);
 	va_end(va);
-	fflush(stderr);
+  fputc('\n', stderr);
 }
 
 LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
@@ -176,9 +160,10 @@ LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
 	if (mad_trace_level < lvl) return;
   va_list va;
   va_start(va, fmt);
-  fprintf(stderr, "trace%d: %s\n", lvl, msgstr(fn, fmt, va));
+	 fprintf(stderr, fn ? "trace:%s: " : "trace: ", fn);
+  vfprintf(stderr, fmt, va);
   va_end(va);
-  fflush(stderr);
+  fputc('\n', stderr);
 }
 
 static int mad_luawarn (lua_State *L)
@@ -193,7 +178,7 @@ static int mad_luatrace (lua_State *L)
 	return 0;
 }
 
-static void mad_regfunc (void)
+static void mad_regfun (void)
 {
 	lua_register(globalL, "warn" , mad_luawarn );
 	lua_register(globalL, "trace", mad_luatrace);
@@ -466,13 +451,6 @@ static int handle_madinit (lua_State *L)
 		return dostring(L, init, "=MAD_INIT");
 }
 
-/* MAD finalization. */
-static int handle_madfini (lua_State *L)
-{
-	int status = dostring(L, "MAD.env.finalize()", "=(MAD finalizer)");
- 	return report(L, status);
-}
-
 /* Extra integrated libs to load. */
 LUALIB_API int luaopen_lpeg (lua_State *L);
 
@@ -490,43 +468,29 @@ static void mad_openlibs (lua_State *L)
   }
 }
 
-/* Handle signals             | error & location | message & final  |    finalization   | */
-static const int   sig_i[6] = { SIGFPE , SIGSEGV , SIGINT , SIGPIPE , SIGQUIT , SIGTERM };
-static const str_t sig_s[6] = {"SIGFPE","SIGSEGV","SIGINT","SIGPIPE","SIGQUIT","SIGTERM"};
-static const str_t sig_m[6] = {"floating-point exception!","segmentation fault!",
-                               "interrupted!","broken pipe!",NULL,NULL};
-
+/* Handle signals */
+static const int   sig_i[] = { SIGSEGV , SIGFPE , SIGPIPE , SIGBUS , SIGILL , SIGABRT };
+static const str_t sig_s[] = {"SIGSEGV","SIGFPE","SIGPIPE","SIGBUS","SIGILL","SIGABRT"};
 enum { sig_n = sizeof sig_i / sizeof *sig_i };
 
-static void sig_handler(int sig)
+static void mad_signal(int sig)
 {
-	/* avoid recursion */
-	signal(sig, SIG_DFL);
+  static const str_t sig_m[sig_n] = {
+  	"segmentation fault!","floating-point exception!","broken pipe!",
+  	"bus error!","illegal instruction!","abort!"};
 
-	int i = 0;
+  int i = 0;
 	while (i < sig_n && sig_i[i] != sig) ++i;
 
-	if (sig_m[i]) {
-		if (i < 2)
-			(mad_error)(NULL,"signal %s: %s", sig_s[i], sig_m[i]);
-		else
-			printf("%s\n", sig_m[i]);
-	}
-
-	int status = 0;
-	if ((mad_flags & FLAGS_MADFINI)) {
-		assert( globalL );
-  	status = lua_cpcall(globalL, handle_madfini, NULL);
-  	report(globalL, status);
-	}
-	exit(status ? EXIT_FAILURE : EXIT_SUCCESS);
+	fprintf(stderr, "signal %s caught!\n", sig_s[i]); // SAFE
+	luaL_error(globalL, sig_m[i]); // NOT SAFE! (but let's try...)
+	exit(EXIT_FAILURE); /* never reached */
 }
-
 
 static void mad_setsig (void)
 {
-	for (int i=0; i < 5; i++)
-		ensure(signal(sig_i[i], sig_handler) != SIG_ERR,
+	for (int i=0; i < sig_n; i++)
+		ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
 					 "unable to set signal hanlder %s", sig_s[i]);
 }
 
@@ -565,7 +529,6 @@ static void print_usage(void)
 	"  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
 	"  -q        Do not show version information.\n"
 	"  -M        Do not load MAD environment.\n"
-	"  -Mf       Do not run  MAD finalizer.\n"
 	"  -Mt[=num] Set initial MAD trace level to " LUA_QL("num") ".\n"
 	"  -MT[=num] Set initial MAD trace level to " LUA_QL("num") " and location.\n"
 	"  -E        Ignore environment variables.\n"
@@ -616,7 +579,7 @@ static int docall(lua_State *L, int narg, int clear)
 #endif
 	status = lua_pcall(L, narg, (clear ? 0 : LUA_MULTRET), base);
 #if !LJ_TARGET_CONSOLE
-	signal(SIGINT, sig_handler); /* MAD */
+	signal(SIGINT, SIG_DFL);
 #endif
 	lua_remove(L, base);  /* remove traceback function */
 	/* force a complete garbage collection in case of errors */
@@ -894,7 +857,7 @@ static int dobytecode(lua_State *L, char **argv)
 #define FLAGS_EXEC				4
 #define FLAGS_OPTION			8
 #define FLAGS_NOENV				16
-#define FLAGS_MADENV		 (128+FLAGS_MADFINI)
+#define FLAGS_MADENV		  128
 
 static int collectargs(char **argv, int *flags)
 {
@@ -938,13 +901,10 @@ static int collectargs(char **argv, int *flags)
 			*flags |= FLAGS_NOENV;
 			break;
 		case 'M': /* MAD options */
-			if (argv[i][2] == 'f') { /* no MAD finalizer */
- 				notail(argv[i],3);
-				*flags &= ~FLAGS_MADFINI;
-			} else if (argv[i][2] == 't' || argv[i][2] == 'T') { /* MAD trace level */
+			if (argv[i][2] == 't' || argv[i][2] == 'T') { /* MAD trace level */
 				mad_trace_location = argv[i][2] == 'T';
 				mad_trace_level    = argv[i][3] == '=' ? strtol(argv[i]+4, NULL, 0) : 1;
-			} else { /* no MAD environment */
+			} else { /* don't load MAD environment */
 				notail(argv[i],2);
 				*flags &= ~FLAGS_MADENV;
 			}
@@ -1036,7 +996,6 @@ static int pmain(lua_State *L)
 		s->status = 1;
 		return 0;
 	}
-	mad_flags = flags;
 
 	if ((flags & FLAGS_NOENV)) {
 		lua_pushboolean(L, 1);
@@ -1061,7 +1020,7 @@ static int pmain(lua_State *L)
 
 	/* MAD section. */
 	mad_setsig();
-	mad_regfunc();
+	mad_regfun();
 
 	if ((flags & FLAGS_MADENV))
 		dolibrary(L, "madl_main");
@@ -1108,11 +1067,6 @@ int main(int argc, char **argv)
 	smain.argv = argv;
 	status = lua_cpcall(L, pmain, NULL);
 	report(L, status);
-
-	if ((mad_flags & FLAGS_MADFINI)) {
-  	int status = lua_cpcall(L, handle_madfini, NULL);
-  	report(L, status);
-	}
 	lua_close(L);
 	return (status || smain.status > 0) ? EXIT_FAILURE : EXIT_SUCCESS;
 }
