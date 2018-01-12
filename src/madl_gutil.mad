@@ -375,23 +375,28 @@ end
 
 -- finalizer
 
-local final_   = {} -- __gc is not supported by luajit
+local final_   = { n=0 } -- __gc is not supported by luajit
 local finalgc_ = ffi.gc(ffi.new('int[1]'), \=>
   if MAD.option.debug > 2 then
     io.write('MAD finalizer called...\n')
   end
-  for i=#final_,1,-1 do
+  for i=final_.n,1,-1 do
     local ret, err = pcall(final_[i])
     if ret ~= true then
        io.stderr:write('finalizer failed: ', err, '\n')
     end
-    final_[i] = nil
+    final_[i], final_.n = nil, i-1
   end
 end)
 
 function utility.atexit (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  final_[#final_+1] = f
+  local n = final_.n+1
+  if n == 1 then
+    local exit = os.exit
+    os.exit = \code -> exit(code, true)
+  end
+  final_[n], final_.n = f, n
 end
 
 -- key/indexes set
