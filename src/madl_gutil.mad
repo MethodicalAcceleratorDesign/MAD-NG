@@ -339,9 +339,11 @@ concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 
 local has_method in concept
 
--- utilities
+-- utilities ------------------------------------------------------------------o
 
 local utility = {}
+
+-- repeater
 
 local _repx, _repn = {}, {}
 
@@ -359,6 +361,8 @@ function utility.rep (x, n_) -- repeater
   return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
 end
 
+-- run once
+
 local runonce_ = setmetatable({}, {__mode='k'})
 
 function utility.runonce (f, ...)
@@ -368,6 +372,29 @@ function utility.runonce (f, ...)
     return f(...)
   end
 end
+
+-- finalizer
+
+local final_   = {} -- __gc is not supported by luajit
+local finalgc_ = ffi.gc(ffi.new('int[1]'), \=>
+  if MAD.option.debug > 2 then
+    io.write('MAD finalizer called...\n')
+  end
+  for i=#final_,1,-1 do
+    local ret, err = pcall(final_[i])
+    if ret ~= true then
+       io.stderr:write('finalizer failed: ', err, '\n')
+    end
+    final_[i] = nil
+  end
+end)
+
+function utility.atexit (f)
+  assert(is_callable(f), "invalid argument #1 (callable expected)")
+  final_[#final_+1] = f
+end
+
+-- key/indexes set
 
 function utility.clearkeys (a, p_)
   assert(is_keyrable(a), "invalid argument #1 (keyrable expected)")
@@ -421,13 +448,7 @@ function utility.countkeys (a)
   return n
 end
 
-function utility.printf (str, ...)
-  return io.write(str:format(...))
-end
-
-function utility.fprintf (fp, str, ...)
-  return fp:write(str:format(...))
-end
+-- files
 
 function utility.fileexists (fname)
   assert(is_string(fname), "invalid argument #1 (string expected)")
@@ -436,6 +457,39 @@ function utility.fileexists (fname)
   io.close(file)
   return true
 end
+
+function utility.printf (str, ...)
+  return io.write(str:format(...))
+end
+
+function utility.fprintf (fp, str, ...)
+  return fp:write(str:format(...))
+end
+
+-- table copy
+
+function utility.tblcpy (a, mt_, na_)
+  local na = na_ or {}
+  for k,v in next, a do na[k] = v end -- shallow copy
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+function utility.tbldeepcpy (a, mt_, xr_, na_)
+  local na = na_ or {}
+  xr_ = xr_ or {}
+  xr_[a] = na
+  for k,v in next, a do -- deep copy, keep track of self-xref
+    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
+  end
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+table.copy     = utility.tblcpy
+table.deepcopy = utility.tbldeepcpy
+
+-- extensions (conversion, factory)
 
 local tostring_ -- forward ref
 
@@ -459,29 +513,6 @@ function utility.str2tbl(str, match_, init_)
     return {str}
   end
 end
-
--- extensions (conversion, factory)
-
-function utility.tblcpy (a, mt_, na_)
-  local na = na_ or {}
-  for k,v in next, a do na[k] = v end -- shallow copy
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-function utility.tbldeepcpy (a, mt_, xr_, na_)
-  local na = na_ or {}
-  xr_ = xr_ or {}
-  xr_[a] = na
-  for k,v in next, a do -- deep copy, keep track of self-xref
-    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
-  end
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-table.copy     = utility.tblcpy
-table.deepcopy = utility.tbldeepcpy
 
 function tostring_ (a, ...)
   if     is_string(a)     then return a
