@@ -93,14 +93,15 @@ int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
 /* Forward declarations. */
-static int dofile   (lua_State *L, const char *name);
-static int dostring (lua_State *L, const char *s, const char *name);
+static int dofile   (lua_State *L, str_t name);
+static int dostring (lua_State *L, str_t s, str_t name);
+static int report   (lua_State *L, int status);
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <sys/stat.h>
 
 /* Missing declaration in Mingw */
-int setenv(const char *name, const char *value, int overwrite);
+int setenv(str_t name, str_t value, int overwrite);
 
 /* Better tty detection under Mingw */
 #undef     lua_stdin_is_tty
@@ -114,8 +115,8 @@ static int lua_stdin_is_tty (void)
 
 static void print_mad_version (void)
 {
-  const char *ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
-	const char *msg =
+  str_t ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
+	str_t msg =
 	"    ____  __   ______    ______     |   Methodical Accelerator Design\n"
 	"     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
 	"    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
@@ -131,49 +132,38 @@ static void print_mad_version (void)
 	printf(msg, ver, buf);
 }
 
-static const char*
-msgstr (const char *fn, const char *fmt, va_list va)
-{
-	assert( globalL );
-	if (mad_trace_location) {
-		luaL_where(globalL, 1);
-		if (fn) lua_pushfstring(globalL, "%s: ", fn);
-		lua_pushvfstring(globalL, fmt, va);
-		lua_concat(globalL, fn ? 3 : 2);
-	} else
-		lua_pushvfstring(globalL, fmt, va);
-
-	return lua_tostring(globalL, -1);
-}
-
-LUALIB_API void (mad_error) (const char *fn, const char *fmt, ...)
+LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
 {
 	va_list va;
 	va_start(va, fmt);
-	const char *msg = msgstr(fn, fmt, va);
+	 fprintf(stderr, fn ? "error: %s: " : "error: ", fn);
+  vfprintf(stderr, fmt, va);
 	va_end(va);
-	luaL_error(globalL, msg);
+  fputc('\n', stderr);
+	luaL_error(globalL,""); // NOT SAFE! (but let's try...)
 	exit(EXIT_FAILURE); /* never reached */
 }
 
-LUALIB_API void (mad_warn) (const char *fn, const char *fmt, ...)
+LUALIB_API void (mad_warn) (str_t fn, str_t fmt, ...)
 {
 	++mad_warn_count;
 	va_list va;
 	va_start(va, fmt);
-	fprintf(stderr, "warning: %s\n", msgstr(fn, fmt, va));
+	 fprintf(stderr, fn ? "warning: %s: " : "warning: ", fn);
+  vfprintf(stderr, fmt, va);
 	va_end(va);
-	fflush(stderr);
+  fputc('\n', stderr);
 }
 
-LUALIB_API void (mad_trace) (int lvl, const char *fn, const char *fmt, ...)
+LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
 {
 	if (mad_trace_level < lvl) return;
   va_list va;
   va_start(va, fmt);
-  fprintf(stderr, "trace%d: %s\n", lvl, msgstr(fn, fmt, va));
+	 fprintf(stderr, fn ? "trace:%s: " : "trace: ", fn);
+  vfprintf(stderr, fmt, va);
   va_end(va);
-  fflush(stderr);
+  fputc('\n', stderr);
 }
 
 static int mad_luawarn (lua_State *L)
@@ -188,39 +178,16 @@ static int mad_luatrace (lua_State *L)
 	return 0;
 }
 
-static void mad_regfunc (void)
+static void mad_regfun (void)
 {
 	lua_register(globalL, "warn" , mad_luawarn );
 	lua_register(globalL, "trace", mad_luatrace);
 }
 
-/* Handle signals */
-
-static const int   sig_i[] = { SIGABRT , SIGFPE , SIGILL , SIGSEGV };
-static const str_t sig_s[] = {"SIGABRT","SIGFPE","SIGILL","SIGSEGV"};
-static const int   sig_n   = sizeof sig_i / sizeof *sig_i;
-
-static void sig_handler(int sig)
-{
-	int i;
-	for (i=0; i < sig_n; i++)
-		if (sig_i[i] == sig) break;
-
-	if (i < sig_n)
-  	(mad_error)(NULL, "signal %s caught!", sig_s[i]);
-}
-
-static void mad_setsig (void)
-{
-	for (int i=0; i<sig_n; i++)
-		ensure(signal(sig_i[i], sig_handler) != SIG_ERR,
-					 "unable to set signal hanlder %s", sig_s[i]);
-}
-
 /* Handle paths */
 
 /* Windows: not declared by any mean but provided by libgettextlib */
-extern char *realpath (const char *restrict fname, char *restrict rname);
+extern char *realpath (str_t restrict fname, char *restrict rname);
 
 #if LUAJIT_OS == LUAJIT_OS_WINDOWS
 static char* winpath (char *buf)
@@ -306,11 +273,11 @@ found:
 		p[0] = dsep, p[1] = nul;
 
 	buf[0] = dsep, buf[1] = nul;
-	const char *dir_sep = buf;
+	str_t dir_sep = buf;
 
 	/* set global table '_M' */
 	enum { nitem = 8 };
-	const char *list[2][nitem] = {
+	str_t list[2][nitem] = {
 	  { "currpath", "homepath", "progpath", "progname", "dirsep",
 	  	"version", "os", "arch" },
 	  { curr_path , home_path , prog_path , prog_name , dir_sep ,
@@ -326,8 +293,8 @@ found:
 
 	if (no_env) return;
 
-	const char *mpath = getenv("MAD_PATH"), *cpath  = getenv("MAD_CPATH");
-	const char *lpath = getenv("LUA_PATH"), *lcpath = getenv("LUA_CPATH");
+	str_t mpath = getenv("MAD_PATH"); str_t cpath  = getenv("MAD_CPATH");
+	str_t lpath = getenv("LUA_PATH"); str_t lcpath = getenv("LUA_CPATH");
 	int len, mlen, clen, marg, carg;
 
 	if (mpath) marg = 0, mlen = strlen(mpath);
@@ -468,19 +435,20 @@ found:
 	setenv("LUA_CPATH", env, 1);
 }
 
+/* MAD initialization. */
 static int handle_madinit (lua_State *L)
 {
 #if LJ_TARGET_CONSOLE
-  const char *init = NULL;
+  str_t init = NULL;
 #else
-	const char *init = getenv("MAD_INIT");
+	str_t init = getenv("MAD_INIT");
 #endif
 	if (init == NULL)
 		return 0;  /* status OK */
 	else if (init[0] == '@')
 		return dofile(L, init+1);
 	else
-		return dostring(L, init, "=" "MAD_INIT");
+		return dostring(L, init, "=MAD_INIT");
 }
 
 /* Extra integrated libs to load. */
@@ -488,7 +456,7 @@ LUALIB_API int luaopen_lpeg (lua_State *L);
 
 static void mad_openlibs (lua_State *L)
 {
-	static struct { const char* name; int(*func)(lua_State*); } libs[] = {
+	static struct { str_t name; int(*func)(lua_State*); } libs[] = {
     { "lpeg", luaopen_lpeg },
     { NULL  , NULL },
 	};
@@ -498,6 +466,32 @@ static void mad_openlibs (lua_State *L)
     lua_pushstring(L, libs[i].name);
     lua_call(L, 1, 0);
   }
+}
+
+/* Handle signals */
+static const int   sig_i[] = { SIGSEGV , SIGFPE , SIGPIPE , SIGBUS , SIGILL , SIGABRT };
+static const str_t sig_s[] = {"SIGSEGV","SIGFPE","SIGPIPE","SIGBUS","SIGILL","SIGABRT"};
+enum { sig_n = sizeof sig_i / sizeof *sig_i };
+
+static void mad_signal(int sig)
+{
+  static const str_t sig_m[sig_n] = {
+  	"segmentation fault!","floating-point exception!","broken pipe!",
+  	"bus error!","illegal instruction!","abort!"};
+
+  int i = 0;
+	while (i < sig_n && sig_i[i] != sig) ++i;
+
+	fprintf(stderr, "signal %s caught!\n", sig_s[i]); // SAFE
+	luaL_error(globalL, sig_m[i]); // NOT SAFE! (but let's try...)
+	exit(EXIT_FAILURE); /* never reached */
+}
+
+static void mad_setsig (void)
+{
+	for (int i=0; i < sig_n; i++)
+		ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
+					 "unable to set signal hanlder %s", sig_s[i]);
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -534,9 +528,9 @@ static void print_usage(void)
 	"  -O[opt]   Control JIT optimizations.\n"
 	"  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
 	"  -q        Do not show version information.\n"
-	"  -t[num]   Set initial trace level for debugging.\n"
-	"  -T[num]   Set initial trace level and location for debugging.\n"
 	"  -M        Do not load MAD environment.\n"
+	"  -Mt[=num] Set initial MAD trace level to " LUA_QL("num") ".\n"
+	"  -MT[=num] Set initial MAD trace level to " LUA_QL("num") " and location.\n"
 	"  -E        Ignore environment variables.\n"
 	"  --        Stop handling options.\n"
 	"  -         Execute stdin and stop handling options.\n", stderr);
@@ -856,14 +850,14 @@ static int dobytecode(lua_State *L, char **argv)
 }
 
 /* check that argument has no extra characters at the end */
-#define notail(x)	{if ((x)[2] != '\0') return -1;}
+#define notail(x,i)	{if ((x)[i] != '\0') return -1;}
 
 #define FLAGS_INTERACTIVE	1
 #define FLAGS_VERSION			2
 #define FLAGS_EXEC				4
 #define FLAGS_OPTION			8
 #define FLAGS_NOENV				16
-#define FLAGS_MADENV			128
+#define FLAGS_MADENV		  128
 
 static int collectargs(char **argv, int *flags)
 {
@@ -874,16 +868,16 @@ static int collectargs(char **argv, int *flags)
 			return i;
 		switch (argv[i][1]) {  /* Check option. */
 		case '-':
-			notail(argv[i]);
+			notail(argv[i],2);
 			return i+1;
 		case '\0':
 			return i;
 		case 'i':
-			notail(argv[i]);
+			notail(argv[i],2);
 			*flags |= FLAGS_INTERACTIVE;
 			break;
 		case 'q':
-			notail(argv[i]);
+			notail(argv[i],2);
 			*flags &= ~FLAGS_VERSION;
 			break;
 		case 'e':
@@ -903,17 +897,17 @@ static int collectargs(char **argv, int *flags)
 			*flags |= FLAGS_EXEC;
 			return i+1;
 		case 'E':
-			notail(argv[i]);
+			notail(argv[i],2);
 			*flags |= FLAGS_NOENV;
 			break;
-		case 'M': /* no MAD environment */
-			notail(argv[i]);
-			*flags &= ~FLAGS_MADENV;
-			break;
-		case 'T': /* MAD initial trace level */
-			mad_trace_location = 1;
-		case 't': /* MAD initial trace level */
-			mad_trace_level = argv[i][2] ? strtol(argv[i]+2, NULL, 0) : 1;
+		case 'M': /* MAD options */
+			if (argv[i][2] == 't' || argv[i][2] == 'T') { /* MAD trace level */
+				mad_trace_location = argv[i][2] == 'T';
+				mad_trace_level    = argv[i][3] == '=' ? strtol(argv[i]+4, NULL, 0) : 1;
+			} else { /* don't load MAD environment */
+				notail(argv[i],2);
+				*flags &= ~FLAGS_MADENV;
+			}
 			break;
 		default: return -1;  /* invalid option */
 		}
@@ -1026,7 +1020,7 @@ static int pmain(lua_State *L)
 
 	/* MAD section. */
 	mad_setsig();
-	mad_regfunc();
+	mad_regfun();
 
 	if ((flags & FLAGS_MADENV))
 		dolibrary(L, "madl_main");
@@ -1063,6 +1057,7 @@ static int pmain(lua_State *L)
 int main(int argc, char **argv)
 {
 	int status;
+
 	lua_State *L = lua_open();
 	if (L == NULL) {
 		l_message(argv[0], "cannot create state: not enough memory");

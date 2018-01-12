@@ -112,7 +112,7 @@ __help.same     = __help.gutil -- move to gfunc
 local ffi, _C  = require 'ffi', require 'madl_cmad'
 local bit, fun = require 'bit', require 'madl_lfun'
 
-local istype                                   in ffi
+local istype, typeof, miscmap                  in ffi
 local format                                   in string
 local abs, huge, min, max                      in math
 local band, bor, rol, rshift                   in bit
@@ -123,7 +123,7 @@ local type, getmetatable, tostring = type, getmetatable, tostring
 
 -- metatables & metamethods
 
-assert(ffi.miscmap, "missing MAD extension (no cdata metatable access)")
+assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
 local metaname = {
   -- list of metanames from lj_obj.h + init + exec + copy + kpairs + totable
@@ -135,8 +135,7 @@ local metaname = {
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
 
 local function get_metatable (a)
-  return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
-         or getmetatable(a)
+  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
 end
 
 local function has_metatable (a)
@@ -149,12 +148,13 @@ local function get_metamethod (a, f)
 end
 
 local function has_metamethod (a, f)
-  return not not get_metamethod(a,f)
+  local mt = get_metatable(a)
+  return (mt and rawget(mt,f)) ~= nil
 end
 
 local function has_metamethod2 (a, f, f2)
   local mt = get_metatable(a)
-  return not not (mt and (rawget(mt,f) or rawget(mt,f2)))
+  return (mt and (rawget(mt,f) or rawget(mt,f2))) ~= nil
 end
 
 -- values
@@ -169,7 +169,7 @@ local value_t = { -- list of types that cannot be modified
 local option = {
 
   format = "%.16g",
-  debug  = false,
+  debug  = 0,
 
 }
 
@@ -252,7 +252,7 @@ operator.opstr = {
 
 -- types
 
-local complex = ffi.typeof 'complex'
+local complex = typeof 'complex'
 
 local typeid = {
 
@@ -268,16 +268,16 @@ local typeid = {
   is_nil      = \a -> rawequal(a, nil  ),
   is_true     = \a -> rawequal(a, true ),
   is_false    = \a -> rawequal(a, false),
-  is_finite   = \a -> type(a) == 'number'  and abs(a) <  huge,
-  is_infinite = \a -> type(a) == 'number'  and abs(a) == huge,
-  is_nan      = \a -> type(a) == 'number'  and a ~= a,
-  is_positive = \a -> type(a) == 'number'  and a > 0,
-  is_negative = \a -> type(a) == 'number'  and a < 0,
-  is_integer  = \a -> type(a) == 'number'  and a >= -2^52 and a <= 2^52 and (a%1) == 0,
-  is_complex  = \a ->                          istype(complex, a),
-  is_scalar   = \a -> type(a) == 'number'  or  istype(complex, a),
-  is_rawtable = \a -> type(a) == 'table'   and rawequal(getmetatable(a), nil),
-  is_empty    = \a -> type(a) == 'table'   and rawequal(next        (a), nil),
+  is_finite   = \a -> type(a) == 'number' and abs(a) <  huge,
+  is_infinite = \a -> type(a) == 'number' and abs(a) == huge,
+  is_nan      = \a -> type(a) == 'number' and a ~= a,
+  is_positive = \a -> type(a) == 'number' and a > 0,
+  is_negative = \a -> type(a) == 'number' and a < 0,
+  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_complex  = \a ->                         istype(complex, a),
+  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
+  is_rawtable = \a -> type(a) == 'table'  and rawequal(getmetatable(a), nil),
+  is_empty    = \a -> type(a) == 'table'  and rawequal(next        (a), nil),
 
   -- file handle (open or closed)
   is_file     = \a -> io.type(a) ~= nil,
@@ -290,8 +290,7 @@ local typeid = {
 
 }
 
-local is_nil, is_number, is_complex, is_string, is_table, is_rawtable,
-      is_function in typeid
+local is_nil, is_number, is_complex, is_string, is_table, is_rawtable in typeid
 
 -- concepts
 
@@ -305,19 +304,19 @@ local concept = {
   is_stringable    = \a -> has_metamethod(a, '__tostring'),
   is_tableable     = \a -> has_metamethod(a, '__totable' ),
 
-  is_callable      = \a -> is_function(a) or has_metamethod(a, '__call'  ),
-  is_iterable      = \a -> is_table(a)    or has_metamethod(a, '__ipairs'),
-  is_keyrable      = \a -> is_table(a)    or has_metamethod(a, '__kpairs'),
-  is_mappable      = \a -> is_table(a)    or has_metamethod(a, '__pairs' ),
-  is_indexable     = \a -> is_table(a)    or has_metamethod(a, '__index' ),
-  is_concatenable  = \a -> is_string(a)   or has_metamethod(a, '__concat'),
-  is_negatable     = \a -> is_number(a)   or has_metamethod(a, '__unm'   ),
-  is_addable       = \a -> is_number(a)   or has_metamethod(a, '__add'   ),
-  is_substractable = \a -> is_number(a)   or has_metamethod(a, '__sub'   ),
-  is_multiplicable = \a -> is_number(a)   or has_metamethod(a, '__mul'   ),
-  is_dividable     = \a -> is_number(a)   or has_metamethod(a, '__div'   ),
-  is_modulable     = \a -> is_number(a)   or has_metamethod(a, '__mod'   ),
-  is_powerable     = \a -> is_number(a)   or has_metamethod(a, '__pow'   ),
+  is_callable      = \a -> type(a) == 'function' or has_metamethod(a, '__call'  ),
+  is_iterable      = \a -> type(a) == 'table'    or has_metamethod(a, '__ipairs'),
+  is_keyrable      = \a -> type(a) == 'table'    or has_metamethod(a, '__kpairs'),
+  is_mappable      = \a -> type(a) == 'table'    or has_metamethod(a, '__pairs' ),
+  is_indexable     = \a -> type(a) == 'table'    or has_metamethod(a, '__index' ),
+  is_concatenable  = \a -> type(a) == 'string'   or has_metamethod(a, '__concat'),
+  is_negatable     = \a -> type(a) == 'number'   or has_metamethod(a, '__unm'   ),
+  is_addable       = \a -> type(a) == 'number'   or has_metamethod(a, '__add'   ),
+  is_substractable = \a -> type(a) == 'number'   or has_metamethod(a, '__sub'   ),
+  is_multiplicable = \a -> type(a) == 'number'   or has_metamethod(a, '__mul'   ),
+  is_dividable     = \a -> type(a) == 'number'   or has_metamethod(a, '__div'   ),
+  is_modulable     = \a -> type(a) == 'number'   or has_metamethod(a, '__mod'   ),
+  is_powerable     = \a -> type(a) == 'number'   or has_metamethod(a, '__pow'   ),
 
   is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
   is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a,'__le','__lt'),
@@ -340,28 +339,110 @@ concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
 
 local has_method in concept
 
--- utilities
+-- utilities ------------------------------------------------------------------o
 
 local utility = {}
 
-local rep_x, rep_n = {}, {}
+-- repeater
 
-local rep_it = \s,i => if i < s[rep_n] then return i+1, s[rep_x] end end
+local _repx, _repn = {}, {}
+
+local rep_it = \s,i => if i < s[_repn] then return i+1, s[_repx] end end
 local rep_mt = {
-  __len      = \s   -> s[rep_n],
-  __index    = \s,i => if 1 <= i and i <= s[rep_n] then return s[rep_x] end end,
+  __len      = \s   -> s[_repn],
+  __index    = \s,i => if 1 <= i and i <= s[_repn] then return s[_repx] end end,
   __newindex = \    -> error("invalid write access to readonly object", 2),
   __pairs    = \s   -> (rep_it, s, 0),
   __ipairs   = \s   -> (rep_it, s, 0),
+  __kpairs   = \s   -> nil,
 }
 
 function utility.rep (x, n_) -- repeater
-  return setmetatable({[rep_x]=x, [rep_n]=n_ or 2^30}, rep_mt)
+  return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
 end
 
-function utility.setkeys (a)
-  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
-  for _,v in ipairs(a) do a[v] = v end
+-- run once
+
+local runonce_ = setmetatable({}, {__mode='k'})
+
+function utility.runonce (f, ...)
+  if runonce_[f] ~= true then
+    assert(is_callable(f), "invalid argument #1 (callable expected)")
+    runonce_[f]=true
+    return f(...)
+  end
+end
+
+-- finalizer
+
+local final_   = { n=0 } -- __gc is not supported by luajit
+local finalgc_ = ffi.gc(ffi.new('int[1]'), \=>
+  if option.debug > 2 then
+    io.write('MAD finalizer called...\n')
+  end
+  for i=final_.n,1,-1 do
+    local ret, err = pcall(final_[i])
+    if ret ~= true then
+       io.stderr:write('finalizer failed: ', err, '\n')
+    end
+    final_[i], final_.n = nil, i-1
+  end
+end)
+
+function utility.atexit (f)
+  assert(is_callable(f), "invalid argument #1 (callable expected)")
+  local n = final_.n+1
+  if n == 1 then
+    local exit = os.exit
+    os.exit = \code -> exit(code, true)
+  end
+  final_[n], final_.n = f, n
+end
+
+-- key/indexes set
+
+function utility.clearkeys (a, p_)
+  assert(is_keyrable(a), "invalid argument #1 (keyrable expected)")
+  local it, tb, k0 = kpairs(a)
+  if not p_ then
+    for k in it,tb,k0 do a[k] = nil end
+  else
+    assert(is_callable(p_), "invalid argument #2 (callable expected)")
+    for k in it,tb,k0 do if p_(k) == true then a[k] = nil end end
+  end
+  return a
+end
+
+function utility.clearidxs (a, i_, j_)
+  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
+  i_, j_ = i_ or 1, j_ or #a
+  assert(is_number(i_)  , "invalid argument #2 (number expected)")
+  assert(is_number(j_)  , "invalid argument #3 (number expected)")
+  for i=i_,j_ do a[i] = nil end
+  return a
+end
+
+function utility.setkeys (a, k_, i_, j_)
+  if is_number(k_) and is_nil(j_) then
+    k_, i_, j_ = nil, k_, i_  -- right shift
+  end
+  k_ = k_ or a
+  assert(is_indexable(a ), "invalid argument #1 (indexable expected)")
+  assert(is_indexable(k_), "invalid argument #2 (indexable expected)")
+  i_, j_ = i_ or 1, j_ or #a
+  assert(is_number(i_)   , "invalid argument #3 (number expected)")
+  assert(is_number(j_)   , "invalid argument #4 (number expected)")
+  for i=i_,j_ do a[k_[i-i_+1]] = a[i] end
+  return a
+end
+
+function utility.setidxs (a, k, i_, j_)
+  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
+  assert(is_indexable(k), "invalid argument #2 (indexable expected)")
+  i_, j_ = i_ or 1, j_ or #a
+  assert(is_number(i_)  , "invalid argument #3 (number expected)")
+  assert(is_number(j_)  , "invalid argument #4 (number expected)")
+  for i=i_,j_ do a[i] = a[k[i-i_+1]] end
   return a
 end
 
@@ -372,13 +453,7 @@ function utility.countkeys (a)
   return n
 end
 
-function utility.printf (str, ...)
-  return io.write(str:format(...))
-end
-
-function utility.fprintf (fp, str, ...)
-  return fp:write(str:format(...))
-end
+-- files
 
 function utility.fileexists (fname)
   assert(is_string(fname), "invalid argument #1 (string expected)")
@@ -387,6 +462,39 @@ function utility.fileexists (fname)
   io.close(file)
   return true
 end
+
+function utility.printf (str, ...)
+  return io.write(str:format(...))
+end
+
+function utility.fprintf (fp, str, ...)
+  return fp:write(str:format(...))
+end
+
+-- table copy
+
+function utility.tblcpy (a, mt_, na_)
+  local na = na_ or {}
+  for k,v in next, a do na[k] = v end -- shallow copy
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+function utility.tbldeepcpy (a, mt_, xr_, na_)
+  local na = na_ or {}
+  xr_ = xr_ or {}
+  xr_[a] = na
+  for k,v in next, a do -- deep copy, keep track of self-xref
+    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
+  end
+  if mt_ == true then setmetatable(na, getmetatable(a)) end
+  return na
+end
+
+table.copy     = utility.tblcpy
+table.deepcopy = utility.tbldeepcpy
+
+-- extensions (conversion, factory)
 
 local tostring_ -- forward ref
 
@@ -410,8 +518,6 @@ function utility.str2tbl(str, match_, init_)
     return {str}
   end
 end
-
--- extensions (conversion, factory)
 
 function tostring_ (a, ...)
   if     is_string(a)     then return a
@@ -440,31 +546,10 @@ function utility.same (a, ...)
   error("invalid argument #1 (sameable object expected)")
 end
 
-function table_copy (a, mt_)
-  local na = {}
-  for k,v in next, a do na[k] = v end -- shallow copy
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-function table_deepcopy (a, mt_, xr_)
-  local na = {}
-  xr_ = xr_ or {}
-  xr_[a] = na
-  for k,v in next, a do -- deep copy, keep track of self-xref
-    na[xr_[k] or k] = xr_[v] or utility.copy(v, mt_, xr_)
-  end
-  if mt_ == true then setmetatable(na, getmetatable(a)) end
-  return na
-end
-
-table.copy     = table_copy
-table.deepcopy = table_deepcopy
-
 function utility.copy (a, ...)
   if    value_t[type(a)] then return a
   elseif is_copiable(a)  then return rawget(get_metatable(a),'__copy')(a, ...)
-  elseif is_table(a)     then return table_deepcopy(a, ...)
+  elseif is_table(a)     then return utility.tbldeepcpy(a, ...)
   end
   error("invalid argument #1 (copiable object expected)")
 end
@@ -610,9 +695,10 @@ string.splitall = utility.strsplitall
 -- iterator
 
 function utility.kpairs (tbl)
-  local init, iter = get_metamethod(tbl, '__kpairs')
+  assert(is_keyrable(tbl), "invalid argument #1 (keyrable expected)")
+  local iter = get_metamethod(tbl, '__kpairs')
   if iter then return iter(tbl) end
-  init, iter = #tbl, pairs(tbl) -- follow __len and __pairs
+  local iter, init = pairs(tbl), #tbl -- follow __len and __pairs
   if init == 0 then init = nil end
   return iter, tbl, init
 end
