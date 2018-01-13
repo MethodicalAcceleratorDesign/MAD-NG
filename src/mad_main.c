@@ -140,7 +140,8 @@ LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
   vfprintf(stderr, fmt, va);
 	va_end(va);
   fputc('\n', stderr);
-	luaL_error(globalL,""); // NOT SAFE! (but let's try...)
+	lua_pushstring(globalL, ""); 	// NOT SAFE! (but let's try...)
+	lua_error(globalL);
 	exit(EXIT_FAILURE); /* never reached */
 }
 
@@ -482,8 +483,10 @@ static void mad_signal(int sig)
   int i = 0;
 	while (i < sig_n && sig_i[i] != sig) ++i;
 
-	fprintf(stderr, "signal %s caught!\n", sig_s[i]); // SAFE
-	luaL_error(globalL, sig_m[i]); // NOT SAFE! (but let's try...)
+	// NOT SAFE! (but let's try...)
+	fprintf(stderr, "%s: %s\n", sig_s[i], sig_m[i]);
+	lua_pushstring(globalL, "");
+	lua_error(globalL);
 	exit(EXIT_FAILURE); /* never reached */
 }
 
@@ -497,8 +500,12 @@ static void mad_setsig (void)
 /* --- MAD (end) -------------------------------------------------------------*/
 
 #if !LJ_TARGET_CONSOLE
+static clock_t sigint_t0;
+static int     sigint_count;
+
 static void lstop(lua_State *L, lua_Debug *ar)
 {
+	sigint_count = 0;
 	(void)ar;  /* unused arg. */
 	lua_sethook(L, NULL, 0, 0);
 	/* Avoid luaL_error -- a C hook doesn't add an extra frame. */
@@ -509,9 +516,24 @@ static void lstop(lua_State *L, lua_Debug *ar)
 
 static void laction(int i)
 {
-	signal(i, SIG_DFL); /* if another SIGINT happens before lstop,
-			 terminate process (default action) */
-	lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+	signal(i, laction); /* protect against multiple Ctrl-C */
+
+	if (!sigint_count++) {
+		sigint_t0 = clock();
+  	lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+  	return;
+	}
+
+	/* prevent multiple Ctrl-C within 0.2-0.5 sec */
+	double sigint_delay = (clock()-sigint_t0)/(double)CLOCKS_PER_SEC;
+
+	if (sigint_count > 2 || sigint_delay > 0.5) {
+  	/* too many SIGINT or timeout happened before lstop, terminate process */
+		fprintf(stderr, "interrupted!\n"); // signal(i, SIG_DFL);
+		exit(EXIT_FAILURE); // give a chance to C for cleanup
+	}
+
+	fprintf(stderr,"pending interruption in VM! (next will exit)\n");
 }
 #endif
 
