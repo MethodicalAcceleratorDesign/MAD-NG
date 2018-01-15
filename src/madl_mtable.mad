@@ -70,19 +70,15 @@ local strtrim, strsplit, strbracket, fprintf, kpairs             in MAD.utility
 local is_nil, is_boolean, is_number, is_positive, is_string,
       is_table, is_rawtable, is_range, is_file, is_matrix        in MAD.typeid
 
-local min, max, ceil in math
+local max, ceil in math
 local strsub = string.sub
 local table_new, table_clear, table_insert, table_remove =
       table.new, table.clear, table.insert, table.remove
 
 -- root object ----------------------------------------------------------------o
 
--- hidden keys: data (columns).
+-- hidden keys.
 local _data = {}
-
--- , _ridx, _rsel = {},{},{}
--- hidden keys: reference column, nrow, ncol, #data or #ridx[key].
--- local _cref, _rlen, _clen, _len = {},{},{},{}
 
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
@@ -117,8 +113,7 @@ end
 -- sanity checks --------------------------------------------------------------o
 
 -- check dictionnary of name -> idx
-local function check_dict (tbl)
-  local data = var_raw(tbl,_data)
+local function check_dict (data)
   if is_nil(data.cref) then return end
   local cref = data[data.cref]
   for rn,ri in pairs(data.ridx) do -- name -> index or table of indexes
@@ -139,10 +134,10 @@ end
 -- build mtable ---------------------------------------------------------------o
 
 -- finalize mtable
-local function finish_mtbl (tbl)
+local function finish_mtbl (data)
   -- sanity checks
   if MAD.option.debug > 2 then
-    check_dict(tbl)
+    check_dict(data)
   end
 end
 
@@ -150,6 +145,7 @@ end
 local function mtbl_init (tbl)
   local nc = tbl:raw_len()
   if nc == 0 then return tbl end -- empty
+
   local nr   = tbl.reserve       -- forseen rows
   local data = table_new(nc, 8)  -- columns (data)
   data.ridx  = table_new( 0,nr)  -- name -> idx
@@ -174,7 +170,7 @@ local function mtbl_init (tbl)
   tbl:clear_array() -- clear list of column names
   tbl.date, tbl.time = os.date'%d/%m/%y', os.date'%H:%M:%S'
   tbl[_data] = data
-  finish_mtbl(tbl)
+  finish_mtbl(data)
   return tbl
 end
 
@@ -367,17 +363,17 @@ end
 -- helper for mangled names and row indexes (same as sequence) ----------------o
 
 -- get row index from signed index (direct)
-local function index_of_idx (tbl, idx)
+local function index_of_idx (data, idx)
   assert(is_number(idx), "invalid argument #2 (index expected)")
-  local n = var_raw(tbl,_data).nr
+  local n = data.nr
   if idx < 0 then idx = n+idx+1 end -- reflect
   if idx < 1 or idx > n then return nil end
   return idx
 end
 
 -- get index from name [with count] (direct)
-local function index_of_cnam (tbl, nam, cnt_)
-  local ri = var_raw(tbl,_data).ridx[nam]
+local function index_of_cnam (data, nam, cnt_)
+  local ri = data.ridx[nam]
   if is_table(ri) then
     cnt_ = cnt_ or 1
     assert(is_number(cnt_), "invalid argument #3 (count expected)")
@@ -388,12 +384,12 @@ local function index_of_cnam (tbl, nam, cnt_)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (tbl, nam, cnt_, idx_)
+local function index_of_rnam (data, nam, cnt_, idx_)
   cnt_ = cnt_ or 1
   assert(is_number(cnt_), "invalid argument #3 (count expected)")
-  local ri = var_raw(tbl,_data).ridx[nam]
+  local ri = data.ridx[nam]
   if is_nil(ri) then return nil end
-  idx_ = index_of_idx(tbl, idx_ or 1)
+  idx_ = index_of_idx(data, idx_ or 1)
   if is_nil(idx_) then return nil end
   if is_number(ri) then
     return (cnt_ ==  1 and ri >= idx_ and ri) or
