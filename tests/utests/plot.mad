@@ -29,28 +29,20 @@ local plot, gplot, mtable, vector                           in MAD
 local sequence, marker                                      in MAD.element
 local observe                                               in MAD.element.flags
 local is_sequence                                           in MAD.typeid
+
+local toolbox  = require 'toolbox'
+local generate = false
+local refdir   = \s -> 'plot_ref/'..s
+local rundir   = \s -> 'plot_run/'..s
+local bmtbl, lmtbl
+
 -- helpers --------------------------------------------------------------------o
 
-local generate   = false
-local refFolder  = "./PlotRef/"
-local testFolder = "./PlotRun/"
-local lhcb1, lhcb2, bmtbl, lmtbl
-
 local function loadLHC ()
-  if lhcb1 then return end
-  loadfile('./lhc_as-built_gen.mad')()
-  loadfile('./lhc_as-built_set.mad')()
-  loadfile('./lhc_undefvar.mad'    )()
-  loadfile('./opt_inj_gen.mad'     )()
-
-  lhcb1, lhcb2 = MADX.lhcb1, MADX.lhcb2
-  assertEquals(#lhcb1, 6677)
-  assertEquals(#lhcb2, 6676)
-
-  MADX.option.warn = false
-
+  local lhcb1, lhcb2 = toolbox.loadLHC()
   lhcb1:select(observe)
   lhcb2:select(observe)
+  return lhcb1, lhcb2
 end
 
 local function createTbl ()
@@ -67,8 +59,8 @@ end
 
 local function assertFiles (name)
   if generate then return end
-  local ref  = assert(io.open(refFolder  .. name, "r"))
-  local test = assert(io.open(testFolder .. name, "r"))
+  local ref  = assert(io.open(refdir(name), "r"))
+  local test = assert(io.open(rundir(name), "r"))
   local line = 1
   while true do
     local refline  = ref:read("*line")
@@ -83,14 +75,14 @@ local function assertFiles (name)
     end
     line = line + 1
   end
-  if not generate then os.remove(testFolder .. name) end
+  if not generate then os.remove(rundir(name)) end
 end
 
 local function getEmptyPlot (name)
   return plot {
     title   = name,
     output  = false,
-    scrdump = testFolder .. name,
+    scrdump = rundir(name),
     exec    = false,
   }
 end
@@ -105,13 +97,12 @@ end
 TestPlot = {}
 
 function TestPlot:setUp ()
-  loadLHC()
   createTbl()
-  os.execute("mkdir -p " .. testFolder)         -- TODO Cleaner + cross platform
+  os.execute("mkdir -p " .. rundir(''))         -- TODO Cleaner + cross platform
 end
 
 function TestPlot:tearDown ()
-  if not generate then os.remove(testFolder) end
+  if not generate then os.remove(rundir('')) end
 end
 
 function TestPlot:testEmptyPlot ()
@@ -134,7 +125,6 @@ function TestPlot:testAxisName ()
   local param4 = {table = lmtbl, x1y1 = { x1 = 'y1'},                          }
   local param5 = {table = lmtbl, x1y1 = {'y1', 'y2'},                          }
   local param6 = {table = lmtbl, x1y1 =  'y1',                                 }
-
   execTest("testAxisName1", param1)
   execTest("testAxisName2", param2)
   execTest("testAxisName3", param3)
@@ -150,7 +140,6 @@ function TestPlot:testAxisSelection ()
   local param4 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' } }
   local param5 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' },
                                   x1y2 = { x1 = 'y3' }, x2y1 = { x2 = 'y4' } }
-
   execTest("testAxisSelection1", param1)
   execTest("testAxisSelection2", param2)
   execTest("testAxisSelection3", param3)
@@ -168,7 +157,6 @@ function TestPlot:testAxisLabel ()
     ylabel  = "label Y",
     y2label = "label Y2",
   }
-
   execTest("testAxisLabel", param)
 end
 
@@ -182,10 +170,8 @@ function TestPlot:testAxisRange ()
     yrange  = { 8  ,  11  },
     y2range = { 28 ,  31  },
   }
-
   execTest("testAxisRange", param)
 end
-
 
 function TestPlot:testTableOrData ()
   local x1, y2 = table.new(25,0), vector(25)
@@ -198,7 +184,6 @@ function TestPlot:testTableOrData ()
     data  = { x1 = x1  , y2 = y2   },
     x1y1  = { x1 = 'y1', x2 = 'y2' },
   }
-
   execTest("testTableOrData", param)
 end
 
@@ -220,7 +205,6 @@ function TestPlot:testTableRange ()
     x1y1       = { x1 = 'y1' },
     tablerange = { 13, 23    },
   }
-
   execTest("testTableRange1", param1)
   execTest("testTableRange2", param2)
 end
@@ -283,21 +267,29 @@ function TestPlot:testObjectShift ()
   execTest("testObjectShift", param)
 end
 
-
 function TestPlot:testLHC()
+  local lhcb1, lhcb2 = loadLHC()
   local param = {
     sequence = { lhcb1, lhcb2 },
     table    = bmtbl,
     x1y1     = { x = 'y' },
   }
-  execTest("testLHC", param)
+  local flg  = MADX.option.warn
+  MADX.option.warn = false
+    execTest("testLHC", param)
+  MADX.option.warn = flg
 end
 
 function TestPlot:testLHCInPlot ()
+  local lhcb1, lhcb2 = loadLHC()
   local param = {
     sequence = { lhcb1, lhcb2 },
     laypos   = "in",
   }
+  local flg  = MADX.option.warn
+  MADX.option.warn = false
   execTest("testLHCInPlot", param)
+  MADX.option.warn = flg
 end
+
 -- end ------------------------------------------------------------------------o
