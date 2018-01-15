@@ -188,27 +188,31 @@ function MT:__len ()
   return rawlen(var)
 end
 
-local function ipairs_iter (self)
-  return ipairs(rawget(self,_var))
-end
-
-local function kiter (var, key) -- scan only strings
+local function iter (var, key) -- scan only numbers and strings
   local k, v = next(var, key)
-  while type(k) ~= 'string' and k do
+  while type(k) ~= 'string' and type(k) ~= 'number' and k do
     k, v = next(var, k)
   end
   return k, v
 end
 
+local function pairs_iter (self)
+  return iter, rawget(self,_var), nil
+end
+
 local function kpairs_iter (self)
   local var = rawget(self,_var)
   local n = rawlen(var) -- skip array part
-  return kiter, var, n > 0 and n or nil
+  return iter, var, n > 0 and n or nil
 end
 
+local function ipairs_iter (self)
+  return ipairs(rawget(self,_var))
+end
+
+MT.__pairs  =  pairs_iter
 MT.__ipairs = ipairs_iter
 MT.__kpairs = kpairs_iter
-MT.__pairs  = kpairs_iter
 
 function MT:__tostring()
   return string.format("'%s' <object> %p", name(self), self)
@@ -308,8 +312,8 @@ local function get_varkeys (self, class_)
   local lst, key = table_new(8,1), table_new(0,8) ; lst.n = 0
   while self and not rawequal(self, class_) do
     for k,v in kpairs_iter(self) do
-      if not (key[k] or is_functor(v)) and strsub(k,1,2) ~= '__' then
-        lst[lst.n+1], key[k], lst.n = k, k, lst.n+1
+      if not (key[k] or is_functor(v)) and is_string(k) and strsub(k,1,2) ~= '__'
+      then lst[lst.n+1], key[k], lst.n = k, k, lst.n+1
       end
     end
     self = parent(self)
@@ -560,7 +564,7 @@ local function strdump (self, class_, pattern_)
     spc = spc .. "   "
     -- variables
     for k,v in kpairs_iter(self) do
-      if strsub(k,1,2) ~= '__' and string.find(k, pattern_) then
+      if is_string(k) and strsub(k,1,2) ~= '__' and string.find(k,pattern_) then
         str = spc .. tostring(k)
         if is_string(v) then
           str = str .. " : '" .. tostring(v):sub(1,15) .. "'"
