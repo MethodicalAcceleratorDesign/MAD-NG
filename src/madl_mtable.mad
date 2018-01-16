@@ -354,26 +354,49 @@ local function add_idx (data, idx)
 end
 
 -- build dictionnary name -> idx
-local function build_idx (data)        -- must be very fast (see add_idx)
+local function build_idx (tbl)         -- must be very fast (see add_idx)
+  local data = var_raw(tbl,_data)
   if is_nil(data.cref) then return end -- no reference column
   table_clear(data.ridx)               -- reuse main storage
   for i=1,data.nr do add_idx(data, i) end
 end
 
+-- memory helpers -------------------------------------------------------------o
+
+-- allocated more memory for vectors
+-- specialize on 1st row unless novector == true
+local function expand (data, reserve, novector)
+  local rmax = ceil(max(reserve, data.rmax*1.5))
+  assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
+  local nr, nc = data.nr, data.nc-data.ng
+  for i=1,nc do
+    local val = data[i]
+    if not novector and is_number(data[i][1]) then
+      data[i] = vector(rmax)
+      data[i].nr = nr
+      if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
+    elseif data.rmax == 1 then -- expand only after 1st row
+      data[i] = table_new(rmax,1)
+      data[i][1], data[i].nr = val[1], nr
+    end
+  end
+  data.rmax = novector and 1e8 or rmax
+end
+
 -- helper for mangled names and row indexes (same as sequence) ----------------o
 
 -- get row index from signed index (direct)
-local function index_of_idx (data, idx)
+local function index_of_idx (tbl, idx)
   assert(is_number(idx), "invalid argument #2 (index expected)")
-  local n = data.nr
+  local n = var_raw(tbl,_data).nr
   if idx < 0 then idx = n+idx+1 end -- reflect
   if idx < 1 or idx > n then return nil end
   return idx
 end
 
 -- get index from name [with count] (direct)
-local function index_of_cnam (data, nam, cnt_)
-  local ri = data.ridx[nam]
+local function index_of_cnam (tbl, nam, cnt_)
+  local ri = var_raw(tbl,_data).ridx[nam]
   if is_table(ri) then
     cnt_ = cnt_ or 1
     assert(is_number(cnt_), "invalid argument #3 (count expected)")
@@ -384,12 +407,12 @@ local function index_of_cnam (data, nam, cnt_)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (data, nam, cnt_, idx_)
+local function index_of_rnam (tbl, nam, cnt_, idx_)
   cnt_ = cnt_ or 1
   assert(is_number(cnt_), "invalid argument #3 (count expected)")
-  local ri = data.ridx[nam]
+  local ri = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  idx_ = index_of_idx(data, idx_ or 1)
+  idx_ = index_of_idx(tbl, idx_ or 1)
   if is_nil(idx_) then return nil end
   if is_number(ri) then
     return (cnt_ ==  1 and ri >= idx_ and ri) or
@@ -480,27 +503,6 @@ local function length_of (tbl, rng_, ntrn_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local siz = rng_ and 1-sub(range_of(tbl, rng_)) or 0
   return siz + #tbl * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
-end
-
--- memory bookkeeping helpers -------------------------------------------------o
-
--- allocated more memory for vectors
--- specialize on 1st row unless novector == true
-local function expand (data, reserve, novector)
-  local rmax = ceil(max(reserve, data.rmax*1.5))
-  local nr, nc = data.nr, data.nc-data.ng
-  for i=1,nc do
-    local val = data[i]
-    if not novector and is_number(data[i][1]) then
-      data[i] = vector(rmax)
-      data[i].nr = nr
-      if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
-    elseif data.rmax == 1 then -- expand only after 1st row
-      data[i] = table_new(rmax,1)
-      data[i][1], data[i].nr = val[1], nr
-    end
-  end
-  data.rmax = novector and 1e8 or rmax
 end
 
 -- methods (R/W, update dict) -------------------------------------------------o
@@ -623,6 +625,7 @@ local function swp_row (tbl, key1, key2)
     data[i][idx1], data[i][idx2] = data[i][idx2], data[i][idx1]
   end
   ins_idx(data, idx1) ; ins_idx(data, idx2)
+  data.rsel[idx1], data.rsel[idx2] = data.rsel[idx2], data.rsel[idx1]
   return tbl
 end
 
@@ -740,13 +743,13 @@ end
 
 local function rebuild_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
-  local data = var_raw(tbl, _data)
-  if key_ then
+  if key_ then -- change reference column
+    local data = var_raw(tbl, _data)
     local idx = is_number(key_) and key_ or data.cidx[key_]
     assert(idx, "invalid argument #2 (valid column expected)")
     data.cref = idx
   end
-  build_idx(data)
+  build_idx  (tbl)
   finish_mtbl(tbl)
   return tbl
 end
