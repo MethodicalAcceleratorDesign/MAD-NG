@@ -483,22 +483,23 @@ end
 
 -- memory bookkeeping helpers -------------------------------------------------o
 
--- allocated more memory for vectors, specialize on 1st row.
-local function expand (data, reserve)
+-- allocated more memory for vectors
+-- specialize on 1st row unless novector == true
+local function expand (data, reserve, novector)
   local rmax = ceil(max(reserve, data.rmax*1.5))
   local nr, nc = data.nr, data.nc-data.ng
   for i=1,nc do
     local val = data[i]
-    if is_number(data[i][1]) then
+    if not novector and is_number(data[i][1]) then
       data[i] = vector(rmax)
       data[i].nr = nr
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
-    elseif data.rmax == 1 then -- 1st expand only
+    elseif data.rmax == 1 then -- expand only after 1st row
       data[i] = table_new(rmax,1)
       data[i][1], data[i].nr = val[1], nr
     end
   end
-  data.rmax = rmax
+  data.rmax = novector and 1e8 or rmax
 end
 
 -- methods (R/W, update dict) -------------------------------------------------o
@@ -525,7 +526,7 @@ local function add_col (tbl, key, val)
   elseif is_iterable(val) then -- iterable
     assert(#val >= data.nr, "invalid argument #2 (longer iterable expected)")
     local idx = data.nc-data.ng+1
-    if is_number(val[1]) and data.rmax > 1 then
+    if is_number(val[1]) and data.rmax > 1 and not tbl.novector then
       table_insert(data, idx, vector(data.rmax):fill(val))
     else
       table_insert(data, idx, table_new(data.rmax,1))
@@ -587,8 +588,8 @@ local function add_row (tbl, val, ini_)
   assert(is_number(ini_) , "invalid argument #3 (number expected)")
   local data = var_raw(tbl, _data)
   local idx  = data.nr+1
-  if idx > data.rmax then expand(data, tbl.reserve) end
-  for i=1,data.nc-data.ng do data[i].nr = idx end -- resize (vectors)
+  if idx > data.rmax then expand(data, tbl.reserve, tbl.novector) end
+  for i=1,data.nc-data.ng do data[i].nr = idx end -- resize
   cpy_row(data, idx, val, ini_-1)
   add_idx(data, idx)
   data.nr = idx
