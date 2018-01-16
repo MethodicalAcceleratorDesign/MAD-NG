@@ -96,7 +96,7 @@ local mtable_mt = getmetatable(mtable)
 local var_raw, var_val = mtable.var_raw, mtable.var_val
 local var_get, var_set = mtable_mt.__index, mtable_mt.__newindex
 local raw_get, tbl_cpy = mtable.raw_get, mtable.copy
-local parent           = mtable.__par
+local parent, readonly = mtable.__par, mtable.set_readonly
 
 local function is_mtable (a)
   return is_table(a) and a[_data] ~= nil
@@ -269,12 +269,29 @@ end
 local gen_mt = {
   __len       =\s   -> s[_data].nr,
   __index     =\s,i -> i >= 1 and i <= s[_data].nr and s[_gen](i) or nil,
-  __pairs     =\s   -> gen_iter, s, 0,
-  __ipairs    =\s   -> gen_iter, s, 0,
+  __pairs     =\s   -> (gen_iter, s, 0),
+  __ipairs    =\s   -> (gen_iter, s, 0),
   __tostring  =\s   -> string.format("<mtable column generator> %p", s),
 
   __newindex := error("forbidden write access to column generator", 2),
   __kpairs   := error("invalid access to column generator"        , 2),
+}
+
+-- column proxy (RO)
+local function col_iter (s, i)
+  i = i+1
+  if i <= s[_data].nr then return i, s[_data][i] end
+end
+
+local col_mt = {
+  __len       =\s   -> s[_data].nr,
+  __index     =\s,i -> i >= 1 and i <= s[_data].nr and s[_data][i] or nil,
+  __pairs     =\s   -> (col_iter, s, 0),
+  __ipairs    =\s   -> (col_iter, s, 0),
+  __tostring  =\s   -> string.format("<mtable readonly column> %p", s),
+
+  __newindex := error("forbidden write access to readonly column", 2),
+  __kpairs   := error("invalid access to readonly column"        , 2),
 }
 
 -- row proxy
@@ -302,9 +319,9 @@ local row_mt = {
                        assert(col, "invalid column (write access)")
                        col[s[_idx]] = v
                        end,
-  __pairs     =\s   -> row_iter , s, 0,
-  __ipairs    =\s   -> row_iter , s, 0,
-  __kpairs    =\s   -> row_kiter, s, nil,
+  __pairs     =\s   -> (row_iter , s, 0  ),
+  __ipairs    =\s   -> (row_iter , s, 0  ),
+  __kpairs    =\s   -> (row_kiter, s, nil),
   __tostring  =\s   -> string.format("<mtable row> %p", s),
 
 }
@@ -321,8 +338,8 @@ local cnt_mt = {
   __index     =\s,i => local ri = s[_idx][i]
                        if ri then s[_data][_idx] = ri return s[_data] end
                        end,
-  __pairs     =\s   -> cnt_iter, s, 0,
-  __ipairs    =\s   -> cnt_iter, s, 0,
+  __pairs     =\s   -> (cnt_iter, s, 0),
+  __ipairs    =\s   -> (cnt_iter, s, 0),
   __tostring  =\s   -> string.format("<mtable count> %p", s),
 
   __newindex := error("forbidden write access to counts", 2),
@@ -380,6 +397,25 @@ local function newindex_mm (tbl, key, val)
   end
   -- variables
   var_set(tbl, key, val)
+end
+
+-- readonly protection --------------------------------------------------------o
+
+local function set_readonly (tbl, set_)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  local data = raw_get(tbl,_data)
+  if set_ ~= false and not tbl:is_readonly() then -- RW -> RO
+    tbl:set_readonly(set_)
+    for i=1,data.nc-data.ng do
+      data[i] = setmetatable({ [_data]=data[i] }, col_mt)
+    end
+  elseif set_ == false and tbl:is_readonly() then -- RO -> RW
+    tbl:set_readonly(set_)
+    for i=1,data.nc-data.ng do
+      data[i] = data[i][_data]
+    end
+  end
+  return tbl
 end
 
 -- methods (readonly) ---------------------------------------------------------o
@@ -1039,6 +1075,9 @@ mtable: set_methods {
   -- read/write
   read         := error("NYI", 2), -- TODO (using splitall or LPEG)
   write         = write,
+
+  -- readonly
+  set_readonly  = set_readonly,
 
   -- debug
   rebuild_index = rebuild_index, -- debug
