@@ -65,10 +65,10 @@ SEE ALSO
 local Object, vector, env                                        in MAD
 local bind1st, bind2nd, bind2st                                  in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
-local is_iterable, is_callable                                   in MAD.concept
 local strtrim, strsplit, strbracket, fprintf, kpairs             in MAD.utility
 local is_nil, is_boolean, is_number, is_positive, is_string,
-      is_table, is_rawtable, is_range, is_file, is_matrix        in MAD.typeid
+      is_table, is_rawtable, is_range, is_file, is_matrix,
+      is_iterable, is_callable                                   in MAD.typeid
 
 local max, ceil in math
 local strsub = string.sub
@@ -461,6 +461,19 @@ end
 
 -- dict helpers ---------------------------------------------------------------o
 
+-- shift indexes >= idx by n
+local function shf_idx (data, idx, n)
+  if is_nil(data.cref) then return end
+  local ridx = data.ridx
+  for nam,ei in pairs(ridx) do
+    if is_number(ei) then       -- scalar
+      if ei >= idx then ridx[nam] = ei+n end
+    else for i=1,ei.n do        -- table
+      if ei[i] >= idx then ei[i] = ei[i]+n end
+    end end
+  end
+end
+
 -- insert to dictionnary name -> idx (warning: indexes are not shifted)
 local function ins_idx (data, idx)
   if is_nil(data.cref) then return end
@@ -645,6 +658,45 @@ local function set_row (tbl, key, val, ini_)
   local data = var_raw(tbl, _data)
   rem_idx(data, idx)
   cpy_row(data, idx, val, ini_-1, data.nr)
+  ins_idx(data, idx)
+  return tbl
+end
+
+local function rem_row (tbl, key)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  local idx = index_of(tbl, key)
+  assert(is_number(idx), "invalid argument #2 (valid row expected)")
+  local data = var_raw(tbl, _data)
+  local nr, nc = data.nr, data.nc-data.ng
+  for i=0,nc do
+    local col = data[i]
+    for j=idx,nr-1 do col[j] = col[j+1] end
+    col[i].nr = col[i].nr-1
+  end
+  data.nr =data.nr-1
+  rem_idx(data, idx)
+  shf_idx(data, idx, -1)
+  return tbl
+end
+
+local function ins_row (tbl, key, val, ini_)
+  ini_ = ini_ or 1
+  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
+  local idx = index_of(tbl, key)
+  assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
+  assert(is_iterable(val), "invalid argument #3 (iterable expected)")
+  assert(is_number(ini_) , "invalid argument #4 (number expected)")
+  local data = var_raw(tbl, _data)
+  local nr, nc = data.nr, data.nc-data.ng
+  if nr+1 > data.rmax then expand(data, tbl, 1) end
+  for i=0,nc do
+    local col = data[i]
+    col[i].nr = col[i].nr+1
+    for j=nr,idx,-1 do col[j+1] = col[j] end
+  end
+  data.nr =data.nr+1
+  cpy_row(data, idx, val, ini_-1, data.nr)
+  shf_idx(data, idx, 1)
   ins_idx(data, idx)
   return tbl
 end
@@ -1089,6 +1141,8 @@ mtable: set_methods {
   getrow        = get_row,
   addrow        = add_row,
   setrow        = set_row,
+  remrow        = rem_row,
+  insrow        = ins_row,
   swprow        = swp_row,
 
   -- sequence-like methods
