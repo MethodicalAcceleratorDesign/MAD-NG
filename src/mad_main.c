@@ -88,7 +88,6 @@ static const char *progname = "mad";
 
 /* globals */
 int mad_warn_count     = 0;
-int mad_info_level     = 0;
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
