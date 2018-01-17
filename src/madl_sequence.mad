@@ -119,8 +119,8 @@ local is_nil, is_boolean, is_number, is_string, is_table,
       is_rawtable, is_range, is_element, is_instanceOf         in MAD.typeid
 
 local abs in math
-local table_new, table_clear, table_insert, table_remove =
-      table.new, table.clear, table.insert, table.remove
+local table_new, table_clear, table_insert, table_remove, table_move =
+      table.new, table.clear, table.insert, table.remove, table.move
 
 -- backup original methods and metamethods
 local sequence_mt = getmetatable(sequence)
@@ -901,7 +901,7 @@ local function remove (seq, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
-  -- remove elements by decreasing indexes -- to optimize to avoid slow removal
+  -- remove elements by decreasing indexes -- to optimize to avoid O(N^2) removal
   local elem, elm_r = raw_get(seq,_data), table_new(nr,0)
   for i=nr,1,-1 do
     local ii = idx_r[i]
@@ -998,16 +998,19 @@ local function insert (seq, elm, rng_, sel_)
     end end
   end
 
-  -- insert elements -- to optimize to avoid slow insertion
+  -- insert elements -- to optimize to avoid O(N^2) insertion
   local elem = raw_get(seq,_data)
   for ie=1,i do
     local idx = bsearch(elem.spos, spos[ie], 2, elem.ne-1)
-    if is_sequence(elm[ie]) then
+    if is_sequence(elm[ie]) and #elm[ie] > 2 then
       local selem = var_raw(elm[ie],_data)
-      for j=selem.ne-1,2,-1 do -- see sequ_pos
-        table_insert(elem     , idx, selem     [j])
-        table_insert(elem.spos, idx, selem.spos[j] + spos[ie])
-        table_insert(elem.epos, idx, selem.epos[j] + spos[ie])
+      table_move(elem     , idx, elem.ne, idx+selem.ne-1)
+      table_move(elem.spos, idx, elem.ne, idx+selem.ne-1)
+      table_move(elem.epos, idx, elem.ne, idx+selem.ne-1)
+      for j=2,selem.ne-1 do -- see sequ_pos
+        elem     [idx+j-2] = selem     [j]
+        elem.spos[idx+j-2] = selem.spos[j]+spos[ie]
+        elem.epos[idx+j-2] = selem.epos[j]+spos[ie]
       end
     else
       table_insert(elem     , idx, elm [ie])
