@@ -257,7 +257,7 @@ local re = {
   updatelocale = updatelocale,
 }
 
-if version == "Lua 5.1" then _G.regex = re end
+if version == "Lua 5.1" then _G.re = re end
 
 -- return re
 return { regex = re } -- MAD
