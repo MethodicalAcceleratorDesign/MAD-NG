@@ -522,8 +522,8 @@ end
 -- memory helpers -------------------------------------------------------------o
 
 -- expand vectors, specialize on 1st row unless novector is set
-local function expand (data, tbl)
-  local rmax = ceil(max(tbl.reserve, data.rmax*1.5))
+local function expand (data, tbl, extra)
+  local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
   if is_nil(data.cvec) then data.cvec = tbl.novector ~= true end
   local nr, nc = data.nr, data.nc-data.ng
@@ -628,7 +628,7 @@ local function add_row (tbl, val, ini_)
   assert(is_number(ini_) , "invalid argument #3 (number expected)")
   local data = var_raw(tbl, _data)
   local idx  = data.nr+1
-  if idx > data.rmax then expand(data, tbl) end
+  if idx > data.rmax then expand(data, tbl, 1) end
   cpy_row(data, idx, val, ini_-1, idx)
   add_idx(data, idx)
   data.nr = idx
@@ -785,66 +785,106 @@ local function rebuild_index (tbl, key_)
   return tbl
 end
 
---[[
-local function sht_row (tbl, idx, dir)
-  local var, col = tbl[_ivar], tbl[_data]
-  if dir > 0 then
-    for i=1,var.lastcol do
-      if is_table(col[i]) then
-        table_insert(col[i], idx, 0)
-      else
-        col[i]:shiftv(idx, 1)
-      end
-    end
-    table_insert(var.rowsel, idx, true)              -- select row
-  elseif dir < 0 then
-    for i=1,var.lastcol do
-      if is_table(col[i]) then
-        table_remove(col[i], idx)
-      else
-        col[i]:shiftv(idx, -1)
-      end
-    end
-    table_remove(var.rowsel, idx)
-  end
-end
+local function remove (tbl, rng_, sel_)
+  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
 
-local function insert_row (tbl, idx, val)
-  idx = index_of(tbl, idx, 1)
-  assert(is_number(idx)  , "invalid argument #2 (valid row index expected)")
-  assert(is_iterable(val), "invalid argument #3 (iterable expected)")
-  local var = tbl[_ivar]
-  local rsz = var.lastrow+1
-  if idx == rsz then return add_row(tbl, val) end
-  if var.colvec then resize(tbl, rsz) end
-  sht_row(tbl, idx, 1) -- shift row from idx by one row down
-  local len = cpy_row(tbl, idx, val)
-  if len ~= var.lastcol then
-    error(string.format(
-      "invalid argument #3 (missing %d columns in row insert)", var.lastcol-len))
+  -- collect indexes of elements to remove
+  local idx_r = filter(tbl, rng_, sel_, true)
+  local nr = idx_r.n
+  if nr == 0 then return end
+  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+
+  -- move rows by increasing indexes
+  local data = raw_get(tbl,_data)
+  local j, nc = 0, data.nc-data.ng
+  for ii=idx_r[1],data.nr-nr do
+    if ii == idx_r[j+1] then j = j+1 end
+    for i=0,nc do data[i][ii] = data[i][ii+j] end
   end
-  var.lastrow = rsz
-  clr_dict(tbl)
+  data.nr = data.nr - nr
+  for i=0,nc do data[i].nr = data.nr end
+  assert(j == nr, "unexpected corrupted move of rows (remove)")
+
+  rebuild_index(tbl)
   return tbl
 end
 
-local function remove_row (tbl, idx)
-  idx = index_of(tbl, idx)
-  assert(is_number(idx), "invalid argument #2 (valid row index expected)")
-  local var = tbl[_ivar]
-  local rsz = var.lastrow-1
-  if rsz == 0 then
-    for i=1,var.lastcol do tbl[_data][i] = {} end
-    var.colvec = nil
-  else
-    sht_row(tbl, idx, -1) -- shift row from idx by one row up
-    if var.colvec then resize(tbl, rsz) end
+local function insert (tbl, rows, rng_, sel_)
+  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+
+  -- collect indexes of elements to remove
+  local idx_r = filter(tbl, rng_, sel_, true)
+  local nr = idx_r.n
+  if nr == 0 then return end
+  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+
+  -- expand if needed
+  local data = raw_get(tbl,_data)
+  if data.nr+nr > data.rmax then expand(data, tbl, nr) end
+
+  -- move rows by decreasing indexes
+  local j, nc = nr, data.nc-data.ng
+  data.nr = data.nr + nr
+  for i=0,nc do data[i].nr = data.nr end
+  for ii=data.nr,idx_r[1],-1 do
+    if ii == idx_r[j] then
+      for i=0,nc do data[i][ii] = rows[j][i] end
+      j = j-1
+    else
+      for i=0,nc do data[i][ii] = data[i][ii-j] end
+    end
   end
-  var.lastrow = rsz
-  clr_dict(tbl)
+  assert(j == 0, "unexpected corrupted move of rows (insert)")
+
+  rebuild_index(tbl)
   return tbl
 end
-]]
+
+local function sort (tbl, cmp, rng_, sel_)
+  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  assert(is_callable(cmp)   , "invalid argument #2 (callable expected)")
+
+  -- collect indexes of elements to remove
+  local idx_r = filter(tbl, rng_, sel_, true)
+  local nr = idx_r.n
+  if nr == 0 then return end
+  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+
+  -- sort indexes (indirectly)
+  local data  = raw_get(tbl,_data)
+  local row1  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
+  local row2  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
+  local idx_s = table.copy(idx_r, table_new(nr,0))
+  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = idx_s[i1], idx_s[i2]
+                              return cmp(row1,row2) end)
+
+  -- build lookup table
+  local idx_l = table_new(0,nr)
+  for i=1,nr do idx_l[idx_s[i]] = idx_r[i] end
+
+  -- sort rows
+  local nc = data.nc-data.ng
+  local tmp = table_new(nc,0)
+  for ii=1,nr do
+    local s, r = idx_s[ii], idx_l[idx_s[ii]]
+    if s == r then -- identity (cleanup)
+      idx_l[s] = nil
+    elseif r then  -- not yet processed
+      local ts = s
+      for i=1,nc do tmp[i] = data[i][s] end
+      while r ~= ts do
+        for i=1,nc do data[i][s] = data[i][r] end
+        s, r, idx_l[s] = r, idx_l[r]
+      end
+      for i=1,nc do data[i][s] = tmp[i] end
+      idx_l[s] = nil
+    end
+  end
+  assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
+
+  rebuild_index(tbl)
+  return tbl
+end
 
 local function copy (tbl, name_)
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
@@ -1009,15 +1049,17 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
 
   -- dump rows
   for j=1,nrow do
-    file:write(' ')
-    for i=1,ncol do
-      local v = cols[i][j]
-      if is_string(v)
-      then fprintf(file, '%-18s ', '"'..v..'"')
-      else fprintf(file, '%-18s ', tostring(v))
+    if cols[0] then -- is_selected
+      file:write(' ')
+      for i=1,ncol do
+        local v = cols[i][j]
+        if is_string(v)
+        then fprintf(file, '%-18s ', '"'..v..'"')
+        else fprintf(file, '%-18s ', tostring(v))
+        end
       end
+      file:write('\n')
     end
-    file:write('\n')
   end
 
   -- close file
@@ -1060,10 +1102,9 @@ mtable: set_methods {
   deselect      = deselect,
   filter        = filter,
 
-  remove        = remove,      -- TODO
-  replace       = replace,     -- TODO
-  insert        = insert,      -- TODO
-  sort          = sort,        -- TODO
+  remove        = remove,
+  insert        = insert,
+  sort          = sort,
   copy          = copy,
 
   cycle         = cycle,
