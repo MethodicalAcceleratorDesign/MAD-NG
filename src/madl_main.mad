@@ -49,6 +49,8 @@ local typeid = require 'madl_typeid' .typeid
 local is_nil, is_boolean, is_number, is_string, is_indexable, is_mappable,
       is_callable in typeid
 
+local strfmt = string.format
+
 -- globals --------------------------------------------------------------------o
 
 -- load 'new' and 'clear' in table (side effect)
@@ -67,48 +69,61 @@ require 'table.new' ; require 'table.clear'
 -- hidden key.
 local _hlp = {}
 
--- special MAD environment
+-- environment
 
-M._C           = _C              -- C symbol access
-M.env, _M      = _M, nil         -- M preloaded environment
-M.env.arg      = arg             -- backup of arg
-M[_hlp]        = {}              -- backup for help
+M[_hlp]   = {}        -- backup for help
+M._C      = _C        -- C symbol access
+M.env, _M = _M, nil   -- M preloaded environment
+M.env.arg = arg       -- backup of arg
 
--- warning, trace
+setmetatable(M.env, {
+  -- protect against new keys, interface to _C.mad_trace_location
+  __index = \_,k =>
+      assert(rawequal(k,'traceloc'), "invalid read access key to env")
+      return _C.mad_trace_location end,
 
-local ctrace = trace
-
-M.env.trace      = \l,s -> _C.mad_trace_level >= l and ctrace(l,s)
-M.env.tracelevel = \l   -> _C.mad_trace_level >= l
-M.env.warncount  = \    -> _C.mad_warn_count
-
-function M.env.trace_setlocation (l)
-    local lvl = _C.mad_trace_location
-    _C.mad_trace_location = l
-    return lvl
-end
+  __newindex = \_,k,v =>
+      assert(rawequal(k,'traceloc'), "invalid write access key to env")
+     _C.mad_trace_location = v end,
+})
 
 -- options
 
 M.option = {
 
   format = "%.16g",
-
-  debug  = setmetatable({},{ -- interface to mad_trace_level
-      __eq       = \a,b   -> _C.mad_trace_level == (is_number(a) and a or b),
-      __lt       = \a,b   -> _C.mad_trace_level <  (is_number(a) and a or b),
-      __index    = \      -> _C.mad_trace_level,
-      __newindex = \_,_,l => _C.mad_trace_level = l end,
-    })
+--debug  = 0,
 }
+
+setmetatable(M.option, {
+  -- protect against new keys, interface to _C.mad_trace_level
+  __index = \_,k =>
+      assert(rawequal(k,'debug'), "invalid read access key to option")
+      return _C.mad_trace_level end,
+
+  __newindex = \_,k,v =>
+      assert(rawequal(k,'debug'), "invalid write access key to option")
+     _C.mad_trace_level = v end,
+})
+
+-- trace, warning
+
+local ctrace = trace ; trace = nil
+local cwarn  = warn  ; warn  = nil
+
+M.warn  = \fmt,...     => cwarn(strfmt(fmt, ...)) end
+M.trace = \lvl,fmt,... =>
+  if lvl >= _C.mad_trace_level then
+    ctrace(lvl, strfmt(fmt, ...))
+  end end
 
 -- finalizer
 
-local _final = { n=0 } -- __gc is not supported by luajit
+local _final = { n=0 } -- __gc is not supported by LJ
 
 M[_final] = ffi.gc(ffi.new('int[1]'),
   function ()
-    if M.option.debug > 2 then
+    if M.option.debug >= 2 then
       io.write('MAD finalizer called...\n')
     end
     for i=_final.n,1,-1 do
@@ -132,8 +147,6 @@ end
 
 -- import
 
-local trace, tracelevel in M.env
-
 function M.import (to, from, override_)
   if to ~= MAD and is_nil(override_) then
     to, from, override_ = MAD, to, from -- right shift
@@ -147,8 +160,8 @@ function M.import (to, from, override_)
   local obj = {}
   for k,v in pairs(from) do
     if is_string(k) and string.sub(k,1,2) ~= '__' then
-      if tracelevel(3) then
-        trace(3, string.format('import: %-25s %-25s',k,v) )
+      if M.option.debug >= 2 then
+        io.write(strfmt('import: %-25s %-25s\n',k,v))
       end
       assert(is_nil(MAD[k]) or MAD[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
@@ -191,8 +204,8 @@ function M.export (from, what_, to_, override_)
       k, v = v, MAD[v]
     end
     if is_string(k) and string.sub(k,1,2) ~= '__' then
-      if tracelevel(2) then
-        trace(3, string.format('export: %-25s %-25s',k,v) )
+      if M.option.debug >= 2 then
+        io.write(strfmt('export: %-25s %-25s\n',k,v))
       end
       assert(is_nil(to[k]) or to[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
@@ -277,10 +290,6 @@ MAD:import {
   __help = require 'madh_main',
 }
 
--- useful as globals
-_M   = MAD
-help = MAD.help
-
 -- load MAD modules
 for _,m in ipairs(modules) do
   MAD:import( require('madl_'..m) )
@@ -291,10 +300,14 @@ for i,v in ipairs(globals) do
   _G[v] = nil
 end
 
+-- useful as globals
+_M   = MAD
+help = MAD.help
+
 -- check _G pollution ---------------------------------------------------------o
 
 local _G_env = {
-    -- Lua
+  -- Lua
   '_G', '_VERSION', 'arg', 'assert', 'collectgarbage', 'coroutine', 'debug',
   'dofile', 'error', 'getmetatable', 'io', 'ipairs', 'load', 'loadfile',
   'loadstring', 'math', 'module', 'next', 'os', 'package', 'pairs', 'pcall',
@@ -307,17 +320,17 @@ local _G_env = {
   'bit32',
   -- 5.3
   'utf8',
-  -- LJ
+  -- LJ 2.1
   'bit', 'jit', 'newproxy',
   -- MAD
-  '_M', 'help', 'kpairs', 'MAD', 'MADX', 'trace', 'warn',
+  '_M', 'help', 'kpairs', 'MAD', 'MADX',
 }
 for i,v in ipairs(_G_env) do _G_env[v] = i end
 
--- check globals
 for k in pairs(_G) do
   if not _G_env[k] then
-    io.write("unexpected global variable: ", tostring(k), '\n')
+    io.write("unexpected global variable: ",
+             tostring(k), ' -> ', tostring(v), '\n')
   end
 end
 
@@ -329,15 +342,15 @@ local _M_env = {
   'help', 'import', 'linspace', 'logrange', 'logspace', 'MAD', 'MADX',
   'matrix', 'mtable', 'nlogrange', 'nrange', 'Object', 'operator', 'option',
   'plot', 'range', 'regex', 'sequence', 'survey', 'tostring', 'totable',
-  'track', 'typeid', 'utest', 'utility', 'vector',
+  'trace', 'track', 'typeid', 'utest', 'utility', 'vector', 'warn',
   [_hlp] = true, [_final] = true,
 }
 for i,v in ipairs(_M_env) do _M_env[v] = i end
 
--- check globals
 for k,v in pairs(_M) do
   if not _M_env[k] then
-    io.write("unexpected MAD variable: ", tostring(k), ' -> ', tostring(v), '\n')
+    io.write("unexpected MAD variable: ",
+             tostring(k), ' -> ', tostring(v), '\n')
   end
 end
 
