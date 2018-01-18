@@ -40,20 +40,21 @@
 
 // --- interface -------------------------------------------------------------o
 
-#define error(...)         mad_error (     __VA_ARGS__)
-#define warn(...)          mad_warn  (     __VA_ARGS__)
-#define trace(lvl, ...)    mad_trace (lvl, __VA_ARGS__)
-#define ensure(cond, ...)  mad_ensure(cond,__VA_ARGS__)
+#define error(...)        mad_error (     __VA_ARGS__)
+#define warn(...)         mad_warn  (     __VA_ARGS__)
+#define trace(lvl,...)    mad_trace (lvl, __VA_ARGS__)
+#define ensure(cond,...)  mad_ensure(cond,__VA_ARGS__)
 
 // --- implementation (private) ----------------------------------------------o
 
-#define mad_error(...)                     (mad_error)(  __func__, __VA_ARGS__)
-#define mad_warn(...)                      (mad_warn )(  __func__, __VA_ARGS__)
-#define mad_trace(l,...)   mad_logchkfun(l,(mad_trace)(l,__func__, __VA_ARGS__))
-#define mad_ensure(c,...)  mad_logtstfun(c,(mad_error)(  __func__, __VA_ARGS__))
+#define mad_error(...)                  (mad_error)(  mad_logloc_,__VA_ARGS__)
+#define mad_warn(...)                   (mad_warn )(  mad_logloc_,__VA_ARGS__)
+#define mad_trace(l,...)  mad_loglvl_(l,(mad_trace)(l,mad_logloc_,__VA_ARGS__))
+#define mad_ensure(c,...) mad_logcnd_(c,(mad_error)(  mad_logloc_,__VA_ARGS__))
 
-#define mad_logchkfun(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
-#define mad_logtstfun(c,f) ((void)(                  !(c) && (f,0)))
+#define mad_loglvl_(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
+#define mad_logcnd_(c,f) ((void)(                  !(c) && (f,0)))
+#define mad_logloc_      __FILE__ ":" MKSTR(__LINE__) ": "
 
 // ---------------------------------------------------------------------------o
 
