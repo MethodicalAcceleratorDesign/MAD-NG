@@ -23,48 +23,38 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
+-- locals ---------------------------------------------------------------------o
+
 local dat = require 'madl_plotdat'
 local is_nil, is_number, is_table, is_mtable, is_string,
-  is_sequence, is_rawtable                                    in MAD.typeid
-local Command, fun, vector, survey                            in MAD
-local strinterp, fileexists                                   in MAD.utility
-local sign, tan, min, max, abs, sqrt, inf, pi                 in MAD.gmath
-local lshift in MAD.operator
+  is_sequence, is_rawtable                                       in MAD.typeid
+local Command, fun, vector, survey, filesys                          in MAD
+local strinterp, fileexists, setkeys, strsplitall,
+ atexit, runonce                                                 in MAD.utility
+local sign, tan, min, max, abs, sqrt, inf, pi                    in MAD.gmath
+local lshift                                                     in MAD.operator
+local ffi = require 'ffi'
 
 -- Utility --------------------------------------------------------------------o
-
-local ffi = require("ffi")
 
 ffi.cdef[[
 void Sleep(int ms);
 int poll(struct pollfd *fds, unsigned long nfds, int timeout);
+int getpid(void);
+int GetCurrentProcessId(void);
 ]]
 
-local sleep
-if ffi.os == "Windows"
-then sleep = \s -> ffi.C.Sleep(s)
-else sleep = \s -> ffi.C.poll(nil, 0, s)
+local sleep, pid
+if ffi.os == "Windows" then
+  sleep = \s -> ffi.C.Sleep(s)
+  pid   = ffi.C.GetCurrentProcessId()
+else
+  sleep = \s -> ffi.C.poll(nil, 0, s)
+  pid   = ffi.C.getpid()
 end
 
-local function lock_file (fname, time, timeout)
-  local waited = 0
-  local lock   = fname .. ".lock"
-  while fileexists(lock) do
-    sleep(time)
-    waited = waited + time
-    if timeout and waited > timeout then
-      os.remove(lock)
-      error("lock file \"" .. lock .. "\" prevent us from proceeding")
-    end
-  end
-  io.open(lock, "w"):close()
-end
-
-local unlock_file = \fname -> os.remove(fname .. ".lock")
-
-MAD.utility.sleep       = sleep
-MAD.utility.lock_file   = lock_file
-MAD.utility.unlock_file = unlock_file
+MAD.utility.pid   = pid
+MAD.utility.sleep = sleep
 
 -- global default -------------------------------------------------------------o
 
@@ -75,8 +65,6 @@ local _dflt = {
   linewidth    = 1,
   pointsize    = 1,
   pointtype    = 1,
-  filename     = "plot.pdf",
-  scrdump      = "plot.gp",
   originx      = 0,
   originy      = 0,
   psizex       = 1,
@@ -90,50 +78,42 @@ local _dflt = {
   layonly      = 1,
 }
 
--- GC -------------------------------------------------------------------------o
--- Use Garbage collector trick to properly remove temporary files
-local gcf = {}
-
-local plotgc = ffi.gc(ffi.new("int*"), \ =>
-    for i=1,#gcf do
-      os.remove(gcf[i])
-    end
-  end
-)
-
-local function gc_file(fname, lock)
-  table.insert(gcf, fname)
-  if lock then table.insert(gcf, fname .. ".lock") end
-  return fname
-end
+local tmpfolder = "TMP_MAD_PLOT/"
+local tmplock   = tmpfolder .. "madplot.lock"
 
 -- gplot ----------------------------------------------------------------------o
 
-local _gpd, _tmpf = {}, {}
+local _gpd = {}
 
 local function gp_create (gplot, id)
   local gnuplot = assert(io.popen('gnuplot', 'w'))
   gnuplot:setvbuf("line")
-  gplot[_gpd ][id] = gnuplot
-  gplot[_tmpf][id] = gc_file(os.tmpname(), true)
+  gplot[_gpd][id] = gnuplot
   return gnuplot
 end
 
 local function gp_isBusy (gplot, id)
-  return fileexists(gplot[_tmpf][id] .. ".lock")
+  local _id = id or gplot[_gpd].__cur_id
+  if not fileexists(tmpfolder) then return false end
+  for name in filesys.dir(tmpfolder) do
+    if string.find(name, "madplot%-%d+") then
+      local file = io.open(tmpfolder .. name, "r")
+      if file then
+        local line = file:read("*line")
+        if line and tonumber(strsplitall(line, "#", 2)[1]) == pid then
+          return true
+        end
+      end
+    end
+  end
+  return false
 end
 
-local function gp_get (gplot, id, curr)
+local function gp_get (gplot, id, curr_)
   local dat = gplot[_gpd]
-  if is_nil( dat[id] )             then gp_create( gplot, id ) end
-  if id ~= '__cur_id' and not curr then dat.__cur_id = id      end
+  if is_nil( dat[id] )              then gp_create( gplot, id ) end
+  if id ~= '__cur_id' and not curr_ then dat.__cur_id = id      end
   return dat[id]
-end
-
-local function gp_getlock (gplot, id)
-  local gnuplot = gp_get(gplot, id, true)
-  local file    = gplot[_tmpf][id]
-  return gnuplot, file
 end
 
 local function gp_call (gplot, id, ...)
@@ -148,16 +128,82 @@ local function gp_call (gplot, id, ...)
 end
 
 local gplot = {
-  is_busy = gp_isBusy,
-  [{}]    = plotgc,
-  [_tmpf] = { },
-  [_gpd]  = { __cur_id = 1 },
+  is_busy   = gp_isBusy,
+  clean_tmp = clean_tmp,
+  option    = { pending = 10 },
+  [_gpd]    = { __cur_id = 1 },
 }
 
 setmetatable(gplot, {
   __index = gp_get,
   __call  = gp_call,
 })
+
+-- tmp files ------------------------------------------------------------------o
+
+local function clean_tmp (strict_)
+  if not fileexists(tmpfolder) then return end
+  for name in filesys.dir(tmpfolder) do
+    if strict_ then
+      os.remove(tmpfolder .. name)
+    elseif string.find(name, "madplot%-%d+") then
+      local fname = tmpfolder .. name
+      local file = io.open(fname, "r")
+      if file then
+        local line = file:read("*line")
+        if line and tonumber(strsplitall(line, "#", 2)[1]) == pid then
+          file:close()
+          os.remove(fname)
+        end
+      end
+    end
+  end
+  filesys.rmdir(tmpfolder)
+end
+
+local function block (handle, time)
+  while not filesys.lock(handle, "w") do sleep(time) end
+  return handle
+end
+
+local _filepool
+local function setup_files()
+  -- runonce(\ atexit(clean_tmp))           -- TODO check why segfault in finalizer
+  if not fileexists(tmpfolder) then
+    local status,msg = filesys.mkdir(tmpfolder)
+    if not status and msg~="File exists" then
+      error("couldn't create TMP_MAD_PLOT")
+    end
+  end
+  entry = 1
+  local tmpfile = tmpfolder .. "madplot-"
+  for i=gplot.option.pending,1,-1 do
+    local file = tmpfile .. i
+    if not fileexists(file) then
+      _filepool[entry] = file
+      entry = entry + 1
+    end
+  end
+end
+
+local function get_tmpfile()
+  if not is_rawtable(_filepool) then _filepool = {}; setup_files() end
+  local lock = block(assert(io.open(tmplock, "w")), 100)
+  local fname, warn = false, 0
+  while true do
+    fname = table.remove(_filepool)
+    if fname and not fileexists(fname) then break end
+    if warn == 1 then
+      print("MAD Plot Warning : no available tmpfile (see documentation)")
+    end
+    filesys.unlock(lock); sleep(100); block(lock)
+    setup_files()
+    warn = warn + 1
+  end
+  local file = assert(io.open(fname, "w"))
+  filesys.unlock(lock)
+  return file, fname
+end
 
 -- initialization -------------------------------------------------------------o
 
@@ -184,47 +230,54 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 -- open files and gnuplot and set terminal when necessary
 local function setup_cmd (self)
   local output, scrdump in self
-  local gp, streamf = gp_getlock(gplot,self.sid)
-  local file, fname
-
-  if scrdump then
-    fname = is_string(scrdump) and scrdump or _dflt.scrdump
-    gc_file(fname .. ".lock")
-  else
-    fname = streamf
-  end
-  lock_file(streamf, 100)
-  file = io.open(fname, "w")
-
+  local gp      = output and gp_get(gplot, self.sid, true)
+  local file, fname = get_tmpfile()
+  file:write("#", pid, "#", self.sid, "\n")
   file:write(init_cmd % self)
 
   if is_number(output) then
     file:write("MAD_NEW_TERM = \"set term $term $output size $wsizex,$wsizey \z
       enhanced font '$font,$fontsize'\"\n" % self)
-  elseif output then
-    local filename = is_string(output) and output or _dflt.filename
+  elseif is_string(output) then
     file:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
-      .. filename .. "'\"\n")
+      .. output .. "'\"\n")
   end
 
   file:write("@MAD_SET_TERM\n")
-
-  return gp, file, streamf, fname
+  return gp, file, fname
 end
 
 local function gnuplot_rm(gp, fname)
   if jit.os == "Windows"
-  then gp:write("system 'del "  ..fname.." >nul 2>&1'\n")
-  else gp:write("system '\\rm -f "..fname.."'\n")
+  then gp:write("system 'del "    , fname, " >nul 2>&1'\n")
+  else gp:write("system '\\rm -f ", fname, "'\n")
   end
 end
 
-local function teardown_cmd (self, gp, file, streamf, fname)
+local function gnuplot_mv(gp, fname, uname)
+  if jit.os == "Windows"
+  then gp:write("system 'move /Y ", fname, " ", uname, "'\n")
+  else gp:write("system '\\mv "   , fname, " ", uname, "'\n")
+  end
+end
+
+local function teardown_cmd (self, gp, file, fname)
   file:close()
-  gp:write("load('" .. fname .. "')\n")
-  if not self.scrdump then gnuplot_rm(gp, streamf) end
-  gnuplot_rm(gp, streamf .. ".lock")
-  gp:flush()
+  if self.output then
+    gp:write("load('" .. fname .. "')\n")
+    if is_string(self.scrdump)
+    then gnuplot_mv(gp, fname, self.scrdump)
+    else gnuplot_rm(gp, fname)
+    end
+    gp:flush()
+  else
+    if is_string(self.scrdump) then
+      os.rename(fname, self.scrdump)
+    else
+      os.remove(fname)
+      print("MAD Plot Warning : no scrdump nor output provided - Nothing done")
+    end
+  end
 end
 
 -- layout ---------------------------------------------------------------------o
@@ -279,8 +332,8 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, func)
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
         xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig)
-        local next = (k == #xj) and "" or "\\"
-        fpwrite("  %s %f, %s %f %s\n", cmd, xk, ref, yk, next)
+        local next = (k == #xj) and "" or " \\"
+        fpwrite("  %s %.5e, %s %.5e%s\n", cmd, xk, ref, yk, next)
         cmd = "to"
       end
       param.oid = param.oid + 1
@@ -295,8 +348,8 @@ local function layout_ellipse (param, len, el, xorig, yorig, dash, size)
   local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig)
   local sx, sy = len, el*size
   local dashtype = dash or ""
-  fpwrite("set object %d ellipse front at %f, %s %f \\\n\z
-    size %f, %s %f front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
+  fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
+    size %.5e, %s %.5e front fc rgb 'white' fs solid 1.0 border rgb 'black' %s \n",
     param.oid, cx, ref, cy, sx, ref, sy, dashtype)
   param.oid = param.oid + 1
 end
@@ -306,7 +359,7 @@ local function layout_label(param, name, kind, xorig, yorig)
   local fpwrite, oid, ref, xadjust, yadjust in param
   local x, y = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig)
   label = name .. " [" .. kind .. "]"
-  fpwrite("set label %d back at %f, %s %f '%s' hypertext \z
+  fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
     point pt 4 ps 1 lc 'white'\n", oid, x, ref, y, label)
 end
 
@@ -317,7 +370,7 @@ local function layout_bline (param, bline)
   for i=2,#bline.y do
     local xi, yi = bline.x[i], bline.y[i]
     fpwrite("set object %d polygon front dashtype solid \\\n\z
-      from first %f, %s %f to first %f, %s %f to first %f, %s %f\n",
+      from first %.5e, %s %.5e to first %.5e, %s %.5e to first %.5e, %s %.5e\n",
       param.oid, prevX, ref, prevY, xi, ref, yi, prevX, ref, prevY)
     param.oid = param.oid + 1
     prevX, prevY = xi, yi
@@ -366,11 +419,11 @@ local function layout_process_in(param, pseq)
     local line_idx = srv:index_of(elem.name, idx)
     if is_table(line_idx) then line_idx = line_idx[1] end
     idx = line_idx
-    local line     = srv:get_row(line_idx)
+    local line     = srv:getrow(line_idx)
     local prevLine, x1, y1, xas, yas, xbs, ybs
 
     repeat
-      prevLine = (line_idx~=1) and srv:get_row(line_idx-1) or { x=0, y=0, z=0 }
+      prevLine = (line_idx~=1) and srv:getrow(line_idx-1) or { x=0, y=0, z=0 }
       x1, y1   = prevLine[labx], prevLine[laby]
       x2, y2   = line[labx], line[laby]
       xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
@@ -504,7 +557,7 @@ local function multi_layout (param)
     layout(param, pseq)
   end
 
-  fpwrite("MAD_MAX = %f\n", param.oid)
+  fpwrite("MAD_MAX = %.5e\n", param.oid)
   xmin, xmax = xmin - param.elemwidth, xmax + param.elemwidth
   ymin, ymax = ymin - param.elemwidth, ymax + param.elemwidth
   if not xrange           then fpwrite("set xrange [%s:%s]\n", xmin, xmax) end
@@ -516,7 +569,13 @@ end
 -- get vector from label
 local function getv (data, tbl, label)
   if label then
-    return data and data[label] or tbl[label],"tbl"  or error("invalid label")
+    if data and data[label] then
+      return data[label]
+    elseif tbl[label] then
+      return tbl[label], true
+    else
+      error("invalid label")
+    end
   end
 end
 
@@ -527,13 +586,11 @@ local function parse_axis (param, func)
     local axis = param[axis_name]
     if is_string(axis) then                  -- e.g. x1y1 = 'y1'
       func(param, nil, axis, axis_name)
-    elseif is_table(axis) and axis[1] then   -- e.g. x1y1 = {'y1', 'y2'}
-      for i,y in ipairs(axis) do
-        func(param, nil, y, axis_name)
-      end
     elseif is_table(axis) then
       for x,y in pairs(axis) do
-        if is_string(y) then                 -- e.g. x1y1 = { x1 = 'y1' }
+        if is_number(x) then                 -- e.g. x1y1 = {'y1', 'y2'}
+          func(param, nil, y, axis_name)
+        elseif is_string(y) then             -- e.g. x1y1 = { x1 = 'y1' }
           func(param, x, y, axis_name)
         elseif is_table(y) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
           for _,yi in pairs(y) do
@@ -547,21 +604,32 @@ end
 
 -- stream one plot data (used in parse_axis)
 local function plot_data (param, xlbl, ylbl)
-  local pwrite, tablerange, data, table in param
-  local x      = getv(data, table, xlbl)
-  local y,tbl  = getv(data, table, ylbl)
-  local min    = tbl and tablerange and tablerange[1] or 1
-  local max    = tbl and tablerange and tablerange[2] or #y
-  for i=min,max do
-    local x = x and x[i] or i -- use index if x is nil
-    pwrite(x, " ", y[i], "\n")
+  local fpwrite, tablerange, data, table in param
+  local x, tblx = getv(data, table, xlbl)
+  local y, tbly = getv(data, table, ylbl)
+  local ix      = tblx and tablerange and tablerange[1] or 1
+  local iy      = tbly and tablerange and tablerange[1] or 1
+  local len
+
+  if (tblx or tbly) and tablerange
+  then len = tablerange[2] - tablerange[1] + 1
+  else len = #y
   end
-  pwrite("e\n")
+
+  assert(not x or ix + len - 1 <= #x , "Invalid data size or tablerange")
+  assert(iy + len - 1 <= #y , "Invalid data size or tablerange")
+  for i=1,len do
+    -- use index if xlbl not specified
+    local xi = x and x[ix] or i
+    fpwrite("%.5e %.5e\n", xi, y[iy])
+    ix, iy = ix + 1, iy + 1
+  end
+  fpwrite("e\n")
 end
 
 -- parse dashtypes and add '' if it is a pattern : e.g.: ".-- "
-local function parse_dash (dashtypes, y)
-  local dash = is_table(dashtypes) and
+local function parse_dash (dashtypes, datastyle, y)
+  local dash = datastyle and datastyle.dashtype or is_table(dashtypes) and
     (dashtypes[y] or _dflt.dashtype) or dashtypes
   if string.match(dash, "[.%-_ ]+") then return "'" .. dash .. "'" end
   return dash
@@ -570,15 +638,18 @@ end
 -- stream the gnuplot 'plot' command (used in parse_axis)
 local function plot_cmd (param, _, y, axis)
   local pwrite, colors, styles, dashtypes, pointsizes,
-    pointtypes, linewidths, legendnames in param
+    pointtypes, linewidths, legend, datastyles in param
   local values = {
-    color     = is_table(colors) and (colors[y] or _dflt.color) or colors,
-    style     = is_table(styles) and (styles[y] or _dflt.style) or styles,
-    dashtype  = parse_dash(dashtypes, y),
-    pointsize = is_table(pointsizes)  and (pointsizes[y] or _dflt.pointsize) or pointsizes,
-    pointtype = is_table(pointtypes)  and (pointtypes[y] or _dflt.pointtype) or pointtypes,
-    linewidth = is_table(linewidths)  and (linewidths[y] or _dflt.linewidth) or linewidths,
-    title     = is_table(legendnames) and legendnames[y] or y,
+    color     = datastyles[y] and datastyles[y].color     or is_table(colors)     and (colors[y]     or _dflt.color)     or colors,
+    style     = datastyles[y] and datastyles[y].style     or is_table(styles)     and (styles[y]     or _dflt.style)     or styles,
+    pointsize = datastyles[y] and datastyles[y].pointsize or is_table(pointsizes) and (pointsizes[y] or _dflt.pointsize) or pointsizes,
+    pointtype = datastyles[y] and datastyles[y].pointtype or is_table(pointtypes) and (pointtypes[y] or _dflt.pointtype) or pointtypes,
+    linewidth = datastyles[y] and datastyles[y].linewidth or is_table(linewidths) and (linewidths[y] or _dflt.linewidth) or linewidths,
+    dashtype  = parse_dash(dashtypes, datastyles[y], y),
+    title     = (legend == false) and ''
+                  or is_table(legend) and
+                    ( legend[y] == false and '' or legend[y] )
+                  or y,
     axis      = axis,
   }
   local cmd = "$cmd using 1:2 with $style "
@@ -600,7 +671,7 @@ local function set_ranges (param)
   local names = {'xrange', 'x2range', 'yrange', 'y2range'}
   for _,rname in ipairs(names) do
     local range = param[rname]
-    if range then fpwrite("set %s [%f:%f]\n", rname, range[1], range[2]) end
+    if range then fpwrite("set %s [%.5e:%.5e]\n", rname, range[1], range[2]) end
   end
 end
 
@@ -616,12 +687,9 @@ end
 
 -- set tics for each used axis
 local function set_tics (param)
-  local cmd = ""
-  if param.x1y1 or param.x1y2 then cmd = cmd .. "set xtics nomirror \n"  end
-  if param.x2y1 or param.x2y2 then cmd = cmd .. "set x2tics nomirror \n" end
-  if param.x1y1 or param.x2y1 then cmd = cmd .. "set ytics nomirror \n"  end
-  if param.x1y2 or param.x2y2 then cmd = cmd .. "set y2tics nomirror \n" end
-  param.pwrite(cmd)
+  local x2y1, x2y2, x1y2, x2y2, pwrite in param
+  if x2y1 or x2y2 then pwrite("set xtics nomirror\nset x2tics nomirror\n") end
+  if x1y2 or x2y2 then pwrite("set ytics nomirror\nset y2tics nomirror\n") end
 end
 
 -- set remaining parameters (miscellaneous)
@@ -629,7 +697,7 @@ local function set_misc (param)
   local psizex, psizey, originx, originy, grid, border,
     title, legendpos, plotter                             in param
   local wrt = \s,... => plotter:write(string.format(s,...) % param) end
-  if grid   then wrt("set %s\n", grid)          end
+  if grid   then wrt("set grid %s\n", grid)     end
   if border then wrt("set border %s\n", border) end
   if title  then
     local font = param.titlefont or ""
@@ -644,11 +712,11 @@ local function set_misc (param)
   end
   if psizey or psizex then
     psizex, psizey = psizex or _dflt.psizex, psizey or _dflt.psizey
-    wrt("set size %f, %f\n", psizex, psizey)
+    wrt("set size %.5e, %.5e\n", psizex, psizey)
   end
   if originy or originx then
     originx, originy = originx or _dflt.originx, originy or _dflt.originy
-    wrt("set origin %f, %f\n", originx, originy)
+    wrt("set origin %.5e, %.5e\n", originx, originy)
   end
 end
 
@@ -694,8 +762,7 @@ local function init_param(self, file)
     pwrite  = \... -> file:write(...)
   }
   if self.elemkind then -- build dictionary
-    param.elemkind = {}
-    fun.foreach(\e => param.elemkind[e] = true end, self.elemkind)
+    setkeys(self.elemkind)
   end
 
   setmetatable(param, {__index=self})
@@ -710,8 +777,7 @@ plot x lc 'white'
 ]]
 
 local function exec (self)
-  local gp, file, streamf, fname = setup_cmd(self)
-
+  local gp, file, fname = setup_cmd(self)
   if self.sequence ~= "keep" then
     file:write("@MAD_RESET_OBJECT\n")
     file:write("@MAD_RESET_LABEL\n")
@@ -736,7 +802,7 @@ local function exec (self)
   end
 
   if self.epilog then file:write(self.epilog, "\n") end
-  teardown_cmd(self, gp, file, streamf, fname)
+  teardown_cmd(self, gp, file, fname)
   return self
 end
 
@@ -755,8 +821,8 @@ local plot = Command 'plot' {
   wsizey      = 500,
 
   -- output
-  output      = 1,       -- ("filename"|true) -> pdf | number -> wid
-  scrdump     = false,   -- ("filename"|true)
+  output      = 1,       -- ("filename") -> pdf | number -> wid
+  scrdump     = false,   -- ("filename")
 
   -- table or data input
   data        = false,   -- { x=tbl.x, y=vec } (precedence over table)
@@ -766,9 +832,9 @@ local plot = Command 'plot' {
   -- sequence input
   sequence    = false,
   range       = false,   -- {'E.DS.L5.B1','S.DS.R5.B1'} or {122.2, 543} etc...
-  seqdisty    = 0,     -- x >= 0 or { x1, x2, ... }
-  seqdistx    = 0,     -- x >= 0 or { x1, x2, ... }
-  seqshift    = 0,     -- x > =0
+  seqdisty    = 0,       -- x >= 0 or { x1, x2, ... }
+  seqdistx    = 0,       -- x >= 0 or { x1, x2, ... }
+  seqshift    = 0,       -- x > =0
   seqlabel    = { 'x', 'z' },
   nturn       = 0,
   X0          = { 0, 0, 0 },
@@ -790,7 +856,9 @@ local plot = Command 'plot' {
   x2y1        = false,   -- e.g. x1y1 = { x1 = 'y1'}
   x2y2        = false,   -- e.g. x1y1 = {'y1', 'y2'}
                          -- e.g. x1y1 = 'y1'
-  -- axis labels
+  -- labels
+  title       = "$name MAD $version, $date, $time",
+  legend      = nil,     -- { y = 'distance' }
   xlabel      = false,   -- strings
   x2label     = false,
   ylabel      = false,
@@ -807,6 +875,9 @@ local plot = Command 'plot' {
   originy     = false,   -- 0 < x < 1
   psizex      = false,   -- 0 < x < 1
   psizey      = false,   -- 0 < x < 1
+
+  -- data style
+  datastyles  = {},      -- { y = { style = 'lines', color = 'blue'} }
   styles      = 'lines', -- { y = 'lines' }
   colors      = 'red',   -- { y = 'green' }
   dashtypes   = 'solid', -- { y = '..-- ' }
@@ -817,14 +888,12 @@ local plot = Command 'plot' {
   -- decoration
   font        = "Times New Roman",
   fontsize    = 14,
-  title       = "$name MAD $version, $date, $time",
   titlefont   = false,
   titlesize   = false,
-  legendnames = false,   -- { y = 'distance' }
   legendfont  = false,
   legendsize  = false,
   legendpos   = "left top",
-  grid        = 'grid',
+  grid        = '',
   border      = 15,
 
   -- object shift

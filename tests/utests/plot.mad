@@ -1,12 +1,12 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Plot module regression tests and demo
+ | Plot module regression tests
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          A.Z. Teska, aleksandra.teska at cern.ch
+ |          A. Bloch, aurelien.bloch at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -22,318 +22,309 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local plot in MAD
-
 -- locals ---------------------------------------------------------------------o
 
-local pi in math
-local track, beam, functor, option, survey, vector             in MAD
-local assertNil, assertNotNil, assertTrue, assertEquals        in MAD.utest
-local drift, marker, quadrupole, sequence, monitor, hkicker,
-      vkicker, multipole,  sbend, sextupole, patch, collimator in MAD.element
+local assertNotNil, assertEquals                            in MAD.utest
+local plot, gplot, mtable, vector, filesys                      in MAD
+local sequence, marker                                      in MAD.element
+local observe                                               in MAD.element.flags
+local is_sequence                                           in MAD.typeid
+local tblcpy, strsplitall                                   in MAD.utility
 
--- plotting -------------------------------------------------------------------o
---[[
--- LHC
-local function loadLHC()
-  assertNotNil(require 'lhc_as-built_gen')
-  assertNotNil(require 'lhc_as-built_set')
-  assertNotNil(require 'lhc_undefvar'    )
-  assertNotNil(require 'opt_inj_gen'     )
+local toolbox  = require 'toolbox'
+local generate = false
+local refdir   = \s -> 'plot_ref/'..s
+local rundir   = \s -> 'plot_run/'..s
+local bmtbl, lmtbl
 
-  local lhcb1, lhcb2 in MADX
-  assertEquals(#lhcb1, 6677)
-  assertEquals(#lhcb2, 6676)
+-- helpers --------------------------------------------------------------------o
+
+local function loadLHC ()
+  local lhcb1, lhcb2 = toolbox.loadLHC()
+  lhcb1:select(observe)
+  lhcb2:select(observe)
+  assert(loadfile('../share/LHC/opt_inj.mad'),"unable to load the LHC opt_inj")()
   return lhcb1, lhcb2
 end
 
-local lhcb1, lhcb2 = loadLHC()
-local beam = beam { particle='proton', energy=450 }
-local tblLHC  = track  { sequence=lhcb1, beam=beam }
-local tblLHC1 = survey { sequence=lhcb1 }
-local tblLHC2 = survey { sequence=lhcb2 }
+local function createTbl ()
+  if bmtbl then return end
+  bmtbl = mtable { {'name'}, 'x', 'y', 'z' }
+  lmtbl = mtable { {'name'}, 'x1', 'x2', 'y1', 'y2', 'y3', 'y4' }
+  for i=1, 25000 do
+    bmtbl = bmtbl + {'A' .. i, i, i, 2*i+100 }
+  end
+  for i=1, 25 do
+    lmtbl = lmtbl + {'A' .. i, i, i+10, i, i+10, i+20, i+30 }
+  end
+end
 
-plot {
-  filename = "lhcIP5.pdf",
-  scrdump = true,
-  table = tblLHC,
-  sequence = lhcb1,
-  range = {'E.DS.L5.B1','S.DS.R5.B1'},
-  xaxis = 's',
-  yaxis = {'x','y'},
-  plotstyle = 'linespoints',
-}
+local function assertFiles (name)
+  if generate then return end
+  local ref     = assert(io.open(refdir(name), "r"))
+  local run     = assert(io.open(rundir(name), "r"))
+  local line    = 2
+  local refsid  = strsplitall(ref:read("*line") , "#", 2)[2]
+  local runsid  = strsplitall(run:read("*line"), "#", 2)[2]
 
-plot 'sps' {
-  window = "size 800, 800",
-  table = tblLHC1,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  --pointsizes = {z=0.1},
-  --key = "off",
-}
+  if refsid ~= runsid then
+    error("expected: '" .. refsid .. "', actual: '" .. runsid .. "' at line: 1")
+  end
 
-plot {
-  continue = true,
-  table  = tblLHC2,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  colors = {z = 'green'},
-  pointsizes = {z=0.1},
-  key = "off",
-}
-]]
+  while true do
+    local refline  = ref:read("*line")
+    local runline = run:read("*line")
+    if refline == nil or runline == nil then break end
+    if refline ~= runline then
+      error(
+        "expected: '" .. refline ..
+        "', actual: '" .. runline ..
+        "' at line: " .. line
+      )
+    end
+    line = line + 1
+  end
+  if not generate then os.remove(rundir(name)) end
+end
 
---[[
-plot {
-  scrdump = true,
-  filename = "lhcIP5survey.pdf",
-  window = "size 20 cm, 20 cm",
-  table = tblLHC1,
-  data = LHC,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  pointsizes = {z=0.1},
-  --xaxis2 = 'y',
-  --yaxis2 = 'd',
-  --axes = { d="x2y2" },
-  --plotstyle = 'points',
-}
-]]
+local function getEmptyPlot (name)
+  return plot {
+    title   = name,
+    output  = false,
+    scrdump = rundir(name),
+    exec    = false,
+  }
+end
 
-local lcell  = 20
-local lquad  = 5
-local ip   = marker     'ip'{}
-local kqf  =  1.4631475E-02
-local kqd  = -1.4643443E-02
-local qf   = quadrupole 'qf'{ l=lquad, k1:= kqf }
-local qd   = quadrupole 'qd'{ l=lquad, k1:= kqd }
-local seq = sequence 'fodo1' {l = lcell, refer = 'entry',
-  --ip 'IP1' { at = 0 },
-  qf 'QF1' { at = 0 },
-  qd 'QD1' { at = 15},
-  --ip 'IP2' { at = lcell },
-}
-local tbl = survey { sequence=seq, X0={-1e-4, 2e-6, 0}, A0={0, 0, 3e-7}}
---[[
-plot {
-  scrdump = true,
-  filename = "testlayout.pdf",
-  table    = tbl,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  plotstyle = 'linespoints',
-  sequence = seq,
-  range = {'QF1','QD1' },
-  --range = {'QD1','IP2' },
-  --hlimit = {0,20},
-  --refer = 'entry',
-  refer = 'center',
-}
-]]
+local function execTest (name, param)
+  getEmptyPlot(name)(param)
+  assertFiles(name)
+end
 
---SPS line
-local circum = 6912.0
-local ncell  = 108
-local lcell  = circum/ncell
-local lsb    = 3.
-local lquad  = 3.085
-local lquad2 = lquad/2.
-local lsex   = 1.0
-local ip  = marker     'ip'{}
-local dr = drift      'dr'{}
-local asb = 2.0*pi/(8*108)
-local sb  = multipole     'sb'{ knl = asb }
-local kqf  =  1.4631475E-02
-local kqd  = -1.4643443E-02
-local qf  = quadrupole 'qf'{ l=lquad, k1:= kqf }
-local qd  = quadrupole 'qd'{ l=lquad, k1:= kdf }
-local ksf =  2.0284442E-02
-local ksd = -3.8394267E-02
-local sf  = sextupole 'sf' {l=lsex,  k2:=ksf}
-local sd  = sextupole 'sd' {l=lsex,  k2:=ksd}
-local bpm = collimator 'bpm'  {l=0.1}
-local ch  = hkicker 'ch'   {l=0.1}
-local cv  = vkicker 'vh'   {l=0.1}
-local seq = sequence 'fodo1' {l = lcell, dir =1, refer = 'centre',
-  ip  'IP1'  { at = 0        },
-  qf  'QF1'  { at = lquad2},
-  sf  'SF1'  { at = lquad2   +  2.5},
-  ch  'CH1'  { at = lquad2   +  3.1},
-  bpm 'BPM1' { at = lquad2   +  3.2},
-  sb  'SB1'  { at = lquad2   +  3.5},
-  sb  'SB2'  { at = lquad2   +  9.9},
-  sb  'SB3'  { at = lquad2   +  22.1},
-  sb  'SB4'  { at = lquad2   +  28.5},
-  qd  'QD1'  { at = lquad2   +  32},
-  sd  'SD1'  { at = lquad2   +  34.5},
-  cv  'CV1'  { at = lquad2   +  35.1},
-  bpm 'BPM2' { at = lquad2   +  35.2},
-  sb  'SB1'  { at = lquad2   +  35.5},
-  sb  'SB2'  { at = lquad2   +  41.9},
-  sb  'SB3'  { at = lquad2   +  54.1},
-  sb  'SB4'  { at = lquad2   +  60.5},
-  ip  'IP2'  { at = lcell    },
-}
+-- regression test suite ------------------------------------------------------o
 
-local tblSPS = survey { sequence=seq, X0={-1e-4, 2e-6, 0}, A0={1, 2, 3e-7}}
+TestPlot = {}
 
---DEMO
--- x11 termial + name from plot
-plot 'sps' {
+function TestPlot:setUp ()
+  createTbl()
+  filesys.mkdir(rundir(''))
+end
 
-  --scrdump = true,
-  table = tblSPS,
-  xaxis = 's',
-  yaxis = {'x','y'},
-  key   = "off",
-  plotstyle = 'linespoints',
-  ymax   = 200,
-  yrange = {-20,100},
-  title  = "$name MAD $version",
-  xlabel = "s [m]",
-  datrange  = 1..20,
-  axespairs = { x1 = {'y1', 'y2'} },
-}
--- continue plotting + point style choice
-plot {
-  scrdump   = true,
-  multiplot = true,
-  key = "off",
-  data   = {s = vector(20):fill(1..20),
-            z = vector(20):fill(1..20)},
-  xaxis = 's',
+function TestPlot:tearDown ()
+  if not generate then filesys.rmdir(rundir('')) end
+end
 
-  yaxis = 'z',
-  colors     = {z="green"},
-  pointtypes = {z=10},
-  pointsizes = {z=2 },
-}
+function TestPlot:testEmptyPlot ()
+  local param = { }
+  execTest("testEmptyPlot", param)
+end
 
--- save to file + save script +  sequence
-plot {
-  --scrdump = true,
-  filename = "test.pdf",
-  table    = tblSPS,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  vkeys    = { x = 'm'},
-  plotstyle = 'linespoints',
-  sequence = seq,
-}
--- data src only + continue saving to pdf
-plot  'data'{
-  --scrdump = true,
-  filename = "test.pdf",
-  title  = "$name MAD $version",
-  data  = {x = vector(20):fill(1..20),
-           y = vector(20):fill(1..20):map\x x^2},
-  xaxis = 'x',
-  yaxis = 'y',
-  plotstyle = 'lines',
-}
+function TestPlot:testPrologEpilog ()
+  local param = {
+    prolog = "set multi",
+    epilog = "unset multi \nunset out",
+  }
+  execTest("testPrologEpilog", param)
+end
 
-plot {
-  filename = "x1x2.pdf",
-  scrdump = true,
-  data = {x = vector(20):fill(1..20 ),
-          d = vector(20):fill(21..40),
-          y = vector(20):fill(1..20):map\x x*2,
-          z = vector(20):fill(1..20):map\x x^2},
-  xaxis  = 'x',
-  xaxis2 = 'd',                                    --different to table for that('x1' -> {'x', '1'})
-  yaxis  = 'z',
-  yaxis2 = 'y',
-  pointtypes = { z=10 },
-  plotstyle  = "linespoints",
-  colors     = { z='pink' } ,
-}
---[[
+function TestPlot:testAxisName ()
+  local param1 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}, x2 = {'y3', 'y4'}}}
+  local param2 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}, x2 = 'y3'}        }
+  local param3 = {table = lmtbl, x1y1 = { x2 = {'y1', 'y2'}, 'y3'},            }
+  local param4 = {table = lmtbl, x1y1 = { x1 = {'y1', 'y2'}},                  }
+  local param5 = {table = lmtbl, x1y1 = { x2 = 'y1', 'y2'},                    }
+  local param6 = {table = lmtbl, x1y1 = { x1 = 'y1'},                          }
+  local param7 = {table = lmtbl, x1y1 = {'y1', 'y2'},                          }
+  local param8 = {table = lmtbl, x1y1 =  'y1',                                 }
+  execTest("testAxisName1", param1)
+  execTest("testAxisName2", param2)
+  execTest("testAxisName3", param3)
+  execTest("testAxisName4", param4)
+  execTest("testAxisName5", param5)
+  execTest("testAxisName6", param6)
+  execTest("testAxisName7", param7)
+  execTest("testAxisName8", param8)
+end
 
-plot {
-  filename = "test.pdf",
-  table = tblSPS,
-  sequence = seq,
-  xaxis = 's',
-  yaxis = {'x','y','z'},
-  plotstyle = "lines",
-  dashtypes = { x = "'-'" },
-  vmargin   = 0.2,
-  scrdump  = true,
-}
+function TestPlot:testAxisSelection ()
+  local param1 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x1y2 = { x1 = 'y2' } }
+  local param2 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y1 = { x2 = 'y2' } }
+  local param3 = { table = lmtbl, x1y2 = { x1 = 'y1' }, x2y1 = { x2 = 'y2' } }
+  local param4 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' } }
+  local param5 = { table = lmtbl, x1y1 = { x1 = 'y1' }, x2y2 = { x2 = 'y2' },
+                                  x1y2 = { x1 = 'y3' }, x2y1 = { x2 = 'y4' } }
+  execTest("testAxisSelection1", param1)
+  execTest("testAxisSelection2", param2)
+  execTest("testAxisSelection3", param3)
+  execTest("testAxisSelection4", param4)
+  execTest("testAxisSelection5", param5)
+end
 
--- table and data
-plot {
-  filename = "test.pdf",
-  table = tblSPS,
-  data  = {d = tblSPS.x:map\x x^2},
-  xaxis = 's',
-  yaxis = {'x','y','d'},
-  pointtype = { x = 10 },
-}
+function TestPlot:testAxisLabel ()
+  local param = {
+    table   = lmtbl,
+    x1y1    = { x1 = 'y1' },
+    x2y2    = { x2 = 'y2' },
+    xlabel  = "label X",
+    x2label = "label X2",
+    ylabel  = "label Y",
+    y2label = "label Y2",
+  }
+  execTest("testAxisLabel", param)
+end
 
--- vertical multiaxes
-plot {
-  filename = "test.pdf",
-  table   = tblSPS,
-  xaxis   = 's',
-  yaxis   = {'x', 'z'},
-  yaxis2  = {'y'},
-  vlimit  = {-100,70},
-  --vlimit2 = {-5 ,5 },
-}
+function TestPlot:testAxisRange ()
+  local param = {
+    table   = lmtbl,
+    x1y1    = { x1 = 'y1' },
+    x2y2    = { x2 = 'y2' },
+    xrange  = { 7  ,  12  },
+    x2range = { 27 ,  32  },
+    yrange  = { 8  ,  11  },
+    y2range = { 28 ,  31  },
+  }
+  execTest("testAxisRange", param)
+end
 
--- horizontal multiaxes
-plot {
-  filename = "test.pdf",
-  table   = tblSPS,
-  xaxis   = 's',
-  xaxis2  = 's',
-  yaxis   = 'x',
-  yaxis2  = 'z',
-  title   = "TITLE",
-}
+function TestPlot:testTableOrData ()
+  local x1, y2 = table.new(25,0), vector(25)
+  for i=1,25 do
+    x1[i] = 11 + i
+    y2[i] = 22 + i
+  end
+  local param = {
+    table = lmtbl,
+    data  = { x1 = x1  , y2 = y2   },
+    x1y1  = { x1 = 'y1', x2 = 'y2' },
+  }
+  execTest("testTableOrData", param)
+end
 
--- change of axis names and size + change of title, no title option
-plot {
-  preamble = "test plot",
-  filename = "test.pdf",
-  table    = tblSPS,
-  xaxis    = 's',
-  yaxis    = {'x','y'},
-  hlimit = {0, 50},
-  vlimit = {-10, 100},
-  key = "right top",
-  xlabel  = "x limited",
-  ylabel  = "y limited",
-  grid = 'nogrid',
-  title   = " ",
-  hmargin = true,
-  vmargin = 0.3,
-}
+function TestPlot:testTableRange ()
+  local x1, y1 = table.new(11,0),table.new(11,0)
+  for i=1,11 do
+    x1[i] = 41 + i
+    y1[i] = 41 + i
+  end
+  local param1 = {
+    table      = lmtbl,
+    data       = { x1 = x1   },
+    x1y1       = { x1 = 'y1' },
+    tablerange = { 13, 23    },
+  }
+  local param2 = {
+    table      = lmtbl,
+    data       = { y1 = y1   },
+    x1y1       = { x1 = 'y1' },
+    tablerange = { 13, 23    },
+  }
+  execTest("testTableRange1", param1)
+  execTest("testTableRange2", param2)
+end
 
-plot 'sps' {
-  id =2 ,
-  scrdump = true,
-  window = "size 800, 800",
---  hmargin = true,
-  table = tblLHC1,
-  xaxis  = 'x',
-  yaxis  = 'z',
-  pointsizes = {z=0.1},
-  key = "off",
-}
-]]
---[[
-plot {
-  filename = "testrng.pdf",
-  table = tblSPS,
-  xaxis = 's',
-  yaxis = 'y',
-  --datrange = {0 ,50},
-  --datrange = {1,-1 },
-  --datrange = 1..10,
-}
-]]
+function TestPlot:testLegend()
+  local param = {
+    table  = lmtbl,
+    x1y1   = { x1 = {'y1', 'y2' } },
+  }
+  param.legend = false                   ;execTest("testLegend1", tblcpy(param))
+  param.legend = nil                     ;execTest("testLegend2", tblcpy(param))
+  param.legend = {y1="legend1"}          ;execTest("testLegend3", tblcpy(param))
+  param.legend = {y1="legend1", y2=false};execTest("testLegend4", tblcpy(param))
+end
+
+function TestPlot:testPlotDecoration()
+  local param = {
+    table      = lmtbl,
+    x1y1       = { x1 = {'y1', 'y4' } },
+    font       = "Comic Sans MS",
+    fontsize   = 31,              -- Not in script because no terminal are set
+    titlefont  = "Arial Black",   -- Same (TODO with gnuplot ?)
+    titlesize  = 21,
+    legend = {
+      y1 = "legend1 {/Symbol b} + \u{03b2}",
+      y4 = "legend2 {/Symbol B} + \u{0392}",
+    },
+    legendfont = "Copperplate",
+    legendsize = 11,
+    legendpos  = "bottom right",
+    grid       = false,
+    border     = 3,
+  }
+  execTest("testPlotDecoration", param)
+end
+
+function TestPlot:testPlotStyle()
+  local param1 = {
+    table      = lmtbl,
+    x1y1       = { x1 = {'y1', 'y3', 'y4' } },
+    originx    = 0.3,
+    originy    = 0.4,
+    psizex     = 0.7,
+    psizey     = 0.6,
+    styles     = { y1 = "lines", y3 = "points", y4 = "linespoints" },
+    colors     = { y1 = 'red'  , y3 = "blue"  , y4 = 'green'       },
+    dashtypes  = { y1 = "..   ",                y4 = "--  "        },
+    linewidths = { y1 = 2.3    ,                y4 = 3.2           },
+    pointtypes = {               y3 = 2       , y4 = 3             },
+    pointsizes = {               y3 = 2.0     , y4 = 4.1           },
+  }
+  local param2 = {
+    table      = lmtbl,
+    x1y1       = { x1 = {'y1', 'y3', 'y4' } },
+    originx    = 0.3,
+    originy    = 0.4,
+    psizex     = 0.7,
+    psizey     = 0.6,
+    datastyles = {
+      y1 = { style='lines', color='red', dashtype='..   ', linewidth=2.3 },
+      y3 = { style='points', color='blue', pointtype=2, pointsize=2.0 },
+      y4 = {
+        style='linespoints', color='green', dashtype="--  ",
+        linewidth=3.2, pointtype=3, pointsize=4.1
+      }
+    }
+  }
+  local param3 = {
+    table      = lmtbl,
+    x1y1       = { x1 = {'y1', 'y4' } },
+    styles     = 'linespoints',
+    colors     = 'black',
+    dashtypes  = '.-.-',
+    linewidths = 4,
+    pointtypes = 2,
+    pointsizes = 3,
+  }
+  execTest("testPlotStyle1", param1)
+  execTest("testPlotStyle2", param2)
+  execTest("testPlotStyle3", param3)
+end
+
+function TestPlot:testObjectShift ()
+  local param = {
+    sequence = sequence { l = 10, marker 'middle' { at = 5 } },
+    oshft    = 11,
+  }
+  execTest("testObjectShift", param)
+end
+
+function TestPlot:testLHC()
+  local lhcb1, lhcb2 = loadLHC()
+  local param = {
+    sequence = { lhcb1, lhcb2 },
+    table    = bmtbl,
+    x1y1     = { x = 'y' },
+  }
+  execTest("testLHC", param)
+end
+
+function TestPlot:testLHCInPlot ()
+  local lhcb1, lhcb2 = loadLHC()
+  local param = {
+    sequence = { lhcb1, lhcb2 },
+    laypos   = "in",
+  }
+  execTest("testLHCInPlot", param)
+end
 
 -- end ------------------------------------------------------------------------o

@@ -460,11 +460,13 @@ static int handle_madinit (lua_State *L)
 
 /* Extra integrated libs to load. */
 LUALIB_API int luaopen_lpeg (lua_State *L);
+LUALIB_API int luaopen_lfs (lua_State *L);
 
 static void mad_openlibs (lua_State *L)
 {
 	static struct { str_t name; int(*func)(lua_State*); } libs[] = {
     { "lpeg", luaopen_lpeg },
+    { "lfs", luaopen_lfs },
     { NULL  , NULL },
 	};
 
