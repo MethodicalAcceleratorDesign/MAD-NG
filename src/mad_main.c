@@ -160,7 +160,7 @@ LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
 	if (mad_trace_level < lvl) return;
   va_list va;
   va_start(va, fmt);
-	 fprintf(stderr, fn ? "trace:%s: " : "trace: ", fn);
+  if (fn) fprintf(stderr, "%s", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
@@ -174,7 +174,14 @@ static int mad_luawarn (lua_State *L)
 
 static int mad_luatrace (lua_State *L)
 {
-	(mad_trace)(luaL_checknumber(L,1), NULL, "%s", luaL_checkstring(L,2));
+	int level = luaL_checknumber(L,1);
+	str_t where = NULL;
+
+	if (mad_trace_location && mad_trace_level >= level) {
+		luaL_where(L, 1);
+	 	where = lua_tostring(L, -1);
+	}
+	(mad_trace)(level, where, "%s", luaL_checkstring(L,2));
 	return 0;
 }
 
