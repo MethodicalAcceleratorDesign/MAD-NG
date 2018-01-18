@@ -77,6 +77,14 @@ local min, max               in math
 
 local tostring = tostring
 
+local option in MAD
+
+local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
+      is_value, is_indexable, is_iterable, is_keyrable, is_mappable,
+      is_callable, is_stringable, is_tableable, is_copiable, is_sameable,
+      is_complex, get_metatable, get_metamethod in MAD.typeid
+
+
 -- implementation -------------------------------------------------------------o
 
 -- operators
@@ -155,13 +163,6 @@ operator.opstr = {
   ['||'] = operator.lor,
   ['!!'] = operator.lbool,
 }
-
-local option in MAD
-
-local is_nil, is_number, is_string, is_table, is_rawtable, is_value,
-      is_indexable, is_iterable, is_keyrable, is_mappable, is_callable,
-      is_stringable, is_tableable, is_copiable, is_sameable, is_complex,
-      get_metatable, get_metamethod in MAD.typeid
 
 -- utilities ------------------------------------------------------------------o
 
@@ -356,7 +357,7 @@ end
 
 -- string interpolation
 
-local function interp_fun (info, tag)
+local function interp_fun (arg, tag)
   local key, suffix = tag, ''
   local s = tag:sub( 1, 1)
   if s == '$' then return tag end
@@ -372,21 +373,30 @@ local function interp_fun (info, tag)
     error("Missing key: $"..tag, 2)
   end
   key = tonumber(key) or key -- cases $n or ${n}
-  local val = info.var[key]
+  local val = arg.var[key]
   if is_nil(val) then
-    if info.strict == false then return nil end -- leave it unchanged
+    if arg.strict == false then return nil end -- leave it unchanged
     error("Undefined key: $"..tag, 2)
   end
-  info.n = info.n + 1
   return tostring_(val) .. suffix
 end
 
 local bind1st in MAD.gfunc
 
-function utility.strinterp (str, var, strict_)
+function utility.strinterp (str, var, strict_, fixpnt_)
+  if is_number(strict_) and is_nil(fixpnt_) then
+    fixpnt_, strict_ = strict_ -- right shift
+  end
+  local st, fp = is_nil(strict_) and true or strict_, fixpnt_ or 1
+  assert(is_string   (str), "invalid argument #1 (string expected)")
   assert(is_indexable(var), "invalid argument #2 (indexable expected)")
-  local info = { var=var, strict=strict_, n=0 }
-  return str:gsub('%$([{$]?[%w_]*}?)', bind1st(interp_fun, info)), info.n
+  assert(is_boolean  (st ), "invalid argument #3 (boolean expected)")
+  assert(is_number   (fp ), "invalid argument #4 (number expected)")
+  local fn, curr, prev = bind1st(interp_fun, { var=var, strict=st }), str
+  repeat
+    curr, prev, fp = curr:gsub('%$([{$]?[%w_]*}?)', fn), curr, fp-1
+  until fp <= 0 or prev == curr
+  return curr
 end
 
 string.interp          = utility.strinterp
