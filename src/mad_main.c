@@ -178,7 +178,7 @@ static int mad_luatrace (lua_State *L)
 	str_t where = NULL;
 
 	if (mad_trace_location && mad_trace_level >= level) {
-		luaL_where(L, 1);
+		luaL_where(L, 2);
 	 	where = lua_tostring(L, -1);
 	}
 	(mad_trace)(level, where, "%s", luaL_checkstring(L,2));
