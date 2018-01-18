@@ -40,7 +40,6 @@ LUALIB_API void mad_trace (int, const char *fn, const char *fmt, ...);
 
 // --- globals ----------------------------------------------------------------o
 
-extern int mad_info_level;
 extern int mad_trace_level;
 extern int mad_trace_location;
 

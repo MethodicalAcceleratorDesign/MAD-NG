@@ -65,10 +65,10 @@ SEE ALSO
 local Object, vector, env                                        in MAD
 local bind1st, bind2nd, bind2st                                  in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
-local is_iterable, is_callable                                   in MAD.concept
 local strtrim, strsplit, strbracket, fprintf, kpairs             in MAD.utility
 local is_nil, is_boolean, is_number, is_positive, is_string,
-      is_table, is_rawtable, is_range, is_file, is_matrix        in MAD.typeid
+      is_table, is_rawtable, is_range, is_file, is_matrix,
+      is_iterable, is_callable                                   in MAD.typeid
 
 local max, ceil in math
 local strsub = string.sub
@@ -461,6 +461,19 @@ end
 
 -- dict helpers ---------------------------------------------------------------o
 
+-- shift indexes >= idx by n
+local function shf_idx (data, idx, n)
+  if is_nil(data.cref) then return end
+  local ridx = data.ridx
+  for nam,ei in pairs(ridx) do
+    if is_number(ei) then       -- scalar
+      if ei >= idx then ridx[nam] = ei+n end
+    else for i=1,ei.n do        -- table
+      if ei[i] >= idx then ei[i] = ei[i]+n end
+    end end
+  end
+end
+
 -- insert to dictionnary name -> idx (warning: indexes are not shifted)
 local function ins_idx (data, idx)
   if is_nil(data.cref) then return end
@@ -649,6 +662,45 @@ local function set_row (tbl, key, val, ini_)
   return tbl
 end
 
+local function rem_row (tbl, key)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  local idx = index_of(tbl, key)
+  assert(is_number(idx), "invalid argument #2 (valid row expected)")
+  local data = var_raw(tbl, _data)
+  local nr, nc = data.nr, data.nc-data.ng
+  for i=0,nc do
+    local col = data[i]
+    for j=idx,nr-1 do col[j] = col[j+1] end
+    col[i].nr = col[i].nr-1
+  end
+  data.nr =data.nr-1
+  rem_idx(data, idx)
+  shf_idx(data, idx, -1)
+  return tbl
+end
+
+local function ins_row (tbl, key, val, ini_)
+  ini_ = ini_ or 1
+  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
+  local idx = index_of(tbl, key)
+  assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
+  assert(is_iterable(val), "invalid argument #3 (iterable expected)")
+  assert(is_number(ini_) , "invalid argument #4 (number expected)")
+  local data = var_raw(tbl, _data)
+  local nr, nc = data.nr, data.nc-data.ng
+  if nr+1 > data.rmax then expand(data, tbl, 1) end
+  for i=0,nc do
+    local col = data[i]
+    col[i].nr = col[i].nr+1
+    for j=nr,idx,-1 do col[j+1] = col[j] end
+  end
+  data.nr =data.nr+1
+  cpy_row(data, idx, val, ini_-1, data.nr)
+  shf_idx(data, idx, 1)
+  ins_idx(data, idx)
+  return tbl
+end
+
 local function swp_row (tbl, key1, key2, ref_)
   assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
   local idx1, idx2 = index_of(tbl, key1, ref_), index_of(tbl, key2, ref_)
@@ -772,12 +824,12 @@ end
 
 -- methods (R/W, rebuild dict) ------------------------------------------------o -- TODO
 
-local function rebuild_index (tbl, key_)
+local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   if key_ then -- change reference column
     local data = var_raw(tbl, _data)
-    local idx = is_number(key_) and key_ or data.cidx[key_]
-    assert(idx, "invalid argument #2 (valid column expected)")
+    local idx = data.cidx[key_] and is_number(key_) and key_ or data.cidx[key_]
+    assert(idx or key_ == 'none', "invalid argument #2 (valid column expected)")
     data.cref = idx
   end
   build_idx  (tbl)
@@ -805,7 +857,7 @@ local function remove (tbl, rng_, sel_)
   for i=0,nc do data[i].nr = data.nr end
   assert(j == nr, "unexpected corrupted move of rows (remove)")
 
-  rebuild_index(tbl)
+  build_index(tbl)
   return tbl
 end
 
@@ -836,7 +888,7 @@ local function insert (tbl, rows, rng_, sel_)
   end
   assert(j == 0, "unexpected corrupted move of rows (insert)")
 
-  rebuild_index(tbl)
+  build_index(tbl)
   return tbl
 end
 
@@ -882,7 +934,7 @@ local function sort (tbl, cmp, rng_, sel_)
   end
   assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
 
-  rebuild_index(tbl)
+  build_index(tbl)
   return tbl
 end
 
@@ -916,7 +968,7 @@ local function copy (tbl, name_)
   end
 
   cpy[_data] = cdat
-  rebuild_index(cpy)
+  build_index(cpy)
   return cpy
 end
 
@@ -1089,6 +1141,8 @@ mtable: set_methods {
   getrow        = get_row,
   addrow        = add_row,
   setrow        = set_row,
+  remrow        = rem_row,
+  insrow        = ins_row,
   swprow        = swp_row,
 
   -- sequence-like methods
@@ -1118,8 +1172,8 @@ mtable: set_methods {
   -- readonly
   set_readonly  = set_readonly,
 
-  -- debug
-  rebuild_index = rebuild_index, -- debug
+  -- index dict
+  build_index = build_index,
 
   -- disabled methods
   is_selected  := error("invalid mtable operation", 2),

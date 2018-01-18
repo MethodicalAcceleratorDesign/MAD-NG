@@ -1,0 +1,228 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Generic type identification module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a set of function to identify types
+  - Includes duck typing checks (i.e. concept checks)
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- help -----------------------------------------------------------------------o
+
+local __help = {}
+__help.typeid = [=[
+NAME
+  typeid -- provide some utility functions to identify types
+
+SYNOPSIS
+  is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
+  is_cdata, is_complex,
+  is_nan, is_infinite, is_positive, is_negative, is_integer,   (specializations)
+  is_scalar, is_rawtable, is_file,
+  is_metaname, has_metatable, get_metatable,                       (metamethods)
+  has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
+  is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
+  is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+  is_modulable, is_powerable, has_member, has_method, has_metamethod,
+  is_same.
+
+DESCRIPTION
+  The utils module provides useful utility functions:
+  - is_nil, is_boolean, is_number, is_string, is_function, is_table, is_cdata,
+    and is_complex return true if the argument is of expected type,
+  - is_nan and is_infinite return true if argument is not-a-number or ±infinity,
+  - is_positive and is_negative return true if argument is >0 or <0 respectively,
+  - is_integer returns true if the argument is an integer number within the
+    interval of [-2^52, 2^52],
+  - is_scalar returns true if the argument is a number or a complex,
+  - is_rawtable returns true if the argument is a table without metatable,
+  - is_empty returns true if the argument is an empty table,
+  - is_ismetaname returns true if the argument is a valid metamethod name,
+  - has_metatable returns true is the argument has a metatable,
+  - get_metatable is a generic version of getmetatable that works also with
+    cdata,
+  - has_length, is_iterable, is_mappable, is_indexable, is_callable,
+    is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
+    is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
+    is_modulable, is_powerable, has_member, has_method and has_metamethod return
+    true if the argument fulfills the concept requirements,
+  - is_stringable and is_tableable check only if the argument supports
+    respectively the __tostring and the __totable metamethods because objects
+    are always stringable and tableable in MAD,
+  - has_member, has_method and has_metamethod returns true if argument #1 has
+    argument #2 as a member, a callable member and a meta member respectively,
+
+RETURN VALUES
+  Depends on the functions, generaly true, false or nil.
+
+ERRORS
+  None.
+
+SEE ALSO
+  None.
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+-- Note: this module is used by MAD env, hence it cannot rely on MAD env.
+
+local ffi = require 'ffi'
+
+local istype, typeof, miscmap in ffi
+local abs, huge               in math
+local type, getmetatable = type, getmetatable
+
+-- implementation -------------------------------------------------------------o
+
+-- metatables & metamethods
+
+assert(miscmap, "missing MAD extension (no cdata metatable access)")
+
+local metaname = {
+  -- list of metanames from lj_obj.h
+  -- + copy + exec + init + kpairs + same + totable
+  '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
+  '__index', '__init', '__ipairs', '__kpairs', '__le', '__len', '__lt',
+  '__metatable', '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs',
+  '__pow', '__same', '__sub', '__tostring', '__totable', '__unm',
+}
+for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
+
+local function get_metatable (a)
+  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
+end
+
+local function has_metatable (a)
+  return not not get_metatable(a)
+end
+
+local function get_metamethod (a, f)
+  local mt = get_metatable(a)
+  return mt and rawget(mt,f)
+end
+
+local function has_metamethod (a, f)
+  local mt = get_metatable(a)
+  return (mt and rawget(mt,f)) ~= nil
+end
+
+local function has_metamethod2 (a, f, f2)
+  local mt = get_metatable(a)
+  return (mt and (rawget(mt,f) or rawget(mt,f2))) ~= nil
+end
+
+-- types
+
+-- classification of primitive types
+-- nil  : can be shared, cannot be modified (but may contain shared states).
+-- true : can be only copied.
+-- false: can be shared, can be modified.
+local typeclass = {
+  -- false
+  table = false,
+  -- true
+  ['nil'] = true,  boolean = true, number = true, string = true,
+  -- nil
+  ['function'] = nil, lightuserdata = nil, userdata = nil, thread = nil,
+    cdata = nil,
+}
+
+local complex = typeof 'complex'
+
+local typeid = {
+  -- classification
+  typeclass = typeclass,
+
+  -- comparison
+  is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
+
+  -- primitive types
+  is_boolean  = \a -> type(a) == 'boolean',
+  is_number   = \a -> type(a) == 'number',
+  is_string   = \a -> type(a) == 'string',
+  is_function = \a -> type(a) == 'function',
+  is_table    = \a -> type(a) == 'table',
+  is_cdata    = \a -> type(a) == 'cdata',
+
+  -- specialisations
+  is_nil      = \a -> rawequal(a, nil  ),
+  is_true     = \a -> rawequal(a, true ),
+  is_false    = \a -> rawequal(a, false),
+  is_finite   = \a -> type(a) == 'number' and abs(a) <  huge,
+  is_infinite = \a -> type(a) == 'number' and abs(a) == huge,
+  is_nan      = \a -> type(a) == 'number' and a ~= a,
+  is_positive = \a -> type(a) == 'number' and a > 0,
+  is_negative = \a -> type(a) == 'number' and a < 0,
+  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_complex  = \a ->                         istype(complex, a),
+  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
+  is_rawtable = \a -> type(a) == 'table'  and rawequal(getmetatable(a), nil),
+  is_empty    = \a -> type(a) == 'table'  and rawequal(next        (a), nil),
+  is_value    = \a -> typeclass[type(a)],
+
+  -- file handle (open or closed)
+  is_file     = \a -> io.type(a) ~= nil,
+
+  -- metatable and metamethods
+  get_metatable    = get_metatable,
+  has_metatable    = has_metatable,
+  get_metamethod   = get_metamethod,
+  has_metamethod   = has_metamethod,
+
+  is_metaname      = \a -> metaname[a] == a,
+
+  is_stringable    = \a -> has_metamethod(a, '__tostring'),
+  is_tableable     = \a -> has_metamethod(a, '__totable' ),
+
+  is_callable      = \a -> type(a) == 'function' or has_metamethod(a, '__call'  ),
+  is_iterable      = \a -> type(a) == 'table'    or has_metamethod(a, '__ipairs'),
+  is_keyrable      = \a -> type(a) == 'table'    or has_metamethod(a, '__kpairs'),
+  is_mappable      = \a -> type(a) == 'table'    or has_metamethod(a, '__pairs' ),
+  is_indexable     = \a -> type(a) == 'table'    or has_metamethod(a, '__index' ),
+  is_concatenable  = \a -> type(a) == 'string'   or has_metamethod(a, '__concat'),
+  is_negatable     = \a -> type(a) == 'number'   or has_metamethod(a, '__unm'   ),
+  is_addable       = \a -> type(a) == 'number'   or has_metamethod(a, '__add'   ),
+  is_substractable = \a -> type(a) == 'number'   or has_metamethod(a, '__sub'   ),
+  is_multiplicable = \a -> type(a) == 'number'   or has_metamethod(a, '__mul'   ),
+  is_dividable     = \a -> type(a) == 'number'   or has_metamethod(a, '__div'   ),
+  is_modulable     = \a -> type(a) == 'number'   or has_metamethod(a, '__mod'   ),
+  is_powerable     = \a -> type(a) == 'number'   or has_metamethod(a, '__pow'   ),
+
+  is_comparable    = \a -> type(a) == 'number'   or
+                           type(a) == 'string'   or has_metamethod(a,'__eq'),
+  is_ordered       = \a -> type(a) == 'number'   or
+                           type(a) == 'string'   or has_metamethod2(a,'__le','__lt'),
+  has_length       = \a -> type(a) == 'table'    or
+                           type(a) == 'string'   or has_metamethod(a,'__len' ),
+  is_copiable      = \a ->                          has_metamethod(a,'__copy'),
+  is_sameable      = \a ->                          has_metamethod(a,'__same'),
+  has_constructor  = \a ->                          has_metamethod(a,'__new' ),
+  is_collectable   = \a ->                          has_metamethod(a,'__gc'  ), -- not supported by LJ
+
+  -- members and methods
+  has_member = \a,b -> ((type(a)    == 'table'    or has_metamethod(a   , '__index')) and
+                                                     not rawequal(a[b], nil)),
+  has_method = \a,b -> ((type(a)    == 'table'    or has_metamethod(a   , '__index')) and
+                        (type(a[b]) == 'function' or has_metamethod(a[b], '__call' ))),
+}
+
+-- end ------------------------------------------------------------------------o
+return {
+  typeid = typeid,
+  __help = __help,
+}

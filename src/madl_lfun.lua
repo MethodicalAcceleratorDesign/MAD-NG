@@ -16,7 +16,7 @@ local unpack = rawget(table, "unpack") or unpack
 -- MAD extensions
 --------------------------------------------------------------------------------
 
-local get_metatable, has_length, is_indexable = getmetatable
+local get_metatable = getmetatable
 
 local ffi = require 'ffi'
 
@@ -34,8 +34,13 @@ local function get_metamethod (a, f)
     return mt and rawget(mt,f)
 end
 
-function has_length  (a) return not not get_metamethod(a, '__len'  ) end
-function is_indexable(a) return not not get_metamethod(a, '__index') end
+local function has_length (a)
+    return get_metamethod(a, '__len') ~= nil
+end
+
+local function is_indexable (a)
+    return get_metamethod(a, '__index') ~= nil
+end
 
 --------------------------------------------------------------------------------
 -- Tools
@@ -130,8 +135,10 @@ local rawiter = function(obj, param, state)
         if mt ~= nil then
             if mt == iterator_mt then
                 return obj.gen, obj.param, obj.state
-            elseif mt.__ipairs ~= nil then
+            elseif mt.__ipairs ~= nil and #obj > 0 then
                 return mt.__ipairs(obj)
+            elseif mt.__kpairs ~= nil then
+                return mt.__kpairs(obj)
             elseif mt.__pairs ~= nil then
                 return mt.__pairs(obj)
             end

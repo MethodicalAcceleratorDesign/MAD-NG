@@ -29,35 +29,16 @@ NAME
   gutil -- provide some utility functions
 
 SYNOPSIS
-  is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
-  is_cdata, is_complex,
-  is_nan, is_infinite, is_positive, is_negative, is_integer,   (specializations)
-  is_scalar, is_rawtable, is_file,
   bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
   ltrue, lfalse, lbool, lnot, land, lor, eq, ne, lt, le, gt, ge,
                                                              (logical operators)
   unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
-  is_metaname, has_metatable, get_metatable,                       (metamethods)
-  has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
-  is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
-  is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
-  is_modulable, is_powerable, has_member, has_method, has_metamethod,
-  is_same, same,                                              (types comparison)
+  same, copy                                                        (types copy)
   strtrim, strsplit, strsplitbra, strsplitall,            (strings manipulation)
-  tostring, totable,                                                (extensions)
-  option { format='%.16g' }.                                             (setup)
+  tostring, totable.                                                (extensions)
 
 DESCRIPTION
   The utils module provides useful utility functions:
-  - is_nil, is_boolean, is_number, is_string, is_function, is_table, is_cdata,
-    and is_complex return true if the argument is of expected type,
-  - is_nan and is_infinite return true if argument is not-a-number or ±infinity,
-  - is_positive and is_negative return true if argument is >0 or <0 respectively,
-  - is_integer returns true if the argument is an integer number within the
-    interval of [-2^52, 2^52],
-  - is_scalar returns true if the argument is a number or a complex,
-  - is_rawtable returns true if the argument is a table without metatable,
-  - is_empty returns true if the argument is an empty table,
   - bnot, band, bor, bxor, tobit and tohex imported are from the bit module,
   - bclr, bset and btst respectively clear, set and test bit 0..31 of an int32,
   - logical_false, logical_true, logical_bool, logical_not, logical_and,
@@ -66,25 +47,10 @@ DESCRIPTION
     operators,
   - unm, add, sub, mul, div, mod, pow, get, set, len, cat, call are functions
     wrapping other operators (i.e. -n, +, -, *, /, %, ^, [], []=, #, .., ()),
-  - is_ismetaname returns true if the argument is a valid metamethod name,
-  - has_metatable returns true is the argument has a metatable,
-  - get_metatable is a generic version of getmetatable that works also with
-    cdata,
-  - has_length, is_iterable, is_mappable, is_indexable, is_callable,
-    is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
-    is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
-    is_modulable, is_powerable, has_member, has_method and has_metamethod return
-    true if the argument fulfills the concept requirements,
-  - is_stringable and is_tableable check only if the argument supports
-    respectively the __tostring and the __totable metamethods because objects
-    are always stringable and tableable in MAD,
-  - has_member, has_method and has_metamethod returns true if argument #1 has
-    argument #2 as a member, a callable member and a meta member respectively,
   - tostring is extended to handle option.format and delegation. To let the
     print command uses this version, it must be exported to override the
     global environment one (i.e. MAD.export('tostring', true)),
-  - totable support delegation for non-primary types,
-  - option is a table that stores various setup.
+  - totable support delegation for non-primary types.
 
 RETURN VALUES
   Depends on the utility functions.
@@ -95,83 +61,23 @@ ERRORS
 SEE ALSO
   None.
 ]=]
-__help.option   = __help.gutil
-__help.typeid   = __help.gutil
-__help.concept  = __help.gutil
 __help.utility  = __help.gutil
 __help.operator = __help.gutil
 __help.totable  = __help.gutil
 __help.tostring = __help.gutil
-__help.same     = __help.gutil -- move to gfunc
 
 -- locals ---------------------------------------------------------------------o
-
--- Note: this module is used by MAD env,
---       hence it cannot rely on MAD env.
 
 local ffi, _C  = require 'ffi', require 'madl_cmad'
 local bit, fun = require 'bit', require 'madl_lfun'
 
-local istype, typeof, miscmap                  in ffi
-local format                                   in string
-local abs, huge, min, max                      in math
-local band, bor, rol, rshift                   in bit
-local totable, iter                            in fun
-local type, getmetatable, tostring = type, getmetatable, tostring
+local band, bor, rol, rshift in bit
+local totable, iter          in fun
+local min, max               in math
+
+local tostring = tostring
 
 -- implementation -------------------------------------------------------------o
-
--- metatables & metamethods
-
-assert(miscmap, "missing MAD extension (no cdata metatable access)")
-
-local metaname = {
-  -- list of metanames from lj_obj.h + init + exec + copy + kpairs + totable
-  '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
-  '__index', '__init', '__ipairs', '__kpairs', '__le', '__len', '__lt',
-  '__metatable', '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs',
-  '__pow', '__same', '__sub', '__tostring', '__totable', '__unm',
-}
-for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
-
-local function get_metatable (a)
-  return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
-end
-
-local function has_metatable (a)
-  return not not get_metatable(a)
-end
-
-local function get_metamethod (a, f)
-  local mt = get_metatable(a)
-  return mt and rawget(mt,f)
-end
-
-local function has_metamethod (a, f)
-  local mt = get_metatable(a)
-  return (mt and rawget(mt,f)) ~= nil
-end
-
-local function has_metamethod2 (a, f, f2)
-  local mt = get_metatable(a)
-  return (mt and (rawget(mt,f) or rawget(mt,f2))) ~= nil
-end
-
--- values
-
-local value_t = { -- list of types that cannot be modified
-  ['nil'] = true, boolean = true, number = true, string = true, -- table = nil
-  ['function'] = true, thread = true,
-}
-
--- options
-
-local option = {
-
-  format = "%.16g",
-  debug  = 0,
-
-}
 
 -- operators
 
@@ -250,94 +156,12 @@ operator.opstr = {
   ['!!'] = operator.lbool,
 }
 
--- types
+local option in MAD
 
-local complex = typeof 'complex'
-
-local typeid = {
-
-  -- primitive types
-  is_boolean  = \a -> type(a) == 'boolean',
-  is_number   = \a -> type(a) == 'number',
-  is_string   = \a -> type(a) == 'string',
-  is_function = \a -> type(a) == 'function',
-  is_table    = \a -> type(a) == 'table',
-  is_cdata    = \a -> type(a) == 'cdata',
-
-  -- specialisations
-  is_nil      = \a -> rawequal(a, nil  ),
-  is_true     = \a -> rawequal(a, true ),
-  is_false    = \a -> rawequal(a, false),
-  is_finite   = \a -> type(a) == 'number' and abs(a) <  huge,
-  is_infinite = \a -> type(a) == 'number' and abs(a) == huge,
-  is_nan      = \a -> type(a) == 'number' and a ~= a,
-  is_positive = \a -> type(a) == 'number' and a > 0,
-  is_negative = \a -> type(a) == 'number' and a < 0,
-  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
-  is_complex  = \a ->                         istype(complex, a),
-  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
-  is_rawtable = \a -> type(a) == 'table'  and rawequal(getmetatable(a), nil),
-  is_empty    = \a -> type(a) == 'table'  and rawequal(next        (a), nil),
-
-  -- file handle (open or closed)
-  is_file     = \a -> io.type(a) ~= nil,
-
-  -- comparison
-  is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
-
-  -- valid metamethods names
-  is_metaname = \a -> metaname[a] == a,
-
-}
-
-local is_nil, is_number, is_complex, is_string, is_table, is_rawtable in typeid
-
--- concepts
-
-local concept = {
-
-  get_metatable    = get_metatable,
-  has_metatable    = has_metatable,
-  get_metamethod   = get_metamethod,
-  has_metamethod   = has_metamethod,
-
-  is_stringable    = \a -> has_metamethod(a, '__tostring'),
-  is_tableable     = \a -> has_metamethod(a, '__totable' ),
-
-  is_callable      = \a -> type(a) == 'function' or has_metamethod(a, '__call'  ),
-  is_iterable      = \a -> type(a) == 'table'    or has_metamethod(a, '__ipairs'),
-  is_keyrable      = \a -> type(a) == 'table'    or has_metamethod(a, '__kpairs'),
-  is_mappable      = \a -> type(a) == 'table'    or has_metamethod(a, '__pairs' ),
-  is_indexable     = \a -> type(a) == 'table'    or has_metamethod(a, '__index' ),
-  is_concatenable  = \a -> type(a) == 'string'   or has_metamethod(a, '__concat'),
-  is_negatable     = \a -> type(a) == 'number'   or has_metamethod(a, '__unm'   ),
-  is_addable       = \a -> type(a) == 'number'   or has_metamethod(a, '__add'   ),
-  is_substractable = \a -> type(a) == 'number'   or has_metamethod(a, '__sub'   ),
-  is_multiplicable = \a -> type(a) == 'number'   or has_metamethod(a, '__mul'   ),
-  is_dividable     = \a -> type(a) == 'number'   or has_metamethod(a, '__div'   ),
-  is_modulable     = \a -> type(a) == 'number'   or has_metamethod(a, '__mod'   ),
-  is_powerable     = \a -> type(a) == 'number'   or has_metamethod(a, '__pow'   ),
-
-  is_comparable    = \a -> is_number(a) or is_string(a) or has_metamethod(a, '__eq' ),
-  is_ordered       = \a -> is_number(a) or is_string(a) or has_metamethod2(a,'__le','__lt'),
-
-  has_length       = \a -> is_table(a)  or is_string(a) or has_metamethod(a, '__len'),
-  has_constructor  = \a -> has_metamethod(a,'__new' ),
-  is_collectable   = \a -> has_metamethod(a,'__gc'  ),
-  is_copiable      = \a -> has_metamethod(a,'__copy'),
-  is_sameable      = \a -> has_metamethod(a,'__same'),
-
-}
-
-local is_indexable, is_iterable, is_mappable, is_callable, is_stringable,
-      is_tableable, is_copiable, is_sameable in concept
-
--- methods
-
-concept.has_member = \a,f -> is_indexable(a) and not is_nil(a[f])  or false
-concept.has_method = \a,f -> is_indexable(a) and is_callable(a[f]) or false
-
-local has_method in concept
+local is_nil, is_number, is_string, is_table, is_rawtable, is_value,
+      is_indexable, is_iterable, is_keyrable, is_mappable, is_callable,
+      is_stringable, is_tableable, is_copiable, is_sameable, is_complex,
+      get_metatable, get_metamethod in MAD.typeid
 
 -- utilities ------------------------------------------------------------------o
 
@@ -371,32 +195,6 @@ function utility.runonce (f, ...)
     runonce_[f]=true
     return f(...)
   end
-end
-
--- finalizer
-
-local final_   = { n=0 } -- __gc is not supported by luajit
-local finalgc_ = ffi.gc(ffi.new('int[1]'), \=>
-  if option.debug > 2 then
-    io.write('MAD finalizer called...\n')
-  end
-  for i=final_.n,1,-1 do
-    local ret, err = pcall(final_[i])
-    if ret ~= true then
-       io.stderr:write('finalizer failed: ', err, '\n')
-    end
-    final_[i], final_.n = nil, i-1
-  end
-end)
-
-function utility.atexit (f)
-  assert(is_callable(f), "invalid argument #1 (callable expected)")
-  local n = final_.n+1
-  if n == 1 then
-    local exit = os.exit
-    os.exit = \code -> exit(code, true)
-  end
-  final_[n], final_.n = f, n
 end
 
 -- key/indexes set
@@ -500,19 +298,22 @@ local tostring_ -- forward ref
 
 function utility.tbl2str(tbl, sep_)
   assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
-  if #tbl == 0 then return '{}' end
-  local r = table.new(#tbl+2,0)
+  local len = #tbl
+  if len == 0 then return '{}' end
+  local r = table.new(len+2,0)
   r[1] = '{'
-  for i=1,#tbl do r[i+1] = tostring_(tbl[i]) end
-  r[#r+1] = '}'
+  for i=1,len do r[i+1] = tostring_(tbl[i]) end
+  r[len+2] = '}'
   return table.concat(r, sep_ or ', ')
 end
 
-function utility.str2tbl(str, match_, init_)
+function utility.str2tbl(str, match_, ini_)
   assert(is_string(str), "invalid argument #1 (string expected)")
   if is_string(match_) then
-    local r = {}
-    for s in string.gmatch(str, match_, init_) do r[#r+1] = s end
+    local r = {n=0}
+    for s in string.gmatch(str, match_, ini_) do
+      r[r.n+1], r.n = s, r.n+1
+    end
     return r
   else
     return {str}
@@ -523,40 +324,39 @@ function tostring_ (a, ...)
   if     is_string(a)     then return a
   elseif is_number(a)     then return (string.format(option.format, a))
   elseif is_rawtable(a)   then return  utility.tbl2str(a,...) -- table.concat
-  elseif is_stringable(a) then return (rawget(get_metatable(a),'__tostring')(a, ...))
+  elseif is_stringable(a) then return (get_metamethod(a,'__tostring')(a, ...))
   else                         return (tostring(a)) -- builtin tail call...
   end
 end
 
 local function totable_ (a, ...)
   if     is_table(a)     then return a
-  elseif is_string(a)    then return utility.str2tbl(a,...) -- table.concat^-1
-  elseif select('#',...) == 0 and (value_t[type(a)] or is_complex(a))
-                         then return {a}
-  elseif is_tableable(a) then return rawget(get_metatable(a),'__totable')(a, ...)
-  else                        return totable(iter(a,...)) -- iterator from lfun
+  elseif is_value(a)     then return {a}
+  elseif is_tableable(a) then return get_metamethod(a,'__totable')(a, ...)
+  elseif is_iterable (a) then return totable(iter(a,...)) -- iterator from lfun
+  else                        return {a}
   end
 end
 
 function utility.same (a, ...)
-  if    value_t[type(a)] then return a
-  elseif is_sameable(a)  then return rawget(get_metatable(a),'__same')(a, ...)
+  if     is_value(a)     then return a
+  elseif is_sameable(a)  then return get_metamethod(a,'__same')(a, ...)
   elseif is_table(a)     then return setmetatable({}, getmetatable(a))
+  else                        return a -- safe? should try more complex copy?
   end
-  error("invalid argument #1 (sameable object expected)")
 end
 
 function utility.copy (a, ...)
-  if    value_t[type(a)] then return a
-  elseif is_copiable(a)  then return rawget(get_metatable(a),'__copy')(a, ...)
+  if     is_value(a)     then return a
+  elseif is_copiable(a)  then return get_metamethod(a,'__copy')(a, ...)
   elseif is_table(a)     then return utility.tbldeepcpy(a, ...)
+  else                        return a -- safe? should try more complex copy?
   end
-  error("invalid argument #1 (copiable object expected)")
 end
 
 -- string interpolation
 
-local function interp_fun (var, strict_, tag)
+local function interp_fun (info, tag)
   local key, suffix = tag, ''
   local s = tag:sub( 1, 1)
   if s == '$' then return tag end
@@ -572,18 +372,21 @@ local function interp_fun (var, strict_, tag)
     error("Missing key: $"..tag, 2)
   end
   key = tonumber(key) or key -- cases $n or ${n}
-  local val = var[key]
+  local val = info.var[key]
   if is_nil(val) then
-    if strict_ == false then return nil end -- leave it unchanged
+    if info.strict == false then return nil end -- leave it unchanged
     error("Undefined key: $"..tag, 2)
   end
+  info.n = info.n + 1
   return tostring_(val) .. suffix
 end
 
+local bind1st in MAD.gfunc
+
 function utility.strinterp (str, var, strict_)
   assert(is_indexable(var), "invalid argument #2 (indexable expected)")
-  local bind2st in MAD.gfunc
-  return (str:gsub('%$([{$]?[%w_]*}?)', bind2st(interp_fun, var, strict_)))
+  local info = { var=var, strict=strict_, n=0 }
+  return str:gsub('%$([{$]?[%w_]*}?)', bind1st(interp_fun, info)), info.n
 end
 
 string.interp          = utility.strinterp
@@ -748,14 +551,9 @@ end
 
 -- end ------------------------------------------------------------------------o
 return {
-  option    = option,
-  typeid    = typeid,
-  concept   = concept,
-  utility   = utility,
-  operator  = operator,
-
-  totable   = totable_,
-  tostring  = tostring_,
-
+  operator = operator,
+  utility  = utility,
+  totable  = totable_,
+  tostring = tostring_,
   __help   = __help,
 }
