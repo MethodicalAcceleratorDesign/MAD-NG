@@ -9,6 +9,7 @@ set -ex
 
 ./tests/travis/build_luajit.sh
 ./tests/travis/build_lpeg.sh
+./tests/travis/build_lfs.sh
 
 ./tests/travis/build_lapack.sh
 ./tests/travis/build_fftw3.sh
