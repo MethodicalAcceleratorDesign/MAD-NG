@@ -83,11 +83,14 @@ static const char *progname = "mad";
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
-#define MAD_VERSION "0.2.0"
+#define MAD_VERSION "0.3.0"
 #endif
 
 /* globals */
 int mad_warn_count     = 0;
+int mad_stdin_is_tty   = 0;
+int mad_is_interactive = 0;
+
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
 
@@ -106,9 +109,9 @@ int setenv(str_t name, str_t value, int overwrite);
 #undef     lua_stdin_is_tty
 static int lua_stdin_is_tty (void)
 {
-  struct stat stats;
-  fstat(0, &stats);
-  return S_ISFIFO(stats.st_mode) || isatty(0);
+	struct stat stats;
+	fstat(0, &stats);
+	return S_ISFIFO(stats.st_mode) || isatty(0);
 }
 #endif /* __MINGW32/64__ */
 
@@ -183,12 +186,6 @@ static int mad_luatrace (lua_State *L)
 	}
 	(mad_trace)(level, where, "%s", luaL_checkstring(L,2));
 	return 0;
-}
-
-static void mad_regfun (void)
-{
-	lua_register(globalL, "warn" , mad_luawarn );
-	lua_register(globalL, "trace", mad_luatrace);
 }
 
 /* Handle paths */
@@ -498,11 +495,18 @@ static void mad_signal(int sig)
 	exit(EXIT_FAILURE); /* never reached */
 }
 
-static void mad_setsig (void)
+static void mad_setsignal (void)
 {
 	for (int i=0; i < sig_n; i++)
 		ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
 					 "unable to set signal hanlder %s", sig_s[i]);
+}
+
+static void mad_regfunvar (void)
+{
+	mad_stdin_is_tty = lua_stdin_is_tty();
+	lua_register(globalL, "warn" , mad_luawarn );
+	lua_register(globalL, "trace", mad_luatrace);
 }
 
 /* --- MAD (end) -------------------------------------------------------------*/
@@ -524,7 +528,8 @@ static void lstop(lua_State *L, lua_Debug *ar)
 
 static void laction(int i)
 {
-	signal(i, laction); /* protect against multiple Ctrl-C */
+  /* protect against multiple Ctrl-C in interactive mode */
+	signal(i, mad_is_interactive ? laction : SIG_DFL);
 
 	if (!sigint_count++) {
 		sigint_t0 = clock();
@@ -535,7 +540,7 @@ static void laction(int i)
 	/* prevent multiple Ctrl-C within 0.2-0.5 sec */
 	double sigint_delay = (clock()-sigint_t0)/(double)CLOCKS_PER_SEC;
 
-	if (sigint_count > 2 || sigint_delay > 0.5) {
+	if (!mad_is_interactive || sigint_count > 2 || sigint_delay > 0.5) {
   	/* too many SIGINT or timeout happened before lstop, terminate process */
 		fprintf(stderr, "interrupted!\n"); // signal(i, SIG_DFL);
 		exit(EXIT_FAILURE); // give a chance to C for cleanup
@@ -737,6 +742,7 @@ static void dotty(lua_State *L)
 	int status;
 	const char *oldprogname = progname;
 	progname = NULL;
+	mad_is_interactive = 1;
 	while ((status = loadline(L)) != -1) {
 		if (status == LUA_OK) status = docall(L, 0, 0);
 		report(L, status);
@@ -1049,8 +1055,8 @@ static int pmain(lua_State *L)
 	}
 
 	/* MAD section. */
-	mad_setsig();
-	mad_regfun();
+	mad_setsignal();
+	mad_regfunvar();
 
 	if ((flags & FLAGS_MADENV))
 		dolibrary(L, "madl_main");
