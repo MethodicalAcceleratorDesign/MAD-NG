@@ -75,8 +75,6 @@ local band, bor, rol, rshift in bit
 local totable, iter          in fun
 local abs, min, max          in math
 
-local tostring = tostring
-
 local option in MAD
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
@@ -299,12 +297,16 @@ local tostring_ -- forward ref
 
 function utility.tbl2str(tbl, sep_)
   assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
-  local len = #tbl
-  if len == 0 then return '{}' end
-  local r = table.new(len+2,0)
+  if is_nil(next(tbl)) then return '{}' end
+  local ir, r = 2, {}
   r[1] = '{'
-  for i=1,len do r[i+1] = tostring_(tbl[i]) end
-  r[len+2] = '}'
+  for k,v in kpairs(tbl) do
+    r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
+  end
+  for i,v in ipairs(tbl) do
+    r[ir], ir = tostring_(v), ir+1
+  end
+  r[ir] = '}'
   return table.concat(r, sep_ or ', ')
 end
 
@@ -320,6 +322,8 @@ function utility.str2tbl(str, match_, ini_)
     return {str}
   end
 end
+
+local tostring = tostring
 
 function tostring_ (a, ...)
   if     is_string(a)     then return a
@@ -358,45 +362,39 @@ end
 -- string interpolation
 
 local function interp_fun (arg, tag)
-  local key, suffix = tag, ''
-  local s = tag:sub( 1, 1)
-  if s == '$' then return tag end
-  local e = tag:sub(-1,-1)
-      if s == '{' and e == '}' then
-    key         = key:sub(2, -2)
-  elseif s ~= '{' and e == '}' then
-    key, suffix = key:sub(1, -2), '}'
-  elseif s == '{' and e ~= '}' then
-    error("Unclosed brace: $"..tag, 2)
-  elseif arg.brace then
-    error("Multiple interpolation enforces braces: $"..tag, 2)
+  local key = tag:sub( 3,-2)
+  if key == '' then return '$' end -- ${} -> $
+  local lst = key:sub(-1,-1)
+  if lst == '-' or lst == '+' then
+    key = key:sub(1,-2)
+  else
+    lst = nil
   end
-  if key == '' then
-    error("Missing key: $"..tag, 2)
-  end
-  key = tonumber(key) or key -- cases $n or ${n}
+  key = tonumber(key) or (key:gsub('%$%b{}', arg.fun))
   local val = arg.var[key]
   if is_nil(val) then
-    if arg.ni > 1 or arg.strict == false then return nil end -- unchanged
-    error("Undefined key: $"..tag, 2)
+    if (not lst and arg.policy) == '=' then
+      return nil                                         -- unchanged
+    elseif (lst or  arg.policy) == '-' then
+      return ''                                          -- removed
+    elseif (lst or  arg.policy) == '+' then
+      error(string.format("Undefined key: '%s'",key), 2) -- substituted!
+    else
+      error(string.format("Invalid policy: '%s'", arg.policy), 2)
+    end
   end
-  return tostring_(val) .. suffix
+  return tostring_(val)
 end
 
 local bind1st in MAD.gfunc
 
-function utility.strinterp (str, var, strict_, niter_)
-  local st, ni = is_nil(strict_) and true or strict_, niter_ or 1
-  assert(is_string   (str), "invalid argument #1 (string expected)")
-  assert(is_indexable(var), "invalid argument #2 (indexable expected)")
-  assert(is_boolean  (st ), "invalid argument #3 (boolean expected)")
-  assert(is_number   (ni ), "invalid argument #4 (number expected)")
-  local arg = { var=var, strict=st, ni=min(abs(ni),25), brace=ni>1 }
-  local fn, curr, prev = bind1st(interp_fun, arg), str
-  while arg.ni > 0 and prev ~= curr do
-    curr, prev, arg.ni = curr:gsub('%$([{$]?[%w_]*}?)', fn), curr, arg.ni-1
-  end
-  return curr
+function utility.strinterp (str, var, policy_)
+  policy_ = policy_ or '+'
+  assert(is_string   (str ), "invalid argument #1 (string expected)")
+  assert(is_indexable(var ), "invalid argument #2 (indexable expected)")
+  assert(is_string(policy_), "invalid argument #3 (string expected)")
+  local arg = { var=var, policy=policy_} ; arg.fun = bind1st(interp_fun, arg)
+  return (str:gsub('%$%b{}', arg.fun))
 end
 
 string.interp          = utility.strinterp
