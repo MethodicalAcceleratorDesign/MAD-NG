@@ -130,7 +130,6 @@ end
 
 local gplot = {
   is_busy   = gp_isBusy,
-  clean_tmp = clean_tmp,
   option    = { pending = 10 },
   [_gpd]    = { __cur_id = 1 },
 }
@@ -142,42 +141,51 @@ setmetatable(gplot, {
 
 -- tmp files ------------------------------------------------------------------o
 
-local function clean_tmp (strict_)
-  if not fileexists(tmpfolder) then return end
-  for name in filesys.dir(tmpfolder) do
-    if strict_ then
-      os.remove(tmpfolder .. name)
-    elseif string.find(name, "madplot%-%d+") then
-      local fname = tmpfolder .. name
-      local file = io.open(fname, "r")
-      if file then
-        local line = file:read("*line")
-        if line and tonumber(strsplitall(line, "#", 2)[1]) == pid then
-          file:close()
-          os.remove(fname)
-        end
-      end
-    end
-  end
-  filesys.rmdir(tmpfolder)
-end
+local _handlepool, _warn, _filepool, lock = {}, true
 
-local function block (handle, time)
-  while not filesys.lock(handle, "w") do sleep(time) end
-  return handle
-end
-
-local _filepool
-local function setup_files()
-  -- runonce(\ atexit(clean_tmp))           -- TODO check why segfault in finalizer
+local function plot_lock ()
   if not fileexists(tmpfolder) then
     local status,msg = filesys.mkdir(tmpfolder)
     if not status and msg~="File exists" then
       error("couldn't create TMP_MAD_PLOT")
     end
   end
+  if not lock then lock = assert(io.open(tmplock, "w")) end
+  while not filesys.lock(lock, "w") do sleep(100) end
+end
+
+local function plot_unlock ()
+  filesys.unlock(lock)
+end
+
+local function clean_tmp ()
+  if not fileexists(tmpfolder) then return end
+  plot_lock()
+  for name in filesys.dir(tmpfolder) do
+    if string.find(name, "madplot%-%d+") then
+      local fname = tmpfolder .. name
+      local file  = io.open(fname)
+      if file and filesys.lock(file, 'r') then
+        os.remove(fname)
+        print(fname)
+      end
+      if file then file:close() end
+    end
+  end
+  for k,v in pairs(_handlepool) do
+    if not fileexists(k) then
+      _handlepool[k] = nil
+    end
+  end
+  _filepool = nil
+  plot_unlock()
+end
+
+local function setup_files()
+  clean_tmp()
   entry = 1
   local tmpfile = tmpfolder .. "madplot-"
+  _filepool     = {}
   for i=gplot.option.pending,1,-1 do
     local file = tmpfile .. i
     if not fileexists(file) then
@@ -187,10 +195,9 @@ local function setup_files()
   end
 end
 
-local _warn = true
 local function get_tmpfile()
-  if not is_rawtable(_filepool) then _filepool = {}; setup_files() end
-  local lock = block(assert(io.open(tmplock, "w")), 100)
+  if not is_rawtable(_filepool) then setup_files() end
+  plot_lock()
   local fname, warn = false, false
   while true do
     fname = table.remove(_filepool)
@@ -199,14 +206,18 @@ local function get_tmpfile()
       print("MAD Plot Warning : no available tmpfile (see documentation)")
       _warn = false
     end
-    filesys.unlock(lock); sleep(100); block(lock)
+    plot_unlock(); sleep(100); plot_lock()
     setup_files()
     warn = true
   end
   local file = assert(io.open(fname, "w"))
-  filesys.unlock(lock)
+  _handlepool[fname] = file
+  filesys.lock(file, 'w')
+  plot_unlock()
   return file, fname
 end
+
+gplot.clean_tmp = clean_tmp
 
 -- initialization -------------------------------------------------------------o
 
@@ -265,7 +276,7 @@ local function gnuplot_mv(gp, fname, uname)
 end
 
 local function teardown_cmd (self, gp, file, fname)
-  file:close()
+  file:flush()
   if self.output then
     gp:write("load('" .. fname .. "')\n")
     if is_string(self.scrdump)
