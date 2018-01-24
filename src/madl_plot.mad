@@ -167,7 +167,6 @@ local function clean_tmp ()
       local file  = io.open(fname)
       if file and filesys.lock(file, 'r') then
         os.remove(fname)
-        print(fname)
       end
       if file then file:close() end
     end
@@ -611,21 +610,21 @@ end
 
 -- parse input axis and apply func to each label
 local function parse_axis (param, func)
+  param.cmdi = 0
   local _axis = {'x1y1', 'x1y2', 'x2y1', 'x2y2'}
   for _,axis_name in ipairs(_axis) do
     local axis = param[axis_name]
     if is_string(axis) then                  -- e.g. x1y1 = 'y1'
-      func(param, nil, axis, axis_name)
+      func(param, nil, {axis}, axis_name)
     elseif is_table(axis) then
-      for x,y in pairs(axis) do
-        if is_number(x) then                 -- e.g. x1y1 = {'y1', 'y2'}
-          func(param, nil, y, axis_name)
-        elseif is_string(y) then             -- e.g. x1y1 = { x1 = 'y1' }
-          func(param, x, y, axis_name)
-        elseif is_table(y) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
-          for _,yi in pairs(y) do
-            func(param, x, yi, axis_name)
-          end
+      if #axis ~= 0 then
+        func(param, nil, axis, axis_name)    -- e.g. x1y1 = {'y1', 'y2'}
+      end
+      for x,ys in kpairs(axis) do
+        if is_string(ys) then                 -- e.g. x1y1 = { x1 = 'y1' }
+          func(param, x, {ys}, axis_name)
+        elseif is_table(ys) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+          func(param, x, ys, axis_name)
         end
       end
     end
@@ -635,26 +634,34 @@ end
 -- stream one plot data (used in parse_axis)
 local function plot_data (param, xlbl, ylbl)
   local fpwrite, tablerange, data, table in param
-  local x, tblx = getv(data, table, xlbl)
-  local y, tbly = getv(data, table, ylbl)
-  local ix      = tblx and tablerange and tablerange[1] or 1
-  local iy      = tbly and tablerange and tablerange[1] or 1
-  local len
+  local datai, iter, tbl, key = 1
 
-  if (tblx or tbly) and tablerange
-  then len = tablerange[2] - tablerange[1] + 1
-  else len = #y
+  if table
+  then iter, tbl, key = table:iter(tablerange)
+  else iter, tbl, key = ipairs(data[ylbl[1]])
   end
 
-  assert(not x or ix + len - 1 <= #x , "Invalid data size or tablerange")
-  assert(iy + len - 1 <= #y , "Invalid data size or tablerange")
-  for i=1,len do
-    -- use index if xlbl not specified
-    local xi = x and x[ix] or i
-    fpwrite("%.5e %.5e\n", xi, y[iy])
-    ix, iy = ix + 1, iy + 1
+  local get_data = \lbl, row ->
+    data  and data[lbl] and data[lbl][datai] or
+    table and row       and row[lbl]
+
+  fpwrite('# %-9s ', xlbl or 'index')
+  for j, lbl in ipairs(ylbl) do
+    fpwrite('%-11s ', lbl)
   end
-  fpwrite("e\n")
+  fpwrite("\n")
+
+  for i, row in iter, tbl, key do
+    fpwrite("%.5e ", get_data(xlbl, row) or datai)
+    for j, lbl in ipairs(ylbl) do
+      local val = get_data(lbl, row)
+      if not is_number(val) then error("MAD Plot : invalid data") end
+      fpwrite("%.5e ", val)
+    end
+    fpwrite("\n")
+    datai = datai + 1
+  end
+  fpwrite("\n\n")
 end
 
 -- parse dashtypes and add '' if it is a pattern : e.g.: ".-- "
@@ -666,33 +673,37 @@ local function parse_dash (dashtypes, datastyle, y)
 end
 
 -- stream the gnuplot 'plot' command (used in parse_axis)
-local function plot_cmd (param, _, y, axis)
+local function plot_cmd (param, _, ys, axis)
   local pwrite, colors, styles, dashtypes, pointsizes,
     pointtypes, linewidths, legend, datastyles in param
-  local values = {
-    color     = datastyles[y] and datastyles[y].color     or is_table(colors)     and (colors[y]     or _dflt.color)     or colors,
-    style     = datastyles[y] and datastyles[y].style     or is_table(styles)     and (styles[y]     or _dflt.style)     or styles,
-    pointsize = datastyles[y] and datastyles[y].pointsize or is_table(pointsizes) and (pointsizes[y] or _dflt.pointsize) or pointsizes,
-    pointtype = datastyles[y] and datastyles[y].pointtype or is_table(pointtypes) and (pointtypes[y] or _dflt.pointtype) or pointtypes,
-    linewidth = datastyles[y] and datastyles[y].linewidth or is_table(linewidths) and (linewidths[y] or _dflt.linewidth) or linewidths,
-    dashtype  = parse_dash(dashtypes, datastyles[y], y),
-    title     = (legend == false) and ''
-                  or is_table(legend) and
-                    ( legend[y] == false and '' or legend[y] )
-                  or y,
-    axis      = axis,
-  }
-  local cmd = "${cmd} using 1:2 with ${style} "
-  if string.match(values.style, "lines") then
-    cmd = cmd .. "dashtype ${dashtype} linewidth ${linewidth} "
+  for i, y in ipairs(ys) do
+    param.col = i + 1
+    local values = {
+      color     = datastyles[y] and datastyles[y].color     or is_table(colors)     and (colors[y]     or _dflt.color)     or colors,
+      style     = datastyles[y] and datastyles[y].style     or is_table(styles)     and (styles[y]     or _dflt.style)     or styles,
+      pointsize = datastyles[y] and datastyles[y].pointsize or is_table(pointsizes) and (pointsizes[y] or _dflt.pointsize) or pointsizes,
+      pointtype = datastyles[y] and datastyles[y].pointtype or is_table(pointtypes) and (pointtypes[y] or _dflt.pointtype) or pointtypes,
+      linewidth = datastyles[y] and datastyles[y].linewidth or is_table(linewidths) and (linewidths[y] or _dflt.linewidth) or linewidths,
+      dashtype  = parse_dash(dashtypes, datastyles[y], y),
+      title     = (legend == false) and ''
+                    or is_table(legend) and
+                      ( legend[y] == false and '' or legend[y] )
+                    or y,
+      axis      = axis,
+    }
+    local cmd = "${cmd} index ${cmdi} using 1:${col} with ${style} "
+    if string.match(values.style, "lines") then
+      cmd = cmd .. "dashtype ${dashtype} linewidth ${linewidth} "
+    end
+    if string.match(values.style, "points") then
+      cmd = cmd .. "pointsize ${pointsize} pointtype ${pointtype} "
+    end
+    cmd = cmd .. "linecolor '${color}' title '${title}' axes ${axis},\\\n"
+    cmd = strinterp(cmd, values, '=') % param
+    param.cmd = "     ''         "     -- only the first command need "plot"
+    pwrite(cmd)
   end
-  if string.match(values.style, "points") then
-    cmd = cmd .. "pointsize ${pointsize} pointtype ${pointtype} "
-  end
-  cmd = cmd .. "linecolor '${color}' title '${title}' axes ${axis},\\\n"
-  cmd = strinterp(cmd, values, '=') % param
-  param.cmd = "     '' "               -- only the first command need "plot '-'"
-  pwrite(cmd)
+  param.cmdi = param.cmdi + 1
 end
 
 -- set the range command for all axis
@@ -724,7 +735,7 @@ end
 
 -- set remaining parameters (miscellaneous)
 local function set_misc (param)
-  local fpwrite, psizex, psizey, originx, originy, grid, border,
+  local psizex, psizey, originx, originy, grid, border,
     title, legendpos, plotter                             in param
   local wrt = \s,... => plotter:write(string.format(s,...) % param) end
   if grid   then wrt("set grid %s\n", grid)     end
@@ -748,23 +759,27 @@ local function set_misc (param)
     originx, originy = originx or _dflt.originx, originy or _dflt.originy
     wrt("set origin %.5e, %.5e\n", originx, originy)
   end
-  if param.plotcfg then fpwrite(param.plotcfg .. "\n") end
 end
 
 -- main plot function
 local function plot (param)
-  local pwrite, plotcmd in param
+  local pwrite, plotcmd, plotcfg in param
   set_ranges(param)
   set_label(param)
   set_tics(param)
   set_misc(param)
-  param.cmd = "plot '-'" -- first plot command initialization
+
+  pwrite("$MAD_DATA << EOD\n")
+  parse_axis(param, plot_data)
+  pwrite("EOD\n\n")
+
+  if plotcfg then pwrite(plotcfg .. "\n") end
+  param.cmd = "plot '$MAD_DATA'" -- first plot command initialization
   if plotcmd
   then pwrite(plotcmd)
   else parse_axis(param, plot_cmd)
   end
   pwrite("\n")
-  parse_axis(param, plot_data)
 end
 
 -- command --------------------------------------------------------------------o
@@ -862,7 +877,7 @@ local plot = Command 'plot' {
   -- table or data input
   data        = false,   -- { x=tbl.x, y=vec } (precedence over table)
   table       = false,
-  tablerange  = false,   -- { min, max }
+  tablerange  = nil,     -- { min, max }
 
   -- sequence input
   sequence    = false,
