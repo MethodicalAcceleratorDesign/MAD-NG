@@ -611,7 +611,6 @@ end
 
 -- parse input axis and apply func to each label
 local function parse_axis (param, func)
-  param.cmdi = 0
   local _axis = {'x1y1', 'x1y2', 'x2y1', 'x2y2'}
   for _,axis_name in ipairs(_axis) do
     local axis = param[axis_name]
@@ -622,9 +621,9 @@ local function parse_axis (param, func)
         func(param, nil, axis, axis_name)    -- e.g. x1y1 = {'y1', 'y2'}
       end
       for x,ys in kpairs(axis) do
-        if is_string(ys) then                 -- e.g. x1y1 = { x1 = 'y1' }
+        if is_string(ys) then                -- e.g. x1y1 = { x1 = 'y1' }
           func(param, x, {ys}, axis_name)
-        elseif is_table(ys) then              -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
+        elseif is_table(ys) then             -- e.g. x1y1 = { x1 = {'y1', 'y2'}}
           func(param, x, ys, axis_name)
         end
       end
@@ -676,9 +675,10 @@ end
 -- stream the gnuplot 'plot' command (used in parse_axis)
 local function plot_cmd (param, _, ys, axis)
   local pwrite, colors, styles, dashtypes, pointsizes,
-    pointtypes, linewidths, legend, datastyles in param
+    pointtypes, linewidths, legend, datastyles, intpol in param
+  local add = \k,v => intpol[k..intpol.id] = v end
+
   for i, y in ipairs(ys) do
-    param.col = i + 1
     local values = {
       color     = datastyles[y] and datastyles[y].color     or is_table(colors)     and (colors[y]     or _dflt.color)     or colors,
       style     = datastyles[y] and datastyles[y].style     or is_table(styles)     and (styles[y]     or _dflt.style)     or styles,
@@ -691,20 +691,51 @@ local function plot_cmd (param, _, ys, axis)
                       ( legend[y] == false and '' or legend[y] )
                     or y,
       axis      = axis,
+      col       = i + 1,
     }
-    local cmd = "${cmd} index ${cmdi} using 1:${col} with ${style} "
-    if string.match(values.style, "lines") then
-      cmd = cmd .. "dashtype ${dashtype} linewidth ${linewidth} "
+
+    if intpol.id == 1
+    then add('cmd', "plot "); add('data', "'$MAD_DATA' ")
+    else add('cmd', "     "); add('data', "''          ")
     end
-    if string.match(values.style, "points") then
-      cmd = cmd .. "pointsize ${pointsize} pointtype ${pointtype} "
+
+    add('index', "index ${databi} " % param)
+    add('using', "using 1:${col} "  % values)
+    add('style', "${style} "        % values)
+
+    if string.match(values.style, "lines")
+    then add('lines' , "dashtype ${dashtype} linewidth ${linewidth} " % values)
+    else add('lines' , "")
     end
-    cmd = cmd .. "linecolor '${color}' title '${title}' axes ${axis},\\\n"
-    cmd = strinterp(cmd, values, '=') % param
-    param.cmd = "     ''         "     -- only the first command need "plot"
-    pwrite(cmd)
+
+    if string.match(values.style, "points")
+    then add('points', "pointsize ${pointsize} pointtype ${pointtype} " %values)
+    else add('points', "")
+    end
+
+    add('color', "linecolor '${color}' " % values)
+    add('title', "title '${title}' "     % values)
+    add('axes' , "axes ${axis} "         % values)
+    intpol.id = intpol.id + 1
   end
-  param.cmdi = param.cmdi + 1
+  param.databi = param.databi + 1
+end
+
+local function cmd_interpolate (param)
+  local pwrite, intpol, plotcmd in param
+  local cmd = ""
+  if is_string(plotcmd) then
+    cmd = plotcmd
+  else
+    for i=1,intpol.id-1 do
+      local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
+                    with ${style${id}}${lines${id}}${points${id}}\z
+                    ${color${id}}${title${id}}${axes${id}},\\\n"
+      intpol.id = i
+      cmd = cmd .. (cmdi % intpol)
+    end
+  end
+  pwrite(cmd % intpol)
 end
 
 -- set the range command for all axis
@@ -775,11 +806,8 @@ local function plot (param)
   pwrite("EOD\n\n")
 
   if plotcfg then pwrite(plotcfg .. "\n") end
-  param.cmd = "plot '$MAD_DATA'" -- first plot command initialization
-  if plotcmd
-  then pwrite(plotcmd)
-  else parse_axis(param, plot_cmd)
-  end
+  parse_axis(param, plot_cmd)
+  cmd_interpolate(param)
   pwrite("\n")
 end
 
@@ -807,6 +835,8 @@ local function init_param(self, file)
     name    = self.name or is_table(self.table) and self.table.title or "",
     date    = self.date or is_table(self.table) and self.table.date  or "",
     time    = self.time or is_table(self.table) and self.table.time  or "",
+    databi  = 0,
+    intpol  = { id = 1 },
     plotter = file,
     oid     = self.oshft,
     fpwrite = \... -> file:write(string.format(...)),
