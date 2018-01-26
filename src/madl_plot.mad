@@ -80,6 +80,7 @@ local tmplock   = tmpfolder .. "madplot.lock"
 local _handlepool, _warn, max_tmp_file = {}, true, 25
 local _filepool, lock
 
+-- lock for atomic operation (blocking)
 local function plot_lock ()
   if not fileexists(tmpfolder) then
     local status,msg = filesys.mkdir(tmpfolder)
@@ -91,10 +92,12 @@ local function plot_lock ()
   while not filesys.lock(lock, "w") do sleep(100) end
 end
 
+-- unlock for atomic operation
 local function plot_unlock ()
   filesys.unlock(lock)
 end
 
+-- clear the list of handle of non-existing file
 local function clear_handle (sid_)
   plot_lock()
   local isbusy = false
@@ -109,6 +112,7 @@ local function clear_handle (sid_)
   return isbusy
 end
 
+-- remove unused tmp file
 local function clean_tmp ()
   if not fileexists(tmpfolder) then return end
   plot_lock()
@@ -127,6 +131,7 @@ local function clean_tmp ()
   clear_handle()
 end
 
+-- initialize the list of available tmp file
 local function setup_files()
   clean_tmp()
   entry = 1
@@ -142,6 +147,7 @@ local function setup_files()
 end
 
 local plot_atexit = \ atexit(clean_tmp)
+-- return an available tmp file and its name (blocking)
 local function get_tmpfile()
   runonce(plot_atexit)
   if not is_rawtable(_filepool) then setup_files() end
@@ -167,8 +173,10 @@ end
 
 -- gplot ----------------------------------------------------------------------o
 
+-- gnuplot list, hidden key for sid
 local _gplist, _sid = { max = 25 }, {}
 
+-- get gnuplot from id and create it if necessary
 local function get_gp (sid)
   local gnuplot = _gplist[sid]
   if not gnuplot then
@@ -179,14 +187,17 @@ local function get_gp (sid)
   return gnuplot
 end
 
+-- write command to gnuplot
 local function gp_write (gplot, ...)
   get_gp(gplot[_sid]):write(..., "\n")
 end
 
+-- printf command to gnuplot
 local function gp_printf (gplot, str, ...)
   get_gp(gplot[_sid]):write(string.format(str, ...), "\n")
 end
 
+-- set the sid of a gplot
 local function gp_setsid (gplot, sid)
   assert(is_number(sid), "invalid argument #1 (number expected)")
   if sid < 1 or _gplist.max < sid then
@@ -196,6 +207,7 @@ local function gp_setsid (gplot, sid)
   gplot[_sid] = sid
 end
 
+-- test if tmpFile exist for this sid
 local function gp_isBusy (gplot)
  return clear_handle(gplot[_sid])
 end
@@ -235,7 +247,7 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 
 ]]
 
--- open files and gnuplot and set terminal when necessary
+-- dump header and set terminal to script file
 local function setup_cmd (self)
   local output, scrdump in self
   local file, fname = get_tmpfile()
@@ -624,7 +636,7 @@ local function parse_axis (param, func)
   end
 end
 
--- stream one plot data (used in parse_axis)
+-- stream one plot data (called by parse_axis)
 local function plot_data (param, xlbl, ylbl)
   local fpwrite, tablerange, data, table in param
   local datai, iter, tbl, key = 1
@@ -665,7 +677,7 @@ local function parse_dash (dashtypes, datastyle, y)
   return dash
 end
 
--- stream the gnuplot plot command (used in parse_axis)
+-- Create interpolation variable for the plot command (called by parse_axis)
 local function plot_cmd (param, _, ys, axis)
   local pwrite, colors, styles, dashtypes, pointsizes,
     pointtypes, linewidths, legend, datastyles, intpol in param
