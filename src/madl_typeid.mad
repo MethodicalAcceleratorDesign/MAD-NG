@@ -74,28 +74,22 @@ local function has_metamethod (a, f)
   return not not mm and mm ~= invalid_use
 end
 
-local function has_metamethod2 (a, f, f2)
-  local mt = get_metatable(a)
-  local mm = mt and (rawget(mt,f) or rawget(mt,f2))
-  return not not mm and mm ~= invalid_use
-end
-
 --[[
-Metaflags notes:
+Concept notes:
 ----------------
 - not_indexable prevents to read at keys *not already defined*.
-- not_scannable prevents all forms of scan (index and {i,k,}pairs).
+- not_scannable prevents all forms of scan (index and {i,k,_}pairs).
 - not_extendable prevents to write at keys *not already defined*.
-- not_mutable set the metatable of the metable as not_extendable.
+- not_mutable sets the metatable __metatable to itself and not_extendable.
 ]]
 
-local metaflags = {               --       1,     2,        4,        8,      16
-  not_indexable  = 1,             -- __index,      ,         ,         ,
-  not_iterable   = 2+4,           --        , __len, __ipairs,         ,
-  not_keyrable   = 8+16,          --        ,      ,         , __kpairs, __pairs
-  not_mappable   = 2+4+8+16,      --        , __len, __ipairs, __kpairs, __pairs
-  not_scannable  = 1+2+4+8+16,    -- __index, __len, __ipairs, __kpairs, __pairs
-  not_extendable = 2^5,           -- __newindex
+local concept = {                 --       1,     2,        4,        8,      16
+  not_indexable    = 1,           -- __index,      ,         ,         ,
+  not_iterable     = 2+4,         --        , __len, __ipairs,         ,
+  not_keyrable     = 8+16,        --        ,      ,         , __kpairs,
+  not_mappable     = 2+4+8+16,    --        , __len, __ipairs, __kpairs, __pairs
+  not_scannable    = 1+2+4+8+16,  -- __index, __len, __ipairs, __kpairs, __pairs
+  not_extendable   = 2^5,         -- __newindex
 
   not_orderable    = 2^6+2^7,     -- __lt, __le
   not_comparable   = 2^6+2^7+2^8, -- __lt, __le, __eq
@@ -105,39 +99,45 @@ local metaflags = {               --       1,     2,        4,        8,      16
   not_mutable      = 2^13,        -- __metatable
 }
 
-local metaflags_keys = {
+local concept_keys = {
   '__index', '__len', '__ipairs', '__kpairs', '__pairs', -- not_scannable
   '__newindex',                                          -- not_extendable
   '__lt', '__le', '__eq',                                -- not_comparable
-   '__call',                                             -- not_callable
-   '__concat',                                           -- not_concatable
+  '__call',                                              -- not_callable
+  '__concat',                                            -- not_concatable
   '__copy', '__same',                                    -- not_copiable
   '__metatable',                                         -- not_mutable
 }
-for _,v in ipairs(metaflags_keys) do
-  metaflags_keys[v] = invalid_use
+for _,v in ipairs(concept_keys) do -- build dict of concepts
+  concept_keys[v] = invalid_use
   if v == '__newindex' then break end -- nil is enough after __newindex
 end
 
-local not_extendable, not_mutable in metaflags
+local not_iterable, not_keyrable, not_extendable, not_mutable in concept
 
-local function set_metamethod (mt, flags, strict_)
+local function set_metamethod (mt, cnpt, strict_)
   local mt = mt or {}
   assert(mt.__metatable == nil, "invalid argument #1 (mutable metatable expected)")
-  for i,v in ipairs(metaflags_keys) do
-    if band(flags, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
---    print('flags=', v, metaflags_keys[v])
-      mt[v] = metaflags_keys[v]
+  for i,v in ipairs(concept_keys) do
+    if band(cnpt, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
+      mt[v] = concept_keys[v]
     end
   end
-  if band(flags, not_mutable) ~= 0 then
+  if band(cnpt, not_keyrable) ~= 0 then -- ensure pairs = ipairs + kpairs
+    mt.__pairs = mt.__ipairs
+  end
+  if band(cnpt, not_iterable) ~= 0 then -- ensure pairs = ipairs + kpairs
+    mt.__pairs = mt.__kpairs
+  end
+  if band(cnpt, not_mutable) ~= 0 then
     mt.__metatable = mt
     setmetatable(mt, {__newindex=invalid_use, __metatable=false})
   end
   return mt
 end
 
-setmetatable(metaflags, set_metamethod({}, not_extendable + not_mutable))
+setmetatable(metaname, set_metamethod({}, not_extendable + not_mutable))
+setmetatable(concept , set_metamethod({}, not_extendable + not_mutable))
 
 --[[
 Classification of primitive types:
@@ -149,24 +149,21 @@ Classification of primitive types:
 
 local typeclass = {
   -- false
-  table = false,
+  table = false, lightuserdata = false, userdata = false, cdata = false,
   -- true
   ['nil'] = true,  boolean = true, number = true, string = true,
   -- nil
-  ['function'] = nil, lightuserdata = nil, userdata = nil, thread = nil,
-    cdata = nil,
+  ['function'] = nil, thread = nil,
 }
 
+-------------------------------------------------------------------------------o
+
 local typeid = {
-  -- classification of types
+  -- classification of types, concepts, meta names
 
   typeclass = typeclass,
-
-  -- classification of concepts
-
-  metaflags = metaflags,
-
-  is_metaname = \a -> metaname[a] == a,
+  concept   = concept  ,
+  metaname  = metaname ,
 
   -- primitive types
 
@@ -202,6 +199,8 @@ local typeid = {
 
   is_value       = \a -> typeclass[type(a)],
 
+  is_metaname    = \a -> metaname[a] == a,
+
   -- metamethods
 
   get_metatable  = get_metatable,
@@ -221,7 +220,7 @@ local typeid = {
                           has_metamethod(a,'__len'   )   or type(a) == 'table',
 
   is_orderable    = \a -> type(a) == 'number'   or
-                          type(a) == 'string'   or has_metamethod2(a,'__le','__lt'),
+                          type(a) == 'string'   or has_metamethod(a,'__lt'    ),
   is_comparable   = \a -> type(a) == 'number'   or
                           type(a) == 'string'   or has_metamethod(a,'__eq'    ),
   is_callable     = \a -> type(a) == 'function' or has_metamethod(a,'__call'  ),
@@ -248,7 +247,7 @@ local typeid = {
   -- concepts for objects
 
   is_constructible = \a -> has_metamethod(a,'__new'),
-  is_collectable   = \a -> has_metamethod(a,'__gc' ), -- not supported by LJ 2.1
+  is_collectable   = \a -> has_metamethod(a,'__gc' ), -- not called for table
 
   -- concepts for containers
 
@@ -257,17 +256,85 @@ local typeid = {
                            or type(a) == 'table' and rawequal(next(a),nil),
 
   -- comparison of types
+
   is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
 
   -- members
 
   has_member = \a,b -> ((has_metamethod(a,'__index') or type(a) == 'table') and
-                                                        not rawequal(a[b], nil)),
+                                                     not rawequal(a[b], nil)),
   -- methods = callable members
 
   has_method = \a,b -> ((has_metamethod(a,'__index') or type(a) == 'table') and
-                    (type(a[b]) == 'function' or has_metamethod(a[b],'__call'))),
+                  (type(a[b]) == 'function' or has_metamethod(a[b],'__call'))),
 }
+
+--[[
+Protection:
+-----------
+  - Protect an object against modification
+]]
+
+local mm_old = {}
+local mm_err = \ -> error("invalid write access to protected object")
+local mm_key = {
+  '__index', '__len', '__ipairs', '__kpairs', '__pairs',
+
+  __index    = \s -> \_,k   -> s[k],
+  __len      = \s -> \_     -> #s,
+  __ipairs   = \s -> \_     -> (ipairs(s)),
+  __kpairs   = \s -> \_     -> (kpairs(s)),
+  __pairs    = \s -> \_     -> ( pairs(s)),
+  __newindex = \s -> \_,k,v =>
+      if rawequal(s[k],nil) then s[k] = v else mm_err() end
+    end
+}
+
+local function wprotect (a)
+  assert(typeclass[type(a)] ~= true, "invalid argument #1 (non-value expected)")
+
+  local amt, omt = get_metatable(a), {}
+
+  if amt ~= nil then
+    for k,v in pairs(amt) do
+      if v ~= invalid_use then
+        omt[k] = \_,... -> amt[k](a,...) -- capture
+      else
+        omt[k] = invalid_use
+      end
+    end
+  end
+
+  if type(a) == 'table' then
+    for _,v in ipairs(mm_key) do
+      if amt == nil or amt[v] == nil then
+        omt[v] = mm_key[v](a) -- capture
+      end
+    end
+  end
+
+  omt[mm_old] = a
+  omt.__newindex  = mm_err
+  omt.__metatable = omt
+  setmetatable(omt, {__newindex=invalid_use, __metatable=false})
+
+  return setmetatable({}, omt)
+end
+
+local function wrestrict (a)
+  local obj = wprotect(a)
+  local omt = getmetatable(obj)
+  omt.__newindex = mm_key.__newindex(a)
+  return obj
+end
+
+local function wunprotect (a)
+  return getmetatable(a)[mm_old]
+end
+
+typeid.wprotect   = wprotect
+typeid.wrestrict  = wrestrict
+typeid.wunprotect = wunprotect
 
 -- end ------------------------------------------------------------------------o
 return {
