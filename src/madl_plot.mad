@@ -28,7 +28,7 @@
 local ffi = require "ffi"
 local dat = require "madl_plotdat"
 
-local Command, fun, vector, survey, filesys, atexit              in MAD
+local Object, Command, fun, vector, survey, filesys, atexit      in MAD
 local sign, tan, min, max, abs, sqrt, inf, pi                    in MAD.gmath
 local lshift                                                     in MAD.operator
 local strinterp, setkeys, strsplitall, tblcpy,
@@ -82,66 +82,10 @@ local _dflt = {
 local tmpfolder = "TMP_MAD_PLOT/"
 local tmplock   = tmpfolder .. "madplot.lock"
 
--- gplot ----------------------------------------------------------------------o
-
-local _gpd = {}
-
-local function gp_create (gplot, id)
-  local gnuplot = assert(io.popen("gnuplot", "w"))
-  gnuplot:setvbuf("line")
-  gplot[_gpd][id] = gnuplot
-  return gnuplot
-end
-
-local function gp_isBusy (gplot, id)
-  local _id = id or gplot[_gpd].__cur_id
-  if not fileexists(tmpfolder) then return false end
-  for name in filesys.dir(tmpfolder) do
-    if string.find(name, "madplot%-%d+") then
-      local file = io.open(tmpfolder .. name, "r")
-      if file then
-        local line = file:read("*line")
-        if line and tonumber(strsplitall(line, "#", 2)[1]) == pid then
-          return true
-        end
-      end
-    end
-  end
-  return false
-end
-
-local function gp_get (gplot, id, curr_)
-  local dat = gplot[_gpd]
-  if is_nil( dat[id] )              then gp_create( gplot, id ) end
-  if id ~= "__cur_id" and not curr_ then dat.__cur_id = id      end
-  return dat[id]
-end
-
-local function gp_call (gplot, id, ...)
-  local gnuplot
-  if is_number(id) then
-    gnuplot = gp_get(gplot, id)
-    gnuplot:write(..., "\n")
-  else
-    gnuplot = gp_get(gplot, gplot.__cur_id)
-    gnuplot:write(id, ..., "\n")
-  end
-end
-
-local gplot = {
-  is_busy   = gp_isBusy,
-  option    = { pending = 10 },
-  [_gpd]    = { __cur_id = 1 },
-}
-
-setmetatable(gplot, {
-  __index = gp_get,
-  __call  = gp_call,
-})
-
 -- tmp files ------------------------------------------------------------------o
 
-local _handlepool, _warn, _filepool, lock = {}, true
+local _handlepool, _warn, max_tmp_file = {}, true, 25
+local _filepool, lock
 
 local function plot_lock ()
   if not fileexists(tmpfolder) then
@@ -158,6 +102,20 @@ local function plot_unlock ()
   filesys.unlock(lock)
 end
 
+local function clear_handle (sid_)
+  plot_lock()
+  local isbusy = false
+  for fname,v in pairs(_handlepool) do
+    if not fileexists(fname) then
+      _handlepool[fname] = nil
+    elseif sid_ == v[1] then
+      isbusy = true
+    end
+  end
+  plot_unlock()
+  return isbusy
+end
+
 local function clean_tmp ()
   if not fileexists(tmpfolder) then return end
   plot_lock()
@@ -171,13 +129,9 @@ local function clean_tmp ()
       if file then file:close() end
     end
   end
-  for k,v in pairs(_handlepool) do
-    if not fileexists(k) then
-      _handlepool[k] = nil
-    end
-  end
   _filepool = nil
   plot_unlock()
+  clear_handle()
 end
 
 local function setup_files()
@@ -185,7 +139,7 @@ local function setup_files()
   entry = 1
   local tmpfile = tmpfolder .. "madplot-"
   _filepool     = {}
-  for i=gplot.option.pending,1,-1 do
+  for i=max_tmp_file,1,-1 do
     local file = tmpfile .. i
     if not fileexists(file) then
       _filepool[entry] = file
@@ -218,7 +172,53 @@ local function get_tmpfile()
   return file, fname
 end
 
-gplot.clean_tmp = clean_tmp
+-- gplot ----------------------------------------------------------------------o
+
+local _gplist, _sid = { max = 25 }, {}
+
+local function get_gp (sid)
+  local gnuplot = _gplist[sid]
+  if not gnuplot then
+    gnuplot = assert(io.popen("gnuplot", "w"))
+    gnuplot:setvbuf("line")
+    _gplist[sid] = gnuplot
+  end
+  return gnuplot
+end
+
+local function gp_write (gplot, ...)
+  get_gp(gplot[_sid]):write(..., "\n")
+end
+
+local function gp_printf (gplot, str, ...)
+  get_gp(gplot[_sid]):write(string.format(str, ...), "\n")
+end
+
+local function gp_setsid (gplot, sid)
+  assert(is_number(sid), "invalid argument #1 (number expected)")
+  if sid < 1 or _gplist.max < sid then
+    error("invalid argument #1 (number should be comprise between 1 and "
+      .. _gplist.max .. " )")
+  end
+  gplot[_sid] = sid
+end
+
+local function gp_isBusy (gplot)
+ return clear_handle(gplot[_sid])
+end
+
+local gplot_ = Object 'gplot' {
+  sid           = \gplot -> gplot[_sid],
+  [_sid]        = 1,
+}:set_methods {
+  write         = gp_write,
+  printf        = gp_printf,
+  set_sid       = gp_setsid,
+  is_busy       = gp_isBusy,
+  clean_tmpFile = clean_tmp,
+}:set_readonly()
+
+local gplot = gplot_ {}
 
 -- initialization -------------------------------------------------------------o
 
@@ -245,8 +245,8 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 -- open files and gnuplot and set terminal when necessary
 local function setup_cmd (self)
   local output, scrdump in self
-  local gp      = output and gp_get(gplot, self.sid, true)
   local file, fname = get_tmpfile()
+  gplot:set_sid(self.sid)
   file:write("#", pid, "#", self.sid, "\n")
   file:write(init_cmd % self)
 
@@ -259,33 +259,32 @@ local function setup_cmd (self)
   end
 
   file:write("@MAD_SET_TERM\n")
-  return gp, file, fname
+  return file, fname
 end
 
-local function gnuplot_rm(gp, fname)
+local function gnuplot_rm(fname)
   if jit.os == "Windows"
-  then gp:write("system 'del "    , fname, " >nul 2>&1'\n")
-  else gp:write("system '\\rm -f ", fname, "'\n")
+  then gplot:printf("system 'del %s >nul 2>&1'", fname)
+  else gplot:printf("system '\\rm -f %s'"      , fname)
   end
 end
 
-local function gnuplot_mv(gp, fname, uname)
+local function gnuplot_mv(fname, uname)
   if jit.os == "Windows"
-  then gp:write("system 'move /Y ", fname, " ", uname, "'\n")
-  else gp:write("system '\\mv "   , fname, " ", uname, "'\n")
+  then gplot:printf("system 'move /Y %s %s'", fname, uname)
+  else gplot:printf("system '\\mv %s %s'"   , fname, uname)
   end
 end
 
-local function teardown_cmd (self, gp, file, fname)
+local function teardown_cmd (self, file, fname)
   local scrdump, output in self
   file:flush()
   if output then
-    gp:write("load('" .. fname .. "')\n")
+    gplot:printf("load('%s')", fname)
     if is_string(scrdump)
-    then gnuplot_mv(gp, fname, scrdump)
-    else gnuplot_rm(gp, fname)
+    then gnuplot_mv(fname, scrdump)
+    else gnuplot_rm(fname)
     end
-    gp:flush()
   else
     if is_string(scrdump) then
       os.rename(fname, scrdump)
@@ -859,7 +858,7 @@ plot x lc 'white'
 ]]
 
 local function exec (self)
-  local gp, file, fname = setup_cmd(self)
+  local file, fname = setup_cmd(self)
   if self.sequence ~= "keep" then
     file:write("@MAD_RESET_OBJECT\n")
     file:write("@MAD_RESET_LABEL\n")
@@ -884,7 +883,7 @@ local function exec (self)
   end
 
   if self.epilog then file:write(self.epilog, "\n") end
-  teardown_cmd(self, gp, file, fname)
+  teardown_cmd(self, file, fname)
   return self
 end
 
