@@ -26,6 +26,10 @@
 
 -- Note: this module is used by MAD env, hence it cannot rely on MAD env.
 
+-- load 'new' and 'clear' in table (side effect)
+require 'table.new'
+require 'table.clear'
+
 local ffi = require 'ffi'
 local bit = require 'bit'
 
@@ -34,6 +38,7 @@ local typeof, miscmap in ffi
 local abs, huge       in math
 
 local tostring, type, getmetatable = tostring, type, getmetatable
+local table_new = table.new
 
 -- implementation -------------------------------------------------------------o
 
@@ -115,7 +120,7 @@ end
 
 local not_iterable, not_keyrable, not_extendable, not_mutable in concept
 
-local function set_concept (mt, cnc, strict_)
+local function set_metamethod (mt, cnc, strict_)
   local mt = mt or {}
   assert(mt.__metatable == nil, "invalid argument #1 (mutable metatable expected)")
   for i,v in ipairs(concept_keys) do
@@ -136,8 +141,8 @@ local function set_concept (mt, cnc, strict_)
   return mt
 end
 
-setmetatable(metaname, set_concept({}, not_extendable + not_mutable))
-setmetatable(concept , set_concept({}, not_extendable + not_mutable))
+setmetatable(metaname, set_metamethod({}, not_extendable + not_mutable))
+setmetatable(concept , set_metamethod({}, not_extendable + not_mutable))
 
 --[[
 Classification of primitive types:
@@ -162,7 +167,6 @@ local typeid = {
   -- classification of types, concepts, meta names
 
   typeclass = typeclass,
-  metaname  = metaname ,
   concept   = concept  ,
 
   -- primitive types
@@ -207,10 +211,9 @@ local typeid = {
   has_metatable  = has_metatable,
   get_metamethod = get_metamethod,
   has_metamethod = has_metamethod,
+  set_metamethod = set_metamethod,
 
   -- concepts
-
-  set_concept     = set_concept,
 
   is_indexable    = \a -> has_metamethod(a,'__index' )   or type(a) == 'table',
   is_iterable     = \a -> has_metamethod(a,'__ipairs')   or type(a) == 'table',
@@ -283,13 +286,11 @@ local mm_obj = {}
 local mm_err = \s -> error("invalid write access to protected object " ..
                            tostring(s), 2)
 local mm_fun = {
-  '__index', '__len', '__ipairs', '__kpairs', '__pairs',
-
   __index    = \s -> \_,k   -> s[k],
   __len      = \s -> \_     -> #s,
-  __ipairs   = \s -> \_     -> (ipairs(s)),
-  __kpairs   = \s -> \_     -> (kpairs(s)),
-  __pairs    = \s -> \_     -> ( pairs(s)),
+  __ipairs   = \s -> \_     -> ipairs(s),
+  __kpairs   = \s -> \_     -> kpairs(s),
+  __pairs    = \s -> \_     ->  pairs(s),
   __newindex = \s -> \_,k,v =>
       if rawequal(s[k],nil) then s[k] = v else mm_err(s) end
     end
@@ -297,48 +298,36 @@ local mm_fun = {
 
 local is_table in typeid
 
-local function wprotect (a)
+local function wrestrict (a)
   assert(typeclass[type(a)] == false, "invalid argument #1 (non-value expected)")
 
-  local amt, omt = get_metatable(a), {}
+  local amt, omt = get_metatable(a) or {}, table.new(0,8)
 
-  if amt ~= nil then
-    for k,v in pairs(amt) do
-      if v ~= invalid_use then
-        omt[k] = \_,... -> amt[k](a,...) -- capture and forward
-      else
-        omt[k] = invalid_use
-      end
+  for _,k in ipairs(metaname) do
+    if amt[k] == nil then
+      omt[k] = mm_fun[k] and mm_fun[k](a) -- capture and forward
+    elseif amt[k] ~= invalid_use then
+      omt[k] = \_,... -> amt[k](a,...)    -- capture and forward
+    else
+      omt[k] = invalid_use
     end
   end
-
-  if is_table(a) then
-    for _,v in ipairs(mm_fun) do
-      if amt == nil or amt[v] == nil then
-        omt[v] = mm_fun[v](a) -- capture and forward
-      end
-    end
-  end
-
-  omt[mm_obj] = a
-  omt.__newindex  = mm_err
-  omt.__metatable = omt
-  setmetatable(omt, {__newindex=invalid_use, __metatable=false})
-
+  omt[mm_obj] = \ -> a                    -- capture object
+  omt.__metatable = omt                   -- protect metatable
   return setmetatable({}, omt)
 end
 
-local function wrestrict (a)
-  local obj = wprotect(a)
+local function wprotect (a)
+  local obj = wrestrict(a)
   local omt = getmetatable(obj)
-  omt.__newindex = mm_fun.__newindex(a)
+  omt.__newindex = mm_err
   return obj
 end
 
 local function wunprotect (a)
   local amt = getmetatable(a)
-  return assert(amt and amt[mm_obj],
-                "invalid argument #1 (protected object expected)")
+  return assert(amt and amt[mm_obj] and amt[mm_obj](),
+                "invalid argument #1 (protected or restricted object expected)")
 end
 
 typeid.wprotect   = wprotect
