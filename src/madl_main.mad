@@ -29,8 +29,9 @@ local M = {}
 -- list of modules to import in MAD, order matters!
 local modules = {
   'regex', 'utest', 'lfun', 'lfs', -- LPEG, LuaUnit, LuaFun and LuaFileSystem
-  'typeid', 'gfunc', 'gmath', 'gutil', 'range', 'complex', 'matrix', -- 'tpsa',
-  'object', 'constant', 'mtable', 'element', 'sequence', 'beam', -- 'mflow',
+  'typeid', 'gfunc', 'gmath', 'gutil',
+  'range', 'complex', 'matrix', -- 'tpsa',
+  'object', 'constant', 'beam', 'element', 'sequence', 'mtable', -- 'mflow',
   'command', 'survey', 'track',
   'madx', 'plot',
 }
@@ -47,14 +48,12 @@ local _C     = require 'madl_cmad'
 local typeid = require 'madl_typeid' .typeid
 
 local is_nil, is_boolean, is_number, is_string, is_indexable, is_mappable,
-      is_callable in typeid
+      is_callable, wrestrict, set_metamethod in typeid
+local not_iterable in typeid.concept
 
 local strfmt = string.format
 
 -- globals --------------------------------------------------------------------o
-
--- load 'new' and 'clear' in table (side effect)
-require 'table.new' ; require 'table.clear'
 
 -- TODO: check how much _G is polluted by MAD environment
 -- uncomment to check invalid use of globals
@@ -71,38 +70,46 @@ local _hlp = {}
 
 -- environment
 
-M[_hlp]   = {}        -- backup for help
-M._C      = _C        -- C symbol access
+M[_hlp]   = {}  -- backup for help
+M._C      = _C  -- C symbol access
 
 local env = _M ; _M = nil
 
 env.arg            = arg
-env.is_tracing_loc =\ _C.mad_trace_location ~= 0
 env.is_tty         =\ _C.mad_stdin_is_tty   ~= 0
 env.is_interactive =\ _C.mad_is_interactive ~= 0
 
-M.env = setmetatable({}, {
-  __index    = env,
-  __pairs   := pairs(env),
-  __kpairs  := pairs(env),
-  __newindex = \_,k,v =>
-      assert(rawequal(k,'trace_location'), "invalid write access to env")
-     _C.mad_trace_location = v end,
-})
+-- protect env against iteration and write access
+M.env = wrestrict(setmetatable(env, set_metamethod({}, not_iterable)))
+
+-- install proxy to emulate attribute 'trace_location'
+getmetatable(M.env).__newindex = \_,k,v =>
+    if not rawequal(k,'trace_location') then
+      error("invalid write access to MAD.env", 2)
+    end
+    _C.mad_trace_location = v
+  end
+getmetatable(env).__index = \_,k =>
+    if not rawequal(k,'trace_location') then
+      error("invalid read access to MAD.env", 2)
+    end
+    return _C.mad_trace_location ~= 0
+  end
 
 -- options
 
 M.option = {
 
   format = "%.16g",
---debug  = 0,
+
+--debug  = 0, -- emulated from C mad_trace_level
 }
 
+-- protect against new keys, interface to _C.mad_trace_level
 setmetatable(M.option, {
-  -- protect against new keys, interface to _C.mad_trace_level
   __index = \_,k =>
       assert(rawequal(k,'debug'), "invalid read access key to option")
-      return rawequal(k,'debug') and _C.mad_trace_level or nil
+      return _C.mad_trace_level
     end,
 
   __newindex = \_,k,v =>
@@ -276,6 +283,19 @@ function M.help (from, pattern_)
   io.write("\n")
 end
 
+function M.show (a)
+  assert(is_mappable(a), "invalid argument #1 (mappable expected)")
+  local keys = {}
+  for k in pairs(a) do
+    keys[#keys+1] = k
+  end
+  table.sort(keys)
+  for i=1,#keys do
+    io.write(string.format("%-25s", tostring(  keys[i] )..':'),
+                                    tostring(a[keys[i]])  , '\n')
+  end
+end
+
 -- environment ----------------------------------------------------------------o
 
 -- protect MAD environment (weak protection, no more)
@@ -308,6 +328,7 @@ end
 -- useful as globals
 _M   = MAD
 help = MAD.help
+show = MAD.show
 
 -- check _G pollution ---------------------------------------------------------o
 
@@ -328,7 +349,7 @@ local _G_env = {
   -- LJ 2.1
   'bit', 'jit', 'newproxy',
   -- MAD
-  '_M', 'help', 'kpairs', 'MAD', 'MADX',
+  '_M', 'help', 'kpairs', 'show', 'MAD', 'MADX',
 }
 for i,v in ipairs(_G_env) do _G_env[v] = i end
 
@@ -346,7 +367,7 @@ local _M_env = {
   'cvector', 'element', 'env', 'export', 'filesys', 'fun', 'gfunc', 'gmath',
   'gplot', 'help', 'import', 'linspace', 'logrange', 'logspace', 'MAD', 'MADX',
   'matrix', 'mtable', 'nlogrange', 'nrange', 'Object', 'operator', 'option',
-  'plot', 'range', 'regex', 'sequence', 'survey', 'tostring', 'totable',
+  'plot', 'range', 'regex', 'sequence', 'show', 'survey', 'tostring', 'totable',
   'trace', 'track', 'typeid', 'utest', 'utility', 'vector', 'warn',
   [_hlp] = true, [_final] = true,
 }
