@@ -24,19 +24,48 @@
 
 -- locals ---------------------------------------------------------------------o
 
+local drift, marker, sbend, quadrupole, sequence, bline,
+      instrument, translation, srotation, sextupole,
+      octupole, decapole, solenoid, kicker, vkicker, rbend,
+      tkicker, hkicker, elseparator, rfcavity, twcavity,
+      collimator, crabcavity, combined                      in MAD.element
+local tkicker                                               in MADX
 local assertNotNil, assertEquals                            in MAD.utest
-local plot, gplot, mtable, vector, filesys                  in MAD
+local Object, plot, gplot, mtable, vector, filesys, atexit  in MAD
 local sequence, marker                                      in MAD.element
 local observe                                               in MAD.element.flags
 local tblcpy                                                in MAD.utility
 
 local toolbox  = require "toolbox"
-local generate = false
+local generate = false                           -- false | true | "pdf" | "wxt"
 local refdir   = \s -> "plot_ref/"..s
 local rundir   = \s -> "plot_run/"..s
-local bmtbl, lmtbl
+local id       = 0
+local plotTest, reset                            -- Parametrized plot command
+local bmtbl, lmtbl, seq                          -- data
 
 -- helpers --------------------------------------------------------------------o
+
+local function newSID ()
+  id = id % 25 + 1
+  return id
+end
+
+local function setPlotTest ()
+  if plotTest then return end
+  if generate == "pdf" then
+    plotTest = plot "plotTest" { output = rundir("tests.pdf"), exec = false }
+    reset    = \ gplot:write("reset")
+    atexit(io.read)
+  elseif generate == "wxt" then
+    plotTest = plot "plotTest" { sid = newSID, exec = false }
+    reset    = \ gplot:write("reset")
+    atexit(io.read)
+  else
+    reset    = \ ()
+    plotTest = plot "plotTest" { output = false, exec = false }
+  end
+end
 
 local function loadLHC ()
   local lhcb1, lhcb2 = toolbox.loadLHC()
@@ -56,6 +85,45 @@ local function createTbl ()
   for i=1, 25 do
     lmtbl = lmtbl + {"A" .. i, i, i+10, i, i+10, i+20, i+30 }
   end
+end
+
+local function createSeq ()
+  if seq then return end
+  seq = sequence 'seq' {
+    refer = 'entry',
+    marker 'start'            { at = 1                              },
+    srotation 'srotation'     { at = 5,   l = 3                     },
+    translation 'translation' { at = 10,  l = 3                     },
+    quadrupole 'quadrupole'   { at = 15,  l = 3, k1 = -1            },
+    quadrupole 'quadrupole'   { at = 20,  l = 3, k1 = 1             },
+    sextupole 'sextupole'     { at = 25,  l = 3, k2 = -1            },
+    sextupole 'sextupole'     { at = 30,  l = 3, k2 =  1            },
+    octupole 'octupole'       { at = 35,  l = 3, k3 = -1            },
+    octupole 'octupole'       { at = 40,  l = 3, k3 =  1            },
+    decapole 'decapole'       { at = 45,  l = 3, k4 = -1            },
+    decapole 'decapole'       { at = 50,  l = 3, k4 =  1            },
+    solenoid 'solenoid'       { at = 55,  l = 3, ks = -1            },
+    solenoid 'solenoid'       { at = 60,  l = 3, ks =  1            },
+    sbend 'sbend'             { at = 65,  l = 3, angle = -1         },
+    sbend 'sbend'             { at = 70,  l = 3, angle = 1          },
+    combined 'combined'       { at = 75,  l = 3, angle = 1, k1 = -1 },
+    combined 'combined'       { at = 80,  l = 3, angle = 1, k1 =  1 },
+    combined 'combined'       { at = 85,  l = 3, angle =-1, k1 = -1 },
+    combined 'combined'       { at = 90,  l = 3, angle =-1, k1 =  1 },
+    rbend 'rbend'             { at = 95,  l = 3                     },
+    kicker 'kicker'           { at = 100, l = 3                     },
+    tkicker 'tkicker'         { at = 105, l = 3, kind='tkicker'     },
+    hkicker 'hkicker'         { at = 110, l = 3                     },
+    vkicker 'vkicker'         { at = 115, l = 3                     },
+    elseparator 'elseparator' { at = 120, l = 3                     },
+    instrument 'instrument'   { at = 125, l = 3                     },
+    rfcavity 'rfcavity'       { at = 130, l = 3                     },
+    twcavity 'twcavity'       { at = 135, l = 3                     },
+    crabcavity 'crabcavity'   { at = 140, l = 3                     },
+    collimator 'collimator'   { at = 145, l = 3                     },
+    drift 'drift'             { at = 150                            },
+    marker 'end'              { at = 155                            },
+  }
 end
 
 local function assertFiles (name)
@@ -80,9 +148,8 @@ local function assertFiles (name)
 end
 
 local function getEmptyPlot (name)
-  return plot {
+  return plotTest {
     title   = name,
-    output  = false,
     scrdump = rundir(name),
     exec    = false,
   }
@@ -94,6 +161,8 @@ TestPlot = {}
 
 function TestPlot:setUp ()
   createTbl()
+  createSeq()
+  setPlotTest()
   filesys.mkdir(rundir(""))
   self.id = 1
 end
@@ -103,6 +172,7 @@ function TestPlot:tearDown ()
 end
 
 function TestPlot:execTest (param)
+  reset()
   local name = self.testName .. self.id
   getEmptyPlot(name)(param)
   assertFiles(name)
@@ -117,7 +187,7 @@ end
 function TestPlot:testPrologEpilog ()
   local param = {
     prolog = "set multi",
-    epilog = "unset multi \nunset out",
+    epilog = "unset multi",
   }
   self:execTest(param)
 end
@@ -217,7 +287,7 @@ function TestPlot:testTableRange ()
   self:execTest(param2)
 end
 
-function TestPlot:testLegend()
+function TestPlot:testLegend ()
   local param = {
     table  = lmtbl,
     x1y1   = { x1 = {"y1", "y2" } },
@@ -228,7 +298,24 @@ function TestPlot:testLegend()
   param.legend = {y1="legend1", y2=false} ; self:execTest(tblcpy(param))
 end
 
-function TestPlot:testPlotDecoration()
+function TestPlot:testTitle ()
+  local name    = self.testName .. self.id
+  local pattern = "set title 'plotTest MAD %d+.%d+.%d+, %d+/%d+/%d+, %d+:%d+:%d+'"
+  local line
+
+  reset()
+  plotTest { scrdump = rundir(name), table = lmtbl, x1y1 = "y1" }
+
+  local file = assert(io.open(rundir(name), "r"))
+  repeat
+    line = file:read("*line")
+    if line and (string.find(line, pattern)) then return end
+  until not line
+
+  error("Default title doesn't contain : version, date, time")
+end
+
+function TestPlot:testPlotDecoration ()
   local param = {
     table      = lmtbl,
     x1y1       = { x1 = {"y1", "y4" } },
@@ -249,7 +336,7 @@ function TestPlot:testPlotDecoration()
   self:execTest(param)
 end
 
-function TestPlot:testPlotDataStyle()
+function TestPlot:testPlotDataStyle ()
   local param1 = {
     table      = lmtbl,
     x1y1       = { x1 = {"y1", "y3", "y4" } },
@@ -295,6 +382,46 @@ function TestPlot:testPlotDataStyle()
   self:execTest(param3)
 end
 
+function TestPlot:testPlotConfig ()
+  local data = {
+    c1 = {6, 3, 0, 0, 0, 0}, c2 = {5, 2, 0, 0, 0, 1}, c3 = {4, 2, 0, 0, 1, 2},
+    c4 = {3, 0, 0, 0, 2, 3}, c5 = {1, 0, 1, 2, 4, 4}, c6 = {0, 1, 0, 3, 3, 5},
+  }
+  local param1 = { -- simple splot example
+    data    = data,
+    x1y1    = { c1 = {'c2', 'c3', 'c4', 'c5', 'c6'} },
+    plotcfg = "set pm3d map",
+    plotcmd = "splot ${data1} matrix",
+  }
+  local param2 = { -- test all available interpolation variables + plotvar
+    table      = lmtbl,
+    x1y1       = { x1 = {"y1", "y3", "y4" } },
+    styles     = { y1 = "lines", y3 = "points", y4 = "linespoints" },
+    colors     = { y1 = "red"  , y3 = "blue"  , y4 = "green"       },
+    dashtypes  = { y1 = "..   ",                y4 = "--  "        },
+    linewidths = { y1 = 2.3    ,                y4 = 3.2           },
+    pointtypes = {               y3 = 2       , y4 = 3             },
+    pointsizes = {               y3 = 2.0     , y4 = 4.1           },
+    plotvar    = { color3 ="linecolor 'pink' " },
+    plotcmd    = "\z
+      ${cmd1}${data1}${index1}${using1}with ${style1}${lines1}${points1}${color1}${title1}${axes1},\\\n\z
+      ${cmd2}${data2}${index2}${using2}with ${style2}${lines2}${points2}${color2}${title2}${axes2},\\\n\z
+      ${cmd3}${data3}${index3}${using3}with ${style3}${lines3}${points3}${color3}${title3}${axes3},\\\n\z
+    "
+  }
+  -- TODO
+  -- local T = \s\ctx -> s % ctx
+  -- local param3 = { -- plotvar + fix-points
+  --   table   = lmtbl,
+  --   x1y1    = "y1",
+  --   plotvar = Object { color3 = T"linecolor 'pink' " },
+  -- }
+  self:execTest(param1)
+  self:execTest(param2)
+  -- self:execTest(param3)
+  -- io.read()
+end
+
 function TestPlot:testObjectShift ()
   local param = {
     sequence = sequence { l = 10, marker "middle" { at = 5 } },
@@ -303,7 +430,45 @@ function TestPlot:testObjectShift ()
   self:execTest(param)
 end
 
-function TestPlot:testLHC()
+function TestPlot:testAllShapes()
+  local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  self:execTest(param)
+end
+
+function TestPlot:testLaypos()
+  local param  = {sequence = seq, table = lmtbl, x1y1 = "y1"}
+  param.laypos = "top"    ; self:execTest(tblcpy(param))
+  param.laypos = "middle" ; self:execTest(tblcpy(param))
+  param.laypos = "bottom" ; self:execTest(tblcpy(param))
+  param.laypos = 0.25     ; self:execTest(tblcpy(param))
+end
+
+function TestPlot:testLaysize()
+  local param  = {sequence = seq, table = lmtbl, x1y1 = "y1", laysize=0.5}
+  param.laypos = "top"    ; self:execTest(tblcpy(param))
+  param.laypos = "middle" ; self:execTest(tblcpy(param))
+  param.laypos = "bottom" ; self:execTest(tblcpy(param))
+  param.laypos = 0.25     ; self:execTest(tblcpy(param))
+end
+
+function TestPlot:testSeqOnly()
+  local param = { sequence = seq }
+  self:execTest(param)
+end
+
+
+-- function TestPlot:testSeqRange()
+--   local lhcb1, = loadLHC()
+--   local param = {
+--     sequence = lhcb1,
+--     range = {"E.DS.L1.B1", "S.DS.R1.B1"}
+--   }
+--   self:execTest(param1)
+--   self:execTest(param2)
+--   io.read()
+-- end
+
+function TestPlot:testLHC ()
   local lhcb1, lhcb2 = loadLHC()
   local param = {
     sequence = { lhcb1, lhcb2 },
