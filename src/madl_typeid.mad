@@ -82,6 +82,13 @@ local function has_metamethod (a, f)
   return not not mm and mm ~= invalid_use
 end
 
+-- can be used for events defined after newindex in concept list
+local function has_metamethod_ (a, f)
+  local mt = get_metatable(a)
+  local mm = mt and rawget(mt,f)
+  return not not mm -- false or nil -> false
+end
+
 --[[
 Concept notes:
 --------------
@@ -89,16 +96,18 @@ Concept notes:
 - not_scannable prevents all forms of scan (index and {i,k,_}pairs).
 - not_extendable prevents to write at keys *not already defined*.
 - not_mutable sets the metatable __metatable to itself and not_extendable.
+- default is set to invalid_use up to newindex, and to nil after.
 ]]
 
-local concept = {                             --     1,       2,       4,      8
+local concept = {                             --     1,       2,      32,      4
   not_lengthable   = 2^0,         '__len',    -- __len,        ,        ,
   not_iterable     = 2^1,         '__ipairs', --      ,__ipairs,        ,
-  not_keyrable     = 2^2,         '__kpairs', --      ,        ,__kpairs,
-  not_mappable     = 2+4+2^3,     '__pairs',  --      ,__ipairs,__kpairs,__pairs
-  not_scannable    = 1+2+4+8,                 -- __len,__ipairs,__kpairs,__pairs
-  not_indexable    = 2^4,         '__index',
-  not_extendable   = 2^5,         '__newindex',
+  not_keyrable     = 2^5,                     --      ,        ,__kpairs,
+  not_mappable     = 2+32+2^2,    '__pairs',  --      ,__ipairs,__kpairs,__pairs
+  not_scannable    = 1+2+32+4,                -- __len,__ipairs,__kpairs,__pairs
+  not_indexable    = 2^3,         '__index',
+  not_extendable   = 2^4,         '__newindex',
+                 --[[2^5,]]       '__kpairs', -- from here, default is nil
   not_callable     = 2^6,         '__call',
   not_orderable    = 2^7+2^8,     '__lt', '__le',
   not_comparable   = 128+256+2^9, '__eq',     -- __lt, __le, __eq
@@ -202,35 +211,35 @@ local typeid = {
 
   -- concepts
 
-  is_lengthable   = \a ->                                   type(a) == 'string' or
-                          has_metamethod(a,'__len'   )   or type(a) == 'table',
-  is_iterable     = \a -> has_metamethod(a,'__ipairs')   or type(a) == 'table',
-  is_keyrable     = \a -> has_metamethod(a,'__kpairs')   or type(a) == 'table',
-  is_mappable     = \a -> has_metamethod(a,'__pairs' )   or type(a) == 'table',
-  is_indexable    = \a -> has_metamethod(a,'__index' )   or type(a) == 'table',
-  is_extendable   = \a -> has_metamethod(a,'__newindex') or type(a) == 'table',
+  is_lengthable   = \a ->                                    type(a) == 'string' or
+                          has_metamethod (a,'__len'   )   or type(a) == 'table',
+  is_iterable     = \a -> has_metamethod (a,'__ipairs')   or type(a) == 'table',
+  is_keyrable     = \a -> has_metamethod_(a,'__kpairs')   or type(a) == 'table',
+  is_mappable     = \a -> has_metamethod (a,'__pairs' )   or type(a) == 'table',
+  is_indexable    = \a -> has_metamethod (a,'__index' )   or type(a) == 'table',
+  is_extendable   = \a -> has_metamethod (a,'__newindex') or type(a) == 'table',
 
-  is_callable     = \a -> type(a) == 'function' or has_metamethod(a,'__call'  ),
+  is_callable     = \a -> type(a) == 'function' or has_metamethod_(a,'__call'),
   is_orderable    = \a -> type(a) == 'number'   or
-                          type(a) == 'string'   or has_metamethod(a,'__lt'    ),
+                          type(a) == 'string'   or has_metamethod_(a,'__lt'  ),
   is_comparable   = \a -> type(a) == 'number'   or
-                          type(a) == 'string'   or has_metamethod(a,'__eq'    ),
-  is_concatenable = \a -> type(a) == 'string'   or has_metamethod(a,'__concat'),
-  is_copiable     = \a ->                          has_metamethod(a,'__copy'  ),
-  is_sameable     = \a ->                          has_metamethod(a,'__same'  ),
-  is_tablable     = \a ->                          has_metamethod(a,'__totable' ),
-  is_stringable   = \a ->                          has_metamethod(a,'__tostring'),
-  is_mutable      = \a ->                          has_metamethod(a,'__metametable'),
+                          type(a) == 'string'   or has_metamethod_(a,'__eq'  ),
+  is_concatenable = \a -> type(a) == 'string'   or has_metamethod_(a,'__concat'),
+  is_copiable     = \a ->                          has_metamethod_(a,'__copy'),
+  is_sameable     = \a ->                          has_metamethod_(a,'__same'),
+  is_tablable     = \a ->                          has_metamethod_(a,'__totable'),
+  is_stringable   = \a ->                          has_metamethod_(a,'__tostring'),
+  is_mutable      = \a ->                          has_metamethod_(a,'__metametable'),
 
   -- concepts for numeric
 
-  is_negatable    = \a -> type(a) == 'number'   or has_metamethod(a,'__unm'),
-  is_addable      = \a -> type(a) == 'number'   or has_metamethod(a,'__add'),
-  is_subtractable = \a -> type(a) == 'number'   or has_metamethod(a,'__sub'),
-  is_multipliable = \a -> type(a) == 'number'   or has_metamethod(a,'__mul'),
-  is_dividable    = \a -> type(a) == 'number'   or has_metamethod(a,'__div'),
-  is_modulable    = \a -> type(a) == 'number'   or has_metamethod(a,'__mod'),
-  is_powerable    = \a -> type(a) == 'number'   or has_metamethod(a,'__pow'),
+  is_negatable    = \a -> type(a) == 'number'   or has_metamethod_(a,'__unm'),
+  is_addable      = \a -> type(a) == 'number'   or has_metamethod_(a,'__add'),
+  is_subtractable = \a -> type(a) == 'number'   or has_metamethod_(a,'__sub'),
+  is_multipliable = \a -> type(a) == 'number'   or has_metamethod_(a,'__mul'),
+  is_dividable    = \a -> type(a) == 'number'   or has_metamethod_(a,'__div'),
+  is_modulable    = \a -> type(a) == 'number'   or has_metamethod_(a,'__mod'),
+  is_powerable    = \a -> type(a) == 'number'   or has_metamethod_(a,'__pow'),
 
   -- concepts for containers
 
@@ -249,7 +258,7 @@ local typeid = {
   -- methods = callable members
 
   has_method = \a,b -> ((has_metamethod(a,'__index') or type(a) == 'table') and
-                  (type(a[b]) == 'function' or has_metamethod(a[b],'__call'))),
+                  (type(a[b]) == 'function' or has_metamethod_(a[b],'__call'))),
 }
 
 -- protection -----------------------------------------------------------------o
@@ -267,11 +276,10 @@ local mm_msg = \k,s -> "invalid write access to object "..k.." <"..s..">"
 local mm_err = \s   -> error(mm_msg("restricted", tostring(s)), 2)
 local mm_erp = \s   -> error(mm_msg("protected" , tostring(s)), 2)
 local mm_obj = {}
-local mm_fun = {
+local mm_fun = { -- default for concepts up to newindex
   __index    = \s -> s,
   __len      = \s -> \_ -> #s,
   __ipairs   = \s -> \_ -> ipairs(s),
-  __kpairs   = \s -> \_ -> kpairs(s),
   __pairs    = \s -> \_ ->  pairs(s),
   __newindex = \s -> \_,k,v =>
       if rawequal(s[k],nil) then s[k] = v else mm_err(s) end
