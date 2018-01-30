@@ -53,6 +53,7 @@
 #define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
 #define P_QELECT    1.6021766208e-19       // [C]     Elementary electric charge
 #define P_HBAR      6.582119514e-25        // [GeV.s] Reduced Plack's constant
+#define P_AMASS     0.9314940954           // [GeV]   Unified atomic mass
 #define P_EMASS     5.109989461e-4         // [GeV]   Electron mass
 #define P_PMASS     0.9382720813           // [GeV]   Proton mass
 #define P_NMASS     0.9395654133           // [GeV]   Neutron mass
@@ -85,9 +86,10 @@ extern const num_t mad_cst_MU0     ;  // [T.m/A] or [N/A^2] or [V.s/(A.m)]
 extern const num_t mad_cst_EPSILON0;  // [F/m]
 extern const num_t mad_cst_QELECT  ;  // [C]
 extern const num_t mad_cst_HBAR    ;  // [GeV.s]
+extern const num_t mad_cst_AMASS   ;  // [GeV]
 extern const num_t mad_cst_EMASS   ;  // [GeV]
-extern const num_t mad_cst_PMASS   ;  // [GeV]
 extern const num_t mad_cst_NMASS   ;  // [GeV]
+extern const num_t mad_cst_PMASS   ;  // [GeV]
 extern const num_t mad_cst_MUMASS  ;  // [GeV]
 extern const num_t mad_cst_DEUMASS ;  // [GeV]
 extern const num_t mad_cst_ERADIUS ;  // [m]
