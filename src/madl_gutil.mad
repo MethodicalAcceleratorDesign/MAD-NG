@@ -31,13 +31,12 @@ local option, fun, _C in MAD
 local band, bor, rol, rshift in bit
 local totable, iter          in fun
 local abs, min, max          in math
-local tostring = tostring
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
       is_value, is_indexable, is_iterable, is_keyrable, is_mappable,
       is_callable, is_stringable, is_tablable, is_copiable, is_sameable,
-      is_complex, get_metatable, get_metamethod, set_metamethod, concept
-      in MAD.typeid
+      is_complex, get_metatable, get_metamethod, set_metamethod, wprotect,
+      concept in MAD.typeid
 
 local not_keyrable, not_extendable, not_mutable in concept
 
@@ -123,6 +122,18 @@ operator.opstr = {
 -- utilities ------------------------------------------------------------------o
 
 local utility = {}
+
+-- sleep
+
+ffi.cdef[[
+void Sleep(int ms);
+int poll(struct pollfd *fds, unsigned long nfds, int timeout);
+]]
+
+if ffi.os == "Windows"
+then utility.sleep = \s -> ffi.C.Sleep(s)
+else utility.sleep = \s -> ffi.C.poll(nil, 0, s)
+end
 
 -- repeater
 
@@ -280,37 +291,37 @@ function utility.str2tbl(str, match_, ini_)
   end
 end
 
-function tostring_ (a, ...)
+function tostring_ (a, ...)      -- to review
   if     is_string(a)     then return a
-  elseif is_number(a)     then return (string.format(option.format, a))
+  elseif is_value(a)      then return (tostring(a))
   elseif is_stringable(a) then return (get_metamethod(a,'__tostring')(a, ...))
   elseif is_mappable(a)   then return  utility.tbl2str(a,...) -- table.concat
   else                         return (tostring(a)) -- builtin tail call...
   end
 end
 
-local function totable_ (a, ...)
-  if     is_table(a)    then return a
-  elseif is_value(a)    then return {a}
-  elseif is_tablable(a) then return get_metamethod(a,'__totable')(a, ...)
-  elseif is_iterable(a) then return totable(iter(a,...)) -- iterator from lfun
-  else                       return {a}
+local function totable_ (a, ...) -- to review
+  if     is_table(a)      then return a
+  elseif is_value(a)      then return {a}
+  elseif is_tablable(a)   then return get_metamethod(a,'__totable')(a, ...)
+  elseif is_iterable(a)   then return totable(iter(a,...)) -- iterator from lfun
+  else                         return {a}
   end
 end
 
-function utility.same (a, ...)
-  if     is_value(a)     then return a
-  elseif is_sameable(a)  then return get_metamethod(a,'__same')(a, ...)
-  elseif is_table(a)     then return setmetatable({}, getmetatable(a))
-  else                        return a -- safe? should try more complex copy?
+function utility.same (a, ...)   -- to review
+  if     is_value(a)      then return a
+  elseif is_sameable(a)   then return get_metamethod(a,'__same')(a, ...)
+  elseif is_table(a)      then return setmetatable({}, getmetatable(a))
+  else                         return a -- safe? should try more complex copy?
   end
 end
 
-function utility.copy (a, ...)
-  if     is_value(a)     then return a
-  elseif is_copiable(a)  then return get_metamethod(a,'__copy')(a, ...)
-  elseif is_table(a)     then return utility.tbldeepcpy(a, ...)
-  else                        return a -- safe? should try more complex copy?
+function utility.copy (a, ...)   -- to review
+  if     is_value(a)      then return a
+  elseif is_copiable(a)   then return get_metamethod(a,'__copy')(a, ...)
+  elseif is_table(a)      then return utility.tbldeepcpy(a, ...)
+  else                         return a -- safe? should try more complex copy?
   end
 end
 
@@ -514,8 +525,8 @@ end
 
 -- end ------------------------------------------------------------------------o
 return {
-  operator = operator,
-  utility  = utility,
+  operator = wprotect(operator),
+  utility  = wprotect(utility ),
   totable  = totable_,
   tostring = tostring_,
   __help   = require 'madh_gutil',
