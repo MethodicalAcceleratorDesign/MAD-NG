@@ -21,41 +21,11 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.gfunc = [=[
-NAME
-  gfunc -- provide generic functions for functional programming
-
-SYNOPSIS
-  functor, is_functor,
-  ident, forget, first, second, swap, swapv, compose, compose_bottom,
-  bind1st, bind2nd, bind2st.
-
-DESCRIPTION
-  The gfunc module provides useful utility functions:
-  - ident is the identity function.
-  - forget drop its arguments.
-  - first, second and swap return arguments #1, #2 and #2 #1 respectively
-    (i.e. #1 #2 swapped). swapv is identical to swap but keep the extra
-    arguments.
-  - compose composes two callable objects.
-  - compose_bottom allows to compose (right to left) callable objects using ^.
-  - bind1st, bind2nd, bind2st allow to bind 1st, 2nd or both arguments to a
-    callable. It is faster than creating a new closure with bounded upvalues.
-
-ERRORS
-  Functors constructor trigs an error if the argument #1 is not a callable.
-
-SEE ALSO
-  Object.
-]=]
-
 -- locals ---------------------------------------------------------------------o
 
-local is_nil, is_function, is_table, is_callable, set_metamethod in MAD.typeid
-local not_mappable, not_extendable, not_mutable in MAD.typeid.concept
+local is_nil, is_function, is_table, is_callable, wprotect,
+      set_metamethod, concept                                      in MAD.typeid
+local not_scannable, not_extendable, not_mutable                   in concept
 
 local select = select
 
@@ -114,128 +84,54 @@ function gfunc.is_functor (a)
   return is_table(a) and rawget(a,_fun) ~= nil
 end
 
-local str = \s -> string.format("<functor> %p", s)
-local err = \  -> error("forbidden access to functor", 2)
+gfunc.bottom = gfunc.functor(gfunc.ident)
+gfunc._      = gfunc.bottom -- alias
+
+local str = \s -> string.format("functor: %p", s)
 
 fct_mt = set_metamethod({
   __pow       = gfunc.compose,
   __call      = \s,... -> rawget(s,_fun)(...),
   __index     = \s,k -> s(k),
   __tostring  = str,
-}, not_mappable + not_extendable + not_mutable)
--- fct_mt.__metatable = fct_mt
+}, not_scannable + not_extendable + not_mutable)
 
-fct_mtc = {
+fct_mtc = set_metamethod({
   __pow       = gfunc.compose,
   __call      = \s,... -> rawget(s,_fun)(rawget(s,_fun2)(...)),
   __index     = \s,k -> s(k),
   __tostring  = str,
-  __len = err, __newindex = err, __ipairs = err, __kpairs = err, __pairs = err,
-}
-fct_mtc.__metatable = fct_mtc
+}, not_scannable + not_extendable + not_mutable)
 
-fct_mtb1 = {
+fct_mtb1 = set_metamethod({
   __pow       = gfunc.compose,
   __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), ...),
   __index     = \s,k -> s(k),
   __tostring  = str,
-  __len = err, __newindex = err, __ipairs = err, __kpairs = err, __pairs = err,
-}
-fct_mtb1.__metatable = fct_mtb1
+}, not_scannable + not_extendable + not_mutable)
 
-fct_mtb2 = {
+fct_mtb2 = set_metamethod({
   __pow       = gfunc.compose,
   __call      = \s,a,... -> rawget(s,_fun)(a, rawget(s,_arg), ...),
   __index     = \s,k -> s(k),
   __tostring  = str,
-  __len = err, __newindex = err, __ipairs = err, __kpairs = err, __pairs = err,
-}
-fct_mtb2.__metatable = fct_mtb2
+}, not_scannable + not_extendable + not_mutable)
 
-fct_mtb12 = {
+fct_mtb12 = set_metamethod({
   __pow       = gfunc.compose,
   __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), rawget(s,_arg2), ...),
   __index     = \s,k -> s(k),
   __tostring  = str,
-  __len = err, __newindex = err, __ipairs = err, __kpairs = err, __pairs = err,
-}
-fct_mtb12.__metatable = fct_mtb12
-
-gfunc.bottom = gfunc.functor(gfunc.ident)
-gfunc._      = gfunc.bottom -- alias
-
-__help['gfunc.functor'] = [=[
-NAME
-  is_functor        -- check if the argument is a functor
-  functor           -- encapsulate a callable into a functor
-  compose           -- compose two callables into a functor
-  bind1st           -- bind a callable first argument into a functor
-  bind2nd           -- bind a callable second argument into a functor
-  bind2st           -- bind a callable two first arguments into a functor
-  bottom or _       -- functor that trigs chain of composition
-
-SYNOPSIS
-  is_functor(val)
-  functor(fun)
-  compose(fun1, fun2)
-  bind1st(fun, arg)
-  bind2nd(fun, arg)
-  bind2st(fun, arg1, arg2)
-
-DESCRIPTION
-  The functor function is a constructor that encapsulates true functions into
-  functors (i.e. some special readonly objects that behaves like functions). It
-  is used by the object model (i.e. set_methods) to protect against the default
-  function-as-value semantic of the object model. The is_functor function checks
-  if a value is a functor.
-
-RETURN VALUES
-  The functor function returns the functor object that encapsulates the function
-  func. The is_functor function returns true if val is a functor, false
-  otherwise.
-
-ERRORS
-  The functor factory functions trig an error if argument #1 is not a callable,
-  except compose that expects arguments #1 and #2 to be callables.
-
-EXAMPLES
-  local obj = Object {}
-    : set_variables { hello := print"hello" }
-    : set_methods { world := print"world" }
-  print( is_functor(obj.hello) )               -- false (print "hello" too)
-  print( is_functor(obj.world) )               -- true  (no extra print)
-  a = obj.hello                                -- print "hello"
-  obj.world()                                  -- print "world"
-  obj.hello = functor \ print"hello"           -- set variable with a functor
-  print( is_functor(obj.hello) )               -- true  (no extra print)
-  obj.hello()                                  -- print "hello" (works as world)
-
-  do                                           -- composition
-    local _ in MAD.gfunc                       -- retrieve 'bottom' functor _|_
-    local sqr = (\x x*x) ^ _                   -- compose x*x with bottom
-    local pow4 = sqr ^ sqr                     -- compose sqr with itself
-    print(sqr(2), pow4(2))                     -- print 4  16
-  end
-
-SEE ALSO
-  Object.
-]=]
-__help['typeid.is_functor']     = __help['gfunc.functor']
-__help['gfunc.is_functor']      = __help['gfunc.functor']
-__help['gfunc.compose']         = __help['gfunc.functor']
-__help['gfunc.bind1st']         = __help['gfunc.functor']
-__help['gfunc.bind2nd']         = __help['gfunc.functor']
-__help['gfunc.bind2st']         = __help['gfunc.functor']
-__help['gfunc.bottom']          = __help['gfunc.functor']
-__help['gfunc._']               = __help['gfunc.functor']
+}, not_scannable + not_extendable + not_mutable)
 
 -- env ------------------------------------------------------------------------o
+
+gfunc = wprotect(setmetatable(gfunc, {__tostring := "MAD.gfunc"}))
 
 MAD.typeid.is_functor = gfunc.is_functor
 
 -- end ------------------------------------------------------------------------o
 return {
   gfunc  = gfunc,
-  __help = __help,
+  __help = require 'madh_gfunc',
 }
-
