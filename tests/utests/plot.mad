@@ -165,6 +165,7 @@ function TestPlot:setUp ()
   setPlotTest()
   filesys.mkdir(rundir(""))
   self.id = 1
+  reset()
 end
 
 function TestPlot:tearDown ()
@@ -172,7 +173,6 @@ function TestPlot:tearDown ()
 end
 
 function TestPlot:execTest (param)
-  reset()
   local name = self.testName .. self.id
   getEmptyPlot(name)(param)
   assertFiles(name)
@@ -303,13 +303,15 @@ function TestPlot:testTitle ()
   local pattern = "set title 'plotTest MAD %d+.%d+.%d+, %d+/%d+/%d+, %d+:%d+:%d+'"
   local line
 
-  reset()
   plotTest { scrdump = rundir(name), table = lmtbl, x1y1 = "y1" }
 
   local file = assert(io.open(rundir(name), "r"))
   repeat
     line = file:read("*line")
-    if line and (string.find(line, pattern)) then return end
+    if line and (string.find(line, pattern)) then
+      if not generate then os.remove(rundir(name)) end
+      return
+    end
   until not line
 
   error("Default title doesn't contain : version, date, time")
@@ -430,43 +432,128 @@ function TestPlot:testObjectShift ()
   self:execTest(param)
 end
 
-function TestPlot:testAllShapes()
+function TestPlot:testAllShapes ()
   local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
   self:execTest(param)
 end
 
-function TestPlot:testLaypos()
-  local param  = {sequence = seq, table = lmtbl, x1y1 = "y1"}
+function TestPlot:testLaypos ()
+  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
   param.laypos = "top"    ; self:execTest(tblcpy(param))
   param.laypos = "middle" ; self:execTest(tblcpy(param))
   param.laypos = "bottom" ; self:execTest(tblcpy(param))
   param.laypos = 0.25     ; self:execTest(tblcpy(param))
 end
 
-function TestPlot:testLaysize()
-  local param  = {sequence = seq, table = lmtbl, x1y1 = "y1", laysize=0.5}
+function TestPlot:testLaysize ()
+  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1", laysize=0.5 }
   param.laypos = "top"    ; self:execTest(tblcpy(param))
   param.laypos = "middle" ; self:execTest(tblcpy(param))
   param.laypos = "bottom" ; self:execTest(tblcpy(param))
   param.laypos = 0.25     ; self:execTest(tblcpy(param))
 end
 
-function TestPlot:testSeqOnly()
+function TestPlot:testElemName ()
+  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  param.elemname = true  ; self:execTest(tblcpy(param))
+  param.elemname = false ; self:execTest(tblcpy(param))
+end
+
+function TestPlot:testKindColor ()
+  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  param.kindcolor = true  ; self:execTest(tblcpy(param))
+  param.kindcolor = false ; self:execTest(tblcpy(param))
+  param.kindcolor = {
+    quadrupole = "blue",
+    sbend      = { fillcolor = "red"  ,                         },
+    rbend      = {                      fillstyle = "pattern 1" },
+    instrument = { fillcolor = "green", fillstyle = "pattern 2" },
+  } ;
+  self:execTest(tblcpy(param))
+end
+
+function TestPlot:testSeqOnly ()
   local param = { sequence = seq }
   self:execTest(param)
 end
 
+function TestPlot:testSeqRange()
+  local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  param.range = { "quadrupole", "elseparator" } ; self:execTest(tblcpy(param))
+  param.range = { 15          , 120           } ; self:execTest(tblcpy(param))
+end
 
--- function TestPlot:testSeqRange()
---   local lhcb1, = loadLHC()
---   local param = {
---     sequence = lhcb1,
---     range = {"E.DS.L1.B1", "S.DS.R1.B1"}
---   }
---   self:execTest(param1)
---   self:execTest(param2)
---   io.read()
--- end
+function TestPlot:testSeqDist ()
+  local param = { sequence = { seq, seq, seq }, table = lmtbl, x1y1 = "y1" }
+  param.seqdisty = 0.2          ; self:execTest(tblcpy(param))
+  param.seqdisty = { 0.2, 0.4 } ; self:execTest(tblcpy(param))
+  param.seqdistx = 10           ; self:execTest(tblcpy(param))
+  param.seqdistx = { 5  , 10  } ; self:execTest(tblcpy(param))
+  param.seqshift = 20           ; self:execTest(tblcpy(param))
+  param.seqshift = 20           ; self:execTest(tblcpy(param))
+end
+
+function TestPlot:testSeqNturn ()
+  local param = { sequence = seq, table = lmtbl, x1y1 = "y1", nturn = 1 }
+  self:execTest(param)
+end
+
+function TestPlot:testElemSize ()
+  local lhcb1, lhcb2 = loadLHC()
+  local param = {
+    table    = lmtbl,
+    x1y1     = "y1",
+    sequence = { lhcb1, lhcb2 },
+    range    = { {"E.DS.L1.B1", "S.DS.R1.B1"}, {"E.DS.L1.B2", "S.DS.R1.B2"} },
+    seqdisty = lhcb2["E.DS.L1.B2"].mech_sep,
+  }
+  self:execTest(tblcpy(param, nil, { elemscale = 2   }))
+  self:execTest(tblcpy(param, nil, { elemwidth = 0.2 }))
+end
+
+function TestPlot:testElemFilter()
+  local lhcb1, lhcb2 = loadLHC()
+  local param = {
+    table    = lmtbl,
+    x1y1     = "y1",
+    sequence = { lhcb1, lhcb2 },
+    range    = { {"E.DS.L1.B1", "S.DS.R1.B1"}, {"E.DS.L1.B2", "S.DS.R1.B2"} },
+    seqdisty = lhcb2["E.DS.L1.B2"].mech_sep
+  }
+  self:execTest(tblcpy(param, nil, { kindselect = {"quadrupole", "sbend"} }))
+  self:execTest(tblcpy(param, nil, { elemminlen = 1 }))
+end
+
+function TestPlot:testLayangle()
+  local lhcb1 = loadLHC()
+  local param = {
+    table    = lmtbl,
+    x1y1     = "y1",
+    sequence = lhcb1,
+    range    = {"E.DS.L1.B1", "S.DS.R1.B1"},
+  }
+  param.layangle = true  ; self:execTest(tblcpy(param))
+  param.layangle = false ; self:execTest(tblcpy(param))
+end
+
+function TestPlot:testIP1IP5 ()
+  local lhcb1, lhcb2 = loadLHC()
+  local param = {
+    table    = lmtbl,
+    x1y1     = "y1",
+    sequence = { lhcb1, lhcb2, lhcb1, lhcb2 },
+    range    = {
+      {"E.DS.L1.B1", "S.DS.R1.B1"},{"E.DS.L1.B2", "S.DS.R1.B2"},
+      {"E.DS.L5.B1", "S.DS.R5.B1"},{"E.DS.L5.B2", "S.DS.R5.B2"},
+    },
+    seqdisty = {
+      lhcb2["E.DS.L1.B2"].mech_sep,
+      -0.4,
+      -0.4 + lhcb2['E.DS.L5.B2'].mech_sep
+    },
+  }
+  self:execTest(param)
+end
 
 function TestPlot:testLHC ()
   local lhcb1, lhcb2 = loadLHC()
