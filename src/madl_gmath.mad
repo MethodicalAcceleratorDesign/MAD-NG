@@ -152,51 +152,42 @@ struct rng_state {
 };
 ]]
 
-local rand     = \r    -> _C.mad_num_rand (r)
-local randi    = \r    -> _C.mad_num_randi(r)
 local randseed = \r,x  => _C.mad_num_randseed(r, x or 0); r.x=nan; return r end
 local randjump = \r,r_ => _C.mad_num_randjump(r, r_)    ; r.x=nan; return r end
 
-local gref = randseed(ffi.new 'rng_state_t') -- streams reference
+local gref = randseed(ffi.new 'rng_state_t') -- reference stream
 local grng = randseed(ffi.new 'rng_state_t') -- global generator
 
-local function randstream ()
+local    randgen = ffi.typeof 'rng_state_t'
+local is_randgen = \a -> ffi.istype(randgen, a)
+
+local function randnewgen ()
   local rng = ffi.new 'rng_state_t'
   rng.id = gref.id + 1
   ffi.copy(gref, randjump(rng, gref), ffi.sizeof 'rng_state_t')
   return rng
 end
 
-local function randsetrng (rng)
-  assert(ffi.istype(ffi.typeof 'rng_state_t', rng),
-         "invalid argument #1 (RNG expected)")
+local function randsetgen (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   grng, rng = rng, grng
   return rng
 end
 
---[[ example:
-local rand, randstream, randsetrng in MAD.gmath
-for i=1,10 do
-  for j=1,10 do
-    print(i,j,rand())
-  end
-  randsetrng(randstream()) -- set a new stream
+local function rand (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  return _C.mad_num_rand(rng)
 end
-]]
 
-gmath.randseed = \x   -> grng:randseed(x)
-gmath.rand     = \    -> grng:rand()
-gmath.randi    = \    -> grng:randi ()
-gmath.randn    = \    -> grng:randn ()
-gmath.randp    = \lmb -> grng:randp (lmb)
-gmath.randtn   = \cut -> grng:randtn(cut)
-
-gmath.randstream = randstream
-gmath.randsetrng = randsetrng
+local function randi (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  return _C.mad_num_randi(rng)
+end
 
 -- Box-Muller transformation (Marsaglia's polar form)
 -- generates pseudo-random gaussian numbers (pairs of, cached)
 local function randn (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   local x1, x2, w
   if not is_nan(rng.x) then
     x1, rng.x = rng.x, nan
@@ -215,6 +206,8 @@ end
 -- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
 local function randtn (rng, cut_)
   if is_nil(cut_) then return randn(rng) end
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  assert(is_number(cut_), "invalid argument #2 (number expected)")
   local c, r = abs(cut_)
   repeat r = randn(rng) until abs(r) <= c
   return r
@@ -224,8 +217,9 @@ end
 -- Discrete Univariate Distributions, L. Devroye, p505
 local function randp (rng, lmb_)
   local lmb = lmb_ or 1
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   assert(is_number(lmb) and lmb > 0 and lmb < 30,
-         "invalid argument #1 (0 < lambda < 30 expected)")
+                          "invalid argument #2 (0 < lambda < 30 expected)")
   local x, p = 0, exp(-lmb)
   local s, u = p, rand(rng)
   while u > s do
@@ -243,23 +237,44 @@ end
 
 local rng_mt = set_metamethod({
   __index = {
-    randseed = \r,x   -> randseed(r, x),
-    rand     = \r     -> rand  (r),
-    randi    = \r     -> randi (r),
-    randn    = \r     -> randn (r),
-    randp    = \r,lmb -> randp (r, lmb),
-    randtn   = \r,cut -> randtn(r, cut),
+    rand     = rand,
+    randi    = randi,
+    randn    = randn,
+    randp    = randp,
+    randtn   = randtn,
+    randseed = randseed,
   },
-
   __ipairs   = \r -> (iter, r, 0),
   __tostring = \r -> string.format("RNG: %p", r),
 }, not_keyrable + not_extendable + not_mutable)
 
 ffi.metatype('rng_state_t', rng_mt)
 
+-- gmath ----------------------------------------------------------------------o
+
+--[[ example:
+local rand, randnewgen, randsetgen in MAD.gmath
+for i=1,10 do
+  for j=1,10 do
+    print(i,j,rand())
+  end
+  randsetgen(randnewgen()) -- set a new global stream
+end
+]]
+
+gmath.randnewgen = randnewgen
+gmath.randsetgen = randsetgen
+
+gmath.rand     = \     -> grng:rand    ()
+gmath.randi    = \     -> grng:randi   ()
+gmath.randn    = \     -> grng:randn   ()
+gmath.randp    = \lmb_ -> grng:randp   (lmb_)
+gmath.randtn   = \cut_ -> grng:randtn  (cut_)
+gmath.randseed = \seed -> grng:randseed(seed)
+
 -- env ------------------------------------------------------------------------o
 
--- already provided in typeid under 'specialisations'
+MAD.typeid.is_randgen = is_randgen
 
 -- end ------------------------------------------------------------------------o
 return {
