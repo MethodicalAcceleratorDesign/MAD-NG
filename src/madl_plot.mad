@@ -63,7 +63,7 @@ local tmplock   = tmpfolder .. "madplot.lock"
 
 -- tmp files ------------------------------------------------------------------o
 
-local _handlepool, _warn, max_tmp_file = {}, true, 25
+local _handlepool, max_tmp_file = {}, 25
 local _filepool, lock
 
 -- lock for atomic operation (blocking)
@@ -134,24 +134,19 @@ end
 
 local plot_atexit = \ atexit(clean_tmp)
 -- return an available tmp file and its name (blocking)
-local function get_tmpfile()
+local function get_tmpfile(sid)
   runonce(plot_atexit)
   if not is_rawtable(_filepool) then setup_files() end
   plot_lock()
-  local fname, warn = false, false
+  local fname = false
   while true do
     fname = table.remove(_filepool)
     if fname and not fileexists(fname) then break end
-    if _warn and warn then
-      print("MAD Plot Warning : no available tmpfile (see documentation)")
-      _warn = false
-    end
     plot_unlock(); sleep(100); plot_lock()
     setup_files()
-    warn = true
   end
   local file = assert(io.open(fname, "w"))
-  _handlepool[fname] = file
+  _handlepool[fname] = {sid, file}
   filesys.lock(file, "w")
   plot_unlock()
   return file, fname
@@ -188,7 +183,7 @@ local function gp_setsid (gplot, sid)
   assert(is_number(sid), "invalid argument #1 (number expected)")
   if sid < 1 or _gplist.max < sid then
     error("invalid argument #1 (number should be comprise between 1 and "
-      .. _gplist.max .. " )")
+      .. _gplist.max .. ")")
   end
   gplot[_sid] = sid
 end
@@ -236,7 +231,7 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 -- dump header and set terminal to script file
 local function setup_cmd (self)
   local output, scrdump in self
-  local file, fname = get_tmpfile()
+  local file, fname = get_tmpfile(self.sid)
   gplot:set_sid(self.sid)
   file:write(init_cmd % self)
 
