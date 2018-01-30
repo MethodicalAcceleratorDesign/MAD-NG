@@ -28,14 +28,15 @@ local drift, marker, sbend, quadrupole, sequence, bline,
       instrument, translation, srotation, sextupole,
       octupole, decapole, solenoid, kicker, vkicker, rbend,
       tkicker, hkicker, elseparator, rfcavity, twcavity,
-      collimator, crabcavity, combined                      in MAD.element
-local tkicker                                               in MADX
-local assertNotNil, assertEquals                            in MAD.utest
-local Object, plot, gplot, mtable, vector, filesys, atexit  in MAD
-local sequence, marker                                      in MAD.element
-local observe                                               in MAD.element.flags
-local tblcpy, sleep                                         in MAD.utility
-local pi                                                    in MAD.gmath
+      collimator, crabcavity, combined                            in MAD.element
+local tkicker                                                     in MADX
+local assertNotNil, assertEquals, assertErrorMsgContains,
+      assertTrue, assertFalse                                     in MAD.utest
+local Object, plot, gplot, mtable, vector, filesys, atexit        in MAD
+local flags, sequence, marker                                     in MAD.element
+local observe                                                     in flags
+local tblcpy, fileexists, sleep                                   in MAD.utility
+local pi                                                          in MAD.gmath
 
 local toolbox  = require "toolbox"
 local generate = false                           -- false | true | "pdf" | "wxt"
@@ -156,7 +157,7 @@ local function getEmptyPlot (name)
   }
 end
 
--- regression test suite ------------------------------------------------------o
+-- plot regression test suite -------------------------------------------------o
 
 TestPlotScript = {}
 
@@ -627,6 +628,57 @@ function TestPlotScript:testOutput ()
   assertEquals(gplot.sid, 12)
 
   gplot.printf, gplot.write = nil, nil
+end
+
+-- gplot regression test suite -------------------------------------------------o
+
+TestPlotGplot = {}
+
+function TestPlotGplot:testSid()
+  local gplot = gplot {}
+
+  for i=1, 25 do
+    gplot:set_sid(i)
+    assertEquals(gplot.sid, i)
+  end
+
+  local msg = {
+    "invalid argument #1 (number expected)",
+    "invalid argument #1 (number should be comprise between 1 and 25)",
+  }
+
+  assertErrorMsgContains(msg[1], gplot.set_sid, gplot, ""  )
+  assertErrorMsgContains(msg[1], gplot.set_sid, gplot, \ ())
+  assertErrorMsgContains(msg[1], gplot.set_sid, gplot, {}  )
+  assertErrorMsgContains(msg[2], gplot.set_sid, gplot, 0   )
+  assertErrorMsgContains(msg[2], gplot.set_sid, gplot, 26  )
+end
+
+function TestPlotGplot:testWritePrintf()
+  local gplot = gplot {}
+  local fname = rundir('test.gp')
+
+  assertFalse(fileexists(fname))
+  gplot:write(string.format("save '%s'", fname)) ; sleep(100)
+  assertTrue(fileexists(fname))
+  os.remove(fname)
+
+  assertFalse(fileexists(fname))
+  gplot:printf("save '%s'", fname) ; sleep(100)
+  assertTrue(fileexists(fname))
+  os.remove(fname)
+end
+
+function TestPlotGplot:testIsBusy()
+  local gplot = gplot {}
+  plot { prolog = "pause 0.100" }
+  assertTrue(gplot:is_busy())
+
+  sleep(200)
+  for i=1, 25 do
+    gplot:set_sid(i)
+    assertFalse(gplot:is_busy())
+  end
 end
 
 -- end ------------------------------------------------------------------------o
