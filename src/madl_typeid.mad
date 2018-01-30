@@ -22,70 +22,22 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.typeid = [=[
-NAME
-  typeid -- provide some utility functions to identify types
-
-SYNOPSIS
-  is_nil, is_boolean, is_number, is_string, is_function, is_table, (basic types)
-  is_cdata, is_complex,
-  is_nan, is_infinite, is_positive, is_negative, is_integer,   (specializations)
-  is_scalar, is_rawtable, is_file,
-  is_metaname, has_metatable, get_metatable,                       (metamethods)
-  has_length, is_iterable, is_mappable, is_indexable, is_callable,    (concepts)
-  is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
-  is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
-  is_modulable, is_powerable, has_member, has_method, has_metamethod,
-  is_same.
-
-DESCRIPTION
-  The utils module provides useful utility functions:
-  - is_nil, is_boolean, is_number, is_string, is_function, is_table, is_cdata,
-    and is_complex return true if the argument is of expected type,
-  - is_nan and is_infinite return true if argument is not-a-number or ±infinity,
-  - is_positive and is_negative return true if argument is >0 or <0 respectively,
-  - is_integer returns true if the argument is an integer number within the
-    interval of [-2^52, 2^52],
-  - is_scalar returns true if the argument is a number or a complex,
-  - is_rawtable returns true if the argument is a table without metatable,
-  - is_empty returns true if the argument is an empty table,
-  - is_ismetaname returns true if the argument is a valid metamethod name,
-  - has_metatable returns true is the argument has a metatable,
-  - get_metatable is a generic version of getmetatable that works also with
-    cdata,
-  - has_length, is_iterable, is_mappable, is_indexable, is_callable,
-    is_comparable, is_ordered, is_concatenable, is_stringable, is_tableable,
-    is_negatable, is_addable, is_substractable, is_multiplicable, is_dividable,
-    is_modulable, is_powerable, has_member, has_method and has_metamethod return
-    true if the argument fulfills the concept requirements,
-  - is_stringable and is_tableable check only if the argument supports
-    respectively the __tostring and the __totable metamethods because objects
-    are always stringable and tableable in MAD,
-  - has_member, has_method and has_metamethod returns true if argument #1 has
-    argument #2 as a member, a callable member and a meta member respectively,
-
-RETURN VALUES
-  Depends on the functions, generaly true, false or nil.
-
-ERRORS
-  None.
-
-SEE ALSO
-  None.
-]=]
-
 -- locals ---------------------------------------------------------------------o
 
 -- Note: this module is used by MAD env, hence it cannot rely on MAD env.
 
-local ffi = require 'ffi'
+-- load 'new' and 'clear' in table (side effect)
+require 'table.new'
+require 'table.clear'
 
-local istype, typeof, miscmap in ffi
-local abs, huge               in math
-local type, getmetatable = type, getmetatable
+local ffi = require 'ffi'
+local bit = require 'bit'
+
+local band, rol       in bit
+local typeof, miscmap in ffi
+local abs, huge       in math
+
+local tostring, type, getmetatable = tostring, type, getmetatable
 
 -- implementation -------------------------------------------------------------o
 
@@ -101,7 +53,11 @@ local metaname = {
   '__metatable', '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs',
   '__pow', '__same', '__sub', '__tostring', '__totable', '__unm',
 }
-for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
+for _,v in ipairs(metaname) do metaname[v] = v end -- build dict of metaname
+
+local function invalid_use (a)
+  error("invalid use of object <"..tostring(a)..">", 2)
+end
 
 local function get_metatable (a)
   return type(a) == 'cdata' and miscmap[-tonumber(typeof(a))] or getmetatable(a)
@@ -118,111 +74,256 @@ end
 
 local function has_metamethod (a, f)
   local mt = get_metatable(a)
-  return (mt and rawget(mt,f)) ~= nil
+  local mm = mt and rawget(mt,f)
+  return not not mm and mm ~= invalid_use
 end
 
-local function has_metamethod2 (a, f, f2)
-  local mt = get_metatable(a)
-  return (mt and (rawget(mt,f) or rawget(mt,f2))) ~= nil
+--[[
+Concept notes:
+----------------
+- not_indexable prevents to read at keys *not already defined*.
+- not_scannable prevents all forms of scan (index and {i,k,_}pairs).
+- not_extendable prevents to write at keys *not already defined*.
+- not_mutable sets the metatable __metatable to itself and not_extendable.
+]]
+
+local concept = {                             --     1,       2,       4,      8
+  not_lengthable   = 2^0,         '__len',    -- __len,        ,        ,
+  not_iterable     = 2^1,         '__ipairs', --      ,__ipairs,        ,
+  not_keyrable     = 2^2,         '__kpairs', --      ,        ,__kpairs,
+  not_mappable     = 2+4+2^3,     '__pairs',  --      ,__ipairs,__kpairs,__pairs
+  not_scannable    = 1+2+4+8,                 -- __len,__ipairs,__kpairs,__pairs
+  not_indexable    = 2^4,         '__index',
+  not_extendable   = 2^5,         '__newindex',
+  not_callable     = 2^6,         '__call',
+  not_orderable    = 2^7+2^8,     '__lt', '__le',
+  not_comparable   = 128+256+2^9, '__eq',     -- __lt, __le, __eq
+  not_concatenable = 2^10,        '__concat',
+  not_copiable     = 2^11+2^12,   '__copy', '__same',
+  not_mutable      = 2^13,        '__metatable'
+}
+for _,v in ipairs(concept) do -- build dict of concepts
+  concept[v] = invalid_use
+  if v == '__newindex' then break end -- nil is enough after __newindex
 end
 
--- types
+local not_iterable, not_keyrable, not_mutable in concept
 
--- classification of primitive types
--- nil  : can be shared, cannot be modified (but may contain shared states).
--- true : can be only copied.
--- false: can be shared, can be modified.
+local function set_metamethod (mt, cnc, strict_)
+  local mt = mt or {}
+  assert(mt.__metatable == nil, "invalid argument #1 (mutable metatable expected)")
+  for i,v in ipairs(concept) do
+    if band(cnc, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
+      mt[v] = concept[v]
+    end
+  end
+  if band(cnc, not_keyrable) ~= 0 and mt.__pairs == nil then
+    mt.__pairs = mt.__ipairs  -- ensure pairs = ipairs + kpairs
+  end
+  if band(cnc, not_iterable) ~= 0 and mt.__pairs == nil then
+    mt.__pairs = mt.__kpairs  -- ensure pairs = ipairs + kpairs
+  end
+  if band(cnc, not_mutable) ~= 0 then
+    mt.__metatable = mt
+    setmetatable(mt, {__newindex=invalid_use, __metatable=false})
+  end
+  return mt
+end
+
+--[[
+Classification of primitive types:
+----------------------------------
+- nil  : can be shared, cannot be modified (but may contain shared states).
+- true : can be copied, cannot be modified.
+- false: can be shared, can be modified.
+]]
+
 local typeclass = {
   -- false
-  table = false,
+  table = false, lightuserdata = false, userdata = false, cdata = false,
   -- true
   ['nil'] = true,  boolean = true, number = true, string = true,
   -- nil
-  ['function'] = nil, lightuserdata = nil, userdata = nil, thread = nil,
-    cdata = nil,
+  ['function'] = nil, thread = nil,
 }
 
-local complex = typeof 'complex'
+-------------------------------------------------------------------------------o
 
 local typeid = {
-  -- classification
-  typeclass = typeclass,
-
-  -- comparison
-  is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
-
   -- primitive types
-  is_boolean  = \a -> type(a) == 'boolean',
-  is_number   = \a -> type(a) == 'number',
-  is_string   = \a -> type(a) == 'string',
-  is_function = \a -> type(a) == 'function',
-  is_table    = \a -> type(a) == 'table',
-  is_cdata    = \a -> type(a) == 'cdata',
+
+  is_nil         = \a -> type(a) == 'nil',
+  is_boolean     = \a -> type(a) == 'boolean',
+  is_number      = \a -> type(a) == 'number',
+  is_string      = \a -> type(a) == 'string',
+  is_function    = \a -> type(a) == 'function',
+  is_table       = \a -> type(a) == 'table',
+  is_userdata    = \a -> type(a) == 'userdata',
+  is_coroutine   = \a -> type(a) == 'thread',
+  is_cdata       = \a -> type(a) == 'cdata',
 
   -- specialisations
-  is_nil      = \a -> rawequal(a, nil  ),
-  is_true     = \a -> rawequal(a, true ),
-  is_false    = \a -> rawequal(a, false),
-  is_finite   = \a -> type(a) == 'number' and abs(a) <  huge,
-  is_infinite = \a -> type(a) == 'number' and abs(a) == huge,
-  is_nan      = \a -> type(a) == 'number' and a ~= a,
-  is_positive = \a -> type(a) == 'number' and a > 0,
-  is_negative = \a -> type(a) == 'number' and a < 0,
-  is_integer  = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
-  is_complex  = \a ->                         istype(complex, a),
-  is_scalar   = \a -> type(a) == 'number' or  istype(complex, a),
-  is_rawtable = \a -> type(a) == 'table'  and rawequal(getmetatable(a), nil),
-  is_empty    = \a -> type(a) == 'table'  and rawequal(next        (a), nil),
-  is_value    = \a -> typeclass[type(a)],
 
-  -- file handle (open or closed)
-  is_file     = \a -> io.type(a) ~= nil,
+  is_true        = \a -> rawequal(a, true ),
+  is_false       = \a -> rawequal(a, false),
 
-  -- metatable and metamethods
-  get_metatable    = get_metatable,
-  has_metatable    = has_metatable,
-  get_metamethod   = get_metamethod,
-  has_metamethod   = has_metamethod,
+  is_nan         = \a -> type(a) == 'number' and a ~= a,
+  is_finite      = \a -> type(a) == 'number' and abs(a) <  huge,
+  is_infinite    = \a -> type(a) == 'number' and abs(a) == huge,
+  is_positive    = \a -> type(a) == 'number' and a > 0,
+  is_negative    = \a -> type(a) == 'number' and a < 0,
+  is_integer     = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
 
-  is_metaname      = \a -> metaname[a] == a,
+  is_emptystring = \a -> type(a) == 'string' and a == '',
 
-  is_stringable    = \a -> has_metamethod(a, '__tostring'),
-  is_tableable     = \a -> has_metamethod(a, '__totable' ),
+  is_rawtable    = \a -> type(a) == 'table'  and rawequal(getmetatable(a),nil),
+  is_emptytable  = \a -> type(a) == 'table'  and rawequal(next        (a),nil),
 
-  is_callable      = \a -> type(a) == 'function' or has_metamethod(a, '__call'  ),
-  is_iterable      = \a -> type(a) == 'table'    or has_metamethod(a, '__ipairs'),
-  is_keyrable      = \a -> type(a) == 'table'    or has_metamethod(a, '__kpairs'),
-  is_mappable      = \a -> type(a) == 'table'    or has_metamethod(a, '__pairs' ),
-  is_indexable     = \a -> type(a) == 'table'    or has_metamethod(a, '__index' ),
-  is_concatenable  = \a -> type(a) == 'string'   or has_metamethod(a, '__concat'),
-  is_negatable     = \a -> type(a) == 'number'   or has_metamethod(a, '__unm'   ),
-  is_addable       = \a -> type(a) == 'number'   or has_metamethod(a, '__add'   ),
-  is_substractable = \a -> type(a) == 'number'   or has_metamethod(a, '__sub'   ),
-  is_multiplicable = \a -> type(a) == 'number'   or has_metamethod(a, '__mul'   ),
-  is_dividable     = \a -> type(a) == 'number'   or has_metamethod(a, '__div'   ),
-  is_modulable     = \a -> type(a) == 'number'   or has_metamethod(a, '__mod'   ),
-  is_powerable     = \a -> type(a) == 'number'   or has_metamethod(a, '__pow'   ),
+  is_file        = \a -> io.type(a) ~= nil,
+  is_emptyfile   = \a -> io.type(a) ~= nil   and a:seek('end') == 0,
 
-  is_comparable    = \a -> type(a) == 'number'   or
-                           type(a) == 'string'   or has_metamethod(a,'__eq'),
-  is_ordered       = \a -> type(a) == 'number'   or
-                           type(a) == 'string'   or has_metamethod2(a,'__le','__lt'),
-  has_length       = \a -> type(a) == 'table'    or
-                           type(a) == 'string'   or has_metamethod(a,'__len' ),
-  is_copiable      = \a ->                          has_metamethod(a,'__copy'),
-  is_sameable      = \a ->                          has_metamethod(a,'__same'),
-  has_constructor  = \a ->                          has_metamethod(a,'__new' ),
-  is_collectable   = \a ->                          has_metamethod(a,'__gc'  ), -- not supported by LJ
+  is_value       = \a -> typeclass[type(a)],
 
-  -- members and methods
-  has_member = \a,b -> ((type(a)    == 'table'    or has_metamethod(a   , '__index')) and
+  is_metaname    = \a -> metaname[a] == a,
+
+  -- metamethods
+
+  get_metatable  = get_metatable,
+  has_metatable  = has_metatable,
+  get_metamethod = get_metamethod,
+  has_metamethod = has_metamethod,
+  set_metamethod = set_metamethod,
+
+  -- concepts
+
+  is_lengthable   = \a ->                                   type(a) == 'string' or
+                          has_metamethod(a,'__len'   )   or type(a) == 'table',
+  is_iterable     = \a -> has_metamethod(a,'__ipairs')   or type(a) == 'table',
+  is_keyrable     = \a -> has_metamethod(a,'__kpairs')   or type(a) == 'table',
+  is_mappable     = \a -> has_metamethod(a,'__pairs' )   or type(a) == 'table',
+  is_indexable    = \a -> has_metamethod(a,'__index' )   or type(a) == 'table',
+  is_extendable   = \a -> has_metamethod(a,'__newindex') or type(a) == 'table',
+
+  is_callable     = \a -> type(a) == 'function' or has_metamethod(a,'__call'  ),
+  is_orderable    = \a -> type(a) == 'number'   or
+                          type(a) == 'string'   or has_metamethod(a,'__lt'    ),
+  is_comparable   = \a -> type(a) == 'number'   or
+                          type(a) == 'string'   or has_metamethod(a,'__eq'    ),
+  is_concatenable = \a -> type(a) == 'string'   or has_metamethod(a,'__concat'),
+  is_copiable     = \a ->                          has_metamethod(a,'__copy'  ),
+  is_sameable     = \a ->                          has_metamethod(a,'__same'  ),
+  is_mutable      = \a ->                          has_metamethod(a,'__metametable'),
+
+  -- concepts for conversion
+
+  is_tablable     = \a ->                          has_metamethod(a,'__totable' ),
+  is_stringable   = \a ->                          has_metamethod(a,'__tostring'),
+
+  -- concepts for numeric
+
+  is_negatable    = \a -> type(a) == 'number'   or has_metamethod(a,'__unm'),
+  is_addable      = \a -> type(a) == 'number'   or has_metamethod(a,'__add'),
+  is_subtractable = \a -> type(a) == 'number'   or has_metamethod(a,'__sub'),
+  is_multipliable = \a -> type(a) == 'number'   or has_metamethod(a,'__mul'),
+  is_dividable    = \a -> type(a) == 'number'   or has_metamethod(a,'__div'),
+  is_modulable    = \a -> type(a) == 'number'   or has_metamethod(a,'__mod'),
+  is_powerable    = \a -> type(a) == 'number'   or has_metamethod(a,'__pow'),
+
+  -- concepts for objects
+
+  is_constructible = \a -> has_metamethod(a,'__new'),
+  is_collectable   = \a -> has_metamethod(a,'__gc' ), -- not called for table
+
+  -- concepts for containers
+
+  is_empty         = \a -> has_metamethod(a,'__pairs') and
+                  rawequal(get_metamethod(a,'__pairs')(a),nil)
+               or type(a) == 'table' and rawequal(next(a),nil),
+
+  -- comparison of types
+
+  is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
+
+  -- members
+
+  has_member = \a,b -> ((has_metamethod(a,'__index') or type(a) == 'table') and
                                                      not rawequal(a[b], nil)),
-  has_method = \a,b -> ((type(a)    == 'table'    or has_metamethod(a   , '__index')) and
-                        (type(a[b]) == 'function' or has_metamethod(a[b], '__call' ))),
+  -- methods = callable members
+
+  has_method = \a,b -> ((has_metamethod(a,'__index') or type(a) == 'table') and
+                  (type(a[b]) == 'function' or has_metamethod(a[b],'__call'))),
 }
+
+--[[
+Write protection:
+-----------------
+  Protect an object against modification:
+  - wprotect  : protect against writing
+  - wrestrict : protect against writing into existing keys
+  - wunprotect: remove protection, i.e. return orignal object
+]]
+
+local mm_obj = {}
+local mm_msg = \k,s -> string.format("invalid write access to %s object %s",k,s)
+local mm_err = \s   -> error(mm_msg("restricted", tostring(s)), 2)
+local mm_erp = \s   -> error(mm_msg("protected" , tostring(s)), 2)
+local mm_fun = {
+  __index    = \s -> s,
+  __len      = \s -> \_ -> #s,
+  __ipairs   = \s -> \_ -> ipairs(s),
+  __kpairs   = \s -> \_ -> kpairs(s),
+  __pairs    = \s -> \_ ->  pairs(s),
+  __newindex = \s -> \_,k,v =>
+      if rawequal(s[k],nil) then s[k] = v else mm_err(s) end
+    end
+}
+
+local is_table in typeid
+
+local function wrestrict (a)
+  assert(typeclass[type(a)] == false,"invalid argument #1 (non-value expected)")
+
+  local amt, omt = get_metatable(a) or {}, table.new(0,8)
+
+  for _,k in ipairs(metaname) do
+    if not amt[k] then
+      omt[k] = mm_fun[k] and mm_fun[k](a) -- capture and forward to default
+    elseif amt[k] ~= invalid_use then
+      omt[k] = \_,... -> amt[k](a,...)    -- capture and forward to original
+    else
+      omt[k] = invalid_use                -- blocked
+    end
+  end
+  omt[mm_obj] = \ -> a                    -- capture object
+  omt.__metatable = omt                   -- protect metatable
+  setmetatable(omt, {__newindex=invalid_use, __metatable=false})
+  return setmetatable({}, omt)
+end
+
+local function wprotect (a)
+  local obj = wrestrict(a)
+  getmetatable(obj).__newindex = mm_erp   -- error for protected object
+  return obj
+end
+
+local function wunprotect (a)
+  local amt = getmetatable(a)
+  return assert(amt and amt[mm_obj] and amt[mm_obj](),
+                "invalid argument #1 (protected object expected)")
+end
+
+-- env ------------------------------------------------------------------------o
+
+typeid.wprotect   = wprotect
+typeid.concept    = wprotect(concept)
+
+typeid.wrestrict  = wrestrict
+typeid.typeclass  = wrestrict(typeclass)
+
+typeid.wunprotect = wunprotect
 
 -- end ------------------------------------------------------------------------o
 return {
-  typeid = typeid,
-  __help = __help,
+  typeid = wrestrict(typeid),
+  __help = require 'madh_typeid',
 }
