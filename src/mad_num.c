@@ -121,7 +121,7 @@ union numbit {
   num_t d;
 };
 
-u64_t mad_num_irand (rng_state_t *restrict st)
+u64_t mad_num_randi (rng_state_t *restrict st)
 {
   int p = st->p;
   u64_t *s = st->s;
@@ -135,7 +135,7 @@ u64_t mad_num_irand (rng_state_t *restrict st)
 
 num_t mad_num_rand (rng_state_t *restrict st)
 {
-  u64_t r = mad_num_irand(st);
+  u64_t r = mad_num_randi(st);
   r = (r & 0x000fffffffffffffULL) | 0x3ff0000000000000ULL;
   const union numbit n = { .u = r }; // number within [1.,2.)
   return n.d - 1.0;                  // number within [0.,1.)
@@ -149,7 +149,7 @@ void mad_num_randseed (rng_state_t *restrict st, num_t seed)
   for (int i = 1; i < N; i++)
     s[i] = s[i-1] * 33;
   for (int i = 0; i < N; i++)
-    mad_num_irand(st);
+    mad_num_randi(st);
 
   mad_num_randjump(st,0);
 }
@@ -181,7 +181,7 @@ void mad_num_randjump (      rng_state_t *restrict st,
       if (jump[i] & 1ULL << b)
         for(int j = 0; j < N; j++)
           t[j] ^= s[(j + p) & (N - 1)];
-      mad_num_irand(st);
+      mad_num_randi(st);
     }
   for(int j = 0; j < N; j++)
     s[(j + p) & (N - 1)] = t[j];

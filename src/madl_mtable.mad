@@ -22,44 +22,6 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.mtable = [=[
-NAME
-  mtable -- TFS table
-
-SYNOPSIS
-  my_tab = mtable 'mytab' { column_name_list... }
-
-DESCRIPTION
-  The module table creates TFS tables used by MAD. The columns and the rows can
-  be accessed (in this order) by name or by index (rows only). If a name of the
-  column name list is itself enclosed into a list (i.e. bracketed), then the
-  name of the rows (i.e. strings) can be used to have direct access to the rows.
-  Adding news rows or columns let the table grows automatically.
-
-RETURN VALUE
-  The TFS table.
-
-ERRORS
-  TODO
-
-EXAMPLES
-  local mtable in MAD
-  tbl = mtable 'survey' { {'name'}, 'x', 'y', 'z', 'phi', 'theta', 'rho' }
-  tbl:add_row { 'dft', 0.1, 0.2, 0.5, 0, 0, 0 }
-  tbl:add_row { name='mq', x=0.2, y=0.4, z=1 }
-  tbl = tbl + { name='mq', x=0.2, y=0.4, z=2 }
-  print(tbl.x[2])     -- x of 'mq[1]' using col-then-row access
-  print(tbl.mq[1].x)  -- x of 'mq[1]' using row-then-col access
-  print(tbl.dft.x)    -- x of 'dft'   using row-then-col access
-  tbl:write()         -- equivalent to tab:write "survey.tfs"
-
-SEE ALSO
-  sequence, element, beam
-]=]
-
 -- locals ---------------------------------------------------------------------o
 
 local Object, vector, env                                        in MAD
@@ -68,7 +30,8 @@ local sub, ltrue, lfalse                                         in MAD.operator
 local strtrim, strsplit, strbracket, fprintf, kpairs             in MAD.utility
 local is_nil, is_boolean, is_number, is_positive, is_string,
       is_table, is_rawtable, is_range, is_file, is_matrix,
-      is_iterable, is_callable                                   in MAD.typeid
+      is_iterable, is_callable, set_metamethod, concept          in MAD.typeid
+local not_keyrable, not_extendable, not_mutable                  in concept
 
 local abs, max, ceil in math
 local strsub = string.sub
@@ -260,23 +223,19 @@ end
 
 local _idx, _gen = {}, {}
 
--- generator proxy
+-- column generator
 local function gen_iter (s, i)
   i = i+1
   if i <= s[_data].nr then return i, s[_gen](i) end
 end
 
-local gen_mt = {
-  __len       =\s   -> s[_data].nr,
-  __index     =\s,i -> i >= 1 and i <= s[_data].nr and s[_gen](i) or nil,
-  __pairs     =\s   -> (gen_iter, s, 0),
-  __ipairs    =\s   -> (gen_iter, s, 0),
-  __tostring  =\s   -> string.format("<mtable column generator> %p", s),
-
-  __newindex := error("forbidden write access to column generator", 2),
-  __kpairs   := error("invalid access to column generator"        , 2),
-}
-gen_mt.__metatable = gen_mt
+local gen_mt = set_metamethod({
+  __len      = \s   -> s[_data].nr,
+  __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_gen](i) or nil,
+  __pairs    = \s   -> (gen_iter, s, 0),
+  __ipairs   = \s   -> (gen_iter, s, 0),
+  __tostring = \s   -> string.format("mtable [column generator]: %p", s),
+}, not_keyrable + not_extendable + not_mutable)
 
 -- column proxy (RO)
 local function col_iter (s, i)
@@ -284,17 +243,13 @@ local function col_iter (s, i)
   if i <= s[_data].nr then return i, s[_data][i] end
 end
 
-local col_mt = {
-  __len       =\s   -> s[_data].nr,
-  __index     =\s,i -> i >= 1 and i <= s[_data].nr and s[_data][i] or nil,
-  __pairs     =\s   -> (col_iter, s, 0),
-  __ipairs    =\s   -> (col_iter, s, 0),
-  __tostring  =\s   -> string.format("<mtable readonly column> %p", s),
-
-  __newindex := error("forbidden write access to readonly column", 2),
-  __kpairs   := error("invalid access to readonly column"        , 2),
-}
-col_mt.__metatable = col_mt
+local col_mt = set_metamethod({
+  __len      = \s   -> s[_data].nr,
+  __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_data][i] or nil,
+  __pairs    = \s   -> (col_iter, s, 0),
+  __ipairs   = \s   -> (col_iter, s, 0),
+  __tostring = \s   -> string.format("mtable [column proxy]: %p", s),
+}, not_keyrable + not_extendable + not_mutable)
 
 -- row proxy
 local function row_iter (s, i)
@@ -310,24 +265,22 @@ local function row_kiter (s, k)
   if col then return data.cidx[i], col[s[_idx]] end
 end
 
-local row_mt = {
-  __len       =\s   -> s[_data].nr,
-  __index     =\s,i => local data = s[_data]
+local row_mt = set_metamethod({
+  __len      = \s   -> s[_data].nr,
+  __index    = \s,i => local data = s[_data]
                        local col = is_number(i) and data[i] or data[data.cidx[i]]
                        if col then return col[s[_idx]] end
                        end,
-  __newindex  =\s,i,v => local data = s[_data]
+  __newindex = \s,i,v => local data = s[_data]
                        local col = is_number(i) and data[i] or data[data.cidx[i]]
                        assert(col, "invalid column (write access)")
                        col[s[_idx]] = v
                        end,
-  __pairs     =\s   -> (row_iter , s, 0  ),
-  __ipairs    =\s   -> (row_iter , s, 0  ),
-  __kpairs    =\s   -> (row_kiter, s, nil),
-  __tostring  =\s   -> string.format("<mtable row> %p", s),
-
-}
-row_mt.__metatable = row_mt
+  __pairs    = \s   -> (row_iter , s, 0  ),
+  __ipairs   = \s   -> (row_iter , s, 0  ),
+  __kpairs   = \s   -> (row_kiter, s, nil),
+  __tostring = \s   -> string.format("mtable [row proxy]: %p", s),
+}, not_mutable)
 
 -- count proxy
 local function cnt_iter (s, i)
@@ -336,19 +289,15 @@ local function cnt_iter (s, i)
   if ri then s[_data][_idx] = ri return i, s[_data] end
 end
 
-local cnt_mt = {
-  __len       =\s   -> s[_idx].n,
-  __index     =\s,i => local ri = s[_idx][i]
+local cnt_mt = set_metamethod({
+  __len      = \s   -> s[_idx].n,
+  __index    = \s,i => local ri = s[_idx][i]
                        if ri then s[_data][_idx] = ri return s[_data] end
                        end,
-  __pairs     =\s   -> (cnt_iter, s, 0),
-  __ipairs    =\s   -> (cnt_iter, s, 0),
-  __tostring  =\s   -> string.format("<mtable count> %p", s),
-
-  __newindex := error("forbidden write access to counts", 2),
-  __kpairs   := error("invalid access to mtable counts" , 2),
-}
-cnt_mt.__metatable = cnt_mt
+  __pairs    = \s   -> (cnt_iter, s, 0),
+  __ipairs   = \s   -> (cnt_iter, s, 0),
+  __tostring = \s   -> string.format("mtable [count proxy]: %p", s),
+}, not_keyrable + not_extendable + not_mutable)
 
 -- iterators over rows
 local function rows_iter (row, i)
@@ -721,22 +670,6 @@ local function swp_row (tbl, key1, key2, ref_)
 end
 
 -- functional methods ---------------------------------------------------------o -- TODO
-
---[=[
-programming model:
-tbl:foreach {
-  action=function,
-  range=range,
-  selected=t/f/nil, pattern=string, kind=string, select=predicate -- AND'ed selections
-  default=nil/'none'
-}
-tbl:foreach(action, range, select, not)
-tbl:select/deselect(range, select, not)
-tbl:filter(range, select, default)
-without any selection criterium:
-  not ~= true and default ~= 'none' -> select all
-  not == true or  default == 'none' -> select nothing
-]=]
 
 local pknd   = \knd,k,  r,i -> knd[i] == k
 local psel   = \sel,    r,i -> sel[i] == true
@@ -1199,9 +1132,8 @@ MAD.typeid.is_original_mtable = is_orig_mtable
 -- end ------------------------------------------------------------------------o
 return {
   mtable = mtable,
-  __help = __help,
+  __help = require 'madh_mtable',
 }
-
 
 --[[ 'High level table access is very slow!
 code A:

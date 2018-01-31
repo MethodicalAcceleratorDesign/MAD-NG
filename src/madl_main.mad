@@ -16,8 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Load in order all the modules of the MAD application and flatten them into
-    the MAD environment for direct 1-level access using local 'in' table syntax.
+  - Load in order all the modules in the MAD environment.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -29,7 +28,7 @@ local M = {}
 -- list of modules to import in MAD, order matters!
 local modules = {
   'regex', 'utest', 'lfun', 'lfs', -- LPEG, LuaUnit, LuaFun and LuaFileSystem
-  'typeid', 'gfunc', 'gmath', 'gutil',
+  --[[cmad,]] 'typeid', --[[main,]] 'gfunc', 'gmath', 'gutil',
   'range', 'complex', 'matrix', -- 'tpsa',
   'object', 'constant', 'beam', 'element', 'sequence', 'mtable', -- 'mflow',
   'command', 'survey', 'track',
@@ -48,64 +47,48 @@ local _C     = require 'madl_cmad'
 local typeid = require 'madl_typeid' .typeid
 
 local is_nil, is_boolean, is_number, is_string, is_indexable, is_mappable,
-      is_callable, wrestrict, set_metamethod in typeid
-local not_iterable in typeid.concept
-
-local strfmt = string.format
+      is_callable, set_metamethod, wprotect, wrestrict  in typeid
+local not_iterable                                      in typeid.concept
 
 -- implementation -------------------------------------------------------------o
 
 -- hidden key.
 local _hlp = {}
 
--- environment
-
 M[_hlp]   = {}  -- backup for help
 M._C      = _C  -- C symbol access
 
+-- env
+
 local env = _M ; _M = nil
 
-env.arg            = arg
-env.is_tty         =\ _C.mad_stdin_is_tty   ~= 0
-env.is_interactive =\ _C.mad_is_interactive ~= 0
+env.arg            =  arg
+env.is_tty         = \ -> _C.mad_stdin_is_tty   ~= 0
+env.is_interactive = \ -> _C.mad_is_interactive ~= 0
 
--- protect env against iteration and write access
-M.env = wrestrict(setmetatable(env, set_metamethod({}, not_iterable)))
+M.env = wprotect(setmetatable(env, {__tostring := "MAD.env"}))
 
--- install proxy to emulate attribute 'trace_location'
-getmetatable(M.env).__newindex = \_,k,v =>
-    if not rawequal(k,'trace_location') then
-      error("invalid write access to MAD.env", 2)
-    end
-    _C.mad_trace_location = v
-  end
-getmetatable(env).__index = \_,k =>
-    if not rawequal(k,'trace_location') then
-      error("invalid read access to MAD.env", 2)
-    end
-    return _C.mad_trace_location ~= 0
-  end
+-- option
 
--- options
+local option = {
 
-M.option = {
+  format   = "%.16g",
+  debug    = nil, -- proxy for mad_trace_level
+  location = nil, -- proxy for mad_trace_location
 
-  format = "%.16g",
-
---debug  = 0, -- emulated from C mad_trace_level
 }
 
--- protect against new keys, interface to _C.mad_trace_level
-setmetatable(M.option, {
-  __index = \_,k =>
-      assert(rawequal(k,'debug'), "invalid read access key to option")
-      return _C.mad_trace_level
-    end,
+debug.setmetatable(0,{__tostring = \a -> string.format(option.format,a)})
 
-  __newindex = \_,k,v =>
-      assert(rawequal(k,'debug'), "invalid write access key to option")
-     _C.mad_trace_level = v
-    end,
+M.option = setmetatable(option, {
+  __tostring = \-> "MAD.option",
+  __index    = \_,k =>   if k == 'debug'    then return _C.mad_trace_level
+                     elseif k == 'location' then return _C.mad_trace_location
+               end end,
+  __newindex = \_,k,v => if k == 'debug'    then _C.mad_trace_level    = v
+                     elseif k == 'location' then _C.mad_trace_location = v
+                     else error("invalid write access to object <MAD.option>",2)
+               end end,
 })
 
 -- trace, warning
@@ -113,15 +96,14 @@ setmetatable(M.option, {
 local ctrace = trace ; trace = nil
 local cwarn  = warn  ; warn  = nil
 
-M.warn  = \fmt,...     => cwarn(strfmt(fmt, ...)) end
-M.trace = \lvl,fmt,... =>
-  if lvl >= _C.mad_trace_level then
-    ctrace(lvl, strfmt(fmt, ...))
-  end end
+M.warn  = \fmt,...     => cwarn(string.format(fmt, ...)) end
+M.trace = \lvl,fmt,... => if lvl >= _C.mad_trace_level then
+                            ctrace(lvl, string.format(fmt, ...))
+                          end end
 
 -- finalizer
 
-local _final = { n=0 } -- __gc is not supported by LJ
+local _final = { n=0 } -- __gc not applicable to table (added in 5.2)
 
 M[_final] = ffi.gc(ffi.new('int[1]'),
   function ()
@@ -163,7 +145,7 @@ function M.import (to, from, override_)
   for k,v in pairs(from) do
     if is_string(k) and string.sub(k,1,2) ~= '__' then
       if M.option.debug >= 2 then
-        io.write(strfmt('import: %-25s %-25s\n',k,v))
+        io.write(string.format('import: %-25s %-25s\n',k,v))
       end
       assert(is_nil(MAD[k]) or MAD[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
@@ -207,7 +189,7 @@ function M.export (from, what_, to_, override_)
     end
     if is_string(k) and string.sub(k,1,2) ~= '__' then
       if M.option.debug >= 2 then
-        io.write(strfmt('export: %-25s %-25s\n',k,v))
+        io.write(string.format('export: %-25s %-25s\n',k,v))
       end
       assert(is_nil(to[k]) or to[k] == v or override == true,
              "cannot override definition for " .. tostring(k))
@@ -222,7 +204,7 @@ end
 
 -- help
 
-local function collect(tt)
+local function help_grab (tt)
   local lst = {}
   for _,t in pairs(tt) do
   for k,v in pairs(t ) do
@@ -232,7 +214,7 @@ local function collect(tt)
   return lst
 end
 
-local function format(tt, n)
+local function help_fmt (tt, n)
   local len = 2 -- tab
   for i,v in ipairs(tt) do
     len = len + #v + 2 -- sep
@@ -249,7 +231,7 @@ function M.help (from, pattern_)
   assert(from == MAD       , "invalid argument #1 (MAD expected)")
   assert(is_string(pattern), "invalid argument #2 (string expected)")
 
-  local hlp, sel, key = collect(MAD[_hlp]), {}, nil
+  local hlp, sel, key = help_grab(MAD[_hlp]), {}, nil
   for k,v in pairs(hlp) do
     assert(is_string(v), "invalid data for "..k.." (string expected)")
     if k == pattern then
@@ -266,20 +248,31 @@ function M.help (from, pattern_)
   end
 
   table.sort(sel)
-  local str = format(sel, 80)
+  local str = help_fmt(sel, 80)
   if str ~= '' then
     io.write("\nRelated topics:\n  ", str, ".\n")
   end
   io.write("\n")
 end
 
-function M.show (a)
+-- show
+
+local function show_cmp (ka, kb)
+  if type(ka) == type(kb) then
+    return ka <= kb
+  end
+  return tostring(ka) <= tostring(kb)
+end
+
+function M.show (a, strict_)
   assert(is_mappable(a), "invalid argument #1 (mappable expected)")
   local keys = {}
   for k in pairs(a) do
-    keys[#keys+1] = k
+    if is_string(k) and k:sub(1,2) ~= '__' or strict_ == false then
+      keys[#keys+1] = k
+    end
   end
-  table.sort(keys)
+  table.sort(keys, show_cmp)
   for i=1,#keys do
     io.write(string.format("%-25s", tostring(  keys[i] )..':'),
                                     tostring(a[keys[i]])  , '\n')
@@ -288,16 +281,8 @@ end
 
 -- environment ----------------------------------------------------------------o
 
--- protect MAD environment (weak protection, no more)
-MAD = setmetatable({},{
-    __len      =\ -> #M,
-    __index    =      M,
-    __pairs    =\ -> ( pairs(M)),
-    __ipairs   =\ -> (ipairs(M)),
-    __kpairs   =\ -> (kpairs(M)),
-    __tostring =\ -> "<MAD environment>",
-    __newindex =\ -> error "MAD is readonly",
-  })
+-- protect MAD
+MAD = wprotect(setmetatable(M, {__tostring := "MAD"}))
 
 -- import MAD as a self reference
 MAD:import {
@@ -305,7 +290,7 @@ MAD:import {
   __help = require 'madh_main',
 }
 
--- load MAD modules
+-- load modules
 for _,m in ipairs(modules) do
   MAD:import( require('madl_'..m) )
 end

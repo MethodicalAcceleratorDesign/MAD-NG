@@ -21,102 +21,26 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.gmath = [=[
-NAME
-  gmath -- generic math functions and constants
-
-SYNOPSIS
-  eps, huge, tiny, inf, infi, nan, nani, pi, twopi, degrad, raddeg,  (constants)
-  angle, abs, ceil, floor, round, frac, trunc, sqrt,         (generic functions)
-  exp, log, log10, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh,
-  acosh, asinh, atanh, erf, erfc, erfi, erfcx, tgamma, lgamma,
-  carg, real, imag, conj, proj, rect, polar,         (generic complex functions)
-  unm, add, sub, mul, div, mod, pow,                    (operators as functions)
-  atan2, hypot, hypot3, ldexp, frexp, fpow, fmod, modf, max,    (math functions)
-  min, sign, step, sinc, deg, rad,
-  randomseed, random, randf, randn, randp, gauss, tgauss, poisson.
-
-DESCRIPTION
-  The module gmath provides generic functions that wraps common math functions
-  with object-oriented dispatch for non-numbers. It also adds few useful
-  constants, functions and generic functions. The generic function
-  angle(x,y) is equivalent to atan2(y,x) (for numbers only). The generic
-  functions trunc and frac are equivalent to first(modf(x)) and second(modf(x))
-  respectively (for numbers only). All operators have binary generic functions
-  wrappers except unm (unary minus).
-
-RETURN VALUES
-  See ISO/IEC 9899:1999 (and ISO/IEC 9899:2011).
-
-ERRORS
-  See ISO/IEC 9899:1999 (and ISO/IEC 9899:2011).
-
-SEE ALSO
-  math, complex.
-]=]
-
-__help['gmath: trigonometric mnemonics'] = [=[
-Trigonometric mnemonics:
-------------------------
-
-deg      0      30     45     60     90
-rad      0     pi/6   pi/4   pi/3   pi/2
-sin     √0/2   √1/2   √2/2   √3/2   √4/2
-cos     √4/2   √3/2   √2/2   √1/2   √0/2   sin(90 - angle)
-tan     0/√3   1/√3    1     √3/1   √3/0   sin/cos
-
-45   : square 1-1  , diag.  √2  , hypot 1 -> sides √2/2
-30-60: equil. 1-1-1, height √3/2, hypot 1 -> sides 1/2 and √3/2
-]=]
-
-__help['gmath: IEEE:IEC 60559 floating-point compliance'] = [=[
-Discrepancies:
-  max(0  ,  nan)    expected: 0    actual: nan
-  max(0,nan,nan)    expected: 0    actual: nan
-  max(nan,0,nan)    expected: 0    actual: nan
-  min(0  ,  nan)    expected: 0    actual: nan
-  min(nan,0,nan)    expected: 0    actual: nan
-  min(0,nan,nan)    expected: 0    actual: nan
-  1/ceil (-0)       expected:-inf  jit: inf
-  1/floor(-0)       expected:-inf  jit: inf (rand)
-  1/round(-0)       expected:-inf  jit: inf (rand)
-  1/fmod (-0, 0.5)  expected:-inf  jit: inf
-  1/fmod (-0,-0.5)  expected:-inf  jit: inf
-  1/fmod (-0, 1  )  expected:-inf  jit: inf
-  1/fmod (-0,-1  )  expected:-inf  jit: inf
-  1/fmod (-0, 10 )  expected:-inf  jit: inf
-  1/fmod (-0,-10 )  expected:-inf  jit: inf
-
-Unexpected behavior:
-  frac( inf) expected: 0    interpreter: nan  jit: 0
-  frac(-inf) expected: 0    interpreter: nan  jit: 0
-  lgamma(-0) expected:-inf  linux: inf
-  1/rect(-0) expected:-inf  jit:   inf (rand)
-]=]
-
 -- locals ---------------------------------------------------------------------o
+
+local _C in MAD
+local second in MAD.gfunc
+local is_nil, is_number, set_metamethod, wrestrict, concept in MAD.typeid
+local not_keyrable, not_extendable, not_mutable             in concept
+
+local ffi = require 'ffi'
+local complex = ffi.typeof 'complex'
 
 local abs, acos, asin, atan, atan2, ceil, cos, cosh, deg, exp, floor, fmod,
       frexp, ldexp, log, log10, max, min, modf, pow, rad, random,
       randomseed, sin, sinh, sqrt, tan, tanh, pi in math
-
-local _C in MAD
-local second in MAD.gfunc
-local is_nil, is_number in MAD.typeid
-
-local ffi = require'ffi'
-local complex = ffi.typeof'complex'
 
 -- t={}; for k in pairs(math) do t[#t+1]=k end;
 -- table.sort(t); print(table.concat(t,', '))
 
 -- implementation -------------------------------------------------------------o
 
-local gmath
-gmath = {
+local gmath = {
 
   -- constants
   pi     = math.pi,
@@ -175,7 +99,7 @@ gmath = {
   conj  = \x -> is_number(x) and x                               or x:conj(),
   proj  = \x -> is_number(x) and (x+0i):proj()                   or x:proj(),
   rect  = \x -> is_number(x) and x                               or x:rect(),
-  polar = \x -> is_number(x) and abs(x)+gmath.carg(x)*1i         or x:polar(),
+  polar = \x -> is_number(x) and abs(x)+(x>=0 and 0 or x<0 and pi or x)*1i or x:polar(),
 
   -- non-generic functions
   hypot  = _C.hypot,
@@ -202,24 +126,24 @@ gmath = {
 }
 
 do
-local abs in gmath
-
-gmath.sumsqr = \x,y -> x + y*y
-gmath.sumabs = \x,y -> x + abs(y)
-gmath.minabs = \x,y -> min(x,abs(y))
-gmath.maxabs = \x,y -> max(x,abs(y))
-
+  local abs in gmath
+  gmath.sumsqr = \x,y -> x + y*y
+  gmath.sumabs = \x,y -> x + abs(y)
+  gmath.minabs = \x,y -> min(x,abs(y))
+  gmath.maxabs = \x,y -> max(x,abs(y))
 end
 
 -- random number generators ---------------------------------------------------o
 
 local is_nan in MAD.typeid
 local nan    in gmath
+local istype in ffi
 
--- MAD XorShift1024* (improved Marsaglia’s xorshift generator) -- see mad_num.c
--- generates 64 pseudo-random bits in [0,ULLONG_MAX]
--- generates 52 pseudo-random bits in [0,1)
--- period is 2^1024 for single stream, or 2^512 streams of 2^512 (i.e. jump)
+-- MAD XorShift1024* (improved Marsaglia’s xorshift generator). -- see mad_num.c
+-- generates 64 pseudo-random bits in [0,ULLONG_MAX].
+-- generates 52 pseudo-random bits in [0,1).
+-- support 2^512 jumps by 2^512 to create independent streams.
+-- period is 2^1024 for a single stream, and 2^512 for multiple streams.
 
 ffi.cdef [[
 struct rng_state {
@@ -229,52 +153,42 @@ struct rng_state {
 };
 ]]
 
-local rand     = \r    -> _C.mad_num_rand (r)
-local irand    = \r    -> _C.mad_num_irand(r)
+local    randgen = ffi.typeof 'rng_state_t'
+local is_randgen = \a -> istype(randgen, a)
+
 local randseed = \r,x  => _C.mad_num_randseed(r, x or 0); r.x=nan; return r end
 local randjump = \r,r_ => _C.mad_num_randjump(r, r_)    ; r.x=nan; return r end
 
-local gref = randseed(ffi.new 'rng_state_t') -- streams reference
+local gref = randseed(ffi.new 'rng_state_t') -- reference stream
 local grng = randseed(ffi.new 'rng_state_t') -- global generator
 
-local function randstream ()
+local function randnewgen ()
   local rng = ffi.new 'rng_state_t'
   rng.id = gref.id + 1
   ffi.copy(gref, randjump(rng, gref), ffi.sizeof 'rng_state_t')
   return rng
 end
 
-local function randsetrng (rng)
-  assert(ffi.istype(ffi.typeof 'rng_state_t', rng),
-         "invalid argument #1 (RNG expected)")
+local function randsetgen (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   grng, rng = rng, grng
   return rng
 end
 
---[[ example:
-local rand, randstream, randsetrng in MAD.gmath
-for i=1,10 do
-  for j=1,10 do
-    print(i,j,rand())
-  end
-  randsetrng(randstream()) -- set a new stream
+local function rand (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  return _C.mad_num_rand(rng)
 end
-]]
 
-gmath.rand     = \    -> grng:rand()
-gmath.irand    = \    -> grng:irand()
-gmath.randseed = \x   -> grng:randseed(x)
-
-gmath.randn    = \    -> grng:randn ()
-gmath.randp    = \lmb -> grng:randp (lmb)
-gmath.randtn   = \cut -> grng:randtn(cut)
-
-gmath.randstream = randstream
-gmath.randsetrng = randsetrng
+local function randi (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  return _C.mad_num_randi(rng)
+end
 
 -- Box-Muller transformation (Marsaglia's polar form)
--- generates pseudo-random gaussian numbers
+-- generates pseudo-random gaussian numbers (pairs of, cached)
 local function randn (rng)
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   local x1, x2, w
   if not is_nan(rng.x) then
     x1, rng.x = rng.x, nan
@@ -293,6 +207,8 @@ end
 -- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
 local function randtn (rng, cut_)
   if is_nil(cut_) then return randn(rng) end
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  assert(is_number(cut_), "invalid argument #2 (number expected)")
   local c, r = abs(cut_)
   repeat r = randn(rng) until abs(r) <= c
   return r
@@ -302,8 +218,9 @@ end
 -- Discrete Univariate Distributions, L. Devroye, p505
 local function randp (rng, lmb_)
   local lmb = lmb_ or 1
+  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   assert(is_number(lmb) and lmb > 0 and lmb < 30,
-         "invalid argument #1 (0 < lambda < 30 expected)")
+                          "invalid argument #2 (0 < lambda < 30 expected)")
   local x, p = 0, exp(-lmb)
   local s, u = p, rand(rng)
   while u > s do
@@ -319,25 +236,42 @@ local function iter (rng, i)
   return i+1, rng:rand()
 end
 
-local rng_mt = {
+local rng_mt = set_metamethod({
   __index = {
-    rand     = \r     -> rand    (r),
-    irand    = \r     -> irand   (r),
-    randseed = \r,x   -> randseed(r, x),
-
-    randn    = \r     -> randn (r),
-    randp    = \r,lmb -> randp (r, lmb),
-    randtn   = \r,cut -> randtn(r, cut),
+    rand     = rand,
+    randi    = randi,
+    randn    = randn,
+    randp    = randp,
+    randtn   = randtn,
+    randseed = randseed,
   },
-
   __ipairs   = \r -> (iter, r, 0),
-  __tostring = \r -> string.format("<rng> %p", r),
-}
+  __tostring = \r -> string.format("RNG: %p", r),
+}, not_keyrable + not_extendable + not_mutable)
 
 ffi.metatype('rng_state_t', rng_mt)
+
+-- gmath ----------------------------------------------------------------------o
+
+gmath.is_randgen = is_randgen
+gmath.randnewgen = randnewgen
+gmath.randsetgen = randsetgen
+
+gmath.rand     = \     -> grng:rand    ()
+gmath.randi    = \     -> grng:randi   ()
+gmath.randn    = \     -> grng:randn   ()
+gmath.randp    = \lmb_ -> grng:randp   (lmb_)
+gmath.randtn   = \cut_ -> grng:randtn  (cut_)
+gmath.randseed = \seed -> grng:randseed(seed)
+
+-- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_randgen = gmath.is_randgen
+
+gmath = wrestrict(setmetatable(gmath, {__tostring := "MAD.gmath"}))
 
 -- end ------------------------------------------------------------------------o
 return {
   gmath  = gmath,
-  __help = __help,
+  __help = require 'madh_gmath',
 }

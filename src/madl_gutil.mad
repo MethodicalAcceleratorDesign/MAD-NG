@@ -21,67 +21,26 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
--- help -----------------------------------------------------------------------o
-
-local __help = {}
-__help.gutil = [=[
-NAME
-  gutil -- provide some utility functions
-
-SYNOPSIS
-  bnot, band, bor, bxor, bclr, bset, btst, tobit, tohex,         (bit operators)
-  ltrue, lfalse, lbool, lnot, land, lor, eq, ne, lt, le, gt, ge,
-                                                             (logical operators)
-  unm, add, sub, mul, div, mod, pow, get, set, len, cat, call        (operators)
-  same, copy                                                        (types copy)
-  strtrim, strsplit, strsplitbra, strsplitall,            (strings manipulation)
-  tostring, totable.                                                (extensions)
-
-DESCRIPTION
-  The utils module provides useful utility functions:
-  - bnot, band, bor, bxor, tobit and tohex imported are from the bit module,
-  - bclr, bset and btst respectively clear, set and test bit 0..31 of an int32,
-  - logical_false, logical_true, logical_bool, logical_not, logical_and,
-    logical_or, is_equal, is_not_equal, is_lesser, is_lesser_or_equal,
-    is_greater and is_greater_or_equal are functions wrapping logical values and
-    operators,
-  - unm, add, sub, mul, div, mod, pow, get, set, len, cat, call are functions
-    wrapping other operators (i.e. -n, +, -, *, /, %, ^, [], []=, #, .., ()),
-  - tostring is extended to handle option.format and delegation. To let the
-    print command uses this version, it must be exported to override the
-    global environment one (i.e. MAD.export('tostring', true)),
-  - totable support delegation for non-primary types.
-
-RETURN VALUES
-  Depends on the utility functions.
-
-ERRORS
-  None.
-
-SEE ALSO
-  None.
-]=]
-__help.utility  = __help.gutil
-__help.operator = __help.gutil
-__help.totable  = __help.gutil
-__help.tostring = __help.gutil
-
 -- locals ---------------------------------------------------------------------o
 
-local ffi, _C  = require 'ffi', require 'madl_cmad'
-local bit, fun = require 'bit', require 'madl_lfun'
+local ffi = require 'ffi'
+local bit = require 'bit'
+
+local tostring = tostring
+
+local option, fun, _C in MAD
 
 local band, bor, rol, rshift in bit
 local totable, iter          in fun
 local abs, min, max          in math
-local tostring = tostring
-
-local option in MAD
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
       is_value, is_indexable, is_iterable, is_keyrable, is_mappable,
       is_callable, is_stringable, is_tablable, is_copiable, is_sameable,
-      is_complex, get_metatable, get_metamethod in MAD.typeid
+      is_complex, get_metatable, get_metamethod, set_metamethod, wprotect,
+      concept in MAD.typeid
+
+local not_keyrable, not_extendable, not_mutable in concept
 
 -- implementation -------------------------------------------------------------o
 
@@ -166,19 +125,30 @@ operator.opstr = {
 
 local utility = {}
 
+-- sleep
+
+ffi.cdef[[
+void Sleep(int ms);
+int poll(struct pollfd *fds, unsigned long nfds, int timeout);
+]]
+
+if ffi.os == "Windows"
+then utility.sleep = \s -> ffi.C.Sleep(s)
+else utility.sleep = \s -> ffi.C.poll(nil, 0, s)
+end
+
 -- repeater
 
 local _repx, _repn = {}, {}
 
 local rep_it = \s,i => if i < s[_repn] then return i+1, s[_repx] end end
-local rep_mt = {
+local rep_mt = set_metamethod({
   __len      = \s   -> s[_repn],
   __index    = \s,i => if 1 <= i and i <= s[_repn] then return s[_repx] end end,
-  __newindex = \    -> error("invalid write access to readonly object", 2),
-  __pairs    = \s   -> (rep_it, s, 0),
   __ipairs   = \s   -> (rep_it, s, 0),
-  __kpairs   = \s   -> nil,
-}
+  __pairs    = \s   -> (rep_it, s, 0),
+  __tostring = \s   -> string.format("repeater: %p", s)
+}, not_keyrable + not_extendable + not_mutable)
 
 function utility.rep (x, n_) -- repeater
   return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
@@ -194,18 +164,6 @@ function utility.runonce (f, ...)
     runonce_[f]=true
     return f(...)
   end
-end
-
--- sleep
-
-ffi.cdef[[
-void Sleep(int ms);
-int poll(struct pollfd *fds, unsigned long nfds, int timeout);
-]]
-
-if ffi.os == "Windows"
-then utility.sleep = \s -> ffi.C.Sleep(s)
-else utility.sleep = \s -> ffi.C.poll(nil, 0, s)
 end
 
 -- key/indexes set
@@ -335,37 +293,37 @@ function utility.str2tbl(str, match_, ini_)
   end
 end
 
-function tostring_ (a, ...)
+function tostring_ (a, ...)      -- to review
   if     is_string(a)     then return a
-  elseif is_number(a)     then return (string.format(option.format, a))
+  elseif is_value(a)      then return (tostring(a))
   elseif is_stringable(a) then return (get_metamethod(a,'__tostring')(a, ...))
   elseif is_mappable(a)   then return  utility.tbl2str(a,...) -- table.concat
   else                         return (tostring(a)) -- builtin tail call...
   end
 end
 
-local function totable_ (a, ...)
-  if     is_table(a)    then return a
-  elseif is_value(a)    then return {a}
-  elseif is_tablable(a) then return get_metamethod(a,'__totable')(a, ...)
-  elseif is_iterable(a) then return totable(iter(a,...)) -- iterator from lfun
-  else                       return {a}
+local function totable_ (a, ...) -- to review
+  if     is_table(a)      then return a
+  elseif is_value(a)      then return {a}
+  elseif is_tablable(a)   then return get_metamethod(a,'__totable')(a, ...)
+  elseif is_iterable(a)   then return totable(iter(a,...)) -- iterator from lfun
+  else                         return {a}
   end
 end
 
-function utility.same (a, ...)
-  if     is_value(a)     then return a
-  elseif is_sameable(a)  then return get_metamethod(a,'__same')(a, ...)
-  elseif is_table(a)     then return setmetatable({}, getmetatable(a))
-  else                        return a -- safe? should try more complex copy?
+function utility.same (a, ...)   -- to review
+  if     is_value(a)      then return a
+  elseif is_sameable(a)   then return get_metamethod(a,'__same')(a, ...)
+  elseif is_table(a)      then return setmetatable({}, getmetatable(a))
+  else                         return a -- safe? should try more complex copy?
   end
 end
 
-function utility.copy (a, ...)
-  if     is_value(a)     then return a
-  elseif is_copiable(a)  then return get_metamethod(a,'__copy')(a, ...)
-  elseif is_table(a)     then return utility.tbldeepcpy(a, ...)
-  else                        return a -- safe? should try more complex copy?
+function utility.copy (a, ...)   -- to review
+  if     is_value(a)      then return a
+  elseif is_copiable(a)   then return get_metamethod(a,'__copy')(a, ...)
+  elseif is_table(a)      then return utility.tbldeepcpy(a, ...)
+  else                         return a -- safe? should try more complex copy?
   end
 end
 
@@ -375,31 +333,31 @@ local function interp_fun (arg, tag)
   local key = tag:sub( 3,-2)
   if key == '' then return '$' end -- ${} -> $
   local lst = key:sub(-1,-1)
-  if lst == '-' or lst == '+' then
+  if lst == '-' or lst == '+' or lst == '=' then -- policy
     key = key:sub(1,-2)
   else
     lst = nil
   end
-  key = tonumber(key) or (key:gsub('%$%b{}', arg.fun))
-  local val = arg.var[key]
+  local sub = tonumber(key) or (key:gsub('%$%b{}', arg.fun))
+  local val = arg.var[sub]
   if is_nil(val) then
     if (not lst and arg.policy) == '=' then
-      return key == tag:sub( 3,-2) and nil or '${'..key.."}" -- unchanged
+      return key ~= sub and string.format("${%s}",sub) or nil   -- unchanged
     elseif (lst or  arg.policy) == '-' then
-      return ''                                              -- removed
+      return ''                                                 -- removed
     elseif (lst or  arg.policy) == '+' then
-      error(string.format("Undefined key: '%s'",key), 2)     -- substituted!
+      error(string.format("Undefined key: '%s'", sub), 2)       -- substituted!
     else
-      error(string.format("Invalid policy: '%s'", arg.policy), 2)
+      error(string.format("Invalid policy: '%s'", lst or arg.policy), 2)
     end
   end
-  return tostring_(val)
+  return tostring(val)
 end
 
 local bind1st in MAD.gfunc
 
 function utility.strinterp (str, var, policy_)
-  policy_ = policy_ or '+'
+  policy_ = policy_ or '+'   -- valid policy: [+-=] (see interp_fun)
   assert(is_string   (str ), "invalid argument #1 (string expected)")
   assert(is_indexable(var ), "invalid argument #2 (indexable expected)")
   assert(is_string(policy_), "invalid argument #3 (string expected)")
@@ -524,7 +482,7 @@ function utility.kpairs (tbl)
   return iter, tbl, init
 end
 
-_G.kpairs = utility.kpairs
+_G.kpairs = utility.kpairs -- make it global too...
 
 -- searching
 
@@ -569,9 +527,9 @@ end
 
 -- end ------------------------------------------------------------------------o
 return {
-  operator = operator,
-  utility  = utility,
+  operator = wprotect(operator),
+  utility  = wprotect(utility ),
   totable  = totable_,
   tostring = tostring_,
-  __help   = __help,
+  __help   = require 'madh_gutil',
 }
