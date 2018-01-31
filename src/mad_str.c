@@ -83,6 +83,7 @@ mad_str_bracket (str_t str, ssz_t arg[6])
 
   if (i == k) { // no bracket found
     arg[2] = arg[3] = arg[4] = -1, arg[5] = 0;
+    mad_str_trim_back(str, arg);
     return str;
   }
 
@@ -111,7 +112,6 @@ str_t
 mad_str_split (str_t str, ssz_t arg[4], str_t sep)
 {
   assert(str && arg && sep);
-  mad_str_trim_front(str, arg);
 
   ssz_t i = arg[0], j = -1, k = arg[0]+arg[1], l = arg[2];
 
@@ -126,13 +126,10 @@ mad_str_split (str_t str, ssz_t arg[4], str_t sep)
 found:
   if (i == k) { // no sep found
     arg[2] = arg[3] = -1;
-    return str;
+  } else {
+    arg[1] = i-arg[0];
+    arg[2] = i;
+    arg[3] = j;
   }
-
-  arg[1] = i-arg[0];
-  arg[2] = i;
-  arg[3] = j;
-  mad_str_trim_back(str, arg);
-
-  return str;
+  return mad_str_trim(str, arg);
 }
