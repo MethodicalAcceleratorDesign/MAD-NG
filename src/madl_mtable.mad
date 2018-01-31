@@ -765,8 +765,8 @@ local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   if key_ then -- change reference column
     local data = var_raw(tbl, _data)
-    local idx = data.cidx[key_] and (is_number(key_) and key_ or data.cidx[key_])
-    assert(idx or key_ == 'none', "invalid argument #2 (valid column expected)")
+    local idx = tonumber(key_) or data.cidx[key_]
+    assert(data[idx] or key_ == 'none', "invalid argument #2 (valid column expected)")
     data.cref = idx  -- key_ = 'none' disable index
   end
   build_idx  (tbl)
@@ -1058,6 +1058,7 @@ local function read(tbl, filnam_)
   local cnam = nil
   local ncol = 0
   local row  = {n=0}
+  local ln   = 0
 
   -- open file
   local file = fnam
@@ -1069,9 +1070,12 @@ local function read(tbl, filnam_)
 
   -- read header
   for line in file:lines() do
+    ln = ln+1
     row, ncol = splitall(line, " \t", nil, row)
     if row[1] == '@' then
-      assert(ncol == 4, "invalid header format (4 columns expected)")
+      if ncol ~= 4 then
+        error("invalid header format (4 columns expected at line "..ln..")")
+      end
       hnam[#hnam+1], hnam[row[2]] = row[2], tonumber(row[4]) or quote(row[4])
     elseif row[1] == '*' then -- col names
       cnam, row.n = table.new(ncol-1,0), ncol-1
@@ -1090,8 +1094,11 @@ local function read(tbl, filnam_)
 
   -- read and add rows
   for line in file:lines() do
+    ln = ln+1
     row, ncol = splitall(line, " \t", nil, row)
-    assert(row.n == ncol, "invalid row format (missing columns)")
+    if row.n ~= ncol then
+      error("invalid row format ("..(row.n-ncol).." missing columns at line "..ln..")")
+    end
     for i=1,ncol do -- convert to numbers or remove quotes (if any)
       row[i] = tonumber(row[i]) or quote(row[i])
     end
