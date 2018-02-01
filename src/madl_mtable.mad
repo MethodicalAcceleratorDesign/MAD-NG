@@ -30,7 +30,7 @@ local sub, ltrue, lfalse                                         in MAD.operator
 local strtrim, strsplit, strbracket, fprintf, kpairs             in MAD.utility
 local is_nil, is_boolean, is_number, is_positive, is_string,
       is_table, is_rawtable, is_range, is_file, is_matrix,
-      is_iterable, is_callable, set_metamethod, concept          in MAD.typeid
+      is_iterable, is_callable, set_concept, concept             in MAD.typeid
 local not_keyrable, not_extendable, not_mutable                  in concept
 
 local abs, max, ceil in math
@@ -229,7 +229,7 @@ local function gen_iter (s, i)
   if i <= s[_data].nr then return i, s[_gen](i) end
 end
 
-local gen_mt = set_metamethod({
+local gen_mt = set_concept({
   __len      = \s   -> s[_data].nr,
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_gen](i) or nil,
   __pairs    = \s   -> (gen_iter, s, 0),
@@ -243,7 +243,7 @@ local function col_iter (s, i)
   if i <= s[_data].nr then return i, s[_data][i] end
 end
 
-local col_mt = set_metamethod({
+local col_mt = set_concept({
   __len      = \s   -> s[_data].nr,
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_data][i] or nil,
   __pairs    = \s   -> (col_iter, s, 0),
@@ -265,7 +265,7 @@ local function row_kiter (s, k)
   if col then return data.cidx[i], col[s[_idx]] end
 end
 
-local row_mt = set_metamethod({
+local row_mt = set_concept({
   __len      = \s   -> s[_data].nr,
   __index    = \s,i => local data = s[_data]
                        local col = is_number(i) and data[i] or data[data.cidx[i]]
@@ -289,7 +289,7 @@ local function cnt_iter (s, i)
   if ri then s[_data][_idx] = ri return i, s[_data] end
 end
 
-local cnt_mt = set_metamethod({
+local cnt_mt = set_concept({
   __len      = \s   -> s[_idx].n,
   __index    = \s,i => local ri = s[_idx][i]
                        if ri then s[_data][_idx] = ri return s[_data] end
@@ -1003,43 +1003,43 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
       fprintf(file, '@ %-18s %%%02ds %q\n', k, #v, v)
     elseif is_number(v) then
       fprintf(file, '@ %-18s %%le %s\n', k, tostring(v))
-    elseif is_boolean(v) then
-      fprintf(file, '@ %-18s %%b %s\n', k, tostring(v))
     else
       fprintf(file, '@ %-18s %%? %s\n', k, tostring(v))
     end
   end
 
   if ncol > 0 then
+    local fmt, v
     -- dump col names
     file:write('*')
+    fmt = ' %-17s '
     for i=1,ncol do
-      fprintf(file, ' %-17s ', cnam[i])
+      if i == ncol then fmt = ' %s\n' end
+      fprintf(file, fmt, cnam[i])
     end
-    file:write('\n')
 
     -- dump col types
     file:write('$')
+    fmt = ' %-17s '
     for i=1,ncol do
       local v = cols[i][1]
-      local fmt = is_string (v) and '%s'
-               or is_number (v) and '%le' or '%?'
-      fprintf(file, ' %-17s ', fmt)
+      local s = is_string(v) and '%s' or is_number(v) and '%le' or '%?'
+      if i == ncol then fmt = ' %s\n' end
+      fprintf(file, fmt, s)
     end
-    file:write('\n')
 
     -- dump rows
     for j=1,nrow do
       if data[0][j] then -- is_selected
         file:write(' ')
-        for i=1,ncol do
-          local v = cols[i][j]
-          if is_string(v)
-          then fprintf(file, '%-18s ', '"'..v..'"')
-          else fprintf(file, '%-18s ', tostring(v))
-          end
+        for i=1,ncol-1 do
+          v = cols[i][j]
+          if is_string(v) then v = string.format("%q", v) end
+          fprintf(file, '%-18s ', tostring(v))
         end
-        file:write('\n')
+        v = cols[ncol][j]
+        if is_string(v) then v = string.format("%q", v) end
+        file:write(tostring(v), '\n')
       end
     end
   end
@@ -1097,7 +1097,8 @@ local function read(tbl, filnam_)
     ln = ln+1
     row, ncol = splitall(line, " \t", nil, row)
     if row.n ~= ncol then
-      error("invalid row format ("..(row.n-ncol).." missing columns at line "..ln..")")
+      error("invalid row format (".. (row.n-ncol) ..
+            " missing columns at line ".. ln ..")")
     end
     for i=1,ncol do -- convert to numbers or remove quotes (if any)
       row[i] = tonumber(row[i]) or quote(row[i])

@@ -45,20 +45,24 @@ mad_str_trim (str_t str, ssz_t arg[2])
 }
 
 str_t
-mad_str_quote (str_t str, ssz_t arg[4])
+mad_str_quote (str_t str, ssz_t arg[5])
 {
   assert(str && arg);
   mad_str_trim_front(str, arg);
 
   if (str[arg[0]] != '"' && str[arg[0]] != '\'') { // no quote found
-    arg[2] = -1, arg[3] = 0;
+    arg[2] = -1, arg[3] = arg[4] = 0;
     return str;
   }
 
-  ssz_t i = arg[0], j = i+1, k = arg[0]+arg[1];
+  ssz_t i = arg[0], j = i+1, k = arg[0]+arg[1], q = 0;
 
-  if (str[i] == '"') while (j < k && str[j] != '"' ) ++j;
-  else               while (j < k && str[j] != '\'') ++j;
+  if (str[i] == '"')
+    while (j < k && str[j] != '"' )
+      j += (str[j] == '\\' && str[j+1] == '"' ) ? ++q, 2 : 1;
+  else
+    while (j < k && str[j] != '\'')
+      j += (str[j] == '\\' && str[j+1] == '\'') ? ++q, 2 : 1;
 
   if (j == k) return NULL; // error: no closing quote found
 
@@ -66,6 +70,7 @@ mad_str_quote (str_t str, ssz_t arg[4])
   arg[1] = j-(i+1);
   arg[2] = j;
   arg[3] = (str[i] == '\'') + 1;
+  arg[4] = q;
 
   return str;
 }
