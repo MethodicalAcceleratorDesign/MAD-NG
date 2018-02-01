@@ -57,8 +57,8 @@ mad_str_quote (str_t str, ssz_t arg[4])
 
   ssz_t i = arg[0], j = i+1, k = arg[0]+arg[1];
 
-  if (str[i] == '"') while (j < k && str[j] != '"' ) ++j;
-  else               while (j < k && str[j] != '\'') ++j;
+  if (str[i] == '"') while (j < k && str[j] != '"' ) j += str[j] != '\\' ? 1:2;
+  else               while (j < k && str[j] != '\'') j += str[j] != '\\' ? 1:2;
 
   if (j == k) return NULL; // error: no closing quote found
 
