@@ -368,7 +368,7 @@ end
 string.interp          = utility.strinterp
 getmetatable("").__mod = utility.strinterp
 
--- string fast specialized manipulation
+-- strings fast specialized manipulation
 
 local sarg = ffi.new 'ssz_t[6]'
 
@@ -377,13 +377,13 @@ function utility.strtrim (str, ini_) -- remove leading and trailing spaces
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_number(ini_), "invalid argument #2 (number expected)")
   local len, str1 = #str
-  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
-  local ptr = _C.mad_str_trim(str, sarg)                             -- sarg[0]: index  of str
-      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)                            -- sarg_in: [0]=ini, [1]=len
+  local ptr = _C.mad_str_trim(str, sarg)                             -- sarg[0]: index  of str (trimmed)
+      if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str (trimmed)
   elseif sarg[1] == len then str1 = str -- unchanged
   else                       str1 = ffi.string(ptr+sarg[0], sarg[1])
   end
-  return str1
+  return str1, sarg[1] -- trimmed str, length
 end
 
 function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
@@ -391,14 +391,14 @@ function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_number(ini_), "invalid argument #2 (number expected)")
   local len, str1 = #str
-  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)                            -- sarg_in: [0]=ini, [1]=len
   local ptr = _C.mad_str_quote(str, sarg)                            -- sarg[0]: index  of str (trimmed)
   assert(ptr ~= nil, "invalid pair of quotes")                       -- sarg[1]: length of str
       if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing quote or -1
   elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[3]: type   of quotes
   else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) --          0: none, 1: "", 2: ''
   end
-  return str1, sarg[2]+1, sarg[3]
+  return str1, sarg[2]+1, sarg[3] -- unquoted str, index of closing quote or 0, type of quote [0-2]
 end
 
 function utility.strsplit (str, seps, ini_) -- split at seps (if any)
@@ -407,42 +407,57 @@ function utility.strsplit (str, seps, ini_) -- split at seps (if any)
   assert(is_string(seps), "invalid argument #2 (string expected)")
   assert(is_number(ini_), "invalid argument #3 (number expected)")
   local len, str1 = #str
-  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), #seps
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), #seps            -- sarg_in: [0]=ini, [1]=len, [2]=#seps
   local ptr = _C.mad_str_split(str, sarg, seps)                      -- sarg[0]: index  of str (trimmed)
       if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[1]: length of str (trimmed if sep)
   elseif sarg[1] == len then str1 = str -- unchanged                 -- sarg[2]: index  of sep or -1
   else                       str1 = ffi.string(ptr+sarg[0], sarg[1]) -- sarg[3]: index  of sep in seps or -1
   end
-  return str1, sarg[2]+1, sarg[3]+1
+  return str1, sarg[2]+1, sarg[3]+1 -- trimmed str, index of sep or 0, index of sep in seps or 0
 end
 
-function utility.strsplitall (str, seps, ini_, res_)
+function utility.strqsplit (str, seps, ini_) -- split at seps (if any)
   ini_ = ini_ or 1
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_string(seps), "invalid argument #2 (string expected)")
   assert(is_number(ini_), "invalid argument #3 (number expected)")
-  seps = '"'.."'"..seps -- add quotes to seps
-  local res, n = res_ or {}, res_ and #res_+1 or 1
-  local len, lsep, ptr = #str, #seps
-  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), 1
-  while sarg[2] > 0 do
-    ptr = _C.mad_str_quote(str, sarg)             -- try quotes
-    assert(ptr ~= nil, "invalid pair of quotes")
-    if sarg[2] == -1 then                         -- no quotes
-      sarg[2] = lsep
-      ptr = _C.mad_str_split(str, sarg, seps)     -- try seps
-      if sarg[2] > 0 and sarg[3] < 2 then         -- sep is a quote
-        sarg[2] = sarg[2]-1
-      end
-    end
-    if sarg[1] == 0
-    then res[n] = ''  -- empty
-    else res[n] = ffi.string(ptr+sarg[0], sarg[1])
-    end
-    n, sarg[0], sarg[1] = n+1, sarg[2]+1, len-(sarg[2]+1)
+  seps = '"'.."'"..seps                                              -- add quotes to seps
+  local len, lsep, str1 = #str, #seps
+  sarg[0], sarg[1], sarg[2] = ini_-1, len-(ini_-1), lsep             -- sarg_in: [0]=ini, [1]=len, [2]=#seps
+  local ptr = _C.mad_str_split(str, sarg, seps)                      -- scan for seps
+  local ini = sarg[0]
+  while sarg[2] >= 0 and sarg[3] < 2 do                              -- sep is a quote
+    sarg[0], sarg[1] = sarg[2], len-sarg[2]                          -- sarg_in: [0]=ini, [1]=len
+    local qptr = _C.mad_str_quote(str, sarg)                         -- scan for quotes
+    assert(qptr ~= nil, "invalid pair of quotes")
+    sarg[0], sarg[1], sarg[2] = sarg[2]+1, len-(sarg[2]+1), lsep     -- sarg_in: [0]=ini, [1]=len, [2]=#seps
+    _C.mad_str_split(str, sarg, seps)                                -- scan for seps
   end
-  if res[n-1] == '' then table.remove(res) end
-  return res
+  sarg[0], sarg[1] = ini, sarg[0]+sarg[1]-ini
+      if sarg[1] == 0   then str1 = ''  -- empty
+  elseif sarg[1] == len then str1 = str -- unchanged
+  else                       str1 = ffi.string(ptr+sarg[0], sarg[1])
+  end
+  return str1, sarg[2]+1, sarg[3]+1 -- trimmed str, index of sep or 0, index of sep in seps or 0
+end
+
+function utility.strsplitall (str, seps, ini_, res_)
+  ini_, res_ = ini_ or 1, res_ or {}
+  assert(is_string  (str ), "invalid argument #1 (string expected)")
+  assert(is_string  (seps), "invalid argument #2 (string expected)")
+  assert(is_number  (ini_), "invalid argument #3 (number expected)")
+  assert(is_iterable(res_), "invalid argument #4 (iterable expected)")
+  local trim, qsplit in string
+  local ns, str, len = 1, trim(str, ini_)
+  if len == 0 then return res_, 0 end
+  sarg[0], sarg[1] = 0, len
+  while true do
+    res_[ns], sarg[0] = qsplit(str, seps, sarg[0]+1)
+    if sarg[0] == 0 then return res_, ns end
+    sarg[1], ns = len-sarg[0], ns+1
+    _C.mad_str_trim(str, sarg)                                       -- sarg_in: [0]=ini, [1]=len
+  end
+  error("unexpected error in string.splitall")
 end
 
 function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
@@ -450,7 +465,7 @@ function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_number(ini_), "invalid argument #2 (number expected)")
   local len, str1, str2 = #str
-  sarg[0], sarg[1] = ini_-1, len-(ini_-1)
+  sarg[0], sarg[1] = ini_-1, len-(ini_-1)                            -- sarg_in: [0]=ini, [1]=len
   local ptr = _C.mad_str_bracket(str, sarg)                          -- sarg[0]: index  of name (trimmed)
   assert(ptr ~= nil, "invalid pair of brackets")                     -- sarg[1]: length of name (trimmed if brackets)
       if sarg[1] == 0   then str1 = ''  -- empty                     -- sarg[2]: index  of closing bracket or -1
@@ -462,13 +477,14 @@ function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
       else                   str2 = ffi.string(ptr+sarg[3], sarg[4])
       end
   end
-  return str1, str2, sarg[2]+1, sarg[5]
+  return str1, str2, sarg[2]+1, sarg[5] -- trimmed name, trimmed count, index of closing bracket or 0, type of bracket [0-2]
 end
 
 string.trim     = utility.strtrim
 string.quote    = utility.strquote
-string.split    = utility.strsplit
 string.bracket  = utility.strbracket
+string.split    = utility.strsplit
+string.qsplit   = utility.strqsplit
 string.splitall = utility.strsplitall
 
 -- iterator

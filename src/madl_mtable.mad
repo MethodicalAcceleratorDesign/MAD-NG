@@ -48,7 +48,7 @@ local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 local mtable = Object 'mtable' {
   type='', title='', origin=origin, kind='mtable',
   header = { 'name', 'type', 'title', 'origin', 'date', 'time' },
-  column = {},
+  column = nil, --{},
   reserve=8, novector=nil,
   [_data]={ridx={}, cidx={}, cref=nil, cvec=nil, [0]={nr=0},
            nr=0, nc=0, ng=0, rmax=0},
@@ -512,7 +512,7 @@ end
 local function get_col (tbl, key)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = var_raw(tbl,_data)
-  local idx = is_number(key) and key or data.cidx[key]
+  local idx = tonumber(key) or data.cidx[key]
   if is_nil(idx) then return nil end
   if idx < 0 then idx = data.nr+idx+1 end
   return data[idx] -- full column data, column generator or nil
@@ -765,9 +765,9 @@ local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   if key_ then -- change reference column
     local data = var_raw(tbl, _data)
-    local idx = data.cidx[key_] and is_number(key_) and key_ or data.cidx[key_]
-    assert(idx or key_ == 'none', "invalid argument #2 (valid column expected)")
-    data.cref = idx
+    local idx = tonumber(key_) or data.cidx[key_]
+    assert(data[idx] or key_ == 'none', "invalid argument #2 (valid column expected)")
+    data.cref = idx  -- key_ = 'none' disable index
   end
   build_idx  (tbl)
   finish_mtbl(tbl)
@@ -974,36 +974,27 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   if is_table(filnam_) and is_nil(hdrnam_) then
     filnam_, colnam_, hdrnam_ = nil, filnam_, colnam_ -- right shift
   end
-  local cnam = colnam_ or tbl.column
-  local hnam = hdrnam_ or tbl.header
   local data = var_raw(tbl,_data)
+  local fnam = filnam_ or tbl.name
+  local cnam = colnam_ or tbl.column or data.cidx
+  local hnam = hdrnam_ or tbl.header
   local nrow = data.nr
   local ncol = #cnam
   local cols = table_new(ncol, 0)
 
   -- collect column
   for i=1,ncol do
-    local idx = is_number(cnam[i]) and cnam[i] or data.cidx[cnam[i]]
+    local idx = tonumber(cnam[i]) or data.cidx[cnam[i]]
     cols[i] = assert(data[idx], "invalid column name or index")
   end
 
   -- open file
-  local file
-  if is_file(filnam_) then
-    file = filnam_
-    assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
-  elseif rawequal(filnam_,'-') then
-    file = io.stdout
-  else
-    local fname = filnam_ or tbl.name or 'tmptable'
-    assert(is_string(fname), "invalid argument #2 (string expected)")
-    if strsub(fname,-4) ~= '.tfs' then fname = fname .. '.tfs' end
-    local handle, err = io.open(fname, 'w')
-    if not handle then
-      error("unable to open file '" .. fname .. "' for writing: " .. err)
-    end
-    file = handle
+  local file = fnam
+  if is_string(fnam) then
+    if strsub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
+    file = assert(io.open(fnam, 'w'))
   end
+  assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
 
   -- dump header
   for i=1,#hnam do
@@ -1019,43 +1010,107 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
     end
   end
 
-  -- dump col names
-  file:write('*')
-  for i=1,ncol do
-    fprintf(file, ' %-17s ', cnam[i])
-  end
-  file:write('\n')
+  if ncol > 0 then
+    -- dump col names
+    file:write('*')
+    for i=1,ncol do
+      fprintf(file, ' %-17s ', cnam[i])
+    end
+    file:write('\n')
 
-  -- dump col types
-  file:write('$')
-  for i=1,ncol do
-    local v = cols[i][1]
-    local fmt = is_string (v) and '%s'
-             or is_number (v) and '%le' or '%?'
-    fprintf(file, ' %-17s ', fmt)
-  end
-  file:write('\n')
+    -- dump col types
+    file:write('$')
+    for i=1,ncol do
+      local v = cols[i][1]
+      local fmt = is_string (v) and '%s'
+               or is_number (v) and '%le' or '%?'
+      fprintf(file, ' %-17s ', fmt)
+    end
+    file:write('\n')
 
-  -- dump rows
-  for j=1,nrow do
-    if cols[0] then -- is_selected
-      file:write(' ')
-      for i=1,ncol do
-        local v = cols[i][j]
-        if is_string(v)
-        then fprintf(file, '%-18s ', '"'..v..'"')
-        else fprintf(file, '%-18s ', tostring(v))
+    -- dump rows
+    for j=1,nrow do
+      if data[0][j] then -- is_selected
+        file:write(' ')
+        for i=1,ncol do
+          local v = cols[i][j]
+          if is_string(v)
+          then fprintf(file, '%-18s ', '"'..v..'"')
+          else fprintf(file, '%-18s ', tostring(v))
+          end
         end
+        file:write('\n')
       end
-      file:write('\n')
     end
   end
 
-  -- close file
-  if not rawequal(filnam_,'-') then
-    file:close()
+  file:close()
+  return tbl
+end
+
+local function read(tbl, filnam_)
+  if not is_mtable(tbl) and is_nil(filnam_) then
+    tbl, filnam_ = mtable, tbl -- right shift
+  end
+  local quote, splitall in string
+  local fnam = filnam_ or tbl.name
+  local hnam = table.new(8,8)
+  local cnam = nil
+  local ncol = 0
+  local row  = {n=0}
+  local ln   = 0
+
+  -- open file
+  local file = fnam
+  if is_string(fnam) then
+    if strsub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
+    file = assert(io.open(fnam, 'r'))
+  end
+  assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
+
+  -- read header
+  for line in file:lines() do
+    ln = ln+1
+    row, ncol = splitall(line, " \t", nil, row)
+    if row[1] == '@' then
+      if ncol ~= 4 then
+        error("invalid header format (4 columns expected at line "..ln..")")
+      end
+      hnam[#hnam+1], hnam[row[2]] = row[2], tonumber(row[4]) or quote(row[4])
+    elseif row[1] == '*' then -- col names
+      cnam, row.n = table.new(ncol-1,0), ncol-1
+      for i=1,ncol-1 do cnam[i] = row[i+1] end
+    elseif row[1] == '$' then -- col types (discarded)
+      break
+    end
   end
 
+  -- create table from header
+  for i,v in ipairs(hnam) do
+    cnam[v], hnam[v] = hnam[v], nil
+  end
+  tbl = tbl(hnam.name, cnam) -- inherit from tbl
+  tbl.header, hnam.n = hnam, nil
+
+  -- read and add rows
+  for line in file:lines() do
+    ln = ln+1
+    row, ncol = splitall(line, " \t", nil, row)
+    if row.n ~= ncol then
+      error("invalid row format ("..(row.n-ncol).." missing columns at line "..ln..")")
+    end
+    for i=1,ncol do -- convert to numbers or remove quotes (if any)
+      row[i] = tonumber(row[i]) or quote(row[i])
+    end
+    tbl:addrow(row)
+  end
+
+  -- build index with column 'name' (if any)
+  if tbl:getcol 'name' then
+    tbl:build_index 'name'
+  end
+
+  file:close()
   return tbl
 end
 
@@ -1098,7 +1153,7 @@ mtable: set_methods {
   iter          = iter,
 
   -- read/write
-  read         := error("NYI", 2), -- TODO (using splitall or LPEG)
+  read          = read,
   write         = write,
 
   -- readonly
@@ -1115,9 +1170,9 @@ mtable: set_methods {
   __len         = len_mm,
   __index       = index_mm,
   __newindex    = newindex_mm,
--- __pairs      = pairs_mm, default
+-- __pairs      = pairs_mm, default from Object
   __ipairs      = ipairs_mm,
--- __kpairs     = kpairs_mm, default
+-- __kpairs     = kpairs_mm, default from Object
 
   __copy        = copy,
   __init        = mtbl_init,
