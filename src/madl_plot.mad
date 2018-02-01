@@ -51,7 +51,7 @@ local _dflt = {
   multisize    = 0.05,
   maxew        = 1.2,   -- maximum size of an element (in plotdat)
   elemwidth    = 0.07,
-  elemwidth_in = 1,
+  elemwidth_in = 0.02,
   padding      = 0.025,
   middle       = 0.5,
   layonly      = 1,
@@ -424,7 +424,7 @@ end
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
   local seqlabel, nturn, A0, X0 in param
-  local range, seq    in pseq
+  local range, seq              in pseq
   local size       = nturn*seq:length_of(range)
   local xs, ys     = table.new(size, 0), table.new(size, 0)
   local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
@@ -435,20 +435,28 @@ local function layout_process_in(param, pseq)
   for i, elem in seq:iter(range, nturn) do
     local line_idx = srv:index_of(elem.name, idx)
     if is_table(line_idx) then line_idx = line_idx[1] end
-    idx = line_idx
-    local line     = srv:getrow(line_idx)
-    local prevLine, x1, y1, xas, yas, xbs, ybs
+    idx = line_idx + 1
+    local line = srv:getrow(line_idx)
+    local inc  = line_idx == 1 and 1 or -1
+    local refLine, x1, y1, xas, yas, xbs, ybs
+    local loop = true
 
     repeat
-      prevLine = (line_idx~=1) and srv:getrow(line_idx-1) or { x=0, y=0, z=0 }
-      x1, y1   = prevLine[labx], prevLine[laby]
-      x2, y2   = line[labx], line[laby]
-      xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
-      line_idx = line_idx - 1
-    until xas ~= 0 or yas ~= 0 or line_idx <= 1
+      repeat
+        line_idx = line_idx + inc
+        refLine  = srv:getrow(line_idx)
+        x1, y1   = refLine[labx], refLine[laby]
+        x2, y2   = line[labx]   , line[laby]
+        xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
+      until xas ~= 0 or yas ~= 0 or
+            line_idx + inc < 1 or line_idx + inc > #srv
+      inc        = -inc
+      line_idx   = idx - 1
+    until xas ~= 0 or yas ~= 0 or inc == -1 or
+          line_idx + inc < 1 or line_idx + inc > #srv
 
     if xas == 0 and yas == 0 then
-      xbs, ybs   = 0, 1
+      xbs, ybs = 0, 1
     else
       local xx, yy = (x1 - x2), (y2 - y1)
       local sqrt_  = 1 / sqrt( yy^2 + xx^2 )
@@ -525,11 +533,12 @@ local function layout_post(param, pseqs, ymin, ymax)
 end
 
 -- post processing for "in plot" layout
-local function layout_post_in(param, ymin, ymax)
+local function layout_post_in(param, xmin, xmax, ymin, ymax)
   local elemwidth, elemscale in param
   local maxew, elemwidth_in  in _dflt
-  elemwidth       = elemwidth or (abs(ymax - ymin)*maxew*elemwidth_in/100)
-  param.elemwidth = elemwidth * elemscale
+  param.elemwidth = elemwidth and elemscale*elemwidth or
+                    elemscale*sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
+                             *elemwidth_in/maxew
 end
 
 -- main layout function
@@ -562,7 +571,7 @@ local function multi_layout (param)
   end
 
   if is_in
-  then layout_post_in(param, ymin, ymax)
+  then layout_post_in(param, xmin, xmax, ymin, ymax)
   else layout_post(param, pseqs, ymin, ymax)
   end
   param.xadjust = is_in and xadjust_in(param.elemwidth) or xadjust
