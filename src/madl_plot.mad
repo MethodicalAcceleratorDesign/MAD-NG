@@ -432,14 +432,16 @@ local function layout_process_in(param, pseq)
   local seqlabel, nturn, A0, X0 in param
   local range, seq              in pseq
   local toidx      = { x = 1, y = 2, z = 3 }
-  local size       = nturn*seq:length_of(range)
+  local size       = nturn*seq:length_of(range, nturn)
   local xs, ys     = table.new(size, 0), table.new(size, 0)
   local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
-  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0 }
+  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0, nturn=nturn }
   local idx, j     = 0, 1
   local labx, laby = seqlabel[1], seqlabel[2]
+  local fstx, fsty = X0[toidx[labx]], X0[toidx[laby]]
   local refLine, x1, y1, x2, y2, xas, yas, xbs, ybs, len, xshft, yshft
-
+  local lstx, lsty
+  srv:write('survey.tfs')
   for i, elem in seq:iter(range, nturn) do
     local line_idx = srv:index_of(elem.name, idx)
     if is_table(line_idx) then line_idx = line_idx[1] end
@@ -464,13 +466,18 @@ local function layout_process_in(param, pseq)
     if xas == 0 and yas == 0 then
       xbs, ybs = 0, 1
     else
-      local xx, yy = (x1 - x2), (y2 - y1)
+      local xx, yy = inc*(x1 - x2), inc*(y2 - y1)
       local sqrt_  = 1 / sqrt( yy^2 + xx^2 )
       xbs, ybs = yy*sqrt_, xx*sqrt_
     end
 
+    if idx - 1 == 1 then
+      x1, y1 = fstx, fsty
+      xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
+    end
+
     if len == 0
-    then xshft, yshft = x2, y2
+    then xshft, yshft = x2      , y2
     else xshft, yshft = x1 + xas, y1 + yas
     end
 
@@ -480,8 +487,6 @@ local function layout_process_in(param, pseq)
     table.insert(bline.x, xshft); table.insert(bline.y, yshft)
     j = j + 1
   end
-  local fstx, fsty = X0[toidx[labx]], X0[toidx[laby]]
-  local lstx, lsty
   if len == 0
   then lstx, lsty = xshft      , yshft
   else lstx, lsty = xshft + xas, yshft + yas
