@@ -28,7 +28,7 @@ local ffi = require "ffi"
 local dat = require "madl_plotdat"
 
 local Object, Command, fun, vector, survey, filesys, atexit      in MAD
-local sign, tan, min, max, abs, sqrt, inf, pi                    in MAD.gmath
+local sign, tan, sin, cos, min, max, abs, sqrt, inf, pi          in MAD.gmath
 local lshift                                                     in MAD.operator
 local strinterp, setkeys, tblcpy, runonce, fileexists, sleep     in MAD.utility
 local is_nil, is_number, is_table, is_mtable, is_string,
@@ -292,8 +292,10 @@ local flays     = lshift(1, flayangle) + lshift(1, flayout)
 local xadjust    = \xs,ys,base,l -> xs*l + base
 local yadjust    = \size  -> \xs,ys,base -> size*ys + base
 --  adjust "in plot" layout coordinate
-local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
-local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
+-- local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
+-- local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
+local xadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
+local yadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
 
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
@@ -347,7 +349,7 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, 
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
-        xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig)
+        xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig, len)
         local next = (k == #xj) and "" or " \\"
         fpwrite("  %s %.5e, %s %.5e%s\n", cmd, xk, ref, yk, next)
         cmd = "to"
@@ -361,7 +363,7 @@ end
 -- stream ellipse data
 local function layout_ellipse (param, len, el, xorig, yorig, dash, eColor, size)
   local fpwrite, xadjust, yadjust, ref in param
-  local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig)
+  local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig, len)
   local sx, sy = len, el*size
   local dashtype = dash or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
@@ -374,7 +376,7 @@ end
 -- stream element label data
 local function layout_label(param, name, kind, xorig, yorig)
   local fpwrite, oid, ref, xadjust, yadjust in param
-  local x, y  = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig)
+  local x, y  = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig, 1)
   local label = name .. " [" .. kind .. "]"
   fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
     point pt 4 ps 1 lc 'white'\n", oid, x, ref, y, label)
@@ -480,8 +482,12 @@ local function layout_process_in(param, pseq)
     then xshft, yshft = x2      , y2
     else xshft, yshft = x1 + xas, y1 + yas
     end
-
-    xs[j], ys[j]         = {xas, xbs, xshft}, {yas, ybs, yshft}
+    local pi in MAD.gmath
+    local cosa = cos(-pi/2 - line['theta']-(elem.angle and len ~= 0 and elem.angle/len/2 or 0))
+    local sina = sin(-pi/2 - line['theta']-(elem.angle and len ~= 0 and elem.angle/len/2 or 0))
+    -- print(cosa, sina)
+    -- xs[j], ys[j]         = {xas, xbs, xshft}, {yas, yshft}
+    xs[j], ys[j]         = {cosa, -sina, xshft}, {sina, cosa, yshft}
     pseq.xmin, pseq.xmax = min(pseq.xmin, xshft), max(pseq.xmax, xshft)
     pseq.ymin, pseq.ymax = min(pseq.ymin, yshft), max(pseq.ymax, yshft)
     table.insert(bline.x, xshft); table.insert(bline.y, yshft)
