@@ -27,7 +27,8 @@
 local ffi = require "ffi"
 local dat = require "madl_plotdat"
 
-local Object, Command, fun, vector, survey, filesys, atexit      in MAD
+local Object, Command, fun, vector, matrix, survey, filesys,
+      atexit                                                     in MAD
 local sign, tan, sin, cos, min, max, abs, sqrt, inf, pi          in MAD.gmath
 local lshift                                                     in MAD.operator
 local strinterp, setkeys, tblcpy, runonce, fileexists, sleep     in MAD.utility
@@ -294,9 +295,27 @@ local yadjust    = \size  -> \xs,ys,base -> size*ys + base
 --  adjust "in plot" layout coordinate
 -- local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
 -- local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
-local xadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
-local yadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
+-- local xadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
+-- local yadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
 
+local with_matrix = \size,xs,ys,base,l =>
+  local rot, shift = base[4], base[5]
+  local shapcoord = matrix(3):fill{0, 1, 0,
+                                  -1, 0, 0,
+                                   0, 0, 0}
+  -- print(shapcoord, '\n====\n')
+  local shapshift = vector(3):fill{1, 0, 0}
+  local shape     = vector(3):fill{xs,ys,0}
+  local factor    = vector(3):fill{l, size, 0}
+  local res       = rot*shapcoord*(factor:emul(shape+shapshift))+shift
+  -- if l == 1.5 then print(shapcoord*(factor:emul(shape+shapshift)), "\n====\n") end
+  return res
+end
+
+local xadjust_in = \size  -> \... -> with_matrix(size,...)[1]
+local yadjust_in = \size  -> \... -> with_matrix(size,...)[2]
+
+-- local yadjust_in =
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
   local kindcolor in param
@@ -438,7 +457,7 @@ local function layout_process_in(param, pseq)
   local xs, ys     = table.new(size, 0), table.new(size, 0)
   local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
   local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0, nturn=nturn }
-  local idx, j     = 0, 1
+  local idx, j     = 1, 1
   local labx, laby = seqlabel[1], seqlabel[2]
   local fstx, fsty = X0[toidx[labx]], X0[toidx[laby]]
   local refLine, x1, y1, x2, y2, xas, yas, xbs, ybs, len, xshft, yshft
@@ -487,7 +506,21 @@ local function layout_process_in(param, pseq)
     local sina = sin(-pi/2 - line['theta']-(elem.angle and len ~= 0 and elem.angle/len/2 or 0))
     -- print(cosa, sina)
     -- xs[j], ys[j]         = {xas, xbs, xshft}, {yas, yshft}
-    xs[j], ys[j]         = {cosa, -sina, xshft}, {sina, cosa, yshft}
+
+    -- line.theta = 0
+    local srvTranslat = vector(3):fill{line.x, line.y, line.z}
+    local coordinate  = matrix(3):fill{ 1, 0, 0,
+                                        0, 0, 1,
+                                        0, 0, 0}
+    local rot   = matrix(3):rotz(-line.theta - (elem.angle or 0)/2)
+    local shift = coordinate*srvTranslat
+    -- rot1         = coordinate*rot
+    -- print(coordinate*srvTranslat, "\n=====\n")
+    -- print(srvTranslat*coordinate, "\n=====\n")
+    -- rot         = rot*coordinate
+    -- print(rot, "\n=====\n")
+
+    xs[j], ys[j]         = {cosa, -sina, xshft, rot, shift}, {sina, cosa, yshft,rot, shift}
     pseq.xmin, pseq.xmax = min(pseq.xmin, xshft), max(pseq.xmax, xshft)
     pseq.ymin, pseq.ymax = min(pseq.ymin, yshft), max(pseq.ymax, yshft)
     table.insert(bline.x, xshft); table.insert(bline.y, yshft)
