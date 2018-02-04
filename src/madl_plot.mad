@@ -290,32 +290,24 @@ local flayout   = MAD.element.flags.layout
 local flays     = lshift(1, flayangle) + lshift(1, flayout)
 
 --  adjust "out of plot" layout coordinate
-local xadjust    = \xs,ys,base,l -> xs*l + base
-local yadjust    = \size  -> \xs,ys,base -> size*ys + base
---  adjust "in plot" layout coordinate
--- local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
--- local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2]+base[3]
--- local xadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
--- local yadjust_in = \size  -> \xs,ys,base,l -> l*xs*base[1] + size*ys*base[2]+base[3]
-
-local with_matrix = \size,xs,ys,base,l =>
-  local rot, shift = base[4], base[5]
-  local shapcoord = matrix(3):fill{0, 1, 0,
-                                  -1, 0, 0,
-                                   0, 0, 0}
-  -- print(shapcoord, '\n====\n')
-  local shapshift = vector(3):fill{1, 0, 0}
-  local shape     = vector(3):fill{xs,ys,0}
-  local factor    = vector(3):fill{l, size, 0}
-  local res       = rot*shapcoord*(factor:emul(shape+shapshift))+shift
-  -- if l == 1.5 then print(shapcoord*(factor:emul(shape+shapshift)), "\n====\n") end
-  return res
+local adjust = \size  -> \xs,ys,shift,l =>
+  local shape  = vector(3):fill{xs, ys, 0}
+  local factor = vector(3):fill{l, size, 0}
+  return factor:emul(shape) + shift
 end
 
-local xadjust_in = \size  -> \... -> with_matrix(size,...)[1]
-local yadjust_in = \size  -> \... -> with_matrix(size,...)[2]
+--  adjust "in plot" layout coordinate
+local adjust_in = \size -> \xs,ys,data,l =>
+  local rot, shift = data[1], data[2]
+  local shapcoord  = matrix(3):fill{ 0, 1, 0,
+                                    -1, 0, 0,
+                                     0, 0, 0, }
+  local shapshift  = vector(3):fill{1, 0, 0}
+  local shape      = vector(3):fill{xs,ys,0}
+  local factor     = vector(3):fill{l, size, 0}
+  return rot*shapcoord*(factor:emul(shape+shapshift))+shift
+end
 
--- local yadjust_in =
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
   local kindcolor in param
@@ -355,8 +347,8 @@ local function eShap (param, elem, dir)
 end
 
 -- stream polygon data
-local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, func)
-  local fpwrite, xadjust, yadjust, ref in param
+local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
+  local fpwrite, adjust, ref in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
@@ -368,9 +360,9 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, 
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
-        xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig, len)
+        local pts  = adjust(xk, yk, data, len)
         local next = (k == #xj) and "" or " \\"
-        fpwrite("  %s %.5e, %s %.5e%s\n", cmd, xk, ref, yk, next)
+        fpwrite("  %s %.5e, %s %.5e%s\n", cmd, pts[1], ref, pts[2], next)
         cmd = "to"
       end
       param.oid = param.oid + 1
@@ -380,25 +372,25 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, 
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, xorig, yorig, dash, eColor, size)
-  local fpwrite, xadjust, yadjust, ref in param
-  local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig, len)
+local function layout_ellipse (param, len, el, data, dash, eColor, size)
+  local fpwrite, adjust, ref in param
+  local pts = adjust(0, 0, data, len)
   local sx, sy = len, el*size
   local dashtype = dash or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
     size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb 'black' %s \n",
-    param.oid, cx, ref, cy, sx, ref, sy,
+    param.oid, pts[1], ref, pts[2], sx, ref, sy,
     eColor.color, eColor.style, dashtype)
   param.oid = param.oid + 1
 end
 
 -- stream element label data
-local function layout_label(param, name, kind, xorig, yorig)
-  local fpwrite, oid, ref, xadjust, yadjust in param
-  local x, y  = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig, 1)
+local function layout_label(param, name, kind, data)
+  local fpwrite, oid, ref, adjust in param
+  local pts  = adjust(0, 0, data, 1)
   local label = name .. " [" .. kind .. "]"
   fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
-    point pt 4 ps 1 lc 'white'\n", oid, x, ref, y, label)
+    point pt 4 ps 1 lc 'white'\n", oid, pts[1], ref, pts[2], label)
 end
 
 -- stream beam line data
@@ -419,149 +411,99 @@ end
 local function layout_process(param, pseq)
   local seqshift, nturn, layangle                         in param
   local range, seq, disty, distx, xmin, xmax, ymin, ymax  in pseq
-  local size    = nturn*seq:length_of(range)
-  local xs, ys  = table.new(size, 0), table.new(size, 0)
-  local bline   = { x = { }, y={ } }
-  local deltaY  = disty
+  local size     = nturn*seq:length_of(range)
+  local data     = table.new(size, 0)
+  local bline    = { x = { }, y={ } }
+  local deltaY   = disty
   local prevs_sh, angle, j, dir = 0, 0, 1, seq.direction
-  local fstx, l2, s_sh
+  local fstx, l2, s_sh, xs, ys
   for i, elem, s in seq:iter(range, nturn) do
     l2           = elem.l/2
     s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
-    xs[j], ys[j] = s_sh + distx + seqshift, deltaY
+    xs, ys       = s_sh + distx + seqshift, deltaY
+    data[j]      = vector(3):fill{ xs, ys, 0 }
     prevs_sh     = s_sh
-    fstx         = fstx or xs[j] - l2
-    xmin, xmax   = min(xmin, xs[j]), max(xmax, xs[j])
-    ymin, ymax   = min(ymin, ys[j]), max(ymax, ys[j])
+    fstx         = fstx or xs - l2
+    xmin, xmax   = min(xmin, xs), max(xmax, xs)
+    ymin, ymax   = min(ymin, ys), max(ymax, ys)
     if elem:is_selected(flayangle) and layangle then
       angle = angle + elem.angle
-      table.insert(bline.x, xs[j]); table.insert(bline.y, ys[j])
+      table.insert(bline.x, xs); table.insert(bline.y, ys)
     end
     j = j + 1
   end
-  local lstx, lsty = xs[#xs] + l2, deltaY - tan(dir*angle)*l2
-  table.insert(bline.x, 1, fstx); table.insert(bline.y, 1, ys[1])
+  local lstx, lsty = xs + l2, deltaY - tan(dir*angle)*l2
+  local fsty = data[1][2]
+  table.insert(bline.x, 1, fstx); table.insert(bline.y, 1, fsty)
   table.insert(bline.x, lstx   ); table.insert(bline.y, lsty    )
-  pseq.xmin, pseq.xmax = min(xmin, fstx, lstx ), max(xmax, fstx, lstx )
-  pseq.ymin, pseq.ymax = min(ymin, ys[1], lsty), max(ymax, ys[1], lsty)
-  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+  pseq.xmin, pseq.xmax  = min(xmin, fstx, lstx), max(xmax, fstx, lstx)
+  pseq.ymin, pseq.ymax  = min(ymin, fsty, lsty), max(ymax, fsty, lsty)
+  pseq.data, pseq.bline = data, bline
 end
 
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
-  local seqlabel, nturn, A0, X0 in param
-  local range, seq              in pseq
-  local toidx      = { x = 1, y = 2, z = 3 }
-  local size       = nturn*seq:length_of(range, nturn)
-  local xs, ys     = table.new(size, 0), table.new(size, 0)
-  local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
-  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0, nturn=nturn }
-  local idx, j     = 1, 1
-  local labx, laby = seqlabel[1], seqlabel[2]
-  local fstx, fsty = X0[toidx[labx]], X0[toidx[laby]]
-  local refLine, x1, y1, x2, y2, xas, yas, xbs, ybs, len, xshft, yshft
-  local lstx, lsty
-  srv:write('survey.tfs')
+  local nturn, A0, X0 in param
+  local range, seq    in pseq
+  local size   = nturn*seq:length_of(range, nturn)
+  local data   = table.new(size, 0)
+  local bline  = { x=table.new(size, 0), y=table.new(size, 0) }
+  local srv    = survey { sequence=seq, range=range, A0=A0, X0=X0, nturn=nturn }
+  local idx, j = 1, 1
+  local shift, coordinate
   for i, elem in seq:iter(range, nturn) do
     local line_idx = srv:index_of(elem.name, idx)
     if is_table(line_idx) then line_idx = line_idx[1] end
     local line = srv:getrow(line_idx)
-    local inc  = line_idx == 1 and 1 or -1
-    idx, len   = line_idx + 1, elem.l
+    idx = line_idx + 1
 
-    repeat
-      repeat
-        line_idx = line_idx + inc
-        refLine  = srv:getrow(line_idx)
-        x1, y1   = refLine[labx], refLine[laby]
-        x2, y2   = line[labx]   , line[laby]
-        xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
-      until xas ~= 0 or yas ~= 0 or
-            line_idx + inc < 1 or line_idx + inc > #srv
-      inc        = -inc
-      line_idx   = idx - 1
-    until xas ~= 0 or yas ~= 0 or inc == -1 or
-          line_idx + inc < 1 or line_idx + inc > #srv
-
-    if xas == 0 and yas == 0 then
-      xbs, ybs = 0, 1
-    else
-      local xx, yy = inc*(x1 - x2), inc*(y2 - y1)
-      local sqrt_  = 1 / sqrt( yy^2 + xx^2 )
-      xbs, ybs = yy*sqrt_, xx*sqrt_
-    end
-
-    if idx - 1 == 1 then
-      x1, y1 = fstx, fsty
-      xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
-    end
-
-    if len == 0
-    then xshft, yshft = x2      , y2
-    else xshft, yshft = x1 + xas, y1 + yas
-    end
-    local pi in MAD.gmath
-    local cosa = cos(-pi/2 - line['theta']-(elem.angle and len ~= 0 and elem.angle/len/2 or 0))
-    local sina = sin(-pi/2 - line['theta']-(elem.angle and len ~= 0 and elem.angle/len/2 or 0))
-    -- print(cosa, sina)
-    -- xs[j], ys[j]         = {xas, xbs, xshft}, {yas, yshft}
-
-    -- line.theta = 0
     local srvTranslat = vector(3):fill{line.x, line.y, line.z}
-    local coordinate  = matrix(3):fill{ 1, 0, 0,
-                                        0, 0, 1,
-                                        0, 0, 0}
-    local rot   = matrix(3):rotz(-line.theta - (elem.angle or 0)/2)
-    local shift = coordinate*srvTranslat
-    -- rot1         = coordinate*rot
-    -- print(coordinate*srvTranslat, "\n=====\n")
-    -- print(srvTranslat*coordinate, "\n=====\n")
-    -- rot         = rot*coordinate
-    -- print(rot, "\n=====\n")
+    coordinate = matrix(3):fill{ 1, 0, 0,
+                                 0, 0, 1,
+                                 0, 0, 0, }
+    local rot = matrix(3):rotz(-line.theta - (elem.angle or 0)/2)
+    shift = coordinate*srvTranslat
 
-    xs[j], ys[j]         = {cosa, -sina, xshft, rot, shift}, {sina, cosa, yshft,rot, shift}
-    pseq.xmin, pseq.xmax = min(pseq.xmin, xshft), max(pseq.xmax, xshft)
-    pseq.ymin, pseq.ymax = min(pseq.ymin, yshft), max(pseq.ymax, yshft)
-    table.insert(bline.x, xshft); table.insert(bline.y, yshft)
+    data[j]              = {rot, shift}
+    pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
+    pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
+    table.insert(bline.x, shift[1]); table.insert(bline.y, shift[2])
     j = j + 1
   end
-  if len == 0
-  then lstx, lsty = xshft      , yshft
-  else lstx, lsty = xshft + xas, yshft + yas
-  end
-  table.insert(bline.x, 1, fstx); table.insert(bline.y, 1, fsty)
-  table.insert(bline.x, lstx   ); table.insert(bline.y, lsty   )
-  pseq.xmin, pseq.xmax = min(pseq.xmin, fstx, lstx), max(pseq.xmax, fstx, lstx)
-  pseq.ymin, pseq.ymax = min(pseq.ymin, fsty, lsty), max(pseq.ymax, fsty, lsty)
-  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+  local fst, lst = coordinate*vector(3):fill(X0), shift
+  table.insert(bline.x, 1, fst[1]); table.insert(bline.y, 1, fst[2])
+  table.insert(bline.x,    lst[1]); table.insert(bline.y,    lst[2])
+  pseq.xmin, pseq.xmax  = min(pseq.xmin, fst[1], shift[1]), max(pseq.xmax, fst[1], lst[1])
+  pseq.ymin, pseq.ymax  = min(pseq.ymin, fst[2], lst[2]  ), max(pseq.ymax, fst[2], lst[2])
+  pseq.data, pseq.bline = data, bline
 end
 
 -- stream a signle layout
 local function layout (param, pseq)
   local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
-  local seq, range, xs, ys, bline                                     in pseq
+  local seq, range, data, bline                                     in pseq
   local dir, j  = seq.direction, 1
 
   layout_bline(param, bline)
   for i, elem, s in seq:iter(range, nturn) do
-    local len, ekind    = elem.l, elem.kind
+    local len, ekind   = elem.l, elem.kind
     local is_flagged   = elem:test_flags(flays)
     local is_vkind     = not kindselect or kindselect[ekind]
-    local xorig, yorig = xs[j], ys[j]
+    local dj = data[j]
 
     if is_flagged or (len >= elemminlen and is_vkind) then
       local sh_l = len / 2
       local el, dash, eColor, x_sh, y_sh, func = eShap(param, elem, dir)
 
-      if elemname  then layout_label(param, elem.name, ekind, xorig, yorig) end
+      if elemname  then layout_label(param, elem.name, ekind, dj) end
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, xorig, yorig, dash, eColor, elemwidth)
+        layout_ellipse(param, len, el, dj, dash, eColor, elemwidth)
       end
 
       if not is_nil(x_sh) then
-        layout_poly(param, sh_l, xorig, yorig, x_sh, y_sh, dash, eColor, func)
+        layout_poly(param, sh_l, dj, x_sh, y_sh, dash, eColor, func)
       end
     end
     j = j + 1
@@ -586,8 +528,8 @@ local function layout_post(param, pseqs, ymin, ymax)
   param.elemwidth = elemwidth * yfactor
   for i=1,#pseqs do
     local pseq = pseqs[i]
-    local ys, bline in pseq
-    pseq.ys      = fun.map(\y -> y*yfactor + laypos, ys):totable()
+    local data, bline in pseq
+    fun.foreach(\v => v[2]=v[2]*yfactor + laypos end, data)
     pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
   end
 end
@@ -634,8 +576,7 @@ local function multi_layout (param)
   then layout_post_in(param, xmin, xmax, ymin, ymax)
   else layout_post(param, pseqs, ymin, ymax)
   end
-  param.xadjust = is_in and xadjust_in(param.elemwidth) or xadjust
-  param.yadjust = is_in and yadjust_in(param.elemwidth) or yadjust(param.elemwidth)
+  param.adjust = is_in and adjust_in(param.elemwidth) or adjust(param.elemwidth)
 
   for i=1,#pseqs do
     local pseq = pseqs[i]
@@ -956,7 +897,6 @@ local plot = Command "plot" {
   seqdisty    = 0,       -- x >= 0 | { x1, x2, ... }
   seqdistx    = 0,       -- x >= 0 | { x1, x2, ... }
   seqshift    = 0,       -- x >= 0
-  seqlabel    = { "x", "z" },
   nturn       = 0,
   X0          = { 0, 0, 0 },
   A0          = { 0, 0, 0 },
@@ -1006,7 +946,7 @@ local plot = Command "plot" {
   psizey      = nil,     -- 0 < x < 1
 
   -- data style
-  datastyles  = {},      -- { y = { style = "lines", color = "blue"} }
+  datastyles  = { },     -- { y = { style = "lines", color = "blue"} }
   styles      = "lines", -- { y = "lines" }
   colors      = "red",   -- { y = "green" }
   dashtypes   = "solid", -- { y = "..-- " }
