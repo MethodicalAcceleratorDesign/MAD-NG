@@ -26,9 +26,7 @@
     corresponds to the number of elements of type 'type' in the buffer.
 
   Information:
-  - parameters ending with an underscope can be null.
-  - mad_malloc and mad_realloc call mad_fatal with caller location if
-    (re)allocation fails instead of returning a NULL pointer.
+  - parameters ending with an underscope can be null (i.e. optional).
   - mad_calloc calls mad_malloc and set to zeros the allocated memory.
   - mad_mcached returns the amount of memory cached (slow).
   - mad_mcollect frees the cached memory and returns its amount (slow).
