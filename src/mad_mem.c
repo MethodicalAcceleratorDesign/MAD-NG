@@ -22,10 +22,9 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mad_log.h"
 #include "mad_mem.h"
 
-// --- macros ----------------------------------------------------------------o
+// --- macros -----------------------------------------------------------------o
 
 /*
 Note about debugging:
@@ -55,7 +54,7 @@ Note about auto collect:
 #define CAM(...) __VA_ARGS__
 #endif
 
-// --- types & constants -----------------------------------------------------o
+// --- types & constants ------------------------------------------------------o
 
 // memory block
 union mblk {
@@ -106,7 +105,7 @@ MAC(
   struct slot slot[slot_max];
 };
 
-// --- locals ----------------------------------------------------------------o
+// --- locals -----------------------------------------------------------------o
 
 static struct pool pool[1];
 
@@ -114,7 +113,7 @@ static struct pool pool[1];
 #pragma omp threadprivate(pool)
 #endif
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 static inline union mblk*
 get_base (void *ptr)
@@ -146,7 +145,7 @@ CHK(ptr->used.mark = MARK; )
 // -- allocator
 
 void*
-(mad_malloc) (str_t fname, size_t size)
+(mad_malloc) (size_t size)
 {
   size_t slot = get_slot(size);
   struct pool *ppool = pool;
@@ -162,8 +161,7 @@ MAC(if (ppool->cached > cach_max) mad_mcollect(); )
     if (!ptr) {
       mad_mcollect();
       ptr = malloc(size ? get_size(slot) : 0);
-      if (!ptr)
-        (mad_error)(fname, "out of memory (%lu bytes)", (unsigned long)size);
+      if (!ptr) return NULL;
     }
   }
 
@@ -171,24 +169,24 @@ MAC(if (ppool->cached > cach_max) mad_mcollect(); )
 }
 
 void*
-(mad_calloc) (str_t fname, size_t count, size_t esize)
+(mad_calloc) (size_t count, size_t esize)
 {
   size_t size = count * esize;
-  void  *ptr  = (mad_malloc)(fname, size);
+  void  *ptr  = (mad_malloc)(size);
   return memset(ptr, 0, size);
 }
 
 void*
-(mad_realloc) (str_t fname, void *ptr_, size_t size)
+(mad_realloc) (void *ptr_, size_t size)
 {
-  if (!size) return (mad_free)  (fname, ptr_), NULL;
-  if (!ptr_) return (mad_malloc)(fname, size);
+  if (!size) return (mad_free)(ptr_), NULL;
+  if (!ptr_) return (mad_malloc)(size);
 
   union mblk *ptr = get_base(ptr_);
 
 CHK(
   if (ptr->used.mark != MARK)
-    (mad_error)(fname, "invalid pointer"); )
+    mad_error("invalid pointer"); )
 
   size_t slot = get_slot(size);
 
@@ -200,24 +198,21 @@ MAC(
   if (!ptr) {
     mad_mcollect();
     ptr = realloc(ptr, size ? get_size(slot) : 0);
-    if (!ptr)
-      (mad_error)(fname, "out of memory (%lu bytes)", (unsigned long)size);
+    if (!ptr) return NULL;
   }
 
   return init_node(ptr, slot);
 }
 
 void
-(mad_free) (str_t fname, void *ptr_)
+(mad_free) (void *ptr_)
 {
-  (void)fname;
-
   if (ptr_) {
     union mblk *ptr = get_base(ptr_);
 
 CHK(
   if (ptr->used.mark != MARK)
-    (mad_error)(fname, "invalid pointer"); )
+    mad_error("invalid pointer"); )
 
     size_t slot = ptr->used.slot;
 
@@ -234,26 +229,15 @@ MAC(  ppool->cached += slot+1;
 
 // -- utils
 
-void*
-(mad_mcheck) (str_t fname, void *ptr_)
-{
-  if (!ptr_)
-    (mad_error)(fname, "invalid pointer (null)");
-
-  return ptr_;
-}
-
 size_t
-(mad_msize) (str_t fname, void* ptr_)
+(mad_msize) (void* ptr_)
 {
-  (void)fname;
-
   if (!ptr_) return 0;
   union mblk *ptr = get_base(ptr_);
 
 CHK(
   if (ptr->used.mark != MARK)
-    (mad_error)(fname, "invalid pointer"); )
+    mad_error("invalid pointer"); )
 
   size_t slot = ptr->used.slot;
   return slot != get_slot(0) ? (slot+1) * mblk_stp : 0;
@@ -302,3 +286,5 @@ MAC(
 
   return cached * mblk_stp;
 }
+
+// --- end --------------------------------------------------------------------o

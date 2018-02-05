@@ -27,11 +27,11 @@
  o-----------------------------------------------------------------------------o
 */
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 typedef unsigned int bit_t;
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 static bit_t mad_bit_set     (bit_t b, int n);
 static bit_t mad_bit_get     (bit_t b, int n);
@@ -41,10 +41,43 @@ static bit_t mad_bit_trunc   (bit_t b, int n);
 extern int   mad_bit_lowest  (bit_t b);
 extern int   mad_bit_highest (bit_t b);
 
-// --- implementation (private) ----------------------------------------------o
+// ----------------------------------------------------------------------------o
+// --- implementation (private) -----------------------------------------------o
+// ----------------------------------------------------------------------------o
 
-#include "mad_bit_priv.h"
+static inline bit_t  __attribute__((const))
+mad_bit_set (bit_t b, int n)
+{
+  return b | (1u << n);
+}
 
-// ---------------------------------------------------------------------------o
+static inline bit_t  __attribute__((const))
+mad_bit_get (bit_t b, int n)
+{
+  return b & (1u << n);
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_clr (bit_t b, int n)
+{
+  return b & ~(1u << n);
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_add (bit_t a, bit_t b)
+{
+  return a | b;
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_trunc (bit_t b, int n)
+{
+  return b & ((2u << n) - 1);
+}
+
+int mad_bit_lowest  (bit_t b) __attribute__((const));
+int mad_bit_highest (bit_t b) __attribute__((const));
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_BIT_H

@@ -20,11 +20,11 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_priv.h"
+#include "mad_desc_impl.h"
 
 #define   MAD_TPSA_NOHELPER
-#include "mad_tpsa_priv.h"
-#include "mad_ctpsa_priv.h"
+#include "mad_tpsa_impl.h"
+#include "mad_ctpsa_impl.h"
 #undef    MAD_TPSA_NOHELPER
 
 void

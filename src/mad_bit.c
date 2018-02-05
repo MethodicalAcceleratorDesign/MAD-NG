@@ -18,10 +18,9 @@
 
 #include "mad_bit.h"
 
+// --- optimized versions -----------------------------------------------------o
+
 #ifdef __SSE2__
-
-// --- optimized versions ----------------------------------------------------o
-
 #include <x86intrin.h>
 
 int
@@ -36,9 +35,9 @@ mad_bit_highest (bit_t b)
   return b ? _bit_scan_reverse(b) : -1;
 }
 
-#else // !__SSE2__
+// --- default versions -------------------------------------------------------o
 
-// --- default versions ------------------------------------------------------o
+#else // !__SSE2__
 
 // http://graphics.stanford.edu/~seander/bithacks.html
 
@@ -71,8 +70,7 @@ mad_bit_highest (bit_t b)
   return 31 - mad_bit_lowest(r);
 }
 
-// ---------------------------------------------------------------------------o
-
 #endif // __SSE2__
 
+// --- end --------------------------------------------------------------------o
 

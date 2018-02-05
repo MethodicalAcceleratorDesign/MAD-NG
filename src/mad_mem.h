@@ -43,29 +43,73 @@
  o-----------------------------------------------------------------------------o
  */
 
-#include "mad_defs.h"
+#include "mad_log.h"
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
-// local buffer
+// local buffer (macros)
 #define mad_alloc_tmp(type,name,length)
-#define mad_free_tmp(name)
+#define mad_free_tmp(      name)
 
-// allocator (fake declarations: same signature as stdlib.h)
-#define mad_malloc(  size         )
-#define mad_calloc(  count, size  )
-#define mad_realloc( ptr_ , size_ )
-#define mad_free(    ptr_         )
-#define mad_msize(   ptr_         )
+// allocators (fake signature as in stdlib.h)
+void*  mad_malloc  (size_t size);         
+void*  mad_calloc  (size_t count, size_t size ); 
+void*  mad_realloc (void*  ptr_ , size_t size_); 
+void   mad_free    (void*  ptr_);          
+size_t mad_msize   (void*  ptr_);          
 
 // utils
 size_t mad_mcached  (void);
 size_t mad_mcollect (void);
 
-// --- implementation (private) ----------------------------------------------o
+// ----------------------------------------------------------------------------o
+// --- implementation (private) -----------------------------------------------o
+// ----------------------------------------------------------------------------o
 
-#include "mad_mem_priv.h"
+#define MAD_MEM_STD 1 // for now...
 
-// ---------------------------------------------------------------------------o
+#ifndef MAD_MEM_STD
+
+#define mad_malloc(s)    mad_mcheck(__func__, mad_malloc (s)  )
+#define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc (c,s))
+#define mad_realloc(p,s) mad_mcheck(__func__, mad_realloc(p,s))
+
+#else
+
+#include <stdlib.h>
+#define mad_malloc(s)    mad_mcheck(__func__, malloc (s))
+#define mad_calloc(c,s)  mad_mcheck(__func__, calloc (c,s))
+#define mad_realloc(p,s) mad_mcheck(__func__, realloc(p,s))
+#define mad_free(p)                           free   (p)
+#define mad_msize(p)                                 (0)
+
+#endif // MAD_MEM_STD
+
+void*  (mad_malloc)  (size_t)         __attribute__((hot,malloc));
+void*  (mad_calloc)  (size_t, size_t) __attribute__((hot,malloc));
+void*  (mad_realloc) (void* , size_t) __attribute__((hot));
+void   (mad_free)    (void*)          __attribute__((hot));
+size_t (mad_msize)   (void*)          __attribute__((hot,const));
+
+static inline void*
+mad_mcheck (str_t fname, void *ptr_)
+{
+  if (!ptr_)
+    (mad_error)(fname, "invalid pointer (null)");
+
+  return ptr_;
+}
+
+#undef  mad_alloc_tmp
+#define mad_alloc_tmp(T,NAME,L) \
+  T NAME##_local_tmp__[sizeof(T)*(L) < 8192 ? (L) : 1]; \
+  T *NAME = (sizeof(T)*(L) < 8192 ? \
+             NAME##_local_tmp__ : mad_malloc(sizeof(T)*(L)) )
+
+#undef  mad_free_tmp
+#define mad_free_tmp(NAME) \
+  (NAME != NAME##_local_tmp__ ? mad_free(NAME) : (void)0)
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_MEM_H

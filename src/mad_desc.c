@@ -35,7 +35,7 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_priv.h"
+#include "mad_desc_impl.h"
 
 // --- GLOBALS ----------------------------------------------------------------
 
@@ -206,10 +206,10 @@ find_index(int n, const ord_t **T, const ord_t m[n], int start, int stop)
     if (mad_mono_equ(n,T[i],m)) return i;
 
   // error
-  printf("monomial not found in table: ");
+  fprintf(stderr, "error: monomial not found in table: ");
   mad_mono_print(n,m);
   assert(NULL);
-  return -1;
+  return -1; // never reached
 }
 
 enum tbl_ordering {BY_ORD, BY_VAR};
@@ -489,9 +489,9 @@ tbl_build_LC(int oa, int ob, D *d)
   assert(oa < d->mo && ob < d->mo);
 
   ord_t **To = d->To;
-  const int *pi   = d->ord2idx,  *tv2to = d->tv2to,          // shorter names
-             iao  = pi[oa],            ibo   = pi[ob],            // offsets
-             cols = pi[oa+1] - pi[oa], rows  = pi[ob+1] - pi[ob]; // sizes
+  const int *pi   = d->ord2idx,      *tv2to = d->tv2to,          // shorter names
+             iao  = pi[oa],            ibo  = pi[ob],            // offsets
+             cols = pi[oa+1] - pi[oa], rows = pi[ob+1] - pi[ob]; // sizes
 
   int mat_size = rows * cols;
   idx_t *lc = mad_malloc(mat_size * sizeof *lc);

@@ -22,12 +22,12 @@
 #include "mad_mem.h"
 #include "mad_vec.h"
 #include "mad_mat.h"
-#include "mad_desc_priv.h"
+#include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL
-#include "mad_ctpsa_priv.h"
+#include "mad_ctpsa_impl.h"
 #else
-#include "mad_tpsa_priv.h"
+#include "mad_tpsa_impl.h"
 #endif
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
