@@ -24,6 +24,20 @@
 
 #include "mad_mem.h"
 
+#define MAD_MEM_STD 1 // for now...
+
+#ifdef  MAD_MEM_STD
+
+void*  (mad_malloc ) (size_t sz)               { return malloc (sz);        }
+void*  (mad_calloc ) (size_t cnt , size_t sz ) { return calloc (cnt, sz);   }
+void*  (mad_realloc) (void*  ptr_, size_t sz_) { return realloc(ptr_, sz_); }
+void    mad_free     (void*  ptr_)             { free(ptr_); }
+size_t  mad_msize    (void*  ptr_)             { return 0; (void)ptr_; }
+size_t  mad_mcached  (void)                    { return 0; }
+size_t  mad_mcollect (void)                    { return 0; }
+
+#else
+
 // --- macros -----------------------------------------------------------------o
 
 /*
@@ -48,7 +62,7 @@ Note about auto collect:
 
 #ifdef  MAD_MEM_AUTOCOLLECT
 #define MAC(...) __VA_ARGS__
-#define CAM(...) 
+#define CAM(...)
 #else
 #define MAC(...)
 #define CAM(...) __VA_ARGS__
@@ -205,7 +219,7 @@ MAC(
 }
 
 void
-(mad_free) (void *ptr_)
+mad_free (void *ptr_)
 {
   if (ptr_) {
     union mblk *ptr = get_base(ptr_);
@@ -230,7 +244,7 @@ MAC(  ppool->cached += slot+1;
 // -- utils
 
 size_t
-(mad_msize) (void* ptr_)
+mad_msize (void* ptr_)
 {
   if (!ptr_) return 0;
   union mblk *ptr = get_base(ptr_);
@@ -245,7 +259,7 @@ CHK(
 
 // note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
-(mad_mcached) (void)
+mad_mcached (void)
 {
   struct pool *ppool = pool;
   size_t cached = 0;
@@ -265,7 +279,7 @@ MAC(
 
 // note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
 size_t __attribute__((noinline))
-(mad_mcollect) (void)
+mad_mcollect (void)
 {
   struct pool *ppool = pool;
   union mblk *ptr, *nxt;
@@ -288,3 +302,5 @@ MAC(
 }
 
 // --- end --------------------------------------------------------------------o
+
+#endif // MAD_MEM_STD
