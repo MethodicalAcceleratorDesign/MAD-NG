@@ -1,10 +1,10 @@
-#ifndef MAD_DESC_IMPL_H
-#define MAD_DESC_IMPL_H
+#ifndef MAD_DESC_PRIV_H
+#define MAD_DESC_PRIV_H
 
 /*
  o-----------------------------------------------------------------------------o
  |
- | Descriptor (TPSA) module implementation
+ | Descriptor (TPSA) module implementation (private)
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -89,5 +89,5 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
 
 // ---------------------------------------------------------------------------o
 
-#endif // MAD_DESC_IMPL_H
+#endif // MAD_DESC_PRIV_H
 
