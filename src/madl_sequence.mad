@@ -173,61 +173,55 @@ local function index_of_num (seq, num)
 end
 
 -- get index from name [with count] (direct)
-local function index_of_cnam (seq, nam, cnt)
+local function index_of_cnam (seq, nam, cnt_)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_table(ei) then
-    if cnt < 0 then cnt = ei.n+cnt+1 end -- reflect
-    return ei[cnt]
+    cnt_ = cnt_ or 1
+    assert(is_number(cnt_), "invalid argument #3 (count expected)")
+    if cnt_ < 0 then cnt_ = ei.n+cnt_+1 end -- reflect
+    return ei[cnt_]
   end
   return ei
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (seq, nam, cnt, idx)
+local function index_of_rnam (seq, nam, cnt_, idx_)
+  cnt_ = cnt_ or 1
+  assert(is_number(cnt_), "invalid argument #3 (count expected)")
   local ei = var_raw(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
-  idx = index_of_idx(seq, idx or 1)
-  if is_nil(idx) then return nil end
+  idx_ = index_of_idx(seq, idx_ or 1)
+  if is_nil(idx_) then return nil end
   if is_number(ei) then
-    return (cnt ==  1 and ei >= idx and ei) or
-           (cnt == -1 and ei <= idx and ei) or nil
+    return (cnt_ ==  1 and ei >= idx_ and ei) or
+           (cnt_ == -1 and ei <= idx_ and ei) or nil
   end
-  if cnt > 0 then
+  if cnt_ > 0 then
     for i=1,ei.n do
-      if ei[i] >= idx then return ei[i+cnt-1] end
+      if ei[i] >= idx_ then return ei[i+cnt_-1] end
     end
   elseif cnt_ < 0 then
     for i=1,ei.n do
-      if ei[i] >  idx then return ei[i+cnt  ] end
+      if ei[i] >  idx_ then return ei[i+cnt_  ] end
     end
   end
   return nil
 end
 
 -- get index from [mangled] name (direct or linear)
-local function index_of_nam (seq, nam, idx_)
+local function index_of_mnam (seq, nam, idx_)
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local nam, cnt, _, bra = strbracket(nam)
-  cnt = is_nil(cnt) and 1 or tonumber(cnt)
-  assert(is_number(cnt), "invalid count (number expected)")
-  if is_nil(idx_) or bra == 1 then
-    return index_of_cnam(seq, nam, cnt      )
-  else
-    return index_of_rnam(seq, nam, cnt, idx_)
-  end
-end
-
--- get index from 'from' [mangled] name (direct or linear)
-local function index_of_fnam (seq, nam, idx_)
-  assert(is_string(nam), "invalid argument #2 (string expected)")
-  local nam, cnt, _, bra = strbracket(nam)
-  cnt = is_nil(cnt) and 1 or tonumber(cnt)
-  assert(is_number(cnt), "invalid argument #2 (count: number expected)")
-  if is_nil(idx_) or bra ~= 2 then -- need both for relative from
+  cnt = tonumber(cnt) or cnt
+  if is_nil(idx_) or bra ~= 2 then
     return index_of_cnam(seq, nam, cnt      ), bra
   else
     return index_of_rnam(seq, nam, cnt, idx_), bra
   end
+end
+
+local function index_of_nam (seq, nam, idx_)
+  return (index_of_mnam(seq, nam, idx_))
 end
 
 -- get index from element (linear)
@@ -293,7 +287,7 @@ end
 local function from_epos (seq, from, idx)
   local elem = var_raw(seq,_data)
   if elem.last_from ~= from then                     -- memoized?
-    local idx, bra = index_of_fnam(seq, from, idx)
+    local idx, bra = index_of_mnam(seq, from, idx)
     if is_nil(idx) then                              -- not found
       seq_error("invalid from of '" .. from .. "'", seq)
     end
@@ -325,7 +319,7 @@ local function from_pos (seq, elm, idx)
   elseif from == 'prev'     then return pos + elem_pos(seq,idx-1)+var_raw(seq,_data)[idx-1].l
   elseif from == 'next'     then return pos + second(elem_pos(seq,idx+fidx(elm)))
   elseif from == 'end'      then return seq.l - pos
-  elseif from == 'selected' then return pos + elem_pos(seq,idx) -- BUG?
+  elseif from == 'selected' then return pos + elem_pos(seq,idx)
   else                           return pos + from_epos(seq,from,idx)
   end
 end
