@@ -18,10 +18,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o-----------------------------------------------------------------------------o
-  
+
   Purpose:
   - provide some functions to handle monomials as array of ord_t
- 
+
   Information:
   - parameters ending with an underscope can be null.
 
@@ -42,8 +42,9 @@ void  mad_mono_copy  (int n, const ord_t a[], ord_t r[]);
 
 ord_t mad_mono_max   (int n, const ord_t a[]);
 int   mad_mono_ord   (int n, const ord_t a[]);
-int   mad_mono_equ   (int n, const ord_t a[], const ord_t b[]);
-int   mad_mono_leq   (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_eq    (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_lt    (int n, const ord_t a[], const ord_t b[]);
+int   mad_mono_le    (int n, const ord_t a[], const ord_t b[]);
 int   mad_mono_rcmp  (int n, const ord_t a[], const ord_t b[]);
 
 void  mad_mono_add   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
