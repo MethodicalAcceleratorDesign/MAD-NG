@@ -95,7 +95,7 @@ static inline void*
 mad_mcheck (str_t fname, void *ptr_)
 {
   if (!ptr_)
-    (mad_error)(fname, "invalid pointer (null)");
+    (mad_error)(fname, "invalid null pointer (out of memory?)");
 
   return ptr_;
 }
