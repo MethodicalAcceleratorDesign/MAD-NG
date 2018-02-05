@@ -1,0 +1,208 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Generalised Truncated Power Series module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provides full set of functions and operations on real and complex TPSA.
+  - Support monomials with knobs and inhomogeneous orders.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local MR, MC = {}, {}
+
+-- locals ---------------------------------------------------------------------o
+
+local ffi = require 'ffi'
+local istype in ffi
+
+local _C, tostring, complex in MAD
+
+-- local mono  = require 'mono'
+-- local xxx in MAD.monomial
+
+local is_nil, is_boolean, is_number, is_string, is_table,
+      is_complex, is_scalar, is_callable, is_iterable, is_indexable,
+      has_method                                                 in MAD.typeid
+local ident, swap, compose, bind1st                              in MAD.gfunc
+local random, carg, real, imag, conj, norm, proj, rect, polar,
+      ceil, floor, frac, trunc, round, abs, exp, log, log10, sqrt,
+      sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
+      acosh, atanh, erf, tgamma, lgamma, min, max, inf,
+      sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
+local unm, add, mul, mod, pow, lbool, lnot, land, lor, eq, opstr in MAD.operator
+local rep                                                        in MAD.utility
+
+-- tmp for returned values
+local  res = ffi.new 'double [1]'
+local cres = ffi.new 'complex[1]'
+
+-- constants
+local dbl_sz = ffi.sizeof 'double'
+local cpx_sz = ffi.sizeof 'complex'
+
+-- types ----------------------------------------------------------------------o
+
+ffi.cdef [[
+typedef unsigned int bit_t; // mad_bit.h
+
+struct desc { // warning: must be kept identical to C definition
+  int   id;           // index in list of registered descriptors
+  int   nmv, nv, nc;  // number of map vars, number of all vars, number of coefs
+  ord_t mo, ko,       // maximum order for map, and for knobs
+        trunc;        // truncation order for operations (always <= mo)
+};
+
+struct tpsa { // warning: must be kept identical to C definition
+  desc_t *d;          // ptr to descriptor
+  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
+  bit_t   nz;         // non-zero homogeneous polynomials
+  num_t   coef[?];
+};
+
+struct ctpsa { // warning: must be kept identical to C definition
+  desc_t *d;          // ptr to descriptor
+  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
+  bit_t   nz;         // non-zero homogeneous polynomials
+  cnum_t  coef[?];
+};
+]]
+
+local  desc_ctor = ffi.typeof ' desc_t '
+local  desc_cref = ffi.typeof ' desc_t&'
+local  tpsa_ctor = ffi.typeof ' tpsa_t '
+local  tpsa_cref = ffi.typeof ' tpsa_t&'
+local ctpsa_ctor = ffi.typeof 'ctpsa_t '
+local ctpsa_cref = ffi.typeof 'ctpsa_t&'
+
+local str_arr    = ffi.typeof '      str_t   [?]'
+local int_arr    = ffi.typeof '      int     [?]'
+local int_carr   = ffi.typeof 'const int     [?]'
+local tpsa_arr   = ffi.typeof '      tpsa_t* [?]'
+local tpsa_carr  = ffi.typeof 'const tpsa_t* [?]'
+
+local is_desc  = \x -> istype( desc_ctor, x)
+local is_tpsa  = \x -> istype( tpsa_ctor, x)
+local is_ctpsa = \x -> istype(ctpsa_ctor, x)
+local isa_tpsa = \x -> is_tpsa(x) or is_ctpsa(x)
+
+-- allocators -----------------------------------------------------------------o
+
+local function tpsa_alloc (d, mo)
+  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
+  local len, tpsa = d.nc, nil
+  if len < _C.mad_alloc_threshold then
+    tpsa = tpsa_ctor(len) -- VLA
+  else
+    assert(len <= 2^30, "tpsa too large")
+    local siz = ffi.sizeof(tpsa_ctor, 0) + len*dbl_sz
+    local ptr = assert(_C.calloc(1,siz), "out of memory")
+    tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.free)
+  end
+  tpsa.d = d
+  tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
+  tpsa.nz, tpsa.coef[0] = 0, 0
+  return tpsa
+end
+
+local function ctpsa_alloc (d, mo)
+  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
+  local len, ctpsa = d.nc, nil
+  if len < (_C.mad_alloc_threshold/2) then
+    ctpsa = ctpsa_ctor(len)
+  else
+    assert(len <= 2^39, "tpsa too large")
+    local siz = ffi.sizeof(ctpsa_ctor, 0) + len*cpx_sz
+    local ptr = assert(_C.calloc(1,siz), "out of memory")
+    tpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.free)
+  end
+  ctpsa.d = d
+  ctpsa.lo, ctpsa.hi, ctpsa.mo = mo, 0, mo
+  ctpsa.nz, ctpsa.coef[0] = 0, 0
+  return ctpsa
+end
+
+-- ctors ----------------------------------------------------------------------o
+
+-- nv: number of variables (if vo is a value)
+-- nk: number of knobs     (if ko is a value)
+
+-- vo: variables orders (array or value)
+-- mo: map variables orders with mo[i] > vo[i]
+-- ko: knobs orders (array or value)
+
+-- dk: max knobs 'cross' orders (degres)
+
+-- ex0: {nv=2,vo=2 [, mo=3]}
+-- ex1: {vo={2,2} [, mo={3,3}] [, v={'x', 'px'}] [, ko={1,1,1}] [, dk=2]}
+-- ex2: {vo={2,2} [, mo={3,3}] [, v={'x', 'px'}] [, nk=3,ko=1] [, dk=2]}
+
+local function desc (args)
+  assert(args and args.vo, "not enough arguments for GTPSA descriptor")
+
+  local nv = args.nv or is_table(args.vo) and #args.vo or 0
+  local nk = args.nk or is_table(args.ko) and #args.ko or 0
+
+  assert(nv > 0, "invalid number of variables")
+
+  local cvar =             mono(args.vo, nv)
+  local cmap = args.mo and mono(args.mo, nv)
+  local cknb = args.ko and mono(args.ko, nk)
+  local names
+
+  if args.v then
+    names = str_arr(nv)
+    for i=1,nv do names[i-1] = args.v[i] end
+  end
+
+  if nk > 0 then
+    return _C.mad_desc_newk(nv, cvar.ord, cmap.ord, names, nk, cknb.ord, args.dk or 0)
+  else
+    return _C.mad_desc_new (nv, cvar.ord, cmap.ord, names)
+  end
+end
+
+-- tpsa(t)       -> t.mo
+-- tpsa(d)       -> d.mo
+-- tpsa(t|d, mo) -> mo
+
+local function tpsa (d, mo_)
+  if isa_tpsa(d) then d = d.d end 
+  return  tpsa_alloc(d, mo_ and max(0, min(mo_, d.mo)) or d.mo)
+end
+
+local function ctpsa (d, mo_)
+  if isa_tpsa(d) then d = d.d end 
+  return ctpsa_alloc(d, mo_ and max(0, min(mo_, d.mo)) or d.mo)
+end
+
+-- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_tpsa  = is_tpsa
+MAD.typeid.is_ctpsa = is_ctpsa
+MAD.typeid.isa_tpsa = isa_tpsa
+
+-- metatables -----------------------------------------------------------------o
+
+ffi.metatype( tpsa_ctor, MR)
+ffi.metatype(ctpsa_ctor, MC)
+
+-- end ------------------------------------------------------------------------o
+return {
+   tpsa  =  tpsa,
+  ctpsa  = ctpsa,
+  __help = require 'madh_tpsa',
+}

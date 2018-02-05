@@ -1,10 +1,10 @@
-#ifndef MAD_CTPSA_IMPL_H
-#define MAD_CTPSA_IMPL_H
+#ifndef MAD_CTPSA_PRIV_H
+#define MAD_CTPSA_PRIV_H
 
 /*
  o-----------------------------------------------------------------------------o
  |
- | Complex Truncated Power Series Algebra module implementation
+ | Complex Truncated Power Series Algebra module implementation (private)
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -53,4 +53,4 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 
 // ---------------------------------------------------------------------------o
 
-#endif // MAD_CTPSA_IMPL_H
+#endif // MAD_CTPSA_PRIV_H

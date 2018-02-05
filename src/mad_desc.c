@@ -35,7 +35,7 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
+#include "mad_desc_priv.h"
 
 // --- GLOBALS ----------------------------------------------------------------
 

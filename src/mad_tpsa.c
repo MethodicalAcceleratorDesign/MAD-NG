@@ -22,12 +22,12 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
+#include "mad_desc_priv.h"
 
 #ifdef    MAD_CTPSA_IMPL
-#include "mad_ctpsa_impl.h"
+#include "mad_ctpsa_priv.h"
 #else
-#include "mad_tpsa_impl.h"
+#include "mad_tpsa_priv.h"
 #endif
 
 // --- DEBUGGING --------------------------------------------------------------

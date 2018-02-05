@@ -1,10 +1,10 @@
-#ifndef MAD_TPSA_IMPL_H
-#define MAD_TPSA_IMPL_H
+#ifndef MAD_TPSA_PRIV_H
+#define MAD_TPSA_PRIV_H
 
 /*
  o-----------------------------------------------------------------------------o
  |
- | Truncated Power Series Algebra module implementation
+ | Truncated Power Series Algebra module implementation (private)
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -48,4 +48,4 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 
 // ---------------------------------------------------------------------------o
 
-#endif // MAD_TPSA_IMPL_H
+#endif // MAD_TPSA_PRIV_H
