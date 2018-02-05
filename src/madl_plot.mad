@@ -482,7 +482,7 @@ end
 -- stream a signle layout
 local function layout (param, pseq)
   local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
-  local seq, range, data, bline                                     in pseq
+  local seq, range, data, bline                                       in pseq
   local dir, j  = seq.direction, 1
 
   layout_bline(param, bline)
@@ -512,7 +512,7 @@ end
 
 -- compute bounding box and scale data accordingly
 -- post processing for "out of plot" layout
-local function layout_post(param, pseqs, ymin, ymax)
+local function layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   local sequence, laypos, layonly, elemwidth, elemscale in param
   local padding, multisize, maxew, middle               in _dflt
   param.laysize  = param.laysize
@@ -532,21 +532,26 @@ local function layout_post(param, pseqs, ymin, ymax)
     fun.foreach(\v => v[2]=v[2]*yfactor + laypos end, data)
     pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
   end
+  param.xrng = { xmin, xmax }
 end
 
 -- post processing for "in plot" layout
 local function layout_post_in(param, xmin, xmax, ymin, ymax)
-  local elemwidth, elemscale in param
-  local maxew, elemwidth_in  in _dflt
-  param.elemwidth = elemwidth and elemscale*elemwidth or
-                    elemscale*sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
-                             *elemwidth_in/maxew
+  local elemwidth, elemscale          in param
+  local maxew, elemwidth_in, padding  in _dflt
+  local diag = sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
+  elemwidth = elemwidth and elemscale*elemwidth or
+              elemscale*diag*elemwidth_in/maxew
+  param.xrng      = { xmin - maxew*elemwidth - padding*diag,
+                      xmax + maxew*elemwidth + padding*diag, }
+  param.yrng      = { ymin - maxew*elemwidth - padding*diag,
+                      ymax + maxew*elemwidth + padding*diag }
+  param.elemwidth = elemwidth
 end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range, seqdistx, seqdisty,
-    elemwidth, elemscale, laypos, xrange                  in param
+  local sequence, fpwrite, range, seqdistx, seqdisty, elemwidth, laypos in param
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
@@ -574,7 +579,7 @@ local function multi_layout (param)
 
   if is_in
   then layout_post_in(param, xmin, xmax, ymin, ymax)
-  else layout_post(param, pseqs, ymin, ymax)
+  else layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   end
   param.adjust = is_in and adjust_in(param.elemwidth) or adjust(param.elemwidth)
 
@@ -584,10 +589,9 @@ local function multi_layout (param)
   end
 
   fpwrite("MAD_MAX = %.5e\n", param.oid)
-  xmin, xmax = xmin - param.elemwidth, xmax + param.elemwidth
-  ymin, ymax = ymin - param.elemwidth, ymax + param.elemwidth
-  if not xrange           then fpwrite("set xrange [%.5e:%.5e]\n", xmin, xmax) end
-  if not yrange and is_in then fpwrite("set yrange [%.5e:%.5e]\n", ymin, ymax) end
+  local xrange, yrange, xrng, yrng in param
+  if not xrange           then fpwrite("set xrange [%.5e:%.5e]\n", xrng[1], xrng[2]) end
+  if not yrange and is_in then fpwrite("set yrange [%.5e:%.5e]\n", yrng[1], yrng[2]) end
 end
 
 -- plot -----------------------------------------------------------------------o
