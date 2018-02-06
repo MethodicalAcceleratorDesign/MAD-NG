@@ -95,15 +95,6 @@ mad_mono_max (int n, const ord_t a[n])
 }
 
 int
-mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-  for (int i=0; i < n; ++i)
-    if (a[i] != b[i]) return 0;
-  return 1;
-}
-
-int
 mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
@@ -133,9 +124,18 @@ mad_mono_print (int n, const ord_t m[n])
   printf("]");
 }
 
+// --- default versions ------------------------------------------------------o
+
 #ifndef __SSE2__
 
-// --- default versions ------------------------------------------------------o
+int
+mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (int i=0; i < n; ++i)
+    if (a[i] != b[i]) return 0;
+  return 1;
+}
 
 int
 mad_mono_lt (int n, const ord_t a[n], const ord_t b[n])
@@ -158,7 +158,14 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
 // --- optimized versions ----------------------------------------------------o
 
 #elif defined(__AVX512F__) && defined(AVX512BW)
+// #warning "AVX512 selected"
 #include "sse/mad_mono_avx512.tc"
+#elif defined(__AVX2__)
+// #warning "AVX2 selected"
+#include "sse/mad_mono_avx2.tc"
+#elif defined(__SSE2__)
+// #warning "SSE2 selected"
+#include "sse/mad_mono_sse2.tc"
 #else
-#include "sse/mad_mono_sse.tc"
-#endif // __SSE2__ || __AVX512F__
+#error "unsupported architecture"
+#endif // __SSE2__ || __AVX2__ || __AVX512F__

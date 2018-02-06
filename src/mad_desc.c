@@ -789,61 +789,57 @@ set_var_ords(D *d, const ord_t ords[])
 }
 
 static inline void
-set_var_names(D *d, str_t var_nam_[])
+set_mvar_names(D *d, str_t mvar_names[])
 {
-  if (!var_nam_)
-    return;
+  if (!mvar_names) return;
 
+  assert(d);
 #ifdef DEBUG
-  printf("set_var_names=[ ");
-  for (int i = 0; i < d->nmv; ++i) printf("%s ", var_nam_[i]);
+  printf("set_mvar_names=[ ");
+  for (int i = 0; i < d->nmv; ++i) printf("%s ", mvar_names[i]);
   printf("]\n");
 #endif
-  assert(d);
-  d->var_names_ = mad_malloc(d->nmv * sizeof *(d->var_names_));
-  assert(d->var_names_);
-  d->size += d->nmv * sizeof *(d->var_names_);
+  d->mvar_names = mad_malloc(d->nmv * sizeof *d->mvar_names);
+  d->size += d->nmv * sizeof *d->mvar_names;
 
   for (int i = 0; i < d->nmv; ++i) {
-    int n = strlen(var_nam_[i]);
-    d->var_names_[i] = mad_malloc(n * sizeof *(d->var_names_[i]));
-    assert(d->var_names_[i]);
-    d->size += n * sizeof *(d->var_names_[i]);
-    strcpy(d->var_names_[i],var_nam_[i]);
+    int n = strlen(mvar_names[i]);
+    char *s = mad_malloc(n * sizeof *d->mvar_names[i]);
+    strcpy(s, mvar_names[i]);
+    d->mvar_names[i] = s;
+    d->size += n * sizeof *d->mvar_names[i];
   }
 }
 
 static inline D*
-desc_init(int nmv, const ord_t map_ords[nmv], int nv, ord_t ko)
+desc_init(int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
 {
-  assert(map_ords);
+  assert(mvar_ords);
 
   D *d = mad_malloc(sizeof *d);
-  assert(d);
-  memset(d, 0, sizeof(*d));
+  memset(d, 0, sizeof *d);
   d->size = sizeof(d);
   d->nmv  = nmv;
   d->nv = nv;
   d->ko = ko;
-  d->mo = d->trunc = mad_mono_max(nmv,map_ords);
+  d->mo = d->trunc = mad_mono_max(nmv,mvar_ords);
 
-  d->map_ords = mad_malloc(nmv * sizeof *(d->map_ords));
-  assert(d->map_ords);
-  mad_mono_copy(nmv,map_ords,d->map_ords);
-  d->size += nmv * sizeof *(d->map_ords);
+  d->mvar_ords = mad_malloc(nmv * sizeof *d->mvar_ords);
+  mad_mono_copy(nmv, mvar_ords, d->mvar_ords);
+  d->size += nmv * sizeof *d->mvar_ords;
 
   return d;
 }
 
 static inline D*
-desc_build(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const ord_t ords[nv], ord_t ko)
+desc_build(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
 {
-  assert(map_ords && ords);
+  assert(mvar_ords && ords);
 
-  D *d = desc_init(nmv,map_ords, nv, ko);
+  D *d = desc_init(nmv, mvar_ords, nv, ko);
 
   set_var_ords(d, ords);
-  set_var_names(d, var_nam_);
+  set_mvar_names(d, mvar_names);
   make_monos(d);
   tbl_by_ord(d);
   tbl_by_var(d);  // requires To
@@ -877,46 +873,45 @@ desc_build(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, cons
 }
 
 static inline int
-desc_equiv(const D *d, int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv],
+desc_equiv(const D *d, int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv],
                        int nv , const ord_t ords[nv], ord_t ko)
 {
-  assert(d && map_ords && ords);
-  if (var_nam_) {
-    if (! d->var_names_) return 0;
+  assert(d && mvar_ords && ords);
+  if (mvar_names) {
+    if (! d->mvar_names) return 0;
     for (int i = 0; i < nmv; ++i)
-      if (strcmp(d->var_names_[i],var_nam_[i]) != 0) {
-        printf("%s %s\n", d->var_names_[i], var_nam_[i]);
+      if (strcmp(d->mvar_names[i],mvar_names[i]) != 0) {
+        printf("%s %s\n", d->mvar_names[i], mvar_names[i]);
         return 0;
       }
   }
-  else if (d->var_names_)
+  else if (d->mvar_names)
     return 0;
 
-  return    d->nmv == nmv && mad_mono_eq(nmv, d->map_ords, map_ords)
+  return    d->nmv == nmv && mad_mono_eq(nmv, d->mvar_ords, mvar_ords)
          && d->nv  == nv  && mad_mono_eq(nv , d->var_ords, ords)
          && d->ko  == ko;
 }
 
 static inline D*
-desc_search(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const ord_t ords[nv], ord_t ko)
+desc_search(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
 {
   for (int i = 0; i < TPSA_DESC_NUM; ++i) {
-    if (Ds[i] && desc_equiv(Ds[i], nmv,map_ords,var_nam_, nv,ords, ko))
+    if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, mvar_names, nv, ords, ko))
       return Ds[i];
   }
   return NULL;
 }
 
 static inline D*
-get_desc(int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv], int nv, const ord_t ords[nv], ord_t ko)
+get_desc(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
 {
-  D *existing_desc = desc_search(nmv,map_ords,var_nam_, nv,ords, ko);
-  if (existing_desc)
-    return existing_desc;
+  D *existing_desc = desc_search(nmv, mvar_ords, mvar_names, nv, ords, ko);
+  if (existing_desc) return existing_desc;
 
   for (int i = 0; i < TPSA_DESC_NUM; ++i)
     if (!Ds[i]) {
-      Ds[i] = desc_build(nmv,map_ords,var_nam_, nv,ords, ko);
+      Ds[i] = desc_build(nmv, mvar_ords, mvar_names, nv, ords, ko);
       Ds[i]->id = i;
       return Ds[i];
     }
@@ -1027,47 +1022,47 @@ mad_desc_gtrunc(D *d, ord_t to)
 }
 
 D*
-mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv])
+mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t mvar_ords_[nv], str_t mvar_names[nv])
 {
   ensure(var_ords);
-  ord_t mo, map_ords[nv];  // to parse optional param
+  ord_t mo, mvar_ords[nv];  // to parse optional param
 
-  if (map_ords_) {
-    for (int i = 0; i < nv; ++i) ensure(var_ords[i] <= map_ords_[i]);
-    mad_mono_copy(nv,map_ords_,map_ords);
-    mo = mad_mono_max(nv,map_ords);
+  if (mvar_ords_) {
+    for (int i = 0; i < nv; ++i) ensure(var_ords[i] <= mvar_ords_[i]);
+    mad_mono_copy(nv, mvar_ords_, mvar_ords);
+    mo = mad_mono_max(nv, mvar_ords);
   }
   else {
-    mo = mad_mono_max(nv,var_ords);
-    mad_mono_fill(nv,map_ords,mo);
+    mo = mad_mono_max(nv, var_ords);
+    mad_mono_fill(nv, mvar_ords, mo);
   }
   ensure(mo < desc_max_order);
 
-  return get_desc(nv,map_ords,var_nam_, nv,var_ords, 0);
+  return get_desc(nv, mvar_ords, mvar_names, nv, var_ords, 0);
 }
 
 D*
-mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t var_nam_[nv],
+mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t mvar_ords_[nv], str_t mvar_names[nv],
               int nk, const ord_t knb_ords[nk], ord_t dk)
 {
   // input validation
   ensure(nv && var_ords);
   // ensure(nk && knb_ords);
-  ensure(dk <= mad_mono_ord(nk,knb_ords));
-  ensure(mad_mono_ord(nv,var_ords) + mad_mono_ord(nk,knb_ords) < desc_max_order);
+  ensure(dk <= mad_mono_ord(nk, knb_ords));
+  ensure(mad_mono_ord(nv, var_ords) + mad_mono_ord(nk, knb_ords) < desc_max_order);
 
-  ord_t map_ords[nv];  // to parse optional param
-  if (map_ords_) {
+  ord_t mvar_ords[nv];  // to parse optional param
+  if (mvar_ords_) {
     for (int i = 0; i < nv; ++i)
-      ensure(var_ords[i] <= map_ords_[i]);
-    mad_mono_copy(nv,map_ords_,map_ords);
+      ensure(var_ords[i] <= mvar_ords_[i]);
+    mad_mono_copy(nv, mvar_ords_, mvar_ords);
   }
   else {
-    ord_t mo = mad_mono_max(nv,var_ords);
-    mad_mono_fill(nv,map_ords,mo);
+    ord_t mo = mad_mono_max(nv, var_ords);
+    mad_mono_fill(nv, mvar_ords, mo);
   }
-  if (dk == 0) dk = mad_mono_max(nk,knb_ords);
-  ensure(dk <= mad_mono_max(nv,map_ords));
+  if (dk == 0) dk = mad_mono_max(nk, knb_ords);
+  ensure(dk <= mad_mono_max(nv, mvar_ords));
 
   ord_t ords[nv+nk];
   int oidx = 0;
@@ -1077,7 +1072,7 @@ mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t map_ords_[nv], str_t
     ensure(knb_ords[i] != 0);
     ords[oidx++] = knb_ords[i];
   }
-  return get_desc(nv,map_ords,var_nam_, nv+nk,ords, dk);
+  return get_desc(nv, mvar_ords, mvar_names, nv+nk, ords, dk);
 }
 
 void
@@ -1085,7 +1080,7 @@ mad_desc_del(D *d)
 {
   assert(d);
   mad_free(d->var_ords);
-  mad_free(d->map_ords);
+  mad_free(d->mvar_ords);
   mad_free(d->monos);
   mad_free(d->ords);
   mad_free(d->To);
@@ -1095,10 +1090,10 @@ mad_desc_del(D *d)
   mad_free(d->to2tv);
   mad_free(d->H);
 
-  if (d->var_names_) {
+  if (d->mvar_names) {
     for (int i = 0; i < d->nmv; ++i)
-      mad_free(d->var_names_[i]);
-    mad_free(d->var_names_);
+      mad_free((void*)d->mvar_names[i]);
+    mad_free(d->mvar_names);
   }
 
   if (d->L) {  // if L exists, then L_idx exists too

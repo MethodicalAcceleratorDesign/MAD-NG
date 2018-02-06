@@ -40,7 +40,7 @@ local random, carg, real, imag, conj, norm, proj, rect, polar,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
       acosh, atanh, erf, tgamma, lgamma, min, max, inf,
       sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
-local unm, add, mul, mod, pow, lbool, lnot, land, lor, eq, opstr in MAD.operator
+local unm, add, mul, mod, pow, lbool, lnot, land, lor, opstr     in MAD.operator
 local rep                                                        in MAD.utility
 
 -- tmp for returned values
@@ -77,7 +77,7 @@ local function matrix_alloc (nr, nc)
   if len <= _C.mad_alloc_threshold then
     mat = matrix_ctor(len) -- VLA
   else
-    assert(len <= 2^30, "matrix too large")
+    assert(len <= 2^30, "matrix is too large")
     local siz = ffi.sizeof(matrix_ctor, 0) + len*dbl_sz
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free)
@@ -91,7 +91,7 @@ local function cmatrix_alloc (nr, nc)
   if len <= _C.mad_alloc_threshold/2 then
     mat = cmatrix_ctor(len) -- VLA
   else
-    assert(len <= 2^29, "matrix too large")
+    assert(len <= 2^29, "cmatrix is too large")
     local siz = ffi.sizeof(cmatrix_ctor, 0) + len*cpx_sz
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free)
@@ -1229,41 +1229,90 @@ MR.__pow = \x,y,r_ -> x:map2(y, pow, r_)
 
 -- equal
 
-local cmp_tol = 0
-local cmp_fct = \a,b -> abs(a - b) <= cmp_tol
-
-function MR.__req_cpx (y, x, f_)                  -- cpx == mat
-  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and eq or cmp_fct end
-  local f = f_ or eq
-  assert(is_callable(f), "invalid argument #3 (callable expected)")
+function MR.__req_cpx (y, x, tol_) -- cpx == mat
+  if abs(x.im) > tol_ then return false end
   for i=1,y:size() do
-    if f(x, geti(y,i), i) ~= true then return false end
+    if abs(geti(y,i) - x.re) > tol_ then return false end
   end
   return true
 end
 
-function MR.__eq (x, y, f_)
-  if is_number(f_) then cmp_tol, f_ = f_, f_ == 0 and eq or cmp_fct end
-  local f = f_ or eq
-  assert(is_callable(f), "invalid argument #3 (callable expected)")
-  if is_number(x) then
+function MR.__eq (x, y, tol_)
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  if is_nil(y) then return false end
+  if is_number(x) then                        -- num == mat
     for i=1,y:size() do
-      if f(x, geti(y,i), i) ~= true then return false end
+      if abs(geti(y,i) - x) > tol_ then return false end
     end
     return true
-  elseif is_scalar(y) then
+  elseif is_scalar(y) then                    -- mat == num or cpx
+    y = complex(y)
+    if abs(y.im) > tol_ then return false end
     for i=1,x:size() do
-      if f(geti(x,i), y, i) ~= true then return false end
+      if abs(geti(x,i) - y.re) > tol_ then return false end
     end
     return true
-  elseif isa_matrix(x) and isa_matrix(y) then
+  elseif is_matrix(x) and is_matrix(y) then   -- mat == mat
     if x:nrow() ~= y:nrow() or x:ncol() ~= y:ncol() then return false end
     for i=1,x:size() do
-      if f(geti(x,i), geti(y,i), i) ~= true then return false end
+      if abs(geti(x,i) - geti(y,i)) > tol_ then return false end
     end
     return true
-  elseif has_method(y, '__req_mat') then
-    return y:__req_mat(x, f_)
+  elseif is_cmatrix(y) then                   -- mat == cmat
+    if x:nrow() ~= y:nrow() or x:ncol() ~= y:ncol() then return false end
+    for i=1,x:size() do
+      if abs(geti(x,i) - geti(y,i).re) > tol_ or
+         abs(            geti(y,i).im) > tol_ then return false end
+    end
+    return true
+  elseif has_method(y, '__req_mat') then      -- mat == ?
+    return y:__req_mat(x, tol_)
+  end
+  error("invalid arguments (unsupported matrix operation)")
+end
+
+function MC.__req_cpx (y, x, tol_) -- cpx == cmat
+  for i=1,y:size() do
+    if abs(geti(y,i).re - x.re) > tol_ or
+       abs(geti(y,i).im - x.im) > tol_ then return false end
+  end
+  return true
+end
+
+function MC.__eq (x, y, tol_)
+   tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  if is_nil(y) then return false end
+  if is_number(x) then                        -- num == cmat
+    for i=1,y:size() do
+      if abs(geti(y,i).re - x) > tol_ or
+         abs(geti(y,i).im    ) > tol_ then return false end
+    end
+    return true
+  elseif is_scalar(y) then                    -- cmat == num or cpx
+    y = complex(y)
+    for i=1,x:size() do
+      if abs(geti(x,i).re - y.re) > tol_ or
+         abs(geti(x,i).im - y.im) > tol_ then return false end
+    end
+    return true
+  elseif is_matrix(y) then                    -- cmat == mat
+    if x:nrow() ~= y:nrow() or x:ncol() ~= y:ncol() then return false end
+    for i=1,x:size() do
+      if abs(geti(x,i).re - geti(y,i)) > tol_ or
+         abs(geti(x,i).im            ) > tol_ then return false end
+    end
+    return true
+  elseif is_cmatrix(x) and is_cmatrix(y) then -- cmat == cmat
+    if x:nrow() ~= y:nrow() or x:ncol() ~= y:ncol() then return false end
+    for i=1,x:size() do
+      if abs(geti(x,i).re - geti(y,i).re) > tol_ or
+         abs(geti(x,i).im - geti(y,i).im) > tol_ then return false end
+    end
+    return true
+  elseif has_method(y, '__req_mat') then      -- cmat == ?
+    return y:__req_mat(x, tol_)
   end
   error("invalid arguments (unsupported matrix operation)")
 end
@@ -1953,16 +2002,16 @@ end
 
 -- metamethods ----------------------------------------------------------------o
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  mod, MR.  pow, MR.  same, MR.  copy =
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__mod, MR.__pow, MR.__same, MR.__copy
+MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 
-MR.  unm = \x,r_  -> MR.__unm(x,nil,r_)
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  eq, MR.  same, MR.  copy =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__eq, MR.__same, MR.__copy
 
-MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  same, MC.  copy =
-MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__same, MC.__copy
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  eq, MC.  same, MC.  copy =
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__eq, MC.__same, MC.__copy
 
-MR.  eq, MR.length, MR.  concat =
-MR.__eq, MR.__len , MR.__concat
+MR.  mod, MR.  pow, MR.length, MR.  concat =
+MR.__mod, MR.__pow, MR.__len , MR.__concat
 
 local function iter (x, i)
   if i < size(x) then return i+1, geti0(x, i) end
