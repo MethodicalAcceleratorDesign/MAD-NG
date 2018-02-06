@@ -5,9 +5,8 @@
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
- | Authors: L.   Deniau, laurent.deniau   at cern.ch
- |          A.Z. Teska , aleksandra.teska at cern.ch
- |          A.   Bloch , aurelien.bloch   at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          A. Bloch , aurelien.bloch at cern.ch
  | Contrib: F.R. Leiro
  |
  o-----------------------------------------------------------------------------o
@@ -28,10 +27,11 @@
 local ffi = require "ffi"
 local dat = require "madl_plotdat"
 
-local Object, Command, fun, vector, survey, filesys, atexit      in MAD
-local sign, tan, min, max, abs, sqrt, inf, pi                    in MAD.gmath
+local Object, Command, fun, vector, matrix, survey, filesys,
+      atexit                                                     in MAD
+local sign, tan, sin, cos, min, max, abs, sqrt, inf, pi          in MAD.gmath
 local lshift                                                     in MAD.operator
-local strinterp, setkeys, tblcpy, sleep, runonce, fileexists     in MAD.utility
+local strinterp, setkeys, tblcpy, runonce, fileexists, sleep     in MAD.utility
 local is_nil, is_number, is_table, is_mtable, is_string,
       is_sequence, is_rawtable                                   in MAD.typeid
 
@@ -50,8 +50,9 @@ local _dflt = {
   psizey       = 1,
   laysize      = 0.15,
   multisize    = 0.05,
+  maxew        = 1.2,   -- maximum size of an element (in plotdat)
   elemwidth    = 0.07,
-  elemwidth_in = 1,
+  elemwidth_in = 0.02,
   padding      = 0.025,
   middle       = 0.5,
   layonly      = 1,
@@ -64,13 +65,13 @@ local tmplock   = tmpfolder .. "madplot.lock"
 
 -- tmp files ------------------------------------------------------------------o
 
-local _handlepool, _warn, max_tmp_file = {}, true, 25
+local _handlepool, max_tmp_file = {}, 25
 local _filepool, lock
 
 -- lock for atomic operation (blocking)
 local function plot_lock ()
   if not fileexists(tmpfolder) then
-    local status,msg = filesys.mkdir(tmpfolder)
+    local status, msg = filesys.mkdir(tmpfolder)
     if not status and msg~="File exists" then
       error("couldn't create TMP_MAD_PLOT")
     end
@@ -121,7 +122,7 @@ end
 -- initialize the list of available tmp file
 local function setup_files()
   clean_tmp()
-  entry = 1
+  local entry = 1
   local tmpfile = tmpfolder .. "madplot-"
   _filepool     = {}
   for i=max_tmp_file,1,-1 do
@@ -135,24 +136,19 @@ end
 
 local plot_atexit = \ atexit(clean_tmp)
 -- return an available tmp file and its name (blocking)
-local function get_tmpfile()
+local function get_tmpfile(sid)
   runonce(plot_atexit)
   if not is_rawtable(_filepool) then setup_files() end
   plot_lock()
-  local fname, warn = false, false
+  local fname = false
   while true do
     fname = table.remove(_filepool)
     if fname and not fileexists(fname) then break end
-    if _warn and warn then
-      print("MAD Plot Warning : no available tmpfile (see documentation)")
-      _warn = false
-    end
     plot_unlock(); sleep(100); plot_lock()
     setup_files()
-    warn = true
   end
   local file = assert(io.open(fname, "w"))
-  _handlepool[fname] = file
+  _handlepool[fname] = {sid, file}
   filesys.lock(file, "w")
   plot_unlock()
   return file, fname
@@ -189,7 +185,7 @@ local function gp_setsid (gplot, sid)
   assert(is_number(sid), "invalid argument #1 (number expected)")
   if sid < 1 or _gplist.max < sid then
     error("invalid argument #1 (number should be comprise between 1 and "
-      .. _gplist.max .. " )")
+      .. _gplist.max .. ")")
   end
   gplot[_sid] = sid
 end
@@ -199,7 +195,7 @@ local function gp_isBusy (gplot)
  return clear_handle(gplot[_sid])
 end
 
-local gplot_ = Object 'gplot' {
+local _gplot = Object 'gplot' {
   sid           = \gplot -> gplot[_sid],
   [_sid]        = 1,
 }:set_methods {
@@ -210,7 +206,7 @@ local gplot_ = Object 'gplot' {
   clean_tmpFile = clean_tmp,
 }:set_readonly()
 
-local gplot = gplot_ {}
+local gplot = _gplot {}
 
 -- initialization -------------------------------------------------------------o
 
@@ -237,16 +233,16 @@ MAD_SET_TERM = "if (!(MAD_OLD_TERM eq MAD_NEW_TERM)) { \
 -- dump header and set terminal to script file
 local function setup_cmd (self)
   local output, scrdump in self
-  local file, fname = get_tmpfile()
+  local file, fname = get_tmpfile(self.sid)
   gplot:set_sid(self.sid)
   file:write(init_cmd % self)
 
   if is_number(output) then
-    file:write("MAD_NEW_TERM = \"set term ${term} ${output} size ${wsizex},${wsizey} \z
-      enhanced font '${font},${fontsize}'\"\n" % self)
+    file:write("MAD_NEW_TERM = \"set term ${term} ${output} size ${wsizex},\z
+      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
   elseif is_string(output) then
-    file:write("MAD_NEW_TERM = \"set term pdfcairo; set out '"
-      .. output .. "'\"\n")
+    file:write("MAD_NEW_TERM = \"set term pdfcairo enhanced font \z
+      '${font},${fontsize}'; set out '${output}'\"\n" % self)
   end
 
   file:write("@MAD_SET_TERM\n")
@@ -294,11 +290,23 @@ local flayout   = MAD.element.flags.layout
 local flays     = lshift(1, flayangle) + lshift(1, flayout)
 
 --  adjust "out of plot" layout coordinate
-local xadjust    = \xs,ys,base,l -> xs*l + base
-local yadjust    = \size  -> \xs,ys,base -> size*ys + base
+local adjust = \size  -> \xs,ys,shift,l =>
+  local shape  = vector(3):fill{xs, ys, 0}
+  local factor = vector(3):fill{l, size, 0}
+  return factor:emul(shape) + shift
+end
+
 --  adjust "in plot" layout coordinate
-local xadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
-local yadjust_in = \size  -> \xs,ys,base -> xs*base[1] + size*ys*base[2] + base[3]
+local adjust_in = \size -> \xs,ys,data,l =>
+  local rot, shift = data[1], data[2]
+  local shapcoord  = matrix(3):fill{ 0, 1, 0,
+                                    -1, 0, 0,
+                                     0, 0, 0, }
+  local shapshift  = vector(3):fill{1, 0, 0}
+  local shape      = vector(3):fill{xs,ys,0}
+  local factor     = vector(3):fill{l, size, 0}
+  return rot*shapcoord*(factor:emul(shape+shapshift))+shift
+end
 
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
@@ -339,8 +347,8 @@ local function eShap (param, elem, dir)
 end
 
 -- stream polygon data
-local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, func)
-  local fpwrite, xadjust, yadjust, ref in param
+local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
+  local fpwrite, adjust, ref in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
@@ -352,9 +360,9 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, 
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
-        xk, yk = xadjust(xk, yk, xorig, len), yadjust(xk, yk, yorig)
+        local pts  = adjust(xk, yk, data, len)
         local next = (k == #xj) and "" or " \\"
-        fpwrite("  %s %.5e, %s %.5e%s\n", cmd, xk, ref, yk, next)
+        fpwrite("  %s %.5e, %s %.5e%s\n", cmd, pts[1], ref, pts[2], next)
         cmd = "to"
       end
       param.oid = param.oid + 1
@@ -364,141 +372,143 @@ local function layout_poly (param, len, xorig, yorig, x_sh, y_sh, dash, eColor, 
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, xorig, yorig, dash, eColor, size)
-  local fpwrite, xadjust, yadjust, ref in param
-  local cx, cy = xadjust(0, 0, xorig, len), yadjust(0, 0, yorig)
+local function layout_ellipse (param, len, el, data, dash, eColor, size)
+  local fpwrite, adjust, ref in param
+  local pts = adjust(0, 0, data, len)
   local sx, sy = len, el*size
   local dashtype = dash or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
     size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb 'black' %s \n",
-    param.oid, cx, ref, cy, sx, ref, sy,
+    param.oid, pts[1], ref, pts[2], sx, ref, sy,
     eColor.color, eColor.style, dashtype)
   param.oid = param.oid + 1
 end
 
 -- stream element label data
-local function layout_label(param, name, kind, xorig, yorig)
-  local fpwrite, oid, ref, xadjust, yadjust in param
-  local x, y = xadjust(0, 0, xorig, 1), yadjust(0, 0, yorig)
-  label = name .. " [" .. kind .. "]"
+local function layout_label(param, name, kind, data)
+  local fpwrite, oid, ref, adjust in param
+  local pts  = adjust(0, 0, data, 1)
+  local label = name .. " [" .. kind .. "]"
   fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
-    point pt 4 ps 1 lc 'white'\n", oid, x, ref, y, label)
+    point pt 4 ps 1 lc 'white'\n", oid, pts[1], ref, pts[2], label)
 end
 
 -- stream beam line data
 local function layout_bline (param, bline)
   local fpwrite, ref in param
-  local prevX, prevY = bline.x[1], bline.y[1]
-  for i=2,#bline.y do
+  local fstx, fsty = bline.x[1], bline.y[1]
+  local size = #bline.y
+  fpwrite("set object %d polygon front dashtype solid \\\n\z
+    from %.5e, %s %.5e", param.oid, fstx, ref, fsty)
+  for i=2,size do
     local xi, yi = bline.x[i], bline.y[i]
-    fpwrite("set object %d polygon front dashtype solid \\\n\z
-      from first %.5e, %s %.5e to first %.5e, %s %.5e to first %.5e, %s %.5e\n",
-      param.oid, prevX, ref, prevY, xi, ref, yi, prevX, ref, prevY)
-    param.oid = param.oid + 1
-    prevX, prevY = xi, yi
+    fpwrite("  to %.5e, %s %.5e \\\n", xi, ref, yi)
   end
+  for i=size-1,1,-1 do
+    local xi, yi = bline.x[i], bline.y[i]
+    local next   = (i == 1) and "" or " \\"
+    fpwrite("  to %.5e, %s %.5e%s\n", xi, ref, yi, next)
+  end
+  param.oid = param.oid + 1
 end
 
 -- process data for "out of plot" layout
 local function layout_process(param, pseq)
-  local seqshift, nturn, layangle in param
-  local range, seq, disty, distx  in pseq
-  local size    = nturn*seq:length_of(range)
-  local xs, ys  = table.new(size, 0), table.new(size, 0)
-  local bline   = { x = { }, y={ } }
-  local deltaY  = disty
+  local seqshift, nturn, layangle                         in param
+  local range, seq, disty, distx, xmin, xmax, ymin, ymax  in pseq
+  local size     = nturn*seq:length_of(range)
+  local data     = table.new(size, 0)
+  local bline    = { x = { }, y={ } }
+  local deltaY   = disty
   local prevs_sh, angle, j, dir = 0, 0, 1, seq.direction
+  local fstx, l2, s_sh, xs, ys
   for i, elem, s in seq:iter(range, nturn) do
-    local s_sh   = s + elem.l/2
+    l2           = elem.l/2
+    s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
-    xs[j], ys[j] = s_sh + distx + seqshift, deltaY
+    xs, ys       = s_sh + distx + seqshift, deltaY
+    data[j]      = vector(3):fill{ xs, ys, 0 }
     prevs_sh     = s_sh
-    pseq.xmin, pseq.xmax = min(pseq.xmin, xs[j]), max(pseq.xmax, xs[j])
-    pseq.ymin, pseq.ymax = min(pseq.ymin, ys[j]), max(pseq.ymax, ys[j])
+    fstx         = fstx or xs - l2
+    xmin, xmax   = min(xmin, xs), max(xmax, xs)
+    ymin, ymax   = min(ymin, ys), max(ymax, ys)
     if elem:is_selected(flayangle) and layangle then
       angle = angle + elem.angle
-      table.insert(bline.x, xs[j]); table.insert(bline.y, ys[j])
+      table.insert(bline.x, xs); table.insert(bline.y, ys)
     end
     j = j + 1
   end
-  table.insert(bline.x, xs[#xs]); table.insert(bline.x, 1, xs[1])
-  table.insert(bline.y, ys[#ys]); table.insert(bline.y, 1, ys[1])
-  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+  local lstx, lsty = xs + l2, deltaY - tan(dir*angle)*l2
+  local fsty = data[1][2]
+  table.insert(bline.x, 1, fstx); table.insert(bline.y, 1, fsty)
+  table.insert(bline.x, lstx   ); table.insert(bline.y, lsty    )
+  pseq.xmin, pseq.xmax  = min(xmin, fstx, lstx), max(xmax, fstx, lstx)
+  pseq.ymin, pseq.ymax  = min(ymin, fsty, lsty), max(ymax, fsty, lsty)
+  pseq.data, pseq.bline = data, bline
 end
 
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
-  local seqlabel, nturn, A0, X0 in param
+  local nturn, A0, X0 in param
   local range, seq    in pseq
-  local size       = nturn*seq:length_of(range)
-  local xs, ys     = table.new(size, 0), table.new(size, 0)
-  local bline      = { x = table.new(size, 0), y = table.new(size, 0) }
-  local srv        = survey { sequence = seq, range = range, A0=A0, X0=X0 }
-  local idx, j     = 1, 1
-  local labx, laby = seqlabel[1], seqlabel[2]
-
+  local size   = nturn*seq:length_of(range, nturn)
+  local data   = table.new(size, 0)
+  local bline  = { x=table.new(size, 0), y=table.new(size, 0) }
+  local srv    = survey { sequence=seq, range=range, A0=A0, X0=X0, nturn=nturn }
+  local idx, j = 1, 1
+  local shift, coordinate
   for i, elem in seq:iter(range, nturn) do
     local line_idx = srv:index_of(elem.name, idx)
     if is_table(line_idx) then line_idx = line_idx[1] end
-    idx = line_idx
-    local line     = srv:getrow(line_idx)
-    local prevLine, x1, y1, xas, yas, xbs, ybs
+    local line = srv:getrow(line_idx)
+    idx = line_idx + 1
 
-    repeat
-      prevLine = (line_idx~=1) and srv:getrow(line_idx-1) or { x=0, y=0, z=0 }
-      x1, y1   = prevLine[labx], prevLine[laby]
-      x2, y2   = line[labx], line[laby]
-      xas, yas = 0.5*(x2 - x1), 0.5*(y2 - y1)
-      line_idx = line_idx - 1
-    until xas ~= 0 or yas ~= 0 or line_idx <= 1
+    local srvTranslat = vector(3):fill{line.x, line.y, line.z}
+    coordinate = matrix(3):fill{ 1, 0, 0,
+                                 0, 0, 1,
+                                 0, 0, 0, }
+    local rot = matrix(3):rotz(-line.theta - (elem.angle or 0)/2)
+    shift = coordinate*srvTranslat
 
-    if xas == 0 and yas == 0 then
-      xbs, ybs   = 0, 1
-    else
-      local xx, yy = (x1 - x2), (y2 - y1)
-      local sqrt_  = 1 / sqrt( yy^2 + xx^2 )
-      xbs, ybs = yy*sqrt_, xx*sqrt_
-    end
-
-    if elem.l == 0
-    then xshft, yshft = x2, y2
-    else xshft, yshft = x1 + xas, y1 + yas
-    end
-
-    xs[j], ys[j]         = {xas, xbs, xshft}, {yas, ybs, yshft}
-    pseq.xmin, pseq.xmax = min(pseq.xmin, xshft), max(pseq.xmax, xshft)
-    pseq.ymin, pseq.ymax = min(pseq.ymin, yshft), max(pseq.ymax, yshft)
-    table.insert(bline.x, xshft); table.insert(bline.y, yshft)
+    data[j]              = {rot, shift}
+    pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
+    pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
+    table.insert(bline.x, shift[1]); table.insert(bline.y, shift[2])
     j = j + 1
   end
-  pseq.xs, pseq.ys, pseq.bline = xs, ys, bline
+  local fst, lst = coordinate*vector(3):fill(X0), shift
+  table.insert(bline.x, 1, fst[1]); table.insert(bline.y, 1, fst[2])
+  table.insert(bline.x,    lst[1]); table.insert(bline.y,    lst[2])
+  pseq.xmin, pseq.xmax  = min(pseq.xmin, fst[1], shift[1]), max(pseq.xmax, fst[1], lst[1])
+  pseq.ymin, pseq.ymax  = min(pseq.ymin, fst[2], lst[2]  ), max(pseq.ymax, fst[2], lst[2])
+  pseq.data, pseq.bline = data, bline
 end
 
 -- stream a signle layout
 local function layout (param, pseq)
   local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
-  local seq, range, xs, ys, bline                                     in pseq
+  local seq, range, data, bline                                       in pseq
   local dir, j  = seq.direction, 1
 
   layout_bline(param, bline)
   for i, elem, s in seq:iter(range, nturn) do
-    local len, ekind    = elem.l, elem.kind
+    local len, ekind   = elem.l, elem.kind
     local is_flagged   = elem:test_flags(flays)
-    local is_vkind     = not kindselect or kind[ekind]
-    local xorig, yorig = xs[j], ys[j]
+    local is_vkind     = not kindselect or kindselect[ekind]
+    local dj = data[j]
 
     if is_flagged or (len >= elemminlen and is_vkind) then
       local sh_l = len / 2
       local el, dash, eColor, x_sh, y_sh, func = eShap(param, elem, dir)
 
-      if elemname  then layout_label(param, elem.name, ekind, xorig, yorig) end
+      if elemname  then layout_label(param, elem.name, ekind, dj) end
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, xorig, yorig, dash, eColor, elemwidth)
+        layout_ellipse(param, len, el, dj, dash, eColor, elemwidth)
       end
 
       if not is_nil(x_sh) then
-        layout_poly(param, sh_l, xorig, yorig, x_sh, y_sh, dash, eColor, func)
+        layout_poly(param, sh_l, dj, x_sh, y_sh, dash, eColor, func)
       end
     end
     j = j + 1
@@ -507,41 +517,46 @@ end
 
 -- compute bounding box and scale data accordingly
 -- post processing for "out of plot" layout
-local function layout_post(param, pseqs, ymin, ymax)
+local function layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   local sequence, laypos, layonly, elemwidth, elemscale in param
+  local padding, multisize, maxew, middle               in _dflt
   param.laysize  = param.laysize
     or (layonly and _dflt.layonly)
-    or (is_rawtable(sequence) and _dflt.laysize + _dflt.multisize*#sequence)
+    or (is_rawtable(sequence) and _dflt.laysize + multisize*#sequence)
     or _dflt.laysize
   elemwidth     = (elemwidth or _dflt.elemwidth) * elemscale
-  local pad     = _dflt.padding
-  local ybbox   = abs(ymax - ymin) + 2.4*elemwidth + 2*pad
+  local ybbox   = abs(ymax - ymin) + 2*maxew*elemwidth + 2*padding
   local yfactor = param.laysize / ybbox
-  elemwidth     = elemwidth * yfactor
-  if laypos == "top"    then laypos =1-(ymax*yfactor + 1.2*elemwidth + pad) end
-  if laypos == "bottom" then laypos =  -ymin*yfactor + 1.2*elemwidth + pad  end
-  if laypos == "middle" then laypos = _dflt.middle end
-  param.elemwidth = elemwidth
-
+  if laypos=="top"    then laypos=1-( ymax+maxew*elemwidth+padding)*yfactor end
+  if laypos=="bottom" then laypos=  (-ymin+maxew*elemwidth+padding)*yfactor end
+  if laypos=="middle" then laypos=middle                                    end
+  param.elemwidth = elemwidth * yfactor
   for i=1,#pseqs do
     local pseq = pseqs[i]
-    local ys, bline in pseq
-    pseq.ys      = fun.map(\y -> y*yfactor + laypos, ys):totable()
+    local data, bline in pseq
+    fun.foreach(\v => v[2]=v[2]*yfactor + laypos end, data)
     pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
   end
+  param.xrng = { xmin, xmax }
 end
 
 -- post processing for "in plot" layout
-local function layout_post_in(param, ymin, ymax)
-  local elemwidth, elemscale in param
-  elemwidth       = elemwidth or (abs(ymax - ymin) * 1.2*_dflt.elemwidth_in/100)
-  param.elemwidth = elemwidth * elemscale
+local function layout_post_in(param, xmin, xmax, ymin, ymax)
+  local elemwidth, elemscale          in param
+  local maxew, elemwidth_in, padding  in _dflt
+  local diag = sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
+  elemwidth = elemwidth and elemscale*elemwidth or
+              elemscale*diag*elemwidth_in/maxew
+  param.xrng      = { xmin - maxew*elemwidth - padding*diag,
+                      xmax + maxew*elemwidth + padding*diag, }
+  param.yrng      = { ymin - maxew*elemwidth - padding*diag,
+                      ymax + maxew*elemwidth + padding*diag }
+  param.elemwidth = elemwidth
 end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range, seqdistx, seqdisty,
-    elemwidth, elemscale, laypos, xrange                  in param
+  local sequence, fpwrite, range, seqdistx, seqdisty, elemwidth, laypos in param
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
@@ -568,11 +583,10 @@ local function multi_layout (param)
   end
 
   if is_in
-  then layout_post_in(param, ymin, ymax)
-  else layout_post(param, pseqs, ymin, ymax)
+  then layout_post_in(param, xmin, xmax, ymin, ymax)
+  else layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   end
-  param.xadjust = is_in and xadjust_in(param.elemwidth) or xadjust
-  param.yadjust = is_in and yadjust_in(param.elemwidth) or yadjust(param.elemwidth)
+  param.adjust = is_in and adjust_in(param.elemwidth) or adjust(param.elemwidth)
 
   for i=1,#pseqs do
     local pseq = pseqs[i]
@@ -580,26 +594,12 @@ local function multi_layout (param)
   end
 
   fpwrite("MAD_MAX = %.5e\n", param.oid)
-  xmin, xmax = xmin - param.elemwidth, xmax + param.elemwidth
-  ymin, ymax = ymin - param.elemwidth, ymax + param.elemwidth
-  if not xrange           then fpwrite("set xrange [%.5e:%.5e]\n", xmin, xmax) end
-  if not yrange and is_in then fpwrite("set yrange [%.5e:%.5e]\n", ymin, ymax) end
+  local xrange, yrange, xrng, yrng in param
+  if not xrange           then fpwrite("set xrange [%.5e:%.5e]\n", xrng[1], xrng[2]) end
+  if not yrange and is_in then fpwrite("set yrange [%.5e:%.5e]\n", yrng[1], yrng[2]) end
 end
 
 -- plot -----------------------------------------------------------------------o
-
--- get vector from label
-local function getv (data, tbl, label)
-  if label then
-    if data and data[label] then
-      return data[label]
-    elseif tbl[label] then
-      return tbl[label], true
-    else
-      error("invalid label")
-    end
-  end
-end
 
 -- parse input axis and apply func to each label
 local function parse_axis (param, func)
@@ -713,21 +713,21 @@ local function plot_cmd (param, _, ys, axis)
   param.databi = param.databi + 1
 end
 
+-- Create the plot command or used the user provided one and interpolate
 local function cmd_interpolate (param)
   local pwrite, intpol, plotcmd, plotvar in param
   local cmd = ""
   if is_string(plotcmd) then
     cmd = plotcmd
   else
+    local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
+                  with ${style${id}}${lines${id}}${points${id}}\z
+                  ${color${id}}${title${id}}${axes${id}},\\\n"
     for i=1,intpol.id-1 do
-      local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
-                    with ${style${id}}${lines${id}}${points${id}}\z
-                    ${color${id}}${title${id}}${axes${id}},\\\n"
-      intpol.id = i
-      cmd = cmd .. (cmdi % intpol)
+      cmd = cmd .. strinterp(cmdi, { id = i }, '=')
     end
   end
-  if is_table(plotvar) then tblcpy(plotvar, false, intpol) end
+  if is_table(plotvar) then intpol:set(plotvar) end
   pwrite(cmd % intpol)
 end
 
@@ -770,8 +770,8 @@ local function set_misc (param)
     title = title % param
     fpwrite("set title '%s' font '%s,%s'\n", title, font, size)
   end
-  if legendpos then
-    local font, size = legendfont or "", legendsize or ""
+  if legendpos or legendfont or legendsize then
+    local pos, font, size = legendpos or "", legendfont or "", legendsize or ""
     fpwrite("set key %s font '%s,%s'\n", legendpos, font, size)
   end
   if psizey or psizex then
@@ -828,7 +828,7 @@ local function init_param(self, file)
     date    = date or is_table(table) and table.date  or "",
     time    = time or is_table(table) and table.time  or "",
     databi  = 0,
-    intpol  = { id = 1 },
+    intpol  = Object { id = 1 },
     plotter = file,
     oid     = oshft,
     fpwrite = \... -> file:write(string.format(...)),
@@ -901,12 +901,11 @@ local plot = Command "plot" {
   tablerange  = nil,     -- { min, max }
 
   -- sequence input
-  sequence    = nil,
-  range       = nil,     -- {"E.DS.L5.B1","S.DS.R5.B1"} or {122.2, 543} etc...
-  seqdisty    = 0,       -- x >= 0 or { x1, x2, ... }
-  seqdistx    = 0,       -- x >= 0 or { x1, x2, ... }
-  seqshift    = 0,       -- x > =0
-  seqlabel    = { "x", "z" },
+  sequence    = nil,     -- seq | { seq1, seq2, ... } | "keep"
+  range       = nil,     -- {"E.DS.L5.B1","S.DS.R5.B1"} | {122.2, 543} etc...
+  seqdisty    = 0,       -- x >= 0 | { x1, x2, ... }
+  seqdistx    = 0,       -- x >= 0 | { x1, x2, ... }
+  seqshift    = 0,       -- x >= 0
   nturn       = 0,
   X0          = { 0, 0, 0 },
   A0          = { 0, 0, 0 },
@@ -956,7 +955,7 @@ local plot = Command "plot" {
   psizey      = nil,     -- 0 < x < 1
 
   -- data style
-  datastyles  = {},      -- { y = { style = "lines", color = "blue"} }
+  datastyles  = { },     -- { y = { style = "lines", color = "blue"} }
   styles      = "lines", -- { y = "lines" }
   colors      = "red",   -- { y = "green" }
   dashtypes   = "solid", -- { y = "..-- " }
