@@ -21,12 +21,12 @@
 #include <assert.h>
 
 #include "mad_log.h"
-#include "mad_desc_priv.h"
+#include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL
-#include "mad_ctpsa_priv.h"
+#include "mad_ctpsa_impl.h"
 #else
-#include "mad_tpsa_priv.h"
+#include "mad_tpsa_impl.h"
 #endif
 
 // --- LOCAL FUNCTIONS --------------------------------------------------------
@@ -164,7 +164,7 @@ der_coef(idx_t ia, idx_t di, ord_t der_ord, const D* d)
     return d->To[ia][di-1];
 
   const ord_t *msrc = d->To[ia], *mder = d->To[di];
-  if (!mad_mono_leq(d->nv,mder,msrc))
+  if (!mad_mono_le(d->nv,mder,msrc))
     return 0;
 
   int c = 1;
@@ -509,7 +509,7 @@ FUN(add) (const T *a, const T *b, T *c)
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d);
 
-  const T* t=0; 
+  const T* t=0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t   hi = MAX(a->hi,b->hi);
@@ -526,7 +526,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d);
 
-  const T* t=0; 
+  const T* t=0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t   hi = MAX(a->hi,b->hi);

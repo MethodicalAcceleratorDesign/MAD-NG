@@ -26,9 +26,7 @@
     corresponds to the number of elements of type 'type' in the buffer.
 
   Information:
-  - parameters ending with an underscope can be null.
-  - mad_malloc and mad_realloc call mad_fatal with caller location if
-    (re)allocation fails instead of returning a NULL pointer.
+  - parameters ending with an underscope can be null (i.e. optional).
   - mad_calloc calls mad_malloc and set to zeros the allocated memory.
   - mad_mcached returns the amount of memory cached (slow).
   - mad_mcollect frees the cached memory and returns its amount (slow).
@@ -43,29 +41,57 @@
  o-----------------------------------------------------------------------------o
  */
 
-#include "mad_defs.h"
+#include "mad_log.h"
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
-// local buffer
+// local buffer (macros)
 #define mad_alloc_tmp(type,name,length)
-#define mad_free_tmp(name)
+#define mad_free_tmp(      name)
 
-// allocator (fake declarations: same signature as stdlib.h)
-#define mad_malloc(  size         )
-#define mad_calloc(  count, size  )
-#define mad_realloc( ptr_ , size_ )
-#define mad_free(    ptr_         )
-#define mad_msize(   ptr_         )
+// allocators
+void*  mad_malloc  (size_t size);
+void*  mad_calloc  (size_t count, size_t size );
+void*  mad_realloc (void*  ptr_ , size_t size_);
+void   mad_free    (void*  ptr_);
 
 // utils
+size_t mad_msize    (void*  ptr_);
 size_t mad_mcached  (void);
 size_t mad_mcollect (void);
 
-// --- implementation (private) ----------------------------------------------o
+// ----------------------------------------------------------------------------o
+// --- implementation (private) -----------------------------------------------o
+// ----------------------------------------------------------------------------o
 
-#include "mad_mem_priv.h"
+#define mad_malloc(s)    mad_mcheck(__func__, mad_malloc (s)  )
+#define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc (c,s))
+#define mad_realloc(p,s) mad_mcheck(__func__, mad_realloc(p,s))
 
-// ---------------------------------------------------------------------------o
+void*  (mad_malloc)  (size_t)         __attribute__((hot,malloc));
+void*  (mad_calloc)  (size_t, size_t) __attribute__((hot,malloc));
+void*  (mad_realloc) (void* , size_t) __attribute__((hot));
+void    mad_free     (void*)          __attribute__((hot));
+
+static inline void*
+mad_mcheck (str_t fname, void *ptr_)
+{
+  if (!ptr_)
+    (mad_error)(fname, "invalid null pointer (out of memory?)");
+
+  return ptr_;
+}
+
+#undef  mad_alloc_tmp
+#define mad_alloc_tmp(T,NAME,L) \
+  T NAME##_local_tmp__[sizeof(T)*(L) < 8192 ? (L) : 1]; \
+  T *NAME = (sizeof(T)*(L) < 8192 ? \
+             NAME##_local_tmp__ : mad_malloc(sizeof(T)*(L)) )
+
+#undef  mad_free_tmp
+#define mad_free_tmp(NAME) \
+  (NAME != NAME##_local_tmp__ ? mad_free(NAME) : (void)0)
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_MEM_H

@@ -36,16 +36,17 @@
  */
 
 #include "mad_defs.h"
-#include "mad_main.h"
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 #define error(...)        mad_error (     __VA_ARGS__)
 #define warn(...)         mad_warn  (     __VA_ARGS__)
 #define trace(lvl,...)    mad_trace (lvl, __VA_ARGS__)
 #define ensure(cond,...)  mad_ensure(cond,__VA_ARGS__)
 
-// --- implementation (private) ----------------------------------------------o
+// ----------------------------------------------------------------------------o
+// --- implementation (private) -----------------------------------------------o
+// ----------------------------------------------------------------------------o
 
 #define mad_error(...)                  (mad_error)(  mad_logloc_,__VA_ARGS__)
 #define mad_warn(...)                   (mad_warn )(  mad_logloc_,__VA_ARGS__)
@@ -56,6 +57,19 @@
 #define mad_logcnd_(c,f) ((void)(                  !(c) && (f,0)))
 #define mad_logloc_      __FILE__ ":" MKSTR(__LINE__) ": "
 
-// ---------------------------------------------------------------------------o
+// see mad_main.c
+
+#ifndef LUALIB_API // Only valid in a Lua environment
+#define LUALIB_API
+#endif
+
+LUALIB_API void (mad_error)(     str_t fn, str_t fmt, ...) __attribute((noreturn));
+LUALIB_API void (mad_warn )(     str_t fn, str_t fmt, ...);
+LUALIB_API void (mad_trace)(int, str_t fn, str_t fmt, ...);
+
+extern int mad_trace_level;
+extern int mad_trace_location;
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_LOG_H

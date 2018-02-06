@@ -15,10 +15,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o-----------------------------------------------------------------------------o
-  
+
   Purpose:
   - provide a full feathered Generalized TPSA package
- 
+
   Information:
   - parameters ending with an underscope can be null.
 
@@ -35,7 +35,7 @@
 #include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_priv.h"
+#include "mad_desc_impl.h"
 
 // --- GLOBALS ----------------------------------------------------------------
 
@@ -203,13 +203,13 @@ find_index(int n, const ord_t **T, const ord_t m[n], int start, int stop)
 {
   assert(T && m);
   for (int i = start; i < stop; ++i)
-    if (mad_mono_equ(n,T[i],m)) return i;
+    if (mad_mono_eq(n,T[i],m)) return i;
 
   // error
-  printf("monomial not found in table: ");
+  fprintf(stderr, "error: monomial not found in table: ");
   mad_mono_print(n,m);
   assert(NULL);
-  return -1;
+  return -1; // never reached
 }
 
 enum tbl_ordering {BY_ORD, BY_VAR};
@@ -230,7 +230,7 @@ find_index_bin(int n, const ord_t **T, const ord_t m[n], const int from_idx, con
     else
       count = step;
   }
-  if ( start < to_idx && mad_mono_equ(n,T[start], m))
+  if ( start < to_idx && mad_mono_eq(n,T[start], m))
     return start;
 
   // error
@@ -489,9 +489,9 @@ tbl_build_LC(int oa, int ob, D *d)
   assert(oa < d->mo && ob < d->mo);
 
   ord_t **To = d->To;
-  const int *pi   = d->ord2idx,  *tv2to = d->tv2to,          // shorter names
-             iao  = pi[oa],            ibo   = pi[ob],            // offsets
-             cols = pi[oa+1] - pi[oa], rows  = pi[ob+1] - pi[ob]; // sizes
+  const int *pi   = d->ord2idx,      *tv2to = d->tv2to,          // shorter names
+             iao  = pi[oa],            ibo  = pi[ob],            // offsets
+             cols = pi[oa+1] - pi[oa], rows = pi[ob+1] - pi[ob]; // sizes
 
   int mat_size = rows * cols;
   idx_t *lc = mad_malloc(mat_size * sizeof *lc);
@@ -668,10 +668,10 @@ tbl_check(D *d)
   }
 
   for (int i = 0; i < d->nc; ++i) {
-    if (to2tv[tv2to[i]] != i)                  return 4e6 + i;
-    if (tv2to[tbl_index_H(d,nv,To[i])] != i)   return 5e6 + i;
-    if (! mad_mono_equ(nv,To[tv2to[i]],Tv[i])) return 6e6 + i;
-    if (! mad_mono_equ(nv,To[i],monos + nv*i)) return 7e6 + i;
+    if (to2tv[tv2to[i]] != i)                 return 4e6 + i;
+    if (tv2to[tbl_index_H(d,nv,To[i])] != i)  return 5e6 + i;
+    if (! mad_mono_eq(nv,To[tv2to[i]],Tv[i])) return 6e6 + i;
+    if (! mad_mono_eq(nv,To[i],monos + nv*i)) return 7e6 + i;
   }
   return tbl_check_L(d);
 }
@@ -892,8 +892,8 @@ desc_equiv(const D *d, int nmv, const ord_t map_ords[nmv], str_t var_nam_[nmv],
   else if (d->var_names_)
     return 0;
 
-  return    d->nmv == nmv && mad_mono_equ(nmv, d->map_ords, map_ords)
-         && d->nv  == nv  && mad_mono_equ(nv , d->var_ords, ords)
+  return    d->nmv == nmv && mad_mono_eq(nmv, d->map_ords, map_ords)
+         && d->nv  == nv  && mad_mono_eq(nv , d->var_ords, ords)
          && d->ko  == ko;
 }
 
@@ -959,7 +959,7 @@ mad_desc_mono_isvalid (const D *d, int n, const ord_t m[n])
   return    (n                                   <= d->nv)
          && (          mad_mono_ord(n    ,m)     <= d->mo)
          && (n > nmv ? mad_mono_ord(n-nmv,m+nmv) <= d->ko : 1)
-         && mad_mono_leq(n,m,d->var_ords);
+         && mad_mono_le(n,m,d->var_ords);
 }
 
 int

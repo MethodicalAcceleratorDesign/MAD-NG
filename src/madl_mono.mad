@@ -22,28 +22,203 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
+local M = {}
+
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
 local istype in ffi
+local min in math
 
 local _C in MAD
 
-local is_number, is_table in MAD.typeid
+local is_nil, is_number, is_iterable in MAD.typeid
+
+local ord_sz = ffi.sizeof 'ord_t'
 
 -- types ----------------------------------------------------------------------o
 
+--[=[
+TODO:
+- compressed representation, maximum order is 31
+- order encoding: ord = data[i] & 0xFF, idx = data[i] >> 8
+- sizeof(mono_t) == 128 byte (i.e. sink opt)
+
 ffi.cdef[[
-typedef struct { short n; ord_t ord[?]; } mono_t;
+typedef struct { ssz_t n; ssz_t data[31]; } mono_t;
+]]
+]=]
+
+-- for now...
+ffi.cdef[[
+typedef struct { ssz_t n; ord_t data[?]; } mono_t;
 ]]
 
-
--- FFI type constructors
 local mono_ctor = ffi.typeof 'mono_t'
 
+local is_mono = \x -> istype(mono_ctor, x)
+
+-- allocators -----------------------------------------------------------------o
+
+local function mono_alloc(n)
+  local r = mono_ctor(n)
+  r.n = n
+  return r
+end
+
+-- ctors ----------------------------------------------------------------------o
+
+-- mono(len, val_)
+-- mono(tbl)
+
+local function mono (n, val_)
+  if is_number(n) then
+    local r, v = mono_alloc(n), val_ or 0
+    assert(is_number(v), "invalid argument #2 (number expected)")
+    for i=0,n-1 do r.data[i] = v end
+    return r
+  elseif is_iterable(n) then
+    local len, tbl = #n, n
+    local r = mono_alloc(len)
+    for i=1,len do r.data[i-1] = tbl[i] end
+    return r
+  end
+  error("invalid argument #1 (number or table expected)")
+end
+
+-- checkers -------------------------------------------------------------------o
+
+local function chksiz (r, a, b) -- add, sub
+  assert((is_nil(r) or (r.n == a.n)) and
+         (is_nil(b) or (b.n == a.n)), "incompatible monomial sizes")
+  return r
+end
+
+local function chksizc (r, a, b) -- concat
+  assert(is_nil(r) or r.n == a.n+b.n, "incompatible monomial sizes")
+  return r
+end
+
+-- size, same, copy -----------------------------------------------------------o
+
+function M.size (a)
+  return a.n
+end
+
+function M.__same (a, n_)
+  return mona_alloc(n_ or a.n)
+end
+
+function M.__copy (a, b_)
+  local n
+  if is_nil(b_) then
+    n, a, b_ = a.n, mono_alloc(a.n), a
+  else
+    assert(is_mono(b_), "invalid argument #1 (monomial expected)")
+    n = min(a.n, b_.n)
+  end
+  ffi.copy(a.data, b_.data, ord_sz*n)
+  return a
+end
+
+-- implementation -------------------------------------------------------------o
+
+function M.fill (a, v_)
+  ffi.fill(a.data, ord_sz * a.n, v_)
+  return a
+end
+
+function M.max (a)
+  return _C.mad_mono_max(a.n, a.data)
+end
+
+function M.ord (a)
+  return _C.mad_mono_ord(a.n, a.data)
+end
+
+function M.__eq (a, b)
+  return a.n == b.n and _C.mad_mono_eq(a.n, a.data, b.data)
+end
+
+function M.__lt (a, b)
+  assert(a.n == b.n, "incompatible monomial sizes")
+  return _C.mad_mono_lt(a.n, a.data, b.data)
+end
+
+function M.__le (a, b)
+  assert(a.n == b.n, "incompatible monomial sizes")
+  return _C.mad_mono_le(a.n, a.data, b.data)
+end
+
+function M.__add (a, b, r_)
+  local r = chksiz(r_,a,b) or mono_alloc(a.n)
+  _C.mad_mono_add(a.n, a.data, b.data, r.data)
+  return r
+end
+
+function M.__sub (a, b, r_)
+  local r = chksiz(r_,a,b) or mono_alloc(a.n)
+  _C.mad_mono_sub(a.n, a.data, b.data, r.data)
+  return r
+end
+
+function M.__concat (a, b, r_)
+  local r = chksizc(r_,a,b) or mono_alloc(a.n+b.n)
+  _C.mad_mono_concat(a.n, a.data, b.n, b.data, r.data)
+  return r
+end
+
+function M.__totable (a)
+  local r = table.new(a.n,0)
+  for i=1,a.n do r[i] = a.data[i-1] end
+  return r
+end
+
+function M.__tostring (a, sep_)
+  local r = table.new(a.n,0)
+  for i=1,a.n do r[i] = tostring(a.data[i-1]) end
+  return table.concat(r, sep_ or ' ')
+end
+
+-- metamethods ----------------------------------------------------------------o
+
+M.  add, M.  sub, M.  eq, M.length, M.  concat, M.  same, M.  copy =
+M.__add, M.__sub, M.__eq, M.__len , M.__concat, M.__same, M.__copy
+
+local function iter (a, i)
+  if i < a.n then return i+1, a.data[i] end
+end
+
+M.__ipairs = \s -> (iter, s, 0)
+M.__pairs  = \s -> (iter, s, 0)
+
+function M.__index (a, i)
+  if type(i) == 'number' then
+    return 1 <= i and i <= a.n and a.data[i-1] or nil
+  else
+    return M[i]
+  end
+end
+
+function M.__newindex (a, i, o)
+  if type(i) == 'number' then
+    assert(1 <= i and i <= a.n, "1-index out of bounds")
+    a.data[i-1] = o
+  else
+    error("invalid monomial member '"..tostring(i).."'")
+  end
+end
+
+-- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_monomial = is_mono
+
+-- metatable ------------------------------------------------------------------o
+
+ffi.metatype(mono_ctor, M)
 
 -- end ------------------------------------------------------------------------o
 return {
-   monomial =  monomial,
+   monomial =  mono,
   __help = require 'madh_mono',
 }

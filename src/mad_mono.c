@@ -95,7 +95,7 @@ mad_mono_max (int n, const ord_t a[n])
 }
 
 int
-mad_mono_equ (int n, const ord_t a[n], const ord_t b[n])
+mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (int i=0; i < n; ++i)
@@ -138,7 +138,16 @@ mad_mono_print (int n, const ord_t m[n])
 // --- default versions ------------------------------------------------------o
 
 int
-mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
+mad_mono_lt (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (int i=0; i < n; ++i)
+    if (a[i] >= b[i]) return 0;
+  return 1;
+}
+
+int
+mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (int i=0; i < n; ++i)
@@ -150,8 +159,6 @@ mad_mono_leq (int n, const ord_t a[n], const ord_t b[n])
 
 #elif defined(__AVX512F__) && defined(AVX512BW)
 #include "sse/mad_mono_avx512.tc"
-#elif defined(__AVX2__)
-#include "sse/mad_mono_avx.tc"
 #else
 #include "sse/mad_mono_sse.tc"
-#endif // __SSE2__ || __AVX2__ || __AVX512F__
+#endif // __SSE2__ || __AVX512F__
