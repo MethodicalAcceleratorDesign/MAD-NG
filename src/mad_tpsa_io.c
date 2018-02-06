@@ -162,7 +162,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   while ((read_cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
 #else
   while ((read_cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 2) {
-#endif 
+#endif
 
     #ifdef DEBUG
       printf("c=%.2f o=%d\n", c, o);
@@ -196,13 +196,13 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   if (!name_) name_ = "-UNNAMED--";
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
           name_,d->mo,d->nmv,d->ko, d->nv - d->nmv);
-  print_ords(d->nmv,d->map_ords,stream_);
+  print_ords(d->nmv,d->mvar_ords,stream_);
   fprintf(stream_, " ||| VAR ORDS: ");
   print_ords(d->nv,d->var_ords,stream_);
-  if (d->var_names_) {
+  if (d->mvar_names) {
     fprintf(stream_, "\n MAP NAME: ");
     for (int i = 0; i < d->nmv; ++i)
-      fprintf(stream_, "%s ", d->var_names_[i]);
+      fprintf(stream_, "%s ", d->mvar_names[i]);
   }
   else
     fprintf(stream_, "\n *******************************************************");
@@ -220,7 +220,7 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
 #ifndef MAD_CTPSA_IMPL
       fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , idx, VAL(t->coef[c]), d->ords[c]);
 #else
-      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);      
+      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);
 #endif
 
       print_ords(d->nv, d->To[c], stream_);
