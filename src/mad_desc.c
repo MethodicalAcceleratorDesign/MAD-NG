@@ -915,7 +915,7 @@ get_desc(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
       return Ds[i];
     }
 
-  error("Too many descriptors");
+  error("Too many descriptors in concurrent use");
 }
 
 // --- public -----------------------------------------------------------------o
