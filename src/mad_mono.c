@@ -172,6 +172,9 @@ mad_mono_min (int n, const ord_t a[n])
 #elif defined(__AVX2__)
 // #warning "AVX2 selected"
 #include "sse/mad_mono_avx2.tc"
+#elif defined(__SSE4__)
+// #warning "SSE4 selected"
+#include "sse/mad_mono_sse4.tc"
 #elif defined(__SSE2__)
 // #warning "SSE2 selected"
 #include "sse/mad_mono_sse2.tc"
