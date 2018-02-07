@@ -31,15 +31,16 @@
  o-----------------------------------------------------------------------------o
  */
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 typedef unsigned char ord_t;
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 void  mad_mono_fill  (int n,       ord_t a[], ord_t v);
 void  mad_mono_copy  (int n, const ord_t a[], ord_t r[]);
 
+ord_t mad_mono_min   (int n, const ord_t a[]);
 ord_t mad_mono_max   (int n, const ord_t a[]);
 int   mad_mono_ord   (int n, const ord_t a[]);
 int   mad_mono_eq    (int n, const ord_t a[], const ord_t b[]);
@@ -55,6 +56,6 @@ void  mad_mono_concat(int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
 void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
 void  mad_mono_print (int n, const ord_t a[]);
 
-// ---------------------------------------------------------------------------o
+// --- end --------------------------------------------------------------------o
 
 #endif //  MAD_MONO_H

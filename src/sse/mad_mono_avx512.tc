@@ -2,21 +2,21 @@
 #define MAD_MONO_AVX512_TC
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | AVX512 optimization for monimials
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include "mad_sse.h"
@@ -93,6 +93,64 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
   return 1;
 }
 
-// ---------------------------------------------------------------------------o
+ord_t
+mad_mono_min (int n, const ord_t a[n])
+{
+  assert(a);
+  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  __m512i ra, rr = _mm512_set1_epi8(-1);
+
+  for (; i < nn; i+=MAD_AVX2_CSIZ) {
+    ra = _mm512_loadu_si512((__m512i*)&a[i]);
+    rr = _mm512_min_epi8(rr,ra);
+  }
+
+  if (nm) {
+    __mmask64 mask = (1ul << nm) - 1;
+    __m512i zero = _mm512_setzero_si512();
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
+    rr = _mm512_min_epi8(rr,ra);
+  }
+
+  int ni = nn ? MAD_AVX512_CSIZ : nm;
+  ord_t m0 = -1, m1 = -1;
+  for (int i=0; i < ni; i+=2) {
+    if (m0 > ((ord_t*)&rr)[i+0]) m0 = ((ord_t*)&rr)[i+0];
+    if (m1 > ((ord_t*)&rr)[i+1]) m1 = ((ord_t*)&rr)[i+1];
+  }
+
+  return m0 <= m1 ? m0 : m1;
+}
+
+ord_t
+mad_mono_max (int n, const ord_t a[n])
+{
+  assert(a);
+  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  __m512i ra, rr = _mm512_setzero_si512();
+
+  for (; i < nn; i+=MAD_AVX2_CSIZ) {
+    ra = _mm512_loadu_si512((__m512i*)&a[i]);
+    rr = _mm512_max_epi8(rr,ra);
+  }
+
+  if (nm) {
+    __mmask64 mask = (1ul << nm) - 1;
+    __m512i zero = _mm512_setzero_si512();
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
+    rr = _mm512_max_epi8(rr,ra);
+  }
+
+  int ni = nn ? MAD_AVX512_CSIZ : nm;
+  ord_t m0 = 0, m1 = 0;
+  for (int i=0; i < ni; i+=2) {
+    if (m0 < ((ord_t*)&rr)[i+0]) m0 = ((ord_t*)&rr)[i+0];
+    if (m1 < ((ord_t*)&rr)[i+1]) m1 = ((ord_t*)&rr)[i+1];
+  }
+
+  return m0 >= m1 ? m0 : m1;
+}
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_MONO_AVX512_TC

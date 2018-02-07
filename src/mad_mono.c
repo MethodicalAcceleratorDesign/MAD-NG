@@ -23,7 +23,7 @@
 
 #include "mad_mono.h"
 
-// --- locals ----------------------------------------------------------------o
+// --- locals -----------------------------------------------------------------o
 
 static const ord_t *ords_to_sort;
 
@@ -33,10 +33,11 @@ cmp_ords (const void *a, const void *b)
   int i1 = *(const int*)a;
   int i2 = *(const int*)b;
 
-  return ords_to_sort[i1] > ords_to_sort[i2] ? -1 : ords_to_sort[i1] < ords_to_sort[i2];
+  return ords_to_sort[i1] > ords_to_sort[i2] ? -1 :
+         ords_to_sort[i1] < ords_to_sort[i2];
 }
 
-// --- implementation --------------------------------------------------------o
+// --- implementation ---------------------------------------------------------o
 
 void
 mad_mono_fill (int n, ord_t a[n], ord_t v)
@@ -50,15 +51,6 @@ mad_mono_copy (int n, const ord_t a[n], ord_t r[n])
 {
   assert(a && r);
   for (int i=0; i < n; ++i) r[i] = a[i];
-}
-
-void
-mad_mono_concat (int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
-{
-  assert(a && b && r);
-  int i, j;
-  for (i=0; i < n; ++i) r[i  ] = a[i];
-  for (j=0; j < m; ++j) r[i+j] = b[j];
 }
 
 void
@@ -84,16 +76,6 @@ mad_mono_ord (int n, const ord_t a[n])
   return s;
 }
 
-ord_t
-mad_mono_max (int n, const ord_t a[n])
-{
-  assert(a);
-  ord_t mo = a[0];
-  for (int i = 1; i < n; ++i)
-    if (a[i] > mo) mo = a[i];
-  return mo;
-}
-
 int
 mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
 {
@@ -104,10 +86,18 @@ mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
 }
 
 void
+mad_mono_concat (int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
+{
+  assert(a && b && r);
+  int i, j;
+  for (i=0; i < n; ++i) r[i  ] = a[i];
+  for (j=0; j < m; ++j) r[i+j] = b[j];
+}
+
+void
 mad_mono_sort (int n, const ord_t a[n], int idxs[n])
 {
   assert(a && idxs);
-
   ords_to_sort = a;
   for (int i=0; i < n; ++i) idxs[i] = i;
   qsort(idxs, n, sizeof *idxs, cmp_ords);
@@ -155,7 +145,27 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
   return 1;
 }
 
-// --- optimized versions ----------------------------------------------------o
+ord_t
+mad_mono_max (int n, const ord_t a[n])
+{
+  assert(a);
+  ord_t mo = 0;
+  for (int i = 0; i < n; ++i)
+    if (a[i] > mo) mo = a[i];
+  return mo;
+}
+
+ord_t
+mad_mono_min (int n, const ord_t a[n])
+{
+  assert(a);
+  ord_t mo = -1;
+  for (int i = 0; i < n; ++i)
+    if (a[i] < mo) mo = a[i];
+  return mo;
+}
+
+// --- optimized versions -----------------------------------------------------o
 
 #elif defined(__AVX512F__) && defined(AVX512BW)
 // #warning "AVX512 selected"
@@ -169,3 +179,5 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
 #else
 #error "unsupported architecture"
 #endif // __SSE2__ || __AVX2__ || __AVX512F__
+
+// --- end --------------------------------------------------------------------o
