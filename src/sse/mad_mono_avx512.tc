@@ -25,10 +25,10 @@ int
 mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
   __m512i ra, rb;
 
-  for (; i < nn; i+=MAD_AVX512_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
     if (~_mm512_cmpeq_epi8_mask(ra,rb)) return 0;
@@ -37,8 +37,8 @@ mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[i])
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
     if (~_mm512_cmpeq_epi8_mask(ra,rb)) return 0;
   }
 
@@ -49,10 +49,10 @@ int
 mad_mono_lt (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
   __m512i ra, rb;
 
-  for (; i < nn; i+=MAD_AVX512_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
     if (_mm512_cmpge_epi8_mask(ra,rb)) return 0;
@@ -61,8 +61,8 @@ mad_mono_lt (int n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[i])
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
     if (_mm512_cmpge_epi8_mask(ra,rb)) return 0;
   }
 
@@ -73,10 +73,10 @@ int
 mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
   __m512i ra, rb;
 
-  for (; i < nn; i+=MAD_AVX512_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
     if (_mm512_cmpgt_epi8_mask(ra,rb)) return 0;
@@ -85,22 +85,56 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[i])
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
     if (_mm512_cmpgt_epi8_mask(ra,rb)) return 0;
   }
 
   return 1;
 }
 
+int
+mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  __m512i ra, rb;
+  __mmask64 rr;
+
+  if (nm) {
+    __mmask64 mask = (1ul << nm) - 1;
+    __m512i zero = _mm512_setzero_si512();
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
+    rr = _mm512_cmpeq_epi8_mask(ra,rb);
+    if (~rr)
+      for (int i=nm-1; i >= 0; i--)
+        if (!(rr & (1ull<<i))) return ((ord_t*)&ra)[i]-((ord_t*)&rb)[i];
+
+  }
+
+  for (int i=nn-MAD_AVX512_CSIZ; i >= 0; i-=MAD_AVX512_CSIZ) {
+    ra = _mm512_loadu_si512((__m512i*)&a[i]);
+    rb = _mm512_loadu_si512((__m512i*)&b[i]);
+    rr = _mm512_cmpeq_epi8_mask(ra,rb);
+    if (~rr)
+      for (int i=MAD_AVX512_CSIZ-2; i >= 0; i-=2) {
+        if (!(rr & (1ull<<(i+1)))) return ((ord_t*)&ra)[i+1]-((ord_t*)&rb)[i+1];
+        if (!(rr & (1ull<<(i+0)))) return ((ord_t*)&ra)[i+0]-((ord_t*)&rb)[i+0];
+      }
+  }
+
+  return 0;
+}
+
 ord_t
 mad_mono_min (int n, const ord_t a[n])
 {
   assert(a);
-  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
   __m512i ra, rr = _mm512_set1_epi8(-1);
 
-  for (; i < nn; i+=MAD_AVX2_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rr = _mm512_min_epi8(rr,ra);
   }
@@ -108,7 +142,7 @@ mad_mono_min (int n, const ord_t a[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
     rr = _mm512_min_epi8(rr,ra);
   }
 
@@ -126,10 +160,10 @@ ord_t
 mad_mono_max (int n, const ord_t a[n])
 {
   assert(a);
-  int i=0, nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
+  int nn=MAD_AVX512_CRND(n), nm=MAD_AVX512_CMOD(n);
   __m512i ra, rr = _mm512_setzero_si512();
 
-  for (; i < nn; i+=MAD_AVX2_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rr = _mm512_max_epi8(rr,ra);
   }
@@ -137,7 +171,7 @@ mad_mono_max (int n, const ord_t a[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[i])
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
     rr = _mm512_max_epi8(rr,ra);
   }
 

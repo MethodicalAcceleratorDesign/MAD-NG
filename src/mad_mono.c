@@ -75,15 +75,6 @@ mad_mono_ord (int n, const ord_t a[n])
   return s;
 }
 
-int
-mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-  for (int i=n-1; i >= 0; --i)
-    if (a[i] != b[i]) return a[i] - b[i];
-  return 0;
-}
-
 void
 mad_mono_concat (int n, const ord_t a[], int m, const ord_t b[], ord_t r[])
 {
@@ -142,6 +133,15 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
   for (int i=0; i < n; ++i)
     if (a[i] > b[i]) return 0;
   return 1;
+}
+
+int
+mad_mono_rcmp (int n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (int i=n-1; i >= 0; --i)
+    if (a[i] != b[i]) return a[i] - b[i];
+  return 0;
 }
 
 ord_t
