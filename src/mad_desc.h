@@ -47,6 +47,8 @@ extern       int   mad_tpsa_strict;
 // --- interface --------------------------------------------------------------o
 
 // ctors, dtor
+desc_t* mad_desc_new62(void);     // 6 mvars of order 2
+desc_t* mad_desc_new6 (ord_t mo); // 6 mvars of order mo
 desc_t* mad_desc_new  (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv]);
 desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
                        int nv , const ord_t  var_ords[nv ], ord_t dk); // knobs X-order

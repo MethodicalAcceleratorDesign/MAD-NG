@@ -990,21 +990,21 @@ mad_desc_mono_nxtbyvar (const D *d, int n, ord_t m[n])
 }
 
 int
-mad_desc_maxlen(const D *d)
+mad_desc_maxlen (const D *d)
 {
   assert(d);
   return d->nc;
 }
 
 ord_t
-mad_desc_maxord(const D *d)
+mad_desc_maxord (const D *d)
 {
   assert(d);
   return d->mo;
 }
 
 ord_t
-mad_desc_gtrunc(D *d, ord_t to)
+mad_desc_gtrunc (D *d, ord_t to)
 {
   assert(d);
   if (to == mad_tpsa_same)
@@ -1021,16 +1021,33 @@ mad_desc_gtrunc(D *d, ord_t to)
 
 // --- ctors, dtor ------------------------------------------------------------o
 
+static str_t mvar_names[6] = {"x","px","y","py","t","pt"};
+
 D*
-mad_desc_new(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv])
+mad_desc_new62 (void)
+{
+  ord_t mvar_ords[6] = {2,2,2,2,2,2};
+  return get_desc(6, mvar_ords, mvar_names, 6, mvar_ords, 0);
+}
+
+D*
+mad_desc_new6 (ord_t mo)
+{
+  ord_t mvar_ords[6];
+  mad_mono_fill(6, mvar_ords, mo);
+  return get_desc(6, mvar_ords, mvar_names, 6, mvar_ords, 0);
+}
+
+D*
+mad_desc_new (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv])
 {
   assert(mvar_ords);
   return get_desc(nmv, mvar_ords, mvar_names_, nmv, mvar_ords, 0);
 }
 
 D*
-mad_desc_newv(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
-              int nv , const ord_t  var_ords[nv ], ord_t dk)
+mad_desc_newv (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
+               int nv , const ord_t  var_ords[nv ], ord_t dk)
 {
   assert(mvar_ords && var_ords);
 
@@ -1045,7 +1062,7 @@ mad_desc_newv(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
 }
 
 void
-mad_desc_del(D *d)
+mad_desc_del (D *d)
 {
   assert(d);
   mad_free(d->var_ords);
