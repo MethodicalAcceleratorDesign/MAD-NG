@@ -34,7 +34,7 @@
 // TODO: taylor series differs for complex series...
 // TODO: use complex series to expand obove order 5
 
-// --- LOCAL FUNCTIONS --------------------------------------------------------
+// --- local ------------------------------------------------------------------o
 
 static inline void
 fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
@@ -66,7 +66,8 @@ fixed_point_iteration(const T *a, T *c, int iter, NUM expansion_coef[iter+1])
 }
 
 static inline void
-sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], int iter_c, NUM cos_coef[iter_c+1])
+sincos_fixed_point(const T *a, T *s, T *c, int iter_s,
+                   NUM sin_coef[iter_s+1], int iter_c, NUM cos_coef[iter_c+1])
 {
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
@@ -96,7 +97,7 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s, NUM sin_coef[iter_s+1], i
   }
 }
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
+// --- public -----------------------------------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
 
@@ -112,8 +113,8 @@ void
 FUN(inv) (const T *a, NUM v, T *c) // v/a
 {
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] != 0);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(a->coef[0] != 0, "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/a->coef[0]); return; }
@@ -131,8 +132,8 @@ FUN(sqrt) (const T *a, T *c)
 {
 // SQRT(A0+P) = SQRT(A0)*(1+1/2(P/A0)-1/8*(P/A0)**2+...)
   assert(a && c);
-  ensure(a->d == c->d);
-  SELECT(ensure(a->coef[0] >= 0),);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  SELECT(ensure(a->coef[0] >= 0, "invalid domain"), );
 
   if (a->coef[0] == 0) { FUN(clear)(c); return; }
 
@@ -151,8 +152,8 @@ void
 FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
 {
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] SELECT(> 0, != 0));
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/sqrt(a->coef[0])); return; }
@@ -171,7 +172,7 @@ FUN(exp) (const T *a, T *c)
 {
 // EXP(A0+P) = EXP(A0)*(1+P+P**2/2!+...)
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, exp(a->coef[0])); return; }
@@ -189,8 +190,8 @@ FUN(log) (const T *a, T *c)
 {
 // LOG(A0+P) = LOG(A0) + (P/A0) - 1/2*(P/A0)**2 + 1/3*(P/A0)**3 - ...)
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] SELECT(> 0, != 0));
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, log(a->coef[0])); return; }
@@ -209,7 +210,7 @@ FUN(sin) (const T *a, T *c)
 {
 // SIN(A0+P) = SIN(A0)*(1-P**2/2!+P**4/4!+...) + COS(A0)*(P-P**3/3!+P**5/5!+...)
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sin(a->coef[0])); return; }
@@ -228,7 +229,7 @@ FUN(cos) (const T *a, T *c)
 {
 // COS(A0+P) = COS(A0)*(1-P**2/2!+P**4/4!+...) - SIN(A0)*(P-P**3/3!+P**5/5!+...)
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, cos(a->coef[0])); return; }
@@ -246,7 +247,7 @@ void
 FUN(sincos) (const T *a, T *s, T *c)
 {
   assert(a && s && c);
-  ensure(a->d == s->d && a->d == c->d);
+  ensure(a->d == s->d && a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t sto = MIN(s->mo,s->d->trunc),
         cto = MIN(c->mo,c->d->trunc);
@@ -283,7 +284,7 @@ void
 FUN(sinh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sinh(a->coef[0])); return; }
@@ -301,7 +302,7 @@ void
 FUN(cosh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, cosh(a->coef[0])); return; }
@@ -319,7 +320,7 @@ void
 FUN(sincosh) (const T *a, T *sh, T *ch)
 {
   assert(a && sh && ch);
-  ensure(a->d == sh->d && a->d == ch->d);
+  ensure(a->d == sh->d && a->d == ch->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t sto = MIN(sh->mo,sh->d->trunc),
         cto = MIN(ch->mo,ch->d->trunc);
@@ -357,8 +358,8 @@ FUN(sirx) (const T *a, T *c)
 {
 // SIN(SQRT(P))/SQRT(P) = 1 - P/3! + P**2/5! - P**3/7! + ...
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] == 0);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] == 0, "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
@@ -376,8 +377,8 @@ FUN(corx) (const T *a, T *c)
 {
 // COS(SQRT(P)) = 1 - P/2! + P**2/4! - P**3/6! + ...
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] == 0);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] == 0, "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
@@ -395,8 +396,8 @@ FUN(sinc) (const T *a, T *c)
 {
 // SIN(P)/P = 1 - P**2/3! + P**4/5! - P**6/7! + ...
   assert(a && c);
-  ensure(a->d == c->d);
-  ensure(a->coef[0] == 0);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] == 0, "invalid domain");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
@@ -419,7 +420,7 @@ void
 FUN(tan) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
 
@@ -435,7 +436,7 @@ FUN(tan) (const T *a, T *c)
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
   NUM sa = sin(a0), ca = cos(a0);
-  ensure(ca != 0);
+  ensure(ca != 0, "invalid domain");
 
   NUM          xcf1 = 1/ca;
   expansion_coef[0] = sa                     *xcf1;
@@ -452,7 +453,7 @@ void
 FUN(cot) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
 
@@ -468,7 +469,7 @@ FUN(cot) (const T *a, T *c)
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
   NUM sa = sin(a0), ca = cos(a0);
-  ensure(sa != 0);
+  ensure(sa != 0, "invalid domain");
 
   NUM          xcf1 = 1/sa;
   expansion_coef[0] = ca                  *xcf1;
@@ -485,13 +486,13 @@ void
 FUN(asin) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1));
+  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
 
   NUM          xcf1 = 1 / sqrt(1 - a0*a0);
   expansion_coef[0] = asin(a0);
@@ -509,13 +510,13 @@ void
 FUN(acos) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1));
+  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
 
   NUM          xcf1 = 1 / sqrt(1 - a0*a0);
   expansion_coef[0] = acos(a0);
@@ -533,13 +534,13 @@ void
 FUN(atan) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1);
+  ensure(a0*a0 != -1, "invalid domain");
 
   NUM          xcf1 = 1 / (1 +  a0*a0);
   expansion_coef[0] = atan(a0);
@@ -556,13 +557,13 @@ void
 FUN(acot) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1);
+  ensure(a0*a0 != -1, "invalid domain");
 
   NUM          xcf1 = 1 / (1 + a0*a0);
   expansion_coef[0] = 2*atan(1) - atan(a0);
@@ -579,14 +580,14 @@ void
 FUN(tanh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
   NUM sa = sinh(a0), ca = cosh(a0);
-  ensure(ca != 0);
+  ensure(ca != 0, "invalid domain");
 
   NUM          xcf1 = 1/ca;
   expansion_coef[0] = sa                  *xcf1;
@@ -604,14 +605,14 @@ void
 FUN(coth) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
   NUM sa = sinh(a0), ca = cosh(a0);
-  ensure(sa != 0);
+  ensure(sa != 0, "invalid domain");
 
   NUM          xcf1 = 1/sa;
   expansion_coef[0] = ca                      *xcf1;
@@ -629,13 +630,13 @@ void
 FUN(asinh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1);
+  ensure(a0*a0 != -1, "invalid domain");
 
   expansion_coef[0] = asinh(a0);
   NUM          xcf1 = 1 / sqrt(1 + a0*a0);
@@ -653,13 +654,13 @@ void
 FUN(acosh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(a0 > 1, a0*a0 != 1));
+  ensure(SELECT(a0 > 1, a0*a0 != 1), "invalid domain");
 
   expansion_coef[0] = acosh(a0);
   NUM          xcf1 = 1 / sqrt(a0*a0 - 1);
@@ -677,13 +678,13 @@ void
 FUN(atanh) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1));
+  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
 
   expansion_coef[0] = atanh(a0);
   NUM          xcf1 = 1 / (1 - a0*a0);
@@ -700,13 +701,13 @@ void
 FUN(acoth) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) > 1, a0 != 0 && a0*a0 != 1));
+  ensure(SELECT(fabs(a0) > 1, a0 != 0 && a0*a0 != 1), "invalid domain");
 
   expansion_coef[0] = atanh(1/a0);
   NUM          xcf1 = 1 / (-1 + a0*a0);
@@ -724,10 +725,10 @@ FUN(erf) (const T *a, T *c)
 {
   // ERF(X) is the integral from 0 to x from [2/sqrt(pi) * exp(-x*x)]
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5);
+  ensure(to <= 5, "NYI");
 
   NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
   // coeff from Berz's TPSALib
@@ -751,3 +752,5 @@ FUN(erf) (const T *a, T *c)
 
   fixed_point_iteration(a,c,to,expansion_coef);
 }
+
+// --- end --------------------------------------------------------------------o

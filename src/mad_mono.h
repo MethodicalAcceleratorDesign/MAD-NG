@@ -9,8 +9,7 @@
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
- | Contrib: -
+ | Contrib: C. Tomoiaga
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU

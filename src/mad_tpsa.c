@@ -30,13 +30,15 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// --- DEBUGGING --------------------------------------------------------------
+// --- debugging --------------------------------------------------------------o
 
 void
 FUN(debug) (const T *t)
 {
   D *d = t->d;
-  printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=" FMT " ", t->nz, t->lo, t->hi, t->mo, VAL(t->coef[0]));
+  printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=" FMT " ",
+            t->nz,t->lo,t->hi,t->mo, VAL(t->coef[0]));
+
   ord_t hi = MIN3(t->hi, t->mo, t->d->trunc);
   int i = d->ord2idx[MAX(1,t->lo)]; // ord 0 already printed
   for (; i < d->ord2idx[hi+1]; ++i)
@@ -45,9 +47,8 @@ FUN(debug) (const T *t)
   printf(" }\n");
 }
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
+// --- introspection ----------------------------------------------------------o
 
-// --- --- INTROSPECTION ------------------------------------------------------
 D*
 FUN(desc) (const T *t)
 {
@@ -75,7 +76,7 @@ ord_t
   return mo;
 }
 
-// --- --- CTORS --------------------------------------------------------------
+// --- ctors, dtor ------------------------------------------------------------o
 
 T*
 FUN(newd) (D *d, ord_t mo)
@@ -83,13 +84,13 @@ FUN(newd) (D *d, ord_t mo)
   assert(d);
 
   if (mo == mad_tpsa_default) mo = d->mo;
-  else ensure(mo <= d->mo);
+  else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
   T *t = mad_malloc(sizeof(T) + d->nc * sizeof(NUM));
 
   t->d = d;
   t->lo = t->mo = mo;
-  t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking NZ[0]
+  t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking nz[0]
   return t;
 }
 
@@ -105,7 +106,7 @@ void
 FUN(copy) (const T *t, T *dst)
 {
   assert(t && dst);
-  ensure(t->d == dst->d);
+  ensure(t->d == dst->d, "incompatible GTPSAs descriptors");
   D *d = t->d;
   if (d->trunc < t->lo) { FUN(clear)(dst); return; }
   dst->hi = MIN3(t->hi, dst->mo, d->trunc);
@@ -150,7 +151,7 @@ FUN(del) (T *t)
   mad_free(t);
 }
 
-// --- --- INDEXING / MONOMIALS -----------------------------------------------
+// --- indexing / monomials ---------------------------------------------------o
 
 int
 FUN(mono) (const T *t, int n, ord_t m_[n], idx_t i)
@@ -173,7 +174,7 @@ FUN(midx_sp) (const T *t, int n, const int m[n])
   return mad_desc_get_idx_sp(t->d, n, m);
 }
 
-// --- --- ACCESSORS ----------------------------------------------------------
+// --- accessors --------------------------------------------------------------o
 
 NUM
 FUN(get0) (const T *t)
@@ -187,8 +188,9 @@ FUN(geti) (const T *t, int i)
 {
   assert(t);
   D *d = t->d;
-  ensure(i >= 0 && i < d->nc);
-  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
+  ensure(i >= 0 && i < d->nc, "index out of bounds");
+  if (mad_tpsa_strict) // ?
+    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -198,7 +200,8 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx(d,n,m);
-  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
+  if (mad_tpsa_strict)
+    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -209,7 +212,8 @@ FUN(getm_sp) (const T *t, int n, const idx_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx_sp(d,n,m);
-  if (mad_tpsa_strict) ensure(d->ords[i] <= t->mo);
+  if (mad_tpsa_strict)
+    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -236,7 +240,8 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
   D *d = t->d;
-  ensure(i >= 0 && i < d->nc && d->ords[i] <= t->mo);
+  ensure(i >= 0 && i < d->nc, "index out of bounds");
+  ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
 
@@ -288,7 +293,7 @@ FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
   FUN(seti)(t,i,a,b);
 }
 
-// --- WITHOUT COMPLEX-BY-VALUE VERSION ---------------------------------------
+// --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
 
@@ -316,56 +321,6 @@ void FUN(setm_r) (T *t, int n, const ord_t m[n], num_t a_re, num_t a_im, num_t b
 void FUN(setm_sp_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setm_sp)(t, n, m, CNUM(a), CNUM(b)); }
 
+// --- end --------------------------------------------------------------------o
+
 #endif // MAD_CTPSA_IMPL
-
-
-#if 0 // not really useful and dangerous!
-// --- --- TRANSFORMATION -----------------------------------------------------
-
-T*
-FUN(map) (const T *a, T *c, NUM (*f)(NUM v, int i_))
-{
-  assert(a && c);
-  ensure(a->d == c->d);
-  // TODO: use on the whole range, not just [lo,hi]
-
-  D *d = a->d;
-  if (d->trunc < a->lo) { FUN(clear)(c); return c; }
-
-  c->hi = MIN3(a->hi, c->mo, d->trunc);
-  c->lo = a->lo;
-  c->nz = mad_bit_trunc(a->nz, c->hi);
-
-  for (int i = d->ord2idx[c->lo]; i < d->ord2idx[c->hi+1]; ++i)
-    c->coef[i] = f(a->coef[i], i);
-
-  return c;
-}
-
-T*
-FUN(map2) (const T *a, const T *b, T *c, NUM (*f)(NUM va, NUM vb, int i_))
-{
-  assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d);
-
-  idx_t *pi = a->d->ord2idx;
-  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-  ord_t c_hi = MIN3(MAX(a->hi,b->hi),c->mo,c->d->trunc),
-        c_lo = a->lo;
-
-  NUM va, vb;
-  for (int i = pi[c_lo]; i < pi[c_hi+1]; ++i) {
-    int curr_strict_mode = mad_tpsa_strict;
-    mad_tpsa_strict = 0;
-    va = FUN(geti)(a,i);
-    vb = FUN(geti)(b,i);
-    mad_tpsa_strict = curr_strict_mode;
-    c->coef[i] = f(va,vb,i);
-  }
-  c->lo = c_lo;
-  c->hi = c_hi;
-  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz),c->hi);
-
-  return c;
-}
-#endif

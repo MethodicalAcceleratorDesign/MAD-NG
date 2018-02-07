@@ -30,24 +30,24 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// --- LOCAL FUNCTIONS --------------------------------------------------------
+// --- local ------------------------------------------------------------------o
 
 static inline void
 check_same_desc(int sa, const T *ma[sa])
 {
   assert(ma);
-  for (int i = 1; i < sa; ++i)
-    ensure(ma[i]->d == ma[i-1]->d);
+  for (int i=1; i < sa; ++i)
+    ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
 check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
 {
-  ensure(sa == sc);
-  ensure(sa == ma[0]->d->nmv); // 'square' matrix, ignoring knobs
+  ensure(sa == sc, "incompatibles number of map variables");
+  ensure(sa == ma[0]->d->nmv, "non-square system"); // 'square' matrix, ignoring knobs
   check_same_desc(sa,ma);
   check_same_desc(sc,(const T**)mc);
-  ensure(ma[0]->d == mc[0]->d);
+  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 /* GSL BASED REAL VERSION (NO COMPLEX)
@@ -167,7 +167,7 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
   mad_free_tmp(mat_knbi);
 }
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
+// --- public -----------------------------------------------------------------o
 
 void
 FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
@@ -175,7 +175,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
   assert(ma && mc);
   check_minv(sa,ma,sc,mc);
   for (int i = 0; i < sa; ++i)
-    ensure(mad_bit_get(ma[i]->nz,1));
+    ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
   D *d = ma[0]->d;
   T *lin_inv[sa], *nonlin[sa], *tmp[sa];
@@ -218,7 +218,7 @@ FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
   check_minv(sa,ma,sc,mc);
   for (int i = 0; i < sa; ++i)
     if (row_select[i])
-      ensure(mad_bit_get(ma[i]->nz,1));
+      ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
   D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
@@ -252,3 +252,4 @@ FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
   }
 }
 
+// --- end --------------------------------------------------------------------o

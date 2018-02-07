@@ -29,7 +29,7 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// --- LOCAL FUNCTIONS --------------------------------------------------------
+// --- local ------------------------------------------------------------------o
 
 static inline void
 hpoly_triang_mul(const NUM *ca, const NUM *cb, NUM *cc, int nb,
@@ -249,15 +249,13 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   c->hi = mad_bit_highest(c->nz);
 }
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
-
-// --- --- UNARY ---------------------------------------------------------------
+// --- unary ops --------------------------------------------------------------o
 
 void
 FUN(abs) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   c->hi = MIN3(a->hi, c->mo, c->d->trunc);
   c->lo = a->lo;
@@ -275,7 +273,7 @@ void
 FUN(arg) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   c->hi = MIN3(a->hi, c->mo, c->d->trunc);
   c->lo = a->lo;
@@ -290,7 +288,7 @@ void
 FUN(conj) (const T *a, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   c->hi = MIN3(a->hi, c->mo, c->d->trunc);
   c->lo = a->lo;
@@ -310,7 +308,7 @@ FUN(nrm1) (const T *a, const T *b_)
   NUM norm = 0.0;
   int *pi = a->d->ord2idx;
   if (b_) {
-    ensure(a->d == b_->d);
+    ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
 
     idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->trunc)+1],
@@ -339,7 +337,7 @@ FUN(nrm2) (const T *a, const T *b_)
   NUM norm = 0.0;
   int *pi = a->d->ord2idx;
   if (b_) {
-    ensure(a->d == b_->d);
+    ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
 
     idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->trunc)+1],
@@ -364,8 +362,9 @@ FUN(nrm2) (const T *a, const T *b_)
 void
 FUN(der) (const T *a, T *c, int var)
 {
-  assert(a && c && a != c);
-  ensure(var >= a->d->ord2idx[1] && var < a->d->ord2idx[2]);
+  assert(a && c && a != c); // TODO: aliasing
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(var >= a->d->ord2idx[1] && var < a->d->ord2idx[2], "invalid domain");
   // TODO: ensure map_order[var] > 0
 
   if (a->hi == 0) { FUN(clear)(c); return; }
@@ -393,11 +392,11 @@ void
 FUN(mder) (const T *a, T *c, int n, const ord_t mono[n])
 {
   assert(a && c && a != c);
-  assert(a->d == c->d);
-  ensure(mad_desc_mono_isvalid(a->d,n,mono));
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(mad_desc_mono_isvalid(a->d,n,mono), "invalid monomial");
 
   ord_t der_ord = mad_mono_ord(n,mono);
-  ensure(der_ord > 0);
+  ensure(der_ord > 0, "invalid derivative order");
   idx_t idx = mad_desc_get_idx(a->d,n,mono);
   if (idx < a->d->ord2idx[2]) {  // fallback on simple version
     FUN(der)(a,c,idx);
@@ -417,7 +416,7 @@ void
 FUN(scl) (const T *a, NUM v, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->hi == 0) { FUN(scalar)(c, v*a->coef[0]); return; }
 
@@ -429,7 +428,7 @@ FUN(scl) (const T *a, NUM v, T *c)
     c->coef[i] = v * a->coef[i];
 }
 
-// --- --- BINARY --------------------------------------------------------------
+// --- binary ops -------------------------------------------------------------o
 
 // TPSA_LINOP_ORD(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
 // TPSA_LINOP assumes ORD=0 and avoids GCC warning -Wtype-limits
@@ -464,7 +463,7 @@ void
 FUN(acc) (const T *a, NUM v, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   if (!v || a->lo > a->hi) return;
 
   D *d = c->d;
@@ -487,7 +486,7 @@ void
 FUN(acc) (const T *a, NUM v, T *c)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   if (!v || a->lo > a->hi) return;
 
   const T *t=0, *b=c;
@@ -507,7 +506,7 @@ void
 FUN(add) (const T *a, const T *b, T *c)
 {
   assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   const T* t=0;
   if (a->lo > b->lo) SWAP(a,b,t);
@@ -524,7 +523,7 @@ void
 FUN(sub) (const T *a, const T *b, T *c)
 {
   assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   const T* t=0;
   if (a->lo > b->lo) SWAP(a,b,t);
@@ -542,7 +541,7 @@ void
 FUN(mul) (const T *a, const T *b, T *r)
 {
   assert(a && b && r);
-  ensure(a->d == b->d && a->d == r->d);
+  ensure(a->d == b->d && a->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *c = (a == r || b == r) ? r->d->PFX(t[0]) : r;
 
@@ -610,8 +609,8 @@ void
 FUN(div) (const T *a, const T *b, T *c)
 {
   assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d);
-  ensure(b->coef[0] != 0);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(b->coef[0] != 0, "invalid domain");
 
   if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
@@ -624,7 +623,7 @@ void
 FUN(ipow) (const T *a, T *c, int n)
 {
   assert(a && c);
-  ensure(a->d == c->d);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   int inv = 0;
 
@@ -659,7 +658,7 @@ void
 FUN(axpb) (NUM a, const T *x, NUM b, T *r)
 {
   assert(x && r);
-  ensure(x->d == r->d);
+  ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
   FUN(scl)(x,a,r);
   if (b) FUN(set0)(r, 1,b);
 }
@@ -668,7 +667,7 @@ void
 FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 {
   assert(a && b && c);
-  ensure(a->d == b->d && b->d == c->d);
+  ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->lo > b->lo)  {
     const T* t; SWAP(a,b,t);
@@ -689,7 +688,7 @@ void
 FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
 {
   assert(x && y && r);
-  ensure(x->d == y->d && y->d == r->d);
+  ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *t1 = (x == r || y == r) ? r->d->PFX(t[1]) : r;
   FUN(mul)(x,y, t1);
@@ -700,7 +699,8 @@ void
 FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
 {
   assert(x && y && z && r);
-  ensure(x->d == y->d && y->d == z->d && z->d == r->d);
+  ensure(x->d == y->d && y->d == z->d && z->d == r->d,
+         "incompatibles GTPSA (descriptors differ)");
 
   T *t1 = (x == r || y == r || z == r) ? r->d->PFX(t[1]) : r;
   FUN(mul)(x,y, t1);
@@ -712,7 +712,8 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
                 NUM b, const T *v, const T *w, NUM c, T *r)
 {
   assert(x && y && v && w && r);
-  ensure(x->d == y->d && y->d == v->d && v->d == w->d && w->d == r->d);
+  ensure(x->d == y->d && y->d == v->d && v->d == w->d && w->d == r->d,
+         "incompatibles GTPSA (descriptors differ)");
 
   T *t1 = (x == r || y == r || v == r || w == r) ? r->d->PFX(t[1]) : r;
   T *t2 = (v == r || w == r || t1 == r) ? r->d->PFX(t[2]) : r;
@@ -725,7 +726,8 @@ void
 FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
 {
   assert(x && y && z && r);
-  ensure(x->d == y->d && y->d == z->d && z->d == r->d);
+  ensure(x->d == y->d && y->d == z->d && z->d == r->d,
+         "incompatibles GTPSA (descriptors differ)");
 
   T *t3 = (z == r) ? r->d->PFX(t[3]) : r;
   FUN(axypbvwpc)(a,x,x, b,y,y, 0, t3);
@@ -737,7 +739,7 @@ FUN(poisson) (const T *a, const T *b, T *c, int n)
 {
   // C = [A,B] (POISSON BRACKET, 2*n: No of PHASEVARS
   assert(a && b && c);
-  ensure(a->d == b->d && b->d == c->d);
+  ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   T *is[4];
   for (int i = 0; i < 4; ++i)
@@ -762,7 +764,7 @@ FUN(poisson) (const T *a, const T *b, T *c, int n)
     FUN(del)(is[i]);
 }
 
-// --- WITHOUT COMPLEX-BY-VALUE VERSION ---------------------------------------
+// --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
 
@@ -806,4 +808,6 @@ void FUN(ax2pby2pcz2_r)(num_t a_re, num_t a_im, const T *x,
                         num_t c_re, num_t c_im, const T *z, T *r)
 { FUN(ax2pby2pcz2)(CNUM(a), x, CNUM(b), y, CNUM(c), z, r); }
 
-#endif
+#endif // MAD_CTPSA_IMPL
+
+// --- end --------------------------------------------------------------------o

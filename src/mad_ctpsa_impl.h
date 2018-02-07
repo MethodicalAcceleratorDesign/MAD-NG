@@ -23,7 +23,7 @@
 #include "mad_bit.h"
 #include "mad_ctpsa.h"
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
   desc_t *d;
@@ -32,7 +32,7 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
   cnum_t  coef[];
 };
 
-// --- helpers ---------------------------------------------------------------o
+// --- helpers ----------------------------------------------------------------o
 
 #ifndef MAD_TPSA_NOHELPER
 
@@ -51,6 +51,6 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 #include <tgmath.h>
 #include <complex.h>
 
-// ---------------------------------------------------------------------------o
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_CTPSA_PRIV_H

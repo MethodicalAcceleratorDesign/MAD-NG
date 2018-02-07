@@ -154,7 +154,7 @@ void    mad_tpsa_pminv   (int sa, const tpsa_t *ma[],                           
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                              FILE *stream_); // TODO
-desc_t* mad_tpsa_scan_hdr (                              FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (                              FILE *stream_); // TODO
 void    mad_tpsa_scan_coef(      tpsa_t *t,              FILE *stream_); // TODO
 void    mad_tpsa_debug    (const tpsa_t *t);
 

@@ -20,24 +20,25 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include "mad_log.h"
 #include "mad_bit.h"
 #include "mad_desc.h"
 #include "mad_tpsa.h"
 #include "mad_ctpsa.h"
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 struct desc {  // WARNING: needs to be identical with Lua for compatibility
   int      id;          // index in list of registered descriptors
-  int      nmv, nv, nc; // number of mvars, number of all vars, number of coeff
+  int      nmv, nv, nc; // number of mvars, number of all vars, number of coefs
   ord_t    mo, ko,      // maximum order for mvars and knobs
            trunc;       // truncation order for operations; always <= mo
-  str_t   *mvar_names;  // names of mvars; TODO: move it 1 level above and set indirection
                // end of compatibility with Lua
 
   size_t   size;       // bytes used by current desc
 
-  ord_t   *var_ords,   // limiting order for each monomial variable
+  str_t   *mvar_names; // names of mvars
+  ord_t   * var_ords,  // limiting order for each monomial variable
           *mvar_ords,  // max order for each TPSA in map -- used just for desc comparison
           *monos,      // 'matrix' storing the monomials (sorted by ord)
           *ords,       // order of each mono of To
@@ -58,7 +59,7 @@ struct desc {  // WARNING: needs to be identical with Lua for compatibility
   ctpsa_t *ct[5];      // temps for ctpsa
 };
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 #define D desc_t
 
@@ -75,10 +76,7 @@ void     mad_tpsa_del   (tpsa_t *t);
 ctpsa_t* mad_ctpsa_newd (D *d, ord_t mo);
 void     mad_ctpsa_del  (ctpsa_t *t);
 
-// --- helpers ---------------------------------------------------------------o
-
-#undef  ensure
-#define ensure(test) assert(test)
+// --- helpers ----------------------------------------------------------------o
 
 static inline idx_t
 hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
@@ -86,7 +84,6 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
   return ib*ia_size + ia;
 }
 
-// ---------------------------------------------------------------------------o
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_DESC_PRIV_H
-

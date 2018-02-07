@@ -31,7 +31,7 @@ void
 mad_ctpsa_real (const ctpsa_t *t, tpsa_t *dst)
 {
   assert(t && dst);
-  ensure(t->d == dst->d);
+  ensure(t->d == dst->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
   if (d->trunc < t->lo) { mad_tpsa_clear(dst); return; }
@@ -41,14 +41,14 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *dst)
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
   for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
-    dst->coef[i] = creal(t->coef[i]);  
+    dst->coef[i] = creal(t->coef[i]);
 }
 
 void
 mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *dst)
 {
   assert(t && dst);
-  ensure(t->d == dst->d);
+  ensure(t->d == dst->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
   if (d->trunc < t->lo) { mad_tpsa_clear(dst); return; }
@@ -58,7 +58,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *dst)
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
 
   for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
-    dst->coef[i] = cimag(t->coef[i]);  
+    dst->coef[i] = cimag(t->coef[i]);
 }
 
 void
@@ -67,7 +67,7 @@ mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst)
   assert((re_ || im_) && dst);
   const tpsa_t *re = re_ ? re_ : im_;
   const tpsa_t *im = im_ ? im_ : re_;
-  ensure(re->d == dst->d && im->d == dst->d);
+  ensure(re->d == dst->d && im->d == dst->d, "incompatibles GTPSA (descriptors differ)");
 
   D *d = dst->d;
   if (d->trunc < MIN(re->lo, im->lo)) { mad_ctpsa_clear(dst); return; }
@@ -86,3 +86,4 @@ mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst)
   }
 }
 
+// --- end --------------------------------------------------------------------o

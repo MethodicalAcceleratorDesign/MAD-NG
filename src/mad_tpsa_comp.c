@@ -30,28 +30,28 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// --- LOCAL FUNCTIONS --------------------------------------------------------
+// --- local ------------------------------------------------------------------o
 
 static inline void
 check_same_desc(int sa, const T *ma[sa])
 {
   assert(ma);
   for (int i = 1; i < sa; ++i)
-    ensure(ma[i]->d == ma[i-1]->d);
+    ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
 check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 {
   assert(ma && mb && mc);
-  ensure(sa && sb && sc);
-  ensure(sa == sc);
-  ensure(sb == ma[0]->d->nmv);
+  ensure(sa && sb && sc, "invalid map sizes (zero sized map detected)");
+  ensure(sa == sc, "incompatibles GTPSA (number of map variables differ)");
+  ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
   check_same_desc(sc,(const T**)mc);
-  ensure(ma[0]->d == mb[0]->d);
-  ensure(ma[0]->d == mc[0]->d);
+  ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 #ifdef _OPENMP
@@ -59,7 +59,7 @@ check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 #endif
 #include "mad_tpsa_comp_s.tc"
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
+// --- public -----------------------------------------------------------------o
 
 void
 FUN(compose) (int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
@@ -78,3 +78,5 @@ FUN(compose) (int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 
   compose_serial(sa,ma,mb,mc);
 }
+
+// --- end --------------------------------------------------------------------o

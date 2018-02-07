@@ -47,10 +47,10 @@ extern       int   mad_tpsa_strict;
 // --- interface -------------------------------------------------------------o
 
 // ctors, dtor
-desc_t* mad_desc_new  (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[]);
-desc_t* mad_desc_newk (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[],
-                       int nk, const ord_t knb_ords[], ord_t dk); // knobs
-void    mad_desc_del  (desc_t *d);
+desc_t* mad_desc_new (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv]);
+desc_t* mad_desc_newv(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
+                      int nv , const ord_t  var_ords[nv ], ord_t dk);
+void    mad_desc_del (desc_t *d);
 
 // introspection
 int     mad_desc_maxsize (const desc_t *d);

@@ -32,49 +32,60 @@
 #define  SPC
 #endif
 
-// --- LOCAL FUNCTIONS -------------------------------------------------------
-
-static inline void
-read_ords(int n, ord_t ords[n], FILE *stream)
-{
-  assert(ords && stream);
-  for (int i = 0; i < n; ++i) {
-    int ord_read = fscanf(stream, "%hhu", ords+i);
-    ensure(ord_read == 1);
-  }
-}
+// --- local ------------------------------------------------------------------o
 
 static inline void
 print_ords(int n, ord_t ords[n], FILE *stream)
 {
   assert(ords && stream);
-  for (int i = 0; i+1 < n; i += 2)
+  for (int i=0; i < n-1; i += 2)
     fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
   if (n % 2)
     fprintf(stream, "  %hhu"     , ords[n-1]);
 }
 
-static inline char**
-scan_var_names(FILE *stream, int nmv, char *buf)
+static inline void
+read_ords(int n, ord_t ords[n], FILE *stream)
 {
-  assert(stream);
-  // try 4th line
-  int read_cnt = fscanf(stream, " MAP %s", buf);
-  if (!read_cnt)
-    return NULL;
-
-  char **var_names = mad_malloc(nmv * sizeof(*var_names));
-  assert(var_names);
-  for (int i = 0; i < nmv; ++i) {
-    read_cnt = fscanf(stream, "%s", buf);
-    ensure(read_cnt && !feof(stream) && !ferror(stream));
-    var_names[i] = mad_malloc(strlen(buf) * sizeof(var_names));
-    strcpy(var_names[i],buf);
+  assert(ords && stream);
+  for (int i=0; i < n; ++i) {
+    int cnt = fscanf(stream, "%hhu", &ords[i]);
+    ensure(cnt == 1, "invalid input (missing order?)");
   }
-  return var_names;
 }
 
-// --- PUBLIC FUNCTIONS -------------------------------------------------------
+static inline void
+read_names(int nmv, str_t mvar_names[nmv], FILE *stream)
+{
+  assert(stream && mvar_names);
+
+  enum { BUF_SIZE=256 };
+  char buf[BUF_SIZE];
+
+  // try 4th line
+  int cnt = fscanf(stream, " MAP %s", buf);
+  if (!cnt) {
+    for (int i=0; i < nmv; ++i) mvar_names[i] = 0;
+    return;
+  }
+
+  for (int i=0; i < nmv; ++i) {
+    int cnt = fscanf(stream, "%s", buf);
+    ensure(cnt == 1 && !feof(stream) && !ferror(stream),
+           "invalid input (missing map variables name?)");
+    mvar_names[i] = strcpy(mad_malloc(strlen(buf)+1), buf);
+  }
+}
+
+static inline void
+del_names(int nmv, str_t mvar_names[nmv])
+{
+  assert(mvar_names);
+  for (int i=0; i < nmv; ++i)
+    mad_free((void*)mvar_names[i]);
+}
+
+// --- public -----------------------------------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
 
@@ -91,58 +102,63 @@ FUN(scan_hdr) (FILE *stream_)
 D*
 FUN(scan_hdr) (FILE *stream_)
 {
+  enum { BUF_SIZE=256 };
+  char buf[BUF_SIZE];
+
+  int nmv=0, nk=0, cnt=0;
+  ord_t mo, ko;
+
   if (!stream_) stream_ = stdin;
 
-  const int BUF_SIZE = 100;
-  char buf[BUF_SIZE];
-  ord_t mo, ko;
-  int nmv, nk = 0, read_cnt = 0;
-  D *d = NULL;
-
   // discard leading white space and the name (which is 10 chars and comma)
-  read_cnt = fscanf(stream_, " %*11c");
+  fscanf(stream_, " %*11c");
+  ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
-  read_cnt = fscanf(stream_, " NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d",
-                    &mo, &nmv, &ko, &nk);
+  cnt = fscanf(stream_, " NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d",
+                              &mo,       &nmv,    &ko,       &nk);
 
-  // rest of lines
-  ord_t var_ords[nmv];
-  if (read_cnt == 4) {                      // GTPSA -- process rest of lines
-    ord_t map_ords[nmv], knb_ords[nk ? nk : 1];
-    read_cnt = fscanf(stream_, " MAP ORDS: ");
-    ensure(!feof(stream_) && !ferror(stream_));
-    read_ords(nmv,map_ords,stream_);
+  if (cnt == 2) {
+    // TPSA  -- ignore rest of lines; default values
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 2nd line
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
 
-    read_cnt = fscanf(stream_, " ||| VAR ORDS: ");
-    ensure(!feof(stream_) && !ferror(stream_));
-    read_ords(nmv,var_ords,stream_);
-    read_ords(nk, knb_ords,stream_);
-
-    char **var_names = scan_var_names(stream_,nmv,buf);
-    d = mad_desc_newk(nmv,var_ords,map_ords,(str_t*)var_names,nk,knb_ords,ko);
-    if (var_names) {
-      for (int i = 0; i < nmv; ++i)
-        mad_free(var_names[i]);
-      mad_free(var_names);
-    }
-    ensure(fgets(buf, BUF_SIZE, stream_));  // finish  3rd line
+    ord_t mvar_ords[nmv];
+    mad_mono_fill(nmv, mvar_ords, mo);
+    return mad_desc_new(nmv, mvar_ords, 0);
   }
-  else if (read_cnt == 2) {                 // TPSA  -- ignore  rest of lines; default values
-    mad_mono_fill(nmv,var_ords,mo);
-    ensure(fgets(buf, BUF_SIZE, stream_));  // finish  1st line
-    ensure(fgets(buf, BUF_SIZE, stream_));  // discard 2nd line
-    ensure(fgets(buf, BUF_SIZE, stream_));  // discard 3rd line
-    d = mad_desc_new(nmv,var_ords,NULL,NULL);
+
+  if (cnt == 4) {
+    // GTPSA -- process rest of lines
+    int nv = nmv+nk;
+    ord_t mvar_ords [nmv], var_ords[nv];
+    str_t mvar_names[nmv];
+
+    // read mvars orders
+    fscanf(stream_, " MAP ORDS: ");
+    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
+    read_ords(nmv, mvar_ords, stream_);
+
+    // read var orders
+    fscanf(stream_, " ||| VAR ORDS: ");
+    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
+    read_ords(nv, var_ords, stream_);
+
+    // read var names
+    read_names(nmv, mvar_names, stream_);
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  3rd line
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
+
+    desc_t *d = mad_desc_newv(nmv, mvar_ords, mvar_names, nv, var_ords, ko);
+    del_names(nmv, mvar_names);
+    return d;
   }
-  else if (read_cnt < 2)
-    printf("ERROR WHILE READING TPSA HEADER: Could not read (NO,NV)\n");
-  else if (read_cnt == 3)
-    printf("ERROR WHILE READING TPSA HEADER: Could not read NK\n");
 
-  ensure(fgets(buf, BUF_SIZE, stream_)); // discard coeff header line
-
-  return d;
+  if (cnt <  2) error("could not read (NO,NV) from header");
+  if (cnt == 3) error("could not read NK from header");
+  return NULL; // never reached
 }
 
 #endif // !MAD_CTPSA_IMPL
@@ -154,21 +170,21 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   NUM c;
-  int nv = t->d->nv, read_cnt = -1;
+  int nv = t->d->nv, cnt = -1;
   ord_t o, ords[nv];
   FUN(clear)(t);
 
 #ifndef MAD_CTPSA_IMPL
-  while ((read_cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
+  while ((cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
 #else
-  while ((read_cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 2) {
+  while ((cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 2) {
 #endif
 
     #ifdef DEBUG
       printf("c=%.2f o=%d\n", c, o);
     #endif
     read_ords(nv,ords,stream_);
-    ensure(mad_mono_ord(nv,ords) == o);  // consistency check
+    ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");  // consistency check
     if (o > t->mo)  // TODO: give warning ?
       break;        // printed by increasing orders
     FUN(setm)(t,nv,ords, 0.0,c);
@@ -180,7 +196,7 @@ FUN(scan) (FILE *stream_)
 {
   // TODO
   (void)stream_;
-  ensure(!"NOT YET IMPLEMENTED");
+  error("NYI");
 }
 
 void
@@ -228,3 +244,5 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
     }
   fprintf(stream_, "\n\n");
 }
+
+// --- end --------------------------------------------------------------------o

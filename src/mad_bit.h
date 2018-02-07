@@ -17,10 +17,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o-----------------------------------------------------------------------------o
-  
+
   Purpose:
   - provide simple functions to manipulate bits.
- 
+
   Information:
   - all functions are inlined
 
