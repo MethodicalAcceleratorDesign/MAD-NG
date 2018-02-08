@@ -43,7 +43,8 @@ local random, carg, real, imag, conj, norm, proj, rect, polar,
       sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
 local unm, add, mul, mod, pow, lbool, lnot, land, lor, eq, opstr in MAD.operator
 
-local is_nil, is_number, is_string, is_table, is_iterable        in MAD.typeid
+local is_nil, is_number, is_string, is_table, is_iterable,
+      is_mappable                                                in MAD.typeid
 
 -- tmp for returned values
 local  res = ffi.new 'double [1]'
@@ -59,12 +60,15 @@ ffi.cdef [[
 typedef unsigned int bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
-  int    id;           // index in list of registered descriptors
-  int    nmv, nv, nc;  // number of mvars, number of all vars, number of coefs
-  ord_t  mo, ko,       // maximum order for mvars and knobs
-         trunc;        // global truncation order for operations (always <= mo)
-              // ... (not visible)
-};
+  int   id;          // index in list of registered descriptors
+  int   nmv, nv;     // number of mvars, number of all vars
+  ssz_t nc;          // number of coefs (length of TPSA)
+  ord_t mo, ko,      // maximum order for mvars and knobs (mo=max(mvar_ords[]))
+        trunc;       // truncation order for operations; always <= mo
+  const ord_t
+        *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
+        * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
+};            // end of compatibility with Lua FFI (rest is not visible)
 
 struct tpsa { // warning: must be kept identical to C definition
   desc_t *d;           // ptr to descriptor
@@ -87,11 +91,8 @@ local  tpsa_cref = ffi.typeof ' tpsa_t&'
 local ctpsa_ctor = ffi.typeof 'ctpsa_t '
 local ctpsa_cref = ffi.typeof 'ctpsa_t&'
 
-local str_arr    = ffi.typeof '      str_t   [?]'
-local int_arr    = ffi.typeof '      int     [?]'
-local int_carr   = ffi.typeof 'const int     [?]'
-local tpsa_arr   = ffi.typeof '      tpsa_t* [?]'
-local tpsa_carr  = ffi.typeof 'const tpsa_t* [?]'
+local int_arr    = ffi.typeof 'int     [?]'
+local tpsa_arr   = ffi.typeof 'tpsa_t* [?]'
 
 local is_desc  = \x -> istype( desc_ctor, x)
 local is_tpsa  = \x -> istype( tpsa_ctor, x)
@@ -136,56 +137,74 @@ end
 
 -- ctors ----------------------------------------------------------------------o
 
--- nv: number of variables (if vo is a value)
--- nk: number of knobs     (if ko is a value)
+-- nv: number of map variables (when mo is a value)
+-- mo: map variables orders (array or value)
+-- vo: variables orders (array) with vo[i] <= mo[i]
+-- ko: max 'knobs' cross-orders (max order of cross terms)
 
--- vo: variables orders (array or value)
--- mo: mvars orders (array or value) with mo[i] > vo[i]
--- ko: knobs orders (array or value)
+-- ex0:    desc(nil)                           : 6 mvars of order 2.
+-- ex1.0:  desc(3)         -> mo=3             : 6 mvars of order 3.
+-- ex2.0:  desc(4,3)       -> nv=4,mo=3        : 4 mvars of order 3.
+-- ex3.0:  desc{3,3}       -> mo={3,3}         : 2 mvars of order 3.
+-- ex1.1:  desc{mo=3}      -> mo=3             : 6 mvars of order 3.
+-- ex2.1:  desc{nv=4,mo=3} -> nv=4,mo=3        : 4 mvars of order 3.
+-- ex3.1:  desc{mo={3,3}}  -> mo={3,3}         : 2 mvars of order 3.
+-- ex4.1:  desc{mo={3,3}, vo={2,2,1,1}, ko=1}  : 2 mvars of order 3,
+--         each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,1,
+--                           knobs x-order is limited to 1 (no cross-terms).
 
--- dk: max knobs 'cross' orders (degrees)
-
--- ex0: {nv=2,vo=2 [, mo=3]}
--- ex1: {vo={2,2} [, mo={3,3}] [, v={'x', 'px'}] [, ko={1,1,1}] [, dk=2]}
--- ex2: {vo={2,2} [, mo={3,3}] [, v={'x', 'px'}] [, nk=3,ko=1]  [, dk=2]}
-
-local function desc (args)
-  assert(args and args.vo, "missing specifier for GTPSA descriptor")
-
-  local nv = args.nv or is_table(args.vo) and #args.vo or 0
-  local nk = args.nk or is_table(args.ko) and #args.ko or 0
-
-  assert(nv > 0, "invalid number of variables")
-
-  local cvar =             mono(args.vo, nv)
-  local cmap = args.mo and mono(args.mo, nv)
-  local cknb = args.ko and mono(args.ko, nk)
-  local names
-
-  if args.v then
-    names = str_arr(nv)
-    for i=1,nv do names[i-1] = args.v[i] end
+local function desc (nv_, mo_)
+  if is_nil(mo_) then
+    mo_, nv_ = nv_ -- right shift
   end
 
-  if nk > 0 then
-    return _C.mad_desc_newk(nv, cvar.ord, cmap.ord, names, nk, cknb.ord, args.dk or 0)
-  else
-    return _C.mad_desc_new (nv, cvar.ord, cmap.ord, names)
+  local ism = is_mappable(mo_)
+  local nv = ism and mo_.nv or nv_ or 6
+  local mo = ism and mo_.mo or mo_ or 2
+  local vo = ism and mo_.vo or nil
+  local ko = ism and mo_.ko or nil
+
+  if is_number(nv) and is_number(mo) then      -- ex 0, 1.0, 2.0, 1.1, 2.1
+    return _C.mad_desc_newn(nv, mo)
   end
+
+  if is_iterable(mo) and is_nil(vo) then       -- ex 3.0, 3.1
+    local m = mono(mo)
+    return _C.mad_desc_newm(m.n, m.data)
+  end
+
+  if is_iterable(mo) and is_iterable(vo) then  -- ex 4.1
+    local m, v = mono(mo), mono(vo)
+    return _C.mad_desc_newm(m.n, m.data, v.n, v.m, ko)
+  end
+
+  error("invalid combination of arguments (GTPSA descriptor)")
 end
 
 -- tpsa(t)       -> t.mo
 -- tpsa(d)       -> d.mo
 -- tpsa(t|d, mo) -> mo
 
-local function tpsa (d, mo_)
-  if isa_tpsa(d) then d = d.d end
-  return  tpsa_alloc(d, mo_ and max(0, min(mo_, d.mo)) or d.mo)
+local function tpsa (td, mo_)
+  if isa_tpsa(td) then
+    mo_, td = mo_ or td.mo, td.d -- mo = t.mo
+  else
+    assert(is_desc(td), "invalid argument #1 (tpsa or descriptor expected)")
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  end
+  assert(is_number(mo_), "invalid argument #2 (number expected)")
+  return tpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
-local function ctpsa (d, mo_)
-  if isa_tpsa(d) then d = d.d end
-  return ctpsa_alloc(d, mo_ and max(0, min(mo_, d.mo)) or d.mo)
+local function tpsa (td, mo_)
+  if isa_tpsa(td) then
+    mo_, td = mo_ or td.mo, td.d -- mo = t.mo
+  else
+    assert(is_desc(td), "invalid argument #1 (tpsa or descriptor expected)")
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  end
+  assert(is_number(mo_), "invalid argument #2 (number expected)")
+  return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
 -- env ------------------------------------------------------------------------o
@@ -201,7 +220,8 @@ ffi.metatype(ctpsa_ctor, MC)
 
 -- end ------------------------------------------------------------------------o
 return {
-   tpsa  =  tpsa,
-  ctpsa  = ctpsa,
-  __help = require 'madh_tpsa',
+   tpsa      =  tpsa,
+  ctpsa      = ctpsa,
+  gtpsa_desc =  desc,
+  __help     = require 'madh_tpsa',
 }

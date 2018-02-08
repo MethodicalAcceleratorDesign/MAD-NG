@@ -35,7 +35,7 @@
 // --- local ------------------------------------------------------------------o
 
 static inline void
-print_ords(int n, ord_t ords[n], FILE *stream)
+print_ords(int n, const ord_t ords[n], FILE *stream)
 {
   assert(ords && stream);
   for (int i=0; i < n-1; i += 2)
@@ -52,37 +52,6 @@ read_ords(int n, ord_t ords[n], FILE *stream)
     int cnt = fscanf(stream, "%hhu", &ords[i]);
     ensure(cnt == 1, "invalid input (missing order?)");
   }
-}
-
-static inline void
-read_names(int nmv, str_t mvar_names[nmv], FILE *stream)
-{
-  assert(stream && mvar_names);
-
-  enum { BUF_SIZE=256 };
-  char buf[BUF_SIZE];
-
-  // try 4th line
-  int cnt = fscanf(stream, " MAP %s", buf);
-  if (!cnt) {
-    for (int i=0; i < nmv; ++i) mvar_names[i] = 0;
-    return;
-  }
-
-  for (int i=0; i < nmv; ++i) {
-    int cnt = fscanf(stream, "%s", buf);
-    ensure(cnt == 1 && !feof(stream) && !ferror(stream),
-           "invalid input (missing map variables name?)");
-    mvar_names[i] = strcpy(mad_malloc(strlen(buf)+1), buf);
-  }
-}
-
-static inline void
-del_names(int nmv, str_t mvar_names[nmv])
-{
-  assert(mvar_names);
-  for (int i=0; i < nmv; ++i)
-    mad_free((void*)mvar_names[i]);
 }
 
 // --- public -----------------------------------------------------------------o
@@ -127,14 +96,13 @@ FUN(scan_hdr) (FILE *stream_)
 
     ord_t mvar_ords[nmv];
     mad_mono_fill(nmv, mvar_ords, mo);
-    return mad_desc_new(nmv, mvar_ords, 0);
+    return mad_desc_newm(nmv, mvar_ords);
   }
 
   if (cnt == 4) {
     // GTPSA -- process rest of lines
     int nv = nmv+nk;
     ord_t mvar_ords [nmv], var_ords[nv];
-    str_t mvar_names[nmv];
 
     // read mvars orders
     fscanf(stream_, " MAP ORDS: ");
@@ -146,13 +114,7 @@ FUN(scan_hdr) (FILE *stream_)
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nv, var_ords, stream_);
 
-    // read var names
-    read_names(nmv, mvar_names, stream_);
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  3rd line
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
-
-    desc_t *d = mad_desc_newv(nmv, mvar_ords, mvar_names, nv, var_ords, ko);
-    del_names(nmv, mvar_names);
+    desc_t *d = mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
     return d;
   }
 
@@ -215,13 +177,7 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   print_ords(d->nmv,d->mvar_ords,stream_);
   fprintf(stream_, " ||| VAR ORDS: ");
   print_ords(d->nv,d->var_ords,stream_);
-  if (d->mvar_names) {
-    fprintf(stream_, "\n MAP NAME: ");
-    for (int i = 0; i < d->nmv; ++i)
-      fprintf(stream_, "%s ", d->mvar_names[i]);
-  }
-  else
-    fprintf(stream_, "\n *******************************************************");
+  fprintf(stream_, "\n *******************************************************");
 
   if (!t->nz) {
     fprintf(stream_, "\n   ALL COMPONENTS ZERO \n");

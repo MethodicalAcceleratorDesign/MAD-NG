@@ -168,6 +168,13 @@ FUN(midx) (const T *t, int n, const ord_t m[n])
 }
 
 int
+FUN(midx_s) (const T *t, int n, str_t s)
+{
+  assert(t && s);
+  return mad_desc_get_idx_s(t->d, n, s);
+}
+
+int
 FUN(midx_sp) (const T *t, int n, const int m[n])
 {
   assert(t && m);
@@ -200,6 +207,18 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx(d,n,m);
+  if (mad_tpsa_strict)
+    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
+}
+
+NUM
+FUN(getm_s) (const T *t, int n, str_t s)
+{
+  // --- mono is a string; represented as "[0-9]*"
+  assert(t && s);
+  D *d = t->d;
+  idx_t i = mad_desc_get_idx_s(d,n,s);
   if (mad_tpsa_strict)
     ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
@@ -286,6 +305,14 @@ FUN(setm) (T *t, int n, const ord_t m[n], NUM a, NUM b)
 }
 
 void
+FUN(setm_s) (T *t, int n, str_t s, NUM a, NUM b)
+{
+  assert(t && s);
+  idx_t i = mad_desc_get_idx_s(t->d,n,s);
+  FUN(seti)(t,i,a,b);
+}
+
+void
 FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
 {
   assert(t && m);
@@ -306,6 +333,9 @@ void FUN(geti_r) (const T *t, int i, NUM *r)
 void FUN(getm_r) (const T *t, int n, const ord_t m[n], NUM *r)
 { assert(r); *r = FUN(getm)(t, n, m); }
 
+void FUN(getm_s_r) (const T *t, int n, str_t s, NUM *r)
+{ assert(r); *r = FUN(getm_s)(t, n, s); }
+
 void FUN(getm_sp_r) (const T *t, int n, const idx_t m[n], NUM *r)
 { assert(r); *r = FUN(getm_sp)(t, n, m); }
 
@@ -317,6 +347,9 @@ void FUN(seti_r) (T *t, int i, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 
 void FUN(setm_r) (T *t, int n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setm)(t, n, m, CNUM(a), CNUM(b)); }
+
+void FUN(setm_s_r) (T *t, int n, str_t s, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(setm_s)(t, n, s, CNUM(a), CNUM(b)); }
 
 void FUN(setm_sp_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setm_sp)(t, n, m, CNUM(a), CNUM(b)); }

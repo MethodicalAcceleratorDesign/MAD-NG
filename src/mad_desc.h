@@ -31,7 +31,6 @@
  o-----------------------------------------------------------------------------o
  */
 
-#include "mad_defs.h"
 #include "mad_mono.h"
 
 // --- types ------------------------------------------------------------------o
@@ -47,15 +46,14 @@ extern       int   mad_tpsa_strict;
 // --- interface --------------------------------------------------------------o
 
 // ctors, dtor
-desc_t* mad_desc_new62(void);     // 6 mvars of order 2
-desc_t* mad_desc_new6 (ord_t mo); // 6 mvars of order mo
-desc_t* mad_desc_new  (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv]);
-desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv], str_t mvar_names_[nmv],
+desc_t* mad_desc_newn (int nmv, ord_t mvo); // nmv mvars of order mvo
+desc_t* mad_desc_newm (int nmv, const ord_t mvar_ords[nmv]);
+desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
                        int nv , const ord_t  var_ords[nv ], ord_t dk); // knobs X-order
 void    mad_desc_del  (desc_t *d);
 
 // introspection
-int     mad_desc_maxlen (const desc_t *d);
+ssz_t   mad_desc_maxlen (const desc_t *d);
 ord_t   mad_desc_maxord (const desc_t *d);
 ord_t   mad_desc_gtrunc (      desc_t *d, ord_t to);
 
