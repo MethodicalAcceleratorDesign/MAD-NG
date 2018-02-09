@@ -50,7 +50,7 @@ local mtable = Object 'mtable' {
   header = { 'name', 'type', 'title', 'origin', 'date', 'time' },
   column = nil, --{},
   reserve=8, novector=nil,
-  [_data]={ridx={}, cidx={}, cref=nil, cvec=nil, [0]={nr=0},
+  [_data]={ridx={}, cidx={}, cref=nil, nvec=nil, [0]={nr=0},
            nr=0, nc=0, ng=0, rmax=0},
 }
 
@@ -197,6 +197,13 @@ local function mtbl_init (tbl)
   data.nc    = nc                   -- #cols
   data.ng    = 0                    -- #gens
   data.rmax  = 1                    -- allocated rows (specialize after 1st row)
+  data.nvec  = {}                   -- columns that should not be specialized
+
+  if is_table(tbl.novector) then
+    for _,k in ipairs(tbl.novector) do data.nvec[k] = true end
+  elseif tbl.novector then
+    data.nvec = data.cidx
+  end
 
   for i=1,nc do
     local col = raw_get(tbl,i)      -- column key
@@ -484,24 +491,23 @@ end
 
 -- memory helpers -------------------------------------------------------------o
 
--- expand vectors, specialize on 1st row unless novector is set
+-- expand vectors, specialize on 1st row unless nvec[col] is set
 local function expand (data, tbl, extra)
   local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
-  if is_nil(data.cvec) then data.cvec = tbl.novector ~= true end
-  local nr, nc = data.nr, data.nc-data.ng
+  local nr, nc, cvec = data.nr, data.nc-data.ng, nil
   for i=1,nc do
     local val = data[i]
-    if data.cvec and is_number(data[i][1]) then
+    if is_number(data[i][1]) and not data.nvec[data.cidx[i]] then
       data[i] = vector(rmax)
-      data[i].nr = nr
+      data[i].nr, cvec = nr, true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
     elseif data.rmax == 1 then -- expand only for 1st row
       data[i] = table_new(rmax,1)
       data[i][1], data[i].nr = val[1], nr
     end
   end
-  data.rmax = data.cvec and rmax or 1e8
+  data.rmax = cvec and rmax or 1e8
 end
 
 -- methods (R/W, update dict) -------------------------------------------------o
@@ -509,13 +515,13 @@ end
 local function get_col (tbl, key)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = var_raw(tbl,_data)
-  local idx = tonumber(key) or data.cidx[key]
+  local idx = is_number(key) and key or data.cidx[key]
   if is_nil(idx) then return nil end
   if idx < 0 then idx = data.nr+idx+1 end
   return data[idx] -- full column data, column generator or nil
 end
 
-local function add_col (tbl, key, val)
+local function add_col (tbl, key, val, nvec_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   assert(is_string(key)     , "invalid argument #2 (string expected)")
   local data = raw_get(tbl,_data)
@@ -528,7 +534,7 @@ local function add_col (tbl, key, val)
   elseif is_iterable(val) then -- iterable
     assert(#val >= data.nr, "invalid argument #2 (longer iterable expected)")
     local idx = data.nc-data.ng+1
-    if data.cvec and is_number(val[1]) then
+    if is_number(val[1]) and not nvec_ then
       table_insert(data, idx, vector(data.rmax):fill(val))
     else
       table_insert(data, idx, table_new(data.rmax,1))
@@ -540,20 +546,19 @@ local function add_col (tbl, key, val)
     end
     data.cidx[key] = idx
     table_insert(data.cidx, idx, key)
+    if nvec_ and data.nvec ~= data.cidx then data.nvec[key] = true end
   end
   data.nc = data.nc+1
 end
 
 local function rem_col (tbl, key)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
-  assert(is_string(key)     , "invalid argument #2 (string expected)")
   local data = var_raw(tbl,_data)
-  local idx  = data.cidx[key]
-  assert(idx, "invalid argument #2 (valid column expected)")
+  local idx  = is_number(key) and key or data.cidx[key]
   assert(idx > data.nc-data.ng, "invalid argument #2 (generator column expected)")
   table_remove(data, idx)
   table_remove(data.cidx, idx)
-  data.nc, data.ng, data.cidx[key] = data.nc-1, data.ng-1
+  data.nc, data.ng, data.cidx[key] = data.nc-1, data.ng-1, nil
   for k,i in kpairs(data.cidx) do
     if i > idx then data.cidx[k] = i-1 end
   end
@@ -569,7 +574,7 @@ local function cpy_row (data, idx, val, i0, nr) -- not exposed
     data[0][idx] = true
   else                       -- copy by key-value
     for k,v in pairs(val) do
-      local col = data[data.cidx[k]]
+      local col = is_number(k) and data[k] or data[data.cidx[k]]
       assert(col, "invalid argument #3 (valid column expected)")
       col.nr = nr
       col[idx] = v
@@ -621,7 +626,7 @@ local function rem_row (tbl, key)
   for i=0,nc do
     local col = data[i]
     for j=idx,nr-1 do col[j] = col[j+1] end
-    col[i].nr = col[i].nr-1
+    col.nr = col.nr-1
   end
   data.nr =data.nr-1
   rem_idx(data, idx)
@@ -641,7 +646,7 @@ local function ins_row (tbl, key, val, ini_)
   if nr+1 > data.rmax then expand(data, tbl, 1) end
   for i=0,nc do
     local col = data[i]
-    col[i].nr = col[i].nr+1
+    col.nr = col.nr+1
     for j=nr,idx,-1 do col[j+1] = col[j] end
   end
   data.nr =data.nr+1
@@ -762,7 +767,7 @@ local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   if key_ then -- change reference column
     local data = var_raw(tbl, _data)
-    local idx = tonumber(key_) or data.cidx[key_]
+    local idx = is_number(key_) and key_ or data.cidx[key_]
     assert(data[idx] or key_ == 'none', "invalid argument #2 (valid column expected)")
     data.cref = idx  -- key_ = 'none' disable index
   end
@@ -888,9 +893,14 @@ local function copy (tbl, name_)
   cdat.ng    = ng                -- #gens
   cdat.rmax  = nr                -- allocated rows
   cdat.cref  = data.cref         -- reference column (if any)
-  cdat.cvec  = data.cvec         -- use vectors for column
+  cdat.nvec  = {}                -- don't use vectors for columns
 
-  table.copy(data.cidx, nil, cdat.cidx)
+  table.copy(data.cidx, cdat.cidx)
+
+  if  data.nvec == data.cidx
+  then cdat.nvec = cdat.cidx
+  else cdat.nvec = table.copy(data.nvec)
+  end
 
   for i=0,nc-ng do                              -- copy data columns
     cdat[i] = is_table(data[i]) and table_new(nr,1) or vector(nr)
@@ -981,7 +991,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
 
   -- collect column
   for i=1,ncol do
-    local idx = tonumber(cnam[i]) or data.cidx[cnam[i]]
+    local idx = is_number(cnam[i]) and cnam[i] or data.cidx[cnam[i]]
     cols[i] = assert(data[idx], "invalid column name or index")
   end
 
@@ -997,6 +1007,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   for i=1,#hnam do
     local k, v = hnam[i], tbl[hnam[i]]
     if is_string(v) then
+      if k == 'type' and v == '' then v = tbl.kind end -- to review
       fprintf(file, '@ %-18s %%%02ds %q\n', k, #v, v)
     elseif is_number(v) then
       fprintf(file, '@ %-18s %%le %s\n', k, tostring(v))
@@ -1046,9 +1057,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
 end
 
 local function read(tbl, filnam_)
-  if not is_mtable(tbl) and is_nil(filnam_) then
-    tbl, filnam_ = mtable, tbl -- right shift
-  end
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local quote, splitall in string
   local fnam = filnam_ or tbl.name
   local hnam = table.new(8,8)
@@ -1081,6 +1090,9 @@ local function read(tbl, filnam_)
       break
     end
   end
+
+  assert(hnam.type == tbl.type or tbl.type == '' and hnam.type == tbl.kind,
+         "invalid parent table (kinds differ)") -- to review
 
   -- create table from header
   for i,v in ipairs(hnam) do
