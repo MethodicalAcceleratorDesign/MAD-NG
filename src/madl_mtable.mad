@@ -248,7 +248,7 @@ local gen_mt = set_concept({
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_gen](i) or nil,
   __pairs    = \s   -> (gen_iter, s, 0),
   __ipairs   = \s   -> (gen_iter, s, 0),
-  __tostring = \s   -> string.format("mtable [column generator]: %p", s),
+  __tostring = \s   -> string.format("mtable column generator: %p", s),
 }, not_keyrable + not_extendable + not_mutable)
 
 -- column proxy (RO)
@@ -262,7 +262,7 @@ local col_mt = set_concept({
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_data][i] or nil,
   __pairs    = \s   -> (col_iter, s, 0),
   __ipairs   = \s   -> (col_iter, s, 0),
-  __tostring = \s   -> string.format("mtable [column proxy]: %p", s),
+  __tostring = \s   -> string.format("mtable readonly column: %p", s),
 }, not_keyrable + not_extendable + not_mutable)
 
 -- row proxy
@@ -293,7 +293,7 @@ local row_mt = set_concept({
   __pairs    = \s   -> (row_iter , s, 0  ),
   __ipairs   = \s   -> (row_iter , s, 0  ),
   __kpairs   = \s   -> (row_kiter, s, nil),
-  __tostring = \s   -> string.format("mtable [row proxy]: %p", s),
+  __tostring = \s   -> string.format("mtable row: %p", s),
 }, not_mutable)
 
 -- count proxy
@@ -310,7 +310,7 @@ local cnt_mt = set_concept({
                        end,
   __pairs    = \s   -> (cnt_iter, s, 0),
   __ipairs   = \s   -> (cnt_iter, s, 0),
-  __tostring = \s   -> string.format("mtable [count proxy]: %p", s),
+  __tostring = \s   -> string.format("mtable count: %p", s),
 }, not_keyrable + not_extendable + not_mutable)
 
 -- iterators over rows
@@ -536,6 +536,7 @@ local function add_col (tbl, key, val, nvec_)
   assert(is_string(key)     , "invalid argument #2 (string expected)")
   local data = raw_get(tbl,_data)
   assert(is_nil(data.cidx[key]), "invalid argument #2 (column name already in use)")
+  assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
   if is_callable(val) then     -- generator
     local idx = data.nc+1
@@ -565,6 +566,8 @@ local function rem_col (tbl, key)
   local data = var_raw(tbl,_data)
   local idx  = is_number(key) and key or data.cidx[key]
   assert(idx > data.nc-data.ng, "invalid argument #2 (generator column expected)")
+  assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
+
   table_remove(data, idx)
   table_remove(data.cidx, idx)
   data.nc, data.ng, data.cidx[key] = data.nc-1, data.ng-1, nil
@@ -705,7 +708,7 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
 
   local data = var_raw(tbl, _data)
   if is_rawtable(sel_) then       -- logically and'ed selections
-    if is_nil(not_) and (sel._default == 'none' or sel._default == true) then
+    if is_nil(not_) and (sel_.default == 'none' or sel_.default == true) then
       not_ = true
     end
     local op = not_ ~= true and ptrue or pfalse
