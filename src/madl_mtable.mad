@@ -122,7 +122,7 @@ end
 local function index_of_rnam (tbl, nam, cnt, idx)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  idx = index_of_idx(tbl, idx or 1)
+  idx = index_of_idx(tbl, idx)
   if is_nil(idx) then return nil end
   if is_number(ri) then
     return (cnt ==  1 and ri >= idx and ri) or
@@ -154,7 +154,7 @@ local function index_of_nam (tbl, nam, idx_)
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (tbl, idx)
+local function name_of_idx (tbl, idx, ref_)
   idx = index_of_idx(tbl, idx)
   if is_nil(idx) then return nil end
   local data = var_raw(tbl,_data)
@@ -165,9 +165,19 @@ local function name_of_idx (tbl, idx)
     assert(ri == idx, "unexpected corrupted dictionnary")
     return nam
   end
+
+  local cnt, b1, b2 = 0, "[", "]"
+  if ref_ then
+    ref_ = index_of_idx(tbl, ref_)
+    for i=1,ri.n do
+      if ri[i] >= ref_ then break else cnt = cnt+1 end
+    end
+    b1, b2 = "{", "}"
+  end
+
   for i=1,ri.n do
     if ri[i] == idx then
-      return string.format("%s[%d]", nam, i)
+      return string.format("%s%s%d%s", nam, i-cnt, b1, b2)
     end
   end
   error("unexpected corrupted dictionnary")
@@ -201,7 +211,7 @@ local function mtbl_init (tbl)
 
   if is_table(tbl.novector) then
     for _,k in ipairs(tbl.novector) do data.nvec[k] = true end
-  elseif tbl.novector then
+  elseif tbl.novector == true then
     data.nvec = data.cidx
   end
 
@@ -375,9 +385,9 @@ end
 
 -- methods (readonly) ---------------------------------------------------------o
 
-local function name_of (tbl, a)
+local function name_of (tbl, a, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  if is_number(a) then return name_of_idx(tbl, a) end
+  if is_number(a) then return name_of_idx(tbl, a, ref_) end
   error("invalid argument #2 (number expected)")
 end
 
@@ -410,9 +420,9 @@ local function range_of (tbl, rng, ref_)
   return start, stop
 end
 
-local function length_of (tbl, rng_, ntrn_)
+local function length_of (tbl, rng_, ntrn_, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local siz = rng_ and 1-sub(range_of(tbl, rng_)) or 0
+  local siz = rng_ and 1-sub(range_of(tbl, rng_, ref_)) or 0
   return siz + #tbl * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
 end
 
@@ -532,7 +542,6 @@ local function add_col (tbl, key, val, nvec_)
     data[idx] = setmetatable({ [_data]=data, [_gen]=val }, gen_mt)
     data.cidx[key], data.cidx[idx], data.ng = idx, key, data.ng+1
   elseif is_iterable(val) then -- iterable
-    assert(#val >= data.nr, "invalid argument #2 (longer iterable expected)")
     local idx = data.nc-data.ng+1
     if is_number(val[1]) and not nvec_ then
       table_insert(data, idx, vector(data.rmax):fill(val))
@@ -603,10 +612,10 @@ local function add_row (tbl, val, ini_)
   return tbl
 end
 
-local function set_row (tbl, key, val, ini_)
+local function set_row (tbl, key, val, ini_, ref_)
   ini_ = ini_ or 1
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key)
+  local idx = index_of(tbl, key, ref_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(is_number(ini_) , "invalid argument #4 (number expected)")
@@ -617,9 +626,9 @@ local function set_row (tbl, key, val, ini_)
   return tbl
 end
 
-local function rem_row (tbl, key)
+local function rem_row (tbl, key, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key)
+  local idx = index_of(tbl, key, ref_)
   assert(is_number(idx), "invalid argument #2 (valid row expected)")
   local data = var_raw(tbl, _data)
   local nr, nc = data.nr, data.nc-data.ng
@@ -634,10 +643,10 @@ local function rem_row (tbl, key)
   return tbl
 end
 
-local function ins_row (tbl, key, val, ini_)
+local function ins_row (tbl, key, val, ini_, ref_)
   ini_ = ini_ or 1
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key)
+  local idx = index_of(tbl, key, ref_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(is_number(ini_) , "invalid argument #4 (number expected)")
@@ -918,10 +927,10 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function cycle (tbl, ref)
-  assert(is_mtable(tbl)    , "invalid argument #1 (mtable expected)")
-  assert(index_of(tbl, ref), "invalid argument #2 (reference expected)")
-  tbl.start_at = ref
+local function cycle (tbl, a, ref_)
+  assert(is_mtable(tbl)        , "invalid argument #1 (mtable expected)")
+  assert(index_of(tbl, a, ref_), "invalid argument #2 (reference expected)")
+  tbl.start_at = a
   return tbl
 end
 
@@ -947,7 +956,7 @@ local function bwditer (state, i)
   return i, state.row
 end
 
-local function iter (tbl, rng_, ntrn_, dir_)
+local function iter (tbl, rng_, ntrn_, dir_, ref_)
   local nturn, dir = ntrn_ or 0, dir_ or 1
   assert(is_mtable(tbl)                  ,"invalid argument #1 (mtable expected)")
   assert(is_number(nturn) and nturn >= 0 ,"invalid argument #3 (number expected)")
@@ -960,11 +969,11 @@ local function iter (tbl, rng_, ntrn_, dir_)
     if is_nil(tbl.start_at) then
       start, stop = s0, sn
     else
-      start = assert(index_of(seq, tbl.start_at), "invalid cycle reference")
+      start = assert(index_of(seq, tbl.start_at, ref_), "invalid cycle reference")
       stop  = start == s0 and sn or start-dir
     end
   else
-    start, stop = range_of(tbl, rng_)
+    start, stop = range_of(tbl, rng_, ref_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end

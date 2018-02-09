@@ -186,7 +186,7 @@ end
 local function index_of_rnam (seq, nam, cnt, idx)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
-  idx = index_of_idx(seq, idx or 1)
+  idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
   if is_number(ei) then
     return (cnt ==  1 and ei >= idx and ei) or
@@ -242,14 +242,13 @@ local function index_of_elm (seq, elm, idx_)
     return ei >= idx_ and elem[ei] == elm and ei or nil
   end
   for i=1,ei.n do
-    local ii = ei[i]
-    if ii >= idx_ and elem[ii] == elm then return ii end
+    if ei[i] >= idx_ and elem[ei[i]] == elm then return ei[i] end
   end
   return nil
 end
 
 -- get [mangled] name from element (linear)
-local function name_of_elm (seq, elm, idx_)
+local function name_of_elm (seq, elm, idx_, ref_)
   assert(is_element(elm), "invalid argument #2 (element expected)")
   local nam = elm.__id
   local elem = var_raw(seq,_data)
@@ -259,17 +258,26 @@ local function name_of_elm (seq, elm, idx_)
   if is_number(ei) then
     return ei >= idx_ and elem[ei] == elm and nam or nil
   end
+
+  local cnt, b1, b2 = 0, "[", "]"
+  if ref_ then
+    ref_ = index_of_idx(seq, ref_)
+    for i=1,ei.n do
+      if ei[i] >= ref_ then break else cnt = cnt+1 end
+    end
+    b1, b2 = "{", "}"
+  end
+
   for i=1,ei.n do
-    local ii = ei[i]
-    if ii >= idx_ and elem[ii] == elm then
-      return string.format("%s[%d]", nam, i)
+    if ei[i] >= idx_ and elem[ei[i]] == elm then
+      return string.format("%s%s%d%s", nam, i-cnt, b1, b2)
     end
   end
   return nil
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (seq, idx)
+local function name_of_idx (seq, idx, ref_)
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
   local elem = var_raw(seq,_data)
@@ -279,9 +287,19 @@ local function name_of_idx (seq, idx)
     assert(ei == idx, "unexpected corrupted dictionnary")
     return nam
   end
+
+  local cnt, b1, b2 = 0, "[", "]"
+  if ref_ then
+    ref_ = index_of_idx(seq, ref_)
+    for i=1,ei.n do
+      if ei[i] >= ref_ then break else cnt = cnt+1 end
+    end
+    b1, b2 = "{", "}"
+  end
+
   for i=1,ei.n do
     if ei[i] == idx then
-      return string.format("%s[%d]", nam, i)
+      return string.format("%s%s%d%s", nam, i-cnt, b1, b2)
     end
   end
   error("unexpected corrupted dictionnary")
@@ -687,9 +705,9 @@ local function range_of (seq, rng, ref_)
   return start, stop
 end
 
-local function length_of (seq, rng_, ntrn_)
+local function length_of (seq, rng_, ntrn_, ref_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local siz = rng_ and 1-sub(range_of(seq, rng_)) or 0
+  local siz = rng_ and 1-sub(range_of(seq, rng_, ref_)) or 0
   return siz + #seq * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
 end
 
@@ -955,10 +973,10 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function cycle (seq, ref)
-  assert(is_sequence(seq)  , "invalid argument #1 (sequence expected)")
-  assert(index_of(seq, ref), "invalid argument #2 (reference expected)")
-  seq.start_at = ref
+local function cycle (seq, a, ref_)
+  assert(is_sequence(seq)      , "invalid argument #1 (sequence expected)")
+  assert(index_of(seq, a, ref_), "invalid argument #2 (reference expected)")
+  seq.start_at = a
   return seq
 end
 
@@ -1054,7 +1072,7 @@ local function bwditer (state, i)
   return i, state.elem[i], state.spos[i]+state.elem[i].l-state.soff
 end
 
-local function iter (seq, rng_, ntrn_, dir_)
+local function iter (seq, rng_, ntrn_, dir_, ref_)
   local nturn, dir = ntrn_ or 0, dir_ or 1
   assert(is_sequence(seq)                ,"invalid argument #1 (sequence expected)")
   assert(is_number(nturn) and nturn >= 0 ,"invalid argument #3 (number expected)")
@@ -1067,11 +1085,11 @@ local function iter (seq, rng_, ntrn_, dir_)
     if is_nil(seq.start_at) then
       start, stop = s0, sn
     else
-      start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
+      start = assert(index_of(seq, seq.start_at, ref_), "invalid cycle reference")
       stop  = start == s0 and sn or start-dir
     end
   else
-    start, stop = range_of(seq, rng_)
+    start, stop = range_of(seq, rng_, ref_)
     assert(is_number(start), "invalid range start")
     assert(is_number(stop ), "invalid range stop" )
   end
