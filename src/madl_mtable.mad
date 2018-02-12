@@ -533,8 +533,8 @@ local function expand (data, tbl, extra)
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
   local nr, nc, cvec = data.nr, data.nc-data.ng, nil
   for i=1,nc do
-    local val = data[i]
-    if is_number(data[i][1]) and not data.nvec[data.cidx[i]] then
+    local val, nvec = data[i], data.nvec[i] or data.nvec[data.cidx[i]]
+    if is_number(data[i][1]) and not nvec then
       data[i] = vector(rmax)
       data[i].nr, cvec = nr, true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
@@ -600,11 +600,13 @@ local function add_col (tbl, key, val, nvec_)
   data.nc = data.nc+1
 end
 
-local function rem_col (tbl, key)
+local function rem_col (tbl, col)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   local data = var_raw(tbl,_data)
-  local idx  = is_number(key) and key or data.cidx[key]
-  assert(idx > data.nc-data.ng, "invalid argument #2 (generator column expected)")
+  local idx  = is_number(col) and col or data.cidx[col]
+  local key  = data.cidx[idx]
+  assert(data.nc-data.ng < idx and idx <= data.nc,
+    "invalid argument #2 (generator column expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
   table_remove(data, idx)
@@ -697,8 +699,8 @@ local function ins_row (tbl, key, val, ini_, ref_)
   if nr+1 > data.rmax then expand(data, tbl, 1) end
   for i=0,nc do
     local col = data[i]
-    col.nr = col.nr+1
     for j=nr,idx,-1 do col[j+1] = col[j] end
+    col.nr = col.nr+1
   end
   data.nr =data.nr+1
   cpy_row(data, idx, val, ini_-1, data.nr)
@@ -1028,7 +1030,7 @@ end
 
 -- I/O methods ----------------------------------------------------------------o
 
-local function write(tbl, filnam_, colnam_, hdrnam_)
+local function write (tbl, filnam_, colnam_, hdrnam_)
   if is_table(filnam_) and is_nil(hdrnam_) then
     filnam_, colnam_, hdrnam_ = nil, filnam_, colnam_ -- right shift
   end
@@ -1107,7 +1109,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   return tbl
 end
 
-local function read(tbl, filnam_)
+local function read (tbl, filnam_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local quote, splitall in string
   local fnam = filnam_ or tbl.name
