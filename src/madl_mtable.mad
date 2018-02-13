@@ -220,7 +220,10 @@ end
 -- mtable initialization
 local function mtbl_init (tbl)
   local nc = tbl:raw_len()
-  if nc == 0 then return tbl end -- empty
+  if nc == 0 then return tbl end -- empty, pure inheritance
+
+  -- TODO: if parent has cidx, then concat parent.cidx with self.cidx
+  --       review inheritance vs is_orig...
 
   local nr   = tbl.reserve          -- forseen rows
   local data = table_new(nc, 8)     -- columns (data)
@@ -553,15 +556,55 @@ end
 
 local function get (tbl, row, col, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_raw(tbl,_data)
-  local cidx = is_number(col) and col or data.cidx[col]
-  if is_nil(cidx) then return nil end
-  if cidx < 0 then cidx = data.nc+cidx+1 end
-  local ridx = is_number(row) and row or data.ridx[row]
-  if is_table(ridx) then ridx = ridx[cnt_ or 1] end
-  if is_nil(ridx) then return nil end
-  if ridx < 0 then ridx = data.nr+ridx+1 end
-  return ridx >= 1 and ridx <= data.nr and data[cidx][ridx] or nil
+  local data, ridx, cidx = var_raw(tbl,_data)
+
+  if is_number(col)
+  then cidx = col < 0 and data.nc+col+1 or col -- reflect
+  else cidx = data.cidx[col]
+  end
+  if is_nil(data[cidx]) then return nil end
+
+  if is_number(row)
+  then ridx = row < 0 and data.nr+row+1 or row -- reflect
+  else ridx = data.ridx[row]
+    if is_table(ridx) then
+      local cnt = cnt_ or 1
+      assert(is_number(cnt), "invalid argument #4 (count expected)")
+      if cnt < 0 then cnt = ridx.n-cnt+1 end -- reflect
+      ridx = ridx[cnt]
+    end
+  end
+
+  return data[cidx][ridx]
+end
+
+local function set (tbl, row, col, cnt_, val)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  if is_nil(val) and not is_nil(cnt_) then
+    val, cnt_ = cnt_, nil -- right shift
+  end
+  local data, cidx, ridx = var_raw(tbl,_data)
+
+  if is_number(col)
+  then cidx = col < 0 and data.nc+col+1 or col -- reflect
+  else cidx = data.cidx[col]
+  end
+  assert(data[cidx], "invalid argument #3 (valid column expected)")
+
+  if is_number(row) then
+    ridx = row < 0 and data.nr+row+1 or row -- reflect
+    assert(ridx >= 1 and ridx <= data.nr, "row index out of bounds")
+  else
+    ridx = assert(data.ridx[row], "invalid argument #2 (valid row expected)")
+    if is_table(ridx) then
+      local cnt = cnt_ or 1
+      assert(is_number(cnt), "invalid argument #4 (count expected)")
+      if cnt < 0 then cnt = ridx.n-cnt+1 end -- reflect
+      ridx = assert(ridx[cnt], "invalid argument #2 (valid row[cnt] expected)")
+    end
+  end
+
+  data[cidx][ridx] = val
 end
 
 local function get_col (tbl, key)
@@ -1187,7 +1230,9 @@ end
 mtable.original = original
 
 mtable: set_methods {
+  -- cells manipulation
   get           = get,
+  set           = set,
 
   -- columns manipulation
   getcol        = get_col,
