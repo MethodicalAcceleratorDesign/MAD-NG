@@ -23,10 +23,10 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertFalse, assertNil, assertNotNil, assertEquals, assertStrContains,
-      assertErrorMsgContains      in MAD.utest
-
-local mtable in MAD
+local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
+  assertStrContains, assertErrorMsgContains                         in MAD.utest
+local mtable                                                        in MAD
+local is_mtable, is_original_mtable in MAD.typeid
 
 -- helpers --------------------------------------------------------------------o
 
@@ -36,18 +36,131 @@ local mth = \f,s,... s[f](s,...)
 
 TestMTable = {}
 
-function TestMTable:testSimple01()
-  local t = mtable { {'name'}, 'x', 'y', 'z' }
-  t = t + {'A', 1.1, 1.2, 1.3}
-  t = t + {'B', 2.1, 2.2, 2.3}
-  t = t + {'A', 3.1, 3.2, 3.3}
+function TestMTable:testConstructor()
+  local tbl1  = mtable 'tbl1'  { }
+  local tbl2  = mtable 'tbl2'  { 'x', 'y', 'z' }
+  local tbl3  = mtable 'tbl3'  { {'dict'}, 'x', 'y', 'z' }
+  local tbl4  = mtable 'tbl4'  { 'x', 'y', 'z', {'dict'} }
+  local tbl42 = tbl4   'tbl42' { }
 
---  for i,v in ipairs(t) do
---    print(i,v)
---    for ii,vv in ipairs(v) do
---      print(ii,vv)
---    end
---  end
+  assertEquals(#tbl1,  0)
+  assertEquals(#tbl2,  0)
+  assertEquals(#tbl3,  0)
+  assertEquals(#tbl4,  0)
+  assertEquals(#tbl42, 0)
+
+  assertEquals(tbl1.name, 'tbl1')
+  assertEquals(tbl2.name, 'tbl2')
+  assertEquals(tbl3.name, 'tbl3')
+  assertEquals(tbl4.name, 'tbl4')
+  assertEquals(tbl42.name, 'tbl42')
+
+  for _,col in ipairs({'x', 'y', 'z'}) do
+    assertNil(tbl1[col])
+    assertNotNil(tbl2[col])
+    assertNotNil(tbl3[col])
+    assertNotNil(tbl4[col])
+    assertNotNil(tbl42[col])
+  end
+
+  assertNotNil(tbl3.dict)
+  assertNotNil(tbl4.dict)
+  assertNotNil(tbl42.dict)
+end
+
+function TestMTable:testIsMtable()
+  local tbl1  = mtable 'tbl1'  { }
+  local tbl2  = mtable 'tbl2'  { 'x', 'y', 'z' }
+  local tbl3  = mtable 'tbl3'  { {'dict'}, 'x', 'y', 'z' }
+  local tbl32 = tbl3   'tbl32' { }
+
+  assertTrue(is_mtable(tbl1))
+  assertTrue(is_mtable(tbl2))
+  assertTrue(is_mtable(tbl3))
+  assertTrue(is_mtable(tbl32))
+
+  assertFalse(is_original_mtable(tbl1))
+  assertTrue(is_original_mtable(tbl2))
+  assertTrue(is_original_mtable(tbl3))
+  assertFalse(is_original_mtable(tbl32))
+end
+
+function TestMTable:testAddRow()
+  local tbl1  = mtable 'tbl1'  { }
+  local tbl2  = mtable 'tbl2'  { 'x', 'y', 'z' }
+  local tbl3  = mtable 'tbl3'  { {'dict'}, 'x', 'y', 'z' }
+  local tbl4  = mtable 'tbl4'  { 'x', 'y', 'z', {'dict'} }
+  local tbl32 = tbl3   'tbl32' { }
+  local val1  = { 1, 2, 3 }
+  local val2  = { "v2", 1, 2, 3 }
+  -- using operator
+  -- local test = mtable + val1          -- TODO mtable should be readonly
+  -- tbl1  = tbl1 + val1                 -- TODO shlould not work (not original)
+  tbl2 = tbl2 + val1
+  tbl3 = tbl3 + val2
+  -- tbl32 = tbl32 + val2                -- TODO shlould not work (not original)
+
+  -- using addrow
+  -- mtable:addrow(val1)                 -- TODO mtable should be readonly
+  -- tbl1:addrow { 1, 2, 3 }             -- TODO shlould not work (not original)
+  tbl2:addrow(val1)
+  tbl3:addrow(val2)
+  -- tbl32:addrow(val2)                  -- TODO shlould not work (not original)
+
+  -- ini
+  tbl2:addrow({ 5, 5, 5, 5, 1, 2, 3 }, 5)
+  tbl3:addrow({ 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+
+  assertEquals(#tbl2, 3)
+  assertEquals(#tbl3, 3)
+
+  for i=1,3 do
+    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
+    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+  end
+
+  -- nil
+  assertErrorMsgContains("table index is nil", tbl4.addrow, tbl4, { })
+  -- assertErrorMsgContains("table index is nil", tbl4.addrow, tbl4, { 1 }) -- TODO doesn't let tbl4 unmodified
+  tbl4:addrow { nil, nil, nil, "v2" }
+  for j=1,3 do assertEquals(tbl4[1][j], nil) end
+  assertEquals(tbl4[1][4], "v2")
+end
+
+function TestMTable:testInsRow()
+  local tbl1  = mtable 'tbl1'  { }
+  local tbl2  = mtable 'tbl2'  { 'x', 'y', 'z' }
+  local tbl3  = mtable 'tbl3'  { {'dict'}, 'x', 'y', 'z' }
+  local tbl4  = mtable 'tbl4'  { 'x', 'y', 'z', {'dict'} }
+  local tbl32 = tbl3   'tbl32' { }
+  local val1  = { 1, 2, 3 }
+  local val2  = { "v2", 1, 2, 3 }
+
+  -- mtable:insrow(1,val1)               -- TODO mtable should be readonly + cannot on empty table
+  tbl2:addrow(val1)                      -- TODO to be removed once insert empty table is fixed
+  tbl3:addrow(val2)                      -- TODO to be removed once insert empty table is fixed
+  tbl2:insrow(1, val1)
+  tbl3:insrow(1, val2)
+
+  -- ini
+  tbl2:insrow(2,{ 5, 5, 5, 5, 1, 2, 3 }, 5)
+  tbl3:insrow(2,{ 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+
+  assertEquals(#tbl2, 3) -- TODO 2 once modified
+  assertEquals(#tbl3, 3) -- TODO 2 once modified
+
+  for i=1,3 do -- TODO i=1,2 once modified
+    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
+    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+  end
+
+  -- -- nil
+  tbl4:addrow({ nil, nil, nil, "v2" })              -- TODO to be removed once insert empty table is fixed
+  -- assertErrorMsgContains("table index is nil", tbl4.insrow, tbl4, 1, { }) -- TODO Doesn't copy nil so doesn't emmit an error
+  tbl4:insrow(1, { nil, nil, nil, "v2" })
+  -- tbl4:insrow(2, { nil, nil, nil, "v2" }) -- TODO should be able to add at the end
+  for j=1,3 do assertEquals(tbl4[1][j], nil) end
+  assertEquals(tbl4[1][4], "v2")
 end
 
 -- end ------------------------------------------------------------------------o
