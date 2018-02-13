@@ -533,8 +533,8 @@ local function expand (data, tbl, extra)
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
   local nr, nc, cvec = data.nr, data.nc-data.ng, nil
   for i=1,nc do
-    local val = data[i]
-    if is_number(data[i][1]) and not data.nvec[data.cidx[i]] then
+    local val, nvec = data[i], data.nvec[i] or data.nvec[data.cidx[i]]
+    if is_number(data[i][1]) and not nvec then
       data[i] = vector(rmax)
       data[i].nr, cvec = nr, true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
@@ -589,7 +589,7 @@ local function add_col (tbl, key, val, nvec_)
       table_insert(data, idx, table_new(data.rmax,1))
       for i=1,data.nr do data[idx][i] = val[i] end
     end
-    data[idx].nr = nr
+    data[idx].nr = data.nr
     for k,i in kpairs(data.cidx) do
       if i >= idx then data.cidx[k] = i+1 end
     end
@@ -600,11 +600,13 @@ local function add_col (tbl, key, val, nvec_)
   data.nc = data.nc+1
 end
 
-local function rem_col (tbl, key)
+local function rem_col (tbl, col)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   local data = var_raw(tbl,_data)
-  local idx  = is_number(key) and key or data.cidx[key]
-  assert(idx > data.nc-data.ng, "invalid argument #2 (generator column expected)")
+  local idx  = is_number(col) and col or data.cidx[col]
+  local key  = data.cidx[idx]
+  assert(data.nc-data.ng < idx and idx <= data.nc,
+    "invalid argument #2 (generator column expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
   table_remove(data, idx)
@@ -618,19 +620,19 @@ end
 local function cpy_row (data, idx, val, i0, nr) -- not exposed
   if val[1] then             -- copy by idx-value
     for i=1,data.nc-data.ng do
-      data[i].nr = nr
+      data[i].nr   = nr
       data[i][idx] = val[i0+i]
     end
-    data[0].nr = nr
-    data[0][idx] = true
   else                       -- copy by key-value
     for k,v in pairs(val) do
       local col = is_number(k) and data[k] or data[data.cidx[k]]
       assert(col, "invalid argument #3 (valid column expected)")
-      col.nr = nr
+      col.nr   = nr
       col[idx] = v
     end
   end
+  data[0].nr   = nr
+  data[0][idx] = true
 end
 
 local function get_row (tbl, key, ref_)
@@ -840,12 +842,15 @@ local function remove (tbl, rng_, sel_)
   local data = raw_get(tbl,_data)
   local j, nc = 0, data.nc-data.ng
   for ii=idx_r[1],data.nr-nr do
-    if ii == idx_r[j+1] then j = j+1 end
-    for i=0,nc do data[i][ii] = data[i][ii+j] end
+    if ii == idx_r[j+1] then
+      repeat j=j+1 until idx_r[j+1] ~= idx_r[j]+1 or j>nr
+    end
+    if j <= nr then
+      for i=0,nc do data[i][ii] = data[i][ii+j] end
+    end
   end
   data.nr = data.nr - nr
   for i=0,nc do data[i].nr = data.nr end
-  assert(j == nr, "unexpected corrupted move of rows (remove)")
 
   build_index(tbl)
   return tbl
@@ -897,12 +902,11 @@ local function sort (tbl, cmp, rng_, sel_)
   local row1  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local idx_s = table.copy(idx_r, table_new(nr,0))
-  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = idx_s[i1], idx_s[i2]
+  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
-
   -- build lookup table
   local idx_l = table_new(0,nr)
-  for i=1,nr do idx_l[idx_s[i]] = idx_r[i] end
+  for i=1,nr do idx_l[idx_r[i]] = idx_s[i] end
 
   -- sort rows
   local nc = data.nc-data.ng
@@ -1028,7 +1032,7 @@ end
 
 -- I/O methods ----------------------------------------------------------------o
 
-local function write(tbl, filnam_, colnam_, hdrnam_)
+local function write (tbl, filnam_, colnam_, hdrnam_)
   if is_table(filnam_) and is_nil(hdrnam_) then
     filnam_, colnam_, hdrnam_ = nil, filnam_, colnam_ -- right shift
   end
@@ -1107,7 +1111,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   return tbl
 end
 
-local function read(tbl, filnam_)
+local function read (tbl, filnam_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local quote, splitall in string
   local fnam = filnam_ or tbl.name
