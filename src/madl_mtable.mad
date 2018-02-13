@@ -111,7 +111,7 @@ local function index_of_num (tbl, num, typ)
   local data = var_raw(tbl,_data)
   print('index_of_num', tbl, data)
   local s = data[data.cidx.s]
-  assert(s, "missing column 's'")
+  assert(s, "missing column 's', cannot find s-position")
   local l = s[data.nr]
   if num < 0 then num = l+num end -- reflect
   if num < 0 or num > l then return nil end
@@ -233,12 +233,6 @@ local function mtbl_init (tbl)
   data.rmax  = 1                    -- allocated rows (specialize after 1st row)
   data.nvec  = {}                   -- columns that should not be specialized
 
-  if is_table(tbl.novector) then
-    for _,k in ipairs(tbl.novector) do data.nvec[k] = true end
-  elseif tbl.novector == true then
-    data.nvec = data.cidx
-  end
-
   for i=1,nc do
     local col = raw_get(tbl,i)      -- column key
     if is_table(col) then           -- ref: { key }
@@ -249,6 +243,15 @@ local function mtbl_init (tbl)
     data.cidx[col], data.cidx[i] = i, col
     data[i] = {nr=0}
   end
+
+  if is_table(tbl.novector) then
+    for _,k in ipairs(tbl.novector) do
+      data.nvec[k], data.nvec[data.cidx[k]] = data.cidx[k], k
+    end
+  elseif tbl.novector == true then
+    data.nvec = data.cidx
+  end
+
   data[0].nr, data.cidx.is_selected, data.cidx[0] = 0, 0, 'is_selected'
   tbl:clear_array() -- clear list of column names
   tbl.date, tbl.time = os.date'%d/%m/%y', os.date'%H:%M:%S'
@@ -534,7 +537,7 @@ local function expand (data, tbl, extra)
   local nr, nc, cvec = data.nr, data.nc-data.ng, nil
   for i=1,nc do
     local val = data[i]
-    if is_number(data[i][1]) and not data.nvec[data.cidx[i]] then
+    if is_number(data[i][1]) and not data.nvec[i] then
       data[i] = vector(rmax)
       data[i].nr, cvec = nr, true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
@@ -589,13 +592,16 @@ local function add_col (tbl, key, val, nvec_)
       table_insert(data, idx, table_new(data.rmax,1))
       for i=1,data.nr do data[idx][i] = val[i] end
     end
-    data[idx].nr = nr
+    data[idx].nr = data.nr
     for k,i in kpairs(data.cidx) do
       if i >= idx then data.cidx[k] = i+1 end
     end
     data.cidx[key] = idx
     table_insert(data.cidx, idx, key)
-    if nvec_ and data.nvec ~= data.cidx then data.nvec[key] = true end
+    if nvec_ and data.nvec ~= data.cidx then
+      data.nvec[key] = idx
+      table_insert(data.nvec, idx, key)
+    end
   end
   data.nc = data.nc+1
 end
@@ -603,10 +609,11 @@ end
 local function rem_col (tbl, key)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   local data = var_raw(tbl,_data)
-  local idx  = is_number(key) and key or data.cidx[key]
-  assert(idx > data.nc-data.ng, "invalid argument #2 (generator column expected)")
+  local idx  = is_number(key) and key or
+           assert(data.cidx[key], "invalid argument #2 (valid column expected")
+  assert(data.nc-data.ng < idx and idx <= data.nc,
+                             "invalid argument #2 (generator column expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
-
   table_remove(data, idx)
   table_remove(data.cidx, idx)
   data.nc, data.ng, data.cidx[key] = data.nc-1, data.ng-1, nil
@@ -618,19 +625,19 @@ end
 local function cpy_row (data, idx, val, i0, nr) -- not exposed
   if val[1] then             -- copy by idx-value
     for i=1,data.nc-data.ng do
-      data[i].nr = nr
+      data[i].nr   = nr
       data[i][idx] = val[i0+i]
     end
-    data[0].nr = nr
-    data[0][idx] = true
   else                       -- copy by key-value
     for k,v in pairs(val) do
       local col = is_number(k) and data[k] or data[data.cidx[k]]
       assert(col, "invalid argument #3 (valid column expected)")
-      col.nr = nr
+      col.nr   = nr
       col[idx] = v
     end
   end
+  data[0].nr   = nr
+  data[0][idx] = true
 end
 
 local function get_row (tbl, key, ref_)
@@ -897,12 +904,12 @@ local function sort (tbl, cmp, rng_, sel_)
   local row1  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local idx_s = table.copy(idx_r, table_new(nr,0))
-  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = idx_s[i1], idx_s[i2]
+  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
   -- build lookup table
   local idx_l = table_new(0,nr)
-  for i=1,nr do idx_l[idx_s[i]] = idx_r[i] end
+  for i=1,nr do idx_l[idx_r[i]] = idx_s[i] end
 
   -- sort rows
   local nc = data.nc-data.ng
@@ -1028,7 +1035,7 @@ end
 
 -- I/O methods ----------------------------------------------------------------o
 
-local function write(tbl, filnam_, colnam_, hdrnam_)
+local function write (tbl, filnam_, colnam_, hdrnam_)
   if is_table(filnam_) and is_nil(hdrnam_) then
     filnam_, colnam_, hdrnam_ = nil, filnam_, colnam_ -- right shift
   end
@@ -1107,7 +1114,7 @@ local function write(tbl, filnam_, colnam_, hdrnam_)
   return tbl
 end
 
-local function read(tbl, filnam_)
+local function read (tbl, filnam_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local quote, splitall in string
   local fnam = filnam_ or tbl.name
@@ -1259,7 +1266,7 @@ t0=os.clock()
 do
   local a, t = 0, MAD.mtable 'mytable' { {'name'}, 'x', 'y', 'z' }
   t=t+{'A', 1.1,1.2,1.3}+{'B', 2.1,2.2,2.3}+{'A', 3.1,3.2,3.3}
-  for i=1,1e7 do a=a+t.B.x end
+  for i=1,1e7 do a=a+t:get('A','x',2) end
   print('a=',a)
 end
 print('time=',os.clock()-t0)
