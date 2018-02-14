@@ -47,12 +47,12 @@ local _data = {}
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
 local mtable = Object 'mtable' {
-  type='', title='', origin=origin, kind='mtable',
-  header = { 'name', 'type', 'title', 'origin', 'date', 'time' },
+  title='', type='', origin=origin, kind='mtable',
+  header = { 'title', 'type', 'origin', 'date', 'time' },
   column = nil, --{},
-  reserve=8, novector=nil,
-  [_data]={ridx={}, cidx={}, cref=nil, nvec=nil, [0]={nr=0},
-           nr=0, nc=0, ng=0, rmax=0},
+  reserve=8, novector=nil, owner=nil,
+  [_data]={ridx={}, cidx={}, nvec={}, [0]={nr=0},
+           cref=nil, nr=0, nc=0, ng=0, rmax=0},
 }
 
 -- backup original methods and metamethods
@@ -80,7 +80,7 @@ end
 
 -- check dictionnary of name -> idx
 local function check_dict (tbl)
-  local data = var_raw(tbl,_data)
+  local data = raw_get(tbl,_data)
   if is_nil(data.cref) then return end
   local cref = data[data.cref]
   for rn,ri in pairs(data.ridx) do -- name -> index or table of indexes
@@ -220,44 +220,70 @@ end
 -- mtable initialization
 local function mtbl_init (tbl)
   local nc = tbl:raw_len()
-  if nc == 0 then return tbl end -- empty, pure inheritance
+  if nc == 0 and not owner then return tbl end -- empty, pure inheritance
 
-  -- TODO: if parent has cidx, then concat parent.cidx with self.cidx
-  --       review inheritance vs is_orig...
+  local pdat = var_raw(tbl.parent, _data)
+  local pnc  = pdat.nc-pdat.ng
+  nc = nc + pnc
+  local nr   = tbl.reserve           -- forseen rows
+  local data = table_new(nc, 8)      -- columns (data)
+  data.ridx  = table_new( 0,nr)      -- name -> idx
+  data.cidx  = table_new(nc+1,nc+1)  -- name -> idx and idx -> name
+  data[0]    = table_new(nr, 1)      -- selected rows
+  data.nvec  = {}                    -- columns that should not be specialized
+  data.cref  = pdat.cref             -- refence column for fast row indexing
+  data.nr    = 0                     -- #rows
+  data.nc    = nc                    -- #cols
+  data.ng    = 0                     -- #gens
+  data.rmax  = 1                     -- allocated rows (specialize after 1st row)
 
-  local nr   = tbl.reserve          -- forseen rows
-  local data = table_new(nc, 8)     -- columns (data)
-  data.ridx  = table_new( 0,nr)     -- name -> idx
-  data.cidx  = table_new(nc+1,nc+1) -- name -> idx and idx -> name
-  data[0]    = table_new(nr, 1)     -- selected rows
-  data.nr    = 0                    -- #rows
-  data.nc    = nc                   -- #cols
-  data.ng    = 0                    -- #gens
-  data.rmax  = 1                    -- allocated rows (specialize after 1st row)
-  data.nvec  = {}                   -- columns that should not be specialized
+  -- copy parent data columns, not generated columns
+  table.cpy(pdat.cidx, data.cidx)
+  for i=pnc+1,pdat.nc do
+    data.cidx[data.cidx[i]], data.cidx[i] = nil, nil
+  end
 
-  for i=1,nc do
-    local col = raw_get(tbl,i)      -- column key
-    if is_table(col) then           -- ref: { key }
+  -- process new columns
+  for i=pnc+1,nc do
+    local col = raw_get(tbl,i-pnc)     -- column key
+    if is_table(col) then              -- cref: { key }
       assert(is_rawtable(col) and is_nil(col[2]), "invalid reference column")
       data.cref, col = i, col[1]
     end
     assert(is_string(col), "invalid column name (string expected)")
+    assert(is_nil(data.cidx[col]), "invalid column name (name already in use)")
     data.cidx[col], data.cidx[i] = i, col
     data[i] = {nr=0}
   end
 
+  -- prepare non-specilized columns
   if is_table(tbl.novector) then
+    data.nvec = table.cpy(pdat.nvec)
     for _,k in ipairs(tbl.novector) do
+      assert(data.cidx[k], "invalid column name for non-specialization")
       data.nvec[k], data.nvec[data.cidx[k]] = data.cidx[k], k
     end
   elseif tbl.novector == true then
     data.nvec = data.cidx
   end
 
-  data[0].nr, data.cidx.is_selected, data.cidx[0] = 0, 0, 'is_selected'
-  tbl:clear_array() -- clear list of column names
+  -- clear list of column names
+  tbl:clear_array()
+  -- set current date and time
   tbl.date, tbl.time = os.date'%d/%m/%y', os.date'%H:%M:%S'
+  -- column 0 named is_selected
+  data[0].nr, data.cidx.is_selected, data.cidx[0] = 0, 0, 'is_selected'
+
+  -- concat header names and column names to parent ones for I/O
+  local hdrnam, colnam = raw_get(tbl, 'header'), raw_get(tbl, 'column')
+  if is_table(hdrnam) and #hdrnam > 0 then
+    tbl.header = table.cat(hdrnam, tbl.parent.header)
+  end
+  if is_table(colnam) and #colnam > 0 then
+    tbl.column = table.cat(colnam, tbl.parent.column)
+  end
+
+  -- finalized
   tbl[_data] = data
   finish_mtbl(tbl)
   return tbl
@@ -524,8 +550,7 @@ local function add_idx (data, idx)
 end
 
 -- build dictionnary name -> idx
-local function build_idx (tbl)         -- must be very fast (see add_idx)
-  local data = var_raw(tbl,_data)
+local function build_idx (data)        -- must be very fast (see add_idx)
   if is_nil(data.cref) then return end -- no reference column
   table_clear(data.ridx)               -- reuse main storage
   for i=1,data.nr do add_idx(data, i) end
@@ -651,7 +676,7 @@ end
 
 local function rem_col (tbl, key)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
-  local data = var_raw(tbl,_data)
+  local data = raw_get(tbl,_data)
   local idx  = is_number(key) and key or
            assert(data.cidx[key], "invalid argument #2 (valid column expected")
   assert(data.nc-data.ng < idx and idx <= data.nc,
@@ -866,13 +891,13 @@ end
 
 local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  local data = raw_get(tbl,_data)
   if key_ then -- change reference column
-    local data = var_raw(tbl, _data)
     local idx = is_number(key_) and key_ or data.cidx[key_]
     assert(data[idx] or key_ == 'none', "invalid argument #2 (valid column expected)")
     data.cref = idx  -- key_ = 'none' disable index
   end
-  build_idx  (tbl)
+  build_idx (data)
   finish_mtbl(tbl)
   return tbl
 end
@@ -946,7 +971,7 @@ local function sort (tbl, cmp, rng_, sel_)
   local data  = raw_get(tbl,_data)
   local row1  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
-  local idx_s = table.copy(idx_r, table_new(nr,0))
+  local idx_s = table.cpy(idx_r, table_new(nr,0))
   table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
@@ -985,31 +1010,32 @@ local function copy (tbl, name_)
   local data = raw_get(tbl,_data)
   if not data then return cpy end -- tbl is not an original table
 
-  local nr, nc, ng = data.nr, data.nc, data.ng
-  local cdat = table_new(nc, 8) -- see mtbl_init
-  cdat.ridx  = table_new( 0,nr)  -- name -> idx
-  cdat.cidx  = table_new(nc,nc)  -- name -> idx and idx -> name
-  cdat.nr    = nr                -- #rows
-  cdat.nc    = nc                -- #cols
-  cdat.ng    = ng                -- #gens
-  cdat.rmax  = nr                -- allocated rows
-  cdat.cref  = data.cref         -- reference column (if any)
-  cdat.nvec  = {}                -- don't use vectors for columns
+  local nr, nc = data.nr, data.nc-data.ng
+  local cdat = table_new(nc, 8)      -- see mtbl_init
+  cdat.ridx  = table_new( 0,nr)      -- name -> idx
+  cdat.cidx  = table_new(nc+1,nc+1)  -- name -> idx and idx -> name
+  cdat.nvec  = {}                    -- columns that should not be specialized
+  cdat.cref  = data.cref             -- reference column (if any)
+  cdat.nr    = nr                    -- #rows
+  cdat.nc    = nc                    -- #cols
+  cdat.ng    = 0                     -- #gens
+  cdat.rmax  = nr                    -- allocated rows
 
-  table.copy(data.cidx, cdat.cidx)
+  -- copy data columns, not generated columns
+  table.cpy(data.cidx, cdat.cidx)
+  for i=nc+1,data.nc do
+    cdat.cidx[cdat.cidx[i]], cdat.cidx[i] = nil, nil
+  end
 
   if  data.nvec == data.cidx
   then cdat.nvec = cdat.cidx
-  else cdat.nvec = table.copy(data.nvec)
+  else cdat.nvec = table.cpy(data.nvec)
   end
 
   for i=0,nc-ng do                              -- copy data columns
     cdat[i] = is_table(data[i]) and table_new(nr,1) or vector(nr)
     for j=1,nr do cdat[i][j] = data[i][j] end
     cdat[i].nr = nr
-  end
-  for i=nc-ng+1,nc do                           -- copy generators
-    cdat[i] = setmetatable({ [_data]=cdat, [_gen]=data[i][_gen] }, gen_mt)
   end
 
   cpy[_data] = cdat
