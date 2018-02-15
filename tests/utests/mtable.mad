@@ -25,8 +25,46 @@
 
 local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
   assertStrContains, assertErrorMsgContains                        in MAD.utest
-local mtable                                                       in MAD
+local mtable, filesys                                              in MAD
 local is_table, is_vector, is_mtable, is_original_mtable           in MAD.typeid
+
+local generate = true
+local refdir   = \s -> "mtable_ref/"..s
+local rundir   = \s -> "mtable_run/"..s
+
+-- helpers --------------------------------------------------------------------o
+
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refdir(name), "r"))
+  local run  = assert(io.open(rundir(name), "r"))
+  local reftbl, sref = string.splitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = string.splitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
+  for i=1,sref do
+    reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
+    runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
+    if is_number(reftbl[i]) then
+      local approx = abs(runtbl[i]-reftbl[i])
+      if 14*eps < approx then
+        local div = min(runtbl[i], reftbl[i])
+        if div == 0 then
+          assertAlmostEquals(approx, 0, 1.1e-5)
+        else
+          assertAlmostEquals((runtbl[i]-reftbl[i])/div, 0, 1.1e-6)
+        end
+      end
+    else
+      assertEquals(runtbl[i], reftbl[i])
+    end
+  end
+  if not generate then os.remove(rundir(name)) end
+end
+
+local function testWrite(tbl, filnam_, colnam_, hdrnam_)
+  tbl:write(rundir(filnam_), colnam_, hdrnam_)
+  assertFiles(filnam_)
+end
 
 -- regression test suite ------------------------------------------------------o
 
@@ -462,4 +500,178 @@ function TestMTable:testGetSet()
     -- assertEquals(tbl22:get("v1", "x" , i-4), 1) -- TODO fix reflection on cnt -- TODO update dictionarry not working
   end
 end
+
+function TestMTable:testNoVector()
+  local tbl11 = mtable 'tbl11' { 'x', 'y', 'z' }
+  local tbl12 = mtable 'tbl12' { 'x', 'y', 'z', novector = true }
+  local tbl13 = mtable 'tbl13' { 'x', 'y', 'z', novector = {1, "y"} }
+  local tbl21 = mtable 'tbl21' { {'dict'}, 'x', 'y', 'z' }
+  local tbl22 = mtable 'tbl22' { {'dict'}, 'x', 'y', 'z', novector = true }
+  local tbl23 = mtable 'tbl23' { {'dict'}, 'x', 'y', 'z', novector = {2, "y"} }
+  local row1  = { 1, 2, 3 }
+  local row2  = { "v0", 1, 2, 3}
+  local col1   = { 10, 10 }
+  local col2   = { 15, 15 }
+
+  tbl11:addrow(row1); tbl11:addrow(row1); tbl21:addrow(row2); tbl21:addrow(row2)
+  tbl12:addrow(row1); tbl12:addrow(row1); tbl22:addrow(row2); tbl22:addrow(row2)
+  tbl13:addrow(row1); tbl13:addrow(row1); tbl23:addrow(row2); tbl23:addrow(row2)
+
+  for i=1,3 do
+    assertTrue(is_vector(tbl11:getcol(i)))
+    assertTrue(is_vector(tbl21:getcol(i+1)))
+
+    assertTrue(is_table(tbl12:getcol(i)))
+    assertTrue(is_table(tbl22:getcol(i+1)))
+  end
+
+  for i=1,2 do
+    assertTrue(is_table(tbl13:getcol(i)))
+    assertTrue(is_table(tbl23:getcol(i+1)))
+  end
+  assertTrue(is_vector(tbl13:getcol(3)))
+  assertTrue(is_vector(tbl23:getcol(4)))
+  assertTrue(is_table (tbl23:getcol(1)))
+
+  -- maintenance after adding columns
+  -- tbl11:addcol("c1", col1); tbl11:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl12:addcol("c1", col1); tbl12:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl13:addcol("c1", col1); tbl13:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl21:addcol("c1", col1); tbl21:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl22:addcol("c1", col1); tbl22:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl23:addcol("c1", col1); tbl23:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+
+  -- assertTrue(is_vector(tbl11:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_table (tbl12:getcol("c1"))) -- TODO fix addcol -- TODO fix nvec_ behavior
+  -- assertTrue(is_vector(tbl13:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_vector(tbl21:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_table (tbl22:getcol("c1"))) -- TODO fix addcol -- TODO fix nvec_ behavior
+  -- assertTrue(is_vector(tbl23:getcol("c1"))) -- TODO fix addcol
+
+  -- assertTrue(is_table(tbl11:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl12:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl13:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl21:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl22:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl23:getcol("c2"))) -- TODO fix addcol
+end
+
+function TestMTable:testWrite()
+  filesys.mkdir(rundir(""))
+  local tbl1 = mtable 'tbl1' { 'x', 'y', 'z' }
+  local tbl2 = mtable 'tbl2' { {'dict'}, 'x', 'y', 'z' }
+  -- local tbl3 = mtable 'tbl3' { {'dict'}, 'x', 'y', 'z', column = {"x", 3}} -- TODO fix column name when integer argument -- TODO fix table_ini table.cat calls
+  local tbl4 = mtable 'tbl4' {
+    {'dict'}, 'x', 'y', 'z',
+    header1 = "MyHeader1", header2 = 42,
+    header  = {"header1", "header2"}
+  }
+  local tbl5 = mtable 'tbl5' {
+    {'name'}, 'x', 'y', 'z',
+    header1="header 'whith quote'",
+    header2="header \"double quote\"",
+    header3=42.5,
+    novector=true
+  }
+
+  local row1 = { 1, 2, 3 }
+  local row2 = { "v0", 1, 2, 3}
+
+  tbl1.time, tbl1.date, tbl1.origin = "", "", ""
+  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
+  -- tbl3.time, tbl3.date, tbl3.origin = "", "", ""  -- TODO fix table_ini table.cat calls
+  tbl4.time, tbl4.date, tbl4.origin = "", "", ""
+  tbl1:addrow(row1); tbl1:addrow(row1);
+  tbl2:addrow(row2); tbl2:addrow(row2)
+  -- tbl3:addrow(row2); tbl3:addrow(row2)            -- TODO fix table_ini table.cat calls
+  tbl4:addrow(row2); tbl4:addrow(row2)
+
+  -- extensions
+  testWrite(tbl1, 'tbl-name1')
+  testWrite(tbl1, 'tbl-name2.tfs')
+
+  -- with dictionary
+  testWrite(tbl2, 'tbl-dict') -- TODO should it be a special marker ?
+
+  -- choose column
+  testWrite(tbl2, 'tbl-col1', {'x', 3}) -- TODO fix column name when integer argument (see generated file)
+  -- testWrite(tbl3, 'tbl-col2') -- TODO fix column name when integer argument (see generated file) -- TODO fix table_ini table.cat calls
+
+  -- choose header
+  testWrite(tbl4, 'tbl-header1', nil, { "title", "header1" })
+  testWrite(tbl4, 'tbl-header2')
+
+  -- tbl with quoted string
+  tbl5:addrow{"name1", 1, 2, 3.15}
+  tbl5:addrow{"name2", nil, nil, nil}
+  tbl5:addrow{"name1", 1, 2, 3.15}
+  tbl5:addcol("gen", \i->i)
+  tbl5:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
+  testWrite(tbl5, 'tbl-write', nil, {"type","header1", "header2", "header3"})
+
+  if not generate then filesys.rmdir(rundir("")) end
+end
+
+function TestMTable:testRead()
+  local parent = mtable 'parent' { var = 42 }
+
+  -- extensions
+  local tbl1 = mtable:read(refdir('tbl-name1'))
+  local tbl2 = mtable:read(refdir('tbl-name2.tfs'))
+  for i=1,2 do
+    for j=1,3 do
+      assertEquals(tbl1[i][j], j)
+      assertEquals(tbl2[i][j], j)
+    end
+  end
+
+  -- inheritance
+  local tbl3 = parent:read(refdir('tbl-name1'))
+  assertFalse(is_original_mtable(parent))
+  assertTrue(is_original_mtable(tbl3))
+  assertEquals(tbl3.var, 42)
+  assertEquals(tbl3.parent, parent)
+
+  -- test values read
+  -- local tbl4 = mtable:read(refdir('tbl-write')) -- TODO types not correct can not read back tbl-write
+
+  -- TODO when read is fixed :  test if quote is handled properly
+  -- TODO test read values
+  -- test dictionary
+end
+
+function TestMTable:testBuildIndex()
+  local tbl = mtable 'tbl' { {'name1'}, 'name2' , 'id' }
+  tbl:addrow{ "n1"   , "n2"   , 1}
+  tbl:addrow{ "other", "other", 2}
+  tbl:addrow{ "n1"   , "n2"   , 3}
+  tbl:addrow{ "n1"   , "n2"   , 4}
+
+  for col,v in pairs{name1="n1", name2="n2"} do
+    tbl:build_index(col)
+    assertEquals(tbl:getrow(v.."[1]"   ).id, 1)
+    assertEquals(tbl:getrow(v.."[3]"   ).id, 4)
+    assertEquals(tbl:getrow(v.."{2}", 2).id, 4)
+  end
+
+  for _,col in ipairs{1} do -- TODO add ,-2 when reflection is fixed
+    tbl:build_index(col)
+    assertEquals(tbl:getrow("n1[1]"   ).id, 1)
+    assertEquals(tbl:getrow("n1[3]"   ).id, 4)
+    assertEquals(tbl:getrow("n1{2}", 2).id, 4)
+  end
+
+  tbl:build_index('none')
+  local v = tbl:getrow("n1[1]"   ).id -- TODO not supposed to work
+
+end
+
+-- function TestMTable:testSetReadOnly()
+--   local tbl = mtable 'tbl' { {'dict'}, 'x', 'y', 'z' }
+--   tbl:addrow{ "v0", 1, 2, 3 }
+--   tbl:set_readonly(true)
+--   tbl:addrow{ "v2", 1, 2, 3 }
+--   tbl:write('tbl')
+--   -- assertErrorMsgContains(msg[3], mtable.remcol, tbl22, "c2")
+-- end
 -- end ------------------------------------------------------------------------o
