@@ -102,6 +102,11 @@ end
 
 local index_of_idx -- forward declaration
 
+-- reflect indexes
+local function reflect (i, n)
+  return i < 0 and n+i+1 or i
+end
+
 -- get index from s-position (binary)
 local function index_of_num (tbl, num, typ)
   assert(is_number(num), "invalid argument #2 (number expected)")
@@ -122,7 +127,7 @@ function index_of_idx (tbl, idx, typ)
   assert(is_integer(idx), "invalid argument #2 (number expected)")
   if typ == 'spos' then return index_of_num(tbl, idx, typ) end
   local n = var_raw(tbl,_data).nr
-  if idx < 0 then idx = n+idx+1 end -- reflect
+  idx = reflect(idx, n)
   if idx < 1 or idx > n then return nil end
   return idx
 end
@@ -131,8 +136,7 @@ end
 local function index_of_cnam (tbl, nam, cnt)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_table(ri) then
-    if cnt < 0 then cnt = ri.n+cnt+1 end -- reflect
-    return ri[cnt]
+    return ri[ reflect(cnt, ri.n) ]
   end
   return ri
 end
@@ -389,9 +393,8 @@ local function index_mm (tbl, key)
   -- row index
   if is_number(key) then              -- see index_of_idx
     local data = var_raw(tbl,_data)
-    local n = data.nr
-    if key < 0 then key = n+key+1 end -- reflect
-    if key < 1 or key > n then return nil end
+    key = reflect(key, data.nr)
+    if key < 1 or key > data.nr then return nil end
     return setmetatable({[_idx]=key, [_data]=data}, row_mt)
   end
   -- variable
@@ -526,10 +529,10 @@ local function rem_idx (data, idx)
     data.ridx[nam] = val[1] == idx and val[2] or val[1]
   else                            -- many: remove
     local i, n = 1, val.n
-    while idx < val[i] do i = i+1 end
+    while idx > val[i] do i = i+1 end
     assert(idx == val[i], "unexpected corrupted dictionnary")
     while i < n do val[i], i = val[i+1], i+1 end
-    val.n, val[i] = i-1, nil
+    val.n, val[n] = n-1, nil
   end
 end
 
@@ -583,19 +586,18 @@ local function get (tbl, row, col, cnt_)
   local data, ridx, cidx = var_raw(tbl,_data)
 
   if is_number(col)
-  then cidx = col < 0 and data.nc+col+1 or col -- reflect
+  then cidx = reflect(col, data.nc)
   else cidx = data.cidx[col]
   end
   if is_nil(data[cidx]) then return nil end
 
   if is_number(row)
-  then ridx = row < 0 and data.nr+row+1 or row -- reflect
+  then ridx = reflect(row, data.nr)
   else ridx = data.ridx[row]
     if is_table(ridx) then
       local cnt = cnt_ or 1
       assert(is_number(cnt), "invalid argument #4 (count expected)")
-      if cnt < 0 then cnt = ridx.n-cnt+1 end -- reflect
-      ridx = ridx[cnt]
+      ridx = ridx[ reflect(cnt, ridx.n) ]
     end
   end
 
@@ -610,21 +612,21 @@ local function set (tbl, row, col, cnt_, val)
   local data, cidx, ridx = var_raw(tbl,_data)
 
   if is_number(col)
-  then cidx = col < 0 and data.nc+col+1 or col -- reflect
+  then cidx = reflect(col, data.nc)
   else cidx = data.cidx[col]
   end
   assert(data[cidx], "invalid argument #3 (valid column expected)")
 
   if is_number(row) then
-    ridx = row < 0 and data.nr+row+1 or row -- reflect
+    ridx = reflect(row, data.nr)
     assert(ridx >= 1 and ridx <= data.nr, "row index out of bounds")
   else
     ridx = assert(data.ridx[row], "invalid argument #2 (valid row expected)")
     if is_table(ridx) then
       local cnt = cnt_ or 1
       assert(is_number(cnt), "invalid argument #4 (count expected)")
-      if cnt < 0 then cnt = ridx.n-cnt+1 end -- reflect
-      ridx = assert(ridx[cnt], "invalid argument #2 (valid row[cnt] expected)")
+      ridx = assert(ridx[ reflect(cnt, ridx.n) ],
+                             "invalid argument #2 (valid row[cnt] expected)")
     end
   end
 
@@ -636,8 +638,7 @@ local function get_col (tbl, key)
   local data = var_raw(tbl,_data)
   local idx = is_number(key) and key or data.cidx[key]
   if is_nil(idx) then return nil end
-  if idx < 0 then idx = data.nr+idx+1 end
-  return data[idx] -- full column data, column generator or nil
+  return data[ reflect(idx, data.nc) ] -- full column data, column generator or nil
 end
 
 local function add_col (tbl, key, val, nvec_)
@@ -676,7 +677,7 @@ end
 local function rem_col (tbl, key)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   local data = raw_get(tbl,_data)
-  local idx  = is_number(key) and key or
+  local idx  = is_number(key) and reflect_idx(key, data.nr) or
            assert(data.cidx[key], "invalid argument #2 (valid column expected")
   assert(data.nc-data.ng < idx and idx <= data.nc,
                              "invalid argument #2 (generator column expected)")
@@ -762,6 +763,7 @@ end
 local function ins_row (tbl, key, val, ini_, ref_)
   ini_ = ini_ or 1
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
+  if key == #tbl+1 then return add_row(tbl, val, ini_) end
   local idx = index_of(tbl, key, ref_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
@@ -984,19 +986,19 @@ local function sort (tbl, cmp, rng_, sel_)
 
   -- sort rows
   local nc = data.nc-data.ng
-  local tmp = table_new(nc,0)
+  local tmp = table_new(nc+1,0)
   for ii=1,nr do
     local s, r = idx_s[ii], idx_l[idx_s[ii]]
     if s == r then -- identity (cleanup)
       idx_l[s] = nil
     elseif r then  -- not yet processed
       local ts = s
-      for i=1,nc do tmp[i] = data[i][s] end
+      for i=0,nc do tmp[i] = data[i][s] end
       while r ~= ts do
-        for i=1,nc do data[i][s] = data[i][r] end
+        for i=0,nc do data[i][s] = data[i][r] end
         s, r, idx_l[s] = r, idx_l[r]
       end
-      for i=1,nc do data[i][s] = tmp[i] end
+      for i=0,nc do data[i][s] = tmp[i] end
       idx_l[s] = nil
     end
   end
