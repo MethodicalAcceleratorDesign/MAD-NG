@@ -204,7 +204,7 @@ local function name_of_idx (tbl, idx, ref_)
 
   for i=1,ri.n do
     if ri[i] == idx then
-      return string.format("%s%s%d%s", nam, i-cnt, b1, b2)
+      return string.format("%s%s%d%s", nam, b1, i-cnt, b2)
     end
   end
   error("unexpected corrupted dictionnary")
@@ -280,10 +280,10 @@ local function mtbl_init (tbl)
   -- concat header names and column names to parent ones for I/O
   local hdrnam, colnam = raw_get(tbl, 'header'), raw_get(tbl, 'column')
   if is_table(hdrnam) and #hdrnam > 0 then
-    tbl.header = table.cat(hdrnam, tbl.parent.header)
+    tbl.header = table.cat(hdrnam, tbl.parent.header or {})
   end
   if is_table(colnam) and #colnam > 0 then
-    tbl.column = table.cat(colnam, tbl.parent.column)
+    tbl.column = table.cat(colnam, tbl.parent.column or {})
   end
 
   -- finalized
@@ -655,7 +655,7 @@ local function add_col (tbl, key, val, nvec_)
   elseif is_iterable(val) then -- iterable
     local idx = data.nc-data.ng+1
     if is_number(val[1]) and not nvec_ then
-      table_insert(data, idx, vector(data.rmax):fill(val))
+      table_insert(data, idx, vector(data.rmax):reshape(data.nr):fill(val))
     else
       table_insert(data, idx, table_new(data.rmax,1))
       for i=1,data.nr do data[idx][i] = val[i] end
@@ -798,7 +798,7 @@ local function swp_row (tbl, key1, key2, ref_)
   return tbl
 end
 
--- functional methods ---------------------------------------------------------o -- TODO
+-- functional methods ---------------------------------------------------------o
 
 local pknd   = \knd,k,  r,i -> knd[i] == k
 local psel   = \sel,    r,i -> sel[i] == true
@@ -888,15 +888,17 @@ local function filter (tbl, rng_, sel_, not_)
   return idx
 end
 
--- methods (R/W, rebuild dict) ------------------------------------------------o -- TODO
+-- methods (R/W, rebuild dict) ------------------------------------------------o
 
 local function build_index (tbl, key_)
   assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
   local data = raw_get(tbl,_data)
-  if key_ then -- change reference column
-    local idx = is_number(key_) and key_ or data.cidx[key_]
-    assert(data[idx] or key_ == 'none', "invalid argument #2 (valid column expected)")
-    data.cref = idx  -- key_ = 'none' disable index
+  if key_ == 'none' then -- 'none' disable index
+    data.cref = nil
+  elseif key_ then       -- change reference column
+    local idx = is_number(key_) and reflect(key_, data.nc) or data.cidx[key_]
+    assert(data[idx], "invalid argument #2 (valid column expected)")
+    data.cref = idx
   end
   build_idx (data)
   finish_mtbl(tbl)
