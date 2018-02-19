@@ -66,15 +66,23 @@ local function is_mtable (a)
   return is_table(a) and a[_data] ~= nil
 end
 
-local function is_orig_mtable (a)
-  return is_mtable(a) and raw_get(a, _data) ~= nil
+local function is_owner (a)
+  return raw_get(a, _data) ~= nil
 end
 
-local function original (a)
-  while raw_get(a, _data) == nil do a = parent(a) end
-  assert(not rawequal(a,mtable), "no original mtable found")
-  return a
+local function is_view (a)
+  return raw_get(a, _data) == nil
 end
+
+-- local function is_orig_mtable (a)
+--   return is_mtable(a) and raw_get(a, _data) ~= nil
+-- end
+--
+-- local function original (a)
+--   while raw_get(a, _data) == nil do a = parent(a) end
+--   assert(not rawequal(a,mtable), "no original mtable found")
+--   return a
+-- end
 
 -- sanity checks --------------------------------------------------------------o
 
@@ -222,7 +230,7 @@ end
 
 -- mtable initialization
 local function mtbl_init (tbl)
-  local nc = tbl:raw_len()
+  local nc, owner = tbl:raw_len(), tbl:raw_get 'owner'
   if nc == 0 and not owner then return tbl end -- empty, pure inheritance
 
   local pdat = var_raw(tbl.parent, _data)
@@ -642,8 +650,8 @@ local function get_col (tbl, key)
 end
 
 local function add_col (tbl, key, val, nvec_)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
-  assert(is_string(key)     , "invalid argument #2 (string expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_string(key), "invalid argument #2 (string expected)")
   local data = raw_get(tbl,_data)
   assert(is_nil(data.cidx[key]), "invalid argument #2 (column name already in use)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
@@ -675,9 +683,9 @@ local function add_col (tbl, key, val, nvec_)
 end
 
 local function rem_col (tbl, key)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = raw_get(tbl,_data)
-  local idx  = is_number(key) and reflect_idx(key, data.nr) or
+  local idx  = is_number(key) and reflect(key, data.nr) or
            assert(data.cidx[key], "invalid argument #2 (valid column expected")
   assert(data.nc-data.ng < idx and idx <= data.nc,
                              "invalid argument #2 (generator column expected)")
@@ -891,7 +899,7 @@ end
 -- methods (R/W, rebuild dict) ------------------------------------------------o
 
 local function build_index (tbl, key_)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = raw_get(tbl,_data)
   if key_ == 'none' then -- 'none' disable index
     data.cref = nil
@@ -906,7 +914,7 @@ local function build_index (tbl, key_)
 end
 
 local function remove (tbl, rng_, sel_)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
 
   -- collect indexes of elements to remove
   local idx_r = filter(tbl, rng_, sel_, true)
@@ -934,7 +942,7 @@ local function remove (tbl, rng_, sel_)
 end
 
 local function insert (tbl, rows, rng_, sel_)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
 
   -- collect indexes of elements to remove
   local idx_r = filter(tbl, rng_, sel_, true)
@@ -965,8 +973,8 @@ local function insert (tbl, rows, rng_, sel_)
 end
 
 local function sort (tbl, cmp, rng_, sel_)
-  assert(is_orig_mtable(tbl), "invalid argument #1 (original mtable expected)")
-  assert(is_callable(cmp)   , "invalid argument #2 (callable expected)")
+  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
+  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
 
   -- collect indexes of elements to remove
   local idx_r = filter(tbl, rng_, sel_)
@@ -1010,13 +1018,16 @@ local function sort (tbl, cmp, rng_, sel_)
   return tbl
 end
 
-local function copy (tbl, name_)
+local function copy (tbl, name_, owner_)
+  if is_nil(owner_) and is_boolean(name_) then
+    owner_, name_ = name_
+  end
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
   assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
-  local cpy  = tbl_cpy(tbl,name_)
-  local data = raw_get(tbl,_data)
-  if not data then return cpy end -- tbl is not an original table
+  local cpy = tbl_cpy(tbl,name_)
+  if is_view(tbl) and not owner_ then return cpy end -- tbl is not an original table
 
+  local data = var_raw(tbl,_data)
   local nr, nc = data.nr, data.nc-data.ng
   local cdat = table_new(nc, 8)      -- see mtbl_init
   cdat.ridx  = table_new( 0,nr)      -- name -> idx
@@ -1039,7 +1050,7 @@ local function copy (tbl, name_)
   else cdat.nvec = table.cpy(data.nvec)
   end
 
-  for i=0,nc-ng do                              -- copy data columns
+  for i=0,nc do                      -- copy data columns
     cdat[i] = is_table(data[i]) and table_new(nr,1) or vector(nr)
     for j=1,nr do cdat[i][j] = data[i][j] end
     cdat[i].nr = nr
@@ -1266,78 +1277,79 @@ end
 
 -- members --------------------------------------------------------------------o
 
-mtable.original = original
-
 mtable: set_methods {
   -- cells manipulation
-  get           = get,
-  set           = set,
+  get          = get,
+  set          = set,
 
   -- columns manipulation
-  getcol        = get_col,
-  addcol        = add_col,
-  remcol        = rem_col,
+  getcol       = get_col,
+  addcol       = add_col,
+  remcol       = rem_col,
 
   -- rows manipulation
-  getrow        = get_row,
-  addrow        = add_row,
-  setrow        = set_row,
-  remrow        = rem_row,
-  insrow        = ins_row,
-  swprow        = swp_row,
+  getrow       = get_row,
+  addrow       = add_row,
+  setrow       = set_row,
+  remrow       = rem_row,
+  insrow       = ins_row,
+  swprow       = swp_row,
 
   -- sequence-like methods
-  name_of       = name_of,
-  index_of      = index_of,
-  range_of      = range_of,
-  length_of     = length_of,
+  name_of      = name_of,
+  index_of     = index_of,
+  range_of     = range_of,
+  length_of    = length_of,
 
-  foreach       = foreach,
-  select        = select,
-  deselect      = deselect,
-  filter        = filter,
+  foreach      = foreach,
+  select       = select,
+  deselect     = deselect,
+  filter       = filter,
 
-  remove        = remove,
-  insert        = insert,
-  sort          = sort,
-  copy          = copy,
+  remove       = remove,
+  insert       = insert,
+  sort         = sort,
+  copy         = copy,
 
-  cycle         = cycle,
+  cycle        = cycle,
 
-  iter          = iter,
+  iter         = iter,
 
   -- read/write
-  read          = read,
-  write         = write,
+  read         = read,
+  write        = write,
 
   -- readonly
-  set_readonly  = set_readonly,
+  set_readonly = set_readonly,
+
+  -- ownership
+  is_owner     = is_owner,
+  is_view      = is_view,
 
   -- index dict
-  build_index = build_index,
-  check_index = check_index,
+  build_index  = build_index,
+  check_index  = check_index,
 
   -- disabled methods
-  is_selected  := error("invalid mtable operation", 2),
+  is_selected := error("invalid mtable operation", 2),
 
 }: set_metamethods ({
-  __add         = add_row,
-  __len         = len_mm,
-  __index       = index_mm,
-  __newindex    = newindex_mm,
--- __pairs      = pairs_mm, default from Object
-  __ipairs      = ipairs_mm,
--- __kpairs     = kpairs_mm, default from Object
+  __add        = add_row,
+  __len        = len_mm,
+  __index      = index_mm,
+  __newindex   = newindex_mm,
+-- __pairs     = pairs_mm, default from Object
+  __ipairs     = ipairs_mm,
+-- __kpairs    = kpairs_mm, default from Object
 
-  __copy        = copy,
-  __init        = mtbl_init,
+  __copy       = copy,
+  __init       = mtbl_init,
 
 }, true): set_readonly()
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_mtable          = is_mtable
-MAD.typeid.is_original_mtable = is_orig_mtable
+MAD.typeid.is_mtable = is_mtable
 
 -- end ------------------------------------------------------------------------o
 return {
