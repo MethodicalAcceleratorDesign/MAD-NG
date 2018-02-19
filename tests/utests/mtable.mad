@@ -895,20 +895,227 @@ function TestMTable:testCycle()
 end
 
 function TestMTable:testForeach()
-  local tbl = mtable 'tbl' { {'dict'} }
-  local val = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
-  local i   = 1
-  local act = \row,_ => assertEquals(row[1], val[i]); i=i+1 end
+  local tbl  = mtable 'tbl' { {'dict'} }
+  local tbl2 = mtable 'tbl' { {'dict'}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local i    = 1
+  local act1 = \row,_ => assertEquals(row[1], val[i]); i=i+1 end
+  local act2 = \row,_ => assertEquals(row[1], val[i]); i=i+2 end
+  local act3 = \row,_ => assertEquals(row[1], "v0")  ; i=i+1 end
 
-  for _,v in ipairs(val) do tbl:addrow{v} end
+  for i,v in ipairs(val) do
+    tbl:addrow{v}
+    tbl2:addrow{v, val2[i%2]}
+  end
 
-  i=1; tbl:foreach(act)                                 ; assertEquals(i, 9)
-  i=1; tbl:foreach(act, nil, nil, true)                 ; assertEquals(i, 1)
-  i=2; tbl:foreach(act, {2,6})                          ; assertEquals(i, 7)
-  i=1; tbl:foreach(act, {2,6}, nil, true)               ; assertEquals(i, 1)
-  i=2; tbl:foreach(act, nil, \r,i -> 1 < i and i < 7)   ; assertEquals(i, 7)
-  i=3; tbl:foreach(act, {3, 5}, \r,i -> 1 < i and i < 7); assertEquals(i, 6)
-  i=3; tbl:foreach(act, {2, 6}, \r,i -> 2 < i and i < 6); assertEquals(i, 6)
+  i=1; tbl:foreach(act1)                                ; assertEquals(i, 9)
+  i=1; tbl:foreach(act1, nil  , nil, true)              ; assertEquals(i, 1)
+  i=2; tbl:foreach(act1, {2,6})                         ; assertEquals(i, 7)
+  i=1; tbl:foreach(act1, {2,6}, nil, true)              ; assertEquals(i, 1)
+  i=2; tbl:foreach(act1, nil,   \r,i -> 1 < i and i < 7); assertEquals(i, 7)
+  i=3; tbl:foreach(act1, {3,5}, \r,i -> 1 < i and i < 7); assertEquals(i, 6)
+  i=1; tbl:foreach(act2, nil,   \r,i -> i%2 == 1       ); assertEquals(i, 9)
 
+  -- argument packed in a table (equivalent to test above)
+  i=1; tbl:foreach { action=act1 }
+  assertEquals(i, 9)
+  i=1; tbl:foreach { action=act1, default=true }
+  assertEquals(i, 1)
+  i=1; tbl:foreach { action=act1, default='none' }
+  assertEquals(i, 1)
+  i=2; tbl:foreach { action=act1, range={2,6} }
+  assertEquals(i, 7)
+  i=1; tbl:foreach { action=act1, range={2,6}, default=true }
+  assertEquals(i, 1)
+  i=1; tbl:foreach { action=act1, range={2,6}, default='none' }
+  assertEquals(i, 1)
+  i=2; tbl:foreach { action=act1, select=\r,i -> 1 < i and i < 7 }
+  assertEquals(i, 7)
+  i=3; tbl:foreach { action=act1, range={3,5}, select=\r,i -> 1 < i and i < 7 }
+  assertEquals(i, 6)
+  i=1; tbl:foreach { action=act2, select=\r,i -> i%2 == 1 }
+  assertEquals(i, 9)
+
+  -- argument packed in a table (test new capabilities)
+  tbl:deselect(); tbl:select(nil, \r,i -> i >=5) -- TODO select should unselect first ?
+  i=5; tbl:foreach  { action=act1, selected=true  }; assertEquals(i, 9)
+  -- i=1; tbl:foreach  { action=act1, selected=false }; assertEquals(i, 5) -- TODO should selected=false do the reverse ??
+  i=1; tbl:foreach  { action=act3, pattern="0"    }; assertEquals(i, 4)
+  i=1; tbl2:foreach { action=act2, kind="kind1"   }; assertEquals(i, 9)
+end
+
+function TestMTable:testSelect()
+  local tbl  = mtable 'tbl' { {'dict'} }
+  local tbl2 = mtable 'tbl' { {'dict'}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local val3 = { [5]=true, [7]=true, [8]=true }
+  local assertSelect = \tbl,min,max,step =>
+    step = step or 1
+    for i=1,8,step do
+      if min <= i and i < max
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    tbl:deselect()
+  end
+  local assertSelect2 = \tbl,key =>
+    for i=1,8 do
+      if key[i]
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    tbl:deselect()
+  end
+
+  for i,v in ipairs(val) do
+    tbl:addrow{v}
+    tbl2:addrow{v, val2[i%2]}
+  end
+
+  tbl:deselect(); tbl2:deselect();
+
+  tbl:select()                              ; assertSelect(tbl, 1, 9)
+  tbl:select(nil  , nil, true)              ; assertSelect(tbl, 1, 1)
+  tbl:select({2,6})                         ; assertSelect(tbl, 2, 7)
+  tbl:select({2,6}, nil, true)              ; assertSelect(tbl, 1, 1)
+  tbl:select(nil,   \r,i -> 1 < i and i < 7); assertSelect(tbl, 2, 7)
+  tbl:select({3,5}, \r,i -> 1 < i and i < 7); assertSelect(tbl, 3, 6)
+  tbl:select(nil,   \r,i -> i%2 == 1       ); assertSelect(tbl, 1, 9, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  tbl:select { }
+  assertSelect(tbl, 1, 9)
+  tbl:select { default=true }
+  assertSelect(tbl, 1, 1)
+  tbl:select { default='none' }
+  assertSelect(tbl, 1, 1)
+  tbl:select { range={2,6} }
+  assertSelect(tbl, 2, 7)
+  tbl:select { range={2,6}, default=true }
+  assertSelect(tbl, 1, 1)
+  tbl:select { range={2,6}, default='none' }
+  assertSelect(tbl, 1, 1)
+  tbl:select { select=\r,i -> 1 < i and i < 7 }
+  assertSelect(tbl, 2, 7)
+  tbl:select { range={3,5}, select=\r,i -> 1 < i and i < 7 }
+  assertSelect(tbl, 3, 6)
+  tbl:select { select=\r,i -> i%2 == 1 }
+  assertSelect(tbl, 1, 9, 2)
+
+  -- argument packed in a table (test new capabilities)
+  tbl:select  { pattern="0"  }; assertSelect2(tbl, val3)
+  tbl2:select { kind="kind1" }; assertSelect(tbl2, 1, 9, 2)
+end
+
+function TestMTable:testDeselect()
+  local tbl  = mtable 'tbl' { {'dict'} }
+  local tbl2 = mtable 'tbl' { {'dict'}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local val3 = { [5]=true, [7]=true, [8]=true }
+  local assertDeselect = \tbl,min,max,step =>
+    step = step or 1
+    for i=1,8,step do
+      if min <= i and i < max
+      then assertFalse(tbl[i][0])
+      else assertTrue (tbl[i][0])
+      end
+    end
+    tbl:select()
+  end
+  local assertDeselect2 = \tbl,key =>
+    for i=1,8 do
+      if key[i]
+      then assertFalse(tbl[i][0])
+      else assertTrue (tbl[i][0])
+      end
+    end
+    tbl:select()
+  end
+
+  for i,v in ipairs(val) do
+    tbl:addrow{v}
+    tbl2:addrow{v, val2[i%2]}
+  end
+
+  tbl:select(); tbl2:select()
+
+  tbl:deselect()                              ; assertDeselect(tbl, 1, 9)
+  tbl:deselect(nil  , nil, true)              ; assertDeselect(tbl, 1, 1)
+  tbl:deselect({2,6})                         ; assertDeselect(tbl, 2, 7)
+  tbl:deselect({2,6}, nil, true)              ; assertDeselect(tbl, 1, 1)
+  tbl:deselect(nil,   \r,i -> 1 < i and i < 7); assertDeselect(tbl, 2, 7)
+  tbl:deselect({3,5}, \r,i -> 1 < i and i < 7); assertDeselect(tbl, 3, 6)
+  tbl:deselect(nil,   \r,i -> i%2 == 1       ); assertDeselect(tbl, 1, 9, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  tbl:deselect { }
+  assertDeselect(tbl, 1, 9)
+  tbl:deselect { default=true }
+  assertDeselect(tbl, 1, 1)
+  tbl:deselect { default='none' }
+  assertDeselect(tbl, 1, 1)
+  tbl:deselect { range={2,6} }
+  assertDeselect(tbl, 2, 7)
+  tbl:deselect { range={2,6}, default=true }
+  assertDeselect(tbl, 1, 1)
+  tbl:deselect { range={2,6}, default='none' }
+  assertDeselect(tbl, 1, 1)
+  tbl:deselect { select=\r,i -> 1 < i and i < 7 }
+  assertDeselect(tbl, 2, 7)
+  tbl:deselect { range={3,5}, select=\r,i -> 1 < i and i < 7 }
+  assertDeselect(tbl, 3, 6)
+  tbl:deselect { select=\r,i -> i%2 == 1 }
+  assertDeselect(tbl, 1, 9, 2)
+
+  -- argument packed in a table (test new capabilities)
+  tbl:deselect  { pattern="0"  }; assertDeselect2(tbl, val3)
+  tbl2:deselect { kind="kind1" }; assertDeselect(tbl2, 1, 9, 2)
+end
+
+function TestMTable:testFilter()
+  local tbl  = mtable 'tbl' { {'dict'} }
+  local tbl2 = mtable 'tbl' { {'dict'}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local assertFilter = \idx,min,max,step_ =>
+    local j, step = 1, step_ or 1
+    for i=min,max,step do
+      assertEquals(idx[j], i)
+      j=j+1
+    end
+  end
+
+  for i,v in ipairs(val) do
+    tbl:addrow{v}
+    tbl2:addrow{v, val2[i%2]}
+  end
+
+  assertFilter(tbl:filter()                              ,  1, 8)
+  assertEquals(tbl:filter(nil  , nil, true)              , {n=0})
+  assertFilter(tbl:filter({2,6})                         ,  2, 6)
+  assertEquals(tbl:filter({2,6}, nil, true)              , {n=0})
+  assertFilter(tbl:filter(nil,   \r,i -> 1 < i and i < 7),  2, 6)
+  assertFilter(tbl:filter({3,5}, \r,i -> 1 < i and i < 7),  3, 5)
+  assertFilter(tbl:filter(nil,   \r,i -> i%2 == 1       ),  1, 8, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  assertFilter(tbl:filter { }, 1, 8)
+  assertEquals(tbl:filter { default=true }, {n=0})
+  assertEquals(tbl:filter { default='none' }, {n=0})
+  assertFilter(tbl:filter { range={2,6} }, 2, 6)
+  assertEquals(tbl:filter { range={2,6}, default=true }, {n=0})
+  assertEquals(tbl:filter { range={2,6}, default='none' }, {n=0})
+  assertFilter(tbl:filter { select=\r,i -> 1 < i and i < 7 }, 2, 6)
+  assertFilter(tbl:filter { range={3,5}, select=\r,i -> 1 < i and i < 7 }, 3, 5)
+  assertFilter(tbl:filter { select=\r,i -> i%2 == 1 }, 1, 8, 2)
+
+  -- argument packed in a table (test new capabilities)
+  assertEquals(tbl:filter  { pattern="0"  }, { 5, 7, 8, n=3})
+  assertFilter(tbl2:filter { kind="kind1" }, 1, 8, 2)
 end
 -- end ------------------------------------------------------------------------o
