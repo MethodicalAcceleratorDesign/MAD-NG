@@ -357,9 +357,9 @@ local row_mt = set_concept({
                        assert(col, "invalid column (write access)")
                        col[s[_idx]] = v
                        end,
-  __pairs    = \s   -> (row_iter , s, 0  ),
-  __ipairs   = \s   -> (row_iter , s, 0  ),
+  __pairs    = \s   -> (row_kiter, s, nil),
   __kpairs   = \s   -> (row_kiter, s, nil),
+  __ipairs   = \s   -> (row_iter , s, 0  ),
   __tostring = \s   -> string.format("mtable row: %p", s),
 }, not_mutable)
 
@@ -669,7 +669,7 @@ local function add_col (tbl, key, val, nvec_)
       for i=1,data.nr do data[idx][i] = val[i] end
     end
     data[idx].nr = data.nr
-    for k,i in kpairs(data.cidx) do
+    for k,i in kpairs(data.cidx, data.nc) do
       if i >= idx then data.cidx[k] = i+1 end
     end
     data.cidx[key] = idx
@@ -693,13 +693,19 @@ local function rem_col (tbl, key)
   data.nc, data.ng, data.cidx[data.cidx[idx]] = data.nc-1, data.ng-1, nil
   table_remove(data, idx)
   table_remove(data.cidx, idx)
-  for k,i in kpairs(data.cidx) do
+  for k,i in kpairs(data.cidx, data.nc) do
     if i > idx then data.cidx[k] = i-1 end
   end
 end
 
+local function clr_row (data, idx) -- not exposed
+  for i=1,data.nc-data.ng do
+    data[i][idx] = not is_table(data[i]) and 0 or nil
+  end
+end
+
 local function cpy_row (data, idx, val, i0, nr) -- not exposed
-  if val[1] then             -- copy by idx-value
+  if val[1] or #val > 0 then             -- copy by idx-value
     for i=1,data.nc-data.ng do
       data[i].nr   = nr
       data[i][idx] = val[i0+i]
@@ -760,10 +766,10 @@ local function rem_row (tbl, key, ref_)
   rem_idx(data, idx)
   shf_idx(data, idx, -1)
   for i=0,nc do
-    local col = data[i]
-    for j=idx,nr-1 do col[j] = col[j+1] end
-    col.nr = col.nr-1
+    for j=idx,nr-1 do data[i][j] = data[i][j+1] end
   end
+  clr_row(data, data.nr)
+  for i=0,nc do data[i].nr = data[i].nr-1 end
   data.nr = data.nr-1
   return tbl
 end
@@ -780,11 +786,11 @@ local function ins_row (tbl, key, val, ini_, ref_)
   local nr, nc = data.nr, data.nc-data.ng
   if nr+1 > data.rmax then expand(data, tbl, 1) end
   for i=0,nc do
-    local col = data[i]
-    col.nr = col.nr+1
-    for j=nr,idx,-1 do col[j+1] = col[j] end
+    data[i].nr = data[i].nr+1
+    for j=nr,idx,-1 do data[i][j+1] = data[i][j] end
   end
-  data.nr =data.nr+1
+  data.nr = data.nr+1
+  clr_row(data, idx)
   cpy_row(data, idx, val, ini_-1, data.nr)
   shf_idx(data, idx, 1)
   ins_idx(data, idx)
