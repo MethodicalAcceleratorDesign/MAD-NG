@@ -99,31 +99,16 @@ end
 
 -- helper for mangled names and row indexes (same as sequence) ----------------o
 
-local index_of -- forward declaration
-
 -- reflect indexes
 local function reflect (i, n)
   return i < 0 and n+i+1 or i
 end
 
--- get index from s-position (binary)
-local function index_of_num (tbl, num)
-  local data = var_raw(tbl,_data)
-  local s = data[data.cidx.s]
-  assert(s, "missing column 's', cannot find s-position")
-  local l = s[data.nr]
-  if num < 0 then num = l+num end -- reflect
-  if num < 0 or num > l then return nil end
-  return bsearch(s, num)
-end
-
--- get row index from signed index or s-position (direct)
-function index_of_idx (tbl, idx, typ)
-  if typ == 'spos' then return index_of_num(tbl, idx, typ) end
+-- canonize index (direct)
+local function index_of_idx (tbl, idx)
   local n = var_raw(tbl,_data).nr
   idx = reflect(idx, n)
-  if idx < 1 or idx > n then return nil end
-  return idx
+  return idx >= 1 and idx <= n and idx or nil
 end
 
 -- get index from name [with absolute count] (direct)
@@ -136,11 +121,10 @@ local function index_of_cnam (tbl, nam, cnt)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (tbl, nam, cnt, ref)
-  local ri, idx = var_raw(tbl,_data).ridx[nam]
+local function index_of_rnam (tbl, nam, cnt, idx)
+  local ri = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  if ref then idx = index_of(tbl, ref) end
-  if is_nil(idx) then return nil end
+  assert(is_integer(idx), "invalid reference index (integer expected)")
   if is_number(ri) then
     return (cnt ==  1 and ri >= idx and ri) or
            (cnt == -1 and ri <= idx and ri) or nil
@@ -158,39 +142,40 @@ local function index_of_rnam (tbl, nam, cnt, ref)
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
-local function index_of_str (tbl, str, ref_)
+local function index_of_str (tbl, str, idx_)
   local num = tonumber(str)
-  if num then return index_of_num(tbl, num, ref_) end
-  local data = var_raw(tbl,_data)
-  assert(data.cref, "no reference column found")
+  if num then
+     assert(is_integer(num), "invalid index (integer expected)")
+     return index_of_idx(tbl, num)
+  end
+  assert(var_raw(tbl,_data).cref, "no reference column found")
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_number(cnt), "invalid count (number expected)")
-  if is_nil(ref_) or bra == 1 then
+  if is_nil(idx_) or bra == 1 then
     return index_of_cnam(tbl, nam, cnt      )
   else
-    return index_of_rnam(tbl, nam, cnt, ref_)
+    return index_of_rnam(tbl, nam, cnt, idx_)
   end
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (tbl, idx, ref_)
-  idx = index_of_idx(tbl, idx)
-  if is_nil(idx) then return nil end
+local function name_of_idx (tbl, idx, idx_)
   local data = var_raw(tbl,_data)
   assert(data.cref, "no reference column found")
   local nam = data[data.cref][idx]
   local ri  = data.ridx[nam]
+  if is_nil(ri) then return nil end
   if is_number(ri) then
     assert(ri == idx, "unexpected corrupted dictionnary")
     return nam
   end
 
   local cnt, b1, b2 = 0
-  if ref_ then
-    ref_ = assert(index_of(tbl, ref_), "invalid reference index")
+  if idx_ then
+    assert(is_integer(idx_), "invalid reference index (integer expected)")
     for i=1,ri.n do
-      if ri[i] < ref_ then cnt = cnt+1 else break end
+      if ri[i] < idx_ then cnt = cnt+1 else break end
     end
     b1, b2 = "{", "}"
   else
@@ -204,18 +189,6 @@ local function name_of_idx (tbl, idx, ref_)
     end
   end
   error("unexpected corrupted dictionnary")
-end
-
-local function name_of_num (tbl, num, ref_)
-  local idx = index_of_num(tbl, num, ref_)
-  if is_nil(idx) then return nil end
-  return name_of_idx (tbl, idx, ref_)
-end
-
-local function name_of_str (tbl, str, ref_)
-  local idx = index_of_str(tbl, str, ref_)
-  if is_nil(idx) then return nil end
-  return name_of_idx (tbl, idx, ref_)
 end
 
 -- build mtable ---------------------------------------------------------------o
@@ -453,48 +426,40 @@ end
 
 -- methods (readonly) ---------------------------------------------------------o
 
-local function name_of (tbl, a, ref_)
+local function name_of (tbl, a, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-      if is_integer(a) then return name_of_idx(tbl, a, ref_)
-  elseif is_number (a) then return name_of_num(tbl, a, ref_)
-  elseif is_string (a) then return name_of_str(tbl, a, ref_)
-  end
-  error("invalid argument #2 (number or string expected)")
+  if is_integer(a) then return name_of_idx(tbl, a, idx_) end
+  error("invalid argument #2 (integer expected)")
 end
 
-function index_of (tbl, a, ref_)
+local function index_of (tbl, a, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-      if is_integer(a) then return index_of_idx(tbl, a, ref_)
-  elseif is_number (a) then return index_of_num(tbl, a, ref_)
-  elseif is_string (a) then return index_of_str(tbl, a, ref_)
+      if is_integer(a) then return index_of_idx(tbl, a)
+  elseif is_string (a) then return index_of_str(tbl, a, idx_)
   end
-  error("invalid argument #2 (number or string expected)")
+  error("invalid argument #2 (integer or string expected)")
 end
 
-local function range_of (tbl, rng, ref_)
+local function range_of (tbl, rng, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local start, stop
-  if is_number(rng) then
-    start = index_of(tbl, rng, ref_)
-    return start, start
+  local start, stop, sta, sto
+  if is_integer(rng) then
+    start, sta = rng, index_of_idx(tbl, rng)
   elseif is_string(rng) then
     local s1, i2 = strsplit(rng, "/" )
     local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
-    start, stop = tonumber(s1) or s1, tonumber(s2) or s2
-  elseif is_table(rng) then
-    start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
+    start, stop = s1, s2
   elseif is_range(rng) then
     start, stop = rng:bounds()
-  else error "invalid argument #2 (index, string, table or range expected)"
+  elseif is_table(rng) then
+    start, stop, idx_ = rng[1], rng[2], idx_ or rng[3]
+  else error "invalid argument #2 (integer, string, table or range expected)"
   end
-  local ref1, ref2
-  if is_nil(ref_) then
-    ref1 = is_number(start) and (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
-    ref2 = is_number(stop ) and (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
-  end
-  start =          index_of(tbl, start, ref1 or ref_)
-  stop  = stop and index_of(tbl, stop , ref2 or ref_) or start
-  return start, stop
+  sta = sta or          index_of(tbl, start, idx_)
+  sto = sto or stop and index_of(tbl, stop , idx_) or sta
+  if is_nil(sta) then error("invalid range start '"..tostring(start).."'") end
+  if is_nil(sto) then error("invalid range stop '" ..tostring(stop ).."'") end
+  return sta, sto
 end
 
 local function length_of (tbl, rng_, ntrn_) -- see iter
@@ -738,9 +703,9 @@ local function cpy_row_ (data, idx, val, ini, nr) -- not exposed
   data[0][idx] = true
 end
 
-local function get_row (tbl, key, ref_)
+local function get_row (tbl, key, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, ref_)
+  local idx = index_of(tbl, key, idx_)
   if is_nil(idx) then return nil end
   return setmetatable({[_idx]=idx, [_data]=var_raw(tbl,_data)}, row_mt)
 end
@@ -758,9 +723,9 @@ local function add_row (tbl, val, ini_)
   return tbl
 end
 
-local function set_row (tbl, key, val, ini_, ref_)
+local function set_row (tbl, key, val, ini_, idx_)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, ref_)
+  local idx = index_of(tbl, key, idx_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
@@ -771,9 +736,9 @@ local function set_row (tbl, key, val, ini_, ref_)
   return tbl
 end
 
-local function rem_row (tbl, key, ref_)
+local function rem_row (tbl, key, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, ref_)
+  local idx = index_of(tbl, key, idx_)
   assert(is_number(idx), "invalid argument #2 (valid row expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
   local data = var_raw(tbl, _data)
@@ -789,10 +754,10 @@ local function rem_row (tbl, key, ref_)
   return tbl
 end
 
-local function ins_row (tbl, key, val, ini_, ref_)
+local function ins_row (tbl, key, val, ini_, idx_)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
   if key == #tbl+1 then return add_row(tbl, val, ini_) end
-  local idx = index_of(tbl, key, ref_)
+  local idx = index_of(tbl, key, idx_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
@@ -811,9 +776,9 @@ local function ins_row (tbl, key, val, ini_, ref_)
   return tbl
 end
 
-local function swp_row (tbl, key1, key2, ref_)
+local function swp_row (tbl, key1, key2, idx_)
   assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
-  local idx1, idx2 = index_of(tbl, key1, ref_), index_of(tbl, key2, ref_)
+  local idx1, idx2 = index_of(tbl, key1, idx_), index_of(tbl, key2, idx_)
   assert(is_number(idx1), "invalid argument #2 (valid row expected)")
   assert(is_number(idx2), "invalid argument #3 (valid row expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
@@ -827,9 +792,9 @@ local function swp_row (tbl, key1, key2, ref_)
   return tbl
 end
 
-local function clr_row (tbl, key, ref_)
+local function clr_row (tbl, key, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, ref_)
+  local idx = index_of(tbl, key, idx_)
   assert(is_number(idx), "invalid argument #2 (valid row expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
   local data = var_raw(tbl, _data)
@@ -1154,8 +1119,6 @@ local function iter (tbl, rng_, ntrn_, dir_)
     end
   else
     start, stop = range_of(tbl, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
   end
   if start == stop+dir then nturn = nturn+1 end
 
