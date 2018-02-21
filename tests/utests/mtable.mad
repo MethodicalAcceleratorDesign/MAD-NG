@@ -6,6 +6,7 @@
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          A. Bloch,  aurelien.bloch at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -23,18 +24,48 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertFalse, assertNil, assertNotNil, assertEquals, assertStrContains,
-      assertErrorMsgContains      in MAD.utest
+local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
+  assertStrContains, assertErrorMsgContains                      in MAD.utest
+local mtable, filesys                                            in MAD
+local is_table, is_vector, is_mtable, is_original_mtable         in MAD.typeid
 
-local mtable in MAD
+local generate = true
+local refdir   = \s -> "mtable_ref/"..s
+local rundir   = \s -> "mtable_run/"..s
 
 -- helpers --------------------------------------------------------------------o
 
-local mth = \f,s,... s[f](s,...)
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refdir(name), "r"))
+  local run  = assert(io.open(rundir(name), "r"))
+  local reftbl, sref = string.splitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = string.splitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
+  for i=1,sref do
+    reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
+    runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
+    if is_number(reftbl[i]) then
+      local approx = abs(runtbl[i]-reftbl[i])
+      if 14*eps < approx then
+        local div = min(runtbl[i], reftbl[i])
+        if div == 0 then
+          assertAlmostEquals(approx, 0, 1.1e-5)
+        else
+          assertAlmostEquals((runtbl[i]-reftbl[i])/div, 0, 1.1e-6)
+        end
+      end
+    else
+      assertEquals(runtbl[i], reftbl[i])
+    end
+  end
+  if not generate then os.remove(rundir(name)) end
+end
 
--- regression test suite ------------------------------------------------------o
-
-TestMTable = {}
+local function testWrite(tbl, filnam_, colnam_, hdrnam_)
+  tbl:write(rundir(filnam_), colnam_, hdrnam_)
+  assertFiles(filnam_)
+end
 
 local function checktbl(tbl, n)
   assertEquals(#tbl, n)
@@ -55,6 +86,10 @@ local function newtbl(n)
   end
   return t
 end
+
+-- regression test suite ------------------------------------------------------o
+
+TestMTable = {}
 
 function TestMTable:testCtor0()
   local t = newtbl(0)
@@ -174,6 +209,1156 @@ function TestMTable:testNameOf()
   checktbl(t, 15)
   for i=1,2 do assertEquals(t:name_of(4+i, 7), 'name5{'..(i-3)..'}') end
   for i=3,5 do assertEquals(t:name_of(4+i, 7), 'name5{'..(i-2)..'}') end
+end
+
+function TestMTable:testConstructor()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
+  local tbl42 = tbl4   "tbl42" { }
+
+  assertEquals(#tbl1,  0)
+  assertEquals(#tbl2,  0)
+  assertEquals(#tbl3,  0)
+  assertEquals(#tbl4,  0)
+  assertEquals(#tbl42, 0)
+
+  assertEquals(tbl1.name, "tbl1")
+  assertEquals(tbl2.name, "tbl2")
+  assertEquals(tbl3.name, "tbl3")
+  assertEquals(tbl4.name, "tbl4")
+  assertEquals(tbl42.name, "tbl42")
+
+  for _,col in ipairs{"x", "y", "z"} do
+    assertNil(tbl1[col])
+    assertNotNil(tbl2[col])
+    assertNotNil(tbl3[col])
+    assertNotNil(tbl4[col])
+    assertNotNil(tbl42[col])
+  end
+
+  assertNotNil(tbl3.dict)
+  assertNotNil(tbl4.dict)
+  assertNotNil(tbl42.dict)
+end
+
+function TestMTable:testIsMtable()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl32 = tbl3   "tbl32" { }
+
+  assertTrue(is_mtable(tbl1))
+  assertTrue(is_mtable(tbl2))
+  assertTrue(is_mtable(tbl3))
+  assertTrue(is_mtable(tbl32))
+
+  -- assertFalse(is_original_mtable(tbl1)) -- TODO doesn't exist anymore
+  -- assertTrue(is_original_mtable(tbl2))
+  -- assertTrue(is_original_mtable(tbl3))
+  -- assertFalse(is_original_mtable(tbl32))
+end
+
+function TestMTable:testAddRow()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
+  local tbl32 = tbl3   "tbl32" { }
+  local val1  = { 1, 2, 3 }
+  local val2  = { "v2", 1, 2, 3 }
+  -- using operator
+  -- local test = mtable + val1          -- TODO mtable should be readonly
+  -- tbl1  = tbl1 + val1                 -- TODO shlould not work (not original)
+  tbl2 = tbl2 + val1
+  tbl3 = tbl3 + val2
+  -- tbl32 = tbl32 + val2                -- TODO shlould not work (not original)
+
+  -- using addrow
+  -- mtable:addrow(val1)                 -- TODO mtable should be readonly
+  -- tbl1:addrow { 1, 2, 3 }             -- TODO shlould not work (not original)
+  tbl2:addrow(val1)
+  tbl3:addrow(val2)
+  -- tbl32:addrow(val2)                  -- TODO shlould not work (not original)
+
+  -- ini
+  tbl2:addrow({ 5, 5, 5, 5, 1, 2, 3 }, 5)
+  tbl3:addrow({ 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+
+  assertEquals(#tbl2, 3)
+  assertEquals(#tbl3, 3)
+
+  for i=1,3 do
+    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
+    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+  end
+
+  -- nil
+  assertErrorMsgContains("table index is nil", tbl4.addrow, tbl4, { })
+  -- assertErrorMsgContains("table index is nil", tbl4.addrow, tbl4, { 1 }) -- TODO doesn"t let tbl4 unmodified
+  tbl4:addrow { nil, nil, nil, "v2" }
+  for j=1,3 do assertEquals(tbl4[1][j], nil) end
+  assertEquals(tbl4[1][4], "v2")
+end
+
+function TestMTable:testInsRow()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
+  local tbl32 = tbl3   "tbl32" { }
+  local val1, val2  = { 1, 2, 3 }      , { "v2", 1, 2, 3 }
+  local val3, val4  = { "v3", 3, 3, 3 }, { "v4", 4, 4, 4 }
+
+  -- mtable:insrow(1,val1)               -- TODO mtable should be readonly + cannot on empty table
+  tbl2:addrow(val1)                      -- TODO to be removed once insert empty table is fixed
+  tbl3:addrow(val2)                      -- TODO to be removed once insert empty table is fixed
+  tbl2:insrow(1, val1)
+  tbl3:insrow(1, val2)
+
+  -- ini
+  tbl2:insrow(2,{ 5, 5, 5, 5, 1, 2, 3 }, 5)
+  tbl3:insrow(2,{ 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+
+  assertEquals(#tbl2, 3) -- TODO 2 once modified
+  assertEquals(#tbl3, 3) -- TODO 2 once modified
+
+  for i=1,3 do -- TODO i=1,2 once modified
+    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
+    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+  end
+
+  -- key by value
+  tbl3:insrow(2, {"v3", 3, 3, 3})
+  tbl3:insrow("v3", {"v4", 4, 4, 4})
+  for i=1,4 do
+    assertEquals(tbl3[2][i], val4[i])
+    assertEquals(tbl3[3][i], val3[i])
+  end
+
+  -- ref
+  tbl3:insrow("v2[3]", {"v5", 1, 2, 3})
+  tbl3:insrow("v2{1}", {"v6", 1, 2, 3}, nil, 3)
+  assertEquals(tbl3[6][1], "v5")
+  assertEquals(tbl3[4][1], "v6")
+
+  -- nil
+  tbl4:addrow{ nil, nil, nil, "v2" }              -- TODO to be removed once insert empty table is fixed
+  -- assertErrorMsgContains("table index is nil", tbl4.insrow, tbl4, 1, { }) -- TODO Doesn"t copy nil so doesn"t emmit an error
+  tbl4:insrow(1, { nil, nil, nil, "v2" })
+  -- tbl4:insrow(2, { nil, nil, nil, "v2" }) -- TODO should be able to add at the end
+  for j=1,3 do assertEquals(tbl4[1][j], nil) end
+  assertEquals(tbl4[1][4], "v2")
+end
+
+function TestMTable:testSetRow()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
+  local tbl32 = tbl3   "tbl32" { }
+  local ini1, ini2  = { 0, 0, 0 }      , { "v0", 0, 0, 0 }
+  local val1, val2  = { 1, 2, 3 }      , { "v2", 1, 2, 3 }
+  local val3, val4  = { "v3", 3, 3, 3 }, { "v4", 4, 4, 4 }
+
+  -- mtable:setrow(1,val1)               -- TODO mtable should be readonly + cannot on empty table
+  tbl2:addrow(ini1); tbl2:addrow(ini1)
+  tbl3:addrow(ini2); tbl3:addrow(ini2)
+  tbl2:setrow(1, val1)
+  tbl3:setrow(1, val2)
+
+  -- ini
+  tbl2:setrow(2, { 5, 5, 5, 5, 1, 2, 3 }, 5)
+  tbl3:setrow(2, { 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+
+  assertEquals(#tbl2, 2)
+  assertEquals(#tbl3, 2)
+
+  for i=1,2 do
+    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
+    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+  end
+
+  -- key by value
+  tbl3:setrow(1, {"v3", 3, 3, 3})
+  tbl3:setrow("v2", {"v4", 4, 4, 4})
+  for i=1,4 do
+    assertEquals(tbl3[1][i], val3[i])
+    assertEquals(tbl3[2][i], val4[i])
+  end
+
+  -- ref
+  tbl3:insrow(1, ini2); tbl3:insrow(3, ini2); tbl3:addrow(ini2)
+  -- tbl3:setrow("v0[3]", {"v5", 1, 2, 3})      -- TODO corrupted dictionary due to rem_idx
+  -- tbl3:setrow("v0{1}", {"v6", 1, 2, 3}, nil, 2)
+  -- assertEquals(tbl3[5][1], "v5")
+  -- assertEquals(tbl3[3][1], "v6")
+
+  -- nil
+  tbl4:addrow { 1, 2, 3, "v2" }
+  -- assertErrorMsgContains("table index is nil", tbl4.setrow, tbl4, 1, { }) -- TODO Doesn"t copy nil so doesn"t emmit an error
+  -- tbl4:setrow(1, { nil, nil, nil, "v3" }) -- TODO doen"t set to nil
+  -- for j=1,3 do assertEquals(tbl4[1][j], nil) end
+  -- assertEquals(tbl4[1][4], "v3")
+end
+
+function TestMTable:testRemRow()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
+  local tbl32 = tbl3   "tbl32" { }
+  local ini1  = { 0, 0, 0 }
+  local ini2  = { "v0", 0, 0, 0 }
+  local val1  = { 1, 2, 3 }
+
+  -- mtable:setrow(1,val1)               -- TODO mtable should be readonly + cannot on empty table
+  tbl2:addrow(ini1); tbl2:addrow(ini1); tbl2:addrow(ini1)
+  tbl3:addrow(ini2); tbl3:addrow(ini2); tbl3:addrow(ini2)
+  -- tbl2:remrow(2); tbl2:remrow(2); tbl2:remrow(1) -- TODO corrupted dictionary due to rem_idx
+  -- tbl3:remrow(2); tbl3:remrow(2); tbl3:remrow(1)
+
+  -- assertEquals(#tbl2, 0)
+  -- assertEquals(#tbl3, 0)
+
+  -- key by value
+  tbl3:addrow(ini2)
+  -- tbl3:remrow("v0")           -- TODO corrupted dictionarry due to rem_idx
+  -- assertEquals(#tbl3, 0)
+
+  -- ref
+  tbl3:addrow{ "v0", 1, 0, 0 };
+  tbl3:addrow{ "v0", 2, 0, 0 };
+  tbl3:addrow{ "v0", 3, 0, 0 };
+  -- tbl3:remrow("v0[3]")      -- TODO corrupted dictionarry due to rem_idx
+  -- tbl3:remrow("v0{1}", 2)
+  -- assertEquals(tbl3[1][1], "v0")
+  -- assertEquals(tbl3[1][2], 1)
+  -- assertEquals(#tbl3, 1)
+end
+
+function TestMTable:testGetRow()
+  local tbl1  = mtable "tbl1"  { "x", "y", "z" }
+  local tbl2  = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
+  local tbl22 = tbl2   "tbl22" { }
+  local val1  = { 1, 2, 3 }
+  local val2  = { "v2", 4, 3, 2 }
+
+  tbl1:addrow(val1);
+  tbl2:addrow(val2);
+  -- for k,v in pairs(tbl1:getrow(1))  do assertEquals(v, val1[k]) end -- TODO change key of pairs idx -> name
+  -- for k,v in pairs(tbl2:getrow(1))  do assertEquals(v, val2[k]) end
+  -- for k,v in pairs(tbl22:getrow(1)) do assertEquals(v, val2[k]) end
+
+  -- key by value
+  -- for k,v in pairs(tbl2:getrow("v2"))  do assertEquals(v, val2[k]) end
+  -- for k,v in pairs(tbl22:getrow("v2")) do assertEquals(v, val2[k]) end
+
+  -- ref
+  tbl2:addrow{ "v0", 1, 0, 0 };
+  tbl2:addrow{ "v0", 2, 0, 0 };
+  tbl2:addrow{ "v0", 3, 0, 0 };
+  assertEquals(tbl2:getrow("v0").x, 1)
+  assertEquals(tbl2:getrow("v0[2]").x, 2)
+  assertEquals(tbl2:getrow("v0{2}", 3).x, 3)
+end
+
+function TestMTable:testSwpRow()
+  local tbl1  = mtable "tbl1"  { "x", "y", "z" }
+  local tbl2  = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
+  local tbl22 = tbl2   "tbl22" { }
+
+  tbl1:addrow{ 1, 1, 1 }          ; tbl1:addrow{ 2, 2, 3 }
+  tbl2:addrow{ "v1", 1, 1, 1 }    ; tbl2:addrow{ "v2", 2, 2, 2 }
+  assertEquals(tbl1[1][1], 1)     ; assertEquals(tbl1[2][1], 2)
+  assertEquals(tbl2[1][1], "v1")  ; assertEquals(tbl2[2][1], "v2")
+  tbl1:swprow(1,2)
+  tbl2:swprow(1,2)
+  assertEquals(tbl1[1][1], 2)     ; assertEquals(tbl1[2][1], 1)
+  assertEquals(tbl2[1][1],  "v2") ; assertEquals(tbl2[2][1],  "v1")
+  assertEquals(tbl22[1][1], "v2") ; assertEquals(tbl22[2][1], "v1")
+
+  -- key by value
+  tbl2:swprow("v1","v2")
+  assertEquals(tbl2[1][1],  "v1") ; assertEquals(tbl2[2][1],  "v2")
+  assertEquals(tbl22[1][1], "v1") ; assertEquals(tbl22[2][1], "v2")
+
+  -- ref
+  tbl2:addrow{ "v0", 1, 0, 0 };
+  tbl2:addrow{ "v0", 2, 0, 0 };
+  tbl2:addrow{ "v0", 3, 0, 0 };
+  -- tbl2:swprow("v0[2]", "v0{2}", 4) -- TODO corrupted dictionarry due to rem_idx
+  -- assertEquals(tbl2[4].x, 3)
+  -- assertEquals(tbl2[5].x, 2)
+end
+
+function TestMTable:testAddCol()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl32 = tbl3   "tbl32" { }
+  local col1  = { 1, 2, 3 }
+  local row1  = { 1, 2, 3 }
+  local row2  = { "v0", 1, 2, 3 }
+  local msg   = {
+    "invalid modification of readonly mtable",
+    "invalid argument #1 (original mtable expected)",
+    "incompatible container size",
+  }
+
+  -- assertErrorMsgContains(msg[3], mtable.addcol, tbl2, "val1", col1) -- TODO messaged is changed
+  -- assertErrorMsgContains(msg[3], mtable.addcol, tbl3, "val2", col1)
+
+  for i=1,3 do tbl2:addrow(row1); tbl3:addrow(row2) end
+  -- tbl2:addcol("col1", col1) -- TODO fix vector nr in add_col
+  -- tbl3:addcol("col1", col1)
+
+  -- generators
+  tbl2:addcol("col1", \i -> i)
+  tbl3:addcol("col1", \i -> i)
+  for i=1,3 do
+    assertEquals(tbl2[i][4], i)
+    assertEquals(tbl3[i][5], i)
+  end
+
+  -- nil
+  tbl2:addcol("col2", {}, true)
+  tbl3:addcol("col2", {}, true)
+  -- assertTrue(is_vector(tbl2.col1)) -- TODO fix vector nr in add_col
+  assertFalse(is_vector(tbl2.col2))
+  -- assertTrue(is_vector(tbl3.col1))
+  assertFalse(is_vector(tbl3.col2))
+
+  assertErrorMsgContains(msg[1], mtable.addcol, mtable, "colname", { })
+  -- assertErrorMsgContains(msg[2], mtable.addcol, tbl1,   "colname", { }) -- TODO bug because tbl1 is not owner
+  -- assertErrorMsgContains(msg[2], mtable.addcol, tbl32,  "colname", { }) -- TODO bug because tbl32 is not owner
+end
+
+function TestMTable:testGetCol()
+  local tbl1  = mtable "tbl1"  { "x", "y", "z" }
+  local tbl2  = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
+  local tbl22 = tbl2   "tbl22" { }
+  local row1  = { 1, 2, 3 }
+  local row2  = { "v0", 1, 2, 3 }
+  local col   = { 1, 1, 1 }
+
+  for i=1,3 do tbl1:addrow(row1); tbl2:addrow(row2) end
+  for i,v in ipairs(tbl1:getcol("x"))  do assertEquals(v, 1) end
+  for i,v in ipairs(tbl2:getcol("x"))  do assertEquals(v, 1) end
+  for i,v in ipairs(tbl22:getcol("x")) do assertEquals(v, 1) end
+  for i,v in ipairs(tbl1:getcol(2))    do assertEquals(v, 2) end
+  for i,v in ipairs(tbl2:getcol(3))    do assertEquals(v, 2) end
+  for i,v in ipairs(tbl22:getcol(3))   do assertEquals(v, 2) end
+  for i,v in ipairs(tbl1:getcol(-1))   do assertEquals(v, 3) end
+  -- for i,v in ipairs(tbl2:getcol(-1))  do assertEquals(v, 3) end -- TODO fix nr use to nc in get_col
+  -- for i,v in ipairs(tbl22:getcol(-1))  do assertEquals(v, 3) end -- TODO fix nr use to nc in get_col
+
+  assertNil(tbl1:getcol(4))
+  assertNil(tbl2:getcol(5))
+  assertNil(tbl22:getcol(5))
+  assertNil(tbl1:getcol("none"))
+  assertNil(tbl2:getcol("none"))
+  assertNil(tbl22:getcol("none"))
+end
+
+function TestMTable:testRemCol()
+  local tbl1  = mtable "tbl1"  { "x", "y", "z" }
+  local tbl2  = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
+  local tbl22 = tbl2   "tbl22" { }
+  local row1  = { 1, 2, 3 }
+  local row2  = { "v0", 1, 2, 3 }
+  local msg   = {
+    "invalid argument #2 (generator column expected)",
+    "invalid argument #2 (valid column expected",
+    "invalid argument #1 (original mtable expected)",
+  }
+
+  for i=1,3 do tbl1:addrow(row1); tbl2:addrow(row2) end
+  tbl1:addcol("c1", \i->i) ; tbl1:addcol("c2", \i->i) ; tbl1:addcol("c3", \i->i)
+  tbl2:addcol("c1", \i->i) ; tbl2:addcol("c2", \i->i) ; tbl2:addcol("c3", \i->i)
+
+  -- assertErrorMsgContains(msg[3], mtable.remcol, tbl22, "c2") -- TODO now is legal
+
+  tbl1:remcol(5)           ; tbl1:remcol("c1")       -- ; tbl1:remcol(-1)    -- TODO fix negative index is not superted
+  tbl2:remcol(6)           ; tbl2:remcol("c1")       -- ; tbl2:remcol(-1)    -- TODO fix negative index is not superted
+  assertNil(tbl1.c1)       ; assertNil(tbl1.c2)      -- ; assertNil(tbl1.c3) -- TODO fix negative index is not superted
+  assertNil(tbl2.c1)       ; assertNil(tbl2.c2)      -- ; assertNil(tbl2.c3) -- TODO fix negative index is not superted
+
+  for i=1,3 do assertErrorMsgContains(msg[1], mtable.remcol, tbl1, i) end
+  for i=1,4 do assertErrorMsgContains(msg[1], mtable.remcol, tbl2, i) end
+  assertErrorMsgContains(msg[1], mtable.remcol, tbl1, 100)
+  assertErrorMsgContains(msg[2], mtable.remcol, tbl1, "none")
+end
+
+function TestMTable:testGetSet()
+  local tbl1     = mtable "tbl1"  { "x", "y", "z" }
+  local tbl2     = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
+  local tbl22    = tbl2   "tbl22" { }
+  local v        = 271
+  for i=1,3 do tbl1:addrow{1,2,3}; tbl2:addrow{"v0",1,2,3} end
+
+  for i=1,3 do
+    for j=1,3 do
+      tbl1:set(i  , j  , j*v+i); assertEquals(tbl1:get(i  , j  ), j*v+i)
+      tbl1:set(i  , j-4, j*v+i); assertEquals(tbl1:get(i  , j-4), j*v+i)
+      tbl1:set(i-4, j  , j*v+i); assertEquals(tbl1:get(i-4, j  ), j*v+i)
+      tbl1:set(i-4, j-4, j*v+i); assertEquals(tbl1:get(i-4, j-4), j*v+i)
+    end
+    for j=2,4 do
+      tbl2:set(i  , j  , j*v+i); assertEquals(tbl2:get(i  , j  ), j*v+i)
+      tbl2:set(i  , j-5, j*v+i); assertEquals(tbl2:get(i  , j-5), j*v+i)
+      tbl2:set(i-4, j  , j*v+i); assertEquals(tbl2:get(i-4, j  ), j*v+i)
+      tbl2:set(i-4, j-5, j*v+i); assertEquals(tbl2:get(i-4, j-5), j*v+i)
+
+      assertEquals(tbl22:get(i  , j  ), j*v+i)
+      assertEquals(tbl22:get(i  , j-5), j*v+i)
+      assertEquals(tbl22:get(i-4, j  ), j*v+i)
+      assertEquals(tbl22:get(i-4, j-5), j*v+i)
+    end
+    for j,v1 in ipairs{"x","y","z"} do
+      tbl1:set(i , v1, j*v+i); assertEquals(tbl1:get(i , v1), j*v+i)
+      tbl2:set(i , v1, j*v+i); assertEquals(tbl2:get(i , v1), j*v+i)
+      tbl22:set(i, v1, j*v+i); assertEquals(tbl22:get(i, v1), j*v+i)
+    end
+    -- tbl2:set(i, 1     , "v1"); assertEquals(tbl2:get(i, 1     ), "v1") -- TODO update dictionarry not working
+    -- tbl2:set(i, "dict", "v1"); assertEquals(tbl2:get(i, "dict"), "v1") -- TODO update dictionarry not working
+    -- tbl2:set("v1", 2  , i, v+2*i); assertEquals(tbl2:get("v1", 2   , i  ), v+2*i) -- TODO update dictionarry not working
+    -- tbl2:set("v1", "x", i, v+3*i); assertEquals(tbl2:get("v1", "x" , i  ), v+3*i) -- TODO update dictionarry not working
+    -- tbl2:set("v1", 2   , i-4, v+4*i); assertEquals(tbl2:get("v1", 2   , i-4), v+4*i) -- TODO fix reflection on cn1 -- TODO update dictionarry not working
+    -- tbl2:set("v1", "x" , i-4, v+5*i); assertEquals(tbl2:get("v1", "x" , i-4), v+5*i) -- TODO fix reflection on cn1 -- TODO update dictionarry not working
+
+    -- assertEquals(tbl22:get(i, 1     ), "v1")    -- TODO update dictionarry not working
+    -- assertEquals(tbl22:get(i, "dict"), "v1")    -- TODO update dictionarry not working
+    -- assertEquals(tbl22:get("v1", 2   , i  ), 1) -- TODO update dictionarry not working
+    -- assertEquals(tbl22:get("v1", "x" , i  ), 1) -- TODO update dictionarry not working
+    -- assertEquals(tbl22:get("v1", 2   , i-4), 1) -- TODO fix reflection on cnt -- TODO update dictionarry not working
+    -- assertEquals(tbl22:get("v1", "x" , i-4), 1) -- TODO fix reflection on cnt -- TODO update dictionarry not working
+  end
+end
+
+function TestMTable:testNoVector()
+  local tbl11 = mtable "tbl11" { "x", "y", "z" }
+  local tbl12 = mtable "tbl12" { "x", "y", "z", novector = true }
+  local tbl13 = mtable "tbl13" { "x", "y", "z", novector = {1, "y"} }
+  local tbl21 = mtable "tbl21" { {"dict"}, "x", "y", "z" }
+  local tbl22 = mtable "tbl22" { {"dict"}, "x", "y", "z", novector = true }
+  local tbl23 = mtable "tbl23" { {"dict"}, "x", "y", "z", novector = {2, "y"} }
+  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3}
+  local col1, col2 = { 10, 10 } , { 15, 15 }
+
+  tbl11:addrow(row1); tbl11:addrow(row1); tbl21:addrow(row2); tbl21:addrow(row2)
+  tbl12:addrow(row1); tbl12:addrow(row1); tbl22:addrow(row2); tbl22:addrow(row2)
+  tbl13:addrow(row1); tbl13:addrow(row1); tbl23:addrow(row2); tbl23:addrow(row2)
+
+  for i=1,3 do
+    assertTrue(is_vector(tbl11:getcol(i)))
+    assertTrue(is_vector(tbl21:getcol(i+1)))
+
+    assertTrue(is_table(tbl12:getcol(i)))
+    assertTrue(is_table(tbl22:getcol(i+1)))
+  end
+  for i=1,2 do
+    assertTrue(is_table(tbl13:getcol(i)))
+    assertTrue(is_table(tbl23:getcol(i+1)))
+  end
+  assertTrue(is_vector(tbl13:getcol(3)))
+  assertTrue(is_vector(tbl23:getcol(4)))
+  assertTrue(is_table (tbl23:getcol(1)))
+
+  -- maintenance after adding columns
+  -- tbl11:addcol("c1", col1); tbl11:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl12:addcol("c1", col1); tbl12:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl13:addcol("c1", col1); tbl13:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl21:addcol("c1", col1); tbl21:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl22:addcol("c1", col1); tbl22:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+  -- tbl23:addcol("c1", col1); tbl23:addcol("c2", col2, true) -- TODO fix vector nr in add_col -- todo fix rmax in expand
+
+  -- assertTrue(is_vector(tbl11:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_table (tbl12:getcol("c1"))) -- TODO fix addcol -- TODO fix nvec_ behavior
+  -- assertTrue(is_vector(tbl13:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_vector(tbl21:getcol("c1"))) -- TODO fix addcol
+  -- assertTrue(is_table (tbl22:getcol("c1"))) -- TODO fix addcol -- TODO fix nvec_ behavior
+  -- assertTrue(is_vector(tbl23:getcol("c1"))) -- TODO fix addcol
+
+  -- assertTrue(is_table(tbl11:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl12:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl13:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl21:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl22:getcol("c2"))) -- TODO fix addcol
+  -- assertTrue(is_table(tbl23:getcol("c2"))) -- TODO fix addcol
+end
+
+function TestMTable:testWrite()
+  filesys.mkdir(rundir(""))
+  local tbl1 = mtable "tbl1" { "x", "y", "z" }
+  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z" }
+  -- local tbl3 = mtable "tbl3" { {"dict"}, "x", "y", "z", column = {"x", 3}} -- TODO fix column name when integer argument -- TODO fix table_ini table.cat calls
+  local tbl4 = mtable "tbl4" {
+    {"dict"}, "x", "y", "z",
+    header1 = "MyHeader1", header2 = 42,
+    header  = {"header1", "header2"}
+  }
+  local tbl5 = mtable "tbl5" {
+    {"name"}, "x", "y", "z",
+    header1 = "header 'whith quote'", header2 = "header \"double quote\"",
+    header3 = 42.5, novector = true
+  }
+  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3}
+
+  tbl1.time, tbl1.date, tbl1.origin = "", "", ""
+  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
+  -- tbl3.time, tbl3.date, tbl3.origin = "", "", ""  -- TODO fix table_ini table.cat calls
+  tbl4.time, tbl4.date, tbl4.origin = "", "", ""
+  tbl1:addrow(row1); tbl1:addrow(row1);
+  tbl2:addrow(row2); tbl2:addrow(row2)
+  -- tbl3:addrow(row2); tbl3:addrow(row2)            -- TODO fix table_ini table.cat calls
+  tbl4:addrow(row2); tbl4:addrow(row2)
+
+  -- extensions
+  testWrite(tbl1, "tbl-name1")
+  testWrite(tbl1, "tbl-name2.tfs")
+
+  -- with dictionary
+  testWrite(tbl2, "tbl-dict") -- TODO should it be a special marker ?
+
+  -- choose column
+  testWrite(tbl2, "tbl-col1", {"x", 3}) -- TODO fix column name when integer argument (see generated file)
+  -- testWrite(tbl3, "tbl-col2") -- TODO fix column name when integer argument (see generated file) -- TODO fix table_ini table.cat calls
+
+  -- choose header
+  testWrite(tbl4, "tbl-header1", nil, { "title", "header1" })
+  testWrite(tbl4, "tbl-header2")
+
+  -- tbl with quoted string
+  tbl5:addrow{"name1", 1, 2, 3.15}
+  tbl5:addrow{"name2", nil, nil, nil}
+  tbl5:addrow{"name1", 1, 2, 3.15}
+  tbl5:addcol("gen", \i->i)
+  tbl5:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
+  testWrite(tbl5, "tbl-write", nil, {"type","header1", "header2", "header3"})
+
+  if not generate then filesys.rmdir(rundir("")) end
+end
+
+function TestMTable:testRead()
+  local parent = mtable "parent" { var = 42 }
+
+  -- extensions
+  local tbl1 = mtable:read(refdir("tbl-name1"))
+  local tbl2 = mtable:read(refdir("tbl-name2.tfs"))
+  for i=1,2 do
+    for j=1,3 do
+      assertEquals(tbl1[i][j], j)
+      assertEquals(tbl2[i][j], j)
+    end
+  end
+
+  -- inheritance
+  local tbl3 = parent:read(refdir("tbl-name1"))
+  -- assertFalse(is_original_mtable(parent)) -- TODO doesn't exist anymore
+  -- assertTrue(is_original_mtable(tbl3))
+  assertEquals(tbl3.var, 42)
+  assertEquals(tbl3.parent, parent)
+
+  -- test values read
+  -- local tbl4 = mtable:read(refdir("tbl-write")) -- TODO types not correct can not read back tbl-write
+
+  -- TODO when read is fixed :  test if quote is handled properly
+  -- TODO test read values
+  -- test dictionary
+end
+
+function TestMTable:testBuildIndex()
+  local tbl = mtable "tbl" { {"name1"}, "name2" , "id" }
+  tbl:addrow{ "n1"   , "n2"   , 1}
+  tbl:addrow{ "other", "other", 2}
+  tbl:addrow{ "n1"   , "n2"   , 3}
+  tbl:addrow{ "n1"   , "n2"   , 4}
+
+  for col,v in pairs{name1="n1", name2="n2"} do
+    tbl:build_index(col)
+    assertEquals(tbl:getrow(v.."[1]"   ).id, 1)
+    assertEquals(tbl:getrow(v.."[3]"   ).id, 4)
+    assertEquals(tbl:getrow(v.."{2}", 2).id, 4)
+  end
+
+  for _,col in ipairs{1} do -- TODO add ,-2 when reflection is fixed
+    tbl:build_index(col)
+    assertEquals(tbl:getrow("n1[1]"   ).id, 1)
+    assertEquals(tbl:getrow("n1[3]"   ).id, 4)
+    assertEquals(tbl:getrow("n1{2}", 2).id, 4)
+  end
+
+  tbl:build_index("none")
+  -- local v = tbl:getrow("n1[1]"   ).id -- TODO not supposed to work
+end
+
+function TestMTable:testSetReadOnly()
+  local tbl1 = mtable "tbl1" { {"dict"}, "x", "y", "z"}
+  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z"}
+  local msg  = {
+    "forbidden write access to 'tbl1' (readonly object or variable)",
+    "invalid use of object <mtable readonly column:",
+    "invalid modification of readonly mtable"
+  }
+
+  tbl2:addrow{ "v1", 1, 1, 1 }
+
+  tbl1:set_readonly()
+  tbl2:set_readonly()
+
+  assertErrorMsgContains(msg[1],\tbl,k,v   => tbl[k]    = v end, tbl1, "var", 42)
+  assertErrorMsgContains(msg[2],\tbl,i,j,v => tbl[i][j] = v end, tbl2, 1, 2, 42)
+  assertErrorMsgContains(msg[2], mtable.set, tbl2, 1, 2, 42)
+  assertErrorMsgContains(msg[3], mtable.addrow, tbl1,  { "v2", 2, 2, 2 })
+  -- assertErrorMsgContains(msg[2], mtable.addrow, tbl2, { "v2", 2, 2, 2 }) -- TODO fix expand function
+  -- assertErrorMsgContains(msg[2], mtable.insrow, tbl2, 1, { "v2", 2, 2, 2 }) -- TODO fix expand function -- error message is not readonly
+  -- assertErrorMsgContains(msg[2], mtable.setrow, tbl2, 1, { "v2", 2, 2, 2 }) -- TODO doesn't let tbl2 in a valid state
+  tbl2:set_readonly(false); tbl2:addrow{ "v2", 2, 2, 2 }; tbl2:set_readonly()
+  assertErrorMsgContains(msg[3], mtable.swprow, tbl2, 1, 2) -- TODO doesn't let tbl2 in a valid state
+  assertErrorMsgContains(msg[3], mtable.remrow, tbl2, 1) -- TODO doesn't let tbl2 in a valid state
+  assertErrorMsgContains(msg[3], mtable.addcol, tbl2, "c1", {5})
+  tbl2:set_readonly(false); tbl2:addcol("gen",\i->i); tbl2:set_readonly()
+  assertErrorMsgContains(msg[3], mtable.remcol, tbl2, "gen")
+
+  -- tbl2:build_index(2) -- TODO should not work ? -> no
+
+  -- TODO test for add sort, remove, insert, cycle,
+  -- TODO select
+end
+
+function TestMTable:testIndexOf()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z", "s" }
+
+  tbl:addrow{"v0",1,2,3,0}
+  tbl:addrow{"v1",1,2,3,4}
+  tbl:addrow{"v0",1,2,3,6}
+  tbl:addrow{"v0",1,2,3,9}
+
+  assertNil(tbl:index_of(100))
+  assertNil(tbl:index_of(-100))
+  assertEquals(tbl:index_of(4), 4)
+  assertEquals(tbl:index_of(-3), 2)
+  -- assertEquals(tbl:index_of(5,"spos"), 3) -- TODO add local bsearch
+  -- assertEquals(tbl:index_of(5.5), 3)      -- TODO add local bsearch
+  assertEquals(tbl:index_of("v0"       ), 1)
+  assertEquals(tbl:index_of("v0[3]"    ), 4)
+  assertEquals(tbl:index_of("v0[-1]"   ), 4)
+  assertEquals(tbl:index_of("v0{2}" , 2), 4)
+  assertEquals(tbl:index_of("v0{-1}", 2), 1)
+end
+
+function TestMTable:testNameOf()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z" }
+
+  tbl:addrow{"v0",1,2,3}
+  tbl:addrow{"v1",1,2,3}
+  tbl:addrow{"v0",1,2,3}
+  tbl:addrow{"v0",1,2,3}
+
+  assertNil(tbl:name_of(100))
+  assertNil(tbl:name_of(-100))
+  assertEquals(tbl:name_of(2)   , "v1"    )
+  assertEquals(tbl:name_of(2)   , "v1"    )
+  -- assertEquals(tbl:name_of(1)   , "v0[1]" ) -- TODO fix order argument of string format
+  -- assertEquals(tbl:name_of(-1)  , "v0[3]" ) -- TODO fix order argument of string format
+  -- assertEquals(tbl:name_of(1, 1), "v0{1}")  -- TODO fix order argument of string format
+  -- assertEquals(tbl:name_of(4, 2), "v0{2}")  -- TODO fix order argument of string format
+  -- assertEquals(tbl:name_of(1, 2), "v0{-1}") -- TODO fix negatif ref
+  -- assertEquals(tbl:name_of(1, 4), "v0{-3}") -- TODO fix negatif ref
+end
+
+function TestMTable:testRangeOf()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z", "s" }
+
+  tbl:addrow{"v0",1,2,3,0}
+  tbl:addrow{"v1",1,2,3,4}
+  tbl:addrow{"v0",1,2,3,6}
+  tbl:addrow{"v0",1,2,3,9}
+
+  assertEquals(table.pack(tbl:range_of(100)), {n=2})
+  assertEquals(table.pack(tbl:range_of(-100)), {n=2})
+  assertEquals(table.pack(tbl:range_of(4 )), {4,4, n=2})
+  assertEquals(table.pack(tbl:range_of(-3)), {2,2, n=2})
+  -- assertEquals(table.pack(tbl:range_of(5,"spos")), {3, 3, n=2}) -- TODO add local bsearch
+  -- assertEquals(table.pack(tbl:range_of(5.5     )), {3, 3, n=2}) -- TODO add local bsearch -- fix range_of is_integer
+
+  assertEquals(table.pack(tbl:range_of("v0/v1")), {1,2, n=2})
+  assertEquals(table.pack(tbl:range_of("v0[1]/v0[3]")), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of("v0{-1}/v0{2}", 2)), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of("v0{-1}/v0{2}", 2)), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of("v0[2]/v0{2}", 2)), {3,4, n=2})
+  assertEquals(table.pack(tbl:range_of("v0{1}/v0[3]", 2)), {3,4, n=2})
+
+  assertEquals(table.pack(tbl:range_of({1       , 2      }   )), {1,2, n=2})
+  -- assertEquals(table.pack(tbl:range_of({5       , 8 }, "spos")), {3,4, n=2}) -- TODO add local bsearch
+  -- assertEquals(table.pack(tbl:range_of({5.5     , 7.5      } )), {3,4, n=2}) -- TODO add local bsearch
+  assertEquals(table.pack(tbl:range_of({"v0"    , "v1"   }   )), {1,2, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0[1]" , "v0[3]"}   )), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}"}, 2)), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}"}, 2)), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0[2]" , "v0{2}"}, 2)), {3,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0{1}" , "v0[3]"}, 2)), {3,4, n=2})
+
+  assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}", 2})), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}", 2})), {1,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0[2]" , "v0{2}", 2})), {3,4, n=2})
+  assertEquals(table.pack(tbl:range_of({"v0{1}" , "v0[3]", 2})), {3,4, n=2})
+end
+
+function TestMTable:testLengthOf()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z", "s" }
+
+  tbl:addrow{"v0",1,2,3,0}
+  tbl:addrow{"v1",1,2,3,4}
+  tbl:addrow{"v0",1,2,3,6}
+  tbl:addrow{"v0",1,2,3,9}
+
+  -- assertEquals(tbl:length_of(100), 1) -- TODO fix length_of for single number
+  -- assertEquals(tbl:length_of(-100), 1) -- TODO fix length_of for single number
+  -- assertEquals(tbl:length_of(4 ), 1) -- TODO fix length_of for single number
+  -- assertEquals(tbl:length_of(-3), 1) -- TODO fix length_of for single number
+  -- assertEquals(tbl:length_of(5,"spos"), 1) -- TODO add local bsearch -- TODO fix length_of for single number
+  -- assertEquals(tbl:length_of(5.5     ), 1) -- TODO add local bsearch -- fix range_of is_integer -- TODO fix length_of for single number
+
+  -- assertEquals(tbl:length_of("v0/v1"), 2)
+  -- assertEquals(tbl:length_of("v0[1]/v0[3]"), 4)
+  -- assertEquals(tbl:length_of("v0{-1}/v0{2}", 2), 4)
+  -- assertEquals(tbl:length_of("v0{-1}/v0{2}", 2), 4)
+  -- assertEquals(tbl:length_of("v0[2]/v0{2}", 2), 2)
+  -- assertEquals(tbl:length_of("v0{1}/v0[3]", 2), 2)
+
+  -- assertEquals(table.pack(tbl:range_of({1       , 2      }   )), {1,2, n=2})
+  -- assertEquals(table.pack(tbl:range_of({5       , 8 }, "spos")), {3,4, n=2}) -- TODO add local bsearch
+  -- assertEquals(table.pack(tbl:range_of({5.5     , 7.5      } )), {3,4, n=2}) -- TODO add local bsearch
+  -- assertEquals(table.pack(tbl:range_of({"v0"    , "v1"   }   )), {1,2, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0[1]" , "v0[3]"}   )), {1,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}"}, 2)), {1,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}"}, 2)), {1,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0[2]" , "v0{2}"}, 2)), {3,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0{1}" , "v0[3]"}, 2)), {3,4, n=2})
+
+  -- assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}", 2})), {1,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0{-1}", "v0{2}", 2})), {1,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0[2]" , "v0{2}", 2})), {3,4, n=2})
+  -- assertEquals(table.pack(tbl:range_of({"v0{1}" , "v0[3]", 2})), {3,4, n=2})
+end
+
+function TestMTable:testIter()
+  local tbl1 = mtable "tbl1" { {"dict"} }
+  local tbl2 = mtable "tbl2" { {"dict"} }
+  local val1 = { "v1", "v2", "v3", "v4" }
+  local val2 = { "v0", "v1", "v0", "v0" }
+  local i    = 1
+
+  for _,v in ipairs(val1) do tbl1:addrow{v} end
+  for _,v in ipairs(val2) do tbl2:addrow{v} end
+
+  for _,row in tbl1:iter() do
+    assertEquals(row[1], val1[i])
+    i=i+1
+  end
+
+  -- range
+  i = 2
+  for _,row in tbl1:iter("v2/v3") do
+    assertEquals(row[1], val1[(i-1) % 4 + 1])
+    i = i + 1
+  end
+  assertEquals(i, 4)
+
+  i = 1
+  for _,row in tbl2:iter{"v0{-1}","v0[2]", 2} do
+    assertEquals(row[1], val2[(i-1) % 4 + 1])
+    i = i + 1
+  end
+  assertEquals(i, 4)
+
+  -- nturn
+  i = 1
+  for _,row in tbl1:iter(nil, 1, 1) do
+    assertEquals(row[1], val1[(i-1) % 4 + 1])
+    i = i + 1
+  end
+  assertEquals(i, 9)
+
+   -- dir
+  i = 8
+  for _,row in tbl1:iter(nil, 1, -1) do
+    assertEquals(row[1], val1[(i-1) % 4 + 1])
+    i = i - 1
+  end
+  assertEquals(i, 0)
+
+end
+
+function TestMTable:testCycle()
+  local tbl    = mtable "tbl" { {"dict"} }
+  local before = { "v1", "v2", "v3", "v4" }
+  local after1 = { "v3", "v4", "v1", "v2" }
+  local after2 = { "v4", "v1", "v2", "v3" }
+  local i      = 1
+
+  for _,v in ipairs(before) do tbl:addrow{v} end
+
+  for _,row in tbl:iter() do
+    assertEquals(row[1], before[i])
+    i = i + 1
+  end
+
+  i = 1
+  tbl:cycle(3)
+  for _,row in tbl:iter() do
+    assertEquals(row[1], after1[i])
+    i = i + 1
+  end
+
+  i = 1
+  tbl:cycle("v4")
+  for _,row in tbl:iter() do
+    assertEquals(row[1], after2[i])
+    i = i + 1
+  end
+
+end
+
+function TestMTable:testForeach()
+  local tbl  = mtable "tbl" { {"dict"} }
+  local tbl2 = mtable "tbl" { {"dict"}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local i    = 1
+  local act1 = \row,_ => assertEquals(row[1], val[i]); i=i+1 end
+  local act2 = \row,_ => assertEquals(row[1], val[i]); i=i+2 end
+  local act3 = \row,_ => assertEquals(row[1], "v0")  ; i=i+1 end
+
+  for i,v in ipairs(val) do
+    tbl:addrow{v}
+    tbl2:addrow{v, val2[i%2]}
+  end
+
+  i=1; tbl:foreach(act1)                                ; assertEquals(i, 9)
+  i=1; tbl:foreach(act1, nil  , nil, true)              ; assertEquals(i, 1)
+  i=2; tbl:foreach(act1, {2,6})                         ; assertEquals(i, 7)
+  i=1; tbl:foreach(act1, {2,6}, nil, true)              ; assertEquals(i, 1)
+  i=2; tbl:foreach(act1, nil,   \r,i -> 1 < i and i < 7); assertEquals(i, 7)
+  i=3; tbl:foreach(act1, {3,5}, \r,i -> 1 < i and i < 7); assertEquals(i, 6)
+  i=1; tbl:foreach(act2, nil,   \r,i -> i%2 == 1       ); assertEquals(i, 9)
+
+  -- argument packed in a table (equivalent to test above)
+  i=1; tbl:foreach{action=act1}                             ; assertEquals(i, 9)
+  i=1; tbl:foreach{action=act1, default=true}               ; assertEquals(i, 1)
+  i=1; tbl:foreach{action=act1, default="none"}             ; assertEquals(i, 1)
+  i=2; tbl:foreach{action=act1, range={2,6}}                ; assertEquals(i, 7)
+  i=1; tbl:foreach{action=act1, range={2,6}, default=true}  ; assertEquals(i, 1)
+  i=1; tbl:foreach{action=act1, range={2,6}, default="none"}; assertEquals(i, 1)
+  i=2; tbl:foreach{action=act1, select=\r,i -> 1<i and i<7} ; assertEquals(i, 7)
+  i=3; tbl:foreach{action=act1, range={3,5}, select=\r,i -> 1<i and i<7}
+  assertEquals(i, 6)
+  i=1; tbl:foreach{action=act2, select=\r,i -> i%2 == 1}    ; assertEquals(i, 9)
+
+  -- argument packed in a table (test new capabilities)
+  tbl:deselect(); tbl:select(nil, \r,i -> i >=5) -- TODO select should unselect first ?
+  i=5; tbl:foreach  { action=act1, selected=true  }; assertEquals(i, 9)
+  -- i=1; tbl:foreach  { action=act1, selected=false }; assertEquals(i, 5) -- TODO should selected=false do the reverse ??
+  i=1; tbl:foreach  { action=act3, pattern="0"    }; assertEquals(i, 4)
+  i=1; tbl2:foreach { action=act2, kind="kind1"   }; assertEquals(i, 9)
+end
+
+function TestMTable:testSelect()
+  local tbl  = mtable "tbl" { {"dict"} }
+  local tbl2 = mtable "tbl" { {"dict"}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local val3 = { [5]=true, [7]=true, [8]=true }
+  local assertSelect = \tbl,min,max,step =>
+    for i=1,8,step or 1 do
+      if min <= i and i < max
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    tbl:deselect()
+  end
+  local assertSelect2 = \tbl,key =>
+    for i=1,8 do
+      if key[i]
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    tbl:deselect()
+  end
+
+  for i,v in ipairs(val) do tbl:addrow{v}; tbl2:addrow{v, val2[i%2]} end
+  tbl:deselect(); tbl2:deselect();
+
+  assertSelect(tbl:select()                              , 1, 9)
+  assertSelect(tbl:select(nil  , nil, true)              , 1, 1)
+  assertSelect(tbl:select({2,6})                         , 2, 7)
+  assertSelect(tbl:select({2,6}, nil, true)              , 1, 1)
+  assertSelect(tbl:select(nil,   \r,i -> 1 < i and i < 7), 2, 7)
+  assertSelect(tbl:select({3,5}, \r,i -> 1 < i and i < 7), 3, 6)
+  assertSelect(tbl:select(nil,   \r,i -> i%2 == 1       ), 1, 9, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  assertSelect(tbl:select{ }                                        , 1, 9)
+  assertSelect(tbl:select{ default=true }                           , 1, 1)
+  assertSelect(tbl:select{ default="none" }                         , 1, 1)
+  assertSelect(tbl:select{ range={2,6} }                            , 2, 7)
+  assertSelect(tbl:select{ range={2,6}, default=true }              , 1, 1)
+  assertSelect(tbl:select{ range={2,6}, default="none" }            , 1, 1)
+  assertSelect(tbl:select{ select=\r,i -> 1 < i and i < 7 }         , 2, 7)
+  assertSelect(tbl:select{ range={3,5}, select=\r,i -> 1<i and i<7 }, 3, 6)
+  assertSelect(tbl:select{ select=\r,i -> i%2 == 1 }                , 1, 9, 2)
+
+  -- argument packed in a table (test new capabilities)
+  assertSelect2(tbl:select{ pattern="0"  }, val3)
+  assertSelect(tbl2:select{ kind="kind1" }, 1, 9, 2)
+end
+
+function TestMTable:testDeselect()
+  local tbl  = mtable "tbl" { {"dict"} }
+  local tbl2 = mtable "tbl" { {"dict"}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local val3 = { [5]=true, [7]=true, [8]=true }
+  local assertDeselect = \tbl,min,max,step =>
+    for i=1,8,step or 1 do
+      if min <= i and i < max
+      then assertFalse(tbl[i][0])
+      else assertTrue (tbl[i][0])
+      end
+    end
+    tbl:select()
+  end
+  local assertDeselect2 = \tbl,key =>
+    for i=1,8 do
+      if key[i]
+      then assertFalse(tbl[i][0])
+      else assertTrue (tbl[i][0])
+      end
+    end
+    tbl:select()
+  end
+
+  for i,v in ipairs(val) do tbl:addrow{v}; tbl2:addrow{v, val2[i%2]} end
+  tbl:select(); tbl2:select()
+
+  assertDeselect(tbl:deselect()                              , 1, 9)
+  assertDeselect(tbl:deselect(nil  , nil, true)              , 1, 1)
+  assertDeselect(tbl:deselect({2,6})                         , 2, 7)
+  assertDeselect(tbl:deselect({2,6}, nil, true)              , 1, 1)
+  assertDeselect(tbl:deselect(nil,   \r,i -> 1 < i and i < 7), 2, 7)
+  assertDeselect(tbl:deselect({3,5}, \r,i -> 1 < i and i < 7), 3, 6)
+  assertDeselect(tbl:deselect(nil,   \r,i -> i%2 == 1       ), 1, 9, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  assertDeselect(tbl:deselect{}                                       , 1, 9)
+  assertDeselect(tbl:deselect{default=true }                          , 1, 1)
+  assertDeselect(tbl:deselect{default="none" }                        , 1, 1)
+  assertDeselect(tbl:deselect{range={2,6} }                           , 2, 7)
+  assertDeselect(tbl:deselect{range={2,6}, default=true }             , 1, 1)
+  assertDeselect(tbl:deselect{range={2,6}, default="none" }           , 1, 1)
+  assertDeselect(tbl:deselect{select=\r,i -> 1 < i and i < 7 }        , 2, 7)
+  assertDeselect(tbl:deselect{range={3,5}, select=\r,i ->1<i and i<7 }, 3, 6)
+  assertDeselect(tbl:deselect{select=\r,i -> i%2 == 1 }               , 1, 9, 2)
+
+  -- argument packed in a table (test new capabilities)
+  assertDeselect2(tbl:deselect{ pattern="0"  }, val3)
+  assertDeselect(tbl2:deselect{ kind="kind1" }, 1, 9, 2)
+end
+
+function TestMTable:testFilter()
+  local tbl  = mtable "tbl" { {"dict"} }
+  local tbl2 = mtable "tbl" { {"dict"}, "kind" }
+  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2 = { "kind1", "kind2" }
+  local assertFilter = \idx,min,max,step_ =>
+    local j, step = 1, step_ or 1
+    for i=min,max,step do
+      assertEquals(idx[j], i)
+      j=j+1
+    end
+  end
+
+  for i,v in ipairs(val) do tbl:addrow{v}; tbl2:addrow{v, val2[i%2]} end
+
+  assertFilter(tbl:filter()                              ,  1, 8)
+  assertEquals(tbl:filter(nil  , nil, true)              , {n=0})
+  assertFilter(tbl:filter({2,6})                         ,  2, 6)
+  assertEquals(tbl:filter({2,6}, nil, true)              , {n=0})
+  assertFilter(tbl:filter(nil,   \r,i -> 1 < i and i < 7),  2, 6)
+  assertFilter(tbl:filter({3,5}, \r,i -> 1 < i and i < 7),  3, 5)
+  assertFilter(tbl:filter(nil,   \r,i -> i%2 == 1       ),  1, 8, 2)
+
+  -- argument packed in a table (equivalent to test above)
+  assertFilter(tbl:filter { }, 1, 8)
+  assertEquals(tbl:filter { default=true }, {n=0})
+  assertEquals(tbl:filter { default="none" }, {n=0})
+  assertFilter(tbl:filter { range={2,6} }, 2, 6)
+  assertEquals(tbl:filter { range={2,6}, default=true }, {n=0})
+  assertEquals(tbl:filter { range={2,6}, default="none" }, {n=0})
+  assertFilter(tbl:filter { select=\r,i -> 1 < i and i < 7 }, 2, 6)
+  assertFilter(tbl:filter { range={3,5}, select=\r,i -> 1 < i and i < 7 }, 3, 5)
+  assertFilter(tbl:filter { select=\r,i -> i%2 == 1 }, 1, 8, 2)
+
+  -- argument packed in a table (test new capabilities)
+  assertEquals(tbl:filter  { pattern="0"  }, { 5, 7, 8, n=3})
+  assertFilter(tbl2:filter { kind="kind1" }, 1, 8, 2)
+end
+
+function TestMTable:testSort()
+  local nsort = { 9, 7, 4, 0, 1, 8, 4, 4 }
+
+  local slt1  = { 0, 1, 4, 4, 4, 7, 8, 9 }
+  local slt2  = { 9, 7, 0, 1, 4, 8, 4, 4 }
+  local slt3  = { 1, 7, 4, 0, 4, 8, 9, 4 }
+  local slt4  = { 9, 7, 1, 0, 4, 8, 4, 4 }
+
+  local sgt1  = { 9, 8, 7, 4, 4, 4, 1, 0 }
+  local sgt2  = { 9, 7, 8, 4, 1, 0, 4, 4 }
+  local sgt3  = { 9, 7, 4, 0, 4, 8, 1, 4 }
+  local sgt4  = { 9, 7, 4, 0, 1, 8, 4, 4 }
+
+  local sel   = { [9]=true, [7]=true, [1]=true }
+  local lt    = \r1,r2 -> r1[1] < r2[1]
+  local gt    = \r1,r2 -> r1[1] > r2[1]
+  local assertSort = \cmp,val,... =>
+    local tbl = mtable "tbl" { "v1", "v2" }
+    for i,v in ipairs(nsort) do tbl:addrow{v, v} end
+    tbl:deselect(); tbl:select(nil, \r,i -> sel[r[1]])
+    tbl:sort(cmp, ...)
+    for i,row in tbl:iter() do
+      assertEquals(row[1], val[i])
+      assertEquals(row[2], val[i])
+      -- test if column[0] is also sorted
+      -- if sel[row[1]]                        -- TODO fix sort of column[0]
+      -- then assertTrue (row[0])
+      -- else assertFalse(row[0])
+      -- end
+    end
+  end
+
+  -- sort increasing
+  assertSort(lt, slt1)
+  assertSort(lt, slt2, {3,6})
+  assertSort(lt, slt3, nil  , \r,i -> i%2 == 1)
+  assertSort(lt, slt4, {3,6}, \r,i -> i%2 == 1)
+
+  -- sort decreasing
+  assertSort(gt, sgt1)
+  assertSort(gt, sgt2, {3,6})
+  assertSort(gt, sgt3, nil  , \r,i -> i%2 == 1)
+  assertSort(gt, sgt4, {3,6}, \r,i -> i%2 == 1)
+end
+
+function TestMTable:testCopy()
+  local tbl1 = mtable "tbl1" { "x", "y", "z" }
+  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z",
+    novector=true, header ={"var"}, var=42, columns={"dict", "x"}}
+  local tbl3 = mtable "tbl3" { {"dict"}, "x", "y", "z", novector = {1, "y"}}
+  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3 }
+  local col1, col2 = { 1, 2, 3 }, \i -> i
+
+  for i=1,3 do tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row2) end
+  -- tbl1:addcol("c1", col1); tbl2:addcol("c1", col1); tbl3:addcol("c1", col1) -- TODO fix reshape of vector
+  tbl1:addcol("c2", col2); tbl2:addcol("c2", col2); tbl3:addcol("c2", col2)
+  tbl1:deselect{2,3}   ; tbl2:deselect{2,3}     ; tbl3:deselect{2,3}
+
+  -- local cpy1 = tbl1:copy("cpy1") -- TODO fix copy of model object
+  -- local cpy2 = tbl2:copy("cpy2")
+  -- local cpy3 = tbl3:copy("cpy3")
+
+  -- assertEquals(cpy1.name, "cpy1")
+  -- assertEquals(cpy2.name, "cpy2")
+  -- assertEquals(cpy3.name, "cpy3")
+
+  -- assertEquals(#cpy1, #tbl1)
+  -- assertEquals(#cpy2, #tbl2)
+  -- assertEquals(#cpy3, #tbl3)
+
+  -- assertEquals(cpy2.var, tbl2.var)
+
+  -- for i=1,3 do
+  --   for j=0,4 do assertEquals(cpy1[i][j], tbl1[i][j]) end -- TODO remove double subtraction of ng in copy
+  --   for j=0,5 do
+  --     assertEquals(cpy2[i][j], tbl2[i][j])
+  --     assertEquals(cpy3[i][j], tbl3[i][j])
+  --   end
+  -- end
+
+  -- test consistence a novector
+  -- for i=1,4 do
+  --   assertEquals(is_vector(cpy1:getcol(i)), is_vector(tbl1:getcol(i)))
+  -- end
+  -- for i=1,5 do
+  --   assertEquals(is_vector(cpy2:getcol(i)), is_vector(tbl2:getcol(i)))
+  --   assertEquals(is_vector(cpy3:getcol(i)), is_vector(tbl3:getcol(i)))
+  -- end
+
+  -- existing dictionary
+  -- assertEquals(cpy2:getrow("v0[2]").c1, 2)
+  -- assertEquals(cpy3:getrow("v0[2]").c1, 2)
+
+  -- TODO test copy without name
+end
+
+function TestMTable:testRemove()
+  local rem1  = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }
+  local rem2  = { 1, 2, 7, 8, 9, 10 }
+  local rem3  = { 2, 4, 6, 8, 10 }
+  local rem4  = { 1, 2, 4, 6, 7, 8, 9, 10 }
+  local assertRemove = \val,... =>
+    local tbl = mtable "tbl" { "v1", "v2" }
+    for i=1,10 do tbl:addrow{i, i} end
+    tbl:deselect(); tbl:select{2,7}
+    tbl:remove(...)
+    for i,row in tbl:iter() do
+      assertEquals(row[1], val[i])
+      assertEquals(row[2], val[i])
+      -- test if column[0] is removed properly
+      if 2 <= row[1] and row[1] <= 7
+      then assertTrue (row[0])
+      else assertFalse(row[0])
+      end
+    end
+  end
+
+  assertRemove(rem1)
+  -- assertRemove(rem2, {3,6})                 -- TODO doesn't remove anything
+  assertRemove(rem3, nil  , \r,i -> i%2 == 1)
+  assertRemove(rem4, {3,6}, \r,i -> i%2 == 1)
+
+  assertRemove(rem1, { })
+  -- assertRemove(rem2, { range={3,6} })        -- TODO doesn't remove anything
+  assertRemove(rem3, { select=\r,i -> i%2 == 1 })
+  assertRemove(rem4, { range={3,6}, select=\r,i -> i%2 == 1 })
+end
+
+function TestMTable:testRemove2()
+  local val1  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
+  local val2  = { "kind1", "kind2" }
+  local rem1  = { 1, 2, 3, 4, 6 }
+  local rem2  = { 2, 4, 6, 8, 10 }
+  local assertRemove = \val,... =>
+    local tbl = mtable "tbl" { {"dict"}, "kind", "i" }
+    for i,v in ipairs(val1) do tbl:addrow{v, val2[i%2], i} end
+    tbl:deselect(); tbl:select{2,7}
+    tbl:remove(...)
+    for i,row in tbl:iter() do
+      assertEquals(row[3], val[i])
+      -- test if column[0] is removed properly
+      if 2 <= row[3] and row[3] <= 7
+      then assertTrue (row[0])
+      else assertFalse(row[0])
+      end
+    end
+  end
+
+  assertRemove(rem1, { pattern="0"  })
+  assertRemove(rem2, { kind="kind1" })
 end
 
 -- end ------------------------------------------------------------------------o
