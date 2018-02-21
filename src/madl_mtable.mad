@@ -99,7 +99,7 @@ end
 
 -- helper for mangled names and row indexes (same as sequence) ----------------o
 
-local index_of_idx -- forward declaration
+local index_of -- forward declaration
 
 -- reflect indexes
 local function reflect (i, n)
@@ -107,11 +107,7 @@ local function reflect (i, n)
 end
 
 -- get index from s-position (binary)
-local function index_of_num (tbl, num, typ)
-  assert(is_number(num), "invalid argument #2 (number expected)")
-  if typ ~= 'spos' and is_integer(num) then
-    return index_of_idx(tbl, num, typ)
-  end
+local function index_of_num (tbl, num)
   local data = var_raw(tbl,_data)
   local s = data[data.cidx.s]
   assert(s, "missing column 's', cannot find s-position")
@@ -121,9 +117,8 @@ local function index_of_num (tbl, num, typ)
   return bsearch(s, num)
 end
 
--- get row index from signed index (direct)
+-- get row index from signed index or s-position (direct)
 function index_of_idx (tbl, idx, typ)
-  assert(is_integer(idx), "invalid argument #2 (number expected)")
   if typ == 'spos' then return index_of_num(tbl, idx, typ) end
   local n = var_raw(tbl,_data).nr
   idx = reflect(idx, n)
@@ -131,7 +126,7 @@ function index_of_idx (tbl, idx, typ)
   return idx
 end
 
--- get index from name [with count] (direct)
+-- get index from name [with absolute count] (direct)
 local function index_of_cnam (tbl, nam, cnt)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_table(ri) then
@@ -141,10 +136,10 @@ local function index_of_cnam (tbl, nam, cnt)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (tbl, nam, cnt, idx)
-  local ri = var_raw(tbl,_data).ridx[nam]
+local function index_of_rnam (tbl, nam, cnt, ref)
+  local ri, idx = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  idx = index_of_idx(tbl, idx)
+  if ref then idx = index_of(tbl, ref) end
   if is_nil(idx) then return nil end
   if is_number(ri) then
     return (cnt ==  1 and ri >= idx and ri) or
@@ -162,26 +157,25 @@ local function index_of_rnam (tbl, nam, cnt, idx)
   return nil
 end
 
--- get index from [mangled] name (direct or linear)
-local function index_of_str (tbl, str, idx_)
-  assert(is_string(str), "invalid argument #2 (string expected)")
+-- get index from [mangled] name or s-position (direct or linear)
+local function index_of_str (tbl, str, ref_)
   local num = tonumber(str)
-  if num then return index_of_num(tbl, num, idx_) end
+  if num then return index_of_num(tbl, num, ref_) end
   local data = var_raw(tbl,_data)
   assert(data.cref, "no reference column found")
-  local str, cnt, _, bra = strbracket(str)
+  local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_number(cnt), "invalid count (number expected)")
-  if is_nil(idx_) or bra == 1 then
-    return index_of_cnam(tbl, str, cnt      )
+  if is_nil(ref_) or bra == 1 then
+    return index_of_cnam(tbl, nam, cnt      )
   else
-    return index_of_rnam(tbl, str, cnt, idx_)
+    return index_of_rnam(tbl, nam, cnt, ref_)
   end
 end
 
 -- get [mangled] name from index (linear)
 local function name_of_idx (tbl, idx, ref_)
-  idx = index_of_idx(tbl, idx, ref_)
+  idx = index_of_idx(tbl, idx)
   if is_nil(idx) then return nil end
   local data = var_raw(tbl,_data)
   assert(data.cref, "no reference column found")
@@ -194,7 +188,7 @@ local function name_of_idx (tbl, idx, ref_)
 
   local cnt, b1, b2 = 0
   if ref_ then
-    ref_ = assert(index_of_idx(tbl, ref_), "invalid reference index")
+    ref_ = assert(index_of(tbl, ref_), "invalid reference index")
     for i=1,ri.n do
       if ri[i] < ref_ then cnt = cnt+1 else break end
     end
@@ -210,6 +204,18 @@ local function name_of_idx (tbl, idx, ref_)
     end
   end
   error("unexpected corrupted dictionnary")
+end
+
+local function name_of_num (tbl, num, ref_)
+  local idx = index_of_num(tbl, num, ref_)
+  if is_nil(idx) then return nil end
+  return name_of_idx (tbl, idx, ref_)
+end
+
+local function name_of_str (tbl, str, ref_)
+  local idx = index_of_str(tbl, str, ref_)
+  if is_nil(idx) then return nil end
+  return name_of_idx (tbl, idx, ref_)
 end
 
 -- build mtable ---------------------------------------------------------------o
@@ -449,11 +455,14 @@ end
 
 local function name_of (tbl, a, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  if is_integer(a) then return name_of_idx(tbl, a, ref_) end
-  error("invalid argument #2 (number expected)")
+      if is_integer(a) then return name_of_idx(tbl, a, ref_)
+  elseif is_number (a) then return name_of_num(tbl, a, ref_)
+  elseif is_string (a) then return name_of_str(tbl, a, ref_)
+  end
+  error("invalid argument #2 (number or string expected)")
 end
 
-local function index_of (tbl, a, ref_)
+function index_of (tbl, a, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
       if is_integer(a) then return index_of_idx(tbl, a, ref_)
   elseif is_number (a) then return index_of_num(tbl, a, ref_)
@@ -478,9 +487,13 @@ local function range_of (tbl, rng, ref_)
     start, stop = rng:bounds()
   else error "invalid argument #2 (index, string, table or range expected)"
   end
-  ref_ = ref_ or (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
-  start = index_of(tbl, start, ref_)
-  stop  = stop and index_of(tbl, stop, ref_) or start
+  local ref1, ref2
+  if is_nil(ref_) then
+    ref1 = is_number(start) and (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
+    ref2 = is_number(stop ) and (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
+  end
+  start =          index_of(tbl, start, ref1 or ref_)
+  stop  = stop and index_of(tbl, stop , ref2 or ref_) or start
   return start, stop
 end
 
