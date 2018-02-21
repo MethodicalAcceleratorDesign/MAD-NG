@@ -163,18 +163,19 @@ local function index_of_rnam (tbl, nam, cnt, idx)
 end
 
 -- get index from [mangled] name (direct or linear)
-local function index_of_str (tbl, nam, idx_)
-  assert(is_string(nam), "invalid argument #2 (string expected)")
-  local num = tonumber(nam)
+local function index_of_str (tbl, str, idx_)
+  assert(is_string(str), "invalid argument #2 (string expected)")
+  local num = tonumber(str)
   if num then return index_of_num(tbl, num, idx_) end
-  assert(var_raw(tbl,_data).cref, "invalid index use (no reference column set)")
-  local nam, cnt, _, bra = strbracket(nam)
+  local data = var_raw(tbl,_data)
+  assert(data.cref, "no reference column found")
+  local str, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_number(cnt), "invalid count (number expected)")
   if is_nil(idx_) or bra == 1 then
-    return index_of_cnam(tbl, nam, cnt      )
+    return index_of_cnam(tbl, str, cnt      )
   else
-    return index_of_rnam(tbl, nam, cnt, idx_)
+    return index_of_rnam(tbl, str, cnt, idx_)
   end
 end
 
@@ -195,7 +196,7 @@ local function name_of_idx (tbl, idx, ref_)
   if ref_ then
     ref_ = assert(index_of_idx(tbl, ref_), "invalid reference index")
     for i=1,ri.n do
-      if ri[i] >= ref_ then break else cnt = cnt+1 end
+      if ri[i] < ref_ then cnt = cnt+1 else break end
     end
     b1, b2 = "{", "}"
   else
@@ -204,6 +205,7 @@ local function name_of_idx (tbl, idx, ref_)
 
   for i=1,ri.n do
     if ri[i] == idx then
+      if cnt >= i then cnt = cnt+1 end
       return string.format("%s%s%d%s", nam, b1, i-cnt, b2)
     end
   end
@@ -258,6 +260,7 @@ local function mtbl_init (tbl)
     data.cidx[col], data.cidx[i] = i, col
     data[i] = {nr=0}
   end
+  if data.cref then tbl.refcol = data.cidx[data.cref] end
 
   -- prepare non-specilized columns
   if is_table(tbl.novector) then
@@ -512,10 +515,11 @@ local function ins_idx (data, idx)
   elseif is_number(val) then      -- one : scalar to array
     data.ridx[nam] = val > idx and {idx, val, n=2} or {val, idx, n=2}
   else                            -- many: insert
-    local i, n = 1, val.n
-    while i <= n and idx <= val[i] do i = i+1 end
-    while i <= n do val[i], idx, i = idx, val[i], i+1 end
-    val.n, val[i] = i, idx
+    local ii = 1
+    for i=val.n,1,-1 do
+      if val[i] >= idx then val[i+1] = val[i] else ii = i+1 ; break end
+    end
+    val[ii], val.n = idx, val.n+1
   end
 end
 
@@ -920,11 +924,11 @@ local function build_index (tbl, key_)
 
   local data = raw_get(tbl,_data)
   if key_ == 'none' then -- 'none' disable index
-    data.cref = nil
+    tbl.refcol, data.cref = nil, nil
   elseif key_ then       -- change reference column
     local idx = is_number(key_) and reflect(key_, data.nc) or data.cidx[key_]
     assert(data[idx], "invalid argument #2 (valid column expected)")
-    data.cref = idx
+    tbl.refcol, data.cref = data.cidx[idx], idx
   end
 
   build_idx (data)
@@ -1182,16 +1186,16 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   for i=1,#hnam do
     local k, v = hnam[hnam[i]] or hnam[i], tbl[hnam[i]]
     if is_number(v) then
-      fprintf(file, '@ %-18s %%le %s\n', k, tostring(v))
+      fprintf(file, '@ %-18s %%le  %s\n', k, tostring(v))
     elseif is_string(v) then
       if k == 'type' and v == '' then v = tbl.kind end -- to review
-      fprintf(file, '@ %-18s %%%02ds %q\n', k, #v, v)
+      fprintf(file, '@ %-18s %%%02ds  %q\n', k, #v, v)
     elseif is_table(v) then
-      fprintf(file, '@ %-18s %%%02dt %q\n', k, #v, table.concat(v,', '))
+      fprintf(file, '@ %-18s %%%02dt  %q\n', k, #v, table.concat(v,', '))
     elseif is_boolean(v) then
-      fprintf(file, '@ %-18s %%b %s\n', k, tostring(v))
+      fprintf(file, '@ %-18s %%b  %s\n', k, tostring(v))
     else
-      fprintf(file, '@ %-18s %%? %s\n', k, tostring(v))
+      fprintf(file, '@ %-18s %%?  %s\n', k, tostring(v))
     end
   end
 
