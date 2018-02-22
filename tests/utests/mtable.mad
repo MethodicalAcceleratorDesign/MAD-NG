@@ -40,6 +40,21 @@ local _msg     = {
 }
 -- helpers --------------------------------------------------------------------o
 
+local function getEmptyTables()
+  local tbl1  = mtable "tbl1" { "x", "y", "z" }
+  local tbl2  = mtable "tbl2" { {"dict"}, "x", "y", "z" }
+  local tbl3  = mtable "tbl3" { "x", "y", "z", {"dict"} }
+  return tbl1, tbl2, tbl3
+end
+
+local function getRows(i)
+  i = i or 1
+  local row1 = { i        , -i, pi*i        }
+  local row2 = { 'name'..i, -i, pi*i, -pi*i }
+  local row3 = { i        , -i, pi*i, -pi*i }
+  return row1, row2, row3
+end
+
 local function assertFiles (name)
   if generate then return end
   local ref  = assert(io.open(refdir(name), "r"))
@@ -72,8 +87,6 @@ local function testWrite(tbl, filnam_, colnam_, hdrnam_)
   if string.sub(filnam_,-4) ~= '.tfs' then filnam_ = filnam_ .. '.tfs' end
   assertFiles(filnam_)
 end
-
--- helpers --------------------------------------------------------------------o
 
 local function newrow(i)
   return { 'name'..i, i, -i, pi*i }
@@ -262,19 +275,30 @@ function TestMTable:testIsMtable()
   local tbl2  = mtable "tbl2"  { "x", "y", "z" }
   local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
   local tbl32 = tbl3   "tbl32" { }
-
   assertTrue(is_mtable(mtable))
   assertTrue(is_mtable(tbl1))
   assertTrue(is_mtable(tbl2))
   assertTrue(is_mtable(tbl3))
   assertTrue(is_mtable(tbl32))
+end
 
+function TestMTable:testIsOwner()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl32 = tbl3   "tbl32" { }
   assertTrue(mtable:is_owner())
   assertFalse(tbl1:is_owner())
   assertTrue(tbl2:is_owner())
   assertTrue(tbl3:is_owner())
   assertFalse(tbl32:is_owner())
+end
 
+function TestMTable:testIsView()
+  local tbl1  = mtable "tbl1"  { }
+  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
+  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
+  local tbl32 = tbl3   "tbl32" { }
   assertFalse(mtable:is_view())
   assertTrue(tbl1:is_view())
   assertFalse(tbl2:is_view())
@@ -283,52 +307,118 @@ function TestMTable:testIsMtable()
 end
 
 function TestMTable:testAddOperator()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1, row2, row3 = getRows()
+  local tbl22 = tbl2   "tbl22" { }
+  local tbl4  = mtable "tbl4"  { }
+  local add = \a,b -> a + b
 
+  tbl1 = tbl1 + row1
+  tbl2 = tbl2 + row2
+  tbl3 = tbl3 + row3
+  assertErrorMsgContains(_msg[1], add, mtable, row2)
+  -- assertErrorMsgContains(_msg[1], add, tbl22 , row2) -- TODO not owner
+  -- assertErrorMsgContains(_msg[1], add, tbl4  , row2) -- TODO not owner
+
+  assertEquals(#tbl1  , 1)
+  assertEquals(#tbl2  , 1)
+  assertEquals(#tbl3  , 1)
+  assertEquals(#tbl4  , 0)
+  assertEquals(#tbl22 , 1)
+  assertEquals(#mtable, 0)
 end
--------------------------------------------------------------------------------o
 
-function TestMTable:testAddRow()
-  local tbl1  = mtable "tbl1"  { }
-  local tbl2  = mtable "tbl2"  { "x", "y", "z" }
-  local tbl3  = mtable "tbl3"  { {"dict"}, "x", "y", "z" }
-  local tbl4  = mtable "tbl4"  { "x", "y", "z", {"dict"} }
-  local tbl32 = tbl3   "tbl32" { }
-  local val1  = { 1, 2, 3 }
-  local val2  = { "v2", 1, 2, 3 }
+function TestMTable:testAddRow1st()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1, row2, row3 = getRows()
+  local tbl22 = tbl2   "tbl22" { }
+  local tbl4  = mtable "tbl4"  { }
 
-  -- using operator
-  -- tbl1  = tbl1  + val1                -- TODO should not work on readonly tbl
-  tbl2  = tbl2  + val1
-  tbl3  = tbl3  + val2
-  tbl32 = tbl32 + val2
+  tbl1:addrow(row1)
+  tbl2:addrow(row2)
+  tbl3:addrow(row3)
+  assertErrorMsgContains(_msg[1], mtable.addrow, mtable, row2)
+  -- assertErrorMsgContains(_msg[1], mtable.addrow, tbl22 , row2) -- TODO not owner
+  -- assertErrorMsgContains(_msg[1], mtable.addrow, tbl4  , row2) -- TODO not owner
 
-  -- using addrow
-  assertErrorMsgContains(_msg[1], mtable.addrow, mtable, { })
-  -- tbl1:addrow { 1, 2, 3 }             -- TODO should not work on readonly tbl
-  tbl2:addrow(val1)
-  tbl3:addrow(val2)
-  tbl32:addrow(val2)
+  assertEquals(#tbl1  , 1)
+  assertEquals(#tbl2  , 1)
+  assertEquals(#tbl3  , 1)
+  assertEquals(#tbl4  , 0)
+  assertEquals(#tbl22 , 1)
+  assertEquals(#mtable, 0)
+end
 
-  -- ini
-  tbl2:addrow({ 5, 5, 5, 5, 1, 2, 3 }, 5)
-  tbl3:addrow({ 5, 5, 5, 5, "v2", 1, 2, 3 }, 5)
+function TestMTable:testGetSimple()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1, row2, row3 = getRows()
+  local tbl22 = tbl2   "tbl22" { }
+  tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row3)
+  for i,v in ipairs(row1) do assertEquals(tbl1:get(1, i), row1[i]) end
+  for i,v in ipairs(row2) do assertEquals(tbl2:get(1, i), row2[i]) end
+  for i,v in ipairs(row3) do assertEquals(tbl3:get(1, i), row3[i]) end
+end
 
-  assertEquals(#tbl2, 3)
-  assertEquals(#tbl3, 5)
-
-  for i=1,3 do
-    for j=1,3 do assertEquals(tbl2[i][j], val1[j]) end
-    for j=1,4 do assertEquals(tbl3[i][j], val2[j]) end
+function TestMTable:testAddRows()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local tbl22 = tbl2   "tbl22" { }
+  for i=1,10 do
+    local row1, row2, row3 = getRows(i)
+    tbl1:addrow(row1) ; tbl2:addrow(row2) ; tbl3:addrow(row3)
+    tbl1:check_index(); tbl2:check_index(); tbl3:check_index()
+    tbl22:check_index()
   end
-
-  -- nil
-  assertErrorMsgContains(_msg[2], mtable.addrow, tbl4, { })
-  -- assertErrorMsgContains("table index is nil", mtable.addrow, tbl4, { 1 }) -- TODO doesn"t let tbl4 unmodified
-  tbl4:addrow { nil, nil, nil, "v2" }
-  -- tbl4:write() -- TODO doesn"t let tbl4 unmodified
-  for j=1,3 do assertEquals(tbl4[1][j], nil) end
-  assertEquals(tbl4[1][4], "v2")
+  for i=1,10 do
+    local row1, row2, row3 = getRows(i)
+    for j=1,3 do assertEquals(tbl1:get(i, j), row1[j]) end
+    for j=1,4 do
+      assertEquals(tbl2 :get(i, j), row2[j])
+      assertEquals(tbl22:get(i, j), row2[j])
+      assertEquals(tbl3 :get(i, j), row3[j])
+    end
+  end
 end
+
+function TestMTable:testAddRowIni()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local tbl22 = tbl2   "tbl22" { }
+  tbl1:addrow({ 5, 5, 5, 5, 1      , 2, 3         }, 5)
+  tbl2:addrow({ 5, 5, 5, 5, "name1", 1, 2, 3      }, 5)
+  tbl3:addrow({ 5, 5, 5, 5, 1      , 2, 3, "name1"}, 5)
+  for i,v in ipairs{1      ,2,3  } do assertEquals(tbl1:get(1,i), v) end
+  for i,v in ipairs{"name1",1,2,3} do
+    assertEquals(tbl2 :get(1,i), v)
+    assertEquals(tbl22:get(1,i), v)
+  end
+  for i,v in ipairs{1,2,3,"name1"} do assertEquals(tbl3:get(1,i), v) end
+end
+
+function TestMTable:testAddRowNil()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+
+  tbl1:addrow{ }
+  assertErrorMsgContains(_msg[2], mtable.addrow, tbl2, { })
+  assertErrorMsgContains(_msg[2], mtable.addrow, tbl3, { })
+
+  assertEquals(#tbl1, 1)
+  assertEquals(#tbl2, 0)
+  assertEquals(#tbl3, 0)
+  for j=1,3 do assertEquals(tbl1:get(1,j), nil) end
+
+  -- assertErrorMsgContains(_msg[2], mtable.addrow, tbl2, { nil, 1 }) -- TODO doesn"t let tbl4 unmodified
+  -- assertErrorMsgContains(_msg[2], mtable.addrow, tbl3, { 1 }) -- TODO doesn"t let tbl4 unmodified
+
+  tbl2:addrow { "name1", nil, nil, nil     }
+  tbl3:addrow {     nil, nil, nil, "name1" }
+  assertEquals(#tbl2, 1)
+  assertEquals(#tbl3, 1)
+  for j=1,3 do
+    assertEquals(tbl2:get(1,j+1), nil)
+    assertEquals(tbl3:get(1,j  ), nil)
+  end
+end
+
+-------------------------------------------------------------------------------o
 
 function TestMTable:testInsRow()
   local tbl1  = mtable "tbl1"  { }
