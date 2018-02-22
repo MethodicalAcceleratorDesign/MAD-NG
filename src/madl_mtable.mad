@@ -36,9 +36,6 @@ local is_nil, is_boolean, is_number, is_integer, is_decimal,
 local not_keyrable, not_extendable, not_mutable                  in concept
 
 local abs, max, ceil in math
-local strsub = string.sub
-local table_new, table_clear, table_insert, table_remove =
-      table.new, table.clear, table.insert, table.remove
 
 -- root object ----------------------------------------------------------------o
 
@@ -79,7 +76,7 @@ end
 
 -- check dictionnary of name -> idx
 local function check_index (tbl)
-  local data = raw_get(tbl,_data)
+  local data = var_raw(tbl,_data)
   if is_nil(data.cref) then return end
   local cref = data[data.cref]
   for rn,ri in pairs(data.ridx) do -- name -> index or table of indexes
@@ -213,10 +210,10 @@ local function mtbl_init (tbl)
   local pnc  = pdat.nc-pdat.ng
   nc = nc + pnc
   local nr   = tbl.reserve           -- forseen rows
-  local data = table_new(nc, 8)      -- columns (data)
-  data.ridx  = table_new( 0,nr)      -- name -> idx
-  data.cidx  = table_new(nc+1,nc+1)  -- name -> idx and idx -> name
-  data[0]    = table_new(nr, 1)      -- selected rows
+  local data = table.new(nc, 8)      -- columns (data)
+  data.ridx  = table.new( 0,nr)      -- name -> idx
+  data.cidx  = table.new(nc+1,nc+1)  -- name -> idx and idx -> name
+  data[0]    = table.new(nr, 1)      -- selected rows
   data.nvec  = {}                    -- columns that should not be specialized
   data.cref  = pdat.cref             -- refence column for fast row indexing
   data.nr    = 0                     -- #rows
@@ -415,13 +412,15 @@ end
 local function set_readonly (tbl, set_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = raw_get(tbl,_data)
-  if set_ ~= false and not tbl:is_readonly() then -- RW -> RO
-    for i=1,data.nc-data.ng do
-      data[i] = setmetatable({ [_data]=data[i] }, col_mt)
-    end
-  elseif set_ == false and tbl:is_readonly() then -- RO -> RW
-    for i=1,data.nc-data.ng do
-      data[i] = data[i][_data]
+  if data then
+    if set_ ~= false and not tbl:is_readonly() then -- RW -> RO
+      for i=1,data.nc-data.ng do
+        data[i] = setmetatable({ [_data]=data[i] }, col_mt)
+      end
+    elseif set_ == false and tbl:is_readonly() then -- RO -> RW
+      for i=1,data.nc-data.ng do
+        data[i] = data[i][_data]
+      end
     end
   end
   return readonly(tbl, set_)
@@ -538,7 +537,7 @@ end
 -- build dictionnary name -> idx
 local function build_idx (data)        -- must be very fast (see add_idx)
   if is_nil(data.cref) then return end -- no reference column
-  table_clear(data.ridx)               -- reuse main storage
+  table.clear(data.ridx)               -- reuse main storage
   for i=1,data.nr do add_idx(data, i) end
 end
 
@@ -556,7 +555,7 @@ local function expand (data, tbl, extra)
       data[i].nr, cvec = nr, true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
     elseif data.rmax == 1 then -- expand only for 1st row
-      data[i] = table_new(rmax,1)
+      data[i] = table.new(rmax,1)
       data[i][1], data[i].nr = val[1], nr
     end
   end
@@ -611,13 +610,14 @@ local function set (tbl, row, col, val, cnt_)
     end
   end
 
---  if cidx ~= data.cref then
+  -- to review as part of column protection
+  if cidx ~= data.cref then
     data[cidx][ridx] = val
---  else
---    rem_idx(data, ridx)
---    data[cidx][ridx] = val
---    ins_idx(data, ridx)
---  end
+  else
+    rem_idx(data, ridx)
+    data[cidx][ridx] = val
+    ins_idx(data, ridx)
+  end
 end
 
 --- columns -------------------------------o
@@ -633,7 +633,7 @@ end
 local function add_col (tbl, key, val, nvec_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(is_string(key), "invalid argument #2 (string expected)")
-  local data = raw_get(tbl,_data)
+  local data = var_raw(tbl,_data)
   assert(is_nil(data.cidx[key]), "invalid argument #2 (column name already in use)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
@@ -644,9 +644,9 @@ local function add_col (tbl, key, val, nvec_)
   elseif is_iterable(val) then -- iterable
     local idx = data.nc-data.ng+1
     if is_number(val[1]) and not nvec_ and data.nvec ~= data.cidx then
-      table_insert(data, idx, vector(data.rmax):reshape(data.nr):fill(val))
+      table.insert(data, idx, vector(data.rmax):reshape(data.nr):fill(val))
     else
-      table_insert(data, idx, table_new(data.nr,1))
+      table.insert(data, idx, table.new(data.nr,1))
       for i=1,data.nr do data[idx][i] = val[i] end
     end
     data[idx].nr = data.nr
@@ -654,10 +654,10 @@ local function add_col (tbl, key, val, nvec_)
       if i >= idx then data.cidx[k] = i+1 end
     end
     data.cidx[key] = idx
-    table_insert(data.cidx, idx, key)
+    table.insert(data.cidx, idx, key)
     if nvec_ and data.nvec ~= data.cidx then
       data.nvec[key] = idx
-      table_insert(data.nvec, idx, key)
+      table.insert(data.nvec, idx, key)
     end
   end
   data.nc = data.nc+1
@@ -665,15 +665,15 @@ end
 
 local function rem_col (tbl, key)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = raw_get(tbl,_data)
-  local idx  = is_number(key) and reflect(key, data.nr) or
-           assert(data.cidx[key], "invalid argument #2 (valid column expected")
+  local data = var_raw(tbl,_data)
+  local idx  = is_number(key) and reflect(key, data.nc) or
+            assert(data.cidx[key], "invalid argument #2 (valid column expected")
   assert(data.nc-data.ng < idx and idx <= data.nc,
-                             "invalid argument #2 (generator column expected)")
+                              "invalid argument #2 (generator column expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
   data.nc, data.ng, data.cidx[data.cidx[idx]] = data.nc-1, data.ng-1, nil
-  table_remove(data, idx)
-  table_remove(data.cidx, idx)
+  table.remove(data, idx)
+  table.remove(data.cidx, idx)
   for k,i in kpairs(data.cidx, data.nc) do
     if i > idx then data.cidx[k] = i-1 end
   end
@@ -888,7 +888,7 @@ end
 local do_filter = \idx,_,i => local n=idx.n+1 ; idx[n], idx.n = i, n end
 
 local function filter (tbl, rng_, sel_, not_)
-  local idx = table_new(8,1)
+  local idx = table.new(8,1)
   local f = bind1st(do_filter, idx)
   idx.n = 0
   tbl:foreach(f, rng_, sel_, not_)
@@ -901,7 +901,7 @@ local function build_index (tbl, key_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
-  local data = raw_get(tbl,_data)
+  local data = var_get(tbl,_data)
   if key_ == 'none' then -- 'none' disable index
     tbl.refcol, data.cref = nil, nil
   elseif key_ then       -- change reference column
@@ -926,7 +926,7 @@ local function remove (tbl, rng_, sel_)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- move rows by increasing indexes
-  local data = raw_get(tbl,_data)
+  local data = var_raw(tbl,_data)
   local ni, nc = data.nr-nr, data.nc-data.ng
   local i, j, r = idx_r[1], idx_r[1]+1, 2
   while i <= ni do
@@ -949,14 +949,14 @@ local function insert (tbl, rows, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not tbl:is_readonly(), "invalid modification of readonly mtable")
 
-  -- collect indexes of elements to remove
+  -- collect indexes of elements to select
   local idx_r = filter(tbl, rng_, sel_, true)
   local nr = idx_r.n
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- expand if needed
-  local data = raw_get(tbl,_data)
+  local data = var_raw(tbl,_data)
   if data.nr+nr > data.rmax then expand(data, tbl, nr) end
 
   -- move rows by decreasing indexes
@@ -989,20 +989,20 @@ local function sort (tbl, cmp, rng_, sel_)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- sort indexes (indirectly)
-  local data  = raw_get(tbl,_data)
+  local data  = var_raw(tbl,_data)
   local row1  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data}, row_mt)
-  local idx_s = table.cpy(idx_r, table_new(nr,0))
+  local idx_s = table.cpy(idx_r, table.new(nr,0))
   table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
   -- build lookup table
-  local idx_l = table_new(0,nr)
+  local idx_l = table.new(0,nr)
   for i=1,nr do idx_l[idx_r[i]] = idx_s[i] end
 
   -- sort rows
   local nc = data.nc-data.ng
-  local tmp = table_new(nc+1,0)
+  local tmp = table.new(nc+1,0)
   for ii=1,nr do
     local s, r = idx_s[ii], idx_l[idx_s[ii]]
     if s == r then -- identity (cleanup)
@@ -1035,9 +1035,9 @@ local function copy (tbl, name_, owner_)
 
   local data = var_raw(tbl,_data)
   local nr, nc = data.nr, data.nc-data.ng
-  local cdat = table_new(nc, 8)      -- see mtbl_init
-  cdat.ridx  = table_new( 0,nr)      -- name -> idx
-  cdat.cidx  = table_new(nc+1,nc+1)  -- name -> idx and idx -> name
+  local cdat = table.new(nc, 8)      -- see mtbl_init
+  cdat.ridx  = table.new( 0,nr)      -- name -> idx
+  cdat.cidx  = table.new(nc+1,nc+1)  -- name -> idx and idx -> name
   cdat.nvec  = {}                    -- columns that should not be specialized
   cdat.cref  = data.cref             -- reference column (if any)
   cdat.nr    = nr                    -- #rows
@@ -1057,7 +1057,7 @@ local function copy (tbl, name_, owner_)
   end
 
   for i=0,nc do                      -- copy data columns
-    cdat[i] = is_table(data[i]) and table_new(nr,1) or vector(nr)
+    cdat[i] = is_table(data[i]) and table.new(nr,1) or vector(nr)
     for j=1,nr do cdat[i][j] = data[i][j] end
     cdat[i].nr = nr
   end
@@ -1142,7 +1142,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   local hnam = hdrnam_ or tbl.header
   local nrow = data.nr
   local ncol = #cnam
-  local cols = table_new(ncol, 0)
+  local cols = table.new(ncol, 0)
 
   -- collect column
   for i=1,ncol do
@@ -1154,7 +1154,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   -- open file
   local file = fnam
   if is_string(fnam) then
-    if strsub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
+    if string.sub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
     file = assert(io.open(fnam, 'w'))
   end
   assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
@@ -1229,7 +1229,7 @@ local function read (tbl, filnam_)
   -- open file
   local file = fnam
   if is_string(fnam) then
-    if strsub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
+    if string.sub(fnam,-4) ~= '.tfs' then fnam = fnam .. '.tfs' end
     file = assert(io.open(fnam, 'r'))
   end
   assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
@@ -1293,7 +1293,7 @@ local function read (tbl, filnam_)
   end
 
   -- build index with column 'name' (if any)
-  local cref = tbl:raw_get('refcol')
+  local cref = tbl:var_raw('refcol')
   if cref then tbl:build_index(cref) end
 
   file:close()
