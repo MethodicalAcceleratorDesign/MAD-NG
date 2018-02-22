@@ -152,36 +152,27 @@ end
 
 -- helper for mangled names and elements indexes (same as mtable) -------------o
 
-local index_of_idx -- forward declaration
-
 -- reflect indexes
 local function reflect (i, n)
   return i < 0 and n+i+1 or i
 end
 
+-- canonize index (direct)
+local function index_of_idx (seq, idx)
+  local n = var_raw(seq,_data).ne
+  idx = reflect(idx, n)
+  return idx >= 1 and idx <= n and idx or nil
+end
+
 -- get index from s-position (binary)
-local function index_of_num (seq, num, typ)
-  assert(is_number(num), "invalid argument #2 (number expected)")
-  if typ ~= 'spos' and is_integer(num) then
-    return index_of_idx(seq, num, typ)
-  end
+local function index_of_num (seq, num)
   local l = seq.l
   if num < 0 then num = l+num end -- reflect
   if num < 0 or num > l then return nil end
   return bsearch(var_raw(seq,_data).spos, num)
 end
 
--- get index from signed index (direct)
-function index_of_idx (seq, idx, typ)
-  assert(is_integer(idx), "invalid argument #2 (number expected)")
-  if typ == 'spos' then return index_of_num(seq, idx, typ) end
-  local n = var_raw(seq,_data).ne
-  idx = reflect(idx, n)
-  if idx < 1 or idx > n then return nil end
-  return idx
-end
-
--- get index from name [with count] (direct)
+-- get index from name [with absolute count] (direct)
 local function index_of_cnam (seq, nam, cnt)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_table(ei) then
@@ -194,8 +185,8 @@ end
 local function index_of_rnam (seq, nam, cnt, idx)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
-  idx = index_of_idx(seq, idx)
-  if is_nil(idx) then return nil end
+  assert(is_integer(idx), "invalid reference index (integer expected)")
+  idx = assert(index_of_idx(seq, idx), "invalid reference index")
   if is_number(ei) then
     return (cnt ==  1 and ei >= idx and ei) or
            (cnt == -1 and ei <= idx and ei) or nil
@@ -212,12 +203,11 @@ local function index_of_rnam (seq, nam, cnt, idx)
   return nil
 end
 
--- get index from [mangled] name (direct or linear)
-local function index_of_str (seq, nam, idx_)
-  assert(is_string(nam), "invalid argument #2 (string expected)")
-  local num = tonumber(nam)
-  if num then return index_of_num(seq, num, idx_) end
-  local nam, cnt, _, bra = strbracket(nam)
+-- get index from [mangled] name or s-position (direct or linear)
+local function index_of_str (seq, str, idx_)
+  local num = tonumber(str)
+  if num then return index_of_num(seq, num) end
+  local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_number(cnt), "invalid count (number expected)")
   if is_nil(idx_) or bra == 1 then
@@ -242,58 +232,25 @@ end
 
 -- get index from element (linear)
 local function index_of_elm (seq, elm, idx_)
-  assert(is_element(elm), "invalid argument #2 (element expected)")
-  local nam = elm.__id
-  local elem = var_raw(seq,_data)
-  local ei = elem.eidx[nam]
+  local nam, elem = elm.__id, var_raw(seq,_data)
+  local ei, idx = elem.eidx[nam], idx_ or 1
   if is_nil(ei) then return nil end
-  idx_ = idx_ and index_of_idx(seq, idx_) or 1
+  assert(is_integer(idx), "invalid reference index (integer expected)")
+  idx = assert(index_of_idx(seq, idx), "invalid reference index")
   if is_number(ei) then
-    return ei >= idx_ and elem[ei] == elm and ei or nil
+    return ei >= idx and elem[ei] == elm and ei or nil
   end
   for i=1,ei.n do
-    if ei[i] >= idx_ and elem[ei[i]] == elm then return ei[i] end
-  end
-  return nil
-end
-
--- get [mangled] name from element (linear)
-local function name_of_elm (seq, elm, idx_, ref_)
-  assert(is_element(elm), "invalid argument #2 (element expected)")
-  local nam = elm.__id
-  local elem = var_raw(seq,_data)
-  local ei = elem.eidx[nam]
-  if is_nil(ei) then return nil end
-  idx_ = index_of_idx(seq, idx_ or 1)
-  if is_number(ei) then
-    return ei >= idx_ and elem[ei] == elm and nam or nil
-  end
-
-  local cnt, b1, b2 = 0
-  if ref_ then
-    ref_ = assert(index_of_idx(seq, ref_), "invalid reference index")
-    for i=1,ei.n do
-      if ei[i] < ref_ then cnt = cnt+1 else break end
-    end
-    b1, b2 = "{", "}"
-  else
-    b1, b2 = "[", "]"
-  end
-
-  for i=1,ei.n do
-    if ei[i] >= idx_ and elem[ei[i]] == elm then
-      if cnt >= i then cnt = cnt+1 end
-      return string.format("%s%s%d%s", nam, b1, i-cnt, b2)
-    end
+    if ei[i] >= idx and elem[ei[i]] == elm then return ei[i] end
   end
   return nil
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (seq, idx, ref_)
-  idx = index_of_idx(seq, idx, ref_)
-  if is_nil(idx) then return nil end
+local function name_of_idx (seq, idx, idx_)
   local elem = var_raw(seq,_data)
+  idx = index_of_idx(seq, idx)
+  if is_nil(idx) then return nil end
   local nam = elem[idx].__id
   local ei = elem.eidx[nam]
   if is_number(ei) then
@@ -302,10 +259,11 @@ local function name_of_idx (seq, idx, ref_)
   end
 
   local cnt, b1, b2 = 0
-  if ref_ then
-    ref_ = assert(index_of_idx(seq, ref_), "invalid reference index")
+  if idx_ then
+    assert(is_integer(idx_), "invalid reference index (integer expected)")
+    idx_ = assert(index_of_idx(seq, idx_), "invalid reference index")
     for i=1,ei.n do
-      if ei[i] < ref_ then cnt = cnt+1 else break end
+      if ei[i] < idx_ then cnt = cnt+1 else break end
     end
     b1, b2 = "{", "}"
   else
@@ -681,44 +639,50 @@ end
 
 -- methods (readonly) ---------------------------------------------------------o
 
-local function name_of (seq, a, ref_)
+local function index (seq, idx)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-      if is_integer(a) then return name_of_idx(seq, a, ref_)
-  elseif is_element(a) then return name_of_elm(seq, a, ref_)
-  end
-  error("invalid argument #2 (index or element expected)")
+  assert(is_integer (idx), "invalid argument #2 (integer expected)")
+  return index_of_idx(seq, idx)
 end
 
-local function index_of (seq, a, ref_)
+local function name_of (seq, idx, idx_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-      if is_integer(a) then return index_of_idx(seq, a, ref_)
-  elseif is_number (a) then return index_of_num(seq, a, ref_)
-  elseif is_string (a) then return index_of_str(seq, a, ref_)
-  elseif is_element(a) then return index_of_elm(seq, a, ref_)
+  assert(is_integer (idx), "invalid argument #2 (integer expected)")
+  return name_of_idx(seq, idx, idx_)
+end
+
+local function index_of (seq, a, idx_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+      if is_number (a) then return index_of_num(seq, a)
+  elseif is_string (a) then return index_of_str(seq, a, idx_)
+  elseif is_element(a) then return index_of_elm(seq, a, idx_)
   end
   error("invalid argument #2 (number, string or element expected)")
 end
 
-local function range_of (seq, rng, ref_)
+local function range_of (seq, rng, idx_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local start, stop
+  local start, stop, sta, sto
   if is_integer(rng) then
-    start = index_of_idx(seq, rng, ref_)
-    return start, start
+    start, sta = rng, index_of_idx(seq, rng)
   elseif is_string(rng) then
     local s1, i2 = strsplit(rng, "/")
     local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
-    start, stop = tonumber(s1) or s1, tonumber(s2) or s2
-  elseif is_table(rng) then
-    start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
+    start, stop = s1, s2
   elseif is_range(rng) then
     start, stop = rng:bounds()
-  else error("invalid argument #2 (index, string, table or range expected)")
+  elseif is_table(rng) then
+    start, stop, idx_ = rng[1], rng[2], idx_ or rng[3]
+    if idx_ == 'idx' and is_integer(start) and is_integer(stop) then
+      sta, sto = index_of_idx(seq, start), index_of_idx(seq, stop)
+    end
+  else error("invalid argument #2 (integer, string, table or range expected)")
   end
-  ref_ = ref_ or (is_decimal(start) or is_decimal(stop)) and 'spos' or nil
-  start = index_of(seq, start, ref_)
-  stop  = stop and index_of(seq, stop, ref_) or start
-  return start, stop
+  sta = sta or          index_of(seq, start, idx_)
+  sto = sto or stop and index_of(seq, stop , idx_) or sta
+  if is_nil(sta) then error("invalid range start '"..tostring(start).."'") end
+  if is_nil(sto) then error("invalid range stop '" ..tostring(stop ).."'") end
+  return sta, sto
 end
 
 local function length_of (seq, rng_, ntrn_) -- see iter
@@ -1116,8 +1080,6 @@ local function iter (seq, rng_, ntrn_, dir_)
     end
   else
     start, stop = range_of(seq, rng_)
-    assert(is_number(start), "invalid range start")
-    assert(is_number(stop ), "invalid range stop" )
   end
   if start == stop+dir then nturn = nturn+1 end
 
@@ -1164,6 +1126,7 @@ sequence :set_methods {
   elem          = \s,i -> s[_data]     [i],
   spos          = \s,i -> s[_data].spos[i],
   epos          = \s,i -> s[_data].epos[i],
+  index         = index,
 
   name_of       = name_of,
   index_of      = index_of,
