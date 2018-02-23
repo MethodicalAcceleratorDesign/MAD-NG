@@ -33,7 +33,7 @@ local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_positive, is_string, is_table, is_rawtable, is_range,
       is_file, is_matrix, is_object,
       is_iterable, is_callable, set_concept, concept             in MAD.typeid
-local not_keyrable, not_extendable, not_mutable                  in concept
+local not_mappable, not_extendable, not_mutable                  in concept
 
 local abs, max, ceil in math
 
@@ -376,8 +376,7 @@ local function copy (tbl, name_, owner_)
   end
 
   cpy[_data] = cdat
-  build_index(cpy)
-  return cpy
+  return cpy:build_index()
 end
 
 -- mtable metamethods ---------------------------------------------------------o
@@ -393,10 +392,9 @@ end
 local gen_mt = set_concept({
   __len      = \s   -> s[_data].nr,
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_col](i) or nil,
-  __pairs    = \s   -> (gen_iter, s, 0),
   __ipairs   = \s   -> (gen_iter, s, 0),
   __tostring = \s   -> string.format("mtable column generator: %p", s),
-}, not_keyrable + not_extendable + not_mutable)
+}, not_mappable + not_extendable + not_mutable)
 
 -- readonly column proxy (RO)
 local function col_iter (s, i)
@@ -407,10 +405,9 @@ end
 local col_mt = set_concept({
   __len      = \s   -> s[_data].nr,
   __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_col][i] or nil,
-  __pairs    = \s   -> (col_iter, s, 0),
   __ipairs   = \s   -> (col_iter, s, 0),
   __tostring = \s   -> string.format("mtable readonly column: %p", s),
-}, not_keyrable + not_extendable + not_mutable)
+}, not_mappable + not_extendable + not_mutable)
 
 -- reference column proxy (RW)
 local ref_mt = set_concept({
@@ -421,10 +418,9 @@ local ref_mt = set_concept({
                        assert(i >= 1 and i <= data.nr, "row index out of bounds")
                        rem_idx(data, i) ; s[_col][i] = v ; ins_idx(data, i)
                      end,
-  __pairs    = \s   -> (col_iter, s, 0),
   __ipairs   = \s   -> (col_iter, s, 0),
   __tostring = \s   -> string.format("mtable reference column: %p", s),
-}, not_keyrable + not_mutable)
+}, not_mappable + not_mutable)
 
 -- row proxy (RW)
 local function row_iter (s, i)
@@ -456,7 +452,6 @@ local row_mt = set_concept({
                        end
                      end,
   __pairs    = \s   -> (row_kiter, s, nil),
-  __kpairs   = \s   -> (row_kiter, s, nil),
   __ipairs   = \s   -> (row_iter , s, 0  ),
   __tostring = \s   -> string.format("mtable row: %p", s),
 }, not_mutable)
@@ -473,10 +468,9 @@ local cnt_mt = set_concept({
   __index    = \s,i => local ri = s[_idx][i]
                        if ri then s[_data][_idx] = ri return s[_data] end
                        end,
-  __pairs    = \s   -> (cnt_iter, s, 0),
   __ipairs   = \s   -> (cnt_iter, s, 0),
   __tostring = \s   -> string.format("mtable count: %p", s),
-}, not_keyrable + not_extendable + not_mutable)
+}, not_mappable + not_extendable + not_mutable)
 
 -- iterators over rows
 local function rows_iter (row, i)
@@ -554,6 +548,26 @@ local function set_readonly (tbl, set_)
   return readonly(tbl, set_)
 end
 
+-- row index dict -------------------------------------------------------------o
+
+local function build_index (tbl, key_)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  local data = var_raw(tbl,_data)
+  assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
+
+  if key_ == 'none' then -- 'none' disable index
+    data.ridx, data.cref, tbl.refcol = {}
+  elseif key_ then       -- change reference column
+    local idx = is_number(key_) and reflect(key_, data.nc) or data.cidx[key_]
+    assert(data[idx], "invalid argument #2 (valid column expected)")
+    tbl.refcol, data.cref = data.cidx[idx], idx
+  end
+
+  build_idx (data)
+  finish_mtbl(tbl)
+  return tbl
+end
+
 -- methods (readonly) ---------------------------------------------------------o
 
 local function name_of (tbl, idx, idx_)
@@ -572,9 +586,10 @@ end
 
 local function range_of (tbl, rng, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local start, stop, sta, sto
+  local start, stop, istart, istop
   if is_integer(rng) then
-    start, sta = rng, index_of_idx(tbl, rng)
+    start, istart = rng, index_of_idx(tbl, rng)
+    stop , istop  = start, istart
   elseif is_string(rng) then
     local s1, i2 = strsplit(rng, "/" )
     local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
@@ -585,11 +600,11 @@ local function range_of (tbl, rng, idx_)
     start, stop, idx_ = rng[1], rng[2], idx_ or rng[3]
   else error "invalid argument #2 (integer, string, table or range expected)"
   end
-  sta = sta or          index_of(tbl, start, idx_)
-  sto = sto or stop and index_of(tbl, stop , idx_) or sta
-  if is_nil(sta) then error("invalid range start '"..tostring(start).."'") end
-  if is_nil(sto) then error("invalid range stop '" ..tostring(stop ).."'") end
-  return sta, sto
+  istart = istart or index_of(tbl, start, idx_)
+  istop  = istop  or index_of(tbl, stop , idx_)
+  if not istart then errorf("invalid range start '%s'", tostring(start)) end
+  if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
+  return istart, istop
 end
 
 local function length_of (tbl, rng_, ntrn_) -- see iter
@@ -712,14 +727,11 @@ local function add_col (tbl, key, val, nvec_)
       table.insert(data, idx, table.new(data.nr,1))
       for i=1,data.nr do data[idx][i] = val[i] end
     end
-    for k,i in kpairs(data.cidx, data.nc) do
-      if i >= idx then data.cidx[k] = i+1 end
-    end
+    for i=idx,data.nc do data.cidx[data.cidx[i]] = i+1 end
     data.cidx[key] = idx
     table.insert(data.cidx, idx, key)
     if nvec_ and data.nvec ~= data.cidx then
-      data.nvec[key] = idx
-      table.insert(data.nvec, idx, key)
+      data.nvec[key], data.nvec[idx] = idx, key -- always last
     end
   end
   data.nc = data.nc+1
@@ -736,9 +748,7 @@ local function rem_col (tbl, key)
   data.nc, data.ng, data.cidx[data.cidx[idx]] = data.nc-1, data.ng-1, nil
   table.remove(data, idx)
   table.remove(data.cidx, idx)
-  for k,i in kpairs(data.cidx, data.nc) do
-    if i > idx then data.cidx[k] = i-1 end
-  end
+  for i=idx,data.nc do data.cidx[data.cidx[i]] = i-1 end
 end
 
 --- rows ----------------------------------o
@@ -962,24 +972,6 @@ end
 
 -- methods (R/W, rebuild dict) ------------------------------------------------o
 
-local function build_index (tbl, key_)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_raw(tbl,_data)
-  assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-
-  if key_ == 'none' then -- 'none' disable index
-    data.ridx, data.cref, tbl.refcol = {}
-  elseif key_ then       -- change reference column
-    local idx = is_number(key_) and reflect(key_, data.nc) or data.cidx[key_]
-    assert(data[idx], "invalid argument #2 (valid column expected)")
-    tbl.refcol, data.cref = data.cidx[idx], idx
-  end
-
-  build_idx (data)
-  finish_mtbl(tbl)
-  return tbl
-end
-
 local function remove (tbl, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = var_raw(tbl,_data)
@@ -1008,8 +1000,7 @@ local function remove (tbl, rng_, sel_)
   end
   data.nr = ni
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 local function insert (tbl, rows, rng_, sel_)
@@ -1042,8 +1033,7 @@ local function insert (tbl, rows, rng_, sel_)
   end
   assert(j == 0, "unexpected corrupted move of rows (insert)")
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 local function sort (tbl, cmp, rng_, sel_)
@@ -1089,8 +1079,7 @@ local function sort (tbl, cmp, rng_, sel_)
   end
   assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 -- special --------------------------------------------------------------------o
@@ -1186,8 +1175,9 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
 
   -- dump header
-  for i=1,#hnam do
-    local k, v = hnam[hnam[i]] or hnam[i], tbl[hnam[i]]
+  local v
+  for i, k in ipairs(hnam) do
+    k, v = hnam[k] or k, tbl[k]
     if is_number(v) then
       fprintf(file, '@ %-18s %%le  %s\n', k, tostring(v))
     elseif is_string(v) then
@@ -1203,7 +1193,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   end
 
   if ncol > 0 then
-    local fmt, v
+    local fmt
     -- dump col names
     file:write('*')
     fmt = ' %-17s '
@@ -1216,7 +1206,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
     file:write('$')
     fmt = ' %-17s '
     for i=1,ncol do
-      local v = cols[i][1]
+      v = cols[i][1]
       local s = is_string(v) and '%s' or is_number(v) and '%le' or '%?'
       if i == ncol then fmt = ' %s\n' end
       fprintf(file, fmt, s)
@@ -1227,11 +1217,11 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
       if data[0][j] then -- is_selected
         file:write(' ')
         for i=1,ncol-1 do
-          local v = cols[i][j]
+          v = cols[i][j]
           if is_string(v) then v = string.format("%q", v) end
           fprintf(file, '%-18s ', tostring(v))
         end
-        local v = cols[ncol][j]
+        v = cols[ncol][j]
         if is_string(v) then v = string.format("%q", v) end
         file:write(tostring(v), '\n')
       end
@@ -1267,7 +1257,6 @@ local function read (tbl, filnam_)
     if row[1] == '@' then
       assertf(ncol == 4, "invalid header format (4 columns expected line %d)", ln)
       local typ = string.sub(row[3],-1)
-      hnam[#hnam+1] = row[2]
       if typ == 'e' then
         hnam[row[2]] = assertf(tonumber(row[4]),
                         "invalid header format (missing number line %d)", ln)
@@ -1290,10 +1279,11 @@ local function read (tbl, filnam_)
         end
         hnam[row[2]] = res
       elseif typ == '?' then
-        hnam[row[2]] = row[4]
+        hnam[row[2]] = row[4] ~= 'nil' and row[4] or nil
       else
         error("invalid header field type: '"..typ.."'")
       end
+      hnam[#hnam+1] = row[2]
     elseif row[1] == '*' then -- col names
       cnam, row.n = table.new(ncol-1,0), ncol-1
       for i=1,ncol-1 do cnam[i] = row[i+1] end
@@ -1302,7 +1292,7 @@ local function read (tbl, filnam_)
     end
   end
 
-  -- to review, require some factory?
+  -- to review: require some factory?
   assert(hnam.type == tbl.type or tbl.type == '' and hnam.type == tbl.kind,
          "invalid parent table (kinds differ)")
 
@@ -1380,7 +1370,6 @@ mtable: set_methods {
   copy         = copy,
 
   cycle        = cycle,
-
   iter         = iter,
 
   -- read/write
@@ -1408,7 +1397,6 @@ mtable: set_methods {
   __newindex   = newindex_mm,
 -- __pairs     = pairs_mm, default from Object
   __ipairs     = ipairs_mm,
--- __kpairs    = kpairs_mm, default from Object
 
   __copy       = copy,
   __init       = mtbl_init,
