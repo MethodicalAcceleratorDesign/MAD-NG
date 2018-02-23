@@ -60,28 +60,34 @@ ffi.cdef [[
 typedef unsigned int bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
-  int   id;          // index in list of registered descriptors
-  int   nmv, nv;     // number of mvars, number of all vars
-  ssz_t nc;          // number of coefs (length of TPSA)
-  ord_t mo, ko,      // maximum order for mvars and knobs (mo=max(mvar_ords[]))
-        trunc;       // truncation order for operations; always <= mo
+  const int   id;          // index in list of registered descriptors
+  const int   nmv, nv;     // number of mvars, number of all vars
+  const ssz_t nc;          // number of coefs (length of TPSA)
+  const ord_t mo, ko,      // maximum order for mvars and knobs (mo=max(mvar_ords[]))
+        trunc;             // truncation order for operations; always <= mo
   const ord_t
-        *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
-        * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
+        *const mvar_ords,  // mvars orders[nmv] (for each TPSA in map)
+        *const  var_ords;  //  vars orders[nv ] (max order for each monomial variable)
 };            // end of compatibility with Lua FFI (rest is not visible)
 
 struct tpsa { // warning: must be kept identical to C definition
-  desc_t *d;           // ptr to descriptor
-  ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
-  bit_t   nz;          // non-zero homogeneous polynomials
+  const desc_t *d;           // ptr to descriptor
+  const ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
+  const bit_t   nz;          // non-zero homogeneous polynomials
   num_t   coef[?];
 };
 
 struct ctpsa { // warning: must be kept identical to C definition
-  desc_t *d;           // ptr to descriptor
-  ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
-  bit_t   nz;          // non-zero homogeneous polynomials
+  const desc_t *d;           // ptr to descriptor
+  const ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
+  const bit_t   nz;          // non-zero homogeneous polynomials
   cnum_t  coef[?];
+};
+
+struct tpsa_ccst { // warning: must be kept identical to C definition
+  desc_t *d;
+  ord_t   lo, hi, mo;
+  bit_t   nz;
 };
 ]]
 
@@ -105,16 +111,16 @@ local function tpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
   local len, tpsa = d.nc, nil
   if len < _C.mad_alloc_threshold then
-    tpsa = tpsa_ctor(len) -- VLA
+    tpsa = tpsa_ctor(len, d, mo, 0, mo, 0) -- VLA
   else
     assert(len <= 2^30, "tpsa is too large")
-    local siz = ffi.sizeof(tpsa_ctor, 0) + len*dbl_sz
+    local siz = ffi.sizeof(tpsa_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.mad_free)
+    local t = ffi.cast(tpsa_ccst, tpsa)
+    t.d, t.lo, t.hi, t.mo, t.nz = d, mo, 0, mo, 0
   end
-  tpsa.d = d
-  tpsa.lo, tpsa.hi, tpsa.mo = mo, 0, mo
-  tpsa.nz, tpsa.coef[0] = 0, 0
+  tpsa.coef[0] = 0
   return tpsa
 end
 
@@ -122,16 +128,16 @@ local function ctpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
   local len, ctpsa = d.nc, nil
   if len < (_C.mad_alloc_threshold/2) then
-    ctpsa = ctpsa_ctor(len)
+    ctpsa = ctpsa_ctor(len, d, mo, 0, mo, 0)
   else
     assert(len <= 2^29, "ctpsa is too large")
-    local siz = ffi.sizeof(ctpsa_ctor, 0) + len*cpx_sz
+    local siz = ffi.sizeof(ctpsa_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-    tpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
+    ctpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
+    local t = ffi.cast(tpsa_ccst, tpsa)
+    t.d, t.lo, t.hi, t.mo, t.nz = d, mo, 0, mo, 0
   end
-  ctpsa.d = d
-  ctpsa.lo, ctpsa.hi, ctpsa.mo = mo, 0, mo
-  ctpsa.nz, ctpsa.coef[0] = 0, 0
+  ctpsa.coef[0] = 0
   return ctpsa
 end
 
