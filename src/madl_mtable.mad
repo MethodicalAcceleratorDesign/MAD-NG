@@ -376,8 +376,7 @@ local function copy (tbl, name_, owner_)
   end
 
   cpy[_data] = cdat
-  build_index(cpy)
-  return cpy
+  return cpy:build_index()
 end
 
 -- mtable metamethods ---------------------------------------------------------o
@@ -572,9 +571,10 @@ end
 
 local function range_of (tbl, rng, idx_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local start, stop, sta, sto
+  local start, stop, istart, istop
   if is_integer(rng) then
-    start, sta = rng, index_of_idx(tbl, rng)
+    start, istart = rng, index_of_idx(tbl, rng)
+    stop , istop  = start, istart
   elseif is_string(rng) then
     local s1, i2 = strsplit(rng, "/" )
     local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
@@ -585,11 +585,11 @@ local function range_of (tbl, rng, idx_)
     start, stop, idx_ = rng[1], rng[2], idx_ or rng[3]
   else error "invalid argument #2 (integer, string, table or range expected)"
   end
-  sta = sta or          index_of(tbl, start, idx_)
-  sto = sto or stop and index_of(tbl, stop , idx_) or sta
-  if is_nil(sta) then error("invalid range start '"..tostring(start).."'") end
-  if is_nil(sto) then error("invalid range stop '" ..tostring(stop ).."'") end
-  return sta, sto
+  istart = istart or index_of(tbl, start, idx_)
+  istop  = istop  or index_of(tbl, stop , idx_)
+  if not istart then errorf("invalid range start '%s'", tostring(start)) end
+  if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
+  return istart, istop
 end
 
 local function length_of (tbl, rng_, ntrn_) -- see iter
@@ -1008,8 +1008,7 @@ local function remove (tbl, rng_, sel_)
   end
   data.nr = ni
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 local function insert (tbl, rows, rng_, sel_)
@@ -1042,8 +1041,7 @@ local function insert (tbl, rows, rng_, sel_)
   end
   assert(j == 0, "unexpected corrupted move of rows (insert)")
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 local function sort (tbl, cmp, rng_, sel_)
@@ -1089,8 +1087,7 @@ local function sort (tbl, cmp, rng_, sel_)
   end
   assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
 
-  build_index(tbl)
-  return tbl
+  return tbl:build_index()
 end
 
 -- special --------------------------------------------------------------------o
@@ -1186,8 +1183,9 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   assert(io.type(file) == 'file', "invalid argument #2 (open file expected)")
 
   -- dump header
-  for i=1,#hnam do
-    local k, v = hnam[hnam[i]] or hnam[i], tbl[hnam[i]]
+  local v
+  for i, k in ipairs(hnam) do
+    k, v = hnam[k] or k, tbl[k]
     if is_number(v) then
       fprintf(file, '@ %-18s %%le  %s\n', k, tostring(v))
     elseif is_string(v) then
@@ -1203,7 +1201,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
   end
 
   if ncol > 0 then
-    local fmt, v
+    local fmt
     -- dump col names
     file:write('*')
     fmt = ' %-17s '
@@ -1216,7 +1214,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
     file:write('$')
     fmt = ' %-17s '
     for i=1,ncol do
-      local v = cols[i][1]
+      v = cols[i][1]
       local s = is_string(v) and '%s' or is_number(v) and '%le' or '%?'
       if i == ncol then fmt = ' %s\n' end
       fprintf(file, fmt, s)
@@ -1227,11 +1225,11 @@ local function write (tbl, filnam_, colnam_, hdrnam_)
       if data[0][j] then -- is_selected
         file:write(' ')
         for i=1,ncol-1 do
-          local v = cols[i][j]
+          v = cols[i][j]
           if is_string(v) then v = string.format("%q", v) end
           fprintf(file, '%-18s ', tostring(v))
         end
-        local v = cols[ncol][j]
+        v = cols[ncol][j]
         if is_string(v) then v = string.format("%q", v) end
         file:write(tostring(v), '\n')
       end
@@ -1267,7 +1265,6 @@ local function read (tbl, filnam_)
     if row[1] == '@' then
       assertf(ncol == 4, "invalid header format (4 columns expected line %d)", ln)
       local typ = string.sub(row[3],-1)
-      hnam[#hnam+1] = row[2]
       if typ == 'e' then
         hnam[row[2]] = assertf(tonumber(row[4]),
                         "invalid header format (missing number line %d)", ln)
@@ -1290,10 +1287,11 @@ local function read (tbl, filnam_)
         end
         hnam[row[2]] = res
       elseif typ == '?' then
-        hnam[row[2]] = row[4]
+        hnam[row[2]] = row[4] ~= 'nil' and row[4] or nil
       else
         error("invalid header field type: '"..typ.."'")
       end
+      hnam[#hnam+1] = row[2]
     elseif row[1] == '*' then -- col names
       cnam, row.n = table.new(ncol-1,0), ncol-1
       for i=1,ncol-1 do cnam[i] = row[i+1] end
@@ -1380,7 +1378,6 @@ mtable: set_methods {
   copy         = copy,
 
   cycle        = cycle,
-
   iter         = iter,
 
   -- read/write
