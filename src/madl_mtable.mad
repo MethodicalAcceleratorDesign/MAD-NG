@@ -28,7 +28,7 @@ local Object, vector, env                                        in MAD
 local bind1st, bind2nd, bind2st                                  in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
 local strtrim, strsplit, strbracket, fprintf, kpairs, bsearch,
-      toboolean                                                  in MAD.utility
+      toboolean, errorf, assertf                                 in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_positive, is_string, is_table, is_rawtable, is_range,
       is_file, is_matrix, is_object,
@@ -1265,21 +1265,29 @@ local function read (tbl, filnam_)
     ln = ln+1
     row, ncol = splitall(line, " \t", nil, row)
     if row[1] == '@' then
-      if ncol ~= 4 then
-        error("invalid header format (4 columns expected at line "..ln..")")
-      end
+      assertf(ncol == 4, "invalid header format (4 columns expected line %d)", ln)
       local typ = string.sub(row[3],-1)
       hnam[#hnam+1] = row[2]
       if typ == 'e' then
-        hnam[row[2]] = tonumber(row[4])
+        hnam[row[2]] = assertf(tonumber(row[4]),
+                        "invalid header format (missing number line %d)", ln)
       elseif typ == 'b' then
-        hnam[row[2]] = toboolean(row[4])
+        hnam[row[2]] = assertf(toboolean(row[4]),
+                       "invalid header format (missing boolean line %d)", ln)
       elseif typ == 's' then
-        hnam[row[2]] = quote(row[4])
+        local res = quote(row[4])
+        if #res ~= tonumber(string.sub(row[3],2,-2)) then
+          errorf("invalid header format (unmatched string length line %d)", ln)
+        end
+        hnam[row[2]] = res
       elseif typ == 't' then
         local res, n = splitall(row[4], ",")
-        assert(n == tonumber(string.sub(row[3],2,-2)), "unmatched table length")
-        for i=1,n do res[i] = tonumber(res[i]) or quote(res[i]) end
+        if n ~= tonumber(string.sub(row[3],2,-2)) then
+          errorf("invalid header format (unmatched table length line %d)", ln)
+        end
+        for i=1,n do
+          res[i] = tonumber(res[i]) or toboolean(res[i]) or quote(res[i])
+        end
         hnam[row[2]] = res
       elseif typ == '?' then
         hnam[row[2]] = row[4]
@@ -1294,8 +1302,9 @@ local function read (tbl, filnam_)
     end
   end
 
+  -- to review, require some factory?
   assert(hnam.type == tbl.type or tbl.type == '' and hnam.type == tbl.kind,
-         "invalid parent table (kinds differ)") -- to review
+         "invalid parent table (kinds differ)")
 
   -- create table from header
   for i,v in ipairs(hnam) do
@@ -1309,17 +1318,17 @@ local function read (tbl, filnam_)
     ln = ln+1
     row, ncol = splitall(line, " \t", nil, row)
     if row.n ~= ncol then
-      error("invalid row format (".. (row.n-ncol) ..
-            " missing columns at line ".. ln ..")")
+      errorf("invalid row format (%d missing columns line %d)", row.n-ncol, ln)
     end
     for i=1,ncol do -- convert to numbers or remove quotes (if any)
-      row[i] = row[i] ~= 'nil' and (tonumber(row[i]) or quote(row[i])) or nil
+      row[i] = row[i] ~= 'nil' and
+               (tonumber(row[i]) or toboolean(row[i]) or quote(row[i])) or nil
     end
     tbl:addrow(row)
   end
 
   -- build index with column 'name' (if any)
-  local cref = tbl:raw_get('refcol')
+  local cref = raw_get(tbl, 'refcol')
   if cref then tbl:build_index(cref) end
 
   file:close()
