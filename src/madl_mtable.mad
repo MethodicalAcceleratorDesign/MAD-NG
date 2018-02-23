@@ -46,22 +46,20 @@ local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
 local mtable = Object 'mtable' {
   title='', type='', origin=origin, kind='mtable',
-  header = { 'title', 'type', 'origin', 'date', 'time', 'refcol' },
-  column = nil, --{},
-  reserve=8, novector=nil, owner=nil,
-  [_data]={ridx={}, cidx={}, nvec={}, [0]={nr=0},
-           cref=nil, nr=0, nc=0, ng=0, rmax=0},
+  header={'title', 'type', 'origin', 'date', 'time', 'refcol'},
+  column=nil, refcol=nil, novector=nil, owner=nil, reserve=8,
+  [_data]={ridx={}, cidx={}, nvec={}, cref=nil, nr=0, nc=0, ng=0, rmax=0},
 }
 
 -- backup original methods and metamethods
 local mtable_mt = getmetatable(mtable)
 local var_raw, var_val = mtable.var_raw, mtable.var_val
-local var_get, var_set = mtable_mt.__index, mtable_mt.__newindex
-local raw_get, tbl_cpy = mtable.raw_get, mtable.copy
-local parent, readonly = mtable.__par, mtable.set_readonly
+local raw_get, var_set = mtable.raw_get, mtable_mt.__newindex
+local parent, readonly = mtable.__par  , mtable.set_readonly
+local tbl_cpy =  mtable.copy
 
 local function is_mtable (a)
-  return is_object(a) and var_get(a, _data) ~= nil
+  return is_object(a) and var_raw(a, _data) ~= nil
 end
 
 local function is_owner (a)
@@ -275,62 +273,62 @@ end
 
 -- mtable initialization
 local function mtbl_init (tbl)
-  local nc, owner = tbl:raw_len(), tbl:raw_get 'owner'
+  local nc, owner = tbl:raw_len(), raw_get(tbl, 'owner')
   if nc == 0 and not owner then return tbl end -- empty, pure inheritance
+  tbl.owner = nil
 
   local pdat = var_raw(tbl.parent, _data)
-  local pnc  = pdat.nc-pdat.ng
-  nc = nc + pnc
-  local nr   = tbl.reserve           -- forseen rows
-  local data = table.new(nc, 8)      -- columns (data)
-  data.ridx  = table.new( 0,nr)      -- name -> idx
-  data.cidx  = table.new(nc+1,nc+1)  -- name -> idx and idx -> name
-  data[0]    = table.new(nr, 1)      -- selected rows
-  data.nvec  = {}                    -- columns that should not be specialized
-  data.cref  = pdat.cref             -- refence column for fast row indexing
-  data.nr    = 0                     -- #rows
-  data.nc    = nc                    -- #cols
-  data.ng    = 0                     -- #gens
-  data.rmax  = 1                     -- allocated rows (specialize after 1st row)
+  nc = nc + pdat.nc
+  local data = table.new(nc, 8)     -- columns (data)
+  data.cidx  = table.new(nc,nc+2)   -- name -> idx and idx -> name
+  data.ridx  = {}                   -- name -> idx
+  data.nvec  = {}                   -- columns that should not be specialized
+  data.cref  = pdat.cref            -- refence column for fast row indexing
+  data.nr    = 0                    -- #rows
+  data.nc    = nc                   -- #cols
+  data.ng    = 0                    -- #gens
+  data.rmax  = 1                    -- allocated rows (specialize after 1st row)
 
-  -- copy parent data columns, clear generated columns
+  -- create columns
+  for i=0,nc do data[i] = {} end
+
+  -- process columns names
   table.cpy(pdat.cidx, data.cidx)
-  for i=pnc+1,pdat.nc do
-    data.cidx[data.cidx[i]], data.cidx[i] = nil, nil
-  end
+  data.cidx.is_selected, data.cidx[0] = 0, 'is_selected' -- case pdat.nc == 0
 
-  -- process new columns
-  for i=pnc+1,nc do
-    local col = raw_get(tbl,i-pnc)     -- column key
-    if is_table(col) then              -- cref: { key }
+  local cref = raw_get(tbl, 'refcol')
+  for i=pdat.nc+1,nc do
+    local col = raw_get(tbl, i-pdat.nc)    -- column key
+    if is_table(col) then                  -- cref: { key }
       assert(is_rawtable(col) and is_nil(col[2]), "invalid reference column")
       data.cref, col = i, col[1]
     end
     assert(is_string(col), "invalid column name (string expected)")
     assert(is_nil(data.cidx[col]), "invalid column name (name already in use)")
     data.cidx[col], data.cidx[i] = i, col
-    data[i] = {nr=0}
   end
-  if data.cref then tbl.refcol = data.cidx[data.cref] end
+  if cref then -- refcol precedence over {name}
+    assert(is_string(cref), "invalid reference name (string expected)")
+    data.cref = assert(data.cidx[cref], "invalid reference name (not found)")
+  end
+  tbl.refcol = data.cidx[data.cref]
 
-  -- prepare non-specilized columns
-  if is_table(tbl.novector) then
+  -- process non-specilized columns names
+  if tbl.novector == true then
+    data.nvec = data.cidx
+  elseif is_table(tbl.novector) then
     data.nvec = table.cpy(pdat.nvec)
     for _,k in ipairs(tbl.novector) do
       assert(data.cidx[k], "invalid column name for non-specialization")
       data.nvec[k], data.nvec[data.cidx[k]] = data.cidx[k], k
     end
-    tbl.novector = table.cat(data.nvec,{})
-  elseif tbl.novector == true then
-    data.nvec = data.cidx
+    tbl.novector = table.cat(data.nvec,{}) -- copy only array part
   end
 
   -- clear list of column names
   tbl:clear_array()
   -- set current date and time
   tbl.date, tbl.time = os.date'%d/%m/%y', os.date'%H:%M:%S'
-  -- column 0 named is_selected
-  data.cidx.is_selected, data.cidx[0] = 0, 'is_selected'
 
   -- concat header names and column names to parent ones for I/O
   local hdrnam, colnam = raw_get(tbl, 'header'), raw_get(tbl, 'column')
@@ -345,6 +343,41 @@ local function mtbl_init (tbl)
   tbl[_data] = data
   finish_mtbl(tbl)
   return tbl
+end
+
+-- copy mtable ----------------------------------------------------------------o
+
+local function copy (tbl, name_, owner_)
+  if is_nil(owner_) and is_boolean(name_) then
+    owner_, name_ = name_
+  end
+  assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
+  assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
+  local cpy = tbl_cpy(tbl,name_)
+  if is_view(tbl) and not owner_ then return cpy end
+
+  local data = var_raw(tbl,_data)
+  local nr, nc = data.nr, data.nc
+  local cdat = table.new(nc, 8)      -- see mtbl_init
+  cdat.ridx  = table.new(0 ,nr)      -- name -> idx
+  cdat.cidx  = table.new(nc,nc+2)    -- name -> idx and idx -> name
+  cdat.cref  = data.cref             -- reference column (if any)
+  cdat.nr    = nr                    -- #rows
+  cdat.nc    = nc                    -- #cols
+  cdat.ng    = 0                     -- #gens
+  cdat.rmax  = data.rmax             -- allocated rows
+
+  table.cpy(data.cidx, cdat.cidx)
+  cdat.nvec = data.nvec == data.cidx and cdat.cidx or table.cpy(data.nvec)
+  for i=0,nc do                      -- copy columns
+    local col = data[i]
+    cdat[i] = is_matrix(col) and vector(nr) or table.new(nr,1)
+    for j=1,nr do cdat[i][j] = col[j] end
+  end
+
+  cpy[_data] = cdat
+  build_index(cpy)
+  return cpy
 end
 
 -- mtable metamethods ---------------------------------------------------------o
@@ -571,15 +604,21 @@ end
 local function expand (data, tbl, extra)
   local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
-  local nr, nc, cvec = data.nr, data.nc-data.ng, nil
-  for i=1,nc do
+  local nr, nc, cvec = data.nr, data.nc-data.ng
+  for i=1,nc do -- process vectors or specialize
     local val = data[i]
-    if is_number(data[i][1]) and not data.nvec[i] then
+    if is_matrix(val) or is_number(val[1]) and not data.nvec[i] then
       data[i], cvec = vector(rmax):_reshapeto(nr), true
       if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
-    elseif data.rmax == 1 then -- expand only for 1st row
-      data[i] = table.new(rmax,1)
-      data[i][1] = val[1]
+    end
+  end
+  if data.rmax == 1 then -- process tables on 1st expand
+    for i=0,nc do
+      local val = data[i]
+      if not is_matrix(val) then
+        data[i] = table.new(rmax,0)
+        data[i][1] = val[1]
+      end
     end
   end
   data.rmax = cvec and rmax or 1e8
@@ -929,7 +968,7 @@ local function build_index (tbl, key_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   if key_ == 'none' then -- 'none' disable index
-    tbl.refcol, data.cref = nil, nil
+    data.ridx, data.cref, tbl.refcol = {}
   elseif key_ then       -- change reference column
     local idx = is_number(key_) and reflect(key_, data.nc) or data.cidx[key_]
     assert(data[idx], "invalid argument #2 (valid column expected)")
@@ -1052,45 +1091,6 @@ local function sort (tbl, cmp, rng_, sel_)
 
   build_index(tbl)
   return tbl
-end
-
-local function copy (tbl, name_, owner_)
-  if is_nil(owner_) and is_boolean(name_) then
-    owner_, name_ = name_
-  end
-  assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
-  assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
-  local cpy = tbl_cpy(tbl,name_)
-  if is_view(tbl) and not owner_ then return cpy end -- tbl is not an original table
-
-  local data = var_raw(tbl,_data)
-  local nr, nc = data.nr, data.nc
-  local cdat = table.new(nc, 8)      -- see mtbl_init
-  cdat.ridx  = table.new( 0,nr)      -- name -> idx
-  cdat.cidx  = table.new(nc,nc+2)    -- name -> idx and idx -> name
-  cdat.nvec  = {}                    -- columns that should not be specialized
-  cdat.cref  = data.cref             -- reference column (if any)
-  cdat.nr    = nr                    -- #rows
-  cdat.nc    = nc                    -- #cols
-  cdat.ng    = 0                     -- #gens
-  cdat.rmax  = data.rmax             -- allocated rows
-
-  -- copy dict of columns
-  table.cpy(data.cidx, cdat.cidx)
-
-  if  data.nvec == data.cidx
-  then cdat.nvec = cdat.cidx
-  else cdat.nvec = table.cpy(data.nvec)
-  end
-
-  for i=0,nc do                      -- copy all columns
-    cdat[i] = is_matrix(data[i]) and vector(nr) or table.new(nr,1)
-    for j=1,nr do cdat[i][j] = data[i][j] end
-  end
-
-  cpy[_data] = cdat
-  build_index(cpy)
-  return cpy
 end
 
 -- special --------------------------------------------------------------------o
@@ -1319,7 +1319,7 @@ local function read (tbl, filnam_)
   end
 
   -- build index with column 'name' (if any)
-  local cref = tbl:var_raw('refcol')
+  local cref = tbl:raw_get('refcol')
   if cref then tbl:build_index(cref) end
 
   file:close()
