@@ -35,12 +35,11 @@ local totable, iter          in fun
 local abs, min, max          in math
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
-      is_value, is_indexable, is_iterable, is_keyrable, is_mappable,
-      is_callable, is_stringable, is_tablable, is_copiable, is_sameable,
-      is_complex, get_metatable, get_metamethod, wprotect, set_concept,
-      concept in MAD.typeid
+      is_value, is_integer, is_indexable, is_iterable, is_mappable, is_callable,
+      is_stringable, is_tablable, is_copiable, is_sameable, is_complex,
+      get_metatable, get_metamethod, wprotect, set_concept, concept in MAD.typeid
 
-local not_keyrable, not_extendable, not_mutable in concept
+local not_mappable, not_extendable, not_mutable in concept
 
 -- implementation -------------------------------------------------------------o
 
@@ -146,9 +145,8 @@ local rep_mt = set_concept({
   __len      = \s   -> s[_repn],
   __index    = \s,i => if 1 <= i and i <= s[_repn] then return s[_repx] end end,
   __ipairs   = \s   -> (rep_it, s, 0),
-  __pairs    = \s   -> (rep_it, s, 0),
   __tostring = \s   -> string.format("repeater: %p", s)
-}, not_keyrable + not_extendable + not_mutable)
+}, not_mappable + not_extendable + not_mutable)
 
 function utility.rep (x, n_) -- repeater
   return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
@@ -169,13 +167,12 @@ end
 -- key/indexes set
 
 function utility.clearkeys (a, p_)
-  assert(is_keyrable(a), "invalid argument #1 (keyrable expected)")
-  local it, tb, k0 = kpairs(a)
+  assert(is_mappable(a), "invalid argument #1 (mappable expected)")
   if not p_ then
-    for k in it,tb,k0 do a[k] = nil end
+    for k in kpairs(a) do a[k] = nil end
   else
     assert(is_callable(p_), "invalid argument #2 (callable expected)")
-    for k in it,tb,k0 do if p_(k) == true then a[k] = nil end end
+    for k in kpairs(a) do if p_(k) == true then a[k] = nil end end
   end
   return a
 end
@@ -302,13 +299,13 @@ local tostring_ -- forward ref
 function utility.tbl2str (tbl, sep_)
   assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
   if is_emptytable(tbl) then return '{}' end
-  local ir, r = 2, {}
+  local ir, r, n = 2, {}
   r[1] = '{'
-  for k,v in kpairs(tbl) do
-    r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
-  end
   for i,v in ipairs(tbl) do
-    r[ir], ir = tostring_(v), ir+1
+    r[ir], ir, n = tostring_(v), ir+1, i
+  end
+  for k,v in kpairs(tbl, n) do
+    r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
   end
   r[ir] = '}'
   return table.concat(r, sep_ or ', ')
@@ -537,16 +534,23 @@ string.split    = utility.strsplit
 string.qsplit   = utility.strqsplit
 string.splitall = utility.strsplitall
 
--- iterator
+-- iterator: pairs = ipairs + kpairs
 
-function utility.kpairs (tbl, ini_)
-  assert(is_keyrable(tbl), "invalid argument #1 (keyrable expected)")
-  local iter = get_metamethod(tbl, '__kpairs')
-  if iter then return iter(tbl, ini_) end
-  if not ini_ then
-    for i in ipairs(tbl) do ini_ = i end -- note: ipairs and # are not equivalent
+local function kpairs_iter (tbl, key)
+  local k, v = key
+  repeat k, v = tbl.nxt(tbl.dat, k) -- discard ipairs keys
+  until type(k) ~= 'number' or (k%1) ~= 0 or k > tbl.lst or k < 1
+  return k, v
+end
+
+function utility.kpairs (tbl, lst_)
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  local nxt, dat, ini = pairs(tbl)
+  if is_nil(lst_) and is_iterable(tbl) then
+    for i in ipairs(tbl) do lst_ = i end
   end
-  return pairs(tbl), tbl, ini_
+  if is_nil(lst_) then return nxt, dat, ini end
+  return kpairs_iter, { nxt=nxt, dat=dat, lst=lst_ }, ini
 end
 
 _G.kpairs = utility.kpairs -- make it global too...

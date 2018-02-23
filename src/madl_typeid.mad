@@ -47,15 +47,15 @@ assert(miscmap, "missing MAD extension (no cdata metatable access)")
 Metamethods notes:
 ------------------
  - list of metanames from lj_obj.h, augmented with
-   copy + exec + init + kpairs + same + totable
+   copy + exec + init + same + totable
  - API extended to retrieve metatables of cdata for concepts checks.
 ]]
 
 local metaname = {
   '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
-  '__index', '__init', '__ipairs', '__kpairs', '__le', '__len', '__lt',
-  '__metatable', '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs',
-  '__pow', '__same', '__sub', '__tostring', '__totable', '__unm',
+  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+  '__same', '__sub', '__tostring', '__totable', '__unm',
 }
 for _,v in ipairs(metaname) do metaname[v] = v end -- build dict of metaname
 
@@ -99,46 +99,42 @@ Concept notes:
 - default is set to invalid_use up to newindex, and to nil after.
 ]]
 
-local concept = {                             --     1,       2,      32,      4
-  not_lengthable   = 2^0,         '__len',    -- __len,        ,        ,
-  not_iterable     = 2^1,         '__ipairs', --      ,__ipairs,        ,
-  not_keyrable     = 2^5,                     --      ,        ,__kpairs,
-  not_mappable     = 2+32+2^2,    '__pairs',  --      ,__ipairs,__kpairs,__pairs
-  not_scannable    = 1+2+32+4,                -- __len,__ipairs,__kpairs,__pairs
+local concept = {                             --     1,        2,       4
+  not_lengthable   = 2^0,         '__len',    -- __len,         ,
+  not_iterable     = 2^1,         '__ipairs', --      , __ipairs,
+  not_mappable     = 2^1+2^2,     '__pairs',  --      , __ipairs, __pairs
+  not_scannable    = 2^0+2^1+2^2,             -- __len, __ipairs, __pairs
   not_indexable    = 2^3,         '__index',
   not_extendable   = 2^4,         '__newindex',
-                 --[[2^5,]]       '__kpairs', -- from here, default is nil
-  not_callable     = 2^6,         '__call',
-  not_orderable    = 2^7+2^8,     '__lt', '__le',
-  not_comparable   = 128+256+2^9, '__eq',     -- __lt, __le, __eq
-  not_concatenable = 2^10,        '__concat',
-  not_copiable     = 2^11+2^12,   '__copy', '__same',
-  not_tablable     = 2^13,        '__totable',
-  not_stringable   = 2^14,        '__tostring',
-  not_mutable      = 2^15,        '__metatable',
+
+  not_callable     = 2^5,         '__call',   -- from here, default is nil
+  not_orderable    = 2^6+2^7,     '__lt', '__le',
+  not_comparable   = 2^6+2^7+2^8, '__eq',     -- __lt, __le, __eq
+  not_concatenable = 2^9,         '__concat',
+  not_copiable     = 2^10+2^11,   '__copy', '__same',
+  not_tablable     = 2^12,        '__totable',
+  not_stringable   = 2^13,        '__tostring',
+  not_mutable      = 2^14,        '__metatable',
 }
 for _,v in ipairs(concept) do -- build dict of concepts
   concept[v] = invalid_use
   if v == '__newindex' then break end -- nil is enough after __newindex
 end
 
-local not_iterable, not_keyrable, not_mutable in concept
+local not_iterable, not_mappable, not_mutable in concept
 
-local function set_concept (mt, cnc, strict_)
+local function set_concept (mt, cncpt, strict_)
   local mt = mt or {}
   assert(mt.__metatable == nil, "invalid argument #1 (mutable metatable expected)")
   for i,v in ipairs(concept) do
-    if band(cnc, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
+    if band(cncpt, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
       mt[v] = concept[v]
     end
   end
-  if band(cnc, not_keyrable) ~= 0 and mt.__pairs == nil then
-    mt.__pairs = mt.__ipairs  -- ensure pairs = ipairs + kpairs
+  if band(cncpt, not_mappable) ~= 0 and mt.__ipairs ~= nil then
+    mt.__pairs = mt.__ipairs -- pairs is a superset of ipairs
   end
-  if band(cnc, not_iterable) ~= 0 and mt.__pairs == nil then
-    mt.__pairs = mt.__kpairs  -- ensure pairs = ipairs + kpairs
-  end
-  if band(cnc, not_mutable) ~= 0 then
+  if band(cncpt, not_mutable) ~= 0 then
     mt.__metatable = mt
     setmetatable(mt, {__newindex=invalid_use, __metatable=false})
   end
@@ -215,7 +211,6 @@ local typeid = {
   is_lengthable   = \a ->                                    type(a) == 'string' or
                           has_metamethod (a,'__len'   )   or type(a) == 'table',
   is_iterable     = \a -> has_metamethod (a,'__ipairs')   or type(a) == 'table',
-  is_keyrable     = \a -> has_metamethod_(a,'__kpairs')   or type(a) == 'table',
   is_mappable     = \a -> has_metamethod (a,'__pairs' )   or type(a) == 'table',
   is_indexable    = \a -> has_metamethod (a,'__index' )   or type(a) == 'table',
   is_extendable   = \a -> has_metamethod (a,'__newindex') or type(a) == 'table',
