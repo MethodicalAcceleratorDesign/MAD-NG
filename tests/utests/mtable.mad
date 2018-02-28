@@ -28,7 +28,7 @@ local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
   assertStrContains, assertErrorMsgContains                      in MAD.utest
 local mtable, filesys                                            in MAD
 local is_table, is_vector, is_mtable, is_number                  in MAD.typeid
-local abs, eps, pi                                               in MAD.gmath
+local abs, eps, pi, random                                       in MAD.gmath
 
 local generate = false
 local refdir   = \s -> "mtable_ref/"..s
@@ -53,6 +53,18 @@ local function getRows(i)
   local row2 = { 'name'..i, -i, pi*i, i         }
   local row3 = { i        , -i, pi*i, 'name'..i }
   return row1, row2, row3
+end
+
+local function getCols(n)
+  n = n or 4
+  local coli, col2, col3, coldict = {}, {}, {}, {}
+  for i=1,n do
+    coli[i]    =  i
+    col2[i]    = -i
+    col3[i]    =  i*pi
+    coldict[i] = (i == 2) and "name2" or "name1"
+  end
+  return coli, col2, col3, coldict
 end
 
 local function getIdxTbl()
@@ -375,7 +387,6 @@ end
 function TestMTable:testGetSimple()
   local tbl1, tbl2, tbl3 = getEmptyTables()
   local row1, row2, row3 = getRows()
-  local tbl22 = tbl2   "tbl22" { }
   tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row3)
   for i,v in ipairs(row1) do assertEquals(tbl1:get(1, i), row1[i]) end
   for i,v in ipairs(row2) do assertEquals(tbl2:get(1, i), row2[i]) end
@@ -1081,7 +1092,198 @@ function TestMTable:testGetColName()
   assertVecEquals(tbl3:getcol("dict"), coldict)
 end
 
+function TestMTable:testGetIdx()
+  local tbl1, tbl2, tbl3          = getIdxTbl()
+  local coli, col2, col3, coldict = getCols()
+  local val1    = { coli    , col2   , col3             }
+  local val2    = { coldict , col2   , col3   , coli    }
+  local val3    = { coli    , col2   , col3   , coldict }
+  -- positive idx
+  for i=1,4 do
+    for j=1,3 do assertEquals(tbl1:get(i,j), val1[j][i]) end
+    for j=1,4 do
+      assertEquals(tbl2:get(i,j), val2[j][i])
+      assertEquals(tbl3:get(i,j), val3[j][i])
+    end
+  end
+  -- negative idx
+  for i=-4,-1 do
+    for j=-3,-1 do assertEquals(tbl1:get(i,j), val1[4+j][5+i]) end
+    for j=-4,-1 do
+      assertEquals(tbl2:get(i,j), val2[5+j][5+i])
+      assertEquals(tbl3:get(i,j), val3[5+j][5+i])
+    end
+  end
+end
+
+function TestMTable:testGetNamedCol()
+  local tbl1, tbl2, tbl3          = getIdxTbl()
+  local coli, col2, col3, coldict = getCols()
+  for i=1,4 do
+    assertEquals(tbl1:get(i, "x"   ), coli[i]   )
+    assertEquals(tbl1:get(i, "y"   ), col2[i]   )
+    assertEquals(tbl1:get(i, "z"   ), col3[i]   )
+    assertEquals(tbl2:get(i, "dict"), coldict[i])
+    assertEquals(tbl2:get(i, "x"   ), col2[i]   )
+    assertEquals(tbl2:get(i, "y"   ), col3[i]   )
+    assertEquals(tbl2:get(i, "z"   ), coli[i]   )
+    assertEquals(tbl3:get(i, "x"   ), coli[i]   )
+    assertEquals(tbl3:get(i, "y"   ), col2[i]   )
+    assertEquals(tbl3:get(i, "z"   ), col3[i]   )
+    assertEquals(tbl3:get(i, "dict"), coldict[i])
+  end
+end
+
+function TestMTable:testGetNamedRow()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for i,tbl in ipairs{tbl2, tbl3} do
+    assertEquals(tbl:get("name1",2), -1)
+    assertEquals(tbl:get("name2",2), -2)
+  end
+end
+
+function TestMTable:testGetNamedRowRef()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for i,tbl in ipairs{tbl2, tbl3} do
+    assertEquals(tbl:get("name1",2, 1), -1)
+    assertEquals(tbl:get("name1",2,-3), -1)
+    assertEquals(tbl:get("name1",2, 2), -3)
+    assertEquals(tbl:get("name1",2,-2), -3)
+    assertEquals(tbl:get("name1",2, 3), -4)
+    assertEquals(tbl:get("name1",2,-1), -4)
+  end
+end
+
+function TestMTable:testGetInvalid()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for i,tbl in ipairs{tbl1, tbl2, tbl3} do
+    assertNil(tbl:get( 6    , 1     ))
+    assertNil(tbl:get(-6    , 1     ))
+    assertNil(tbl:get( 1    , "none"))
+    assertNil(tbl:get( 1    , 6     ))
+    assertNil(tbl:get( 1    ,-6     ))
+  end
+  for i,tbl in ipairs{tbl2, tbl3} do
+    assertNil(tbl:get("name1"   , 1, 4))
+    assertNil(tbl:get("name1[2]", 1   ))
+    assertNil(tbl:get("name1"   , 1,-4))
+  end
+end
+
+function TestMTable:testSetIdx()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local last = 1
+  local r = \ => last = random() return last end
+  for i=1,4 do
+    for j=1,3 do
+      tbl1:set(i  , j  , r()); assertEquals(tbl1:get(i  , j  ), last)
+      tbl1:set(i-5, j-4, r()); assertEquals(tbl1:get(i-5, j-4), last)
+      tbl3:set(i  , j  , r()); assertEquals(tbl3:get(i  , j  ), last)
+      tbl3:set(i-5, j-5, r()); assertEquals(tbl3:get(i-5, j-5), last)
+    end
+    for j=2,4 do
+      tbl2:set(i  , j  , r()); assertEquals(tbl2:get(i  , j  ), last)
+      tbl2:set(i-5, j-5, r()); assertEquals(tbl2:get(i-5, j-5), last)
+    end
+  end
+end
+
+function TestMTable:testSetNamedCol()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local last = 1
+  local r    = \ => last = random() return last end
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    for _,key in ipairs{"x", "y", "z"} do
+      for i=1,4 do
+        tbl:set(i, key, r()); assertEquals(tbl:get(i, key),last)
+      end
+    end
+  end
+end
+
+function TestMTable:testSetNamedRow()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local last = 1
+  local r    = \ => last = random() return last end
+  for i,tbl in ipairs{tbl2, tbl3} do
+    tbl:set("name1", 2, r()); assertEquals(tbl:get("name1", 2), last)
+    tbl:set("name2", 2, r()); assertEquals(tbl:get("name2", 2), last)
+  end
+end
+
+function TestMTable:testGetNamedRowRef()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local last = 1
+  local r    = \ => last = random() return last end
+  for i,tbl in ipairs{tbl2, tbl3} do
+    tbl:set("name1", 2, r(), 1); assertEquals(tbl:get("name1", 2, 1), last)
+    tbl:set("name1", 2, r(),-3); assertEquals(tbl:get("name1", 2,-3), last)
+    tbl:set("name1", 2, r(), 2); assertEquals(tbl:get("name1", 2, 2), last)
+    tbl:set("name1", 2, r(),-2); assertEquals(tbl:get("name1", 2,-2), last)
+    tbl:set("name1", 2, r(), 3); assertEquals(tbl:get("name1", 2, 3), last)
+    tbl:set("name1", 2, r(),-1); assertEquals(tbl:get("name1", 2,-1), last)
+  end
+end
+
+function TestMTable:testSetInvalid()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local v   = 241
+  local msg = {
+    "row index out of bounds",
+    "invalid argument #3 (valid column expected)",
+    "invalid argument #2 (valid row[cnt] expected)",
+    "invalid argument #2 (valid row expected)",
+  }
+  for i,tbl in ipairs{tbl1, tbl2, tbl3} do
+    assertErrorMsgContains(msg[1], mtable.set, tbl,  6        , 1     , v)
+    assertErrorMsgContains(msg[1], mtable.set, tbl, -6        , 1     , v)
+    assertErrorMsgContains(msg[2], mtable.set, tbl,  1        , "none", v)
+    assertErrorMsgContains(msg[2], mtable.set, tbl,  1        , 6     , v)
+    assertErrorMsgContains(msg[2], mtable.set, tbl,  1        ,-6     , v)
+  end
+  for i,tbl in ipairs{tbl2, tbl3} do
+    assertErrorMsgContains(msg[3], mtable.set, tbl, "name1"   , 1     , v, 4)
+    assertErrorMsgContains(msg[3], mtable.set, tbl, "name1"   , 1     , v,-4)
+    assertErrorMsgContains(msg[4], mtable.set, tbl, "name1[2]", 1     , v   )
+  end
+end
+
+function TestMTable:testSetDict()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for i,tbl in ipairs{tbl2, tbl3} do
+    tbl:set("name1", "dict", "name5"   ); assertEquals(tbl:get("name5", 2),-1)
+    tbl:set("name1", "dict", "name6", 2); assertEquals(tbl:get("name6", 2),-4)
+    tbl:set("name1", "dict", "name7", 1); assertEquals(tbl:get("name7", 2),-3)
+  end
+end
+
 -------------------------------------------------------------------------------o
+
+function TestMTable:testAddCol()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local col1 = {"v1", "v2", "v3", "v4"}
+  local col2 = \i -> i
+  local col3 = {10  , 20  , 30  , 40  }
+  local col4 = \i -> i+1
+  for i,tbl in ipairs{tbl1} do
+    -- tbl:addcol("col2", col2) -- TODO[BUG]
+    -- tbl:addcol("col1", col1)
+    -- tbl:addcol("col4", col4)
+    -- tbl:addcol("col3", col3)
+    -- test value
+    for i=1,4 do
+      -- assertEquals(tbl:getcol("col1")[i], col1[i])
+      -- assertEquals(tbl:getcol("col2")[i], col2(i))
+      -- assertEquals(tbl:getcol("col3")[i], col3[i])
+      -- assertEquals(tbl:getcol("col4")[i], col4(i))
+    end
+    -- test order
+    -- assertEquals(tbl:getcol("col1"), tbl:getcol(-4))
+    -- assertEquals(tbl:getcol("col2"), tbl:getcol(-2))
+    -- assertEquals(tbl:getcol("col3"), tbl:getcol(-3))
+    -- assertEquals(tbl:getcol("col4"), tbl:getcol(-1))
+  end
+end
 
 function TestMTable:testAddCol42()
   local tbl1  = mtable "tbl1"  { }
@@ -1330,62 +1532,6 @@ function TestMTable:testRemCol()
 --  for i=1,4 do assertErrorMsgContains(msg[1], mtable.remcol, tbl2, i) end
 --  assertErrorMsgContains(msg[1], mtable.remcol, tbl1, 100)
   assertErrorMsgContains(msg[2], mtable.remcol, tbl1, "none")
-end
-
-function TestMTable:testGetSet()
-  local tbl1     = mtable "tbl1"  { "x", "y", "z" }
-  local tbl2     = mtable "tbl2"  { {"dict"}, "x", "y", "z" }
-  local tbl22    = tbl2   "tbl22" { }
-  local v        = 271
-  for i=1,3 do tbl1:addrow{1,2,3}; tbl2:addrow{"v0",1,2,3} end
-
-  for i=1,3 do
-    for j=1,3 do
-      tbl1:set(i  , j  , j*v+i); assertEquals(tbl1:get(i  , j  ), j*v+i)
-      tbl1:set(i  , j-4, j*v+i); assertEquals(tbl1:get(i  , j-4), j*v+i)
-      tbl1:set(i-4, j  , j*v+i); assertEquals(tbl1:get(i-4, j  ), j*v+i)
-      tbl1:set(i-4, j-4, j*v+i); assertEquals(tbl1:get(i-4, j-4), j*v+i)
-    end
-    for j=2,4 do
-      tbl2:set(i  , j  , j*v+i); assertEquals(tbl2:get(i  , j  ), j*v+i)
-      tbl2:set(i  , j-5, j*v+i); assertEquals(tbl2:get(i  , j-5), j*v+i)
-      tbl2:set(i-4, j  , j*v+i); assertEquals(tbl2:get(i-4, j  ), j*v+i)
-      tbl2:set(i-4, j-5, j*v+i); assertEquals(tbl2:get(i-4, j-5), j*v+i)
-
-      assertEquals(tbl22:get(i  , j  ), j*v+i)
-      assertEquals(tbl22:get(i  , j-5), j*v+i)
-      assertEquals(tbl22:get(i-4, j  ), j*v+i)
-      assertEquals(tbl22:get(i-4, j-5), j*v+i)
-    end
-    for j,v1 in ipairs{"x","y","z"} do
-      tbl1:set(i , v1, j*v+i); assertEquals(tbl1:get(i , v1), j*v+i)
-      tbl2:set(i , v1, j*v+i); assertEquals(tbl2:get(i , v1), j*v+i)
-      tbl22:set(i, v1, j*v+i); assertEquals(tbl22:get(i, v1), j*v+i)
-    end
-    -- tbl2:set(i, 1     , "v1")                     -- TODO update dictionary
-    -- assertEquals(tbl2 :get(i, 1), "v1")
-    -- assertEquals(tbl22:get(i, 1), "v1")
-
-    -- tbl2:set(i, "dict", "v2")
-    -- assertEquals(tbl2 :get(i, "dict"), "v2")
-    -- assertEquals(tbl22:get(i, "dict"), "v2")
-
-    -- tbl2:set("v2", 2, v+2*i, i)
-    -- assertEquals(tbl2 :get("v2", 2, i), v+2*i)
-    -- assertEquals(tbl22:get("v2", 2, i), v+2*i)
-
-    -- tbl2:set("v2", "x", v+3*i, i)
-    -- assertEquals(tbl2 :get("v2", "x" , i), v+3*i)
-    -- assertEquals(tbl22:get("v2", "x" , i), v+3*i)
-
-    -- tbl2:set("v2", 2  , v+4*i, i-4)
-    -- assertEquals(tbl2 :get("v2", 2, i-4), v+4*i)
-    -- assertEquals(tbl22:get("v2", 2, i-4), v+4*i)
-
-    -- tbl2:set("v2", "x", v+5*i, i-4)
-    -- assertEquals(tbl2 :get("v2", "x", i-4), v+5*i)
-    -- assertEquals(tbl22:get("v2", "x", i-4), v+5*i)
-  end
 end
 
 function TestMTable:testNoVector()
