@@ -115,10 +115,14 @@ local function assertFiles (name)
       assertEquals(runtbl[i], reftbl[i])
     end
   end
-  if not generate then os.remove(rundir(name)) end
+  if not generate then
+    os.remove(rundir(name))
+    filesys.rmdir(rundir(""))
+  end
 end
 
 local function testWrite(tbl, filnam_, colnam_, hdrnam_)
+  filesys.mkdir(rundir(""))
   tbl:write(rundir(filnam_), colnam_, hdrnam_)
   if string.sub(filnam_,-4) ~= '.tfs' then filnam_ = filnam_ .. '.tfs' end
   assertFiles(filnam_)
@@ -2261,6 +2265,80 @@ function TestMTable:testBuildIndexInvalid()
   assertErrorMsgContains(msg[1], mtable.build_index, tbl, "nonecol")
 end
 
+function TestMTable:testWriteExtensions()
+  local tbl = mtable "tbl1" { "x", "y", "z" }
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  testWrite(tbl, "tbl-name1")
+  testWrite(tbl, "tbl-name2.tfs")
+end
+
+function TestMTable:testWriteDict()
+  local _, tbl2, tbl3 = getIdxTbl()
+  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
+  tbl3.time, tbl3.date, tbl3.origin = "", "", ""
+  testWrite(tbl2, "tbl-dict2")
+  testWrite(tbl3, "tbl-dict3")
+end
+
+function TestMTable:testWriteCol()
+  local tbl1 = mtable "tbl1" { {"dict"}, "x", "y", "z" }
+  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z", column = {"x", 3}}
+  local row = { "v0", 1, 2, 3 }
+  tbl1.time, tbl1.date, tbl1.origin = "", "", ""
+  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
+  for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
+  testWrite(tbl1, "tbl-col1"          )
+  testWrite(tbl1, "tbl-col2", {"x", 3})
+  testWrite(tbl2, "tbl-col2"          )
+end
+
+function TestMTable:testWriteHeader()
+  local tbl = mtable "tbl" {
+    {"dict"}, "x", "y", "z",
+    header1 = "MyHeader1", header2 = 42,
+    header  = {"header1", "header2"}
+  }
+  local row = { "v0", 1, 2, 3 }
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  for i=1,4 do tbl:addrow(row) end
+  testWrite(tbl, "tbl-header1", nil, { "title", "header1" })
+  testWrite(tbl, "tbl-header2")
+end
+
+function TestMTable:testWriteNovector()
+  local tbl1 = mtable "tbl1" {"x", "y", "z",
+    header   = { "novector" },
+    novector = true
+  }
+  local tbl2 = mtable "tbl2" {"x", "y", "z",
+    header   = { "novector" },
+    novector = { 1, "y" }
+  }
+  local row = { 1, 2, 3 }
+  tbl1.time, tbl1.date, tbl1.origin = "", "", ""
+  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
+  for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
+  testWrite(tbl1, "tbl-novector1")
+  testWrite(tbl2, "tbl-novector2")
+end
+
+function TestMTable:testWriteValues()
+  local tbl = mtable "tbl" {
+    {"name"}, "x", "y", "z",
+    header1  = "header 'whith quote'", header2 = "header \"double quote\"",
+    header3  = 42.5, header4 = true, header5 = { "val", 3 },
+    novector = true, header = { "type", "header1", "header2", "header3",
+    "header4", "header5", "novector" },
+  }
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  tbl:addrow{"name1", 1  , 2    , 3.15}
+  tbl:addrow{"name2", nil, nil  , true}
+  tbl:addrow{"name1", 1  , false, 3.15}
+  tbl:addcol("gen"  , \i->i)
+  tbl:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
+  testWrite(tbl, "tbl-write")
+end
+
 -------------------------------------------------------------------------------o
 
 function TestMTable:testNoVector()
@@ -2313,78 +2391,6 @@ function TestMTable:testNoVector()
   assertTrue(is_table(tbl21:getcol("c2")))
   assertTrue(is_table(tbl22:getcol("c2")))
   assertTrue(is_table(tbl23:getcol("c2")))
-end
-
-function TestMTable:testWrite()
-  filesys.mkdir(rundir(""))
-  local tbl1 = mtable "tbl1" { "x", "y", "z" }
-  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z" }
-  local tbl3 = mtable "tbl3" { {"dict"}, "x", "y", "z", column = {"x", 3}}
-  local tbl4 = mtable "tbl4" {
-    {"dict"}, "x", "y", "z",
-    header1 = "MyHeader1", header2 = 42,
-    header  = {"header1", "header2"}
-  }
-  local tbl5 = mtable "tbl5" {
-    "x", "y", "z",
-    novector = true, header = {"novector"}
-  }
-  local tbl6 = mtable "tbl6" {
-    "x", "y", "z",
-    novector = {1, "y"}, header = {"novector"}
-  }
-  local tbl7 = mtable "tbl7" {
-    {"name"}, "x", "y", "z",
-    header1  = "header 'whith quote'", header2 = "header \"double quote\"",
-    header3  = 42.5, header4 = true, header5 = { "val", 3 }, -- TODO add boolean
-    novector = true, header = { "type", "header1", "header2", "header3",
-    "header4", "header5", "novector" },
-  }
-  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3}
-
-  tbl1.time, tbl1.date, tbl1.origin = "", "", ""
-  tbl2.time, tbl2.date, tbl2.origin = "", "", ""
-  tbl3.time, tbl3.date, tbl3.origin = "", "", ""
-  tbl4.time, tbl4.date, tbl4.origin = "", "", ""
-  tbl5.time, tbl5.date, tbl5.origin = "", "", ""
-  tbl6.time, tbl6.date, tbl6.origin = "", "", ""
-  tbl7.time, tbl7.date, tbl7.origin = "", "", ""
-  tbl1:addrow(row1); tbl1:addrow(row1)
-  tbl2:addrow(row2); tbl2:addrow(row2)
-  tbl3:addrow(row2); tbl3:addrow(row2)
-  tbl4:addrow(row2); tbl4:addrow(row2)
-  tbl5:addrow(row1); tbl5:addrow(row1)
-  tbl6:addrow(row1); tbl6:addrow(row1)
-  tbl7:addrow(row2); tbl7:addrow(row2)
-
-  -- extensions
-  testWrite(tbl1, "tbl-name1")
-  testWrite(tbl1, "tbl-name2.tfs")
-
-  -- with dictionary
-  testWrite(tbl2, "tbl-dict")
-
-  -- choose column
-  testWrite(tbl2, "tbl-col1", {"x", 3})
-  testWrite(tbl3, "tbl-col2")
-
-  -- choose header
-  testWrite(tbl4, "tbl-header1", nil, { "title", "header1" })
-  testWrite(tbl4, "tbl-header2")
-
-  -- novector
-  testWrite(tbl5, "tbl-novector1")
-  testWrite(tbl6, "tbl-novector2")
-
-  -- tbl with quoted string
-  tbl7:addrow{"name1", 1  , 2    , 3.15}
-  tbl7:addrow{"name2", nil, nil  , true}
-  tbl7:addrow{"name1", 1  , false, 3.15}
-  tbl7:addcol("gen"  , \i->i)
-  tbl7:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
-  testWrite(tbl7, "tbl-write")
-
-  if not generate then filesys.rmdir(rundir("")) end
 end
 
 function TestMTable:testRead()
