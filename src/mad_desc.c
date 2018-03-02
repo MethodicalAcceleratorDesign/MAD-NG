@@ -426,7 +426,9 @@ tbl_build_H(D *d)
   // close congruence of the last var
   idx_t var_idx = sort[rows-1];
   H[(rows-1)*cols + vo[var_idx] + 1] = nc;
+#ifdef DEBUG
   tbl_print_H(d);
+#endif
 }
 
 static inline void

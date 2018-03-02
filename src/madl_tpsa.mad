@@ -31,9 +31,6 @@ local istype in ffi
 
 local _C, tostring, complex in MAD
 
--- local mono  = require 'mono'
--- local xxx in MAD.monomial
-
 local monomial                                                   in MAD
 local ident, swap, compose, bind1st                              in MAD.gfunc
 local random, carg, real, imag, conj, norm, proj, rect, polar,
@@ -71,77 +68,45 @@ struct desc { // warning: must be kept identical to C definition
 };            // end of compatibility with Lua FFI (rest is not visible)
 
 struct tpsa { // warning: must be kept identical to C definition
-  const desc_t *d;           // ptr to descriptor
-  const ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
-  const bit_t   nz;          // non-zero homogeneous polynomials
-  num_t   coef[?];
+  const desc_t *const d;     // ptr to descriptor
+  const ord_t lo, hi, mo;    // lowest/highest used ord, trunc ord
+  const bit_t nz;            // non-zero homogeneous polynomials
+  const num_t coef[?];
 };
 
 struct ctpsa { // warning: must be kept identical to C definition
-  const desc_t *d;           // ptr to descriptor
-  const ord_t   lo, hi, mo;  // lowest/highest used ord, trunc ord
-  const bit_t   nz;          // non-zero homogeneous polynomials
-  cnum_t  coef[?];
+  const desc_t *const d;     // ptr to descriptor
+  const ord_t lo, hi, mo;    // lowest/highest used ord, trunc ord
+  const bit_t nz;            // non-zero homogeneous polynomials
+  const cnum_t coef[?];
 };
 
-struct tpsa_ccst { // warning: must be kept identical to C definition
-  desc_t *d;
-  ord_t   lo, hi, mo;
-  bit_t   nz;
+struct tpsa_ccast { // warning: must be kept identical to C definition
+  const desc_t *d;
+  ord_t lo, hi, mo;
+  bit_t nz;
+  num_t coef[?];
 };
 ]]
 
-local  desc_ctor = ffi.typeof ' desc_t '
-local  tpsa_ctor = ffi.typeof ' tpsa_t '
-local  tpsa_cref = ffi.typeof ' tpsa_t&'
-local ctpsa_ctor = ffi.typeof 'ctpsa_t '
-local ctpsa_cref = ffi.typeof 'ctpsa_t&'
+local  desc_ctor = ffi.typeof 'struct  desc '
+local  tpsa_ctor = ffi.typeof 'struct  tpsa '
+local  tpsa_cref = ffi.typeof 'struct  tpsa&'
+local ctpsa_ctor = ffi.typeof 'struct ctpsa '
+local ctpsa_cref = ffi.typeof 'struct ctpsa&'
+local  tpsa_ccst = ffi.typeof 'struct  tpsa_ccast&'
 
-local int_arr    = ffi.typeof 'int     [?]'
-local tpsa_arr   = ffi.typeof 'tpsa_t* [?]'
+local int_arr    = ffi.typeof 'int [?]'
+local tpsa_arr   = ffi.typeof 'struct tpsa* [?]'
 
 local is_desc  = \x -> istype( desc_ctor, x)
 local is_tpsa  = \x -> istype( tpsa_ctor, x)
 local is_ctpsa = \x -> istype(ctpsa_ctor, x)
 local isa_tpsa = \x -> is_tpsa(x) or is_ctpsa(x)
 
--- allocators -----------------------------------------------------------------o
+local desc_curr = nil -- current descriptor (last used)
 
-local function tpsa_alloc (d, mo)
-  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, tpsa = d.nc, nil
-  if len < _C.mad_alloc_threshold then
-    tpsa = tpsa_ctor(len, d, mo, 0, mo, 0) -- VLA
-  else
-    assert(len <= 2^30, "tpsa is too large")
-    local siz = ffi.sizeof(tpsa_ctor, len)
-    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-    tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.mad_free)
-    local t = ffi.cast(tpsa_ccst, tpsa)
-    t.d, t.lo, t.hi, t.mo, t.nz = d, mo, 0, mo, 0
-  end
-  tpsa.coef[0] = 0
-  return tpsa
-end
-
-local function ctpsa_alloc (d, mo)
-  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, ctpsa = d.nc, nil
-  if len < (_C.mad_alloc_threshold/2) then
-    ctpsa = ctpsa_ctor(len, d, mo, 0, mo, 0)
-  else
-    assert(len <= 2^29, "ctpsa is too large")
-    local siz = ffi.sizeof(ctpsa_ctor, len)
-    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-    ctpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
-    local t = ffi.cast(tpsa_ccst, tpsa)
-    t.d, t.lo, t.hi, t.mo, t.nz = d, mo, 0, mo, 0
-  end
-  ctpsa.coef[0] = 0
-  return ctpsa
-end
-
--- ctors ----------------------------------------------------------------------o
+-- descriptors ----------------------------------------------------------------o
 
 -- nv: number of map variables (when mo is a value)
 -- mo: map variables orders (array or value)
@@ -187,27 +152,80 @@ local function desc (nv_, mo_)
   error("invalid combination of arguments (GTPSA descriptor)")
 end
 
+-- allocators -----------------------------------------------------------------o
+
+local function tpsa_alloc (d, mo)
+  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
+  local len, tpsa = d.nc, nil
+  if len < _C.mad_alloc_threshold then
+    tpsa = tpsa_ctor(len, d, mo, 0, mo) -- VLA
+  else
+    assert(len <= 2^30, "tpsa is too large")
+    local siz = ffi.sizeof(tpsa_ctor, len)
+    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
+    tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.mad_free)
+    local t = ffi.cast(tpsa_ccst, tpsa)
+    t.d, t.lo, t.mo = d, mo, mo
+  end
+  desc_curr = d
+  return tpsa
+end
+
+local function ctpsa_alloc (d, mo)
+  assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
+  local len, ctpsa = d.nc, nil
+  if len < (_C.mad_alloc_threshold/2) then
+    ctpsa = ctpsa_ctor(len, d, mo, 0, mo)
+  else
+    assert(len <= 2^29, "ctpsa is too large")
+    local siz = ffi.sizeof(ctpsa_ctor, len)
+    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
+    ctpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
+    local t = ffi.cast(tpsa_ccst, tpsa)
+    t.d, t.lo, t.mo = d, mo, mo
+  end
+  desc_curr = d
+  return ctpsa
+end
+
+-- ctors ----------------------------------------------------------------------o
+
+-- tpsa()        -> last d
 -- tpsa(t)       -> t.mo
 -- tpsa(d)       -> d.mo
 -- tpsa(t|d, mo) -> mo
 
 local function tpsa (td, mo_)
-  if isa_tpsa(td) then
+  if is_number(td) and is_nil(mo_) then
+    mo_, td = td -- right shift
+  end
+  if is_nil(td) then
+    td      = desc_curr or desc(mo_)
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  elseif is_desc(td) then
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   else
-    assert(is_desc(td), "invalid argument #1 (tpsa or descriptor expected)")
-    mo_     = mo_ or td.mo       -- mo = d.mo
+    error("invalid argument #1 (tpsa or descriptor expected)")
   end
   assert(is_number(mo_), "invalid argument #2 (number expected)")
   return tpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
-local function tpsa (td, mo_)
-  if isa_tpsa(td) then
+local function ctpsa (td, mo_)
+  if is_number(td) and is_nil(mo_) then
+    mo_, td = td -- right shift
+  end
+  if is_nil(td) then
+    td      = desc_curr or desc(mo_)
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  elseif is_desc(td) then
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   else
-    assert(is_desc(td), "invalid argument #1 (tpsa or descriptor expected)")
-    mo_     = mo_ or td.mo       -- mo = d.mo
+    error("invalid argument #1 (tpsa or descriptor expected)")
   end
   assert(is_number(mo_), "invalid argument #2 (number expected)")
   return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
