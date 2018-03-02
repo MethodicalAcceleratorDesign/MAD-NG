@@ -40,31 +40,26 @@ local ord_sz = ffi.sizeof 'ord_t'
 
 --[=[
 TODO:
-- compressed representation, maximum order is 32
+- compressed representation, maximum order is 30
 - order encoding: ord = data[i] & 0xFF, idx = data[i] >> 8
 - sizeof(mono_t) == 128 byte (i.e. sink opt)
 
 ffi.cdef[[
-typedef struct { ssz_t n; ssz_t data[31]; } mono_t;
+typedef struct { ssz_t n; ssz_t data[30]; } mono_t;
 ]]
 ]=]
 
 -- for now...
 ffi.cdef[[
-typedef struct { ssz_t n; ord_t data[?]; } mono_t;
+struct mono { const ssz_t n; ord_t data[?]; };
+struct mono_ccast { ssz_t n; ord_t data[?]; };
 ]]
 
-local mono_ctor = ffi.typeof 'mono_t'
+local mono_ctor = ffi.typeof 'struct mono'
+-- local mono_cref = ffi.typeof 'struct mono&'
+-- local mono_ccst = ffi.typeof 'struct mono_ccast&'
 
 local is_mono = \x -> istype(mono_ctor, x)
-
--- allocators -----------------------------------------------------------------o
-
-local function mono_alloc(n)
-  local r = mono_ctor(n)
-  r.n = n
-  return r
-end
 
 -- ctors ----------------------------------------------------------------------o
 
@@ -73,13 +68,13 @@ end
 
 local function mono (n, val_)
   if is_number(n) then
-    local r, v = mono_alloc(n), val_ or 0
+    local r, v = mono_ctor(n, n), val_ or 0
     assert(is_number(v), "invalid argument #2 (number expected)")
     for i=0,n-1 do r.data[i] = v end
     return r
   elseif is_iterable(n) then
     local len, tbl = #n, n
-    local r = mono_alloc(len)
+    local r = mono_ctor(len, len)
     for i=1,len do r.data[i-1] = tbl[i] end
     return r
   end
