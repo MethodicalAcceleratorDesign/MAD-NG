@@ -56,6 +56,13 @@ FUN(desc) (const T *t)
   return t->d;
 }
 
+ssz_t
+FUN(len) (const T *t)
+{
+  assert(t);
+  return mad_desc_tpsa_len(t->d, t->mo);
+}
+
 ord_t
 FUN(ord) (const T *t)
 {
@@ -86,7 +93,8 @@ FUN(newd) (D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
-  T *t = mad_malloc(sizeof(T) + d->nc * sizeof(NUM));
+  ssz_t nc = mad_desc_tpsa_len(d, mo);
+  T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
 
   t->d = d;
   t->lo = t->mo = mo;
@@ -196,8 +204,7 @@ FUN(geti) (const T *t, int i)
   assert(t);
   D *d = t->d;
   ensure(i >= 0 && i < d->nc, "index out of bounds");
-  if (mad_tpsa_strict) // ?
-    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -207,8 +214,7 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx(d,n,m);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -219,8 +225,7 @@ FUN(getm_s) (const T *t, int n, str_t s)
   assert(t && s);
   D *d = t->d;
   idx_t i = mad_desc_get_idx_s(d,n,s);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -231,8 +236,7 @@ FUN(getm_sp) (const T *t, int n, const idx_t m[n])
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx_sp(d,n,m);
-  if (mad_tpsa_strict)
-    ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -260,7 +264,7 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   assert(t);
   D *d = t->d;
   ensure(i >= 0 && i < d->nc, "index out of bounds");
-  ensure(d->ords[i] <= t->mo, "GTPSA order exceeds maximum order");
+  ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
 
