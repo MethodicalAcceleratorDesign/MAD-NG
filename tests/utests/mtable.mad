@@ -3165,7 +3165,90 @@ function TestMTable:testFilterTableDict()
   end
 end
 
+function TestMTable:testSortEmpty()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:sort(\ ())
+  end
+end
+
+function TestMTable:testSort1Row()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1, row2, row3= getRows()
+  local lt    = \r1,r2 -> r1[1] < r2[1]
+  tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row3)
+  tbl1:sort(lt)
+  tbl2:sort(lt)
+  tbl3:sort(lt)
+end
+
+function TestMTable:testSortIncreasing()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local sorted = { -4, -3, -2, -1 }
+  local lt     = \r1,r2 -> r1[2] < r2[2]
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:sort(lt)
+    assertVecEquals(tbl:getcol(2), sorted)
+  end
+end
+
+function TestMTable:testSortDecreasing()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local sorted = { -1, -2, -3, -4 }
+  local gt     = \r1,r2 -> r1[2] > r2[2]
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:sort(gt)
+    assertVecEquals(tbl:getcol(2), sorted)
+  end
+end
 -------------------------------------------------------------------------------o
+
+
+
+function TestMTable:testSort42()
+  local nsort = { 9, 7, 4, 0, 1, 8, 4, 4 }
+
+  local slt1  = { 0, 1, 4, 4, 4, 7, 8, 9 }
+  local slt2  = { 9, 7, 0, 1, 4, 8, 4, 4 }
+  local slt3  = { 1, 7, 4, 0, 4, 8, 9, 4 }
+  local slt4  = { 9, 7, 1, 0, 4, 8, 4, 4 }
+
+  local sgt1  = { 9, 8, 7, 4, 4, 4, 1, 0 }
+  local sgt2  = { 9, 7, 8, 4, 1, 0, 4, 4 }
+  local sgt3  = { 9, 7, 4, 0, 4, 8, 1, 4 }
+  local sgt4  = { 9, 7, 4, 0, 1, 8, 4, 4 }
+
+  local sel   = { [9]=true, [7]=true, [1]=true }
+  local lt    = \r1,r2 -> r1[1] < r2[1]
+  local gt    = \r1,r2 -> r1[1] > r2[1]
+  local assertSort = \cmp,val,... =>
+    local tbl = mtable "tbl" { "v1", "v2" }
+    for i,v in ipairs(nsort) do tbl:addrow{v, v} end
+    tbl:deselect(); tbl:select(nil, \r,i -> sel[r[1]])
+    tbl:sort(cmp, ...)
+    for i,row in tbl:iter() do
+      assertEquals(row[1], val[i])
+      assertEquals(row[2], val[i])
+      -- test if column[0] is also sorted
+      if sel[row[1]]
+      then assertTrue (row[0])
+      else assertFalse(row[0])
+      end
+    end
+  end
+
+  -- sort increasing
+  assertSort(lt, slt1)
+  assertSort(lt, slt2, {3,6})
+  assertSort(lt, slt3, nil  , \r,i -> i%2 == 1)
+  assertSort(lt, slt4, {3,6}, \r,i -> i%2 == 1)
+
+  -- sort decreasing
+  assertSort(gt, sgt1)
+  assertSort(gt, sgt2, {3,6})
+  assertSort(gt, sgt3, nil  , \r,i -> i%2 == 1)
+  assertSort(gt, sgt4, {3,6}, \r,i -> i%2 == 1)
+end
 
 function TestMTable:testNoVector()
   local tbl11 = mtable "tbl11" { "x", "y", "z" }
@@ -3250,51 +3333,6 @@ function TestMTable:testSetReadOnly()
 
   -- TODO test for add sort, remove, insert, cycle,
   -- TODO select
-end
-
-function TestMTable:testSort()
-  local nsort = { 9, 7, 4, 0, 1, 8, 4, 4 }
-
-  local slt1  = { 0, 1, 4, 4, 4, 7, 8, 9 }
-  local slt2  = { 9, 7, 0, 1, 4, 8, 4, 4 }
-  local slt3  = { 1, 7, 4, 0, 4, 8, 9, 4 }
-  local slt4  = { 9, 7, 1, 0, 4, 8, 4, 4 }
-
-  local sgt1  = { 9, 8, 7, 4, 4, 4, 1, 0 }
-  local sgt2  = { 9, 7, 8, 4, 1, 0, 4, 4 }
-  local sgt3  = { 9, 7, 4, 0, 4, 8, 1, 4 }
-  local sgt4  = { 9, 7, 4, 0, 1, 8, 4, 4 }
-
-  local sel   = { [9]=true, [7]=true, [1]=true }
-  local lt    = \r1,r2 -> r1[1] < r2[1]
-  local gt    = \r1,r2 -> r1[1] > r2[1]
-  local assertSort = \cmp,val,... =>
-    local tbl = mtable "tbl" { "v1", "v2" }
-    for i,v in ipairs(nsort) do tbl:addrow{v, v} end
-    tbl:deselect(); tbl:select(nil, \r,i -> sel[r[1]])
-    tbl:sort(cmp, ...)
-    for i,row in tbl:iter() do
-      assertEquals(row[1], val[i])
-      assertEquals(row[2], val[i])
-      -- test if column[0] is also sorted
-      if sel[row[1]]
-      then assertTrue (row[0])
-      else assertFalse(row[0])
-      end
-    end
-  end
-
-  -- sort increasing
-  assertSort(lt, slt1)
-  assertSort(lt, slt2, {3,6})
-  assertSort(lt, slt3, nil  , \r,i -> i%2 == 1)
-  assertSort(lt, slt4, {3,6}, \r,i -> i%2 == 1)
-
-  -- sort decreasing
-  assertSort(gt, sgt1)
-  assertSort(gt, sgt2, {3,6})
-  assertSort(gt, sgt3, nil  , \r,i -> i%2 == 1)
-  assertSort(gt, sgt4, {3,6}, \r,i -> i%2 == 1)
 end
 
 function TestMTable:testCopy()
