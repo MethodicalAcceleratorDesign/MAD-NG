@@ -2946,8 +2946,8 @@ end
 
 function TestMTable:testForeachTableKind()
   local _, tbl2, tbl3 = getIdxTbl()
-  local kinds = {"kind1", "kind2", "kind1", "kind1"}
-  local idxs = {1, 3, 4}
+  local kinds = { "kind1", "kind2", "kind1", "kind1" }
+  local idxs  = { 1, 3, 4 }
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
@@ -2960,6 +2960,79 @@ function TestMTable:testForeachTableKind()
     i = 1
     tbl:foreach{action=act, kind="kind1"}
     assertEquals(i, 4)
+  end
+end
+
+function TestMTable:testSelect()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local assertSelect = \tbl,min,max =>
+    for i=1,#tbl do
+      if min <= i and i < max
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    for i=1,#tbl do tbl[i][0] = false end
+  end
+
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    -- deselect all
+    for i=1,#tbl do tbl[i][0] = false end
+    assertSelect(tbl:select()                              , 1, 5)
+    assertSelect(tbl:select(nil  , nil, true)              , 1, 1)
+    assertSelect(tbl:select({2,4})                         , 2, 5)
+    assertSelect(tbl:select({2,4}, nil, true)              , 2, 5)
+    assertSelect(tbl:select(nil,   \r,i -> 2 < i and i < 4), 3, 4)
+    assertSelect(tbl:select({1,3}, \r,i -> 1 < i and i < 4), 2, 4)
+  end
+end
+
+function TestMTable:testSelectTable()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local assertSelect = \tbl,min,max =>
+    for i=1,#tbl do
+      if min <= i and i < max
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    for i=1,#tbl do tbl[i][0] = false end
+  end
+
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    -- deselect all
+    for i=1,#tbl do tbl[i][0] = false end
+    assertSelect(tbl:select{ }                                        , 1, 5)
+    assertSelect(tbl:select{ default=true }                           , 1, 1)
+    assertSelect(tbl:select{ default="none" }                         , 1, 1)
+    assertSelect(tbl:select{ range={2,4} }                            , 2, 5)
+    assertSelect(tbl:select{ range={2,4}, default=true }              , 2, 5)
+    assertSelect(tbl:select{ range={2,4}, default="none" }            , 2, 5)
+    assertSelect(tbl:select{ select=\r,i -> 2 < i and i < 4 }         , 3, 4)
+    assertSelect(tbl:select{ range={1,3}, select=\r,i -> 1<i and i<4 }, 2, 4)
+  end
+end
+
+function TestMTable:testSelectTableDict()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local kinds = { "kind1", "kind2", "kind1", "kind1" }
+  local test = { true, false, true, true }
+  local assertSelect = \tbl =>
+    for i=1,#tbl do
+      if test[i]
+      then assertTrue (tbl[i][0])
+      else assertFalse(tbl[i][0])
+      end
+    end
+    for i=1,#tbl do tbl[i][0] = false end
+  end
+
+  for _,tbl in ipairs{tbl2, tbl3} do
+    -- deselect all
+    for i=1,#tbl do tbl[i][0] = false end
+    tbl:addcol("kind", kinds)
+    assertSelect(tbl:select{ pattern = "name1" })
+    assertSelect(tbl:select{ kind    = "kind1" })
   end
 end
 
@@ -3048,58 +3121,6 @@ function TestMTable:testSetReadOnly()
 
   -- TODO test for add sort, remove, insert, cycle,
   -- TODO select
-end
-
-function TestMTable:testSelect()
-  local tbl  = mtable "tbl" { {"dict"} }
-  local tbl2 = mtable "tbl" { {"dict"}, "kind" }
-  local val  = { "v1", "v2", "v3", "v4", "v0", "v1", "v0", "v0" }
-  local val2 = { "kind1", "kind2" }
-  local val3 = { [5]=true, [7]=true, [8]=true }
-  local assertSelect = \tbl,min,max,step =>
-    for i=1,8,step or 1 do
-      if min <= i and i < max
-      then assertTrue (tbl[i][0])
-      else assertFalse(tbl[i][0])
-      end
-    end
-    tbl:deselect()
-  end
-  local assertSelect2 = \tbl,key =>
-    for i=1,8 do
-      if key[i]
-      then assertTrue (tbl[i][0])
-      else assertFalse(tbl[i][0])
-      end
-    end
-    tbl:deselect()
-  end
-
-  for i,v in ipairs(val) do tbl:addrow{v}; tbl2:addrow{v, val2[i%2]} end
-  tbl:deselect(); tbl2:deselect();
-
-  assertSelect(tbl:select()                              , 1, 9)
-  assertSelect(tbl:select(nil  , nil, true)              , 1, 1)
-  assertSelect(tbl:select({2,6})                         , 2, 7)
-  -- assertSelect(tbl:select({2,6}, nil, true)              , 1, 1) -- TODO change of behavior
-  assertSelect(tbl:select(nil,   \r,i -> 1 < i and i < 7), 2, 7)
-  assertSelect(tbl:select({3,5}, \r,i -> 1 < i and i < 7), 3, 6)
-  assertSelect(tbl:select(nil,   \r,i -> i%2 == 1       ), 1, 9, 2)
-
-  -- argument packed in a table (equivalent to test above)
-  assertSelect(tbl:select{ }                                        , 1, 9)
-  -- assertSelect(tbl:select{ default=true }                           , 1, 1) -- TODO change of behavior
-  -- assertSelect(tbl:select{ default="none" }                         , 1, 1) -- TODO change of behavior
-  assertSelect(tbl:select{ range={2,6} }                            , 2, 7)
-  -- assertSelect(tbl:select{ range={2,6}, default=true }              , 1, 1) -- TODO change of behavior
-  -- assertSelect(tbl:select{ range={2,6}, default="none" }            , 1, 1) -- TODO change of behavior
-  assertSelect(tbl:select{ select=\r,i -> 1 < i and i < 7 }         , 2, 7)
-  assertSelect(tbl:select{ range={3,5}, select=\r,i -> 1<i and i<7 }, 3, 6)
-  assertSelect(tbl:select{ select=\r,i -> i%2 == 1 }                , 1, 9, 2)
-
-  -- argument packed in a table (test new capabilities)
-  assertSelect2(tbl:select{ pattern="0"  }, val3)
-  assertSelect(tbl2:select{ kind="kind1" }, 1, 9, 2)
 end
 
 function TestMTable:testDeselect()
