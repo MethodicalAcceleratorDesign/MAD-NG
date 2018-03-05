@@ -27,7 +27,7 @@
 local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
   assertStrContains, assertErrorMsgContains                      in MAD.utest
 local mtable, filesys                                            in MAD
-local is_table, is_vector, is_mtable, is_number                  in MAD.typeid
+local is_vector, is_mtable, is_number                            in MAD.typeid
 local abs, eps, pi, random                                       in MAD.gmath
 
 local generate = false
@@ -1204,7 +1204,7 @@ function TestMTable:testSetNamedRow()
   end
 end
 
-function TestMTable:testGetNamedRowRef()
+function TestMTable:testSetNamedRowRef()
   local _, tbl2, tbl3 = getIdxTbl()
   local last = 1
   local r    = \ => last = random() return last end
@@ -1248,6 +1248,45 @@ function TestMTable:testSetDict()
     tbl:set("name1", "dict", "name6", 2); assertEquals(tbl:get("name6", 2),-4)
     tbl:set("name1", "dict", "name7", 1); assertEquals(tbl:get("name7", 2),-3)
   end
+end
+
+function TestMTable:testNoVector()
+  local tbl1 = mtable "tbl1" { "x", "y", "z", novector = true }
+  local tbl2 = mtable "tbl2" { "x", "y", "z", novector = {"x", "y"} }
+  local row  = { 1, 2, 3 }
+  for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
+  assertFalse(is_vector(tbl1:getcol(1)))
+  assertFalse(is_vector(tbl1:getcol(2)))
+  assertFalse(is_vector(tbl1:getcol(3)))
+  assertFalse(is_vector(tbl2:getcol(1)))
+  assertFalse(is_vector(tbl2:getcol(2)))
+  assertTrue (is_vector(tbl2:getcol(3)))
+end
+
+function TestMTable:testNoVectorInheritance()
+  local parent1 = mtable  "parent1" { "w", "x", novector = true  }
+  local parent2 = mtable  "parent2" { "w", "x", novector = {"w"} }
+  local child1  = parent1 "child1"  { "y", "z", novector = {"y"} }
+  local child2  = parent2 "child2"  { "y", "z", novector = {"y"} }
+  local child3  = parent2 "child3"  { "y", "z", novector = true  }
+  local row     = { 1, 2, 3, 4 }
+
+  for i=1,4 do child1:addrow(row); child2:addrow(row); child3:addrow(row) end
+
+  assertFalse(is_vector(child1:getcol(1)))
+  assertFalse(is_vector(child1:getcol(2)))
+  assertFalse(is_vector(child1:getcol(3)))
+  assertTrue (is_vector(child1:getcol(4)))
+
+  assertFalse(is_vector(child2:getcol(1)))
+  assertTrue (is_vector(child2:getcol(2)))
+  assertFalse(is_vector(child2:getcol(3)))
+  assertTrue (is_vector(child2:getcol(4)))
+
+  assertFalse(is_vector(child3:getcol(1)))
+  assertFalse(is_vector(child3:getcol(2)))
+  assertFalse(is_vector(child3:getcol(3)))
+  assertFalse(is_vector(child3:getcol(4)))
 end
 
 function TestMTable:testAddCol()
@@ -3300,12 +3339,12 @@ function TestMTable:testCopyNoVector()
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
   local cpy1 = tbl1:copy()
   local cpy2 = tbl2:copy()
-  assertTrue(is_table (cpy1:getcol(1)))
-  assertTrue(is_table (cpy1:getcol(2)))
-  assertTrue(is_table (cpy1:getcol(3)))
-  assertTrue(is_table (cpy2:getcol(1)))
-  assertTrue(is_table (cpy2:getcol(2)))
-  assertTrue(is_vector(cpy2:getcol(3)))
+  assertFalse(is_vector(cpy1:getcol(1)))
+  assertFalse(is_vector(cpy1:getcol(2)))
+  assertFalse(is_vector(cpy1:getcol(3)))
+  assertFalse(is_vector(cpy2:getcol(1)))
+  assertFalse(is_vector(cpy2:getcol(2)))
+  assertTrue (is_vector(cpy2:getcol(3)))
   assertEquals(cpy1.novector, tbl1.novector)
   assertEquals(cpy2.novector, tbl2.novector)
 end
@@ -3356,58 +3395,6 @@ function TestMTable:testRemoveDict()
 end
 
 -------------------------------------------------------------------------------o
-
-function TestMTable:testNoVector()
-  local tbl11 = mtable "tbl11" { "x", "y", "z" }
-  local tbl12 = mtable "tbl12" { "x", "y", "z", novector = true }
-  local tbl13 = mtable "tbl13" { "x", "y", "z", novector = {"x", "y"} }
-  local tbl21 = mtable "tbl21" { {"dict"}, "x", "y", "z" }
-  local tbl22 = mtable "tbl22" { {"dict"}, "x", "y", "z", novector = true }
-  local tbl23 = mtable "tbl23" { {"dict"}, "x", "y", "z", novector = {"x", "y"} }
-  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3}
-  local col1, col2 = { 10, 10 } , { 15, 15 }
-
-  tbl11:addrow(row1); tbl11:addrow(row1); tbl21:addrow(row2); tbl21:addrow(row2)
-  tbl12:addrow(row1); tbl12:addrow(row1); tbl22:addrow(row2); tbl22:addrow(row2)
-  tbl13:addrow(row1); tbl13:addrow(row1); tbl23:addrow(row2); tbl23:addrow(row2)
-
-  for i=1,3 do
-    assertTrue(is_vector(tbl11:getcol(i)))
-    assertTrue(is_vector(tbl21:getcol(i+1)))
-
-    assertTrue(is_table(tbl12:getcol(i)))
-    assertTrue(is_table(tbl22:getcol(i+1)))
-  end
-  for i=1,2 do
-    assertTrue(is_table(tbl13:getcol(i)))
-    assertTrue(is_table(tbl23:getcol(i+1)))
-  end
-  assertTrue(is_vector(tbl13:getcol(3)))
-  assertTrue(is_vector(tbl23:getcol(4)))
-  assertTrue(is_table (tbl23:getcol(1)))
-
-  -- maintenance after adding columns
-  tbl11:addcol("c1", col1); tbl11:addcol("c2", col2, true)
-  tbl12:addcol("c1", col1); tbl12:addcol("c2", col2, true)
-  tbl13:addcol("c1", col1); tbl13:addcol("c2", col2, true)
-  tbl21:addcol("c1", col1); tbl21:addcol("c2", col2, true)
-  tbl22:addcol("c1", col1); tbl22:addcol("c2", col2, true)
-  tbl23:addcol("c1", col1); tbl23:addcol("c2", col2, true)
-
-  assertTrue(is_vector(tbl11:getcol("c1")))
-  assertTrue(is_table (tbl12:getcol("c1")))
-  assertTrue(is_vector(tbl13:getcol("c1")))
-  assertTrue(is_vector(tbl21:getcol("c1")))
-  assertTrue(is_table (tbl22:getcol("c1")))
-  assertTrue(is_vector(tbl23:getcol("c1")))
-
-  assertTrue(is_table(tbl11:getcol("c2")))
-  assertTrue(is_table(tbl12:getcol("c2")))
-  assertTrue(is_table(tbl13:getcol("c2")))
-  assertTrue(is_table(tbl21:getcol("c2")))
-  assertTrue(is_table(tbl22:getcol("c2")))
-  assertTrue(is_table(tbl23:getcol("c2")))
-end
 
 function TestMTable:testSetReadOnly()
   local tbl1 = mtable "tbl1" { {"dict"}, "x", "y", "z"}
