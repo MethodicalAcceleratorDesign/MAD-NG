@@ -27,7 +27,7 @@
 local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
   assertStrContains, assertErrorMsgContains                      in MAD.utest
 local mtable, filesys                                            in MAD
-local is_table, is_vector, is_mtable, is_number                  in MAD.typeid
+local is_vector, is_mtable, is_number                            in MAD.typeid
 local abs, eps, pi, random                                       in MAD.gmath
 
 local generate = false
@@ -36,7 +36,6 @@ local rundir   = \s -> "mtable_run/"..s
 local _msg     = {
   "invalid write access to readonly mtable",
   "nil reference value",
-  "invalid write access to readonly mtable",
   "no reference column found",
 }
 -- helpers --------------------------------------------------------------------o
@@ -450,6 +449,22 @@ function TestMTable:testAddRowNil()
   tbl3:check_index()
 end
 
+function TestMTable:testAccessPriority()
+  local tbl = mtable "tbl" { {"name1"}, "name2", name1 = 42 }
+  tbl:addrow{ "name1", 1 }
+  tbl:addrow{ "name2", 2 }
+  tbl:addrow{ "name3", 3 }
+
+  -- rows idx
+  assertVecEquals(tbl[1], {"name1", 1})
+  -- vars
+  assertEquals(tbl.name1, 42)
+  -- cols
+  assertVecEquals(tbl.name2, {1, 2, 3})
+  -- rows
+  assertVecEquals(tbl.name3, {"name3", 3})
+end
+
 function TestMTable:testIndexOfInt()
   local tbl1, tbl2, tbl3  = getEmptyTables()
   local msg = {
@@ -476,7 +491,9 @@ end
 
 function TestMTable:testIndexOfString()
   local _, tbl2, tbl3 = getIdxTbl()
-
+  local msg = {
+    "invalid argument #2 (non-zero count expected)",
+  }
   for i,tbl in ipairs{tbl2, tbl3} do
     assertNil   (tbl:index_of("name100  "   )   )
     assertNil   (tbl:index_of("name1[4] "   )   )
@@ -518,14 +535,15 @@ function TestMTable:testIndexOfString()
     assertEquals(tbl:index_of("name1{-3}",-1), 1)
     assertEquals(tbl:index_of("name2{-1}", 3), 2)
     assertEquals(tbl:index_of("name2{-1}",-2), 2)
+    assertErrorMsgContains(msg[1], mtable.index_of, tbl, "name1{0}", 2)
   end
 end
 
 function TestMTable:testIndexOfStringNoDict()
   local tbl1 = getIdxTbl()
-  assertErrorMsgContains(_msg[4], mtable.index_of, tbl1, "name1"      )
-  assertErrorMsgContains(_msg[4], mtable.index_of, tbl1, "name1[1]"   )
-  assertErrorMsgContains(_msg[4], mtable.index_of, tbl1, "name1{1}", 1)
+  assertErrorMsgContains(_msg[3], mtable.index_of, tbl1, "name1"      )
+  assertErrorMsgContains(_msg[3], mtable.index_of, tbl1, "name1[1]"   )
+  assertErrorMsgContains(_msg[3], mtable.index_of, tbl1, "name1{1}", 1)
 end
 
 function TestMTable:testNameOfDirect()
@@ -575,9 +593,9 @@ end
 
 function TestMTable:testNameOfCntNoDict()
   local tbl1  = getIdxTbl()
-  assertErrorMsgContains(_msg[4], mtable.name_of, tbl1, 2   )
-  assertErrorMsgContains(_msg[4], mtable.name_of, tbl1, 1   )
-  assertErrorMsgContains(_msg[4], mtable.name_of, tbl1, 1, 1)
+  assertErrorMsgContains(_msg[3], mtable.name_of, tbl1, 2   )
+  assertErrorMsgContains(_msg[3], mtable.name_of, tbl1, 1   )
+  assertErrorMsgContains(_msg[3], mtable.name_of, tbl1, 1, 1)
 end
 
 function TestMTable:testRangeOfInt()
@@ -1204,7 +1222,7 @@ function TestMTable:testSetNamedRow()
   end
 end
 
-function TestMTable:testGetNamedRowRef()
+function TestMTable:testSetNamedRowRef()
   local _, tbl2, tbl3 = getIdxTbl()
   local last = 1
   local r    = \ => last = random() return last end
@@ -1248,6 +1266,45 @@ function TestMTable:testSetDict()
     tbl:set("name1", "dict", "name6", 2); assertEquals(tbl:get("name6", 2),-4)
     tbl:set("name1", "dict", "name7", 1); assertEquals(tbl:get("name7", 2),-3)
   end
+end
+
+function TestMTable:testNoVector()
+  local tbl1 = mtable "tbl1" { "x", "y", "z", novector = true }
+  local tbl2 = mtable "tbl2" { "x", "y", "z", novector = {"x", "y"} }
+  local row  = { 1, 2, 3 }
+  for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
+  assertFalse(is_vector(tbl1:getcol(1)))
+  assertFalse(is_vector(tbl1:getcol(2)))
+  assertFalse(is_vector(tbl1:getcol(3)))
+  assertFalse(is_vector(tbl2:getcol(1)))
+  assertFalse(is_vector(tbl2:getcol(2)))
+  assertTrue (is_vector(tbl2:getcol(3)))
+end
+
+function TestMTable:testNoVectorInheritance()
+  local parent1 = mtable  "parent1" { "w", "x", novector = true  }
+  local parent2 = mtable  "parent2" { "w", "x", novector = {"w"} }
+  local child1  = parent1 "child1"  { "y", "z", novector = {"y"} }
+  local child2  = parent2 "child2"  { "y", "z", novector = {"y"} }
+  local child3  = parent2 "child3"  { "y", "z", novector = true  }
+  local row     = { 1, 2, 3, 4 }
+
+  for i=1,4 do child1:addrow(row); child2:addrow(row); child3:addrow(row) end
+
+  assertFalse(is_vector(child1:getcol(1)))
+  assertFalse(is_vector(child1:getcol(2)))
+  assertFalse(is_vector(child1:getcol(3)))
+  assertTrue (is_vector(child1:getcol(4)))
+
+  assertFalse(is_vector(child2:getcol(1)))
+  assertTrue (is_vector(child2:getcol(2)))
+  assertFalse(is_vector(child2:getcol(3)))
+  assertTrue (is_vector(child2:getcol(4)))
+
+  assertFalse(is_vector(child3:getcol(1)))
+  assertFalse(is_vector(child3:getcol(2)))
+  assertFalse(is_vector(child3:getcol(3)))
+  assertFalse(is_vector(child3:getcol(4)))
 end
 
 function TestMTable:testAddCol()
@@ -1328,7 +1385,7 @@ end
 function TestMTable:testAddColInvalid()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local msg = {
-    "invalid argument #2 (column name already in use)",
+    "invalid argument #3 (column name already in use)",
     "incompatible container size",
   }
   for i,tbl in ipairs{tbl1, tbl2, tbl3} do
@@ -1439,7 +1496,7 @@ function TestMTable:testRemColDict()
   local _, tbl22, tbl32 = getIdxTbl()
   for _,tbl in pairs{tbl21, tbl31} do
     tbl:remcol("dict")
-    assertErrorMsgContains(_msg[4], mtable.index_of, tbl, "name1")
+    assertErrorMsgContains(_msg[3], mtable.index_of, tbl, "name1")
   end
   for _,tbl in pairs{tbl22, tbl32} do
     tbl:remcol(2)
@@ -1612,7 +1669,7 @@ end
 function TestMTable:testInsColInvalid()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local msg = {
-    "invalid argument #2 (column name already in use)",
+    "invalid argument #3 (column name already in use)",
     "incompatible container size",
     "invalid insertion key (valid column expected)",
   }
@@ -2185,6 +2242,23 @@ function TestMTable:testSwpRowInvalid()
   assertErrorMsgContains(msg[2], mtable.swprow, tbl3, 1,"none")
 end
 
+function TestMTable:testRowsWithGenerators()
+  local tbl = mtable "tbl" { "x" }
+  for i=1,4 do tbl:addrow{i} end
+  tbl:addcol("y", {11, 12, 13, 14})
+  tbl:addcol("z", \i -> i + 100 )
+
+  tbl:addrow{1.1, 2.2}
+  assertVecEquals(tbl:getrow(5), {1.1, 2.2, 105})
+  tbl:insrow(2, {3.3, 4.4})
+  assertVecEquals(tbl:getrow(2), {3.3, 4.4, 102})
+  tbl:swprow(1,3)
+  assertVecEquals(tbl:getrow(1), {2, 12, 101})
+  assertVecEquals(tbl:getrow(3), {1, 11, 103})
+  tbl:setrow(2, {5.5, 6.6})
+  assertVecEquals(tbl:getrow(2), {5.5, 6.6, 102})
+end
+
 function TestMTable:testBuildIndexIdx()
   local tbl = mtable "tbl" { "name1", "name2" , "id" }
   tbl:addrow{ "n1"   , "n2"   , 1}
@@ -2237,18 +2311,15 @@ function TestMTable:testBuildIndexNone()
   tbl:addrow{ "other", "other", 2}
   tbl:addrow{ "n1"   , "n2"   , 3}
   tbl:addrow{ "n1"   , "n2"   , 4}
-  local msg = {
-    "no reference column found"
-  }
 
   assertEquals(tbl:getrow("n1[1]"   ).id, 1)
   assertEquals(tbl:getrow("n1[3]"   ).id, 4)
   assertEquals(tbl:getrow("n1{2}", 2).id, 4)
 
   tbl:build_index("none")
-  assertErrorMsgContains(msg[1], mtable.getrow, tbl, "n1[1]"   )
-  assertErrorMsgContains(msg[1], mtable.getrow, tbl, "n1[3]"   )
-  assertErrorMsgContains(msg[1], mtable.getrow, tbl, "n1{2}", 2)
+  assertErrorMsgContains(_msg[3], mtable.getrow, tbl, "n1[1]"   )
+  assertErrorMsgContains(_msg[3], mtable.getrow, tbl, "n1[3]"   )
+  assertErrorMsgContains(_msg[3], mtable.getrow, tbl, "n1{2}", 2)
 end
 
 function TestMTable:testBuildIndexInvalid()
@@ -3300,12 +3371,12 @@ function TestMTable:testCopyNoVector()
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
   local cpy1 = tbl1:copy()
   local cpy2 = tbl2:copy()
-  assertTrue(is_table (cpy1:getcol(1)))
-  assertTrue(is_table (cpy1:getcol(2)))
-  assertTrue(is_table (cpy1:getcol(3)))
-  assertTrue(is_table (cpy2:getcol(1)))
-  assertTrue(is_table (cpy2:getcol(2)))
-  assertTrue(is_vector(cpy2:getcol(3)))
+  assertFalse(is_vector(cpy1:getcol(1)))
+  assertFalse(is_vector(cpy1:getcol(2)))
+  assertFalse(is_vector(cpy1:getcol(3)))
+  assertFalse(is_vector(cpy2:getcol(1)))
+  assertFalse(is_vector(cpy2:getcol(2)))
+  assertTrue (is_vector(cpy2:getcol(3)))
   assertEquals(cpy1.novector, tbl1.novector)
   assertEquals(cpy2.novector, tbl2.novector)
 end
@@ -3355,91 +3426,91 @@ function TestMTable:testRemoveDict()
   assertVecEquals(tbl3:getrow("name1[2]"), row34)
 end
 
--------------------------------------------------------------------------------o
+function TestMTable:testViewRow()
+  local tbl  = mtable "tbl"  { "x", "y", "z" }
+  local view = tbl    "view" { }
+  local row1 = { 1, 2, 3 }
+  local row2 = { 4, 5, 6 }
+  local row3 = { 7, 8, 9 }
 
-function TestMTable:testNoVector()
-  local tbl11 = mtable "tbl11" { "x", "y", "z" }
-  local tbl12 = mtable "tbl12" { "x", "y", "z", novector = true }
-  local tbl13 = mtable "tbl13" { "x", "y", "z", novector = {"x", "y"} }
-  local tbl21 = mtable "tbl21" { {"dict"}, "x", "y", "z" }
-  local tbl22 = mtable "tbl22" { {"dict"}, "x", "y", "z", novector = true }
-  local tbl23 = mtable "tbl23" { {"dict"}, "x", "y", "z", novector = {"x", "y"} }
-  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3}
-  local col1, col2 = { 10, 10 } , { 15, 15 }
+  view:addrow(row1)
+  assertEquals(view:getrow(1), tbl:getrow(1))
 
-  tbl11:addrow(row1); tbl11:addrow(row1); tbl21:addrow(row2); tbl21:addrow(row2)
-  tbl12:addrow(row1); tbl12:addrow(row1); tbl22:addrow(row2); tbl22:addrow(row2)
-  tbl13:addrow(row1); tbl13:addrow(row1); tbl23:addrow(row2); tbl23:addrow(row2)
+  view:addrow(row1)
+  view:insrow(1, row2)
+  assertEquals(view:getrow(1), tbl:getrow(1))
+  assertEquals(view:getrow(2), tbl:getrow(2))
 
-  for i=1,3 do
-    assertTrue(is_vector(tbl11:getcol(i)))
-    assertTrue(is_vector(tbl21:getcol(i+1)))
+  view:swprow(1, 2)
+  assertEquals(view:getrow(1), tbl:getrow(1))
+  assertEquals(view:getrow(2), tbl:getrow(2))
 
-    assertTrue(is_table(tbl12:getcol(i)))
-    assertTrue(is_table(tbl22:getcol(i+1)))
-  end
-  for i=1,2 do
-    assertTrue(is_table(tbl13:getcol(i)))
-    assertTrue(is_table(tbl23:getcol(i+1)))
-  end
-  assertTrue(is_vector(tbl13:getcol(3)))
-  assertTrue(is_vector(tbl23:getcol(4)))
-  assertTrue(is_table (tbl23:getcol(1)))
+  view:setrow(3, row3)
+  assertEquals(view:getrow(3), tbl:getrow(3))
 
-  -- maintenance after adding columns
-  tbl11:addcol("c1", col1); tbl11:addcol("c2", col2, true)
-  tbl12:addcol("c1", col1); tbl12:addcol("c2", col2, true)
-  tbl13:addcol("c1", col1); tbl13:addcol("c2", col2, true)
-  tbl21:addcol("c1", col1); tbl21:addcol("c2", col2, true)
-  tbl22:addcol("c1", col1); tbl22:addcol("c2", col2, true)
-  tbl23:addcol("c1", col1); tbl23:addcol("c2", col2, true)
+  view:set(3, 2, 9)
+  assertEquals(view:get(3,2), tbl:get(3,2))
 
-  assertTrue(is_vector(tbl11:getcol("c1")))
-  assertTrue(is_table (tbl12:getcol("c1")))
-  assertTrue(is_vector(tbl13:getcol("c1")))
-  assertTrue(is_vector(tbl21:getcol("c1")))
-  assertTrue(is_table (tbl22:getcol("c1")))
-  assertTrue(is_vector(tbl23:getcol("c1")))
+  view:remrow(2)
+  assertEquals(#view, 2)
+  assertEquals(#tbl, 2)
+  assertEquals(view:nrow(), 2)
+  assertEquals(tbl:nrow(), 2)
+end
 
-  assertTrue(is_table(tbl11:getcol("c2")))
-  assertTrue(is_table(tbl12:getcol("c2")))
-  assertTrue(is_table(tbl13:getcol("c2")))
-  assertTrue(is_table(tbl21:getcol("c2")))
-  assertTrue(is_table(tbl22:getcol("c2")))
-  assertTrue(is_table(tbl23:getcol("c2")))
+function TestMTable:testViewCol()
+  local tbl  = mtable "tbl"  { "x" }
+  local view = tbl    "view" { }
+
+  view:addrow{1}
+  assertEquals(view:getcol("x"), tbl:getcol("x"))
+
+  view:addcol("col", { 42 })
+  assertEquals(view:getcol("col"), tbl:getcol("col"))
+  assertVecEquals(view:getcol("col"), {42})
+
+  view:setcol("col", { 43 })
+  assertEquals(view:getcol("col"), tbl:getcol("col"))
+  assertVecEquals(view:getcol("col"), {43})
+
+  view:inscol(2, "col2", { 44 })
+  assertEquals(view:getcol("col2"), tbl:getcol(2))
+  assertVecEquals(view:getcol("col2"), {44})
+
+  view:remcol(2)
+  assertEquals(view:ncol(), 2)
+  assertEquals(tbl :ncol(), 2)
+
+  view:addcol("col3", \i -> i)
+  assertEquals(view:ngen(), 1)
+  assertEquals(tbl :ngen(), 1)
 end
 
 function TestMTable:testSetReadOnly()
-  local tbl1 = mtable "tbl1" { {"dict"}, "x", "y", "z"}
-  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z"}
-  local msg  = {
-    "forbidden write access to 'tbl1' (readonly object or variable)",
-    "invalid write access to readonly mtable",
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z"}
+  local row = {"name", 1, 2, 3}
+  local col = {1, 2}
+  local msg = {
+    "forbidden write access to 'tbl' (readonly object or variable)"
   }
+  tbl:addrow(row)
+  tbl:addrow(row)
 
-  tbl2:addrow{ "v1", 1, 1, 1 }
-
-  tbl1:set_readonly()
-  tbl2:set_readonly()
-
-  assertErrorMsgContains(msg[1],\tbl,k,v   => tbl[k]    = v end, tbl1, "var", 42)
-  assertErrorMsgContains(msg[2],\tbl,i,j,v => tbl[i][j] = v end, tbl2, 1, 2, 42)
-  assertErrorMsgContains(msg[2], mtable.set, tbl2, 1, 2, 42)
-  assertErrorMsgContains(_msg[1], mtable.addrow, tbl1,  { "v2", 2, 2, 2 })
-  assertErrorMsgContains(_msg[1], mtable.addrow, tbl2, { "v2", 2, 2, 2 })
-  assertErrorMsgContains(_msg[1], mtable.insrow, tbl2, 1, { "v2", 2, 2, 2 })
-  assertErrorMsgContains(_msg[1], mtable.setrow, tbl2, 1, { "v2", 2, 2, 2 })  -- TODO doesn't let tbl2 in a valid state
-  tbl2:set_readonly(false); tbl2:addrow{ "v2", 2, 2, 2 }; tbl2:set_readonly()
-  assertErrorMsgContains(_msg[1], mtable.swprow, tbl2, 1, 2)                   -- TODO doesn't let tbl2 in a valid state
-  assertErrorMsgContains(_msg[1], mtable.remrow, tbl2, 1)                      -- TODO doesn't let tbl2 in a valid state
-  assertErrorMsgContains(_msg[1], mtable.addcol, tbl2, "c1", {5})
-  tbl2:set_readonly(false); tbl2:addcol("gen",\i->i); tbl2:set_readonly()
-  assertErrorMsgContains(msg[2], mtable.remcol, tbl2, "gen")
-
-  -- tbl2:build_index(2) -- TODO should not work ? -> no
-
-  -- TODO test for add sort, remove, insert, cycle,
-  -- TODO select
+  tbl:set_readonly()
+  assertErrorMsgContains(_msg[1], mtable.addrow     , tbl, row              )
+  assertErrorMsgContains(_msg[1], mtable.remrow     , tbl, 1                )
+  assertErrorMsgContains(_msg[1], mtable.insrow     , tbl, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , tbl, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.swprow     , tbl, 1    , 2         )
+  assertErrorMsgContains(_msg[1], mtable.addcol     , tbl, "col", col       )
+  assertErrorMsgContains(_msg[1], mtable.inscol     , tbl, 1    , "col", col)
+  assertErrorMsgContains(_msg[1], mtable.setcol     , tbl, "x"  , col       )
+  assertErrorMsgContains(_msg[1], mtable.set        , tbl, 1    , 1    , 2  )
+  assertErrorMsgContains(_msg[1], mtable.build_index, tbl, "x"              )
+  assertErrorMsgContains(_msg[1], mtable.sort       , tbl, \ ()             )
+  assertErrorMsgContains(_msg[1], mtable.remove     , tbl                   )
+  assertErrorMsgContains(_msg[1], mtable.insert     , tbl                   )
+  assertErrorMsgContains( msg[1], mtable.cycle      , tbl, 2                )
 end
 
 -- end ------------------------------------------------------------------------o
