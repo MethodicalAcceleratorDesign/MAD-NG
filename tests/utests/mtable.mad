@@ -3222,58 +3222,95 @@ function TestMTable:testSortSelect()
   end
 end
 
--------------------------------------------------------------------------------o
-
-function TestMTable:testCopy42()
-  local tbl1 = mtable "tbl1" { "x", "y", "z" }
-  local tbl2 = mtable "tbl2" { {"dict"}, "x", "y", "z",
-    novector=true, header ={"var"}, var=42, columns={"dict", "x"}}
-  local tbl3 = mtable "tbl3" { {"dict"}, "x", "y", "z", novector = {1, "y"}}
-  local row1, row2 = { 1, 2, 3 }, { "v0", 1, 2, 3 }
-  local col1, col2 = { 1, 2, 3 }, \i -> i
-
-  for i=1,3 do tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row2) end
-  tbl1:addcol("c1", col1); tbl2:addcol("c1", col1); tbl3:addcol("c1", col1)
-  tbl1:addcol("c2", col2); tbl2:addcol("c2", col2); tbl3:addcol("c2", col2)
-  tbl1:deselect{2,3}   ; tbl2:deselect{2,3}     ; tbl3:deselect{2,3}
-
-  -- local cpy1 = tbl1:copy("cpy1") -- TODO forward declarion of build_index
-  -- local cpy2 = tbl2:copy("cpy2")
-  -- local cpy3 = tbl3:copy("cpy3")
-
-  -- assertEquals(cpy1.name, "cpy1")
-  -- assertEquals(cpy2.name, "cpy2")
-  -- assertEquals(cpy3.name, "cpy3")
-
-  -- assertEquals(#cpy1, #tbl1)
-  -- assertEquals(#cpy2, #tbl2)
-  -- assertEquals(#cpy3, #tbl3)
-
-  -- assertEquals(cpy2.var, tbl2.var)
-
-  -- for i=1,3 do
-  --   for j=0,4 do assertEquals(cpy1[i][j], tbl1[i][j]) end
-  --   for j=0,5 do
-  --     assertEquals(cpy2[i][j], tbl2[i][j])
-  --     assertEquals(cpy3[i][j], tbl3[i][j])
-  --   end
-  -- end
-
-  -- test consistence a novector
-  -- for i=1,4 do
-  --   assertEquals(is_vector(cpy1:getcol(i)), is_vector(tbl1:getcol(i)))
-  -- end
-  -- for i=1,5 do
-  --   assertEquals(is_vector(cpy2:getcol(i)), is_vector(tbl2:getcol(i)))
-  --   assertEquals(is_vector(cpy3:getcol(i)), is_vector(tbl3:getcol(i)))
-  -- end
-
-  -- existing dictionary
-  -- assertEquals(cpy2:getrow("v0[2]").c1, 2)
-  -- assertEquals(cpy3:getrow("v0[2]").c1, 2)
-
-  -- TODO test copy without name
+function TestMTable:testCopy()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local gen1 = \i -> i
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:addcol("gen1", gen1)
+    local cpy = tbl:copy()
+    assertEquals(cpy:ncol(), tbl:ncol())
+    assertEquals(cpy:nrow(), tbl:nrow())
+    assertEquals(cpy:ngen(), 0)
+    for i=1,4 do
+      assertVecEquals(cpy:getrow(i), tbl:getrow(i))
+    end
+    assertTrue(cpy:is_owner())
+  end
 end
+
+function TestMTable:testCopyView()
+  local tbl = mtable "tbl" {
+    var1 = 42,
+    var2 = "test",
+    var3 = true,
+    var4 = false,
+  }
+  local cpy = tbl:copy()
+  assertEquals(cpy.var1, 42    )
+  assertEquals(cpy.var2, "test")
+  assertEquals(cpy.var3, true  )
+  assertEquals(cpy.var4, false )
+  assertTrue(tbl:is_view())
+end
+
+function TestMTable:testCopyViewName()
+  local tbl = mtable "tbl" { }
+  local cpy1 = tbl:copy()
+  local cpy2 = tbl:copy("tbl2")
+  assertEquals(cpy1.name, "tbl_copy")
+  assertEquals(cpy2.name, "tbl2"    )
+end
+
+function TestMTable:testCopyViewOwner()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    local view = tbl "view" { }
+    local cpy1 = view:copy()
+    local cpy2 = view:copy(nil, true)
+    local cpy3 = view:copy(true)      -- shift right
+    for _,cpy in ipairs{cpy1, cpy2, cpy3} do
+      assertEquals(cpy:ncol(), tbl:ncol())
+      assertEquals(cpy:nrow(), tbl:nrow())
+      assertEquals(cpy:ngen(), 0)
+      for i=1,4 do
+        assertVecEquals(cpy:getrow(i), tbl:getrow(i))
+      end
+    end
+    assertTrue(cpy1:is_view())
+    assertTrue(cpy2:is_owner())
+    assertTrue(cpy3:is_owner())
+  end
+end
+
+function TestMTable:testCopyDict()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl2, tbl3} do
+    local cpy = tbl:copy()
+    cpy:check_index()
+    assertEquals(cpy.refcol, "dict")
+    assertVecEquals(cpy:getrow("name1")   , tbl:getrow("name1")   )
+    assertVecEquals(cpy:getrow("name1[3]"), tbl:getrow("name1[3]"))
+  end
+end
+
+function TestMTable:testCopyNoVector()
+  local tbl1 = mtable "tbl" { "x", "y", "z", novector = true}
+  local tbl2 = mtable "tbl" { "x", "y", "z", novector = {1, "y"}}
+  local row = { 1, 2, 3 }
+  for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
+  local cpy1 = tbl1:copy()
+  local cpy2 = tbl2:copy()
+  assertTrue(is_table (cpy1:getcol(1)))
+  assertTrue(is_table (cpy1:getcol(2)))
+  assertTrue(is_table (cpy1:getcol(3)))
+  assertTrue(is_table (cpy2:getcol(1)))
+  assertTrue(is_table (cpy2:getcol(2)))
+  assertTrue(is_vector(cpy2:getcol(3)))
+  assertEquals(cpy1.novector, tbl1.novector)
+  assertEquals(cpy2.novector, tbl2.novector)
+end
+
+-------------------------------------------------------------------------------o
 
 function TestMTable:testNoVector()
   local tbl11 = mtable "tbl11" { "x", "y", "z" }
