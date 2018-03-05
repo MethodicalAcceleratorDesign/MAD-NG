@@ -31,13 +31,14 @@
 struct desc { // WARNING: needs to be identical with Lua for compatibility
   int   id;          // index in list of registered descriptors
   int   nmv, nv;     // number of mvars, number of all vars
-  ssz_t nc;          // number of coefs (length of TPSA)
   ord_t mo, ko,      // maximum order for mvars and knobs (mo=max(mvar_ords[]))
         trunc;       // truncation order for operations; always <= mo
   const ord_t
         *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
         * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
               // end of compatibility with Lua FFI
+
+  ssz_t nc;          // number of coefs (max length of TPSA)
 
   ord_t *monos,      // 'matrix' storing the monomials (sorted by ord)
         *ords,       // order of each mono of To

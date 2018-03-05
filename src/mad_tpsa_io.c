@@ -186,7 +186,8 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
 
   fprintf(stream_, "\n    I  COEFFICIENT         " SPC " ORDER   EXPONENTS");
   int idx = 1;
-  for (int c = 0; c < d->nc; ++c)
+  ssz_t nc = mad_desc_tpsa_len(d, t->mo);
+  for (int c = 0; c < nc; ++c)
     if (mad_bit_get(t->nz,d->ords[c]) && fabs(t->coef[c]) > 1e-10) {
 
 #ifndef MAD_CTPSA_IMPL

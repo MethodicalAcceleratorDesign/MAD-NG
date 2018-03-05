@@ -45,7 +45,6 @@ typedef struct tpsa tpsa_t;
 
 extern const ord_t mad_tpsa_default;
 extern const ord_t mad_tpsa_same;
-extern       int   mad_tpsa_strict;
 
 // --- interface --------------------------------------------------------------o
 
@@ -56,6 +55,7 @@ void    mad_tpsa_del     (      tpsa_t *t);
 
 // introspection
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
+ssz_t   mad_tpsa_len     (const tpsa_t *t);
 ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max order of all
 

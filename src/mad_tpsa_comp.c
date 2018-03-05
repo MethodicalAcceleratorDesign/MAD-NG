@@ -21,7 +21,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "mad_log.h"
+#include "mad_mem.h"
 #include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL

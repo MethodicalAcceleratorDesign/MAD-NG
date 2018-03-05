@@ -39,9 +39,8 @@
 
 // --- globals ----------------------------------------------------------------o
 
-const ord_t mad_tpsa_default   = -1;
-const ord_t mad_tpsa_same      = -2;
-      int   mad_tpsa_strict    =  0;
+const ord_t mad_tpsa_default = -1;
+const ord_t mad_tpsa_same    = -2;
 
 // --- constants --------------------------------------------------------------o
 
@@ -195,7 +194,7 @@ make_monos(D *d)
 
 /* kept for debugging binary search below.
 static inline int
-find_index(ssz_t n, ord_t **T_, const ord_t m[n], idx_t start, idx_t stop)
+find_index_lin(ssz_t n, ord_t **T_, const ord_t m[n], idx_t start, idx_t stop)
 {
   assert(T_ && m);
   const ord_t **T = (const ord_t **)T_;
@@ -618,7 +617,7 @@ tbl_check_L(D *d)
     for (int j = 1; j <= oc / 2; ++j) {
       int oa = oc - j, ob = j;
       idx_t *lc = d->L[oa*ho + ob];
-      if (!lc)                                   return  1e7 + oa*1e3 + ob;
+      if (!lc)                                     return  1e7 + oa*1e3 + ob;
 
       int sa = pi[oa+1]-pi[oa], sb = pi[ob+1]-pi[ob];
 
@@ -632,7 +631,7 @@ tbl_check_L(D *d)
 
           int ic = lc[il];
           if (ic >= pi[oc+1])                      return  3e7 + ic*1e5 + 11;
-          if (ic >= 0 && ic < d->ord2idx[oc]) return  3e7 + ic*1e5 + 12;
+          if (ic >= 0 && ic < d->ord2idx[oc])      return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
           if (ic < 0 && mad_desc_mono_isvalid(d,d->nv,m))
@@ -1018,6 +1017,14 @@ mad_desc_gtrunc (D *d, ord_t to)
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
   return d->trunc = to, orig;
+}
+
+ssz_t
+mad_desc_tpsa_len (const D *d, ord_t mo)
+{
+  assert(d);
+  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  return d->ord2idx[mo+1];
 }
 
 // --- ctors, dtor ------------------------------------------------------------o

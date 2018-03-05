@@ -41,7 +41,6 @@ typedef struct desc desc_t;
 
 extern const ord_t mad_tpsa_default;
 extern const ord_t mad_tpsa_same;
-extern       int   mad_tpsa_strict;
 
 // --- interface --------------------------------------------------------------o
 
@@ -53,9 +52,10 @@ desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
 void    mad_desc_del  (desc_t *d);
 
 // introspection
-ssz_t   mad_desc_maxlen (const desc_t *d);
-ord_t   mad_desc_maxord (const desc_t *d);
-ord_t   mad_desc_gtrunc (      desc_t *d, ord_t to);
+ssz_t   mad_desc_maxlen   (const desc_t *d);
+ord_t   mad_desc_maxord   (const desc_t *d);
+ord_t   mad_desc_gtrunc   (      desc_t *d, ord_t to);
+ssz_t   mad_desc_tpsa_len (const desc_t *d, ord_t mo);
 
 // --- end --------------------------------------------------------------------o
 
