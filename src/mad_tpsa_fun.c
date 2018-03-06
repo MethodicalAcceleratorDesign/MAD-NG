@@ -99,16 +99,6 @@ sincos_fixed_point(const T *a, T *s, T *c, int iter_s,
 
 // --- public -----------------------------------------------------------------o
 
-#ifdef MAD_CTPSA_IMPL
-
-void FUN(inv_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(inv)(a, CNUM(v), c); }
-
-void FUN(invsqrt_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(invsqrt)(a, CNUM(v), c); }
-
-#endif
-
 void
 FUN(inv) (const T *a, NUM v, T *c) // v/a
 {
@@ -752,5 +742,17 @@ FUN(erf) (const T *a, T *c)
 
   fixed_point_iteration(a,c,to,expansion_coef);
 }
+
+// --- without complex-by-value version ---------------------------------------o
+
+#ifdef MAD_CTPSA_IMPL
+
+void FUN(inv_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(inv)(a, CNUM(v), c); }
+
+void FUN(invsqrt_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(invsqrt)(a, CNUM(v), c); }
+
+#endif
 
 // --- end --------------------------------------------------------------------o

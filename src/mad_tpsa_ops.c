@@ -306,7 +306,7 @@ FUN(nrm1) (const T *a, const T *b_)
 {
   assert(a);
   NUM norm = 0.0;
-  int *pi = a->d->ord2idx;
+  idx_t *pi = a->d->ord2idx;
   if (b_) {
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
@@ -335,7 +335,7 @@ FUN(nrm2) (const T *a, const T *b_)
 {
   assert(a);
   NUM norm = 0.0;
-  int *pi = a->d->ord2idx;
+  idx_t *pi = a->d->ord2idx;
   if (b_) {
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
@@ -424,8 +424,69 @@ FUN(scl) (const T *a, NUM v, T *c)
   c->lo = a->lo;
   c->hi = MIN3(a->hi, c->mo, d->trunc);
   c->nz = mad_bit_trunc(a->nz,c->hi);
-  for (int i = d->ord2idx[c->lo]; i < d->ord2idx[c->hi+1]; ++i)
+  idx_t *pi = d->ord2idx;
+
+  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
     c->coef[i] = v * a->coef[i];
+}
+
+void
+FUN(acc) (const T *a, NUM v, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  if (!v || a->lo > a->hi) return;
+
+  D *d = c->d;
+  const NUM *ca = a->coef;
+        NUM *cc = c->coef;
+  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
+  ord_t new_lo = MIN(a->lo,c->lo);
+  idx_t *pi = d->ord2idx;
+
+  for (int i = pi[new_lo ]; i < pi[c->lo   ]; ++i) cc[i] = 0;
+  for (int i = pi[c->hi+1]; i < pi[new_hi+1]; ++i) cc[i] = 0;
+  for (int i = pi[a->lo  ]; i < pi[new_hi+1]; ++i) cc[i] += v * ca[i];
+
+  c->lo = new_lo;
+  c->hi = MAX(new_hi, c->hi);
+  c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
+}
+
+log_t
+FUN(equ) (const T *a, const T *b, num_t tol)
+{
+  assert(a && b);
+  ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
+
+  const T* t=0;
+  if (a->lo > b->lo) SWAP(a,b,t);
+
+  idx_t *pi = a->d->ord2idx;
+  idx_t start_a = pi[a->lo], end_a = pi[a->hi+1];
+  idx_t start_b = pi[b->lo], end_b = pi[b->hi+1];
+  int i = start_a;
+
+#ifdef MAD_CTPSA_IMPL
+  for (; i < MIN(end_a,start_b); ++i)
+    if (fabs(creal(a->coef[i])) > tol || fabs(cimag(a->coef[i])) > tol) return FALSE;
+  i = start_b;
+  for (; i < MIN(end_a,end_b); ++i)
+    if (fabs(creal(a->coef[i]) - creal(b->coef[i])) > tol ||
+        fabs(cimag(a->coef[i]) - cimag(b->coef[i])) > tol) return FALSE;
+  for (; i < end_a; ++i)
+    if (fabs(creal(a->coef[i])) > tol || fabs(cimag(a->coef[i])) > tol) return FALSE;
+  for (; i < end_b; ++i)
+    if (fabs(creal(b->coef[i])) > tol || fabs(cimag(b->coef[i])) > tol) return FALSE;
+#else
+  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > tol) return FALSE;
+  i = start_b;
+  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > tol) return FALSE;
+  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > tol) return FALSE;
+  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > tol) return FALSE;
+#endif // MAD_CTPSA_IMPL
+
+  return TRUE;
 }
 
 // --- binary ops -------------------------------------------------------------o
@@ -458,49 +519,6 @@ do { \
     for (; i <     end_a         ; ++i) c->coef[i] = OPA a->coef[i]; \
     for (; i <           end_b   ; ++i) c->coef[i] =                OPB b->coef[i]; \
 } while(0) \
-
-void
-FUN(acc) (const T *a, NUM v, T *c)
-{
-  assert(a && c);
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  if (!v || a->lo > a->hi) return;
-
-  D *d = c->d;
-  const NUM *ca = a->coef;
-        NUM *cc = c->coef;
-  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
-  ord_t new_lo = MIN(a->lo,c->lo);
-
-  for (int i = d->ord2idx[new_lo ]; i < d->ord2idx[c->lo   ]; ++i) cc[i] = 0;
-  for (int i = d->ord2idx[c->hi+1]; i < d->ord2idx[new_hi+1]; ++i) cc[i] = 0;
-  for (int i = d->ord2idx[a->lo  ]; i < d->ord2idx[new_hi+1]; ++i) cc[i] += v * ca[i];
-
-  c->lo = new_lo;
-  c->hi = MAX(new_hi, c->hi);
-  c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
-}
-
-/* TODO: check if this version is faster or not than the one above (use LINOP)
-void
-FUN(acc) (const T *a, NUM v, T *c)
-{
-  assert(a && c);
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  if (!v || a->lo > a->hi) return;
-
-  const T *t=0, *b=c;
-  if (a->lo > b->lo) SWAP(a,b,t);
-
-  ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
-  if (t) TPSA_LINOP(v*,+  );  // c->coef[i] = v*a->coef[i] +   c->coef[i];
-  else   TPSA_LINOP(  ,+v*);  // c->coef[i] =   c->coef[i] + v*a->coef[i];
-  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
-  c->hi = c_hi;
-  c->nz = mad_bit_trunc(mad_bit_add(a->nz,b->nz), c->hi);
-}
-*/
 
 void
 FUN(add) (const T *a, const T *b, T *c)
@@ -660,7 +678,7 @@ FUN(axpb) (NUM a, const T *x, NUM b, T *r)
   assert(x && r);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
   FUN(scl)(x,a,r);
-  if (b) FUN(set0)(r, 1,b);
+  if (b) FUN(set0)(r, 1, b);
 }
 
 void
@@ -670,8 +688,8 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->lo > b->lo)  {
-    const T* t; SWAP(a,b,t);
-    NUM n;    SWAP(c1,c2,n);
+    const T* t; SWAP(a ,b ,t);
+    NUM n;      SWAP(c1,c2,n);
   }
   ord_t   hi = MAX(a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);  // TODO: optimise c_hi == 0 ?

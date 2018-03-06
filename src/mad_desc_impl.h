@@ -57,8 +57,9 @@ struct desc { // WARNING: needs to be identical with Lua for compatibility
   size_t size;       // bytes used by desc
 
   // WARNING: temps must be used with care (internal side effects)
-   tpsa_t * t[5];      // temps for mul[0], fix pts[1-3], div & funs[4], alg funs[1-3] for aliasing
-  ctpsa_t *ct[5];      // temps for ctpsa
+  // mul[0], fix pts[1-3], div & funs[1-4], alg funs[1-3] for aliasing, conv[0 or 1]
+   tpsa_t * t[5];    // temps for  tpsa
+  ctpsa_t *ct[5];    // temps for ctpsa
 };
 
 // --- interface --------------------------------------------------------------o

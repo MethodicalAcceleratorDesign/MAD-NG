@@ -27,21 +27,15 @@ local MR, MC = {}, {}
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
-local istype in ffi
+local istype   in ffi
+local min, max in math
 
 local _C, tostring, complex in MAD
 
+-- To review
 local monomial                                                   in MAD
-local ident, swap, compose, bind1st                              in MAD.gfunc
-local random, carg, real, imag, conj, norm, proj, rect, polar,
-      ceil, floor, frac, trunc, round, abs, exp, log, log10, sqrt,
-      sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
-      acosh, atanh, erf, tgamma, lgamma, min, max, inf,
-      sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
-local unm, add, mul, mod, pow, lbool, lnot, land, lor, eq, opstr in MAD.operator
-
-local is_nil, is_number, is_string, is_table, is_iterable,
-      is_mappable                                                in MAD.typeid
+local is_nil, is_number, is_string, is_complex, is_table,
+      is_iterable, is_mappable                                   in MAD.typeid
 
 -- tmp for returned values
 local  res = ffi.new 'double [1]'
@@ -108,21 +102,23 @@ local desc_curr = nil -- current descriptor (last used)
 
 -- descriptors ----------------------------------------------------------------o
 
--- nv: number of map variables (when mo is a value)
--- mo: map variables orders (array or value)
--- vo: variables orders (array) with vo[i] <= mo[i]
--- ko: max 'knobs' cross-orders (max order of cross terms)
+--[=[
+  nv: number of map variables (when mo is a value)
+  mo: map variables orders (array or value)
+  vo: variables orders (array) with vo[i] <= mo[i]
+  ko: max 'knobs' cross-orders (max order of cross terms)
 
--- ex0:    desc(nil)                           : 6 mvars of order 2.
--- ex1.0:  desc(3)         -> mo=3             : 6 mvars of order 3.
--- ex2.0:  desc(4,3)       -> nv=4,mo=3        : 4 mvars of order 3.
--- ex3.0:  desc{3,3}       -> mo={3,3}         : 2 mvars of order 3.
--- ex1.1:  desc{mo=3}      -> mo=3             : 6 mvars of order 3.
--- ex2.1:  desc{nv=4,mo=3} -> nv=4,mo=3        : 4 mvars of order 3.
--- ex3.1:  desc{mo={3,3}}  -> mo={3,3}         : 2 mvars of order 3.
--- ex4.1:  desc{mo={3,3}, vo={2,2,1,1}, ko=1}  : 2 mvars of order 3,
---         each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,1,
---                           knobs x-order is limited to 1 (no cross-terms).
+  ex0:    desc(nil)                           : 6 mvars of order 2.
+  ex1.0:  desc(3)         -> mo=3             : 6 mvars of order 3.
+  ex2.0:  desc(4,3)       -> nv=4,mo=3        : 4 mvars of order 3.
+  ex3.0:  desc{3,3}       -> mo={3,3}         : 2 mvars of order 3.
+  ex1.1:  desc{mo=3}      -> mo=3             : 6 mvars of order 3.
+  ex2.1:  desc{nv=4,mo=3} -> nv=4,mo=3        : 4 mvars of order 3.
+  ex3.1:  desc{mo={3,3}}  -> mo={3,3}         : 2 mvars of order 3.
+  ex4.1:  desc{mo={3,3}, vo={2,2,1,1}, ko=1}  : 2 mvars of order 3,
+          each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,1,
+                            knobs x-order is limited to 1 (no cross-terms).
+--]=]
 
 local function desc (nv_, mo_)
   if is_nil(mo_) then
@@ -149,7 +145,7 @@ local function desc (nv_, mo_)
     return _C.mad_desc_newm(m.n, m.data, v.n, v.m, ko)
   end
 
-  error("invalid combination of arguments (GTPSA descriptor)")
+  error("invalid combination of arguments (gtpsa descriptor)")
 end
 
 -- allocators -----------------------------------------------------------------o
@@ -207,7 +203,7 @@ local function tpsa (td, mo_)
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   else
-    error("invalid argument #1 (tpsa or descriptor expected)")
+    error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_number(mo_), "invalid argument #2 (number expected)")
   return tpsa_alloc(td, max(0, min(mo_, td.mo)))
@@ -225,11 +221,509 @@ local function ctpsa (td, mo_)
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   else
-    error("invalid argument #1 (tpsa or descriptor expected)")
+    error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_number(mo_), "invalid argument #2 (number expected)")
   return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
+
+-- checkers -------------------------------------------------------------------o
+
+local function chksiz (r, x, y) -- add, sub, mul
+  assert( is_nil(r) or (r.mo >= x.mo and r.d == x.d and
+         (is_nil(y) or  r.mo >= y.mo and r.d == y.d)),
+         "incompatible GTPSA order or descriptor")
+  return r
+end
+
+-- same, copy -----------------------------------------------------------------o
+
+function MR.__same (x, y_, e_)
+  if is_nil(e_) and is_complex(y_) then -- shift right
+    e_, y_ = y_
+  end
+  assert(is_nil(y_) or isa_tpsa(y_), "invalid argument #2 (GTPSA expected)")
+  local mo = max(x.mo, y_ and y_.mo)
+  return is_complex(e_) and ctpsa(x, mo) or tpsa(x, mo)
+end
+
+function MC.__same (x, y_)
+  assert(is_nil(y_) or isa_tpsa(y_), "invalid argument #2 (GTPSA expected)")
+  local mo = max(x.mo, y_ and y_.mo)
+  return ctpsa(x, mo)
+end
+
+function MR.__copy (x, y_)
+  if is_nil(y_) then
+    x, y_ = tpsa_alloc(x.d, x.mo), x
+    _C.mad_tpsa_copy(y_, x)
+  else
+    assert(is_tpsa(y_), "invalid argument #2 (tpsa expected)")
+    if x ~= y_ then _C.mad_tpsa_copy(y_, chksiz(x,y_)) end
+  end
+  return x
+end
+
+function MC.__copy (x, y_)
+  if is_nil(y_) then
+    x, y_ = ctpsa_alloc(x.d, x.mo), x
+    _C.mad_ctpsa_copy(y_, x)
+  elseif is_tpsa(y_) then
+    x, y_ = chksiz(x,y_) and ctpsa_alloc(x.d, x.mo), x
+    _C.mad_ctpsa_complex(y_, nil, x)
+  else
+    assert(is_ctpsa(y_), "invalid argument #2 (ctpsa expected)")
+    if x ~= y_ then _C.mad_ctpsa_copy(y_, chksiz(x,y_)) end
+  end
+  return x
+end
+
+-- conversion -----------------------------------------------------------------o
+
+function MR.complex (_, re_, im_, r) -- require a (c)tpsa to be called
+  local re, im = re_ or im_, im_ or re_
+  assert(is_tpsa(re) and is_tpsa(im), "invalid argument #2 or #3 (tpsa expected)")
+  r = chksiz(r,y) or ctpsa(re, max(re.mo, im.mo))
+  _C.mad_ctpsa_complex(re_, im_, r)
+  return r
+end
+
+function MR.scalar (x, e_)
+ e_ = e_ or 0
+ assert(is_number(e_), "invalid argument #2 (number expected)")
+  _C.mad_tpsa_scalar(x, e_)
+  return x
+end
+
+function MC.scalar (x, e_)
+ e_ = e_ or 0i
+ assert(is_complex(e_), "invalid argument #2 (complex expected)")
+ _C.mad_ctpsa_scalar_r(x, e_.re, e_.im)
+ return x
+end
+
+MR.clear = \x => _C.mad_tpsa_clear (x) return x end
+MC.clear = \x => _C.mad_ctpsa_clear(x) return x end
+
+-- operators ------------------------------------------------------------------o
+
+-- unm
+
+function MR.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_scl(x, -1, r)
+  return r
+end
+
+function MC.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_scl_r(x, -1, 0, r)
+  return r
+end
+
+-- equ
+
+local function tpsa_eqn (x, y, tol)
+  return x.hi == 0 and abs(x.coef[0]-y) <= tol
+end
+
+local function tpsa_eqc (x, y, tol)
+  return x.hi == 0 and abs(          y.im) <= tol
+                   and abs(x.coef[0]-y.re) <= tol
+end
+
+local function ctpsa_eqn (x, y, tol)
+  return x.hi == 0 and abs(x.coef[0].im  ) <= tol
+                   and abs(x.coef[0].re-y) <= tol
+end
+
+local function ctpsa_eqc (x, y, tol)
+  return x.hi == 0 and abs(x.coef[0].re-y.re) <= tol
+                   and abs(x.coef[0].im-y.im) <= tol
+end
+
+function MR.__req_cpx (y, x, tol_)               -- cpx == tpsa
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  return tpsa_eqc(y, x, tol_)
+end
+
+function MR.__eq (x, y, tol_)
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  if is_nil(y) then
+    return false
+  elseif is_number(x) then                       -- num == tpsa
+    return tpsa_eqn(y, x, tol_)
+  elseif is_number(y) then                       -- tpsa == num
+    return tpsa_eqn(x, y, tol_)
+  elseif is_complex(y) then                      -- tpsa == cpx
+    return tpsa_eqc(x, y, tol_)
+  elseif is_ctpsa(y) then                        -- tpsa == ctpsa
+    assert(x.d == y.d, "incompatible GTPSA descriptor")
+    return _C.mad_ctpsa_equt(y, x, tol_)
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa == tpsa
+    assert(x.d == y.d, "incompatible GTPSA descriptor")
+    return _C.mad_tpsa_equ(x, y, tol_)
+  elseif has_method(y, '__req_tpsa') then        -- tpsa + ?
+    return y:__req_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '==')")
+end
+
+function MC.__req_cpx (y, x, tol_)               -- cpx == tpsa
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  return ctpsa_eqc(y, x, tol_)
+end
+
+function MC.__eq (x, y, tol_)
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  if is_nil(y) then
+    return false
+  elseif is_number(x) then                       -- num == ctpsa
+    return ctpsa_eqn(y, x, tol_)
+  elseif is_number(y) then                       -- ctpsa == num
+    return ctpsa_eqn(x, y, tol_)
+  elseif is_complex(y) then                      -- ctpsa == cpx
+    return ctpsa_eqc(x, y, tol_)
+  elseif is_tpsa(y) then                         -- ctpsa == tpsa
+    assert(x.d == y.d, "incompatible GTPSA descriptor")
+    return _C.mad_ctpsa_equt(x, y, tol_)
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa == ctpsa
+    assert(x.d == y.d, "incompatible GTPSA descriptor")
+    return _C.mad_ctpsa_equ(x, y, tol_)
+  elseif has_method(y, '__req_ctpsa') then       -- ctpsa + ?
+    return y:__req_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '==')")
+end
+
+-- add (see also kadd)
+
+function MR.__radd_cpx (y, x, r)                 -- cpx + tpsa
+  if y.hi == 0 then return x + y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+end
+
+function MR.__add (x, y, r)
+  if is_number(x) then                           -- num + tpsa
+    if y.hi == 0 then return x + y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_copy(y, r)
+    _C.mad_tpsa_set0(r, 1, x) return r
+  elseif is_number(y) then                       -- tpsa + num
+    if x.hi == 0 then return x.coef[0] + y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_copy(x, r)
+    _C.mad_tpsa_set0(r, 1, y) return r
+  elseif is_complex(y) then                      -- tpsa + cpx
+    if x.hi == 0 then return x.coef[0] + y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im) return r
+  elseif is_ctpsa(y) then                        -- tpsa + ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_tadd(x, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa + tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_add(x, y, r) return r
+  elseif has_method(y, '__radd_tpsa') then       -- tpsa + ?
+    return y:__radd_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '+')")
+end
+
+function MC.__radd_cpx (y, x, r)                 -- cpx + ctpsa
+  if y.hi == 0 then return x + y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  _C.mad_ctpsa_copy(y, r)
+  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+end
+
+function MC.__add (x, y, r)
+  if is_number(x) then                           -- num + ctpsa
+    if y.hi == 0 then return x + y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    _C.mad_ctpsa_copy(y, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0) return r
+  elseif is_number(y) then                       -- ctpsa + num
+    if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_copy(x, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, y, 0) return r
+  elseif is_complex(y) then                      -- ctpsa + cpx
+    if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_copy(x, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im) return r
+  elseif is_tpsa(y) then                         -- ctpsa + tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_addt(x, y, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa + ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_add(x, y, r) return r
+  elseif has_method(y, '__radd_ctpsa') then      -- ctpsa + ?
+    return y:__radd_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '+')")
+end
+
+-- sub (see also kadd)
+
+function MR.__rsub_cpx (y, x, r)                 -- cpx - tpsa
+  if y.hi == 0 then return x - y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+end
+
+function MR.__sub (x, y, r)
+  if is_number(x) then                           -- num - tpsa
+    if y.hi == 0 then return x - y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_scl(y, -1, r)
+    _C.mad_tpsa_set0(r, 1, x) return r
+  elseif is_number(y) then                       -- tpsa - num
+    if x.hi == 0 then return x.coef[0] - y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_copy(x, r)
+    _C.mad_tpsa_set0(r, 1, -y) return r
+  elseif is_complex(y) then                      -- tpsa - cpx
+    if x.hi == 0 then return x.coef[0] - y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    _C.mad_ctpsa_copy(x, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im) return r
+  elseif is_ctpsa(y) then                        -- tpsa - ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_tsub(x, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa - tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_sub(x, y, r) return r
+  elseif has_method(y, '__rsub_tpsa') then       -- tpsa - ?
+    return y:__rsub_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '-')")
+end
+
+function MC.__rsub_cpx (y, x, r)                 -- cpx - ctpsa
+  if y.hi == 0 then return x - y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  _C.mad_ctpsa_copy(y, r)
+  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+end
+
+function MC.__sub (x, y, r)
+  if is_number(x) then                           -- num - ctpsa
+    if y.hi == 0 then return x - y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    _C.mad_ctpsa_scl(y, -1, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0) return r
+  elseif is_number(y) then                       -- ctpsa - num
+    if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_copy(x, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, -y, 0) return r
+  elseif is_complex(y) then                      -- ctpsa - cpx
+    if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_copy(x, r)
+    _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im) return r
+  elseif is_tpsa(y) then                         -- ctpsa - tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_subt(x, y, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa - ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_sub(x, y, r) return r
+  elseif has_method(y, '__rsub_ctpsa') then      -- ctpsa - ?
+    return y:__rsub_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '-')")
+end
+
+-- mul
+
+function MR.__rmul_cpx (y, x, r)                 -- cpx * tpsa
+  if y.hi == 0 then return x * y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_scl_r(r, x.re, x.im, r) return r
+end
+
+function MR.__mul (x, y, r)
+  if is_number(x) then                           -- num * tpsa
+    if y.hi == 0 then return x * y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_scl(y, x, r) return r
+  elseif is_number(y) then                       -- tpsa * num
+    if x.hi == 0 then return x.coef[0] * y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_scl(x, y, r) return r
+  elseif is_complex(y) then                      -- tpsa * cpx
+    if x.hi == 0 then return x.coef[0] * y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_scl_r(r, y.re, y.im, r) return r
+  elseif is_ctpsa(y) then                        -- tpsa * ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_tmul(x, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa * tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_mul(x, y, r) return r
+  elseif has_method(y, '__rmul_tpsa') then       -- tpsa * ?
+    return y:__rmul_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '*')")
+end
+
+function MC.__rmul_cpx (y, x, r)                 -- cpx * ctpsa
+  if y.hi == 0 then return x * y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  _C.mad_ctpsa_scl_r(y, x.re, x.im, r) return r
+end
+
+function MC.__mul (x, y, r)
+  if is_number(x) then                           -- num * ctpsa
+    if y.hi == 0 then return x * y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    _C.mad_ctpsa_scl_r(y, x, 0, r) return r
+  elseif is_number(y) then                       -- ctpsa * num
+    if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_scl_r(x, y, 0, r) return r
+  elseif is_complex(y) then                      -- ctpsa * cpx
+    if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_scl_r(x, y.re, y.im, r) return r
+  elseif is_tpsa(y) then                         -- ctpsa * tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_mult(x, y, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa * ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_mul(x, y, r) return r
+  elseif has_method(y, '__rmul_ctpsa') then      -- ctpsa * ?
+    return y:__rmul_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '*')")
+end
+
+-- div
+
+function MR.__rdiv_cpx (y, x, r)                 -- cpx / tpsa
+  if y.hi == 0 then return x / y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_inv_r(r, x.re, x.im, r) return r
+end
+
+function MR.__div (x, y, r)
+  if is_number(x) then                           -- num / tpsa
+    if y.hi == 0 then return x / y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_inv(y, x, r) return r
+  elseif is_number(y) then                       -- tpsa / num
+    if x.hi == 0 then return x.coef[0] / y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_scl(x, 1/y, r) return r
+  elseif is_complex(y) then                      -- tpsa / cpx
+    if x.hi == 0 then return x.coef[0] / y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    local _y = 1/y
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_scl_r(r, _y.re, _y.im, r) return r
+  elseif is_ctpsa(y) then                        -- tpsa / ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_tdiv(x, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa / tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_div(x, y, r) return r
+  elseif has_method(y, '__rdiv_tpsa') then       -- tpsa / ?
+    return y:__rdiv_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '/')")
+end
+
+function MC.__rdiv_cpx (y, x, r)                 -- cpx / ctpsa
+  if y.hi == 0 then return x / y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  _C.mad_ctpsa_inv_r(y, x.re, x.im, r) return r
+end
+
+function MC.__div (x, y, r)
+  if is_number(x) then                           -- num / ctpsa
+    if y.hi == 0 then return x / y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    _C.mad_ctpsa_inv_r(y, 1/x, 0, r) return r
+  elseif is_number(y) then                       -- ctpsa / num
+    if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_scl_r(x, 1/y, 0, r) return r
+  elseif is_complex(y) then                      -- ctpsa / cpx
+    if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    local _y = 1/y
+    _C.mad_ctpsa_scl_r(x, _y.re, _y.im, r) return r
+  elseif is_tpsa(y) then                         -- ctpsa / tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_divt(x, y, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa / ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_div(x, y, r) return r
+  elseif has_method(y, '__rdiv_ctpsa') then      -- ctpsa / ?
+    return y:__rdiv_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '/')")
+end
+
+-- I/O -----------------------------------------------------------------------o
+
+-- metamethods ----------------------------------------------------------------o
+
+MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
+MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
+
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  eq, MR.  same, MR.  copy =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__eq, MR.__same, MR.__copy
+
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  eq, MC.  same, MC.  copy =
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__eq, MC.__same, MC.__copy
+
+-- MR.  pow =
+-- MR.__pow
+
+MR.__index = MR
+MC.__index = MC
+
+function MR.__newindex (_, i)
+  error("invalid GTPSA member '".. tostring(i) .."'")
+end
+
+-- MR -> MC -------------------------------------------------------------------o
+
+for k,v in pairs(MR) do
+  if is_nil(MC[k]) then MC[k] = v end
+end
+
+-- TODO: set concepts for MR and MC
 
 -- env ------------------------------------------------------------------------o
 
