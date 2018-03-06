@@ -30,12 +30,11 @@ local ffi = require 'ffi'
 local istype   in ffi
 local min, max in math
 
-local _C, tostring, complex in MAD
+local _C, tostring, complex, monomial in MAD
 
 -- To review
-local monomial                                                   in MAD
-local is_nil, is_number, is_string, is_complex, is_table,
-      is_iterable, is_mappable                                   in MAD.typeid
+local is_nil, is_number, is_integer, is_string, is_complex, is_table,
+      is_iterable, is_mappable, is_monomial in MAD.typeid
 
 -- tmp for returned values
 local  res = ffi.new 'double [1]'
@@ -136,12 +135,12 @@ local function desc (nv_, mo_)
   end
 
   if is_iterable(mo) and is_nil(vo) then       -- ex 3.0, 3.1
-    local m = mono(mo)
+    local m = monomial(mo)
     return _C.mad_desc_newm(m.n, m.data)
   end
 
   if is_iterable(mo) and is_iterable(vo) then  -- ex 4.1
-    local m, v = mono(mo), mono(vo)
+    local m, v = monomial(mo), monomial(vo)
     return _C.mad_desc_newm(m.n, m.data, v.n, v.m, ko)
   end
 
@@ -278,28 +277,142 @@ function MC.__copy (x, y_)
   return x
 end
 
+-- indexing ------------------------------------------------------------------o
+
+function MR.get_idx (x, m)
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return _C.mad_tpsa_midx(x, m.n, m.ord)
+end
+
+function MC.get_idx (x, m)
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return _C.mad_ctpsa_midx(x, m.n, m.ord)
+end
+
+function MR.get_idx_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local ma = int_arr(#tbl, tbl)
+  return _C.mad_tpsa_midx_sp(x, #tbl, ma)
+end
+
+function MC.get_idx_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local ma = int_arr(#tbl, tbl)
+  return _C.mad_ctpsa_midx_sp(x, #tbl, ma)
+end
+
+function MR.get_mono (x, i, r)
+  assert(is_integer(i), "invalid argument #2 (index expected)")
+  local m = r or monomial(x.d.nv)
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return m, _C.mad_tpsa_mono(t, m.n, m.ord, i)
+end
+
+function MC.get_mono (x, i, r)
+  assert(is_integer(i), "invalid argument #2 (index expected)")
+  local m = r or monomial(x.d.nv)
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return m, _C.mad_ctpsa_mono(t, m.n, m.ord, i)
+end
+
+-- get & set ----------------------------------------------------------------o
+
+function MR.get0 (x)
+  return _C.mad_tpsa_get0(x)
+end
+
+function MC.get0 (x)
+  _C.mad_ctpsa_get0(x, cres) return cres
+end
+
+function MR.get (x, m)
+  if is_number(m) then return _C.mad_tpsa_geti(x, m) end
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return _C.mad_tpsa_getm(x, m.n, m.ord)
+end
+
+function MC.get (x, m)
+  if is_number(m) then return _C.mad_ctpsa_geti(x, m) end
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  _C.mad_tpsa_getm_r(x, m.n, m.ord, cres) return cres
+end
+
+function MR.get_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local m = int_arr(#tbl, tbl)
+  return _C.mad_tpsa_getm_sp(x, #tbl, m)
+end
+
+function MC.get_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local m = int_arr(#tbl, tbl)
+  return _C.mad_ctpsa_getm_sp(x, #tbl, m)
+end
+
+function MR.set0 (x, a, b)
+  if is_nil(b) then a, b = 0, a end
+  _C.mad_tpsa_set0(x, a, b) return x
+end
+
+function MC.set0 (x, a, b)
+  if is_nil(b) then a, b = 0, a end
+  a, b = complex(a), complex(b)
+  _C.mad_ctpsa_set0_r(x, a.re, a.im, b.re, b.im) return x
+end
+
+function MR.set (x, m, a, b)
+  if is_nil(b) then a, b = 0, a end
+  if is_number(m) then _C.mad_tpsa_seti(x, m, a, b) return x end
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  _C.mad_tpsa_setm(x, m.n, m.ord, a, b) return x
+end
+
+function MC.set (x, m, a, b)
+  if is_nil(b) then a, b = 0, a end
+  if is_number(m) then _C.mad_ctpsa_seti(x, m, a, b) return x end
+  m = is_table(m) and monomial(m) or m
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  _C.mad_ctpsa_setm(x, m.n, m.ord, a, b) return x
+end
+
+function MR.set_sp (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  if is_nil(b) then a, b = 0, a end
+  local m = int_arr(#tbl, tbl)
+  _C.mad_tpsa_setm_sp(x, n, m, a, b) return x
+end
+
+function MC.set_sp (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  if is_nil(b) then a, b = 0, a end
+  local m = int_arr(#tbl, tbl)
+  _C.mad_ctpsa_setm_sp(x, n, m, a, b) return x
+end
+
 -- conversion -----------------------------------------------------------------o
 
 function MR.complex (_, re_, im_, r) -- require a (c)tpsa to be called
   local re, im = re_ or im_, im_ or re_
   assert(is_tpsa(re) and is_tpsa(im), "invalid argument #2 or #3 (tpsa expected)")
   r = chksiz(r,y) or ctpsa(re, max(re.mo, im.mo))
-  _C.mad_ctpsa_complex(re_, im_, r)
-  return r
+  _C.mad_ctpsa_complex(re_, im_, r) return r
 end
 
 function MR.scalar (x, e_)
  e_ = e_ or 0
  assert(is_number(e_), "invalid argument #2 (number expected)")
-  _C.mad_tpsa_scalar(x, e_)
-  return x
+  _C.mad_tpsa_scalar(x, e_) return x
 end
 
 function MC.scalar (x, e_)
  e_ = e_ or 0i
  assert(is_complex(e_), "invalid argument #2 (complex expected)")
- _C.mad_ctpsa_scalar_r(x, e_.re, e_.im)
- return x
+ _C.mad_ctpsa_scalar_r(x, e_.re, e_.im) return x
 end
 
 MR.clear = \x => _C.mad_tpsa_clear (x) return x end
@@ -311,14 +424,12 @@ MC.clear = \x => _C.mad_ctpsa_clear(x) return x end
 
 function MR.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_scl(x, -1, r)
-  return r
+  _C.mad_tpsa_scl(x, -1, r) return r
 end
 
 function MC.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_scl_r(x, -1, 0, r)
-  return r
+  _C.mad_ctpsa_scl_r(x, -1, 0, r) return r
 end
 
 -- equ
@@ -694,21 +805,452 @@ function MC.__div (x, y, r)
   error("invalid arguments (unsupported GTPSA operation '/')")
 end
 
+-- pow
+
+function MR.__pow (x, n, r)
+  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
+  if x.hi == 0 then return x.coef[0]^n end       -- promote to num
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_ipow(x, r, n) return r
+end
+
+function MC.__pow (x, n, r)
+  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
+  if x.hi == 0 then return x.coef[0]^n end       -- promote to cpx
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_ipow(x, r, n) return r
+end
+
+-- poisson brackets
+
+function MR.poisson(x, y, n, r)
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
+  r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_tpsa_poisson(x, y, r, n) return r
+end
+
+function MC.poisson(x, y, n, r)
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
+  r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_ctpsa_poisson(x, y, r, n) return r
+end
+
+-- tpsa functions -------------------------------------------------------------o
+
+MR.nrm1 = _C.mad_tpsa_nrm1
+MR.nrm2 = _C.mad_tpsa_nrm2
+
+function MR.abs (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_abs(x,r) return r
+end
+
+function MR.der (x, ivar, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_der(x, r, ivar) return r
+end
+
+function MR.mder (x, tbl, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  local m = monomial(tbl)
+  _C.mad_tpsa_mder(x, r, m.n, m.ord) return r
+end
+
+function MR.scale (x, val, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_scl(x, val, r) return r
+end
+
+function MR.acc (x, v, r)  -- r += v*x
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_acc(x, v, r) return r
+end
+
+function MR.inv (x, v, r)  -- v/x
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_inv(x, v, r) return r
+end
+
+function MR.invsqrt (x, v, r) -- v/sqrt(x)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_invsqrt(x, v, r) return r
+end
+
+function MR.sqrt (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sqrt(x, r) return r
+end
+
+function MR.exp (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_exp(x, r) return r
+end
+
+function MR.log (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_log(x, r) return r
+end
+
+function MR.sin (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sin(x, r) return r
+end
+
+function MR.cos (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_cos(x, r) return r
+end
+
+function MR.tan (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_tan(x, r) return r
+end
+
+function MR.cot (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_cot(x, r) return r
+end
+
+function MR.sinh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sinh(x, r) return r
+end
+
+function MR.cosh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_cosh(x, r) return r
+end
+
+function MR.tanh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_tanh(x, r) return r
+end
+
+function MR.coth (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_coth(x, r) return r
+end
+
+function MR.asin (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_asin(x, r) return r
+end
+
+function MR.acos (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_acos(x, r) return r
+end
+
+function MR.atan (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_atan(x, r) return r
+end
+
+function MR.acot (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_acot(x, r) return r
+end
+
+function MR.asinh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_asinh(x, r) return r
+end
+
+function MR.acosh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_acosh(x, r) return r
+end
+
+function MR.atanh (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_atanh(x, r) return r
+end
+
+function MR.acoth (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_acoth(x, r) return r
+end
+
+function MR.erf (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_erf(x, r) return r
+end
+
+function MR.sinc (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sinc(x, r) return r
+end
+
+function MR.sirx (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sirx(x, r) return r
+end
+
+function MR.corx (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_corx(x, r) return r
+end
+
+function MR.sincos (x, rs_, rc_)
+  local rs = rs_ or tpsa(x)
+  local rc = rc_ or tpsa(x)
+  _C.mad_tpsa_sincos(x, rs, rc)
+  return rs, rc
+end
+
+function MR.sincosh (x, rs_, rc_)
+  local rs = rs_ or tpsa(x)
+  local rc = rc_ or tpsa(x)
+  _C.mad_tpsa_sincosh(x, rs, rc)
+  return rs, rc
+end
+
+-- ctpsa functions ------------------------------------------------------------o
+
+MC.nrm1 = _C.mad_ctpsa_nrm1
+MC.nrm2 = _C.mad_ctpsa_nrm2
+
+function MC.abs (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_abs(x,r) return r
+end
+
+function MC.der (x, ivar, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_der(x, r, ivar) return r
+end
+
+function MC.mder (x, tbl, r_)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  local m = monomial(tbl)
+  _C.mad_ctpsa_mder(x, r, m.n, m.ord) return r
+end
+
+function MC.scale (t, val, r_)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_scl(t, val, r) return r
+end
+
+function MC.acc (x, v, r)  -- r += v*x
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_acc(x, v, r) return r
+end
+
+function MC.inv (x, v, r)  -- v/x
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_inv(x, v, r) return r
+end
+
+function MC.invsqrt (x, v, r) -- v/sqrt(x)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_invsqrt(x, v, r) return r
+end
+
+function MC.sqrt (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sqrt(x, r) return r
+end
+
+function MC.exp (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_exp(x, r) return r
+end
+
+function MC.log (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_log(x, r) return r
+end
+
+function MC.sin (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sin(x, r) return r
+end
+
+function MC.cos (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_cos(x, r) return r
+end
+
+function MC.tan (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_tan(x, r) return r
+end
+
+function MC.cot (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_cot(x, r) return r
+end
+
+function MC.sinh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sinh(x, r) return r
+end
+
+function MC.cosh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_cosh(x, r) return r
+end
+
+function MC.tanh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_tanh(x, r) return r
+end
+
+function MC.coth (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_coth(x, r) return r
+end
+
+function MC.asin (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_asin(x, r) return r
+end
+
+function MC.acos (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_acos(x, r) return r
+end
+
+function MC.atan (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_atan(x, r) return r
+end
+
+function MC.acot (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_acot(x, r) return r
+end
+
+function MC.asinh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_asinh(x, r) return r
+end
+
+function MC.acosh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_acosh(x, r) return r
+end
+
+function MC.atanh (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_atanh(x, r) return r
+end
+
+function MC.acoth (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_acoth(x, r) return r
+end
+
+function MC.erf (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_erf(x, r) return r
+end
+
+function MC.sinc (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sinc(x, r) return r
+end
+
+function MC.sirx (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sirx(x, r) return r
+end
+
+function MC.corx (x, r)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_corx(x, r) return r
+end
+
+function MC.sincos (x, rs_, rc_)
+  local rs = rs_ or tpsa(x)
+  local rc = rc_ or tpsa(x)
+  _C.mad_ctpsa_sincos(x, rs, rc)
+  return rs, rc
+end
+
+function MC.sincosh (x, rs_, rc_)
+  local rs = rs_ or tpsa(x)
+  local rc = rc_ or tpsa(x)
+  _C.mad_ctpsa_sincosh(x, rs, rc)
+  return rs, rc
+end
+
+
+-- maps of (c)tpsa ------------------------------------------------------------o
+
+-- maps composition
+
+function MR.compose (ma, mb, mr) -- ma, mb, mr: compatible arrays of TPSAs
+  local cma, cmb, cmr = tpsa_carr(#ma,ma), tpsa_carr(#mb,mb), tpsa_arr(#mr,mr)
+  _C.mad_tpsa_compose(#ma, cma, #mb, cmb, #mr, cmr) return cmr
+end
+
+function MC.compose (ma, mb, mr) -- ma, mb, mr: compatible arrays of TPSAs
+  local cma, cmb, cmr = ctpsa_carr(#ma,ma), ctpsa_carr(#mb,mb), ctpsa_arr(#mr,mr)
+  _C.mad_ctpsa_compose(#ma, cma, #mb, cmb, #mr, cmr) return cmr
+end
+
+-- map inv
+
+function MR.minv (ma, mr) -- ma, mr: compatible arrays of TPSAs
+  local cma, cmr = tpsa_carr(#ma,ma), tpsa_arr(#mr,mr)
+  _C.mad_tpsa_minv(#ma, cma, #mr, cmr) return cmr
+end
+
+function MC.minv (ma, mr) -- ma, mr: compatible arrays of TPSAs
+  local cma, cmr = ctpsa_carr(#ma,ma), ctpsa_arr(#mr,mr)
+  _C.mad_ctpsa_minv(#ma, cma, #mr, cmr) return cmr
+end
+
+-- partial map inverse on selected rows
+
+function MR.pminv (ma, mr, sel) -- ma, mr: compatible arrays of TPSAs
+  local cma, cmr = tpsa_carr(#ma,ma), tpsa_arr(#mr,mr)
+  local rsel = int_carr(#sel, sel)
+  _C.mad_tpsa_pminv(#ma, cma, #mr, cmr, rsel) return cmr
+end
+
+function MC.pminv (ma, mr, sel) -- ma, mr: compatible arrays of TPSAs
+  local cma, cmr = ctpsa_carr(#ma,ma), ctpsa_arr(#mr,mr)
+  local rsel = int_carr(#sel, sel)
+  _C.mad_ctpsa_pminv(#ma, cma, #mr, cmr, rsel) return cmr
+end
+
 -- I/O -----------------------------------------------------------------------o
+
+function MR.print(x, name, file)
+  _C.mad_tpsa_print(x, name, file)
+end
+
+function MC.print(x, name, file)
+  _C.mad_ctpsa_print(x, name, file)
+end
+
+function MR.read (_, file)
+  local x = tpsa(_C.mad_tpsa_scan_hdr(file))
+  _C.mad_tpsa_scan_coef(x, file) return x
+end
+
+function MC.read (_, file)
+  local x = ctpsa(_C.mad_ctpsa_scan_hdr(file))
+  _C.mad_ctpsa_scan_coef(x, file) return x
+end
+
+MR.debug = _C.mad_tpsa_debug
+MC.debug = _C.mad_ctpsa_debug
 
 -- metamethods ----------------------------------------------------------------o
 
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  eq, MR.  same, MR.  copy =
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__eq, MR.__same, MR.__copy
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq, MR.  same, MR.  copy=
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq, MR.__same, MR.__copy
 
-MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  eq, MC.  same, MC.  copy =
-MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__eq, MC.__same, MC.__copy
-
--- MR.  pow =
--- MR.__pow
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq, MC.  same, MC.  copy=
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq, MC.__same, MC.__copy
 
 MR.__index = MR
 MC.__index = MC
