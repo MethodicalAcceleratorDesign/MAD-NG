@@ -27,7 +27,7 @@
 local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
   assertStrContains, assertErrorMsgContains                      in MAD.utest
 local mtable, filesys                                            in MAD
-local is_vector, is_mtable, is_number                            in MAD.typeid
+local is_vector, is_mtable, is_number, is_string                 in MAD.typeid
 local abs, eps, pi, random                                       in MAD.gmath
 
 local generate = false
@@ -38,6 +38,7 @@ local _msg     = {
   "nil reference value",
   "no reference column found",
 }
+
 -- helpers --------------------------------------------------------------------o
 
 local function getEmptyTables()
@@ -463,6 +464,19 @@ function TestMTable:testAccessPriority()
   assertVecEquals(tbl.name2, {1, 2, 3})
   -- rows
   assertVecEquals(tbl.name3, {"name3", 3})
+end
+
+function TestMTable:testAccessInvalid()
+  local tbl = mtable "tbl" { {"name1"}, "x" }
+  local assign = \tbl,a,b => tbl[a] = b end
+  local msg = {
+    "invalid mtable write access (use 'set' methods)",
+  }
+  tbl:addrow{ "name2", 1 }
+
+  assertErrorMsgContains(msg[1], assign, tbl, 1, 42)
+  assertErrorMsgContains(msg[1], assign, tbl, "name1", 42)
+  assertErrorMsgContains(msg[1], assign, tbl, "name2", 42)
 end
 
 function TestMTable:testIndexOfInt()
@@ -1181,6 +1195,17 @@ function TestMTable:testGetInvalid()
   end
 end
 
+function TestMTable:testGetDict()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl2, tbl3} do
+    local col = tbl:getcol("dict")
+    col[2] = "name3"
+    col[4] = "name4"
+    assertEquals(tbl:get("name3", 2), -2)
+    assertEquals(tbl:get("name4", 2), -4)
+  end
+end
+
 function TestMTable:testSetIdx()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local last = 1
@@ -1608,6 +1633,15 @@ function TestMTable:testInsColIdxNegative()
   end
 end
 
+function TestMTable:testInsColAdd()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local col = \i -> i
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:inscol("col", col)
+    assertEquals(tbl:getcol("col"), tbl:getcol(-1))
+  end
+end
+
 function TestMTable:testInsColName()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local col1 = \i -> i
@@ -1672,6 +1706,7 @@ function TestMTable:testInsColInvalid()
     "invalid argument #3 (column name already in use)",
     "incompatible container size",
     "invalid insertion key (valid column expected)",
+    "invalid argument #4 (callable or iterable expected)",
   }
   for i,tbl in ipairs{tbl1, tbl2, tbl3} do
     tbl:addcol("col1", {}  )
@@ -1682,6 +1717,7 @@ function TestMTable:testInsColInvalid()
     assertErrorMsgContains(msg[3], mtable.inscol, tbl, 8     , "col3", {   })
     assertErrorMsgContains(msg[3], mtable.inscol, tbl,-8     , "col3", {   })
     assertErrorMsgContains(msg[3], mtable.inscol, tbl, "none", "col3", {   })
+    assertErrorMsgContains(msg[4], mtable.inscol, tbl, 1     , "col3", "   ")
   end
 end
 
@@ -1762,6 +1798,7 @@ function TestMTable:testSetColInvalid()
   local msg = {
     "invalid argument #2 (callable expected)",
     "invalid argument #2 (valid column expected)",
+    "invalid argument #3 (callable or iterable expected)",
   }
   for i,tbl in ipairs{tbl1, tbl2, tbl3} do
     tbl:addcol("col1", {}  )
@@ -1770,6 +1807,7 @@ function TestMTable:testSetColInvalid()
     assertErrorMsgContains(msg[2], mtable.setcol, tbl, 8     , { })
     assertErrorMsgContains(msg[2], mtable.setcol, tbl,-8     , { })
     assertErrorMsgContains(msg[2], mtable.setcol, tbl, "none", { })
+    assertErrorMsgContains(msg[3], mtable.setcol, tbl, 1     , "" )
   end
 end
 
@@ -2413,7 +2451,7 @@ end
 
 function TestMTable:testWriteStdout()
   filesys.mkdir(rundir(""))
-  local tbl    = mtable "tbl" { "x", "y", "z" }
+  local tbl    = mtable "tbl" { "x", "y", "z", var = 42 }
   local row    = { 1, 2, 3 }
   local fname  = "tbl-stdout"
   tbl.time, tbl.date, tbl.origin = "", "", ""
@@ -2422,7 +2460,7 @@ function TestMTable:testWriteStdout()
   local stdout = io.stdout
   io.stdout    = assert(io.open(rundir(fname), 'w'))
 
-  tbl:write()
+  tbl:write({"x", "y"}, {"var", "type"})
   assertFiles(fname)
 
   io.stdout = stdout
@@ -2492,10 +2530,30 @@ function TestMTable:testReadStdin()
   local stdin = io.stdin
   io.stdin    = assert(io.open(refdir("tbl-stdout"), 'r'))
   local tbl   = mtable:read()
+  assertEquals(tbl.var, 42)
   assertVecEquals(tbl:getcol(1), {1, 1, 1, 1})
   assertVecEquals(tbl:getcol(2), {2, 2, 2, 2})
-  assertVecEquals(tbl:getcol(3), {3, 3, 3, 3})
   io.stdin = stdin
+end
+
+function TestMTable:testReadInvalid()
+  local msg = {
+    "invalid header format (4 columns expected line",
+    "invalid header format (missing number line",
+    "invalid header format (missing boolean line",
+    "invalid header format (unmatched string length line",
+    "invalid header format (unmatched table length line",
+    "invalid header field type: ",
+    "invalid row format ("
+  }
+
+  assertErrorMsgContains(msg[1], mtable.read, mtable, refdir("tbl-invalid1"))
+  assertErrorMsgContains(msg[2], mtable.read, mtable, refdir("tbl-invalid2"))
+  assertErrorMsgContains(msg[3], mtable.read, mtable, refdir("tbl-invalid3"))
+  assertErrorMsgContains(msg[4], mtable.read, mtable, refdir("tbl-invalid4"))
+  assertErrorMsgContains(msg[5], mtable.read, mtable, refdir("tbl-invalid5"))
+  assertErrorMsgContains(msg[6], mtable.read, mtable, refdir("tbl-invalid6"))
+  assertErrorMsgContains(msg[7], mtable.read, mtable, refdir("tbl-invalid7"))
 end
 
 function TestMTable:testIterEmpty()
@@ -2695,6 +2753,40 @@ function TestMTable:testIterDir()
   end
 end
 
+function TestMTable:testColIterIPairs()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    for i,row in tbl:iter() do
+      for j,v in ipairs(row) do
+        assertEquals(tbl:get(i, j), v)
+        assertTrue(is_number(j))
+      end
+    end
+  end
+end
+
+function TestMTable:testColIterPairs()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    for i,row in tbl:iter() do
+      for j,v in pairs(row) do
+        assertEquals(tbl:get(i, j), v)
+        assertTrue(is_string(j))
+      end
+    end
+  end
+end
+
+function TestMTable:testCntProxy()
+  local _, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl2, tbl3} do
+    assertEquals(tbl.name1[1][2], -1)
+    assertEquals(tbl.name2   [2], -2)
+    assertEquals(tbl.name1[2][2], -3)
+    assertEquals(tbl.name1[3][2], -4)
+  end
+end
+
 function TestMTable:testCycleIdx()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local idx = {2, 3, 4, 1}
@@ -2788,11 +2880,10 @@ end
 function TestMTable:testForeachNot()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local i = 1
-  for it,tbl in ipairs{tbl1, tbl2, tbl3} do
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \=> i=i+1 end
-    tbl:foreach(act, nil, true) -- shift right
     tbl:foreach(act, nil, nil, true)
-    assertEquals(i, 1+4*it) -- 1) -- to review
+    assertEquals(i, 1)
   end
 end
 
@@ -2864,6 +2955,28 @@ function TestMTable:testForeachSelect()
 
     i = 2
     tbl:foreach(act, {2, 4}, \r,i -> r[2] ~= -4)
+    assertEquals(i, 4)
+
+    i = 2
+    tbl[4][0] = false
+    tbl:foreach(act, {2, 4}, true)
+    assertEquals(i, 4)
+  end
+end
+
+function TestMTable:testForeachPattern()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local idxs = {1, 3, 4}
+  local i = 1
+  for _,tbl in ipairs{tbl2, tbl3} do
+    local act = \row,idx =>
+      assertVecEquals(row, tbl:getrow(idxs[i]))
+      assertEquals(idx, idxs[i])
+      i = i + 1
+    end
+
+    i = 1
+    tbl:foreach(act, nil, "name1")
     assertEquals(i, 4)
   end
 end
@@ -3010,7 +3123,6 @@ function TestMTable:testForeachTablePattern()
       assertEquals(idx, idxs[i])
       i = i + 1
     end
-    tbl[3][0] = false; tbl[4][0] = false
 
     i = 1
     tbl:foreach{action=act, pattern="name1"}
@@ -3293,6 +3405,16 @@ function TestMTable:testSortSelect()
   end
 end
 
+function TestMTable:testSortSelectNonContinuous()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local sorted = { -1, -4, -3, -2 }
+  local lt     = \r1,r2 -> r1[2] < r2[2]
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:sort(lt, {1,4}, \r,i -> i%2==0)
+    assertVecEquals(tbl:getcol(2), sorted)
+  end
+end
+
 function TestMTable:testCopy()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local gen1 = \i -> i
@@ -3486,7 +3608,7 @@ function TestMTable:testViewCol()
   assertEquals(tbl :ngen(), 1)
 end
 
-function TestMTable:testSetReadOnly()
+function TestMTable:testSetReadOnlyOwner()
   local tbl = mtable "tbl" { {"dict"}, "x", "y", "z"}
   local row = {"name", 1, 2, 3}
   local col = {1, 2}
@@ -3511,6 +3633,149 @@ function TestMTable:testSetReadOnly()
   assertErrorMsgContains(_msg[1], mtable.remove     , tbl                   )
   assertErrorMsgContains(_msg[1], mtable.insert     , tbl                   )
   assertErrorMsgContains( msg[1], mtable.cycle      , tbl, 2                )
+end
+
+function TestMTable:testSetReadOnlyView()
+  local tbl  = mtable "tbl"  { {"dict"}, "x", "y", "z"}
+  local view = tbl "view" { }
+  local row = {"name", 1, 2, 3}
+  local col = {1, 2}
+  local msg = {
+    "forbidden write access to 'view' (readonly object or variable)"
+  }
+  view:addrow(row)
+  view:addrow(row)
+
+  view:set_readonly()
+  assertErrorMsgContains(_msg[1], mtable.addrow     , view, row              )
+  assertErrorMsgContains(_msg[1], mtable.remrow     , view, 1                )
+  assertErrorMsgContains(_msg[1], mtable.insrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.swprow     , view, 1    , 2         )
+  assertErrorMsgContains(_msg[1], mtable.addcol     , view, "col", col       )
+  assertErrorMsgContains(_msg[1], mtable.inscol     , view, 1    , "col", col)
+  assertErrorMsgContains(_msg[1], mtable.setcol     , view, "x"  , col       )
+  assertErrorMsgContains(_msg[1], mtable.set        , view, 1    , 1    , 2  )
+  assertErrorMsgContains(_msg[1], mtable.build_index, view, "x"              )
+  assertErrorMsgContains(_msg[1], mtable.sort       , view, \ ()             )
+  assertErrorMsgContains(_msg[1], mtable.remove     , view                   )
+  assertErrorMsgContains(_msg[1], mtable.insert     , view                   )
+  assertErrorMsgContains( msg[1], mtable.cycle      , view, 2                )
+end
+
+function TestMTable:testSetReadOnlyOwnerView()
+  local tbl  = mtable "tbl"  { {"dict"}, "x", "y", "z"}
+  local view = tbl "view" { }
+  local row = {"name", 1, 2, 3}
+  local col = {1, 2}
+  view:addrow(row)
+  view:addrow(row)
+
+  tbl:set_readonly()
+  assertErrorMsgContains(_msg[1], mtable.addrow     , view, row              )
+  assertErrorMsgContains(_msg[1], mtable.remrow     , view, 1                )
+  assertErrorMsgContains(_msg[1], mtable.insrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.swprow     , view, 1    , 2         )
+  assertErrorMsgContains(_msg[1], mtable.addcol     , view, "col", col       )
+  assertErrorMsgContains(_msg[1], mtable.inscol     , view, 1    , "col", col)
+  assertErrorMsgContains(_msg[1], mtable.setcol     , view, "x"  , col       )
+  assertErrorMsgContains(_msg[1], mtable.set        , view, 1    , 1    , 2  )
+  assertErrorMsgContains(_msg[1], mtable.build_index, view, "x"              )
+  assertErrorMsgContains(_msg[1], mtable.sort       , view, \ ()             )
+  assertErrorMsgContains(_msg[1], mtable.remove     , view                   )
+  assertErrorMsgContains(_msg[1], mtable.insert     , view                   )
+  view:cycle(2)
+end
+
+function TestMTable:testDebug()
+  local debug = MAD.option.debug
+  MAD.option.debug = 3
+  local tbl = mtable "tbl"  { "dict", "x", "y", "z" }
+  tbl:addrow{"name1", 1, 2, 3}
+  tbl:build_index("dict")
+  MAD.option.debug = debug
+end
+
+function TestMTable:testSetReadOnlyProxy()
+  local tbl    = mtable "tbl" { {"dict"}, "x", "y", "z"}
+  local assign1 = \tbl,a,b   => tbl[a]       = b end
+  local assign2 = \tbl,a,b,c => tbl[a][b]    = c end
+  local assign3 = \tbl,a,b,c => tbl[a][b][c] = d end
+  local row1 = {"name1", 1, 2, 3}
+  local row2 = {"name2", 1, 2, 3}
+  tbl:addrow(row1); tbl:addrow(row2); tbl:addrow(row1)
+  tbl:set_readonly()
+  local msg = {
+    "invalid use of object <mtable readonly column:",
+    "invalid use of object <mtable count:",
+  }
+
+  assertErrorMsgContains( msg[1], assign1, tbl:getcol("x"), 1, 42  )
+  assertErrorMsgContains(_msg[1], assign2, tbl, "name2", "x", 42   )
+  assertErrorMsgContains(_msg[1], assign3, tbl, "name1", 2, "x", 42)
+end
+
+function TestMTable:testSetUnsetReadOnly()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z"}
+  local row = {"name1", 1, 2, 3}
+  tbl:addrow(row)
+
+  tbl:set_readonly(true)
+  tbl:set_readonly(false)
+
+  tbl.dict[1] = "name2"
+  tbl.x   [1] = 42
+  tbl.y   [1] = 43
+  tbl.z   [1] = 44
+  assertVecEquals(tbl.name2, {"name2", 42, 43, 44})
+end
+
+function TestMTable:testReadOnlyColProxy()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:set_readonly()
+    for j=1,tbl:ncol() do
+      local col = tbl:getcol(j)
+      for i,v in ipairs(col) do
+        assertEquals(tbl:get(i,j), v)
+        assertEquals(tbl:get(i,j), col[i])
+        assertEquals(#tbl, #col)
+      end
+    end
+  end
+end
+
+function TestMTable:testReadOnlyRowProxy()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:set_readonly()
+    for i,row in ipairs(tbl) do
+      for j=1,tbl:ncol() do
+        assertEquals(tbl:get(i,j), row[j])
+      end
+      assertEquals(#row, tbl:ncol())
+    end
+  end
+end
+
+-------------------------------------------------------------------------------o
+
+function TestMTable:testInsert42()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local ref1, ref2, ref3 = getIdxTbl()
+  -- print()
+  -- for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
+    -- tbl:insert(ref, {1,4})
+    -- tbl:write()
+    -- for i=1,4 do
+    --   print(1, 2*i-1, 2*i)
+    --   assertVecEquals(tbl:getrow(2*i-1), ref:getrow(i))
+    --   assertVecEquals(tbl:getrow(2*i)  , ref:getrow(i))
+    -- end
+  -- end
+  local row = {42, 43, 44}
+  tbl1:insert(row)
 end
 
 -- end ------------------------------------------------------------------------o
