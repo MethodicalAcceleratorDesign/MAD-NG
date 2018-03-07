@@ -98,7 +98,8 @@ FUN(newd) (D *d, ord_t mo)
 
   t->d = d;
   t->lo = t->mo = mo;
-  t->hi = t->nz = t->coef[0] = 0;  // coef[0] used without checking nz[0]
+  t->hi = t->nz = 0;
+  t->coef[0] = 0;
   return t;
 }
 
@@ -129,8 +130,9 @@ void
 FUN(clear) (T *t)
 {
   assert(t);
-  t->hi = t->nz = t->coef[0] = 0;
   t->lo = t->mo;
+  t->hi = t->nz = 0;
+  t->coef[0] = 0;
 }
 
 void
@@ -138,9 +140,9 @@ FUN(scalar) (T *t, NUM v)
 {
   assert(t);
   if (v) {
-    t->coef[0] = v;
-    t->nz = 1;
     t->lo = t->hi = 0;
+    t->nz = 1;
+    t->coef[0] = v;
   }
   else
     FUN(clear)(t);

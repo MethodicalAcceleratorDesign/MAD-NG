@@ -38,7 +38,6 @@
 
 // --- types ------------------------------------------------------------------o
 
-struct ctpsa;
 typedef struct tpsa tpsa_t;
 
 // --- globals ----------------------------------------------------------------o
@@ -63,9 +62,6 @@ ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max orde
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
 void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
-
-// conversion
-void    mad_tpsa_complex (const tpsa_t *re_, const tpsa_t *im_, struct ctpsa *dst);
 
 // indexing / monomials
 int     mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -96,6 +92,8 @@ void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_div     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
+
+log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c);  // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c);  // c  = v*a

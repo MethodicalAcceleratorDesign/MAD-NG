@@ -35,10 +35,9 @@
 
 #include "mad_mono.h"
 #include "mad_desc.h"
+#include "mad_tpsa.h"
 
 // --- types -----------------------------------------------------------------o
-
-struct tpsa;
 
 typedef struct ctpsa ctpsa_t;
 
@@ -67,8 +66,9 @@ void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
 
 // conversion
-void     mad_ctpsa_real    (const ctpsa_t *t, struct tpsa *dst);
-void     mad_ctpsa_imag    (const ctpsa_t *t, struct tpsa *dst);
+void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *dst);
+void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *dst);
+void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst);
 
 // indexing / monomials
 int      mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -114,6 +114,9 @@ void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_div     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 
+log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t tol);
+log_t    mad_ctpsa_equt    (const ctpsa_t *a, const  tpsa_t *b, num_t tol);
+
 void     mad_ctpsa_acc     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c += v*a, aliasing OK
 void     mad_ctpsa_scl     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c  = v*a
 void     mad_ctpsa_inv     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c  = v/a
@@ -154,6 +157,14 @@ void     mad_ctpsa_acc_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *
 void     mad_ctpsa_scl_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_invsqrt_r(const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
+
+// operators with internal real-to-complex conversion
+void     mad_ctpsa_addt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_subt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_mult    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_divt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_tsub    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_tdiv    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 
 // high level functions
 void     mad_ctpsa_axpb        (cnum_t a, const ctpsa_t *x,

@@ -145,20 +145,19 @@ FUN(scan_coef) (T *t, FILE *stream_)
     #ifdef DEBUG
       printf("c=%.2f o=%d\n", c, o);
     #endif
-    read_ords(nv,ords,stream_);
-    ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");  // consistency check
-    if (o > t->mo)  // TODO: give warning ?
-      break;        // printed by increasing orders
-    FUN(setm)(t,nv,ords, 0.0,c);
+    read_ords(nv,ords,stream_); // sanity check
+    ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
+    if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c); // discard too high mononial
   }
 }
 
 T*
 FUN(scan) (FILE *stream_)
 {
-  // TODO
-  (void)stream_;
-  error("NYI");
+  desc_t *d = FUN(scan_hdr)(stream_);
+  T *t = FUN(newd)(d, mad_tpsa_default);
+  FUN(scan_coef)(t, stream_);
+  return t;
 }
 
 void
@@ -173,10 +172,10 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   // print header
   if (!name_) name_ = "-UNNAMED--";
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
-          name_,d->mo,d->nmv,d->ko, d->nv - d->nmv);
-  print_ords(d->nmv,d->mvar_ords,stream_);
+                       name_,    d->mo,  d->nmv,     d->ko, d->nv - d->nmv);
+  print_ords(d->nmv, d->mvar_ords, stream_);
   fprintf(stream_, " ||| VAR ORDS: ");
-  print_ords(d->nv,d->var_ords,stream_);
+  print_ords(d->nv, d->var_ords, stream_);
   fprintf(stream_, "\n *******************************************************");
 
   if (!t->nz) {
@@ -187,18 +186,17 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   fprintf(stream_, "\n    I  COEFFICIENT         " SPC " ORDER   EXPONENTS");
   int idx = 1;
   ssz_t nc = mad_desc_tpsa_len(d, t->mo);
-  for (int c = 0; c < nc; ++c)
+  for (int c = 0; c < nc; ++c) {
     if (mad_bit_get(t->nz,d->ords[c]) && fabs(t->coef[c]) > 1e-10) {
-
 #ifndef MAD_CTPSA_IMPL
       fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , idx, VAL(t->coef[c]), d->ords[c]);
 #else
       fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);
 #endif
-
       print_ords(d->nv, d->To[c], stream_);
       idx++;
     }
+  }
   fprintf(stream_, "\n\n");
 }
 
