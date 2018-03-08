@@ -119,11 +119,11 @@ local function index_of_cnam (tbl, nam, cnt)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (tbl, nam, cnt, idx)
+local function index_of_rnam (tbl, nam, cnt, ref)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  assert(is_integer(idx), "invalid reference index (integer expected)")
-  idx = assert(index_of_idx(tbl, idx), "invalid reference index")
+  assert(is_integer(ref), "invalid reference index (integer expected)")
+  local idx = assert(index_of_idx(tbl, ref), "invalid reference index")
   if is_number(ri) then
     return (cnt ==  1 and ri >= idx and ri) or
            (cnt == -1 and ri <= idx and ri) or nil
@@ -141,7 +141,7 @@ local function index_of_rnam (tbl, nam, cnt, idx)
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
-local function index_of_str (tbl, str, idx_)
+local function index_of_str (tbl, str, ref_)
   local num = tonumber(str)
   if num then
      assert(is_integer(num), "invalid index (integer expected)")
@@ -151,15 +151,15 @@ local function index_of_str (tbl, str, idx_)
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
-  if is_nil(idx_) or bra == 1 then
+  if is_nil(ref_) or bra == 1 then
     return index_of_cnam(tbl, nam, cnt      )
   else
-    return index_of_rnam(tbl, nam, cnt, idx_)
+    return index_of_rnam(tbl, nam, cnt, ref_)
   end
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (tbl, idx, idx_)
+local function name_of_idx (tbl, idx, ref_)
   local data = var_raw(tbl,_data)
   assert(data.cref, "no reference column found")
   idx = index_of_idx(tbl, idx)
@@ -172,11 +172,11 @@ local function name_of_idx (tbl, idx, idx_)
   end
 
   local cnt, b1, b2 = 0
-  if idx_ then
-    assert(is_integer(idx_), "invalid reference index (integer expected)")
-    idx_ = assert(index_of_idx(tbl, idx_), "invalid reference index")
+  if ref_ then
+    assert(is_integer(ref_), "invalid reference index (integer expected)")
+    local idx = assert(index_of_idx(tbl, ref_), "invalid reference index")
     for i=1,ri.n do
-      if ri[i] < idx_ then cnt = cnt+1 else break end
+      if ri[i] < idx then cnt = cnt+1 else break end
     end
     b1, b2 = "{", "}"
   else
@@ -197,10 +197,10 @@ end
 -- shift indexes >= idx by n
 local function shf_idx (data, idx, n)
   if is_nil(data.cref) then return end
-  local ridx = data.ridx
-  for nam,ei in pairs(ridx) do
+  local ri = data.ridx
+  for nam,ei in pairs(ri) do
     if is_number(ei) then       -- scalar
-      if ei >= idx then ridx[nam] = ei+n end
+      if ei >= idx then ri[nam] = ei+n end
     else for i=1,ei.n do        -- table
       if ei[i] >= idx then ei[i] = ei[i]+n end
     end end
@@ -420,10 +420,16 @@ local ref_mt = set_concept({
                        assert(not (data.ro or s[_slf]:is_readonly()),
                               "invalid write access to readonly mtable")
                        assert(i >= 1 and i <= data.nr, "row index out of bounds")
-                       rem_idx(data, i) ; s[_col][i] = v ; ins_idx(data, i)
+                       if not v then
+                         error("invalid argument #3 (valid reference key expected)")
+                       elseif not rawequal(v, s[_col][i]) then
+                         rem_idx(data, i)
+                         s[_col][i] = v
+                         ins_idx(data, i)
+                       end
                      end,
-  __ipairs   = \s   -> (col_iter, s, 0),
-  __tostring = \s   -> string.format("mtable reference column: %p", s),
+  __ipairs   = \s -> (col_iter, s, 0),
+  __tostring = \s -> string.format("mtable reference column: %p", s),
 }, not_mappable + not_mutable)
 
 -- row proxy (RW)
@@ -452,13 +458,19 @@ local row_mt = set_concept({
                        local ci = is_number(i) and reflect(i, data.nc) or data.cidx[i]
                        assert(data[ci], "invalid column in row write access")
                        local ri = s[_idx]
-                       if ci ~= data.cref then data[ci][ri] = v
-                       else rem_idx(data,ri)   data[ci][ri] = v ins_idx(data,ri)
+                       if ci ~= data.cref then
+                         data[ci][ri] = v
+                       elseif not v then
+                         error("invalid argument #3 (valid reference key expected)")
+                       elseif not rawequal(v, data[ci][ri]) then
+                         rem_idx(data, ri)
+                         data[ci][ri] = v
+                         ins_idx(data, ri)
                        end
                      end,
-  __pairs    = \s   -> (row_kiter, s, nil),
-  __ipairs   = \s   -> (row_iter , s, 0  ),
-  __tostring = \s   -> string.format("mtable row: %p", s),
+  __pairs    = \s -> (row_kiter, s, nil),
+  __ipairs   = \s -> (row_iter , s, 0  ),
+  __tostring = \s -> string.format("mtable row: %p", s),
 }, not_mutable)
 
 -- count proxy
@@ -573,21 +585,21 @@ end
 
 -- methods (readonly) ---------------------------------------------------------o
 
-local function name_of (tbl, idx, idx_)
+local function name_of (tbl, idx, ref_)
   assert(is_mtable (tbl), "invalid argument #1 (mtable expected)")
   assert(is_integer(idx), "invalid argument #2 (integer expected)")
-  return name_of_idx(tbl, idx, idx_)
+  return name_of_idx(tbl, idx, ref_)
 end
 
-local function index_of (tbl, a, idx_)
+local function index_of (tbl, a, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
       if is_integer(a) then return index_of_idx(tbl, a)
-  elseif is_string (a) then return index_of_str(tbl, a, idx_)
+  elseif is_string (a) then return index_of_str(tbl, a, ref_)
   end
   error("invalid argument #2 (integer or string expected)")
 end
 
-local function range_of (tbl, rng, idx_)
+local function range_of (tbl, rng, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local start, stop, istart, istop
   if is_integer(rng) then
@@ -600,11 +612,11 @@ local function range_of (tbl, rng, idx_)
   elseif is_range(rng) then
     start, stop = rng:ranges()
   elseif is_table(rng) then
-    start, stop, idx_ = rng[1], rng[2], idx_ or rng[3]
+    start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
   else error "invalid argument #2 (integer, string, table or range expected)"
   end
-  istart = istart or index_of(tbl, start, idx_)
-  istop  = istop  or index_of(tbl, stop , idx_)
+  istart = istart or index_of(tbl, start, ref_)
+  istop  = istop  or index_of(tbl, stop , ref_)
   if not istart then errorf("invalid range start '%s'", tostring(start)) end
   if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
   return istart, istop
@@ -646,25 +658,25 @@ end
 
 local function get (tbl, row, col, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data, ridx, cidx = var_raw(tbl,_data)
+  local data, ri, ci = var_raw(tbl,_data)
 
   if is_number(col)
-  then cidx = reflect(col, data.nc)
-  else cidx = data.cidx[col]
+  then ci = reflect(col, data.nc)
+  else ci = data.cidx[col]
   end
-  if is_nil(data[cidx]) then return nil end
+  if is_nil(data[ci]) then return nil end
 
   if is_number(row)
-  then ridx = reflect(row, data.nr)
-  else ridx = data.ridx[row]
-    if is_table(ridx) then
+  then ri = reflect(row, data.nr)
+  else ri = data.ridx[row]
+    if is_table(ri) then
       local cnt = cnt_ or 1
       assert(is_number(cnt), "invalid argument #4 (number expected)")
-      ridx = ridx[ reflect(cnt, ridx.n) ]
+      ri = ri[ reflect(cnt, ri.n) ]
     end
   end
 
-  return data[cidx][ridx]
+  return data[ci][ri]
 end
 
 local function set (tbl, row, col, val, cnt_)
@@ -672,32 +684,34 @@ local function set (tbl, row, col, val, cnt_)
   local data = var_raw(tbl,_data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
-  local cidx, ridx
+  local ci, ri
   if is_number(col)
-  then cidx = reflect(col, data.nc)
-  else cidx = data.cidx[col]
+  then ci = reflect(col, data.nc)
+  else ci = data.cidx[col]
   end
-  assert(data[cidx], "invalid argument #3 (valid column expected)")
+  assert(data[ci], "invalid argument #3 (valid column expected)")
 
   if is_number(row) then
-    ridx = reflect(row, data.nr)
-    assert(ridx >= 1 and ridx <= data.nr, "row index out of bounds")
+    ri = reflect(row, data.nr)
+    assert(ri >= 1 and ri <= data.nr, "row index out of bounds")
   else
-    ridx = assert(data.ridx[row], "invalid argument #2 (valid row expected)")
-    if is_table(ridx) then
+    ri = assert(data.ridx[row], "invalid argument #2 (valid row expected)")
+    if is_table(ri) then
       local cnt = cnt_ or 1
       assert(is_number(cnt), "invalid argument #5 (number expected)")
-      ridx = assert(ridx[ reflect(cnt, ridx.n) ],
+      ri = assert(ri[ reflect(cnt, ri.n) ],
                              "invalid argument #2 (valid row[cnt] expected)")
     end
   end
 
-  if cidx ~= data.cref then
-    data[cidx][ridx] = val
-  else
-    rem_idx(data, ridx)
-    data[cidx][ridx] = val
-    ins_idx(data, ridx)
+  if ci ~= data.cref then
+    data[ci][ri] = val
+  elseif not val then
+    error("invalid argument #4 (valid reference key expected)")
+  elseif not rawequal(val, data[ci][ri]) then
+    rem_idx(data, ri)
+    data[ci][ri] = val
+    ins_idx(data, ri)
   end
 end
 
@@ -793,79 +807,75 @@ end
 
 --- rows ----------------------------------o
 
+local function get_row (tbl, key, ref_)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  local idx = index_of(tbl, key, ref_)
+  if is_nil(idx) then return nil end
+  return setmetatable({[_idx]=idx, [_data]=var_raw(tbl,_data), [_slf]=tbl}, row_mt)
+end
+
+local function set_row (tbl, key, val, ref_)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_iterable(val), "invalid argument #3 (iterable expected)")
+  local data = var_raw(tbl, _data)
+  assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
+  local idx = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
+  if data.cref then
+    local ck = val[data.cidx[data.cref]] or val[data.cref]
+    if ck and not rawequal(ck, data[data.cref][idx]) then
+      rem_idx(data, idx)
+      data[data.cref][idx] = ck
+      ins_idx(data, idx)
+    end
+  end
+  for k,v in pairs(val) do
+    local ci = is_number(k) and reflect(k, data.nc) or data.cidx[k]
+    assert(ci and ci >= 1 and ci <= data.nc-data.ng,
+                             "invalid argument #3 (valid data column expected)")
+    data[ci][idx] = v
+  end
+  return tbl
+end
+
 local function clr_row (data, idx) -- not exposed
   for i=1,data.nc-data.ng do
     data[i][idx] = is_matrix(data[i]) and 0 or nil
   end
 end
 
-local function cpy_row (data, idx, val, ini, nr) -- not exposed
-  if ini or val[1] then      -- copy by idx-value
-    local i0 = (ini or 1) - 1
-    for ci=1,data.nc-data.ng do
-      assert(val[i0+ci] or ci ~= data.cref, "invalid reference index (key is nil)")
-      local col = data[ci]
-      if nr and is_matrix(col) then col:_reshapeto(nr) end
-      col[idx] = val[i0+ci]
-    end
-  else                       -- copy by key-value
-    for k,v in pairs(val) do
-      local ci = is_number(k) and reflect(k, data.nc) or data.cidx[k]
-      assert(ci and ci >= 1 and ci <= data.nc-data.ng,
-                             "invalid argument #3 (valid data column expected)")
-      assert(v or ci ~= data.cref, "invalid argument #3 (nil reference value)")
-      local col = data[ci]
-      if nr and is_matrix(col) then col:_reshapeto(nr) end
-      col[idx] = v
+local function cpy_row (data, idx, val, nr) -- not exposed
+  for ci=1,data.nc-data.ng do
+    if nr and is_matrix(data[ci]) then data[ci]:_reshapeto(nr) end
+    if is_nil(val[ci]) then
+      assert(ci ~= data.cref, "invalid reference index (key is nil)")
+    else
+      data[ci][idx] = val[ci]
     end
   end
   data[0][idx] = true
 end
 
-local function get_row (tbl, key, idx_)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, idx_)
-  if is_nil(idx) then return nil end
-  return setmetatable({[_idx]=idx, [_data]=var_raw(tbl,_data), [_slf]=tbl}, row_mt)
-end
-
-local function set_row (tbl, key, val, ini_, idx_)
-  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  assert(is_iterable(val), "invalid argument #3 (iterable expected)")
-  local data = var_raw(tbl, _data)
-  assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  local idx = assert(index_of(tbl, key, idx_), "invalid argument #2 (valid row expected)")
-  rem_idx(data, idx)
-  if data.cref then
-    local ck = val[data.cidx[data.cref]] or val[data.cref+(ini_ or 1)-1]
-    if ck then data[data.cref][idx] = ck end
-  end
-  ins_idx(data, idx)
-  cpy_row(data, idx, val, ini_)
-  return tbl
-end
-
-local function add_row (tbl, val, ini_)
+local function add_row (tbl, val)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
   assert(is_iterable(val), "invalid argument #2 (iterable expected)")
   local data = var_raw(tbl, _data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  local idx  = data.nr+1
-  if idx > data.rmax then expand(data, tbl, 1) end
+  local nr = data.nr+1
+  if nr > data.rmax then expand(data, tbl, 1) end
   if data.cref then
-    local ck = val[data.cidx[data.cref]] or val[data.cref+(ini_ or 1)-1]
-    data[data.cref][idx] = assert(ck, "invalid argument #2 (nil reference value)")
+    local ck = val[data.cidx[data.cref]] or val[data.cref]
+    data[data.cref][nr] = assert(ck, "invalid argument #2 (nil reference value)")
+    add_idx(data, nr)
   end
-  add_idx(data, idx)
-  data.nr = idx
-  cpy_row(data, idx, val, ini_, idx)
+  data.nr = nr
+  cpy_row(data, nr, val, nr)
   return tbl
 end
 
-local function ins_row (tbl, key, val, ini_, idx_)
+local function ins_row (tbl, key, val, ref_)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  if key == #tbl+1 then return add_row(tbl, val, ini_) end
-  local idx = index_of(tbl, key, idx_)
+  if key == #tbl+1 then return add_row(tbl, val) end
+  local idx = index_of(tbl, key, ref_)
   assert(is_number(idx)  , "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   local data = var_raw(tbl, _data)
@@ -879,25 +889,27 @@ local function ins_row (tbl, key, val, ini_, idx_)
   end
   data.nr = nr
   clr_row(data, idx)
-  shf_idx(data, idx, 1)
   if data.cref then
-    local ck = val[data.cidx[data.cref]] or val[data.cref+(ini_ or 1)-1]
+    shf_idx(data, idx, 1)
+    local ck = val[data.cidx[data.cref]] or val[data.cref]
     data[data.cref][idx] = assert(ck, "invalid argument #3 (nil reference value)")
+    ins_idx(data, idx)
   end
-  ins_idx(data, idx)
-  cpy_row(data, idx, val, ini_)
+  cpy_row(data, idx, val)
   return tbl
 end
 
-local function rem_row (tbl, key, idx_)
+local function rem_row (tbl, key, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, key, idx_)
+  local idx = index_of(tbl, key, ref_)
   assert(is_number(idx), "invalid argument #2 (valid row expected)")
   local data = var_raw(tbl, _data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local nr, nc = data.nr-1, data.nc-data.ng
-  rem_idx(data, idx)
-  shf_idx(data, idx, -1)
+  if data.cref then
+    rem_idx(data, idx)
+    shf_idx(data, idx, -1)
+  end
   for i=0,nc do
     for j=idx,nr do data[i][j] = data[i][j+1] end
   end
@@ -909,42 +921,47 @@ local function rem_row (tbl, key, idx_)
   return tbl
 end
 
-local function swp_row (tbl, key1, key2, idx_)
+local function swp_row (tbl, key1, key2, ref1_, ref2_)
   assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
-  local idx1, idx2 = index_of(tbl, key1, idx_), index_of(tbl, key2, idx_)
+  local idx1 = index_of(tbl, key1, ref1_)
+  local idx2 = index_of(tbl, key2, ref2_ or ref1_)
   assert(is_number(idx1), "invalid argument #2 (valid row expected)")
   assert(is_number(idx2), "invalid argument #3 (valid row expected)")
   if idx1 == idx2 then return tbl end
   local data = var_raw(tbl, _data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  rem_idx(data, idx1) ; rem_idx(data, idx2)
+  local swp = data.cref and not rawequal(data[data.cref][idx1], data[data.cref][idx2])
+  if swp then rem_idx(data, idx1) ; rem_idx(data, idx2) end
   for i=0,data.nc-data.ng do
     data[i][idx1], data[i][idx2] = data[i][idx2], data[i][idx1]
   end
-  ins_idx(data, idx1) ; ins_idx(data, idx2)
+  if swp then ins_idx(data, idx1) ; ins_idx(data, idx2) end
   return tbl
 end
 
 -- functional methods ---------------------------------------------------------o
 
 local pknd   = \knd,k,  r,i -> knd[i] == k
-local psel   = \sel,    r,i -> sel[i] == true
+local psel   = \sel,b,  r,i -> sel[i] == b
 local pnam   = \ref,pat,r,i -> string.match(ref[i], pat) ~= nil
 local pand   = \p,p2,   r,i -> p(r,i) and p2(r,i)
 local ptrue  = \p,_ ,   r,i -> p(r,i) and true
 local pfalse = \p,_ ,   r,i -> p(r,i) or false
 
+
 local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection, default
   local data = var_raw(tbl, _data)
   local f, p
 
+  -- foreach(sel) -> foreach(sel.action, sel)
   if is_nil(rng_) and is_rawtable(act) then
     f, rng_ = act.action, act     -- extract action + right shift
   else
     f = act
   end
+  -- foreach(act,sel) -> foreach(act, sel.range, sel)
   if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
-    rng_, sel_ = rng_.range, rng_ -- extract range  + right shift
+    rng_, sel_ = rng_.range, rng_ -- extract range + right shift
   end
 
   if is_rawtable(sel_) then       -- logically and'ed selections
@@ -967,10 +984,11 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
       op, p = pand, bind2st(op, bind2st(pknd,data[data.cidx.kind], sel_.kind),p)
     end
     if sel_.selected then
-      op, p = pand, bind2st(op, bind1st(psel, data[0]), p)
+      assert(is_boolean(sel_.selected), "invalid selected (boolean expected)")
+      op, p = pand, bind2st(op, bind2st(psel, sel_.selected, data[0]), p)
     end
   elseif not is_nil(sel_) then    -- build the selection
-    p = is_boolean (sel_) and bind1st(psel, data[0])               or
+    p = is_boolean (sel_) and bind2st(psel, sel_, data[0])         or
         is_string  (sel_) and assert(data.cref, "unexpected pattern selection (no reference column)")
                           and bind2st(pnam, data[data.cref], sel_) or
         is_callable(sel_) and sel_                                 or nil
@@ -1028,12 +1046,11 @@ local function remove (tbl, rng_, sel_)
   else
     idx_r = filter(tbl, rng_, sel_, true)
   end
-  if idx_r.n == 0 then return tbl end
-  assert(idx_r[idx_r.n]-idx_r[1] >= idx_r.n-1,
-                                    "invalid range, indexes must be increasing")
   local nr = idx_r.n
+  if nr == 0 then return tbl end
+  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
-  -- move rows by increasing indexes
+  -- remove rows by increasing indexes
   local ni, nc = data.nr-nr, data.nc-data.ng
   local i, j, r = idx_r[1], idx_r[1]+1, 2
   while i <= ni do
@@ -1045,7 +1062,10 @@ local function remove (tbl, rng_, sel_)
     end
     j = j+1
   end
+  -- clear remaning rows
   for i=ni+1,data.nr do clr_row(data, i) end
+
+  -- reshape vectors
   for i=1,nc do
     if is_matrix(data[i]) then data[i]:_reshapeto(ni) end
   end
@@ -1059,48 +1079,54 @@ local function insert (tbl, rows, rng_, sel_)
   local data = var_raw(tbl,_data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
-  if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
-    rng_, sel_ = rng_.range, rng_ -- extract range  + right shift (see foreach)
-  end
-
   -- collect indexes of elements to select
   local idx_r
   if is_number(rng_) and is_nil(sel_) and 1 <= rng_ and rng_ <= data.nr+1 then
     idx_r = { rng_, n=1 }
     -- if #rows == 1 then tbl:insrow(rng_, rows[1]) return tbl end -- uniformity test
   else
+    -- insert(sel) -> insert(sel.range, sel)
+    if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
+      rng_, sel_ = rng_.range, rng_ -- extract range + right shift (see foreach)
+    end
+
     idx_r = filter(tbl, rng_, sel_, true)
     if is_rawtable(sel_) and sel_.where == 'after' then
       for i=1,idx_r.n do idx_r[i] = idx_r[i]+1 end
     end
   end
-  if idx_r.n == 0 then return tbl end
-  assert(idx_r[idx_r.n]-idx_r[1] >= idx_r.n-1,
-                                    "invalid range, indexes must be increasing")
+  local nr = idx_r.n
+  if nr == 0 then return tbl end
+  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+
+  -- process cases: 1x1, 1xR, Nx1, NxR where R=#rows and N=idx_r.n
   local rsize = #rows
-  local nr = rsize   == 1 and idx_r.n or
-             idx_r.n == 1 and rsize   or
-             min(idx_r.n, rsize)
+  nr = rsize   == 1 and idx_r.n or
+       idx_r.n == 1 and rsize   or min(idx_r.n, rsize)
 
   -- expand if needed
   if data.nr+nr > data.rmax then expand(data, tbl, nr) end
 
-  local i, j, k, nc = data.nr, rsize, idx_r.n, data.nc-data.ng
-  data.nr = data.nr + nr
+  -- reshape vectors
+  data.nr = data.nr+nr
   for i=1,nc do
     if is_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
   end
-  for ii=data.nr,idx_r[1],-1 do
-    if i == idx_r[k]-1 and nr > 0 then
-      clr_row(data, ii)
-      cpy_row(data, ii, rows[j])
-      nr = nr - 1
-      if j > 1 then j = j-1 end
-      if k > 1 then k = k-1 end
+
+  -- insert rows by decreasing indexes
+  local ni, nc = idx_r[1], data.nc-data.ng
+  local j, k, r = data.nr-nr, nr, nr
+  while i >= ni do
+    if j == idx_r[r]-1 then
+      clr_row(data, i)
+      cpy_row(data, i, rows[k])
+      k = (k-2) % rsize   + 1
+      r = (r-2) % idx_r.n + 1
     else
-      for i2=0,nc do data[i2][ii] = data[i2][i] end
-      i = i-1
+      for ic=0,nc do data[ic][i] = data[ic][j] end
+      j = j-1
     end
+    i = i-1
   end
 
   return tbl:build_index()
