@@ -182,11 +182,11 @@ local function index_of_cnam (seq, nam, cnt)
 end
 
 -- get index from name [with relative count] (linear)
-local function index_of_rnam (seq, nam, cnt, idx)
+local function index_of_rnam (seq, nam, cnt, ref)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
-  assert(is_integer(idx), "invalid reference index (integer expected)")
-  idx = assert(index_of_idx(seq, idx), "invalid reference index")
+  assert(is_integer(ref), "invalid reference index (integer expected)")
+  local idx = assert(index_of_idx(seq, ref), "invalid reference index")
   if is_number(ei) then
     return (cnt ==  1 and ei >= idx and ei) or
            (cnt == -1 and ei <= idx and ei) or nil
@@ -204,39 +204,39 @@ local function index_of_rnam (seq, nam, cnt, idx)
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
-local function index_of_str (seq, str, idx_)
+local function index_of_str (seq, str, ref_)
   local num = tonumber(str)
   if num then return index_of_num(seq, num) end
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
-  if is_nil(idx_) or bra == 1 then
+  if is_nil(ref_) or bra == 1 then
     return index_of_cnam(seq, nam, cnt      )
   else
-    return index_of_rnam(seq, nam, cnt, idx_)
+    return index_of_rnam(seq, nam, cnt, ref_)
   end
 end
 
 -- get index from 'from' [mangled] name (direct or linear)
-local function index_of_fnam (seq, nam, idx_)
+local function index_of_fnam (seq, nam, ref_)
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local nam, cnt, _, bra = strbracket(nam)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
-  if is_nil(idx_) or bra ~= 2 then -- need both for relative from
+  if is_nil(ref_) or bra ~= 2 then -- need both for relative from
     return index_of_cnam(seq, nam, cnt      ), bra
   else
-    return index_of_rnam(seq, nam, cnt, idx_), bra
+    return index_of_rnam(seq, nam, cnt, ref_), bra
   end
 end
 
 -- get index from element (linear)
-local function index_of_elm (seq, elm, idx_)
+local function index_of_elm (seq, elm, ref_)
   local nam, elem = elm.__id, var_raw(seq,_data)
-  local ei, idx = elem.eidx[nam], idx_ or 1
+  local ei, idx = elem.eidx[nam], ref_ or 1
   if is_nil(ei) then return nil end
-  assert(is_integer(idx), "invalid reference index (integer expected)")
-  idx = assert(index_of_idx(seq, idx), "invalid reference index")
+  assert(is_integer(ref_), "invalid reference index (integer expected)")
+  local idx = assert(index_of_idx(seq, ref_), "invalid reference index")
   if is_number(ei) then
     return ei >= idx and elem[ei] == elm and ei or nil
   end
@@ -247,7 +247,7 @@ local function index_of_elm (seq, elm, idx_)
 end
 
 -- get [mangled] name from index (linear)
-local function name_of_idx (seq, idx, idx_)
+local function name_of_idx (seq, idx, ref_)
   local elem = var_raw(seq,_data)
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
@@ -259,11 +259,11 @@ local function name_of_idx (seq, idx, idx_)
   end
 
   local cnt, b1, b2 = 0
-  if idx_ then
-    assert(is_integer(idx_), "invalid reference index (integer expected)")
-    idx_ = assert(index_of_idx(seq, idx_), "invalid reference index")
+  if ref_ then
+    assert(is_integer(ref_), "invalid reference index (integer expected)")
+    local idx = assert(index_of_idx(seq, ref_), "invalid reference index")
     for i=1,ei.n do
-      if ei[i] < idx_ then cnt = cnt+1 else break end
+      if ei[i] < idx then cnt = cnt+1 else break end
     end
     b1, b2 = "{", "}"
   else
@@ -703,11 +703,13 @@ local pfalse = \p,_ ,e,i -> p(e,i) or false
 local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection, default
   local f, p
 
+  -- foreach(sel) -> foreach(sel.action, sel)
   if is_nil(rng_) and is_rawtable(act) then
     f, rng_ = act.action, act     -- extract action + right shift
   else
     f = act
   end
+  -- foreach(act,sel) -> foreach(act, sel.range, sel)
   if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
     rng_, sel_ = rng_.range, rng_ -- extract range  + right shift
   end
