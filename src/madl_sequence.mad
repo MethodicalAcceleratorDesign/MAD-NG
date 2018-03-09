@@ -117,15 +117,23 @@ local function check_spos (seq)
 end
 
 -- check dictionnary of name -> idx
-local function check_dict (seq)
+local function check_index (seq)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local elem = var_raw(seq,_data)
   local eidx = elem.eidx
+  local s, e, S, E = eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E']
+  assert(is_number(s) and is_number(e) and is_number(S) and is_number(E),
+         "unexpected reuse of #s/#e or #S/#E start/stop markers names")
+
   eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E'] = nil
-  for en,ei in pairs(eidx) do   -- name -> index or table of indexes
+
+  -- check dict vs elem: name -> index or table of indexes
+  for en,ei in pairs(eidx) do
     if is_number(ei) then
       assert(elem[ei].__id == en     , "unexpected corrupted dictionnary")
     elseif is_table(ei) then
       assert(elem[ei[1]].__id == en  , "unexpected corrupted dictionnary")
+      assert(ei.n             >= 2   , "unexpected corrupted dictionnary")
       for i=2,ei.n do
         assert(ei[i-1] < ei[i]       , "unexpected corrupted dictionnary")
         assert(elem[ei[i]].__id == en, "unexpected corrupted dictionnary")
@@ -134,6 +142,24 @@ local function check_dict (seq)
       error("unexpected corrupted dictionnary")
     end
   end
+
+  -- check elem vs dict: name -> index or table of indexes
+  for i=1,elem.ne do
+    local ei = eidx[elem[i].__id]
+    if is_number(ei) then
+      assert(ei == i                 , "unexpected corrupted dictionnary")
+    elseif is_table(ei) then
+      local ii
+      for j=1,ei.n do
+        if ei[j] >= i then ii = ei[j] ; break end
+      end
+      assert(ii == i                 , "unexpected corrupted dictionnary")
+    else
+      error("unexpected corrupted dictionnary")
+    end
+  end
+
+  eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E'] = s, e, S, E
 end
 
 --[=[
@@ -545,17 +571,17 @@ local function finish_sequ (seq)
   data.last_from    = nil
   data.last_frompos = nil
 
-  -- sanity checks
-  if MAD.option.debug > 2 then
-    check_mark(seq)
-    check_spos(seq)
-    check_dict(seq) -- remove $start/$end marker aliases
-  end
-
   -- $start/$end markers aliases
   local ei, ne = data.eidx, data.ne
   ei['#s'], ei['#S'] =  1,  1
   ei['#e'], ei['#E'] = ne, ne
+
+  -- sanity checks
+  if MAD.option.debug > 2 then
+    check_mark (seq)
+    check_spos (seq)
+    check_index(seq) -- remove $start/$end marker aliases
+  end
 end
 
 -- sequence init (build)
