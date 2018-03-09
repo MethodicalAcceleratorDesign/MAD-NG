@@ -78,6 +78,7 @@ local function check_index (tbl)
   local data = var_raw(tbl,_data)
   if is_nil(data.cref) then return end
   local cref = data[data.cref]
+  -- check dict vs cref
   for rn,ri in pairs(data.ridx) do -- name -> index or table of indexes
     if is_number(ri) then
       assert(cref[ri] == rn     , "unexpected corrupted dictionnary")
@@ -87,6 +88,22 @@ local function check_index (tbl)
         assert(ri[i-1] < ri[i]  , "unexpected corrupted dictionnary")
         assert(cref[ri[i]] == rn, "unexpected corrupted dictionnary")
       end
+    else
+      error("unexpected corrupted dictionnary")
+    end
+  end
+  -- check cref vs dict
+  for i=1,data.nr do -- name -> index or table of indexes
+    local rn = cref[i]
+    local ri = data.ridx[rn]
+    if is_number(ri) then          -- one : delete
+      assert(ri == i     , "unexpected corrupted dictionnary")
+    elseif is_table(ri) then
+      local ii
+      for j=1,ri.n do
+        if ri[j] >= i then ii = ri[j] ; break end
+      end
+      assert(ii == i, "unexpected corrupted dictionnary")
     else
       error("unexpected corrupted dictionnary")
     end
@@ -452,13 +469,6 @@ local function row_iter (s, i)
   if col then return i, col[s[_idx]] end
 end
 
-local function row_kiter (s, k)
-  local data = s[_data]
-  local i = k and data.cidx[k]+1 or 1
-  local col = data[i]
-  if col then return data.cidx[i], col[s[_idx]] end
-end
-
 local row_mt = set_concept({
   __len      = \s   -> s[_data].nc,
   __index    = \s,i => local data = s[_data]
@@ -481,10 +491,9 @@ local row_mt = set_concept({
                          ins_idx(data, ri)
                        end
                      end,
-  __pairs    = \s -> (row_kiter, s, nil),
-  __ipairs   = \s -> (row_iter , s, 0  ),
+  __ipairs   = \s -> (row_iter, s, 0),
   __tostring = \s -> string.format("mtable row: %p", s),
-}, not_mutable)
+}, not_mappable+ not_mutable)
 
 -- count proxy
 local function cnt_iter (s, i)
@@ -821,11 +830,37 @@ end
 
 --- rows ----------------------------------o
 
+local function clrrow (data, ri) -- not exposed
+  for ci=0,data.nc-data.ng do
+    data[ci][ri] = is_matrix(data[ci]) and 0 or nil
+  end
+end
+
+local function cpyrow (data, ri, val) -- not exposed
+  for ci=1,data.nc-data.ng do
+    local v = val[ci]
+    if is_nil(v) then v = val[data.cidx[ci]] end
+    data[ci][ri] = is_matrix(data[ci]) and (v or 0) or v
+  end
+  data[0][ri] = true
+end
+
 local function get_row (tbl, key, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local ri = index_of(tbl, key, ref_)
   if is_nil(ri) then return nil end
   return setmetatable({[_idx]=ri, [_data]=var_raw(tbl,_data), [_slf]=tbl}, row_mt)
+end
+
+local function clr_row (tbl, key, ref_)
+  local data = var_raw(tbl, _data)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
+  local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
+  local ck = data.cref and data[data.cref][ri] -- backup
+  clrrow(data, ri)
+  if ck then data[data.cref][ri] = ck end
+  return tbl
 end
 
 local function set_row (tbl, key, val, ref_)
@@ -834,13 +869,14 @@ local function set_row (tbl, key, val, ref_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
-  local ck = data.cref and (val[data.cref] or val[data.cidx[data.cref]])
-  if ck and not rawequal(ck, data[data.cref][ri]) then rem_idx(data, ri) end
+  local ck = data.cref and not rawequal(val[data.cref] or val[data.cidx[data.cref]], data[data.cref][ri])
+  if ck then rem_idx(data, ri) end
   for ci=0,data.nc-data.ng do
-    local v = val[ci] or val[data.cidx[ci]]
+    local v = val[ci]
+    if is_nil(v) then v = val[data.cidx[ci]] end
     if not is_nil(v) then data[ci][ri] = v end -- update if not nil
   end
-  if ck and not rawequal(ck, data[data.cref][ri]) then ins_idx(data, ri) end
+  if ck then ins_idx(data, ri) end
   return tbl
 end
 
@@ -854,7 +890,8 @@ local function add_row (tbl, val)
   local nr = data.nr+1
   if nr > data.rmax then expand(data, tbl, 1) end
   for ci=1,data.nc-data.ng do
-    local v = val[ci] or val[data.cidx[ci]]
+    local v = val[ci]
+    if is_nil(v) then v = val[data.cidx[ci]] end
     if is_matrix(data[ci])
     then data[ci]:_reshapeto(nr):seti(nr, v or 0)
     else data[ci][nr] = v
@@ -877,7 +914,8 @@ local function ins_row (tbl, key, val, ref_)
   local nr = data.nr+1 
   if nr > data.rmax then expand(data, tbl, 1) end
   for ci=1,data.nc-data.ng do
-    local v = val[ci] or val[data.cidx[ci]]
+    local v = val[ci]
+    if is_nil(v) then v = val[data.cidx[ci]] end
     if is_matrix(data[ci])
     then data[ci]:_reshapeto(nr):shiftv(ri, 1):seti(ri, v or 0)
     else table.insert(data[ci], ri, v)
@@ -894,15 +932,15 @@ local function rem_row (tbl, key, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
-  local nr = data.nr-1, 
+  local nr = data.nr, 
   rem_idx(data, ri) -- remove before update
   shf_idx(data, ri, -1)
   for ci=0,data.nc-data.ng do
     if is_matrix(data[ci])
-    then data[ci]:shiftv(ri, -1):seti(nr+1, 0):_reshapeto(nr)
-    else table.remove(data[ci], ri)
+    then data[ci]:shiftv(ri, -1):seti(nr, 0):_reshapeto(nr-1)
+    else table.move(data[ci], ri+1, nr, ri)[nr] = nil
   end end
-  data.nr = nr
+  data.nr = nr-1
   return tbl
 end
 
@@ -1016,20 +1054,6 @@ end
 
 -- methods (R/W, rebuild dict) ------------------------------------------------o
 
-local function clr_row (data, ri) -- not exposed
-  for ci=0,data.nc-data.ng do
-    data[ci][ri] = is_matrix(data[ci]) and 0 or nil
-  end
-end
-
-local function cpy_row (data, ri, val) -- not exposed
-  for ci=1,data.nc-data.ng do
-    local v = val[ci] or val[data.cidx[ci]]
-    data[ci][ri] = is_matrix(data[ci]) and (v or 0) or v
-  end
-  data[0][ri] = true
-end
-
 local function remove (tbl, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = var_raw(tbl,_data)
@@ -1060,7 +1084,7 @@ local function remove (tbl, rng_, sel_)
     j = j+1
   end
   -- clear remaning rows
-  for i=ni+1,data.nr do clr_row(data, i) end
+  for i=ni+1,data.nr do clrrow(data, i) end
 
   -- reshape vectors and clear tables
   for i=1,nc do
@@ -1114,16 +1138,18 @@ local function insert (tbl, rows, rng_, sel_)
 
   -- reshape vectors
   data.nr = data.nr+nr
+  local nc = data.nc-data.ng
   for i=1,nc do
     if is_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
   end
 
   -- insert rows by decreasing indexes
-  local ni, nc = idx_r[1], data.nc-data.ng
-  local j, k, r = data.nr-nr, nr, nr
+  local i, j, ni = data.nr, data.nr-nr, idx_r[1]
+  local k = (nr-1) % rsize   + 1
+  local r = (nr-1) % idx_r.n + 1
   while i >= ni do
     if j == idx_r[r]-1 then
-      cpy_row(data, i, rows[k])
+      cpyrow(data, i, rows[k])
       k = (k-2) % rsize   + 1
       r = (r-2) % idx_r.n + 1
     else
@@ -1452,6 +1478,7 @@ mtable: set_methods {
   getrow       = get_row,
   addrow       = add_row,
   setrow       = set_row,
+  clrrow       = clr_row,
   remrow       = rem_row,
   insrow       = ins_row,
   swprow       = swp_row,
