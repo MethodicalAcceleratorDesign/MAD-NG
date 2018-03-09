@@ -393,11 +393,11 @@ FUN(mder) (const T *a, T *c, int n, const ord_t mono[n])
 {
   assert(a && c && a != c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(mad_desc_mono_isvalid(a->d,n,mono), "invalid monomial");
+  ensure(mad_desc_mono_isvalid_m(a->d,n,mono), "invalid monomial");
 
   ord_t der_ord = mad_mono_ord(n,mono);
   ensure(der_ord > 0, "invalid derivative order");
-  idx_t idx = mad_desc_get_idx(a->d,n,mono);
+  idx_t idx = mad_desc_get_idx_m(a->d,n,mono);
   if (idx < a->d->ord2idx[2]) {  // fallback on simple version
     FUN(der)(a,c,idx);
     return;

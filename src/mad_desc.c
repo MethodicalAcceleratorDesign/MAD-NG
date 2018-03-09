@@ -116,7 +116,7 @@ make_higher_ord_monos(D *d, idx_t curr_mono_idx, int need_realloc, idx_t var_at_
     for   (idx_t i=pi[ 1 ]; i < pi[2]; ++i) { // i goes through ord  1
       for (idx_t j=pi[o-1]; j < pi[o]; ++j) { // j goes through ord (o-1)
         mad_mono_add(nv, d->monos + i*nv, d->monos + j*nv, m);
-        if (mad_desc_mono_isvalid(d, nv, m)) {
+        if (mad_desc_mono_isvalid_m(d, nv, m)) {
           // ensure there is space for m
           if (need_realloc && curr_mono_idx >= d->nc) {
             tbl_realloc_monos(d, 0);
@@ -334,7 +334,7 @@ tbl_index_H(const D *d, int n, const ord_t m[n])
 }
 
 static inline int
-tbl_index_H_sp(const D *d, int n, const idx_t m[n])
+tbl_index_H_sm(const D *d, int n, const idx_t m[n])
 {
   assert(d && n/2 <= d->nv && !(n & 1));
   int s = 0, I = 0, cols = d->mo+2, idx, o;
@@ -379,7 +379,7 @@ tbl_solve_H(D *d)
     accum += vo[v];
     for (int o=vo[v]+2; o <= MIN(accum, d->mo); o++) { // orders
       nxt_mono_by_unk(nv, vo, sort, r, o, mono);  // NOTE: it's r, not v
-      if (mad_desc_mono_isvalid(d, nv, mono)) {
+      if (mad_desc_mono_isvalid_m(d, nv, mono)) {
         idx_t idx0 = tbl_index_H(d, nv, mono);
         idx_t idx1 = find_index_bin(nv, d->Tv, mono, idx0, d->nc, BY_VAR);
         d->H[r*cols + o] = idx1 - idx0;
@@ -505,7 +505,7 @@ tbl_build_LC(int oa, int ob, D *d)
     int lim_a = oa == ob ? ib+1 : pi[oa+1];   // triangular is lower left
     for (int ia = pi[oa]; ia < lim_a; ++ia) {
       mad_mono_add(d->nv, To[ia], To[ib], m);
-      if (mad_desc_mono_isvalid(d,d->nv,m)) {
+      if (mad_desc_mono_isvalid_m(d,d->nv,m)) {
         ic = tv2to[tbl_index_H(d,d->nv,m)];
         idx_lc = hpoly_idx(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
@@ -634,7 +634,7 @@ tbl_check_L(D *d)
           if (ic >= 0 && ic < d->ord2idx[oc])      return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
-          if (ic < 0 && mad_desc_mono_isvalid(d,d->nv,m))
+          if (ic < 0 && mad_desc_mono_isvalid_m(d,d->nv,m))
                                                    return -3e7          - 13;
         }
       }
@@ -912,10 +912,10 @@ mad_desc_get_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
 }
 
 idx_t
-mad_desc_get_idx (const D *d, ssz_t n, const ord_t m[n])
+mad_desc_get_idx_m (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m);
-  ensure(mad_desc_mono_isvalid(d, n, m), "invalid monomial");
+  ensure(mad_desc_mono_isvalid_m(d, n, m), "invalid monomial");
   return d->tv2to[tbl_index_H(d, n, m)];
 }
 
@@ -926,19 +926,19 @@ mad_desc_get_idx_s (const D *d, ssz_t n, str_t s)
   if (n <= 0) n = strlen(s);
   ord_t m[n];
   n = mad_mono_str(n, m, s);
-  return mad_desc_get_idx(d, n, m);
+  return mad_desc_get_idx_m(d, n, m);
 }
 
 idx_t
-mad_desc_get_idx_sp (const D *d, ssz_t n, const idx_t m[n])
+mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
 {
   assert(d && m);
-  ensure(mad_desc_mono_isvalid_sp(d, n, m), "invalid monomial");
-  return d->tv2to[tbl_index_H_sp(d, n, m)];
+  ensure(mad_desc_mono_isvalid_sm(d, n, m), "invalid monomial");
+  return d->tv2to[tbl_index_H_sm(d, n, m)];
 }
 
 int
-mad_desc_mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
+mad_desc_mono_isvalid_m (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m);
   return n <= d->nv
@@ -954,11 +954,11 @@ mad_desc_mono_isvalid_s (const D *d, ssz_t n, str_t s)
   if (n <= 0 || n > 1000000) n = strlen(s);
   ord_t m[n];
   n = mad_mono_str(n, m, s);
-  return mad_desc_mono_isvalid(d, n, m);
+  return mad_desc_mono_isvalid_m(d, n, m);
 }
 
 int
-mad_desc_mono_isvalid_sp (const D *d, ssz_t n, const idx_t m[n])
+mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m[n])
 {
   assert(d && m);
   if (n & 1) return 0;
@@ -983,7 +983,7 @@ mad_desc_mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
   const idx_t *sort = d->sort_var;
   for (idx_t i=0; i < n; ++i) {
     ++m[sort[i]];
-    if (mad_desc_mono_isvalid(d, n, m)) return 1;
+    if (mad_desc_mono_isvalid_m(d, n, m)) return 1;
     m[sort[i]] = 0;
   }
   return 0;

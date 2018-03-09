@@ -65,21 +65,21 @@ void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
 
 // indexing / monomials
 int     mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t   mad_tpsa_midx    (const tpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t   mad_tpsa_midx_s  (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t   mad_tpsa_midx_sp (const tpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t   mad_tpsa_idxs    (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
+idx_t   mad_tpsa_idxm    (const tpsa_t *t, ssz_t n, const ord_t m [n]);
+idx_t   mad_tpsa_idxsm   (const tpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
 
 // accessors
 num_t   mad_tpsa_get0    (const tpsa_t *t);
 num_t   mad_tpsa_geti    (const tpsa_t *t, idx_t i);
+num_t   mad_tpsa_gets    (const tpsa_t *t, ssz_t n,       str_t s   ); // string mono "[0-9]*"
 num_t   mad_tpsa_getm    (const tpsa_t *t, ssz_t n, const ord_t m[n]);
-num_t   mad_tpsa_getm_s  (const tpsa_t *t, ssz_t n,       str_t s   ); // string mono "[0-9]*"
-num_t   mad_tpsa_getm_sp (const tpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
+num_t   mad_tpsa_getsm   (const tpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
 void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */                num_t a, num_t b);
 void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                   num_t a, num_t b);
 void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n], num_t a, num_t b);
-void    mad_tpsa_setm_s  (      tpsa_t *t, ssz_t n,       str_t s   , num_t a, num_t b);
-void    mad_tpsa_setm_sp (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, num_t b);
+void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s   , num_t a, num_t b);
+void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, num_t b);
 
 // operations
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);

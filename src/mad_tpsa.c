@@ -40,10 +40,10 @@ FUN(debug) (const T *t)
             t->nz,t->lo,t->hi,t->mo, VAL(t->coef[0]));
 
   ord_t hi = MIN3(t->hi, t->mo, t->d->trunc);
-  int i = d->ord2idx[MAX(1,t->lo)]; // ord 0 already printed
-  for (; i < d->ord2idx[hi+1]; ++i)
-    if (t->coef[i])
-      printf("[%d]=" FMT " ", i, VAL(t->coef[i]));
+  idx_t *pi = d->ord2idx;
+  int i = pi[MAX(1,t->lo)]; // ord 0 already printed
+  for (; i < pi[hi+1]; ++i)
+    if (t->coef[i]) printf("[%d]=" FMT " ", i, VAL(t->coef[i]));
   printf(" }\n");
 }
 
@@ -121,8 +121,9 @@ FUN(copy) (const T *t, T *dst)
   dst->hi = MIN3(t->hi, dst->mo, d->trunc);
   dst->lo = t->lo;
   dst->nz = mad_bit_trunc(t->nz, dst->hi);
+  idx_t *pi = d->ord2idx;
 
-  for (int i = d->ord2idx[dst->lo]; i < d->ord2idx[dst->hi+1]; ++i)
+  for (int i = pi[dst->lo]; i < pi[dst->hi+1]; ++i)
     dst->coef[i] = t->coef[i];
 }
 
@@ -171,24 +172,24 @@ FUN(mono) (const T *t, int n, ord_t m_[n], idx_t i)
 }
 
 int
-FUN(midx) (const T *t, int n, const ord_t m[n])
-{
-  assert(t && m);
-  return mad_desc_get_idx(t->d, n, m);
-}
-
-int
-FUN(midx_s) (const T *t, int n, str_t s)
+FUN(idxs) (const T *t, int n, str_t s)
 {
   assert(t && s);
   return mad_desc_get_idx_s(t->d, n, s);
 }
 
 int
-FUN(midx_sp) (const T *t, int n, const int m[n])
+FUN(idxm) (const T *t, int n, const ord_t m[n])
 {
   assert(t && m);
-  return mad_desc_get_idx_sp(t->d, n, m);
+  return mad_desc_get_idx_m(t->d, n, m);
+}
+
+int
+FUN(idxsm) (const T *t, int n, const int m[n])
+{
+  assert(t && m);
+  return mad_desc_get_idx_sm(t->d, n, m);
 }
 
 // --- accessors --------------------------------------------------------------o
@@ -205,8 +206,18 @@ FUN(geti) (const T *t, int i)
 {
   assert(t);
   D *d = t->d;
-  ensure(i >= 0 && i < d->nc, "index out of bounds");
-  ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
+  ensure(i >= 0 && i < d->nc, "index order exceeds GPTSA maximum order");
+  return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
+}
+
+NUM
+FUN(gets) (const T *t, int n, str_t s)
+{
+  // --- mono is a string; represented as "[0-9]*"
+  assert(t && s);
+  D *d = t->d;
+  idx_t i = mad_desc_get_idx_s(d,n,s);
+  ensure(i >= 0 && i < d->nc, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -215,30 +226,19 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
 {
   assert(t && m);
   D *d = t->d;
-  idx_t i = mad_desc_get_idx(d,n,m);
-  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
+  idx_t i = mad_desc_get_idx_m(d,n,m);
+  ensure(i >= 0 && i < d->nc, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
 NUM
-FUN(getm_s) (const T *t, int n, str_t s)
-{
-  // --- mono is a string; represented as "[0-9]*"
-  assert(t && s);
-  D *d = t->d;
-  idx_t i = mad_desc_get_idx_s(d,n,s);
-  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
-  return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
-}
-
-NUM
-FUN(getm_sp) (const T *t, int n, const idx_t m[n])
+FUN(getsm) (const T *t, int n, const idx_t m[n])
 {
   // --- mono is sparse; represented as [(i o)]
   assert(t && m);
   D *d = t->d;
-  idx_t i = mad_desc_get_idx_sp(d,n,m);
-  ensure(d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
+  idx_t i = mad_desc_get_idx_sm(d,n,m);
+  ensure(i >= 0 && i < d->nc, "monomial order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
 
@@ -248,8 +248,9 @@ FUN(set0) (T *t, NUM a, NUM b)
   assert(t);
   t->coef[0] = a*t->coef[0] + b;
   if (t->coef[0]) {
+    idx_t *pi = t->d->ord2idx;
     t->nz = mad_bit_set(t->nz,0);
-    for (int c = t->d->ord2idx[1]; c < t->d->ord2idx[t->lo]; ++c)
+    for (int c = pi[1]; c < pi[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = 0;
   }
@@ -265,7 +266,6 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
   D *d = t->d;
-  ensure(i >= 0 && i < d->nc, "index out of bounds");
   ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
@@ -281,20 +281,21 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
     return;
   }
 
-  ord_t o = d->ords[i];
+  ord_t  o  = d->ords[i];
+  idx_t *pi = d->ord2idx;
   t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (int c = d->ord2idx[o]; c < d->ord2idx[o+1]; ++c)
+    for (int c = pi[o]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (int c = d->ord2idx[t->hi+1]; c < d->ord2idx[o+1]; ++c)
+    for (int c = pi[t->hi+1]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (int c = d->ord2idx[o]; c < d->ord2idx[t->lo]; ++c)
+    for (int c = pi[o]; c < pi[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = o;
   }
@@ -302,27 +303,30 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 }
 
 void
+FUN(sets) (T *t, int n, str_t s, NUM a, NUM b)
+{
+  assert(t && s);
+  idx_t i = mad_desc_get_idx_s(t->d,n,s);
+  ensure(t->d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
+  FUN(seti)(t,i,a,b);
+}
+
+void
 FUN(setm) (T *t, int n, const ord_t m[n], NUM a, NUM b)
 {
   assert(t && m);
   assert(n <= t->d->nv);
-  idx_t i = mad_desc_get_idx(t->d,n,m);
+  idx_t i = mad_desc_get_idx_m(t->d,n,m);
+  ensure(t->d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
   FUN(seti)(t,i,a,b);
 }
 
 void
-FUN(setm_s) (T *t, int n, str_t s, NUM a, NUM b)
-{
-  assert(t && s);
-  idx_t i = mad_desc_get_idx_s(t->d,n,s);
-  FUN(seti)(t,i,a,b);
-}
-
-void
-FUN(setm_sp) (T *t, int n, const idx_t m[n], NUM a, NUM b)
+FUN(setsm) (T *t, int n, const idx_t m[n], NUM a, NUM b)
 {
   assert(t && m);
-  idx_t i = mad_desc_get_idx_sp(t->d,n,m);
+  idx_t i = mad_desc_get_idx_sm(t->d,n,m);
+  ensure(t->d->ords[i] <= t->mo, "monomial order exceeds GPTSA maximum order");
   FUN(seti)(t,i,a,b);
 }
 
@@ -336,14 +340,14 @@ void FUN(get0_r) (const T *t, NUM *r)
 void FUN(geti_r) (const T *t, int i, NUM *r)
 { assert(r); *r = FUN(geti)(t, i); }
 
+void FUN(gets_r) (const T *t, int n, str_t s, NUM *r)
+{ assert(r); *r = FUN(gets)(t, n, s); }
+
 void FUN(getm_r) (const T *t, int n, const ord_t m[n], NUM *r)
 { assert(r); *r = FUN(getm)(t, n, m); }
 
-void FUN(getm_s_r) (const T *t, int n, str_t s, NUM *r)
-{ assert(r); *r = FUN(getm_s)(t, n, s); }
-
-void FUN(getm_sp_r) (const T *t, int n, const idx_t m[n], NUM *r)
-{ assert(r); *r = FUN(getm_sp)(t, n, m); }
+void FUN(getsm_r) (const T *t, int n, const idx_t m[n], NUM *r)
+{ assert(r); *r = FUN(getsm)(t, n, m); }
 
 void FUN(set0_r) (T *t, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(set0)(t, CNUM(a), CNUM(b)); }
@@ -351,14 +355,14 @@ void FUN(set0_r) (T *t, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 void FUN(seti_r) (T *t, int i, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(seti)(t, i, CNUM(a), CNUM(b)); }
 
+void FUN(sets_r) (T *t, int n, str_t s, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(sets)(t, n, s, CNUM(a), CNUM(b)); }
+
 void FUN(setm_r) (T *t, int n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setm)(t, n, m, CNUM(a), CNUM(b)); }
 
-void FUN(setm_s_r) (T *t, int n, str_t s, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(setm_s)(t, n, s, CNUM(a), CNUM(b)); }
-
-void FUN(setm_sp_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(setm_sp)(t, n, m, CNUM(a), CNUM(b)); }
+void FUN(setsm_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
+{ FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
 
 // --- end --------------------------------------------------------------------o
 

@@ -72,33 +72,33 @@ void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst)
 
 // indexing / monomials
 int      mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t    mad_ctpsa_midx    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t    mad_ctpsa_midx_s  (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t    mad_ctpsa_midx_sp (const ctpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t    mad_ctpsa_idxs    (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
+idx_t    mad_ctpsa_idxm    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);
+idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
 
 // accessors
 cnum_t   mad_ctpsa_get0    (const ctpsa_t *t);
 cnum_t   mad_ctpsa_geti    (const ctpsa_t *t, idx_t i);
+cnum_t   mad_ctpsa_gets    (const ctpsa_t *t, ssz_t n,       str_t s   ); // string w orders in '0'-'9'
 cnum_t   mad_ctpsa_getm    (const ctpsa_t *t, ssz_t n, const ord_t m[n]);
-cnum_t   mad_ctpsa_getm_s  (const ctpsa_t *t, ssz_t n,       str_t s   ); // string w orders in '0'-'9'
-cnum_t   mad_ctpsa_getm_sp (const ctpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
+cnum_t   mad_ctpsa_getsm   (const ctpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
 void     mad_ctpsa_set0    (      ctpsa_t *t, /* i = 0 */                cnum_t a, cnum_t b); // a*x[0]+b
 void     mad_ctpsa_seti    (      ctpsa_t *t, idx_t i,                   cnum_t a, cnum_t b); // a*x[i]+b
+void     mad_ctpsa_sets    (      ctpsa_t *t, ssz_t n,       str_t s   , cnum_t a, cnum_t b); // a*x[m]+b
 void     mad_ctpsa_setm    (      ctpsa_t *t, ssz_t n, const ord_t m[n], cnum_t a, cnum_t b); // a*x[m]+b
-void     mad_ctpsa_setm_s  (      ctpsa_t *t, ssz_t n,       str_t s   , cnum_t a, cnum_t b); // a*x[m]+b
-void     mad_ctpsa_setm_sp (      ctpsa_t *t, ssz_t n, const int   m[n], cnum_t a, cnum_t b); // a*x[m]+b
+void     mad_ctpsa_setsm   (      ctpsa_t *t, ssz_t n, const int   m[n], cnum_t a, cnum_t b); // a*x[m]+b
 
 // accessors without complex-by-value
-void     mad_ctpsa_get0_r   (const ctpsa_t *t, cnum_t *r);
-void     mad_ctpsa_geti_r   (const ctpsa_t *t, idx_t i, cnum_t *r);
-void     mad_ctpsa_getm_r   (const ctpsa_t *t, ssz_t n, const ord_t m[n], cnum_t *r);
-void     mad_ctpsa_getm_s_r (const ctpsa_t *t, ssz_t n,       str_t s   , cnum_t *r);
-void     mad_ctpsa_getm_sp_r(const ctpsa_t *t, ssz_t n, const int   m[n], cnum_t *r);
-void     mad_ctpsa_set0_r   (      ctpsa_t *t, /* i = 0 */                num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_seti_r   (      ctpsa_t *t, idx_t i,                   num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_setm_r   (      ctpsa_t *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_setm_s_r (      ctpsa_t *t, ssz_t n,       str_t s   , num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_setm_sp_r(      ctpsa_t *t, ssz_t n, const int   m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_get0_r  (const ctpsa_t *t, cnum_t *r);
+void     mad_ctpsa_geti_r  (const ctpsa_t *t, idx_t i, cnum_t *r);
+void     mad_ctpsa_gets_r  (const ctpsa_t *t, ssz_t n,       str_t s   , cnum_t *r);
+void     mad_ctpsa_getm_r  (const ctpsa_t *t, ssz_t n, const ord_t m[n], cnum_t *r);
+void     mad_ctpsa_getsm_r (const ctpsa_t *t, ssz_t n, const int   m[n], cnum_t *r);
+void     mad_ctpsa_set0_r  (      ctpsa_t *t, /* i = 0 */                num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_seti_r  (      ctpsa_t *t, idx_t i,                   num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_sets_r  (      ctpsa_t *t, ssz_t n,       str_t s   , num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const int   m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
 
 // operations
 void     mad_ctpsa_abs     (const ctpsa_t *a, ctpsa_t *c);
