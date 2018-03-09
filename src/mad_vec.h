@@ -33,7 +33,6 @@ void   mad_vec_fill   (                         num_t x        ,  num_t  r[], ss
 void   mad_vec_shift  (       num_t x[],                                      ssz_t n, int nshft);
 void   mad_vec_roll   (       num_t x[],                                      ssz_t n, int nroll);
 void   mad_vec_copy   (const  num_t x[],                          num_t  r[], ssz_t n); //  vec -> vec
-void   mad_vec_rcopy  (const  num_t x[],                          num_t  r[], ssz_t n); //  vec -> vec
 void   mad_vec_copyv  (const  num_t x[],                         cnum_t  r[], ssz_t n); //  vec ->cvec
 void   mad_vec_cvec   (const  num_t x[], const  num_t y[],       cnum_t  r[], ssz_t n); // vr,vi->cvec
 num_t  mad_vec_dot    (const  num_t x[], const  num_t y[]                   , ssz_t n); // <vec ,  vec>
@@ -72,7 +71,6 @@ void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], ss
 void   mad_cvec_shift (      cnum_t x[],                                      ssz_t n, int nshft);
 void   mad_cvec_roll  (      cnum_t x[],                                      ssz_t n, int nroll);
 void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec
-void   mad_cvec_rcopy (const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec
 void   mad_cvec_vec   (const cnum_t x[],             num_t re[], num_t  ri[], ssz_t n); //  cvec->vr,vi
 void   mad_cvec_conj  (const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec*
 cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , ssz_t n); // <cvec , cvec>

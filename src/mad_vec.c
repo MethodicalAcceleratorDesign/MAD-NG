@@ -47,13 +47,12 @@ void mad_vec_fill (num_t x, num_t r[], ssz_t n)
 { CHKR; for (ssz_t i=0; i < n; i++) r[i] = x; }
 
 void mad_vec_copy (const num_t x[], num_t r[], ssz_t n)
-{ CHKXR; if (x != r) for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
-
-void mad_vec_rcopy (const num_t x[], num_t r[], ssz_t n)
-{ CHKXR; if (x != r) for (ssz_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
+{ CHKXR; if (x > r) for (ssz_t i=0; i <  n; i++) r[  i] = x[  i];
+  else   if (x < r) for (ssz_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
 
 void mad_vec_copyv (const num_t x[], cnum_t r[], ssz_t n)
-{ CHKXR; for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
+{ CHKXR; if (x > (num_t*)r) for (ssz_t i=0; i <  n; i++) r[  i] = x[  i];
+  else   if (x < (num_t*)r) for (ssz_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
 
 void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], ssz_t n)
 { assert( r && (x || y) );
@@ -151,12 +150,9 @@ void mad_vec_center (const num_t x[], num_t r[], ssz_t n)
 void
 mad_vec_shift (num_t x[], ssz_t n, int nshft)
 { CHKX;
-  if (nshft > 0) {
-    mad_vec_rcopy(x, x+nshft, n-nshft); // shift x down (or right)
-  } else
-  if (nshft < 0) {
-    mad_vec_copy (x-nshft, x, n+nshft); // shift x up (or left)
-  }
+  if (nshft > 0) mad_vec_copy(x, x+nshft, n-nshft); // shift x down (or right)
+  else
+  if (nshft < 0) mad_vec_copy(x-nshft, x, n+nshft); // shift x up (or left)
 }
 
 void
@@ -165,14 +161,14 @@ mad_vec_roll (num_t x[], ssz_t n, int nroll)
   ssz_t nsz = abs(nroll);
   mad_alloc_tmp(num_t, a, nsz);
   if (nroll > 0) {
-    mad_vec_copy (x+n-nsz, a    ,   nsz); // end of x to a
-    mad_vec_rcopy(x      , x+nsz, n-nsz); // shift x down (or right)
-    mad_vec_copy (a      , x    ,   nsz); // a to beginning of x
+    mad_vec_copy(x+n-nsz, a    ,   nsz); // end of x to a
+    mad_vec_copy(x      , x+nsz, n-nsz); // shift x down (or right)
+    mad_vec_copy(a      , x    ,   nsz); // a to beginning of x
   } else
   if (nroll < 0) {
-    mad_vec_copy (x    , a      ,   nsz); // beginning of x to a
-    mad_vec_copy (x+nsz, x      , n-nsz); // shift x up (or left)
-    mad_vec_copy (a    , x+n-nsz,   nsz); // a to end of x
+    mad_vec_copy(x    , a      ,   nsz); // beginning of x to a
+    mad_vec_copy(x+nsz, x      , n-nsz); // shift x up (or left)
+    mad_vec_copy(a    , x+n-nsz,   nsz); // a to end of x
   }
   mad_free_tmp(a);
 }
@@ -237,10 +233,7 @@ void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
 { mad_cvec_fill(CNUM(x_re,x_im), r, n); }
 
 void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKXR; if (x != r) for (ssz_t i=0; i < n; i++) r[i] = x[i]; }
-
-void mad_cvec_rcopy (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKXR; if (x != r) for (ssz_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
+{ mad_vec_copy((const num_t*)x, (num_t*)r, 2*n); }
 
 void mad_cvec_shift (cnum_t x[], ssz_t n, int nshft)
 { mad_vec_shift((num_t*)x, 2*n, 2*nshft); }

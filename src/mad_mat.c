@@ -479,27 +479,27 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
   ssz_t sz = msz > nsz ? msz : nsz;
   mad_alloc_tmp(num_t, a, sz);
   if (mroll > 0) {
-    mad_vec_copy (x+nm-msz, a    ,    msz); // end of x to a
-    mad_vec_rcopy(x       , x+msz, nm-msz); // shift x down
-    mad_vec_copy (a       , x    ,    msz); // a to beginning of x
+    mad_vec_copy(x+nm-msz, a    ,    msz); // end of x to a
+    mad_vec_copy(x       , x+msz, nm-msz); // shift x down
+    mad_vec_copy(a       , x    ,    msz); // a to beginning of x
   } else
   if (mroll < 0) {
-    mad_vec_copy (x    , a       ,    msz); // beginning of x to a
-    mad_vec_copy (x+msz, x       , nm-msz); // shift x up
-    mad_vec_copy (a    , x+nm-msz,    msz); // a to end of x
+    mad_vec_copy(x    , a       ,    msz); // beginning of x to a
+    mad_vec_copy(x+msz, x       , nm-msz); // shift x up
+    mad_vec_copy(a    , x+nm-msz,    msz); // a to end of x
   }
   if (nroll > 0) {
     for (ssz_t i=0; i < nm; i += n) {
-      mad_vec_copy (x+i+n-nsz, a      ,   nsz); // end of x to a
-      mad_vec_rcopy(x+i      , x+i+nsz, n-nsz); // shift x right
-      mad_vec_copy (a        , x+i    ,   nsz); // a to beginning of x
+      mad_vec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
+      mad_vec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
+      mad_vec_copy(a        , x+i    ,   nsz); // a to beginning of x
     }
   } else
   if (nroll < 0) {
     for (ssz_t i=0; i < nm; i += n) {
-      mad_vec_copy (x+i    , a        ,   nsz); // beginning of x to a
-      mad_vec_copy (x+i+nsz, x+i      , n-nsz); // shift x left
-      mad_vec_copy (a      , x+i+n-nsz,   nsz); // a to end of x
+      mad_vec_copy(x+i    , a        ,   nsz); // beginning of x to a
+      mad_vec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
+      mad_vec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
     }
   }
   mad_free_tmp(a);
