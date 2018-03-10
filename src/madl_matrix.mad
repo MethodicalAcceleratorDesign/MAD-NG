@@ -54,19 +54,27 @@ local cpx_sz = ffi.sizeof 'complex'
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[
-struct  matrix { const ssz_t nr, nc; double  data[?]; };
-struct cmatrix { const ssz_t nr, nc; complex data[?]; };
-struct  matrix_ccast { ssz_t nr, nc; double  data[?]; };
+struct  matrix       { const ssz_t nr, nc;       double  data[?]; };
+struct cmatrix       { const ssz_t nr, nc;       complex data[?]; };
+struct  matrix_const { const ssz_t nr, nc; const double  data[?]; };
+struct cmatrix_const { const ssz_t nr, nc; const complex data[?]; };
+struct  matrix_ccast {       ssz_t nr, nc;       double  data[?]; };
 ]]
 
 local  matrix_ctor = ffi.typeof 'struct  matrix '
 local  matrix_cref = ffi.typeof 'struct  matrix&'
 local cmatrix_ctor = ffi.typeof 'struct cmatrix '
 local cmatrix_cref = ffi.typeof 'struct cmatrix&'
-local  matrix_ccst = ffi.typeof 'struct  matrix_ccast&'
 
-local is_matrix  = \x -> istype( matrix_ctor, x)
-local is_cmatrix = \x -> istype(cmatrix_ctor, x)
+local  matrix_cctor = ffi.typeof 'struct  matrix_const'
+local cmatrix_cctor = ffi.typeof 'struct cmatrix_const'
+local  matrix_ccref = ffi.typeof 'struct  matrix_const&'
+local cmatrix_ccref = ffi.typeof 'struct cmatrix_const&'
+
+local  matrix_ccast = ffi.typeof 'struct  matrix_ccast&'
+
+local is_matrix  = \x -> istype( matrix_ctor, x) or istype( matrix_cctor, x)
+local is_cmatrix = \x -> istype(cmatrix_ctor, x) or istype(cmatrix_cctor, x)
 local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x)
 local is_vector  = \x -> is_matrix(x)  and (x.nr == 1 or x.nc == 1)
 local is_cvector = \x -> is_cmatrix(x) and (x.nr == 1 or x.nc == 1)
@@ -83,7 +91,7 @@ local function matrix_alloc (nr, nc)
     local siz = ffi.sizeof(matrix_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free)
-    local m = ffi.cast(matrix_ccst, mat)
+    local m = ffi.cast(matrix_ccast, mat)
     m.nr, m.nc = nr, nc
   end
   return mat
@@ -98,7 +106,7 @@ local function cmatrix_alloc (nr, nc)
     local siz = ffi.sizeof(cmatrix_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     mat = ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free)
-    local m = ffi.cast(matrix_ccst, mat)
+    local m = ffi.cast(matrix_ccast, mat)
     m.nr, m.nc = nr, nc
   end
   return mat
@@ -266,6 +274,30 @@ function MC.__same (x, e_, nr_, nc_)
   end
   -- e_ is ignored because x is a cmatrix
   return cmatrix(nr_ or x.nr, nc_ or x.nc)
+end
+
+-- readonly -------------------------------------------------------------------o
+
+function MR.set_readonly (x, flg_)
+  if flg_ == false
+  then return ffi.cast(matrix_cref , x)
+  else return ffi.cast(matrix_ccref, x)
+  end
+end
+
+function MC.set_readonly (x, flg_)
+  if flg_ == false
+  then return ffi.cast(cmatrix_cref , x)
+  else return ffi.cast(cmatrix_ccref, x)
+  end
+end
+
+function MR.is_readonly (x)
+  return istype(matrix_cctor, x)
+end
+
+function MC.is_readonly (x)
+  return istype(cmatrix_cctor, x)
 end
 
 -- copy, resize ---------------------------------------------------------------o
@@ -491,7 +523,7 @@ end
 function MR.reshape (x, nr_, nc_)
   local nr, nc = nr_ or x:size(), nc_ or 1
   assert(nr >= 1 and nc >= 1 and nr*nc <= x:size(), "invalid matrix new sizes")
-  local xx = ffi.cast(matrix_ccst, x)
+  local xx = ffi.cast(matrix_ccast, x)
   xx.nr, xx.nc = nr, nc
   return x
 end
@@ -499,7 +531,7 @@ end
 function MR._reshapeto (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  local xx = ffi.cast(matrix_ccst, x)
+  local xx = ffi.cast(matrix_ccast, x)
   xx.nr, xx.nc = nr_ or 1, nc_ or 1
   return x
 end
@@ -507,7 +539,7 @@ end
 function MR._reshapeby (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  local xx = ffi.cast(matrix_ccst, x)
+  local xx = ffi.cast(matrix_ccast, x)
   xx.nr, xx.nc = x.nr + (nr_ or 0), x.nc + (nc_ or 0)
   return x
 end
@@ -2107,8 +2139,10 @@ MAD.typeid.isa_matrix = isa_matrix
 
 -- metatables -----------------------------------------------------------------o
 
-ffi.metatype( matrix_ctor, MR)
-ffi.metatype(cmatrix_ctor, MC)
+ffi.metatype( matrix_ctor , MR)
+ffi.metatype(cmatrix_ctor , MC)
+ffi.metatype( matrix_cctor, MR)
+ffi.metatype(cmatrix_cctor, MC)
 
 -- end ------------------------------------------------------------------------o
 return {
