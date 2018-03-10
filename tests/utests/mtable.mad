@@ -1267,6 +1267,7 @@ function TestMTable:testSetInvalid()
     "invalid argument #3 (valid column expected)",
     "invalid argument #2 (valid row[cnt] expected)",
     "invalid argument #2 (valid row expected)",
+    "invalid argument #4 (valid reference key expected)",
   }
   for i,tbl in ipairs{tbl1, tbl2, tbl3} do
     assertErrorMsgContains(msg[1], mtable.set, tbl,  6        , 1     , v)
@@ -1279,6 +1280,7 @@ function TestMTable:testSetInvalid()
     assertErrorMsgContains(msg[3], mtable.set, tbl, "name1"   , 1     , v, 4)
     assertErrorMsgContains(msg[3], mtable.set, tbl, "name1"   , 1     , v,-4)
     assertErrorMsgContains(msg[4], mtable.set, tbl, "name1[2]", 1     , v   )
+    assertErrorMsgContains(msg[5], mtable.set, tbl, 1         , "dict", nil )
   end
 end
 
@@ -2058,19 +2060,16 @@ function TestMTable:testSetRowNil()
   }
   tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row3);
 
-  assertErrorMsgContains(msg[1], mtable.setrow, tbl2, 1, {  }, 1)
-  assertErrorMsgContains(msg[1], mtable.setrow, tbl3, 1, {  }, 1)
-  tbl2:setrow(1, { "name1", nil, nil, nil     })
-  tbl3:setrow(1, {     nil, nil, nil, "name1" })
-  assertEquals(#tbl2, 1)
-  assertEquals(#tbl3, 1)
-  for j=1,3 do
-    assertEquals(tbl2:get(1,j+1), nil)
-    assertEquals(tbl3:get(1,j  ), nil)
+  for _,tbl in ipairs{tbl2, tbl2, tbl3} do
+    tbl:setrow(1, { })
+    assertEquals(#tbl, 1)
+    tbl:check_index()
   end
+  assertEquals(tbl1:getrow(1), row1)
+  assertEquals(tbl2:getrow(1), row2)
+  assertEquals(tbl3:getrow(1), row3)
   tbl1:check_index()
   tbl2:check_index()
-  tbl3:check_index()
 end
 
 function TestMTable:testSetRowInvalid()
@@ -2089,6 +2088,64 @@ function TestMTable:testSetRowInvalid()
   assertErrorMsgContains(msg[1], mtable.setrow, tbl3,-5     , { })
   assertErrorMsgContains(msg[1], mtable.setrow, tbl2, "none", { })
   assertErrorMsgContains(msg[1], mtable.setrow, tbl3, "none", { })
+end
+
+function TestMTable:testClrRowIdx()
+  local tbl1 , tbl2 , tbl3  = getIdxTbl()
+  local row1 = { 0      , 0, 0         }
+  local row2 = { "name1", 0, 0, 0      }
+  local row3 = { 0      , 0, 0, "name1"}
+  tbl1:clrrow( 1)
+  tbl1:clrrow(-1)
+  tbl2:clrrow( 1)
+  tbl2:clrrow(-1)
+  tbl3:clrrow( 1)
+  tbl3:clrrow(-1)
+  assertEquals(tbl1:getrow( 1), row1)
+  assertEquals(tbl1:getrow(-1), row1)
+  assertEquals(tbl2:getrow( 1), row2)
+  assertEquals(tbl2:getrow(-1), row2)
+  assertEquals(tbl3:getrow( 1), row3)
+  assertEquals(tbl3:getrow(-1), row3)
+end
+
+function TestMTable:testClrRowName()
+  local _, tbl2, tbl3   = getIdxTbl()
+  tbl2:clrrow("name1")
+  tbl2:clrrow("name2")
+  tbl3:clrrow("name1")
+  tbl3:clrrow("name2")
+  assertEquals(tbl2:getrow(1), { "name1", 0, 0, 0      })
+  assertEquals(tbl2:getrow(2), { "name2", 0, 0, 0      })
+  assertEquals(tbl3:getrow(1), { 0      , 0, 0, "name1"})
+  assertEquals(tbl3:getrow(2), { 0      , 0, 0, "name2"})
+end
+
+function TestMTable:testClrRowNameRef()
+  local _, tbl2, tbl3   = getIdxTbl()
+  local row2 = { "name1", 0, 0, 0      }
+  local row3 = { 0      , 0, 0, "name1"}
+  tbl2:clrrow("name1{2}", 2)
+  tbl3:clrrow("name1{2}", 2)
+  tbl2:clrrow("name1[2]")
+  tbl3:clrrow("name1[2]")
+  assertEquals(tbl2:getrow(4), row2)
+  assertEquals(tbl2:getrow(3), row2)
+  assertEquals(tbl3:getrow(4), row3)
+  assertEquals(tbl3:getrow(3), row3)
+end
+
+function TestMTable:testClrRowNoVector()
+  local tbl = mtable "tbl" { {"dict"}, "x", "y", "z", novector = true }
+  local row1 = { "name1" }
+  local _, row2 = getRows(1)
+
+  for i=1,4 do tbl:addrow(row2) end
+  tbl:clrrow(1)
+  tbl:clrrow(-1)
+  tbl:clrrow("name1[2]")
+  tbl:clrrow("name1{2}",2)
+  for i=1,4 do assertVecEquals(tbl:getrow(i), row1) end
 end
 
 function TestMTable:testRemRowIdxPositive()
@@ -2751,7 +2808,7 @@ function TestMTable:testColIterPairs()
     for i,row in tbl:iter() do
       for j,v in pairs(row) do
         assertEquals(tbl:get(i, j), v)
-        assertTrue(is_string(j))
+        assertTrue(is_number(j))
       end
     end
   end
@@ -3503,6 +3560,16 @@ function TestMTable:testRemoveNothing()
   end
 end
 
+function TestMTable:testRemoveInt()
+  local tbl1, tbl2, tbl3 = getIdxTbl()
+  local ref1, ref2, ref3 = getIdxTbl()
+  for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
+    tbl:remove(1)
+    for i=1,3 do assertEquals(tbl:getrow(i), ref:getrow(i+1)) end
+    assertEquals(#tbl, 3)
+  end
+end
+
 function TestMTable:testRemoveRange()
   local tbl1, tbl2, tbl3 = getIdxTbl()
   local ref1, ref2, ref3 = getIdxTbl()
@@ -3614,6 +3681,7 @@ function TestMTable:testSetReadOnlyOwner()
   assertErrorMsgContains(_msg[1], mtable.addrow     , tbl, row              )
   assertErrorMsgContains(_msg[1], mtable.remrow     , tbl, 1                )
   assertErrorMsgContains(_msg[1], mtable.insrow     , tbl, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , tbl, 1                )
   assertErrorMsgContains(_msg[1], mtable.setrow     , tbl, 1    , row       )
   assertErrorMsgContains(_msg[1], mtable.swprow     , tbl, 1    , 2         )
   assertErrorMsgContains(_msg[1], mtable.addcol     , tbl, "col", col       )
@@ -3643,6 +3711,7 @@ function TestMTable:testSetReadOnlyView()
   assertErrorMsgContains(_msg[1], mtable.remrow     , view, 1                )
   assertErrorMsgContains(_msg[1], mtable.insrow     , view, 1    , row       )
   assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1                )
   assertErrorMsgContains(_msg[1], mtable.swprow     , view, 1    , 2         )
   assertErrorMsgContains(_msg[1], mtable.addcol     , view, "col", col       )
   assertErrorMsgContains(_msg[1], mtable.inscol     , view, 1    , "col", col)
@@ -3668,6 +3737,7 @@ function TestMTable:testSetReadOnlyOwnerView()
   assertErrorMsgContains(_msg[1], mtable.remrow     , view, 1                )
   assertErrorMsgContains(_msg[1], mtable.insrow     , view, 1    , row       )
   assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1    , row       )
+  assertErrorMsgContains(_msg[1], mtable.setrow     , view, 1                )
   assertErrorMsgContains(_msg[1], mtable.swprow     , view, 1    , 2         )
   assertErrorMsgContains(_msg[1], mtable.addcol     , view, "col", col       )
   assertErrorMsgContains(_msg[1], mtable.inscol     , view, 1    , "col", col)
@@ -3944,6 +4014,17 @@ function TestMTable:testInsertNRowMIdxAfter()
   assertEquals(#tbl12, 6)
   assertEquals(#tbl22, 6)
   assertEquals(#tbl32, 6)
+end
+
+function TestMTable:testInsertSel()
+  local tbl1 , tbl2 , tbl3  = getIdxTbl()
+  local rows1, rows2, rows3 = getRows(5,6)
+
+  for tbl,rows in pairs{[tbl1]=rows1, [tbl2]=rows2, [tbl3]=rows3} do
+    tbl:insert(rows, {range={2,4}, select=\r,i -> i<4})
+    assertEquals(tbl:getrow(2), rows[1])
+    assertEquals(tbl:getrow(4), rows[2])
+  end
 end
 
 -------------------------------------------------------------------------------o
