@@ -29,6 +29,7 @@ local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
 local mtable, filesys                                            in MAD
 local is_vector, is_mtable, is_number, is_string                 in MAD.typeid
 local abs, eps, pi, random                                       in MAD.gmath
+local tblcpy                                                     in MAD.utility
 
 local generate = false
 local refdir   = \s -> "mtable_ref/"..s
@@ -133,11 +134,10 @@ local function assertFiles (name)
   end
 end
 
-local function testWrite(tbl, filnam_, colnam_, hdrnam_)
+local function testWrite(tbl, filname, ...)
   filesys.mkdir(rundir(""))
-  tbl:write(rundir(filnam_), colnam_, hdrnam_)
-  if string.sub(filnam_,-4) ~= '.tfs' then filnam_ = filnam_ .. '.tfs' end
-  assertFiles(filnam_)
+  tbl:write(...)
+  assertFiles(filname)
 end
 
 local function newrow(i)
@@ -448,6 +448,19 @@ function TestMTable:testAddRowNil()
   tbl3:check_index()
 end
 
+function TestMTable:testAddRowsByColName()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1 = { x = 1, y = 2, z = 3         }
+  local row2 = { x = 1, y = 2, z = 3, dict = "name"}
+  local row3 = { x = 1, y = 2, z = 3, dict = "name"}
+  tbl1:addrow(row1)
+  tbl2:addrow(row2)
+  tbl3:addrow(row3)
+  assertEquals(tbl1:getrow(1), { 1     , 2, 3         })
+  assertEquals(tbl2:getrow(1), { "name", 1, 2, 3      })
+  assertEquals(tbl3:getrow(1), { 1     , 2, 3, "name" })
+end
+
 function TestMTable:testAccessPriority()
   local tbl = mtable "tbl" { {"name1"}, "name2", name1 = 42 }
   tbl:addrow{ "name1", 1 }
@@ -455,13 +468,13 @@ function TestMTable:testAccessPriority()
   tbl:addrow{ "name3", 3 }
 
   -- rows idx
-  assertVecEquals(tbl[1], {"name1", 1})
+  assertEquals(tbl[1], {"name1", 1})
   -- vars
   assertEquals(tbl.name1, 42)
   -- cols
   assertVecEquals(tbl.name2, {1, 2, 3})
   -- rows
-  assertVecEquals(tbl.name3, {"name3", 3})
+  assertEquals(tbl.name3, {"name3", 3})
 end
 
 function TestMTable:testAccessInvalid()
@@ -1033,9 +1046,9 @@ function TestMTable:testGetRowIdx()
   end
   for i=1,4 do
     local row1, row2, row3 = getRows(i)
-    assertVecEquals(tbl1:getrow(i), row1)
-    assertVecEquals(tbl2:getrow(i), row2)
-    assertVecEquals(tbl3:getrow(i), row3)
+    assertEquals(tbl1:getrow(i), row1)
+    assertEquals(tbl2:getrow(i), row2)
+    assertEquals(tbl3:getrow(i), row3)
   end
 end
 
@@ -1047,8 +1060,8 @@ function TestMTable:testGetRowName()
   end
   for i=1,4 do
     local row1, row2, row3 = getRows(i)
-    assertVecEquals(tbl2:getrow(row2[1]), row2)
-    assertVecEquals(tbl3:getrow(row3[4]), row3)
+    assertEquals(tbl2:getrow(row2[1]), row2)
+    assertEquals(tbl3:getrow(row3[4]), row3)
   end
 end
 
@@ -1056,8 +1069,8 @@ function TestMTable:testGetRowNameRef()
   local _, tbl2, tbl3 = getIdxTbl()
   local _, row2, row3 = getRows(3)
   row2[1], row3[4] = "name1", "name1"
-  assertVecEquals(tbl2:getrow("name1", 2), row2)
-  assertVecEquals(tbl3:getrow("name1", 2), row3)
+  assertEquals(tbl2:getrow("name1", 2), row2)
+  assertEquals(tbl3:getrow("name1", 2), row3)
 end
 
 function TestMTable:testGetColIdx()
@@ -1090,9 +1103,9 @@ function TestMTable:testGetColInvalid()
   assertNil(tbl1:getcol( 4    ))
   assertNil(tbl2:getcol( 5    ))
   assertNil(tbl3:getcol( 5    ))
-  assertNil(tbl1:getcol(-4    ))
-  assertNil(tbl2:getcol(-5    ))
-  assertNil(tbl3:getcol(-5    ))
+  assertNil(tbl1:getcol(-5    ))
+  assertNil(tbl2:getcol(-6    ))
+  assertNil(tbl3:getcol(-6    ))
   assertNil(tbl1:getcol("none"))
   assertNil(tbl2:getcol("none"))
 end
@@ -1860,9 +1873,9 @@ function TestMTable:testInsRowEmpty()
   tbl1:insrow(1, row1)
   tbl2:insrow(1, row2)
   tbl3:insrow(1, row3)
-  assertVecEquals(tbl1:getrow(1, row1), row1)
-  assertVecEquals(tbl2:getrow(1, row2), row2)
-  assertVecEquals(tbl3:getrow(1, row3), row3)
+  assertEquals(tbl1:getrow(1, row1), row1)
+  assertEquals(tbl2:getrow(1, row2), row2)
+  assertEquals(tbl3:getrow(1, row3), row3)
 end
 
 function TestMTable:testInsRowIdxPositive()
@@ -1879,15 +1892,15 @@ function TestMTable:testInsRowIdxPositive()
   tbl1:insrow(5, row13)
   tbl2:insrow(5, row23)
   tbl3:insrow(5, row33)
-  assertVecEquals(tbl1:getrow(1), row11)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl1:getrow(3), row12)
-  assertVecEquals(tbl2:getrow(3), row22)
-  assertVecEquals(tbl3:getrow(3), row32)
-  assertVecEquals(tbl1:getrow(5), row13)
-  assertVecEquals(tbl2:getrow(5), row23)
-  assertVecEquals(tbl3:getrow(5), row33)
+  assertEquals(tbl1:getrow(1), row11)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl1:getrow(3), row12)
+  assertEquals(tbl2:getrow(3), row22)
+  assertEquals(tbl3:getrow(3), row32)
+  assertEquals(tbl1:getrow(5), row13)
+  assertEquals(tbl2:getrow(5), row23)
+  assertEquals(tbl3:getrow(5), row33)
 end
 
 function TestMTable:testInsRowIdxNegative()
@@ -1900,12 +1913,12 @@ function TestMTable:testInsRowIdxNegative()
   tbl1:insrow(-2, row12)
   tbl2:insrow(-2, row22)
   tbl3:insrow(-2, row32)
-  assertVecEquals(tbl1:getrow(1), row11)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl1:getrow(4), row12)
-  assertVecEquals(tbl2:getrow(4), row22)
-  assertVecEquals(tbl3:getrow(4), row32)
+  assertEquals(tbl1:getrow(1), row11)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl1:getrow(4), row12)
+  assertEquals(tbl2:getrow(4), row22)
+  assertEquals(tbl3:getrow(4), row32)
 end
 
 function TestMTable:testInsRowName()
@@ -1916,10 +1929,10 @@ function TestMTable:testInsRowName()
   tbl3:insrow("name1", row31)
   tbl2:insrow("name2", row22)
   tbl3:insrow("name2", row32)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl2:getrow(3), row22)
-  assertVecEquals(tbl3:getrow(3), row32)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl2:getrow(3), row22)
+  assertEquals(tbl3:getrow(3), row32)
 end
 
 function TestMTable:testInsRowNameRef()
@@ -1972,6 +1985,19 @@ function TestMTable:testInsRowInvalid()
   assertErrorMsgContains(msg[1], mtable.insrow, tbl3,"none", { })
 end
 
+function TestMTable:testInsRowsByColName()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1 = { x = 1, y = 2, z = 3         }
+  local row2 = { x = 1, y = 2, z = 3, dict = "name"}
+  local row3 = { x = 1, y = 2, z = 3, dict = "name"}
+  tbl1:insrow(1, row1)
+  tbl2:insrow(1, row2)
+  tbl3:insrow(1, row3)
+  assertEquals(tbl1:getrow(1), { 1     , 2, 3         })
+  assertEquals(tbl2:getrow(1), { "name", 1, 2, 3      })
+  assertEquals(tbl3:getrow(1), { 1     , 2, 3, "name" })
+end
+
 function TestMTable:testSetRowIdxPositive()
   local tbl1 , tbl2 , tbl3  = getIdxTbl()
   local row11, row21, row31 = getRows(5)
@@ -1986,15 +2012,15 @@ function TestMTable:testSetRowIdxPositive()
   tbl1:setrow(4, row13)
   tbl2:setrow(4, row23)
   tbl3:setrow(4, row33)
-  assertVecEquals(tbl1:getrow(1), row11)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl1:getrow(3), row12)
-  assertVecEquals(tbl2:getrow(3), row22)
-  assertVecEquals(tbl3:getrow(3), row32)
-  assertVecEquals(tbl1:getrow(4), row13)
-  assertVecEquals(tbl2:getrow(4), row23)
-  assertVecEquals(tbl3:getrow(4), row33)
+  assertEquals(tbl1:getrow(1), row11)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl1:getrow(3), row12)
+  assertEquals(tbl2:getrow(3), row22)
+  assertEquals(tbl3:getrow(3), row32)
+  assertEquals(tbl1:getrow(4), row13)
+  assertEquals(tbl2:getrow(4), row23)
+  assertEquals(tbl3:getrow(4), row33)
 end
 
 function TestMTable:testSetRowIdxNegative()
@@ -2011,15 +2037,15 @@ function TestMTable:testSetRowIdxNegative()
   tbl1:setrow(-1, row13)
   tbl2:setrow(-1, row23)
   tbl3:setrow(-1, row33)
-  assertVecEquals(tbl1:getrow(1), row11)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl1:getrow(3), row12)
-  assertVecEquals(tbl2:getrow(3), row22)
-  assertVecEquals(tbl3:getrow(3), row32)
-  assertVecEquals(tbl1:getrow(4), row13)
-  assertVecEquals(tbl2:getrow(4), row23)
-  assertVecEquals(tbl3:getrow(4), row33)
+  assertEquals(tbl1:getrow(1), row11)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl1:getrow(3), row12)
+  assertEquals(tbl2:getrow(3), row22)
+  assertEquals(tbl3:getrow(3), row32)
+  assertEquals(tbl1:getrow(4), row13)
+  assertEquals(tbl2:getrow(4), row23)
+  assertEquals(tbl3:getrow(4), row33)
 end
 
 function TestMTable:testSetRowByName()
@@ -2030,10 +2056,10 @@ function TestMTable:testSetRowByName()
   tbl3:setrow("name1", row31)
   tbl2:setrow("name2", row22)
   tbl3:setrow("name2", row32)
-  assertVecEquals(tbl2:getrow(1), row21)
-  assertVecEquals(tbl3:getrow(1), row31)
-  assertVecEquals(tbl2:getrow(2), row22)
-  assertVecEquals(tbl3:getrow(2), row32)
+  assertEquals(tbl2:getrow(1), row21)
+  assertEquals(tbl3:getrow(1), row31)
+  assertEquals(tbl2:getrow(2), row22)
+  assertEquals(tbl3:getrow(2), row32)
 end
 
 function TestMTable:testSetRowByNameRef()
@@ -2088,6 +2114,22 @@ function TestMTable:testSetRowInvalid()
   assertErrorMsgContains(msg[1], mtable.setrow, tbl3,-5     , { })
   assertErrorMsgContains(msg[1], mtable.setrow, tbl2, "none", { })
   assertErrorMsgContains(msg[1], mtable.setrow, tbl3, "none", { })
+end
+
+function TestMTable:testSetRowsByColName()
+  local tbl1, tbl2, tbl3 = getEmptyTables()
+  local row1 = { x = 1, y = 2, z = 3         }
+  local row2 = { x = 1, y = 2, z = 3, dict = "name"}
+  local row3 = { x = 1, y = 2, z = 3, dict = "name"}
+  tbl1:addrow{ }
+  tbl2:addrow{dict = "test"}
+  tbl3:addrow{dict = "test"}
+  tbl1:setrow(1, row1)
+  tbl2:setrow(1, row2)
+  tbl3:setrow(1, row3)
+  assertEquals(tbl1:getrow(1), { 1     , 2, 3         })
+  assertEquals(tbl2:getrow(1), { "name", 1, 2, 3      })
+  assertEquals(tbl3:getrow(1), { 1     , 2, 3, "name" })
 end
 
 function TestMTable:testClrRowIdx()
@@ -2163,9 +2205,9 @@ function TestMTable:testRemRowIdxPositive()
   assertEquals(#tbl1, 1)
   assertEquals(#tbl2, 1)
   assertEquals(#tbl3, 1)
-  assertVecEquals(tbl1:getrow(1), row1)
-  assertVecEquals(tbl2:getrow(1), row2)
-  assertVecEquals(tbl3:getrow(1), row3)
+  assertEquals(tbl1:getrow(1), row1)
+  assertEquals(tbl2:getrow(1), row2)
+  assertEquals(tbl3:getrow(1), row3)
 end
 
 function TestMTable:testRemRowIdxNegative()
@@ -2183,9 +2225,9 @@ function TestMTable:testRemRowIdxNegative()
   assertEquals(#tbl1, 1)
   assertEquals(#tbl2, 1)
   assertEquals(#tbl3, 1)
-  assertVecEquals(tbl1:getrow(1), row1)
-  assertVecEquals(tbl2:getrow(1), row2)
-  assertVecEquals(tbl3:getrow(1), row3)
+  assertEquals(tbl1:getrow(1), row1)
+  assertEquals(tbl2:getrow(1), row2)
+  assertEquals(tbl3:getrow(1), row3)
 end
 
 function TestMTable:testRemRowName()
@@ -2197,10 +2239,10 @@ function TestMTable:testRemRowName()
   tbl3:remrow("name2")
   assertEquals(#tbl2, 2)
   assertEquals(#tbl3, 2)
-  assertVecEquals(tbl2:getrow(1), ref2:getrow(3))
-  assertVecEquals(tbl3:getrow(1), ref3:getrow(3))
-  assertVecEquals(tbl2:getrow(2), ref2:getrow(4))
-  assertVecEquals(tbl3:getrow(2), ref3:getrow(4))
+  assertEquals(tbl2:getrow(1), ref2:getrow(3))
+  assertEquals(tbl3:getrow(1), ref3:getrow(3))
+  assertEquals(tbl2:getrow(2), ref2:getrow(4))
+  assertEquals(tbl3:getrow(2), ref3:getrow(4))
 end
 
 function TestMTable:testRemRowNameRef()
@@ -2212,10 +2254,10 @@ function TestMTable:testRemRowNameRef()
   tbl3:remrow("name1[2]")
   assertEquals(#tbl2, 2)
   assertEquals(#tbl3, 2)
-  assertVecEquals(tbl2:getrow(1), ref2:getrow(1))
-  assertVecEquals(tbl3:getrow(1), ref3:getrow(1))
-  assertVecEquals(tbl2:getrow(2), ref2:getrow(2))
-  assertVecEquals(tbl3:getrow(2), ref3:getrow(2))
+  assertEquals(tbl2:getrow(1), ref2:getrow(1))
+  assertEquals(tbl3:getrow(1), ref3:getrow(1))
+  assertEquals(tbl2:getrow(2), ref2:getrow(2))
+  assertEquals(tbl3:getrow(2), ref3:getrow(2))
 end
 
 function TestMTable:testRemRowInvalid()
@@ -2242,10 +2284,10 @@ function TestMTable:testSwpRowIdxPositive()
   for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
     tbl:swprow(1, 4)
     tbl:swprow(2, 3)
-    assertVecEquals(tbl:getrow(1), ref:getrow(4))
-    assertVecEquals(tbl:getrow(4), ref:getrow(1))
-    assertVecEquals(tbl:getrow(2), ref:getrow(3))
-    assertVecEquals(tbl:getrow(3), ref:getrow(2))
+    assertEquals(tbl:getrow(1), ref:getrow(4))
+    assertEquals(tbl:getrow(4), ref:getrow(1))
+    assertEquals(tbl:getrow(2), ref:getrow(3))
+    assertEquals(tbl:getrow(3), ref:getrow(2))
   end
 end
 
@@ -2255,10 +2297,10 @@ function TestMTable:testSwpRowIdxNegative()
   for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
     tbl:swprow(-4, -1)
     tbl:swprow(-3, -2)
-    assertVecEquals(tbl:getrow(1), ref:getrow(4))
-    assertVecEquals(tbl:getrow(4), ref:getrow(1))
-    assertVecEquals(tbl:getrow(2), ref:getrow(3))
-    assertVecEquals(tbl:getrow(3), ref:getrow(2))
+    assertEquals(tbl:getrow(1), ref:getrow(4))
+    assertEquals(tbl:getrow(4), ref:getrow(1))
+    assertEquals(tbl:getrow(2), ref:getrow(3))
+    assertEquals(tbl:getrow(3), ref:getrow(2))
   end
 end
 
@@ -2267,10 +2309,10 @@ function TestMTable:testSwpRowName()
   local _, ref2, ref3 = getIdxTbl()
   tbl2:swprow("name1", "name2")
   tbl3:swprow("name1", "name2")
-  assertVecEquals(tbl2:getrow(1), ref2:getrow(2))
-  assertVecEquals(tbl3:getrow(1), ref3:getrow(2))
-  assertVecEquals(tbl2:getrow(2), ref2:getrow(1))
-  assertVecEquals(tbl3:getrow(2), ref3:getrow(1))
+  assertEquals(tbl2:getrow(1), ref2:getrow(2))
+  assertEquals(tbl3:getrow(1), ref3:getrow(2))
+  assertEquals(tbl2:getrow(2), ref2:getrow(1))
+  assertEquals(tbl3:getrow(2), ref3:getrow(1))
 end
 
 function TestMTable:testSwpRowNameRef()
@@ -2280,12 +2322,12 @@ function TestMTable:testSwpRowNameRef()
   tbl3:swprow("name1{1}", "name1{2}", 2)
   tbl2:swprow("name1[1]", "name1[2]")
   tbl3:swprow("name1[1]", "name1[2]")
-  assertVecEquals(tbl2:getrow(1), ref2:getrow(4))
-  assertVecEquals(tbl3:getrow(1), ref3:getrow(4))
-  assertVecEquals(tbl2:getrow(3), ref2:getrow(1))
-  assertVecEquals(tbl3:getrow(3), ref3:getrow(1))
-  assertVecEquals(tbl2:getrow(4), ref2:getrow(3))
-  assertVecEquals(tbl3:getrow(4), ref3:getrow(3))
+  assertEquals(tbl2:getrow(1), ref2:getrow(4))
+  assertEquals(tbl3:getrow(1), ref3:getrow(4))
+  assertEquals(tbl2:getrow(3), ref2:getrow(1))
+  assertEquals(tbl3:getrow(3), ref3:getrow(1))
+  assertEquals(tbl2:getrow(4), ref2:getrow(3))
+  assertEquals(tbl3:getrow(4), ref3:getrow(3))
 end
 
 function TestMTable:testSwpRowInvalid()
@@ -2324,14 +2366,14 @@ function TestMTable:testRowsWithGenerators()
   tbl:addcol("z", \i -> i + 100 )
 
   tbl:addrow{1.1, 2.2}
-  assertVecEquals(tbl:getrow(5), {1.1, 2.2, 105})
+  assertEquals(tbl:getrow(5), {1.1, 2.2, 105})
   tbl:insrow(2, {3.3, 4.4})
-  assertVecEquals(tbl:getrow(2), {3.3, 4.4, 102})
+  assertEquals(tbl:getrow(2), {3.3, 4.4, 102})
   tbl:swprow(1,3)
-  assertVecEquals(tbl:getrow(1), {2, 12, 101})
-  assertVecEquals(tbl:getrow(3), {1, 11, 103})
+  assertEquals(tbl:getrow(1), {2, 12, 101})
+  assertEquals(tbl:getrow(3), {1, 11, 103})
   tbl:setrow(2, {5.5, 6.6})
-  assertVecEquals(tbl:getrow(2), {5.5, 6.6, 102})
+  assertEquals(tbl:getrow(2), {5.5, 6.6, 102})
 end
 
 function TestMTable:testBuildIndexIdx()
@@ -2414,16 +2456,16 @@ end
 function TestMTable:testWriteExtensions()
   local tbl = mtable "tbl1" { "x", "y", "z" }
   tbl.time, tbl.date, tbl.origin = "", "", ""
-  testWrite(tbl, "tbl-name1")
-  testWrite(tbl, "tbl-name2.tfs")
+  testWrite(tbl, "tbl-name1.tfs", rundir("tbl-name1"    ))
+  testWrite(tbl, "tbl-name2.tfs", rundir("tbl-name2.tfs"))
 end
 
 function TestMTable:testWriteDict()
   local _, tbl2, tbl3 = getIdxTbl()
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   tbl3.time, tbl3.date, tbl3.origin = "", "", ""
-  testWrite(tbl2, "tbl-dict1")
-  testWrite(tbl3, "tbl-dict2")
+  testWrite(tbl2, "tbl-dict1.tfs", rundir("tbl-dict1"))
+  testWrite(tbl3, "tbl-dict2.tfs", rundir("tbl-dict2"))
 end
 
 function TestMTable:testWriteCol()
@@ -2433,9 +2475,9 @@ function TestMTable:testWriteCol()
   tbl1.time, tbl1.date, tbl1.origin = "", "", ""
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
-  testWrite(tbl1, "tbl-col1"          )
-  testWrite(tbl1, "tbl-col2", {"x", 3})
-  testWrite(tbl2, "tbl-col2"          )
+  testWrite(tbl1, "tbl-col1.tfs", rundir("tbl-col1")          )
+  testWrite(tbl1, "tbl-col2.tfs", rundir("tbl-col2"), {"x", 3})
+  testWrite(tbl2, "tbl-col2.tfs", rundir("tbl-col2")          )
 end
 
 function TestMTable:testWriteHeader()
@@ -2447,8 +2489,9 @@ function TestMTable:testWriteHeader()
   local row = { "v0", 1, 2, 3 }
   tbl.time, tbl.date, tbl.origin = "", "", ""
   for i=1,4 do tbl:addrow(row) end
-  testWrite(tbl, "tbl-header1", nil, { "title", "header1" })
-  testWrite(tbl, "tbl-header2")
+  testWrite(tbl, "tbl-header1.tfs", rundir("tbl-header1")
+    , nil, { "title", "header1" })
+  testWrite(tbl, "tbl-header2.tfs", rundir("tbl-header2"))
 end
 
 function TestMTable:testWriteNovector()
@@ -2464,8 +2507,8 @@ function TestMTable:testWriteNovector()
   tbl1.time, tbl1.date, tbl1.origin = "", "", ""
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
-  testWrite(tbl1, "tbl-novector1")
-  testWrite(tbl2, "tbl-novector2")
+  testWrite(tbl1, "tbl-novector1.tfs", rundir("tbl-novector1"))
+  testWrite(tbl2, "tbl-novector2.tfs", rundir("tbl-novector2"))
 end
 
 function TestMTable:testWriteValues()
@@ -2473,7 +2516,7 @@ function TestMTable:testWriteValues()
     {"name"}, "x", "y", "z",
     header1  = "header 'whith quote'", header2 = "header \"double quote\"",
     header3  = 42.5, header4 = true, header5 = false, header6 = nil,
-    header7  = { "val", 3 }, novector = true, header = { "type", "header1",
+    header7  = { "val", 3 }, novector = true, header = { "header1",
       "header2", "header3", "header4", "header5", "header6", "header7",
       "novector" },
   }
@@ -2483,24 +2526,59 @@ function TestMTable:testWriteValues()
   tbl:addrow{"name1", 1  , false, 3.15}
   tbl:addcol("gen"  , \i->i)
   tbl:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
-  testWrite(tbl, "tbl-write")
+  testWrite(tbl, "tbl-write.tfs", rundir("tbl-write"))
 end
 
 function TestMTable:testWriteStdout()
-  filesys.mkdir(rundir(""))
   local tbl    = mtable "tbl" { "x", "y", "z", var = 42 }
   local row    = { 1, 2, 3 }
-  local fname  = "tbl-stdout"
+  local fname  = "tbl-stdout.tfs"
+  local stdout = io.stdout
+
+  filesys.mkdir(rundir(""))
   tbl.time, tbl.date, tbl.origin = "", "", ""
   for i=1,4 do tbl:addrow(row) end
-
-  local stdout = io.stdout
   io.stdout    = assert(io.open(rundir(fname), 'w'))
 
-  tbl:write({"x", "y"}, {"var", "type"})
-  assertFiles(fname)
+  testWrite(tbl, fname, {"x", "y"}, {"var", "type"})
 
-  io.stdout = stdout
+  io.stdout    = stdout
+end
+
+function TestMTable:testWriteStream()
+  filesys.mkdir(rundir(""))
+  local tbl    = getIdxTbl()
+  local fname  = "tbl-stream.tfs"
+  local stream = assert(io.open(rundir(fname), 'w'))
+
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  testWrite(tbl, fname, stream, {"x", "y"})
+end
+
+function TestMTable:testWriteRightShift()
+  local tbl = getIdxTbl()
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  tbl.var = 42
+  tbl:addcol("gen"  , \i->i)
+  tbl[1][0] = false
+  tbl[3][0] = false
+  testWrite(tbl, "tbl-rightshft1.tfs", rundir("tbl-rightshft1"), {"x"}, true)
+  testWrite(tbl, "tbl-rightshft2.tfs", rundir("tbl-rightshft2"), true)
+end
+
+function TestMTable:testWriteNamedArgs()
+  local tbl  = mtable "tbl" { "x", "y", "z", var = 42 }
+  local args = { column = { "x", "y" }, header = { "var" }, selected = true }
+  local args1, args2 = tblcpy(args), tblcpy(args)
+
+  filesys.mkdir(rundir(""))
+  args1.filename = rundir("tbl-namedargs1")
+  args2.file     = assert(io.open(rundir("tbl-namedargs2.tfs"), "w"))
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  tbl.var = 42
+
+  testWrite(tbl, "tbl-namedargs1.tfs", args1)
+  testWrite(tbl, "tbl-namedargs2.tfs", args2)
 end
 
 function TestMTable:testReadExtensions()
@@ -2565,12 +2643,20 @@ end
 
 function TestMTable:testReadStdin()
   local stdin = io.stdin
-  io.stdin    = assert(io.open(refdir("tbl-stdout"), 'r'))
+  io.stdin    = assert(io.open(refdir("tbl-stdout.tfs"), 'r'))
   local tbl   = mtable:read()
   assertEquals(tbl.var, 42)
   assertVecEquals(tbl:getcol(1), {1, 1, 1, 1})
   assertVecEquals(tbl:getcol(2), {2, 2, 2, 2})
   io.stdin = stdin
+end
+
+function TestMTable:testReadStream()
+  local stream = assert(io.open(refdir("tbl-stream.tfs"), 'r'))
+  local tbl    = mtable:read(refdir("tbl-stream.tfs"))
+  local ref    = getIdxTbl()
+
+  for i=1,2 do assertEquals(tbl:getcol(i), ref:getcol(i)) end
 end
 
 function TestMTable:testReadInvalid()
@@ -2606,9 +2692,9 @@ function TestMTable:testIterOne()
   local tbl1, tbl2, tbl3 = getEmptyTables()
   local row1, row2, row3 = getRows(1)
   tbl1:addrow(row1); tbl2:addrow(row2); tbl3:addrow(row3)
-  for _,row in tbl1:iter() do assertVecEquals(row, row1) end
-  for _,row in tbl2:iter() do assertVecEquals(row, row2) end
-  for _,row in tbl3:iter() do assertVecEquals(row, row3) end
+  for _,row in tbl1:iter() do assertEquals(row, row1) end
+  for _,row in tbl2:iter() do assertEquals(row, row2) end
+  for _,row in tbl3:iter() do assertEquals(row, row3) end
 end
 
 function TestMTable:testIter()
@@ -2617,7 +2703,7 @@ function TestMTable:testIter()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 1
     for j,row in tbl:iter() do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2632,7 +2718,7 @@ function TestMTable:testIterRangeTableIdx()
     -- first/last iterator
     i = 1
     for j,row in tbl:iter{1,-1} do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2641,7 +2727,7 @@ function TestMTable:testIterRangeTableIdx()
     -- 2nd/3rd iterator
     i = 2
     for j,row in tbl:iter{2,-2} do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2656,7 +2742,7 @@ function TestMTable:testIterRangeStringIdx()
     -- first/last iterator
     i = 1
     for j,row in tbl:iter("1/-1") do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2665,7 +2751,7 @@ function TestMTable:testIterRangeStringIdx()
     -- 2nd/3rd iterator
     i = 2
     for j,row in tbl:iter("2/-2") do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2680,7 +2766,7 @@ function TestMTable:testIterRangeRangeIdx()
     -- first/last iterator
     i = 1
     for j,row in tbl:iter(1..-1) do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2689,7 +2775,7 @@ function TestMTable:testIterRangeRangeIdx()
     -- 2nd/3rd iterator
     i = 2
     for j,row in tbl:iter(2..-2) do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2704,7 +2790,7 @@ function TestMTable:testIterRangeName()
     -- first/last iterator
     i = 1
     for j,row in tbl:iter("name1[1]/name1[3]") do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2713,7 +2799,7 @@ function TestMTable:testIterRangeName()
     -- 2nd/3rd iterator
     i = 2
     for j,row in tbl:iter{"name2", "name1{1}", 2} do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2727,7 +2813,7 @@ function TestMTable:testIterRangeSingle()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 2
     for j,row in tbl:iter{2,2} do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i + 1
     end
@@ -2742,7 +2828,7 @@ function TestMTable:testIterCycle()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 1
     for j,row in tbl:iter{3,2} do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx[i], j)
       i = i + 1
     end
@@ -2757,7 +2843,7 @@ function TestMTable:testIterNturn()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 0
     for j,row in tbl:iter(nil,3)  do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i%4 + 1, j)
       i = i + 1
     end
@@ -2773,7 +2859,7 @@ function TestMTable:testIterDir()
     -- last/first iterator decreasing
     i = 4
     for j,row in tbl:iter(nil, nil, -1) do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(i, j)
       i = i - 1
     end
@@ -2782,7 +2868,7 @@ function TestMTable:testIterDir()
     -- 2nd/3rd iterator decreasing
     i = 1
     for j,row in tbl:iter({2, 3}, nil, -1) do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx[i], j)
       i = i + 1
     end
@@ -2820,7 +2906,7 @@ function TestMTable:testCntIter()
   for _,tbl in ipairs{tbl2, tbl3} do
     i = 1
     for _,row in ipairs(tbl.name1) do
-      assertVecEquals(row, tbl:getrow(idx[i]))
+      assertEquals(row, tbl:getrow(idx[i]))
       i = i + 1
     end
   end
@@ -2844,7 +2930,7 @@ function TestMTable:testCycleIdx()
     i = 1
     tbl:cycle(2)
     for j,row in tbl:iter() do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx[i], j)
       i = i + 1
     end
@@ -2853,7 +2939,7 @@ function TestMTable:testCycleIdx()
     i = 1
     tbl:cycle(-3)
     for j,row in tbl:iter() do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx[i], j)
       i = i + 1
     end
@@ -2870,7 +2956,7 @@ function TestMTable:testCycleName()
     i = 1
     tbl:cycle("name2")
     for j,row in tbl:iter() do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx1[i], j)
       i = i + 1
     end
@@ -2879,7 +2965,7 @@ function TestMTable:testCycleName()
     i = 1
     tbl:cycle("name1[2]")
     for j,row in tbl:iter() do
-      assertVecEquals(row, tbl:getrow(j))
+      assertEquals(row, tbl:getrow(j))
       assertEquals(idx2[i], j)
       i = i + 1
     end
@@ -2917,7 +3003,7 @@ function TestMTable:testForeach()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 1
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -2941,7 +3027,7 @@ function TestMTable:testForeachRangeIdx()
   local i = 1
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -2969,7 +3055,7 @@ function TestMTable:testForeachRangeName()
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -2993,7 +3079,7 @@ function TestMTable:testForeachSelect()
   local i = 1
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3019,7 +3105,7 @@ function TestMTable:testForeachPattern()
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(idxs[i]))
+      assertEquals(row, tbl:getrow(idxs[i]))
       assertEquals(idx, idxs[i])
       i = i + 1
     end
@@ -3045,7 +3131,7 @@ function TestMTable:testForeachTable()
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     i = 1
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3070,7 +3156,7 @@ function TestMTable:testForeachTableRangeIdx()
   local i = 1
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3106,7 +3192,7 @@ function TestMTable:testForeachTableRangeName()
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3130,7 +3216,7 @@ function TestMTable:testForeachTableSelect()
   local i = 1
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3150,7 +3236,7 @@ function TestMTable:testForeachTableSelected()
   local i = 1
   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(i))
+      assertEquals(row, tbl:getrow(i))
       assertEquals(idx, i)
       i = i + 1
     end
@@ -3168,7 +3254,7 @@ function TestMTable:testForeachTablePattern()
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(idxs[i]))
+      assertEquals(row, tbl:getrow(idxs[i]))
       assertEquals(idx, idxs[i])
       i = i + 1
     end
@@ -3186,7 +3272,7 @@ function TestMTable:testForeachTableKind()
   local i = 1
   for _,tbl in ipairs{tbl2, tbl3} do
     local act = \row,idx =>
-      assertVecEquals(row, tbl:getrow(idxs[i]))
+      assertEquals(row, tbl:getrow(idxs[i]))
       assertEquals(idx, idxs[i])
       i = i + 1
     end
@@ -3474,7 +3560,7 @@ function TestMTable:testCopy()
     assertEquals(cpy:nrow(), tbl:nrow())
     assertEquals(cpy:ngen(), 0)
     for i=1,4 do
-      assertVecEquals(cpy:getrow(i), tbl:getrow(i))
+      assertEquals(cpy:getrow(i), tbl:getrow(i))
     end
     assertTrue(cpy:is_owner())
   end
@@ -3515,7 +3601,7 @@ function TestMTable:testCopyViewOwner()
       assertEquals(cpy:nrow(), tbl:nrow())
       assertEquals(cpy:ngen(), 0)
       for i=1,4 do
-        assertVecEquals(cpy:getrow(i), tbl:getrow(i))
+        assertEquals(cpy:getrow(i), tbl:getrow(i))
       end
     end
     assertTrue(cpy1:is_view())
@@ -3530,8 +3616,8 @@ function TestMTable:testCopyDict()
     local cpy = tbl:copy()
     cpy:check_index()
     assertEquals(cpy.refcol, "dict")
-    assertVecEquals(cpy:getrow("name1")   , tbl:getrow("name1")   )
-    assertVecEquals(cpy:getrow("name1[3]"), tbl:getrow("name1[3]"))
+    assertEquals(cpy:getrow("name1")   , tbl:getrow("name1")   )
+    assertEquals(cpy:getrow("name1[3]"), tbl:getrow("name1[3]"))
   end
 end
 
@@ -3575,8 +3661,8 @@ function TestMTable:testRemoveRange()
   local ref1, ref2, ref3 = getIdxTbl()
   for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
     tbl:remove({2,3})
-    assertVecEquals(tbl:getrow(1), ref:getrow(1))
-    assertVecEquals(tbl:getrow(2), ref:getrow(4))
+    assertEquals(tbl:getrow(1), ref:getrow(1))
+    assertEquals(tbl:getrow(2), ref:getrow(4))
     assertEquals(#tbl, 2)
   end
 end
@@ -3586,8 +3672,8 @@ function TestMTable:testRemoveSelect()
   local ref1, ref2, ref3 = getIdxTbl()
   for tbl,ref in pairs{[tbl1]=ref1, [tbl2]=ref2, [tbl3]=ref3} do
     tbl:remove(nil, \r,i -> 1 < i and i < 4)
-    assertVecEquals(tbl:getrow(1), ref:getrow(1))
-    assertVecEquals(tbl:getrow(2), ref:getrow(4))
+    assertEquals(tbl:getrow(1), ref:getrow(1))
+    assertEquals(tbl:getrow(2), ref:getrow(4))
     assertEquals(#tbl, 2)
   end
 end
@@ -3601,10 +3687,10 @@ function TestMTable:testRemoveDict()
   tbl3:remove{2,3}
   tbl2:check_index()
   tbl3:check_index()
-  assertVecEquals(tbl2:getrow("name1")   , row21)
-  assertVecEquals(tbl2:getrow("name1[2]"), row24)
-  assertVecEquals(tbl3:getrow("name1")   , row31)
-  assertVecEquals(tbl3:getrow("name1[2]"), row34)
+  assertEquals(tbl2:getrow("name1")   , row21)
+  assertEquals(tbl2:getrow("name1[2]"), row24)
+  assertEquals(tbl3:getrow("name1")   , row31)
+  assertEquals(tbl3:getrow("name1[2]"), row34)
 end
 
 function TestMTable:testViewRow()
@@ -3791,7 +3877,7 @@ function TestMTable:testSetUnsetReadOnly()
   tbl.x   [1] = 42
   tbl.y   [1] = 43
   tbl.z   [1] = 44
-  assertVecEquals(tbl.name2, {"name2", 42, 43, 44})
+  assertEquals(tbl.name2, {"name2", 42, 43, 44})
 end
 
 function TestMTable:testReadOnlyColProxy()
@@ -3822,6 +3908,52 @@ function TestMTable:testReadOnlyRowProxy()
   end
 end
 
+function TestMTable:testRefColProxy()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local assign = \tbl,a,b => tbl.dict[a] = b end
+  local msg    = {
+    "row index out of bounds",
+    "invalid argument #3 (valid reference key expected)",
+  }
+  for _,tbl in ipairs{tbl2, tbl3} do
+    assertEquals(#tbl.dict, 4)
+    assertEquals(tbl.dict[1], "name1")
+    assertEquals(tbl.dict[2], "name2")
+    assertErrorMsgContains(msg[1], assign, tbl, 5     )
+    assertErrorMsgContains(msg[1], assign, tbl,-5     )
+    assertErrorMsgContains(msg[2], assign, tbl, 1, nil)
+    tbl.dict[2] = "name3"
+    assertEquals(tbl.name3, tbl:getrow(2))
+    tbl:check_index()
+  end
+end
+
+function TestMTable:testRowProxy()
+  local _, tbl2, tbl3 = getIdxTbl()
+  local assign = \tbl,a,b => tbl[a] = b end
+  local msg    = {
+    "invalid column in row write access",
+    "invalid argument #3 (valid reference key expected)",
+  }
+  for _,tbl in ipairs{tbl2, tbl3} do
+    for i=1,4 do
+      assertEquals(#tbl[i], 4)
+      assertEquals(tbl[i][ 1], tbl:get(i, 1  ))
+      assertEquals(tbl[i][-2], tbl:get(i,-2  ))
+      assertEquals(tbl[i].y  , tbl:get(i, "y"))
+      assertEquals(tbl[i].y  , tbl:get(i, "y"))
+      assertErrorMsgContains(msg[1], assign, tbl[i], 5     )
+      assertErrorMsgContains(msg[1], assign, tbl[i],-6     )
+      assertErrorMsgContains(msg[1], assign, tbl[i], "none")
+      assertErrorMsgContains(msg[2], assign, tbl[i], "dict", nil)
+      local name  = tbl.name .. i
+      tbl[i].dict = name
+      assertEquals(tbl:get(name, 2), tbl:get(i, 2))
+    end
+    tbl:check_index()
+  end
+end
+
 function TestMTable:testInsertEmptySingle()
   local tbl11, tbl21, tbl31 = getEmptyTables()
   local tbl12, tbl22, tbl32 = getEmptyTables()
@@ -3829,9 +3961,9 @@ function TestMTable:testInsertEmptySingle()
   tbl11:insert(rows1, 1)
   tbl21:insert(rows2, 1)
   tbl31:insert(rows3, 1)
-  assertVecEquals(tbl11:getrow(1), rows1[1])
-  assertVecEquals(tbl21:getrow(1), rows2[1])
-  assertVecEquals(tbl31:getrow(1), rows3[1])
+  assertEquals(tbl11:getrow(1), rows1[1])
+  assertEquals(tbl21:getrow(1), rows2[1])
+  assertEquals(tbl31:getrow(1), rows3[1])
 end
 
 function TestMTable:testInsertEmptyMulti()
@@ -3843,9 +3975,9 @@ function TestMTable:testInsertEmptyMulti()
   tbl21:insert(rows2, 1)
   tbl31:insert(rows3, 1)
   for i=1,4 do
-    assertVecEquals(tbl11:getrow(i), rows1[i])
-    assertVecEquals(tbl21:getrow(i), rows2[i])
-    assertVecEquals(tbl31:getrow(i), rows3[i])
+    assertEquals(tbl11:getrow(i), rows1[i])
+    assertEquals(tbl21:getrow(i), rows2[i])
+    assertEquals(tbl31:getrow(i), rows3[i])
   end
 end
 
@@ -3855,23 +3987,23 @@ function TestMTable:testInsert1Row1Idx()
   tbl1:insert(rows1, 1)
   tbl2:insert(rows2, 1)
   tbl3:insert(rows3, 1)
-  assertVecEquals(tbl1:getrow(1), rows1[1])
-  assertVecEquals(tbl2:getrow(1), rows2[1])
-  assertVecEquals(tbl3:getrow(1), rows3[1])
+  assertEquals(tbl1:getrow(1), rows1[1])
+  assertEquals(tbl2:getrow(1), rows2[1])
+  assertEquals(tbl3:getrow(1), rows3[1])
 
   tbl1:insert(rows1, 3)
   tbl2:insert(rows2, 3)
   tbl3:insert(rows3, 3)
-  assertVecEquals(tbl1:getrow(3), rows1[1])
-  assertVecEquals(tbl2:getrow(3), rows2[1])
-  assertVecEquals(tbl3:getrow(3), rows3[1])
+  assertEquals(tbl1:getrow(3), rows1[1])
+  assertEquals(tbl2:getrow(3), rows2[1])
+  assertEquals(tbl3:getrow(3), rows3[1])
 
   tbl1:insert(rows1, 7)
   tbl2:insert(rows2, 7)
   tbl3:insert(rows3, 7)
-  assertVecEquals(tbl1:getrow(7), rows1[1])
-  assertVecEquals(tbl2:getrow(7), rows2[1])
-  assertVecEquals(tbl3:getrow(7), rows3[1])
+  assertEquals(tbl1:getrow(7), rows1[1])
+  assertEquals(tbl2:getrow(7), rows2[1])
+  assertEquals(tbl3:getrow(7), rows3[1])
 end
 
 function TestMTable:testInsertNRow1IdxBegin()
@@ -3883,9 +4015,9 @@ function TestMTable:testInsertNRow1IdxBegin()
   tbl2:insert(rows21, 1)
   tbl3:insert(rows31, 1)
   for i=1,4 do
-    assertVecEquals(tbl1:getrow(i), rows11[i])
-    assertVecEquals(tbl2:getrow(i), rows21[i])
-    assertVecEquals(tbl3:getrow(i), rows31[i])
+    assertEquals(tbl1:getrow(i), rows11[i])
+    assertEquals(tbl2:getrow(i), rows21[i])
+    assertEquals(tbl3:getrow(i), rows31[i])
   end
 end
 
@@ -3897,9 +4029,9 @@ function TestMTable:testInsertNRow1IdxInside()
   tbl2:insert(rows2, 2)
   tbl3:insert(rows3, 2)
   for i=2,5 do
-    assertVecEquals(tbl1:getrow(i), rows1[i-1])
-    assertVecEquals(tbl2:getrow(i), rows2[i-1])
-    assertVecEquals(tbl3:getrow(i), rows3[i-1])
+    assertEquals(tbl1:getrow(i), rows1[i-1])
+    assertEquals(tbl2:getrow(i), rows2[i-1])
+    assertEquals(tbl3:getrow(i), rows3[i-1])
   end
 end
 
@@ -3912,18 +4044,18 @@ function TestMTable:testInsertNRow1IdxEnd()
   tbl2:insert(rows21, 4, {where="after"})
   tbl3:insert(rows31, 4, {where="after"})
   for i=5,8 do
-    assertVecEquals(tbl1:getrow(i), rows11[i-4])
-    assertVecEquals(tbl2:getrow(i), rows21[i-4])
-    assertVecEquals(tbl3:getrow(i), rows31[i-4])
+    assertEquals(tbl1:getrow(i), rows11[i-4])
+    assertEquals(tbl2:getrow(i), rows21[i-4])
+    assertEquals(tbl3:getrow(i), rows31[i-4])
   end
 
   tbl1:insert(rows12, 9)
   tbl2:insert(rows22, 9)
   tbl3:insert(rows32, 9)
   for i=9,12 do
-    assertVecEquals(tbl1:getrow(i), rows12[i-8])
-    assertVecEquals(tbl2:getrow(i), rows22[i-8])
-    assertVecEquals(tbl3:getrow(i), rows32[i-8])
+    assertEquals(tbl1:getrow(i), rows12[i-8])
+    assertEquals(tbl2:getrow(i), rows22[i-8])
+    assertEquals(tbl3:getrow(i), rows32[i-8])
   end
 end
 
@@ -3935,9 +4067,9 @@ function TestMTable:testInsert1RowNIdxBefore()
   tbl2:insert(rows2, {1,4})
   tbl3:insert(rows3, {1,4})
   for i=1,7,2 do
-    assertVecEquals(tbl1:getrow(i), rows1[1])
-    assertVecEquals(tbl2:getrow(i), rows2[1])
-    assertVecEquals(tbl3:getrow(i), rows3[1])
+    assertEquals(tbl1:getrow(i), rows1[1])
+    assertEquals(tbl2:getrow(i), rows2[1])
+    assertEquals(tbl3:getrow(i), rows3[1])
   end
 end
 
@@ -3949,9 +4081,9 @@ function TestMTable:testInsert1RowNIdxAfter()
   tbl2:insert(rows2, {1,4}, {where="after"})
   tbl3:insert(rows3, {1,4}, {where="after"})
   for i=2,8,2 do
-    assertVecEquals(tbl1:getrow(i), rows1[1])
-    assertVecEquals(tbl2:getrow(i), rows2[1])
-    assertVecEquals(tbl3:getrow(i), rows3[1])
+    assertEquals(tbl1:getrow(i), rows1[1])
+    assertEquals(tbl2:getrow(i), rows2[1])
+    assertEquals(tbl3:getrow(i), rows3[1])
   end
 end
 
@@ -3963,9 +4095,9 @@ function TestMTable:testInsertNRowNIdxBefore()
   tbl2:insert(rows2, {1,4})
   tbl3:insert(rows3, {1,4})
   for i=1,7,2 do
-    assertVecEquals(tbl1:getrow(i), rows1[(1+i)/2])
-    assertVecEquals(tbl2:getrow(i), rows2[(1+i)/2])
-    assertVecEquals(tbl3:getrow(i), rows3[(1+i)/2])
+    assertEquals(tbl1:getrow(i), rows1[(1+i)/2])
+    assertEquals(tbl2:getrow(i), rows2[(1+i)/2])
+    assertEquals(tbl3:getrow(i), rows3[(1+i)/2])
   end
 end
 
@@ -3977,9 +4109,9 @@ function TestMTable:testInsertNRowNIdxAfter()
   tbl2:insert(rows2, {1,4}, {where="after"})
   tbl3:insert(rows3, {1,4}, {where="after"})
   for i=2,8,2 do
-    assertVecEquals(tbl1:getrow(i), rows1[i/2])
-    assertVecEquals(tbl2:getrow(i), rows2[i/2])
-    assertVecEquals(tbl3:getrow(i), rows3[i/2])
+    assertEquals(tbl1:getrow(i), rows1[i/2])
+    assertEquals(tbl2:getrow(i), rows2[i/2])
+    assertEquals(tbl3:getrow(i), rows3[i/2])
   end
 end
 
@@ -3994,9 +4126,9 @@ function TestMTable:testInsertNRowMIdxAfter()
   tbl21:insert(rows21, {1,4})
   tbl31:insert(rows31, {1,4})
   for i=1,7,2 do
-    assertVecEquals(tbl11:getrow(i), rows11[(i+1)/2])
-    assertVecEquals(tbl21:getrow(i), rows21[(i+1)/2])
-    assertVecEquals(tbl31:getrow(i), rows31[(i+1)/2])
+    assertEquals(tbl11:getrow(i), rows11[(i+1)/2])
+    assertEquals(tbl21:getrow(i), rows21[(i+1)/2])
+    assertEquals(tbl31:getrow(i), rows31[(i+1)/2])
   end
   assertNil(tbl21.name9 )
   assertNil(tbl31.name9 )
@@ -4008,9 +4140,9 @@ function TestMTable:testInsertNRowMIdxAfter()
   tbl22:insert(rows22, {1,4})
   tbl32:insert(rows32, {1,4})
   for i=1,3,2 do
-    assertVecEquals(tbl12:getrow(i), rows12[(i+1)/2])
-    assertVecEquals(tbl22:getrow(i), rows22[(i+1)/2])
-    assertVecEquals(tbl32:getrow(i), rows32[(i+1)/2])
+    assertEquals(tbl12:getrow(i), rows12[(i+1)/2])
+    assertEquals(tbl22:getrow(i), rows22[(i+1)/2])
+    assertEquals(tbl32:getrow(i), rows32[(i+1)/2])
   end
   assertEquals(#tbl12, 6)
   assertEquals(#tbl22, 6)
@@ -4029,5 +4161,119 @@ function TestMTable:testInsertSel()
 end
 
 -------------------------------------------------------------------------------o
+
+-- function TestMTable:testKpairsTbl()                                       -- BUG
+--   local tbl1, tbl2, tbl3  = getIdxTbl()
+--   print()
+--   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+--     print("===== ipairs")
+--     for k,v in ipairs(tbl) do
+--       print(k,v)
+--     end
+--     print("===== kpairs")
+--     for k,v in kpairs(tbl) do
+--       print(k,v)
+--     end
+--     print("===== pairs")
+--     for k,v in pairs(tbl) do
+--       print(k,v)
+--     end
+--   end
+-- end
+
+function TestMTable:testKpairsCol()                                        -- OK
+  local tbl1, tbl2, tbl3  = getIdxTbl()
+  for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+    tbl:addcol("gen", \i -> i)
+    for i=1,tbl:ncol() do                                -- start a 0 ??
+      local j   , col  = 0  , tbl:getcol(i)
+      local val1, val2 = { }, { }
+      for k,v in ipairs(col) do val1[k] = v   end
+      for k,v in kpairs(col) do j       = j+1 end
+      for k,v in pairs (col) do val2[k] = v   end
+      assertEquals(j   , 0   )
+      assertEquals(val1, val2)
+    end
+  end
+end
+
+-- function TestMTable:testKpairsReadOnlyCol()                               -- BUG
+--   local tbl1, tbl2, tbl3  = getIdxTbl()
+--   print()
+--   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+--     print("================ tbl")
+--     tbl:addcol("gen", \i -> i)
+--     tbl:set_readonly()
+--     for i=1,tbl:ncol() do                                -- start a 0 ??
+--       local col = tbl:getcol(i)
+--       print(tbl:getcol(i))
+--       print("===== ipairs")
+--       for k,v in ipairs(col) do
+--         print(k,v)
+--       end
+--       print("===== kpairs")
+--       for k,v in kpairs(col) do
+--         print(k,v)
+--       end
+--       print("===== pairs")
+--       for k,v in pairs(col) do
+--         print(k,v)
+--       end
+--     end
+--   end
+-- end
+
+-- function TestMTable:testKpairsRow()                                       -- BUG
+--   local tbl1, tbl2, tbl3  = getIdxTbl()
+--   print()
+--   for _,tbl in ipairs{tbl1, tbl2, tbl3} do
+--     print("================ tbl")
+--     tbl:addcol("gen", \i -> i)
+--     for i=1,tbl:nrow() do
+--       local row = tbl:getrow(i)
+--       print("===== ipairs")
+--       for k,v in ipairs(row) do
+--         print(k,v)
+--       end
+--       print("===== kpairs")
+--       print(kpairs(row))
+--       for k,v in kpairs(row) do
+--         print(k,v)
+--       end
+--       print("===== pairs")
+--       for k,v in pairs(row) do
+--         print(k,v)
+--       end
+--     end
+--   end
+-- end
+
+function TestMTable:testKpairsCnt()                                        -- OK
+  local _, tbl2, tbl3  = getIdxTbl()
+  for _,tbl in ipairs{tbl2, tbl3} do
+    tbl:addcol("gen", \i -> i)
+    local j   , cnt  = 0  , tbl.name1
+    local val1, val2 = { }, { }
+
+    for k,v in ipairs(cnt) do
+      for i=0,#v do
+        val1[i + 100*k] = v[i]
+      end
+    end
+
+    for k,v in kpairs(cnt) do
+      j = j+1
+    end
+
+    for k,v in pairs(cnt)  do
+      for i=0,#v do
+        val2[i + 100*k] = v[i]
+      end
+    end
+
+    assertEquals(j   , 0   )
+    assertEquals(val1, val2)
+  end
+end
 
 -- end ------------------------------------------------------------------------o
