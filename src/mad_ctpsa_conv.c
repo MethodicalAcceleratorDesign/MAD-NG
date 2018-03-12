@@ -136,6 +136,15 @@ void mad_ctpsa_subt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   mad_ctpsa_sub(a, t, c);
 }
 
+void mad_ctpsa_tsub (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
+{
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ctpsa_t *t = c->d->ct[0];
+  mad_ctpsa_complex(a, NULL, t);
+  mad_ctpsa_sub(t, b, c);
+}
+
 void mad_ctpsa_mult (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
@@ -154,15 +163,6 @@ void mad_ctpsa_divt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   mad_ctpsa_div(a, t, c);        // div.mul uses ct[0] if a == c, but not t (!)
 }
 
-void mad_ctpsa_tsub (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
-{
-  assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = c->d->ct[0];
-  mad_ctpsa_complex(a, NULL, t);
-  mad_ctpsa_sub(t, b, c);
-}
-
 void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
@@ -170,6 +170,24 @@ void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   ctpsa_t *t = c->d->ct[0];      // see divt
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_div(t, b, c);
+}
+
+void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int n)
+{
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ctpsa_t *t = c->d->ct[1];
+  mad_ctpsa_complex(b, NULL, t); // poisson.mul uses ct[0]
+  mad_ctpsa_poisson(a, t, c, n);
+}
+
+void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n)
+{
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ctpsa_t *t = c->d->ct[1];
+  mad_ctpsa_complex(a, NULL, t); // poisson.mul uses ct[0]
+  mad_ctpsa_poisson(t, b, c, n);
 }
 
 // --- end --------------------------------------------------------------------o

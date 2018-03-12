@@ -64,7 +64,7 @@ void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
 
 // indexing / monomials
-int     mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
+ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
 idx_t   mad_tpsa_idxs    (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
 idx_t   mad_tpsa_idxm    (const tpsa_t *t, ssz_t n, const ord_t m [n]);
 idx_t   mad_tpsa_idxsm   (const tpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
@@ -81,19 +81,21 @@ void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n], num_t a, n
 void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s   , num_t a, num_t b);
 void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, num_t b);
 
-// operations
-void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
-num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
-num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
-void    mad_tpsa_der     (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
-void    mad_tpsa_mder    (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[]);
-
+// operators
+log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol);
 void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_div     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
+void    mad_tpsa_ipow    (const tpsa_t *a,                  tpsa_t *c, int n);
 
-log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol);
+// functions
+void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
+num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
+num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
+void    mad_tpsa_der     (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
+void    mad_tpsa_derm    (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[]);
+void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int n);  // TO CHECK n
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c);  // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c);  // c  = v*a
@@ -103,30 +105,28 @@ void    mad_tpsa_invsqrt (const tpsa_t *a, num_t v, tpsa_t *c);  // c  = v/sqrt(
 void    mad_tpsa_sqrt    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_exp     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_log     (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sincos  (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
 void    mad_tpsa_sin     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cos     (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_sincos  (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
-void    mad_tpsa_sincosh (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
-void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_sirx    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_corx    (const tpsa_t *a, tpsa_t *c);
-
 void    mad_tpsa_tan     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cot     (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sincosh (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
+void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_tanh    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_coth    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_asin    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acos    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_atan    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acot    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_tanh    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_coth    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_asinh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acosh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_atanh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acoth   (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sirx    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_corx    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erf     (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_ipow    (const tpsa_t *a, tpsa_t *c, int n);
 
 // high level functions
 void    mad_tpsa_axpb       (num_t a, const tpsa_t *x,
@@ -147,10 +147,9 @@ void    mad_tpsa_ax2pby2pcz2(num_t a, const tpsa_t *x,
                              num_t c, const tpsa_t *z, tpsa_t *r); // aliasing OK
 
 // to check for non-homogeneous maps & knobs
-void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int n);  // TO CHECK n
-void    mad_tpsa_compose (int sa, const tpsa_t *ma[], int sb, const tpsa_t *mb[], int sc, tpsa_t *mc[]);
-void    mad_tpsa_minv    (int sa, const tpsa_t *ma[],                             int sc, tpsa_t *mc[]);
-void    mad_tpsa_pminv   (int sa, const tpsa_t *ma[],                             int sc, tpsa_t *mc[], int row_select[]);
+void    mad_tpsa_compose (ssz_t sa, const tpsa_t *ma[], ssz_t sb, const tpsa_t *mb[], ssz_t sc, tpsa_t *mc[]);
+void    mad_tpsa_minv    (ssz_t sa, const tpsa_t *ma[],                               ssz_t sc, tpsa_t *mc[]);
+void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[],                               ssz_t sc, tpsa_t *mc[], int row_select[]);
 
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, FILE *stream_);
