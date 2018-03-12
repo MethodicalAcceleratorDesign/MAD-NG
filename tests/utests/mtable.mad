@@ -29,6 +29,7 @@ local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
 local mtable, filesys                                            in MAD
 local is_vector, is_mtable, is_number, is_string                 in MAD.typeid
 local abs, eps, pi, random                                       in MAD.gmath
+local tblcpy                                                     in MAD.utility
 
 local generate = false
 local refdir   = \s -> "mtable_ref/"..s
@@ -133,11 +134,10 @@ local function assertFiles (name)
   end
 end
 
-local function testWrite(tbl, filnam_, colnam_, hdrnam_)
+local function testWrite(tbl, filname, ...)
   filesys.mkdir(rundir(""))
-  tbl:write(rundir(filnam_), colnam_, hdrnam_)
-  if string.sub(filnam_,-4) ~= '.tfs' then filnam_ = filnam_ .. '.tfs' end
-  assertFiles(filnam_)
+  tbl:write(...)
+  assertFiles(filname)
 end
 
 local function newrow(i)
@@ -2414,16 +2414,16 @@ end
 function TestMTable:testWriteExtensions()
   local tbl = mtable "tbl1" { "x", "y", "z" }
   tbl.time, tbl.date, tbl.origin = "", "", ""
-  testWrite(tbl, "tbl-name1")
-  testWrite(tbl, "tbl-name2.tfs")
+  testWrite(tbl, "tbl-name1.tfs", rundir("tbl-name1"    ))
+  testWrite(tbl, "tbl-name2.tfs", rundir("tbl-name2.tfs"))
 end
 
 function TestMTable:testWriteDict()
   local _, tbl2, tbl3 = getIdxTbl()
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   tbl3.time, tbl3.date, tbl3.origin = "", "", ""
-  testWrite(tbl2, "tbl-dict1")
-  testWrite(tbl3, "tbl-dict2")
+  testWrite(tbl2, "tbl-dict1.tfs", rundir("tbl-dict1"))
+  testWrite(tbl3, "tbl-dict2.tfs", rundir("tbl-dict2"))
 end
 
 function TestMTable:testWriteCol()
@@ -2433,9 +2433,9 @@ function TestMTable:testWriteCol()
   tbl1.time, tbl1.date, tbl1.origin = "", "", ""
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
-  testWrite(tbl1, "tbl-col1"          )
-  testWrite(tbl1, "tbl-col2", {"x", 3})
-  testWrite(tbl2, "tbl-col2"          )
+  testWrite(tbl1, "tbl-col1.tfs", rundir("tbl-col1")          )
+  testWrite(tbl1, "tbl-col2.tfs", rundir("tbl-col2"), {"x", 3})
+  testWrite(tbl2, "tbl-col2.tfs", rundir("tbl-col2")          )
 end
 
 function TestMTable:testWriteHeader()
@@ -2447,8 +2447,9 @@ function TestMTable:testWriteHeader()
   local row = { "v0", 1, 2, 3 }
   tbl.time, tbl.date, tbl.origin = "", "", ""
   for i=1,4 do tbl:addrow(row) end
-  testWrite(tbl, "tbl-header1", nil, { "title", "header1" })
-  testWrite(tbl, "tbl-header2")
+  testWrite(tbl, "tbl-header1.tfs", rundir("tbl-header1")
+    , nil, { "title", "header1" })
+  testWrite(tbl, "tbl-header2.tfs", rundir("tbl-header2"))
 end
 
 function TestMTable:testWriteNovector()
@@ -2464,8 +2465,8 @@ function TestMTable:testWriteNovector()
   tbl1.time, tbl1.date, tbl1.origin = "", "", ""
   tbl2.time, tbl2.date, tbl2.origin = "", "", ""
   for i=1,4 do tbl1:addrow(row); tbl2:addrow(row) end
-  testWrite(tbl1, "tbl-novector1")
-  testWrite(tbl2, "tbl-novector2")
+  testWrite(tbl1, "tbl-novector1.tfs", rundir("tbl-novector1"))
+  testWrite(tbl2, "tbl-novector2.tfs", rundir("tbl-novector2"))
 end
 
 function TestMTable:testWriteValues()
@@ -2483,24 +2484,47 @@ function TestMTable:testWriteValues()
   tbl:addrow{"name1", 1  , false, 3.15}
   tbl:addcol("gen"  , \i->i)
   tbl:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
-  testWrite(tbl, "tbl-write")
+  testWrite(tbl, "tbl-write.tfs", rundir("tbl-write"))
 end
 
 function TestMTable:testWriteStdout()
-  filesys.mkdir(rundir(""))
   local tbl    = mtable "tbl" { "x", "y", "z", var = 42 }
   local row    = { 1, 2, 3 }
-  local fname  = "tbl-stdout"
+  local fname  = "tbl-stdout.tfs"
   tbl.time, tbl.date, tbl.origin = "", "", ""
   for i=1,4 do tbl:addrow(row) end
 
   local stdout = io.stdout
   io.stdout    = assert(io.open(rundir(fname), 'w'))
 
-  tbl:write({"x", "y"}, {"var", "type"})
-  assertFiles(fname)
+  testWrite(tbl, fname, {"x", "y"}, {"var", "type"})
 
   io.stdout = stdout
+end
+
+function TestMTable:testWriteRightShift()
+  local tbl = getIdxTbl()
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  tbl.var = 42
+  tbl:addcol("gen"  , \i->i)
+  tbl[1][0] = false
+  tbl[3][0] = false
+  testWrite(tbl, "tbl-rightshft1.tfs", rundir("tbl-rightshft1"), {"x"}, true)
+  testWrite(tbl, "tbl-rightshft2.tfs", rundir("tbl-rightshft2"), true)
+end
+
+function TestMTable:testWriteNamedArgs()
+  local tbl  = mtable "tbl" { "x", "y", "z", var = 42 }
+  local args = { column = { "x", "y" }, header = { "var" }, selected = true }
+  local args1, args2 = tblcpy(args), tblcpy(args)
+
+  args1.filename = rundir("tbl-namedargs1")
+  args2.file     = io.open(rundir("tbl-namedargs2.tfs"), "w")
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  tbl.var = 42
+
+  testWrite(tbl, "tbl-namedargs1.tfs", args1)
+  testWrite(tbl, "tbl-namedargs2.tfs", args2)
 end
 
 function TestMTable:testReadExtensions()
@@ -2565,7 +2589,7 @@ end
 
 function TestMTable:testReadStdin()
   local stdin = io.stdin
-  io.stdin    = assert(io.open(refdir("tbl-stdout"), 'r'))
+  io.stdin    = assert(io.open(refdir("tbl-stdout.tfs"), 'r'))
   local tbl   = mtable:read()
   assertEquals(tbl.var, 42)
   assertVecEquals(tbl:getcol(1), {1, 1, 1, 1})
