@@ -901,7 +901,7 @@ get_desc(int nmv, const ord_t mvar_ords[nmv],
 
 // --- public -----------------------------------------------------------------o
 
-int
+ord_t
 mad_desc_get_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
 {
   assert(d);
