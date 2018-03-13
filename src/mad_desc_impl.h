@@ -66,7 +66,7 @@ struct desc { // WARNING: needs to be identical with Lua for compatibility
 
 #define D desc_t
 
-int      mad_desc_get_mono        (const D *d, ssz_t n,       ord_t m_[n], idx_t i);
+ord_t    mad_desc_get_mono        (const D *d, ssz_t n,       ord_t m_[n], idx_t i);
 idx_t    mad_desc_get_idx_s       (const D *d, ssz_t n,       str_t s    );
 idx_t    mad_desc_get_idx_m       (const D *d, ssz_t n, const ord_t m [n]);
 idx_t    mad_desc_get_idx_sm      (const D *d, ssz_t n, const idx_t m [n]);

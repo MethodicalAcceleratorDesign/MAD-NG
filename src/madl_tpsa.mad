@@ -81,12 +81,12 @@ struct tpsa_ccast { // warning: must be kept identical to C definition
 };
 ]]
 
-local  desc_ctor = ffi.typeof 'struct  desc '
-local  tpsa_ctor = ffi.typeof 'struct  tpsa '
-local  tpsa_cref = ffi.typeof 'struct  tpsa&'
-local ctpsa_ctor = ffi.typeof 'struct ctpsa '
-local ctpsa_cref = ffi.typeof 'struct ctpsa&'
-local  tpsa_ccst = ffi.typeof 'struct  tpsa_ccast&'
+local  desc_ctor  = ffi.typeof 'struct  desc '
+local  tpsa_ctor  = ffi.typeof 'struct  tpsa '
+local  tpsa_cref  = ffi.typeof 'struct  tpsa&'
+local ctpsa_ctor  = ffi.typeof 'struct ctpsa '
+local ctpsa_cref  = ffi.typeof 'struct ctpsa&'
+local  tpsa_ccast = ffi.typeof 'struct  tpsa_ccast&'
 
 local   int_arr  = ffi.typeof 'int [?]'
 local  tpsa_arr  = ffi.typeof 'struct  tpsa* [?]'
@@ -159,7 +159,7 @@ local function tpsa_alloc (d, mo)
     local siz = ffi.sizeof(tpsa_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.mad_free)
-    local t = ffi.cast(tpsa_ccst, tpsa)
+    local t = ffi.cast(tpsa_ccast, tpsa)
     t.d, t.lo, t.mo = d, mo, mo -- see tpsa_newd() in mad_tpsa.c
   end
   desc_curr = d
@@ -176,7 +176,7 @@ local function ctpsa_alloc (d, mo)
     local siz = ffi.sizeof(ctpsa_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     ctpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
-    local t = ffi.cast(tpsa_ccst, tpsa)
+    local t = ffi.cast(tpsa_ccast, tpsa)
     t.d, t.lo, t.mo = d, mo, mo
   end
   desc_curr = d
@@ -204,7 +204,7 @@ local function tpsa (td, mo_)
   else
     error("invalid argument #1 (GTPSA or descriptor expected)")
   end
-  assert(is_number(mo_), "invalid argument #2 (number expected)")
+  assert(is_integer(mo_), "invalid argument #2 (integer expected)")
   return tpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
@@ -222,7 +222,7 @@ local function ctpsa (td, mo_)
   else
     error("invalid argument #1 (GTPSA or descriptor expected)")
   end
-  assert(is_number(mo_), "invalid argument #2 (number expected)")
+  assert(is_integer(mo_), "invalid argument #2 (integer expected)")
   return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
@@ -235,7 +235,7 @@ local function chksiz (r, x, y) -- add, sub, mul
   return r
 end
 
--- same, copy -----------------------------------------------------------------o
+-- same, copy, clear, scalar --------------------------------------------------o
 
 function MR.__same (x, y_, e_)
   if is_nil(e_) and is_complex(y_) then -- shift right
@@ -277,159 +277,200 @@ function MC.__copy (x, y_)
   return x
 end
 
+function MR.clear (x)
+  _C.mad_tpsa_clear(x) return x
+end
+
+function MC.clear (x)
+  _C.mad_ctpsa_clear(x) return x
+end
+
+function MR.scalar (x, e_) -- clear + set1(0,e1)
+  e_ = e_ or 0
+  assert(is_number(e_), "invalid argument #2 (number expected)")
+  _C.mad_tpsa_scalar(x, e_) return x
+end
+
+function MC.scalar (x, e_) -- clear + set1(0,e1)
+  e_ = e_ or 0i
+  assert(is_complex(e_), "invalid argument #2 (complex expected)")
+  _C.mad_ctpsa_scalar_r(x, e_.re, e_.im) return x
+end
+
 -- indexing ------------------------------------------------------------------o
 
--- TODO!!!
-
-function MR.get_idx (x, m)
+function MR.get_idx (x, m) -- mono -> idx
   m = is_table(m) and monomial(m) or m
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_midx(x, m.n, m.ord)
+  return _C.mad_tpsa_idxm(x, m.n, m.ord)+1
 end
 
-function MC.get_idx (x, m)
+function MC.get_idx (x, m) -- mono -> idx
   m = is_table(m) and monomial(m) or m
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_midx(x, m.n, m.ord)
+  return _C.mad_ctpsa_idxm(x, m.n, m.ord)+1
 end
 
-function MR.get_idx_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+function MR.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
   assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local ma = int_arr(#tbl, tbl)
-  return _C.mad_tpsa_midx_sp(x, #tbl, ma)
+  local n = #tbl
+  local ma = int_arr(n, tbl)
+  return _C.mad_tpsa_idxsm(x, n, ma)+1
 end
 
-function MC.get_idx_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
+function MC.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
   assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local ma = int_arr(#tbl, tbl)
-  return _C.mad_ctpsa_midx_sp(x, #tbl, ma)
+  local n = #tbl
+  local ma = int_arr(n, tbl)
+  return _C.mad_ctpsa_idxsm(x, n, ma)+1
 end
 
-function MR.get_mono (x, i, r)
+function MR.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nv)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_mono(t, m.n, m.ord, i)
+  return _C.mad_tpsa_mono(t, m.n, m.ord, i) -- set m, return order
 end
 
-function MC.get_mono (x, i, r)
+function MC.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nv)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_mono(t, m.n, m.ord, i)
+  return _C.mad_ctpsa_mono(t, m.n, m.ord, i) -- set m, return order
 end
 
--- get & set ----------------------------------------------------------------o
+-- getters and setters --------------------------------------------------------o
 
--- TODO!!!
-
-function MR.get0 (x)
-  return _C.mad_tpsa_get0(x)
+function MR.get1 (x)
+  return x.coef[0]
 end
 
-function MC.get0 (x)
-  _C.mad_ctpsa_get0(x, cres) return cres
+function MC.get1 (x)
+  return x.coef[0]
 end
 
-function MR.get (x, m)
-  if is_nil(m) then
-    return _C.mad_tpsa_get0(x)
-  elseif is_number(m) then
-    return _C.mad_tpsa_geti(x, m)
-  elseif is_string(m) then
-    return _C.mad_tpsa_gets(x, #m, m)
-  elseif is_monomial(m) then
-    return _C.mad_tpsa_getm(x, m.n, m.ord)
-  else
-    assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-    m = is_table(m) and monomial(m) or m
-    return _C.mad_tpsa_getm(x, m.n, m.ord)
-  end
-end
-
-function MC.get (x, m)
-  if is_number(m) then return _C.mad_ctpsa_geti(x, m) end
-  m = is_table(m) and monomial(m) or m
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  _C.mad_tpsa_getm_r(x, m.n, m.ord, cres) return cres
-end
-
-function MR.get_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local m = int_arr(#tbl, tbl)
-  return _C.mad_tpsa_getm_sp(x, #tbl, m)
-end
-
-function MC.get_sp (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... }
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local m = int_arr(#tbl, tbl)
-  return _C.mad_ctpsa_getm_sp(x, #tbl, m)
-end
-
-function MR.set0 (x, a, b)
+function MR.set1 (x, a, b)
   if is_nil(b) then a, b = 0, a end
   _C.mad_tpsa_set0(x, a, b) return x
 end
 
-function MC.set0 (x, a, b)
+function MC.set1 (x, a, b)
   if is_nil(b) then a, b = 0, a end
   a, b = complex(a), complex(b)
   _C.mad_ctpsa_set0_r(x, a.re, a.im, b.re, b.im) return x
 end
 
+function MR.get (x, m) -- idx or str or mono -> num
+  if is_integer(m) then
+    return m == 1 and x.coef[0] or _C.mad_tpsa_geti(x, m-1)
+  elseif is_string(m) then
+    return _C.mad_tpsa_gets(x, #m, m)
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    return _C.mad_tpsa_getm(x, m.n, m.ord)
+  end
+end
+
+function MC.get (x, m) -- idx or str or mono -> cnum
+  if is_integer(m) then
+    if m == 1
+    then return x.coef[0]
+    else _C.mad_ctpsa_geti_r(x, m-1, cres) return cres[0]
+    end
+  elseif is_string(m) then
+    _C.mad_ctpsa_gets(x, #m, m, cres) return cres[0]
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    _C.mad_ctpsa_getm_r(x, m.n, m.ord, cres) return cres[0]
+  end
+end
+
 function MR.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
-  if is_number(m) then _C.mad_tpsa_seti(x, m, a, b) return x end
-  m = is_table(m) and monomial(m) or m
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  _C.mad_tpsa_setm(x, m.n, m.ord, a, b) return x
+  if is_integer(m) then
+    if m == 1
+    then _C.mad_tpsa_set0(x,      a, b) return x
+    else _C.mad_tpsa_seti(x, m-1, a, b) return x
+    end
+  elseif is_string(m) then
+    _C.mad_tpsa_sets(x, #m, m, a, b) return x
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    _C.mad_tpsa_setm(x, m.n, m.ord, a, b) return x
+  end
 end
 
 function MC.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
-  if is_number(m) then _C.mad_ctpsa_seti(x, m, a, b) return x end
-  m = is_table(m) and monomial(m) or m
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  _C.mad_ctpsa_setm(x, m.n, m.ord, a, b) return x
+  a, b = complex(a), complex(b)
+  if is_integer(m) then
+    if m == 1
+    then _C.mad_ctpsa_set0_r(x,      a.re, a.im, b.re, b.im) return x
+    else _C.mad_ctpsa_seti_r(x, m-1, a.re, a.im, b.re, b.im) return x
+    end
+  elseif is_string(m) then
+    _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im) return x
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    _C.mad_ctpsa_setm_r(x, m.n, m.ord, a.re, a.im, b.re, b.im) return x
+  end
 end
 
-function MR.set_sp (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
+-- sparse getters and setters -------------------------------------------------o
+
+function MR.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> num
   assert(is_table(tbl), "invalid argument #2 (table expected)")
-  if is_nil(b) then a, b = 0, a end
-  local m = int_arr(#tbl, tbl)
-  _C.mad_tpsa_setm_sp(x, n, m, a, b) return x
+  local n = #tbl
+  local m = int_arr(n, tbl)
+  return _C.mad_tpsa_getsm(x, n, m)
 end
 
-function MC.set_sp (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
+function MC.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> cnum
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n, tbl)
+  _C.mad_ctpsa_getsm_r(x, n, m, cres) return cres[0]
+end
+
+function MR.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
   assert(is_table(tbl), "invalid argument #2 (table expected)")
   if is_nil(b) then a, b = 0, a end
-  local m = int_arr(#tbl, tbl)
-  _C.mad_ctpsa_setm_sp(x, n, m, a, b) return x
+  local n = #tbl
+  local m = int_arr(n, tbl)
+  _C.mad_tpsa_setsm(x, n, m, a, b) return x
+end
+
+function MC.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  if is_nil(b) then a, b = 0, a end
+  a, b = complex(a), complex(b)
+  local n = #tbl
+  local m = int_arr(n, tbl)
+  _C.mad_ctpsa_setsm_r(x, n, m, a.re, a.im, b.re, b.im) return x
 end
 
 -- conversion -----------------------------------------------------------------o
 
-function MR.complex (_, re_, im_, r) -- require a (c)tpsa to be called
+function MR.complex (_, re_, im_, r) -- (re,im) -> r, r can be x
   local re, im = re_ or im_, im_ or re_
   assert(is_tpsa(re) and is_tpsa(im), "invalid argument #2 or #3 (tpsa expected)")
-  r = chksiz(r,y) or ctpsa(re, max(re.mo, im.mo))
+  r = chksiz(r,re,im) or ctpsa(re, max(re.mo, im.mo))
   _C.mad_ctpsa_complex(re_, im_, r) return r
 end
 
-function MR.scalar (x, e_)
- e_ = e_ or 0
- assert(is_number(e_), "invalid argument #2 (number expected)")
-  _C.mad_tpsa_scalar(x, e_) return x
+function MC.real (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_real(x, r) return r
 end
 
-function MC.scalar (x, e_)
- e_ = e_ or 0i
- assert(is_complex(e_), "invalid argument #2 (complex expected)")
- _C.mad_ctpsa_scalar_r(x, e_.re, e_.im) return x
+function MC.imag (x, r)
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_imag(x, r) return r
 end
-
-MR.clear = \x => _C.mad_tpsa_clear (x) return x end
-MC.clear = \x => _C.mad_ctpsa_clear(x) return x end
 
 -- operators ------------------------------------------------------------------o
 
@@ -836,44 +877,42 @@ function MC.__pow (x, n, r)
   _C.mad_ctpsa_ipow(x, r, n) return r
 end
 
--- poisson brackets
-
-function MR.poisson(x, y, n, r)
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
-  r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
-  _C.mad_tpsa_poisson(x, y, r, n) return r
-end
-
-function MC.poisson(x, y, n, r)
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
-  r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
-  _C.mad_ctpsa_poisson(x, y, r, n) return r
-end
-
 -- tpsa functions -------------------------------------------------------------o
-
-MR.nrm1 = _C.mad_tpsa_nrm1
-MR.nrm2 = _C.mad_tpsa_nrm2
 
 function MR.abs (x, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_abs(x,r) return r
 end
 
-function MR.der (x, ivar, r)
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_der(x, r, ivar) return r
+function MR.nrm1 (x)
+  return _C.mad_tpsa_nrm1(x)
 end
 
-function MR.mder (x, tbl, r)
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  local m = monomial(tbl)
-  _C.mad_tpsa_mder(x, r, m.n, m.ord) return r
+function MR.nrm2 (x)
+  return _C.mad_tpsa_nrm2(x)
 end
 
-function MR.scale (x, val, r)
+function MR.der (x, m, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_scl(x, val, r) return r
+  if is_integer(m) then
+    _C.mad_tpsa_der(x, r, m) return r
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+    _C.mad_tpsa_derm(x, r, m.n, m.ord) return r
+  end
+end
+
+function MR.poisson (x, y, n, r)
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
+  if is_tpsa(y) then
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
+    _C.mad_tpsa_poisson (x, y, r, n) return r
+  elseif is_ctpsa(y) then
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+    _C.mad_ctpsa_tpoiss(x, y, r, n) return r
+  end
+  error("invalid arguments (unsupported GTPSA operation '[,]')")
 end
 
 function MR.acc (x, v, r)  -- r += v*x
@@ -881,12 +920,17 @@ function MR.acc (x, v, r)  -- r += v*x
   _C.mad_tpsa_acc(x, v, r) return r
 end
 
-function MR.inv (x, v, r)  -- v/x
+function MR.scl (x, v, r) -- r = v*x
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_scl(x, v, r) return r
+end
+
+function MR.inv (x, v, r)  -- r = v/x
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_inv(x, v, r) return r
 end
 
-function MR.invsqrt (x, v, r) -- v/sqrt(x)
+function MR.invsqrt (x, v, r) -- r = v/sqrt(x)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_invsqrt(x, v, r) return r
 end
@@ -904,6 +948,12 @@ end
 function MR.log (x, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_log(x, r) return r
+end
+
+function MR.sincos (x, rs, rc)
+  rs = chksiz(rs,x) or tpsa_alloc(x.d, x.mo)
+  rc = chksiz(rc,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sincos(x, rs, rc) return rs, rc
 end
 
 function MR.sin (x, r)
@@ -924,6 +974,12 @@ end
 function MR.cot (x, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_cot(x, r) return r
+end
+
+function MR.sincosh (x, rs, rc)
+  rs = chksiz(rs,x) or tpsa_alloc(x.d, x.mo)
+  rc = chksiz(rc,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sincosh(x, rs, rc) return rs, rc
 end
 
 function MR.sinh (x, r)
@@ -986,64 +1042,72 @@ function MR.acoth (x, r)
   _C.mad_tpsa_acoth(x, r) return r
 end
 
+function MR.sinc (x, r) -- sin(x)/x
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sinc(x, r) return r
+end
+
+function MR.sirx (x, r) -- sinc(sqrt(x))
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_sirx(x, r) return r
+end
+
+function MR.corx (x, r) -- cos(sqrt(x))
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_corx(x, r) return r
+end
+
 function MR.erf (x, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_erf(x, r) return r
 end
 
-function MR.sinc (x, r)
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_sinc(x, r) return r
-end
-
-function MR.sirx (x, r)
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_sirx(x, r) return r
-end
-
-function MR.corx (x, r)
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_corx(x, r) return r
-end
-
-function MR.sincos (x, rs_, rc_)
-  local rs = rs_ or tpsa(x)
-  local rc = rc_ or tpsa(x)
-  _C.mad_tpsa_sincos(x, rs, rc)
-  return rs, rc
-end
-
-function MR.sincosh (x, rs_, rc_)
-  local rs = rs_ or tpsa(x)
-  local rc = rc_ or tpsa(x)
-  _C.mad_tpsa_sincosh(x, rs, rc)
-  return rs, rc
-end
-
 -- ctpsa functions ------------------------------------------------------------o
-
-MC.nrm1 = _C.mad_ctpsa_nrm1
-MC.nrm2 = _C.mad_ctpsa_nrm2
 
 function MC.abs (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_abs(x,r) return r
 end
 
-function MC.der (x, ivar, r)
+function MC.arg (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_der(x, r, ivar) return r
+  _C.mad_ctpsa_arg(x,r) return r
 end
 
-function MC.mder (x, tbl, r_)
+function MC.conj (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  local m = monomial(tbl)
-  _C.mad_ctpsa_mder(x, r, m.n, m.ord) return r
+  _C.mad_ctpsa_conj(x,r) return r
 end
 
-function MC.scale (t, val, r_)
+function MC.nrm1 (x)
+  _C.mad_ctpsa_nrm1(x, cres) return cres[0]
+end
+
+function MC.nrm2 (x)
+  _C.mad_ctpsa_nrm2(x, cres) return cres[0]
+end
+
+function MC.der (x, m, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_scl(t, val, r) return r
+  if is_integer(m) then
+    _C.mad_ctpsa_der(x, r, m) return r
+  else
+    m = is_table(m) and monomial(m) or m
+    assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+    _C.mad_cpsa_derm(x, r, m.n, m.ord) return r
+  end
+end
+
+function MC.poisson(x, y, n, r)
+  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '[,]')")
+  if is_tpsa(y) then
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+    _C.mad_ctpsa_poisst (x, y, r, n) return r
+  elseif is_ctpsa(y) then
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+    _C.mad_ctpsa_poisson(x, y, r, n) return r
+  end
+  error("invalid arguments (unsupported GTPSA operation '[,]')")
 end
 
 function MC.acc (x, v, r)  -- r += v*x
@@ -1051,12 +1115,17 @@ function MC.acc (x, v, r)  -- r += v*x
   _C.mad_ctpsa_acc(x, v, r) return r
 end
 
-function MC.inv (x, v, r)  -- v/x
+function MC.scl (t, v, r) -- r = v*x
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_scl(t, v, r) return r
+end
+
+function MC.inv (x, v, r)  -- r = v/x
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_inv(x, v, r) return r
 end
 
-function MC.invsqrt (x, v, r) -- v/sqrt(x)
+function MC.invsqrt (x, v, r) -- r = v/sqrt(x)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_invsqrt(x, v, r) return r
 end
@@ -1074,6 +1143,12 @@ end
 function MC.log (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_log(x, r) return r
+end
+
+function MC.sincos (x, rs, rc)
+  rs = chksiz(rs,x) or ctpsa_alloc(x.d, x.mo)
+  rc = chksiz(rc,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sincos(x, rs, rc) return rs, rc
 end
 
 function MC.sin (x, r)
@@ -1094,6 +1169,12 @@ end
 function MC.cot (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_cot(x, r) return r
+end
+
+function MC.sincosh (x, rs, rc)
+  rs = chksiz(rs,x) or ctpsa_alloc(x.d, x.mo)
+  rc = chksiz(rc,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sincosh(x, rs, rc) return rs, rc
 end
 
 function MC.sinh (x, r)
@@ -1156,40 +1237,33 @@ function MC.acoth (x, r)
   _C.mad_ctpsa_acoth(x, r) return r
 end
 
+function MC.sinc (x, r) -- sin(x)/x
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sinc(x, r) return r
+end
+
+function MC.sirx (x, r) -- sinc(sqrt(x))
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_sirx(x, r) return r
+end
+
+function MC.corx (x, r) -- cos(sqrt(x))
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_corx(x, r) return r
+end
+
 function MC.erf (x, r)
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_erf(x, r) return r
 end
 
-function MC.sinc (x, r)
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_sinc(x, r) return r
-end
+-- tpsa high level functions --------------------------------------------------o
 
-function MC.sirx (x, r)
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_sirx(x, r) return r
-end
+-- TODO
 
-function MC.corx (x, r)
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_corx(x, r) return r
-end
+-- ctpsa high level functions -------------------------------------------------o
 
-function MC.sincos (x, rs_, rc_)
-  local rs = rs_ or tpsa(x)
-  local rc = rc_ or tpsa(x)
-  _C.mad_ctpsa_sincos(x, rs, rc)
-  return rs, rc
-end
-
-function MC.sincosh (x, rs_, rc_)
-  local rs = rs_ or tpsa(x)
-  local rc = rc_ or tpsa(x)
-  _C.mad_ctpsa_sincosh(x, rs, rc)
-  return rs, rc
-end
-
+-- TODO
 
 -- maps of (c)tpsa ------------------------------------------------------------o
 

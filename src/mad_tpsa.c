@@ -115,6 +115,7 @@ void
 FUN(copy) (const T *t, T *dst)
 {
   assert(t && dst);
+  if (t == dst) return;
   ensure(t->d == dst->d, "incompatible GTPSAs descriptors");
   D *d = t->d;
   if (d->trunc < t->lo) { FUN(clear)(dst); return; }
@@ -164,28 +165,28 @@ FUN(del) (T *t)
 
 // --- indexing / monomials ---------------------------------------------------o
 
-int
+ord_t
 FUN(mono) (const T *t, int n, ord_t m_[n], idx_t i)
 {
   assert(t);
   return mad_desc_get_mono(t->d, n, m_, i);
 }
 
-int
+idx_t
 FUN(idxs) (const T *t, int n, str_t s)
 {
   assert(t && s);
   return mad_desc_get_idx_s(t->d, n, s);
 }
 
-int
+idx_t
 FUN(idxm) (const T *t, int n, const ord_t m[n])
 {
   assert(t && m);
   return mad_desc_get_idx_m(t->d, n, m);
 }
 
-int
+idx_t
 FUN(idxsm) (const T *t, int n, const int m[n])
 {
   assert(t && m);
@@ -247,14 +248,14 @@ FUN(set0) (T *t, NUM a, NUM b)
 {
   assert(t);
   t->coef[0] = a*t->coef[0] + b;
-  if (t->coef[0]) {
+  if (t->coef[0] && !mad_bit_get(t->nz,0)) {
     idx_t *pi = t->d->ord2idx;
     t->nz = mad_bit_set(t->nz,0);
     for (int c = pi[1]; c < pi[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = 0;
   }
-  else {
+  else if (!t->coef[0] && mad_bit_get(t->nz,0)) {
     int n = mad_bit_lowest(t->nz);
     t->nz = mad_bit_clr(t->nz,0);
     t->lo = MIN(n,t->mo);
@@ -271,15 +272,8 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   if (i == 0) { FUN(set0)(t,a,b); return; }
 
   NUM v = a*FUN(geti)(t,i) + b;
-  if (v == 0) {
-    t->coef[i] = v;
-    if (i == 0 && t->lo == 0) {
-      int n = mad_bit_lowest(t->nz);
-      t->nz = mad_bit_clr(t->nz,0);
-      t->lo = MIN(n,t->mo);
-    }
-    return;
-  }
+
+  if (v == 0) { t->coef[i] = v; return; }
 
   ord_t  o  = d->ords[i];
   idx_t *pi = d->ord2idx;
