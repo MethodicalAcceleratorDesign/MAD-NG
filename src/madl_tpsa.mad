@@ -33,16 +33,11 @@ local min, max in math
 local _C, tostring, complex, monomial in MAD
 
 -- To review
-local is_nil, is_number, is_integer, is_string, is_complex, is_table,
+local is_nil, is_number, is_integer, is_complex, is_scalar, is_string, is_table,
       is_iterable, is_mappable, is_monomial in MAD.typeid
 
 -- tmp for returned values
-local  res = ffi.new 'double [1]'
 local cres = ffi.new 'complex[1]'
-
--- constants
-local dbl_sz = ffi.sizeof 'double'
-local cpx_sz = ffi.sizeof 'complex'
 
 -- types ----------------------------------------------------------------------o
 
@@ -229,8 +224,8 @@ end
 -- checkers -------------------------------------------------------------------o
 
 local function chksiz (r, x, y) -- add, sub, mul
-  assert( is_nil(r) or (r.mo >= x.mo and r.d == x.d and
-         (is_nil(y) or  r.mo >= y.mo and r.d == y.d)),
+  y = y or x
+  assert(x.d == y.d and (is_nil(r) or r.d == x.d and r.mo >= max(x.mo,y.mo)),
          "incompatible GTPSA order or descriptor")
   return r
 end
@@ -1259,13 +1254,92 @@ end
 
 -- tpsa high level functions --------------------------------------------------o
 
--- TODO
+function MR.axpb (x, a, b, r) -- r = ax+b
+  assert(is_number(a) and is_number(b), "invalid argument #2 or #3 (number expected)")
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_axpb(a,x,b,r) return r
+end
+
+function MR.axpbypc (x, y, a, b, c, r) -- r = ax+by+c
+  assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
+  assert(is_number(a) and is_number(b) and is_isnumber(c),
+         "invalid argument #3, #4 or #5 (number expected)")
+  r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_tpsa_axpbypc(a,x,b,y,c,r) return r
+end
+
+function MR.axypb (x, y, a, b, r) -- r = axy+b
+  assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
+  assert(is_number(a) and is_number(b), "invalid argument #3 or #4 (number expected)")
+  r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_tpsa_axypb(a,x,y,b,r) return r
+end
+
+function MR.axypbvwpc (x, y, v, w, a, b, c, r) -- r = axy+bvw+c
+  assert(is_tpsa(y) and is_tpsa(v) and is_tpsa(w),
+         "invalid argument #2, #3 or #4 (tpsa expected)")
+  assert(is_number(a) and is_number(b) and is_isnumber(c),
+         "invalid argument #5, #6 or #7 (number expected)")
+  r = chksiz(r,x,y) and chksiz(r,v,w) and chksiz(r,x,v) or
+      tpsa_alloc(x.d, max(x.mo,y.mo,v.mo,w.mo))
+  _C.mad_tpsa_axypbvwpc(a,x,y,b,v,w,c,r) return r
+end
+
+function MR.ax2pby2pcz2 (x, y, z, a, b, c, r) -- r = ax^2+by^2+cz^2
+  assert(is_tpsa(y) and is_tpsa(z), "invalid argument #2 or #3 (tpsa expected)")
+  assert(is_number(a) and is_number(b) and is_isnumber(c),
+         "invalid argument #4, #5 or #6 (number expected)")
+  r = chksiz(r,x,y) and chksiz(r,x,z) or tpsa_alloc(x.d, max(x.mo,y.mo,z.mo))
+  _C.mad_tpsa_ax2pby2pcz2(a,x,b,y,c,z,r) return r
+end
 
 -- ctpsa high level functions -------------------------------------------------o
 
--- TODO
+function MC.axpb (x, a, b, r) -- r = ax+b
+  assert(is_scalar(a) and is_scalar(b), "invalid argument #2 or #3 (scalar expected)")
+  a, b = complex(a), complex(b)
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_axpb_r(a.re,a.im, x, b.re,b.im, r) return r
+end
+
+function MC.axpbypc (x, y, a, b, c, r) -- r = ax+by+c
+  assert(is_ctpsa(y), "invalid argument #2 (ctpsa expected)")
+  assert(is_scalar(a) and is_scalar(b) and is_scalar(c),
+         "invalid argument #3, #4 or #5 (scalar expected)")
+  a, b, c = complex(a), complex(b), complex(c)
+  r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_ctpsa_axpbypc_r(a.re,a.im, x, b.re,b.im, y, c.re,c.im, r) return r
+end
+
+function MC.axypb (x, y, a, b, r) -- r = axy+b
+  assert(is_ctpsa(y), "invalid argument #2 (ctpsa expected)")
+  assert(is_scalar(a) and is_scalar(b), "invalid argument #3 or #4 (scalar expected)")
+  a, b = complex(a), complex(b)
+  r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
+  _C.mad_ctpsa_axypb_r(a.re,a.im, x, y, b.re,b.im, r) return r
+end
+
+function MC.axypbvwpc (x, y, v, w, a, b, c, r) -- r = axy+bvw+c
+  assert(is_ctpsa(y) and is_ctpsa(v) and is_ctpsa(w),
+         "invalid argument #2, #3 or #4 (ctpsa expected)")
+  assert(is_scalar(a) and is_scalar(b) and is_scalar(c),
+         "invalid argument #5, #6 or #7 (scalar expected)")
+  r = chksiz(r,x,y) and chksiz(r,v,w) and chksiz(r,x,v) or
+      ctpsa_alloc(x.d, max(x.mo,y.mo,v.mo,w.mo))
+  _C.mad_ctpsa_axypbvwpc_r(a.re,a.im, x,y, b.re,b.im, v,w, c.re,c.im, r) return r
+end
+
+function MC.ax2pby2pcz2 (x, y, z, a, b, c, r) -- r = ax^2+by^2+cz^2
+  assert(is_ctpsa(y) and is_ctpsa(z), "invalid argument #2 or #3 (ctpsa expected)")
+  assert(is_scalar(a) and is_scalar(b) and is_scalar(c),
+         "invalid argument #4, #5 or #6 (scalar expected)")
+  r = chksiz(r,x,y) and chksiz(r,x,z) or ctpsa_alloc(x.d, max(x.mo,y.mo,z.mo))
+  _C.mad_ctpsa_ax2pby2pcz2_r(a.re,a.im, x, b.re,b.im, y, c.re,c.im, z, r) return r
+end
 
 -- maps of (c)tpsa ------------------------------------------------------------o
+
+-- TODO: maps should special objects
 
 -- maps composition
 
