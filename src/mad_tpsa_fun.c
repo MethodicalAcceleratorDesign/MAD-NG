@@ -39,9 +39,9 @@
 enum { MANUAL_EXPANSION_ORD = 5 };
 
 static inline void
-fixed_point_iteration(const T *a, T *c, ord_t iter, NUM expansion_coef[iter+1])
+fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
 {
-  assert(a && c && expansion_coef);
+  assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
 
   T *acp = a->d->PFX(t[1]);
@@ -49,8 +49,8 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM expansion_coef[iter+1])
     FUN(copy)(a,acp);
 
   // iter 1
-  FUN(scl)(a, expansion_coef[1], c);
-  FUN(set0)(c, 0, expansion_coef[0]);
+  FUN(scl)(a, ord_coef[1], c);
+  FUN(set0)(c, 0, ord_coef[0]);
 
   // iter 2..iter
   if (iter >= 2) {
@@ -60,8 +60,8 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM expansion_coef[iter+1])
     FUN(copy)(acp,pow);  // already did ord 1
 
     for (ord_t i = 2; i <= iter; ++i) {
-      FUN(mul)(acp,pow,tmp); // never use t0!
-      FUN(acc)(tmp,expansion_coef[i],c);
+      FUN(mul)(acp,pow,tmp); // never use t[0]!
+      FUN(acc)(tmp,ord_coef[i],c);
       SWAP(pow,tmp,t);
     }
   }
@@ -75,7 +75,7 @@ sincos_fixed_point(const T *a, T *s, T *c, ord_t iter_s,
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
   ord_t max_iter = MAX(iter_s,iter_c);
-  T *acp = a->d->PFX(t[2]);
+  T *acp = a->d->PFX(t[1]);
   if (max_iter >= 2)      // save copy before scale, to deal with aliasing
     FUN(copy)(a,acp);
 
@@ -84,13 +84,13 @@ sincos_fixed_point(const T *a, T *s, T *c, ord_t iter_s,
   FUN(scl)(a,cos_coef[1],c); FUN(set0)(c, 0,cos_coef[0]);
 
   if (max_iter >= 2) {
-    T *pow = a->d->PFX(t[1]),
+    T *pow = a->d->PFX(t[2]),
       *tmp = a->d->PFX(t[3]), *t;
     FUN(set0)(acp, 0,0);
     FUN(copy)(acp,pow);
 
     for (ord_t i = 1; i <= max_iter; ++i) {
-      FUN(mul)(acp,pow,tmp); // never use t0!
+      FUN(mul)(acp,pow,tmp); // never use t[0]!
 
       if (i <= iter_s) FUN(acc)(tmp,sin_coef[i],s);
       if (i <= iter_c) FUN(acc)(tmp,cos_coef[i],c);
@@ -111,11 +111,12 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/a->coef[0]); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = 1 / a0;
+  NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
+  ord_coef[0] = _a0;
   for (ord_t o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0;
-  fixed_point_iteration(a,c,to,expansion_coef);
+    ord_coef[o] = -ord_coef[o-1] * _a0;
+
+  fixed_point_iteration(a,c,to,ord_coef);
   FUN(scl)(c,v,c);
 }
 
@@ -132,12 +133,12 @@ FUN(sqrt) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sqrt(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = sqrt(a0);
+  NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
+  ord_coef[0] = sqrt(a0);
   for (ord_t o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2*o) * (2*o-3);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-3);
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -150,31 +151,31 @@ FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/sqrt(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = 1/sqrt(a0);
+  NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
+  ord_coef[0] = 1/sqrt(a0);
   for (ord_t o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0 / (2*o) * (2*o-1);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-1);
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
   FUN(scl)(c,v,c);
 }
 
 void
 FUN(exp) (const T *a, T *c)
 {
-// EXP(A0+P) = EXP(A0)*(1+P+P**2/2!+...)
+// EXP(A0+P) = EXP(A0)*(1+P+P^2/2!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, exp(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = exp(a0);
+  NUM ord_coef[to+1], a0 = a->coef[0];
+  ord_coef[0] = exp(a0);
   for (int o = 1; o <= to; ++o)
-    expansion_coef[o] = expansion_coef[o-1] / o;
+    ord_coef[o] = ord_coef[o-1] / o;
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -188,13 +189,13 @@ FUN(log) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, log(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = log(a0);
-  expansion_coef[1] = 1/a0;
+  NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
+  ord_coef[0] = log(a0);
+  ord_coef[1] = _a0;
   for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / a0 / o * (o-1);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / o * (o-1);
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -206,24 +207,26 @@ FUN(sincos) (const T *a, T *s, T *c)
   ord_t sto = MIN(s->mo,s->d->trunc),
         cto = MIN(c->mo,c->d->trunc);
 
-  NUM s_a0 = sin(a->coef[0]), c_a0 = cos(a->coef[0]);
+  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
+
   if (a->hi == 0) {
-    FUN(scalar)(s, s_a0);
-    FUN(scalar)(c, c_a0);
+    FUN(scalar)(s, sa);
+    FUN(scalar)(c, ca);
     return;
   }
+
   if (!sto || !cto) {
-    if (!sto) FUN(scalar)(s, s_a0);
+    if (!sto) FUN(scalar)(s, sa);
     else      FUN(sin)(a,s);
-    if (!cto) FUN(scalar)(c, c_a0);
+    if (!cto) FUN(scalar)(c, ca);
     else      FUN(cos)(a,c);
     return;
   }
 
   // ord 0, 1
   NUM sin_coef[sto+1], cos_coef[cto+1];
-  sin_coef[0] = s_a0;  cos_coef[0] =  c_a0;
-  sin_coef[1] = c_a0;  cos_coef[1] = -s_a0;
+  sin_coef[0] = sa;  cos_coef[0] =  ca;
+  sin_coef[1] = ca;  cos_coef[1] = -sa;
 
   // ords 2..to
   for (ord_t o = 2; o <= sto; ++o )
@@ -237,39 +240,39 @@ FUN(sincos) (const T *a, T *s, T *c)
 void
 FUN(sin) (const T *a, T *c)
 {
-// SIN(A0+P) = SIN(A0)*(1-P**2/2!+P**4/4!+...) + COS(A0)*(P-P**3/3!+P**5/5!+...)
+// SIN(A0+P) = SIN(A0)*(1-P^2/2!+P^4/4!+...) + COS(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, sin(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = sin(a0);
-  expansion_coef[1] = cos(a0);
+  NUM ord_coef[to+1], a0 = a->coef[0];
+  ord_coef[0] = sin(a0);
+  ord_coef[1] = cos(a0);
   for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-2] / (o*(o-1));
+    ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
 FUN(cos) (const T *a, T *c)
 {
-// COS(A0+P) = COS(A0)*(1-P**2/2!+P**4/4!+...) - SIN(A0)*(P-P**3/3!+P**5/5!+...)
+// COS(A0+P) = COS(A0)*(1-P^2/2!+P^4/4!+...) - SIN(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, cos(a->coef[0])); return; }
 
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] =  cos(a0);
-  expansion_coef[1] = -sin(a0);
+  NUM ord_coef[to+1], a0 = a->coef[0];
+  ord_coef[0] =  cos(a0);
+  ord_coef[1] = -sin(a0);
   for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-2] / (o*(o-1));
+    ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -281,26 +284,29 @@ FUN(tan) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
 
   if (!to || a->hi == 0) { FUN(scalar)(c, tan(a->coef[0])); return; }
+
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[0]);
+    T *t = c->d->PFX(t[4]);  /* store sin */
     FUN(sincos)(a,t,c);
     FUN(div)(t,c,c);
     return;
   }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  NUM sa = sin(a0), ca = cos(a0);
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1];
+  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
   ensure(ca != 0, "invalid domain");
 
-  NUM          xcf1 = 1/ca;
-  expansion_coef[0] = sa                     *xcf1;
-  expansion_coef[1] = 1                      *xcf1*xcf1;
-  expansion_coef[2] = sa                     *xcf1*xcf1*xcf1;
-  expansion_coef[3] = (  ca*ca + 3*sa*sa)    *xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[4] = (2*sa    +   sa*sa*sa) *xcf1*xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[5] = (2*ca*ca + 3*ca*ca*sa*sa + 10*sa*sa + 5*sa*sa*sa*sa)
-                                             *xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 /15;
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1/ca, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  switch(to) {
+  case 5: ord_coef[5] = (2*ca2 + 3*ca2*sa2 + 10*sa2 + 5*sa2*sa2) *xc2*xc2*xc2/15; /* FALLTHRU */
+  case 4: ord_coef[4] = (2*sa  +   sa2*sa) *xc2*xc2*xc1 /3; /* FALLTHRU */
+  case 3: ord_coef[3] = (  ca2 + 3*sa2   ) *xc2*xc2 /3;     /* FALLTHRU */
+  case 2: ord_coef[2] = sa                 *xc2*xc1;        /* FALLTHRU */
+  case 1: ord_coef[1] = 1                  *xc2;            /* FALLTHRU */
+  case 0: ord_coef[0] = sa                 *xc1;
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -312,63 +318,29 @@ FUN(cot) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
 
   if (!to || a->hi == 0) { FUN(scalar)(c, tan(M_PI_2 - a->coef[0])); return; }
+
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[0]);
+    T *t = c->d->PFX(t[4]); /* store sin */
     FUN(sincos)(a,t,c);
     FUN(div)(c,t,c);
     return;
   }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  NUM sa = sin(a0), ca = cos(a0);
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1];
+  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
   ensure(sa != 0, "invalid domain");
 
-  NUM          xcf1 = 1/sa;
-  expansion_coef[0] = ca                  *xcf1;
-  expansion_coef[1] = -1                  *xcf1*xcf1;
-  expansion_coef[2] = ca                  *xcf1*xcf1*xcf1;
-  expansion_coef[3] = -(sa*sa +  3*ca*ca) *xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[4] =  (2*ca  + ca*ca*ca) *xcf1*xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[5] = -(2*sa*sa + 3*sa*sa*ca*ca + 10*ca*ca + 5*ca*ca*ca*ca)
-                                          *xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 /15;
-  fixed_point_iteration(a,c,to,expansion_coef);
-}
+  NUM xc1 = 1/sa, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  switch(to) {
+  case 5: ord_coef[5] = -(2*sa2 + 3*sa2*ca2 + 10*ca2 + 5*ca2*ca2) *xc2*xc2*xc2 /15; /* FALLTHRU */
+  case 4: ord_coef[4] =  (2*ca  +   ca2*ca) *xc2*xc2*xc1 /3; /* FALLTHRU */
+  case 3: ord_coef[3] = -(  sa2 + 3*ca2   ) *xc2*xc2 /3;     /* FALLTHRU */
+  case 2: ord_coef[2] = ca                  *xc2*xc1;        /* FALLTHRU */
+  case 1: ord_coef[1] = -1                  *xc2;            /* FALLTHRU */
+  case 0: ord_coef[0] = ca                  *xc1;
+  }
 
-
-void
-FUN(sinh) (const T *a, T *c)
-{
-  assert(a && c);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
-
-  ord_t to = MIN(c->mo,c->d->trunc);
-  if (!to || a->hi == 0) { FUN(scalar)(c, sinh(a->coef[0])); return; }
-
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = sinh(a0);
-  expansion_coef[1] = cosh(a0);
-  for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = expansion_coef[o-2] / (o*(o-1));
-
-  fixed_point_iteration(a,c,to,expansion_coef);
-}
-
-void
-FUN(cosh) (const T *a, T *c)
-{
-  assert(a && c);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
-
-  ord_t to = MIN(c->mo,c->d->trunc);
-  if (!to || a->hi == 0) { FUN(scalar)(c, cosh(a->coef[0])); return; }
-
-  NUM expansion_coef[to+1], a0 = a->coef[0];
-  expansion_coef[0] = cosh(a0);
-  expansion_coef[1] = sinh(a0);
-  for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = expansion_coef[o-2] / (o*(o-1));
-
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -380,24 +352,25 @@ FUN(sincosh) (const T *a, T *sh, T *ch)
   ord_t sto = MIN(sh->mo,sh->d->trunc),
         cto = MIN(ch->mo,ch->d->trunc);
 
-  NUM s_a0 = sinh(a->coef[0]), c_a0 = cosh(a->coef[0]);  // TODO: use sincos ?
+  NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
   if (a->hi == 0) {
-    FUN(scalar)(sh, s_a0);
-    FUN(scalar)(ch, c_a0);
+    FUN(scalar)(sh, sa);
+    FUN(scalar)(ch, ca);
     return;
   }
+
   if (!sto || !cto) {
-    if (!sto) FUN(scalar)(sh, s_a0);
+    if (!sto) FUN(scalar)(sh, sa);
     else      FUN(sinh)(a,sh);
-    if (!cto) FUN(scalar)(ch, c_a0);
+    if (!cto) FUN(scalar)(ch, ca);
     else      FUN(cosh)(a,ch);
     return;
   }
 
   // ord 0, 1
   NUM sin_coef[sto+1], cos_coef[cto+1];
-  sin_coef[0] = s_a0;  cos_coef[0] = c_a0;
-  sin_coef[1] = c_a0;  cos_coef[1] = s_a0;
+  sin_coef[0] = sa;  cos_coef[0] = ca;
+  sin_coef[1] = ca;  cos_coef[1] = sa;
 
   // ords 2..to
   for (int o = 2; o <= sto; ++o )
@@ -409,6 +382,42 @@ FUN(sincosh) (const T *a, T *sh, T *ch)
 }
 
 void
+FUN(sinh) (const T *a, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+
+  ord_t to = MIN(c->mo,c->d->trunc);
+  if (!to || a->hi == 0) { FUN(scalar)(c, sinh(a->coef[0])); return; }
+
+  NUM ord_coef[to+1], a0 = a->coef[0];
+  ord_coef[0] = sinh(a0);
+  ord_coef[1] = cosh(a0);
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o*(o-1));
+
+  fixed_point_iteration(a,c,to,ord_coef);
+}
+
+void
+FUN(cosh) (const T *a, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+
+  ord_t to = MIN(c->mo,c->d->trunc);
+  if (!to || a->hi == 0) { FUN(scalar)(c, cosh(a->coef[0])); return; }
+
+  NUM ord_coef[to+1], a0 = a->coef[0];
+  ord_coef[0] = cosh(a0);
+  ord_coef[1] = sinh(a0);
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o*(o-1));
+
+  fixed_point_iteration(a,c,to,ord_coef);
+}
+
+void
 FUN(tanh) (const T *a, T *c)
 {
   assert(a && c);
@@ -417,27 +426,29 @@ FUN(tanh) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
 
   if (!to || a->hi == 0) { FUN(scalar)(c, tanh(a->coef[0])); return; }
+
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[0]);
+    T *t = c->d->PFX(t[4]);  /* store sinh */
     FUN(sincosh)(a,t,c);
     FUN(div)(t,c,c);
     return;
   }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  NUM sa = sinh(a0), ca = cosh(a0);
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1];
+  NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
   ensure(ca != 0, "invalid domain");
 
-  NUM          xcf1 = 1/ca;
-  expansion_coef[0] = sa                  *xcf1;
-  expansion_coef[1] =  1                  *xcf1*xcf1;
-  expansion_coef[2] = -sa                 *xcf1*xcf1*xcf1;
-  expansion_coef[3] = (-ca*ca +  3*sa*sa) *xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[4] = (2*sa   - sa*sa*sa) *xcf1*xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[5] = (2*ca*ca - 3*ca*ca*sa*sa - 10*sa*sa + 5*sa*sa*sa*sa)
-                                          *xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 /15;
+  NUM xc1 = 1/ca, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  switch(to) {
+  case 5: ord_coef[5] = (2*ca2 - 3*ca2*sa2 - 10*sa2 + 5*sa2*sa2) *xc2*xc2*xc2 /15; /* FALLTHRU */
+  case 4: ord_coef[4] = (2*sa  -   sa2*sa) *xc2*xc2*xc1 /3; /* FALLTHRU */
+  case 3: ord_coef[3] = (- ca2 + 3*sa2   ) *xc2*xc2 /3;     /* FALLTHRU */
+  case 2: ord_coef[2] = -sa                *xc2*xc1;        /* FALLTHRU */
+  case 1: ord_coef[1] =  1                 *xc2;            /* FALLTHRU */
+  case 0: ord_coef[0] = sa                 *xc1;
+  }
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -448,34 +459,36 @@ FUN(coth) (const T *a, T *c)
 
   ord_t to = MIN(c->mo,c->d->trunc);
 
-  if (!to || a->hi == 0) { FUN(scalar)(c, tanh(a->coef[0])); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c, 1/tanh(a->coef[0])); return; }
+
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[0]);
+    T *t = c->d->PFX(t[4]);
     FUN(sincosh)(a,t,c);
     FUN(div)(c,t,c);
     return;
   }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  NUM sa = sinh(a0), ca = cosh(a0);
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1];
+  NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
   ensure(sa != 0, "invalid domain");
 
-  NUM          xcf1 = 1/sa;
-  expansion_coef[0] = ca                      *xcf1;
-  expansion_coef[1] = -1                      *xcf1*xcf1;
-  expansion_coef[2] = ca                      *xcf1*xcf1*xcf1;
-  expansion_coef[3] = (sa*sa    - 3*ca*ca)    *xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[4] = ( 2*ca    +   ca*ca*ca) *xcf1*xcf1*xcf1*xcf1*xcf1 /3;
-  expansion_coef[5] = ( 2*sa*sa + 3*sa*sa*ca*ca - 10*ca*ca - 5*ca*ca*ca*ca)
-                                              *xcf1*xcf1*xcf1*xcf1*xcf1*xcf1/15;
+  NUM xc1 = 1/sa, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  switch(to) {
+  case 5: ord_coef[5] = (2*sa2 + 3*sa2*ca2 - 10*ca2 - 5*ca2*ca2) *xc2*xc2*xc2 /15; /* FALLTHRU */
+  case 4: ord_coef[4] = (2*ca  +   ca2*ca) *xc2*xc2*xc1 /3; /* FALLTHRU */
+  case 3: ord_coef[3] = (  sa2 - 3*ca2   ) *xc2*xc2 /3;     /* FALLTHRU */
+  case 2: ord_coef[2] = ca                 *xc2*xc1;        /* FALLTHRU */
+  case 1: ord_coef[1] = -1                 *xc2;            /* FALLTHRU */
+  case 0: ord_coef[0] = ca                 *xc1;
+  }
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
 FUN(sinc) (const T *a, T *c)
 {
-// SIN(P)/P = 1 - P**2/3! + P**4/5! - P**6/7! + ...
+// SIN(P)/P = 1 - P^2/3! + P^4/5! - P^6/7! + ...
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   ensure(a->coef[0] == 0, "invalid domain");
@@ -483,19 +496,19 @@ FUN(sinc) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
-  NUM expansion_coef[to+1];
-  expansion_coef[0] = 1;
-  expansion_coef[1] = 0;
+  NUM ord_coef[to+1];
+  ord_coef[0] = 1;
+  ord_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-2] / (o * (o+1));
+    ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
 FUN(sirx) (const T *a, T *c)
 {
-// SIN(SQRT(P))/SQRT(P) = 1 - P/3! + P**2/5! - P**3/7! + ...
+// SIN(SQRT(P))/SQRT(P) = 1 - P/3! + P^2/5! - P^3/7! + ...
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   ensure(a->coef[0] == 0, "invalid domain");
@@ -503,18 +516,18 @@ FUN(sirx) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
-  NUM expansion_coef[to+1];
-  expansion_coef[0] = 1;
+  NUM ord_coef[to+1];
+  ord_coef[0] = 1;
   for (int o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / (2*o * (2*o+1));
+    ord_coef[o] = -ord_coef[o-1] / (2*o * (2*o+1));
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
 FUN(corx) (const T *a, T *c)
 {
-// COS(SQRT(P)) = 1 - P/2! + P**2/4! - P**3/6! + ...
+// COS(SQRT(P)) = 1 - P/2! + P^2/4! - P^3/6! + ...
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   ensure(a->coef[0] == 0, "invalid domain");
@@ -522,12 +535,12 @@ FUN(corx) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to) { FUN(scalar)(c, 1); return; }
 
-  NUM expansion_coef[to+1];
-  expansion_coef[0] = 1;
+  NUM ord_coef[to+1];
+  ord_coef[0] = 1;
   for (int o = 1; o <= to; ++o)
-    expansion_coef[o] = -expansion_coef[o-1] / (2*o * (2*o-1));
+    ord_coef[o] = -ord_coef[o-1] / (2*o * (2*o-1));
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 // --- The following functions are manually expanded up to order 5
@@ -540,22 +553,32 @@ FUN(asin) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use asin(x) = Re[-i*ln(i*x + sqrt(1-x^2))]
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
+  if (!to || a->hi == 0) { FUN(scalar)(c, asin(a->coef[0])); return; }
 
-  NUM          xcf1 = 1 / sqrt(1 - a0*a0);
-  expansion_coef[0] = asin(a0);
-  expansion_coef[1] =                        xcf1;
-  expansion_coef[2] =            a0        * xcf1*xcf1*xcf1                     / 2;
-  expansion_coef[3] = (1    +  2*a0*a0   ) * xcf1*xcf1*xcf1*xcf1*xcf1           / 6;
-  expansion_coef[4] = (3*a0 +  2*a0*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 8;
-  expansion_coef[5] = (3    + 24*a0*a0 + 8*a0*a0*a0*a0)
-                      *            xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 40;
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use asin(x) = Re[-i*ln(i*x + sqrt(1-x^2))]
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
+
+  NUM xc1 = 1 / sqrt(1 - a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = (3    + 24*a2 + 8*a2*a2) *xc2*xc2*xc2*xc2*xc1 /40; /* FALLTHRU */
+  case 4: ord_coef[4] = (3*a0 +  2*a2*a0) *xc2*xc2*xc2*xc1 /8; /* FALLTHRU */
+  case 3: ord_coef[3] = (1    +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
+  case 2: ord_coef[2] =               a0  *xc2*xc1 /2;         /* FALLTHRU */
+  case 1: ord_coef[1] =                    xc1;                /* FALLTHRU */
+  case 0: ord_coef[0] = asin(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -565,22 +588,31 @@ FUN(acos) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use acos(x) = Re[-i*ln(x + i*sqrt(1-x^2))]
+  if (!to || a->hi == 0) { FUN(scalar)(c, acos(a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use acos(x) = Re[-i*ln(x + i*sqrt(1-x^2))]
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  NUM          xcf1 = 1 / sqrt(1 - a0*a0);
-  expansion_coef[0] = acos(a0);
-  expansion_coef[1] = -                       xcf1;
-  expansion_coef[2] = -           a0        * xcf1*xcf1*xcf1                     / 2;
-  expansion_coef[3] = -(1    +  2*a0*a0   ) * xcf1*xcf1*xcf1*xcf1*xcf1           / 6;
-  expansion_coef[4] = -(3*a0 +  2*a0*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 8;
-  expansion_coef[5] = -(3    + 24*a0*a0 + 8*a0*a0*a0*a0)
-                      *             xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 40;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / sqrt(1 - a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = -(3    + 24*a2 + 8*a2*a2) *xc2*xc2*xc2*xc2*xc1 /40; /* FALLTHRU */
+  case 4: ord_coef[4] = -(3*a0 +  2*a2*a0) *xc2*xc2*xc2*xc1 /8; /* FALLTHRU */
+  case 3: ord_coef[3] = -(1    +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
+  case 2: ord_coef[2] = -              a0  *xc2*xc1 /2;         /* FALLTHRU */
+  case 1: ord_coef[1] = -                   xc1;                /* FALLTHRU */
+  case 0: ord_coef[0] = acos(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -590,21 +622,31 @@ FUN(atan) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use atan(x) = Re[i/2 ln((1+x) / (1-x))], x in (-pi/2,pi/2) for real x, R for cpx x
+  if (!to || a->hi == 0) { FUN(scalar)(c, atan(a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1, "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use atan(x) = i/2 ln((i+x) / (i-x))
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  NUM          xcf1 = 1 / (1 +  a0*a0);
-  expansion_coef[0] = atan(a0);
-  expansion_coef[1] =                                    xcf1;
-  expansion_coef[2] = -a0                              * xcf1*xcf1;
-  expansion_coef[3] = -(1.0/3 - a0*a0)                 * xcf1*xcf1*xcf1;
-  expansion_coef[4] =  (a0    - a0*a0*a0)              * xcf1*xcf1*xcf1*xcf1;
-  expansion_coef[5] =  (1.0/5 + a0*a0*a0*a0 - 2*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(a2 != -1, "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / (1 + a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] =  (1.0/5 + a2*a2 - 2*a2) * xc2*xc2*xc1; /* FALLTHRU */
+  case 4: ord_coef[4] =  (a0    - a2*a0)        * xc2*xc2;     /* FALLTHRU */
+  case 3: ord_coef[3] = -(1.0/3 - a2)           * xc2*xc1;     /* FALLTHRU */
+  case 2: ord_coef[2] = -a0                     * xc2;         /* FALLTHRU */
+  case 1: ord_coef[1] =                           xc1;         /* FALLTHRU */
+  case 0: ord_coef[0] = atan(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -614,21 +656,31 @@ FUN(acot) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use acot(x) = Re[i/2 ln((1-x) / (1+x))], x in (-pi/2,pi/2) for real x, R for cpx x
+  if (!to || a->hi == 0) { FUN(scalar)(c, atan(1/a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1, "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use acot(x) = i/2 ln((1-x) / (1+x)), x in (-pi/2,pi/2) for real x, R for cpx x
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  NUM          xcf1 = 1 / (1 + a0*a0);
-  expansion_coef[0] = 2*atan(1) - atan(a0);
-  expansion_coef[1] = -                                  xcf1;
-  expansion_coef[2] =           a0                     * xcf1*xcf1;
-  expansion_coef[3] =  (1.0/3 - a0*a0)                 * xcf1*xcf1*xcf1;
-  expansion_coef[4] = -(a0    - a0*a0*a0)              * xcf1*xcf1*xcf1*xcf1;
-  expansion_coef[5] = -(1.0/5 + a0*a0*a0*a0 - 2*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(a2 != -1, "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / (1 + a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = -(1.0/5 + a2*a2 - 2*a2) * xc2*xc2*xc1; /* FALLTHRU */
+  case 4: ord_coef[4] = -(a0    - a2*a0)        * xc2*xc2;     /* FALLTHRU */
+  case 3: ord_coef[3] =  (1.0/3 - a2)           * xc2*xc1;     /* FALLTHRU */
+  case 2: ord_coef[2] =           a0            * xc2;         /* FALLTHRU */
+  case 1: ord_coef[1] = -                         xc1;         /* FALLTHRU */
+  case 0: ord_coef[0] = 2*atan(1) - atan(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -638,22 +690,31 @@ FUN(asinh) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use asinh(x) = ln(x + sqrt(x^2+1)), x in R
+  if (!to || a->hi == 0) { FUN(scalar)(c, asinh(a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(a0*a0 != -1, "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use asinh(x) = ln(x + sqrt(x^2+1)), x in R
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  expansion_coef[0] = asinh(a0);
-  NUM          xcf1 = 1 / sqrt(1 + a0*a0);
-  expansion_coef[1] =                        xcf1;
-  expansion_coef[2] = -          a0        * xcf1*xcf1*xcf1                     / 2;
-  expansion_coef[3] = (-1   +  2*a0*a0   ) * xcf1*xcf1*xcf1*xcf1*xcf1           / 6;
-  expansion_coef[4] = (3*a0 -  2*a0*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 8;
-  expansion_coef[5] = (3    - 24*a0*a0 + 8*a0*a0*a0*a0)
-                      *           xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1  / 40;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(a2 != -1, "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / sqrt(1 + a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = (3    - 24*a2 + 8*a2*a2) *xc2*xc2*xc2*xc2*xc1 /40; /* FALLTHRU */
+  case 4: ord_coef[4] = (3*a0 -  2*a2*a0) * xc2*xc2*xc2*xc1 /8; /* FALLTHRU */
+  case 3: ord_coef[3] = (-1   +  2*a2   ) * xc2*xc2*xc1 /6;     /* FALLTHRU */
+  case 2: ord_coef[2] = -          a0     * xc2*xc1 /2;         /* FALLTHRU */
+  case 1: ord_coef[1] =                     xc1;                /* FALLTHRU */
+  case 0: ord_coef[0] = asinh(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -663,22 +724,30 @@ FUN(acosh) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use acosh(x) = ln(x + sqrt(x^2-1)), x in [1,+inf)
+  if (!to || a->hi == 0) { FUN(scalar)(c, acosh(a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(a0 > 1, a0*a0 != 1), "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use acosh(x) = ln(x + sqrt(x^2-1)), x in [1,+inf)
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  expansion_coef[0] = acosh(a0);
-  NUM          xcf1 = 1 / sqrt(a0*a0 - 1);
-  expansion_coef[1] =                        xcf1;
-  expansion_coef[2] = -        a0          * xcf1*xcf1*xcf1                     / 2;
-  expansion_coef[3] = (1     + 2*a0*a0   ) * xcf1*xcf1*xcf1*xcf1*xcf1           / 6;
-  expansion_coef[4] = (-3*a0 - 2*a0*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 8;
-  expansion_coef[5] = (3     + 24*a0*a0 + 8*a0*a0*a0*a0)
-                      *            xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1*xcf1 / 40;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(SELECT(a0 > 1, a2 != 1), "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / sqrt(a2 - 1), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = (3     + 24*a2 + 8*a2*a2) *xc2*xc2*xc2*xc2*xc1 /40; /* FALLTHRU */
+  case 4: ord_coef[4] = (-3*a0 -  2*a2*a0) *xc2*xc2*xc2*xc1 /8; /* FALLTHRU */
+  case 3: ord_coef[3] = (1     +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
+  case 2: ord_coef[2] = -           a0     *xc2*xc1 /2;         /* FALLTHRU */
+  case 1: ord_coef[1] =                     xc1;                /* FALLTHRU */
+  case 0: ord_coef[0] = acosh(a0);
+  }
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -688,21 +757,31 @@ FUN(atanh) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use atanh(x) = 1/2 ln((1+x) / (1-x)), x in (-1,1) for real x, R for cpx x
+  if (!to || a->hi == 0) { FUN(scalar)(c, atanh(a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) < 1, a0*a0 != 1), "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use atanh(x) = 1/2 ln((1+x) / (1-x)), x in (-1,1) for real x, R for cpx x
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  expansion_coef[0] = atanh(a0);
-  NUM          xcf1 = 1 / (1 - a0*a0);
-  expansion_coef[1] =                                   xcf1;
-  expansion_coef[2] = a0                              * xcf1*xcf1;
-  expansion_coef[3] = (1.0/3 + a0*a0)                 * xcf1*xcf1*xcf1;
-  expansion_coef[4] = (a0    + a0*a0*a0)              * xcf1*xcf1*xcf1*xcf1;
-  expansion_coef[5] = (1.0/5 + a0*a0*a0*a0 + 2*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / (1 - a2), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = (1.0/5 + a2*a2 + 2*a2) * xc2*xc2*xc1; /* FALLTHRU */
+  case 4: ord_coef[4] = (a0    + a2*a0)        * xc2*xc2;     /* FALLTHRU */
+  case 3: ord_coef[3] = (1.0/3 + a2)           * xc2*xc1;     /* FALLTHRU */
+  case 2: ord_coef[2] =  a0                    * xc2;         /* FALLTHRU */
+  case 1: ord_coef[1] =                          xc1;         /* FALLTHRU */
+  case 0: ord_coef[0] = atanh(a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -712,21 +791,31 @@ FUN(acoth) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
-  // TODO: use acoth(x) = 1/2 ln((x+1) / (x-1)), x in (-1,1)
+  if (!to || a->hi == 0) { FUN(scalar)(c, atanh(1/a->coef[0])); return; }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  ensure(SELECT(fabs(a0) > 1, a0 != 0 && a0*a0 != 1), "invalid domain");
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use acoth(x) = 1/2 ln((x+1) / (x-1)), x in (-1,1)
+    // T *t = c->d->PFX(t[4]);  /* store sin */
+    // FUN(sincos)(a,t,c);
+    // FUN(div)(t,c,c);
+    return;
+  }
 
-  expansion_coef[0] = atanh(1/a0);
-  NUM          xcf1 = 1 / (-1 + a0*a0);
-  expansion_coef[1] = -                                  xcf1;
-  expansion_coef[2] =   a0                             * xcf1*xcf1;
-  expansion_coef[3] = (-1.0/3 - a0*a0)                 * xcf1*xcf1*xcf1;
-  expansion_coef[4] = (a0     + a0*a0*a0)              * xcf1*xcf1*xcf1*xcf1;
-  expansion_coef[5] = (-1.0/5 - a0*a0*a0*a0 - 2*a0*a0) * xcf1*xcf1*xcf1*xcf1*xcf1;
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
+  ensure(SELECT(fabs(a0) > 1, a0 != 0 && a2 != 1), "invalid domain");
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  NUM xc1 = 1 / (a2 - 1), xc2 = xc1*xc1;
+  switch(to) {
+  case 5: ord_coef[5] = (-1.0/5 - a2*a2 - 2*a2) *xc2*xc2*xc1; /* FALLTHRU */
+  case 4: ord_coef[4] = (a0     + a2*a0)        *xc2*xc2;     /* FALLTHRU */
+  case 3: ord_coef[3] = (-1.0/3 - a2   )        *xc2*xc1;     /* FALLTHRU */
+  case 2: ord_coef[2] =              a0         *xc2;         /* FALLTHRU */
+  case 1: ord_coef[1] = -                        xc1;         /* FALLTHRU */
+  case 0: ord_coef[0] = atanh(1/a0);
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
@@ -737,31 +826,35 @@ FUN(erf) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  ensure(to <= 5, "NYI");
-  // TODO: use Faddeva function
+  if (to > MANUAL_EXPANSION_ORD) {
+    ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
+    // TODO: use Faddeva function from MIT
+  }
 
-  NUM expansion_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0];
-  // coefs from Mathematica
+  NUM ord_coef[MANUAL_EXPANSION_ORD+1], a0 = a->coef[0], a2 = a0*a0;
 
-  static const
-  num_t a1 =  0.254829592,
-        a2 = -0.284496736,
-        a3 =  1.421413741,
-        a4 = -1.453152027,
-        a5 =  1.061405429,
+  static const // coefs from Mathematica
+  num_t b1 =  0.254829592,
+        b2 = -0.284496736,
+        b3 =  1.421413741,
+        b4 = -1.453152027,
+        b5 =  1.061405429,
         p  =  0.327591100,
-        p2 =  0.886226925452758013649083741671; // sqrt(atan(1.0)),
+        p2 =  0.886226925452758013649083741671; // sqrt(atan(1)),
   NUM   t  = 1 / (1 + p*a0),
-        e1 = exp(-a0*a0),
-        e2 = 1 - t*(a1+t*(a2+t*(a3+t*(a4+t*a5))))*e1;
-  expansion_coef[0] = e2;
-  expansion_coef[1] =                                        e1 / p2;
-  expansion_coef[2] = -                                   a0*e1 / p2;
-  expansion_coef[3] = (-1             +  2*a0*a0)      /   3*e1 / p2;
-  expansion_coef[4] = (12*a0          -  8*a0*a0*a0)   /  24*e1 / p2;
-  expansion_coef[5] = (16*a0*a0*a0*a0 - 48*a0*a0 + 12) / 120*e1 / p2;
+        e1 = exp(-a2),
+        e2 = 1 - t*(b1+t*(b2+t*(b3+t*(b4+t*b5))))*e1;
 
-  fixed_point_iteration(a,c,to,expansion_coef);
+  switch(to) {
+  case 5: ord_coef[5] = (16*a2*a2 - 48*a2 + 12) / 120*e1 / p2; /* FALLTHRU */
+  case 4: ord_coef[4] = (12*a0    -  8*a2*a0)   /  24*e1 / p2; /* FALLTHRU */
+  case 3: ord_coef[3] = (-1       +  2*a2)      /   3*e1 / p2; /* FALLTHRU */
+  case 2: ord_coef[2] = -                          a0*e1 / p2; /* FALLTHRU */
+  case 1: ord_coef[1] =                               e1 / p2; /* FALLTHRU */
+  case 0: ord_coef[0] =                               e2;
+  }
+
+  fixed_point_iteration(a,c,to,ord_coef);
 }
 
 // --- without complex-by-value version ---------------------------------------o
