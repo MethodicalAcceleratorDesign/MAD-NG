@@ -394,9 +394,10 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
-  T *t = a == c ? c->d->PFX(t[0]) : c;
-  FUN(inv) (b,1,t);        // div.inv uses t1-t3
-  FUN(mul) (a,t,c);        // div.mul uses t0 if a == c
+  T *t0 = c->d->PFX(t[0]), *t1 = c->d->PFX(t[1]);
+  FUN(inv)(b,1,t0);        // div.inv uses t[1]-t[3]
+  if (a == c) FUN(copy)(t0,t1); else t1 = t0;
+  FUN(mul)(a,t1,c);        // div.mul uses t[0] if a == c
 }
 
 void
@@ -409,7 +410,7 @@ FUN(ipow) (const T *a, T *c, int n)
 
   if (n < 0) { n = -n; inv = 1; }
 
-  T *t1 = c->d->PFX(t[1]); // ipow.mul uses t0 if a == c
+  T *t1 = c->d->PFX(t[1]); // ipow.mul uses t[0] if a == c
 
   switch (n) {
     case 0: FUN(scalar) (c, 1);    break; // ok: no copy
