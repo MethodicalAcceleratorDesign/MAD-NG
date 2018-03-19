@@ -23,8 +23,8 @@ local ffi = require 'ffi'
 if ffi.miscmap ~= nil then
 
     function get_metatable (a)
-        return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
-            or getmetatable(a)
+        return type(a) == 'cdata' and (a.__metatable or miscmap[-tonumber(typeof(a))])
+               or getmetatable(a)
     end
 
 end
