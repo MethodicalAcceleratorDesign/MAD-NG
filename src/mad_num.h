@@ -24,9 +24,12 @@
  o-----------------------------------------------------------------------------o
  */
 
+#include <math.h>
 #include "mad_defs.h"
 
 // --- interface --------------------------------------------------------------o
+
+cnum_t mad_cnum_sinc   (cnum_t x);
 
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
 num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
@@ -49,6 +52,8 @@ void  mad_cnum_atan_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r);
+
+void  mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r);
 
 void  mad_cnum_unit_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
@@ -76,6 +81,14 @@ num_t mad_num_rand     (rng_state_t*);             // [0.,1.)
 u64_t mad_num_randi    (rng_state_t*);             // [0,ULLONG_MAX]
 void  mad_num_randseed (rng_state_t*, num_t seed);
 void  mad_num_randjump (rng_state_t*, const rng_state_t* ref);
+
+// --- inlined functions ------------------------------------------------------o
+
+static inline
+num_t mad_num_sinc(num_t x)
+{
+  return fabs(x)<1e-10 ? 1 : sin(x)/x;
+}
 
 // ----------------------------------------------------------------------------o
 
