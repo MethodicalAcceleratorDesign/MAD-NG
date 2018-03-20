@@ -158,16 +158,16 @@ void mad_ctpsa_divt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = c->d->ct[0];      // div.tmp uses ct[4]
-  mad_ctpsa_complex(b, NULL, t); // div.inv uses fix pts ct[1-3]
-  mad_ctpsa_div(a, t, c);        // div.mul uses ct[0] if a == c, but not t (!)
+  ctpsa_t *t = c->d->ct[4];
+  mad_ctpsa_complex(b, NULL, t); // div.inv uses fix pts ct[1]-ct[3]
+  mad_ctpsa_div(a, t, c);        // div.mul uses ct[0] if a == c
 }
 
 void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = c->d->ct[0];      // see divt
+  ctpsa_t *t = c->d->ct[4];      // see divt
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_div(t, b, c);
 }

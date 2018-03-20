@@ -256,8 +256,8 @@ FUN(set0) (T *t, NUM a, NUM b)
     t->lo = 0;
   }
   else if (!t->coef[0] && mad_bit_get(t->nz,0)) {
-    int n = mad_bit_lowest(t->nz);
     t->nz = mad_bit_clr(t->nz,0);
+    int n = mad_bit_lowest(t->nz);
     t->lo = MIN(n,t->mo);
   }
 }
@@ -267,6 +267,7 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
   D *d = t->d;
+  ensure(i >= 0 && i < d->nc, "index out of GPTSA bounds");
   ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
@@ -279,17 +280,17 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   idx_t *pi = d->ord2idx;
   t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (int c = pi[o]; c < pi[o+1]; ++c)
+    for (idx_t c = pi[o]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (int c = pi[t->hi+1]; c < pi[o+1]; ++c)
+    for (idx_t c = pi[t->hi+1]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (int c = pi[o]; c < pi[t->lo]; ++c)
+    for (idx_t c = pi[o]; c < pi[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = o;
   }
