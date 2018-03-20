@@ -26,7 +26,7 @@
 
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
-#define  SPC "                     "
+#define  SPC "                      "
 #else
 #include "mad_tpsa_impl.h"
 #define  SPC
@@ -183,7 +183,7 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
     return;
   }
 
-  fprintf(stream_, "\n    I  COEFFICIENT         " SPC " ORDER   EXPONENTS");
+  fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
   int idx = 1;
   ssz_t nc = mad_desc_tpsa_len(d, t->mo);
   for (int c = 0; c < nc; ++c) {
