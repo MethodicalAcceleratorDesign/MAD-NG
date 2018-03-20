@@ -82,11 +82,13 @@ cnum_t   mad_ctpsa_geti    (const ctpsa_t *t, idx_t i);
 cnum_t   mad_ctpsa_gets    (const ctpsa_t *t, ssz_t n,       str_t s   ); // string w orders in '0'-'9'
 cnum_t   mad_ctpsa_getm    (const ctpsa_t *t, ssz_t n, const ord_t m[n]);
 cnum_t   mad_ctpsa_getsm   (const ctpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
+void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,          cnum_t v[n]);
 void     mad_ctpsa_set0    (      ctpsa_t *t, /* i = 0 */                cnum_t a, cnum_t b); // a*x[0]+b
 void     mad_ctpsa_seti    (      ctpsa_t *t, idx_t i,                   cnum_t a, cnum_t b); // a*x[i]+b
 void     mad_ctpsa_sets    (      ctpsa_t *t, ssz_t n,       str_t s   , cnum_t a, cnum_t b); // a*x[m]+b
 void     mad_ctpsa_setm    (      ctpsa_t *t, ssz_t n, const ord_t m[n], cnum_t a, cnum_t b); // a*x[m]+b
 void     mad_ctpsa_setsm   (      ctpsa_t *t, ssz_t n, const int   m[n], cnum_t a, cnum_t b); // a*x[m]+b
+void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n,    const cnum_t v[n]);
 
 // accessors without complex-by-value
 void     mad_ctpsa_get0_r  (const ctpsa_t *t, cnum_t *r);

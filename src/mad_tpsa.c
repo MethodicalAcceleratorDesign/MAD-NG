@@ -203,12 +203,25 @@ FUN(get0) (const T *t)
 }
 
 NUM
-FUN(geti) (const T *t, int i)
+FUN(geti) (const T *t, idx_t i)
 {
   assert(t);
   D *d = t->d;
   ensure(i >= 0 && i < d->nc, "index order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
+}
+
+void
+FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
+{
+  assert(t && v);
+  D *d = t->d;
+  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+
+  ord_t *ords = d->ords+i;
+  const NUM *coef = t->coef+i;
+  for (idx_t j=0; j < n; j++)
+    v[j] = t->lo <= ords[j] && ords[j] <= t->hi ? coef[j] : 0;
 }
 
 NUM
@@ -295,6 +308,23 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
     t->lo = o;
   }
   t->coef[i] = v;
+}
+
+void
+FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
+{
+  assert(t && v);
+  D *d = t->d;
+  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+
+  ord_t *ords = d->ords+i;
+  NUM   *coef = t->coef+i;
+  for (idx_t j=0; j < n; j++) coef[j] = v[j];
+
+  if (t->lo > ords[0]) t->lo = ords[0];
+  if (t->hi < ords[n]) t->hi = ords[n];
+  for (idx_t o=ords[0]; o < ords[n]; o++)
+    t->nz = mad_bit_set(t->nz,o);
 }
 
 void
