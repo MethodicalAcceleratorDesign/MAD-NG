@@ -25,7 +25,7 @@
 -- locals ---------------------------------------------------------------------o
 local filesys, mtable                                   in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil, assertEquals,
-      assertErrorMsgContains                            in MAD.utest
+      assertErrorMsgContains, assertIs                  in MAD.utest
 local is_sequence                                       in MAD.typeid
 local drift, marker, sbend, quadrupole, sequence, bline in MAD.element
 
@@ -621,6 +621,192 @@ function TestSequence:testLengthOfNTrnNegative()
   assertEquals(seq:length_of({"name1[3]", "name1[1] "   }, 5), 34)
   assertEquals(seq:length_of({"name1{2}", "name1{-1}", 3}, 5), 34)
   assertEquals(seq:length_of({3         , 2             }, 5), 36)
+end
+
+function TestSequence:testIterOne()
+  local mk  = marker { at = 1 }
+  local seq = sequence "seq" { l=2, refer="entry", mk }
+  local i   = 1
+  for j,elm,s in seq:iter() do
+    assertIs(elm, seq[j])
+    assertEquals(i, j)
+    assertEquals(s, seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 4)
+end
+
+function TestSequence:testIter()
+  local seq = getIdxSeq()
+  local i = 1
+  for j,elm,s in seq:iter() do
+    assertIs(elm, seq[j])
+    assertEquals(i, j)
+    assertEquals(s, seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testIterRangeTableIdx()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter{0,-0.1} do
+    assertIs    (elm, seq[j]     )
+    assertEquals(i  , j          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter{1,-4} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(i  , j            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeStringIdx()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter("0/-0.1") do
+    assertIs    (elm, seq[j]     )
+    assertEquals(j  , i          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter("1/-4") do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeRangeIdx()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter(0..-0.1) do
+    assertIs    (elm, seq[j]     )
+    assertEquals(j  , i          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter(1..-4) do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeName()
+  local seq, i = getIdxSeq()
+
+  i = 2
+  for j,elm,s in seq:iter("name1[1]/name1[3]") do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 6)
+
+  i = 3
+  for j,elm,s in seq:iter{"name2", "name1{1}", 3} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-2)
+    i = i + 1
+  end
+  assertEquals(i, 5)
+end
+
+function TestSequence:testIterRangeSingle()
+  local seq, i = getIdxSeq(), 3
+  for j,elm,s in seq:iter{2,2} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-2)
+    i = i + 1
+  end
+  assertEquals(i, 4)
+end
+
+function TestSequence:testIterCycle()
+  local seq, i = getIdxSeq(), 1
+  local idx  = {3, 4, 5, 6, 1, 2}
+  local spos = {0, 1, 2, 3, 3, 4}
+  for j,elm,s in seq:iter{2,1} do
+    assertIs    (elm   , seq[j] )
+    assertEquals(idx[i], j      )
+    assertEquals(s     , spos[i])
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testIterNturn()
+  local seq, i, spos = getIdxSeq()
+
+  spos, i = {0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 15}, 0
+  for j,elm,s in seq:iter(nil,2) do
+    assertIs    (elm    , seq[j]   )
+    assertEquals(i%6 + 1, j        )
+    assertEquals(s      , spos[i+1])
+    i = i + 1
+  end
+  assertEquals(i, 18)
+
+  spos, i = {0, 1, 2, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 12, 12, 13, 14}, 3
+  for j,elm,s in seq:iter({3,2},2) do
+    assertIs    (elm    , seq[j]   )
+    assertEquals(i%6 + 1, j        )
+    assertEquals(s      , spos[i-2])
+    i = i + 1
+  end
+  assertEquals(i, 21)
+end
+
+function TestSequence:testIterDir()
+  local seq, i, spos = getIdxSeq()
+  local idx = {3, 2, 1, 6, 5, 4}
+  -- last/first iterator decreasing
+  i, spos = 6, 0
+  for j,elm,s in seq:iter(nil,nil,-1) do
+    assertIs    (elm, seq[j])
+    assertEquals(j  , i     )
+    assertEquals(s  , spos  )
+    spos, i = spos-1, i-1
+  end
+  assertEquals(i, 0)
+
+  -- 2nd/3rd iterator decreasing
+  spos, i = {0, -1, -2, -2, -3, -4}, 1
+  for j,elm,s in seq:iter({2, 3}, nil, -1) do
+    assertIs    (elm   , seq[j] )
+    assertEquals(idx[i], j      )
+    assertEquals(s     , spos[i])
+    i = i + 1
+  end
+  assertEquals(i, 7)
 end
 
 -------------------------------------------------------------------------------o
