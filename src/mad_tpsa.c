@@ -203,12 +203,25 @@ FUN(get0) (const T *t)
 }
 
 NUM
-FUN(geti) (const T *t, int i)
+FUN(geti) (const T *t, idx_t i)
 {
   assert(t);
   D *d = t->d;
   ensure(i >= 0 && i < d->nc, "index order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
+}
+
+void
+FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
+{
+  assert(t && v);
+  D *d = t->d;
+  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+
+  ord_t *ords = d->ords+i;
+  const NUM *coef = t->coef+i;
+  for (idx_t j=0; j < n; j++)
+    v[j] = t->lo <= ords[j] && ords[j] <= t->hi ? coef[j] : 0;
 }
 
 NUM
@@ -256,8 +269,8 @@ FUN(set0) (T *t, NUM a, NUM b)
     t->lo = 0;
   }
   else if (!t->coef[0] && mad_bit_get(t->nz,0)) {
-    int n = mad_bit_lowest(t->nz);
     t->nz = mad_bit_clr(t->nz,0);
+    int n = mad_bit_lowest(t->nz);
     t->lo = MIN(n,t->mo);
   }
 }
@@ -267,6 +280,7 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
   D *d = t->d;
+  ensure(i >= 0 && i < d->nc, "index out of GPTSA bounds");
   ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
@@ -279,21 +293,38 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
   idx_t *pi = d->ord2idx;
   t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (int c = pi[o]; c < pi[o+1]; ++c)
+    for (idx_t c = pi[o]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (int c = pi[t->hi+1]; c < pi[o+1]; ++c)
+    for (idx_t c = pi[t->hi+1]; c < pi[o+1]; ++c)
       t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (int c = pi[o]; c < pi[t->lo]; ++c)
+    for (idx_t c = pi[o]; c < pi[t->lo]; ++c)
       t->coef[c] = 0;
     t->lo = o;
   }
   t->coef[i] = v;
+}
+
+void
+FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
+{
+  assert(t && v);
+  D *d = t->d;
+  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+
+  ord_t *ords = d->ords+i;
+  NUM   *coef = t->coef+i;
+  for (idx_t j=0; j < n; j++) coef[j] = v[j];
+
+  if (t->lo > ords[0]) t->lo = ords[0];
+  if (t->hi < ords[n]) t->hi = ords[n];
+  for (idx_t o=ords[0]; o < ords[n]; o++)
+    t->nz = mad_bit_set(t->nz,o);
 }
 
 void

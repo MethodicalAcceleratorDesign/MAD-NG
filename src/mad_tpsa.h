@@ -75,11 +75,13 @@ num_t   mad_tpsa_geti    (const tpsa_t *t, idx_t i);
 num_t   mad_tpsa_gets    (const tpsa_t *t, ssz_t n,       str_t s   ); // string mono "[0-9]*"
 num_t   mad_tpsa_getm    (const tpsa_t *t, ssz_t n, const ord_t m[n]);
 num_t   mad_tpsa_getsm   (const tpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
+void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,          num_t v[n]);
 void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */                num_t a, num_t b);
 void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                   num_t a, num_t b);
 void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n], num_t a, num_t b);
 void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s   , num_t a, num_t b);
 void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, num_t b);
+void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const num_t v[n]);
 
 // operators
 log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol);
@@ -110,6 +112,7 @@ void    mad_tpsa_sin     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cos     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tan     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cot     (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sincosh (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
 void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
@@ -123,28 +126,29 @@ void    mad_tpsa_asinh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acosh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_atanh   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acoth   (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_sirx    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_corx    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erf     (const tpsa_t *a, tpsa_t *c);
 
-// high level functions
+// high level functions (aliasing OK)
 void    mad_tpsa_axpb       (num_t a, const tpsa_t *x,
-                             num_t b, tpsa_t *r);  // aliasing OK
+                             num_t b, tpsa_t *r);
 void    mad_tpsa_axpbypc    (num_t a, const tpsa_t *x,
                              num_t b, const tpsa_t *y,
-                             num_t c, tpsa_t *r);  // aliasing OK
+                             num_t c, tpsa_t *r);
 void    mad_tpsa_axypb      (num_t a, const tpsa_t *x, const tpsa_t *y,
-                             num_t b, tpsa_t *r);  // aliasing OK
+                             num_t b, tpsa_t *r);
 void    mad_tpsa_axypbzpc   (num_t a, const tpsa_t *x, const tpsa_t *y,
                              num_t b, const tpsa_t *z,
-                             num_t c, tpsa_t *r);  // aliasing OK
+                             num_t c, tpsa_t *r);
 void    mad_tpsa_axypbvwpc  (num_t a, const tpsa_t *x, const tpsa_t *y,
                              num_t b, const tpsa_t *v, const tpsa_t *w,
-                             num_t c, tpsa_t *r);  // aliasing OK
+                             num_t c, tpsa_t *r);
 void    mad_tpsa_ax2pby2pcz2(num_t a, const tpsa_t *x,
                              num_t b, const tpsa_t *y,
-                             num_t c, const tpsa_t *z, tpsa_t *r); // aliasing OK
+                             num_t c, const tpsa_t *z, tpsa_t *r);
+
+void    mad_tpsa_axpsqrtbpcx2    (const tpsa_t *x, num_t a, num_t b, num_t c, tpsa_t *r);
+void    mad_tpsa_logaxpsqrtbpcx2 (const tpsa_t *x, num_t a, num_t b, num_t c, tpsa_t *r);
+void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
 void    mad_tpsa_compose (ssz_t sa, const tpsa_t *ma[], ssz_t sb, const tpsa_t *mb[], ssz_t sc, tpsa_t *mc[]);

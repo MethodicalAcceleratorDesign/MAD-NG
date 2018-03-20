@@ -56,6 +56,8 @@ void mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catanh ( 
 
 void mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cproj  ( CNUM(x) ); }
 
+void mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinc( CNUM(x) ); }
+
 void mad_cnum_unit_r (num_t x_re, num_t x_im, cnum_t *r)
 { CHKR; *r = CNUM(x) / cabs( CNUM(x) ); }
 
@@ -83,6 +85,13 @@ void mad_cnum_ipow_r (num_t x_re, num_t x_im, long long y, cnum_t *r)
     if (y & 1) *r *= x;
     if (y >>= 1) x *= x; else break;
   }
+}
+
+// --- inlined functions ------------------------------------------------------o
+
+cnum_t mad_cnum_sinc(cnum_t x)
+{
+  return cabs(x)<1e-10 ? 1 : csin(x)/x;
 }
 
 // --- Faddeeva function and variants from MIT --------------------------------o

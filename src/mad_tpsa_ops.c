@@ -782,6 +782,38 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
   FUN(axypbzpc)(c,z,z, 1,t2, 0, r);
 }
 
+void
+FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
+{
+  assert(x && r);
+  ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  T *t = r->d->PFX(t[0]);
+  FUN(axypb)(c,x,x,b,t);
+  FUN(sqrt)(t,r);
+  FUN(axpbypc)(a,x,1,r,0,r);
+}
+
+void
+FUN(logaxpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
+{
+  assert(x && r);
+  ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  T *t = r->d->PFX(t[4]);
+  FUN(axpsqrtbpcx2)(x, a, b, c, t);
+  FUN(log)(t, r);
+}
+
+void
+FUN(logxdy) (const T *x, const T *y, T *r)
+{
+  assert(x && y && r);
+  ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
+
+  T *t = r->d->PFX(t[4]);
+  FUN(div)(x, y, t);
+  FUN(log)(t, r);
+}
+
 // --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
@@ -825,6 +857,16 @@ void FUN(ax2pby2pcz2_r)(num_t a_re, num_t a_im, const T *x,
                         num_t b_re, num_t b_im, const T *y,
                         num_t c_re, num_t c_im, const T *z, T *r)
 { FUN(ax2pby2pcz2)(CNUM(a), x, CNUM(b), y, CNUM(c), z, r); }
+
+void FUN(axpsqrtbpcx2_r)(const T *x, num_t a_re, num_t a_im,
+                                     num_t b_re, num_t b_im,
+                                     num_t c_re, num_t c_im, T *r)
+{ FUN(axpsqrtbpcx2)(x, CNUM(a), CNUM(b), CNUM(c), r); }
+
+void FUN(logaxpsqrtbpcx2_r) (const T *x, num_t a_re, num_t a_im,
+                                         num_t b_re, num_t b_im,
+                                         num_t c_re, num_t c_im, T *r)
+{ FUN(logaxpsqrtbpcx2)(x, CNUM(a), CNUM(b), CNUM(c), r); }
 
 #endif // MAD_CTPSA_IMPL
 
