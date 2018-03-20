@@ -142,6 +142,7 @@ void     mad_ctpsa_sin     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cos     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tan     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cot     (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_sinc    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sincosh (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c);
 void     mad_ctpsa_sinh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cosh    (const ctpsa_t *a, ctpsa_t *c);
@@ -155,9 +156,6 @@ void     mad_ctpsa_asinh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acosh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_atanh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acoth   (const ctpsa_t *a, ctpsa_t *c);
-void     mad_ctpsa_sinc    (const ctpsa_t *a, ctpsa_t *c);
-void     mad_ctpsa_sirx    (const ctpsa_t *a, ctpsa_t *c);
-void     mad_ctpsa_corx    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 
 // functions without complex-by-value arguments
@@ -168,41 +166,52 @@ void     mad_ctpsa_scl_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t 
 void     mad_ctpsa_inv_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_invsqrt_r (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 
-// high level functions
+// high level functions (aliasing OK)
 void     mad_ctpsa_axpb        (cnum_t a, const ctpsa_t *x,
-                                cnum_t b, ctpsa_t *r);  // aliasing OK
+                                cnum_t b, ctpsa_t *r);
 void     mad_ctpsa_axpbypc     (cnum_t a, const ctpsa_t *x,
                                 cnum_t b, const ctpsa_t *y,
-                                cnum_t c, ctpsa_t *r);  // aliasing OK
+                                cnum_t c, ctpsa_t *r);
 void     mad_ctpsa_axypb       (cnum_t a, const ctpsa_t *x, const ctpsa_t *y,
-                                cnum_t b, ctpsa_t *r);  // aliasing OK
+                                cnum_t b, ctpsa_t *r);
 void     mad_ctpsa_axypbzpc    (cnum_t a, const ctpsa_t *x, const ctpsa_t *y,
                                 cnum_t b, const ctpsa_t *z,
-                                cnum_t c, ctpsa_t *r);  // aliasing OK
+                                cnum_t c, ctpsa_t *r);
 void     mad_ctpsa_axypbvwpc   (cnum_t a, const ctpsa_t *x, const ctpsa_t *y,
                                 cnum_t b, const ctpsa_t *v, const ctpsa_t *w,
-                                cnum_t c, ctpsa_t *r);  // aliasing OK
+                                cnum_t c, ctpsa_t *r);
 void     mad_ctpsa_ax2pby2pcz2 (cnum_t a, const ctpsa_t *x,
                                 cnum_t b, const ctpsa_t *y,
-                                cnum_t c, const ctpsa_t *z, ctpsa_t *r); // aliasing OK
+                                cnum_t c, const ctpsa_t *z, ctpsa_t *r);
+
+void    mad_ctpsa_axpsqrtbpcx2    (const ctpsa_t *x, cnum_t a, cnum_t b, cnum_t c, ctpsa_t *r);
+void    mad_ctpsa_logaxpsqrtbpcx2 (const ctpsa_t *x, cnum_t a, cnum_t b, cnum_t c, ctpsa_t *r);
+void    mad_ctpsa_logxdy          (const ctpsa_t *x, const ctpsa_t *y, ctpsa_t *r);
 
 // high level functions without complex-by-value
-void     mad_ctpsa_axpb_r       (num_t a_re, num_t a_im, const ctpsa_t *x,
-                                 num_t b_re, num_t b_im, ctpsa_t *r);  // aliasing OK
-void     mad_ctpsa_axpbypc_r    (num_t a_re, num_t a_im, const ctpsa_t *x,
-                                 num_t b_re, num_t b_im, const ctpsa_t *y,
-                                 num_t c_re, num_t c_im, ctpsa_t *r);  // aliasing OK
-void     mad_ctpsa_axypb_r      (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
-                                 num_t b_re, num_t b_im, ctpsa_t *r);  // aliasing OK
-void     mad_ctpsa_axypbzpc_r   (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
-                                 num_t b_re, num_t b_im, const ctpsa_t *z,
-                                 num_t c_re, num_t c_im, ctpsa_t *r);  // aliasing OK
-void     mad_ctpsa_axypbvwpc_r  (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
-                                 num_t b_re, num_t b_im, const ctpsa_t *v, const ctpsa_t *w,
-                                 num_t c_re, num_t c_im, ctpsa_t *r);  // aliasing OK
-void     mad_ctpsa_ax2pby2pcz2_r(num_t a_re, num_t a_im, const ctpsa_t *x,
-                                 num_t b_re, num_t b_im, const ctpsa_t *y,
-                                 num_t c_re, num_t c_im, const ctpsa_t *z, ctpsa_t *r); // aliasing OK
+void     mad_ctpsa_axpb_r        (num_t a_re, num_t a_im, const ctpsa_t *x,
+                                  num_t b_re, num_t b_im, ctpsa_t *r);
+void     mad_ctpsa_axpbypc_r     (num_t a_re, num_t a_im, const ctpsa_t *x,
+                                  num_t b_re, num_t b_im, const ctpsa_t *y,
+                                  num_t c_re, num_t c_im, ctpsa_t *r);
+void     mad_ctpsa_axypb_r       (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
+                                  num_t b_re, num_t b_im, ctpsa_t *r);
+void     mad_ctpsa_axypbzpc_r    (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
+                                  num_t b_re, num_t b_im, const ctpsa_t *z,
+                                  num_t c_re, num_t c_im, ctpsa_t *r);
+void     mad_ctpsa_axypbvwpc_r   (num_t a_re, num_t a_im, const ctpsa_t *x, const ctpsa_t *y,
+                                  num_t b_re, num_t b_im, const ctpsa_t *v, const ctpsa_t *w,
+                                  num_t c_re, num_t c_im, ctpsa_t *r);
+void     mad_ctpsa_ax2pby2pcz2_r (num_t a_re, num_t a_im, const ctpsa_t *x,
+                                  num_t b_re, num_t b_im, const ctpsa_t *y,
+                                  num_t c_re, num_t c_im, const ctpsa_t *z, ctpsa_t *r);
+
+void    mad_ctpsa_axpsqrtbpcx2_r    (const ctpsa_t *x, num_t a_re, num_t a_im,
+                                                       num_t b_re, num_t b_im,
+                                                       num_t c_re, num_t c_im, ctpsa_t *r);
+void    mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
+                                                       num_t b_re, num_t b_im,
+                                                       num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
 void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[], ssz_t sb, const ctpsa_t *mb[], ssz_t sc, ctpsa_t *mc[]);
