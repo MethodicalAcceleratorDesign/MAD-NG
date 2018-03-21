@@ -32,6 +32,8 @@
 
 // --- cnum
 
+cnum_t mad_cnum_sinc  (cnum_t x) { return cabs(x)<1e-10 ? 1 : csin(x)/x; }
+
 num_t mad_cnum_abs_r  (num_t x_re, num_t x_im) { return cabs( CNUM(x) ); }
 num_t mad_cnum_arg_r  (num_t x_re, num_t x_im) { return carg( CNUM(x) ); }
 
@@ -85,13 +87,6 @@ void mad_cnum_ipow_r (num_t x_re, num_t x_im, long long y, cnum_t *r)
     if (y & 1) *r *= x;
     if (y >>= 1) x *= x; else break;
   }
-}
-
-// --- inlined functions ------------------------------------------------------o
-
-cnum_t mad_cnum_sinc(cnum_t x)
-{
-  return cabs(x)<1e-10 ? 1 : csin(x)/x;
 }
 
 // --- Faddeeva function and variants from MIT --------------------------------o
