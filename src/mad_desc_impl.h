@@ -28,6 +28,8 @@
 
 // --- types ------------------------------------------------------------------o
 
+enum { DESC_MAX_TMP = 6 };
+
 struct desc { // WARNING: needs to be identical with Lua for compatibility
   int   id;          // index in list of registered descriptors
   int   nmv, nv;     // number of mvars, number of all vars
@@ -58,8 +60,9 @@ struct desc { // WARNING: needs to be identical with Lua for compatibility
 
   // WARNING: temps must be used with care (internal side effects)
   // mul[0], fix pts[1-3], div & funs[1-4], alg funs[1-3] for aliasing, conv[0 or 1]
-   tpsa_t * t[5];    // temps for  tpsa
-  ctpsa_t *ct[5];    // temps for ctpsa
+   tpsa_t * t[DESC_MAX_TMP]; // tmp for  tpsa
+  ctpsa_t *ct[DESC_MAX_TMP]; // tmp for ctpsa
+  idx_t ti, cti;     // index of tmp used
 };
 
 // --- interface --------------------------------------------------------------o
@@ -88,6 +91,20 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
 {
   return ib*ia_size + ia;
 }
+
+// --- macros -----------------------------------------------------------------o
+
+#define GET_TMPX(tp) \
+  (assert((tp)->d->PFX(ti) < DESC_MAX_TMP), (tp)->d->PFX(t)[(tp)->d->PFX(ti)++])
+
+#define REL_TMPX(tp) \
+  (assert((tp)->d->PFX(ti) > 0), (tp)->d->PFX(t)[--(tp)->d->PFX(ti)] = (tp))
+
+#define GET_TMPC(tp) \
+  (assert((tp)->d->cti < DESC_MAX_TMP), (tp)->d->ct[(tp)->d->cti++])
+
+#define REL_TMPC(tp) \
+  (assert((tp)->d->cti > 0), (tp)->d->ct[--(tp)->d->cti] = (tp))
 
 // --- end --------------------------------------------------------------------o
 

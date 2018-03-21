@@ -44,8 +44,7 @@ const ord_t mad_tpsa_same    = -2;
 
 // --- constants --------------------------------------------------------------o
 
-const ord_t desc_max_order = CHAR_BIT * sizeof(bit_t);
-const int   desc_max_temps = sizeof ((desc_t*)0)->t / sizeof *((desc_t*)0)->t;
+enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t) };
 
 // --- helpers ----------------------------------------------------------------o
 
@@ -825,8 +824,8 @@ desc_build(int nmv, const ord_t mvar_ords[nmv],
 
   // variables max orders validation
   ord_t mo = mad_mono_max(nmv, mvar_ords);
-  ensure(mo <= desc_max_order,
-         "some map variables order exceeds maximum order [%u]", desc_max_order);
+  ensure(mo <= DESC_MAX_ORD,
+         "some map variables order exceeds maximum order [%u]", DESC_MAX_ORD);
   ensure(mad_mono_le(nmv, var_ords, mvar_ords),
          "some variables orders exceed map variables orders");
   ensure(mad_mono_max(nv, var_ords) <= mo,
@@ -845,13 +844,15 @@ desc_build(int nmv, const ord_t mvar_ords[nmv],
   build_dispatch(d);
 
   // set temps
-  for(int i=0; i < desc_max_temps; i++) {
+  for(int i=0; i < DESC_MAX_TMP; i++) {
     d-> t[i] = mad_tpsa_newd (d,d->mo);
     d->ct[i] = mad_ctpsa_newd(d,d->mo);
   }
+  d->ti = d->cti = 0;
 
-  d->size += desc_max_temps*(sizeof d-> t[0] + d->nc * sizeof( num_t));
-  d->size += desc_max_temps*(sizeof d->ct[0] + d->nc * sizeof(cnum_t));
+  d->size += DESC_MAX_TMP*(sizeof d-> t[0] + d->nc * sizeof( num_t));
+  d->size += DESC_MAX_TMP*(sizeof d->ct[0] + d->nc * sizeof(cnum_t));
+  d->size += sizeof d->ti + sizeof d->cti;
 
 #ifdef DEBUG
   printf("nc = %d ---- Total desc size: %d bytes\n", d->nc, d->size);
@@ -1094,7 +1095,7 @@ mad_desc_del (D *d)
     mad_free(d->ocs);
   }
 
-  for(int i=0; i < desc_max_temps; i++) {
+  for(int i=0; i < DESC_MAX_TMP; i++) {
     mad_tpsa_del (d-> t[i]);
     mad_ctpsa_del(d->ct[i]);
   }

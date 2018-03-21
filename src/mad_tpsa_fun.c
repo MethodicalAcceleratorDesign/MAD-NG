@@ -34,10 +34,6 @@
 #include <complex.h>
 #endif
 
-// TODO: check domain of validity! (input values)
-// TODO: taylor series differs for complex series...
-// TODO: use complex series to expand obove order 5
-
 // --- local ------------------------------------------------------------------o
 
 enum { MANUAL_EXPANSION_ORD = 5 };
@@ -48,7 +44,7 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
   assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
 
-  T *acp = a->d->PFX(t[1]);
+  T *acp = GET_TMPX(a);
   if (iter >=2) FUN(copy)(a,acp); // save copy before scaling for aliasing
 
   // iter 1
@@ -57,8 +53,8 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
 
   // iter 2..iter
   if (iter >= 2) {
-    T *pow = a->d->PFX(t[2]),
-      *tmp = a->d->PFX(t[3]), *t;
+    T *pow = GET_TMPX(a);
+    T *tmp = GET_TMPX(a), *t;
     FUN(set0)(acp,0,0);  // clear a0
     FUN(copy)(acp,pow);  // already did ord 1
 
@@ -67,7 +63,9 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
       FUN(acc)(tmp,ord_coef[i],c);
       SWAP(pow,tmp,t);
     }
+    REL_TMPX(tmp), REL_TMPX(pow);
   }
+  REL_TMPX(acp);
 }
 
 static inline void
@@ -77,27 +75,29 @@ sincos_fixed_point(const T *a, T *s, T *c, ord_t iter_s,
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
-  ord_t max_iter = MAX(iter_s,iter_c);
-  T *acp = a->d->PFX(t[1]);
-  if (max_iter >= 2) FUN(copy)(a,acp); // save copy before scaling for aliasing
+  T *acp = GET_TMPX(a);
+  ord_t iter = MAX(iter_s,iter_c);
+  if (iter >= 2) FUN(copy)(a,acp); // save copy before scaling for aliasing
 
   // iter 1
   FUN(scl)(a, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
   FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
-  if (max_iter >= 2) {
-    T *pow = a->d->PFX(t[2]),
-      *tmp = a->d->PFX(t[3]), *t;
+  if (iter >= 2) {
+    T *pow = GET_TMPX(a);
+    T *tmp = GET_TMPX(a), *t;
     FUN(set0)(acp,0,0);
     FUN(copy)(acp,pow);
 
-    for (ord_t i = 1; i <= max_iter; ++i) {
+    for (ord_t i = 2; i <= iter; ++i) {
       FUN(mul)(acp,pow,tmp); // never use t[0]!
       if (i <= iter_s) FUN(acc)(tmp,sin_coef[i],s);
       if (i <= iter_c) FUN(acc)(tmp,cos_coef[i],c);
       SWAP(pow,tmp,t);
     }
+    REL_TMPX(tmp), REL_TMPX(pow);
   }
+  REL_TMPX(acp);
 }
 
 // --- public -----------------------------------------------------------------o
@@ -124,7 +124,6 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a
 void
 FUN(sqrt) (const T *a, T *c)
 {
-// SQRT(A0+P) = SQRT(A0)*(1+1/2(P/A0)-1/8*(P/A0)**2+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -140,7 +139,7 @@ FUN(sqrt) (const T *a, T *c)
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-3);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
@@ -161,7 +160,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-1);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-1);
 
   fixed_point_iteration(a,c,to,ord_coef);
   FUN(scl)(c,v,c);
@@ -170,7 +169,6 @@ FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
 void
 FUN(exp) (const T *a, T *c)
 {
-// EXP(A0+P) = EXP(A0)*(1+P+P^2/2!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -191,7 +189,6 @@ FUN(exp) (const T *a, T *c)
 void
 FUN(log) (const T *a, T *c)
 {
-// LOG(A0+P) = LOG(A0) + (P/A0) - 1/2*(P/A0)**2 + 1/3*(P/A0)**3 - ...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -253,7 +250,6 @@ FUN(sincos) (const T *a, T *s, T *c)
 void
 FUN(sin) (const T *a, T *c)
 {
-// SIN(A0+P) = SIN(A0)*(1-P^2/2!+P^4/4!+...) + COS(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -272,7 +268,6 @@ FUN(sin) (const T *a, T *c)
 void
 FUN(cos) (const T *a, T *c)
 {
-// COS(A0+P) = COS(A0)*(1-P^2/2!+P^4/4!+...) - SIN(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -302,21 +297,21 @@ FUN(tan) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);  /* store sin */
+    T *t = GET_TMPX(c);
     FUN(sincos)(a,t,c);
     FUN(div)(t,c,c);
+    REL_TMPX(t);
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
-  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
-  NUM xc1 = 1/ca, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  NUM f2 = f0*f0;
   switch(to) {
-  case 5: ord_coef[5] = (2*ca2 + 3*ca2*sa2 + 10*sa2 + 5*sa2*sa2) *xc2*xc2*xc2/15; /* FALLTHRU */
-  case 4: ord_coef[4] = (2*sa  +   sa2*sa) *xc2*xc2*xc1 /3; /* FALLTHRU */
-  case 3: ord_coef[3] = (  ca2 + 3*sa2   ) *xc2*xc2 /3;     /* FALLTHRU */
-  case 2: ord_coef[2] = sa                 *xc2*xc1;        /* FALLTHRU */
-  case 1: ord_coef[1] = 1                  *xc2;            /* FALLTHRU */
+  case 5: ord_coef[5] = 2.0/15 + f2*(17.0/15 + f2*(2 + f2)); /* FALLTHRU */
+  case 4: ord_coef[4] = f0*(2.0/3 + f2*(5.0/3 + f2));        /* FALLTHRU */
+  case 3: ord_coef[3] = 1.0/3 + f2*(4.0/3 + f2);             /* FALLTHRU */
+  case 2: ord_coef[2] = f0*(1 + f2);                         /* FALLTHRU */
+  case 1: ord_coef[1] = 1 + f2;                              /* FALLTHRU */
   case 0: ord_coef[0] = f0;
   }
 
@@ -337,9 +332,10 @@ FUN(cot) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]); /* store sin */
+    T *t = GET_TMPX(c);
     FUN(sincos)(a,t,c);
     FUN(div)(c,t,c);
+    REL_TMPX(t);
     return;
   }
 
@@ -477,9 +473,10 @@ FUN(tanh) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);  /* store sinh */
+    T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(t,c,c);
+    REL_TMPX(t);
     return;
   }
 
@@ -512,9 +509,10 @@ FUN(coth) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, 1/f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);
+    T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(c,t,c);
+    REL_TMPX(t);
     return;
   }
 
@@ -552,13 +550,12 @@ FUN(asin) (const T *a, T *c)
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_scl(c, -I, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
-    mad_ctpsa_complex(a, NULL, tc);
-    const ctpsa_t *ta = tc;
-    mad_ctpsa_logaxpsqrtbpcx2(ta, I, 1, -1, tc);
-    mad_ctpsa_scl(tc, -I, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del (tc);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
+    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
+    mad_ctpsa_scl(t, -I, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
     return;
   }
@@ -597,13 +594,12 @@ FUN(acos) (const T *a, T *c)
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_axpb(I, c, M_PI_2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
-    mad_ctpsa_complex(a, NULL, tc);
-    const ctpsa_t *ta = tc;
-    mad_ctpsa_logaxpsqrtbpcx2(ta, I, 1, -1, tc);
-    mad_ctpsa_axpb(I, tc, M_PI_2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del (tc);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
+    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
+    mad_ctpsa_axpb(I, t, M_PI_2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
     return;
   }
@@ -648,18 +644,18 @@ FUN(atan) (const T *a, T *c)
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_set0(tn, 1, I);
     mad_ctpsa_complex(a, NULL, td);
     mad_ctpsa_set0(td, -1, I);
-    mad_ctpsa_logxdy(tn, td, tc);
-    mad_ctpsa_scl(tc, I/2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del(tc);
+    mad_ctpsa_logxdy(tn, td, t);
+    mad_ctpsa_scl(t, I/2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
-    mad_ctpsa_del(tn);
     mad_ctpsa_del(td);
+    mad_ctpsa_del(tn);
     return;
   }
 
@@ -703,18 +699,18 @@ FUN(acot) (const T *a, T *c)
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_set0(tn, -I, 1);
     mad_ctpsa_complex(a, NULL, td);
     mad_ctpsa_set0(td, I, 1);
-    mad_ctpsa_logxdy(tn, td, tc);
-    mad_ctpsa_scl(tc, I/2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del(tc);
+    mad_ctpsa_logxdy(tn, td, t);
+    mad_ctpsa_scl(t, I/2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
-    mad_ctpsa_del(tn);
     mad_ctpsa_del(td);
+    mad_ctpsa_del(tn);
     return;
   }
 
@@ -816,16 +812,14 @@ FUN(atanh) (const T *a, T *c)
 
   if (to > MANUAL_EXPANSION_ORD) {
     // atanh(x) = 1/2 ln((1+x) / (1-x))
-    T *tn = FUN(newd)(c->d, to);
-    T *td = FUN(newd)(c->d, to);
+    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
     FUN(set0)(tn, 1, 1);
     FUN(copy)(a, td);
     FUN(set0)(td, 1, -1);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    FUN(del)(tn);
-    FUN(del)(td);
+    REL_TMPX(td), REL_TMPX(tn);
     return;
   }
 
@@ -859,16 +853,14 @@ FUN(acoth) (const T *a, T *c)
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acoth(x) = 1/2 ln((x+1) / (x-1))
-    T *tn = FUN(newd)(c->d, to);
-    T *td = FUN(newd)(c->d, to);
+    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
     FUN(set0)(tn, 1, 1);
     FUN(copy)(a, td);
     FUN(set0)(td, -1, 1);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    FUN(del)(tn);
-    FUN(del)(td);
+    REL_TMPX(td), REL_TMPX(tn);
     return;
   }
 

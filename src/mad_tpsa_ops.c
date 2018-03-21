@@ -318,71 +318,71 @@ FUN(sub) (const T *a, const T *b, T *c)
 }
 
 void
-FUN(mul) (const T *a, const T *b, T *r)
+FUN(mul) (const T *a, const T *b, T *c)
 {
-  assert(a && b && r);
-  ensure(a->d == b->d && a->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *c = (a == r || b == r) ? r->d->PFX(t[0]) : r;
+  T *t = (a == c || b == c) ? GET_TMPX(c) : c;
 
   D *d = a->d;
-  c->lo = a->lo + b->lo;
-  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
+  t->lo = a->lo + b->lo;
+  t->hi = MIN3(a->hi + b->hi, t->mo, d->trunc);
 
   // empty
-  if (c->lo > c->hi) { FUN(clear)(c); goto ret; }
+  if (t->lo > t->hi) { FUN(clear)(t); goto ret; }
 
   // order 0
   NUM a0 = a->coef[0], b0 = b->coef[0];
-  c->coef[0] = a0 * b0;
-  c->nz = c->coef[0] != 0;
-  if (c->hi == 0) {
-    if (!c->coef[0]) c->lo = c->mo; // reset
+  t->coef[0] = a0 * b0;
+  t->nz = t->coef[0] != 0;
+  if (t->hi == 0) {
+    if (!t->coef[0]) t->lo = t->mo; // reset
     goto ret;
   }
 
   // order 1+
   idx_t max_ord1 = d->ord2idx[2];
   if (mad_bit_get(a->nz,1) && b0 && mad_bit_get(b->nz,1) && a0) {
-    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] = a0*b->coef[i] + b0*a->coef[i];
+    t->nz = mad_bit_set(t->nz,1);
   }
   else if (mad_bit_get(a->nz,1) && b0) {
-    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] =                 b0*a->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] =                 b0*a->coef[i];
+    t->nz = mad_bit_set(t->nz,1);
   }
   else if (mad_bit_get(b->nz,1) && a0) {
-    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
-    c->nz = mad_bit_set(c->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] = a0*b->coef[i];
+    t->nz = mad_bit_set(t->nz,1);
   }
 
   // order 2+
-  if (c->hi >= 2) {
+  if (t->hi >= 2) {
     if (a->lo > b->lo) {     //  a is the left-most one
       const T* t; SWAP(a,b,t);
       a0 = a->coef[0];
       b0 = b->coef[0];
     }
 
-    ord_t c_hi = c->hi;              // needed by TPSA_LINOP
-    TPSA_LINOP_ORD(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
+    ord_t c_hi = t->hi;              // needed by TPSA_LINOP
+    TPSA_LINOP_ORD(b0 *, + a0 *, 2); // t->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
     for (idx_t i = d->ord2idx[MAX(a->hi,b->hi)+1]; i < d->ord2idx[c_hi+1]; ++i)
-      c->coef[i] = 0;
+      t->coef[i] = 0;
 
-    if (a0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,b->nz),c->hi);
-    if (b0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
+    if (a0) t->nz = mad_bit_trunc(mad_bit_add(t->nz,b->nz),t->hi);
+    if (b0) t->nz = mad_bit_trunc(mad_bit_add(t->nz,a->nz),t->hi);
 
     #ifdef _OPENMP
-    if (c->hi >= 12)
-      hpoly_mul_par(a,b,c);
+    if (t->hi >= 12)
+      hpoly_mul_par(a,b,t);
     else
     #endif
-      hpoly_mul_ser(a,b,c);
+      hpoly_mul_ser(a,b,t);
   }
 
 ret:
-  assert(a != c && b != c);
-  if (c != r) FUN(copy)(c,r);
+  assert(a != t && b != t);
+  if (t != c) { FUN(copy)(t,c); REL_TMPX(t); }
 }
 
 void
@@ -394,10 +394,10 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
-  T *t0 = c->d->PFX(t[0]), *t1 = c->d->PFX(t[1]);
-  FUN(inv)(b,1,t0);        // div.inv uses t[1]-t[3]
-  if (a == c) FUN(copy)(t0,t1); else t1 = t0;
-  FUN(mul)(a,t1,c);        // div.mul uses t[0] if a == c
+  T *t = a == c ? GET_TMPX(c) : c;
+  FUN(inv)(b,1,t);
+  FUN(mul)(a,t,c);
+  if (t != c) REL_TMPX(t);
 }
 
 void
@@ -410,7 +410,7 @@ FUN(ipow) (const T *a, T *c, int n)
 
   if (n < 0) { n = -n; inv = 1; }
 
-  T *t1 = c->d->PFX(t[1]); // ipow.mul uses t[0] if a == c
+  T *t1 = GET_TMPX(c);
 
   switch (n) {
     case 0: FUN(scalar) (c, 1);    break; // ok: no copy
@@ -419,7 +419,7 @@ FUN(ipow) (const T *a, T *c, int n)
     case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
     case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
     default: {
-      T *t2 = c->d->PFX(t[2]), *t;
+      T *t2 = GET_TMPX(c), *t;
       FUN(copy  )(a, t1);
       FUN(scalar)(c, 1 );
       for (;;) {
@@ -427,8 +427,10 @@ FUN(ipow) (const T *a, T *c, int n)
         if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); } // ok: no copy
         else break;
       }
+      REL_TMPX(t2);
     }
   }
+  REL_TMPX(t1);
 
   if (inv) FUN(inv)(c,1, c);
 }
@@ -751,9 +753,10 @@ FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t1 = z == r ? r->d->PFX(t[1]) : r;
-  FUN(mul)(x,y,t1);
-  FUN(axpbypc)(a,t1,b,z,c,r);
+  T *t = z == r ? GET_TMPX(r) : r;
+  FUN(mul)(x,y,t);
+  FUN(axpbypc)(a,t,b,z,c,r);
+  if (t != r) REL_TMPX(t);
 }
 
 void
@@ -764,10 +767,11 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
   ensure(x->d == y->d && y->d == v->d && v->d == w->d && w->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t1 = r->d->PFX(t[1]);
-  FUN(mul)(x,y,r);
-  if (x != v && y != w) FUN(mul)(v,w,t1); else t1 = r;
-  FUN(axpbypc)(a,r,b,t1,c,r);
+  T *t = GET_TMPX(r);
+  FUN(mul)(x,y,t);
+  FUN(mul)(v,w,r);
+  FUN(axpbypc)(a,t,b,r,c,r);
+  REL_TMPX(t);
 }
 
 void
@@ -777,9 +781,10 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t2 = z == r ? r->d->PFX(t[2]) : r;
-  FUN(axypbvwpc)(a,x,x, b,y,y, 0, t2);
-  FUN(axypbzpc)(c,z,z, 1,t2, 0, r);
+  T *t = z == r ? GET_TMPX(r) : r;
+  FUN(axypbvwpc)(a,x,x, b,y,y, 0, t);
+  FUN(axypbzpc)(c,z,z, 1,t, 0, r);
+  if (t != r) REL_TMPX(t);
 }
 
 void
@@ -787,9 +792,9 @@ FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
   assert(x && r);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
-  T *t = r->d->PFX(t[0]);
-  FUN(axypb)(c,x,x,b,t);
-  FUN(sqrt)(t,r);
+
+  FUN(axypb)(c,x,x,b,r);
+  FUN(sqrt)(r,r);
   FUN(axpbypc)(a,x,1,r,0,r);
 }
 
@@ -798,9 +803,9 @@ FUN(logaxpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
   assert(x && r);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
-  T *t = r->d->PFX(t[4]);
-  FUN(axpsqrtbpcx2)(x, a, b, c, t);
-  FUN(log)(t, r);
+
+  FUN(axpsqrtbpcx2)(x, a, b, c, r);
+  FUN(log)(r, r);
 }
 
 void
@@ -809,9 +814,8 @@ FUN(logxdy) (const T *x, const T *y, T *r)
   assert(x && y && r);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *t = r->d->PFX(t[4]);
-  FUN(div)(x, y, t);
-  FUN(log)(t, r);
+  FUN(div)(x, y, r);
+  FUN(log)(r, r);
 }
 
 // --- without complex-by-value version ---------------------------------------o
