@@ -154,6 +154,8 @@ num_t mad_vec_eval (const num_t x[], num_t x0, ssz_t n) // Horner scheme
   return v;
 }
 
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
 num_t mad_vec_sum (const num_t x[], ssz_t n) // Neumaier variant
 { CHKX;
   num_t s = x[0], c = 0, t;
@@ -167,6 +169,7 @@ num_t mad_vec_sum (const num_t x[], ssz_t n) // Neumaier variant
   }
   return s + c;
 }
+#pragma GCC pop_options
 
 void mad_vec_shift (num_t x[], ssz_t n, int nshft)
 { CHKX;
@@ -373,6 +376,8 @@ cnum_t mad_cvec_eval (const cnum_t x[], cnum_t x0, ssz_t n) // Horner scheme
 void mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_eval(x, CNUM(x0_re, x0_im), n); }
 
+#pragma GCC push_options
+#pragma GCC optimize ("O3")
 cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n) // Neumaier variant
 { CHKX;
   cnum_t s = x[0], c = 0, t;
@@ -386,6 +391,7 @@ cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n) // Neumaier variant
   }
   return s + c;
 }
+#pragma GCC pop_options
 
 void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_sum(x, n); }
