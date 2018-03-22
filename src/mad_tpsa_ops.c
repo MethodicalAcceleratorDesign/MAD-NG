@@ -318,71 +318,71 @@ FUN(sub) (const T *a, const T *b, T *c)
 }
 
 void
-FUN(mul) (const T *a, const T *b, T *c)
+FUN(mul) (const T *a, const T *b, T *r)
 {
-  assert(a && b && c);
-  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && b && r);
+  ensure(a->d == b->d && a->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *t = (a == c || b == c) ? GET_TMPX(c) : c;
+  T *c = (a == r || b == r) ? GET_TMPX(r) : r;
 
   D *d = a->d;
-  t->lo = a->lo + b->lo;
-  t->hi = MIN3(a->hi + b->hi, t->mo, d->trunc);
+  c->lo = a->lo + b->lo;
+  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
 
   // empty
-  if (t->lo > t->hi) { FUN(clear)(t); goto ret; }
+  if (c->lo > c->hi) { FUN(clear)(c); goto ret; }
 
   // order 0
   NUM a0 = a->coef[0], b0 = b->coef[0];
-  t->coef[0] = a0 * b0;
-  t->nz = t->coef[0] != 0;
-  if (t->hi == 0) {
-    if (!t->coef[0]) t->lo = t->mo; // reset
+  c->coef[0] = a0 * b0;
+  c->nz = c->coef[0] != 0;
+  if (c->hi == 0) {
+    if (!c->coef[0]) c->lo = c->mo; // reset
     goto ret;
   }
 
   // order 1+
   idx_t max_ord1 = d->ord2idx[2];
   if (mad_bit_get(a->nz,1) && b0 && mad_bit_get(b->nz,1) && a0) {
-    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] = a0*b->coef[i] + b0*a->coef[i];
-    t->nz = mad_bit_set(t->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
   }
   else if (mad_bit_get(a->nz,1) && b0) {
-    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] =                 b0*a->coef[i];
-    t->nz = mad_bit_set(t->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] =                 b0*a->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
   }
   else if (mad_bit_get(b->nz,1) && a0) {
-    for (idx_t i = 1; i < max_ord1; ++i) t->coef[i] = a0*b->coef[i];
-    t->nz = mad_bit_set(t->nz,1);
+    for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
+    c->nz = mad_bit_set(c->nz,1);
   }
 
   // order 2+
-  if (t->hi >= 2) {
+  if (c->hi >= 2) {
     if (a->lo > b->lo) {     //  a is the left-most one
-      const T* t; SWAP(a,b,t);
+      const T* c; SWAP(a,b,c);
       a0 = a->coef[0];
       b0 = b->coef[0];
     }
 
-    ord_t c_hi = t->hi;              // needed by TPSA_LINOP
-    TPSA_LINOP_ORD(b0 *, + a0 *, 2); // t->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
+    ord_t c_hi = c->hi;              // needed by TPSA_LINOP
+    TPSA_LINOP_ORD(b0 *, + a0 *, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
     for (idx_t i = d->ord2idx[MAX(a->hi,b->hi)+1]; i < d->ord2idx[c_hi+1]; ++i)
-      t->coef[i] = 0;
+      c->coef[i] = 0;
 
-    if (a0) t->nz = mad_bit_trunc(mad_bit_add(t->nz,b->nz),t->hi);
-    if (b0) t->nz = mad_bit_trunc(mad_bit_add(t->nz,a->nz),t->hi);
+    if (a0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,b->nz),c->hi);
+    if (b0) c->nz = mad_bit_trunc(mad_bit_add(c->nz,a->nz),c->hi);
 
     #ifdef _OPENMP
-    if (t->hi >= 12)
-      hpoly_mul_par(a,b,t);
+    if (c->hi >= 12)
+      hpoly_mul_par(a,b,c);
     else
     #endif
-      hpoly_mul_ser(a,b,t);
+      hpoly_mul_ser(a,b,c);
   }
 
 ret:
-  assert(a != t && b != t);
-  if (t != c) { FUN(copy)(t,c); REL_TMPX(t); }
+  assert(a != c && b != c);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
 }
 
 void
@@ -394,7 +394,7 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) { FUN(scl) (a,1/b->coef[0],c); return; }
 
-  T *t = a == c ? GET_TMPX(c) : c;
+  T *t = (a == c || b == c) ? GET_TMPX(c) : c;
   FUN(inv)(b,1,t);
   FUN(mul)(a,t,c);
   if (t != c) REL_TMPX(t);
@@ -636,7 +636,7 @@ FUN(derm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
 void
 FUN(poisson) (const T *a, const T *b, T *c, int n)
 {
-  // C = [A,B] (POISSON BRACKET, 2*n: No of PHASEVARS
+  // C = [A,B]
   assert(a && b && c);
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
