@@ -179,18 +179,16 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   print_ords(d->nv, d->var_ords, stream_);
   fprintf(stream_, "\n *******************************************************");
 
-
   // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
   idx_t *pi = d->ord2idx, idx = 0;
-  for (ord_t o=t->lo; o <= t->hi ; o++) {
+  for (ord_t o = t->lo; o <= t->hi ; ++o) {
     if (!mad_bit_get(t->nz,o)) continue;
-    for (idx_t i=pi[o]; i < pi[o+1]; ++i) {
-#ifndef MAD_CTPSA_IMPL
+    for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
       if (fabs(t->coef[i]) >= eps_) {
+#ifndef MAD_CTPSA_IMPL
         fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
 #else
-      if (fabs(creal(t->coef[i])) >= eps_ || fabs(cimag(t->coef[i])) >= eps_) {
         fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
         print_ords(d->nv, d->To[i], stream_);
