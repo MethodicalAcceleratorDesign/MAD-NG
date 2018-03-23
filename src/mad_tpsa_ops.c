@@ -441,6 +441,8 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
   assert(a && b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
 
+  if (eps_ < 0) eps_ = 1e-16;
+
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
   idx_t *pi = a->d->ord2idx;
@@ -448,26 +450,11 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
   idx_t start_b = pi[b->lo], end_b = pi[b->hi+1];
   idx_t i = start_a;
 
-  if (eps_ < 0) eps_ = 1e-16;
-
-#ifdef MAD_CTPSA_IMPL
-  for (; i < MIN(end_a,start_b); ++i)
-    if (fabs(creal(a->coef[i])) > eps_ || fabs(cimag(a->coef[i])) > eps_)       return FALSE;
-  i = start_b;
-  for (; i < MIN(end_a,end_b); ++i)
-    if (fabs(creal(a->coef[i]) - creal(b->coef[i])) > eps_ ||
-        fabs(cimag(a->coef[i]) - cimag(b->coef[i])) > eps_)                     return FALSE;
-  for (; i < end_a; ++i)
-    if (fabs(creal(a->coef[i])) > eps_ || fabs(cimag(a->coef[i])) > eps_)       return FALSE;
-  for (; i < end_b; ++i)
-    if (fabs(creal(b->coef[i])) > eps_ || fabs(cimag(b->coef[i])) > eps_)       return FALSE;
-#else
   for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > eps_)              return FALSE;
   i = start_b;
   for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > eps_) return FALSE;
   for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > eps_)              return FALSE;
   for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > eps_)              return FALSE;
-#endif // MAD_CTPSA_IMPL
 
   return TRUE;
 }
@@ -544,11 +531,11 @@ FUN(nrm1) (const T *a, const T *b_)
   }
   else {
     ord_t hi = MIN(a->hi, a->d->trunc);
-    for (ord_t o = a->lo; o <= hi; ++o)
-      if (mad_bit_get(a->nz,o)) {
-        for (idx_t i = pi[o]; i < pi[o+1]; ++i)
-          norm += fabs(a->coef[i]);
-      }
+    for (ord_t o = a->lo; o <= hi; ++o) {
+      if (!mad_bit_get(a->nz,o)) continue;
+      for (idx_t i = pi[o]; i < pi[o+1]; ++i)
+        norm += fabs(a->coef[i]);
+    }
   }
   return norm;
 }

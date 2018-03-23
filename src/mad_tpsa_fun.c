@@ -366,10 +366,8 @@ FUN(sinc) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
   NUM f0 = mad_cnum_sinc(a0);
-  num_t aa = fabs(creal(a0)) + fabs(cimag(a0));
 #else
   NUM f0 = mad_num_sinc(a0);
-  num_t aa = fabs(a0);
 #endif
 
   ord_t to = MIN(c->mo,c->d->trunc);
@@ -377,15 +375,15 @@ FUN(sinc) (const T *a, T *c)                     // checked for real and complex
 
   // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
   NUM ord_coef[to+1];
-  NUM _a0 = 1/a0, f1 = cos(a0)*_a0, fo = 1;
-  num_t fa = aa;
+  NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, fo = 1;
+  num_t aa = fabs(a0), fa = aa;
   ord_coef[0] = f0;
-  ord_coef[1] = fa < 1e-10 ? 0 : f1-f0*_a0;
+  ord_coef[1] = fa < 1e-10 ? 0 : (ca-f0)*_a0;
   int o = 2;
   for (; o <= to; ++o) {
     fa *= aa; if (fa < 1e-10) break;                   // check discontinuity !!
     fo *= o & 1 ? o : -o;
-    ord_coef[o] = -ord_coef[o-1]*_a0 + (o & 1 ? f1 : f0) / fo;
+    ord_coef[o] = (-ord_coef[o-1] + (o & 1 ? ca : sa))*_a0 / fo;
   }
   for (; o <= to; ++o) // |a0^o| < 1e-10
     ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
