@@ -436,7 +436,7 @@ FUN(ipow) (const T *a, T *c, int n)
 }
 
 log_t
-FUN(equ) (const T *a, const T *b, num_t tol)
+FUN(equ) (const T *a, const T *b, num_t eps_)
 {
   assert(a && b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
@@ -448,23 +448,25 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   idx_t start_b = pi[b->lo], end_b = pi[b->hi+1];
   idx_t i = start_a;
 
+  if (eps_ < 0) eps_ = 1e-16;
+
 #ifdef MAD_CTPSA_IMPL
   for (; i < MIN(end_a,start_b); ++i)
-    if (fabs(creal(a->coef[i])) > tol || fabs(cimag(a->coef[i])) > tol) return FALSE;
+    if (fabs(creal(a->coef[i])) > eps_ || fabs(cimag(a->coef[i])) > eps_)       return FALSE;
   i = start_b;
   for (; i < MIN(end_a,end_b); ++i)
-    if (fabs(creal(a->coef[i]) - creal(b->coef[i])) > tol ||
-        fabs(cimag(a->coef[i]) - cimag(b->coef[i])) > tol) return FALSE;
+    if (fabs(creal(a->coef[i]) - creal(b->coef[i])) > eps_ ||
+        fabs(cimag(a->coef[i]) - cimag(b->coef[i])) > eps_)                     return FALSE;
   for (; i < end_a; ++i)
-    if (fabs(creal(a->coef[i])) > tol || fabs(cimag(a->coef[i])) > tol) return FALSE;
+    if (fabs(creal(a->coef[i])) > eps_ || fabs(cimag(a->coef[i])) > eps_)       return FALSE;
   for (; i < end_b; ++i)
-    if (fabs(creal(b->coef[i])) > tol || fabs(cimag(b->coef[i])) > tol) return FALSE;
+    if (fabs(creal(b->coef[i])) > eps_ || fabs(cimag(b->coef[i])) > eps_)       return FALSE;
 #else
-  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > tol) return FALSE;
+  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > eps_)              return FALSE;
   i = start_b;
-  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > tol) return FALSE;
-  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > tol) return FALSE;
-  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > tol) return FALSE;
+  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > eps_) return FALSE;
+  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > eps_)              return FALSE;
+  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > eps_)              return FALSE;
 #endif // MAD_CTPSA_IMPL
 
   return TRUE;
