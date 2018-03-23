@@ -84,7 +84,7 @@ void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, n
 void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const num_t v[n]);
 
 // operators
-log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol);
+log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t eps_);
 void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
@@ -156,10 +156,10 @@ void    mad_tpsa_minv    (ssz_t sa, const tpsa_t *ma[],                         
 void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[],                               ssz_t sc, tpsa_t *mc[], int row_select[]);
 
 // I/O
-void    mad_tpsa_print    (const tpsa_t *t, str_t name_, FILE *stream_);
-tpsa_t* mad_tpsa_scan     (                              FILE *stream_); // TODO
-desc_t* mad_tpsa_scan_hdr (                              FILE *stream_); // TODO
-void    mad_tpsa_scan_coef(      tpsa_t *t,              FILE *stream_); // TODO
+void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
+tpsa_t* mad_tpsa_scan     (                                          FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (                                          FILE *stream_);
+void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
