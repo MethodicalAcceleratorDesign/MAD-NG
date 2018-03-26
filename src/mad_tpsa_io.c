@@ -161,16 +161,17 @@ FUN(scan) (FILE *stream_)
 }
 
 void
-FUN(print) (const T *t, str_t name_, FILE *stream_)
+FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
 {
   assert(t);
-  // TODO: print map vars and name
 
+  if (!name_  ) name_ = "-UNNAMED--";
+  if (eps_ < 0) eps_ = 1e-16;
   if (!stream_) stream_ = stdout;
+
   D *d = t->d;
 
   // print header
-  if (!name_) name_ = "-UNNAMED--";
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
                        name_,    d->mo,  d->nmv,     d->ko, d->nv - d->nmv);
   print_ords(d->nmv, d->mvar_ords, stream_);
@@ -178,26 +179,27 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   print_ords(d->nv, d->var_ords, stream_);
   fprintf(stream_, "\n *******************************************************");
 
-  if (!t->nz) {
-    fprintf(stream_, "\n   ALL COMPONENTS ZERO \n");
-    return;
-  }
-
+  // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
-  int idx = 1;
-  ssz_t nc = mad_desc_tpsa_len(d, t->mo);
-  for (int c = 0; c < nc; ++c) {
-    if (mad_bit_get(t->nz,d->ords[c]) && fabs(t->coef[c]) > 1e-10) {
+  idx_t *pi = d->ord2idx, idx = 0;
+  for (ord_t o = t->lo; o <= t->hi ; ++o) {
+    if (!mad_bit_get(t->nz,o)) continue;
+    for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
+      if (fabs(t->coef[i]) >= eps_) {
 #ifndef MAD_CTPSA_IMPL
-      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , idx, VAL(t->coef[c]), d->ords[c]);
+        fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
 #else
-      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);
+        fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
-      print_ords(d->nv, d->To[c], stream_);
-      idx++;
+        print_ords(d->nv, d->To[i], stream_);
+      }
     }
   }
-  fprintf(stream_, "\n\n");
+
+  if (!idx)
+    fprintf(stream_, "\n   ALL COMPONENTS ZERO \n");
+  else
+    fprintf(stream_, "\n\n");
 }
 
 // --- end --------------------------------------------------------------------o

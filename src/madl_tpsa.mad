@@ -126,17 +126,20 @@ local function desc (nv_, mo_)
   local ko = ism and mo_.ko or nil
 
   if is_number(nv) and is_number(mo) then      -- ex 0, 1.0, 2.0, 1.1, 2.1
-    return _C.mad_desc_newn(nv, mo)
+    desc_curr = _C.mad_desc_newn(nv, mo)
+    return desc_curr
   end
 
   if is_iterable(mo) and is_nil(vo) then       -- ex 3.0, 3.1
     local m = monomial(mo)
-    return _C.mad_desc_newm(m.n, m.data)
+    desc_curr = _C.mad_desc_newm(m.n, m.data)
+    return desc_curr
   end
 
   if is_iterable(mo) and is_iterable(vo) then  -- ex 4.1
     local m, v = monomial(mo), monomial(vo)
-    return _C.mad_desc_newm(m.n, m.data, v.n, v.m, ko)
+    desc_curr = _C.mad_desc_newm(m.n, m.data, v.n, v.m, ko)
+    return desc_curr
   end
 
   error("invalid combination of arguments (gtpsa descriptor)")
@@ -181,6 +184,7 @@ end
 -- ctors ----------------------------------------------------------------------o
 
 -- tpsa()        -> last d
+-- tpsa(mo)      -> last d, mo
 -- tpsa(t)       -> t.mo
 -- tpsa(d)       -> d.mo
 -- tpsa(t|d, mo) -> mo
@@ -1262,7 +1266,7 @@ end
 
 function MR.axpbypc (x, y, a, b, c, r) -- r = ax+by+c
   assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
-  assert(is_number(a) and is_number(b) and is_isnumber(c),
+  assert(is_number(a) and is_number(b) and is_number(c),
          "invalid argument #3, #4 or #5 (number expected)")
   r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
   _C.mad_tpsa_axpbypc(a,x,b,y,c,r) return r
@@ -1275,10 +1279,18 @@ function MR.axypb (x, y, a, b, r) -- r = axy+b
   _C.mad_tpsa_axypb(a,x,y,b,r) return r
 end
 
+function MR.axypbzpc (x, y, z, a, b, c, r) -- r = axy+bz+c
+  assert(is_tpsa(y) and is_tpsa(z), "invalid argument #2 or #3 (tpsa expected)")
+  assert(is_number(a) and is_number(b) and is_number(c),
+         "invalid argument #4, #5 or #6 (number expected)")
+  r = chksiz(r,x,y) and chksiz(r,z) or tpsa_alloc(x.d, max(x.mo,y.mo,z.mo))
+  _C.mad_tpsa_axypbzpc(a,x,y,b,z,c,r) return r
+end
+
 function MR.axypbvwpc (x, y, v, w, a, b, c, r) -- r = axy+bvw+c
   assert(is_tpsa(y) and is_tpsa(v) and is_tpsa(w),
          "invalid argument #2, #3 or #4 (tpsa expected)")
-  assert(is_number(a) and is_number(b) and is_isnumber(c),
+  assert(is_number(a) and is_number(b) and is_number(c),
          "invalid argument #5, #6 or #7 (number expected)")
   r = chksiz(r,x,y) and chksiz(r,v,w) and chksiz(r,x,v) or
       tpsa_alloc(x.d, max(x.mo,y.mo,v.mo,w.mo))
@@ -1287,21 +1299,21 @@ end
 
 function MR.ax2pby2pcz2 (x, y, z, a, b, c, r) -- r = ax^2+by^2+cz^2
   assert(is_tpsa(y) and is_tpsa(z), "invalid argument #2 or #3 (tpsa expected)")
-  assert(is_number(a) and is_number(b) and is_isnumber(c),
+  assert(is_number(a) and is_number(b) and is_number(c),
          "invalid argument #4, #5 or #6 (number expected)")
   r = chksiz(r,x,y) and chksiz(r,x,z) or tpsa_alloc(x.d, max(x.mo,y.mo,z.mo))
   _C.mad_tpsa_ax2pby2pcz2(a,x,b,y,c,z,r) return r
 end
 
 function MR.axpsqrtbpcx2 (x, a, b, c, r) -- r = ax+sqrt(b+cx^2)
-  assert(is_number(a) and is_number(b) and is_isnumber(c),
+  assert(is_number(a) and is_number(b) and is_number(c),
          "invalid argument #2, #3 or #4 (scalar expected)")
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_axpsqrtbpcx2(x, a, b, c, r) return r
 end
 
 function MR.logaxpsqrtbpcx2 (x, a, b, c, r) -- r = log(ax+sqrt(b+cx^2))
-  assert(is_number(a) and is_number(b) and is_isnumber(c),
+  assert(is_number(a) and is_number(b) and is_number(c),
          "invalid argument #2, #3 or #4 (scalar expected)")
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_logaxpsqrtbpcx2(x, a, b, c, r) return r
@@ -1337,6 +1349,15 @@ function MC.axypb (x, y, a, b, r) -- r = axy+b
   a, b = complex(a), complex(b)
   r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
   _C.mad_ctpsa_axypb_r(a.re,a.im, x, y, b.re,b.im, r) return r
+end
+
+function MC.axypbzpc (x, y, z, a, b, c, r) -- r = axy+bz+c
+  assert(is_ctpsa(y) and is_ctpsa(z), "invalid argument #2 or #3 (ctpsa expected)")
+  assert(is_scalar(a) and is_scalar(b) and is_scalar(c),
+         "invalid argument #4, #5 or #6 (scalar expected)")
+  a, b, c = complex(a), complex(b), complex(c)
+  r = chksiz(r,x,y) and chksiz(r,z) or ctpsa_alloc(x.d, max(x.mo,y.mo,z.mo))
+  _C.mad_ctpsa_axypbzpc_r(a.re,a.im, x, y, b.re,b.im, z, c.re,c.im, r) return r
 end
 
 function MC.axypbvwpc (x, y, v, w, a, b, c, r) -- r = axy+bvw+c
@@ -1423,22 +1444,34 @@ end
 
 -- I/O -----------------------------------------------------------------------o
 
-function MR.print(x, name, file)
-  _C.mad_tpsa_print(x, name, file)
+function MR.print(x, file_, name_, eps_)
+  if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
+    file_, name_, eps_ = nil, file_, name_   -- right shift
+  end
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_                 -- right shift
+  end
+  _C.mad_tpsa_print(x, name_, eps_ or -1, file_) return x
 end
 
-function MC.print(x, name, file)
-  _C.mad_ctpsa_print(x, name, file)
+function MC.print(x, file_, name_, eps_)
+  if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
+    file_, name_, eps_ = nil, file_, name_   -- right shift
+  end
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_                 -- right shift
+  end
+  _C.mad_ctpsa_print(x, name_, eps_ or -1, file_) return x
 end
 
-function MR.read (_, file)
-  local x = tpsa(_C.mad_tpsa_scan_hdr(file))
-  _C.mad_tpsa_scan_coef(x, file) return x
+function MR.read (_, file_)
+  local x = tpsa(_C.mad_tpsa_scan_hdr(file_))
+  _C.mad_tpsa_scan_coef(x, file_) return x
 end
 
-function MC.read (_, file)
-  local x = ctpsa(_C.mad_ctpsa_scan_hdr(file))
-  _C.mad_ctpsa_scan_coef(x, file) return x
+function MC.read (_, file_)
+  local x = ctpsa(_C.mad_ctpsa_scan_hdr(file_))
+  _C.mad_ctpsa_scan_coef(x, file_) return x
 end
 
 MR.debug = _C.mad_tpsa_debug

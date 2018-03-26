@@ -34,13 +34,9 @@
 #include <complex.h>
 #endif
 
-// TODO: check domain of validity! (input values)
-// TODO: taylor series differs for complex series...
-// TODO: use complex series to expand obove order 5
-
 // --- local ------------------------------------------------------------------o
 
-enum { MANUAL_EXPANSION_ORD = 5 };
+enum { MANUAL_EXPANSION_ORD = 6 };
 
 static inline void
 fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
@@ -48,7 +44,7 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
   assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
 
-  T *acp = a->d->PFX(t[1]);
+  T *acp = GET_TMPX(a);
   if (iter >=2) FUN(copy)(a,acp); // save copy before scaling for aliasing
 
   // iter 1
@@ -57,8 +53,8 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
 
   // iter 2..iter
   if (iter >= 2) {
-    T *pow = a->d->PFX(t[2]),
-      *tmp = a->d->PFX(t[3]), *t;
+    T *pow = GET_TMPX(a);
+    T *tmp = GET_TMPX(a), *t;
     FUN(set0)(acp,0,0);  // clear a0
     FUN(copy)(acp,pow);  // already did ord 1
 
@@ -67,7 +63,9 @@ fixed_point_iteration(const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
       FUN(acc)(tmp,ord_coef[i],c);
       SWAP(pow,tmp,t);
     }
+    REL_TMPX(tmp), REL_TMPX(pow);
   }
+  REL_TMPX(acp);
 }
 
 static inline void
@@ -77,33 +75,35 @@ sincos_fixed_point(const T *a, T *s, T *c, ord_t iter_s,
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
-  ord_t max_iter = MAX(iter_s,iter_c);
-  T *acp = a->d->PFX(t[1]);
-  if (max_iter >= 2) FUN(copy)(a,acp); // save copy before scaling for aliasing
+  T *acp = GET_TMPX(a);
+  ord_t iter = MAX(iter_s,iter_c);
+  if (iter >= 2) FUN(copy)(a,acp); // save copy before scaling for aliasing
 
   // iter 1
   FUN(scl)(a, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
   FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
-  if (max_iter >= 2) {
-    T *pow = a->d->PFX(t[2]),
-      *tmp = a->d->PFX(t[3]), *t;
+  if (iter >= 2) {
+    T *pow = GET_TMPX(a);
+    T *tmp = GET_TMPX(a), *t;
     FUN(set0)(acp,0,0);
     FUN(copy)(acp,pow);
 
-    for (ord_t i = 1; i <= max_iter; ++i) {
+    for (ord_t i = 2; i <= iter; ++i) {
       FUN(mul)(acp,pow,tmp); // never use t[0]!
       if (i <= iter_s) FUN(acc)(tmp,sin_coef[i],s);
       if (i <= iter_c) FUN(acc)(tmp,cos_coef[i],c);
       SWAP(pow,tmp,t);
     }
+    REL_TMPX(tmp), REL_TMPX(pow);
   }
+  REL_TMPX(acp);
 }
 
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(inv) (const T *a, NUM v, T *c) // c = v/a
+FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -122,9 +122,8 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a
 }
 
 void
-FUN(sqrt) (const T *a, T *c)
+FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
 {
-// SQRT(A0+P) = SQRT(A0)*(1+1/2(P/A0)-1/8*(P/A0)**2+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -140,13 +139,13 @@ FUN(sqrt) (const T *a, T *c)
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-3);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
+FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -161,16 +160,15 @@ FUN(invsqrt) (const T *a, NUM v, T *c)  // v/sqrt(a)
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2*o) * (2*o-1);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-1);
 
   fixed_point_iteration(a,c,to,ord_coef);
   FUN(scl)(c,v,c);
 }
 
 void
-FUN(exp) (const T *a, T *c)
+FUN(exp) (const T *a, T *c)                      // checked for real and complex
 {
-// EXP(A0+P) = EXP(A0)*(1+P+P^2/2!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -189,9 +187,8 @@ FUN(exp) (const T *a, T *c)
 }
 
 void
-FUN(log) (const T *a, T *c)
+FUN(log) (const T *a, T *c)                      // checked for real and complex
 {
-// LOG(A0+P) = LOG(A0) + (P/A0) - 1/2*(P/A0)**2 + 1/3*(P/A0)**3 - ...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -212,7 +209,7 @@ FUN(log) (const T *a, T *c)
 }
 
 void
-FUN(sincos) (const T *a, T *s, T *c)
+FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
 {
   assert(a && s && c);
   ensure(a->d == s->d && a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -251,9 +248,8 @@ FUN(sincos) (const T *a, T *s, T *c)
 }
 
 void
-FUN(sin) (const T *a, T *c)
+FUN(sin) (const T *a, T *c)                      // checked for real and complex
 {
-// SIN(A0+P) = SIN(A0)*(1-P^2/2!+P^4/4!+...) + COS(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -270,9 +266,8 @@ FUN(sin) (const T *a, T *c)
 }
 
 void
-FUN(cos) (const T *a, T *c)
+FUN(cos) (const T *a, T *c)                      // checked for real and complex
 {
-// COS(A0+P) = COS(A0)*(1-P^2/2!+P^4/4!+...) - SIN(A0)*(P-P^3/3!+P^5/5!+...)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
@@ -289,7 +284,7 @@ FUN(cos) (const T *a, T *c)
 }
 
 void
-FUN(tan) (const T *a, T *c)
+FUN(tan) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -302,29 +297,31 @@ FUN(tan) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);  /* store sin */
+    T *t = GET_TMPX(c);
     FUN(sincos)(a,t,c);
     FUN(div)(t,c,c);
+    REL_TMPX(t);
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
-  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
-  NUM xc1 = 1/ca, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  NUM f2 = f0*f0;
   switch(to) {
-  case 5: ord_coef[5] = (2*ca2 + 3*ca2*sa2 + 10*sa2 + 5*sa2*sa2) *xc2*xc2*xc2/15; /* FALLTHRU */
-  case 4: ord_coef[4] = (2*sa  +   sa2*sa) *xc2*xc2*xc1 /3; /* FALLTHRU */
-  case 3: ord_coef[3] = (  ca2 + 3*sa2   ) *xc2*xc2 /3;     /* FALLTHRU */
-  case 2: ord_coef[2] = sa                 *xc2*xc1;        /* FALLTHRU */
-  case 1: ord_coef[1] = 1                  *xc2;            /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 6: ord_coef[6] = f0*(17./45 + f2*(77./45 + f2*(7./3 + f2))); /* FALLTHRU */
+  case 5: ord_coef[5] = 2./15 + f2*(17./15 + f2*(2 + f2));          /* FALLTHRU */
+  case 4: ord_coef[4] = f0*(2./3 + f2*(5./3 + f2));                 /* FALLTHRU */
+  case 3: ord_coef[3] = 1./3 + f2*(4./3 + f2);                      /* FALLTHRU */
+  case 2: ord_coef[2] = f0*(1 + f2);                                /* FALLTHRU */
+  case 1: ord_coef[1] = 1 + f2;                                     /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                         break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(cot) (const T *a, T *c)
+FUN(cot) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -337,54 +334,65 @@ FUN(cot) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]); /* store sin */
+    T *t = GET_TMPX(c);
     FUN(sincos)(a,t,c);
     FUN(div)(c,t,c);
+    REL_TMPX(t);
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
-  NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
-  NUM xc1 = 1/sa, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  NUM f2 = f0*f0;
   switch(to) {
-  case 5: ord_coef[5] = -(2*sa2 + 3*sa2*ca2 + 10*ca2 + 5*ca2*ca2) *xc2*xc2*xc2 /15; /* FALLTHRU */
-  case 4: ord_coef[4] =  (2*ca  +   ca2*ca) *xc2*xc2*xc1 /3; /* FALLTHRU */
-  case 3: ord_coef[3] = -(  sa2 + 3*ca2   ) *xc2*xc2 /3;     /* FALLTHRU */
-  case 2: ord_coef[2] = ca                  *xc2*xc1;        /* FALLTHRU */
-  case 1: ord_coef[1] = -1                  *xc2;            /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 6: ord_coef[6] = f0*(17./45 + f2*(77./45 + f2*(7./3 + f2))); /* FALLTHRU */
+  case 5: ord_coef[5] = -2./15 - f2*(17./15 + f2*(2 + f2));         /* FALLTHRU */
+  case 4: ord_coef[4] = f0*(2./3 + f2*(5./3 + f2));                 /* FALLTHRU */
+  case 3: ord_coef[3] = -1./3 - f2*(4./3 + f2);                     /* FALLTHRU */
+  case 2: ord_coef[2] = f0*(1 + f2);                                /* FALLTHRU */
+  case 1: ord_coef[1] = -1 - f2;                                    /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                         break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(sinc) (const T *a, T *c)
+FUN(sinc) (const T *a, T *c)                     // checked for real and complex
 {
-// SIN(P)/P = 1 - P^2/3! + P^4/5! - P^6/7! + ...
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
+  NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
-  NUM f0 = mad_num_sinc (a->coef[0]);
+  NUM f0 = mad_cnum_sinc(a0);
 #else
-  NUM f0 = mad_cnum_sinc(a->coef[0]);
+  NUM f0 = mad_num_sinc(a0);
 #endif
 
   ord_t to = MIN(c->mo,c->d->trunc);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
+  // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
   NUM ord_coef[to+1];
-  ord_coef[0] = f0; // was 1, certainly buggy, see sin, TODO check!!!
-  ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
+  NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, fo = 1;
+  num_t aa = fabs(a0), fa = aa;
+  ord_coef[0] = f0;
+  ord_coef[1] = fa < 1e-10 ? 0 : (ca-f0)*_a0;
+  int o = 2;
+  for (; o <= to; ++o) {
+    fa *= aa; if (fa < 1e-10) break;                   // check discontinuity !!
+    fo *= o & 1 ? o : -o;
+    ord_coef[o] = (-ord_coef[o-1] + (o & 1 ? ca : sa))*_a0 / fo;
+  }
+  for (; o <= to; ++o) // |a0^o| < 1e-10
     ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(sincosh) (const T *a, T *sh, T *ch)
+FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
 {
   assert(a && sh && ch);
   ensure(a->d == sh->d && a->d == ch->d, "incompatible GTPSA (descriptors differ)");
@@ -422,7 +430,7 @@ FUN(sincosh) (const T *a, T *sh, T *ch)
 }
 
 void
-FUN(sinh) (const T *a, T *c)
+FUN(sinh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -443,7 +451,7 @@ FUN(sinh) (const T *a, T *c)
 }
 
 void
-FUN(cosh) (const T *a, T *c)
+FUN(cosh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -464,7 +472,7 @@ FUN(cosh) (const T *a, T *c)
 }
 
 void
-FUN(tanh) (const T *a, T *c)
+FUN(tanh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -477,29 +485,31 @@ FUN(tanh) (const T *a, T *c)
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);  /* store sinh */
+    T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(t,c,c);
+    REL_TMPX(t);
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
-  NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
-  NUM xc1 = 1/ca, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  NUM f2 = f0*f0;
   switch(to) {
-  case 5: ord_coef[5] = (2*ca2 - 3*ca2*sa2 - 10*sa2 + 5*sa2*sa2) *xc2*xc2*xc2 /15; /* FALLTHRU */
-  case 4: ord_coef[4] = (2*sa  -   sa2*sa) *xc2*xc2*xc1 /3; /* FALLTHRU */
-  case 3: ord_coef[3] = (- ca2 + 3*sa2   ) *xc2*xc2 /3;     /* FALLTHRU */
-  case 2: ord_coef[2] = -sa                *xc2*xc1;        /* FALLTHRU */
-  case 1: ord_coef[1] =  1                 *xc2;            /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 6: ord_coef[6] = f0*(-17./45 + f2*(77./45 + f2*(-7./3 + f2))); /* FALLTHRU */
+  case 5: ord_coef[5] = 2./15 + f2*(-17./15 + f2*(2 - f2));           /* FALLTHRU */
+  case 4: ord_coef[4] = f0*(2./3 + f2*(-5./3 + f2));                  /* FALLTHRU */
+  case 3: ord_coef[3] = -1./3 + f2*(4./3 - f2);                       /* FALLTHRU */
+  case 2: ord_coef[2] = f0*(-1 + f2);                                 /* FALLTHRU */
+  case 1: ord_coef[1] = 1 - f2;                                       /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                           break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(coth) (const T *a, T *c)
+FUN(coth) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -507,34 +517,37 @@ FUN(coth) (const T *a, T *c)
   NUM f0 = tanh(a->coef[0]);
   if (errno) error(strerror(errno));
   ensure(f0 != 0, "invalid domain");
+  f0 = 1/f0;
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  if (!to || a->hi == 0) { FUN(scalar)(c, 1/f0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
-    T *t = c->d->PFX(t[4]);
+    T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(c,t,c);
+    REL_TMPX(t);
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
-  NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
-  NUM xc1 = 1/sa, xc2 = xc1*xc1, sa2 = sa*sa, ca2 = ca*ca;
+  NUM f2 = f0*f0;
   switch(to) {
-  case 5: ord_coef[5] = (2*sa2 + 3*sa2*ca2 - 10*ca2 - 5*ca2*ca2) *xc2*xc2*xc2 /15; /* FALLTHRU */
-  case 4: ord_coef[4] = (2*ca  +   ca2*ca) *xc2*xc2*xc1 /3; /* FALLTHRU */
-  case 3: ord_coef[3] = (  sa2 - 3*ca2   ) *xc2*xc2 /3;     /* FALLTHRU */
-  case 2: ord_coef[2] = ca                 *xc2*xc1;        /* FALLTHRU */
-  case 1: ord_coef[1] = -1                 *xc2;            /* FALLTHRU */
-  case 0: ord_coef[0] = ca                 *xc1;
+  case 6: ord_coef[6] = f0*(-17./45 + f2*(77./45 + f2*(-7./3 + f2))); /* FALLTHRU */
+  case 5: ord_coef[5] = 2./15 + f2*(-17./15 + f2*(2 - f2));           /* FALLTHRU */
+  case 4: ord_coef[4] = f0*(2./3 + f2*(-5./3 + f2));                  /* FALLTHRU */
+  case 3: ord_coef[3] = -1./3 + f2*(4./3 - f2);                       /* FALLTHRU */
+  case 2: ord_coef[2] = f0*(-1 + f2);                                 /* FALLTHRU */
+  case 1: ord_coef[1] = 1 - f2;                                       /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                           break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
 }
 
 void
-FUN(asin) (const T *a, T *c)
+FUN(asin) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -552,27 +565,30 @@ FUN(asin) (const T *a, T *c)
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_scl(c, -I, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
-    mad_ctpsa_complex(a, NULL, tc);
-    const ctpsa_t *ta = tc;
-    mad_ctpsa_logaxpsqrtbpcx2(ta, I, 1, -1, tc);
-    mad_ctpsa_scl(tc, -I, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del (tc);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
+    ctpsa_t *t2 = mad_ctpsa_newd(c->d, to);
+    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t2);
+    mad_ctpsa_scl(t2, -I, t2);
+    mad_ctpsa_real(t2, c);
+    mad_ctpsa_del(t);
+    mad_ctpsa_del(t2);
 #endif
     return;
   }
 
   NUM ord_coef[MANUAL_EXPANSION_ORD+1];
   NUM a0 = a->coef[0], a2 = a0*a0;
-  NUM xc1 = 1 / sqrt(1 - a2), xc2 = xc1*xc1;
+  NUM f1 = 1 / sqrt(1 - a2), f2 = f1*f1, f4 = f2*f2;
   switch(to) {
-  case 5: ord_coef[5] = (3    + 24*a2 + 8*a2*a2) *xc2*xc2*xc2*xc2*xc1 /40; /* FALLTHRU */
-  case 4: ord_coef[4] = (3*a0 +  2*a2*a0) *xc2*xc2*xc2*xc1 /8; /* FALLTHRU */
-  case 3: ord_coef[3] = (1    +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
-  case 2: ord_coef[2] =               a0  *xc2*xc1 /2;         /* FALLTHRU */
-  case 1: ord_coef[1] =                    xc1;                /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 6: ord_coef[6] = a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
+  case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;       /* FALLTHRU */
+  case 4: ord_coef[4] = a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (1./6 + 1./3*a2) *f4*f1;                       /* FALLTHRU */
+  case 2: ord_coef[2] = (1./2*a0) *f2*f1;                              /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                            /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                            break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -597,13 +613,12 @@ FUN(acos) (const T *a, T *c)
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_axpb(I, c, M_PI_2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
-    mad_ctpsa_complex(a, NULL, tc);
-    const ctpsa_t *ta = tc;
-    mad_ctpsa_logaxpsqrtbpcx2(ta, I, 1, -1, tc);
-    mad_ctpsa_axpb(I, tc, M_PI_2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del (tc);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
+    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
+    mad_ctpsa_axpb(I, t, M_PI_2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
     return;
   }
@@ -617,7 +632,8 @@ FUN(acos) (const T *a, T *c)
   case 3: ord_coef[3] = -(1    +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
   case 2: ord_coef[2] = -              a0  *xc2*xc1 /2;         /* FALLTHRU */
   case 1: ord_coef[1] = -                   xc1;                /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                            break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -648,18 +664,18 @@ FUN(atan) (const T *a, T *c)
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_set0(tn, 1, I);
     mad_ctpsa_complex(a, NULL, td);
     mad_ctpsa_set0(td, -1, I);
-    mad_ctpsa_logxdy(tn, td, tc);
-    mad_ctpsa_scl(tc, I/2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del(tc);
+    mad_ctpsa_logxdy(tn, td, t);
+    mad_ctpsa_scl(t, I/2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
-    mad_ctpsa_del(tn);
     mad_ctpsa_del(td);
+    mad_ctpsa_del(tn);
     return;
   }
 
@@ -672,7 +688,8 @@ FUN(atan) (const T *a, T *c)
   case 3: ord_coef[3] = -(1.0/3 - a2)           * xc2*xc1;     /* FALLTHRU */
   case 2: ord_coef[2] = -a0                     * xc2;         /* FALLTHRU */
   case 1: ord_coef[1] =                           xc1;         /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                    break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -703,18 +720,18 @@ FUN(acot) (const T *a, T *c)
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tc = mad_ctpsa_newd(c->d, to);
+    ctpsa_t *t = mad_ctpsa_newd(c->d, to);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_set0(tn, -I, 1);
     mad_ctpsa_complex(a, NULL, td);
     mad_ctpsa_set0(td, I, 1);
-    mad_ctpsa_logxdy(tn, td, tc);
-    mad_ctpsa_scl(tc, I/2, tc);
-    mad_ctpsa_real(tc, c);
-    mad_ctpsa_del(tc);
+    mad_ctpsa_logxdy(tn, td, t);
+    mad_ctpsa_scl(t, I/2, t);
+    mad_ctpsa_real(t, c);
+    mad_ctpsa_del(t);
 #endif
-    mad_ctpsa_del(tn);
     mad_ctpsa_del(td);
+    mad_ctpsa_del(tn);
     return;
   }
 
@@ -727,7 +744,8 @@ FUN(acot) (const T *a, T *c)
   case 3: ord_coef[3] =  (1.0/3 - a2)           * xc2*xc1;     /* FALLTHRU */
   case 2: ord_coef[2] =           a0            * xc2;         /* FALLTHRU */
   case 1: ord_coef[1] = -                         xc1;         /* FALLTHRU */
-  case 0: ord_coef[0] = f0; // was M_PI_2 - atan(a0);
+  case 0: ord_coef[0] = f0;                                    break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -761,7 +779,8 @@ FUN(asinh) (const T *a, T *c)
   case 3: ord_coef[3] = (-1   +  2*a2   ) * xc2*xc2*xc1 /6;     /* FALLTHRU */
   case 2: ord_coef[2] = -          a0     * xc2*xc1 /2;         /* FALLTHRU */
   case 1: ord_coef[1] =                     xc1;                /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                     break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -795,7 +814,8 @@ FUN(acosh) (const T *a, T *c)
   case 3: ord_coef[3] = (1     +  2*a2   ) *xc2*xc2*xc1 /6;     /* FALLTHRU */
   case 2: ord_coef[2] = -           a0     *xc2*xc1 /2;         /* FALLTHRU */
   case 1: ord_coef[1] =                     xc1;                /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                            break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -816,16 +836,14 @@ FUN(atanh) (const T *a, T *c)
 
   if (to > MANUAL_EXPANSION_ORD) {
     // atanh(x) = 1/2 ln((1+x) / (1-x))
-    T *tn = FUN(newd)(c->d, to);
-    T *td = FUN(newd)(c->d, to);
+    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
     FUN(set0)(tn, 1, 1);
     FUN(copy)(a, td);
     FUN(set0)(td, 1, -1);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    FUN(del)(tn);
-    FUN(del)(td);
+    REL_TMPX(td), REL_TMPX(tn);
     return;
   }
 
@@ -838,7 +856,8 @@ FUN(atanh) (const T *a, T *c)
   case 3: ord_coef[3] = (1.0/3 + a2)           * xc2*xc1;     /* FALLTHRU */
   case 2: ord_coef[2] =  a0                    * xc2;         /* FALLTHRU */
   case 1: ord_coef[1] =                          xc1;         /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                            break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -859,16 +878,14 @@ FUN(acoth) (const T *a, T *c)
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acoth(x) = 1/2 ln((x+1) / (x-1))
-    T *tn = FUN(newd)(c->d, to);
-    T *td = FUN(newd)(c->d, to);
+    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
     FUN(set0)(tn, 1, 1);
     FUN(copy)(a, td);
     FUN(set0)(td, -1, 1);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    FUN(del)(tn);
-    FUN(del)(td);
+    REL_TMPX(td), REL_TMPX(tn);
     return;
   }
 
@@ -881,7 +898,8 @@ FUN(acoth) (const T *a, T *c)
   case 3: ord_coef[3] = (-1.0/3 - a2   )        *xc2*xc1;     /* FALLTHRU */
   case 2: ord_coef[2] =              a0         *xc2;         /* FALLTHRU */
   case 1: ord_coef[1] = -                        xc1;         /* FALLTHRU */
-  case 0: ord_coef[0] = f0;
+  case 0: ord_coef[0] = f0;                                            break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);
@@ -895,12 +913,12 @@ FUN(erf) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   ord_t to = MIN(c->mo,c->d->trunc);
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > 5) {
     ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
     // TODO: use Faddeva function from MIT??
   }
 
-  NUM ord_coef[MANUAL_EXPANSION_ORD+1];
+  NUM ord_coef[5+1];
   NUM a0 = a->coef[0], a2 = a0*a0;
 
   static const // coefs from Mathematica
@@ -921,7 +939,8 @@ FUN(erf) (const T *a, T *c)
   case 3: ord_coef[3] = (-1       +  2*a2)      /   3*e1 / p2; /* FALLTHRU */
   case 2: ord_coef[2] = -                          a0*e1 / p2; /* FALLTHRU */
   case 1: ord_coef[1] =                               e1 / p2; /* FALLTHRU */
-  case 0: ord_coef[0] =                               e2;
+  case 0: ord_coef[0] =                               e2;      break;
+  assert(!"missing order coefficients");
   }
 
   fixed_point_iteration(a,c,to,ord_coef);

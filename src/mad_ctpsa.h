@@ -103,7 +103,7 @@ void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[n], num_t a
 void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const int   m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
 
 // operators
-log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t tol);
+log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t eps_);
 void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
@@ -221,10 +221,10 @@ void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[],                      
 void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[],                                ssz_t sc, ctpsa_t *mc[], int row_select[]);
 
 // I/O
-void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, FILE *stream_);
-ctpsa_t* mad_ctpsa_scan     (                               FILE *stream_); // TODO
-desc_t*  mad_ctpsa_scan_hdr (                               FILE *stream_);
-void     mad_ctpsa_scan_coef(      ctpsa_t *t,              FILE *stream_); // TODO
+void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
+ctpsa_t* mad_ctpsa_scan     (                                           FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (                                           FILE *stream_);
+void     mad_ctpsa_scan_coef(      ctpsa_t *t,                          FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t);
 
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
