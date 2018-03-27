@@ -828,10 +828,14 @@ local function remove (seq, rng_, sel_)
   local idx_r = filter(seq, rng_, sel_, true)
   local nr = idx_r.n
   if nr == 0 then return end
+
+  local elem = var_raw(seq,_data)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+  assert(idx_r[1] > 1              , "invalid range, $start marker selected")
+  assert(idx_r[nr] < elem.ne       , "invalid range, $end marker selected")
 
   -- remove elements by decreasing indexes -- to optimize to avoid O(N^2) removal
-  local elem, elm_r = var_raw(seq,_data), table.new(nr,0)
+  local elm_r = table.new(nr,0)
   for i=nr,1,-1 do
     local ii = idx_r[i]
     elm_r[i] = elem[ii]    -- backup
@@ -1004,15 +1008,26 @@ local function share (seq1, seq2)
       assert(is_number(i1) and is_number(i2), "invalid shared element (must be unique)")
       local e1, e2 = elem1[i1], elem2[i2]
       assert(e1.__id == nam and e2.__id == nam, "unexpected corrupted dictionnary")
-      -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
-      local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
-      local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
-      -- check compatibility of positions
-      local s0, s1, s2 = elem2.spos[i2], elem_pos(seq2,i2,c2), elem_pos(seq2,i2,e2)
-      assert(s0 == s1 and s0 == s2, "incompatible shared elements (spos differs)")
-      -- update arrays, add shared flag
-      elem1[i1] = c1:set_flag(flags.shared)
-      elem2[i2] = c2:set_flag(flags.shared)
+      if e1:is_selected(flags.shared) then
+        e1 = parent(e1)
+        -- make Y inheritance using e1 parent as reference and discard e2 (pos are unchanged)
+        local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
+        -- check compatibility of positions
+        local s0, s1, s2 = elem2.spos[i2], elem_pos(seq2,i2,c2), elem_pos(seq2,i2,e2)
+        assert(s0 == s1 and s0 == s2, "incompatible shared elements (spos differs)")
+        -- update arrays, add shared flag
+        elem2[i2] = c2:select(flags.shared)
+      else
+        -- make Y inheritance using e1 as reference and discard e2 (pos are unchanged)
+        local c1 = e1 { at := e1.at, from := e1.from, refpos := e1.refpos }
+        local c2 = e1 { at := e2.at, from := e2.from, refpos := e2.refpos }
+        -- check compatibility of positions
+        local s0, s1, s2 = elem2.spos[i2], elem_pos(seq2,i2,c2), elem_pos(seq2,i2,e2)
+        assert(s0 == s1 and s0 == s2, "incompatible shared elements (spos differs)")
+        -- update arrays, add shared flag
+        elem1[i1] = c1:select(flags.shared)
+        elem2[i2] = c2:select(flags.shared)
+      end
     end
   end
   finish_sequ(seq1) finish_sequ(seq2)
