@@ -286,8 +286,8 @@ FUN(add) (const T *a, const T *b, T *c)
 
   ord_t   hi = MAX(a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
-  TPSA_LINOP(,+,0);  // c->coef[i] = a->coef[i] + b->coef[i];
-  c->lo = a->lo;     // a->lo <= b->lo  (because of swap)
+  TPSA_LINOP(, +, 0);  // c->coef[i] = a->coef[i] + b->coef[i];
+  c->lo = a->lo;       // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   c->nz = mad_bit_hcut(mad_bit_add(a->nz,b->nz), c_hi);
 }
@@ -360,8 +360,10 @@ FUN(mul) (const T *a, const T *b, T *r)
   // order 2+
   if (c->hi >= 2) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi, b->hi);
-    TPSA_LINOP(b0*, +a0*, 2); // c->coef[i] = b0 * a->coef[i] + a0 * b->coef[i] ;
-    TPSA_CLEAR(ab_hi+1);      // c->coef[i] = 0
+    if (a0 && b0) TPSA_LINOP(b0*, +a0*, 2);
+    else if (!a0) TPSA_LINOP(b0*, +0* , 2);
+    else if (!b0) TPSA_LINOP( 0*, +a0*, 2);
+    TPSA_CLEAR(ab_hi+1);
 
     if (a0) { c->nz = mad_bit_add (c->nz, mad_bit_lcut(b->nz,2)); }
     if (b0) { c->nz = mad_bit_add (c->nz, mad_bit_lcut(a->nz,2)); }
