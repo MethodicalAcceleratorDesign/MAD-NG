@@ -33,18 +33,46 @@
 // --- debugging --------------------------------------------------------------o
 
 void
-FUN(debug) (const T *t)
+FUN(debug) (const T *t, str_t name_, FILE *stream_)
 {
+  assert(t);
   D *d = t->d;
-  printf("{ nz=%d lo=%d hi=%d mo=%d | [0]=" FMT " ",
-            t->nz,t->lo,t->hi,t->mo, VAL(t->coef[0]));
 
-  ord_t hi = MIN3(t->hi, t->mo, t->d->trunc);
+  if (!stream_) stream_ = stdout;
+
+  fprintf(stream_, "{ %s: nz=%d lo=%d hi=%d mo=%d",
+          name_ ? name_ : "??", t->nz,t->lo,t->hi,t->mo);
+
   idx_t *pi = d->ord2idx;
-  int i = pi[MAX(1,t->lo)]; // ord 0 already printed
-  for (; i < pi[hi+1]; ++i)
-    if (t->coef[i]) printf("[%d]=" FMT " ", i, VAL(t->coef[i]));
-  printf(" }\n");
+  ord_t *po = d->ords;
+  ord_t  mo = MAX(0,MIN(t->mo,d->mo)); // avoid segfault if mo is corrupted
+
+  for (idx_t i = 0; i < pi[mo+1]; ++i)
+    fprintf(stream_," [%d]=" FMT, i, VAL(t->coef[i]));
+
+  ord_t lo = MAX(0,MIN(t->lo, t->mo)); // avoid segfault if lo is corrupted
+  ord_t hi = MAX(0,MIN(t->hi, t->mo)); // avoid segfault if hi is corrupted
+  ord_t o;
+  idx_t i = -1;
+
+  // GTPSA are dense within [lo,hi], nz must be zero outside
+  // ord in [lo,hi]: nz[ord] == 0 <=> all coef[ord] == 0
+  // ord in [lo,hi]: nz[ord] == 1 <=> any coef[ord] != 0
+  log_t nz_ok = TRUE;
+  for (o = 0; nz_ok && o < lo; ++o)
+    nz_ok = !mad_bit_get(t->nz,o);
+  if (nz_ok)
+    for (i = pi[lo]; nz_ok && i < pi[hi+1]; ++i)
+      nz_ok = (t->coef[i] == 0 && !mad_bit_get(t->nz,po[i])) ||
+              (t->coef[i] != 0 &&  mad_bit_get(t->nz,po[i]));
+  if (nz_ok)
+    for (o = hi+1; nz_ok && o <= mo; ++o)
+      nz_ok = !mad_bit_get(t->nz,o);
+
+  if (nz_ok)
+    fprintf(stream_," }\n");
+  else
+    fprintf(stream_," } ** (%d,%d)\n", i == -1 ? o : po[i], i);
 }
 
 // --- introspection ----------------------------------------------------------o
@@ -83,50 +111,7 @@ ord_t
   return mo;
 }
 
-// --- ctors, dtor ------------------------------------------------------------o
-
-T*
-FUN(newd) (D *d, ord_t mo)
-{
-  assert(d);
-
-  if (mo == mad_tpsa_default) mo = d->mo;
-  else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
-
-  ssz_t nc = mad_desc_tpsa_len(d, mo);
-  T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
-
-  t->d = d;
-  t->lo = t->mo = mo;
-  t->hi = t->nz = 0;
-  t->coef[0] = 0;
-  return t;
-}
-
-T*
-FUN(new) (const T *t, ord_t mo)
-{
-  assert(t);
-  if (mo == mad_tpsa_same) mo = t->mo;
-  return FUN(newd)(t->d,mo);
-}
-
-void
-FUN(copy) (const T *t, T *dst)
-{
-  assert(t && dst);
-  if (t == dst) return;
-  ensure(t->d == dst->d, "incompatible GTPSAs descriptors");
-  D *d = t->d;
-  if (d->trunc < t->lo) { FUN(clear)(dst); return; }
-  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
-  dst->lo = t->lo;
-  dst->nz = mad_bit_trunc(t->nz, dst->hi);
-  idx_t *pi = d->ord2idx;
-
-  for (int i = pi[dst->lo]; i < pi[dst->hi+1]; ++i)
-    dst->coef[i] = t->coef[i];
-}
+// --- clear, scalar ----------------------------------------------------------o
 
 void
 FUN(clear) (T *t)
@@ -141,21 +126,55 @@ void
 FUN(scalar) (T *t, NUM v)
 {
   assert(t);
-  if (v) {
+  if (!v) FUN(clear)(t);
+  else {
     t->lo = t->hi = 0;
     t->nz = 1;
     t->coef[0] = v;
   }
-  else
-    FUN(clear)(t);
 }
 
-#ifdef MAD_CTPSA_IMPL
+// --- ctors, dtor ------------------------------------------------------------o
 
-void FUN(scalar_r) (T *t, num_t v_re, num_t v_im)
-{ FUN(scalar)(t, CNUM(v)); }
+T*
+FUN(newd) (D *d, ord_t mo)
+{
+  assert(d);
 
-#endif
+  if (mo == mad_tpsa_default) mo = d->mo;
+  else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
+
+  ssz_t nc = mad_desc_tpsa_len(d, mo);
+  T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
+
+  t->d = d, t->mo = mo;
+  FUN(clear)(t);
+  return t;
+}
+
+T*
+FUN(new) (const T *t, ord_t mo)
+{
+  assert(t);
+  return FUN(newd)(t->d, mo == mad_tpsa_same ? t->mo : mo);
+}
+
+void
+FUN(copy) (const T *t, T *dst)
+{
+  assert(t && dst);
+  if (t == dst) return;
+  ensure(t->d == dst->d, "incompatible GTPSAs descriptors");
+  D *d = t->d;
+  if (d->trunc < t->lo) { FUN(clear)(dst); return; }
+  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
+  dst->lo = t->lo;
+  dst->nz = mad_bit_hcut(t->nz, dst->hi);
+
+  idx_t *pi = d->ord2idx;
+  for (idx_t i = pi[dst->lo]; i < pi[dst->hi+1]; ++i)
+    dst->coef[i] = t->coef[i];
+}
 
 void
 FUN(del) (T *t)
@@ -199,7 +218,7 @@ NUM
 FUN(get0) (const T *t)
 {
   assert(t);
-  return t->coef[0];
+  return t->lo == 0 ? t->coef[0] : 0;
 }
 
 NUM
@@ -216,11 +235,11 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
 {
   assert(t && v);
   D *d = t->d;
-  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+  ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
 
   ord_t *ords = d->ords+i;
   const NUM *coef = t->coef+i;
-  for (idx_t j=0; j < n; j++)
+  for (idx_t j = 0; j < n; ++j)
     v[j] = t->lo <= ords[j] && ords[j] <= t->hi ? coef[j] : 0;
 }
 
@@ -248,7 +267,7 @@ FUN(getm) (const T *t, int n, const ord_t m[n])
 NUM
 FUN(getsm) (const T *t, int n, const idx_t m[n])
 {
-  // --- mono is sparse; represented as [(i o)]
+  // --- mono is sparse; represented as [(i,o)]
   assert(t && m);
   D *d = t->d;
   idx_t i = mad_desc_get_idx_sm(d,n,m);
@@ -260,12 +279,12 @@ void
 FUN(set0) (T *t, NUM a, NUM b)
 {
   assert(t);
-  t->coef[0] = a*t->coef[0] + b;
+
+  t->coef[0] = a*FUN(get0)(t) + b;
   if (t->coef[0] && !mad_bit_get(t->nz,0)) {
     idx_t *pi = t->d->ord2idx;
+    for (idx_t c = pi[1]; c < pi[t->lo]; ++c) t->coef[c] = 0;
     t->nz = mad_bit_set(t->nz,0);
-    for (int c = pi[1]; c < pi[t->lo]; ++c)
-      t->coef[c] = 0;
     t->lo = 0;
   }
   else if (!t->coef[0] && mad_bit_get(t->nz,0)) {
@@ -280,31 +299,40 @@ FUN(seti) (T *t, int i, NUM a, NUM b)
 {
   assert(t);
   D *d = t->d;
-  ensure(i >= 0 && i < d->nc, "index out of GPTSA bounds");
-  ensure(d->ords[i] <= t->mo, "index order exceeds GPTSA maximum order");
+  ensure(i >= 0 && i < d->nc, "index order exceeds GPTSA maximum order");
 
   if (i == 0) { FUN(set0)(t,a,b); return; }
 
-  NUM v = a*FUN(geti)(t,i) + b;
-
-  if (v == 0) { t->coef[i] = v; return; }
+  ensure(d->ords[i] <= t->mo, "index order exceeds GTPSA order");
 
   ord_t  o  = d->ords[i];
   idx_t *pi = d->ord2idx;
+  NUM v = a*FUN(geti)(t,i) + b;
+
+  if (v == 0) {
+    if (!mad_bit_get(t->nz,o)) return;
+    t->coef[i] = v;
+    idx_t c; // scan hpoly for non-zero
+    for (c = pi[o]; c < pi[o+1] && !t->coef[c]; ++c);
+    if (c == pi[o+1]) { // zero hpoly
+      t->nz = mad_bit_clr(t->nz,o);
+      int n = mad_bit_lowest(t->nz);
+      t->lo = MIN(n,t->mo);
+    }
+    return;
+  }
+
   t->nz = mad_bit_set(t->nz,o);
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (idx_t c = pi[o]; c < pi[o+1]; ++c)
-      t->coef[c] = 0;
+    for (idx_t c = pi[o]; c < pi[o+1]; ++c) t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (idx_t c = pi[t->hi+1]; c < pi[o+1]; ++c)
-      t->coef[c] = 0;
+    for (idx_t c = pi[t->hi+1]; c < pi[o+1]; ++c) t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (idx_t c = pi[o]; c < pi[t->lo]; ++c)
-      t->coef[c] = 0;
+    for (idx_t c = pi[o]; c < pi[t->lo]; ++c) t->coef[c] = 0;
     t->lo = o;
   }
   t->coef[i] = v;
@@ -315,16 +343,20 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
 {
   assert(t && v);
   D *d = t->d;
-  ensure(i >= 0 && i+n < d->nc, "index order exceeds GPTSA maximum order");
+  ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
+
+  for (idx_t j = 0; j < n; j++) t->coef[j+i] = v[j];
 
   ord_t *ords = d->ords+i;
-  NUM   *coef = t->coef+i;
-  for (idx_t j=0; j < n; j++) coef[j] = v[j];
+  if (t->lo > ords[0  ]) t->lo = ords[0  ];
+  if (t->hi < ords[n-1]) t->hi = ords[n-1];
 
-  if (t->lo > ords[0]) t->lo = ords[0];
-  if (t->hi < ords[n]) t->hi = ords[n];
-  for (idx_t o=ords[0]; o < ords[n]; o++)
-    t->nz = mad_bit_set(t->nz,o);
+  idx_t *pi = d->ord2idx;
+  for (idx_t o = ords[0]; o <= ords[n-1]; o++) {
+    idx_t c; // scan hpoly for non-zero
+    for (c = pi[o]; c < pi[o+1] && !t->coef[c]; ++c);
+    t->nz = c == pi[o+1] ? mad_bit_clr(t->nz,o) : mad_bit_set(t->nz,o);
+  }
 }
 
 void
@@ -389,6 +421,9 @@ void FUN(setm_r) (T *t, int n, const ord_t m[n], num_t a_re, num_t a_im, num_t b
 void FUN(setsm_r) (T *t, int n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
 
-// --- end --------------------------------------------------------------------o
+void FUN(scalar_r) (T *t, num_t v_re, num_t v_im)
+{ FUN(scalar)(t, CNUM(v)); }
 
 #endif // MAD_CTPSA_IMPL
+
+// --- end --------------------------------------------------------------------o
