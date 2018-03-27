@@ -41,7 +41,7 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 #define FUN(name)   MKNAME(mad_tpsa_,name)
 #define PFX(name)   name
 #define VAL(num)    num
-#define FMT         "%g"
+#define FMT         " %+6.4lE"
 #define SELECT(R,C) R
 
 #endif
