@@ -23,7 +23,7 @@
   - provide a full feathered Generalized TPSA package
 
   Information:
-  - parameters ending with an underscope can be null.
+  - parameters ending with an underscope are optional (i.e. can be null).
 
   Errors:
   - TODO
@@ -160,7 +160,7 @@ void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *strea
 tpsa_t* mad_tpsa_scan     (                                          FILE *stream_);
 desc_t* mad_tpsa_scan_hdr (                                          FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *stream_);
-void    mad_tpsa_debug    (const tpsa_t *t);
+void    mad_tpsa_debug    (const tpsa_t *t, str_t name_,             FILE *stream_);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
 
