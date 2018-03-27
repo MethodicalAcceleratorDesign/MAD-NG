@@ -117,6 +117,7 @@ mad_mono_print (ssz_t n, const ord_t m[n])
 // --- default versions -------------------------------------------------------o
 
 #ifndef __SSE2__
+// #warning "Default (<SSE2) selected"
 
 int
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
