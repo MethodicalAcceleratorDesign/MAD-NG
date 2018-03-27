@@ -197,7 +197,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   }
 
   if (!idx)
-    fprintf(stream_, "\n   ALL COMPONENTS ZERO \n");
+    fprintf(stream_, "\n          ALL COMPONENTS ZERO \n");
   else
     fprintf(stream_, "\n\n");
 }
