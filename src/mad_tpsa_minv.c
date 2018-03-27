@@ -193,7 +193,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
   for (int i = 0; i < sa; ++i)
     FUN(copy)(lin_inv[i], mc[i]);
 
-  for (int o = 2; o <= d->mo; ++o) {
+  for (ord_t o = 2; o <= d->mo; ++o) {
     d->trunc = o;
     FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
 
@@ -212,19 +212,19 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
 }
 
 void
-FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
+FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int selected[sa])
 {
-  assert(ma && mc && row_select);
+  assert(ma && mc && selected);
   check_minv(sa,ma,sc,mc);
   for (int i = 0; i < sa; ++i)
-    if (row_select[i])
+    if (selected[i])
       ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
   D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
   for (int i = 0; i < sa; ++i) {
-    if (row_select[i]) {
+    if (selected[i]) {
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
       mUnused[i] = FUN(newd)(d,1);
@@ -242,7 +242,7 @@ FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
     FUN(set0)(mUnused[i], 0.0,0.0);
   }
 
-  FUN(minv)(sa,(const T**)mUsed,sa,mInv);
+  FUN(minv)   (sa,(const T**)mUsed  ,sa,           mInv);
   FUN(compose)(sa,(const T**)mUnused,sa,(const T**)mInv,sc,mc);
 
   for (int i = 0; i < sa; ++i) {
