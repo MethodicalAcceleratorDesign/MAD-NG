@@ -1514,4 +1514,105 @@ end
 
 -------------------------------------------------------------------------------o
 
+function TestSequence:testInit()
+  local seq1 = sequence "seq1" {
+    marker { eid = 1 },
+  }
+  local seq2 = sequence "seq2" {
+    marker { eid = 1 },
+    marker { eid = 2 },
+    marker { eid = 3 },
+    marker { eid = 4 },
+  }
+  assertEquals(#seq1, 3)
+  assertEquals(#seq2, 6)
+  for i=1,3 do assertIs(seq1[i], seq1:elem(i)) end
+  for i=1,6 do assertIs(seq2[i], seq2:elem(i)) end
+
+  assertTrue  (seq1[1].is_marker)
+  assertEquals(seq2[2].eid, 1)
+  for i=2,5 do
+    assertTrue  (seq2[i].is_marker)
+    assertEquals(seq2[i].eid, i-1)
+  end
+end
+
+function TestSequence:testInitSimpleSpos()
+  local seq = sequence "seq" {
+    l = 10,
+    marker { at = 1 },
+    marker { at = 2 },
+    marker { at = 3 },
+    marker { at = 4 },
+  }
+  for i=2,5 do
+    assertEquals(seq:spos(i), seq[i].at)
+    assertEquals(seq:epos(i), seq[i].at)
+  end
+  assertEquals(seq:spos(1), 0 )
+  assertEquals(seq:spos(6), 10)
+  assertEquals(seq:epos(1), 0 )
+  assertEquals(seq:epos(6), 10)
+end
+
+function TestSequence:testInitInvalidElem()
+  local msg = {
+    "invalid element detected",
+  }
+  assertErrorMsgContains(msg[1], sequence, "seq", { 1     })
+  assertErrorMsgContains(msg[1], sequence, "seq", { true  })
+  assertErrorMsgContains(msg[1], sequence, "seq", { \ ()  })
+  assertErrorMsgContains(msg[1], sequence, "seq", { "seq" })
+end
+
+function TestSequence:testInitElemReferPos()
+  local epos  = { 1, 2, 3 }
+  local sposs = {
+    entry  = { 1  , 2  , 3   },
+    centre = { 0.5, 1.5, 2.5 },
+    exit   = { 0  , 1  , 2   },
+  }
+
+  for refer,spos in pairs(sposs) do
+    local seq1 = sequence "seq" {
+      refer = refer,
+      drift "prv" { l = 1, at = 1 },
+      drift "elm" { l = 1, at = 2 },
+      drift "nxt" { l = 1, at = 3 },
+    }
+    local seq2 = sequence "seq" {
+      drift "prv" { l = 1, at = 1, refer = refer },
+      drift "elm" { l = 1, at = 2, refer = refer },
+      drift "nxt" { l = 1, at = 3, refer = refer },
+    }
+    for i=2,4 do
+      assertEquals(seq1:spos(i), spos[i-1])
+      assertEquals(seq1:epos(i), epos[i-1])
+      assertEquals(seq2:spos(i), spos[i-1])
+      assertEquals(seq2:epos(i), epos[i-1])
+    end
+  end
+end
+
+function TestSequence:testInitElemFromPos()
+  local prv   = drift "prv" { l = 1, at = 1 }
+  local elm   = drift "elm" { l = 1         }
+  local nxt   = drift "nxt" { l = 1, at = 3 }
+  local froms = {
+    start   =  2,
+    prev    =  0,
+    next    = -1,
+    ["end"] = -2,
+    prv     =  1,
+    nxt     = -1,
+  }
+
+  for from, at in pairs(froms) do
+    elm.from  = from
+    elm.at    = at
+    local seq = sequence "seq" { refer = "entry", prv, elm, nxt }
+    assertEquals(seq:epos(3), 2)
+  end
+end
+
 -- end ------------------------------------------------------------------------o
