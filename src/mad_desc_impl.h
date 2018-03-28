@@ -95,16 +95,36 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
 // --- macros -----------------------------------------------------------------o
 
 #define GET_TMPX(tp) \
-  (assert((tp)->d->PFX(ti) < DESC_MAX_TMP), (tp)->d->PFX(t)[(tp)->d->PFX(ti)++])
+  (assert((tp)->d->PFX(ti) < DESC_MAX_TMP), \
+   TRC_TMP(printf("GET_TMPX[%d]: %p in %s("MKSTR(PFX())")\n", \
+        (tp)->d->PFX(ti), (void*)(tp)->d->PFX(t)[(tp)->d->PFX(ti)], __func__)),\
+   (tp)->d->PFX(t)[(tp)->d->PFX(ti)++])
 
 #define REL_TMPX(tp) \
-  (assert((tp)->d->PFX(ti) > 0), (tp)->d->PFX(t)[--(tp)->d->PFX(ti)] = (tp))
+  (assert((tp)->d->PFX(ti) > 0), \
+   TRC_TMP(printf("REL_TMPX[%d]: %p in %s("MKSTR(PFX())")\n", \
+                  (tp)->d->PFX(ti)-1, (void*)tp, __func__)), \
+   (tp)->d->PFX(t)[--(tp)->d->PFX(ti)] = (tp))
 
 #define GET_TMPC(tp) \
-  (assert((tp)->d->cti < DESC_MAX_TMP), (tp)->d->ct[(tp)->d->cti++])
+  (assert((tp)->d->cti < DESC_MAX_TMP), \
+   TRC_TMP(printf("GET_TMPC[%d]: %p in %s(c)\n", \
+                  (tp)->d->cti, (void*)(tp)->d->ct[(tp)->d->cti], __func__)),\
+   (tp)->d->ct[(tp)->d->cti++])
 
 #define REL_TMPC(tp) \
-  (assert((tp)->d->cti > 0), (tp)->d->ct[--(tp)->d->cti] = (tp))
+  (assert((tp)->d->cti > 0), \
+   TRC_TMP(printf("REL_TMPC[%d]: %p in %s(c)\n", \
+                  (tp)->d->cti-1, (void*)tp, __func__)), \
+   (tp)->d->ct[--(t)->d->cti] = (tp))
+
+#define REL_TMPRC(t, tp) \
+  (assert((t)->d->cti > 0), \
+   TRC_TMP(printf("REL_TMPR[%d]: %p in %s(c)\n", \
+                  (t)->d->cti-1, (void*)tp, __func__)), \
+   (t)->d->ct[--(t)->d->cti] = (tp))
+
+#define TRC_TMP(a) a // (void)0
 
 // --- end --------------------------------------------------------------------o
 

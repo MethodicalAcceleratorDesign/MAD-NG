@@ -225,7 +225,7 @@ void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *st
 ctpsa_t* mad_ctpsa_scan     (                                           FILE *stream_);
 desc_t*  mad_ctpsa_scan_hdr (                                           FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                          FILE *stream_);
-void     mad_ctpsa_debug    (const ctpsa_t *t);
+void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_,             FILE *stream_);
 
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
 

@@ -40,11 +40,10 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->trunc);
-  c->nz = mad_bit_trunc(t->nz, c->hi);
+  c->nz = mad_bit_hcut(t->nz, c->hi);
 
   idx_t *pi = d->ord2idx;
-
-  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
     c->coef[i] = creal(t->coef[i]);
 }
 
@@ -59,11 +58,10 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->trunc);
-  c->nz = mad_bit_trunc(t->nz, c->hi);
+  c->nz = mad_bit_hcut(t->nz, c->hi);
 
   idx_t *pi = d->ord2idx;
-
-  for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
     c->coef[i] = cimag(t->coef[i]);
 }
 
@@ -83,23 +81,22 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 
   c->lo  = lo;
   c->hi  = MIN3(hi, c->mo, d->trunc);
-  c->nz  = mad_bit_trunc(mad_bit_add(re->nz, im->nz), c->hi);
+  c->nz  = mad_bit_hcut(mad_bit_add(re->nz, im->nz), c->hi);
 
   idx_t *pi = d->ord2idx;
-
   switch(!!re_ + 2*!!im_) {
   case 1: // re_ && !im_
-    for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
       c->coef[i] = re->coef[i];
     break;
 
   case 2: // !re_ && im_
-    for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
       c->coef[i] = im->coef[i]*I;
     break;
 
   case 3: // re_ && im_
-    for (int i = pi[c->lo]; i < pi[c->hi+1]; ++i) {
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i) {
       c->coef[i] = 0;
       if (pi[re->lo] <= i && i < pi[re->hi+1]) c->coef[i] += re->coef[i];
       if (pi[im->lo] <= i && i < pi[im->hi+1]) c->coef[i] += im->coef[i]*I;
@@ -195,7 +192,7 @@ void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n)
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(c);
-  mad_ctpsa_complex(a, NULL, t); // poisson.mul uses ct[0]
+  mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_poisson(t, b, c, n);
   REL_TMPC(t);
 }
