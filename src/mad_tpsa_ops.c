@@ -237,7 +237,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   const NUM *ca = a->coef;
         NUM *cc;
 
-  c->hi = MIN3(c->mo, d->trunc, a->hi-ord);  // initial guess, readjust based on nz
+  c->hi = MIN3(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
   for (ord_t oc = 1; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+ord)) {
       cc = c->coef + pi[oc];
@@ -285,7 +285,7 @@ FUN(add) (const T *a, const T *b, T *c)
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
   ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->to);
   TPSA_LINOP(, +, 0);  // c->coef[i] = a->coef[i] + b->coef[i];
   c->lo = a->lo;       // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -302,7 +302,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   if (a->lo > b->lo) SWAP(a,b,t);
 
   ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);
+  ord_t c_hi = MIN3(hi, c->mo, c->d->to);
   if (t) TPSA_LINOP(-, +, 0); // c->coef[i] = - a->coef[i] + b->coef[i];
   else   TPSA_LINOP( , -, 0); // c->coef[i] =   a->coef[i] - b->coef[i];
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
@@ -320,7 +320,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 
   D *d = a->d;
   c->lo = a->lo + b->lo;
-  c->hi = MIN3(a->hi + b->hi, c->mo, d->trunc);
+  c->hi = MIN3(a->hi + b->hi, c->mo, d->to);
   c->nz = 0;
 
   // empty
@@ -361,8 +361,8 @@ FUN(mul) (const T *a, const T *b, T *r)
   if (c->hi >= 2) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi, b->hi);
     if (a0 && b0) TPSA_LINOP(b0*, +a0*, 2);
-    else if (!a0) TPSA_LINOP(b0*, +0* , 2);
     else if (!b0) TPSA_LINOP( 0*, +a0*, 2);
+    else          TPSA_LINOP(b0*, + 0*, 2);
     TPSA_CLEAR(ab_hi+1);
 
     if (a0) { c->nz = mad_bit_add (c->nz, mad_bit_lcut(b->nz,2)); }
@@ -466,7 +466,7 @@ FUN(abs) (const T *a, T *c)
   assert(a && c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  c->hi = MIN3(a->hi, c->mo, c->d->trunc);
+  c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->lo = a->lo;
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
@@ -484,7 +484,7 @@ FUN(arg) (const T *a, T *c)
   assert(a && c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  c->hi = MIN3(a->hi, c->mo, c->d->trunc);
+  c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->lo = a->lo;
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
@@ -499,7 +499,7 @@ FUN(conj) (const T *a, T *c)
   assert(a && c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  c->hi = MIN3(a->hi, c->mo, c->d->trunc);
+  c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->lo = a->lo;
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
@@ -520,8 +520,8 @@ FUN(nrm1) (const T *a, const T *b_)
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->trunc)+1],
-          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->trunc)+1];
+    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->to)+1],
+          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->to)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm += fabs(a->coef[i]);
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += fabs(a->coef[i] - b_->coef[i]);
@@ -529,7 +529,7 @@ FUN(nrm1) (const T *a, const T *b_)
     for (           ; i <     end_b         ; ++i) norm += fabs(b_->coef[i]);
   }
   else {
-    ord_t hi = MIN(a->hi, a->d->trunc);
+    ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o) {
       if (!mad_bit_get(a->nz,o)) continue;
       for (idx_t i = pi[o]; i < pi[o+1]; ++i)
@@ -549,8 +549,8 @@ FUN(nrm2) (const T *a, const T *b_)
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->trunc)+1],
-          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->trunc)+1];
+    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->to)+1],
+          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->to)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm +=  a->coef[i]              *  a->coef[i];
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += (a->coef[i]-b_->coef[i]) * (a->coef[i]-b_->coef[i]);
@@ -558,7 +558,7 @@ FUN(nrm2) (const T *a, const T *b_)
     for (           ; i <     end_b         ; ++i) norm +=  b_->coef[i]             *  b_->coef[i];
   }
   else {
-    ord_t hi = MIN(a->hi, a->d->trunc);
+    ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o)
       if (mad_bit_get(a->nz,o)) {
         for (idx_t i = pi[o]; i < pi[o+1]; ++i)
@@ -580,7 +580,7 @@ FUN(der) (const T *a, T *c, int var)
   FUN(scalar)(c,FUN(geti)(a,var));  // TODO: what if alpha[var] == 0 ?
 
   D *d = c->d;
-  c->hi = MIN3(c->mo, d->trunc, a->hi-1);
+  c->hi = MIN3(a->hi-1, c->mo, d->to);
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
 
   idx_t *pi = d->ord2idx;
@@ -630,7 +630,7 @@ FUN(poisson) (const T *a, const T *b, T *c, int n)
 
   T *is[4];
   for (int i = 0; i < 4; ++i)
-    is[i] = FUN(new)(a, a->d->trunc);
+    is[i] = FUN(new)(a, a->d->to);
 
   for (int i = 1; i <= n; ++i) {
     FUN(der)(a, is[0], 2*i - 1);
@@ -660,7 +660,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   D *d = a->d;
   c->lo = a->lo;
-  c->hi = MIN3(a->hi, c->mo, d->trunc);
+  c->hi = MIN3(a->hi, c->mo, d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
   idx_t *pi = d->ord2idx;
 
@@ -678,7 +678,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   D *d = c->d;
   const NUM *ca = a->coef;
         NUM *cc = c->coef;
-  ord_t new_hi = MIN3(a->hi,c->mo,d->trunc);
+  ord_t new_hi = MIN3(a->hi,c->mo,d->to);
   ord_t new_lo = MIN(a->lo,c->lo);
   idx_t *pi = d->ord2idx;
 
@@ -713,7 +713,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
     NUM n;      SWAP(c1,c2,n);
   }
   ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, c->d->trunc);  // TODO: optimise c_hi == 0 ?
+  ord_t c_hi = MIN3(hi, c->mo, c->d->to);  // TODO: optimise c_hi == 0 ?
   TPSA_LINOP(c1*, +c2*, 0); // c->coef[i] = c1 * a->coef[i] + c2 * b->coef[i];
 
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)

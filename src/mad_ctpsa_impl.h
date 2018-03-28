@@ -27,7 +27,7 @@
 
 struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
   desc_t *d;
-  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
+  ord_t   lo, hi, mo; // lowest/highest used ord, max ord (allocated)
   bit_t   nz;
   cnum_t  coef[];
 };

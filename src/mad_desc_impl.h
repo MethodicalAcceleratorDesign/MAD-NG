@@ -33,8 +33,7 @@ enum { DESC_MAX_TMP = 6 };
 struct desc { // WARNING: needs to be identical with Lua for compatibility
   int   id;          // index in list of registered descriptors
   int   nmv, nv;     // number of mvars, number of all vars
-  ord_t mo, ko,      // maximum order for mvars and knobs (mo=max(mvar_ords[]))
-        trunc;       // truncation order for operations; always <= mo
+  ord_t mo, ko, to;  // max order for mvars, knobs (mo=max(mvar_ords)) and truncation (to<=mo)
   const ord_t
         *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
         * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
@@ -52,8 +51,8 @@ struct desc { // WARNING: needs to be identical with Lua for compatibility
         *ord2idx,    // order to polynomial start index in To (i.e. in TPSA coef[])
         *tv2to,      // lookup tv->to
         *to2tv,      // lookup to->tv
-        *H,          // indexing matrix, in Tv
-       **L,          // multiplication indexes -- L[oa][ob] -> lc; lc[ia][ib] -> ic
+        *H,          // indexing matrix in Tv
+       **L,          // multiplication indexes: L[oa][ob] -> lc; lc[ia][ib] -> ic
       ***L_idx;      // L_idx[oa,ob] -> [start] [split] [end] idxs in L
 
   size_t size;       // bytes used by desc
@@ -92,7 +91,7 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
   return ib*ia_size + ia;
 }
 
-// --- macros -----------------------------------------------------------------o
+// --- macros for temporaries -------------------------------------------------o
 
 #define GET_TMPX(tp) \
   (assert((tp)->d->PFX(ti) < DESC_MAX_TMP), \
@@ -124,6 +123,7 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
                   (t)->d->cti-1, (void*)tp, __func__)), \
    (t)->d->ct[--(t)->d->cti] = (tp))
 
+// enable/disable trace of temporaries
 #define TRC_TMP(a) a // (void)0
 
 // --- end --------------------------------------------------------------------o

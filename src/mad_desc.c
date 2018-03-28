@@ -802,7 +802,7 @@ desc_init(int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
   d->nmv = nmv;
   d->nv = nv;
   d->ko = ko;
-  d->mo = d->trunc = mad_mono_max(nmv, mvar_ords);
+  d->mo = d->to = mad_mono_max(nmv, mvar_ords);
 
   ord_t *mo = mad_malloc(nmv * sizeof *d->mvar_ords);
   mad_mono_copy(nmv, mvar_ords, mo);
@@ -1009,15 +1009,15 @@ mad_desc_gtrunc (D *d, ord_t to)
 {
   assert(d);
   if (to == mad_tpsa_same)
-    return d->trunc;
+    return d->to;
 
-  ord_t orig = d->trunc;
+  ord_t orig = d->to;
 
   if (to == mad_tpsa_default)
-    return d->trunc = d->mo, orig;
+    return d->to = d->mo, orig;
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
-  return d->trunc = to, orig;
+  return d->to = to, orig;
 }
 
 ssz_t

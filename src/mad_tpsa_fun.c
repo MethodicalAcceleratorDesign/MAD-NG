@@ -109,7 +109,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ensure(a->coef[0] != 0, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, v/a->coef[0]); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
@@ -133,7 +133,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
 
   if (a->coef[0] == 0) { FUN(clear)(c); return; }
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
@@ -154,7 +154,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, v*f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
@@ -175,7 +175,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = exp(a->coef[0]);
   // if (errno) error(strerror(errno));
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1]; //, a0 = a->coef[0];
@@ -196,7 +196,7 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
@@ -214,8 +214,8 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   assert(a && s && c);
   ensure(a->d == s->d && a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
-  ord_t sto = MIN(s->mo,s->d->trunc),
-        cto = MIN(c->mo,c->d->trunc);
+  ord_t sto = MIN(s->mo,s->d->to),
+        cto = MIN(c->mo,c->d->to);
 
   NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
 
@@ -253,7 +253,7 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, sin(a->coef[0])); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0];
@@ -271,7 +271,7 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, cos(a->coef[0])); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0];
@@ -293,7 +293,7 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(ca != 0, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -330,7 +330,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(sa != 0, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -370,7 +370,7 @@ FUN(sinc) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = mad_num_sinc(a0);
 #endif
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
@@ -397,8 +397,8 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
   assert(a && sh && ch);
   ensure(a->d == sh->d && a->d == ch->d, "incompatible GTPSA (descriptors differ)");
 
-  ord_t sto = MIN(sh->mo,sh->d->trunc),
-        cto = MIN(ch->mo,ch->d->trunc);
+  ord_t sto = MIN(sh->mo,sh->d->to),
+        cto = MIN(ch->mo,ch->d->to);
 
   NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
   if (a->hi == 0) {
@@ -438,7 +438,7 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = sinh(a->coef[0]);
   if (errno) error(strerror(errno));
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0];
@@ -459,7 +459,7 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = cosh(a->coef[0]);
   if (errno) error(strerror(errno));
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0];
@@ -481,7 +481,7 @@ FUN(tanh) (const T *a, T *c)                     // checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(ca != 0, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -519,7 +519,7 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   ensure(f0 != 0, "invalid domain");
   f0 = 1/f0;
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -556,7 +556,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   if (errno) error(strerror(errno));
   // ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -602,7 +602,7 @@ FUN(acos) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -647,7 +647,7 @@ FUN(atan) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(a2 != -1, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -703,7 +703,7 @@ FUN(acot) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(a2 != -1, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -759,7 +759,7 @@ FUN(asinh) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(a2 != -1, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -794,7 +794,7 @@ FUN(acosh) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(SELECT(a0 > 1, a2 != 1), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -829,7 +829,7 @@ FUN(atanh) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(SELECT(fabs(a0) < 1, a2 != 1), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -871,7 +871,7 @@ FUN(acoth) (const T *a, T *c)
   if (errno) error(strerror(errno));
   // ensure(SELECT(fabs(a0) > 1, a0 != 0 && a2 != 1), "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
@@ -910,7 +910,7 @@ FUN(erf) (const T *a, T *c)
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
-  ord_t to = MIN(c->mo,c->d->trunc);
+  ord_t to = MIN(c->mo,c->d->to);
   if (to > 5) {
     ensure(to <= MANUAL_EXPANSION_ORD, "NYI");
     // TODO: use Faddeva function from MIT??

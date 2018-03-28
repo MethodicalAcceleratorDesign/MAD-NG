@@ -166,8 +166,8 @@ FUN(copy) (const T *t, T *dst)
   if (t == dst) return;
   ensure(t->d == dst->d, "incompatible GTPSAs descriptors");
   D *d = t->d;
-  if (d->trunc < t->lo) { FUN(clear)(dst); return; }
-  dst->hi = MIN3(t->hi, dst->mo, d->trunc);
+  if (d->to < t->lo) { FUN(clear)(dst); return; }
+  dst->hi = MIN3(t->hi, dst->mo, d->to);
   dst->lo = t->lo;
   dst->nz = mad_bit_hcut(t->nz, dst->hi);
 
