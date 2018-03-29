@@ -134,7 +134,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   NUM c;
   int nv = t->d->nv, cnt = -1;
   ord_t o, ords[nv];
-  FUN(clear)(t);
+  FUN(reset)(t);
 
 #ifndef MAD_CTPSA_IMPL
   while ((cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
@@ -185,14 +185,13 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   for (ord_t o = t->lo; o <= t->hi ; ++o) {
     if (!mad_bit_get(t->nz,o)) continue;
     for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
-      if (fabs(t->coef[i]) >= eps_) {
+      if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
-        fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
+      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
 #else
-        fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
+      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
-        print_ords(d->nv, d->To[i], stream_);
-      }
+      print_ords(d->nv, d->To[i], stream_);
     }
   }
 
