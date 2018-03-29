@@ -30,11 +30,12 @@ local ffi = require 'ffi'
 local istype   in ffi
 local min, max in math
 
-local _C, tostring, complex, monomial in MAD
+local _C, tostring, complex, vector, cvector, monomial in MAD
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar, is_string, is_table,
-      is_iterable, is_mappable, is_monomial, has_method in MAD.typeid
+local is_nil, is_number, is_integer, is_complex, is_scalar, is_string,
+      is_table, is_iterable, is_mappable, is_matrix, is_cmatrix,
+      is_monomial, has_method                                      in MAD.typeid
 
 -- tmp for returned values
 local cres = ffi.new 'complex[1]'
@@ -47,8 +48,7 @@ typedef unsigned int bit_t; // mad_bit.h
 struct desc { // warning: must be kept identical to C definition
   const int   id;         // index in list of registered descriptors
   const int   nmv, nv;    // number of mvars, number of all vars
-  const ord_t mo, ko, to; // maximum order for mvars and knobs (mo=max(mvar_ords[]))
-                          // truncation order for operations; always <= mo
+  const ord_t mo, ko, to; // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
   const ord_t
        *const mvar_ords,  // mvars orders[nmv] (for each TPSA in map)
        *const  var_ords;  //  vars orders[nv ] (max order for each monomial variable)
@@ -149,7 +149,7 @@ end
 
 local function tpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, tpsa = _C.mad_desc_tpsa_len(d, mo), nil
+  local len, tpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < _C.mad_alloc_threshold then
     tpsa = tpsa_ctor(len, d, mo, 0, mo) -- VLA
   else
@@ -166,7 +166,7 @@ end
 
 local function ctpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, ctpsa = _C.mad_desc_tpsa_len(d, mo), nil
+  local len, ctpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < (_C.mad_alloc_threshold/2) then
     ctpsa = ctpsa_ctor(len, d, mo, 0, mo)
   else
@@ -193,6 +193,7 @@ local function tpsa (td, mo_)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
+  local tbl
   if is_nil(td) then
     td      = desc_curr or desc(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
@@ -200,17 +201,22 @@ local function tpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  else
-    error("invalid argument #1 (GTPSA or descriptor expected)")
+  elseif is_table(td) or is_matrix(td) then
+    td, tbl = desc_curr or desc(mo_), td
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  return tpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local t = tpsa_alloc(td, max(0, min(mo_, td.mo)))
+  if tbl then t:setv(1,tbl) end
+  return t
 end
 
 local function ctpsa (td, mo_)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
+  local tbl
   if is_nil(td) then
     td      = desc_curr or desc(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
@@ -218,11 +224,15 @@ local function ctpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  else
-    error("invalid argument #1 (GTPSA or descriptor expected)")
+  elseif is_table(td) or is_cmatrix(td) then
+    td, tbl = desc_curr or desc(mo_), td
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local t = ctpsa_alloc(td, max(0, min(mo_, td.mo)))
+  if tbl then t:setv(1,tbl) end
+  return t
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -233,6 +243,16 @@ local function chksiz (r, x, y) -- add, sub, mul
          "incompatible GTPSA order or descriptor")
   return r
 end
+
+-- maxord, maxlen, ordlen, gtrunc, dump ---------------------------------------o
+
+MR.maxord = \x    -> _C.mad_desc_maxord(x.d)
+MR.maxlen = \x    -> _C.mad_desc_maxlen(x.d)
+MR.ordlen = \x,mo -> _C.mad_desc_ordlen(x.d, mo)
+MR.gtrunc = \x,to -> _C.mad_desc_gtrunc(x.d, to)
+
+MR.debug  = \x,nam_,fil_ => _C.mad_tpsa_debug (x, nam_, fil_) return x end
+MC.debug  = \x,nam_,fil_ => _C.mad_ctpsa_debug(x, nam_, fil_) return x end
 
 -- same, copy, clear, scalar --------------------------------------------------o
 
@@ -450,6 +470,51 @@ function MC.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
   local m = int_arr(n, tbl)
   _C.mad_ctpsa_setsm_r(x, n, m, a.re, a.im, b.re, b.im) return x
+end
+
+-- table/vector getters and setters -------------------------------------------o
+
+function MR.getv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_integer(a) then a = vector(a) end
+  assert(is_matrix (a), "invalid argument #3 (vector expected)")
+  _C.mad_tpsa_getv(x, i-1, a:size(), a.data)
+  return a
+end
+
+function MC.getv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_integer(a) then a = cvector(a) end
+  assert(is_cmatrix(a), "invalid argument #3 (cvector expected)")
+  _C.mad_ctpsa_getv(x, i-1, a:size(), a.data)
+  return a
+end
+
+function MR.setv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_matrix(a) then
+    _C.mad_tpsa_setv(x, i-1, a:size(), a.data)
+  elseif is_table(a) then
+    for j,v in ipairs(a) do
+      _C.mad_tpsa_seti(x, j+i-2, 0, v)
+    end
+  else error("invalid argument #3 (table or vector expected)")
+  end
+  return x
+end
+
+function MC.setv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_matrix(a) then
+    _C.mad_ctpsa_setv(x, i-1, a:size(), a.data)
+  elseif is_table(a) then
+    for j,v in ipairs(a) do
+      v = complex(v)
+      _C.mad_ctpsa_seti_r(x, j+i-2, 0, 0, v.re, v.im)
+    end
+  else error("invalid argument #3 (table or cvector expected)")
+  end
+  return x
 end
 
 -- conversion -----------------------------------------------------------------o
@@ -1444,7 +1509,7 @@ end
 
 -- I/O -----------------------------------------------------------------------o
 
-function MR.print(x, file_, name_, eps_)
+function MR.write (x, file_, name_, eps_)
   if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
     file_, name_, eps_ = nil, file_, name_   -- right shift
   end
@@ -1454,7 +1519,7 @@ function MR.print(x, file_, name_, eps_)
   _C.mad_tpsa_print(x, name_, eps_ or -1, file_) return x
 end
 
-function MC.print(x, file_, name_, eps_)
+function MC.write (x, file_, name_, eps_)
   if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
     file_, name_, eps_ = nil, file_, name_   -- right shift
   end
@@ -1462,6 +1527,13 @@ function MC.print(x, file_, name_, eps_)
     name_, eps_ = nil, name_                 -- right shift
   end
   _C.mad_ctpsa_print(x, name_, eps_ or -1, file_) return x
+end
+
+function MR.print (x, name_, eps_)
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_ -- right shift
+  end
+  return x:write(x, nil, name_, eps_)
 end
 
 function MR.read (_, file_)
@@ -1473,9 +1545,6 @@ function MC.read (_, file_)
   local x = ctpsa(_C.mad_ctpsa_scan_hdr(file_))
   _C.mad_ctpsa_scan_coef(x, file_) return x
 end
-
-MR.debug = _C.mad_tpsa_debug
-MC.debug = _C.mad_ctpsa_debug
 
 -- metamethods ----------------------------------------------------------------o
 
