@@ -36,11 +36,12 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
-  if (d->to < t->lo) { mad_tpsa_clear(c); return; }
+  if (d->to < t->lo) { mad_tpsa_reset(c); return; }
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->to);
-  c->nz = mad_bit_hcut(t->nz, c->hi);
+  c->nz = mad_bit_hcut(t->nz,c->hi);
+  c->coef[0] = 0;
 
   idx_t *pi = d->ord2idx;
   for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
@@ -54,11 +55,12 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
-  if (d->to < t->lo) { mad_tpsa_clear(c); return; }
+  if (d->to < t->lo) { mad_tpsa_reset(c); return; }
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->to);
-  c->nz = mad_bit_hcut(t->nz, c->hi);
+  c->nz = mad_bit_hcut(t->nz,c->hi);
+  c->coef[0] = 0;
 
   idx_t *pi = d->ord2idx;
   for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
@@ -77,11 +79,12 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
         hi = MAX(re->hi, im->hi);
 
   D *d = c->d;
-  if (d->to < lo) { mad_ctpsa_clear(c); return; }
+  if (d->to < lo) { mad_ctpsa_reset(c); return; }
 
-  c->lo  = lo;
-  c->hi  = MIN3(hi, c->mo, d->to);
-  c->nz  = mad_bit_hcut(mad_bit_add(re->nz, im->nz), c->hi);
+  c->lo = lo;
+  c->hi = MIN3(hi, c->mo, d->to);
+  c->nz = mad_bit_hcut(re->nz|im->nz,c->hi);
+  c->coef[0] = 0;
 
   idx_t *pi = d->ord2idx;
   switch(!!re_ + 2*!!im_) {
