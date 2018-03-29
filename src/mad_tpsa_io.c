@@ -147,7 +147,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
     #endif
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
-    if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c); // discard too high mononial
+    if (o <= t->mo)             // discard too high mononial
+     FUN(setm)(t,nv,ords, 0.0,c);
   }
 }
 
