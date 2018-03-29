@@ -41,10 +41,19 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 #define FUN(name)   MKNAME(mad_tpsa_,name)
 #define PFX(name)   name
 #define VAL(num)    num
-#define FMT         " %+6.4lE"
+#define FMT         "%+6.4lE"
 #define SELECT(R,C) R
 
 #endif
+
+static inline tpsa_t*
+mad_tpsa_reset (tpsa_t *t)
+{
+  t->lo = t->mo;
+  t->hi = t->nz = 0;
+  t->coef[0] = 0;
+  return t;
+}
 
 // --- end --------------------------------------------------------------------o
 
