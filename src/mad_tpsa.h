@@ -78,8 +78,8 @@ num_t   mad_tpsa_getsm   (const tpsa_t *t, ssz_t n, const int   m[n]); // sparse
 void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,          num_t v[n]);
 void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */                num_t a, num_t b);
 void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                   num_t a, num_t b);
-void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n], num_t a, num_t b);
 void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s   , num_t a, num_t b);
+void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n], num_t a, num_t b);
 void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n], num_t a, num_t b);
 void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const num_t v[n]);
 
@@ -96,7 +96,7 @@ void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
 num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
 num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
 void    mad_tpsa_der     (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
-void    mad_tpsa_derm    (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[]);
+void    mad_tpsa_derm    (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
 void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int n);  // TO CHECK n
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c);  // c += v*a, aliasing OK
@@ -151,9 +151,9 @@ void    mad_tpsa_logaxpsqrtbpcx2 (const tpsa_t *x, num_t a, num_t b, num_t c, tp
 void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void    mad_tpsa_compose (ssz_t sa, const tpsa_t *ma[], ssz_t sb, const tpsa_t *mb[], ssz_t sc, tpsa_t *mc[]);
-void    mad_tpsa_minv    (ssz_t sa, const tpsa_t *ma[],                               ssz_t sc, tpsa_t *mc[]);
-void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[],                               ssz_t sc, tpsa_t *mc[], int row_select[]);
+void    mad_tpsa_compose (ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const tpsa_t *mb[sb], ssz_t sc, tpsa_t *mc[sc]);
+void    mad_tpsa_minv    (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc]);
+void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc], int selected[sa]);
 
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
