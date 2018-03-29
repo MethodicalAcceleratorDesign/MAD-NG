@@ -128,7 +128,7 @@ void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *a, const ctpsa_t *b_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *a, const ctpsa_t *b_);
 void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
-void     mad_ctpsa_derm    (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[]);
+void     mad_ctpsa_derm    (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
 void     mad_ctpsa_poisson (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n);  // TO CHECK n
 
 void     mad_ctpsa_acc     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c += v*a, aliasing OK
@@ -216,9 +216,9 @@ void    mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                        num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[], ssz_t sb, const ctpsa_t *mb[], ssz_t sc, ctpsa_t *mc[]);
-void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[],                                ssz_t sc, ctpsa_t *mc[]);
-void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[],                                ssz_t sc, ctpsa_t *mc[], int row_select[]);
+void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc], int selected[sa]);
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
