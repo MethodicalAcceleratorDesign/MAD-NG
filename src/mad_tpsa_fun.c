@@ -29,9 +29,12 @@
 
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
+#define   MAD_TPSA_NOHELPER
+#include "mad_tpsa_impl.h"
 #else
 #include "mad_tpsa_impl.h"
-#include <complex.h>
+#define   MAD_TPSA_NOHELPER
+#include "mad_ctpsa_impl.h"
 #endif
 
 // --- local ------------------------------------------------------------------o
@@ -131,7 +134,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   if (errno) error(strerror(errno));
   // SELECT(ensure(a->coef[0] >= 0, "invalid domain"), );
 
-  if (a->coef[0] == 0) { FUN(clear)(c); return; }
+  if (a->coef[0] == 0) { FUN(reset)(c); return; }
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
@@ -565,12 +568,12 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_scl(c, -I, c);
 #else
-    ctpsa_t *t = GET_TMPC(c), *t2 = GET_TMPC(c);
-    mad_ctpsa_complex(a, NULL, t);
-    mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t2);
+    ctpsa_t *t1 = GET_TMPC(c), *t2 = GET_TMPC(c);
+    mad_ctpsa_complex(a, NULL, t1);
+    mad_ctpsa_logaxpsqrtbpcx2(t1, I, 1, -1, t2);
     mad_ctpsa_scl(t2, -I, t2);
     mad_ctpsa_real(t2, c);
-    REL_TMPRC(c,t2), REL_TMPRC(c,t);
+    REL_TMPC(t2), REL_TMPC(t1);
 #endif
     return;
   }
