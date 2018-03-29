@@ -951,8 +951,8 @@ mad_desc_mono_isvalid_m (const D *d, ssz_t n, const ord_t m[n])
 int
 mad_desc_mono_isvalid_s (const D *d, ssz_t n, str_t s)
 {
-  assert(s);
-  if (n <= 0 || n > 1000000) n = strlen(s);
+  assert(s && n <= 1000000);
+  if (n <= 0) n = strlen(s);
   ord_t m[n];
   n = mad_mono_str(n, m, s);
   return mad_desc_mono_isvalid_m(d, n, m);
@@ -990,6 +990,13 @@ mad_desc_mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
   return 0;
 }
 
+ord_t
+mad_desc_maxord (const D *d)
+{
+  assert(d);
+  return d->mo;
+}
+
 ssz_t
 mad_desc_maxlen (const D *d)
 {
@@ -997,11 +1004,12 @@ mad_desc_maxlen (const D *d)
   return d->nc;
 }
 
-ord_t
-mad_desc_maxord (const D *d)
+ssz_t
+mad_desc_ordlen (const D *d, ord_t mo)
 {
   assert(d);
-  return d->mo;
+  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  return d->ord2idx[mo+1];
 }
 
 ord_t
@@ -1018,14 +1026,6 @@ mad_desc_gtrunc (D *d, ord_t to)
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
   return d->to = to, orig;
-}
-
-ssz_t
-mad_desc_tpsa_len (const D *d, ord_t mo)
-{
-  assert(d);
-  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
-  return d->ord2idx[mo+1];
 }
 
 // --- ctors, dtor ------------------------------------------------------------o
