@@ -36,7 +36,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
-  if (d->to < t->lo) { mad_tpsa_reset(c); return; }
+  if (d->to < t->lo) { mad_tpsa_reset0(c); return; }
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->to);
@@ -55,7 +55,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   desc_t *d = t->d;
-  if (d->to < t->lo) { mad_tpsa_reset(c); return; }
+  if (d->to < t->lo) { mad_tpsa_reset0(c); return; }
 
   c->lo = t->lo;
   c->hi = MIN3(t->hi, c->mo, d->to);
@@ -79,7 +79,7 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
         hi = MAX(re->hi, im->hi);
 
   D *d = c->d;
-  if (d->to < lo) { mad_ctpsa_reset(c); return; }
+  if (d->to < lo) { mad_ctpsa_reset0(c); return; }
 
   c->lo = lo;
   c->hi = MIN3(hi, c->mo, d->to);
@@ -113,7 +113,7 @@ log_t mad_ctpsa_equt (const ctpsa_t *a, const tpsa_t *b, num_t tol)
 {
   assert(a && b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(a);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   log_t res = mad_ctpsa_equ(a, t, tol);
   REL_TMPC(t);
@@ -124,7 +124,7 @@ void mad_ctpsa_addt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_add(a, t, c);
   REL_TMPC(t);
@@ -134,7 +134,7 @@ void mad_ctpsa_subt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_sub(a, t, c);
   REL_TMPC(t);
@@ -144,7 +144,7 @@ void mad_ctpsa_tsub (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_sub(t, b, c);
   REL_TMPC(t);
@@ -154,7 +154,7 @@ void mad_ctpsa_mult (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_mul(a, t, c);
   REL_TMPC(t);
@@ -164,7 +164,7 @@ void mad_ctpsa_divt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_div(a, t, c);
   REL_TMPC(t);
@@ -174,7 +174,7 @@ void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_div(t, b, c);
   REL_TMPC(t);
@@ -184,7 +184,7 @@ void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int n)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_poisson(a, t, c, n);
   REL_TMPC(t);
@@ -194,7 +194,7 @@ void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n)
 {
   assert(a && b && c);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPC(c);
+  ctpsa_t *t = GET_TMPR(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_poisson(t, b, c, n);
   REL_TMPC(t);
