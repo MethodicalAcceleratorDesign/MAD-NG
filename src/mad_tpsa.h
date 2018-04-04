@@ -59,7 +59,8 @@ ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max order of all
 
 // initialization
-void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *dst);
+void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
+void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v);
 
@@ -161,6 +162,7 @@ tpsa_t* mad_tpsa_scan     (                                          FILE *strea
 desc_t* mad_tpsa_scan_hdr (                                          FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_,             FILE *stream_);
+log_t   mad_tpsa_is_valid (const tpsa_t *t);
 
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
 

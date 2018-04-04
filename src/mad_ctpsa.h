@@ -60,7 +60,8 @@ ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t1, const ctpsa_t *t2, ...);  // max order of all
 
 // initialization
-void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
+void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
+void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
@@ -226,6 +227,7 @@ ctpsa_t* mad_ctpsa_scan     (                                           FILE *st
 desc_t*  mad_ctpsa_scan_hdr (                                           FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                          FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_,             FILE *stream_);
+log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
 
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
 
