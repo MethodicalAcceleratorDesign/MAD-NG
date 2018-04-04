@@ -47,7 +47,7 @@ fun_fix_point (const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
   assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
 
-  T *acp = GET_TMPX(a);
+  T *acp = GET_TMPX(c);
   if (iter >=2) FUN(copy)(a,acp); // make copy before scaling for aliasing
 
   // iter 1
@@ -56,8 +56,8 @@ fun_fix_point (const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
 
   // iter 2..iter
   if (iter >= 2) {
-    T *pow = GET_TMPX(a);
-    T *tmp = GET_TMPX(a), *t;
+    T *pow = GET_TMPX(c);
+    T *tmp = GET_TMPX(c), *t;
     FUN(set0)(acp,0,0);  // clear a0
     FUN(copy)(acp,pow);  // already did ord 1
 
@@ -66,6 +66,8 @@ fun_fix_point (const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
       FUN(acc)(tmp,ord_coef[i],c);
       SWAP(pow,tmp,t);
     }
+
+    if ((iter-1) & 1) SWAP(pow,tmp,t); // enforce even number of swaps
     REL_TMPX(tmp), REL_TMPX(pow);
   }
   REL_TMPX(acp);
@@ -78,7 +80,7 @@ sincos_fix_point (const T *a, T *s, T *c, ord_t iter_s,
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
 
-  T *acp = GET_TMPX(a);
+  T *acp = GET_TMPX(c);
   ord_t iter = MAX(iter_s,iter_c);
   if (iter >= 2) FUN(copy)(a,acp); // make copy before scaling for aliasing
 
@@ -87,8 +89,8 @@ sincos_fix_point (const T *a, T *s, T *c, ord_t iter_s,
   FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
   if (iter >= 2) {
-    T *pow = GET_TMPX(a);
-    T *tmp = GET_TMPX(a), *t;
+    T *pow = GET_TMPX(c);
+    T *tmp = GET_TMPX(c), *t;
     FUN(set0)(acp,0,0);
     FUN(copy)(acp,pow);
 
@@ -98,6 +100,8 @@ sincos_fix_point (const T *a, T *s, T *c, ord_t iter_s,
       if (i <= iter_c) FUN(acc)(tmp,cos_coef[i],c);
       SWAP(pow,tmp,t);
     }
+
+    if ((iter-1) & 1) SWAP(pow,tmp,t); // enforce even number of swaps
     REL_TMPX(tmp), REL_TMPX(pow);
   }
   REL_TMPX(acp);
@@ -112,11 +116,13 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ensure(a->coef[0] != 0, "invalid domain");
 
-  ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c, v/a->coef[0]); return; }
+  NUM f0 = 1/a->coef[0];
 
-  NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
-  ord_coef[0] = _a0;
+  ord_t to = MIN(c->mo,c->d->to);
+  if (!to || a->hi == 0) { FUN(scalar)(c, v*f0); return; }
+
+  NUM ord_coef[to+1], _a0 = f0;
+  ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0;
 
@@ -129,20 +135,20 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  SELECT(ensure(a->coef[0] >= 0, "invalid domain"), );
 
   NUM f0 = sqrt(a->coef[0]);
-  if (errno) error(strerror(errno));
-  // SELECT(ensure(a->coef[0] >= 0, "invalid domain"), );
-
-  if (a->coef[0] == 0) { FUN(reset)(c); return; }
+//  if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
   NUM ord_coef[to+1], a0 = a->coef[0], _a0 = 1 / a0;
   ord_coef[0] = f0;
-  for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
+  if (a0)
+    for (ord_t o = 1; o <= to; ++o)
+      ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
+  else ord_coef[1] = to = 1;
 
   fun_fix_point(a,c,to,ord_coef);
 }
@@ -152,10 +158,10 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
   NUM f0 = 1/sqrt(a->coef[0]);
-  if (errno) error(strerror(errno));
-  // ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
+  // if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, v*f0); return; }
@@ -176,7 +182,6 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   NUM f0 = exp(a->coef[0]);
-  // if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
@@ -194,10 +199,10 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
 
   NUM f0 = log(a->coef[0]);
-  if (errno) error(strerror(errno));
-  // ensure(a->coef[0] SELECT(> 0, != 0), "invalid domain");
+  // if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
@@ -291,10 +296,10 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(cos(a->coef[0]) != 0, "invalid domain");
 
   NUM f0 = tan(a->coef[0]);
-  if (errno) error(strerror(errno));
-  // ensure(ca != 0, "invalid domain");
+//  if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
@@ -328,10 +333,10 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(sin(a->coef[0]) != 0, "invalid domain");
 
   NUM f0 = tan(M_PI_2 - a->coef[0]);
-  if (errno) error(strerror(errno));
-  // ensure(sa != 0, "invalid domain");
+//  if (errno) error(strerror(errno));
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
@@ -366,6 +371,7 @@ FUN(sinc) (const T *a, T *c)                     // checked for real and complex
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
+  // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
   NUM f0 = mad_cnum_sinc(a0);
@@ -376,20 +382,17 @@ FUN(sinc) (const T *a, T *c)                     // checked for real and complex
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c, f0); return; }
 
-  // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
   NUM ord_coef[to+1];
-  NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, fo = 1;
-  num_t aa = fabs(a0), fa = aa;
   ord_coef[0] = f0;
-  ord_coef[1] = fa < 1e-10 ? 0 : (ca-f0)*_a0;
-  int o = 2;
-  for (; o <= to; ++o) {
-    fa *= aa; if (fa < 1e-10) break;                   // check discontinuity !!
-    fo *= o & 1 ? o : -o;
-    ord_coef[o] = (-ord_coef[o-1] + (o & 1 ? ca : sa))*_a0 / fo;
-  }
-  for (; o <= to; ++o) // |a0^o| < 1e-10
-    ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
+  if (abs(f0) > 1) {
+    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, fo = 1;
+    for (int o = 1; o <= to; ++o) {
+      fo *= o & 1 ? o : -o;
+      ord_coef[o] = (-ord_coef[o-1] + (o & 1 ? ca : sa))*_a0 / fo;
+    }
+  } else
+    for (int o = 1; o <= to; ++o) // |a0| < 1e-10
+      ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
 
   fun_fix_point(a,c,to,ord_coef);
 }
@@ -568,7 +571,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_scl(c, -I, c);
 #else
-    ctpsa_t *t1 = GET_TMPC(c), *t2 = GET_TMPC(c);
+    ctpsa_t *t1 = GET_TMPR(c), *t2 = GET_TMPR(c);
     mad_ctpsa_complex(a, NULL, t1);
     mad_ctpsa_logaxpsqrtbpcx2(t1, I, 1, -1, t2);
     mad_ctpsa_scl(t2, -I, t2);
