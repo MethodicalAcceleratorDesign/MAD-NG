@@ -32,7 +32,7 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
   num_t   coef[];
 };
 
-// --- helpers ----------------------------------------------------------------o
+// --- macros -----------------------------------------------------------------o
 
 #ifndef MAD_TPSA_NOHELPER
 
@@ -46,13 +46,51 @@ struct tpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
 
 #endif
 
+// --- helpers ----------------------------------------------------------------o
+
 static inline tpsa_t*
-mad_tpsa_reset (tpsa_t *t)
+mad_tpsa_reset0 (tpsa_t *t)
 {
   t->lo = t->mo;
   t->hi = t->nz = 0;
   t->coef[0] = 0;
   return t;
+}
+
+static inline tpsa_t*
+mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
+{
+  if (t != r) {
+    r->lo = t->lo;
+    r->hi = MIN3(t->hi, r->mo, t->d->to);
+    r->nz = mad_bit_hcut(t->nz, r->hi);
+    if (r->lo) r->coef[0] = 0;
+  }
+  return r;
+}
+
+static inline tpsa_t*
+mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
+{
+  D *d = t->d;
+  int tid = omp_get_thread_num();
+  assert(d->ti[tid] < DESC_MAX_TMP);
+  tpsa_t *tmp = d->t[ tid*DESC_MAX_TMP + d->ti[tid]++ ];
+  TRC_TMP(printf("GET_TMPX%d[%d]: %p in %s()\n",
+                 tid, d->ti[tid]-1, (void*)tmp, func));
+  tmp->mo = t->mo;
+  return mad_tpsa_reset0(tmp);
+}
+
+static inline void
+mad_tpsa_reltmp (tpsa_t *tmp, const str_t func)
+{
+  D *d = tmp->d;
+  int tid = omp_get_thread_num();
+  TRC_TMP(printf("REL_TMPX%d[%d]: %p in %s()\n",
+                 tid, d->ti[tid]-1, (void*)tmp, func));
+  assert(d->t[ tid*DESC_MAX_TMP + d->ti[tid]-1 ] == tmp);
+  --d->ti[tid], tmp->mo = d->mo; // ensure stack-like usage of temps
 }
 
 // --- end --------------------------------------------------------------------o
