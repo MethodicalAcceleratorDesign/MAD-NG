@@ -46,7 +46,7 @@ ffi.cdef [[
 typedef unsigned int bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
-  const int   id;         // index in list of registered descriptors
+  const int   id, nth;    // index in list of registered descriptors, max #threads or 1
   const int   nmv, nv;    // number of mvars, number of all vars
   const ord_t mo, ko, to; // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
   const ord_t
@@ -246,10 +246,16 @@ end
 
 -- maxord, maxlen, ordlen, gtrunc, dump ---------------------------------------o
 
+MR.__len  = \x    -> _C.mad_tpsa_len (x)
+MC.__len  = \x    -> _C.mad_ctpsa_len(x)
+
 MR.maxord = \x    -> _C.mad_desc_maxord(x.d)
 MR.maxlen = \x    -> _C.mad_desc_maxlen(x.d)
-MR.ordlen = \x,mo -> _C.mad_desc_ordlen(x.d, mo)
+MR.ordlen = \x,mo -> _C.mad_desc_ordlen(x.d, mo or x.mo)
 MR.gtrunc = \x,to -> _C.mad_desc_gtrunc(x.d, to)
+
+MR.is_valid = \x  -> _C.mad_tpsa_is_valid (x)
+MC.is_valid = \x  -> _C.mad_ctpsa_is_valid(x)
 
 MR.debug  = \x,nam_,fil_ => _C.mad_tpsa_debug (x, nam_, fil_) return x end
 MC.debug  = \x,nam_,fil_ => _C.mad_ctpsa_debug(x, nam_, fil_) return x end
@@ -294,6 +300,30 @@ function MC.__copy (x, y_)
     if x ~= y_ then _C.mad_ctpsa_copy(y_, chksiz(x,y_)) end
   end
   return x
+end
+
+function MR.convert (x, y, tbl_)
+  assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
+  local n, m = 0
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    n = #tbl_
+    m = int_arr(n, tbl_)
+  end
+  _C.mad_tpsa_convert(x, y, n, m)
+  return y
+end
+
+function MC.convert (x, y)
+  assert(is_ctpsa(y), "invalid argument #2 (ctpsa expected)")
+  local n, m = 0
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    n = #tbl_
+    m = int_arr(n, tbl_)
+  end
+  _C.mad_ctpsa_convert(x, y, n, m)
+  return y
 end
 
 function MR.clear (x)
@@ -989,14 +1019,20 @@ function MR.scl (x, v, r) -- r = v*x
   _C.mad_tpsa_scl(x, v, r) return r
 end
 
-function MR.inv (x, v, r)  -- r = v/x
+function MR.inv (x, v_, r)  -- r = v/x
+  if is_tpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_inv(x, v, r) return r
+  _C.mad_tpsa_inv(x, v_ or 1, r) return r
 end
 
-function MR.invsqrt (x, v, r) -- r = v/sqrt(x)
+function MR.invsqrt (x, v_, r) -- r = v/sqrt(x)
+  if is_tpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_invsqrt(x, v, r) return r
+  _C.mad_tpsa_invsqrt(x, v_ or 1, r) return r
 end
 
 function MR.sqrt (x, r)
@@ -1184,14 +1220,22 @@ function MC.scl (t, v, r) -- r = v*x
   _C.mad_ctpsa_scl(t, v, r) return r
 end
 
-function MC.inv (x, v, r)  -- r = v/x
+function MC.inv (x, v_, r)  -- r = v/x
+  if is_ctpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_inv(x, v, r) return r
+  v_ = complex(v_ or 1)
+  _C.mad_ctpsa_inv_r(x, v_.re, v_.im, r) return r
 end
 
-function MC.invsqrt (x, v, r) -- r = v/sqrt(x)
+function MC.invsqrt (x, v_, r) -- r = v/sqrt(x)
+  if is_ctpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_invsqrt(x, v, r) return r
+  v_ = complex(v_ or 1)
+  _C.mad_ctpsa_invsqrt(x, v_.re, v_.im, r) return r
 end
 
 function MC.sqrt (x, r)
@@ -1533,7 +1577,7 @@ function MR.print (x, name_, eps_)
   if is_nil(eps_) and is_number(name_) then
     name_, eps_ = nil, name_ -- right shift
   end
-  return x:write(x, nil, name_, eps_)
+  return x:write(nil, name_, eps_)
 end
 
 function MR.read (_, file_)
@@ -1551,11 +1595,17 @@ end
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq, MR.  same, MR.  copy=
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq, MR.__same, MR.__copy
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq
 
-MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq, MC.  same, MC.  copy=
-MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq, MC.__same, MC.__copy
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq =
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq
+
+MR.  same, MR.  copy, MR.length =
+MR.__same, MR.__copy, MR.__len
+
+MC.  same, MC.  copy, MC.length =
+MC.__same, MC.__copy, MC.__len
 
 MR.__index = MR
 MC.__index = MC
