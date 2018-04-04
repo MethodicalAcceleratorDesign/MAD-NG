@@ -28,10 +28,10 @@
 
 // --- types ------------------------------------------------------------------o
 
-enum { DESC_MAX_TMP = 6 };
+enum { DESC_MAX_TMP = 5 };
 
 struct desc { // WARNING: needs to be identical with Lua for compatibility
-  int   id;          // index in list of registered descriptors
+  int   id, nth;     // index in list of registered descriptors, max #threads or 1
   int   nmv, nv;     // number of mvars, number of all vars
   ord_t mo, ko, to;  // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
   const ord_t
@@ -57,11 +57,10 @@ struct desc { // WARNING: needs to be identical with Lua for compatibility
 
   size_t size;       // bytes used by desc
 
-  // WARNING: temps must be used with care (internal side effects)
-  // mul[0], fix pts[1-3], div & funs[1-4], alg funs[1-3] for aliasing, conv[0 or 1]
-   tpsa_t * t[DESC_MAX_TMP]; // tmp for  tpsa
-  ctpsa_t *ct[DESC_MAX_TMP]; // tmp for ctpsa
-  idx_t ti, cti;     // index of tmp used
+  // permanent temporaries per thread for internal use
+   tpsa_t ** t;      // tmp for  tpsa
+  ctpsa_t **ct;      // tmp for ctpsa
+  idx_t *ti, *cti;   // index of tmp used
 };
 
 // --- interface --------------------------------------------------------------o
@@ -91,33 +90,21 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
   return ib*ia_size + ia;
 }
 
+#ifdef DEBUG
+#define CHECK_VALIDITY(t) if (!FUN(is_valid)(t)) FUN(debug)(t,__func__,0)
+#else
+#define CHECK_VALIDITY(t)
+#endif
+
 // --- macros for temporaries -------------------------------------------------o
 
-#define GET_TMPX(tp) \
-  (assert((tp)->d->PFX(ti) < DESC_MAX_TMP), \
-   TRC_TMP(printf("GET_TMPX[%d]: %p in %s("MKSTR(PFX())")\n", \
-        (tp)->d->PFX(ti), (void*)(tp)->d->PFX(t)[(tp)->d->PFX(ti)], __func__)),\
-   FUN(reset)((tp)->d->PFX(t)[(tp)->d->PFX(ti)++]))
+#define TRC_TMP(a) (void)func // a
 
-#define GET_TMPC(tp) \
-  (assert((tp)->d->cti < DESC_MAX_TMP), \
-   TRC_TMP(printf("GET_TMPC[%d]: %p in %s(c)\n", \
-                  (tp)->d->cti, (void*)(tp)->d->ct[(tp)->d->cti], __func__)), \
-   mad_ctpsa_reset((tp)->d->ct[(tp)->d->cti++]))
-
-#define REL_TMPX(tp) \
-  (assert((tp)->d->PFX(ti) > 0), \
-   TRC_TMP(printf("REL_TMPX[%d]: %p in %s("MKSTR(PFX())")\n", \
-                  (tp)->d->PFX(ti)-1, (void*)tp, __func__)), \
-   (tp)->d->PFX(t)[--(tp)->d->PFX(ti)] = (tp))
-
-#define REL_TMPC(tp) \
-  (assert((tp)->d->cti > 0), \
-   TRC_TMP(printf("REL_TMPC[%d]: %p in %s(c)\n", \
-                  (tp)->d->cti-1, (void*)tp, __func__)), \
-   (tp)->d->ct[--(tp)->d->cti] = (tp))
-
-#define TRC_TMP(a) a // (void)0
+#define GET_TMPX(t)       FUN(gettmp)(t, __func__)
+#define REL_TMPX(t)       FUN(reltmp)(t, __func__)
+#define GET_TMPC(t) mad_ctpsa_gettmp (t, __func__)
+#define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
+#define GET_TMPR(t) mad_ctpsa_gettmpr(t, __func__)
 
 // --- end --------------------------------------------------------------------o
 
