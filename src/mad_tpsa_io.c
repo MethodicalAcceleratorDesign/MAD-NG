@@ -134,7 +134,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   NUM c;
   int nv = t->d->nv, cnt = -1;
   ord_t o, ords[nv];
-  FUN(reset)(t);
+  FUN(reset0)(t);
 
 #ifndef MAD_CTPSA_IMPL
   while ((cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
@@ -143,7 +143,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
 #endif
 
     #ifdef DEBUG
-      printf("c=%.2f o=%d\n", c, o);
+      printf("c=" FMT ", o=%d\n", VAL(c), o);
     #endif
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
