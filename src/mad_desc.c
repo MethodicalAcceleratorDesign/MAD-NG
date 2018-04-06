@@ -798,9 +798,9 @@ del_temps (D *d)
 
 // --- descriptor management --------------------------------------------------o
 
-enum { TPSA_DESC_MAX = 50 };    // max number of simultaneous descriptors
+enum { MAX_TPSA_DESC = 50 };    // max number of simultaneous descriptors
 
-static D  *Ds[TPSA_DESC_MAX];
+static D  *Ds[MAX_TPSA_DESC];
 
 static inline void
 set_var_ords (D *d, const ord_t var_ords[])
@@ -910,11 +910,11 @@ get_desc (int nmv, const ord_t mvar_ords[nmv],
 {
   assert(mvar_ords && var_ords);
 
-  for (int i=0; i < TPSA_DESC_MAX; ++i)
+  for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, nv, var_ords, ko))
       return Ds[i];
 
-  for (int i=0; i < TPSA_DESC_MAX; ++i)
+  for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (!Ds[i]) {
       Ds[i] = desc_build(nmv, mvar_ords, nv, var_ords, ko);
       Ds[i]->id = i;
@@ -1124,6 +1124,13 @@ mad_desc_del (D *d)
   // remove descriptor from global array
   Ds[d->id] = NULL;
   mad_free(d);
+}
+
+void
+mad_desc_cleanup (void)
+{
+  for (idx_t i = 0; i < MAX_TPSA_DESC; ++i)
+    if (Ds[i]) mad_desc_del(Ds[i]);
 }
 
 // --- end --------------------------------------------------------------------o

@@ -57,6 +57,9 @@ ssz_t   mad_desc_maxlen (const desc_t *d); // ordlen(maxord) == maxlen
 ssz_t   mad_desc_ordlen (const desc_t *d, ord_t mo);
 ord_t   mad_desc_gtrunc (      desc_t *d, ord_t to);
 
+// global cleanup (warning: no GTSPA must still be in use!)
+void    mad_desc_cleanup (void);
+
 // --- end --------------------------------------------------------------------o
 
 #endif // MAD_DESC_H
