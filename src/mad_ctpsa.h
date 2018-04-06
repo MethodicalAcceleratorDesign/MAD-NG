@@ -109,7 +109,9 @@ void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_div     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
-void     mad_ctpsa_ipow    (const ctpsa_t *a,                   ctpsa_t *c, int n);
+void     mad_ctpsa_pow     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_powi    (const ctpsa_t *a, int            n, ctpsa_t *c);
+void     mad_ctpsa_pown    (const ctpsa_t *a, cnum_t         v, ctpsa_t *c);
 
 // operators with internal real-to-complex conversion
 log_t    mad_ctpsa_equt    (const ctpsa_t *a, const  tpsa_t *b, num_t tol);
@@ -164,6 +166,7 @@ void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 // functions without complex-by-value arguments
 void     mad_ctpsa_nrm1_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
 void     mad_ctpsa_nrm2_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
+void     mad_ctpsa_pown_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_acc_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_scl_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
