@@ -36,18 +36,19 @@
 /*
 GTPSA are dense within [lo,hi], nz[ord] is zero outside, coef[0] is always set
 ord in [lo,hi]: nz[ord] == 0 <=> all coef[ord] == 0
-ord in [lo,hi]: nz[ord] == 1 <=> any coef[ord] != 0
+ord in [lo,hi]: nz[ord] == 1 <=> any coef[ord] != 0 (or none)
                 nz[0  ] == 0 <=>     coef[0  ] == 0 && lo >= 1
                 nz[0  ] == 1 <=>     coef[0  ] != 0 && lo == 0
 GTPSA just initialized have lo=mo, hi=0, nz=0, coef[0]=0 (see reset)
 */
 
 static inline log_t
-FUN(check) (const T *t, idx_t *i_, ord_t *o_)
+FUN(check) (const T *t, ord_t *o_, idx_t *i_)
 {
-  ord_t o  = 0;
-  idx_t i  = -1;
-  log_t ok = TRUE;
+  ord_t o   = 0;
+  idx_t i   = -1;
+  log_t ok  = TRUE;
+  idx_t *pi = t->d->ord2idx;
 
   ok &= t->mo <= t->d->mo && t->mo > 0;
   ok &= t->hi <= t->mo;
@@ -56,26 +57,25 @@ FUN(check) (const T *t, idx_t *i_, ord_t *o_)
 
   if (!ok) goto ret;
 
-  idx_t *pi = t->d->ord2idx;
-  ord_t *po = t->d->ords;
-  for (o = 0; o < t->lo; ++o) {
+  for (; o < t->lo; ++o) {
     ok &= !mad_bit_get(t->nz,o);
     if (!ok) goto ret;
   }
-  for (i = pi[o]; i < pi[t->hi+1]; ++i) {
-    ok &= (!t->coef[i] && !mad_bit_get(t->nz,po[i])) ||
-          ( t->coef[i] &&  mad_bit_get(t->nz,po[i]));
+  for (; o <= t->hi; ++o) {
+    if (!mad_bit_get(t->nz,o))
+      for (i = pi[o]; i < pi[o+1]; ++i) {
+        ok &= !t->coef[i];
+        if (!ok) goto ret;
+      }
+  }
+  for (; o <= t->mo; ++o) {
+    ok &= !mad_bit_get(t->nz,o);
     if (!ok) goto ret;
   }
-  if (i < pi[t->mo+1])
-    for (o = po[i]; o <= t->mo; ++o) {
-      ok &= !mad_bit_get(t->nz,o);
-      if (!ok) goto ret;
-    }
 
 ret:
-  if (i_) *i_ = i > -1 && i < pi[t->hi+1] ?    i  : -1;
-  if (o_) *o_ = i > -1 && i < pi[t->hi+1] ? po[i] :  o;
+  if (o_) *o_ = o;
+  if (i_) *i_ = i < pi[o] ? pi[o] : i;
   return ok;
 }
 
@@ -93,8 +93,8 @@ FUN(debug) (const T *t, str_t name_, FILE *stream_)
   assert(t);
   if (!stream_) stream_ = stdout;
 
-  fprintf(stream_, "{ %s: nz=%d lo=%d hi=%d mo=%d",
-          name_ ? name_ : "??", t->nz,t->lo,t->hi,t->mo);
+  fprintf(stream_, "{ %s: lo=%d hi=%d mo=%d",
+          name_ ? name_ : "??", t->lo,t->hi,t->mo);
 
   ord_t  mo = MAX(0,MIN(t->mo,t->d->mo)); // avoid segfault if mo is corrupted
   idx_t *pi = t->d->ord2idx;
@@ -103,7 +103,7 @@ FUN(debug) (const T *t, str_t name_, FILE *stream_)
 
   ord_t o  = 0;
   idx_t i  = -1;
-  log_t ok = FUN(check)(t, &i, &o);
+  log_t ok = FUN(check)(t, &o, &i);
   if (ok)
     fprintf(stream_," }\n");
   else {
