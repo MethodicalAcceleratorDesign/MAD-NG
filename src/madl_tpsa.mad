@@ -31,6 +31,7 @@ local istype   in ffi
 local min, max in math
 
 local _C, tostring, complex, vector, cvector, monomial in MAD
+local log, exp in MAD.gmath
 
 -- To review
 local is_nil, is_number, is_integer, is_complex, is_scalar, is_string,
@@ -953,22 +954,90 @@ function MC.__div (x, y, r)
   error("invalid arguments (unsupported GTPSA operation '/')")
 end
 
--- pow
+-- pow = exp(y*log(x))
 
-function MR.__pow (x, n, r)
-  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
-  if x.hi == 0 then return x.coef[0]^n end       -- promote to num
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_ipow(x, r, n) return r
+function MR.__rpow_cpx (y, x, r)                 -- cpx ^ tpsa
+  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  local logx = log(x)
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_scl_r(r, logx.re, logx.im, r)
+  _C.mad_ctpsa_exp(r, r) return r
 end
 
-function MC.__pow (x, n, r)
-  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
-  if x.hi == 0 then return x.coef[0]^n end       -- promote to cpx
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_ipow(x, r, n) return r
+function MR.__pow (x, y, r)
+  if is_number(x) then                           -- num ^ tpsa
+    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_scl(y, log(x), r)
+    _C.mad_tpsa_exp(r, r) return r
+  elseif is_number(y) then                       -- tpsa ^ num
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    if is_integer(y)
+    then _C.mad_tpsa_powi(x, y, r) return r
+    else _C.mad_tpsa_pown(x, y, r) return r
+    end
+  elseif is_complex(y) then                      -- tpsa ^ cpx
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+  elseif is_ctpsa(y) then                        -- tpsa ^ ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_pow(r, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa ^ tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_pow(x, y, r) return r
+  elseif has_method(y, '__rpow_tpsa') then       -- tpsa ^ ?
+    return y:__rpow_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '^')")
+end
+
+function MC.__rpow_cpx (y, x, r)                 -- cpx ^ ctpsa
+  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  local logx = log(x)
+  _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
+  _C.mad_ctpsa_exp(r, r) return r
+end
+
+function MC.__pow (x, y, r)
+  if is_number(x) then                           -- num ^ ctpsa
+    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    local logx = log(complex(x))
+    _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
+    _C.mad_ctpsa_exp(r, r) return r
+  elseif is_number(y) then                       -- ctpsa ^ num
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    if is_integer(y)
+    then _C.mad_ctpsa_powi(x, y, r) return r
+    else y = complex(y)
+         _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+    end
+  elseif is_complex(y) then                      -- ctpsa ^ cpx
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+  elseif is_tpsa(y) then                         -- ctpsa ^ tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_complex(y, nil, r)
+    _C.mad_ctpsa_pow(x, r, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa ^ ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_pow(x, y, r) return r
+  elseif has_method(y, '__rpow_ctpsa') then      -- ctpsa ^ ?
+    return y:__rpow_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '^')")
 end
 
 -- tpsa functions -------------------------------------------------------------o
@@ -1145,16 +1214,6 @@ end
 function MR.sinc (x, r) -- sin(x)/x
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_sinc(x, r) return r
-end
-
-function MR.sirx (x, r) -- sinc(sqrt(x))
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_sirx(x, r) return r
-end
-
-function MR.corx (x, r) -- cos(sqrt(x))
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_corx(x, r) return r
 end
 
 function MR.erf (x, r)
@@ -1348,16 +1407,6 @@ end
 function MC.sinc (x, r) -- sin(x)/x
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_sinc(x, r) return r
-end
-
-function MC.sirx (x, r) -- sinc(sqrt(x))
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_sirx(x, r) return r
-end
-
-function MC.corx (x, r) -- cos(sqrt(x))
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_corx(x, r) return r
 end
 
 function MC.erf (x, r)
