@@ -28,7 +28,7 @@
 
 // --- types ------------------------------------------------------------------o
 
-enum { DESC_MAX_TMP = 5 };
+enum { DESC_MAX_TMP = 6 };
 
 struct desc { // WARNING: needs to be identical with Lua for compatibility
   int   id, nth;     // index in list of registered descriptors, max #threads or 1
