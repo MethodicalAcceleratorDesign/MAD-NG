@@ -70,6 +70,20 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 }
 
 static inline tpsa_t*
+mad_tpsa_updtnz (tpsa_t *t)
+{
+  idx_t *pi = t->d->ord2idx;
+  for (ord_t o = t->lo; o <= t->hi; ++o) {
+    if (mad_bit_get(t->nz,o)) {
+      idx_t i = pi[o];
+      while (i < pi[o+1] && !t->coef[i]) ++i;
+      if (i < pi[o+1]) t->nz = mad_bit_clr(t->nz, o);
+    }
+  }
+  return t;
+}
+
+static inline tpsa_t*
 mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 {
   D *d = t->d;
