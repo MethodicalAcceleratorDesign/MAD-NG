@@ -312,6 +312,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
   c->nz = mad_bit_hcut(c->nz|a->nz,c->hi);
+  if (c->lo) c->coef[0] = 0;
 
   CHECK_VALIDITY(c);
 }
@@ -459,7 +460,7 @@ FUN(div) (const T *a, const T *b, T *c)
 }
 
 void
-FUN(ipow) (const T *a, T *c, int n)
+FUN(powi) (const T *a, int n, T *c)
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -751,7 +752,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   c->nz = mad_bit_hcut(a->nz|b->nz,c->hi);
-  if (!c->lo) c->coef[0] = 0;
+  if (c->lo) c->coef[0] = 0;
 
   if (c3) FUN(set0)(c,1,c3);
 
