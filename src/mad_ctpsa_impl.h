@@ -75,7 +75,7 @@ mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 }
 
 static inline ctpsa_t*
-mad_ctpsa_updtnz (ctpsa_t *t)
+mad_ctpsa_update0 (ctpsa_t *t)
 {
   idx_t *pi = t->d->ord2idx;
   for (ord_t o = t->lo; o <= t->hi; ++o) {
@@ -98,7 +98,7 @@ mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
   TRC_TMP(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
                  tid, d->cti[tid]-1, (void*)tmp, func));
   tmp->mo = t->mo;
-  return mad_ctpsa_reset0(tmp);
+  return tmp; // mad_ctpsa_reset0(tmp);
 }
 
 static inline ctpsa_t*
@@ -115,7 +115,7 @@ mad_ctpsa_reltmp (ctpsa_t *tmp, const str_t func)
   TRC_TMP(printf("REL_TMPX%d[%d]: %p in %s(c)\n",
                  tid, d->cti[tid]-1, (void*)tmp, func));
   assert(d->ct[ tid*DESC_MAX_TMP + d->cti[tid]-1 ] == tmp);
-  --d->cti[tid], tmp->mo = d->mo; // ensure stack-like usage of temps
+  --d->cti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
 }
 
 // --- end --------------------------------------------------------------------o
