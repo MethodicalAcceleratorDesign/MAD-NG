@@ -181,7 +181,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c,f0); return; }
 
-  NUM ord_coef[to+1]; //, a0 = a->coef[0];
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (int o = 1; o <= to; ++o)
     ord_coef[o] = ord_coef[o-1] / o;
@@ -894,10 +894,10 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
 void
 FUN(erf) (const T *a, T *c)
 {
-  // ERF(X) is the integral from 0 to x from [2/sqrt(pi) * exp(-x*x)]
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
+  // erf(z) = 2/sqrt(pi) \int_0^z exp(-t^2) dt
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
   cnum_t f0 = mad_cnum_erf(a0, 0);
@@ -908,22 +908,11 @@ FUN(erf) (const T *a, T *c)
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c,f0); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) {
-    ensure(0, "NYI");
-  }
-
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI/exp(a2);
-
-  switch(to) {
-  case 6: ord_coef[6] = -a0*(1./6 + a2*(-2./9 + 2./45*a2)) *f1; /* FALLTHRU */
-  case 5: ord_coef[5] = (1./10 + a2*(-2./5 + 2./15*a2)) *f1;    /* FALLTHRU */
-  case 4: ord_coef[4] = -a0*(-1./2 + 1./3*a2) *f1;              /* FALLTHRU */
-  case 3: ord_coef[3] = (-1./3 + 2./3*a2) *f1;                  /* FALLTHRU */
-  case 2: ord_coef[2] = -a0 *f1;                                /* FALLTHRU */
-  case 1: ord_coef[1] = f1;                                     /* FALLTHRU */
-  case 0: ord_coef[0] = f0;                                     break;
-  assert(!"unexpected missing coefficients");
-  }
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI*exp(-a2);
+  ord_coef[0] = f0;
+  ord_coef[1] = f1;
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = -2*((o-2)*ord_coef[o-2]/(o-1) + ord_coef[o-1]*a0) / o;
 
   fun_fix_point(a,c,to,ord_coef);
 }
@@ -944,3 +933,46 @@ void FUN(pown_r) (const T *a, num_t v_re, num_t v_im, T *c)
 #endif
 
 // --- end --------------------------------------------------------------------o
+
+/*
+Recurrence of Taylor coefficients:
+----------------------------------
+(f(g(x)))`   = f`(g(x)).g`(x)
+(f(x).g(x))` = f`(x)g(x) + f(x)g`(x)
+
+-- erf(z) -----
+[0]  erf(z)
+[1] (erf(z))`    =     1
+[2] (erf(z))``   = -2*      z                                 = -2*(0*[0]+[1]*z)
+[3] (erf(z))```  = -2*(1 -2*z^2)                              = -2*(1*[1]+[2]*z)
+[4] (erf(z))^(4) = -2*(-4*z -2*(1-2*z^2)*z)                   = -2*(2*[2]+[3]*z)
+[5] (erf(z))^(5) = -2*(-6*(1-2*z^2) +4*(3*z-2*z^3)*z)         = -2*(3*[3]+[4]*z)
+[6] (erf(z))^(6) = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z)  = -2*(4*[4]+[5]*z)
+                   % *exp(-z^2) *2/sqrt(pi)
+{0} = 0
+{1} = 1 *exp(-z^2)
+(exp(-z^2))`
+    = exp`(-z^2).(-z^2)`
+{2} = -2*z *exp(-z^2)                                         = -2*(0*{0}+{1}*z)
+-2*(z*exp(-z^2))`
+    = -2*(z`*exp(-z^2) + z*(exp(-z^2))`)
+    = -2*(exp(-z^2) + z*(-2*z*exp(-z^2)))
+{3} = -2* (1 -2*z^2) *exp(-z^2)                               = -2*(1*{1}+{2}*z)
+-2*((1-2*z^2)*exp(-z^2))` =
+    = -2*((1-2*z^2)`*exp(-z^2) + (1-2*z^2)*(exp(-z^2))`)
+    = -2*(-4*z*exp(-z^2) + (1-2*z^2)*(-2*z*exp(-z^2)))
+{4} = -2*(-4*z -2*(1-2*z^2)*z) *exp(-z^2)                     = -2*(2*{2}+{3}*z)
+    =  4*(3*z-2*z^3) *exp(-z^2)
+4*((3*z-2*z^3)*exp(-z^2))` =
+    = 4*((3*z-2*z^3)`*exp(-z^2) + (3*z-2*z^3)*(exp(-z^2))`)
+    = 4*(3*(1-2*z^2)*exp(-z^2) + (3*z-2*z^3)*(-2*z*exp(-z^2)))
+{5} = -2*(3*-2*(1-2*z^2) + 4*(3*z-2*z^3)*z) *exp(-z^2)        = -2*(3*{3}+{4}*z)
+    = 4*(3-12*z^2+4*z^4) *exp(-z^2)
+4*((3-12*z^2+4*z^4)*exp(-z^2))` =
+    = 4*((3-12*z^2+4*z^4)`*exp(-z^2) + (3-12*z^2+4*z^4)*(exp(-z^2))`)
+    = 4*((-24*z+16*z^3)*exp(-z^2) + (3-12*z^2+4*z^4)*(-2*z*exp(-z^2)))
+    = 4*(-2*(12*z-8*z^3) -2*(3-12*z^2+4*z^4)*z) *exp(-z^2)
+{6} = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z) *exp(-z^2)    = -2*(4*{4}+{5}*z)
+    = 4*(-30*z+40*z^3-8*z^5) *exp(-z^2)
+...
+*/
