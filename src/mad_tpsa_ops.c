@@ -82,6 +82,8 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
   idx_t *pi = d->ord2idx, hod = d->mo/2;
   bit_t nza = a->nz, nzb = b->nz;
 
+//  printf("%s(%d,%d)\n", __func__, in_parallel, ocs[0]);
+
   for (ord_t i = 0; ocs[i]; ++i) {
     if (ocs[i] < c->lo || ocs[i] > c->hi+1 || (ocs[i] == c->hi+1 && !in_parallel))
 //    if (ocs[i] < c->lo || ocs[i] > c->hi + in_parallel)
@@ -100,32 +102,35 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
       ssz_t na = pi[oa+1] - pi[oa];
       ssz_t nb = pi[ob+1] - pi[ob];
       const idx_t *lc = d->L[oa*hod + ob];
-      assert(lc);
       const idx_t *idx[2] = { d->L_idx[oa*hod + ob][idx0],
-                              d->L_idx[oa*hod + ob][idx1]};
-      assert(idx[0] && idx[1]);
+                              d->L_idx[oa*hod + ob][idx1] };
+       assert(lc); assert(idx[0] && idx[1]);
 
       if (mad_bit_get(nza & nzb,oa) && mad_bit_get(nza & nzb,ob)) {
+//        printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_sym_mul(ca+pi[oa],cb+pi[ob], ca+pi[ob],cb+pi[oa], cc, na,nb, lc, idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_get(nza,oa) && mad_bit_get(nzb,ob)) {
+//        printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_asym_mul(ca+pi[oa],cb+pi[ob],cc, na,nb, lc, idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_get(nza,ob) && mad_bit_get(nzb,oa)) {
+//        printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
         hpoly_asym_mul(cb+pi[oa],ca+pi[ob],cc, na,nb, lc, idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
     }
-    // even oc, triang matrix
+    // even oc, diagonal case
     if (!(oc & 1) && mad_bit_get(nza & nzb,oc/2)) {
       ord_t hoc = oc/2;
       ssz_t nb = pi[hoc+1]-pi[hoc];
       const idx_t *lc = d->L[hoc*hod + hoc];
       const idx_t *idx[2] = { d->L_idx[hoc*hod + hoc][idx0],
                               d->L_idx[hoc*hod + hoc][idx1] };
-      assert(lc);
+      assert(lc); assert(idx[0] && idx[1]);
+//      printf("hpoly_diag_mul (%d) %2d+%2d=%2d\n", ocs[0], hoc,hoc,oc);
       hpoly_diag_mul(ca+pi[hoc],cb+pi[hoc],cc, nb, lc, idx);
       *cnz = mad_bit_set(*cnz,oc);
     }
@@ -142,19 +147,31 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
   for (int t = 0; t < d->nth; ++t)
     c_nzs[t] = c->nz;
 
-  #pragma omp parallel for
+//  printf("%s(%d)\n", __func__, d->nth);
+//  FUN(debug)(a,"ain",0);
+//  FUN(debug)(b,"bin",0);
+//  FUN(debug)(c,"cin",0);
+
+#pragma omp parallel for
   for (int t = 0; t < d->nth; ++t)
-    hpoly_mul(a, b, c, d->ocs[t], &c_nzs[t], TRUE);
+    hpoly_mul(a, b, c, d->ocs[1+t], &c_nzs[t], TRUE);
 
   for (int t = 0; t < d->nth; ++t)
     c->nz |= c_nzs[t];
+
+//  FUN(debug)(c,"cout",0);
 }
 #endif
 
 static inline void
 hpoly_mul_ser(const T *a, const T *b, T *c) // serial version
 {
+//  printf("%s(1)\n", __func__);
+//  FUN(debug)(a,"ain",0);
+//  FUN(debug)(b,"bin",0);
+//  FUN(debug)(c,"cin",0);
   hpoly_mul(a, b, c, c->d->ocs[0], &c->nz, FALSE);
+//  FUN(debug)(c,"cout",0);
 }
 
 // --- derivative helpers -----------------------------------------------------o
@@ -239,16 +256,14 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   for (ord_t oc = 1; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+ord)) {
       cc = c->coef + pi[oc];
-      if (oc < ord)
-        hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
-      else if (oc == ord)
-        hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
-      else
-        hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
+           if (oc <  ord) hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
+      else if (oc == ord) hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
+      else                hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
     }
   ord_t n = mad_bit_lowest(c->nz);
   c->lo = MIN(n,c->mo);
   c->hi = mad_bit_highest(c->nz);
+  if (c->lo) c->coef[0] = 0;
 }
 
 // --- binary ops -------------------------------------------------------------o
@@ -404,7 +419,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   }
 
   // order 2+
-  if (c->hi >= 2) {
+  if (c->hi > 1) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
     if (a0 && b0) TPSA_LINOP(b0*, +a0*, 2);
     else if (!b0) TPSA_LINOP( 0*, +a0*, 2);
@@ -415,23 +430,24 @@ FUN(mul) (const T *a, const T *b, T *r)
     if (b0) { c->nz |= mad_bit_lcut(a->nz,2); }
               c->nz  = mad_bit_hcut(c->nz,c_hi);
 
-    if (c_hi == 2 && mad_bit_get(a->nz & b->nz,1)) {
+    if (mad_bit_get(a->nz & b->nz,1)) {
       idx_t *pi = d->ord2idx, hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
-      const idx_t *idx[2] = { d->L_idx[hod+1][0],
-                              d->L_idx[hod+1][2] };
+      const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
       hpoly_diag_mul(a->coef+pi[1], b->coef+pi[1], c->coef, pi[2]-pi[1], lc, idx);
       c->nz = mad_bit_set(c->nz,2);
-      goto ret;
     }
 
-    #ifdef _OPENMP
-    if (c->hi >= 12)
-      hpoly_mul_par(a,b,c);
-    else
-    #endif
-      hpoly_mul_ser(a,b,c);
+    // order 3+
+    if (c->hi > 2) {
+      #ifdef _OPENMP
+      if (d->ord2idx[c->hi] >= 15000)
+        hpoly_mul_par(a,b,c);
+      else
+      #endif
+        hpoly_mul_ser(a,b,c);
+    }
   }
 
 ret:
