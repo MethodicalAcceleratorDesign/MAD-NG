@@ -42,7 +42,7 @@
 enum { MANUAL_EXPANSION_ORD = 6 };
 
 static inline void
-fun_fix_point (const T *a, T *c, ord_t iter, const NUM ord_coef[iter+1])
+fun_taylor (const T *a, T *c, ord_t iter, const NUM ord_coef[iter+1])
 {
   assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
@@ -74,9 +74,9 @@ fun_fix_point (const T *a, T *c, ord_t iter, const NUM ord_coef[iter+1])
 }
 
 static inline void
-sincos_fix_point (const T *a, T *s, T *c,
-                  ord_t iter_s, const NUM sin_coef[iter_s+1],
-                  ord_t iter_c, const NUM cos_coef[iter_c+1])
+sincos_taylor (const T *a, T *s, T *c,
+               ord_t iter_s, const NUM sin_coef[iter_s+1],
+               ord_t iter_c, const NUM cos_coef[iter_c+1])
 {
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
@@ -120,7 +120,7 @@ FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
   ord_t to = MIN3(n-1,c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c,coef[0]); return; }
 
-  fun_fix_point(a,c,to,coef);
+  fun_taylor(a,c,to,coef);
 }
 
 void
@@ -140,7 +140,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * f0;
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
   if (v != 1) FUN(scl)(c,v,c);
 }
 
@@ -161,7 +161,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-1);
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
   if (v != 1) FUN(scl)(c,v,c);
 }
 
@@ -182,7 +182,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -200,7 +200,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   for (int o = 1; o <= to; ++o)
     ord_coef[o] = ord_coef[o-1] / o;
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -221,7 +221,7 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0 / o * (o-1);
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -278,7 +278,7 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   for (ord_t o = 2; o <= cto; ++o )
     cos_coef[o] = -cos_coef[o-2] / (o*(o-1));
 
-  sincos_fix_point(a,s,c, sto,sin_coef, cto,cos_coef);
+  sincos_taylor(a,s,c, sto,sin_coef, cto,cos_coef);
 }
 
 void
@@ -297,7 +297,7 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -316,7 +316,7 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -351,7 +351,7 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -386,7 +386,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -432,7 +432,7 @@ FUN(sinc) (const T *a, T *c)                 // NOT checked for real and complex
       ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -469,7 +469,7 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
   for (int o = 2; o <= cto; ++o )
     cos_coef[o] = cos_coef[o-2] / (o*(o-1));
 
-  sincos_fix_point(a,sh,ch, sto,sin_coef, cto,cos_coef);
+  sincos_taylor(a,sh,ch, sto,sin_coef, cto,cos_coef);
 }
 
 void
@@ -488,7 +488,7 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = ord_coef[o-2] / (o*(o-1));
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -507,7 +507,7 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = ord_coef[o-2] / (o*(o-1));
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -540,7 +540,7 @@ FUN(tanh) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -575,7 +575,7 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -618,7 +618,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -661,7 +661,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -708,7 +708,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -759,7 +759,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -790,7 +790,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -823,7 +823,7 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -862,7 +862,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -902,7 +902,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   assert(!"unexpected missing coefficients");
   }
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 void
@@ -928,7 +928,7 @@ FUN(erf) (const T *a, T *c)
   for (int o = 2; o <= to; ++o)
     ord_coef[o] = -2*((o-2)*ord_coef[o-2]/(o-1) + ord_coef[o-1]*a0) / o;
 
-  fun_fix_point(a,c,to,ord_coef);
+  fun_taylor(a,c,to,ord_coef);
 }
 
 // --- without complex-by-value version ---------------------------------------o
