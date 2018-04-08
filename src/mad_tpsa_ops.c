@@ -81,16 +81,14 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
   NUM *cc = c->coef;
   idx_t *pi = d->ord2idx, hod = d->mo/2;
   bit_t nza = a->nz, nzb = b->nz;
+  ord_t lo = MAX(c->lo,3);
 
-//  printf("%s(%d,%d)\n", __func__, in_parallel, ocs[0]);
+//  printf("%s(%d,%d->%d)\n", __func__, in_parallel, ocs[0], lo);
 
-  for (ord_t i = 0; ocs[i]; ++i) {
-    if (ocs[i] < c->lo || ocs[i] > c->hi+1 || (ocs[i] == c->hi+1 && !in_parallel))
-//    if (ocs[i] < c->lo || ocs[i] > c->hi + in_parallel)
-      continue;
-
+  for (ord_t i = 0; ocs[i] >= lo; ++i) {
     ord_t oc = ocs[i];
     idx_t idx0 = 0, idx1 = 2;
+
     if (in_parallel && ocs[i] >= c->hi) {
       oc = c->hi;
       if (ocs[i] == c->hi) idx1 = 1;
@@ -144,17 +142,17 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
   D *d = c->d;
   bit_t c_nzs[d->nth];
 
-  for (int t = 0; t < d->nth; ++t)
-    c_nzs[t] = c->nz;
-
 //  printf("%s(%d)\n", __func__, d->nth);
 //  FUN(debug)(a,"ain",0);
 //  FUN(debug)(b,"bin",0);
 //  FUN(debug)(c,"cin",0);
 
 #pragma omp parallel for
-  for (int t = 0; t < d->nth; ++t)
-    hpoly_mul(a, b, c, d->ocs[1+t], &c_nzs[t], TRUE);
+  for (int t = 0; t < d->nth; ++t) {
+    c_nzs[t] = c->nz;
+    ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
+    hpoly_mul(a, b, c, &d->ocs[1+t][i], &c_nzs[t], TRUE);
+  }
 
   for (int t = 0; t < d->nth; ++t)
     c->nz |= c_nzs[t];
@@ -170,7 +168,9 @@ hpoly_mul_ser(const T *a, const T *b, T *c) // serial version
 //  FUN(debug)(a,"ain",0);
 //  FUN(debug)(b,"bin",0);
 //  FUN(debug)(c,"cin",0);
-  hpoly_mul(a, b, c, c->d->ocs[0], &c->nz, FALSE);
+
+  hpoly_mul(a, b, c, &c->d->ocs[0][c->d->mo-c->hi], &c->nz, FALSE);
+
 //  FUN(debug)(c,"cout",0);
 }
 
