@@ -687,7 +687,8 @@ static inline void
 get_ops(D *d, long long int ops[])
 {
   int *pi = d->ord2idx;
-  for (int o = 2; o <= d->mo; ++o) {
+  ops[0] = ops[1] = ops[2] = 0;
+  for (int o = 3; o <= d->mo; ++o) {
     ops[o] = 0;
     for (int j = 1; j <= (o-1)/2; ++j) {
       int oa = o-j, ob = j;            // oa > ob >= 1
@@ -699,10 +700,8 @@ get_ops(D *d, long long int ops[])
       ops[o] += (pi[ho+1]-pi[ho]) * (pi[ho+1]-pi[ho]);
     }
   }
-  if (d->mo >= 12) {
-    ops[d->mo]   /= 2;
-    ops[d->mo+1] = ops[d->mo];
-  }
+  ops[d->mo+1] = ops[d->mo]/2;
+  ops[d->mo]  -= ops[d->mo+1];
 }
 
 static inline int
@@ -721,38 +720,42 @@ get_min_dispatched_idx(int nb_threads, long long int dops[])
 static inline void
 build_dispatch (D *d)
 {
-  d->ocs = mad_malloc(d->nth * sizeof *(d->ocs));
-  d->size += d->nth * sizeof *(d->ocs);
+  // [0] serial(all), [1..nth] parallel(split)
+  int nth = d->nth + d->nth > 1;
 
-  int sizes[d->nth];
-  for (int t = 0; t < d->nth; ++t) {
-    d->ocs[t] = mad_calloc(d->mo, sizeof *d->ocs[t]);
-    d->size += d->mo * sizeof *d->ocs[t];
+  d->ocs = mad_malloc(nth * sizeof *(d->ocs));
+  d->size += nth * sizeof *(d->ocs);
+
+  int sizes[nth];
+  for (int t = 0; t < nth; ++t) {
+    d->ocs[t] = mad_calloc(d->mo, sizeof *d->ocs[0]);
+    d->size += (d->mo) * sizeof *d->ocs[0];
     sizes[t] = 0;
   }
 
-  long long int ops[d->mo+1], dops[d->nth];
-  memset(dops, 0, d->nth * sizeof *dops);
-  get_ops(d,ops);
+  long long int ops[d->mo+1], dops[nth];
+  memset(dops, 0, nth * sizeof *dops);
+  get_ops(d, ops);
 
-  if (d->nth == 1 || d->mo < 12) {
-    for (int o = d->mo; o >= 2; --o) {
-      d->ocs[0][sizes[0]++] = o;
-      dops[0] += ops[o];
-    }
+  // serial
+  for (int o = d->mo; o > 2; --o) {
+    d->ocs[0][sizes[0]++] = o;
+    dops[0] += ops[o];
   }
-  else {
-    for (int o = d->mo + 1; o >= 2; --o) {
-      int idx = get_min_dispatched_idx(d->nth,dops);
+  dops[0] += ops[d->mo+1];
+
+  // parallel
+  if (nth > 1)
+    for (int o = d->mo+1; o > 2; --o) {
+      int idx = get_min_dispatched_idx(d->nth,dops+1);
       assert(idx >= 0 && idx < d->nth);
-      d->ocs[idx][sizes[idx]++] = o;
-      dops[idx] += ops[o];
+      d->ocs[1+idx][sizes[1+idx]++] = o;
+      dops[1+idx] += ops[o];
     }
-  }
 
-#if DEBUG > 1
+#ifdef DEBUG
   printf("\nTHREAD DISPATCH:\n");
-  for (int t = 0; t < d->nth; ++t) {
+  for (int t = 0; t < nth; ++t) {
     printf("[%d]: ", t);
     for (int i = 0; d->ocs[t][i]; ++i)
       printf("%d ", d->ocs[t][i]);
@@ -1113,7 +1116,8 @@ mad_desc_del (D *d)
   }
 
   if (d->ocs) {
-    for (int t=0; t < d->nth; ++t)
+    int nth = d->nth + d->nth > 1;
+    for (int t=0; t < nth; ++t)
       mad_free(d->ocs[t]);
     mad_free(d->ocs);
   }
