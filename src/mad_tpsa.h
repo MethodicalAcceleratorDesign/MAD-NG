@@ -101,6 +101,7 @@ num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
 void    mad_tpsa_der     (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
 void    mad_tpsa_derm    (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
 void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int n);  // TO CHECK n
+void    mad_tpsa_taylor  (const tpsa_t *a, ssz_t n, const num_t coef[n], tpsa_t *c);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c);  // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c);  // c  = v*a

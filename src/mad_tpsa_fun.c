@@ -42,7 +42,7 @@
 enum { MANUAL_EXPANSION_ORD = 6 };
 
 static inline void
-fun_fix_point (const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
+fun_fix_point (const T *a, T *c, ord_t iter, const NUM ord_coef[iter+1])
 {
   assert(a && c && ord_coef);
   assert(iter >= 1); // ord 0 treated outside
@@ -74,8 +74,9 @@ fun_fix_point (const T *a, T *c, ord_t iter, NUM ord_coef[iter+1])
 }
 
 static inline void
-sincos_fix_point (const T *a, T *s, T *c, ord_t iter_s,
-                  NUM sin_coef[iter_s+1], ord_t iter_c, NUM cos_coef[iter_c+1])
+sincos_fix_point (const T *a, T *s, T *c,
+                  ord_t iter_s, const NUM sin_coef[iter_s+1],
+                  ord_t iter_c, const NUM cos_coef[iter_c+1])
 {
   assert(a && s && c && sin_coef && cos_coef);
   assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
@@ -108,6 +109,19 @@ sincos_fix_point (const T *a, T *s, T *c, ord_t iter_s,
 }
 
 // --- public -----------------------------------------------------------------o
+
+void
+FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
+{
+  assert(a && c && coef);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(n > 0, "invalid number of coefficients (>0 expected)");
+
+  ord_t to = MIN3(n-1,c->mo,c->d->to);
+  if (!to || a->hi == 0) { FUN(scalar)(c,coef[0]); return; }
+
+  fun_fix_point(a,c,to,coef);
+}
 
 void
 FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
