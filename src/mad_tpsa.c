@@ -100,18 +100,18 @@ FUN(debug) (const T *t, str_t name_, FILE *stream_)
   idx_t *pi = t->d->ord2idx;
   for (idx_t i = 0; i < pi[mo+1]; ++i)
     fprintf(stream_," [%d]=" FMT, i, VAL(t->coef[i]));
+  fprintf(stream_," }");
+
+  char bnz[sizeof(t->nz)*CHAR_BIT+1] = {0};
+  for (int b = 0; b <= mo; ++b)
+    bnz[b] = '0' + !!mad_bit_get(t->nz,b);
+  fprintf(stream_," nz=%s", bnz);
 
   ord_t o  = 0;
   idx_t i  = -1;
   log_t ok = FUN(check)(t, &o, &i);
-  if (ok)
-    fprintf(stream_," }\n");
-  else {
-    char bnz[sizeof(t->nz)*CHAR_BIT+1] = {0};
-    for (int b = 0; b <= mo; ++b)
-      bnz[b] = '0' + !!mad_bit_get(t->nz,b);
-    fprintf(stream_," } ** (o=%d, i=%d, nz=%s)\n", o, i, bnz);
-  }
+  if (!ok) fprintf(stream_," ** (o=%d, i=%d)", o, i);
+  fprintf(stream_,"\n");
 }
 
 // --- introspection ----------------------------------------------------------o
