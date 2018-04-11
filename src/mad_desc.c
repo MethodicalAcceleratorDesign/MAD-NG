@@ -721,7 +721,7 @@ static inline void
 build_dispatch (D *d)
 {
   // [0] serial(all), [1..nth] parallel(split)
-  int nth = d->nth + d->nth > 1;
+  int nth = d->nth + (d->nth > 1);
 
   d->ocs = mad_malloc(nth * sizeof *(d->ocs));
   d->size += nth * sizeof *(d->ocs);
@@ -745,13 +745,14 @@ build_dispatch (D *d)
   dops[0] += ops[d->mo+1];
 
   // parallel
-  if (nth > 1)
+  if (nth > 1) {
     for (int o = d->mo+1; o > 2; --o) {
       int idx = get_min_dispatched_idx(d->nth,dops+1);
       assert(idx >= 0 && idx < d->nth);
       d->ocs[1+idx][sizes[1+idx]++] = o;
       dops[1+idx] += ops[o];
     }
+  }
 
 #ifdef DEBUG
   printf("\nTHREAD DISPATCH:\n");
@@ -1116,7 +1117,7 @@ mad_desc_del (D *d)
   }
 
   if (d->ocs) {
-    int nth = d->nth + d->nth > 1;
+    int nth = d->nth + (d->nth > 1);
     for (int t=0; t < nth; ++t)
       mad_free(d->ocs[t]);
     mad_free(d->ocs);
