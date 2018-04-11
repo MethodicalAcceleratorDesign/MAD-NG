@@ -41,71 +41,107 @@
 
 enum { MANUAL_EXPANSION_ORD = 6 };
 
+#ifdef MAD_TPSA_TAYLOR_HORNER
+
 static inline void
-fun_taylor (const T *a, T *c, ord_t iter, const NUM ord_coef[iter+1])
+fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
 {
   assert(a && c && ord_coef);
-  assert(iter >= 1); // ord 0 treated outside
+  assert(n >= 1); // ord 0 treated outside
 
   T *acp = GET_TMPX(c);
-  if (iter >=2) FUN(copy)(a,acp); // make copy before scaling for aliasing
+  FUN(copy)(a,acp);               // copy of a
+  FUN(set0)(acp,0,0);             // (a-a_0)
+  FUN(scalar)(c,ord_coef[n]);     // f(a_n)
 
-  // iter 1
-  FUN(scl)(a, ord_coef[1], c);
-  FUN(set0)(c, 0, ord_coef[0]);
-
-  // iter 2..iter
-  if (iter >= 2) {
-    T *pow = GET_TMPX(c);
-    T *tmp = GET_TMPX(c), *t;
-    FUN(set0)(acp,0,0);  // clear a0
-    FUN(copy)(acp,pow);  // already did ord 1
-
-    for (ord_t i = 2; i <= iter; ++i) {
-      FUN(mul)(acp,pow,tmp);
-      FUN(acc)(tmp,ord_coef[i],c);
-      SWAP(pow,tmp,t);
-    }
-
-    if ((iter-1) & 1) SWAP(pow,tmp,t); // enforce even number of swaps
-    REL_TMPX(tmp), REL_TMPX(pow);
+  // Honer's method (slower by 50% - 100% because mul is always full order)
+  while (n-- > 0) {
+    FUN(mul)(acp,c,c);            //                    f^(n)(a_n)*(a-a_0)
+    FUN(set0)(c,1,ord_coef[n]);   // f^(n-1)(a_{n-1}) + f^(n)(a_n)*(a-a_0)
   }
   REL_TMPX(acp);
 }
 
+#else
+
+static inline void
+fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
+{
+  assert(a && c && ord_coef);
+  assert(n >= 1); // ord 0 treated outside
+
+  T *acp;
+  if (n >= 2) acp = GET_TMPX(c), FUN(copy)(a,acp);
+
+  // n=1
+  FUN(scl)(a, ord_coef[1], c);
+  FUN(set0)(c, 0, ord_coef[0]);    // f(a) + f'(a)(a-a0)
+
+  // n=2
+  if (n >= 2) {
+    T *pow = GET_TMPX(c);
+    FUN(set0)(acp,0,0);            //  a-a0
+    FUN(mul)(acp,acp,pow);         // (a-a0)^2
+    FUN(acc)(pow,ord_coef[2],c);   // f(a0) + f'(a0)(a-a0) + f"(a0)(a-a0)^2
+
+    // i=3..n
+    if (n >= 3) {
+      T *tmp = GET_TMPX(c), *t;
+
+      for (ord_t i = 3; i <= n; ++i) {
+        FUN(mul)(acp,pow,tmp);
+        FUN(acc)(tmp,ord_coef[i],c); // f(a0) + ... + f^(i)(a0)(a-a0)^i
+        SWAP(pow,tmp,t);
+      }
+
+      if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
+      REL_TMPX(tmp);
+    }
+    REL_TMPX(pow), REL_TMPX(acp);
+  }
+}
+#endif
+
 static inline void
 sincos_taylor (const T *a, T *s, T *c,
-               ord_t iter_s, const NUM sin_coef[iter_s+1],
-               ord_t iter_c, const NUM cos_coef[iter_c+1])
+               ord_t n_s, const NUM sin_coef[n_s+1],
+               ord_t n_c, const NUM cos_coef[n_c+1])
 {
   assert(a && s && c && sin_coef && cos_coef);
-  assert(iter_s >= 1 && iter_c >= 1);  // ord 0 treated outside
+  assert(n_s >= 1 && n_c >= 1);
 
-  T *acp = GET_TMPX(c);
-  ord_t iter = MAX(iter_s,iter_c);
-  if (iter >= 2) FUN(copy)(a,acp); // make copy before scaling for aliasing
+  T *acp;
+  ord_t n = MAX(n_s,n_c);
+  if (n >= 2) acp = GET_TMPX(c), FUN(copy)(a,acp);
 
-  // iter 1
+  // n=1
   FUN(scl)(a, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
   FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
-  if (iter >= 2) {
+  // n=2
+  if (n >= 2) {
     T *pow = GET_TMPX(c);
-    T *tmp = GET_TMPX(c), *t;
     FUN(set0)(acp,0,0);
-    FUN(copy)(acp,pow);
+    FUN(mul)(acp,acp,pow);
+    if (n_s >= 2) FUN(acc)(pow,sin_coef[2],s);
+    if (n_c >= 2) FUN(acc)(pow,cos_coef[2],c);
 
-    for (ord_t i = 2; i <= iter; ++i) {
-      FUN(mul)(acp,pow,tmp);
-      if (i <= iter_s) FUN(acc)(tmp,sin_coef[i],s);
-      if (i <= iter_c) FUN(acc)(tmp,cos_coef[i],c);
-      SWAP(pow,tmp,t);
+    // i=3..n
+    if (n >= 3) {
+      T *tmp = GET_TMPX(c), *t;
+
+      for (ord_t i = 3; i <= n; ++i) {
+        FUN(mul)(acp,pow,tmp);
+        if (n_s >= i) FUN(acc)(tmp,sin_coef[i],s);
+        if (n_c >= i) FUN(acc)(tmp,cos_coef[i],c);
+        SWAP(pow,tmp,t);
+      }
+
+      if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
+      REL_TMPX(tmp);
     }
-
-    if ((iter-1) & 1) SWAP(pow,tmp,t); // enforce even number of swaps
-    REL_TMPX(tmp), REL_TMPX(pow);
+    REL_TMPX(pow), REL_TMPX(acp);
   }
-  REL_TMPX(acp);
 }
 
 // --- public -----------------------------------------------------------------o
