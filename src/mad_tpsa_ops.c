@@ -84,7 +84,6 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
   ord_t lo = MAX(c->lo,3);
 
 //  printf("%s(%d,%d->%d)\n", __func__, in_parallel, ocs[0], lo);
-
   for (ord_t i = 0; ocs[i] >= lo; ++i) {
     ord_t oc = ocs[i];
     idx_t idx0 = 0, idx1 = 2;
@@ -142,7 +141,7 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
   D *d = c->d;
   bit_t c_nzs[d->nth];
 
-//  printf("%s(%d)\n", __func__, d->nth);
+//  printf("%s(%d)\n", __func__, c->d->nth);
 //  FUN(debug)(a,"ain",0);
 //  FUN(debug)(b,"bin",0);
 //  FUN(debug)(c,"cin",0);
@@ -441,11 +440,14 @@ FUN(mul) (const T *a, const T *b, T *r)
 
     // order 3+
     if (c->hi > 2) {
-      #ifdef _OPENMP
-      if (d->ord2idx[c->hi] >= 15000)
+#ifdef _OPENMP
+#ifdef MAD_TPSA_MUL_PAR
+      //if (c->hi >= 12)
+      if (d->ord2idx[c->hi+1] >= 1000000) // parallel mul is always slower...
         hpoly_mul_par(a,b,c);
       else
-      #endif
+#endif
+#endif
         hpoly_mul_ser(a,b,c);
     }
   }
