@@ -27,6 +27,7 @@ local filesys, mtable                                             in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil,
       assertEquals, assertErrorMsgContains, assertIs              in MAD.utest
 local is_sequence, is_element                                     in MAD.typeid
+local tblcpy                                                      in MAD.utility
 local drift, marker, sbend, quadrupole, sequence, bline, flags    in MAD.element
 local selected                                                    in flags
 
@@ -1551,8 +1552,6 @@ function TestSequence:testInitSimpleSpos()
   end
   assertEquals(seq:spos(1), 0 )
   assertEquals(seq:spos(6), 10)
-  assertEquals(seq:epos(1), 0 )
-  assertEquals(seq:epos(6), 10)
 end
 
 function TestSequence:testInitInvalidElem()
@@ -1613,6 +1612,40 @@ function TestSequence:testInitElemFromPos()
     local seq = sequence "seq" { refer = "entry", prv, elm, nxt }
     assertEquals(seq:epos(3), 2)
   end
+end
+
+function TestSequence:testInitElemFromPosInvalid()
+  local newParam = \ -> { refer = "entry",
+    drift "prv" { l = 1, at = 1 },
+    drift "elm" { l = 1, at = 1 },
+    drift "nxt" { l = 1, at = 3 },
+  }
+  local param
+  local msg   = {
+    "invalid from='selected' detected in sequence \z
+      'seq' for element 'elm' at index 3",
+    "invalid element position at s = 3m (negative drift -1m) \z
+      in sequence 'seq' for element 'nxt' at index 4",
+    "cycling dependencies detected in sequence 'seq' for element '?' at index 3",
+    "invalid refer to 'invalid' in sequence 'seq' for element '$start' at index 1",
+    "invalid from of 'none' in sequence 'seq' for element '?' at index ?",
+  }
+  param = newParam();
+  param[2].from = "selected"
+  assertErrorMsgContains(msg[1], sequence, "seq", param)
+  param = newParam();
+  param[2].from = "prev"
+  assertErrorMsgContains(msg[2], sequence, "seq", param)
+  param         = newParam();
+  param[2].from = "next"
+  param[3].from = "prev"
+  assertErrorMsgContains(msg[3], sequence, "seq", param)
+  param       = newParam();
+  param.refer = "invalid"
+  assertErrorMsgContains(msg[4], sequence, "seq", param)
+  param         = newParam();
+  param[2].from = "none"
+  assertErrorMsgContains(msg[5], sequence, "seq", param)
 end
 
 -- end ------------------------------------------------------------------------o
