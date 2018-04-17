@@ -61,7 +61,7 @@ local _dflt = {
 }
 
 local tmpfolder = "TMP_MAD_PLOT/"
-local tmplock   = tmpfolder .. "madplot.lock"
+local tmplock   = "TMP_MAD_PLOT.lock"
 
 -- tmp files ------------------------------------------------------------------o
 
@@ -69,25 +69,37 @@ local _handlepool, max_tmp_file = {}, 25
 local _filepool, lock
 
 -- lock for atomic operation (blocking)
-local function plot_lock ()
-  if not fileexists(tmpfolder) then
+local function plot_lock (folder)
+  lock = assert(io.open(tmplock, "w"))
+  while not filesys.lock(lock, "w") do sleep(100) end
+  if not fileexists(tmpfolder) and folder ~= false then
     local status, msg = filesys.mkdir(tmpfolder)
-    if not status and msg~="File exists" then
-      error("couldn't create TMP_MAD_PLOT")
+    if not status then
+      error("couldn't create TMP_MAD_PLOT : " .. msg)
     end
   end
-  if not lock then lock = assert(io.open(tmplock, "w")) end
-  while not filesys.lock(lock, "w") do sleep(100) end
 end
 
 -- unlock for atomic operation
-local function plot_unlock ()
+local function plot_unlock (folder)
+  if fileexists(tmpfolder) and folder == true then
+    local status, msg = filesys.rmdir(tmpfolder)
+    if not status then
+      error("couldn't delete TMP_MAD_PLOT : " .. msg)
+    end
+  end
+  os.remove(tmplock)
   filesys.unlock(lock)
 end
 
 -- clear the list of handle of non-existing file
 local function clear_handle (sid_)
-  plot_lock()
+  plot_lock(false)
+  if not fileexists(tmpfolder) then
+    _handlepool = {}
+    plot_unlock()
+    return false
+  end
   local isbusy = false
   for fname,v in pairs(_handlepool) do
     if not fileexists(fname) then
@@ -103,19 +115,23 @@ end
 -- remove unused tmp file
 local function clean_tmp ()
   if not fileexists(tmpfolder) then return end
-  plot_lock()
+  plot_lock(false)
+  if not fileexists(tmpfolder) then plot_unlock() return end
+  local delfolder = true
   for name in filesys.dir(tmpfolder) do
     if string.find(name, "madplot%-%d+") then
       local fname = tmpfolder .. name
       local file  = io.open(fname)
       if file and filesys.lock(file, "r") and not _handlepool[fname] then
         os.remove(fname)
+      else
+        delfolder = false
       end
       if file then file:close() end
     end
   end
   _filepool = nil
-  plot_unlock()
+  plot_unlock(delfolder)
   clear_handle()
 end
 
@@ -139,12 +155,13 @@ local plot_atexit = \ atexit(clean_tmp)
 local function get_tmpfile(sid)
   runonce(plot_atexit)
   if not is_rawtable(_filepool) then setup_files() end
-  plot_lock()
   local fname = false
   while true do
+    plot_lock()
     fname = table.remove(_filepool)
     if fname and not fileexists(fname) then break end
-    plot_unlock(); sleep(100); plot_lock()
+    plot_unlock();
+    sleep(100);
     setup_files()
   end
   local file = assert(io.open(fname, "w"))
