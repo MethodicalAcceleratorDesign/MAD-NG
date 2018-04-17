@@ -30,11 +30,13 @@ local ffi = require 'ffi'
 local istype   in ffi
 local min, max in math
 
-local _C, tostring, complex, monomial in MAD
+local _C, tostring, complex, vector, cvector, monomial in MAD
+local log, exp in MAD.gmath
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar, is_string, is_table,
-      is_iterable, is_mappable, is_monomial, has_method in MAD.typeid
+local is_nil, is_number, is_integer, is_complex, is_scalar, is_string,
+      is_table, is_iterable, is_mappable, is_matrix, is_cmatrix,
+      is_monomial, has_method                                      in MAD.typeid
 
 -- tmp for returned values
 local cres = ffi.new 'complex[1]'
@@ -45,10 +47,9 @@ ffi.cdef [[
 typedef unsigned int bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
-  const int   id;         // index in list of registered descriptors
+  const int   id, nth;    // index in list of registered descriptors, max #threads or 1
   const int   nmv, nv;    // number of mvars, number of all vars
-  const ord_t mo, ko,     // maximum order for mvars and knobs (mo=max(mvar_ords[]))
-              trunc;      // truncation order for operations; always <= mo
+  const ord_t mo, ko, to; // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
   const ord_t
        *const mvar_ords,  // mvars orders[nmv] (for each TPSA in map)
        *const  var_ords;  //  vars orders[nv ] (max order for each monomial variable)
@@ -149,7 +150,7 @@ end
 
 local function tpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, tpsa = _C.mad_desc_tpsa_len(d, mo), nil
+  local len, tpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < _C.mad_alloc_threshold then
     tpsa = tpsa_ctor(len, d, mo, 0, mo) -- VLA
   else
@@ -166,7 +167,7 @@ end
 
 local function ctpsa_alloc (d, mo)
   assert(is_desc(d), "invalid argument #1 (GTPSA descriptor expected)")
-  local len, ctpsa = _C.mad_desc_tpsa_len(d, mo), nil
+  local len, ctpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < (_C.mad_alloc_threshold/2) then
     ctpsa = ctpsa_ctor(len, d, mo, 0, mo)
   else
@@ -193,6 +194,7 @@ local function tpsa (td, mo_)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
+  local tbl
   if is_nil(td) then
     td      = desc_curr or desc(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
@@ -200,17 +202,22 @@ local function tpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  else
-    error("invalid argument #1 (GTPSA or descriptor expected)")
+  elseif is_table(td) or is_matrix(td) then
+    td, tbl = desc_curr or desc(mo_), td
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  return tpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local t = tpsa_alloc(td, max(0, min(mo_, td.mo)))
+  if tbl then t:setv(1,tbl) end
+  return t
 end
 
 local function ctpsa (td, mo_)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
+  local tbl
   if is_nil(td) then
     td      = desc_curr or desc(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
@@ -218,11 +225,15 @@ local function ctpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  else
-    error("invalid argument #1 (GTPSA or descriptor expected)")
+  elseif is_table(td) or is_cmatrix(td) then
+    td, tbl = desc_curr or desc(mo_), td
+    mo_     = mo_ or td.mo       -- mo = d.mo
+  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local t = ctpsa_alloc(td, max(0, min(mo_, td.mo)))
+  if tbl then t:setv(1,tbl) end
+  return t
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -233,6 +244,22 @@ local function chksiz (r, x, y) -- add, sub, mul
          "incompatible GTPSA order or descriptor")
   return r
 end
+
+-- maxord, maxlen, ordlen, gtrunc, dump ---------------------------------------o
+
+MR.__len  = \x    -> _C.mad_tpsa_len (x)
+MC.__len  = \x    -> _C.mad_ctpsa_len(x)
+
+MR.maxord = \x    -> _C.mad_desc_maxord(x.d)
+MR.maxlen = \x    -> _C.mad_desc_maxlen(x.d)
+MR.ordlen = \x,mo -> _C.mad_desc_ordlen(x.d, mo or x.mo)
+MR.gtrunc = \x,to -> _C.mad_desc_gtrunc(x.d, to)
+
+MR.is_valid = \x  -> _C.mad_tpsa_is_valid (x)
+MC.is_valid = \x  -> _C.mad_ctpsa_is_valid(x)
+
+MR.debug  = \x,nam_,fil_ => _C.mad_tpsa_debug (x, nam_, fil_) return x end
+MC.debug  = \x,nam_,fil_ => _C.mad_ctpsa_debug(x, nam_, fil_) return x end
 
 -- same, copy, clear, scalar --------------------------------------------------o
 
@@ -274,6 +301,30 @@ function MC.__copy (x, y_)
     if x ~= y_ then _C.mad_ctpsa_copy(y_, chksiz(x,y_)) end
   end
   return x
+end
+
+function MR.convert (x, y, tbl_)
+  assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
+  local n, m = 0
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    n = #tbl_
+    m = int_arr(n, tbl_)
+  end
+  _C.mad_tpsa_convert(x, y, n, m)
+  return y
+end
+
+function MC.convert (x, y)
+  assert(is_ctpsa(y), "invalid argument #2 (ctpsa expected)")
+  local n, m = 0
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    n = #tbl_
+    m = int_arr(n, tbl_)
+  end
+  _C.mad_ctpsa_convert(x, y, n, m)
+  return y
 end
 
 function MR.clear (x)
@@ -450,6 +501,51 @@ function MC.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
   local m = int_arr(n, tbl)
   _C.mad_ctpsa_setsm_r(x, n, m, a.re, a.im, b.re, b.im) return x
+end
+
+-- table/vector getters and setters -------------------------------------------o
+
+function MR.getv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_integer(a) then a = vector(a) end
+  assert(is_matrix (a), "invalid argument #3 (vector expected)")
+  _C.mad_tpsa_getv(x, i-1, a:size(), a.data)
+  return a
+end
+
+function MC.getv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_integer(a) then a = cvector(a) end
+  assert(is_cmatrix(a), "invalid argument #3 (cvector expected)")
+  _C.mad_ctpsa_getv(x, i-1, a:size(), a.data)
+  return a
+end
+
+function MR.setv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_matrix(a) then
+    _C.mad_tpsa_setv(x, i-1, a:size(), a.data)
+  elseif is_table(a) then
+    for j,v in ipairs(a) do
+      _C.mad_tpsa_seti(x, j+i-2, 0, v)
+    end
+  else error("invalid argument #3 (table or vector expected)")
+  end
+  return x
+end
+
+function MC.setv (x, i, a)
+  assert(is_integer(i), "invalid argument #2 (integer expected)")
+  if is_matrix(a) then
+    _C.mad_ctpsa_setv(x, i-1, a:size(), a.data)
+  elseif is_table(a) then
+    for j,v in ipairs(a) do
+      v = complex(v)
+      _C.mad_ctpsa_seti_r(x, j+i-2, 0, 0, v.re, v.im)
+    end
+  else error("invalid argument #3 (table or cvector expected)")
+  end
+  return x
 end
 
 -- conversion -----------------------------------------------------------------o
@@ -858,22 +954,90 @@ function MC.__div (x, y, r)
   error("invalid arguments (unsupported GTPSA operation '/')")
 end
 
--- pow
+-- pow = exp(y*log(x))
 
-function MR.__pow (x, n, r)
-  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
-  if x.hi == 0 then return x.coef[0]^n end       -- promote to num
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_ipow(x, r, n) return r
+function MR.__rpow_cpx (y, x, r)                 -- cpx ^ tpsa
+  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to num
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
+  local logx = log(x)
+  _C.mad_ctpsa_complex(y, nil, r)
+  _C.mad_ctpsa_scl_r(r, logx.re, logx.im, r)
+  _C.mad_ctpsa_exp(r, r) return r
 end
 
-function MC.__pow (x, n, r)
-  assert(is_scalar(n), "invalid argument #2 (scalar expected)")
-  if x.hi == 0 then return x.coef[0]^n end       -- promote to cpx
-  assert(is_integer(n), "invalid arguments (unsupported GTPSA operation '^')")
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_ipow(x, r, n) return r
+function MR.__pow (x, y, r)
+  if is_number(x) then                           -- num ^ tpsa
+    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to num
+    r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
+    _C.mad_tpsa_scl(y, log(x), r)
+    _C.mad_tpsa_exp(r, r) return r
+  elseif is_number(y) then                       -- tpsa ^ num
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+    r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+    if is_integer(y)
+    then _C.mad_tpsa_powi(x, y, r) return r
+    else _C.mad_tpsa_pown(x, y, r) return r
+    end
+  elseif is_complex(y) then                      -- tpsa ^ cpx
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+  elseif is_ctpsa(y) then                        -- tpsa ^ ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_complex(x, nil, r)
+    _C.mad_ctpsa_pow(r, y, r) return r
+  elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa ^ tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_tpsa_pow(x, y, r) return r
+  elseif has_method(y, '__rpow_tpsa') then       -- tpsa ^ ?
+    return y:__rpow_tpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '^')")
+end
+
+function MC.__rpow_cpx (y, x, r)                 -- cpx ^ ctpsa
+  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to cpx
+  r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+  local logx = log(x)
+  _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
+  _C.mad_ctpsa_exp(r, r) return r
+end
+
+function MC.__pow (x, y, r)
+  if is_number(x) then                           -- num ^ ctpsa
+    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to cpx
+    r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
+    local logx = log(complex(x))
+    _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
+    _C.mad_ctpsa_exp(r, r) return r
+  elseif is_number(y) then                       -- ctpsa ^ num
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    if is_integer(y)
+    then _C.mad_ctpsa_powi(x, y, r) return r
+    else y = complex(y)
+         _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+    end
+  elseif is_complex(y) then                      -- ctpsa ^ cpx
+    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
+  elseif is_tpsa(y) then                         -- ctpsa ^ tpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_complex(y, nil, r)
+    _C.mad_ctpsa_pow(x, r, r) return r
+  elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa ^ ctpsa
+    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+    r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
+    _C.mad_ctpsa_pow(x, y, r) return r
+  elseif has_method(y, '__rpow_ctpsa') then      -- ctpsa ^ ?
+    return y:__rpow_ctpsa(x, r)
+  end
+  error("invalid arguments (unsupported GTPSA operation '^')")
 end
 
 -- tpsa functions -------------------------------------------------------------o
@@ -924,14 +1088,20 @@ function MR.scl (x, v, r) -- r = v*x
   _C.mad_tpsa_scl(x, v, r) return r
 end
 
-function MR.inv (x, v, r)  -- r = v/x
+function MR.inv (x, v_, r)  -- r = v/x
+  if is_tpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_inv(x, v, r) return r
+  _C.mad_tpsa_inv(x, v_ or 1, r) return r
 end
 
-function MR.invsqrt (x, v, r) -- r = v/sqrt(x)
+function MR.invsqrt (x, v_, r) -- r = v/sqrt(x)
+  if is_tpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_invsqrt(x, v, r) return r
+  _C.mad_tpsa_invsqrt(x, v_ or 1, r) return r
 end
 
 function MR.sqrt (x, r)
@@ -1046,16 +1216,6 @@ function MR.sinc (x, r) -- sin(x)/x
   _C.mad_tpsa_sinc(x, r) return r
 end
 
-function MR.sirx (x, r) -- sinc(sqrt(x))
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_sirx(x, r) return r
-end
-
-function MR.corx (x, r) -- cos(sqrt(x))
-  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
-  _C.mad_tpsa_corx(x, r) return r
-end
-
 function MR.erf (x, r)
   r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
   _C.mad_tpsa_erf(x, r) return r
@@ -1119,14 +1279,22 @@ function MC.scl (t, v, r) -- r = v*x
   _C.mad_ctpsa_scl(t, v, r) return r
 end
 
-function MC.inv (x, v, r)  -- r = v/x
+function MC.inv (x, v_, r)  -- r = v/x
+  if is_ctpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_inv(x, v, r) return r
+  v_ = complex(v_ or 1)
+  _C.mad_ctpsa_inv_r(x, v_.re, v_.im, r) return r
 end
 
-function MC.invsqrt (x, v, r) -- r = v/sqrt(x)
+function MC.invsqrt (x, v_, r) -- r = v/sqrt(x)
+  if is_ctpsa(v_) and is_nil(r) then
+    v_, r = nil, v_ -- right shift
+  end
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_invsqrt(x, v, r) return r
+  v_ = complex(v_ or 1)
+  _C.mad_ctpsa_invsqrt(x, v_.re, v_.im, r) return r
 end
 
 function MC.sqrt (x, r)
@@ -1239,16 +1407,6 @@ end
 function MC.sinc (x, r) -- sin(x)/x
   r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
   _C.mad_ctpsa_sinc(x, r) return r
-end
-
-function MC.sirx (x, r) -- sinc(sqrt(x))
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_sirx(x, r) return r
-end
-
-function MC.corx (x, r) -- cos(sqrt(x))
-  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
-  _C.mad_ctpsa_corx(x, r) return r
 end
 
 function MC.erf (x, r)
@@ -1444,7 +1602,7 @@ end
 
 -- I/O -----------------------------------------------------------------------o
 
-function MR.print(x, file_, name_, eps_)
+function MR.write (x, file_, name_, eps_)
   if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
     file_, name_, eps_ = nil, file_, name_   -- right shift
   end
@@ -1454,7 +1612,7 @@ function MR.print(x, file_, name_, eps_)
   _C.mad_tpsa_print(x, name_, eps_ or -1, file_) return x
 end
 
-function MC.print(x, file_, name_, eps_)
+function MC.write (x, file_, name_, eps_)
   if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
     file_, name_, eps_ = nil, file_, name_   -- right shift
   end
@@ -1462,6 +1620,13 @@ function MC.print(x, file_, name_, eps_)
     name_, eps_ = nil, name_                 -- right shift
   end
   _C.mad_ctpsa_print(x, name_, eps_ or -1, file_) return x
+end
+
+function MR.print (x, name_, eps_)
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_ -- right shift
+  end
+  return x:write(nil, name_, eps_)
 end
 
 function MR.read (_, file_)
@@ -1474,19 +1639,22 @@ function MC.read (_, file_)
   _C.mad_ctpsa_scan_coef(x, file_) return x
 end
 
-MR.debug = _C.mad_tpsa_debug
-MC.debug = _C.mad_ctpsa_debug
-
 -- metamethods ----------------------------------------------------------------o
 
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq, MR.  same, MR.  copy=
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq, MR.__same, MR.__copy
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq
 
-MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq, MC.  same, MC.  copy=
-MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq, MC.__same, MC.__copy
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq =
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq
+
+MR.  same, MR.  copy, MR.length =
+MR.__same, MR.__copy, MR.__len
+
+MC.  same, MC.  copy, MC.length =
+MC.__same, MC.__copy, MC.__len
 
 MR.__index = MR
 MC.__index = MC

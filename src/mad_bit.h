@@ -36,7 +36,6 @@ typedef unsigned int bit_t;
 static bit_t mad_bit_set     (bit_t b, int n);
 static bit_t mad_bit_get     (bit_t b, int n);
 static bit_t mad_bit_clr     (bit_t b, int n);
-static bit_t mad_bit_add     (bit_t a, bit_t b);
 static bit_t mad_bit_lcut    (bit_t b, int n);
 static bit_t mad_bit_hcut    (bit_t b, int n);
 
@@ -68,12 +67,6 @@ static inline bit_t __attribute__((const))
 mad_bit_clr (bit_t b, int n)
 {
   return b & ~(1u << n);
-}
-
-static inline bit_t __attribute__((const))
-mad_bit_add (bit_t a, bit_t b)
-{
-  return a | b;
 }
 
 static inline bit_t __attribute__((const))

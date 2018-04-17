@@ -114,13 +114,16 @@ mad_mono_print (ssz_t n, const ord_t m[n])
   printf("]");
 }
 
-// --- default versions -------------------------------------------------------o
+// --- default/reference versions ---------------------------------------------o
 
-#ifndef __SSE2__
-// #warning "Default (<SSE2) selected"
+#ifdef __SSE2__
+#define FUN(name)   MKNAME(name,_ref)
+#else
+#define FUN(name)   name
+#endif
 
 int
-mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
+FUN(mad_mono_eq) (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=0; i < n; ++i)
@@ -129,7 +132,7 @@ mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 }
 
 int
-mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
+FUN(mad_mono_lt) (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=0; i < n; ++i)
@@ -138,16 +141,28 @@ mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
 }
 
 int
-mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
+FUN(mad_mono_gt) (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=0; i < n; ++i)
-    if (a[i] > b[i]) return 0;
+    if (a[i] <= b[i]) return 0;
   return 1;
 }
 
 int
-mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
+FUN(mad_mono_le) (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !FUN(mad_mono_gt)(n,a,b);
+}
+
+int
+FUN(mad_mono_ge) (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !FUN(mad_mono_lt)(n,a,b);
+}
+
+int
+FUN(mad_mono_rcmp) (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=n-1; i >= 0; --i)
@@ -156,7 +171,7 @@ mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
 }
 
 ord_t
-mad_mono_max (ssz_t n, const ord_t a[n])
+FUN(mad_mono_max) (ssz_t n, const ord_t a[n])
 {
   assert(a);
   ord_t mo = 0;
@@ -166,10 +181,10 @@ mad_mono_max (ssz_t n, const ord_t a[n])
 }
 
 ord_t
-mad_mono_min (ssz_t n, const ord_t a[n])
+FUN(mad_mono_min) (ssz_t n, const ord_t a[n])
 {
   assert(a);
-  ord_t mo = -1;
+  ord_t mo = ~0;
   for (idx_t i=0; i < n; ++i)
     if (a[i] < mo) mo = a[i];
   return mo;
@@ -177,20 +192,20 @@ mad_mono_min (ssz_t n, const ord_t a[n])
 
 // --- optimized versions -----------------------------------------------------o
 
-#elif defined(__AVX512F__) && defined(AVX512BW)
+// to check availability with gcc:
+// echo | gcc -dM -E -march=native - | grep "SSE\|AVX"
+// echo | gcc -dM -E -msse2 - | grep "SSE\|AVX"
+// echo | gcc -dM -E -mavx2 - | grep "SSE\|AVX"
+
+#if defined(__AVX512F__) && defined(__AVX512BW__)
 // #warning "AVX512 selected"
-#include "sse/mad_mono_avx512.tc"
+#include "sse/mad_mono_avx512.tc" // never tested
 #elif defined(__AVX2__)
 // #warning "AVX2 selected"
 #include "sse/mad_mono_avx2.tc"
-#elif defined(__SSE4__)
-// #warning "SSE4 selected"
-#include "sse/mad_mono_sse4.tc"
 #elif defined(__SSE2__)
 // #warning "SSE2 selected"
 #include "sse/mad_mono_sse2.tc"
-#else
-#error "unsupported architecture"
 #endif // __SSE2__ || __AVX2__ || __AVX512F__
 
 // --- end --------------------------------------------------------------------o

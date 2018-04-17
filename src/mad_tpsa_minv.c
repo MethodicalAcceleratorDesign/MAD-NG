@@ -194,7 +194,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
     FUN(copy)(lin_inv[i], mc[i]);
 
   for (ord_t o = 2; o <= d->mo; ++o) {
-    d->trunc = o;
+    d->to = o;
     FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
 
     for (int v = 0; v < sa; ++v)

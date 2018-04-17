@@ -38,7 +38,7 @@ local ident, swap, compose, bind1st                              in MAD.gfunc
 local random, carg, real, imag, conj, norm, proj, rect, polar,
       ceil, floor, frac, trunc, round, abs, exp, log, log10, sqrt,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
-      acosh, atanh, erf, tgamma, lgamma, min, max, inf,
+      acosh, atanh, erf, tgamma, lgamma, min, max, inf, eps,
       sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
 local unm, add, mul, mod, pow, lbool, lnot, land, lor, opstr     in MAD.operator
 local rep                                                        in MAD.utility
@@ -1988,69 +1988,7 @@ function MC.infft (x, p_, r_)
   return r
 end
 
--- concatenation, conversion --------------------------------------------------o
-
-MR.__len = MR.size
-
-function MR.__concat (x, y, d_, r_)
-  assert(isa_matrix(x), "invalid argument #1 (matrix expected)")
-  assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
-  local nrx, ncx = x:sizes()
-  local nry, ncy = y:sizes()
-  local r
-  if is_nil(d_) or d_ == 'vec' or d_ == 'col' then -- concat columns (vectical)
-    local nr, nc = nrx + nry, ncx
-    assert(ncx == ncy and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
-           "incompatible matrix sizes")
-    local r = r_ or x:same(x[1]+y[1],nr,nc)
-    local nx, ny = nrx * nc, nry * nc
-    for i=0,nx-1 do seti0(r,i   , geti0(x,i)) end
-    for i=0,ny-1 do seti0(r,i+nx, geti0(y,i)) end
-    if d_ == 'vec' then r:reshape(nr*nc) end
-    return r
-  elseif d_ == 'row' then                          -- concat rows (horizontal)
-    local nr, nc = nrx, ncx + ncy
-    assert(nrx == nry and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
-           "incompatible matrix sizes")
-    local r = r_ or x:same(x[1]+y[1],nr,nc)
-    for i=0,nr-1 do
-      for j=0,ncx-1 do set0(r,i,j    , get0(x,i,j)) end
-      for j=0,ncy-1 do set0(r,i,j+ncx, get0(y,i,j)) end
-    end
-    return r
-  end
-  error("invalid argument #3 (string 'vec', row' or 'col' expected)")
-end
-
-function MR.__tostring (x, sep_, lsep_)
-  local nr, nc = x:sizes()
-  local r, c = table.new(nr,0), table.new(nc,0)
-  for i=0,nr-1 do
-    for j=0,nc-1 do
-      c[j+1] = tostring(get0(x,i,j))
-    end
-    r[i+1] = table.concat(c, sep_ or ' ')
-  end
-  return table.concat(r, lsep_ or '\n')
-end
-
-function MR.__totable (x, r_)
-  assert(is_nil(r_) or is_table(r_), "invalid argument #2 (table expected)")
-  local nr, nc, r = x:sizes()
-  if nc == 1 then
-    r = r_ or table.new(nr*nc,0)
-    for i=0,nr*nc-1 do r[i+1] = geti0(x,i) end
-  else
-    r = r_ or table.new(nr,0)
-    for i=0,nr-1 do
-      local c = r[i+1] or table.new(nc,0)
-      assert(is_table(c), "invalid argument #2 (table of tables expected)")
-      for j=0,nc-1 do c[j+1] = get0(x,i,j) end
-      r[i+1] = c
-    end
-  end
-  return r
-end
+-- linspace, logspace, factorial ----------------------------------------------o
 
 local function linspace (start, stop_, size_)
   assert(is_scalar(start) and abs(start) < inf,
@@ -2096,6 +2034,99 @@ do -- fill on load
   local a = 1
   for i=1,170 do a = a*i ; seti0(fact_, i, a) end
   seti0(fact_, 0, 1)
+end
+
+-- concatenation, conversion --------------------------------------------------o
+
+MR.__len = MR.size
+
+function MR.__concat (x, y, d_, r_)
+  assert(isa_matrix(x), "invalid argument #1 (matrix expected)")
+  assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
+  local nrx, ncx = x:sizes()
+  local nry, ncy = y:sizes()
+  local r
+  if is_nil(d_) or d_ == 'vec' or d_ == 'col' then -- concat columns (vectical)
+    local nr, nc = nrx + nry, ncx
+    assert(ncx == ncy and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
+           "incompatible matrix sizes")
+    local r = r_ or x:same(x[1]+y[1],nr,nc)
+    local nx, ny = nrx * nc, nry * nc
+    for i=0,nx-1 do seti0(r,i   , geti0(x,i)) end
+    for i=0,ny-1 do seti0(r,i+nx, geti0(y,i)) end
+    if d_ == 'vec' then r:reshape(nr*nc) end
+    return r
+  elseif d_ == 'row' then                          -- concat rows (horizontal)
+    local nr, nc = nrx, ncx + ncy
+    assert(nrx == nry and (is_nil(r_) or nr == r_:nrow() and nc == r_:ncol()),
+           "incompatible matrix sizes")
+    local r = r_ or x:same(x[1]+y[1],nr,nc)
+    for i=0,nr-1 do
+      for j=0,ncx-1 do set0(r,i,j    , get0(x,i,j)) end
+      for j=0,ncy-1 do set0(r,i,j+ncx, get0(y,i,j)) end
+    end
+    return r
+  end
+  error("invalid argument #3 (string 'vec', row' or 'col' expected)")
+end
+
+function MR.tostring (x, sep_, lsep_)
+  local nr, nc = x:sizes()
+  local r, c = table.new(nr,0), table.new(nc,0)
+  for i=0,nr-1 do
+    for j=0,nc-1 do
+      c[j+1] = tostring(get0(x,i,j))
+    end
+    r[i+1] = table.concat(c, sep_ or ' ')
+  end
+  return table.concat(r, lsep_ or '\n')
+end
+
+function MR.totable (x, r_)
+  assert(is_nil(r_) or is_table(r_), "invalid argument #2 (table expected)")
+  local nr, nc, r = x:sizes()
+  if nc == 1 then
+    r = r_ or table.new(nr*nc,0)
+    for i=0,nr*nc-1 do r[i+1] = geti0(x,i) end
+  else
+    r = r_ or table.new(nr,0)
+    for i=0,nr-1 do
+      local c = r[i+1] or table.new(nc,0)
+      assert(is_table(c), "invalid argument #2 (table of tables expected)")
+      for j=0,nc-1 do c[j+1] = get0(x,i,j) end
+      r[i+1] = c
+    end
+  end
+  return r
+end
+
+-- I/O -----------------------------------------------------------------------o
+
+function MR.write (x, file_, name_, eps_)
+  file_, eps_ = file_ or io.stdout, eps_ or eps
+  local nr, nc, v = x:sizes()
+  io.write(name_ or '', '[', nr, 'x', nc, '] =\n')
+  for i=0,nr-1 do
+    io.write('  ')
+    for j=0,nc-2 do
+      v = get0(x,i,j)
+      io.write(tostring(abs(v) >= eps_ and v or 0), '  ')
+    end
+    v = get0(x,i,nc-1)
+    io.write(tostring(abs(v) >= eps_ and v or 0), '\n')
+  end
+  return x
+end
+
+function MR.print (x, name_, eps_)
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_ -- right shift
+  end
+  return x:write(x, nil, name_, eps_)
+end
+
+function MR.read (_, file_)
+  error("NYI")
 end
 
 -- metamethods ----------------------------------------------------------------o

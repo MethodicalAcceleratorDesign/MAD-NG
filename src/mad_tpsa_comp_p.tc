@@ -45,10 +45,10 @@ get_mono(int c, int tmp_idx, T *tmps[2], ord_t complement[], CTX *ctx)
       T *t = get_mono(compl_idx, tmp_idx ^ 1, tmps, complement, ctx);
 
 #ifdef DEBUG
-      mad_mono_print(da->nv, da->To[c]);
+      mad_mono_print(d->nv, d->To[c]);
       printf(" = ");
-      mad_mono_print(da->nv, da->To[m]);
-      mad_mono_print(da->nv, da->To[compl_idx]);
+      mad_mono_print(d->nv, d->To[m]);
+      mad_mono_print(d->nv, d->To[compl_idx]);
       printf("m=%d", m);
       printf("\n");
 #endif
@@ -76,8 +76,8 @@ compose_ser(int sa, const T *ma[], T *mc[], CTX *ctx)
     FUN(scalar)(mc[i], ma[i]->coef[0]);
 
   ord_t mono[ctx->d->nv];
-  T *tmps[2] = { FUN(newd)(ctx->d, ctx->d->trunc),
-                 FUN(newd)(ctx->d, ctx->d->trunc) }, *t = NULL;
+  T *tmps[2] = { FUN(newd)(ctx->d, ctx->d->to),
+                 FUN(newd)(ctx->d, ctx->d->to) }, *t = NULL;
   for (int c = 1; c < ctx->cached_size; ++c) {
     // TODO: only cache what is needed
     t = get_mono(c, 0, tmps, mono, ctx);
@@ -89,8 +89,6 @@ compose_ser(int sa, const T *ma[], T *mc[], CTX *ctx)
   FUN(del)(tmps[1]);
 }
 
-static int COMPOSE_NUM_THREADS;
-
 static inline void
 compose_par(int sa, const T *ma[], T *mc[], CTX *ctx)
 {
@@ -100,18 +98,15 @@ compose_par(int sa, const T *ma[], T *mc[], CTX *ctx)
       highest = ma[i]->hi;
   int max_coeff = ctx->d->ord2idx[highest+1];
 
-  if (!COMPOSE_NUM_THREADS)
-    COMPOSE_NUM_THREADS = omp_get_num_procs();
-
-  T *mt[COMPOSE_NUM_THREADS][sa];
-  #pragma omp parallel num_threads(COMPOSE_NUM_THREADS)
+  T *mt[ctx->d->nth][sa];
+  #pragma omp parallel num_threads(ctx->d->nth)
   {
     int id = omp_get_thread_num();
 
     // alloc private vars
     ord_t mono[ctx->d->nv];
-    T *tmps[2] = { FUN(newd)(ctx->d, ctx->d->trunc),
-                   FUN(newd)(ctx->d, ctx->d->trunc) }, *t = NULL;
+    T *tmps[2] = { FUN(newd)(ctx->d, ctx->d->to),
+                   FUN(newd)(ctx->d, ctx->d->to) }, *t = NULL;
     T **m_curr_thread = mt[id];
     for (int i = 0; i < sa; ++i)
       m_curr_thread[i] = FUN(newd)(ctx->d, mad_tpsa_default);
@@ -136,7 +131,7 @@ compose_par(int sa, const T *ma[], T *mc[], CTX *ctx)
     FUN(del)(tmps[1]);
   }
 
-  for (int thread = 0; thread < COMPOSE_NUM_THREADS; ++thread)
+  for (int thread = 0; thread < ctx->d->nth; ++thread)
     for (int i = 0; i < sa; ++i) {
       FUN(acc)(mt[thread][i], 1, mc[i]);
       FUN(del)(mt[thread][i]);

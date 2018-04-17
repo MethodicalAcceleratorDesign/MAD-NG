@@ -60,7 +60,8 @@ ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t1, const ctpsa_t *t2, ...);  // max order of all
 
 // initialization
-void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *dst);
+void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
+void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
 void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
@@ -108,7 +109,9 @@ void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_div     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
-void     mad_ctpsa_ipow    (const ctpsa_t *a,                   ctpsa_t *c, int n);
+void     mad_ctpsa_pow     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_powi    (const ctpsa_t *a, int            n, ctpsa_t *c);
+void     mad_ctpsa_pown    (const ctpsa_t *a, cnum_t         v, ctpsa_t *c);
 
 // operators with internal real-to-complex conversion
 log_t    mad_ctpsa_equt    (const ctpsa_t *a, const  tpsa_t *b, num_t tol);
@@ -128,8 +131,9 @@ void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *a, const ctpsa_t *b_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *a, const ctpsa_t *b_);
 void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
-void     mad_ctpsa_derm    (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[]);
+void     mad_ctpsa_derm    (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
 void     mad_ctpsa_poisson (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n);  // TO CHECK n
+void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cnum_t coef[n], ctpsa_t *c);
 
 void     mad_ctpsa_acc     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c += v*a, aliasing OK
 void     mad_ctpsa_scl     (const ctpsa_t *a, cnum_t v, ctpsa_t *c);  // c  = v*a
@@ -163,6 +167,7 @@ void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 // functions without complex-by-value arguments
 void     mad_ctpsa_nrm1_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
 void     mad_ctpsa_nrm2_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
+void     mad_ctpsa_pown_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_acc_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_scl_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
@@ -216,9 +221,9 @@ void    mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                        num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[], ssz_t sb, const ctpsa_t *mb[], ssz_t sc, ctpsa_t *mc[]);
-void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[],                                ssz_t sc, ctpsa_t *mc[]);
-void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[],                                ssz_t sc, ctpsa_t *mc[], int row_select[]);
+void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc], int selected[sa]);
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
@@ -226,6 +231,7 @@ ctpsa_t* mad_ctpsa_scan     (                                           FILE *st
 desc_t*  mad_ctpsa_scan_hdr (                                           FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                          FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_,             FILE *stream_);
+log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
 
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
 
