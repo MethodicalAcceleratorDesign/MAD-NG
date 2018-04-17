@@ -19,7 +19,20 @@
  o-----------------------------------------------------------------------------o
  */
 
+/*
+  Warning: this code was never tested because I don't have access to AVX512 yet
+*/
+
 #include "mad_sse.h"
+
+static inline void
+dump(__m512i ra, __m512i rb, __mmask64 rr)
+{
+  printf("\nra="); for (int i=0; i < MAD_AVX512_CSIZ; ++i) printf("%02x ", ((ord_t*)&ra)[i]);
+  printf("\nrb="); for (int i=0; i < MAD_AVX512_CSIZ; ++i) printf("%02x ", ((ord_t*)&rb)[i]);
+  printf("\nrr="); for (int i=0; i < MAD_AVX512_CSIZ; ++i) printf("%02x ", ((ord_t*)&rr)[i]);
+  printf("\n");
+}
 
 int
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
@@ -31,15 +44,15 @@ mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
   for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
-    if (~_mm512_cmpeq_epi8_mask(ra,rb)) return 0;
+    if (~_mm512_cmpeq_epu8_mask(ra,rb)) return 0;
   }
 
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
-    if (~_mm512_cmpeq_epi8_mask(ra,rb)) return 0;
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn]);
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn]);
+    if (~_mm512_cmpeq_epu8_mask(ra,rb)) return 0;
   }
 
   return 1;
@@ -55,15 +68,15 @@ mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
   for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
-    if (_mm512_cmpge_epi8_mask(ra,rb)) return 0;
+    if (_mm512_cmpge_epu8_mask(ra,rb)) return 0;
   }
 
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
-    if (_mm512_cmpge_epi8_mask(ra,rb)) return 0;
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn]);
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn]);
+    if (_mm512_cmpge_epu8_mask(ra,rb)) return 0;
   }
 
   return 1;
@@ -79,18 +92,30 @@ mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
   for (int i=0; i < nn; i+=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
-    if (_mm512_cmpgt_epi8_mask(ra,rb)) return 0;
+    if (_mm512_cmpgt_epu8_mask(ra,rb)) return 0;
   }
 
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
-    if (_mm512_cmpgt_epi8_mask(ra,rb)) return 0;
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn]);
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn]);
+    if (_mm512_cmpgt_epu8_mask(ra,rb)) return 0;
   }
 
   return 1;
+}
+
+int
+mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_le(n,a,b);
+}
+
+int
+mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_lt(n,a,b);
 }
 
 int
@@ -104,9 +129,9 @@ mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn])
-    rr = _mm512_cmpeq_epi8_mask(ra,rb);
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn]);
+    rb = _mm512_mask_loadu_epi8(zero, mask, &b[nn]);
+    rr = _mm512_cmpeq_epu8_mask(ra,rb);
     if (~rr)
       for (int i=nm-1; i >= 0; i--)
         if (!(rr & (1ull<<i))) return ((ord_t*)&ra)[i]-((ord_t*)&rb)[i];
@@ -116,7 +141,7 @@ mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
   for (int i=nn-MAD_AVX512_CSIZ; i >= 0; i-=MAD_AVX512_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
     rb = _mm512_loadu_si512((__m512i*)&b[i]);
-    rr = _mm512_cmpeq_epi8_mask(ra,rb);
+    rr = _mm512_cmpeq_epu8_mask(ra,rb);
     if (~rr)
       for (int i=MAD_AVX512_CSIZ-2; i >= 0; i-=2) {
         if (!(rr & (1ull<<(i+1)))) return ((ord_t*)&ra)[i+1]-((ord_t*)&rb)[i+1];
@@ -136,14 +161,14 @@ mad_mono_min (ssz_t n, const ord_t a[n])
 
   for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
-    rr = _mm512_min_epi8(rr,ra);
+    rr = _mm512_min_epu8(rr,ra);
   }
 
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
-    __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rr = _mm512_min_epi8(rr,ra);
+    __m512i max = _mm512_set1_epi8(-1);
+    ra = _mm512_mask_loadu_epi8(max, mask, &a[nn]);
+    rr = _mm512_min_epu8(rr,ra);
   }
 
   int ni = nn ? MAD_AVX512_CSIZ : nm;
@@ -165,14 +190,14 @@ mad_mono_max (ssz_t n, const ord_t a[n])
 
   for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm512_loadu_si512((__m512i*)&a[i]);
-    rr = _mm512_max_epi8(rr,ra);
+    rr = _mm512_max_epu8(rr,ra);
   }
 
   if (nm) {
     __mmask64 mask = (1ul << nm) - 1;
     __m512i zero = _mm512_setzero_si512();
-    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn])
-    rr = _mm512_max_epi8(rr,ra);
+    ra = _mm512_mask_loadu_epi8(zero, mask, &a[nn]);
+    rr = _mm512_max_epu8(rr,ra);
   }
 
   int ni = nn ? MAD_AVX512_CSIZ : nm;
