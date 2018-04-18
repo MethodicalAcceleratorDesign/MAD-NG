@@ -426,7 +426,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
 }
 
 void
-FUN(sinc) (const T *a, T *c)                 // NOT checked for real and complex
+FUN(sinc) (const T *a, T *c)                              // unstable series....
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -450,17 +450,15 @@ FUN(sinc) (const T *a, T *c)                 // NOT checked for real and complex
     FUN(div)(t,a,c);
     REL_TMPX(t);
     return;
-  } else
-  // prefer explicit above
-  if (fabs(f0) < 1 - 1e-10) {
-    NUM sa = -sin(a0), ca = cos(a0), _a0 = 1/a0, term;
-    num_t fo = 1;
-    ord_coef[0] = f0;
-    for (int o = 1; o <= to; ++o) {
-      fo *= o;
-      term = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
-      ord_coef[o] = -(ord_coef[o-1] + term/fo)*_a0;
-    }
+// prefer explicit above?
+//  NUM sa = -sin(a0), ca = cos(a0), _a0 = 1/a0, vo;
+//  num_t fo = 1;
+//  ord_coef[0] = f0;
+//  for (int o = 1; o <= to; ++o) {
+//    fo *= o;
+//    vo  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+//    ord_coef[o] = -(ord_coef[o-1] + vo/fo) * _a0;
+//  }
   } else {  // |a0| < 1e-10
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -685,15 +683,15 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     return;
   }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
   switch(to) {
-  case 6: ord_coef[6] = -a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
-  case 5: ord_coef[5] = -(3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;       /* FALLTHRU */
-  case 4: ord_coef[4] = -a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
-  case 3: ord_coef[3] = -(1./6 + 1./3*a2) *f4*f1;                       /* FALLTHRU */
-  case 2: ord_coef[2] = -a0*(1./2) *f2*f1;                              /* FALLTHRU */
-  case 1: ord_coef[1] = -f1;                                            /* FALLTHRU */
-  case 0: ord_coef[0] =  f0;                                            break;
+  case 6: ord_coef[6] = a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
+  case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;       /* FALLTHRU */
+  case 4: ord_coef[4] = a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (1./6 + 1./3*a2) *f4*f1;                       /* FALLTHRU */
+  case 2: ord_coef[2] = a0*(1./2) *f2*f1;                              /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                            /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                            break;
   assert(!"unexpected missing coefficients");
   }
 
@@ -783,14 +781,14 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     return;
   }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
   switch(to) {
   case 6: ord_coef[6] = a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
-  case 5: ord_coef[5] = (-1./5 + a2*(2 - a2)) *f4*f1;     /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;     /* FALLTHRU */
   case 4: ord_coef[4] = a0*(-1 + a2) *f4;                 /* FALLTHRU */
-  case 3: ord_coef[3] = (1./3 - a2) *f2*f1;               /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;              /* FALLTHRU */
   case 2: ord_coef[2] = a0 *f2;                           /* FALLTHRU */
-  case 1: ord_coef[1] = -f1;                              /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                               /* FALLTHRU */
   case 0: ord_coef[0] = f0;                               break;
   assert(!"unexpected missing coefficients");
   }
