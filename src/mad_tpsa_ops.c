@@ -857,8 +857,15 @@ FUN(logxdy) (const T *x, const T *y, T *r)
   assert(x && y && r);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  FUN(div)(x, y, r);
-  FUN(log)(r, r);
+  NUM x0 = FUN(get0)(x), y0 = FUN(get0)(y);
+  if (fabs(x0) > fabs(y0)) { // TODO: improve stability around 1i
+    FUN(div)(x, y, r);
+    FUN(log)(r, r);
+  } else {
+    FUN(div)(y, x, r);
+    FUN(log)(r, r);
+    FUN(scl)(r, -1, r);
+  }
 }
 
 // --- without complex-by-value version ---------------------------------------o
