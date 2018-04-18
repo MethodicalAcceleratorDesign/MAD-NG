@@ -451,14 +451,15 @@ FUN(sinc) (const T *a, T *c)                              // unstable series....
 //    REL_TMPX(t);
 //    return;
 // prefer explicit above?
-    NUM ca = cos(a0)/a0, _a0 = 1/a0, f1;
+    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
     num_t fo = 1;
     ord_coef[0] = f0;
-    ord_coef[1] = ca - f0*_a0;
+    ord_coef[1] = (ca - f0)*_a0;
     for (int o = 2; o <= to; ++o) {
       fo *= o; // formula numerically unstable in (0, 0.5), need some work
-      f1  = o & 1 ? (ca=-ca,ca) : (f0=-f0,f0);
-      ord_coef[o] = f1/fo - ord_coef[o-1]*_a0;
+      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
+      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
     }
   } else {  // |a0| < 1e-6
     ord_coef[0] = 1;
