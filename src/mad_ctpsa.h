@@ -163,6 +163,7 @@ void     mad_ctpsa_acosh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_atanh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acoth   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_erfc    (const ctpsa_t *a, ctpsa_t *c);
 
 // functions without complex-by-value arguments
 void     mad_ctpsa_nrm1_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);

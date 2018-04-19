@@ -426,7 +426,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
 }
 
 void
-FUN(sinc) (const T *a, T *c)                 // NOT checked for real and complex
+FUN(sinc) (const T *a, T *c)                              // unstable series....
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
@@ -444,24 +444,24 @@ FUN(sinc) (const T *a, T *c)                 // NOT checked for real and complex
 
   NUM ord_coef[to+1];
 
-  if (fabs(f0) < 1 - 1e-10) {
-    T *t = GET_TMPX(c);
-    FUN(sin)(a,t);
-    FUN(div)(t,a,c);
-    REL_TMPX(t);
-    return;
-  } else
-  // prefer explicit above
-  if (fabs(f0) < 1 - 1e-10) {
-    NUM sa = -sin(a0), ca = cos(a0), _a0 = 1/a0, term;
+  if (fabs(a0) > 1e-6) {
+//    T *t = GET_TMPX(c);
+//    FUN(sin)(a,t);
+//    FUN(div)(t,a,c);
+//    REL_TMPX(t);
+//    return;
+// prefer explicit above?
+    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
     num_t fo = 1;
     ord_coef[0] = f0;
-    for (int o = 1; o <= to; ++o) {
-      fo *= o;
-      term = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
-      ord_coef[o] = -(ord_coef[o-1] + term/fo)*_a0;
+    ord_coef[1] = (ca - f0)*_a0;
+    for (int o = 2; o <= to; ++o) {
+      fo *= o; // formula numerically unstable in (0, 0.5), need some work
+      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
+      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
     }
-  } else {  // |a0| < 1e-10
+  } else {  // |a0| < 1e-6
     ord_coef[0] = 1;
     ord_coef[1] = 0;
     for (int o = 2; o <= to; ++o)
@@ -685,15 +685,15 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     return;
   }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
   switch(to) {
-  case 6: ord_coef[6] = -a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
-  case 5: ord_coef[5] = -(3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;       /* FALLTHRU */
-  case 4: ord_coef[4] = -a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
-  case 3: ord_coef[3] = -(1./6 + 1./3*a2) *f4*f1;                       /* FALLTHRU */
-  case 2: ord_coef[2] = -a0*(1./2) *f2*f1;                              /* FALLTHRU */
-  case 1: ord_coef[1] = -f1;                                            /* FALLTHRU */
-  case 0: ord_coef[0] =  f0;                                            break;
+  case 6: ord_coef[6] = a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
+  case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;       /* FALLTHRU */
+  case 4: ord_coef[4] = a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (1./6 + 1./3*a2) *f4*f1;                       /* FALLTHRU */
+  case 2: ord_coef[2] = a0*(1./2) *f2*f1;                              /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                            /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                            break;
   assert(!"unexpected missing coefficients");
   }
 
@@ -783,14 +783,14 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     return;
   }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
   switch(to) {
   case 6: ord_coef[6] = a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
-  case 5: ord_coef[5] = (-1./5 + a2*(2 - a2)) *f4*f1;     /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;     /* FALLTHRU */
   case 4: ord_coef[4] = a0*(-1 + a2) *f4;                 /* FALLTHRU */
-  case 3: ord_coef[3] = (1./3 - a2) *f2*f1;               /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;              /* FALLTHRU */
   case 2: ord_coef[2] = a0 *f2;                           /* FALLTHRU */
-  case 1: ord_coef[1] = -f1;                              /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                               /* FALLTHRU */
   case 0: ord_coef[0] = f0;                               break;
   assert(!"unexpected missing coefficients");
   }
@@ -967,6 +967,13 @@ FUN(erf) (const T *a, T *c)
   fun_taylor(a,c,to,ord_coef);
 }
 
+void
+FUN(erfc) (const T *a, T *c)
+{
+  FUN(erf)(a,c);
+  FUN(axpb)(-1,c,1,c);
+}
+
 // --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
@@ -987,39 +994,48 @@ void FUN(pown_r) (const T *a, num_t v_re, num_t v_im, T *c)
 /*
 Recurrence of Taylor coefficients:
 ----------------------------------
-(f(g(x)))`   = f`(g(x)).g`(x)
-(f(x).g(x))` = f`(x)g(x) + f(x)g`(x)
+(f(g(x)))'   = f'(g(x)).g'(x)
+(f(x).g(x))' = f'(x)g(x) + f(x)g'(x)
+
+-- sinc(z) -----
+[0]  sinc(z)      =   sin(z)/z ; cos(z)/z = [c] ; sin(z) = sz ; cos(z) = cz
+[1] (sinc(z))'    =  cz/z -1sz/z^2                                                     =  [c]-1*[0]/z
+[2] (sinc(z))''   = -sz/z -2cz/z^2 +2!sz/z^3                                           = -[0]-2*[1]/z
+[3] (sinc(z))'''  = -cz/z +3sz/z^2 +3!cz/z^3 - 3!sz/z^4                                = -[c]-3*[2]/z
+[4] (sinc(z))^(4) =  sz/z +4cz/z^2 -12sz/z^3 - 4!cz/z^4 + 4!sz/z^5                     =  [0]-4*[3]/z
+[5] (sinc(z))^(5) =  cz/z -5sz/z^2 -20cz/z^3 + 60sz/z^4 + 5!cz/z^5 -5!sz/z^6           =  [c]-5*[4]/z
+[6] (sinc(z))^(6) = -sz/z -6cz/z^2 +30sz/z^3 +120cz/z^4 -360sz/z^5 -6!cz/z^6 +6!sz/z^7 = -[0]-6*[5]/z
 
 -- erf(z) -----
 [0]  erf(z)
-[1] (erf(z))`    =     1
-[2] (erf(z))``   = -2*      z                                 = -2*(0*[0]+[1]*z)
-[3] (erf(z))```  = -2*(1 -2*z^2)                              = -2*(1*[1]+[2]*z)
+[1] (erf(z))'    =     1
+[2] (erf(z))''   = -2*      z                                 = -2*(0*[0]+[1]*z)
+[3] (erf(z))'''  = -2*(1 -2*z^2)                              = -2*(1*[1]+[2]*z)
 [4] (erf(z))^(4) = -2*(-4*z -2*(1-2*z^2)*z)                   = -2*(2*[2]+[3]*z)
 [5] (erf(z))^(5) = -2*(-6*(1-2*z^2) +4*(3*z-2*z^3)*z)         = -2*(3*[3]+[4]*z)
 [6] (erf(z))^(6) = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z)  = -2*(4*[4]+[5]*z)
                    % *exp(-z^2) *2/sqrt(pi)
 {0} = 0
 {1} = 1 *exp(-z^2)
-(exp(-z^2))`
-    = exp`(-z^2).(-z^2)`
+(exp(-z^2))'
+    = exp'(-z^2).(-z^2)'
 {2} = -2*z *exp(-z^2)                                         = -2*(0*{0}+{1}*z)
--2*(z*exp(-z^2))`
-    = -2*(z`*exp(-z^2) + z*(exp(-z^2))`)
+-2*(z*exp(-z^2))'
+    = -2*(z'*exp(-z^2) + z*(exp(-z^2))')
     = -2*(exp(-z^2) + z*(-2*z*exp(-z^2)))
 {3} = -2* (1 -2*z^2) *exp(-z^2)                               = -2*(1*{1}+{2}*z)
--2*((1-2*z^2)*exp(-z^2))` =
-    = -2*((1-2*z^2)`*exp(-z^2) + (1-2*z^2)*(exp(-z^2))`)
+-2*((1-2*z^2)*exp(-z^2))' =
+    = -2*((1-2*z^2)'*exp(-z^2) + (1-2*z^2)*(exp(-z^2))')
     = -2*(-4*z*exp(-z^2) + (1-2*z^2)*(-2*z*exp(-z^2)))
 {4} = -2*(-4*z -2*(1-2*z^2)*z) *exp(-z^2)                     = -2*(2*{2}+{3}*z)
     =  4*(3*z-2*z^3) *exp(-z^2)
-4*((3*z-2*z^3)*exp(-z^2))` =
-    = 4*((3*z-2*z^3)`*exp(-z^2) + (3*z-2*z^3)*(exp(-z^2))`)
+4*((3*z-2*z^3)*exp(-z^2))' =
+    = 4*((3*z-2*z^3)'*exp(-z^2) + (3*z-2*z^3)*(exp(-z^2))')
     = 4*(3*(1-2*z^2)*exp(-z^2) + (3*z-2*z^3)*(-2*z*exp(-z^2)))
 {5} = -2*(3*-2*(1-2*z^2) + 4*(3*z-2*z^3)*z) *exp(-z^2)        = -2*(3*{3}+{4}*z)
     = 4*(3-12*z^2+4*z^4) *exp(-z^2)
-4*((3-12*z^2+4*z^4)*exp(-z^2))` =
-    = 4*((3-12*z^2+4*z^4)`*exp(-z^2) + (3-12*z^2+4*z^4)*(exp(-z^2))`)
+4*((3-12*z^2+4*z^4)*exp(-z^2))' =
+    = 4*((3-12*z^2+4*z^4)'*exp(-z^2) + (3-12*z^2+4*z^4)*(exp(-z^2))')
     = 4*((-24*z+16*z^3)*exp(-z^2) + (3-12*z^2+4*z^4)*(-2*z*exp(-z^2)))
     = 4*(-2*(12*z-8*z^3) -2*(3-12*z^2+4*z^4)*z) *exp(-z^2)
 {6} = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z) *exp(-z^2)    = -2*(4*{4}+{5}*z)
