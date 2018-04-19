@@ -973,6 +973,7 @@ FUN(erfc) (const T *a, T *c)
   FUN(erf)(a,c);
   FUN(axpb)(-1,c,1,c);
 }
+
 // --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
