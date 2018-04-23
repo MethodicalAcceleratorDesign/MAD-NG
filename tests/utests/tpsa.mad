@@ -35,13 +35,14 @@ local ord = {1,2,3,4,5,6,7,10,12,15}
 
 TestTPSAFun = {}
 
-local function checkVal (msg, r, c, neg, alt, trc)
+local function checkVal (r, c, neg, alt, trc)
   local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
   neg = neg or ident
-  if not r:is_valid() then r:debug(msg) end
+  trc = trc or 0
+  if not r:is_valid() then r:debug() end
   for i=1,#r do
     local v = neg(c[i],i)
-    if trc then
+    if trc > 0 then
       local is, vs, rs, es = string.format("%-2d"  , i),
                              string.format("%+.17e", v),
                              string.format("%+.17e", r:get(i))
@@ -51,7 +52,7 @@ local function checkVal (msg, r, c, neg, alt, trc)
       end
       io.write('i=',is,', v=',vs,', r=',rs,', eps=',es,es>99 and ' **\n' or '\n')
     end
-    if not trc or trc < 2 then -- do not stop tests if trc >= 2
+    if trc < 2 then
       if abs(v) > 2
       then assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
       else assertAlmostEquals(r:get(i)    , v, i*tol)
@@ -73,19 +74,20 @@ local function checkFun1 (fnam, trc)
     if c.omax   and o > c.omax   then break end -- limit order (local)
     if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
     t = tpsa(o):set(1,c.x0):set(2,1)
-    r = t[fnam](t)   ; checkVal('p', r, c, nil, nil, trc) -- positive (r ~= t)
-    r = t[fnam](t,t) ; checkVal('a', r, c, nil, nil)      -- aliased  (r == t)
+    r = t[fnam](t)   ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
+    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
+    r = t[fnam](t,t) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
 
     if fun.alt then
       if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
       t = tpsa(o):set(1,c.x0):set(2,1)
-      r = fun.alt(t) ; checkVal('f', r, c, nil, fun.alt, trc) -- alternate function
+      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
     end
 
     if fun.neg and c.x0 ~= 0 then
-      if trc then io.write('f=',fnam,'(',-c.x0,') @ ',o,'\n') end
+      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
       t = tpsa(o):set(1,-c.x0):set(2,1)
-      r = t[fnam](t) ; checkVal('n', r, c, fun.neg, nil, trc) -- negative
+      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
     end
   end end
 end
@@ -99,7 +101,7 @@ TestTPSAFun.testSin   = \s -> checkFun1('sin')
 TestTPSAFun.testCos   = \s -> checkFun1('cos')
 TestTPSAFun.testTan   = \s -> checkFun1('tan')
 TestTPSAFun.testCot   = \s -> checkFun1('cot')
--- TestTPSAFun.testSinc  = \s -> checkFun1('sinc') -- ,1) -- stability problem
+TestTPSAFun.testSinc  = \s -> checkFun1('sinc') -- ,1) -- stability problem
 TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
 TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
 TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
@@ -120,10 +122,12 @@ TestTPSAFun.testErf   = \s -> checkFun1('erf')
 
 Test_TPSAFun = {}
 
+local ord_ = {1,2,3,6,7}
+
 local function benchFun1 (fnam, x0, trc)
   local d = gtpsa_desc(6,15)
   local fun, t, r = dat.fun[fnam]
-  for _,o in ipairs(ord) do
+  for _,o in ipairs(ord_) do
 --  for o=1,d.mo do
     if fun.omin and o < fun.omin then break end -- limit order
     if fun.omax and o > fun.omax then break end -- limit order

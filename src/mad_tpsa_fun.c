@@ -402,14 +402,14 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) { FUN(scalar)(c,f0); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) {
-    T *t = GET_TMPX(c);
-    FUN(sincos)(a,t,c);
-    FUN(div)(c,t,c);
-    REL_TMPX(t);
-    return;
-  }
+  T *t = GET_TMPX(c);
+  FUN(sincos)(a,t,c);
+  FUN(div)(c,t,c);
+  REL_TMPX(t);
+  return;
 
+#if 0
+  // Inaccurate expansion for small a0
   NUM ord_coef[to+1], f2 = f0*f0;
   switch(to) {
   case 6: ord_coef[6] = f0*(17./45 + f2*(77./45 + f2*(7./3 + f2))); /* FALLTHRU */
@@ -423,6 +423,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   }
 
   fun_taylor(a,c,to,ord_coef);
+#endif
 }
 
 void
@@ -450,7 +451,7 @@ FUN(sinc) (const T *a, T *c)                              // unstable series....
 //    FUN(div)(t,a,c);
 //    REL_TMPX(t);
 //    return;
-// prefer explicit above?
+// prefer explicit above? not better in term of stability
     NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
     num_t fo = 1;
     ord_coef[0] = f0;
