@@ -75,8 +75,8 @@ end
 local elem_pos
 
 -- start and end markers
-local mkstart = marker '$start' { at=0 } : set_readonly()
-local mkend   = marker '$end'   {      } : set_readonly()
+local mkstart = marker '$start' {} : set_readonly()
+local mkend   = marker '$end'   {} : set_readonly()
 
 -- sanity checks --------------------------------------------------------------o
 
@@ -94,13 +94,24 @@ local function seq_poserr (typ, seq, idx, pos)
   seq_error(msg, seq, idx, elem[idx].__id)
 end
 
+-- check sequence spos and elements overlapp
+local function check_elem (seq, idx)
+  local elem, ds = var_raw(seq,_data)
+  assert(idx > 1 and idx < elem.ne, "unexpected corrupted element index")
+
+  ds = elem.spos[idx  ] - (elem.spos[idx-1]+elem[idx-1].l)
+  if ds < -minlen then seq_poserr("element", seq, idx, elem.spos[idx]-ds) end
+
+  ds = elem.spos[idx+1] - (elem.spos[idx  ]+elem[idx  ].l)
+  if ds < -minlen then seq_poserr("element", seq, idx, elem.spos[idx]-ds) end
+end
+
 -- check sequence $start and $stop integrity
 local function check_mark (seq)
   local elem = var_raw(seq,_data)
-  local n = elem.ne
-      if elem[1].__id ~= mkstart.__id or elem[1].is_marker ~= true then
+  if elem[1] ~= mkstart then
     error("invalid sequence first element ($start marker expected)", 2)
-  elseif elem[n].__id ~= mkend  .__id or elem[n].is_marker ~= true then
+  elseif elem[elem.ne] ~= mkend then
     error("invalid sequence last element ($end marker expected)", 2)
   end
 end
@@ -492,7 +503,7 @@ local function copy_ssequ (seq, flat, sref, idx, dir)
   end
 
   if sref.dir ~= seq.direction then
-    idx, flat[idx-2+n] = idx+1, flat[idx-1]:select(shared) -- share patch
+    idx, flat[idx-2+n] = idx+1, flat[idx-1] -- share patch
   end
   return idx-2+n
 end
@@ -579,11 +590,12 @@ local function finish_sequ (seq)
   ei['#s'], ei['#S'] =  1,  1
   ei['#e'], ei['#E'] = ne, ne
 
+  check_mark(seq)
+
   -- sanity checks
-  if MAD.option.debug > 2 then
-    check_mark (seq)
+  if MAD.option.debug >= 2 then
     check_spos (seq)
-    check_index(seq) -- remove $start/$end marker aliases
+    check_index(seq)
   end
 end
 
@@ -886,10 +898,10 @@ local function replace (seq, elm, rng_, sel_)
     local ii, ie = idx_r[i], (i-1)%ne+1    -- recycle list of elements
     elem[ii], elm_r[i] = elm[ie], elem[ii] -- backup
     elem.spos[ii], elem.epos[ii] = uninitialized, uninitialized
-    elem_pos(seq, ii) -- recompute the positions
+    elem_pos  (seq, ii) -- recompute the positions
+    check_elem(seq, ii) -- check surrounding drifts
   end
 
-  check_spos (seq)
   build_index(seq)
   return elm_r, idx_r
 end
@@ -957,15 +969,17 @@ local function install (seq, elm, rng_, sel_)
         elem.epos[idx+j-2] = selem.epos[j]+spos[ie]
       end
       elem.ne = elem.ne + selem.ne - 2
+      check_elem(seq, idx)              -- check surrounding drifts of fst elem
+      check_elem(seq, idx+selem.ne - 3) -- check surrounding drifts of lst elem
     else
       table.insert(elem     , idx, elm [ie])
       table.insert(elem.spos, idx, spos[ie])
       table.insert(elem.epos, idx, epos[ie])
       elem.ne = elem.ne + 1
+      check_elem(seq, idx)              -- check surrounding drifts
     end
   end
 
-  check_spos (seq)
   build_index(seq)
   return seq
 end
@@ -1054,7 +1068,8 @@ local function unique (seq, fmt_)
     if is_table(ei) then
       table.clear(lst)
       for i=1,ei.n do
-        local elm = elem[ei[i]]
+        local idx = ei[i]
+        local elm = elem[idx]
         lst[elm] = (lst[elm] or 0)+1
       end
       for i=1,ei.n do
