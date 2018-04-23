@@ -215,7 +215,6 @@ function TestSequence:testInitElemFromPos()
     elm.from  = from
     elm.at    = at
     local seq = sequence "seq" { l = 4, refer = "entry", prv, elm, nxt }
-    print(seq.l)
     assertEquals(seq:epos(3), 2)
   end
 end
@@ -1871,9 +1870,9 @@ function TestSequence:testInstallMulti()
   local seq  = sequence "seq" { l = 10, owner = true }
   local line = drift "df" { } * 2
   local tbl  = {
-    drift "df2" { l = 1 , at = -3, from = "$end" },
-    drift "df3" { l = 1 , at = -1, from = "$end" },
-    drift "df4" { at = 10 },
+    drift "df2" { l = 1 , at =-3 , from = "end" },
+    drift "df3" { l = 1 , at =-1 , from = "end" },
+    drift "df4" {         at = 10               },
   }
   seq:install(line)
   seq:install(tbl)
@@ -1884,6 +1883,103 @@ function TestSequence:testInstallMulti()
     assertEquals(seq:spos(i), spos[i])
   end
   assertEquals(#seq, 7)
+end
+
+function TestSequence:testInstallSubSeq()
+  local seq  = sequence "seq"  { l = 10, owner = true }
+  local sseq = sequence "sseq" { l = 6 , at = 5, refpos = "centre",
+    drift "df1" { l = 1 , at =-4 , from = "end" },
+    drift "df2" { l = 1 , at =-2 , from = "end" },
+    drift "df3" {         at = 5                },
+  }
+
+  seq:install(sseq)
+  local spos = { 0       , 4    , 6    , 7    , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testInstallSubSeqMulti()
+  local seq   = sequence "seq"   { l = 16, owner = true }
+  local sseq1 = sequence "sseq1" { l = 6 , at = 5, refpos = "centre",
+    drift "df1'" { l = 1 , at =-4 , from = "end" },
+    drift "df2'" { l = 1 , at =-2 , from = "end" },
+    drift "df3'" {         at = 5                },
+  }
+  local sseq2 = sequence "sseq2" { l = 6 , at = 14, refpos = "exit",
+    drift "df1''" { l = 1 , at =-4 , from = "end" },
+    drift "df2''" { l = 1 , at =-2 , from = "end" },
+    drift "df3''" {         at = 5                },
+  }
+  local elems = {
+    drift "df1" { l = 1, at = 1 },
+    sseq1,
+    sseq2,
+    drift "df2" { l = 1, at = 15 },
+  }
+  seq:install(elems)
+  local spos = { 0, 1, 4, 6, 7, 10, 12, 13, 15, 16 }
+  local name = {
+    "$start", "df1",
+    "df1'"  , "df2'" , "df3'" ,
+    "df1''" , "df2''", "df3''",
+    "df2",
+    "$end"
+  }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 10)
+end
+
+function TestSequence:testInstallSelectedSingle()
+  local seq = \   (sequence "seq" { marker "mk" { at = 1, from = "prev" } * 5 })
+  local mk  = \at (marker   "mk2" { at=at, from="selected" })
+
+  local seq1 = seq():install(mk( 0.5), {2, 4})
+  local seq2 = seq():install(mk(-0.5), {2, 4})
+  local seq3 = seq():install(mk( 0.5), {2, 4}, \e,i -> i < 4)
+  local vals = {
+    [seq1] = {[4]=2.5, [6]=3.5, [8]=4.5},
+    [seq2] = {[3]=1.5, [5]=2.5, [7]=3.5},
+    [seq3] = {[4]=2.5,             },
+  }
+  for seq,val in pairs(vals) do
+    local i = 0
+    for idx,spos in pairs(val) do
+      assertEquals(seq:spos(idx), spos)
+      i = i+1
+    end
+    assertEquals(#seq, i+7)
+  end
+end
+
+function TestSequence:testInstallSelectedSingleWithTbl()
+  local seq = \   (sequence "seq" { marker "mk" { at = 1, from = "prev" } * 5 })
+  local mk  = \at (marker   "mk2" { at=at, from="selected" })
+
+  local seq1 = seq():install{elements=mk( 0.5), range={2, 4}}
+  local seq2 = seq():install{elements=mk(-0.5), range={2, 4}}
+  local seq3 = seq():install{elements=mk( 0.5), range={2, 4},
+    select=\e,i -> i < 4}
+  local vals = {
+    [seq1] = {[4]=2.5, [6]=3.5, [8]=4.5},
+    [seq2] = {[3]=1.5, [5]=2.5, [7]=3.5},
+    [seq3] = {[4]=2.5,             },
+  }
+  for seq,val in pairs(vals) do
+    local i = 0
+    for idx,spos in pairs(val) do
+      assertEquals(seq:spos(idx), spos)
+      i = i+1
+    end
+    assertEquals(#seq, i+7)
+  end
 end
 
 -- end ------------------------------------------------------------------------o
