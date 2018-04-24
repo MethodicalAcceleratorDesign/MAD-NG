@@ -42,34 +42,34 @@ local ord_sz = ffi.sizeof 'ord_t'
 TODO:
 - compressed representation, maximum order is 31
 - order encoding: ord = data[i] & 0xFF, idx = data[i] >> 8
-- sizeof(mono_t) == 128 byte (i.e. sink opt)
+- sizeof(monomial_t) == 128 byte (i.e. sink opt)
 
 ffi.cdef[[
-typedef struct { const ssz_t n; uint32_t data[31]; } mono_t;
+typedef struct { const ssz_t n; uint32_t data[31]; } monomial_t;
 ]]
 ]=]
 
 -- for now...
 ffi.cdef[[
-struct mono { const ssz_t n; ord_t data[?]; };
+struct monomial { const ssz_t n; ord_t data[?]; };
 ]]
 
-local mono_ctor = ffi.typeof 'struct mono'
--- local mono_cref = ffi.typeof 'struct mono&'
--- local mono_ccst = ffi.typeof 'struct mono_ccast&'
+local mono_ctor = ffi.typeof 'struct monomial'
 
-local is_mono = \x -> istype(mono_ctor, x)
+local is_monomial = \x -> istype(mono_ctor, x)
 
 -- ctors ----------------------------------------------------------------------o
 
--- mono(len)
--- mono(len, num)
--- mono(len, str or itr)
--- mono(str or itr)
+--[=[
+  monomial (len)
+  monomial (len, num)
+  monomial (len, str or itr)
+  monomial (str or itr)
+--]=]
 
 local code_0 = string.byte("0")
 
-local function mono (len, ord)
+local function monomial (len, ord)
   if is_nil(ord) and is_lengthable(len) then
     len, ord = #len, len -- right shift
   end
@@ -96,15 +96,16 @@ function M.size (a)
 end
 
 function M.__same (a, n_)
-  return mono_alloc(n_ or a.n)
+  local n = n_ or a.n
+  return mono_ctor(n,n)
 end
 
 function M.__copy (a, b_)
   local n
   if is_nil(b_) then
-    n, a, b_ = a.n, mono_alloc(a.n), a
+    n, a, b_ = a.n, mono_ctor(a.n, a.n), a
   else
-    assert(is_mono(b_), "invalid argument #1 (monomial expected)")
+    assert(is_monomial(b_), "invalid argument #1 (monomial expected)")
     n = min(a.n, b_.n)
   end
   ffi.copy(a.data, b_.data, ord_sz*n)
@@ -137,8 +138,8 @@ end
 --  io.write("== : a='", tostring(a), "', b='", tostring(b), "'\n")
 
 function M.__eq (a, b)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
     return _C.mad_mono_eq(a.n, a.data, b.data) == 1
   end
@@ -148,8 +149,8 @@ function M.__eq (a, b)
 end
 
 function M.__lt (a, b)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
     return _C.mad_mono_lt(a.n, a.data, b.data) == 1
   elseif a.n > b.n then
@@ -161,8 +162,8 @@ function M.__lt (a, b)
 end
 
 function M.__le (a, b)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
     return _C.mad_mono_le(a.n, a.data, b.data) == 1
   elseif a.n > b.n then
@@ -174,10 +175,10 @@ function M.__le (a, b)
 end
 
 function M.__add (a, b, r_)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   local n = max(a.n,b.n)
-  local r = r_ or mono_alloc(n)
+  local r = r_ or mono_ctor(n,n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
     _C.mad_mono_add(n, a.data, b.data, r.data)
@@ -192,10 +193,10 @@ function M.__add (a, b, r_)
 end
 
 function M.__sub (a, b, r_)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   local n = max(a.n,b.n)
-  local r = r_ or mono_alloc(n)
+  local r = r_ or mono_ctor(n,n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
     _C.mad_mono_sub(a.n, a.data, b.data, r.data)
@@ -210,9 +211,10 @@ function M.__sub (a, b, r_)
 end
 
 function M.__concat (a, b, r_)
-  assert(is_mono(a), "invalid argument #1 (monomial expected)")
-  assert(is_mono(b), "invalid argument #2 (monomial expected)")
-  local r = r_ or mono_alloc(a.n+b.n)
+  assert(is_monomial(a), "invalid argument #1 (monomial expected)")
+  assert(is_monomial(b), "invalid argument #2 (monomial expected)")
+  local n = a.n+b.n
+  local r = r_ or mono_ctor(n,n)
   assert(r.n == a.n+b.n, "incompatible monomial sizes")
   _C.mad_mono_concat(a.n, a.data, b.n, b.data, r.data)
   return r
@@ -260,7 +262,7 @@ end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_monomial = is_mono
+MAD.typeid.is_monomial = is_monomial
 
 -- metatable ------------------------------------------------------------------o
 
@@ -270,6 +272,6 @@ ffi.metatype(mono_ctor, M)
 
 -- end ------------------------------------------------------------------------o
 return {
-   monomial = mono,
+   monomial = monomial,
   __help = require 'madh_mono',
 }
