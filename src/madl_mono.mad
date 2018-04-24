@@ -67,26 +67,14 @@ local is_monomial = \x -> istype(mono_ctor, x)
   monomial (str or itr)
 --]=]
 
-local code_0 = string.byte("0")
+local mono_alloc = \n -> mono_ctor(n,n)
 
 local function monomial (len, ord)
   if is_nil(ord) and is_lengthable(len) then
     len, ord = #len, len -- right shift
   end
-  assert(is_integer(len), "invalid monomial length (integer expected)")
-
-  local r = mono_ctor(len, len)
-  if is_integer(ord) then
-    assert(ord >= 1 and ord <= 31, "invalid monomial order range")
-    ffi.fill(r.data, ord_sz * r.n, ord)
-  elseif is_string(ord) then
-    for i=1,len do r.data[i-1] = string.byte(ord,i) - code_0 end
-  elseif is_iterable(ord) then
-    for i=1,len do r.data[i-1] = ord[i] end
-  else
-    error("invalid argument #1 or #2 (integer, string or iterable expected)")
-  end
-  return r
+  assert(is_integer(len) and len > 0, "invalid monomial length (integer expected)")
+  return mono_alloc(len):fill(ord)
 end
 
 -- size, same, copy -----------------------------------------------------------o
@@ -97,16 +85,16 @@ end
 
 function M.__same (a, n_)
   local n = n_ or a.n
-  return mono_ctor(n,n)
+  return mono_alloc(n)
 end
 
 function M.__copy (a, b_)
   local n
   if is_nil(b_) then
-    n, a, b_ = a.n, mono_ctor(a.n, a.n), a
+    n, a, b_ = a.n, mono_alloc(a.n), a
   else
     assert(is_monomial(b_), "invalid argument #1 (monomial expected)")
-    n = min(a.n, b_.n)
+    n = min(a.n,b_.n)
   end
   ffi.copy(a.data, b_.data, ord_sz*n)
   return a
@@ -114,8 +102,19 @@ end
 
 -- implementation -------------------------------------------------------------o
 
-function M.fill (a, v_)
-  ffi.fill(a.data, ord_sz * a.n, v_)
+local code_0 = string.byte("0")
+
+function M.fill (a, ord)
+  ord = ord or 0
+  if is_integer(ord) then
+    ffi.fill(a.data, ord_sz*a.n, ord)
+  elseif is_string(ord) then
+    for i=1,min(a.n,#ord) do a.data[i-1] = string.byte(ord,i) - code_0 end
+  elseif is_iterable(ord) then
+    for i=1,min(a.n,#ord) do a.data[i-1] = ord[i] end
+  else
+    error("invalid argument #2 (integer, string or iterable expected)")
+  end
   return a
 end
 
@@ -178,7 +177,7 @@ function M.__add (a, b, r_)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   local n = max(a.n,b.n)
-  local r = r_ or mono_ctor(n,n)
+  local r = r_ or mono_alloc(n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
     _C.mad_mono_add(n, a.data, b.data, r.data)
@@ -196,7 +195,7 @@ function M.__sub (a, b, r_)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   local n = max(a.n,b.n)
-  local r = r_ or mono_ctor(n,n)
+  local r = r_ or mono_alloc(n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
     _C.mad_mono_sub(a.n, a.data, b.data, r.data)
@@ -214,7 +213,7 @@ function M.__concat (a, b, r_)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   local n = a.n+b.n
-  local r = r_ or mono_ctor(n,n)
+  local r = r_ or mono_alloc(n)
   assert(r.n == a.n+b.n, "incompatible monomial sizes")
   _C.mad_mono_concat(a.n, a.data, b.n, b.data, r.data)
   return r
