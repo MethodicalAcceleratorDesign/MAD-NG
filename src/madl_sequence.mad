@@ -95,7 +95,7 @@ local function seq_poserr (typ, seq, idx, pos)
 end
 
 -- check sequence spos and elements overlapp
-local function check_elem (seq, idx)
+local function check_drift (seq, idx)
   local elem, ds = var_raw(seq,_data)
   assert(idx > 1 and idx < elem.ne, "unexpected corrupted element index")
 
@@ -869,7 +869,7 @@ end
 local function replace (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
 
-  if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) then
+  if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
   end
 
@@ -893,15 +893,14 @@ local function replace (seq, elm, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
-  -- replace elements
   local elem, elm_r = var_raw(seq,_data), table.new(nr,0)
-  for i=1,nr do
-    local ii, ie = idx_r[i], (i-1)%ne+1    -- recycle list of elements
-    elem[ii], elm_r[i] = elm[ie], elem[ii] -- backup
+  for i=1,nr do                                -- replace elements
+    local ii, ie = idx_r[i], (i-1)%ne+1        -- recycle list of elements
+    elem[ii], elm_r[i] = elm[ie], elem[ii]     -- backup
     elem.spos[ii], elem.epos[ii] = uninitialized, uninitialized
-    elem_pos  (seq, ii) -- recompute the positions
-    check_elem(seq, ii) -- check surrounding drifts
   end
+  for i=1,nr do elem_pos   (seq, idx_r[i]) end -- recompute the positions
+  for i=1,nr do check_drift(seq, idx_r[i]) end -- check surrounding drifts
 
   build_index(seq)
   return elm_r, idx_r
@@ -917,7 +916,7 @@ local function install (seq, elm, rng_, sel_)
   if is_element(elm) then elm = {elm} end
   assert(is_rawtable(elm), "invalid argument #2 (elements list expected)")
   local ne = #elm
-  if ne == 0 then return end
+  if ne == 0 then return seq end
 
   -- collect indexes of reference where to insert
   local idx_r = filter(seq, rng_, sel_, true)
@@ -972,14 +971,13 @@ local function install (seq, elm, rng_, sel_)
         elem.epos[idx+j-2] = selem.epos[j]+spos[ie]
       end
       elem.ne = elem.ne + selem.ne - 2
-      check_elem(seq, idx)              -- check surrounding drifts of fst elem
-      check_elem(seq, idx+selem.ne - 3) -- check surrounding drifts of lst elem
+      check_drift(seq, idx+selem.ne - 3) -- check surrounding drifts of lst elem
     else
       table.insert(elem     , idx, ins [ie])
       table.insert(elem.spos, idx, spos[ie])
       table.insert(elem.epos, idx, epos[ie])
       elem.ne = elem.ne + 1
-      check_elem(seq, idx)              -- check surrounding drifts
+      check_drift(seq, idx)              -- check surrounding drifts
     end
   end
 
