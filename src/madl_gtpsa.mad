@@ -34,8 +34,8 @@ local _C, tostring, complex, vector, cvector, monomial in MAD
 local max, log, exp in MAD.gmath
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar, is_string, is_table,
-      is_iterable, is_lengthable, is_mappable, is_matrix, is_cmatrix,
+local is_nil, is_number, is_integer, is_complex, is_scalar, is_string,
+      is_table, is_lengthable, is_mappable, is_matrix, is_cmatrix,
       is_vector, is_cvector, is_monomial, has_method               in MAD.typeid
 
 -- tmp for returned values
@@ -102,9 +102,10 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
   mo: mvars orders     (value, string or array)
   nk: number of knobs  (ignored and replaced by #ko if ko is an array or a string)
   ko: knobs orders     (value, string or array)
-  vo: variables orders (string or array, lower orders of variables)
+  dk: knobs max x-ord  (value)
+  vo: variables orders (string or array, defined orders of variables)
 
-  default: nv=6, mo=2, nk=0, ko=1, vo=nil
+  default: nv=6, mo=2, nk=0, ko=1, dk=0, vo=nil
 
   ex0:    gtpsad(nil)                           : 6 mvars of order 2.
   ex1.0:  gtpsad(3)         -> nv=3             : 3 mvars of order 2.
@@ -114,75 +115,62 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
   ex3.0:  gtpsad{mo={3,3}}  -> nv=2,mo={3,3}    : 2 mvars of order 3.
   ex4.0:  gtpsad{mo={3,3}, nk=100}              : 2 mvars of order 3,
           each mvars contains 102 vars (2 mvars + 100 knobs) of orders 3,3,1,1..
-  ex4.1:  gtpsad{mo={3,3}, vo={2,2,1,2}, ko=1}  : 2 mvars of order 3,
+  ex4.1:  gtpsad{mo={3,3}, vo={2,2,1,2}, dk=1}  : 2 mvars of order 3,
           each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,2,
                             knobs x-order is limited to 1 (no cross-terms).
 --]=]
 
-local curr_gtpsad -- current descriptor (last used or default)
-
 local function gtpsad (nv_, mo_)
-  if is_nil(mo_) then
-    mo_, nv_ = nv_ -- right shift
+  local is = is_mappable(nv_)
+  local nv = is and nv_.nv or nv_ or 6       -- number of map variables
+  local mo = is and nv_.mo or mo_ or 2       -- map variables orders
+  local nk = is and nv_.nk or nil            -- number of knob variables
+  local ko = is and nv_.ko or nil            -- knob variables orders
+  local dk = is and nv_.dk or 0              -- knob variables max cross-orders
+  local vo = is and nv_.vo or nil            -- variables orders
+
+  if is_integer(nv) and is_integer(mo) and is_nil(vo) then
+    if is_nil(nk or ko) then
+      return _C.mad_desc_newn(nv, mo)
+    elseif is_integer(nk) and is_integer(ko) then
+      return _C.mad_desc_newk(nv, mo, nk, ko, dk)
+    end
   end
 
-  local ism = is_mappable(mo_)
-  local nv = ism and mo_.nv or nv_ or 6        -- number of map variables
-  local mo = ism and mo_.mo or mo_ or 2        -- map variables orders
-  local nk = ism and mo_.nk or nil             -- number of knob variables
-  local ko = ism and mo_.ko or 1               -- knob variables orders
-  local no =                   nil             -- number of variable orders
-  local vo = ism and mo_.vo or nil             -- variables orders
-
-  if is_number(nv) and is_number(mo) and is_nil(nk or vo) then
-    curr_gtpsad = _C.mad_desc_newn(nv, mo)
-    return curr_gtpsad
-  end
-
-  if is_number(nv) and is_number(mo) then      -- ex 1.0, 1.1, 2.0, 2.1
+  if is_integer(nv) and is_integer(mo) then
     mo = monomial(nv, mo)
-  elseif is_lengthable(mo) then                -- ex 3.0, 3.1
+  elseif is_lengthable(mo) then
     mo = monomial(mo) -- nv ignored
   else
     error("invalid map variables specification (GTPSA descriptor)")
   end
 
-  if is_nil(nk or vo) then
-    curr_gtpsad = _C.mad_desc_newm(mo.n, mo.data)
-    return curr_gtpsad
+  if is_nil(nk or ko) then
+    if is_nil(vo) then
+      return _C.mad_desc_newm(mo.n, mo.data)
+    else
+      vo = monomial(vo)
+      return _C.mad_desc_newv(mo.n, mo.data, vo.n, vo.data)
+    end
   end
 
-  vo = vo or {}
-  assert(is_lengthable(vo),"invalid variables specification (GTPSA descriptor)")
-  no = #vo
-
-  -- TODO
-
-  if is_number(nk) and is_number(ko) then      -- ex 4.0
-    ko = monomial(mo.n+nk, ko)
-  elseif is_lengthable(ko) then -- ex 4.1
-    ko = monomial(mo.n+#ko, ko) -- nk ignored
+  if is_integer(nk) and is_integer(ko) then
+    ko = monomial(nk, ko)
+  elseif is_lengthable(ko) then
+    ko = monomial(ko) -- nk ignored
   else
     error("invalid knob variables specification (GTPSA descriptor)")
   end
 
-  nv = max(mo.n+nk, no)
-  vo = monomial(nv, vo)
-
-  for i=no,nv do vo.data[i] = ko end
-
-  if is_string(vo) or is_iterable(vo) then
+  if is_nil(vo) then
+    return _C.mad_desc_newkv(mo.n, mo.data, ko.n, ko.data, 0, nil, dk)
+  else
     vo = monomial(vo)
-    for i=0,mo.n-1 do vo.data[i] = mo.data[i] end
+    return _C.mad_desc_newkv(mo.n, mo.data, ko.n, ko.data, vo.n, vo.data, dk)
   end
-
-  curr_gtpsad = _C.mad_desc_newv(mo.n, mo.data, vo.n, vo.m, ko)
-  return curr_gtpsad
-
---   error("invalid combination of arguments (GTPSA descriptor)")
 end
 
-curr_gtpsad = gtpsad()
+gtpsad() -- set default desc to nv=6,mo=2
 
 -- allocators -----------------------------------------------------------------o
 
@@ -199,7 +187,6 @@ local function tpsa_alloc (d, mo)
     local t = ffi.cast(tpsa_ccast, tpsa)
     t.d, t.lo, t.mo = d, mo, mo -- see tpsa_newd() in mad_tpsa.c
   end
-  curr_gtpsad = d
   return tpsa
 end
 
@@ -216,7 +203,6 @@ local function ctpsa_alloc (d, mo)
     local t = ffi.cast(tpsa_ccast, tpsa)
     t.d, t.lo, t.mo = d, mo, mo
   end
-  curr_gtpsad = d
   return ctpsa
 end
 
@@ -234,14 +220,14 @@ local function tpsa (td, mo_)
   end
   local tbl
   if is_nil(td) then
-    td      = curr_gtpsad or gtpsad(mo_)
+    td      = _C.mad_desc_curr or gtpsad(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif is_gtpsad(td) then
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   elseif is_table(td) or is_matrix(td) then
-    td, tbl = curr_gtpsad or gtpsad(mo_), td
+    td, tbl = _C.mad_desc_curr or gtpsad(mo_), td
     mo_     = mo_ or td.mo       -- mo = d.mo
   else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
@@ -257,14 +243,14 @@ local function ctpsa (td, mo_)
   end
   local tbl
   if is_nil(td) then
-    td      = curr_gtpsad or gtpsad(mo_)
+    td      = _C.mad_desc_curr or gtpsad(mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif is_gtpsad(td) then
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   elseif is_table(td) or is_cmatrix(td) then
-    td, tbl = curr_gtpsad or gtpsad(mo_), td
+    td, tbl = _C.mad_desc_curr or gtpsad(mo_), td
     mo_     = mo_ or td.mo       -- mo = d.mo
   else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
