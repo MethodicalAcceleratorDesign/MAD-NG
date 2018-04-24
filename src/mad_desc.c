@@ -39,8 +39,9 @@
 
 // --- globals ----------------------------------------------------------------o
 
-const ord_t mad_tpsa_default = -1;
-const ord_t mad_tpsa_same    = -2;
+const  ord_t  mad_tpsa_default = -1;
+const  ord_t  mad_tpsa_same    = -2;
+const desc_t *mad_desc_curr    =  0;
 
 // --- constants --------------------------------------------------------------o
 
@@ -916,13 +917,13 @@ get_desc (int nmv, const ord_t mvar_ords[nmv],
 
   for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, nv, var_ords, ko))
-      return Ds[i];
+      return mad_desc_curr=Ds[i], Ds[i];
 
   for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (!Ds[i]) {
       Ds[i] = desc_build(nmv, mvar_ords, nv, var_ords, ko);
       Ds[i]->id = i;
-      return Ds[i];
+      return mad_desc_curr=Ds[i], Ds[i];
     }
 
   error("Too many descriptors in concurrent use");
@@ -1041,8 +1042,9 @@ mad_desc_ordlen (const D *d, ord_t mo)
 }
 
 ord_t
-mad_desc_gtrunc (D *d, ord_t to)
+mad_desc_gtrunc (const D *d_, ord_t to)
 {
+  D* d = (void*)d_;
   assert(d);
   if (to == mad_tpsa_same)
     return d->to;
@@ -1058,7 +1060,7 @@ mad_desc_gtrunc (D *d, ord_t to)
 
 // --- ctors, dtor ------------------------------------------------------------o
 
-D*
+const D*
 mad_desc_newn (int nmv, ord_t mvo)
 {
   ord_t mvar_ords[nmv];
@@ -1066,20 +1068,7 @@ mad_desc_newn (int nmv, ord_t mvo)
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
-D*
-mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko)
-{
-  int nv = nmv+nk;
-  ensure(nmv > 0  , "invalid map variables orders specification");
-  ensure(nv >= nmv, "invalid variable orders specification");
-
-  ord_t var_ords[nv];
-  mad_mono_fill(nmv,  var_ords    , mvo);
-  mad_mono_fill(nk ,  var_ords+nmv, ko );
-  return get_desc(nmv, var_ords, nv, var_ords, ko);
-}
-
-D*
+const D*
 mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
 {
   assert(mvar_ords);
@@ -1087,7 +1076,7 @@ mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
-D*
+const D*
 mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
                int nv , const ord_t  var_ords[nv ], ord_t dk)
 {
@@ -1105,9 +1094,47 @@ mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
   return get_desc(nmv, mvar_ords, nv, var_ords, dk);
 }
 
-void
-mad_desc_del (D *d)
+const D*
+mad_desc_newk (int nmv, ord_t mvo, int nkv, ord_t kvo, ord_t dk)
 {
+  int nv = nmv+nkv;
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid knob variables orders specification");
+  ensure(nv < 100000, "too many variables");
+
+  ord_t var_ords[nv];
+  mad_mono_fill(nmv, var_ords    , mvo);
+  mad_mono_fill(nkv, var_ords+nmv, kvo);
+
+  return mad_desc_newv(nmv, var_ords, nv, var_ords, dk);
+}
+
+const D*
+mad_desc_newkv (int nmv, const ord_t mvar_ords[nmv],
+                int nkv, const ord_t kvar_ords[nkv],
+                int nv_, const ord_t _var_ords[nv_], ord_t dk)
+{
+  assert(mvar_ords && kvar_ords);
+  int nv = MAX(nmv+nkv, nv_);
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid knob variables orders specification");
+  ensure(nv < 100000, "too many variables");
+
+  ord_t var_ords[nv];
+  mad_mono_copy(nmv, mvar_ords, var_ords    );
+  mad_mono_copy(nkv, kvar_ords, var_ords+nmv);
+  if (_var_ords) {
+    ensure(nv_ > 0, "invalid variable orders specification");
+    mad_mono_copy(nv_, _var_ords, var_ords); // override overlapping part
+  }
+
+  return mad_desc_newv(nmv, mvar_ords, nv, var_ords, dk);
+}
+
+void
+mad_desc_del (const D *d_)
+{
+  D *d = (void*)d_;
   assert(d);
   mad_free((void*)d->mvar_ords);
   mad_free((void*)d->var_ords);

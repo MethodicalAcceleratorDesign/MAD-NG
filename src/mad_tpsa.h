@@ -48,11 +48,12 @@ extern const ord_t mad_tpsa_same;
 // --- interface --------------------------------------------------------------o
 
 // ctors, dtor
-tpsa_t* mad_tpsa_newd    (desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
+tpsa_t* mad_tpsa_newd    (const desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo);
-void    mad_tpsa_del     (      tpsa_t *t);
+void    mad_tpsa_del     (const tpsa_t *t);
 
 // introspection
+const
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
 ssz_t   mad_tpsa_len     (const tpsa_t *t);
 ord_t   mad_tpsa_ord     (const tpsa_t *t);
@@ -163,6 +164,7 @@ void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[sa],                       
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                          FILE *stream_);
+const
 desc_t* mad_tpsa_scan_hdr (                                          FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_,             FILE *stream_);

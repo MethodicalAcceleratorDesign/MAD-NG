@@ -35,7 +35,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   assert(t && c);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  desc_t *d = t->d;
+  const D* d = t->d;
   if (d->to < t->lo) { mad_tpsa_reset0(c); return; }
 
   c->lo = t->lo;
@@ -54,7 +54,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   assert(t && c);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  desc_t *d = t->d;
+  const D* d = t->d;
   if (d->to < t->lo) { mad_tpsa_reset0(c); return; }
 
   c->lo = t->lo;
@@ -78,7 +78,7 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   ord_t lo = MIN(re->lo, im->lo),
         hi = MAX(re->hi, im->hi);
 
-  D *d = c->d;
+  const D *d = c->d;
   if (d->to < lo) { mad_ctpsa_reset0(c); return; }
 
   c->lo = lo;

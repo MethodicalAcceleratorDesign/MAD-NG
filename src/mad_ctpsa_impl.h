@@ -29,10 +29,10 @@
 // --- types ------------------------------------------------------------------o
 
 struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
-  desc_t *d;
-  ord_t   lo, hi, mo; // lowest/highest used ord, max ord (allocated)
-  bit_t   nz;
-  cnum_t  coef[];
+  const desc_t *d;
+  ord_t  lo, hi, mo; // lowest/highest used ord, max ord (allocated)
+  bit_t  nz;
+  cnum_t coef[];
 };
 
 // --- macros -----------------------------------------------------------------o
@@ -91,12 +91,12 @@ mad_ctpsa_update0 (ctpsa_t *t)
 static inline ctpsa_t*
 mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
 {
-  D *d = t->d;
+  const D *d = t->d;
   int tid = omp_get_thread_num();
   assert(d->cti[tid] < DESC_MAX_TMP);
   ctpsa_t *tmp = d->ct[ tid*DESC_MAX_TMP + d->cti[tid]++ ];
-  TRC_TMP(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
-                 tid, d->cti[tid]-1, (void*)tmp, func));
+  TRC_TMPX(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
+                  tid, d->cti[tid]-1, (void*)tmp, func));
   tmp->mo = t->mo;
   return tmp; // mad_ctpsa_reset0(tmp);
 }
@@ -110,10 +110,10 @@ mad_ctpsa_gettmpr (const tpsa_t *t, const str_t func)
 static inline void
 mad_ctpsa_reltmp (ctpsa_t *tmp, const str_t func)
 {
-  D *d = tmp->d;
+  const D *d = tmp->d;
   int tid = omp_get_thread_num();
-  TRC_TMP(printf("REL_TMPX%d[%d]: %p in %s(c)\n",
-                 tid, d->cti[tid]-1, (void*)tmp, func));
+  TRC_TMPX(printf("REL_TMPX%d[%d]: %p in %s(c)\n",
+                  tid, d->cti[tid]-1, (void*)tmp, func));
   assert(d->ct[ tid*DESC_MAX_TMP + d->cti[tid]-1 ] == tmp);
   --d->cti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
 }

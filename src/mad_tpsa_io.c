@@ -58,9 +58,9 @@ read_ords(int n, ord_t ords[n], FILE *stream)
 
 #ifdef MAD_CTPSA_IMPL
 
-extern D* mad_tpsa_scan_hdr(FILE*);
+extern const D* mad_tpsa_scan_hdr(FILE*);
 
-D*
+const D*
 FUN(scan_hdr) (FILE *stream_)
 {
   return mad_tpsa_scan_hdr(stream_);
@@ -68,7 +68,7 @@ FUN(scan_hdr) (FILE *stream_)
 
 #else
 
-D*
+const D*
 FUN(scan_hdr) (FILE *stream_)
 {
   enum { BUF_SIZE=256 };
@@ -114,8 +114,7 @@ FUN(scan_hdr) (FILE *stream_)
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nv, var_ords, stream_);
 
-    desc_t *d = mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
-    return d;
+    return mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
   }
 
   if (cnt <  2) error("could not read (NO,NV) from header");
@@ -155,7 +154,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
 T*
 FUN(scan) (FILE *stream_)
 {
-  desc_t *d = FUN(scan_hdr)(stream_);
+  const D *d = FUN(scan_hdr)(stream_);
   T *t = FUN(newd)(d, mad_tpsa_default);
   FUN(scan_coef)(t, stream_);
   return t;
@@ -170,7 +169,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   if (eps_ < 0) eps_ = 1e-16;
   if (!stream_) stream_ = stdout;
 
-  D *d = t->d;
+  const D *d = t->d;
 
   // print header
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",

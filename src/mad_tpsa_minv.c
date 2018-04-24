@@ -177,7 +177,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
   for (int i = 0; i < sa; ++i)
     ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
-  D *d = ma[0]->d;
+  const D *d = ma[0]->d;
   T *lin_inv[sa], *nonlin[sa], *tmp[sa];
   for (int i = 0; i < sa; ++i) {
     lin_inv[i] = FUN(newd)(d,1);
@@ -193,8 +193,9 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
   for (int i = 0; i < sa; ++i)
     FUN(copy)(lin_inv[i], mc[i]);
 
+  ord_t o_prev = mad_desc_gtrunc(d, 2);
   for (ord_t o = 2; o <= d->mo; ++o) {
-    d->to = o;
+    mad_desc_gtrunc(d, o);
     FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
 
     for (int v = 0; v < sa; ++v)
@@ -202,6 +203,7 @@ FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
 
     FUN(compose)(sa, (const T**)lin_inv, sa, (const T**)tmp, sa, mc);
   }
+  mad_desc_gtrunc(d, o_prev);
 
   // cleanup
   for (int i = 0; i < sa; ++i) {
@@ -220,7 +222,7 @@ FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int selected[sa])
     if (selected[i])
       ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
-  D *d = ma[0]->d;
+  const D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
   for (int i = 0; i < sa; ++i) {

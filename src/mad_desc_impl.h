@@ -76,11 +76,11 @@ int      mad_desc_mono_isvalid_m  (const D *d, ssz_t n, const ord_t m [n]);
 int      mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m [n]);
 int      mad_desc_mono_nxtbyvar   (const D *d, ssz_t n,       ord_t m [n]);
 
-tpsa_t*  mad_tpsa_newd  (D *d, ord_t mo);
-void     mad_tpsa_del   (tpsa_t *t);
+tpsa_t*  mad_tpsa_newd  (const D *d, ord_t mo);
+void     mad_tpsa_del   (const tpsa_t *t);
 
-ctpsa_t* mad_ctpsa_newd (D *d, ord_t mo);
-void     mad_ctpsa_del  (ctpsa_t *t);
+ctpsa_t* mad_ctpsa_newd (const D *d, ord_t mo);
+void     mad_ctpsa_del  (const ctpsa_t *t);
 
 // --- helpers ----------------------------------------------------------------o
 
@@ -98,7 +98,7 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
 
 // --- macros for temporaries -------------------------------------------------o
 
-#define TRC_TMP(a) (void)func // a
+#define TRC_TMPX(a) (void)func // a
 
 #define GET_TMPX(t)       FUN(gettmp)(t, __func__)
 #define REL_TMPX(t)       FUN(reltmp)(t, __func__)

@@ -76,7 +76,7 @@ hpoly_asym_mul(const NUM *ca, const NUM *cb, NUM *cc, ssz_t na, ssz_t nb,
 static inline void
 hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_parallel)
 {
-  D *d = c->d;
+  const D *d = c->d;
   const NUM *ca = a->coef, *cb = b->coef;
   NUM *cc = c->coef;
   idx_t *pi = d->ord2idx, hod = d->mo/2;
@@ -138,7 +138,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
 static inline void
 hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
 {
-  D *d = c->d;
+  const D *d = c->d;
   bit_t c_nzs[d->nth];
 
 //  printf("%s(%d)\n", __func__, c->d->nth);
@@ -246,7 +246,7 @@ hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
 static inline void
 hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
-  D *d = c->d;
+  const D *d = c->d;
   idx_t *pi = d->ord2idx;
   const NUM *ca = a->coef;
         NUM *cc;
@@ -292,7 +292,7 @@ void
 FUN(scl) (const T *a, NUM v, T *c)
 {
   assert(a && c);
-  D *d = a->d;
+  const D *d = a->d;
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (!v || a->hi == 0) { FUN(scalar)(c, v*a->coef[0]); return; }
@@ -310,7 +310,7 @@ void
 FUN(acc) (const T *a, NUM v, T *c)
 {
   assert(a && c);
-  D *d = c->d;
+  const D *d = c->d;
   ensure(a->d == d, "incompatibles GTPSA (descriptors differ)");
 
   if (!v) return;
@@ -335,7 +335,7 @@ void
 FUN(add) (const T *a, const T *b, T *c)
 {
   assert(a && b && c);
-  D *d = a->d;
+  const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
@@ -356,7 +356,7 @@ void
 FUN(sub) (const T *a, const T *b, T *c)
 {
   assert(a && b && c);
-  D *d = a->d;
+  const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   const T* t = 0;
@@ -379,7 +379,7 @@ void
 FUN(mul) (const T *a, const T *b, T *r)
 {
   assert(a && b && r);
-  D *d = a->d;
+  const D *d = a->d;
   ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *c = (a == r || b == r) ? GET_TMPX(r) : r;
@@ -661,7 +661,7 @@ FUN(der) (const T *a, T *c, int var)
   if (a->hi == 0) { FUN(reset0)(c); return; }
   FUN(scalar)(c,FUN(geti)(a,var));  // TODO: what if alpha[var] == 0 ?
 
-  D *d = c->d;
+  const D *d = c->d;
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN3(a->hi-1, c->mo, d->to);
 

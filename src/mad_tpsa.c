@@ -116,7 +116,7 @@ FUN(debug) (const T *t, str_t name_, FILE *stream_)
 
 // --- introspection ----------------------------------------------------------o
 
-D*
+const D*
 FUN(desc) (const T *t)
 {
   assert(t);
@@ -153,9 +153,10 @@ ord_t
 // --- ctors, dtor ------------------------------------------------------------o
 
 T*
-FUN(newd) (D *d, ord_t mo)
+FUN(newd) (const D *d, ord_t mo)
 {
-  assert(d);
+  if (!d) d = mad_desc_curr;
+  ensure(d, "GTPSA descriptor not found");
 
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
@@ -174,9 +175,9 @@ FUN(new) (const T *t, ord_t mo)
 }
 
 void
-FUN(del) (T *t)
+FUN(del) (const T *t)
 {
-  mad_free(t);
+  mad_free((void*)t);
 }
 
 // --- clear, scalar ----------------------------------------------------------o
@@ -206,7 +207,7 @@ FUN(copy) (const T *t, T *r)
 {
   assert(t && r);
   if (t == r) return;
-  D *d = t->d;
+  const D *d = t->d;
   ensure(d == r->d, "incompatible GTPSAs descriptors");
 
   if (d->to < t->lo) { FUN(reset0)(r); return; }
@@ -297,7 +298,7 @@ NUM
 FUN(geti) (const T *t, idx_t i)
 {
   assert(t);
-  D *d = t->d;
+  const D *d = t->d;
   ensure(i >= 0 && i < d->nc, "index order exceeds GPTSA maximum order");
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
@@ -306,7 +307,7 @@ void
 FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
 {
   assert(t && v);
-  D *d = t->d;
+  const D *d = t->d;
   ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
 
   ord_t *ords = d->ords+i;
@@ -320,7 +321,7 @@ FUN(gets) (const T *t, ssz_t n, str_t s)
 {
   // --- mono is a string; represented as "[0-9]*"
   assert(t && s);
-  D *d = t->d;
+  const D *d = t->d;
   idx_t i = mad_desc_get_idx_s(d,n,s);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
@@ -329,7 +330,7 @@ NUM
 FUN(getm) (const T *t, ssz_t n, const ord_t m[n])
 {
   assert(t && m);
-  D *d = t->d;
+  const D *d = t->d;
   idx_t i = mad_desc_get_idx_m(d,n,m);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
@@ -339,7 +340,7 @@ FUN(getsm) (const T *t, ssz_t n, const idx_t m[n])
 {
   // --- mono is sparse; represented as [(i,o)]
   assert(t && m);
-  D *d = t->d;
+  const D *d = t->d;
   idx_t i = mad_desc_get_idx_sm(d,n,m);
   return t->lo <= d->ords[i] && d->ords[i] <= t->hi ? t->coef[i] : 0;
 }
@@ -371,7 +372,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   assert(t);
   if (!i) { FUN(set0)(t,a,b); return; }
 
-  D *d = t->d;
+  const D *d = t->d;
   ensure(i > 0 && i < d->nc , "index order exceeds GPTSA maximum order");
   ensure(d->ords[i] <= t->mo, "index order exceeds GTPSA order");
 
@@ -414,7 +415,7 @@ void
 FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
 {
   assert(t && v);
-  D *d = t->d;
+  const D *d = t->d;
   ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
 
   for (idx_t j = 0; j < n; j++) t->coef[j+i] = v[j];
