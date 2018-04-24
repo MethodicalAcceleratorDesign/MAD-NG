@@ -1848,8 +1848,6 @@ function TestSequence:testFlagsInvalid()
   assertErrorMsgContains(msg[1], sequence.restore_flags, seq)
 end
 
--------------------------------------------------------------------------------o
-
 function TestSequence:testInstallSingleEmpty()
   local seq = sequence "seq" { l = 10, owner = true }
   local df  = drift    "df"  { l = 1 , at = 1, from = "prev" }
@@ -1981,5 +1979,100 @@ function TestSequence:testInstallSelectedSingleWithTbl()
     assertEquals(#seq, i+7)
   end
 end
+
+function TestSequence:testInstallMultiMixedFrom()
+  local mk   = marker   "mk"  { }
+  local seq  = sequence "seq" { l = 10,
+    mk "mk1" { at = 2 },
+    mk "mk2" { at = 4 },
+    mk "mk3" { at = 8 },
+  }
+  local sseq = sequence "sseq" { l = 3 , at = 5,
+    drift "df1'" { l = 1, at = 0 },
+    drift "df2'" { l = 1, at = 1 },
+    drift "df3'" { l = 1, at = 2 },
+  }
+  local param = {
+    class    = mk,
+    elements = {
+      drift "df1" { l = 0.1, at = 0.1, from="selected" },
+      drift "df2" { l = 0.1, at = 0.2, from="selected" },
+      drift "df3" { l = 0.1, at = 0.3, from="selected" },
+      sseq,
+      drift "df4" { l = 1, at = 9 },
+    }
+  }
+  seq:install(param)
+  local spos = {
+    0,
+    2, 2.1, 2.2, 2.3,
+    4, 4.1, 4.2, 4.3,
+    5, 6  , 7  ,
+    8, 8.1, 8.2, 8.3,
+    9, 10
+  }
+  local name = {
+    "$start",
+    "mk1"   , "df1" , "df2" , "df3",
+    "mk2"   , "df1" , "df2" , "df3",
+    "df1'"  , "df2'", "df3'",
+    "mk3"   , "df1" , "df2" , "df3",
+    "df4"   , "$end"
+  }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 18)
+end
+
+function TestSequence:testInstallInvalidNegDrift()
+  local msg = {
+    "invalid element position at s = 1.5m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'd2' at index 3",
+    "invalid element position at s = 1m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'd1' at index 2",
+    "invalid element position at s = -1m (negative drift -1m) \z
+      in sequence 'seq' for element 'd2' at index 2",
+    "invalid element position at s = 2.5m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'd2' at index 2",
+  }
+
+  local seq    = \ (sequence "seq" { l = 10, owner = true })
+  local param1 = {
+    drift "d1" { l = 1, at = 1   },
+    drift "d2" { l = 1, at = 1.5 },
+  }
+  local param2 = {
+    drift "d2" { l = 1, at = 1.5 },
+    drift "d1" { l = 1, at = 1   },
+  }
+  local param3 = {
+    drift "d2" { l = 1, at =-1   },
+  }
+  local param4 = {
+    drift    "d1"   { l = 1, at = 3 },
+    sequence "sseq" { l = 2, at = 2.5,
+      drift  "d2"   { l = 1 },
+    },
+  }
+  assertErrorMsgContains(msg[1], sequence.install, seq(), param1)
+  assertErrorMsgContains(msg[2], sequence.install, seq(), param2)
+  assertErrorMsgContains(msg[3], sequence.install, seq(), param3)
+  assertErrorMsgContains(msg[4], sequence.install, seq(), param4)
+end
+
+function TestSequence:testInstallSubSeqInvalidFromSelected()
+  local seq  = sequence "seq"  { l = 10, owner = true }
+  local sseq = sequence "sseq" { at = 5, from = "selected",
+    drift "df1" { l = 1, at = 3 },
+  }
+  local msg = {
+    "invalid from 'selected' for sequence sseq",
+  }
+  assertErrorMsgContains(msg[1], sequence.install, seq, sseq, {0,0})
+end
+
+-------------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o
