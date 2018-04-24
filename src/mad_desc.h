@@ -46,6 +46,7 @@ extern const ord_t mad_tpsa_same;
 
 // ctors, dtor
 desc_t* mad_desc_newn (int nmv, ord_t mvo); // nmv mvars of order mvo
+desc_t* mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko); // + nk knobs of order ko
 desc_t* mad_desc_newm (int nmv, const ord_t mvar_ords[nmv]);
 desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
                        int nv , const ord_t  var_ords[nv ], ord_t dk); // knobs X-order
