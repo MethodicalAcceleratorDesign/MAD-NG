@@ -32,7 +32,7 @@ local min, max in math
 
 local _C in MAD
 
-local is_nil, is_number, is_string, is_iterable in MAD.typeid
+local is_nil, is_integer, is_string, is_iterable, is_lengthable in MAD.typeid
 
 local ord_sz = ffi.sizeof 'ord_t'
 
@@ -40,12 +40,12 @@ local ord_sz = ffi.sizeof 'ord_t'
 
 --[=[
 TODO:
-- compressed representation, maximum order is 30
+- compressed representation, maximum order is 31
 - order encoding: ord = data[i] & 0xFF, idx = data[i] >> 8
 - sizeof(mono_t) == 128 byte (i.e. sink opt)
 
 ffi.cdef[[
-typedef struct { ssz_t n; ssz_t data[30]; } mono_t;
+typedef struct { const ssz_t n; uint32_t data[31]; } mono_t;
 ]]
 ]=]
 
@@ -53,7 +53,6 @@ typedef struct { ssz_t n; ssz_t data[30]; } mono_t;
 ffi.cdef[[
 struct mono { const ssz_t n; ord_t data[?]; };
 ]]
--- struct mono_ccast { ssz_t n; ord_t data[?]; };
 
 local mono_ctor = ffi.typeof 'struct mono'
 -- local mono_cref = ffi.typeof 'struct mono&'
@@ -63,29 +62,31 @@ local is_mono = \x -> istype(mono_ctor, x)
 
 -- ctors ----------------------------------------------------------------------o
 
--- mono(len, val_)
--- mono(tbl)
+-- mono(len)
+-- mono(len, num)
+-- mono(len, str or itr)
+-- mono(str or itr)
 
 local code_0 = string.byte("0")
 
-local function mono (n, val_)
-  if is_number(n) then
-    local r, v = mono_ctor(n, n), val_ or 0
-    assert(is_number(v), "invalid argument #2 (number expected)")
-    ffi.fill(r.data, ord_sz * r.n, v)
-    return r
-  elseif is_string(n) then
-    local len, str = #n, n
-    local r = mono_ctor(len, len)
-    for i=1,len do r.data[i-1] = string.byte(str,i) - code_0 end
-    return r
-  elseif is_iterable(n) then
-    local len, tbl = #n, n
-    local r = mono_ctor(len, len)
-    for i=1,len do r.data[i-1] = tbl[i] end
-    return r
+local function mono (len, ord)
+  if is_nil(ord) and is_lengthable(len) then
+    len, ord = #len, len -- right shift
   end
-  error("invalid argument #1 (number, string or iterable expected)")
+  assert(is_integer(len), "invalid monomial length (integer expected)")
+
+  local r = mono_ctor(len, len)
+  if is_integer(ord) then
+    assert(ord >= 1 and ord <= 31, "invalid monomial order range")
+    ffi.fill(r.data, ord_sz * r.n, ord)
+  elseif is_string(ord) then
+    for i=1,len do r.data[i-1] = string.byte(ord,i) - code_0 end
+  elseif is_iterable(ord) then
+    for i=1,len do r.data[i-1] = ord[i] end
+  else
+    error("invalid argument #1 or #2 (integer, string or iterable expected)")
+  end
+  return r
 end
 
 -- size, same, copy -----------------------------------------------------------o
