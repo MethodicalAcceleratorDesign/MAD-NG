@@ -1067,9 +1067,23 @@ mad_desc_newn (int nmv, ord_t mvo)
 }
 
 D*
+mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko)
+{
+  int nv = nmv+nk;
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid variable orders specification");
+
+  ord_t var_ords[nv];
+  mad_mono_fill(nmv,  var_ords    , mvo);
+  mad_mono_fill(nk ,  var_ords+nmv, ko );
+  return get_desc(nmv, var_ords, nv, var_ords, ko);
+}
+
+D*
 mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
 {
   assert(mvar_ords);
+  ensure(nmv > 0, "invalid map variables orders specification");
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
@@ -1078,6 +1092,8 @@ mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
                int nv , const ord_t  var_ords[nv ], ord_t dk)
 {
   assert(mvar_ords && var_ords);
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid variable orders specification");
 
   // knobs max cross-order adjustment
   int nk = nv-nmv;
