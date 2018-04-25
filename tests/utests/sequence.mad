@@ -2073,6 +2073,150 @@ function TestSequence:testInstallSubSeqInvalidFromSelected()
   assertErrorMsgContains(msg[1], sequence.install, seq, sseq, {0,0})
 end
 
+function TestSequence:testReplaceSingleEmpty()
+  local seq = sequence "seq" { l = 10, owner = true }
+  local df  = drift    "df"  { l = 1 , at = 1, from = "prev" }
+  local elm_r, idx_r = seq:replace(df)
+  assertEquals(#seq, 2)
+  assertNil(elm_r)
+  assertNil(idx_r)
+end
+
+function TestSequence:testReplaceSingle()
+  local df1 = drift    "df1" { at = 1 }
+  local df2 = drift    "df2" { l = 1 , at = -1, from = "next" }
+  local seq = sequence "seq" { df1, l = 10 }
+  local elm_r, idx_r = seq:replace(df2, {1,1})
+  assertEquals(#seq, 3)
+  assertEquals(seq:spos(2), 9)
+  assertIs(seq[2], df2)
+  assertEquals(elm_r, {df1})
+  assertEquals(idx_r, {2, n=1})
+end
+
+function TestSequence:testReplaceMulti()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms }
+  local tbl  = {
+    drift "df1" { l = 1 , at =-3 , from = "end" },
+    drift "df2" { l = 1 , at =-1 , from = "end" },
+    drift "df3" {         at = 10               },
+  }
+
+  local elm_r, idx_r = seq:replace(tbl, {1,3})
+
+  local spos = { 0       , 7    , 9    , 10   , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4, n=3})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiWithTable()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms }
+  local param  = {
+    range    = {1,3},
+    elements = {
+      drift "df1" { l = 1 , at =-3 , from = "end" },
+      drift "df2" { l = 1 , at =-1 , from = "end" },
+      drift "df3" {         at = 10               },
+    },
+  }
+
+  local elm_r, idx_r = seq:replace(param)
+
+  local spos = { 0       , 7    , 9    , 10   , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4, n=3})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiRecycle1()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms }
+  local df   = drift    "df"  { l = 1 , at =1 , from = "prev" }
+
+  local elm_r, idx_r = seq:replace(df, {1,3})
+
+  local spos = { 0       , 1   , 3   , 5   , 10     }
+  local name = { "$start", "df", "df", "df", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4, n=3})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiRecycleN()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms }
+  local tbl  = {
+    drift "df1" { l = 1 , at =1 , from = "prev" },
+    drift "df2" { l = 1 , at =1 , from = "prev" },
+  }
+
+  local elm_r, idx_r = seq:replace(tbl, {1,3})
+
+  local spos = { 0       , 1    , 3    , 5    , 10     }
+  local name = { "$start", "df1", "df2", "df1", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4, n=3})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceInvalidElem()
+  local seq  = sequence "seq"  { marker { l=1, at=1 }, l = 10 }
+  local sseq = sequence "sseq" { owner=true, l = 1 }
+  local line = drift    "df"   { at = 1 } * 2
+  local msg  = {
+    "element is a beam line bline",
+    "element is a sequence sseq",
+    "invalid argument #2 (elements list expected)",
+    "item is not an element ?"
+  }
+
+  assertErrorMsgContains(msg[1], sequence.replace, seq, line   , {1,1})
+  assertErrorMsgContains(msg[2], sequence.replace, seq, sseq   , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, 1      , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, "df1"  , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, \ ()   , {1,1})
+  -- assertErrorMsgContains(msg[4], sequence.replace, seq, {1}    , {1,1}) -- TODO fix error message test for is_table
+  -- assertErrorMsgContains(msg[4], sequence.replace, seq, {"df1"}, {1,1})
+  -- assertErrorMsgContains(msg[4], sequence.replace, seq, {\ ()} , {1,1})
+end
+
 -------------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o
