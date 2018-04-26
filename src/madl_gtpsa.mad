@@ -107,26 +107,33 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
 
   default: nv=6, mo=2, nk=0, ko=1, dk=0, vo=nil
 
-  ex0:    gtpsad(nil)                           : 6 mvars of order 2.
-  ex1.0:  gtpsad(3)         -> nv=3             : 3 mvars of order 2.
-  ex1.1:  gtpsad{mo=3}      -> mo=3             : 6 mvars of order 3.
-  ex2.0:  gtpsad(4,3)       -> nv=4,mo=3        : 4 mvars of order 3.
-  ex2.1:  gtpsad{nv=4,mo=3} -> nv=4,mo=3        : 4 mvars of order 3.
-  ex3.0:  gtpsad{mo={3,3}}  -> nv=2,mo={3,3}    : 2 mvars of order 3.
-  ex4.0:  gtpsad{mo={3,3}, nk=100}              : 2 mvars of order 3,
-          each mvars contains 102 vars (2 mvars + 100 knobs) of orders 3,3,1,1..
-  ex4.1:  gtpsad{mo={3,3}, vo={2,2,1,2}, dk=1}  : 2 mvars of order 3,
-          each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,2,
-                            knobs x-order is limited to 1 (no cross-terms).
+  gtpsad(nil)                               : 6 mvars of order 2.
+  gtpsad(3)         -> nv=3                 : 3 mvars of order 2.
+  gtpsad{mo=3}      -> mo=3                 : 6 mvars of order 3.
+  gtpsad(4,3)       -> nv=4,mo=3            : 4 mvars of order 3.
+  gtpsad{nv=4,mo=3}                         : as above.
+  gtpsad(4,3,100,1) -> nv=4,mo=3,nk=10,ko=1 : 4 mvars of ord.3, 10 knobs of ord.1.
+  gtpsad{nv=4,mo=3,nk=100,ko=1}             : as above.
+  gtpsad(4,3,100,2,1) -> nv=4,mo=3,nk=10,ko=2,dk=1
+                    : 4 mvars of order 3, 10 knobs of order 2 without crossterm.
+  gtpsad{nv=4,mo=3,nk=100,ko=2,dk=1}        : as above.
+
+  gtpsad{mo={3,2}}                          : 2 mvars of order 3 and 2 resp.
+  gtpsad{mo={3,2}, nk=100}                  : 2 mvars of order 3 and 2 resp.,
+         each mvars contains 102 vars (2 mvars + 100 knobs) of orders 3,2,1,1..
+
+  gtpsad{mo={3,3}, vo={2,2,1,2}, dk=1}  : 2 mvars of order 3,
+    each mvars contains 4 vars (2 mvars + 2 knobs) of orders 2,2,1,2,
+                                knobs x-order is limited to 1 (no cross-terms).
 --]=]
 
-local function gtpsad (nv_, mo_)
+local function gtpsad (nv_, mo_, nk_, ko_, dk_)
   local is = is_mappable(nv_)
   local nv = is and nv_.nv or nv_ or 6       -- number of map variables
   local mo = is and nv_.mo or mo_ or 2       -- map variables orders
-  local nk = is and nv_.nk or nil            -- number of knob variables
-  local ko = is and nv_.ko or nil            -- knob variables orders
-  local dk = is and nv_.dk or 0              -- knob variables max cross-orders
+  local nk = is and nv_.nk or nk_            -- number of knob variables
+  local ko = is and nv_.ko or ko_            -- knob variables orders
+  local dk = is and nv_.dk or dk_ or 0       -- knob variables max cross-orders
   local vo = is and nv_.vo or nil            -- variables orders
 
   if is_integer(nv) and is_integer(mo) and is_nil(vo) then
@@ -175,7 +182,6 @@ gtpsad() -- set default desc to nv=6,mo=2
 -- allocators -----------------------------------------------------------------o
 
 local function tpsa_alloc (d, mo)
-  assert(is_gtpsad(d), "invalid argument #1 (GTPSA descriptor expected)")
   local len, tpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < _C.mad_alloc_threshold then
     tpsa = tpsa_ctor(len, d, mo, 0, mo) -- VLA
@@ -185,23 +191,22 @@ local function tpsa_alloc (d, mo)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     tpsa = ffi.gc(ffi.cast(tpsa_cref, ptr), _C.mad_free)
     local t = ffi.cast(tpsa_ccast, tpsa)
-    t.d, t.lo, t.mo = d, mo, mo -- see tpsa_newd() in mad_tpsa.c
+    t.d, t.lo, t.mo = d, mo, mo -- see mad_tpsa_newd() in mad_tpsa.c
   end
   return tpsa
 end
 
 local function ctpsa_alloc (d, mo)
-  assert(is_gtpsad(d), "invalid argument #1 (GTPSA descriptor expected)")
   local len, ctpsa = _C.mad_desc_ordlen(d, mo), nil
   if len < (_C.mad_alloc_threshold/2) then
-    ctpsa = ctpsa_ctor(len, d, mo, 0, mo)
+    ctpsa = ctpsa_ctor(len, d, mo, 0, mo) -- VLA
   else
     assert(len <= 2^29, "ctpsa is too large")
     local siz = ffi.sizeof(ctpsa_ctor, len)
     local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
     ctpsa = ffi.gc(ffi.cast(ctpsa_cref, ptr), _C.mad_free)
     local t = ffi.cast(tpsa_ccast, tpsa)
-    t.d, t.lo, t.mo = d, mo, mo
+    t.d, t.lo, t.mo = d, mo, mo -- see mad_ctpsa_newd() in mad_tpsa.c
   end
   return ctpsa
 end
@@ -220,17 +225,17 @@ local function tpsa (td, mo_)
   end
   local tbl
   if is_nil(td) then
-    td      = _C.mad_desc_curr or gtpsad(mo_)
+    td      = _C.mad_desc_curr
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif is_gtpsad(td) then
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   elseif is_table(td) or is_matrix(td) then
-    td, tbl = _C.mad_desc_curr or gtpsad(mo_), td
+    td, tbl = _C.mad_desc_curr, td
     mo_     = mo_ or td.mo       -- mo = d.mo
-  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
+  assert(is_gtpsad(td)  , "invalid argument #1 (GTPSA descriptor expected)")
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
   local t = tpsa_alloc(td, max(0, min(mo_, td.mo)))
   if tbl then t:setv(1,tbl) end
@@ -243,17 +248,17 @@ local function ctpsa (td, mo_)
   end
   local tbl
   if is_nil(td) then
-    td      = _C.mad_desc_curr or gtpsad(mo_)
+    td      = _C.mad_desc_curr
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif is_gtpsad(td) then
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
   elseif is_table(td) or is_cmatrix(td) then
-    td, tbl = _C.mad_desc_curr or gtpsad(mo_), td
+    td, tbl = _C.mad_desc_curr, td
     mo_     = mo_ or td.mo       -- mo = d.mo
-  else error("invalid argument #1 (GTPSA or descriptor expected)")
   end
+  assert(is_gtpsad(td)  , "invalid argument #1 (GTPSA descriptor expected)")
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
   local t = ctpsa_alloc(td, max(0, min(mo_, td.mo)))
   if tbl then t:setv(1,tbl) end
