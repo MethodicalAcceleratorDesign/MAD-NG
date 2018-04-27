@@ -64,8 +64,8 @@ ord_t    mad_ctpsa_ordv    (const ctpsa_t *t1, const ctpsa_t *t2, ...);  // max 
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
-void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v);
-void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im); // without complex-by-value
+void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v, idx_t iv);
+void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv); // without complex-by-value
 
 // conversion
 void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *dst);
@@ -223,9 +223,11 @@ void    mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                        num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
 void     mad_ctpsa_minv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc]);
-void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc], int selected[sa]);
+void     mad_ctpsa_pminv   (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc], ssz_t selected[sa]);
+void     mad_ctpsa_compose (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_normal  (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb,       ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_tnormal (ssz_t sa, const  tpsa_t *ma[sa], ssz_t sb,       ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);

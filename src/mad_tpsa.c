@@ -190,14 +190,21 @@ FUN(clear) (T *t)
 }
 
 void
-FUN(scalar) (T *t, NUM v)
+FUN(scalar) (T *t, NUM v, idx_t iv)
 {
   assert(t);
-  if (!v) { FUN(reset0)(t); return; }
+  if (!v && !iv) { FUN(reset0)(t); return; }
 
   t->lo = t->hi = 0;
   t->nz = 1;
   t->coef[0] = v;
+
+  if (iv > 0 && t->mo > 0) {
+    ensure(iv <= t->d->nmv, "index exceeds GPTSA number of map variables");
+    t->hi = 1;
+    t->nz = 3;
+    t->coef[iv] = 1;
+  }
 }
 
 // --- copy, convert ----------------------------------------------------------o
@@ -491,8 +498,8 @@ void FUN(setm_r) (T *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t
 void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
 
-void FUN(scalar_r) (T *t, num_t v_re, num_t v_im)
-{ FUN(scalar)(t, CNUM(v)); }
+void FUN(scalar_r) (T *t, num_t v_re, num_t v_im, idx_t iv)
+{ FUN(scalar)(t, CNUM(v), iv); }
 
 #endif // MAD_CTPSA_IMPL
 
