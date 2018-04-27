@@ -57,7 +57,7 @@ void  mad_mono_sub   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 
 void  mad_mono_concat(ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[n], ord_t r[n]);
 
-void  mad_mono_sort  (ssz_t n, const ord_t a[n], int idxs[n]);
+void  mad_mono_sort  (ssz_t n, const ord_t a[n], idx_t idxs[n]);
 void  mad_mono_print (ssz_t n, const ord_t a[n]);
 
 // --- reference for crosscheck with SSE2 or above ----------------------------o
