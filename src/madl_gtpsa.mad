@@ -84,9 +84,9 @@ local ctpsa_ctor  = ffi.typeof 'struct ctpsa '
 local ctpsa_cref  = ffi.typeof 'struct ctpsa&'
 local  tpsa_ccast = ffi.typeof 'struct  tpsa_ccast&'
 
-local   int_arr  = ffi.typeof 'int [?]'
-local  tpsa_arr  = ffi.typeof 'struct  tpsa* [?]'
-local ctpsa_arr  = ffi.typeof 'struct ctpsa* [?]'
+local   int_arr = ffi.typeof 'int [?]'
+local  tpsa_arr = ffi.typeof 'struct  tpsa* [?]'
+local ctpsa_arr = ffi.typeof 'struct ctpsa* [?]'
 
 local is_gtpsad = \x -> istype(gtpsad_ctor, x)
 local is_tpsa   = \x -> istype( tpsa_ctor , x)
@@ -290,7 +290,7 @@ MC.is_valid = \x  -> _C.mad_ctpsa_is_valid(x)
 MR.debug  = \x,nam_,fil_ => _C.mad_tpsa_debug (x, nam_, fil_) return x end
 MC.debug  = \x,nam_,fil_ => _C.mad_ctpsa_debug(x, nam_, fil_) return x end
 
--- same, copy, clear, scalar --------------------------------------------------o
+-- same, copy, convert, clear, scalar -----------------------------------------o
 
 function MR.__same (x, y_, e_)
   if is_nil(e_) and is_complex(y_) then -- shift right
@@ -364,16 +364,13 @@ function MC.clear (x)
   _C.mad_ctpsa_clear(x) return x
 end
 
-function MR.scalar (x, e_) -- clear + set0(e1)
-  e_ = e_ or 0
-  assert(is_number(e_), "invalid argument #2 (number expected)")
-  _C.mad_tpsa_scalar(x, e_) return x
+function MR.scalar (x, e_, iv_) -- clear + set0(e1) + set(iv, 1)
+  _C.mad_tpsa_scalar(x, e_ or 0, iv_ or 0) return x
 end
 
-function MC.scalar (x, e_) -- clear + set0(e1)
-  e_ = e_ or 0i
-  assert(is_complex(e_), "invalid argument #2 (complex expected)")
-  _C.mad_ctpsa_scalar_r(x, e_.re, e_.im) return x
+function MC.scalar (x, e_, iv_) -- clear + set0(e1) + set(iv, 1)
+  e_ = complex(e_)
+  _C.mad_ctpsa_scalar_r(x, e_.re, e_.im, iv_ or 0) return x
 end
 
 -- indexing ------------------------------------------------------------------o
@@ -1597,49 +1594,7 @@ function MC.logxdy (x, y, r) -- r = log(x/y)
   _C.mad_ctpsa_logxdy(x, y, r) return r
 end
 
--- maps of (c)tpsa ------------------------------------------------------------o
-
--- TODO: maps should be special objects
-
--- maps composition
-
-function MR.compose (ma, mb, mr) -- ma, mb, mr: compatible arrays of TPSAs
-  local cma, cmb, cmr = tpsa_arr(#ma,ma), tpsa_arr(#mb,mb), tpsa_arr(#mr,mr)
-  _C.mad_tpsa_compose(#ma, cma, #mb, cmb, #mr, cmr) return cmr
-end
-
-function MC.compose (ma, mb, mr) -- ma, mb, mr: compatible arrays of TPSAs
-  local cma, cmb, cmr = ctpsa_arr(#ma,ma), ctpsa_arr(#mb,mb), ctpsa_arr(#mr,mr)
-  _C.mad_ctpsa_compose(#ma, cma, #mb, cmb, #mr, cmr) return cmr
-end
-
--- map inv
-
-function MR.minv (ma, mr) -- ma, mr: compatible arrays of TPSAs
-  local cma, cmr = tpsa_arr(#ma,ma), tpsa_arr(#mr,mr)
-  _C.mad_tpsa_minv(#ma, cma, #mr, cmr) return cmr
-end
-
-function MC.minv (ma, mr) -- ma, mr: compatible arrays of TPSAs
-  local cma, cmr = ctpsa_arr(#ma,ma), ctpsa_arr(#mr,mr)
-  _C.mad_ctpsa_minv(#ma, cma, #mr, cmr) return cmr
-end
-
--- partial map inverse on selected rows
-
-function MR.pminv (ma, mr, sel) -- ma, mr: compatible arrays of TPSAs
-  local cma, cmr = tpsa_arr(#ma,ma), tpsa_arr(#mr,mr)
-  local rsel = int_arr(#sel, sel)
-  _C.mad_tpsa_pminv(#ma, cma, #mr, cmr, rsel) return cmr
-end
-
-function MC.pminv (ma, mr, sel) -- ma, mr: compatible arrays of TPSAs
-  local cma, cmr = ctpsa_arr(#ma,ma), ctpsa_arr(#mr,mr)
-  local rsel = int_arr(#sel, sel)
-  _C.mad_ctpsa_pminv(#ma, cma, #mr, cmr, rsel) return cmr
-end
-
--- I/O -----------------------------------------------------------------------o
+-- I/O ------------------------------------------------------------------------o
 
 function MR.write (x, file_, name_, eps_)
   if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
