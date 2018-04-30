@@ -25,7 +25,7 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
+local first, second, bind1st, bind2nd, bind2st                   in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
 local sequence, marker, changedir, flags                         in MAD.element
 local minlen                                                     in MAD.constant
@@ -76,8 +76,8 @@ end
 local elem_pos
 
 -- start and end markers
-local mkstart = marker '$start' {at=0} : set_readonly()
-local mkend   = marker '$end'   {    } : set_readonly()
+local mkstart = marker '$start' {} : set_readonly()
+local mkend   = marker '$end'   {} : set_readonly()
 
 -- sanity checks --------------------------------------------------------------o
 
@@ -352,28 +352,47 @@ end
 
 -- return s-position of 'from'
 local function from_pos (seq, elm, idx)
-  local from = elm.from or elm.at and 'start' or 'prev'
+  local from = elm.from or elm.at and (elm.at>=0 and 'start' or 'end') or 'prev'
+  local take = elm.at and second or first
+  local add  = elm.at and first  or add
   local pos  = elm.at or 0
+  local epos
 
-      if from == 'start'    then return pos
-  elseif from == 'prev'     then return pos + elem_pos(seq,idx-1)+var_raw(seq,_data)[idx-1].l
-  elseif from == 'next'     then return pos + second(elem_pos(seq,idx+fidx(elm)))
-  elseif from == 'end'      then return seq.l + pos
-  elseif from == 'selected' then return pos + var_raw(seq,_data).spos[idx] -- elem_pos(seq,idx) -- BUG?
-  else                           return pos + from_epos(seq,from,idx)
+      if from == 'start'    then epos = pos
+  elseif from == 'prev'     then epos = pos + add(take(elem_pos(seq,idx-1)), var_raw(seq,_data)[idx-1].l)
+  elseif from == 'next'     then epos = pos + take(elem_pos(seq,idx+fidx(elm)))
+  elseif from == 'end'      then epos = pos + seq.l
+  elseif from == 'selected' then epos = pos + var_raw(seq,_data).spos[idx]
+  elseif is_number(from)    then epos = pos + from
+  else                           epos = pos + from_epos(seq,from,idx)
   end
+
+  return epos
 end
 
--- return s-position of 'refpos'
+-- return relative e-position of 'refpos'
 local function refpos_pos (seq, elm, idx)
   local refpos = elm.refpos or seq.refer or 'centre'
+  local rpos
 
-      if refpos == 'entry'  then return 0
-  elseif refpos == 'centre' then return elm.l/2
-  elseif refpos == 'exit'   then return elm.l
-  elseif is_number(refpos)  then return refpos
-  else                           return refpos_epos(elm, refer, idx)
+      if refpos == 'entry'  then rpos = 0
+  elseif refpos == 'centre' then rpos = elm.l/2
+  elseif refpos == 'exit'   then rpos = elm.l
+  elseif is_number(refpos)  then rpos = refpos
+  else                           rpos = refpos_epos(elm, refpos, idx)
   end
+
+  if is_nil(elm.at)
+    if elm.from == 'prev' then
+      rpos =       - rpos
+    elseif elm.from == 'next'
+      rpos = elm.l - rpos
+    else
+      error("unexpected from='"..elm.from.."'")
+    end
+  end
+
+  return rpos
 end
 
 -- build positions ------------------------------------------------------------o
@@ -397,7 +416,7 @@ function elem_pos (seq, idx, elm_)
   end
 
   local elm  = elm_ or elem[idx]
-  local epos = from_pos  (seq, elm, idx)
+  local epos =   from_pos(seq, elm, idx)
   local rpos = refpos_pos(seq, elm, idx)
   spos = epos - rpos
 
@@ -475,11 +494,9 @@ local function build_pos (seq, sref)
   assert(n == idx-1, "unexpected corrupted flat sequence")
 
   local len = elem.spos[n]
-  if seq.l == uninitialized then -- adjust length
+  if seq.l == uninitialized then
     seq.l = len
-  elseif seq.l >= len then       -- adjust end marker position
-    elem.spos[n], elem.epos[n] = seq.l, seq.l
-  else
+  elseif seq.l < len then
     error("invalid sequence length "..seq.l.."m for "..seq.__id)
   end
 end
@@ -541,7 +558,7 @@ end
 -- flatten sequence
 local function flatten_sequ (seq, flat, sref)
   local n, idx = seq:raw_len(), 2
-  flat[1] = mkstart {}
+  flat[1] = mkstart {at=0}
   for i=1,n do
     local elm = seq:raw_get(i)
     if not (is_element(elm) or is_rawtable(elm)) then
@@ -554,7 +571,7 @@ local function flatten_sequ (seq, flat, sref)
       idx, flat[idx] = idx+1, elm
     end
   end
-  flat[idx] = mkend {}
+  flat[idx] = mkend {at= seq.l~=uninitialized and seq.l or nil}
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
