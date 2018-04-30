@@ -25,7 +25,7 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local first, second, bind1st, bind2nd, bind2st                   in MAD.gfunc
+local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
 local sequence, marker, changedir, flags                         in MAD.element
 local minlen                                                     in MAD.constant
@@ -71,9 +71,6 @@ local function is_view (a)
 end
 
 -- definitions ----------------------------------------------------------------o
-
--- forward declarations
-local elem_pos
 
 -- start and end markers
 local mkstart = marker '$start' {} : set_readonly()
@@ -320,6 +317,9 @@ end
 
 -- position helpers -----------------------------------------------------------o
 
+-- forward declarations
+local elem_pos, refpos_pos
+
 -- return e-position of 'from', memoize result if count is not relative
 local function from_epos (seq, from, idx)
   local elem = var_raw(seq,_data)
@@ -350,19 +350,22 @@ local function fidx (elm)
   return is_sequence(elm) and #elm or 1
 end
 
+local function fpos (at, elen, spos, epos)
+  return at and epos or spos+elen
+end
+
 -- return s-position of 'from'
 local function from_pos (seq, elm, idx)
-  local from = elm.from or elm.at and (elm.at>=0 and 'start' or 'end') or 'prev'
-  local take = elm.at and second or first
-  local add  = elm.at and first  or add
-  local pos  = elm.at or 0
+  local at   = elm.at
+  local from = elm.from or at and (at>=0 and 'start' or 'end') or 'prev'
+  local pos  = at or refpos_pos(seq, elm, idx)
   local epos
 
       if from == 'start'    then epos = pos
-  elseif from == 'prev'     then epos = pos + add(take(elem_pos(seq,idx-1)), var_raw(seq,_data)[idx-1].l)
-  elseif from == 'next'     then epos = pos + take(elem_pos(seq,idx+fidx(elm)))
+  elseif from == 'prev'     then epos = pos + fpos(at, seq[idx-1].l, elem_pos(seq,idx-1        ))
+  elseif from == 'next'     then epos = pos + fpos(at,       -elm.l, elem_pos(seq,idx+fidx(elm)))
   elseif from == 'end'      then epos = pos + seq.l
-  elseif from == 'selected' then epos = pos + var_raw(seq,_data).spos[idx]
+  elseif from == 'selected' then epos = pos + seq:spos(idx)
   elseif is_number(from)    then epos = pos + from
   else                           epos = pos + from_epos(seq,from,idx)
   end
@@ -371,7 +374,7 @@ local function from_pos (seq, elm, idx)
 end
 
 -- return relative e-position of 'refpos'
-local function refpos_pos (seq, elm, idx)
+function refpos_pos (seq, elm, idx)
   local refpos = elm.refpos or seq.refer or 'centre'
   local rpos
 
@@ -380,16 +383,6 @@ local function refpos_pos (seq, elm, idx)
   elseif refpos == 'exit'   then rpos = elm.l
   elseif is_number(refpos)  then rpos = refpos
   else                           rpos = refpos_epos(elm, refpos, idx)
-  end
-
-  if is_nil(elm.at)
-    if elm.from == 'prev' then
-      rpos =       - rpos
-    elseif elm.from == 'next'
-      rpos = elm.l - rpos
-    else
-      error("unexpected from='"..elm.from.."'")
-    end
   end
 
   return rpos
