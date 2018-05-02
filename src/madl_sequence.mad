@@ -79,19 +79,19 @@ local mkend   = marker '$end'   {} : set_readonly()
 
 -- sanity checks --------------------------------------------------------------o
 
-local function seq_error (msg, seq, idx, nam)
+local function seq_error (msg, seq, idx, elm)
   local fun = seq.debug and warn or error
-  fun(msg .. " in sequence '"  .. (seq.__id or '?')
-          .. "' for element '" .. (nam      or '?')
-          .. "' at index "     .. (idx      or '?'), 2)
+  elm = elm or is_integer(idx) and is_sequence(seq) and seq[idx]
+  fun(msg .. (is_object(seq) and " in sequence '" .. seq.__id .. "'" or '')
+          .. (is_object(elm) and " for element '" .. elm.__id .. "'" or '')
+          .. (          idx  and " at index "     .. idx             or ''), 2)
 end
 
 local function seq_poserr (typ, seq, idx, pos)
-  local elem = var_raw(seq,_data)
   local msg = string.format(
     "invalid %s position at s = %.6gm (negative drift %.6gm)",
-    typ, elem.spos[idx], elem.spos[idx]-pos)
-  seq_error(msg, seq, idx, elem[idx].__id)
+             typ,               seq:spos(idx),        seq:spos(idx)-pos)
+  seq_error(msg, seq, idx, seq[idx])
 end
 
 -- check sequence spos and elements overlapp
@@ -316,7 +316,7 @@ local function from_epos (seq, from, idx)
   if elem.last_from ~= from then                     -- memoized?
     local idx, bra = index_of_fnam(seq, from, idx)
     if is_nil(idx) then                              -- not found
-      seq_error("invalid from of '" .. from .. "'", seq)
+      seq_error("invalid from of '" .. from .. "'", seq, idx)
     end
     elem.last_frompos = second(elem_pos(seq, idx))
     elem.last_from = bra ~= 2 and from or nil        -- memoize if not relative
@@ -328,7 +328,7 @@ end
 local function refpos_epos (elm, rpos, idx)
   if #elm == 0 then
     -- if not is_element(elm[rpos]) then
-    seq_error("invalid refpos to subelement '" .. rpos .. "'", elm, idx, elm.__id)
+    seq_error("invalid refpos to subelement '" .. rpos .. "'", elm, idx)
   end
   return from_epos(elm, rpos)
 end
@@ -382,7 +382,7 @@ function elem_pos (seq, idx, elm_)
   local elem = var_raw(seq,_data)
   local spos = elem.spos[idx]
   if is_nil(spos) then
-    seq_error("invalid index or reference detected", seq, idx, elm_ and elm_.__id)
+    seq_error("invalid index or reference detected", seq, idx, elm_)
   elseif is_nil(elm_) then
     if spos >= 0 then
       return spos, elem.epos[idx]
@@ -447,7 +447,7 @@ local function build_pos (seq, sref)
   sref = sref or {}
   for i=1,n do
     if elem[i].from == 'selected' then
-      seq_error("invalid from='selected' detected", seq, i, elem[i].__id)
+      seq_error("invalid from='selected' detected", seq, i, elem[i])
     end
     elem.spos[i], elem.epos[i] = uninitialized, uninitialized
   end
