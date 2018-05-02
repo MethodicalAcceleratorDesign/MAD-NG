@@ -43,7 +43,7 @@ mad_mono_str (ssz_t n, ord_t a[n], str_t s)
 {
   assert(a && s);
   ssz_t i = 0;
-  for (; i < n && s[i]; ++i) a[i] = s[i] - '0';
+  for (; i < n && s[i]; ++i) a[i] = s[i] - (s[i] > '9' ? 'A'-10 : '0');
   return i;
 }
 
