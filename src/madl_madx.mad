@@ -23,8 +23,10 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local Object, warn in MAD
-local is_nil, is_number, is_string, is_instanceOf in MAD.typeid
+local Object, warn                                                in MAD
+local assertf                                                     in MAD.utility
+local bind1st                                                     in MAD.gfunc
+local is_nil, is_number, is_string, is_instanceOf                 in MAD.typeid
 
 assert(is_nil(MADX), "MADX environment already defined")
 
@@ -46,18 +48,18 @@ local function convert_tokens (line)
   return line
 end
 
-local function convert_name (str)
+local function convert_name (env, str)
   local c = string.sub(str,1,1)
   if c == '"' or c == "'" then
-    assert(c == string.sub(str,-1), "unterminated string")
+    assertf(c == string.sub(str,-1), "unterminated string, line %d", env.lin)
     return str
   else
     return string.lower(string.gsub(str, '([.$])', '_'))
   end
 end
 
-local function convert_names (str)
-  return (string.gsub(str, "(['\"]?[%a_][%w%._$]*['\"]?)", convert_name))
+local function convert_names (env, str)
+  return (string.gsub(str, "(['\"]?[%a_][%w%._$]*['\"]?)", bind1st(convert_name, env)))
 end
 
 local function convert_eref (str)
@@ -74,9 +76,10 @@ end
 local variable = "^(%s*)([%a_][%w%._$]*)(%s*)(:?=)(%s*)([^;]*);"
 
 local function convert_variable (env, line, cap)
-  assert(env.cur == 0, "unsupported variable definition inside sequence")
-  cap[2] = convert_name (cap[2])
-  cap[6] = convert_names(cap[6])
+  cap[2] = convert_name (env, cap[2])
+  cap[6] = convert_names(env, cap[6])
+  assertf(env.cur == 0, "unsupported variable %s assignment in %s, line %d",
+    cap[2], env[env.cur], env.lin)
   if cap[4] == ':=' then
     cap[4] = '=\\ '
     if string.sub(cap[6],1,1) == '(' then
@@ -95,7 +98,7 @@ local command = "^(%s*)([%a_][%w%._$]*)([^,;%a_]*)()"
 local command_attr = "(%s*)([^;]*);"
 
 local function convert_command (env, line, cap)
-  local cmd = convert_name(cap[2])
+  local cmd = convert_name(env, cap[2])
   if cmd == 'endsequence' then
     env.cur = 0
     return '}'
@@ -110,22 +113,22 @@ local function convert_command (env, line, cap)
     spc, cap[3] = string.match(line, command_attr, cap[4])
     if env.cur == 0 then                -- outside sequence definition, update
       pfx = sid > 0 and env[sid] .. "['" .. cap[2] .. "'] " or cmd
-      opn, cap[3], clo = ':set { ', convert_names(cap[3] or ''), ' }'
+      opn, cap[3], clo = ':set { ', convert_names(env, cap[3] or ''), ' }'
     elseif env.seq[cmd] then            -- sharing sequence (keep only at, from, refpos)
       if env.wrn then
-        warn("sequence update inside sequence " .. env[env.cur] .. ": " .. cmd)
+        warn("%03d: sequence updated in %s: %s", env.lin, env[env.cur], cap[2])
       end
       pfx = cap[2]
 --      pfx = "sequence '" .. cap[2] .. "' "
-      opn, cap[3], clo = '{ ', convert_names(convert_eref(cap[3] or '')), ' },'
+      opn, cap[3], clo = '{ ', convert_names(env, convert_eref(cap[3] or '')), ' },'
 --      opn, cap[3], clo = '{ '..cmd..', ', convert_names(convert_eref(cap[3] or '')), ' },'
     else                                -- sharing element (keep only at, from)
       if env.wrn then
-        warn("element update inside sequence " .. env[env.cur] .. ": " .. cmd)
+        warn("%03d: element updated in %s: %s", env.lin, env[env.cur], cap[2])
       end
       pfx = cap[2]
 --      pfx = env.cls[cmd] .. " '" .. cap[2] .. "' "
-      opn, cap[3], clo = '{ ', convert_names(convert_eref(cap[3] or '')), ' },'
+      opn, cap[3], clo = '{ ', convert_names(env, convert_eref(cap[3] or '')), ' },'
     end
     return string.format("%s%s %s%s%s%s", cap[1],pfx, opn,spc or '',cap[3],clo)
   else                                    -- command, ignored
@@ -150,13 +153,14 @@ local function convert_line (str)
 end
 
 local function convert_element (env, line, cap)
-  local nam = convert_name(cap[2])
-  local cmd = convert_name(cap[3])
+  local nam = convert_name(env, cap[2])
+  local cmd = convert_name(env, cap[3])
   local sid, spc, clo, pfx = env.elm[nam]
   if cmd == 'sequence' then -- sequence
-    assert(env.cur == 0, "invalid sequence definition inside sequence")
+    assertf(env.cur == 0, "invalid sequence %s definition in %s, line %d",
+            cap[2], env[env.cur], env.lin)
     pfx, clo     = nam .. ' = ', ','
-    env[#env+1]  = nam
+    env[#env+1]  = cap[2]
     env.seq[nam] = #env
     env.cur      = #env
   elseif env.cur == 0 then  -- class
@@ -167,7 +171,12 @@ local function convert_element (env, line, cap)
     pfx, clo     = '', ' },'
     if sid then
       if env.wrn then
-        warn("implicit element re-definition ignored: " .. nam)
+        if env.cur == 0 then
+          warn("%03d: element redefined, ignored: %s", env.lin, cap[2])
+        else
+          warn("%03d: element redefined in %s, ignored: %s",
+               env.lin, env[env.cur], cap[2])
+        end
       end
     else
       env.cls[nam] = cmd
@@ -179,13 +188,13 @@ local function convert_element (env, line, cap)
     cap[5] = cap[5]+1
   end
   if c == '=' then -- line -- TODO: line arguments
-    assert(cmd == 'line', "line definition expected")
+    assertf(cmd == 'line', "'line' definition expected, line %d", env.lin)
     spc, cap[4] = string.match(line, element_line, cap[5])
-    cap[4] = convert_names(convert_line(cap[4] or ''))
+    cap[4] = convert_names(env, convert_line(cap[4] or ''))
   elseif c ~= ';' then -- attribute
-    assert(cmd ~= 'line', "unexpected line definition")
+    assertf(cmd ~= 'line', "unexpected 'line' definition, line %d", env.lin)
     spc, cap[4] = string.match(line, element_attr, cap[5])
-    cap[4] = convert_names(convert_eref(cap[4] or ''))
+    cap[4] = convert_names(env, convert_eref(cap[4] or ''))
   else
     cap[4] = ''
   end
@@ -224,7 +233,8 @@ local function load_file (madx, file_in, file_out)
 
   madx = madx or MADX
 
-  local env = { cur=0, seq={}, elm={}, cls={}, wrn=madx.option.warn, madx=madx }
+  local env = { cur=0, seq={}, elm={}, cls={}, lin=0,
+                wrn=madx.option.warn, madx=madx }
 
   -- load file
   local inf = assert( io.open(file_in) )
@@ -234,6 +244,7 @@ local function load_file (madx, file_in, file_out)
   }
 
   for line in inf:lines() do
+    env.lin = env.lin + 1
     line = convert_comments   (line)
     line = convert_tokens     (line)
     line = convert_statements (env, line)
@@ -242,13 +253,13 @@ local function load_file (madx, file_in, file_out)
   out[#out+1] = string.format("\n%s:close_env()", madx.name)
   inf:close()
 
-  if file_out then -- save to file
+  -- compile in memory
+  assert( load( table.concat(out,'\n') ) ) ()
+
+  -- save to file
+  if file_out then
     local outf = assert( io.open(file_out, "w") )
-    for i,s in ipairs(out) do
-      outf:write(s, '\n')
-    end
-  else             -- compile in memory
-    assert( load( table.concat(out,'\n') ) ) ()
+    for i,s in ipairs(out) do outf:write(s, '\n') end
   end
 
   env, out = nil, nil
