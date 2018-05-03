@@ -27,7 +27,7 @@
 local filesys, mtable, Object                                     in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil,
       assertEquals, assertErrorMsgContains, assertIs,
-      assertAlmostEquals                                          in MAD.utest
+      assertAlmostEquals,  assertNotIs                            in MAD.utest
 local is_sequence, is_element, is_number                          in MAD.typeid
 local tblcpy                                                      in MAD.utility
 local abs, eps, min                                               in MAD.gmath
@@ -2630,6 +2630,84 @@ function TestSequence:testDumpseqStdout()
   assertFiles(fname)
 
   io.stdout    = stdout
+end
+
+function TestSequence:testUniqueIdentity()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  -- no param : unique identity
+  seq:unique()
+  assertTrue(seq[2]:is_instanceOf(df1)); assertNotIs(seq[2], df1)
+  assertIs  (seq[3], df2)
+  assertTrue(seq[4]:is_instanceOf(df1)); assertNotIs(seq[4], df1)
+end
+
+function TestSequence:testUniqueName()
+  local df11 = drift    "df1" { at = 1, from = "prev" }
+  local df12 = drift    "df1" { at = 1, from = "prev" }
+  local df2  = drift    "df2" { at = 1, from = "prev" }
+  local seq  = sequence "seq" { df11, df2, df12 }
+  -- no param : only unique identity (nothing is done here)
+  seq:unique()
+  assertIs(seq[2], df11)
+  assertIs(seq[3], df2 )
+  assertIs(seq[4], df12)
+end
+
+function TestSequence:testUniqueString()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique("%s cnt:%d idx:%d")
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueFunc()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique(\name,cnt,idx -> name.." cnt:"..cnt.." idx:"..idx)
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueInvalid()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  local msg = {
+    "cannot rename uniquely element 'df1' (already in use)",
+    "cannot rename uniquely element 'df3' (already in use)",
+  }
+  assertErrorMsgContains(msg[1], sequence.unique, seq, \s -> s)
+  assertErrorMsgContains(msg[1], sequence.unique, seq, "%s"   )
+  assertErrorMsgContains(msg[2], sequence.unique, seq, "df3"  )
 end
 
 -------------------------------------------------------------------------------o
