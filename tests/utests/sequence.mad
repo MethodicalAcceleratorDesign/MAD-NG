@@ -26,16 +26,19 @@
 
 local filesys, mtable, Object                                     in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil,
-      assertEquals, assertErrorMsgContains, assertIs              in MAD.utest
-local is_sequence, is_element                                     in MAD.typeid
+      assertEquals, assertErrorMsgContains, assertIs,
+      assertAlmostEquals                                          in MAD.utest
+local is_sequence, is_element, is_number                          in MAD.typeid
 local tblcpy                                                      in MAD.utility
+local abs, eps, min                                               in MAD.gmath
 local drift, marker, sbend, quadrupole, sequence, bline, flags    in MAD.element
 local selected                                                    in flags
 
-local srcdir = \s -> '../share/'    ..(s or '')
-local refdir = \s -> 'sequence_ref/'..(s or '')
-local rundir = \s -> 'sequence_run/'..(s or '')
-local _msg   = {
+local generate = false
+local srcdir   = \s -> '../share/'    ..(s or '')
+local refdir   = \s -> 'sequence_ref/'..(s or '')
+local rundir   = \s -> 'sequence_run/'..(s or '')
+local _msg     = {
   "invalid write access to readonly mtable",
   "nil reference value",
   "no reference column found",
@@ -60,6 +63,36 @@ local function assertElem(actual, expected)
   assertTrue(is_element(actual  ))
   assertTrue(is_element(expected))
   assertEquals(actual, expected)
+end
+
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refdir(name), "r"))
+  local run  = assert(io.open(rundir(name), "r"))
+  local reftbl, sref = string.splitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = string.splitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
+  for i=1,sref do
+    reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
+    runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
+    if is_number(reftbl[i]) then
+      local approx = abs(runtbl[i]-reftbl[i])
+      if 14*eps < approx then
+        local div = min(runtbl[i], reftbl[i])
+        if div == 0 then
+          assertAlmostEquals(approx, 0, 1.1e-5)
+        else
+          assertAlmostEquals((runtbl[i]-reftbl[i])/div, 0, 1.1e-6)
+        end
+      end
+    else
+      assertEquals(runtbl[i], reftbl[i])
+    end
+  end
+  if not generate then
+    os.remove(rundir(name))
+    filesys.rmdir(rundir(""))
+  end
 end
 
 -- regression test suite ------------------------------------------------------o
@@ -2482,8 +2515,6 @@ function TestSequence:testReplaceInvalidElem()
   assertErrorMsgContains(msg[6], sequence.replace, seq, {\ ()} , {1,1})
 end
 
--------------------------------------------------------------------------------o
-
 function TestSequence:testShareSimple()
   local df   = drift "df" { l=1, at=1.5 }
   local seq1 = sequence "seq1"  { df }
@@ -2565,5 +2596,42 @@ function TestSequence:testShareNonUniqueNameInvalid()
   assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
   assertErrorMsgContains(msg[1], sequence.share, seq2, seq1)
 end
+
+function TestSequence:testDumpseqFileName()
+  local seq = sequence "seq" { l = 10,
+    drift      "df" { at =-3, l = 2, from = "next"                  },
+    marker     "mk" { at = 5                                        },
+    quadrupole "mq" { at = 3, l = 3, from = "prev", refpos = "exit" },
+  }
+  local fname  = "dumpseq.dat"
+  filesys.mkdir(rundir())
+  seq:dumpseq(rundir(fname))
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStream()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stream.dat"
+
+  filesys.mkdir(rundir())
+  local stream = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq(stream)
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStdout()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stdout.dat"
+  local stdout = io.stdout
+
+  filesys.mkdir(rundir())
+  io.stdout    = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq()
+  assertFiles(fname)
+
+  io.stdout    = stdout
+end
+
+-------------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o
