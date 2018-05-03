@@ -1045,7 +1045,8 @@ local function filter (tbl, rng_, sel_, not_)
   local f = bind1st(do_filter, ri)
   ri.n = 0
   tbl:foreach(f, rng_, sel_, not_)
-  return ri
+  local n = ri.n ; ri.n = nil
+  return ri, n
 end
 
 -- methods (R/W, rebuild dict) ------------------------------------------------o
@@ -1056,14 +1057,13 @@ local function remove (tbl, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to remove
-  local idx_r
+  local idx_r, nr
   if is_number(rng_) and is_nil(sel_) and 1 <= rng_ and rng_ <= data.nr+1 then
-    idx_r = { rng_, n=1 }
+    idx_r, nr = { rng_ }, 1
     -- if true then tbl:remrow(rng_) return tbl end -- uniformity test
   else
-    idx_r = filter(tbl, rng_, sel_, true)
+    idx_r, nr = filter(tbl, rng_, sel_, true)
   end
-  local nr = idx_r.n
   if nr == 0 then return tbl end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
@@ -1097,9 +1097,9 @@ local function insert (tbl, rows, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to select
-  local idx_r
+  local idx_r, nr
   if is_number(rng_) and is_nil(sel_) and 1 <= rng_ and rng_ <= data.nr+1 then
-    idx_r = { rng_, n=1 }
+    idx_r, nr = { rng_ }, 1
     -- if #rows == 1 then tbl:insrow(rng_, rows[1]) return tbl end -- uniformity test
   else
     -- insert(rows, sel) -> insert(rows, sel.range, sel)
@@ -1107,12 +1107,11 @@ local function insert (tbl, rows, rng_, sel_)
       rng_, sel_ = rng_.range, rng_ -- extract range + right shift (see foreach)
     end
 
-    idx_r = filter(tbl, rng_, sel_, true)
+    idx_r, nr = filter(tbl, rng_, sel_, true)
     if is_rawtable(sel_) and sel_.where == 'after' then
-      for i=1,idx_r.n do idx_r[i] = idx_r[i]+1 end
+      for i=1,nr do idx_r[i] = idx_r[i]+1 end
     end
   end
-  local nr = idx_r.n
   if nr == 0 then return tbl end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
@@ -1125,29 +1124,29 @@ local function insert (tbl, rows, rng_, sel_)
     end
   end
 
-  -- process cases: 1x1, 1xR, Nx1, NxR where R=#rows and N=#selected=idx_r.n
-  nr = rsize   == 1 and idx_r.n or
-       idx_r.n == 1 and rsize   or min(idx_r.n, rsize)
+  -- process cases: 1x1, 1xR, Nx1, NxR where R=#rows and N=#selected=nr
+  local nrs = rsize == 1 and nr    or
+              nr    == 1 and rsize or min(nr, rsize)
 
   -- expand if needed
-  if data.nr+nr > data.rmax then expand(data, tbl, nr) end
+  if data.nr+nrs > data.rmax then expand(data, tbl, nrs) end
 
   -- reshape vectors
-  data.nr = data.nr+nr
+  data.nr = data.nr+nrs
   local nc = data.nc-data.ng
   for i=1,nc do
     if is_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
   end
 
   -- insert rows by decreasing indexes
-  local i, j, ni = data.nr, data.nr-nr, idx_r[1]
-  local k = (nr-1) % rsize   + 1
-  local r = (nr-1) % idx_r.n + 1
+  local i, j, ni = data.nr, data.nr-nrs, idx_r[1]
+  local k = (nrs-1) % rsize + 1
+  local r = (nrs-1) % nr    + 1
   while i >= ni do
     if j == idx_r[r]-1 then
       cpyrow(data, i, rows[k])
-      k = (k-2) % rsize   + 1
-      r = (r-2) % idx_r.n + 1
+      k = (k-2) % rsize + 1
+      r = (r-2) % nr    + 1
     else
       for ic=0,nc do data[ic][i] = data[ic][j] end
       j = j-1
@@ -1165,8 +1164,7 @@ local function sort (tbl, cmp, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to sort
-  local idx_r = filter(tbl, rng_, sel_)
-  local nr = idx_r.n
+  local idx_r, nr = filter(tbl, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
