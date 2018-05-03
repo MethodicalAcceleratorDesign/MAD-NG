@@ -35,7 +35,7 @@ local totable, iter          in fun
 local abs, min, max          in math
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
-      is_value, is_integer, is_indexable, is_iterable, is_mappable, is_callable,
+      is_value, is_integer, is_iterable, is_mappable, is_callable,
       is_stringable, is_tablable, is_copiable, is_sameable, is_complex,
       get_metatable, get_metamethod, wprotect, set_concept, concept in MAD.typeid
 
@@ -88,6 +88,10 @@ local operator = {
   div     = \x,y -> x / y,
   mod     = \x,y -> x % y,
   pow     = \x,y -> x ^ y,
+  emul    = \x,y -> x:emul(y), -- .*
+  ediv    = \x,y -> x:ediv(y), -- ./
+  emod    = \x,y -> x:emod(y), -- .%
+  epow    = \x,y -> x:epow(y), -- .^
 
   -- object operators
   get     = \x,k   -> x[k],
@@ -105,6 +109,10 @@ operator.opstr = {
   ['/' ] = operator.div,
   ['%' ] = operator.mod,
   ['^' ] = operator.pow,
+  ['.*'] = operator.emul,
+  ['./'] = operator.ediv,
+  ['.%'] = operator.emod,
+  ['.^'] = operator.epow,
   ['#' ] = operator.len,
   ['..'] = operator.cat,
   ['<' ] = operator.lt,
@@ -178,10 +186,10 @@ function utility.clearkeys (a, p_)
 end
 
 function utility.clearidxs (a, i_, j_)
-  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
+  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)  , "invalid argument #2 (number expected)")
-  assert(is_number(j_)  , "invalid argument #3 (number expected)")
+  assert(is_integer(i_)  , "invalid argument #2 (integer expected)")
+  assert(is_integer(j_)  , "invalid argument #3 (integer expected)")
   for i=i_,j_ do a[i] = nil end
   return a
 end
@@ -191,21 +199,21 @@ function utility.setkeys (a, k_, i_, j_)
     k_, i_, j_ = nil, k_, i_  -- right shift
   end
   k_ = k_ or a
-  assert(is_indexable(a ), "invalid argument #1 (indexable expected)")
-  assert(is_indexable(k_), "invalid argument #2 (indexable expected)")
+  assert(is_iterable(a ), "invalid argument #1 (iterable expected)")
+  assert(is_iterable(k_), "invalid argument #2 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)   , "invalid argument #3 (number expected)")
-  assert(is_number(j_)   , "invalid argument #4 (number expected)")
+  assert(is_integer(i_)   , "invalid argument #3 (integer expected)")
+  assert(is_integer(j_)   , "invalid argument #4 (integer expected)")
   for i=i_,j_ do a[k_[i-i_+1]] = a[i] end
   return a
 end
 
 function utility.setidxs (a, k, i_, j_)
-  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
-  assert(is_indexable(k), "invalid argument #2 (indexable expected)")
+  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
+  assert(is_iterable(k), "invalid argument #2 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)  , "invalid argument #3 (number expected)")
-  assert(is_number(j_)  , "invalid argument #4 (number expected)")
+  assert(is_integer(i_)  , "invalid argument #3 (integer expected)")
+  assert(is_integer(j_)  , "invalid argument #4 (integer expected)")
   for i=i_,j_ do a[i] = a[k[i-i_+1]] end
   return a
 end
@@ -219,34 +227,45 @@ end
 
 -- files
 
+local filemode = { -- see fopen in ISO/IEC 9899:2011 7.21.5.3 (C11 standard)
+  ['r'  ]='r', ['w'  ]='w', ['wx'  ]='w', ['a'  ]='w',
+  ['r+' ]='w', ['w+' ]='w', ['w+x' ]='w', ['a+' ]='w',
+  ['rb' ]='r', ['wb' ]='w', ['wbx' ]='w', ['ab' ]='w',
+  ['r+b']='w', ['w+b']='w', ['w+bx']='w', ['a+b']='w',
+  ['rb+']='w', ['wb+']='w', ['wb+x']='w', ['ab+']='w',
+}
+
+function utility.openfile (fname_, mode_, ext_)
+  if filemode[fname_] and is_nil(ext_) then
+    fname_, mode_, ext_ = nil, fname_, mode_ -- right shift
+  end
+  if is_string(mode_) and not filemode[mode_] and is_nil(ext_) then
+    mode_, ext_ = nil, mode_                 -- right shift
+  end
+
+  assert(is_nil(mode_) or filemode[mode_], "invalid argument #2 (file mode expected)")
+  assert(is_nil(ext_ ) or is_string(ext_), "invalid argument #3 (string expected)")
+
+  local file
+  if is_string(fname_) then
+    if ext_ and #ext_ > 0 and string.sub(fname_,-#ext_) ~= ext_ then
+      fname_ = fname_ .. ext_ -- e.g. '.tfs', '.dat', '.mad', etc...
+    end
+    file = assert(io.open(fname_, mode_ or 'r'))
+    assert(io.type(file) == 'file', "invalid argument #1 (unable to open file)")
+  else
+    file = fname_ or filemode[mode_] == 'w' and io.stdout or io.stdin
+    assert(io.type(file) == 'file', "invalid argument #1 (open file expected)")
+  end
+  return file
+end
+
 function utility.fileexists (fname)
   assert(is_string(fname), "invalid argument #1 (string expected)")
   local file = io.open(fname)
   if is_nil(file) then return false end
   io.close(file)
   return true
-end
-
-function utility.openfile (fname_, mode_, ext_)
-  -- default is read (as io.open)
-  local mode, ext = mode_ or 'r', ext_ or ''
-  assert(is_string(mode), "invalid argument #2 (string expected)")
-  assert(is_string(ext ), "invalid argument #3 (string expected)")
-  if string.sub(mode,1,1) == '.' and is_nil(ext_) then
-    mode, ext = 'r', mode -- right shift
-  end
-  local file
-  if is_string(fname_) then
-    if #ext > 0 and string.sub(fname_,-#ext) ~= ext then
-      fname_ = fname_ .. ext -- e.g. '.tfs', '.dat', '.mad', etc...
-    end
-    file = assert(io.open(fname_, mode))
-    assert(io.type(file) == 'file', "invalid argument #1 (unable to open file)")
-  else
-    file = fname_ or string.sub(mode,1,1) == 'r' and io.stdin or io.stdout
-    assert(io.type(file) == 'file', "invalid argument #1 (open file expected)")
-  end
-  return file
 end
 
 -- string formating
@@ -422,8 +441,8 @@ local bind1st in MAD.gfunc
 
 function utility.strinterp (str, var, policy_)
   policy_ = policy_ or '+'   -- valid policy: [+-=] (see interp_fun)
-  assert(is_string   (str ), "invalid argument #1 (string expected)")
-  assert(is_indexable(var ), "invalid argument #2 (indexable expected)")
+  assert(is_string  (str)  , "invalid argument #1 (string expected)")
+  assert(is_mappable(var)  , "invalid argument #2 (mappable expected)")
   assert(is_string(policy_), "invalid argument #3 (string expected)")
   local arg = { var=var, policy=policy_} ; arg.fun = bind1st(interp_fun, arg)
   return (str:gsub('%$%b{}', arg.fun))
