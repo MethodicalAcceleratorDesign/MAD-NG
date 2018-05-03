@@ -908,6 +908,22 @@ function MC.__mul (x, y, r)
   error("invalid arguments (unsupported GTPSA operation '*')")
 end
 
+-- element wise mul (.*)
+
+function MR.__emul (x, y, r_)
+  if has_method(y,'__remul_tpsa') then           -- tpsa .* ?
+    return y:__remul_tpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.*'')")
+end
+
+function MC.__emul (x, y, r_)
+  if has_method(y,'__remul_ctpsa') then          -- ctpsa .* ?
+    return y:__remul_ctpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.*'')")
+end
+
 -- div
 
 function MR.__rdiv_cpx (y, x, r)                 -- cpx / tpsa
@@ -978,6 +994,38 @@ function MC.__div (x, y, r)
     return y:__rdiv_ctpsa(x, r)
   end
   error("invalid arguments (unsupported GTPSA operation '/')")
+end
+
+-- element wise div (./)
+
+function MR.__ediv (x, y, r_)
+  if has_method(y,'__rediv_tpsa') then           -- tpsa ./ ?
+    return y:__rediv_tpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation './'')")
+end
+
+function MC.__ediv (x, y, r_)
+  if has_method(y,'__rediv_ctpsa') then          -- ctpsa ./ ?
+    return y:__rediv_ctpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation './'')")
+end
+
+-- element wise mod (.%)
+
+function MR.__emod (x, y, r_)
+  if has_method(y,'__remod_tpsa') then           -- tpsa .% ?
+    return y:__remod_tpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.%'')")
+end
+
+function MC.__emod (x, y, r_)
+  if has_method(y,'__remod_ctpsa') then          -- ctpsa .% ?
+    return y:__remod_ctpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.%'')")
 end
 
 -- pow = exp(y*log(x))
@@ -1064,6 +1112,22 @@ function MC.__pow (x, y, r)
     return y:__rpow_ctpsa(x, r)
   end
   error("invalid arguments (unsupported GTPSA operation '^')")
+end
+
+-- element wise pow (.%)
+
+function MR.__epow (x, y, r_)
+  if has_method(y,'__repow_tpsa') then           -- tpsa .% ?
+    return y:__repow_tpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.%'')")
+end
+
+function MC.__epow (x, y, r_)
+  if has_method(y,'__repow_ctpsa') then          -- ctpsa .% ?
+    return y:__repow_ctpsa(x, r_)
+  end
+  error("invalid arguments (unsupported GTPSA operation '.%'')")
 end
 
 -- tpsa functions -------------------------------------------------------------o
@@ -1596,24 +1660,18 @@ end
 
 -- I/O ------------------------------------------------------------------------o
 
-function MR.write (x, file_, name_, eps_)
-  if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
-    file_, name_, eps_ = nil, file_, name_   -- right shift
-  end
-  if is_nil(eps_) and is_number(name_) then
-    name_, eps_ = nil, name_                 -- right shift
-  end
-  _C.mad_tpsa_print(x, name_, eps_ or -1, file_) return x
+function MR.write (x, filnam_, name_, eps_)
+  local file = openfile(filnam_, 'w', '.dat')
+  _C.mad_tpsa_print(x, name_, eps_ or -1, file)
+  if is_string(filnam_) then file:close() else file:flush() end
+  return x
 end
 
-function MC.write (x, file_, name_, eps_)
-  if is_nil(eps_) and (is_string(file_) or is_number(file_)) then
-    file_, name_, eps_ = nil, file_, name_   -- right shift
-  end
-  if is_nil(eps_) and is_number(name_) then
-    name_, eps_ = nil, name_                 -- right shift
-  end
-  _C.mad_ctpsa_print(x, name_, eps_ or -1, file_) return x
+function MC.write (x, filnam_, name_, eps_)
+  local file = openfile(filnam_, 'w', '.dat')
+  _C.mad_ctpsa_print(x, name_, eps_ or -1, file)
+  if is_string(filnam_) then file:close() else file:flush() end
+  return x
 end
 
 function MR.print (x, name_, eps_)
@@ -1623,14 +1681,20 @@ function MR.print (x, name_, eps_)
   return x:write(nil, name_, eps_)
 end
 
-function MR.read (_, file_)
-  local x = tpsa(_C.mad_tpsa_scan_hdr(file_))
-  _C.mad_tpsa_scan_coef(x, file_) return x
+function MR.read (_, filnam_)
+  local file = openfile(filnam_, 'r', '.dat')
+  local d = _C.mad_tpsa_scan_hdr(file)
+  local x = tpsa(d)
+  _C.mad_tpsa_scan_coef(x, file)
+  return x
 end
 
 function MC.read (_, file_)
-  local x = ctpsa(_C.mad_ctpsa_scan_hdr(file_))
-  _C.mad_ctpsa_scan_coef(x, file_) return x
+  local file = openfile(filnam_, 'r', '.dat')
+  local d = _C.mad_tpsa_cscan_hdr(file)
+  local x = ctpsa(d)
+  _C.mad_ctpsa_cscan_coef(x, file)
+  return x
 end
 
 -- metamethods ----------------------------------------------------------------o
@@ -1638,17 +1702,23 @@ end
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq =
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow
 
-MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow, MC.  eq =
-MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow, MC.__eq
+MC.  add, MC.  sub, MC.  mul, MC.  div, MC.  pow =
+MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__pow
 
-MR.  same, MR.  copy, MR.length =
-MR.__same, MR.__copy, MR.__len
+MR.  emul, MR.  ediv, MR.  emod, MR.  epow =
+MR.__emul, MR.__ediv, MR.__emod, MR.__epow
 
-MC.  same, MC.  copy, MC.length =
-MC.__same, MC.__copy, MC.__len
+MC.  emul, MC.  ediv, MC.  emod, MC.  epow =
+MC.__emul, MC.__ediv, MC.__emod, MC.__epow
+
+MR.  eq, MR.  same, MR.  copy, MR.length =
+MR.__eq, MR.__same, MR.__copy, MR.__len
+
+MC.  eq, MC.  same, MC.  copy, MC.length =
+MC.__eq, MC.__same, MC.__copy, MC.__len
 
 MR.__index = MR
 MC.__index = MC
