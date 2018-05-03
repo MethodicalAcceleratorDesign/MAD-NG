@@ -138,3 +138,60 @@ found:
   }
   return mad_str_trim(str, arg);
 }
+
+str
+mad_str_num (str_t str, ssz_t arg[5])
+{
+  assert(str);
+
+  int i = 0, d = 0, e = 0, n = 0;
+  char c;
+
+  // sign
+  if (buf[i] == '-' || buf[i] == '+') i++;
+
+  // drop leading zeros
+  while(buf[i] == '0') i++;
+
+  // digits
+  while(isdigit(buf[i])) n++, i++;
+
+  // dot
+  if (buf[i] == '.') d = ++i;
+
+  // decimals
+  if (d) {
+    // drop leading zeros
+    if (!n) while(buf[i] == '0') i++;
+
+    // digits
+    while(isdigit(buf[i])) n++, i++;
+  }
+
+  // ensure at least ±# or ±#. or ±.#
+  if(!(i > 0 && (isdigit(buf[i-1]) || (i > 1 &&  isdigit(buf[i-2])))))
+    return 0;
+
+  // exponent
+  if (buf[i] == 'e' || buf[i] == 'E' || buf[i] == 'd' || buf[i] == 'D')
+    c = buf[i], buf[i] = 'e', e = ++i;
+
+  if (e) {
+    // sign
+    if (buf[i] == '-' || buf[i] == '+') i++;
+
+    // digits
+    while(isdigit(buf[i])) i++;
+
+    // ensure e# or e±# otherwise backtrack
+    if (!isdigit(buf[i-1]))
+      i = e-1, buf[i] = c, e = 0;
+  }
+
+  if (n_) *n_ = n;
+  if (d_) *d_ = d-1;
+  if (e_) *e_ = e-1;
+  if (f_) *f_ = d > 0 || e > 0;
+
+  return i;
+}
