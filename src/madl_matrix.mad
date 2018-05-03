@@ -30,7 +30,7 @@ local ffi = require 'ffi'
 local istype in ffi
 local splitall in string
 
-local _C, tostring, complex in MAD
+local _C, tostring, complex, tocomplex in MAD
 
 local is_nil, is_boolean, is_number, is_string, is_table,
       is_complex, is_scalar, is_callable, is_iterable,
@@ -545,6 +545,47 @@ function MR._reshapeby (x, nr_, nc_)
   return x
 end
 
+-- conversion -----------------------------------------------------------------o
+
+function MR.complex (_, re_, im_, r) -- (re,im) -> r
+  assert(is_nil(re_) or is_matrix(re_), "invalid argument #2 (matrix expected)")
+  assert(is_nil(im_) or is_matrix(im_), "invalid argument #3 (matrix expected)")
+  assert(is_nil(r  ) or is_cmatrix(r ), "invalid argument #4 (cmatrix expected)")
+  assert(re_ or im_, "invalid argument #1 or #2 (at least one matrix expected)")
+  r = chksiz(re_, r, im_) or cmatrix_alloc((re_ or im_):sizes())
+  _C.mad_vec_cvec(re_ and re_.data, im_ and im_.data, r.data, r:size())
+  return r
+end
+
+function MR.real (x, re_)
+  assert(is_nil(re_) or is_matrix(re_), "invalid argument #2 (matrix expected)")
+  re_ = chksiz(re_, x) or matrix_alloc(x:sizes())
+  _C.mad_vec_copy(x.data, re_.data, x:size())
+  return re_
+end
+
+function MC.real (x, re_, im_)
+  assert(is_nil(re_) or is_matrix(re_), "invalid argument #2 (matrix expected)")
+  assert(is_nil(im_) or is_matrix(im_), "invalid argument #3 (matrix expected)")
+  re_ = chksiz(re_, x, im_) or matrix_alloc(x:sizes())
+  _C.mad_cvec_vec(x.data, re_.data, im_ and im_.data, x:size())
+  return re_, im_
+end
+
+function MR.imag (x, im_)
+  assert(is_nil(im_) or is_matrix(im_), "invalid argument #2 (matrix expected)")
+  im_ = chksiz(im_, x) or matrix_alloc(x:sizes())
+  _C.mad_vec_zero(im_.data, x:size())
+  return im_
+end
+
+function MC.imag (x, im_)
+  assert(is_nil(im_) or is_matrix(im_), "invalid argument #2 (matrix expected)")
+  im_ = chksiz(im_, x) or matrix_alloc(x:sizes())
+  _C.mad_cvec_vec(x.data, nil, im_.data, x:size())
+  return im_
+end
+
 -- getx, setx -----------------------------------------------------------------o
 
 function MR.getv (x, ij, r_)
@@ -962,8 +1003,6 @@ MR.tgamma= \x,r_ -> x:map(tgamma, r_)
 MR.lgamma= \x,r_ -> x:map(lgamma, r_)
 
 MR.carg  = \x,r_ -> x:map(carg , r_)
-MR.real  = \x,r_ -> x:map(real , r_)
-MR.imag  = \x,r_ -> x:map(imag , r_)
 MR.conj  = \x,r_ -> x:map(conj , r_)
 MR.proj  = \x,r_ -> x:map(proj , r_)
 MR.rect  = \x,r_ -> x:map(rect , r_)
@@ -2180,7 +2219,7 @@ function MR.write (x, filnam_, name_, eps_)
   eps_ = eps_ or eps
   local file = openfile(filnam_, 'w', '.dat')
   local nr, nc, v = x:sizes()
-  file:write(name_ or '', '[', nr, 'x', nc, '] =\n')
+  file:write(name_ or '', '[',nr,'x',nc, is_cmatrix(x) and 'i' or '','] =\n')
   for i=0,nr-1 do
     file:write('  ')
     for j=0,nc-2 do
@@ -2207,10 +2246,16 @@ function MR.read (_, filnam_)
   local def = file:read()
   if not def then return end
 
-  local _, _, nrs, ncs = string.find(def, "^[^[]*%[(%d+)x(%d+)%]%s*=")
+  local _, _, nrs, ncs, cpx = string.find(def, "^[^[]*%[(%d+)x(%d+)(i?)%]%s*=")
   local nr, nc = tonumber(nrs), tonumber(ncs)
-  local x, v = matrix(nr, nc)
-  local i, row, ncol = 0, {}
+  local i, x, v, to, row, ncol = 0, nil
+
+  if cpx == 'i'
+  then x, toval = cmatrix(nr, nc), tocomplex
+  else x, toval =  matrix(nr, nc), tonumber
+  end
+
+  print("cpx=", cpx)
 
   for line in file:lines() do
     if i == nr then break end
@@ -2220,9 +2265,9 @@ function MR.read (_, filnam_)
             "invalid format row %d (%d columns expected, got %d)", i, nc, ncol)
 
     for j=1,nc do
-      v = tonumber(row[j])
+      v = toval(row[j])
       if is_nil(v) then
-        errorf("invalid input row %d column %d (number expected, got '%s')",
+        errorf("invalid input row %d column %d (scalar expected, got '%s')",
                i, j, row[j])
       end
       x:set(i,j, v)
