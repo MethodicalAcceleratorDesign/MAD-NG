@@ -128,6 +128,16 @@ operator.opstr = {
   ['!!'] = operator.lbool,
 }
 
+local function toboolean (str)
+  if str == 'true' then
+    return true
+  elseif str == 'false' then
+    return false
+  else
+    return nil
+  end
+end
+
 -- utilities ------------------------------------------------------------------o
 
 local utility = {}
@@ -171,6 +181,30 @@ function utility.runonce (f, ...)
     return f(...)
   end
 end
+
+-- iterator: pairs = ipairs + kpairs
+
+local function kpairs_iter (tbl, key)
+  local k, v = key
+  repeat k, v = tbl.nxt(tbl.dat, k)                -- discard ipairs indexes
+  until type(k) ~= 'number' or (k%1) ~= 0 or k > tbl.lst or k < 1
+  return k, v
+end
+
+function utility.kpairs (tbl, lst_)
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  local nxt, dat, ini = pairs(tbl)
+  local lst = lst_
+  if not lst and is_iterable(tbl) then
+    for i in ipairs(tbl) do lst = i end
+  end
+  if not lst then return nxt, dat, ini end
+  return kpairs_iter, { nxt=nxt, dat=dat, lst=lst }, ini
+end
+
+-- _G.kpairs = utility.kpairs -- make it global too...
+
+local kpairs in utility
 
 -- key/indexes set
 
@@ -340,17 +374,15 @@ local tostring_ -- forward ref
 function utility.tbl2str (tbl, sep_)
   assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
   if is_emptytable(tbl) then return '{}' end
-  local r, ir = {}
-  r[1] = '{'
+  local r = {}
   for i,v in ipairs(tbl) do
-    r[i+1] = tostring_(v)
+    r[i] = tostring_(v)
   end
-  ir = #r+1
+  local ir = #r+1
   for k,v in kpairs(tbl) do
     r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
   end
-  r[ir] = '}'
-  return table.concat(r, sep_ or ', ')
+  return '{'..table.concat(r, sep_ or ', ')..'}'
 end
 
 function utility.str2tbl (str, match_, ini_)
@@ -363,16 +395,6 @@ function utility.str2tbl (str, match_, ini_)
     return r, n
   else
     return {str}, 1
-  end
-end
-
-function utility.toboolean (str)
-  if str == 'true' then
-    return true
-  elseif str == 'false' then
-    return false
-  else
-    return nil
   end
 end
 
@@ -587,28 +609,6 @@ end
 -- string.qsplit   = utility.strqsplit
 -- string.splitall = utility.strsplitall
 
--- iterator: pairs = ipairs + kpairs
-
-local function kpairs_iter (tbl, key)
-  local k, v = key
-  repeat k, v = tbl.nxt(tbl.dat, k)                -- discard ipairs indexes
-  until type(k) ~= 'number' or (k%1) ~= 0 or k > tbl.lst or k < 1
-  return k, v
-end
-
-function utility.kpairs (tbl, lst_)
-  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
-  local nxt, dat, ini = pairs(tbl)
-  local lst = lst_
-  if not lst and is_iterable(tbl) then
-    for i in ipairs(tbl) do lst = i end
-  end
-  if not lst then return nxt, dat, ini end
-  return kpairs_iter, { nxt=nxt, dat=dat, lst=lst }, ini
-end
-
-_G.kpairs = utility.kpairs -- make it global too...
-
 -- searching
 
 function utility.bsearch (tbl, val, cmp_, low_, high_)
@@ -652,9 +652,10 @@ end
 
 -- end ------------------------------------------------------------------------o
 return {
-  operator = wprotect(operator),
-  utility  = wprotect(utility ),
-  totable  = totable_,
-  tostring = tostring_,
-  __help   = require 'madh_gutil',
+  operator  = wprotect(operator),
+  utility   = wprotect(utility ),
+  totable   = totable_,
+  tostring  = tostring_,
+  toboolean = toboolean,
+  __help    = require 'madh_gutil',
 }
