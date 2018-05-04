@@ -594,43 +594,6 @@ local function close_env (self)
   return reset_env(self)
 end
 
--- local function strdump (self, class, pattern)
---   class, pattern = class or Object, pattern or ''
---   assert(is_object(self)   , "invalid argument #1 (object expected)")
---   assert(is_object(class)  , "invalid argument #2 (object expected)")
---   assert(is_string(pattern), "invalid argument #3 (string expected)")
---   local cnt, res, spc, str = {}, {}, ""
---   while self and self ~= class do
---     local var = rawget(self,_var)
---     -- header
---     str = rawget(var, '__id') and (" '"..var.__id.."'") or ""
---     res[#res+1] = spc.."+ "..tostring(self)
---     spc = spc .. "   "
---     -- variables
---     for k,v in pairs(var) do
---       if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k, pattern) then
---         str = spc .. tostring(k)
---         if is_string(v) then
---           str = str.." : '"..tostring(v):sub(1,15).."'"
---         elseif is_function(v) then
---           str = str.." := "..tostring(v(self))
---         else
---           str = str.." :  "..tostring(v)
---         end
---         if cnt[k]
---         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
---         else cnt[k] = 0 end
---         cnt[k] = cnt[k] + 1
---         res[#res+1] = str
---       end
---     end
---     self = parent(self)
---   end
---   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
---   res[#res+1] = ''
---   return table.concat(res, '\n')
--- end
-
 -- members
 M.__id  = 'Object'
 M.__par = parent
