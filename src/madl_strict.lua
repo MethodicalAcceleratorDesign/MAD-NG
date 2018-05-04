@@ -6,7 +6,6 @@ local IGNORED_WRITES = {}
 local IGNORED_READS = {
   _PROMPT=true,
   _PROMPT2=true,
-  arg=true,
 }
 
 local MT = {
