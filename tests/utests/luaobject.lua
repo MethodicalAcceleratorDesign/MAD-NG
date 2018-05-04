@@ -695,6 +695,7 @@ setmetatable(M, Object)
 
 -- end of object model --------------------------------------------------------o
 
+local utest
 if MAD == nil then
   utest = require("luaunit")
 else

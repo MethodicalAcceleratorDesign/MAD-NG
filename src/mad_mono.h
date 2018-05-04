@@ -9,8 +9,7 @@
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
- | Contrib: -
+ | Contrib: C. Tomoiaga
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -31,30 +30,47 @@
  o-----------------------------------------------------------------------------o
  */
 
-// --- types -----------------------------------------------------------------o
+#include "mad_defs.h"
+
+// --- types ------------------------------------------------------------------o
 
 typedef unsigned char ord_t;
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
-void  mad_mono_fill  (int n,       ord_t a[], ord_t v);
-void  mad_mono_copy  (int n, const ord_t a[], ord_t r[]);
+ssz_t mad_mono_str   (ssz_t n,       ord_t a[n], str_t s); // string mono "[0-9]*"
+void  mad_mono_fill  (ssz_t n,       ord_t a[n], ord_t v);
+void  mad_mono_copy  (ssz_t n, const ord_t a[n], ord_t r[n]);
 
-ord_t mad_mono_max   (int n, const ord_t a[]);
-int   mad_mono_ord   (int n, const ord_t a[]);
-int   mad_mono_eq    (int n, const ord_t a[], const ord_t b[]);
-int   mad_mono_lt    (int n, const ord_t a[], const ord_t b[]);
-int   mad_mono_le    (int n, const ord_t a[], const ord_t b[]);
-int   mad_mono_rcmp  (int n, const ord_t a[], const ord_t b[]);
+ord_t mad_mono_min   (ssz_t n, const ord_t a[n]);
+ord_t mad_mono_max   (ssz_t n, const ord_t a[n]);
+int   mad_mono_ord   (ssz_t n, const ord_t a[n]);
+int   mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_gt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_ge    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_rcmp  (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
-void  mad_mono_add   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
-void  mad_mono_sub   (int n, const ord_t a[], const ord_t b[], ord_t r[]);
+void  mad_mono_add   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
+void  mad_mono_sub   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 
-void  mad_mono_concat(int n, const ord_t a[], int m, const ord_t b[], ord_t r[]);
+void  mad_mono_concat(ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[n], ord_t r[n]);
 
-void  mad_mono_sort  (int n, const ord_t a[], int idxs[]);
-void  mad_mono_print (int n, const ord_t a[]);
+void  mad_mono_sort  (ssz_t n, const ord_t a[n], idx_t idxs[n]);
+void  mad_mono_print (ssz_t n, const ord_t a[n]);
 
-// ---------------------------------------------------------------------------o
+// --- reference for crosscheck with SSE2 or above ----------------------------o
+
+ord_t mad_mono_min_ref  (ssz_t n, const ord_t a[n]);
+ord_t mad_mono_max_ref  (ssz_t n, const ord_t a[n]);
+int   mad_mono_eq_ref   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_lt_ref   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_gt_ref   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_le_ref   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_ge_ref   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_rcmp_ref (ssz_t n, const ord_t a[n], const ord_t b[n]);
+
+// --- end --------------------------------------------------------------------o
 
 #endif //  MAD_MONO_H

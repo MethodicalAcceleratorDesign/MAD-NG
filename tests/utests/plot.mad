@@ -33,10 +33,10 @@ local tkicker                                                     in MADX
 local assertNotNil, assertNotEquals, assertEquals,
       assertErrorMsgContains, assertTrue, assertFalse,
       assertAlmostEquals                                          in MAD.utest
-local Object, plot, gplot, mtable, vector, filesys, atexit        in MAD
+local object, plot, gplot, mtable, vector, filesys, atexit        in MAD
 local flags, sequence, marker                                     in MAD.element
 local observe                                                     in flags
-local tblcpy, fileexists, sleep                                   in MAD.utility
+local tblcpy, fileexists, sleep, strsplitall                      in MAD.utility
 local pi, eps, min, abs                                           in MAD.gmath
 local is_number                                                   in MAD.typeid
 
@@ -134,9 +134,9 @@ local function assertFiles (name)
   if generate then return end
   local ref  = assert(io.open(refdir(name), "r"))
   local run  = assert(io.open(rundir(name), "r"))
-  local reftbl, sref = string.splitall(ref:read("*all"), " \n,:;[]")
-  local runtbl, srun = string.splitall(run:read("*all"), " \n,:;[]")
-  assertEquals(srun, sref)
+  local reftbl, sref = strsplitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = strsplitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
   for i=1,sref do
     reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
     runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
@@ -163,6 +163,11 @@ local function getEmptyPlot (name)
     scrdump = rundir(name),
     exec    = false,
   }
+end
+
+local function wait_fileexists(fname)
+  local t0 = os.clock()
+  while not fileexists(fname) and os.clock() - t0 < 1 do sleep(20) end
 end
 
 -- plot regression test suite -------------------------------------------------o
@@ -326,7 +331,7 @@ function TestPlotScript:testTitle ()
   local t0 = os.clock()
   while not file and os.clock() - t0 < 1 do
     file = io.open(rundir(name), "r")
-    sleep(100)
+    sleep(20)
   end
   repeat
     line = file:read("*line")
@@ -501,7 +506,7 @@ end
 function TestPlotScript:testSeqRange()
   local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
   param.range = { "quadrupole", "elseparator" } ; self:execTest(tblcpy(param))
-  param.range = { 15          , 120           } ; self:execTest(tblcpy(param))
+  param.range = { 15          , 120,   'spos' } ; self:execTest(tblcpy(param))
 end
 
 function TestPlotScript:testSeqDist ()
@@ -752,12 +757,14 @@ function TestPlotGplot:testWritePrintf()
   local fname = rundir("test.gp")
 
   os.remove(fname)
-  gplot:write(string.format("save '%s'", fname)) ; sleep(200)
+  gplot:write(string.format("save '%s'", fname))
+  wait_fileexists(fname)
   assertTrue(fileexists(fname))
   os.remove(fname)
 
   assertFalse(fileexists(fname))
-  gplot:printf("save '%s'", fname) ; sleep(200)
+  gplot:printf("save '%s'", fname)
+  wait_fileexists(fname)
   assertTrue(fileexists(fname))
   os.remove(fname)
 end
@@ -786,6 +793,6 @@ function TestPlotGplot:testCleanTmpFile()
   for i=1,25 do plot { sid = i, prolog = "pause 0.3" } end
   gplot:clean_tmpfile()
   for i=1,25 do assertTrue(fileexists(tmp..i))         end
-
 end
+
 -- end ------------------------------------------------------------------------o

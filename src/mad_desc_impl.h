@@ -20,65 +20,69 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include "mad_log.h"
 #include "mad_bit.h"
 #include "mad_desc.h"
 #include "mad_tpsa.h"
 #include "mad_ctpsa.h"
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
-struct desc {  // WARNING: needs to be identical with Lua for compatibility
-  int      id;          // index in list of registered descriptors
-  int      nmv, nv, nc; // number of mvars, number of all vars, number of coeff
-  ord_t    mo, ko,      // maximum order for mvars and knobs
-           trunc;       // truncation order for operations; always <= mo
-  str_t   *mvar_names;  // names of mvars; TODO: move it 1 level above and set indirection
-               // end of compatibility with Lua
+enum { DESC_MAX_TMP = 6 };
 
-  size_t   size;       // bytes used by current desc
+struct desc { // WARNING: needs to be identical with Lua for compatibility
+  int   id, nth;     // index in list of registered descriptors, max #threads or 1
+  int   nmv, nv;     // number of mvars, number of all vars
+  ord_t mo, ko, to;  // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
+  const ord_t
+        *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
+        * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
+              // end of compatibility with Lua FFI
 
-  ord_t   *var_ords,   // limiting order for each monomial variable
-          *mvar_ords,  // max order for each TPSA in map -- used just for desc comparison
-          *monos,      // 'matrix' storing the monomials (sorted by ord)
-          *ords,       // order of each mono of To
-         **To,         // Table by orders -- pointers to monos, sorted by order
-         **Tv,         // Table by vars   -- pointers to monos, sorted by vars
-         **ocs;        // ocs[t,i] -> o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
+  ssz_t nc;          // number of coefs (max length of TPSA)
 
-  idx_t   *sort_var,   // array
-          *ord2idx,    // order to polynomial start index in To (i.e. in TPSA coef[])
-          *tv2to,      // lookup tv->to
-          *to2tv,      // lookup to->tv
-          *H,          // indexing matrix, in Tv
-         **L,          // multiplication indexes -- L[oa][ob] -> lc; lc[ia][ib] -> ic
-        ***L_idx;      // L_idx[oa,ob] -> [start] [split] [end] idxs in L
+  ord_t *monos,      // 'matrix' storing the monomials (sorted by ord)
+        *ords,       // order of each mono of To
+       **To,         // Table by orders -- pointers to monos, sorted by order
+       **Tv,         // Table by vars   -- pointers to monos, sorted by vars
+       **ocs;        // ocs[t,i] -> o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0
 
-  // WARNING: temps must be used with care (internal side effects)
-   tpsa_t * t[5];      // temps for mul[0], fix pts[1-3], div & funs[4], alg funs[1-3] for aliasing
-  ctpsa_t *ct[5];      // temps for ctpsa
+  idx_t *sort_var,   // array
+        *ord2idx,    // order to polynomial start index in To (i.e. in TPSA coef[])
+        *tv2to,      // lookup tv->to
+        *to2tv,      // lookup to->tv
+        *H,          // indexing matrix in Tv
+       **L,          // multiplication indexes: L[oa][ob] -> lc; lc[ia][ib] -> ic
+      ***L_idx;      // L_idx[oa,ob] -> [start] [split] [end] idxs in L
+
+  size_t size;       // bytes used by desc
+
+  // permanent temporaries per thread for internal use
+   tpsa_t ** t;      // tmp for  tpsa
+  ctpsa_t **ct;      // tmp for ctpsa
+  idx_t *ti, *cti;   // index of tmp used
 };
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 #define D desc_t
 
-idx_t    mad_desc_get_idx         (const D *d, int n, const ord_t m [n]);
-idx_t    mad_desc_get_idx_sp      (const D *d, int n, const idx_t m [n]);
-int      mad_desc_get_mono        (const D *d, int n,       ord_t m_[n], idx_t i);
-int      mad_desc_mono_isvalid    (const D *d, int n, const ord_t m [n]);
-int      mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m [n]);
-int      mad_desc_mono_nxtbyvar   (const D *d, int n,       ord_t m [n]);
+ord_t    mad_desc_get_mono        (const D *d, ssz_t n,       ord_t m_[n], idx_t i);
+idx_t    mad_desc_get_idx_s       (const D *d, ssz_t n,       str_t s    );
+idx_t    mad_desc_get_idx_m       (const D *d, ssz_t n, const ord_t m [n]);
+idx_t    mad_desc_get_idx_sm      (const D *d, ssz_t n, const idx_t m [n]);
+int      mad_desc_mono_isvalid_s  (const D *d, ssz_t n,       str_t s    );
+int      mad_desc_mono_isvalid_m  (const D *d, ssz_t n, const ord_t m [n]);
+int      mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m [n]);
+int      mad_desc_mono_nxtbyvar   (const D *d, ssz_t n,       ord_t m [n]);
 
-tpsa_t*  mad_tpsa_newd  (D *d, ord_t mo);
-void     mad_tpsa_del   (tpsa_t *t);
+tpsa_t*  mad_tpsa_newd  (const D *d, ord_t mo);
+void     mad_tpsa_del   (const tpsa_t *t);
 
-ctpsa_t* mad_ctpsa_newd (D *d, ord_t mo);
-void     mad_ctpsa_del  (ctpsa_t *t);
+ctpsa_t* mad_ctpsa_newd (const D *d, ord_t mo);
+void     mad_ctpsa_del  (const ctpsa_t *t);
 
-// --- helpers ---------------------------------------------------------------o
-
-#undef  ensure
-#define ensure(test) assert(test)
+// --- helpers ----------------------------------------------------------------o
 
 static inline idx_t
 hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
@@ -86,7 +90,22 @@ hpoly_idx (idx_t ib, idx_t ia, idx_t ia_size)
   return ib*ia_size + ia;
 }
 
-// ---------------------------------------------------------------------------o
+#ifdef DEBUG
+#define CHECK_VALIDITY(t) if (!FUN(is_valid)(t)) FUN(debug)(t,__func__,0)
+#else
+#define CHECK_VALIDITY(t)
+#endif
+
+// --- macros for temporaries -------------------------------------------------o
+
+#define TRC_TMPX(a) (void)func // a
+
+#define GET_TMPX(t)       FUN(gettmp)(t, __func__)
+#define REL_TMPX(t)       FUN(reltmp)(t, __func__)
+#define GET_TMPC(t) mad_ctpsa_gettmp (t, __func__)
+#define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
+#define GET_TMPR(t) mad_ctpsa_gettmpr(t, __func__)
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_DESC_PRIV_H
-

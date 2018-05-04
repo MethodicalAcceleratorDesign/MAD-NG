@@ -2,85 +2,68 @@
 #define MAD_MONO_SSE2_TC
 
 /*
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  |
  | SSE2 optimization for monimials
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
  |
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
  | General Public License GPLv3 (or later), as published by the Free Software
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
- o----------------------------------------------------------------------------o
+ o-----------------------------------------------------------------------------o
  */
 
 #include "mad_sse.h"
 
+static inline void
+dump(__m128i ra, __m128i rb, __m128i rr)
+{
+  printf("\nra="); for (int i=0; i < MAD_SSE2_CSIZ; ++i) printf("%02x ", ((ord_t*)&ra)[i]);
+  printf("\nrb="); for (int i=0; i < MAD_SSE2_CSIZ; ++i) printf("%02x ", ((ord_t*)&rb)[i]);
+  printf("\nrr="); for (int i=0; i < MAD_SSE2_CSIZ; ++i) printf("%02x ", ((ord_t*)&rr)[i]);
+  printf("\n");
+}
+
 int
-mad_mono_eq (int n, const ord_t a[n], const ord_t b[n])
+mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  int i=0, nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
-  __m128i ra, rb, rr, rm;
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rb, rr;
 
-  for (; i < nn; i+=MAD_SSE2_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_SSE2_CSIZ) {
     ra = _mm_loadu_si128((__m128i*)&a[i]);
     rb = _mm_loadu_si128((__m128i*)&b[i]);
     rr = _mm_cmpeq_epi8(ra,rb);
-    if (~_mm_movemask_epi8(rr)) return 0;
+    if (~(int16_t)_mm_movemask_epi8(rr)) return 0;
   }
 
   if (nm) {
+    __m128i rm;
     rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
-    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[i]));
-    rb = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&b[i]));
+    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[nn]));
+    rb = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&b[nn]));
     rr = _mm_cmpeq_epi8(ra,rb);
-    if (~_mm_movemask_epi8(rr)) return 0;
+    if (~(int16_t)_mm_movemask_epi8(rr)) return 0;
   }
 
   return 1;
 }
 
 int
-mad_mono_lt (int n, const ord_t a[n], const ord_t b[n])
+mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  int i=0, nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
-  __m128i ra, rb, rr, re, rm;
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rb, rr;
 
-  for (; i < nn; i+=MAD_SSE2_CSIZ) {
-    ra = _mm_loadu_si128((__m128i*)&a[i]);
-    rb = _mm_loadu_si128((__m128i*)&b[i]);
-    re = _mm_cmpeq_epi8(ra,rb);
-    rr = _mm_cmpgt_epi8(ra,rb);
-    if (_mm_movemask_epi8(rr) | _mm_movemask_epi8(re)) return 0;
-  }
-
-  if (nm) {
-    rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
-    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[i]));
-    rb = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&b[i]));
-    re = _mm_cmpeq_epi8(ra,rb);
-    rr = _mm_cmpgt_epi8(ra,rb);
-    if (_mm_movemask_epi8(rr) | _mm_movemask_epi8(re)) return 0;
-  }
-
-  return 1;
-}
-
-int
-mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-  int i=0, nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
-  __m128i ra, rb, rr, rm;
-
-  for (; i < nn; i+=MAD_SSE2_CSIZ) {
+  for (int i=0; i < nn; i+=MAD_SSE2_CSIZ) {
     ra = _mm_loadu_si128((__m128i*)&a[i]);
     rb = _mm_loadu_si128((__m128i*)&b[i]);
     rr = _mm_cmpgt_epi8(ra,rb);
@@ -88,17 +71,145 @@ mad_mono_le (int n, const ord_t a[n], const ord_t b[n])
   }
 
   if (nm) {
+    __m128i rm;
     rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
-    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[i]));
-    rb = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&b[i]));
-    rr = _mm_cmpgt_epi8(ra,rb);
+    ra = _mm_loadu_si128((__m128i*)&a[nn]);
+    rb = _mm_loadu_si128((__m128i*)&b[nn]);
+    rr = _mm_and_si128(rm,_mm_cmpgt_epi8(ra,rb));
     if (_mm_movemask_epi8(rr)) return 0;
   }
 
   return 1;
 }
 
-// ---------------------------------------------------------------------------o
+int
+mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rb, rr;
+
+  for (int i=0; i < nn; i+=MAD_SSE2_CSIZ) {
+    ra = _mm_loadu_si128((__m128i*)&a[i]);
+    rb = _mm_loadu_si128((__m128i*)&b[i]);
+    rr = _mm_cmplt_epi8(ra,rb);
+    if (_mm_movemask_epi8(rr)) return 0;
+  }
+
+  if (nm) {
+    __m128i rm;
+    rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
+    ra = _mm_loadu_si128((__m128i*)&a[nn]);
+    rb = _mm_loadu_si128((__m128i*)&b[nn]);
+    rr = _mm_and_si128(rm,_mm_cmplt_epi8(ra,rb));
+    if (_mm_movemask_epi8(rr)) return 0;
+  }
+
+  return 1;
+}
+
+int
+mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_ge(n,a,b);
+}
+
+int
+mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_le(n,a,b);
+}
+
+int
+mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rb, rm, rr;
+
+  if (nm) {
+    rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
+    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[nn]));
+    rb = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&b[nn]));
+    rr = _mm_cmpeq_epi8(ra,rb);
+    if (~(int16_t)_mm_movemask_epi8(rr))
+      for (int i=nm-1; i >= 0; i--)
+        if (!((ord_t*)&rr)[i]) return ((ord_t*)&ra)[i] - ((ord_t*)&rb)[i];
+  }
+
+  for (int i=nn-MAD_SSE2_CSIZ; i >= 0; i-=MAD_SSE2_CSIZ) {
+    ra = _mm_loadu_si128((__m128i*)&a[i]);
+    rb = _mm_loadu_si128((__m128i*)&b[i]);
+    rr = _mm_cmpeq_epi8(ra,rb);
+    if (~(int16_t)_mm_movemask_epi8(rr))
+      for (int i=MAD_SSE2_CSIZ-2; i >= 0; i-=2) {
+        if (!((ord_t*)&rr)[i+1]) return ((ord_t*)&ra)[i+1] - ((ord_t*)&rb)[i+1];
+        if (!((ord_t*)&rr)[i+0]) return ((ord_t*)&ra)[i+0] - ((ord_t*)&rb)[i+0];
+      }
+  }
+
+  return 0;
+}
+
+ord_t
+mad_mono_min (ssz_t n, const ord_t a[n])
+{
+  assert(a);
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rr = _mm_set1_epi8(-1);
+
+  for (int i=0; i < nn; i+=MAD_SSE2_CSIZ) {
+    ra = _mm_loadu_si128((__m128i*)&a[i]);
+    rr = _mm_min_epu8(rr,ra);
+  }
+
+  if (nm) {
+    __m128i rm;
+    rm = _mm_load_si128((__m128i*)mad_sse2_msk1[16-nm]);
+    ra = _mm_or_si128(rm,_mm_loadu_si128((__m128i*)&a[nn]));
+    rr = _mm_min_epu8(rr,ra);
+  }
+
+  int ni = nn ? MAD_SSE2_CSIZ : nm;
+  ord_t m0 = -1, m1 = -1;
+  for (int i=0; i < ni; i+=2) {
+    if (m0 > ((ord_t*)&rr)[i+0]) m0 = ((ord_t*)&rr)[i+0];
+    if (m1 > ((ord_t*)&rr)[i+1]) m1 = ((ord_t*)&rr)[i+1];
+  }
+
+  return m0 <= m1 ? m0 : m1;
+}
+
+ord_t
+mad_mono_max (ssz_t n, const ord_t a[n])
+{
+  assert(a);
+  int nn=MAD_SSE2_CRND(n), nm=MAD_SSE2_CMOD(n);
+  __m128i ra, rr = _mm_setzero_si128();
+
+  for (int i=0; i < nn; i+=MAD_SSE2_CSIZ) {
+    ra = _mm_loadu_si128((__m128i*)&a[i]);
+    rr = _mm_max_epu8(rr,ra);
+  }
+
+  if (nm) {
+    __m128i rm;
+    rm = _mm_load_si128((__m128i*)mad_sse2_msk2[nm]);
+    ra = _mm_and_si128(rm,_mm_loadu_si128((__m128i*)&a[nn]));
+    rr = _mm_max_epu8(rr,ra);
+  }
+
+  int ni = nn ? MAD_SSE2_CSIZ : nm;
+  ord_t m0 = 0, m1 = 0;
+  for (int i=0; i < ni; i+=2) {
+    if (m0 < ((ord_t*)&rr)[i+0]) m0 = ((ord_t*)&rr)[i+0];
+    if (m1 < ((ord_t*)&rr)[i+1]) m1 = ((ord_t*)&rr)[i+1];
+  }
+
+  return m0 >= m1 ? m0 : m1;
+}
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_MONO_SSE2_TC
 

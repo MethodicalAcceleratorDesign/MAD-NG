@@ -55,7 +55,7 @@ mad_str_quote (str_t str, ssz_t arg[5])
     return str;
   }
 
-  ssz_t i = arg[0], j = i+1, k = arg[0]+arg[1], q = 0;
+  idx_t i = arg[0], j = i+1, k = arg[0]+arg[1], q = 0;
 
   if (str[i] == '"')
     while (j < k && str[j] != '"' )
@@ -81,7 +81,7 @@ mad_str_bracket (str_t str, ssz_t arg[6])
   assert(str && arg);
   mad_str_trim_front(str, arg);
 
-  ssz_t i = arg[0], k = arg[0]+arg[1];
+  idx_t i = arg[0], k = arg[0]+arg[1];
 
   while (i < k && str[i] != '[' && str[i] != '{'
                && str[i] != ']' && str[i] != '}') ++i;
@@ -95,7 +95,7 @@ mad_str_bracket (str_t str, ssz_t arg[6])
   if (str[i] == ']' || str[i] == '}') // error: no opening bracket
     return NULL;
 
-  ssz_t j = i+1;
+  idx_t j = i+1;
   while (j < k && str[j] != '[' && str[j] != '{'
                && str[j] != ']' && str[j] != '}') ++j;
 
@@ -118,7 +118,7 @@ mad_str_split (str_t str, ssz_t arg[4], str_t sep)
 {
   assert(str && arg && sep);
 
-  ssz_t i = arg[0], j = -1, k = arg[0]+arg[1], l = arg[2];
+  idx_t i = arg[0], j = -1, k = arg[0]+arg[1], l = arg[2];
 
   switch(l) {
     case 1: while (i < k && str[i] != sep[j=0]) ++i; break;
@@ -137,4 +137,67 @@ found:
     arg[3] = j;
   }
   return mad_str_trim(str, arg);
+}
+
+str_t
+mad_str_num (str_t str, ssz_t arg[5])
+{
+  assert(str && arg);
+  mad_str_trim_front(str, arg);
+
+  idx_t i = arg[0], d = -1, e = -1, n = 0;
+
+  // sign
+  if (str[i] == '-' || str[i] == '+') ++i;
+
+  // ±inf, ±nan, or invalid
+  if (isalpha(str[i])) {
+    if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
+        tolower(str[i+2]) == 'f' && !isalpha(str[i+3])) {
+      i += 3; goto fini;
+    }
+    if (tolower(str[i  ]) == 'n' &&  tolower(str[i+1]) == 'a' &&
+        tolower(str[i+2]) == 'n' && !isalpha(str[i+3])) {
+      i += 3; goto fini;
+    }
+    i = arg[0]; goto fini;
+  }
+
+  // integer part
+  while(isdigit(str[i])) ++i, ++n;
+
+  // decimal part
+  if (str[i] == '.') {
+    d = i++;
+
+    // concat ..
+    if (str[i] == '.') { i = n ? i-2 : arg[0], d = -1; goto fini; }
+
+    while(isdigit(str[i])) ++i, ++n;
+  }
+
+  // ensure at least ±# or ±#. or ±.#
+  if(!n && d > 0) { i = arg[0], d = -1; goto fini; }
+
+  // exponent part
+  if (str[i] == 'e' || str[i] == 'E') {
+    e = i++;
+
+    // sign
+    if (str[i] == '-' || str[i] == '+') ++i;
+
+    // digits
+    while(isdigit(str[i])) ++i;
+
+    // ensure e# or e±# otherwise backtrack
+    if (!isdigit(str[i-1])) { i = e-1, e = -1; goto fini; }
+  }
+
+fini:
+  arg[1] = i-arg[0]; // len
+  arg[2] = i; // index right after
+  arg[3] = d;
+  arg[4] = e;
+
+  return str;
 }

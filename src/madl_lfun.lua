@@ -23,8 +23,8 @@ local ffi = require 'ffi'
 if ffi.miscmap ~= nil then
 
     function get_metatable (a)
-        return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
-            or getmetatable(a)
+        return type(a) == 'cdata' and (a.__metatable or miscmap[-tonumber(typeof(a))])
+               or getmetatable(a)
     end
 
 end
@@ -34,12 +34,12 @@ local function get_metamethod (a, f)
     return mt and rawget(mt,f)
 end
 
-local function has_length (a)
+local function is_lengthable (a)
     return get_metamethod(a, '__len') ~= nil
 end
 
-local function is_indexable (a)
-    return get_metamethod(a, '__index') ~= nil
+local function is_iterable (a)
+    return get_metamethod(a, '__ipairs') ~= nil
 end
 
 --------------------------------------------------------------------------------
@@ -137,8 +137,6 @@ local rawiter = function(obj, param, state)
                 return obj.gen, obj.param, obj.state
             elseif mt.__ipairs ~= nil and #obj > 0 then
                 return mt.__ipairs(obj)
-            elseif mt.__kpairs ~= nil then
-                return mt.__kpairs(obj)
             elseif mt.__pairs ~= nil then
                 return mt.__pairs(obj)
             end
@@ -334,7 +332,7 @@ exports.rands = rands
 local nth = function(n, gen_x, param_x, state_x)
     assert(n > 0, "invalid first argument to nth")
     -- An optimization for arrays and strings
-    if gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
+    if gen_x == ipairs_gen or is_iterable(param_x) then -- MAD
         return param_x[n]
     elseif gen_x == string_gen then
         if n <= #param_x then
@@ -634,7 +632,7 @@ methods.reduce = methods.foldl
 exports.reduce = exports.foldl
 
 local length = function(gen, param, state)
-    if gen == ipairs_gen or gen == string_gen or has_length(param) then -- MAD
+    if gen == ipairs_gen or gen == string_gen or is_lengthable(param) then -- MAD
         return #param
     end
     local len = 0

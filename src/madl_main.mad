@@ -29,8 +29,8 @@ local M = {}
 local modules = {
   'regex', 'utest', 'lfun', 'lfs', -- LPEG, LuaUnit, LuaFun and LuaFileSystem
   --[[cmad,]] 'typeid', --[[main,]] 'gfunc', 'gmath', 'gutil',
-  'range', 'complex', 'matrix', 'mono', 'tpsa',
-  'object', 'constant', 'beam', 'element', 'sequence', 'mtable', -- 'mflow',
+  'range', 'complex', 'matrix', 'mono', 'gtpsa', 'mflow',
+  'object', 'constant', 'beam', 'element', 'sequence', 'mtable',
   'command', 'survey', 'track',
   'madx', 'plot',
 }
@@ -46,7 +46,7 @@ local ffi    = require 'ffi'
 local _C     = require 'madl_cmad'
 local typeid = require 'madl_typeid' .typeid
 
-local is_nil, is_boolean, is_number, is_string, is_indexable, is_mappable,
+local is_nil, is_boolean, is_number, is_string, is_mappable,
       is_callable, wprotect, wrestrict, set_concept, concept     in typeid
 local not_iterable                                               in concept
 
@@ -77,8 +77,6 @@ local option = {
   location = nil, -- proxy for mad_trace_location
 
 }
-
-debug.setmetatable(0,{__tostring = \a -> string.format(option.format,a)})
 
 M.option = setmetatable(option, {
   __tostring = \-> "MAD.option",
@@ -119,6 +117,8 @@ M[_final] = ffi.gc(ffi.new('int[1]'),
     end
   end)
 
+-- atexit
+
 function M.atexit (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   local n = _final.n+1
@@ -137,7 +137,7 @@ function M.import (to, from, override_)
   end
   local override = override_ or false
   assert(to == MAD           , "invalid argument #1 (MAD expected)")
-  assert(is_indexable(from)  , "invalid argument #2 (indexable expected)")
+  assert(is_mappable(from)   , "invalid argument #2 (mappable expected)")
   assert(is_boolean(override), "invalid argument #3 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
@@ -177,8 +177,8 @@ function M.export (from, what_, to_, override_)
   local to       = to_       or _G
   local override = override_ or false
   assert(from == MAD         , "invalid argument #1 (MAD expected)")
-  assert(is_indexable(what)  , "invalid argument #2 (indexable expected)")
-  assert(is_indexable(to)    , "invalid argument #3 (indexable expected)")
+  assert(is_mappable(what)   , "invalid argument #2 (mappable expected)")
+  assert(is_mappable(to)     , "invalid argument #3 (mappable expected)")
   assert(is_boolean(override), "invalid argument #4 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
@@ -266,10 +266,16 @@ end
 
 function M.show (a, strict_)
   assert(is_mappable(a), "invalid argument #1 (mappable expected)")
-  local keys = {}
-  for k in pairs(a) do
-    if is_string(k) and k:sub(1,2) ~= '__' or strict_ == false then
-      keys[#keys+1] = k
+  local is_object in MAD.typeid
+  local keys
+  if is_object(a) and is_object(strict_) then
+    keys = a:get_varkeys(strict_)
+  else
+    keys = {}
+    for k in pairs(a) do
+      if is_string(k) and k:sub(1,2) ~= '__' or strict_ == false then
+        keys[#keys+1] = k
+      end
     end
   end
   table.sort(keys, show_cmp)
@@ -309,12 +315,12 @@ show = MAD.show
 
 local _G_env = {
   -- Lua
-  '_G', '_VERSION', 'arg', 'assert', 'collectgarbage', 'coroutine', 'debug',
-  'dofile', 'error', 'getmetatable', 'io', 'ipairs', 'load', 'loadfile',
-  'loadstring', 'math', 'module', 'next', 'os', 'package', 'pairs', 'pcall',
-  'print', 'rawequal', 'rawget', 'rawlen', 'rawset', 'require', 'select',
-  'setmetatable', 'string', 'table', 'tonumber', 'tostring', 'type', 'unpack',
-  'xpcall',
+  '_G', '_VERSION',
+  'arg', 'assert', 'collectgarbage', 'coroutine', 'debug', 'dofile', 'error',
+  'getmetatable', 'io', 'ipairs', 'load', 'loadfile', 'loadstring', 'math',
+  'module', 'next', 'os', 'package', 'pairs', 'pcall', 'print', 'rawequal',
+  'rawget', 'rawlen', 'rawset', 'require', 'select', 'setmetatable', 'string',
+  'table', 'tonumber', 'tostring', 'type', 'unpack', 'xpcall',
   -- 5.1
   'gcinfo', 'getfenv', 'setfenv',
   -- 5.2
@@ -324,36 +330,48 @@ local _G_env = {
   -- LJ 2.1
   'bit', 'jit', 'newproxy',
   -- MAD
-  '_M', 'help', 'kpairs', 'show', 'MAD', 'MADX',
+  '_M', 'MAD', 'MADX',
+  'help', 'kpairs', 'show',
 }
 for i,v in ipairs(_G_env) do _G_env[v] = i end
 
-for k in pairs(_G) do
-  if not _G_env[k] then
-    io.write("unexpected global variable: ",
-             tostring(k), ' -> ', tostring(v), '\n')
+local function check_G (extra)
+  extra = extra or {}
+  for k,v in pairs(_G) do
+    if not (_G_env[k] or extra[k]) then
+      io.write("unexpected global variable: ",
+               tostring(k), ' -> ', tostring(v), '\n')
+    end
   end
 end
 
 -- check _M pollution ---------------------------------------------------------o
 
 local _M_env = {
-  '_C', 'atexit', 'beam', 'cmatrix', 'Command', 'complex', 'constant', 'ctpsa',
-  'cvector', 'element', 'env', 'export', 'filesys', 'fun', 'gfunc', 'gmath',
-  'gplot', 'help', 'import', 'linspace', 'logrange', 'logspace', 'MAD', 'MADX',
-  'matrix', 'monomial', 'mtable', 'nlogrange', 'nrange', 'Object', 'operator',
-  'option', 'plot', 'range', 'regex', 'sequence', 'show', 'survey', 'tostring',
-  'totable', 'tpsa', 'trace', 'track', 'typeid', 'utest', 'utility', 'vector',
-  'warn',
+  '_C', 'MAD', 'MADX',
+  'atexit', 'beam', 'cmapflow', 'cmatrix', 'command', 'complex', 'constant',
+  'ctpsa', 'cvector', 'element', 'env', 'export', 'filesys', 'fun', 'gfunc',
+  'gmath', 'gplot', 'gtpsad', 'help', 'import', 'linspace', 'logrange',
+  'logspace', 'matrix', 'mapflow', 'monomial', 'mtable', 'nlogrange', 'nrange',
+  'object', 'operator', 'option', 'plot', 'range', 'regex', 'sequence', 'show',
+  'survey', 'tocomplex', 'torange', 'tostring', 'totable', 'tpsa', 'trace',
+  'track', 'typeid', 'utest', 'utility', 'vector', 'warn', 'check_globals',
   [_hlp] = true, [_final] = true,
 }
 for i,v in ipairs(_M_env) do _M_env[v] = i end
 
-for k,v in pairs(_M) do
-  if not _M_env[k] then
-    io.write("unexpected MAD variable: ",
-             tostring(k), ' -> ', tostring(v), '\n')
+local function check_M ()
+  for k,v in pairs(_M) do
+    if not _M_env[k] then
+      io.write("unexpected MAD variable: ",
+               tostring(k), ' -> ', tostring(v), '\n')
+    end
   end
 end
+
+M.check_globals =\extra => check_G(extra) ; check_M() end
+
+-- execute after loading MAD env
+M.check_globals()
 
 -- end ------------------------------------------------------------------------o

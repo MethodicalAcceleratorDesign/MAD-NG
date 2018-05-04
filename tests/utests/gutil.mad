@@ -23,6 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
+local toolbox  = require "toolbox"
 local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals,
       assertAlmostEquals, assertErrorMsgContains, assertError      in MAD.utest
 
@@ -37,19 +38,26 @@ local is_lengthable, is_iterable, is_keyrable, is_mappable, is_indexable,
       is_powerable, is_collectable, is_constructible, has_metatable,
       has_member, has_method, has_metamethod, get_metatable        in MAD.typeid
 
+local check_kpairs                                                 in toolbox
+
 local tostring_ = tostring
 
 local tostring, totable, option           in MAD
 local compose                             in MAD.gfunc
 local pi, log, eps                        in MAD.gmath
 local btst, bclr, bset, band, bxor, tobit in MAD.operator
-local same, bsearch                       in MAD.utility
+local same, bsearch, strinterp            in MAD.utility
 
 local sm = setmetatable
 
 -- regression test suite ------------------------------------------------------o
 
 TestGutil = {}
+
+local alltypes = {
+  'boolean', 'number', 'string', 'function', 'table',
+  'range', 'complex', 'integer', 'inf', 'nan'
+}
 
 local types = {
   boolean    = { false, true, 1==1, 0<1, 1<0 },
@@ -312,11 +320,11 @@ function TestGutil:testIsRawtable()
 end
 
 function TestGutil:testIsMetaname()
-  local meta = {
-    '__add', '__call', '__concat', '__div', '__eq', '__gc', '__index', '__init',
-    '__ipairs', '__kpairs', '__le', '__len', '__lt', '__metatable', '__mod',
-    '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
-    '__tostring', '__totable', '__unm',
+  local meta = { -- see list from madl_typeid.mad
+    '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
+    '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+    '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+    '__same', '__sub', '__tostring', '__totable', '__unm',
   }
   for _,s in ipairs(meta) do
     assertTrue( is_metaname(s) )
@@ -362,16 +370,6 @@ function TestGutil:testIsIterable()
   assertFalse( is_iterable("hello") )
 end
 
-function TestGutil:testIsKeyrable()
-  assertTypes( {'table'}, is_keyrable )
-  assertTrue ( is_keyrable(sm({},{})) ) ! fake: tables are always mappable
-  assertTrue ( is_keyrable(sm({},{__ipair:=nil})) )
-  assertTrue ( is_keyrable(sm({},{__kpair:=nil})) )
-  assertTrue ( is_keyrable(sm({},{__pairs:=nil})) )
-  assertFalse( is_keyrable("hello") )
-  assertFalse( is_keyrable(1..2) )
-end
-
 function TestGutil:testIsMappable()
   assertTypes( {'table'}, is_mappable )
   assertTrue ( is_mappable(sm({},{})) ) ! fake: tables are always mappable
@@ -383,7 +381,8 @@ function TestGutil:testIsMappable()
 end
 
 function TestGutil:testIndexable()
-  assertTypes( {'string', 'table', 'complex', 'range'}, is_indexable )
+  local tr = {boolean=true, ['function']=true}
+  assertTypes(alltypes, is_indexable, tr)
   assertTrue ( is_indexable(sm({},{})) ) ! fake: tables are always indexable
   assertTrue ( is_indexable(sm({},{__index:=nil})) )
   assertTrue ( is_indexable(sm({},{__newindex:=nil})) )
@@ -556,7 +555,7 @@ function TestGutil:testStrInterp()
   assertEquals("${F}"         % {F=false},    "false" )
   assertEquals("${}"          % {},           "$" )
 
-  assertEquals(select('#', string.interp("", {})), 1)
+  assertEquals(select('#', strinterp("", {})), 1)
 
   -- can control format:
   option.format = '%+.2e'
@@ -618,6 +617,157 @@ function TestGutil:testBSearchCmp()
 
   assertEquals(bsearch(arr,  0), 1)
   assertEquals(bsearch(arr, 40), 9)
+end
+
+function TestGutil:testKpairsStringOnly()
+  local tbl = table.new(0,6)
+  ----------
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairsStringOnlyPlus0()
+  local tbl = table.new(0,6)
+  ----------
+  tbl[0]    = 1
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairs()
+  local tbl = table.new(5,6)
+  tbl[1]    = 4
+  tbl[2]    = -4
+  tbl[3]    = 12.5663706143592
+  tbl[4]    = "name1"
+  tbl[5]    = 4
+  ----------
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairsWith0()
+  local tbl = table.new(5,6)
+  tbl[1]    = 4
+  tbl[2]    = -4
+  tbl[3]    = 12.5663706143592
+  tbl[4]    = "name1"
+  tbl[5]    = 4
+  ----------
+  tbl[0]    = 1
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairsNilInVec()
+  local tbl = table.new(9,6)
+  tbl[1]    = 4
+  tbl[2]    = -4
+  tbl[3]    = 12.5663706143592
+  tbl[4]    = "name1"
+  tbl[5]    = 4
+  ----------
+  tbl[7]    = true
+  tbl[8]    = true
+  tbl[9]    = true
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairsWith0NilInVec()
+  local tbl = table.new(10,6)
+  tbl[1]    = 4
+  tbl[2]    = -4
+  tbl[3]    = 12.5663706143592
+  tbl[4]    = "name1"
+  tbl[5]    = 4
+  ----------
+  tbl[0]    = 1
+  tbl[7]    = true
+  tbl[8]    = true
+  tbl[9]    = true
+  tbl[10]   = true
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+function TestGutil:testKpairsHashOnly()
+  local tbl = table.new(0,16)
+  tbl[1]    = 4
+  tbl[2]    = -4
+  tbl[3]    = 12.5663706143592
+  ----------
+  tbl[0]    = 2
+  tbl[5]    = 4
+  tbl[7]    = true
+  tbl[8]    = true
+  tbl[9]    = true
+  tbl.val0  = true
+  tbl.val1  = 4
+  tbl.val2  = -4
+  tbl.val3  = 12.5663706143592
+  tbl.val4  = "name1"
+  tbl.val5  = 4
+  check_kpairs(tbl)
+end
+
+-- performance test suite -----------------------------------------------------o
+
+Test_Gutil = {}
+
+function Test_Gutil:testKpairsKeyOnly()
+  local tbl = table.new(0,2.2e6)
+  local sum = 0
+  for i=1,2.2e6 do tbl["k"..i] = 1 end
+  local t0 = os.clock()
+  for k,v in kpairs(tbl) do sum = sum + v end
+  local dt = os.clock() - t0
+  assertEquals(sum, 2.2e6)
+  assertAlmostEquals(dt , 0.5, 1)
+end
+
+function Test_Gutil:testKpairsKeyOnlyWith0()
+  local len = 2e6+1
+  local tbl = table.new(0, len)
+  local sum = 0
+  for i=1,2.2e6 do tbl["k"..i] = 1 end
+  tbl[0] = 1
+  local t0 = os.clock()
+  for k,v in kpairs(tbl) do sum = sum + v end
+  local dt = os.clock() - t0
+  assertEquals(sum, 2.2e6+1)
+  assertAlmostEquals(dt , 0.5, 1)
 end
 
 -- end ------------------------------------------------------------------------o

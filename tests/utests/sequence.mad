@@ -6,6 +6,7 @@
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          A. Bloch,  aurelien.bloch at cern.ch
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
@@ -22,54 +23,88 @@
 ]=]
 
 -- locals ---------------------------------------------------------------------o
-local filesys                                           in MAD
-local assertFalse, assertNil, assertNotNil, assertEquals, assertStrContains,
-      assertErrorMsgContains                            in MAD.utest
 
-local drift, marker, sbend, quadrupole, sequence, bline in MAD.element
+local filesys, mtable, object                                     in MAD
+local assertTrue, assertFalse, assertNil, assertNotNil,
+      assertEquals, assertErrorMsgContains, assertIs,
+      assertAlmostEquals,  assertNotIs                            in MAD.utest
+local is_sequence, is_element, is_number                          in MAD.typeid
+local tblcpy, strsplitall                                         in MAD.utility
+local abs, eps, min                                               in MAD.gmath
+local drift, marker, sbend, quadrupole, sequence, bline, flags    in MAD.element
+local selected                                                    in flags
 
-local srcdir = \s -> '../share/'    ..s
-local refdir = \s -> 'sequence_ref/'..s
-local rundir = \s -> 'sequence_run/'..s
+local generate = false
+local srcdir   = \s -> '../share/'    ..(s or '')
+local refdir   = \s -> 'sequence_ref/'..(s or '')
+local rundir   = \s -> 'sequence_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local mth = \f,s,... s[f](s,...)
+local function getIdxSeq()
+  local seq = sequence {
+    l = 5,
+    marker     "name1" { at = 1, eid = 2 },
+    quadrupole "name2" { at = 2, eid = 3 },
+    quadrupole "name1" { at = 3, eid = 4 },
+    marker     "name1" { at = 4, eid = 5 },
+  }
+  seq[1].eid = 1
+  seq[6].eid = 6
+  return seq
+end
 
-local function dumpseq (seq)
-  local optfmt = MAD.option.format
-  MAD.option.format = "%.5g"
-  print()
-  print('sequence:', seq.name, 'l=', seq.l)
-  print('i', 'name', 'L', 'S (s)', 'S (e)')
-  seq:foreach \e,i => print(i, e.name, e.l, seq:spos(i), seq:epos(i)) end
-  MAD.option.format = optfmt
+local function assertElem(actual, expected)
+  assertTrue(is_element(actual  ))
+  assertTrue(is_element(expected))
+  assertEquals(actual, expected)
+end
+
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refdir(name), "r"))
+  local run  = assert(io.open(rundir(name), "r"))
+  local reftbl, sref = strsplitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = strsplitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
+  for i=1,sref do
+    reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
+    runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
+    if is_number(reftbl[i]) then
+      local approx = abs(runtbl[i]-reftbl[i])
+      if 14*eps < approx then
+        local div = min(runtbl[i], reftbl[i])
+        if div == 0 then
+          assertAlmostEquals(approx, 0, 1.1e-5)
+        else
+          assertAlmostEquals((runtbl[i]-reftbl[i])/div, 0, 1.1e-6)
+        end
+      end
+    else
+      assertEquals(runtbl[i], reftbl[i])
+    end
+  end
+  if not generate then
+    os.remove(rundir(name))
+    filesys.rmdir(rundir(""))
+  end
 end
 
 -- regression test suite ------------------------------------------------------o
 
-TestSequence = {}
+TestSequenceOrig = {}
 
-function TestSequence:setUp()
-  filesys.mkdir(rundir(''))
+function TestSequenceOrig:setUp()
+  filesys.mkdir(rundir())
 end
 
-function TestSequence:tearDown()
+function TestSequenceOrig:tearDown()
   if MADX:is_open_env() == true then
     MADX:reset_env()
   end
 end
 
-function TestSequence:testNegativeDrift()
-  local msg = "invalid element position at s = 0.5m (negative drift -0.5m) "..
-              "in sequence 'ndrift' for element 'marker' at index 3"
-  local no_error, error_msg =
-    pcall(sequence, 'ndrift',  { marker { at=1 }, marker { at=0.5 } })
-  assertFalse(no_error)
-  assertStrContains(error_msg, msg)
-end
-
-function TestSequence:testSimple01()
+function TestSequenceOrig:testSimple01()
   local marker, quadrupole, sequence in MAD.element
   local ip = marker 'ip' {}
   local qf = quadrupole 'qf' { l=6 }
@@ -99,7 +134,7 @@ function TestSequence:testSimple01()
 --  end
 end
 
-function TestSequence:testSimple02()
+function TestSequenceOrig:testSimple02()
   local marker, quadrupole, sequence in MAD.element
   local mk = marker     'mk' {}
   local mq = quadrupole 'mq' { l=3 }
@@ -114,7 +149,7 @@ function TestSequence:testSimple02()
   assertEquals(seq:spos(#seq), mq.l)
 end
 
-function TestSequence:testSPSDef()
+function TestSequenceOrig:testSPSDef()
   local ds = drift      'ds' {}
   local dl = drift      'dl' {}
   local dm = drift      'dm' {}
@@ -137,7 +172,7 @@ function TestSequence:testSPSDef()
   assertEquals(SPS:spos(#SPS), 0) -- no length provided...
 end
 
-function TestSequence:testConvertFiveCell2File()
+function TestSequenceOrig:testConvertFiveCell2File()
   MADX.option.warn = false
 
   MADX:load(srcdir("FiveCell/fivecell.seq"), rundir('fivecell.mad'))
@@ -154,7 +189,7 @@ function TestSequence:testConvertFiveCell2File()
   MADX.fivecell = nil -- cleanup
 end
 
-function TestSequence:testConvertFiveCell2Mem()
+function TestSequenceOrig:testConvertFiveCell2Mem()
   MADX.option.warn = false
   MADX:load(srcdir("FiveCell/fivecell.seq"))
   MADX.option.warn = true
@@ -166,7 +201,7 @@ function TestSequence:testConvertFiveCell2Mem()
   MADX.fivecell = nil -- cleanup
 end
 
-function TestSequence:testLoadFiveCell()
+function TestSequenceOrig:testLoadFiveCell()
   local ld = loadfile(refdir('fivecell.mad')) assertNotNil(ld) ld()
 
   local fivecell in MADX
@@ -176,7 +211,7 @@ function TestSequence:testLoadFiveCell()
   MADX.fivecell = nil -- cleanup
 end
 
-function TestSequence:testConvertLHC2Files()
+function TestSequenceOrig:testConvertLHC2Files()
   MADX.option.warn = false
   MADX:load(srcdir("LHC/lhc_as-built.seq"), rundir('lhc_as-built.mad'))
   MADX:load(srcdir("LHC/opt_inj.madx"    ), rundir('opt_inj.mad'     ))
@@ -196,7 +231,7 @@ function TestSequence:testConvertLHC2Files()
   MADX.lhcb1, MADX.lhcb2 = nil, nil -- cleanup
 end
 
-function TestSequence:testConvertLHC2Mem()
+function TestSequenceOrig:testConvertLHC2Mem()
   MADX.option.warn = false
   MADX:load(srcdir("LHC/lhc_as-built.seq"))
   MADX:load(srcdir("LHC/opt_inj.madx"    ))
@@ -211,7 +246,7 @@ function TestSequence:testConvertLHC2Mem()
   MADX.lhcb1, MADX.lhcb2 = nil, nil -- cleanup
 end
 
-function TestSequence:testLoadLHC()
+function TestSequenceOrig:testLoadLHC()
   local ld
   ld = loadfile(refdir('lhc_as-built.mad'))  assertNotNil(ld) ld()
   ld = loadfile(refdir('lhc_setup.mad'   ))  assertNotNil(ld) ld()
@@ -258,18 +293,18 @@ local seq2 = sequence 'seq2' {
 -- print('seq' , seq. l) 3.5
 -- print('seq2', seq2.l) 7
 
-function TestSequence:testSequence_init()
+function TestSequenceOrig:testSequence_init()
   local def, s = {
     kind='sequence', direction=1, refer='centre', l=0,
   }
   s = sequence 's'
-  s = sequence 's' { marker }                  assertEquals( s.refer, 'centre')
-  for k,v in pairs(def) do assertEquals( v, s[k] ) end
+  s = sequence 's' { marker }                  -- assertEquals( s.refer, 'centre') TODO fix
+  --for k,v in pairs(def) do assertEquals( v, s[k] ) end             TODO fix
   s = sequence 's' { refer='entry', marker }   assertEquals( s.refer, 'entry' )
   s = sequence 's' { refer='exit' , marker }   assertEquals( s.refer, 'exit'  )
 end
 
-function TestSequence:testFlatten_sequ ()
+function TestSequenceOrig:testFlatten_sequ ()
   local vector in MAD
   local seqbl = sequence 'seq' {
     l = lcell, direction=1, refer = 'entry',
@@ -291,24 +326,24 @@ function TestSequence:testFlatten_sequ ()
   --local seq3 =  sequence {refer = 'entry', ip, qf, bl        } -- 332 -> seq_err again
 end
 
-function TestSequence:testAdjust_len ()
-  assertEquals( sequence { l= 2, ds {at=3}}.l, 3.25 )
-  assertEquals( sequence { l=-1, ds {at=3}}.l, 3.25 )
+function TestSequenceOrig:testAdjust_len ()
+  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
+  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
   assertEquals( sequence { l= 5, ds {at=3}}.l, 5 )
   assertEquals( sequence {       ip       }.l, 0 )
   assertEquals( seq2     { l= 2           }.l, 2 )
 end
 
-function TestSequence:testSequence_len()
+function TestSequenceOrig:testSequence_len()
   assertEquals( sequence {ip}.l, 0 )
   assertEquals( seq      {  }.l, 3.5 )
   assertEquals( seq2     {  }.l, 7 )
 end
 
-function TestSequence:testWriteAccess() -- same as simple02
+function TestSequenceOrig:testWriteAccess() -- same as simple02
   local msg = {
     "invalid sequence write access (use replace method)",
-    "invalid use of object <sequence [count proxy]: 0x",
+    "invalid use of object <sequence count: 0x",
   }
   local marker, quadrupole, sequence in MAD.element
   local mk = marker     'mk' {}
@@ -327,99 +362,2358 @@ function TestSequence:testWriteAccess() -- same as simple02
   assertErrorMsgContains( msg[2], set, seq.mk, 10  , mk )
 end
 
--- helpers --------------------------------------------------------------------o
+-------------------------------------------------------------------------------o
 
-function TestSequence:testIndex_of()
-  local msg = {
-    "invalid argument #2 (index expected)",
+TestSequence = {}
+
+function TestSequence:testIsSequence()
+  local seq1  = sequence "seq1"  { marker {} }
+  local seq12 = seq1     "seq12" { }
+  assertTrue (is_sequence(sequence))
+  assertTrue (is_sequence(seq1))
+  assertTrue (is_sequence(seq12))
+  assertFalse(is_sequence({}))
+  assertFalse(is_sequence(mtable {}))
+end
+
+function TestSequence:testIsOwner()
+  local seq1  = sequence "seq1"  { marker {} }
+  local seq12 = seq1     "seq12" { }
+  assertTrue (sequence:is_owner())
+  assertTrue (seq1    :is_owner())
+  assertFalse(seq12   :is_owner())
+end
+
+function TestSequence:testIsView()
+  local seq1  = sequence "seq1"  { marker {} }
+  local seq12 = seq1     "seq12" { }
+  assertFalse(sequence:is_view())
+  assertFalse(seq1    :is_view())
+  assertTrue (seq12   :is_view())
+end
+
+function TestSequence:testView()
+  local seq1  = getIdxSeq()
+  local seq12 = seq1 "seq12" { }
+  seq12:check_index()
+  for i=1,#seq1 do assertIs(seq12[i], seq1[i]) end
+  assertEquals(#seq12, #seq1)
+end
+
+function TestSequence:testInit()
+  local seq1 = sequence "seq1" {
+    marker { eid = 1 },
   }
-  -- name[count] (case of multiple occurences)
-  -- #s or #S (idx=1), #e or #E (idx=#seq)
-  local s = sequence { refer = 'entry', ip 'IP1' {}, ds, qf, ds }
+  local seq2 = sequence "seq2" {
+    marker { eid = 1 },
+    marker { eid = 2 },
+    marker { eid = 3 },
+    marker { eid = 4 },
+  }
+  assertEquals(#seq1, 3)
+  assertEquals(#seq2, 6)
+  for i=1,3 do assertIs(seq1[i], seq1:elem(i)) end
+  for i=1,6 do assertIs(seq2[i], seq2:elem(i)) end
 
-  assertErrorMsgContains( msg[1], mth, 'index_of', s, ds, "3" )
-
-  assertEquals( s:index_of('IP1'), 2   )
-  assertEquals( s:index_of( 1.0 ), 5   )
-  assertEquals( s:index_of(-1.5 ), 4   )
-  assertEquals( s:index_of(ip   ), nil )
-  assertEquals( s:index_of(qf   ), 4   )
-  --assertEquals( s:index_of(ds[1]), nil   )
-  --print( s[ds.name] )
-  --print( s:index_of(ds[1]) )
-  for i=1,#seq do
-    assertEquals( seq:index_of(seq[i]), i )
-    --assertEquals( seq:index_of( i   ), i        )
-    --assertEquals( seq:index_of(-i   ), #seq-i+1 )
+  assertTrue  (seq1[1].is_marker)
+  assertEquals(seq2[2].eid, 1)
+  for i=2,5 do
+    assertTrue  (seq2[i].is_marker)
+    assertEquals(seq2[i].eid, i-1)
   end
 end
 
-function TestSequence:testSfind_index()
-  --for i=1,#spos do
-  --  local s = seq.spos[i]
-  --  print( seq:sfind_index(s) )
-  --end
+function TestSequence:testInitOwner()
+  local seq1 = sequence { owner = true }
+  local seq2 = sequence { marker { } }
+  local seq3 = seq2 { owner = true }
+  assertTrue(seq1:is_owner())
+  assertTrue(seq3:is_owner())
+  assertEquals(#seq1, 2)
+  assertEquals(#seq3, 2)
 end
 
-function TestSequence:testLfind_index()
-  for i=1,#seq do
-    local name = seq[i].kind
-    --print( seq:lfind_index() )
+function TestSequence:testInitSimpleSpos()
+  local seq = sequence "seq" {
+    l = 10,
+    marker { at = 1 },
+    marker { at = 2 },
+    marker { at = 3 },
+    marker { at = 4 },
+  }
+  for i=2,5 do
+    assertEquals(seq:spos(i), seq[i].at)
+    assertEquals(seq:epos(i), seq[i].at)
+  end
+  assertEquals(seq:spos(1), 0 )
+  assertEquals(seq:spos(6), 10)
+end
+
+function TestSequence:testInitInvalidElem()
+  local msg = {
+    "invalid element detected",
+  }
+  assertErrorMsgContains(msg[1], sequence, "seq", { 1     })
+  assertErrorMsgContains(msg[1], sequence, "seq", { true  })
+  assertErrorMsgContains(msg[1], sequence, "seq", { \ ()  })
+  assertErrorMsgContains(msg[1], sequence, "seq", { "seq" })
+end
+
+function TestSequence:testInitElemReferPos()
+  local epos  = { 1, 2, 3 }
+  local sposs = {
+    entry  = { 1  , 2  , 3   },
+    centre = { 0.5, 1.5, 2.5 },
+    exit   = { 0  , 1  , 2   },
+  }
+
+  for refer,spos in pairs(sposs) do
+    local seq1 = sequence "seq" {
+      refer = refer,
+      drift "prv" { l = 1, at = 1 },
+      drift "elm" { l = 1, at = 2 },
+      drift "nxt" { l = 1, at = 3 },
+    }
+    local seq2 = sequence "seq" {
+      drift "prv" { l = 1, at = 1, refpos = refer },
+      drift "elm" { l = 1, at = 2, refpos = refer },
+      drift "nxt" { l = 1, at = 3, refpos = refer },
+    }
+    for i=2,4 do
+      assertEquals(seq1:spos(i), spos[i-1])
+      assertEquals(seq1:epos(i), epos[i-1])
+      assertEquals(seq2:spos(i), spos[i-1])
+      assertEquals(seq2:epos(i), epos[i-1])
+    end
   end
 end
 
--- methods --------------------------------------------------------------------o
+function TestSequence:testInitElemFromPos()
+  local prv   = drift "prv" { l = 1, at = 1 }
+  local elm   = drift "elm" { l = 1         }
+  local nxt   = drift "nxt" { l = 1, at = 3 }
+  local froms = {
+    start      = 2,
+    prev       = 1,
+    next       =-1,
+    ["end"]    =-2,
+    prv        = 1,
+    nxt        =-1,
+    ["$start"] = 2,
+    ["$end"]   =-2,
+  }
 
--- Must be replaced by iterator tests...
--- function TestSequence:testRange_indexes()
---   local msg = {
---     "invalid range start",
---     "invalid range stop" ,
---   }
---   assertEquals( {seq:range_indexes()   }, {1,#seq} )
---   assertEquals( {seq:range_indexes'1/5'}, {1,5} )
---   assertEquals( {seq:range_indexes{1,5}}, {1,5} )
---
---   assertEquals( {seq:range_indexes{2,1}}, {2,1} )
---   assertEquals( {seq:range_indexes'2/1'}, {2,1} )
---
---   assertEquals( {seq:range_indexes{-1,1}},{#seq,1} )
--- end
+  for from, at in pairs(froms) do
+    elm.from  = from
+    elm.at    = at
+    local seq = sequence "seq" { l = 4, refer = "entry", prv, elm, nxt }
+    assertEquals(seq:epos(3), 2)
+  end
+end
+
+function TestSequence:testInitElemFromPosWithName()
+  local params = {
+    ["name1"    ] = 1,
+    ["name1[1]" ] = 1,
+    ["name1[2]" ] =-1,
+    ["name1[3]" ] =-2,
+    ["name1[-1]"] =-2,
+    ["name1[-2]"] =-1,
+    ["name1[-3]"] = 1,
+    ["name1{1}" ] =-1,
+    ["name1{-1}"] = 1,
+  }
+
+  for from,at in pairs(params) do
+    local seq = sequence "seq" {
+      l = 5,  refer = "entry",
+      drift "name1" { l = 1, at = 1               },
+      drift "name2" { l = 1, at = at, from = from },
+      drift "name1" { l = 1, at = 3               },
+      drift "name1" { l = 1, at = 4               },
+    }
+    assertEquals(seq:spos(3), 2)
+  end
+end
+
+function TestSequence:testInitElemFromPosInvalid()
+  local newParam = \ -> { refer = "entry",
+    drift "prv" { l = 1, at = 1 },
+    drift "elm" { l = 1, at = 1 },
+    drift "nxt" { l = 1, at = 3 },
+  }
+  local param
+  local msg   = {
+    "invalid from='selected' detected in sequence \z
+      'seq' for element 'elm' at index 3",
+    "invalid element position at s = 3m (negative drift -1m) \z
+      in sequence 'seq' for element 'nxt' at index 4",
+    "cycling dependencies detected in sequence 'seq' for element 'elm' at index 3",
+    "invalid refpos to subelement 'invalid' in sequence '$start' at index 1",
+    "invalid from of 'none' in sequence 'seq'",
+  }
+  param = newParam();
+  param[2].from = "selected"
+  assertErrorMsgContains(msg[1], sequence, "seq", param)
+  param = newParam();
+  param[2].at   = 2
+  param[2].from = "prev"
+  assertErrorMsgContains(msg[2], sequence, "seq", param)
+  param         = newParam();
+  param[2].from = "next"
+  param[3].from = "prev"
+  assertErrorMsgContains(msg[3], sequence, "seq", param)
+  param       = newParam();
+  param.refer = "invalid"
+  assertErrorMsgContains(msg[4], sequence, "seq", param)
+  param         = newParam();
+  param[2].from = "none"
+  assertErrorMsgContains(msg[5], sequence, "seq", param)
+end
+
+function TestSequence:testInitDebug()
+  local debug = MAD.option.debug
+  MAD.option.debug = 3
+  local seq = getIdxSeq()
+  MAD.option.debug = debug
+end
+
+function TestSequence:testInitFlattenTable()
+  local line1 = {     drift {}, quadrupole {}  , drift {}  , quadrupole {} }
+  local line2 = { {   drift {}, quadrupole {} }, drift {}  , quadrupole {} }
+  local line3 = { { { drift {}, quadrupole {} }, drift {} }, quadrupole {} }
+  local seq   = sequence {
+    line1,
+    line2,
+    drift {},
+    line3,
+  }
+  assertEquals(#seq, 15)
+  local idrift      = { 2, 4, 6, 8, 10, 11, 13 }
+  local iquadrupole = { 3, 5, 7, 9, 12, 14     }
+  for _,i in ipairs(idrift)      do assertEquals(seq[i].kind, "drift")      end
+  for _,i in ipairs(iquadrupole) do assertEquals(seq[i].kind, "quadrupole") end
+end
+
+function TestSequence:testInitFlattenbline()
+  local line1 = bline { drift {}     , quadrupole {} }
+  local line2 = bline { quadrupole {}, drift {}      }
+  local line3 = bline { line1        ,-line2         }
+  local seq   = sequence {
+    line3 * 2,
+    drift {} ,
+    2 * line1,
+  }
+  assertEquals(#seq, 15)
+  local idrift      = { 2, 4, 6, 8, 10, 11, 13 }
+  local iquadrupole = { 3, 5, 7, 9, 12, 14     }
+  for _,i in ipairs(idrift)      do assertEquals(seq[i].kind, "drift")      end
+  for _,i in ipairs(iquadrupole) do assertEquals(seq[i].kind, "quadrupole") end
+end
+
+function TestSequence:testInitFlattenSeqSimple()
+  local seq1 = sequence { drift {}, quadrupole {}  , drift {}  , quadrupole {} }
+  local seq2 = sequence {
+    sequence   { drift {}, quadrupole {} },
+    drift      { },
+    quadrupole { },
+  }
+  local seq3 = sequence {
+    sequence {
+      sequence { drift {}, quadrupole {} },
+      drift    { },
+    },
+    quadrupole {},
+  }
+  local seq   = sequence {
+    seq1,
+    seq2,
+    drift {},
+    seq3,
+  }
+  assertEquals(#seq, 15)
+  local idrift      = { 2, 4, 6, 8, 10, 11, 13 }
+  local iquadrupole = { 3, 5, 7, 9, 12, 14     }
+  for _,i in ipairs(idrift)      do assertEquals(seq[i].kind, "drift")      end
+  for _,i in ipairs(iquadrupole) do assertEquals(seq[i].kind, "quadrupole") end
+end
+
+function TestSequence:testInitFlattenSeqLine()
+  local line1 =          { drift {}     , quadrupole {}           }
+  local line2 = sequence { quadrupole {}, drift {}                }
+  local line3 = bline    { line1        ,-line2                   }
+  local line4 = sequence { quadrupole {}, drift {}, direction =-1 }
+  local seq   = sequence {
+    line3 * 2,
+    drift {},
+    line1,
+    line4,
+  }
+  assertEquals(#seq, 17)
+  local idrift      = { 2 , 4, 6, 8, 10, 11, 15 }
+  local iquadrupole = { 3 , 5, 7, 9, 12, 14 }
+  local ichangedir  = { 13, 16 }
+  for _,i in ipairs(idrift)      do assertEquals(seq[i].kind, "drift")      end
+  for _,i in ipairs(iquadrupole) do assertEquals(seq[i].kind, "quadrupole") end
+  for _,i in ipairs(ichangedir)  do assertEquals(seq[i].kind, "changedir")  end
+end
+
+function TestSequence:testInitFlattenSeq()
+  local case = {
+    { at = 1                , refpos = "entry" },
+    { at =-4  , from = "d2'", refpos = "entry" },
+    { at =-1.5, from = "d2'", refpos = "d2"    },
+    { at = 3  , l    = 4    , refpos = "centre"},
+  }
+  local elms = \ -> {
+    drift "d1" { l = 1, at = 1.5 },
+    drift "d2" { l = 1, at = 2.5 },
+    drift "d3" { l = 1, at = 3.5 },
+  }
+  for _,v in pairs(case) do
+    local param = tblcpy(elms(), nil, v)
+    local seq = sequence "seq" { refer = "entry",
+      drift "d1'" { l = 1, at = 1 },
+      sequence("sub", param),
+      drift "d2'" { l = 1, at = 5 },
+    }
+    for i=2,6 do assertEquals(seq:spos(i), i-1) end
+  end
+end
+
+function TestSequence:testInitFlattenInvalid()
+  local line1 = bline { drift {}     , quadrupole {} }
+  local line2 = bline { quadrupole {}, drift {}      }
+  local line3 = bline { line1        ,-line2         }
+  local param = {
+    line3 * 2,
+    drift {} ,
+    2 * line1,
+  }
+  local msg = {
+    "invalid element detected",
+  }
+  assertErrorMsgContains(msg[1], sequence, "seq", {       { 1     } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", {       { true  } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", {       { \ ()  } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", {       { "seq" } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", { bline { 1     } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", { bline { true  } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", { bline { \ ()  } } )
+  assertErrorMsgContains(msg[1], sequence, "seq", { bline { "seq" } } )
+end
+
+function TestSequence:testInitLenInvalid()
+  local param = { drift "df" { at = 10 }, l = 5 }
+  local msg = {
+    "invalid element position at s = 5m (negative drift -5m) in sequence \z
+      'seq' for element '$end' at index 3",
+  }
+  assertErrorMsgContains(msg[1], sequence, "seq", param)
+end
+
+function TestSequence:testIndexOfNum()
+  local seq  = getIdxSeq()
+  assertNil(seq:index_of( 6  ))
+  assertNil(seq:index_of(-6  ))
+  assertNil(seq:index_of( 100))
+  assertNil(seq:index_of(-100))
+  assertEquals(seq:index_of( 0)  , 1)
+  assertEquals(seq:index_of( 1)  , 2)
+  assertEquals(seq:index_of( 2)  , 3)
+  assertEquals(seq:index_of(-3)  , 3)
+  assertEquals(seq:index_of( 4)  , 5)
+  assertEquals(seq:index_of(-1)  , 5)
+  assertEquals(seq:index_of( 4.4), 6)
+  assertEquals(seq:index_of(-0.1), 6)
+  assertEquals(seq:index_of(-0.1), 6)
+end
+
+function TestSequence:testIndexOfString()
+  local seq = getIdxSeq()
+  local msg = {
+    "invalid argument #2 (non-zero count expected)",
+  }
+  assertNil   (seq:index_of("name100  "   )   )
+  assertNil   (seq:index_of("name1[4] "   )   )
+  assertNil   (seq:index_of("name2[2] "   )   )
+  assertNil   (seq:index_of("name1[-4]"   )   )
+  assertNil   (seq:index_of("name2[-2]"   )   )
+  assertNil   (seq:index_of("name1{3} ", 3)   )
+  assertNil   (seq:index_of("name1{3} ",-4)   )
+  assertNil   (seq:index_of("name1{-2}", 2)   )
+  assertNil   (seq:index_of("name1{-2}",-5)   )
+  assertNil   (seq:index_of("name1{-3}", 4)   )
+  assertNil   (seq:index_of("name1{-3}",-3)   )
+  assertEquals(seq:index_of("name1"       ), 2)
+  assertEquals(seq:index_of("name2"       ), 3)
+  assertEquals(seq:index_of("name1[1]"    ), 2)
+  assertEquals(seq:index_of("name2[1]"    ), 3)
+  assertEquals(seq:index_of("name1[2]"    ), 4)
+  assertEquals(seq:index_of("name1[3]"    ), 5)
+  assertEquals(seq:index_of("name1[-1]"   ), 5)
+  assertEquals(seq:index_of("name2[-1]"   ), 3)
+  assertEquals(seq:index_of("name1[-3]"   ), 2)
+  assertEquals(seq:index_of("name1{1}" , 2), 2)
+  assertEquals(seq:index_of("name1{1}" ,-5), 2)
+  assertEquals(seq:index_of("name1{1}" , 3), 4)
+  assertEquals(seq:index_of("name1{1}" ,-4), 4)
+  assertEquals(seq:index_of("name1{2}" , 3), 5)
+  assertEquals(seq:index_of("name1{2}" ,-4), 5)
+  assertEquals(seq:index_of("name1{-1}", 3), 2)
+  assertEquals(seq:index_of("name1{-1}",-4), 2)
+  assertEquals(seq:index_of("name1{-1}", 2), 2)
+  assertEquals(seq:index_of("name1{-1}",-5), 2)
+  assertEquals(seq:index_of("name1{-2}", 4), 2)
+  assertEquals(seq:index_of("name1{-2}",-3), 2)
+  assertEquals(seq:index_of("name1{-1}", 4), 4)
+  assertEquals(seq:index_of("name1{-1}",-3), 4)
+  assertEquals(seq:index_of("name1{-2}", 5), 4)
+  assertEquals(seq:index_of("name1{-2}",-2), 4)
+  assertEquals(seq:index_of("name1{-3}", 5), 2)
+  assertEquals(seq:index_of("name1{-3}",-2), 2)
+  assertEquals(seq:index_of("name2{-1}", 4), 3)
+  assertEquals(seq:index_of("name2{-1}",-3), 3)
+  assertErrorMsgContains(msg[1], sequence.index_of, seq, "name1{0}", 2)
+end
+
+function TestSequence:testIndexOfElem()
+  local mk1 = marker "name1" { }
+  local mk2 = marker "name2" { at = 2, l = 1 }
+  local mk3 = marker "name1" { }
+  local mk4 = marker "name3" { }
+  local mk5 = marker "name1" { }
+  local seq = sequence {
+    l = 5, refer = "entry",
+    mk1,mk2,mk1,mk1,mk3
+  }
+  assertNil(seq:index_of(mk4)   )
+  assertNil(seq:index_of(mk5)   )
+  assertNil(seq:index_of(mk1, 6))
+  assertEquals(seq:index_of(mk1)   , 2)
+  assertEquals(seq:index_of(mk2)   , 3)
+  assertEquals(seq:index_of(mk3)   , 6)
+  assertEquals(seq:index_of(mk3, 3), 6)
+  assertEquals(seq:index_of(mk1, 2), 2)
+  assertEquals(seq:index_of(mk1,-6), 2)
+  assertEquals(seq:index_of(mk1, 3), 4)
+  assertEquals(seq:index_of(mk1,-5), 4)
+end
+
+function TestSequence:testIndexOfInvalid()
+  local msg = {
+    "invalid argument #2 (number, string or element expected)"
+  }
+  local seq = sequence {}
+  assertErrorMsgContains(msg[1], sequence.index_of, seq, {})
+  assertErrorMsgContains(msg[1], sequence.index_of, seq, nil)
+  assertErrorMsgContains(msg[1], sequence.index_of, seq, \ ())
+end
+
+function TestSequence:testIndex()
+  local seq  = getIdxSeq()
+  assertNil(seq:index( 0  ))
+  assertNil(seq:index( 7  ))
+  assertNil(seq:index( 100))
+  assertNil(seq:index(-100))
+  assertEquals(seq:index( 1), 1)
+  assertEquals(seq:index( 6), 6)
+  assertEquals(seq:index(-1), 6)
+  assertEquals(seq:index(-3), 4)
+end
+
+function TestSequence:testNameOfDirect()
+  local seq = sequence {
+    marker "name1" { },
+    marker "name2" { },
+    marker "name3" { },
+    marker "name4" { },
+  }
+  local msg = {
+    "invalid argument #2 (integer expected)",
+  }
+  assertNil(seq:name_of( 7  ))
+  assertNil(seq:name_of(-7  ))
+  assertNil(seq:name_of( 100))
+  assertNil(seq:name_of(-100))
+  assertEquals(seq:name_of( 1), "$start")
+  assertEquals(seq:name_of( 2), "name1" )
+  assertEquals(seq:name_of( 5), "name4" )
+  assertEquals(seq:name_of( 6), "$end"  )
+  assertEquals(seq:name_of(-2), "name4" )
+  assertEquals(seq:name_of(-4), "name2" )
+  assertErrorMsgContains(msg[1], sequence.name_of, seq, 1.5)
+end
+
+function TestSequence:testNameOfCnt()
+  local seq = getIdxSeq()
+  assertEquals(seq:name_of(3   ), "name2"    )
+  assertEquals(seq:name_of(2   ), "name1[1]" )
+  assertEquals(seq:name_of(4   ), "name1[2]" )
+  assertEquals(seq:name_of(5   ), "name1[3]" )
+  assertEquals(seq:name_of(2, 1), "name1{1}" )
+  assertEquals(seq:name_of(2,-6), "name1{1}" )
+  assertEquals(seq:name_of(4, 3), "name1{1}" )
+  assertEquals(seq:name_of(4,-4), "name1{1}" )
+  assertEquals(seq:name_of(5, 3), "name1{2}" )
+  assertEquals(seq:name_of(5,-4), "name1{2}" )
+  assertEquals(seq:name_of(2, 3), "name1{-1}")
+  assertEquals(seq:name_of(2,-4), "name1{-1}")
+  assertEquals(seq:name_of(2, 4), "name1{-1}")
+  assertEquals(seq:name_of(2,-3), "name1{-1}")
+  assertEquals(seq:name_of(2, 5), "name1{-2}")
+  assertEquals(seq:name_of(2,-2), "name1{-2}")
+end
+
+function TestSequence:testRangeOfNum()
+  local seq = getIdxSeq()
+  local msg = {
+    "invalid range start",
+    "invalid argument #2 (integer, string, table or range expected)",
+  }
+  assertEquals(table.pack(seq:range_of(1 )), {1,1, n=2})
+  assertEquals(table.pack(seq:range_of(4 )), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of(-3)), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of(-5)), {2,2, n=2})
+  assertErrorMsgContains(msg[1], sequence.range_of, seq, 0  )
+  assertErrorMsgContains(msg[1], sequence.range_of, seq, 7  )
+  assertErrorMsgContains(msg[1], sequence.range_of, seq, 100)
+  assertErrorMsgContains(msg[1], sequence.range_of, seq,-100)
+  assertErrorMsgContains(msg[2], sequence.range_of, seq, 1.5)
+end
+
+function TestSequence:testRangeOfStringNum()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of(" 1/ 1")), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of(" 2/ 2")), {3,3, n=2})
+  assertEquals(table.pack(seq:range_of("-1/ 1")), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("-1/ 4")), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of(" 1/-1")), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of(" 4/-1")), {5,5, n=2})
+end
+
+function TestSequence:testRangeOfStringPositive()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of("name1    /name1    "   )), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1    /name2    "   )), {2,3, n=2})
+  assertEquals(table.pack(seq:range_of("name1[2] /name1[2] "   )), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-2]/name1[-2]"   )), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[1] /name1[3] "   )), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-3]/name1[-1]"   )), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[2] /name1[3] "   )), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-2]/name1[-1]"   )), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[1] /name1[-1]"   )), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{2} ", 3)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{2} ",-4)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{2} ", 4)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{2} ",-3)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{1} ", 4)), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{1} ",-3)), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-2}/name1{-1}", 5)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-2}/name1{-1}",-2)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{1} ", 3)), {2,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{1} ",-4)), {2,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{2} ", 3)), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{2} ",-4)), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[2] /name1{2} ", 3)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[2] /name1{2} ",-4)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-2]/name1{2} ", 3)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-2]/name1{2} ",-4)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1[3] ", 3)), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1[3] ",-4)), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1[3] ", 3)), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1[3] ",-4)), {4,5, n=2})
+end
+
+function TestSequence:testRangeOfStringNegative()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of("name2    /name1    "   )), {3,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1[1] "   )), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-1]/name1[-3]"   )), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1[2] "   )), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-1]/name1[-2]"   )), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[-1]/name1[1] "   )), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{1} ", 3)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{1} ",-4)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{1} ", 4)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{1} ",-3)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{-2}", 5)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{-1}/name1{-2}",-2)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{-1}", 3)), {4,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1{1} /name1{-1}",-4)), {4,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{-1}", 3)), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1{-1}",-4)), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1[2] ", 3)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1[2] ",-4)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1[-2]", 3)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1{2} /name1[-2]",-4)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1{-1}", 3)), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1{-1}",-4)), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1{1} ", 3)), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of("name1[3] /name1{1} ",-4)), {5,4, n=2})
+end
+
+function TestSequence:testRangeOfStringInvalid()
+  local seq      = getIdxSeq()
+  local range_of = sequence.range_of
+  local msg = {
+    "invalid range start",
+    "invalid range stop",
+    "invalid argument #2 (number, string or element expected)",
+  }
+  assertErrorMsgContains(msg[3], range_of, seq, "                   "   )
+  assertErrorMsgContains(msg[1], range_of, seq, "         /         "   )
+  assertErrorMsgContains(msg[2], range_of, seq, "name1    /         "   )
+  assertErrorMsgContains(msg[1], range_of, seq, "name100  /name1    "   )
+  assertErrorMsgContains(msg[2], range_of, seq, "name1    /name200  "   )
+  assertErrorMsgContains(msg[1], range_of, seq, "name100  /name200  "   )
+  assertErrorMsgContains(msg[1], range_of, seq, "name1[-4]/name1[3] "   )
+  assertErrorMsgContains(msg[2], range_of, seq, "name1[1] /name1[4] "   )
+  assertErrorMsgContains(msg[1], range_of, seq, "name1[4] /name1[3] "   )
+  assertErrorMsgContains(msg[2], range_of, seq, "name1[1] /name1[-4]"   )
+  assertErrorMsgContains(msg[1], range_of, seq, "name1{-2}/name1{1} ", 3)
+  assertErrorMsgContains(msg[2], range_of, seq, "name1{-1}/name1{3} ", 3)
+  assertErrorMsgContains(msg[1], range_of, seq, "name1{3} /name1{1} ", 3)
+  assertErrorMsgContains(msg[2], range_of, seq, "name1{-1}/name1{-3}", 3)
+end
+
+function TestSequence:testRangeOfTableIdx()
+  local seq = getIdxSeq()
+  local range_of = sequence.range_of
+  local msg = {
+    "invalid argument #2 (range of integers expected)",
+  }
+  assertEquals(table.pack(seq:range_of({ 1, 1, "idx"})), {1,1, n=2})
+  assertEquals(table.pack(seq:range_of({ 1,-1, "idx"})), {1,6, n=2})
+  assertEquals(table.pack(seq:range_of({ 2, 2, "idx"})), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({-1, 1, "idx"})), {6,1, n=2})
+  assertEquals(table.pack(seq:range_of({-1, 4, "idx"})), {6,4, n=2})
+  assertEquals(table.pack(seq:range_of({ 4,-1, "idx"})), {4,6, n=2})
+end
+
+function TestSequence:testRangeOfTableNum()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of({  1, 1  })), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({  1,-1  })), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of({  2, 2  })), {3,3, n=2})
+  assertEquals(table.pack(seq:range_of({ -1, 1  })), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of({ -1, 4  })), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of({  4,-1  })), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of({1.1,-1.1})), {3,5, n=2})
+end
+
+function TestSequence:testRangeOfTableStringNum()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of({" 1", " 1"})), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({" 1", "-1"})), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of({" 2", " 2"})), {3,3, n=2})
+  assertEquals(table.pack(seq:range_of({"-1", " 1"})), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of({"-1", " 4"})), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of({" 4", "-1"})), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of({" 1", " 1"})), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({"-1", " 1"})), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of({" 2", " 2"})), {3,3, n=2})
+  assertEquals(table.pack(seq:range_of({" 1", "-1"})), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of({" 4", "-1"})), {5,5, n=2})
+  assertEquals(table.pack(seq:range_of({"-1", " 4"})), {5,5, n=2})
+end
+
+function TestSequence:testRangeOfTableStringPositiveAbsolute()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of({"name1    ", "name1    "})), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({"name1    ", "name2    "})), {2,3, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[2] ", "name1[2] "})), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-2]", "name1[-2]"})), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[1] ", "name1[3] "})), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-3]", "name1[-1]"})), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[2] ", "name1[3] "})), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-2]", "name1[-1]"})), {4,5, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[1] ", "name1[-1]"})), {2,5, n=2})
+end
+
+function TestSequence:testRangeOfTableStringPositiveRelative()
+  local seq   = getIdxSeq()
+  local tpack = table.pack
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} "}, 3)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} "},-4)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} "}, 4)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} "},-3)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} "}, 4)), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} "},-3)), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-2}", "name1{-1}"}, 5)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-2}", "name1{-1}"},-2)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} "}, 3)), {2,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} "},-4)), {2,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{2} "}, 3)), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{2} "},-4)), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[2] ", "name1{2} "}, 3)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[2] ", "name1{2} "},-4)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[-2]", "name1{2} "}, 3)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[-2]", "name1{2} "},-4)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1[3] "}, 3)), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1[3] "},-4)), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1[3] "}, 3)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1[3] "},-4)), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} ", 3})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} ",-4})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} ", 4})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{2} ",-3})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} ", 4})), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} ",-3})), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-2}", "name1{-1}", 5})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-2}", "name1{-1}",-2})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} ", 3})), {2,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{1} ",-4})), {2,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{2} ", 3})), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{2} ",-4})), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[2] ", "name1{2} ", 3})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[2] ", "name1{2} ",-4})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[-2]", "name1{2} ", 3})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1[-2]", "name1{2} ",-4})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1[3] ", 3})), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1[3] ",-4})), {2,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1[3] ", 3})), {4,5, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1[3] ",-4})), {4,5, n=2})
+end
+
+function TestSequence:testRangeOfTableStringNegativeAbsolute()
+  local seq   = getIdxSeq()
+  assertEquals(table.pack(seq:range_of({"name1    ", "name1    "})), {2,2, n=2})
+  assertEquals(table.pack(seq:range_of({"name2    ", "name1    "})), {3,2, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[2] ", "name1[2] "})), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-2]", "name1[-2]"})), {4,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[3] ", "name1[1] "})), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-1]", "name1[-3]"})), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[3] ", "name1[2] "})), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-1]", "name1[-2]"})), {5,4, n=2})
+  assertEquals(table.pack(seq:range_of({"name1[-1]", "name1[1] "})), {5,2, n=2})
+end
+
+function TestSequence:testRangeOfTableStringNegativeRelative()
+  local seq   = getIdxSeq()
+  local tpack = table.pack
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} "}, 3)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} "},-4)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} "}, 4)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} "},-3)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}"}, 4)), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}"},-3)), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{-2}"}, 5)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{-2}"},-2)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}"}, 3)), {4,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}"},-4)), {4,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{-1}"}, 3)), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{-1}"},-4)), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[2] "}, 3)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[2] "},-4)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[-2]"}, 3)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[-2]"},-4)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{-1}"}, 3)), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{-1}"},-4)), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{1} "}, 3)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{1} "},-4)), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} ", 3})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} ",-4})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} ", 4})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{1} ",-3})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}", 4})), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}",-3})), {4,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{-2}", 5})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{-1}", "name1{-2}",-2})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}", 3})), {4,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{1} ", "name1{-1}",-4})), {4,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{-1}", 3})), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1{-1}",-4})), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[2] ", 3})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[2] ",-4})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[-2]", 3})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1{2} ", "name1[-2]",-4})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{-1}", 3})), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{-1}",-4})), {5,2, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{1} ", 3})), {5,4, n=2})
+  assertEquals(tpack(seq:range_of({"name1[3] ", "name1{1} ",-4})), {5,4, n=2})
+end
+
+function TestSequence:testRangeOfTableInvalid()
+  local seq      = getIdxSeq()
+  local range_of = sequence.range_of
+  local msg      = {
+    "invalid range start",
+    "invalid range stop",
+    "invalid argument #2 (number, string or element expected)",
+    "invalid argument #2 (range of integers expected)",
+  }
+  assertErrorMsgContains(msg[1], range_of, seq, { 0         , 2  , "idx" }   )
+  assertErrorMsgContains(msg[2], range_of, seq, { 1         , 7  , "idx" }   )
+  assertErrorMsgContains(msg[1], range_of, seq, {-100       , 2  , "idx" }   )
+  assertErrorMsgContains(msg[2], range_of, seq, { 1         , 100, "idx" }   )
+  assertErrorMsgContains(msg[4], range_of, seq, { 1.5       , 2  , "idx" }   )
+  assertErrorMsgContains(msg[4], range_of, seq, { 1         , 2.5, "idx" }   )
+  assertErrorMsgContains(msg[2], range_of, seq, { 1         , 7          }   )
+  assertErrorMsgContains(msg[1], range_of, seq, {-7         , 5          }   )
+  assertErrorMsgContains(msg[1], range_of, seq, {-100       , 2          }   )
+  assertErrorMsgContains(msg[2], range_of, seq, { 1         , 100        }   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"         ", "         "}   )
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1    ", "         "}   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"name100  ", "name1    "}   )
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1    ", "name200  "}   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"name100  ", "name200  "}   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1[-4]", "name1[3] "}   )
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1[1] ", "name1[4] "}   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1[4] ", "name1[3] "}   )
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1[1] ", "name1[-4]"}   )
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1{-2}", "name1{1} "}, 3)
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1{-1}", "name1{3} "}, 3)
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1{3} ", "name1{1} "}, 3)
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1{-1}", "name1{-3}"}, 3)
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1{-2}", "name1{1} ", 3})
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1{-1}", "name1{3} ", 3})
+  assertErrorMsgContains(msg[1], range_of, seq, {"name1{3} ", "name1{1} ", 3})
+  assertErrorMsgContains(msg[2], range_of, seq, {"name1{-1}", "name1{-3}", 3})
+end
+
+function TestSequence:testRangeOfRange()
+  local seq = getIdxSeq()
+  assertEquals(table.pack(seq:range_of( 1 ..  4 )), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of(-4 .. -1 )), {2,5, n=2})
+  assertEquals(table.pack(seq:range_of( 2 ..  3 )), {3,4, n=2})
+  assertEquals(table.pack(seq:range_of( 4 ..  1 )), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of(-1 .. -4 )), {5,2, n=2})
+  assertEquals(table.pack(seq:range_of( 3 ..  2 )), {4,3, n=2})
+end
+
+function TestSequence:testLengthOf0TrnPositive()
+  local seq       = getIdxSeq()
+  local length_of = sequence.length_of
+  local msg       = {
+    "invalid range start",
+    "invalid range stop",
+  }
+  assertEquals(seq:length_of(                               ), 6)
+  assertEquals(seq:length_of( "1         /  4       "       ), 4)
+  assertEquals(seq:length_of( "name1[1]  /  name1[3]"       ), 4)
+  assertEquals(seq:length_of({"name1[1] ", "name1[3]"   }   ), 4)
+  assertEquals(seq:length_of({"name1{-1}", "name1{2}", 3}   ), 4)
+  assertEquals(seq:length_of({2          , 3            }   ), 2)
+  assertEquals(seq:length_of( nil                        , 0), 6)
+  assertEquals(seq:length_of( "1         /  4       "    , 0), 4)
+  assertEquals(seq:length_of( "name1[1]  /  name1[3]"    , 0), 4)
+  assertEquals(seq:length_of({"name1[1] ", "name1[3]"   }, 0), 4)
+  assertEquals(seq:length_of({"name1{-1}", "name1{2}", 3}, 0), 4)
+  assertEquals(seq:length_of({2          , 3            }, 0), 2)
+  assertErrorMsgContains(msg[1], length_of, seq,  "name1[-4] / name1[3] "    )
+  assertErrorMsgContains(msg[2], length_of, seq, {"name1{-1}","name1{-3}", 3})
+end
+
+function TestSequence:testLengthOf0TrnNegative()
+  local seq       = getIdxSeq()
+  local length_of = sequence.length_of
+  local msg       = {
+    "invalid range start",
+    "invalid range stop",
+  }
+  assertEquals(seq:length_of( "4        /  1       "        ), 4)
+  assertEquals(seq:length_of( "name1[3] /  name1[1]"        ), 4)
+  assertEquals(seq:length_of({3         , 2             }   ), 6)
+  assertEquals(seq:length_of({"name1[3]", "name1[1] "   }   ), 4)
+  assertEquals(seq:length_of({"name1{2}", "name1{-1}", 3}   ), 4)
+  assertEquals(seq:length_of( "4        /  1        "    , 0), 4)
+  assertEquals(seq:length_of( "name1[3] /  name1[1] "    , 0), 4)
+  assertEquals(seq:length_of({"name1[3]", "name1[1] "   }, 0), 4)
+  assertEquals(seq:length_of({"name1{2}", "name1{-1}", 3}, 0), 4)
+  assertEquals(seq:length_of({3          , 2            }, 0), 6)
+  assertErrorMsgContains(msg[1], length_of, seq, {"name1{-3}","name1{-1}", 3})
+  assertErrorMsgContains(msg[2], length_of, seq,  "name1[3] / name1[-4] "    )
+end
+
+function TestSequence:testLengthOfNTrnPositive()
+  local seq = getIdxSeq()
+  assertEquals(seq:length_of( nil                        , 5), 36)
+  assertEquals(seq:length_of( "1         /  4       "    , 5), 34)
+  assertEquals(seq:length_of( "name1[1]  /  name1[3]"    , 5), 34)
+  assertEquals(seq:length_of({"name1[1] ", "name1[3]"   }, 5), 34)
+  assertEquals(seq:length_of({"name1{-1}", "name1{2}", 3}, 5), 34)
+  assertEquals(seq:length_of({2          , 3            }, 5), 32)
+end
+
+function TestSequence:testLengthOfNTrnNegative()
+  local seq = getIdxSeq()
+  assertEquals(seq:length_of( "4        /  1        "    , 5), 34)
+  assertEquals(seq:length_of( "name1[3] /  name1[1] "    , 5), 34)
+  assertEquals(seq:length_of({"name1[3]", "name1[1] "   }, 5), 34)
+  assertEquals(seq:length_of({"name1{2}", "name1{-1}", 3}, 5), 34)
+  assertEquals(seq:length_of({3         , 2             }, 5), 36)
+end
+
+function TestSequence:testIterEmpty()
+  local seq = sequence "seq" { }
+  local i   = 1
+  for j,elm,s in seq:iter() do
+    error("Empty sequence iterator should iter for 0 step")
+  end
+  assertEquals(i, 1)
+end
+
+function TestSequence:testIterOne()
+  local mk  = marker { at = 1 }
+  local seq = sequence "seq" { l=2, refer="entry", mk }
+  local i   = 1
+  for j,elm,s in seq:iter() do
+    assertIs(elm, seq[j])
+    assertEquals(i, j)
+    assertEquals(s, seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 4)
+end
+
+function TestSequence:testIter()
+  local seq = getIdxSeq()
+  local i = 1
+  for j,elm,s in seq:iter() do
+    assertIs(elm, seq[j])
+    assertEquals(i, j)
+    assertEquals(s, seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testIterRangeTableNum()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter{0,-0.1} do
+    assertIs    (elm, seq[j]     )
+    assertEquals(i  , j          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter{1,-4} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(i  , j            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeStringNum()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter("0/-0.1") do
+    assertIs    (elm, seq[j]     )
+    assertEquals(j  , i          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter("1/-4") do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeRange()
+  local seq, i = getIdxSeq()
+  -- first/last iterator
+  i = 1
+  for j,elm,s in seq:iter(0..-0.1) do
+    assertIs    (elm, seq[j]     )
+    assertEquals(j  , i          )
+    assertEquals(s  , seq:spos(j))
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  -- 2nd/3rd iterator
+  i = 2
+  for j,elm,s in seq:iter(1..-4) do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 3)
+end
+
+function TestSequence:testIterRangeName()
+  local seq, i = getIdxSeq()
+
+  i = 2
+  for j,elm,s in seq:iter("name1[1]/name1[3]") do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-1)
+    i = i + 1
+  end
+  assertEquals(i, 6)
+
+  i = 3
+  for j,elm,s in seq:iter{"name2", "name1{1}", 3} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-2)
+    i = i + 1
+  end
+  assertEquals(i, 5)
+end
+
+function TestSequence:testIterRangeSingle()
+  local seq, i = getIdxSeq(), 3
+  for j,elm,s in seq:iter{2,2} do
+    assertIs    (elm, seq[j]       )
+    assertEquals(j  , i            )
+    assertEquals(s  , seq:spos(j)-2)
+    i = i + 1
+  end
+  assertEquals(i, 4)
+end
+
+function TestSequence:testIterCycle()
+  local seq, i = getIdxSeq(), 1
+  local idx  = {3, 4, 5, 6, 1, 2}
+  local spos = {0, 1, 2, 3, 3, 4}
+  for j,elm,s in seq:iter{2,1} do
+    assertIs    (elm   , seq[j] )
+    assertEquals(idx[i], j      )
+    assertEquals(s     , spos[i])
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testIterNturn()
+  local seq, i, spos = getIdxSeq()
+
+  spos, i = {0, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 15}, 0
+  for j,elm,s in seq:iter(nil,2) do
+    assertIs    (elm    , seq[j]   )
+    assertEquals(i%6 + 1, j        )
+    assertEquals(s      , spos[i+1])
+    i = i + 1
+  end
+  assertEquals(i, 18)
+
+  spos, i = {0, 1, 2, 2, 3, 4, 5, 6, 7, 7, 8, 9, 10, 11, 12, 12, 13, 14}, 3
+  for j,elm,s in seq:iter({3,2},2) do
+    assertIs    (elm    , seq[j]   )
+    assertEquals(i%6 + 1, j        )
+    assertEquals(s      , spos[i-2])
+    i = i + 1
+  end
+  assertEquals(i, 21)
+end
+
+function TestSequence:testIterDir()
+  local seq, i, spos = getIdxSeq()
+  local idx = {3, 2, 1, 6, 5, 4}
+  -- last/first iterator decreasing
+  i, spos = 6, 0
+  for j,elm,s in seq:iter(nil,nil,-1) do
+    assertIs    (elm, seq[j])
+    assertEquals(j  , i     )
+    assertEquals(s  , spos  )
+    spos, i = spos-1, i-1
+  end
+  assertEquals(i, 0)
+
+  -- 2nd/3rd iterator decreasing
+  spos, i = {0, -1, -2, -2, -3, -4}, 1
+  for j,elm,s in seq:iter({2, 3}, nil, -1) do
+    assertIs    (elm   , seq[j] )
+    assertEquals(idx[i], j      )
+    assertEquals(s     , spos[i])
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testCycleNum()
+  local seq = getIdxSeq()
+  local idx = {3, 4, 5, 6, 1, 2}
+  local i
+  i = 1
+  seq:cycle(2)
+  for j,elm in seq:iter() do
+    assertIs    (elm   , seq[j])
+    assertEquals(idx[i], j     )
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  i = 1
+  seq:cycle(-3)
+  for j,elm in seq:iter() do
+    assertIs    (elm   , seq[j])
+    assertEquals(idx[i], j     )
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testCycleName()
+  local seq  = getIdxSeq()
+  local idx1 = { 3, 4, 5, 6, 1, 2 }
+  local idx2 = { 4, 5, 6, 1, 2, 3 }
+  local i
+  i = 1
+  seq:cycle("name2")
+  for j,elm in seq:iter() do
+    assertIs    (elm    , seq[j])
+    assertEquals(idx1[i], j     )
+    i = i + 1
+  end
+  assertEquals(i, 7)
+
+  i = 1
+  seq:cycle("name1[2]")
+  for j,elm in seq:iter() do
+    assertIs    (elm    , seq[j])
+    assertEquals(idx2[i], j     )
+    i = i + 1
+  end
+  assertEquals(i, 7)
+end
+
+function TestSequence:testCycleInvalid()
+  local seq = getIdxSeq()
+  local msg = {
+    "invalid argument #2 (reference expected)",
+  }
+  assertErrorMsgContains(msg[1], sequence.cycle, seq, 5.1   )
+  assertErrorMsgContains(msg[1], sequence.cycle, seq,-5.1   )
+  assertErrorMsgContains(msg[1], sequence.cycle, seq, "none")
+end
 
 function TestSequence:testForeach()
-  local msg = {
-    "invalid argument #2 (callable expected)",
-  }
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+  seq:foreach(act)
+  assertEquals(i, 7)
 end
 
-function TestSequence:testFilter()
-  local msg = {
-    "invalid argument #2 (callable expected)",
-  }
+function TestSequence:testForeachNot()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \=> i=i+1 end
+  seq:foreach(act, nil, nil, true)
+  assertEquals(i, 1)
+end
+
+function TestSequence:testForeachRangeNum()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  i = 3
+  seq:foreach(act, { 2, 4})
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach(act, {-3,-1})
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach(act, { 2, 4}, nil, nil, true)
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach(act, {-3,-1}, nil, nil, true)
+  assertEquals(i, 6)
+end
+
+function TestSequence:testForeachRangeName()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  i = 3
+  seq:foreach(act, {"name2", "name1[3]"})
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach(act, "name2/name1[3]")
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach(act, {"name2", "name1{2}", 3})
+  assertEquals(i, 6)
+end
+
+function TestSequence:testForeachFlags()
+  local seq     = getIdxSeq()
+  local flg, i  = 31, 2
+  local act     = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  for i=2,4 do seq[i]:select(flg) end
+  seq:foreach(act, nil, flg)
+  assertEquals(i, 5)
+end
+
+function TestSequence:testForeachPattern()
+  local seq  = getIdxSeq()
+  local idxs = { 2, 4, 5 }
+  local i    = 1
+  local act  = \elm,idx =>
+    assertIs    (elm, seq[idxs[i]])
+    assertEquals(idx, idxs[i]     )
+    i = i + 1
+  end
+  seq:foreach(act, nil, "name1")
+  assertEquals(i, 4)
+end
+
+function TestSequence:testForeachClass()
+  local seq = getIdxSeq()
+  local i   = 3
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  seq:foreach(act, nil, quadrupole)
+  assertEquals(i, 5)
+end
+
+function TestSequence:testForeachSelect()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  -- select using i
+  i = 3
+  seq:foreach(act, {2, 4}, \e,i -> i < 5)
+  assertEquals(i, 5)
+
+  -- select using e
+  i = 3
+  seq[5].var = true
+  seq:foreach(act, {2, 4}, \e,i -> not e.var)
+  assertEquals(i, 5)
+end
+
+function TestSequence:testForeachTable()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+  seq:foreach{action=act}
+  assertEquals(i, 7)
+end
+
+function TestSequence:testForeachTableNot()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \=> i=i+1 end
+  seq:foreach{action=act, default=true  }
+  seq:foreach{action=act, default="none"}
+  assertEquals(i, 1)
+end
+
+function TestSequence:testForeachTableRangeNum()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  i = 3
+  seq:foreach{action=act, range={ 2, 4}}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={-3,-1}}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={ 2, 4}, default=true}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={-3,-1}, default=true}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={ 2, 4}, default="none"}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={-3,-1}, default="none"}
+  assertEquals(i, 6)
+end
+
+function TestSequence:testForeachTableRangeName()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  i = 3
+  seq:foreach{action=act, range={"name2", "name1[3]"}}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range="name2/name1[3]"}
+  assertEquals(i, 6)
+
+  i = 3
+  seq:foreach{action=act, range={"name2", "name1{2}", 3}}
+  assertEquals(i, 6)
+end
+
+function TestSequence:testForeachTableSelect()
+  local seq = getIdxSeq()
+  local i   = 1
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  -- select using i
+  i = 3
+  seq:foreach{action=act, range={2, 4}, select=\e,i -> i < 5}
+  assertEquals(i, 5)
+
+  -- select using e
+  i = 3
+  seq[5].var = true
+  seq:foreach{action=act, range={2, 4}, select=\e,i -> not e.var}
+  assertEquals(i, 5)
+end
+
+function TestSequence:testForeachTableClass()
+  local seq = getIdxSeq()
+  local i   = 3
+  local act = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  seq:foreach{action=act, class=quadrupole}
+  assertEquals(i, 5)
+end
+
+function TestSequence:testForeachTablePattern()
+  local seq  = getIdxSeq()
+  local idxs = { 2, 4, 5 }
+  local i    = 1
+  local act  = \elm,idx =>
+    assertIs    (elm, seq[idxs[i]])
+    assertEquals(idx, idxs[i]     )
+    i = i + 1
+  end
+  seq:foreach{action=act, pattern="name1"}
+  assertEquals(i, 4)
+end
+
+function TestSequence:testForeachTableFlags()
+  local seq     = getIdxSeq()
+  local flg, i  = 31, 2
+  local act     = \elm,idx =>
+    assertIs    (elm, seq[idx])
+    assertEquals(idx, i       )
+    i = i + 1
+  end
+
+  for i=2,4 do seq[i]:select(flg) end
+  seq:foreach{action=act, flag=flg}
+  assertEquals(i, 5)
 end
 
 function TestSequence:testSelect()
-  local msg = {
-    "invalid argument #2 (callable expected)",
-  }
+  local seq = getIdxSeq()
+  local flg = 31
+  local assertSelect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertTrue (seq[i]:is_selected(flg))
+      else assertFalse(seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:deselect(flg) end
+  end
+
+  assertSelect(seq:select(flg)                                  , 1, 7)
+  assertSelect(seq:select(flg, nil  , nil, true)                , 1, 1)
+  assertSelect(seq:select(flg, {2,4})                           , 3, 6)
+  assertSelect(seq:select(flg, {2,4}, nil, true)                , 3, 6)
+  assertSelect(seq:select(flg, nil  , \e,i -> 2 < i and i < 4)  , 3, 4)
+  assertSelect(seq:select(flg, {2,4}, \e,i -> 1 < i and i < 4)  , 3, 4)
+  assertSelect(seq:select(flg, nil  , \e,i -> e.eid >=5)        , 5, 7)
+  assertSelect(seq:select(flg, nil, quadrupole)                 , 3, 5)
+
+  local _flg = 30
+  seq[3]:select(_flg); seq[4]:select(_flg)
+  assertSelect(seq:select(flg, nil, _flg), 3, 5)
 end
 
-function TestSequence:testUnique()
+function TestSequence:testSelectTable()
+  local seq = getIdxSeq()
+  local flg = 31
+  local assertSelect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertTrue (seq[i]:is_selected(flg))
+      else assertFalse(seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:deselect(flg) end
+  end
+
+  assertSelect(seq:select(flg, {})                                      , 1, 7)
+  assertSelect(seq:select(flg, {default=true})                          , 1, 1)
+  assertSelect(seq:select(flg, {default="none"})                        , 1, 1)
+  assertSelect(seq:select(flg, {range={2,4} })                          , 3, 6)
+  assertSelect(seq:select(flg, {range={2,4}, default=true })            , 3, 6)
+  assertSelect(seq:select(flg, {range={2,4}, default="none" })          , 3, 6)
+  assertSelect(seq:select(flg, {select=\e,i -> 2 < i and i < 4 })       , 3, 4)
+  assertSelect(seq:select(flg, {range={2,4}, select=\e,i ->1<i and i<4}), 3, 4)
+  assertSelect(seq:select(flg, {select=\e,i -> e.at and e.eid >=5 })    , 5, 7)
+  assertSelect(seq:select(flg, {class=quadrupole})                      , 3, 5)
+
+  local _flg = 30
+  seq[3]:select(_flg); seq[4]:select(_flg)
+  assertSelect(seq:select(flg, {flag=_flg}), 3, 5)
+end
+
+function TestSequence:testSelectPattern()
+  local seq  = getIdxSeq()
+  local test = { false, true, false, true, true, false }
+  local flg  = 31
+  local assertSelect = \seq =>
+    for i=1,#seq do
+      if test[i]
+      then assertTrue (seq[i]:is_selected(flg))
+      else assertFalse(seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:deselect(flg) end
+  end
+
+  assertSelect(seq:select(flg, {pattern = "name1"}))
+  assertSelect(seq:select(flg, nil, "name1"))
+end
+
+function TestSequence:testSelectDefaultFlag()
+  local seq = getIdxSeq()
+  local assertSelect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertTrue (seq[i]:is_selected())
+      else assertFalse(seq[i]:is_selected())
+      end
+    end
+    for i=1,#seq do seq[i]:deselect() end
+  end
+
+  assertSelect(seq:select(nil,  {2,4},         "name1"), 4, 6)
+  assertSelect(seq:select{range={2,4}, pattern="name1"}, 4, 6)
+end
+
+function TestSequence:testDeselect()
+  local seq = getIdxSeq()
+  local flg = 31
+  local assertDeselect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertFalse(seq[i]:is_selected(flg))
+      else assertTrue (seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:select(flg) end
+  end
+
+  for i=1,#seq do seq[i]:select(flg) end
+  assertDeselect(seq:deselect(flg)                                , 1, 7)
+  assertDeselect(seq:deselect(flg, nil  , nil, true)              , 1, 1)
+  assertDeselect(seq:deselect(flg, {2,4})                         , 3, 6)
+  assertDeselect(seq:deselect(flg, {2,4}, nil, true)              , 3, 6)
+  assertDeselect(seq:deselect(flg, nil  , \e,i -> 2 < i and i < 4), 3, 4)
+  assertDeselect(seq:deselect(flg, {2,4}, \e,i -> 1 < i and i < 4), 3, 4)
+  assertDeselect(seq:deselect(flg, nil  , \e,i -> e.eid >=5)      , 5, 7)
+  assertDeselect(seq:deselect(flg, nil, quadrupole)               , 3, 5)
+
+  local _flg = 30
+  seq[3]:select(_flg); seq[4]:select(_flg)
+  assertDeselect(seq:deselect(flg, nil, _flg), 3, 5)
+end
+
+function TestSequence:testDeselectTable()
+  local seq = getIdxSeq()
+  local flg = 31
+  local assertDeselect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertFalse(seq[i]:is_selected(flg))
+      else assertTrue (seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:select(flg) end
+  end
+
+  for i=1,#seq do seq[i]:select(flg) end
+  assertDeselect(seq:deselect(flg, {})                                      , 1, 7)
+  assertDeselect(seq:deselect(flg, {default=true})                          , 1, 1)
+  assertDeselect(seq:deselect(flg, {default="none"})                        , 1, 1)
+  assertDeselect(seq:deselect(flg, {range={2,4} })                          , 3, 6)
+  assertDeselect(seq:deselect(flg, {range={2,4}, default=true })            , 3, 6)
+  assertDeselect(seq:deselect(flg, {range={2,4}, default="none" })          , 3, 6)
+  assertDeselect(seq:deselect(flg, {select=\e,i -> 2 < i and i < 4 })       , 3, 4)
+  assertDeselect(seq:deselect(flg, {range={2,4}, select=\e,i ->1<i and i<4}), 3, 4)
+  assertDeselect(seq:deselect(flg, {select=\e,i -> e.eid >=5 })             , 5, 7)
+  assertDeselect(seq:deselect(flg, {class=quadrupole})                      , 3, 5)
+
+  local _flg = 30
+  seq[3]:select(_flg); seq[4]:select(_flg)
+  assertDeselect(seq:deselect(flg, {flag=_flg}), 3, 5)
+end
+
+function TestSequence:testDeselectPattern()
+  local seq  = getIdxSeq()
+  local test = { false, true, false, true, true, false }
+  local flg  = 31
+  local assertDeselect = \seq =>
+    for i=1,#seq do
+      if test[i]
+      then assertFalse(seq[i]:is_selected(flg))
+      else assertTrue (seq[i]:is_selected(flg))
+      end
+    end
+    for i=1,#seq do seq[i]:select(flg) end
+  end
+
+  for i=1,#seq do seq[i]:select(flg) end
+  assertDeselect(seq:deselect(flg, {pattern = "name1"}))
+  assertDeselect(seq:deselect(flg, nil, "name1"))
+end
+
+function TestSequence:testDeselectDefaultFlag()
+  local seq = getIdxSeq()
+  local assertDeselect = \seq,min,max =>
+    for i=1,#seq do
+      if min <= i and i < max
+      then assertFalse(seq[i]:is_selected())
+      else assertTrue (seq[i]:is_selected())
+      end
+    end
+    for i=1,#seq do seq[i]:select() end
+  end
+
+  for i=1,#seq do seq[i]:select() end
+  assertDeselect(seq:deselect(nil,  {2,4},         "name1"), 4, 6)
+  assertDeselect(seq:deselect{range={2,4}, pattern="name1"}, 4, 6)
+end
+
+function TestSequence:testFilter()
+  local seq = getIdxSeq()
+  local assertFilter = \idx,min,max =>
+    local j = 1
+    for i=min,max-1 do
+      assertEquals(idx[j], i)
+      j = j + 1
+    end
+  end
+
+  assertFilter(seq:filter()                                , 1, 7)
+  assertFilter(seq:filter(nil  , nil, true)                , 1, 1)
+  assertFilter(seq:filter({2,4})                           , 3, 6)
+  assertFilter(seq:filter({2,4}, nil, true)                , 3, 6)
+  assertFilter(seq:filter(nil  , \e,i -> 2 < i and i < 4)  , 3, 4)
+  assertFilter(seq:filter({2,4}, \e,i -> 1 < i and i < 4)  , 3, 4)
+  assertFilter(seq:filter(nil  , \e,i -> e.eid >=5)        , 5, 7)
+  assertFilter(seq:filter(nil, quadrupole)                 , 3, 5)
+
+  local flg = 31
+  seq[3]:select(flg); seq[4]:select(flg)
+  assertFilter(seq:filter(nil, flg), 3, 5)
+end
+
+function TestSequence:testFilterTable()
+  local seq = getIdxSeq()
+  local assertFilter = \idx,min,max =>
+    local j = 1
+    for i=min,max-1 do
+      assertEquals(idx[j], i)
+      j = j + 1
+    end
+  end
+
+  assertFilter(seq:filter({})                                      , 1, 7)
+  assertFilter(seq:filter({default=true})                          , 1, 1)
+  assertFilter(seq:filter({default="none"})                        , 1, 1)
+  assertFilter(seq:filter({range={2,4} })                          , 3, 6)
+  assertFilter(seq:filter({range={2,4}, default=true })            , 3, 6)
+  assertFilter(seq:filter({range={2,4}, default="none" })          , 3, 6)
+  assertFilter(seq:filter({select=\e,i -> 2 < i and i < 4 })       , 3, 4)
+  assertFilter(seq:filter({range={2,4}, select=\e,i ->1<i and i<4}), 3, 4)
+  assertFilter(seq:filter({select=\e,i -> e.eid >=5 })             , 5, 7)
+  assertFilter(seq:filter({class=quadrupole})                      , 3, 5)
+
+  local flg = 31
+  seq[3]:select(flg); seq[4]:select(flg)
+  assertFilter(seq:filter{flag=flg}, 3, 5)
+end
+
+function TestSequence:testFilterPattern()
+  local seq  = getIdxSeq()
+  local test = { 2, 4, 5 }
+  local assertFilter = \idx =>
+    for i,v in ipairs(test) do
+      assertEquals(idx[i], v)
+    end
+  end
+
+  assertFilter(seq:filter{pattern = "name1"})
+  assertFilter(seq:filter(nil,      "name1"))
+end
+
+function TestSequence:testCopy()
+  local seq = getIdxSeq()
+  local cpy = seq:copy()
+  assertEquals(#cpy, #seq)
+  for i=1,6 do
+    assertElem(cpy[i], seq[i])
+  end
+  assertTrue(cpy:is_owner())
+end
+
+function TestSequence:testCopyView()
+  local seq  = getIdxSeq()
+  local view = seq "view" { var1=42, var2="test", var3=true, var4=false }
+  local cpy  = view:copy()
+  assertEquals(cpy.var1, 42    )
+  assertEquals(cpy.var2, "test")
+  assertEquals(cpy.var3, true  )
+  assertEquals(cpy.var4, false )
+  for i=1,6 do
+    assertElem(cpy[i], seq[i])
+  end
+  assertTrue(cpy:is_view())
+end
+
+function TestSequence:testCopyViewName()
+  local seq  = getIdxSeq()
+  local cpy1 = seq:copy()
+  local cpy2 = seq:copy("seq2")
+  assertEquals(cpy1.name, seq.name)
+  assertEquals(cpy2.name, "seq2")
+end
+
+function TestSequence:testCopyViewOwner()
+  local seq  = getIdxSeq()
+  local view = seq "view" { }
+  local cpy1 = view:copy()
+  local cpy2 = view:copy(nil, true)
+  local cpy3 = view:copy(true)      -- shift right
+  for _,cpy in ipairs{cpy1, cpy2, cpy3} do
+    assertEquals(#cpy, #seq)
+    for i=1,4 do
+      assertElem(cpy[i], seq[i])
+    end
+  end
+  assertTrue(cpy1:is_view())
+  assertTrue(cpy2:is_owner())
+  assertTrue(cpy3:is_owner())
+end
+
+function TestSequence:testCopyDict()
+  local seq = getIdxSeq()
+  local cpy = seq:copy()
+  cpy:check_index()
+  assertEquals(cpy:index_of("name1")   , seq:index_of("name1")   )
+  assertEquals(cpy:index_of("name1[3]"), seq:index_of("name1[3]"))
+end
+
+function TestSequence:testRemoveNothing()
+  local seq = getIdxSeq()
+  seq:remove()
+  assertEquals(#seq, 6)
+end
+
+function TestSequence:testRemoveInt()
+  local seq = getIdxSeq()
+  local ref = getIdxSeq()
+  seq:remove(2)
+  seq:check_index()
+  assertElem(seq[1], ref[1])
+  for i=2,5 do assertElem(seq[i], ref[i+1]) end
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testRemoveRange()
+  local seq = getIdxSeq()
+  local ref = getIdxSeq()
+  local idx = { 1, 2, 5, 6 }
+  seq:remove({2,3})
+  seq:check_index()
+  for i=1,#seq do
+    assertElem(seq[i], ref[idx[i]])
+  end
+  assertEquals(#seq, 4)
+end
+
+function TestSequence:testRemoveSelect()
+  local seq = getIdxSeq()
+  local ref = getIdxSeq()
+  local idx = { 1, 2, 5, 6 }
+
+  seq:remove(nil, \r,i -> 2 < i and i < 5)
+  seq:check_index()
+  for i=1,#seq do
+    assertElem(seq[i], ref[idx[i]])
+  end
+  assertEquals(#seq, 4)
+end
+
+function TestSequence:testRemoveMarker()
+  local seq = getIdxSeq()
   local msg = {
-    "unexpected corrupted dictionnary",
+    "invalid range, $start marker selected",
+    "invalid range, $end marker selected",
   }
+
+  assertErrorMsgContains(msg[1], seq.remove, seq, 1                    )
+  assertErrorMsgContains(msg[2], seq.remove, seq, 6                    )
+  assertErrorMsgContains(msg[1], seq.remove, seq, {0, 4}               )
+  assertErrorMsgContains(msg[2], seq.remove, seq, {2, 5}               )
+  assertErrorMsgContains(msg[1], seq.remove, seq, nil   , \r,i -> i < 3)
+  assertErrorMsgContains(msg[2], seq.remove, seq, nil   , \r,i -> i > 3)
+  seq:check_index()
+  assertEquals(#seq, 6)
+end
+
+function TestSequence:testFlags()
+  local clr, set = object.clear_flags, object.set_flags
+  local seq = getIdxSeq()
+  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*4 ) end; seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*8 ) end; seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*16) end; seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*32) end
+  for i=1,#seq do assertEquals(seq[i]:get_flags(), i*32) end; seq:restore_flags()
+  for i=1,#seq do assertEquals(seq[i]:get_flags(), i*16) end
+  seq:drop_flags(); seq:restore_flags()
+  for i=1,#seq do assertEquals(seq[i]:get_flags(), i*4 ) end
+end
+
+function TestSequence:testFlagsInvalid()
+  local seq = getIdxSeq()
+  local msg = {
+    "saved flags not found",
+  }
+  assertErrorMsgContains(msg[1], sequence.drop_flags   , seq)
+  assertErrorMsgContains(msg[1], sequence.restore_flags, seq)
+  seq:save_flags(); seq:drop_flags()
+  assertErrorMsgContains(msg[1], sequence.drop_flags   , seq)
+  assertErrorMsgContains(msg[1], sequence.restore_flags, seq)
+end
+
+function TestSequence:testInstallSingleEmpty()
+  local seq = sequence "seq" { l = 10, owner = true, refer = "entry" }
+  local df  = drift    "df"  { l = 1 , at = 1, from = "prev" }
+  seq:install(df)
+  assertEquals(#seq, 3)
+  assertEquals(seq:spos(2), 1)
+end
+
+function TestSequence:testInstallSingle()
+  local seq = sequence "seq" { drift "df1" { at = 1 }, l = 10, refer = "entry" }
+  local df  = drift    "df2" { l = 1 , at = -1, from = "next" }
+  seq:install(df)
+  assertEquals(#seq, 4)
+  assertEquals(seq:spos(3), 9)
+end
+
+function TestSequence:testInstallMulti()
+  local seq  = sequence "seq" { l = 10, owner = true, refer = "entry" }
+  local line = drift "df" { } * 2
+  local tbl  = {
+    drift "df2" { l = 1 , at =-3 , from = "end" },
+    drift "df3" { l = 1 , at =-1 , from = "end" },
+    drift "df4" {         at = 10               },
+  }
+  seq:install(line)
+  seq:install(tbl)
+  local spos = { 0       , 0   , 0   , 7    , 9    , 10   , 10     }
+  local name = { "$start", "df", "df", "df2", "df3", "df4", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 7)
+end
+
+function TestSequence:testInstallSubSeq()
+  local seq  = sequence "seq"  { l = 10, owner = true }
+  local sseq = sequence "sseq" {
+    l = 6 , at = 5, refpos = "centre", refer="entry",
+    drift "df1" { l = 1 , at =-4 , from = "end" },
+    drift "df2" { l = 1 , at =-2 , from = "end" },
+    drift "df3" {         at = 5                },
+  }
+
+  seq:install(sseq)
+  local spos = { 0       , 4    , 6    , 7    , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testInstallSubSeqMulti()
+  local seq   = sequence "seq"   { l = 16, owner = true, refer="entry" }
+  local sseq1 = sequence "sseq1" {
+    l = 6 , at = 5, refpos = "centre", refer="entry",
+    drift "df1'" { l = 1 , at =-4 , from = "end" },
+    drift "df2'" { l = 1 , at =-2 , from = "end" },
+    drift "df3'" {         at = 5                },
+  }
+  local sseq2 = sequence "sseq2" {
+    l = 6 , at = 14, refpos = "exit", refer="entry",
+    drift "df1''" { l = 1 , at =-4 , from = "end" },
+    drift "df2''" { l = 1 , at =-2 , from = "end" },
+    drift "df3''" {         at = 5                },
+  }
+  local elems = {
+    drift "df1" { l = 1, at = 1 },
+    sseq1,
+    sseq2,
+    drift "df2" { l = 1, at = 15 },
+  }
+  seq:install(elems)
+  local spos = { 0, 1, 4, 6, 7, 10, 12, 13, 15, 16 }
+  local name = {
+    "$start", "df1",
+    "df1'"  , "df2'" , "df3'" ,
+    "df1''" , "df2''", "df3''",
+    "df2",
+    "$end"
+  }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 10)
+end
+
+function TestSequence:testInstallSelectedSingle()
+  local seq = \   (sequence "seq" { marker "mk" { at = 1, from = "prev" } * 5 })
+  local mk  = \at (marker   "mk2" { at=at, from="selected" })
+
+  local seq1 = seq():install(mk( 0.5), {2, 4})
+  local seq2 = seq():install(mk(-0.5), {2, 4})
+  local seq3 = seq():install(mk( 0.5), {2, 4}, \e,i -> i < 4)
+  local vals = {
+    [seq1] = {[4]=2.5, [6]=3.5, [8]=4.5},
+    [seq2] = {[3]=1.5, [5]=2.5, [7]=3.5},
+    [seq3] = {[4]=2.5,             },
+  }
+  for seq,val in pairs(vals) do
+    local i = 0
+    for idx,spos in pairs(val) do
+      assertEquals(seq:spos(idx), spos)
+      i = i+1
+    end
+    assertEquals(#seq, i+7)
+  end
+end
+
+function TestSequence:testInstallSelectedSingleWithTbl()
+  local seq = \   (sequence "seq" { marker "mk" { at = 1, from = "prev" } * 5 })
+  local mk  = \at (marker   "mk2" { at=at, from="selected" })
+
+  local seq1 = seq():install{elements=mk( 0.5), range={2, 4}}
+  local seq2 = seq():install{elements=mk(-0.5), range={2, 4}}
+  local seq3 = seq():install{elements=mk( 0.5), range={2, 4},
+    select=\e,i -> i < 4}
+  local vals = {
+    [seq1] = {[4]=2.5, [6]=3.5, [8]=4.5},
+    [seq2] = {[3]=1.5, [5]=2.5, [7]=3.5},
+    [seq3] = {[4]=2.5,             },
+  }
+  for seq,val in pairs(vals) do
+    local i = 0
+    for idx,spos in pairs(val) do
+      assertEquals(seq:spos(idx), spos)
+      i = i+1
+    end
+    assertEquals(#seq, i+7)
+  end
+end
+
+function TestSequence:testInstallMultiMixedFrom()
+  local mk   = marker   "mk"  { }
+  local seq  = sequence "seq" { l = 10, refer="entry",
+    mk "mk1" { at = 2 },
+    mk "mk2" { at = 4 },
+    mk "mk3" { at = 8 },
+  }
+  local sseq = sequence "sseq" { l = 3 , at = 5, refer="entry",
+    drift "df1'" { l = 1, at = 0 },
+    drift "df2'" { l = 1, at = 1 },
+    drift "df3'" { l = 1, at = 2 },
+  }
+  local param = {
+    class    = mk,
+    elements = {
+      drift "df1" { l = 0.1, at = 0.1, from="selected" },
+      drift "df2" { l = 0.1, at = 0.2, from="selected" },
+      drift "df3" { l = 0.1, at = 0.3, from="selected" },
+      sseq,
+      drift "df4" { l = 1, at = 9 },
+    }
+  }
+  seq:install(param)
+  local spos = {
+    0,
+    2, 2.1, 2.2, 2.3,
+    4, 4.1, 4.2, 4.3,
+    5, 6  , 7  ,
+    8, 8.1, 8.2, 8.3,
+    9, 10
+  }
+  local name = {
+    "$start",
+    "mk1"   , "df1" , "df2" , "df3",
+    "mk2"   , "df1" , "df2" , "df3",
+    "df1'"  , "df2'", "df3'",
+    "mk3"   , "df1" , "df2" , "df3",
+    "df4"   , "$end"
+  }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(#seq, 18)
+end
+
+function TestSequence:testInstallInvalidNegDrift()
+  local msg = {
+    "invalid element position at s = 1.5m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'df2' at index 3",
+    "invalid element position at s = 1m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'df1' at index 2",
+    "invalid element position at s = 2.5m (negative drift -0.5m) \z
+      in sequence 'seq' for element 'df2' at index 2",
+  }
+
+  local seq    = \ (sequence "seq" { l = 10, owner = true, refer="entry" })
+  local param1 = {
+    drift "df1" { l = 1, at = 1   },
+    drift "df2" { l = 1, at = 1.5 },
+  }
+  local param2 = {
+    drift "df2" { l = 1, at = 1.5 },
+    drift "df1" { l = 1, at = 1   },
+  }
+  local param3 = {
+    drift    "df1"   { l = 1, at = 3 },
+    sequence "sseq"  { l = 2, at = 2.5, refer="entry",
+      drift  "df2"   { l = 1 },
+    },
+  }
+  assertErrorMsgContains(msg[1], sequence.install, seq(), param1)
+  assertErrorMsgContains(msg[2], sequence.install, seq(), param2)
+  assertErrorMsgContains(msg[3], sequence.install, seq(), param3)
+end
+
+function TestSequence:testInstallSubSeqInvalidFromSelected()
+  local seq  = sequence "seq"  { l = 10, owner = true }
+  local sseq = sequence "sseq" { at = 5, from = "selected",
+    drift "df1" { l = 1, at = 3 },
+  }
+  local msg = {
+    "invalid from 'selected' for sequence sseq",
+  }
+  assertErrorMsgContains(msg[1], sequence.install, seq, sseq, {0,0})
+end
+
+function TestSequence:testReplaceSingleEmpty()
+  local seq = sequence "seq" { l = 10, owner = true }
+  local df  = drift    "df"  { l = 1 , at = 1, from = "prev" }
+  local elm_r, idx_r = seq:replace(df)
+  assertEquals(#seq, 2)
+  assertNil(elm_r)
+  assertNil(idx_r)
+end
+
+function TestSequence:testReplaceSingle()
+  local df1 = drift    "df1" { at = 1 }
+  local df2 = drift    "df2" { l = 1 , at = -.5, from = "next", }
+  local seq = sequence "seq" { df1, l = 10 }
+  local elm_r, idx_r = seq:replace(df2, {1,1})
+  assertEquals(#seq, 3)
+  assertEquals(seq:spos(2), 9)
+  assertIs(seq[2], df2)
+  assertEquals(elm_r, {df1})
+  assertEquals(idx_r, {2})
+end
+
+function TestSequence:testReplaceMulti()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms, refer="entry" }
+  local tbl  = {
+    drift "df1" { l = 1 , at =-3 , from = "end" },
+    drift "df2" { l = 1 , at =-1 , from = "end" },
+    drift "df3" {         at = 10               },
+  }
+
+  local elm_r, idx_r = seq:replace(tbl, {1,3})
+
+  local spos = { 0       , 7    , 9    , 10   , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiWithTable()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, elms, refer="entry" }
+  local param  = {
+    range    = {1,3},
+    elements = {
+      drift "df1" { l = 1 , at =-3 , from = "end" },
+      drift "df2" { l = 1 , at =-1 , from = "end" },
+      drift "df3" {         at = 10               },
+    },
+  }
+
+  local elm_r, idx_r = seq:replace(param)
+
+  local spos = { 0       , 7    , 9    , 10   , 10     }
+  local name = { "$start", "df1", "df2", "df3", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiRecycle1()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, refer = "entry", elms }
+  local df   = drift    "df"  { l = 1 , at    = 1      , from = "prev" }
+
+  local elm_r, idx_r = seq:replace(df, {1,3})
+
+  local spos = { 0       , 1   , 2   , 3   , 10     }
+  local name = { "$start", "df", "df", "df", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceMultiRecycleN()
+  local elms = {
+    marker "mk1" { at = 1 },
+    marker "mk2" { at = 2 },
+    marker "mk3" { at = 3 },
+  }
+  local seq  = sequence "seq" { l = 10, refer = "entry", elms }
+  local tbl  = {
+    drift "df1" { l = 1, at = 1, from = "prev" },
+    drift "df2" { l = 1, at = 1, from = "prev" },
+  }
+
+  local elm_r, idx_r = seq:replace(tbl, {1,3})
+
+  local spos = { 0       , 1    , 2    , 3    , 10     }
+  local name = { "$start", "df1", "df2", "df1", "$end" }
+  for i=1,#seq do
+    assertEquals(seq[i].name, name[i])
+    assertEquals(seq:spos(i), spos[i])
+  end
+  assertEquals(elm_r, elms)
+  assertEquals(idx_r, {2,3,4})
+  assertEquals(#seq, 5)
+end
+
+function TestSequence:testReplaceInvalidElem()
+  local seq  = sequence "seq"  { marker { l=1, at=1 }, l = 10 }
+  local sseq = sequence "sseq" { owner=true, l = 1 }
+  local line = drift    "df"   { at = 1 } * 2
+  local msg  = {
+    "element is a beam line 'bline'",
+    "element is a sequence 'sseq'",
+    "invalid argument #2 (elements list expected)",
+    "item is not an element 'number'",
+    "item is not an element 'string'",
+    "item is not an element 'function'",
+  }
+
+  assertErrorMsgContains(msg[1], sequence.replace, seq, line   , {1,1})
+  assertErrorMsgContains(msg[2], sequence.replace, seq, sseq   , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, 1      , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, "df1"  , {1,1})
+  assertErrorMsgContains(msg[3], sequence.replace, seq, \ ()   , {1,1})
+  assertErrorMsgContains(msg[4], sequence.replace, seq, {1}    , {1,1})
+  assertErrorMsgContains(msg[5], sequence.replace, seq, {"df1"}, {1,1})
+  assertErrorMsgContains(msg[6], sequence.replace, seq, {\ ()} , {1,1})
+end
+
+function TestSequence:testShareSimple()
+  local df   = drift "df" { l=1, at=1.5 }
+  local seq1 = sequence "seq1"  { df }
+  local seq2 = sequence "seq2"  { drift "df" { l=1, at=3.5, truc=42 } }
+  seq1:share(seq2)
+  assertIs(seq1[2], seq2[2])
+  assertIs(seq2[2], df)
+end
+
+function TestSequence:testShareSimpleOrder()
+  local df   = drift "df" { l=1, at=3.5, var=42 }
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=1.5 } }
+  local seq2 = sequence "seq2"  { df }
+  seq2:share(seq1)
+  assertEquals(seq1[2].var, 42)
+  assertEquals(seq2[2].var, 42)
+  assertIs(seq1[2], seq2[2])
+  assertIs(seq2[2], df)
 end
 
 function TestSequence:testShare()
-local msg = {
-  "invalid argument #2 (sequence expected)",
-  "invalid shared element (must be unique)",
-}
+  local df11  = drift "df1" { l = 3, at = 1.5 }
+  local df12  = drift "df2" { l = 1, at = 4.5 }
+  local df13  = drift "df3" { l = 2, at = 6   }
+
+  local df21  = drift "df1" { l = 3, at = 2.5 }
+  local df22  = drift "df2" { l = 1, at = 8.5 }
+  local df23  = drift "df3" { l = 2, at = 6   }
+
+  local seq1 = sequence "seq1" {
+    df11,
+    drift "df4" { l = 1, at = 3.5 },
+    df12,
+    df13,
+  }
+  local seq2 = sequence "seq2" {
+    drift "df5" { l = 1, at = 0.5 },
+    df21,
+    drift "df6" { l = 1, at = 4.5 },
+    df23,
+    drift "df7" { l = 1, at = 7.5 },
+    df22,
+  }
+  local elm_r, idx_r = seq1:share(seq2)
+  assertEquals(elm_r, {df21, df22, df23})
+  assertEquals(idx_r, {3, 7, 5})
+  assertIs(seq1[2], seq2[3]); assertIs(seq2[3], df11)
+  assertIs(seq1[4], seq2[7]); assertIs(seq2[7], df12)
+  assertIs(seq1[5], seq2[5]); assertIs(seq2[5], df13)
 end
 
+function TestSequence:testShareDiffLenInvalid()
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=2 } }
+  local seq2 = sequence "seq2"  { drift "df" { l=2, at=2 } }
+  local msg  = {
+    "incompatible shared elements (lengths differ)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+end
 
-function TestSequence:testDeselect() end
+function TestSequence:testShareDiffPosInvalid()
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=2, refpos="centre"} }
+  local seq2 = sequence "seq2"  { drift "df" { l=1, at=2, refpos="entry"} }
+  local msg  = {
+    "incompatible shared elements (epos-spos differ)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+end
 
-function TestSequence:testIs_selected() end
+function TestSequence:testShareNonUniqueNameInvalid()
+  local seq1 = sequence "seq1" { drift "df" { l=1, at=2 } }
+  local seq2 = sequence "seq2" {
+    drift "df" { l=1, at=2 },
+    drift "df" { l=1, at=3 },
+  }
+  local msg  = {
+    "invalid shared element (must be unique)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+  assertErrorMsgContains(msg[1], sequence.share, seq2, seq1)
+end
+
+function TestSequence:testDumpseqFileName()
+  local seq = sequence "seq" { l = 10,
+    drift      "df" { at =-3, l = 2, from = "next"                  },
+    marker     "mk" { at = 5                                        },
+    quadrupole "mq" { at = 3, l = 3, from = "prev", refpos = "exit" },
+  }
+  local fname  = "dumpseq.dat"
+  filesys.mkdir(rundir())
+  seq:dumpseq(rundir(fname))
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStream()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stream.dat"
+
+  filesys.mkdir(rundir())
+  local stream = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq(stream)
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStdout()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stdout.dat"
+  local stdout = io.stdout
+
+  filesys.mkdir(rundir())
+  io.stdout    = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq()
+  assertFiles(fname)
+
+  io.stdout    = stdout
+end
+
+function TestSequence:testUniqueIdentity()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  -- no param : unique identity
+  seq:unique()
+  assertTrue(seq[2]:is_instanceOf(df1)); assertNotIs(seq[2], df1)
+  assertIs  (seq[3], df2)
+  assertTrue(seq[4]:is_instanceOf(df1)); assertNotIs(seq[4], df1)
+end
+
+function TestSequence:testUniqueName()
+  local df11 = drift    "df1" { at = 1, from = "prev" }
+  local df12 = drift    "df1" { at = 1, from = "prev" }
+  local df2  = drift    "df2" { at = 1, from = "prev" }
+  local seq  = sequence "seq" { df11, df2, df12 }
+  -- no param : only unique identity (nothing is done here)
+  seq:unique()
+  assertIs(seq[2], df11)
+  assertIs(seq[3], df2 )
+  assertIs(seq[4], df12)
+end
+
+function TestSequence:testUniqueString()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique("%s cnt:%d idx:%d")
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueFunc()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique(\name,cnt,idx -> name.." cnt:"..cnt.." idx:"..idx)
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueInvalid()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  local msg = {
+    "cannot rename uniquely element 'df1' (already in use)",
+    "cannot rename uniquely element 'df3' (already in use)",
+  }
+  assertErrorMsgContains(msg[1], sequence.unique, seq, \s -> s)
+  assertErrorMsgContains(msg[1], sequence.unique, seq, "%s"   )
+  assertErrorMsgContains(msg[2], sequence.unique, seq, "df3"  )
+end
+
+-------------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o

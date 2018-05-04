@@ -35,12 +35,11 @@ local totable, iter          in fun
 local abs, min, max          in math
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
-      is_value, is_indexable, is_iterable, is_keyrable, is_mappable,
-      is_callable, is_stringable, is_tablable, is_copiable, is_sameable,
-      is_complex, get_metatable, get_metamethod, wprotect, set_concept,
-      concept in MAD.typeid
+      is_value, is_integer, is_iterable, is_mappable, is_callable,
+      is_stringable, is_tablable, is_copiable, is_sameable, is_complex,
+      get_metatable, get_metamethod, wprotect, set_concept, concept in MAD.typeid
 
-local not_keyrable, not_extendable, not_mutable in concept
+local not_mappable, not_extendable, not_mutable in concept
 
 -- implementation -------------------------------------------------------------o
 
@@ -81,7 +80,7 @@ local operator = {
   ge      = \x,y -> x >= y,
 
   -- math operators
-  unm     = \x   -> -x,
+  unm     = \x   ->  -x,
   sqr     = \x   -> x * x,
   add     = \x,y -> x + y,
   sub     = \x,y -> x - y,
@@ -89,6 +88,10 @@ local operator = {
   div     = \x,y -> x / y,
   mod     = \x,y -> x % y,
   pow     = \x,y -> x ^ y,
+  emul    = \x,y -> x:emul(y), -- .*
+  ediv    = \x,y -> x:ediv(y), -- ./
+  emod    = \x,y -> x:emod(y), -- .%
+  epow    = \x,y -> x:epow(y), -- .^
 
   -- object operators
   get     = \x,k   -> x[k],
@@ -106,6 +109,10 @@ operator.opstr = {
   ['/' ] = operator.div,
   ['%' ] = operator.mod,
   ['^' ] = operator.pow,
+  ['.*'] = operator.emul,
+  ['./'] = operator.ediv,
+  ['.%'] = operator.emod,
+  ['.^'] = operator.epow,
   ['#' ] = operator.len,
   ['..'] = operator.cat,
   ['<' ] = operator.lt,
@@ -146,9 +153,8 @@ local rep_mt = set_concept({
   __len      = \s   -> s[_repn],
   __index    = \s,i => if 1 <= i and i <= s[_repn] then return s[_repx] end end,
   __ipairs   = \s   -> (rep_it, s, 0),
-  __pairs    = \s   -> (rep_it, s, 0),
   __tostring = \s   -> string.format("repeater: %p", s)
-}, not_keyrable + not_extendable + not_mutable)
+}, not_mappable + not_extendable + not_mutable)
 
 function utility.rep (x, n_) -- repeater
   return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
@@ -169,22 +175,21 @@ end
 -- key/indexes set
 
 function utility.clearkeys (a, p_)
-  assert(is_keyrable(a), "invalid argument #1 (keyrable expected)")
-  local it, tb, k0 = kpairs(a)
+  assert(is_mappable(a), "invalid argument #1 (mappable expected)")
   if not p_ then
-    for k in it,tb,k0 do a[k] = nil end
+    for k in kpairs(a) do a[k] = nil end
   else
     assert(is_callable(p_), "invalid argument #2 (callable expected)")
-    for k in it,tb,k0 do if p_(k) == true then a[k] = nil end end
+    for k in kpairs(a) do if p_(k) == true then a[k] = nil end end
   end
   return a
 end
 
 function utility.clearidxs (a, i_, j_)
-  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
+  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)  , "invalid argument #2 (number expected)")
-  assert(is_number(j_)  , "invalid argument #3 (number expected)")
+  assert(is_integer(i_)  , "invalid argument #2 (integer expected)")
+  assert(is_integer(j_)  , "invalid argument #3 (integer expected)")
   for i=i_,j_ do a[i] = nil end
   return a
 end
@@ -194,21 +199,21 @@ function utility.setkeys (a, k_, i_, j_)
     k_, i_, j_ = nil, k_, i_  -- right shift
   end
   k_ = k_ or a
-  assert(is_indexable(a ), "invalid argument #1 (indexable expected)")
-  assert(is_indexable(k_), "invalid argument #2 (indexable expected)")
+  assert(is_iterable(a ), "invalid argument #1 (iterable expected)")
+  assert(is_iterable(k_), "invalid argument #2 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)   , "invalid argument #3 (number expected)")
-  assert(is_number(j_)   , "invalid argument #4 (number expected)")
+  assert(is_integer(i_)   , "invalid argument #3 (integer expected)")
+  assert(is_integer(j_)   , "invalid argument #4 (integer expected)")
   for i=i_,j_ do a[k_[i-i_+1]] = a[i] end
   return a
 end
 
 function utility.setidxs (a, k, i_, j_)
-  assert(is_indexable(a), "invalid argument #1 (indexable expected)")
-  assert(is_indexable(k), "invalid argument #2 (indexable expected)")
+  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
+  assert(is_iterable(k), "invalid argument #2 (iterable expected)")
   i_, j_ = i_ or 1, j_ or #a
-  assert(is_number(i_)  , "invalid argument #3 (number expected)")
-  assert(is_number(j_)  , "invalid argument #4 (number expected)")
+  assert(is_integer(i_)  , "invalid argument #3 (integer expected)")
+  assert(is_integer(j_)  , "invalid argument #4 (integer expected)")
   for i=i_,j_ do a[i] = a[k[i-i_+1]] end
   return a
 end
@@ -222,6 +227,39 @@ end
 
 -- files
 
+local filemode = { -- see fopen in ISO/IEC 9899:2011 7.21.5.3 (C11 standard)
+  ['r'  ]='r', ['w'  ]='w', ['wx'  ]='w', ['a'  ]='w',
+  ['r+' ]='w', ['w+' ]='w', ['w+x' ]='w', ['a+' ]='w',
+  ['rb' ]='r', ['wb' ]='w', ['wbx' ]='w', ['ab' ]='w',
+  ['r+b']='w', ['w+b']='w', ['w+bx']='w', ['a+b']='w',
+  ['rb+']='w', ['wb+']='w', ['wb+x']='w', ['ab+']='w',
+}
+
+function utility.openfile (fname_, mode_, ext_)
+  if filemode[fname_] and is_nil(ext_) then
+    fname_, mode_, ext_ = nil, fname_, mode_ -- right shift
+  end
+  if is_string(mode_) and not filemode[mode_] and is_nil(ext_) then
+    mode_, ext_ = nil, mode_                 -- right shift
+  end
+
+  assert(is_nil(mode_) or filemode[mode_], "invalid argument #2 (file mode expected)")
+  assert(is_nil(ext_ ) or is_string(ext_), "invalid argument #3 (string expected)")
+
+  local file
+  if is_string(fname_) then
+    if ext_ and #ext_ > 0 and string.sub(fname_,-#ext_) ~= ext_ then
+      fname_ = fname_ .. ext_ -- e.g. '.tfs', '.dat', '.mad', etc...
+    end
+    file = assert(io.open(fname_, mode_ or 'r'))
+    assert(io.type(file) == 'file', "invalid argument #1 (unable to open file)")
+  else
+    file = fname_ or filemode[mode_] == 'w' and io.stdout or io.stdin
+    assert(io.type(file) == 'file', "invalid argument #1 (open file expected)")
+  end
+  return file
+end
+
 function utility.fileexists (fname)
   assert(is_string(fname), "invalid argument #1 (string expected)")
   local file = io.open(fname)
@@ -229,6 +267,8 @@ function utility.fileexists (fname)
   io.close(file)
   return true
 end
+
+-- string formating
 
 function utility.printf (str, ...)
   return io.write(str:format(...))
@@ -238,17 +278,31 @@ function utility.fprintf (fp, str, ...)
   return fp:write(str:format(...))
 end
 
+function utility.errorf (str, ...)
+  error(str:format(...), 2)
+end
+
+function utility.assertf (cond, str, ...)
+  if not cond then error(str:format(...), 2) end
+  return cond
+end
+
+getmetatable(io.stdout).printf = utility.fprintf
+
 -- table copy
 
 function utility.tblcpy (a, mt_, na_)
-  local na = na_ or {}
+  if is_table(mt_) and is_nil(na_) then
+    na_, mt_ = mt_, nil -- right shift
+  end
+  local na = na_ or table.new(#a, 0)
   for k,v in next, a do na[k] = v end -- shallow copy
   if mt_ == true then setmetatable(na, getmetatable(a)) end
   return na
 end
 
 function utility.tbldeepcpy (a, mt_, xr_, na_)
-  local na = na_ or {}
+  local na = na_ or table.new(#a, 0)
   xr_ = xr_ or {}
   xr_[a] = na
   for k,v in next, a do -- deep copy, keep track of self-xref
@@ -258,38 +312,67 @@ function utility.tbldeepcpy (a, mt_, xr_, na_)
   return na
 end
 
-table.copy     = utility.tblcpy
-table.deepcopy = utility.tbldeepcpy
+-- table.cpy     = utility.tblcpy
+-- table.deepcpy = utility.tbldeepcpy
+
+-- table concat
+
+function utility.tblcat (a, b, mt_, c_)
+  if is_table(mt_) and is_nil(c_) then
+    c_, mt_ = mt_, nil -- right shift
+  end
+  local c = c_ or table.new(#a + #b, 0)
+  local k = 0
+  for i,v in ipairs(a) do c[  i], k = v, i end -- shallow copy
+  for i,v in ipairs(b) do c[k+i]    = v    end -- shallow copy
+  if mt_ == true then
+    setmetatable(c, getmetatable(a) or getmetatable(b))
+  end
+  return c
+end
+
+-- table.cat = utility.tblcat
 
 -- extensions (conversion, factory)
 
 local tostring_ -- forward ref
 
-function utility.tbl2str(tbl, sep_)
+function utility.tbl2str (tbl, sep_)
   assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
   if is_emptytable(tbl) then return '{}' end
-  local ir, r = 2, {}
+  local r, ir = {}
   r[1] = '{'
+  for i,v in ipairs(tbl) do
+    r[i+1] = tostring_(v)
+  end
+  ir = #r+1
   for k,v in kpairs(tbl) do
     r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
-  end
-  for i,v in ipairs(tbl) do
-    r[ir], ir = tostring_(v), ir+1
   end
   r[ir] = '}'
   return table.concat(r, sep_ or ', ')
 end
 
-function utility.str2tbl(str, match_, ini_)
+function utility.str2tbl (str, match_, ini_)
   assert(is_string(str), "invalid argument #1 (string expected)")
   if is_string(match_) then
-    local r = {n=0}
+    local r, n = {}, 0
     for s in string.gmatch(str, match_, ini_) do
-      r[r.n+1], r.n = s, r.n+1
+      r[n+1], n = s, n+1
     end
-    return r
+    return r, n
   else
-    return {str}
+    return {str}, 1
+  end
+end
+
+function utility.toboolean (str)
+  if str == 'true' then
+    return true
+  elseif str == 'false' then
+    return false
+  else
+    return nil
   end
 end
 
@@ -358,14 +441,14 @@ local bind1st in MAD.gfunc
 
 function utility.strinterp (str, var, policy_)
   policy_ = policy_ or '+'   -- valid policy: [+-=] (see interp_fun)
-  assert(is_string   (str ), "invalid argument #1 (string expected)")
-  assert(is_indexable(var ), "invalid argument #2 (indexable expected)")
+  assert(is_string  (str)  , "invalid argument #1 (string expected)")
+  assert(is_mappable(var)  , "invalid argument #2 (mappable expected)")
   assert(is_string(policy_), "invalid argument #3 (string expected)")
   local arg = { var=var, policy=policy_} ; arg.fun = bind1st(interp_fun, arg)
   return (str:gsub('%$%b{}', arg.fun))
 end
 
-string.interp          = utility.strinterp
+-- string.interp       = utility.strinterp
 getmetatable("").__mod = utility.strinterp
 
 -- strings fast specialized manipulation
@@ -412,6 +495,16 @@ function utility.strtrim (str, ini_) -- remove leading and trailing spaces
   return tostr(str, ptr, sarg), sarg[1]
 end
 
+function utility.strnum (str, ini_) -- parse number
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  sarg[0], sarg[1] = ini_-1, #str-(ini_-1)                     -- sarg_in: [0]=ini, [1]=len
+  local ptr = _C.mad_str_num(str, sarg)                        -- [0]: index  of str (trimmed)
+  -- number str, length, index of char ending num              -- [1]: length of num
+  return tostr(str, ptr, sarg), sarg[1], sarg[2]+1             -- [2]: index of char ending num
+end
+
 function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
   ini_ = ini_ or 1
   assert(is_string(str ), "invalid argument #1 (string expected)")
@@ -443,7 +536,7 @@ function utility.strqsplit (str, seps, ini_) -- split at seps (if any outside qu
   sarg[0], sarg[1], sarg[2] = ini_-1, #str-(ini_-1), #seps     -- sarg_in: [0]=ini, [1]=len, [2]=#seps
   local ptr = qsplit(str, seps, sarg)                          -- [0]: index  of str (trimmed)
   -- trimmed str, index of sep or 0, index of sep in seps or 0 -- [1]: length of str (trimmed if sep)
-  return tostr(str, ptr, sarg, true), sarg[2]+1, sarg[3]+1     -- [2]: index  of sep or -1
+  return tostr(str, ptr, sarg), sarg[2]+1, sarg[3]+1           -- [2]: index  of sep or -1
 end                                                            -- [3]: index  of sep in seps or -1
                                                                -- [4]: number of escaped quotes
 function utility.strsplitall (str, seps, ini_, res_)
@@ -460,12 +553,12 @@ function utility.strsplitall (str, seps, ini_, res_)
   while true do
     sarg[2], ns = lsep, ns+1                       -- see strqsplit above
     local ptr = qsplit(str, seps, sarg)            -- sarg_in: [0]=ini, [1]=len, [2]=#seps
-    res_[ns] = tostr(str, ptr, sarg, true)         -- process esc quotes
+    res_[ns] = tostr(str, ptr, sarg)               -- process esc quotes
     if sarg[2] == -1 then return res_, ns end      -- no more sep
     sarg[0], sarg[1] = sarg[2]+1, len-(sarg[2]+1)  -- sarg_in: [0]=ini, [1]=len
     _C.mad_str_trim(str, sarg)
   end
-  error("unexpected error in string.splitall")
+  error("unexpected error in utility.strsplitall")
 end
 
 function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
@@ -486,22 +579,32 @@ function utility.strbracket (str, ini_) -- split name[cnt] or name{cnt} (if any)
   return tostr(str, ptr, sarg), cnt, sarg[2]+1, sarg[5]
 end
 
-string.trim     = utility.strtrim
-string.quote    = utility.strquote
-string.bracket  = utility.strbracket
-string.split    = utility.strsplit
-string.qsplit   = utility.strqsplit
-string.splitall = utility.strsplitall
+-- string.trim     = utility.strtrim
+-- string.getnum   = utility.strnum
+-- string.quote    = utility.strquote
+-- string.bracket  = utility.strbracket
+-- string.split    = utility.strsplit
+-- string.qsplit   = utility.strqsplit
+-- string.splitall = utility.strsplitall
 
--- iterator
+-- iterator: pairs = ipairs + kpairs
 
-function utility.kpairs (tbl)
-  assert(is_keyrable(tbl), "invalid argument #1 (keyrable expected)")
-  local iter = get_metamethod(tbl, '__kpairs')
-  if iter then return iter(tbl) end
-  local iter, init = pairs(tbl), #tbl -- follow __len and __pairs
-  if init == 0 then init = nil end
-  return iter, tbl, init
+local function kpairs_iter (tbl, key)
+  local k, v = key
+  repeat k, v = tbl.nxt(tbl.dat, k)                -- discard ipairs indexes
+  until type(k) ~= 'number' or (k%1) ~= 0 or k > tbl.lst or k < 1
+  return k, v
+end
+
+function utility.kpairs (tbl, lst_)
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  local nxt, dat, ini = pairs(tbl)
+  local lst = lst_
+  if not lst and is_iterable(tbl) then
+    for i in ipairs(tbl) do lst = i end
+  end
+  if not lst then return nxt, dat, ini end
+  return kpairs_iter, { nxt=nxt, dat=dat, lst=lst }, ini
 end
 
 _G.kpairs = utility.kpairs -- make it global too...

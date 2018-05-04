@@ -37,56 +37,54 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
-// --- GLOBALS ----------------------------------------------------------------
+// --- globals ----------------------------------------------------------------o
 
-const ord_t mad_tpsa_default   = -1;
-const ord_t mad_tpsa_same      = -2;
-      int   mad_tpsa_strict    =  0;
+const  ord_t  mad_tpsa_default = -1;
+const  ord_t  mad_tpsa_same    = -2;
+const desc_t *mad_desc_curr    =  0;
 
-// --- CONSTANTS --------------------------------------------------------------
+// --- constants --------------------------------------------------------------o
 
-const ord_t desc_max_order = CHAR_BIT * sizeof(bit_t);
-const int   desc_max_temps = sizeof(((desc_t*)0)->t)/sizeof(*((desc_t*)0)->t);
+enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t) };
 
-// --- HELPERS ----------------------------------------------------------------
+// --- helpers ----------------------------------------------------------------o
 
-static inline int
-max_nc(int nv, int no)
+static inline ssz_t
+max_nc(ssz_t nv, ssz_t no)
 {
   // #coeff(nv,no) = (nv+no)! / (nv! no!)
-  int max = MAX(nv,no);
-  long long unsigned int num = 1, den = 1;
-  for (int i = max + 1; i <= nv+no; ++i) {
+  ssz_t max = MAX(nv,no);
+  u64_t num = 1, den = 1;
+  for (ssz_t i=max+1; i <= nv+no; ++i) {
     num *= i;
     den *= i - max;
   }
   return num / den;
 }
 
-// --- MONOMIALS --------------------------------------------------------------
+// --- monomials --------------------------------------------------------------o
 
 static inline void
-nxt_mono_by_unk(int n, const ord_t a[n], const idx_t sort[n], int r, int o, ord_t m[n])
+nxt_mono_by_unk(ssz_t n, const ord_t a[n], const idx_t sort[n],
+                idx_t r, int o, ord_t m[n])
 {
   assert(a && sort && m);
-  mad_mono_fill(n,m,0);
-  for (int k = r; k < n; ++k) {
+  mad_mono_fill(n, m, 0);
+  for (idx_t k=r; k < n; ++k) {
     idx_t v = sort[k];
     m[v] = a[v];
     o -= a[v];
-    if (o <= 0) {
-      if (o < 0) m[v] += o;
-      break;
-    }
+    if (o <  0) { m[v] += o; break; }
+    if (o == 0) {            break; }
   }
 }
 
-// --- TABLES -----------------------------------------------------------------
+// --- tables -----------------------------------------------------------------o
 
 static inline void
-tbl_print(int w, int h, ord_t **t)
+tbl_print(ssz_t w, ssz_t h, ord_t **t)
 {
-  for (int i = 0; i < MIN(h,50); ++i) {
+  for (idx_t i=0; i < MIN(h,50); ++i) {
     printf("(%2d) ", i);
     mad_mono_print(w, t[i]);
     printf(" o=%d\n", mad_mono_ord(w, t[i]));
@@ -95,34 +93,33 @@ tbl_print(int w, int h, ord_t **t)
 }
 
 static inline void
-tbl_realloc_monos(D *d, int new_nc_)
+tbl_realloc_monos(D *d, ssz_t new_nc_)
 {
   // reallocates array of monomials to fit at least new_nc_ items
   // if new_nc_ is 0, it increases the capacity of exiting array
   assert(d);
-
   if (!new_nc_) new_nc_ = d->nc * 2;
   d->nc = new_nc_;
-  d->monos = mad_realloc(d->monos, d->nc * d->nv * sizeof *(d->monos));
-  d->ords  = mad_realloc(d->ords,  d->nc         * sizeof *(d->monos));
+  d->monos = mad_realloc(d->monos, d->nc * d->nv * sizeof *d->monos);
+  d->ords  = mad_realloc(d->ords,  d->nc         * sizeof *d->monos);
 }
 
 static inline idx_t  // idx to end of d->monos
-make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_idx[])
+make_higher_ord_monos(D *d, idx_t curr_mono_idx, int need_realloc, idx_t var_at_idx[])
 {
   // ords 2..mo
   int nv = d->nv;
   ord_t m[nv], *curr_mono = d->monos + curr_mono_idx*nv;
   idx_t *pi = d->ord2idx;
 
-  for (ord_t o = 2; o <= d->mo; o++) {        // to build ord o:
-    for   (int i = pi[ 1 ]; i < pi[2]; ++i) { // i goes through ord  1
-      for (int j = pi[o-1]; j < pi[o]; ++j) { // j goes through ord (o-1)
+  for (ord_t o=2; o <= d->mo; o++) {          // to build ord o:
+    for   (idx_t i=pi[ 1 ]; i < pi[2]; ++i) { // i goes through ord  1
+      for (idx_t j=pi[o-1]; j < pi[o]; ++j) { // j goes through ord (o-1)
         mad_mono_add(nv, d->monos + i*nv, d->monos + j*nv, m);
-        if (mad_desc_mono_isvalid(d, nv, m)) {
+        if (mad_desc_mono_isvalid_m(d, nv, m)) {
           // ensure there is space for m
           if (need_realloc && curr_mono_idx >= d->nc) {
-            tbl_realloc_monos(d,0);
+            tbl_realloc_monos(d, 0);
             curr_mono = d->monos + nv*curr_mono_idx;
           }
           mad_mono_copy(nv, m, curr_mono);
@@ -138,9 +135,9 @@ make_higher_ord_monos(D *d, int curr_mono_idx, int need_realloc, idx_t var_at_id
     }
   }
 
-#ifdef DEBUG
+#if DEBUG > 1
   printf("ps={ ");
-  for (int o = 0; o <= d->mo + 1; ++o)
+  for (int o=0; o <= d->mo+1; ++o)
     printf("[%d]=%d ", o, pi[o]);
   printf("}\n");
 #endif
@@ -161,28 +158,25 @@ make_monos(D *d)
     d->nc = max_init_alloc;
   }
 
-  d->monos        = mad_malloc(d->nc * nv  * sizeof *(d->monos));
-  d->ords         = mad_malloc(d->nc       * sizeof *(d->ords));
-  d->ord2idx = mad_malloc((d->mo + 2) * sizeof *(d->ord2idx));
-  assert(d->monos);
-  assert(d->ords);
-  assert(d->ord2idx);
+  d->monos   = mad_malloc(d->nc*nv  * sizeof *d->monos);
+  d->ords    = mad_malloc(d->nc     * sizeof *d->ords);
+  d->ord2idx = mad_malloc((d->mo+2) * sizeof *d->ord2idx);
 
   // ord 0
   mad_mono_fill(nv, d->monos, 0);
   d->ord2idx[0] = d->ords[0] = 0;
   d->ord2idx[1] = 1;
-  int curr_mono_idx = 1;
+  idx_t curr_mono_idx = 1;
 
   // ord 1
   idx_t var_at_idx[nv+1];
   if (d->mo >= 1) {
-    mad_mono_fill(nv*nv, d->monos+nv, 0);  // init with 0; TODO: check d->monos has nv*nv slots
-    for (int i = 0; i < nv; ++i)
+    mad_mono_fill(nv*nv, d->monos+nv, 0);  // TODO: check d->monos has nv*nv slots
+    for (idx_t i=0; i < nv; ++i)
       if (d->var_ords[i]) {
-        d->monos[curr_mono_idx*nv + i] = 1;
-        d->ords [curr_mono_idx]        = 1;
-        var_at_idx[curr_mono_idx]      = i;
+        d->monos  [curr_mono_idx*nv + i] = 1;
+        d->ords   [curr_mono_idx       ] = 1;
+        var_at_idx[curr_mono_idx       ] = i;
         curr_mono_idx++;
       }
     d->ord2idx[2] = curr_mono_idx;
@@ -190,55 +184,59 @@ make_monos(D *d)
 
   int real_nc = curr_mono_idx;
   if (d->mo >= 2)
-    real_nc = make_higher_ord_monos(d, curr_mono_idx, need_realloc,var_at_idx);
+    real_nc = make_higher_ord_monos(d, curr_mono_idx, need_realloc, var_at_idx);
 
   tbl_realloc_monos(d, real_nc);
-  d->size += real_nc * d->nv * sizeof *(d->monos);
-  d->size += real_nc         * sizeof *(d->ords);
-  d->size += (d->mo + 2)     * sizeof *(d->ord2idx);
+  d->size += real_nc*d->nv * sizeof *d->monos;
+  d->size += real_nc       * sizeof *d->ords;
+  d->size += (d->mo+2)     * sizeof *d->ord2idx;
 }
 
+/* kept for debugging binary search below.
 static inline int
-find_index(int n, const ord_t **T, const ord_t m[n], int start, int stop)
+find_index_lin(ssz_t n, ord_t **T_, const ord_t m[n], idx_t start, idx_t stop)
 {
-  assert(T && m);
-  for (int i = start; i < stop; ++i)
-    if (mad_mono_eq(n,T[i],m)) return i;
+  assert(T_ && m);
+  const ord_t **T = (const ord_t **)T_;
+  for (idx_t i=start; i < stop; ++i)
+    if (mad_mono_eq(n, T[i], m)) return i;
 
   // error
-  fprintf(stderr, "error: monomial not found in table: ");
-  mad_mono_print(n,m);
-  assert(NULL);
+  mad_mono_print(n, m);
+  error("this monomial was not found in table (unexpected)");
   return -1; // never reached
 }
+*/
 
 enum tbl_ordering {BY_ORD, BY_VAR};
 
 static inline int
-find_index_bin(int n, const ord_t **T, const ord_t m[n], const int from_idx, const int to_idx, enum tbl_ordering tbl_ord)
+find_index_bin(ssz_t n, ord_t **T_, const ord_t m[n], idx_t from, idx_t to,
+               enum tbl_ordering tbl_ord)
 {
-  int start = from_idx, count = to_idx - from_idx, i = 0, step = 0;
-  int iter = 0;
+  const ord_t **T = (const ord_t **)T_;
+  idx_t start = from, count = to-from, i = 0, step = 0;
+  int ord_m = mad_mono_ord(n, m);
   while (count > 0) {
-    ++iter;
     step = count / 2;
     i = start + step;
-    if ((tbl_ord == BY_ORD && mad_mono_ord(n,T[i]) < mad_mono_ord(n,m)) || mad_mono_rcmp(n,T[i],m) < 0) {
+    if ((tbl_ord == BY_ORD && mad_mono_ord (n, T[i]) < ord_m)
+                           || mad_mono_rcmp(n, T[i], m) < 0) {
       start = ++i;
       count -= step + 1;
     }
     else
       count = step;
   }
-  if ( start < to_idx && mad_mono_eq(n,T[start], m))
+  if (start < to && mad_mono_eq(n, T[start], m))
     return start;
 
   // error
-  tbl_print(n, to_idx, (ord_t **)T);
-  printf("monomial not found in table_by_%s: ", tbl_ord == BY_ORD ? "ord" : "var"); mad_mono_print(n,m);
-  printf(" Searched from %d to %d\n", from_idx, to_idx);
-  assert(NULL);
-  return -1;
+  tbl_print(n, to, T_);
+  mad_mono_print(n, m);
+  error("this monomial was not found in table_by_%s from %d to %d (unexpected)",
+         tbl_ord == BY_ORD ? "ord" : "var", from, to);
+  return -1; // never reached
 }
 
 static inline void
@@ -247,13 +245,13 @@ tbl_by_ord(D *d)
   assert(d && d->var_ords && d->ord2idx && d->monos);
 
   d->To    = mad_malloc(d->nc * sizeof *(d->To));
-  assert(d->To);
   d->size += d->nc * sizeof *(d->To);
 
   ord_t *monos = d->monos;
-  for (int i = 0; i < d->nc; ++i, monos += d->nv)
+  for (int i=0; i < d->nc; ++i, monos += d->nv)
     d->To[i] = monos;
-#ifdef DEBUG
+
+#if DEBUG > 1
   tbl_print(d->nv, d->nc, d->To);
 #endif
 }
@@ -273,34 +271,33 @@ tbl_by_var(D *d)
   d->Tv    = mad_malloc(d->nc * sizeof *d->Tv);
   d->tv2to = mad_malloc(d->nc * sizeof *d->tv2to);
   d->to2tv = mad_malloc(d->nc * sizeof *d->to2tv);
-  d->size +=     d->nc * sizeof *d->Tv;
-  d->size += 2 * d->nc * sizeof *d->tv2to;  // tv2to + to2tv
+  d->size +=   d->nc * sizeof *d->Tv;
+  d->size += 2*d->nc * sizeof *d->tv2to;  // tv2to + to2tv
 
   int mi = 0, nv = d->nv;
   ord_t m[nv];
   mad_mono_fill(nv, m, 0);
   do {
     int o = mad_mono_ord(nv, m);
-    int idx = find_index_bin(nv, (const ord_t**)d->To, m,
-                             d->ord2idx[o], d->ord2idx[o+1], BY_ORD);
+    int idx = find_index_bin(nv, d->To, m, d->ord2idx[o], d->ord2idx[o+1], BY_ORD);
     d->tv2to[mi]  = idx;
     d->to2tv[idx] = mi;
     d->Tv[mi]     = d->To[idx];
     ++mi;
-  } while (mad_desc_mono_nxtbyvar(d,nv,m));
+  } while (mad_desc_mono_nxtbyvar(d, nv, m));
   assert(mi == d->nc);
 
-#ifdef DEBUG
+#if DEBUG > 1
   printf("sort:  ");
-  for (int i = 0; i < d->nv; ++i)
+  for (int i=0; i < d->nv; ++i)
     printf("%d ", d->sort_var[i]);
   printf("\n");
   tbl_print(nv, d->nc, d->Tv);
   printf("tv2to=[ ");
-  for (int i = 0; i < MIN(d->nc,50); ++i) printf("%d ", d->tv2to[i]);
+  for (int i=0; i < MIN(d->nc,50); ++i) printf("%d ", d->tv2to[i]);
   printf("%s]\n", d->nc > 50 ? " ... " : "");
   printf("to2tv=[ ");
-  for (int i = 0; i < MIN(d->nc,50); ++i) printf("%d ", d->to2tv[i]);
+  for (int i=0; i < MIN(d->nc,50); ++i) printf("%d ", d->to2tv[i]);
   printf("%s]\n", d->nc > 50 ? " ... " : "");
 #endif
 }
@@ -311,10 +308,10 @@ static inline void
 tbl_print_H(const D *d)
 {
   assert(d && d->H);
-  int cols = d->mo + 2;
-  for (int i = 0; i < d->nv; ++i) {
+  int cols = d->mo+2;
+  for (int i=0; i < d->nv; ++i) {
     printf("%2d | ", d->sort_var[i]);
-    for (int j = 0; j < cols; ++j)
+    for (int j=0; j < cols; ++j)
       printf("%2d ", d->H[i*cols + j]);
     printf("\n");
   }
@@ -323,12 +320,12 @@ tbl_print_H(const D *d)
 static inline int
 tbl_index_H(const D *d, int n, const ord_t m[n])
 {
-  assert(d);
-  assert(n <= d->nv);
-  int s = 0, I = 0, cols = d->mo + 2;
+  assert(d && n <= d->nv);
+  int s = 0, I = 0, cols = d->mo+2;
   const idx_t *H = d->H, *sort = d->sort_var;
-        idx_t v;
-  for (int r = n - 1; r >= 0; --r) {
+  idx_t v;
+
+  for (int r = n-1; r >= 0; --r) {
     v = sort[r];
     I += H[r*cols + s+m[v]] - H[r*cols + s];
     s += m[v];
@@ -338,14 +335,13 @@ tbl_index_H(const D *d, int n, const ord_t m[n])
 }
 
 static inline int
-tbl_index_H_sp(const D *d, int n, const idx_t m[n])
+tbl_index_H_sm(const D *d, int n, const idx_t m[n])
 {
-  assert(d);
-  assert(n/2 <= d->nv);
-  int s = 0, I = 0, cols = d->mo + 2, idx, o;
+  assert(d && n/2 <= d->nv && !(n & 1));
+  int s = 0, I = 0, cols = d->mo+2, idx, o;
   const int *H = d->H;
   // indexes in m should be in ascending order
-  for (int i = n - 2; i >= 0; i -= 2) {
+  for (int i = n-2; i >= 0; i -= 2) {
     idx = m[i] - 1;
     o = m[i+1];
     I += H[idx*cols + s+o] - H[idx*cols + s];
@@ -358,12 +354,13 @@ tbl_index_H_sp(const D *d, int n, const idx_t m[n])
 static inline void
 tbl_clear_H(D *d)
 {
-  int cols = d->mo + 2, accum = 0;
+  int cols = d->mo+2, accum = 0;
   idx_t *sort = d->sort_var, si;
-  for (int r = d->nv - 1; r >= 0; --r) {  // rows (sorted vars)
+
+  for (int r=d->nv-1; r >= 0; --r) {  // rows (sorted vars)
     si = sort[r];
     accum += d->var_ords[si];
-    for (int o = 1 + MIN(accum,d->mo); o < cols; ++o)  // ords
+    for (int o=1 + MIN(accum, d->mo); o < cols; ++o)  // ords
       d->H[r*cols + o] = -1;
   }
 }
@@ -372,18 +369,20 @@ static inline void
 tbl_solve_H(D *d)
 {
   idx_t *sort = d->sort_var, v;
-  int nv = d->nv, cols = d->mo + 2, accum = d->var_ords[sort[nv-1]];
-  ord_t mono[nv], *vo = d->var_ords;
+  int nv = d->nv, cols = d->mo+2, accum = d->var_ords[sort[nv-1]];
+  ord_t mono[nv];
+  const ord_t *vo = d->var_ords;
 
   // solve system of equations
-  for (int r = nv-2; r >= 1; --r) { // r goes through H rows (vars) from lowest to highest ord
+  // r goes through H rows (vars) from lowest to highest ord
+  for (int r=nv-2; r >= 1; --r) {
     v = sort[r];  // the var at this row
     accum += vo[v];
-    for (int o = vo[v]+2; o <= MIN(accum,d->mo); o++) { // orders
-      nxt_mono_by_unk(nv,vo,sort,r,o,mono);  // ATTENTION: it's r, not v
-      if (mad_desc_mono_isvalid(d,nv,mono)) {
-        idx_t idx0 = tbl_index_H(d,nv,mono);
-        idx_t idx1 = find_index_bin(nv,(const ord_t**)d->Tv,mono,idx0,d->nc,BY_VAR);
+    for (int o=vo[v]+2; o <= MIN(accum, d->mo); o++) { // orders
+      nxt_mono_by_unk(nv, vo, sort, r, o, mono);  // NOTE: it's r, not v
+      if (mad_desc_mono_isvalid_m(d, nv, mono)) {
+        idx_t idx0 = tbl_index_H(d, nv, mono);
+        idx_t idx1 = find_index_bin(nv, d->Tv, mono, idx0, d->nc, BY_VAR);
         d->H[r*cols + o] = idx1 - idx0;
       }
       else
@@ -397,8 +396,9 @@ tbl_build_H(D *d)
 {
   idx_t *H = d->H;
   int rows = d->nv, cols = d->mo + 2, nc = d->nc;
-  ord_t *var_ords = d->var_ords, **Tv = d->Tv;
+  ord_t **Tv = d->Tv;
   idx_t *sort = d->sort_var;
+  const ord_t *vo = d->var_ords;
 
   // minimal constants for 1st row
   for (int c = 0; c < cols; ++c)
@@ -425,8 +425,11 @@ tbl_build_H(D *d)
 
   // close congruence of the last var
   idx_t var_idx = sort[rows-1];
-  H[(rows-1)*cols + var_ords[var_idx] + 1] = nc;
+  H[(rows-1)*cols + vo[var_idx] + 1] = nc;
+
+#if DEBUG > 1
   tbl_print_H(d);
+#endif
 }
 
 static inline void
@@ -436,14 +439,13 @@ tbl_set_H(D *d)
   assert(d->nv != 0);
 
   d->H = mad_malloc(d->nv * (d->mo+2) * sizeof *(d->H));
-  assert(d->H);
   d->size += d->nv * (d->mo+2) * sizeof *(d->H);
 
   tbl_build_H(d);
   tbl_solve_H(d);
   tbl_clear_H(d);
 
-#ifdef DEBUG
+#if DEBUG > 1
   printf("H = {\n");
   tbl_print_H(d);
 #endif
@@ -482,8 +484,8 @@ tbl_print_L(const D *d)
 static inline idx_t*
 tbl_build_LC(int oa, int ob, D *d)
 {
-#ifdef DEBUG
-  // printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
+#if DEBUG > 1
+  printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
 #endif
   assert(d && d->To && d->ord2idx && d->tv2to);
   assert(oa < d->mo && ob < d->mo);
@@ -495,7 +497,6 @@ tbl_build_LC(int oa, int ob, D *d)
 
   int mat_size = rows * cols;
   idx_t *lc = mad_malloc(mat_size * sizeof *lc);
-  assert(lc);
   d->size += mat_size * sizeof *lc;
   for (int i = 0; i < mat_size; ++i)
     lc[i] = -1;
@@ -506,17 +507,15 @@ tbl_build_LC(int oa, int ob, D *d)
     int lim_a = oa == ob ? ib+1 : pi[oa+1];   // triangular is lower left
     for (int ia = pi[oa]; ia < lim_a; ++ia) {
       mad_mono_add(d->nv, To[ia], To[ib], m);
-      if (mad_desc_mono_isvalid(d,d->nv,m)) {
+      if (mad_desc_mono_isvalid_m(d,d->nv,m)) {
         ic = tv2to[tbl_index_H(d,d->nv,m)];
         idx_lc = hpoly_idx(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
-#ifdef DEBUG
-        /*
+#if DEBUG > 1
         printf(" ib=%d ", ib); mad_mono_print(d->nv, To[ib]);
         printf(" ia=%d ", ia); mad_mono_print(d->nv, To[ia]);
         printf(" ic=%d ", ic); mad_mono_print(d->nv, m);
         printf(" ilc=%d\n", idx_lc);
-        */
 #endif
       }
     }
@@ -535,11 +534,9 @@ get_LC_idxs(int oa, int ob, D *d)
              rows =  pi[ob+1] - pi[ob];
 
   int **LC_idx = mad_malloc(3 * sizeof *LC_idx);
-  assert(LC_idx);
   d->size += 3 * sizeof *LC_idx;
 
   int *limits = mad_malloc(3 * rows * sizeof *limits); // rows: [start split end]
-  assert(limits);
   d->size += 3 * rows * sizeof *limits;
 
   const int START = 0, SPLIT = 1, END = 2;
@@ -566,7 +563,7 @@ get_LC_idxs(int oa, int ob, D *d)
       }
   }
 
-#ifdef DEBUG
+#if DEBUG > 1
   if (oc <= 5) {
     printf("LC_idx[%d][%d] = { [T=%d]\n", ob, oa, T);
     printf("  -->\t  //\t<--\n");
@@ -584,12 +581,10 @@ tbl_set_L(D *d)
   ord_t o = d->mo, ho = d->mo / 2;
   int size_L = (o*ho + 1) * sizeof *(d->L);
   d->L = mad_malloc(size_L);
-  assert(d->L);
   d->size += size_L;
 
   int size_lci = (o*ho + 1) * sizeof *(d->L_idx);
   d->L_idx = mad_malloc(size_lci);
-  assert(d->L_idx);
   d->size += size_lci;
 
   memset(d->L,     0, size_L);
@@ -605,14 +600,14 @@ tbl_set_L(D *d)
       d->L_idx[oa*ho + ob] = get_LC_idxs (oa, ob, d);
     }
 
-#ifdef DEBUG
+#if DEBUG > 1
   tbl_print_L(d);
 #endif
 }
 
-// --- TABLE TEST --------------------------------------------------------------
+// --- descriptor internal checks ---------------------------------------------o
 
-static inline int
+static int
 tbl_check_L(D *d)
 {
   assert(d && d->ord2idx && d->L && d->var_ords && d->To && d->H);
@@ -622,7 +617,7 @@ tbl_check_L(D *d)
     for (int j = 1; j <= oc / 2; ++j) {
       int oa = oc - j, ob = j;
       idx_t *lc = d->L[oa*ho + ob];
-      if (!lc)                                   return  1e7 + oa*1e3 + ob;
+      if (!lc)                                     return  1e7 + oa*1e3 + ob;
 
       int sa = pi[oa+1]-pi[oa], sb = pi[ob+1]-pi[ob];
 
@@ -636,10 +631,10 @@ tbl_check_L(D *d)
 
           int ic = lc[il];
           if (ic >= pi[oc+1])                      return  3e7 + ic*1e5 + 11;
-          if (ic >= 0 && ic < d->ord2idx[oc]) return  3e7 + ic*1e5 + 12;
+          if (ic >= 0 && ic < d->ord2idx[oc])      return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
-          if (ic < 0 && mad_desc_mono_isvalid(d,d->nv,m))
+          if (ic < 0 && mad_desc_mono_isvalid_m(d,d->nv,m))
                                                    return -3e7          - 13;
         }
       }
@@ -647,42 +642,54 @@ tbl_check_L(D *d)
   return 0;
 }
 
-static inline int  // error code
+static int  // error code
 tbl_check(D *d)
 {
-  ord_t **Tv = d->Tv, **To = d->To, *monos = d->monos, *vo = d->var_ords;
-  const idx_t *tv2to = d->tv2to, *to2tv = d->to2tv, *H = d->H, *sort = d->sort_var,
-                  nv = d->nv, cols = d->mo + 2;
+  const idx_t
+      *tv2to = d->tv2to,
+      *to2tv = d->to2tv,
+          *H = d->H,
+       *sort = d->sort_var,
+          nv = d->nv,
+        cols = d->mo+2;
+  ord_t **Tv = d->Tv,
+        **To = d->To,
+      *monos = d->monos;
+  const ord_t *vo = d->var_ords;
 
   // check H
   for (int i = 0; i < nv; ++i)
     if (H[i*cols + 0] != 0)                   return 1e6 + i;
+
   for (int r = 1; r < nv; ++r) {
     if (vo[sort[r]] == 0) {
       for (int o = 1; o <= d->mo + 1; ++o)
         if (H[r*cols + o] != -1)              return 2e6 + r;
-    }
-    else if (H[r*cols + 1] != (H[(r-1)*cols + vo[sort[r-1]] + 1] != -1 ?  // TODO: restore test
-                          H[(r-1)*cols + vo[sort[r-1]] + 1] : H[(r-1)*cols + vo[sort[r-1]]] + 1))
+    } else // TODO: restore test (LD:?)
+    if (H[r*cols + 1] != (H[(r-1)*cols + vo[sort[r-1]]  + 1] != -1 ?
+                          H[(r-1)*cols + vo[sort[r-1]]  + 1] :
+                          H[(r-1)*cols + vo[sort[r-1]]] + 1) )
                                               return 3e6 + r;
   }
 
-  for (int i = 0; i < d->nc; ++i) {
+  for (int i=0; i < d->nc; ++i) {
     if (to2tv[tv2to[i]] != i)                 return 4e6 + i;
     if (tv2to[tbl_index_H(d,nv,To[i])] != i)  return 5e6 + i;
-    if (! mad_mono_eq(nv,To[tv2to[i]],Tv[i])) return 6e6 + i;
-    if (! mad_mono_eq(nv,To[i],monos + nv*i)) return 7e6 + i;
+    if (!mad_mono_eq(nv,To[tv2to[i]],Tv[i]))  return 6e6 + i;
+    if (!mad_mono_eq(nv,To[i],monos + nv*i))  return 7e6 + i;
   }
+
   return tbl_check_L(d);
 }
 
-// --- THREAD DISPATCH ---------------------------------------------------------
+// --- thread dispatch --------------------------------------------------------o
 
 static inline void
 get_ops(D *d, long long int ops[])
 {
   int *pi = d->ord2idx;
-  for (int o = 2; o <= d->mo; ++o) {
+  ops[0] = ops[1] = ops[2] = 0;
+  for (int o = 3; o <= d->mo; ++o) {
     ops[o] = 0;
     for (int j = 1; j <= (o-1)/2; ++j) {
       int oa = o-j, ob = j;            // oa > ob >= 1
@@ -694,10 +701,8 @@ get_ops(D *d, long long int ops[])
       ops[o] += (pi[ho+1]-pi[ho]) * (pi[ho+1]-pi[ho]);
     }
   }
-  if (d->mo >= 12) {
-    ops[d->mo]   /= 2;
-    ops[d->mo+1] = ops[d->mo];
-  }
+  ops[d->mo+1] = ops[d->mo]/2;
+  ops[d->mo]  -= ops[d->mo+1];
 }
 
 static inline int
@@ -714,42 +719,45 @@ get_min_dispatched_idx(int nb_threads, long long int dops[])
 }
 
 static inline void
-build_dispatch(D *d)
+build_dispatch (D *d)
 {
-  int nb_threads = omp_get_num_procs();
-  d->ocs = mad_malloc(nb_threads * sizeof *(d->ocs));
-  assert(d->ocs);
-  d->size += nb_threads * sizeof *(d->ocs);
+  // [0] serial(all), [1..nth] parallel(split)
+  int nth = d->nth + (d->nth > 1);
 
-  int sizes[nb_threads];
-  for (int t = 0; t < nb_threads; ++t) {
-    d->ocs[t] = mad_calloc(d->mo, sizeof *d->ocs[t]);
-    d->size += d->mo * sizeof *d->ocs[t];
+  d->ocs = mad_malloc(nth * sizeof *(d->ocs));
+  d->size += nth * sizeof *(d->ocs);
+
+  int sizes[nth];
+  for (int t = 0; t < nth; ++t) {
+    d->ocs[t] = mad_calloc(d->mo, sizeof *d->ocs[0]);
+    d->size += (d->mo) * sizeof *d->ocs[0];
     sizes[t] = 0;
   }
 
-  long long int ops[d->mo+1], dops[nb_threads];
-  memset(dops, 0, nb_threads * sizeof *dops);
-  get_ops(d,ops);
+  long long int ops[d->mo+1], dops[nth];
+  memset(dops, 0, nth * sizeof *dops);
+  get_ops(d, ops);
 
-  if (nb_threads == 1 || d->mo < 12) {
-    for (int o = d->mo; o >= 2; --o) {
-      d->ocs[0][sizes[0]++] = o;
-      dops[0] += ops[o];
-    }
+  // serial
+  for (int o = d->mo; o > 2; --o) {
+    d->ocs[0][sizes[0]++] = o;
+    dops[0] += ops[o];
   }
-  else {
-    for (int o = d->mo + 1; o >= 2; --o) {
-      int idx = get_min_dispatched_idx(nb_threads,dops);
-      assert(idx >= 0 && idx < nb_threads);
-      d->ocs[idx][sizes[idx]++] = o;
-      dops[idx] += ops[o];
+  dops[0] += ops[d->mo+1];
+
+  // parallel
+  if (nth > 1) {
+    for (int o = d->mo+1; o > 2; --o) {
+      int idx = get_min_dispatched_idx(d->nth,dops+1);
+      assert(idx >= 0 && idx < d->nth);
+      d->ocs[1+idx][sizes[1+idx]++] = o;
+      dops[1+idx] += ops[o];
     }
   }
 
 #ifdef DEBUG
   printf("\nTHREAD DISPATCH:\n");
-  for (int t = 0; t < nb_threads; ++t) {
+  for (int t = 0; t < nth; ++t) {
     printf("[%d]: ", t);
     for (int i = 0; d->ocs[t][i]; ++i)
       printf("%d ", d->ocs[t][i]);
@@ -759,28 +767,61 @@ build_dispatch(D *d)
 #endif
 }
 
-// --- DESC management ---------------------------------------------------------
+static inline void
+set_temps (D *d)
+{
+  d->  t = mad_malloc(DESC_MAX_TMP * d->nth * sizeof *d-> t );
+  d-> ct = mad_malloc(DESC_MAX_TMP * d->nth * sizeof *d->ct );
+  d-> ti = mad_malloc(               d->nth * sizeof *d-> ti);
+  d->cti = mad_malloc(               d->nth * sizeof *d->cti);
 
-enum { TPSA_DESC_NUM = 100 };    // number of descriptors to store
+  for(int j = 0; j < d->nth; ++j) {
+  for(int i = 0; i < DESC_MAX_TMP; ++i) {
+    d-> t[j*DESC_MAX_TMP+i] = mad_tpsa_newd (d,d->mo);
+    d->ct[j*DESC_MAX_TMP+i] = mad_ctpsa_newd(d,d->mo); }
+    d->ti[j] = d->cti[j] = 0;
+  }
 
-static D  *Ds[TPSA_DESC_NUM];
+#if DEBUG > 1
+  printf("\n#TEMPS TPSA=%d\n", 2*DESC_MAX_TMP*d->nth);
+#endif
+}
 
 static inline void
-set_var_ords(D *d, const ord_t ords[])
+del_temps (D *d)
 {
-  assert(d && ords);
+  for(int j = 0; j < d->nth; ++j) {
+  for(int i = 0; i < DESC_MAX_TMP; ++i) {
+    mad_tpsa_del (d-> t[j*DESC_MAX_TMP+i]);
+    mad_ctpsa_del(d->ct[j*DESC_MAX_TMP+i]);
+  }}
+  mad_free(d->  t);
+  mad_free(d-> ct);
+  mad_free(d-> ti);
+  mad_free(d->cti);
+}
+
+// --- descriptor management --------------------------------------------------o
+
+enum { MAX_TPSA_DESC = 50 };    // max number of simultaneous descriptors
+
+static D  *Ds[MAX_TPSA_DESC];
+
+static inline void
+set_var_ords (D *d, const ord_t var_ords[])
+{
+  assert(d && var_ords);
 
   d->sort_var = mad_malloc(d->nv * sizeof *d->sort_var);
-  assert(d->sort_var);
+  mad_mono_sort(d->nv, var_ords, d->sort_var);
   d->size += d->nv * sizeof *d->sort_var;
-  mad_mono_sort(d->nv, ords, d->sort_var);
 
-  d->var_ords = mad_malloc(d->nv * sizeof *d->var_ords);
-  assert(d->var_ords);
+  ord_t *vo = mad_malloc(d->nv * sizeof *d->var_ords);
+  mad_mono_copy(d->nv, var_ords, vo);
+  d->var_ords = vo;
   d->size += d->nv * sizeof *d->var_ords;
-  mad_mono_copy(d->nv, ords, d->var_ords);
 
-#ifdef DEBUG
+#if DEBUG > 1
   printf("var_ords sorting: [");
   for(int i = 0; i < d->nv; ++i)
     printf("%d ", d->sort_var[i]);
@@ -788,75 +829,62 @@ set_var_ords(D *d, const ord_t ords[])
 #endif
 }
 
-static inline void
-set_mvar_names(D *d, str_t mvar_names[])
-{
-  if (!mvar_names) return;
-
-  assert(d);
-#ifdef DEBUG
-  printf("set_mvar_names=[ ");
-  for (int i = 0; i < d->nmv; ++i) printf("%s ", mvar_names[i]);
-  printf("]\n");
-#endif
-  d->mvar_names = mad_malloc(d->nmv * sizeof *d->mvar_names);
-  d->size += d->nmv * sizeof *d->mvar_names;
-
-  for (int i = 0; i < d->nmv; ++i) {
-    int n = strlen(mvar_names[i]);
-    char *s = mad_malloc(n * sizeof *d->mvar_names[i]);
-    strcpy(s, mvar_names[i]);
-    d->mvar_names[i] = s;
-    d->size += n * sizeof *d->mvar_names[i];
-  }
-}
-
 static inline D*
-desc_init(int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
+desc_init (int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
 {
   assert(mvar_ords);
 
   D *d = mad_malloc(sizeof *d);
   memset(d, 0, sizeof *d);
-  d->size = sizeof(d);
-  d->nmv  = nmv;
+  d->size = sizeof *d;
+  d->nmv = nmv;
   d->nv = nv;
   d->ko = ko;
-  d->mo = d->trunc = mad_mono_max(nmv,mvar_ords);
+  d->mo = d->to = mad_mono_max(nmv, mvar_ords);
 
-  d->mvar_ords = mad_malloc(nmv * sizeof *d->mvar_ords);
-  mad_mono_copy(nmv, mvar_ords, d->mvar_ords);
+  ord_t *mo = mad_malloc(nmv * sizeof *d->mvar_ords);
+  mad_mono_copy(nmv, mvar_ords, mo);
+  d->mvar_ords = mo;
   d->size += nmv * sizeof *d->mvar_ords;
+  d->nth = omp_get_max_threads();
 
   return d;
 }
 
-static inline D*
-desc_build(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
+static D*
+desc_build (int nmv, const ord_t mvar_ords[nmv],
+            int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
-  assert(mvar_ords && ords);
+  assert(mvar_ords && var_ords);
+
+  // input validation
+  ensure(nmv > 0 && nmv < 1000, "invalid number of map variables [%d]", nmv);
+  ensure(nv >= nmv, "#map variables [%d] exceeds #variables [%d]", nmv, nv);
+
+  // variables max orders validation
+  ord_t mo = mad_mono_max(nmv, mvar_ords);
+  ensure(mo <= DESC_MAX_ORD,
+         "some map variables order exceeds maximum order [%u]", DESC_MAX_ORD);
+  ensure(mad_mono_le(nmv, var_ords, mvar_ords),
+         "some variables orders exceed map variables orders");
+  ensure(mad_mono_max(nv, var_ords) <= mo,
+         "some variables orders exceed map variables orders");
+  ensure(mad_mono_min(nv, var_ords) > 0,
+         "some variables have invalid zero order");
 
   D *d = desc_init(nmv, mvar_ords, nv, ko);
 
-  set_var_ords(d, ords);
-  set_mvar_names(d, mvar_names);
+  set_var_ords(d, var_ords);
   make_monos(d);
   tbl_by_ord(d);
   tbl_by_var(d);  // requires To
   tbl_set_H(d);
   tbl_set_L(d);
   build_dispatch(d);
+  set_temps(d);
 
-  // set temps
-  for(int i=0; i < desc_max_temps; i++) {
-    d-> t[i] = mad_tpsa_newd (d,d->mo);
-    d->ct[i] = mad_ctpsa_newd(d,d->mo);
-  }
-
-  // TODO: add the size of the temps to d->size
-
-#ifdef DEBUG
-  printf("nc = %d ---- Total desc size: %d bytes\n", d->nc, d->size);
+#if DEBUG > 1
+  printf("nc = %d ---- Total desc size: %ld bytes\n", d->nc, d->size);
 #endif
 
   int err = tbl_check(d);
@@ -865,7 +893,7 @@ desc_build(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, c
     printf("\nH=\n");  tbl_print_H(d);
     printf("\nTv=\n"); tbl_print(d->nv, d->nc, d->Tv);
     printf("\nTo=\n"); tbl_print(d->nv, d->nc, d->To);
-    printf("\nCheking table consistency ... %d\n", err);
+    printf("\nChecking table consistency ... %d\n", err);
     assert(NULL);
   }
 
@@ -873,99 +901,65 @@ desc_build(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, c
 }
 
 static inline int
-desc_equiv(const D *d, int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv],
-                       int nv , const ord_t ords[nv], ord_t ko)
+desc_equiv (const D *d, int nmv, const ord_t mvar_ords[nmv],
+                        int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
-  assert(d && mvar_ords && ords);
-  if (mvar_names) {
-    if (! d->mvar_names) return 0;
-    for (int i = 0; i < nmv; ++i)
-      if (strcmp(d->mvar_names[i],mvar_names[i]) != 0) {
-        printf("%s %s\n", d->mvar_names[i], mvar_names[i]);
-        return 0;
-      }
-  }
-  else if (d->mvar_names)
-    return 0;
-
-  return    d->nmv == nmv && mad_mono_eq(nmv, d->mvar_ords, mvar_ords)
-         && d->nv  == nv  && mad_mono_eq(nv , d->var_ords, ords)
-         && d->ko  == ko;
+  return d->nmv == nmv && mad_mono_eq(nmv, d->mvar_ords, mvar_ords)
+      && d->nv  == nv  && mad_mono_eq(nv , d-> var_ords,  var_ords)
+      && d->ko  == ko;
 }
 
 static inline D*
-desc_search(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
+get_desc (int nmv, const ord_t mvar_ords[nmv],
+          int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
-  for (int i = 0; i < TPSA_DESC_NUM; ++i) {
-    if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, mvar_names, nv, ords, ko))
-      return Ds[i];
-  }
-  return NULL;
-}
+  assert(mvar_ords && var_ords);
 
-static inline D*
-get_desc(int nmv, const ord_t mvar_ords[nmv], str_t mvar_names[nmv], int nv, const ord_t ords[nv], ord_t ko)
-{
-  D *existing_desc = desc_search(nmv, mvar_ords, mvar_names, nv, ords, ko);
-  if (existing_desc) return existing_desc;
+  for (int i=0; i < MAX_TPSA_DESC; ++i)
+    if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, nv, var_ords, ko))
+      return mad_desc_curr=Ds[i], Ds[i];
 
-  for (int i = 0; i < TPSA_DESC_NUM; ++i)
+  for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (!Ds[i]) {
-      Ds[i] = desc_build(nmv, mvar_ords, mvar_names, nv, ords, ko);
+      Ds[i] = desc_build(nmv, mvar_ords, nv, var_ords, ko);
       Ds[i]->id = i;
-      return Ds[i];
+      return mad_desc_curr=Ds[i], Ds[i];
     }
-  ensure(NULL && "Too many descriptors.");
+
+  error("Too many descriptors in concurrent use");
 }
 
-// --- Public Functions -------------------------------------------------------
+// --- public -----------------------------------------------------------------o
 
 int
-mad_desc_get_mono (const D *d, int n, ord_t m_[n], idx_t i)
-{
-  assert(d);
-  ensure(0 <= n && n < d->nv);
-  ensure(0 <= i && i < d->nc);
-  if (m_ && n) memcpy(m_, d->To[i], n * sizeof(ord_t));
-  return d->ords[i];
-}
-
-idx_t
-mad_desc_get_idx (const D *d, int n, const ord_t m[n])
+mad_desc_mono_isvalid_m (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m);
-  ensure(mad_desc_mono_isvalid(d, n, m));
-  return d->tv2to[tbl_index_H(d,n,m)];
-}
-
-idx_t
-mad_desc_get_idx_sp (const D *d, int n, const idx_t m[n])
-{
-  assert(d && m);
-  ensure(mad_desc_mono_isvalid_sp(d, n, m));
-  return d->tv2to[tbl_index_H_sp(d,n,m)];
+  return n <= d->nv
+         && mad_mono_ord(n, m) <= d->mo
+         && mad_mono_le (n, m, d->var_ords)
+         && mad_mono_ord(n-d->nmv, m+d->nmv) <= d->ko;
 }
 
 int
-mad_desc_mono_isvalid (const D *d, int n, const ord_t m[n])
+mad_desc_mono_isvalid_s (const D *d, ssz_t n, str_t s)
 {
-  assert(d && m);
-  int nmv = d->nmv;
-  return    (n                                   <= d->nv)
-         && (          mad_mono_ord(n    ,m)     <= d->mo)
-         && (n > nmv ? mad_mono_ord(n-nmv,m+nmv) <= d->ko : 1)
-         && mad_mono_le(n,m,d->var_ords);
+  assert(s && n <= 1000000);
+  if (n <= 0) n = strlen(s);
+  ord_t m[n];
+  n = mad_mono_str(n, m, s);
+  return mad_desc_mono_isvalid_m(d, n, m);
 }
 
 int
-mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n])
+mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m[n])
 {
   assert(d && m);
   if (n & 1) return 0;
 
   int mo = 0, ko = 0;
-  for (int i = 0; i < n; i += 2) {
-    int mono_idx = m[i] - 1; // translate from var idx to mono idx
+  for (idx_t i = 0; i < n; i += 2) {
+    idx_t mono_idx = m[i] - 1; // translate from var idx to mono idx
     if (mono_idx >= d->nv)         return 0;
 
     ord_t o = m[i+1];
@@ -977,110 +971,173 @@ mad_desc_mono_isvalid_sp (const D *d, int n, const idx_t m[n])
 }
 
 int
-mad_desc_mono_nxtbyvar (const D *d, int n, ord_t m[n])
+mad_desc_mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 {
   assert(d && m);
   const idx_t *sort = d->sort_var;
-  for (int i=0; i < n; ++i) {
+  for (idx_t i = 0; i < n; ++i) {
     ++m[sort[i]];
-    if (mad_desc_mono_isvalid(d, n, m)) return 1;
+    if (mad_desc_mono_isvalid_m(d, n, m)) return 1;
     m[sort[i]] = 0;
   }
   return 0;
 }
 
-// --- Public Functions -------------------------------------------------------
-
-int
-mad_desc_maxsize(const D *d)
+ord_t
+mad_desc_get_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
 {
   assert(d);
-  return d->nc;
+  ensure(0 <= n && n < d->nv, "invalid monomial length");
+  ensure(0 <= i && i < d->nc, "index out of bounds");
+  if (m_ && n) mad_mono_copy(n, d->To[i], m_);
+  return d->ords[i];
+}
+
+idx_t
+mad_desc_get_idx_m (const D *d, ssz_t n, const ord_t m[n])
+{
+  assert(d && m);
+  ensure(mad_desc_mono_isvalid_m(d, n, m), "invalid monomial");
+  return d->tv2to[tbl_index_H(d, n, m)];
+}
+
+idx_t
+mad_desc_get_idx_s (const D *d, ssz_t n, str_t s)
+{
+  assert(s);
+  if (n <= 0) n = strlen(s);
+  ord_t m[n];
+  n = mad_mono_str(n, m, s);
+  return mad_desc_get_idx_m(d, n, m);
+}
+
+idx_t
+mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
+{
+  assert(d && m);
+  ensure(mad_desc_mono_isvalid_sm(d, n, m), "invalid monomial");
+  return d->tv2to[tbl_index_H_sm(d, n, m)];
 }
 
 ord_t
-mad_desc_maxord(const D *d)
+mad_desc_maxord (const D *d)
 {
   assert(d);
   return d->mo;
 }
 
-ord_t
-mad_desc_gtrunc(D *d, ord_t to)
+ssz_t
+mad_desc_maxlen (const D *d)
 {
   assert(d);
-  ord_t orig = d->trunc;
+  return d->nc;
+}
+
+ssz_t
+mad_desc_ordlen (const D *d, ord_t mo)
+{
+  assert(d);
+  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  return d->ord2idx[mo+1];
+}
+
+ord_t
+mad_desc_gtrunc (const D *d_, ord_t to)
+{
+  D* d = (void*)d_;
+  assert(d);
   if (to == mad_tpsa_same)
-    return orig;
+    return d->to;
+
+  ord_t orig = d->to;
 
   if (to == mad_tpsa_default)
-    to = d->mo;
-  else
-    ensure(to <= d->mo);
-  d->trunc = to;
-  return orig;
+    return d->to = d->mo, orig;
+
+  ensure(to <= d->mo, "invalid order (exceeds maximum order)");
+  return d->to = to, orig;
 }
 
-D*
-mad_desc_new(int nv, const ord_t var_ords[nv], const ord_t mvar_ords_[nv], str_t mvar_names[nv])
+// --- ctors, dtor ------------------------------------------------------------o
+
+const D*
+mad_desc_newn (int nmv, ord_t mvo)
 {
-  ensure(var_ords);
-  ord_t mo, mvar_ords[nv];  // to parse optional param
-
-  if (mvar_ords_) {
-    for (int i = 0; i < nv; ++i) ensure(var_ords[i] <= mvar_ords_[i]);
-    mad_mono_copy(nv, mvar_ords_, mvar_ords);
-    mo = mad_mono_max(nv, mvar_ords);
-  }
-  else {
-    mo = mad_mono_max(nv, var_ords);
-    mad_mono_fill(nv, mvar_ords, mo);
-  }
-  ensure(mo < desc_max_order);
-
-  return get_desc(nv, mvar_ords, mvar_names, nv, var_ords, 0);
+  ord_t mvar_ords[nmv];
+  mad_mono_fill(nmv, mvar_ords, mvo);
+  return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
-D*
-mad_desc_newk(int nv, const ord_t var_ords[nv], const ord_t mvar_ords_[nv], str_t mvar_names[nv],
-              int nk, const ord_t knb_ords[nk], ord_t dk)
+const D*
+mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
 {
-  // input validation
-  ensure(nv && var_ords);
-  // ensure(nk && knb_ords);
-  ensure(dk <= mad_mono_ord(nk, knb_ords));
-  ensure(mad_mono_ord(nv, var_ords) + mad_mono_ord(nk, knb_ords) < desc_max_order);
+  assert(mvar_ords);
+  ensure(nmv > 0, "invalid map variables orders specification");
+  return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
+}
 
-  ord_t mvar_ords[nv];  // to parse optional param
-  if (mvar_ords_) {
-    for (int i = 0; i < nv; ++i)
-      ensure(var_ords[i] <= mvar_ords_[i]);
-    mad_mono_copy(nv, mvar_ords_, mvar_ords);
-  }
-  else {
-    ord_t mo = mad_mono_max(nv, var_ords);
-    mad_mono_fill(nv, mvar_ords, mo);
-  }
-  if (dk == 0) dk = mad_mono_max(nk, knb_ords);
-  ensure(dk <= mad_mono_max(nv, mvar_ords));
+const D*
+mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
+               int nv , const ord_t  var_ords[nv ], ord_t dk)
+{
+  assert(mvar_ords && var_ords);
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid variable orders specification");
 
-  ord_t ords[nv+nk];
-  int oidx = 0;
-  for (int i = 0; i < nv; ++i)
-    ords[oidx++] = var_ords[i];
-  for (int i = 0; i < nk; ++i) {
-    ensure(knb_ords[i] != 0);
-    ords[oidx++] = knb_ords[i];
+  // knobs max cross-order adjustment
+  int nk = nv-nmv;
+  if (nk > 0) {
+    ord_t ko = mad_mono_max(nk, var_ords+nmv);
+    if (!dk || dk > ko) dk = ko;
+  } else dk = 0;
+
+  return get_desc(nmv, mvar_ords, nv, var_ords, dk);
+}
+
+const D*
+mad_desc_newk (int nmv, ord_t mvo, int nkv, ord_t kvo, ord_t dk)
+{
+  int nv = nmv+nkv;
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid knob variables orders specification");
+  ensure(nv < 100000, "too many variables");
+
+  ord_t var_ords[nv];
+  mad_mono_fill(nmv, var_ords    , mvo);
+  mad_mono_fill(nkv, var_ords+nmv, kvo);
+
+  return mad_desc_newv(nmv, var_ords, nv, var_ords, dk);
+}
+
+const D*
+mad_desc_newkv (int nmv, const ord_t mvar_ords[nmv],
+                int nkv, const ord_t kvar_ords[nkv],
+                int nv_, const ord_t _var_ords[nv_], ord_t dk)
+{
+  assert(mvar_ords && kvar_ords);
+  int nv = MAX(nmv+nkv, nv_);
+  ensure(nmv > 0  , "invalid map variables orders specification");
+  ensure(nv >= nmv, "invalid knob variables orders specification");
+  ensure(nv < 100000, "too many variables");
+
+  ord_t var_ords[nv];
+  mad_mono_copy(nmv, mvar_ords, var_ords    );
+  mad_mono_copy(nkv, kvar_ords, var_ords+nmv);
+  if (_var_ords) {
+    ensure(nv_ > 0, "invalid variable orders specification");
+    mad_mono_copy(nv_, _var_ords, var_ords); // override overlapping part
   }
-  return get_desc(nv, mvar_ords, mvar_names, nv+nk, ords, dk);
+
+  return mad_desc_newv(nmv, mvar_ords, nv, var_ords, dk);
 }
 
 void
-mad_desc_del(D *d)
+mad_desc_del (const D *d_)
 {
+  D *d = (void*)d_;
   assert(d);
-  mad_free(d->var_ords);
-  mad_free(d->mvar_ords);
+  mad_free((void*)d->mvar_ords);
+  mad_free((void*)d->var_ords);
   mad_free(d->monos);
   mad_free(d->ords);
   mad_free(d->To);
@@ -1090,14 +1147,8 @@ mad_desc_del(D *d)
   mad_free(d->to2tv);
   mad_free(d->H);
 
-  if (d->mvar_names) {
-    for (int i = 0; i < d->nmv; ++i)
-      mad_free((void*)d->mvar_names[i]);
-    mad_free(d->mvar_names);
-  }
-
   if (d->L) {  // if L exists, then L_idx exists too
-    for (int i = 0; i < 1 + d->mo * d->mo/2; ++i) {
+    for (idx_t i=0; i < 1 + d->mo * d->mo/2; ++i) {
       mad_free(d->L[i]);
       if (d->L_idx[i]) {
         mad_free(*d->L_idx[i]);  // allocated as single block
@@ -1109,18 +1160,25 @@ mad_desc_del(D *d)
   }
 
   if (d->ocs) {
-    int nb_threads = omp_get_num_procs();
-    for (int t = 0; t < nb_threads; ++t)
+    int nth = d->nth + (d->nth > 1);
+    for (int t=0; t < nth; ++t)
       mad_free(d->ocs[t]);
     mad_free(d->ocs);
   }
 
-  for(int i=0; i < desc_max_temps; i++) {
-    mad_tpsa_del (d-> t[i]);
-    mad_ctpsa_del(d->ct[i]);
-  }
+  // destroy temporaries
+  del_temps(d);
 
   // remove descriptor from global array
   Ds[d->id] = NULL;
   mad_free(d);
 }
+
+void
+mad_desc_cleanup (void)
+{
+  for (idx_t i = 0; i < MAX_TPSA_DESC; ++i)
+    if (Ds[i]) mad_desc_del(Ds[i]);
+}
+
+// --- end --------------------------------------------------------------------o

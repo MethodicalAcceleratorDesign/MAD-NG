@@ -31,32 +31,40 @@
  o-----------------------------------------------------------------------------o
  */
 
-#include "mad_defs.h"
 #include "mad_mono.h"
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 typedef struct desc desc_t;
 
-// --- globals ---------------------------------------------------------------o
+// --- globals ----------------------------------------------------------------o
 
-extern const ord_t mad_tpsa_default;
-extern const ord_t mad_tpsa_same;
-extern       int   mad_tpsa_strict;
+extern const  ord_t  mad_tpsa_default;
+extern const  ord_t  mad_tpsa_same;
+extern const desc_t *mad_desc_curr;
 
-// --- interface -------------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
 
 // ctors, dtor
-desc_t* mad_desc_new  (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[]);
-desc_t* mad_desc_newk (int nv, const ord_t var_ords[], const ord_t map_ords_[], str_t var_nam_[],
-                       int nk, const ord_t knb_ords[], ord_t dk); // knobs
-void    mad_desc_del  (desc_t *d);
+const desc_t* mad_desc_newn (int nmv, ord_t mvo); // nmv mvars of order mvo
+const desc_t* mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko, ord_t dk); // knobs X-order
+const desc_t* mad_desc_newm (int nmv, const ord_t mvar_ords[nmv]);
+const desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
+                             int nv , const ord_t  var_ords[nv ], ord_t dk); // knobs X-order
+const desc_t* mad_desc_newkv(int nmv, const ord_t mvar_ords[nmv],
+                             int nkv, const ord_t kvar_ords[nkv],
+                             int nv_, const ord_t _var_ords[nv_], ord_t dk); // knobs X-order
+void          mad_desc_del  (const desc_t *d);
 
 // introspection
-int     mad_desc_maxsize (const desc_t *d);
-ord_t   mad_desc_maxord  (const desc_t *d);
-ord_t   mad_desc_gtrunc  (      desc_t *d, ord_t to);
+ord_t mad_desc_maxord (const desc_t *d);
+ssz_t mad_desc_maxlen (const desc_t *d); // ordlen(maxord) == maxlen
+ssz_t mad_desc_ordlen (const desc_t *d, ord_t mo);
+ord_t mad_desc_gtrunc (const desc_t *d, ord_t to);
 
-// ---------------------------------------------------------------------------o
+// global cleanup (warning: no GTSPA must still be in use!)
+void  mad_desc_cleanup (void);
+
+// --- end --------------------------------------------------------------------o
 
 #endif // MAD_DESC_H
