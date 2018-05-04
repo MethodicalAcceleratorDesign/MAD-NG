@@ -30,7 +30,7 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname,is_callable, is_iterable,
       is_mappable                                               in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
-local bsearch, lsearch, kpairs                                  in MAD.utility
+local bsearch, lsearch, kpairs, openfile                        in MAD.utility
 local functor                                                   in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
@@ -545,13 +545,22 @@ local function dump_env (self) -- for debug
   end
 end
 
--- debug
+-- I/O ------------------------------------------------------------------------o
 
-local function strdump (self, class_, pattern_)
+-- dump obj members (including controlled inheritance)
+local function dumpobj (self, filnam_, class_, pattern_)
+  if is_object(filnam_) and is_nil(pattern_) then
+    filnam_, class_, pattern_ = nil, filnam_, class_ -- right shift
+  end
+  if is_string(class_) and is_nil(pattern_) then
+    class_, pattern_ = nil, class_                   -- right shift
+  end
+
   class_, pattern_ = class_ or object, pattern_ or ''
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_object(class_)  , "invalid argument #2 (object expected)")
-  assert(is_string(pattern_), "invalid argument #3 (string expected)")
+  assert(is_object(class_)  , "invalid argument #3 (object expected)")
+  assert(is_string(pattern_), "invalid argument #4 (string expected)")
+
   local tostring in MAD
   local n, cnt, res, spc, str = 0, {}, {}, ""
   while self and not rawequal(self, class_) do
@@ -583,11 +592,20 @@ local function strdump (self, class_, pattern_)
     self = parent(self)
   end
   assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
-  res[n+1] = ''
-  return table.concat(res, '\n')
+
+  -- return result as a string
+  if filnam_ == '-' then return table.concat(res, '\n') end
+
+  -- dump to file
+  local file = openfile(filnam_, 'w', '.dat')
+  for _,s in ipairs(res) do file:write(s,'\n') end
+  if is_string(filnam_) then file:close() else file:flush() end
+
+  return self
 end
 
--- members
+-- members --------------------------------------------------------------------o
+
 M.__id  = 'object'
 M.__par = parent
 M.first_free_flag = flg_free
@@ -643,7 +661,7 @@ M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
 M.is_open_env     = functor( is_open_env     )
 
-M.strdump         = functor( strdump         )
+M.dumpobj         = functor( dumpobj         )
 
 -- aliases
 M.parent = parent
