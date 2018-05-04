@@ -150,7 +150,7 @@ mad_str_num (str_t str, ssz_t arg[5])
   // sign
   if (str[i] == '-' || str[i] == '+') ++i;
 
-  // ±inf, ±nan, or invalid
+  // ±inf or ±nan ?
   if (isalpha(str[i])) {
     if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
         tolower(str[i+2]) == 'f' && !isalpha(str[i+3])) {
@@ -160,7 +160,8 @@ mad_str_num (str_t str, ssz_t arg[5])
         tolower(str[i+2]) == 'n' && !isalpha(str[i+3])) {
       i += 3; goto fini;
     }
-    i = arg[0]; goto fini;
+    arg[1] = 0, arg[2] = arg[3] = arg[4] = -1; // no number found
+    return str;
   }
 
   // integer part
@@ -171,13 +172,20 @@ mad_str_num (str_t str, ssz_t arg[5])
     d = i++;
 
     // concat ..
-    if (str[i] == '.') { i = n ? i-2 : arg[0], d = -1; goto fini; }
+    if (str[i] == '.') {
+      if (n) { i -= 2, d = -1; goto fini; }
+      arg[1] = 0, arg[2] = arg[3] = arg[4] = -1; // no number found
+      return str;
+    }
 
     while(isdigit(str[i])) ++i, ++n;
   }
 
   // ensure at least ±# or ±#. or ±.#
-  if(!n && d > 0) { i = arg[0], d = -1; goto fini; }
+  if(!n && d > 0) {
+    arg[1] = 0, arg[2] = arg[3] = arg[4] = -1; // no number found
+    return str;
+  }
 
   // exponent part
   if (str[i] == 'e' || str[i] == 'E') {
