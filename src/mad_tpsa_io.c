@@ -80,7 +80,7 @@ FUN(scan_hdr) (FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   // discard leading white space and the name (which is 10 chars and comma)
-  ensure(!fscanf(stream_, " %*11c"));
+  ensure(!fscanf(stream_, " %*11c"), "unexpected fscanf returned value");
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
@@ -105,12 +105,12 @@ FUN(scan_hdr) (FILE *stream_)
     ord_t mvar_ords [nmv], var_ords[nv];
 
     // read mvars orders
-    ensure(!fscanf(stream_, " MAP ORDS: "));
+    ensure(!fscanf(stream_, " MAP ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nmv, mvar_ords, stream_);
 
     // read var orders
-    ensure(!fscanf(stream_, " ||| VAR ORDS: "));
+    ensure(!fscanf(stream_, " ||| VAR ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nv, var_ords, stream_);
 
