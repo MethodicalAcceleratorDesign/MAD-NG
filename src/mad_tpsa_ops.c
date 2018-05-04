@@ -272,11 +272,8 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 #define TPSA_LINOP(OPA, OPB, ORD) \
 do { \
   idx_t *pi = c->d->ord2idx; \
-_Pragma("GCC diagnostic push") \
-_Pragma("GCC diagnostic ignored \"-Wtype-limits\"") \
-  idx_t start_a = pi[MAX(a->lo,ORD)], end_a = pi[MIN(a->hi,c_hi)+1]; \
-  idx_t start_b = pi[MAX(b->lo,ORD)], end_b = pi[MIN(b->hi,c_hi)+1]; \
-_Pragma("GCC diagnostic pop") \
+  idx_t start_a = pi[ORD?MAX(a->lo,ORD):a->lo], end_a = pi[MIN(a->hi,c_hi)+1]; \
+  idx_t start_b = pi[ORD?MAX(b->lo,ORD):b->lo], end_b = pi[MIN(b->hi,c_hi)+1]; \
   idx_t i = start_a; \
   for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
   for (; i <           start_b ; ++i) c->coef[i] = 0; \
