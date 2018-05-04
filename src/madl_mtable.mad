@@ -27,8 +27,9 @@
 local object, vector, env                                        in MAD
 local bind1st, bind2nd, bind2st                                  in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
-local strtrim, strsplit, strbracket, fprintf, kpairs, bsearch,
-      toboolean, errorf, assertf, openfile                       in MAD.utility
+local strtrim, strsplit, strbracket, strquote, strsplitall,
+      fprintf, kpairs, bsearch, toboolean, errorf, assertf,
+      openfile, tblcpy, tblcat                                   in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_positive, is_string, is_table, is_rawtable, is_range,
       is_file, is_matrix, is_object, is_iterable, is_callable,
@@ -56,7 +57,7 @@ local mtable_mt = getmetatable(mtable)
 local var_raw, var_val = mtable.var_raw, mtable.var_val
 local raw_get, var_set = mtable.raw_get, mtable_mt.__newindex
 local parent, readonly = mtable.__par  , mtable.set_readonly
-local tbl_cpy =  mtable.copy
+local tbl_cpy = mtable.copy
 
 local function is_mtable (a)
   return is_object(a) and var_raw(a, _data) ~= nil
@@ -326,7 +327,7 @@ local function mtbl_init (tbl)
   for i=0,nc do data[i] = {} end
 
   -- process columns names
-  table.cpy(pdat.cidx, data.cidx)
+  tblcpy(pdat.cidx, data.cidx)
   data.cidx.is_selected, data.cidx[0] = 0, 'is_selected' -- case pdat.nc == 0
 
   local cref = raw_get(tbl, 'refcol')
@@ -350,13 +351,13 @@ local function mtbl_init (tbl)
   if tbl.novector == true then
     data.nvec = data.cidx
   elseif is_table(tbl.novector) then
-    data.nvec = table.cpy(pdat.nvec)
+    data.nvec = tblcpy(pdat.nvec)
     for _,k in ipairs(tbl.novector) do
       assert(is_number(data.cidx[k]),
                        "invalid column name for non-specialization (not found)")
       data.nvec[k], data.nvec[data.cidx[k]] = data.cidx[k], k
     end
-    tbl.novector = table.cat(data.nvec,{}) -- copy only array part
+    tbl.novector = tblcat(data.nvec,{}) -- copy only array part
   end
 
   -- clear list of column names
@@ -367,10 +368,10 @@ local function mtbl_init (tbl)
   -- concat header names and column names to parent ones for I/O
   local hdrnam, colnam = raw_get(tbl, 'header'), raw_get(tbl, 'column')
   if is_table(hdrnam) and #hdrnam > 0 then
-    tbl.header = table.cat(hdrnam, tbl.parent.header or {})
+    tbl.header = tblcat(hdrnam, tbl.parent.header or {})
   end
   if is_table(colnam) and #colnam > 0 then
-    tbl.column = table.cat(colnam, tbl.parent.column or {})
+    tbl.column = tblcat(colnam, tbl.parent.column or {})
   end
 
   -- finalized
@@ -401,8 +402,8 @@ local function copy (tbl, name_, owner_)
   cdat.ng    = 0                     -- #gens
   cdat.rmax  = data.rmax             -- allocated rows
 
-  table.cpy(data.cidx, cdat.cidx)
-  cdat.nvec = data.nvec == data.cidx and cdat.cidx or table.cpy(data.nvec)
+  tblcpy(data.cidx, cdat.cidx)
+  cdat.nvec = data.nvec == data.cidx and cdat.cidx or tblcpy(data.nvec)
   for i=0,nc do                      -- copy columns
     local col = data[i]
     cdat[i] = is_matrix(col) and vector(nr) or table.new(nr,1)
@@ -1045,7 +1046,8 @@ local function filter (tbl, rng_, sel_, not_)
   local f = bind1st(do_filter, ri)
   ri.n = 0
   tbl:foreach(f, rng_, sel_, not_)
-  return ri
+  local n = ri.n ; ri.n = nil
+  return ri, n
 end
 
 -- methods (R/W, rebuild dict) ------------------------------------------------o
@@ -1056,14 +1058,13 @@ local function remove (tbl, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to remove
-  local idx_r
+  local idx_r, nr
   if is_number(rng_) and is_nil(sel_) and 1 <= rng_ and rng_ <= data.nr+1 then
-    idx_r = { rng_, n=1 }
+    idx_r, nr = { rng_ }, 1
     -- if true then tbl:remrow(rng_) return tbl end -- uniformity test
   else
-    idx_r = filter(tbl, rng_, sel_, true)
+    idx_r, nr = filter(tbl, rng_, sel_, true)
   end
-  local nr = idx_r.n
   if nr == 0 then return tbl end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
@@ -1097,9 +1098,9 @@ local function insert (tbl, rows, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to select
-  local idx_r
+  local idx_r, nr
   if is_number(rng_) and is_nil(sel_) and 1 <= rng_ and rng_ <= data.nr+1 then
-    idx_r = { rng_, n=1 }
+    idx_r, nr = { rng_ }, 1
     -- if #rows == 1 then tbl:insrow(rng_, rows[1]) return tbl end -- uniformity test
   else
     -- insert(rows, sel) -> insert(rows, sel.range, sel)
@@ -1107,12 +1108,11 @@ local function insert (tbl, rows, rng_, sel_)
       rng_, sel_ = rng_.range, rng_ -- extract range + right shift (see foreach)
     end
 
-    idx_r = filter(tbl, rng_, sel_, true)
+    idx_r, nr = filter(tbl, rng_, sel_, true)
     if is_rawtable(sel_) and sel_.where == 'after' then
-      for i=1,idx_r.n do idx_r[i] = idx_r[i]+1 end
+      for i=1,nr do idx_r[i] = idx_r[i]+1 end
     end
   end
-  local nr = idx_r.n
   if nr == 0 then return tbl end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
@@ -1125,29 +1125,29 @@ local function insert (tbl, rows, rng_, sel_)
     end
   end
 
-  -- process cases: 1x1, 1xR, Nx1, NxR where R=#rows and N=#selected=idx_r.n
-  nr = rsize   == 1 and idx_r.n or
-       idx_r.n == 1 and rsize   or min(idx_r.n, rsize)
+  -- process cases: 1x1, 1xR, Nx1, NxR where R=#rows and N=#selected=nr
+  local nrs = rsize == 1 and nr    or
+              nr    == 1 and rsize or min(nr, rsize)
 
   -- expand if needed
-  if data.nr+nr > data.rmax then expand(data, tbl, nr) end
+  if data.nr+nrs > data.rmax then expand(data, tbl, nrs) end
 
   -- reshape vectors
-  data.nr = data.nr+nr
+  data.nr = data.nr+nrs
   local nc = data.nc-data.ng
   for i=1,nc do
     if is_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
   end
 
   -- insert rows by decreasing indexes
-  local i, j, ni = data.nr, data.nr-nr, idx_r[1]
-  local k = (nr-1) % rsize   + 1
-  local r = (nr-1) % idx_r.n + 1
+  local i, j, ni = data.nr, data.nr-nrs, idx_r[1]
+  local k = (nrs-1) % rsize + 1
+  local r = (nrs-1) % nr    + 1
   while i >= ni do
     if j == idx_r[r]-1 then
       cpyrow(data, i, rows[k])
-      k = (k-2) % rsize   + 1
-      r = (r-2) % idx_r.n + 1
+      k = (k-2) % rsize + 1
+      r = (r-2) % nr    + 1
     else
       for ic=0,nc do data[ic][i] = data[ic][j] end
       j = j-1
@@ -1165,15 +1165,14 @@ local function sort (tbl, cmp, rng_, sel_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to sort
-  local idx_r = filter(tbl, rng_, sel_)
-  local nr = idx_r.n
+  local idx_r, nr = filter(tbl, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- sort indexes (indirectly)
   local row1  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
-  local idx_s = table.cpy(idx_r, table.new(nr,0))
+  local idx_s = tblcpy(idx_r, table.new(nr,0))
   table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
@@ -1361,7 +1360,6 @@ end
 
 local function read (tbl, filnam_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local quote, splitall in string
   local file = openfile(filnam_, 'r', '.tfs')
   local hnam = table.new(8,8)
   local cnam = nil
@@ -1372,7 +1370,7 @@ local function read (tbl, filnam_)
   -- read header
   for line in file:lines() do
     ln = ln+1
-    row, ncol = splitall(line, " \t", nil, row)
+    row, ncol = strsplitall(line, " \t", nil, row)
     if row[1] == '@' then
       assertf(ncol == 4, "invalid header format (4 columns expected line %d)", ln)
       local typ = string.sub(row[3],-1)
@@ -1384,19 +1382,19 @@ local function read (tbl, filnam_)
         assertf(res ~= nil, "invalid header format (missing boolean line %d)", ln)
         hnam[row[2]] = res
       elseif typ == 's' then
-        local res = quote(row[4])
+        local res = strquote(row[4])
         if #res ~= tonumber(string.sub(row[3],2,-2)) then
           errorf("invalid header format (unmatched string length line %d)", ln)
         end
         hnam[row[2]] = res
       elseif typ == 't' then
-        local res, n = splitall(quote(row[4]), ",")
+        local res, n = strsplitall(strquote(row[4]), ",")
         if n ~= tonumber(string.sub(row[3],2,-2)) then
           errorf("invalid header format (unmatched table length line %d)", ln)
         end
         for i=1,n do
           local r = tonumber(res[i]) or toboolean(res[i])
-          if is_nil(r) then r = quote(res[i]) end
+          if is_nil(r) then r = strquote(res[i]) end
           res[i] = r
         end
         hnam[row[2]] = res
@@ -1428,13 +1426,13 @@ local function read (tbl, filnam_)
   -- read and add rows
   for line in file:lines() do
     ln = ln+1
-    row, ncol = splitall(line, " \t", nil, row)
+    row, ncol = strsplitall(line, " \t", nil, row)
     if row.n ~= ncol then
       errorf("invalid row format (%d missing columns line %d)", row.n-ncol, ln)
     end
     for i=1,ncol do -- convert to number or to boolean or remove quotes (if any)
       local r = tonumber(row[i]) or toboolean(row[i])
-      if is_nil(r) and row[i] ~= 'nil' then r = quote(row[i]) end
+      if is_nil(r) and row[i] ~= 'nil' then r = strquote(row[i]) end
       row[i] = r
     end
     tbl:addrow(row)
