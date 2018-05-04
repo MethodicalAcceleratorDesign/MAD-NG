@@ -145,37 +145,41 @@ mad_str_num (str_t str, ssz_t arg[5])
   assert(str && arg);
   mad_str_trim_front(str, arg);
 
-  idx_t i = arg[0], d = -1, e = -1;
+  idx_t i = arg[0], d = -1, e = -1, n = 0;
 
   // sign
   if (str[i] == '-' || str[i] == '+') ++i;
 
-  // integer
-  while(isdigit(str[i])) ++i;
+  // ±inf, ±nan, or invalid
+  if (isalpha(str[i])) {
+    if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
+        tolower(str[i+2]) == 'f' && !isalpha(str[i+3])) {
+      i += 3; goto fini;
+    }
+    if (tolower(str[i  ]) == 'n' &&  tolower(str[i+1]) == 'a' &&
+        tolower(str[i+2]) == 'n' && !isalpha(str[i+3])) {
+      i += 3; goto fini;
+    }
+    i = arg[0]; goto fini;
+  }
 
-  // decimal
+  // integer part
+  while(isdigit(str[i])) ++i, ++n;
+
+  // decimal part
   if (str[i] == '.') {
     d = i++;
 
-    while(isdigit(str[i])) ++i;
+    // concat ..
+    if (str[i] == '.') { i = n ? i-2 : arg[0], d = -1; goto fini; }
+
+    while(isdigit(str[i])) ++i, ++n;
   }
 
   // ensure at least ±# or ±#. or ±.#
-  if(!(i > 0 && (isdigit(str[i-1]) || (i > 1 && isdigit(str[i-2]))))) {
-    // "±inf"
-    if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
-        tolower(str[i+2]) == 'f' && !isalpha(str[i+3]) && d == -1) {
-      i += 3; goto fini;
-    }
-    // "±nan"
-    if (tolower(str[i  ]) == 'n' &&  tolower(str[i+1]) == 'a' &&
-        tolower(str[i+2]) == 'n' && !isalpha(str[i+3]) && d == -1) {
-      i += 3; goto fini;
-    }
-    i = arg[0], d = -1; goto fini;
-  }
+  if(!n && d > 0) { i = arg[0], d = -1; goto fini; }
 
-  // exponent
+  // exponent part
   if (str[i] == 'e' || str[i] == 'E') {
     e = i++;
 
@@ -186,7 +190,7 @@ mad_str_num (str_t str, ssz_t arg[5])
     while(isdigit(str[i])) ++i;
 
     // ensure e# or e±# otherwise backtrack
-    if (!isdigit(str[i-1])) i = e-1, e = -1;
+    if (!isdigit(str[i-1])) { i = e-1, e = -1; goto fini; }
   }
 
 fini:
