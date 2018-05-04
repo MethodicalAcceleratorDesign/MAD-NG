@@ -119,7 +119,7 @@ end
 
 -- algorithms
 
-function bsearch (tbl, val, cmp_)
+local function bsearch (tbl, val, cmp_)
   local cmp = cmp_ or lt -- cmp must be the same used by table.sort
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
@@ -402,7 +402,7 @@ local function wrap_variables (self, tbl)
     if is_callable(v) then
       newv = f(v)
     else
-      fv = function() return v end
+      local fv = function() return v end
       newv = f(fv)
     end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
@@ -779,6 +779,7 @@ function TestLuaObjectErr:testConstructor()
     "invalid argument #1 (string or raw table expected)",
     "invalid argument #2 (raw table expected)"
   }
+  local a
 
   assertErrorMsgContains(msg[1], get, p2, a)      -- read
   assertErrorMsgContains(msg[1], get, p00, a)     -- read child
@@ -1453,7 +1454,7 @@ function TestLuaObjectErr:testSetVariables()
 end
 
 function TestLuaObject:testWrapVariables()
-  f = function() return 3 end
+  local f = function() return 3 end
   local p0 = Object 'p0' { x=1, y=2, z=f }
   local p1 = p0 'p1' { x=-1, y={} }
   local vw = {'name', 'x','y','z'}
