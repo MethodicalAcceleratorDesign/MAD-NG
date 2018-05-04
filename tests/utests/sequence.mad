@@ -23,33 +23,23 @@
 ]=]
 
 -- locals ---------------------------------------------------------------------o
+
 local filesys, mtable, object                                     in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil,
-      assertEquals, assertErrorMsgContains, assertIs              in MAD.utest
-local is_sequence, is_element                                     in MAD.typeid
-local tblcpy                                                      in MAD.utility
+      assertEquals, assertErrorMsgContains, assertIs,
+      assertAlmostEquals,  assertNotIs                            in MAD.utest
+local is_sequence, is_element, is_number                          in MAD.typeid
+local tblcpy, strsplitall                                         in MAD.utility
+local abs, eps, min                                               in MAD.gmath
 local drift, marker, sbend, quadrupole, sequence, bline, flags    in MAD.element
 local selected                                                    in flags
 
-local srcdir = \s -> '../share/'    ..s
-local refdir = \s -> 'sequence_ref/'..s
-local rundir = \s -> 'sequence_run/'..s
-local _msg   = {
-  "invalid write access to readonly mtable",
-  "nil reference value",
-  "no reference column found",
-}
--- helpers --------------------------------------------------------------------o
+local generate = false
+local srcdir   = \s -> '../share/'    ..(s or '')
+local refdir   = \s -> 'sequence_ref/'..(s or '')
+local rundir   = \s -> 'sequence_run/'..(s or '')
 
-local function dumpseq (seq)
-  local optfmt = MAD.option.format
-  MAD.option.format = "%.5g"
-  print()
-  print('sequence:', seq.name, 'l=', seq.l)
-  print('i', 'name', 'L', 'S (s)', 'S (e)')
-  seq:foreach \e,i => print(i, e.name, e.l, seq:spos(i), seq:epos(i)) end
-  MAD.option.format = optfmt
-end
+-- helpers --------------------------------------------------------------------o
 
 local function getIdxSeq()
   local seq = sequence {
@@ -70,7 +60,309 @@ local function assertElem(actual, expected)
   assertEquals(actual, expected)
 end
 
+local function assertFiles (name)
+  if generate then return end
+  local ref  = assert(io.open(refdir(name), "r"))
+  local run  = assert(io.open(rundir(name), "r"))
+  local reftbl, sref = strsplitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = strsplitall(run:read("*all"), " \n,:;[]")
+  assertEquals(sref, srun)
+  for i=1,sref do
+    reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
+    runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
+    if is_number(reftbl[i]) then
+      local approx = abs(runtbl[i]-reftbl[i])
+      if 14*eps < approx then
+        local div = min(runtbl[i], reftbl[i])
+        if div == 0 then
+          assertAlmostEquals(approx, 0, 1.1e-5)
+        else
+          assertAlmostEquals((runtbl[i]-reftbl[i])/div, 0, 1.1e-6)
+        end
+      end
+    else
+      assertEquals(runtbl[i], reftbl[i])
+    end
+  end
+  if not generate then
+    os.remove(rundir(name))
+    filesys.rmdir(rundir(""))
+  end
+end
+
 -- regression test suite ------------------------------------------------------o
+
+TestSequenceOrig = {}
+
+function TestSequenceOrig:setUp()
+  filesys.mkdir(rundir())
+end
+
+function TestSequenceOrig:tearDown()
+  if MADX:is_open_env() == true then
+    MADX:reset_env()
+  end
+end
+
+function TestSequenceOrig:testSimple01()
+  local marker, quadrupole, sequence in MAD.element
+  local ip = marker 'ip' {}
+  local qf = quadrupole 'qf' { l=6 }
+  local lcell = 10
+
+  local seq = sequence 'simple01' {
+    l = lcell, refer = 'entry',
+    ip 'IP1' { at = 0 },
+    qf 'QF1' { at = 0 },
+    ip 'IP2' { at = lcell },
+  }
+
+  -- dumpseq(seq)
+  assertEquals(#seq, 5)
+  assertEquals(seq:spos(#seq), lcell)
+
+  -- the following should be put in sparated tests...
+--  local printf in MAD.utility
+--  printf "\n"
+--  seq:foreach(\e,i -> printf("%s[%d]: %s\n", seq.name, i, e.name))
+--
+--  seq:cycle('QF1')
+--  local iter, state, param = seq:iter()
+--  printf "\n"
+--  for i,e in iter, state, param do
+--    printf("%s[%d]: %s (%d,%s)\n", seq.name, i, e.name, state.turn, state.drift)
+--  end
+end
+
+function TestSequenceOrig:testSimple02()
+  local marker, quadrupole, sequence in MAD.element
+  local mk = marker     'mk' {}
+  local mq = quadrupole 'mq' { l=3 }
+
+  local seq = sequence 's02' {
+    refer = 'entry',
+    mk 'mk' { at = 0 },
+    mq 'mq' { at = 0 },
+    mk 'mk' { at = mq.l },
+  }
+  assertEquals(#seq, 5)
+  assertEquals(seq:spos(#seq), mq.l)
+end
+
+function TestSequenceOrig:testSPSDef()
+  local ds = drift      'ds' {}
+  local dl = drift      'dl' {}
+  local dm = drift      'dm' {}
+  local b1 = sbend      'b1' {}
+  local b2 = sbend      'b2' {}
+  local qf = quadrupole 'qf' {}
+  local qd = quadrupole 'qd' {}
+
+  local pf  = bline 'pf'  {qf,2*b1,2*b2,ds}           -- # = 6
+  local pd  = bline 'pd'  {qd,2*b2,2*b1,ds}           -- # = 6
+  local p24 = bline 'p24' {qf,dm,2*b2,ds,pd}          -- # = 11 (5+6)
+  local p42 = bline 'p42' {pf,qd,2*b2,dm,ds}          -- # = 11 (6+5)
+  local p00 = bline 'p00' {qf,dl,qd,dl}               -- # = 4
+  local p44 = bline 'p44' {pf,pd}                     -- # = 12 (6+6)
+  local insert = bline 'insert' {p24,2*p00,p42}       -- # = 30 (11+2*4+11)
+  local super  = bline 'super'  {7*p44,insert,7*p44}  -- # = 198 (7*12+30+7*12)
+  local SPS = sequence 'SPS' {6*super}                -- # = 1188 (6*198)
+
+  assertEquals(#SPS, 1190)
+  assertEquals(SPS:spos(#SPS), 0) -- no length provided...
+end
+
+function TestSequenceOrig:testConvertFiveCell2File()
+  MADX.option.warn = false
+
+  MADX:load(srcdir("FiveCell/fivecell.seq"), rundir('fivecell.mad'))
+  MADX.option.warn = true
+
+  -- to remove, should not be loaded in MADX environement here
+  local ld = loadfile(rundir('fivecell.mad')) assertNotNil(ld) ld()
+
+  local fivecell in MADX
+--  dumpseq(fivecell)
+  assertEquals(#fivecell, 81)
+  assertEquals(fivecell:spos(#fivecell), 534.6)
+
+  MADX.fivecell = nil -- cleanup
+end
+
+function TestSequenceOrig:testConvertFiveCell2Mem()
+  MADX.option.warn = false
+  MADX:load(srcdir("FiveCell/fivecell.seq"))
+  MADX.option.warn = true
+
+  local fivecell in MADX
+  assertEquals(#fivecell, 81)
+  assertEquals(fivecell:spos(#fivecell), 534.6)
+
+  MADX.fivecell = nil -- cleanup
+end
+
+function TestSequenceOrig:testLoadFiveCell()
+  local ld = loadfile(refdir('fivecell.mad')) assertNotNil(ld) ld()
+
+  local fivecell in MADX
+  assertEquals(#fivecell, 81)
+  assertEquals(fivecell:spos(#fivecell), 534.6)
+
+  MADX.fivecell = nil -- cleanup
+end
+
+function TestSequenceOrig:testConvertLHC2Files()
+  MADX.option.warn = false
+  MADX:load(srcdir("LHC/lhc_as-built.seq"), rundir('lhc_as-built.mad'))
+  MADX:load(srcdir("LHC/opt_inj.madx"    ), rundir('opt_inj.mad'     ))
+  MADX.option.warn = true
+
+  -- to remove, should not be loaded in MADX environement here
+  local ld
+  ld = loadfile(rundir('lhc_as-built.mad'))  assertNotNil(ld) ld()
+  ld = loadfile(rundir('opt_inj.mad'     ))  assertNotNil(ld) ld()
+
+  local lhcb1, lhcb2 in MADX
+  assertEquals(#lhcb1, 6677)
+  assertEquals(#lhcb2, 6676)
+  assertEquals(lhcb1:spos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:spos(#lhcb2), 26658.8832)
+
+  MADX.lhcb1, MADX.lhcb2 = nil, nil -- cleanup
+end
+
+function TestSequenceOrig:testConvertLHC2Mem()
+  MADX.option.warn = false
+  MADX:load(srcdir("LHC/lhc_as-built.seq"))
+  MADX:load(srcdir("LHC/opt_inj.madx"    ))
+  MADX.option.warn = true
+
+  local lhcb1, lhcb2 in MADX
+  assertEquals(#lhcb1, 6677)
+  assertEquals(#lhcb2, 6676)
+  assertEquals(lhcb1:spos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:spos(#lhcb2), 26658.8832)
+
+  MADX.lhcb1, MADX.lhcb2 = nil, nil -- cleanup
+end
+
+function TestSequenceOrig:testLoadLHC()
+  local ld
+  ld = loadfile(refdir('lhc_as-built.mad'))  assertNotNil(ld) ld()
+  ld = loadfile(refdir('lhc_setup.mad'   ))  assertNotNil(ld) ld()
+  ld = loadfile(refdir('lhc_undef.mad'   ))  assertNotNil(ld) ld()
+  ld = loadfile(refdir('opt_inj.mad'     ))  assertNotNil(ld) ld()
+
+  local lhcb1, lhcb2 in MADX
+  assertEquals(#lhcb1, 6677)
+  assertEquals(#lhcb2, 6676)
+  assertEquals(lhcb1:spos(#lhcb1), 26658.8832)
+  assertEquals(lhcb2:spos(#lhcb2), 26658.8832)
+
+  MADX.lhcb1, MADX.lhcb2 = nil, nil -- cleanup
+end
+
+-- forwarded meta-functions ---------------------------------------------------o
+
+-- NOTE: sequences and elements SHOULD NOT be build on load!!!
+
+local ip = marker     'ip' {      }
+local qf = quadrupole 'qf' { l=1  }
+local ds = drift      'ds' { l=.5 }
+local b1 = sbend      'b1' { l=2  }
+local bl = sbend + drift
+
+local seq = sequence 'seq' {
+  refer = 'entry',
+  ip 'IP1' { },
+  qf 'QF1' { },
+  ip 'IP2' { },
+  ds 'DS1' { from = 'IP2' },
+  b1 'B11' { from = 'prev' },
+}
+
+local seq2 = sequence 'seq2' {
+  refer = 'entry',
+  ip 'IP1' { },
+  qf 'QF1' { },
+  ip 'IP2' { },
+  ds 'DS1' { at = 3 },
+  b1 'B11' { at = 5 },
+}
+
+-- print('seq' , seq. l) 3.5
+-- print('seq2', seq2.l) 7
+
+function TestSequenceOrig:testSequence_init()
+  local def, s = {
+    kind='sequence', direction=1, refer='centre', l=0,
+  }
+  s = sequence 's'
+  s = sequence 's' { marker }                  -- assertEquals( s.refer, 'centre') TODO fix
+  --for k,v in pairs(def) do assertEquals( v, s[k] ) end             TODO fix
+  s = sequence 's' { refer='entry', marker }   assertEquals( s.refer, 'entry' )
+  s = sequence 's' { refer='exit' , marker }   assertEquals( s.refer, 'exit'  )
+end
+
+function TestSequenceOrig:testFlatten_sequ ()
+  local vector in MAD
+  local seqbl = sequence 'seq' {
+    l = lcell, direction=1, refer = 'entry',
+    ip 'IP1' { at = 0 },
+    qf 'QF1' { at = 0 },
+    ip 'IP2' { at = lcell },
+    ds 'DS1' { at = 3},
+    ip 'IP1' { at = 4},
+    b1 'B11' { at = 5},
+  }
+  local seqs = sequence 'seq' {
+    l = lcell, direction=1, refer = 'entry',
+    ip 'IP1' {at=0},
+    seq2     {at=0},
+  }
+
+  local bl = sbend + drift + vector(3)
+  --local seq3 =  sequence {refer = 'entry', ip, qf, vector{1} } -- 351 line no indx in flatten_sequ
+  --local seq3 =  sequence {refer = 'entry', ip, qf, bl        } -- 332 -> seq_err again
+end
+
+function TestSequenceOrig:testAdjust_len ()
+  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
+  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
+  assertEquals( sequence { l= 5, ds {at=3}}.l, 5 )
+  assertEquals( sequence {       ip       }.l, 0 )
+  assertEquals( seq2     { l= 2           }.l, 2 )
+end
+
+function TestSequenceOrig:testSequence_len()
+  assertEquals( sequence {ip}.l, 0 )
+  assertEquals( seq      {  }.l, 3.5 )
+  assertEquals( seq2     {  }.l, 7 )
+end
+
+function TestSequenceOrig:testWriteAccess() -- same as simple02
+  local msg = {
+    "invalid sequence write access (use replace method)",
+    "invalid use of object <sequence count: 0x",
+  }
+  local marker, quadrupole, sequence in MAD.element
+  local mk = marker     'mk' {}
+  local mq = quadrupole 'mq' { l=3 }
+  local seq = sequence 'seq' { refer='entry',
+    mk 'mk' { at = 0 },
+    mq 'mq' { at = 0 },
+    mk 'mk' { at = mq.l },
+  }
+  local set = \s,k,v => s[k]=v end
+  assertErrorMsgContains( msg[1], set, seq   , 1   , mk )
+  assertErrorMsgContains( msg[1], set, seq   , 10  , mk )
+  assertErrorMsgContains( msg[1], set, seq   , 'mq', mq )
+  assertErrorMsgContains( msg[1], set, seq   , 'mk', mk )
+  assertErrorMsgContains( msg[2], set, seq.mk, 1   , mk )
+  assertErrorMsgContains( msg[2], set, seq.mk, 10  , mk )
+end
+
+-------------------------------------------------------------------------------o
 
 TestSequence = {}
 
@@ -951,6 +1243,15 @@ function TestSequence:testLengthOfNTrnNegative()
   assertEquals(seq:length_of({"name1[3]", "name1[1] "   }, 5), 34)
   assertEquals(seq:length_of({"name1{2}", "name1{-1}", 3}, 5), 34)
   assertEquals(seq:length_of({3         , 2             }, 5), 36)
+end
+
+function TestSequence:testIterEmpty()
+  local seq = sequence "seq" { }
+  local i   = 1
+  for j,elm,s in seq:iter() do
+    error("Empty sequence iterator should iter for 0 step")
+  end
+  assertEquals(i, 1)
 end
 
 function TestSequence:testIterOne()
@@ -2216,6 +2517,201 @@ function TestSequence:testReplaceInvalidElem()
   assertErrorMsgContains(msg[4], sequence.replace, seq, {1}    , {1,1})
   assertErrorMsgContains(msg[5], sequence.replace, seq, {"df1"}, {1,1})
   assertErrorMsgContains(msg[6], sequence.replace, seq, {\ ()} , {1,1})
+end
+
+function TestSequence:testShareSimple()
+  local df   = drift "df" { l=1, at=1.5 }
+  local seq1 = sequence "seq1"  { df }
+  local seq2 = sequence "seq2"  { drift "df" { l=1, at=3.5, truc=42 } }
+  seq1:share(seq2)
+  assertIs(seq1[2], seq2[2])
+  assertIs(seq2[2], df)
+end
+
+function TestSequence:testShareSimpleOrder()
+  local df   = drift "df" { l=1, at=3.5, var=42 }
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=1.5 } }
+  local seq2 = sequence "seq2"  { df }
+  seq2:share(seq1)
+  assertEquals(seq1[2].var, 42)
+  assertEquals(seq2[2].var, 42)
+  assertIs(seq1[2], seq2[2])
+  assertIs(seq2[2], df)
+end
+
+function TestSequence:testShare()
+  local df11  = drift "df1" { l = 3, at = 1.5 }
+  local df12  = drift "df2" { l = 1, at = 4.5 }
+  local df13  = drift "df3" { l = 2, at = 6   }
+
+  local df21  = drift "df1" { l = 3, at = 2.5 }
+  local df22  = drift "df2" { l = 1, at = 8.5 }
+  local df23  = drift "df3" { l = 2, at = 6   }
+
+  local seq1 = sequence "seq1" {
+    df11,
+    drift "df4" { l = 1, at = 3.5 },
+    df12,
+    df13,
+  }
+  local seq2 = sequence "seq2" {
+    drift "df5" { l = 1, at = 0.5 },
+    df21,
+    drift "df6" { l = 1, at = 4.5 },
+    df23,
+    drift "df7" { l = 1, at = 7.5 },
+    df22,
+  }
+  local elm_r, idx_r = seq1:share(seq2)
+  assertEquals(elm_r, {df21, df22, df23})
+  assertEquals(idx_r, {3, 7, 5})
+  assertIs(seq1[2], seq2[3]); assertIs(seq2[3], df11)
+  assertIs(seq1[4], seq2[7]); assertIs(seq2[7], df12)
+  assertIs(seq1[5], seq2[5]); assertIs(seq2[5], df13)
+end
+
+function TestSequence:testShareDiffLenInvalid()
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=2 } }
+  local seq2 = sequence "seq2"  { drift "df" { l=2, at=2 } }
+  local msg  = {
+    "incompatible shared elements (lengths differ)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+end
+
+function TestSequence:testShareDiffPosInvalid()
+  local seq1 = sequence "seq1"  { drift "df" { l=1, at=2, refpos="centre"} }
+  local seq2 = sequence "seq2"  { drift "df" { l=1, at=2, refpos="entry"} }
+  local msg  = {
+    "incompatible shared elements (epos-spos differ)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+end
+
+function TestSequence:testShareNonUniqueNameInvalid()
+  local seq1 = sequence "seq1" { drift "df" { l=1, at=2 } }
+  local seq2 = sequence "seq2" {
+    drift "df" { l=1, at=2 },
+    drift "df" { l=1, at=3 },
+  }
+  local msg  = {
+    "invalid shared element (must be unique)",
+  }
+  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
+  assertErrorMsgContains(msg[1], sequence.share, seq2, seq1)
+end
+
+function TestSequence:testDumpseqFileName()
+  local seq = sequence "seq" { l = 10,
+    drift      "df" { at =-3, l = 2, from = "next"                  },
+    marker     "mk" { at = 5                                        },
+    quadrupole "mq" { at = 3, l = 3, from = "prev", refpos = "exit" },
+  }
+  local fname  = "dumpseq.dat"
+  filesys.mkdir(rundir())
+  seq:dumpseq(rundir(fname))
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStream()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stream.dat"
+
+  filesys.mkdir(rundir())
+  local stream = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq(stream)
+  assertFiles(fname)
+end
+
+function TestSequence:testDumpseqStdout()
+  local seq    = getIdxSeq()
+  local fname  = "dumpseq-stdout.dat"
+  local stdout = io.stdout
+
+  filesys.mkdir(rundir())
+  io.stdout    = assert(io.open(rundir(fname), 'w'))
+  seq:dumpseq()
+  assertFiles(fname)
+
+  io.stdout    = stdout
+end
+
+function TestSequence:testUniqueIdentity()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  -- no param : unique identity
+  seq:unique()
+  assertTrue(seq[2]:is_instanceOf(df1)); assertNotIs(seq[2], df1)
+  assertIs  (seq[3], df2)
+  assertTrue(seq[4]:is_instanceOf(df1)); assertNotIs(seq[4], df1)
+end
+
+function TestSequence:testUniqueName()
+  local df11 = drift    "df1" { at = 1, from = "prev" }
+  local df12 = drift    "df1" { at = 1, from = "prev" }
+  local df2  = drift    "df2" { at = 1, from = "prev" }
+  local seq  = sequence "seq" { df11, df2, df12 }
+  -- no param : only unique identity (nothing is done here)
+  seq:unique()
+  assertIs(seq[2], df11)
+  assertIs(seq[3], df2 )
+  assertIs(seq[4], df12)
+end
+
+function TestSequence:testUniqueString()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique("%s cnt:%d idx:%d")
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueFunc()
+  local df11  = drift    "df1" { at = 1, from = "prev" }
+  local df12  = drift    "df1" { at = 1, from = "prev" }
+  local df2   = drift    "df2" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local names = {
+    "$start",
+    "df1 cnt:1 idx:2",
+    "df2",
+    "df1 cnt:2 idx:4",
+    "df1 cnt:3 idx:5",
+    "$end",
+  }
+  seq:unique(\name,cnt,idx -> name.." cnt:"..cnt.." idx:"..idx)
+  assertTrue(seq[2]:is_instanceOf(df11)); assertNotIs(seq[2], df11)
+  assertIs  (seq[3], df2 )
+  assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
+  assertIs  (seq[5], df12)
+  for i=1,#seq do assertEquals(seq[i].name, names[i]) end
+end
+
+function TestSequence:testUniqueInvalid()
+  local df1 = drift    "df1" { at = 1, from = "prev" }
+  local df2 = drift    "df2" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1 }
+  local msg = {
+    "cannot rename uniquely element 'df1' (already in use)",
+    "cannot rename uniquely element 'df3' (already in use)",
+  }
+  assertErrorMsgContains(msg[1], sequence.unique, seq, \s -> s)
+  assertErrorMsgContains(msg[1], sequence.unique, seq, "%s"   )
+  assertErrorMsgContains(msg[2], sequence.unique, seq, "df3"  )
 end
 
 -------------------------------------------------------------------------------o
