@@ -27,7 +27,7 @@
 local filesys, mtable, object                                     in MAD
 local assertTrue, assertFalse, assertNil, assertNotNil,
       assertEquals, assertErrorMsgContains, assertIs,
-      assertAlmostEquals,  assertNotIs                            in MAD.utest
+      assertAlmostEquals,  assertNotIs, assertStrContains         in MAD.utest
 local is_sequence, is_element, is_number                          in MAD.typeid
 local tblcpy, strsplitall                                         in MAD.utility
 local abs, eps, min                                               in MAD.gmath
@@ -42,7 +42,7 @@ local rundir   = \s -> 'sequence_run/'..(s or '')
 -- helpers --------------------------------------------------------------------o
 
 local function getIdxSeq()
-  local seq = sequence {
+  local seq = sequence "seq" {
     l = 5,
     marker     "name1" { at = 1, eid = 2 },
     quadrupole "name2" { at = 2, eid = 3 },
@@ -264,32 +264,33 @@ end
 
 -- forwarded meta-functions ---------------------------------------------------o
 
--- NOTE: sequences and elements SHOULD NOT be build on load!!!
+local function createOrigSeq()
+  local elm = {}
+  elm.ip = marker     'ip' {      }
+  elm.qf = quadrupole 'qf' { l=1  }
+  elm.ds = drift      'ds' { l=.5 }
+  elm.b1 = sbend      'b1' { l=2  }
+  elm.bl = sbend + drift
 
-local ip = marker     'ip' {      }
-local qf = quadrupole 'qf' { l=1  }
-local ds = drift      'ds' { l=.5 }
-local b1 = sbend      'b1' { l=2  }
-local bl = sbend + drift
+  elm.seq = sequence 'seq' {
+    refer = 'entry',
+    elm.ip 'IP1' { },
+    elm.qf 'QF1' { },
+    elm.ip 'IP2' { },
+    elm.ds 'DS1' { from = 'IP2' },
+    elm.b1 'B11' { from = 'prev' },
+  }
 
-local seq = sequence 'seq' {
-  refer = 'entry',
-  ip 'IP1' { },
-  qf 'QF1' { },
-  ip 'IP2' { },
-  ds 'DS1' { from = 'IP2' },
-  b1 'B11' { from = 'prev' },
-}
-
-local seq2 = sequence 'seq2' {
-  refer = 'entry',
-  ip 'IP1' { },
-  qf 'QF1' { },
-  ip 'IP2' { },
-  ds 'DS1' { at = 3 },
-  b1 'B11' { at = 5 },
-}
-
+  elm.seq2 = sequence 'seq2' {
+    refer = 'entry',
+    elm.ip 'IP1' { },
+    elm.qf 'QF1' { },
+    elm.ip 'IP2' { },
+    elm.ds 'DS1' { at = 3 },
+    elm.b1 'B11' { at = 5 },
+  }
+  return elm
+end
 -- print('seq' , seq. l) 3.5
 -- print('seq2', seq2.l) 7
 
@@ -306,20 +307,20 @@ end
 
 function TestSequenceOrig:testFlatten_sequ ()
   local vector in MAD
-  local lcell -- not set?
+  local elm   = createOrigSeq()
   local seqbl = sequence 'seq' {
     l = lcell, direction=1, refer = 'entry',
-    ip 'IP1' { at = 0 },
-    qf 'QF1' { at = 0 },
-    ip 'IP2' { at = lcell },
-    ds 'DS1' { at = 3},
-    ip 'IP1' { at = 4},
-    b1 'B11' { at = 5},
+    elm.ip 'IP1' { at = 0 },
+    elm.qf 'QF1' { at = 0 },
+    elm.ip 'IP2' { at = lcell },
+    elm.ds 'DS1' { at = 3},
+    elm.ip 'IP1' { at = 4},
+    elm.b1 'B11' { at = 5},
   }
   local seqs = sequence 'seq' {
     l = lcell, direction=1, refer = 'entry',
-    ip 'IP1' {at=0},
-    seq2     {at=0},
+    elm.ip 'IP1' {at=0},
+    elm.seq2     {at=0},
   }
 
   local bl = sbend + drift + vector(3)
@@ -328,17 +329,19 @@ function TestSequenceOrig:testFlatten_sequ ()
 end
 
 function TestSequenceOrig:testAdjust_len ()
-  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
-  assertEquals( sequence { ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
-  assertEquals( sequence { l= 5, ds {at=3}}.l, 5 )
-  assertEquals( sequence {       ip       }.l, 0 )
-  assertEquals( seq2     { l= 2           }.l, 2 )
+  local elm = createOrigSeq()
+  assertEquals( sequence { elm.ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
+  assertEquals( sequence { elm.ds {at=3}      }.l, 3.25 ) -- fail now if: l to small
+  assertEquals( sequence { l= 5, elm.ds {at=3}}.l, 5 )
+  assertEquals( sequence {       elm.ip       }.l, 0 )
+  assertEquals( elm.seq2 { l= 2               }.l, 2 )
 end
 
 function TestSequenceOrig:testSequence_len()
-  assertEquals( sequence {ip}.l, 0 )
-  assertEquals( seq      {  }.l, 3.5 )
-  assertEquals( seq2     {  }.l, 7 )
+  local elm = createOrigSeq()
+  assertEquals( sequence     { elm.ip }.l, 0 )
+  assertEquals( elm.seq      {        }.l, 3.5 )
+  assertEquals( elm.seq2     {        }.l, 7 )
 end
 
 function TestSequenceOrig:testWriteAccess() -- same as simple02
@@ -706,11 +709,49 @@ end
 
 function TestSequence:testInitLenInvalid()
   local param = { drift "df" { at = 10 }, l = 5 }
-  local msg = {
+  local msg   = {
     "invalid element position at s = 5m (negative drift -5m) in sequence \z
       'seq' for element '$end' at index 3",
   }
   assertErrorMsgContains(msg[1], sequence, "seq", param)
+end
+
+function TestSequence:testNamedAccess()
+  local df1 = drift    "df1" { }
+  local df2 = drift    "df2" { }
+  local df3 = drift    "df3" { }
+  local seq = sequence "seq" { df1, df2, df3 }
+  assertIs(seq.df1, df1)
+  assertIs(seq.df2, df2)
+  assertIs(seq.df3, df3)
+end
+
+function TestSequence:testCntProxy()
+  local seq = getIdxSeq()
+  -- index
+  assertIs(seq.name1[1], seq[2])
+  assertIs(seq.name1[2], seq[4])
+  assertIs(seq.name1[3], seq[5])
+  -- len
+  assertEquals(#seq.name1, 3)
+  -- ipairs
+  local i = 1
+  local values = { seq[2], seq[4], seq[5] }
+  for j,v in ipairs(seq.name1) do
+    assertIs(v, values[i])
+    assertEquals(i, j)
+    i = i + 1
+  end
+  -- pairs
+  i = 1
+  for j,v in pairs(seq.name1) do
+    assertIs(v, values[i])
+    assertEquals(i, j)
+    i = i + 1
+  end
+  assertEquals(i, 4)
+  -- string
+  assertStrContains(tostring(seq.name1), "sequence count: ")
 end
 
 function TestSequence:testIndexOfNum()
@@ -2713,6 +2754,23 @@ function TestSequence:testUniqueInvalid()
   assertErrorMsgContains(msg[1], sequence.unique, seq, \s -> s)
   assertErrorMsgContains(msg[1], sequence.unique, seq, "%s"   )
   assertErrorMsgContains(msg[2], sequence.unique, seq, "df3"  )
+end
+
+function TestSequence:testNegDriftInFinishSeqWithDebug()
+  local debug = MAD.option.debug
+  MAD.option.debug = 2
+  local msg = {
+    "invalid element position at s = 1m (negative drift -3m) in sequence \z
+      'seq' for element 'name1' at index 2",
+  }
+
+  local seq = getIdxSeq()
+  -- creates a negative drift
+  seq[2].l = 4
+  -- triggers a call to finish_sequ()
+  assertErrorMsgContains(msg[1], sequence.build_index, seq)
+
+  MAD.option.debug = debug
 end
 
 -------------------------------------------------------------------------------o
