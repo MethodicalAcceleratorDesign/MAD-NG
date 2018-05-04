@@ -917,7 +917,7 @@ static int collectargs(char **argv, int *flags)
 			*flags &= ~FLAGS_VERSION;
 			break;
 		case 'e':
-			*flags |= FLAGS_EXEC;
+			*flags |= FLAGS_EXEC; /* FALLTHRU */
 		case 'j':  /* LuaJIT extension */
 		case 'l':
 			*flags |= FLAGS_OPTION;
