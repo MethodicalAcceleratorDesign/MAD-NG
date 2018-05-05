@@ -182,7 +182,7 @@ mad_str_num (str_t str, ssz_t arg[5])
   }
 
   // ensure at least ±# or ±#. or ±.#
-  if(!n && d > 0) {
+  if(!n && d >= 0) {
     arg[1] = 0, arg[2] = arg[3] = arg[4] = -1; // no number found
     return str;
   }
