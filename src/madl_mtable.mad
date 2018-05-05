@@ -24,16 +24,16 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local object, vector, cvector, toboolean, env                    in MAD
-local bind1st, bind2nd, bind2st                                  in MAD.gfunc
-local sub, ltrue, lfalse                                         in MAD.operator
+local object, vector, cvector, toboolean, tocomplex, torange, env in MAD
+local bind1st, bind2nd, bind2st                                   in MAD.gfunc
+local sub, ltrue, lfalse                                          in MAD.operator
 local strtrim, strsplit, strbracket, strquote, strsplitall,
       fprintf, errorf, assertf, openfile, tblicpy, tblcpy, tblcat in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_complex,
       is_string, is_table, is_rawtable, is_range, isa_matrix,
       is_object, is_iterable, is_callable, set_concept, concept,
-      is_file                                                    in MAD.typeid
-local not_mappable, not_extendable, not_mutable                  in concept
+      is_file                                                     in MAD.typeid
+local not_mappable, not_extendable, not_mutable                   in concept
 
 local abs, min, max, ceil in math
 
@@ -1312,6 +1312,10 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
     k, v = hnam[k] or k, tbl[k]
     if is_number(v) then
       fprintf(file, '@ %-18s %%le  %s\n', k, tostring(v))
+    elseif is_complex(v) then
+      fprintf(file, '@ %-18s %%lz  %s\n', k, tostring(v))
+    elseif is_range(v) then
+      fprintf(file, '@ %-18s %%lr  %s\n', k, tostring(v))
     elseif is_string(v) then
       if k == 'type' and v == '' then v = tbl.kind end -- to review
       fprintf(file, '@ %-18s %%%02ds  %q\n', k, #v, v)
@@ -1325,23 +1329,22 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   end
 
   if ncol > 0 then
-    local fmt
     -- dump col names
     file:write('*')
-    fmt = ' %-17s '
     for i=1,ncol do
-      if i == ncol then fmt = ' %s\n' end
-      fprintf(file, fmt, cnam[i])
+      fprintf(file, i < ncol and ' %-17s ' or ' %s\n', cnam[i])
     end
 
     -- dump col types
     file:write('$')
-    fmt = ' %-17s '
     for i=1,ncol do
       v = cols[i][1]
-      local s = is_string(v) and '%s' or is_number(v) and '%le' or '%?'
-      if i == ncol then fmt = ' %s\n' end
-      fprintf(file, fmt, s)
+      local s = is_string (v) and '%s'  or
+                is_number (v) and '%le' or
+                is_complex(v) and '%lz' or
+                is_range  (v) and '%lr' or
+                is_boolean(v) and '%b'  or '%?'
+      fprintf(file, i < ncol and ' %-17s ' or ' %s\n', s)
     end
 
     -- dump rows
@@ -1378,25 +1381,31 @@ local function read (tbl, filnam_)
     ln = ln+1
     row, ncol = strsplitall(line, " \t", nil, row)
     if row[1] == '@' then
-      assertf(ncol == 4, "invalid header format (4 columns expected line %d)", ln)
+      assertf(ncol == 4, "invalid header format (4 columns expected, line %d)", ln)
       local typ = string.sub(row[3],-1)
-      if typ == 'e' then
+      -- types: b, {e, f}, {i, z}, r, s, t, ?
+          if typ == 'e' or typ == 'f' then                -- number
         hnam[row[2]] = assertf(tonumber(row[4]),
-                        "invalid header format (missing number line %d)", ln)
-      elseif typ == 'b' then
-        local res = toboolean(row[4])
-        assertf(res ~= nil, "invalid header format (missing boolean line %d)", ln)
-        hnam[row[2]] = res
-      elseif typ == 's' then
-        local res = strquote(row[4])
-        if #res ~= tonumber(string.sub(row[3],2,-2)) then
-          errorf("invalid header format (unmatched string length line %d)", ln)
+                        "invalid header format (missing number, line %d)", ln)
+      elseif typ == 'i' or typ == 'z' then                -- complex
+        hnam[row[2]] = assertf(tocomplex(row[4]),
+                        "invalid header format (missing complex, line %d)", ln)
+      elseif typ == 'r' then                              -- range
+        hnam[row[2]] = assertf(torange(row[4]),
+                        "invalid header format (missing range, line %d)", ln)
+      elseif typ == 'b' then                              -- boolean
+        hnam[row[2]] = toboolean(row[4])
+        assertf(hnam[row[2]] ~= nil,
+                        "invalid header format (missing boolean, line %d)", ln)
+      elseif typ == 's' then                              -- string
+        hnam[row[2]] = strquote(row[4])
+        if #hnam[row[2]] ~= tonumber(string.sub(row[3],2,-2)) then
+          errorf("invalid header format (unmatched string length, line %d)", ln)
         end
-        hnam[row[2]] = res
-      elseif typ == 't' then
+      elseif typ == 't' then                              -- table
         local res, n = strsplitall(strquote(row[4]), ",")
         if n ~= tonumber(string.sub(row[3],2,-2)) then
-          errorf("invalid header format (unmatched table length line %d)", ln)
+          errorf("invalid header format (unmatched table length, line %d)", ln)
         end
         for i=1,n do
           local r = tonumber(res[i]) or toboolean(res[i])
@@ -1404,16 +1413,16 @@ local function read (tbl, filnam_)
           res[i] = r
         end
         hnam[row[2]] = res
-      elseif typ == '?' then
+      elseif typ == '?' then                             -- unkownn
         hnam[row[2]] = row[4] ~= 'nil' and row[4] or nil
-      else
+      else                                               -- invalid
         error("invalid header field type: '"..typ.."'")
       end
       hnam[#hnam+1] = row[2]
     elseif row[1] == '*' then -- col names
       cnam, row.n = table.new(ncol-1,0), ncol-1
       for i=1,ncol-1 do cnam[i] = row[i+1] end
-    elseif row[1] == '$' then -- col types (discarded)
+    elseif row[1] == '$' then -- col types (discarded, optionnal)
       break
     end
   end
@@ -1434,10 +1443,11 @@ local function read (tbl, filnam_)
     ln = ln+1
     row, ncol = strsplitall(line, " \t", nil, row)
     if row.n ~= ncol then
-      errorf("invalid row format (%d missing columns line %d)", row.n-ncol, ln)
+      errorf("invalid row format (%d missing columns, line %d)", row.n-ncol, ln)
     end
     for i=1,ncol do -- convert to number or to boolean or remove quotes (if any)
-      local r = tonumber(row[i]) or toboolean(row[i])
+      local r = tonumber(row[i]) or tocomplex(row[i]) or
+                torange (row[i]) or toboolean(row[i])
       if is_nil(r) and row[i] ~= 'nil' then r = strquote(row[i]) end
       row[i] = r
     end
