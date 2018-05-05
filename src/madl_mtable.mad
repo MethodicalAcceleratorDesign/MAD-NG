@@ -24,15 +24,15 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local object, vector, toboolean, env                             in MAD
+local object, vector, cvector, toboolean, env                    in MAD
 local bind1st, bind2nd, bind2st                                  in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
 local strtrim, strsplit, strbracket, strquote, strsplitall,
-      fprintf, errorf, assertf, openfile, tblcpy, tblcat         in MAD.utility
-local is_nil, is_boolean, is_number, is_integer, is_decimal,
-      is_positive, is_string, is_table, is_rawtable, is_range,
-      is_file, is_matrix, is_object, is_iterable, is_callable,
-      set_concept, concept                                       in MAD.typeid
+      fprintf, errorf, assertf, openfile, tblicpy, tblcpy, tblcat in MAD.utility
+local is_nil, is_boolean, is_number, is_integer, is_complex,
+      is_string, is_table, is_rawtable, is_range, isa_matrix,
+      is_object, is_iterable, is_callable, set_concept, concept,
+      is_file                                                    in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
 
 local abs, min, max, ceil in math
@@ -399,14 +399,13 @@ local function copy (tbl, name_, owner_)
   cdat.nr    = nr                    -- #rows
   cdat.nc    = nc                    -- #cols
   cdat.ng    = 0                     -- #gens
-  cdat.rmax  = data.rmax             -- allocated rows
+  cdat.rmax  = nr                    -- allocated rows (no oversize with rmax)
 
   tblcpy(data.cidx, cdat.cidx)
   cdat.nvec = data.nvec == data.cidx and cdat.cidx or tblcpy(data.nvec)
   for i=0,nc do                      -- copy columns
     local col = data[i]
-    cdat[i] = is_matrix(col) and vector(nr) or table.new(nr,1)
-    for j=1,nr do cdat[i][j] = col[j] end
+    cdat[i] = isa_matrix(col) and col:copy() or tblicpy(col, table.new(nr,0))
   end
 
   cpy[_data] = cdat
@@ -565,7 +564,7 @@ local function set_readonly (tbl, set_)
     set_ = set_ ~= false and true or false
     if set_ ~= tbl:is_readonly() then
       for i=1,data.nc-data.ng do -- is_selected is never RO
-        if is_matrix(data[i]) then
+        if isa_matrix(data[i]) then
           data[i] = data[i]:set_readonly(set_)
         elseif set_ then
           data[i] = setmetatable({[_col]=data[i], [_data]=data}, col_mt)
@@ -653,21 +652,29 @@ local function expand (data, tbl, extra)
   local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 1e8, "too big mtable") -- should see 'out of memory' first
   local nr, nc, cvec = data.nr, data.nc-data.ng
-  for i=1,nc do -- process vectors or specialize
-    local val = data[i]
-    if is_matrix(val) or is_number(val[1]) and not data.nvec[i] then
-      data[i], cvec = vector(rmax):_reshapeto(nr), true
-      if nr > 1 then data[i]:copy(val) else data[i][1] = val[1] end
-    end
-  end
-  if data.rmax == 1 then -- process tables on 1st expand
-    for i=0,nc do
-      local val = data[i]
-      if not is_matrix(val) then
-        data[i] = table.new(rmax,0)
-        data[i][1] = val[1]
+
+  -- nth expand, expand only vectors
+  if data.rmax > 1 then
+    for i=1,nc do
+      local col = data[i]
+      if isa_matrix(col) then
+        data[i], data.rmax = col:same(rmax,1):_reshapeto(nr):copy(col), rmax
       end
     end
+    return
+  end
+
+  -- 1st expand, specialize vectors
+  for i=0,nc do
+    local col = data[i]
+        if is_number (col[1]) and not data.nvec[i] then
+      data[i], cvec =  vector(rmax):_reshapeto(1), true
+    elseif is_complex(col[1]) and not data.nvec[i] then
+      data[i], cvec = cvector(rmax):_reshapeto(1), true
+    else
+      data[i] = table.new(rmax,0)
+    end
+    data[i][1] = col[1]
   end
   data.rmax = cvec and rmax or 1e8
 end
@@ -829,7 +836,7 @@ end
 
 local function clrrow (data, ri) -- not exposed
   for ci=0,data.nc-data.ng do
-    data[ci][ri] = is_matrix(data[ci]) and 0 or nil
+    data[ci][ri] = isa_matrix(data[ci]) and 0 or nil
   end
 end
 
@@ -837,7 +844,7 @@ local function cpyrow (data, ri, val) -- not exposed
   for ci=1,data.nc-data.ng do
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
-    data[ci][ri] = is_matrix(data[ci]) and (v or 0) or v
+    data[ci][ri] = isa_matrix(data[ci]) and (v or 0) or v
   end
   data[0][ri] = nil
 end
@@ -889,7 +896,7 @@ local function add_row (tbl, val)
   for ci=1,data.nc-data.ng do
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
-    if is_matrix(data[ci])
+    if isa_matrix(data[ci])
     then data[ci]:_reshapeto(nr):seti(nr, v or 0)
     else data[ci][nr] = v
   end end
@@ -913,7 +920,7 @@ local function ins_row (tbl, key, val, ref_)
   for ci=1,data.nc-data.ng do
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
-    if is_matrix(data[ci])
+    if isa_matrix(data[ci])
     then data[ci]:_reshapeto(nr):shiftv(ri, 1):seti(ri, v or 0)
     else table.insert(data[ci], ri, v)
   end end
@@ -933,7 +940,7 @@ local function rem_row (tbl, key, ref_)
   rem_idx(data, ri) -- remove before update
   shf_idx(data, ri, -1)
   for ci=0,data.nc-data.ng do
-    if is_matrix(data[ci])
+    if isa_matrix(data[ci])
     then data[ci]:shiftv(ri, -1):seti(nr, 0):_reshapeto(nr-1)
     else table.move(data[ci], ri+1, nr, ri)[nr] = nil
   end end
@@ -1084,7 +1091,7 @@ local function remove (tbl, rng_, sel_)
 
   -- reshape vectors and clear tables
   for i=1,nc do
-    if is_matrix(data[i]) then data[i]:_reshapeto(ni) end
+    if isa_matrix(data[i]) then data[i]:_reshapeto(ni) end
   end
   data.nr = ni
 
@@ -1135,7 +1142,7 @@ local function insert (tbl, rows, rng_, sel_)
   data.nr = data.nr+nrs
   local nc = data.nc-data.ng
   for i=1,nc do
-    if is_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
+    if isa_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
   end
 
   -- insert rows by decreasing indexes
@@ -1171,7 +1178,7 @@ local function sort (tbl, cmp, rng_, sel_)
   -- sort indexes (indirectly)
   local row1  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
-  local idx_s = tblcpy(idx_r, table.new(nr,0))
+  local idx_s = tblicpy(idx_r, table.new(nr,0))
   table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
