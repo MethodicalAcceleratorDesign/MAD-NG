@@ -42,9 +42,8 @@ local abs in math
 -- backup original methods and metamethods
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val = sequence.var_raw, sequence.var_val
-local var_get, var_set = sequence_mt.__index, sequence_mt.__newindex
-local raw_get, seq_cpy = sequence.raw_get, sequence.copy
-local parent           = sequence.parent
+local raw_get, var_set = sequence.raw_get, sequence_mt.__newindex
+local seq_cpy = sequence.copy
 
 -- root object ----------------------------------------------------------------o
 
@@ -104,6 +103,16 @@ local function check_drift (seq, idx)
 
   ds = elem.spos[idx+1] - (elem.spos[idx  ]+elem[idx  ].l)
   if ds < -minlen then seq_poserr("element", seq, idx, elem.spos[idx]-ds) end
+end
+
+-- check shared element
+
+local function check_shared (seq, idx)
+  local elm = var_raw(seq,_data)[idx]
+  if is_nil(raw_get(elm, 'l') or raw_get(elm, 'refpos')) then
+    return elm.parent
+  end
+  seq_error("invalid shared element (l or refpos defined)", seq, idx, elm)
 end
 
 -- check sequence $start and $stop integrity
@@ -459,7 +468,7 @@ local function build_pos (seq, sref)
         seq_poserr('element', seq, idx, pos)
       end
       if elem[idx].shared == true then -- shared element
-        elem[idx] = elem[idx].parent
+        elem[idx] = check_shared(seq, idx)
       end
       pos = elem.spos[idx] + elem[idx].l
       idx = idx + 1
@@ -906,7 +915,7 @@ local function replace (seq, elm, rng_, sel_)
   for i=1,nr do
     local idx = idx_r[i]
     if seq[idx].shared == true then         -- shared element
-      seq[idx] = seq[idx].parent
+      seq[idx] = check_shared(seq, idx)
     end
     check_drift(seq, idx)                   -- check surrounding drifts
   end
@@ -986,7 +995,7 @@ local function install (seq, elm, rng_, sel_)
       table.insert(elem.epos, idx, epos[ie])
       elem.ne = elem.ne + 1
       if seq[idx].shared == true then    -- shared element
-        seq[idx] = seq[idx].parent
+        seq[idx] = check_shared(seq, idx)
       end
       check_drift(seq, idx)              -- check surrounding drifts
     end
