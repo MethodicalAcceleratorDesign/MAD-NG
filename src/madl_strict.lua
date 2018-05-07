@@ -5,15 +5,13 @@
 local IGNORED_EXTRAS
 local IGNORED_WRITES = {}
 local IGNORED_READS  = {
-  _PROMPT=true,
+  _PROMPT =true,
   _PROMPT2=true,
 }
 
 local MT = {
   __index = function (table, key)
-    if IGNORED_READS[key] then
-      return
-    end
+    if IGNORED_READS[key] then return end
     error("attempt to read undeclared variable: "..key, 2)
   end,
 
@@ -29,9 +27,9 @@ local MT = {
 
 local require_orig = require
 
-local function require_mod (modname)
+local function require_strict (modname)
   IGNORED_WRITES[modname] = true
-  return origRequire(modname)
+  return require_orig(modname)
 end
 
 -- Raises an error when an undeclared variable is read or written.
@@ -42,7 +40,7 @@ local function strict (extra)
   end
   setmetatable(_G, MT)
   IGNORED_EXTRAS = extra or {}
-  require = require_mod
+  require = require_strict
 end
 
 local function unstrict ()
