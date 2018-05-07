@@ -458,6 +458,9 @@ local function build_pos (seq, sref)
       if pos-minlen > elem.spos[idx] then
         seq_poserr('element', seq, idx, pos)
       end
+      if elem[idx].shared == true then -- shared element
+        elem[idx] = elem[idx].parent
+      end
       pos = elem.spos[idx] + elem[idx].l
       idx = idx + 1
     else                     -- subsequence
@@ -899,8 +902,14 @@ local function replace (seq, elm, rng_, sel_)
     elem[ii], elm_r[i] = elm[ie], elem[ii]     -- backup
     elem.spos[ii], elem.epos[ii] = uninitialized, uninitialized
   end
-  for i=1,nr do elem_pos   (seq, idx_r[i]) end -- recompute the positions
-  for i=1,nr do check_drift(seq, idx_r[i]) end -- check surrounding drifts
+  for i=1,nr do elem_pos(seq, idx_r[i]) end -- recompute the positions
+  for i=1,nr do
+    local idx = idx_r[i]
+    if seq[idx].shared == true then         -- shared element
+      seq[idx] = seq[idx].parent
+    end
+    check_drift(seq, idx)                   -- check surrounding drifts
+  end
 
   build_index(seq)
   return elm_r, idx_r
@@ -976,6 +985,9 @@ local function install (seq, elm, rng_, sel_)
       table.insert(elem.spos, idx, spos[ie])
       table.insert(elem.epos, idx, epos[ie])
       elem.ne = elem.ne + 1
+      if seq[idx].shared == true then    -- shared element
+        seq[idx] = seq[idx].parent
+      end
       check_drift(seq, idx)              -- check surrounding drifts
     end
   end
@@ -1033,13 +1045,15 @@ local function share (seq1, seq2)
       -- ensure that elements are unique in both sequences
       assert(is_integer(i1) and is_integer(i2), "invalid shared element (must be unique)")
       local e1, e2 = elem1[i1], elem2[i2]
-      assert(e1.__id == nam and e2.__id == nam, "unexpected corrupted dictionnary")
+      if e1 ~= e2 then
+        assert(e1.__id == nam and e2.__id == nam, "unexpected corrupted dictionnary")
         local ds1 = elem1.epos[i1]-elem1.spos[i1]
         local ds2 = elem2.epos[i2]-elem2.spos[i2]
         assert(abs(e1.l-e2.l) < minlen, "incompatible shared elements (lengths differ)")
         assert(abs(ds1 -ds2 ) < minlen, "incompatible shared elements (epos-spos differ)")
         -- update arrays
         elem2[i2], elm_r[nr], idx_r[nr], nr = e1, e2, i2, nr+1
+      end
     end
   end
   finish_sequ(seq1) finish_sequ(seq2)
