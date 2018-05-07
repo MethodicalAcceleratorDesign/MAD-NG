@@ -511,7 +511,7 @@ tbl_build_LC(int oa, int ob, D *d)
         ic = tv2to[tbl_index_H(d,d->nv,m)];
         idx_lc = hpoly_idx(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
-#if DEBUG > 1
+#if DEBUG > 2
         printf(" ib=%d ", ib); mad_mono_print(d->nv, To[ib]);
         printf(" ia=%d ", ia); mad_mono_print(d->nv, To[ia]);
         printf(" ic=%d ", ic); mad_mono_print(d->nv, m);
@@ -734,7 +734,7 @@ build_dispatch (D *d)
     sizes[t] = 0;
   }
 
-  long long int ops[d->mo+1], dops[nth];
+  long long int ops[d->mo+2], dops[nth];
   memset(dops, 0, nth * sizeof *dops);
   get_ops(d, ops);
 
@@ -748,10 +748,10 @@ build_dispatch (D *d)
   // parallel
   if (nth > 1) {
     for (int o = d->mo+1; o > 2; --o) {
-      int idx = get_min_dispatched_idx(d->nth,dops+1);
-      assert(idx >= 0 && idx < d->nth);
-      d->ocs[1+idx][sizes[1+idx]++] = o;
-      dops[1+idx] += ops[o];
+      int idx = get_min_dispatched_idx(d->nth,dops+1) + 1;
+      assert(idx > 0 && idx <= d->nth);
+      d->ocs[idx][sizes[idx]++] = o;
+      dops[idx] += ops[o];
     }
   }
 
@@ -783,7 +783,10 @@ set_temps (D *d)
   }
 
 #if DEBUG > 1
-  printf("\n#TEMPS TPSA=%d\n", 2*DESC_MAX_TMP*d->nth);
+  printf("\nTEMPS #TPSA = 2 (R&C) x %d (#TMPS) x %d (Threads) = %d\n"
+         "TEMPS TMEM  = %d (TPSA) x %d (nc) = %llu bytes\n",
+          DESC_MAX_TMP, d->nth, 2*DESC_MAX_TMP*d->nth, 2*DESC_MAX_TMP*d->nth,
+          d->nc, 2*DESC_MAX_TMP*d->nth* 3ull*d->nc*sizeof(num_t)/2);
 #endif
 }
 
