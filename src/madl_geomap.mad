@@ -1,0 +1,162 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Geometric 3D maps
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a catalog of geometric 3D maps (i.e. survey)
+    maps have the following calling convention:
+      geomap(elm, map)
+    where the expected fields are:
+
+    map -> { dir ; R, S, T, V, W }
+    elm -> { l, angle, phi, theta, psi, dx, dy, dz}
+
+    (see the code for optionnal fields.)
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- locals ---------------------------------------------------------------------o
+
+local abs, sin, cos  in math
+local minlen, minang in MAD.constant
+
+-- patches --------------------------------------------------------------------o
+
+-- X-rotation (pitch)
+
+function M.xrotation (elm, m) -- Rx(phi)
+  local phi = elm.phi or 0
+  if abs(phi) < minang then return end
+
+  m.S :rotx(-phi*m.dir)
+  m.W = m.W * m.S
+end
+
+-- Y-rotation (yaw)
+
+function M.yrotation (elm, m) -- Ry(theta)
+  local theta = elm.theta or 0
+  if abs(theta) < minang then return end
+
+  m.S :roty(-theta*m.dir)
+  m.W = m.W * m.S
+end
+
+-- S-rotation (roll, tilt)
+
+function M.srotation (elm, m) -- Rz(psi)
+  local psi = elm.psi or 0
+  if abs(psi) < minang then return end
+
+  m.S :rotz(psi*m.dir)
+  m.W = m.W * m.S
+end
+
+-- Translation (dz treated a drift)
+
+function M.translate (elm, m)
+  local dx = elm.dx or 0, dy = elm.dy or 0, dz = elm.dz or 0
+
+  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
+
+  local dir in m
+  m.R :fill {dx*dir, dy*dir, dz*dir}
+  m.V = m.W * m.R + m.V
+end
+
+-- Changedir (reverse x and angles)
+
+function M.changedir (_, m)
+  m.dir = -m.dir
+end
+
+-- Forward patch
+
+function M.fwdpatch (elm, m)
+  xrotation(elm, m)    -- phi  : Elevation angle.
+  yrotation(elm, m)    -- theta: Azimuthal angle.
+  srotation(elm, m)    -- psi  : Roll      angle.
+  translate(elm, m)
+end
+
+-- Backward patch
+
+function M.bwdpatch (elm, m)
+  translate(elm, m)
+  srotation(elm, m)    -- psi  : Roll      angle.
+  yrotation(elm, m)    -- theta: Azimuthal angle.
+  xrotation(elm, m)    -- phi  : Elevation angle.
+end
+
+-- kinds ----------------------------------------------------------------------o
+
+function M.drift (elm, m) -- e.g. drift, monitor, ...
+  local l in elm
+  if abs(l) < minlen then return end
+
+  m.R :fill {0, 0, l}
+  m.V = m.W * m.R + m.V
+end
+
+function M.thin (elm, m) -- e.g. multipole
+  local angle in elm
+  if abs(angle) < minang then return end
+
+  local dir in m
+  m.S :roty(-angle * dir)
+
+  local tilt in elm
+  if abs(tilt) >= minang then
+    m.T :rotz(tilt * dir)
+    m.S = m.T * m.S * m.T:t()
+  end
+
+  m.W = m.W * m.S
+end
+
+function M.thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
+  local l in elm
+  if abs(l) < minlen then
+    return M.thin(elm, m)
+  end
+
+  local angle in elm
+  if abs(angle) < minang then
+    return M.drift(elm, m)
+  end
+
+  local dir in m
+  angle = angle*dir
+  local rho = l/angle
+  m.R :fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
+  m.S :roty(-angle)
+
+  local tilt in elm
+  if abs(tilt) >= minang then
+    m.T :rotz(tilt*dir)
+    m.R = m.T * m.R
+    m.S = m.T * m.S * m.T:t()
+  end
+
+  m.V = m.W * m.R + m.V
+  m.W = m.W * m.S
+end
+
+-- end ------------------------------------------------------------------------o
+return M
