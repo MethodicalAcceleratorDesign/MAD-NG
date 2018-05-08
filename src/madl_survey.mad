@@ -27,20 +27,38 @@ local vector, matrix, element, mtable, command               in MAD
 local is_nil, is_sequence                                    in MAD.typeid
 local minlen, minang                                         in MAD.constant
 local observe                                                in element.flags
+local errorf                                                 in MAD.utility
 
 local abs, sin, cos                                          in math
 
+-- maps -----------------------------------------------------------------------o
+
+local geomaps = require "madl_geomap"
+
 -- special --------------------------------------------------------------------o
 
-local function empty_survey () end
+local empty_survey = \ -> ()
 
-local function invalid_survey (elm)
-  error(string.format("invalid element %s of kind %s with length %s",
-                      elm.name, elm.kind, elm.l))
-end
+local invalid_survey = \e ->
+  errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
 
-element.  extra_element :set_methods { survey = invalid_survey } -- not valid
-element.special_element :set_methods { survey =   empty_survey } -- default
+-- load maps into elements ----------------------------------------------------o
+
+local E = element
+
+E.  extra_element :set_methods { survey = invalid_survey } -- not valid
+E.special_element :set_methods { survey =   empty_survey } -- default
+
+E. thin_element   :set_methods { survey = geomaps.thin }
+E.drift_element   :set_methods { survey = geomaps.drift }
+E.patch_element   :set_methods { survey = geomaps.patch }
+E.thick_element   :set_methods { survey = geomaps.thick }
+
+E.changedir       :set_methods { survey = geomaps.changedir   }
+E.srotation       :set_methods { survey = geomaps.srotation   }
+E.yrotation       :set_methods { survey = geomaps.yrotation   }
+E.xrotation       :set_methods { survey = geomaps.xrotation   }
+E.translation     :set_methods { survey = geomaps.translation }
 
 -- angles adjustment ----------------------------------------------------------o
 
@@ -48,158 +66,6 @@ local function update_angles (m)
   local A, W in m
   A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
 end
-
--- drifts ---------------------------------------------------------------------o
-
-local function straight_drift (_, m, l)
-  if abs(l) < minlen then return end
-
-  m.R :fill {0, 0, l}
-  m.V = m.W * m.R + m.V
-end
-
--- patches --------------------------------------------------------------------o
-
--- X-rotation (pitch)
-
-local function xrotation (_, m, angle) -- Rx(angle)
-  if abs(angle) < minang then return end
-
-  m.S :rotx(-angle*m.dir)
-  m.W = m.W * m.S
-end
-
--- Y-rotation (yaw)
-
-local function yrotation (_, m, angle) -- Ry(angle)
-  if abs(angle) < minang then return end
-
-  m.S :roty(-angle*m.dir)
-  m.W = m.W * m.S
-end
-
--- S-rotation (roll, tilt)
-
-local function srotation (_, m, angle) -- Rz(angle)
-  if abs(angle) < minang then return end
-
-  m.S :rotz(angle*m.dir)
-  m.W = m.W * m.S
-end
-
--- Translation (ds treated as drift length)
-
-local function translate (_, m, dx, dy, dz)
-  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
-
-  local dir in m
-  m.R :fill {dx*dir, dy*dir, dz*dir}
-  m.V = m.W * m.R + m.V
-end
-
--- Changedir (reverse x and angles)
-
-local function changedir (_, m)
-  m.dir = -m.dir
-end
-
--- Changeref (change reference frame)
-
-local function changeref (elm, m)
-  local x, y, z, theta, phi, psi in elm
-  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
-  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
-  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
-  translate(nil, m, x or 0, y or 0, z or 0)
-end
-
--- Forward/Backward patches
-
-local function forward_patch (elm, m)
-  local x, y, z, theta, phi, psi in elm
-  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
-  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
-  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
-  translate(nil, m, x     or 0, y or 0, z or 0)
-end
-
-local function backward_patch (elm, m)
-  local x, y, z, theta, phi, psi in elm
-  translate(nil, m, x     or 0, y or 0, z or 0)
-  srotation(nil, m, psi   or 0)    -- psi  : Roll      angle.
-  yrotation(nil, m, theta or 0)    -- theta: Azimuthal angle.
-  xrotation(nil, m, phi   or 0)    -- phi  : Elevation angle.
-end
-
--- element kind tracking ------------------------------------------------------o
-
-local function patch_survey (elm, m, pos)
-  if pos == 'entry'
-  then forward_patch (elm, m)
-  else backward_patch(elm, m) -- not correct, need local survey patch
-  end
-end
-
-local function thin_survey (elm, m) -- e.g. multipole
-  local angle in elm
-  if abs(angle) < minang then return end
-
-  local dir in m
-  m.S :roty(-angle * dir)
-
-  local tilt in elm
-  if abs(tilt) >= minang then
-    m.T :rotz(tilt * dir)
-    m.S = m.T * m.S * m.T:t()
-  end
-
-  m.W = m.W * m.S
-end
-
-local function drift_survey (elm, m) -- e.g. monitor
-  straight_drift(nil, m, elm.l)
-end
-
-local function thick_survey (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  local l, angle in elm
-  if abs(l) < minlen then
-    return thin_survey(elm, m)
-  end
-  if abs(angle) < minang then
-    return straight_drift(nil, m, l)
-  end
-
-  local dir in m
-  angle = angle*dir
-  local rho = l/angle
-  m.R :fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
-  m.S :roty(-angle)
-
-  local tilt in elm
-  if abs(tilt) >= minang then
-    m.T :rotz(tilt*dir)
-    m.R = m.T * m.R
-    m.S = m.T * m.S * m.T:t()
-  end
-
-  m.V = m.W * m.R + m.V
-  m.W = m.W * m.S
-end
-
--- load maps into elements ----------------------------------------------------o
-
-local E = element
-
-E. thin_element :set_methods { survey =  thin_survey }
-E.drift_element :set_methods { survey = drift_survey }
-E.patch_element :set_methods { survey = patch_survey }
-E.thick_element :set_methods { survey = thick_survey }
-
-E.changedir   :set_methods { survey = \_,m -> changedir(nil, m) }
-E.srotation   :set_methods { survey = \e,m -> srotation(nil, m, e.angle) }
-E.yrotation   :set_methods { survey = \e,m -> yrotation(nil, m, e.angle) }
-E.xrotation   :set_methods { survey = \e,m -> xrotation(nil, m, e.angle) }
-E.translation :set_methods { survey = \e,m -> translate(nil, m, e.dx or 0, e.dy or 0, e.dz or 0) }
 
 -- survey command -------------------------------------------------------------o
 
@@ -264,6 +130,8 @@ local function make_mflow (self)
            [_srv]=_srv }
 end
 
+local dft = element.drift { l=0 } -- implicit drift template
+
 local function exec (self)
   assert(self[_srv], "invalid argument #1 (survey expected)")
   local seq = assert(self.sequence, "missing sequence")
@@ -281,20 +149,21 @@ local function exec (self)
   local range, nturn in self
 
   -- affine tracking
-  for i,elm in seq:iter(range, nturn) do
+  for i,elm in seq:iter(range, nturn) do -- TODO: recover spos
 
     -- implicit drift
     local ds in map
     if ds >= minlen then
-      straight_drift(nil, map, ds)
+      dft.l = ds ; geomaps.drift(dft, map)
+      -- dftmap(ds, map)
       if drift and elm:is_selected(observe) then
         ndft = ndft+1
         fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, ds)
       end
       map.s, map.ds = map.s+ds, 0
     elseif ds <= -minlen then
-      error(string.format("negative implicit drift %s in %s['%s'] at %s",
-            ds, seq.name, elm.name, map.s))
+      errorf("negative implicit drift %s in %s['%s'] at %s",
+             ds, seq.name, elm.name, map.s)
     end
 
     -- sequence element
@@ -324,7 +193,4 @@ local survey = command 'Survey' {
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
-return {
-  survey = survey,
-  -- __help = require 'madh_survey',
-}
+return { survey = survey }
