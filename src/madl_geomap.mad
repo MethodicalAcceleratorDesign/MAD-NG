@@ -21,10 +21,10 @@
       geomap(elm, map)
     where the expected fields are:
 
-    map -> { dir ; R, S, T, V, W }
+    map -> { dir, V, W ; R, S, T, U }
     elm -> { l, angle ; phi, theta, psi, dx, dy, dz}
 
-    (fields beyond ; are optionnal)
+    (fields beyond ; are optionnal or internal)
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -35,6 +35,7 @@ local M = {}
 
 local abs, sin, cos  in math
 local minlen, minang in MAD.constant
+local errorf         in MAD.utility
 
 -- patches --------------------------------------------------------------------o
 
@@ -51,10 +52,10 @@ end
 -- Y-rotation (yaw)
 
 function M.yrotation (elm, m) -- Ry(-theta)
-  local theta = elm.theta or 0
-  if abs(theta) < minang then return end
+  local th = elm.theta or 0
+  if abs(th) < minang then return end
 
-  m.S :roty(-theta*m.dir)
+  m.S :roty(-th*m.dir)
   m.W :mul(m.S, m.W) -- W = W*S
 end
 
@@ -68,7 +69,7 @@ function M.srotation (elm, m) -- Rz(psi)
   m.W :mul(m.S, m.W) -- W = W*S
 end
 
--- Translation (dz treated as a drift)
+-- Translation
 
 function M.translate (elm, m)
   local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
@@ -79,28 +80,60 @@ function M.translate (elm, m)
   m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
+-- MAD patch
+
+function M.madpatch (elm, m)
+  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+
+  local dir in m
+  m.S :rotmad(th*dir, phi*dir, psi*dir)
+  m.W :mul(m.S, m.W) -- W = W*S
+
+  M.translate(elm, m)
+end
+
+-- Forward patch
+
+function M.xystpatch (elm, m)
+  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+
+  local dir in m                           -- phi  : Elevation angle.
+  m.S :rotxyz(phi*dir, th*dir, psi*dir)    -- theta: Azimuthal angle.
+  m.W :mul(m.S, m.W) -- W = W*S            -- psi  : Roll      angle.
+
+  M.translate(elm, m)
+end
+
+-- Backward patch
+
+function M.tsyxpatch (elm, m)
+  M.translate(elm, m)
+
+  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+
+  local dir in m                           -- psi  : Roll      angle.
+  m.S :rotzyx(phi*dir, th*dir, psi*dir)    -- theta: Azimuthal angle.
+  m.W :mul(m.S, m.W) -- W = W*S            -- phi  : Elevation angle.
+end
+
 -- Changedir (reverse x and angles)
 
 function M.changedir (_, m)
   m.dir = -m.dir
 end
 
--- Forward patch
+-- Changeref (generic patch)
 
-function M.fwdpatch (elm, m)
-  M.xrotation(elm, m)    -- phi  : Elevation angle.
-  M.yrotation(elm, m)    -- theta: Azimuthal angle.
-  M.srotation(elm, m)    -- psi  : Roll      angle.
-  M.translate(elm, m)
-end
+function M.changeref (elm, m)
+  local typ = elm.patch or 'xyst'
 
--- Backward patch
-
-function M.bwdpatch (elm, m)
-  M.translate(elm, m)
-  M.srotation(elm, m)    -- psi  : Roll      angle.
-  M.yrotation(elm, m)    -- theta: Azimuthal angle.
-  M.xrotation(elm, m)    -- phi  : Elevation angle.
+      if typ == 'xyst' then M.xystpatch(elm, m)
+  elseif typ == 'tsyx' then M.tsyxpatch(elm, m)
+  else errorf("invalid patch type '%s' ('xyst' or 'tsyx' expected)", typ)
+  end
 end
 
 -- kinds ----------------------------------------------------------------------o
