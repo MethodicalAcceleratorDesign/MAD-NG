@@ -40,44 +40,43 @@ local minlen, minang in MAD.constant
 
 -- X-rotation (pitch)
 
-function M.xrotation (elm, m) -- Rx(phi)
+function M.xrotation (elm, m) -- Rx(-phi)
   local phi = elm.phi or 0
   if abs(phi) < minang then return end
 
   m.S :rotx(-phi*m.dir)
-  m.W = m.W * m.S
+  m.W :mul(m.S, m.W) -- W = W*S
 end
 
 -- Y-rotation (yaw)
 
-function M.yrotation (elm, m) -- Ry(theta)
+function M.yrotation (elm, m) -- Ry(-theta)
   local theta = elm.theta or 0
   if abs(theta) < minang then return end
 
   m.S :roty(-theta*m.dir)
-  m.W = m.W * m.S
+  m.W :mul(m.S, m.W) -- W = W*S
 end
 
 -- S-rotation (roll, tilt)
 
-function M.srotation (elm, m) -- Rz(-psi)
+function M.srotation (elm, m) -- Rz(psi)
   local psi = elm.psi or 0
   if abs(psi) < minang then return end
 
   m.S :rotz(psi*m.dir)
-  m.W = m.W * m.S
+  m.W :mul(m.S, m.W) -- W = W*S
 end
 
 -- Translation (dz treated as a drift)
 
 function M.translate (elm, m)
   local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
-
-  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
+  if abs(dx)+abs(dy)+abs(dz) < 3*minlen then return end
 
   local dir in m
   m.R :fill {dx*dir, dy*dir, dz*dir}
-  m.V = m.W * m.R + m.V
+  m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
 -- Changedir (reverse x and angles)
@@ -111,7 +110,7 @@ function M.drift (elm, m) -- e.g. drift, monitor, ...
   if abs(l) < minlen then return end
 
   m.R :fill {0, 0, l}
-  m.V = m.W * m.R + m.V
+  m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
 function M.thin (elm, m) -- e.g. multipole
@@ -119,15 +118,15 @@ function M.thin (elm, m) -- e.g. multipole
   if abs(angle) < minang then return end
 
   local dir in m
-  m.S :roty(-angle * dir)
+  m.S :roty(-angle*dir)
 
   local tilt in elm
   if abs(tilt) >= minang then
-    m.T :rotz(tilt * dir)
-    m.S = m.T * m.S * m.T:t()
+    m.T :rotz(tilt*dir)
+    m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
-  m.W = m.W * m.S
+  m.W :mul(m.S, m.W) -- W = W*S
 end
 
 function M.thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
@@ -150,12 +149,12 @@ function M.thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   local tilt in elm
   if abs(tilt) >= minang then
     m.T :rotz(tilt*dir)
-    m.R = m.T * m.R
-    m.S = m.T * m.S * m.T:t()
+    m.T :mul(m.R, m.R)                 -- R = T*R
+    m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
-  m.V = m.W * m.R + m.V
-  m.W = m.W * m.S
+  m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
+  m.W :mul(m.S, m.W)                   -- W = W*S
 end
 
 -- end ------------------------------------------------------------------------o
