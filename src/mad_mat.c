@@ -36,10 +36,6 @@
 #define CHKYR    assert( y && r )
 #define CHKXYR   assert( x && y && r )
 #define CHKXRX   assert( x && r && x != r)
-#define CHKYRY   assert( y && r && y != r)
-#define CHKXYRX  assert( x && y && r && x != r )
-#define CHKXYRY  assert( x && y && r && y != r )
-#define CHKXYRXY assert( x && y && r && x != r && y != r )
 
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
@@ -436,22 +432,64 @@ void mad_mat_dotm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t
 { CHKXYR; DOT(); }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; MUL(); }
+{ CHKXYR;
+  if (x != r && y != r) { MUL(); return; }
+  mad_alloc_tmp(num_t, r_, m*n);
+  num_t *t = r; r = r_;
+  MUL();
+  mad_vec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_mulm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRY; MUL(); }
+{ CHKXYR;
+  if (y != r) { MUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_tmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; TMUL(); }
+{ CHKXYR;
+  if (x != r && y != r) { TMUL(); return; }
+  mad_alloc_tmp(num_t, r_, m*n);
+  num_t *t = r; r = r_;
+  TMUL();
+  mad_vec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_tmulm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRY; TMUL(); }
+{ CHKXYR;
+  if (y != r) { TMUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  TMUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_mult (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; MULT(); }
+{ CHKXYR;
+  if (x != r && y != r) { MULT(); return; }
+  mad_alloc_tmp(num_t, r_, m*n);
+  num_t *t = r; r = r_;
+  MULT();
+  mad_vec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_multm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRY; MULT(conj); }
+{ CHKXYR;
+  if (y != r) { MULT(conj); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULT(conj);
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
@@ -535,22 +573,64 @@ void mad_cmat_dotm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_
 { CHKXYR; DOT(conj); }
 
 void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; MUL(); }
+{ CHKXYR;
+  if (x != r && y != r) { MUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_mulm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRX; MUL(); }
+{ CHKXYR;
+  if (x != r) { MUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_tmul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; TMUL(conj); }
+{ CHKXYR;
+  if (x != r && y != r) { TMUL(conj); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  TMUL(conj);
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_tmulm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRX; TMUL(conj); }
+{ CHKXYR;
+  if (x != r) { TMUL(conj); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  TMUL(conj);
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_mult (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRXY; MULT(conj); }
+{ CHKXYR;
+  if (x != r && y != r) { MULT(conj); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULT(conj);
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYRX; MULT(); }
+{ CHKXYR;
+  if (x != r) { MULT(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULT();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
 
 void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
