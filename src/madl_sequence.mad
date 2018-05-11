@@ -28,7 +28,7 @@ local M = {}
 local warn                                                       in MAD
 local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
-local sequence, marker, changedir, flags                         in MAD.element
+local sequence, marker, drift, changedir, flags                  in MAD.element
 local minlen                                                     in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, errorf, openfile   in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_decimal,
@@ -1119,7 +1119,7 @@ local function fwditer (state, i)
   if i < state.ne then
     i = i+1
   else
-    i, state.soff = 1, state.soff+state.l
+    i, state.soff = 1, state.soff+state.seq_l
   end
   return i, state.elem[i], state.spos[i]+state.soff
 end
@@ -1132,10 +1132,72 @@ local function bwditer (state, i)
   if i > 1 then
     i = i-1
   else
-    i, state.soff = state.ne, state.soff+state.l
+    i, state.soff = state.ne, state.soff+state.seq_l
   end
   return i, state.elem[i], state.spos[i]+state.elem[i].l-state.soff
 end
+
+---
+
+local function fwdsiter (state, i)
+  if i == state.stop then
+    if state.turn == 0 then return nil end
+    state.turn = state.turn-1
+  end
+  if i < state.ne then
+    if rawequal(state.elm, state.dft) then -- last was implicit drift
+      i = i+1
+      state.pos = state.spos[i]
+      state.elm = state.elem[i]
+    else
+      local dl = state.spos[i+1] - (state.spos[i]+state.elm.l)
+      if dl < minlen then                  -- implicit drift is too small
+        i = i+1
+        state.pos = state.spos[i]
+        state.elm = state.elem[i]
+      else                                 -- update implicit drift
+        state.pos   = state.spos[i]+state.elm.l
+        state.elm   = state.dft
+        state.elm.l = dl
+      end
+    end
+  else
+    i, state.elm    , state.pos    , state.soff =
+    1, state.elem[1], state.spos[1], state.soff+state.seq_l
+  end
+  return i, state.elm, state.pos+state.soff
+end
+
+local function bwdsiter (state, i)
+  if i == state.stop then
+    if state.turn == 0 then return nil end
+    state.turn = state.turn-1
+  end
+  if i > 1 then
+    if rawequal(state.elm, state.dft) then -- last was implicit drift
+      i = i-1
+      state.elm = state.elem[i]
+      state.pos = state.spos[i]+state.elm.l
+    else
+      local dl = state.spos[i] - (state.spos[i-1]+state.elem[i-1].l)
+      if dl < minlen then                  -- implicit drift is too small
+        i = i-1
+        state.elm = state.elem[i]
+        state.pos = state.spos[i]+state.elm.l
+      else                                 -- update implicit drift
+        state.pos   = state.spos[i]
+        state.elm   = state.dft
+        state.elm.l = dl
+      end
+    end
+  else
+    i, state.soff = state.ne, state.soff+state.seq_l
+    state.elm, state.pos = state.elem[i], state.spos[i]+state.elem[i].l
+  end
+  return i, state.elm, state.pos+state.elm.l-state.soff
+end
+
+---
 
 local function iter (seq, rng_, ntrn_, dir_)
   local nturn, dir = ntrn_ or 0, dir_ or 1
@@ -1162,7 +1224,15 @@ local function iter (seq, rng_, ntrn_, dir_)
 
   local soff = dir > 0 and -elem.spos[start] or elem.spos[start]+elem[start].l
   return dir > 0 and fwditer or bwditer, {elem=elem, spos=elem.spos, soff=soff,
-         l=seq.l, ne=elem.ne, stop=stop, turn=nturn}, start-dir
+         seq_l=seq.l, ne=elem.ne, stop=stop, turn=nturn}, start-dir
+end
+
+local function siter (seq, rng_, ntrn_, dir_)
+  local iter, state, start = iter(seq, rng_, nturn_, dir_)
+  local dir = dir_ or 1
+  state.dft = drift 'DRIFT_' { l=0, implicit=true }  -- implicit drift (shared)
+  state.elm = state.dft                              -- init
+  return dir > 0 and fwdsiter or bwdsiter, state, start
 end
 
 -- flags ----------------------------------------------------------------------o
@@ -1260,6 +1330,7 @@ sequence :set_methods {
   share         = share,
   unique        = unique,
   iter          = iter,
+  siter         = siter,
 
   -- flags
   save_flags    = save_flags,
