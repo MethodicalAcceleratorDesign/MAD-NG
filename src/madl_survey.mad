@@ -24,6 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local vector, matrix, element, mtable, command               in MAD
+local fnone                                                  in MAD.gfunc
 local is_nil, is_sequence                                    in MAD.typeid
 local minlen, minang                                         in MAD.constant
 local observe                                                in element.flags
@@ -37,28 +38,27 @@ local geomap = require "madl_geomap"
 
 -- special --------------------------------------------------------------------o
 
-local special_survey = \ -> ()
-
-local invalid_survey = \e ->
+local invalid = \e ->
   errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
 
 -- load maps into elements ----------------------------------------------------o
 
 local E = element
 
-E.  extra_element :set_methods { survey = invalid_survey }
-E.special_element :set_methods { survey = special_survey }
+E. thin_element :set_methods { survey = geomap.thin  }
+E.drift_element :set_methods { survey = geomap.drift }
+E.thick_element :set_methods { survey = geomap.thick }
+E.extra_element :set_methods { survey = invalid }
 
-E. thin_element   :set_methods { survey = geomap.thin  }
-E.drift_element   :set_methods { survey = geomap.drift }
-E.thick_element   :set_methods { survey = geomap.thick }
+E.special       :set_methods { survey = fnone   }
+E.patch         :set_methods { survey = invalid }
 
-E.srotation       :set_methods { survey = geomap.srotation }
-E.xrotation       :set_methods { survey = geomap.xrotation }
-E.yrotation       :set_methods { survey = geomap.yrotation }
-E.translate       :set_methods { survey = geomap.translate }
-E.changedir       :set_methods { survey = geomap.changedir }
-E.changeref       :set_methods { survey = geomap.changeref }
+E.srotation     :set_methods { survey = geomap.srotation }
+E.xrotation     :set_methods { survey = geomap.xrotation }
+E.yrotation     :set_methods { survey = geomap.yrotation }
+E.translate     :set_methods { survey = geomap.translate }
+E.changedir     :set_methods { survey = geomap.changedir }
+E.changeref     :set_methods { survey = geomap.changeref }
 
 -- angles adjustment ----------------------------------------------------------o
 
@@ -96,16 +96,20 @@ local function fill_mtable (tbl, name, kind, m, l, ang, til)
   tbl = tbl + { name, kind, s+l, l, ang, til, x, y, z, th, phi, psi, psi+til }
 end
 
-local function make_mflow (self)
-  local sequence, mflow in self
+local function update_mflow (self)
+  local mflow, sequence in self
 
-  if not is_nil(mflow) then
-    if sequence ~= mflow.seq then -- new sequence -> update
-      local len, dir = #sequence, sequence.direction
-      mflow.ds, mflow.iturn, mflow.dir, mflow.nlen = 0, 0, dir, len
-      mflow.seq = sequence
-    end
-    return mflow
+  if sequence ~= mflow.seq then -- new sequence -> update
+    local len, dir = #sequence, sequence.direction
+    mflow.ds, mflow.iturn, mflow.dir, mflow.nlen = 0, 0, dir, len
+    mflow.seq = sequence
+  end
+  return mflow
+end
+
+local function make_mflow (self)
+  if self.mflow then
+    return update_mflow(self)
   end
 
   local x, y, z, theta, phi, psi, X0, A0 in self
@@ -116,7 +120,7 @@ local function make_mflow (self)
   phi   = phi   or A0.phi   or A0[2] or 0
   psi   = psi   or A0.psi   or A0[3] or 0
 
-  local save, drift in self
+  local sequence, save, drift in self
   local len, dir = #sequence, sequence.direction
   local V   = vector(3):fill{x,y,z}
   local W   = matrix(3):rotmad(theta, phi, psi)
@@ -130,7 +134,7 @@ local function make_mflow (self)
            [_srv]=_srv }
 end
 
-local dft = element.drift { l=0 } -- template for implicit drifts
+local dft = E.drift { l=0 } -- template for implicit drifts
 
 local function exec (self)
   assert(self[_srv], "invalid argument #1 (survey expected)")
@@ -161,7 +165,7 @@ local function exec (self)
       end
       map.s, map.ds = map.s+ds, 0
     elseif ds <= -minlen then
-      errorf("negative implicit drift %s in %s['%s'] at %s",
+      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
              ds, seq.name, elm.name, map.s)
     end
 
@@ -187,7 +191,7 @@ local function exec (self)
 end
 
 local survey = command 'Survey' {
-  X0={0,0,0}, A0={0,0,0}, nturn=0, drift=true, save=true,
+  X0={0,0,0}, A0={0,0,0}, nturn=0, direction=1, drift=true, save=true,
   exec=exec, [_srv]=true,
 } :set_readonly()
 
