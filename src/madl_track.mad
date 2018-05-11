@@ -24,7 +24,9 @@
 -- locals ---------------------------------------------------------------------o
 
 local element, mtable, command                                  in MAD
+local fnone                                                     in MAD.gfunc
 local is_nil, is_number, is_sequence, is_beam                   in MAD.typeid
+local errorf                                                    in MAD.utility
 local minlen                                                    in MAD.constant
 local observe                                                   in element.flags
 
@@ -38,8 +40,8 @@ local symint = require 'madl_symint'
 
 -- sub element tracking -------------------------------------------------------o
 
-local function subelm_track (elm, m, symint)
-  local drift_track, kick_track in elm
+local function track_subelm (elm, m, symint)
+  local track_drift, track_kick in elm
   local selm, selm_s in m
 
   -- save current sub-element and sub-position
@@ -52,11 +54,11 @@ local function subelm_track (elm, m, symint)
     -- implicit drift
     local dl = elm:spos(i) - selm_s[nselm]
     if dl >= minlen then
-      symint(elm, m, dl, drift_track, kick_track)
+      symint(elm, m, dl, track_drift, track_kick)
       selm_s[nelm] = selm_s[nelm] + dl
     elseif dl <= -minlen then
-      error(string.format("invalid sub-element %s['%s'] relative position at %sm",
-            m.sequence.name, elm[i].name, dl))
+      errorf("invalid sub-element %s['%s'] relative position at %sm",
+             m.sequence.name, elm[i].name, dl)
     end
 
     -- sub-element
@@ -67,20 +69,20 @@ local function subelm_track (elm, m, symint)
   -- last implicit drift (if any)
   local dl = elm.l - elm:spos(n)
   if dl >= minlen then
-    symint(elm, m, dl, drift_track, kick_track)
+    symint(elm, m, dl, track_drift, track_kick)
   elseif dl <= -minlen then
-    error(string.format("invalid sub-element %s['%s'] relative position at %sm",
-          m.sequence.name, elm[n].name, dl))
+    errorf("invalid sub-element %s['%s'] relative position at %sm",
+           m.sequence.name, elm[n].name, dl)
   end
 
   -- remove current sub-element
   selm[nselm] = nil
 end
 
--- sub element for backtracking ---------------------------------------------------o
+-- sub element for backtracking -----------------------------------------------o
 
-local function subelm_trackback (elm, m, symint)
-  local drift_track, kick_track in elm
+local function trackback_subelm (elm, m, symint)
+  local track_drift, track_kick in elm
   local selm, selm_s in m
 
   -- save current sub-element and sub-position
@@ -93,11 +95,11 @@ local function subelm_trackback (elm, m, symint)
     -- implicit drift
     local dl = selm_s[nselm] - (elm:spos(i) + elm[i].l)
     if dl <= -minlen then
-      symint(elm, m, dl, drift_track, kick_track)
+      symint(elm, m, dl, track_drift, track_kick)
       selm_s[nelm] = selm_s[nelm] + dl
     elseif dl >= minlen then
-      error(string.format("invalid sub-element %s['%s'] relative position at %sm",
-            m.sequence.name, elm[i].name, dl))
+      errorf("invalid sub-element %s['%s'] relative position at %sm",
+             m.sequence.name, elm[i].name, dl)
     end
 
     -- sub-element
@@ -108,10 +110,10 @@ local function subelm_trackback (elm, m, symint)
   -- last implicit drift (if any)
   local dl = -elm:spos(1)
   if dl <= -minlen then
-    symint(elm, m, dl, drift_track, kick_track)
+    symint(elm, m, dl, track_drift, track_kick)
   elseif dl <= -minlen then
-    error(string.format("invalid sub-element %s['%s'] relative position at %sm",
-          m.sequence.name, elm[n].name, dl))
+    errorf("invalid sub-element %s['%s'] relative position at %sm",
+           m.sequence.name, elm[n].name, dl)
   end
 
   -- remove current sub-element
@@ -120,118 +122,117 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
--- TODO:
-local function patch_track (elm, m, pos)
+local function track_patch (elm, m, pos)
   if pos == 'entry'
   then entry_patch(elm, m)
   else  exit_patch(elm, m)
   end
 end
 
-local function thin_track (elm, m) -- e.g. multipole
+local function track_thin (elm, m) -- e.g. multipole
   get_mult(elm, m) -- load strengths in map
 
   if m.has_k == false then return end
 
-  patch_track(elm, m, 'entry')
+  track_patch(elm, m, 'entry')
   thin_kick  (elm, m)
-  patch_track(elm, m, 'exit' )
+  track_patch(elm, m, 'exit' )
 end
 
-local function drift_track (elm, m) -- e.g. monitor
+local function track_drift (elm, m) -- e.g. monitor
   local no_selm = #m.selm == 0
 
-  patch_track(elm, m, 'entry')
+  track_patch(elm, m, 'entry')
 
   if no_selm and #elm == 0 then -- any surrounding or sub-elements?
     symint.thick(elm, m, m.el, straight_drift)
   elseif no_selm then
-    subelm_track(elm, m, straight_drift)
+    track_subelm(elm, m, straight_drift)
   else
-    subelm_track(elm, m, symint[elm.method or m.mth])
+    track_subelm(elm, m, symint[elm.method or m.mth])
   end
 
-  patch_track(elm, m, 'exit')
+  track_patch(elm, m, 'exit')
 end
 
-local function thick_track (elm, m) -- e.g. sbend, rbend, quadrupole, ...
+local function track_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   get_kmult(elm, m)   -- load strengths in map
 
   if m.has_k == false then -- no strengths in elm
-    return drift_track(elm, m)
+    return track_drift(elm, m)
   end
 
-  patch_track(elm, m, 'entry')
-  elm:fringe_track(m, 'entry')
+  track_patch(elm, m, 'entry')
+  elm:track_fringe(m, 'entry')
 
   local symint = symint[elm.method or m.mth]
   if #elm == 0 then   -- any sub-elements?
-    symint  (elm, m, m.el, elm.drift_track, elm.kick_track)
+    symint  (elm, m, m.el, elm.track_drift, elm.track_kick)
   else
-    subelm_track(elm, m, symint)
+    track_subelm(elm, m, symint)
   end
 
-  elm:fringe_track(m, 'exit')
-  patch_track(elm, m, 'exit')
+  elm:track_fringe(m, 'exit')
+  track_patch(elm, m, 'exit')
 end
 
 -- element for tracking back --------------------------------------------------o
 
-local patch_trackback = patch_track
+local trackback_patch = track_patch
 
-local function thin_trackback (elm, m) -- e.g. multipole
+local function trackback_thin (elm, m) -- e.g. multipole
   get_mult(elm, m) -- load strengths in map
 
   if m.has_k == false then return end
 
-  patch_trackback(elm, m, 'exit' )
+  trackback_patch(elm, m, 'exit' )
   thin_kick      (elm, m)
-  patch_trackback(elm, m, 'entry')
+  trackback_patch(elm, m, 'entry')
 end
 
-local function drift_trackback (elm, m) -- e.g. monitor
+local function trackback_drift (elm, m) -- e.g. monitor
   local no_selm = #m.selm == 0
 
-  patch_trackback(elm, m, 'exit')
+  trackback_patch(elm, m, 'exit')
 
   if no_selm and #elm == 0 then -- any surrounding or sub-elements?
     symint.thick(elm, m, m.el, straight_drift)
   elseif no_selm then
-    subelm_trackback(elm, m, straight_drift)
+    trackback_subelm(elm, m, straight_drift)
   else
-    subelm_trackback(elm, m, symint[elm.method or m.mth])
+    trackback_subelm(elm, m, symint[elm.method or m.mth])
   end
 
-  patch_trackback (elm, m, 'entry')
+  trackback_patch (elm, m, 'entry')
 end
 
 
-local function thick_trackback (elm, m) -- e.g. sbend, rbend, quadrupole, ...
+local function trackback_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   get_kmult(elm, m)   -- load strengths in map
 
   if m.has_k == false then -- no strengths in elm
-    return drift_trackback(elm, m)
+    return trackback_drift(elm, m)
   end
 
-  patch_trackback(elm, m, 'exit')
-  elm:fringe_track    (m, 'exit')
+  trackback_patch(elm, m, 'exit')
+  elm:track_fringe    (m, 'exit')
 
   local symint = symint[elm.method or m.mth]
   if #elm == 0 then   -- any sub-elements ?
-    symint      (elm, m, m.el, elm.drift_track, elm.kick_track)
+    symint      (elm, m, m.el, elm.track_drift, elm.track_kick)
   else
-    subelm_trackback(elm, m, symint)
+    trackback_subelm(elm, m, symint)
   end
 
-  elm:fringe_track    (m, 'entry')
-  patch_trackback(elm, m, 'entry')
+  elm:track_fringe    (m, 'entry')
+  trackback_patch(elm, m, 'entry')
 end
 
 -- sequence tracking ----------------------------------------------------------o
 
 local dft = element.drift {}
 
-local function sequ_trackback (seq, map, rng_, ntrn_)
+local function sequ_track (seq, map, rng_, ntrn_)
   local tbl = map.mtable
 
   -- retrieve information
@@ -249,10 +250,10 @@ local function sequ_trackback (seq, map, rng_, ntrn_)
         dft.name = 'DRIFT_'..map.ndft
         tbl:fill(dft, map, dl)
       end
-      map.s, map.dl = map.s + dl, 0 -- update s
+      map.s, map.dl = map.s+dl, 0 -- update s
     elseif dl <= -minlen then
-      error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
-            dl, seq.name, elm.name, map.s))
+      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
+            dl, seq.name, elm.name, map.s)
     end
 
     -- sequence element
@@ -298,8 +299,8 @@ local function sequ_trackback (seq, map, rng_, ntrn_)
       end
       map.s, map.dl = map.s + dl, 0 -- update s
     elseif dl >= minlen then
-      error(string.format("invalid implicit drift of %sm in %s['%s'] at %sm",
-            dl, seq.name, elm.name, map.s))
+      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
+             dl, seq.name, elm.name, map.s)
     end
 
     -- sequence element
@@ -325,7 +326,7 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local special_track = \ -> ()
+local special_track = fnone
 
 local invalid_track = \e ->
   errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
@@ -334,68 +335,72 @@ local invalid_track = \e ->
 
 local E = element
 
+E.sequence :set_readonly(false)
+
 E.  extra_element :set_methods { track     = invalid_track,
                                  trackback = invalid_track }
-E.special_element :set_methods { track     = special_track,
+E. thin_element   :set_methods { track     = track_thin,
+                                 trackback = track_thinback }
+
+E.drift_element   :set_methods { track     = track_drift,
+                                 trackback = track_driftback }
+
+E.thick_element   :set_methods { track     = track_thick,
+                                 trackback = track_thickback }
+
+E.sequence        :set_methods { track     = sequ_track,
+                                 trackback = sequ_trackback }
+
+E.special         :set_methods { track     = special_track,
                                  trackback = special_track }
 
-E.patch_element :set_methods {    track = patch_track,
-                              trackback = patch_trackback }
-
-E. thin_element :set_methods {    track = thin_track,
-                              trackback = thin_trackback }
-
-E.drift_element :set_methods {    track = drift_track,
-                              trackback = drift_trackback }
-
-E.thick_element :set_methods {    track = thick_track,
-                              trackback = thick_trackback }
-
-E.sequence :set_readonly(false)
-                :set_methods {    track = sequ_track,
-                              trackback = sequ_trackback } :set_readonly()
+E.patch           :set_methods { track     = track_patch,
+                                 trackback = track_patchback }
 
 -- specialized maps
 
-E.thick_element :set_methods { drift_track = straight_drift,
-                                kick_track = straight_kick,
-                              fringe_track = straight_fringe }
+E.thick_element :set_methods { track_drift  = straight_drift,
+                               track_kick   = straight_kick,
+                               track_fringe = straight_fringe }
 
-E.sbend         :set_methods { drift_track = sbend_drift,
-                                kick_track = polar_kick,
-                              fringe_track = sbend_fringe }
+E.sbend         :set_methods { track_drift  = sbend_drift,
+                               track_kick   = polar_kick,
+                               track_fringe = sbend_fringe }
 
-E.combined      :set_methods { drift_track = combined_drift,
-                                kick_track = combined_kick,
-                              fringe_track = sbend_fringe }
+E.combined      :set_methods { track_drift  = combined_drift,
+                               track_kick   = combined_kick,
+                               track_fringe = sbend_fringe }
 
-E.rbend         :set_methods { drift_track = rbend_drift,
-                                kick_track = rfcavity_kick,
-                              fringe_track = straight_fringe }
+E.rbend         :set_methods { track_drift  = rbend_drift,
+                               track_kick   = rfcavity_kick,
+                               track_fringe = straight_fringe }
 
-E.quadrupole    :set_methods { drift_track = quadrupole_drift,
-                                kick_track = quadrupole_kick,
-                              fringe_track = straight_fringe }
+E.quadrupole    :set_methods { track_drift  = quadrupole_drift,
+                               track_kick   = quadrupole_kick,
+                               track_fringe = straight_fringe }
 
-E.solenoid      :set_methods { drift_track = solenoid_drift,
-                                kick_track = rfcavity_kick,
-                              fringe_track = solenoid_fringe }
+E.solenoid      :set_methods { track_drift  = solenoid_drift,
+                               track_kick   = rfcavity_kick,
+                               track_fringe = solenoid_fringe }
 
-E.rfcavity      :set_methods { drift_track = solenoid_drift,
-                                kick_track = rfcavity_kick,
-                              fringe_track = rfcavity_fringe }
+E.rfcavity      :set_methods { track_drift  = solenoid_drift,
+                               track_kick   = rfcavity_kick,
+                               track_fringe = rfcavity_fringe }
 
-E.twcavity      :set_methods { drift_track = twcavity_drift,
-                                kick_track = twcavity_kick,
-                              fringe_track = twcavity_fringe }
+E.twcavity      :set_methods { track_drift  = twcavity_drift,
+                               track_kick   = twcavity_kick,
+                               track_fringe = twcavity_fringe }
 
--- TODO
-E.changedir   :set_methods { track = \_,m -> changedir(nil, m) }
+-- TODO: patches
 E.srotation   :set_methods { track = \e,m -> srotation(nil, m, e.angle) }
 E.yrotation   :set_methods { track = \e,m -> yrotation(nil, m, e.angle) }
 E.xrotation   :set_methods { track = \e,m -> xrotation(nil, m, e.angle) }
 E.translate   :set_methods { track = \e,m -> translate(nil, m, e.dx or 0,
                                                        e.dy or 0, e.dz or 0) }
+E.changedir   :set_methods { track = \_,m -> changedir(nil, m) }
+E.changeref   :set_methods { track = \_,m -> changeref(nil, m) }
+
+E.sequence :set_readonly()
 
 -- track helper ---------------------------------------------------------------o
 
@@ -505,8 +510,7 @@ local track = command 'Track' {
   nturn=0, direction=1, total_path=false, drift=true, save=true,
   nstep=1, nslice=2, method='simple',
   exec=exec, [_trk]=true,
-} :set_methods { naction=empty_track }
-  :set_readonly()
+} :set_methods { naction=fnone } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return { track = track }
