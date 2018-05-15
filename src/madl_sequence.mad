@@ -25,7 +25,7 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local warn                                                       in MAD
+local warn, object                                               in MAD
 local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
 local sub, ltrue, lfalse                                         in MAD.operator
 local sequence, marker, drift, changedir, flags                  in MAD.element
@@ -36,12 +36,13 @@ local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_range, is_element, is_object, is_instanceOf,
       set_concept, concept                                       in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
+local implicit                                                   in flags
 
 local abs in math
 
 -- backup original methods and metamethods
 local sequence_mt = getmetatable(sequence)
-local var_raw, var_val, raw_get in sequence
+local var_raw, var_val, raw_get, test_flag in object
 local seq_cpy, var_set = sequence.copy, sequence_mt.__newindex
 
 -- root object ----------------------------------------------------------------o
@@ -1106,6 +1107,10 @@ end
 
 -- iterators ------------------------------------------------------------------o
 
+local function is_implicit (elm)
+  return test_flag(elm, implicit)
+end
+
 local function niliter (state, i)
   return nil
 end
@@ -1141,12 +1146,12 @@ end
 local function fwdsiter (state, i)
   if i == state.stop then
     if state.turn == 0 then return nil end
-    if not raw_get(state.elm, 'implicit') then
+    if not is_implicit(state.elm) then
       state.turn = state.turn-1
     end
   end
   if i < state.ne then
-    if rawequal(state.elm, state.dft) then -- last was implicit drift
+    if is_implicit(state.elm) then -- last elm was the implicit drift
       i = i+1
       state.pos = state.spos[i]
       state.elm = state.elem[i]
@@ -1163,7 +1168,7 @@ local function fwdsiter (state, i)
       else                                 -- update implicit drift
         state.pos   = state.spos[i]+state.elem[i].l
         state.elm   = state.dft
-        state.elm.l = dl
+        state.elm_l = dl
       end
     end
   else
@@ -1176,12 +1181,12 @@ end
 local function bwdsiter (state, i)
   if i == state.stop then
     if state.turn == 0 then return nil end
-    if not raw_get(state.elm, 'implicit') then
+    if not is_implicit(state.elm) then
       state.turn = state.turn-1
     end
   end
   if i > 1 then
-    if rawequal(state.elm, state.dft) then -- last was implicit drift
+    if is_implicit(state.elm) then -- last elm was the implicit drift
       i = i-1
       state.pos = state.spos[i]+state.elem[i].l
       state.elm = state.elem[i]
@@ -1198,7 +1203,7 @@ local function bwdsiter (state, i)
       else                                 -- update implicit drift
         state.pos   = state.spos[i]
         state.elm   = state.dft
-        state.elm.l = dl
+        state.elm_l = dl
       end
     end
   else
@@ -1235,15 +1240,17 @@ local function iter (seq, rng_, ntrn_, dir_)
 
   local soff = dir > 0 and -elem.spos[start] or elem.spos[start]+elem[start].l
   return dir > 0 and fwditer or bwditer, {elem=elem, spos=elem.spos, soff=soff,
-         seq=seq, seq_l=seq.l, ne=elem.ne, stop=stop, turn=nturn}, start-dir
+         seq=seq, seq_l=seq.l, elm_l=0, ne=elem.ne, stop=stop, turn=nturn},
+         start-dir
 end
 
 local function siter (seq, rng_, ntrn_, dir_)
   local iter, state, start = iter(seq, rng_, ntrn_, dir_)
   if iter == niliter then return iter end
   local dir = dir_ or 1
-  state.dft = drift 'DRIFT_' { l=0, implicit=true }  -- implicit drift (shared)
-  state.elm = state.dft                              -- init
+  -- implicit drift (shared)
+  state.dft = drift 'DRIFT_' { l := state.elm_l } :set_flag(implicit)
+  state.elm = state.dft:set_readonly() -- init, protect the implicit drift
   return dir > 0 and fwdsiter or bwdsiter, state, start
 end
 
