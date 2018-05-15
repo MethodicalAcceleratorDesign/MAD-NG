@@ -23,13 +23,14 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix, element, mtable, command               in MAD
+local vector, matrix, element, mtable, command, object       in MAD
 local fnone                                                  in MAD.gfunc
 local is_nil, is_sequence                                    in MAD.typeid
 local minlen, minang                                         in MAD.constant
 local observe                                                in element.flags
 local errorf                                                 in MAD.utility
 
+local raw_get                                                in object
 local abs, sin, cos                                          in math
 
 -- maps -----------------------------------------------------------------------o
@@ -41,7 +42,7 @@ local geomap = require "madl_geomap"
 local invalid = \e ->
   errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
 
--- load maps into elements ----------------------------------------------------o
+-- load maps into elements of element module ----------------------------------o
 
 local E = element
 
@@ -72,44 +73,29 @@ end
 local _srv = {}
 
 local function make_mtable (self)
-  if self.mtable then return self.mtable end -- already built
-  if not self.save then return nil end       -- nothing to build
+  if self.mtable then
+    assert(self.mtable[_srv] == _srv, "invalid survey mtable")
+    return self.mtable
+  end
 
-  local sequence, drift, range, nturn in self
-  local name, direction in sequence
-  local nrow = sequence:length_of(range, nturn) * (drift and 2 or 1)
+  if not self.save then return nil end -- nothing to build
+
+  local range, nturn in self
+  local seq  = self.sequence
+  local nrow = 2*seq:length_of(range, nturn)
 
   return mtable 'survey' {
-    type='survey', title=name, direction=direction, reserve=nrow,
+    type='survey', title=seq.name, direction=seq.direction, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
     [_srv]=_srv,
   }
 end
 
-local function fill_mtable (tbl, name, kind, m, l, ang, til)
-  local V, A, s, dir in m
-  local x, y, z      = V[1], V[2], V[3]
-  local th, phi, psi = A[1], A[2], A[3]
-  ang, til = (ang or 0)*dir, (til or 0)*dir
-  -- keep order!
-  tbl = tbl + { name, kind, s+l, l, ang, til, x, y, z, th, phi, psi, psi+til }
-end
-
-local function update_mflow (self)
-  local mflow, sequence in self
-
-  if sequence ~= mflow.seq then -- new sequence -> update
-    local len, dir = #sequence, sequence.direction
-    mflow.ds, mflow.iturn, mflow.dir, mflow.nlen = 0, 0, dir, len
-    mflow.seq = sequence
-  end
-  return mflow
-end
-
 local function make_mflow (self)
   if self.mflow then
-    return update_mflow(self)
+    assert(self.mflow[_srv] == _srv, "invalid survey mflow")
+    return self.mflow
   end
 
   local x, y, z, theta, phi, psi, X0, A0 in self
@@ -120,79 +106,66 @@ local function make_mflow (self)
   phi   = phi   or A0.phi   or A0[2] or 0
   psi   = psi   or A0.psi   or A0[3] or 0
 
-  local sequence, save, drift in self
-  local len, dir = #sequence, sequence.direction
-  local V   = vector(3):fill{x,y,z}
+  local seq = self.sequence
+
+  local range, nturn, save, drift in self
+  local dir = seq.direction
+  local V   = vector(3):fill  {x,y,z}
   local W   = matrix(3):rotmad(theta, phi, psi)
-  local A   = vector(3):fill{theta, phi, psi}
+  local A   = vector(3):fill  {theta, phi, psi}
   local R, S, T, U = vector(3), matrix(3), matrix(3), vector(3)
+  local iter, state, init = seq:siter(range, nturn)
 
   return { A=A, V=V, W=W,                                   -- initial vars
            R=R, S=S, T=T, U=U,                              -- internal vars
-           s=0, ds=0, iturn=0, dir=dir, nlen=len, ndft=0,   -- internal status
-           seq=sequence, save=save, drift=save and drift,   -- user status
+           dir=dir, ndft=0,                                 -- internal status
+           iter=iter, state=state, init=init,               -- iterator status
+           seq=seq, save=save,                              -- user status
            [_srv]=_srv }
 end
 
-local dft = E.drift { l=0 } -- template for implicit drifts
+local function fill_mtable (tbl, elm, map, spos)
+  local name, kind, l, angle, tilt in elm
+  local V, A, s, dir in map
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
+
+   -- implicit drift
+   if raw_get(elm,'implicit') then
+    name = name..map.ndft
+    map.ndft = map.ndft+1
+  end
+
+  -- keep order!
+  tbl = tbl +
+    { name, kind, spos+l*dir, l, angle, tilt, x, y, z, th, phi, psi, psi+tilt }
+end
 
 local function exec (self)
-  assert(self[_srv], "invalid argument #1 (survey expected)")
   local seq = assert(self.sequence, "missing sequence")
   assert(is_sequence(seq), "invalid sequence")
 
-  -- build or update mflow and mtable
+  -- build mflow and mtable
   local map = make_mflow (self)
   local tbl = make_mtable(self)
 
-  assert(is_nil(tbl) or tbl[_srv] == _srv, "invalid survey mtable")
-  assert(               map[_srv] == _srv, "invalid survey mflow" )
-
   -- retrieve information
-  local nlen, ndft, save, drift in map
-  local range, nturn in self
+  local iter, state, init, save, onestep in map
 
-  -- affine tracking
-  for i,elm in seq:iter(range, nturn) do -- TODO: recover spos
-
-    -- implicit drift
-    local ds in map
-    if ds >= minlen then
-      dft.l = ds ; geomap.drift(dft, map)
-      if drift and elm:is_selected(observe) then
-        ndft = ndft+1
-        fill_mtable(tbl, 'DRIFT_'..ndft, 'drift', map, ds)
-      end
-      map.s, map.ds = map.s+ds, 0
-    elseif ds <= -minlen then
-      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
-             ds, seq.name, elm.name, map.s)
-    end
-
-    -- sequence element
-    local tbl2, map2 = elm:survey(map)
-    if tbl2 then return tbl2, map2 end -- stop (e.g. slink)
-    update_angles(map)
-    if save and elm:is_selected(observe) then
-      fill_mtable(tbl, elm.name, elm.kind, map, elm.l, elm.angle, elm.tilt)
-    end
-
-    -- update map s, ds, iturn
-    if i < nlen then
-      map.ds = seq:spos(i+1) - (seq:spos(i)+elm.l) -- patch z+dz?
-    else
-      map.ds, map.iturn = 0, map.iturn+1
-    end
-    map.s = map.s+elm.l
+  -- geometric tracking
+  for _,elm,spos in iter,state,init do
+    elm:survey(map)
+    if not raw_get(elm, 'implicit') then update_angles(map) end
+    if save    then fill_mtable(tbl, elm, map, spos) end
+    if onestep then return tbl, map, elm end
   end
 
-  map.ndft = ndft
   return tbl, map
 end
 
 local survey = command 'Survey' {
-  X0={0,0,0}, A0={0,0,0}, nturn=0, direction=1, drift=true, save=true,
-  exec=exec, [_srv]=true,
+  X0={0,0,0}, A0={0,0,0}, nturn=0, direction=1, save=true, onestep=false,
+  exec=exec,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
