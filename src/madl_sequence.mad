@@ -27,7 +27,7 @@ local M = {}
 
 local warn, object                                               in MAD
 local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
-local sub, ltrue, lfalse                                         in MAD.operator
+local lt, sub, ltrue, lfalse                                     in MAD.operator
 local sequence, marker, drift, changedir, flags                  in MAD.element
 local minlen                                                     in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, errorf, openfile   in MAD.utility
@@ -198,11 +198,18 @@ local function index_of_idx (seq, idx)
 end
 
 -- get index from s-position (binary)
-local function index_of_num (seq, num)
+local function index_of_num (seq, num, dir)
   local l = seq.l
   if num < 0 then num = l+num end -- reflect
   if num < 0 or num > l then return nil end
-  return bsearch(var_raw(seq,_data).spos, num)
+  local elem = var_raw(seq,_data)
+  local idx = bsearch(elem.spos, num)
+  dir = dir or 1
+  assert(is_number(dir) and abs(dir) == 1, "invalid direction (1 or -1 expected)")
+  if idx > 1 and (num < elem.spos[idx-1]+elem[idx-1].l or dir < 0) then
+    idx = idx-1
+  end
+  return idx
 end
 
 -- get index from name [with absolute count] (direct)
@@ -238,9 +245,9 @@ local function index_of_rnam (seq, nam, cnt, ref)
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
-local function index_of_str (seq, str, ref_)
+local function index_of_str (seq, str, ref_, dir_)
   local num = tonumber(str)
-  if num then return index_of_num(seq, num) end
+  if num then return index_of_num(seq, num, dir_) end
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
@@ -698,18 +705,18 @@ local function name_of (seq, idx, ref_)
   return name_of_idx(seq, idx, ref_)
 end
 
-local function index_of (seq, a, ref_)
+local function index_of (seq, a, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-      if is_number (a) then return index_of_num(seq, a)
-  elseif is_string (a) then return index_of_str(seq, a, ref_)
+      if is_number (a) then return index_of_num(seq, a, dir_)
+  elseif is_string (a) then return index_of_str(seq, a, ref_, dir_)
   elseif is_element(a) then return index_of_elm(seq, a, ref_)
   end
   error("invalid argument #2 (number, string or element expected)")
 end
 
-local function range_of (seq, rng, ref_)
+local function range_of (seq, rng, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local start, stop, istart, istop, doidx
+  local start, stop, step, istart, istop, doidx
   if is_integer(rng) then
     start, istart = rng, index_of_idx(seq, rng)
     stop , istop  = start, istart
@@ -718,7 +725,8 @@ local function range_of (seq, rng, ref_)
     local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
     doidx, start, stop = true, s1, s2
   elseif is_range(rng) then
-    doidx, start, stop = true, rng:ranges()
+    doidx, start, stop, step = true, rng:ranges()
+    dir_ = dir_ or step
   elseif is_table(rng) then
     start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
     if ref_ == 'idx' then
@@ -730,17 +738,19 @@ local function range_of (seq, rng, ref_)
   else error("invalid argument #2 (integer, string, table or range expected)")
   end
   if doidx then
-    istart = index_of(seq, start, ref_)
-    istop  = index_of(seq, stop , ref_)
+    local dir = dir_ or 1
+    assert(is_number(dir) and abs(dir) == 1, "invalid direction (1 or -1 expected)")
+    istart = index_of(seq, start, ref_,  dir)
+    istop  = index_of(seq, stop , ref_, -dir)
   end
   if not istart then errorf("invalid range start '%s'", tostring(start)) end
   if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
   return istart, istop
 end
 
-local function length_of (seq, rng_, ntrn_) -- see iter
+local function length_of (seq, rng_, ntrn_, dir_) -- see iter
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local siz = rng_ and 1-sub(range_of(seq, rng_)) or 0
+  local siz = rng_ and 1-sub(range_of(seq, rng_, nil, dir_)) or 0
   return siz + #seq * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
 end
 
@@ -1230,7 +1240,7 @@ local function iter (seq, rng_, ntrn_, dir_)
       stop  = start == s0 and sn or start-dir
     end
   else
-    start, stop = range_of(seq, rng_)
+    start, stop = range_of(seq, rng_, nil, dir_)
   end
   if start == stop+dir then nturn = nturn+1 end
 
