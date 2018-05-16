@@ -204,19 +204,16 @@ local function index_of_num (seq, num, dir)
   if num < 0 or num > l then return nil end
   local elem = var_raw(seq,_data)
   local idx = bsearch(elem.spos, num)
-  dir = dir or 1
-  assert(is_number(dir) and abs(dir) == 1, "invalid direction (1 or -1 expected)")
-  if idx > 1 and num < elem.spos[idx]-minlen and (dir < 0 or num < elem.spos[idx-1]+elem[idx-1].l+minlen) then
-    idx = idx-1
+  dir = dir or 0
+  assert(dir == 0 or dir == 1 or dir == -1, "invalid direction (0, 1 or -1 expected)")
+  if idx > 1 and num < elem.spos[idx]-minlen then
+    if dir < 0 or num < elem.spos[idx-1]+elem[idx-1].l+minlen then
+      idx = idx-1
+    elseif dir == 0 and num > elem.spos[idx-1]+elem[idx-1].l+minlen then
+      idx = nil
+    end
   end
-
-  -- if idx > 1 then
-  --   if dir > 0 and num < elem.spos[idx]-minlen and num < elem.spos[idx-1]+elem[idx-1].l+minlen or
-  --      dir < 0 and num < elem.spos[idx]-minlen then
-  --     idx = idx-1
-  --   end
-  -- end
-  return idx
+  return idx, num
 end
 
 -- get index from name [with absolute count] (direct)
@@ -744,18 +741,23 @@ local function range_of (seq, rng, ref_, dir_)
     end
   else error("invalid argument #2 (integer, string, table or range expected)")
   end
+  local sstart, sstop
   if doidx then
     local dir = dir_ or 1
-    assert(is_number(dir) and abs(dir) == 1, "invalid direction (1 or -1 expected)")
-    istart = index_of(seq, start, ref_,  dir)
-    istop  = index_of(seq, stop , ref_, -dir)
+    assert(dir ~= 0, "invalid range direction (1 or -1 expected)")
+    istart, sstart = index_of(seq, start, ref_,  dir)
+    istop , sstop  = index_of(seq, stop , ref_, -dir)
   end
   if not istart then errorf("invalid range start '%s'", tostring(start)) end
   if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
+  if sstart and sstop and (istart > istop and sstart < sstop or
+                           istart < istop and sstart > sstop) then
+    return nil -- empty range
+  end
   return istart, istop
 end
 
-local function length_of (seq, rng_, ntrn_, dir_) -- see iter
+local function length_of (seq, rng_, ntrn_, dir_) -- see iter                   -- TODO
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local siz = rng_ and 1-sub(range_of(seq, rng_, nil, dir_)) or 0
   return siz + #seq * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
@@ -1238,16 +1240,17 @@ local function iter (seq, rng_, ntrn_, dir_)
 
   local elem, start, stop = var_raw(seq,_data)
   if is_nil(rng_) then
-    local s0, sn = 1, elem.ne
-    if dir < 0 then s0, sn = sn, s0 end
+    local idx1, idxn = 1, elem.ne
+    if dir < 0 then idx1, idxn = idxn, idx1 end
     if is_nil(seq.start_at) then
-      start, stop = s0, sn
+      start, stop = idx1, idxn
     else
       start = assert(index_of(seq, seq.start_at), "invalid cycle reference")
-      stop  = start == s0 and sn or start-dir
+      stop  = start == idx1 and idxn or start-dir
     end
   else
     start, stop = range_of(seq, rng_, nil, dir_)
+    if is_nil(start) then return niliter end
   end
   if start == stop+dir then nturn = nturn+1 end
 
