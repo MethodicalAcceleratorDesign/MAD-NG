@@ -614,23 +614,25 @@ local function index_of (tbl, a, ref_)
   error("invalid argument #2 (integer or string expected)")
 end
 
-local function range_of (tbl, rng, ref_)
+local function range_of (tbl, rng_, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local start, stop, istart, istop
-  if is_integer(rng) then
-    start, istart = rng, index_of_idx(tbl, rng)
+  if is_nil(rng_) then
+    return 1, #tbl
+  elseif is_integer(rng_) then
+    start, istart = rng_, index_of_idx(tbl, rng_)
     stop , istop  = start, istart
-  elseif is_string(rng) then
-    local s1, i2 = strsplit(rng, "/" )
-    local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
+  elseif is_string(rng_) then
+    local s1, i2 = strsplit(rng_, "/" )
+    local s2 = i2 > 0 and strtrim(rng_, i2+1) or nil
     start, stop = s1, s2
-  elseif is_range(rng) then
-    start, stop = rng:ranges()
-  elseif is_table(rng) then
-    start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
+  elseif is_range(rng_) then
+    start, stop = rng_:ranges()
+  elseif is_table(rng_) then
+    start, stop, ref_ = rng_[1], rng_[2], ref_ or rng_[3]
   else error "invalid argument #2 (integer, string, table or range expected)"
   end
-  if not is_number(rng) then
+  if not is_number(rng_) then
     istart = index_of(tbl, start, ref_)
     istop  = index_of(tbl, stop , ref_)
   end
@@ -639,10 +641,11 @@ local function range_of (tbl, rng, ref_)
   return istart, istop
 end
 
-local function length_of (tbl, rng_, ntrn_) -- see iter
+local function length_of (tbl, rng_, ntrn_, dir_) -- see iter
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local siz = rng_ and 1-sub(range_of(tbl, rng_)) or 0
-  return siz + #tbl * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
+  local start, stop = range_of(tbl, rng_)
+  local siz, trn, dir = stop-start, ntrn_ or 0, dir_ or 1
+  return 1 + siz + #tbl * (trn + (siz*dir < 0 and 1 or 0))
 end
 
 -- memory helpers -------------------------------------------------------------o
@@ -1229,7 +1232,7 @@ local function fwditer (state, i)
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
-  i = i < state.n and i+1 or 1
+  i = i < state.nr and i+1 or 1
   state.row[_idx] = i
   return i, state.row
 end
@@ -1239,7 +1242,7 @@ local function bwditer (state, i)
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
-  i = i > 1 and i-1 or state.n
+  i = i > 1 and i-1 or state.nr
   state.row[_idx] = i
   return i, state.row
 end
@@ -1252,24 +1255,24 @@ local function iter (tbl, rng_, ntrn_, dir_)
 
   if #tbl == 0 then return niliter end
 
-  local start, stop
+  local data, start, stop = var_raw(tbl,_data)
   if is_nil(rng_) then
-    local s0, sn = 1, #tbl
-    if dir < 0 then s0, sn = sn, s0 end
+    local idx1, idxn = 1, data.nr
+    if dir < 0 then idx1, idxn = idxn, idx1 end
     if is_nil(tbl.start_at) then
-      start, stop = s0, sn
+      start, stop = idx1, idxn
     else
       start = assert(index_of(tbl, tbl.start_at), "invalid cycle reference")
-      stop  = start == s0 and sn or start-dir
+      stop  = start == idx1 and idxn or start-dir
     end
   else
     start, stop = range_of(tbl, rng_)
   end
   if start == stop+dir then nturn = nturn+1 end
 
-  local row = setmetatable({[_idx]=0, [_data]=var_raw(tbl,_data), [_slf]=tbl}, row_mt)
+  local row = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
   return dir > 0 and fwditer or bwditer,
-         { row=row, n=#tbl, stop=stop, turn=nturn }, start-dir
+         { row=row, nr=data.nr, stop=stop, turn=nturn }, start-dir
 end
 
 -- I/O methods ----------------------------------------------------------------o

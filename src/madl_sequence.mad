@@ -718,21 +718,23 @@ local function index_of (seq, a, ref_, dir_)
   error("invalid argument #2 (number, string or element expected)")
 end
 
-local function range_of (seq, rng, ref_, dir_)
+local function range_of (seq, rng_, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local start, stop, step, istart, istop, doidx
-  if is_integer(rng) then
-    start, istart = rng, index_of_idx(seq, rng)
+  if is_nil(rng_) then
+    return 1, #seq
+  elseif is_integer(rng_) then
+    start, istart = rng_, index_of_idx(seq, rng_)
     stop , istop  = start, istart
-  elseif is_string(rng) then
-    local s1, i2 = strsplit(rng, "/")
-    local s2 = i2 > 0 and strtrim(rng, i2+1) or nil
+  elseif is_string(rng_) then
+    local s1, i2 = strsplit(rng_, "/")
+    local s2 = i2 > 0 and strtrim(rng_, i2+1) or nil
     doidx, start, stop = true, s1, s2
-  elseif is_range(rng) then
-    doidx, start, stop, step = true, rng:ranges()
+  elseif is_range(rng_) then
+    doidx, start, stop, step = true, rng_:ranges()
     dir_ = dir_ or step
-  elseif is_table(rng) then
-    start, stop, ref_ = rng[1], rng[2], ref_ or rng[3]
+  elseif is_table(rng_) then
+    start, stop, ref_, dir_ = rng_[1], rng_[2], ref_ or rng_[3], dir_ or rng_[4]
     if ref_ == 'idx' then
       assert(is_integer(start) and is_integer(stop),
              "invalid argument #2 (range of integers expected)")
@@ -750,17 +752,18 @@ local function range_of (seq, rng, ref_, dir_)
   end
   if not istart then errorf("invalid range start '%s'", tostring(start)) end
   if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
-  if sstart and sstop and (istart > istop and sstart < sstop or
-                           istart < istop and sstart > sstop) then
+  if sstart and sstop and (istart-istop)*(sstart-sstop) < 0 then
     return nil -- empty range
   end
   return istart, istop
 end
 
-local function length_of (seq, rng_, ntrn_, dir_) -- see iter                   -- TODO
+local function length_of (seq, rng_, ntrn_, dir_) -- see iter
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local siz = rng_ and 1-sub(range_of(seq, rng_, nil, dir_)) or 0
-  return siz + #seq * ((ntrn_ or 0) + (siz <= 0 and 1 or 0))
+  local start, stop = range_of(seq, rng_, nil, dir_)
+  if is_nil(start) then return 0 end
+  local siz, trn, dir = stop-start, ntrn_ or 0, dir_ or 1
+  return 1 + siz + #seq * (trn + (siz*dir < 0 and 1 or 0))
 end
 
 -- functional methods ---------------------------------------------------------o
@@ -1177,7 +1180,7 @@ local function fwdsiter (state, i)
       if dl < minlen then                  -- implicit drift is too small
         if dl < -minlen then
           errorf("negative implicit drift of %sm in %s['%s'] at %sm",
-                  dl, state.seq.name, elem[i+1].name, state.spos[i+1])
+                  dl, state.seq.name, state.elem[i+1].name, state.spos[i+1])
         end
         i = i+1
         state.pos = state.spos[i]
@@ -1186,6 +1189,7 @@ local function fwdsiter (state, i)
         state.pos   = state.spos[i]+state.elem[i].l
         state.elm   = state.dft
         state.elm_l = dl
+        state.elm_s = 'DRIFT_'..i
       end
     end
   else
@@ -1210,7 +1214,7 @@ local function bwdsiter (state, i)
       if dl < minlen then                  -- implicit drift is too small
         if dl < -minlen then
           errorf("negative implicit drift of %sm in %s['%s'] at %sm",
-                  dl, state.seq.name, elem[i-1].name, state.spos[i-1])
+                  dl, state.seq.name, state.elem[i-1].name, state.spos[i-1])
         end
         i = i-1
         state.pos = state.spos[i]+state.elem[i].l
@@ -1219,6 +1223,7 @@ local function bwdsiter (state, i)
         state.pos   = state.spos[i]
         state.elm   = state.dft
         state.elm_l = dl
+        state.elm_s = 'DRIFT_'..i
       end
     end
   else
@@ -1256,16 +1261,16 @@ local function iter (seq, rng_, ntrn_, dir_)
 
   local soff = dir > 0 and -elem.spos[start] or elem.spos[start]+elem[start].l
   return dir > 0 and fwditer or bwditer, {elem=elem, spos=elem.spos, soff=soff,
-         seq=seq, seq_l=seq.l, elm_l=0, ne=elem.ne, stop=stop, turn=nturn},
-         start-dir
+    seq=seq, seq_l=seq.l, elm_l=0, elm_s='', ne=elem.ne, stop=stop, turn=nturn},
+    start-dir
 end
 
 local function siter (seq, rng_, ntrn_, dir_)
   local iter, state, start = iter(seq, rng_, ntrn_, dir_)
   if iter == niliter then return iter end
   -- implicit drift (reused)
-  state.dft = drift 'DRIFT_' { l := state.elm_l } :set_flag(implicit)
-  state.elm = state.dft :set_readonly() -- init, protect the implicit drift
+  state.dft = drift { l := state.elm_l, name := state.elm_s }
+  state.elm = state.dft :set_flag(implicit) :set_readonly()
   if start == state.stop then state.turn = state.turn-1 end
   return dir_ and dir_ < 0 and bwdsiter or fwdsiter, state, start
 end
