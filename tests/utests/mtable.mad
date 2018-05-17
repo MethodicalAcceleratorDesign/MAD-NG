@@ -30,12 +30,12 @@ local assertFalse, assertTrue, assertNil, assertNotNil, assertEquals,
 local mtable, filesys                                             in MAD
 local is_vector, is_mtable, is_number                             in MAD.typeid
 local abs, eps, pi, random, min                                   in MAD.gmath
-local tblcpy                                                      in MAD.utility
+local tblcpy, strsplitall                                         in MAD.utility
 local check_kpairs                                                in toolbox
 
 local generate = false
-local refdir   = \s -> "mtable_ref/"..s
-local rundir   = \s -> "mtable_run/"..s
+local refdir   = \s -> "mtable_ref/"..(s or "")
+local rundir   = \s -> "mtable_run/"..(s or "")
 local _msg     = {
   "invalid write access to readonly mtable",
   "nil reference value",
@@ -53,11 +53,11 @@ end
 
 local function getRows(i, j)
   local row1, row2, row3
-  i, nb = i or 1, j or 1
+  i = i or 1
   if j then
     row1, row2, row3 = {}, {}, {}
     local s = 1
-    for i=i,i+nb-1 do
+    for i=i,i+j-1 do
       row1[s] = { i        , -i, pi*i            }
       row2[s] = { 'name'..i, -i, pi*i, i         }
       row3[s] = { i        , -i, pi*i, 'name'..i }
@@ -110,9 +110,9 @@ local function assertFiles (name)
   if generate then return end
   local ref  = assert(io.open(refdir(name), "r"))
   local run  = assert(io.open(rundir(name), "r"))
-  local reftbl, sref = string.splitall(ref:read("*all"), " \n,:;[]")
-  local runtbl, srun = string.splitall(run:read("*all"), " \n,:;[]")
-  assertEquals(sref, srun)
+  local reftbl, sref = strsplitall(ref:read("*all"), " \n,:;[]")
+  local runtbl, srun = strsplitall(run:read("*all"), " \n,:;[]")
+  assertEquals(srun, sref)
   for i=1,sref do
     reftbl[i] = tonumber(reftbl[i]) or reftbl[i]
     runtbl[i] = tonumber(runtbl[i]) or runtbl[i]
@@ -132,12 +132,12 @@ local function assertFiles (name)
   end
   if not generate then
     os.remove(rundir(name))
-    filesys.rmdir(rundir(""))
+    filesys.rmdir(rundir())
   end
 end
 
 local function testWrite(tbl, filname, ...)
-  filesys.mkdir(rundir(""))
+  filesys.mkdir(rundir())
   tbl:write(...)
   assertFiles(filname)
 end
@@ -2527,7 +2527,7 @@ function TestMTable:testWriteStdout()
   local fname  = "tbl-stdout.tfs"
   local stdout = io.stdout
 
-  filesys.mkdir(rundir(""))
+  filesys.mkdir(rundir())
   tbl.time, tbl.date, tbl.origin = "", "", ""
   for i=1,4 do tbl:addrow(row) end
   io.stdout    = assert(io.open(rundir(fname), 'w'))
@@ -2538,7 +2538,7 @@ function TestMTable:testWriteStdout()
 end
 
 function TestMTable:testWriteStream()
-  filesys.mkdir(rundir(""))
+  filesys.mkdir(rundir())
   local tbl    = getIdxTbl()
   local fname  = "tbl-stream.tfs"
   local stream = assert(io.open(rundir(fname), 'w'))
@@ -2563,7 +2563,7 @@ function TestMTable:testWriteNamedArgs()
   local args = { column = { "x", "y" }, header = { "var" }, selected = true }
   local args1, args2 = tblcpy(args), tblcpy(args)
 
-  filesys.mkdir(rundir(""))
+  filesys.mkdir(rundir())
   args1.filename = rundir("tbl-namedargs1")
   args2.file     = assert(io.open(rundir("tbl-namedargs2.tfs"), "w"))
   tbl.time, tbl.date, tbl.origin = "", "", ""
@@ -2653,11 +2653,11 @@ end
 
 function TestMTable:testReadInvalid()
   local msg = {
-    "invalid header format (4 columns expected line",
-    "invalid header format (missing number line",
-    "invalid header format (missing boolean line",
-    "invalid header format (unmatched string length line",
-    "invalid header format (unmatched table length line",
+    "invalid header format (4 columns expected, line",
+    "invalid header format (missing number, line",
+    "invalid header format (missing boolean, line",
+    "invalid header format (unmatched string length, line",
+    "invalid header format (unmatched table length, line",
     "invalid header field type: ",
     "invalid row format ("
   }
@@ -2905,10 +2905,8 @@ function TestMTable:testCntIter()
   local _, tbl2, tbl3 = getIdxTbl()
   local idx = { 1, 3, 4 }
   for _,tbl in ipairs{tbl2, tbl3} do
-    i = 1
-    for _,row in ipairs(tbl.name1) do
+    for i,row in ipairs(tbl.name1) do
       assertEquals(row, tbl:getrow(idx[i]))
-      i = i + 1
     end
   end
 end
@@ -3588,8 +3586,8 @@ function TestMTable:testCopyViewName()
   local tbl = mtable "tbl" { }
   local cpy1 = tbl:copy()
   local cpy2 = tbl:copy("tbl2")
-  assertEquals(cpy1.name, "tbl_copy")
-  assertEquals(cpy2.name, "tbl2"    )
+  assertEquals(cpy1.name, "tbl" )
+  assertEquals(cpy2.name, "tbl2")
 end
 
 function TestMTable:testCopyViewOwner()
@@ -3865,9 +3863,9 @@ end
 
 function TestMTable:testSetReadOnlyProxy()
   local tbl    = mtable "tbl" { {"dict"}, "x", "y", "z"}
-  local assign1 = \tbl,a,b   => tbl[a]       = b end
-  local assign2 = \tbl,a,b,c => tbl[a][b]    = c end
-  local assign3 = \tbl,a,b,c => tbl[a][b][c] = d end
+  local assign1 = \tbl,a,b     => tbl[a]       = b end
+  local assign2 = \tbl,a,b,c   => tbl[a][b]    = c end
+  local assign3 = \tbl,a,b,c,d => tbl[a][b][c] = d end
   local row1 = {"name1", 1, 2, 3}
   local row2 = {"name2", 1, 2, 3}
   tbl:addrow(row1); tbl:addrow(row2); tbl:addrow(row1)

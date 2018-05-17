@@ -34,12 +34,12 @@ local function get_metamethod (a, f)
     return mt and rawget(mt,f)
 end
 
-local function has_length (a)
+local function is_lengthable (a)
     return get_metamethod(a, '__len') ~= nil
 end
 
-local function is_indexable (a)
-    return get_metamethod(a, '__index') ~= nil
+local function is_iterable (a)
+    return get_metamethod(a, '__ipairs') ~= nil
 end
 
 --------------------------------------------------------------------------------
@@ -332,7 +332,7 @@ exports.rands = rands
 local nth = function(n, gen_x, param_x, state_x)
     assert(n > 0, "invalid first argument to nth")
     -- An optimization for arrays and strings
-    if gen_x == ipairs_gen or is_indexable(param_x) then -- MAD
+    if gen_x == ipairs_gen or is_iterable(param_x) then -- MAD
         return param_x[n]
     elseif gen_x == string_gen then
         if n <= #param_x then
@@ -632,7 +632,7 @@ methods.reduce = methods.foldl
 exports.reduce = exports.foldl
 
 local length = function(gen, param, state)
-    if gen == ipairs_gen or gen == string_gen or has_length(param) then -- MAD
+    if gen == ipairs_gen or gen == string_gen or is_lengthable(param) then -- MAD
         return #param
     end
     local len = 0

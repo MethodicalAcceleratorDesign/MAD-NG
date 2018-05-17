@@ -58,9 +58,9 @@ read_ords(int n, ord_t ords[n], FILE *stream)
 
 #ifdef MAD_CTPSA_IMPL
 
-extern D* mad_tpsa_scan_hdr(FILE*);
+extern const D* mad_tpsa_scan_hdr(FILE*);
 
-D*
+const D*
 FUN(scan_hdr) (FILE *stream_)
 {
   return mad_tpsa_scan_hdr(stream_);
@@ -68,7 +68,7 @@ FUN(scan_hdr) (FILE *stream_)
 
 #else
 
-D*
+const D*
 FUN(scan_hdr) (FILE *stream_)
 {
   enum { BUF_SIZE=256 };
@@ -80,7 +80,7 @@ FUN(scan_hdr) (FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   // discard leading white space and the name (which is 10 chars and comma)
-  fscanf(stream_, " %*11c");
+  ensure(!fscanf(stream_, " %*11c"), "unexpected fscanf returned value");
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
@@ -105,17 +105,16 @@ FUN(scan_hdr) (FILE *stream_)
     ord_t mvar_ords [nmv], var_ords[nv];
 
     // read mvars orders
-    fscanf(stream_, " MAP ORDS: ");
+    ensure(!fscanf(stream_, " MAP ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nmv, mvar_ords, stream_);
 
     // read var orders
-    fscanf(stream_, " ||| VAR ORDS: ");
+    ensure(!fscanf(stream_, " ||| VAR ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nv, var_ords, stream_);
 
-    desc_t *d = mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
-    return d;
+    return mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
   }
 
   if (cnt <  2) error("could not read (NO,NV) from header");
@@ -134,7 +133,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   NUM c;
   int nv = t->d->nv, cnt = -1;
   ord_t o, ords[nv];
-  FUN(clear)(t);
+  FUN(reset0)(t);
 
 #ifndef MAD_CTPSA_IMPL
   while ((cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
@@ -143,34 +142,36 @@ FUN(scan_coef) (T *t, FILE *stream_)
 #endif
 
     #ifdef DEBUG
-      printf("c=%.2f o=%d\n", c, o);
+      printf("c=" FMT ", o=%d\n", VAL(c), o);
     #endif
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
-    if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c); // discard too high mononial
+    if (o <= t->mo)             // discard too high mononial
+     FUN(setm)(t,nv,ords, 0.0,c);
   }
 }
 
 T*
 FUN(scan) (FILE *stream_)
 {
-  desc_t *d = FUN(scan_hdr)(stream_);
+  const D *d = FUN(scan_hdr)(stream_);
   T *t = FUN(newd)(d, mad_tpsa_default);
   FUN(scan_coef)(t, stream_);
   return t;
 }
 
 void
-FUN(print) (const T *t, str_t name_, FILE *stream_)
+FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
 {
   assert(t);
-  // TODO: print map vars and name
 
+  if (!name_  ) name_ = "-UNNAMED--";
+  if (eps_ < 0) eps_ = 1e-16;
   if (!stream_) stream_ = stdout;
-  D *d = t->d;
+
+  const D *d = t->d;
 
   // print header
-  if (!name_) name_ = "-UNNAMED--";
   fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
                        name_,    d->mo,  d->nmv,     d->ko, d->nv - d->nmv);
   print_ords(d->nmv, d->mvar_ords, stream_);
@@ -178,26 +179,26 @@ FUN(print) (const T *t, str_t name_, FILE *stream_)
   print_ords(d->nv, d->var_ords, stream_);
   fprintf(stream_, "\n *******************************************************");
 
-  if (!t->nz) {
-    fprintf(stream_, "\n   ALL COMPONENTS ZERO \n");
-    return;
-  }
-
+  // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
-  int idx = 1;
-  ssz_t nc = mad_desc_tpsa_len(d, t->mo);
-  for (int c = 0; c < nc; ++c) {
-    if (mad_bit_get(t->nz,d->ords[c]) && fabs(t->coef[c]) > 1e-10) {
+  idx_t *pi = d->ord2idx, idx = 0;
+  for (ord_t o = t->lo; o <= t->hi ; ++o) {
+    if (!mad_bit_get(t->nz,o)) continue;
+    for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
+      if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
-      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , idx, VAL(t->coef[c]), d->ords[c]);
+      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
 #else
-      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", idx, VAL(t->coef[c]), d->ords[c]);
+      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
-      print_ords(d->nv, d->To[c], stream_);
-      idx++;
+      print_ords(d->nv, d->To[i], stream_);
     }
   }
-  fprintf(stream_, "\n\n");
+
+  if (!idx)
+    fprintf(stream_, "\n          ALL COMPONENTS ZERO \n");
+  else
+    fprintf(stream_, "\n\n");
 }
 
 // --- end --------------------------------------------------------------------o

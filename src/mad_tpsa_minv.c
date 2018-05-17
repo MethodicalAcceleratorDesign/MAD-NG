@@ -33,15 +33,15 @@
 // --- local ------------------------------------------------------------------o
 
 static inline void
-check_same_desc(int sa, const T *ma[sa])
+check_same_desc(ssz_t sa, const T *ma[sa])
 {
   assert(ma);
-  for (int i=1; i < sa; ++i)
+  for (idx_t i=1; i < sa; ++i)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
-check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
+check_minv(ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
 {
   ensure(sa == sc, "incompatibles number of map variables");
   ensure(sa == ma[0]->d->nmv, "non-square system"); // 'square' matrix, ignoring knobs
@@ -58,7 +58,7 @@ check_minv(int sa, const T *ma[sa], int sc, T *mc[sc])
 #include <gsl/gsl_blas.h>
 
 static void
-split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
+split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 {
   int nv = d->nv, cv = d->nmv, nk = nv - cv;                    // #vars, #canonical vars, #knobs
   gsl_matrix *mat_var  =      gsl_matrix_calloc(cv,cv),        // canonical vars
@@ -98,9 +98,9 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
   // copy result into TPSA
   for (int i = 0; i < cv; ++i) {
     for (int v = 0; v < cv; ++v)
-      FUN(seti)(lin_inv[i], v    +1, 0, gsl_matrix_get(mat_vari, i,v));
+      FUN(seti)(lininv[i], v    +1, 0, gsl_matrix_get(mat_vari, i,v));
     for (int k = 0; k < nk; ++k)
-      FUN(seti)(lin_inv[i], k+cv +1, 0, gsl_matrix_get(mat_knbi, i,k));
+      FUN(seti)(lininv[i], k+cv +1, 0, gsl_matrix_get(mat_knbi, i,k));
   }
 
   gsl_matrix_free(mat_var);
@@ -111,24 +111,24 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 */
 
 static void
-split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
+split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 {
-  int nv = d->nv, cv = d->nmv, nk = nv - cv; // #vars, #canonical vars, #knobs
+  ssz_t nv = d->nv, cv = d->nmv, nk = nv - cv; // #vars, #canonical vars, #knobs
   mad_alloc_tmp(NUM, mat_var , cv*cv); // canonical vars
   mad_alloc_tmp(NUM, mat_vari, cv*cv); // inverse of vars
   mad_alloc_tmp(NUM, mat_knb , cv*nk); // knobs
   mad_alloc_tmp(NUM, mat_knbi, cv*nk); // 'inverse' of knobs
 
   // split linear, (-1 * nonlinear)
-  for (int i = 0; i < cv; ++i) {
-    int v = 0;
+  for (idx_t i = 0; i < cv; ++i) {
+    idx_t v = 0;
     for (; v < cv; ++v) mat_var[i*cv +  v    ] = ma[i]->coef[v+1];
     for (; v < nv; ++v) mat_knb[i*nk + (v-cv)] = ma[i]->coef[v+1];
 
     FUN(copy)(ma[i], nonlin[i]);
 
     // clear constant and linear part
-    for (int c = 0; c < d->ord2idx[2]; ++c)
+    for (idx_t c = 0; c < d->ord2idx[2]; ++c)
       nonlin[i]->coef[c] = 0;
 
     nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,0);
@@ -154,11 +154,11 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 # endif
 
   // copy result into TPSA
-  for (int i = 0; i < cv; ++i) {
-    for (int v = 0; v < cv; ++v)
-      FUN(seti)(lin_inv[i], v    +1, 0, mat_vari[i*cv + v]);
-    for (int k = 0; k < nk; ++k)
-      FUN(seti)(lin_inv[i], k+cv +1, 0, mat_knbi[i*nk + k]);
+  for (idx_t i = 0; i < cv; ++i) {
+    for (idx_t v = 0; v < cv; ++v)
+      FUN(seti)(lininv[i], v    +1, 0, mat_vari[i*cv + v]);
+    for (idx_t k = 0; k < nk; ++k)
+      FUN(seti)(lininv[i], k+cv +1, 0, mat_knbi[i*nk + k]);
   }
 
   mad_free_tmp(mat_var );
@@ -170,82 +170,84 @@ split_and_inv(const D *d, const T *ma[], T *lin_inv[], T *nonlin[])
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(minv) (int sa, const T *ma[sa], int sc, T *mc[sc])
+FUN(minv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
 {
   assert(ma && mc);
   check_minv(sa,ma,sc,mc);
-  for (int i = 0; i < sa; ++i)
+  for (idx_t i = 0; i < sa; ++i)
     ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
-  D *d = ma[0]->d;
-  T *lin_inv[sa], *nonlin[sa], *tmp[sa];
-  for (int i = 0; i < sa; ++i) {
-    lin_inv[i] = FUN(newd)(d,1);
-    nonlin[i]  = FUN(new)(ma[i], mad_tpsa_same);
-    tmp[i]     = FUN(new)(ma[i], mad_tpsa_same);
+  const D *d = ma[0]->d;
+  T *lininv[sa], *nonlin[sa], *tmp[sa];
+  for (idx_t i = 0; i < sa; ++i) {
+    lininv[i] = FUN(newd)(d,1);
+    nonlin[i] = FUN(new)(ma[i], mad_tpsa_same);
+    tmp[i]    = FUN(new)(ma[i], mad_tpsa_same);
   }
 
-  split_and_inv(d, ma, lin_inv, nonlin);
+  split_and_inv(d, ma, lininv, nonlin);
 
   // iteratively compute higher orders of the inverse
   // MC (OF ORDER I) = AL^-1 o [ I - ANL (NONLINEAR) o MC (OF ORDER I-1) ]
 
-  for (int i = 0; i < sa; ++i)
-    FUN(copy)(lin_inv[i], mc[i]);
+  for (idx_t i = 0; i < sa; ++i)
+    FUN(copy)(lininv[i], mc[i]);
 
-  for (int o = 2; o <= d->mo; ++o) {
-    d->trunc = o;
+  ord_t o_prev = mad_desc_gtrunc(d, 2);
+  for (ord_t o = 2; o <= d->mo; ++o) {
+    mad_desc_gtrunc(d, o);
     FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
 
-    for (int v = 0; v < sa; ++v)
-      FUN(seti)(tmp[v], v+1, 1.0,1.0);    // add I
+    for (idx_t v = 0; v < sa; ++v)
+      FUN(seti)(tmp[v], v+1, 1,1);    // add I
 
-    FUN(compose)(sa, (const T**)lin_inv, sa, (const T**)tmp, sa, mc);
+    FUN(compose)(sa, (const T**)lininv, sa, (const T**)tmp, sa, mc);
   }
+  mad_desc_gtrunc(d, o_prev);
 
   // cleanup
-  for (int i = 0; i < sa; ++i) {
-    FUN(del)(lin_inv[i]);
+  for (idx_t i = 0; i < sa; ++i) {
+    FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
   }
 }
 
 void
-FUN(pminv) (int sa, const T *ma[sa], int sc, T *mc[sc], int row_select[sa])
+FUN(pminv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t selected[sa])
 {
-  assert(ma && mc && row_select);
+  assert(ma && mc && selected);
   check_minv(sa,ma,sc,mc);
-  for (int i = 0; i < sa; ++i)
-    if (row_select[i])
+  for (idx_t i = 0; i < sa; ++i)
+    if (selected[i])
       ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
-  D *d = ma[0]->d;
+  const D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
-  for (int i = 0; i < sa; ++i) {
-    if (row_select[i]) {
+  for (idx_t i = 0; i < sa; ++i) {
+    if (selected[i]) {
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
       mUnused[i] = FUN(newd)(d,1);
       FUN(copy)(ma[i],mUsed[i]);
-      FUN(seti)(mUnused[i], i+1,  0.0,1.0);
+      FUN(seti)(mUnused[i], i+1,  0,1);
     }
     else {
       mUsed  [i] = FUN(newd)(d,1);
       mInv   [i] = FUN(newd)(d,1);
       mUnused[i] = FUN(new) (ma[i], mad_tpsa_same);
       FUN(copy)(ma[i],mUnused[i]);
-      FUN(seti)(mUsed[i], i+1,  0.0,1.0);
+      FUN(seti)(mUsed[i], i+1, 0,1);
     }
-    FUN(set0)(mUsed  [i], 0.0,0.0);
-    FUN(set0)(mUnused[i], 0.0,0.0);
+    FUN(set0)(mUsed  [i], 0,0);
+    FUN(set0)(mUnused[i], 0,0);
   }
 
-  FUN(minv)(sa,(const T**)mUsed,sa,mInv);
+  FUN(minv)   (sa,(const T**)mUsed  ,sa,           mInv);
   FUN(compose)(sa,(const T**)mUnused,sa,(const T**)mInv,sc,mc);
 
-  for (int i = 0; i < sa; ++i) {
+  for (idx_t i = 0; i < sa; ++i) {
     FUN(del)(mUsed[i]);
     FUN(del)(mUnused[i]);
     FUN(del)(mInv[i]);

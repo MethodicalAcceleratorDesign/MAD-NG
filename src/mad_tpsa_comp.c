@@ -33,18 +33,18 @@
 // --- local ------------------------------------------------------------------o
 
 static inline void
-check_same_desc(int sa, const T *ma[sa])
+check_same_desc(ssz_t sa, const T *ma[sa])
 {
   assert(ma);
-  for (int i = 1; i < sa; ++i)
+  for (idx_t i = 1; i < sa; ++i)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
-check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
+check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T *mc[sc])
 {
   assert(ma && mb && mc);
-  ensure(sa && sb && sc, "invalid map sizes (zero sized map detected)");
+  ensure(sa>0 && sb>0 && sc>0, "invalid map sizes (zero or negative sized map)");
   ensure(sa == sc, "incompatibles GTPSA (number of map variables differ)");
   ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
@@ -62,13 +62,13 @@ check_compose(int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(compose) (int sa, const T *ma[], int sb, const T *mb[], int sc, T *mc[])
+FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T *mc[sc])
 {
   check_compose(sa, ma, sb, mb, sc, mc);
 
   #ifdef _OPENMP
   ord_t highest = 0;
-  for (int i = 0; i < sa; ++i)
+  for (idx_t i = 0; i < sa; ++i)
     if (ma[i]->hi > highest) highest = ma[i]->hi;
 
   if (highest >= 6)

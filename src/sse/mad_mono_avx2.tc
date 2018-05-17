@@ -21,6 +21,15 @@
 
 #include "mad_sse.h"
 
+static inline void
+dump(__m256i ra, __m256i rb, __m256i rr)
+{
+  printf("\nra="); for (int i=0; i < MAD_AVX2_CSIZ; ++i) printf("%02x ", ((ord_t*)&ra)[i]);
+  printf("\nrb="); for (int i=0; i < MAD_AVX2_CSIZ; ++i) printf("%02x ", ((ord_t*)&rb)[i]);
+  printf("\nrr="); for (int i=0; i < MAD_AVX2_CSIZ; ++i) printf("%02x ", ((ord_t*)&rr)[i]);
+  printf("\n");
+}
+
 int
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
@@ -65,10 +74,10 @@ mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __m256i rm;
     rm = _mm256_load_si256((__m256i*)mad_avx2_msk2[nm]);
-    ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[nn]));
-    rb = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&b[nn]));
-    re = _mm256_cmpeq_epi8(ra,rb);
-    rr = _mm256_cmpgt_epi8(ra,rb);
+    ra = _mm256_loadu_si256((__m256i*)&a[nn]);
+    rb = _mm256_loadu_si256((__m256i*)&b[nn]);
+    re = _mm256_and_si256(rm,_mm256_cmpeq_epi8(ra,rb));
+    rr = _mm256_and_si256(rm,_mm256_cmpgt_epi8(ra,rb));
     if (_mm256_movemask_epi8(rr) | _mm256_movemask_epi8(re)) return 0;
   }
 
@@ -92,13 +101,25 @@ mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
   if (nm) {
     __m256i rm;
     rm = _mm256_load_si256((__m256i*)mad_avx2_msk2[nm]);
-    ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[nn]));
-    rb = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&b[nn]));
-    rr = _mm256_cmpgt_epi8(ra,rb);
+    ra = _mm256_loadu_si256((__m256i*)&a[nn]);
+    rb = _mm256_loadu_si256((__m256i*)&b[nn]);
+    rr = _mm256_and_si256(rm,_mm256_cmpgt_epi8(ra,rb));
     if (_mm256_movemask_epi8(rr)) return 0;
   }
 
   return 1;
+}
+
+int
+mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_le(n,a,b);
+}
+
+int
+mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  return !mad_mono_lt(n,a,b);
 }
 
 int
@@ -143,14 +164,14 @@ mad_mono_min (ssz_t n, const ord_t a[n])
 
   for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm256_loadu_si256((__m256i*)&a[i]);
-    rr = _mm256_min_epi8(rr,ra);
+    rr = _mm256_min_epu8(rr,ra);
   }
 
   if (nm) {
     __m256i rm;
-    rm = _mm256_load_si256((__m256i*)mad_avx2_msk2[nm]);
-    ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[nn]));
-    rr = _mm256_min_epi8(rr,ra);
+    rm = _mm256_load_si256((__m256i*)mad_avx2_msk1[32-nm]);
+    ra = _mm256_or_si256(rm,_mm256_loadu_si256((__m256i*)&a[nn]));
+    rr = _mm256_min_epu8(rr,ra);
   }
 
   int ni = nn ? MAD_AVX2_CSIZ : nm;
@@ -172,14 +193,14 @@ mad_mono_max (ssz_t n, const ord_t a[n])
 
   for (int i=0; i < nn; i+=MAD_AVX2_CSIZ) {
     ra = _mm256_loadu_si256((__m256i*)&a[i]);
-    rr = _mm256_max_epi8(rr,ra);
+    rr = _mm256_max_epu8(rr,ra);
   }
 
   if (nm) {
     __m256i rm;
     rm = _mm256_load_si256((__m256i*)mad_avx2_msk2[nm]);
     ra = _mm256_and_si256(rm,_mm256_loadu_si256((__m256i*)&a[nn]));
-    rr = _mm256_max_epi8(rr,ra);
+    rr = _mm256_max_epu8(rr,ra);
   }
 
   int ni = nn ? MAD_AVX2_CSIZ : nm;

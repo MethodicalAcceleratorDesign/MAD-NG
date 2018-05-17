@@ -38,6 +38,8 @@ void   mad_vec_cvec   (const  num_t x[], const  num_t y[],       cnum_t  r[], ss
 num_t  mad_vec_dot    (const  num_t x[], const  num_t y[]                   , ssz_t n); // <vec ,  vec>
 cnum_t mad_vec_dotv   (const  num_t x[], const cnum_t y[]                   , ssz_t n); // <vec , cvec>
 void   mad_vec_dotv_r (const  num_t x[], const cnum_t y[]      , cnum_t *r  , ssz_t n); // <vec , cvec>
+num_t  mad_vec_sum    (const  num_t x[],                                      ssz_t n); // Sum(vec)
+num_t  mad_vec_eval   (const  num_t x[],         num_t x0,                    ssz_t n); // Horner scheme
 num_t  mad_vec_norm   (const  num_t x[]                                     , ssz_t n); // |vec|
 num_t  mad_vec_dist   (const  num_t x[], const   num_t y[]                  , ssz_t n); // |vec -  vec|
 num_t  mad_vec_distv  (const  num_t x[], const  cnum_t y[]                  , ssz_t n); // |vec - cvec|
@@ -77,6 +79,10 @@ cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , ss
 cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , ssz_t n); // <cvec ,  vec>
 void   mad_cvec_dot_r (const cnum_t x[], const cnum_t y[]      , cnum_t *r  , ssz_t n); // <cvec , cvec>
 void   mad_cvec_dotv_r(const cnum_t x[], const  num_t y[]      , cnum_t *r  , ssz_t n); // <cvec ,  vec>
+cnum_t mad_cvec_sum   (const cnum_t x[],                                      ssz_t n); // Sum(vec)
+void   mad_cvec_sum_r (const cnum_t x[],                         cnum_t *r  , ssz_t n); // Sum(vec)
+cnum_t mad_cvec_eval  (const cnum_t x[],       cnum_t x0,                     ssz_t n); // Horner scheme
+void   mad_cvec_eval_r(const cnum_t x[],num_t x0_re,num_t x0_im, cnum_t *r  , ssz_t n);
 num_t  mad_cvec_norm  (const cnum_t x[]                                     , ssz_t n); // |cvec|
 num_t  mad_cvec_dist  (const cnum_t x[], const cnum_t y[]                   , ssz_t n); // |cvec - cvec|
 num_t  mad_cvec_distv (const cnum_t x[], const  num_t y[]                   , ssz_t n); // |cvec -  vec|

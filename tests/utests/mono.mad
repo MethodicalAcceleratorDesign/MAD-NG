@@ -1,0 +1,182 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Monomial module regression tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the monomial module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+
+local _C, monomial                                                  in MAD
+local min, max                                                      in MAD.gmath
+local assertTrue, assertEquals, assertAlmostEquals                  in MAD.utest
+
+-- locals ---------------------------------------------------------------------o
+
+local cdef in require 'ffi'
+
+cdef [[
+ord_t mad_mono_min_ref  (ssz_t n, const ord_t a[]);
+ord_t mad_mono_max_ref  (ssz_t n, const ord_t a[]);
+int   mad_mono_eq_ref   (ssz_t n, const ord_t a[], const ord_t b[]);
+int   mad_mono_lt_ref   (ssz_t n, const ord_t a[], const ord_t b[]);
+int   mad_mono_gt_ref   (ssz_t n, const ord_t a[], const ord_t b[]);
+int   mad_mono_le_ref   (ssz_t n, const ord_t a[], const ord_t b[]);
+int   mad_mono_ge_ref   (ssz_t n, const ord_t a[], const ord_t b[]);
+int   mad_mono_rcmp_ref (ssz_t n, const ord_t a[], const ord_t b[]);
+]]
+
+local mono = {
+  monomial "000000",
+
+  monomial "100000", monomial "010000", monomial "001000",
+  monomial "000100", monomial "000010", monomial "000001",
+
+  monomial "110000", monomial "000011", monomial "010100", monomial "001010",
+  monomial "100100", monomial "001001", monomial "010010", monomial "100001",
+
+  monomial "111000", monomial "000111", monomial "011100", monomial "001110",
+  monomial "100101", monomial "101001", monomial "011010", monomial "010110",
+
+  monomial "101101",
+}
+
+local mono_gt = {
+  monomial "111111",
+
+  monomial "211111", monomial "121111", monomial "112111",
+  monomial "111211", monomial "111121", monomial "111112",
+
+  monomial "221111", monomial "111122", monomial "121211", monomial "112121",
+  monomial "211211", monomial "112112", monomial "121121", monomial "211112",
+
+  monomial "222111", monomial "111222", monomial "122211", monomial "112221",
+  monomial "211212", monomial "212112", monomial "122121", monomial "121221",
+
+  monomial "212212",
+}
+
+local mono_cut = {
+  monomial "0",
+
+  monomial "1"   , monomial "01"   , monomial "001"   ,
+  monomial "0001", monomial "00001", monomial "000001",
+
+  monomial "11"  , monomial "000011", monomial "0101" , monomial "00101" ,
+  monomial "1001", monomial "001001", monomial "01001", monomial "100001",
+
+  monomial "111"   , monomial "000111", monomial "0111" , monomial "00111",
+  monomial "100101", monomial "101001", monomial "01101", monomial "01011",
+
+  monomial "101101",
+}
+
+-- regression test suites -----------------------------------------------------o
+
+TestMono = {}
+
+function TestMono:testEqual ()
+  for i,m in ipairs(mono) do
+    assertTrue(m == m)
+    assertTrue(m == mono_cut[i])
+    assertTrue(_C.mad_mono_eq_ref(m.n, m.data, m.data) == 1)
+    assertTrue(_C.mad_mono_eq_ref(mono_cut[i].n, mono_cut[i].data, mono_cut[i].data) == 1)
+  end
+end
+
+function TestMono:testLesserThan ()
+  for i,m in ipairs(mono) do
+    assertTrue(m < mono_gt[i])
+    assertTrue(mono_cut[i] < mono_gt[i])
+    assertTrue(_C.mad_mono_lt_ref(m.n, m.data, mono_gt[i].data) == 1)
+  end
+end
+
+function TestMono:testGreaterThan ()
+  for i,m in ipairs(mono) do
+    assertTrue(mono_gt[i] > m)
+    assertTrue(mono_gt[i] > mono_cut[i])
+    assertTrue(_C.mad_mono_gt_ref(m.n, mono_gt[i].data, m.data) == 1)
+  end
+end
+
+function TestMono:testLesserEqual ()
+  for i,m in ipairs(mono) do
+    assertTrue(m <= m)
+    assertTrue(m <= mono_cut[i])
+    assertTrue(m <= mono_gt[i])
+    assertTrue(mono_cut[i] <= mono_gt[i])
+    assertTrue(_C.mad_mono_le_ref(m.n, m.data, m.data) == 1)
+    assertTrue(_C.mad_mono_le_ref(m.n, m.data, mono_gt[i].data) == 1)
+  end
+end
+
+function TestMono:testGreaterEqual ()
+  for i,m in ipairs(mono) do
+    assertTrue(m >= m)
+    assertTrue(m >= mono_cut[i])
+    assertTrue(mono_gt[i] >= m)
+    assertTrue(mono_gt[i] >= mono_cut[i])
+    assertTrue(_C.mad_mono_ge_ref(m.n, m.data, m.data) == 1)
+    assertTrue(_C.mad_mono_ge_ref(m.n, mono_gt[i].data, m.data) == 1)
+  end
+end
+
+function TestMono:testMin ()
+  local vs = { [2]=1, [8]=1, [16]=1 }
+  for i,m in ipairs(mono) do
+    local v = vs[i] or 0
+    assertTrue(m:min() == 0)
+    assertTrue(mono_cut[i]:min() == v)
+    assertTrue(mono_gt[i]:min() == 1)
+    assertTrue(_C.mad_mono_min_ref(m.n, m.data) == 0)
+    assertTrue(_C.mad_mono_min_ref(mono_cut[i].n, mono_cut[i].data) == v)
+    assertTrue(_C.mad_mono_min_ref(mono_gt[i].n, mono_gt[i].data) == 1)
+  end
+end
+
+function TestMono:testMax ()
+  for i,m in ipairs(mono) do
+    local v = i>1 and 1 or 0
+    assertTrue(m:max() == v)
+    assertTrue(mono_cut[i]:max() == v)
+    assertTrue(mono_gt[i]:max() == v+1)
+    assertTrue(_C.mad_mono_max_ref(m.n, m.data) == v)
+    assertTrue(_C.mad_mono_max_ref(mono_cut[i].n, mono_cut[i].data) == v)
+    assertTrue(_C.mad_mono_max_ref(mono_gt[i].n, mono_gt[i].data) == v+1)
+  end
+end
+
+function TestMono:testRevCompare ()
+  for i,m in ipairs(mono) do
+    assertTrue(_C.mad_mono_rcmp_ref(m.n, m.data, m.data) ==
+               _C.mad_mono_rcmp    (m.n, m.data, m.data))
+    assertTrue(_C.mad_mono_rcmp_ref(m.n, m.data, mono_gt[i].data) ==
+               _C.mad_mono_rcmp    (m.n, m.data, mono_gt[i].data))
+    assertTrue(_C.mad_mono_rcmp_ref(m.n, mono_gt[i].data, m.data) ==
+               _C.mad_mono_rcmp    (m.n, mono_gt[i].data, m.data))
+  end
+end
+
+-- performance tests ----------------------------------------------------------o
+
+Test_Mono = {}
+
+-- end ------------------------------------------------------------------------o
+
+

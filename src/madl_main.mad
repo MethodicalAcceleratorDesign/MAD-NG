@@ -27,10 +27,12 @@ local M = {}
 
 -- list of modules to import in MAD, order matters!
 local modules = {
-  'regex', 'utest', 'lfun', 'lfs', -- LPEG, LuaUnit, LuaFun and LuaFileSystem
+  -- Lua modules: Strict, LPEG, LuaFun, LuaFileSystem, LuaUnit
+  'strict', 'regex', 'lfun', 'lfs', -- 'utest',
+  -- MAD modules, order matters!
   --[[cmad,]] 'typeid', --[[main,]] 'gfunc', 'gmath', 'gutil',
-  'range', 'complex', 'matrix', 'mono', 'tpsa',
-  'object', 'constant', 'beam', 'element', 'sequence', 'mtable', -- 'mflow',
+  'range', 'complex', 'matrix', 'mono', 'gtpsa', 'mflow',
+  'object', 'constant', 'beam', 'element', 'sequence', 'mtable',
   'command', 'survey', 'track',
   'madx', 'plot',
 }
@@ -46,7 +48,7 @@ local ffi    = require 'ffi'
 local _C     = require 'madl_cmad'
 local typeid = require 'madl_typeid' .typeid
 
-local is_nil, is_boolean, is_number, is_string, is_indexable, is_mappable,
+local is_nil, is_boolean, is_number, is_string, is_mappable,
       is_callable, wprotect, wrestrict, set_concept, concept     in typeid
 local not_iterable                                               in concept
 
@@ -77,8 +79,6 @@ local option = {
   location = nil, -- proxy for mad_trace_location
 
 }
-
-debug.setmetatable(0,{__tostring = \a -> string.format(option.format,a)})
 
 M.option = setmetatable(option, {
   __tostring = \-> "MAD.option",
@@ -119,6 +119,8 @@ M[_final] = ffi.gc(ffi.new('int[1]'),
     end
   end)
 
+-- atexit
+
 function M.atexit (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   local n = _final.n+1
@@ -131,13 +133,58 @@ end
 
 -- import
 
+local loaded_mod = {}
+
+local function loadreq (modnam)
+  local status, mod = pcall(require, modnam)
+  local err
+
+  if not status then
+    if not string.find(mod, "module '"..modnam.."' not found:") then
+      error(mod)
+    end
+    mod, err = nil, mod
+  end
+  return mod, err
+end
+
+local function loadmod(modnam)
+  local mod, hlp, err
+
+  hlp, mod, err = true, loadreq('madl_'..modnam)    -- 1st attempt
+  if not mod then
+    hlp, mod, err = false, loadreq(modnam)          -- 2nd attempt
+  end
+  assert(mod, err)
+
+  if loaded_mod[mod] then return nil end
+
+  if hlp then
+    hlp, err = loadreq('madh_'..modnam)                 -- 1st attempt for help
+    if not hlp then hlp, err = loadreq('help.madh_'..modnam) end -- 2nd attempt
+    assert(hlp, err)
+    assert(not mod.__help, "help already registered")
+    mod.__help = hlp
+  end
+
+  loaded_mod[mod] = mod
+  return mod
+end
+
 function M.import (to, from, override_)
   if to ~= MAD and is_nil(override_) then
     to, from, override_ = MAD, to, from -- right shift
   end
+
+  -- load module first
+  if is_string(from) then
+    from = loadmod(from)
+    if is_nil(from) then return MAD end -- module already loaded
+  end
+
   local override = override_ or false
   assert(to == MAD           , "invalid argument #1 (MAD expected)")
-  assert(is_indexable(from)  , "invalid argument #2 (indexable expected)")
+  assert(is_mappable(from)   , "invalid argument #2 (mappable expected)")
   assert(is_boolean(override), "invalid argument #3 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
@@ -177,8 +224,8 @@ function M.export (from, what_, to_, override_)
   local to       = to_       or _G
   local override = override_ or false
   assert(from == MAD         , "invalid argument #1 (MAD expected)")
-  assert(is_indexable(what)  , "invalid argument #2 (indexable expected)")
-  assert(is_indexable(to)    , "invalid argument #3 (indexable expected)")
+  assert(is_mappable(what)   , "invalid argument #2 (mappable expected)")
+  assert(is_mappable(to)     , "invalid argument #3 (mappable expected)")
   assert(is_boolean(override), "invalid argument #4 (boolean expected)")
 
   -- collect and check first (make a copy in case of error)
@@ -234,9 +281,10 @@ function M.help (from, pattern_)
   local hlp, sel, key = help_grab(MAD[_hlp]), {}, nil
   for k,v in pairs(hlp) do
     assert(is_string(v), "invalid data for "..k.." (string expected)")
-    if k == pattern then
+    local kl = string.lower(k)
+    if k == pattern or kl == pattern then
       key = k
-    elseif string.match(k, pattern) then
+    elseif string.match(k, pattern) or string.match(kl, pattern) then
       sel[#sel+1] = k
     end
   end
@@ -266,10 +314,16 @@ end
 
 function M.show (a, strict_)
   assert(is_mappable(a), "invalid argument #1 (mappable expected)")
-  local keys = {}
-  for k in pairs(a) do
-    if is_string(k) and k:sub(1,2) ~= '__' or strict_ == false then
-      keys[#keys+1] = k
+  local is_object in MAD.typeid
+  local keys
+  if is_object(a) and is_object(strict_) then
+    keys = a:get_varkeys(strict_)
+  else
+    keys = {}
+    for k in pairs(a) do
+      if is_string(k) and k:sub(1,2) ~= '__' or strict_ == false then
+        keys[#keys+1] = k
+      end
     end
   end
   table.sort(keys, show_cmp)
@@ -287,18 +341,14 @@ MAD = wprotect(setmetatable(M, {__tostring := "MAD"}))
 -- import MAD as a self reference
 MAD:import {
   MAD    = MAD,
-  __help = require 'madh_main',
+--  __help = require 'madh_main',
 }
 
 -- load modules
-for _,m in ipairs(modules) do
-  MAD:import( require('madl_'..m) )
-end
+for _,m in ipairs(modules) do MAD:import(m) end
 
 -- cleanup globals
-for i,v in ipairs(globals) do
-  _G[v] = nil
-end
+for i,v in ipairs(globals) do _G[v] = nil end
 
 -- useful as globals
 _M   = MAD
@@ -309,7 +359,7 @@ show = MAD.show
 
 local _G_env = {
   -- Lua
-  '_G', '_VERSION',
+  '_G', '_PROMPT', '_PROMPT2', '_VERSION',
   'arg', 'assert', 'collectgarbage', 'coroutine', 'debug', 'dofile', 'error',
   'getmetatable', 'io', 'ipairs', 'load', 'loadfile', 'loadstring', 'math',
   'module', 'next', 'os', 'package', 'pairs', 'pcall', 'print', 'rawequal',
@@ -325,13 +375,14 @@ local _G_env = {
   'bit', 'jit', 'newproxy',
   -- MAD
   '_M', 'MAD', 'MADX',
-  'help', 'kpairs', 'show',
+  'help', 'show',
 }
 for i,v in ipairs(_G_env) do _G_env[v] = i end
 
-local function check_G ()
+local function check_G (extra)
+  extra = extra or {}
   for k,v in pairs(_G) do
-    if not _G_env[k] then
+    if not (_G_env[k] or extra[k]) then
       io.write("unexpected global variable: ",
                tostring(k), ' -> ', tostring(v), '\n')
     end
@@ -342,12 +393,13 @@ end
 
 local _M_env = {
   '_C', 'MAD', 'MADX',
-  'atexit', 'beam', 'cmatrix', 'Command', 'complex', 'constant', 'ctpsa',
-  'cvector', 'element', 'env', 'export', 'filesys', 'fun', 'gfunc', 'gmath',
-  'gplot', 'gtpsa_desc', 'help', 'import', 'linspace', 'logrange', 'logspace',
-  'matrix', 'monomial', 'mtable', 'nlogrange', 'nrange', 'Object', 'operator',
-  'option', 'plot', 'range', 'regex', 'sequence', 'show', 'survey', 'tostring',
-  'totable', 'tpsa', 'trace', 'track', 'typeid', 'utest', 'utility', 'vector',
+  'atexit', 'beam', 'cmapflow', 'cmatrix', 'command', 'complex', 'constant',
+  'ctpsa', 'cvector', 'element', 'env', 'export', 'filesys', 'fun', 'gfunc',
+  'gmath', 'gplot', 'gtpsad', 'help', 'import', 'linspace', 'logrange',
+  'logspace', 'matrix', 'mapflow', 'monomial', 'mtable', 'nlogrange', 'nrange',
+  'object', 'operator', 'option', 'plot', 'range', 'regex', 'sequence', 'show',
+  'strict', 'survey', 'toboolean', 'tocomplex', 'torange', 'tostring', 'totable',
+  'tpsa', 'trace', 'track', 'typeid', 'unstrict', 'utest', 'utility', 'vector',
   'warn', 'check_globals',
   [_hlp] = true, [_final] = true,
 }
@@ -362,7 +414,7 @@ local function check_M ()
   end
 end
 
-M.check_globals =\=> check_G() ; check_M() end
+M.check_globals = \extra => check_G(extra) ; check_M() end
 
 -- execute after loading MAD env
 M.check_globals()

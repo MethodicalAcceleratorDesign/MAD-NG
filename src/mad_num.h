@@ -29,7 +29,10 @@
 
 // --- interface --------------------------------------------------------------o
 
+num_t  mad_num_powi    (num_t x, int n);
+
 cnum_t mad_cnum_sinc   (cnum_t x);
+cnum_t mad_cnum_powi   (cnum_t x, int n);
 
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
 num_t mad_cnum_arg_r   (num_t x_re, num_t x_im);
@@ -63,8 +66,23 @@ void  mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_div_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_mod_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
+void  mad_cnum_powi_r  (num_t x_re, num_t x_im, int   n,                cnum_t *r);
 
-void  mad_cnum_ipow_r  (num_t x_re, num_t x_im, long long y, cnum_t *r);
+// --- Faddeeva ---------------------------------------------------------------o
+
+num_t   mad_num_erf    (num_t x);
+num_t   mad_num_erfc   (num_t x);
+num_t   mad_num_erfi   (num_t x);
+num_t   mad_num_erfw   (num_t x);
+num_t   mad_num_erfcx  (num_t x);
+num_t   mad_num_dawson (num_t x);
+
+cnum_t  mad_cnum_erf   (cnum_t x, num_t relerr);
+cnum_t  mad_cnum_erfc  (cnum_t x, num_t relerr);
+cnum_t  mad_cnum_erfi  (cnum_t x, num_t relerr);
+cnum_t  mad_cnum_erfw  (cnum_t x, num_t relerr);
+cnum_t  mad_cnum_erfcx (cnum_t x, num_t relerr);
+cnum_t  mad_cnum_dawson(cnum_t x, num_t relerr);
 
 void  mad_cnum_erf_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfc_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
@@ -75,12 +93,18 @@ void  mad_cnum_dawson_r(num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 
 // --- RNG --------------------------------------------------------------------o
 
-typedef struct rng_state rng_state_t; // ADT in mad_num.c
+typedef struct rng_state rng_state_t;
 
 num_t mad_num_rand     (rng_state_t*);             // [0.,1.)
 u64_t mad_num_randi    (rng_state_t*);             // [0,ULLONG_MAX]
 void  mad_num_randseed (rng_state_t*, num_t seed);
 void  mad_num_randjump (rng_state_t*, const rng_state_t* ref);
+
+// --- private
+struct rng_state {
+  u64_t s[16];
+  int p;
+};
 
 // --- inlined functions ------------------------------------------------------o
 

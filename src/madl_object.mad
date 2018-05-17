@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Object module (object model)
+ | object module (object model)
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -30,13 +30,13 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname,is_callable, is_iterable,
       is_mappable                                               in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
-local bsearch, lsearch                                          in MAD.utility
+local bsearch, lsearch, kpairs, openfile                        in MAD.utility
 local functor                                                   in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
 
 -- Root of all objects, forward declaration
-local Object
+local object
 
 -- object members
 local _var = {} -- hidden key
@@ -238,10 +238,12 @@ local function set_variables (self, tbl, override_)
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
     assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable")
     var[k] = v
   end
+  var.__id = id
   return self
 end
 
@@ -250,6 +252,7 @@ local function wrap_variables (self, tbl)
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     local v, newv = var[k]
     assert(not is_nil(v) , "invalid variable (nil value)")
@@ -260,6 +263,7 @@ local function wrap_variables (self, tbl)
     end
     var[k] = newv
   end
+  var.__id = id
   return self
 end
 
@@ -268,12 +272,14 @@ local function set_methods (self, tbl, override_, strict_)
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     assert(is_string(k), "invalid key (function name expected)")
     assert(is_callable(f) or strict_ == false, "invalid value (callable expected)")
     assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override function")
     var[k] = is_function(f) and functor(f) or f
   end
+  var.__id = id
   return self
 end
 
@@ -306,20 +312,18 @@ local function set_final (self)
 end
 
 local function get_varkeys (self, class_)
-  class_ = class_ or Object
-  assert(is_object(self)  , "invalid argument #1 (object expected)")
-  assert(is_object(class_), "invalid argument #2 (object expected)")
-  local lst, key = table.new(8,1), table.new(0,8) ; lst.n = 0
+  assert(is_object(self)                    , "invalid argument #1 (object expected)")
+  assert(is_nil(class_) or is_object(class_), "invalid argument #2 (object expected)")
+  local lst, key = table.new(8,1), table.new(0,8)
   while self and not rawequal(self, class_) do
     for k,v in kpairs(self) do
       if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
-      then lst[lst.n+1], key[k], lst.n = k, k, lst.n+1
+      then lst[#lst+1], key[k] = k, k
       end
     end
     self = parent(self)
   end
-  assert(rawequal(self, class_),
-         "invalid argument #2 (parent of argument #1 expected)")
+  assert(rawequal(self, class_),"invalid argument #2 (parent of argument #1 expected)")
   return lst
 end
 
@@ -405,9 +409,8 @@ end
 -- copy
 
 local function same (self, name_)
-  assert(is_object(self),"invalid argument #1 (object expected)")
-  -- protect against special args from utility.same
-  name_ = is_string(name_) and name_ or nil
+  assert(is_object(self)                  ,"invalid argument #1 (object expected)")
+  assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   -- same shares the same parent
   local par = parent(self)
   local sam = par(name_, {})
@@ -423,15 +426,13 @@ local function same (self, name_)
 end
 
 local function copy (self, name_)
-  assert(is_object(self),"invalid argument #1 (object expected)")
-  local cpy = same(self)
-  -- data
+  assert(is_object(self)                  ,"invalid argument #1 (object expected)")
+  assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
+  local cpy = same(self, name_ or raw_get(self,'__id'))
   local var, cvar = rawget(self,_var), rawget(cpy,_var)
+  local id  = rawget(cvar,'__id')
   for k,v in pairs_iter(self) do cvar[k] = v end
-  -- name, protect against special args from utility.copy
-  local id = raw_get(self,'__id')
-  name_ = is_string(name_) and name_ or id and id..'_copy' or nil
-  cvar.__id = name_
+  cvar.__id = id
   return cpy
 end
 
@@ -544,13 +545,22 @@ local function dump_env (self) -- for debug
   end
 end
 
--- debug
+-- I/O ------------------------------------------------------------------------o
 
-local function strdump (self, class_, pattern_)
-  class_, pattern_ = class_ or Object, pattern_ or ''
+-- dump obj members (including controlled inheritance)
+local function dumpobj (self, filnam_, class_, pattern_)
+  if is_object(filnam_) and is_nil(pattern_) then
+    filnam_, class_, pattern_ = nil, filnam_, class_ -- right shift
+  end
+  if is_string(class_) and is_nil(pattern_) then
+    class_, pattern_ = nil, class_                   -- right shift
+  end
+
+  class_, pattern_ = class_ or object, pattern_ or ''
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_object(class_)  , "invalid argument #2 (object expected)")
-  assert(is_string(pattern_), "invalid argument #3 (string expected)")
+  assert(is_object(class_)  , "invalid argument #3 (object expected)")
+  assert(is_string(pattern_), "invalid argument #4 (string expected)")
+
   local tostring in MAD
   local n, cnt, res, spc, str = 0, {}, {}, ""
   while self and not rawequal(self, class_) do
@@ -582,12 +592,21 @@ local function strdump (self, class_, pattern_)
     self = parent(self)
   end
   assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
-  res[n+1] = ''
-  return table.concat(res, '\n')
+
+  -- return result as a string
+  if filnam_ == '-' then return table.concat(res, '\n') end
+
+  -- dump to file
+  local file = openfile(filnam_, 'w', '.dat')
+  for _,s in ipairs(res) do file:write(s,'\n') end
+  if is_string(filnam_) then file:close() else file:flush() end
+
+  return self
 end
 
--- members
-M.__id  = 'Object'
+-- members --------------------------------------------------------------------o
+
+M.__id  = 'object'
 M.__par = parent
 M.first_free_flag = flg_free
 
@@ -642,7 +661,7 @@ M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
 M.is_open_env     = functor( is_open_env     )
 
-M.strdump         = functor( strdump         )
+M.dumpobj         = functor( dumpobj         )
 
 -- aliases
 M.parent = parent
@@ -658,20 +677,20 @@ MAD.typeid.is_instanceOf = is_instanceOf
 
 -- metatables -----------------------------------------------------------------o
 
--- root Object variables = module
-Object = setmetatable({[_var]=M}, MT)
+-- root object variables = module
+object = setmetatable({[_var]=M}, MT)
 
  -- parent link
-setmetatable(M, Object)
+setmetatable(M, object)
 
 -- protect against changing metatable
 MT.__metatable = MT
 
 -- set as readonly
-Object:set_readonly()
+object:set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return {
-  Object = Object,
-  __help = require 'madh_object',
+  object = object,
+  -- __help = require 'madh_object',
 }

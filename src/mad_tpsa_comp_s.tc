@@ -21,11 +21,11 @@
 */
 
 struct compose_ctx_ser {
-  int sa;
+  ssz_t sa;
   char *required;
   const T **ma, **mb;
         T **mc, **ords, *knb_coef, *tmp;
-  D *da;
+  const D *da;
 };
 
 #define CTX struct compose_ctx_ser
@@ -35,7 +35,7 @@ get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
 {
   // extract from `a` all knob children of `pure_mono`, which contains only canonical vars
   assert(pure_mono && knb_coef);
-  D *d = a->d;
+  const D *d = a->d;
   ord_t mono[d->nv], knb_mono[d->nv];
   mad_mono_copy(d->nv, pure_mono, mono);
   NUM val;
@@ -57,15 +57,15 @@ get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
 }
 
 static inline void
-compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
+compose_ord1(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
-  D *d = ma[0]->d;
+  const D *d = ma[0]->d;
   if (d->nmv < d->nv) { // there are knobs
     T *knb_coef = FUN(newd)(d,d->ko);
-    T *tmp      = FUN(newd)(d,d->trunc);
+    T *tmp      = FUN(newd)(d,d->to);
 
-    for (int i = 0; i < sa; ++i) {
-      FUN(scalar)(mc[i],ma[i]->coef[0]);
+    for (idx_t i = 0; i < sa; ++i) {
+      FUN(scalar)(mc[i],ma[i]->coef[0],0);
 
       // ord 1 -- vars
       for (int v = 1; v <= d->nmv; ++v)
@@ -80,10 +80,13 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
       for (int k = d->nmv+1; k <= d->nv; ++k)
         mc[i]->coef[k] = ma[i]->coef[k];
     }
+
+    FUN(del)(tmp);
+    FUN(del)(knb_coef);
   }
   else {                        // no knobs
-    for (int i = 0; i < sa; ++i) {
-      FUN(scalar)(mc[i], ma[i]->coef[0]);
+    for (idx_t i = 0; i < sa; ++i) {
+      FUN(scalar)(mc[i], ma[i]->coef[0],0);
       for (int v = 1; v <= d->nv; ++v) {
         NUM coef = FUN(geti)(ma[i],v);
         if (coef) FUN(acc)(mb[v-1], coef, mc[i]);
@@ -95,7 +98,7 @@ compose_ord1(int sa, const T *ma[], const T *mb[], T *mc[])
 static inline void
 compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
 {
-  D *da = ctx->da;
+  const D *da = ctx->da;
   int idx = mad_desc_get_idx_m(da, da->nv, curr_mono);
   if (!ctx->required[idx])
     return;
@@ -104,7 +107,7 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
     FUN(mul)(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
 
   if (da->nmv < da->nv) { // there are knobs
-    for (int i = 0; i < ctx->sa; ++i) {
+    for (idx_t i = 0; i < ctx->sa; ++i) {
       T *coef = get_knobs_coef(ctx->ma[i], curr_mono, ctx->knb_coef);
       if (coef->nz) {
         FUN(mul)(coef, ctx->ords[o], ctx->tmp);
@@ -113,7 +116,7 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
     }
   }
   else {                        // no knobs
-    for (int i = 0; i < ctx->sa; ++i) {
+    for (idx_t i = 0; i < ctx->sa; ++i) {
       NUM coef = FUN(geti)(ctx->ma[i],idx);
       if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[i]);
     }
@@ -128,19 +131,19 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
 }
 
 static inline ord_t
-init_required(int sa, const T *ma[sa], char required[])
+init_required(ssz_t sa, const T *ma[sa], char required[])
 {
   assert(ma && required);
-  D *d = ma[0]->d;
+  const D *d = ma[0]->d;
   int nv = d->nv, *pi = d->ord2idx;
   ord_t highest_ord = 0;
 
   // original nodes
   memset(required, 0, d->nc);
-  for (int i = 0; i < sa; ++i) {
+  for (idx_t i = 0; i < sa; ++i) {
     if (ma[i]->hi > highest_ord)
       highest_ord = ma[i]->hi;
-    for (int c = 0; c < pi[ ma[i]->hi+1 ]; ++c)
+    for (idx_t c = 0; c < pi[ ma[i]->hi+1 ]; ++c)
       if (mad_bit_get(ma[i]->nz, d->ords[c]) && ma[i]->coef[c] != 0)
         required[c] = 1;
   }
@@ -150,9 +153,9 @@ init_required(int sa, const T *ma[sa], char required[])
 
   // fathers of nodes
   ord_t mono[nv];
-  int j, father = -1;
-  for (int o = highest_ord; o > 1; --o) {
-    for (int c = pi[o]; c < pi[o+1]; ++c)
+  idx_t j, father = -1;
+  for (ord_t o = highest_ord; o > 1; --o) {
+    for (idx_t c = pi[o]; c < pi[o+1]; ++c)
       if (required[c]) {
         mad_mono_copy(nv,d->To[c],mono);
         for (j = nv-1; j >= 0 && !mono[j]; --j)
@@ -166,10 +169,10 @@ init_required(int sa, const T *ma[sa], char required[])
 }
 
 static inline void
-compose_serial(int sa, const T *ma[], const T *mb[], T *mc[])
+compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   // locals
-  D *da = ma[0]->d;
+  const D *da = ma[0]->d;
   ord_t mono[da->nv];
   T *ords[da->mo+1];  // one for each order [0,mo]
   mad_alloc_tmp(char, required, da->nc); // char required[da->nc];
@@ -181,26 +184,23 @@ compose_serial(int sa, const T *ma[], const T *mb[], T *mc[])
   }
 
   // initialization
-  for (int v = 0; v <  da->nv; ++v) mono[v] = 0;
-  for (int o = 0; o <= highest_ord; ++o) ords[o] = FUN(newd)(da,da->trunc);
-  FUN(scalar)(ords[0],1.0);
-  for (int ic = 0; ic < sa; ++ic)
-    FUN(clear)(mc[ic]);
+  for (int   v = 0; v <  da->nv     ; ++v) mono[v] = 0;
+  for (ord_t o = 0; o <= highest_ord; ++o) ords[o] = FUN(newd)(da,da->to);
+  FUN(scalar)(ords[0],1,0);
+  for (idx_t ic = 0; ic < sa; ++ic) FUN(clear)(mc[ic]);
 
-  CTX ctx = { .sa=sa, .ma=ma,   .mc=mc,  .required=required,
-              .da=da, .mb=mb, .ords=ords  };
-  ctx.knb_coef = da->ko ? FUN(newd)(da,da->ko) : NULL;
-  ctx.tmp      = FUN(newd)(da,da->trunc);
+  CTX ctx = { .sa=sa, .ma=ma, .mc=mc, .required=required,
+              .da=da, .mb=mb, .ords=ords,
+              .knb_coef = da->ko ? FUN(newd)(da,da->ko) : NULL,
+              .tmp      =          FUN(newd)(da,da->to) };
 
   // do composition from root of tree, ord 0
   compose(0, 0, mono, &ctx);
 
   // cleanup
-  for (int o = 0; o <= highest_ord; ++o)
-    FUN(del)(ords[o]);
-
-  FUN(del)(ctx.knb_coef);
   FUN(del)(ctx.tmp);
+  FUN(del)(ctx.knb_coef);
+  for (ord_t o = 0; o <= highest_ord; ++o) FUN(del)(ords[o]);
   mad_free_tmp(required);
 }
 

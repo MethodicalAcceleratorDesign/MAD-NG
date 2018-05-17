@@ -184,8 +184,10 @@ local typeid = {
   is_infinite    = \a -> type(a) == 'number' and abs(a) == huge,
   is_positive    = \a -> type(a) == 'number' and a > 0,
   is_negative    = \a -> type(a) == 'number' and a < 0,
-  is_integer     = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
   is_decimal     = \a -> type(a) == 'number' and (a < -2^52 or  a >  2^52 or  (a%1) ~= 0),
+  is_integer     = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
+  is_even        = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%2) == 0,
+  is_odd         = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%2) == 1,
 
   is_emptystring = \a -> type(a) == 'string' and a == '',
 
@@ -209,12 +211,12 @@ local typeid = {
 
   -- concepts
 
-  is_lengthable   = \a ->                                    type(a) == 'string' or
-                          has_metamethod (a,'__len'   )   or type(a) == 'table',
-  is_iterable     = \a -> has_metamethod (a,'__ipairs')   or type(a) == 'table',
-  is_mappable     = \a -> has_metamethod (a,'__pairs' )   or type(a) == 'table',
-  is_indexable    = \a -> has_metamethod (a,'__index' )   or type(a) == 'table',
-  is_extendable   = \a -> has_metamethod (a,'__newindex') or type(a) == 'table',
+  is_lengthable   = \a -> type(a) == 'string'   or
+                          type(a) == 'table'    or has_metamethod (a,'__len'),
+  is_iterable     = \a -> type(a) == 'table'    or has_metamethod (a,'__ipairs'),
+  is_mappable     = \a -> type(a) == 'table'    or has_metamethod (a,'__pairs'),
+  is_indexable    = \a -> type(a) == 'table'    or has_metamethod (a,'__index'),
+  is_extendable   = \a -> type(a) == 'table'    or has_metamethod (a,'__newindex'),
 
   is_callable     = \a -> type(a) == 'function' or has_metamethod_(a,'__call'),
   is_orderable    = \a -> type(a) == 'number'   or
@@ -269,7 +271,7 @@ Write protection:
   - wunprotect: remove protection, i.e. return orignal object
 ]]
 
-local mm_msg = \k,s -> "invalid write access to object "..k.." <"..s..">"
+local mm_msg = \k,s -> "invalid write access to "..k.." object <"..s..">"
 local mm_err = \s   -> error(mm_msg("restricted", tostring(s)), 2)
 local mm_erp = \s   -> error(mm_msg("protected" , tostring(s)), 2)
 local mm_obj = {}
@@ -287,6 +289,7 @@ local is_table in typeid
 
 local function wrestrict (a)
   assert(typeclass[type(a)] == false,"invalid argument #1 (non-value expected)")
+  assert(not rawequal(a,_G), "_G cannot be protected against update (see strict)")
 
   local amt, omt = get_metatable(a) or {}, table.new(0,8)
 
@@ -306,6 +309,7 @@ local function wrestrict (a)
 end
 
 local function wprotect (a)
+  assert(not rawequal(a,_G), "_G cannot be protected against update (see strict)")
   local obj = wrestrict(a)
   getmetatable(obj).__newindex = mm_erp   -- error for protected object
   return obj
@@ -334,5 +338,5 @@ typeid.wunprotect = wunprotect
 -- end ------------------------------------------------------------------------o
 return {
   typeid = typeid,
-  __help = require 'madh_typeid',
+  -- __help = require 'madh_typeid',
 }

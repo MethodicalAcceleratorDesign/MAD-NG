@@ -119,7 +119,7 @@ end
 
 -- algorithms
 
-function bsearch (tbl, val, cmp_)
+local function bsearch (tbl, val, cmp_)
   local cmp = cmp_ or lt -- cmp must be the same used by table.sort
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
@@ -402,7 +402,7 @@ local function wrap_variables (self, tbl)
     if is_callable(v) then
       newv = f(v)
     else
-      fv = function() return v end
+      local fv = function() return v end
       newv = f(fv)
     end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
@@ -594,43 +594,6 @@ local function close_env (self)
   return reset_env(self)
 end
 
--- local function strdump (self, class, pattern)
---   class, pattern = class or Object, pattern or ''
---   assert(is_object(self)   , "invalid argument #1 (object expected)")
---   assert(is_object(class)  , "invalid argument #2 (object expected)")
---   assert(is_string(pattern), "invalid argument #3 (string expected)")
---   local cnt, res, spc, str = {}, {}, ""
---   while self and self ~= class do
---     local var = rawget(self,_var)
---     -- header
---     str = rawget(var, '__id') and (" '"..var.__id.."'") or ""
---     res[#res+1] = spc.."+ "..tostring(self)
---     spc = spc .. "   "
---     -- variables
---     for k,v in pairs(var) do
---       if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k, pattern) then
---         str = spc .. tostring(k)
---         if is_string(v) then
---           str = str.." : '"..tostring(v):sub(1,15).."'"
---         elseif is_function(v) then
---           str = str.." := "..tostring(v(self))
---         else
---           str = str.." :  "..tostring(v)
---         end
---         if cnt[k]
---         then str = str.." ("..string.rep('*', cnt[k])..")" -- mark overrides
---         else cnt[k] = 0 end
---         cnt[k] = cnt[k] + 1
---         res[#res+1] = str
---       end
---     end
---     self = parent(self)
---   end
---   assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
---   res[#res+1] = ''
---   return table.concat(res, '\n')
--- end
-
 -- members
 M.__id  = 'Object'
 M.__par = parent
@@ -695,6 +658,7 @@ setmetatable(M, Object)
 
 -- end of object model --------------------------------------------------------o
 
+local utest
 if MAD == nil then
   utest = require("luaunit")
 else
@@ -778,6 +742,7 @@ function TestLuaObjectErr:testConstructor()
     "invalid argument #1 (string or raw table expected)",
     "invalid argument #2 (raw table expected)"
   }
+  local a
 
   assertErrorMsgContains(msg[1], get, p2, a)      -- read
   assertErrorMsgContains(msg[1], get, p00, a)     -- read child
@@ -1452,7 +1417,7 @@ function TestLuaObjectErr:testSetVariables()
 end
 
 function TestLuaObject:testWrapVariables()
-  f = function() return 3 end
+  local f = function() return 3 end
   local p0 = Object 'p0' { x=1, y=2, z=f }
   local p1 = p0 'p1' { x=-1, y={} }
   local vw = {'name', 'x','y','z'}

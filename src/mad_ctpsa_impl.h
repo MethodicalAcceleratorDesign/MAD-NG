@@ -20,19 +20,22 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <tgmath.h>
+#include <complex.h>
+
 #include "mad_bit.h"
 #include "mad_ctpsa.h"
 
 // --- types ------------------------------------------------------------------o
 
 struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua)
-  desc_t *d;
-  ord_t   lo, hi, mo; // lowest/highest used ord, trunc ord
-  bit_t   nz;
-  cnum_t  coef[];
+  const desc_t *d;
+  ord_t  lo, hi, mo; // lowest/highest used ord, max ord (allocated)
+  bit_t  nz;
+  cnum_t coef[];
 };
 
-// --- helpers ----------------------------------------------------------------o
+// --- macros -----------------------------------------------------------------o
 
 #ifndef MAD_TPSA_NOHELPER
 
@@ -41,15 +44,79 @@ struct ctpsa { // warning: must be kept identical to LuaJIT definition (cmad.lua
 #define FUN(name)   MKNAME(mad_ctpsa_,name)
 #define PFX(name)   MKNAME(c,name)
 #define VAL(num)    creal(num), cimag(num)
-#define FMT         "%g%+gi"
+#define FMT         "%+6.4lE%+6.4lEi"
 #define SELECT(R,C) C
 
 #define CNUM(a) (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
 #endif
 
-#include <tgmath.h>
-#include <complex.h>
+// --- helpers ----------------------------------------------------------------o
+
+static inline ctpsa_t*
+mad_ctpsa_reset0 (ctpsa_t *t)
+{
+  t->lo = t->mo;
+  t->hi = t->nz = 0;
+  t->coef[0] = 0;
+  return t;
+}
+
+static inline ctpsa_t*
+mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
+{
+  if (t != r) {
+    r->lo = t->lo;
+    r->hi = MIN3(t->hi, r->mo, t->d->to);
+    r->nz = mad_bit_hcut(t->nz, r->hi);
+    if (r->lo) r->coef[0] = 0;
+  }
+  return r;
+}
+
+static inline ctpsa_t*
+mad_ctpsa_update0 (ctpsa_t *t)
+{
+  idx_t *pi = t->d->ord2idx;
+  for (ord_t o = t->lo; o <= t->hi; ++o) {
+    if (mad_bit_get(t->nz,o)) {
+      idx_t i = pi[o];
+      while (i < pi[o+1] && !t->coef[i]) ++i;
+      if (i < pi[o+1]) t->nz = mad_bit_clr(t->nz, o);
+    }
+  }
+  return t;
+}
+
+static inline ctpsa_t*
+mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
+{
+  const D *d = t->d;
+  int tid = omp_get_thread_num();
+  assert(d->cti[tid] < DESC_MAX_TMP);
+  ctpsa_t *tmp = d->ct[ tid*DESC_MAX_TMP + d->cti[tid]++ ];
+  TRC_TMPX(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
+                  tid, d->cti[tid]-1, (void*)tmp, func));
+  tmp->mo = t->mo;
+  return tmp; // mad_ctpsa_reset0(tmp);
+}
+
+static inline ctpsa_t*
+mad_ctpsa_gettmpr (const tpsa_t *t, const str_t func)
+{
+  return mad_ctpsa_gettmp((const ctpsa_t*)t, func);
+}
+
+static inline void
+mad_ctpsa_reltmp (ctpsa_t *tmp, const str_t func)
+{
+  const D *d = tmp->d;
+  int tid = omp_get_thread_num();
+  TRC_TMPX(printf("REL_TMPX%d[%d]: %p in %s(c)\n",
+                  tid, d->cti[tid]-1, (void*)tmp, func));
+  assert(d->ct[ tid*DESC_MAX_TMP + d->cti[tid]-1 ] == tmp);
+  --d->cti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
+}
 
 // --- end --------------------------------------------------------------------o
 
