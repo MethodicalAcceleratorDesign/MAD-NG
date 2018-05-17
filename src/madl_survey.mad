@@ -26,9 +26,8 @@
 local vector, matrix, element, mtable, command, object          in MAD
 local fnone                                                     in MAD.gfunc
 local is_sequence, is_boolean, is_number, is_integer,
-      is_callable, is_mappable                                  in MAD.typeid
+      is_callable, is_mappable, is_implicit                     in MAD.typeid
 local errorf                                                    in MAD.utility
-local implicit                                                  in element.flags
 local test_flag                                                 in object
 local abs                                                       in math
 
@@ -39,6 +38,7 @@ local geomap = require "madl_geomap"
 -- integrator schemes ---------------------------------------------------------o
 
 local symint = require 'madl_symint'
+local integr = symint.thick
 
 -- special --------------------------------------------------------------------o
 
@@ -68,15 +68,15 @@ E.changeref     :set_methods { survey = geomap.changeref }
 
 local _srv = {}
 
-local function save_all (mflw, elm, spos)
+local function save_all (elm, mflw)
   local name, kind, l, angle, tilt in elm
 
-  if not test_flag(elm, implicit) then
+  if not is_implicit(elm) then
     local A, W in mflw
     A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
   end
 
-  local V, A, dir, sdir, mtbl in mflw
+  local V, A, dir, sdir, spos, mtbl in mflw
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
 
@@ -85,17 +85,15 @@ local function save_all (mflw, elm, spos)
                   x, y, z, th, phi, psi, psi+tilt*sdir, sdir }
 end
 
-local function save_elm (mflw, elm, spos)
-  if not test_flat(elm, implicit) then
-    save_all(mflw, elm, spos)
-  end
+local function save_elm (elm, mflw)
+  if not is_implicit(elm) then save_all(elm, mflw) end
 end
 
 local function make_mtable (self)
   local range, nturn in self
   local sequ = self.sequence
-  local nrow = 2*sequ:length_of(range, nturn) -- to check after new range_of
-  local dir  = self.dir or 1           -- direction of the tracking (fwd or bwd)
+  local dir  = self.dir or 1 -- direction of the tracking
+  local nrow = 2*sequ:length_of(range, nturn)
 
   return mtable 'survey' {
     type='survey', title=sequ.name, direction=dir, reserve=nrow,
@@ -135,16 +133,16 @@ local function make_mflow (self)
   local iter, state, init = sequ:siter(range, nturn, dir)
 
   -- build mtable
-  local save in self
+  local save, implicit in self
   assert(is_boolean(save) or is_callable(save),
          "invalid save (boolean or callable expected)")
 
-  local mtbl
+  local mtbl, fill
   if save then
     mtbl = make_mtable(self)
-    save = is_callable(save) and save or implicit and save_all or save_elm
+    fill = is_callable(save) and save or implicit and save_all or save_elm
   else
-    save = fnone
+    fill = fnone
   end
 
   -- setup default sclicing
@@ -169,13 +167,17 @@ local function make_mflow (self)
     dir=dir,                           -- direction of tracking
     sdir=dir*seqdir,                   -- s-direction of tracking
 
-    save=save,                         -- save one row to mtable (if any)
+    fill=fill,                         -- fill/add one row to mtable (if any)
     nslice=nslice,                     -- number of slice for each element
     noslice=noslice,                   -- nslice=1 with highest precedence
 
+    idx=init,                          -- index of the current element
+    spos=0,                            -- s-position of the current element
+    npos=nil,                          -- integrator step: nil, 'first', 'last'
+
     atentry=atentry,                   -- action when entering an element
     atslice=atslice,                   -- action after each element slices
-    atexit =atexit ,                   -- action when exiting an element
+    atexit =atexit,                    -- action when exiting an element
 
     -- global frame (see geomap)
     V=vector(3):fill{x,y,z},           -- displacement vector
@@ -189,8 +191,8 @@ local function make_mflow (self)
     U=vector(3),                       -- temporary vector
 
     -- internal vars for survey
-    __iter=iter, __state=state, idx=init, -- iterator states
-    [_srv]=_srv                           -- hidden key
+    __iter=iter, __state=state,        -- iterator and iteraror state
+    [_srv]=_srv                        -- hidden key
   }
 end
 
@@ -200,15 +202,18 @@ local function exec (self)
 
   -- retrieve information
   local nstep in self
-  local mtbl, idx, __iter, __state in mflw
+  local idx, __iter, __state in mflw
+  local mtbl, fill, atentry, atexit in mflw
+
+  if nstep == 0 then return mtbl, mflw end
 
   -- geometric tracking
-  for i,elm,spos in __iter,__state,idx do
-    mflw.idx = i
-    mflw:atentry(elm , spos)
-    elm :survey (mflw, spos)
-    mflw:atexit (elm , spos)
-    mflw:save   (elm , spos)
+  for i,elm,spos in __iter, __state, idx do
+    mflw.idx, mflw.spos = i, spos
+    atentry(elm, mflw)
+    integr (elm, mflw, 1, elm.survey)
+    atexit (elm, mflw)
+    fill   (elm, mflw)
 
     -- check remaining number of element to track
     nstep = nstep-1
@@ -227,7 +232,7 @@ local survey = command 'Survey' {
   A0={0,0,0},     -- initial angles                                       (mflw)
 
   nturn=0,        -- number of extra turns                                (iter)
-  nstep=0,        -- number of elements to track                          (iter)
+  nstep=-1,       -- number of elements to track                          (iter)
   nslice=1,       -- number of slice for each element                     (mflw)
 
   save=true,      -- save data to mtable                                  (mtbl)
