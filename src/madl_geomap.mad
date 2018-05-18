@@ -21,7 +21,7 @@
       geomap(elm, map)
     where the expected fields are:
 
-    map -> { dir, V, W ; R, S, T, U }
+    map -> { sdir, V, W ; R, S, T, U }
     elm -> { l, angle ; phi, theta, psi, dx, dy, dz}
 
     (fields beyond ; are optionnal or internal)
@@ -37,6 +37,13 @@ local abs, sin, cos  in math
 local minlen, minang in MAD.constant
 local errorf         in MAD.utility
 
+-- helpers --------------------------------------------------------------------o
+
+local function update_angles(mflw)
+  local A, W in mflw
+  A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
+end
+
 -- patches --------------------------------------------------------------------o
 
 -- X-rotation (pitch)
@@ -45,8 +52,9 @@ function M.xrotation (elm, m, lw_) -- Rx(-phi)
   local phi = elm.phi or 0
   if abs(phi) < minang then return end
 
-  m.S :rotx(-phi*m.dir)
+  m.S :rotx(-phi*m.tdir)
   m.W :mul(m.S, m.W) -- W = W*S
+  update_angles(m)
 end
 
 -- Y-rotation (yaw)
@@ -55,8 +63,9 @@ function M.yrotation (elm, m, lw_) -- Ry(-theta)
   local th = elm.theta or 0
   if abs(th) < minang then return end
 
-  m.S :roty(-th*m.dir)
+  m.S :roty(-th*m.tdir)
   m.W :mul(m.S, m.W) -- W = W*S
+  update_angles(m)
 end
 
 -- S-rotation (roll, tilt)
@@ -65,8 +74,9 @@ function M.srotation (elm, m, lw_) -- Rz(psi)
   local psi = elm.psi or 0
   if abs(psi) < minang then return end
 
-  m.S :rotz(psi*m.dir)
+  m.S :rotz(psi*m.tdir)
   m.W :mul(m.S, m.W) -- W = W*S
+  update_angles(m)
 end
 
 -- Translation
@@ -75,8 +85,8 @@ function M.translate (elm, m, lw_)
   local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
   if abs(dx)+abs(dy)+abs(dz) < 3*minlen then return end
 
-  local dir in m
-  m.R :fill {dx*dir, dy*dir, dz*dir}
+  local tdir in m
+  m.R :fill {dx*tdir, dy*tdir, dz*tdir}
   m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
@@ -86,11 +96,12 @@ function M.madpatch (elm, m, lw_)
   local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
   if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
 
-  local dir in m
-  m.S :rotmad(th*dir, phi*dir, psi*dir)
+  local tdir in m
+  m.S :rotmad(th*tdir, phi*tdir, psi*tdir)
   m.W :mul(m.S, m.W) -- W = W*S
+  update_angles(m)
 
-  M.translate(elm, m)
+  M.translate(elm, m, lw_)
 end
 
 -- Forward patch
@@ -99,30 +110,26 @@ function M.xystpatch (elm, m, lw_)
   local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
   if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
 
-  local dir in m                           -- phi  : Elevation angle.
-  m.S :rotxyz(phi*dir, th*dir, psi*dir)    -- theta: Azimuthal angle.
-  m.W :mul(m.S, m.W) -- W = W*S            -- psi  : Roll      angle.
+  local tdir in m                           -- phi  : Elevation angle.
+  m.S :rotxyz(phi*tdir, th*tdir, psi*tdir)  -- theta: Azimuthal angle.
+  m.W :mul(m.S, m.W) -- W = W*S             -- psi  : Roll      angle.
+  update_angles(m)
 
-  M.translate(elm, m)
+  M.translate(elm, m, lw_)
 end
 
 -- Backward patch
 
 function M.tsyxpatch (elm, m, lw_)
-  M.translate(elm, m)
+  M.translate(elm, m, lw_)
 
   local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
   if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
 
-  local dir in m                           -- psi  : Roll      angle.
-  m.S :rotzyx(phi*dir, th*dir, psi*dir)    -- theta: Azimuthal angle.
-  m.W :mul(m.S, m.W) -- W = W*S            -- phi  : Elevation angle.
-end
-
--- Changedir (reverse direction)
-
-function M.changedir (elm_, m, lw_)
-  m.sdir = -m.sdir
+  local tdir in m                           -- psi  : Roll      angle.
+  m.S :rotzyx(phi*tdir, th*tdir, psi*tdir)  -- theta: Azimuthal angle.
+  m.W :mul(m.S, m.W) -- W = W*S             -- phi  : Elevation angle.
+  update_angles(m)
 end
 
 -- Changeref (generic patch)
@@ -136,58 +143,72 @@ function M.changeref (elm, m, lw_)
   end
 end
 
+-- Changedir (reverse mflow t-direction)
+
+function M.changedir (elm_, m, lw_)
+  m.tdir = -m.tdir
+end
+
+-- Changenrj (change mflow energy)
+
+function M.changenrj (elm_, m_, lw_)
+  -- N/A for survey
+end
+
 -- kinds ----------------------------------------------------------------------o
 
-function M.drift (elm, m, lw) -- e.g. drift, monitor, ...
-  local l in elm
+function M.drift (elm, m, lw) -- drift_element
+  local l = elm.l*lw*m.sdir
   if abs(l) < minlen then return end
 
-  m.R :fill {0, 0, l}
+  m.R :fill{0, 0, l}
   m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
-function M.thin (elm, m, lw) -- e.g. multipole
-  local angle in elm
+function M.thin (elm, m, lw_) -- thin_element
+  local angle = elm.angle
   if abs(angle) < minang then return end
 
-  local dir in m
-  m.S :roty(-angle*dir)
+  local tdir in m
+  m.S :roty(-angle*tdir)
 
   local tilt in elm
   if abs(tilt) >= minang then
-    m.T :rotz(tilt*dir)
+    m.T :rotz(tilt*tdir)
     m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
   m.W :mul(m.S, m.W) -- W = W*S
+  update_angles(m)
 end
 
-function M.thick (elm, m, lw) -- e.g. sbend, rbend, quadrupole, ...
-  local l in elm
+function M.thick (elm, m, lw) -- thick_element
+  local l = elm.l*lw
   if abs(l) < minlen then
-    return M.thin(elm, m)
+    return M.thin(elm, m, lw)
   end
 
-  local angle in elm
+  local angle = elm.angle*lw
   if abs(angle) < minang then
-    return M.drift(elm, m)
+    return M.drift(elm, m, lw)
   end
 
-  local dir in m
-  angle = angle*dir
+  local sdir, tdir in m
+  l, angle = l*sdir, angle*tdir
   local rho = l/angle
-  m.R :fill {rho*(cos(angle)-1), 0, rho*sin(angle)}
+  m.R :fill{rho*(cos(angle)-1), 0, rho*sin(angle)}
   m.S :roty(-angle)
 
   local tilt in elm
   if abs(tilt) >= minang then
-    m.T :rotz(tilt*dir)
+    m.T :rotz(tilt*tdir)
     m.T :mul(m.R, m.R)                 -- R = T*R
     m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
   m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
   m.W :mul(m.S, m.W)                   -- W = W*S
+  update_angles(m)
 end
 
 -- end ------------------------------------------------------------------------o
