@@ -26,25 +26,76 @@
 
 #include "mad_defs.h"
 
-// --- Math constants ---------------------------------------------------------o
+// --- interface --------------------------------------------------------------o
+
+// constants for maths
+
+extern const num_t mad_cst_EPS     ;  // minimum value such that 1+eps > 1
+extern const num_t mad_cst_TINY    ;  // minimum value above 0
+extern const num_t mad_cst_HUGE    ;  // maximum value below inf
+extern const num_t mad_cst_INFINITY;  // maximum representable value inf
+
+extern const num_t mad_cst_E       ;  // e
+extern const num_t mad_cst_LOG2E   ;  // log_2 e
+extern const num_t mad_cst_LOG10E  ;  // log_10 e
+extern const num_t mad_cst_LN2     ;  // log_e 2
+extern const num_t mad_cst_LN10    ;  // log_e 10
+extern const num_t mad_cst_PI      ;  // pi
+extern const num_t mad_cst_2PI     ;  // 2*pi
+extern const num_t mad_cst_PI_2    ;  // pi/2
+extern const num_t mad_cst_PI_4    ;  // pi/4
+extern const num_t mad_cst_1_PI    ;  // 1/pi
+extern const num_t mad_cst_2_PI    ;  // 2/pi
+extern const num_t mad_cst_2_SQRTPI;  // 2/sqrt(pi)
+extern const num_t mad_cst_SQRT2   ;  // sqrt(2)
+extern const num_t mad_cst_SQRT1_2 ;  // 1/sqrt(2), sqrt(1/2)
+
+extern const num_t mad_cst_DEGRAD  ;  // degree to radian factor
+extern const num_t mad_cst_RADDEG  ;  // radian to degree factor
+
+// constants for physics
+
+extern const num_t mad_cst_MINLEN  ;  // [m]   Minimum length tolerance
+extern const num_t mad_cst_MINANG  ;  // [rad] Minimum angle  tolerance
+
+extern const num_t mad_cst_CLIGHT  ;  // [m/s]
+extern const num_t mad_cst_MU0     ;  // [T.m/A] or [N/A^2] or [V.s/(A.m)]
+extern const num_t mad_cst_EPSILON0;  // [F/m]
+extern const num_t mad_cst_QELECT  ;  // [C]
+extern const num_t mad_cst_HBAR    ;  // [GeV.s]
+extern const num_t mad_cst_AMASS   ;  // [GeV]
+extern const num_t mad_cst_EMASS   ;  // [GeV]
+extern const num_t mad_cst_NMASS   ;  // [GeV]
+extern const num_t mad_cst_PMASS   ;  // [GeV]
+extern const num_t mad_cst_MUMASS  ;  // [GeV]
+extern const num_t mad_cst_DEUMASS ;  // [GeV]
+extern const num_t mad_cst_ERADIUS ;  // [m]
+
+// --- math constants ---------------------------------------------------------o
 
 #ifndef M_E
-#define M_E         2.7182818284590452353602874713526625  // e
-#define M_LOG2E     1.4426950408889634073599246810018921  // log_2 e
-#define M_LOG10E    0.4342944819032518276511289189166051  // log_10 e
-#define M_LN2       0.6931471805599453094172321214581766  // log_e 2
-#define M_LN10      2.3025850929940456840179914546843642  // log_e 10
-#define M_PI        3.1415926535897932384626433832795029  // pi
-#define M_PI_2      1.5707963267948966192313216916397514  // pi/2
-#define M_PI_4      0.7853981633974483096156608458198757  // pi/4
-#define M_1_PI      0.3183098861837906715377675267450287  // 1/pi
-#define M_2_PI      0.6366197723675813430755350534900574  // 2/pi
-#define M_2_SQRTPI  1.1283791670955125738961589031215452  // 2/sqrt(pi)
-#define M_SQRT2     1.4142135623730950488016887242096981  // sqrt(2)
-#define M_1_SQRT2   0.7071067811865475244008443621048490  // 1/sqrt(2)
+#define M_E         2.71828182845904523536028747135266250   // e
+#define M_LOG2E     1.44269504088896340735992468100189214   // log_2 e
+#define M_LOG10E    0.434294481903251827651128918916605082  // log_10 e
+#define M_LN2       0.693147180559945309417232121458176568  // log_e 2
+#define M_LN10      2.30258509299404568401799145468436421   // log_e 10
+#define M_PI        3.14159265358979323846264338327950288   // pi
+#define M_2PI       6.28318530717958647692528676655900577   // 2*pi
+#define M_PI_2      1.57079632679489661923132169163975144   // pi/2
+#define M_PI_4      0.785398163397448309615660845819875721  // pi/4
+#define M_1_PI      0.318309886183790671537767526745028724  // 1/pi
+#define M_2_PI      0.636619772367581343075535053490057448  // 2/pi
+#define M_2_SQRTPI  1.12837916709551257389615890312154517   // 2/sqrt(pi)
+#define M_SQRT2     1.41421356237309504880168872420969808   // sqrt(2)
+#define M_SQRT1_2   0.707106781186547524400844362104849039  // 1/sqrt(2)
+#else
+#define M_2PI       6.28318530717958647692528676655900577   // 2*pi
 #endif
 
-// --- Physics constants ------------------------------------------------------o
+#define M_RADDEG    57.2957795130823208767981548141051703   // 180/pi
+#define M_DEGRAD    0.0174532925199432957692369076848861271 // pi/180
+
+// --- physics constants ------------------------------------------------------o
 
 #ifndef P_CLIGHT                           // Source: CODATA 2014
 #define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
@@ -61,38 +112,6 @@
 #define P_DEUMASS   1.875612928            // [GeV]   Deuteron mass
 #define P_ERADIUS   2.8179403227e-15       // [m]     Classical electron radius
 #endif
-
-// --- interface --------------------------------------------------------------o
-
-extern const num_t mad_cst_minlen  ;  // [m]   Minimum length tolerance
-extern const num_t mad_cst_minang  ;  // [rad] Minimum angle  tolerance
-
-extern const num_t mad_cst_E       ;  // e
-extern const num_t mad_cst_LOG2E   ;  // log_2 e
-extern const num_t mad_cst_LOG10E  ;  // log_10 e
-extern const num_t mad_cst_LN2     ;  // log_e 2
-extern const num_t mad_cst_LN10    ;  // log_e 10
-extern const num_t mad_cst_PI      ;  // pi
-extern const num_t mad_cst_PI_2    ;  // pi/2
-extern const num_t mad_cst_PI_4    ;  // pi/4
-extern const num_t mad_cst_1_PI    ;  // 1/pi
-extern const num_t mad_cst_2_PI    ;  // 2/pi
-extern const num_t mad_cst_2_SQRTPI;  // 2/sqrt(pi)
-extern const num_t mad_cst_SQRT2   ;  // sqrt(2)
-extern const num_t mad_cst_1_SQRT2 ;  // 1/sqrt(2)
-
-extern const num_t mad_cst_CLIGHT  ;  // [m/s]
-extern const num_t mad_cst_MU0     ;  // [T.m/A] or [N/A^2] or [V.s/(A.m)]
-extern const num_t mad_cst_EPSILON0;  // [F/m]
-extern const num_t mad_cst_QELECT  ;  // [C]
-extern const num_t mad_cst_HBAR    ;  // [GeV.s]
-extern const num_t mad_cst_AMASS   ;  // [GeV]
-extern const num_t mad_cst_EMASS   ;  // [GeV]
-extern const num_t mad_cst_NMASS   ;  // [GeV]
-extern const num_t mad_cst_PMASS   ;  // [GeV]
-extern const num_t mad_cst_MUMASS  ;  // [GeV]
-extern const num_t mad_cst_DEUMASS ;  // [GeV]
-extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // ----------------------------------------------------------------------------o
 
