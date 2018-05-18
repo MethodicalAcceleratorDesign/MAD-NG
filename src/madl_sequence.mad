@@ -44,6 +44,7 @@ local abs in math
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val, raw_get, test_flag in object
 local seq_cpy, var_set = sequence.copy, sequence_mt.__newindex
+local readonly = sequence.set_readonly
 
 -- root object ----------------------------------------------------------------o
 
@@ -701,6 +702,20 @@ local function newindex_mm (seq, key, val)
   var_set(seq, key, val)
 end
 
+-- readonly protection --------------------------------------------------------o
+
+local function set_readonly (seq, set_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = raw_get(seq,_data)
+  if elem then
+    set_ = set_ ~= false and true or false
+    if set_ ~= seq:is_readonly() then
+      elem.ro = set_
+    end
+  end
+  return readonly(seq, set_)
+end
+
 -- methods (readonly) ---------------------------------------------------------o
 
 local function index (seq, idx)
@@ -883,12 +898,13 @@ end
 
 local function remove (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to remove
   local idx_r, nr = filter(seq, rng_, sel_, true)
   if nr == 0 then return end
 
-  local elem = var_raw(seq,_data)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
   assert(idx_r[1] > 1              , "invalid range, $start marker selected")
   assert(idx_r[nr] < elem.ne       , "invalid range, $end marker selected")
@@ -910,6 +926,8 @@ end
 
 local function replace (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -937,7 +955,7 @@ local function replace (seq, elm, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
-  local elem, elm_r = var_raw(seq,_data), table.new(nr,0)
+  local elm_r = table.new(nr,0)
   for i=1,nr do                                -- replace elements
     local ii, ie = idx_r[i], (i-1)%ne+1        -- recycle list of elements
     elem[ii], elm_r[i] = elm[ie], elem[ii]     -- backup
@@ -958,6 +976,8 @@ end
 
 local function install (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -1006,7 +1026,6 @@ local function install (seq, elm, rng_, sel_)
   end
 
   -- insert elements -- to optimize to avoid O(N^2) insertion
-  local elem = var_raw(seq,_data)
   for ie=1,i do
     local idx = bsearch(elem.spos, spos[ie], 2, elem.ne)
     if is_sequence(ins[ie]) and #ins[ie] > 2 then
@@ -1078,6 +1097,9 @@ local function share (seq1, seq2)
   check_mark(seq1) check_mark(seq2)
   local elem1 = var_raw(seq1,_data)
   local elem2 = var_raw(seq2,_data)
+  assert(not (elem1.ro or seq1:is_readonly()), "invalid write access to readonly sequence")
+  assert(not (elem2.ro or seq2:is_readonly()), "invalid write access to readonly sequence")
+
   local elm_r, idx_r, nr = {}, {}, 1
   for i=2,elem1.ne-1 do
     local nam = elem1[i].__id   -- share by (unique) name
@@ -1106,6 +1128,8 @@ local function unique (seq, fmt_)
   if is_string(fmt_) then fmt_ = bind1st(string.format, fmt_) end
   assert(is_nil(fmt_) or is_callable(fmt_), "invalid argument #2 (callable expected)")
   local elem, lst = var_raw(seq,_data), table.new(0,100)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
+
   for en,ei in pairs(elem.eidx) do
     if is_table(ei) then
       table.clear(lst)
@@ -1391,6 +1415,9 @@ sequence :set_methods {
   read         := error("NYI", 2), -- TODO (possible?)
   write        := error("NYI", 2), -- TODO (useful?)
   dumpseq       = dumpseq,
+
+  -- readonly
+  set_readonly = set_readonly,
 
   -- ownership
   is_owner      = is_owner,
