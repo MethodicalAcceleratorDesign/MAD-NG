@@ -44,6 +44,7 @@ local abs in math
 local sequence_mt = getmetatable(sequence)
 local var_raw, var_val, raw_get, test_flag in object
 local seq_cpy, var_set = sequence.copy, sequence_mt.__newindex
+local readonly = sequence.set_readonly
 
 -- root object ----------------------------------------------------------------o
 
@@ -55,7 +56,7 @@ local uninitialized = -1e9
 local ongoing_init  = -2e9
 
 -- defined in elements
-sequence :set { direction=1, l=uninitialized,
+sequence :set { dir=1, l=uninitialized,
                 [_data]={eidx={}, spos={}, epos={}, ne=0} }
 
 local function is_sequence (a)
@@ -90,6 +91,13 @@ local function seq_poserr (typ, seq, idx, pos)
   local msg = string.format(
     "invalid %s position at s = %.6gm (negative drift %.6gm)",
              typ,               seq:spos(idx),        seq:spos(idx)-pos)
+  seq_error(msg, seq, idx, seq[idx])
+end
+
+local function seq_lenerr (typ, seq, idx, len)
+  local msg = string.format(
+    "invalid %s length at s = %.6gm (invalid length %.6gm)",
+             typ,             seq:spos(idx),        len)
   seq_error(msg, seq, idx, seq[idx])
 end
 
@@ -133,6 +141,8 @@ local function check_spos (seq)
     local ds = elem.spos[i+1] - (elem.spos[i]+elem[i].l)
     if ds < -minlen then
       seq_poserr("element", seq, i, elem.spos[i]-ds)
+    elseif elem[i].is_thin and elem[i].l ~= 0 then
+      seq_lenerr("element", seq, i, elem[i].l)
     end
   end
 end
@@ -184,6 +194,7 @@ end
 
 local function check_sequ (seq)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  assert(seq.dir == 1 or seq.dir == -1, "invalid direction (1 or -1 expected)")
   check_spos (seq)
   check_index(seq)
   check_mark (seq)
@@ -334,8 +345,8 @@ end
 
 -- position helpers -----------------------------------------------------------o
 
--- forward declarations
-local elem_pos, refpos_pos
+-- forward declaration
+local elem_pos
 
 -- return e-position of 'from', memoize result if count is not relative
 local function from_epos (seq, from, idx)
@@ -358,6 +369,20 @@ local function refpos_epos (elm, rpos, idx)
     seq_error("invalid refpos to subelement '" .. rpos .. "'", elm, idx)
   end
   return from_epos(elm, rpos)
+end
+
+-- return internal e-position of 'refpos'
+local function refpos_pos (seq, elm, idx)
+  local refpos = elm.refpos or seq.refer or 'centre'
+  local rpos
+
+      if refpos == 'entry'  then rpos = 0
+  elseif refpos == 'centre' then rpos = elm.l/2
+  elseif refpos == 'exit'   then rpos = elm.l
+  elseif is_number(refpos)  then rpos = refpos
+  else                           rpos = refpos_epos(elm, refpos, idx)
+  end
+  return rpos
 end
 
 -- forward index
@@ -385,20 +410,6 @@ local function from_pos (seq, elm, idx)
   else                           epos = epos + from_epos(seq,from,idx)
   end
   return epos
-end
-
--- return internal e-position of 'refpos'
-function refpos_pos (seq, elm, idx)
-  local refpos = elm.refpos or seq.refer or 'centre'
-  local rpos
-
-      if refpos == 'entry'  then rpos = 0
-  elseif refpos == 'centre' then rpos = elm.l/2
-  elseif refpos == 'exit'   then rpos = elm.l
-  elseif is_number(refpos)  then rpos = refpos
-  else                           rpos = refpos_epos(elm, refpos, idx)
-  end
-  return rpos
 end
 
 -- build positions ------------------------------------------------------------o
@@ -438,7 +449,7 @@ local function sequ_pos (seq, sseq, idx, dir)
   local pos = elem_pos(seq, idx, sseq)    -- shift by subsequence refpos
   local elem, selem = var_raw(seq,_data), var_raw(sseq,_data)
 
-  if seq.direction ~= sseq.direction then -- changedir patch
+  if seq.dir ~= sseq.dir then -- changedir patch
     elem.spos[idx] = selem.spos[1] + pos
     elem.epos[idx] = selem.epos[1] + pos
     idx = idx + 1
@@ -451,7 +462,7 @@ local function sequ_pos (seq, sseq, idx, dir)
       elem.epos[idx-2+i] = selem.epos[i] + pos
       assert(elem[idx-2+i] == selem[i], "unexpected corrupted flat sequence")
     end
-  else
+  elseif dir < 0 then
     local l = sseq.l
     for i=2,n-1 do
       local sp, el = selem.spos[n+1-i], selem[n+1-i].l
@@ -459,9 +470,11 @@ local function sequ_pos (seq, sseq, idx, dir)
       elem.epos[idx-2+i] = l - (sp + el - (selem.epos[n+1-i] - sp)) + pos
       assert(elem[idx-2+i] == selem[n+1-i], "unexpected corrupted flat sequence")
     end
+  else
+    error("invalid direction (1 or -1 expected)")
   end
 
-  if seq.direction ~= sseq.direction then -- changedir patch
+  if seq.dir ~= sseq.dir then -- changedir patch
     elem.spos[idx+n] = selem.spos[n] + pos
     elem.epos[idx+n] = selem.epos[n] + pos
   end
@@ -484,6 +497,8 @@ local function build_pos (seq, sref)
       elem_pos(seq, idx)
       if pos-minlen > elem.spos[idx] then
         seq_poserr('element', seq, idx, pos)
+      elseif elem[idx].is_thin and elem[idx].l ~= 0 then
+        seq_lenerr("element", seq, idx, elem[idx].l)
       end
       if elem[idx].shared == true then -- shared element
         elem[idx] = check_shared(seq, idx)
@@ -520,18 +535,20 @@ local function copy_ssequ (seq, flat, sref, idx, dir)
 
   sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
 
-  if sref.dir ~= seq.direction then -- insert changedir patch
+  if sref.dir ~= seq.dir then -- insert changedir patch
     idx, flat[idx] = idx+1, changedir(seq.__id.."_chdir", {})
   end
 
   local n = elem.ne
-  if dir > 0 then
-    for i=2,n-1 do flat[idx-2+i] = elem[i] end
-  else
+      if dir ==  1 then
+    for i=2,n-1 do flat[idx-2+i] = elem[i    ] end
+  elseif dir == -1 then
     for i=2,n-1 do flat[idx-2+i] = elem[n+1-i] end
+  else
+    error("invalid direction (1 or -1 expected)")
   end
 
-  if sref.dir ~= seq.direction then
+  if sref.dir ~= seq.dir then
     idx, flat[idx-2+n] = idx+1, flat[idx-1] -- share patch
   end
   return idx-2+n
@@ -540,7 +557,7 @@ end
 -- flatten lines and subsequence
 local function flatten_line (line, flat, sref, idx, dir)
   local n, rep = #line, (line.__rep or 1) * dir
-  if n == 0 then return idx end
+  if n == 0 or rep == 0 then return idx end
 
   local start, stop, step
   if rep < 0
@@ -632,7 +649,7 @@ local function sequ_init (seq)
   local n, owner = seq:raw_len(), raw_get(seq, 'owner')
   if n == 0 and not owner then return seq end -- empty
 
-  local sref = { dir=seq.direction, sdir={} }
+  local sref = { dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
   flatten_sequ(seq, data, sref)
   seq:clear_array()
@@ -701,6 +718,20 @@ local function newindex_mm (seq, key, val)
   var_set(seq, key, val)
 end
 
+-- readonly protection --------------------------------------------------------o
+
+local function set_readonly (seq, set_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = raw_get(seq,_data)
+  if elem then
+    set_ = set_ ~= false and true or false
+    if set_ ~= seq:is_readonly() then
+      elem.ro = set_
+    end
+  end
+  return readonly(seq, set_)
+end
+
 -- methods (readonly) ---------------------------------------------------------o
 
 local function index (seq, idx)
@@ -728,9 +759,10 @@ local function range_of (seq, rng_, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local start, stop, step, istart, istop, doidx
   if is_nil(rng_) then
-    if dir_ == -1
-    then return #seq, 1
-    else return 1, #seq
+    local dir = dir_ or 1
+        if dir ==  1 then return 1, #seq
+    elseif dir == -1 then return #seq, 1
+    else error("invalid range direction (1 or -1 expected)")
     end
   elseif is_integer(rng_) then
     start, istart = rng_, index_of_idx(seq, rng_)
@@ -755,7 +787,7 @@ local function range_of (seq, rng_, ref_, dir_)
   local sstart, sstop
   if doidx then
     local dir = dir_ or 1
-    assert(dir ~= 0, "invalid range direction (1 or -1 expected)")
+    assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
     istart, sstart = index_of(seq, start, ref_,  dir)
     istop , sstop  = index_of(seq, stop , ref_, -dir)
   end
@@ -883,12 +915,13 @@ end
 
 local function remove (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to remove
   local idx_r, nr = filter(seq, rng_, sel_, true)
   if nr == 0 then return end
 
-  local elem = var_raw(seq,_data)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
   assert(idx_r[1] > 1              , "invalid range, $start marker selected")
   assert(idx_r[nr] < elem.ne       , "invalid range, $end marker selected")
@@ -910,6 +943,8 @@ end
 
 local function replace (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -937,7 +972,7 @@ local function replace (seq, elm, rng_, sel_)
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
-  local elem, elm_r = var_raw(seq,_data), table.new(nr,0)
+  local elm_r = table.new(nr,0)
   for i=1,nr do                                -- replace elements
     local ii, ie = idx_r[i], (i-1)%ne+1        -- recycle list of elements
     elem[ii], elm_r[i] = elm[ie], elem[ii]     -- backup
@@ -958,6 +993,8 @@ end
 
 local function install (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local elem = var_raw(seq,_data)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -1006,7 +1043,6 @@ local function install (seq, elm, rng_, sel_)
   end
 
   -- insert elements -- to optimize to avoid O(N^2) insertion
-  local elem = var_raw(seq,_data)
   for ie=1,i do
     local idx = bsearch(elem.spos, spos[ie], 2, elem.ne)
     if is_sequence(ins[ie]) and #ins[ie] > 2 then
@@ -1078,6 +1114,9 @@ local function share (seq1, seq2)
   check_mark(seq1) check_mark(seq2)
   local elem1 = var_raw(seq1,_data)
   local elem2 = var_raw(seq2,_data)
+  assert(not (elem1.ro or seq1:is_readonly()), "invalid write access to readonly sequence")
+  assert(not (elem2.ro or seq2:is_readonly()), "invalid write access to readonly sequence")
+
   local elm_r, idx_r, nr = {}, {}, 1
   for i=2,elem1.ne-1 do
     local nam = elem1[i].__id   -- share by (unique) name
@@ -1106,6 +1145,8 @@ local function unique (seq, fmt_)
   if is_string(fmt_) then fmt_ = bind1st(string.format, fmt_) end
   assert(is_nil(fmt_) or is_callable(fmt_), "invalid argument #2 (callable expected)")
   local elem, lst = var_raw(seq,_data), table.new(0,100)
+  assert(not (elem.ro or seq:is_readonly()), "invalid write access to readonly sequence")
+
   for en,ei in pairs(elem.eidx) do
     if is_table(ei) then
       table.clear(lst)
@@ -1247,9 +1288,9 @@ end
 
 local function iter (seq, rng_, ntrn_, dir_)
   local nturn, dir = ntrn_ or 0, dir_ or 1
-  assert(is_sequence(seq)                ,"invalid argument #1 (sequence expected)")
-  assert(is_number(nturn) and nturn >= 0 ,"invalid argument #3 (number expected)")
-  assert(is_number(dir) and abs(dir) == 1,"invalid argument #4 (direction expected)")
+  assert(is_sequence(seq)                 ,"invalid argument #1 (sequence expected)")
+  assert(is_integer(nturn) and nturn >= 0 ,"invalid argument #3 (positive integer expected)")
+  assert(dir == 1 or dir == -1            ,"invalid argument #4 (1 or -1 expected)")
 
   if #seq == 0 then return niliter end
 
@@ -1391,6 +1432,9 @@ sequence :set_methods {
   read         := error("NYI", 2), -- TODO (possible?)
   write        := error("NYI", 2), -- TODO (useful?)
   dumpseq       = dumpseq,
+
+  -- readonly
+  set_readonly = set_readonly,
 
   -- ownership
   is_owner      = is_owner,

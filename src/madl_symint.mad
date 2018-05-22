@@ -18,10 +18,10 @@
   Purpose:
   - Provide a catalog of symplectic integrators from 1st to 8th order
     Integrators have the following calling convention:
-      integrate(elm, map, len, drift, kick)
-    where drift and kick must have the following calling convention:
-      drift(elm, map, len)
-       kick(elm, map, len)
+      integrate(elm, map, len, thick, thin)
+    where thick and thin must have the following calling convention:
+      thick(elm, mflow, len_weight)
+       thin(elm, mflow, len_weight)
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -91,33 +91,30 @@ print('E8') make_yoshida(yosh8_w.E)
 
 -- integrators ----------------------------------------------------------------o
 
-function M.thin (elm, mflw, lw, drift_, kick)
-  local nsl = max(elm.nslice or mflw.nslice, 1)
+function M.thinonly (elm, mflw, lw, thick_, thin)
   local fsl = mflw.atslice
-  local lwk = lw/nsl
+  local lwk = lw
 
-  -- nsl kicks
-     fsl(elm, mflw, lwk, 0)  mflw.npos = nil
-  for i=1,nsl do
-    kick(elm, mflw, lwk)
-     fsl(elm, mflw, lwk, i)
-  end
+  -- 1 thin
+   fsl(elm, mflw, lwk, 0)
+  thin(elm, mflw, lwk)
+   fsl(elm, mflw, lwk, 1)
 end
 
-function M.thick (elm, mflw, lw, drift, kick_)
+function M.thickonly (elm, mflw, lw, thick, thin_)
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwd = lw/nsl
 
-  -- nsl drifts
-      fsl(elm, mflw, lwd, 0)  mflw.npos = nil
+  -- nsl thick
+      fsl(elm, mflw, lwd, 0)
   for i=1,nsl do
-    drift(elm, mflw, lwd)
+    thick(elm, mflw, lwd)
       fsl(elm, mflw, lwd, i)
   end
 end
 
-function M.simple (elm, mflw, lw, drift, kick) -- 1st order
+function M.simple (elm, mflw, lw, thick, thin) -- 1st order
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwk = lw/nsl
@@ -126,148 +123,148 @@ function M.simple (elm, mflw, lw, drift, kick) -- 1st order
   -- nsl kicks
       fsl(elm, mflw, lwk, 0)
   for i=1,nsl do              mflw.npos = 'first'
-    drift(elm, mflw, lwd)
-     kick(elm, mflw, lwk)     mflw.npos = 'last'
-    drift(elm, mflw, lwd)
+    thick(elm, mflw, lwd)     mflw.npos = nil
+     thin(elm, mflw, lwk)     mflw.npos = 'last'
+    thick(elm, mflw, lwd)     mflw.npos = nil
       fsl(elm, mflw, lwk, i)
   end
 end
 
-function M.collim (elm, mflw, lw, drift, kick) -- 1st order
+function M.collim (elm, mflw, lw, thick, thin) -- 1st order
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwd = lw/nsl
   local lwk = lwd/2
 
-  -- nsl drifts
-      fsl(elm, mflw, lwd, 0)  mflw.npos = nil
-  for i=1,nsl do
-     kick(elm, mflw, lwk)
-    drift(elm, mflw, lwd)
-     kick(elm, mflw, lwk)
+  -- nsl thick
+      fsl(elm, mflw, lwd, 0)
+  for i=1,nsl do              mflw.npos = 'first'
+     thin(elm, mflw, lwk)     mflw.npos = nil
+    thick(elm, mflw, lwd)     mflw.npos = 'last'
+     thin(elm, mflw, lwk)     mflw.npos = nil
       fsl(elm, mflw, lwd, i)
   end
 end
 
 -- [Burkhardt13] table 1, p. 946
-function M.teapot (elm, mflw, lw, drift, kick) -- 2nd order
+function M.teapot (elm, mflw, lw, thick, thin) -- 2nd order
   local nsl = max(elm.nslice or mflw.nslice, 2)
   local fsl = mflw.atslice
   local lwk = lw/nsl
   local lwd = lwk/(2*(nsl+1))
   local lwD = lwk*nsl/(nsl^2-1)
 
-  -- nsl kicks
+  -- nsl*(1 thin + 1 thick) + 1 thick
       fsl(elm, mflw, lwk, 0)  mflw.npos = 'first'
-    drift(elm, mflw, lwd)
+    thick(elm, mflw, lwd)     mflw.npos = nil
 if fsl == fnone then
   for i=1,nsl-1 do
-     kick(elm, mflw, lwk)
-    drift(elm, mflw, lwD)
+     thin(elm, mflw, lwk)
+    thick(elm, mflw, lwD)
   end
 else
   for i=1,nsl-1 do
-     kick(elm, mflw, lwk)
-    drift(elm, mflw, lwD/2)
+     thin(elm, mflw, lwk)
+    thick(elm, mflw, lwD/2)
       fsl(elm, mflw, lwk, i)
-    drift(elm, mflw, lwD/2)
+    thick(elm, mflw, lwD/2)
   end
 end
-     kick(elm, mflw, lwk)     mflw.npos = 'last'
-    drift(elm, mflw, lwd)
+     thin(elm, mflw, lwk)     mflw.npos = 'last'
+    thick(elm, mflw, lwd)     mflw.npos = nil
       fsl(elm, mflw, lwk, nsl)
 end
 
 -- [Yoshida90] eq. 2.11, p. 263
-function M.yoshida4 (elm, mflw, lw, drift, kick) -- 4th order
+function M.yoshida4 (elm, mflw, lw, thick, thin) -- 4th order
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwn = lw/nsl
 
-  -- nsl*3 kicks (k=4)
+  -- nsl*(3 thins + 4 thicks) ; k=4
       fsl(elm, mflw, lwn, 0)
   for i=1,nsl do                        mflw.npos = 'first'
-    drift(elm, mflw, lwn * yosh4_d[1])
-     kick(elm, mflw, lwn * yosh4_k[1])
-    drift(elm, mflw, lwn * yosh4_d[2])
-     kick(elm, mflw, lwn * yosh4_k[2]) -- middle
-    drift(elm, mflw, lwn * yosh4_d[2])
-     kick(elm, mflw, lwn * yosh4_k[1])  mflw.npos = 'last'
-    drift(elm, mflw, lwn * yosh4_d[1])
+    thick(elm, mflw, lwn * yosh4_d[1])  mflw.npos = nil
+     thin(elm, mflw, lwn * yosh4_k[1])
+    thick(elm, mflw, lwn * yosh4_d[2])
+     thin(elm, mflw, lwn * yosh4_k[2]) -- middle
+    thick(elm, mflw, lwn * yosh4_d[2])
+     thin(elm, mflw, lwn * yosh4_k[1])  mflw.npos = 'last'
+    thick(elm, mflw, lwn * yosh4_d[1])  mflw.npos = nil
     -- back to physics
       fsl(elm, mflw, lwn, i)
   end
 end
 
 -- [Yoshida90] table 1, p. 267
-function M.yoshida6 (elm, mflw, lw, drift, kick) -- 6th order
+function M.yoshida6 (elm, mflw, lw, thick, thin) -- 6th order
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwn = lw/nsl
 
-  -- nsl*7 kicks (k=8)
+  -- nsl*(7 thins + 8 thicks) ; k=8
       fsl(elm, mflw, lwn, 0)
   for i=1,nsl do                        mflw.npos = 'first'
-    drift(elm, mflw, lwn * yosh6_d[1])
-     kick(elm, mflw, lwn * yosh6_k[1])
-    drift(elm, mflw, lwn * yosh6_d[2])
-     kick(elm, mflw, lwn * yosh6_k[2])
-    drift(elm, mflw, lwn * yosh6_d[3])
-     kick(elm, mflw, lwn * yosh6_k[3])
-    drift(elm, mflw, lwn * yosh6_d[4])
-     kick(elm, mflw, lwn * yosh6_k[4]) -- middle
-    drift(elm, mflw, lwn * yosh6_d[4])
-     kick(elm, mflw, lwn * yosh6_k[3])
-    drift(elm, mflw, lwn * yosh6_d[3])
-     kick(elm, mflw, lwn * yosh6_k[2])
-    drift(elm, mflw, lwn * yosh6_d[2])
-     kick(elm, mflw, lwn * yosh6_k[1])  mflw.npos = 'last'
-    drift(elm, mflw, lwn * yosh6_d[1])
+    thick(elm, mflw, lwn * yosh6_d[1])  mflw.npos = nil
+     thin(elm, mflw, lwn * yosh6_k[1])
+    thick(elm, mflw, lwn * yosh6_d[2])
+     thin(elm, mflw, lwn * yosh6_k[2])
+    thick(elm, mflw, lwn * yosh6_d[3])
+     thin(elm, mflw, lwn * yosh6_k[3])
+    thick(elm, mflw, lwn * yosh6_d[4])
+     thin(elm, mflw, lwn * yosh6_k[4]) -- middle
+    thick(elm, mflw, lwn * yosh6_d[4])
+     thin(elm, mflw, lwn * yosh6_k[3])
+    thick(elm, mflw, lwn * yosh6_d[3])
+     thin(elm, mflw, lwn * yosh6_k[2])
+    thick(elm, mflw, lwn * yosh6_d[2])
+     thin(elm, mflw, lwn * yosh6_k[1])  mflw.npos = 'last'
+    thick(elm, mflw, lwn * yosh6_d[1])  mflw.npos = nil
     -- back to physics
       fsl(elm, mflw, lwn, i)
   end
 end
 
 -- [Yoshida90] table 2, p. 267
-function M.yoshida8 (elm, mflw, lw, drift, kick) -- 8th order
+function M.yoshida8 (elm, mflw, lw, thick, thin) -- 8th order
   local nsl = max(elm.nslice or mflw.nslice, 1)
   local fsl = mflw.atslice
   local lwn = lw/nsl
 
-  -- nsl*15 kicks (k=16)
+  -- nsl*(15 thins + 16 thicks) ; k=16
       fsl(elm, mflw, lwn, 0)
   for i=1,nsl do                        mflw.npos = 'first'
-    drift(elm, mflw, lwn * yosh8_d[1])
-     kick(elm, mflw, lwn * yosh8_k[1])
-    drift(elm, mflw, lwn * yosh8_d[2])
-     kick(elm, mflw, lwn * yosh8_k[2])
-    drift(elm, mflw, lwn * yosh8_d[3])
-     kick(elm, mflw, lwn * yosh8_k[3])
-    drift(elm, mflw, lwn * yosh8_d[4])
-     kick(elm, mflw, lwn * yosh8_k[4])
-    drift(elm, mflw, lwn * yosh8_d[5])
-     kick(elm, mflw, lwn * yosh8_k[5])
-    drift(elm, mflw, lwn * yosh8_d[6])
-     kick(elm, mflw, lwn * yosh8_k[6])
-    drift(elm, mflw, lwn * yosh8_d[7])
-     kick(elm, mflw, lwn * yosh8_k[7])
-    drift(elm, mflw, lwn * yosh8_d[8])
-     kick(elm, mflw, lwn * yosh8_k[8]) -- middle
-    drift(elm, mflw, lwn * yosh8_d[8])
-     kick(elm, mflw, lwn * yosh8_k[7])
-    drift(elm, mflw, lwn * yosh8_d[7])
-     kick(elm, mflw, lwn * yosh8_k[6])
-    drift(elm, mflw, lwn * yosh8_d[6])
-     kick(elm, mflw, lwn * yosh8_k[5])
-    drift(elm, mflw, lwn * yosh8_d[5])
-     kick(elm, mflw, lwn * yosh8_k[4])
-    drift(elm, mflw, lwn * yosh8_d[4])
-     kick(elm, mflw, lwn * yosh8_k[3])
-    drift(elm, mflw, lwn * yosh8_d[3])
-     kick(elm, mflw, lwn * yosh8_k[2])
-    drift(elm, mflw, lwn * yosh8_d[2])
-     kick(elm, mflw, lwn * yosh8_k[1])  mflw.npos = 'last'
-    drift(elm, mflw, lwn * yosh8_d[1])
+    thick(elm, mflw, lwn * yosh8_d[1])  mflw.npos = nil
+     thin(elm, mflw, lwn * yosh8_k[1])
+    thick(elm, mflw, lwn * yosh8_d[2])
+     thin(elm, mflw, lwn * yosh8_k[2])
+    thick(elm, mflw, lwn * yosh8_d[3])
+     thin(elm, mflw, lwn * yosh8_k[3])
+    thick(elm, mflw, lwn * yosh8_d[4])
+     thin(elm, mflw, lwn * yosh8_k[4])
+    thick(elm, mflw, lwn * yosh8_d[5])
+     thin(elm, mflw, lwn * yosh8_k[5])
+    thick(elm, mflw, lwn * yosh8_d[6])
+     thin(elm, mflw, lwn * yosh8_k[6])
+    thick(elm, mflw, lwn * yosh8_d[7])
+     thin(elm, mflw, lwn * yosh8_k[7])
+    thick(elm, mflw, lwn * yosh8_d[8])
+     thin(elm, mflw, lwn * yosh8_k[8]) -- middle
+    thick(elm, mflw, lwn * yosh8_d[8])
+     thin(elm, mflw, lwn * yosh8_k[7])
+    thick(elm, mflw, lwn * yosh8_d[7])
+     thin(elm, mflw, lwn * yosh8_k[6])
+    thick(elm, mflw, lwn * yosh8_d[6])
+     thin(elm, mflw, lwn * yosh8_k[5])
+    thick(elm, mflw, lwn * yosh8_d[5])
+     thin(elm, mflw, lwn * yosh8_k[4])
+    thick(elm, mflw, lwn * yosh8_d[4])
+     thin(elm, mflw, lwn * yosh8_k[3])
+    thick(elm, mflw, lwn * yosh8_d[3])
+     thin(elm, mflw, lwn * yosh8_k[2])
+    thick(elm, mflw, lwn * yosh8_d[2])
+     thin(elm, mflw, lwn * yosh8_k[1])  mflw.npos = 'last'
+    thick(elm, mflw, lwn * yosh8_d[1])  mflw.npos = nil
     -- back to physics
       fsl(elm, mflw, lwn, i)
   end

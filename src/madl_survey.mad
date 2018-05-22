@@ -23,85 +23,80 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix, element, mtable, command, object          in MAD
+local vector, matrix, element, mtable, command                  in MAD
+local is_sequence, is_boolean, is_integer, is_implicit,
+      is_callable, is_mappable                                  in MAD.typeid
 local fnone                                                     in MAD.gfunc
-local is_sequence, is_boolean, is_number, is_integer,
-      is_callable, is_mappable, is_implicit                     in MAD.typeid
 local errorf                                                    in MAD.utility
-local test_flag                                                 in object
-local abs                                                       in math
 
 -- geometric maps -------------------------------------------------------------o
 
 local geomap = require "madl_geomap"
+local drift, thin, thick, srotation, xrotation, yrotation,
+      translate, changeref, changedir, changenrj in geomap
 
 -- integrator schemes ---------------------------------------------------------o
 
 local symint = require 'madl_symint'
-local integr = symint.thick
+local thinonly, thickonly in symint
 
--- special --------------------------------------------------------------------o
+-- load maps into elements of element module ----------------------------------o
 
 local invalid = \e ->
   errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
 
--- load maps into elements of element module ----------------------------------o
-
 local E = element
 
-E. thin_element :set_methods { survey = geomap.thin  }
-E.drift_element :set_methods { survey = geomap.drift }
-E.thick_element :set_methods { survey = geomap.thick }
 E.extra_element :set_methods { survey = invalid }
+E.drift_element :set_methods { survey = \e,m -> thickonly(e,m,1, drift, nil ) }
+E.thick_element :set_methods { survey = \e,m -> thickonly(e,m,1, thick, nil ) }
+E. thin_element :set_methods { survey = \e,m ->  thinonly(e,m,1, nil  , thin) }
 
-E.special       :set_methods { survey = fnone   }
 E.patch         :set_methods { survey = invalid }
+E.special       :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, fnone    ) }
+E.srotation     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, srotation) }
+E.xrotation     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, xrotation) }
+E.yrotation     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, yrotation) }
+E.translate     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, translate) }
+E.changeref     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, changeref) }
+E.changedir     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, changedir) }
+E.changenrj     :set_methods { survey = \e,m ->  thinonly(e,m,1, nil, changenrj) }
 
-E.srotation     :set_methods { survey = geomap.srotation }
-E.xrotation     :set_methods { survey = geomap.xrotation }
-E.yrotation     :set_methods { survey = geomap.yrotation }
-E.translate     :set_methods { survey = geomap.translate }
-E.changedir     :set_methods { survey = geomap.changedir }
-E.changeref     :set_methods { survey = geomap.changeref }
-
--- survey command -------------------------------------------------------------o
+-- survey mtable --------------------------------------------------------------o
 
 local _srv = {}
 
-local function save_all (elm, mflw)
+local function save_all (elm, mflw, lw)
   local name, kind, l, angle, tilt in elm
 
-  if not is_implicit(elm) then
-    local A, W in mflw
-    A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
-  end
-
-  local V, A, dir, sdir, spos, mtbl in mflw
+  local V, A, sdir, tdir, spos, mtbl in mflw
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
 
   -- keep order!
-  mtbl = mtbl + { name, kind, spos+l*dir, l, angle*sdir, tilt,
-                  x, y, z, th, phi, psi, psi+tilt*sdir, sdir }
+  mtbl = mtbl + { name, kind, spos, l*lw*sdir, angle*lw*tdir, tilt*tdir,
+                  x, y, z, th, phi, psi, psi+tilt*tdir, tdir }
 end
 
-local function save_elm (elm, mflw)
-  if not is_implicit(elm) then save_all(elm, mflw) end
+local function save_elm (elm, mflw, lw)
+  if not is_implicit(elm) then save_all(elm, mflw, lw) end
 end
 
 local function make_mtable (self)
-  local range, nturn in self
+  local range, nturn, implicit in self
   local sequ = self.sequence
-  local dir  = self.dir or 1 -- direction of the tracking
-  local nrow = 2*sequ:length_of(range, nturn)
+  local sdir = self.sdir -- s-direction of the tracking
+  local nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
 
   return mtable 'survey' {
-    type='survey', title=sequ.name, direction=dir, reserve=nrow,
+    type='survey', title=sequ.name, sdir=sdir, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
-    'sdir', -- s-direction of the tracking: self.dir * sequ.dir
+    'tdir', -- t-direction of the tracking: sdir * seqdir
   }
 end
+
+-- survey mflow ---------------------------------------------------------------o
 
 local function make_mflow (self)
   if self.mflow then
@@ -112,15 +107,15 @@ local function make_mflow (self)
   -- check sequence
   local sequ = assert(self.sequence, "missing sequence")
   assert(is_sequence(sequ), "invalid sequence")
-  local seqdir = sequ.direction
-  assert(is_number(seqdir) and abs(seqdir) == 1,
-         "invalid sequence direction (1 or -1 expected)")
 
   -- retrieve initial conditions
-  local x0, y0, z0, theta0, phi0, psi0, X0, A0 in self
+  local s0, x0, y0, z0, theta0, phi0, psi0, X0, A0 in self
+  X0, A0 = X0 or {}, A0 or {}
   assert(is_mappable(X0), "invalid X0 (mappable expected)")
   assert(is_mappable(A0), "invalid A0 (mappable expected)")
 
+  -- precedence of initial conditions
+  local s     = s0                          or 0
   local x     = x0     or X0.x     or X0[1] or 0
   local y     = y0     or X0.y     or X0[2] or 0
   local z     = z0     or X0.z     or X0[3] or 0
@@ -129,14 +124,17 @@ local function make_mflow (self)
   local psi   = psi0   or A0.psi   or A0[3] or 0
 
   -- build iterator
-  local range, dir, nturn in self
-  local iter, state, init = sequ:siter(range, nturn, dir)
+  local range, sdir, nturn in self
+  local iter, state, init = sequ:siter(range, nturn, sdir)
 
   -- build mtable
-  local save, implicit in self
+  local save, nofill, implicit in self
   assert(is_boolean(save) or is_callable(save),
-         "invalid save (boolean or callable expected)")
+                               "invalid save (boolean or callable expected)")
+  assert(is_boolean(nofill)  , "invalid nofill (boolean expected)")
+  assert(is_boolean(implicit), "invalid implicit (boolean expected)")
 
+  -- saving data
   local mtbl, fill
   if save then
     mtbl = make_mtable(self)
@@ -145,34 +143,39 @@ local function make_mflow (self)
     fill = fnone
   end
 
+  -- time direction
+  local tdir = sdir*sequ.dir
+  assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
+
   -- setup default sclicing
   local nslice, noslice in self
   assert(is_integer(nslice) and nslice > 0, "invalid nslice (positive integer expected)")
   assert(is_boolean(noslice)              , "invalid noslice (boolean expected)")
   nslice = noslice and 1 or nslice
 
-  -- retrieve default actions
-  local atentry, atslice, atexit in self
-  atentry = atentry or fnone
-  atslice = atslice or fnone
-  atexit  = atexit  or fnone
+  -- retrieve default actions (avoid evaluation in case of function)
+  local atentry = self:var_raw('atentry') or fnone
+  local atslice = self:var_raw('atslice') or fnone
+  local atexit  = self:var_raw('atexit' ) or fnone
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
 
   -- build mflow
-  return {
+  local mflw = {
     sequ=sequ,                         -- current sequence
     mtbl=mtbl,                         -- current mtable (nil if no save)
-    dir=dir,                           -- direction of tracking
-    sdir=dir*seqdir,                   -- s-direction of tracking
+    sdir=sdir,                         -- s-direction of tracking
+    tdir=tdir,                         -- t-direction of tracking
 
     fill=fill,                         -- fill/add one row to mtable (if any)
+    nofill=nofill,                     -- disable filling at the end of an element
     nslice=nslice,                     -- number of slice for each element
-    noslice=noslice,                   -- nslice=1 with highest precedence
+    noslice=noslice,                   -- disable slicing
 
+    s0=s,                              -- initial s-position
     idx=init,                          -- index of the current element
-    spos=0,                            -- s-position of the current element
+    spos=s,                            -- s-position of the current element entry
     npos=nil,                          -- integrator step: nil, 'first', 'last'
 
     atentry=atentry,                   -- action when entering an element
@@ -183,6 +186,7 @@ local function make_mflow (self)
     V=vector(3):fill{x,y,z},           -- displacement vector
     W=matrix(3):rotmad(theta,phi,psi), -- orientation matrix (rotations)
     A=vector(3):fill{theta,phi,psi},   -- oriented angles (for output)
+    X=0,                               -- alias for V (see below)
 
     -- local frame (see geomap) at element slices or exit
     R=vector(3),                       -- displacement vector
@@ -194,26 +198,38 @@ local function make_mflow (self)
     __iter=iter, __state=state,        -- iterator and iteraror state
     [_srv]=_srv                        -- hidden key
   }
+  mflw.X = mflw.V
+
+  return mflw
 end
+
+-- survey command -------------------------------------------------------------o
 
 local function exec (self)
   -- build mflow
   local mflw = make_mflow(self)
 
-  -- retrieve information
+  -- check number of element to track
   local nstep in self
-  local idx, __iter, __state in mflw
-  local mtbl, fill, atentry, atexit in mflw
+  if nstep == 0 then return mflw.mtbl, mflw end
 
-  if nstep == 0 then return mtbl, mflw end
+  -- retrieve information
+  local s0, sdir, idx, __iter, __state in mflw
+  local mtbl, fill, nofill, atentry, atexit in mflw
+
+  -- disable fill locally
+  if nofill then fill = fnone end
 
   -- geometric tracking
   for i,elm,spos in __iter, __state, idx do
-    mflw.idx, mflw.spos = i, spos
-    atentry(elm, mflw)
-    integr (elm, mflw, 1, elm.survey)
-    atexit (elm, mflw)
-    fill   (elm, mflw)
+    mflw.idx, mflw.spos = i, s0+spos
+
+        atentry(elm, mflw)
+    elm:survey (     mflw, 1)
+        atexit (elm, mflw)
+
+    mflw.spos = s0+spos+elm.l*sdir
+        fill   (elm, mflw, 1)
 
     -- check remaining number of element to track
     nstep = nstep-1
@@ -226,22 +242,24 @@ end
 local survey = command 'Survey' {
   sequence=nil,   -- sequence (required)                                  (mflw)
   range=nil,      -- range of tracking                                    (iter)
-  dir=1,          -- direction of tracking (1 or -1)                      (mflw)
+  sdir=1,         -- s-direction of tracking (1 or -1)                    (mflw)
 
+  s0=0,           -- initial s                                            (mflw)
   X0={0,0,0},     -- initial coordinates                                  (mflw)
   A0={0,0,0},     -- initial angles                                       (mflw)
 
   nturn=0,        -- number of extra turns                                (iter)
   nstep=-1,       -- number of elements to track                          (iter)
   nslice=1,       -- number of slice for each element                     (mflw)
+  noslice=false,  -- discable slicing                                     (mflw)
 
-  save=true,      -- save data to mtable                                  (mtbl)
-  implicit=true,  -- save implicit elements to mtable                     (mtbl)
-  noslice=false,  -- discard nslice with highest precedence               (mflw)
+  save=true,      -- create mtable and set fill to save data              (mtbl)
+  nofill=false,   -- disable filling at the end of an element             (mflw)
+  implicit=true,  -- save also implicit elements                          (mtbl)
 
-  atentry=nil,    -- function to call when entering an element            (mflw)
-  atslice=nil,    -- function to call after each element slices           (mflw)
-  atexit=nil,     -- function to call when exiting an element             (mflw)
+  atentry=nil,    -- action to call when entering an element              (mflw)
+  atslice=nil,    -- action to call after each element slices             (mflw)
+  atexit=nil,     -- action to call when exiting an element               (mflw)
 
   mflow=nil,      -- current mflow, exclusive with other attributes except nstep
 

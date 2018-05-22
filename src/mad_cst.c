@@ -16,12 +16,19 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <math.h>
+#include <float.h>
+
 #include "mad_cst.h"
 
 // --- implementation ---------------------------------------------------------o
 
-const num_t mad_cst_minlen   = 1e-12;
-const num_t mad_cst_minang   = 1e-12;
+// constants for maths
+
+const num_t mad_cst_EPS      = DBL_EPSILON;
+const num_t mad_cst_TINY     = DBL_MIN;
+const num_t mad_cst_HUGE     = DBL_MAX;
+const num_t mad_cst_INFINITY = INFINITY;
 
 const num_t mad_cst_E        = M_E;
 const num_t mad_cst_LOG2E    = M_LOG2E;
@@ -29,13 +36,21 @@ const num_t mad_cst_LOG10E   = M_LOG10E;
 const num_t mad_cst_LN2      = M_LN2;
 const num_t mad_cst_LN10     = M_LN10;
 const num_t mad_cst_PI       = M_PI;
+const num_t mad_cst_2PI      = M_2PI;
 const num_t mad_cst_PI_2     = M_PI_2;
 const num_t mad_cst_PI_4     = M_PI_4;
 const num_t mad_cst_1_PI     = M_1_PI;
 const num_t mad_cst_2_PI     = M_2_PI;
 const num_t mad_cst_2_SQRTPI = M_2_SQRTPI;
 const num_t mad_cst_SQRT2    = M_SQRT2;
-const num_t mad_cst_1_SQRT2  = M_1_SQRT2;
+const num_t mad_cst_SQRT1_2  = M_SQRT1_2;
+const num_t mad_cst_DEGRAD   = M_DEGRAD;
+const num_t mad_cst_RADDEG   = M_RADDEG;
+
+// constants for physics
+
+const num_t mad_cst_MINLEN   = 1e-12;
+const num_t mad_cst_MINANG   = 1e-12;
 
 const num_t mad_cst_CLIGHT   = P_CLIGHT;
 const num_t mad_cst_MU0      = P_MU0;
