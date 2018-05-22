@@ -65,15 +65,17 @@ local refdir   = \s -> "plot_ref/"..(s or '')
 local rundir   = \s -> "plot_run/"..(s or '')
 local id       = 0
 local plotTest, reset                            -- Parametrized plot command
-local bmtbl, lmtbl, seq                          -- data
 
 -- helpers --------------------------------------------------------------------o
 
+-- unique id generator
 local function newSID ()
   id = id % 25 + 1
   return id
 end
 
+-- customize the plot command use in the tests
+-- w.r.t. the generate local variable (see above).
 local function setPlotTest ()
   if plotTest then return end
   if generate == "pdf" then
@@ -98,21 +100,27 @@ local function loadLHC ()
   return lhcb1, lhcb2
 end
 
-local function createTbl ()
-  if bmtbl then return end
-  bmtbl = mtable { {"name"}, "x", "y", "z" }
-  lmtbl = mtable { {"name"}, "x1", "x2", "y1", "y2", "y3", "y4" }
-  for i=1, 25000 do
-    bmtbl = bmtbl + {"A" .. i, i, i, 2*i+100 }
+-- create a small mtbl
+local function getSTbl ()
+  local smtbl = mtable { {"name"}, "x1", "x2", "y1", "y2", "y3", "y4" }
+  for i=1,25 do
+    smtbl = smtbl + { "A" .. i, i, i+10, i, i+10, i+20, i+30 }
   end
-  for i=1, 25 do
-    lmtbl = lmtbl + {"A" .. i, i, i+10, i, i+10, i+20, i+30 }
-  end
+  return smtbl
 end
 
-local function createSeq ()
-  if seq then return end
-  seq = sequence "seq" {
+-- create a big mtbl
+local function getBtbl ()
+  local bmtbl = mtable { {"name"}, "x", "y", "z" }
+  for i=1,25000 do
+    bmtbl = bmtbl + { "A" .. i, i, i, 2*i+100 }
+  end
+  return bmtbl
+end
+
+-- create a sequence with all tested shapes.
+local function getSeq ()
+  return sequence "seq" {
     refer = "entry",
     marker      "start"       { at = 1,                              },
     srotation   "srotation"   { at = 5,                              },
@@ -149,6 +157,9 @@ local function createSeq ()
   }
 end
 
+-- very simple and fast function to compare test files that can contains numbers
+-- Should be replace by a more refined version in the future
+-- (i.e. line number, test name, idea of the issue)
 local function assertFiles (name)
   if generate then return end
   local ref  = assert(io.open(refdir(name), "r"))
@@ -176,6 +187,8 @@ local function assertFiles (name)
   if not generate then os.remove(rundir(name)) end
 end
 
+-- customize the plot command by setting the test name as the plot title and the
+-- script dump file name.
 local function getEmptyPlot (name)
   return plotTest {
     title   = name,
@@ -194,8 +207,6 @@ end
 TestPlotScript = {}
 
 function TestPlotScript:setUp ()
-  createTbl()
-  createSeq()
   setPlotTest()
   filesys.mkdir(rundir())
   self.id = 1
@@ -235,14 +246,15 @@ function TestPlotScript:testPrologEpilog ()
 end
 
 function TestPlotScript:testDataSelection ()
-  local param1 = {table = lmtbl, x1y1 = { x1 = {"y1", "y2"}, x2 = {"y3", "y4"}}}
-  local param2 = {table = lmtbl, x1y1 = { x1 = {"y1", "y2"}, x2 = "y3"}        }
-  local param3 = {table = lmtbl, x1y1 = { x2 = {"y1", "y2"}, "y3"},            }
-  local param4 = {table = lmtbl, x1y1 = { x1 = {"y1", "y2"}},                  }
-  local param5 = {table = lmtbl, x1y1 = { x2 = "y1", "y2"},                    }
-  local param6 = {table = lmtbl, x1y1 = { x1 = "y1"},                          }
-  local param7 = {table = lmtbl, x1y1 = {"y1", "y2"},                          }
-  local param8 = {table = lmtbl, x1y1 =  "y1",                                 }
+  local smtbl  = getSTbl()
+  local param1 = {table = smtbl, x1y1 = { x1 = {"y1", "y2"}, x2 = {"y3", "y4"}}}
+  local param2 = {table = smtbl, x1y1 = { x1 = {"y1", "y2"}, x2 = "y3"}        }
+  local param3 = {table = smtbl, x1y1 = { x2 = {"y1", "y2"}, "y3"},            }
+  local param4 = {table = smtbl, x1y1 = { x1 = {"y1", "y2"}},                  }
+  local param5 = {table = smtbl, x1y1 = { x2 = "y1", "y2"},                    }
+  local param6 = {table = smtbl, x1y1 = { x1 = "y1"},                          }
+  local param7 = {table = smtbl, x1y1 = {"y1", "y2"},                          }
+  local param8 = {table = smtbl, x1y1 =  "y1",                                 }
   self:execTest(param1)
   self:execTest(param2)
   self:execTest(param3)
@@ -254,11 +266,12 @@ function TestPlotScript:testDataSelection ()
 end
 
 function TestPlotScript:testAxisSelection ()
-  local param1 = { table = lmtbl, x1y1 = { x1 = "y1" }, x1y2 = { x1 = "y2" } }
-  local param2 = { table = lmtbl, x1y1 = { x1 = "y1" }, x2y1 = { x2 = "y2" } }
-  local param3 = { table = lmtbl, x1y2 = { x1 = "y1" }, x2y1 = { x2 = "y2" } }
-  local param4 = { table = lmtbl, x1y1 = { x1 = "y1" }, x2y2 = { x2 = "y2" } }
-  local param5 = { table = lmtbl, x1y1 = { x1 = "y1" }, x2y2 = { x2 = "y2" },
+  local smtbl  = getSTbl()
+  local param1 = { table = smtbl, x1y1 = { x1 = "y1" }, x1y2 = { x1 = "y2" } }
+  local param2 = { table = smtbl, x1y1 = { x1 = "y1" }, x2y1 = { x2 = "y2" } }
+  local param3 = { table = smtbl, x1y2 = { x1 = "y1" }, x2y1 = { x2 = "y2" } }
+  local param4 = { table = smtbl, x1y1 = { x1 = "y1" }, x2y2 = { x2 = "y2" } }
+  local param5 = { table = smtbl, x1y1 = { x1 = "y1" }, x2y2 = { x2 = "y2" },
                                   x1y2 = { x1 = "y3" }, x2y1 = { x2 = "y4" } }
   self:execTest(param1)
   self:execTest(param2)
@@ -268,8 +281,9 @@ function TestPlotScript:testAxisSelection ()
 end
 
 function TestPlotScript:testAxisLabel ()
+  local smtbl  = getSTbl()
   local param = {
-    table   = lmtbl,
+    table   = smtbl,
     x1y1    = { x1 = "y1" },
     x2y2    = { x2 = "y2" },
     xlabel  = "label X",
@@ -281,8 +295,9 @@ function TestPlotScript:testAxisLabel ()
 end
 
 function TestPlotScript:testAxisRange ()
+  local smtbl  = getSTbl()
   local param = {
-    table   = lmtbl,
+    table   = smtbl,
     x1y1    = { x1 = "y1" },
     x2y2    = { x2 = "y2" },
     xrange  = { 7  ,  12  },
@@ -294,13 +309,14 @@ function TestPlotScript:testAxisRange ()
 end
 
 function TestPlotScript:testTableOrData ()
+  local smtbl  = getSTbl()
   local x1, y2 = table.new(25,0), vector(25)
   for i=1,25 do
     x1[i] = 11 + i
     y2[i] = 22 + i
   end
   local param = {
-    table = lmtbl,
+    table = smtbl,
     data  = { x1 = x1  , y2 = y2   },
     x1y1  = { x1 = "y1", x2 = "y2" },
   }
@@ -308,19 +324,20 @@ function TestPlotScript:testTableOrData ()
 end
 
 function TestPlotScript:testTableRange ()
+  local smtbl  = getSTbl()
   local x1, y1 = table.new(11,0),table.new(11,0)
   for i=1,11 do
     x1[i] = 41 + i
     y1[i] = 41 + i
   end
   local param1 = {
-    table      = lmtbl,
+    table      = smtbl,
     data       = { x1 = x1   },
     x1y1       = { x1 = "y1" },
     tablerange = { 13, 23    },
   }
   local param2 = {
-    table      = lmtbl,
+    table      = smtbl,
     data       = { y1 = y1   },
     x1y1       = { x1 = "y1" },
     tablerange = { 13, 23    },
@@ -330,8 +347,9 @@ function TestPlotScript:testTableRange ()
 end
 
 function TestPlotScript:testLegend ()
+  local smtbl = getSTbl()
   local param = {
-    table  = lmtbl,
+    table  = smtbl,
     x1y1   = { x1 = {"y1", "y2" } },
   }
   param.legend = false                    ; self:execTest(tblcpy(param))
@@ -343,9 +361,10 @@ end
 function TestPlotScript:testTitle ()
   local name    = self.testName .. self.id
   local pattern = "set title 'plotTest MAD %d+.%d+.%d+, %d+/%d+/%d+, %d+:%d+:%d+'"
+  local smtbl   = getSTbl()
   local line, file
 
-  plotTest { scrdump = rundir(name), table = lmtbl, x1y1 = "y1" }
+  plotTest { scrdump = rundir(name), table = smtbl, x1y1 = "y1" }
 
   local t0 = os.clock()
   while not file and os.clock() - t0 < 1 do
@@ -364,8 +383,9 @@ function TestPlotScript:testTitle ()
 end
 
 function TestPlotScript:testPlotDecoration ()
-  local param = {
-    table      = lmtbl,
+  local smtbl  = getSTbl()
+  local param  = {
+    table      = smtbl,
     x1y1       = { x1 = {"y1", "y4" } },
     titlefont  = "Arial Black",
     titlesize  = 21,
@@ -383,8 +403,9 @@ function TestPlotScript:testPlotDecoration ()
 end
 
 function TestPlotScript:testPlotDataStyle ()
+  local smtbl  = getSTbl()
   local param1 = {
-    table      = lmtbl,
+    table      = smtbl,
     x1y1       = { x1 = {"y1", "y3", "y4" } },
     originx    = 0.3,
     originy    = 0.4,
@@ -398,7 +419,7 @@ function TestPlotScript:testPlotDataStyle ()
     pointsizes = {               y3 = 2.0     , y4 = 4.1           },
   }
   local param2 = {
-    table      = lmtbl,
+    table      = smtbl,
     x1y1       = { x1 = {"y1", "y3", "y4" } },
     originx    = 0.3,
     originy    = 0.4,
@@ -414,7 +435,7 @@ function TestPlotScript:testPlotDataStyle ()
     }
   }
   local param3 = {
-    table      = lmtbl,
+    table      = smtbl,
     x1y1       = { x1 = {"y1", "y4" } },
     styles     = "linespoints",
     colors     = "black",
@@ -429,7 +450,8 @@ function TestPlotScript:testPlotDataStyle ()
 end
 
 function TestPlotScript:testPlotConfig ()
-  local data = {
+  local smtbl  = getSTbl()
+  local data   = {
     c1 = {6, 3, 0, 0, 0, 0}, c2 = {5, 2, 0, 0, 0, 1}, c3 = {4, 2, 0, 0, 1, 2},
     c4 = {3, 0, 0, 0, 2, 3}, c5 = {1, 0, 1, 2, 4, 4}, c6 = {0, 1, 0, 3, 3, 5},
   }
@@ -440,7 +462,7 @@ function TestPlotScript:testPlotConfig ()
     plotcmd = "splot ${data1} matrix",
   }
   local param2 = { -- test all available interpolation variables + plotvar
-    table      = lmtbl,
+    table      = smtbl,
     x1y1       = { x1 = {"y1", "y3", "y4" } },
     styles     = { y1 = "lines", y3 = "points", y4 = "linespoints" },
     colors     = { y1 = "red"  , y3 = "blue"  , y4 = "green"       },
@@ -457,7 +479,7 @@ function TestPlotScript:testPlotConfig ()
   }
   local T = \s\ctx -> s % ctx
   local param3 = { -- plotvar + lambda T resolution example
-    table   = lmtbl,
+    table   = smtbl,
     x1y1    = {"y1", "y2"},
     plotvar = {
       title2  = T"title '${mytitle}' ",
@@ -478,12 +500,16 @@ function TestPlotScript:testObjectShift ()
 end
 
 function TestPlotScript:testAllShapes ()
-  local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  local seq   = getSeq()
+  local smtbl = getSTbl()
+  local param = { sequence = seq, table = smtbl, x1y1 = "y1" }
   self:execTest(param)
 end
 
 function TestPlotScript:testLaypos ()
-  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  local seq    = getSeq()
+  local smtbl  = getSTbl()
+  local param  = { sequence = seq, table = smtbl, x1y1 = "y1" }
   param.laypos = 0.25     ; self:execTest(tblcpy(param)) -- order matters
   param.laypos = "middle" ; self:execTest(tblcpy(param))
   param.laypos = "top"    ; self:execTest(tblcpy(param))
@@ -491,7 +517,9 @@ function TestPlotScript:testLaypos ()
 end
 
 function TestPlotScript:testLaysize ()
-  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1", laysize=0.5 }
+  local seq    = getSeq()
+  local smtbl  = getSTbl()
+  local param  = { sequence = seq, table = smtbl, x1y1 = "y1", laysize=0.5 }
   param.laypos = 0.25     ; self:execTest(tblcpy(param)) -- order matters
   param.laypos = "middle" ; self:execTest(tblcpy(param))
   param.laypos = "top"    ; self:execTest(tblcpy(param))
@@ -499,13 +527,17 @@ function TestPlotScript:testLaysize ()
 end
 
 function TestPlotScript:testElemName ()
-  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  local seq      = getSeq()
+  local smtbl    = getSTbl()
+  local param    = { sequence = seq, table = smtbl, x1y1 = "y1" }
   param.elemname = true  ; self:execTest(tblcpy(param))
   param.elemname = false ; self:execTest(tblcpy(param))
 end
 
 function TestPlotScript:testKindColor ()
-  local param  = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  local seq    = getSeq()
+  local smtbl  = getSTbl()
+  local param  = { sequence = seq, table = smtbl, x1y1 = "y1" }
   param.kindcolor = true  ; self:execTest(tblcpy(param))
   param.kindcolor = false ; self:execTest(tblcpy(param))
   param.kindcolor = {
@@ -518,18 +550,23 @@ function TestPlotScript:testKindColor ()
 end
 
 function TestPlotScript:testSeqOnly ()
+  local seq   = getSeq()
   local param = { sequence = seq }
   self:execTest(param)
 end
 
 function TestPlotScript:testSeqRange()
-  local param = { sequence = seq, table = lmtbl, x1y1 = "y1" }
+  local seq   = getSeq()
+  local smtbl = getSTbl()
+  local param = { sequence = seq, table = smtbl, x1y1 = "y1" }
   param.range = { "quadrupole", "elseparator" } ; self:execTest(tblcpy(param))
   param.range = { 15          , 120,   'spos' } ; self:execTest(tblcpy(param))
 end
 
 function TestPlotScript:testSeqDist ()
-  local param = { sequence = { seq, seq, seq }, table = lmtbl, x1y1 = "y1" }
+  local seq      = getSeq()
+  local smtbl    = getSTbl()
+  local param    = { sequence = { seq, seq, seq }, table = smtbl, x1y1 = "y1" }
   param.seqdisty = 0.2          ; self:execTest(tblcpy(param))
   param.seqdisty = { 0.2, 0.4 } ; self:execTest(tblcpy(param))
   param.seqdistx = 10           ; self:execTest(tblcpy(param))
@@ -539,21 +576,26 @@ function TestPlotScript:testSeqDist ()
 end
 
 function TestPlotScript:testSeqNturn ()
-  local param = { sequence = seq, table = lmtbl, x1y1 = "y1", nturn = 1 }
+  local seq   = getSeq()
+  local smtbl = getSTbl()
+  local param = { sequence = seq, table = smtbl, x1y1 = "y1", nturn = 1 }
   self:execTest(param)
 end
 
 function TestPlotScript:testSeqKeep()
-  local param1 = { sid = 1, sequence = seq   , table = lmtbl, x1y1 = "y1" }
-  local param2 = { sid = 1, sequence = "keep", table = lmtbl, x1y1 = "y2" }
+  local seq    = getSeq()
+  local smtbl  = getSTbl()
+  local param1 = { sid = 1, sequence = seq, table = smtbl, x1y1 = "y1" }
+  local param2 = { sid = 1, sequence = "keep"  , table = smtbl, x1y1 = "y2" }
   self:execTest(param1)
   self:execTest(param2)
 end
 
 function TestPlotScript:testElemSize ()
   local lhcb1, lhcb2 = loadLHC()
+  local smtbl = getSTbl()
   local param = {
-    table    = lmtbl,
+    table    = smtbl,
     x1y1     = "y1",
     sequence = { lhcb1, lhcb2 },
     range    = { {"E.DS.L1.B1", "S.DS.R1.B1"}, {"E.DS.L1.B2", "S.DS.R1.B2"} },
@@ -565,8 +607,9 @@ end
 
 function TestPlotScript:testElemFilter()
   local lhcb1, lhcb2 = loadLHC()
+  local smtbl = getSTbl()
   local param = {
-    table    = lmtbl,
+    table    = smtbl,
     x1y1     = "y1",
     sequence = { lhcb1, lhcb2 },
     range    = { {"E.DS.L1.B1", "S.DS.R1.B1"}, {"E.DS.L1.B2", "S.DS.R1.B2"} },
@@ -578,8 +621,9 @@ end
 
 function TestPlotScript:testLayangle()
   local lhcb1 = loadLHC()
+  local smtbl = getSTbl()
   local param = {
-    table    = lmtbl,
+    table    = smtbl,
     x1y1     = "y1",
     sequence = lhcb1,
     range    = {"E.DS.L1.B1", "S.DS.R1.B1"},
@@ -589,11 +633,12 @@ function TestPlotScript:testLayangle()
 end
 
 function TestPlotScript:testSurveySimple()
-  local seq = sequence { refer = "entry", instrument { at = 0, l = 3 } }
+  local smtbl = getSTbl()
+  local seq   = sequence { refer = "entry", instrument { at = 0, l = 3 } }
   seq:select(observe)
   local param = {
     sequence  = seq,
-    table     = lmtbl,
+    table     = smtbl,
     laypos    = "in",
     x1y1      = "y1",
   }
@@ -603,7 +648,8 @@ function TestPlotScript:testSurveySimple()
 end
 
 function TestPlotScript:testSurvey()
-  local seq = sequence { refer = "entry",
+  local smtbl  = getSTbl()
+  local seq    = sequence { refer = "entry",
     sbend { at = 0,  l = 1, angle = pi/10 },
     sbend { at = 1,  l = 1, angle = pi/10 },
     sbend { at = 2,  l = 1, angle = pi/10 },
@@ -628,7 +674,7 @@ function TestPlotScript:testSurvey()
   seq:select(observe)
   local param = {
     sequence  = seq,
-    table     = lmtbl,
+    table     = smtbl,
     laypos    = "in",
     x1y1      = "y1",
   }
@@ -636,7 +682,8 @@ function TestPlotScript:testSurvey()
 end
 
 function TestPlotScript:testSurveyNturn()
-  local seq = sequence { refer = "entry",
+  local smtbl  = getSTbl()
+  local seq    = sequence { refer = "entry",
     sbend { at = 0, l = 1, angle = pi/10 },
     sbend { at = 1, l = 1, angle = pi/10 },
     sbend { at = 2, l = 1, angle = pi/10 },
@@ -651,7 +698,7 @@ function TestPlotScript:testSurveyNturn()
   seq:select(observe)
   local param = {
     sequence = seq,
-    table    = lmtbl,
+    table    = smtbl,
     laypos   = "in",
     x1y1     = "y1",
     nturn    = 1,
@@ -661,9 +708,10 @@ end
 
 function TestPlotScript:testSurveyInput()
   local lhcb1 = loadLHC()
+  local smtbl = getSTbl()
   local param = {
     sequence  = lhcb1,
-    table     = lmtbl,
+    table     = smtbl,
     laypos    = "in",
     x1y1      = "y1",
     xrange    = { -8510.46, 101.011    },
@@ -677,8 +725,9 @@ end
 
 function TestPlotScript:testIP1IP5 ()
   local lhcb1, lhcb2 = loadLHC()
+  local smtbl = getSTbl()
   local param = {
-    table    = lmtbl,
+    table    = smtbl,
     x1y1     = "y1",
     sequence = { lhcb1, lhcb2, lhcb1, lhcb2 },
     range    = {
@@ -696,7 +745,8 @@ end
 
 function TestPlotScript:testLHC ()
   local lhcb1, lhcb2 = loadLHC()
-  local param = {
+  local bmtbl        = getBtbl()
+  local param        = {
     sequence = { lhcb1, lhcb2 },
     table    = bmtbl,
     x1y1     = { x = "y" },
