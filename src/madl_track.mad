@@ -24,9 +24,10 @@
 -- locals ---------------------------------------------------------------------o
 
 local element, mtable, command                                  in MAD
+local is_sequence, is_beam, is_boolean, is_number, is_integer,
+      is_table, is_implicit, is_callable, is_mappable           in MAD.typeid
 local fnone                                                     in MAD.gfunc
-local is_nil, is_number, is_sequence, is_beam                   in MAD.typeid
-local errorf                                                    in MAD.utility
+local errorf, assertf                                           in MAD.utility
 local minlen                                                    in MAD.constant
 local observe                                                   in element.flags
 
@@ -403,70 +404,61 @@ E.changenrj   :set_methods { track = \_,m -> changenrj(nil, m) }
 
 E.sequence :set_readonly()
 
--- track helper ---------------------------------------------------------------o
+-- track mtable ---------------------------------------------------------------o
 
-local _trk = {}
+local _var = {}
 
-local function fill_mtable (self, elm, m, l)
+local function save_all (elm, mflw, lw)
+  if not elm:is_selected(observe) then return end
+
+  local name, kind, l in elm
+  local x, px, y, py, t, pt, sdir, tdir, spos, mtbl in mflw
+
   -- keep order!
-  self = self+{ elm.name, elm.kind, m.s+l, l, m.x, m.px, m.y, m.py, m.t, m.pt }
+  mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, 1 }
+end
+
+local function save_elm (elm, mflw, lw)
+  if not is_implicit(elm) then save_all(elm, mflw, lw) end
 end
 
 local function make_mtable (self)
-  if self.mtable then
-    assert(self.mtable[_trk] == _trk, "corrupted tracked mtable")
-    return self.mtable
-  end
-
-  local sequence, drift, range, nturn, sdir in self
-  local nrow = sequence:length_of(range, nturn) * (drift and 2 or 1)
+  local range, nturn, implicit in self
+  local sequ = self.sequence
+  local sdir = self.sdir -- s-direction of the tracking
+  local nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
 
   return mtable 'track' {
-    type='track', title=sequence.name, sdir=sdir, reserve=nrow,
+    type='track', title=sequ.name, sdir=sdir, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
-    [_trk]=_trk,
-  } : set_methods { fill=fill_mtable }
+    'tdir',   -- t-direction of the tracking: sdir * seqdir
+    'id',     -- particle or mapflow id
+  }
 end
 
-local function update_mflow (self)
-  local sequence, beam, sdir, mflow in self
-
-  -- sanity checks
-  assert(mflow[_trk] == _trk, "corrupted tracked mflow" )
-  if mflow.save then
-    assert(mflow.mtable[_trk] == _trk, "corrupted tracked mtable")
-  end
-  assert(is_beam    (mflow.beam    ), "corrupted tracked beam"    )
-  assert(is_sequence(mflow.sequence), "corrupted tracked sequence")
-
-  -- update with proper precedence
-  if sequence and sequence ~= mflow.sequence then -- new sequence -> update
-    assert(is_sequence(sequence), "invalid sequence")
-    local len, seqdir = #sequence, sequence.dir
-     mflow.sequ, mflow.dl, mflow.seqdir, mflow.nlen = sequence, 0, seqdir, len
-  end
-  if seqdir and seqdir ~= mflow.mdir then -- new direction -> update
-    mflow.dl, mflow.mdir = 0, direction
-  end
-  if beam and beam ~= mflow.beam then -- new beam -> update
-    assert(is_beam(beam), "invalid beam")
-    mflow.beam, mflow.bdir = beam, mflow.sdir*mflow.mdir*beam.charge
-  end
-
-  return mflow
-end
+-- track mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
   if self.mflow then
-    return update_mflow(self)
+    assert(is_table(self.mflow[_var]), "invalid mflow (track mflow expected)")
+    return self.mflow
   end
 
-  local beam, sequence in self -- mandatory
-  assert(is_beam(beam)        , "invalid beam")
-  assert(is_sequence(sequence), "invalid sequence")
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
 
-  local s, x, px, y, py, t, pt, X0 in self
-  s  = s  or X0.s  or          0
+  -- check beam
+  local beam = assert(self.beam, "missing beam")
+  assert(is_beam(beam), "invalid beam")
+
+  -- retrieve initial conditions
+  local s0, X0 in self
+  assert(is_number  (s0), "invalid s0 (number expected)")
+  assert(is_mappable(X0), "invalid X0 (mappable expected)")
+
+  -- precedence of initial conditions
+  local x, px, y, py, t, pt in self
   x  = x  or X0.x  or X0[1] or 0
   px = px or X0.px or X0[2] or 0
   y  = y  or X0.y  or X0[3] or 0
@@ -474,43 +466,173 @@ local function make_mflow (self)
   t  = t  or X0.t  or X0[5] or 0
   pt = pt or X0.pt or X0[6] or 0
 
-  local save, drift, nstep, nslice, naction, method, total_path in self
-  local nlen, sdir, mdir = #sequence, sequence.direction, self.direction
-  local T = total_path == true and 1 or 0
+  -- TODO: handle N mapflows or N particles
+  -- X0={0,0,0,0,0,0}        -- initial coordinates
+  -- X0={{0,0,0,0,0,0},....} -- initial list of coordinates
+  -- X0=mapflow              -- initial mapflow
+  -- X0={mapflow, ...}       -- initial list of mapflow
+  -- mapdef=nil,             -- mapflow setup (X0 are their initial coordinates)
 
-  local mtable = save and make_mtable(self)
+  --npar=npar,               -- number of particles or mapflows, #mflw
+  --ipar=1,                  -- current particle or mapflow
+  --part=table.new(npar,0),  -- list of particles or mapflows
 
-  return { x=x, px=px, y=y, py=py, t=t, pt=pt, T=T,          -- initial vars
-           nmul=0, knl={}, ksl={}, pnl={}, psl={},           -- internal vars
-           s=s, dl=0, el=0, nlen=nlen, ndft=0,               -- internal states
-           selm={}, selm_s={},                               -- subelement stack
-           nst=nstep, nsl=nslice, nact=naction, mth=method,  -- user setup
-           save=save, drift=save and drift,                  -- user status
-           sdir=sdir, mdir=mdir, bdir=sdir*mdir*beam.charge, -- directions
-           sequence=sequence, beam=beam, mtable=mtable,      -- attached objects
-           [_trk]=_trk }                                     -- tag
+  -- build iterator
+  local range, sdir, nturn in self
+  local iter, state, init = sequ:siter(range, nturn, sdir)
+
+  -- build mtable
+  local save, nofill, implicit in self
+  assert(is_boolean(save) or is_callable(save),
+                               "invalid save (boolean or callable expected)")
+  assert(is_boolean(nofill)  , "invalid nofill (boolean expected)")
+  assert(is_boolean(implicit), "invalid implicit (boolean expected)")
+
+  -- saving data
+  local mtbl, fill
+  if save then
+    mtbl = make_mtable(self)
+    fill = is_callable(save) and save or implicit and save_all or save_elm
+  else
+    fill = fnone
+  end
+
+  -- time direction
+  local tdir = sdir*sequ.dir
+  assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
+
+  -- totalpath
+  local totalpath in self
+  assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
+
+  -- method
+  local method in self
+  local integr = symint[method]
+  assertf(is_callable(integr), "invalid integration method '%s'", method)
+
+  -- setup default sclicing
+  local nslice, noslice in self
+  assert(is_integer(nslice) and nslice > 0, "invalid nslice (positive integer expected)")
+  assert(is_boolean(noslice)              , "invalid noslice (boolean expected)")
+  nslice = noslice and 1 or nslice
+
+  -- retrieve default actions (avoid evaluation in case of function)
+  local atentry = self:var_raw('atentry') or fnone
+  local atslice = self:var_raw('atslice') or fnone
+  local atexit  = self:var_raw('atexit' ) or fnone
+  assert(is_callable(atentry), "invalid atentry (callable expected)")
+  assert(is_callable(atslice), "invalid atslice (callable expected)")
+  assert(is_callable(atexit ), "invalid atexit (callable expected)")
+
+  -- build mflow
+  local mflw = {
+    sequ=sequ,                         -- current sequence
+    beam=beam,                         -- current beam
+    mtbl=mtbl,                         -- current mtable (nil if no save)
+    sdir=sdir,                         -- s-direction of tracking
+    tdir=tdir,                         -- t-direction of tracking
+--  bdir=tdir*beam.charge,             -- beam direction of tracking
+
+    integr=integr,                     -- default integrator
+    totalpath=false,                   -- t is the totalpath
+
+    fill=fill,                         -- fill/add one row to mtable (if any)
+    nofill=nofill,                     -- disable filling at the end of an element
+    nslice=nslice,                     -- number of slice for each element
+    noslice=noslice,                   -- disable slicing
+
+    s0=s0,                             -- initial s-position
+    idx=init,                          -- index of the current element
+    spos=s0,                           -- s-position of the current element entry
+    npos=nil,                          -- integrator step: nil, 'first', 'last'
+
+    atentry=atentry,                   -- action when entering an element
+    atslice=atslice,                   -- action after each element slices
+    atexit =atexit,                    -- action when exiting an element
+
+    -- for processing elements
+    nmul=0,                            -- current element number of multipoles
+    knl=table.new(15,0),               -- current element multipoles
+    ksl=table.new(15,0),               -- current element multipoles skew
+    pnl=table.new(15,0),               -- current element multipoles phases
+    psl=table.new(15,0),               -- current element multipoles shew phases
+
+    -- for processing subelements
+    selm=table.new(3,0),               -- subelement stack
+
+    -- internal vars for track
+    [_var]={iter=iter, state=state},   -- iterator and iteraror state
+  }
+
+  return mflw
 end
 
 -- track command --------------------------------------------------------------o
 
 local function exec (self)
-  assert(self[_trk], "invalid argument #1 (track expected)")
-  local map = make_mflow(self)                          -- build mflow
-  local range, nturn in self                            -- range of tracking
+  -- build mflow
+  local mflw = make_mflow(self)
 
-  if map.mdir == 1
-  then return map.sequence:    track(map, range, nturn) --     track sequence
-  else return map.sequence:trackback(map, range, nturn) -- trackback sequence
+  -- check number of element to track
+  local nstep in self
+  if nstep == 0 then return mflw.mtbl, mflw end
+
+  -- retrieve information
+  local s0, sdir, idx, mtbl, fill, nofill, atentry, atexit in mflw
+  local iter, state in mflw[_var]
+
+  -- disable fill locally
+  if nofill == false then fill = fnone end
+
+  -- geometric tracking
+  for i,elm,spos in iter, state, idx do
+    mflw.idx, mflw.spos = i, s0+spos
+
+        atentry(elm, mflw)
+    elm:track  (     mflw, 1)
+        atexit (elm, mflw)
+
+    mflw.spos = s0+spos+elm.l*sdir
+        fill   (elm, mflw, 1)
+
+    -- check remaining number of element to track
+    nstep = nstep-1
+    if nstep == 0 then return mtbl, mflw, elm end
   end
+
+  return mtbl, mflw
 end
 
--- track command template
-
 local track = command 'Track' {
-  nturn=0, direction=1, total_path=false, drift=true, save=true, onestep=false,
-  nstep=1, nslice=2, method='simple',
-  exec=exec, [_trk]=true,
-} :set_methods { naction=fnone } :set_readonly()
+  sequence=nil,     -- sequence (required)                                (mflw)
+  beam=nil,         -- beam (required)                                    (mflw)
+  range=nil,        -- range of tracking                                  (iter)
+  sdir=1,           -- s-direction of tracking (1 or -1)                  (mflw)
+
+  s0=0,             -- initial s                                          (mflw)
+  X0={0,0,0,0,0,0}, -- initial coordinates (or mapflow, or list of)       (mflw)
+
+  mapdef=nil,       -- setup for mapflow                                  (mflw)
+  method='simple',  -- default integrator                                 (mflw)
+  totalpath=false,  -- t is the totalpath                                 (mflw)
+
+  nturn=1,          -- number of turns                                    (iter)
+  nstep=-1,         -- number of elements to track                        (iter)
+  nslice=1,         -- number of slice for each element                   (mflw)
+  noslice=false,    -- discable slicing                                   (mflw)
+
+  save=true,        -- create mtable and set fill to save data            (mtbl)
+  nofill=false,     -- disable filling at the end of an element           (mflw)
+  implicit=true,    -- save also implicit elements                        (mtbl)
+
+  atentry=nil,      -- action to call when entering an element            (mflw)
+  atslice=nil,      -- action to call after each element slices           (mflw)
+  atexit=nil,       -- action to call when exiting an element             (mflw)
+
+  mflow=nil,      -- current mflow, exclusive with other attributes except nstep
+
+  exec=exec,      -- command to execute upon children creation
+} :set_readonly() -- reference survey command is readonly
 
 -- end ------------------------------------------------------------------------o
 return { track = track }
