@@ -24,101 +24,28 @@
 -- locals ---------------------------------------------------------------------o
 
 local element, mtable, command                                  in MAD
-local is_sequence, is_beam, is_boolean, is_number, is_integer,
-      is_table, is_implicit, is_callable, is_mappable           in MAD.typeid
+local is_sequence, is_beam, is_boolean, is_number, is_integer, is_table,
+      is_implicit, isa_mapflow, is_callable, is_mappable        in MAD.typeid
 local fnone                                                     in MAD.gfunc
 local errorf, assertf                                           in MAD.utility
 local minlen                                                    in MAD.constant
 local observe                                                   in element.flags
 
--- dynamic maps ---------------------------------------------------------------o
-
-local dynmap = require 'madl_dynmap'
-
 -- integrator schemes ---------------------------------------------------------o
 
 local symint = require 'madl_symint'
+local thinonly, thickonly in symint
+
+-- dynamic maps ---------------------------------------------------------------o
+
+local dynmap = require 'madl_dynmap'
+local drift, thin, thick, srotation, xrotation, yrotation,
+      translate, changeref, changedir, changenrj in dynmap
 
 -- sub element tracking -------------------------------------------------------o
 
-local function track_subelm (elm, m, symint)
-  local track_drift, track_kick in elm
-  local selm, selm_s in m
-
-  -- save current sub-element and sub-position
-  local nselm = #selm
-  selm[nselm], selm_s[nselm] = elm, 0
-
-  -- sub-tracking
-  local n = #elm
-  for i=1,n do
-    -- implicit drift
-    local dl = elm:spos(i) - selm_s[nselm]
-    if dl >= minlen then
-      symint(elm, m, dl, track_drift, track_kick)
-      selm_s[nelm] = selm_s[nelm] + dl
-    elseif dl <= -minlen then
-      errorf("invalid sub-element %s['%s'] relative position at %sm",
-             m.sequence.name, elm[i].name, dl)
-    end
-
-    -- sub-element
-    elm[i]:track(m)
-    selm_s[nelm] = selm_s[nelm] + elm[i].l
-  end
-
-  -- last implicit drift (if any)
-  local dl = elm.l - elm:spos(n)
-  if dl >= minlen then
-    symint(elm, m, dl, track_drift, track_kick)
-  elseif dl <= -minlen then
-    errorf("invalid sub-element %s['%s'] relative position at %sm",
-           m.sequence.name, elm[n].name, dl)
-  end
-
-  -- remove current sub-element
-  selm[nselm] = nil
-end
-
--- sub element for backtracking -----------------------------------------------o
-
-local function trackback_subelm (elm, m, symint)
-  local track_drift, track_kick in elm
-  local selm, selm_s in m
-
-  -- save current sub-element and sub-position
-  local nselm = #selm
-  selm[nselm], selm_s[nselm] = elm, 0
-
-  -- sub-tracking
-  local n = #elm
-  for i=n,1,-1 do
-    -- implicit drift
-    local dl = selm_s[nselm] - (elm:spos(i) + elm[i].l)
-    if dl <= -minlen then
-      symint(elm, m, dl, track_drift, track_kick)
-      selm_s[nelm] = selm_s[nelm] + dl
-    elseif dl >= minlen then
-      errorf("invalid sub-element %s['%s'] relative position at %sm",
-             m.sequence.name, elm[i].name, dl)
-    end
-
-    -- sub-element
-    elm[i]:trackback(m)
-    selm_s[nelm] = selm_s[nelm] - elm[i].l
-  end
-
-  -- last implicit drift (if any)
-  local dl = -elm:spos(1)
-  if dl <= -minlen then
-    symint(elm, m, dl, track_drift, track_kick)
-  elseif dl <= -minlen then
-    errorf("invalid sub-element %s['%s'] relative position at %sm",
-           m.sequence.name, elm[n].name, dl)
-  end
-
-  -- remove current sub-element
-  selm[nselm] = nil
+local function subelm (elm, m, symint)
+  error("NYI")
 end
 
 -- element tracking -----------------------------------------------------------o
@@ -177,232 +104,69 @@ local function track_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
   track_patch(elm, m, 'exit')
 end
 
--- element for tracking back --------------------------------------------------o
-
-local trackback_patch = track_patch
-
-local function trackback_thin (elm, m) -- e.g. multipole
-  get_mult(elm, m) -- load strengths in map
-
-  if m.has_k == false then return end
-
-  trackback_patch(elm, m, 'exit' )
-  thin_kick      (elm, m)
-  trackback_patch(elm, m, 'entry')
+local function track_sbend (elm, m, _)
+  -- sbend_drift, polar_kick, sbend_fringe
 end
 
-local function trackback_drift (elm, m) -- e.g. monitor
-  local no_selm = #m.selm == 0
-
-  trackback_patch(elm, m, 'exit')
-
-  if no_selm and #elm == 0 then -- any surrounding or sub-elements?
-    symint.thick(elm, m, m.el, straight_drift)
-  elseif no_selm then
-    trackback_subelm(elm, m, straight_drift)
-  else
-    trackback_subelm(elm, m, symint[elm.method or m.mth])
-  end
-
-  trackback_patch (elm, m, 'entry')
+local function track_combined (elm, m, _)
+  -- combined_drift, combined_kick, sbend_fringe
 end
 
-
-local function trackback_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  get_kmult(elm, m)   -- load strengths in map
-
-  if m.has_k == false then -- no strengths in elm
-    return trackback_drift(elm, m)
-  end
-
-  trackback_patch(elm, m, 'exit')
-  elm:track_fringe    (m, 'exit')
-
-  local symint = symint[elm.method or m.mth]
-  if #elm == 0 then   -- any sub-elements ?
-    symint      (elm, m, m.el, elm.track_drift, elm.track_kick)
-  else
-    trackback_subelm(elm, m, symint)
-  end
-
-  elm:track_fringe    (m, 'entry')
-  trackback_patch(elm, m, 'entry')
+local function track_rbend (elm, m, _)
+  -- rbend_drift, rfcavity_kick, straight_fringe
 end
 
--- sequence tracking ----------------------------------------------------------o
-
-local dft = element.drift {}
-
-local function sequ_track (seq, map, rng_, ntrn_)
-  local tbl = map.mtable
-
-  -- retrieve information
-  local save, drift, nlen in map
-
-  -- dynamic tracking
-  for i,elm in seq:iter(rng_, ntrn_, 1) do
-
-    -- implicit drift
-    local dl in map
-    if dl >= minlen then
-      straight_drift(nil, map, dl)
-      if drift and elm:is_selected(observe) then
-        map.ndft = map.ndft+1
-        dft.name = 'DRIFT_'..map.ndft
-        tbl:fill(dft, map, dl)
-      end
-      map.s, map.dl = map.s+dl, 0 -- update s
-    elseif dl <= -minlen then
-      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
-            dl, seq.name, elm.name, map.s)
-    end
-
-    -- sequence element
-    map.el = elm.l
-    local stop = elm:track(map)
-    if stop then return tbl, map end -- stop (e.g. slink)
-
-    local el in map
-    if save and elm:is_selected(observe) then
-      tbl:fill(elm, map, el)
-    end
-    map.s = map.s + el -- update s
-
-    -- update dl
-    if i == nlen
-    then map.dl = 0
-    else map.dl = seq:spos(i+1) - (seq:spos(i) + el) -- patch and dl?
-    end
-  end
-
-  return tbl, map
+local function track_quad (elm, m, _)
+  -- quad_drift, quad_kick, straight_fringe
 end
 
--- sequence backtracking ------------------------------------------------------o
-
-local function sequ_trackback (seq, map, rng_, ntrn_)
-  local tbl = map.mtable
-
-  -- retrieve information
-  local save, drift, nlen in map
-
-  -- dynamic tracking
-  for i,elm in seq:iter(rng_, ntrn_, -1) do
-
-    -- implicit drift
-    local dl in map
-    if dl <= -minlen then
-      straight_drift(nil, map, dl)
-      if drift and elm:is_selected(observe) then
-        map.ndft = map.ndft+1
-        dft.name = 'DRIFT_'..map.ndft
-        tbl:fill(dft, map, dl)
-      end
-      map.s, map.dl = map.s + dl, 0 -- update s
-    elseif dl >= minlen then
-      errorf("negative implicit drift of %sm in %s['%s'] at %sm",
-             dl, seq.name, elm.name, map.s)
-    end
-
-    -- sequence element
-    map.el = -elm.l
-    local stop = elm:trackback(map)
-    if stop then return tbl, map end -- stop (e.g. slink)
-
-    local el in map
-    if save and elm:is_selected(observe) then
-      tbl:fill(elm, map, el)
-    end
-    map.s = map.s + el -- update s
-
-    -- update dl
-    if i == 1
-    then map.dl = 0
-    else map.dl = seq:spos(i-1) + seq[i-1].l - seq:spos(i) -- patch and dl?
-    end
-  end
-
-  return tbl, map
+local function track_solenoid (elm, m, _)
+  -- solenoid_drift, rfcavity_kick, solenoid_fringe
 end
 
--- special --------------------------------------------------------------------o
+local function track_rfcavity (elm, m, _)
+  -- solenoid_drift, rfcavity_kick, rfcavity_fringe
+end
 
-local special_track = fnone
+local function track_twcavity (elm, m, _)
+  -- twcavity_drift, twcavity_kick, twcavity_fringe
+end
+
+-- load maps into elements ----------------------------------------------------o
 
 local invalid_track = \e ->
   errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
 
--- load maps into elements ----------------------------------------------------o
-
 local E = element
 
-E.sequence :set_readonly(false)
+-- kind maps
 
-E.  extra_element :set_methods { track     = invalid_track,
-                                 trackback = invalid_track }
-E. thin_element   :set_methods { track     = track_thin,
-                                 trackback = track_thinback }
-
-E.drift_element   :set_methods { track     = track_drift,
-                                 trackback = track_driftback }
-
-E.thick_element   :set_methods { track     = track_thick,
-                                 trackback = track_thickback }
-
-E.sequence        :set_methods { track     = sequ_track,
-                                 trackback = sequ_trackback }
-
-E.special         :set_methods { track     = special_track,
-                                 trackback = special_track }
-
-E.patch           :set_methods { track     = track_patch,
-                                 trackback = track_patchback }
+E.extra_element :set_methods { track = invalid }
+E.drift_element :set_methods { track = track_drift }
+E.thick_element :set_methods { track = track_thick }
+E. thin_element :set_methods { track = track_thin  }
 
 -- specialized maps
 
-E.thick_element :set_methods { track_drift  = straight_drift,
-                               track_kick   = straight_kick,
-                               track_fringe = straight_fringe }
+E.sbend      :set_methods { track = track_sbend      } -- polar   , k0
+E.combined   :set_methods { track = track_combined   } -- polar   , k0+k1
+E.rbend      :set_methods { track = track_rbend      } -- straight, k0
+E.quadrupole :set_methods { track = track_quadrupole } -- straight, k0+k1
+E.solenoid   :set_methods { track = track_solenoid   } -- straight, ks+ksi
+E.rfcavity   :set_methods { track = track_rfcavity   }
+E.twcavity   :set_methods { track = track_twcavity   }
 
-E.sbend         :set_methods { track_drift  = sbend_drift,
-                               track_kick   = polar_kick,
-                               track_fringe = sbend_fringe }
+-- special maps
 
-E.combined      :set_methods { track_drift  = combined_drift,
-                               track_kick   = combined_kick,
-                               track_fringe = sbend_fringe }
-
-E.rbend         :set_methods { track_drift  = rbend_drift,
-                               track_kick   = rfcavity_kick,
-                               track_fringe = straight_fringe }
-
-E.quadrupole    :set_methods { track_drift  = quadrupole_drift,
-                               track_kick   = quadrupole_kick,
-                               track_fringe = straight_fringe }
-
-E.solenoid      :set_methods { track_drift  = solenoid_drift,
-                               track_kick   = rfcavity_kick,
-                               track_fringe = solenoid_fringe }
-
-E.rfcavity      :set_methods { track_drift  = solenoid_drift,
-                               track_kick   = rfcavity_kick,
-                               track_fringe = rfcavity_fringe }
-
-E.twcavity      :set_methods { track_drift  = twcavity_drift,
-                               track_kick   = twcavity_kick,
-                               track_fringe = twcavity_fringe }
-
--- TODO: patches
-E.srotation   :set_methods { track = \e,m -> srotation(nil, m, e.angle) }
-E.yrotation   :set_methods { track = \e,m -> yrotation(nil, m, e.angle) }
-E.xrotation   :set_methods { track = \e,m -> xrotation(nil, m, e.angle) }
-E.translate   :set_methods { track = \e,m -> translate(nil, m, e.dx or 0,
-                                                       e.dy or 0, e.dz or 0) }
-E.changeref   :set_methods { track = \_,m -> changeref(nil, m) }
-E.changedir   :set_methods { track = \_,m -> changedir(nil, m) }
-E.changenrj   :set_methods { track = \_,m -> changenrj(nil, m) }
-
-E.sequence :set_readonly()
+E.patch     :set_methods { track = invalid }
+E.special   :set_methods { track = \e,m -> thinonly(e,m,1, nil, fnone    ) }
+E.srotation :set_methods { track = \e,m -> thinonly(e,m,1, nil, srotation) }
+E.xrotation :set_methods { track = \e,m -> thinonly(e,m,1, nil, xrotation) }
+E.yrotation :set_methods { track = \e,m -> thinonly(e,m,1, nil, yrotation) }
+E.translate :set_methods { track = \e,m -> thinonly(e,m,1, nil, translate) }
+E.changeref :set_methods { track = \e,m -> thinonly(e,m,1, nil, changeref) }
+E.changedir :set_methods { track = \e,m -> thinonly(e,m,1, nil, changedir) }
+E.changenrj :set_methods { track = \e,m -> thinonly(e,m,1, nil, changenrj) }
 
 -- track mtable ---------------------------------------------------------------o
 
@@ -452,31 +216,6 @@ local function make_mflow (self)
   local beam = assert(self.beam, "missing beam")
   assert(is_beam(beam), "invalid beam")
 
-  -- retrieve initial conditions
-  local s0, X0 in self
-  assert(is_number  (s0), "invalid s0 (number expected)")
-  assert(is_mappable(X0), "invalid X0 (mappable expected)")
-
-  -- precedence of initial conditions
-  local x, px, y, py, t, pt in self
-  x  = x  or X0.x  or X0[1] or 0
-  px = px or X0.px or X0[2] or 0
-  y  = y  or X0.y  or X0[3] or 0
-  py = py or X0.py or X0[4] or 0
-  t  = t  or X0.t  or X0[5] or 0
-  pt = pt or X0.pt or X0[6] or 0
-
-  -- TODO: handle N mapflows or N particles
-  -- X0={0,0,0,0,0,0}        -- initial coordinates
-  -- X0={{0,0,0,0,0,0},....} -- initial list of coordinates
-  -- X0=mapflow              -- initial mapflow
-  -- X0={mapflow, ...}       -- initial list of mapflow
-  -- mapdef=nil,             -- mapflow setup (X0 are their initial coordinates)
-
-  --npar=npar,               -- number of particles or mapflows, #mflw
-  --ipar=1,                  -- current particle or mapflow
-  --part=table.new(npar,0),  -- list of particles or mapflows
-
   -- build iterator
   local range, sdir, nturn in self
   local iter, state, init = sequ:siter(range, nturn, sdir)
@@ -522,44 +261,77 @@ local function make_mflow (self)
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
 
-  -- build mflow
-  local mflw = {
-    sequ=sequ,                         -- current sequence
-    beam=beam,                         -- current beam
-    mtbl=mtbl,                         -- current mtable (nil if no save)
-    sdir=sdir,                         -- s-direction of tracking
-    tdir=tdir,                         -- t-direction of tracking
---  bdir=tdir*beam.charge,             -- beam direction of tracking
+  -- retrieve initial conditions
+  local s0, X0, mapdef in self
+  assert(is_number  (s0), "invalid s0 (number expected)")
+  assert(is_mappable(X0), "invalid X0 (mappable expected)")
+  if not is_mappable(X0[1]) then X0 = {X0} end
 
-    integr=integr,                     -- default integrator
-    totalpath=false,                   -- t is the totalpath
+  -- precedence of initial conditions
+  local npar = #X0
+  local mflw = table.new(npar,100)
+  for i=1,npar do
+    if isa_mapflow(X0[i]) then -- mapflows are mappable (i.e. must be first)
+      X0[i].id = X0[i].id or i
+      mflw[i]  = X0[i]
+    elseif is_mappable(X0[i]) then
+      local id =             X0[i].id or i
+      local x  = X0[i][1] or X0[i].x  or 0
+      local px = X0[i][2] or X0[i].px or 0
+      local y  = X0[i][3] or X0[i].y  or 0
+      local py = X0[i][4] or X0[i].py or 0
+      local t  = X0[i][5] or X0[i].t  or 0
+      local pt = X0[i][6] or X0[i].pt or 0
+      if mapdef then X0[i] = mapflow(mapdef) end -- mapflow required
+      if is_table(X0[i]) then                    -- includes mapflow
+        X0[i].id, X0[i].x, X0[i].px, X0[i].y, X0[i].py, X0[i].t, X0[i].pt
+          = id, x, px, y, py, t, pt
+      else                                       -- replace data by a new table
+        X0[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt ; pz=0}
+      end
+      mflw[i] = X0[i]
+    else
+      error("invalid type of item at id="..i.." (coordinates or mapflow expected)")
+    end
+  end
 
-    fill=fill,                         -- fill/add one row to mtable (if any)
-    nofill=nofill,                     -- disable filling at the end of an element
-    nslice=nslice,                     -- number of slice for each element
+  -- complete mflow
 
-    s0=s0,                             -- initial s-position
-    idx=init,                          -- index of the current element
-    spos=s0,                           -- s-position of the current element entry
-    npos=nil,                          -- integrator step: nil, 'first', 'last'
+  mflw.beam=beam                    -- current beam
+  mflw.sequ=sequ                    -- current sequence
+  mflw.mtbl=mtbl                    -- current mtable (nil if no save)
+  mflw.sdir=sdir                    -- s-direction of tracking
+  mflw.tdir=tdir                    -- t-direction of tracking
 
-    atentry=atentry,                   -- action when entering an element
-    atslice=atslice,                   -- action after each element slices
-    atexit =atexit,                    -- action when exiting an element
+  mflw.integr=integr                -- default integrator
+  mflw.totalpath=totalpath          -- t is the totalpath
+
+  mflw.fill=fill                    -- fill/add one row to mtable (if any)
+  mflw.nofill=nofill                -- disable filling at the end of an element
+  mflw.nslice=nslice                -- number of slice for each element
+
+  mflw.s0=s0                        -- initial s-position
+  mflw.idx=init                     -- index of the current element
+  mflw.spos=s0                      -- s-position of the current element entry
+  mflw.npos=nil                     -- integrator step: nil, 'first', 'last'
+  mflw.npar=npar                    -- number of particles or mapflows: #mflw
+
+  mflw.atentry=atentry              -- action when entering an element
+  mflw.atslice=atslice              -- action after each element slices
+  mflw.atexit =atexit               -- action when exiting an element
 
     -- for processing elements
-    nmul=0,                            -- current element number of multipoles
-    knl=table.new(15,0),               -- current element multipoles
-    ksl=table.new(15,0),               -- current element multipoles skew
-    pnl=table.new(15,0),               -- current element multipoles phases
-    psl=table.new(15,0),               -- current element multipoles shew phases
+  mflw.nmul=0                       -- current element number of multipoles
+  mflw.knl=table.new(15,0)          -- current element multipoles
+  mflw.ksl=table.new(15,0)          -- current element multipoles skew
+  mflw.pnl=table.new(15,0)          -- current element multipoles phases
+  mflw.psl=table.new(15,0)          -- current element multipoles shew phases
 
     -- for processing subelements
-    selm=table.new(3,0),               -- subelement stack
+  mflw.selm=table.new(3,0)          -- subelement stack
 
     -- internal vars for track
-    [_var]={iter=iter, state=state},   -- iterator and iteraror state
-  }
+  mflw[_var]={iter=iter, state=state} -- iterator and iteraror state
 
   return mflw
 end
@@ -601,8 +373,8 @@ local function exec (self)
 end
 
 local track = command 'Track' {
-  sequence=nil,     -- sequence (required)                                (mflw)
   beam=nil,         -- beam (required)                                    (mflw)
+  sequence=nil,     -- sequence (required)                                (mflw)
   range=nil,        -- range of tracking                                  (iter)
   sdir=1,           -- s-direction of tracking (1 or -1)                  (mflw)
 
