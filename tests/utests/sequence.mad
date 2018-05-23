@@ -32,7 +32,8 @@ local is_sequence, is_element, is_number                         in MAD.typeid
 local tblcpy, strsplitall                                        in MAD.utility
 local eps                                                        in MAD.constant
 local abs, min, ceil, floor                                      in MAD.gmath
-local drift, marker, sbend, quadrupole, sequence, bline, flags   in MAD.element
+local drift, marker, sbend, quadrupole, sequence, bline, flags,
+      srotation                                                  in MAD.element
 local selected, implicit                                         in flags
 
 local toolbox  = require "toolbox"
@@ -556,11 +557,14 @@ end
 function TestSequence:testInitInvalidElem()
   local msg = {
     "invalid element detected",
+    "invalid element length at s = 0m (invalid length 2m) in sequence \z
+      'seq' for element 'srotation' at index 2",
   }
   assertErrorMsgContains(msg[1], sequence, "seq", { 1     })
   assertErrorMsgContains(msg[1], sequence, "seq", { true  })
   assertErrorMsgContains(msg[1], sequence, "seq", { \ ()  })
   assertErrorMsgContains(msg[1], sequence, "seq", { "seq" })
+  assertErrorMsgContains(msg[2], sequence, "seq", { srotation { l = 2} })
 end
 
 function TestSequence:testInitElemReferPos()
@@ -1382,6 +1386,9 @@ function TestSequence:testRangeOfNumFloatingPointWithDrift()
   local seq = sequence "seq" { l = 3, refer = "entry",
     drift "df" { at = 1, l = 1 },
   }
+  local msg = {
+    "invalid range direction (1 or -1 expected)"
+  }
 
   assertEquals(table.pack(seq:range_of(nil       , nil, 1)), {1  , 3, n=2})
   assertEquals(table.pack(seq:range_of(nil       , nil,-1)), {3  , 1, n=2})
@@ -1395,6 +1402,8 @@ function TestSequence:testRangeOfNumFloatingPointWithDrift()
   assertEquals(table.pack(seq:range_of({0.5, 0.5}, nil,-1)), {1  , 2, n=2})
   assertEquals(table.pack(seq:range_of({0.5, 0.6}, nil, 1)), {nil,    n=1})
   assertEquals(table.pack(seq:range_of({0.6, 0.5}, nil,-1)), {nil,    n=1})
+  assertErrorMsgContains(msg[1], seq.range_of, seq, nil, nil,  0)
+  assertErrorMsgContains(msg[1], seq.range_of, seq, nil, nil, -2)
 end
 
 function TestSequence:testRangeOfNumFloatingPointNoDrift()
@@ -2505,6 +2514,31 @@ function TestSequence:testForeachTableFlags()
   assertEquals(i, 5)
 end
 
+function TestSequence:testForeachAndedSelection()
+  local flg = 31
+  local elm = drift "name1" { l = 1 }:select(flg)
+  local seq = sequence "seq" {
+    drift      "name1" { l = 1 }            , -- ruled out by "flag"
+    elm,
+    quadrupole "name1" { l = 1 }:select(flg), -- ruled out by "class"
+    drift      "name2" { l = 1 }:select(flg), -- ruled out by "pattern"
+    drift      "name1" { l = 1 }:select(flg), -- ruled out by "select"
+    drift      "name1" { l = 1 }:select(flg), -- ruled out by "range"
+  }
+
+  local assertTest = \e,i => assertIs(e, elm); assertEquals(i, 3) end
+
+  -- test the "and" of the different selections
+  seq:foreach{
+    action  = assertTest,
+    range   = {"name1[1]", "name1[4]"},
+    select  = \r,i -> i~=6,
+    pattern = "name1",
+    class   = drift,
+    flag    = flg,
+  }
+end
+
 function TestSequence:testSelect()
   local seq = getIdxSeq()
   local flg = 31
@@ -3497,6 +3531,21 @@ function TestSequence:testNegDriftInSeqWithDebug()
   MAD.option.debug = debug
 end
 
+function TestSequence:testThinLength()
+  local seq = sequence "seq" { l = 2,
+    srotation { },
+  }
+  local msg = {
+    "invalid element length at s = 0m (invalid length 1m) in sequence \z
+      'seq' for element 'srotation' at index 2",
+  }
+
+  -- creates a negative drift
+  seq[2].l = 1
+
+  assertErrorMsgContains(msg[1], sequence.check_sequ, seq)
+end
+
 function TestSequence:testSharedElementBuild()
   local df  = drift "df" { l = 1, refpos = "entry", shared = true }
   local seq = sequence "seq" { l = 5,
@@ -3642,7 +3691,5 @@ function TestSequence:testSetUnsetReadOnly()
   seq.test    = 42
   assertEquals(seq.test, 42)
 end
-
--------------------------------------------------------------------------------o
 
 -- end ------------------------------------------------------------------------o
