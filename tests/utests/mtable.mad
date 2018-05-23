@@ -2631,17 +2631,27 @@ end
 
 function TestMTable:testWriteValues()
   local tbl = mtable "tbl" {
-    {"name"}, "x", "y", "z",
-    header1  = "header 'whith quote'", header2 = "header \"double quote\"",
-    header3  = 42.5, header4 = true, header5 = false, header6 = nil,
-    header7  = { "val", 3 }, novector = true, header = { "header1",
-      "header2", "header3", "header4", "header5", "header6", "header7",
-      "novector" },
+    {"name"}, "w", "x", "y", "z",
+    header1  = "header 'whith quote'",
+    header2  = "header \"double quote\"",
+    header3  = 42.5,
+    header4  = true,
+    header5  = false,
+    header6  = nil,
+    header7  = { "val", 3 },
+    header8  = 1+1i,
+    header9  = 7.3..-1.7..-1,
+    novector = true,
+    header   = {
+      "header1", "header2", "header3", "header4", "header5",
+      "header6", "header7", "header8","header9",
+      "novector"
+    },
   }
   tbl.time, tbl.date, tbl.origin = "", "", ""
-  tbl:addrow{"name1", 1  , 2    , 3.15}
-  tbl:addrow{"name2", nil, nil  , true}
-  tbl:addrow{"name1", 1  , false, 3.15}
+  tbl:addrow{"name1", 1  , 2    , 3.15, 1+1i}
+  tbl:addrow{"name2", nil, nil  , true, nil}
+  tbl:addrow{"name1", 1  , false, 3.15, 7.3..-1.7..-1}
   tbl:addcol("gen"  , \i->i)
   tbl:addrow{"name1", "value 'whith quote'", "value \"double quote\"", 3}
   testWrite(tbl, "tbl-write.tfs", rundir("tbl-write"))
@@ -2699,6 +2709,23 @@ function TestMTable:testWriteNamedArgs()
   testWrite(tbl, "tbl-namedargs2.tfs", args2)
 end
 
+function TestMTable:testPrint()
+  local tbl    = mtable "tbl" { "x", "y", "z", var = 42 }
+  local row    = { 1, 2, 3 }
+  local fname  = "tbl-print.tfs"
+  local stdout = io.stdout
+
+  filesys.mkdir(rundir())
+  tbl.time, tbl.date, tbl.origin = "", "", ""
+  for i=1,4 do tbl:addrow(row) end
+  io.stdout    = assert(io.open(rundir(fname), 'w'))
+
+  tbl:print({"x", "y"}, {"var", "type"})
+  assertFiles(fname)
+
+  io.stdout    = stdout
+end
+
 function TestMTable:testReadExtensions()
   local tbl1 = mtable:read(refdir("tbl-name1"))
   local tbl2 = mtable:read(refdir("tbl-name2.tfs"))
@@ -2734,11 +2761,12 @@ end
 
 function TestMTable:testReadValues()
   local tbl = mtable:read(refdir("tbl-write"))
-  local col1 = { "name1", "name2", "name1", "name1"                  }
-  local col2 = { 1      , nil    , 1      , "value 'whith quote'"    }
-  local col3 = { 2      , nil    , false  , "value \"double quote\"" }
-  local col4 = { 3.15   , true   , 3.15   , 3                        }
-  local col5 = { 1      , 2      , 3      , 4                        }
+  local col1 = { "name1", "name2", "name1"      , "name1"                  }
+  local col2 = { 1      , nil    , 1            , "value 'whith quote'"    }
+  local col3 = { 2      , nil    , false        , "value \"double quote\"" }
+  local col4 = { 3.15   , true   , 3.15         , 3                        }
+  local col5 = { 1+1i   , nil    , 7.3..-1.7..-1, nil                      }
+  local col6 = { 1      , 2      , 3            , 4                        }
   assertEquals(tbl.header1, "header 'whith quote'"   )
   assertEquals(tbl.header2, "header \"double quote\"")
   assertEquals(tbl.header3, 42.5                     )
@@ -2746,11 +2774,14 @@ function TestMTable:testReadValues()
   assertEquals(tbl.header5, false                    )
   assertEquals(tbl.header6, nil                      )
   assertEquals(tbl.header7, {"val", 3}               )
+  assertEquals(tbl.header8, 1+1i                     )
+  assertEquals(tbl.header9, 7.3..-1.7..-1            )
   assertVecEquals(tbl:getcol(1), col1)
   assertVecEquals(tbl:getcol(2), col2)
   assertVecEquals(tbl:getcol(3), col3)
   assertVecEquals(tbl:getcol(4), col4)
   assertVecEquals(tbl:getcol(5), col5)
+  assertVecEquals(tbl:getcol(6), col6)
 end
 
 function TestMTable:testReadinheritance()
@@ -3407,6 +3438,31 @@ function TestMTable:testForeachTableKind()
     tbl:foreach{action=act, kind="kind1"}
     assertEquals(i, 4)
   end
+end
+
+function TestMTable:testForeachAndedSelection()
+  local tbl = mtable "tbl" { {"name"}, "kind", "x" }
+
+  local assertTest = \r,i => assertEquals(r.x, 2); assertEquals(i, 2) end
+
+  tbl:addrow{ "name1", "kind1", 1 } -- ruled out by "selected"
+  tbl:addrow{ "name1", "kind1", 2 }
+  tbl:addrow{ "name1", "kind2", 3 } -- ruled out by "kind"
+  tbl:addrow{ "name2", "kind1", 4 } -- ruled out by "pattern"
+  tbl:addrow{ "name1", "kind1", 5 } -- ruled out by "select"
+  tbl:addrow{ "name1", "kind1", 6 } -- ruled out by "range"
+
+  for i=2,6 do tbl[i][0] = true end
+
+  -- test the "and" of the different selections
+  tbl:foreach{
+    action   = assertTest,
+    range    = {1,5},
+    select   = \r,i -> i~=5,
+    pattern  = "name1",
+    kind     = "kind1",
+    selected = true,
+  }
 end
 
 function TestMTable:testSelect()
@@ -4369,6 +4425,52 @@ function TestMTable:testKpairsReadOnlyCol()
     tbl:set_readonly()
     for i=0,tbl:ncol() do check_kpairs(tbl:getcol(i)) end
   end
+end
+
+-- performance test suite -----------------------------------------------------o
+
+Test_MTable = {}
+
+function Test_MTable:testInsertVsAddRow()
+  local tbl1 = mtable "tbl" { {"name"}, "x", "y", "z" }
+  local tbl2 = mtable "tbl" { {"name"}, "x", "y", "z" }
+  local size = 5e5
+  local rows = table.new(size,0)
+  for i=1,size do rows[i] = newrow(i) end
+
+  local t0 = os.clock()
+  for i=1,size do tbl1:addrow(rows[i]) end
+  local dt1 = os.clock() - t0
+
+  local t1 = os.clock()
+  tbl2:insert(rows, 1)
+  local dt2 = os.clock() - t1
+
+  assertAlmostEquals( dt1 , 0.4, 0.8 )
+  assertAlmostEquals( dt2 , 0.2, 0.4 )
+
+  assertEquals(#tbl1, #tbl2)
+  for i=1,size do assertVecEquals(tbl1:getrow(i), tbl2:getrow(i)) end
+end
+
+function Test_MTable:testRemoveVsRemRow()
+  local size, start, stop = 1e4, 1e3, 2e3
+  local tbl1 = newtbl(size)
+  local tbl2 = newtbl(size)
+
+  local t0 = os.clock()
+  for i=stop,start,-1 do tbl1:remrow(i) end
+  local dt1 = os.clock() - t0
+
+  local t1 = os.clock()
+  tbl2:remove{start, stop}
+  local dt2 = os.clock() - t1
+
+  assertAlmostEquals( dt1 , 0.5, 1 )
+  assertAlmostEquals( dt2 , 0.1, 1 )
+
+  assertEquals(#tbl1, #tbl2)
+  for i=1,#tbl1 do assertVecEquals(tbl1:getrow(i), tbl2:getrow(i)) end
 end
 
 -- end ------------------------------------------------------------------------o
