@@ -55,24 +55,38 @@ local cpx_sz = ffi.sizeof 'complex'
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[
+struct  matrix33     { const ssz_t nr, nc;       double  data[9];  };
+struct  matrix66     { const ssz_t nr, nc;       double  data[36]; };
 struct  matrix       { const ssz_t nr, nc;       double  data[?]; };
-struct cmatrix       { const ssz_t nr, nc;       complex data[?]; };
 struct  matrix_const { const ssz_t nr, nc; const double  data[?]; };
+
+struct cmatrix33     { const ssz_t nr, nc;       complex data[9];  };
+struct cmatrix66     { const ssz_t nr, nc;       complex data[36]; };
+struct cmatrix       { const ssz_t nr, nc;       complex data[?]; };
 struct cmatrix_const { const ssz_t nr, nc; const complex data[?]; };
+
 struct  matrix_ccast {       ssz_t nr, nc;       double  data[?]; };
 ]]
 
-local  matrix_ctor = ffi.typeof 'struct  matrix '
-local  matrix_cref = ffi.typeof 'struct  matrix&'
+local   mat33_ctor = ffi.typeof   'struct  matrix33'
+local   mat66_ctor = ffi.typeof   'struct  matrix66'
+local  matrix_ctor = ffi.typeof   'struct  matrix '
+local  matrix_cref = ffi.typeof   'struct  matrix&'
+
+local  cmat33_ctor = ffi.typeof 'struct cmatrix33'
+local  cmat66_ctor = ffi.typeof 'struct cmatrix66'
 local cmatrix_ctor = ffi.typeof 'struct cmatrix '
 local cmatrix_cref = ffi.typeof 'struct cmatrix&'
 
 local  matrix_cctor = ffi.typeof 'struct  matrix_const'
-local cmatrix_cctor = ffi.typeof 'struct cmatrix_const'
 local  matrix_ccref = ffi.typeof 'struct  matrix_const&'
+local cmatrix_cctor = ffi.typeof 'struct cmatrix_const'
 local cmatrix_ccref = ffi.typeof 'struct cmatrix_const&'
 
 local  matrix_ccast = ffi.typeof 'struct  matrix_ccast&'
+
+local  matrix_size = ffi.offsetof( matrix_ctor, 'data')
+local cmatrix_size = ffi.offsetof(cmatrix_ctor, 'data')
 
 local is_matrix  = \x -> istype( matrix_ctor, x) or istype( matrix_cctor, x)
 local is_cmatrix = \x -> istype(cmatrix_ctor, x) or istype(cmatrix_cctor, x)
@@ -85,32 +99,34 @@ local isa_vector = \x -> isa_matrix(x) and (x.nr == 1 or x.nc == 1)
 
 local function matrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len <= _C.mad_alloc_threshold then
-    mat = matrix_ctor(len, nr, nc) -- VLA
-  else
-    assert(len <= 2^30, "matrix is too large")
-    local siz = ffi.sizeof(matrix_ctor, len)
-    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-    mat = ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free)
-    local m = ffi.cast(matrix_ccast, mat)
-    m.nr, m.nc = nr, nc
+  if len <= 9 then
+    return (ffi.cast(matrix_cref, mat33_ctor(nr,nc)))
+  elseif len <= _C.mad_alloc_threshold then
+    return (matrix_ctor(len, nr, nc)) -- VLA
   end
-  return mat
+  -- nr*nc > 16*16
+  assert(len <= 2^30, "matrix is too large")
+  local siz = matrix_size + len*dbl_sz
+  local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
+  local m = ffi.cast(matrix_ccast, ptr)
+  m.nr, m.nc = nr, nc
+  return (ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free))
 end
 
 local function cmatrix_alloc (nr, nc)
   local len, mat = nr*nc, nil
-  if len <= _C.mad_alloc_threshold/2 then
-    mat = cmatrix_ctor(len, nr, nc) -- VLA
-  else
-    assert(len <= 2^29, "cmatrix is too large")
-    local siz = ffi.sizeof(cmatrix_ctor, len)
-    local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-    mat = ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free)
-    local m = ffi.cast(matrix_ccast, mat)
-    m.nr, m.nc = nr, nc
+  if len <=  9 then
+    return (ffi.cast(cmatrix_cref, cmat33_ctor(nr,nc)))
+  elseif len <= _C.mad_alloc_threshold/2 then
+    return (cmatrix_ctor(len, nr, nc)) -- VLA
   end
-  return mat
+  -- nr*nc > 11*11
+  assert(len <= 2^29, "cmatrix is too large")
+  local siz = cmatrix_size + len*cpx_sz
+  local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
+  local m = ffi.cast(matrix_ccast, mat)
+  m.nr, m.nc = nr, nc
+  return (ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free))
 end
 
 local function fromtable (ctor, tbl)
