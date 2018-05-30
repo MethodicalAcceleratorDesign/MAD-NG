@@ -98,37 +98,35 @@ local isa_vector = \x -> isa_matrix(x) and (x.nr == 1 or x.nc == 1)
 -- allocators -----------------------------------------------------------------o
 
 local function matrix_alloc (nr, nc)
-  local len = nr*nc
---  if len <= 9 then
---    local mat = mat33_ctor(nr,nc)
---    return (ffi.cast(matrix_cref, mat))
+  local len, mat = nr*nc
   if len <= _C.mad_alloc_threshold then
-    return (matrix_ctor(len, nr, nc)) -- VLA
+    mat = matrix_ctor(len)
+  else
+    assert(len <= 2^30, "matrix is too large")
+    local siz = matrix_size + len*dbl_sz
+    mat = assert(_C.mad_calloc(1,siz), "out of memory")
+    mat = ffi.gc(ffi.cast(matrix_cref, mat), _C.mad_free)
   end
-  -- nr*nc > 16*16
-  assert(len <= 2^30, "matrix is too large")
-  local siz = matrix_size + len*dbl_sz
-  local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
-  local m = ffi.cast(matrix_ccast, ptr)
+
+  local m = ffi.cast(matrix_ccast, mat)
   m.nr, m.nc = nr, nc
-  return (ffi.gc(ffi.cast(matrix_cref, ptr), _C.mad_free))
+  return mat
 end
 
 local function cmatrix_alloc (nr, nc)
-  local len = nr*nc
---  if len <=  9 then
---    local mat = cmat33_ctor(nr,nc)
---    return (ffi.cast(cmatrix_cref, mat))
+  local len, mat = nr*nc
   if len <= _C.mad_alloc_threshold/2 then
-    return (cmatrix_ctor(len, nr, nc)) -- VLA
+    mat = cmatrix_ctor(len)
+  else
+    assert(len <= 2^29, "cmatrix is too large")
+    local siz = matrix_size + len*dbl_sz
+    mat = assert(_C.mad_calloc(1,siz), "out of memory")
+    mat = ffi.gc(ffi.cast(matrix_cref, mat), _C.mad_free)
   end
-  -- nr*nc > 11*11
-  assert(len <= 2^29, "cmatrix is too large")
-  local siz = cmatrix_size + len*cpx_sz
-  local ptr = assert(_C.mad_calloc(1,siz), "out of memory")
+
   local m = ffi.cast(matrix_ccast, mat)
   m.nr, m.nc = nr, nc
-  return (ffi.gc(ffi.cast(cmatrix_cref, ptr), _C.mad_free))
+  return mat
 end
 
 local function fromtable (ctor, tbl)
