@@ -35,6 +35,7 @@ local M = {}
 
 local abs, sin, cos  in math
 local minlen, minang in MAD.constant
+local is_number      in MAD.typeid
 local errorf         in MAD.utility
 
 -- helpers --------------------------------------------------------------------o
@@ -49,7 +50,7 @@ end
 -- X-rotation (pitch)
 
 function M.xrotation (elm, m, lw_) -- Rx(-phi)
-  local phi = elm.phi or 0
+  local phi = is_number(elm) and elm or elm.phi or 0
   if abs(phi) < minang then return end
 
   m.S :rotx(-phi*m.tdir)
@@ -60,10 +61,10 @@ end
 -- Y-rotation (yaw)
 
 function M.yrotation (elm, m, lw_) -- Ry(-theta)
-  local th = elm.theta or 0
-  if abs(th) < minang then return end
+  local the = is_number(elm) and elm or elm.theta or 0
+  if abs(the) < minang then return end
 
-  m.S :roty(-th*m.tdir)
+  m.S :roty(-the*m.tdir)
   m.W :mul(m.S, m.W) -- W = W*S
   update_angles(m)
 end
@@ -71,7 +72,7 @@ end
 -- S-rotation (roll, tilt)
 
 function M.srotation (elm, m, lw_) -- Rz(psi)
-  local psi = elm.psi or 0
+  local psi = is_number(elm) and elm or elm.psi or 0
   if abs(psi) < minang then return end
 
   m.S :rotz(psi*m.tdir)
@@ -93,26 +94,26 @@ end
 -- MAD patch
 
 function M.madpatch (elm, m, lw_)
-  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(the)+abs(phi)+abs(psi) < 3*minang then return end
 
   local tdir in m
-  m.S :rotmad(th*tdir, phi*tdir, psi*tdir)
-  m.W :mul(m.S, m.W) -- W = W*S
-  update_angles(m)
+  m.S :rotmad(the*tdir, phi*tdir, psi*tdir)   -- phi  : Elevation angle.
+  m.W :mul(m.S, m.W) -- W = W*S               -- theta: Azimuthal angle.
+  update_angles(m)                            -- psi  : Roll      angle.
 
   M.translate(elm, m, lw_)
 end
 
 -- Forward patch
 
-function M.xyzpatch (elm, m, lw_)
-  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+function M.xyspatch (elm, m, lw_)
+  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(the)+abs(phi)+abs(psi) < 3*minang then return end
 
-  local tdir in m                           -- phi  : Elevation angle.
-  m.S :rotxyz(phi*tdir, th*tdir, psi*tdir)  -- theta: Azimuthal angle.
-  m.W :mul(m.S, m.W) -- W = W*S             -- psi  : Roll      angle.
+  local tdir in m
+  m.S :rotxyz(phi*tdir, the*tdir, psi*tdir)
+  m.W :mul(m.S, m.W) -- W = W*S
   update_angles(m)
 
   M.translate(elm, m, lw_)
@@ -120,27 +121,27 @@ end
 
 -- Backward patch
 
-function M.zyxpatch (elm, m, lw_)
+function M.syxpatch (elm, m, lw_)
   M.translate(elm, m, lw_)
 
-  local th, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(th)+abs(phi)+abs(psi) < 3*minang then return end
+  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(the)+abs(phi)+abs(psi) < 3*minang then return end
 
-  local tdir in m                           -- psi  : Roll      angle.
-  m.S :rotzyx(phi*tdir, th*tdir, psi*tdir)  -- theta: Azimuthal angle.
-  m.W :mul(m.S, m.W) -- W = W*S             -- phi  : Elevation angle.
+  local tdir in m
+  m.S :rotzyx(phi*tdir, the*tdir, psi*tdir)
+  m.W :mul(m.S, m.W) -- W = W*S
   update_angles(m)
 end
 
 -- Changeref (generic patch)
 
 function M.changeref (elm, m, lw_)
-  local typ = elm.patch or 'xyst'
+  local typ = elm.type or 'xys'
 
-      if typ == 'xyz' then M.xyzpatch(elm, m, lw_)
-  elseif typ == 'zyx' then M.zyxpatch(elm, m, lw_)
+      if typ == 'xys' then M.xyspatch(elm, m, lw_)
+  elseif typ == 'syx' then M.syxpatch(elm, m, lw_)
   elseif typ == 'mad' then M.madpatch(elm, m, lw_)
-  else errorf("invalid patch type '%s' ('xyz', 'zyx' or 'mad' expected)", typ)
+  else errorf("invalid patch type '%s' ('xys', 'syx' or 'mad' expected)", typ)
   end
 end
 
@@ -159,11 +160,12 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 function M.drift (elm, m, lw) -- drift_element
-  local l = elm.l*lw*m.sdir
+  local l = is_number(elm) and elm or elm.l*lw
   if abs(l) < minlen then return end
 
-  m.R :fill{0, 0, l}
-  m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
+  m.R :fill{0, 0, l*m.sdir}
+  m.V = m.W*m.R+m.V
+--  m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
 function M.thin (elm, m, lw_) -- thin_element
@@ -179,7 +181,8 @@ function M.thin (elm, m, lw_) -- thin_element
     m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
-  m.W :mul(m.S, m.W) -- W = W*S
+  m.W = m.W*m.S -- W = W*S
+--  m.W :mul(m.S, m.W) -- W = W*S
   update_angles(m)
 end
 
@@ -207,8 +210,10 @@ function M.thick (elm, m, lw) -- thick_element
     m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
   end
 
-  m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
-  m.W :mul(m.S, m.W)                   -- W = W*S
+  m.V = m.W*m.R+m.V
+  m.W = m.W*m.S
+--  m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
+--  m.W :mul(m.S, m.W)                   -- W = W*S
   update_angles(m)
 end
 
