@@ -18,7 +18,7 @@
   Purpose:
   - Provide a catalog of dynamical 6D maps (i.e. track)
     maps must have the following calling convention:
-      dynmap(elm, map, len)
+      dynmap(elm, map, weight)
     (see the symplectic integrators)
   - TODO: list the expected fields for elm and map
 
@@ -27,294 +27,393 @@
 
 local M = {}
 
+ -- Note:
+ -- Is (_beta+pt) in t shouldn't be sqrt((_beta+pt)^2 - (_beta*_gamma)^2) ??
+
 -- locals ---------------------------------------------------------------------o
 
 local matrix                                                     in MAD
-local is_nil                                                     in MAD.typeid
-local minlen, minang, clight                                     in MAD.constant
+local is_nil, is_number                                          in MAD.typeid
+local minlen, minang, clight, twopi                              in MAD.constant
 
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
-      sinh, cosh, sinc, fact, twopi                              in MAD.gmath
+      sinh, cosh, sinc, fact                                     in MAD.gmath
 
 local minvolt, volt_c = 1e-6, 1e-3
 
--- forward declarations -------------------------------------------------------o
-
--- patches
--- local entry_patch, exit_patch                                     -- patches
--- local xrotation, yrotation, srotation                             -- rotations
--- local translate, changedir, changeref                             -- specials
-
--- drifts
--- local straight_drift , rbend_drift, quadrupole_drift              -- straight
--- local polar_drift    , sbend_drift, combined_drift                -- curved
--- local solenoid_drift                                              -- solenoid
--- local twcavity_drift                                              -- cavities
-
--- kicks
--- local thin_kick                                                   -- thin
--- local straight_kick  , quadrupole_kick                            -- straight
--- local polar_kick     , combined_kick                              -- curved
--- local rfcavity_kick  , twcavity_kick                              -- cavities
-
--- fringes
--- local straight_fringe                                             -- straight
--- local polar_fringe   , sbend_fringe                               -- curved
--- local solenoid_fringe                                             -- solenoid
--- local rfcavity_fringe, twcavity_fringe                            -- cavities
-
 -- helpers --------------------------------------------------------------------o
 
-local function bxby (nmul, knl, ksl, x, y, lw)
+local function bxby (m, x, y, lw)
+  local nmul, knl, ksl in m
   if nmul == 0 then return 0, 0 end
-  -- bdir, charge?
 
   local by = lw*knl[nmul] / fact(nmul-1)
   local bx = lw*ksl[nmul] / fact(nmul-1)
   local byt
 
   for i=nmul-1,1,-1 do
-    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
-    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    byt = by*x - bx*y + lw*knl[i] / fact(i-1)
+    bx  = by*y + bx*x + lw*ksl[i] / fact(i-1)
     by  = byt
   end
+
   return bx, by
-end
-
-local function drift (l, m) -- exact, l~=0
-  if abs(l) < minlen then return end
-  l = l*m.bdir
-
-  local x, px, y, py, t, pt, T in m
-  local _beta = 1/m.beam.beta
-  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-
-  m.x = x + px*l_pz
-  m.y = y + py*l_pz
-  m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-end
-
-local function drift_adj (l, m) -- drift adjustment (quad, sbend)
-  if abs(l) < minlen then return end
-  drift(l, m)
-  m.x = m.x - m.px*l*m.bdir
-  m.y = m.y - m.py*l*m.bdir
-end
-
-local function tilt (a, m) -- exact, a~=0
-  if abs(a) < minang then return end
-  a = a*m.bdir
-
-  local x, px, y, py in m
-  local sa, ca = sin(a), cos(a)
-
-  m.x  = ca*x  + sa*y
-  m.y  = ca*y  - sa*x
-  m.px = ca*px + sa*py
-  m.py = ca*py - sa*px
 end
 
 -- patches --------------------------------------------------------------------o
 
 -- X-rotation (pitch)
 
-function M.xrotation (elm, m, _)  -- Rx(phi) [ROT_YZR]
-  local phi = (elm.phi or 0) + (elm.dphi or 0)
+function M.xrotation (elm, m, lw_)  -- Rx(phi) [ROT_YZR]
+  local phi = is_number(elm) and elm or (elm.phi or 0) + (elm.dphi or 0)
   if abs(phi) < minang then return end
 
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(phi*sdir), cos(phi*sdir), tan(phi*sdir)
-  local _beta = 1/m.beam.beta
-  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local   _pz = 1/pz
-  local   ptt = 1 - ta*py*_pz
-  local  _ptt = 1/ptt
+  local tdir, npar in m
+  phi = phi*tdir
+  local sa, ca, ta = sin(phi), cos(phi), tan(phi)
 
-  m.y  = y/(ca*ptt)
-  m.py = ca*py + sa*pz
-  m.x  = x + ta*y*px*_pz*_ptt
-  m.t  = t - ta*y   *_pz*_ptt*(_beta+pt)
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+    local   _pz = 1/pz
+    local   ptt = 1 - ta*py*_pz
+    local  _ptt = y/ptt
+    local  _pzt = ta*_pz*_ptt
+
+    m[i].y  = _ptt/ca
+    m[i].py = ca*py + sa*pz
+    m[i].x  = x + _pzt*px
+    m[i].t  = t - _pzt*(_beta+pt)
+  end
 end
 
 -- Y-rotation (yaw)
 
-function M.yrotation (elm, m, _)  -- Ry(theta) [ROT_XZR or PROT]
-  local theta = (elm.theta or 0) + (elm.dtheta or 0)
-  if abs(theta) < minang then return end
+function M.yrotation (elm, m, lw_)  -- Ry(theta) [ROT_XZR]
+  local the = is_number(elm) and elm or (elm.theta or 0) + (elm.dtheta or 0)
+  if abs(the) < minang then return end
 
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(theta*sdir), cos(theta*sdir), tan(theta*sdir)
-  local _beta = 1/m.beam.beta
-  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local   _pz = 1/pz
-  local   ptt = 1 - ta*px*_pz
-  local  _ptt = 1/ptt
+  local tdir, npar in m
+  the = the*tdir
+  local sa, ca, ta = sin(the), cos(the), tan(the)
 
-  m.x  = x/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + ta*x*py*_pz*_ptt
-  m.t  = t - ta*x   *_pz*_ptt*(_beta+pt)
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+    local   _pz = 1/pz
+    local   ptt = 1 - ta*px*_pz
+    local  _ptt = x/ptt
+    local  _pzt = ta*_pz*_ptt
+
+    -- eq. 127 in Forest06
+    m[i].x  = _ptt/ca
+    m[i].px = ca*px + sa*pz
+    m[i].y  = y + _pzt*py
+    m[i].t  = t - _pzt*(_beta+pt)
+  end
 end
 
 -- S-rotation (roll, tilt)
 
-function M.srotation (elm, m, _)  -- Rz(psi) [XYrot]
-  local psi = (elm.psi or 0) + (elm.dpsi or 0)
-  tilt(psi, m)
+function M.srotation (elm, m, lw_)  -- Rz(psi) [ROT_XYR]
+  local psi = is_number(elm) and elm or (elm.psi or 0) + (elm.dpsi or 0)
+  if abs(psi) < minang then return end
+
+  local tdir, npar in m
+  psi = psi*tdir
+  local sa, ca = sin(psi), cos(psi)
+
+  for i=1,npar do
+    local x, px, y, py in m[i]
+    local nx  = ca*x  + sa*y
+    local npx = ca*px + sa*py
+    m[i].y    = ca*y  - sa*x
+    m[i].py   = ca*py - sa*px
+    m[i].x    = nx
+    m[i].px   = npx
+  end
 end
 
--- Translation (dz treated as a drift)
+-- Translation (dx, dy, dz)
 
-function M.translate (elm, m, _)
-  local dx = (elm.x or 0) + (elm.dx or 0)
-  local dy = (elm.y or 0) + (elm.dy or 0)
-  local dz = (elm.z or 0) + (elm.dz or 0)
-  local bdir in m
+function M.translate (elm, m, lw_) -- [TRANSR]
+  local dx = (elm.dx or 0) + (elm.ddx or 0)
+  local dy = (elm.dy or 0) + (elm.ddy or 0)
+  local dz = (elm.dz or 0) + (elm.ddz or 0)
 
-  drift(dz, m)
-  m.x = m.x - dx*bdir
-  m.y = m.y - dy*bdir
+  if abs(dx)+abs(dy)+abs(dz) < 3*minlen then return end
+
+  local tdir, npar in m
+  dx = dx*tdir
+
+  if abs(dz) < minlen then
+    for i=1,npar do
+      local x, y in m[i]
+      m[i].x = x - dx
+      m[i].y = y - dy
+    end
+    return
+  end
+
+  -- dz is treated as a drift without correction for the time of flight
+  local T, sdir in m
+  dz = dz*sdir
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+
+    m[i].x = x + l_pz*px - dx
+    m[i].y = y + l_pz*py - dy
+    m[i].t = t - l_pz*(_beta+pt)
+  end
 end
 
--- Changedir (reverse x and angles)
+-- MAD patch
 
-function M.changedir(_, m, _)
-  m.sdir = -m.sdir
-  m.bdir = -m.bdir
+function M.madpatch (elm, m, lw_)  -- (to review)
+  local phi = (elm.phi or 0) + (elm.dphi or 0)
+  M.srotation( elm, m, lw_)   -- psi  : Roll      angle.
+  M.xrotation(-phi, m, lw_)   -- phi  : Elevation angle.
+  M.yrotation( elm, m, lw_)   -- theta: Azimuthal angle.
+  M.translate( elm, m, lw_)
 end
 
 -- Forward patch
 
-function M.fwdpatch (elm, m, _)
-  M.xrotation(elm, m)    -- phi  : Elevation angle.
-  M.yrotation(elm, m)    -- theta: Azimuthal angle.
-  M.srotation(elm, m)    -- psi  : Roll      angle.
-  M.translate(elm, m)
+function M.xyspatch (elm, m, lw_)  -- (to review)
+  M.xrotation(elm, m, lw_)
+  M.yrotation(elm, m, lw_)
+  M.srotation(elm, m, lw_)
+  M.translate(elm, m, lw_)
 end
 
 -- Backward patch
 
-function M.bwdpatch (elm, m, _)
-  M.translate(elm, m)
-  M.srotation(elm, m)    -- psi  : Roll      angle.
-  M.yrotation(elm, m)    -- theta: Azimuthal angle.
-  M.xrotation(elm, m)    -- phi  : Elevation angle.
+function M.syxpatch (elm, m, lw_)  -- (to review)
+  M.translate(elm, m, lw_)
+  M.srotation(elm, m, lw_)
+  M.yrotation(elm, m, lw_)
+  M.xrotation(elm, m, lw_)
 end
 
--- Entry/Exit patches
+-- Changeref (generic patch)
 
-function M.entry_patch (elm, m, _)
-  M.fwdpatch(elm, m)
-  tilt(elm.tilt, m)
+function M.changeref (elm, m, lw_)
+  local typ = elm.type or 'xys'
+
+      if typ == 'xys' then M.xyspatch(elm, m, lw_)
+  elseif typ == 'syx' then M.syxpatch(elm, m, lw_)
+  elseif typ == 'mad' then M.madpatch(elm, m, lw_)
+  else errorf("invalid patch type '%s' ('xys', 'syx' or 'mad' expected)", typ)
+  end
 end
 
-function M.exit_patch (elm, m, _)
-  tilt(-elm.tilt, m)
-  M.bwdpatch(elm, m)
+-- Changedir (reverse mflow t-direction)
+
+function M.changedir (elm_, m, lw_)
+  m.tdir = -m.tdir
+end
+
+-- Changenrj (change particles energy)
+
+function M.changenrj (elm, m, lw_)  -- (to review)
+  local dnrj = elm.dnrj
+  if dnrj == 0 then return end
+
+  local sdir, npar, beam in m
+  beam.energy = beam.energy + dnrj*sdir
+
+  for i=1,npar do
+    beam = m[i].beam
+    if beam then
+      beam.energy = beam.energy + dnrj*sdir
+    end
+  end
 end
 
 -- drifts ---------------------------------------------------------------------o
 
-function M.straight_drift (elm, m, l)
-  drift(l, m)
+function M.drift (elm, m, lw) -- k0=0, angle=0, [DRIFT]
+  local l = is_number(elm) and elm or elm.l*lw
+  if abs(l) < minlen then return end
+
+  local T, sdir, npar in m
+  l = l*sdir
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+
+    m[i].x = x + l_pz*px
+    m[i].y = y + l_pz*py
+    m[i].t = t - l_pz*(_beta+pt) + (1-T)*_beta*l
+  end
 end
 
-function M.rbend_drift (elm, m, l) -- exact, l~=0
-  local knl in m
-  if abs(knl[1]) < minang then
-    return drift(l,m)
+function M.polar_drift (elm, m, lw) -- k0=0, angle~=0, [PROT(TEAPOT)]
+  local l, angle in elm
+  l, angle = l*lw, angle*lw
+  if abs(angle) < minang then return M.drift(l,m) end
+
+  local T, sdir, tdir, npar in m
+  l, angle = l*sdir, angle*tdir
+
+  local rho = l/angle
+  local sa, ca, ta, sa2 = sin(angle), cos(angle), tan(angle), sin(angle/2)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+
+    local   pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+    local  _pz = 1/pz
+    local  pxt = px*_pz
+    local  ptt = (1 - ta*pxt)*ca
+    local _ptt = 1/ptt
+    local  pst = (x+rho)*sa*_pz*_ptt
+
+    m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
+    m[i].px = ca*px + sa*pz
+    m[i].y  = y + pst*py
+    m[i].t  = t - pst*(_beta+pt) + (1-T)*_beta*l
+  end
+end
+
+function M.rbend_drift (elm, m, lw) -- k0~=0, angle=0, [SPAR(STREX)]
+  local k0, l in elm
+  l = l*lw
+  if abs(k0*l) < minang then return M.drift(l,m) end
+
+  local T, sdir, tdir, npar in m
+  l, k0 = l*sdir, k0*tdir
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local   k0q = k0*beam.charge
+    local _beta = 1/beam.beta
+
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)
+    local  npx = px - l*k0q
+    local   ps = sqrt(pw2 - npx^2)
+    local  ptt = sqrt(pw2)
+    local _ptt = 1/ptt
+    local  pzt = (asin(px*_ptt) - asin(npx*_ptt))/k0q
+
+    -- eq. 129 in Forest06
+    m[i].x  = x + (ps-pz)/k0q
+    m[i].px = npx
+    m[i].y  = y + pzt*py
+    m[i].t  = t - pzt*(_beta+pt) + (1-T)*_beta*l
+  end
+end
+
+function M.sbend_drift (elm, m, lw) -- k0~=0, angle~=0, [SSEC(TEAPOT)]
+  local k0, l, angle in elm
+  l, angle = l*lw, angle*lw
+  if abs(k0*l ) < minang then return M.polar_drift(elm, m, lw) end
+  if abs(angle) < minang then return M.rbend_drift(elm, m, lw) end
+
+  local T, sdir, tdir, npar in m
+  l, k0, angle = l*sdir, k0*tdir, angle*tdir
+
+  local rho = l/angle
+  local sa, ca = sin(angle), cos(angle)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local   k0q = k0*beam.charge
+    local _beta = 1/beam.beta
+
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)
+    local  pzx = pz - (rho+x)*k0q
+    local  npx =  ca*px + sa*pzx
+    local  dpx = -sa*px + ca*pzx
+    local   ps = sqrt(pw2 - npx^2)
+    local  ptt = sqrt(pw2)
+    local _ptt = 1/ptt
+    local  dxs = (angle + asin(px*_ptt) - asin(npx*_ptt))/k0q
+
+    -- eq. 126 in Forest06
+    m[i].x  = (ps-dpx)/k0q - rho   -- x + ??
+    m[i].px = npx
+    m[i].y  = y + dxs*py
+    m[i].t  = t - dxs*(_beta+pt) + (1-T)*_beta*l
+  end
+end
+
+function M.drift_adj (elm, m, lw) -- drift adjustment (combined, quad)
+  local l = is_number(elm) and elm or elm.l*lw
+  if abs(l) < minlen then return end
+
+  local T, sdir, tdir, npar in m
+  l = l*sdir
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = 1/(beam or m.beam).beta
+    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+
+    m[i].x = x + l_pz*px - (2*l*tdir)*px
+    m[i].y = y + l_pz*py - (  l*tdir)*py
+    m[i].t = t - l_pz*(_beta+pt) + (1-T)*_beta*l
+  end
+end
+
+function M.quad_drift (elm, m, lw) -- k1~=0, [INTER_TKTF]
+  local k0, k1, l in elm
+  l = l*lw
+  if abs(k1*l) < minang then
+    return M.rbend_drift(elm, m, lw)
   end
 
-  local x, px, y, py, t, pt, bdir, T in m
-  local _beta = 1/m.beam.beta
-  local lw = l/elm.l
-  local k0 = bdir*lw*knl[1]
+  local T, sdir, tdir, npar, npos in m
 
-  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local pt = sqrt(1 + 2*_beta*pt + pt^2 - py^2)
-  local xp = px - k0
-  local ps = sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - py^2)
-  local xs = (asin(px/pt) - asin(xp/pt))/k0
-
-  m.x  = x + (ps-pz)/k0
-  m.px = xp
-  m.y  = y + py*xs
-  m.t  = t - (_beta+pt)*xs + (1-T)*l*_beta
-end
-
-function M.solenoid_drift (elm, m, l) -- exact, l~=0
-  if abs(m.ksi) < minang then
-    return M.rbend_drift(elm,m,l)
-  end
-
-  local x, px, y, py, t, pt, T, bdir in m
-  local _beta = 1/m.beam.beta
-  local _el = 1/elm.l
-
-  local bsol = m.ksi*bdir*_el/2
-  local xp = px + bsol*y
-  local yp = py - bsol*x
-
-  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2)
-  local angle = l_pz*bsol
-
-  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
-
-  local xt  = ca*x  + l_pz*sc*px
-  local pxt = ca*px - l_pz*sc*x *bsol^2
-  local yt  = ca*y  + l_pz*sc*py
-  local pyt = ca*py - l_pz*sc*y *bsol^2
-
-  m.x  = ca*xt  + sa*yt
-  m.px = ca*pxt + sa*pyt
-  m.y  = ca*yt  - sa*xt
-  m.py = ca*pyt - sa*pxt
-
-  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-end
-
-function M.quadrupole_drift (elm, m, l) -- comb_drift with angle == 0
-  local _el   = 1/elm.l
-  local _beta = 1/m.beam.beta
-  local l_bet2_gam2 = l/(m.beam.gamma^2-1)
-
-  local knl, bdir in m
-  local k0, k1 = bdir*knl[1]*_el, bdir*knl[2]*_el
   local w2 = abs(k1)
   local w  = sqrt(w2)
-
-  -- TODO: case w=0...
   local cw, sw = cos (w*l), sin (w*l)/w
   local ch, sh = cosh(w*l), sinh(w*l)/w
 
   if k1 < 0 then
     cw, sw, ch, sh = ch, sh, cw, sw
   end
-
-  local npos in m
-  if npos == 'last' then
-    drift_adj(l  , m) ; m.npos = nil
-  elseif npos == nil then
-    drift_adj(l/2, m)
-  end
-
-  local x, px, y, py, t, pt in m
   local m16 = (1-cw)/w2
 
-  m.x  =    cw*x + sw*px -k0*m16
-  m.px = -w*sw*x + cw*px -k0*sw
-  m.y  =    ch*y + sh*py
-  m.py =  w*sh*y + ch*py
-  m.t  = t + l_bet2_gam2*pt
+  M.drift_adj(npos == 'last' and l or l/2, m)
 
-  if npos == 'first' then
-    drift_adj(l  , m) ; m.npos = nil
-  elseif npos == nil then
-    drift_adj(l/2, m)
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = tdir*beam.charge
+    local l_bg2 = l/(beam.gamma^2-1)
+
+    local mx =    cw* x + sw*px -k0*m16
+    local my =    ch* y + sh*py
+    m[i].px  = -w*sw*mx + cw*px -k0*sw
+    m[i].py  =  w*sh*my + ch*py
+    m[i].t   = t + l_bg2*pt
+    m[i].x   = mx
+    m[i].y   = my
   end
+
+  M.drift_adj(npos == 'first' and l or l/2, m)
 end
 
-function M.combined_drift (elm, m, l)
+function M.combi_drift (elm, m, l) -- k1~=0, angle~=0 (polar)
+  local k0, k1, l, angle in elm
+  l, angle = l*lw, angle*lw
+  if abs(k0*l-angle) < minang and abs(k1*l) < minang then
+    return M.sbend_drift(elm, m, lw)
+  end
+
   local _el   = 1/elm.l
   local _beta = 1/m.beam.beta
   local l_bet2_gam2 = l/(m.beam.gamma^2-1)
@@ -341,11 +440,8 @@ function M.combined_drift (elm, m, l)
   end
 
   local npos in m
-  if npos == 'last' then
-    drift_adj(l  , m) ; m.npos = nil
-  elseif npos == nil then
-    drift_adj(l/2, m)
-  end
+
+  M.drift_adj(npos == 'last' and l or l/2, m)
 
   local x, px, y, py, t, pt in m
   local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2
@@ -356,56 +452,40 @@ function M.combined_drift (elm, m, l)
   m.py =  wy2*sy*y + cy*py
   m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
 
-  if npos == 'first' then
-    drift_adj(l  , m) ; m.npos = nil
-  elseif npos == nil then
-    drift_adj(l/2, m)
-  end
+  M.drift_adj(npos == 'first' and l or l/2, m)
 end
 
-function M.polar_drift (elm, m, l) -- exact, l~=0, k0=angle
-  local rho = elm.l/(elm.angle*m.sdir)
-  local ang = l/rho
-  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
+function M.solenoid_drift (elm, m, l) -- ks~=0, ksi~=0, (to review)
+  local ksi in elm
+  if abs(ksi) < minang then
+    return M.rbend_drift(elm,m,l)
+  end
 
-  local x, px, y, py, t, pt, T in m
+  local x, px, y, py, t, pt, T, bdir in m
   local _beta = 1/m.beam.beta
-  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local _pz = 1/pz
-  local ptt = 1 - ta*px*_pz
-  local xr  = (x+rho)*ta*_pz
+  local _el = 1/elm.l
 
-  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + xr*py/ptt
-  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
+  local bsol = ksi*bdir*_el/2
+  local xp = px + bsol*y
+  local yp = py - bsol*x
+
+  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2)
+  local angle = l_pz*bsol
+
+  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
+
+  local xt  = ca*x  + l_pz*sc*px
+  local pxt = ca*px - l_pz*sc*x *bsol^2
+  local yt  = ca*y  + l_pz*sc*py
+  local pyt = ca*py - l_pz*sc*y *bsol^2
+
+  m.x  = ca*xt  + sa*yt
+  m.px = ca*pxt + sa*pyt
+  m.y  = ca*yt  - sa*xt
+  m.py = ca*pyt - sa*pxt
+
+  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
 end
-
-function M.sbend_drift (elm, m, l) -- exact, l~=0, k0~=angle
-  local angle in elm
-  local knl in m
-  if abs(angle - knl[1]) < minang then
-    return polar_drift(elm,m,l)
-  end
-  error("NYI")
-end
-
--- PRECEDENCE SHOULD BE OUTSIDE INTEGRATORS
---local function combined_drift (elm, m, l) -- angle, k0, k1 (tunes)
---  if abs(m.knl[2]) < minang then -- Put these checks outside the integrator
---    if abs(angle) < minang then
---      return rbend_drift(elm,m,l)
---    else
---      return sbend_drift(elm,m,l)
---    end
---  else
---    if abs(angle) < minang then
---      return quadrupole_drift(elm,m,l)
---    else
---      return combined_drift  (elm,m,l)
---    end
---  end
---end
 
 -- kicks ----------------------------------------------------------------------o
 
@@ -1034,123 +1114,11 @@ end
 --]=]
 
 -- end ------------------------------------------------------------------------o
-return M
+return { dynmap = M }
 
 --[===[
 
 Original code from track before splitting....
-
--- patches --------------------------------------------------------------------o
-
--- X-rotation (pitch)
-
-function xrotation (_, m, angle)   -- ROT_YZR <-> Rx(angle)
-  if abs(angle) < minang then return end -- XZrot with x,px <-> y,py)
-
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
-  local _beta = 1/m.beam.beta
-  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local   _pz = 1/pz
-  local   ptt = 1 - ta*py*_pz
-  local  _ptt = 1/ptt
-
-  m.y  = y/(ca*ptt)
-  m.py = ca*py + sa*pz
-  m.x  = x + ta*y*px*_pz*_ptt
-  m.t  = t - ta*y   *_pz*_ptt*(_beta+pt)
-end
-
--- Y-rotation (yaw)
-
-function yrotation (_, m, angle)   -- ROT_XZR (Dragt's PROT) <-> Ry(angle)
-  if abs(angle) < minang then return end
-
-  local x, px, y, py, t, pt, sdir in m
-  local sa, ca, ta = sin(angle*sdir), cos(angle*sdir), tan(angle*sdir)
-  local _beta = 1/m.beam.beta
-  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
-  local   _pz = 1/pz
-  local   ptt = 1 - ta*px*_pz
-  local  _ptt = 1/ptt
-
-  m.x  = x/(ca*ptt)
-  m.px = ca*px + sa*pz
-  m.y  = y + ta*x*py*_pz*_ptt
-  m.t  = t - ta*x   *_pz*_ptt*(_beta+pt)
-end
-
--- S-rotation (roll, tilt)
-
-function srotation (_, m, angle)   -- XYrot <-> Rz(-angle)?
-  if abs(angle) < minang then return end
-
-  local x, px, y, py, bdir in m
-  local sa, ca = sin(angle*bdir), cos(angle*bdir)
-
-  m.x  = ca*x  + sa*y
-  m.y  = ca*y  - sa*x
-  m.px = ca*px + sa*py
-  m.py = ca*py - sa*px
-end
-
--- Translation (dz treated as drift length)
-
-function translate (_, m, dx, dy, dz)
-  local bdir in m
-
-  straight_drift(nil, m, dz)
-  m.x = m.x - dx*bdir
-  m.y = m.y - dy*bdir
-end
-
--- Changedir (reverse x and angles)
-
-function changedir(_, m)
-  m.sdir = -m.sdir
-  m.bdir = -m.bdir
-end
-
--- Changeref (change reference frame)
-
-function changeref (elm, m)
-  local x, y, z, theta, phi, psi in elm
-  xrotation(nil, m, phi   or 0)                    -- phi  : Elevation angle.
-  yrotation(nil, m, theta or 0)                    -- theta: Azimuthal angle.
-  srotation(nil, m, psi   or 0)                    -- psi  : Roll      angle.
-  translate(nil, m, x or 0, y or 0, z or 0)
-end
-
--- Entry/Exit patches
-
- -- not correct, need local survey patch
-function entry_patch (elm, m)
-  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
-  local x, y, z, dx, dy, dz in elm
-  local mdir in m
-  -- TODO: survey m.S (mdir = -1)
-  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
-  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  translate(nil, m, (x or 0)+(dx or 0),
-                    (y or 0)+(dy or 0),
-                   ((z or 0)+(dz or 0))*mdir )
-  srotation(nil, m, tilt)
-end
-
-function exit_patch (elm, m)
-  local theta, phi, psi, dtheta, dphi, dpsi, tilt in elm
-  local x, y, z, dx, dy, dz in elm
-  local mdir in m
-  -- TODO: survey m.S (mdir = 1)
-  srotation(nil, m, -tilt)
-  translate(nil, m, (x or 0)+(dx or 0),
-                    (y or 0)+(dy or 0),
-                   ((z or 0)+(dz or 0))*mdir )
-  srotation(nil, m, (psi   or 0)+(dpsi   or 0))    -- psi  : Roll      angle.
-  yrotation(nil, m, (theta or 0)+(dtheta or 0))    -- theta: Azimuthal angle.
-  xrotation(nil, m, (phi   or 0)+(dphi   or 0))    -- phi  : Elevation angle.
-end
 
 -- strengths and phases -------------------------------------------------------o
 
