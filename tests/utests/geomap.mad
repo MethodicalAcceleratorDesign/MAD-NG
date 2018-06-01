@@ -27,6 +27,7 @@ local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
 local vector, matrix, mtable, option, filesys, plot              in MAD
+local is_string                                                  in MAD.typeid
 local eps, pi                                                    in MAD.constant
 
 local E, G = MAD.element, MAD.geomap
@@ -34,18 +35,22 @@ local E, G = MAD.element, MAD.geomap
 local refdir = \s -> 'geomap_ref/'..s
 local rundir = \s -> 'geomap_run/'..s
 
-local doplot = true
+local doplot = false
 
 -- helpers (adapted from survey) ----------------------------------------------o
 
-local function mk_mtbl ()
+local function mk_mtbl (title)
   return mtable 'geomap' {
+    title=title,
     'name', 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'tdir',
   }
 end
 
-local function mk_mflw (X0, A0, spos, sdir, tdir)
+local function mk_mflw (title, X0, A0, spos, sdir, tdir)
+  if not is_string(title) then
+    X0, A0, spos, sdir, tdir = title, X0, A0, spos, sdir
+  end
   X0, A0 = X0 or {}, A0 or {}
 
   local x     = X0[1] or X0.x     or 0
@@ -54,7 +59,7 @@ local function mk_mflw (X0, A0, spos, sdir, tdir)
   local theta = A0[1] or A0.theta or 0
   local phi   = A0[2] or A0.phi   or 0
   local psi   = A0[3] or A0.psi   or 0
-  local mtbl  = mk_mtbl()
+  local mtbl  = mk_mtbl(title)
 
   mtbl.sdir = sdir or 1
 
@@ -73,7 +78,7 @@ local function mk_mflw (X0, A0, spos, sdir, tdir)
     T=matrix(3),                       -- transformation matrix if tilted
     U=vector(3),                       -- temporary vector for calculations
   }
-  return mflw
+  return mflw, mtbl
 end
 
 local function save (elm, mflw, lw)
@@ -106,6 +111,8 @@ end
 
 -- regression test suite ------------------------------------------------------o
 
+-- TODO: vary parameters nst, lw, sdir, tdir, spos, X0, A0, ...
+
 TestGeomap = {}
 
 function TestGeomap:setUp ()
@@ -118,40 +125,79 @@ function TestGeomap:tearDown ()
   option.format = self.optfmt
 end
 
-function TestGeomap:TestDrift ()
-  local nsl  = 10
-  local mflw = mk_mflw()
-  local dft  = E.drift 'dft' { l=10/nsl }
-  local lw   = 1/nsl
+function TestGeomap:testDrift ()
+  local mflw, mtbl = mk_mflw('drift')
+  local nst = 10
+  local dft = E.drift 'dft' { l=1 }
 
-  for i=1,nsl do
-    mflw.spos = mflw.spos + dft.l*lw*(i-1)
-    G.drift(dft, mflw, lw)
-       save(dft, mflw, lw)
+    save(dft, mflw, 0)
+  for i=1,nst do
+    mflw.spos = mflw.spos + dft.l
+    G.drift(dft, mflw, 1)
+       save(dft, mflw, 1)
   end
-  mflw.mtbl:write(rundir('geomap_drift'))
-  assertEquals(#mflw.mtbl, nsl)
-  plotxz(mflw.mtbl)
+  mtbl:write(rundir('geomap_drift'))
+  assertEquals(#mtbl, nst+1)
+
+  assertEquals(mtbl.    s[#mtbl], nst)
+  assertEquals(mtbl.    x[#mtbl], 0  )
+  assertEquals(mtbl.    y[#mtbl], 0  )
+  assertEquals(mtbl.    z[#mtbl], nst)
+  assertEquals(mtbl.theta[#mtbl], 0  )
+  assertEquals(mtbl.phi  [#mtbl], 0  )
+  assertEquals(mtbl.psi  [#mtbl], 0  )
+  plotxz(mtbl)
 end
 
-function TestGeomap:TestThin ()
-  local nsl  = 20
-  local mflw = mk_mflw()
+function TestGeomap:testThin ()
+  local mflw, mtbl = mk_mflw('thin')
+  local nst = 20
   local dft = E.drift     'dft' { l=1 }
-  local kck = E.multipole 'kck' { angle=2*pi/nsl }
-  local lw   = 1/nsl
+  local kck = E.multipole 'kck' { angle=2*pi/nst }
 
-  for i=1,nsl do
-    mflw.spos = mflw.spos + dft.l*lw*(i-1)
-    G.drift(dft, mflw, lw)
-       save(dft, mflw, lw)
-  if i == nsl then break end
-    G.thin (kck, mflw, lw)
-       save(kck, mflw, lw)
+    save(dft, mflw, 0)
+  for i=1,nst do
+    mflw.spos = mflw.spos + dft.l
+    G.drift(dft, mflw, 1)
+       save(dft, mflw, 1)
+    G.thin (kck, mflw, 1)
+       save(kck, mflw, 1)
   end
-  mflw.mtbl:write(rundir('geomap_thin'))
-  assertEquals(#mflw.mtbl, 2*nsl-1)
-  plotxz(mflw.mtbl)
+  mtbl:write(rundir('geomap_thin'))
+  assertEquals(#mtbl, 2*nst+1)
+
+  assertEquals      (mtbl.    s[#mtbl], nst      )
+  assertAlmostEquals(mtbl.    x[#mtbl], 0, 15*eps)
+  assertEquals      (mtbl.    y[#mtbl], 0        )
+  assertEquals      (mtbl.    z[#mtbl], 0        )
+  assertEquals      (mtbl.theta[#mtbl], -2*pi    )
+  assertEquals      (mtbl.phi  [#mtbl], 0        )
+  assertEquals      (mtbl.psi  [#mtbl], 0        )
+  plotxz(mtbl)
+end
+
+function TestGeomap:testThick ()
+  local mflw, mtbl = mk_mflw('thick')
+  local nst = 20
+  local bnd = E.sbend 'sbend' { l=1, angle=2*pi/nst }
+
+    save(bnd, mflw, 0)
+  for i=1,nst do
+    mflw.spos = mflw.spos + bnd.l
+    G.thick(bnd, mflw, 1)
+       save(bnd, mflw, 1)
+  end
+  mtbl:write(rundir('geomap_thick'))
+  assertEquals(#mtbl, nst+1)
+
+  assertEquals      (mtbl.    s[#mtbl], nst      )
+  assertAlmostEquals(mtbl.    x[#mtbl], 0, 11*eps)
+  assertEquals      (mtbl.    y[#mtbl], 0        )
+  assertAlmostEquals(mtbl.    z[#mtbl], 0,  2*eps)
+  assertEquals      (mtbl.theta[#mtbl], -2*pi    )
+  assertEquals      (mtbl.phi  [#mtbl], 0        )
+  assertEquals      (mtbl.psi  [#mtbl], 0        )
+  plotxz(mtbl)
 end
 
 -- end ------------------------------------------------------------------------o
