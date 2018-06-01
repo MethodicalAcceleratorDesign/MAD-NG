@@ -33,14 +33,42 @@ local observe                                                   in element.flags
 
 -- integrator schemes ---------------------------------------------------------o
 
-local symint = require 'madl_symint'
-local thinonly, thickonly in symint
+local thinonly, thickonly                                       in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
-local dynmap = require 'madl_dynmap'
 local drift, thin, thick, srotation, xrotation, yrotation,
-      translate, changeref, changedir, changenrj in dynmap
+      translate, changeref, changedir, changenrj                in MAD.dynmap
+
+-- strengths and phases -------------------------------------------------------o
+
+local function get_mult (elm, m)
+  local knl, dknl = elm.knl or {}, elm.dknl or {}
+  local ksl, dksl = elm.ksl or {}, elm.dksl or {}
+  local nmul = max(#knl, #ksl, #dknl, #dksl)
+
+  if nmul >= 1 then
+    for i=1,nmul do
+      m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+    end
+  else
+    m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0
+  end
+  m.nmul = nmul
+end
+
+local function get_phas (elm, m)
+  local pnl, dpnl = elm.pnl or {}, elm.dpnl or {}
+  local psl, dpsl = elm.psl or {}, elm.dpsl or {}
+  local npha = max(#pnl, #psl, #dpnl, #dpsl)
+
+  for i=1,npha do
+    m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
+    m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
+  end
+  m.npha = npha
+end
 
 -- sub element tracking -------------------------------------------------------o
 
@@ -84,11 +112,7 @@ local function track_drift (elm, m) -- e.g. monitor
 end
 
 local function track_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  get_kmult(elm, m)   -- load strengths in map
-
-  if m.has_k == false then -- no strengths in elm
-    return track_drift(elm, m)
-  end
+  get_mult(elm, m)   -- load strengths in map
 
   track_patch(elm, m, 'entry')
   elm:track_fringe(m, 'entry')
@@ -116,7 +140,7 @@ local function track_rbend (elm, m, _)
   -- rbend_drift, rfcavity_kick, straight_fringe
 end
 
-local function track_quad (elm, m, _)
+local function track_quadrupole (elm, m, _)
   -- quad_drift, quad_kick, straight_fringe
 end
 
@@ -148,13 +172,13 @@ E. thin_element :set_methods { track = track_thin  }
 
 -- specialized maps
 
-E.sbend      :set_methods { track = track_sbend      } -- polar   , k0
-E.combined   :set_methods { track = track_combined   } -- polar   , k0+k1
-E.rbend      :set_methods { track = track_rbend      } -- straight, k0
-E.quadrupole :set_methods { track = track_quadrupole } -- straight, k0+k1
-E.solenoid   :set_methods { track = track_solenoid   } -- straight, ks+ksi
-E.rfcavity   :set_methods { track = track_rfcavity   }
-E.twcavity   :set_methods { track = track_twcavity   }
+-- E.sbend      :set_methods { track = track_sbend      } -- polar   , k0
+-- E.combined   :set_methods { track = track_combined   } -- polar   , k0+k1
+-- E.rbend      :set_methods { track = track_rbend      } -- straight, k0
+-- E.quadrupole :set_methods { track = track_quadrupole } -- straight, k0+k1
+-- E.solenoid   :set_methods { track = track_solenoid   } -- straight, ks+ksi
+-- E.rfcavity   :set_methods { track = track_rfcavity   }
+-- E.twcavity   :set_methods { track = track_twcavity   }
 
 -- special maps
 
@@ -243,6 +267,7 @@ local function make_mflow (self)
   -- totalpath
   local totalpath in self
   assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
+  local T = totalpath and 1 or 0
 
   -- method
   local method in self
@@ -297,38 +322,40 @@ local function make_mflow (self)
 
   -- complete mflow
 
-  mflw.beam=beam                    -- current beam
-  mflw.sequ=sequ                    -- current sequence
-  mflw.mtbl=mtbl                    -- current mtable (nil if no save)
-  mflw.sdir=sdir                    -- s-direction of tracking
-  mflw.tdir=tdir                    -- t-direction of tracking
+  mflw.beam=beam                  -- current beam
+  mflw.sequ=sequ                  -- current sequence
+  mflw.mtbl=mtbl                  -- current mtable (nil if no save)
+  mflw.sdir=sdir                  -- s-direction of tracking
+  mflw.tdir=tdir                  -- t-direction of tracking
 
-  mflw.integr=integr                -- default integrator
-  mflw.totalpath=totalpath          -- t is the totalpath
+  mflw.integr=integr              -- default integrator
+  mflw.totalpath=totalpath        -- t is the totalpath
+  mflw.T=T                        -- cancel compensation for time of flight
 
-  mflw.fill=fill                    -- fill/add one row to mtable (if any)
-  mflw.nofill=nofill                -- disable filling at the end of an element
-  mflw.nslice=nslice                -- number of slice for each element
+  mflw.fill=fill                  -- fill/add one row to mtable (if any)
+  mflw.nofill=nofill              -- disable filling at the end of an element
+  mflw.nslice=nslice              -- number of slice for each element
 
-  mflw.s0=s0                        -- initial s-position
-  mflw.idx=init                     -- index of the current element
-  mflw.spos=s0                      -- s-position of the current element entry
-  mflw.npos=nil                     -- integrator step: nil, 'first', 'last'
-  mflw.npar=npar                    -- number of particles or mapflows: #mflw
+  mflw.s0=s0                      -- initial s-position
+  mflw.idx=init                   -- index of the current element
+  mflw.spos=s0                    -- s-position of the current element entry
+  mflw.npos=nil                   -- integrator step: nil, 'first', 'last'
+  mflw.npar=npar                  -- number of particles or mapflows: #mflw
 
-  mflw.atentry=atentry              -- action when entering an element
-  mflw.atslice=atslice              -- action after each element slices
-  mflw.atexit =atexit               -- action when exiting an element
+  mflw.atentry=atentry            -- action when entering an element
+  mflw.atslice=atslice            -- action after each element slices
+  mflw.atexit =atexit             -- action when exiting an element
 
     -- for processing elements
-  mflw.nmul=0                       -- current element number of multipoles
-  mflw.knl=table.new(15,0)          -- current element multipoles
-  mflw.ksl=table.new(15,0)          -- current element multipoles skew
-  mflw.pnl=table.new(15,0)          -- current element multipoles phases
-  mflw.psl=table.new(15,0)          -- current element multipoles shew phases
+  mflw.nmul=0                     -- current element number of multipoles
+  mflw.knl=table.new(15,0)        -- current element multipoles
+  mflw.ksl=table.new(15,0)        -- current element multipoles skew
+  mflw.npha=0                     -- current element number of multiplole phases
+  mflw.pnl=table.new(15,0)        -- current element multipoles phases
+  mflw.psl=table.new(15,0)        -- current element multipoles shew phases
 
     -- for processing subelements
-  mflw.selm=table.new(3,0)          -- subelement stack
+  mflw.selm=table.new(3,0)        -- subelement stack
 
     -- internal vars for track
   mflw[_var]={iter=iter, state=state} -- iterator and iteraror state
