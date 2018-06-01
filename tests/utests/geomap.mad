@@ -1,0 +1,157 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Survey tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the survey module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
+      assertStrContains, assertErrorMsgContains                  in MAD.utest
+
+local vector, matrix, mtable, option, filesys, plot              in MAD
+local eps, pi                                                    in MAD.constant
+
+local E, G = MAD.element, MAD.geomap
+
+local refdir = \s -> 'geomap_ref/'..s
+local rundir = \s -> 'geomap_run/'..s
+
+local doplot = true
+
+-- helpers (adapted from survey) ----------------------------------------------o
+
+local function mk_mtbl ()
+  return mtable 'geomap' {
+    'name', 'kind', 's', 'l', 'angle', 'tilt',
+    'x', 'y', 'z', 'theta', 'phi', 'psi', 'tdir',
+  }
+end
+
+local function mk_mflw (X0, A0, spos, sdir, tdir)
+  X0, A0 = X0 or {}, A0 or {}
+
+  local x     = X0[1] or X0.x     or 0
+  local y     = X0[2] or X0.y     or 0
+  local z     = X0[3] or X0.z     or 0
+  local theta = A0[1] or A0.theta or 0
+  local phi   = A0[2] or A0.phi   or 0
+  local psi   = A0[3] or A0.psi   or 0
+  local mtbl  = mk_mtbl()
+
+  mtbl.sdir = sdir or 1
+
+  local mflw = {
+    mtbl=mtbl,
+    spos=spos or 0,
+    sdir=sdir or 1,
+    tdir=tdir or 1,
+
+    V=vector(3):fill{x,y,z},           -- displacement vector
+    W=matrix(3):rotmad(theta,phi,psi), -- orientation matrix (rotations)
+    A=vector(3):fill{theta,phi,psi},   -- oriented angles
+
+    R=vector(3),                       -- displacement vector
+    S=matrix(3),                       -- orientation matrix (rotations)
+    T=matrix(3),                       -- transformation matrix if tilted
+    U=vector(3),                       -- temporary vector for calculations
+  }
+  return mflw
+end
+
+local function save (elm, mflw, lw)
+  local name, kind, l, angle, tilt in elm
+
+  local V, A, sdir, tdir, spos, mtbl in mflw
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
+
+  -- keep order!
+  mtbl = mtbl + { name, kind, spos, l*lw*sdir, angle*lw*tdir, tilt*tdir,
+                  x, y, z, th, phi, psi, tdir }
+end
+
+local function plot (mtbl)
+  MAD.plot { table=mtbl, x1y1  = { s={'x','y','z'} },
+                         x1y2  = { s={'theta','phi','psi'} },
+                         colors= {x='blue', y='cyan', z='violet',
+                                  theta='red', phi='orange', psi='green'} }
+  io.write("press return to continue...")
+  io.read()
+end
+
+local function plotxz (mtbl)
+  if doplot ~= true then return end
+  MAD.plot { table=mtbl, x1y1 = { x='z'} }
+  io.write("press return to continue...")
+  io.read()
+end
+
+-- regression test suite ------------------------------------------------------o
+
+TestGeomap = {}
+
+function TestGeomap:setUp ()
+  filesys.mkdir(rundir(''))
+  self.optfmt = option.format
+  option.format = "%-18.11g"
+end
+
+function TestGeomap:tearDown ()
+  option.format = self.optfmt
+end
+
+function TestGeomap:TestDrift ()
+  local nsl  = 10
+  local mflw = mk_mflw()
+  local dft  = E.drift 'dft' { l=10/nsl }
+  local lw   = 1/nsl
+
+  for i=1,nsl do
+    mflw.spos = mflw.spos + dft.l*lw*(i-1)
+    G.drift(dft, mflw, lw)
+       save(dft, mflw, lw)
+  end
+  mflw.mtbl:write(rundir('geomap_drift'))
+  assertEquals(#mflw.mtbl, nsl)
+  plotxz(mflw.mtbl)
+end
+
+function TestGeomap:TestThin ()
+  local nsl  = 20
+  local mflw = mk_mflw()
+  local dft = E.drift     'dft' { l=1 }
+  local kck = E.multipole 'kck' { angle=2*pi/nsl }
+  local lw   = 1/nsl
+
+  for i=1,nsl do
+    mflw.spos = mflw.spos + dft.l*lw*(i-1)
+    G.drift(dft, mflw, lw)
+       save(dft, mflw, lw)
+  if i == nsl then break end
+    G.thin (kck, mflw, lw)
+       save(kck, mflw, lw)
+  end
+  mflw.mtbl:write(rundir('geomap_thin'))
+  assertEquals(#mflw.mtbl, 2*nsl-1)
+  plotxz(mflw.mtbl)
+end
+
+-- end ------------------------------------------------------------------------o
