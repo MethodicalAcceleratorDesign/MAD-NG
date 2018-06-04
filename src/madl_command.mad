@@ -23,8 +23,9 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local object                        in MAD
-local is_nil, is_table, is_callable in MAD.typeid
+local object                                   in MAD
+local is_nil, is_string, is_table, is_callable in MAD.typeid
+local assertf                                  in MAD.utility
 
 -- root object ----------------------------------------------------------------o
 
@@ -51,6 +52,29 @@ local function exec (a)
   return rawget(getmetatable(a), '__exec')(a)
 end
 
+local function add_specialization (cmd, def, tbl_)
+  if is_string(def) and is_table(tbl_) then
+    def, tbl_ = {def=tbl_}, nil        -- left shift
+  end
+  assert(is_command(cmd), "invalid argument #1 (command expected)")
+  assert(is_table(def)  , "invalid argument #2 (command specialization expected")
+
+  local status = cmd:is_readonly()
+  cmd:set_readonly(false)
+  for k,v in pairs(def) do
+    assertf(is_nil(cmd[k]), "invalid key for specialization ('%s' already in use)", k)
+    assert (is_nil(v.exec), "invalid specialization ('exec' already in use)")
+    v.exec = false
+    cmd[k] = cmd(k, v) -- attach specialized child
+  end
+  cmd:set_readonly(status)
+  return cmd
+end
+
+command :set_methods {
+  add_specialization = add_specialization,
+}
+
 command :set_metamethods {
   __init  = \s -> exec(s),
   __exec := error("invalid command (missing exec or __exec definition)", 2),
@@ -61,7 +85,4 @@ command :set_metamethods {
 MAD.typeid.is_command = is_command
 
 -- end ------------------------------------------------------------------------o
-return {
-  command = command,
-  -- __help  = require 'madh_command',
-}
+return { command = command }
