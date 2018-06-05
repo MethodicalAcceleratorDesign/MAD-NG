@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | Survey tests
+ | Geomap tests
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide regression test suites for the survey module.
+  - Provide regression test suites for the geomap module.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -27,41 +27,31 @@ local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
 local option, filesys                                            in MAD
-local vector, matrix, sequence, mtable, survey, plot             in MAD
-local is_string                                                  in MAD.typeid
-local drift, sbend, multipole                                    in MAD.element
+local sequence, survey, plot                                     in MAD
+local drift_element, thick_element, thin_element                 in MAD.element
 local eps, pi                                                    in MAD.constant
 
-local G = MAD.geomap
-
-local refdir = \s -> 'geomap_ref/'..s
-local rundir = \s -> 'geomap_run/'..s
+local refdir = \s -> 'geomap_ref/'..(s or '')
+local rundir = \s -> 'geomap_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local plotid -- = 0
+local doplot -- = true
 
-if plotid then
+if doplot then
   MAD.atexit(MAD.utility.pause, true)
 end
 
-local function plot (mtbl, seq)
-  if not plotid then return end
-  plotid = plotid+1
+local function plot (mtbl)
+  if not doplot then return end
   MAD.plot { table=mtbl, title=mtbl.title,
-             x1y1  = { s={'x','y','z'} },
-             x1y2  = { s={'theta','phi','psi'} },
-             colors= {x='blue', y='cyan', z='violet',
-                      theta='red', phi='orange', psi='green'},
-             output=plotid, laypos='in', sequence=seq }
+             x1y1 = { s={'x','y','z'} },
+             x1y2 = { s={'theta','phi','psi'} } }
 end
 
-local function plotxz (mtbl, seq)
-  if not plotid then return end
-  plotid = plotid+1
-  MAD.plot { table=mtbl, title=mtbl.title,
-             x1y1 = { x='z'},
-             output=plotid, laypos='in', sequence=seq }
+local function plotxz (mtbl)
+  if not doplot then return end
+  MAD.plot { table=mtbl, title=mtbl.title, x1y1 = { x='z'} }
 end
 
 -- regression test suite ------------------------------------------------------o
@@ -71,59 +61,53 @@ end
 TestGeomap = {}
 
 function TestGeomap:setUp ()
-  filesys.mkdir(rundir(''))
-  self.optfmt = option.format
-  option.format = "%-18.11g"
-end
-
-function TestGeomap:tearDown ()
-  option.format = self.optfmt
+  filesys.mkdir(rundir())
 end
 
 function TestGeomap:testDrift ()
   local nst = 20
-  local seq = sequence 'seq' { nst*drift{ l=1 } }
+  local seq = sequence 'seq' { nst * drift_element{ l=1 } }
   local tbl = survey { sequence=seq, title='drift' }
 
   tbl:write(rundir('geomap_drift'))
-  assertEquals(#tbl, nst+2)
+  plotxz(tbl)
 
+  assertEquals(#tbl, nst+2)
   local s, x, y, z, theta, phi, psi in tbl[#tbl]
   assertEquals({  s, x, y,   z, theta, phi, psi},
                {nst, 0, 0, nst,     0,   0,   0} )
-  plotxz(tbl)
 end
 
 function TestGeomap:testThin ()
   local nst = 20
   local seq = sequence 'seq' {
-    nst*multipole{ at=1, from='prev', angle=2*pi/nst } }
+    nst * thin_element { at=1, from='prev', angle=2*pi/nst } }
   local tbl = survey { sequence=seq, title='thin' }
 
   tbl:write(rundir('geomap_thin'))
-  assertEquals(#tbl, 2*nst+2)
+  plotxz(tbl)
 
+  assertEquals(#tbl, 2*nst+2)
   local s, x, y, z, theta, phi, psi in tbl[#tbl]
   assertAllAlmostEquals({  s,      x, y,     z, theta, phi, psi},
                         {nst,      0, 0,     0, -2*pi,   0,   0},
                         {  0, 23*eps, 0, 7*eps, 4*eps,   0,   0} )
-  plotxz(tbl, seq)
 end
 
 function TestGeomap:testThick ()
   local nst = 20
   local seq = sequence 'seq' {
-    nst*sbend{ l=1, angle=2*pi/nst } }
+    nst * thick_element { l=1, angle=2*pi/nst } }
   local tbl = survey { sequence=seq, title='thick' }
 
   tbl:write(rundir('geomap_thick'))
-  assertEquals(#tbl, nst+2)
+  plotxz(tbl)
 
+  assertEquals(#tbl, nst+2)
   local s, x, y, z, theta, phi, psi in tbl[#tbl]
   assertAllAlmostEquals({  s,      x, y,     z, theta, phi, psi},
                         {nst,      0, 0,     0, -2*pi,   0,   0},
                         {  0, 21*eps, 0, 9*eps, 4*eps,   0,   0} )
-  plotxz(tbl, seq)
 end
 
 -- end ------------------------------------------------------------------------o
