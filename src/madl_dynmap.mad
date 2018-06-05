@@ -44,16 +44,16 @@ local minvolt, volt_c = 1e-6, 1e-3
 -- helpers --------------------------------------------------------------------o
 
 local function bxby (m, x, y, lw)
-  local nmul, knl, ksl in m
+  local nmul, knl, ksl, tdir in m
   if nmul == 0 then return 0, 0 end
 
-  local by = lw*knl[nmul] / fact(nmul-1)
-  local bx = lw*ksl[nmul] / fact(nmul-1)
+  local by = lw*knl[nmul]*tdir / fact(nmul-1)
+  local bx = lw*ksl[nmul]*tdir / fact(nmul-1)
   local byt
 
   for i=nmul-1,1,-1 do
-    byt = by*x - bx*y + lw*knl[i] / fact(i-1)
-    bx  = by*y + bx*x + lw*ksl[i] / fact(i-1)
+    byt = by*x - bx*y + lw*knl[i]*tdir / fact(i-1)
+    bx  = by*y + bx*x + lw*ksl[i]*tdir / fact(i-1)
     by  = byt
   end
 
@@ -185,6 +185,10 @@ end
 -- Forward patch
 
 function M.xyspatch (elm, m, lw_)  -- (to review)
+  if m.sdir < 0 then
+    return M.syxpatch (elm, m, lw_)
+  end
+
   M.xrotation(elm, m, lw_)
   M.yrotation(elm, m, lw_)
   M.srotation(elm, m, lw_)
@@ -194,6 +198,10 @@ end
 -- Backward patch
 
 function M.syxpatch (elm, m, lw_)  -- (to review)
+  if m.sdir < 0 then
+    return M.xyspatch (elm, m, lw_)
+  end
+
   M.translate(elm, m, lw_)
   M.srotation(elm, m, lw_)
   M.yrotation(elm, m, lw_)
@@ -489,6 +497,19 @@ end
 
 -- kicks ----------------------------------------------------------------------o
 
+function M.kick (elm, m, lw) -- l~=0
+  local nmul in m
+  if nmul == 0 then return end
+
+  for i=1,npar do
+    local x, px, y, py in m[i]
+    local bx, by = bxby(m, x, y, lw)
+
+    m[i].px = px - by
+    m[i].py = py + bx
+  end
+end
+
 -- Special case TO BE REVIEWED !!!
 function M.thin_kick (elm, m, _) -- l=0 (ignored)
   local nmul in m
@@ -518,19 +539,7 @@ function M.thin_kick (elm, m, _) -- l=0 (ignored)
   end
 end
 
-function M.straight_kick (elm, m, l) -- l~=0
-  local nmul in m
-  if nmul == 0 then return end
-
-  local x, px, y, py, knl, ksl, bdir in m
-  local lw = abs(elm.l)>minlen and l/elm.l or 1
-  local bx, by = bxby(nmul, knl, ksl, x, y, lw)
-
-  m.px = px - bdir*by
-  m.py = py + bdir*bx
-end
-
-function M.quadrupole_kick (elm, m, l)
+function M.quad_kick (elm, m, l)
   if abs(m.knl[2]) < minang then -- should never occur due to precedences
     return M.rfcavity_kick(elm,m,l)
   end
@@ -564,7 +573,7 @@ function M.polar_kick (elm, m, l) -- [PTC] SKICK
   m.py = py + bdir*bx*(1 + h*x)
 end
 
-function M.combined_kick (elm, m, l) -- angle, k0, k1 (tunes)
+function M.combi_kick (elm, m, l) -- angle, k0, k1 (tunes)
 --  local knl in m
 --  if abs(knl[2]) < minang then
     return M.polar_kick(elm,m,l)
