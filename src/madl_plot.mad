@@ -40,12 +40,6 @@ local is_nil, is_number, is_table, is_mtable, is_string,
 -- global default -------------------------------------------------------------o
 
 local _dflt = {
-  color        = "red",
-  style        = "linespoints",
-  dashtype     = "solid",
-  linewidth    = 1,
-  pointsize    = 1,
-  pointtype    = 1,
   originx      = 0,
   originy      = 0,
   psizex       = 1,
@@ -182,7 +176,7 @@ local _gplist, _sid = { max = 25 }, {}
 local function get_gp (sid)
   local gnuplot = _gplist[sid]
   if not gnuplot then
-    gnuplot = assert(io.popen("gnuplot", "w"))
+    gnuplot = assert(io.popen("gnuplot -p", "w"))
     gnuplot:setvbuf("line")
     _gplist[sid] = gnuplot
   end
@@ -255,6 +249,9 @@ local function setup_cmd (self)
   local file, fname = get_tmpfile(self.sid)
   gplot:set_sid(self.sid)
   file:write(init_cmd % self)
+
+  self.font     = self.font     or ""
+  self.fontsize = self.fontsize or ""
 
   if is_number(output) then
     file:write("MAD_NEW_TERM = \"set term ${term} ${output} size ${wsizex},\z
@@ -677,26 +674,42 @@ end
 
 -- parse dashtypes and add '' if it is a pattern : e.g.: ".-- "
 local function parse_dash (dashtypes, datastyle, y)
-  local dash = datastyle and datastyle.dashtype or is_table(dashtypes) and
-    (dashtypes[y] or _dflt.dashtype) or dashtypes
-  if string.match(dash, "[.%-_ ]+") then return "'" .. dash .. "'" end
+  local dash = datastyle and datastyle.dashtype
+
+  if not dash then
+    if is_table(dashtypes)
+    then dash = dashtypes[y]
+    else dash = dashtypes
+    end
+  end
+
+  if dash and string.match(dash, "[.%-_ ]+") then return "'" .. dash .. "'" end
   return dash
 end
 
 -- get style with proper precedence
 local function getstyle (param, y, stys, sty)
-  return param.datastyles[y]   and  param.datastyles[y][sty]      or
-         is_table(param[stys]) and (param[stys][y] or _dflt[sty]) or param[stys]
+  local style = param.datastyles[y] and param.datastyles[y][sty]
+
+  if not style then
+    if is_table(param[stys])
+    then style = param[stys][y]
+    else style = param[stys]
+    end
+  end
+
+  return style
 end
 
 -- Create interpolation variable for the plot command (called by parse_axis)
 local function plot_cmd (param, _, ys, axis)
-  local pwrite, colors, styles, dashtypes, pointsizes,
-    pointtypes, linewidths, legend, datastyles, intpol in param
-  local add = \k,v => intpol[k..intpol.id] = v end
+  local dashtypes, legend, datastyles, intpol in param
+  local values
+  local add2 = \k,v => values[k]            = values[k] and (v % values) or "" end
+  local add  = \k,v => intpol[k..intpol.id] = v                              end
 
   for i, y in ipairs(ys) do
-    local values = {
+    values = {
       color     = getstyle(param, y, 'colors'    , 'color'    ),
       style     = getstyle(param, y, 'styles'    , 'style'    ),
       pointsize = getstyle(param, y, 'pointsizes', 'pointsize'),
@@ -716,21 +729,23 @@ local function plot_cmd (param, _, ys, axis)
 
     add("index", "index ${databi} " % param)
     add("using", "using 1:${col} "  % values)
-    add("style", "${style} "        % values)
 
-    if string.match(values.style, "lines")
-    then add("lines" , "dashtype ${dashtype} linewidth ${linewidth} " % values)
-    else add("lines" , "")
+    if values.style
+    then add("style", "${style} " % values)
+    else add("style", "linespoints ")
     end
 
-    if string.match(values.style, "points")
-    then add("points", "pointsize ${pointsize} pointtype ${pointtype} " %values)
-    else add("points", "")
-    end
+    add2("dashtype" , "dashtype ${dashtype} "  )
+    add2("linewidth", "linewidth ${linewidth} ")
+    add2("pointsize", "pointsize ${pointsize} ")
+    add2("pointtype", "pointtype ${pointtype} ")
 
-    add("color", "linecolor '${color}' " % values)
-    add("title", "title '${title}' "     % values)
-    add("axes" , "axes ${axis} "         % values)
+    add("lines" , "${dashtype}${linewidth}"  % values)
+    add("points", "${pointsize}${pointtype}" % values)
+    add("title" , "title '${title}' "        % values)
+    add("axes"  , "axes ${axis} "            % values)
+
+    add("color" , values.color and "linecolor '${color}' " % values or "")
     intpol.id = intpol.id + 1
   end
   param.databi = param.databi + 1
@@ -985,16 +1000,16 @@ local plot = command "Plot" {
 
   -- data style
   datastyles  = { },        -- { y = { style = "lines", color = "blue"} }
-  styles      = "lines",    -- { y = "lines" }
-  colors      = "red",      -- { y = "green" }
-  dashtypes   = "solid",    -- { y = "..-- " }
-  linewidths  = 1,          -- { y = 2.3     }
-  pointtypes  = 1,          -- { y = 2       }
-  pointsizes  = 1,          -- { y = 2.3     }
+  styles      = nil,        -- { y = "lines" }
+  colors      = nil,        -- { y = "green" }
+  dashtypes   = nil,        -- { y = "..-- " }
+  linewidths  = nil,        -- { y = 2.3     }
+  pointtypes  = nil,        -- { y = 2       }
+  pointsizes  = nil,        -- { y = 2.3     }
 
   -- decoration
-  font        = "Times New Roman",
-  fontsize    = 14,         -- n > 0
+  font        = nil,        -- string
+  fontsize    = nil,        -- n > 0
   titlefont   = nil,        -- string
   titlesize   = nil,        -- n > 0
   legendfont  = nil,        -- string
