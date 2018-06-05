@@ -1,0 +1,110 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Dynmap tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the dynmap module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
+      assertStrContains, assertErrorMsgContains                  in MAD.utest
+
+local sequence, beam, track, plot, filesys                       in MAD
+local drift_element, thick_element, thin_element                 in MAD.element
+local eps, pi                                                    in MAD.constant
+
+local refdir = \s -> 'dynmap_ref/'..(s or '')
+local rundir = \s -> 'dynmap_run/'..(s or '')
+
+-- helpers --------------------------------------------------------------------o
+
+local doplot -- = true
+
+if doplot then
+  MAD.atexit(MAD.utility.pause, true)
+end
+
+local function plot (mtbl)
+  if not doplot then return end
+  MAD.plot { table=mtbl, title=mtbl.title,
+             x1y1 = { s={'x','px','y','py','t','pt'} } }
+end
+
+local function plotxy (mtbl)
+  if not doplot then return end
+  MAD.plot { table=mtbl, title=mtbl.title, x1y1 = { x='px', y='py'} }
+end
+
+-- regression test suite ------------------------------------------------------o
+
+-- TODO: vary parameters nst, lw, sdir, tdir, s0, X0 ...
+
+TestDynmap = {}
+
+function TestDynmap:setUp ()
+  filesys.mkdir(rundir())
+end
+
+function TestDynmap:testDrift ()
+  local nst = 20
+  local seq = sequence 'seq' { nst * drift_element{ l=1 } }
+  local tbl = track { sequence=seq, beam=beam, title='drift' }
+
+  tbl:write(rundir('dynmap_drift'))
+  plotxy(tbl)
+
+  assertEquals(#tbl, nst+2)
+  local s, x, px, y, py, t, pt in tbl[#tbl]
+  assertEquals({  s, x, px, y, py, t, pt},
+               {nst, 0,  0, 0,  0, 0,  0} )
+end
+
+function TestDynmap:testThin ()
+  local nst = 20
+  local seq = sequence 'seq' {
+    nst * thin_element { at=1, from='prev', angle=2*pi/nst } }
+  local tbl = track { sequence=seq, beam=beam, title='thin' }
+
+  tbl:write(rundir('dynmap_thin'))
+  plotxy(tbl)
+
+  assertEquals(#tbl, 2*nst+2)
+  local s, x, px, y, py, t, pt in tbl[#tbl]
+  assertEquals({  s, x, px, y, py, t, pt},
+               {nst, 0,  0, 0,  0, 0,  0} )
+end
+
+function TestDynmap:testThick ()
+  local nst = 20
+  local seq = sequence 'seq' {
+    nst * thick_element { l=1, angle=2*pi/nst } }
+  local tbl = track { sequence=seq, beam=beam, title='thick' }
+
+  tbl:write(rundir('dynmap_thick'))
+  plotxz(tbl)
+
+  assertEquals(#tbl, nst+2)
+  local s, x, px, y, py, t, pt in tbl[#tbl]
+  assertAllAlmostEquals({  s, x, px, y, py, t, pt},
+                        {nst, 0,  0, 0,  0, 0,  0},
+                        {  0, 0,  0, 0,  0, 0,  0} )
+end
+
+-- end ------------------------------------------------------------------------o
