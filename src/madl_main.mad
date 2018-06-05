@@ -102,11 +102,11 @@ M.trace = \lvl,fmt,... => if lvl >= _C.mad_trace_level then
                             ctrace(lvl, string.format(fmt, ...))
                           end end
 
--- finalizer
+-- atexit (and finalizer)
 
 local _final = { n=0 } -- __gc not applicable to table (added in 5.2)
 
-M[_final] = ffi.gc(ffi.new('int[1]'),
+_final[_final] = ffi.gc(ffi.new('int[1]'),
   function ()
     if M.option.debug >= 2 then
       io.write('MAD finalizer called...\n')
@@ -116,20 +116,24 @@ M[_final] = ffi.gc(ffi.new('int[1]'),
       if ret ~= true then
          io.stderr:write('finalizer failed: ', err, '\n')
       end
-      _final[i], _final.n = nil, i-1
     end
   end)
 
--- atexit
-
-function M.atexit (f)
+function M.atexit (f, uniq_)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
+
+  -- check if not already registered
+  if uniq_ and _final[f] then return end
+
+  -- register
   local n = _final.n+1
+  _final[f], _final[n], _final.n = f, f, n
+
+  -- override os.exit to force gc to call finalizers
   if n == 1 then
     local exit = os.exit
     os.exit = \code -> exit(code, true)
   end
-  _final[n], _final.n = f, n
 end
 
 -- import
