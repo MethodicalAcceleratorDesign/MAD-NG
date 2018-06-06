@@ -640,36 +640,39 @@ end
 
 -- plot -----------------------------------------------------------------------o
 
--- parse input axis and apply func to each label
-local function parse_axis (param, func)
+-- parse input axis
+local function parse_axis (param)
+  local selaxis in param
+  local di = 1
   local _axis = {"x1y1", "x1y2", "x2y1", "x2y2"}
-  for _,axis_name in ipairs(_axis) do
+  for _, axis_name in ipairs(_axis) do
     local axis = param[axis_name]
     if is_string(axis) then                  -- e.g. x1y1 = "y1"
-      func(param, nil, {axis}, axis_name)
+      selaxis[di] = {axis_name, nil, {axis}}
+      di = di + 1
     elseif is_table(axis) then
       if #axis ~= 0 then
-        func(param, nil, axis, axis_name)    -- e.g. x1y1 = {"y1", "y2"}
+        selaxis[di] = {axis_name, nil, axis} -- e.g. x1y1 = {"y1", "y2"}
+        di = di + 1
       end
       local keys, ki = {}, 1
-      for k in kpairs(axis) do
-        keys[ki] = k
-        ki       = ki + 1
-      end
+      for k in kpairs(axis) do keys[ki], ki = k, ki+1 end
       table.sort(keys)
-      for _,x in ipairs(keys) do
+      for _, x in ipairs(keys) do
         local ys = axis[x]
         if is_string(ys) then                -- e.g. x1y1 = { x1 = "y1" }
-          func(param, x, {ys}, axis_name)
+          selaxis[di] = {axis_name, x, {ys}}
         elseif is_table(ys) then             -- e.g. x1y1 = { x1 = {"y1", "y2"}}
-          func(param, x, ys, axis_name)
+          selaxis[di] = {axis_name, x, ys}
         end
+        di = di + 1
       end
     end
   end
+  param.selaxis = selaxis
 end
 
--- stream one plot data (called by parse_axis)
+-- stream one plot data
 local function plot_data (param, xlbl, ylbl)
   local fpwrite, tablerange, data, table in param
   local datai, iter, tbl, key = 1
@@ -731,8 +734,8 @@ local function getstyle (param, y, stys, sty)
   return style
 end
 
--- Create interpolation variable for the plot command (called by parse_axis)
-local function plot_cmd (param, _, ys, axis)
+-- Create interpolation variable for the plot command
+local function plot_cmd (param, axis, ys)
   local dashtypes, legend, datastyles, intpol in param
   local values
   local add2 = \k,v => values[k]            = values[k] and v%values or "" end
@@ -858,16 +861,17 @@ end
 local function plot (param)
   local pwrite, plotcmd, plotcfg in param
   set_ranges(param)
-  set_label(param)
-  set_tics(param)
-  set_misc(param)
+  set_label (param)
+  set_tics  (param)
+  set_misc  (param)
+  parse_axis(param)
 
   pwrite("$MAD_DATA << EOD\n")
-  parse_axis(param, plot_data)
+  for _,tpl in ipairs(param.selaxis) do plot_data(param, tpl[2], tpl[3]) end
   pwrite("EOD\n\n")
 
   if plotcfg then pwrite(plotcfg .. "\n") end
-  parse_axis(param, plot_cmd)
+  for _,tpl in ipairs(param.selaxis) do plot_cmd(param, tpl[1], tpl[3]) end
   cmd_interpolate(param)
   pwrite("\n")
 end
@@ -901,6 +905,7 @@ local function init_param(self, file)
     intpol  = object { id = 1 },
     plotter = file,
     oid     = oshft,
+    selaxis = {},
     fpwrite = \... -> file:write(string.format(...)),
     pwrite  = \... -> file:write(...)
   }
