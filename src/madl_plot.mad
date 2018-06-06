@@ -54,6 +54,7 @@ local _dflt = {
   layonly      = 1,
   ocolor       = "white",
   ostyle       = "solid 1.0",
+  olstyle      = "black",
 }
 
 local tmpname   = "TMP_MAD_PLOT"
@@ -349,22 +350,28 @@ local function eShap (param, elem, dir)
   local kindcolor in param
   local shape        = dat[elem.kind]
   local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
-  local color, style
+  local color, style, linecolor
 
   if is_table(kindcolor) and kindcolor[elem.kind] then
     local cs = kindcolor[elem.kind]
-    color = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shape.fillcolor
-    style = is_table(cs) and cs.fillstyle or shape.fillstyle
+    color     = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shape.fillcolor
+    style     = is_table(cs) and cs.fillstyle or shape.fillstyle
+    linecolor = is_table(cs) and cs.linecolor or shape.linecolor
   elseif kindcolor then
-    color, style = shape.fillcolor, shape.fillstyle
+    color, style, linecolor = shape.fillcolor, shape.fillstyle, shape.linecolor
   else
-    color, style = _dflt.ocolor, _dflt.ostyle
+    color, style, linecolor = _dflt.ocolor, _dflt.ostyle, _dflt.olstyle
   end
-  local eColor = { color = color, style = style }
+  local eStyle = {
+    color     = color,
+    style     = style,
+    linecolor = linecolor,
+    dash      = dash,
+  }
 
   sh = sh and elem.l == 0 and elem.kind ~= "marker" and dat.default.shape or sh
   -- if only a ellipse
-  if not is_table(sh) then return el, dash, eColor end
+  if not is_table(sh) then return el, eStyle end
 
   local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
   local yshft = shape.yshft and sign(elem[shape.yshft]) or 0
@@ -379,19 +386,19 @@ local function eShap (param, elem, dir)
     ysym = (ysym == "angle") and fv*dir or fv
     func = {\y -> ((ysym*y + yshft)*yscl) }
   end
-  return el, dash, eColor, sh.x, sh.y, func
+  return el, eStyle, sh.x, sh.y, func
 end
 
 -- stream polygon data
-local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
+local function layout_poly (param, len, data, x_sh, y_sh, eStyle, func)
   local fpwrite, adjust, ref in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
-      local dashtype = dash and "dashtype '" .. dash .. "'" or ""
+      local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
       fpwrite("set object %d polygon front fc rgb '%s' fs %s \z
-        border rgb 'black' %s \\\n",
-        param.oid, eColor.color, eColor.style, dashtype)
+        border rgb '%s' %s \\\n",
+        param.oid, eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
       local cmd = "from"
 
       for k=1,#xj do
@@ -408,15 +415,15 @@ local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, data, dash, eColor, size)
+local function layout_ellipse (param, len, el, data, eStyle, size)
   local fpwrite, adjust, ref in param
   local pts = adjust(0, 0, data, len)
   local sx, sy = len, el*size
-  local dashtype = dash or ""
+  local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
-    size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb 'black' %s \n",
+    size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb '%s' %s \n",
     param.oid, pts[1], ref, pts[2], sx, ref, sy,
-    eColor.color, eColor.style, dashtype)
+    eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
   param.oid = param.oid + 1
 end
 
@@ -520,7 +527,7 @@ local function layout_process_in(param, pseq)
   pseq.data, pseq.bline = data, bline
 end
 
--- stream a signle layout
+-- stream a single layout
 local function layout (param, pseq)
   local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
   local seq, range, data, bline                                       in pseq
@@ -535,16 +542,16 @@ local function layout (param, pseq)
 
     if is_flagged or (len >= elemminlen and is_vkind) then
       local sh_l = len / 2
-      local el, dash, eColor, x_sh, y_sh, func = eShap(param, elem, dir)
+      local el, eStyle, x_sh, y_sh, func = eShap(param, elem, dir)
 
       if elemname  then layout_label(param, elem.name, ekind, dj) end
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, dj, dash, eColor, elemwidth)
+        layout_ellipse(param, len, el, dj, eStyle, elemwidth)
       end
 
       if not is_nil(x_sh) then
-        layout_poly(param, sh_l, dj, x_sh, y_sh, dash, eColor, func)
+        layout_poly(param, sh_l, dj, x_sh, y_sh, eStyle, func)
       end
     end
     j = j + 1
@@ -995,10 +1002,15 @@ local plot = command "Plot" {
   layangle    = true,       -- boolean
   kindselect  = nil,        -- { "quadrupole", "sbend" }
   kindcolor   = true,       -- {
-                            --  quadrupole = "blue",
-                            --  sbend = {fillcolor = "red", fillstyle = "solid"}
+                            --   quadrupole = "blue",
+                            --   sbend = {
+                            --     fillcolor = "red",
+                            --     fillstyle = "solid",
+                            --     linecolor = "green",
+                            --   }
                             -- }
-                            -- true -> use default
+                            -- true  -> use default
+                            -- false -> no color
 
   -- axis selection (and names)
   x1y1        = nil,        -- x1y1 = { x1 = {"y1", "y2"}, x2 = {"y3", "y4"}}
