@@ -55,6 +55,8 @@ local _dflt = {
   ocolor       = "white",
   ostyle       = "solid 1.0",
   olstyle      = "black",
+  border       = 15,
+  grid         = "",
 }
 
 local tmpname   = "TMP_MAD_PLOT"
@@ -844,15 +846,19 @@ end
 local function set_misc (param)
   local fpwrite, psizex, psizey, originx, originy, grid,
     border, title, legendpos, titlefont, titlesize,
-    legendfont, legendsize                                in param
-  if grid   then fpwrite("set grid %s\n", grid)     end
-  if border then fpwrite("set border %s\n", border) end
+    legendfont, legendsize, layonly                      in param
+  if grid or (is_nil(grid) and not layonly) then
+    fpwrite("set grid %s\n", grid or _dflt.grid)
+  end
+  if border or (is_nil(grid) and not layonly) then
+    fpwrite("set border %s\n", border or _dflt.border)
+  end
   if title  then
     local font, size = titlefont or "", titlesize or ""
     title = title % param
     fpwrite("set title '%s' font '%s,%s'\n", title, font, size)
   end
-  if legendpos or legendfont or legendsize then
+  if (legendpos or legendfont or legendsize) and not layonly then
     local pos, font, size = legendpos or "", legendfont or "", legendsize or ""
     fpwrite("set key %s font '%s,%s'\n", legendpos, font, size)
   end
@@ -866,13 +872,17 @@ local function set_misc (param)
   end
 end
 
--- main plot function
-local function plot (param)
-  local pwrite, plotcmd, plotcfg in param
+local function set_frame(param)
   set_ranges(param)
   set_label (param)
   set_tics  (param)
   set_misc  (param)
+end
+
+-- main plot function
+local function plot (param)
+  local pwrite, plotcmd, plotcfg in param
+  set_frame (param)
   parse_axis(param)
 
   pwrite("$MAD_DATA << EOD\n")
@@ -924,11 +934,15 @@ local function init_param(self, file)
   return setmetatable(param, {__index=self})
 end
 
-local layout_only = [[
+local layonly_without = [[
 unset key
 unset tics
 unset border
-plot x lc 'white'
+plot x lc 'white' title ''
+]]
+
+local layonly_with = [[
+plot x lc 'white' title ''
 ]]
 
 local function exec (self)
@@ -951,9 +965,15 @@ local function exec (self)
   elseif has_plot then
     plot(param)
   elseif has_layout then
-    param.layonly = true
+    param.layonly = is_nil(param.layonly) and true or param.layonly
+
+    set_frame(param)
     multi_layout(param)
-    param.fpwrite(layout_only)
+    if param.layonly then
+      param.fpwrite(layonly_without)
+    else
+      param.fpwrite(layonly_with)
+    end
   end
 
   if self.epilog then file:write(self.epilog, "\n") end
@@ -997,6 +1017,7 @@ local plot = command "Plot" {
   -- layout style
   laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
   laysize     = nil,        -- 0 < y < 1
+  layonly     = nil,        -- boolean
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
@@ -1068,8 +1089,8 @@ local plot = command "Plot" {
   legendfont  = nil,        -- string
   legendsize  = nil,        -- n > 0
   legendpos   = "left top", -- string
-  grid        = "",         -- string
-  border      = 15,         -- 0 <= n <= 15
+  grid        = nil,        -- string
+  border      = nil,        -- 0 <= n <= 15
 
   -- object shift
   oshft       = 1000000,    -- n >= 0
