@@ -23,13 +23,15 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local element, mtable, command                                  in MAD
-local is_sequence, is_beam, is_boolean, is_number, is_integer, is_table,
-      is_implicit, isa_mapflow, is_callable, is_mappable        in MAD.typeid
+local is_sequence, is_beam, is_boolean, is_number, is_integer,
+      is_table, is_implicit, isa_mapflow, is_callable,
+      is_mappable                                               in MAD.typeid
+local element, mtable, command, symint                          in MAD
 local fnone                                                     in MAD.gfunc
 local errorf, assertf                                           in MAD.utility
 local minlen                                                    in MAD.constant
 local observe                                                   in element.flags
+local max in math
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -37,8 +39,16 @@ local thinonly, thickonly                                       in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
-local drift, thin, thick, srotation, xrotation, yrotation,
-      translate, changeref, changedir, changenrj                in MAD.dynmap
+local drift, rbend_drift, quad_drift, solenoid_drift,
+      polar_drift, sbend_drift, combi_drift                     in MAD.dynmap
+
+local kick, rbend_kick, quad_kick, rfcavity_kick,
+      polar_kick, sbend_kick, combi_kick                        in MAD.dynmap
+
+local fringe, polar_fringe, solenoid_fringe                     in MAD.dynmap
+
+local xrotation, yrotation, srotation, translate,
+      xyspatch, syxpatch, changeref, changedir, changenrj       in MAD.dynmap
 
 -- strengths and phases -------------------------------------------------------o
 
@@ -72,87 +82,73 @@ end
 
 -- sub element tracking -------------------------------------------------------o
 
-local function subelm (elm, m, symint)
+local function subtrack_drift (elm, mflw)
   error("NYI")
 end
 
--- element tracking -----------------------------------------------------------o
-
-local function track_patch (elm, m, pos)
-  if pos == 'entry'
-  then entry_patch(elm, m)
-  else  exit_patch(elm, m)
-  end
+local function subtrack_thick (elm, mflw)
+  error("NYI")
 end
 
-local function track_thin (elm, m) -- e.g. multipole
-  get_mult(elm, m) -- load strengths in map
+-- kinds ----------------------------------------------------------------------o
 
-  if m.has_k == false then return end
+local function track_drift (elm, mflw) -- drift_element
+  if #elm ~= 0 then subtrack_drift(elm, mflw) end
 
-  track_patch(elm, m, 'entry')
-  thin_kick  (elm, m)
-  track_patch(elm, m, 'exit' )
+  xyspatch (elm, mflw)
+  thickonly(elm, mflw, 1, drift)
+  syxpatch (elm, mflw)
 end
 
-local function track_drift (elm, m) -- e.g. monitor
-  local no_selm = #m.selm == 0
+local function track_thin (elm, mflw)
+  get_mult(elm, mflw) -- load strengths in map
 
-  track_patch(elm, m, 'entry')
-
-  if no_selm and #elm == 0 then -- any surrounding or sub-elements?
-    symint.thick(elm, m, m.el, straight_drift)
-  elseif no_selm then
-    track_subelm(elm, m, straight_drift)
-  else
-    track_subelm(elm, m, symint[elm.method or m.mth])
-  end
-
-  track_patch(elm, m, 'exit')
+  xyspatch(elm, mflw)
+  thinonly(elm, mflw, 1, nil, kick)
+  syxpatch(elm, mflw)
 end
 
-local function track_thick (elm, m) -- e.g. sbend, rbend, quadrupole, ...
-  get_mult(elm, m)   -- load strengths in map
+local function track_thick (elm, mflw)
+  if #elm ~= 0 then subtrack_thick(elm, mflw) end
 
-  track_patch(elm, m, 'entry')
-  elm:track_fringe(m, 'entry')
+  local sdir   in mflw
+  local method in elm
+  local integr = method and symint[method] or mflw.integr
 
-  local symint = symint[elm.method or m.mth]
-  if #elm == 0 then   -- any sub-elements?
-    symint  (elm, m, m.el, elm.track_drift, elm.track_kick)
-  else
-    track_subelm(elm, m, symint)
-  end
+  get_mult(elm, mflw)   -- load strengths in map
 
-  elm:track_fringe(m, 'exit')
-  track_patch(elm, m, 'exit')
+  xyspatch(elm, mflw, sdir)
+--  fringe  (elm, mflw, sdir)
+  integr  (elm, mflw, 1, drift, kick)
+--  fringe  (elm, mflw, -sdir)
+  syxpatch(elm, mflw, sdir)
 end
 
-local function track_sbend (elm, m, _)
+local function track_sbend (elm, mflw)
   -- sbend_drift, polar_kick, sbend_fringe
 end
 
-local function track_combined (elm, m, _)
+local function track_combined (elm, mflw)
   -- combined_drift, combined_kick, sbend_fringe
 end
 
-local function track_rbend (elm, m, _)
+local function track_rbend (elm, mflw)
   -- rbend_drift, rfcavity_kick, straight_fringe
 end
 
-local function track_quadrupole (elm, m, _)
+local function track_quadrupole (elm, mflw)
   -- quad_drift, quad_kick, straight_fringe
 end
 
-local function track_solenoid (elm, m, _)
+local function track_solenoid (elm, mflw)
   -- solenoid_drift, rfcavity_kick, solenoid_fringe
 end
 
-local function track_rfcavity (elm, m, _)
+local function track_rfcavity (elm, mflw)
   -- solenoid_drift, rfcavity_kick, rfcavity_fringe
 end
 
-local function track_twcavity (elm, m, _)
+local function track_twcavity (elm, mflw)
   -- twcavity_drift, twcavity_kick, twcavity_fringe
 end
 
@@ -196,19 +192,23 @@ E.changenrj :set_methods { track = \e,m -> thinonly(e,m,1, nil, changenrj) }
 
 local _var = {}
 
-local function save_all (elm, mflw, lw)
-  if not elm:is_selected(observe) then return end
+local function save_all (elm, mflw, lw_)
+--  if not elm:is_selected(observe) then return end
 
   local name, kind, l in elm
-  local x, px, y, py, t, pt, sdir, tdir, spos, mtbl, atfill in mflw
+  local npar, sdir, tdir, spos, mtbl, atfill in mflw
+  local lw = lw_ or 1
 
   -- keep order!
-  mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, 1 }
+  for i=1,npar do
+    local x, px, y, py, t, pt in mflw[i]
+    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i }
+  end
   atfill(elm, mflw, lw)
 end
 
-local function save_elm (elm, mflw, lw)
-  if not is_implicit(elm) then save_all(elm, mflw, lw) end
+local function save_elm (elm, mflw, lw_)
+  if not is_implicit(elm) then save_all(elm, mflw, lw_) end
 end
 
 local function make_mtable (self)
@@ -216,6 +216,7 @@ local function make_mtable (self)
   local sequ = self.sequence
   local nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
 
+  -- keep order!
   return mtable 'track' {
     type='track', title=title or sequ.name, sdir=sdir, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
@@ -386,13 +387,11 @@ local function exec (self)
   -- geometric tracking
   for i,elm,spos in iter, state, idx do
     mflw.idx, mflw.spos = i, s0+spos
-
-        atentry(elm, mflw)
-    elm:track  (     mflw, 1)
-        atexit (elm, mflw)
-
-    mflw.spos = s0+spos+elm.l*sdir
-        fill   (elm, mflw, 1)
+    atentry(elm, mflw)
+    elm:track   (mflw)
+    mflw.spos = s0+spos + elm.l*sdir
+    atexit (elm, mflw)
+    fill   (elm, mflw)
 
     -- check remaining number of element to track
     nstep = nstep-1
