@@ -54,15 +54,27 @@ local _dflt = {
   layonly      = 1,
   ocolor       = "white",
   ostyle       = "solid 1.0",
+  olstyle      = "black",
+  border       = 15,
+  grid         = "",
 }
 
-local tmpfolder = "TMP_MAD_PLOT/"
-local tmplock   = "TMP_MAD_PLOT.lock"
+local tmpname   = "TMP_MAD_PLOT"
+local tmpfolder = tmpname .. "/"
+local tmplock   = tmpname .. ".lock"
 
 -- tmp files ------------------------------------------------------------------o
 
 local _handlepool, max_tmp_file = {}, 25
 local _filepool, lock
+
+-- change the name of the tmp folder (for testing)
+local function set_tmp(self, name)
+  assert(is_string(name), "invalid argument #2 (string expected)")
+  tmpname   = name
+  tmpfolder = tmpname .. "/"
+  tmplock   = tmpname .. ".lock"
+end
 
 -- lock for atomic operation (blocking)
 local function plot_lock (folder)
@@ -71,7 +83,7 @@ local function plot_lock (folder)
   if not fileexists(tmpfolder) and folder ~= false then
     local status, msg = filesys.mkdir(tmpfolder)
     if not status then
-      error("couldn't create TMP_MAD_PLOT : " .. msg)
+      error("couldn't create " .. tmpname .. " : " .. msg)
     end
   end
 end
@@ -81,7 +93,7 @@ local function plot_unlock (folder)
   if fileexists(tmpfolder) and folder == true then
     local status, msg = filesys.rmdir(tmpfolder)
     if not status then
-      error("couldn't delete TMP_MAD_PLOT : " .. msg)
+      error("couldn't delete " .. tmpname .. " : " .. msg)
     end
   end
   os.remove(tmplock)
@@ -210,6 +222,7 @@ end
 
 local _gplot = object 'Gplot' {
   sid           = \gplot -> gplot[_sid],
+  tmpname       = \ tmpname,
   [_sid]        = 1,
 } :set_methods {
   write         = gp_write,
@@ -217,6 +230,7 @@ local _gplot = object 'Gplot' {
   set_sid       = gp_setsid,
   is_busy       = gp_isBusy,
   clean_tmpfile = clean_tmp,
+  set_tmpname_  = set_tmp,   -- unsafe ?
 } :set_readonly()
 
 local gplot = _gplot {}
@@ -338,22 +352,30 @@ local function eShap (param, elem, dir)
   local kindcolor in param
   local shape        = dat[elem.kind]
   local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
-  local color, style
+  local color, style, linecolor
 
   if is_table(kindcolor) and kindcolor[elem.kind] then
     local cs = kindcolor[elem.kind]
-    color = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shape.fillcolor
-    style = is_table(cs) and cs.fillstyle or shape.fillstyle
+    color     = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shape.fillcolor
+    style     = is_table(cs) and cs.fillstyle or shape.fillstyle
+    linecolor = is_table(cs) and cs.linecolor or shape.linecolor
+    dash      = is_table(cs) and cs.dashtype  or dash
   elseif kindcolor then
-    color, style = shape.fillcolor, shape.fillstyle
+    color, style, linecolor = shape.fillcolor, shape.fillstyle, shape.linecolor
   else
-    color, style = _dflt.ocolor, _dflt.ostyle
+    color, style, linecolor = _dflt.ocolor, _dflt.ostyle, _dflt.olstyle
   end
-  local eColor = { color = color, style = style }
+
+  local eStyle = {
+    color     = color,
+    style     = style,
+    linecolor = linecolor,
+    dash      = dash,
+  }
 
   sh = sh and elem.l == 0 and elem.kind ~= "marker" and dat.default.shape or sh
   -- if only a ellipse
-  if not is_table(sh) then return el, dash, eColor end
+  if not is_table(sh) then return el, eStyle end
 
   local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
   local yshft = shape.yshft and sign(elem[shape.yshft]) or 0
@@ -368,19 +390,19 @@ local function eShap (param, elem, dir)
     ysym = (ysym == "angle") and fv*dir or fv
     func = {\y -> ((ysym*y + yshft)*yscl) }
   end
-  return el, dash, eColor, sh.x, sh.y, func
+  return el, eStyle, sh.x, sh.y, func
 end
 
 -- stream polygon data
-local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
+local function layout_poly (param, len, data, x_sh, y_sh, eStyle, func)
   local fpwrite, adjust, ref in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
-      local dashtype = dash and "dashtype '" .. dash .. "'" or ""
+      local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
       fpwrite("set object %d polygon front fc rgb '%s' fs %s \z
-        border rgb 'black' %s \\\n",
-        param.oid, eColor.color, eColor.style, dashtype)
+        border rgb '%s' %s \\\n",
+        param.oid, eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
       local cmd = "from"
 
       for k=1,#xj do
@@ -397,22 +419,22 @@ local function layout_poly (param, len, data, x_sh, y_sh, dash, eColor, func)
 end
 
 -- stream ellipse data
-local function layout_ellipse (param, len, el, data, dash, eColor, size)
+local function layout_ellipse (param, len, el, data, eStyle, size)
   local fpwrite, adjust, ref in param
   local pts = adjust(0, 0, data, len)
   local sx, sy = len, el*size
-  local dashtype = dash or ""
+  local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
-    size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb 'black' %s \n",
+    size %.5e, %s %.5e front fc rgb '%s' fs %s border rgb '%s' %s \n",
     param.oid, pts[1], ref, pts[2], sx, ref, sy,
-    eColor.color, eColor.style, dashtype)
+    eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
   param.oid = param.oid + 1
 end
 
 -- stream element label data
-local function layout_label(param, name, kind, data)
+local function layout_label(param, name, kind, len, data)
   local fpwrite, oid, ref, adjust in param
-  local pts  = adjust(0, 0, data, 1)
+  local pts  = adjust(0, 0, data, len/2)
   local label = name .. " [" .. kind .. "]"
   fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
     point pt 4 ps 1 lc 'white'\n", oid, pts[1], ref, pts[2], label)
@@ -474,8 +496,8 @@ end
 
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
-  local nturn, A0, X0 in param
-  local range, seq    in pseq
+  local nturn              in param
+  local range, seq, A0, X0 in pseq
   local size   = seq:length_of(range, nturn)
   local data   = table.new(size, 0)
   local bline  = { x=table.new(size, 0), y=table.new(size, 0) }
@@ -492,7 +514,7 @@ local function layout_process_in(param, pseq)
     coordinate = matrix(3):fill{ 1, 0, 0,
                                  0, 0, 1,
                                  0, 0, 0, }
-    local rot = matrix(3):rotz(-line.theta - (elem.angle or 0)/2)
+    local rot = matrix(3):rotz(-line.theta - (elem.angle or 0)*seq.dir/2)
     shift = coordinate*srvTranslat
 
     data[j]              = {rot, shift}
@@ -509,7 +531,7 @@ local function layout_process_in(param, pseq)
   pseq.data, pseq.bline = data, bline
 end
 
--- stream a signle layout
+-- stream a single layout
 local function layout (param, pseq)
   local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
   local seq, range, data, bline                                       in pseq
@@ -524,16 +546,16 @@ local function layout (param, pseq)
 
     if is_flagged or (len >= elemminlen and is_vkind) then
       local sh_l = len / 2
-      local el, dash, eColor, x_sh, y_sh, func = eShap(param, elem, dir)
+      local el, eStyle, x_sh, y_sh, func = eShap(param, elem, dir)
 
-      if elemname  then layout_label(param, elem.name, ekind, dj) end
+      if elemname  then layout_label(param, elem.name, ekind, len, dj) end
 
       if not is_nil(el) and len ~= 0 then
-        layout_ellipse(param, len, el, dj, dash, eColor, elemwidth)
+        layout_ellipse(param, len, el, dj, eStyle, elemwidth)
       end
 
       if not is_nil(x_sh) then
-        layout_poly(param, sh_l, dj, x_sh, y_sh, dash, eColor, func)
+        layout_poly(param, sh_l, dj, x_sh, y_sh, eStyle, func)
       end
     end
     j = j + 1
@@ -567,8 +589,8 @@ end
 
 -- post processing for "in plot" layout
 local function layout_post_in(param, xmin, xmax, ymin, ymax)
-  local elemwidth, elemscale          in param
-  local maxew, elemwidth_in, padding  in _dflt
+  local elemwidth, elemscale         in param
+  local maxew, elemwidth_in, padding in _dflt
   local diag = sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
   elemwidth = elemwidth and elemscale*elemwidth or
               elemscale*diag*elemwidth_in/maxew
@@ -581,7 +603,8 @@ end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, fpwrite, range, seqdistx, seqdisty, elemwidth, laypos in param
+  local sequence, A0, X0, fpwrite, range, seqdistx,
+        seqdisty, elemwidth, laypos                 in param
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
@@ -591,12 +614,14 @@ local function multi_layout (param)
                error("Invalid sequence input")
 
   for i=1,#seqs do
+    local A0    = is_table(A0) and is_table(A0[1]) and A0[i] or A0
+    local X0    = is_table(X0) and is_table(X0[1]) and X0[i] or X0
     local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
     local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
     local rg    = (#seqs > 1) and is_table(range) and range[i] or range or nil
     local pseq  = {
-      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
-      seq = seqs[i], distx = distx, disty = disty, range=rg
+      xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, range = rg,
+      seq = seqs[i], A0 = A0, X0 = X0, distx = distx, disty = disty,
     }
     if is_in
     then layout_process_in(param, pseq)
@@ -626,29 +651,39 @@ end
 
 -- plot -----------------------------------------------------------------------o
 
--- parse input axis and apply func to each label
-local function parse_axis (param, func)
+-- parse input axis
+local function parse_axis (param)
+  local selaxis in param
+  local di = 1
   local _axis = {"x1y1", "x1y2", "x2y1", "x2y2"}
-  for _,axis_name in ipairs(_axis) do
+  for _, axis_name in ipairs(_axis) do
     local axis = param[axis_name]
     if is_string(axis) then                  -- e.g. x1y1 = "y1"
-      func(param, nil, {axis}, axis_name)
+      selaxis[di] = {axis_name, nil, {axis}}
+      di = di + 1
     elseif is_table(axis) then
       if #axis ~= 0 then
-        func(param, nil, axis, axis_name)    -- e.g. x1y1 = {"y1", "y2"}
+        selaxis[di] = {axis_name, nil, axis} -- e.g. x1y1 = {"y1", "y2"}
+        di = di + 1
       end
-      for x,ys in kpairs(axis) do
+      local keys, ki = {}, 1
+      for k in kpairs(axis) do keys[ki], ki = k, ki+1 end
+      table.sort(keys)
+      for _, x in ipairs(keys) do
+        local ys = axis[x]
         if is_string(ys) then                -- e.g. x1y1 = { x1 = "y1" }
-          func(param, x, {ys}, axis_name)
+          selaxis[di] = {axis_name, x, {ys}}
         elseif is_table(ys) then             -- e.g. x1y1 = { x1 = {"y1", "y2"}}
-          func(param, x, ys, axis_name)
+          selaxis[di] = {axis_name, x, ys}
         end
+        di = di + 1
       end
     end
   end
+  param.selaxis = selaxis
 end
 
--- stream one plot data (called by parse_axis)
+-- stream one plot data
 local function plot_data (param, xlbl, ylbl)
   local fpwrite, tablerange, data, table in param
   local datai, iter, tbl, key = 1
@@ -710,12 +745,12 @@ local function getstyle (param, y, stys, sty)
   return style
 end
 
--- Create interpolation variable for the plot command (called by parse_axis)
-local function plot_cmd (param, _, ys, axis)
+-- Create interpolation variable for the plot command
+local function plot_cmd (param, axis, ys)
   local dashtypes, legend, datastyles, intpol in param
   local values
-  local add2 = \k,v => values[k]            = values[k] and (v % values) or "" end
-  local add  = \k,v => intpol[k..intpol.id] = v                              end
+  local add2 = \k,v => values[k]            = values[k] and v%values or "" end
+  local add  = \k,v => intpol[k..intpol.id] = v                            end
 
   for i, y in ipairs(ys) do
     values = {
@@ -724,6 +759,7 @@ local function plot_cmd (param, _, ys, axis)
       pointsize = getstyle(param, y, 'pointsizes', 'pointsize'),
       pointtype = getstyle(param, y, 'pointtypes', 'pointtype'),
       linewidth = getstyle(param, y, 'linewidths', 'linewidth'),
+      smooth    = getstyle(param, y, 'smooths'   , 'smooth'   ),
       dashtype  = parse_dash(dashtypes, datastyles[y], y),
       title     = legend    == false and "" or is_table(legend) and
                  (legend[y] == false and "" or legend[y]) or y,
@@ -754,7 +790,8 @@ local function plot_cmd (param, _, ys, axis)
     add("title" , "title '${title}' "        % values)
     add("axes"  , "axes ${axis} "            % values)
 
-    add("color" , values.color and "linecolor '${color}' " % values or "")
+    add("smooth", values.smooth and "smooth ${smooth} "     % values or "")
+    add("color" , values.color  and "linecolor '${color}' " % values or "")
     intpol.id = intpol.id + 1
   end
   param.databi = param.databi + 1
@@ -769,7 +806,7 @@ local function cmd_interpolate (param)
   else
     local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
                   with ${style${id}}${lines${id}}${points${id}}\z
-                  ${color${id}}${title${id}}${axes${id}},\\\n"
+                  ${color${id}}${title${id}}${axes${id}}${smooth${id}},\\\n"
     for i=1,intpol.id-1 do
       cmd = cmd .. strinterp(cmdi, { id = i }, '=')
     end
@@ -809,15 +846,19 @@ end
 local function set_misc (param)
   local fpwrite, psizex, psizey, originx, originy, grid,
     border, title, legendpos, titlefont, titlesize,
-    legendfont, legendsize                                in param
-  if grid   then fpwrite("set grid %s\n", grid)     end
-  if border then fpwrite("set border %s\n", border) end
+    legendfont, legendsize, layonly                      in param
+  if grid or (is_nil(grid) and not layonly) then
+    fpwrite("set grid %s\n", grid or _dflt.grid)
+  end
+  if border or (is_nil(grid) and not layonly) then
+    fpwrite("set border %s\n", border or _dflt.border)
+  end
   if title  then
     local font, size = titlefont or "", titlesize or ""
     title = title % param
     fpwrite("set title '%s' font '%s,%s'\n", title, font, size)
   end
-  if legendpos or legendfont or legendsize then
+  if (legendpos or legendfont or legendsize) and not layonly then
     local pos, font, size = legendpos or "", legendfont or "", legendsize or ""
     fpwrite("set key %s font '%s,%s'\n", legendpos, font, size)
   end
@@ -831,20 +872,25 @@ local function set_misc (param)
   end
 end
 
+local function set_frame(param)
+  set_ranges(param)
+  set_label (param)
+  set_tics  (param)
+  set_misc  (param)
+end
+
 -- main plot function
 local function plot (param)
   local pwrite, plotcmd, plotcfg in param
-  set_ranges(param)
-  set_label(param)
-  set_tics(param)
-  set_misc(param)
+  set_frame (param)
+  parse_axis(param)
 
   pwrite("$MAD_DATA << EOD\n")
-  parse_axis(param, plot_data)
+  for _,tpl in ipairs(param.selaxis) do plot_data(param, tpl[2], tpl[3]) end
   pwrite("EOD\n\n")
 
   if plotcfg then pwrite(plotcfg .. "\n") end
-  parse_axis(param, plot_cmd)
+  for _,tpl in ipairs(param.selaxis) do plot_cmd(param, tpl[1], tpl[3]) end
   cmd_interpolate(param)
   pwrite("\n")
 end
@@ -878,6 +924,7 @@ local function init_param(self, file)
     intpol  = object { id = 1 },
     plotter = file,
     oid     = oshft,
+    selaxis = {},
     fpwrite = \... -> file:write(string.format(...)),
     pwrite  = \... -> file:write(...)
   }
@@ -887,11 +934,15 @@ local function init_param(self, file)
   return setmetatable(param, {__index=self})
 end
 
-local layout_only = [[
+local layonly_without = [[
 unset key
 unset tics
 unset border
-plot x lc 'white'
+plot x lc 'white' title ''
+]]
+
+local layonly_with = [[
+plot x lc 'white' title ''
 ]]
 
 local function exec (self)
@@ -914,9 +965,15 @@ local function exec (self)
   elseif has_plot then
     plot(param)
   elseif has_layout then
-    param.layonly = true
+    param.layonly = is_nil(param.layonly) and true or param.layonly
+
+    set_frame(param)
     multi_layout(param)
-    param.fpwrite(layout_only)
+    if param.layonly then
+      param.fpwrite(layonly_without)
+    else
+      param.fpwrite(layonly_with)
+    end
   end
 
   if self.epilog then file:write(self.epilog, "\n") end
@@ -954,12 +1011,13 @@ local plot = command "Plot" {
   seqdistx    = 0,          -- x >= 0 | { x1, x2, ... }
   seqshift    = 0,          -- x >= 0
   nturn       = 1,          -- n >= 1
-  X0          = {0, 0, 0},  -- {x, y, z} numbers
-  A0          = {0, 0, 0},  -- {theta, phi, psi} numbers
+  X0          = {0, 0, 0},  -- {x    , y  , z  } | { {...}, {...}, ...}
+  A0          = {0, 0, 0},  -- {theta, phi, psi} | { {...}, {...}, ...}
 
   -- layout style
   laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
   laysize     = nil,        -- 0 < y < 1
+  layonly     = nil,        -- boolean
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
@@ -967,10 +1025,16 @@ local plot = command "Plot" {
   layangle    = true,       -- boolean
   kindselect  = nil,        -- { "quadrupole", "sbend" }
   kindcolor   = true,       -- {
-                            --  quadrupole = "blue",
-                            --  sbend = {fillcolor = "red", fillstyle = "solid"}
+                            --   quadrupole = "blue",
+                            --   sbend = {
+                            --     fillcolor = "red",
+                            --     fillstyle = "solid",
+                            --     linecolor = "green",
+                            --     dashtype  = "..  ",
+                            --   }
                             -- }
-                            -- true -> use default
+                            -- true  -> use default
+                            -- false -> no color
 
   -- axis selection (and names)
   x1y1        = nil,        -- x1y1 = { x1 = {"y1", "y2"}, x2 = {"y3", "y4"}}
@@ -1009,12 +1073,13 @@ local plot = command "Plot" {
 
   -- data style
   datastyles  = { },        -- { y = { style = "lines", color = "blue"} }
-  styles      = nil,        -- { y = "lines" }
-  colors      = nil,        -- { y = "green" }
-  dashtypes   = nil,        -- { y = "..-- " }
-  linewidths  = nil,        -- { y = 2.3     }
-  pointtypes  = nil,        -- { y = 2       }
-  pointsizes  = nil,        -- { y = 2.3     }
+  smooths     = nil,        -- { y = "csplines" }
+  styles      = nil,        -- { y = "lines"    }
+  colors      = nil,        -- { y = "green"    }
+  dashtypes   = nil,        -- { y = "..-- "    }
+  linewidths  = nil,        -- { y = 2.3        }
+  pointtypes  = nil,        -- { y = 2          }
+  pointsizes  = nil,        -- { y = 2.3        }
 
   -- decoration
   font        = nil,        -- string
@@ -1024,8 +1089,8 @@ local plot = command "Plot" {
   legendfont  = nil,        -- string
   legendsize  = nil,        -- n > 0
   legendpos   = "left top", -- string
-  grid        = "",         -- string
-  border      = 15,         -- 0 <= n <= 15
+  grid        = nil,        -- string
+  border      = nil,        -- 0 <= n <= 15
 
   -- object shift
   oshft       = 1000000,    -- n >= 0
