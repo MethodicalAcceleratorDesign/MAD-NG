@@ -45,11 +45,13 @@ local function update_angles(mflw)
   A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
 end
 
--- patches --------------------------------------------------------------------o
+-- patches (lw_ == 0 disable the patch) ---------------------------------------o
 
 -- X-rotation (pitch)
 
 function M.xrotation (elm, m, lw_) -- Rx(-phi)
+  if lw_ == 0 then return end
+
   local phi = is_number(elm) and elm or elm.phi or 0
   if abs(phi) < minang then return end
 
@@ -61,6 +63,8 @@ end
 -- Y-rotation (yaw)
 
 function M.yrotation (elm, m, lw_) -- Ry(-theta)
+  if lw_ == 0 then return end
+
   local the = is_number(elm) and elm or elm.theta or 0
   if abs(the) < minang then return end
 
@@ -72,6 +76,8 @@ end
 -- S-rotation (roll, tilt)
 
 function M.srotation (elm, m, lw_) -- Rz(psi)
+  if lw_ == 0 then return end
+
   local psi = is_number(elm) and elm or elm.psi or 0
   if abs(psi) < minang then return end
 
@@ -83,83 +89,48 @@ end
 -- Translation
 
 function M.translate (elm, m, lw_)
+  if lw_ == 0 then return end
+
   local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
-  if abs(dx)+abs(dy)+abs(dz) < 3*minlen then return end
+  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
 
   local tdir in m
   m.R :fill {dx*tdir, dy*tdir, dz*tdir}
   m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
 end
 
--- MAD patch
-
-function M.madpatch (elm, m, lw_)
-  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(the)+abs(phi)+abs(psi) >= 3*minang then
-    local tdir in m
-    m.S :rotmad(the*tdir, phi*tdir, psi*tdir)   -- phi  : Elevation angle.
-    m.W :mul(m.S, m.W) -- W = W*S               -- theta: Azimuthal angle.
-    update_angles(m)                            -- psi  : Roll      angle.
-  end
-
-  M.translate(elm, m, lw_)
-end
-
--- Forward patch
-
-function M.xyspatch (elm, m, lw_)
-  if m.sdir < 0 then
-    return M.syxpatch (elm, m, lw_)
-  end
-
-  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(the)+abs(phi)+abs(psi) >= 3*minang then
-    local tdir in m
-    m.S :rotxyz(phi*tdir, the*tdir, psi*tdir)
-    m.W :mul(m.S, m.W) -- W = W*S
-    update_angles(m)
-  end
-
-  M.translate(elm, m, lw_)
-end
-
--- Backward patch
-
-function M.syxpatch (elm, m, lw_)
-  if m.sdir < 0 then
-    return M.xyspatch (elm, m, lw_)
-  end
-
-  M.translate(elm, m, lw_)
-
-  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
-  if abs(the)+abs(phi)+abs(psi) >= 3*minang then
-    local tdir in m
-    m.S :rotzyx(phi*tdir, the*tdir, psi*tdir)
-    m.W :mul(m.S, m.W) -- W = W*S
-    update_angles(m)
-  end
-end
-
--- Changeref (generic patch)
+-- Changeref (generic patch, dir>0: entry(xyzt), dir<0: exit(tzyx))
 
 function M.changeref (elm, m, lw_)
-  local typ = elm.type or 'xys'
+  if lw_ == 0 then return end
 
-      if typ == 'xys' then M.xyspatch(elm, m, lw_)
-  elseif typ == 'syx' then M.syxpatch(elm, m, lw_)
-  elseif typ == 'mad' then M.madpatch(elm, m, lw_)
-  else errorf("invalid patch type '%s' ('xys', 'syx' or 'mad' expected)", typ)
+  local dir = lw_ or 1
+
+  if dir < 0 then M.translate(elm, m, lw_) end
+
+  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
+  if abs(the)+abs(phi)+abs(psi) >= minang then
+    local tdir in m
+    if dir > 0
+    then m.S :rotxyz(phi*tdir, the*tdir, psi*tdir)
+    else m.S :rotzyx(phi*tdir, the*tdir, psi*tdir)
+    end
+    m.W :mul(m.S, m.W) -- W = W*S
+    update_angles(m)
   end
+
+  if dir > 0 then M.translate(elm, m, lw_) end
 end
 
--- Changedir (reverse mflow t-direction)
+-- Changedir (reverse t-direction)
 
 function M.changedir (elm_, m, lw_)
+  if lw_ == 0 then return end
+
   m.tdir = -m.tdir
 end
 
--- Changenrj (change mflow energy)
+-- Changenrj (change energy)
 
 function M.changenrj (elm_, m_, lw_)
   -- N/A for survey
@@ -176,7 +147,7 @@ function M.drift (elm, m, lw) -- drift_element
 end
 
 function M.thin (elm, m, lw_) -- thin_element
-  local angle = elm.angle
+  local angle in elm
   if abs(angle) < minang then return end
 
   local tdir in m
