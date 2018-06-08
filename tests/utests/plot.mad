@@ -211,10 +211,14 @@ function TestPlotScript:setUp ()
   filesys.mkdir(rundir())
   self.id = 1
   reset()
+  self.tmpname = gplot.tmpname
+  gplot:set_tmpname_("TMP_MAD_TestPlotScript")
 end
 
 function TestPlotScript:tearDown ()
   if not generate and self.testPassed then filesys.rmdir(rundir()) end
+  gplot:clean_tmpfile()
+  gplot:set_tmpname_(self.tmpname)
 end
 
 function TestPlotScript:execTest (param)
@@ -443,12 +447,13 @@ function TestPlotScript:testPlotDataStyleTypeSpec ()
     originy    = 0.4,
     psizex     = 0.7,
     psizey     = 0.6,
-    styles     = { y1 = "lines", y3 = "points", y4 = "linespoints" },
-    colors     = { y1 = "red"  , y3 = "blue"  , y4 = "green"       },
-    dashtypes  = { y1 = "..   ",                y4 = "--  "        },
-    linewidths = { y1 = 2.3    ,                y4 = 3.2           },
-    pointtypes = {               y3 = 2       , y4 = 3             },
-    pointsizes = {               y3 = 2.0     , y4 = 4.1           },
+    styles     = { y1 = "lines"   , y3 = "points", y4 = "linespoints" },
+    colors     = { y1 = "red"     , y3 = "blue"  , y4 = "green"       },
+    dashtypes  = { y1 = "..   "   ,                y4 = "--  "        },
+    linewidths = { y1 = 2.3       ,                y4 = 3.2           },
+    pointtypes = {                  y3 = 2       , y4 = 3             },
+    pointsizes = {                  y3 = 2.0     , y4 = 4.1           },
+    smooths    = { y1 = "csplines", y3 = "bezier",                    },
   }
   self:execTest(param)
 end
@@ -463,11 +468,20 @@ function TestPlotScript:testPlotDataStyleOrdinateSpec ()
     psizex     = 0.7,
     psizey     = 0.6,
     datastyles = {
-      y1 = { style="lines", color="red", dashtype="..   ", linewidth=2.3 },
-      y3 = { style="points", color="blue", pointtype=2, pointsize=2.0 },
+      y1 = {
+        style     = "lines",      color      = "red",
+        dashtype  = "..   ",      linewidth  = 2.3,
+        smooth    = "csplines"
+        },
+      y3 = {
+        style     = "points",      color     = "blue",
+        pointtype = 2,             pointsize = 2.0 ,
+        smooth    = "bezier"
+      },
       y4 = {
-        style="linespoints", color="green", dashtype="--  ",
-        linewidth=3.2, pointtype=3, pointsize=4.1
+        style     = "linespoints", color     = "green",
+        dashtype  = "--  ",        linewidth = 3.2,
+        pointtype = 3,             pointsize = 4.1
       }
     }
   }
@@ -482,6 +496,7 @@ function TestPlotScript:testPlotDataStyleGlobalSpec ()
     styles     = "linespoints",
     colors     = "black",
     dashtypes  = ".-.-",
+    smooths    = "csplines",
     linewidths = 4,
     pointtypes = 2,
     pointsizes = 3,
@@ -671,6 +686,7 @@ function TestPlotScript:testKindColorSpec ()
       sbend      = { fillcolor = "red"  ,                         },
       rbend      = {                      fillstyle = "pattern 1" },
       instrument = { fillcolor = "green", fillstyle = "pattern 2" },
+      srotation  = { linecolor = "gold" , dashtype  = "..  "      },
     },
   }
   self:execTest(param)
@@ -892,6 +908,21 @@ function TestPlotScript:testSurvey()
   self:execTest(param)
 end
 
+function TestPlotScript:testSurveyPosDirNegDir()
+  local seq_pos  = sequence "seq_pos" { refer = "entry",
+    20*sbend { l = 1, angle = pi/10 },
+  }
+  local seq_neg  = seq_pos "seq_neg" { dir = -1 }
+  seq_pos:select(observe)
+  seq_neg:select(observe)
+  local param = {
+    sequence  = { seq_pos, seq_neg },
+    laypos    = "in",
+    x1y1      = "y1",
+  }
+  self:execTest(param)
+end
+
 function TestPlotScript:testSurveyNturn()
   local smtbl  = getSTbl()
   local seq    = sequence { refer = "entry",
@@ -965,7 +996,35 @@ function TestPlotScript:testSurveyLHC ()
   self:execTest(param)
 end
 
+function TestPlotScript:testSurveyMultipleInit ()
+  local seq   = sequence { refer = "entry",
+    10*sbend { l = 1, angle = pi/10 },
+  }
+  local param = {
+    sequence = { seq           , seq                 },
+    X0       = { {-100, 0, 100}, {-106.3666, 0, 100} },
+    A0       = { {   0, 0,   0}, {-pi      , 0,   0} },
+    laypos   = "in",
+  }
+  self:execTest(param)
+end
+
+function TestPlotScript:testSurveyNotLayonly ()
+  local seq   = sequence { refer = "entry",
+    20*sbend { l = 1, angle = pi/10 },
+  }
+  local param = {
+    sequence = seq,
+    laypos   = "in",
+    layonly  = false,
+    xrange   = {-3.2, 0.75},
+    yrange   = {-3.4, 3.4 },
+  }
+  self:execTest(param)
+end
+
 function TestPlotScript:testOutput ()
+  local sid = gplot.sid
   gplot:set_methods {
     printf = \s,... =>
       local match = string.match(string.format(...), "system '(.+)'")
@@ -987,6 +1046,7 @@ function TestPlotScript:testOutput ()
   param.output="plot.pdf"
   self:execTest(tblcpy(param))
   assertEquals(gplot.sid, 12)
+  gplot:set_sid(sid)
 
   gplot.printf, gplot.write = nil, nil
 end
@@ -997,15 +1057,19 @@ TestPlotGplot = {}
 
 function TestPlotGplot:setUp ()
   filesys.mkdir(rundir())
+  self.sid = gplot.sid
+  self.tmpname = gplot.tmpname
+  gplot:set_tmpname_("TMP_MAD_TestPlotGplot")
 end
 
 function TestPlotGplot:tearDown ()
   if not generate and self.testPassed then filesys.rmdir(rundir()) end
+  gplot:clean_tmpfile()
+  gplot:set_sid(self.sid)
+  gplot:set_tmpname_(self.tmpname)
 end
 
 function TestPlotGplot:testSid()
-  local gplot = gplot {}
-
   for i=1, 25 do
     gplot:set_sid(i)
     assertEquals(gplot.sid, i)
@@ -1024,7 +1088,6 @@ function TestPlotGplot:testSid()
 end
 
 function TestPlotGplot:testWritePrintf()
-  local gplot = gplot {}
   local fname = rundir("test.gp")
 
   os.remove(fname)
@@ -1041,7 +1104,6 @@ function TestPlotGplot:testWritePrintf()
 end
 
 function TestPlotGplot:testIsBusy()
-  local gplot = gplot {}
   plot { prolog = "pause 0.2" }
   assertTrue(gplot:is_busy())
 
@@ -1053,9 +1115,8 @@ function TestPlotGplot:testIsBusy()
 end
 
 function TestPlotGplot:testCleanTmpFile()
-  local gplot = gplot {}
-  local tmp = "TMP_MAD_PLOT/madplot-"
-  filesys.mkdir("TMP_MAD_PLOT")
+  local tmp = gplot.tmpname.."/madplot-"
+  filesys.mkdir(gplot.tmpname)
 
   for i=1,25 do assert(io.open(tmp..i, "w")):close()   end
   gplot:clean_tmpfile()
