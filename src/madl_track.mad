@@ -202,16 +202,18 @@ local function save_all (elm, mflw, lw_)
 --  if not elm:is_selected(observe) then return end
 
   local name, kind, l in elm
-  local npar, sdir, tdir, spos, mtbl, atfill in mflw
+  local npar, sdir, tdir, spos, mtbl, atfill, mapsave in mflw
   local lw = lw_ or 1
 
   -- keep order!
   for i=1,npar do
     local x, px, y, py, t, pt in mflw[i]
+    local map
     if is_tpsa(x) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
+      map = mapsave and mflw[i]:copy()
     end
-    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i }
+    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i, map }
   end
   atfill(elm, mflw, lw)
 end
@@ -221,7 +223,7 @@ local function save_elm (elm, mflw, lw_)
 end
 
 local function make_mtable (self)
-  local range, nturn, sdir, implicit, title in self
+  local range, nturn, sdir, implicit, title, mapsave in self
   local sequ = self.sequence
   local nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
 
@@ -229,8 +231,9 @@ local function make_mtable (self)
   return mtable 'track' {
     type='track', title=title or sequ.name, sdir=sdir, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
-    'tdir',   -- t-direction of the tracking: sdir * seqdir
-    'id',     -- particle or mapflow id
+    'tdir',           -- t-direction of the tracking: sdir * seqdir
+    'id',             -- particle or mapflow id
+    mapsave and 'map' -- extra optional column to save the entire map
   }
 end
 
@@ -299,7 +302,7 @@ local function make_mflow (self)
   assert(is_callable(atfill ), "invalid atfill (callable expected)")
 
   -- retrieve initial conditions
-  local s0, X0, mapdef in self
+  local s0, X0, mapdef, mapsave in self
   assert(is_number  (s0), "invalid s0 (number expected)")
   assert(is_mappable(X0), "invalid X0 (mappable expected)")
   if not is_mappable(X0[1]) then X0 = {X0} end
@@ -349,6 +352,9 @@ local function make_mflow (self)
   mflw.fill=fill                  -- fill/add one row to mtable (if any)
   mflw.nofill=nofill              -- disable filling at the end of an element
   mflw.nslice=nslice              -- number of slice for each element
+
+  mflw.mapdef=mapdef              -- save map definitions (for info)
+  mflw.mapsave=mapsave            -- save entire maps
 
   mflw.s0=s0                      -- initial s-position
   mflw.idx=init                   -- index of the current element
@@ -423,6 +429,7 @@ local track = command 'Track' {
   X0={0,0,0,0,0,0}, -- initial coordinates (or mapflow, or list of)       (mflw)
 
   mapdef=nil,       -- setup for mapflow                                  (mflw)
+  mapsave=nil,      -- save mapflow in the mtable                         (mflw)
   method='simple',  -- default integrator                                 (mflw)
   totalpath=false,  -- t is the totalpath                                 (mflw)
 
