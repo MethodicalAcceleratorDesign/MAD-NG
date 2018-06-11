@@ -41,18 +41,24 @@ local gt   = function (x,y) return x >  y                   end
 local ge   = function (x,y) return x >= y                   end
 
 -- metatables & metamethods
+local ffi = require 'ffi'
+local typeof, miscmap in ffi
+assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
 local metaname = {
-  -- list of metanames from lj_obj.h + __init + __exec + __totable
-  '__add', '__call', '__concat', '__div', '__eq', '__exec', '__gc', '__index',
-  '__init', '__ipairs', '__le', '__len', '__lt', '__metatable', '__mod',
-  '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow', '__sub',
-  '__tostring', '__totable', '__unm',
+  '__add', '__call', '__concat', '__copy', '__div', '__eq', '__exec', '__gc',
+  '__index', '__init', '__ipairs', '__le', '__len', '__lt', '__metatable',
+  '__mod', '__mode', '__mul', '__new', '__newindex', '__pairs', '__pow',
+  '__same', '__sub', '__tostring', '__totable', '__unm',
 }
-for _,v in ipairs(metaname) do metaname[v] = v end -- build dictionary
+for _,v in ipairs(metaname) do metaname[v] = v end -- build dict of metaname
+
+local function invalid_use (a)
+  error("invalid use of object <" .. tostring(a) .. ">", 2)
+end
 
 local function get_metatable (a)
-  return type(a) == 'cdata' and ffi.miscmap[ -tonumber(ffi.typeof(a)) ]
+  return type(a) == 'cdata' and (a.__metatable or miscmap[-tonumber(typeof(a))])
          or getmetatable(a)
 end
 
@@ -66,7 +72,15 @@ local function get_metamethod (a, f)
 end
 
 local function has_metamethod (a, f)
-  return not not get_metamethod(a,f)
+  local mt = get_metatable(a)
+  local mm = mt and rawget(mt,f)
+  return not not mm and mm ~= invalid_use
+end
+
+local function has_metamethod_ (a, f)
+  local mt = get_metatable(a)
+  local mm = mt and rawget(mt,f)
+  return not not mm -- false or nil -> false
 end
 
 -- types
@@ -87,16 +101,16 @@ local function is_string (a)
   return type(a) == 'string'
 end
 
+local function is_function (a)
+  return type(a) == 'function'
+end
+
 local function is_table (a)
   return type(a) == 'table'
 end
 
 local function is_rawtable (a)
-  return type(a) == 'table' and type(getmetatable(a)) == 'nil'
-end
-
-local function is_function (a)
-  return type(a) == 'function'
+  return type(a) == 'table' and rawequal(getmetatable(a),nil)
 end
 
 local function is_metaname (a)
@@ -106,25 +120,51 @@ end
 -- concepts
 
 local function is_callable (a)
- return is_function(a) or has_metamethod(a, '__call')
+  return type(a) == 'function' or has_metamethod_(a,'__call')
 end
 
 local function is_iterable (a)
- return is_table(a) or has_metamethod(a, '__ipairs')
+ return type(a) == 'table' or has_metamethod (a,'__ipairs')
 end
 
 local function is_mappable (a)
- return is_table(a) or has_metamethod(a, '__pairs' )
+ return type(a) == 'table' or has_metamethod (a,'__pairs')
 end
 
--- algorithms
+-- iterator: pairs = ipairs + kpairs
 
-local function bsearch (tbl, val, cmp_)
-  local cmp = cmp_ or lt -- cmp must be the same used by table.sort
+local function kpairs_iter (tbl, key)
+  local k, v = key
+  repeat k, v = tbl.nxt(tbl.dat, k)                -- discard ipairs indexes
+  until type(k) ~= 'number' or (k%1) ~= 0 or k > tbl.lst or k < 1
+  return k, v
+end
+
+local function kpairs (tbl, lst_)
+  assert(is_mappable(tbl), "invalid argument #1 (mappable expected)")
+  local nxt, dat, ini = pairs(tbl)
+  local lst = lst_
+  if not lst and is_iterable(tbl) then
+    for i in ipairs(tbl) do lst = i end
+  end
+  if not lst then return nxt, dat, ini end
+  return kpairs_iter, { nxt=nxt, dat=dat, lst=lst }, ini
+end
+
+-- searching
+
+local function bsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
-  assert(is_callable(cmp), "invalid argument #3 (callable expected)")
-  local low, cnt = 1, #tbl
-  local mid, stp, tst
+  if is_number(cmp_) and is_nil(high_) then
+    cmp_, low_, high_ = nil, cmp_, low_ -- right shift
+  end
+  if not (is_nil(cmp_) or is_callable(cmp_)) then
+    error("invalid argument #3 (callable expected)")
+  end
+  local cmp  = cmp_ or lt -- cmp must be the same used by table.sort
+  local low  = is_number(low_ ) and max(low_ , 1   ) or 1
+  local high = is_number(high_) and min(high_, #tbl) or #tbl
+  local cnt, mid, stp, tst = high-low+1
   while cnt > 0 do
     stp = rshift(cnt,1)
     mid = low+stp
@@ -152,10 +192,10 @@ local function compose (f, g)
 end
 
 local function is_functor (a)
-  return is_table(a) and not is_nil(rawget(a,_fun))
+  return is_table(a) and rawget(a,_fun) ~= nil
 end
 
-local str = function(s) return string.format("<functor> %p", s) end
+local str = function(s) return string.format("functor: %p", s) end
 local err = function()  error("forbidden access to functor", 2) end
 
 fct_mt = {
@@ -176,18 +216,18 @@ fct_mtc = {
 
 -- implementation -------------------------------------------------------------o
 
--- module and metatable of objects
-local M, MT = {}, {}
+local M = {}
 
--- root of all objects
-local Object
+-- Root of all objects, forward declaration
+local object
 
--- protected keys to object members, flags and environment.
-local _var, _flg, _env = {}, {}, {}
+-- object members
+local _var = {} -- hidden key
 
--- flags (bit num)
-local flg_ro, flg_cl = 0, 1
-local flg_free = 2
+-- reserved flags (bits)
+local _flg = {} -- hidden key
+local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
+local flg_free = 2          -- used flags (0 - 1), free flags (2 - 31)
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -199,7 +239,8 @@ local var0 = setmetatable({}, {
 -- helpers
 
 local function name (a)
-  return rawget(rawget(a,_var),'__id') or ('? <: ' .. a.name)
+  local var = rawget(a,_var)
+  return rawget(var,'__id') or ('? <: ' .. var.__id)
 end
 
 local function init (a)
@@ -226,20 +267,28 @@ local function set_class (a)
 end
 
 local function is_object (a) -- exported
-  return is_table(a) and not is_nil(rawget(a,_var))
+  return is_table(a) and rawget(a,_var) ~= nil
 end
 
 local function is_class (a) -- exported
   return is_table(a) and fclass(a)
 end
 
-local function is_readonly (a) -- exported
-  return is_table(a) and freadonly(a)
+local function is_instanceOf (a, b) -- exported
+  if is_object(a) and is_class(b) then
+    repeat a = parent(a) until not a or rawequal(a,b)
+    return not not a
+  end
+  return false
 end
+
+-- metamethods
+
+local MT = {}
 
 -- objects are proxies controlling variables access and inheritance
 function MT:__call (a, b) -- object constructor (define the object-model)
-  if is_string(a) then                                  -- named object
+  if is_string(a) or is_nil(a) then                     -- [un]named object
     if is_nil(b) then
       local obj = {__id=a, [_var]=var0, __index=rawget(self,_var)} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
@@ -273,38 +322,39 @@ local function raw_get (self, k)
 end
 
 local function raw_set (self, k, v)
-  rawget(self,_var)[k] = v            -- no protection
+  rawset(rawget(self,_var), k, v)     -- no protection!!
 end
 
 local function var_raw (self, k)
   return rawget(self,_var)[k]         -- no function evaluation with inheritance
 end
 
-local function var_val (self, k, v)
-  if is_string(k) and is_function(v)  -- string key with value function
+local function var_val (self, k, v)   -- string key with value function
+  if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
 end
 
-local function var_get (self, k)      -- reusing var_raw and var_val kills the inlining
+local function var_get (self, k) -- reusing var_raw and var_val kills the inlining
   local v = rawget(self,_var)[k]
-  if is_string(k) and is_function(v)
+  if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
 end
 
-function MT:__index (k)               -- reusing var_raw and var_val kills the inlining
+function MT:__index (k)          -- reusing var_raw and var_val kills the inlining
   local v = rawget(self,_var)[k]
-  if is_string(k) and is_function(v)
+  if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
 end
 
 function MT:__newindex (k, v)
-  if freadonly(self) then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' then
+    error("forbidden write access to '" .. name(self) ..
+          "' (readonly object or variable)", 2)
   end
-  raw_set(self, k, v)
+  rawget(self,_var)[k] = v      -- note: must use [k] for var0
 end
 
 function MT:__len ()
@@ -317,260 +367,338 @@ function MT:__len ()
   return rawlen(var)
 end
 
-local function pairs_iter (var, key) -- scan only strings
+local function iter (var, key) -- scan only numbers and strings
   local k, v = next(var, key)
-  while not (is_nil(k) or is_string(k)) do
+  while type(k) ~= 'string' and type(k) ~= 'number' and k do
     k, v = next(var, k)
   end
   return k, v
 end
 
-function MT:__pairs ()
-  local var = rawget(self,_var)
-  local n = rawlen(var) -- skip array part
-  return pairs_iter, var, n > 0 and n or nil
+local function pairs_iter (self)
+  return iter, rawget(self,_var), nil
 end
 
-function MT:__ipairs()
+local function ipairs_iter (self)
   return ipairs(rawget(self,_var))
 end
 
+MT.__pairs  =  pairs_iter
+MT.__ipairs = ipairs_iter
+
 function MT:__tostring()
-  return string.format("'%s' <object> %p", name(self), self)
+  return string.format("object: '%s' %p", name(self), self)
 end
 
 -- methods
 
-local function set_parent (self, p) -- exported
+local function is_readonly (self)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_object(p)   , "invalid argument #2 (object expected)")
-  if freadonly(self) then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  return freadonly(self)
+end
+
+local function set_readonly (self, set_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  if set_ ~= false
+  then rawset(self, _flg, bset(rawget(self,_flg) or 0, flg_ro))
+  else rawset(self, _flg, bclr(rawget(self,_flg) or 0, flg_ro))
   end
-  rawset(self,'__index', rawget(p,_var))
   return self
 end
 
-local function set_readonly (a, b) -- exported
-  assert(a ~= Object, "invalid argument #1 (forbidden access to 'Object')")
-  assert(is_nil(b) or is_boolean(b),
-                      "invalid argument #2 (boolean or nil expected)")
-  if b ~= false
-  then rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_ro))
-  else rawset(a,_flg, bclr(rawget(a,_flg) or 0, flg_ro)) end
-  return a
-end
-
-local function is_instanceOf (a, b) -- exported
-  if not (is_object(a) and is_class(b) and a ~= b) then return false end
-  repeat a = parent(a) until not a or a == b
-  return a == b
-end
-
-local function get_variables (self, lst, noeval)
+local function get_variables (self, lst, noeval_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
-  local var, res = rawget(self,_var), {}
-  if noeval
-  then for _,k in ipairs(lst) do res[k] = var [k] end
-  else for _,k in ipairs(lst) do res[k] = self[k] end
-  end
-  return res
+  local n   = #lst
+  local res = table.new(0,n)
+  local get = noeval_ == true and var_raw or var_get
+  for i=1,n do res[lst[i]] = get(self, lst[i]) end
+  return res -- key -> val
 end
 
-local function set_variables (self, tbl, override)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_variables (self, tbl, override_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override variable")
-    rawset(var, k, v)
+    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable")
+    var[k] = v
   end
+  var.__id = id
   return self
 end
 
 local function wrap_variables (self, tbl)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     local v, newv = var[k]
-    assert(is_callable(f), "invalid wrapper (callable expected)")
     assert(not is_nil(v) , "invalid variable (nil value)")
-    if is_callable(v) then
-      newv = f(v)
-    else
-      local fv = function() return v end
-      newv = f(fv)
-    end -- simplify user's side.
+    assert(is_callable(f), "invalid wrapper (callable expected)")
+    if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
       newv = functor(newv)                   -- newv must maintain v's semantic.
     end
-    rawset(var, k, newv)
+    var[k] = newv
   end
+  var.__id = id
   return self
 end
 
-local function set_functions (self, tbl, override, strict)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_methods (self, tbl, override_, strict_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
+  local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     assert(is_string(k), "invalid key (function name expected)")
-    assert(is_callable(f) or strict==false, "invalid value (callable expected)")
-    assert(is_nil(rawget(var,k)) or override~=false, "cannot override function")
-    rawset(var, k, is_function(f) and functor(f) or f)
+    assert(is_callable(f) or strict_ == false, "invalid value (callable expected)")
+    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override function")
+    var[k] = is_function(f) and functor(f) or f
   end
+  var.__id = id
   return self
 end
 
-local function set_metamethods (self, tbl, override, strict)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+local function set_metamethods (self, tbl, override_, strict_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
-    assert(not fclass(self), "invalid metatable (class unexpected)")
-    sm={} for k,v in pairs(pm) do sm[k] = v end
+    assert(not fclass(self), "invalid metatable write access (unexpected class)")
+    sm=table.new(0,8) for k,v in pairs(pm) do sm[k] = v end
+    pm.__metatable = nil -- unprotect change
+    setmetatable(self, sm)
+    pm.__metatable, sm.__metatable = pm, sm
   end
   for k,mm in pairs(tbl) do
-    assert(is_metaname(k) or strict==false, "invalid key (metamethod expected)")
-    assert(is_nil(rawget(sm,k)) or override==true, "cannot override metamethod")
-    rawset(sm, k, mm)
+    assert(is_metaname(k) or strict_ == false, "invalid key (metamethod expected)")
+    assert(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod")
+    sm[k] = mm
   end
-  return setmetatable(self, sm)
+  return self
 end
 
-local function get_varkeys (self, class)
-  class = class or Object
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_object(class), "invalid argument #2 (object expected)")
-  local lst, key = {}, {}
-  while self and self ~= class do
-    for k,v in pairs(self) do
-      if not (key[k] or is_functor(v)) and string.sub(k,1,2) ~= '__' then
-        lst[#lst+1], key[k] = k, k
+local function final_err (self)
+  error("invalid object creation ('"..name(self).."' is qualified as final)", 2)
+end
+
+local function set_final (self)
+  return set_metamethods(self, {__call=final_err}, true)
+end
+
+local function get_varkeys (self, class_)
+  assert(is_object(self)                    , "invalid argument #1 (object expected)")
+  assert(is_nil(class_) or is_object(class_), "invalid argument #2 (object expected)")
+  local lst, key = table.new(8,1), table.new(0,8)
+  while self and not rawequal(self, class_) do
+    for k,v in kpairs(self) do
+      if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
+      then lst[#lst+1], key[k] = k, k
       end
     end
     self = parent(self)
   end
-  assert(self == class, "invalid argument #2 (parent of argument #1 expected)")
+  assert(rawequal(self, class_),"invalid argument #2 (parent of argument #1 expected)")
   return lst
 end
 
-local function remove_array (self, pos)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(pos), "invalid argument #2 (number expected)")
+local function insert (self, idx_, val)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
-  return table.remove(rawget(self,_var), pos)
-end
-
-local function insert_array (self, pos, val)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(pos), "invalid argument #2 (number expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
-  table.insert(rawget(self,_var), pos, val)
+  table.insert(rawget(self,_var), idx_, val)
   return self
 end
 
-local function sort_array (self, cmp_)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(cmp_) or is_callable(cmp_), "invalid argument #2 (callable expected)")
+local function remove (self, idx_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(not freadonly(self), "forbidden write access to readonly object")
+  return table.remove(rawget(self,_var), idx_)
+end
+
+local function move (self, idx1, idx2, idxto, dest_)
+  dest_ = dest_ or self
+  assert(is_object(self)     , "invalid argument #1 (object expected)")
+  assert(is_object(dest_)    , "invalid argument #2 (object expected)")
+  assert(not freadonly(dest_), "forbidden write access to readonly object")
+  table.move(rawget(self,_var), idx1, idx2, idxto, rawget(dest_,_var))
+  return dest_
+end
+
+local function sort (self, cmp_)
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   table.sort(rawget(self,_var), cmp_)
   return self
 end
 
-local function bsearch_array (self, val, cmp_)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  return bsearch(rawget(self,_var), val, cmp_)
+local function bsearch_ (self, val, cmp_, low_, high_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return bsearch(rawget(self,_var), val, cmp_, low_, high_)
+end
+
+local function lsearch_ (self, val, equ_, low_, high_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return lsearch(rawget(self,_var), val, equ_, low_, high_)
 end
 
 local function clear_array (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  for i in ipairs(self) do rawset(var, i, nil) end
+  for i=1,rawlen(var) do var[i]=nil end
   return self
 end
 
 local function clear_variables (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
-  for k in pairs(self) do rawset(var, k, nil) end
-  rawset(var, '__id', id)
+  for k in kpairs(self) do var[k]=nil end
+  var.__id = id
   return self
 end
 
 local function clear_all (self)
-  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(not freadonly(self), "forbidden write access to readonly object")
   local var = rawget(self,_var)
-  local id = rawget(var, '__id')
-  table.clear(var)
-  rawset(var, '__id', id)
+  local id  = rawget(var,'__id')
+  for k in pairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
+  var.__id = id
   return self
 end
+
+-- inheritance
+
+local function set_parent (self, newp)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(newp), "invalid argument #2 (object expected)")
+  if freadonly(self) then
+    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  end
+  local spar = self.parent
+  if getmetatable(newp) ~= getmetatable(spar) then
+    error("new and current parent do not share same metamethods")
+  end
+  if newp.parent ~= spar.parent then
+    error("new and current parent do not inherit from same direct parent")
+  end
+  rawset(self,'__index', rawget(newp,_var))
+  set_class(newp)
+  return self
+end
+
+-- copy
+
+local function same (self, name_)
+  assert(is_object(self)                  ,"invalid argument #1 (object expected)")
+  assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
+  -- same shares the same parent
+  local par = parent(self)
+  local sam = par(name_, {})
+  -- metatable
+  local sm, pm = getmetatable(self), getmetatable(par)
+  if sm ~= pm then -- copy metatable
+    local cm=table.new(0,8) for k,v in pairs(sm) do cm[k] = v end
+    sm.__metatable = nil
+    setmetatable(sam, cm)
+    sm.__metatable, cm.__metatable = sm, cm
+  end
+  return sam
+end
+
+local function copy (self, name_)
+  assert(is_object(self)                  ,"invalid argument #1 (object expected)")
+  assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
+  local cpy = same(self, name_ or raw_get(self,'__id'))
+  local var, cvar = rawget(self,_var), rawget(cpy,_var)
+  local id  = rawget(cvar,'__id')
+  for k,v in pairs_iter(self) do cvar[k] = v end
+  cvar.__id = id
+  return cpy
+end
+
+MT.__same = same
+MT.__copy = copy
 
 -- flags
-
-local function is_valid_flag (n)
-  return is_number(n) and n >= flg_free and n <= 31
-end
-
-local function set_flag (self, n)
-  assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  rawset(self,_flg, bset(rawget(self,_flg) or 0, n))
-  return self
-end
-
-local function clear_flag (self, n)
-  assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  local flg = rawget(self,_flg) -- avoid to create slot _flg if not needed
-  if flg ~= nil then rawset(self,_flg, bclr(flg, n)) end
-  return self
-end
-
-local function test_flag (self, n)
-  assert(is_object(self)      , "invalid argument #1 (object expected)")
-  assert(is_valid_flag(n), "invalid argument #2 (valid flag id expected)")
-  return btst(rawget(self,_flg) or 0, n)
-end
 
 local flg_mask = lshift(-1, flg_free)
 local flg_notmask = bnot(flg_mask)
 
-local function get_flags(self)
+local function test_flag (self, n)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return band(rawget(self,_flg) or 0, flg_mask)
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  return btst(rawget(self,_flg) or 0, n)
 end
 
-local function set_flags(self, flags)
+local function set_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  if n >= flg_free then
+    rawset(self, _flg, bset(rawget(self,_flg) or 0, n))
+  end
+  return self
+end
+
+local function clear_flag (self, n)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(n)   , "invalid argument #2 (number expected)")
+  if n >= flg_free then
+    rawset(self, _flg, bclr(rawget(self,_flg) or 0, n))
+  end
+  return self
+end
+
+local function get_flags (self)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return rawget(self,_flg) or 0
+end
+
+local function test_flags (self, flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  local flg = band(rawget(self, _flg) or 0, flg_notmask)
-  rawset(self,_flg, bor(flg, band(flags, flg_mask)))
+  return band(rawget(self,_flg) or 0, flags) ~= 0
+end
+
+local function set_flags (self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  flags = band(flags, flg_mask)
+  rawset(self, _flg, bor(rawget(self, _flg) or 0, flags))
+  return self
+end
+
+local function clear_flags (self, flags)
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_number(flags), "invalid argument #2 (number expected)")
+  flags = band(flags, flg_mask)
+  rawset(self, _flg, band(rawget(self, _flg) or 0, bnot(flags)))
   return self
 end
 
 -- environments
 
-local function open_env (self, ctx)
+local _env = {} -- hidden key
+
+local function open_env (self, ctx_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(ctx) or is_function(ctx) or is_number(ctx) and ctx >= 1,
+  assert(is_nil(ctx_) or is_function(ctx_) or is_number(ctx_) and ctx_ >= 1,
                           "invalid argument #2 (not a function or < 1)")
-  ctx = is_function(ctx) and ctx or is_number(ctx) and ctx+1 or 2
+  ctx_ = is_function(ctx_) and ctx_ or is_number(ctx_) and ctx_+1 or 2
   assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
-  rawset(self, _env, { ctx=ctx, env=getfenv(ctx) })
+  rawset(self, _env, { ctx=ctx_, env=getfenv(ctx_) })
   rawset(self, self.__id, self) -- self reference
-  setfenv(ctx, self)
+  setfenv(ctx_, self)
   return self
 end
 
@@ -594,8 +722,82 @@ local function close_env (self)
   return reset_env(self)
 end
 
--- members
-M.__id  = 'Object'
+local function dump_env (self) -- for debug
+  for k,v in pairs(rawget(self,_var)) do
+    if is_rawtable(v) then
+      for k,v in pairs(v) do
+        print(k,'=',v)
+      end
+    elseif is_object(v) then
+      print(k,'=',name(v))
+    else
+      print(k,'=',v)
+    end
+  end
+end
+
+-- I/O ------------------------------------------------------------------------o
+
+-- dump obj members (including controlled inheritance)
+local function dumpobj (self, filnam_, class_, pattern_)
+  if is_object(filnam_) and is_nil(pattern_) then
+    filnam_, class_, pattern_ = nil, filnam_, class_ -- right shift
+  end
+  if is_string(class_) and is_nil(pattern_) then
+    class_, pattern_ = nil, class_                   -- right shift
+  end
+
+  class_, pattern_ = class_ or object, pattern_ or ''
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(class_)  , "invalid argument #3 (object expected)")
+  assert(is_string(pattern_), "invalid argument #4 (string expected)")
+
+  local tostring in MAD
+  local n, cnt, res, spc, str = 0, {}, {}, ""
+  while self and not rawequal(self, class_) do
+    local var = rawget(self,_var)
+    -- header
+    local id = rawget(var, '__id')
+    n, str = n+1, id and (" '" .. id .. "'") or ""
+    res[n] = spc .. "+ " .. tostring(self)
+    spc = spc .. "   "
+    -- variables
+    for k,v in kpairs(self) do
+      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k,pattern_) then
+        str = spc .. tostring(k)
+        if is_string(v) then
+          str = str .. " : '" .. tostring(v):sub(1,15) .. "'"
+        elseif is_function(v) then
+          str = str .. " := " .. tostring(v(self))
+        else
+          str = str .. " :  " .. tostring(v)
+        end
+        if cnt[k]
+        then str = str .. " (" .. string.rep('*', cnt[k]) .. ")" -- mark overrides
+        else cnt[k] = 0
+        end
+        cnt[k], n = cnt[k]+1, n+1
+        res[n] = str
+      end
+    end
+    self = parent(self)
+  end
+  assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
+
+  -- return result as a string
+  if filnam_ == '-' then return table.concat(res, '\n') end
+
+  -- dump to file
+  local file = openfile(filnam_, 'w', '.dat')
+  for _,s in ipairs(res) do file:write(s,'\n') end
+  if is_string(filnam_) then file:close() else file:flush() end
+
+  return self
+end
+
+-- members --------------------------------------------------------------------o
+
+M.__id  = 'object'
 M.__par = parent
 M.first_free_flag = flg_free
 
@@ -606,23 +808,28 @@ M.is_instanceOf   = functor( is_instanceOf   )
 
 M.set_parent      = functor( set_parent      )
 M.set_readonly    = functor( set_readonly    )
+M.set_final       = functor( set_final       )
 
 M.get_varkeys     = functor( get_varkeys     )
 M.get_variables   = functor( get_variables   )
 M.set_variables   = functor( set_variables   )
 M.wrap_variables  = functor( wrap_variables  )
 
-M.set_functions   = functor( set_functions   )
-
+M.set_methods     = functor( set_methods     )
 M.set_metamethods = functor( set_metamethods )
 
-M.insert_array    = functor( insert_array    )
-M.remove_array    = functor( remove_array    )
-M.bsearch_array   = functor( bsearch_array   )
-M.sort_array      = functor( sort_array      )
+M.insert          = functor( insert          )
+M.remove          = functor( remove          )
+M.move            = functor( move            )
+M.sort            = functor( sort            )
+M.bsearch         = functor( bsearch_        )
+M.lsearch         = functor( lsearch_        )
 M.clear_array     = functor( clear_array     )
 M.clear_variables = functor( clear_variables )
 M.clear_all       = functor( clear_all       )
+
+M.same            = functor( same            )
+M.copy            = functor( copy            )
 
 M.raw_len         = functor( raw_len         )
 M.raw_get         = functor( raw_get         )
@@ -637,24 +844,35 @@ M.test_flag       = functor( test_flag       )
 M.clear_flag      = functor( clear_flag      )
 M.get_flags       = functor( get_flags       )
 M.set_flags       = functor( set_flags       )
+M.test_flags      = functor( test_flags      )
+M.clear_flags     = functor( clear_flags     )
 
 M.open_env        = functor( open_env        )
-M.is_open_env     = functor( is_open_env     )
 M.reset_env       = functor( reset_env       )
 M.close_env       = functor( close_env       )
+M.is_open_env     = functor( is_open_env     )
+
+M.dumpobj         = functor( dumpobj         )
 
 -- aliases
 M.parent = parent
 M.name   = function(s) return s.__id end
 M.set    = M.set_variables
 M.get    = M.get_variables
-M.getk   = M.get_varkeys
 
--- root Object variables = module
-Object = setmetatable({[_var]=M, [_flg]=bset(0,flg_ro)}, MT)
+-- metatables -----------------------------------------------------------------o
+
+-- root object variables = module
+object = setmetatable({[_var]=M}, MT)
 
  -- parent link
-setmetatable(M, Object)
+setmetatable(M, object)
+
+-- protect against changing metatable
+MT.__metatable = MT
+
+-- set as readonly
+object:set_readonly()
 
 -- end of object model --------------------------------------------------------o
 
@@ -688,10 +906,10 @@ local _msg = {
 }
 
 function TestLuaObject:testConstructor()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
-  local p3 = Object('p3',{})
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object
+  local p3 = object('p3',{})
 
   local p00 = p0 'p00' {}
   local p01 = p0 {}
@@ -699,7 +917,7 @@ function TestLuaObject:testConstructor()
   local p04 = p0('p04',{})
 
   -- ctor equivalence
-  assertEquals(p04, Object 'p04' {})
+  assertEquals(p04, object 'p04' {})
   assertEquals(p04, p0 'p04' {})
 
   -- read
@@ -727,9 +945,9 @@ function TestLuaObject:testConstructor()
 end
 
 function TestLuaObjectErr:testConstructor()
-  local p0 = Object 'p0' {}
-  local p2 = Object 'p2'
-  local p3 = Object
+  local p0 = object 'p0' {}
+  local p2 = object 'p2'
+  local p3 = object
   local p00 = p0 'p02'
 
   local notraw_table = setmetatable({}, {})
@@ -740,34 +958,34 @@ function TestLuaObjectErr:testConstructor()
     "forbidden read access to incomplete object",
     "forbidden write access to incomplete object",
     "invalid argument #1 (string or raw table expected)",
-    "invalid argument #2 (raw table expected)"
+    "invalid argument #2 (raw table expected)",
+    "forbidden write access to 'object' (readonly object or variable)",
   }
   local a
-
   assertErrorMsgContains(msg[1], get, p2, a)      -- read
   assertErrorMsgContains(msg[1], get, p00, a)     -- read child
 
   assertErrorMsgContains(msg[2], set, p2, a, '')  -- write
   assertErrorMsgContains(msg[2], set, p00, a, '') -- write child
 
-  assertErrorMsgContains(_msg[3], set, p3, a, '') -- write
+  assertErrorMsgContains(msg[5], set, p3, a, '')  -- write
 
-  assertErrorMsgContains(msg[3], Object, true)
-  assertErrorMsgContains(msg[3], Object, 1)
-  assertErrorMsgContains(msg[3], Object, myFunc)
-  assertErrorMsgContains(msg[3], Object, Object)
-  assertErrorMsgContains(msg[3], Object, notraw_table)
+  assertErrorMsgContains(msg[3], object, true)
+  assertErrorMsgContains(msg[3], object, 1)
+  assertErrorMsgContains(msg[3], object, myFunc)
+  assertErrorMsgContains(msg[3], object, object)
+  assertErrorMsgContains(msg[3], object, notraw_table)
 
-  assertErrorMsgContains(msg[4], Object, 'p', true)
-  assertErrorMsgContains(msg[4], Object, 'p', 1)
-  assertErrorMsgContains(msg[4], Object, 'p', '1')
-  assertErrorMsgContains(msg[4], Object, 'p', myFunc)
-  assertErrorMsgContains(msg[4], Object, 'p', Object)
-  assertErrorMsgContains(msg[4], Object, 'p', notraw_table)
+  assertErrorMsgContains(msg[4], object, 'p', true)
+  assertErrorMsgContains(msg[4], object, 'p', 1)
+  assertErrorMsgContains(msg[4], object, 'p', '1')
+  assertErrorMsgContains(msg[4], object, 'p', myFunc)
+  assertErrorMsgContains(msg[4], object, 'p', object)
+  assertErrorMsgContains(msg[4], object, 'p', notraw_table)
 end
 
 function TestLuaObject:testInheritance()
-  local p0 = Object {}
+  local p0 = object {}
   local p1 = p0 { x=3, y=2, z=1  }
   local p2 = p1 { x=2, y=1 }
   local p3 = p2 { x=1  }
@@ -828,10 +1046,10 @@ function TestLuaObject:testInheritance()
 end
 
 function TestLuaObject:testIsObject()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object 'p2'
-  local p3 = Object
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object 'p2'
+  local p3 = object
 
   local p00 = p0 'p00' {}
   local p01 = p0 {}
@@ -854,16 +1072,16 @@ function TestLuaObject:testIsObject()
 end
 
 function TestLuaObject:testIsClass()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object 'p2'
-  local p3 = Object
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object 'p2'
+  local p3 = object
   local p00 = p0 'p00' {}
   local p01 = p0 {}
   local p02 = p0 'p02'
   local p03 = p0
 
-  assertTrue ( is_class(Object) )
+  assertTrue ( is_class(object) )
   assertTrue ( is_class(p0) )
   assertTrue ( is_class(p3) )
   assertTrue ( is_class(p03) )
@@ -880,110 +1098,91 @@ function TestLuaObject:testIsClass()
 end
 
 function TestLuaObject:testIsReadonly()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object 'p2'
-  local p3 = Object
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object 'p2' {}
+  local p3 = object
   local p00 = p0 'p00' {}
   local p01 = p0 {}
-  local p02 = p0 'p02'
+  local p02 = p0 'p02' {}
   local p03 = p0
 
-  assertFalse( is_readonly(p0)  )
-  assertFalse( is_readonly(p1)  )
-  assertFalse( is_readonly(p2)  )
-  assertTrue ( is_readonly(p3)  )
-  assertFalse( is_readonly(p00) )
-  assertFalse( is_readonly(p01) )
-  assertFalse( is_readonly(p02) )
-  assertFalse( is_readonly(p03) )
-  assertTrue ( is_readonly(p03:set_readonly(true)) )
+  assertFalse( p0 :is_readonly() )
+  assertFalse( p1 :is_readonly() )
+  assertFalse( p2 :is_readonly() )
+  assertTrue ( p3 :is_readonly() )
+  assertFalse( p00:is_readonly() )
+  assertFalse( p01:is_readonly() )
+  assertFalse( p02:is_readonly() )
+  assertFalse( p03:is_readonly() )
+  assertTrue ( p03:set_readonly(true):is_readonly() )
   p0:set_readonly(true)
   assertTrue ( p0:is_readonly()  )
   assertFalse( p00:is_readonly() )
 end
 
-function TestLuaObjectErr:testIsReadonly()
-  local p0 = Object 'p0' {}
-  local p1 = p0 'p1' {}
-  local msg = {
-    "invalid argument #1 (forbidden access to 'Object')",
-    "invalid argument #2 (boolean or nil expected)"
-  }
-
-  assertErrorMsgContains(msg[1], Object.set_readonly, Object, true)
-  assertErrorMsgContains(msg[1], Object.set_readonly, Object, false)
-  assertErrorMsgContains(msg[1], Object.set_readonly, Object, nil)
-
-  assertErrorMsgContains(msg[2], p0.set_readonly, p0, 1)
-  assertErrorMsgContains(msg[2], p1.set_readonly, p0, '')
-  assertErrorMsgContains(msg[2], p1.set_readonly, p0, {})
-  assertErrorMsgContains(msg[2], p1.set_readonly, p0, myFunc)
-  assertErrorMsgContains(msg[2], p1.set_readonly, p0, p0)
-end
-
 function TestLuaObject:testSetParent()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local p00 = p0  "p00" {}
   local p01 = p0  "p01" { a = true }
-  local p02 = p01 "p01" { b = true }
+  local p02 = p00 "p02" { b = true }
 
-  assertNil(p00.a)
-  p00:set_parent(p02)
-  assertTrue(p00.a)
-  assertTrue(p00.b)
+  assertNil(p02.a)
+  p02:set_parent(p01)
+  assertTrue(p02.a)
+  assertTrue(p02.b)
 end
 
 function TestLuaObjectErr:testSetParent()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }:set_readonly()
 
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.set_parent, objectErr[i])
     assertErrorMsgContains(_msg[2], p0.set_parent, p0, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.set_parent, p1, p1)
-  assertErrorMsgContains(_msg[3], Object.set_parent, Object, p1)
+  assertErrorMsgContains(_msg[3], object.set_parent, p1, p1)
+  assertErrorMsgContains(_msg[3], object.set_parent, object, p1)
 end
 
 function TestLuaObject:testIsInstanceOf()
-  local p0 = Object {}
+  local p0 = object {}
   local p1 = p0 { }
   local p2 = p1 { }
   local p3 = p1 { }
   local p4 = p3 { }
 
-  assertFalse( Object:is_instanceOf(Object) )
+  assertFalse( object:is_instanceOf(object) )
 
-  assertTrue ( p0:is_instanceOf(Object) )
+  assertTrue ( p0:is_instanceOf(object) )
   assertFalse( p0:is_instanceOf(p0) )
   assertFalse( p0:is_instanceOf(p1) )
   assertFalse( p0:is_instanceOf(p2) )
   assertFalse( p0:is_instanceOf(p3) )
   assertFalse( p0:is_instanceOf(p4) )
 
-  assertTrue ( p1:is_instanceOf(Object) )
+  assertTrue ( p1:is_instanceOf(object) )
   assertTrue ( p1:is_instanceOf(p0) )
   assertFalse( p1:is_instanceOf(p1) )
   assertFalse( p1:is_instanceOf(p2) )
   assertFalse( p1:is_instanceOf(p3) )
   assertFalse( p1:is_instanceOf(p4) )
 
-  assertTrue ( p2:is_instanceOf(Object) )
+  assertTrue ( p2:is_instanceOf(object) )
   assertTrue ( p2:is_instanceOf(p0) )
   assertTrue ( p2:is_instanceOf(p1) )
   assertFalse( p2:is_instanceOf(p2) )
   assertFalse( p2:is_instanceOf(p3) )
   assertFalse( p2:is_instanceOf(p4) )
 
-  assertTrue ( p3:is_instanceOf(Object) )
+  assertTrue ( p3:is_instanceOf(object) )
   assertTrue ( p3:is_instanceOf(p0) )
   assertTrue ( p3:is_instanceOf(p1) )
   assertFalse( p3:is_instanceOf(p2) )
   assertFalse( p3:is_instanceOf(p3) )
   assertFalse( p3:is_instanceOf(p4) )
 
-  assertTrue ( p4:is_instanceOf(Object) )
+  assertTrue ( p4:is_instanceOf(object) )
   assertTrue ( p4:is_instanceOf(p0) )
   assertTrue ( p4:is_instanceOf(p1) )
   assertFalse( p4:is_instanceOf(p2) )
@@ -995,75 +1194,59 @@ function TestLuaObject:testIsInstanceOf()
   assertFalse( is_instanceOf({}, p0) )
 end
 
-function TestLuaObject:testIsValidFlag()
-  local p0 = Object 'p0' {}
-
-  assertFalse(is_valid_flag(0))
-  assertFalse(is_valid_flag(1))
-  assertTrue (is_valid_flag(2))
-  for i=2, 31 do
-    assertTrue(is_valid_flag(i))
-  end
-  assertFalse(is_valid_flag(33))
-
-  assertEquals(p0.first_free_flag, 2)
-end
-
 function TestLuaObjectErr:testSetFlag()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local msg = {
-    "invalid argument #2 (valid flag id expected)"
+    "invalid argument #2 (number expected)"
   }
 
-  for i=1,#objectErr+1 do
+  for i=2,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.set_flag, objectErr[i])
-    assertErrorMsgContains(msg[1], p0.set_flag, p0, objectErr[i])
+    assertErrorMsgContains( msg[1], p0.set_flag, p0, objectErr[i])
   end
-  assertErrorMsgContains(msg[1], p0.set_flag, p0, 0)
-  assertErrorMsgContains(msg[1], p0.set_flag, p0, 32)
 end
 
 function TestLuaObjectErr:testClearFlag()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local msg = {
-    "invalid argument #2 (valid flag id expected)"
+    "invalid argument #2 (number expected)"
   }
 
-  for i=1,#objectErr+1 do
+  for i=2,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.clear_flag, objectErr[i])
-    assertErrorMsgContains(msg[1], p0.clear_flag, p0, objectErr[i])
+    assertErrorMsgContains( msg[1], p0.clear_flag, p0, objectErr[i])
   end
-  assertErrorMsgContains(msg[1], p0.clear_flag, p0, 0)
-  assertErrorMsgContains(msg[1], p0.clear_flag, p0, 32)
 end
 
 function TestLuaObjectErr:testTestFlag()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local msg = {
-    "invalid argument #2 (valid flag id expected)"
+    "invalid argument #2 (number expected)"
   }
 
-  for i=1,#objectErr+1 do
+  for i=2,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.test_flag, objectErr[i])
-    assertErrorMsgContains(msg[1], p0.test_flag, p0, objectErr[i])
+    assertErrorMsgContains( msg[1], p0.test_flag, p0, objectErr[i])
   end
-  assertErrorMsgContains(msg[1], p0.test_flag, p0, 0)
-  assertErrorMsgContains(msg[1], p0.test_flag, p0, 32)
 end
 
 function TestLuaObject:testSetGetFlags()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object {} :set_readonly()
+  local p3 = object
   local p00 = p0 'p00' {}
 
   assertEquals(p0:set_flags(-1), p0)
   assertEquals(p1:set_flags(-1), p1)
   assertEquals(p2:set_flags(-1), p2)
+  assertEquals(p3:set_flags(-1), p3)
 
-  assertEquals(p0:get_flags(), tobit(0xfffffffc))
-  assertEquals(p1:get_flags(), tobit(0xfffffffc))
-  assertEquals(p2:get_flags(), tobit(0xfffffffc))
+  local tobit in MAD.operator
+  assertEquals(p0:get_flags(), tobit(0xfffffffe)) -- object (class+        )
+  assertEquals(p1:get_flags(), tobit(0xfffffffc)) -- object (     +        )
+  assertEquals(p2:get_flags(), tobit(0xfffffffd)) -- object (     +readonly)
+  assertEquals(p3:get_flags(), tobit(0xffffffff)) -- object (class+readonly)
 
   -- no inheritance
   p0:set_flags(-1)
@@ -1075,7 +1258,7 @@ function TestLuaObject:testSetGetFlags()
 end
 
 function TestLuaObjectErr:testSetGetFlags()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local msg = {
     "invalid argument #2 (number expected)"
   }
@@ -1092,9 +1275,9 @@ function TestLuaObjectErr:testSetGetFlags()
 end
 
 function TestLuaObject:testClearSetTestFlag()
-  local p0 = Object 'p0' {}
-  local p1 = Object {}
-  local p2 = Object
+  local p0 = object 'p0' {}
+  local p1 = object {}
+  local p2 = object
   local p00 = p0 'p00' {}
 
   assertFalse(p0:test_flag(2))
@@ -1118,7 +1301,7 @@ function TestLuaObject:testClearSetTestFlag()
 end
 
 function TestLuaObject:testValueSemantic()
-  local p0 = Object {}
+  local p0 = object {}
   local p1 = p0 { x=3, y=2, z=function(s) return 2*s.y end}
   local p2 = p1 { x=2, y=function(s) return 3*s.x end }
   local p3 = p2 { x=function() return 5 end }
@@ -1176,7 +1359,7 @@ function TestLuaObject:testValueSemantic()
 end
 
 function TestLuaObject:testArrayValueSemantic()
-  local p0 = Object {}
+  local p0 = object {}
   local p1 = p0 { x=3, y=2, z=function(s) return { x=3*s.x, y=2*s.y } end }
   local p2 = p1 { x=2, y=function(s) return 2*s.x end }
   local p3 = p2 { x=function() return 5 end }
@@ -1216,13 +1399,13 @@ function TestLuaObject:testArrayValueSemantic()
 end
 
 function TestLuaObject:testSpecialVariable()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local p1 = p0 { x=3, y=function(s) return 2*s.x end, z=function(s) return { x=3*s.x, y=2*s.y } end }
   local p2 = p1 { x=2, y=function(s) return 4*s.x end }
   local p3 = p2 { x=function() return 5 end }
   local p4 = p3 {}
 
-  assertTrue     ( p0.parent == Object )
+  assertTrue     ( p0.parent == object )
   assertTrue     ( p1.parent == p0 )
   assertTrue     ( p2.parent == p1 )
   assertTrue     ( p3.parent == p2 )
@@ -1238,7 +1421,7 @@ function TestLuaObject:testSpecialVariable()
   assertEquals   ( p0      , { __id='p0' } )
   assertEquals   ( p1.__id , 'p0' )
 
-  assertEquals   ( p0.parent.name , 'Object' )
+  assertEquals   ( p0.parent.name , 'object' )
   assertTrue     ( p0.parent:is_readonly() )
   assertFalse    ( p0:is_readonly() )
 
@@ -1289,7 +1472,7 @@ function TestLuaObject:testSpecialVariable()
 end
 
 function TestLuaObject:testIterators()
-  local p0 = Object 'p0' { 2, function() return 3 end, 4, x=1, y=2, z=function(s) return s.x*3 end }
+  local p0 = object 'p0' { 2, function() return 3 end, 4, x=1, y=2, z=function(s) return s.x*3 end }
   local p1 = p0 'p1' { 7, function() return 8 end, x=-1, y={} }
   local c
 
@@ -1298,9 +1481,9 @@ function TestLuaObject:testIterators()
 
   -- bypass function evaluation, v may be a function but loops get same length
   c=0 for k,v in  pairs(p0) do c=c+1 assertEquals(p0:var_raw(k), v) end
-  assertEquals(c , 4)
+  assertEquals(c , 7)
   c=0 for k,v in  pairs(p1) do c=c+1 assertEquals(p1:var_raw(k), v) end
-  assertEquals(c , 3)
+  assertEquals(c , 5)
   c=0 for i,v in ipairs(p0) do c=c+1 assertEquals(p0:var_raw(i), v) end
   assertEquals(c , 3)
   c=0 for i,v in ipairs(p1) do c=c+1 assertEquals(p1:var_raw(i), v) end
@@ -1314,7 +1497,7 @@ end
 
 function TestLuaObject:testGetVariables()
   local f = function() return 4 end
-  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end, z2=f}
+  local p0 = object 'p0' { x=1, y=2, z=function() return 3 end, z2=f}
   local p1 = p0 'p1' { x=-1, y={} }
   local vs = {'name', 'x','y','z'}
 
@@ -1340,7 +1523,7 @@ function TestLuaObject:testGetVariables()
 end
 
 function TestLuaObjectErr:testGetVariables()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local msg = {
     "invalid argument #2 (iterable expected)"
   }
@@ -1355,7 +1538,7 @@ function TestLuaObjectErr:testGetVariables()
 end
 
 function TestLuaObject:testSetVariables()
-  local p0 = Object 'p0' {}
+  local p0 = object 'p0' {}
   local p1 = p0 'p1' {}
   local vs = {'name', 'x','y','z'}
 
@@ -1391,7 +1574,7 @@ function TestLuaObject:testSetVariables()
 end
 
 function TestLuaObjectErr:testSetVariables()
-  local p0 = Object 'p0' { x=1 }
+  local p0 = object 'p0' { x=1 }
   local p1 = p0 'p1' { y={} }
   local p2 = p0 'p2' {}:set_readonly()
   local vs = {'name', 'x','y','z'}
@@ -1403,7 +1586,7 @@ function TestLuaObjectErr:testSetVariables()
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.set, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.set, Object, {})
+  assertErrorMsgContains(_msg[3], object.set, object, {})
   assertErrorMsgContains(_msg[3], p2.set, p2, {})
 
   assertErrorMsgContains(msg[1], p0.set, p0, 0)
@@ -1418,7 +1601,7 @@ end
 
 function TestLuaObject:testWrapVariables()
   local f = function() return 3 end
-  local p0 = Object 'p0' { x=1, y=2, z=f }
+  local p0 = object 'p0' { x=1, y=2, z=f }
   local p1 = p0 'p1' { x=-1, y={} }
   local vw = {'name', 'x','y','z'}
 
@@ -1432,14 +1615,14 @@ function TestLuaObject:testWrapVariables()
   assertEquals(p1.z(), 3)
 
   -- keep functor semantic
-  p0:set_functions{a=function(s) return s.name end}
+  p0:set_methods{a=function(s) return s.name end}
   p0:wrap_variables{a=function(prev) return function(s) return prev(s.parent)end end}
-  assertEquals(p0:a(), "Object")
+  assertEquals(p0:a(), "object")
 
   -- concrete example: change angle
   local eps = 2.2204460492503130e-16
   local ksb = 0.85
-  local rbend = Object 'rbend' {}
+  local rbend = object 'rbend' {}
   local r1 = rbend 'r1' {
     angle =function() return ksb end,
     h=3,
@@ -1454,18 +1637,18 @@ function TestLuaObject:testWrapVariables()
 end
 
 function TestLuaObjectErr:testWrapVariables()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { y=1 }
   local p1 = p0 'p1' {}:set_readonly()
   local msg = {
     "invalid argument #2 (mappable expected)",
+    "invalid variable (nil value)",
     "invalid wrapper (callable expected)",
-    "invalid variable (nil value)"
   }
 
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.wrap_variables, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.wrap_variables, Object, {})
+  assertErrorMsgContains(_msg[3], object.wrap_variables, object, {})
   assertErrorMsgContains(_msg[3], p1.wrap_variables, p1, {})
 
   assertErrorMsgContains(msg[1], p0.wrap_variables, p0, 0)
@@ -1478,15 +1661,19 @@ function TestLuaObjectErr:testWrapVariables()
   assertErrorMsgContains(msg[2], p0.wrap_variables, p0, {z=true})
   assertErrorMsgContains(msg[2], p0.wrap_variables, p0, {z=""})
   assertErrorMsgContains(msg[2], p0.wrap_variables, p0, {z={}})
+  assertErrorMsgContains(msg[2], p0.wrap_variables, p0, {z2=function() return 2 end})
 
-  assertErrorMsgContains(msg[3], p0.wrap_variables, p0, {z2=function() return 2 end})
+  assertErrorMsgContains(msg[3], p0.wrap_variables, p0, {y=0})
+  assertErrorMsgContains(msg[3], p0.wrap_variables, p0, {y=true})
+  assertErrorMsgContains(msg[3], p0.wrap_variables, p0, {y=""})
+  assertErrorMsgContains(msg[3], p0.wrap_variables, p0, {y={}})
 end
 
 function TestLuaObject:testSetFunction()
-  local p0 = Object 'p0' { z=function() return 3 end }
+  local p0 = object 'p0' { z=function() return 3 end }
   local p1 = p0 'p1' {}
 
-  p0:set_functions { x=function() return 2 end, y=function(s,n) return s.z*n end }
+  p0:set_methods { x=function() return 2 end, y=function(s,n) return s.z*n end }
 
   assertFalse ( is_function(p0.x) )
   assertFalse ( is_function(p0.y) )
@@ -1506,7 +1693,7 @@ function TestLuaObject:testSetFunction()
   assertTrue  ( is_functor(p1.y) )
   assertTrue  ( is_number(p1.z) )
 
-  p1:set_functions({ x=function() return function() return 2 end end, y =function(s) return function(n) return s.z*n end end })
+  p1:set_methods({ x=function() return function() return 2 end end, y =function(s) return function(n) return s.z*n end end })
 
   assertTrue  ( is_functor (p1.x)   )
   assertTrue  ( is_function(p1.x()) )
@@ -1523,8 +1710,8 @@ function TestLuaObject:testSetFunction()
   assertEquals( p1.y(3), 9)
 end
 
-function TestLuaObjectErr:testSetFunction()
-  local p0 = Object 'p0' { x=function() return 2 end }
+function TestLuaObjectErr:testSetMethods()
+  local p0 = object 'p0' { x=function() return 2 end }
   local p1 = p0 'p1' { y=function() return 2 end }
   local p2 = p0 'p2' {}:set_readonly()
   local msg = {
@@ -1535,30 +1722,30 @@ function TestLuaObjectErr:testSetFunction()
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.set_functions, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.set_methods, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.set_functions, Object, {})
-  assertErrorMsgContains(_msg[3], p2.set_functions, p2, {})
+  assertErrorMsgContains(_msg[3], object.set_methods, object, {})
+  assertErrorMsgContains(_msg[3], p2.set_methods, p2, {})
 
-  assertErrorMsgContains(msg[1], p0.set_functions, p0, 0)
-  assertErrorMsgContains(msg[1], p0.set_functions, p0, nil)
-  assertErrorMsgContains(msg[1], p0.set_functions, p0, true)
-  assertErrorMsgContains(msg[1], p0.set_functions, p0, "")
-  assertErrorMsgContains(msg[1], p0.set_functions, p0, myFunc)
+  assertErrorMsgContains(msg[1], p0.set_methods, p0, 0)
+  assertErrorMsgContains(msg[1], p0.set_methods, p0, nil)
+  assertErrorMsgContains(msg[1], p0.set_methods, p0, true)
+  assertErrorMsgContains(msg[1], p0.set_methods, p0, "")
+  assertErrorMsgContains(msg[1], p0.set_methods, p0, myFunc)
 
-  assertErrorMsgContains(msg[2], p0.set_functions, p0, {myFunc, 2, {3}})
+  assertErrorMsgContains(msg[2], p0.set_methods, p0, {myFunc, 2, {3}})
 
-  assertErrorMsgContains(msg[3], p0.set_functions, p0, {x=0})
-  assertErrorMsgContains(msg[3], p0.set_functions, p0, {x=true})
-  assertErrorMsgContains(msg[3], p0.set_functions, p0, {x=""})
-  assertErrorMsgContains(msg[3], p0.set_functions, p0, {x={}})
+  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=0})
+  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=true})
+  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=""})
+  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x={}})
 
-  assertErrorMsgContains(msg[4], p0.set_functions, p0, {x=function() return 3 end}, false)
-  assertErrorMsgContains(msg[4], p1.set_functions, p1, {y=function() return 3 end}, false)
+  assertErrorMsgContains(msg[4], p0.set_methods, p0, {x=function() return 3 end}, false)
+  assertErrorMsgContains(msg[4], p1.set_methods, p1, {y=function() return 3 end}, false)
 end
 
 function TestLuaObject:testSetMetamethod()
-  local p0 = Object 'p0' { 1, 2, z=function() return 3 end }
+  local p0 = object 'p0' { 1, 2, z=function() return 3 end }
   local p1 = p0 'p1' {}
   local tostr = function(s)
       local str = ''
@@ -1566,27 +1753,27 @@ function TestLuaObject:testSetMetamethod()
       return str .. '#=' .. tostring(#s)
     end
 
-  local p00 = Object 'p00' { 1, 2, z=function() return 3 end }
-  -- clone metatable shared with Object
+  local p00 = object 'p00' { 1, 2, z=function() return 3 end }
+  -- clone metatable shared with object
   p00:set_metamethods({ __tostring = tostr }, true)
-  assertEquals      (tostring(p00), 'z, __id, #=2')    -- tostring -> tostr
-  assertNotEquals   (tostring(p1), '__id, #=2')        -- builtin tostring
-  assertStrContains (tostring(p1), '<object>')         -- builtin tostring
+  assertEquals      (tostring(p00), '1, 2, z, __id, #=2') -- tostring -> tostr
+  assertNotEquals   (tostring(p1), '__id, #=2')           -- builtin tostring
+  assertStrContains (tostring(p1), "object: 'p1'")        -- builtin tostring
 
   -- p1 child of p0 and not yet a class
-  -- clone metatable shared with Object
+  -- clone metatable shared with object
   p1:set_metamethods({ __tostring = tostr }, true)
   assertEquals      (tostring(p1), '__id, #=2')        -- tostring -> tostr
 
   local p01 = p00 'p01' {} -- fresh p1
   p01:set_metamethods({ __tostring = tostr }, true)    -- clone need override
   assertEquals      (tostring(p01), '__id, #=2')       -- tostring -> tostr
-  p01:set_functions { x=function() return 2 end, y =function(s) return function(n) return s.z*n end end}
+  p01:set_methods { x=function() return 2 end, y =function(s) return function(n) return s.z*n end end}
   p01.z =function() return 3 end
   assertEquals      (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
 
   -- example of the help
-  local obj1 = Object 'obj1' { e = 3 }
+  local obj1 = object 'obj1' { e = 3 }
   obj1:set_metamethods({ __pow = function(s,p) return s.e^p end })
   assertEquals(obj1^3, 27)
   obj1:set_metamethods({ __tostring =function(s) return s.name .. " has e = " .. s.e end}, true)
@@ -1594,12 +1781,12 @@ function TestLuaObject:testSetMetamethod()
 end
 
 function TestLuaObjectErr:testSetMetamethod()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }
   local p2 = p0 'p2' { }:set_readonly()
   local msg = {
     "invalid argument #2 (mappable expected)",
-    "invalid metatable (class unexpected)",
+    "invalid metatable write access (unexpected class)",
     "invalid key (metamethod expected)",
     "cannot override metamethod"
   }
@@ -1607,7 +1794,7 @@ function TestLuaObjectErr:testSetMetamethod()
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.set_metamethods, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.set_metamethods, Object, {})
+  assertErrorMsgContains(_msg[3], object.set_metamethods, object, {})
   assertErrorMsgContains(_msg[3], p2.set_metamethods, p2, {})
 
   assertErrorMsgContains(msg[1], p0.set_metamethods, p0, 0)
@@ -1626,87 +1813,92 @@ function TestLuaObjectErr:testSetMetamethod()
 end
 
 function TestLuaObject:testGetVarKeys()
-  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end}
+  local p0 = object 'p0' { x=1, y=2, z=function() return 3 end}
   local p1 = p0 'p1' { x=-1, y={} }
+  local r  = {"parent", "first_free_flag", "name"}
+  local r2 = {"first_free_flag", "name", "parent", 'x','y','z'}
 
-  local t = Object:getk() assertEquals ( t, {} ) -- Object is excluded
-  t = p0:getk()             table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p0:getk(Object)       table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p0:getk(Object.__par) table.sort(t) assertEquals (t, {'x','y','z'})
+  local t = object:get_varkeys() assertEquals ( t, r ) -- object not excluded
+  t = p0:get_varkeys()             table.sort(t) assertEquals (t, r2)
+  t = p0:get_varkeys(object)       table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p0:get_varkeys(object.__par) table.sort(t) assertEquals (t, r2)
 
-  t = p1:getk()             table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p1:getk(p0.__par)     table.sort(t) assertEquals (t, {'x','y','z'})
-  t = p1:getk(p0)           table.sort(t) assertEquals (t, {'x','y'})
-  t = p1:getk(p1.__par)     table.sort(t) assertEquals (t, {'x','y'})
+  t = p1:get_varkeys()             table.sort(t) assertEquals (t, r2)
+  t = p1:get_varkeys(p0.__par)     table.sort(t) assertEquals (t, {'x','y','z'})
+  t = p1:get_varkeys(p0)           table.sort(t) assertEquals (t, {'x','y'})
+  t = p1:get_varkeys(p1.__par)     table.sort(t) assertEquals (t, {'x','y'})
 
-  assertEquals(Object.getk, Object.get_varkeys)
 end
 
 function TestLuaObjectErr:testGetVarKeys()
-  local p0 = Object 'p0' { x=1, y=2, z=function() return 3 end }
+  local p0 = object 'p0' { x=1, y=2, z=function() return 3 end }
   local p1 = p0 'p1' { }
   local msg = {
     "invalid argument #2 (parent of argument #1 expected)"
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.getk, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.get_varkeys, objectErr[i])
   end
-  assertErrorMsgContains(_msg[2], p0.getk, p0, 0)
-  assertErrorMsgContains(_msg[2], p0.getk, p0, true)
-  assertErrorMsgContains(_msg[2], p0.getk, p0, "")
-  assertErrorMsgContains(_msg[2], p0.getk, p0, {})
-  assertErrorMsgContains(_msg[2], p0.getk, p0, myFunc)
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, 0)
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, true)
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, "")
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, {})
+  assertErrorMsgContains(_msg[2], p0.get_varkeys, p0, myFunc)
 
-  assertErrorMsgContains(msg[1], p0.getk, p0, p1)
+  assertErrorMsgContains(msg[1], p0.get_varkeys, p0, p1)
 end
 
-function TestLuaObject:testInsertArray()
-  local p0 = Object 'p0' { 1, 2, 3 }
+function TestLuaObject:testInsert()
+  local p0 = object 'p0' { 1, 2, 3 }
   local p1 = p0 'p1' { }
 
-  assertEquals(p0:insert_array(4,4), p0)
+  assertEquals(p0:insert(4,4), p0)
   assertEquals(p0[4], 4)
   assertEquals(p1[4], 4)
 
-  assertEquals(p1:insert_array(5,5), p1)
+  assertEquals(p1:insert(5,5), p1)
   assertEquals(p1[5], 5)
 
-  p0:insert_array(2,"test")
+  p0:insert(2,"test")
   assertEquals(p0[1], 1)
   assertEquals(p0[2], "test")
   assertEquals(p0[3], 2)
   assertEquals(p0[4], 3)
 
-  p0:insert_array(1000,"test")
+  p0:insert(1000,"test")
   assertEquals(p0[1000], "test")
 end
 
-function TestLuaObjectErr:testInsertArray()
-  local p0 = Object 'p0' { 1, 2, 3 }
+function TestLuaObjectErr:testInsert()
+  local p0 = object 'p0' { 1, 2, 3 }
   local p1 = p0 'p1' {}:set_readonly()
   local msg = {
-    "invalid argument #2 (number expected)"
+    "bad argument #2 to 'insert' (number expected, got nil)",
+    "bad argument #2 to 'insert' (number expected, got boolean)",
+    "bad argument #2 to 'insert' (number expected, got string)",
+    "bad argument #2 to 'insert' (number expected, got table)",
+    "bad argument #2 to 'insert' (number expected, got function)",
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.insert_array, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.insert, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.insert_array, Object, 1)
-  assertErrorMsgContains(_msg[3], p1.insert_array, p1, 1)
+  assertErrorMsgContains(_msg[3], object.insert, object, 1)
+  assertErrorMsgContains(_msg[3], p1.insert, p1, 1)
 
-  assertErrorMsgContains(msg[1], p0.insert_array, p0, nil)
-  assertErrorMsgContains(msg[1], p0.insert_array, p0, true)
-  assertErrorMsgContains(msg[1], p0.insert_array, p0, "")
-  assertErrorMsgContains(msg[1], p0.insert_array, p0, {})
-  assertErrorMsgContains(msg[1], p0.insert_array, p0, myFunc)
+  assertErrorMsgContains(msg[1], p0.insert, p0, nil)
+  assertErrorMsgContains(msg[2], p0.insert, p0, true)
+  assertErrorMsgContains(msg[3], p0.insert, p0, "")
+  assertErrorMsgContains(msg[4], p0.insert, p0, {})
+  assertErrorMsgContains(msg[5], p0.insert, p0, myFunc)
 end
 
-function TestLuaObject:testRemoveArray()
-  local p0 = Object 'p0' { 1, 2, 3, 4 }
+function TestLuaObject:testRemove()
+  local p0 = object 'p0' { 1, 2, 3, 4 }
   local p1 = p0 'p1' { }
 
-  assertEquals(p0:remove_array(2), 2)
+  assertEquals(p0:remove(2), 2)
   assertEquals(p0[1], 1)
   assertEquals(p0[2], 3)
   assertEquals(p0[3], 4)
@@ -1714,7 +1906,7 @@ function TestLuaObject:testRemoveArray()
   assertEquals(p1[2], 3)
   assertEquals(p1[3], 4)
 
-  assertEquals(p1:remove_array(2), nil)
+  assertEquals(p1:remove(2), nil)
   assertEquals(p0[1], 1)
   assertEquals(p0[2], 3)
   assertEquals(p0[3], 4)
@@ -1723,87 +1915,89 @@ function TestLuaObject:testRemoveArray()
   assertEquals(p1[3], 4)
 end
 
-function TestLuaObjectErr:testRemoveArray()
-  local p0 = Object 'p0' { 1, 2, 3, 4 }
+function TestLuaObjectErr:testRemove()
+  local p0 = object 'p0' { 1, 2, 3, 4 }
   local p1 = p0 'p1' {}:set_readonly()
   local msg = {
-    "invalid argument #2 (number expected)"
+    "bad argument #2 to '?' (number expected, got boolean)",
+    "bad argument #2 to '?' (number expected, got string)",
+    "bad argument #2 to '?' (number expected, got table)",
+    "bad argument #2 to '?' (number expected, got function)",
   }
 
-  for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.remove_array, objectErr[i])
-  end
-  assertErrorMsgContains(_msg[3], Object.remove_array, Object, 1)
-  assertErrorMsgContains(_msg[3], p1.remove_array, p1, 1)
+  assertErrorMsgContains(_msg[3], object.remove, object, 1)
+  assertErrorMsgContains(_msg[3], p1.remove, p1, 1)
 
-  assertErrorMsgContains(msg[1], p0.remove_array, p0, nil)
-  assertErrorMsgContains(msg[1], p0.remove_array, p0, true)
-  assertErrorMsgContains(msg[1], p0.remove_array, p0, "")
-  assertErrorMsgContains(msg[1], p0.remove_array, p0, {})
-  assertErrorMsgContains(msg[1], p0.remove_array, p0, myFunc)
+  assertErrorMsgContains(msg[1], p0.remove, p0, true)
+  assertErrorMsgContains(msg[2], p0.remove, p0, "")
+  assertErrorMsgContains(msg[3], p0.remove, p0, {})
+  assertErrorMsgContains(msg[4], p0.remove, p0, myFunc)
 end
 
-function TestLuaObject:testBsearchArray()
-  local p0 = Object 'p0' { 1, 2, 2, 2, 3, 4, 5 }
+function TestLuaObject:testBsearch()
+  local p0 = object 'p0' { 1, 2, 2, 2, 3, 4, 5 }
+
 
   local res, resEq = {}, {}
   for i=1,7 do
-    res[i]   = p0:bsearch_array(i, lt)
-    resEq[i] = p0:bsearch_array(i, le)
+    res[i]   = p0:bsearch(i, lt)
+    resEq[i] = p0:bsearch(i, le)
   end
 
   assertEquals(res  , {1, 2, 5, 6, 7, 8, 8})
   assertEquals(resEq, {2, 5, 6, 7, 8, 8, 8})
 
   res, resEq = {}, {}
-  p0:sort_array(gt)
+  p0:sort(gt)
   for i=1,7 do
-    res[i]   = p0:bsearch_array(i, gt)
-    resEq[i] = p0:bsearch_array(i, ge)
+    res[i]   = p0:bsearch(i, gt)
+    resEq[i] = p0:bsearch(i, ge)
   end
 
   assertEquals(res  , {7, 4, 3, 2, 1, 1, 1})
   assertEquals(resEq, {8, 7, 4, 3, 2, 1, 1})
 end
 
-function TestLuaObjectErr:testBsearchArray()
-  local p0 = Object 'p0' { }
+function TestLuaObjectErr:testBsearch()
+  local p0 = object 'p0' { }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.bsearch_array, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.bsearch, objectErr[i])
   end
 end
 
-function TestLuaObject:testSortArray()
-  local p0 = Object 'p0' { 1, 5, 2, -10, 3, 4, 2, 200 }
+function TestLuaObject:testSort()
+  local p0 = object 'p0' { 1, 5, 2, -10, 3, 4, 2, 200 }
   local p1 = p0 'p1' { }
 
-  p0:sort_array(lt)
+  p0:sort(lt)
   assertEquals(p0:get{1,2,3,4,5,6,7,8}, {-10,1,2,2,3,4,5,200})
-  p0:sort_array(gt)
+  p0:sort(gt)
   assertEquals(p0:get{1,2,3,4,5,6,7,8}, {200,5,4,3,2,2,1,-10})
 end
 
-function TestLuaObjectErr:testSortArray()
-  local p0 = Object 'p0' { 1, 5, 2, -10, 3, 4, 2, 200 }
+function TestLuaObjectErr:testSort()
+  local p0 = object 'p0' { 1, 5, 2, -10, 3, 4, 2, 200 }
   local p1 = p0 'p1' {}:set_readonly()
   local msg = {
-    "invalid argument #2 (callable expected)"
+    "bad argument #2 to 'sort' (function expected, got boolean)",
+    "bad argument #2 to 'sort' (function expected, got number)",
+    "bad argument #2 to 'sort' (function expected, got table)",
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.sort_array, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.sort, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.sort_array, Object)
-  assertErrorMsgContains(_msg[3], p1.sort_array, p1)
+  assertErrorMsgContains(_msg[3], object.sort, object)
+  assertErrorMsgContains(_msg[3], p1.sort, p1)
 
-  assertErrorMsgContains(msg[1], p0.sort_array, p0, 1)
-  assertErrorMsgContains(msg[1], p0.sort_array, p0, true)
-  assertErrorMsgContains(msg[1], p0.sort_array, p0, {})
+  assertErrorMsgContains(msg[1], p0.sort, p0, true)
+  assertErrorMsgContains(msg[2], p0.sort, p0, 1)
+  assertErrorMsgContains(msg[3], p0.sort, p0, {})
 end
 
 function TestLuaObject:testClearArray()
-  local p0 = Object 'p0' {
+  local p0 = object 'p0' {
       1,   true,   "",    {},    myFunc,
     x=1, y=true, z="", z2={}, z3=myFunc
   }
@@ -1834,18 +2028,18 @@ function TestLuaObject:testClearArray()
 end
 
 function TestLuaObjectErr:testClearArray()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' {}:set_readonly()
 
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.clear_array, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.clear_array, Object)
+  assertErrorMsgContains(_msg[3], object.clear_array, object)
   assertErrorMsgContains(_msg[3], p1.clear_array, p1)
 end
 
 function TestLuaObject:testClearVariables()
-  local p0 = Object 'p0' {
+  local p0 = object 'p0' {
       1,   true,   "",    {},    myFunc,
     x=1, y=true, z="", z2={}, z3=myFunc
   }
@@ -1880,18 +2074,18 @@ function TestLuaObject:testClearVariables()
 end
 
 function TestLuaObjectErr:testClearVariables()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' {}:set_readonly()
 
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.clear_variables, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.clear_variables, Object)
+  assertErrorMsgContains(_msg[3], object.clear_variables, object)
   assertErrorMsgContains(_msg[3], p1.clear_variables, p1)
 end
 
 function TestLuaObject:testClearAll()
-  local p0 = Object 'p0' {
+  local p0 = object 'p0' {
       1,   true,   "",    {},    myFunc,
     x=1, y=true, z="", z2={}, z3=myFunc
   }
@@ -1928,18 +2122,18 @@ function TestLuaObject:testClearAll()
 end
 
 function TestLuaObjectErr:testClearAll()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }:set_readonly()
 
   for i=1,#objectErr+1 do
     assertErrorMsgContains(_msg[1], p0.clear_all, objectErr[i])
   end
-  assertErrorMsgContains(_msg[3], Object.clear_all, Object)
+  assertErrorMsgContains(_msg[3], object.clear_all, object)
   assertErrorMsgContains(_msg[3], p1.clear_all, p1)
 end
 
 function TestLuaObject:testRawLen()
-  local p0 = Object 'p0' { 1, 2, 3, 4 }
+  local p0 = object 'p0' { 1, 2, 3, 4 }
   local p1 = p0 'p1' { x=true, y=true }
   local p2 = p0 'p2' { 1, 2, 3 }
 
@@ -1954,7 +2148,7 @@ function TestLuaObject:testRawLen()
 end
 
 function TestLuaObject:testRawGetSet()
-  local p0 = Object 'p0' { 1, 2, 3, 4 }
+  local p0 = object 'p0' { 1, 2, 3, 4 }
   local p1 = p0 'p1' {42, x=true, y=function() return true end}
   local p2 = p0 'p2' {}:set_readonly()
 
@@ -1970,13 +2164,16 @@ function TestLuaObject:testRawGetSet()
 end
 
 function TestLuaObjectErr:testRawGetSet()
-  local p0 = Object 'p0' {}:set_readonly()
+  local p0 = object 'p0' {}:set_readonly()
+  local msg = {
+    "forbidden write access to 'p0' (readonly object or variable)",
+  }
 
-  assertErrorMsgContains(_msg[3], function(p0) p0.x=false end, p0)
+  assertErrorMsgContains(msg[1], function(p0) p0.x=false end, p0)
 end
 
 function TestLuaObject:testVarRawVal()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
 
   -- eval
   assertFalse (is_function(p0:var_val("k", function() return 2 end)))
@@ -2002,7 +2199,7 @@ function TestLuaObject:testVarRawVal()
 end
 
 function TestLuaObject:testVarRawGet()
-  local p0 = Object 'p0' { 1, 2, 3, 4, z=function() return 5 end }
+  local p0 = object 'p0' { 1, 2, 3, 4, z=function() return 5 end }
   local p1 = p0 'p1' {42, x=true, y=function() return true end }
 
   assertEquals(p1:var_raw(1), 42)
@@ -2025,7 +2222,7 @@ function TestLuaObject:testVarRawGet()
 end
 
 function TestLuaObjectErr:testEnv()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local msg = {
     "invalid argument #2 (not a function or < 1)",
     "invalid environment (already open)",
@@ -2052,7 +2249,7 @@ function TestLuaObjectErr:testEnv()
 end
 
 function TestLuaObject:testEnvSimple()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }
 
   local oCtx, nCtx = getfenv(1), {}
@@ -2075,7 +2272,7 @@ function TestLuaObject:testEnvSimple()
 end
 
 function TestLuaObject:testEnvInheritance()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }
 
   assertFalse(p0:is_open_env())
@@ -2091,7 +2288,7 @@ function TestLuaObject:testEnvInheritance()
 end
 
 function TestLuaObject:testEnvNested()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local p1 = p0 'p1' { }
 
   local oCtx, nCtx = getfenv(1), {}
@@ -2122,7 +2319,7 @@ function TestLuaObject:testEnvNested()
 end
 
 function TestLuaObject:testEnvFunc()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local oCtx, nCtx = getfenv(1), {}
   local setfenv = setfenv
 
@@ -2142,7 +2339,7 @@ function TestLuaObject:testEnvFunc()
 end
 
 function TestLuaObject:testEnvMultLvl()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local oCtx, nCtx = getfenv(1), {}
   local setfenv = setfenv
 
@@ -2180,7 +2377,7 @@ function TestLuaObject:testEnvMultLvl()
 end
 
 function TestLuaObject:testEnvSelfRef()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
 
   p0:open_env()
     assertTrue  (p0:is_open_env())
@@ -2194,7 +2391,7 @@ function TestLuaObject:testEnvSelfRef()
 end
 
 function TestLuaObject:testEnvReset()
-  local p0 = Object 'p0' { }
+  local p0 = object 'p0' { }
   local error = error
   local func = function()
     p0:open_env()
@@ -2209,18 +2406,84 @@ function TestLuaObject:testEnvReset()
   assertNil(p0.p0)
 end
 
--- examples test suite --------------------------------------------------------o
+function TestLuaObjectErr:testDumpObj()
+  local p0 = object 'p0' { x=1, y=2, z:=3 }
+  local p1 = p0 'p1' {}
+  local msg = {
+    "invalid argument #2 (parent of argument #1 expected)",
+    "invalid argument #3 (object expected)",
+    "invalid argument #4 (string expected)",
+  }
 
+  for i=1,#objectErr+1 do
+    assertErrorMsgContains(_msg[1], p0.dumpobj, objectErr[i])
+  end
+  assertErrorMsgContains(msg[1], p0.dumpobj, p0, '-', p1)
+
+  assertErrorMsgContains(msg[2], p0.dumpobj, p0, '-', 0)
+  assertErrorMsgContains(msg[2], p0.dumpobj, p0, '-', true)
+  assertErrorMsgContains(msg[2], p0.dumpobj, p0, '-', {})
+  assertErrorMsgContains(msg[2], p0.dumpobj, p0, '-', myFunc)
+
+  assertErrorMsgContains(msg[3], p0.dumpobj, p0, '-', object, 0)
+  assertErrorMsgContains(msg[3], p0.dumpobj, p0, '-', object, true)
+  assertErrorMsgContains(msg[3], p0.dumpobj, p0, '-', object, {})
+  assertErrorMsgContains(msg[3], p0.dumpobj, p0, '-', object, myFunc)
+  assertErrorMsgContains(msg[3], p0.dumpobj, p0, '-', object, object)
+end
+
+function TestLuaObject:testDumpObj()
+  local p0 = object 'p0' { x=1, y=2, z:=3 }
+  local p1 = p0 'p1' {}
+  local p2 = p0 'p2' { x=-1, y={}, z2="", z3=\s s.x, z4=p1}
+  local str_p0 = [[
++ object: 'p0'
+   y :  2
+   x :  1
+   z := 3]]
+  local str_p1 = [[
++ object: 'p2'
+   x :  -1
+   y :  {}
+   z4 :  object: 'p1'
+   z2 : ''
+   z3 := -1
+   + object: 'p0'
+      y :  2 (*)
+      x :  1 (*)
+      z := 3]]
+  local str_p1_np0 = [[
++ object: 'p2'
+   x :  -1
+   y :  {}
+   z4 :  object: 'p1'
+   z2 : ''
+   z3 := -1]]
+  local str_p1_pattern = [[
++ object: 'p2'
+   z4 :  object: 'p1'
+   z2 : ''
+   z3 := -1
+   + object: 'p0'
+      z := 3]]
+
+  assertEquals(string.gsub(p0:dumpobj('-'    ), '%s0x%x+' , ''), str_p0)
+  assertEquals(string.gsub(p2:dumpobj('-'    ), '%s0x%x+' , ''), str_p1)
+  assertEquals(string.gsub(p2:dumpobj('-', p0), '%s0x%x+' , ''), str_p1_np0)
+  assertEquals(string.gsub(p2:dumpobj('-', nil, "z[0-9]?"), '%s0x%x+', ''),
+               str_p1_pattern)
+end
+
+-- examples test suite --------------------------------------------------------o
 function TestLuaObject:testMetamethodForwarding()
   local msg = {
     "invalid argument #1 (forbidden access to 'ro_obj')",
-    "invalid argument #2 (boolean or nil expected)"
   }
 
-  local ro_obj = Object {}
+  local ro_obj = object {}
   local parent = ro_obj.parent
 
-  ro_obj:set_functions {
+  ro_obj:set_methods {
     set_readonly = function(s,f)
       assert(s ~= ro_obj, msg[1])
       return parent.set_readonly(s,f)
@@ -2228,18 +2491,18 @@ function TestLuaObject:testMetamethodForwarding()
   }
   ro_obj:set_metamethods { __init = function(s) return s:set_readonly(true) end}
   assertErrorMsgContains(msg[1], ro_obj.set_readonly, ro_obj, true)
-  assertFalse( is_readonly(ro_obj) )
+  assertFalse( ro_obj:is_readonly() )
   parent.set_readonly(ro_obj, true)
-  assertTrue ( is_readonly(ro_obj) )
+  assertTrue ( ro_obj:is_readonly() )
 
   local ro_chld = ro_obj {}
-  assertTrue ( is_readonly(ro_chld) )
-  assertFalse( is_readonly(ro_chld:set_readonly(false)) )
-  assertErrorMsgContains(msg[2], ro_chld.set_readonly, ro_chld, 1)
+  assertTrue ( ro_chld:is_readonly() )
+  assertTrue ( ro_chld:set_readonly(1):is_readonly() )
+  assertFalse( ro_chld:set_readonly(false):is_readonly() )
 end
 
 function TestLuaObject:testMetamethodNotification()
-  local p1 = Object 'p1' { x=1, y=2  }
+  local p1 = object 'p1' { x=1, y=2  }
   local p2 = p1 'p2' { x=2, y=-1, z=0 }
 
   local function trace (fp, self, k, v)
@@ -2278,10 +2541,10 @@ function TestLuaObject:testMetamethodCounting()
     __init = function(s) count=count+1 ; return s end
   } end
 
-  local o0 = Object 'o0' {}          set_counter(o0)
+  local o0 = object 'o0' {}          set_counter(o0)
   local o1 = o0 'o1' { a = 2 }       assertEquals( count, 1 )
   local o2 = o1 'o2' { a = 2 }       assertEquals( count, 2 )
-  local a = Object 'a' { x = o2.a }  assertEquals( count, 2 )
+  local a = object 'a' { x = o2.a }  assertEquals( count, 2 )
 end
 
 -- performance test suite -----------------------------------------------------o
@@ -2289,9 +2552,9 @@ end
 Test_LuaObject = {}
 
 function Test_LuaObject:testPrimes()
-  local Primes = Object {}
+  local Primes = object {}
 
-  Primes:set_functions {
+  Primes:set_methods {
     isPrimeDivisible = function(s,c)
       for i=3, s.prime_count do
         if s.primes[i] * s.primes[i] > c then break end
@@ -2326,9 +2589,10 @@ function Test_LuaObject:testPrimes()
 end
 
 function Test_LuaObject:testDuplicates()
-  local DupFinder = Object {}
 
-  DupFinder:set_functions {
+  local DupFinder = object {}
+
+  DupFinder:set_methods {
     find_duplicates = function(s,res)
       for _,v in ipairs(s) do
         res[v] = res[v] and res[v]+1 or 1
@@ -2355,11 +2619,47 @@ function Test_LuaObject:testDuplicates()
   for i=1,5e5 do inp:find_duplicates(res:clear()) end
   local dt = os.clock() - t0
   assertEquals( res, out )
+  assertAlmostEquals( dt , 0.5, 1 ) -- fails very often
+end
+
+function Test_LuaObject:testDuplicates2()
+  local DupFinder = object {}
+  local _len = {}
+
+  DupFinder:set_methods {
+    find_duplicates = function(s,res)
+      for _,v in ipairs(s) do
+        res[v] = (res[v] or 0) + 1
+      end
+      for _,v in ipairs(s) do
+        if res[v] and res[v] > 1 then
+          local len = res[_len]+1
+          res[len], res[_len] = v, len
+        end
+        res[v] = nil
+      end
+    end,
+
+    clear = function(s)
+      for i=1,s[_len] do s[i]=nil end
+      s[_len] = 0
+      return s
+    end
+  }
+
+  local inp = DupFinder {'b','a','c','c','e','a','c','d','c','d'}
+  local out = DupFinder {'a','c','d'}
+  local res = DupFinder { [_len]=0 }
+
+  local t0 = os.clock()
+  for i=1,5e5 do inp:find_duplicates(res:clear()) end
+  local dt = os.clock() - t0
+  assertEquals( res, out )
   assertAlmostEquals( dt , 0.5, 1 )
 end
 
 function Test_LuaObject:testLinkedList()
-  local List = Object {}
+  local List = object {}
   local nxt = {}
 
   local function generate(n)
@@ -2382,7 +2682,7 @@ function Test_LuaObject:testLinkedList()
 end
 
 function Test_LuaObject:testSlides()
-  local Point = Object 'Point' { }
+  local Point = object 'Point' { }
   local p1 = Point 'p1' { x=3, y=2, z=1 }
   local p2 = p1 'p2' { x=2, y=1 }
   local p3 = p2 'p3' { x=1 }
@@ -2410,7 +2710,7 @@ function Test_LuaObject:testSlides()
   assertAlmostEquals( dt, 0.5, 1 )
 
   p1.getz = nil
-  p1:set_functions { getz = function(s) return s.z end }
+  p1:set_methods { getz = function(s) return s.z end }
 
   s=0
   t0 = os.clock()
