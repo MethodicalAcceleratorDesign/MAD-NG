@@ -114,11 +114,7 @@ local tanh  = function (x) return is_number(x) and tanh (x)  or x:tanh () end
 
 -- locals ---------------------------------------------------------------------o
 
-local utest
-if not MAD
-then utest = require("luaunit")
-else utest = MAD.utest
-end
+local utest = MAD and MAD.utest or require("luaunit")
 
 local assertFalse        = utest.assertFalse
 local assertTrue         = utest.assertTrue

@@ -928,11 +928,7 @@ object:set_readonly()
 
 -- end of object model --------------------------------------------------------o
 
-local utest
-if not MAD
-then utest = require("luaunit")
-else utest = MAD.utest
-end
+local utest = MAD and MAD.utest or require("luaunit")
 
 local assertNil              = utest.assertNil
 local assertTrue             = utest.assertTrue
