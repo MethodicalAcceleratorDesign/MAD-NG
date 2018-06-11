@@ -23,7 +23,10 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertEquals, assertAlmostEquals in MAD.utest
+local utest = MAD and MAD.utest or require("luaunit")
+
+local assertEquals       = utest.assertEquals
+local assertAlmostEquals = utest.assertAlmostEquals
 
 -- regression test suite ------------------------------------------------------o
 
@@ -213,5 +216,5 @@ end
 
 -- run as a standalone test
 if MAD == nil then
-  os.exit( lu.LuaUnit.run() )
+  os.exit( utest.LuaUnit.run() )
 end

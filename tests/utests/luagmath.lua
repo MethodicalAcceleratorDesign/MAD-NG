@@ -114,8 +114,14 @@ local tanh  = function (x) return is_number(x) and tanh (x)  or x:tanh () end
 
 -- locals ---------------------------------------------------------------------o
 
-local assertFalse, assertTrue, assertEquals, assertNotEquals,
-      assertAlmostEquals, assertNaN in MAD.utest
+local utest = MAD and MAD.utest or require("luaunit")
+
+local assertFalse        = utest.assertFalse
+local assertTrue         = utest.assertTrue
+local assertEquals       = utest.assertEquals
+local assertNotEquals    = utest.assertNotEquals
+local assertAlmostEquals = utest.assertAlmostEquals
+local assertNaN          = utest.assertNaN
 
 -- regression test suite ------------------------------------------------------o
 
@@ -2211,6 +2217,6 @@ end
 -- end ------------------------------------------------------------------------o
 
 -- run as a standalone test
-if MAD == nil then
-  os.exit( lu.LuaUnit.run() )
+if not MAD then
+  os.exit( utest.LuaUnit.run() )
 end

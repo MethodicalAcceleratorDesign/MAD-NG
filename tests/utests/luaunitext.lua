@@ -21,8 +21,16 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local assertEquals, assertAlmostEquals, assertAllAlmostEquals, assertErrorMsgContains
-      in MAD.utest
+-- locals ---------------------------------------------------------------------o
+
+local utest = MAD and MAD.utest or require("luaunit")
+
+local assertEquals           = utest.assertEquals
+local assertAlmostEquals     = utest.assertAlmostEquals
+local assertAllAlmostEquals  = utest.assertAllAlmostEquals
+local assertErrorMsgContains = utest.assertErrorMsgContains
+
+-- regression test suite ------------------------------------------------------o
 
 TestLuaUnitExt = {}
 
@@ -77,4 +85,11 @@ function TestLuaUnitExt:testAllEqualMixedMixed()
   local expected = { a=-1.1      , b={}, 0      , d=0, e=0      , {}, g=1.1       }
   local margin   = { a=     2e-15, b={},   1e-15, d=0, e=  1e-15, {}, g=    2e-15 }
   assertAllAlmostEquals (actual, expected, margin)
+end
+
+-- end ------------------------------------------------------------------------o
+
+-- run as a standalone test
+if not MAD then
+  os.exit( utest.LuaUnit.run() )
 end
