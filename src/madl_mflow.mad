@@ -66,17 +66,17 @@ local function map_alloc (td, mt)
   local mo = td.mvar_ords
   local mv = table.new(td.nmv, #vnam+3) -- __td, __ta, pz
 
-  ta[0] = ct(td, mo[0]):scalar(0,2) ; mv.x , mv[1] = ta[0], ta[0]
-  ta[1] = ct(td, mo[1]):scalar(0,3) ; mv.px, mv[2] = ta[1], ta[1]
-  ta[2] = ct(td, mo[2]):scalar(0,4) ; mv.y , mv[3] = ta[2], ta[2]
-  ta[3] = ct(td, mo[3]):scalar(0,5) ; mv.py, mv[4] = ta[3], ta[3]
-  ta[4] = ct(td, mo[4]):scalar(0,6) ; mv.t , mv[5] = ta[4], ta[4]
-  ta[5] = ct(td, mo[5]):scalar(0,7) ; mv.pt, mv[6] = ta[5], ta[5]
+  mv[1] = ct(td, mo[0]):scalar(0,1) ; mv.x , ta[0] = mv[1], mv[1]
+  mv[2] = ct(td, mo[1]):scalar(0,2) ; mv.px, ta[1] = mv[2], mv[2]
+  mv[3] = ct(td, mo[2]):scalar(0,3) ; mv.y , ta[2] = mv[3], mv[3]
+  mv[4] = ct(td, mo[3]):scalar(0,4) ; mv.py, ta[3] = mv[4], mv[4]
+  mv[5] = ct(td, mo[4]):scalar(0,5) ; mv.t , ta[4] = mv[5], mv[5]
+  mv[6] = ct(td, mo[5]):scalar(0,6) ; mv.pt, ta[5] = mv[6], mv[6]
 
   -- extra map variables (unamed)
   for i=6,td.nmv-1 do
-    ta[i  ] = ct(td, mo[i]):set(i+2,1)
-    mv[i+1] = ta[i]
+    mv[i+1] = ct(td, mo[i]):scalar(0,i+2)
+    ta[i] = mv[i+1]
   end
 
   mv.pz = ct(td, max(mo[1], mo[3], mo[5])) -- px, py, pt
@@ -103,6 +103,7 @@ local function map_ctor(arg, mt)
   end
 
   local td = gtpsad{nv=arg.nv, mo=mo, nk=arg.nk, ko=arg.ko, dk=arg.dk, vo=arg.vo}
+
   return map_alloc(td, mt)
 end
 
@@ -262,7 +263,8 @@ function MR.pinv (x, sel, r)
   assert(is_table(sel), "invalid argument #2 (table expected)")
   assert(is_mapflow(r), "invalid argument #3 (mapflow expected)")
   assert(r.__td == x.__td, "incompatible mapflow (GTPSA descriptors differ)")
-  _C.mad_tpsa_pminv(#x, x.__ta, #r, r.__ta, int_arr(#x, sel))
+  local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end
+  _C.mad_tpsa_pminv(#x, x.__ta, #r, r.__ta, s)
   return r
 end
 
@@ -271,7 +273,8 @@ function MC.pinv (x, sel, r)
   assert(is_table(sel) , "invalid argument #2 (table expected)")
   assert(is_cmapflow(r), "invalid argument #3 (cmapflow expected)")
   assert(r.__td == x.__td, "incompatible cmapflow (GTPSA descriptors differ)")
-  _C.mad_ctpsa_pminv(#x, x.__ta, #r, r.__ta, int_arr(#x, sel))
+  local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end
+  _C.mad_ctpsa_pminv(#x, x.__ta, #r, r.__ta, s)
   return r
 end
 
@@ -344,10 +347,10 @@ MC.__index = \s,k -> s[_var][k] or MC[k]
 function MR.__newindex (s, k, x)
   local v = s[_var][k]
 
-  if is_nil(v) then -- new var
+  if v == nil then -- new var
     if is_tpsa(x)
-    then s[_var][k] = x -- keep tpsa under control
-    else s[k]       = x -- uncontrolled variable
+    then s[_var][k] = x  -- keep tpsa under control
+    else rawset(s, k, x) -- uncontrolled variable
     end
     return
   end
@@ -367,10 +370,10 @@ end
 function MC.__newindex (s, k, x)
   local v = s[_var][k]
 
-  if is_nil(v) then  -- new var
+  if v == nil then  -- new var
     if is_ctpsa(x)
-    then s[_var][k] = x -- keep tpsa under control
-    else s[k]       = x -- uncontrolled variable
+    then s[_var][k] = x  -- keep tpsa under control
+    else rawset(s, k, x) -- uncontrolled variable
     end
     return
   end
