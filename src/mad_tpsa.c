@@ -195,15 +195,21 @@ FUN(scalar) (T *t, NUM v, idx_t iv)
   assert(t);
   if (!v && !iv) { FUN(reset0)(t); return; }
 
-  t->lo = t->hi = 0;
-  t->nz = 1;
+  t->lo = 0;
   t->coef[0] = v;
 
   if (iv > 0 && t->mo > 0) {
     ensure(iv <= t->d->nmv, "index exceeds GPTSA number of map variables");
+    if (t->hi && mad_bit_get(t->nz,1)) {
+      idx_t *pi = t->d->ord2idx;
+      for (idx_t c = pi[1]; c < pi[2]; ++c) t->coef[c] = 0;
+    }
     t->hi = 1;
     t->nz = 3;
     t->coef[iv] = 1;
+  } else {
+    t->hi = 0;
+    t->nz = 1;
   }
 }
 
