@@ -34,7 +34,7 @@ local _C, gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix    in MAD
 
 local is_nil, is_number, is_integer, is_complex, is_string, is_table,
       is_tpsa, is_ctpsa, is_matrix, is_cmatrix, is_indexable,
-      is_mappable                                                  in MAD.typeid
+      is_iterable, is_mappable                                     in MAD.typeid
 
 -- types ----------------------------------------------------------------------o
 
@@ -52,8 +52,9 @@ local isa_mapflow = \a -> is_table(a) and rawget(a,_var) ~= nil
 -- variable names -------------------------------------------------------------o
 
 -- explicit variable names and indexes
-local vnam = {'x', 'px', 'y', 'py', 't', 'pt',
-               x=1, px=2, y=3, py=4, t=5, pt=6}
+local vnam = {'x', 'px', 'y', 'py', 't', 'pt'}
+local vidx = {x=1, px=2, y=3, py=4, t=5, pt=6,
+              X=1, PX=2, Y=3, PY=4, T=5, PT=6}
 
 -- add upper case variable names at negative indexes
 for i=1,#vnam do vnam[-i] = string.upper(vnam[i]) end
@@ -198,6 +199,23 @@ function MC.set0 (x, v)
   return x
 end
 
+function MR.setv (x, v)
+  assert(is_iterable(v), "invalid argument #2 (iterable expected)")
+  for i=1,min(#x,#v) do
+    _C.mad_tpsa_scalar(x[i], v[i], i)
+  end
+  return x
+end
+
+function MC.setv (x, v)
+  assert(is_iterable(v), "invalid argument #2 (iterable expected)")
+  for i=1,min(#x,#v) do
+    local b = complex(v[i])
+    _C.mad_ctpsa_scalar_r(x[i], b.re, b.im, i)
+  end
+  return x
+end
+
 function MR.get1 (x, m)
   m = m or matrix(#x, x.__td.nv)
   assert(is_matrix(m), "invalid argument #2 (matrix expected)")
@@ -329,9 +347,13 @@ end
 
 function MR.write (x, file_, eps_)
   for i=1,#x do
-    x[i]:write(file_, vnam[-i] or i, eps_)
+    x[i]:write(file_, vnam[-i] or tostring(i), eps_)
   end
   return x
+end
+
+function MR.print (x, eps_)
+  return x:write(nil, eps_)
 end
 
 function MR.read (_, file_)
@@ -363,7 +385,7 @@ function MR.__newindex (s, k, x)
   assert(is_tpsa(v), "forbidden access to readonly variable")
 
   if is_number(x) then
-    _C.mad_tpsa_scalar(v, x, vnam[k] or 0)
+    _C.mad_tpsa_scalar(v, x, vidx[k] or k)
   elseif is_tpsa(x) then
     _C.mad_tpsa_copy(x, v)
   else
@@ -388,7 +410,7 @@ function MC.__newindex (s, k, x)
   if is_number(x) then x = complex(x) end
 
   if is_complex(x) then
-    _C.mad_ctpsa_scalar_r(v, x.re, x.im, vnam[k] or 0)
+    _C.mad_ctpsa_scalar_r(v, x.re, x.im, vidx[k] or k)
   elseif is_ctpsa(x) then
     _C.mad_ctpsa_copy(x, v)
   else
