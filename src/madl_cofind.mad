@@ -61,49 +61,50 @@ function method.newton (X0, X, R, tol, dptol)
 
     if rnk < 6 then
       warn("singular matrix occurred during 6D closed orbit search.")
-      return nil, rnk
+      return rnk, "Singular"
     end
+
+    -- return if correction to apply is below tolerance
+    if dX:maxabs() < tol then return rnk, "6D" end
 
     -- adjust orbit
     X0:sub(dX,X0)
 
   else                        -- 4D case
-    X = X:getrow(1..4) - X0:getrow(1..4)
-    R = R:getsub(1..4, 1..4) - I4
-    dX, rnk = R:solve(X)
+    local X4 = X:getrow(1..4) - X0:getrow(1..4)
+    local R4 = R:getsub(1..4, 1..4) - I4
+    dX, rnk = R4:solve(X4)
 
     if rnk < 4 then
       warn("singular matrix occurred during 4D closed orbit search.")
-      return nil, rnk
+      return rnk, "Singular"
     end
 
+    -- return if correction to apply is below tolerance
+    if dX:maxabs() < tol then return rnk, "4D" end
+
     -- adjust orbit
-    X = X0:getrow(1..4) - dX
-    X0:zeros():copy(X)
+    X4 = X0:getrow(1..4) - dX
+    X0:zeros():copy(X4)
   end
-
-  -- return X0 if correction is below tolerance
-  if dX:maxabs() < tol then return X0 end
-
-  -- not found, continue iteration
-  return -1
 end
 
 -- cofind using jacobian ------------------------------------------------------o
 
 local function cofind_jacob (self, track)
   local cotol, coiter, codiff, codptol, optimize in self
-  local cofind = method[optimize]
+  local costep = method[optimize]
 
-  -- build 6D initial orbit
+  -- build 6D initial orbit and final orbit translation
   local X0 = vector(6):fill(self.X0)
+  local X1 = vector(6):fill(self.X1)
 
   -- track 6+1 particles to compute jacobian by finite differences
   local Xs = { 0,0,0,0,0,0,X0 }
   for j=1,6 do Xs[j] = X0:same() end
 
   -- search for fix point
-  for iter=1,coiter do
+  for itr=1,coiter do
 
     -- init dx_j
     for j=1,6 do
@@ -123,9 +124,11 @@ local function cofind_jacob (self, track)
       end
     end
 
-    -- update X0 = X0-dX, where dX solves (R-I)dX = X-X0
-    local res, rnk = cofind(X0, X, R, cotol, codptol)
-    if res ~= -1 then return res, rnk or iter end -- solution or sub-rank
+    -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = X-X0-X1
+    local rnk, typ = costep(X0, X-X1, R, cotol, codptol)
+
+    -- orbit, one-turn map, rank of R, "4D" | "6D" | "Singular", no iterations
+    if typ then return X0, R, rnk, typ, itr end
   end
 
   errorf("closed orbit did not converge in %d iterations", coiter)
@@ -135,13 +138,14 @@ end
 
 local function cofind_map (self, track)
   local cotol, coiter, codptol, optimize in self
-  local cofind = method[optimize]
+  local costep = method[optimize]
 
-  -- build 6D initial orbit
+  -- build 6D initial orbit and final orbit translation
   local X0 = vector(6):fill(self.X0)
+  local X1 = vector(6):fill(self.X1)
 
   -- search for fix point
-  for iter=1,coiter do
+  for itr=1,coiter do
 
     -- track 6D x 1 mapflow
     local _, mflw = track { X0=X0 }
@@ -150,9 +154,11 @@ local function cofind_map (self, track)
     local X = mflw[1]:get0()
     local R = mflw[1]:get1()
 
-    -- update X0 = X0-dX, where dX solves (R-I)dX = X-X0
-    local res, rnk = cofind(X0, X, R, cotol, codptol)
-    if res ~= -1 then return res, rnk or iter end -- solution or sub-rank
+    -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = X-X0-X1
+    local rnk, typ = costep(X0, X-X1, R, cotol, codptol)
+
+    -- orbit, one-turn map, rank of R, "4D" | "6D" | "Singular", no iterations
+    if typ then return X0, R, rnk, typ, itr end
   end
 
   errorf("closed orbit did not converge in %d iterations", coiter)
@@ -179,6 +185,7 @@ local function exec (self)
 
     s0        = self.s0,
     X0        = self.X0,
+    X1        = self.X1,
 
     mapdef    = self.usemap and {xy=1} or nil,
     nturn     = self.nturn,
@@ -205,6 +212,7 @@ local cofind = command 'COFind' {
 
   s0=0,              -- initial s                                         (trck)
   X0={0,0,0,0,0,0},  -- initial coordinates for orbit search              (trck)
+  X1={0,0,0,0,0,0},  -- optional final coordinates translation            (cofn)
 
   usemap=true,       -- use DA to compute the jacobian                    (cofn)
 
