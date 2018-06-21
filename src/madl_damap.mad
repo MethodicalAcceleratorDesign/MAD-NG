@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | MFlow module
+ | DA Maps module
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provides full set of functions and operations on mflow.
+  - Provides full set of functions and operations on damap and cdamap.
   - Support real and complex scalars and GTPSA as inhomogeneous variables.
 
  o-----------------------------------------------------------------------------o
@@ -45,9 +45,9 @@ local   int_arr = ffi.typeof 'int [?]'
 local  tpsa_arr = ffi.typeof 'struct  tpsa* [?]'
 local ctpsa_arr = ffi.typeof 'struct ctpsa* [?]'
 
-local is_mapflow  = \a -> is_table(a) and rawget(a,_var) ~= nil and is_tpsa (a.x)
-local is_cmapflow = \a -> is_table(a) and rawget(a,_var) ~= nil and is_ctpsa(a.x)
-local isa_mapflow = \a -> is_table(a) and rawget(a,_var) ~= nil
+local is_damap  = \a -> is_table(a) and rawget(a,_var) ~= nil and is_tpsa (a.x)
+local is_cdamap = \a -> is_table(a) and rawget(a,_var) ~= nil and is_ctpsa(a.x)
+local isa_damap = \a -> is_table(a) and rawget(a,_var) ~= nil
 
 -- variable names -------------------------------------------------------------o
 
@@ -114,13 +114,13 @@ end
     - otherwise same as gtpsad{}.
 --]=]
 
-local function mapflow (arg)
+local function damap (arg)
   arg = arg or {}
   assert(is_mappable(arg), "invalid argument #1 (mappable expected)")
   return map_ctor(arg, MR)
 end
 
-local function cmapflow (arg)
+local function cdamap (arg)
   arg = arg or {}
   assert(is_mappable(arg), "invalid argument #1 (mappable expected)")
   return map_ctor(arg, MC)
@@ -132,8 +132,8 @@ function MR.__same (x, y_, e_)
   if is_nil(e_) and is_complex(y_) then -- shift right
     e_, y_ = y_
   end
-  assert(is_nil(y_) or isa_mapflow(y_), "invalid argument #2 (mapflow expected)")
-  return map_alloc(x.__td, (is_complex(e_) or is_cmapflow(y_)) and MC or MR)
+  assert(is_nil(y_) or isa_damap(y_), "invalid argument #2 (damap expected)")
+  return map_alloc(x.__td, (is_complex(e_) or is_cdamap(y_)) and MC or MR)
 end
 
 function MC.__same (x)
@@ -144,8 +144,8 @@ function MR.__copy (x, y_)
   if is_nil(y_) then
     x, y_ = map_alloc(x.__td, MR), x
   else
-    assert(is_mapflow(y_), "invalid argument #2 (mapflow expected)")
-    assert(x.__td == y.__td, "incompatible mapflows")
+    assert(is_damap(y_), "invalid argument #2 (damap expected)")
+    assert(x.__td == y.__td, "incompatible damaps")
   end
   for i=1,#x do
     _C.mad_tpsa_copy(y_[i], x[i])
@@ -157,8 +157,8 @@ function MC.__copy (x, y_)
   if is_nil(y_) then
     x, y_ = map_alloc(x.__td, MC), x
   else
-    assert(is_cmapflow(y_), "invalid argument #2 (cmapflow expected)")
-    assert(x.__td == y.__td, "incompatible cmapflows")
+    assert(is_cdamap(y_), "invalid argument #2 (cdamap expected)")
+    assert(x.__td == y.__td, "incompatible cdamaps")
   end
   for i=1,#x do
     _C.mad_ctpsa_copy(y_[i], x[i])
@@ -260,16 +260,16 @@ end
 
 function MR.inv (x, r)
   r = r or map_alloc(x.__td, MR)
-  assert(is_mapflow(r), "invalid argument #2 (mapflow expected)")
-  assert(r.__td == x.__td, "incompatible mapflow (GTPSA descriptors differ)")
+  assert(is_damap(r), "invalid argument #2 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   _C.mad_tpsa_minv(#x, x.__ta, #r, r.__ta)
   return r
 end
 
 function MC.inv (x, r)
   r = r or map_alloc(x.__td, MC)
-  assert(is_cmapflow(r), "invalid argument #2 (cmapflow expected)")
-  assert(r.__td == x.__td, "incompatible cmapflow (GTPSA descriptors differ)")
+  assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   _C.mad_ctpsa_minv(#x, x.__ta, #r, r.__ta)
   return r
 end
@@ -279,8 +279,8 @@ end
 function MR.pinv (x, sel, r)
   r = r or map_alloc(x.__td, MR)
   assert(is_table(sel), "invalid argument #2 (table expected)")
-  assert(is_mapflow(r), "invalid argument #3 (mapflow expected)")
-  assert(r.__td == x.__td, "incompatible mapflow (GTPSA descriptors differ)")
+  assert(is_damap(r)  , "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end
   _C.mad_tpsa_pminv(#x, x.__ta, #r, r.__ta, s)
   return r
@@ -288,9 +288,9 @@ end
 
 function MC.pinv (x, sel, r)
   r = r or map_alloc(x.__td, MC)
-  assert(is_table(sel) , "invalid argument #2 (table expected)")
-  assert(is_cmapflow(r), "invalid argument #3 (cmapflow expected)")
-  assert(r.__td == x.__td, "incompatible cmapflow (GTPSA descriptors differ)")
+  assert(is_table(sel), "invalid argument #2 (table expected)")
+  assert(is_cdamap(r) , "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end
   _C.mad_ctpsa_pminv(#x, x.__ta, #r, r.__ta, s)
   return r
@@ -302,10 +302,10 @@ end
 function MR.normal (x, r, a)
   error("NYI: high order normal form")
   r, a = r or map_alloc(x.__td, MC), a or map_alloc(x.__td, MC)
-  assert(is_cmapflow(r), "invalid argument #2 (cmapflow expected)")
-  assert(is_cmapflow(a), "invalid argument #3 (cmapflow expected)")
+  assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
+  assert(is_cdamap(a), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td and a.__td == x.__td,
-                        "incompatible mapflow (GTPSA descriptors differ)")
+                        "incompatible damap (GTPSA descriptors differ)")
   _C.mad_ctpsa_tnormal(#x, x.__ta, #r, r.__ta, #a, a.__ta)
   return r, a
 end
@@ -313,10 +313,10 @@ end
 function MC.normal (x, r, a)
   error("NYI: high order normal form")
   r, a = r or map_alloc(x.__td, MC), a or map_alloc(x.__td, MC)
-  assert(is_cmapflow(r), "invalid argument #2 (cmapflow expected)")
-  assert(is_cmapflow(a), "invalid argument #3 (cmapflow expected)")
+  assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
+  assert(is_cdamap(a), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td and a.__td == x.__td,
-                        "incompatible cmapflow (GTPSA descriptors differ)")
+                        "incompatible cdamap (GTPSA descriptors differ)")
   _C.mad_ctpsa_normal(#x, x.__ta, #r, r.__ta, #a, a.__ta)
   return r, a
 end
@@ -325,20 +325,20 @@ end
 
 function MR.compose (x, y, r)
   r = r or map_alloc(x.__td, MR)
-  assert(is_mapflow(y), "invalid argument #2 (mapflow expected)")
-  assert(is_mapflow(r), "invalid argument #3 (mapflow expected)")
-  assert(r.__td == x.__td, "incompatible mapflow (GTPSA descriptors differ)")
-  assert(r.__td == y.__td, "incompatible mapflow (GTPSA descriptors differ)")
+  assert(is_damap(y), "invalid argument #2 (damap expected)")
+  assert(is_damap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
   _C.mad_tpsa_compose(#x, x.__ta, #y, y.__ta, #r, r.__ta)
   return mr
 end
 
 function MC.compose (x, y, r)
   r = r or map_alloc(x.__td, MC)
-  assert(is_cmapflow(y), "invalid argument #2 (cmapflow expected)")
-  assert(is_cmapflow(r), "invalid argument #3 (cmapflow expected)")
-  assert(r.__td == x.__td, "incompatible cmapflow (GTPSA descriptors differ)")
-  assert(r.__td == y.__td, "incompatible cmapflow (GTPSA descriptors differ)")
+  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
+  assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
   _C.mad_ctpsa_compose(#x, x.__ta, #y, y.__ta, #r, r.__ta)
   return r
 end
@@ -367,8 +367,8 @@ MR.__len = \s -> s[_var].__td.nmv
 MR.__index = \s,k -> s[_var][k] or MR[k]
 MC.__index = \s,k -> s[_var][k] or MC[k]
 
-MR.__tostring = \s -> string.format("mapflow: %p", s)
-MC.__tostring = \s -> string.format("cmapflow: %p", s)
+MR.__tostring = \s -> string.format("damap: %p", s)
+MC.__tostring = \s -> string.format("cdamap: %p", s)
 
 function MR.__newindex (s, k, x)
   local v = s[_var][k]
@@ -434,12 +434,12 @@ end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_mapflow  = is_mapflow
-MAD.typeid.is_cmapflow = is_cmapflow
-MAD.typeid.isa_mapflow = isa_mapflow
+MAD.typeid.is_damap  = is_damap
+MAD.typeid.is_cdamap = is_cdamap
+MAD.typeid.isa_damap = isa_damap
 
 -- end ------------------------------------------------------------------------o
 return {
-   mapflow =  mapflow,
-  cmapflow = cmapflow,
+   damap =  damap,
+  cdamap = cdamap,
 }
