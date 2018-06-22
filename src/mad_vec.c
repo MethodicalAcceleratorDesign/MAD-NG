@@ -199,7 +199,13 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
 { assert(a && x && r);
   if (k == 0) return;
   int j = k%8;
+
   switch(j) {
+  case 0: j = 8;
+    for (idx_t i=0; i < n; i++)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
+           + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i] + a[7]*x[7][i];
+    break;
   case 1:
     for (idx_t i=0; i < n; i++)
       r[i] = a[0]*x[0][i];
@@ -231,11 +237,8 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i];
     break;
-  case 0: j = 8;
-    for (idx_t i=0; i < n; i++)
-      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
-           + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i] + a[7]*x[7][i];
   }
+
   for(; j < k; j+=8) {
     for (idx_t i=0; i < n; i++)
       r[i] += a[j+0]*x[j+0][i] + a[j+1]*x[j+1][i] + a[j+2]*x[j+2][i] + a[j+3]*x[j+3][i]
