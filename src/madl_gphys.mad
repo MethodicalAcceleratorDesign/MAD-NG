@@ -1,0 +1,95 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Generic physics module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide useful function for physics computation.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local is_positive, is_matrix, is_cvector, wrestrict                in MAD.typeid
+
+local abs in math
+
+-- implementation -------------------------------------------------------------o
+
+local gphys = {}
+
+-- check for delta_p in R using dptol tolerance
+
+local function has_dp (R, dptol_)
+  dptol_ = dptol_ or 1e-12
+  assert(is_matrix(R)       , "invalid argument #1 (matrix expected)")
+  assert(is_positive(dptol_), "invalid argument #2 (positive number expected)")
+
+  local nr, nc = R:sizes()
+  assert(nr == 6 and nc == 6, "invalid one-turn map (6D matrix expected)")
+
+  local nodp = abs(R:get(6,6) - 1) <= dptol_
+
+  for i=1,5 do
+    nodp = nodp and abs(R:get(6,i)) <= dptol_
+  end
+
+  return not nodp
+end
+
+-- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and (t,pt)
+
+local function order_eigen (V, W)
+  assert(is_matrix (V), "invalid argument #1 (matrix expected)")
+  assert(is_cvector(W), "invalid argument #2 (cvector expected)")
+
+  local nr, nc = V:sizes()
+  assert(nr == 6 and nc == 6 or
+         nr == 4 and nc == 4, "invalid eigenvectors (4D/6D matrix expected)")
+  assert(W:nrow() == nr     , "invalid eigenvalues (4D/6D cvector expected)")
+
+  for i=1,nc-3,2 do
+    local mv, k = 0
+
+    for j=i,nc-1,2 do
+      local pv = V:get(i  ,j)^2 + V:get(i  ,j+1)^2 + -- real part
+                 V:get(i+1,j)^2 + V:get(i+1,j+1)^2   -- imag part
+      if pv > mv then mv, k = pv, j end
+    end
+
+    if i ~= k then
+      -- swap eigenvectors pairs (i,i+1) with (k,k+1)
+      local col = {1,2,3,4}
+      col[i], col[i+1] = k, k+1
+      V:swpcol(col)
+      -- swap eigenvalues pairs (i,i+1) with (k,k+1)
+      W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
+    end
+  end
+end
+
+
+-- gmath ----------------------------------------------------------------------o
+
+gphys.had_dp      = had_dp
+gphys.order_eigen = order_eigen
+
+-- env ------------------------------------------------------------------------o
+
+gphys = wrestrict(setmetatable(gphys, {__tostring := "MAD.gphys"}))
+
+-- end ------------------------------------------------------------------------o
+return { gphys = gphys }
