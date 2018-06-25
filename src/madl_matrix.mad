@@ -189,7 +189,6 @@ end
 
 -- get, set -------------------------------------------------------------------o
 
-local idx0    = \i,j,c   -> ( i   *c +  j   )
 local idx     = \i,j,c   -> ((i-1)*c + (j-1))
 
 local geti0   = \x,i     -> x.data[i]
@@ -397,7 +396,7 @@ function MC.random (x, f_, ...) -- random
   return x
 end
 
-function MR.perm (x) -- random permutation (Knuth shuffles)
+function MR.shuffle (x) -- random permutation (Knuth shuffles)
   local n = x:size()
   for i=0,n-2 do
     local j = random(i,n-1)
@@ -588,7 +587,7 @@ function MC.imag (x, im_)
   return im_
 end
 
--- getx, setx -----------------------------------------------------------------o
+-- getx, setx, swpx -----------------------------------------------------------o
 
 function MR.getv (x, ij, r_)
   if is_number(ij) then ij = {ij} end
@@ -667,6 +666,18 @@ function MR.setrow (x, ir, y, p_, s_)
   return x
 end
 
+function MR.swprow (x, ir) -- inplace
+  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
+  local nc = x:ncol()
+  for k,i in ipairs(ir) do
+    if k ~= i then -- swap row k and i
+      local r1, r2 = idx(k,1,nc), idx(i,1,nc)
+      for j=1,nc do x[r1+j], x[r2+j] = x[r2+j], x[r1+j] end
+    end
+  end
+  return x
+end
+
 function MR.getcol (x, jc, r_)
   if is_number(jc) then jc = {jc} end
   assert(is_iterable(jc)              , "invalid argument #2 (iterable expected)")
@@ -700,6 +711,17 @@ function MR.setcol (x, jc, y, p_, s_)
     assert(is_callable(y), "invalid argument #3 (scalar or callable expected)")
     for _,j in ipairs(jc) do local v
     for i=1,x:nrow()      do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
+  end
+  return x
+end
+
+function MR.swpcol (x, jc) -- inplace
+  assert(is_iterable(jc), "invalid argument #2 (iterable expected)")
+  local nr, nc = x:sizes()
+  for k,j in ipairs(jc) do
+    if k ~= j then -- swap col k and j
+      for i=0,nr-1 do x[i*nc+k], x[i*nc+j] = x[i*nc+j], x[i*nc+k] end
+    end
   end
   return x
 end
@@ -2236,14 +2258,13 @@ function MR.write (x, filnam_, name_, eps_)
   local nr, nc, v = x:sizes()
   file:write(name_ or '', '[',nr,'x',nc, is_cmatrix(x) and 'i' or '','] =\n')
   local tostr = is_cmatrix(x) and tostring or num2str
+  local zero  = is_cmatrix(x) and 0i or 0
   for i=0,nr-1 do
     file:write('  ')
-    for j=0,nc-2 do
+    for j=0,nc-1 do
       v = get0(x,i,j)
-      file:write(tostr(abs(v) >= eps_ and v or 0), '  ')
+      file:write(tostr(abs(v) >= eps_ and v or zero), j==nc-1 and '\n' or '  ')
     end
-    v = get0(x,i,nc-1)
-    file:write(tostr(abs(v) >= eps_ and v or 0), '\n')
   end
 
   if is_string(filnam_) then file:close() else file:flush() end
