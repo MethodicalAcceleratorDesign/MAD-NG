@@ -31,6 +31,7 @@ local ffi = require 'ffi'
 local min, max in math
 
 local _C, gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix    in MAD
+local cvname                                                       in MAD.gphys
 
 local is_nil, is_number, is_integer, is_complex, is_string, is_table,
       is_tpsa, is_ctpsa, is_matrix, is_cmatrix, is_indexable,
@@ -51,13 +52,13 @@ local isa_damap = \a -> is_table(a) and rawget(a,_var) ~= nil
 
 -- variable names -------------------------------------------------------------o
 
--- explicit variable names and indexes
-local vnam = {'x', 'px', 'y', 'py', 't', 'pt'}
-local vidx = {x=1, px=2, y=3, py=4, t=5, pt=6,
-              X=1, PX=2, Y=3, PY=4, T=5, PT=6}
+-- explicit canonical variables names and indexes
+local cvnam = cvname                 -- index -> name  (lowercase)
+local cvidx = table.new(0,#cvnam*2)  -- name  -> index
 
--- add upper case variable names at negative indexes
-for i=1,#vnam do vnam[-i] = string.upper(vnam[i]) end
+for i,v in ipairs(cvnam) do
+  cvidx[v], cvidx[string.upper(v)] = i, i
+end
 
 -- ctors ----------------------------------------------------------------------o
 
@@ -65,7 +66,7 @@ local function map_alloc (td, mt)
   local ct = mt == MR and tpsa or ctpsa
   local ta = mt == MR and tpsa_arr(td.nmv) or ctpsa_arr(td.nmv)
   local mo = td.mvar_ords
-  local mv = table.new(td.nmv, #vnam+3) -- __td, __ta, pz
+  local mv = table.new(td.nmv, #cvnam+3) -- __td, __ta, pz
 
   mv[1] = ct(td, mo[0]):scalar(0,1) ; mv.x , ta[0] = mv[1], mv[1]
   mv[2] = ct(td, mo[1]):scalar(0,2) ; mv.px, ta[1] = mv[2], mv[2]
@@ -347,7 +348,7 @@ end
 
 function MR.write (x, file_, eps_)
   for i=1,#x do
-    x[i]:write(file_, vnam[-i] or tostring(i), eps_)
+    x[i]:write(file_, cvnam[i] and string.upper(cvnam[i]) or tostring(i), eps_)
   end
   return x
 end
@@ -385,7 +386,7 @@ function MR.__newindex (s, k, x)
   assert(is_tpsa(v), "forbidden access to readonly variable")
 
   if is_number(x) then
-    _C.mad_tpsa_scalar(v, x, vidx[k] or k)
+    _C.mad_tpsa_scalar(v, x, cvidx[k] or k)
   elseif is_tpsa(x) then
     _C.mad_tpsa_copy(x, v)
   else
@@ -410,7 +411,7 @@ function MC.__newindex (s, k, x)
   if is_number(x) then x = complex(x) end
 
   if is_complex(x) then
-    _C.mad_ctpsa_scalar_r(v, x.re, x.im, vidx[k] or k)
+    _C.mad_ctpsa_scalar_r(v, x.re, x.im, cvidx[k] or k)
   elseif is_ctpsa(x) then
     _C.mad_ctpsa_copy(x, v)
   else
