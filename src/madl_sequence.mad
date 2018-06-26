@@ -1211,7 +1211,7 @@ local function bwditer (state, i)
   else
     i, state.soff = state.ne, state.soff+state.seq_l
   end
-  return i, state.data[i], state.spos[i]+state.data[i].l-state.soff
+  return i, state.data[i], state.spos[i]+state.e_l[i]-state.soff
 end
 
 ---
@@ -1227,7 +1227,7 @@ local function fwdsiter (state, i)
       state.pos = state.spos[i]
       state.elm = state.data[i]
     else
-      local dl = state.spos[i+1] - (state.spos[i]+state.data[i].l)
+      local dl = state.spos[i+1] - (state.spos[i]+state.e_l[i])
       if dl < minlen then                  -- implicit drift is too small
         if dl < -minlen then
           errorf("negative implicit drift of %sm in %s['%s'] at %sm",
@@ -1237,7 +1237,7 @@ local function fwdsiter (state, i)
         state.pos = state.spos[i]
         state.elm = state.data[i]
       else                                 -- update implicit drift
-        state.pos   = state.spos[i]+state.data[i].l
+        state.pos   = state.spos[i]+state.e_l[i]
         state.elm   = state.dft
         state.elm_l = dl
         state.elm_s = 'drift__'..i
@@ -1258,17 +1258,17 @@ local function bwdsiter (state, i)
   if i > 1 then
     if is_implicit(state.elm) then -- last elm was the implicit drift
       i = i-1
-      state.pos = state.spos[i]+state.data[i].l
+      state.pos = state.spos[i]+state.e_l[i]
       state.elm = state.data[i]
     else
-      local dl = state.spos[i] - (state.spos[i-1]+state.data[i-1].l)
+      local dl = state.spos[i] - (state.spos[i-1]+state.e_l[i-1])
       if dl < minlen then                  -- implicit drift is too small
         if dl < -minlen then
           errorf("negative implicit drift of %sm in %s['%s'] at %sm",
                   dl, state.seq.name, state.data[i-1].name, state.spos[i-1])
         end
         i = i-1
-        state.pos = state.spos[i]+state.data[i].l
+        state.pos = state.spos[i]+state.e_l[i]
         state.elm = state.data[i]
       else                                 -- update implicit drift
         state.pos   = state.spos[i]
@@ -1279,14 +1279,14 @@ local function bwdsiter (state, i)
     end
   else
     i, state.soff = state.ne, state.soff+state.seq_l
-    state.elm, state.pos = state.data[i], state.spos[i]+state.data[i].l
+    state.elm, state.pos = state.data[i], state.spos[i]+state.e_l[i]
   end
   return i, state.elm, state.pos-state.soff
 end
 
 ---
 
-local function iter (seq, rng_, ntrn_, dir_)
+local function iter (seq, rng_, ntrn_, dir_, siter)
   local nturn, dir = ntrn_ or 1, dir_ or 1
   assert(is_sequence(seq)                ,"invalid argument #1 (sequence expected)")
   assert(is_integer(nturn) and nturn > 0 ,"invalid argument #3 (integer >1 expected)")
@@ -1311,13 +1311,19 @@ local function iter (seq, rng_, ntrn_, dir_)
   if start == stop+dir then nturn = nturn+1 end
 
   local soff = dir > 0 and -data.spos[start] or data.spos[start]+data[start].l
-  return dir > 0 and fwditer or bwditer, {data=data, spos=data.spos, soff=soff,
-    seq=seq, seq_l=seq.l, elm_l=0, elm_s='', ne=data.ne, stop=stop, turn=nturn-1},
+  local e_l
+  if dir < 0 or siter then
+    e_l = table.new(#seq, 0)
+    for i=1,#seq do e_l[i] = data[i].l end
+  end
+  return dir > 0 and fwditer or bwditer, {e_l = e_l, data=data, spos=data.spos,
+    soff=soff, seq=seq, seq_l=seq.l, elm_l=0, elm_s='', ne=data.ne, stop=stop,
+    turn=nturn-1},
     start-dir
 end
 
 local function siter (seq, rng_, ntrn_, dir_)
-  local iter, state, start = iter(seq, rng_, ntrn_, dir_)
+  local iter, state, start = iter(seq, rng_, ntrn_, dir_, true)
   if iter == niliter then return iter end
   -- implicit drift (reused)
   state.dft = drift { l := state.elm_l, name := state.elm_s }
