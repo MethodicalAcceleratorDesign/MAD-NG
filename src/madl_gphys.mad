@@ -23,9 +23,42 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local is_positive, is_matrix, is_cvector, wrestrict                in MAD.typeid
+local matrix                                                     in MAD
+local is_positive, is_matrix, is_cvector, wrestrict              in MAD.typeid
+local assertf                                                    in MAD.utility
+local twopi                                                      in MAD.constant
+local abs, sqrt, atan2 in math
 
-local abs in math
+local dp_tol = 1e-12
+
+-- helpers --------------------------------------------------------------------o
+
+local function chkeigsiz (V, W)
+  assert(is_matrix (V), "invalid argument #1 (matrix expected)")
+
+  local nr, nc = V:sizes()
+  assert(nr == 6 and nc == 6 or
+         nr == 4 and nc == 4, "invalid eigenvectors (4D/6D matrix expected)")
+
+  if W then
+    assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
+    assert(W:nrow() == nr, "invalid eigenvalues (4D/6D cvector expected)")
+  end
+end
+
+local function chkeigsys (V, W, R, tol)
+  tol = tol or 1e-12
+  chkeigsiz(V, W) ; chkeigsiz(R, W)
+  assert(is_positive(tol), "invalid argument #4 (positive number expected)")
+
+  local I = matrix(#W):eye()
+  for i=1,#W-1,2 do
+    assertf( ((R-W[i  ]*I) * (V:getcol(i)+V:getcol(i+1)*1i)) :eq(0, 1e-12),
+            "invalid eigen system for eigenvector/eigenvalue %d", i)
+    assertf( ((R-W[i+1]*I) * (V:getcol(i)-V:getcol(i+1)*1i)) :eq(0, 1e-12),
+            "invalid eigen system for eigenvector/eigenvalue %d", i)
+  end
+end
 
 -- implementation -------------------------------------------------------------o
 
@@ -34,17 +67,31 @@ local gphys = {
   -- canonical variables names (index -> name)
   cvname = {'x', 'px', 'y', 'py', 't', 'pt'},
 
+  -- canonical variables indexes (name -> index)
+  cvindex = {x=1, px=2, y=3, py=4, t=5, pt=6,
+             X=1, PX=2, Y=3, PY=4, T=5, PT=6},
+
+  -- optical functions names (index -> name)
+  ofname = {
+    'beta11', 'alfa11', 'beta12', 'alfa12', 'beta13', 'alfa13',
+    'beta21', 'alfa21', 'beta22', 'alfa22', 'beta23', 'alfa23',
+    'beta31', 'alfa31', 'beta32', 'alfa32', 'beta33', 'alfa33',
+  },
+
+  -- eigen checks
+  chkeigsiz = chkeigsiz,
+  chkeigsys = chkeigsys,
 }
 
--- check for delta_p in R using dptol tolerance
+-- check for delta_p in one-turn map using dptol tolerance
 
-local function has_dp (R, dptol_)
-  dptol_ = dptol_ or 1e-12
+function gphys.has_dp (R, dptol_)
+  dptol_ = dptol_ or dp_tol
   assert(is_matrix(R)       , "invalid argument #1 (matrix expected)")
   assert(is_positive(dptol_), "invalid argument #2 (positive number expected)")
 
   local nr, nc = R:sizes()
-  assert(nr == 6 and nc == 6, "invalid one-turn map (6D matrix expected)")
+  assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
 
   local nodp = abs(R:get(6,6) - 1) <= dptol_
 
@@ -57,21 +104,17 @@ end
 
 -- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and (t,pt)
 
-local function order_eigen (V, W)
-  assert(is_matrix (V), "invalid argument #1 (matrix expected)")
-  assert(is_cvector(W), "invalid argument #2 (cvector expected)")
+function gphys.order_eigen (V, W)
+  chkeigsiz(V, W)
 
-  local nr, nc = V:sizes()
-  assert(nr == 6 and nc == 6 or
-         nr == 4 and nc == 4, "invalid eigenvectors (4D/6D matrix expected)")
-  assert(W:nrow() == nr     , "invalid eigenvalues (4D/6D cvector expected)")
+  local get, n = V.get, V:nrow()
 
-  for i=1,nc-3,2 do
+  for i=1,n-3,2 do
     local mv, k = 0
 
-    for j=i,nc-1,2 do
-      local pv = V:get(i  ,j)^2 + V:get(i  ,j+1)^2 + -- real part
-                 V:get(i+1,j)^2 + V:get(i+1,j+1)^2   -- imag part
+    for j=i,n-1,2 do
+      local pv = get(V,i  ,j)^2 + get(V,i  ,j+1)^2 + -- real part
+                 get(V,i+1,j)^2 + get(V,i+1,j+1)^2   -- imag part
       if pv > mv then mv, k = pv, j end
     end
 
@@ -86,11 +129,95 @@ local function order_eigen (V, W)
   end
 end
 
+-- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
 
--- gmath ----------------------------------------------------------------------o
+function gphys.norm_eigen (V, W)
+  chkeigsiz(V, W)
 
-gphys.has_dp      = has_dp
-gphys.order_eigen = order_eigen
+  local get, n = V.get, V:nrow()
+
+  for i=1,n-1,2 do
+    local pb = 0 -- poisson bracket
+    for j = 1,n-1,2 do
+      pb = pb + get(V,i,j) * get(V,i+1,j+1) - get(V,i,j+1) * get(V,i+1,j)
+    end
+    local spb = sqrt(abs(pb))
+    if pb < 0 then -- swap eigenvalues
+       W[i], W[i+1] = W[i+1], W[i]
+    end
+    for j=1,n do -- normalize plane
+      V:set(i  ,j,  get(V,i  ,j) /  spb      )
+      V:set(i+1,j,  get(V,i+1,j) * (spb / pb))
+    end
+  end
+end
+
+-- rephase in place the eigenvectors
+
+function gphys.phas_eigen (V)
+  chkeigsiz(V)
+
+  local get, nr = V.get, V:nrow()
+  local T = matrix(nr)
+
+--  call m66one(tm)
+--  dx = sqrt(am(1,1)**2 + am(1,2)**2)
+--  tm(1,1) = am(1,1) / dx
+--  tm(2,1) = am(1,2) / dx
+--  tm(1,2) = - tm(2,1)
+--  tm(2,2) = tm(1,1)
+--  dy = sqrt(am(3,3)**2 + am(3,4)**2)
+--  tm(3,3) = am(3,3) / dy
+--  tm(4,3) = am(3,4) / dy
+--  tm(3,4) = - tm(4,3)
+--  tm(4,4) = tm(3,3)
+
+  V:mul(T,V)
+end
+
+-- get linear optical function from ordered eigenvectors and eigenvalues
+
+function gphys.linoptfun (V, W)
+  chkeigsiz(V, W)
+
+  local get, nr = V.get, V:nrow()
+  local optfun = {
+    rank = nr,
+    q1 = 1 + atan2(W[1].im, W[1].re) / twopi,
+    q2 = 1 + atan2(W[3].im, W[3].re) / twopi,
+    q3 = 0,
+    beta11 =   get(V,1,1)^2            + get(V,1,2)^2            ,
+    alfa11 = -(get(V,1,1) * get(V,2,1) + get(V,1,2) * get(V,2,2)),
+    beta12 =   get(V,1,3)^2            + get(V,1,4)^2            ,
+    alfa12 = -(get(V,1,3) * get(V,2,3) + get(V,1,4) * get(V,2,4)),
+    beta13 = 0,
+    alfa13 = 0,
+    beta21 =   get(V,3,1)^2            + get(V,3,2)^2            ,
+    alfa21 = -(get(V,3,1) * get(V,4,1) + get(V,3,2) * get(V,4,2)),
+    beta22 =   get(V,3,3)^2            + get(V,3,4)^2            ,
+    alfa22 = -(get(V,3,3) * get(V,4,3) + get(V,3,4) * get(V,4,4)),
+    beta23 = 0,
+    alfa23 = 0,
+    beta31 = 0, beta32 = 0, beta33 = 0,
+    alfa31 = 0, alfa32 = 0, alfa33 = 0,
+  }
+
+  if nr >= 6 then
+    optfun.q3     =   atan2(W[5].im, W[5].re) / twopi
+    optfun.beta13 =   get(V,1,5)^2            + get(V,1,6)^2
+    optfun.alfa13 = -(get(V,1,5) * get(V,2,5) + get(V,1,6) * get(V,2,6))
+    optfun.beta23 =   get(V,3,5)^2            + get(V,3,6)^2
+    optfun.alfa23 = -(get(V,3,5) * get(V,4,5) + get(V,3,6) * get(V,4,6))
+    optfun.beta31 =   get(V,5,1)^2            + get(V,5,2)^2
+    optfun.alfa31 = -(get(V,5,1) * get(V,6,1) + get(V,5,2) * get(V,6,2))
+    optfun.beta32 =   get(V,5,3)^2            + get(V,5,4)^2
+    optfun.alfa32 = -(get(V,5,3) * get(V,6,3) + get(V,5,4) * get(V,6,4))
+    optfun.beta33 =   get(V,5,5)^2            + get(V,5,6)^2
+    optfun.alfa33 = -(get(V,5,5) * get(V,6,5) + get(V,5,6) * get(V,6,6))
+  end
+
+  return optfun
+end
 
 -- env ------------------------------------------------------------------------o
 
