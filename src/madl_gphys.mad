@@ -34,7 +34,7 @@ local dp_tol = 1e-12
 -- helpers --------------------------------------------------------------------o
 
 local function chkeigsiz (V, W)
-  assert(is_matrix (V), "invalid argument #1 (matrix expected)")
+  assert(is_matrix(V), "invalid argument #1 (matrix expected)")
 
   local nr, nc = V:sizes()
   assert(nr == 6 and nc == 6 or
@@ -152,7 +152,7 @@ function gphys.norm_eigen (V, W)
   end
 end
 
--- rephase in place the eigenvectors such that ?
+-- rephase in place the eigenvectors such that mux>0, muy>0 (and mut>0)
 
 function gphys.phas_eigen (V)
   chkeigsiz(V)
@@ -183,27 +183,65 @@ function gphys.phas_eigen (V)
   V:mul(P,V) -- V = P*V
 end
 
--- get linear optical function from ordered eigenvectors and eigenvalues
+-- get linear normal form A of one-turn map R
 
-function gphys.linoptfun (V, W)
-  chkeigsiz(V, W)
+function gphys.normal1 (R)
+  chkeigsiz(R)
 
-  local get, nr = V.get, V:nrow()
+  -- get eigenvalues and eigenvectors of R
+  local W, A, V, info = R:eigen()
+--  print("\ninfo=", info)
+--  R:print('R')
+--  W:print('W')
+--  V:print('V')
+
+  -- reuse matrix returned for left eigenvectors
+  A:copy(V)
+
+  -- order eigenvalues and eigenvectors by planes
+--  print("order eigen system")
+  gphys.order_eigen(A, W)
+--  W:print('W')
+--  A:print('A')
+
+  -- check eigen system: (R - I*Wi)*Ai == 0
+--  chkeigsys(A,W,R)
+
+  -- normalize eigen system: [x,px]=1, [y,py]=1 and [t,pt]=1
+--  print("normalize eigen system")
+  gphys.norm_eigen(A, W)
+--  W:print('W')
+--  A:print('A')
+
+  -- rephase eigen vectors
+--  print("rephase eigen vectors")
+  gphys.phas_eigen(A)
+--  A:print('A')
+
+  return A, V, W, info
+end
+
+-- get linear optical function from normal form and eigenvalues
+
+function gphys.optfun1 (A, W)
+  chkeigsiz(A, W)
+
+  local get, nr = A.get, A:nrow()
   local optfun = {
     rank = nr,
     q1 = 1 + atan2(W[1].im, W[1].re) / twopi,
     q2 = 1 + atan2(W[3].im, W[3].re) / twopi,
     q3 = 0,
-    beta11 =   get(V,1,1)^2            + get(V,1,2)^2            ,
-    alfa11 = -(get(V,1,1) * get(V,2,1) + get(V,1,2) * get(V,2,2)),
-    beta12 =   get(V,1,3)^2            + get(V,1,4)^2            ,
-    alfa12 = -(get(V,1,3) * get(V,2,3) + get(V,1,4) * get(V,2,4)),
+    beta11 =   get(A,1,1)^2            + get(A,1,2)^2            ,
+    alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)),
+    beta12 =   get(A,1,3)^2            + get(A,1,4)^2            ,
+    alfa12 = -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)),
     beta13 = 0,
     alfa13 = 0,
-    beta21 =   get(V,3,1)^2            + get(V,3,2)^2            ,
-    alfa21 = -(get(V,3,1) * get(V,4,1) + get(V,3,2) * get(V,4,2)),
-    beta22 =   get(V,3,3)^2            + get(V,3,4)^2            ,
-    alfa22 = -(get(V,3,3) * get(V,4,3) + get(V,3,4) * get(V,4,4)),
+    beta21 =   get(A,3,1)^2            + get(A,3,2)^2            ,
+    alfa21 = -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)),
+    beta22 =   get(A,3,3)^2            + get(A,3,4)^2            ,
+    alfa22 = -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)),
     beta23 = 0,
     alfa23 = 0,
     beta31 = 0, beta32 = 0, beta33 = 0,
@@ -212,17 +250,22 @@ function gphys.linoptfun (V, W)
 
   if nr >= 6 then
     optfun.q3     =   atan2(W[5].im, W[5].re) / twopi
-    optfun.beta13 =   get(V,1,5)^2            + get(V,1,6)^2
-    optfun.alfa13 = -(get(V,1,5) * get(V,2,5) + get(V,1,6) * get(V,2,6))
-    optfun.beta23 =   get(V,3,5)^2            + get(V,3,6)^2
-    optfun.alfa23 = -(get(V,3,5) * get(V,4,5) + get(V,3,6) * get(V,4,6))
-    optfun.beta31 =   get(V,5,1)^2            + get(V,5,2)^2
-    optfun.alfa31 = -(get(V,5,1) * get(V,6,1) + get(V,5,2) * get(V,6,2))
-    optfun.beta32 =   get(V,5,3)^2            + get(V,5,4)^2
-    optfun.alfa32 = -(get(V,5,3) * get(V,6,3) + get(V,5,4) * get(V,6,4))
-    optfun.beta33 =   get(V,5,5)^2            + get(V,5,6)^2
-    optfun.alfa33 = -(get(V,5,5) * get(V,6,5) + get(V,5,6) * get(V,6,6))
+    optfun.beta13 =   get(A,1,5)^2            + get(A,1,6)^2
+    optfun.alfa13 = -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6))
+    optfun.beta23 =   get(A,3,5)^2            + get(A,3,6)^2
+    optfun.alfa23 = -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6))
+    optfun.beta31 =   get(A,5,1)^2            + get(A,5,2)^2
+    optfun.alfa31 = -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2))
+    optfun.beta32 =   get(A,5,3)^2            + get(A,5,4)^2
+    optfun.alfa32 = -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4))
+    optfun.beta33 =   get(A,5,5)^2            + get(A,5,6)^2
+    optfun.alfa33 = -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6))
   end
+
+  -- print debug information
+--  io.write('rank=', nr,'\n')
+--  for i=1,3 do io.write('q'..i,':\t', num2str(optfun['q'..i]),'\n') end
+--  for _,v in ipairs(gphys.ofname) do io.write(v,':\t', num2str(optfun[v]),'\n') end
 
   return optfun
 end
