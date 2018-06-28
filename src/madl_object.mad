@@ -54,7 +54,7 @@ local var0 = setmetatable({}, {
 -- helpers --------------------------------------------------------------------o
 
 local function name (a)
-  local var = rawget(a,_var)
+  local var = a[_var]
   return rawget(var,'__id') or ('? <: ' .. var.__id)
 end
 
@@ -114,21 +114,21 @@ local MT = {}
 function MT:__call (a, b) -- object constructor (define the object-model)
   if is_string(a) or is_nil(a) then                     -- [un]named object
     if is_nil(b) then
-      local obj = {__id=a, [_var]=var0, __index=rawget(self,_var)} -- proxy
+      local obj = {__id=a, [_var]=var0, __index=self[_var]} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {[_var]=b, __index=rawget(self,_var)} -- proxy
+      local obj = {[_var]=b, __index=self[_var]}        -- proxy
       b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
-    if rawget(self,_var) == var0 then                   -- finalize named object
+    if self[_var] == var0 then                          -- finalize named object
       a.__id, self.__id = self.__id, nil
-      rawset(self,_var, setmetatable(a, self));         -- set fast inheritance
+      self[_var] = setmetatable(a, self)                -- set fast inheritance
       set_class(parent(self))
       return init(self)
     else                                                -- unnamed object
-      local obj = {[_var]=a, __index=rawget(self,_var)} -- proxy
+      local obj = {[_var]=a, __index=self[_var]}        -- proxy
       setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
@@ -138,7 +138,7 @@ function MT:__call (a, b) -- object constructor (define the object-model)
 end
 
 function MT:__index (k)        -- reusing var_raw and var_val kills the inlining
-  local v = rawget(self,_var)[k]
+  local v = self[_var][k]
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
@@ -149,14 +149,14 @@ function MT:__newindex (k, v)
     error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
           .. "' (readonly object, method or variable)", 2)
   end
-  rawget(self,_var)[k] = v      -- note: must use [k] for var0
+  self[_var][k] = v      -- note: must use [k] for var0
 end
 
 function MT:__len ()
-  local var = rawget(self,_var)
+  local var = self[_var]
   if is_nil(var[1]) then return 0 end -- fast
   while is_nil(rawget(var,1)) do      -- slow
-    var  = rawget(self,'__index')
+    var  = self.__index
     self = getmetatable(var)
   end
   return rawlen(var)
@@ -171,11 +171,11 @@ local function iter (var, key) -- scan only numbers and strings
 end
 
 local function pairs_iter (self)
-  return iter, rawget(self,_var), nil
+  return iter, self[_var], nil
 end
 
 local function ipairs_iter (self)
-  return ipairs(rawget(self,_var))
+  return ipairs(self[_var])
 end
 
 MT.__pairs  =  pairs_iter
@@ -193,29 +193,29 @@ MF.is_class      = is_class
 MF.is_instanceOf = is_instanceOf
 
 function MF:raw_len ()
-  return rawlen(rawget(self,_var))    -- no inheritance
+  return rawlen(self[_var])           -- no inheritance
 end
 
 function MF:raw_get (k)
-  return rawget(rawget(self,_var),k)  -- no inheritance nor function evaluation
+  return rawget(self[_var],k)         -- no inheritance nor function evaluation
 end
 
 function MF:raw_set (k, v)
-  rawset(rawget(self,_var), k, v)     -- no protection!!
+  rawset(self[_var], k, v)            -- no protection!!
 end
 
 function MF:var_raw (k)
-  return rawget(self,_var)[k]         -- no function evaluation with inheritance
+  return self[_var][k]                -- no function evaluation with inheritance
 end
 
-function MF:var_val (k, v)         -- string key with value function
+function MF:var_val (k, v)            -- string key with value function
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
 end
 
-function MF:var_get (k)     -- reusing var_raw and var_val kills the inlining
-  local v = rawget(self,_var)[k]
+function MF:var_get (k)        -- reusing var_raw and var_val kills the inlining
+  local v = self[_var][k]
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
@@ -251,7 +251,7 @@ function MF:set_variables (tbl, override_) -- default: override = true
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
     assertf(override_ ~= false or is_nil(var[k]), "cannot override variable '%s'",k)
@@ -267,7 +267,7 @@ function MF:wrap_variables (tbl)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     local v, newv = var[k]
@@ -294,7 +294,7 @@ function MF:set_methods (tbl, override_) -- default: override = true
   if fclass(self) and override_ == false then
     errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
@@ -354,7 +354,7 @@ function MF:insert (idx_, val)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  table.insert(rawget(self,_var), idx_, val)
+  table.insert(self[_var], idx_, val)
   return self
 end
 
@@ -363,7 +363,7 @@ function MF:remove (idx_)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  return table.remove(rawget(self,_var), idx_)
+  return table.remove(self[_var], idx_)
 end
 
 function MF:move (idx1, idx2, idxto, dest_)
@@ -373,7 +373,7 @@ function MF:move (idx1, idx2, idxto, dest_)
   if not freadonly(dest_) then
     errorf("forbidden write access to readonly object '%s'", name(dest_))
   end
-  table.move(rawget(self,_var), idx1, idx2, idxto, rawget(dest_,_var))
+  table.move(self[_var], idx1, idx2, idxto, dest_[_var])
   return dest_
 end
 
@@ -382,18 +382,18 @@ function MF:sort (cmp_)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  table.sort(rawget(self,_var), cmp_)
+  table.sort(self[_var], cmp_)
   return self
 end
 
 function MF:bsearch (val, cmp_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return bsearch(rawget(self,_var), val, cmp_, low_, high_)
+  return bsearch(self[_var], val, cmp_, low_, high_)
 end
 
 function MF:lsearch (val, equ_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return lsearch(rawget(self,_var), val, equ_, low_, high_)
+  return lsearch(self[_var], val, equ_, low_, high_)
 end
 
 function MF:clear_array ()
@@ -401,7 +401,7 @@ function MF:clear_array ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   for i=1,rawlen(var) do var[i]=nil end
   return self
 end
@@ -411,7 +411,7 @@ function MF:clear_variables ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   local id  = rawget(var,'__id')
   for k in kpairs(self) do var[k]=nil end
   var.__id = id
@@ -423,7 +423,7 @@ function MF:clear_all ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = rawget(self,_var)
+  local var = self[_var]
   local id  = rawget(var,'__id')
   for k in pairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
   var.__id = id
@@ -445,7 +445,7 @@ function MF:set_parent (newp)
   if newp.parent ~= spar.parent then
     error("new and current parent do not inherit from same direct parent")
   end
-  rawset(self,'__index', rawget(newp,_var))
+  self.__index = newp[_var]
   set_class(newp)
   return self
 end
@@ -468,7 +468,7 @@ function MF:copy (name_)
   assert(is_object(self)                  ,"invalid argument #1 (object expected)")
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   local cpy = MF.same(self, name_ or MF.raw_get(self,'__id'))
-  local var, cvar = rawget(self,_var), rawget(cpy,_var)
+  local var, cvar = self[_var], cpy[_var]
   local id  = rawget(cvar,'__id')
   for k,v in pairs_iter(self) do cvar[k] = v end
   cvar.__id = id
@@ -571,7 +571,8 @@ function MF:close_env ()
 end
 
 function MF:dumpenv () -- for debug
-  for k,v in pairs(rawget(self,_var)) do
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  for k,v in pairs(self[_var]) do
     if is_rawtable(v) then
       for k,v in pairs(v) do
         print(k,'=',v)
@@ -603,7 +604,7 @@ function MF:dumpobj (filnam_, class_, pattern_)
   local tostring in MAD
   local n, cnt, res, spc, str = 0, {}, {}, ""
   while self and not rawequal(self, class_) do
-    local var = rawget(self,_var)
+    local var = self[_var]
     -- header
     local id = rawget(var, '__id')
     n, str = n+1, id and (" '" .. id .. "'") or ""
