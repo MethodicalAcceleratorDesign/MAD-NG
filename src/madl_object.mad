@@ -245,16 +245,16 @@ function MF:get_variables (lst, noeval_)
   return res -- key -> val
 end
 
-function MF:set_variables (tbl, override_)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
+function MF:set_variables (tbl, override_) -- default: override = true
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
-    assertf(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable '%s'", k)
+    assertf(override_ ~= false or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
   end
   var.__id = id
@@ -285,39 +285,42 @@ end
 
 local MV = {}
 
-function MF:set_methods (tbl, override_, strict_)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
+function MF:set_methods (tbl, override_) -- default: override = true
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
+  end
+  if fclass(self) and override_ == false then
+    errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
-    assertf(is_string(k), "invalid key '%s' (method name expected)", k)
-    assertf(is_callable(f) or strict_ == false, "invalid key value '%s' (callable expected)", k)
-    assertf(is_nil(rawget(var,k)) or override_ == true, "cannot override method '%s'", k)
+    assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
+    assertf(is_callable(f), "invalid value for key '%s' (callable expected)", k)
+    assertf(override_ ~= false or is_nil(var[k]), "cannot override method '%s'",k)
     var[k] = is_function(f) and functor(f) or f
   end
   var.__id = id
   return self
 end
 
-function MF:set_metamethods (tbl, override_, strict_)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
+function MF:set_metamethods (tbl, override_) -- default: override = false
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
-  if sm == pm then -- create new metatable if same as parent
-    assert(not fclass(self), "invalid metatable write access (unexpected class)")
-    sm = copy_metamethods(self, pm)
+  if fclass(self) then
+    errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
   end
-  for k,mm in pairs(tbl) do
-    assertf(is_metaname(k) or strict_ == false, "invalid key '%s' (metamethod expected)", tostring(k))
-    assertf(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod '%s'", k)
-    sm[k] = mm
+  local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
+  if sm == pm then sm = copy_metamethods(self, pm) end
+  for k,m in pairs(tbl) do
+    assertf(is_metaname(k), "invalid key '%s' (metamethod expected)", tostring(k))
+    assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
+    sm[k] = m
   end
   return self
 end
