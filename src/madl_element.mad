@@ -25,9 +25,9 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local object                            in MAD
-local is_nil, is_number, is_table       in MAD.typeid
-local test_flag, set_flag, clear_flag   in object
+local object                                       in MAD
+local is_nil, is_number, is_table, is_object       in MAD.typeid
+local test_flag, set_flag, clear_flag              in object
 
 -- root object ----------------------------------------------------------------o
 
@@ -43,7 +43,29 @@ local function is_element (a)
   return is_table(a) and a[_elem] ~= nil
 end
 
-Element :set_metamethods ({
+-- flags ----------------------------------------------------------------------o
+
+M.flags = {
+  implicit = Element.first_free_flag,               -- inherited from object
+  selected = Element.first_free_flag+1,
+  observe  = Element.first_free_flag+2,
+  layout   = Element.first_free_flag+3,
+  layangle = Element.first_free_flag+4,
+}
+
+Element.first_free_flag = Element.first_free_flag+5 -- overridden in Element
+
+-- members --------------------------------------------------------------------o
+
+local implicit, selected in M.flags
+
+Element :set_methods {
+  is_implicit = \s   ->  test_flag(s,      implicit),
+  is_selected = \s,f ->  test_flag(s, f or selected),
+  select      = \s,f ->   set_flag(s, f or selected),
+  deselect    = \s,f -> clear_flag(s, f or selected),
+
+} :set_metamethods ({
   -- concatenation
   __add = \a,b -> M.bline { a, b },
   -- repetition
@@ -53,7 +75,8 @@ Element :set_metamethods ({
   __unm = \a -> M.bline { __rep=-1, a },
   -- dump
   __tostring = \s -> string.format("%s: '%s' %p", s.kind, s.__id, s),
-}, true)
+
+}, true) :set_readonly()
 
 -- taxonomy -------------------------------------------------------------------o
 
@@ -126,11 +149,13 @@ M.vmonitor    = M.monitor       'vmonitor'     { }
 -- build kind and is_xxx keys of elements -------------------------------------o
 
 for k,e in pairs(M) do
-  assert(is_element(e), "non-element '"..e.__id.."'detected in Element")
-  if k ~= string.lower(e.__id) then
-    error("inconsistent element kind '"..k.."' detected in '".. e.__id .."'")
+  if is_object(e) then
+    assert(is_element(e), "non-element '"..e.__id.."'detected in Element")
+    if k ~= string.lower(e.__id) then
+      error("inconsistent element kind '"..k.."' detected in '".. e.__id .."'")
+    end
+    e.kind, e['is_'..k] = k, true
   end
-  e.kind, e['is_'..k] = k, true
 end
 
 -- attributes aliases ---------------------------------------------------------o
@@ -139,29 +164,6 @@ M. kicker.knl = \s -> { -(s.hkick or 0) }
 M. kicker.ksl = \s -> {   s.vkick or 0  }
 M.hkicker.knl = \s -> { -(s. kick or s.hkick or 0) }
 M.vkicker.ksl = \s -> {   s. kick or s.vkick or 0  }
-
--- flags ----------------------------------------------------------------------o
-
-M.flags = {
-  implicit = Element.first_free_flag,               -- inherited from object
-  selected = Element.first_free_flag+1,
-  observe  = Element.first_free_flag+2,
-  layout   = Element.first_free_flag+3,
-  layangle = Element.first_free_flag+4,
-}
-
-Element.first_free_flag = Element.first_free_flag+5 -- overridden in Element
-
--- members --------------------------------------------------------------------o
-
-local implicit, selected in M.flags
-
-Element :set_methods {
-  is_implicit = \s   ->  test_flag(s,      implicit),
-  is_selected = \s,f ->  test_flag(s, f or selected),
-  select      = \s,f ->   set_flag(s, f or selected),
-  deselect    = \s,f -> clear_flag(s, f or selected),
-} :set_readonly()
 
 -- env ------------------------------------------------------------------------o
 

@@ -22,15 +22,13 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = {}
-
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname,is_callable, is_iterable,
       is_mappable                                               in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
-local bsearch, lsearch, kpairs, openfile                        in MAD.utility
+local bsearch, lsearch, kpairs, openfile, assertf, errorf       in MAD.utility
 local functor                                                   in MAD.gfunc
 
 -- implementation -------------------------------------------------------------o
@@ -53,7 +51,7 @@ local var0 = setmetatable({}, {
   __metatable  = false,
 })
 
--- helpers
+-- helpers --------------------------------------------------------------------o
 
 local function name (a)
   local var = rawget(a,_var)
@@ -99,7 +97,16 @@ local function is_instanceOf (a, b) -- exported
   return false
 end
 
--- metamethods
+local function copy_metamethods (a, m)
+  local c = table.new(0,8)
+  for k,v in pairs(m) do c[k] = v end
+  m.__metatable = nil -- unprotect change
+  setmetatable(a, c)
+  m.__metatable, c.__metatable = m, c
+  return c
+end
+
+-- metamethods ----------------------------------------------------------------o
 
 local MT = {}
 
@@ -130,36 +137,7 @@ function MT:__call (a, b) -- object constructor (define the object-model)
                   or  "invalid argument #2 (raw table expected)", 2)
 end
 
-local function raw_len (self)
-  return rawlen(rawget(self,_var))    -- no inheritance
-end
-
-local function raw_get (self, k)
-  return rawget(rawget(self,_var),k)  -- no inheritance nor function evaluation
-end
-
-local function raw_set (self, k, v)
-  rawset(rawget(self,_var), k, v)     -- no protection!!
-end
-
-local function var_raw (self, k)
-  return rawget(self,_var)[k]         -- no function evaluation with inheritance
-end
-
-local function var_val (self, k, v)   -- string key with value function
-  if type(k) == 'string' and type(v) == 'function'
-  then return v(self)
-  else return v end
-end
-
-local function var_get (self, k) -- reusing var_raw and var_val kills the inlining
-  local v = rawget(self,_var)[k]
-  if type(k) == 'string' and type(v) == 'function'
-  then return v(self)
-  else return v end
-end
-
-function MT:__index (k)          -- reusing var_raw and var_val kills the inlining
+function MT:__index (k)        -- reusing var_raw and var_val kills the inlining
   local v = rawget(self,_var)[k]
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
@@ -168,8 +146,8 @@ end
 
 function MT:__newindex (k, v)
   if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' then
-    error("forbidden write access to '" .. name(self) ..
-          "' (readonly object or variable)", 2)
+    error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
+          .. "' (readonly object, method or variable)", 2)
   end
   rawget(self,_var)[k] = v      -- note: must use [k] for var0
 end
@@ -207,14 +185,48 @@ function MT:__tostring()
   return string.format("object: '%s' %p", name(self), self)
 end
 
--- methods
+-- methods (member functions) -------------------------------------------------o
 
-local function is_readonly (self)
+local MF = {}
+
+MF.is_class      = is_class
+MF.is_instanceOf = is_instanceOf
+
+function MF:raw_len ()
+  return rawlen(rawget(self,_var))    -- no inheritance
+end
+
+function MF:raw_get (k)
+  return rawget(rawget(self,_var),k)  -- no inheritance nor function evaluation
+end
+
+function MF:raw_set (k, v)
+  rawset(rawget(self,_var), k, v)     -- no protection!!
+end
+
+function MF:var_raw (k)
+  return rawget(self,_var)[k]         -- no function evaluation with inheritance
+end
+
+function MF:var_val (k, v)         -- string key with value function
+  if type(k) == 'string' and type(v) == 'function'
+  then return v(self)
+  else return v end
+end
+
+function MF:var_get (k)     -- reusing var_raw and var_val kills the inlining
+  local v = rawget(self,_var)[k]
+  if type(k) == 'string' and type(v) == 'function'
+  then return v(self)
+  else return v end
+end
+
+function MF:is_readonly ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return freadonly(self)
 end
 
-local function set_readonly (self, set_)
+function MF:set_readonly (set_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   if set_ ~= false
   then rawset(self, _flg, bset(rawget(self,_flg) or 0, flg_ro))
@@ -223,34 +235,38 @@ local function set_readonly (self, set_)
   return self
 end
 
-local function get_variables (self, lst, noeval_)
+function MF:get_variables (lst, noeval_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
   local n   = #lst
   local res = table.new(0,n)
-  local get = noeval_ == true and var_raw or var_get
+  local get = noeval_ == true and MF.var_raw or MF.var_get
   for i=1,n do res[lst[i]] = get(self, lst[i]) end
   return res -- key -> val
 end
 
-local function set_variables (self, tbl, override_)
+function MF:set_variables (tbl, override_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
-    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable")
+    assertf(is_nil(rawget(var,k)) or override_ ~= false, "cannot override variable '%s'", k)
     var[k] = v
   end
   var.__id = id
   return self
 end
 
-local function wrap_variables (self, tbl)
+function MF:wrap_variables (tbl)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
@@ -267,37 +283,40 @@ local function wrap_variables (self, tbl)
   return self
 end
 
-local function set_methods (self, tbl, override_, strict_)
+local MV = {}
+
+function MF:set_methods (tbl, override_, strict_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
-    assert(is_string(k), "invalid key (function name expected)")
-    assert(is_callable(f) or strict_ == false, "invalid value (callable expected)")
-    assert(is_nil(rawget(var,k)) or override_ ~= false, "cannot override function")
+    assertf(is_string(k), "invalid key '%s' (method name expected)", k)
+    assertf(is_callable(f) or strict_ == false, "invalid key value '%s' (callable expected)", k)
+    assertf(is_nil(rawget(var,k)) or override_ == true, "cannot override method '%s'", k)
     var[k] = is_function(f) and functor(f) or f
   end
   var.__id = id
   return self
 end
 
-local function set_metamethods (self, tbl, override_, strict_)
+function MF:set_metamethods (tbl, override_, strict_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then -- create new metatable if same as parent
     assert(not fclass(self), "invalid metatable write access (unexpected class)")
-    sm=table.new(0,8) for k,v in pairs(pm) do sm[k] = v end
-    pm.__metatable = nil -- unprotect change
-    setmetatable(self, sm)
-    pm.__metatable, sm.__metatable = pm, sm
+    sm = copy_metamethods(self, pm)
   end
   for k,mm in pairs(tbl) do
-    assert(is_metaname(k) or strict_ == false, "invalid key (metamethod expected)")
-    assert(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod")
+    assertf(is_metaname(k) or strict_ == false, "invalid key '%s' (metamethod expected)", tostring(k))
+    assertf(is_nil(rawget(sm,k)) or override_ == true, "cannot override metamethod '%s'", k)
     sm[k] = mm
   end
   return self
@@ -307,11 +326,11 @@ local function final_err (self)
   error("invalid object creation ('"..name(self).."' is qualified as final)", 2)
 end
 
-local function set_final (self)
+function MF:set_final ()
   return set_metamethods(self, {__call=final_err}, true)
 end
 
-local function get_varkeys (self, class_)
+function MF:get_varkeys (class_)
   assert(is_object(self)                    , "invalid argument #1 (object expected)")
   assert(is_nil(class_) or is_object(class_), "invalid argument #2 (object expected)")
   local lst, key = table.new(8,1), table.new(0,8)
@@ -327,56 +346,68 @@ local function get_varkeys (self, class_)
   return lst
 end
 
-local function insert (self, idx_, val)
+function MF:insert (idx_, val)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   table.insert(rawget(self,_var), idx_, val)
   return self
 end
 
-local function remove (self, idx_)
+function MF:remove (idx_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   return table.remove(rawget(self,_var), idx_)
 end
 
-local function move (self, idx1, idx2, idxto, dest_)
+function MF:move (idx1, idx2, idxto, dest_)
   dest_ = dest_ or self
   assert(is_object(self)     , "invalid argument #1 (object expected)")
   assert(is_object(dest_)    , "invalid argument #2 (object expected)")
-  assert(not freadonly(dest_), "forbidden write access to readonly object")
+  if not freadonly(dest_) then
+    errorf("forbidden write access to readonly object '%s'", name(dest_))
+  end
   table.move(rawget(self,_var), idx1, idx2, idxto, rawget(dest_,_var))
   return dest_
 end
 
-local function sort (self, cmp_)
+function MF:sort (cmp_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   table.sort(rawget(self,_var), cmp_)
   return self
 end
 
-local function bsearch_ (self, val, cmp_, low_, high_)
+function MF:bsearch (val, cmp_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   return bsearch(rawget(self,_var), val, cmp_, low_, high_)
 end
 
-local function lsearch_ (self, val, equ_, low_, high_)
+function MF:lsearch (val, equ_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   return lsearch(rawget(self,_var), val, equ_, low_, high_)
 end
 
-local function clear_array (self)
+function MF:clear_array ()
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   for i=1,rawlen(var) do var[i]=nil end
   return self
 end
 
-local function clear_variables (self)
+function MF:clear_variables ()
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k in kpairs(self) do var[k]=nil end
@@ -384,9 +415,11 @@ local function clear_variables (self)
   return self
 end
 
-local function clear_all (self)
+function MF:clear_all ()
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(not freadonly(self), "forbidden write access to readonly object")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
   local var = rawget(self,_var)
   local id  = rawget(var,'__id')
   for k in pairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
@@ -396,7 +429,7 @@ end
 
 -- inheritance
 
-local function set_parent (self, newp)
+function MF:set_parent (newp)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_object(newp), "invalid argument #2 (object expected)")
   if freadonly(self) then
@@ -416,7 +449,7 @@ end
 
 -- copy
 
-local function same (self, name_)
+function MF:same (name_)
   assert(is_object(self)                  ,"invalid argument #1 (object expected)")
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   -- same shares the same parent
@@ -424,19 +457,14 @@ local function same (self, name_)
   local sam = par(name_, {})
   -- metatable
   local sm, pm = getmetatable(self), getmetatable(par)
-  if sm ~= pm then -- copy metatable
-    local cm=table.new(0,8) for k,v in pairs(sm) do cm[k] = v end
-    sm.__metatable = nil
-    setmetatable(sam, cm)
-    sm.__metatable, cm.__metatable = sm, cm
-  end
+  if sm ~= pm then copy_metamethods(sam, sm) end
   return sam
 end
 
-local function copy (self, name_)
+function MF:copy (name_)
   assert(is_object(self)                  ,"invalid argument #1 (object expected)")
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
-  local cpy = same(self, name_ or raw_get(self,'__id'))
+  local cpy = MF.same(self, name_ or MF.raw_get(self,'__id'))
   local var, cvar = rawget(self,_var), rawget(cpy,_var)
   local id  = rawget(cvar,'__id')
   for k,v in pairs_iter(self) do cvar[k] = v end
@@ -444,21 +472,21 @@ local function copy (self, name_)
   return cpy
 end
 
-MT.__same = same
-MT.__copy = copy
+MT.__same = MF.same
+MT.__copy = MF.copy
 
 -- flags
 
 local flg_mask = lshift(-1, flg_free)
 local flg_notmask = bnot(flg_mask)
 
-local function test_flag (self, n)
+function MF:test_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   return btst(rawget(self,_flg) or 0, n)
 end
 
-local function set_flag (self, n)
+function MF:set_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   if n >= flg_free then
@@ -467,7 +495,7 @@ local function set_flag (self, n)
   return self
 end
 
-local function clear_flag (self, n)
+function MF:clear_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   if n >= flg_free then
@@ -476,18 +504,18 @@ local function clear_flag (self, n)
   return self
 end
 
-local function get_flags (self)
+function MF:get_flags ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return rawget(self,_flg) or 0
 end
 
-local function test_flags (self, flags)
+function MF:test_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
   return band(rawget(self,_flg) or 0, flags) ~= 0
 end
 
-local function set_flags (self, flags)
+function MF:set_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
   flags = band(flags, flg_mask)
@@ -495,7 +523,7 @@ local function set_flags (self, flags)
   return self
 end
 
-local function clear_flags (self, flags)
+function MF:clear_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
   flags = band(flags, flg_mask)
@@ -507,7 +535,7 @@ end
 
 local _env = {} -- hidden key
 
-local function open_env (self, ctx_)
+function MF:open_env (ctx_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_nil(ctx_) or is_function(ctx_) or is_number(ctx_) and ctx_ >= 1,
                           "invalid argument #2 (not a function or < 1)")
@@ -519,27 +547,27 @@ local function open_env (self, ctx_)
   return self
 end
 
-local function is_open_env (self)
+function MF:is_open_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return not is_nil(rawget(self,_env))
 end
 
-local function reset_env (self) -- if an error occurs while in the environment
+function MF:reset_env () -- if an error occurs while in the environment
   assert(is_object(self), "invalid argument #1 (object expected)")
   rawset(self, _env, nil)
   rawset(self, self.__id, nil) -- clear self reference
   return self
 end
 
-local function close_env (self)
+function MF:close_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   local env = rawget(self,_env)
   assert(not is_nil(env), "invalid environment (not open)")
   setfenv(env.ctx, env.env)
-  return reset_env(self)
+  return MF.reset_env(self)
 end
 
-local function dump_env (self) -- for debug
+function MF:dumpenv () -- for debug
   for k,v in pairs(rawget(self,_var)) do
     if is_rawtable(v) then
       for k,v in pairs(v) do
@@ -556,7 +584,7 @@ end
 -- I/O ------------------------------------------------------------------------o
 
 -- dump obj members (including controlled inheritance)
-local function dumpobj (self, filnam_, class_, pattern_)
+function MF:dumpobj (filnam_, class_, pattern_)
   if is_object(filnam_) and is_nil(pattern_) then
     filnam_, class_, pattern_ = nil, filnam_, class_ -- right shift
   end
@@ -612,70 +640,19 @@ local function dumpobj (self, filnam_, class_, pattern_)
   return self
 end
 
--- members --------------------------------------------------------------------o
+-- variables ------------------------------------------------------------------o
 
-M.__id  = 'object'
-M.__par = parent
-M.first_free_flag = flg_free
+-- local MV = {}
 
--- methods
-M.is_class        = functor( is_class        )
-M.is_readonly     = functor( is_readonly     )
-M.is_instanceOf   = functor( is_instanceOf   )
-
-M.set_parent      = functor( set_parent      )
-M.set_readonly    = functor( set_readonly    )
-M.set_final       = functor( set_final       )
-
-M.get_varkeys     = functor( get_varkeys     )
-M.get_variables   = functor( get_variables   )
-M.set_variables   = functor( set_variables   )
-M.wrap_variables  = functor( wrap_variables  )
-
-M.set_methods     = functor( set_methods     )
-M.set_metamethods = functor( set_metamethods )
-
-M.insert          = functor( insert          )
-M.remove          = functor( remove          )
-M.move            = functor( move            )
-M.sort            = functor( sort            )
-M.bsearch         = functor( bsearch_        )
-M.lsearch         = functor( lsearch_        )
-M.clear_array     = functor( clear_array     )
-M.clear_variables = functor( clear_variables )
-M.clear_all       = functor( clear_all       )
-
-M.same            = functor( same            )
-M.copy            = functor( copy            )
-
-M.raw_len         = functor( raw_len         )
-M.raw_get         = functor( raw_get         )
-M.raw_set         = functor( raw_set         )
-
-M.var_raw         = functor( var_raw         )
-M.var_val         = functor( var_val         )
-M.var_get         = functor( var_get         )
-
-M.set_flag        = functor( set_flag        )
-M.test_flag       = functor( test_flag       )
-M.clear_flag      = functor( clear_flag      )
-M.get_flags       = functor( get_flags       )
-M.set_flags       = functor( set_flags       )
-M.test_flags      = functor( test_flags      )
-M.clear_flags     = functor( clear_flags     )
-
-M.open_env        = functor( open_env        )
-M.reset_env       = functor( reset_env       )
-M.close_env       = functor( close_env       )
-M.is_open_env     = functor( is_open_env     )
-
-M.dumpobj         = functor( dumpobj         )
+MV.__id  = 'object'
+MV.__par = parent
+MV.first_free_flag = flg_free
 
 -- aliases
-M.parent = parent
-M.name   = \s -> s.__id
-M.set    = M.set_variables
-M.get    = M.get_variables
+MV.parent = parent
+MV.name   = \s -> s.__id
+MF.setv   = MF.set_variables
+MF.getv   = MF.get_variables
 
 -- env ------------------------------------------------------------------------o
 
@@ -683,22 +660,16 @@ MAD.typeid.is_class      = is_class
 MAD.typeid.is_object     = is_object
 MAD.typeid.is_instanceOf = is_instanceOf
 
--- metatables -----------------------------------------------------------------o
+-- object ---------------------------------------------------------------------o
 
--- root object variables = module
-object = setmetatable({[_var]=M}, MT)
+-- add variables, methods and metamethods, and set as readonly
+object = MF.set_methods(setmetatable({[_var]=MV}, MT), MF) :set_readonly()
 
  -- parent link
-setmetatable(M, object)
+setmetatable(MV, object)
 
 -- protect against changing metatable
 MT.__metatable = MT
 
--- set as readonly
-object:set_readonly()
-
 -- end ------------------------------------------------------------------------o
-return {
-  object = object,
-  -- __help = require 'madh_object',
-}
+return { object = object }
