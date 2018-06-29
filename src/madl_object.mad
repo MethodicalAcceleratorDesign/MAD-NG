@@ -557,17 +557,30 @@ end
 
 function MF:reset_env () -- if an error occurs while in the environment
   assert(is_object(self), "invalid argument #1 (object expected)")
-  rawset(self, _env, nil)
-  rawset(self, self.__id, nil) -- clear self reference
+  local env = rawget(self,_env)
+  if env then
+    setfenv(env.ctx, env.env)
+    rawset(self, _env, nil)
+    rawset(self, self.__id, nil) -- clear self reference
+  end
   return self
 end
 
 function MF:close_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
-  local env = rawget(self,_env)
-  assert(not is_nil(env), "invalid environment (not open)")
-  setfenv(env.ctx, env.env)
+  assert(not is_nil(rawget(self,_env)), "invalid environment (not open)")
   return MF.reset_env(self)
+end
+
+function MF:load_env (loader)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  if is_string(loader) then loader = assert(loadfile(loader)) end
+  assert(is_callable(loader), "invalid argument #2 (filename or callable expected)")
+  self:open_env(loader)
+  local st, err = pcall(loader)
+  self:reset_env()
+  assert(st, err)
+  return self
 end
 
 function MF:dumpenv () -- for debug
