@@ -36,8 +36,8 @@ local functor                                                   in MAD.gfunc
 -- Root of all objects, forward declaration
 local object
 
--- object members
-local _var = {} -- hidden key
+-- object kind
+local _obj = {} -- unique value
 
 -- reserved flags (bits)
 local _flg = {} -- hidden key
@@ -54,18 +54,18 @@ local var0 = setmetatable({}, {
 -- helpers --------------------------------------------------------------------o
 
 local function name (a)
-  local var = a[_var]
+  local var = a.__var
   return rawget(var,'__id') or ('? <: ' .. var.__id)
 end
 
 local function init (a)
-  local init = rawget(getmetatable(a), '__init')
+  local init = getmetatable(a).__init
   if init then return init(a) end
   return a
 end
 
 local function parent (a)
-  return getmetatable(rawget(a,'__index'))
+  return getmetatable(a.__index)
 end
 
 local function fclass (a)
@@ -82,11 +82,12 @@ local function set_class (a)
 end
 
 local function is_object (a) -- exported
-  return is_table(a) and rawget(a,_var) ~= nil
+  local mt = getmetatable(a)
+  return mt ~= nil and mt.__obj == _obj
 end
 
 local function is_class (a) -- exported
-  return is_table(a) and fclass(a)
+  return is_object(a) and fclass(a)
 end
 
 local function is_instanceOf (a, b) -- exported
@@ -108,27 +109,27 @@ end
 
 -- metamethods ----------------------------------------------------------------o
 
-local MT = {}
+local MT = {__obj=_obj}
 
 -- objects are proxies controlling variables access and inheritance
 function MT:__call (a, b) -- object constructor (define the object-model)
   if is_string(a) or is_nil(a) then                     -- [un]named object
     if is_nil(b) then
-      local obj = {__id=a, [_var]=var0, __index=self[_var]} -- proxy
+      local obj = {__id=a, __var=var0, __index=self.__var} -- proxy
       return setmetatable(obj, getmetatable(self))      -- incomplete object
     elseif is_rawtable(b) then
-      local obj = {[_var]=b, __index=self[_var]}        -- proxy
+      local obj = {__var=b, __index=self.__var}         -- proxy
       b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
-    if self[_var] == var0 then                          -- finalize named object
+    if self.__var == var0 then                          -- finalize named object
       a.__id, self.__id = self.__id, nil
-      self[_var] = setmetatable(a, self)                -- set fast inheritance
+      self.__var = setmetatable(a, self)                -- set fast inheritance
       set_class(parent(self))
       return init(self)
     else                                                -- unnamed object
-      local obj = {[_var]=a, __index=self[_var]}        -- proxy
+      local obj = {__var=a, __index=self.__var}         -- proxy
       setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
@@ -138,7 +139,7 @@ function MT:__call (a, b) -- object constructor (define the object-model)
 end
 
 function MT:__index (k)        -- reusing var_raw and var_val kills the inlining
-  local v = self[_var][k]
+  local v = self.__var[k]
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
@@ -149,11 +150,11 @@ function MT:__newindex (k, v)
     error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
           .. "' (readonly object, method or variable)", 2)
   end
-  self[_var][k] = v      -- note: must use [k] for var0
+  self.__var[k] = v      -- note: must use [k] for var0
 end
 
 function MT:__len ()
-  local var = self[_var]
+  local var = self.__var
   if is_nil(var[1]) then return 0 end -- fast
   while is_nil(rawget(var,1)) do      -- slow
     var  = self.__index
@@ -171,11 +172,11 @@ local function iter (var, key) -- scan only numbers and strings
 end
 
 local function pairs_iter (self)
-  return iter, self[_var], nil
+  return iter, self.__var, nil
 end
 
 local function ipairs_iter (self)
-  return ipairs(self[_var])
+  return ipairs(self.__var)
 end
 
 MT.__pairs  =  pairs_iter
@@ -193,19 +194,19 @@ MF.is_class      = is_class
 MF.is_instanceOf = is_instanceOf
 
 function MF:raw_len ()
-  return rawlen(self[_var])           -- no inheritance
+  return rawlen(self.__var)           -- no inheritance
 end
 
 function MF:raw_get (k)
-  return rawget(self[_var],k)         -- no inheritance nor function evaluation
+  return rawget(self.__var,k)         -- no inheritance nor function evaluation
 end
 
 function MF:raw_set (k, v)
-  rawset(self[_var], k, v)            -- no protection!!
+  rawset(self.__var, k, v)            -- no protection!!
 end
 
 function MF:var_raw (k)
-  return self[_var][k]                -- no function evaluation with inheritance
+  return self.__var[k]                -- no function evaluation with inheritance
 end
 
 function MF:var_val (k, v)            -- string key with value function
@@ -215,7 +216,7 @@ function MF:var_val (k, v)            -- string key with value function
 end
 
 function MF:var_get (k)             -- named __index, can return multiple values
-  local v = self[_var][k]
+  local v = self.__var[k]
   if type(k) == 'string' and type(v) == 'function'
   then return v(self)
   else return v end
@@ -251,7 +252,7 @@ function MF:set_variables (tbl, override_) -- default: override = true
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
     assertf(override_ ~= false or is_nil(var[k]), "cannot override variable '%s'",k)
@@ -267,7 +268,7 @@ function MF:wrap_variables (tbl)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     local v, newv = var[k]
@@ -283,8 +284,6 @@ function MF:wrap_variables (tbl)
   return self
 end
 
-local MV = {}
-
 function MF:set_methods (tbl, override_) -- default: override = true
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
@@ -294,7 +293,7 @@ function MF:set_methods (tbl, override_) -- default: override = true
   if fclass(self) and override_ == false then
     errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
@@ -318,7 +317,8 @@ function MF:set_metamethods (tbl, override_) -- default: override = false
   local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(tbl) do
-    assertf(is_metaname(k), "invalid key '%s' (metamethod expected)", tostring(k))
+    assertf(is_string(k) and string.sub(k,1,2) == '__',
+            "invalid key '%s' (string starting with __ expected)", tostring(k))
     assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
   end
@@ -354,7 +354,7 @@ function MF:insert (idx_, val)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  table.insert(self[_var], idx_, val)
+  table.insert(self.__var, idx_, val)
   return self
 end
 
@@ -363,7 +363,7 @@ function MF:remove (idx_)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  return table.remove(self[_var], idx_)
+  return table.remove(self.__var, idx_)
 end
 
 function MF:move (idx1, idx2, idxto, dest_)
@@ -373,7 +373,7 @@ function MF:move (idx1, idx2, idxto, dest_)
   if not freadonly(dest_) then
     errorf("forbidden write access to readonly object '%s'", name(dest_))
   end
-  table.move(self[_var], idx1, idx2, idxto, dest_[_var])
+  table.move(self.__var, idx1, idx2, idxto, dest_.__var)
   return dest_
 end
 
@@ -382,18 +382,18 @@ function MF:sort (cmp_)
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  table.sort(self[_var], cmp_)
+  table.sort(self.__var, cmp_)
   return self
 end
 
 function MF:bsearch (val, cmp_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return bsearch(self[_var], val, cmp_, low_, high_)
+  return bsearch(self.__var, val, cmp_, low_, high_)
 end
 
 function MF:lsearch (val, equ_, low_, high_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return lsearch(self[_var], val, equ_, low_, high_)
+  return lsearch(self.__var, val, equ_, low_, high_)
 end
 
 function MF:clear_array ()
@@ -401,7 +401,7 @@ function MF:clear_array ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   for i=1,rawlen(var) do var[i]=nil end
   return self
 end
@@ -411,7 +411,7 @@ function MF:clear_variables ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   local id  = rawget(var,'__id')
   for k in kpairs(self) do var[k]=nil end
   var.__id = id
@@ -423,7 +423,7 @@ function MF:clear_all ()
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self[_var]
+  local var = self.__var
   local id  = rawget(var,'__id')
   for k in pairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
   var.__id = id
@@ -445,7 +445,7 @@ function MF:set_parent (newp)
   if newp.parent ~= spar.parent then
     error("new and current parent do not inherit from same direct parent")
   end
-  self.__index = newp[_var]
+  self.__index = newp.__var
   set_class(newp)
   return self
 end
@@ -468,7 +468,7 @@ function MF:copy (name_)
   assert(is_object(self)                  ,"invalid argument #1 (object expected)")
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   local cpy = MF.same(self, name_ or MF.raw_get(self,'__id'))
-  local var, cvar = self[_var], cpy[_var]
+  local var, cvar = self.__var, cpy.__var
   local id  = rawget(cvar,'__id')
   for k,v in pairs_iter(self) do cvar[k] = v end
   cvar.__id = id
@@ -572,7 +572,7 @@ end
 
 function MF:dumpenv () -- for debug
   assert(is_object(self), "invalid argument #1 (object expected)")
-  for k,v in pairs(self[_var]) do
+  for k,v in pairs(self.__var) do
     if is_rawtable(v) then
       for k,v in pairs(v) do
         print(k,'=',v)
@@ -604,7 +604,7 @@ function MF:dumpobj (filnam_, class_, pattern_)
   local tostring in MAD
   local n, cnt, res, spc, str = 0, {}, {}, ""
   while self and not rawequal(self, class_) do
-    local var = self[_var]
+    local var = self.__var
     -- header
     local id = rawget(var, '__id')
     n, str = n+1, id and (" '" .. id .. "'") or ""
@@ -646,7 +646,7 @@ end
 
 -- variables ------------------------------------------------------------------o
 
--- local MV = {}
+local MV = {}
 
 MV.__id  = 'object'
 MV.__par = parent
@@ -667,7 +667,7 @@ MAD.typeid.is_instanceOf = is_instanceOf
 -- object ---------------------------------------------------------------------o
 
 -- add variables, methods and metamethods, and set as readonly
-object = MF.set_methods(setmetatable({[_var]=MV}, MT), MF) :set_readonly()
+object = MF.set_methods(setmetatable({__var=MV, __index={}}, MT), MF) :set_readonly()
 
  -- parent link
 setmetatable(MV, object)
