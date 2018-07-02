@@ -42,16 +42,31 @@ local cvnam, cvidx = cvname, cvindex
 
 -- types ----------------------------------------------------------------------o
 
--- hidden key.
-local _var = {}
-
 local   int_arr = ffi.typeof 'int [?]'
 local  tpsa_arr = ffi.typeof 'struct  tpsa* [?]'
 local ctpsa_arr = ffi.typeof 'struct ctpsa* [?]'
 
-local is_damap  = \a -> is_table(a) and rawget(a,_var) ~= nil and is_tpsa (a.x)
-local is_cdamap = \a -> is_table(a) and rawget(a,_var) ~= nil and is_ctpsa(a.x)
-local isa_damap = \a -> is_table(a) and rawget(a,_var) ~= nil
+-- identity -------------------------------------------------------------------o
+
+local _idr, _idc = {}, {} -- identity
+
+local function is_damap (a)
+  local mt = getmetatable(a)
+  return mt ~= nil and mt.__obj == _idr
+end
+
+local function is_cdamap (a)
+  local mt = getmetatable(a)
+  return mt ~= nil and mt.__obj == _idc
+end
+
+local function isa_damap (a)
+  local mt = getmetatable(a)
+  return mt ~= nil and (mt.__obj == _idr or mt.__obj == _idc)
+end
+
+MR.__obj = _idr
+MC.__obj = _idc
 
 -- ctors ----------------------------------------------------------------------o
 
@@ -77,7 +92,7 @@ local function map_alloc (td, mt)
   mv.pz = ct(td, max(mo[1], mo[3], mo[5])) -- px, py, pt
   mv.__td, mv.__ta = td, ta
 
-  return setmetatable({[_var]=mv}, mt)
+  return setmetatable({__var=mv}, mt)
 end
 
 local function map_ctor(arg, mt)
@@ -356,20 +371,20 @@ end
 
 -- metamethods ----------------------------------------------------------------o
 
-MR.__len = \s -> s[_var].__td.nmv
+MR.__len = \s -> s.__var.__td.nmv
 
-MR.__index = \s,k -> s[_var][k] or MR[k]
-MC.__index = \s,k -> s[_var][k] or MC[k]
+MR.__index = \s,k -> s.__var[k] or MR[k]
+MC.__index = \s,k -> s.__var[k] or MC[k]
 
 MR.__tostring = \s -> string.format("damap: %p", s)
 MC.__tostring = \s -> string.format("cdamap: %p", s)
 
 function MR.__newindex (s, k, x)
-  local v = s[_var][k]
+  local v = s.__var[k]
 
   if v == nil then -- new var
     if is_tpsa(x)
-    then s[_var][k] = x  -- keep tpsa under control
+    then s.__var[k] = x  -- keep tpsa under control
     else rawset(s, k, x) -- uncontrolled variable
     end
     return
@@ -388,11 +403,11 @@ function MR.__newindex (s, k, x)
 end
 
 function MC.__newindex (s, k, x)
-  local v = s[_var][k]
+  local v = s.__var[k]
 
   if v == nil then  -- new var
     if is_ctpsa(x)
-    then s[_var][k] = x  -- keep tpsa under control
+    then s.__var[k] = x  -- keep tpsa under control
     else rawset(s, k, x) -- uncontrolled variable
     end
     return
@@ -411,6 +426,18 @@ function MC.__newindex (s, k, x)
     error("invalid assignment (scalar or complex GTPSA expected)")
   end
 end
+
+local function iter (self, key)
+  local k, v = next(self, key)
+  if k == '__var' then return next(self, k) end
+  return k, v
+end
+
+local function pairs_iter (self)
+  return iter, self, nil
+end
+
+MR.__pairs  =  pairs_iter
 
 MR.  same, MR.  copy, MR.length =
 MR.__same, MR.__copy, MR.__len

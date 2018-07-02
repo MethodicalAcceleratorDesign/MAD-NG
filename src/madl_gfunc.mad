@@ -27,7 +27,7 @@ local is_nil, is_function, is_table, is_callable, wprotect,
       set_concept, concept                                         in MAD.typeid
 local not_scannable, not_extendable, not_mutable                   in concept
 
-local select = select
+local rawget, select = rawget, select
 
 -- implementation -------------------------------------------------------------o
 
@@ -48,76 +48,81 @@ local gfunc = {
 
 -- functors
 
--- hidden keys
-local _fun, _fun2, _arg, _arg2 = {}, {}, {}, {}
+local _id = {} -- itdentity
 
 -- forward declarations
 local fct_mt, fct_mtc, fct_mtb1, fct_mtb2, fct_mtb12
 
 function gfunc.functor (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_fun]=f}, fct_mt)
+  return setmetatable({__fun=f}, fct_mt)
 end
 
 function gfunc.compose (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  return setmetatable({[_fun]=f, [_fun2]=g}, fct_mtc)
+  return setmetatable({__fun=f, __fun2=g}, fct_mtc)
 end
 
 function gfunc.bind1st (f, a)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_fun]=f, [_arg]=a}, fct_mtb1)
+  return setmetatable({__fun=f, __arg=a}, fct_mtb1)
 end
 
-function gfunc.bind2nd (f, a)
+function gfunc.bind2nd (f, b)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_fun]=f, [_arg]=a}, fct_mtb2)
+  return setmetatable({__fun=f, __arg2=b}, fct_mtb2)
 end
 
 function gfunc.bind2st (f, a, b)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({[_fun]=f, [_arg]=a, [_arg2]=b}, fct_mtb12)
+  return setmetatable({__fun=f, __arg=a, __arg2=b}, fct_mtb12)
 end
 
 function gfunc.is_functor (a)
-  return is_table(a) and rawget(a,_fun) ~= nil
+  local mt = getmetatable(a)
+  return mt ~= nil and mt.__obj == _id
 end
 
 local str = \s -> string.format("functor: %p", s)
 
 fct_mt = set_concept({
+  __obj       = _id,
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_fun)(...),
-  __index     = \s,k -> s(k),
+  __call      = \s,... -> s.__fun(...),
+  __index     = \s,k   -> s.__fun(k),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
 fct_mtc = set_concept({
+  __obj       = _id,
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_fun)(rawget(s,_fun2)(...)),
-  __index     = \s,k -> s(k),
+  __call      = \s,... -> s.__fun(s.__fun2(...)),
+  __index     = \s,k   -> s.__fun(s.__fun2(k)),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
 fct_mtb1 = set_concept({
+  __obj       = _id,
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), ...),
-  __index     = \s,k -> s(k),
+  __call      = \s,... -> s.__fun(rawget(s, '__arg'), ...),
+  __index     = \s,k   -> s.__fun(rawget(s, '__arg'), k),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
 fct_mtb2 = set_concept({
+  __obj       = _id,
   __pow       = gfunc.compose,
-  __call      = \s,a,... -> rawget(s,_fun)(a, rawget(s,_arg), ...),
-  __index     = \s,k -> s(k),
+  __call      = \s,a,... -> s.__fun(a, rawget(s, '__arg2'), ...),
+  __index     = \s,k     -> s.__fun(k, rawget(s, '__arg2')),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
 fct_mtb12 = set_concept({
+  __obj       = _id,
   __pow       = gfunc.compose,
-  __call      = \s,... -> rawget(s,_fun)(rawget(s,_arg), rawget(s,_arg2), ...),
-  __index     = \s,k -> s(k),
+  __call      = \s,... -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), ...),
+  __index     = \s,k   -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), k),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
@@ -132,7 +137,4 @@ MAD.typeid.is_functor = gfunc.is_functor
 gfunc = wprotect(setmetatable(gfunc, {__tostring := "MAD.gfunc"}))
 
 -- end ------------------------------------------------------------------------o
-return {
-  gfunc  = gfunc,
-  -- __help = require 'madh_gfunc',
-}
+return { gfunc = gfunc }
