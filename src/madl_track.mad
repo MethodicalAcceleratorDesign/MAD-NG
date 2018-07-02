@@ -24,13 +24,13 @@
 -- locals ---------------------------------------------------------------------o
 
 local is_sequence, is_beam, is_boolean, is_number, is_integer,
-      is_table, is_implicit, isa_damap, is_tpsa, is_callable,
-      is_mappable                                               in MAD.typeid
+      is_table, is_implicit, is_observed, isa_damap, is_tpsa,
+      is_callable, is_mappable                                  in MAD.typeid
 local element, mtable, command, damap, symint                   in MAD
 local fnone                                                     in MAD.gfunc
 local errorf, assertf                                           in MAD.utility
 local minlen                                                    in MAD.constant
-local observe                                                   in element.flags
+
 local max in math
 
 -- integrator schemes ---------------------------------------------------------o
@@ -197,8 +197,6 @@ E.changenrj :set_methods { track = changenrj }
 -- track mtable ---------------------------------------------------------------o
 
 local function save_all (elm, mflw, lw_)
---  if not elm:is_selected(observe) then return end
-
   local name, kind, l in elm
   local npar, sdir, tdir, spos, mtbl, atfill, mapsave in mflw
   local lw = lw_ or 1
@@ -206,18 +204,24 @@ local function save_all (elm, mflw, lw_)
   -- keep order!
   for i=1,npar do
     local x, px, y, py, t, pt in mflw[i]
-    local map
+    local damap
     if is_tpsa(x) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
-      map = mapsave and mflw[i]:copy()
+      damap = mapsave and mflw[i]:copy()
     end
-    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i, map }
+    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i, damap }
   end
   atfill(elm, mflw, lw)
 end
 
-local function save_elm (elm, mflw, lw_)
-  if not is_implicit(elm) then save_all(elm, mflw, lw_) end
+local function save_imp (elm, mflw, lw_)
+  if is_implicit(elm) then return end
+  save_all(elm, mflw, lw_)
+end
+
+local function save_obs (elm, mflw, lw_)
+  if not is_observed(elm) then return end
+  save_all(elm, mflw, lw_)
 end
 
 local function make_mtable (self)
@@ -229,9 +233,9 @@ local function make_mtable (self)
   return mtable 'track' {
     type='track', title=title or sequ.name, sdir=sdir, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
-    'tdir',                  -- t-direction of the tracking: sdir * seqdir
-    'id',                    -- particle or damap id
-    mapsave and 'map' or nil -- extra optional column to save the entire map
+    'tdir',                    -- t-direction of the tracking: sdir * seqdir
+    'id',                      -- particle or damap id
+    mapsave and 'damap' or nil -- extra optional column to save the entire damap
   }
 end
 
@@ -258,17 +262,20 @@ local function make_mflow (self)
   local iter, state, init = sequ:siter(range, nturn, sdir)
 
   -- build mtable
-  local save, nofill, implicit in self
+  local save, nofill, observe, implicit in self
   assert(is_boolean(save) or is_callable(save),
                                "invalid save (boolean or callable expected)")
   assert(is_boolean(nofill)  , "invalid nofill (boolean expected)")
+  assert(is_boolean(observe) , "invalid observe (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
 
   -- saving data
   local mtbl, fill
   if save then
     mtbl = make_mtable(self)
-    fill = is_callable(save) and save or implicit and save_all or save_elm
+    fill = is_callable(save) and save     or -- precedence matters!
+           observe  == true  and save_obs or
+           implicit == false and save_imp or save_all
   else
     fill = fnone
   end
@@ -356,8 +363,8 @@ local function make_mflow (self)
   mflw.nofill=nofill              -- disable filling at the end of an element
   mflw.nslice=nslice              -- number of slice for each element
 
-  mflw.mapdef=mapdef              -- save map definitions (for info)
-  mflw.mapsave=mapsave            -- save entire maps
+  mflw.mapdef=mapdef              -- save damap definitions (for info)
+  mflw.mapsave=mapsave            -- save entire damaps
 
   mflw.s0=s0                      -- initial s-position
   mflw.idx=init                   -- index of the current element
@@ -379,7 +386,7 @@ local function make_mflow (self)
   mflw.psl=table.new(15,0)        -- current element multipoles shew phases
 
     -- for processing subelements
-  mflw.selm=table.new(3,0)        -- subelement pre-allocated stack
+  mflw.selm=table.new(4,0)        -- subelement pre-allocated stack
 
     -- internal vars for track
   mflw.__trckitr={iter=iter, state=state} -- iterator and iteraror state
@@ -443,6 +450,7 @@ local track = command 'track' {
 
   save=true,        -- create mtable and set fill to save data            (mtbl)
   nofill=false,     -- disable filling at the end of an element           (mflw)
+  observe=false,    -- save only observed elements                        (mtbl)
   implicit=true,    -- save also implicit elements                        (mtbl)
 
   atentry=nil,      -- action to call when entering an element            (mflw)
