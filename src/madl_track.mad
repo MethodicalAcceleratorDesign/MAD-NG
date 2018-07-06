@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local is_sequence, is_beam, is_boolean, is_number, is_integer,
-      is_table, is_implicit, is_observed, isa_damap, is_tpsa,
+      is_table, is_implicit, is_observed, is_tpsa, is_damap,
       is_callable, is_mappable                                  in MAD.typeid
 local element, mtable, command, damap, symint                   in MAD
 local fnone                                                     in MAD.gfunc
@@ -113,21 +113,23 @@ local function track_drift (elm, mflw)
   changeref(elm, mflw, -sdir)
 end
 
+local drift_sabac, quad_kick_sabac, quad_corr_sabac in MAD.dynmap
+
 local function track_thick (elm, mflw)
   if #elm ~= 0 then subtrack_thick(elm, mflw) end
 
-  get_mult(elm, mflw)
-  if mflw.nmul == 0 then return end
+--  get_mult(elm, mflw)
+--  if mflw.nmul == 0 then return end
 
   local sdir   in mflw
   local method in elm
   local integr = method and symint[method] or mflw.integr
 
-  changeref(elm, mflw,  sdir)
+--  changeref(elm, mflw,  sdir)
 --   fringe(elm, mflw,  sdir)
-     integr(elm, mflw,   1  , drift, kick)
+     integr(elm, mflw,   1  , drift_sabac, quad_kick_sabac, quad_corr_sabac)
 --   fringe(elm, mflw, -sdir)
-  changeref(elm, mflw, -sdir)
+--  changeref(elm, mflw, -sdir)
 end
 
 local function track_sbend (elm, mflw)
@@ -307,10 +309,10 @@ local function make_mflow (self)
   assert(is_callable(atfill ), "invalid atfill (callable expected)")
 
   -- retrieve initial conditions
-  local s0, X0, mapdef, mapsave in self
+  local s0, X0, R0, mapdef, mapsave in self
   assert(is_number  (s0), "invalid s0 (number expected)")
   assert(is_mappable(X0), "invalid X0 (mappable expected)")
-  if not is_mappable(X0[1]) then X0 = {X0} end
+  if not is_mappable(X0[1]) then X0, R0 = {X0}, {R0} end
 
   -- precedence of initial conditions
   local npar = #X0
@@ -319,7 +321,7 @@ local function make_mflow (self)
   for i=1,npar do
     mflw[i] = X0[i] -- default is to reuse!
 
-    if isa_damap(X0[i]) then -- damap are mappable (i.e. must be first)
+    if is_damap(X0[i]) then -- damap are mappable (i.e. must be first)
       mflw[i].id = X0[i].id or i
     elseif is_mappable(X0[i]) then -- access by indexes first for vectors
       local id =             X0[i].id or i
@@ -329,16 +331,18 @@ local function make_mflow (self)
       local py = X0[i][4] or X0[i].py or 0
       local t  = X0[i][5] or X0[i].t  or 0
       local pt = X0[i][6] or X0[i].pt or 0
-      if mapdef then            -- replace: damap required from coordinates
+      if mapdef then -- replace: damap required from coordinates (and R matrix)
         mflw[i] = damap(mapdef == true and {} or mapdef)
-      end
-      if is_table(mflw[i]) then -- reuse: damaps are tables
+        mflw[i].id = id
+        mflw[i]:set0{x, px, y, py, t, pt}
+        if R0[i] then mflw[i]:set1(R0[i]) end
+      elseif is_table(mflw[i]) then -- reuse: fill table
         mflw[i].id,
         mflw[i].x, mflw[i].px,
         mflw[i].y, mflw[i].py,
         mflw[i].t, mflw[i].pt = id, x, px, y, py, t, pt
-      else                      -- replace: need a table for key access (e.g. vector)
-        mflw[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt ; pz=0}
+      else -- replace: need a table for key access (e.g. vector)
+        mflw[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
       end
     else
       error("invalid type of item at id="..i.." (coordinates or damap expected)")
@@ -412,11 +416,10 @@ local function exec (self)
 
   -- dynamic tracking
   for i,elm,spos in iter, state, idx do
-    mflw.idx, mflw.spos = i, s0+spos
+    mflw.idx = i       ; mflw.spos = s0+spos
     atentry(elm, mflw)
-    elm:track   (mflw)
-    mflw.spos = s0+spos + elm.l*sdir
-    atexit (elm, mflw)
+    elm:track   (mflw) ; mflw.spos = s0+spos + elm.l*sdir
+    atexit (elm, mflw) ; mflw.spos = s0+spos
     fill   (elm, mflw)
 
     -- check remaining number of element to track
@@ -437,7 +440,8 @@ local track = command 'track' {
   sdir=1,           -- s-direction of tracking (1 or -1)                  (mflw)
 
   s0=0,             -- initial s                                          (mflw)
-  X0={0,0,0,0,0,0}, -- initial coordinates (or damap, or list of)         (mflw)
+  X0={0,0,0,0,0,0}, -- initial X coordinates (or damap, or list of)       (mflw)
+  R0=nil,           -- initial R matrix (compagnion of X0)                (mflw)
 
   mapdef=false,     -- setup for damap                                    (mflw)
   mapsave=false,    -- save damap in the mtable                           (mflw)
