@@ -25,11 +25,12 @@
 
 local matrix, cvector, trace                                     in MAD
 local is_nil, is_positive, is_matrix, is_cvector, wrestrict      in MAD.typeid
-local assertf, num2str                                           in MAD.utility
+local assertf, errorf, num2str                                   in MAD.utility
 local twopi                                                      in MAD.constant
-local abs, sqrt, atan2 in math
+local max, abs, sqrt, atan2 in math
 
 local dp_tol   = 1e-12
+local eig_tol  = 1e-12
 local symp_tol = 1e-12
 
 -- helpers --------------------------------------------------------------------o
@@ -44,20 +45,6 @@ local function chkeigsiz (V, W)
   if W then
     assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
     assert(W:nrow() == nr, "invalid eigenvalues (4D/6D cvector expected)")
-  end
-end
-
-local function chkeigsys (V, W, R, tol)
-  tol = tol or 1e-12
-  chkeigsiz(V, W) ; chkeigsiz(R, W)
-  assert(is_positive(tol), "invalid argument #4 (positive number expected)")
-
-  local I = matrix(#W):eye()
-  for i=1,#W-1,2 do
-    assertf( ((R-W[i  ]*I) * (V:getcol(i)+V:getcol(i+1)*1i)) :eq(0, 1e-12),
-            "invalid eigen system for eigenvector/eigenvalue %d", i)
-    assertf( ((R-W[i+1]*I) * (V:getcol(i)-V:getcol(i+1)*1i)) :eq(0, 1e-12),
-            "invalid eigen system for eigenvector/eigenvalue %d", i)
   end
 end
 
@@ -78,30 +65,71 @@ local gphys = {
     'beta21', 'alfa21', 'beta22', 'alfa22', 'beta23', 'alfa23',
     'beta31', 'alfa31', 'beta32', 'alfa32', 'beta33', 'alfa33',
   },
-
-  -- eigen checks
-  chkeigsiz = chkeigsiz,
-  chkeigsys = chkeigsys,
 }
+
+-- checkers -------------------------------------------------------------------o
+
+-- check if system is eigen using eigtol tolerance
+
+function gphys.is_eigsys (V, W, R, eigtol_)
+  local tol = eigtol_ or eig_tol
+  chkeigsiz(V, W) ; chkeigsiz(R, W)
+  assert(is_positive(tol), "invalid argument #4 (positive number expected)")
+  local cvec, getc = R.complex, R.getcol
+
+--  print("checking eigen system")
+--  R:print('R'); W:print('W'); V:print('V')
+
+  for i=1,#W-1,2 do
+    local dW = W[i]-W[i+1]:conj()
+    if not dW:eq(0, tol) then
+      errorf("invalid eigenvalues %d (conjugate pairs deviates by %s)",
+             i, num2str(dW:norm()))
+    end
+
+    local Vi = cvec(getc(V,i), getc(V,i+1))
+    local Vc = Vi:conj()
+    local dV1, dV2 = R*Vi-W[i]*Vi, R*Vc-W[i+1]*Vc
+    if not (dV1:eq(0, tol) and dV2:eq(0, tol)) then
+      errorf("invalid eigen system %d (R*V%d deviates from W%d*V%d by %s)",
+             i, i ,i, i, num2str(max(dV1:norm(),dV2:norm())))
+    end
+  end
+
+  return true
+end
+
+-- check one-turn map normalisation: N = (1/A * R * A) contains only rotations
+
+function gphys.is_normal1 (A, R)
+  A :print('A') ;
+  R :print('R') ;
+  local N = (1/A * R * A) :print('N = A^-1 R A ')
+  -- TODO: check that N has only rotations.
+  return true
+end
 
 -- check for delta_p in one-turn map using dptol tolerance
 
 function gphys.has_dp (R, dptol_)
-  dptol_ = dptol_ or dp_tol
-  assert(is_matrix(R)       , "invalid argument #1 (matrix expected)")
-  assert(is_positive(dptol_), "invalid argument #2 (positive number expected)")
+  local tol = dptol_ or dp_tol
+  assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
+  assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
   local nr, nc = R:sizes()
   assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
 
-  local nodp = abs(R:get(6,6) - 1) <= dptol_
+  local get = R.get
+  local nodp = abs(get(R,6,6) - 1) <= tol
 
   for i=1,5 do
-    nodp = nodp and abs(R:get(6,i)) <= dptol_
+    nodp = nodp and abs(get(R,6,i)) <= tol
   end
 
   return not nodp
 end
+
+-- normalization --------------------------------------------------------------o
 
 -- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and (t,pt)
 
@@ -128,6 +156,10 @@ function gphys.order_eigen (V, W)
       W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
     end
   end
+
+--  print("ordered eigen system")
+--  W:print('W')
+--  V:print('V')
 end
 
 -- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
@@ -151,6 +183,10 @@ function gphys.norm_eigen (V, W)
       V:set(i+1,j,  get(V,i+1,j) * (spb / pb))
     end
   end
+
+--  print("normalized eigen system")
+--  W:print('W')
+--  V:print('V')
 end
 
 -- rephase in place the eigenvectors such that mux>0, muy>0 (and mut>0)
@@ -158,30 +194,33 @@ end
 function gphys.phas_eigen (V)
   chkeigsiz(V)
 
-  local get, nr = V.get, V:nrow()
+  local get, set, nr = V.get, V.set, V:nrow()
   local P = matrix(nr):eye()
 
   local dx = sqrt(get(V,1,1)^2 + get(V,1,2)^2)
-  P:set(1,1,  get(V,1,1) / dx )
-  P:set(2,1,  get(V,1,2) / dx )
-  P:set(1,2, -get(P,2,1) )
-  P:set(2,2,  get(P,1,1) )
+  set(P,1,1,  get(V,1,1) / dx )
+  set(P,2,1,  get(V,1,2) / dx )
+  set(P,1,2, -get(P,2,1) )
+  set(P,2,2,  get(P,1,1) )
 
   local dy = sqrt(get(V,3,3)^2 + get(V,3,4)^2)
-  P:set(3,3,  get(V,3,3) / dy )
-  P:set(4,3,  get(V,3,4) / dy )
-  P:set(3,4, -get(P,4,3) )
-  P:set(4,4,  get(P,3,3) )
+  set(P,3,3,  get(V,3,3) / dy )
+  set(P,4,3,  get(V,3,4) / dy )
+  set(P,3,4, -get(P,4,3) )
+  set(P,4,4,  get(P,3,3) )
 
   if nr == 6 then
     local dp = sqrt(get(V,5,5)^2 + get(V,5,6)^2)
-    P:set(5,5,  get(V,5,5) / dp )
-    P:set(6,5,  get(V,5,6) / dp )
-    P:set(5,6, -get(P,6,5) )
-    P:set(6,6,  get(P,5,5) )
+    set(P,5,5,  get(V,5,5) / dp )
+    set(P,6,5,  get(V,5,6) / dp )
+    set(P,5,6, -get(P,6,5) )
+    set(P,6,6,  get(P,5,5) )
   end
 
   V:mul(P,V) -- V = P*V
+
+--  print("rephased eigen vectors")
+--  V:print('V')
 end
 
 -- get linear normal form A of one-turn map R
@@ -190,73 +229,64 @@ function gphys.normal1 (R)
   chkeigsiz(R)
 
   local symperr = R:symperr()
---  if symperr > symp_tol then
+  if symperr > symp_tol then
     trace(0, "symplectic deviation: %s", num2str(symperr))
---  end
+  end
 
-  -- get eigenvalues and eigenvectors of R
+  -- get eigenvalues (W) and (right) eigenvectors (V) of R
   local W, A, V, info = R:eigen()
---  print("\ninfo=", info)
---  R:print('R')
---  W:print('W')
---  V:print('V')
+
+  -- check that system is eigen: R*Vi = Wi*Vi
+  gphys.is_eigsys(V, W, R)
 
   -- reuse matrix returned for left eigenvectors
   A:copy(V)
 
   -- order eigenvalues and eigenvectors by planes
---  print("order eigen system")
   gphys.order_eigen(A, W)
---  W:print('W')
---  A:print('A')
-
-  -- check eigen system: (R - I*Wi)*Ai == 0
---  chkeigsys(A,W,R)
 
   -- normalize eigen system: [x,px]=1, [y,py]=1 and [t,pt]=1
---  print("normalize eigen system")
   gphys.norm_eigen(A, W)
---  W:print('W')
---  A:print('A')
 
   -- rephase eigen vectors
---  print("rephase eigen vectors")
   gphys.phas_eigen(A)
---  A:print('A')
+
+  -- check that system is normalized: N = (1/A * R * A) has only rotations
+  gphys.is_normal1(A, R)
 
   return A, V, W, info
 end
 
-function gphys.check_normal1 (R, A)
-  -- check one-turn-map normalisation
-  R :print('R') ;
-  A :print('A') ;
-  local N = (1/A * R * A) :print('N = A^-1 R A ')
-  return N
-end
-
 -- get linear optical function from normal form and eigenvalues
 
-function gphys.optfun1 (A, W, R)
-  chkeigsiz(A, W)
+function gphys.optfun1 (A, W_or_R)
   local get, nr = A.get, A:nrow()
+  local W = W_or_R
 
-  -- retrieve eigenvalues from normal form and one-turn map
-  -- if W is not provided
-  if is_nil(W) and is_matrix(R) then
+  -- if W is not provided, retrieve eigenvalues from normal form and one-turn map
+  if is_matrix(W_or_R) then
+    local R = W_or_R
     chkeigsiz(R)
     W = cvector(nr)
-    local v1 = A:getcol(1) + A:getcol(2)*1i
-    local v2 = A:getcol(3) + A:getcol(4)*1i
-    W[1] = get(R,1,1) + get(R,1,2) * get(v1,2,1)/get(v1,1,1)
-    W[3] = get(R,3,3) + get(R,3,4) * get(v2,4,1)/get(v2,3,1)
+    local cvec, getc = A.complex, A.getcol
+    local v1 = cvec(getc(A,1), getc(A,2))
+    local v2 = cvec(getc(A,3), getc(A,4))
+    -- get eigenvalue Wi from R*Vi = Wi*Vi
+    W[1] = get(R,1,1) + get(R,1,2)*get(v1,2,1)/get(v1,1,1)
+    W[2] = W[1]:conj()
+    W[3] = get(R,3,3) + get(R,3,4)*get(v2,4,1)/get(v2,3,1)
+    W[4] = W[3]:conj()
 
     if nr >= 6 then
-      local v3 = A:getcol(5) + A:getcol(6)*1i
-      W[5] = get(R,5,5) + get(R,5,6) * get(v3,6,1)/get(v3,5,1)
+      local v3 = cvec(getc(A,5), getc(A,6)) : print()
+      print(get(R,5,6),get(v3,6,1))
+      W[5] = get(R,5,5) + get(R,5,6)*get(v3,6,1)/get(v3,5,1)
+      W[6] = W[5]:conj()
     end
   -- W:print('W')
   end
+
+  chkeigsiz(A, W)
 
   local optfun = {
     rank = nr,
