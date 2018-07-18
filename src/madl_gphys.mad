@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, cvector, trace                                     in MAD
+local matrix, cvector, trace, warn                               in MAD
 local is_nil, is_positive, is_matrix, is_cvector, wrestrict      in MAD.typeid
 local assertf, errorf, num2str                                   in MAD.utility
 local twopi, minang                                              in MAD.constant
@@ -183,10 +183,21 @@ end
 function gphys.makesymp (R)
   chkeigsiz(R)
 
-  local I = R:same():eye()
-  local V = (I-R)/(I+R)
-  local A = (V:bar()-V)/2
-  R  :copy( (I+A)/(I-A) )
+  local n, rnk, err = max(R:sizes())
+  local I, A, V = R:same():eye()
+
+  V, rnk = (I-R)/(I+R)
+  if rnk == n then
+    A = (V:bar()-V)/2
+    V, rnk = (I+A)/(I-A)
+    if rnk == n then R:copy(V) end
+  end
+
+  if rnk < n then
+    warn("singular matrix detected during symplectification of R (left unchanged).")
+  else
+    trace(0, "symplectification deviation: %s", num2str(R:symperr()))
+  end
 
   return R
 end
@@ -295,11 +306,10 @@ end
 function gphys.normal (R)
   chkeigsiz(R)
 
-  local symperr = R:symperr()
-  if symperr > symp_tol then
-    trace(0, "symplectic deviation: %s", num2str(symperr))
+  local serr = R:symperr()
+  if serr > symp_tol then
+    trace(0, "symplectic deviation: %s", num2str(serr))
     gphys.makesymp(R)
-    trace(0, "symplectification deviation: %s", num2str(R:symperr()))
   end
 
   -- get eigenvalues (W) and (right) eigenvectors (V) of R
