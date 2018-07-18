@@ -410,6 +410,9 @@
 
 // --- mat
 
+void mad_mat_reshape(struct matrix *x, ssz_t m, ssz_t n)
+{ assert(x); x->nr = m; x->nc = n; }
+
 void mad_mat_ident(num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; num_t x = 0; SET(); x = 1; DIAG(); }
 
@@ -544,6 +547,9 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 }
 
 // -- cmat
+
+void mad_cmat_reshape(struct cmatrix *x, ssz_t m, ssz_t n)
+{ assert(x); x->nr = m; x->nc = n; }
 
 void mad_cmat_ident(cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; cnum_t x = 0; SET(); x = 1; DIAG(); }
