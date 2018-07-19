@@ -26,8 +26,14 @@
 
 #include "mad_defs.h"
 
+// --- types ------------------------------------------------------------------o
+
+struct  matrix { ssz_t nr, nc;  num_t data[]; };
+struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
+
 // --- interface --------------------------------------------------------------o
 
+void   mad_mat_reshape  (struct matrix *x                                     , ssz_t m, ssz_t n);
 void   mad_mat_ident    (                                           num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); // ident-> mat
 void   mad_mat_fill     (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  num -> mat
 void   mad_mat_roll     (       num_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  mat -> mat
@@ -57,6 +63,7 @@ void   mad_mat_center   (const  num_t x[],                          num_t  r[], 
 void   mad_mat_sympconj (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  M' J M - J
 
+void   mad_cmat_reshape (struct cmatrix *x                                    , ssz_t m, ssz_t n);
 void   mad_cmat_ident   (                                          cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  ident->cmat
 void   mad_cmat_fill    (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat
 void   mad_cmat_fill_r  (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat

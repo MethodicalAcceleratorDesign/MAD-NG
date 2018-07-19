@@ -23,14 +23,15 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, cvector, trace                                     in MAD
+local matrix, cvector, trace, warn                               in MAD
 local is_nil, is_positive, is_matrix, is_cvector, wrestrict      in MAD.typeid
 local assertf, errorf, num2str                                   in MAD.utility
-local twopi                                                      in MAD.constant
+local twopi, minang                                              in MAD.constant
 local max, abs, sqrt, atan2 in math
 
 local dp_tol   = 1e-12
 local eig_tol  = 1e-12
+local nrm_tol  = 1e-12
 local symp_tol = 1e-12
 
 -- helpers --------------------------------------------------------------------o
@@ -70,6 +71,7 @@ local gphys = {
 -- checkers -------------------------------------------------------------------o
 
 -- check if system is eigen using eigtol tolerance
+-- check R*Vi = Wi*Vi
 
 function gphys.is_eigsys (V, W, R, eigtol_)
   local tol = eigtol_ or eig_tol
@@ -99,13 +101,28 @@ function gphys.is_eigsys (V, W, R, eigtol_)
   return true
 end
 
--- check one-turn map normalisation: N = (1/A * R * A) contains only rotations
+-- check one-turn map normalisation
+-- check that N = (1/A * R * A) = Abar * R * A contains only rotations
 
-function gphys.is_normal1 (A, R)
-  A :print('A') ;
-  R :print('R') ;
-  local N = (1/A * R * A) :print('N = A^-1 R A ')
-  -- TODO: check that N has only rotations.
+function gphys.is_normal (A, R, nrmtol_)
+  local tol = nrmtol_ or nrm_tol
+  local get, set = A.get, A.set
+
+  local N = (A:bar() * R * A) -- :print("N = Abar R A ")
+
+  for i = 1,N:nrow()-1,2 do
+    local mu1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
+    local mu2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
+    if abs(mu1-mu2) > tol then
+      errorf("invalid normal form N[%d] (deviates from a pure rotation by %s)",
+             i, num2str(mu1-mu2))
+    end
+    N:setsub(i..i+1, i..i+1, 0)
+  end
+  if not N:eq(0, tol) then
+    error("invalid normal form N (contains coupling terms)")
+  end
+
   return true
 end
 
@@ -129,9 +146,66 @@ function gphys.has_dp (R, dptol_)
   return not nodp
 end
 
+-- helpers --------------------------------------------------------------------o
+
+-- retrieve eigenvalues from pairs of eigenvectors
+
+function gphys.get_eigval (V, R, W)
+  local nr = V:nrow()
+
+  W = W or cvector(nr)
+
+  local cvec, getc = A.complex, A.getcol
+  local v1 = cvec(getc(A,1), getc(A,2))
+  local v2 = cvec(getc(A,3), getc(A,4))
+
+    -- get eigenvalue Wi from R*Vi = Wi*Vi
+  W[1] = get(R,1,1) + get(R,1,2)*get(v1,2,1)/get(v1,1,1)
+  W[2] = W[1]:conj()
+  W[3] = get(R,3,3) + get(R,3,4)*get(v2,4,1)/get(v2,3,1)
+  W[4] = W[3]:conj()
+
+  if nr >= 6 then
+    local v3 = cvec(getc(A,5), getc(A,6))
+    W[5] = get(R,5,5) + get(R,5,6)*get(v3,6,1)/get(v3,5,1)
+    W[6] = W[5]:conj()
+  end
+  -- W:print('W')
+
+  return W
+end
+
+-- symplectification ----------------------------------------------------------o
+
+-- get symplectified one-turn map R
+-- Algorithm described in the doctoral thesis by Liam Healey.
+
+function gphys.makesymp (R)
+  chkeigsiz(R)
+
+  local n, rnk, err = max(R:sizes())
+  local I, A, V = R:same():eye()
+
+  V, rnk = (I-R)/(I+R)
+  if rnk == n then
+    A = (V:bar()-V)/2
+    V, rnk = (I+A)/(I-A)
+    if rnk == n then R:copy(V) end
+  end
+
+  if rnk < n then
+    warn("singular matrix detected during symplectification of R (left unchanged).")
+  else
+    trace(0, "symplectification deviation: %s", num2str(R:symperr()))
+  end
+
+  return R
+end
+
 -- normalization --------------------------------------------------------------o
 
--- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and (t,pt)
+-- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
+-- (t,pt)
 
 function gphys.order_eigen (V, W)
   chkeigsiz(V, W)
@@ -142,8 +216,8 @@ function gphys.order_eigen (V, W)
     local mv, k = 0
 
     for j=i,n-1,2 do
-      local pv = get(V,i  ,j)^2 + get(V,i  ,j+1)^2 + -- real part
-                 get(V,i+1,j)^2 + get(V,i+1,j+1)^2   -- imag part
+      local pv = get(V,i,j  )^2 + get(V,i+1,j  )^2 + -- real part
+                 get(V,i,j+1)^2 + get(V,i+1,j+1)^2   -- imag part
       if pv > mv then mv, k = pv, j end
     end
 
@@ -160,6 +234,7 @@ function gphys.order_eigen (V, W)
 --  print("ordered eigen system")
 --  W:print('W')
 --  V:print('V')
+  return V
 end
 
 -- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
@@ -187,9 +262,11 @@ function gphys.norm_eigen (V, W)
 --  print("normalized eigen system")
 --  W:print('W')
 --  V:print('V')
+  return V
 end
 
--- rephase in place the eigenvectors such that mux>0, muy>0 (and mut>0)
+-- rephase in place the eigenvectors such that V(1,2)=0 and mux>0, V(3,4)=0 and
+-- muy>0 (and V(5,6)=0 and mut>0)
 
 function gphys.phas_eigen (V)
   chkeigsiz(V)
@@ -221,77 +298,57 @@ function gphys.phas_eigen (V)
 
 --  print("rephased eigen vectors")
 --  V:print('V')
+  return V
 end
 
 -- get linear normal form A of one-turn map R
 
-function gphys.normal1 (R)
+function gphys.normal (R)
   chkeigsiz(R)
 
-  local symperr = R:symperr()
-  if symperr > symp_tol then
-    trace(0, "symplectic deviation: %s", num2str(symperr))
+  local serr = R:symperr()
+  if serr > symp_tol then
+    trace(0, "symplectic deviation: %s", num2str(serr))
+    gphys.makesymp(R)
   end
 
   -- get eigenvalues (W) and (right) eigenvectors (V) of R
-  local W, A, V, info = R:eigen()
+  local W, _, V, info = R:eigen()
 
-  -- check that system is eigen: R*Vi = Wi*Vi
+  -- check that system is eigen
   gphys.is_eigsys(V, W, R)
 
   -- reuse matrix returned for left eigenvectors
-  A:copy(V)
+  local A = V:copy()
 
   -- order eigenvalues and eigenvectors by planes
   gphys.order_eigen(A, W)
 
-  -- normalize eigen system: [x,px]=1, [y,py]=1 and [t,pt]=1
+  -- normalize eigen system
   gphys.norm_eigen(A, W)
 
   -- rephase eigen vectors
   gphys.phas_eigen(A)
 
-  -- check that system is normalized: N = (1/A * R * A) has only rotations
-  gphys.is_normal1(A, R)
+  -- check that system is a normal form
+  gphys.is_normal(A, R)
 
   return A, V, W, info
 end
 
--- get linear optical function from normal form and eigenvalues
+-- get linear optical functions from normal form
 
-function gphys.optfun1 (A, W_or_R)
-  local get, nr = A.get, A:nrow()
-  local W = W_or_R
+function gphys.optfun (A, R, W_)
+  chkeigsiz(R); chkeigsiz(A)
+  local get, nr, N = A.get, A:nrow()
 
-  -- if W is not provided, retrieve eigenvalues from normal form and one-turn map
-  if is_matrix(W_or_R) then
-    local R = W_or_R
-    chkeigsiz(R)
-    W = cvector(nr)
-    local cvec, getc = A.complex, A.getcol
-    local v1 = cvec(getc(A,1), getc(A,2))
-    local v2 = cvec(getc(A,3), getc(A,4))
-    -- get eigenvalue Wi from R*Vi = Wi*Vi
-    W[1] = get(R,1,1) + get(R,1,2)*get(v1,2,1)/get(v1,1,1)
-    W[2] = W[1]:conj()
-    W[3] = get(R,3,3) + get(R,3,4)*get(v2,4,1)/get(v2,3,1)
-    W[4] = W[3]:conj()
-
-    if nr >= 6 then
-      local v3 = cvec(getc(A,5), getc(A,6)) : print()
-      print(get(R,5,6),get(v3,6,1))
-      W[5] = get(R,5,5) + get(R,5,6)*get(v3,6,1)/get(v3,5,1)
-      W[6] = W[5]:conj()
-    end
-  -- W:print('W')
-  end
-
-  chkeigsiz(A, W)
+  -- compute normal form N (rotations) if W (eigenvalues) is not provided
+  if is_nil(W_) then N = A:bar()*R*A end
 
   local optfun = {
     rank = nr,
-    cosmu1 = atan2(W[1].im, W[1].re) / twopi, -- W[1]:carg() / twopi
-    cosmu2 = atan2(W[3].im, W[3].re) / twopi, -- W[3]:carg() / twopi
+    cosmu1 = (W_ and W_[1]:carg() or atan2(get(N,1,2), get(N,1,1))) / twopi,
+    cosmu2 = (W_ and W_[3]:carg() or atan2(get(N,3,4), get(N,3,3))) / twopi,
     cosmu3 = 0,
     beta11 =   get(A,1,1)^2            + get(A,1,2)^2            ,
     alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)),
@@ -310,7 +367,7 @@ function gphys.optfun1 (A, W_or_R)
   }
 
   if nr >= 6 then
-    optfun.cosmu3 =   atan2(W[5].im, W[5].re) / twopi -- W[5]:carg() / twopi
+    optfun.cosmu3 = (W_ and W_[5]:carg() or atan2(get(N,5,6), get(N,5,5))) / twopi
     optfun.beta13 =   get(A,1,5)^2            + get(A,1,6)^2
     optfun.alfa13 = -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6))
     optfun.beta23 =   get(A,3,5)^2            + get(A,3,6)^2

@@ -24,8 +24,8 @@
 -- locals ---------------------------------------------------------------------o
 
 local warn, vector, cvector, matrix, command, track, cofind       in MAD
-local has_dp, normal1, optfun1                                    in MAD.gphys
-local num2str                                                     in MAD.utility
+local has_dp, normal, optfun, phas_eigen                          in MAD.gphys
+local num2str, printf                                             in MAD.utility
 
 local abs                                                         in math
 
@@ -106,6 +106,13 @@ end
 
 -- twiss command --------------------------------------------------------------o
 
+local Rf = matrix(4): fill {
+  -0.23753333699999999E+01,  0.15433238599999999E+02,  0.00000000000000000E+00,  0.00000000000000000E+00,
+  -0.43038332899999998E+00,  0.23753333699999999E+01,  0.00000000000000000E+00,  0.00000000000000000E+00,
+   0.00000000000000000E+00,  0.00000000000000000E+00,  0.65380005200000002E+00,  0.33167049300000002E+01,
+   0.00000000000000000E+00,  0.00000000000000000E+00, -0.43038332899999998E+00, -0.65380005200000002E+00,
+}
+
 local function exec (self)
   -- find closed orbit
   local X, R, rnk = twiss_cofind(self)
@@ -117,10 +124,10 @@ local function exec (self)
   MAD.option.format = "%14.8e"
 
   -- get linear normal form A of one-turn map R
-  local A, V, W, info = normal1(R)
+  local A, V, W, info = normal(R)
 
   -- get initial linear optical function from normal form and eigenvalues
-  local optfun0 = optfun1(A, W)
+  local optfun0 = optfun(A, R, W)
 
   -- (re)extend to 6D
   if rnk == 4 then
@@ -132,22 +139,25 @@ local function exec (self)
   local mtbl, mflw = twiss_atrack(self, X, A)
 
   -- to remove
-  show(optfun0)
+--  print("show optfun0")
+--  show(optfun0)
 
   -- dump results
-  mtbl:print()
-  local q1, q2, q3 = 0, 0, 0
-  for i=1,#mtbl do
-    local A = mtbl[i].damap:get1():print('A:'..i)
-    local optfun = optfun1(A, R)
-    q1 = q1 + optfun.cosmu1
-    q2 = q2 + optfun.cosmu2
-    q3 = q3 + optfun.cosmu3
-
-    show(optfun)
-    print('q1=',q1, 'q2=',q2, 'q3=',q3)
+  if false then
+    local q1 , q2 , q3  = 0, 0, 0
+    local mu1, mu2, mu3 = 0, 0, 0
+    for i=1,#mtbl do
+      local A = mtbl[i].damap:get1()
+      local optfun = optfun(A, R)
+      q1 = q1 + optfun.cosmu1 - mu1
+      q2 = q2 + optfun.cosmu2 - mu2
+      q3 = q3 + optfun.cosmu3 - mu3
+      mu1, mu2, mu3 = optfun.cosmu1, optfun.cosmu2, optfun.cosmu3
+      printf('mu1=%14.8e, mu2=%14.8e\n', optfun.cosmu1, optfun.cosmu2)
+      printf('q1 =%14.8e, q2 =%14.8e\n', q1, q2)
+    end
+    show(optfun0)
   end
-  show(optfun0)
 
   return mtbl, mflw
 end
