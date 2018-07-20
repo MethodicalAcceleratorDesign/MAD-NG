@@ -34,6 +34,7 @@
 */
 
 #define _GNU_SOURCE 1
+#define _POSIX_C_SOURCE 1
 #define _XOPEN_UNIX 1
 #define _XOPEN_VERSION 700
 #define _DARWIN_BETTER_REALPATH 1

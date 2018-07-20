@@ -177,7 +177,7 @@ end
 
 -- symplectification ----------------------------------------------------------o
 
--- get symplectified one-turn map R
+-- symplectifiy one-turn map R
 -- Algorithm described in the doctoral thesis by Liam Healey.
 
 function gphys.makesymp (R)
@@ -194,7 +194,7 @@ function gphys.makesymp (R)
   end
 
   if rnk < n then
-    warn("singular matrix detected during symplectification of R (left unchanged).")
+    warn("symplectification failed (singular matrix, left unchanged).")
   else
     trace(0, "symplectification deviation: %s", num2str(R:symperr()))
   end
@@ -336,38 +336,35 @@ function gphys.normal (R)
   return A, V, W, info
 end
 
+-- optics parameters ----------------------------------------------------------o
+
 -- get linear optical functions from normal form
 
-function gphys.optfun (A, R, W_)
+function gphys.optfun (A, R, W_, optfun_)
   chkeigsiz(R); chkeigsiz(A)
-  local get, nr, N = A.get, A:nrow()
+  local get = A.get
 
-  -- compute normal form N (rotations) if W (eigenvalues) is not provided
-  if is_nil(W_) then N = A:bar()*R*A end
+  local optfun = optfun_ or table.new(0,50)
 
-  local optfun = {
-    rank = nr,
-    cosmu1 = (W_ and W_[1]:carg() or atan2(get(N,1,2), get(N,1,1))) / twopi,
-    cosmu2 = (W_ and W_[3]:carg() or atan2(get(N,3,4), get(N,3,3))) / twopi,
-    cosmu3 = 0,
-    beta11 =   get(A,1,1)^2            + get(A,1,2)^2            ,
-    alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)),
-    beta12 =   get(A,1,3)^2            + get(A,1,4)^2            ,
-    alfa12 = -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)),
-    beta13 = 0,
-    alfa13 = 0,
-    beta21 =   get(A,3,1)^2            + get(A,3,2)^2            ,
-    alfa21 = -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)),
-    beta22 =   get(A,3,3)^2            + get(A,3,4)^2            ,
-    alfa22 = -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)),
-    beta23 = 0,
-    alfa23 = 0,
-    beta31 = 0, beta32 = 0, beta33 = 0,
-    alfa31 = 0, alfa32 = 0, alfa33 = 0,
-  }
+  optfun.rank   = optfun.rank or A:nrow()
+  optfun.beta11 =   get(A,1,1)^2            + get(A,1,2)^2
+  optfun.alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2))
+  optfun.beta12 =   get(A,1,3)^2            + get(A,1,4)^2
+  optfun.alfa12 = -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4))
+  optfun.beta13 = 0
+  optfun.alfa13 = 0
+  optfun.beta21 =   get(A,3,1)^2            + get(A,3,2)^2
+  optfun.alfa21 = -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2))
+  optfun.beta22 =   get(A,3,3)^2            + get(A,3,4)^2
+  optfun.alfa22 = -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4))
+  optfun.beta23 = 0
+  optfun.alfa23 = 0
+  optfun.beta31 = 0 ; optfun.beta32 = 0 ; optfun.beta33 = 0
+  optfun.alfa31 = 0 ; optfun.alfa32 = 0 ; optfun.alfa33 = 0
+  optfun.dx     = 0 ; optfun.dpx    = 0
+  optfun.dy     = 0 ; optfun.dpy    = 0
 
-  if nr >= 6 then
-    optfun.cosmu3 = (W_ and W_[5]:carg() or atan2(get(N,5,6), get(N,5,5))) / twopi
+  if optfun.rank >= 6 then
     optfun.beta13 =   get(A,1,5)^2            + get(A,1,6)^2
     optfun.alfa13 = -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6))
     optfun.beta23 =   get(A,3,5)^2            + get(A,3,6)^2
@@ -380,16 +377,53 @@ function gphys.optfun (A, R, W_)
     optfun.alfa33 = -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6))
   end
 
+  -- fill phase advance
+  gphys.phasadv(A, R, W_, optfun)
+
+  return optfun
+end
+
+-- get phase advances from normal form
+
+function gphys.phasadv (A, R, W_, optfun_)
+  local N
+
+  -- compute normal form N (rotations) if W (eigenvalues) is not provided
+  if is_nil(W_) then
+    chkeigsiz(R); chkeigsiz(A)
+    N = A:bar()*R*A
+  end
+
+  local optfun = optfun_ or table.new(0,30)
+
+  optfun.rank   = optfun.rank or W_ and W_:nrow() or N:nrow()
+  optfun.cosmu1 = (W_ and W_[1]:carg() or atan2(N:get(1,2), N:get(1,1))) / twopi
+  optfun.cosmu2 = (W_ and W_[3]:carg() or atan2(N:get(3,4), N:get(3,3))) / twopi
+  optfun.cosmu3 = 0
+
+  if optfun.rank >= 6 then
+    optfun.cosmu3 = (W_ and W_[5]:carg() or atan2(N:get(5,6), N:get(5,5))) / twopi
+  end
+
   if optfun.cosmu1 < 0 then optfun.cosmu1 = 1+optfun.cosmu1 end
   if optfun.cosmu2 < 0 then optfun.cosmu2 = 1+optfun.cosmu2 end
   if optfun.cosmu3 < 0 then optfun.cosmu3 =  -optfun.cosmu3 end
 
-  -- print debug information
---  io.write('rank=', nr,'\n')
---  for i=1,3 do io.write('q'..i,':\t', num2str(optfun['q'..i]),'\n') end
---  for _,v in ipairs(gphys.ofname) do io.write(v,':\t', num2str(optfun[v]),'\n') end
-
   return optfun
+end
+
+-- get dispersion in 6D from normal form
+
+function  gphys.disp6d (A, R, W_, optfun_)
+  -- optfun.dx  = ... ; optfun.dpx = ...
+  -- optfun.dy  = ... ; optfun.dpy = ...
+end
+
+-- get dispersion in 5D
+
+function  gphys.disp5d (A, R, W_, optfun_)
+  -- optfun.dx  = ... ; optfun.dpx = ...
+  -- optfun.dy  = ... ; optfun.dpy = ...
 end
 
 -- env ------------------------------------------------------------------------o
