@@ -43,6 +43,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+// to shut up gcc 8 invalid warnings!
+int snprintf(char *restrict str, size_t size, const char* restrict format, ...);
+
 #define luajit_c
 
 #include "lua.h"
