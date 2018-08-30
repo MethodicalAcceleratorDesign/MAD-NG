@@ -458,6 +458,15 @@ function TestSequenceOrig:testIs_selected() end
 -------------------------------------------------------------------------------o
 
 TestSequence = {}
+TestSequenceDebug = {}
+
+function TestSequenceDebug:Setup()
+  self.debug = MAD.option.debug
+end
+
+function TestSequenceDebug:Teardown()
+  MAD.option.debug = self.debug
+end
 
 function TestSequence:testIsSequence()
   local seq1  = sequence "seq1"  { marker {} }
@@ -536,7 +545,7 @@ function TestSequence:testInitSimpleSpos()
   }
   for i=2,5 do
     assertEquals(seq:spos(i), seq[i].at)
-    assertEquals(seq:epos(i), seq[i].at)
+    assertEquals(seq:upos(i), seq[i].at)
   end
   assertEquals(seq:spos(1), 0 )
   assertEquals(seq:spos(6), 10)
@@ -545,7 +554,7 @@ end
 function TestSequence:testInitInvalidElem()
   local msg = {
     "invalid element detected",
-    "invalid element length at s = 0m (invalid length 2m) in sequence \z
+    "invalid thin element length at s = 0m (invalid length 2m) in sequence \z
       'seq' for element 'srotation' at index 2",
   }
   assertErrorMsgContains(msg[1], sequence, "seq", { 1     })
@@ -556,7 +565,7 @@ function TestSequence:testInitInvalidElem()
 end
 
 function TestSequence:testInitElemReferPos()
-  local epos  = { 1, 2, 3 }
+  local upos  = { 1, 2, 3 }
   local sposs = {
     entry  = { 1  , 2  , 3   },
     centre = { 0.5, 1.5, 2.5 },
@@ -577,9 +586,9 @@ function TestSequence:testInitElemReferPos()
     }
     for i=2,4 do
       assertEquals(seq1:spos(i), spos[i-1])
-      assertEquals(seq1:epos(i), epos[i-1])
+      assertEquals(seq1:upos(i), upos[i-1])
       assertEquals(seq2:spos(i), spos[i-1])
-      assertEquals(seq2:epos(i), epos[i-1])
+      assertEquals(seq2:upos(i), upos[i-1])
     end
   end
 end
@@ -604,7 +613,7 @@ function TestSequence:testInitElemFromPos()
     elm.from  = from
     elm.at    = at
     local seq = sequence "seq" { l = 4, refer = "entry", prv, elm, nxt }
-    assertEquals(seq:epos(3), 2)
+    assertEquals(seq:upos(3), 2)
   end
 end
 
@@ -686,11 +695,9 @@ function TestSequence:testInitElemFromPosInvalid()
   assertErrorMsgContains(msg[5], sequence, "seq", param)
 end
 
-function TestSequence:testInitDebug()
-  local debug = MAD.option.debug
+function TestSequenceDebug:testInit()
   MAD.option.debug = 3
   local seq = getIdxSeq()
-  MAD.option.debug = debug
 end
 
 function TestSequence:testInitFlattenTable()
@@ -988,7 +995,7 @@ end
 
 function TestSequence:testIndexOfInvalid()
   local msg = {
-    "invalid argument #2 (number, string or element expected)"
+    "invalid argument #2 (number, string or element expected, got ",
   }
   local seq = sequence {}
   assertErrorMsgContains(msg[1], sequence.index_of, seq, {})
@@ -2163,6 +2170,7 @@ function TestSequence:testSiterDir()
     [2]=true, [4]=true,
     [7]=true, [9]=true,
   }
+
   for j,elm,s in seq:siter({2, 3}, nil, -1) do
     assertEquals(idx[i], j      )
     assertEquals(s     , spos[i])
@@ -2233,7 +2241,7 @@ function TestSequence:testSiterSposFloatingPointNoDrift()
   end
 end
 
-function TestSequence:testSiterNegDrift()
+function TestSequence:testSiterNegDrift() -- to review
   local seq = sequence "seq" { l = 3, refer="entry",
     drift "df1" { at = 1, l = 1 },
     drift "df2" { at = 2, l = 1 },
@@ -2245,6 +2253,7 @@ function TestSequence:testSiterNegDrift()
 
   -- create a negative drift
   seq[2].l=2
+  -- seq:update(seq:upos(2)) -- to review
 
   local fwditer, fwdstate = seq:siter()
   local bwditer, bwdstate = seq:siter(nil, nil, -1)
@@ -3386,7 +3395,7 @@ function TestSequence:testShareDiffPosInvalid()
   local seq1 = sequence "seq1"  { drift "df" { l=1, at=2, refpos="centre"} }
   local seq2 = sequence "seq2"  { drift "df" { l=1, at=2, refpos="entry"} }
   local msg  = {
-    "incompatible shared elements (epos-spos differ)",
+    "incompatible shared elements (upos-spos differ)",
   }
   assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
 end
@@ -3527,21 +3536,18 @@ function TestSequence:testUniqueInvalid()
   assertErrorMsgContains(msg[2], sequence.unique, seq, "df3"  )
 end
 
-function TestSequence:testNegDriftInSeqWithDebug()
-  local debug = MAD.option.debug
-  MAD.option.debug = 2
+function TestSequenceDebug:testNegDriftInSeq()
   local msg = {
-    "invalid element position at s = 1m (negative drift -3m) in sequence \z
-      'seq' for element 'name1' at index 2",
+    "invalid element length at s = 1m (length changed by 4m) in sequence \z
+     'seq' for element 'name1' at index 2",
   }
 
+  MAD.option.debug = 2
   local seq = getIdxSeq()
   -- creates a negative drift
   seq[2].l = 4
 
   assertErrorMsgContains(msg[1], sequence.check_sequ, seq)
-
-  MAD.option.debug = debug
 end
 
 function TestSequence:testThinLength()
@@ -3549,7 +3555,7 @@ function TestSequence:testThinLength()
     srotation { },
   }
   local msg = {
-    "invalid element length at s = 0m (invalid length 1m) in sequence \z
+    "invalid element length at s = 0m (length changed by 1m) in sequence \z
       'seq' for element 'srotation' at index 2",
   }
 
