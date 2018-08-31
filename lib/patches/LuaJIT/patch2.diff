@@ -1,0 +1,45 @@
+diff --git a/src/lj_meta.c b/src/lj_meta.c
+index aa3f47c..21fd057 100644
+--- a/src/lj_meta.c
++++ b/src/lj_meta.c
+@@ -9,6 +9,7 @@
+ #define lj_meta_c
+ #define LUA_CORE
+ 
++#include <stdio.h>
+ #include "lj_obj.h"
+ #include "lj_gc.h"
+ #include "lj_err.h"
+@@ -249,19 +250,27 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
+       (left == 1 || (left == 2 && tvisnumber(top-2)))) {
+     /* Convert 2-3 concatenated numbers into a range,
+        see also lj_record.c:rec_cat. */
+-    if (!ljmad_range_id) {
++        GCtab *reg = tabV(registry(L));
++        int key = (int)&ljmad_range_id;
++        cTValue *range_id = lj_tab_getint(reg, key);
++        CTypeID rid;
++    if (range_id && !tvisnil(range_id)) {
++        rid = (CTypeID) numV(range_id);
++    } else {
++      // fprintf(stderr, "*** get id\n");
+         GCstr *name = lj_str_newlit(L, "range");
+         CTState *cts = ctype_cts(L);
+         CType *ct;
+-        CTypeID id = lj_ctype_getname(cts, &ct, name, 1u<<CT_STRUCT);
+-        if (!id) lj_err_optype(L, top-left, LJ_ERR_OPCAT);
++        rid = lj_ctype_getname(cts, &ct, name, 1u<<CT_STRUCT);
++        if (!rid) lj_err_optype(L, top-left, LJ_ERR_OPCAT);
+         lua_assert(ctype_isstruct(ct->info));
+         // fprintf(stderr, "**** id=%d, ctinfo=0x%x, is_struct=%d, name=%s\n",id,
+         // ct->info, ctype_isstruct(ct->info), strdata(gcrefp(cts->tab[id].name,GCstr)));
+-        ljmad_range_id = id;
++        ljmad_range_id = rid;
++        setnumV(lj_tab_setint(L, reg, key), rid);
+     }
+     /* Allocate cdata struct range. */
+-    GCcdata *cd = lj_cdata_new(ctype_cts(L), ljmad_range_id, 3*sizeof(double));
++    GCcdata *cd = lj_cdata_new(ctype_cts(L), rid, 3*sizeof(double));
+     /* Copy start, stop[, step], default step is 1. */
+     top -= left;
+     ((double *)cdataptr(cd))[0] = numV(top);
