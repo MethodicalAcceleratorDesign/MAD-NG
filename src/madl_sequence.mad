@@ -29,7 +29,7 @@ local warn, trace                                                in MAD
 local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
 local lt, sub, ltrue, lfalse                                     in MAD.operator
 local sequence, marker, drift, changedir, flags                  in MAD.element
-local minlen                                                     in MAD.constant
+local minlen, eps                                                in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, errorf, openfile   in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_string, is_table, is_rawtable, is_iterable, is_callable,
@@ -58,7 +58,7 @@ local ongoing_init  = -2e9
 
 -- defined in elements
 sequence :setv { dir=1, l=uninitialized,
-                 [_data]={eidx={}, spos={}, upos={}, epos={}, ne=0} }
+                 [_data]={eidx={}, spos={}, upos={}, ds={}, ne=0} }
 
 local function is_sequence (a)
   return is_table(a) and a[_data] ~= nil
@@ -97,8 +97,8 @@ end
 
 local function seq_uposerr (typ, seq, idx, pos)
   local msg = string.format(
-    "invalid %s position at s = %.6gm (inconsistency in [spos,upos,epos] by %.6gm)",
-             typ,               seq:spos(idx),                              pos)
+    "invalid %s position at s = %.6gm (inconsistency in [spos,upos,ds] by %.6gm)",
+             typ,               seq:spos(idx),                            pos)
   seq_error(msg, seq, idx, seq[idx])
 end
 
@@ -121,10 +121,10 @@ local function check_drift (seq, idx)
   local data, ds = var_raw(seq,_data)
   assert(idx > 1 and idx < data.ne, "unexpected corrupted element index")
 
-  ds = data.spos[idx  ] - data.epos[idx-1]
+  ds = data.spos[idx] - (data.spos[idx-1] + data.ds[idx-1])
   if ds < -minlen then seq_poserr("element", seq, idx, data.spos[idx]-ds) end
 
-  ds = data.spos[idx+1] - data.epos[idx  ]
+  ds = data.spos[idx+1] - (data.spos[idx] + data.ds[idx])
   if ds < -minlen then seq_poserr("element", seq, idx, data.spos[idx]-ds) end
 end
 
@@ -152,7 +152,7 @@ end
 local function check_pos (seq)
   local data = var_raw(seq,_data)
   for i=1,data.ne-1 do
-    local ds = data.spos[i+1] - data.epos[i]
+    local ds = data.spos[i+1] - (data.spos[i] + data.ds[i])
     if ds < -minlen then
       seq_poserr("element", seq, i, data.spos[i]-ds)
     end
@@ -160,19 +160,14 @@ local function check_pos (seq)
 
   for i=1,data.ne do
     local el = data[i].l
-    local dl = el-data.epos[i]+data.spos[i]
-    if abs(dl) >= minlen then
-      seq_lenchg("element", seq, i, dl)
+    local ds = el-data.ds[i]
+    if abs(ds) >= minlen then
+      seq_lenchg("element", seq, i, ds)
     end
 
-    dl = data.upos[i]-data.spos[i]
-    if dl < -minlen then
-      seq_uposerr("element", seq, i, dl)
-    end
-
-    dl = data.epos[i]-data.upos[i]
-    if dl < -minlen then
-      seq_uposerr("element", seq, i, dl)
+    ds = data.upos[i]-data.spos[i]
+    if ds < -minlen or ds-data.ds[i] > minlen then
+      seq_uposerr("element", seq, i, ds)
     end
 
     if data[i].is_thin and el ~= 0 then
@@ -252,17 +247,16 @@ end
 
 -- get index from s-position (binary)
 local function index_of_num (seq, num, dir)
-  local l = seq.l
-  if num < 0 then num = l+num end -- reflect
-  if num < 0 or num > l then return nil end
+  if num < 0 or num > seq.l then return nil end
   local data = var_raw(seq,_data)
   local idx = bsearch(data.spos, num)
   dir = dir or 0
   assert(dir == 0 or dir == 1 or dir == -1, "invalid direction (0, 1 or -1 expected)")
   if idx > 1 and num < data.spos[idx]-minlen then
-    if dir < 0 or num < data.epos[idx-1]+minlen then
+    local epos = data.spos[idx-1] + data.ds[idx-1]
+    if dir < 0 or num < epos+minlen then
       idx = idx-1
-    elseif dir == 0 and num > data.epos[idx-1]+minlen then
+    elseif dir == 0 and num > epos+minlen then
       idx = nil
     end
   end
@@ -481,7 +475,7 @@ function elem_pos (seq, idx, elm_)
   spos = upos - rpos
 
   if is_nil(elm_) then
-    data.spos[idx], data.upos[idx], data.epos[idx] = spos, upos, spos+elm.l
+    data.spos[idx], data.upos[idx], data.ds[idx] = spos, upos, elm.l
   end
   return spos, upos
 end
@@ -495,7 +489,7 @@ local function sequ_pos (seq, sseq, idx, dir)
   if seq.dir ~= sseq.dir then -- changedir patch
     data.spos[idx] = sdata.spos[1] + pos
     data.upos[idx] = sdata.upos[1] + pos
-    data.epos[idx] = sdata.epos[1] + pos
+    data.ds  [idx] = sdata.ds  [1]
     idx = idx + 1
   end
 
@@ -504,17 +498,17 @@ local function sequ_pos (seq, sseq, idx, dir)
     for i=2,n-1 do
       data.spos[idx-2+i] = sdata.spos[i] + pos
       data.upos[idx-2+i] = sdata.upos[i] + pos
-      data.epos[idx-2+i] = sdata.epos[i] + pos
+      data.ds  [idx-2+i] = sdata.ds  [i]
       assert(data[idx-2+i] == sdata[i], "unexpected corrupted flat sequence")
     end
   elseif dir < 0 then
     local l = sseq.l
     for i=2,n-1 do
       local ix, ii = idx-2+i, n+1-i
-      local sp, el = sdata.spos[ii], sdata.epos[ii] - sdata.spos[ii]
-      data.spos[ix] = l - (sp + el                      ) + pos
-      data.upos[ix] = l - (sp + el - sdata.upos[ii] + sp) + pos
-      data.epos[ix] = l - (sp + el                      ) + pos + el
+      local sp, ds = sdata.spos[ii], sdata.ds[ii]
+      data.spos[ix] = l - (sp + ds                      ) + pos
+      data.upos[ix] = l - (sp + ds - sdata.upos[ii] + sp) + pos
+      data.ds  [ix] = ds
       assert(data[ix] == sdata[ii], "unexpected corrupted flat sequence")
     end
   else
@@ -524,7 +518,7 @@ local function sequ_pos (seq, sseq, idx, dir)
   if seq.dir ~= sseq.dir then -- changedir patch
     data.spos[idx+n] = sdata.spos[n] + pos
     data.upos[idx+n] = sdata.upos[n] + pos
-    data.epos[idx+n] = sdata.epos[n] + pos
+    data.ds  [idx+n] = sdata.ds  [n]
   end
 end
 
@@ -546,13 +540,13 @@ local function build_pos (seq, sref)
       if data.spos[idx]-pos < -minlen then -- see check_pos
       -- if pos-minlen > data.spos[idx] then
         seq_poserr('element', seq, idx, pos)
-      elseif data[idx].is_thin and data.epos[idx] - data.spos[idx] ~= 0 then
+      elseif data[idx].is_thin and data.ds[idx] ~= 0 then
         seq_lenerr("thin element", seq, idx, data[idx].l)
       end
       if data[idx].shared == true then -- shared element
         data[idx] = check_shared(seq, idx)
       end
-      pos = data.epos[idx]
+      pos = data.spos[idx]+data.ds[idx]
       idx = idx + 1
     else                     -- subsequence
       sequ_pos(seq, sseq, idx, sref.sdir[idx])
@@ -708,7 +702,7 @@ local function sequ_init (seq)
   data.eidx = table.new(0,ne)
   data.spos = table.new(ne,0)
   data.upos = table.new(ne,0)
-  data.epos = table.new(ne,0)
+  data.ds   = table.new(ne,0)
   seq[_data], data.ne = data, ne
 
   build_idx(data)
@@ -1014,7 +1008,7 @@ local function remove (seq, rng_, sel_)
     table.remove(data     , ii)
     table.remove(data.spos, ii)
     table.remove(data.upos, ii)
-    table.remove(data.epos, ii)
+    table.remove(data.ds  , ii)
   end
   data.ne = #data
 
@@ -1132,12 +1126,12 @@ local function install (seq, elm, rng_, sel_)
       table.move(data     , idx, data.ne, idx+sdata.ne-2)
       table.move(data.spos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.upos, idx, data.ne, idx+sdata.ne-2)
-      table.move(data.epos, idx, data.ne, idx+sdata.ne-2)
+      table.move(data.ds  , idx, data.ne, idx+sdata.ne-2)
       for j=2,sdata.ne-1 do -- see sequ_pos
         data     [idx+j-2] = sdata     [j]
         data.spos[idx+j-2] = sdata.spos[j]+spos[ie]
         data.upos[idx+j-2] = sdata.upos[j]+spos[ie]
-        data.epos[idx+j-2] = sdata.epos[j]+spos[ie]
+        data.ds  [idx+j-2] = sdata.ds  [j]
       end
       data.ne = data.ne + sdata.ne - 2
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst data
@@ -1145,7 +1139,7 @@ local function install (seq, elm, rng_, sel_)
       table.insert(data     , idx, ins [ie])
       table.insert(data.spos, idx, spos[ie])
       table.insert(data.upos, idx, upos[ie])
-      table.insert(data.epos, idx, spos[ie]+ins[ie].l)
+      table.insert(data.ds  , idx, ins [ie].l)
       data.ne = data.ne + 1
       if data[idx].shared == true then    -- shared element
         data[idx] = check_shared(seq, idx)
@@ -1174,13 +1168,13 @@ local function copy (seq, name_, owner_)
   cdata.eidx  = table.new(0,ne)
   cdata.spos  = table.new(ne,0)
   cdata.upos  = table.new(ne,0)
-  cdata.epos  = table.new(ne,0)
+  cdata.ds    = table.new(ne,0)
   cpy[_data], cdata.ne = cdata, ne
 
   for i=1,ne do
     cdata[i] = data[i]:copy()
-    cdata.spos[i], cdata.upos[i], cdata.epos[i] =
-     data.spos[i],  data.upos[i],  data.epos[i]
+    cdata.spos[i], cdata.upos[i], cdata.ds[i] =
+     data.spos[i],  data.upos[i],  data.ds[i]
   end
 
   build_index(cpy)
@@ -1287,7 +1281,7 @@ local function fwditer (state, i)
     soff = state.soff
   end
 
-  return i, state.data[i], state.spos[i]+soff, state.epos[i]+soff
+  return i, state.data[i], state.spos[i]+soff, state.ds[i]
 end
 
 local function bwditer (state, i)
@@ -1305,13 +1299,14 @@ local function bwditer (state, i)
     soff = state.soff
   end
 
-  return i, state.data[i], state.epos[i]-soff, state.spos[i]-soff
+  local ds = state.ds[i]
+  return i, state.data[i], state.spos[i]+ds-soff, -ds
 end
 
 ---
 
 local function fwdsiter (state, i)
-  local data, spos, epos, soff, elm_i in state
+  local data, spos, ds, soff, elm_i in state
 
   if i == state.stop and not elm_i then
     if state.turn == 0 then return nil end
@@ -1321,29 +1316,29 @@ local function fwdsiter (state, i)
   if i == state.ne then
     i, soff = 1, state.seq_l+soff
     state.soff = soff
-    return i, data[i], spos[i]+soff, epos[i]+soff
+    return i, data[i], spos[i]+soff, ds[i]
   end
 
   if elm_i then -- last elm was an implicit drift => not current one
     i = i+1
     state.elm_i = false
-    return i, data[i], spos[i]+soff, epos[i]+soff
+    return i, data[i], spos[i]+soff, ds[i]
   end
 
-  local dl = state.spos[i+1] - state.epos[i]
+  local dl = (spos[i+1]-spos[i]) - ds[i]
   if dl < minlen then      -- implicit drift is too small, discard
     i = i+1
-    return i, data[i], spos[i]+soff, epos[i]+soff
+    return i, data[i], spos[i]+soff, ds[i]
   else                     -- update implicit drift
     state.elm_i = true
     state.elm_l = dl
     state.elm_s = 'drift__'..i
-    return i, state.dft, epos[i]+soff, spos[i+1]+soff
+    return i, state.dft, (spos[i]+ds[i])+soff, dl
   end
 end
 
 local function bwdsiter (state, i)
-  local data, spos, epos, soff, elm_i in state
+  local data, spos, ds, soff, elm_i in state
 
   if i == state.stop and not elm_i then
     if state.turn == 0 then return nil end
@@ -1353,24 +1348,24 @@ local function bwdsiter (state, i)
   if i == 1 then
     i, soff = state.ne, state.seq_l+soff
     state.soff = soff
-    return i, data[i], epos[i]-soff, spos[i]-soff
+    return i, data[i], spos[i]+ds[i]-soff, -ds[i]
   end
 
   if elm_i then -- last elm was an implicit drift => not current one
     i = i-1
     state.elm_i = false
-    return i, data[i], epos[i]-soff, spos[i]-soff
+    return i, data[i], spos[i]+ds[i]-soff, -ds[i]
   end
 
-  local dl = spos[i] - epos[i-1]
+  local dl = (spos[i]-spos[i-1]) - ds[i-1]
   if dl < minlen then                  -- implicit drift is too small
     i = i-1
-    return i, data[i], epos[i]-soff, spos[i]-soff
+    return i, data[i], spos[i]+ds[i]-soff, -ds[i]
   else                                 -- update implicit drift
     state.elm_i = true
     state.elm_l = dl
     state.elm_s = 'drift__'..i
-    return i, state.dft, spos[i]-soff, epos[i-1]-soff
+    return i, state.dft, spos[i]-soff, -dl
   end
 end
 
@@ -1400,9 +1395,9 @@ local function iter (seq, rng_, ntrn_, dir_)
   end
   if start == stop+dir then nturn = nturn+1 end
 
-  local soff = dir > 0 and -data.spos[start] or data.epos[start]
+  local soff = dir > 0 and -data.spos[start] or data.spos[start]+data.ds[start]
   return dir > 0 and fwditer or bwditer, {
-    data=data, spos=data.spos, epos=data.epos, ne=data.ne, soff=soff,
+    data=data, spos=data.spos, ds=data.ds, ne=data.ne, soff=soff,
     seq=seq, seq_l=seq.l, elm_i=true, elm_l=0, elm_s='', stop=stop, turn=nturn-1,
     dft=0}, start-dir
 end
@@ -1456,12 +1451,15 @@ local function dumpseq (seq, filnam_)
   -- header
   res[1] = 'sequence: ' .. seq.name .. ', ' ..
            'l=' .. (seq.l == uninitialized and 'uninitialized' or seq.l)
-  res[2] = 'idx  kind          name                    l        dl         spos       upos       epos    uds'
+  res[2] = 'idx  kind          name                    l          dl       \z
+            spos       upos    uds'
   -- elements
   seq:foreach \e,i =>
-    res[#res+1] = string.format('%03d  %-14s%-20s%9.3f%9.3f%11.3f%11.3f%11.3f%8.3f',
-                  i, e.kind, e.__id, e.l, seq:epos(i)-seq:spos(i),
-                  seq:spos(i), seq:upos(i), seq:epos(i), seq:upos(i)-seq:spos(i))
+    local ds, uds = seq:ds(i), seq:upos(i)-seq:spos(i)
+    local dl = ds-e.l
+    res[#res+1] = string.format('%03d  %-14s%-20s%9.3f%8.3g%s%11.3f%11.3f%8.3f%s',
+                  i, e.kind, e.__id, e.l, dl, abs(dl) > eps and '*' or ' ',
+                  seq:spos(i), seq:upos(i), uds, (uds<0 or uds>ds) and '*' or '')
     end
 
   -- return result as a string
@@ -1480,11 +1478,11 @@ end
 sequence.original = original
 
 sequence :set_methods {
-  -- elem, spos, upos, epos, canonical index
+  -- elem, spos, upos, ds, canonical index
   elem          = \s,i -> var_raw(s, _data)     [i],
   spos          = \s,i -> var_raw(s, _data).spos[i],
   upos          = \s,i -> var_raw(s, _data).upos[i],
-  epos          = \s,i -> var_raw(s, _data).epos[i],
+  ds            = \s,i -> var_raw(s, _data).ds  [i],
   index         = index,
 
   -- elements manipulation
