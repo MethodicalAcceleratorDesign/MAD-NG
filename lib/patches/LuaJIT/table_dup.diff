@@ -1,0 +1,81 @@
+diff --git a/src/lib_table.c b/src/lib_table.c
+index 0450f1f..0df790c 100644
+--- a/src/lib_table.c
++++ b/src/lib_table.c
+@@ -299,6 +299,27 @@ LJLIB_NOREG LJLIB_CF(table_clear)	LJLIB_REC(.)
+   return 0;
+ }
+ 
++LJLIB_NOREG LJLIB_CF(table_dup) LJLIB_REC(.)
++{
++  GCtab *t = lj_tab_dup(L, lj_lib_checktab(L, 1));
++  settabV(L,L->top-1,t);
++  lj_gc_check(L);
++  return 1;
++}
++
++LJLIB_CF(table_dup2)
++{
++  GCtab *t = lj_lib_checktab(L, 1);
++  lua_createtable(L, t->asize, t->hmask);
++  lua_pushnil(L);
++  while (lua_next(L, 2) != 0) {
++    lua_pushvalue(L, -2);
++    lua_insert(L, -2);
++    lua_rawset(L, 1);
++  }
++  return 1;
++}
++
+ static int luaopen_table_new(lua_State *L)
+ {
+   return lj_lib_postreg(L, lj_cf_table_new, FF_table_new, "new");
+@@ -309,6 +330,11 @@ static int luaopen_table_clear(lua_State *L)
+   return lj_lib_postreg(L, lj_cf_table_clear, FF_table_clear, "clear");
+ }
+ 
++static int luaopen_table_dup(lua_State *L)
++{
++  return lj_lib_postreg(L, lj_cf_table_dup, FF_table_dup, "dup");
++}
++
+ /* ------------------------------------------------------------------------ */
+ 
+ #include "lj_libdef.h"
+@@ -322,6 +348,7 @@ LUALIB_API int luaopen_table(lua_State *L)
+ #endif
+   lj_lib_prereg(L, LUA_TABLIBNAME ".new", luaopen_table_new, tabV(L->top-1));
+   lj_lib_prereg(L, LUA_TABLIBNAME ".clear", luaopen_table_clear, tabV(L->top-1));
++  lj_lib_prereg(L, LUA_TABLIBNAME ".dup", luaopen_table_dup, tabV(L->top-1));
+   return 1;
+ }
+ 
+diff --git a/src/lj_ffrecord.c b/src/lj_ffrecord.c
+index 849d7a2..401603a 100644
+--- a/src/lj_ffrecord.c
++++ b/src/lj_ffrecord.c
+@@ -6,6 +6,7 @@
+ #define lj_ffrecord_c
+ #define LUA_CORE
+ 
++#include <stdio.h>
+ #include "lj_obj.h"
+ 
+ #if LJ_HASJIT
+@@ -1105,6 +1106,16 @@ static void LJ_FASTCALL recff_table_clear(jit_State *J, RecordFFData *rd)
+   }  /* else: Interpreter will throw. */
+ }
+ 
++static void LJ_FASTCALL recff_table_dup(jit_State *J, RecordFFData *rd)
++{
++  fprintf(stderr, "dup\n");
++  TRef tr = J->base[0];
++  if (tref_istab(tr)) {
++    lj_ir_call(J, IRCALL_lj_tab_dup, tr);
++//    J->needsnap = 1;
++  }  /* else: Interpreter will throw. */
++}
++
+ /* -- I/O library fast functions ------------------------------------------ */
+ 
+ /* Get FILE* for I/O function. Any I/O error aborts recording, so there's

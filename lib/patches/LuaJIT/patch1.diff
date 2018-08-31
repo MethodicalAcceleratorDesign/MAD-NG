@@ -1,0 +1,523 @@
+diff --git a/src/Makefile b/src/Makefile
+index 55d308e..3b8fcb2 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -238,7 +238,7 @@ TARGET_SONAME= libluajit-$(ABIVER).so.$(MAJVER)
+ TARGET_DYLIBNAME= libluajit-$(ABIVER).$(MAJVER).dylib
+ TARGET_DYLIBPATH= $(TARGET_LIBPATH)/$(TARGET_DYLIBNAME)
+ TARGET_DLLNAME= lua$(NODOTABIVER).dll
+-TARGET_XSHLDFLAGS= -shared -fPIC -Wl,-soname,$(TARGET_SONAME)
++TARGET_XSHLDFLAGS= -shared -fPIC -Wl,-soname,$(TARGET_SONAME) #-Wl,-no_pie
+ TARGET_DYNXLDOPTS=
+
+ TARGET_LFSFLAGS= -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+diff --git a/src/lib_jit.c b/src/lib_jit.c
+index ffa928d..8534348 100644
+--- a/src/lib_jit.c
++++ b/src/lib_jit.c
+@@ -147,6 +147,47 @@ LJLIB_PUSH(top-4) LJLIB_SET(arch)
+ LJLIB_PUSH(top-3) LJLIB_SET(version_num)
+ LJLIB_PUSH(top-2) LJLIB_SET(version)
+
++LJLIB_CF(jit_white)
++{
++  // Flush all
++  setjitmode(L, LUAJIT_MODE_FLUSH);
++
++  // Clear penalty cache
++  jit_State *J = L2J(L);
++  memset(J->penalty, 0, sizeof(J->penalty));
++
++  // Clear hotcount cache
++  GG_State *GG = J2GG(J);
++  // memset(GG->hotcount, 0, sizeof(GG->hotcount));
++
++  // Clear value used for randomization
++  // fprintf(stderr, "White seed = %d\n", J->prngstate);
++  // J->prngstate = 0;
++
++  //print counter
++  int32_t hotloop = J->param[JIT_P_hotloop];
++  HotCount start = (HotCount)(hotloop*HOTCOUNT_LOOP - 1);
++  HotCount *hotcount = GG->hotcount;
++  uint32_t i;
++  fprintf(stderr, "start : %d\n", start);
++  for (i = 0; i < HOTCOUNT_SIZE; i++) {
++    if(hotcount[i] != start) {
++      fprintf(stderr, "c=%d,v=%d    ", i, hotcount[i]);
++    }
++  }
++
++  // whiteList
++  GCRef *p = &(G(L)->gc.root);
++  GCobj *o;
++  while ((o = gcref(*p)) != NULL) {
++    if (o->gch.gct == ~LJ_TPROTO) {
++      lj_trace_reenableproto(gco2pt(o));
++    }
++    p = &o->gch.nextgc;
++  }
++  return 0;
++}
++
+ #include "lj_libdef.h"
+
+ /* -- jit.util.* functions ------------------------------------------------ */
+diff --git a/src/lj_crecord.c b/src/lj_crecord.c
+index fc1befa..62df55a 100644
+--- a/src/lj_crecord.c
++++ b/src/lj_crecord.c
+@@ -971,8 +971,10 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
+     TRef trsz = TREF_NIL;
+     if ((info & CTF_VLA)) {  /* Calculate VLA/VLS size at runtime. */
+       CTSize sz0, sz1;
+-      if (!J->base[1] || J->base[2])
++      if (!J->base[1] || J->base[2]) {
++        // fprintf(stderr, "NYI: init VLA/VLS.\n");
+ 	lj_trace_err(J, LJ_TRERR_NYICONV);  /* NYI: init VLA/VLS. */
++      }
+       trsz = crec_ct_tv(J, ctype_get(cts, CTID_INT32), 0,
+ 			J->base[1], &rd->argv[1]);
+       sz0 = lj_ctype_vlsize(cts, d, 0);
+@@ -988,8 +990,10 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
+       TRef dp;
+       CTSize align;
+     special:  /* Only handle bulk zero-fill for large/VLA/VLS types. */
+-      if (J->base[1])
++      if (J->base[1]) {
++        //fprintf(stderr, "NYI: init large/VLA/VLS types.\n");
+ 	lj_trace_err(J, LJ_TRERR_NYICONV);  /* NYI: init large/VLA/VLS types. */
++      }
+       dp = emitir(IRT(IR_ADD, IRT_PTR), trcd, lj_ir_kintp(J, sizeof(GCcdata)));
+       if (trsz == TREF_NIL) trsz = lj_ir_kint(J, sz);
+       align = ctype_align(info);
+@@ -1036,8 +1040,10 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
+ 	  if (!gcref(df->name)) continue;  /* Ignore unnamed fields. */
+ 	  dc = ctype_rawchild(cts, df);  /* Field type. */
+ 	  if (!(ctype_isnum(dc->info) || ctype_isptr(dc->info) ||
+-		ctype_isenum(dc->info)))
+-	    lj_trace_err(J, LJ_TRERR_NYICONV);  /* NYI: init aggregates. */
++		ctype_isenum(dc->info))) {
++	   //fprintf(stderr, "NYI: init aggregates.\n");
++            lj_trace_err(J, LJ_TRERR_NYICONV);  /* NYI: init aggregates. */
++          }
+ 	  if (J->base[i]) {
+ 	    sp = J->base[i];
+ 	    sval = &rd->argv[i];
+@@ -1049,6 +1055,7 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
+ 		      lj_ir_kintp(J, df->size + sizeof(GCcdata)));
+ 	  crec_ct_tv(J, dc, dp, sp, sval);
+ 	} else if (!ctype_isconstval(df->info)) {
++          //fprintf(stderr, "NYI: init bitfields and sub-structures.\n");
+ 	  /* NYI: init bitfields and sub-structures. */
+ 	  lj_trace_err(J, LJ_TRERR_NYICONV);
+ 	}
+diff --git a/src/lj_ctype.h b/src/lj_ctype.h
+index feeadc6..aab0aa8 100644
+--- a/src/lj_ctype.h
++++ b/src/lj_ctype.h
+@@ -181,6 +181,7 @@ typedef struct CTState {
+   GCtab *miscmap;	/* Map of -CTypeID to metatable and cb slot to func. */
+   CCallback cb;		/* Temporary callback state. */
+   CTypeID1 hash[CTHASH_SIZE];  /* Hash anchors for C type table. */
++  CTypeID rangeid;
+ } CTState;
+
+ #define CTINFO(ct, flags)	(((CTInfo)(ct) << CTSHIFT_NUM) + (flags))
+diff --git a/src/lj_dispatch.c b/src/lj_dispatch.c
+index 5d6795f..ca45bd5 100644
+--- a/src/lj_dispatch.c
++++ b/src/lj_dispatch.c
+@@ -83,6 +83,7 @@ void lj_dispatch_init(GG_State *GG)
+ /* Initialize hotcount table. */
+ void lj_dispatch_init_hotcount(global_State *g)
+ {
++  // fprintf(stderr, "init_hotcount\n");
+   int32_t hotloop = G2J(g)->param[JIT_P_hotloop];
+   HotCount start = (HotCount)(hotloop*HOTCOUNT_LOOP - 1);
+   HotCount *hotcount = G2GG(g)->hotcount;
+@@ -210,8 +211,10 @@ void lj_dispatch_update(global_State *g)
+ /* Set JIT mode for a single prototype. */
+ static void setptmode(global_State *g, GCproto *pt, int mode)
+ {
++  // fprintf(stderr, "setptmode1\n");
+   if ((mode & LUAJIT_MODE_ON)) {  /* (Re-)enable JIT compilation. */
+     pt->flags &= ~PROTO_NOJIT;
++  // fprintf(stderr, "setptmode:%s:%d\n", proto_chunknamestr(pt),pt->firstline);
+     lj_trace_reenableproto(pt);  /* Unpatch all ILOOP etc. bytecodes. */
+   } else {  /* Flush and/or disable JIT compilation. */
+     if (!(mode & LUAJIT_MODE_FLUSH))
+diff --git a/src/lj_dispatch.h b/src/lj_dispatch.h
+index 5bda51a..8daffd1 100644
+--- a/src/lj_dispatch.h
++++ b/src/lj_dispatch.h
+@@ -71,7 +71,7 @@ GOTDEF(GOTENUM)
+ typedef uint16_t HotCount;
+
+ /* Number of hot counter hash table entries (must be a power of two). */
+-#define HOTCOUNT_SIZE		64
++#define HOTCOUNT_SIZE		64// 4194304
+ #define HOTCOUNT_PCMASK		((HOTCOUNT_SIZE-1)*sizeof(HotCount))
+
+ /* Hotcount decrements. */
+diff --git a/src/lj_jit.h b/src/lj_jit.h
+index f37e792..a2a8985 100644
+--- a/src/lj_jit.h
++++ b/src/lj_jit.h
+@@ -287,9 +287,9 @@ typedef struct HotPenalty {
+   uint16_t reason;	/* Abort reason (really TraceErr). */
+ } HotPenalty;
+
+-#define PENALTY_SLOTS	64	/* Penalty cache slot. Must be a power of 2. */
++#define PENALTY_SLOTS	1024	/* Penalty cache slot. Must be a power of 2. */
+ #define PENALTY_MIN	(36*2)	/* Minimum penalty value. */
+-#define PENALTY_MAX	60000	/* Maximum penalty value. */
++#define PENALTY_MAX	60000	/* Maximum penalty value. */  // 6000000
+ #define PENALTY_RNDBITS	4	/* # of random bits to add to penalty value. */
+
+ /* Round-robin backpropagation cache for narrowing conversions. */
+@@ -497,8 +497,10 @@ jit_State;
+ /* Trivial PRNG e.g. used for penalty randomization. */
+ static LJ_AINLINE uint32_t LJ_PRNG_BITS(jit_State *J, int bits)
+ {
++  // fprintf(stderr, "Seed2= %d\n", J->prngstate);
+   /* Yes, this LCG is very weak, but that doesn't matter for our use case. */
+-  J->prngstate = J->prngstate * 1103515245 + 12345;
++   J->prngstate = J->prngstate * 1103515245 + 12345;
++//  J->prngstate = 229283573;
+   return J->prngstate >> (32-bits);
+ }
+
+diff --git a/src/lj_mcode.c b/src/lj_mcode.c
+index 64b0ca9..403f4e9 100644
+--- a/src/lj_mcode.c
++++ b/src/lj_mcode.c
+@@ -88,6 +88,7 @@ static int mcode_setprot(void *p, size_t sz, DWORD prot)
+ #elif LJ_TARGET_POSIX
+
+ #include <sys/mman.h>
++#include <stdio.h>
+
+ #ifndef MAP_ANONYMOUS
+ #define MAP_ANONYMOUS	MAP_ANON
+@@ -101,7 +102,10 @@ static void *mcode_alloc_at(jit_State *J, uintptr_t hint, size_t sz, int prot)
+ {
+   void *p = mmap((void *)hint, sz, prot, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+   if (p == MAP_FAILED) {
+-    if (!hint) lj_trace_err(J, LJ_TRERR_MCODEAL);
++    if (!hint) {
++//      fprintf(stderr, "mcode: not hint\n");
++      lj_trace_err(J, LJ_TRERR_MCODEAL);
++    }
+     p = NULL;
+   }
+   return p;
+@@ -246,6 +250,7 @@ static void *mcode_alloc(jit_State *J, size_t sz)
+     } while (!(hint + sz < range+range));
+     hint = target + hint - range;
+   }
++//  fprintf(stderr, "mcode: os ignore hint\n");
+   lj_trace_err(J, LJ_TRERR_MCODEAL);  /* Give up. OS probably ignores hints? */
+   return NULL;
+ }
+@@ -372,8 +377,10 @@ void lj_mcode_limiterr(jit_State *J, size_t need)
+   maxmcode = (size_t)J->param[JIT_P_maxmcode] << 10;
+   if ((size_t)need > sizemcode)
+     lj_trace_err(J, LJ_TRERR_MCODEOV);  /* Too long for any area. */
+-  if (J->szallmcarea + sizemcode > maxmcode)
++  if (J->szallmcarea + sizemcode > maxmcode) {
++//    fprintf(stderr, "mcode: limit reached\n");
+     lj_trace_err(J, LJ_TRERR_MCODEAL);
++  }
+   mcode_allocarea(J);
+   lj_trace_err(J, LJ_TRERR_MCODELM);  /* Retry with new area. */
+ }
+diff --git a/src/lj_obj.h b/src/lj_obj.h
+index 72b7ace..b9e9c00 100644
+--- a/src/lj_obj.h
++++ b/src/lj_obj.h
+@@ -9,6 +9,7 @@
+ #ifndef _LJ_OBJ_H
+ #define _LJ_OBJ_H
+
++#include <stdio.h>
+ #include "lua.h"
+ #include "lj_def.h"
+ #include "lj_arch.h"
+@@ -520,7 +521,11 @@ enum {
+   LJ_VMST__MAX
+ };
+
+-#define setvmstate(g, st)	((g)->vmstate = ~LJ_VMST_##st)
++#define setvmstate(g, st)      ((g)->vmstate = ~LJ_VMST_##st)
++
++//#define setvmstate(g, st) \
++//  ((g)->vmstate = ~LJ_VMST_##st); \
++//  fprintf(stderr, #st"\n")
+
+ /* Metamethods. ORDER MM */
+ #ifdef LJ_HASFFI
+diff --git a/src/lj_profile.c b/src/lj_profile.c
+index 3223697..11aa9c5 100644
+--- a/src/lj_profile.c
++++ b/src/lj_profile.c
+@@ -126,6 +126,7 @@ void LJ_FASTCALL lj_profile_hook_leave(global_State *g)
+ void LJ_FASTCALL lj_profile_interpreter(lua_State *L)
+ {
+   ProfileState *ps = &profile_state;
++//  fprintf(stderr, "ps->vmstate %c\n", ps->vmstate);
+   global_State *g = G(L);
+   uint8_t mask;
+   profile_lock(ps);
+@@ -155,6 +156,7 @@ static void profile_trigger(ProfileState *ps)
+   mask = g->hookmask;
+   if (!(mask & (HOOK_PROFILE|HOOK_VMEVENT))) {  /* Set profile hook. */
+     int st = g->vmstate;
++//    fprintf(stderr, "g->vmstate : %d\n", st);
+     ps->vmstate = st >= 0 ? 'N' :
+ 		  st == ~LJ_VMST_INTERP ? 'I' :
+ 		  st == ~LJ_VMST_C ? 'C' :
+diff --git a/src/lj_record.c b/src/lj_record.c
+index fe382e4..a7084df 100644
+--- a/src/lj_record.c
++++ b/src/lj_record.c
+@@ -850,8 +850,10 @@ void lj_record_ret(jit_State *J, BCReg rbase, ptrdiff_t gotresults)
+     } else if (J->parent == 0 && J->exitno == 0 &&
+ 	       !bc_isret(bc_op(J->cur.startins))) {
+       /* Return to lower frame would leave the loop in a root trace. */
++      // fprintf(stderr, "LJ_TRERR_LLEAVE:%s:%d:%d:%d\n", proto_chunknamestr(pt), pt->firstline, bc_op(J->cur.startins), BC_FUNCF);
+       lj_trace_err(J, LJ_TRERR_LLEAVE);
+     } else if (J->needsnap) {  /* Tailcalled to ff with side-effects. */
++      // fprintf(stderr, "LJ_TRERR_NYIRETL:%s:%d:%d:%d\n", proto_chunknamestr(pt), pt->firstline, bc_op(J->cur.startins), BC_FUNCF);
+       lj_trace_err(J, LJ_TRERR_NYIRETL);  /* No way to insert snapshot here. */
+     } else {  /* Return to lower frame. Guard for the target we return to. */
+       TRef trpt = lj_ir_kgc(J, obj2gco(pt), IRT_PROTO);
+diff --git a/src/lj_trace.c b/src/lj_trace.c
+index d85b47f..e55d2c0 100644
+--- a/src/lj_trace.c
++++ b/src/lj_trace.c
+@@ -6,6 +6,7 @@
+ #define lj_trace_c
+ #define LUA_CORE
+
++#include <stdio.h>
+ #include "lj_obj.h"
+
+ #if LJ_HASJIT
+@@ -182,6 +183,7 @@ void LJ_FASTCALL lj_trace_free(global_State *g, GCtrace *T)
+ void lj_trace_reenableproto(GCproto *pt)
+ {
+   if ((pt->flags & PROTO_ILOOP)) {
++//    fprintf(stderr, "Remove blacklist:%s:%d\n", proto_chunknamestr(pt),pt->firstline);
+     BCIns *bc = proto_bc(pt);
+     BCPos i, sizebc = pt->sizebc;;
+     pt->flags &= ~PROTO_ILOOP;
+@@ -236,6 +238,7 @@ static void trace_unpatch(jit_State *J, GCtrace *T)
+ /* Flush a root trace. */
+ static void trace_flushroot(jit_State *J, GCtrace *T)
+ {
++  // fprintf(stderr, "flushroot\n");
+   GCproto *pt = &gcref(T->startpt)->pt;
+   lua_assert(T->root == 0 && pt != NULL);
+   /* First unpatch any modified bytecode. */
+@@ -258,6 +261,7 @@ static void trace_flushroot(jit_State *J, GCtrace *T)
+ /* Flush a trace. Only root traces are considered. */
+ void lj_trace_flush(jit_State *J, TraceNo traceno)
+ {
++  // fprintf(stderr, "flush\n");
+   if (traceno > 0 && traceno < J->sizetrace) {
+     GCtrace *T = traceref(J, traceno);
+     if (T && T->root == 0)
+@@ -268,6 +272,7 @@ void lj_trace_flush(jit_State *J, TraceNo traceno)
+ /* Flush all traces associated with a prototype. */
+ void lj_trace_flushproto(global_State *g, GCproto *pt)
+ {
++  // fprintf(stderr, "flushproto\n");
+   while (pt->trace != 0)
+     trace_flushroot(G2J(g), traceref(G2J(g), pt->trace));
+ }
+@@ -275,6 +280,7 @@ void lj_trace_flushproto(global_State *g, GCproto *pt)
+ /* Flush all traces. */
+ int lj_trace_flushall(lua_State *L)
+ {
++//    fprintf(stderr, "flushall\n");
+   jit_State *J = L2J(L);
+   ptrdiff_t i;
+   if ((J2G(J)->hookmask & HOOK_GC))
+@@ -291,8 +297,20 @@ int lj_trace_flushall(lua_State *L)
+   }
+   J->cur.traceno = 0;
+   J->freetrace = 0;
++//  /* Unpatch blacklisted byte codes. */
++//  GCRef *p = &(G(L)->gc.root);
++//  GCobj *o;
++//  while ((o = gcref(*p)) != NULL) {
++//    if (o->gch.gct == ~LJ_TPROTO) {
++//      lj_trace_reenableproto(gco2pt(o));
++//    }
++//    p = &o->gch.nextgc;
++//  }
++  // J->prngstate = 0; // random init
+   /* Clear penalty cache. */
+   memset(J->penalty, 0, sizeof(J->penalty));
++  /* Reset hotcounts. */
++  // lj_dispatch_init_hotcount(J2G(J));
+   /* Free the whole machine code and invalidate all exit stub groups. */
+   lj_mcode_free(J);
+   memset(J->exitstubgroup, 0, sizeof(J->exitstubgroup));
+@@ -382,6 +400,7 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
+       val = ((uint32_t)J->penalty[i].val << 1) +
+ 	    LJ_PRNG_BITS(J, PENALTY_RNDBITS);
+       if (val > PENALTY_MAX) {
++//        fprintf(stderr, "blacklist:%s:%d err=%d\n", proto_chunknamestr(pt),pt->firstline, e);
+ 	blacklist_pc(pt, pc);  /* Blacklist it, if that didn't help. */
+ 	return;
+       }
+@@ -402,6 +421,7 @@ setpenalty:
+ /* Start tracing. */
+ static void trace_start(jit_State *J)
+ {
++//  fprintf(stderr, "trace_start\n");
+   lua_State *L;
+   TraceNo traceno;
+
+@@ -421,6 +441,7 @@ static void trace_start(jit_State *J)
+   traceno = trace_findfree(J);
+   if (LJ_UNLIKELY(traceno == 0)) {  /* No free trace? */
+     lua_assert((J2G(J)->hookmask & HOOK_GC) == 0);
++//    fprintf(stderr, "no free trace slot\n");
+     lj_trace_flushall(J->L);
+     J->state = LJ_TRACE_IDLE;  /* Silently ignored. */
+     return;
+@@ -473,6 +494,7 @@ static void trace_stop(jit_State *J)
+   TraceNo traceno = J->cur.traceno;
+   GCtrace *T = J->curfinal;
+   lua_State *L;
++  //int i;
+
+   switch (op) {
+   case BC_FORL:
+@@ -523,6 +545,10 @@ static void trace_stop(jit_State *J)
+   lj_mcode_commit(J, J->cur.mcode);
+   J->postproc = LJ_POST_NONE;
+   trace_save(J, T);
++  /* Clear any penalty after successful recording. */
++//  for (i = 0; i < PENALTY_SLOTS; i++)
++//    if (mref(J->penalty[i].pc, const BCIns) == pc)
++//      J->penalty[i].val = PENALTY_MIN;
+
+   L = J->L;
+   lj_vmevent_send(L, TRACE,
+@@ -614,8 +640,10 @@ static int trace_abort(jit_State *J)
+   L->top--;  /* Remove error object */
+   if (e == LJ_TRERR_DOWNREC)
+     return trace_downrec(J);
+-  else if (e == LJ_TRERR_MCODEAL)
++  else if (e == LJ_TRERR_MCODEAL) {
+     lj_trace_flushall(L);
++//    fprintf(stderr, "failed to allocate mcode memory\n");
++  }
+   return 0;
+ }
+
+@@ -687,10 +715,12 @@ static TValue *trace_state(lua_State *L, lua_CFunction dummy, void *ud)
+       break;
+
+     case LJ_TRACE_ASM:
++//      fprintf(stderr, "trace_asm\n");
+       setvmstate(J2G(J), ASM);
+       lj_asm_trace(J, &J->cur);
+       trace_stop(J);
+       setvmstate(J2G(J), INTERP);
++//      fprintf(stderr, "INTERP\n");
+       J->state = LJ_TRACE_IDLE;
+       lj_dispatch_update(J2G(J));
+       return NULL;
+@@ -703,6 +733,7 @@ static TValue *trace_state(lua_State *L, lua_CFunction dummy, void *ud)
+       if (trace_abort(J))
+ 	goto retry;
+       setvmstate(J2G(J), INTERP);
++//      fprintf(stderr, "INTERP\n");
+       J->state = LJ_TRACE_IDLE;
+       lj_dispatch_update(J2G(J));
+       return NULL;
+@@ -724,10 +755,21 @@ void lj_trace_ins(jit_State *J, const BCIns *pc)
+     J->state = LJ_TRACE_ERR;
+ }
+
++// static const BCIns *print_save_pc;
++void LJ_FASTCALL lj_trace_print(jit_State *J, const BCIns *pc)
++{
++  // print_save_pc = pc;
++  // fprintf(stderr, "increase pc:\n");
++  // fprintf(stderr, "increase pc:%d\n", );
++}
++
+ /* A hotcount triggered. Start recording a root trace. */
+ void LJ_FASTCALL lj_trace_hot(jit_State *J, const BCIns *pc)
+ {
+   /* Note: pc is the interpreter bytecode PC here. It's offset by 1. */
++  // fprintf(stderr, "HOTPC:%d\n", (u32ptr(pc)>>2) & (HOTCOUNT_SIZE-1));
++  // fprintf(stderr, "HOTPC:%d\n", *pc);
++   // Note: pc is the interpreter bytecode PC here. It's offset by 1.
+   ERRNO_SAVE
+   /* Reset hotcount. */
+   hotcount_set(J2GG(J), pc, J->param[JIT_P_hotloop]*HOTCOUNT_LOOP);
+diff --git a/src/lj_trace.h b/src/lj_trace.h
+index 22cae74..be27f3c 100644
+--- a/src/lj_trace.h
++++ b/src/lj_trace.h
+@@ -35,6 +35,7 @@ LJ_FUNC void lj_trace_freestate(global_State *g);
+ /* Event handling. */
+ LJ_FUNC void lj_trace_ins(jit_State *J, const BCIns *pc);
+ LJ_FUNCA void LJ_FASTCALL lj_trace_hot(jit_State *J, const BCIns *pc);
++LJ_FUNCA void LJ_FASTCALL lj_trace_print(jit_State *J, const BCIns *pc);
+ LJ_FUNCA void LJ_FASTCALL lj_trace_stitch(jit_State *J, const BCIns *pc);
+ LJ_FUNCA int LJ_FASTCALL lj_trace_exit(jit_State *J, void *exptr);
+
+diff --git a/src/vm_x86.dasc b/src/vm_x86.dasc
+index 211ae7b..118a456 100644
+--- a/src/vm_x86.dasc
++++ b/src/vm_x86.dasc
+@@ -418,6 +418,7 @@
+ |  and reg, HOTCOUNT_PCMASK
+ |  sub word [DISPATCH+reg+GG_DISP2HOT], HOTCOUNT_LOOP
+ |  jb ->vm_hotloop
++|  //jmp ->vm_print
+ |.endmacro
+ |
+ |.macro hotcall, reg
+@@ -2697,7 +2698,24 @@ static void build_subroutines(BuildCtx *ctx)
+   |  lea FCARG1, [DISPATCH+GG_DISP2J]
+   |  mov aword [DISPATCH+DISPATCH_J(L)], L:RBa
+   |  mov SAVE_PC, PC
+-  |  call extern lj_trace_hot@8		// (jit_State *J, const BCIns *pc)
++  |  call extern lj_trace_hot@8   // (jit_State *J, const BCIns *pc)
++  |  jmp <3
++  |.endif
++  |
++  |->vm_print:      // Hot loop counter underflow.
++  |.if JIT
++  |  mov LFUNC:RB, [BASE-8]   // Same as curr_topL(L).
++  |  mov RB, LFUNC:RB->pc
++  |  movzx RD, byte [RB+PC2PROTO(framesize)]
++  |  lea RD, [BASE+RD*8]
++  |  mov L:RB, SAVE_L
++  |  mov L:RB->base, BASE
++  |  mov L:RB->top, RD
++  |  mov FCARG2, PC
++  |  lea FCARG1, [DISPATCH+GG_DISP2J]
++  |  mov aword [DISPATCH+DISPATCH_J(L)], L:RBa
++  |  mov SAVE_PC, PC
++  |  call extern lj_trace_print@8   // (jit_State *J, const BCIns *pc)
+   |  jmp <3
+   |.endif
+   |
+@@ -4868,6 +4886,7 @@ static void build_ins(BuildCtx *ctx, BCOp op, int defop)
+     break;
+
+   case BC_ISNEXT:
++    //fprintf(stderr, "ISNEXT\n");
+     |  ins_AD	// RA = base, RD = target (points to ITERN)
+     |  cmp dword [BASE+RA*8-20], LJ_TFUNC; jne >5
+     |  mov CFUNC:RB, [BASE+RA*8-24]
