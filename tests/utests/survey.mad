@@ -27,6 +27,8 @@ local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains in MAD.utest
 
 local survey, option, filesys in MAD
+local fnone, ftrue            in MAD.gfunc
+local atmid, atbody           in MAD.symint
 local eps                     in MAD.constant
 
 local toolbox = require 'toolbox'
@@ -45,7 +47,7 @@ end
 function TestSurvey:setUp ()
   filesys.mkdir(rundir(''))
   self.optfmt = option.format
-  option.format = "%-.10g"
+  option.format = "% -.10g"
 end
 
 function TestSurvey:tearDown ()
@@ -55,65 +57,76 @@ end
 function TestSurvey:testSurveyLHC1()
   local lhcb1 = loadLHC()
   local mtbl = survey { sequence=lhcb1 }
-  assertEquals(#mtbl, 13269)
   mtbl:write(rundir('survey_lhcb1'))
+  assertEquals(#mtbl, 13270)
 end
 
 function TestSurvey:testSurveyLHC2()
   local _, lhcb2 = loadLHC()
   local mtbl = survey { sequence=lhcb2 }
-  assertEquals(#mtbl, 13267)
   mtbl:write(rundir('survey_lhcb2'))
-end
-
-local function atslice (elm, mflw, lw, si)
-  if si == 1 then mflw.fill(elm, mflw, 1) end
+  assertEquals(#mtbl, 13269)
 end
 
 function TestSurvey:testSurveySlicedLHC1()
   local lhcb1 = loadLHC()
-  local mtbl = survey { sequence=lhcb1,
-                        nslice=2, atslice=atslice, nofill=true }
-  assertEquals(#mtbl, 13192)
+  local mtbl = survey { sequence=lhcb1, nslice=3, atslice=atbody }
   mtbl:write(rundir('survey_lhcb1_slice'))
+  assertEquals(#mtbl, 37122)
 end
 
 function TestSurvey:testSurveySlicedLHC2()
   local _, lhcb2 = loadLHC()
-  local mtbl = survey { sequence=lhcb2,
-                        nslice=2, atslice=atslice, implicit=false, nofill=true }
-  assertEquals(#mtbl, 6599)
+  local mtbl = survey { sequence=lhcb2, nslice=3, atslice=atbody }
   mtbl:write(rundir('survey_lhcb2_slice'))
+  assertEquals(#mtbl, 37127)
 end
 
-function TestSurvey:testSurveySlicedBwdLHC1()
+local atslice = \_,_,_,slc -> slc == 1 -- save at the middle
+
+function TestSurvey:testSurveyMidSliceLHC1()
+  local lhcb1 = loadLHC() -- ; lhcb1:dumpseq(rundir('dump_lhcb1_slice'))
+  local mtbl = survey { sequence=lhcb1, nslice=2, atslice=atmid, atexit=fnone }
+  -- mtbl:inscol('s', 's_madx', \i -> mtbl.s[i]-mtbl.l[i])
+  mtbl:write(rundir('survey_lhcb1_midslc'))
+  assertEquals(#mtbl, 11926)
+end
+
+function TestSurvey:testSurveyMidSliceLHC2()
+  local _, lhcb2 = loadLHC() -- ; lhcb2:dumpseq(rundir('dump_lhcb2_slice'))
+  local mtbl = survey { sequence=lhcb2, nslice=2, atslice=atmid, atexit=fnone }
+  mtbl:write(rundir('survey_lhcb2_midslc'))
+  assertEquals(#mtbl, 11929)
+end
+
+function TestSurvey:testSurveyMidSliceBwdLHC1()
   local lhcb1 = loadLHC()
-  local mtbl = survey { sequence=lhcb1, sdir=-1,
-                        nslice=2, atslice=atslice, nofill=true }
-  assertEquals(#mtbl, 13192)
-  mtbl:write(rundir('survey_lhcb1_slice_bwd'))
+  local mtbl = survey { sequence=lhcb1, nslice=2, atslice=atmid, atexit=fnone,
+                        dir=-1 }
+  mtbl:write(rundir('survey_lhcb1_midslc_bwd'))
+  assertEquals(#mtbl, 11926)
 end
 
-function TestSurvey:testSurveySlicedBwdLHC2()
+function TestSurvey:testSurveyMidSliceBwdLHC2()
   local _, lhcb2 = loadLHC()
-  local mtbl = survey { sequence=lhcb2, sdir=-1,
-                        nslice=2, atslice=atslice, implicit=false, nofill=true }
-  assertEquals(#mtbl, 6599)
-  mtbl:write(rundir('survey_lhcb2_slice_bwd'))
+  local mtbl = survey { sequence=lhcb2, nslice=2, atslice=atmid, atexit=fnone,
+                        dir=-1 }
+  mtbl:write(rundir('survey_lhcb2_midslc_bwd'))
+  assertEquals(#mtbl, 11929)
 end
 
 function TestSurvey:testSurveyFwdBwdLHC1()
   local lhcb1 = loadLHC()
-  local _, mflw = survey { sequence=lhcb1, sdir= 1, save=false }
+  local _, mflw = survey { sequence=lhcb1, dir=1, save=false }
 
-  local idx, spos, V, A in mflw
-  assertEquals(idx, #lhcb1)
+  local eidx, spos, V, A in mflw
+  assertEquals(eidx, #lhcb1)
 
-  local _, mflw = survey { sequence=lhcb1, sdir=-1, save=false, -- bwd
+  local _, mflw = survey { sequence=lhcb1, dir=-1, save=false, -- bwd
                            s0=spos, X0=V, A0=A }
 
-  local idx, spos, V, A in mflw
-  assertEquals         ( idx , 1 )
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 1 )
   assertAlmostEquals   ( spos, 0 )
   assertAllAlmostEquals( V:totable(), 0, 1e-9  )
   assertAllAlmostEquals( A:totable(), 0, 1e-14 )
@@ -121,16 +134,16 @@ end
 
 function TestSurvey:testSurveyFwdBwdLHC2()
   local _, lhcb2 = loadLHC()
-  local _, mflw = survey { sequence=lhcb2, sdir= 1, save=false }
+  local _, mflw = survey { sequence=lhcb2, dir=1, save=false }
 
-  local idx, spos, V, A in mflw
-  assertEquals(idx, #lhcb2)
+  local eidx, spos, V, A in mflw
+  assertEquals(eidx, #lhcb2)
 
-  local _, mflw = survey { sequence=lhcb2, sdir=-1, save=false, -- bwd
+  local _, mflw = survey { sequence=lhcb2, dir=-1, save=false, -- bwd
                            s0=spos, X0=V, A0=A }
 
-  local idx, spos, V, A in mflw
-  assertEquals         ( idx , 1 )
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 1 )
   assertAlmostEquals   ( spos, 0 )
   assertAllAlmostEquals( V:totable(), 0, 1e-9  )
   assertAllAlmostEquals( A:totable(), 0, 1e-14 )
@@ -142,8 +155,8 @@ function TestSurvey:testSurveyIterLHC1()
   repeat
     mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
   until not elm
-  assertEquals(#mtbl, 13269)
   mtbl:write(rundir('survey_lhcb1_iter'))
+  assertEquals(#mtbl, 13270)
 end
 
 function TestSurvey:testSurveyIterLHC2()
@@ -152,8 +165,8 @@ function TestSurvey:testSurveyIterLHC2()
   repeat
     mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
   until not elm
-  assertEquals(#mtbl, 13267)
   mtbl:write(rundir('survey_lhcb2_iter'))
+  assertEquals(#mtbl, 13269)
  end
 
 function TestSurvey:testSurveyFullRangeIterLHC1()
@@ -163,6 +176,31 @@ function TestSurvey:testSurveyFullRangeIterLHC1()
     mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
   until not elm
   mtbl:write(rundir('survey_lhcb1_range_iter'))
+  assertEquals(#mtbl, 13270)
+end
+
+function TestSurvey:testSurveyFullRangeIterLHC2()
+  local _, lhcb2 = loadLHC()
+  local mtbl, mflw, elm = survey { sequence=lhcb2, range='#s/#e', nstep=0 }
+  repeat
+    mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
+  until not elm
+  mtbl:write(rundir('survey_lhcb2_range_iter'))
+  assertEquals(#mtbl, 13269)
+end
+
+function TestSurvey:testSurveyRangeLHC1()
+  local lhcb1 = loadLHC()
+  local mtbl = survey { sequence=lhcb1, range={'IP2','IP3'} }
+  mtbl:write(rundir('survey_lhcb1_range'))
+  assertEquals(#mtbl, 1644)
+end
+
+function TestSurvey:testSurveyRangeLHC2()
+  local _, lhcb2 = loadLHC()
+  local mtbl = survey { sequence=lhcb2, range={'IP2','IP3'} }
+  mtbl:write(rundir('survey_lhcb2_range'))
+  assertEquals(#mtbl, 1662)
 end
 
 function TestSurvey:testSurveyRangeIterLHC1()
@@ -172,6 +210,7 @@ function TestSurvey:testSurveyRangeIterLHC1()
     mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
   until not elm
   mtbl:write(rundir('survey_lhcb1_range_iter'))
+  assertEquals(#mtbl, 1644)
 end
 
 function TestSurvey:testSurveyRangeIterLHC2()
@@ -181,18 +220,7 @@ function TestSurvey:testSurveyRangeIterLHC2()
     mtbl, mflw, elm = survey { mflow=mflw, nstep=1 }
   until not elm
   mtbl:write(rundir('survey_lhcb2_range_iter'))
-end
-
-function TestSurvey:testSurveyRangeLHC1()
-  local lhcb1 = loadLHC()
-  local mtbl = survey { sequence=lhcb1, range={'IP2','IP3'} }
-  mtbl:write(rundir('survey_lhcb1_range'))
-end
-
-function TestSurvey:testSurveyRangeLHC2()
-   local _, lhcb2 = loadLHC()
- local mtbl = survey { sequence=lhcb2, range={'IP2','IP3'} }
-  mtbl:write(rundir('survey_lhcb2_range'))
+  assertEquals(#mtbl, 1662)
 end
 
 function TestSurvey:testSurveyRangeSetLHC1()
@@ -201,6 +229,7 @@ function TestSurvey:testSurveyRangeSetLHC1()
   lhcb1:setv { survey_ip23 := survey_ip23 {} }
   local mtbl = lhcb1.survey_ip23
   mtbl:write(rundir('survey_lhcb1_range_method'))
+  assertEquals(#mtbl, 1644)
   lhcb1:setv { survey_ip23 = nil }
 end
 
@@ -210,6 +239,7 @@ function TestSurvey:testSurveyRangeSetLHC2()
   lhcb2:setv { survey_ip23 := survey_ip23 {} }
   local mtbl = lhcb2.survey_ip23
   mtbl:write(rundir('survey_lhcb2_range_method'))
+  assertEquals(#mtbl, 1662)
   lhcb2:setv { survey_ip23 = nil }
 end
 
