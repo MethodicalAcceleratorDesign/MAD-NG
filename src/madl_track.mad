@@ -256,6 +256,8 @@ local function make_mtable (self, obs)
     nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
   end
 
+      print('TRACK', tblcat(mtable.header, header))
+
   -- keep order!
   return mtable 'track' {
     title=title or sequ.name, type='track', reserve=nrow,
@@ -269,14 +271,7 @@ end
 
 -- track mflow ----------------------------------------------------------------o
 
-local _id = {} -- identity
-
 local function make_mflow (self)
-  if self.mflow then
-    assert(self.mflow.__trck == _id, "invalid mflow (track mflow expected)")
-    return self.mflow
-  end
-
   -- check beam
   local beam = assert(self.beam, "missing beam")
   assert(is_beam(beam), "invalid beam")
@@ -314,10 +309,10 @@ local function make_mflow (self)
                                 "invalid nslice (positive integer expected)")
 
   -- retrieve default actions (avoid evaluation in case of functions)
-  local atentry = self:var_raw('atentry')
-  local atslice = self:var_raw('atslice')
-  local atexit  = self:var_raw('atexit' )
-  local atsave  = self:var_raw('atsave' )
+  local atentry = self:var_raw 'atentry'
+  local atslice = self:var_raw 'atslice'
+  local atexit  = self:var_raw 'atexit'
+  local atsave  = self:var_raw 'atsave'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
@@ -374,7 +369,7 @@ local function make_mflow (self)
       local t  = X0[i][5] or X0[i].t  or 0
       local pt = X0[i][6] or X0[i].pt or 0
       if mapdef then -- replace: damap required from coordinates (and R matrix)
-        mflw[i] = damap(is_true(mapdef) and {} or mapdef)
+        mflw[i] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
         mflw[i].id = id
         mflw[i]:set0{x, px, y, py, t, pt}
         if R0[i] then mflw[i]:set1(R0[i]) end
@@ -424,7 +419,7 @@ local function make_mflow (self)
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
 
-    -- for processing elements
+  -- for processing elements
   mflw.nmul=0                -- current element number of multipoles
   mflw.knl=table.new(15,0)   -- current element multipoles
   mflw.ksl=table.new(15,0)   -- current element multipoles skew
@@ -432,28 +427,37 @@ local function make_mflow (self)
   mflw.pnl=table.new(15,0)   -- current element multipoles phases
   mflw.psl=table.new(15,0)   -- current element multipoles shew phases
 
-    -- for processing subelements
+  -- for processing subelements
   mflw.selm=table.new(4,0)   -- subelement pre-allocated stack (TODO)
 
-    -- internal vars for track
+  -- internal vars for track
   mflw.__trckitr={iter=iter, state=state} -- iterator and iteraror state
-  mflw.__trck=_id
 
-  return mflw
+  return mflw, mtbl
 end
 
 -- track command --------------------------------------------------------------o
 
+local _id = {} -- identity
+
 local function exec (self)
-  -- build mflow
-  local mflw = make_mflow(self)
+  local mflw, mtbl
+
+  -- retrieve or build mflw (and mtbl)
+  if self.mflow then
+    assert(self.mflow.__trck == _id, "invalid mflow (track mflow expected)")
+    mflw, mtbl = self.mflow, self.mflow.mtbl
+  else
+    mflw, mtbl = make_mflow(self)
+    mflw.__trck = _id
+  end
 
   -- check number of element to track
   local nstep in self
-  if nstep == 0 then return mflw.mtbl, mflw end
+  if nstep == 0 then return mtbl, mflw end
 
   -- retrieve information
-  local s0, eidx, sequ, mtbl, atentry, atexit in mflw
+  local s0, eidx, sequ, atentry, atexit in mflw
   local iter, state in mflw.__trckitr
   local ne = #sequ
 
@@ -468,7 +472,7 @@ local function exec (self)
     if ei == ne then mflw.turn = mflw.turn + 1 end
     -- check remaining number of element to track
     nstep = nstep-1
-    if nstep == 0 then return mtbl, mflw, elm end
+    if nstep == 0 then return mtbl, mflw, ei end
   end
 
   return mtbl, mflw
