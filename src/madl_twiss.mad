@@ -25,142 +25,14 @@
 
 local matrix, command, track, cofind        in MAD
 local normal, optfun, ofname                in MAD.gphys
-local fnone, bind1st                        in MAD.gfunc
-local is_damap                              in MAD.typeid
+local fnone, swap, bind1st                  in MAD.gfunc
+local is_true, is_damap                     in MAD.typeid
 local abs                                   in math
 
--- close orbit ----------------------------------------------------------------o
+-- twiss mtable ---------------------------------------------------------------o
 
-local function twiss_cofind (self)
-
-  -- retrieve closed orbit
-  local X, R, rnk, typ, itr = cofind 'cotwiss' {
-    -- forward options to cofind
-    beam     = self.beam,
-    sequence = self.sequence,
-    range    = self.range,
-    sdir     = self.sdir,
-
-    s0       = self.s0,
-    X0       = self.X0,
-    X1       = self.X1,
-
-    nturn    = self.nturn,
-    nslice   = self.nslice,
-    method   = self.method,
-
-    cotol    = self.cotol,
-    coiter   = self.coiter,
-    codiff   = self.codiff,
-    codptol  = self.codptol,
-    cousemap = self.cousemap,
-    comethod = self.comethod,
-  }
-
-  if typ == 'Singular' then
-    error("unable to find closed orbit during twiss initialization")
-  end
-
-  return X, R, rnk
-end
-
--- init track A ---------------------------------------------------------------o
-
-local function twiss_track0 (self, X, A)
-
-  -- capture initial mtbl and mflw
-  return track 'twtrack0' {
-
-    -- forwarded options
-    beam      = self.beam,
-    sequence  = self.sequence,
-    range     = self.range,
-    sdir      = self.sdir,
-
-    s0        = self.s0,
-    X0        = X,
-    R0        = A,
-
-    mapdef    = self.mapdef,
-    mapsave   = self.mapsave,
-
-    nturn     = self.nturn,
-    nstep     = 0,
-    nslice    = self.nslice,
-    method    = self.method,
-    totalpath = self.totalpath,
-
-    save      = self.save,
-    nofill    = self.nofill,
-    observe   = self.observe,
-    implicit  = self.implicit,
-
-    atentry   = self.atentry,
-    atslice   = self.atslice,
-    atexit    = self.atexit,
-    atfill    = self.atfill,
-  }
-end
-
--- optfun filling -------------------------------------------------------------o
-
-local function twiss_fill (fill, elm, mflw, lw_)
-  -- forward mtable fill
-  if not fill(elm, mflw, lw_) then return end
-
-  -- complete fill with twiss parameters
-  local mtbl, npar, R in mflw
-  local n = #mtbl-npar
-
-  for i=1,npar do
-    local damap = mflw[i]
-    if is_damap(damap) then -- skip particles
-      local A = damap:get1()
-      local ofun = optfun(A, R, mflw.optfun)
-      for _,k in ipairs(ofname) do
-        mtbl[k][n+i] = ofun[k] or 0
-      end
-    end
-  end
-end
-
--- twiss command --------------------------------------------------------------o
-
-local function exec (self)
-  -- find closed orbit
-  local X, R, rnk = twiss_cofind(self)
-
-  -- 4D case
-  if rnk == 4 then R = R:getsub(1..4,1..4) end
-
-  -- get linear normal form A of one-turn map R
-  local A, V, W, info = normal(R)
-
-  -- get initial linear optical functions and phase advances from normal form A
---  local optfun0 = optfun(A, R, W)
-  local optfun0 = table.new(0,50)
-  optfun0.rank = rnk
-
-  -- (re)extend to 6D if needed
-  if rnk == 4 then
-    R = matrix(6):eye():setsub(1..4, 1..4, R)
-    A = matrix(6):eye():setsub(1..4, 1..4, A)
-  end
-
-  -- init track of normal form A
-  local mtbl, mflw = twiss_track0(self, X, A)
-
-  -- wrap fill
-  if mflw.fill ~= fnone then
-    for _,k in ipairs(ofname) do mtbl:addcol(k,{}) end
-    mflw.fill   = bind1st(twiss_fill, mflw.fill)
-    mflw.optfun = optfun0
-    mflw.R      = R
-  end
-
-  mtbl, mflw = track 'twtrack' { mflow=mflw, nstep=self.nstep }
-
-  -- TODO: build summary mtable
+local function save_twsum (mflw)
+  -- TODO!!
 
   -- to remove
 --  print("show optfun0")
@@ -183,18 +55,186 @@ local function exec (self)
 --    end
 --    show(optfun0)
 --  end
+end
+
+local function save_twiss (save, elm, mflw, lw, slc)
+  local mtbl, npar, R in mflw
+  local n = #mtbl-npar
+
+  for i=1,npar do
+    local par = mflw[i]
+    if is_damap(par) then -- skip particles (?)
+      local A = par:get1()
+      local ofun = optfun(A, R, mflw.optfun)
+      for _,k in ipairs(ofname) do
+        mtbl[k][n+i] = ofun[k] or 0
+      end
+    end
+  end
+  -- user action
+  save(elm, mflw, lw, slc)
+end
+
+-- close orbit ----------------------------------------------------------------o
+
+local function twiss_cofind (self)
+
+  -- retrieve closed orbit
+  local X, R, rnk, typ, itr = cofind 'twcofind' {
+    -- forward options to cofind
+    beam     = self.beam,
+    sequence = self.sequence,
+    range    = self.range,
+    dir      = self.dir,
+
+    s0       = self.s0,
+    X0       = self.X0,
+
+    mapdef   = self.comapdef,
+    R0       = self.R0,
+
+    nturn    = self.nturn,
+    nslice   = self.nslice,
+    method   = self.method,
+
+    atentry  = self.atentry,
+    atslice  = self.atslice,
+    atexit   = self.atexit,
+
+    cotol    = self.cotol,
+    coiter   = self.coiter,
+    codiff   = self.codiff,
+    codptol  = self.codptol,
+    comethod = self.comethod,
+    cowarn   = self.cowarn,
+    X1       = self.X1,
+  }
+
+  if typ == 'Singular' then
+    error("unable to find closed orbit during twiss initialization")
+  end
+
+  return X, R, rnk
+end
+
+-- init track -----------------------------------------------------------------o
+
+local function twiss_track0 (self, X, R, A, ofun0)
+  local mapdef, save in self
+  local atsave = self:var_raw 'atsave' -- prevent evaluation
+
+  -- wrap atsave
+  if save then
+    atsave = bind1st(save_twiss, atsave or track:var_raw 'atsave')
+  end
+
+  local mtbl, mflw = track 'twtrack0' {
+    -- forwarded options
+    beam      = self.beam,
+    sequence  = self.sequence,
+    range     = self.range,
+    dir       = self.dir,
+
+    s0        = self.s0,
+    X0        = X,
+
+    mapdef    = is_true(mapdef) and {xy=2} or mapdef,
+    mapsave   = self.mapsave,
+    R0        = A,
+
+    nturn     = self.nturn,
+    nstep     = 0,               -- do only initialisation
+    nslice    = self.nslice,
+    method    = self.method,
+    totalpath = self.totalpath,
+
+    save      = self.save,
+    title     = self.title,
+    implicit  = self.implicit,
+    relative  = self.relative,
+    observe   = self.observe,
+
+    atentry   = self.atentry,
+    atslice   = self.atslice,
+    atexit    = self.atexit,
+    atsave    = atsave,
+  }
+
+  -- extend mflw and mtbl
+  if save then
+    mflw.optfun0 = ofun0
+    mflw.optfun  = table.new(0,50)
+    mflw.R       = R
+    -- add twiss columns and change type
+    for _,k in ipairs(ofname) do mtbl:addcol(k,{}) end
+    mtbl.type = 'twiss'
+
+    -- Strange duplication of mtbl header
+    print('TWISS', mtbl.header)
+  end
 
   return mtbl, mflw
 end
 
-local _na -- not applicable (see track or cofind)
+-- twiss mflow ----------------------------------------------------------------o
+
+local function make_mflow (self)
+  -- TODO: process multiple maps/particles in //
+
+  -- find closed orbit if R0 is not provided
+  local X, R, rnk = twiss_cofind(self)
+
+  -- 4D case
+  if rnk == 4 then R = R:getsub(1..4,1..4) end
+
+  -- get linear normal form A from one-turn map R
+  local A, V, W, info = normal(R)
+
+  -- get initial linear optical functions and phase advances
+  local ofun0 = optfun(A, W)
+
+  -- (re)extend to 6D if needed
+  if rnk == 4 then
+    R = matrix(6):eye():setsub(1..4, 1..4, R)
+    A = matrix(6):eye():setsub(1..4, 1..4, A)
+  end
+
+  -- init track with normal form A and compute optfun0
+  return swap( twiss_track0(self, X, R, A, ofun0) )
+end
+
+-- twiss command --------------------------------------------------------------o
+
+local _id = {} -- identity
+
+local function exec (self)
+  local mflw, mtbl, ei
+
+  if self.mflow then
+    assert(self.mflow.__twss == _id, "invalid mflow (twiss mflow expected)")
+    mflw, mtbl = self.mflow, self.mflow.mtbl
+  else
+    mflw, mtbl = make_mflow(self)
+    mflw.__twss = _id
+  end
+
+  mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
+
+  if ei == nil then -- TODO
+    -- fill table with summary
+  end
+
+  return mtbl, mflw, ei
+end
+
+local _na -- not applicable (see track and cofind)
 
 local twiss = command 'twiss' {
   -- attributes (not required) set to nil will use the default from track
   beam=nil,          -- beam (required)                                   (trck)
   sequence=nil,      -- sequence (required)                               (trck)
   range=nil,         -- range of tracking                                 (trck)
-  dir=1,             -- s-direction of tracking (1 or -1)                 (trck)
+  dir=nil,           -- s-direction of tracking (1 or -1)                 (trck)
 
   s0=nil,            -- initial s                                         (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
@@ -209,11 +249,11 @@ local twiss = command 'twiss' {
   method=nil,        -- method for integration                            (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
 
-  save=true,        -- create mtable and save results                     (mtbl)
-  title=nil,        -- title of mtable (default seq.name)                 (mtbl)
-  implicit=true,    -- save also in implicit elements                     (mtbl)
-  relative=false,   -- save length of slices instead from element start   (mtbl)
-  observe=false,    -- save only in observed elements (every n turns)     (mtbl)
+  save=true,         -- create mtable and save results                    (mtbl)
+  title=nil,         -- title of mtable (default seq.name)                (mtbl)
+  implicit=true,     -- save also in implicit elements                    (mtbl)
+  relative=false,    -- save length of slices instead from element start  (mtbl)
+  observe=false,     -- save only in observed elements (every n turns)    (mtbl)
 
   atentry=nil,       -- action to call when entering an element           (trck)
   atslice=nil,       -- action to call after each element slices          (trck)
