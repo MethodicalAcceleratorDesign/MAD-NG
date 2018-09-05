@@ -349,6 +349,7 @@ end
 
 function gphys.optfun (A, RW_, optfun_)
   chkeigsiz(A)
+  if optfun_ then table.clear(optfun_) end -- only reuse memory!
 
   local get = A.get
   local rnk = A:nrow()
@@ -357,7 +358,7 @@ function gphys.optfun (A, RW_, optfun_)
 
   -- rank of the system
 
-  fun.rank   = rnk
+  fun.rank = rnk
 
   -- alpha, beta and gamma functions
 
@@ -397,30 +398,27 @@ function gphys.optfun (A, RW_, optfun_)
     fun.alfa33 = -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6))
     fun.beta33 =   get(A,5,5)^2            + get(A,5,6)^2
     fun.gama33 =   get(A,6,5)^2            + get(A,6,6)^2
-  elseif optfun_ then
-    fun.alfa13, fun.alfa31, fun.alfa23, fun.alfa32, fun.alfa33 = nil
-    fun.beta13, fun.beta31, fun.beta23, fun.beta32, fun.beta33 = nil
-    fun.gama13, fun.gama31, fun.gama23, fun.gama32, fun.gama33 = nil
   end
 
   -- phase advances
 
-  if is_matrix(RW_) then
-    local N = A:bar()*RW_*A -- compute rotations N
-    fun.mu1 =         atan2(get(N,1,2), get(N,1,1)) / twopi
-    fun.mu2 =         atan2(get(N,3,4), get(N,3,3)) / twopi
-    fun.mu3 = rk6 and atan2(get(N,5,6), get(N,5,5)) / twopi or nil
-  elseif is_cmatrix(RW_) then
-    fun.mu1 =         RW_[1]:carg() / twopi
-    fun.mu2 =         RW_[3]:carg() / twopi
-    fun.mu3 = rk6 and RW_[5]:carg() / twopi or nil
+  if RW_ then
+    if is_matrix(RW_) then
+      local N = A:bar()*RW_*A -- compute rotations N
+      fun.mu1 =         atan2(get(N,1,2), get(N,1,1)) / twopi
+      fun.mu2 =         atan2(get(N,3,4), get(N,3,3)) / twopi
+      fun.mu3 = rk6 and atan2(get(N,5,6), get(N,5,5)) / twopi or nil
+    elseif is_cmatrix(RW_) then -- use eigenvalues
+      fun.mu1 =         RW_[1]:carg() / twopi
+      fun.mu2 =         RW_[3]:carg() / twopi
+      fun.mu3 = rk6 and RW_[5]:carg() / twopi or nil
+    end
+    if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
+    if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
+    if rk6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
   else
     warn "phase advance not computed"
   end
-
-  if fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
-  if fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
-  if fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
   -- dispersion (if any)
 
@@ -428,9 +426,6 @@ function gphys.optfun (A, RW_, optfun_)
     -- TODO 5D, 6D?
     fun.dx, fun.dpx = 0, 0
     fun.dy, fun.dpy = 0, 0
-  else
-    fun.dx, fun.dpx = nil
-    fun.dy, fun.dpy = nil
   end
 
   return fun
