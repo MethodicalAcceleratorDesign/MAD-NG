@@ -26,7 +26,7 @@
 local warn, vector, matrix, command, track        in MAD
 local cvname, has_dp                              in MAD.gphys
 local fnone                                       in MAD.gfunc
-local is_positive, is_boolean                     in MAD.typeid
+local is_positive, is_boolean, is_true            in MAD.typeid
 local errorf, assertf                             in MAD.utility
 local abs                                         in math
 
@@ -162,13 +162,12 @@ end
 -- cofind command -------------------------------------------------------------o
 
 local function exec (self)
-  local cotol, coiter, codiff, codptol, cousemap, comethod in self
+  local mapdef, cotol, coiter, codiff, codptol, comethod in self
   assertf(is_positive(cotol ), "invalid cotol %.15g (positive number expected)" , cotol )
   assertf(is_positive(coiter), "invalid coiter %d (positive number expected)"   , coiter)
   assertf(is_positive(codiff), "invalid codiff %.15g (positive number expected)", codiff)
   assertf(is_positive(codptol),"invalid codptol %.15g (positive number expected)",codptol)
-  assertf(method[comethod]   , "invalid comethod '%s' (unsupported method)"     ,comethod)
-  assert (is_boolean(cousemap),"invalid cousemap (boolean expected)")
+  assertf(   method[comethod], "invalid comethod '%s' (unsupported method)"     ,comethod)
   assert (is_boolean(cowarn) , "invalid cowarn (boolean expected)")
 
   -- prepare the track template
@@ -183,7 +182,8 @@ local function exec (self)
     s0        = self.s0,
     X0        = self.X0,
 
-    mapdef    = cousemap and {xy=1} or nil,
+    mapdef    = is_true(mapdef) and {xy=1} or mapdef,
+    R0        = self.R0,
 
     nturn     = self.nturn,
     nslice    = self.nslice,
@@ -199,35 +199,46 @@ local function exec (self)
   }
 
   -- search closed orbit using Newton algorithm
-  if cousemap
-  then return cofind_map   (self, trck0) -- use one-turn map
-  else return cofind_jacob (self, trck0) -- use computed jacobian
+  if mapdef
+  then return cofind_map   (self, trck0) -- use damap
+  else return cofind_jacob (self, trck0) -- use jacobian
   end
 end
 
+local _na -- not applicable (see track)
+
 local cofind = command 'cofind' {
+  -- attributes (not required) set to nil will use the default from track
   beam=nil,          -- beam (required)                                   (trck)
   sequence=nil,      -- sequence (required)                               (trck)
   range=nil,         -- range of tracking                                 (trck)
   dir=1,             -- s-direction of tracking (1 or -1)                 (trck)
 
-  s0=0,              -- initial s                                         (trck)
-  X0={0,0,0,0,0,0},  -- initial X coordinates for orbit search            (trck)
+  s0=nil,            -- initial s                                         (trck)
+  X0=nil,            -- initial X coordinates for orbit search            (trck)
   X1={0,0,0,0,0,0},  -- optional final coordinates translation            (cofn)
 
-  nturn=1,           -- number of turns                                   (trck)
-  nslice=1,          -- number of slice for each element                  (trck)
-  method='simple',   -- default integrator                                (trck)
+  mapdef=nil,        -- setup for damap (true => {xy=1})                  (trck)
+  mapsave=na_,       -- never save data                                   (trck)
+  R0=nil,            -- initial R matrix (compagnion of X0 for damap)     (trck)
+
+  nturn=nil,         -- number of turns                                   (trck)
+  nstep=na_,         -- number of elements to track                       (trck)
+  nslice=nil,        -- number of slice for each element                  (trck)
+  method=nil,        -- default integrator                                (trck)
+  totalpath=na_,     -- 't' is the totalpath                              (trck)
+
+  save=na_,          -- never save data                                   (trck)
 
   atentry=fnone,     -- action called when entering an element            (trck)
   atslice=fnone,     -- action called after each element slices           (trck)
   atexit =fnone,     -- action called when exiting an element             (trck)
+  atsave =na_,       -- never save data                                   (trck)
 
   cotol=1e-8,        -- closed orbit tolerance                            (cofn)
   coiter=20,         -- maximum number of iteration                       (cofn)
-  codiff=1e-10,      -- finite differences steps                          (cofn)
-  codptol=1e-12,     -- static vs dynamic tolerance                       (cofn)
-  cousemap=true,     -- use DA to compute the jacobian                    (cofn)
+  codiff=1e-10,      -- finite differences step for jacobian              (cofn)
+  codptol=1e-12,     -- 4D vs 6D dp tolerance                             (cofn)
   comethod='newton', -- default optimizer                                 (cofn)
   cowarn=false,      -- commute errors into warnings                      (cofn)
 
