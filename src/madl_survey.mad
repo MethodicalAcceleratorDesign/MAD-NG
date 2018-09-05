@@ -26,7 +26,7 @@
 local vector, matrix, element, mtable, command                    in MAD
 
 local is_sequence, is_boolean, is_number, is_integer,
-      is_table, is_callable, is_mappable                          in MAD.typeid
+      is_table, is_callable, is_mappable, is_matrix               in MAD.typeid
 local fnone, ffalse, ftrue, bind2st                               in MAD.gfunc
 local tblcat, errorf                                              in MAD.utility
 
@@ -112,11 +112,11 @@ local header = {
   'direction', 'observe', 'implicit', 'relative',
 }
 
-local function make_mtable (self)
-  local title, range, nturn, dir, observe, implicit, relative, mapsave in self
+local function make_mtable (self, obs)
+  local title, range, nturn, dir, implicit, relative, mapsave in self
   local sequ, nrow = self.sequence
 
-  if observe > 0 then
+  if obs > 0 then
     nrow = nturn+1 -- assume 1 observation point per turn
   else
     nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
@@ -125,7 +125,7 @@ local function make_mtable (self)
   -- keep order!
   return mtable 'survey' {
     title=title or sequ.name, type='survey', reserve=nrow,
-    direction=dir, observe=observe, implicit=implicit, relative=relative,
+    direction=dir, observe=obs, implicit=implicit, relative=relative,
     header=tblcat(mtable.header, header),
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
@@ -155,13 +155,14 @@ local function make_mflow (self)
   -- saving data, build mtable
   local save, observe, implicit, relative in self
   local fill, mtbl = fnone
+  if is_boolean(observe) then observe = observe and 1 or 0 end
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_boolean(relative), "invalid relative (boolean expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
   if save then
-    mtbl = make_mtable(self)
+    mtbl = make_mtable(self, observe)
     fill = observe  >  0    and save_obs or
            implicit ~= true and save_imp or save_dat
   end
@@ -200,58 +201,67 @@ local function make_mflow (self)
   end
 
   -- retrieve initial conditions
-  local s0, X0, A0, mapsave in self
+  local s0, X0, A0, W0, mapsave in self
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_mappable(A0)    , "invalid A0 (mappable expected)")
   assert(is_boolean(mapsave), "invalid mapsave (boolean expected)")
 
+  if W0 then
+    assert(is_matrix(W0), "invalid W0 (matrix expected)")
+    A0[1], A0[2], A0[3] = W0:torotmad(A0[1], A0[2], A0[3])
+  end
+
   -- precedence of initial conditions
   local mflw = table.new(0,50)
 
-  local x     = X0[1] or X0.x     or 0
-  local y     = X0[2] or X0.y     or 0
-  local z     = X0[3] or X0.z     or 0
-  local theta = A0[1] or A0.theta or 0
-  local phi   = A0[2] or A0.phi   or 0
-  local psi   = A0[3] or A0.psi   or 0
+  local x     = X0[1] or X0.x
+  local y     = X0[2] or X0.y
+  local z     = X0[3] or X0.z
+  local theta = A0[1] or A0.theta
+  local phi   = A0[2] or A0.phi
+  local psi   = A0[3] or A0.psi
+
+  local V = vector(3):fill{x,y,z}
+  local W = matrix(3):rotmad(theta,phi,psi)
+  local A = vector(3):fill{theta,phi,psi}
 
   -- complete mflow
-  mflw.sequ=sequ                         -- current sequence
-  mflw.mtbl=mtbl                         -- current mtable (nil if no save)
-  mflw.sdir=dir                          -- s-direction of tracking
-  mflw.tdir=tdir                         -- t-direction of tracking
-  mflw.eidx=init                         -- current element index
-  mflw.turn=1                            -- current turn index
+  mflw.sequ=sequ             -- current sequence
+  mflw.mtbl=mtbl             -- current mtable (nil if no save)
+  mflw.sdir=dir              -- s-direction of tracking
+  mflw.tdir=tdir             -- t-direction of tracking
+  mflw.eidx=init             -- current element index
+  mflw.turn=1                -- current turn index
 
-  mflw.s0=s0                             -- initial s-position (i.e. offset)
-  mflw.ds=nil                            -- s-length of results (signed)
-  mflw.spos=nil                          -- s-position of results (signed)
-  mflw.npos=nil                          -- position in slices 'first', nil, 'last'
-  mflw.nslc=nslice                       -- number of slice for each element
+  mflw.s0=s0                 -- initial s-position (i.e. offset)
+  mflw.ds=nil                -- s-length of results (signed)
+  mflw.spos=nil              -- s-position of results (signed)
+  mflw.npos=nil              -- position in slices 'first', nil, 'last'
+  mflw.nslc=nslice           -- number of slice for each element
 
-  mflw.save=save                         -- save data
-  mflw.observe=observe                   -- save observed elements every n turns
-  mflw.implicit=implicit                 -- save also implicit elements
-  mflw.relative=relative                 -- save length of slices
+  mflw.save=save             -- save data
+  mflw.observe=observe       -- save observed elements every n turns
+  mflw.implicit=implicit     -- save also implicit elements
+  mflw.relative=relative     -- save length of slices
 
-  mflw.atentry=atentry                   -- action when entering an element
-  mflw.atslice=atslice                   -- action after each element slices
-  mflw.atexit =atexit                    -- action when exiting an element
-  mflw.atsave =atsave                    -- action when saving a row in mtable
+  mflw.atentry=atentry       -- action when entering an element
+  mflw.atslice=atslice       -- action after each element slices
+  mflw.atexit =atexit        -- action when exiting an element
+  mflw.atsave =atsave        -- action when saving a row in mtable
 
-  mflw.mapsave=mapsave                   -- save orientation matrix
+  mflw.mapsave=mapsave       -- save orientation matrix
 
     -- global frame (see geomap)
-  mflw.V=vector(3):fill{x,y,z}           -- displacement vector
-  mflw.W=matrix(3):rotmad(theta,phi,psi) -- orientation matrix (rotations)
-  mflw.A=vector(3):fill{theta,phi,psi}   -- oriented angles
+  mflw.V=V                   -- displacement vector
+  mflw.W=W                   -- orientation matrix (rotations)
+  mflw.A=A                   -- oriented angles
 
     -- local frame (see geomap) at element slices or exit
-  mflw.R=vector(3)                       -- displacement vector
-  mflw.S=matrix(3)                       -- orientation matrix (rotations)
-  mflw.T=matrix(3)                       -- transformation matrix if tilted
-  mflw.U=vector(3)                       -- temporary vector for calculations
+  mflw.R=vector(3)           -- displacement vector
+  mflw.S=matrix(3)           -- orientation matrix (rotations)
+  mflw.T=matrix(3)           -- transformation matrix if tilted
+  mflw.U=vector(3)           -- temporary vector for calculations
 
     -- internal vars for survey
   mflw.__survitr={iter=iter, state=state}   -- iterator and iteraror state
@@ -292,7 +302,7 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na -- not applicable (see track or twiss)
+local _na -- not applicable (see track)
 
 local survey = command 'survey' {
   beam=_na,         -- N/A                                                (mflw)
@@ -304,8 +314,9 @@ local survey = command 'survey' {
   X0={0,0,0},       -- initial coordinates x, y, z                        (mflw)
   A0={0,0,0},       -- initial angles theta, phi, psi                     (mflw)
 
-  mapdef=_na,       -- always use matrix formalism                        (mflw)
+  mapdef=_na,       -- always use matrix formalism (i.e. true)            (mflw)
   mapsave=false,    -- save the orientation matrix W (rotations)          (mflw)
+  W0=nil,           -- initial W matrix (compagnion of X0)                (mflw)
 
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -317,7 +328,7 @@ local survey = command 'survey' {
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   implicit=true,    -- save also in implicit elements                     (mtbl)
   relative=false,   -- save length of slices instead from element start   (mtbl)
-  observe=0,        -- save only in observed elements (every n turns)     (mtbl)
+  observe=false,    -- save only in observed elements (every n turns)     (mtbl)
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
