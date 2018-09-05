@@ -23,15 +23,14 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local is_sequence, is_beam, is_boolean, is_number, is_integer,
-      is_table, is_implicit, is_observed, is_tpsa, is_damap,
-      is_callable, is_mappable                                  in MAD.typeid
 local element, mtable, command, damap, symint                   in MAD
-local fnone                                                     in MAD.gfunc
-local errorf, assertf                                           in MAD.utility
-local minlen                                                    in MAD.constant
 
-local max in math
+local is_beam, is_sequence, is_boolean, is_number, is_integer,
+      is_table, is_callable, is_mappable, is_tpsa, is_damap     in MAD.typeid
+local fnone, ffalse, ftrue, bind2st                             in MAD.gfunc
+local tblcat, errorf, assertf                                   in MAD.utility
+
+local min, max in math
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -164,8 +163,9 @@ end
 
 -- load maps into elements ----------------------------------------------------o
 
-local invalid_track = \e ->
-  errorf("invalid element %s of kind %s with length %s", e.name, e.kind, e.l)
+local invalid = \e ->
+  errorf("invalid track element %s of kind %s with length %s",
+          e.name, e.kind, e.l)
 
 local E = element
 
@@ -201,46 +201,69 @@ E.changenrj :set_methods { track = changenrj }
 
 -- track mtable ---------------------------------------------------------------o
 
-local function save_all (elm, mflw, lw_)
-  local name, kind, l in elm
-  local npar, sdir, tdir, spos, mtbl, atfill, mapsave in mflw
-  local lw = lw_ or 1
+local function save_dat (elm, mflw, lw, slc)
+  local name, kind in elm
+  local npar, ds, tdir, spos, turn, mtbl, atsave, relative, mapsave in mflw
 
-  -- keep order!
+  lw = relative and lw*max(0,min(1,slc)) or slc<0 and 1 or lw*slc
+  local dsw = ds*lw
+
   for i=1,npar do
-    local x, px, y, py, t, pt in mflw[i]
+    local id, x, px, y, py, t, pt in mflw[i]
     local damap
     if is_tpsa(x) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
       damap = mapsave and mflw[i]:copy()
     end
-    mtbl = mtbl + { name, kind, spos, l*lw*sdir, x, px, y, py, t, pt, tdir, i, damap }
+
+    -- keep order!
+    mtbl = mtbl + { name, kind, spos+dsw, dsw, id,
+                    x, px, y, py, t, pt, slc, turn, tdir, damap }
   end
-
-  atfill(elm, mflw, lw)
-  return true
+  -- user action
+  atsave(elm, mflw, lw, slc)
 end
 
-local function save_imp (elm, mflw, lw_)
-  if is_implicit(elm) then else return save_all(elm, mflw, lw_) end
+local function save_imp (elm, mflw, lw, slc)
+  if not elm:is_implicit() then
+    save_dat(elm, mflw, lw, slc)
+  end
 end
 
-local function save_obs (elm, mflw, lw_)
-  if is_observed(elm) then      return save_all(elm, mflw, lw_) end
+local function save_obs (elm, mflw, lw, slc)
+  if elm:is_observed() and mflw.turn % mflw.observe == 0 then
+    save_dat(elm, mflw, lw, slc)
+  end
 end
+
+local function save_act (uact, save, elm, mflw, lw, slc)
+  if uact(elm, mflw, lw, slc) then
+     save(elm, mflw, lw, slc)
+  end
+end
+
+local header = {
+  'direction', 'observe', 'implicit', 'relative',
+}
 
 local function make_mtable (self)
-  local range, nturn, sdir, implicit, title, mapsave in self
-  local sequ = self.sequence
-  local nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
+  local title, range, nturn, dir, observe, implicit, relative, mapsave in self
+  local sequ, nrow = self.sequence
+
+  if observe > 0 then
+    nrow = nturn-1
+  else
+    nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
+  end
 
   -- keep order!
   return mtable 'track' {
-    type='track', title=title or sequ.name, sdir=sdir, reserve=nrow,
-    {'name'}, 'kind', 's', 'l', 'x', 'px', 'y', 'py', 't', 'pt',
-    'tdir',                    -- t-direction of the tracking: sdir * seqdir
-    'id',                      -- particle or damap id
-    mapsave and 'damap' or nil -- extra optional column to save the entire damap
+    title=title or sequ.name, type='track', reserve=nrow,
+    direction=dir, observe=observe, implicit=implicit, relative=relative,
+    header=tblcat(mtable.header, header),
+    {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
+    'slc', 'turn', 'tdir',     -- t-direction of the tracking: sdir * seq.dir
+    mapsave and 'damap' or nil -- optional column to save the damap
   }
 end
 
@@ -254,17 +277,64 @@ local function make_mflow (self)
     return self.mflow
   end
 
-  -- check sequence
-  local sequ = assert(self.sequence, "missing sequence")
-  assert(is_sequence(sequ), "invalid sequence")
-
   -- check beam
   local beam = assert(self.beam, "missing beam")
   assert(is_beam(beam), "invalid beam")
 
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
+
   -- build iterator
   local range, dir, nturn in self
   local iter, state, init = sequ:siter(range, nturn, dir)
+
+  -- saving data, build mtable
+  local save, observe, implicit, relative in self
+  local fill, mtbl = fnone
+  assert(is_boolean(save)    , "invalid save (boolean expected)")
+  assert(is_boolean(implicit), "invalid implicit (boolean expected)")
+  assert(is_boolean(relative), "invalid relative (boolean expected)")
+  assert(is_integer(observe) and observe >= 0
+                             , "invalid observe (positive integer expected)")
+  if save then
+    mtbl = make_mtable(self)
+    fill = observe  >  0    and save_obs or
+           implicit ~= true and save_nim or save_dat
+  end
+
+  -- time direction
+  local tdir = dir*sequ.dir
+  assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
+
+  -- setup default sclicing
+  local nslice in self
+  assert(is_integer(nslice) and nslice > 0,
+                                "invalid nslice (positive integer expected)")
+
+  -- retrieve default actions (avoid evaluation in case of functions)
+  local atentry = self:var_raw('atentry')
+  local atslice = self:var_raw('atslice')
+  local atexit  = self:var_raw('atexit' )
+  local atsave  = self:var_raw('atsave' )
+
+  assert(is_callable(atentry), "invalid atentry (callable expected)")
+  assert(is_callable(atslice), "invalid atslice (callable expected)")
+  assert(is_callable(atexit ), "invalid atexit (callable expected)")
+  assert(is_callable(atsave ), "invalid atsave (callable expected)")
+
+  -- wrap atentry, atslice and atexit to fill table (if needed)
+  if save then
+    if atentry ~= fnone and atentry ~= ffalse then
+      atentry = atentry == ftrue and fill or bind2st(save_act, atentry, fill)
+    end
+    if atslice ~= fnone and atslice ~= ffalse then
+      atslice = atslice == ftrue and fill or bind2st(save_act, atslice, fill)
+    end
+    if atexit  ~= fnone and atexit  ~= ffalse then
+      atexit  = atexit  == ftrue and fill or bind2st(save_act, atexit , fill)
+    end
+  end
 
   -- build mtable
   local save, observe, implicit in self
@@ -272,21 +342,6 @@ local function make_mflow (self)
                                "invalid save (boolean or callable expected)")
   assert(is_boolean(observe) , "invalid observe (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
-
-  -- saving data
-  local mtbl, fill
-  if save then
-    mtbl = make_mtable(self)
-    fill = is_callable(save) and save     or -- precedence matters!
-           observe  == true  and save_obs or
-           implicit == false and save_imp or save_all
-  else
-    fill = fnone
-  end
-
-  -- time direction
-  local tdir = dir*sequ.dir
-  assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
 
   -- totalpath
   local totalpath in self
@@ -298,24 +353,12 @@ local function make_mflow (self)
   local integr = symint[method]
   assertf(is_callable(integr), "invalid integration method '%s'", method)
 
-  -- setup default sclicing
-  local nslice in self
-  assert(is_integer(nslice) and nslice > 0, "invalid nslice (positive integer expected)")
-
-  -- retrieve default actions (avoid evaluation in case of functions)
-  local atentry = self:var_raw('atentry') or fnone
-  local atslice = self:var_raw('atslice') or fnone
-  local atexit  = self:var_raw('atexit' ) or fnone
-  local atfill  = self:var_raw('atfill' ) or fnone
-  assert(is_callable(atentry), "invalid atentry (callable expected)")
-  assert(is_callable(atslice), "invalid atslice (callable expected)")
-  assert(is_callable(atexit ), "invalid atexit (callable expected)")
-  assert(is_callable(atfill ), "invalid atfill (callable expected)")
-
   -- retrieve initial conditions
   local s0, X0, R0, mapdef, mapsave in self
-  assert(is_number  (s0), "invalid s0 (number expected)")
-  assert(is_mappable(X0), "invalid X0 (mappable expected)")
+  assert(is_number  (s0)    , "invalid s0 (number expected)")
+  assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
+  assert(is_boolean(mapdef) , "invalid mapdef (boolean expected)")
+  assert(is_boolean(mapsave), "invalid mapsave (boolean expected)")
   if not is_mappable(X0[1]) then X0, R0 = {X0}, {R0} end
 
   -- precedence of initial conditions
@@ -349,18 +392,35 @@ local function make_mflow (self)
         mflw[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
       end
     else
-      error("invalid type of item at id="..i.." (coordinates or damap expected)")
+      errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
     end
   end
 
   -- complete mflow
-
   mflw.beam=beam                  -- current beam
   mflw.sequ=sequ                  -- current sequence
   mflw.mtbl=mtbl                  -- current mtable (nil if no save)
-  mflw.sdir=sdir                  -- s-direction of tracking
+  mflw.sdir=dir                   -- s-direction of tracking
   mflw.tdir=tdir                  -- t-direction of tracking
+  mflw.eidx=init                  -- current element index
+  mflw.turn=1                     -- current turn index
+
+  mflw.s0=s0                      -- initial s-position (i.e. offset)
+  mflw.ds=nil                     -- s-length of results (signed)
+  mflw.spos=nil                   -- s-position of results (signed)
+  mflw.npos=nil                   -- position in slices 'first', nil, 'last'
+  mflw.npar=npar                  -- number of particles or damaps (i.e. #mflw)
   mflw.nslc=nslice                -- number of slice for each element
+
+  mflw.save=save                  -- save data
+  mflw.observe=observe            -- save observed elements every n turns
+  mflw.implicit=implicit          -- save also implicit elements
+  mflw.relative=relative          -- save length of slices
+
+  mflw.atentry=atentry            -- action when entering an element
+  mflw.atslice=atslice            -- action after each element slices
+  mflw.atexit =atexit             -- action when exiting an element
+  mflw.atsave =atsave             -- action when saving a row in mtable
 
   mflw.integr=integr              -- default integrator
   mflw.totalpath=totalpath        -- t is the totalpath
@@ -368,18 +428,6 @@ local function make_mflow (self)
 
   mflw.mapdef=mapdef              -- save damap definitions (for info)
   mflw.mapsave=mapsave            -- save entire damaps
-
-  mflw.s0=s0                      -- initial s-position
-  mflw.ds=0                       -- signed s-move
-  mflw.idx=init                   -- index of the current element
-  mflw.spos=s0                    -- s-position of the current element entry
-  mflw.npos=nil                   -- integrator step: nil, 'first', 'last'
-  mflw.npar=npar                  -- number of particles or damaps: #mflw
-
-  mflw.atentry=atentry            -- action when entering an element
-  mflw.atslice=atslice            -- action after each element slices
-  mflw.atexit =atexit             -- action when exiting an element
-  mflw.atfill =atfill             -- action when filling a mtable row
 
     -- for processing elements
   mflw.nmul=0                     -- current element number of multipoles
@@ -390,7 +438,7 @@ local function make_mflow (self)
   mflw.psl=table.new(15,0)        -- current element multipoles shew phases
 
     -- for processing subelements
-  mflw.selm=table.new(4,0)        -- subelement pre-allocated stack
+  mflw.selm=table.new(4,0)        -- subelement pre-allocated stack (TODO)
 
     -- internal vars for track
   mflw.__trckitr={iter=iter, state=state} -- iterator and iteraror state
@@ -405,22 +453,25 @@ local function exec (self)
   -- build mflow
   local mflw = make_mflow(self)
 
-  -- check number of elements to track
+  -- check number of element to track
   local nstep in self
   if nstep == 0 then return mflw.mtbl, mflw end
 
   -- retrieve information
-  local s0, idx, mtbl, atentry, atexit in mflw
+  local s0, eidx, sequ, mtbl, atentry, atexit in mflw
   local iter, state in mflw.__trckitr
+  local ne = #sequ
 
   -- dynamic tracking
-  for i,elm,spos,ds in iter, state, idx do
-    mflw.idx = i       ; mflw.spos = s0+spos ; mflw.ds = ds
-    atentry(elm, mflw)
-    elm:track   (mflw) ; mflw.spos = s0+spos+ds
-    atexit (elm, mflw)
+  for ei,elm,spos,ds in iter, state, eidx do
+    mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
+    atentry  (elm, mflw, 0,  0)
+    elm:track(     mflw       )
+    atexit   (elm, mflw, 0, -1)
 
-    -- check remaining number of elements to track
+    -- check for end of turn
+    if ei == ne then mflw.turn = mflw.turn + 1 end
+    -- check remaining number of element to track
     nstep = nstep-1
     if nstep == 0 then return mtbl, mflw, elm end
   end
@@ -450,16 +501,17 @@ local track = command 'track' {
   method='simple',  -- method for integration                             (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
 
-  save=true,        -- create mtable and set fill to save data            (mtbl)
-  observe=true,     -- save only observed elements                        (mtbl)
-  implicit=true,    -- save also implicit elements                        (mtbl)
+  save=true,        -- create mtable and save results                     (mtbl)
+  implicit=true,    -- save also in implicit elements                     (mtbl)
+  relative=false,   -- save length of slices instead from element start   (mtbl)
+  observe=1,        -- save only in observed elements (every n turns)     (mtbl)
 
-  atentry=nil,      -- action called when entering an element             (mflw)
-  atslice=nil,      -- action called after each element slices            (mflw)
-  atexit=nil,       -- action called when exiting an element              (mflw)
-  atfill=nil,       -- action called when filling a mtable row            (mflw)
+  atentry=fnone,    -- action called when entering an element             (mflw)
+  atslice=fnone,    -- action called after each element slices            (mflw)
+  atexit =ftrue,    -- action called when exiting an element              (mflw)
+  atsave =fnone,    -- action called when saving a row in mtable          (mflw)
 
-  mflow=nil,        -- mflow, exclusive with other attributes except nstep & save
+  mflow=nil,        -- mflow, exclusive with other attributes except nstep
 
   exec=exec,        -- command to execute upon children creation
 } :set_readonly()   -- reference track command is readonly
