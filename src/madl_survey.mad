@@ -108,6 +108,19 @@ local function save_act (uact, save, elm, mflw, lw, slc)
   end
 end
 
+local act2str = {
+  [fnone   ] = 'fnone'   , [ftrue   ] = 'ftrue'   , [ffalse  ] = 'ffalse',
+  [save_dat] = 'save_all', [save_imp] = 'save_imp', [save_obs] = 'save_obs',
+  [save_act] = 'save_act',
+}
+
+local function debug_action(atentry, atslice, atexit)
+  local estr = act2str[atentry] or 'user defined'
+  local sstr = act2str[atslice] or 'user defined'
+  local xstr = act2str[atexit ] or 'user defined'
+  trace(2, "survey actions: atentry=%s, atslice=%s, atexit=%s", estr, sstr, xstr)
+end
+
 local header = {
   'direction', 'observe', 'implicit', 'relative',
 }
@@ -124,9 +137,8 @@ local function make_mtable (self, obs)
 
   -- keep order!
   return mtable 'survey' {
-    title=title or sequ.name, type='survey', reserve=nrow,
+    title=title or sequ.name, type='survey', header=header, reserve=nrow,
     direction=dir, observe=obs, implicit=implicit, relative=relative,
-    header=tblcat(mtable.header, header),
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
     'slc', 'turn','tdir',  -- t-direction of the tracking: sdir * seq.dir
@@ -259,7 +271,7 @@ local function make_mflow (self)
   -- internal vars for survey
   mflw.__survitr={iter=iter, state=state}   -- iterator and iteraror state
 
-  return mflw, mtbl
+  return mflw
 end
 
 -- survey command -------------------------------------------------------------o
@@ -272,11 +284,12 @@ local function exec (self)
   -- retrieve or build mflw (and mtbl)
   if self.mflow then
     assert(self.mflow.__trck == _id, "invalid mflow (survey mflow expected)")
-    mflw, mtbl = self.mflow, self.mflow.mtbl
+    mflw = self.mflow
   else
-    mflw, mtbl = make_mflow(self)
+    mflw = make_mflow(self)
     mflw.__trck = _id
   end
+  mtbl = mflw.mtbl
 
   -- check number of element to track
   local nstep in self
@@ -286,6 +299,11 @@ local function exec (self)
   local s0, eidx, sequ, atentry, atexit in mflw
   local iter, state in mflw.__survitr
   local ne = #sequ
+
+  -- debug actions setup
+  if MAD.option.debug >= 2 then
+    debug_action(atentry, mflw.atslice, atexit)
+  end
 
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
