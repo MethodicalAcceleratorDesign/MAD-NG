@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local element, mtable, command, damap, symint                   in MAD
+local element, mtable, command, damap, symint, trace            in MAD
 
 local is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
       is_table, is_callable, is_mappable, is_tpsa, is_damap     in MAD.typeid
@@ -242,6 +242,19 @@ local function save_act (uact, save, elm, mflw, lw, slc)
   end
 end
 
+local act2str = {
+  [fnone   ] = 'fnone'   , [ftrue   ] = 'ftrue'   , [ffalse  ] = 'ffalse',
+  [save_dat] = 'save_all', [save_imp] = 'save_imp', [save_obs] = 'save_obs',
+  [save_act] = 'save_act',
+}
+
+local function debug_action(atentry, atslice, atexit)
+  local estr = act2str[atentry] or 'user defined'
+  local sstr = act2str[atslice] or 'user defined'
+  local xstr = act2str[atexit ] or 'user defined'
+  trace(2, "track actions: atentry=%s, atslice=%s, atexit=%s", estr, sstr, xstr)
+end
+
 local header = {
   'direction', 'observe', 'implicit', 'relative',
 }
@@ -256,13 +269,10 @@ local function make_mtable (self, obs)
     nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
   end
 
-      print('TRACK', tblcat(mtable.header, header))
-
   -- keep order!
   return mtable 'track' {
-    title=title or sequ.name, type='track', reserve=nrow,
+    title=title or sequ.name, type='track', header=header, reserve=nrow,
     direction=dir, observe=obs, implicit=implicit, relative=relative,
-    header=tblcat(mtable.header, header),
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',     -- t-direction of the tracking: sdir * seq.dir
     mapsave and 'damap' or nil -- optional column to save the damap
@@ -296,7 +306,7 @@ local function make_mflow (self)
   if save then
     mtbl = make_mtable(self, observe)
     fill = observe  >  0    and save_obs or
-           implicit ~= true and save_nim or save_dat
+           implicit ~= true and save_imp or save_dat
   end
 
   -- time direction
@@ -433,7 +443,7 @@ local function make_mflow (self)
   -- internal vars for track
   mflw.__trckitr={iter=iter, state=state} -- iterator and iteraror state
 
-  return mflw, mtbl
+  return mflw
 end
 
 -- track command --------------------------------------------------------------o
@@ -446,11 +456,12 @@ local function exec (self)
   -- retrieve or build mflw (and mtbl)
   if self.mflow then
     assert(self.mflow.__trck == _id, "invalid mflow (track mflow expected)")
-    mflw, mtbl = self.mflow, self.mflow.mtbl
+    mflw = self.mflow
   else
-    mflw, mtbl = make_mflow(self)
+    mflw = make_mflow(self)
     mflw.__trck = _id
   end
+  mtbl = mflw.mtbl
 
   -- check number of element to track
   local nstep in self
@@ -460,6 +471,11 @@ local function exec (self)
   local s0, eidx, sequ, atentry, atexit in mflw
   local iter, state in mflw.__trckitr
   local ne = #sequ
+
+  -- debug actions setup
+  if MAD.option.debug >= 2 then
+    debug_action(atentry, mflw.atslice, atexit)
+  end
 
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
