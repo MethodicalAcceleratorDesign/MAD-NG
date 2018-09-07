@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local matrix, cvector, trace, warn                               in MAD
-local is_nil, is_positive, is_matrix, is_cmatrix, wrestrict      in MAD.typeid
+local is_nil, is_positive, is_matrix, is_cvector, wrestrict      in MAD.typeid
 local assertf, errorf, num2str                                   in MAD.utility
 local twopi, minang                                              in MAD.constant
 local max, abs, sqrt, atan2 in math
@@ -44,10 +44,8 @@ local function chkeigsiz (V, W)
          nr == 4 and nc == 4, "invalid eigenvectors (4D/6D matrix expected)")
 
   if W then
-    assert(is_cmatrix(W) , "invalid argument #2 (cmatrix expected)")
-
-    local wr, wc = W:sizes()
-    assert(wr == nr and wc == 1, "invalid eigenvalues (4D/6D cvector expected)")
+    assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
+    assert(W:nrow() == nr, "invalid eigenvalues (4D/6D cvector expected)")
   end
 end
 
@@ -68,8 +66,7 @@ local gphys = {
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33',
     'mu1', 'mu2', 'mu3',
-    'dx', 'dpx',
-    'dy', 'dpy',
+    'dx', 'dpx', 'dy', 'dpy', 'dt'
   },
 }
 
@@ -343,24 +340,32 @@ end
 
 -- optics parameters ----------------------------------------------------------o
 
+local _id = {} -- identity
+
 -- get linear optical functions from normal form
--- get phases advances if R (one turn map) or W (eigenvalues) is provided in RW_
 -- this routine has to be fast and match ofname list (see above)
 
-function gphys.optfun (A, RW_, optfun_)
+function gphys.optfun (A, optfun_, W_)
   chkeigsiz(A)
-  if optfun_ then table.clear(optfun_) end -- only reuse memory!
 
   local get = A.get
   local rnk = A:nrow()
   local rk6 = rnk >= 6
-  local fun = optfun_ or table.new(0, rk6 and 35 or 20)
+  local fun = optfun_
 
-  -- rank of the system
+  if fun then
+    assert(fun.__ofun == _id, "invalid argument #3 (optfun table expected)")
+    table.clear(fun)
+  else
+    fun = table.new(0, rk6 and 35 or 20)
+  end
+  fun.__ofun = _id
+
+  -- rank
 
   fun.rank = rnk
 
-  -- alpha, beta and gamma functions
+  -- alpha, beta and gamma
 
   fun.alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2))
   fun.beta11 =   get(A,1,1)^2            + get(A,1,2)^2
@@ -400,35 +405,55 @@ function gphys.optfun (A, RW_, optfun_)
     fun.gama33 =   get(A,6,5)^2            + get(A,6,6)^2
   end
 
-  -- phase advances
+  -- phase advance
 
-  if RW_ then
-    if is_matrix(RW_) then
-      local N = A:bar()*RW_*A -- compute rotations N
-      fun.mu1 =         atan2(get(N,1,2), get(N,1,1)) / twopi
-      fun.mu2 =         atan2(get(N,3,4), get(N,3,3)) / twopi
-      fun.mu3 = rk6 and atan2(get(N,5,6), get(N,5,5)) / twopi or nil
-    elseif is_cmatrix(RW_) then -- use eigenvalues
-      fun.mu1 =         RW_[1]:carg() / twopi
-      fun.mu2 =         RW_[3]:carg() / twopi
-      fun.mu3 = rk6 and RW_[5]:carg() / twopi or nil
-    end
-    if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
-    if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
-    if rk6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
+  if W_ then -- use eigenvalues
+    assert(is_cvector(W_), "invalid argument #3 (eigenvalues expected)")
+    fun.mu1 =         W_[1]:carg() / twopi
+    fun.mu2 =         W_[3]:carg() / twopi
+    fun.mu3 = rk6 and W_[5]:carg() / twopi or nil
   else
-    warn "phase advance not computed"
+    fun.mu1 =         atan2(get(A,1,2), get(A,1,1)) / twopi
+    fun.mu2 =         atan2(get(A,3,4), get(A,3,3)) / twopi
+    fun.mu3 = rk6 and atan2(get(A,5,6), get(A,5,5)) / twopi or nil
   end
+  if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
+  if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
+  if rk6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
-  -- dispersion (if any)
+  -- dispersion
 
   if rk6 then
-    -- TODO 5D, 6D?
-    fun.dx, fun.dpx = 0, 0
-    fun.dy, fun.dpy = 0, 0
+    -- TODO: 6D
+    -- this is only for 5D
+    fun.dx, fun.dpx = get(A,1,6), get(A,2,6)
+    fun.dy, fun.dpy = get(A,3,6), get(A,4,6)
+    fun.dt          = get(A,5,6)
   end
 
   return fun
+end
+
+-- beta block -----------------------------------------------------------------o
+
+function gphys.betablk (optfun, R_)
+  local fun = optfun
+  assert(fun.__ofun == _id, "invalid argument #1 (optfun table expected)")
+
+  local R = R_ or matrix(6)
+  assert(is_matrix(R) and R:nrow() == R:ncol() and R:nrow() == 6,
+         "invalid argument #2 (matrix [6x6] expected)")
+
+  return R:fill { error("NYI") }
+
+--[[
+  fun.alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2))
+  fun.beta11 =   get(A,1,1)^2            + get(A,1,2)^2
+  fun.gama11 =   get(A,2,1)^2            + get(A,2,2)^2
+  fun.mu1    = atan2(get(A,1,2), get(A,1,1)) / twopi
+
+  tan(fun.mu1*twopi) => get(A,1,2)/get(A,1,1)
+]]
 end
 
 -- env ------------------------------------------------------------------------o
