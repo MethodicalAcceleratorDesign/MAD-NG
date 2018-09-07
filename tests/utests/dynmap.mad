@@ -27,6 +27,7 @@ local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
 local sequence, beam, track, plot, option, filesys               in MAD
+local fnone, ftrue                                               in MAD.gfunc
 local drift_element, thick_element, thin_element, drift, marker  in MAD.element
 local eps, pi                                                    in MAD.constant
 local openfile                                                   in MAD.utility
@@ -36,7 +37,7 @@ local rundir = \s -> 'dynmap_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local doplot -- = true
+local doplot = true
 
 if doplot then
   MAD.atexit(MAD.utility.pause, true)
@@ -62,7 +63,8 @@ end
 local function plottw (mtbl, seq)
   if not doplot then return end
   MAD.plot { table=mtbl, title=mtbl.title, sequence=seq,
-             x1y1 = { s={'beta11','beta22'} } }
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s={'mu1'   ,'mu2'   } } }
 end
 
 -- regression test suite ------------------------------------------------------o
@@ -187,28 +189,42 @@ function TestDynmap:testCOThinFODO ()
 end
 
 function TestDynmap:testTwissThinFODO ()
-  local nsl = 10
-  local dl  = 1/nsl
+  local nsl = 1 -- 10 -- for madx row by row compatibility
+  local nth = 10
+  local dl  = 1/nth
   local X0  = { 0, 1e-6, 0, 5e-7, 0, 0 }
   local k1l = 0.3037241107
-  local mq1 = thin_element 'mq1' { knl := {0,  k1l/nsl} }
-  local mq2 = thin_element 'mq2' { knl := {0, -k1l/nsl} }
-  local dft = drift 'dft' { l=4, nslice=nsl }
-  local seq = sequence 'seq' { l=10, refer='entry', -- dir=-1,
-                mq1 {at=0+dl/2}, (nsl-1)*mq1 {at=dl, from='prev'},
-                dft {at=1},
-                mq2 {at=5+dl/2}, (nsl-1)*mq2 {at=dl, from='prev'},
-                dft {at=6},
-              }
+  local mk1 = marker       'mk1' {}
+  local mk2 = marker       'mk2' {}
+  local df1 = drift        'df1' { l=4, nslice=nsl }
+  local df2 = drift        'df2' { l=4, nslice=nsl }
+  local mq1 = thin_element 'mq1' { knl := {0,  k1l/nth} }
+  local mq2 = thin_element 'mq2' { knl := {0, -k1l/nth} }
+  local seq = sequence     'seq' { l=10, refer='entry', -- dir=-1,
+                mq1 {at=0+dl/2              },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+                mk1 {at=0+dl/2, from='prev' },
+                mq1 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+--                df1 {at=1}, -- for madx row by row compatibility
+
+                mq2 {at=5+dl/2              },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+                mk2 {at=0+dl/2, from='prev' },
+                mq2 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+--                df2 {at=6}, -- for madx row by row compatibility
+  }
+
+  seq:dumpseq()
 
 --  local X, R, rank, type, iter
 --  local nloop, t0 = 1000, os.clock()
-
---  for i=1,nloop do
-  local mtbl, mflw = MAD.twiss{sequence=seq, beam=beam, X0=X0}
+  -- MAD.option.debug=2
+  local mtbl, mflw = MAD.twiss{sequence=seq, beam=beam, X0=X0,
+                              -- atslice=ftrue} -- for madx row by row compatibility
+                               atentry=\e -> e.is_thin, atslice=MAD.symint.atbody}
   plottw(mtbl, seq)
-
---  end
 
   mtbl:write(rundir('dynmap_thinfodotwiss'))
 
