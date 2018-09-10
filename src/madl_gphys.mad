@@ -24,15 +24,17 @@
 -- locals ---------------------------------------------------------------------o
 
 local matrix, cvector, trace, warn                               in MAD
-local is_nil, is_positive, is_matrix, is_cvector, wrestrict      in MAD.typeid
+local is_nil, is_positive, is_table, is_matrix, is_cvector,
+      wrestrict                                                  in MAD.typeid
 local assertf, errorf, num2str                                   in MAD.utility
 local twopi, minang                                              in MAD.constant
-local max, abs, sqrt, atan2 in math
+local max, abs, sqrt, sin, cos, atan2 in math
 
 local dp_tol   = 1e-12
 local eig_tol  = 1e-12
 local nrm_tol  = 1e-12
 local symp_tol = 1e-12
+local ofun_tol = 1e-12
 
 -- helpers --------------------------------------------------------------------o
 
@@ -66,7 +68,7 @@ local gphys = {
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33',
     'mu1', 'mu2', 'mu3',
-    'dx', 'dpx', 'dy', 'dpy', 'dt'
+    'dx', 'dpx', 'dy', 'dpy'
   },
 }
 
@@ -342,10 +344,17 @@ end
 
 local _id = {} -- identity
 
+local function ofval(x)
+  return abs(x) <= ofun_tol and 0 or x
+end
+
 -- get linear optical functions from normal form
--- this routine has to be fast and match ofname list (see above)
+-- this routine has to be fast and must match ofname list (see above)
 
 function gphys.optfun (A, optfun_, W_)
+  if is_nil(W_) and is_cvector(optfun_) then
+    W_, optfun_ = optfun_, nil -- right shift
+  end
   chkeigsiz(A)
 
   local get = A.get
@@ -367,55 +376,55 @@ function gphys.optfun (A, optfun_, W_)
 
   -- alpha, beta and gamma
 
-  fun.alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2))
-  fun.beta11 =   get(A,1,1)^2            + get(A,1,2)^2
-  fun.gama11 =   get(A,2,1)^2            + get(A,2,2)^2
+  fun.alfa11 = ofval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)) )
+  fun.beta11 = ofval(   get(A,1,1)^2            + get(A,1,2)^2             )
+  fun.gama11 = ofval(   get(A,2,1)^2            + get(A,2,2)^2             )
 
-  fun.alfa12 = -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4))
-  fun.beta12 =   get(A,1,3)^2            + get(A,1,4)^2
-  fun.gama12 =   get(A,2,3)^2            + get(A,2,4)^2
+  fun.alfa12 = ofval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)) )
+  fun.beta12 = ofval(   get(A,1,3)^2            + get(A,1,4)^2             )
+  fun.gama12 = ofval(   get(A,2,3)^2            + get(A,2,4)^2             )
 
-  fun.alfa21 = -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2))
-  fun.beta21 =   get(A,3,1)^2            + get(A,3,2)^2
-  fun.gama21 =   get(A,4,1)^2            + get(A,4,2)^2
+  fun.alfa21 = ofval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)) )
+  fun.beta21 = ofval(   get(A,3,1)^2            + get(A,3,2)^2             )
+  fun.gama21 = ofval(   get(A,4,1)^2            + get(A,4,2)^2             )
 
-  fun.alfa22 = -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4))
-  fun.beta22 =   get(A,3,3)^2            + get(A,3,4)^2
-  fun.gama22 =   get(A,4,3)^2            + get(A,4,4)^2
+  fun.alfa22 = ofval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)) )
+  fun.beta22 = ofval(   get(A,3,3)^2            + get(A,3,4)^2             )
+  fun.gama22 = ofval(   get(A,4,3)^2            + get(A,4,4)^2             )
 
   if rk6 then
-    fun.alfa13 = -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6))
-    fun.beta13 =   get(A,1,5)^2            + get(A,1,6)^2
-    fun.gama13 =   get(A,2,5)^2            + get(A,2,6)^2
+    fun.alfa13 = ofval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)) )
+    fun.beta13 = ofval(   get(A,1,5)^2            + get(A,1,6)^2             )
+    fun.gama13 = ofval(   get(A,2,5)^2            + get(A,2,6)^2             )
 
-    fun.alfa23 = -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6))
-    fun.beta23 =   get(A,3,5)^2            + get(A,3,6)^2
-    fun.gama23 =   get(A,4,5)^2            + get(A,4,6)^2
+    fun.alfa23 = ofval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)) )
+    fun.beta23 = ofval(   get(A,3,5)^2            + get(A,3,6)^2             )
+    fun.gama23 = ofval(   get(A,4,5)^2            + get(A,4,6)^2             )
 
-    fun.alfa31 = -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2))
-    fun.beta31 =   get(A,5,1)^2            + get(A,5,2)^2
-    fun.gama31 =   get(A,6,1)^2            + get(A,6,2)^2
+    fun.alfa31 = ofval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)) )
+    fun.beta31 = ofval(   get(A,5,1)^2            + get(A,5,2)^2             )
+    fun.gama31 = ofval(   get(A,6,1)^2            + get(A,6,2)^2             )
 
-    fun.alfa32 = -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4))
-    fun.beta32 =   get(A,5,3)^2            + get(A,5,4)^2
-    fun.gama32 =   get(A,6,3)^2            + get(A,6,4)^2
+    fun.alfa32 = ofval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
+    fun.beta32 = ofval(   get(A,5,3)^2            + get(A,5,4)^2             )
+    fun.gama32 = ofval(   get(A,6,3)^2            + get(A,6,4)^2             )
 
-    fun.alfa33 = -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6))
-    fun.beta33 =   get(A,5,5)^2            + get(A,5,6)^2
-    fun.gama33 =   get(A,6,5)^2            + get(A,6,6)^2
+    fun.alfa33 = ofval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
+    fun.beta33 = ofval(   get(A,5,5)^2            + get(A,5,6)^2             )
+    fun.gama33 = ofval(   get(A,6,5)^2            + get(A,6,6)^2             )
   end
 
   -- phase advance
 
   if W_ then -- use eigenvalues
     assert(is_cvector(W_), "invalid argument #3 (eigenvalues expected)")
-    fun.mu1 =         W_[1]:carg() / twopi
-    fun.mu2 =         W_[3]:carg() / twopi
-    fun.mu3 = rk6 and W_[5]:carg() / twopi or nil
+    fun.mu1 =         ofval( W_[1]:carg() / twopi )
+    fun.mu2 =         ofval( W_[3]:carg() / twopi )
+    fun.mu3 = rk6 and ofval( W_[5]:carg() / twopi ) or nil
   else
-    fun.mu1 =         atan2(get(A,1,2), get(A,1,1)) / twopi
-    fun.mu2 =         atan2(get(A,3,4), get(A,3,3)) / twopi
-    fun.mu3 = rk6 and atan2(get(A,5,6), get(A,5,5)) / twopi or nil
+    fun.mu1 =         ofval( atan2(get(A,1,2), get(A,1,1)) / twopi )
+    fun.mu2 =         ofval( atan2(get(A,3,4), get(A,3,3)) / twopi )
+    fun.mu3 = rk6 and ofval( atan2(get(A,5,6), get(A,5,5)) / twopi ) or nil
   end
   if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
   if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
@@ -425,10 +434,8 @@ function gphys.optfun (A, optfun_, W_)
 
   if rk6 then
     -- TODO: 6D
-    -- this is only for 5D
-    fun.dx, fun.dpx = get(A,1,6), get(A,2,6)
-    fun.dy, fun.dpy = get(A,3,6), get(A,4,6)
-    fun.dt          = get(A,5,6)
+    fun.dx, fun.dpx = ofval( get(A,1,6) ), ofval( get(A,2,6) )
+    fun.dy, fun.dpy = ofval( get(A,3,6) ), ofval( get(A,4,6) )
   end
 
   return fun
@@ -436,24 +443,51 @@ end
 
 -- beta block -----------------------------------------------------------------o
 
-function gphys.betablk (optfun, R_)
+local S6 = matrix(6):symp() -- [6x6] symplectic matrix S
+
+function gphys.betablk (optfun)
   local fun = optfun
   assert(fun.__ofun == _id, "invalid argument #1 (optfun table expected)")
 
-  local R = R_ or matrix(6)
-  assert(is_matrix(R) and R:nrow() == R:ncol() and R:nrow() == 6,
-         "invalid argument #2 (matrix [6x6] expected)")
+  local A11 = sqrt(fun.beta11)
+  local A12 = 0
+  local A21 = -fun.alfa11 / A11
+  local A22 = sqrt(fun.gama11 - A21^2)
+  local A16 = fun.dx  or 0
+  local A26 = fun.dpx or 0
 
-  return R:fill { error("NYI") }
+  local A33 = sqrt(fun.beta22)
+  local A34 = 0
+  local A43 = -fun.alfa22 / A33
+  local A44 = sqrt(fun.gama22 - A43^2)
+  local A36 = fun.dy  or 0
+  local A46 = fun.dpy or 0
 
---[[
-  fun.alfa11 = -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2))
-  fun.beta11 =   get(A,1,1)^2            + get(A,1,2)^2
-  fun.gama11 =   get(A,2,1)^2            + get(A,2,2)^2
-  fun.mu1    = atan2(get(A,1,2), get(A,1,1)) / twopi
+  local A55, A56, A65, A66 = 0, 0, 0, 0
 
-  tan(fun.mu1*twopi) => get(A,1,2)/get(A,1,1)
-]]
+  if fun.rank >= 6 then
+    A55 = sqrt(fun.beta33)
+    A56 = 0
+    A65 = -fun.alfa33 / A55
+    A66 = sqrt(fun.gama33 - A65^2)
+  end
+
+  -- TODO: coupling terms.
+  local A = matrix(6):fill {
+      A11, A12,   0,   0,   0, A16,
+      A21, A22,   0,   0,   0, A26,
+        0,   0, A33, A34,   0, A36,
+        0,   0, A43, A44,   0, A46,
+        0,   0,   0,   0, A55, A56,
+        0,   0,   0,   0, A65, A66,
+    }
+
+  local R = A*S6*A:bar()
+  if fun.rank < 6 then
+    R:set(5,5,1) ; R:set(6,6,1)
+  end
+
+  return R, A
 end
 
 -- env ------------------------------------------------------------------------o
