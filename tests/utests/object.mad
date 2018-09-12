@@ -27,10 +27,10 @@ local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
       assertAlmostEquals, assertStrContains, assertErrorMsgContains,
       assertNotNil in MAD.utest
 
-local object in MAD
+local object       in MAD
+local functor      in MAD.gfunc
 local is_number, is_function, is_table, is_object, is_class, is_instanceOf,
-      is_functor in MAD.typeid
-
+      is_functor   in MAD.typeid
 
 -- regression test suite ------------------------------------------------------o
 
@@ -754,7 +754,7 @@ function TestObject:testWrapVariables()
   assertEquals(p1.z(), 3)
 
   -- keep functor semantic
-  p0:set_methods({a=\s s.name}, 'init')
+  p0:set_variables ({a=functor(\s s.name)}    ,'init')
   p0:wrap_variables({a=\prev\s prev(s.parent)},'init')
   assertEquals(p0:a(), "object")
 
@@ -805,7 +805,10 @@ function TestObject:testSetFunction()
   local p0 = object 'p0' { z:=3 }
   local p1 = p0 'p1' {}
 
-  p0:set_methods({ x:=2, y =\s,n s.z*n }, 'init')
+  p0:set_variables({ x=functor\ 2, y =functor\s,n s.z*n }, 'init')
+
+  -- test not valid for immethod object model
+--  if p0:mth_raw('x') then return end
 
   assertFalse ( is_function(p0.x) )
   assertFalse ( is_function(p0.y) )
@@ -825,7 +828,7 @@ function TestObject:testSetFunction()
   assertTrue  ( is_functor(p1.y) )
   assertTrue  ( is_number(p1.z) )
 
-  p1:set_methods { x:=\ 2, y =\s\n s.z*n }
+  p1:set_variables { x=functor\ \ 2, y =functor\s\n s.z*n }
 
   assertTrue  ( is_functor (p1.x)   )
   assertTrue  ( is_function(p1.x()) )
@@ -844,7 +847,7 @@ end
 
 function TestObjectErr:testSetMethods()
   local p0 = object 'p0' { x:=2 }
-  local p1 = p0 'p1' { y:=2 }
+  local p1 = p0 'p1' {}:set_methods { y:=2 }
   local p2 = p0 'p2' {}:set_readonly()
   local msg = {
     "invalid argument #2 (mappable expected)",
@@ -866,12 +869,12 @@ function TestObjectErr:testSetMethods()
   assertErrorMsgContains(msg[1], p0.set_methods, p0, "")
   assertErrorMsgContains(msg[1], p0.set_methods, p0, \ ())
 
-  assertErrorMsgContains(msg[2], p0.set_methods, p0, {\ 1, 2, {3}}, 'init')
+  assertErrorMsgContains(msg[2], p0.set_methods, p1, {\ 1, 2, {3}}, 'init')
 
-  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=0},         'init')
-  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=true},      'init')
-  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x=""},        'init')
-  assertErrorMsgContains(msg[3], p0.set_methods, p0, {x={}},        'init')
+  assertErrorMsgContains(msg[3], p0.set_methods, p1, {x=0},         'init')
+  assertErrorMsgContains(msg[3], p0.set_methods, p1, {x=true},      'init')
+  assertErrorMsgContains(msg[3], p0.set_methods, p1, {x=""},        'init')
+  assertErrorMsgContains(msg[3], p0.set_methods, p1, {x={}},        'init')
 
   assertErrorMsgContains(msg[4], p0.set_methods, p0, {x:=3}, false)
   assertErrorMsgContains(msg[5], p1.set_methods, p1, {y:=3}, false)
@@ -903,7 +906,12 @@ function TestObject:testSetMetamethod()
   assertEquals      (tostring(p01), '__id, #=2')       -- tostring -> tostr
   p01:set_methods { x:=\ 2, y =\s\n s.z*n }
   p01.z =\ 3
-  assertEquals      (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
+
+  if p01:mth_raw('x') then
+    assertEquals    (tostring(p01),       '__id, z, #=2') -- tostring -> tostr
+  else
+    assertEquals    (tostring(p01), 'y, x, __id, z, #=2') -- tostring -> tostr
+  end
 
   -- example of the help
   local obj1 = object 'obj1' { e = 3 }
@@ -949,10 +957,10 @@ end
 function TestObject:testGetVarKeys()
   local p0 = object 'p0' { x=1, y=2, z:=3 }
   local p1 = p0 'p1' { x=-1, y={} }
-  local r  = {"parent", "first_free_flag", "name"}
+  local r  = {"first_free_flag", "name", "parent"}
   local r2 = {"first_free_flag", "name", "parent", 'x','y','z'}
 
-  local t = object:get_varkeys() assertEquals ( t, r ) -- object not excluded
+  local t = object:get_varkeys()   table.sort(t) assertEquals (t, r ) -- object not excluded
   t = p0:get_varkeys()             table.sort(t) assertEquals (t, r2)
   t = p0:get_varkeys(object)       table.sort(t) assertEquals (t, {'x','y','z'})
   t = p0:get_varkeys(object.__par) table.sort(t) assertEquals (t, r2)
@@ -1870,7 +1878,7 @@ function Test_object:testSlides()
   assertAlmostEquals( dt, 0.5, 1 )
 
   p1.getvz = nil
-  p1:set_methods({getvz = \s s.z}, 'init')
+  p1.getvz = functor\s s.z
 
   s=0
   t0 = os.clock()
