@@ -53,6 +53,10 @@ local var0 = setmetatable({}, {
   __metatable  = false,
 })
 
+-- object model variant -------------------------------------------------------o
+
+local nolookup = false -- MAD.option.cacheobjlookup
+
 -- helpers --------------------------------------------------------------------o
 
 local function name (a)
@@ -78,9 +82,19 @@ local function freadonly (a)
   return btst(rawget(a,_flg) or 0, flg_ro)
 end
 
-local function set_class (a)
-  rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
-  return a
+local flg_rocl, set_class
+
+if nolookup then
+  flg_rocl = bor(bor(0, flg_ro), flg_cl)
+  function set_class (a)
+    rawset(a,_flg, bor(rawget(a, _flg) or 0, flg_rocl))
+    return a
+  end
+else
+  function set_class (a)
+    rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
+    return a
+  end
 end
 
 local function is_object (a) -- exported
@@ -140,12 +154,29 @@ function MT:__call (a, b) -- object constructor (define the object-model)
                   or  "invalid argument #2 (raw table expected)", 2)
 end
 
-function MT:__index (k)        -- reusing var_raw and var_val kills the inlining
-  local v = self.__var[k]
-  if type(k) == 'string' and type(v) == 'function'
-  then return v(self)
-  else return v end
+local index_mm  -- reusing var_raw and var_val kills the inlining
+
+if nolookup then
+  function index_mm (self, k)
+    local v = rawget(self.__var, k)
+    if rawequal(v, nil) then
+      v = self.__var[k]
+      self.__var[k] = v
+    end
+    if type(k) == 'string' and type(v) == 'function'
+    then return v(self)
+    else return v end
+  end
+else
+  function index_mm (self, k)
+    local v = self.__var[k]
+    if type(k) == 'string' and type(v) == 'function'
+    then return v(self)
+    else return v end
+  end
 end
+
+MT.__index = index_mm
 
 function MT:__newindex (k, v)
   if freadonly(self) or type(k) == 'string' and strsub(k,1,2) == '__' then
