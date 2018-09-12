@@ -31,7 +31,8 @@ local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
 local bsearch, lsearch, kpairs, openfile, assertf, errorf       in MAD.utility
 local functor                                                   in MAD.gfunc
 
-local type, strsub = type, string.sub
+local type, rawget, rawset, rawequal, strsub =
+      type, rawget, rawset, rawequal, string.sub
 
 -- implementation -------------------------------------------------------------o
 
@@ -53,9 +54,12 @@ local var0 = setmetatable({}, {
   __metatable  = false,
 })
 
--- object model variant -------------------------------------------------------o
+-- object model variants ------------------------------------------------------o
 
 local nolookup = false -- MAD.option.cacheobjlookup
+local immethod = false -- MAD.option.cacheobjmethod
+
+local flg_cls = nolookup and bset(bset(0, flg_ro), flg_cl) or bset(0, flg_cl)
 
 -- helpers --------------------------------------------------------------------o
 
@@ -82,19 +86,9 @@ local function freadonly (a)
   return btst(rawget(a,_flg) or 0, flg_ro)
 end
 
-local flg_rocl, set_class
-
-if nolookup then
-  flg_rocl = bor(bor(0, flg_ro), flg_cl)
-  function set_class (a)
-    rawset(a,_flg, bor(rawget(a, _flg) or 0, flg_rocl))
-    return a
-  end
-else
-  function set_class (a)
-    rawset(a,_flg, bset(rawget(a,_flg) or 0, flg_cl))
-    return a
-  end
+local function set_class (a)
+  rawset(a,_flg, bor(rawget(a, _flg) or 0, flg_cls))
+  return a
 end
 
 local function is_object (a) -- exported
@@ -114,12 +108,19 @@ local function is_instanceOf (a, b) -- exported
   return false
 end
 
+local function copy_methods (a, m)
+  local c = table.new(0,8)
+  for k,v in pairs(m) do c[k] = v end
+  a.__mth = c -- set new methods
+  return c
+end
+
 local function copy_metamethods (a, m)
   local c = table.new(0,8)
   for k,v in pairs(m) do c[k] = v end
   m.__metatable = nil -- unprotect change
-  setmetatable(a, c)
-  m.__metatable, c.__metatable = m, c
+  setmetatable(a, c) -- set new metamethods
+  m.__metatable, c.__metatable = m, c -- restore/set protection(s)
   return c
 end
 
@@ -127,53 +128,112 @@ end
 
 local MT = {__obj=_id}
 
--- objects are proxies controlling variables access and inheritance
-function MT:__call (a, b) -- object constructor (define the object-model)
-  if is_string(a) or is_nil(a) then                     -- [un]named object
-    if is_nil(b) then
-      local obj = {__id=a, __var=var0, __index=self.__var} -- proxy
-      return setmetatable(obj, getmetatable(self))      -- incomplete object
-    elseif is_rawtable(b) then
-      local obj = {__var=b, __index=self.__var}         -- proxy
-      b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
-      return init(setmetatable(obj, getmetatable(self)))-- complete object
+-- object model (and variants):
+--   objects are proxies controlling variables access and inheritance
+local call_mm
+
+if immethod then                -- object model with cached methods
+  function call_mm (self, a, b) -- object constructor (define the object-model)
+    if is_string(a) or is_nil(a) then                     -- [un]named object
+      if is_nil(b) then
+        local obj = {__id=a, __var=var0, __mth=self.__mth, __index=self.__var}
+        return setmetatable(obj, getmetatable(self))      -- incomplete object
+      elseif is_rawtable(b) then
+        local obj = {__var=b, __mth=self.__mth, __index=self.__var}
+        b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
+        return init(setmetatable(obj, getmetatable(self)))-- complete object
+      end
+    elseif is_rawtable(a) then
+      if self.__var == var0 then                          -- finalize named object
+        a.__id, self.__id = self.__id, nil
+        self.__var = setmetatable(a, self)                -- set fast inheritance
+        set_class(parent(self))
+        return init(self)
+      else                                                -- unnamed object
+        local obj = {__var=a, __mth=self.__mth, __index=self.__var}
+        setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
+        return init(setmetatable(obj, getmetatable(self)))-- complete object
+      end
     end
-  elseif is_rawtable(a) then
-    if self.__var == var0 then                          -- finalize named object
-      a.__id, self.__id = self.__id, nil
-      self.__var = setmetatable(a, self)                -- set fast inheritance
-      set_class(parent(self))
-      return init(self)
-    else                                                -- unnamed object
-      local obj = {__var=a, __index=self.__var}         -- proxy
-      setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
-      return init(setmetatable(obj, getmetatable(self)))-- complete object
-    end
+    error(is_nil(b) and "invalid argument #1 (string or raw table expected)"
+                    or  "invalid argument #2 (raw table expected)", 2)
   end
-  error(is_nil(b) and "invalid argument #1 (string or raw table expected)"
-                  or  "invalid argument #2 (raw table expected)", 2)
+
+else -- default                 -- object model
+  function call_mm (self, a, b) -- object constructor (define the object-model)
+    if is_string(a) or is_nil(a) then                     -- [un]named object
+      if is_nil(b) then
+        local obj = {__id=a, __var=var0, __index=self.__var} -- proxy
+        return setmetatable(obj, getmetatable(self))      -- incomplete object
+      elseif is_rawtable(b) then
+        local obj = {__var=b, __index=self.__var}         -- proxy
+        b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
+        return init(setmetatable(obj, getmetatable(self)))-- complete object
+      end
+    elseif is_rawtable(a) then
+      if self.__var == var0 then                          -- finalize named object
+        a.__id, self.__id = self.__id, nil
+        self.__var = setmetatable(a, self)                -- set fast inheritance
+        set_class(parent(self))
+        return init(self)
+      else                                                -- unnamed object
+        local obj = {__var=a, __index=self.__var}         -- proxy
+        setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
+        return init(setmetatable(obj, getmetatable(self)))-- complete object
+      end
+    end
+    error(is_nil(b) and "invalid argument #1 (string or raw table expected)"
+                    or  "invalid argument #2 (raw table expected)", 2)
+  end
 end
 
-local index_mm  -- reusing var_raw and var_val kills the inlining
+ MT.__call = call_mm
 
-if nolookup then
+-- object model variants try to optimize lookup of object attributes.
+local index_mm
+
+if immethod and nolookup then -- object model with cached lookup and methods
   function index_mm (self, k)
+    local m = self.__mth[k]
+    if m then return m end    -- methods have the precedence over variables
     local v = rawget(self.__var, k)
-    if rawequal(v, nil) then
-      v = self.__var[k]
-      self.__var[k] = v
+    if rawequal(v, nil) then  -- cache lookup
+      v = self.__var[k] ; self.__var[k] = v
     end
     if type(k) == 'string' and type(v) == 'function'
     then return v(self)
     else return v end
   end
-else
+
+elseif immethod then          -- object model with lookup and cached methods
+  function index_mm (self, k)
+    local m = self.__mth[k]
+    if m then return m end    -- methods have the precedence over variables
+    local v = self.__var[k]
+    if type(k) == 'string' and type(v) == 'function'
+    then return v(self)
+    else return v end
+  end
+
+elseif nolookup then          -- object model with cached lookup
+  function index_mm (self, k)
+    local v = rawget(self.__var, k)
+    if rawequal(v, nil) then  -- cache lookup
+      v = self.__var[k] ; self.__var[k] = v
+    end
+    if type(k) == 'string' and type(v) == 'function'
+    then return v(self)
+    else return v end
+  end
+
+else -- default               -- object model with lookup
   function index_mm (self, k)
     local v = self.__var[k]
     if type(k) == 'string' and type(v) == 'function'
     then return v(self)
     else return v end
   end
+
 end
 
 MT.__index = index_mm
@@ -282,7 +342,7 @@ end
 function MF:set_variables (tbl, override_) -- default: override = true
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
-  if freadonly(self) then
+  if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
@@ -295,10 +355,10 @@ function MF:set_variables (tbl, override_) -- default: override = true
   return self
 end
 
-function MF:wrap_variables (tbl)
+function MF:wrap_variables (tbl, override_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
-  if freadonly(self) then
+  if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
@@ -320,21 +380,32 @@ end
 function MF:set_methods (tbl, override_) -- default: override = true
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
-  if freadonly(self) then
+  if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and override_ == false then
+  if fclass(self) and override_ ~= 'init' then -- == false then
     errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
-  local var = self.__var
-  local id  = rawget(var,'__id')
-  for k,f in pairs(tbl) do
-    assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
-    assertf(is_callable(f), "invalid value for key '%s' (callable expected)", k)
-    assertf(override_ ~= false or is_nil(var[k]), "cannot override method '%s'",k)
-    var[k] = is_function(f) and functor(f) or f
+  if immethod then -- object model with cached methods
+    local sm, pm = self.__mth, parent(self).__mth -- or MF
+    if sm == pm then sm = copy_methods(self, pm) end
+    for k,m in pairs(tbl) do
+      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
+      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
+      assertf(override_ ~= false or is_nil(sm[k]), "cannot override method '%s'",k)
+      sm[k] = m
+    end
+  else -- default
+    local var = self.__var
+    local id  = rawget(var,'__id')
+    for k,m in pairs(tbl) do
+      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
+      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
+      assertf(override_ ~= false or is_nil(var[k]), "cannot override method '%s'",k)
+      var[k] = is_function(m) and functor(m) or m
+    end
+    var.__id = id
   end
-  var.__id = id
   return self
 end
 
@@ -347,7 +418,7 @@ function MF:set_metamethods (tbl, override_) -- default: override = false
   if fclass(self) then
     errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
   end
-  local sm, pm = getmetatable(self), getmetatable(parent(self)) or MT
+  local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(tbl) do
     assertf(is_string(k) and strsub(k,1,2) == '__',
@@ -355,6 +426,24 @@ function MF:set_metamethods (tbl, override_) -- default: override = false
     assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
   end
+  return self
+end
+
+function MF:set_parent (newp, override_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(newp), "invalid argument #2 (object expected)")
+  if freadonly(self) and override_ ~= 'init' then
+    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
+  end
+  local spar = self.parent
+  if getmetatable(newp) ~= getmetatable(spar) then
+    error("new and current parent do not share same metamethods")
+  end
+  if newp.parent ~= spar.parent then
+    error("new and current parent do not inherit from same direct parent")
+  end
+  self.__index = newp.__var
+  set_class(newp)
   return self
 end
 
@@ -463,26 +552,6 @@ function MF:clear_all ()
   return self
 end
 
--- inheritance
-
-function MF:set_parent (newp)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_object(newp), "invalid argument #2 (object expected)")
-  if freadonly(self) then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
-  end
-  local spar = self.parent
-  if getmetatable(newp) ~= getmetatable(spar) then
-    error("new and current parent do not share same metamethods")
-  end
-  if newp.parent ~= spar.parent then
-    error("new and current parent do not inherit from same direct parent")
-  end
-  self.__index = newp.__var
-  set_class(newp)
-  return self
-end
-
 -- copy
 
 function MF:same (name_)
@@ -491,9 +560,14 @@ function MF:same (name_)
   -- same shares the same parent
   local par = parent(self)
   local sam = par(name_, {})
-  -- metatable
+  -- metamethods
   local sm, pm = getmetatable(self), getmetatable(par)
   if sm ~= pm then copy_metamethods(sam, sm) end
+  -- methods
+  if immethod then
+    local sm, pm = self.__mth, par.__mth
+    if sm ~= pm then copy_methods(sam, sm) end
+  end
   return sam
 end
 
@@ -713,7 +787,13 @@ MAD.typeid.is_instanceOf = is_instanceOf
 -- object ---------------------------------------------------------------------o
 
 -- add variables, methods and metamethods, and set as readonly
-object = MF.set_methods(setmetatable({__var=MV, __index={}}, MT), MF) :set_readonly()
+if immethod then
+  object = setmetatable({__var=MV, __mth=MF, __index={}}, MT)
+             :set_readonly()
+else
+  object = MF.set_methods(setmetatable({__var=MV, __index={}}, MT), MF)
+             :set_readonly()
+end
 
  -- parent link
 setmetatable(MV, object)
