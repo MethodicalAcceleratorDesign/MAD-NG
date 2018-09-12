@@ -109,7 +109,7 @@ local function is_instanceOf (a, b) -- exported
 end
 
 local function copy_methods (a, m)
-  local c = table.new(0,8)
+  local c = table.new(0,32)
   for k,v in pairs(m) do c[k] = v end
   a.__mth = c -- set new methods
   return c
@@ -129,11 +129,10 @@ end
 local MT = {__obj=_id}
 
 -- object model (and variants):
---   objects are proxies controlling variables access and inheritance
-local call_mm
+-- objects are proxies controlling variables access and inheritance
 
-if immethod then                -- object model with cached methods
-  function call_mm (self, a, b) -- object constructor (define the object-model)
+if immethod then             -- object model with cached methods
+  function MT:__call (a, b)  -- object constructor (define the object-model)
     if is_string(a) or is_nil(a) then                     -- [un]named object
       if is_nil(b) then
         local obj = {__id=a, __var=var0, __mth=var0, __index=self.__var}
@@ -160,8 +159,8 @@ if immethod then                -- object model with cached methods
                     or  "invalid argument #2 (raw table expected)", 2)
   end
 
-else -- default                 -- object model
-  function call_mm (self, a, b) -- object constructor (define the object-model)
+else -- default              -- object model
+  function MT:__call (a, b)  -- object constructor (define the object-model)
     if is_string(a) or is_nil(a) then                     -- [un]named object
       if is_nil(b) then
         local obj = {__id=a, __var=var0, __index=self.__var} -- proxy
@@ -188,13 +187,10 @@ else -- default                 -- object model
   end
 end
 
- MT.__call = call_mm
-
 -- object model variants try to optimize lookup of object attributes.
-local index_mm
 
 if immethod and nolookup then -- object model with cached lookup and methods
-  function index_mm (self, k)
+  function MT:__index (k)
     local m = self.__mth[k]
     if m then return m end    -- methods have the precedence over variables
     local v = rawget(self.__var, k)
@@ -207,7 +203,7 @@ if immethod and nolookup then -- object model with cached lookup and methods
   end
 
 elseif immethod then          -- object model with lookup and cached methods
-  function index_mm (self, k)
+  function MT:__index (k)
     local m = self.__mth[k]
     if m then return m end    -- methods have the precedence over variables
     local v = self.__var[k]
@@ -217,7 +213,7 @@ elseif immethod then          -- object model with lookup and cached methods
   end
 
 elseif nolookup then          -- object model with cached lookup
-  function index_mm (self, k)
+  function MT:__index (k)
     local v = rawget(self.__var, k)
     if rawequal(v, nil) then  -- cache lookup
       v = self.__var[k] ; self.__var[k] = v
@@ -228,7 +224,7 @@ elseif nolookup then          -- object model with cached lookup
   end
 
 else -- default               -- object model with lookup
-  function index_mm (self, k)
+  function MT:__index (k)
     local v = self.__var[k]
     if type(k) == 'string' and type(v) == 'function'
     then return v(self)
@@ -236,8 +232,6 @@ else -- default               -- object model with lookup
   end
 
 end
-
-MT.__index = index_mm
 
 function MT:__newindex (k, v)
   if freadonly(self) or type(k) == 'string' and strsub(k,1,2) == '__' then
@@ -297,6 +291,17 @@ end
 
 function MF:raw_set (k, v)
   rawset(self.__var, k, v)            -- no protection!!
+end
+
+if immethod then
+  function MF:mth_raw (k)
+    return self.__mth[k]              -- no function evaluation with inheritance
+  end
+
+else
+  function MF:mth_raw (k)
+    return nil                        -- no function evaluation with inheritance
+  end
 end
 
 function MF:var_raw (k)
