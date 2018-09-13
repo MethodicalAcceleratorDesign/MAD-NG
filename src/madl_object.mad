@@ -56,10 +56,10 @@ local var0 = setmetatable({}, {
 
 -- object model variants ------------------------------------------------------o
 
-local nolookup = false -- MAD.option.cacheobjlookup
-local immethod = false -- MAD.option.cacheobjmethod
+local cachelookup = false -- MAD.option.omcachelookup
+local cachemethod = false -- MAD.option.omcachemethod
 
-local flg_cls = nolookup and bset(bset(0, flg_ro), flg_cl) or bset(0, flg_cl)
+local flg_cls = cachelookup and bset(bset(0, flg_ro), flg_cl) or bset(0, flg_cl)
 
 -- helpers --------------------------------------------------------------------o
 
@@ -131,7 +131,7 @@ local MT = {__obj=_id}
 -- object model (and variants):
 -- objects are proxies controlling variables access and inheritance
 
-if immethod then             -- object model with cached methods
+if cachemethod then          -- object model with cached methods
   function MT:__call (a, b)  -- object constructor (define the object-model)
     if is_string(a) or is_nil(a) then                     -- [un]named object
       if is_nil(b) then
@@ -189,10 +189,10 @@ end
 
 -- object model variants try to optimize lookup of object attributes.
 
-if immethod and nolookup then -- object model with cached lookup and methods
+if cachemethod and cachelookup then -- object model with cached lookup and methods
   function MT:__index (k)
     local m = self.__mth[k]
-    if m then return m end    -- methods have the precedence over variables
+    if m then return m end          -- methods have the precedence over variables
     local v = rawget(self.__var, k)
     if rawequal(v, nil) then  -- cache lookup
       v = self.__var[k] ; self.__var[k] = v
@@ -202,17 +202,17 @@ if immethod and nolookup then -- object model with cached lookup and methods
     else return v end
   end
 
-elseif immethod then          -- object model with lookup and cached methods
+elseif cachemethod then          -- object model with lookup and cached methods
   function MT:__index (k)
     local m = self.__mth[k]
-    if m then return m end    -- methods have the precedence over variables
+    if m then return m end       -- methods have the precedence over variables
     local v = self.__var[k]
     if type(k) == 'string' and type(v) == 'function'
     then return v(self)
     else return v end
   end
 
-elseif nolookup then          -- object model with cached lookup
+elseif cachelookup then          -- object model with cached lookup
   function MT:__index (k)
     local v = rawget(self.__var, k)
     if rawequal(v, nil) then  -- cache lookup
@@ -223,7 +223,7 @@ elseif nolookup then          -- object model with cached lookup
     else return v end
   end
 
-else -- default               -- object model with lookup
+else -- default                  -- object model with lookup
   function MT:__index (k)
     local v = self.__var[k]
     if type(k) == 'string' and type(v) == 'function'
@@ -293,14 +293,14 @@ function MF:raw_set (k, v)
   rawset(self.__var, k, v)            -- no protection!!
 end
 
-if immethod then
+if cachemethod then
   function MF:mth_raw (k)
     return self.__mth[k]              -- no function evaluation with inheritance
   end
 
 else
   function MF:mth_raw (k)
-    return nil                        -- no function evaluation with inheritance
+    return nil                        -- methods are variables, no separate lookup
   end
 end
 
@@ -389,10 +389,10 @@ function MF:set_methods (tbl, override_) -- default: override = true
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and (override_ ~= 'init' or immethod) then
+  if fclass(self) and (override_ ~= 'init' or cachemethod) then
     errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
-  if immethod then -- object model with cached methods
+  if cachemethod then -- object model with cached methods
     local sm, pm = self.__mth, parent(self).__mth -- or MF
     if sm == pm then sm = copy_methods(self, pm) end
     for k,m in pairs(tbl) do
@@ -573,7 +573,7 @@ function MF:same (name_)
   local sm, pm = getmetatable(self), getmetatable(par)
   if sm ~= pm then copy_metamethods(sam, sm) end
   -- methods
-  if immethod then
+  if cachemethod then
     local sm, pm = self.__mth, par.__mth
     if sm ~= pm then copy_methods(sam, sm) end
   end
@@ -796,7 +796,7 @@ MAD.typeid.is_instanceOf = is_instanceOf
 -- object ---------------------------------------------------------------------o
 
 -- add variables, methods and metamethods, and set as readonly
-if immethod then
+if cachemethod then
   object = setmetatable({__var=MV, __mth=MF, __index={}}, MT)
              :set_readonly()
 else
