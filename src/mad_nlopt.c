@@ -72,7 +72,7 @@ void mad_nlopt (void)
   nlopt_add_inequality_constraint(opt, myconstraint, &data[0], 1e-12);
   nlopt_add_inequality_constraint(opt, myconstraint, &data[1], 1e-12);
 
-  nlopt_set_xtol_rel(opt, 1e-12);
+  nlopt_set_xtol_rel(opt, 1e-6);
 
   double x[2] = { 1.234, 5.678 };  /* `*`some` `initial` `guess`*` */
   double minf; /* `*`the` `minimum` `objective` `value,` `upon` `return`*` */
