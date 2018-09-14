@@ -255,10 +255,120 @@ local function exec (self)
 end
 --]=]
 
+-- FODO example ---------------------------------------------------------------o
+
+local beam, sequence              in MAD
+local marker, drift, thin_element in MAD.element
+
+local k1_qf =  0.5 --  0.3037241107
+local k1_qd = -0.5 -- -0.3037241107
+
+local function thinFODO ()
+  local nsl = 1 -- 10 -- for madx row by row compatibility
+  local nth = 10
+  local dl  = 1/nth
+  local mk1 = marker       'mk1' {}
+  local mk2 = marker       'mk2' {}
+  local df1 = drift        'df1' { l=4, nslice=nsl }
+  local df2 = drift        'df2' { l=4, nslice=nsl }
+  local mq1 = thin_element 'mq1' { knl := {0, k1_qf/nth} }
+  local mq2 = thin_element 'mq2' { knl := {0, k1_qd/nth} }
+  local seq = sequence     'seq' { l=10, refer='entry', -- dir=-1,
+                mq1 {at=0+dl/2              },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+                mk1 {at=0+dl/2, from='prev' },
+                mq1 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+--                df1 {at=1}, -- for madx row by row compatibility
+
+                mq2 {at=5+dl/2              },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+                mk2 {at=0+dl/2, from='prev' },
+                mq2 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+--                df2 {at=6}, -- for madx row by row compatibility
+  }
+  seq.beam = beam
+
+  seq:dumpseq()
+
+  return seq
+end
+
+-----
+
+local twiss      in MAD
+local printf     in MAD.utility
+local sqrt, huge in math
+
+local my_count, my_ccount = 0, 0
+
+local fodo = thinFODO()
+local mtbl
+
+local function my_objective(n, x, grad, data)
+  k1_qf, k1_qd = x[0], x[1]
+
+  my_count = my_count + 1
+
+  print(k1_qf, k1_qd)
+
+  mtbl = twiss { sequence=fodo, observe=true }
+  print('mu1=', mtbl[-1].mu1, 'mu2=', mtbl[-1].mu2)
+  mtbl:write('match.out')
+
+  if grad then
+    grad[0], grad[1] = 1, 1
+  end
+
+  local err = sqrt( (mtbl[-1].mu1 - 0.25)^2 + (mtbl[-1].mu2 - 0.25)^2 )
+
+  print('err=', err)
+  return err
+end
+
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
   -- TODO!!!
+
+  local f    = ffi.cast('objective_t*' , my_objective)
+--  local c    = ffi.cast('constraint_t*', my_contraints)
+  local x    = vector{k1_qf, k1_qd}
+  local xmin = vector{0, -huge}
+  local xmax = vector{huge,  0}
+  local xtol = vector{1e-4, 1e-4}
+--  local ctol = vector{1e-8, 1e-8}
+
+  local arg = ffi.new 'nlopt_args_t[1]'
+  local num = ffi.new 'num_t[1]'
+  num[0] = 1e-4
+
+  arg[0].algorithm = _C.NLOPT_GD_STOGO -- NLOPT_GN_DIRECT -- _C.NLOPT_LD_MMA
+
+  arg[0].x         = x.data
+  arg[0].xmin      = xmin.data
+  arg[0].xmax      = xmax.data
+  arg[0].xtol_rel  = xtol.data
+
+  arg[0].n         = 2
+  arg[0].f         = f
+  arg[0].ftol_rel  = num
+
+--  arg[0].q         = 2
+--  arg[0].c_le      = c
+--  arg[0].ctol_le   = ctol.data
+
+  _C.mad_nlopt(arg)
+
+  print('status=', arg[0].status)
+
+  printf('solution (%d): (%g,%g), f=%g\n',
+         my_count, arg[0].x[0], arg[0].x[1], arg[0].fmin)
+
+  my_count = 0
+  f:free()
+--  c:free()
 end
 
 local match = command 'match' {
