@@ -25,7 +25,9 @@
 
 local ffi = require 'ffi'
 
-local _C, command, vector in MAD
+local _C, command, vector, warn in MAD
+local is_rawtable               in MAD.typeid
+local eps, inf                  in MAD.constant
 
 -- types ----------------------------------------------------------------------o
 
@@ -131,251 +133,235 @@ enum {
 ffi.cdef[[
 // NLopt MAD C interface (see mad_nlopt.h)
 
-typedef num_t (objective_t) (u32_t n, const num_t *x, num_t *grad, void *data);
-typedef void  (constraint_t)(u32_t m, num_t *res,
-                             u32_t n, const num_t* x, num_t* grad, void* data);
+typedef num_t (nlopt_obj_t)(u32_t n, const num_t *x, num_t *grad, void *data);
+typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
+                            u32_t n, const num_t* x, num_t* grad, void* data);
 
 struct nlopt_args {
   // algorithm
-  int             algorithm;
+  int            algo;
 
-  // variables [n] (required)
-  num_t          *x;
-  const num_t    *xtol_rel;
-  const num_t    *xtol_abs;
-  const num_t    *xstep;
+  // objective function (required)
+  nlopt_obj_t   *fn;
+  int            fdir; // 1: maximize, -1: minimize (default)
+  const num_t    ftol;
+  const num_t    fstop;
 
-  // objective function [n] (required)
-  ssz_t           n;
-  objective_t    *f;
-  void           *fdat;
-  const num_t    *ftol_rel;
-  const num_t    *ftol_abs;
+  // state variables [n] (required)
+  ssz_t          n;
+  num_t         *x;
+  const num_t   *xtol;
+  const num_t   *xstp;
+
+  // bound constraints [n] (optional)
+  const num_t   *xmin;
+  const num_t   *xmax;
 
   // equality constraints [p] (optional)
-  ssz_t           p;
-  constraint_t   *c_eq;
-  void           *cdat_eq;
-  const num_t    *ctol_eq;
+  ssz_t          p;
+  nlopt_cts_t   *eq;
+  const num_t   *etol;
 
   // inequality constraints [q] (optional)
-  ssz_t           q;
-  constraint_t   *c_le;
-  void           *cdat_le;
-  const num_t    *ctol_le;
+  ssz_t          q;
+  nlopt_cts_t   *le;
+  const num_t   *ltol;
 
-  // bounds constraint [n] (optional)
-  const num_t    *xmin;
-  const num_t    *xmax;
-
-  // stop criteria
-  const int      *maxcall;
-  const num_t    *maxtime;
+  // stop criteria (if >0)
+  const int      maxcall;
+  const num_t    maxtime;
 
   // returned values
-  num_t           fmin;
-  int             status;
+  int            status;
+  int            ncall;
+  num_t          fval;
 };
 ]]
 
--- callback example -----------------------------------------------------------o
+-- variables default weights --------------------------------------------------o
 
---[=[
-local sqrt, huge in math
+local dft_weights = {
+  x  = 10, px  = 100, y  = 10, py  = 100, t = 10, pt = 100,
+  dx = 10, dpx = 100, dy = 10, dpy = 100,
 
-local my_count, my_ccount = 0, 0
+  q1  = 10, q2  = 10,
+  mu1 = 10, mu2 = 10,
+  alfa11 = 10, alfa22 = 10, alfa33 = 10,
+}
 
-local function my_objective(n, x, grad, data)
-  assert(n == 2)
+--- callbacks -----------------------------------------------------------------o
 
-  my_count = my_count + 1
+local function nlopt_callbacks (env)
+  assert(is_rawtable(env), "unexpected missing environment")
+  local command, variables, equalities, inequalities, weights in env
+  local n, p, q in env.__arg
+  local eq, le  in env.__res
+  local nrm = 0.5/(n+p+q)
 
-  if grad then
-    grad[0] = 0
-    grad[1] = 1 / ( 2*sqrt(x[1]) )
-  end
+  -- nlopt objective function
+  return \_, x, grad, data =>
+    if grad ~= nil then
+      warn("unsupported request for jacobian in objective function (ignored)")
+    end
 
-  return sqrt(x[1])
-end
+    if data ~= nil then
+      error("unexpected user data in objective function (corrupted callback?)")
+    end
 
-local function my_contraints(m, res, n, x, grad, data)
-  assert(m == 2 and n == 2)
+    local err = 0
 
-  my_ccount = my_ccount + 1
+    -- iteration number
+    env.__arg.ncall = env.__arg.ncall + 1
 
-  if grad then
-    local a, b = 2, 0
-    grad[0] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
-    grad[1] = -1.0;
+    -- update state variables
+    for i=1,n do
+      variables[i].set(x[i-1])
+    end
 
-    local a, b = -1, 1
-    grad[2] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
-    grad[3] = -1.0;
-  end
+    -- call user command
+    local res = command(env)
 
-  local a, b = 2, 0
-  res[0] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
+    -- collect equalities
+    for i=1,p do
+      local name, expr in equalities[i]
+      eq[i] = expr(res, env) or 0
+      err = err + (eq[i] * (weights[name] or dft_weights[name] or 1))^2
+    end
 
-  local a, b = -1, 1
-  res[1] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
-end
+    -- collect inequalities
+    for i=1,q do
+      local name, expr in inequalities[i]
+      le[i] = expr(res, env) or 0
+      if le[i] > 0 then
+        err = err + (le[i] * (weights[name] or dft_weights[name] or 1))^2
+      end
+    end
 
-local printf in MAD.utility
+    -- return mean squares penalty 1/2 \sum_i f_i(x)^2
+    return err * nrm
+  end,
 
-local function exec (self)
-  local f    = ffi.cast('objective_t*' , my_objective )
-  local c    = ffi.cast('constraint_t*', my_contraints)
-  local x    = vector{1.234, 5.678}
-  local xmin = vector{-huge, 0}
-  local xtol = vector{1e-4, 1e-4}
-  local ctol = vector{1e-8, 1e-8}
+  -- nlopt equality function
+  p > 0 and \_, res => for i=1,p do res[i-1] = eq[i] end end
+        or  nil,
 
-  local arg = ffi.new 'nlopt_args_t[1]'
-
-  arg[0].algorithm = _C.NLOPT_LD_MMA
-
-  arg[0].x         = x.data
-  arg[0].xmin      = xmin.data
-  arg[0].xtol_rel  = xtol.data
-
-  arg[0].n         = 2
-  arg[0].f         = f
-
-  arg[0].q         = 2
-  arg[0].c_le      = c
-  arg[0].ctol_le   = ctol.data
-
-  _C.mad_nlopt(arg)
-
-  printf('solution (%d, %d): (%g,%g), f=%g, status=%d\n',
-      my_count, my_ccount, arg[0].x[0], arg[0].x[1], arg[0].fmin, arg[0].status)
-
-  f:free()
-  c:free()
-end
---]=]
-
--- FODO example ---------------------------------------------------------------o
-
-local beam, sequence              in MAD
-local marker, drift, thin_element in MAD.element
-
-local k1_qf =  0.5 --  0.3037241107
-local k1_qd = -0.5 -- -0.3037241107
-
-local function thinFODO ()
-  local nsl = 1 -- 10 -- for madx row by row compatibility
-  local nth = 10
-  local dl  = 1/nth
-  local mk1 = marker       'mk1' {}
-  local mk2 = marker       'mk2' {}
-  local df1 = drift        'df1' { l=4, nslice=nsl }
-  local df2 = drift        'df2' { l=4, nslice=nsl }
-  local mq1 = thin_element 'mq1' { knl := {0, k1_qf/nth} }
-  local mq2 = thin_element 'mq2' { knl := {0, k1_qd/nth} }
-  local seq = sequence     'seq' { l=10, refer='entry', -- dir=-1,
-                mq1 {at=0+dl/2              },
-      (nth/2-1)*mq1 {at=dl    , from='prev' },
-                mk1 {at=0+dl/2, from='prev' },
-                mq1 {at=0+dl/2, from='prev' },
-      (nth/2-1)*mq1 {at=dl    , from='prev' },
---                df1 {at=1}, -- for madx row by row compatibility
-
-                mq2 {at=5+dl/2              },
-      (nth/2-1)*mq2 {at=dl    , from='prev' },
-                mk2 {at=0+dl/2, from='prev' },
-                mq2 {at=0+dl/2, from='prev' },
-      (nth/2-1)*mq2 {at=dl    , from='prev' },
---                df2 {at=6}, -- for madx row by row compatibility
-  }
-  seq.beam = beam
-
---  seq:dumpseq()
-
-  return seq
-end
-
------
-
-local twiss      in MAD
-local printf     in MAD.utility
-local sqrt, huge in math
-
-local my_count, my_ccount = 0, 0
-
-local fodo = thinFODO()
-local mtbl
-
-local function my_objective(n, x, grad, data)
-  k1_qf, k1_qd = x[0], x[1]
-
-  my_count = my_count + 1
-
-  print(k1_qf, k1_qd)
-
-  mtbl = twiss { sequence=fodo, observe=true }
-  print('mu1=', mtbl[-1].mu1, 'mu2=', mtbl[-1].mu2)
-  mtbl:write('match.out')
-
-  if grad then
-    grad[0], grad[1] = 1, 1
-  end
-
-  local err = sqrt( (mtbl[-1].mu1 - 0.25)^2 + (mtbl[-1].mu2 - 0.25)^2 )
-
-  print('err=', err)
-  return err
+  -- nlopt inequality function
+  q > 0 and \_, res => for i=1,q do res[i-1] = le[i] end end
+        or  nil
 end
 
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
-  -- TODO!!!
+  local command, objective, variables, equalities, inequalities, weights in self
 
-  local f    = ffi.cast('objective_t*' , my_objective)
---  local c    = ffi.cast('constraint_t*', my_contraints)
-  local x    = vector{k1_qf, k1_qd}
-  local xmin = vector{0, -huge}
-  local xmax = vector{huge,  0}
-  local xtol = vector{1e-4, 1e-4}
---  local ctol = vector{1e-8, 1e-8}
+  -- TODO: checks!!!
 
-  local arg = ffi.new 'nlopt_args_t[1]'
-  local num = ffi.new 'num_t[1]'
-  num[0] = 1e-4
+  -- local sizes
+  local n, p, q = #variables, #equalities, #inequalities
 
-  arg[0].algorithm = _C.NLOPT_GD_STOGO -- NLOPT_GN_DIRECT -- _C.NLOPT_LD_MMA
+  -- matching environment
+  local env = {
+    command      = command,
+    objective    = objective,
+    variables    = variables,
+    equalities   = equalities,
+    inequalities = inequalities,
+    weights      = weights,
 
-  arg[0].x         = x.data
-  arg[0].xmin      = xmin.data
-  arg[0].xmax      = xmax.data
-  arg[0].xtol_rel  = xtol.data
+    -- hidden variables
+    __res = { x  =         vector(n),
+              eq = p>0 and vector(p) or nil,
+              le = q>0 and vector(q) or nil},
+    __arg = ffi.new 'nlopt_args_t[1]',
+  }
 
-  arg[0].n         = 2
-  arg[0].f         = f
-  arg[0].ftol_rel  = num
+  local arg, res = env.__arg, env.__res
 
---  arg[0].q         = 2
---  arg[0].c_le      = c
---  arg[0].ctol_le   = ctol.data
+  -- problem sizes
+  arg[0].n = n
+  arg[0].p = p
+  arg[0].q = q
 
-  _C.mad_nlopt(arg)
+  -- nlopt callbacks
+  local fn, eq, le = nlopt_callbacks (env)
+  if fn then fn = ffi.cast('nlopt_obj_t*', fn) end
+  if eq then eq = ffi.cast('nlopt_cts_t*', eq) end
+  if le then le = ffi.cast('nlopt_cts_t*', le) end
 
-  print('status=', arg[0].status)
+  -- algorithm
+  arg[0].algo = _C[objective.method or 'NLOPT_GN_DIRECT_L']
 
-  printf('solution (%d): (%g,%g), f=%g\n',
-         my_count, arg[0].x[0], arg[0].x[1], arg[0].fmin)
+  -- objective function (required)
+  arg[0].fn    = fn
+  arg[0].fdir  = objective.kind == 'max' and 1 or -1
+  arg[0].ftol  = objective.tol or 0
+  arg[0].fstop = objective.stopval or arg[0].fdir*inf
 
-  my_count = 0
-  f:free()
---  c:free()
+  -- vectors anchors
+  local x, xtol, xmin, xmax, xstp, etol, ltol = res.x
+
+  -- bound constraints and initial steps [n] (optional)
+                     arg[0].x    = x.data
+  xtol = vector(n) ; arg[0].xtol = xtol.data
+  xmin = vector(n) ; arg[0].xmin = xmin.data
+  xmax = vector(n) ; arg[0].xmax = xmax.data
+  xstp = vector(n) ; arg[0].xstp = xstp.data
+
+  for i=1,n do
+    xtol[i] = variables[i].tol  or 0
+    xmin[i] = variables[i].xmin or -inf
+    xmax[i] = variables[i].xmax or  inf
+    xstp[i] = variables[i].step or 1e-6
+  end
+
+  -- equality constraints [p] (optional)
+  if p > 0 then
+    etol = vector(p)
+    for i=1,p do etol[i] = equalities[i].tol or eps end
+
+    arg[0].eq   = eq
+    arg[0].etol = etol.data
+  end
+
+  -- inequality constraints [q] (optional)
+  if q > 0 then
+    ltol = vector(q)
+    for i=1,q do ltol[i] = inequalities[i].tol or 0 end
+
+    arg[0].le   = le
+    arg[0].ltol = ltol.data
+  end
+
+  -- stop criteria
+  arg[0].maxcall = objective.maxcall or 0
+  arg[0].maxtime = objective.maxtime or 0
+
+  -- optimize (protected call)
+  local status, errmsg = pcall(_C.mad_nlopt, arg)
+
+  -- release callback (note: callbacks are never collected)
+  if fn then fn:free() end
+  if eq then eq:free() end
+  if le then le:free() end
+
+  if status then
+    return status, errmsg
+  end
+
+  return arg[0].status, arg[0].fval, arg[0].ncall
 end
 
 local match = command 'match' {
-  -- TODO!!!
+  command      = nil, -- command to execute at each iteration (required)
+  objective    = nil, -- objective to minimize or maximize (required)
+  variables    = nil, -- state variables (required)
+  equalities   = {},  -- equalities constraints (optional)
+  inequalities = {},  -- inqualities constraints (optional)
+  weights      = {},  -- variables and constraints weights (optional)
 
-  exec=exec,      -- command to execute upon children creation
-} :set_readonly() -- reference match command is readonly
+  exec=exec,          -- command to execute upon children creation
+} :set_readonly()     -- reference match command is readonly
 
 -- end ------------------------------------------------------------------------o
 return { match = match }
