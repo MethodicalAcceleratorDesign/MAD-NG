@@ -36,50 +36,48 @@ void mad_nlopt (nlopt_args_t *args);
 // -- types -------------------------------------------------------------------o
 
 // Define explicitly nlopt_func and nlopt_mfunc here to ensure FFI x-check
-typedef num_t (objective_t )(u32_t n, const num_t *x, num_t *grad, void *data);
-typedef void  (constraint_t)(u32_t m, num_t *res,
-                             u32_t n, const num_t* x, num_t* grad, void* data);
+typedef num_t (nlopt_obj_t)(u32_t n, const num_t *x, num_t *grad, void *data);
+typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
+                            u32_t n, const num_t* x, num_t* grad, void* data);
 
 struct nlopt_args {
   // algorithm
-  int             algorithm;
+  int            algo;
 
-  // variables [n] (required)
-  num_t          *x;
-  const num_t    *xtol_rel;
-  const num_t    *xtol_abs;
-  const num_t    *xstep;
+  // objective function (required)
+  nlopt_obj_t   *fn;
+  int            fdir; // 1: maximize, -1: minimize (default)
+  const num_t    ftol;
+  const num_t    fstop;
 
-  // objective function [n] (required)
-  ssz_t           n;
-  objective_t    *f;
-  void           *fdat;
-  const num_t    *ftol_rel;
-  const num_t    *ftol_abs;
+  // state variables [n] (required)
+  ssz_t          n;
+  num_t         *x;
+  const num_t   *xtol;
+  const num_t   *xstp;
+
+  // bound constraints [n] (optional)
+  const num_t   *xmin;
+  const num_t   *xmax;
 
   // equality constraints [p] (optional)
-  ssz_t           p;
-  constraint_t   *c_eq;
-  void           *cdat_eq;
-  const num_t    *ctol_eq;
+  ssz_t          p;
+  nlopt_cts_t   *eq;
+  const num_t   *etol;
 
   // inequality constraints [q] (optional)
-  ssz_t           q;
-  constraint_t   *c_le;
-  void           *cdat_le;
-  const num_t    *ctol_le;
+  ssz_t          q;
+  nlopt_cts_t   *le;
+  const num_t   *ltol;
 
-  // bounds constraint [n] (optional)
-  const num_t    *xmin;
-  const num_t    *xmax;
-
-  // stop criteria
-  const int      *maxcall;
-  const num_t    *maxtime;
+  // stop criteria (if >0)
+  const int      maxcall;
+  const num_t    maxtime;
 
   // returned values
-  num_t           fmin;
-  int             status;
+  int            status;
+  int            ncall;
+  num_t          fval;
 };
 
 // -- end ---------------------------------------------------------------------o
