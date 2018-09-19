@@ -47,8 +47,8 @@ struct nlopt_args {
   // objective function (required)
   nlopt_obj_t   *fn;
   int            fdir; // 1: maximize, -1: minimize (default)
-  const num_t    ftol;
-  const num_t    fstop;
+  num_t          ftol;
+  num_t          fstop;
 
   // state variables [n] (required)
   ssz_t          n;
@@ -71,8 +71,8 @@ struct nlopt_args {
   const num_t   *ltol;
 
   // stop criteria (if >0)
-  const int      maxcall;
-  const num_t    maxtime;
+  int            maxcall;
+  num_t          maxtime;
 
   // returned values
   int            status;
