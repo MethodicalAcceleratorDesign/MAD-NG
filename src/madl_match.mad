@@ -26,9 +26,11 @@
 local ffi = require 'ffi'
 
 local _C, command, vector, warn                                  in MAD
-local assertf, printf                                            in MAD.utility
+local assertf, errorf, printf, strsplit                          in MAD.utility
 local is_nil, is_string, is_iterable, is_mappable, is_callable   in MAD.typeid
 local eps, inf                                                   in MAD.constant
+
+local strfmt = string.format
 
 -- types ----------------------------------------------------------------------o
 
@@ -179,13 +181,15 @@ struct nlopt_args {
 };
 ]]
 
--- bd = support bounds constraints (f = require finite bounds)
--- eq = support equality constraints (result == 0)
--- le = support inequality constraints (result <= 0)
--- lo = require local optimiser specification
--- gr = require explicit computation of gradient
--- lg = require augmented lagrangian
-
+--[[
+NLopt algorithm specs
+  bd = support bounds constraints (f = require finite bounds)
+  eq = support equality constraints (result == 0)
+  le = support inequality constraints (result <= 0)
+  lo = require local optimiser specification
+  gr = require explicit computation of gradient
+  lg = require augmented lagrangian
+]]
 local nlopt_algo = {
   -- global optimisers without derivatives
   NLOPT_GN_CRS2_LM                 = { bd='y', eq='n', le='n', lo='n', gr='n' },
@@ -237,20 +241,21 @@ local nlopt_algo = {
   NLOPT_G_MLSL_LDS                 = { bd=nil, eq=nil, le=nil, lo=nil, gr='y' },
 }
 
+-- NLopt return code strings
 local retstr = {
   -- generic failure code
-  [-1] = 'NLOPT_FAILURE',
-  [-2] = 'NLOPT_INVALID_ARGS',
-  [-3] = 'NLOPT_OUT_OF_MEMORY',
-  [-4] = 'NLOPT_ROUNDOFF_LIMITED',
-  [-5] = 'NLOPT_FORCED_STOP',
+  [_C['NLOPT_FAILURE'         ]] = 'NLOPT_FAILURE',
+  [_C['NLOPT_INVALID_ARGS'    ]] = 'NLOPT_INVALID_ARGS',
+  [_C['NLOPT_OUT_OF_MEMORY'   ]] = 'NLOPT_OUT_OF_MEMORY',
+  [_C['NLOPT_ROUNDOFF_LIMITED']] = 'NLOPT_ROUNDOFF_LIMITED',
+  [_C['NLOPT_FORCED_STOP'     ]] = 'NLOPT_FORCED_STOP',
   -- generic success code
-  [ 1] = 'NLOPT_SUCCESS',
-  [ 2] = 'NLOPT_STOPVAL_REACHED',
-  [ 3] = 'NLOPT_FTOL_REACHED',
-  [ 4] = 'NLOPT_XTOL_REACHED',
-  [ 5] = 'NLOPT_MAXEVAL_REACHED',
-  [ 6] = 'NLOPT_MAXTIME_REACHED',
+  [_C['NLOPT_SUCCESS'         ]] = 'NLOPT_SUCCESS',
+  [_C['NLOPT_STOPVAL_REACHED' ]] = 'NLOPT_STOPVAL_REACHED',
+  [_C['NLOPT_FTOL_REACHED'    ]] = 'NLOPT_FTOL_REACHED',
+  [_C['NLOPT_XTOL_REACHED'    ]] = 'NLOPT_XTOL_REACHED',
+  [_C['NLOPT_MAXEVAL_REACHED' ]] = 'NLOPT_MAXEVAL_REACHED',
+  [_C['NLOPT_MAXTIME_REACHED' ]] = 'NLOPT_MAXTIME_REACHED',
 }
 
 -- variables default weights --------------------------------------------------o
@@ -350,6 +355,82 @@ local function nlopt_functions (env)
                             or nil)
 end
 
+-- getters/setters ------------------------------------------------------------o
+
+local function variables_accessor (variables)
+  local loc, upv, ctx = {}, {}, getfenv(3)
+  local fun = debug.getinfo(3, 'f').func
+  local n = #variables
+
+  assert(ctx and fun, "unexpected invalid stack level")
+
+  for i=1,1e6 do -- scan local variables
+    local k,v = debug.getlocal(3, i)
+    if not k then break end
+    loc[k], loc[i] = i, v -- override (required!)
+  end
+  for i=1,1e6 do -- scan non-local variables (upvalues)
+    local k,v = debug.getupvalue(fun, i)
+    if not k then break end
+    upv[k], upv[i] = i, v -- cannot override
+  end
+
+  -- build variables setter
+  for i=1,n do
+    local var = variables[i].var
+    assertf(is_string(var), "invalid 'var' for variables %d (string expected)", i)
+    local str, isep = strsplit(var, '.[')
+    local sgt, sst
+    if loc[str] then
+      if isep > 0 then -- local variable with indirection (safe, use obj)
+        sgt = strfmt("return \\%s\\ %s", str, var)
+        sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
+        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(loc[loc[str]])()
+--      variables[i].get = variables[i].get or assert(loadstring(sgt))()(loc[loc[str]])
+        variables[i].set = variables[i].set or assert(loadstring(sst))()(loc[loc[str]])
+      else             -- local variable with direct access (dangerous, use stack level!!)
+        sgt = strfmt("local second in MAD.gfunc \z
+                      return \\_,n   second(debug.getlocal(n or 3,%d))", loc[str])
+        sst = strfmt("return \\x,_,n assert(debug.setlocal(n or 6,%d,x)=='%s', \z
+                      'invalid local variable setter')", loc[str], str)
+        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()()
+--      variables[i].get = variables[i].get or assert(loadstring(sgt))()
+--      variables[i].set = variables[i].set or assert(loadstring(sst))()
+-- 'set' seems to update variables, but deferred expressions don't see the updated values...
+        assert(update or variables[i].set,
+               "update of local variables not supported, use set/update/indirect")
+      end
+    elseif upv[str] then
+      if isep > 0 then -- upvalue variable with indirection (safe, use obj)
+        sgt = strfmt("return \\%s\\ %s", str, var)
+        sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
+        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(upv[upv[str]])()
+--      variables[i].get = variables[i].get or assert(loadstring(sgt))()(upv[upv[str]])
+        variables[i].set = variables[i].set or assert(loadstring(sst))()(upv[upv[str]])
+      else             -- upvalue variable with direct access (safe, use fun)
+        sgt = strfmt("local second in MAD.gfunc \z
+                      return \\f\\  second(debug.getupvalue(f,%d))", upv[str])
+        sst = strfmt("return \\f\\x assert(debug.setupvalue(f,%d,x)=='%s', \z
+                      'invalid upvalue variables setter')", upv[str], str)
+        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(fun)()
+--      variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
+--      variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
+-- 'set' seems to update variables, but deferred expressions don't see the updated values...
+        assert(update or variables[i].set,
+               "update of upvalue variables not supported, use set/update/indirect")
+      end
+    elseif not is_nil(ctx[str]) then -- caller environment (safe, use ctx)
+      sgt = strfmt("return \\__ctx\\ __ctx.%s", var)
+      sst = strfmt("return \\__ctx\\__x => __ctx.%s=__x end", var)
+      variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(ctx)()
+--    variables[i].get = variables[i].get or assert(loadstring(sgt))()(ctx)
+      variables[i].set = variables[i].set or assert(loadstring(sst))()(ctx)
+    else
+      errorf("unable to build setter (variable '%s' not found)", var)
+    end
+  end
+end
+
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
@@ -378,10 +459,10 @@ local function exec (self)
   assert(n>0 or objective.exec ~= nil,
          "invalid objective (variables expected)")
   assert(p>0 or q>0 or objective.exec ~= nil,
-         "invalid objective (equality and/or inequality expected)")
+         "invalid objective (equalities and/or inequalities expected)")
 
   -- matching environment
-  local menv = {
+  local env = {
     command      = command,
     objective    = objective,
     variables    = variables,
@@ -397,7 +478,12 @@ local function exec (self)
     __arg = ffi.new 'nlopt_args_t[1]',
   }
 
-  local arg, res = menv.__arg, menv.__res
+  local arg, res = env.__arg, env.__res
+
+  -- setup variables getter/setters
+  if is_nil(variables.init) or is_nil(variables.update) then
+    variables_accessor(variables)
+  end
 
   -- problem sizes
   arg[0].n = n
@@ -405,7 +491,7 @@ local function exec (self)
   arg[0].q = q
 
   -- nlopt callbacks
-  local fn, eq, le = nlopt_functions (menv)
+  local fn, eq, le = nlopt_functions (env)
   if fn then fn = ffi.cast('nlopt_obj_t*', fn) end
   if eq then eq = ffi.cast('nlopt_cts_t*', eq) end
   if le then le = ffi.cast('nlopt_cts_t*', le) end
@@ -422,38 +508,25 @@ local function exec (self)
   arg[0].ftol  = objective.tol or 0
   arg[0].fstop = objective.stopval or arg[0].fdir*inf
 
-  -- anchor vectors
+  -- allocate and anchor vectors
   local x, xtol, xmin, xmax, xstp, etol, ltol
 
-  -- bound constraints and initial steps [n] (optional)
   x    = res.x     ; arg[0].x    = x.data
   xtol = vector(n) ; arg[0].xtol = xtol.data
   xmin = vector(n) ; arg[0].xmin = mopt.bd ~= 'n' and xmin.data or nil
   xmax = vector(n) ; arg[0].xmax = mopt.bd ~= 'n' and xmax.data or nil
   xstp = vector(n) ; arg[0].xstp = xstp.data
 
-  local v = mopt.bd ~= 'f' and inf or nil
+  -- state variables [n]
+  local bd = mopt.bd ~= 'f' and inf or nil
   for i=1,n do
-    xtol[i] = variables[i].tol  or 0
-    xmin[i] = variables[i].xmin or -assert(v, "invalid bound (finite value expected)")
-    xmax[i] = variables[i].xmax or  assert(v, "invalid bound (finite value expected)")
-    xstp[i] = variables[i].step or 1e-3
-    if xmin[i] > xmax[i] then
-      xmin[i], xmax[i] = xmax[i], xmin[i]
-    end
-  end
-
-  -- initial values
-  local init in variables
-  if is_callable(init) then
-    init(x)
-  elseif is_iterable(init) then
-    for i=1,n do
-      assert(init[i]>=xmin[i] and init[i]<=xmax[i], "invalid initial value (out of bound)")
-      x[i] = init[i]
-    end
-  else
-    error("unsupported variables initialisation (callable or iterable expected")
+    local v = variables[i]
+    x   [i] = v.ini  or 0
+    xtol[i] = v.tol  or 0
+    xmin[i] = v.min  or -assert(bd, "invalid bound (finite value expected)")
+    xmax[i] = v.max  or  assert(bd, "invalid bound (finite value expected)")
+    xstp[i] = v.step or 1e-3
+    if xmin[i] > xmax[i] then xmin[i], xmax[i] = xmax[i], xmin[i] end
   end
 
   -- equality constraints [p] (optional)
@@ -477,6 +550,30 @@ local function exec (self)
   -- stop criteria
   arg[0].maxcall = objective.maxcall or 0
   arg[0].maxtime = objective.maxtime or 0
+
+  -- initial values
+  local init in variables
+  if is_nil(init) then
+    for i=1,n do
+      assertf(not is_nil(variables[i].ini), "missing initial value for variable %d", i)
+--      if is_nil(variables[i].ini) then
+--        local get = variables[i].get -- change ini to get in variables_access to reactivate getters
+--        assertf(is_callable(get), "unable to setup initial value %d (getter expected)", i)
+--        x[i] = get(env)
+--      end
+    end
+  elseif is_callable(init) then
+    init(x)
+  elseif is_iterable(init) then
+    for i=1,n do x[i] = init[i] end
+  else
+    error("unsupported variables initialisation (callable or iterable expected)")
+  end
+
+  -- check bounds
+  for i=1,n do
+    assertf(x[i]>=xmin[i] and x[i]<=xmax[i], "invalid initial value %d (out of bound)", i)
+  end
 
   -- optimize (protected call)
   local status, errmsg = pcall(_C.mad_nlopt, arg)
