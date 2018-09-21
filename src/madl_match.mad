@@ -357,6 +357,40 @@ end
 
 -- getters/setters ------------------------------------------------------------o
 
+local locfmt =
+  "return \\f => local l = 2 \z
+    return \\ => local info = debug.getinfo(l, 'f') \z
+                 if not (info and info.func == f) then \z
+                   l = nil \z
+                   for i=2,1e6 do \z
+                     info = debug.getinfo(i, 'f') \z
+                     if not info then break end \z
+                     if info.func == f then l=i ; break end \z
+                   end ; assert(l, 'local variable not found') \z
+                 end \z
+                 local k, v = debug.getlocal(l, %d) \z
+                 assert(k == '%s', 'invalid local variable getter') \z
+                 return v end, \z
+           \\x =>local info = debug.getinfo(l, 'f') \z
+                 if not (info and info.func == f) then \z
+                   l = nil \z
+                   for i=2,1e6 do \z
+                     info = debug.getinfo(i, 'f') \z
+                     if not info then break end \z
+                     if info.func == f then l=i ; break end \z
+                   end ; assert(l, 'local variable not found') \z
+                 end \z
+                 local k = debug.setlocal(l, %d, x) \z
+                 assert(k == '%s', 'invalid local variable setter') \z
+                 jit.flush() end end"
+local upvfmt =
+  "return \\f (\\ => local k, v = debug.getupvalue(f, %d) \z
+                     assert(k == '%s', 'invalid upvalue getter') \z
+                     return v end, \z
+              \\x => local k = debug.setupvalue(f, %d, x) \z
+                     assert(k == '%s', 'invalid upvalue setter') \z
+                     jit.flush() end)"
+
 local function variables_accessor (variables)
   local loc, upv, ctx = {}, {}, getfenv(3)
   local fun = debug.getinfo(3, 'f').func
@@ -386,60 +420,31 @@ local function variables_accessor (variables)
       if isep > 0 then -- local variable with indirection (safe, use obj)
         fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", str, var, var)
         get, set = assert(loadstring(fmt))()(loc[loc[str]])
-      else             -- local variable with direct access (need stack level and jit flush!)
+      else -- local variable with direct access (need stack level and jit flush!)
         if not (wrn or update or variables[i].set) then
           wrn = true -- jit.flush is a killer, ask for another method
           warn("update of local variables is very slow, use set/update/indirect")
         end
-        fmt = strfmt("return \\f => local l = 2 \z
-                       return \\ => local info = debug.getinfo(l, 'f') \z
-                                    if not (info and info.func == f) then \z
-                                      l = nil \z
-                                      for i=2,1e6 do \z
-                                        info = debug.getinfo(i, 'f') \z
-                                        if not info then break end \z
-                                        if info.func == f then l=i ; break end \z
-                                      end ; assert(l, 'local variable not found') \z
-                                    end \z
-                                    local k, v = debug.getlocal(l, %d) \z
-                                    assert(k == '%s', 'invalid local variable getter') \z
-                                    return v end, \z
-                              \\x =>local info = debug.getinfo(l, 'f') \z
-                                    if not (info and info.func == f) then \z
-                                      l = nil \z
-                                      for i=2,1e6 do \z
-                                        info = debug.getinfo(i, 'f') \z
-                                        if not info then break end \z
-                                        if info.func == f then l=i ; break end \z
-                                      end ; assert(l, 'local variable not found') \z
-                                    end \z
-                                    local k = debug.setlocal(l, %d, x) \z
-                                    assert(k == '%s', 'invalid local variable setter') \z
-                                    jit.flush() end end", loc[str], str, loc[str], str)
+        fmt = strfmt(locfmt, loc[str], str, loc[str], str)
         get, set = assert(loadstring(fmt))()(fun)
       end
     elseif upv[str] then
       if isep > 0 then -- upvalue variable with indirection (safe, use obj)
         fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", str, var, var)
         get, set = assert(loadstring(fmt))()(upv[upv[str]])
-      else             -- upvalue variable with direct access (safe, use fun)
+      else -- upvalue variable with direct access (safe, use fun)
         if not (wrn or update or variables[i].set) then
           wrn = true -- jit.flush is a killer, ask for another method
           warn("update of upvalues is very slow, use set/update/indirect")
         end
-        fmt = strfmt("return \\f (\\ => local k, v = debug.getupvalue(f, %d) \z
-                                        assert(k == '%s', 'invalid upvalue getter') \z
-                                        return v end, \z
-                                 \\x => local k = debug.setupvalue(f, %d, x) \z
-                                        assert(k == '%s', 'invalid upvalue setter') \z
-                                        jit.flush() end)", upv[str], str, upv[str], str)
+        fmt = strfmt(upvfmt, upv[str], str, upv[str], str)
         get, set = assert(loadstring(fmt))()(fun)
       end
     elseif not is_nil(ctx[str]) then -- caller environment (safe, use ctx)
       fmt = strfmt("return \\__ctx (\\ __ctx.%s, \\__x => __ctx.%s=__x end)", var, var)
       get, set = assert(loadstring(fmt))()(ctx)
     else
-      errorf("unable to build setter (variable '%s' not found)", var)
+      errorf("unable to build getter and setter (variable '%s' not found)", var)
     end
     variables[i].get = variables[i].get or get
     variables[i].set = variables[i].set or set
