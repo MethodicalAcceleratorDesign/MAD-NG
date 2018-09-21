@@ -375,69 +375,74 @@ local function variables_accessor (variables)
     upv[k], upv[i] = i, v -- cannot override
   end
 
-  -- build variables setter
+  -- build variables getter/setter
+  local wrn
   for i=1,n do
     local var = variables[i].var
     assertf(is_string(var), "invalid 'var' for variables %d (string expected)", i)
     local str, isep = strsplit(var, '.[')
-    local sgt, sst
+    local fmt, get, set
     if loc[str] then
       if isep > 0 then -- local variable with indirection (safe, use obj)
-        sgt = strfmt("return \\%s\\ %s", str, var)
-        sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
-        variables[i].get = variables[i].get or assert(loadstring(sgt))()(loc[loc[str]])
-        variables[i].set = variables[i].set or assert(loadstring(sst))()(loc[loc[str]])
-      else             -- local variable with direct access (very heavy, need stack level!!)
-                       -- optimization is possible and will be done once the problem is solved
-        -- this code is unstable in MAD: 'set' seems to update _local_ variables
-        --   but deferred expressions don't see the updated values...
-        assert(update or variables[i].set, "update of local variables not yet supported, use set/update/indirect")
-        sgt = strfmt("return \\f\\ => local n \z
-                                      for l=2,1e6 do \z
-                                        if debug.getinfo(l,'f').func == f then n=l ; break end \z
-                                      end ; assert(n, 'local variable not found') \z
-                                      local k,v = debug.getlocal(n, %d) \z
-                                      assert(k == '%s', 'invalid local variable getter') \z
-                                      print('get:', k, v, n) \z
-                                      return v end", loc[str], str)
-        sst = strfmt("return \\f\\x => local n \z
-                                      for l=2,1e6 do \z
-                                        if debug.getinfo(l,'f').func == f then n=l ; break end \z
-                                      end ; assert(n, 'local variable not found') \z
-                                      local k, v = debug.getlocal(n, %d) \z
-                                      assert(k == '%s', 'invalid local variable setter') \z
-                                      print('set:', k, v, n, x) \z
-                                      assert(debug.setlocal(n, %d, x) == '%s','unexpected broken setter') \z
-                                    end", loc[str], str, loc[str], str)
-        variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
-        variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
+        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", str, var, var)
+        get, set = assert(loadstring(fmt))()(loc[loc[str]])
+      else             -- local variable with direct access (need stack level and jit flush!)
+        if not (wrn or update or variables[i].set) then
+          wrn = true -- jit.flush is a killer, ask for another method
+          warn("update of local variables is very slow, use set/update/indirect")
+        end
+        fmt = strfmt("return \\f => local l = 2 \z
+                       return \\ => local info = debug.getinfo(l, 'f') \z
+                                    if not (info and info.func == f) then \z
+                                      l = nil \z
+                                      for i=2,1e6 do \z
+                                        info = debug.getinfo(i, 'f') \z
+                                        if not info then break end \z
+                                        if info.func == f then l=i ; break end \z
+                                      end ; assert(l, 'local variable not found') \z
+                                    end \z
+                                    local k, v = debug.getlocal(l, %d) \z
+                                    assert(k == '%s', 'invalid local variable getter') \z
+                                    return v end, \z
+                              \\x =>local info = debug.getinfo(l, 'f') \z
+                                    if not (info and info.func == f) then \z
+                                      l = nil \z
+                                      for i=2,1e6 do \z
+                                        info = debug.getinfo(i, 'f') \z
+                                        if not info then break end \z
+                                        if info.func == f then l=i ; break end \z
+                                      end ; assert(l, 'local variable not found') \z
+                                    end \z
+                                    local k = debug.setlocal(l, %d, x) \z
+                                    assert(k == '%s', 'invalid local variable setter') \z
+                                    jit.flush() end end", loc[str], str, loc[str], str)
+        get, set = assert(loadstring(fmt))()(fun)
       end
     elseif upv[str] then
       if isep > 0 then -- upvalue variable with indirection (safe, use obj)
-        sgt = strfmt("return \\%s\\ %s", str, var)
-        sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
-        variables[i].get = variables[i].get or assert(loadstring(sgt))()(upv[upv[str]])
-        variables[i].set = variables[i].set or assert(loadstring(sst))()(upv[upv[str]])
+        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", str, var, var)
+        get, set = assert(loadstring(fmt))()(upv[upv[str]])
       else             -- upvalue variable with direct access (safe, use fun)
-        -- this code is unstable in MAD: 'set' seems to update _upvalue_ variables
-        --   but deferred expressions don't see the updated values...
-        assert(update or variables[i].set, "update of upvalue variables not yet supported, use set/update/indirect")
-        sgt = strfmt("local second in MAD.gfunc \z
-                      return \\f\\  second(debug.getupvalue(f,%d))", upv[str])
-        sst = strfmt("return \\f\\x assert(debug.setupvalue(f,%d,x)=='%s', \z
-                      'invalid upvalue variables setter')", upv[str], str)
-        variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
-        variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
+        if not (wrn or update or variables[i].set) then
+          wrn = true -- jit.flush is a killer, ask for another method
+          warn("update of upvalues is very slow, use set/update/indirect")
+        end
+        fmt = strfmt("return \\f (\\ => local k, v = debug.getupvalue(f, %d) \z
+                                        assert(k == '%s', 'invalid upvalue getter') \z
+                                        return v end, \z
+                                 \\x => local k = debug.setupvalue(f, %d, x) \z
+                                        assert(k == '%s', 'invalid upvalue setter') \z
+                                        jit.flush() end)", upv[str], str, upv[str], str)
+        get, set = assert(loadstring(fmt))()(fun)
       end
     elseif not is_nil(ctx[str]) then -- caller environment (safe, use ctx)
-      sgt = strfmt("return \\__ctx\\ __ctx.%s", var)
-      sst = strfmt("return \\__ctx\\__x => __ctx.%s=__x end", var)
-      variables[i].get = variables[i].get or assert(loadstring(sgt))()(ctx)
-      variables[i].set = variables[i].set or assert(loadstring(sst))()(ctx)
+      fmt = strfmt("return \\__ctx (\\ __ctx.%s, \\__x => __ctx.%s=__x end)", var, var)
+      get, set = assert(loadstring(fmt))()(ctx)
     else
       errorf("unable to build setter (variable '%s' not found)", var)
     end
-    -- set ini value
+    variables[i].get = variables[i].get or get
+    variables[i].set = variables[i].set or set
     variables[i].ini = variables[i].ini or variables[i].get()
   end
 end
