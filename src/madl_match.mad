@@ -385,49 +385,60 @@ local function variables_accessor (variables)
       if isep > 0 then -- local variable with indirection (safe, use obj)
         sgt = strfmt("return \\%s\\ %s", str, var)
         sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
-        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(loc[loc[str]])()
---      variables[i].get = variables[i].get or assert(loadstring(sgt))()(loc[loc[str]])
+        variables[i].get = variables[i].get or assert(loadstring(sgt))()(loc[loc[str]])
         variables[i].set = variables[i].set or assert(loadstring(sst))()(loc[loc[str]])
-      else             -- local variable with direct access (dangerous, use stack level!!)
-        sgt = strfmt("local second in MAD.gfunc \z
-                      return \\_,n   second(debug.getlocal(n or 3,%d))", loc[str])
-        sst = strfmt("return \\x,_,n assert(debug.setlocal(n or 6,%d,x)=='%s', \z
-                      'invalid local variable setter')", loc[str], str)
-        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()()
---      variables[i].get = variables[i].get or assert(loadstring(sgt))()
---      variables[i].set = variables[i].set or assert(loadstring(sst))()
--- 'set' seems to update variables, but deferred expressions don't see the updated values...
-        assert(update or variables[i].set,
-               "update of local variables not supported, use set/update/indirect")
+      else             -- local variable with direct access (very heavy, need stack level!!)
+                       -- optimization is possible and will be done once the problem is solved
+        -- this code is unstable in MAD: 'set' seems to update _local_ variables
+        --   but deferred expressions don't see the updated values...
+        assert(update or variables[i].set, "update of local variables not yet supported, use set/update/indirect")
+        sgt = strfmt("return \\f\\ => local n \z
+                                      for l=2,1e6 do \z
+                                        if debug.getinfo(l,'f').func == f then n=l ; break end \z
+                                      end ; assert(n, 'local variable not found') \z
+                                      local k,v = debug.getlocal(n, %d) \z
+                                      assert(k == '%s', 'invalid local variable getter') \z
+                                      print('get:', k, v, n) \z
+                                      return v end", loc[str], str)
+        sst = strfmt("return \\f\\x => local n \z
+                                      for l=2,1e6 do \z
+                                        if debug.getinfo(l,'f').func == f then n=l ; break end \z
+                                      end ; assert(n, 'local variable not found') \z
+                                      local k, v = debug.getlocal(n, %d) \z
+                                      assert(k == '%s', 'invalid local variable setter') \z
+                                      print('set:', k, v, n, x) \z
+                                      assert(debug.setlocal(n, %d, x) == '%s','unexpected broken setter') \z
+                                    end", loc[str], str, loc[str], str)
+        variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
+        variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
       end
     elseif upv[str] then
       if isep > 0 then -- upvalue variable with indirection (safe, use obj)
         sgt = strfmt("return \\%s\\ %s", str, var)
         sst = strfmt("return \\%s\\__x => %s=__x end", str, var)
-        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(upv[upv[str]])()
---      variables[i].get = variables[i].get or assert(loadstring(sgt))()(upv[upv[str]])
+        variables[i].get = variables[i].get or assert(loadstring(sgt))()(upv[upv[str]])
         variables[i].set = variables[i].set or assert(loadstring(sst))()(upv[upv[str]])
       else             -- upvalue variable with direct access (safe, use fun)
+        -- this code is unstable in MAD: 'set' seems to update _upvalue_ variables
+        --   but deferred expressions don't see the updated values...
+        assert(update or variables[i].set, "update of upvalue variables not yet supported, use set/update/indirect")
         sgt = strfmt("local second in MAD.gfunc \z
                       return \\f\\  second(debug.getupvalue(f,%d))", upv[str])
         sst = strfmt("return \\f\\x assert(debug.setupvalue(f,%d,x)=='%s', \z
                       'invalid upvalue variables setter')", upv[str], str)
-        variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(fun)()
---      variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
---      variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
--- 'set' seems to update variables, but deferred expressions don't see the updated values...
-        assert(update or variables[i].set,
-               "update of upvalue variables not supported, use set/update/indirect")
+        variables[i].get = variables[i].get or assert(loadstring(sgt))()(fun)
+        variables[i].set = variables[i].set or assert(loadstring(sst))()(fun)
       end
     elseif not is_nil(ctx[str]) then -- caller environment (safe, use ctx)
       sgt = strfmt("return \\__ctx\\ __ctx.%s", var)
       sst = strfmt("return \\__ctx\\__x => __ctx.%s=__x end", var)
-      variables[i].ini = variables[i].ini or assert(loadstring(sgt))()(ctx)()
---    variables[i].get = variables[i].get or assert(loadstring(sgt))()(ctx)
+      variables[i].get = variables[i].get or assert(loadstring(sgt))()(ctx)
       variables[i].set = variables[i].set or assert(loadstring(sst))()(ctx)
     else
       errorf("unable to build setter (variable '%s' not found)", var)
     end
+    -- set ini value
+    variables[i].ini = variables[i].ini or variables[i].get()
   end
 end
 
@@ -481,7 +492,7 @@ local function exec (self)
   local arg, res = env.__arg, env.__res
 
   -- setup variables getter/setters
-  if is_nil(variables.init) or is_nil(variables.update) then
+  if n > 0 and (is_nil(variables.init) or is_nil(variables.update)) then
     variables_accessor(variables)
   end
 
