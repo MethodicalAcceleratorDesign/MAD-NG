@@ -314,7 +314,9 @@ local function nlopt_functions (env)
       for i=1,n do x[i]=x_[i-1] end
       update(x, env)
     else
+      env.__res.flush = nil
       for i=1,n do variables[i].set(x_[i-1], env) end
+      if env.__res.flush then jit.flush() end
     end
 
     -- call user command
@@ -358,40 +360,40 @@ end
 -- getters/setters ------------------------------------------------------------o
 
 local locfmt =
-  "return \\f => local l = 2 \z
-    return \\ => local info = debug.getinfo(l, 'f') \z
-                 if not (info and info.func == f) then \z
-                   l = nil \z
-                   for i=2,1e6 do \z
-                     info = debug.getinfo(i, 'f') \z
-                     if not info then break end \z
-                     if info.func == f then l=i ; break end \z
-                   end ; assert(l, 'local variable not found') \z
-                 end \z
-                 local k, v = debug.getlocal(l, %d) \z
-                 assert(k == '%s', 'invalid local variable getter') \z
-                 return v end, \z
-          \\x => local info = debug.getinfo(l, 'f') \z
-                 if not (info and info.func == f) then \z
-                   l = nil \z
-                   for i=2,1e6 do \z
-                     info = debug.getinfo(i, 'f') \z
-                     if not info then break end \z
-                     if info.func == f then l=i ; break end \z
-                   end ; assert(l, 'local variable not found') \z
-                 end \z
-                 local k = debug.setlocal(l, %d, x) \z
-                 assert(k == '%s', 'invalid local variable setter') \z
-                 jit.flush() end end"
-local upvfmt =
-  "return \\f (\\ => local k, v = debug.getupvalue(f, %d) \z
-                     assert(k == '%s', 'invalid upvalue getter') \z
+  "return \\f,res => local l = 2 \z
+        return \\ => local info = debug.getinfo(l, 'f') \z
+                     if not (info and info.func == f) then \z
+                       l = nil \z
+                       for i=2,1e6 do \z
+                         info = debug.getinfo(i, 'f') \z
+                         if not info then break end \z
+                         if info.func == f then l=i ; break end \z
+                       end ; assert(l, 'local variable not found') \z
+                     end \z
+                     local k, v = debug.getlocal(l, %d) \z
+                     assert(k == '%s', 'invalid local variable getter') \z
                      return v end, \z
-              \\x => local k = debug.setupvalue(f, %d, x) \z
-                     assert(k == '%s', 'invalid upvalue setter') \z
-                     jit.flush() end)"
+              \\x => local info = debug.getinfo(l, 'f') \z
+                     if not (info and info.func == f) then \z
+                       l = nil \z
+                       for i=2,1e6 do \z
+                         info = debug.getinfo(i, 'f') \z
+                         if not info then break end \z
+                         if info.func == f then l=i ; break end \z
+                       end ; assert(l, 'local variable not found') \z
+                     end \z
+                     local k = debug.setlocal(l, %d, x) \z
+                     assert(k == '%s', 'invalid local variable setter') \z
+                     res.flush = true end end"
+local upvfmt =
+  "return \\f,res (\\ => local k, v = debug.getupvalue(f, %d) \z
+                         assert(k == '%s', 'invalid upvalue getter') \z
+                         return v end, \z
+                  \\x => local k = debug.setupvalue(f, %d, x) \z
+                         assert(k == '%s', 'invalid upvalue setter') \z
+                         res.flush = true end)"
 
-local function variables_accessor (variables)
+local function variables_accessor (variables, res)
   local loc, upv, ctx = {}, {}, getfenv(3)
   local fun = debug.getinfo(3, 'f').func
   local n = #variables
@@ -426,7 +428,7 @@ local function variables_accessor (variables)
           warn("update of local variables is very slow, use set/update/indirect")
         end
         fmt = strfmt(locfmt, loc[str], str, loc[str], str)
-        get, set = assert(loadstring(fmt))()(fun)
+        get, set = assert(loadstring(fmt))()(fun, res)
       end
     elseif upv[str] then
       if isep > 0 then -- upvalue variable with indirection (safe, use obj)
@@ -438,7 +440,7 @@ local function variables_accessor (variables)
           warn("update of upvalues is very slow, use set/update/indirect")
         end
         fmt = strfmt(upvfmt, upv[str], str, upv[str], str)
-        get, set = assert(loadstring(fmt))()(fun)
+        get, set = assert(loadstring(fmt))()(fun, res)
       end
     elseif not is_nil(ctx[str]) then -- caller environment (safe, use ctx)
       fmt = strfmt("return \\__ctx (\\ __ctx.%s, \\__x => __ctx.%s=__x end)", var, var)
@@ -503,7 +505,7 @@ local function exec (self)
 
   -- setup variables getter/setters
   if n > 0 and (is_nil(variables.init) or is_nil(variables.update)) then
-    variables_accessor(variables)
+    variables_accessor(variables, res)
   end
 
   -- problem sizes
