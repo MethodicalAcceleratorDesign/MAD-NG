@@ -40,10 +40,12 @@ void mad_nlopt (nlopt_args_t *a)
   nlopt_set_ftol_abs    (opt, a->ftol);
   // set objective function stop value
   nlopt_set_stopval     (opt, a->fstop);
-  // set variables tolerances
-  nlopt_set_xtol_abs    (opt, a->xtol);
   // set variables intial steps
   nlopt_set_initial_step(opt, a->xstp);
+  // set variables tolerances
+  nlopt_set_xtol_abs    (opt, a->xtol);
+  // set variables relative tolerance
+  nlopt_set_xtol_rel    (opt, a->rtol);
   // set variables boundary constraints
   nlopt_set_lower_bounds(opt, a->xmin);
   nlopt_set_upper_bounds(opt, a->xmax);

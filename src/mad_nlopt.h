@@ -53,8 +53,9 @@ struct nlopt_args {
   // state variables [n] (required)
   ssz_t          n;
   num_t         *x;
-  const num_t   *xtol;
   const num_t   *xstp;
+  const num_t   *xtol;
+  num_t          rtol;
 
   // bound constraints [n] (optional)
   const num_t   *xmin;
