@@ -1,0 +1,180 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Match tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the match module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
+      assertStrContains, assertErrorMsgContains                  in MAD.utest
+
+local beam, sequence, twiss, match, option, filesys              in MAD
+local marker, drift, thin_element                                in MAD.element
+local eps, inf                                                   in MAD.constant
+local sqrt                                                       in MAD.gmath
+
+local refdir = \s -> 'match_ref/'..(s or '')
+local rundir = \s -> 'match_run/'..(s or '')
+
+-- Tests ----------------------------------------------------------------------o
+
+TestMatch = {}
+
+function TestMatch:setUp ()
+  filesys.mkdir(rundir())
+  self.optfmt = option.format
+  option.format = "%-.10g"
+end
+
+function TestMatch:tearDown ()
+  option.format = self.optfmt
+end
+
+-- FODO matching --------------------------------------------------------------o
+
+function TestMatch:testMatchFODO ()
+  local knobs = { k1qf =  0.2828427125,   --  0.3037241107,
+                  k1qd = -0.2828427125, } -- -0.3037241107, }
+
+  local function thinFODO () -- TODO: simplify the fodo
+    local seq
+    local nsl = 1 -- 10 -- for madx row by row compatibility
+    local nth = 10
+    local dl  = 1/nth
+    local mk1 = marker       'mk1' {}
+    local mk2 = marker       'mk2' {}
+    local df1 = drift        'df1' { l=4, nslice=nsl }
+    local df2 = drift        'df2' { l=4, nslice=nsl }
+    local mq1 = thin_element 'mq1' { knl := {0, knobs.k1qf/nth} }
+    local mq2 = thin_element 'mq2' { knl := {0, knobs.k1qd/nth} }
+
+    seq = sequence 'seq' { l=10, refer='entry', -- dir=-1,
+                  mq1 {at=0+dl/2              },
+        (nth/2-1)*mq1 {at=dl    , from='prev' },
+                  mk1 {at=0+dl/2, from='prev' },
+                  mq1 {at=0+dl/2, from='prev' },
+        (nth/2-1)*mq1 {at=dl    , from='prev' },
+  --                df1 {at=1}, -- for madx row by row compatibility
+
+                  mq2 {at=5+dl/2              },
+        (nth/2-1)*mq2 {at=dl    , from='prev' },
+                  mk2 {at=0+dl/2, from='prev' },
+                  mq2 {at=0+dl/2, from='prev' },
+        (nth/2-1)*mq2 {at=dl    , from='prev' },
+  --                df2 {at=6}, -- for madx row by row compatibility
+    }
+    seq.beam  = beam
+
+    return seq
+  end
+
+  local fodo = thinFODO()
+
+  -- match test
+  local status, fmin, ncall = match {
+
+    command := twiss { sequence=fodo, observe=true },
+
+    variables = {
+      { var = 'knobs.k1qf' },
+      { var = 'knobs.k1qd' },
+    },
+
+    equalities = {
+      { var = 'mux', expr = \t -> t.mu1[1] - 0.25 },
+      { var = 'muy', expr = \t -> t.mu2[1] - 0.25 },
+    },
+
+    objective = { method = 'NLOPT_LN_COBYLA', tol = 1e-16, maxcall = 100 },
+  }
+
+--  print('status=', status, 'fmin=', fmin, 'ncall=', ncall)
+--  print('k1_qf=', knobs.k1qf, 'k1_qd=', knobs.k1qd)
+
+  assertEquals      (status    ,  'NLOPT_FTOL_REACHED')
+  assertEquals      (ncall     ,  32)
+  assertAlmostEquals(fmin      ,  6.3877839033e-21, 1e-8)
+  assertAlmostEquals(knobs.k1qf,  0.30372411082735, 1e-8)
+  assertAlmostEquals(knobs.k1qd, -0.30372411097101, 1e-8)
+end
+
+-- Function matching ----------------------------------------------------------o
+
+-- Example from NLOpt tutorial
+
+function TestMatch:testMatchFunc ()
+  local ncall, x1, x2 = 0
+
+  local function myfunc (n, x, grad)
+    ncall = ncall + 1
+    x1, x2 = x[0], x[1]
+
+    if grad then
+      grad[0] = 0.0
+      grad[1] = 0.5 / sqrt(x[1])
+    end
+    return sqrt(x[1])
+  end
+
+  local function myconstraint (m, res, n, x, grad)
+    local a, b = 2, 0
+    if grad then
+      grad[0] = 3 * a * (a*x[0] + b) * (a*x[0] + b)
+      grad[1] = -1.0
+    end
+    res[0] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
+
+    local a, b = -1, 1
+    if grad then
+      grad[2] = 3 * a * (a*x[0] + b) * (a*x[0] + b)
+      grad[3] = -1.0
+    end
+    res[1] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
+  end
+
+  -- match test
+  local status, fmin = match {
+    variables = {
+      { ini = 1.234, min = -inf },
+      { ini = 5.678, min =  0   },
+      tol = 1e-4, -- relative tolerance for all variables
+    },
+
+    inequalities = {
+      { tol = 1e-8 },
+      { tol = 1e-8 },
+      exec = myconstraint,
+    },
+
+    objective = {
+      method = 'NLOPT_LD_MMA', tol = 1e-16, maxcall = 100,
+      exec = myfunc,
+    },
+  }
+
+  assertEquals      (status, 'NLOPT_XTOL_REACHED')
+  assertEquals      (ncall , 11)
+  assertAlmostEquals(fmin  , 0.54433104738223, 1e-8)
+  assertAlmostEquals(x1    , 0.33333333482478, 1e-8)
+  assertAlmostEquals(x2    , 0.29629628914424, 1e-8)
+end
+
+-- end ------------------------------------------------------------------------o

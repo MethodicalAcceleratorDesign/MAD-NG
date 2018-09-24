@@ -1,0 +1,111 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Twiss tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the twiss module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
+      assertStrContains, assertErrorMsgContains                  in MAD.utest
+
+local sequence, beam, track, plot, option, filesys               in MAD
+local fnone, ftrue                                               in MAD.gfunc
+local drift_element, thick_element, thin_element, drift, marker  in MAD.element
+local eps, pi                                                    in MAD.constant
+local openfile                                                   in MAD.utility
+
+local refdir = \s -> 'twiss_ref/'..(s or '')
+local rundir = \s -> 'twiss_run/'..(s or '')
+
+-- helpers --------------------------------------------------------------------o
+
+local doplot = false
+
+if doplot then
+  MAD.atexit(MAD.utility.pause, true)
+end
+
+local function plottw (mtbl, seq)
+  if not doplot then return end
+  MAD.plot { table=mtbl, title=mtbl.title, sequence=seq,
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s={'mu1'   ,'mu2'   } } }
+end
+
+-- Tests ----------------------------------------------------------------------o
+
+TestTwiss = {}
+
+function TestTwiss:setUp ()
+  filesys.mkdir(rundir())
+  self.optfmt = option.format
+  option.format = "%-.10g"
+end
+
+function TestTwiss:tearDown ()
+  option.format = self.optfmt
+end
+
+function TestTwiss:testTwissThinFODO ()
+  local nsl = 1 -- 10 -- for madx row by row compatibility
+  local nth = 10
+  local dl  = 1/nth
+  local X0  = { 0, 1e-6, 0, 5e-7, 0, 0 }
+  local k1l = 0.3037241107
+  local mk1 = marker       'mk1' {}
+  local mk2 = marker       'mk2' {}
+  local df1 = drift        'df1' { l=4, nslice=nsl }
+  local df2 = drift        'df2' { l=4, nslice=nsl }
+  local mq1 = thin_element 'mq1' { knl := {0,  k1l/nth} }
+  local mq2 = thin_element 'mq2' { knl := {0, -k1l/nth} }
+  local seq = sequence     'seq' { l=10, refer='entry', -- dir=-1,
+                mq1 {at=0+dl/2              },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+                mk1 {at=0+dl/2, from='prev' },
+                mq1 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+--                df1 {at=1}, -- for madx row by row compatibility
+
+                mq2 {at=5+dl/2              },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+                mk2 {at=0+dl/2, from='prev' },
+                mq2 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+--                df2 {at=6}, -- for madx row by row compatibility
+  }
+
+  seq:dumpseq()
+
+  local mtbl, mflw = MAD.twiss{sequence=seq, beam=beam, X0=X0,
+                              -- atslice=ftrue} -- for madx row by row compatibility
+                               atentry=\e -> e.is_thin, atslice=MAD.symint.atbody}
+  plottw(mtbl, seq)
+
+  mtbl:write(rundir('thinfodotwiss'))
+
+  -- TODO: 6D case
+  assertEquals(rank, 4)
+  assertEquals(iter, 2)
+  assertEquals(type, "4D")
+  assertAllAlmostEquals(X:totable(), 0, eps)
+end
+
+-- end ------------------------------------------------------------------------o
