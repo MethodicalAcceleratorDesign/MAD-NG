@@ -1,0 +1,130 @@
+option, -info ;
+
+beam ;
+
+system, "mkdir -p madx_run" ;
+
+l.mq   = 1 ;
+l.cell = 10 ;
+u.cell = pi/2 ;
+f.cell = l.cell/(4*sin(u.cell/2)) ;
+k.cell = 1/(f.cell * l.mq) ;
+k1.qf  =  k.cell ;
+k1.qd  = -k.cell ;
+
+! class
+mq: quadrupole, l=l.mq ;
+
+! sequence
+cell: sequence, l=l.cell ;
+mq1: mq, at=l.mq/2         , k1:=k1.qf ;
+mq2: mq, at=l.cell/2+l.mq/2, k1:=k1.qd ;
+endsequence ;
+
+! check values
+value, k1.qf, k1.qd, k1.qf*beam->brho ;
+
+! match thick lens
+use, sequence=cell ;
+match, sequence=cell ;
+  ! search for quads strengths
+  vary, name = k1.qf, step = 1e-5 ;
+  vary, name = k1.qd, step = 1e-5 ;
+  ! for cell with phase advance of pi/2 (specified in 2*pi unit!)
+  constraint range = #e, mux = u.cell/(2*pi) ;
+  constraint, range = #e, muy = u.cell/(2*pi) ;
+  lmdif, calls = 20, tolerance = 1e-16 ;
+endmatch ;
+
+! check values
+value, k1.qf, k1.qd, k1.qf*beam->brho ;
+
+! save thick fodo
+use , sequence=cell;
+save, sequence=cell, file='madx_run/cell_thick.seq';
+
+! makethin
+use, sequence=cell;
+select, flag=makethin, class=mq, slice=10 ;
+makethin, sequence=cell, style=simple ; // style=teapot ;
+
+! match thin lens
+k1.qf  =  k.cell ;
+k1.qd  = -k.cell ;
+
+value, k1.qf, k1.qd;
+
+use, sequence=cell ;
+match, sequence=cell ;
+  ! search for quads strengths
+  vary, name = k1.qf, step = 1e-5 ;
+  vary, name = k1.qd, step = 1e-5 ;
+  ! for cell with phase advance of pi/2 (specified in 2*pi unit!)
+  constraint range = #e, mux = u.cell/(2*pi) ;
+  constraint, range = #e, muy = u.cell/(2*pi) ;
+  lmdif, calls = 20, tolerance = 1e-16 ;
+endmatch ;
+
+! check values
+value, k1.qf, k1.qd, k1.qf*beam->brho ;
+
+! install marker for extra 'observe' points
+mk: marker ;
+select, flag=seqedit, pattern=\.\. ;
+seqedit, sequence=cell ;
+flatten ;
+install, element=mk, at=0, from=selected ;
+flatten ;
+endedit ;
+
+! save thin fodo
+use , sequence=cell ;
+save, sequence=cell, file='madx_run/cell_thin.seq';
+
+value, k1.qf, k1.qd ;
+value, mq1..1->k1l, mq2..1->k1l ;
+
+obspnt(nam, id): macro = { observe, place=namid;   } ;
+obscnt(nam, id): macro = { observe, place=nam[id]; } ;
+
+! track
+use, sequence=cell ;
+track, onepass, onetable, dump, file="madx_run/track_thinfodo." ;
+start, x=0, px=1e-6, y=0, py=1e-8, t=0, pt=0;
+observe, place=#s ;
+
+observe, place=mq1 ;
+i=0; while(i<10) { i=i+1; exec, obspnt(mq1..,$i); }
+
+observe, place=mq2 ;
+i=0; while(i<10) { i=i+1; exec, obspnt(mq2..,$i); }
+
+! markers
+i=0; while(i<20) { i=i+1; exec, obscnt(mk,$i); }
+
+observe, place=#e ;
+run, turns=1 ;
+endtrack ;
+
+! twiss
+use, sequence=cell ;
+select, flag=twiss, clear;
+select, flag=twiss, column={name, keyword, s, l, x, px, y, py, t, pt, betx, alfx, mux, bety, alfy, muy,
+  mu1, mu2, mu3,
+  beta11, beta12, beta13,
+  beta21, beta22, beta23,
+  beta31, beta32, beta33,
+  alfa11, alfa12, alfa13,
+  alfa21, alfa22, alfa23,
+  alfa31, alfa32, alfa33,
+  gama11, gama12, gama13,
+  gama21, gama22, gama23,
+  gama31, gama32, gama33,
+ };
+
+twiss, file='madx_run/dynmap_thinfodotwiss.tfs',
+       // x=0, px=1e-6, y=0, py=1e-8, t=0, pt=0, // betx=1, bety=1,
+       rmatrix, ripken,
+       sectormap, sectoracc, sectorfile='madx_run/dynmap_thinfodotwiss_secmap.tfs' ;
+
+plot, haxis=s, vaxis={betx,bety}, interpolate;
