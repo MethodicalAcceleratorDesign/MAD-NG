@@ -1,0 +1,111 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Aperture module
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a catalog of aperture models used to check particle positions
+    during tracking (i.e. track). maps have the following calling convention:
+      apermap(elm, map, len_weight)
+  - Provide an aperture margin estimate n1 (TODO)
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- locals ---------------------------------------------------------------------o
+
+local abs, max, sin, cos in math
+local is_tpsa            in MAD.typeid
+
+-- aperture models ------------------------------------------------------------o
+
+local model = {
+  circle      = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
+  ellipse     = \x,y,ap -> ((x/ap[1])^2 + (y/ap[2])^2 >= 1),
+
+  bbox        = \x,y,ap -> x >= ap[1] or y >= ap[1],
+  rectangle   = \x,y,ap -> x >= ap[1] or y >= ap[2],
+
+  rectcircle  = \x,y,ap -> x >= ap[1] or y >= ap[2] or x^2 + y^2 >= ap[3]^2,
+  rectellipse = \x,y,ap -> x >= ap[1] or y >= ap[2] or (x/ap[3])^2 + (y/ap[4])^2 >= 1,
+
+  racetrack   = \x,y,ap -> x >= ap[1] or y >= ap[2] or
+                          (x >= ap[1]-ap[3] and y >= ap[2]-ap[4] and
+                           ((x-(ap[1]-ap[3]))/ap[3])^2 +
+                           ((y-(ap[2]-ap[4]))/ap[4])^2 >= 1),
+
+  octagon     = \x,y,ap -> x >= ap[1] or y >= ap[2] or
+                           y >= (x-(ap[1]-ap[3]))*ap[4]/ap[3] + ap[2],
+}
+
+-- aperture check -------------------------------------------------------------o
+
+local function lostpar (m, i, lw, slc)
+  local eidx, npar, spos, ds, relative in m
+
+  lw = relative and lw*max(0,min(1,slc)) or slc<0 and 1 or lw*slc
+  local dsw = ds*lw
+
+  m[i].eidx, m[i].spos, m[i].ds = eidx, spos+dsw, dsw
+  m[i], m[npar] = m[npar], m[i] -- swap with last tracked particle
+  m.npar = npar - 1
+  return npar-1
+end
+
+local function checkaper (elm, m, lw, slc)
+  local aper, npar, tdir in m
+  local kind, tilt, dx, dy in aper
+  local chkap = model[kind]
+
+  local ca, sa = 1, 0
+  if tilt ~= 0 then
+    ca, sa = cos(tilt*tdir), sin(tilt*tdir)
+  end
+
+  local i = 1
+  while i <= npar do
+    local x, y in m[i]
+
+    if is_tpsa(x) then -- for now, explicitly check for tpsa...
+      x, y = x:get0(), y:get0()
+    end
+
+    local nx = abs( ca*(x-dx) + sa*(y-dy))
+    local ny = abs(-sa*(x-dx) + ca*(y-dy))
+
+    if chkap(nx,ny,aper) then
+      npar = lostpar(m, i, lw, slc)
+    else
+      i = i + 1
+    end
+  end
+end
+
+M.circle      = checkaper
+M.ellipse     = checkaper
+
+M.bbox        = checkaper
+M.rectangle   = checkaper
+
+M.rectcircle  = checkaper
+M.rectellipse = checkaper
+
+M.racetrack   = checkaper
+M.octagon     = checkaper
+
+-- end ------------------------------------------------------------------------o
+return { aperture = M }
