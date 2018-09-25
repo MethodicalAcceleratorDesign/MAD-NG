@@ -68,7 +68,7 @@ void  mad_cnum_mod_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *
 void  mad_cnum_pow_r   (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
 void  mad_cnum_powi_r  (num_t x_re, num_t x_im, int   n,                cnum_t *r);
 
-// --- Faddeeva ---------------------------------------------------------------o
+// --- Faddeeva based functions -----------------------------------------------o
 
 num_t   mad_num_erf    (num_t x);
 num_t   mad_num_erfc   (num_t x);

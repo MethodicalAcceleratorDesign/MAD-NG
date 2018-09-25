@@ -108,7 +108,7 @@ void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 
 // --- Faddeeva function and variants from MIT --------------------------------o
 
-#include "Faddeeva.h"
+#include "mad_erfw.h"
 
 num_t  mad_num_erf    (num_t x) { return Faddeeva_erf_re   (x); }
 num_t  mad_num_erfc   (num_t x) { return Faddeeva_erfc_re  (x); }
