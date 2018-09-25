@@ -64,3 +64,9 @@ void mad_nlopt (nlopt_args_t *a)
   // destroy optimizer
   nlopt_destroy(opt);
 }
+
+void mad_nlopt_srand (u64_t seed)
+{
+  nlopt_srand(seed);
+  nlopt_srand_time();
+}
