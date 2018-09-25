@@ -216,7 +216,7 @@ static inline double my_copysign(double x, double y) { return x<0 != y<0 ? -x : 
 
 #else // !__cplusplus, i.e. pure C (requires C99 features)
 
-#  include "Faddeeva.h"
+#  include "mad_erfw.h"
 
 #  define _GNU_SOURCE // enable GNU libc NAN extension if possible
 
