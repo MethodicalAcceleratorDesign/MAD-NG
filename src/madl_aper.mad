@@ -30,15 +30,16 @@ local M = {}
 
 local abs, max, sin, cos in math
 local is_tpsa            in MAD.typeid
+local errorf             in MAD.utility
 
 -- aperture models ------------------------------------------------------------o
 
-local model = {
-  circle      = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
-  ellipse     = \x,y,ap -> ((x/ap[1])^2 + (y/ap[2])^2 >= 1),
-
+local apmodel = {
   bbox        = \x,y,ap -> x >= ap[1] or y >= ap[1],
   rectangle   = \x,y,ap -> x >= ap[1] or y >= ap[2],
+
+  circle      = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
+  ellipse     = \x,y,ap -> ((x/ap[1])^2 + (y/ap[2])^2 >= 1),
 
   rectcircle  = \x,y,ap -> x >= ap[1] or y >= ap[2] or x^2 + y^2 >= ap[3]^2,
   rectellipse = \x,y,ap -> x >= ap[1] or y >= ap[2] or (x/ap[3])^2 + (y/ap[4])^2 >= 1,
@@ -66,46 +67,61 @@ local function lostpar (m, i, lw, slc)
   return npar-1
 end
 
-local function checkaper (elm, m, lw, slc)
-  local aper, npar, tdir in m
-  local kind, tilt, dx, dy in aper
-  local chkap = model[kind]
+local function checkaper (chkap)
+  return \elm, m, lw, slc =>
+    local aperture in elm
+    local npar, tdir in m
+    local tilt, offset in aperture
 
-  local ca, sa = 1, 0
-  if tilt ~= 0 then
-    ca, sa = cos(tilt*tdir), sin(tilt*tdir)
-  end
-
-  local i = 1
-  while i <= npar do
-    local x, y in m[i]
-
-    if is_tpsa(x) then -- for now, explicitly check for tpsa...
-      x, y = x:get0(), y:get0()
+    local ca, sa = 1, 0
+    if tilt and tilt ~= 0 then
+      ca, sa = cos(tilt*tdir), sin(tilt*tdir)
     end
 
-    local nx = abs( ca*(x-dx) + sa*(y-dy))
-    local ny = abs(-sa*(x-dx) + ca*(y-dy))
-
-    if chkap(nx,ny,aper) then
-      npar = lostpar(m, i, lw, slc)
-    else
-      i = i + 1
+    local dx, dy = 0, 0
+    if offset then
+      dx, dy = offset[1], offset[2]
     end
+
+    local i = 1
+    while i <= npar do
+      local x, y in m[i]
+
+      if is_tpsa(x) then -- check for tpsa
+        x, y = x:get0(), y:get0()
+      end
+
+      local nx = abs( ca*(x-dx) + sa*(y-dy))
+      local ny = abs(-sa*(x-dx) + ca*(y-dy))
+
+      if chkap(nx,ny,aperture) then
+        npar = lostpar(m, i, lw, slc)
+      else
+        i = i + 1
+      end
+    end
+    return true
   end
 end
 
-M.circle      = checkaper
-M.ellipse     = checkaper
+local apcheck = setmetatable({
+  bbox        = checkaper(apmodel.bbox       ),
+  rectangle   = checkaper(apmodel.rectangle  ),
+  circle      = checkaper(apmodel.circle     ),
+  ellipse     = checkaper(apmodel.ellipse    ),
+  rectcircle  = checkaper(apmodel.rectcircle ),
+  rectellipse = checkaper(apmodel.rectellipse),
+  racetrack   = checkaper(apmodel.racetrack  ),
+  octagon     = checkaper(apmodel.octagon    ),
+}, {
+  __index     = \_,k -> errorf("unknown kind of aperture '%s'", tostring(k))
+})
 
-M.bbox        = checkaper
-M.rectangle   = checkaper
+for k,v in pairs(apcheck) do M[k] = v end
 
-M.rectcircle  = checkaper
-M.rectellipse = checkaper
-
-M.racetrack   = checkaper
-M.octagon     = checkaper
+function M.apercheck (elm, m, lw, slc)
+  return apcheck[elm.aperture.kind](elm, m, lw, slc)
+end
 
 -- end ------------------------------------------------------------------------o
 return { aperture = M }
