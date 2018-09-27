@@ -241,18 +241,6 @@ local function save_obs (elm, mflw, lw, slc)
   end
 end
 
-local act2str = {
-  [fnone   ] = 'fnone'   , [ftrue   ] = 'ftrue'   , [ffalse  ] = 'ffalse',
-  [save_dat] = 'save_all', [save_imp] = 'save_imp', [save_obs] = 'save_obs',
-}
-
-local function debug_action(atentry, atslice, atexit)
-  local estr = act2str[atentry] or 'user defined'
-  local sstr = act2str[atslice] or 'user defined'
-  local xstr = act2str[atexit ] or 'user defined'
-  trace(2, "track actions: atentry=%s, atslice=%s, atexit=%s", estr, sstr, xstr)
-end
-
 local header = {
   'direction', 'observe', 'implicit', 'relative',
 }
@@ -275,6 +263,26 @@ local function make_mtable (self, obs)
     'slc', 'turn', 'tdir',     -- t-direction of the tracking: sdir * seq.dir
     mapsave and 'damap' or nil -- optional column to save the damap
   }
+end
+
+-- trace track internal actions -----------------------------------------------o
+
+local act2str = {
+  [fnone   ] = 'fnone'   , [ftrue   ] = 'ftrue'   , [ffalse  ] = 'ffalse',
+  [save_dat] = 'save_all', [save_imp] = 'save_imp', [save_obs] = 'save_obs',
+}
+
+local function trace_action (mflw)
+  local atentry, atslice, atexit, ataper, atsave in mflw
+
+  local estr = act2str[atentry] or 'usrdef'
+  local sstr = act2str[atslice] or 'usrdef'
+  local xstr = act2str[atexit ] or 'usrdef'
+  local astr = act2str[ataper ] or 'usrdef'
+  local ostr = act2str[atsave ] or 'usrdef'
+
+  trace(2, "track actions: atentry=%s, atslice=%s, atexit=%s, ataper=%s, atsave=%s",
+           estr, sstr, xstr, astr, ostr)
 end
 
 -- track mflow ----------------------------------------------------------------o
@@ -342,7 +350,7 @@ local function make_mflow (self)
     end
   end
 
-  -- chain atslice for aperture check (if not disabled)
+  -- chain ataper with atslice for aperture check (if not disabled)
   if ataper ~= fnone and ataper ~= ffalse then
     ataper  = ataper  == ftrue and apercheck or achain(ataper, apercheck)
     atslice = (atslice == fnone or atslice == ftrue) and ataper
@@ -373,18 +381,19 @@ local function make_mflow (self)
   local mflw = table.new(npar,50)
 
   for i=1,npar do
-    mflw[i] = X0[i] -- default is to reuse!
+    local X0i = X0[i]
+    mflw[i] = X0i -- default is to reuse!
 
-    if is_damap(X0[i]) then -- damap are mappable (i.e. must be first)
-      mflw[i].id = X0[i].id or i
-    elseif is_mappable(X0[i]) then -- access by indexes first for vectors
-      local id =             X0[i].id or i
-      local x  = X0[i][1] or X0[i].x  or 0
-      local px = X0[i][2] or X0[i].px or 0
-      local y  = X0[i][3] or X0[i].y  or 0
-      local py = X0[i][4] or X0[i].py or 0
-      local t  = X0[i][5] or X0[i].t  or 0
-      local pt = X0[i][6] or X0[i].pt or 0
+    if is_damap(X0i) then -- damap are mappable (i.e. must be first)
+      mflw[i].id = X0i.id or i
+    elseif is_mappable(X0i) then -- access by indexes first for vectors
+      local id =           X0i.id or i
+      local x  = X0i[1] or X0i.x  or 0
+      local px = X0i[2] or X0i.px or 0
+      local y  = X0i[3] or X0i.y  or 0
+      local py = X0i[4] or X0i.py or 0
+      local t  = X0i[5] or X0i.t  or 0
+      local pt = X0i[6] or X0i.pt or 0
       if mapdef then -- replace: damap required from coordinates (and R matrix)
         mflw[i] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
         mflw[i].id = id
@@ -484,9 +493,7 @@ local function exec (self)
   local ne = #sequ
 
   -- debug actions setup
-  if MAD.option.debug >= 2 then
-    debug_action(atentry, mflw.atslice, atexit)
-  end
+  if MAD.option.debug >= 2 then trace_action(mflw) end
 
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
