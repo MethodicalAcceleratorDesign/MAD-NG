@@ -24,61 +24,50 @@
 -- locals ---------------------------------------------------------------------o
 
 local matrix, command, track, cofind                              in MAD
-local normal, optfun, betablk, has_dp, ofname                     in MAD.gphys
-local fnone, bind1st                                              in MAD.gfunc
-local is_true, is_damap                                           in MAD.typeid
-local tblcpy                                                      in MAD.utility
+local normal, optfun, phasadv, betablk, has_dp, ofname, ofcname   in MAD.gphys
+local fnone, ffalse, ftrue, achain                                in MAD.gfunc
+local is_nil, is_true, is_mappable, is_damap                      in MAD.typeid
+local tblcpy, assertf                                             in MAD.utility
 local abs                                                         in math
 
 -- twiss mtable ---------------------------------------------------------------o
 
 local function twiss_sum (mflw)
-  -- TODO!!
+  local mtbl in mflw
+  local n = #mtbl
 
-  -- to remove
-  -- print("show optfun0")
-  -- show(optfun0)
+  -- tunes (for now...)
+  mtbl.q1 = mtbl.mu1[n]
+  mtbl.q2 = mtbl.mu2[n]
+  mtbl.q3 = mtbl.mu3[n]
 
-  -- dump results
---  if true then
---    local printf in MAD.utility
---    local q1 , q2 , q3  = 0, 0, 0
---    local mu1, mu2, mu3 = 0, 0, 0
---    for i=1,#mtbl do
---      local A = mtbl[i].damap:get1()
---      local optfun = optfun(A, R)
---      q1 = q1 + optfun.mu1 - mu1
---      q2 = q2 + optfun.mu2 - mu2
---      q3 = q3 + optfun.mu3 - mu3
---      mu1, mu2, mu3 = optfun.mu1, optfun.mu2, optfun.mu3
---      printf('mu1=%14.8e, mu2=%14.8e\n', optfun.mu1, optfun.mu2)
---      printf('q1 =%14.8e, q2 =%14.8e\n', q1, q2)
---    end
---    show(optfun0)
---  end
+  -- TODO: momentum compaction factor
+  -- TODO: gramma transition
+  -- TODO: chromaticity
+  -- TODO: chromatic functions
 end
 
-local function save_twiss (save, elm, mflw, lw, slc)
-  local mtbl, npar, R in mflw
+local function save_twiss (elm, mflw, lw, slc)
+  local mtbl, npar, R, ofun, ocpl, onam in mflw
   local n = #mtbl-npar
 
   for i=1,npar do
     local par = mflw[i]
-    if is_damap(par) then -- skip particles (?)
-      local A = par:get1()
-      local ofun = optfun(A, mflw.optfun)
-      for _,k in ipairs(ofname) do
-        mtbl[k][n+i] = ofun[k]
-      end
+    assertf(is_damap(par), "unexpected particle %d (damap expected)", i)
+
+    local A = par:get1()
+    optfun(A, ofun, ocpl)
+    for _,k in ipairs(onam) do
+      mtbl[k][n+i] = ofun[k]
     end
   end
-  -- user action
-  save(elm, mflw, lw, slc)
+
+  return true
 end
 
 -- close orbit ----------------------------------------------------------------o
 
-local function twiss_cofind (self)
+local function twiss_cofind (self, X0, R0)
 
   -- retrieve closed orbit
   local X, R, rnk, typ, itr = cofind 'twcofind' {
@@ -89,10 +78,10 @@ local function twiss_cofind (self)
     dir      = self.dir,
 
     s0       = self.s0,
-    X0       = self.X0,
+    X0       = X0,
 
     mapdef   = self.comapdef,
-    R0       = self.R0,
+    R0       = R0,
 
     nturn    = self.nturn,
     nslice   = self.nslice,
@@ -123,13 +112,16 @@ end
 
 -- init track -----------------------------------------------------------------o
 
-local function twiss_track0 (self, X, R, A, ofun0)
+local function twiss_track0 (self, X0, R0, ofun0)
   local mapdef, save in self
   local atsave  = self:var_raw 'atsave' -- prevent evaluation
 
   -- wrap atsave
   if save then
-    atsave = bind1st(save_twiss, atsave or track:var_raw 'atsave')
+    if atsave ~= fnone and atsave ~= ffalse then
+      atsave = (atsave == nil or atsave == ftrue) and save_twiss
+                                                  or  achain(save_twiss, atsave)
+    end
   end
 
   local mtbl, mflw = track 'twtrack0' {
@@ -140,11 +132,11 @@ local function twiss_track0 (self, X, R, A, ofun0)
     dir       = self.dir,
 
     s0        = self.s0,
-    X0        = X,
+    X0        = X0,
 
     mapdef    = is_true(mapdef) and {xy=2} or mapdef,
     mapsave   = self.mapsave,
-    R0        = A,
+    R0        = R0,
 
     nturn     = self.nturn,
     nstep     = 0,               -- do only initialisation
@@ -156,7 +148,7 @@ local function twiss_track0 (self, X, R, A, ofun0)
     title     = self.title,
     implicit  = self.implicit,
     relative  = self.relative,
-    observe   = self.observe,
+    observe   = 0,               -- always save at each elements (at least)
 
     atentry   = self:var_raw 'atentry', -- prevent evaluation
     atslice   = self:var_raw 'atslice',
@@ -169,60 +161,85 @@ local function twiss_track0 (self, X, R, A, ofun0)
 
   -- extend mflw and mtbl
   if save then
-    mflw.optfun0 = ofun0
-    mflw.optfun  = tblcpy(ofun0[1] or ofun0)
+    mflw.ofun = ofun0
+    mflw.ocpl = self.coupling
+    mflw.onam = mflw.ocpl and ofcname or ofname
     -- add twiss columns and change table type
-    for _,k in ipairs(ofname) do mtbl:addcol(k,{}) end
+    for _,k in ipairs(mflw.onam) do mtbl:addcol(k,{}) end
     mtbl.type  = 'twiss'
   end
 
   return mflw
 end
 
+-- trace twiss normal form ----------------------------------------------------o
+
+local function trace_normal (R, A)
+  local fmt = MAD.option.format
+  MAD.option.format = "% 10.5f"
+  R :print('R1') ; A :print('A1')
+  local R2, A2 = betablk(ofun0)
+  R2:print('R2') ; A2:print('A2')
+  MAD.option.format = fmt
+end
+
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  -- TODO: process multiple maps/particles in //
   local X0, R0, beta0 in self
-  local X, R, rnk
 
-  -- convert beta block into R0 matrix
-  if beta0 then R0 = betablk(beta0) end
-
-  -- find closed orbit or use initial conditions
-  if R0 then
-    X, R, rnk = X0, R0, has_dp(R0, self.codptol) and 6 or 4
-  else
-    X, R, rnk = twiss_cofind(self)
+  -- validate initial conditions
+  if is_nil(X0) then X0 = track.X0 end
+  assert(is_mappable(X0), "invalid X0 (mappable expected)")
+  if not is_mappable(X0[1]) then
+    X0, R0, beta0 = {X0}, {R0}, {beta0}
   end
 
-  -- 4D case
-  if rnk == 4 then R = R:getsub(1..4,1..4) end
+  local npar = #X0
+  local Xn, An, ofun0 = table.new(npar,0), table.new(npar,0)
 
-  -- get linear normal form A from one-turn map R
-  local A, V, W, info = normal(R)
+  for i=1,npar do
+    local X0i, R0i = X0[i], R0[i]
 
-  -- get initial linear optical functions and phase advances
-  local ofun0 = optfun(A, nil, W)
+    -- precedence of initial conditions
+    if beta0[i] then
+      R0i = betablk(beta0[i])
+    elseif is_damap(X0[i]) then
+      R0i = X0[i]:get1()
+      X0i = X0[i]:get0()
+    end
 
-  -- (re)extend to 6D if needed
-  if rnk == 4 then
-    R = matrix(6):eye():setsub(1..4, 1..4, R)
-    A = matrix(6):eye():setsub(1..4, 1..4, A)
+    -- find closed orbit or use initial conditions
+    local X, R, rnk
+
+    if R0i then
+      X, R, rnk = X0i, R0i, has_dp(R0i, self.codptol) and 6 or 4
+    else
+      X, R, rnk = twiss_cofind(self, X0i, R0i)
+    end
+
+    -- 4D case
+    if rnk == 4 then R = R:getsub(1..4,1..4) end
+
+    -- get linear normal form A from one-turn map R
+    local A, V, W, info = normal(R)
+
+    -- get initial linear optical functions and phase advances
+    ofun0 = phasadv(W, optfun(A, nil, self.coupling))
+
+    -- TODO: high order normal form
+
+    -- debug normal form
+    if MAD.option.debug >= 2 then trace_normal(R, A) end
+
+    -- back to 6D
+    if rnk == 4 then A = matrix(6):eye():setsub(1..4, 1..4, A) end
+
+    Xn[i], An[i] = X, A
   end
 
-  -- DEBUG!
-  if false then
-    local fmt = MAD.option.format
-    MAD.option.format = "% 10.5f"
-    R :print('R1') ; A :print('A1')
-    local R2, A2 = betablk(ofun0)
-    R2:print('R2') ; A2:print('A2')
-    MAD.option.format = fmt
-  end
-
-  -- init track with normal form A and compute optfun0
-  return twiss_track0(self, X, R, A, ofun0)
+  -- init track with normal form A and compute optfun
+  return twiss_track0(self, Xn, An, ofun0)
 end
 
 -- twiss command --------------------------------------------------------------o
@@ -242,9 +259,8 @@ local function exec (self)
 
   mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
 
-  if ei == nil then -- TODO
-    -- fill twiss summary
-    -- twiss_sum(mflw)
+  if ei == nil and mtbl ~= nil then
+    twiss_sum(mflw)
   end
 
   return mtbl, mflw, ei
@@ -265,7 +281,9 @@ local twiss = command 'twiss' {
   mapdef=true,       -- always use damap formalism (true => {xy=2})       (trck)
   mapsave=nil,       -- save damap in the mtable                          (trck)
   R0=nil,            -- initial R matrix (compagnion of X0)               (trck)
+
   beta0=nil,         -- initial beta0 block to build uncoupled R0         (twss)
+  coupling=nil,      -- compute optfun for non-diagonal blocks            (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track                       (trck)
@@ -277,7 +295,7 @@ local twiss = command 'twiss' {
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   implicit=true,     -- save also in implicit elements                    (mtbl)
   relative=false,    -- save length of slices instead from element start  (mtbl)
-  observe=false,     -- save only in observed elements (every n turns)    (mtbl)
+  observe=_na,       -- N/A                                               (mtbl)
 
   atentry=nil,       -- action to call when entering an element           (trck)
   atslice=nil,       -- action to call after each element slices          (trck)
