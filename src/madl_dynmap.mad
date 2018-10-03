@@ -58,17 +58,16 @@ local function bxby (nmul, knl, ksl, x, y)
   local bx, by, byt = 0, 0
 
   for i=nmul,1,-1 do
-    byt = by*x - bx*y + knl[i]/fact(i-1)
-    bx  = by*y + bx*x + ksl[i]/fact(i-1)
+    byt = by*x - bx*y + knl[i] -- /fact(i-1) -- done when copied to mflw
+    bx  = by*y + bx*x + ksl[i] -- /fact(i-1) -- done when copied to mflw
     by  = byt
   end
-
   return bx, by
 end
 
--- TODO: polar_bxby (nmul, knl, ksl, h, x, y) using TPSA
+-- TODO: polar_bxby (nmul, knl, ksl, h, x, y) using TPSA (?)
 
--- patches (lw_ == 0 disable the patch) ---------------------------------------o
+-- patches (lw_ == 0 disable the patches) -------------------------------------o
 
 -- X-rotation (pitch)
 
@@ -244,6 +243,8 @@ function M.drift (elm, m, lw) -- [DRIFT]                                        
   local sdir, npar, beam, T in m
   l = l*sdir
 
+  mdump('drift-0:', l, m)
+
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
     local _beta = 1/(m[i].beam or beam).beta
@@ -253,11 +254,16 @@ function M.drift (elm, m, lw) -- [DRIFT]                                        
     m[i].y = y + py*l_pz
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
   end
+
+  mdump('drift-1:', l, m)
 end
 
 function M.kick (elm, m, lw) -- [KICKEX(DKD)]                                   checked vs PTC code
-  local tdir, npar, beam, nmul, knl, ksl in m
-  if nmul == 0 then return end
+  if m.nmul == 0 then return end
+
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local l = el*sdir
+  mdump('kick-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py in m[i]
@@ -267,6 +273,8 @@ function M.kick (elm, m, lw) -- [KICKEX(DKD)]                                   
     m[i].px = px - (chg*tdir*lw)*by
     m[i].py = py + (chg*tdir*lw)*bx
   end
+
+  mdump('kick-1:', l, m)
 end
 
 -- angle=0, k0~=0, k1=0 [INTER_STREX] -----------------------------------------o
@@ -405,11 +413,10 @@ end
 -- extra maps for SABAC integrators -------------------------------------------o
 
 function M.drift_sabac (elm, m, lw)
-  print('drift_sabac', elm.name, lw)
-  local el, sdir, npar, beam in m
+  local el, sdir, npar, beam, T in m
   local l = el*sdir*lw
 
-  mdump('quad_drift_sabac-0:', l, m)
+  mdump('drift_sabac-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -421,47 +428,28 @@ function M.drift_sabac (elm, m, lw)
     m[i].t = t - 0.5*(px^2+py^2)*l_dp^2/l
   end
 
-  mdump('quad_drift_sabac-1:', l, m)
+  mdump('drift_sabac-1:', l, m)
 end
-
-function M.kick_sabac (elm, m, lw)
-  local el, sdir, tdir, npar, nmul, knl, ksl in m
-  local l = el*sdir*lw
-
-  local bx,by = bxby(nmul, knl, ksl, x, y)
-
-  mdump('quad_kick_sabac-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py in m[i]
-
-    m[i].px = px - k1*l*x
-    m[i].py = py + k1*l*y
-  end
-
-  mdump('quad_kick_sabac-1:', l, m)
-end
-
 
 function M.quad_corr_sabac (elm, m, lw, w)
-  print('corr_sabac', elm.name, lw)
-  local k1, l in elm
-  l = l*lw
-  if abs(k1*l) < minang then return end
+  local el, sdir, tdir, npar, k1 in m
+  local l, k1w2 = el*sdir*lw, k1^2*tdir*w
 
-  local sdir, tdir, npar in m
-  l, k1 = l*sdir, k1*tdir
+  mdump('quad_corr_sabac-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
     local  beam = m[i].beam or m.beam
+    local  bdir = tdir*beam.charge
     local _beta = 1/beam.beta
-    local    dp = 1 + (2*_beta)*pt + pt^2
+    local  l_dp = l/(1 + (2*_beta)*pt + pt^2)
 
-    m[i].px = px + k1^2*l^3* w *x/dp
-    m[i].py = py + k1^2*l^3* w *y/dp
-    m[i].t  = t  + k1^2*l^3* w *0.5*(x^2+y^2)/dp^2
+    m[i].px = px + l^2*k1w2*x*l_dp
+    m[i].py = py + l^2*k1w2*y*l_dp
+    m[i].t  = t  + l  *k1w2*0.5*(x^2+y^2)*l_dp^2
   end
+
+  mdump('quad_corr_sabac-1:', l, m)
 end
 
 -- angle~=0, k0=0, k1=0 -------------------------------------------------------o
