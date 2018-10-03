@@ -23,19 +23,23 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local element, mtable, command, damap, symint, aperture, trace  in MAD
+local element, mtable, command, damap, symint, aperture, trace   in MAD
 
 local is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
-      is_table, is_callable, is_mappable, is_tpsa, is_damap     in MAD.typeid
-local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
-local tblcat, errorf, assertf                                   in MAD.utility
-local apercheck                                                 in MAD.aperture
+      is_table, is_callable, is_mappable, is_tpsa, is_damap      in MAD.typeid
+local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
+local tblcat, errorf, assertf                                    in MAD.utility
+local apercheck                                                  in MAD.aperture
+local minang                                                     in MAD.constant
 
-local min, max in math
+local abs, min, max in math
+local strsub = string.sub
 
 -- integrator schemes ---------------------------------------------------------o
 
 local thickonly, atend                                          in MAD.symint
+
+local modint = {DKD=true, TKT=true}
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -47,6 +51,10 @@ local kick, rbend_kick, quad_kick, rfcavity_kick,
 
 local fringe, polar_fringe, solenoid_fringe                     in MAD.dynmap
 
+-- sabac
+local drift_sabac, quad_kick_sabac, quad_corr_sabac             in MAD.dynmap
+
+-- patches
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj                           in MAD.dynmap
 
@@ -63,7 +71,8 @@ local function get_mult (elm, m)
       m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
     end
   else
-    m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0
+    m.knl[1], m.knl[2] = 0, 0
+    m.ksl[1], m.ksl[2] = 0, 0
   end
   m.nmul = nmul
 end
@@ -99,12 +108,12 @@ local function track_thin (elm, mflw)
   local sdir in mflw
 
   changeref(elm, mflw,  sdir)
-       kick(elm, mflw,   1  )
+  kick     (elm, mflw,   1  )
   changeref(elm, mflw, -sdir)
 end
 
 local function track_drift (elm, mflw)
-  if #elm ~= 0 then subtrack_drift(elm, mflw) end
+--  if #elm ~= 0 then subtrack_drift(elm, mflw) end
 
   local sdir in mflw
 
@@ -113,13 +122,10 @@ local function track_drift (elm, mflw)
   changeref(elm, mflw, -sdir)
 end
 
--- local drift_sabac, quad_kick_sabac, quad_corr_sabac in MAD.dynmap
-
 local function track_thick (elm, mflw)
-  if #elm ~= 0 then subtrack_thick(elm, mflw) end
+--  if #elm ~= 0 then subtrack_thick(elm, mflw) end
 
   get_mult(elm, mflw)
---  if mflw.nmul == 0 then return end
 
   local sdir   in mflw
   -- TODO
@@ -130,36 +136,67 @@ end
 
 local function track_sbend (elm, mflw)
   -- sbend_drift, polar_kick, sbend_fringe
+  error("NYI")
 end
 
 local function track_combined (elm, mflw)
   -- combined_drift, combined_kick, sbend_fringe
+  error("NYI")
 end
 
 local function track_rbend (elm, mflw)
   -- rbend_drift, rfcavity_kick, straight_fringe
+  error("NYI")
 end
 
 local function track_quadrupole (elm, mflw)
-  -- quad_drift, quad_kick, straight_fringe
+  print('track_quadrupole', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
 
---  changeref(elm, mflw,  sdir)
---   fringe(elm, mflw,  sdir)
-     integr(elm, mflw,   1  , drift, kick) -- , quad_corr_sabac)
---   fringe(elm, mflw, -sdir)
---  changeref(elm, mflw, -sdir)
+  get_mult(elm, mflw)
+
+  local sdir, nmul, knl, ksl in mflw
+  local l, k0, k1 in elm
+  knl[1] = knl[1] + k0*l ; mflw.k0 = nmul >= 1 and knl[1] / l or k0
+  knl[2] = knl[2] + k1*l ; mflw.k1 = nmul >= 2 and knl[2] / l or k1
+                           mflw.el = l
+                           
+  local method = elm.method or mflw.method
+  local drift, kick, corr
+
+  if abs(knl[2]) >= minang then
+    mflw.nmul = max(2,nmul) 
+    if strsub(method,1,4) == 'saba' then
+      drift, kick, corr = drift_sabac, quad_kick_sabac, quad_corr_sabac
+    else
+      drift, kick = quad_drift, quad_kick
+    end
+  elseif abs(knl[1]) >= minang then 
+    mflw.nmul = max(1,nmul) 
+    drift, kick = rbend_drift, rbend_kick
+  else
+    drift, kick = drift, kick
+  end
+
+--changeref      (elm, mflw,  sdir)
+--straight_fringe(elm, mflw,  sdir)
+  symint[method] (elm, mflw,   1  , drift, kick, corr)
+--straight_fringe(elm, mflw, -sdir)
+--changeref      (elm, mflw, -sdir) -- TODO: survey
 end
 
 local function track_solenoid (elm, mflw)
   -- solenoid_drift, rfcavity_kick, solenoid_fringe
+  error("NYI")
 end
 
 local function track_rfcavity (elm, mflw)
   -- solenoid_drift, rfcavity_kick, rfcavity_fringe
+  error("NYI")
 end
 
 local function track_twcavity (elm, mflw)
   -- twcavity_drift, twcavity_kick, twcavity_fringe
+  error("NYI")
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -185,13 +222,13 @@ E.extra_element:setv({ track = functor( invalid     ) }, 'init') -- forbidden in
 
 -- specialized maps
 
--- E.sbend     :setv({ track = functor( track_sbend      ) }, 'init') -- polar   , k0
--- E.combined  :setv({ track = functor( track_combined   ) }, 'init') -- polar   , k0+k1
--- E.rbend     :setv({ track = functor( track_rbend      ) }, 'init') -- straight, k0
--- E.quadrupole:setv({ track = functor( track_quadrupole ) }, 'init') -- straight, k0+k1
--- E.solenoid  :setv({ track = functor( track_solenoid   ) }, 'init') -- straight, ks+ksi
--- E.rfcavity  :setv({ track = functor( track_rfcavity   ) }, 'init')
--- E.twcavity  :setv({ track = functor( track_twcavity   ) }, 'init')
+E.sbend     :setv({ track = functor( track_sbend      ) }, 'init') -- polar   , k0
+E.combined  :setv({ track = functor( track_combined   ) }, 'init') -- polar   , k0+k1
+E.rbend     :setv({ track = functor( track_rbend      ) }, 'init') -- straight, k0
+E.quadrupole:setv({ track = functor( track_quadrupole ) }, 'init') -- straight, k0+k1
+E.solenoid  :setv({ track = functor( track_solenoid   ) }, 'init') -- straight, ks+ksi
+E.rfcavity  :setv({ track = functor( track_rfcavity   ) }, 'init')
+E.twcavity  :setv({ track = functor( track_twcavity   ) }, 'init')
 
 -- special maps
 
@@ -362,10 +399,10 @@ local function make_mflow (self)
   assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
   local T = totalpath and 1 or 0
 
-  -- method
-  local method in self
-  local integr = symint[method]
-  assertf(is_callable(integr), "invalid integration method '%s'", method)
+  -- model, method
+  local model, method in self
+  assert(modint[model], "invalid integration model (DKD or TKT expected")
+  assertf(is_callable(symint[method]), "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
   local s0, X0, R0, mapdef, mapsave in self
@@ -424,10 +461,9 @@ local function make_mflow (self)
   mflw.s0=s0                 -- initial s-position (i.e. offset)
   mflw.ds=nil                -- s-length of results (signed)
   mflw.spos=nil              -- s-position of results (signed)
-  mflw.npos=nil              -- position in slices 'first', nil, 'last'
   mflw.npar=npar             -- number of tracked particles or damaps
   mflw.tpar=npar             -- total number of particles or damaps (i.e. #mflw)
-  mflw.nslc=nslice           -- number of slice for each element
+  mflw.nslice=nslice         -- number of slice for each element
 
   mflw.save=save             -- save data
   mflw.observe=observe       -- save observed elements every n turns
@@ -442,7 +478,8 @@ local function make_mflow (self)
 
   mflw.usrdef=self.usrdef    -- user defined data
 
-  mflw.integr=integr         -- default integrator
+  mflw.model=model           -- default integration model
+  mflw.method=method         -- default integration method
   mflw.totalpath=totalpath   -- t is the totalpath
   mflw.T=T                   -- cancel compensation for time of flight
 
@@ -450,6 +487,9 @@ local function make_mflow (self)
   mflw.mapsave=mapsave       -- save damaps
 
   -- for processing elements
+  mflw.el=0                  -- current element length
+  mflw.k0=0                  -- current element strength k0
+  mflw.k1=0                  -- current element strength k1
   mflw.nmul=0                -- current element number of multipoles
   mflw.knl=table.new(15,0)   -- current element multipoles
   mflw.ksl=table.new(15,0)   -- current element multipoles skew
@@ -530,6 +570,7 @@ local track = command 'track' {
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
   nslice=1,         -- number of slice for each element                   (mflw)
+  model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   method='simple',  -- method for integration                             (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
 
