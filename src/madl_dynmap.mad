@@ -42,6 +42,16 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 local minvolt, volt_c = 1e-6, 1e-3
 
+-- debug ----------------------------------------------------------------------o
+
+local nodump = false
+
+local function mdump(str, l, m)
+  if nodump then return end
+  assert(m.npar >= 1)
+  print(str, l, m[1].x, m[1].px, m[1].y, m[1].py, m[1].t, m[1].pt)
+end
+
 -- field mutipoles ------------------------------------------------------------o
 
 local function bxby (nmul, knl, ksl, x, y)
@@ -227,38 +237,35 @@ end
 
 -- angle=0, k0=0, k1=0 --------------------------------------------------------o
 
-function M.drift (elm, m, lw) -- [DRIFT]
-  local l = is_number(elm) and elm or elm.l*lw
+function M.drift (elm, m, lw) -- [DRIFT]                                        checked vs PTC code
+  local l = is_number(elm) and elm or m.el*lw
   if abs(l) < minlen then return end
 
-  local T, sdir, npar, beam in m
+  local sdir, npar, beam, T in m
   l = l*sdir
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
     local _beta = 1/(m[i].beam or beam).beta
-    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
-    m[i].x = x + l_pz*px
-    m[i].y = y + l_pz*py
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*_beta*l
+    m[i].x = x + px*l_pz
+    m[i].y = y + py*l_pz
+    m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
   end
 end
 
-function M.kick (elm, m, lw) -- [KICKEX(DKD)]
-  local nmul in m
+function M.kick (elm, m, lw) -- [KICKEX(DKD)]                                   checked vs PTC code
+  local tdir, npar, beam, nmul, knl, ksl in m
   if nmul == 0 then return end
-
-  local knl, ksl, tdir, npar, beam in m
-  lw = lw*tdir
 
   for i=1,npar do
     local x, px, y, py in m[i]
     local chg = (m[i].beam or beam).charge
     local bx, by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - by*(lw*chg)
-    m[i].py = py + bx*(lw*chg)
+    m[i].px = px - (chg*tdir*lw)*by
+    m[i].py = py + (chg*tdir*lw)*bx
   end
 end
 
@@ -316,93 +323,93 @@ end
 
 -- angle=0, k0~=0, k1~=0 [INTER_TKTF] -----------------------------------------o
 
-function M.drift_adj (elm, m, lw) -- drift adjustment [KICKPATH(TKTF)]
-  local l = is_number(elm) and elm or elm.l*lw
-  if abs(l) < minlen then return end
+local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            checked vs PTC
+  local beam, npar, T in m
 
-  local T, sdir, npar in m
-  l = l*sdir
+  mdump('drift_adj-0:', l, m)
 
   for i=1,npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local _beta = 1/(beam or m.beam).beta
+    local x, px, y, py, t, pt in m[i]
+    local _beta = 1/(m[i].beam or beam).beta
     local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
-    m[i].x = x + l_pz*px - 2*l*px
-    m[i].y = y + l_pz*py -   l*py
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*_beta*l
+    m[i].x = x + px*(l_pz-l)
+    m[i].y = y + py*(l_pz-l)
+    m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
   end
+
+  mdump('drift_adj-1:', l, m)
 end
 
-function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]
-  local k0, k1, l in elm
-  l = l*lw
-  if abs(k1*l) < minang then return M.rbend_drift(elm, m, lw) end
-
-  local T, sdir, tdir, npar, npos in m
-  l, k0, k1 = l*sdir, k0*tdir, k1*tdir
-
-  local w2 = abs(k1)                           -- [GETMAT7(TKTF)]
+function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC
+  local el, k0, k1, sdir, tdir, npar, T in m
+  local l  = el*sdir*lw
+  local w2 = abs(k1)               -- [GETMAT7(TKTF)]
   local w  = sqrt(w2)
-  local cw, sw = cos (w*l), sin (w*l)/w
-  local ch, sh = cosh(w*l), sinh(w*l)/w
+  local wl = w*l
+  local cw, sw = cos (wl), sin (wl)/w
+  local ch, sh = cosh(wl), sinh(wl)/w
 
   if k1 < 0 then
     cw, sw, ch, sh = ch, sh, cw, sw
   end
   local m16 = (1-cw)/w2
 
-  M.drift_adj(npos == 'last' and l or l/2, m)  -- [KICKPATH(TKTF)]
+  mdump('quad_drift-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
     local  beam = m[i].beam or m.beam
-    local  bdir = tdir*beam.charge -- not used...
+--    local  bdir = tdir*beam.charge -- not used...
     local l_bg2 = l/(beam.gamma^2-1)
 
-    local nx =    cw* x + sw*px -k0*m16
-    local ny =    ch* y + sh*py
-    m[i].px  = -w*sw*nx + cw*px -k0*sw
-    m[i].py  =  w*sh*ny + ch*py
+    local nx = sw*px + cw*x -k0*m16
+    local ny = sh*py + ch*y
+
+    m[i].px  = -w*sw*x + cw*px -k0*sw
+    m[i].py  =  w*sh*y + ch*py
     m[i].t   = t + l_bg2*pt
     m[i].x   = nx
     m[i].y   = ny
   end
 
-  M.drift_adj(npos == 'first' and l or l/2, m) -- [KICKPATH(TKTF)]
+  mdump('quad_drift-1:', l, m)
 end
 
-function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]
-  local k0, k1, l in elm
-  l = l*lw
-  if abs(k1*l) < minang then return M.rbend_kick(elm, m, lw) end
+function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           checked vs PTC
+  local el, k0, sdir, tdir, npar, nmul, knl, ksl in m
+  local l = el*sdir*lw
 
-  local T, sdir, tdir, npar, npos in m
-  l, k0, k1 = l*sdir, k0*tdir, k1*tdir
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
+
+  mdump('quad_kick-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
     local  beam = m[i].beam or m.beam
     local  bdir = tdir*beam.charge
     local _beta = 1/beam.beta
-    local    pz = sqrt(1 + 2*_beta*pt + pt^2) - 1
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
     local bx,by = bxby(nmul, knl, ksl, x, y)
-    local   npx = px + k0*l*(pz-pt)*_beta
 
-    m[i].px = px - bdir*(by - (k0 - k1*x)*l)
-    m[i].py = py + bdir*(bx -       k1*y *l)
-    m[i].t  = t  - k0*l*((pt+_beta)/(1+pz) - _beta)*x
+    m[i].px = px + l*bdir*(k0*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
+    m[i].py = py + l*bdir*(                   (bx          - knl[2]*y))
+    m[i].t  =  t - l*k0*((pt+_beta)/(1+pz) - _beta)*x
   end
+
+  mdump('quad_kick-1:', l, m)
+
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
 end
 
 -- extra maps for SABAC integrators -------------------------------------------o
 
 function M.drift_sabac (elm, m, lw)
-  local l = is_number(elm) and elm or elm.l*lw
-  if abs(l) < minlen then return end
+  print('drift_sabac', elm.name, lw)
+  local el, sdir, npar, beam in m
+  local l = el*sdir*lw
 
-  local sdir, npar, beam in m
-  l = l*sdir
+  mdump('quad_drift_sabac-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -413,15 +420,17 @@ function M.drift_sabac (elm, m, lw)
     m[i].y = y + py*l_dp
     m[i].t = t - 0.5*(px^2+py^2)*l_dp^2/l
   end
+
+  mdump('quad_drift_sabac-1:', l, m)
 end
 
-function M.quad_kick_sabac (elm, m, lw)
-  local k1, l in elm
-  l = l*lw
---  if abs(k1*l) < minang then return M.rbend_kick(elm, m, lw) end
+function M.kick_sabac (elm, m, lw)
+  local el, sdir, tdir, npar, nmul, knl, ksl in m
+  local l = el*sdir*lw
 
-  local sdir, tdir, npar in m
-  l, k1 = l*sdir, k1*tdir
+  local bx,by = bxby(nmul, knl, ksl, x, y)
+
+  mdump('quad_kick_sabac-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py in m[i]
@@ -429,32 +438,16 @@ function M.quad_kick_sabac (elm, m, lw)
     m[i].px = px - k1*l*x
     m[i].py = py + k1*l*y
   end
+
+  mdump('quad_kick_sabac-1:', l, m)
 end
+
 
 function M.quad_corr_sabac (elm, m, lw, w)
+  print('corr_sabac', elm.name, lw)
   local k1, l in elm
   l = l*lw
---  if abs(k1*l) < minang then return M.rbend_kick(elm, m, lw) end
-
-  local sdir, tdir, npar in m
-  l, k1 = l*sdir, k1*tdir
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local _beta = 1/beam.beta
-    local    dp = 1 + (2*_beta)*pt + pt^2
-
-    m[i].px = px + k1^2*l^3* w *x/dp
-    m[i].py = py + k1^2*l^3* w *y/dp
-    m[i].t  = t  + k1^2*l^3* w *0.5*(x^2+y^2)/dp^2
-  end
-end
-
-function M.corr_sabac (elm, m, lw, w)
-  local k1, l in elm
-  l = l*lw
---  if abs(k1*l) < minang then return M.rbend_kick(elm, m, lw) end
+  if abs(k1*l) < minang then return end
 
   local sdir, tdir, npar in m
   l, k1 = l*sdir, k1*tdir
@@ -598,9 +591,8 @@ function M.combi_drift (elm, m, l) --
   else cy, sy = cos (wy*l), sin (wy*l)/wy -- check wy == 0
   end
 
-  local npos in m
-
-  M.drift_adj(npos == 'last' and l or l/2, m)
+--  local npos in m
+--  M.drift_adj(npos == 'last' and l or l/2, m)
 
   local x, px, y, py, t, pt in m
   local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2
@@ -611,7 +603,7 @@ function M.combi_drift (elm, m, l) --
   m.py =  wy2*sy*y + cy*py
   m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
 
-  M.drift_adj(npos == 'first' and l or l/2, m)
+--  M.drift_adj(npos == 'first' and l or l/2, m)
 end
 
 -- solenoid -------------------------------------------------------------------o
@@ -1016,7 +1008,7 @@ function M.straight_fringe (elm, m, l)
   end
 end
 
-function M.solenoid_fringe (elm, m, l)
+function M.solenoid_fringe (elm, mflw, lw)
 --  local ksi in m
 --  if abs(ksi) < minang then -- should never occur due to precedences
     return M.straight_fringe(elm,m,l)
@@ -1026,7 +1018,7 @@ end
 
 local rfcavity_fringe_ptc -- forward
 
-function M.rfcavity_fringe (elm, m, l)
+function M.rfcavity_fringe (elm, mflw, lw)
 --  local v in m
 --  if abs(v) < minvolt then -- should never occur due to precedences
     return M.straight_fringe(elm,m,l)
@@ -1036,7 +1028,7 @@ end
 
 local sbend_fringe_ptc -- forward
 
-function M.sbend_fringe (elm, m, l)
+function M.sbend_fringe (elm, mflw, lw)
   local angle in elm
   if abs(angle) < minang then -- should never occur due to precedences
     return straight_fringe(elm,m,l)
