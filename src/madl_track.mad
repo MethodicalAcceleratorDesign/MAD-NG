@@ -28,6 +28,7 @@ local element, mtable, command, damap, symint, aperture, trace   in MAD
 local is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
       is_table, is_callable, is_mappable, is_tpsa, is_damap      in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
+local fact                                                       in MAD.gmath
 local tblcat, errorf, assertf                                    in MAD.utility
 local apercheck                                                  in MAD.aperture
 local minang                                                     in MAD.constant
@@ -52,7 +53,7 @@ local kick, rbend_kick, quad_kick, rfcavity_kick,
 local fringe, polar_fringe, solenoid_fringe                     in MAD.dynmap
 
 -- sabac
-local drift_sabac, quad_kick_sabac, quad_corr_sabac             in MAD.dynmap
+local drift_sabac, quad_corr_sabac                              in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
@@ -67,8 +68,8 @@ local function get_mult (elm, m)
 
   if nmul >= 1 then
     for i=1,nmul do
-      m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
-      m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+      m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
+      m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
     end
   else
     m.knl[1], m.knl[2] = 0, 0
@@ -102,7 +103,8 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_thin (elm, mflw)
-  get_mult (elm, mflw)
+  print('\ntrack_thin', elm.name, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
+  get_mult(elm, mflw)
   if mflw.nmul == 0 then return end
 
   local sdir in mflw
@@ -113,22 +115,10 @@ local function track_thin (elm, mflw)
 end
 
 local function track_drift (elm, mflw)
---  if #elm ~= 0 then subtrack_drift(elm, mflw) end
-
+  print('\ntrack_drift', elm.name, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
   local sdir in mflw
+  mflw.el = elm.l
 
-  changeref(elm, mflw,  sdir)
-  thickonly(elm, mflw,   1  , drift, nil)
-  changeref(elm, mflw, -sdir)
-end
-
-local function track_thick (elm, mflw)
---  if #elm ~= 0 then subtrack_thick(elm, mflw) end
-
-  get_mult(elm, mflw)
-
-  local sdir   in mflw
-  -- TODO
   changeref(elm, mflw,  sdir)
   thickonly(elm, mflw,   1  , drift, nil)
   changeref(elm, mflw, -sdir)
@@ -150,7 +140,7 @@ local function track_rbend (elm, mflw)
 end
 
 local function track_quadrupole (elm, mflw)
-  print('track_quadrupole', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
+  print('\ntrack_quadrupole', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
 
   get_mult(elm, mflw)
 
@@ -160,21 +150,23 @@ local function track_quadrupole (elm, mflw)
   knl[2] = knl[2] + k1*l ; mflw.k1 = nmul >= 2 and knl[2] / l or k1
                            mflw.el = l
                            
+  local model  = elm.model  or mflw.model
   local method = elm.method or mflw.method
-  local drift, kick, corr
+  local drift, kick, corr = drift, kick
 
-  if abs(knl[2]) >= minang then
-    mflw.nmul = max(2,nmul) 
-    if strsub(method,1,4) == 'saba' then
-      drift, kick, corr = drift_sabac, quad_kick_sabac, quad_corr_sabac
-    else
+  if model == 'TKT' then
+    if abs(knl[2]) >= minang then
+      mflw.nmul = max(2,nmul) 
       drift, kick = quad_drift, quad_kick
+    elseif abs(knl[1]) >= minang then 
+      mflw.nmul = max(1,nmul) 
+      drift, kick = rbend_drift, rbend_kick
     end
-  elseif abs(knl[1]) >= minang then 
-    mflw.nmul = max(1,nmul) 
-    drift, kick = rbend_drift, rbend_kick
   else
-    drift, kick = drift, kick
+    mflw.nmul = max(2,nmul)
+    if strsub(method,1,4) == 'saba' then
+      drift, corr = drift_sabac, quad_corr_sabac
+    end
   end
 
 --changeref      (elm, mflw,  sdir)
@@ -215,7 +207,7 @@ local E = element
 
 E. thin_element:setv({ track = functor( track_thin  ) }, 'init')
 E.drift_element:setv({ track = functor( track_drift ) }, 'init')
-E.thick_element:setv({ track = functor( track_thick ) }, 'init')
+E.thick_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
 E.specl_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
 E.patch_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
 E.extra_element:setv({ track = functor( invalid     ) }, 'init') -- forbidden in track
@@ -401,7 +393,7 @@ local function make_mflow (self)
 
   -- model, method
   local model, method in self
-  assert(modint[model], "invalid integration model (DKD or TKT expected")
+  assert(modint[model], "invalid integration model (DKD or TKT expected)")
   assertf(is_callable(symint[method]), "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
