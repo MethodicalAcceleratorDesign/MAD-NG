@@ -18,7 +18,7 @@
   Purpose:
   - Provide a catalog of dynamical 6D maps (i.e. track)
     maps must have the following calling convention:
-      dynmap(elm, map, len_weight)
+      dynmap(elm, map, length_weight)
     (see the symplectic integrators)
   - TODO: list the expected fields for elm and map
 
@@ -44,7 +44,7 @@ local minvolt, volt_c = 1e-6, 1e-3
 
 -- debug ----------------------------------------------------------------------o
 
-local nodump = true
+local nodump = true -- false
 
 local function mdump(str, l, m)
   if nodump then return end
@@ -58,8 +58,8 @@ local function bxby (nmul, knl, ksl, x, y)
   local bx, by, byt = 0, 0
 
   for i=nmul,1,-1 do
-    byt = by*x - bx*y + knl[i] -- /fact(i-1) -- done when copied to mflw
-    bx  = by*y + bx*x + ksl[i] -- /fact(i-1) -- done when copied to mflw
+    byt = by*x - bx*y + knl[i] -- /fact(i-1) done when copied to mflw
+    bx  = by*y + bx*x + ksl[i] -- /fact(i-1) done when copied to mflw
     by  = byt
   end
   return bx, by
@@ -234,14 +234,14 @@ function M.changenrj (elm, m, lw_)  -- (to review)
   end
 end
 
--- angle=0, k0=0, k1=0 --------------------------------------------------------o
+-- DKD model ------------------------------------------------------------------o
 
-function M.drift (elm, m, lw) -- [DRIFT]                                        checked vs PTC code
-  local l = is_number(elm) and elm or m.el*lw
-  if abs(l) < minlen then return end
+function M.drift (elm, m, lw) -- [DRIFTR]                                       checked
+  local el = is_number(elm) and elm or m.el*lw
+  if abs(el) < minlen then return end
 
   local sdir, npar, beam, T in m
-  l = l*sdir
+  local l = el*sdir
 
   mdump('drift-0:', l, m)
 
@@ -258,24 +258,74 @@ function M.drift (elm, m, lw) -- [DRIFT]                                        
   mdump('drift-1:', l, m)
 end
 
-function M.kick (elm, m, lw) -- [KICKEX(DKD)]                                   checked vs PTC code
+function M.kick (elm, m, lw) -- [KICKEXR, KICKR]                                checked
   if m.nmul == 0 then return end
 
   local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
-  local l = el*sdir
+  local l, w = el*sdir, lw*tdir
+
   mdump('kick-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py in m[i]
-    local chg = (m[i].beam or beam).charge
-    local bx, by = bxby(nmul, knl, ksl, x, y)
+    local wchg = (m[i].beam or beam).charge * w
+    local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - (chg*tdir*lw)*by
-    m[i].py = py + (chg*tdir*lw)*bx
+    m[i].px = px - wchg*by
+    m[i].py = py + wchg*bx
   end
 
   mdump('kick-1:', l, m)
 end
+
+function M.hdrift (elm, m, lw) -- [DRIFTR, L ~= LD]                             unchecked
+  local el, eld, sdir, npar, beam, T in m
+  local l, ld = el*sdir, eld*sdir
+
+  mdump('hdrift-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local _beta = 1/(m[i].beam or beam).beta
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+
+    m[i].x = x + px*l_pz
+    m[i].y = y + py*l_pz
+    m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
+  end
+
+  mdump('hdrift-1:', l, m)
+end
+
+function M.hkick (elm, m, lw) -- [KICKTR(DKD), L ~= LD]                         unchecked
+  if m.nmul == 0 then return end
+
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local l, w = el*sdir, lw*tdir
+
+  mdump('hkick-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  wchg = beam.charge * w
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    px = px - wchg*(by - knl[1])
+    py = py + wchg*(bx - ksl[1])
+
+    -- dipole focusing
+    local _beta = 1/beam.beta
+    local pz = sqrt(1 + 2*_beta*pt + pt^2)
+    m[i].px = px - wchg*knl[1]*(knl[1]/el*x - (pz-1))
+    m[i].py = py + wchg*ksl[1]*(ksl[1]/el*y - (pz-1))
+    m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
+  end
+
+  mdump('hkick-1:', l, m)
+end
+
+-- TKT model ------------------------------------------------------------------o
 
 -- angle=0, k0~=0, k1=0 [INTER_STREX] -----------------------------------------o
 
