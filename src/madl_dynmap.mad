@@ -42,9 +42,11 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 local minvolt, volt_c = 1e-6, 1e-3
 
+local drift = MAD.element.drift {}
+
 -- debug ----------------------------------------------------------------------o
 
-local nodump = true -- false
+local nodump = true
 
 local function mdump(str, l, m)
   if nodump then return end
@@ -236,53 +238,15 @@ end
 
 -- DKD model ------------------------------------------------------------------o
 
-function M.drift (elm, m, lw) -- [DRIFTR]                                       checked
-  local el = is_number(elm) and elm or m.el*lw
-  if abs(el) < minlen then return end
+-- straight drift-kick ----------------
 
-  local sdir, npar, beam, T in m
-  local l = el*sdir
+function M.drift (elm, m, lw) -- [DRIFTR]                                       checked
+  if abs(m.el) < minlen then return end
+
+  local el, eld, sdir, npar, beam, T in m
+  local l, ld = el*sdir*lw, eld*sdir*lw
 
   mdump('drift-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local _beta = 1/(m[i].beam or beam).beta
-    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
-
-    m[i].x = x + px*l_pz
-    m[i].y = y + py*l_pz
-    m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-  end
-
-  mdump('drift-1:', l, m)
-end
-
-function M.kick (elm, m, lw) -- [KICKEXR, KICKR]                                checked
-  if m.nmul == 0 then return end
-
-  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
-  local l, w = el*sdir, lw*tdir
-
-  mdump('kick-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py in m[i]
-    local wchg = (m[i].beam or beam).charge * w
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px - wchg*by
-    m[i].py = py + wchg*bx
-  end
-
-  mdump('kick-1:', l, m)
-end
-
-function M.hdrift (elm, m, lw) -- [DRIFTR, L ~= LD]                             unchecked
-  local el, eld, sdir, npar, beam, T in m
-  local l, ld = el*sdir, eld*sdir
-
-  mdump('hdrift-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -294,16 +258,36 @@ function M.hdrift (elm, m, lw) -- [DRIFTR, L ~= LD]                             
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
   end
 
-  mdump('hdrift-1:', l, m)
+  mdump('drift-1:', l, m)
 end
 
-function M.hkick (elm, m, lw) -- [KICKTR(DKD), L ~= LD]                         unchecked
+function M.kick (elm, m, lw) -- [KICKEXR, KICKR]                                checked
+  if m.nmul == 0 then return end
+
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local w = lw*tdir
+
+  mdump('kick-0:', m.el*sdir*lw, m)
+
+  for i=1,npar do
+    local x, px, y, py in m[i]
+    local wchg = (m[i].beam or beam).charge * w
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - wchg*by
+    m[i].py = py + wchg*bx
+  end
+
+  mdump('kick-1:', m.el*sdir*lw, m)
+end
+
+function M.fockick (elm, m, lw) -- [KICKTR(DKD)]                                unchecked
   if m.nmul == 0 then return end
 
   local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
   local l, w = el*sdir, lw*tdir
 
-  mdump('hkick-0:', l, m)
+  mdump('fockick-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -322,7 +306,7 @@ function M.hkick (elm, m, lw) -- [KICKTR(DKD), L ~= LD]                         
     m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
   end
 
-  mdump('hkick-1:', l, m)
+  mdump('fockick-1:', l, m)
 end
 
 -- TKT model ------------------------------------------------------------------o
@@ -332,7 +316,9 @@ end
 function M.rbend_drift (elm, m, lw) -- [SPAR(STREX)]
   local k0, l in elm
   l = l*lw
-  if abs(k0*l) < minang then return M.drift(l, m) end
+  if abs(k0*l) < minang then
+    return M.drift(l, m)
+  end
 
   local T, sdir, tdir, npar in m
   l, k0 = l*sdir, k0*tdir
@@ -399,7 +385,114 @@ local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            
   mdump('drift_adj-1:', l, m)
 end
 
-function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC
+function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]
+  local el, k0, k1, sdir, tdir, npar, knl, T in m
+
+  local dh = el*lw
+  local B0 = knl[1] -- B0?
+
+  -- [GETMAT7R]
+  local  matx,  maty = matrix(3), matrix(2,3)
+  local rmatx, rmaty = matrix(3), matrix(2,3)
+
+  local mx, my = rmatx, rmaty
+  for dir=-1,1,2 do
+    local ws, w2 = -1, dir*(knl[2]+B0*knl[1])
+    if w2 < 0 then ws, w2 = 1, -w2 end
+    local w = sqrt(w2)
+    if w > 0 then
+      local s, c
+      if ws > 0
+      then c, s = cosh(w*dh), sinh(w*dh)
+      else c, s = cos (w*dh), sin (w*dh)
+      end
+      mx:fill {
+        c     , s/w, B0*(c-1)/w2*ws,
+        ws*w*s, c  , B0*s/w        ,
+        B0*s/w, B0*(c-1)/w2*ws, -B0^2*ws*(dh-s/w)/w2 -- LX
+      }
+    else
+      mx:fill {
+        1, dh, B0*dh^2/2,
+        0,  1, B0*dh    ,
+        B0*dh, B0*dh^2/2, B0^2*dh^3/6, -- LX
+      }
+    end
+
+    local ws, w2 = -1, -dir*knl[2]
+    if w2 < 0 then ws, w2 = 1, -w2 end
+    local w = sqrt(w2)
+    if w > 0 then
+      local s, c
+      if ws > 0
+      then c, s = cosh(w*dh), sinh(w*dh)
+      else c, s = cos (w*dh), sin (w*dh)
+      end
+      my:fill {
+        c     , s/w, 0,
+        ws*w*s, c  , 0,
+      }
+    else
+      my:fill {
+        1, dh, 0,
+        0,  1, 0,
+      }
+    end
+    mx, my = matx, maty
+  end
+  -- [GETMAT7R]
+
+  local l, w = el*sdir*lw, lw*tdir
+
+  mdump('quad_drift-0:', l, m)
+
+
+  -- [PUSHTKT7(TKTF)]
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local   chg = beam.charge
+    local _beta = 1/beam.beta
+--    local l_bg2 = l/(beam.gamma^2-1)
+
+    if chg*tdir > 0 then
+      mx, my =  matx,  maty
+    else
+      mx, my = rmatx, rmaty
+    end
+
+    mx:getsub(1..2,1..2):print('X')
+    my:getsub(1..2,1..2):print('Y')
+    mx:getsub(1..2,1..2):inv():print('X^-1')
+    my:getsub(1..2,1..2):inv():print('Y^-1')
+
+    local nx  = x*mx:get(1,1) + px*mx:get(1,2) + pt*mx:get(1,3)*_beta   -- nx = sw*px + cw*x -k0*m16
+    local npx = x*mx:get(2,1) + px*mx:get(2,2) + pt*mx:get(2,3)*_beta   -- ny = sh*py + ch*y
+    local ny  = y*my:get(1,1) + py*my:get(1,2)
+    local npy = y*my:get(2,1) + py*my:get(2,2)
+    local nt  = x*mx:get(3,1)*_beta + px*mx:get(3,2)*_beta + pt*mx:get(3,3)
+
+    m[i].x   = nx  --      nx
+    m[i].y   = ny  --      ny
+    m[i].px  = npx --      -w*sw*x + cw*px -k0*sw
+    m[i].py  = npy --       w*sh*y + ch*py
+    m[i].t   = nt + t  --      t + l_bg2*pt
+  end
+  -- [PUSHTKT7(TKTF)]
+
+  mdump('quad_drift-1:', l, m)
+end
+
+--[[
+ 0.962274109  * 5.9323654782281e-06 + 0.493696394 * 2.3762588827029e-06
+-0.1499474982 * 5.9323654782281e-06 + 0.962274109 * 2.3762588827029e-06
+
+1.038206353   * 2.9661827391134e-06 + 0.5063516521 * -3.2644454002439e-07
+0.1537912052  * 2.9661827391134e-06 +  1.038206353 * -3.2644454002439e-07
+
+]]
+
+function M.quad_drift_old (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC
   local el, k0, k1, sdir, tdir, npar, T in m
   local l  = el*sdir*lw
   local w2 = abs(k1)               -- [GETMAT7(TKTF)]
@@ -507,7 +600,9 @@ end
 function M.polar_drift (elm, m, lw) -- [SPROT(TEAPOT)]
   local l, angle in elm
   l, angle = l*lw, angle*lw
-  if abs(angle) < minang then return M.drift(l,m) end
+  if abs(angle) < minang then
+    return M.drift(l,m)
+  end
 
   local T, sdir, tdir, npar in m
   l, angle = l*sdir, angle*tdir
