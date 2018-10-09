@@ -28,10 +28,10 @@ local element, mtable, command, damap, symint, aperture, trace   in MAD
 local is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
       is_table, is_callable, is_mappable, is_tpsa, is_damap      in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
-local fact                                                       in MAD.gmath
+local fact, sinc                                                 in MAD.gmath
 local tblcat, errorf, assertf                                    in MAD.utility
 local apercheck                                                  in MAD.aperture
-local minang                                                     in MAD.constant
+local minlen, minang                                             in MAD.constant
 
 local abs, min, max in math
 local strsub = string.sub
@@ -42,16 +42,16 @@ local thickonly, atend                                          in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
-local drift, rbend_drift, quad_drift, solenoid_drift,
-      polar_drift, sbend_drift, combi_drift                     in MAD.dynmap
+local strex_drift, rbend_drift, quad_drift, solenoid_drift,
+      polar_drift, sbend_drift, comb_drift                      in MAD.dynmap
 
-local kick, fockick, rbend_kick, quad_kick, rfcavity_kick,
-      polar_kick, sbend_kick, combi_kick                        in MAD.dynmap
+local strex_kick, rbend_kick, quad_kick, rfcavity_kick,
+      polar_kick, sbend_kick, comb_kick                         in MAD.dynmap
 
-local fringe, polar_fringe, solenoid_fringe                     in MAD.dynmap
+local strex_fringe, polar_fringe, solenoid_fringe               in MAD.dynmap
 
--- sabac
-local drift_sabac, quad_corr_sabac                              in MAD.dynmap
+-- sabac: TODO
+local sabac_corr                                                in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
@@ -118,9 +118,9 @@ local function track_thin (elm, mflw)
   local sdir in mflw
   mflw.el, mflw.eld = l, l
 
-  changeref(elm, mflw,  sdir)
-  kick     (elm, mflw,   1  )
-  changeref(elm, mflw, -sdir)
+  changeref (elm, mflw,  sdir)
+  strex_kick(elm, mflw,   1  )
+  changeref (elm, mflw, -sdir)
 end
 
 local function track_drift (elm, mflw)
@@ -130,7 +130,7 @@ local function track_drift (elm, mflw)
   mflw.el, mflw.eld = l, l
 
   changeref(elm, mflw,  sdir)
-  thickonly(elm, mflw,   1  , drift, nil)
+  thickonly(elm, mflw,   1  , strex_drift, nil)
   changeref(elm, mflw, -sdir)
 end
 
@@ -145,34 +145,57 @@ local function track_combined (elm, mflw)
 end
 
 local function track_rbend (elm, mflw)
-  -- rbend_drift, rfcavity_kick, straight_fringe
-  error("NYI")
-end
-
-local function track_quadrupole (elm, mflw)
-  mdump('\ntrack_quadrupole', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
+  mdump('\track_rbend', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'angle=', elm.angle, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
 
   get_mult(elm, mflw)
 
-  local sdir, nmul, knl, ksl in mflw
-  local l, k0, k1 in elm
-  knl[1] = knl[1] + k0*l ; mflw.k0 = knl[1] / l
-  knl[2] = knl[2] + k1*l ; mflw.k1 = knl[2] / l
-  mflw.el = l ; mflw.eld = l
-                           
+  local sdir, nmul, knl in mflw
+  local l, angle, k0 in elm
+  knl[1] = knl[1] + k0*l ; mflw.k0 = l ~= 0 and knl[1]/l or 0
+  mflw.el = l ; mflw.angle = angle
+  mflw.eld = angle == 0 and l or l/sinc(angle/2)
+  mflw.nmul = max(1,nmul)
+
   local model  = elm.model  or mflw.model
   local method = elm.method or mflw.method
-  local drift, kick, corr = drift, kick
+  local drift, kick, corr
 
   if model == 'DKD' then
-    mflw.nmul = max(2,nmul)
-    corr = quad_corr_sabac -- TODO: generic SABAC corrector for drift-kick
-  elseif abs(knl[2]) >= minang then -- TKT
-    mflw.nmul = max(2,nmul) 
-    drift, kick = quad_drift, quad_kick
-  elseif abs(knl[1]) >= minang then  -- TKT
-    mflw.nmul = max(1,nmul) 
-    drift, kick = rbend_drift, rbend_kick
+    drift, kick, corr = strex_drift, strex_kick, sabac_corr
+  else -- TKT
+    drift, kick       = rbend_drift, rbend_kick
+  end
+
+--changeref      (elm, mflw,  sdir)
+--straight_fringe(elm, mflw,  sdir)
+  symint[method] (elm, mflw,   1  , drift, kick, corr)
+--straight_fringe(elm, mflw, -sdir)
+--changeref      (elm, mflw, -sdir) -- TODO: survey
+end
+
+local function track_quadrupole (elm, mflw)
+  mdump('\ntrack_quadrupole', elm.name, 'mth=', mflw.method, 'l=', elm.l, 'angle=', elm.angle, 'sdir=', mflw.sdir, 'tdir=', mflw.tdir, 'beta0=', mflw.beam.beta)
+
+  get_mult(elm, mflw)
+
+  local sdir, nmul, knl in mflw
+  local l, angle, k0, k1 in elm
+  knl[1] = knl[1] + k0*l ; mflw.k0 = l ~= 0 and knl[1]/l or k0
+  knl[2] = knl[2] + k1*l ; mflw.k1 = l ~= 0 and knl[2]/l or k1
+  mflw.el = l ; mflw.angle = angle
+  mflw.eld = angle == 0 and l or l/sinc(angle/2)
+  mflw.nmul = max(2,nmul)
+
+  mdump('track_quadrupole', 'el=', mflw.el, 'eld=', mflw.eld, 'k0=', mflw.k0, 'k1=', mflw.k1)
+
+  local model  = elm.model  or mflw.model
+  local method = elm.method or mflw.method
+  local drift, kick, corr
+
+  if model == 'DKD' then
+    drift, kick, corr = strex_drift, strex_kick, sabac_corr
+  else -- TKT
+    drift, kick       = quad_drift, quad_kick
   end
 
 --changeref      (elm, mflw,  sdir)
