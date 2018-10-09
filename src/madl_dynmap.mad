@@ -219,7 +219,7 @@ end
 
 -- Changenrj (change particles energy)
 
-function M.changenrj (elm, m, lw_)  -- (to review)
+function M.changenrj (elm, m, lw_)  -- (to review, option to reset pt?)
   if lw_ == 0 then return end
 
   local dnrj = elm.dnrj
@@ -240,7 +240,7 @@ end
 
 -- straight drift-kick ----------------
 
-function M.drift (elm, m, lw) -- [DRIFTR]                                       checked
+function M.strex_drift (elm, m, lw) -- [DRIFTR]                                 checked
   if abs(m.el) < minlen then return end
 
   local el, eld, sdir, npar, beam, T in m
@@ -261,7 +261,7 @@ function M.drift (elm, m, lw) -- [DRIFTR]                                       
   mdump('drift-1:', l, m)
 end
 
-function M.kick (elm, m, lw) -- [KICKEXR, KICKR]                                checked
+function M.strex_kick (elm, m, lw) -- [KICKEXR, KICKR]                          checked
   if m.nmul == 0 then return end
 
   local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
@@ -281,321 +281,7 @@ function M.kick (elm, m, lw) -- [KICKEXR, KICKR]                                
   mdump('kick-1:', m.el*sdir*lw, m)
 end
 
-function M.fockick (elm, m, lw) -- [KICKTR(DKD)]                                unchecked
-  if m.nmul == 0 then return end
-
-  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
-  local l, w = el*sdir, lw*tdir
-
-  mdump('fockick-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  wchg = beam.charge * w
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    px = px - wchg*(by - knl[1])
-    py = py + wchg*(bx - ksl[1])
-
-    -- dipole focusing
-    local _beta = 1/beam.beta
-    local pz = sqrt(1 + 2*_beta*pt + pt^2)
-    m[i].px = px - wchg*knl[1]*(knl[1]/el*x - (pz-1))
-    m[i].py = py + wchg*ksl[1]*(ksl[1]/el*y - (pz-1))
-    m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
-  end
-
-  mdump('fockick-1:', l, m)
-end
-
--- TKT model ------------------------------------------------------------------o
-
--- angle=0, k0~=0, k1=0 [INTER_STREX] -----------------------------------------o
-
-function M.rbend_drift (elm, m, lw) -- [SPAR(STREX)]
-  local k0, l in elm
-  l = l*lw
-  if abs(k0*l) < minang then
-    return M.drift(l, m)
-  end
-
-  local T, sdir, tdir, npar in m
-  l, k0 = l*sdir, k0*tdir
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local   k0q = k0*beam.charge
-    local _beta = 1/beam.beta
-
-    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)
-    local  npx = px - l*k0q
-    local   ps = sqrt(pw2 - npx^2)
-    local  ptt = sqrt(pw2)
-    local _ptt = 1/ptt
-    local  pzt = (asin(px*_ptt) - asin(npx*_ptt))/k0q
-
-    -- eq. 129 in Forest06
-    m[i].x  = x + (ps-pz)/k0q
-    m[i].px = npx
-    m[i].y  = y + pzt*py
-    m[i].t  = t - pzt*(_beta+pt) + (1-T)*_beta*l
-  end
-end
-
-function M.rbend_kick (elm, m, lw) -- [KICKEX(STREX)]
-  local k0, l in elm
-  l = l*lw
-  if abs(k0*l) < minang then return M.kick(elm, m, lw) end
-
-  local nmul in m
-  if nmul == 0 then return end
-
-  local knl, ksl, sdir, tdir, npar in m
-  l, lw, k0 = l*sdir, lw*tdir, k0*tdir
-
-  for i=1,npar do
-    local x, px, y, py in m[i]
-    local bx, by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px - by*lw + k0*l
-    m[i].py = py + bx*lw
-  end
-end
-
--- angle=0, k0~=0, k1~=0 [INTER_TKTF] -----------------------------------------o
-
-local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            checked vs PTC
-  local beam, npar, T in m
-
-  mdump('drift_adj-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local _beta = 1/(m[i].beam or beam).beta
-    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
-
-    m[i].x = x + px*(l_pz-l)
-    m[i].y = y + py*(l_pz-l)
-    m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
-  end
-
-  mdump('drift_adj-1:', l, m)
-end
-
-function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]
-  local el, k0, k1, sdir, tdir, npar, knl, T in m
-
-  local dh = el*lw
-  local B0 = knl[1] -- B0?
-
-  -- [GETMAT7R]
-  local  matx,  maty = matrix(3), matrix(2,3)
-  local rmatx, rmaty = matrix(3), matrix(2,3)
-
-  local mx, my = rmatx, rmaty
-  for dir=-1,1,2 do
-    local ws, w2 = -1, dir*(knl[2]+B0*knl[1])
-    if w2 < 0 then ws, w2 = 1, -w2 end
-    local w = sqrt(w2)
-    if w > 0 then
-      local s, c
-      if ws > 0
-      then c, s = cosh(w*dh), sinh(w*dh)
-      else c, s = cos (w*dh), sin (w*dh)
-      end
-      mx:fill {
-        c     , s/w, B0*(c-1)/w2*ws,
-        ws*w*s, c  , B0*s/w        ,
-        B0*s/w, B0*(c-1)/w2*ws, -B0^2*ws*(dh-s/w)/w2 -- LX
-      }
-    else
-      mx:fill {
-        1, dh, B0*dh^2/2,
-        0,  1, B0*dh    ,
-        B0*dh, B0*dh^2/2, B0^2*dh^3/6, -- LX
-      }
-    end
-
-    local ws, w2 = -1, -dir*knl[2]
-    if w2 < 0 then ws, w2 = 1, -w2 end
-    local w = sqrt(w2)
-    if w > 0 then
-      local s, c
-      if ws > 0
-      then c, s = cosh(w*dh), sinh(w*dh)
-      else c, s = cos (w*dh), sin (w*dh)
-      end
-      my:fill {
-        c     , s/w, 0,
-        ws*w*s, c  , 0,
-      }
-    else
-      my:fill {
-        1, dh, 0,
-        0,  1, 0,
-      }
-    end
-    mx, my = matx, maty
-  end
-  -- [GETMAT7R]
-
-  local l, w = el*sdir*lw, lw*tdir
-
-  mdump('quad_drift-0:', l, m)
-
-
-  -- [PUSHTKT7(TKTF)]
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local   chg = beam.charge
-    local _beta = 1/beam.beta
---    local l_bg2 = l/(beam.gamma^2-1)
-
-    if chg*tdir > 0 then
-      mx, my =  matx,  maty
-    else
-      mx, my = rmatx, rmaty
-    end
-
-    mx:getsub(1..2,1..2):print('X')
-    my:getsub(1..2,1..2):print('Y')
-    mx:getsub(1..2,1..2):inv():print('X^-1')
-    my:getsub(1..2,1..2):inv():print('Y^-1')
-
-    local nx  = x*mx:get(1,1) + px*mx:get(1,2) + pt*mx:get(1,3)*_beta   -- nx = sw*px + cw*x -k0*m16
-    local npx = x*mx:get(2,1) + px*mx:get(2,2) + pt*mx:get(2,3)*_beta   -- ny = sh*py + ch*y
-    local ny  = y*my:get(1,1) + py*my:get(1,2)
-    local npy = y*my:get(2,1) + py*my:get(2,2)
-    local nt  = x*mx:get(3,1)*_beta + px*mx:get(3,2)*_beta + pt*mx:get(3,3)
-
-    m[i].x   = nx  --      nx
-    m[i].y   = ny  --      ny
-    m[i].px  = npx --      -w*sw*x + cw*px -k0*sw
-    m[i].py  = npy --       w*sh*y + ch*py
-    m[i].t   = nt + t  --      t + l_bg2*pt
-  end
-  -- [PUSHTKT7(TKTF)]
-
-  mdump('quad_drift-1:', l, m)
-end
-
---[[
- 0.962274109  * 5.9323654782281e-06 + 0.493696394 * 2.3762588827029e-06
--0.1499474982 * 5.9323654782281e-06 + 0.962274109 * 2.3762588827029e-06
-
-1.038206353   * 2.9661827391134e-06 + 0.5063516521 * -3.2644454002439e-07
-0.1537912052  * 2.9661827391134e-06 +  1.038206353 * -3.2644454002439e-07
-
-]]
-
-function M.quad_drift_old (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC
-  local el, k0, k1, sdir, tdir, npar, T in m
-  local l  = el*sdir*lw
-  local w2 = abs(k1)               -- [GETMAT7(TKTF)]
-  local w  = sqrt(w2)
-  local wl = w*l
-  local cw, sw = cos (wl), sin (wl)/w
-  local ch, sh = cosh(wl), sinh(wl)/w
-
-  if k1 < 0 then
-    cw, sw, ch, sh = ch, sh, cw, sw
-  end
-  local m16 = (1-cw)/w2
-
-  mdump('quad_drift-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
---    local  bdir = tdir*beam.charge -- not used...
-    local l_bg2 = l/(beam.gamma^2-1)
-
-    local nx = sw*px + cw*x -k0*m16
-    local ny = sh*py + ch*y
-
-    m[i].px  = -w*sw*x + cw*px -k0*sw
-    m[i].py  =  w*sh*y + ch*py
-    m[i].t   = t + l_bg2*pt
-    m[i].x   = nx
-    m[i].y   = ny
-  end
-
-  mdump('quad_drift-1:', l, m)
-end
-
-function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           checked vs PTC
-  local el, k0, sdir, tdir, npar, nmul, knl, ksl in m
-  local l = el*sdir*lw
-
-  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
-
-  mdump('quad_kick-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  bdir = tdir*beam.charge
-    local _beta = 1/beam.beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px + l*bdir*(k0*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
-    m[i].py = py + l*bdir*(                   (bx          - knl[2]*y))
-    m[i].t  =  t - l*k0*((pt+_beta)/(1+pz) - _beta)*x
-  end
-
-  mdump('quad_kick-1:', l, m)
-
-  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
-end
-
--- extra maps for SABAC integrators -------------------------------------------o
-
-function M.drift_sabac (elm, m, lw)
-  local el, sdir, npar, beam, T in m
-  local l = el*sdir*lw
-
-  mdump('drift_sabac-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local _beta = 1/(m[i].beam or beam).beta
-    local l_dp = l/(1 + (2*_beta)*pt + pt^2)
-
-    m[i].x = x + px*l_dp
-    m[i].y = y + py*l_dp
-    m[i].t = t - 0.5*(px^2+py^2)*l_dp^2/l
-  end
-
-  mdump('drift_sabac-1:', l, m)
-end
-
-function M.quad_corr_sabac (elm, m, lw, w)
-  local el, sdir, tdir, npar, k1 in m
-  local l, k1w2 = el*sdir*lw, k1^2*tdir*w
-
-  mdump('quad_corr_sabac-0:', l, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  bdir = tdir*beam.charge
-    local _beta = 1/beam.beta
-    local  l_dp = l/(1 + (2*_beta)*pt + pt^2)
-
-    m[i].px = px + l^2*k1w2*x*l_dp
-    m[i].py = py + l^2*k1w2*y*l_dp
-    m[i].t  = t  + l  *k1w2*0.5*(x^2+y^2)*l_dp^2
-  end
-
-  mdump('quad_corr_sabac-1:', l, m)
-end
-
--- angle~=0, k0=0, k1=0 -------------------------------------------------------o
+-- polar drift-kick ----------------
 
 function M.polar_drift (elm, m, lw) -- [SPROT(TEAPOT)]
   local l, angle in elm
@@ -644,12 +330,204 @@ function M.polar_kick (elm, m, lw) -- [SKICK(TEAPOT)]
     local x, px, y, py in m[i]
     local bx, by = bxby(nmul, knl, ksl, x, y, lw)
 
-    m[i].px = px - by*(1 + h*x) -- TODO: h at all orders...
+    m[i].px = px - by*(1 + h*x)
     m[i].py = py + bx*(1 + h*x)
   end
 end
 
--- angle~=0, k0=~0, k1=0 ------------------------------------------------------o
+-- special kick ---------------------------------------------------------------o
+
+function M.hkick (elm, m, lw) -- [KICKTR(DKD)]                                  unchecked
+  if m.nmul == 0 then return end
+
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local l, w = el*sdir, lw*tdir
+
+  mdump('fockick-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  wchg = beam.charge * w
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    px = px - wchg*(by - knl[1])
+    py = py + wchg*(bx - ksl[1])
+
+    -- dipole focusing
+    local _beta = 1/beam.beta
+    local pz = sqrt(1 + 2*_beta*pt + pt^2)
+    m[i].px = px - wchg*knl[1]*(knl[1]/el*x - (pz-1))
+    m[i].py = py + wchg*ksl[1]*(ksl[1]/el*y - (pz-1))
+    m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
+  end
+
+  mdump('fockick-1:', l, m)
+end
+
+-- TKT model ------------------------------------------------------------------o
+
+-- angle=0, k0~=0, k1=0 [INTER_STREX] -----------------------------------------o
+
+function M.rbend_drift (elm, m, lw) -- [SPARR(STREX)]
+  local el, eld, angle, k0, sdir, tdir, npar, knl, T in m
+  local l, ld = el*lw*sdir, eld*lw*sdir
+
+  mdump('rbend_drift-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = beam.charge*tdir
+    local _beta = 1/beam.beta
+
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)
+    local  ptt = sqrt(pw2)
+    local _ptt = 1/ptt
+    local  npx = px - l*knl[1]*bdir
+    local  pzs = sqrt(pw2 - npx^2)
+    local   nx = x + (pzs-pz)/(knl[1]*bdir)
+    local  pzt = (asin(px*_ptt) - asin(npx*_ptt))/(knl[1]*bdir)
+
+    -- eq. 129 in Forest06
+    m[i].x  = nx
+    m[i].px = npx
+    m[i].y  = y + pzt*py
+    m[i].t  = t - pzt*(_beta+pt) + (1-T)*ld*_beta
+  end
+
+  mdump('rbend_drift-1:', l, m)
+end
+
+function M.rbend_kick (elm, m, lw) -- [KICKEXR(STREX)]
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local w = lw*tdir
+
+  mdump('rbend_kick-0:', m.el*sdir*lw, m)
+
+  for i=1,npar do
+    local x, px, y, py in m[i]
+    local wchg = (m[i].beam or beam).charge * w
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - wchg*(by - knl[1])
+    m[i].py = py + wchg* bx
+  end
+
+  mdump('rbend_kick-1:', m.el*sdir*lw, m)
+end
+
+-- angle=0, k0~=0, k1~=0 [INTER_TKTF] -----------------------------------------o
+
+local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            checked vs PTC
+  local beam, npar, T in m
+
+  mdump('drift_adj-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local _beta = 1/(m[i].beam or beam).beta
+    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+
+    m[i].x = x + px*(l_pz-l)
+    m[i].y = y + py*(l_pz-l)
+    m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+  end
+
+  mdump('drift_adj-1:', l, m)
+end
+
+function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC for h=0
+  local el, eld, angle, k0, k1, sdir, tdir, npar in m
+
+  local l = el*lw*sdir             -- dh
+  local h = angle*tdir/(eld*sdir)  -- B0
+
+  mdump('quad_drift-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = beam.charge*tdir
+    local _beta = 1/beam.beta
+
+    -- [GETMAT7R]
+    local wx = sqrt(abs(k1+h*k0))*bdir
+    local wy = sqrt(abs(k1     ))*bdir
+    local wx2 = wx^2
+
+    local ws, cx, sx, cy, sy
+    if k1*bdir*sdir < 0 then -- TODO: optimise the case of h*k0 == 0
+      ws = -1
+      cx, sx = cosh(wx*l), sinh(wx*l)
+      cy, sy = cos (wy*l), sin (wy*l)
+    else
+      ws = 1
+      cx, sx = cos (wx*l), sin (wx*l)
+      cy, sy = cosh(wy*l), sinh(wy*l)
+    end
+
+    local mx12, mx21, mx13 = sx/wx, -sx*wx*ws, (1-cx  )/wx2*ws
+    local my12, my21, mx33 = sy/wy,  sy*wy*ws, (l-mx21)/wx2*ws
+    local h_b = h*_beta
+    -- [GETMAT7R]
+
+--[[ MATRIX REPRESENTATION
+    local mx = matrix(3):fill {
+      cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
+     -sx*wx*ws      , cx                   , h*sx/wx                   ,
+      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta,
+    }
+    local my = matrix(2,3):fill {
+      cy      , sy/wy, 0,
+      sy*wy*ws, cy   , 0,
+    }
+--]]
+
+    local nx  = x*cx       + px*mx12     + pt*mx13*h_b
+    local npx = x*mx21     + px*cx       + pt*mx12*h_b
+    local ny  = y*cy       + py*my12
+    local npy = y*my21     + py*cy
+    local nt  = x*mx12*h_b + px*mx13*h_b + pt*mx33*h^2
+
+    m[i].x   = nx
+    m[i].y   = ny
+    m[i].px  = npx
+    m[i].py  = npy
+    m[i].t   = t - nt
+  end
+
+  mdump('quad_drift-1:', l, m)
+end
+
+function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           checked vs PTC for k0=0
+  local el, k0, sdir, tdir, npar, nmul, knl, ksl in m
+  local l = el*lw*sdir
+
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
+
+  mdump('quad_kick-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = beam.charge*tdir
+    local _beta = 1/beam.beta
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px + l*bdir*(k0*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
+    m[i].py = py + l*bdir*(                   (bx          - knl[2]*y))
+    m[i].t  =  t - l*k0*((pt+_beta)/(1+pz) - _beta)*x
+  end
+
+  mdump('quad_kick-1:', l, m)
+
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
+end
+
+-- angle~=0, k0=~0, k1=0 [INTER_TEAPOT] ---------------------------------------o
 
 function M.sbend_drift (elm, m, lw) -- [SSEC(TEAPOT)]
   local k0, l, angle in elm
@@ -690,9 +568,9 @@ end
 function M.sbend_kick (elm, m, lw) -- [??]
 end
 
--- angle~=0, k0=~0, k1~=0 -----------------------------------------------------o
+-- angle~=0, k0=~0, k1~=0 [INTER_TEAPOT] --------------------------------------o
 
-function M.combi_drift (elm, m, l) --
+function M.comb_drift (elm, m, l) --
   local k0, k1, l, angle in elm
   l, angle = l*lw, angle*lw
   if abs(k0*l-angle) < minang and abs(k1*l) < minang then
@@ -739,7 +617,7 @@ function M.combi_drift (elm, m, l) --
 --  M.drift_adj(npos == 'first' and l or l/2, m)
 end
 
--- solenoid -------------------------------------------------------------------o
+-- solenoid [INTER_SOL5] ------------------------------------------------------o
 
 function M.solenoid_drift (elm, m, l) -- ks~=0, ksi~=0, (to review)
   local ksi in elm
@@ -800,7 +678,7 @@ function M.thick_kick (elm, m, _)
   end
 end
 
-function M.combi_kick (elm, m, l) -- angle, k0, k1 (tunes)
+function M.comb_kick (elm, m, l) -- angle, k0, k1 (tunes)
 --  local knl in m
 --  if abs(knl[2]) < minang then
     return M.polar_kick(elm,m,l)
@@ -1167,6 +1045,48 @@ function M.sbend_fringe (elm, mflw, lw)
     return straight_fringe(elm,m,l)
   end
   sbend_fringe_ptc(elm, m, l)
+end
+
+-- TODO: extra maps for SABAC integrators -------------------------------------o
+
+function M.drift_sabac (elm, m, lw)
+  local el, sdir, npar, beam, T in m
+  local l = el*lw*sdir
+
+  mdump('drift_sabac-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local _beta = 1/(m[i].beam or beam).beta
+    local l_dp = l/(1 + (2*_beta)*pt + pt^2)
+
+    m[i].x = x + px*l_dp
+    m[i].y = y + py*l_dp
+    m[i].t = t - 0.5*(px^2+py^2)*l_dp^2/l
+  end
+
+  mdump('drift_sabac-1:', l, m)
+end
+
+function M.quad_corr_sabac (elm, m, lw, w)
+  local el, sdir, tdir, npar, k1 in m
+  local l, k1w2 = el*lw*sdir, k1^2*tdir*w
+
+  mdump('quad_corr_sabac-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = tdir*beam.charge
+    local _beta = 1/beam.beta
+    local  l_dp = l/(1 + (2*_beta)*pt + pt^2)
+
+    m[i].px = px + l^2*k1w2*x*l_dp
+    m[i].py = py + l^2*k1w2*y*l_dp
+    m[i].t  = t  + l  *k1w2*0.5*(x^2+y^2)*l_dp^2
+  end
+
+  mdump('quad_corr_sabac-1:', l, m)
 end
 
 -- end ------------------------------------------------------------------------o
