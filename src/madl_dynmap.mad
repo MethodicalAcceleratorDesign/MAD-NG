@@ -27,9 +27,19 @@
 
 local M = {}
 
- -- Note:
- -- Is (_beta+pt) in t shouldn't be sqrt((_beta+pt)^2 - (_beta*_gamma)^2) ??
- -- is it a 1st order approximation?
+-- PTC variables:
+-- L     thick weighted length
+-- LD    thick weighted arc length
+-- YL    kick  weighted length
+-- B     relativistic beta0
+-- B0    curvature = angle/LD
+-- BN(1) k0
+-- BN(2) k1
+-- DIR   tracking direction
+
+-- Note:
+-- Is (_beta+pt) in t shouldn't be sqrt((_beta+pt)^2 - (_beta*_gamma)^2) ??
+-- is it a 1st order approximation?
 
 -- locals ---------------------------------------------------------------------o
 
@@ -236,21 +246,20 @@ function M.changenrj (elm, m, lw_)  -- (to review, option to reset pt?)
   end
 end
 
--- DKD model ------------------------------------------------------------------o
-
--- straight drift-kick ----------------
+-- DKD [INTER_DKD] ------------------------------------------------------------o
 
 function M.strex_drift (elm, m, lw) -- [DRIFTR]                                 checked
   if abs(m.el) < minlen then return end
 
   local el, eld, sdir, npar, beam, T in m
   local l, ld = el*sdir*lw, eld*sdir*lw
+  local _beta = 1/beam.beta
 
-  mdump('drift-0:', l, m)
+  mdump('strex_drift-0:', l, m)
 
   for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local _beta = 1/(m[i].beam or beam).beta
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = beam and 1/beam.beta or _beta
     local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*l_pz
@@ -258,30 +267,30 @@ function M.strex_drift (elm, m, lw) -- [DRIFTR]                                 
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
   end
 
-  mdump('drift-1:', l, m)
+  mdump('strex_drift-1:', l, m)
 end
 
-function M.strex_kick (elm, m, lw) -- [KICKEXR, KICKR]                          checked
+function M.strex_kick (elm, m, lw) -- [KICKEXR]                                 checked
   if m.nmul == 0 then return end
 
   local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
-  local w = lw*tdir
+  local wchg = lw*tdir*beam.charge
 
-  mdump('kick-0:', m.el*sdir*lw, m)
+  mdump('strex_kick-0:', m.el*sdir*lw, m)
 
   for i=1,npar do
-    local x, px, y, py in m[i]
-    local wchg = (m[i].beam or beam).charge * w
+    local x, px, y, py, beam in m[i]
+    local wchg = beam and lw*tdir*beam.charge or wchg
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
     m[i].px = px - wchg*by
     m[i].py = py + wchg*bx
   end
 
-  mdump('kick-1:', m.el*sdir*lw, m)
+  mdump('strex_kick-1:', m.el*sdir*lw, m)
 end
 
--- polar drift-kick ----------------
+-- DKD [INTER_TEAPOT] ---------------------------------------------------------o
 
 function M.polar_drift (elm, m, lw) -- [SPROT(TEAPOT)]
   local l, angle in elm
@@ -335,7 +344,7 @@ function M.polar_kick (elm, m, lw) -- [SKICK(TEAPOT)]
   end
 end
 
--- special kick ---------------------------------------------------------------o
+-- DKD [special kick] ---------------------------------------------------------o
 
 function M.hkick (elm, m, lw) -- [KICKTR(DKD)]                                  unchecked
   if m.nmul == 0 then return end
@@ -365,9 +374,7 @@ function M.hkick (elm, m, lw) -- [KICKTR(DKD)]                                  
   mdump('fockick-1:', l, m)
 end
 
--- TKT model ------------------------------------------------------------------o
-
--- angle=0, k0~=0, k1=0 [INTER_STREX] -----------------------------------------o
+-- TKT [INTER_STREX] ----------------------------------------------------------o
 
 function M.rbend_drift (elm, m, lw) -- [SPARR(STREX)]
   local el, eld, angle, k0, sdir, tdir, npar, knl, T in m
@@ -418,16 +425,17 @@ function M.rbend_kick (elm, m, lw) -- [KICKEXR(STREX)]
   mdump('rbend_kick-1:', m.el*sdir*lw, m)
 end
 
--- angle=0, k0~=0, k1~=0 [INTER_TKTF] -----------------------------------------o
+-- TKT [INTER_TKTF] -----------------------------------------------------------o
 
 local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            checked vs PTC
-  local beam, npar, T in m
+  local npar, beam, T in m
+  local _beta = 1/beam.beta
 
   mdump('drift_adj-0:', l, m)
 
   for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local _beta = 1/(m[i].beam or beam).beta
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = beam and 1/beam.beta or _beta
     local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*(l_pz-l)
@@ -438,19 +446,81 @@ local function drift_adj (l, m) -- drift adjustment [KICKPATH(TKTF)]            
   mdump('drift_adj-1:', l, m)
 end
 
-function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC for h=0
-  local el, eld, angle, k0, k1, sdir, tdir, npar in m
-  local mx12, mx21, mx13, my12, my21, mx33
-  local chg, cx, cy, sx, sy
+function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC
+  local el, k1, sdir, tdir, npar, beam in m
+  local l = el*sdir*lw
+  local chg = beam.charge
 
-  local l = el*lw*sdir
-  local h = angle*tdir/(eld*sdir)
+  -- [GETMAT7R, h == 0]
+  local ws = k1*tdir*sdir < 0 and -1 or 1
+  local w  = sqrt(abs(k1))*tdir*ws
+  local cx, sx = cos (w*l), sin (w*l)
+  local cy, sy = cosh(w*l), sinh(w*l)
+  local mx1, mx2 = sx/w, -sx*w
+  local my1, my2 = sy/w,  sy*w
+-- [GETMAT7R]
 
   mdump('quad_drift-0:', l, m)
 
   for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local chg = beam and beam.charge or chg
+
+    if ws ~= chg then -- swap x <-> y
+      ws, cx, cy, mx1, mx2, my1, my2 = -ws, cy, cx, my1, my2, mx1, mx2
+    end
+
+    local nx  = x*cx  + px*mx1
+    local npx = x*mx2 + px*cx
+    local ny  = y*cy  + py*my1
+    local npy = y*my2 + py*cy
+
+    m[i].x   = nx
+    m[i].y   = ny
+    m[i].px  = npx
+    m[i].py  = npy
+  end
+
+  mdump('quad_drift-1:', l, m)
+end
+
+function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           checked vs PTC
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local l = el*lw*sdir
+  local  bdir = beam.charge*tdir
+  local _beta = 1/beam.beta
+
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
+
+  mdump('quad_kick-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local  bdir = beam and beam.charge*tdir or bdir
+    local _beta = beam and 1/beam.beta or _beta
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - l*bdir*(by - knl[1] - knl[2]*x)
+    m[i].py = py + l*bdir*(bx          - knl[2]*y)
+  end
+
+  mdump('quad_kick-1:', l, m)
+
+  drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
+end
+
+function M.quad_hdrift (elm, m, lw) -- [PUSHTKT7(TKTF)]                         checked vs PTC for h=0
+  local el, eld, h, k0, k1, sdir, tdir, npar, beam in m
+  local chg, cx, cy, sx, sy, mx12, mx21, mx13, my12, my21, mx33
+
+  local l = el*lw*sdir
+
+  mdump('quad_hdrift-0:', l, m)
+
+  for i=1,npar do
     local x, px, y, py, t, pt in m[i]
-    local beam = m[i].beam or m.beam
+    local beam = m[i].beam or beam
     local h_b = h/beam.beta
 
     -- [GETMAT7R]
@@ -497,16 +567,16 @@ function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          
     m[i].t   = t - nt
   end
 
-  mdump('quad_drift-1:', l, m)
+  mdump('quad_hdrift-1:', l, m)
 end
 
-function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           checked vs PTC for k0=0
-  local el, k0, sdir, tdir, npar, nmul, knl, ksl in m
+function M.quad_hkick (elm, m, lw) -- [KICKTKT7(TKTF)]                          checked vs PTC for h=0
+  local el, h, sdir, tdir, npar, nmul, knl, ksl in m
   local l = el*lw*sdir
 
   drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
 
-  mdump('quad_kick-0:', l, m)
+  mdump('quad_hkick-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -516,17 +586,17 @@ function M.quad_kick (elm, m, lw) -- [KICKTKT7(TKTF)]                           
     local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px + l*bdir*(k0*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
-    m[i].py = py + l*bdir*(                   (bx          - knl[2]*y))
-    m[i].t  =  t - l*k0*((pt+_beta)/(1+pz) - _beta)*x
+    m[i].px = px + l*bdir*(h*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
+    m[i].py = py + l*bdir*(                  (bx          - knl[2]*y))
+    m[i].t  =  t - l*h*((pt+_beta)/(1+pz) - _beta)*x
   end
 
-  mdump('quad_kick-1:', l, m)
+  mdump('quad_hkick-1:', l, m)
 
   drift_adj(l/2, m)               -- [KICKPATH(TKTF)]
 end
 
--- angle~=0, k0=~0, k1=0 [INTER_TEAPOT] ---------------------------------------o
+-- [INTER_TEAPOT] -------------------------------------------------------------o
 
 function M.sbend_drift (elm, m, lw) -- [SSEC(TEAPOT)]
   local k0, l, angle in elm
