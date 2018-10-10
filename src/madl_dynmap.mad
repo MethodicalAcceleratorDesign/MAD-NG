@@ -440,49 +440,48 @@ end
 
 function M.quad_drift (elm, m, lw) -- [PUSHTKT7(TKTF)]                          checked vs PTC for h=0
   local el, eld, angle, k0, k1, sdir, tdir, npar in m
+  local mx12, mx21, mx13, my12, my21, mx33
+  local chg, cx, cy, sx, sy
 
-  local l = el*lw*sdir             -- dh
-  local h = angle*tdir/(eld*sdir)  -- B0
+  local l = el*lw*sdir
+  local h = angle*tdir/(eld*sdir)
 
   mdump('quad_drift-0:', l, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  bdir = beam.charge*tdir
-    local _beta = 1/beam.beta
+    local beam = m[i].beam or m.beam
+    local h_b = h/beam.beta
 
     -- [GETMAT7R]
-    local wx = sqrt(abs(k1+h*k0))*bdir
-    local wy = sqrt(abs(k1     ))*bdir
-    local wx2 = wx^2
+    if chg ~= beam.charge then
+      chg = beam.charge
+      local bdir = tdir*chg
+      local kx, ky = k1+h*k0, k1
+      local wx = sqrt(abs(kx))*bdir
+      local wy = sqrt(abs(ky))*bdir
+      local wsx, wsy
 
-    local ws, cx, sx, cy, sy
-    if k1*bdir*sdir < 0 then -- TODO: optimise the case of h*k0 == 0
-      ws = -1
-      cx, sx = cosh(wx*l), sinh(wx*l)
-      cy, sy = cos (wy*l), sin (wy*l)
-    else
-      ws = 1
-      cx, sx = cos (wx*l), sin (wx*l)
-      cy, sy = cosh(wy*l), sinh(wy*l)
+      if kx*bdir*sdir < 0
+      then cx, sx, wsx = cosh(wx*l), sinh(wx*l), -1
+      else cx, sx, wsx = cos (wx*l), sin (wx*l),  1
+      end
+      if ky*bdir*sdir < 0
+      then cy, sy, wsy = cos (wy*l), sin (wy*l), -1
+      else cy, sy, wsy = cosh(wy*l), sinh(wy*l),  1
+      end
+
+      mx12, mx21, mx13 = sx/wx, -sx*wx*wsx, (1-cx  )/wx^2*wsx
+      my12, my21, mx33 = sy/wy,  sy*wy*wsy, (l-mx21)/wx^2*wsx
     end
-
-    local mx12, mx21, mx13 = sx/wx, -sx*wx*ws, (1-cx  )/wx2*ws
-    local my12, my21, mx33 = sy/wy,  sy*wy*ws, (l-mx21)/wx2*ws
-    local h_b = h*_beta
     -- [GETMAT7R]
 
---[[ MATRIX REPRESENTATION
-    local mx = matrix(3):fill {
-      cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
+--[[ MATRIX REPRESENTATION FROM PTC [GETMAT7R]
+    { cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
      -sx*wx*ws      , cx                   , h*sx/wx                   ,
-      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta,
-    }
-    local my = matrix(2,3):fill {
-      cy      , sy/wy, 0,
-      sy*wy*ws, cy   , 0,
-    }
+      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta }
+    { cy      , sy/wy, 0,
+      sy*wy*ws, cy   , 0}
 --]]
 
     local nx  = x*cx       + px*mx12     + pt*mx13*h_b
