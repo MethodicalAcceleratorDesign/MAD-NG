@@ -21,16 +21,40 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
+--[[
+chg  = particle charge
+dir  = sequence direction (e.g. lhcb2, dir=-1)
+sdir = tracking s-direction
+tdir = tracking t-direction (=dir*sdir)
+bdir = tracking b-direction (=dir*sdir*chg)
+
+      dir   sdir  chg  |  tdir  bdir
+FODO   1     1     1   |   1     1
+FODO  -1     1     1   |  -1    -1
+ODOF   1    -1     1   |  -1    -1
+ODOF  -1    -1     1   |   1     1
+
+DOFO   1     1    -1   |   1    -1
+DOFO  -1     1    -1   |  -1     1
+OFOD   1    -1    -1   |  -1     1
+OFOD  -1    -1    -1   |   1    -1
+
+Usage of directions:
+  - lengths        are multiplied by sdir
+  - bending angles are multiplied by tdir
+  - strengths      are multiplied by bdir
+--]]
+
 -- locals ---------------------------------------------------------------------o
 
 local assertTrue, assertEquals, assertAllAlmostEquals           in MAD.utest
 local printf, openfile                                          in MAD.utility
-local eps                                                       in MAD.constant
+local eps, pi                                                   in MAD.constant
 
 local track, beam, element, sequence, option, filesys           in MAD
 local fnone, ftrue                                              in MAD.gfunc
 
-local marker, drift, quadrupole                                 in element
+local marker, drift, quadrupole, rbend                          in element
 local observe                                                   in element.flags
 
 local refdir = \s -> 'track_ref/'..(s or '')
@@ -60,52 +84,28 @@ end
 local tbl_col = {'name','s','x','px','y','py','t','pt'}
 local tbl_hdr = {'title','type','origin','date','time'}
 
--- FODO Testsuite -------------------------------------------------------------o
+-- QUAD Testsuite -------------------------------------------------------------o
 
---[[
-chg  = particle charge
-dir  = sequence direction (e.g. lhcb2, dir=-1)
-sdir = tracking s-direction
-tdir = tracking t-direction (=dir*sdir)
-bdir = tracking b-direction (=dir*sdir*chg)
+local quad_x0  = {0, 1e-6, 0, 5e-7, 0, 0}
 
-      dir   sdir  chg  |  tdir  bdir
-FODO   1     1     1   |   1     1
-FODO  -1     1     1   |  -1    -1
-ODOF   1    -1     1   |  -1    -1
-ODOF  -1    -1     1   |   1     1
+local quad_xs  = {1.4600656220217e-05, 2.3588119782185e-06, 1.7943847978254e-06, -3.9372067136230e-07, -1.4531875702772e-11, 0}
+local quad_xt  = {1.4606200539093e-05, 2.3602690620606e-06, 1.7977500040831e-06, -3.9282268749294e-07, -1.4538426018618e-11, 0}
+local quad_x4  = {1.4607603046229e-05, 2.3604497079904e-06, 1.7977728935816e-06, -3.9292618283356e-07, -1.4541645665389e-11, 0}
+local quad_x6  = {1.4607613705636e-05, 2.3604524793349e-06, 1.7977644418495e-06, -3.9292873471424e-07, -1.4541645665389e-11, 0}
+local quad_x8  = {1.4607613712814e-05, 2.3604524808132e-06, 1.7977644446180e-06, -3.9292873420957e-07, -1.4541812198843e-11, 0}
 
-DOFO   1     1    -1   |   1    -1
-DOFO  -1     1    -1   |  -1     1
-OFOD   1    -1    -1   |  -1     1
-OFOD  -1    -1    -1   |   1    -1
+local quad_xst = {1.4607613712814e-05, 2.3604524808134e-06, 1.7977644446181e-06, -3.9292873420967e-07, -1.4268142223273e-11, 0}
+local quad_xtt = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4544476734102e-11, 0}
+local quad_x4t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420967e-07, -1.4538148462861e-11, 0}
+local quad_x6t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4541257087330e-11, 0}
+local quad_x8t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4542589354960e-11, 0}
 
-Usage of directions:
-  - lengths        are multiplied by sdir
-  - bending angles are multiplied by tdir
-  - strengths      are multiplied by bdir
-]]
-
-local fodo_x0  = {0, 1e-6, 0, 5e-7, 0, 0}
-
-local fodo_xs  = {1.4600656220217e-05, 2.3588119782185e-06, 1.7943847978254e-06, -3.9372067136230e-07, -1.4531875702772e-11, 0}
-local fodo_xt  = {1.4606200539093e-05, 2.3602690620606e-06, 1.7977500040831e-06, -3.9282268749294e-07, -1.4538426018618e-11, 0}
-local fodo_x4  = {1.4607603046229e-05, 2.3604497079904e-06, 1.7977728935816e-06, -3.9292618283356e-07, -1.4541645665389e-11, 0}
-local fodo_x6  = {1.4607613705636e-05, 2.3604524793349e-06, 1.7977644418495e-06, -3.9292873471424e-07, -1.4541645665389e-11, 0}
-local fodo_x8  = {1.4607613712814e-05, 2.3604524808132e-06, 1.7977644446180e-06, -3.9292873420957e-07, -1.4541812198843e-11, 0}
-
-local fodo_xst = {1.4607613712814e-05, 2.3604524808134e-06, 1.7977644446181e-06, -3.9292873420967e-07, -1.4268142223273e-11, 0}
-local fodo_xtt = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4544476734102e-11, 0}
-local fodo_x4t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420967e-07, -1.4538148462861e-11, 0}
-local fodo_x6t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4541257087330e-11, 0}
-local fodo_x8t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4542589354960e-11, 0}
-
-local fodo_ptc = {1.4607613712814E-05, 2.3604524808134E-06, 1.7977644446181E-06, -3.9292873420967E-07, -1.4269030401692E-11, 0}
+local quad_ptc = {1.4607613712814E-05, 2.3604524808134E-06, 1.7977644446181E-06, -3.9292873420967E-07, -1.4269030401692E-11, 0}
 
 -- ptc_create_layout, model=2, method=2, nst=1, time=true, exact=true;
--- ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="ptctrack_fodo_madx.";
+-- ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="ptctrack_quad_madx.";
 
-local function mkFODO (dir_, chg_)
+local function mkQUAD (dir_, chg_)
   local dir   = dir_ or 1 -- sequence direction
   local chg   = chg_ or 1 -- particle charge
   local k1_qf =  0.2110222185*dir*chg
@@ -119,437 +119,499 @@ local function mkFODO (dir_, chg_)
   return seq   -- seq:dumpseq()
 end
 
-TestTrackFODO = {}
+TestTrackQUAD = {}
 
-function TestTrackFODO:setUp ()
+function TestTrackQUAD:setUp ()
   filesys.mkdir(rundir())
   self.optfmt = option.format
   option.format = "%-.16e"
 end
 
-function TestTrackFODO:tearDown ()
+function TestTrackQUAD:tearDown ()
   option.format = self.optfmt
 end
 
 -- DKD model ---------------o
 
-function TestTrackFODO:testDKD10S () -- simple
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10S () -- simple
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10s'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10s'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xs
+  local ref = quad_xs
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SB () -- simple, backward
-  local seq = mkFODO()
-  local X0 = fodo_xs
+function TestTrackQUAD:testDKD10SB () -- simple, backward
+  local seq = mkQUAD()
+  local X0 = quad_xs
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10sb'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sb'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SR () -- simple, reversed
-  local seq = mkFODO(-1)
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10SR () -- simple, reversed
+  local seq = mkQUAD(-1)
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10sr'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sr'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xs
+  local ref = quad_xs
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SBR () -- simple, backward, reverse
-  local seq = mkFODO(-1)
-  local X0 = fodo_xs
+function TestTrackQUAD:testDKD10SBR () -- simple, backward, reverse
+  local seq = mkQUAD(-1)
+  local X0 = quad_xs
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10sbr'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sbr'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SN () -- simple, negative
-  local seq, beam = mkFODO(1,-1), beam { particle='electron' }
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10SN () -- simple, negative
+  local seq, beam = mkQUAD(1,-1), beam { particle='electron' }
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10sn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xs
+  local ref = quad_xs
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SBN () -- simple, backward, negative
-  local seq, beam = mkFODO(1,-1), beam { particle='electron' }
-  local X0 = fodo_xs
+function TestTrackQUAD:testDKD10SBN () -- simple, backward, negative
+  local seq, beam = mkQUAD(1,-1), beam { particle='electron' }
+  local X0 = quad_xs
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10sbn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sbn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SRN () -- simple, reversed, negative
-  local seq, beam = mkFODO(-1,-1), beam { particle='electron' }
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10SRN () -- simple, reversed, negative
+  local seq, beam = mkQUAD(-1,-1), beam { particle='electron' }
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10srn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10srn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xs
+  local ref = quad_xs
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10SBRN () -- simple, backward, reverse, negative
-  local seq, beam = mkFODO(-1,-1), beam { particle='electron' }
-  local X0 = fodo_xs
+function TestTrackQUAD:testDKD10SBRN () -- simple, backward, reverse, negative
+  local seq, beam = mkQUAD(-1,-1), beam { particle='electron' }
+  local X0 = quad_xs
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10sbrn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10sbrn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10T () -- teapot
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10T () -- teapot
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='teapot', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10t'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10t'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xt
+  local ref = quad_xt
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10TB () -- teapot, backward
-  local seq = mkFODO()
-  local X0 = fodo_xt
+function TestTrackQUAD:testDKD10TB () -- teapot, backward
+  local seq = mkQUAD()
+  local X0 = quad_xt
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='teapot', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10tb'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10tb'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y4 () -- yoshida4
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10Y4 () -- yoshida4
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida4', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10y4'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y4'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x4
+  local ref = quad_x4
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y4B () -- yoshida4, backward
-  local seq = mkFODO()
-  local X0 = fodo_x4
+function TestTrackQUAD:testDKD10Y4B () -- yoshida4, backward
+  local seq = mkQUAD()
+  local X0 = quad_x4
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida4', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10y4b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y4b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y6 () -- yoshida6
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10Y6 () -- yoshida6
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida6', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10y6'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y6'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x6
+  local ref = quad_x6
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y6B () -- yoshida6, backward
-  local seq = mkFODO()
-  local X0 = fodo_x6
+function TestTrackQUAD:testDKD10Y6B () -- yoshida6, backward
+  local seq = mkQUAD()
+  local X0 = quad_x6
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida6', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10y6b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y6b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y8 () -- yoshida8
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testDKD10Y8 () -- yoshida8
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida8', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10y8'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y8'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x8
+  local ref = quad_x8
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testDKD10Y8B () -- yoshida8, backward
-  local seq = mkFODO()
-  local X0 = fodo_x8
+function TestTrackQUAD:testDKD10Y8B () -- yoshida8, backward
+  local seq = mkQUAD()
+  local X0 = quad_x8
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', method='yoshida8', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_dkd10y8b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10y8b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
 -- TKT model ---------------o
 
-function TestTrackFODO:testTKT1S () -- simple
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1S () -- simple
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0 }
 
-  mtbl:write(rundir('fodo_tkt1s'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1s'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xst
+  local ref = quad_xst
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SB () -- simple, backward
-  local seq = mkFODO()
-  local X0 = fodo_xst
+function TestTrackQUAD:testTKT1SB () -- simple, backward
+  local seq = mkQUAD()
+  local X0 = quad_xst
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1s'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1s'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SR () -- simple, reversed
-  local seq = mkFODO(-1)
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1SR () -- simple, reversed
+  local seq = mkQUAD(-1)
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0 }
 
-  mtbl:write(rundir('fodo_tkt1sr'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1sr'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xst
+  local ref = quad_xst
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SBR () -- simple, backward, reverse
-  local seq = mkFODO(-1)
-  local X0 = fodo_xst
+function TestTrackQUAD:testTKT1SBR () -- simple, backward, reverse
+  local seq = mkQUAD(-1)
+  local X0 = quad_xst
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1sbr'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1sbr'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SN () -- simple, negative
-  local seq, beam = mkFODO(1,-1), beam { particle='electron' }
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1SN () -- simple, negative
+  local seq, beam = mkQUAD(1,-1), beam { particle='electron' }
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0 }
 
-  mtbl:write(rundir('fodo_tkt1sn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1sn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xst
+  local ref = quad_xst
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SBN () -- simple, backward, negative
-  local seq, beam = mkFODO(1,-1), beam { particle='electron' }
-  local X0 = fodo_xst
+function TestTrackQUAD:testTKT1SBN () -- simple, backward, negative
+  local seq, beam = mkQUAD(1,-1), beam { particle='electron' }
+  local X0 = quad_xst
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1sbn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1sbn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SRN () -- simple, reversed, negative
-  local seq, beam = mkFODO(-1,-1), beam { particle='electron' }
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1SRN () -- simple, reversed, negative
+  local seq, beam = mkQUAD(-1,-1), beam { particle='electron' }
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0 }
 
-  mtbl:write(rundir('fodo_tkt1srn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1srn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xst
+  local ref = quad_xst
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1SBRN () -- simple, backward, reverse, negative
-  local seq, beam = mkFODO(-1,-1), beam { particle='electron' }
-  local X0 = fodo_xst
+function TestTrackQUAD:testTKT1SBRN () -- simple, backward, reverse, negative
+  local seq, beam = mkQUAD(-1,-1), beam { particle='electron' }
+  local X0 = quad_xst
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1sbrn'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1sbrn'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT10T () -- teapot
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT10T () -- teapot
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='teapot', nslice=10 }
 
-  mtbl:write(rundir('fodo_dkd10t'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_dkd10t'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_xtt
+  local ref = quad_xtt
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT10TB () -- teapot, backward
-  local seq = mkFODO()
-  local X0 = fodo_xtt
+function TestTrackQUAD:testTKT10TB () -- teapot, backward
+  local seq = mkQUAD()
+  local X0 = quad_xtt
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='teapot', nslice=10, dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt10tb'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt10tb'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y4 () -- yoshida4
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1Y4 () -- yoshida4
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida4' }
 
-  mtbl:write(rundir('fodo_tkt1y4'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y4'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x4t
+  local ref = quad_x4t
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y4B () -- yoshida4, backward
-  local seq = mkFODO()
-  local X0 = fodo_x4t
+function TestTrackQUAD:testTKT1Y4B () -- yoshida4, backward
+  local seq = mkQUAD()
+  local X0 = quad_x4t
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida4', dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1y4b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y4b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y6 () -- yoshida6
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1Y6 () -- yoshida6
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida6' }
 
-  mtbl:write(rundir('fodo_tkt1y6'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y6'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x6t
+  local ref = quad_x6t
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y6B () -- yoshida6, backward
-  local seq = mkFODO()
-  local X0 = fodo_x6t
+function TestTrackQUAD:testTKT1Y6B () -- yoshida6, backward
+  local seq = mkQUAD()
+  local X0 = quad_x6t
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida6', dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1y6b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y6b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y8 () -- yoshida8
-  local seq = mkFODO()
-  local X0 = fodo_x0
+function TestTrackQUAD:testTKT1Y8 () -- yoshida8
+  local seq = mkQUAD()
+  local X0 = quad_x0
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida8' }
 
-  mtbl:write(rundir('fodo_tkt1y8'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y8'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x8t
+  local ref = quad_x8t
   assertAllAlmostEquals(res, ref, eps)
 end
 
-function TestTrackFODO:testTKT1Y8B () -- yoshida8, backward
-  local seq = mkFODO()
-  local X0 = fodo_x8t
+function TestTrackQUAD:testTKT1Y8B () -- yoshida8, backward
+  local seq = mkQUAD()
+  local X0 = quad_x8t
   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, method='yoshida8', dir=-1 }
 
-  mtbl:write(rundir('fodo_tkt1y8b'), tbl_col, tbl_hdr)
+  mtbl:write(rundir('quad_tkt1y8b'), tbl_col, tbl_hdr)
 
   local row = mtbl[#mtbl]
   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-  local ref = fodo_x0
+  local ref = quad_x0
   assertAllAlmostEquals(res, ref, 2*eps)
 end
+
+-- RBEND Testsuite ------------------------------------------------------------o
+
+local rbend_x0  = {0, 1e-6, 0, 5e-7, 0, 0}
+
+local rbend_xs  = {1.4600656220217e-05, 2.3588119782185e-06, 1.7943847978254e-06, -3.9372067136230e-07, -1.4531875702772e-11, 0}
+local rbend_xt  = {1.4606200539093e-05, 2.3602690620606e-06, 1.7977500040831e-06, -3.9282268749294e-07, -1.4538426018618e-11, 0}
+local rbend_x4  = {1.4607603046229e-05, 2.3604497079904e-06, 1.7977728935816e-06, -3.9292618283356e-07, -1.4541645665389e-11, 0}
+local rbend_x6  = {1.4607613705636e-05, 2.3604524793349e-06, 1.7977644418495e-06, -3.9292873471424e-07, -1.4541645665389e-11, 0}
+local rbend_x8  = {1.4607613712814e-05, 2.3604524808132e-06, 1.7977644446180e-06, -3.9292873420957e-07, -1.4541812198843e-11, 0}
+
+local rbend_xst = {1.4607613712814e-05, 2.3604524808134e-06, 1.7977644446181e-06, -3.9292873420967e-07, -1.4268142223273e-11, 0}
+local rbend_xtt = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4544476734102e-11, 0}
+local rbend_x4t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420967e-07, -1.4538148462861e-11, 0}
+local rbend_x6t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4541257087330e-11, 0}
+local rbend_x8t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4542589354960e-11, 0}
+
+local rbend_ptc = {1.4607613712814E-05, 2.3604524808134E-06, 1.7977644446181E-06, -3.9292873420967E-07, -1.4269030401692E-11, 0}
+
+-- ptc_create_layout, model=2, method=2, nst=1, time=true, exact=true;
+-- ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="ptctrack_rbend_madx.";
+
+local function mkRBEND (dir_, chg_)
+  local dir   = dir_ or 1 -- sequence direction
+  local chg   = chg_ or 1 -- particle charge
+  local k0_qf =  2*pi/1e4/1.5*dir*chg
+  local k0_qd = -2*pi/1e4/1.5*dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    rbend 'm1' {at=0  , l=1.5, k0:=k0_qf},
+    drift 'd1' {at=1.5, l=3.5},
+    rbend 'm2' {at=5  , l=1.5, k0:=k0_qd},
+    drift 'd2' {at=6.5, l=3.5},
+  }
+  return seq   -- seq:dumpseq()
+end
+
+TestTrackRBEND = {}
+
+function TestTrackRBEND:setUp ()
+  filesys.mkdir(rundir())
+  self.optfmt = option.format
+  option.format = "%-.16e"
+end
+
+function TestTrackRBEND:tearDown ()
+  option.format = self.optfmt
+end
+
+-- DKD model ---------------o
+
+-- function TestTrackRBEND:testDKD10S () -- simple
+--   local seq = mkRBEND()
+--   local X0 = rbend_x0
+--   local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, model='DKD', nslice=10 }
+--
+--   mtbl:write(rundir('rbend_dkd10s'), tbl_col, tbl_hdr)
+--
+--   local row = mtbl[#mtbl]
+--   local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
+--   local ref = rbend_xs
+--   assertAllAlmostEquals(res, ref, eps)
+-- end
 
 -- Drift ----------------------------------------------------------------------o
 
