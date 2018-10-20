@@ -30,62 +30,69 @@ local M = {}
 
 local max, sqrt in math
 local fnone     in MAD.gfunc
+local is_number in MAD.typeid
 
 -- integrators ----------------------------------------------------------------o
 
 function M.thickonly (elm, mflw, lw, thick)
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and lw/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(1 thick)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-    thick(elm, mflw, lwn)
-      fsl(elm, mflw, lwn, i)
+    local lwi = lwn or lw*slc[i]
+    thick(elm, mflw, lwi)
+      fsl(elm, mflw, lwi, i)
   end
 end
 
 function M.simple (elm, mflw, lw, thick, kick) -- 1st order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and lw/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(1 kick + 2 thicks)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-    thick(elm, mflw, lwn*0.5)
-     kick(elm, mflw, lwn)
-    thick(elm, mflw, lwn*0.5)
-      fsl(elm, mflw, lwn, i)
+    local lwi = lwn or lw*slc[i]
+    thick(elm, mflw, lwi*0.5)
+     kick(elm, mflw, lwi)
+    thick(elm, mflw, lwi*0.5)
+      fsl(elm, mflw, lwi, i)
   end
 end
 
 function M.collim (elm, mflw, lw, thick, kick) -- 1st order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(2 kicks + 1 thick)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     kick(elm, mflw, lwn*0.5)
-    thick(elm, mflw, lwn)
-     kick(elm, mflw, lwn*0.5)
-      fsl(elm, mflw, lwn, i)
+    local lwi = lw*(lwn or slc[i])
+     kick(elm, mflw, lwi*0.5)
+    thick(elm, mflw, lwi)
+     kick(elm, mflw, lwi*0.5)
+      fsl(elm, mflw, lwi, i)
   end
 end
 
 -- [Burkhardt13] table 1, p. 946
 function M.teapot (elm, mflw, lw, thick, kick) -- 2nd order
-  local nsl = max(2, elm.nslice, mflw.nslice)
-  local fsl = mflw.atslice
+  local nsl = max(2, elm.nslice or mflw.nslice)
   local lwn = lw/nsl
   local lwd = lw/(2*(nsl+1))
   local lwD = lw*nsl/(nsl^2-1)/2
+  local fsl = mflw.atslice
 
  -- nsl*(1 kick + 2 thicks)
-     fsl(elm, mflw, lwn, 0)
+     fsl(elm, mflw, 0, 0)
    thick(elm, mflw, lwd)
  for i=1,nsl-1 do
     kick(elm, mflw, lwn)
@@ -159,93 +166,99 @@ print('E8') make_yoshida(yosh8_w.E)
 
 -- [Yoshida90] eq. 2.11, p. 263
 function M.yoshida4 (elm, mflw, lw, thick, kick) -- 4th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(3 kicks + 4 thicks) ; k=4
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-    thick(elm, mflw, lwn * yosh4_d[1])
-     kick(elm, mflw, lwn * yosh4_k[1])
-    thick(elm, mflw, lwn * yosh4_d[2])
-     kick(elm, mflw, lwn * yosh4_k[2]) -- middle
-    thick(elm, mflw, lwn * yosh4_d[2])
-     kick(elm, mflw, lwn * yosh4_k[1])
-    thick(elm, mflw, lwn * yosh4_d[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+    thick(elm, mflw, lwi * yosh4_d[1])
+     kick(elm, mflw, lwi * yosh4_k[1])
+    thick(elm, mflw, lwi * yosh4_d[2])
+     kick(elm, mflw, lwi * yosh4_k[2]) -- middle
+    thick(elm, mflw, lwi * yosh4_d[2])
+     kick(elm, mflw, lwi * yosh4_k[1])
+    thick(elm, mflw, lwi * yosh4_d[1])
+      fsl(elm, mflw, lwi, i)
   end
 end
 
 -- [Yoshida90] table 1, p. 267
 function M.yoshida6 (elm, mflw, lw, thick, kick) -- 6th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(7 kicks + 8 thicks) ; k=8
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-    thick(elm, mflw, lwn * yosh6_d[1])
-     kick(elm, mflw, lwn * yosh6_k[1])
-    thick(elm, mflw, lwn * yosh6_d[2])
-     kick(elm, mflw, lwn * yosh6_k[2])
-    thick(elm, mflw, lwn * yosh6_d[3])
-     kick(elm, mflw, lwn * yosh6_k[3])
-    thick(elm, mflw, lwn * yosh6_d[4])
-     kick(elm, mflw, lwn * yosh6_k[4]) -- middle
-    thick(elm, mflw, lwn * yosh6_d[4])
-     kick(elm, mflw, lwn * yosh6_k[3])
-    thick(elm, mflw, lwn * yosh6_d[3])
-     kick(elm, mflw, lwn * yosh6_k[2])
-    thick(elm, mflw, lwn * yosh6_d[2])
-     kick(elm, mflw, lwn * yosh6_k[1])
-    thick(elm, mflw, lwn * yosh6_d[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+    thick(elm, mflw, lwi * yosh6_d[1])
+     kick(elm, mflw, lwi * yosh6_k[1])
+    thick(elm, mflw, lwi * yosh6_d[2])
+     kick(elm, mflw, lwi * yosh6_k[2])
+    thick(elm, mflw, lwi * yosh6_d[3])
+     kick(elm, mflw, lwi * yosh6_k[3])
+    thick(elm, mflw, lwi * yosh6_d[4])
+     kick(elm, mflw, lwi * yosh6_k[4]) -- middle
+    thick(elm, mflw, lwi * yosh6_d[4])
+     kick(elm, mflw, lwi * yosh6_k[3])
+    thick(elm, mflw, lwi * yosh6_d[3])
+     kick(elm, mflw, lwi * yosh6_k[2])
+    thick(elm, mflw, lwi * yosh6_d[2])
+     kick(elm, mflw, lwi * yosh6_k[1])
+    thick(elm, mflw, lwi * yosh6_d[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Yoshida90] table 2, p. 267
 function M.yoshida8 (elm, mflw, lw, thick, kick) -- 8th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(15 kicks + 16 thicks) ; k=16
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-    thick(elm, mflw, lwn * yosh8_d[1])
-     kick(elm, mflw, lwn * yosh8_k[1])
-    thick(elm, mflw, lwn * yosh8_d[2])
-     kick(elm, mflw, lwn * yosh8_k[2])
-    thick(elm, mflw, lwn * yosh8_d[3])
-     kick(elm, mflw, lwn * yosh8_k[3])
-    thick(elm, mflw, lwn * yosh8_d[4])
-     kick(elm, mflw, lwn * yosh8_k[4])
-    thick(elm, mflw, lwn * yosh8_d[5])
-     kick(elm, mflw, lwn * yosh8_k[5])
-    thick(elm, mflw, lwn * yosh8_d[6])
-     kick(elm, mflw, lwn * yosh8_k[6])
-    thick(elm, mflw, lwn * yosh8_d[7])
-     kick(elm, mflw, lwn * yosh8_k[7])
-    thick(elm, mflw, lwn * yosh8_d[8])
-     kick(elm, mflw, lwn * yosh8_k[8]) -- middle
-    thick(elm, mflw, lwn * yosh8_d[8])
-     kick(elm, mflw, lwn * yosh8_k[7])
-    thick(elm, mflw, lwn * yosh8_d[7])
-     kick(elm, mflw, lwn * yosh8_k[6])
-    thick(elm, mflw, lwn * yosh8_d[6])
-     kick(elm, mflw, lwn * yosh8_k[5])
-    thick(elm, mflw, lwn * yosh8_d[5])
-     kick(elm, mflw, lwn * yosh8_k[4])
-    thick(elm, mflw, lwn * yosh8_d[4])
-     kick(elm, mflw, lwn * yosh8_k[3])
-    thick(elm, mflw, lwn * yosh8_d[3])
-     kick(elm, mflw, lwn * yosh8_k[2])
-    thick(elm, mflw, lwn * yosh8_d[2])
-     kick(elm, mflw, lwn * yosh8_k[1])
-    thick(elm, mflw, lwn * yosh8_d[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+    thick(elm, mflw, lwi * yosh8_d[1])
+     kick(elm, mflw, lwi * yosh8_k[1])
+    thick(elm, mflw, lwi * yosh8_d[2])
+     kick(elm, mflw, lwi * yosh8_k[2])
+    thick(elm, mflw, lwi * yosh8_d[3])
+     kick(elm, mflw, lwi * yosh8_k[3])
+    thick(elm, mflw, lwi * yosh8_d[4])
+     kick(elm, mflw, lwi * yosh8_k[4])
+    thick(elm, mflw, lwi * yosh8_d[5])
+     kick(elm, mflw, lwi * yosh8_k[5])
+    thick(elm, mflw, lwi * yosh8_d[6])
+     kick(elm, mflw, lwi * yosh8_k[6])
+    thick(elm, mflw, lwi * yosh8_d[7])
+     kick(elm, mflw, lwi * yosh8_k[7])
+    thick(elm, mflw, lwi * yosh8_d[8])
+     kick(elm, mflw, lwi * yosh8_k[8]) -- middle
+    thick(elm, mflw, lwi * yosh8_d[8])
+     kick(elm, mflw, lwi * yosh8_k[7])
+    thick(elm, mflw, lwi * yosh8_d[7])
+     kick(elm, mflw, lwi * yosh8_k[6])
+    thick(elm, mflw, lwi * yosh8_d[6])
+     kick(elm, mflw, lwi * yosh8_k[5])
+    thick(elm, mflw, lwi * yosh8_d[5])
+     kick(elm, mflw, lwi * yosh8_k[4])
+    thick(elm, mflw, lwi * yosh8_d[4])
+     kick(elm, mflw, lwi * yosh8_k[3])
+    thick(elm, mflw, lwi * yosh8_d[3])
+     kick(elm, mflw, lwi * yosh8_k[2])
+    thick(elm, mflw, lwi * yosh8_d[2])
+     kick(elm, mflw, lwi * yosh8_k[1])
+    thick(elm, mflw, lwi * yosh8_d[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
@@ -336,255 +349,271 @@ local sabac10_c = { 0.000621934331486166426497049845358646, }
 
 -- [Laskar01]
 function M.sabac2 (elm, mflw, lw, thick, kick, corr) -- 4th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(2 kicks + 3 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac2_c[1])
-    thick(elm, mflw, lwn * sabac2_d[1])
-     kick(elm, mflw, lwn * sabac2_k[1])
-    thick(elm, mflw, lwn * sabac2_d[2]) -- middle
-     kick(elm, mflw, lwn * sabac2_k[1])
-    thick(elm, mflw, lwn * sabac2_d[1])
-     corr(elm, mflw, lwn , sabac2_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac2_c[1])
+    thick(elm, mflw, lwi * sabac2_d[1])
+     kick(elm, mflw, lwi * sabac2_k[1])
+    thick(elm, mflw, lwi * sabac2_d[2]) -- middle
+     kick(elm, mflw, lwi * sabac2_k[1])
+    thick(elm, mflw, lwi * sabac2_d[1])
+     corr(elm, mflw, lwi , sabac2_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac3 (elm, mflw, lw, thick, kick, corr) -- 5th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(3 kicks + 4 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac3_c[1])
-    thick(elm, mflw, lwn * sabac3_d[1])
-     kick(elm, mflw, lwn * sabac3_k[1])
-    thick(elm, mflw, lwn * sabac3_d[2])
-     kick(elm, mflw, lwn * sabac3_k[2]) -- middle
-    thick(elm, mflw, lwn * sabac3_d[2])
-     kick(elm, mflw, lwn * sabac3_k[1])
-    thick(elm, mflw, lwn * sabac3_d[1])
-     corr(elm, mflw, lwn , sabac3_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac3_c[1])
+    thick(elm, mflw, lwi * sabac3_d[1])
+     kick(elm, mflw, lwi * sabac3_k[1])
+    thick(elm, mflw, lwi * sabac3_d[2])
+     kick(elm, mflw, lwi * sabac3_k[2]) -- middle
+    thick(elm, mflw, lwi * sabac3_d[2])
+     kick(elm, mflw, lwi * sabac3_k[1])
+    thick(elm, mflw, lwi * sabac3_d[1])
+     corr(elm, mflw, lwi , sabac3_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac4 (elm, mflw, lw, thick, kick, corr) -- 6th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
-
-  print('sabac4', elm.name, nsl, lw, thick, kick, corr)
 
   -- nsl*(4 kicks + 5 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac4_c[1])
-    thick(elm, mflw, lwn * sabac4_d[1])
-     kick(elm, mflw, lwn * sabac4_k[1])
-    thick(elm, mflw, lwn * sabac4_d[2])
-     kick(elm, mflw, lwn * sabac4_k[2])
-    thick(elm, mflw, lwn * sabac4_d[3]) -- middle
-     kick(elm, mflw, lwn * sabac4_k[2])
-    thick(elm, mflw, lwn * sabac4_d[2])
-     kick(elm, mflw, lwn * sabac4_k[1])
-    thick(elm, mflw, lwn * sabac4_d[1])
-     corr(elm, mflw, lwn , sabac4_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac4_c[1])
+    thick(elm, mflw, lwi * sabac4_d[1])
+     kick(elm, mflw, lwi * sabac4_k[1])
+    thick(elm, mflw, lwi * sabac4_d[2])
+     kick(elm, mflw, lwi * sabac4_k[2])
+    thick(elm, mflw, lwi * sabac4_d[3]) -- middle
+     kick(elm, mflw, lwi * sabac4_k[2])
+    thick(elm, mflw, lwi * sabac4_d[2])
+     kick(elm, mflw, lwi * sabac4_k[1])
+    thick(elm, mflw, lwi * sabac4_d[1])
+     corr(elm, mflw, lwi , sabac4_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac5 (elm, mflw, lw, thick, kick, corr) -- 7th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(5 kicks + 6 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac5_c[1])
-    thick(elm, mflw, lwn * sabac5_d[1])
-     kick(elm, mflw, lwn * sabac5_k[1])
-    thick(elm, mflw, lwn * sabac5_d[2])
-     kick(elm, mflw, lwn * sabac5_k[2])
-    thick(elm, mflw, lwn * sabac5_d[3])
-     kick(elm, mflw, lwn * sabac5_k[3]) -- middle
-    thick(elm, mflw, lwn * sabac5_d[3])
-     kick(elm, mflw, lwn * sabac5_k[2])
-    thick(elm, mflw, lwn * sabac5_d[2])
-     kick(elm, mflw, lwn * sabac5_k[1])
-    thick(elm, mflw, lwn * sabac5_d[1])
-     corr(elm, mflw, lwn , sabac5_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac5_c[1])
+    thick(elm, mflw, lwi * sabac5_d[1])
+     kick(elm, mflw, lwi * sabac5_k[1])
+    thick(elm, mflw, lwi * sabac5_d[2])
+     kick(elm, mflw, lwi * sabac5_k[2])
+    thick(elm, mflw, lwi * sabac5_d[3])
+     kick(elm, mflw, lwi * sabac5_k[3]) -- middle
+    thick(elm, mflw, lwi * sabac5_d[3])
+     kick(elm, mflw, lwi * sabac5_k[2])
+    thick(elm, mflw, lwi * sabac5_d[2])
+     kick(elm, mflw, lwi * sabac5_k[1])
+    thick(elm, mflw, lwi * sabac5_d[1])
+     corr(elm, mflw, lwi , sabac5_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac6 (elm, mflw, lw, thick, kick, corr) -- 8th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(6 kicks + 7 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac6_c[1])
-    thick(elm, mflw, lwn * sabac6_d[1])
-     kick(elm, mflw, lwn * sabac6_k[1])
-    thick(elm, mflw, lwn * sabac6_d[2])
-     kick(elm, mflw, lwn * sabac6_k[2])
-    thick(elm, mflw, lwn * sabac6_d[3])
-     kick(elm, mflw, lwn * sabac6_k[3])
-    thick(elm, mflw, lwn * sabac6_d[4]) -- middle
-     kick(elm, mflw, lwn * sabac6_k[3])
-    thick(elm, mflw, lwn * sabac6_d[3])
-     kick(elm, mflw, lwn * sabac6_k[2])
-    thick(elm, mflw, lwn * sabac6_d[2])
-     kick(elm, mflw, lwn * sabac6_k[1])
-    thick(elm, mflw, lwn * sabac6_d[1])
-     corr(elm, mflw, lwn , sabac6_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac6_c[1])
+    thick(elm, mflw, lwi * sabac6_d[1])
+     kick(elm, mflw, lwi * sabac6_k[1])
+    thick(elm, mflw, lwi * sabac6_d[2])
+     kick(elm, mflw, lwi * sabac6_k[2])
+    thick(elm, mflw, lwi * sabac6_d[3])
+     kick(elm, mflw, lwi * sabac6_k[3])
+    thick(elm, mflw, lwi * sabac6_d[4]) -- middle
+     kick(elm, mflw, lwi * sabac6_k[3])
+    thick(elm, mflw, lwi * sabac6_d[3])
+     kick(elm, mflw, lwi * sabac6_k[2])
+    thick(elm, mflw, lwi * sabac6_d[2])
+     kick(elm, mflw, lwi * sabac6_k[1])
+    thick(elm, mflw, lwi * sabac6_d[1])
+     corr(elm, mflw, lwi , sabac6_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac7 (elm, mflw, lw, thick, kick, corr) -- 9th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(7 kicks + 8 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac7_c[1])
-    thick(elm, mflw, lwn * sabac7_d[1])
-     kick(elm, mflw, lwn * sabac7_k[1])
-    thick(elm, mflw, lwn * sabac7_d[2])
-     kick(elm, mflw, lwn * sabac7_k[2])
-    thick(elm, mflw, lwn * sabac7_d[3])
-     kick(elm, mflw, lwn * sabac7_k[3])
-    thick(elm, mflw, lwn * sabac7_d[4])
-     kick(elm, mflw, lwn * sabac7_k[4]) -- middle
-    thick(elm, mflw, lwn * sabac7_d[4])
-     kick(elm, mflw, lwn * sabac7_k[3])
-    thick(elm, mflw, lwn * sabac7_d[3])
-     kick(elm, mflw, lwn * sabac7_k[2])
-    thick(elm, mflw, lwn * sabac7_d[2])
-     kick(elm, mflw, lwn * sabac7_k[1])
-    thick(elm, mflw, lwn * sabac7_d[1])
-     corr(elm, mflw, lwn , sabac7_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac7_c[1])
+    thick(elm, mflw, lwi * sabac7_d[1])
+     kick(elm, mflw, lwi * sabac7_k[1])
+    thick(elm, mflw, lwi * sabac7_d[2])
+     kick(elm, mflw, lwi * sabac7_k[2])
+    thick(elm, mflw, lwi * sabac7_d[3])
+     kick(elm, mflw, lwi * sabac7_k[3])
+    thick(elm, mflw, lwi * sabac7_d[4])
+     kick(elm, mflw, lwi * sabac7_k[4]) -- middle
+    thick(elm, mflw, lwi * sabac7_d[4])
+     kick(elm, mflw, lwi * sabac7_k[3])
+    thick(elm, mflw, lwi * sabac7_d[3])
+     kick(elm, mflw, lwi * sabac7_k[2])
+    thick(elm, mflw, lwi * sabac7_d[2])
+     kick(elm, mflw, lwi * sabac7_k[1])
+    thick(elm, mflw, lwi * sabac7_d[1])
+     corr(elm, mflw, lwi , sabac7_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac8 (elm, mflw, lw, thick, kick, corr) -- 10th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(8 kicks + 9 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac8_c[1])
-    thick(elm, mflw, lwn * sabac8_d[1])
-     kick(elm, mflw, lwn * sabac8_k[1])
-    thick(elm, mflw, lwn * sabac8_d[2])
-     kick(elm, mflw, lwn * sabac8_k[2])
-    thick(elm, mflw, lwn * sabac8_d[3])
-     kick(elm, mflw, lwn * sabac8_k[3])
-    thick(elm, mflw, lwn * sabac8_d[4])
-     kick(elm, mflw, lwn * sabac8_k[4])
-    thick(elm, mflw, lwn * sabac8_d[5]) -- middle
-     kick(elm, mflw, lwn * sabac8_k[4])
-    thick(elm, mflw, lwn * sabac8_d[4])
-     kick(elm, mflw, lwn * sabac8_k[3])
-    thick(elm, mflw, lwn * sabac8_d[3])
-     kick(elm, mflw, lwn * sabac8_k[2])
-    thick(elm, mflw, lwn * sabac8_d[2])
-     kick(elm, mflw, lwn * sabac8_k[1])
-    thick(elm, mflw, lwn * sabac8_d[1])
-     corr(elm, mflw, lwn , sabac8_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac8_c[1])
+    thick(elm, mflw, lwi * sabac8_d[1])
+     kick(elm, mflw, lwi * sabac8_k[1])
+    thick(elm, mflw, lwi * sabac8_d[2])
+     kick(elm, mflw, lwi * sabac8_k[2])
+    thick(elm, mflw, lwi * sabac8_d[3])
+     kick(elm, mflw, lwi * sabac8_k[3])
+    thick(elm, mflw, lwi * sabac8_d[4])
+     kick(elm, mflw, lwi * sabac8_k[4])
+    thick(elm, mflw, lwi * sabac8_d[5]) -- middle
+     kick(elm, mflw, lwi * sabac8_k[4])
+    thick(elm, mflw, lwi * sabac8_d[4])
+     kick(elm, mflw, lwi * sabac8_k[3])
+    thick(elm, mflw, lwi * sabac8_d[3])
+     kick(elm, mflw, lwi * sabac8_k[2])
+    thick(elm, mflw, lwi * sabac8_d[2])
+     kick(elm, mflw, lwi * sabac8_k[1])
+    thick(elm, mflw, lwi * sabac8_d[1])
+     corr(elm, mflw, lwi , sabac8_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac9 (elm, mflw, lw, thick, kick, corr) -- 11th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(9 kicks + 10 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac9_c[1])
-    thick(elm, mflw, lwn * sabac9_d[1])
-     kick(elm, mflw, lwn * sabac9_k[1])
-    thick(elm, mflw, lwn * sabac9_d[2])
-     kick(elm, mflw, lwn * sabac9_k[2])
-    thick(elm, mflw, lwn * sabac9_d[3])
-     kick(elm, mflw, lwn * sabac9_k[3])
-    thick(elm, mflw, lwn * sabac9_d[4])
-     kick(elm, mflw, lwn * sabac9_k[4])
-    thick(elm, mflw, lwn * sabac9_d[5])
-     kick(elm, mflw, lwn * sabac9_k[5]) -- middle
-    thick(elm, mflw, lwn * sabac9_d[5])
-     kick(elm, mflw, lwn * sabac9_k[4])
-    thick(elm, mflw, lwn * sabac9_d[4])
-     kick(elm, mflw, lwn * sabac9_k[3])
-    thick(elm, mflw, lwn * sabac9_d[3])
-     kick(elm, mflw, lwn * sabac9_k[2])
-    thick(elm, mflw, lwn * sabac9_d[2])
-     kick(elm, mflw, lwn * sabac9_k[1])
-    thick(elm, mflw, lwn * sabac9_d[1])
-     corr(elm, mflw, lwn , sabac9_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac9_c[1])
+    thick(elm, mflw, lwi * sabac9_d[1])
+     kick(elm, mflw, lwi * sabac9_k[1])
+    thick(elm, mflw, lwi * sabac9_d[2])
+     kick(elm, mflw, lwi * sabac9_k[2])
+    thick(elm, mflw, lwi * sabac9_d[3])
+     kick(elm, mflw, lwi * sabac9_k[3])
+    thick(elm, mflw, lwi * sabac9_d[4])
+     kick(elm, mflw, lwi * sabac9_k[4])
+    thick(elm, mflw, lwi * sabac9_d[5])
+     kick(elm, mflw, lwi * sabac9_k[5]) -- middle
+    thick(elm, mflw, lwi * sabac9_d[5])
+     kick(elm, mflw, lwi * sabac9_k[4])
+    thick(elm, mflw, lwi * sabac9_d[4])
+     kick(elm, mflw, lwi * sabac9_k[3])
+    thick(elm, mflw, lwi * sabac9_d[3])
+     kick(elm, mflw, lwi * sabac9_k[2])
+    thick(elm, mflw, lwi * sabac9_d[2])
+     kick(elm, mflw, lwi * sabac9_k[1])
+    thick(elm, mflw, lwi * sabac9_d[1])
+     corr(elm, mflw, lwi , sabac9_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
 -- [Laskar01]
 function M.sabac10 (elm, mflw, lw, thick, kick, corr) -- 12th order
-  local nsl = max(1, elm.nslice, mflw.nslice)
+  local slc = elm.nslice or mflw.nslice
+  local nsl = max(1, is_number(slc) and slc or #slc)
+  local lwn = is_number(slc) and 1/nsl or nil
   local fsl = mflw.atslice
-  local lwn = lw/nsl
 
   -- nsl*(10 kicks + 11 thicks + 2 corrs)
-      fsl(elm, mflw, lwn, 0)
+      fsl(elm, mflw, 0, 0)
   for i=1,nsl do
-     corr(elm, mflw, lwn , sabac10_c[1])
-    thick(elm, mflw, lwn * sabac10_d[1])
-     kick(elm, mflw, lwn * sabac10_k[1])
-    thick(elm, mflw, lwn * sabac10_d[2])
-     kick(elm, mflw, lwn * sabac10_k[2])
-    thick(elm, mflw, lwn * sabac10_d[3])
-     kick(elm, mflw, lwn * sabac10_k[3])
-    thick(elm, mflw, lwn * sabac10_d[4])
-     kick(elm, mflw, lwn * sabac10_k[4])
-    thick(elm, mflw, lwn * sabac10_d[5])
-     kick(elm, mflw, lwn * sabac10_k[5])
-    thick(elm, mflw, lwn * sabac10_d[6]) -- middle
-     kick(elm, mflw, lwn * sabac10_k[5])
-    thick(elm, mflw, lwn * sabac10_d[5])
-     kick(elm, mflw, lwn * sabac10_k[4])
-    thick(elm, mflw, lwn * sabac10_d[4])
-     kick(elm, mflw, lwn * sabac10_k[3])
-    thick(elm, mflw, lwn * sabac10_d[3])
-     kick(elm, mflw, lwn * sabac10_k[2])
-    thick(elm, mflw, lwn * sabac10_d[2])
-     kick(elm, mflw, lwn * sabac10_k[1])
-    thick(elm, mflw, lwn * sabac10_d[1])
-     corr(elm, mflw, lwn , sabac10_c[1])
-      fsl(elm, mflw, lwn , i)
+    local lwi = lw*(lwn or slc[i])
+     corr(elm, mflw, lwi , sabac10_c[1])
+    thick(elm, mflw, lwi * sabac10_d[1])
+     kick(elm, mflw, lwi * sabac10_k[1])
+    thick(elm, mflw, lwi * sabac10_d[2])
+     kick(elm, mflw, lwi * sabac10_k[2])
+    thick(elm, mflw, lwi * sabac10_d[3])
+     kick(elm, mflw, lwi * sabac10_k[3])
+    thick(elm, mflw, lwi * sabac10_d[4])
+     kick(elm, mflw, lwi * sabac10_k[4])
+    thick(elm, mflw, lwi * sabac10_d[5])
+     kick(elm, mflw, lwi * sabac10_k[5])
+    thick(elm, mflw, lwi * sabac10_d[6]) -- middle
+     kick(elm, mflw, lwi * sabac10_k[5])
+    thick(elm, mflw, lwi * sabac10_d[5])
+     kick(elm, mflw, lwi * sabac10_k[4])
+    thick(elm, mflw, lwi * sabac10_d[4])
+     kick(elm, mflw, lwi * sabac10_k[3])
+    thick(elm, mflw, lwi * sabac10_d[3])
+     kick(elm, mflw, lwi * sabac10_k[2])
+    thick(elm, mflw, lwi * sabac10_d[2])
+     kick(elm, mflw, lwi * sabac10_k[1])
+    thick(elm, mflw, lwi * sabac10_d[1])
+     corr(elm, mflw, lwi , sabac10_c[1])
+      fsl(elm, mflw, lwi , i)
   end
 end
 
@@ -609,12 +638,17 @@ M.uniform = M.simple
 
 -- slices selectors -----------------------------------------------------------o
 
+local function nslc (e, m)
+  local slc = e.nslice or m.nslice
+  return max(1, is_number(slc) and slc or #slc)
+end
+
 M.atbeg  = \e,m,_,i ->           i == 0
 M.atins  = \e,m,_,i ->           i >  0
-M.atmid  = \e,m,_,i ->         2*i == max(1, e.nslice, m.nslice)
-M.atend  = \e,m,_,i ->           i == max(1, e.nslice, m.nslice)
-M.atbnd  = \e,m,_,i -> i == 0 or i == max(1, e.nslice, m.nslice)
-M.atbody = \e,m,_,i -> i > 0 and i  < max(1, e.nslice, m.nslice)
+M.atmid  = \e,m,_,i ->         2*i == nslc(e, m)
+M.atend  = \e,m,_,i ->           i == nslc(e, m)
+M.atbnd  = \e,m,_,i -> i == 0 or i == nslc(e, m)
+M.atbody = \e,m,_,i -> i > 0 and i  < nslc(e, m)
 
 -- end ------------------------------------------------------------------------o
 return { symint = M }
