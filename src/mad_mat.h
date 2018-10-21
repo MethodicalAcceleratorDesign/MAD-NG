@@ -96,7 +96,7 @@ void   mad_cmat_center  (const cnum_t x[],                         cnum_t  r[], 
 void   mad_cmat_sympconj(const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_cmat_symperr (const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  M' J M - J
 
-void   mad_mat_cleanup  (void);
+void   mad_fft_cleanup (void);
 
 // ----------------------------------------------------------------------------o
 
