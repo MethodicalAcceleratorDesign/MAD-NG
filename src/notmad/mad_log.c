@@ -14,6 +14,10 @@
  | Foundation. This file is distributed in the hope that it will be useful, but
  | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
  o-----------------------------------------------------------------------------o
+
+  WARNING: this file is not part of MAD, it must be used only for standalone
+           library build.
+
 */
 
 #include <stdio.h>
