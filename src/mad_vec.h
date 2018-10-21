@@ -114,7 +114,7 @@ void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], ss
 void   mad_cvec_infft (const cnum_t x[], const num_t r_node[]  , cnum_t  r[], ssz_t n, ssz_t nx);
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec-<cvec>
 
-void   mad_vec_cleanup(void);
+void   mad_fft_cleanup (void);
 
 // ----------------------------------------------------------------------------o
 
