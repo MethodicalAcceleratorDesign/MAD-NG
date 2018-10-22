@@ -1,12 +1,11 @@
 /*
  o-----------------------------------------------------------------------------o
  |
- | Truncated Power Series Algebra module implementation
+ | CTPSA and TPSA conversion module implementation
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
  | Contrib: -
  |
  o-----------------------------------------------------------------------------o
