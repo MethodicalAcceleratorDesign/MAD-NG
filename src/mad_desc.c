@@ -1151,7 +1151,7 @@ mad_desc_del (const D *d_)
   mad_free(d->H);
 
   if (d->L) {  // if L exists, then L_idx exists too
-    for (idx_t i=0; i < 1 + d->mo * d->mo/2; ++i) {
+    for (idx_t i=0; i < 1 + d->mo * (d->mo/2); ++i) {
       mad_free(d->L[i]);
       if (d->L_idx[i]) {
         mad_free(*d->L_idx[i]);  // allocated as single block
