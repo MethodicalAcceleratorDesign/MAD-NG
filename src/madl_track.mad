@@ -38,7 +38,7 @@ local strsub = string.sub
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thickonly, atend                                          in MAD.symint
+local thinonly, thickonly, atend                                in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -118,9 +118,9 @@ local function track_thin (elm, mflw)
   local sdir in mflw
   mflw.el, mflw.eld = l, l
 
-  changeref (elm, mflw,  sdir)
-  strex_kick(elm, mflw,   1  )
-  changeref (elm, mflw, -sdir)
+  changeref(elm, mflw,  sdir)
+  thinonly (elm, mflw,   1  , nil, strex_kick)
+  changeref(elm, mflw, -sdir)
 end
 
 local function track_drift (elm, mflw)
@@ -292,11 +292,11 @@ E.changenrj:setv({ track = functor( changenrj ) }, 'init')
 
 -- track mtable ---------------------------------------------------------------o
 
-local function save_dat (elm, mflw, lw, slc)
+local function save_dat (elm, mflw, lw, islc, nslc)
   local name, kind in elm
   local npar, ds, tdir, spos, turn, mtbl, atsave, relative, mapsave in mflw
 
-  lw = relative and lw*max(0,min(1,slc)) or slc<0 and 1 or lw*slc
+  lw = relative and lw*max(0,min(1,islc)) or islc<0 and 1 or lw*islc
   local dsw = ds*lw
 
   for i=1,npar do
@@ -309,21 +309,21 @@ local function save_dat (elm, mflw, lw, slc)
 
     -- keep order!
     mtbl = mtbl + { name, kind, spos+dsw, dsw, id,
-                    x, px, y, py, t, pt, slc, turn, tdir, damap }
+                    x, px, y, py, t, pt, islc, turn, tdir, damap }
   end
   -- user action
-  atsave(elm, mflw, lw, slc)
+  atsave(elm, mflw, lw, islc, nslc)
 end
 
-local function save_imp (elm, mflw, lw, slc)
+local function save_imp (elm, mflw, lw, islc, nslc)
   if not elm:is_implicit() then
-    save_dat(elm, mflw, lw, slc)
+    save_dat(elm, mflw, lw, islc, nslc)
   end
 end
 
-local function save_obs (elm, mflw, lw, slc)
+local function save_obs (elm, mflw, lw, islc, nslc)
   if elm:is_observed() and mflw.turn % mflw.observe == 0 then
-    save_dat(elm, mflw, lw, slc)
+    save_dat(elm, mflw, lw, islc, nslc)
   end
 end
 
@@ -409,7 +409,7 @@ local function make_mflow (self)
 
   -- setup default sclicing
   local nslice in self
-  local nslc = is_number(nslice) and nslice or #nslice
+  local nslc = is_number(nslice) and nslice or is_table(nslice) and #nslice
   assert(is_integer(nslc) and nslc > 0,
          "invalid nslice (positive integer or array of slice weights expected)")
 
@@ -605,7 +605,7 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na -- not applicable (see survey)
+local _na, _nyi -- not applicable (see survey), not yet implemented
 
 local track = command 'track' {
   beam=nil,         -- beam (required or sequence.beam)                   (mflw)
@@ -626,6 +626,7 @@ local track = command 'track' {
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   method='simple',  -- method for integration                             (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
+  radiate=_nyi,     -- radiate at slices                                  (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
