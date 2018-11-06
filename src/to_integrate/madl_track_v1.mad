@@ -1,0 +1,1122 @@
+-- cavities -------------------------------------------------------------------o
+
+local function rfcavity_kick (elm, m, l) -- RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+  local x, px, y, py, t, pt, nmul, bdir in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a, r = elm.a or  0, elm.r or 0
+
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+  local pc = m.beam.pc
+  local volt_c = 1.0e-3
+  local freq, harm, volt, lag = elm.freq or 0, elm.harm or 0, elm.volt or 0, elm.lag or 0
+  local nbessel, nf = elm.nbessel or  0, elm.nf or 1
+  if freq == 0 and harm == 0 then
+    error("either frequency or harmonic number has to be defined for RF Cavity "
+          .. elm.name)
+  end
+
+  local omega = twopi*freq / clight
+  local vl    = m.bdir*l*volt*volt_c/pc
+  local df, f, r2 = 0, 1, 1
+
+  for ko=1,nf do -- over modes
+    for i=1,nbessel do
+      r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+      dr2 =  r2*i
+      df  =  df + 2*dr2
+      r2  =  r2*(x^2+y^2)
+      f   =  f + r2
+    end
+
+    if nbessel > 0 then
+      m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+      m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    end
+
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
+
+    m.px = m.px - ff[ko]*bdir*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*bdir*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
+      bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
+    by  = byt
+
+    m.pt = m.pt + ff[ko]*(ko*omega)*bdir*by/pc * r *sin(arg)
+  end --over modes
+end
+
+local function rfcavity_thin_kick (elm, m, l) -- for tracking thin rf mult
+  local x, px, y, py, t, pt, nmul, bdir in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a, r = elm.a or  0, elm.r or 0
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+  local pc = beam.pc
+  local volt =elm.volt
+  local volt_c = 1.0e-3
+  local omega = twopi*freq / clight
+
+  for ko=1,nf do -- over modes
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt - bdir*volt_c*ff[ko]*volt*sin(arg)/pc
+
+    -- BUG: knl, ksl never retrieved
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
+
+    m.px = m.px - ff[ko]*bdir*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*bdir*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul,2,-1 do
+      byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+      bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
+    by  = byt
+
+    m.t = t - ff[ko]*(ko*omega)*bdir*by/pc * r *sin(arg)
+  end --over modes
+end
+
+local function adjust_time_cav(elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  local _beta = 1/m.beam.beta
+
+  local delta_e = elm.delta_e or 0
+  if pos == 'entry' then
+    delta_e = pt
+    if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+    if elm.l < minlen then
+      rfcavity_thin_kick(elm, m)
+      delta_e=(m.pt - delta_e)*m.beam.pc -- side effects?
+    end
+  else
+    if elm.l < minlen then return end
+    t = t - elm.l*_beta -- TO CHECK      -- side effects?
+    delta_e = (pt - delta_e)*m.beam.pc   -- side effects?
+  end
+end
+
+local function rfcavity_fringe_ptc (elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+
+  if ('nocavity' and (not 'always_on')) then return end -- non-sense!!!
+
+  if elm.kill_fringe     == 1                     or
+     elm.kill_ent_fringe == 1 and pos ==  'entry' or
+     elm.kill_ext_fringe == 1 and pos ==  'exit' then return end
+
+  adjust_time_cav(elm, m, 'entry')
+
+  if not ('fringe' or elm.nbessel == -1) then return end
+  if elm.l < minlen then return end
+
+  local kbmad = 0
+  if elm.nbessel == -1 then kbmad = 1 end
+
+  local z = 0
+  if pos == 'entry' then z = elm.l end
+  local freq, volt = elm.freg or 0, elm.volt or 0
+  local volt_c = 1.0e-3
+  local pc = m.beam.pc
+  local omega = twopi*freq / clight
+  local vl = m.bdir*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ph = elm.f or {}, elm.ph or {}
+  local nf = elm.nf or 1
+
+  for ko=1,nf do   -- over modes
+   s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   m.px = m.px + 0.5*vl*s1*m.x
+   m.py = m.py + 0.5*vl*s1*m.y
+   m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+  end
+
+  adjust_time_cav(elm, m, 'exit')
+end
+
+----------------------------------------------------------------------------------------
+Original code from track before splitting....
+
+-- strengths and phases -------------------------------------------------------o
+
+-- Load element phases in mflow
+
+local function get_phas (elm, m, nmul) -- l=0 (or ignored)
+  local pnl, dpnl = elm.pnl or {}, elm.dpnl or {}
+  local psl, dpsl = elm.psl or {}, elm.dpsl or {}
+  for i=1,nmul do
+    m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
+    m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
+  end
+end
+
+-- Load element multipoles and volts in mflow
+
+local function get_mult (elm, m) -- l=0 (or ignored)
+  local knl, dknl = elm.knl or {}, elm.dknl or {}
+  local ksl, dksl = elm.ksl or {}, elm.dksl or {}
+  local nmul = max(#knl, #ksl, #dknl, #dksl)
+
+  m.ksi = (elm.ksi  or 0) + (elm.dksi or 0) -- solenoid
+  m.krf = (elm.krf  or 0) + (elm.dkrf or 0) -- rf cavity (krf*z = omega_rf*t)
+  m.vrf = (elm.volt or 0) + (elm.dvrf or 0) -- rf volts
+
+  m.has_k = m.ksi ~= 0 or m.krf ~= 0 or m.vrf ~= 0
+
+  if nmul >= 1 then
+    for i=1,nmul do
+      m.knl[i] = (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ksl[i] or 0) + (dksl[i] or 0)
+      m.has_k  = m.has_k or m.knl[i] ~= 0 or m.ksl[i] ~= 0
+    end
+    if abs(m.krf) >= minang then
+      get_phas(elm, m, nmul)
+    end
+    m.nmul = nmul
+  else
+    m.nmul, m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0, 0
+  end
+end
+
+-- Load element strengths, multipoles and volts in mflow
+
+local function get_kmult (elm, m) -- l~=0
+  local l in elm
+  if abs(l) < minlen then return get_mult(elm, m) end
+
+  local k0 , k1 , k2 , k3 , k4  in elm
+  local k0s, k1s, k2s, k3s, k4s in elm
+  local nkn = k4  and 5 or k3  and 4 or k2  and 3 or k1  and 2 or k0  and 1 or 0
+  local nks = k4s and 5 or k3s and 4 or k2s and 3 or k1s and 2 or k0s and 1 or 0
+  local knl, dknl = elm.knl or {}, elm.dknl or {}
+  local ksl, dksl = elm.ksl or {}, elm.dksl or {}
+  local nmul = max(#knl, #ksl, #dknl, #dksl, nkn, nks)
+
+  m.ksi  = (elm.ks or 0)*l + (elm.ksi  or 0) + (elm.dksi or 0)
+  m.krf  =                   (elm.krf  or 0) + (elm.dkrf or 0)
+  m.vrf  =                   (elm.volt or 0) + (elm.dvrf or 0)
+  m.has_k = m.ksi ~= 0 or m.krf ~= 0 or m.vrf ~= 0
+
+  if nmul >= 1 then
+    local kn = { k0 , k1 , k2 , k3 , k4  }
+    local ks = { k0s, k1s, k2s, k3s, k4s }
+    for i=1,nmul do
+      m.knl[i] = (kn[i] or 0)*l + (knl[i] or 0) + (dknl[i] or 0)
+      m.ksl[i] = (ks[i] or 0)*l + (ksl[i] or 0) + (dksl[i] or 0)
+      m.has_k = m.has_k or m.knl[i] ~= 0 or m.ksl[i] ~= 0
+    end
+    if abs(m.krf) >= minang then
+      get_phas(elm, m, nmul)
+    end
+    m.nmul = nmul
+  else
+    m.nmul, m.knl[1], m.ksl[1], m.knl[2] = 0, 0, 0, 0
+  end
+end
+
+-- Compute weighted multipoles
+
+local function get_bxby (nmul, knl, ksl, x, y, lw)
+  if nmul == 0 then return 0, 0 end
+
+  local by = lw*knl[nmul] / fact(nmul-1)
+  local bx = lw*ksl[nmul] / fact(nmul-1)
+  local byt
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+    bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+    by  = byt
+  end
+  return bx, by
+end
+
+-- drifts ---------------------------------------------------------------------o
+
+function straight_drift (_, m, l) -- exact, l~=0
+  if abs(l) < minlen then return end
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+
+  m.x = x + px*l_pz
+  m.y = y + py*l_pz
+  m.t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+function rbend_thick (elm, m, l) -- exact, l~=0
+  local knl in m
+  if abs(knl[1]) < minang then
+    return straight_drift(nil,m,l)
+  end
+
+  local x, px, y, py, t, pt, bdir, T in m
+  local _beta = 1/m.beam.beta
+  local lw = l/elm.l
+  local k0 = bdir*lw*knl[1]
+
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local pt = sqrt(1 + 2*_beta*pt + pt^2 - py^2)
+  local xp = px - k0
+  local ps = sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - py^2)
+  local xs = (asin(px/pt) - asin(xp/pt))/k0
+
+  m.x  = x + (ps-pz)/k0
+  m.px = xp
+  m.y  = y + py*xs
+  m.t  = t - (_beta+pt)*xs + (1-T)*l*_beta
+end
+
+function solenoid_thick (elm, m, l) -- exact, l~=0          TO BE REVIEWED
+  if abs(m.ksi) < minang then
+    return rbend_thick(elm,m,l)
+  end
+
+  local x, px, y, py, t, pt, T, bdir in m
+  local _beta = 1/m.beam.beta
+  local _el = 1/elm.l
+
+  local bsol = m.ksi*bdir*_el/2
+  local xp = px + bsol*y
+  local yp = py - bsol*x
+
+  local l_pz  = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2)
+  local angle = l_pz*bsol
+
+  local ca, sa, sc = cos(angle), sin(angle), sinc(angle)
+
+  local xt  = ca*x  + l_pz*sc*px
+  local pxt = ca*px - l_pz*sc*x *bsol^2
+  local yt  = ca*y  + l_pz*sc*py
+  local pyt = ca*py - l_pz*sc*y *bsol^2
+
+  m.x  = ca*xt  + sa*yt
+  m.px = ca*pxt + sa*pyt
+  m.y  = ca*yt  - sa*xt
+  m.py = ca*pyt - sa*pxt
+
+  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+local function combadj_drift (_, m, l) -- l~=0, adjust combi_drift
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+
+  local l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  m.x  = x + px*(l_pz-l)
+  m.y  = y + py*(l_pz-l)
+  m.t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
+end
+
+function quad_thick (elm, m, l) -- combi_thick with angle == 0
+  local _el   = 1/elm.l
+  local _beta = 1/m.beam.beta
+  local l_bet2_gam2 = l/(m.beam.gamma^2-1)
+
+  local knl, bdir in m
+  local k0, k1 = bdir*knl[1]*_el, bdir*knl[2]*_el
+  local w2 = abs(k1)
+  local w  = sqrt(w2)
+
+  -- TODO: case w=0...
+  local cw, sw = cos (w*l), sin (w*l)/w
+  local ch, sh = cosh(w*l), sinh(w*l)/w
+
+  if k1 < 0 then
+    cw, sw, ch, sh = ch, sh, cw, sw
+  end
+
+  local npos in m
+  if is_nil(npos) or npos == 'last' then
+    local dl = is_nil(pos) and l/2 or l
+    combadj_drift(_, m, dl)
+  end
+
+  local x, px, y, py, t, pt in m
+  local m16 = (1-cw)/w2
+
+  m.x  =    cw*x + sw*px -k0*m16
+  m.px = -w*sw*x + cw*px -k0*sw
+  m.y  =    ch*y + sh*py
+  m.py =  w*sh*y + ch*py
+  m.t  = t + l_bet2_gam2*pt
+
+  if is_nil(npos) or npos == 'first' then
+    local dl = is_nil(pos) and l/2 or l
+    combadj_drift(_, m, l)
+  end
+  m.npos = nil
+end
+
+function combi_thick (elm, m, l)
+  local _el   = 1/elm.l
+  local _beta = 1/m.beam.beta
+  local l_bet2_gam2 = l/(m.beam.gamma^2-1)
+
+  local angle = elm.angle
+  local lw    = l*_el
+  local h     = lw*angle
+  local hbar  = h*_beta
+
+  local knl, bdir in m
+  local k0, k1 = bdir*knl[1]*_el, bdir*knl[2]*_el
+  local hk0pk1 = h*k0+k1
+  local wx2, wy2 = abs(hk0pk1), abs(k1)
+  local wx , wy  = sqrt(wx2), sqrt(wy2)
+
+  local cx, sx, cy, sy
+  if hk0pk1 < 0
+  then cx, sx = cosh(wx*l), sinh(wx*l)/wx -- check wx == 0
+  else cx, sx = cos (wx*l), sin (wx*l)/wx -- check wx == 0
+  end
+  if k1 < 0
+  then cy, sy = cosh(wy*l), sinh(wy*l)/wy -- check wy == 0
+  else cy, sy = cos (wy*l), sin (wy*l)/wy -- check wy == 0
+  end
+
+  local npos in m
+  if is_nil(npos) or npos == 'last' then
+    local dl = is_nil(pos) and l/2 or l
+    combadj_drift(_, m, dl)
+  end
+
+  local x, px, y, py, t, pt in m
+  local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2
+
+  m.x  =      cx*x + sx*px + hbar*m16*pt + (h-k0)*m16
+  m.px = -wx2*sx*x + cx*px + hbar*sx*pt  + (h-k0)*sx
+  m.y  =      cy*y + sy*py
+  m.py =  wy2*sy*y + cy*py
+  m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
+
+  if is_nil(npos) or npos == 'first' then
+    local dl = is_nil(pos) and l/2 or l
+    combadj_drift(_, m, l)
+  end
+  m.npos = nil
+end
+
+function polar_drift (elm, m, l) -- exact, l~=0, k0=angle
+  local rho = elm.l/(elm.angle*m.sdir)
+  local ang = l/rho
+  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
+
+  local x, px, y, py, t, pt, T in m
+  local _beta = 1/m.beam.beta
+  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local _pz = 1/pz
+  local ptt = 1 - ta*px*_pz
+  local xr  = (x+rho)*ta*_pz
+
+  m.x  = (x + rho*(2*sa2^2 + sa*px*_pz))/(ca*ptt)
+  m.px = ca*px + sa*pz
+  m.y  = y + xr*py/ptt
+  m.t  = t - xr*(_beta+pt)/ptt + (1-T)*l*_beta
+end
+
+function sbend_thick (elm, m, l) -- exact, l~=0, k0~=angle
+  local angle in elm
+  local knl in m
+  if abs(angle - knl[1]) < minang then
+    return polar_drift(elm,m,l)
+  end
+  error("NYI")
+end
+
+-- PRECEDENCE SHOULD BE OUTSIDE INTEGRATORS
+--local function combi_thick (elm, m, l) -- angle, k0, k1 (tunes)
+--  if abs(m.knl[2]) < minang then -- Put these checks outside the integrator
+--    if abs(angle) < minang then
+--      return rbend_thick(elm,m,l)
+--    else
+--      return sbend_thick(elm,m,l)
+--    end
+--  else
+--    if abs(angle) < minang then
+--      return quad_thick(elm,m,l)
+--    else
+--      return combi_thick  (elm,m,l)
+--    end
+--  end
+--end
+
+-- kicks ----------------------------------------------------------------------o
+
+-- Special case TO BE REVIEWED !!!
+function thin_kick (elm, m) -- l=0 (ignored)
+  local nmul in m
+  if nmul == 0 then return end
+
+--  local knlt, kslt = elm.knl or {}, elm.ksl or {} -- BUG: not retrieved by getmul
+--  local knl1, ksl1 = (knlt[1] or 0), (kslt[1] or 0)
+
+  local x, px, y, py, bdir, knl, ksl in m
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, 1)
+
+  m.px = px - bdir*(by + knl[1])
+  m.py = py + bdir*(bx - ksl[1])
+
+  if knl1 ~= 0 or ksl1 ~= 0 then
+    local t, pt in m
+    local _beta = 1/m.beam.beta
+    local pz = sqrt(1 + 2*_beta*pt + pt^2)
+
+    local l = elm.lrad or 0 -- TODO: check if lrad or l?
+    if l ~= 0 then -- dipole focusing and deltap
+      m.px = m.px - knl[1]^2*x/l + bdir*knl[1]*(pz-1)
+      m.py = m.py - ksl[1]^2*y/l + bdir*ksl[1]*(pz-1)
+    end
+--    m.t = t + bdir*(knl1*x - ksl1*y) * (_beta+pt)/pz
+    m.t = t - bdir*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
+  end
+end
+
+function straight_kick (elm, m, l) -- l~=0
+  local nmul in m
+  if nmul == 0 then return end
+
+  local x, px, y, py, knl, ksl, bdir in m
+  local lw = abs(elm.l)>minlen and l/elm.l or 1
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
+
+  m.px = px - bdir*by
+  m.py = py + bdir*bx
+end
+
+function quadrupole_kick (elm, m, l)
+  if abs(m.knl[2]) < minang then -- should never occur due to precedences
+    return rfcavity_kick(elm,m,l)
+  end
+
+  local x, px, y, py, t, pt, bdir, T, nmul, knl, ksl in m
+  local _beta = 1/m.beam.beta
+  local pz = sqrt(1 + 2*_beta*pt + pt^2) - 1
+
+  local lw = l/elm.l
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
+
+   m.px = px + lw*knl[1]*(pz-pt)*_beta
+   m.t  = t  - lw*knl[1]*((pt+_beta)/(1+pz) - _beta)*x
+
+   m.px = m.px - bdir*(by - lw*(knl[1] - knl[2]*x))
+   m.py = m.py + bdir*(bx - lw*          knl[2]*y )
+end
+
+function polar_kick (elm, m, l) -- [PTC] SKICK
+  local angle in elm
+  if abs(angle) < minang then -- should never occur due to precedences
+    return straight_kick(elm,m,l)
+  end
+
+  local x, px, y, py, nmul, knl, ksl, bdir in m
+  local lw = l/elm.l
+  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw) -- TODO: GETELECTRIC
+
+  local h = lw*angle
+  m.px = px - bdir*by*(1 + h*x)
+  m.py = py + bdir*bx*(1 + h*x)
+end
+
+function combi_kick (elm, m, l) -- angle, k0, k1 (tunes)
+--  local knl in m
+--  if abs(knl[2]) < minang then
+    return polar_kick(elm,m,l)
+--  end
+  -- error("NYI") -- TODO
+end
+
+function rfcavity_kick (elm, m, l) --RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+  --local vrf in m
+  --if abs(vrf) < minvolt then
+    return straight_kick(elm,m,l)
+  --end
+
+-- missing input: tt, phase, phase0, ff, ph, a, r, nbessel, freq, volt, lag
+
+--  local x, px, y, py, t, pt, bdir, nmul, knl, ksl in m
+--  local volt, freq, lag, nbessel in elm
+--
+--  if freq == 0 then
+--    error("Frequency number has to be defined for RF Cavity (i.e. harmon NYI) "
+--          .. elm.name)
+--  end
+--
+--  local pc = m.beam.pc
+--  local omega = twopi*freq / clight
+--  local vl    = bdir*l*volt*volt_c/pc
+--  local df, f, r2 = 0, 1, 1
+--
+--  do i=1,nbessel
+--    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+--    dr2 =  r2*i
+--    df  =  df + 2*dr2
+--    r2  =  r2*(x^2+y^2)
+--    f   =  f + r2
+--  end
+--
+--  local ff, ph = elm.f or {}, elm.ph or {}
+--  local a , r  = elm.a or  0, elm.r or 0
+--  local arg = omega*(t + tt) + phasе + ph + phase0
+--
+--  if nbessel > 0 then
+--    m.px = px-x*ff[ko]* df * vl * cos(arg)/(omega)
+--    m.py = py-y*ff[ko]* df * vl * cos(arg)/(omega)
+--  end
+--
+--  m.pt = m.pt -ff*f*vl*sin(arg)
+--
+--  local lw = elm.l>0 and l/elm.l or 1
+--  local bx, by = get_bxby(nmul, knl, ksl, x, y, lw)
+--
+--  m.px = m.px - ff[ko]*           bdir*by/pc*(a + r*cos(arg))
+--  m.py = m.py + ff[ko]*           bdir*bx/pc*(a + r*cos(arg))
+--  m.pt = m.pt + ff[ko]*(ko*omega)*bdir*by/pc*     r*sin(arg)
+
+--[[ useful???
+  by = -lw*knl[nmul] / fact(nmul-1) / nmul
+  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+  for i=nmul-1,1,-1 do
+    byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
+    bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
+    by  = byt
+  end
+
+  byt = x*by - y*bx
+  bx  = y*by + x*bx
+  by  = byt
+]]
+end
+
+-- fringes --------------------------------------------------------------------o
+
+local function mult_fringe_field (elm, m, pos)
+  if elm.kill_fringe                        or
+     elm.kill_ent_fringe and pos == 'entry' or
+     elm.kill_exi_fringe and pos == 'exit'  then return end
+
+  local x, px, y, py, bdir, nmul, knl, ksl in m
+  local _beta = 1/m.beam.beta
+  local _l = 1/elm.l
+
+  local rx, ix, fx, fy, fxx, fxy, fyx, fyy = 1, 0, 0, 0, 0, 0, 0, 0
+
+  for i=1, nmul do
+    local drx, dix = rx, ix
+    rx  = drx*x - dix*y
+    ix  = drx*y + dix*x
+
+    local ni, nf = -bdir/(4*(i+1)), i+2/i
+    local lkn, lks = knl[i]*_l, ksl[i]*_l
+
+    local u   =  ni*(lkn*rx  - lks*ix )
+    local v   =  ni*(lkn*ix  + lks*rx )
+    local du  =  ni*(lkn*drx - lks*dix)
+    local dv  =  ni*(lkn*dix + lks*drx)
+    local dux =   i*du
+    local dvx =   i*dv
+    local duy =  -i*dv
+    local dvy =   i*du
+
+    fx  = fx  +   u*x + nf*       v*y
+    fy  = fy  +   u*y - nf*       v*x
+    fxx = fxx + dux*x + nf*     dvx*y + u
+    fyy = fyy + duy*y - nf*     dvy*x + u
+    fxy = fxy + duy*x + nf*(v + dvy*y)
+    fyx = fyx + dux*y - nf*(v - dvx*x)
+  end
+
+  local _pz = 1/sqrt(1 + 2*pt*_beta + pt^2)
+  local a = 1 - fxx*_pz
+  local d = 1 - fyy*_pz
+  local b =   - fyx*_pz
+  local c =   - fxy*_pz
+  local _det = 1/(a*d - b*c)
+
+  m.x  = x - fx*_pz
+  m.y  = y - fy*_pz
+  m.px = (d*px - b*py)*_det
+  m.py = (a*py - c*px)*_det
+  m.t  = t + (_beta+pt)*(m.px*fx + m.py*fy)*_pz^3
+end
+
+local function straight_fringe_field (elm, m, pos)
+  if elm.kill_fringe                        or
+     elm.kill_ent_fringe and pos == 'entry' or
+     elm.kill_exi_fringe and pos == 'exit'  then return end
+
+-- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
+  local x, px, y, py, t, pt, T, bdir in m
+  local k0   = elm.k0 or 0
+  local _beta = 1/m.beam.beta
+-- soft edge
+  local fint = elm.fint or 0  -- fringe field integral at entrance and exit of the bend
+  local hgap = elm.hgap or 0  -- half gap of the magnet
+
+  local _pz  = 1/sqrt(1 + 2*_beta*pt + pt^2 )
+  local time_fac = (_beta + pt)*_pz
+
+  local a2, b2 = elm.ksl[2]/elm.l or 0, elm.knl[2]/elm.l or 0
+  local b  = sqrt(b2^2 + a2^2)
+
+  local f1 = -bdir*fint*abs(fint)*b*_pz/24.0
+  local f2 =  hgap*b*_pz
+
+  local ang=-atan2(a2,b2)/2
+
+  srotation(nil, m, -ang or 0)
+
+  m.t = t - time_fac*(f1*x + f2*(1+f1/2)*px*_pz*exp(-f1))*px*_pz
+          + time_fac*(f1*y + f2*(1-f1/2)*py*_pz*exp( f1))*py*_pz
+
+  m.x = x*exp( f1) + px*f2*_pz
+  m.y = y*exp(-f1) - py*f2*_pz
+
+  m.px = px*exp(-f1)
+  m.py = py*exp( f1)
+
+  srotation(nil, m, -ang or 0)
+end
+
+function straight_fringe (elm, m, l) -- ADD DIRECTION
+  local nmul, sdir in m
+  if nmul == 0 then return end
+
+  if pos == 'entry'  then
+    local e, h = elm.e1 or 0, elm.h1 or 0
+    if sdir == 1 then
+      yrotation          (elm, m,  e)
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'entry')
+    else
+      sbend_fringe_field (elm, m,  'entry')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
+    end
+    mult_fringe_field    (elm, m,  'entry')
+    straight_fringe_field(elm, m,  'entry')
+    return
+  end
+
+  if pos == 'exit'  then
+    local e, h = elm.e2 or 0, elm.h2 or 0
+    straight_fringe_field(elm, m,  'exit')
+    mult_fringe_field    (elm, m,  'exit')
+    if sdir == 1 then
+      sbend_fringe_field (elm, m,  'exit')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
+    else
+      yrotation          (elm, m,  e)
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'exit')
+    end
+    return
+  end
+end
+
+function solenoid_fringe (elm, m, l)
+--  local ksi in m
+--  if abs(ksi) < minang then -- should never occur due to precedences
+    return straight_fringe(elm,m,l)
+--  end
+  -- error("NYI") -- TODO
+end
+
+local rfcavity_fringe_ptc -- forward
+
+function rfcavity_fringe (elm, m, l)
+--  local v in m
+--  if abs(v) < minvolt then -- should never occur due to precedences
+    return straight_fringe(elm,m,l)
+--  end
+  -- rfcavity_fringe_ptc(elm, m, l) -- TODO
+end
+
+local sbend_fringe_ptc -- forward
+
+function sbend_fringe (elm, m, l)
+  local angle in elm
+  if abs(angle) < minang then -- should never occur due to precedences
+    return straight_fringe(elm,m,l)
+  end
+  sbend_fringe_ptc(elm, m, l)
+end
+
+-- sbend ----------------------------------------------------------------------o
+
+local function sbend_face (elm, m, h)
+  local x, px, y, py, t, pt, bdir in m
+  local k0 = elm.k0 or 0
+  local _beta = 1/m.beam.beta
+
+  if bdir == 1 then -- to insure reversal symmetry ; horizontal wedge (only dir)
+    px = px +(bdir*k0*h/2)*x^2
+  end
+
+  local ptt =        sqrt(1 + 2*pt*_beta + pt^2 - px^2)
+  local xi  = bdir*sqrt(1 + 2*pt*_beta + pt^2)*k0*h/ptt^2
+  local dxi_px   =  2*px*xi/ptt^2
+  local dxi_ddel = -2*xi*(1 + pt)/ptt^2
+
+  x  = x / (1-dxi_px*y^2)
+  px = px - xi*y^2
+  py = py - 2*xi*x*y
+  t  = t  - dxi_ddel*x*y^2
+
+  if(bdir == -1) then -- to insure reversal symmetry; horizontal wedge (only dir)
+    px = px +(bdir*k0*h/2)*x^2
+  end
+
+  m.x  = x
+  m.px = px
+  m.py = py
+  m.t  = t
+end
+
+local function sbend_wedge (elm, m, e)
+  local x, px, y, py, t, pt, T, bdir in m
+  local k0 = elm.k0 or 0
+  local _beta = 1/m.beam.beta
+  local b1 = bdir*k0
+  local sa, ca, sa2 = sin(e), cos(e), sin(2*e)
+
+  if b1 == 0 then
+    yrot_track (elm, m, e) return
+  end
+
+  local pz  = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local ptt = sqrt(1 + 2*_beta*pt + pt^2        - py^2)
+  local pxt = px*ca + (pz - b1*x)*sa
+  local pzs = sqrt(1 + 2*_beta*pt + pt^2 - py^2 - pxt^2)
+  local yt  = (e + asin(px/ptt) - asin(pxt/ptt)) / b1
+
+  m.x  = x*ca + (x*px*sa2 + sa^2*(2*x*pz-b1*x^2)) / (pzs+pz*ca-px*sa)
+  m.px = pxt
+  m.y  = y + py * yt
+  m.t  = t - yt*(_beta + pt)
+end
+
+local function sbend_fringe_field (elm, m, pos)
+--  TODO: FINT and FINTX to have different FINT at entrance /exit
+  local x, px, y, py, t, pt, T in m
+  local k0   = elm.k0 or 0
+  local _beta = 1/m.beam.beta
+-- soft edge
+  local fint = elm.fint or 0  -- fringe field integral at entrance and exit of the bend
+  local hgap = elm.hgap or 0  -- half gap of the magnet
+  local fsad = 0
+
+  if fint*hgap ~= 0.0 then  -- soft edge
+      fsad = 1/(fint*hgap*2)/36
+  end
+
+  local b = m.beam.charge*k0
+  if pos == 'exit' then
+     b = -b
+  end
+
+  local pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local time_fac = _beta + pt
+  local rel_p    = sqrt(1 + 2*_beta*pt + pt^2)
+
+  local c3=b^2*fsad/rel_p
+
+  local xp, yp = px/pz or 0, py/pz or 0
+  local d  = matrix {
+    { (1+xp^2) / pz, xp*yp    / pz, -time_fac*xp /pz^2 },
+    {  xp*yp   / pz, (1+yp^2) / pz, -time_fac*yp /pz^2 },
+    { -xp          ,   -yp        ,  time_fac    /pz   },
+  }
+
+  local fi0 = atan((xp/(1 + yp^2)))-2*b*fint*hgap*(1 + xp^2*(2 + yp^2))*pz
+  local co2 = b/cos(fi0)^2
+  local co1 = co2/(1 + (xp/(1 + yp^2))^2)
+
+  local fi = {0, 0, 0}
+  fi[1] =    co1 /       (1 + yp^2) - 2*co2*b*fint*hgap* (2*xp*(2 + yp^2)*pz)
+  fi[2] =-2*co1*xp*yp/(1 + yp^2)^2  - 2*co2*b*fint*hgap* (2*xp^2*yp)*pz
+  fi[3] =                           - 2*co2*b*fint*hgap* (1 + xp^2*(2 + yp^2))
+
+  fi0=b*tan(fi0)
+
+  b=0
+  for i=1,3 do -- y column
+    b=fi[i]*d:get(i,2) + b
+  end
+  m.y  = 2*m.y/(1 + sqrt(1 - 2*b*m.y))
+  m.py = py - fi0*m.y
+
+  b=0
+  for i=1,3 do -- x column
+    b=fi[i]*d:get(i,1) + b
+  end
+  m.x = m.x+0.5*b*m.y^2
+
+  b=0
+  for i=1,3 do -- z column
+    b=fi[i]*d:get(i,3) + b
+  end
+  m.t = t + 0.5*b*m.y^2
+
+  -- soft edge
+  m.py = m.py - 4*c3*m.y^3
+  m.t  = m.t  +   c3*m.y^4/rel_p^2*time_fac
+end
+
+function sbend_fringe_ptc (elm, m, pos) -- has forward decl
+  if elm.kill_fringe then return end
+
+  if pos == 'entry' and not elm.kill_ent_fringe then
+    local e, h = elm.e1 or 0, elm.h1 or 0
+    if abs(e) < minang then
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'entry')
+    else
+      yrotation          (elm, m,  e)
+      sbend_face         (elm, m,  h)
+      sbend_fringe_field (elm, m,  'entry')
+      sbend_wedge        (elm, m, -e)
+    end
+    return
+  end
+
+  if pos == 'exit' and not elm.kill_exi_fringe then
+    local e, h = elm.e2 or 0, elm.h2 or 0
+    if abs(e) < minang then
+      sbend_fringe_field (elm, m, 'exit')
+      sbend_face         (elm, m,  h)
+    else
+      sbend_wedge        (elm, m, -e)
+      sbend_fringe_field (elm, m, 'exit')
+      sbend_face         (elm, m,  h)
+      yrotation          (elm, m,  e)
+    end
+    return
+  end
+end
+
+-- cavities -------------------------------------------------------------------o
+
+local function rfcavity_kick (elm, m, l) -- RF CAV, CRAB, RFMULT with l>0 kick (kickcavr)
+  local x, px, y, py, t, pt, nmul, bdir in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a, r = elm.a or  0, elm.r or 0
+
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+  local pc = m.beam.pc
+  local volt_c = 1.0e-3
+  local freq, harm, volt, lag = elm.freq or 0, elm.harm or 0, elm.volt or 0, elm.lag or 0
+  local nbessel, nf = elm.nbessel or  0, elm.nf or 1
+  if freq == 0 and harm == 0 then
+    error("either frequency or harmonic number has to be defined for RF Cavity "
+          .. elm.name)
+  end
+
+  local omega = twopi*freq / clight
+  local vl    = m.bdir*l*volt*volt_c/pc
+  local df, f, r2 = 0, 1, 1
+
+  for ko=1,nf do -- over modes
+    for i=1,nbessel do
+      r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
+      dr2 =  r2*i
+      df  =  df + 2*dr2
+      r2  =  r2*(x^2+y^2)
+      f   =  f + r2
+    end
+
+    if nbessel > 0 then
+      m.px = px-x*ff[ko]* df * vl * cos(arg)/(ko*omega)
+      m.py = py-y*ff[ko]* df * vl * cos(arg)/(ko*omega)
+    end
+
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt -ff[ko]*f*vl*sin(arg)
+
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
+
+    m.px = m.px - ff[ko]*bdir*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*bdir*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
+      bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
+    by  = byt
+
+    m.pt = m.pt + ff[ko]*(ko*omega)*bdir*by/pc * r *sin(arg)
+  end --over modes
+end
+
+local function rfcavity_thin_kick (elm, m, l) -- for tracking thin rf mult
+  local x, px, y, py, t, pt, nmul, bdir in m
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ff, ph = elm.f or {}, elm.ph or {}
+  local a, r = elm.a or  0, elm.r or 0
+  -- nocavity.and.(.not.always_on)  return
+  if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+  local pc = beam.pc
+  local volt =elm.volt
+  local volt_c = 1.0e-3
+  local omega = twopi*freq / clight
+
+  for ko=1,nf do -- over modes
+    local arg = ko*omega*(t + tt) + phas + ph[ko] + phase0
+    m.pt = m.pt - bdir*volt_c*ff[ko]*volt*sin(arg)/pc
+
+    -- BUG: knl, ksl never retrieved
+    local lw, byt = elm.l>0 and l/elm.l or 1
+    local by = lw*knl[nmul] / fact(nmul-1)
+    local bx = lw*ksl[nmul] / fact(nmul-1)
+
+    for i=nmul-1,1,-1 do
+      byt = x*by - y*bx + lw*knl[i] / fact(i-1)
+      bx  = y*by + x*bx + lw*ksl[i] / fact(i-1)
+      by  = byt
+    end
+
+    m.px = m.px - ff[ko]*bdir*by/pc*(a + r*cos(arg))
+    m.py = m.py + ff[ko]*bdir*bx/pc*(a + r*cos(arg))
+
+    by = -lw*knl[nmul] / fact(nmul-1) / nmul
+    bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+
+    for i=nmul,2,-1 do
+      byt = x*by - y*bx - lw*knl[i-i] / fact(i-2) / (i-1)
+      bx  = y*by + x*bx - lw*ksl[i-i] / fact(i-2) / (i-1)
+      by  = byt
+    end
+
+    byt = x*by - y*bx
+    bx  = y*by + x*bx
+    by  = byt
+
+    m.t = t - ff[ko]*(ko*omega)*bdir*by/pc * r *sin(arg)
+  end --over modes
+end
+
+local function adjust_time_cav(elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+  local _beta = 1/m.beam.beta
+
+  local delta_e = elm.delta_e or 0
+  if pos == 'entry' then
+    delta_e = pt
+    if 'nocavity' and (not 'always_on') then return end -- non-sense!!!
+
+    if elm.l < minlen then
+      rfcavity_thin_kick(elm, m)
+      delta_e=(m.pt - delta_e)*m.beam.pc -- side effects?
+    end
+  else
+    if elm.l < minlen then return end
+    t = t - elm.l*_beta -- TO CHECK      -- side effects?
+    delta_e = (pt - delta_e)*m.beam.pc   -- side effects?
+  end
+end
+
+local function rfcavity_fringe_ptc (elm, m, pos)
+  local x, px, y, py, t, pt, T, dir in m
+
+  if ('nocavity' and (not 'always_on')) then return end -- non-sense!!!
+
+  if elm.kill_fringe     == 1                     or
+     elm.kill_ent_fringe == 1 and pos ==  'entry' or
+     elm.kill_ext_fringe == 1 and pos ==  'exit' then return end
+
+  adjust_time_cav(elm, m, 'entry')
+
+  if not ('fringe' or elm.nbessel == -1) then return end
+  if elm.l < minlen then return end
+
+  local kbmad = 0
+  if elm.nbessel == -1 then kbmad = 1 end
+
+  local z = 0
+  if pos == 'entry' then z = elm.l end
+  local freq, volt = elm.freg or 0, elm.volt or 0
+  local volt_c = 1.0e-3
+  local pc = m.beam.pc
+  local omega = twopi*freq / clight
+  local vl = m.bdir*volt*volt_c/pc
+  if pos == 'exit' then vl = -vl end
+
+  local tt, phase, phase0 = elm.tt or 0, elm.phase or 0, elm.phase0 or 0
+  local ph = elm.f or {}, elm.ph or {}
+  local nf = elm.nf or 1
+
+  for ko=1,nf do   -- over modes
+   s1 = cos(kbmad*ko*omega*z)*sin(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   c1 = cos(kbmad*ko*omega*z)*cos(ko*omega*(t+tt) + phas + phase0 + ph[ko])
+   m.px = m.px + 0.5*vl*s1*m.x
+   m.py = m.py + 0.5*vl*s1*m.y
+   m.pt = m.pt - 0.25*(m.x^2 + m.y^2)*vl*c1*omega*ko
+  end
+
+  adjust_time_cav(elm, m, 'exit')
+end
