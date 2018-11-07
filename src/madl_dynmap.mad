@@ -274,7 +274,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFTR]                                 
   mdump('strex_drift-1:', l, m)
 end
 
-function M.strex_kick (elm, m, lw, no_k0) -- [KICKEXR]                          checked
+function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEXR]                         checked
   if m.nmul == 0 then return end
 
   local tdir, npar, beam, nmul, knl, ksl in m
@@ -287,13 +287,43 @@ function M.strex_kick (elm, m, lw, no_k0) -- [KICKEXR]                          
     local wchg = beam and lw*tdir*beam.charge or wchg
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    if no_k0 then by = by - knl[1] end
+    if no_k0l then by = by - knl[1] end
 
     m[i].px = px - wchg*by
     m[i].py = py + wchg*bx
   end
 
   mdump('strex_kick-1:', 0, m)
+end
+
+function M.strex_hkick (elm, m, lw) -- [KICKTR]                                 unchecked
+  if m.nmul == 0 then return end
+
+  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
+  local wchg = lw*tdir*beam.charge
+  local _beta = 1/beam.beta
+
+  mdump('strex_hkick-0:', el*sdir*lw, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local  wchg = beam and lw*tdir*beam.charge or wchg
+    local _beta = beam and 1/beam.beta or _beta
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - wchg*(by - knl[1])
+    m[i].py = py + wchg*(bx - ksl[1])
+
+    -- dipole focusing
+    local dp = sqrt(1 + (2*_beta)*pt + pt^2) - 1
+    if el ~= 0 then
+      m[i].px = m[i].px - (knl[1]^2/el)*x + (wchg*knl[1])*dp
+      m[i].py = m[i].py - (ksl[1]^2/el)*y + (wchg*ksl[1])*dp
+    end
+      m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/(1+dp)
+  end
+
+  mdump('strex_hkick-1:', el*sdir*lw, m)
 end
 
 function M.strex_fringe (elm, m, lw) -- [??] re-defined to fnone hereafter
@@ -339,73 +369,6 @@ function M.strex_fringe (elm, m, lw) -- [??] re-defined to fnone hereafter
 end
 
 M.strex_fringe = fnone -- TODO
-
--- special case
-
-function M.strex_hkick (elm, m, lw) -- [KICKTR]                                 unchecked
-  if m.nmul == 0 then return end
-
-  local el, sdir, tdir, npar, beam, nmul, knl, ksl in m
-  local wchg = lw*tdir*beam.charge
-  local _beta = 1/beam.beta
-
-  mdump('strex_hkick-0:', el*sdir*lw, m)
-
-  for i=1,npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local  wchg = beam and lw*tdir*beam.charge or wchg
-    local _beta = beam and 1/beam.beta or _beta
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px - wchg*(by - knl[1])
-    m[i].py = py + wchg*(bx - ksl[1])
-
-    -- dipole focusing
-    local pz = sqrt(1 + (2*_beta)*pt + pt^2)
-    if el ~= 0 then
-      m[i].px = m[i].px - (knl[1]^2/el)*x + (wchg*knl[1])*(pz-1)
-      m[i].py = m[i].py - (ksl[1]^2/el)*y + (wchg*ksl[1])*(pz-1)
-    end
-      m[i].t  =  t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
-  end
-
-  mdump('strex_hkick-1:', el*sdir*lw, m)
-end
-
-! function M.multipole (elm, m, lw_) -- [KICKTR]
-!   if m.nmul == 0 then return end
-!
-!   local tdir, npar, beam, nmul, knl, ksl in m
-!   local bdir = tdir*beam.charge
-!   local _beta = 1/beam.beta
-!
-!   mdump('mutipole-0:', 0, m)
-!
-!   for i=1,npar do
-!     local x, px, y, py, beam in m[i]
-!     local  bdir = beam and tdir*beam.charge or bdir
-!     local bx,by = bxby(nmul, knl, ksl, x, y)
-!
-!     m[i].px = px - bdir*(by - knl[1])
-!     m[i].py = py + bdir*(bx - ksl[1])
-!
-!     if knl[1] ~= 0 or ksl[1] ~= 0 then
-!       local t, pt in m[i]
-!       local _beta = beam and 1/beam.beta or _beta
-!       local pz = sqrt(1 + (2*_beta)*pt + pt^2)
-!
-!       local l = elm.lrad or 0
-!       if l ~= 0 then -- dipole focusing and deltap
-!         m[i].px = m[i].px - knl[1]^2*x/l + bdir*knl[1]*(pz-1)
-!         m[i].py = m[i].py - ksl[1]^2*y/l + bdir*ksl[1]*(pz-1)
-!       end
-!
-!       m[i].t = t - bdir*(knl[1]*x - ksl[1]*y) * (_beta+pt)/pz
-!     end
-!   end
-!
-!   mdump('mutipole-1:', 0, m)
-! end
 
 -- DKD [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
 
