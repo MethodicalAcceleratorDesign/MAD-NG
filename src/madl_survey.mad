@@ -225,16 +225,12 @@ local function make_mflow (self)
   -- precedence of initial conditions
   local mflw = table.new(0,50)
 
-  local x     = X0[1] or X0.x
-  local y     = X0[2] or X0.y
-  local z     = X0[3] or X0.z
-  local theta = A0[1] or A0.theta
-  local phi   = A0[2] or A0.phi
-  local psi   = A0[3] or A0.psi
-
-  local V = vector(3):fill{x,y,z}
-  local W = matrix(3):rotmad(theta,phi,psi)
-  local A = vector(3):fill{theta,phi,psi}
+  local x   = X0[1] or X0.x
+  local y   = X0[2] or X0.y
+  local z   = X0[3] or X0.z
+  local the = A0[1] or A0.theta
+  local phi = A0[2] or A0.phi
+  local psi = A0[3] or A0.psi
 
   -- complete mflow
   mflw.sequ=sequ             -- current sequence
@@ -263,19 +259,23 @@ local function make_mflow (self)
 
   mflw.mapsave=mapsave       -- save orientation matrix
 
-  -- global frame (see geomap)
-  mflw.V=V                   -- displacement vector
-  mflw.W=W                   -- orientation matrix (rotations)
-  mflw.A=A                   -- oriented angles
+  -- global frame (exposed vars)
+  mflw.V=vector(3):fill{x,y,z}         -- displacement vector
+  mflw.W=matrix(3):rotmad(the,phi,psi) -- orientation matrix (rotations)
+  mflw.A=vector(3):fill{the,phi,psi}   -- oriented angles
 
-  -- local frame (see geomap) at element slices or exit
-  mflw.R=vector(3)           -- displacement vector
-  mflw.S=matrix(3)           -- orientation matrix (rotations)
-  mflw.T=matrix(3)           -- transformation matrix if tilted
-  mflw.U=vector(3)           -- temporary vector for calculations
+  -- internal vars for survey (varying states) --
 
-  -- internal vars for survey
-  mflw.__survitr={iter=iter, state=state}   -- iterator and iteraror state
+  -- for processing elements local frame
+  mflw.__edat = setmetatable({
+    R=vector(3),                       -- displacement vector
+    S=matrix(3),                       -- orientation matrix (rotations)
+    T=matrix(3),                       -- transformation matrix if tilted
+    U=vector(3),                       -- temporary vector for calculations
+  }, {__index=mflw})
+
+  -- for processing sequence elements by nstep
+  mflw.__sitr={iter=iter, state=state} -- sequence iterator state
 
   return mflw
 end
@@ -289,11 +289,11 @@ local function exec (self)
 
   -- retrieve or build mflw (and mtbl)
   if self.mflow then
-    assert(self.mflow.__trck == _id, "invalid mflow (survey mflow expected)")
+    assert(self.mflow.__surv == _id, "invalid mflow (survey mflow expected)")
     mflw = self.mflow
   else
     mflw = make_mflow(self)
-    mflw.__trck = _id
+    mflw.__surv = _id
   end
   mtbl = mflw.mtbl
 
@@ -303,7 +303,7 @@ local function exec (self)
 
   -- retrieve information
   local s0, eidx, sequ, atentry, atexit in mflw
-  local iter, state in mflw.__survitr
+  local iter, state in mflw.__sitr
   local ne = #sequ
 
   -- debug actions setup
@@ -312,9 +312,9 @@ local function exec (self)
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
-    atentry   (elm, mflw, 0,  0)
-    elm:survey(     mflw       )
-    atexit    (elm, mflw, 0, -1)
+    atentry   (elm, mflw.__edat, 0,  0)
+    elm:survey(     mflw.__edat       )
+    atexit    (elm, mflw.__edat, 0, -1)
 
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
