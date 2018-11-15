@@ -405,7 +405,7 @@ function M.curex_drift (elm, m, lw) -- [SPROTR]
   mdump('curex_drift-1:', ld, m)
 end
 
-function M.curex_kick (elm, m, lw) -- [SKICKR]
+function M.curex_kick (elm, m, lw, no_k0l) -- [SKICKR]
   if m.nmul == 0 then return end
 
   local eh, edir, tdir, npar, beam, nmul, knl, ksl in m
@@ -419,7 +419,10 @@ function M.curex_kick (elm, m, lw) -- [SKICKR]
     local wchg = beam and lw*tdir*beam.charge or wchg
     local bx, by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - ((1+eh*x)*wchg)*by -- for now, should be sbend_kick...
+    if no_k0l then by = by - knl[1] end
+
+    -- TODO...
+    m[i].px = px - ((1+eh*x)*wchg)*by -- for now, should use TPSA for bxby (?)
     m[i].py = py +           wchg *bx
   end
 
@@ -502,23 +505,23 @@ M.rbend_fringe = M.strex_fringe
 -- TKT [INTER_TEAPOT] ---------------------------------------------------------o
 
 function M.sbend_thick (elm, m, lw) -- [SSECR]
-  local el, ang, k0, sdir, tdir, npar, T in m
-  el, ang, k0 = el*lw*sdir, ang*lw*tdir, k0*tdir
+  if abs(m.ang) < minang then return M.strex_drift(elm,m,lw) end
 
-  local rho = el/ang
+  local eld, ang, k0, eh, edir, sdir, tdir, npar, beam, T in m
+  local ld, ang, k0 = eld*sdir*lw, ang*tdir*lw, k0*edir
+  local rho, _beta, k0q = 1/eh*edir, 1/beam.beta, k0*beam.charge
+
   local sa, ca = sin(ang), cos(ang)
 
-  mdump('sbend_thick-0:', m.eld*m.sdir*lw, m)
+  mdump('sbend_thick-0:', ld, m)
 
   for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local   k0q = k0*beam.charge
-    local _beta = 1/beam.beta
-
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = beam and 1/beam.beta or _beta
+    local   k0q = beam and k0*beam.charge or k0q
     local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)
-    local  pzx = pz - (rho+x)*k0q
+    local  pzx = pz - (x+rho)*k0q
     local  npx =  ca*px + sa*pzx
     local  dpx = -sa*px + ca*pzx
     local   ps = sqrt(pw2 - npx^2)
@@ -530,48 +533,13 @@ function M.sbend_thick (elm, m, lw) -- [SSECR]
     m[i].x  = (ps-dpx)/k0q - rho   -- x + ... ??
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(_beta+pt) + (1-T)*_beta*el
+    m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta
   end
 
-  mdump('sbend_thick-1:', m.eld*m.sdir*lw, m)
+  mdump('sbend_thick-1:', ld, m)
 end
 
-function M.sbend_kick (elm, m, lw) -- [SKICKR]
-  if m.nmul == 0 then return end
-
-  local ang, tdir, npar, beam, nmul, knl, ksl in m
-  local wchg = lw*tdir*beam.charge
-  local ang = ang*tdir*lw
-  local h = ang
-
-  -- [SET_S_B -> S_B_from_V] -- should be done with TPSA
-  -- [GETANBNR]
-  -- [GETMAGNETICR]
-
-  mdump('sbend_kick-0:', m.eld*m.sdir*lw, m)
-
-  for i=1,npar do
-    local x, px, y, py, beam in m[i]
-    local wchg = beam and lw*tdir*beam.charge or wchg
-    local bx, by = bxby(nmul, knl, ksl, x, y)
-
-    -- TODO...
-    m[i].px = px - wchg*by
-    m[i].py = py + wchg*bx
-
---    X(2)=X(2)+YL*DIR*B(1)
---    X(4)=X(4)+YL*DIR*B(2)
---    IF(.NOT.EL%DRIFTKICK) THEN
---       X(2)=X(2)+YL*DIR*EL%BN(1)*(1.0_dp+X(1)*EL%P%B0)
---    ENDIF
-  end
-
-  mdump('sbend_kick-1:', m.eld*m.sdir*lw, m)
-
-  error("NYI")
-end
-
-M.sbend_kick   = M.curex_kick -- TODO: case angle ~= k0l
+M.sbend_kick   = \el,m,lw => M.curex_kick(el,m,lw,true) end
 M.sbend_fringe = M.curex_fringe
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
