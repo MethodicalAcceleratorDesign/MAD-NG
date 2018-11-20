@@ -29,6 +29,8 @@ local is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
       is_table, is_callable, is_mappable, is_tpsa, is_damap      in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
 local fact, sinc                                                 in MAD.gmath
+local betablk                                                    in MAD.gphys
+local action                                                     in MAD.symint
 local tblcat, errorf, assertf                                    in MAD.utility
 local apercheck                                                  in MAD.aperture
 local minlen, minang                                             in MAD.constant
@@ -249,7 +251,7 @@ local function track_rbend (elm, mflw)
   knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
   ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
   mflw.k0, mflw.k1  = knl[1]/l, knl[2]/l
-  mflw.el, mflw.eld = l, l/sinc(angle)
+  mflw.el, mflw.eld = l, l -- l/sinc(angle)
   mflw.eh, mflw.ang = angle/mflw.eld, angle
 
   if nmul < 2 then
@@ -263,10 +265,10 @@ local function track_rbend (elm, mflw)
   local thick, kick, corr
 
   if model == 'DKD' then
-    if abs(knl[1])+abs(ksl[1]) < minang then
+    if abs(angle) < minang then
       thick, kick = strex_drift, strex_kick
     else
-      thick, kick = strex_drift, strex_hkick
+      thick, kick = curex_drift, curex_kick
     end
   else
     thick, kick = rbend_thick, rbend_kick
@@ -526,9 +528,12 @@ E.changenrj  :setv({ track = functor( changenrj        ) }, 'init') -- patch
 
 local function save_dat (elm, mflw, lw, islc)
   local name, kind in elm
-  local npar, ds, tdir, spos, turn, mtbl, atsave, relative, mapsave in mflw
+  local npar, ds, tdir, spos, turn, mtbl, relative, mapsave in mflw
 
-  lw = relative and lw*max(0,min(1,islc)) or islc<0 and 1 or lw*islc
+--  local lw = relative and lw*max(0,min(1,islc)) or islc<0 and 1 or lw*islc
+--  local dsw = ds*lw
+
+  local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
   local dsw = ds*lw
 
   for i=1,npar do
@@ -543,20 +548,21 @@ local function save_dat (elm, mflw, lw, islc)
     mtbl = mtbl + { name, kind, spos+dsw, dsw, id,
                     x, px, y, py, t, pt, islc, turn, tdir, damap }
   end
-  -- user action
-  atsave(elm, mflw, lw, islc)
+  return true
 end
 
 local function save_imp (elm, mflw, lw, islc)
   if not elm:is_implicit() then
-    save_dat(elm, mflw, lw, islc)
+    return save_dat(elm, mflw, lw, islc)
   end
+  return false
 end
 
 local function save_obs (elm, mflw, lw, islc)
   if elm:is_observed() and mflw.turn % mflw.observe == 0 then
-    save_dat(elm, mflw, lw, islc)
+    return save_dat(elm, mflw, lw, islc)
   end
+  return false
 end
 
 local header = {
@@ -622,18 +628,12 @@ local function make_mflow (self)
 
   -- saving data, build mtable
   local save, observe, implicit, relative, radiate in self
-  local fill, mtbl = fnone
   if is_boolean(observe) then observe = observe and 1 or 0 end
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_boolean(relative), "invalid relative (boolean expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
-  if save then
-    mtbl = make_mtable(self, observe)
-    fill = observe  >  0    and save_obs or
-           implicit ~= true and save_imp or save_dat
-  end
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -659,24 +659,32 @@ local function make_mflow (self)
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
 
-  -- chain atentry, atslice and atexit to fill table (if needed)
-  if save then
-    if atentry ~= fnone and atentry ~= ffalse then
-      atentry = atentry == ftrue and fill or achain(atentry, fill)
-    end
-    if atslice ~= fnone and atslice ~= ffalse then
-      atslice = atslice == ftrue and fill or achain(atslice, fill)
-    end
-    if atexit  ~= fnone and atexit  ~= ffalse then
-      atexit  = atexit  == ftrue and fill or achain(atexit , fill)
-    end
+  local atslice0 = atslice
+
+  -- chain ataper and atslice for aperture check (if not disabled)
+  if ataper ~= ffalse then
+    ataper = (ataper == fnone or ataper == ftrue) and
+              apercheck or achain(apercheck, ataper)
+    atslice = (atslice == fnone or atslice == ftrue) and achain(atend,ataper) or
+               atslice ~= ffalse and chain(atslice, action('ataper')) or atslice
   end
 
-  -- chain ataper with atslice for aperture check (if not disabled)
-  if ataper ~= fnone and ataper ~= ffalse then
-    ataper  = ataper  == ftrue and apercheck or achain(ataper, apercheck)
-    atslice = (atslice == fnone or atslice == ftrue) and ataper
-                                             or  chain(ataper, atslice  )
+  -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
+  local mtbl
+  if save then
+    mtbl = make_mtable(self, observe)
+
+    if atsave ~= ffalse then
+      local fill = observe  >  0    and save_obs or
+                   implicit ~= true and save_imp or save_dat
+
+      atsave = (atsave == fnone or atsave == ftrue) and
+                fill or achain(fill, atsave)
+      atexit = (atexit == fnone or atexit == ftrue) and atsave or
+                atexit ~= ffalse and chain(atexit, atsave) or atexit
+      if atentry  == ftrue then atentry = atsave end
+      if atslice0 == ftrue then atslice = chain(atslice, action('atsave')) end
+    end
   end
 
   -- totalpath
@@ -692,13 +700,15 @@ local function make_mflow (self)
           "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
-  local s0, X0, R0, mapdef, mapsave in self
+  local s0, X0, R0, beta0, mapdef, mapsave in self
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
   assert(is_boolean(mapsave), "invalid mapsave (boolean expected)")
-  if not is_mappable(X0[1]) then X0, R0 = {X0}, {R0} end
+  if not is_mappable(X0[1]) then
+    X0, R0, beta0 = {X0}, {R0}, {beta0}
+  end
 
   -- precedence of initial conditions
   local npar = #X0
@@ -722,7 +732,8 @@ local function make_mflow (self)
         mflw[i] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
         mflw[i].id = id
         mflw[i]:set0{x, px, y, py, t, pt}
-        if R0[i] then mflw[i]:set1(R0[i]) end
+        if        R0[i] then mflw[i]:set1(R0[i])
+        elseif beta0[i] then mflw[i]:set1((betablk(beta0[i]))) end
       elseif is_table(mflw[i]) then -- reuse: fill table
         mflw[i].id,
         mflw[i].x, mflw[i].px,
@@ -751,7 +762,8 @@ local function make_mflow (self)
   mflw.spos=nil              -- s-position of results (signed)
   mflw.npar=npar             -- number of tracked particles or damaps
   mflw.tpar=npar             -- total number of particles or damaps (i.e. #mflw)
-  mflw.nslice=nslice         -- number of slice for each element
+  mflw.nslc=nslc             -- number of slices for each element
+  mflw.nslice=nslice         -- slices for each element
 
   mflw.save=save             -- save data
   mflw.observe=observe       -- save observed elements every n turns
@@ -761,8 +773,8 @@ local function make_mflow (self)
   mflw.atentry=atentry       -- action when entering an element
   mflw.atslice=atslice       -- action after each element slices
   mflw.atexit=atexit         -- action when exiting an element
-  mflw.atsave=atsave         -- action when saving a row in mtable
-  mflw.ataper=ataper         -- action when checking for aperture
+  mflw.ataper=ataper         -- action after checking for aperture
+  mflw.atsave=atsave         -- action after saving in mtable
 
   mflw.usrdef=self.usrdef    -- user defined data
 
@@ -843,9 +855,9 @@ local function exec (self)
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
-    atentry  (elm, mflw.__edat, 0,  0)
+    atentry  (elm, mflw.__edat, 0, -1)
     elm:track(     mflw.__edat       )
-    atexit   (elm, mflw.__edat, 0, -1)
+    atexit   (elm, mflw.__edat, 0, -2)
 
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
@@ -857,7 +869,7 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na, _nyi -- not applicable (see survey), not yet implemented
+local _na, _nyi -- not applicable, not yet implemented
 
 local track = command 'track' {
   beam=nil,         -- beam (required or sequence.beam)                   (mflw)
@@ -867,10 +879,11 @@ local track = command 'track' {
 
   s0=0,             -- initial s                                          (mflw)
   X0={0,0,0,0,0,0}, -- initial X coordinates (or damap, or list of)       (mflw)
+  R0=nil,           -- initial R matrix (compagnion of X0 for damap)      (mflw)
+  beta0=nil,         -- initial beta0 block to build uncoupled R0         (mflw)
 
   mapdef=false,     -- setup for damap (true => {})                       (mflw)
   mapsave=false,    -- save damap in the mtable                           (mflw)
-  R0=nil,           -- initial R matrix (compagnion of X0 for damap)      (mflw)
 
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -888,14 +901,13 @@ local track = command 'track' {
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
-  atexit=ftrue,     -- action called when exiting an element              (mflw)
-  ataper=atend,     -- action called when checking for aperture           (mflw)
-  atsave=fnone,     -- action called when saving a row in mtable          (mflw)
+  atexit=fnone,     -- action called when exiting an element              (mflw)
+  ataper=fnone,     -- action called after checking for aperture          (mflw)
+  atsave=fnone,     -- action called after saving in mtable               (mflw)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
-
   exec=exec,        -- command to execute upon children creation
 } :set_readonly()   -- reference track command is readonly
 
