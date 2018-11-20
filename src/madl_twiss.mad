@@ -32,7 +32,7 @@ local abs                                                         in math
 
 -- twiss mtable ---------------------------------------------------------------o
 
-local function twiss_sum (mflw)
+local function fill_sum (mflw)
   local mtbl in mflw
   local n = #mtbl
 
@@ -47,7 +47,7 @@ local function twiss_sum (mflw)
   -- TODO: chromatic functions
 end
 
-local function save_twiss (elm, mflw, lw, islc)
+local function fill (elm, mflw, lw, islc)
   local mtbl, npar in mflw
   local n = #mtbl-npar
 
@@ -61,7 +61,6 @@ local function save_twiss (elm, mflw, lw, islc)
       mtbl[k][n+i] = ofun[k]
     end
   end
-
   return true
 end
 
@@ -115,14 +114,12 @@ end
 
 local function twiss_track0 (self, X0, R0, ofun0)
   local mapdef, save in self
-  local atsave  = self:var_raw 'atsave' -- prevent evaluation
+  local atsave = self:var_raw 'atsave' -- prevent evaluation
 
   -- wrap atsave
-  if save then
-    if atsave ~= fnone and atsave ~= ffalse then
-      atsave = (atsave == nil or atsave == ftrue) and save_twiss
-                                                  or  achain(save_twiss, atsave)
-    end
+  if save and atsave ~= ffalse then
+      atsave = (atsave == fnone or atsave == ftrue) and
+                fill or achain(fill, atsave)
   end
 
   local mtbl, mflw = track 'twtrack0' {
@@ -134,13 +131,13 @@ local function twiss_track0 (self, X0, R0, ofun0)
 
     s0        = self.s0,
     X0        = X0,
+    R0        = R0,
 
     mapdef    = is_true(mapdef) and {xy=2} or mapdef,
     mapsave   = self.mapsave,
-    R0        = R0,
 
     nturn     = self.nturn,
-    nstep     = 0,               -- do only initialisation
+    nstep     = 0,                      -- do only initialisation
     nslice    = self.nslice,
     model     = self.model,
     method    = self.method,
@@ -151,7 +148,7 @@ local function twiss_track0 (self, X0, R0, ofun0)
     title     = self.title,
     implicit  = self.implicit,
     relative  = self.relative,
-    observe   = 0,               -- always save at each elements (at least)
+    observe   = self.observe,
 
     atentry   = self:var_raw 'atentry', -- prevent evaluation
     atslice   = self:var_raw 'atslice',
@@ -207,14 +204,14 @@ local function make_mflow (self)
   local Xn, An, ofun0 = table.new(npar,0), table.new(npar,0)
 
   for i=1,npar do
-    local X0i, R0i = X0[i], R0[i]
-
     -- precedence of initial conditions
-    if beta0[i] then
-      R0i = betablk(beta0[i])
-    elseif is_damap(X0[i]) then
-      R0i = X0[i]:get1()
-      X0i = X0[i]:get0()
+    local X0i, R0i
+    if is_damap(X0[i]) then
+      X0i, R0i = X0[i]:get0(), X0[i]:get1()
+    elseif R0[i] then
+      X0i, R0i = X0[i], R0[i]
+    elseif beta0[i] then
+      X0i, R0i = X0[i], betablk(beta0[i])
     end
 
     -- find closed orbit or use initial conditions
@@ -268,13 +265,13 @@ local function exec (self)
   mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
 
   if ei == nil and mtbl ~= nil then
-    twiss_sum(mflw)
+    fill_sum(mflw)
   end
 
   return mtbl, mflw, ei
 end
 
-local _na, _nyi -- not applicable (see track), not yet implemented
+local _na, _nyi -- not applicable, not yet implemented
 
 local twiss = command 'twiss' {
   -- attributes (not required) set to nil will use the default from track
@@ -285,13 +282,11 @@ local twiss = command 'twiss' {
 
   s0=nil,            -- initial s                                         (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
+  R0=nil,            -- initial R matrix (companion of X0)                (trck)
+  beta0=nil,         -- initial beta0 block to build uncoupled R0         (trck)
 
   mapdef=true,       -- always use damap formalism (true => {xy=2})       (trck)
   mapsave=nil,       -- save damap in the mtable                          (trck)
-  R0=nil,            -- initial R matrix (companion of X0)                (trck)
-
-  beta0=nil,         -- initial beta0 block to build uncoupled R0         (twss)
-  coupling=nil,      -- compute optfun for non-diagonal blocks            (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track                       (trck)
@@ -304,14 +299,15 @@ local twiss = command 'twiss' {
   save=true,         -- create mtable and save results                    (mtbl)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   implicit=true,     -- save also in implicit elements                    (mtbl)
-  relative=false,    -- save length of slices instead from element start  (mtbl)
-  observe=_na,       -- N/A                                               (mtbl)
+  relative=nil,      -- save length of slices instead from element start  (mtbl)
+  observe=false,     -- save only in observed elements (every n turns)    (mtbl)
+  coupling=false,    -- save optical functions for non-diagonal blocks    (mtbl)
 
-  atentry=nil,       -- action to call when entering an element           (trck)
-  atslice=nil,       -- action to call after each element slices          (trck)
-  atexit=nil,        -- action to call when exiting an element            (trck)
-  ataper=nil,        -- action called when checking for aperture          (trck)
-  atsave=nil,        -- action called when saving a row in mtable         (trck)
+  atentry=nil,       -- action called when entering an element            (trck)
+  atslice=nil,       -- action called after each element slices           (trck)
+  atexit=nil,        -- action called when exiting an element             (trck)
+  ataper=nil,        -- action called after checking for aperture         (trck)
+  atsave=fnone,      -- action called after saving in mtable              (trck)
 
   usrdef=nil,        -- user defined data attached to the mflow           (mflw)
 
@@ -325,7 +321,6 @@ local twiss = command 'twiss' {
   X1=nil,            -- optional final coordinates translation            (cofn)
 
   mflow=nil,      -- current mflow, exclusive with other attributes except nstep
-
   exec=exec,      -- command to execute upon children creation
 } :set_readonly() -- reference twiss command is readonly
 

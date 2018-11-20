@@ -27,7 +27,8 @@ local vector, matrix, element, mtable, command                    in MAD
 
 local is_sequence, is_boolean, is_number, is_integer,
       is_table, is_callable, is_mappable, is_matrix               in MAD.typeid
-local fnone, ffalse, ftrue, functor, achain                       in MAD.gfunc
+local fnone, ffalse, ftrue, functor, chain, achain                in MAD.gfunc
+local action                                                      in MAD.symint
 local tblcat, errorf                                              in MAD.utility
 
 local min in math
@@ -77,12 +78,11 @@ E.changenrj:setv({ survey = functor( changenrj ) }, 'init')
 
 local function save_dat (elm, mflw, lw, islc)
   local name, kind, angle, tilt in elm
-
-  local A, V, ds, sdir, tdir, spos, turn, mtbl, atsave, relative, mapsave in mflw
+  local A, V, ds, sdir, tdir, spos, turn, mtbl, relative, mapsave in mflw
   local x, y, z      = V[1], V[2], V[3]
   local th, phi, psi = A[1], A[2], A[3]
 
-  lw = relative and lw*max(0,min(1,islc)) or islc<0 and 1 or lw*islc
+  local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
   local dsw = ds*lw
 
   local W = mapsave and mflw.W:copy()
@@ -90,20 +90,21 @@ local function save_dat (elm, mflw, lw, islc)
   -- keep order!
   mtbl = mtbl + { name, kind, spos+dsw, dsw, angle*lw*sdir, tilt*sdir,
                   x, y, z, th, phi, psi, psi+tilt*sdir, islc, turn, tdir, W }
-  -- user action
-  atsave(elm, mflw, lw, islc)
+  return true
 end
 
 local function save_imp (elm, mflw, lw, islc)
   if not elm:is_implicit() then
-    save_dat(elm, mflw, lw, islc)
+    return save_dat(elm, mflw, lw, islc)
   end
+  return false
 end
 
 local function save_obs (elm, mflw, lw, islc)
   if elm:is_observed() and mflw.turn % mflw.observe == 0 then
-    save_dat(elm, mflw, lw, islc)
+    return save_dat(elm, mflw, lw, islc)
   end
+  return false
 end
 
 local header = {
@@ -163,18 +164,12 @@ local function make_mflow (self)
 
   -- saving data, build mtable
   local save, observe, implicit, relative in self
-  local fill, mtbl = fnone
   if is_boolean(observe) then observe = observe and 1 or 0 end
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_boolean(relative), "invalid relative (boolean expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
-  if save then
-    mtbl = make_mtable(self, observe)
-    fill = observe  >  0    and save_obs or
-           implicit ~= true and save_imp or save_dat
-  end
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -198,16 +193,21 @@ local function make_mflow (self)
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
 
-  -- wrap atentry, atslice and atexit to fill table (if needed)
+  -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
+  local mtbl
   if save then
-    if atentry ~= fnone and atentry ~= ffalse then
-      atentry = atentry == ftrue and fill or achain(atentry, fill)
-    end
-    if atslice ~= fnone and atslice ~= ffalse then
-      atslice = atslice == ftrue and fill or achain(atslice, fill)
-    end
-    if atexit  ~= fnone and atexit  ~= ffalse then
-      atexit  = atexit  == ftrue and fill or achain(atexit , fill)
+    mtbl = make_mtable(self, observe)
+
+    if atsave ~= ffalse then
+      local fill = observe  >  0    and save_obs or
+                   implicit ~= true and save_imp or save_dat
+
+      atsave = (atsave == fnone or atsave == ftrue) and
+                fill or achain(fill, atsave)
+      atexit = (atexit == fnone or atexit == ftrue) and atsave or
+                atexit ~= ffalse and chain(atexit, atsave) or atexit
+      if atentry == ftrue then atentry = atsave end
+      if atslice == ftrue then atslice = chain(atslice, action('atsave')) end
     end
   end
 
@@ -246,7 +246,8 @@ local function make_mflow (self)
   mflw.s0=s0                 -- initial s-position (i.e. offset)
   mflw.ds=nil                -- s-length of results (signed)
   mflw.spos=nil              -- s-position of results (signed)
-  mflw.nslice=nslice         -- number of slice for each element
+  mflw.nslc=nslc             -- number of slices for each element
+  mflw.nslice=nslice         -- slices for each element
 
   mflw.save=save             -- save data
   mflw.observe=observe       -- save observed elements every n turns
@@ -256,7 +257,7 @@ local function make_mflow (self)
   mflw.atentry=atentry       -- action when entering an element
   mflw.atslice=atslice       -- action after each element slices
   mflw.atexit=atexit         -- action when exiting an element
-  mflw.atsave=atsave         -- action when saving a row in mtable
+  mflw.atsave=atsave         -- action after saving in mtable
 
   mflw.usrdef=self.usrdef    -- user defined data
 
@@ -315,9 +316,9 @@ local function exec (self)
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
-    atentry   (elm, mflw.__edat, 0,  0)
+    atentry   (elm, mflw.__edat, 0, -1)
     elm:survey(     mflw.__edat       )
-    atexit    (elm, mflw.__edat, 0, -1)
+    atexit    (elm, mflw.__edat, 0, -2)
 
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
@@ -329,7 +330,7 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na -- not applicable (see track)
+local _na, _nyi -- not applicable, not yet implemented
 
 local survey = command 'survey' {
   beam=_na,         -- N/A                                                (mflw)
@@ -340,10 +341,10 @@ local survey = command 'survey' {
   s0=0,             -- initial s                                          (mflw)
   X0={0,0,0},       -- initial coordinates x, y, z                        (mflw)
   A0={0,0,0},       -- initial angles theta, phi, psi                     (mflw)
+  W0=nil,           -- initial W matrix (compagnion of X0)                (mflw)
 
   mapdef=_na,       -- always use matrix formalism (i.e. true)            (mflw)
   mapsave=false,    -- save the orientation matrix W (rotations)          (mflw)
-  W0=nil,           -- initial W matrix (compagnion of X0)                (mflw)
 
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -361,14 +362,13 @@ local survey = command 'survey' {
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
-  atexit=ftrue,     -- action called when exiting an element              (mflw)
+  atexit=fnone,     -- action called when exiting an element              (mflw)
   ataper=_na,       -- N/A                                                (mflw)
-  atsave=fnone,     -- action called when saving a row in mtable          (mflw)
+  atsave=fnone,     -- action called after saving in mtable               (mflw)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
-
   exec=exec,        -- command to execute upon children creation
 } :set_readonly()   -- reference survey command is readonly
 
