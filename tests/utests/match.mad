@@ -26,10 +26,13 @@
 local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
-local beam, sequence, twiss, match, option, filesys              in MAD
-local marker, drift, thin_element                                in MAD.element
-local eps, inf                                                   in MAD.constant
+local beam, sequence, twiss, match, plot,
+      option, filesys, atexit                                    in MAD
+local ftrue                                                      in MAD.gfunc
+local marker, drift, quadrupole, sbend                           in MAD.element
+local eps, inf, pi                                               in MAD.constant
 local sqrt                                                       in MAD.gmath
+local pause                                                      in MAD.utility
 
 local refdir = \s -> 'match_ref/'..(s or '')
 local rundir = \s -> 'match_run/'..(s or '')
@@ -41,16 +44,19 @@ TestMatch = {}
 function TestMatch:setUp ()
   filesys.mkdir(rundir())
   self.optfmt = option.format
+  self.optdbg = option.debug
   option.format = "%-.10g"
+  option.debug = 1
 end
 
 function TestMatch:tearDown ()
   option.format = self.optfmt
+  option.debug  = self.optdbg
 end
 
 -- FODO matching --------------------------------------------------------------o
 
-function TestMatch:testMatchFODO ()
+function TestMatch:testMatchThinFODO ()
   local knobs = { k1qf =  0.2828427125,   --  0.3037241107,
                   k1qd = -0.2828427125, } -- -0.3037241107, }
 
@@ -114,6 +120,63 @@ function TestMatch:testMatchFODO ()
   assertAlmostEquals(fmin      ,  6.3877839033e-21, 1e-8)
   assertAlmostEquals(knobs.k1qf,  0.30372411082735, 1e-8)
   assertAlmostEquals(knobs.k1qd, -0.30372411097101, 1e-8)
+end
+
+function TestMatch:testMatchFODO ()
+-- classes
+local mb = sbend { l=2, angle=2*pi/50 }
+local mq = quadrupole { l=1 }
+local var = { k1f=0.28, k1d=-0.28 }
+
+-- sequence
+local seq = sequence 'seq' {
+  l=10, refer='entry', beam=beam,
+  mq 'mq1' { at=0, k1 := var.k1f },
+  mb 'mb1' { at=2, k0 =\s s.angle/s.l },
+  mq 'mq2' { at=5, k1 := var.k1d },
+  mb 'mb2' { at=7, k0 =\s s.angle/s.l },
+}
+
+-- twiss
+local mtbl = twiss {sequence=seq, nslice=10, atslice=ftrue}
+plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+       x1y1 = { s={'beta11','beta22'} },
+       x1y2 = { s={'mu1'   ,'mu2'   } } }
+pause()
+
+-- match phase advance
+local status, fmin = match {
+  command := twiss { sequence=seq, observe=true },
+  variables = {
+    { var = 'var.k1f' },
+    { var = 'var.k1d' },
+  },
+  equalities = {
+    { expr = \t -> t.mu1[#t] - 0.25 },
+    { expr = \t -> t.mu2[#t] - 0.25 },
+  },
+  objective = {
+    method = 'NLOPT_LN_COBYLA', tol = 1e-16, maxcall = 100
+  },
+}
+
+-- check results
+assertEquals      (status ,  'NLOPT_FTOL_REACHED')
+assertAlmostEquals(fmin   ,  6.3877839e-21 , 1e-20)
+assertAlmostEquals(var.k1f,  0.296004765416, 1e-12)
+assertAlmostEquals(var.k1d, -0.302420662794, 1e-12)
+
+-- plot betas and phases
+local mtbl = twiss {sequence=seq, nslice=10, atslice=ftrue}
+plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+       x1y1 = { s={'beta11','beta22'} },
+       x1y2 = { s={'mu1'   ,'mu2'   } } }
+pause()
+
+plot { table=mtbl, sequence=seq, fontsize=18, !styles='lines',
+       x1y1 = { s={'beta11','beta22'} },
+       x1y2 = { s={'mu1'   ,'mu2'   } } }
+pause()
 end
 
 -- Function matching ----------------------------------------------------------o
