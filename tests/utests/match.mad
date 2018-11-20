@@ -148,7 +148,7 @@ if doplot then
 end
 
 -- match phase advance
-local status, fmin = match {
+local status, fmin, ncall = match {
   command := twiss { sequence=seq, observe=true },
   variables = {
     { var = 'var.k1f' },
@@ -164,10 +164,72 @@ local status, fmin = match {
 }
 
 -- check results
-assertEquals      (status ,  'NLOPT_FTOL_REACHED')
+assertEquals      (status ,  'NLOPT_FTOL_REACHED' )
+assertEquals      (ncall  ,  38                   )
 assertAlmostEquals(fmin   ,  6.3877839e-21 , 1e-20)
 assertAlmostEquals(var.k1f,  0.296004765416, 1e-12)
 assertAlmostEquals(var.k1d, -0.302420662794, 1e-12)
+
+if doplot then
+  -- plot betas and phases
+  local mtbl = twiss {sequence=seq, nslice=10, atslice=ftrue}
+  plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+         x1y1 = { s={'beta11','beta22'} },
+         x1y2 = { s={'mu1'   ,'mu2'   } } }
+  pause()
+  plot { table=mtbl, sequence=seq, fontsize=18, !styles='lines',
+         x1y1 = { s={'beta11','beta22'} },
+         x1y2 = { s={'mu1'   ,'mu2'   } } }
+  pause()
+end
+end
+
+function TestMatch:testMatchFODONoVar ()
+-- classes
+local mb = sbend { l=2, angle=2*pi/50 }
+local mq = quadrupole { l=1 }
+local doplot = false
+
+-- sequence
+local seq = sequence 'seq' {
+  l=10, refer='entry', beam=beam,
+  mq 'mq1' { at=0, k1 = 0.28 },
+  mb 'mb1' { at=2, k0 =\s s.angle/s.l },
+  mq 'mq2' { at=5, k1 = -0.28 },
+  mb 'mb2' { at=7, k0 =\s s.angle/s.l },
+}
+
+-- twiss
+if doplot then
+  local mtbl = twiss {sequence=seq, nslice=10, atslice=ftrue}
+  plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+         x1y1 = { s={'beta11','beta22'} },
+         x1y2 = { s={'mu1'   ,'mu2'   } } }
+  pause()
+end
+
+-- match phase advance
+local status, fmin, ncall = match {
+  command := twiss { sequence=seq, observe=true },
+  variables = {
+    { var = 'seq.mq1.k1' },
+    { var = 'seq.mq2.k1' },
+  },
+  equalities = {
+    { expr = \t -> t['$end'].mu1 - 0.25 },
+    { expr = \t -> t['$end'].mu2 - 0.25 },
+  },
+  objective = {
+    method = 'NLOPT_LN_COBYLA', tol = 1e-16, maxcall = 100
+  },
+}
+
+-- check results
+assertEquals      (status    ,  'NLOPT_FTOL_REACHED' )
+assertEquals      (ncall     ,  38                   )
+assertAlmostEquals(fmin      ,  6.3877839e-21 , 1e-20)
+assertAlmostEquals(seq.mq1.k1,  0.296004765416, 1e-12)
+assertAlmostEquals(seq.mq2.k1, -0.302420662794, 1e-12)
 
 if doplot then
   -- plot betas and phases
