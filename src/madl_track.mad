@@ -35,9 +35,11 @@ local tblcat, errorf, assertf                                    in MAD.utility
 local apercheck                                                  in MAD.aperture
 local minlen, minang                                             in MAD.constant
 
-local abs, min, max in math
+local abs, min, max, cos in math
 
 local strsub = string.sub
+
+local is_implicit = element.drift.is_implicit
 
 -- constants
 local minvolt = 1e-6
@@ -113,35 +115,53 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function onetrack (elm, mflw, track, thick, thin, corr, fringe)
-  local sdir in mflw
+local function trackdft (elm, mflw, track, thick, thin)
+  local tlt = elm.tilt
+  mflw.etlt = tlt
 
-  changeref(elm, mflw,  sdir)
-  fringe   (elm, mflw,  sdir)
-  track    (elm, mflw,   1  , thick, thin, corr)
-  fringe   (elm, mflw, -sdir)
-  changeref(elm, mflw, -sdir)
+  changeref(elm, mflw,  1)
+  srotation(tlt, mflw,  1)
+  track    (elm, mflw,  1, thick, thin)
+  srotation(tlt, mflw, -1)
+  changeref(elm, mflw, -1)
 end
 
-local function subtrack (elm, mflw, track, thick, thin, corr, fringe)
+local function trackelm (elm, mflw, track, thick, thin, fringe)
+  local tlt = elm.tilt
+  mflw.etlt = tlt
+
+  changeref(elm, mflw,  1)
+  srotation(tlt, mflw,  1)
+  fringe   (elm, mflw,  1)
+  track    (elm, mflw,  1, thick, thin)
+  fringe   (elm, mflw, -1)
+  srotation(tlt, mflw, -1)
+  changeref(elm, mflw, -1)
+end
+
+local function tracksub (elm, mflw, track, thick, thin, fringe)
   local sdir in mflw
   local nelm = #elm
 
-  changeref(elm, mflw, sdir)
-  fringe   (elm, mflw, sdir)
+  local tlt = elm.tilt
+  mflw.etlt = tlt
+
+  changeref(elm, mflw, 1)
+  srotation(tlt, mflw, 1)
+  fringe   (elm, mflw, 1)
 
   if sdir > 0 then
     local at, lw = 0
     for i=1,nelm do
       at, lw = elm[i].at, elm[i].at - at
       if abs(lw) >= minlen then
-        track(elm, mflw, lw, thick, thin, corr)
+        track(elm, mflw, lw, thick, thin)
       end
       elm[i]:track(mflw.__sdat)
     end
     lw = 1 - at
     if abs(lw) >= minlen then
-      track(elm, mflw, lw, thick, thin, corr)
+      track(elm, mflw, lw, thick, thin)
     end
 
   else -- backtrack
@@ -149,34 +169,51 @@ local function subtrack (elm, mflw, track, thick, thin, corr, fringe)
     for i=nelm,1,-1 do
       at, lw = elm[i].at, at - elm[i].at
       if abs(lw) >= minlen then
-        track(elm, mflw, lw, thick, thin, corr)
+        track(elm, mflw, lw, thick, thin)
       end
       elm[i]:track(mflw.__sdat)
     end
     lw = at
     if abs(lw) >= minlen then
-      track(elm, mflw, lw, thick, thin, corr)
+      track(elm, mflw, lw, thick, thin)
     end
   end
 
-  fringe   (elm, mflw, -sdir)
-  changeref(elm, mflw, -sdir)
+  fringe   (elm, mflw, -1)
+  srotation(tlt, mflw, -1)
+  changeref(elm, mflw, -1)
 end
 
 -- kinds ----------------------------------------------------------------------o
 
-local function track_thin (elm, mflw)
-  get_mult(elm, mflw)
-  mdump('\ntrack_thin', elm.name, 'l=', elm.l, 'nmul=', mflw.nmul)
-  if mflw.nmul == 0 then return end
+local function track_marker (elm, mflw)
+  mdump('\ntrack_marker', elm.name)
 
-  onetrack(elm, mflw, thinonly, nil, strex_kick, nil, fnone)
+  mflw.etlt = 0
+  thinonly(elm, mflw, 1, nil, fnone)
+end
+
+local function track_drift (elm, mflw)
+  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
+
+  local l in elm
+  if abs(l) < minlen then return track_marker(elm, mflw) end
+
+  mflw.el, mflw.eld = l, l
+
+  if is_implicit(elm) then
+    mflw.etlt = 0
+    thickonly(elm, mflw, 1, strex_drift, nil)
+  else
+    local track = #elm == 0 and trackdft or tracksub
+    track(elm, mflw, thickonly, strex_drift, nil, fnone)
+  end
 end
 
 local function track_multipole (elm, mflw)
   get_mult(elm, mflw)
   mdump('\ntrack_multi', elm.name, 'l=', elm.l, 'nmul=', mflw.nmul)
-  if mflw.nmul == 0 then return end
+  if mflw.nmul == 0 then return track_marker(elm, mflw) end
 
   local knl, ksl in mflw
   mflw.el = elm.l or elm.lrad
@@ -185,28 +222,16 @@ local function track_multipole (elm, mflw)
   if abs(knl[1])+abs(ksl[1]) < minang then
     kick = strex_kick
   else
-    kick = strex_hkick
+    kick = thin_kick
   end
 
-  onetrack(elm, mflw, thinonly, nil, kick, nil, fnone)
-end
-
-local function track_drift (elm, mflw)
-  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
-
-  local l in elm
-  if abs(l) < minlen then return end
-
-  mflw.el, mflw.eld = l, l
-
-  local track = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, thickonly, strex_drift, nil, nil, fnone)
+  trackelm(elm, mflw, thinonly, nil, kick, fnone)
 end
 
 local function track_sbend (elm, mflw)
   mdump('\ntrack_sbend', elm.name, 'l=', elm.l, 'angle=', elm.angle)
 
-  local l, angle, k0, k1, k0s, k1s in elm
+  local l, angle, k0, k0s, k1, k1s in elm
   assert(l >= minlen, "invalid sbend length (>0 expected)")
   assert(abs(angle) >= minang, "invalid sbend angle (~=0 expected)")
   get_mult(elm, mflw)
@@ -226,7 +251,7 @@ local function track_sbend (elm, mflw)
 
   local model  = elm.model  or mflw.model
   local method = elm.method or mflw.method
-  local thick, kick, corr
+  local thick, kick
 
   if model == 'DKD' then
     thick, kick = curex_drift, curex_kick
@@ -234,8 +259,8 @@ local function track_sbend (elm, mflw)
     thick, kick = sbend_thick, sbend_kick
   end
 
-  local track  = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, symint[method], thick, kick, corr, sbend_fringe)
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], thick, kick, sbend_fringe)
 end
 
 local track_combined =\ error("NYI") -- for now...
@@ -251,8 +276,8 @@ local function track_rbend (elm, mflw)
   knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
   ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
   mflw.k0, mflw.k1  = knl[1]/l, knl[2]/l
-  mflw.el, mflw.eld = l, l -- l/sinc(angle)
-  mflw.eh, mflw.ang = angle/mflw.eld, angle
+  mflw.el, mflw.eld = l*sinc(0.5*angle)*cos(angle), l
+  mflw.eh, mflw.ang = angle/l, angle
 
   if nmul < 2 then
     mflw.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -262,20 +287,16 @@ local function track_rbend (elm, mflw)
 
   local model  = elm.model  or mflw.model
   local method = elm.method or mflw.method
-  local thick, kick, corr
+  local thick, kick
 
   if model == 'DKD' then
-    if abs(angle) < minang then
-      thick, kick = strex_drift, strex_kick
-    else
-      thick, kick = curex_drift, curex_kick
-    end
+    thick, kick = strex_drift, strex_kick
   else
     thick, kick = rbend_thick, rbend_kick
   end
 
-  local track  = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, symint[method], thick, kick, corr, rbend_fringe)
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], thick, kick, rbend_fringe)
 end
 
 local function track_quadrupole (elm, mflw)
@@ -283,14 +304,15 @@ local function track_quadrupole (elm, mflw)
 
   local l, angle, k0, k0s, k1, k1s in elm
   assert(l >= minlen, "invalid quadrupole length (>0 expected)")
+  assert(abs(angle) < minang, "invalid quadrupole angle (=0 expected)")
   get_mult(elm, mflw)
 
   local sdir, nmul, knl, ksl in mflw
   knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
   ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
   mflw.k0, mflw.k1  = knl[1]/l, knl[2]/l
-  mflw.el, mflw.eld = l, l/sinc(angle)
-  mflw.eh, mflw.ang = angle/mflw.eld, angle
+  mflw.el, mflw.eld = l, l
+  mflw.eh, mflw.ang = 0, 0
 
   if nmul < 2 then
     mflw.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -300,9 +322,9 @@ local function track_quadrupole (elm, mflw)
 
   local model  = elm.model  or mflw.model
   local method = elm.method or mflw.method
-  local thick, kick, corr
+  local thick, kick
 
-  if model == 'DKD' then                                                        -- TODO: SABAC DKD
+  if model == 'DKD' then
     if abs(knl[1])+abs(ksl[1]) < minang then
       thick, kick = strex_drift, strex_kick
     else
@@ -314,8 +336,8 @@ local function track_quadrupole (elm, mflw)
       drift, kick = quad_hthick, quad_hkick
   end
 
-  local track = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, symint[method], thick, kick, corr, quad_fringe)
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], thick, kick, quad_fringe)
 end
 
 local function track_sextupole (elm, mflw)
@@ -337,9 +359,8 @@ local function track_sextupole (elm, mflw)
   mdump('track_sext', 'el=', mflw.el, 'k2=', mflw.knl[3])
 
   local method = elm.method or mflw.method
-  local track = #elm == 0 and onetrack or subtrack
-  local thick, kick, corr = strex_drift, strex_kick
-  track(elm, mflw, symint[method], thick, kick, corr, strex_fringe)
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_octupole (elm, mflw)
@@ -361,9 +382,8 @@ local function track_octupole (elm, mflw)
   mdump('track_octu', 'el=', mflw.el, 'k3=', mflw.knl[4])
 
   local method = elm.method or mflw.method
-  local track = #elm == 0 and onetrack or subtrack
-  local thick, kick, corr = strex_drift, strex_kick
-  track(elm, mflw, symint[method], thick, kick, corr, strex_fringe)
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_decapole (elm, mflw)
@@ -385,9 +405,9 @@ local function track_decapole (elm, mflw)
   mdump('track_deca', 'el=', mflw.el, 'k4=', mflw.k4)
 
   local method = elm.method or mflw.method
-  local track = #elm == 0 and onetrack or subtrack
-  local thick, kick, corr = strex_drift, strex_kick
-  track(elm, mflw, symint[method], thick, kick, corr, strex_fringe)
+  local track = #elm == 0 and trackelm or tracksub
+  local thick, kick = strex_drift, strex_kick
+  track(elm, mflw, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_dodecapole (elm, mflw)
@@ -409,9 +429,9 @@ local function track_dodecapole (elm, mflw)
   mdump('track_dodeca', 'el=', mflw.el, 'k5=', mflw.knl[6])
 
   local method = elm.method or mflw.method
-  local track = #elm == 0 and onetrack or subtrack
-  local thick, kick, corr = strex_drift, strex_kick
-  track(elm, mflw, symint[method], thick, kick, corr, strex_fringe)
+  local track = #elm == 0 and trackelm or tracksub
+  local thick, kick = strex_drift, strex_kick
+  track(elm, mflw, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_solenoid (elm, mflw)
@@ -426,17 +446,17 @@ local function track_solenoid (elm, mflw)
 
   mdump('track_solen', 'el=', mflw.el, 'ksi=', mflw.ksi)
 
-  local thick, kick, corr
+  local thick, kick
 
   if abs(mflw.ksi) < minang then
-    thick, kick = strex_thick, strex_kick
+    thick, kick = strex_drift, strex_kick
   else
     thick, kick = solen_thick, strex_kick
   end
 
   local method = elm.method or mflw.method
-  local track  = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, symint[method], thick, kick, corr, solen_fringe)
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], thick, kick, solen_fringe)
 end
 
 local function track_rfcavity (elm, mflw)
@@ -451,17 +471,17 @@ local function track_rfcavity (elm, mflw)
 
   mdump('track_rfcav', 'volt=', mflw.volt, 'freq=', mflw.freq, 'lag=', mflw.lag)
 
-  local thick, kick, corr
+  local thick, kick
 
   if abs(mflw.volt) < minvolt then
-    thick, kick = strex_thick, strex_kick
+    thick, kick = strex_drift, strex_kick
   else
     thick, kick = rfcav_thick, rfcav_kick
   end
 
   local method = elm.method or mflw.method
-  local track  = #elm == 0 and onetrack or subtrack
-  track(elm, mflw, symint[method], thick, kick, corr, rfcav_fringe)
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, mflw, symint[method], thick, kick, rfcav_fringe)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -478,12 +498,12 @@ local E = element
 
 -- kind maps
 
-E. thin_element:setv({ track = functor( track_thin  ) }, 'init')
-E.drift_element:setv({ track = functor( track_drift ) }, 'init')
-E.thick_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
-E.specl_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
-E.patch_element:setv({ track = functor( invalid     ) }, 'init') -- avoid missing definition
-E.extra_element:setv({ track = functor( invalid     ) }, 'init') -- forbidden in track
+E. thin_element:setv({ track = functor( invalid      ) }, 'init') -- avoid missing definition
+E.drift_element:setv({ track = functor( track_drift  ) }, 'init')
+E.thick_element:setv({ track = functor( invalid      ) }, 'init') -- avoid missing definition
+E.specl_element:setv({ track = functor( track_marker ) }, 'init')
+E.patch_element:setv({ track = functor( invalid      ) }, 'init') -- avoid missing definition
+E.extra_element:setv({ track = functor( invalid      ) }, 'init') -- forbidden in track
 
 -- specialized maps (invalid == NYI)
 
@@ -513,9 +533,8 @@ E.beambeam   :setv({ track = functor( invalid          ) }, 'init') -- thin
 E.multipole  :setv({ track = functor( track_multipole  ) }, 'init') -- thin
 E.rfmultipole:setv({ track = functor( invalid          ) }, 'init') -- thin
 
--- special maps
+-- patches
 
-E.marker     :setv({ track = functor( fnone            ) }, 'init')
 E.xrotation  :setv({ track = functor( xrotation        ) }, 'init') -- patch
 E.yrotation  :setv({ track = functor( yrotation        ) }, 'init') -- patch
 E.srotation  :setv({ track = functor( srotation        ) }, 'init') -- patch
@@ -801,6 +820,7 @@ local function make_mflow (self)
     k0s=0,                   -- current element strength k0s
     k1=0,                    -- current element strength k1
     k1s=0,                   -- current element strength k1s
+    etlt=0,                  -- current element tilt angle
     nmul=0,                  -- current element number of multipoles
     knl=table.new(15,0),     -- current element multipoles
     ksl=table.new(15,0),     -- current element multipoles skew
@@ -811,6 +831,7 @@ local function make_mflow (self)
 
   -- for processing (thin) subelements
   mflw.__sdat = setmetatable({
+    etlt=0,                  -- current subelement tilt angle
     nmul=0,                  -- current subelement number of multipoles
     knl=table.new(15,0),     -- current subelement multipoles
     ksl=table.new(15,0),     -- current subelement multipoles skew
