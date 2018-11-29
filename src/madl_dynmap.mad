@@ -275,13 +275,15 @@ function M.thin_kick (elm, m, lw) -- [KICKT]                                    
     m[i].py = py + wchg*(bx - ksl[1])
 
     -- dipole focusing and delta_p
-    local dpp1 = sqrt(1 + (2*_beta)*pt + pt^2)
-    if el ~= 0 then
-      local dp = dpp1 - 1
-      m[i].px = m[i].px - (knl[1]^2/el)*x + (wchg*knl[1])*dp
-      m[i].py = m[i].py - (ksl[1]^2/el)*y + (wchg*ksl[1])*dp
+    if abs(knl[1])+abs(ksl[1]) >= minang then
+      local dpp1 = sqrt(1 + (2*_beta)*pt + pt^2)
+      if el ~= 0 then
+        local dp = dpp1 - 1
+        m[i].px = m[i].px - (knl[1]^2/el)*x + (wchg*knl[1])*dp
+        m[i].py = m[i].py - (ksl[1]^2/el)*y + (wchg*ksl[1])*dp
+      end
+        m[i].t  = t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/dpp1
     end
-      m[i].t  = t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/dpp1
   end
 
   mdump('thin_kick-1:', el*sdir*lw, m)
@@ -471,25 +473,26 @@ M.curex_fringe = fnone -- TODO: see above
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
 function M.rbend_thick (elm, m, lw) -- [SPAR]
-  local el, eld, k0, sdir, tdir, npar, knl, T in m
-  local l, ld = el*lw*sdir, eld*lw*sdir
+  local el, eld, sdir, tdir, npar, beam, k0, knl, T in m
+  local l, ld, k0, k0l = el*lw*sdir, eld*lw*sdir, k0*tdir, knl[1]*lw*tdir
+  local _beta, _k0q, k0lq = 1/beam.beta, 1/(k0*beam.charge), k0l*beam.charge
 
   mdump('rbend_thick-0:', l, m)
 
   for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  bdir = beam.charge*tdir
-    local _beta = 1/beam.beta
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = beam and 1/beam.beta or _beta
+    local _k0q  = beam and 1/(k0*beam.charge) or _k0q
+    local  k0lq = beam and k0l*beam.charge or k0lq
 
     local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)
     local  ptt = sqrt(pw2)
     local _ptt = 1/ptt
-    local  npx = px - l*knl[1]*bdir
+    local  npx = px - k0lq
     local  pzs = sqrt(pw2 - npx^2)
-    local   nx = x + (pzs-pz)/(knl[1]*bdir)
-    local  pzt = (asin(px*_ptt) - asin(npx*_ptt))/(knl[1]*bdir)
+    local   nx = x + (pzs-pz)*_k0q
+    local  pzt = (asin(px*_ptt) - asin(npx*_ptt))*_k0q
 
     -- eq. 129 in Forest06
     m[i].x  = nx
@@ -570,14 +573,14 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
   local l = el*sdir*lw
   local chg = beam.charge
 
-  -- [GETMAT7R, h == 0]
+  -- [GETMAT7, h == 0]
   local ws = k1*edir < 0 and -1 or 1
   local w  = sqrt(abs(k1))*tdir*ws
   local cx, sx = cos (w*l), sin (w*l)
   local cy, sy = cosh(w*l), sinh(w*l)
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
--- [GETMAT7R]
+-- [GETMAT7]
 
   mdump('quad_thick-0:', l, m)
 
@@ -631,7 +634,7 @@ end
 
 M.quad_fringe = M.strex_fringe
 
--- special case
+-- special case, k0+k1
 
 function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               unchecked
   local el, eld, eh, k0, k1, edir, sdir, tdir, npar, beam in m
@@ -647,7 +650,7 @@ function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               
     local beam = m[i].beam or beam
     local h_b = h/beam.beta
 
-    if chg ~= beam.charge then -- [GETMAT7R]
+    if chg ~= beam.charge then -- [GETMAT7]
       chg = beam.charge
       local bdir = tdir*chg
       local kx, ky = k1+h*k0, k1
@@ -668,7 +671,7 @@ function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               
       my12, my21, mx33 = sy/wy,  sy*wy*wsy, (l-mx21)/wx^2*wsx
     end
 
---[[ MATRIX REPRESENTATION FROM PTC [GETMAT7R]
+--[[ MATRIX REPRESENTATION FROM PTC [GETMAT7]
     { cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
      -sx*wx*ws      , cx                   , h*sx/wx                   ,
       h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta }
