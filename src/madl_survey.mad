@@ -39,8 +39,51 @@ local thinonly, thickonly                                         in MAD.symint
 
 -- geometric maps -------------------------------------------------------------o
 
-local thin, drift, thick, xrotation, yrotation, srotation,
-      translate, changeref, changedir, changenrj                  in MAD.geomap
+local thin, drift, thick                                          in MAD.geomap
+
+local xrotation, yrotation, srotation, translate,
+      changeref, changedir, changenrj                             in MAD.geomap
+
+-- debug ----------------------------------------------------------------------o
+
+local nodump = true
+
+local function mdump(str, ...)
+  if nodump then return end
+  print(str, ...)
+end
+
+-- kinds ----------------------------------------------------------------------o
+
+local function track_marker (elm, mflw)
+  mdump('\ntrack_marker', elm.name, 'l=', elm.l)
+
+  thinonly(elm, mflw, 1, nil, fnone)
+end
+
+local function track_drift (elm, mflw)
+  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
+
+  local l in elm
+  mflw.el = l
+  thickonly(elm, mflw, 1, drift, nil)
+end
+
+local function track_thin (elm, mflw)
+  mdump('\ntrack_thin', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
+
+  local l, angle, tilt in elm
+  mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
+  thinonly(elm, mflw, 1, nil, thin)
+end
+
+local function track_thick (elm, mflw)
+  mdump('\ntrack_thick', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
+
+  local l, angle, tilt in elm
+  mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
+  thickonly(elm, mflw, 1, thick, nil)
+end
 
 -- load maps into elements ----------------------------------------------------o
 
@@ -56,16 +99,15 @@ local E = element
 
 -- kind maps
 
-E. thin_element:setv({ survey = functor \e,m -> thinonly (e,m,1, nil,  thin) }, 'init')
-E.drift_element:setv({ survey = functor \e,m -> thickonly(e,m,1, drift, nil) }, 'init')
-E.thick_element:setv({ survey = functor \e,m -> thickonly(e,m,1, thick, nil) }, 'init')
-E.specl_element:setv({ survey = functor( invalid ) }, 'init')  -- avoid missing definition
-E.patch_element:setv({ survey = functor( invalid ) }, 'init')  -- avoid missing definition
-E.extra_element:setv({ survey = functor( invalid ) }, 'init')  -- forbidden in survey
+E. thin_element:setv({ survey = functor( track_thin   ) }, 'init')
+E.drift_element:setv({ survey = functor( track_drift  ) }, 'init')
+E.thick_element:setv({ survey = functor( track_thick  ) }, 'init')
+E.specl_element:setv({ survey = functor( track_marker ) }, 'init')
+E.patch_element:setv({ survey = functor( invalid      ) }, 'init') -- avoid missing definition
+E.extra_element:setv({ survey = functor( invalid      ) }, 'init') -- forbidden in track
 
--- special maps
+-- patches
 
-E.marker   :setv({ survey = functor( fnone     ) }, 'init')
 E.xrotation:setv({ survey = functor( xrotation ) }, 'init')
 E.yrotation:setv({ survey = functor( yrotation ) }, 'init')
 E.srotation:setv({ survey = functor( srotation ) }, 'init')
@@ -240,7 +282,6 @@ local function make_mflow (self)
   mflw.tdir=tdir             -- t-direction of tracking
   mflw.edir=edir             -- current element direction
   mflw.eidx=init             -- current element index
-  mflw.eslc=0                -- current element number of slices
   mflw.turn=1                -- current turn index
 
   mflw.s0=s0                 -- initial s-position (i.e. offset)
@@ -272,10 +313,14 @@ local function make_mflow (self)
 
   -- for processing elements local frame
   mflw.__edat = setmetatable({
-    R=vector(3),                       -- displacement vector
-    S=matrix(3),                       -- orientation matrix (rotations)
-    T=matrix(3),                       -- transformation matrix if tilted
-    U=vector(3),                       -- temporary vector for calculations
+    el=0,                    -- current element length
+    ang=0,                   -- current element angle
+    etlt=0,                  -- current element tilt angle
+    eslc=0,                  -- current element number of slices
+    R=vector(3),             -- displacement vector
+    S=matrix(3),             -- orientation matrix (rotations)
+    T=matrix(3),             -- transformation matrix if tilted
+    U=vector(3),             -- temporary vector for calculations
   }, {__index=mflw})
 
   -- for processing sequence elements by nstep
