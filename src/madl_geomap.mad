@@ -38,6 +38,16 @@ local minlen, minang in MAD.constant
 local is_number      in MAD.typeid
 local errorf         in MAD.utility
 
+-- debug ----------------------------------------------------------------------o
+
+local nodump = true
+
+local function mdump(str, l, m)
+  if nodump then return end
+  local V, A in m
+  print(str, l, V[1], V[2], V[3], A[1], A[2], A[3])
+end
+
 -- helpers --------------------------------------------------------------------o
 
 local function update_angles(mflw)
@@ -140,52 +150,68 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 function M.drift (elm, m, lw) -- drift_element
-  local l = is_number(elm) and elm or elm.l
-  if abs(l) < minlen then return end
+  local el = is_number(elm) and elm or m.el
+  if abs(el) < minlen then return end
 
-  m.R :fill{0, 0, l*lw*m.sdir}
-  m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
+  local sdir, R, U, V, W in m
+  local l = el*lw*sdir
+
+  mdump('drift-0:', l, m)
+
+  R:fill{0, 0, l}
+  V:add(W:mul(R, U), V)     -- V = V+W*R
+
+  mdump('drift-1:', l, m)
 end
 
 function M.thin (elm, m, lw_) -- thin_element
-  local angle in elm
-  if abs(angle) < minang then return end
+  local ang = is_number(elm) and elm or m.ang
+  if abs(ang) < minang then return end
 
-  local tdir in m
-  m.S :roty(-angle*tdir)
+  local etlt, tdir, S, W in m
 
-  local tilt in elm
-  if abs(tilt) >= minang then
-    m.T :rotz(tilt*tdir)
-    m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
+  mdump('thin-0:', m.el*m.sdir, m)
+
+  S:roty(-ang*tdir)
+
+  if abs(etlt) >= minang then
+    local T in m
+    T:rotz(etlt*tdir)
+    T:mul(S, S):mult(T, S)      -- S = T*S*T'
   end
 
-  m.W :mul(m.S, m.W)                   -- W = W*S
+  W:mul(S, W)                   -- W = W*S
   update_angles(m)
+
+  mdump('thin-1:', m.el*m.sdir, m)
 end
 
 function M.thick (elm, m, lw) -- thick_element
-  local l, angle in elm
-  if abs(angle) < minang then return M.drift(l , m, lw) end
-  if abs(l)     < minlen then return M.thin(elm, m, lw) end
+  local el, ang in m
+  if abs(ang) < minang then return M.drift(el, m, lw) end
+  if abs(el)  < minlen then return M.thin(ang, m, lw) end
 
-  local sdir, tdir in m
-  l, angle = l*sdir*lw, angle*tdir*lw
+  local etlt, sdir, tdir, R, S, U, V, W in m
+  local l, ang = el*sdir*lw, ang*tdir*lw
+  local rho = l/ang
 
-  local rho = l/angle
-  m.R :fill{rho*(cos(angle)-1), 0, rho*sin(angle)}
-  m.S :roty(-angle)
+  mdump('thick-0:', l, m)
 
-  local tilt in elm
-  if abs(tilt) >= minang then
-    m.T :rotz(tilt*tdir)
-    m.T :mul(m.R, m.R)                 -- R = T*R
-    m.T :mul(m.S, m.S) :mult(m.T, m.S) -- S = T*S*T'
+  m.R :fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
+  m.S :roty(-ang)
+
+  if abs(etlt) >= minang then
+    local T in m
+    T:rotz(etlt*tdir)
+    T:mul(R, R)                 -- R = T*R
+    T:mul(S, S):mult(T, S)      -- S = T*S*T'
   end
 
-  m.V :add(m.W :mul(m.R,m.U), m.V)     -- V = W*R+V
-  m.W :mul(m.S, m.W)                   -- W = W*S
+  V:add(W:mul(R, U), V)         -- V = W*R+V
+  W:mul(S, W)                   -- W = W*S
   update_angles(m)
+
+  mdump('thick-1:', l, m)
 end
 
 -- end ------------------------------------------------------------------------o
