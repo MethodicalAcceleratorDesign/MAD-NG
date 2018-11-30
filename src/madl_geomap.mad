@@ -61,12 +61,15 @@ end
 
 function M.xrotation (elm, m, lw_) -- Rx(-phi)
   if lw_ == 0 then return end
+  local lw, mis = lw_ or 1, 0
+  if abs(lw) == 2 then lw, mis = lw/2, 1 end
 
-  local phi = is_number(elm) and elm or elm.phi or 0
+  local phi = is_number(elm) and elm or (elm.phi or 0) + (elm.dphi or 0)*mis
   if abs(phi) < minang then return end
 
-  m.S :rotx(-phi*m.tdir)
-  m.W :mul(m.S, m.W) -- W = W*S
+  local tdir, S, W in m
+  S:rotx(-phi*lw*tdir)
+  W:mul(S, W)              -- W = W*S
   update_angles(m)
 end
 
@@ -74,12 +77,15 @@ end
 
 function M.yrotation (elm, m, lw_) -- Ry(-theta)
   if lw_ == 0 then return end
+  local lw, mis = lw_ or 1, 0
+  if abs(lw) == 2 then lw, mis = lw/2, 1 end
 
-  local the = is_number(elm) and elm or elm.theta or 0
+  local the = is_number(elm) and elm or (elm.theta or 0) + (elm.dtheta or 0)*mis
   if abs(the) < minang then return end
 
-  m.S :roty(-the*m.tdir)
-  m.W :mul(m.S, m.W) -- W = W*S
+  local tdir, S, W in m
+  S:roty(-the*lw*tdir)
+  W:mul(S, W)              -- W = W*S
   update_angles(m)
 end
 
@@ -87,49 +93,60 @@ end
 
 function M.srotation (elm, m, lw_) -- Rz(psi)
   if lw_ == 0 then return end
+  local lw, mis = lw_ or 1, 0
+  if abs(lw) == 2 then lw, mis = lw/2, 1 end
 
-  local psi = is_number(elm) and elm or elm.psi or 0
+  local psi = is_number(elm) and elm or (elm.psi or 0) + (elm.dpsi or 0)*mis
   if abs(psi) < minang then return end
 
-  m.S :rotz(psi*m.tdir)
-  m.W :mul(m.S, m.W) -- W = W*S
+  local tdir, S, W in m
+  S:rotz(psi*lw*tdir)
+  W:mul(S, W)              -- W = W*S
   update_angles(m)
 end
 
 -- Translation
 
 function M.translate (elm, m, lw_)
-  if lw_ == 0 then return end
+  if lw_ == 0 then return end                 -- lw = -2, -1, 0, 1, 2
+  local lw, mis = lw_ or 1, 0
+  if abs(lw) == 2 then lw, mis = lw/2, 1 end  -- lw = -1, 1; mis = 0, 1
 
-  local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
+  local dx = (elm.dx or 0) + (elm.ddx or 0)*mis
+  local dy = (elm.dy or 0) + (elm.ddy or 0)*mis
+  local dz = (elm.dz or 0) + (elm.ddz or 0)*mis
+
   if abs(dx)+abs(dy)+abs(dz) < minlen then return end
 
-  local tdir in m
-  m.R :fill {dx*tdir, dy*tdir, dz*tdir}
-  m.V :add(m.W :mul(m.R,m.U), m.V) -- V = W*R+V
+  local tdir, R, U, V, W in m
+  R:fill {dx*lw*tdir, dy*lw*tdir, dz*lw*tdir}
+  V:add(W:mul(R, U), V)    -- V = W*R+V
 end
 
 -- Changeref (generic patch, dir>0: xyzt, dir<0: tzyx)
 
 function M.changeref (elm, m, lw_)
   if lw_ == 0 then return end
+  local lw, mis = lw_ or 1, 0
+  if abs(lw) == 2 then lw, mis = lw/2, 1 end
 
-  local dir = lw_ or 1
+  if lw < 0 then M.translate(elm, m, lw_) end
 
-  if dir < 0 then M.translate(elm, m, lw_) end
+  local the = (elm.theta or 0) + (elm.dtheta or 0)*mis
+  local phi = (elm.phi   or 0) + (elm.dphi   or 0)*mis
+  local psi = (elm.psi   or 0) + (elm.dpsi   or 0)*mis
 
-  local the, phi, psi = elm.theta or 0, elm.phi or 0, elm.psi or 0
   if abs(the)+abs(phi)+abs(psi) >= minang then
-    local tdir in m
-    if dir > 0
-    then m.S :rotxyz(phi*tdir, the*tdir, psi*tdir)
-    else m.S :rotzyx(phi*tdir, the*tdir, psi*tdir)
+    local tdir, S, W in m
+    if lw > 0
+    then S:rotxyz(phi*lw*tdir, the*lw*tdir, psi*lw*tdir)
+    else S:rotzyx(phi*lw*tdir, the*lw*tdir, psi*lw*tdir)
     end
-    m.W :mul(m.S, m.W) -- W = W*S
+    W :mul(S, W)           -- W = W*S
     update_angles(m)
   end
 
-  if dir > 0 then M.translate(elm, m, lw_) end
+  if lw > 0 then M.translate(elm, m, lw_) end
 end
 
 -- Changedir (reverse t-direction)
