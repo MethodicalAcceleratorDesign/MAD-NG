@@ -23,26 +23,29 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix, element, mtable, command                    in MAD
+local vector, matrix, element, mtable, command                   in MAD
 
 local is_sequence, is_boolean, is_number, is_integer,
-      is_table, is_callable, is_mappable, is_matrix               in MAD.typeid
-local fnone, ffalse, ftrue, functor, chain, achain                in MAD.gfunc
-local action                                                      in MAD.symint
-local tblcat, errorf                                              in MAD.utility
+      is_table, is_callable, is_mappable, is_matrix              in MAD.typeid
+local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
+local action                                                     in MAD.symint
+local tblcat, errorf                                             in MAD.utility
+local minlen, minang                                             in MAD.constant
 
-local min in math
+local abs, min in math
+
+local is_implicit = element.drift.is_implicit
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly                                         in MAD.symint
+local thinonly, thickonly, driftonly                             in MAD.symint
 
 -- geometric maps -------------------------------------------------------------o
 
-local thin, drift, thick                                          in MAD.geomap
+local str_drift, tlt_thin, tlt_thick                             in MAD.geomap
 
 local xrotation, yrotation, srotation, translate,
-      changeref, changedir, changenrj                             in MAD.geomap
+      changeref, changedir, changenrj                            in MAD.geomap
 
 -- debug ----------------------------------------------------------------------o
 
@@ -53,11 +56,24 @@ local function mdump(str, ...)
   print(str, ...)
 end
 
+-- element tracking -----------------------------------------------------------o
+
+local function trackelm (elm, mflw, track, thick, thin)
+  local tlt = elm.tilt
+  local mis = mflw.misalign
+  mflw.etlt = tlt
+
+  changeref(elm, mflw,  mis)
+  track    (elm, mflw,   1 , thick, thin)
+  changeref(elm, mflw, -mis)
+end
+
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, mflw)
   mdump('\ntrack_marker', elm.name, 'l=', elm.l)
 
+  mflw.etlt = 0
   thinonly(elm, mflw, 1, nil, fnone)
 end
 
@@ -66,7 +82,16 @@ local function track_drift (elm, mflw)
 
   local l in elm
   mflw.el = l
-  thickonly(elm, mflw, 1, drift, nil)
+
+  local thick = abs(l) >= minlen and thickonly or driftonly
+
+  if is_implicit(elm) then
+    mflw.etlt = 0
+    local track = mflw.implicit and thick or driftonly
+    track(elm, mflw, 1, str_drift)
+  else
+    trackelm(elm, mflw, thick, str_drift, nil)
+  end
 end
 
 local function track_thin (elm, mflw)
@@ -74,7 +99,7 @@ local function track_thin (elm, mflw)
 
   local l, angle, tilt in elm
   mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
-  thinonly(elm, mflw, 1, nil, thin)
+  trackelm(elm, mflw, thinonly, nil, tlt_thin)
 end
 
 local function track_thick (elm, mflw)
@@ -82,7 +107,8 @@ local function track_thick (elm, mflw)
 
   local l, angle, tilt in elm
   mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
-  thickonly(elm, mflw, 1, thick, nil)
+  local thick = abs(l) >= minlen and thickonly or driftonly
+  trackelm(elm, mflw, thick, tlt_thick, nil)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -241,13 +267,13 @@ local function make_mflow (self)
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
 
   -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
-  local mtbl
+  local mtbl, fill
   if save then
     mtbl = make_mtable(self, observe)
 
     if atsave ~= ffalse then
-      local fill = observe  >  0    and save_obs or
-                   implicit ~= true and save_imp or save_dat
+      fill = observe  >  0    and save_obs or
+             implicit ~= true and save_imp or save_dat
 
       atsave = (atsave == fnone or atsave == ftrue) and
                 fill or achain(fill, atsave)
@@ -257,6 +283,8 @@ local function make_mflow (self)
       if atslice == ftrue then atslice = chain(atslice, action('atsave')) end
     end
   end
+
+  if fill ~= save_dat then implicit = false end
 
   -- retrieve initial conditions
   local s0, X0, A0, W0, mapsave in self
