@@ -46,7 +46,7 @@ local minvolt = 1e-6
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, atend                                in MAD.symint
+local thinonly, thickonly, driftonly, atend                     in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -114,18 +114,6 @@ local function get_phas (elm, m)
 end
 
 -- element tracking -----------------------------------------------------------o
-
-local function trackdft (elm, mflw, track, thick, thin)
-  local tlt = elm.tilt
-  local mis = mflw.misalign
-  mflw.etlt = tlt
-
-  changeref(elm, mflw,  mis)
-  srotation(tlt, mflw,   1)
-  track    (elm, mflw,   1, thick, thin)
-  srotation(tlt, mflw,  -1)
-  changeref(elm, mflw, -mis)
-end
 
 local function trackelm (elm, mflw, track, thick, thin, fringe)
   local tlt = elm.tilt
@@ -206,9 +194,10 @@ local function track_drift (elm, mflw)
 
   if is_implicit(elm) then
     mflw.etlt = 0
-    thickonly(elm, mflw, 1, strex_drift, nil)
+    local track = mflw.implicit and thickonly or driftonly
+    track(elm, mflw, 1, strex_drift)
   else
-    local track = #elm == 0 and trackdft or tracksub
+    local track = #elm == 0 and trackelm or tracksub
     track(elm, mflw, thickonly, strex_drift, nil, fnone)
   end
 end
@@ -262,7 +251,7 @@ local function track_sbend (elm, mflw)
     thick, kick = sbend_thick, sbend_kick
   end
 
-  local track  = #elm == 0 and trackelm or tracksub
+  local track = #elm == 0 and trackelm or tracksub
   track(elm, mflw, symint[method], thick, kick, sbend_fringe)
 end
 
@@ -298,7 +287,7 @@ local function track_rbend (elm, mflw)
     thick, kick = rbend_thick, rbend_kick
   end
 
-  local track  = #elm == 0 and trackelm or tracksub
+  local track = #elm == 0 and trackelm or tracksub
   track(elm, mflw, symint[method], thick, kick, rbend_fringe)
 end
 
@@ -695,13 +684,13 @@ local function make_mflow (self)
   end
 
   -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
-  local mtbl
+  local mtbl, fill
   if save then
     mtbl = make_mtable(self, observe)
 
     if atsave ~= ffalse then
-      local fill = observe  >  0    and save_obs or
-                   implicit ~= true and save_imp or save_dat
+      fill = observe  >  0    and save_obs or
+             implicit ~= true and save_imp or save_dat
 
       atsave = (atsave == fnone or atsave == ftrue) and
                 fill or achain(fill, atsave)
@@ -711,6 +700,8 @@ local function make_mflow (self)
       if atslice0 == ftrue then atslice = chain(atslice, action('atsave')) end
     end
   end
+
+  if fill ~= save_dat then implicit = false end
 
   -- totalpath
   local totalpath in self
