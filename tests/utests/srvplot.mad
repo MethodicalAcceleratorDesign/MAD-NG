@@ -1,0 +1,136 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Plot module regression tests
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          A. Bloch, aurelien.bloch at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the plot module combined with survey
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local sequence, marker, drift, sbend, quadrupole                 in MAD.element
+
+local assertNotNil, assertNotEquals, assertEquals,
+      assertErrorMsgContains, assertTrue, assertFalse,
+      assertAlmostEquals                                         in MAD.utest
+
+local beam, survey, twiss, plot, option, filesys, atexit         in MAD
+local tblcpy, fileexists, pause, strsplitall                     in MAD.utility
+local ftrue                                                      in MAD.gfunc
+local min, abs                                                   in MAD.gmath
+local pi, eps                                                    in MAD.constant
+local is_number                                                  in MAD.typeid
+
+local refdir   = \s -> "plot_ref/"..(s or '')
+local rundir   = \s -> "plot_run/"..(s or '')
+
+-- helpers --------------------------------------------------------------------o
+
+if true then atexit(pause, true) end
+
+local tbl_col = {'name','s','l','slc','beta11','beta22'}
+local tbl_hdr = {'title','type','origin','date','time'}
+
+-- Tests ----------------------------------------------------------------------o
+
+TestSrvPlot = {}
+
+function TestSrvPlot:setUp ()
+  filesys.mkdir(rundir())
+  self.optfmt = option.format
+  self.optdbg = option.debug
+  option.format = "%-.10g"
+  option.debug = 1
+end
+
+function TestSrvPlot:tearDown ()
+  option.format = self.optfmt
+  option.debug  = self.optdbg
+end
+
+function TestSrvPlot:testBendTlt ()
+  local mb = sbend      { l=1.5, k0 =\s s.angle/s.l }
+  local ang = 2*pi/10
+  local cell = \a,t -> sequence { l=10, refer='entry',
+      mb 'mb' { at=2, angle=\s ->  a*s.l, tilt= t },
+      mb 'mb' { at=7, angle=\s -> -a*s.l, tilt=-t },
+    }
+  local seq = sequence 'seq' { cell(ang, pi/2), beam=beam }
+  seq:dumpseq()
+
+  local srv = survey { sequence=seq, nslice=5, atslice=ftrue }
+
+  local col = {'name', 'kind', 's', 'l', 'angle', 'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt'}
+  srv:write(rundir('survey_bendtlt'), col, tbl_hdr)
+
+  plot {
+    sequence = { seq },
+    laypos   = "in",
+    layonly  = false,
+    title    = "Tilted bends",
+    xlabel   = "x [m]",
+    ylabel   = "z [m]",
+    fontsize = 14,
+  }
+end
+
+function TestSrvPlot:testCirc2 ()
+  local mb = sbend      { l=2, k0 =\s s.angle/s.l }
+  local mq = quadrupole { l=1 }
+  local k1f, k1d, ang = 0.296004765416, -0.302420662794, 2*pi/50
+  local cell =\a -> sequence { l=10, refer='entry',
+      mq 'mq1' { at=0, k1=k1f  },
+      mb 'mb1' { at=2, angle=a },
+      mq 'mq2' { at=5, k1=k1d  },
+      mb 'mb2' { at=7, angle=a },
+    }
+  local seq1 = sequence 'seq1' { 25*cell( ang), beam=beam }
+  local seq2 = sequence 'seq2' { 25*cell(-ang), beam=beam }
+--  seq:dumpseq()
+  assertEquals(seq1.l, 250)
+  assertEquals(seq2.l, 250)
+
+  local sv1 = survey { sequence=seq1, nslice=5, atslice=ftrue }
+  local sv2 = survey { sequence=seq2, nslice=5, atslice=ftrue }
+  local tw1 = twiss  { sequence=seq1, nslice=5, atslice=ftrue }
+  local tw2 = twiss  { sequence=seq2, nslice=5, atslice=ftrue }
+
+  sv1:write(rundir('survey_seq1'), nil, tbl_hdr)
+  sv2:write(rundir('survey_seq2'), nil, tbl_hdr)
+  tw1:write(rundir('twiss_seq1'), tbl_col, tbl_hdr)
+  tw2:write(rundir('twiss_seq2'), tbl_col, tbl_hdr)
+
+  local plt = plot {
+    sequence = { seq1, seq2 },
+    laypos   = "in",
+    layonly  = false,
+    title    = "Layout in plot",
+
+--    table    = mtbl,
+--    x1y1     = { s = { 'beta11', 'beta22' } },
+--    styles   = 'lines',
+    xlabel   = "x [m]",
+    ylabel   = "z [m]",
+    fontsize = 14,
+  }
+
+
+end
+
+-- end ------------------------------------------------------------------------o
