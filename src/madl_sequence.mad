@@ -499,16 +499,17 @@ local function sequ_pos (seq, sseq, idx, dir)
 
   local n = sdata.ne
   if dir > 0 then
-    for i=2,n-1 do
-      data.spos[idx-2+i] = sdata.spos[i] + pos
-      data.upos[idx-2+i] = sdata.upos[i] + pos
-      data.ds  [idx-2+i] = sdata.ds  [i]
-      assert(data[idx-2+i] == sdata[i], "unexpected corrupted flat sequence")
+    for i=1,n do
+      local ix = idx-1+i
+      data.spos[ix] = sdata.spos[i] + pos
+      data.upos[ix] = sdata.upos[i] + pos
+      data.ds  [ix] = sdata.ds  [i]
+      assert(data[ix] == sdata[i], "unexpected corrupted flat sequence")
     end
   elseif dir < 0 then
     local l = sseq.l
-    for i=2,n-1 do
-      local ix, ii = idx-2+i, n+1-i
+    for i=1,n do
+      local ix, ii = idx-1+i, n+1-i
       local sp, ds = sdata.spos[ii], sdata.ds[ii]
       data.spos[ix] = l - (sp + ds                      ) + pos
       data.upos[ix] = l - (sp + ds - sdata.upos[ii] + sp) + pos
@@ -523,14 +524,16 @@ local function sequ_pos (seq, sseq, idx, dir)
     data.spos[idx+n] = sdata.spos[n] + pos
     data.upos[idx+n] = sdata.upos[n] + pos
     data.ds  [idx+n] = sdata.ds  [n]
+    idx = idx + 1
   end
+
+  return idx+n
 end
 
 -- compute elements positions
 local function build_pos (seq, sref)
   local data = var_raw(seq,_data)
   local n, idx, pos = data.ne, 1, 0
-  sref = sref or {}
   for i=1,n do
     if data[i].from == 'selected' then
       seq_error("invalid from='selected' detected", seq, i, data[i])
@@ -553,13 +556,13 @@ local function build_pos (seq, sref)
       pos = data.spos[idx]+data.ds[idx]
       idx = idx + 1
     else                     -- subsequence
-      sequ_pos(seq, sseq, idx, sref.sdir[idx])
+      local nidx = sequ_pos(seq, sseq, idx, sref.sdir[idx])
       if pos-minlen > data.spos[idx] then
         seq_poserr('subsequence', seq, idx, pos)
       end
       local sdata = var_raw(sseq,_data)
-      pos = data.spos[idx] - sdata.spos[2] + sseq.l
-      idx = idx + sdata.ne-2
+      pos = data.spos[idx] - sdata.spos[1] + sseq.l
+      idx = nidx
     end
   end
   assert(n == idx-1, "unexpected corrupted flat sequence")
@@ -578,7 +581,7 @@ end
 local function copy_ssequ (seq, flat, sref, idx, dir)
   check_mark(seq)
   local data = var_raw(seq,_data)
-  if data.ne <= 2 then return idx end
+  local n = data.ne
 
   sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
 
@@ -586,19 +589,19 @@ local function copy_ssequ (seq, flat, sref, idx, dir)
     idx, flat[idx] = idx+1, changedir(seq.__id.."_chdir", {})
   end
 
-  local n = data.ne
       if dir ==  1 then
-    for i=2,n-1 do flat[idx-2+i] = data[i    ] end
+    for i=1,n do flat[idx-1+i] = data[i    ] end
   elseif dir == -1 then
-    for i=2,n-1 do flat[idx-2+i] = data[n+1-i] end
+    for i=1,n do flat[idx-1+i] = data[n+1-i] end
   else
     error("invalid direction (1 or -1 expected)")
   end
 
   if sref.dir ~= seq.dir then
-    idx, flat[idx-2+n] = idx+1, flat[idx-1] -- share patch
+    idx, flat[idx+n] = idx+1, flat[idx-1] -- share patch
   end
-  return idx-2+n
+
+  return idx+n
 end
 
 -- flatten lines and subsequence
@@ -618,7 +621,7 @@ local function flatten_line (line, flat, sref, idx, dir)
     if not (is_element(elm) or is_rawtable(elm)) then
       seq_error("invalid element detected", line, j)
     elseif elm.is_bline == true or is_rawtable(elm) then
-      -- TODO: keep track of dir, refpos, like for sequence...
+      -- TODO: keep track of l, dir, refpos and refer like for sequence...
       idx = flatten_line(elm, flat, sref, idx, step)
     elseif not is_nil(sref) and is_sequence(elm) then
       idx = copy_ssequ  (elm, flat, sref, idx, step)
@@ -672,6 +675,25 @@ end
 
 -- build sequence -------------------------------------------------------------o
 
+-- remove subsequence markers (if any)
+local function clear_sub (seq, sref)
+  if is_nil(next(sref.sdir)) then return end
+  local data = var_raw(seq,_data)
+  local spos, upos, ds, n = data.spos, data.upos, data.ds, data.ne
+  local j, nam = 2
+  for i=2,n-1 do
+    nam = data[i].__id
+    if not (nam == '$start' and is_instanceOf(data[i], mkstart) or
+            nam == '$end'   and is_instanceOf(data[i], mkend))  then
+      data[j], spos[j], upos[j], ds[j], j =
+      data[i], spos[i], upos[i], ds[i], j+1
+    end
+  end
+  data[j], spos[j], upos[j], ds[j], data.ne =
+  data[n], spos[n], upos[n], ds[n], j
+  build_idx(data)
+end
+
 -- finalize sequence
 local function finish_sequ (seq)
   local data = var_raw(seq,_data)
@@ -712,6 +734,7 @@ local function sequ_init (seq)
 
   build_idx(data)
   build_pos(seq, sref)
+  clear_sub(seq, sref)
   finish_sequ(seq)
   return seq
 end
