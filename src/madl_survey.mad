@@ -42,7 +42,7 @@ local thinonly, thickonly, driftonly                             in MAD.symint
 
 -- geometric maps -------------------------------------------------------------o
 
-local str_drift, tlt_thin, tlt_thick                             in MAD.geomap
+local str_drift, cur_thin, cur_thick                             in MAD.geomap
 
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj                            in MAD.geomap
@@ -59,29 +59,30 @@ end
 -- element tracking -----------------------------------------------------------o
 
 local function trackelm (elm, mflw, track, thick, thin)
-  local tlt = elm.tilt
   local mis = mflw.misalign
-  mflw.etlt = tlt
+  local tlt = mflw.etlt
+  local ref = mis > 0 and changeref or fnone
+  local rot = abs(tlt) >= minang and srotation or fnone
 
-  changeref(elm, mflw,  mis)
-  track    (elm, mflw,   1 , thick, thin)
-  changeref(elm, mflw, -mis)
+  ref  (elm, mflw,  mis)
+  rot  (tlt, mflw,   1 )
+  track(elm, mflw,   1 , thick, thin)
+  rot  (tlt, mflw,  -1 )
+  ref  (elm, mflw, -mis)
 end
 
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, mflw)
-  mdump('\ntrack_marker', elm.name, 'l=', elm.l)
-
-  mflw.etlt = 0
+--  mdump('\ntrack_marker', elm.name, 'l=', elm.l)
+  mflw.el, mflw.ang, mflw.etlt = 0, 0, 0
   thinonly(elm, mflw, 1, nil, fnone)
 end
 
 local function track_drift (elm, mflw)
-  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
-
+--  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
   local l in elm
-  mflw.el = l
+  mflw.el, mflw.ang = l, 0
 
   local thick = abs(l) >= minlen and thickonly or driftonly
 
@@ -90,25 +91,24 @@ local function track_drift (elm, mflw)
     local track = mflw.implicit and thick or driftonly
     track(elm, mflw, 1, str_drift)
   else
+    mflw.etlt = elm.tilt
     trackelm(elm, mflw, thick, str_drift, nil)
   end
 end
 
 local function track_thin (elm, mflw)
-  mdump('\ntrack_thin', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
-
+--  mdump('\ntrack_thin', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
   local l, angle, tilt in elm
   mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
-  trackelm(elm, mflw, thinonly, nil, tlt_thin)
+  trackelm(elm, mflw, thinonly, nil, cur_thin)
 end
 
 local function track_thick (elm, mflw)
-  mdump('\ntrack_thick', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
-
+--  mdump('\ntrack_thick', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
   local l, angle, tilt in elm
   mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
   local thick = abs(l) >= minlen and thickonly or driftonly
-  trackelm(elm, mflw, thick, tlt_thick, nil)
+  trackelm(elm, mflw, thick, cur_thick, nil)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -149,19 +149,22 @@ local function save_dat (elm, mflw, lw, islc)
     return false
   end
 
-  local name, kind, angle, tilt in elm
-  local A, V, ds, sdir, tdir, spos, turn, mtbl, relative, mapsave in mflw
-  local x, y, z      = V[1], V[2], V[3]
-  local th, phi, psi = A[1], A[2], A[3]
+  local name, kind in elm
+  local A, V, W, ds, ang, etlt, tdir, spos, turn, mtbl, relative, mapsave in mflw
 
   local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
   local dsw = ds*lw
 
-  local W = mapsave and mflw.W:copy()
+  A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
+
+  local x, y, z      = V[1], V[2], V[3]
+  local th, phi, psi = A[1], A[2], A[3]
+
+  W = mapsave and W:copy()
 
   -- keep order!
-  mtbl = mtbl + { name, kind, spos+dsw, dsw, angle*lw*sdir, tilt*sdir,
-                  x, y, z, th, phi, psi, psi+tilt*sdir, islc, turn, tdir, W }
+  mtbl = mtbl + { name, kind, spos+dsw, dsw, ang*lw*tdir, etlt*tdir,
+                  x, y, z, th, phi, psi, psi+etlt*tdir, islc, turn, tdir, W }
   return true
 end
 
@@ -351,7 +354,6 @@ local function make_mflow (self)
     eslc=0,                  -- current element number of slices
     R=vector(3),             -- displacement vector
     S=matrix(3),             -- orientation matrix (rotations)
-    T=matrix(3),             -- transformation matrix if tilted
     U=vector(3),             -- temporary vector for calculations
   }, {__index=mflw})
 
