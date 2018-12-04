@@ -21,7 +21,7 @@
       geomap(elm, map, len_weight)
     where the expected fields are:
 
-    map -> { sdir, V, W ; R, S, T, U }
+    map -> { sdir, V, W ; R, S, U }
     elm -> { l, angle ; phi, theta, psi, dx, dy, dz}
 
     (fields beyond ; are optionnal or internal)
@@ -48,13 +48,6 @@ local function mdump(str, l, m)
   print(str, l, V[1], V[2], V[3], A[1], A[2], A[3])
 end
 
--- helpers --------------------------------------------------------------------o
-
-local function update_angles(mflw)
-  local A, W in mflw
-  A[1], A[2], A[3] = W:torotmad(A[1], A[2], A[3])
-end
-
 -- patches (lw_ == 0 disable the patch) ---------------------------------------o
 
 -- X-rotation (pitch)
@@ -70,7 +63,6 @@ function M.xrotation (elm, m, lw_) -- Rx(-phi)
   local tdir, S, W in m
   S:rotx(-phi*lw*tdir)
   W:mul(S, W)              -- W = W*S
-  update_angles(m)
 end
 
 -- Y-rotation (yaw)
@@ -86,7 +78,6 @@ function M.yrotation (elm, m, lw_) -- Ry(-theta)
   local tdir, S, W in m
   S:roty(-the*lw*tdir)
   W:mul(S, W)              -- W = W*S
-  update_angles(m)
 end
 
 -- S-rotation (roll, tilt)
@@ -102,7 +93,6 @@ function M.srotation (elm, m, lw_) -- Rz(psi)
   local tdir, S, W in m
   S:rotz(psi*lw*tdir)
   W:mul(S, W)              -- W = W*S
-  update_angles(m)
 end
 
 -- Translation
@@ -143,7 +133,6 @@ function M.changeref (elm, m, lw_)
     else S:rotzyx(phi*lw*tdir, the*lw*tdir, psi*lw*tdir)
     end
     W :mul(S, W)           -- W = W*S
-    update_angles(m)
   end
 
   if lw > 0 then M.translate(elm, m, lw_) end
@@ -166,69 +155,46 @@ end
 
 -- kinds ----------------------------------------------------------------------o
 
-function M.str_drift (elm, m, lw) -- drift_element
+function M.str_drift (elm, m, lw)
   local el = is_number(elm) and elm or m.el
   if abs(el) < minlen then return end
 
   local sdir, R, U, V, W in m
   local l = el*lw*sdir
 
-  mdump('drift-0:', l, m)
-
+--  mdump('drift-0:', l, m)
   R:fill{0, 0, l}
   V:add(W:mul(R, U), V)     -- V = V+W*R
-
-  mdump('drift-1:', l, m)
+--  mdump('drift-1:', l, m)
 end
 
-function M.tlt_thin (elm, m, lw_) -- thin_element
+function M.cur_thin (elm, m, lw_)
   local ang = is_number(elm) and elm or m.ang
   if abs(ang) < minang then return end
 
-  local etlt, tdir, S, W in m
+  local tdir, S, W in m
 
-  mdump('thin-0:', m.el*m.sdir, m)
-
+--  mdump('thin-0:', m.el*m.sdir, m)
   S:roty(-ang*tdir)
-
-  if abs(etlt) >= minang then
-    local T in m
-    T:rotz(etlt*tdir)
-    T:mul(S, S):mult(T, S)      -- S = T*S*T'
-  end
-
   W:mul(S, W)                   -- W = W*S
-  update_angles(m)
-
-  mdump('thin-1:', m.el*m.sdir, m)
+--  mdump('thin-1:', m.el*m.sdir, m)
 end
 
-function M.tlt_thick (elm, m, lw) -- thick_element
+function M.cur_thick (elm, m, lw)
   local el, ang in m
   if abs(ang) < minang then return M.str_drift(el, m, lw) end
-  if abs(el)  < minlen then return M.tlt_thin(ang, m, lw) end
+  if abs(el)  < minlen then return M.cur_thin(ang, m, lw) end
 
-  local etlt, sdir, tdir, R, S, U, V, W in m
+  local sdir, tdir, R, S, U, V, W in m
   local l, ang = el*sdir*lw, ang*tdir*lw
   local rho = l/ang
 
-  mdump('thick-0:', l, m)
-
-  m.R :fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
-  m.S :roty(-ang)
-
-  if abs(etlt) >= minang then
-    local T in m
-    T:rotz(etlt*tdir)
-    T:mul(R, R)                 -- R = T*R
-    T:mul(S, S):mult(T, S)      -- S = T*S*T'
-  end
-
+--  mdump('thick-0:', l, m)
+  R:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
+  S:roty(-ang)
   V:add(W:mul(R, U), V)         -- V = W*R+V
   W:mul(S, W)                   -- W = W*S
-  update_angles(m)
-
-  mdump('thick-1:', l, m)
+--  mdump('thick-1:', l, m)
 end
 
 -- end ------------------------------------------------------------------------o
