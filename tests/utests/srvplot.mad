@@ -30,7 +30,7 @@ local assertNotNil, assertNotEquals, assertEquals,
       assertErrorMsgContains, assertTrue, assertFalse,
       assertAlmostEquals                                         in MAD.utest
 
-local beam, survey, twiss, plot, option, filesys, atexit         in MAD
+local beam, survey, twiss, plot, vector, option, filesys, atexit in MAD
 local tblcpy, fileexists, pause, strsplitall                     in MAD.utility
 local ftrue                                                      in MAD.gfunc
 local min, abs                                                   in MAD.gmath
@@ -42,10 +42,10 @@ local rundir   = \s -> "plot_run/"..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-! atexit(pause, true)
-
-local tbl_col = {'name','s','l','slc','beta11','beta22'}
 local tbl_hdr = {'title','type','origin','date','time'}
+
+local tw_col = {'name','s','l','slc','beta11','beta22'}
+local sv_col = {'name', 'kind', 's', 'l', 'angle', 'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt', 'slc'}
 
 -- Tests ----------------------------------------------------------------------o
 
@@ -75,9 +75,7 @@ function TestSrvPlot:testBendTlt ()
 --  seq:dumpseq()
 
   local srv = survey { sequence=seq, nslice=5, atslice=ftrue }
-
-  local col = {'name', 'kind', 's', 'l', 'angle', 'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt'}
-  srv:write(rundir('survey_bendtlt'), col, tbl_hdr)
+  srv:write(rundir('survey_bendtlt'), sv_col, tbl_hdr)
 
 !  local plt = plot {
 !    sequence = { seq },
@@ -91,44 +89,55 @@ function TestSrvPlot:testBendTlt ()
 end
 
 function TestSrvPlot:testCirc2 ()
-  local mb = sbend      { l=2, k0 =\s s.angle/s.l }
-  local mq = quadrupole { l=1 }
-  local k1f, k1d, ang = 0.296004765416, -0.302420662794, 2*pi/50
-  local cell =\a -> sequence { l=10, refer='entry',
-      mq 'mq1' { at=0, k1=k1f  },
-      mb 'mb1' { at=2, angle=a },
-      mq 'mq2' { at=5, k1=k1d  },
-      mb 'mb2' { at=7, angle=a },
-    }
-  local seq1 = sequence 'seq1' { 25*cell( ang), beam=beam }
-  local seq2 = sequence 'seq2' { 25*cell(-ang), beam=beam }
---  seq:dumpseq()
-  assertEquals(seq1.l, 250)
-  assertEquals(seq2.l, 250)
+local mb = sbend      { l=2, k0 =\s s.angle/s.l }
+local mq = quadrupole { l=1 }
+local k1f, k1d, ang = 0.296004765416, -0.302420662794, 2*pi/50
+local cell =\a -> sequence { l=10, refer='entry',
+    mq 'mq1' { at=0, k1=k1f  },
+    mb 'mb1' { at=2, angle=a },
+    mq 'mq2' { at=5, k1=k1d  },
+    mb 'mb2' { at=7, angle=a },
+  }
+local seq1 = sequence 'seq1' { 25*cell( ang), beam=beam }
+local seq2 = sequence 'seq2' { 25*cell(-ang), beam=beam }
+assertEquals(seq1.l, 250)
+assertEquals(seq2.l, 250)
 
-  local sv1 = survey { sequence=seq1, nslice=5, atslice=ftrue }
-  local sv2 = survey { sequence=seq2, nslice=5, atslice=ftrue }
-  local tw1 = twiss  { sequence=seq1, nslice=5, atslice=ftrue }
-  local tw2 = twiss  { sequence=seq2, nslice=5, atslice=ftrue }
+local sv1 = survey { sequence=seq1, nslice=5, implicit=true, atslice=ftrue, mapsave=true }
+local sv2 = survey { sequence=seq2, nslice=5, implicit=true, atslice=ftrue }
+sv1:write(rundir('survey_seq1'), sv_col, tbl_hdr)
+sv2:write(rundir('survey_seq2'), sv_col, tbl_hdr)
 
-  sv1:write(rundir('survey_seq1'), nil, tbl_hdr)
-  sv2:write(rundir('survey_seq2'), nil, tbl_hdr)
-  tw1:write(rundir('twiss_seq1'), tbl_col, tbl_hdr)
-  tw2:write(rundir('twiss_seq2'), tbl_col, tbl_hdr)
+seq1.beam = beam
+local tw1 = twiss { sequence=seq1, nslice=5, implicit=true, atslice=ftrue }
+tw1:write(rundir('twiss_seq1'), tw_col, tbl_hdr)
 
-!  local plt = plot {
-!    sequence = { seq1, seq2 },
-!    laypos   = "in",
-!    layonly  = false,
-!    title    = "Layout in plot",
-!
-!--    table    = mtbl,
-!--    x1y1     = { s = { 'beta11', 'beta22' } },
-!--    styles   = 'lines',
-!    xlabel   = "x [m]",
-!    ylabel   = "z [m]",
-!    fontsize = 14,
-!  }
+local round in MAD.gmath
+local bet11 = { x=vector(#sv1), z=vector(#sv1) }
+local v, scl = vector(3), round(tw1.beta11:max()/5)
+for i=1,#sv1 do
+  v:fill {3+tw1.beta11[i]/scl, 0, 0}
+  sv1.W[i]:mul(v, v)
+  bet11.x[i], bet11.z[i] = v[1], v[3]
+end
+bet11.x = bet11.x+sv1.x
+bet11.z = bet11.z+sv1.z
+
+local plt = plot {
+  sequence = { seq1, seq2 },
+  laypos   = "in",
+  layonly  = false,
+  title    = "Layout in plot with \u{03b2}_x",
+  data     = { x=bet11.x, z=bet11.z },
+  x1y1     = { x = 'z' },
+  styles   = 'lines',
+  xlabel   = "x [m]",
+  ylabel   = "z [m]",
+  legend   = { z = '\u{03b2}_x/'..scl },
+  fontsize = 14,
+}
+
+  atexit(pause, true)
 end
 
 -- end ------------------------------------------------------------------------o
