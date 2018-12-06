@@ -466,7 +466,7 @@ end
 
 -- process data for "out of plot" layout
 local function layout_process(param, pseq)
-  local seqshift, nturn, layangle                         in param
+  local layshift, nturn, layangle                         in param
   local range, seq, disty, distx, xmin, xmax, ymin, ymax  in pseq
   local size     = seq:length_of(range, nturn)
   local data     = table.new(size, 0)
@@ -478,7 +478,7 @@ local function layout_process(param, pseq)
     l2           = elem.l/2
     s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
-    xs, ys       = s_sh + distx + seqshift, deltaY
+    xs, ys       = s_sh + distx + layshift, deltaY
     data[j]      = vector(3):fill{ xs, ys, 0 }
     prevs_sh     = s_sh
     fstx         = fstx or xs - l2
@@ -503,11 +503,10 @@ local ssel = \e -> not e:is_implicit()
 
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
-  local nturn                   in param
-  local range, seq, A0, X0, mis in pseq
+  local nturn                       in param
+  local range, seq, X0, A0, W0, mis in pseq
   local srv   = survey { sequence=seq, range=range, nturn=nturn, savesel=ssel,
-                         A0=A0, X0=X0, misalign=mis }
---  srv:remove(nil, \r -> string.find(r.name,'drift__') == 1)
+                         X0=X0, A0=A0, W0=W0, misalign=mis }
   local data  = table.new(#srv, 0)
   local bline = { x=table.new(#srv, 0), y=table.new(#srv, 0) }
 
@@ -605,8 +604,8 @@ end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, A0, X0, fpwrite, range, misalign, seqdistx,
-        seqdisty, elemwidth, laypos in param
+  local sequence, X0, A0, W0, fpwrite, range, misalign, laydistx,
+        laydisty, elemwidth, laypos in param
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
@@ -616,14 +615,15 @@ local function multi_layout (param)
                error("Invalid sequence input")
 
   for i=1,#seqs do
-    local A0    = is_table(A0) and is_table(A0[1]) and A0[i] or A0
     local X0    = is_table(X0) and is_table(X0[1]) and X0[i] or X0
-    local distx = (i~=1) and (is_table(seqdistx) and seqdistx[i-1] or seqdistx) or 0
-    local disty = (i~=1) and (is_table(seqdisty) and seqdisty[i-1] or seqdisty) or 0
+    local A0    = is_table(A0) and is_table(A0[1]) and A0[i] or A0
+    local W0    = is_table(W0) and                     W0[i] or W0
+    local distx = (i~=1) and (is_table(laydistx) and laydistx[i-1] or laydistx) or 0
+    local disty = (i~=1) and (is_table(laydisty) and laydisty[i-1] or laydisty) or 0
     local rg    = (#seqs > 1) and is_table(range) and range[i] or range or nil
     local pseq  = {
       xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, range = rg,
-      seq = seqs[i], A0 = A0, X0 = X0, mis = misalign,
+      seq = seqs[i], X0 = X0, A0 = A0, W0 = W0, mis = misalign,
       distx = distx, disty = disty,
     }
     if is_in
@@ -1010,18 +1010,19 @@ local plot = command "plot" {
   -- sequence and survey input
   sequence    = nil,        -- seq | { seq1, seq2, ... } | "keep"
   range       = nil,        -- compatible sequence range
-  misalign    = 0,          -- survey misalign level
   nturn       = 1,          -- n >= 1
-  seqdisty    = 0,          -- y >= 0 | { y1, y2, ... }
-  seqdistx    = 0,          -- x >= 0 | { x1, x2, ... }
-  seqshift    = 0,          -- x >= 0
+  misalign    = 0,          -- survey misalign level
   X0          = {0, 0, 0},  -- {x    , y  , z  } | { {...}, {...}, ...}
   A0          = {0, 0, 0},  -- {theta, phi, psi} | { {...}, {...}, ...}
+  W0          = nil,        -- W0 | {W0, W0, ...}
 
   -- layout style
   laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
   laysize     = nil,        -- 0 < y < 1
   layonly     = nil,        -- boolean
+  laydisty    = 0,          -- y >= 0 | { y1, y2, ... }
+  laydistx    = 0,          -- x >= 0 | { x1, x2, ... }
+  layshift    = 0,          -- x >= 0
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
