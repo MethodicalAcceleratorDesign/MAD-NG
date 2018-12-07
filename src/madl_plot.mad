@@ -30,6 +30,7 @@ local dat = require "madl_plotdat"
 local object, command, fun, vector, matrix, survey, filesys,
       atexit                                                     in MAD
 local sign, tan, sin, cos, min, max, abs, sqrt                   in MAD.gmath
+local ftrue                                                      in MAD.gfunc
 local inf, pi                                                    in MAD.constant
 local lshift                                                     in MAD.operator
 local kpairs, strinterp, setkeys, tblcpy, runonce, fileexists,
@@ -241,7 +242,7 @@ local gplot = _gplot {}
 local init_cmd = [[
 #== initialization =============================================================
 if (!exist("MAD_MIN")) {
-  MAD_MIN      = ${oshft};
+  MAD_MIN      = ${objshft};
   MAD_MAX      = -1;
   MAD_WID      = -1;
   MAD_TERM     = "";
@@ -327,7 +328,7 @@ end
 -- element flag for layout
 local flayangle = MAD.element.flags.layangle
 local flayout   = MAD.element.flags.layout
-local flays     = lshift(1, flayangle) + lshift(1, flayout)
+local flays = lshift(1, flayangle) + lshift(1, flayout)
 
 --  adjust "out of plot" layout coordinate
 local adjust = \size  -> \xs,ys,shift,l =>
@@ -503,10 +504,10 @@ local ssel = \e -> not e:is_implicit()
 
 -- process data "in plot" layout (see help for formulas)
 local function layout_process_in(param, pseq)
-  local nturn                       in param
-  local range, seq, X0, A0, W0, mis in pseq
+  local nturn                           in param
+  local range, seq, s0, X0, A0, W0, mis in pseq
   local srv   = survey { sequence=seq, range=range, nturn=nturn, savesel=ssel,
-                         X0=X0, A0=A0, W0=W0, misalign=mis }
+                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis }
   local data  = table.new(#srv, 0)
   local bline = { x=table.new(#srv, 0), y=table.new(#srv, 0) }
 
@@ -534,18 +535,17 @@ end
 
 -- stream a single layout
 local function layout (param, pseq)
-  local elemminlen, kindselect, elemwidth, elemname, nturn, kindcolor in param
-  local seq, range, data, bline                                       in pseq
+  local elemsel, elemwidth, elemname, nturn, kindcolor in param
+  local seq, range, data, bline                        in pseq
   local dir, j  = seq.dir, 1
 
   layout_bline(param, bline)
   for i, elem, s in seq:iter(range, nturn) do
     local len, ekind   = elem.l, elem.kind
     local is_flagged   = elem:test_flags(flays)
-    local is_vkind     = not kindselect or kindselect[ekind]
     local dj = data[j]
 
-    if is_flagged or (len >= elemminlen and is_vkind) then
+    if is_flagged or elemsel(elem) then
       local sh_l = len / 2
       local el, eStyle, x_sh, y_sh, func = eShap(param, elem, dir)
 
@@ -604,7 +604,7 @@ end
 
 -- main layout function
 local function multi_layout (param)
-  local sequence, X0, A0, W0, fpwrite, range, misalign, laydistx,
+  local sequence, s0, X0, A0, W0, fpwrite, range, misalign, laydistx,
         laydisty, elemwidth, laypos in param
   local is_in = (laypos == "in")
   param.ref = is_in and "" or "screen"
@@ -615,15 +615,16 @@ local function multi_layout (param)
                error("Invalid sequence input")
 
   for i=1,#seqs do
-    local X0    = is_table(X0) and is_table(X0[1]) and X0[i] or X0
-    local A0    = is_table(A0) and is_table(A0[1]) and A0[i] or A0
-    local W0    = is_table(W0) and                     W0[i] or W0
+    local s0    = is_table(s0) and                     s0[i] or s0 -- scalar
+    local X0    = is_table(X0) and is_table(X0[1]) and X0[i] or X0 -- triplet
+    local A0    = is_table(A0) and is_table(A0[1]) and A0[i] or A0 -- triplet
+    local W0    = is_table(W0) and                     W0[i] or W0 -- scalar
     local distx = (i~=1) and (is_table(laydistx) and laydistx[i-1] or laydistx) or 0
     local disty = (i~=1) and (is_table(laydisty) and laydisty[i-1] or laydisty) or 0
     local rg    = (#seqs > 1) and is_table(range) and range[i] or range or nil
     local pseq  = {
       xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, range = rg,
-      seq = seqs[i], X0 = X0, A0 = A0, W0 = W0, mis = misalign,
+      seq = seqs[i], s0=s0, X0 = X0, A0 = A0, W0 = W0, mis = misalign,
       distx = distx, disty = disty,
     }
     if is_in
@@ -917,7 +918,7 @@ end
 
 -- initialize the table of parameters
 local function init_param(self, file)
-  local table, oshft, kindselect, name, date, time in self
+  local table, objshft, name, date, time in self
   local param = {
     version = tostring(MAD.env.version),
     name    = name or is_table(table) and table.title or "",
@@ -926,14 +927,12 @@ local function init_param(self, file)
     databi  = 0,
     intpol  = object { id = 1 },
     plotter = file,
-    oid     = oshft,
+    oid     = objshft,
     selaxis = {},
     fpwrite = \... -> file:write(string.format(...)),
-    pwrite  = \... -> file:write(...)
+    pwrite  = \... -> file:write(...),
+    elemsel = self:var_raw'elemsel',
   }
-  if kindselect then -- build dictionary
-    setkeys(kindselect)
-  end
   return setmetatable(param, {__index=self})
 end
 
@@ -989,10 +988,6 @@ local plot = command "plot" {
   -- stream id
   sid         = 1,          -- 1 <= n <= 25
 
-  -- user command
-  prolog      = nil,        -- string
-  epilog      = nil,        -- string
-
   -- windows setup
   term        = "wxt",
   wsizex      = 800,        -- x > 0
@@ -1009,12 +1004,13 @@ local plot = command "plot" {
 
   -- sequence and survey input
   sequence    = nil,        -- seq | { seq1, seq2, ... } | "keep"
-  range       = nil,        -- compatible sequence range
-  nturn       = 1,          -- n >= 1
-  misalign    = 0,          -- survey misalign level
-  X0          = {0, 0, 0},  -- {x    , y  , z  } | { {...}, {...}, ...}
-  A0          = {0, 0, 0},  -- {theta, phi, psi} | { {...}, {...}, ...}
-  W0          = nil,        -- W0 | {W0, W0, ...}
+  range       = nil,        -- sequence iterator range
+  nturn       = 1,          -- sequence iterator nturn, n >= 1
+  misalign    = nil,        -- survey misalign level
+  s0          = nil,        -- s0                | {s0, s0, ...}
+  X0          = {0, 0, 0},  -- {x, y, z }        | { {...}, {...}, ...}
+  A0          = nil,        -- {theta, phi, psi} | { {...}, {...}, ...}
+  W0          = nil,        -- W0                | {W0, W0, ...}
 
   -- layout style
   laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
@@ -1023,12 +1019,11 @@ local plot = command "plot" {
   laydisty    = 0,          -- y >= 0 | { y1, y2, ... }
   laydistx    = 0,          -- x >= 0 | { x1, x2, ... }
   layshift    = 0,          -- x >= 0
+  layangle    = true,       -- boolean
+  elemsel     = ftrue,      -- element selector (i.e. predicate)
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
-  elemminlen  = 0,          -- x > 0
-  layangle    = true,       -- boolean
-  kindselect  = nil,        -- { "quadrupole", "sbend" }
   kindcolor   = true,       -- {
                             --   quadrupole = "blue",
                             --   sbend = {
@@ -1065,10 +1060,12 @@ local plot = command "plot" {
   yrange      = nil,        -- { min, max }
   y2range     = nil,        -- { min, max }
 
-  -- plot command configuration
+  -- plot command customization
+  prolog      = nil,        -- string
+  epilog      = nil,        -- string
   plotcfg     = nil,        -- string
-  plotvar     = nil,        -- table
   plotcmd     = nil,        -- string
+  plotvar     = nil,        -- table
 
   -- plot style
   originx     = nil,        -- 0 < x < 1
@@ -1077,7 +1074,6 @@ local plot = command "plot" {
   psizey      = nil,        -- 0 < y < 1
 
   -- data style
-  datastyles  = { },        -- { y = { style = "lines", color = "blue"} }
   smooths     = nil,        -- { y = "csplines" }
   styles      = nil,        -- { y = "lines"    }
   colors      = nil,        -- { y = "green"    }
@@ -1085,6 +1081,7 @@ local plot = command "plot" {
   linewidths  = nil,        -- { y = 2.3        }
   pointtypes  = nil,        -- { y = 2          }
   pointsizes  = nil,        -- { y = 2.3        }
+  datastyles  = { },        -- { y = { style = "lines", color = "blue"} }
 
   -- decoration
   font        = nil,        -- string
@@ -1098,7 +1095,7 @@ local plot = command "plot" {
   border      = nil,        -- 0 <= n <= 15
 
   -- object shift
-  oshft       = 1000000,    -- n >= 0
+  objshft     = 1000000,    -- n >= 0
 
   -- build the command (do not execute)
   exec        = exec,
