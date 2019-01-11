@@ -1096,6 +1096,7 @@ static int pmain(lua_State *L)
 
 int main(int argc, char **argv)
 {
+//	fprintf(stderr, "main=0x%p\n", (void*)main);
 	int status;
 
 	lua_State *L = lua_open();
