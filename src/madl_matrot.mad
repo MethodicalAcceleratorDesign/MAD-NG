@@ -25,9 +25,8 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local abs, max, round, sign, sin, cos, atan2, sqrt        in MAD.gmath
-local is_iterable                                         in MAD.typeid
-local twopi                                               in MAD.constant
+local abs, max, sign, sin, cos, atan2, sqrt        in MAD.gmath
+local is_iterable                                  in MAD.typeid
 
 -- helpers --------------------------------------------------------------------o
 
@@ -47,10 +46,6 @@ local function chk3v(x)
   assert(x.nrow == 3 and x.ncol == 1,
          "invalid argument #5 (3D vector expected)")
   return x
-end
-
-local function rangle (a, ref_a)                                -- (util:proxim)
-  return a + twopi * round((ref_a - a) / twopi)
 end
 
 -- rotations ------------------------------------------------------------------o
@@ -157,20 +152,26 @@ function M.rotxyz (x, ax, ay, az, inv_) -- Rz(az).Ry(ay).Rx(ax)
   end
 end
 
-function M.torotxyz (x) -- Rz(az).Ry(ay).Rx(ax)
+function M.torotxyz (x, inv_) -- Rz(az).Ry(ay).Rx(ax)
   chk3d(x)
-  local x11, x21      = x:_get(1,1), x:_get(2,1)
-  local x31, x32, x33 = x:_get(3,1), x:_get(3,2), x:_get(3,3)
-  ax = atan2( x32, x33 )
-  ay = atan2(-x31, sqrt(x32^2 + x33^2) )
-  az = atan2( x21, x11 )
+  local x11, x33, x21, x31, x32 = x:_get(1,1), x:_get(3,3)
+
+  if not inv_ then -- normal
+    x21, x31, x32 = x:_get(2,1), x:_get(3,1), x:_get(3,2)
+  else             -- transposed
+    x21, x31, x32 = x:_get(1,2), x:_get(1,3), x:_get(2,3)
+  end
+
+  local ax = atan2( x32, x33 )
+  local ay = atan2(-x31, sqrt(x32^2 + x33^2) )
+  local az = atan2( x21, x11 )
   return ax, ay, az
 end
 
-function M.rotm (x, the, phi, psi, inv_) -- Ry(the).Rx(-phi).Rz(psi)(survey:sumtrx)
-  local cx, sx = cos(-phi), sin(-phi)  -- phi  : Elevation angle.
-  local cy, sy = cos( the), sin( the)  -- theta: Azimuthal angle.
-  local cz, sz = cos( psi), sin( psi)  -- psi  : Roll      angle.
+function M.rotyxz (x, ax, ay, az, inv_) -- Ry(ay).Rx(ax).Rz(az) (survey:sumtrx)
+  local cx, sx = cos(ax), sin(ax)  -- ax = -phi   : elevation angle.
+  local cy, sy = cos(ay), sin(ay)  -- ay =  theta : azimuthal angle.
+  local cz, sz = cos(az), sin(az)  -- az =  psi   : roll      angle.
   chk3d(x)
 
   if not inv_ then
@@ -186,14 +187,20 @@ function M.rotm (x, the, phi, psi, inv_) -- Ry(the).Rx(-phi).Rz(psi)(survey:sumt
   end
 end
 
-function M.torotm (x, the, phi, psi) -- extract angles           (survey:suangl)
+function M.torotyxz (x, inv_) -- extract angles     (survey:suangl)
   chk3d(x)
-  local x21, x22      = x:_get(2,1), x:_get(2,2)
-  local x13, x23, x33 = x:_get(1,3), x:_get(2,3), x:_get(3,3)
-  the = rangle( atan2( x13, x33 ), the  )
-  phi =         atan2( x23, sqrt(x21^2 + x22^2) )
-  psi = rangle( atan2( x21, x22 ), psi )
-  return the, phi, psi
+  local x22, x33, x13, x21, x23 = x:_get(2,2), x:_get(3,3)
+
+  if not inv_ then -- normal
+    x13, x21, x23 = x:_get(1,3), x:_get(2,1), x:_get(2,3)
+  else             -- transposed
+    x13, x21, x23 = x:_get(3,1), x:_get(1,2), x:_get(3,2)
+  end
+
+  local ax = atan2( x23, sqrt(x21^2 + x22^2) )
+  local ay = atan2( x13, x33 )
+  local az = atan2( x21, x22 )
+  return ax, ay, az
 end
 
 -- 3D rotations (vector)
