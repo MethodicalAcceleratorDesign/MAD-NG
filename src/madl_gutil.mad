@@ -172,6 +172,34 @@ function utility.pause (msg_, val_)
   return str
 end
 
+-- atexit (and finalizer)
+
+local _final = { n=0 } -- __gc not applicable to table (added in 5.2)
+
+_final[_final] = ffi.gc(ffi.new('int[1]'),
+  function ()
+    if MAD.option.debug >= 2 then
+      io.write('MAD finalizer called...\n')
+    end
+    for i=_final.n,1,-1 do
+      local ret, err = pcall(_final[i])
+      if ret ~= true then
+         io.stderr:write('finalizer failed: ', err, '\n')
+      end
+    end
+  end)
+
+function utility.atexit (f, uniq_)
+  assert(is_callable(f), "invalid argument #1 (callable expected)")
+
+  -- check if not already registered
+  if uniq_ and _final[f] then return end
+
+  -- register
+  local n = _final.n+1
+  _final[f], _final[n], _final.n = f, f, n
+end
+
 -- repeater
 
 local _repx, _repn = {}, {}

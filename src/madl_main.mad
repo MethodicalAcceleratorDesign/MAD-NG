@@ -64,6 +64,11 @@ local is_nil, is_boolean, is_number, is_string, is_mappable,
       is_callable, wprotect, wrestrict, set_concept, concept     in typeid
 local not_iterable                                               in concept
 
+-- override os.exit to close the Lua state and force the GC to call finalizers
+
+local os_exit = os.exit
+os.exit = \code,close -> os_exit(code, is_nil(close) and true or close)
+
 -- implementation -------------------------------------------------------------o
 
 local _hlp = {} -- hidden key.
@@ -111,40 +116,6 @@ M.warn  = \fmt,...     => cwarn(string.format(fmt, ...)) end
 M.trace = \lvl,fmt,... => if lvl >= _C.mad_trace_level then
                             ctrace(lvl, string.format(fmt, ...))
                           end end
-
--- atexit (and finalizer)
-
-local _final = { n=0 } -- __gc not applicable to table (added in 5.2)
-
-_final[_final] = ffi.gc(ffi.new('int[1]'),
-  function ()
-    if M.option.debug >= 2 then
-      io.write('MAD finalizer called...\n')
-    end
-    for i=_final.n,1,-1 do
-      local ret, err = pcall(_final[i])
-      if ret ~= true then
-         io.stderr:write('finalizer failed: ', err, '\n')
-      end
-    end
-  end)
-
-function M.atexit (f, uniq_)
-  assert(is_callable(f), "invalid argument #1 (callable expected)")
-
-  -- check if not already registered
-  if uniq_ and _final[f] then return end
-
-  -- register
-  local n = _final.n+1
-  _final[f], _final[n], _final.n = f, f, n
-
-  -- override os.exit to force gc to call finalizers
-  if n == 1 then
-    local exit = os.exit
-    os.exit = \code -> exit(code, true)
-  end
-end
 
 -- import
 
@@ -438,7 +409,7 @@ local _M_env = {
   'unstrict', 'utest', 'utility',
   'vector',
   'warn',
-  [_hlp] = true, [_final] = true,
+  [_hlp] = true,
 }
 for i,v in ipairs(_M_env) do _M_env[v] = i end
 

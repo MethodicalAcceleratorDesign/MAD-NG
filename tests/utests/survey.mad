@@ -30,7 +30,7 @@ local survey, plot, option, filesys                              in MAD
 local fnone, ftrue, ffalse                                       in MAD.gfunc
 local saveat, atmid1, atins                                      in MAD.symint
 local pi, eps                                                    in MAD.constant
-local sinc                                                       in MAD.gmath
+local sinc, deg2rad                                              in MAD.gmath
 local pause                                                      in MAD.utility
 local sequence, sbend, quadrupole, srotation, yrotation          in MAD.element
 
@@ -39,18 +39,28 @@ local toolbox = require 'toolbox'
 local refdir = \s -> 'survey_ref/'..(s or '')
 local rundir = \s -> 'survey_run/'..(s or '')
 
-local srvcol = {'name','kind','s','l','angle','x','y','z','theta','phi','psi','slc'}
-local srvplt = plot { output   = 0,
-                      x1y1     = { z = {'x','y'} },
-                      xlabel   = "z [m]",
-                      ylabel   = "x,y [m]",
-                      fontsize = 14,
-                      exec     = false,
-                    }
-
 -- helpers --------------------------------------------------------------------o
 
-local doplot -- = true
+local doplot = true
+
+if doplot then
+  local pause, atexit in MAD.utility
+  atexit(pause, true)
+end
+
+local srvcol = {'name','kind','s','l','angle','x','y','z','theta','phi','psi','slc'}
+
+local srvpid = 0
+local srvplt = plot {
+  sid      = \ => srvpid=srvpid%25+1 return srvpid end,
+  output   = 0,
+  x1y1     = { z = {'x','y'} },
+  xlabel   = "z [m]",
+  ylabel   = "x,y [m]",
+  prolog   = "set size ratio -1\nset size square\n",
+  fontsize = 14,
+  exec     = false,
+}
 
 -- regression test suite ------------------------------------------------------o
 
@@ -266,10 +276,10 @@ function TestSurvey:testChicaneSBend()
   local cl=el/2
 
   local seq = sequence 'seq' { l=(2*n-1)*el,
-    sbend 'm11' { at=cl+1*el, l=el, angle=-ang, tilt=tlt },
-    sbend 'm12' { at=cl+3*el, l=el, angle= ang, tilt=tlt },
-    sbend 'm13' { at=cl+5*el, l=el, angle= ang, tilt=tlt },
-    sbend 'm14' { at=cl+7*el, l=el, angle=-ang, tilt=tlt },
+    sbend 'm1' { at=cl+1*el, l=el, angle=-ang, tilt=tlt },
+    sbend 'm2' { at=cl+3*el, l=el, angle= ang, tilt=tlt },
+    sbend 'm3' { at=cl+5*el, l=el, angle= ang, tilt=tlt },
+    sbend 'm4' { at=cl+7*el, l=el, angle=-ang, tilt=tlt },
   }
 
   local mtbl, mflw = survey { sequence=seq, nslice=self.nslice, atslice=ftrue }
@@ -282,7 +292,6 @@ function TestSurvey:testChicaneSBend()
       title   = "Chicane tilted by 30 deg",
       scrdump = rundir(fnam)..'.gp',
     }
-    pause()
   end
 
   local eidx, spos, V, A in mflw
@@ -320,7 +329,6 @@ function TestSurvey:testChicanePatch()
       title   = "Chicane with patches tilted by 30 deg",
       scrdump = "survey_chicane_patch1.gp",
     }
-    pause()
   end
 
   local eidx, spos, V, A in mflw
@@ -354,8 +362,119 @@ function TestSurvey:testChicanePatch3()
       title   = "Chicane with patches tilted by 30 deg",
       scrdump = "survey_chicane_patch3.gp",
     }
-    pause()
   end
+end
+
+function TestSurvey:testSBendMisalign()
+  local el, ang = 1.5, pi/2
+  local cos, sin in math
+  local seq = sequence 'seq' { l=2*el,
+    sbend 'm1' { at=el, l=el, angle=ang, dx=0.1, dy=0.1 },
+  }
+
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
+  mtbl:write(rundir("survey_sbend_mis.tfs"), srvcol)
+
+  if doplot then
+    srvplt {
+      table   = mtbl,
+      title   = "SBend of pi/2 translated by 0.1,0.1,0",
+      scrdump = rundir("survey_sbend_mis.gp"),
+    }
+  end
+
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 3 )
+  assertAlmostEquals   ( spos, 3, eps )
+  local Vres = {-1.70492965855137180, 0, 1.70492965855137246}
+  local Ares = {-1.57079632679489634, 0, 0}
+  assertAllAlmostEquals( V:totable(), Vres, eps )
+  assertAllAlmostEquals( A:totable(), Ares, eps )
+end
+
+function TestSurvey:testSBendMisalign2()
+  local el, ang, tlt = 1.5, pi/2, pi/6
+  local seq = sequence 'seq' { l=2*el,
+    sbend 'm1' { at=el, l=el, angle=ang, dx=0.1, dy=0.1, tilt=tlt},
+  }
+
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
+  mtbl:write(rundir("survey_sbend_mis2.tfs"), srvcol)
+
+  if doplot then
+    srvplt {
+      table   = mtbl,
+      title   = "SBend of 90 deg tilted by 30 deg and translated by 0.1,0.1,0",
+      scrdump = rundir("survey_sbend_mis2.gp"),
+    }
+  end
+
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 3 )
+  assertAlmostEquals   ( spos, 3, eps )
+  local Vres = {-1.47651239597101691,-0.852464829275685787, 1.704929658551372460}
+  local Ares = {-pi/2,-0.523598775598298705,-0.523598775598298483}
+  assertAllAlmostEquals( V:totable(), Vres, 2*eps )
+  assertAllAlmostEquals( A:totable(), Ares, 2*eps )
+end
+
+function TestSurvey:testSBendMisalign3()
+  local el, ang, tlt = 1.5, pi/2, pi/6
+  local seq = sequence 'seq' { l=2*el,
+    sbend 'm1' { at=el, l=el, angle=ang, dx=0.1, dy=0.1, dpsi=tlt},
+  }
+
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
+  mtbl:write(rundir("survey_sbend_mis3.tfs"), srvcol)
+
+  if doplot then
+    local mtbl2 = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue }
+    srvplt {
+      table   = mtbl,
+      data    = { xr=mtbl2.x, yr=mtbl2.y, z=mtbl2.z },
+      x1y1     = { z = {'x','y','xr','yr'}},
+      title   = "SBend of 90 deg rotated by 30 deg and translated by 0.1,0.1,0",
+      scrdump = rundir("survey_sbend_mis3.gp"),
+    }
+  end
+
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 3 )
+  assertAlmostEquals   ( spos, 3, eps )
+  local Vres = {-1.704929658551372, 0, 1.704929658551372}
+  local Ares = {-pi/2, 0, 0}
+  assertAllAlmostEquals( V:totable(), Vres, 2*eps )
+  assertAllAlmostEquals( A:totable(), Ares, 2*eps )
+end
+
+function TestSurvey:testSBendMisalign4()
+  local deg2rad in MAD.gmath
+  local el, ang, tlt = 1.5, pi/2, pi/2
+  local seq = sequence 'seq' { l=2*el,
+    sbend 'm1' { at=el, l=el, angle=ang, dphi=deg2rad(15), dy=0.1, tilt=tlt},
+  }
+
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
+  mtbl:write(rundir("survey_sbend_mis4.tfs"), srvcol)
+
+  if doplot then
+    local mtbl2 = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue }
+    srvplt {
+      table   = mtbl,
+      data    = { xr=mtbl2.x, yr=mtbl2.y, z=mtbl2.z },
+      x1y1    = { z = {'x','y','xr','yr'}},
+      title   = "SBend of 90 deg tilted by 90 deg and misaligned by phi=15 deg, dy=0.1m",
+      scrdump = rundir("survey_sbend_mis4.gp"),
+    }
+  end
+
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 3 )
+  assertAlmostEquals   ( spos, 3, eps )
+  local Vres = {-1.47651239597101691,-0.852464829275685787, 1.704929658551372460}
+  local Ares = {-pi/2,-0.523598775598298705,-0.523598775598298483}
+  assertAllAlmostEquals( V:totable(), Vres, 2*eps )
+  assertAllAlmostEquals( A:totable(), Ares, 2*eps )
 end
 
 function TestSurvey:testChicaneSBendMisalign()
@@ -363,27 +482,56 @@ function TestSurvey:testChicaneSBendMisalign()
   local cl=el/2
 
   local seq = sequence 'seq' { l=(2*n-1)*el,
-    sbend 'm11' { at=cl+1*el, l=el, angle=-ang, tilt=tlt },
-    sbend 'm12' { at=cl+3*el, l=el, angle= ang, tilt=tlt },
-    sbend 'm13' { at=cl+5*el, l=el, angle= ang, tilt=tlt, dx=1, dy=1 },
-    sbend 'm14' { at=cl+7*el, l=el, angle=-ang, tilt=tlt },
+    sbend 'm1' { at=cl+1*el, l=el, angle=-ang, tilt=tlt },
+    sbend 'm2' { at=cl+3*el, l=el, angle= ang, tilt=tlt },
+    sbend 'm3' { at=cl+5*el, l=el, angle= ang, tilt=tlt, dx=0.1, dy=0.1 },
+    sbend 'm4' { at=cl+7*el, l=el, angle=-ang, tilt=tlt },
   }
 
-  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=1 }
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
   mtbl:write(rundir("survey_chicane_sbend_mis.tfs"), srvcol)
+
   if doplot then
     srvplt {
       table   = mtbl,
       title   = "Chicane tilted by 30 deg with misalignment",
       scrdump = rundir("survey_chicane_sbend_mis.gp"),
     }
-    pause()
   end
 
   local eidx, spos, V, A in mflw
   assertEquals         ( eidx, 6 )
   assertAlmostEquals   ( spos, 13.5, eps )
-  local Vres = { 1.1830127018922185, 0.68301270189221874, 6.9536932304210533 }
+  assertAllAlmostEquals( V:totable(), {0,0,8.3197186342054881}, 2*eps )
+  assertAllAlmostEquals( A:totable(), 0, eps )
+end
+
+function TestSurvey:testChicaneQuadMisalign()
+  local n, el, dphi = 5, 1.5, deg2rad(10)
+  local cl=el/2
+
+  local seq = sequence 'seq' { l=(2*n-1)*el,
+    quadrupole 'm1' { at=cl+1*el, l=el, dphi= dphi },
+    quadrupole 'm2' { at=cl+3*el, l=el, dphi=-dphi },
+    quadrupole 'm3' { at=cl+5*el, l=el, dphi=-dphi },
+    quadrupole 'm4' { at=cl+7*el, l=el, dphi= dphi },
+  }
+
+  local mtbl, mflw = survey { sequence=seq, nslice=3, atslice=ftrue, atentry=ftrue, misalign=true }
+  mtbl:write(rundir("survey_chicane_sbend_mis.tfs"), srvcol)
+  
+  if doplot then
+    srvplt {
+      table   = mtbl,
+      title   = "Quad with 10 deg misalignment",
+      scrdump = rundir("survey_chicane_quad_mis.gp"),
+    }
+  end
+
+  local eidx, spos, V, A in mflw
+  assertEquals         ( eidx, 6 )
+  assertAlmostEquals   ( spos, 13.5, eps )
+  local Vres = { 0, 0, 13.5 }
   assertAllAlmostEquals( V:totable(), Vres, eps )
   assertAllAlmostEquals( A:totable(), 0, eps )
 end
