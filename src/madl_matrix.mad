@@ -58,11 +58,8 @@ local cpx_sz = ffi.sizeof 'complex'
 ffi.cdef [[ // warning: must be kept identical to C definition
 struct  matrix       { const ssz_t nrow, ncol;       double  data[?]; };
 struct cmatrix       { const ssz_t nrow, ncol;       complex data[?]; };
-
 struct  matrix_cview { const ssz_t nrow, ncol; const double  data[?]; };
 struct cmatrix_cview { const ssz_t nrow, ncol; const complex data[?]; };
-
-struct  matrix_ccast {       ssz_t nrow, ncol;       double  data[?]; };
 ]]
 
 local  matrix_ctor  = ffi.typeof 'struct  matrix'
@@ -74,7 +71,6 @@ local  matrix_cref  = ffi.typeof 'struct  matrix&'
 local cmatrix_cref  = ffi.typeof 'struct cmatrix&'
 local  matrix_cvref = ffi.typeof 'struct  matrix_cview&'
 local cmatrix_cvref = ffi.typeof 'struct cmatrix_cview&'
-local  matrix_ccast = ffi.typeof 'struct  matrix_ccast&'
 
 local  matrix_size  = ffi.offsetof( matrix_ctor, 'data')
 local cmatrix_size  = ffi.offsetof(cmatrix_ctor, 'data')
@@ -89,9 +85,9 @@ local isa_vector = \x -> isa_matrix(x) and (x.nrow == 1 or x.ncol == 1)
 -- allocators -----------------------------------------------------------------o
 
 local function matrix_alloc (nr, nc)
-  local len, mat = nr*nc, nil
+  local len = nr*nc
   assert(len <= 2^30, "matrix is too large")
-  mat = matrix_ctor(len) -- VLA
+  local mat = matrix_ctor(len) -- VLA
 --  if len <= _C.mad_alloc_threshold then
 --    mat = matrix_ctor(len) -- VLA
 --  else
@@ -100,16 +96,14 @@ local function matrix_alloc (nr, nc)
 --    mat = assert(_C.mad_calloc(1,siz), "out of memory")
 --    mat = ffi.gc(ffi.cast(matrix_cref, mat), _C.mad_free)
 --  end
---  local m = ffi.cast(matrix_ccast, mat)
---  m.nrow, m.ncol = nr, nc
   _C.mad_mat_reshape(mat, nr, nc)
   return mat
 end
 
 local function cmatrix_alloc (nr, nc)
-  local len, mat = nr*nc, nil
+  local len = nr*nc
   assert(len <= 2^29, "cmatrix is too large")
-  mat = cmatrix_ctor(len) -- VLA
+  local mat = cmatrix_ctor(len) -- VLA
 --  if len <= _C.mad_alloc_threshold/2 then
 --    mat = cmatrix_ctor(len) -- VLA
 --  else
@@ -118,8 +112,6 @@ local function cmatrix_alloc (nr, nc)
 --    mat = assert(_C.mad_calloc(1,siz), "out of memory")
 --    mat = ffi.gc(ffi.cast(cmatrix_cref, mat), _C.mad_free)
 --  end
---  local m = ffi.cast(matrix_ccast, mat)
---  m.nrow, m.ncol = nr, nc
   _C.mad_cmat_reshape(mat, nr, nc)
   return mat
 end
@@ -528,8 +520,6 @@ end
 function MR.reshape (x, nr_, nc_)
   local nr, nc = nr_ or x:size(), nc_ or 1
   assert(nr >= 1 and nc >= 1 and nr*nc <= x:size(), "invalid matrix new sizes")
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = nr, nc
   _C.mad_mat_reshape(x, nr, nc)
   return x
 end
@@ -537,8 +527,6 @@ end
 function MC.reshape (x, nr_, nc_)
   local nr, nc = nr_ or x:size(), nc_ or 1
   assert(nr >= 1 and nc >= 1 and nr*nc <= x:size(), "invalid matrix new sizes")
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = nr, nc
   _C.mad_cmat_reshape(x, nr, nc)
   return x
 end
@@ -546,8 +534,6 @@ end
 function MR._reshapeto (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = nr_ or 1, nc_ or 1
   _C.mad_mat_reshape(x, nr_ or 1, nc_ or 1)
   return x
 end
@@ -555,8 +541,6 @@ end
 function MC._reshapeto (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = nr_ or 1, nc_ or 1
   _C.mad_cmat_reshape(x, nr_ or 1, nc_ or 1)
   return x
 end
@@ -564,8 +548,6 @@ end
 function MR._reshapeby (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = x.nrow + (nr_ or 0), x.ncol + (nc_ or 0)
   _C.mad_mat_reshape(x, x.nrow + (nr_ or 0), x.ncol + (nc_ or 0))
   return x
 end
@@ -573,8 +555,6 @@ end
 function MC._reshapeby (x, nr_, nc_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
---  local xx = ffi.cast(matrix_ccast, x)
---  xx.nrow, xx.ncol = x.nrow + (nr_ or 0), x.ncol + (nc_ or 0)
   _C.mad_cmat_reshape(x, x.nrow + (nr_ or 0), x.ncol + (nc_ or 0))
   return x
 end
@@ -1138,9 +1118,15 @@ MR.conjugate = MR.conj
 
 function MR.transpose (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksizt(r_,x) or matrix_alloc(x:tsizes())
-  _C.mad_mat_trans(x.data, r.data, x:sizes())         -- transpose
-  return r
+
+  if r_ == x and (x.nrow == 1 or x.ncol == 1) then
+    _C.mad_mat_reshape(x, x.ncol, x.nrow)
+    return x
+  else
+    local r = chksizt(r_,x) or matrix_alloc(x:tsizes())
+    _C.mad_mat_trans(x.data, r.data, x:sizes())         -- transpose
+    return r
+  end
 end
 
 MR.t = MR.transpose -- shortcut
@@ -1148,12 +1134,21 @@ MR.t = MR.transpose -- shortcut
 function MC.transpose (x, r_, c_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   if is_boolean(r_) and is_nil(c_) then r_, c_ = nil, r_ end
-  local r = chksizt(r_,x) or cmatrix_alloc(x:tsizes())
-  if c_ == false
-  then _C.mad_cmat_trans (x.data, r.data, x:sizes())  -- transpose (no conj.)
-  else _C.mad_cmat_ctrans(x.data, r.data, x:sizes())  -- conjugate transpose
+
+  if r_ == x and (x.nrow == 1 or x.ncol == 1) then
+    _C.mad_cmat_reshape(x, x.ncol, x.nrow)           -- transpose (no conj.)
+    if c_ ~= false then
+      _C.mad_cmat_ctrans(x.data, x.data, x:sizes())  -- conjugate transpose
+    end
+    return x
+  else
+    local r = chksizt(r_,x) or cmatrix_alloc(x:tsizes())
+    if c_ == false
+    then _C.mad_cmat_trans (x.data, r.data, x:sizes())  -- transpose (no conj.)
+    else _C.mad_cmat_ctrans(x.data, r.data, x:sizes())  -- conjugate transpose
+    end
+    return r
   end
-  return r
 end
 
 MC.t = MC.transpose -- shortcut
