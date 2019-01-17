@@ -28,6 +28,7 @@ local vector, matrix, element, mtable, command                   in MAD
 local is_sequence, is_boolean, is_number, is_integer,
       is_table, is_callable, is_mappable, is_matrix              in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
+local rangle                                                     in MAD.gmath
 local action                                                     in MAD.symint
 local tblcat, errorf                                             in MAD.utility
 local minlen, minang                                             in MAD.constant
@@ -58,16 +59,57 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackelm (elm, mflw, track, thick, thin)
+local V1, W1 = vector(3), matrix(3)
+local V2, W2 = vector(3), matrix(3)
+
+local function trackmiselm (elm, mflw, track, thick, thin)
   local tlt = mflw.etlt
-  local ref = mflw.misalign > 0 and changeref or fnone
+  local ref = changeref
+  local rot = abs(tlt) >= minang and srotation or fnone
+  local trk = thick or thin
+
+  -- save entry
+  V1:copy(mflw.V)
+  W1:copy(mflw.W)
+
+  -- track through element without misalignment
+  rot(tlt, mflw,  1)
+  trk(elm, mflw,  1)
+  rot(tlt, mflw, -1)
+
+  -- save exit
+  V2:copy(mflw.V)
+  W2:copy(mflw.W)
+
+  -- restore entry
+  mflw.V:copy(V1)
+  mflw.W:copy(W1)
+
+  -- track through element with misalignment
+  ref  (elm, mflw, 1)
+  rot  (tlt, mflw, 1)
+  track(elm, mflw, 1, thick, thin)
+
+  -- restore exit
+  mflw.V:copy(V2)
+  mflw.W:copy(W2)
+end
+
+local function trackelm (elm, mflw, track, thick, thin)
+--  if mflw.misalign then
+--    -- fast approach, mainly for debugging
+--    return trackmiselm(elm, mflw, track, thick, thin)
+--  end
+
+  local tlt = mflw.etlt
+  local ref = mflw.misalign and changeref or fnone
   local rot = abs(tlt) >= minang and srotation or fnone
 
   ref  (elm, mflw,  1)
   rot  (tlt, mflw,  1)
   track(elm, mflw,  1, thick, thin)
   rot  (tlt, mflw, -1)
-  ref  (elm, mflw, -1)
+  ref  (elm, mflw, -1) -- slow approach but symmetric with dynamic tracking
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -83,15 +125,14 @@ local function track_drift (elm, mflw)
   local l in elm
   mflw.el, mflw.ang = l, 0
 
-  local thick = abs(l) >= minlen and thickonly or driftonly
-
   if is_implicit(elm) then
     mflw.etlt = 0
-    local track = mflw.implicit and thick or driftonly
-    track(elm, mflw, 1, str_drift)
+    local trackone = mflw.implicit and abs(l) >= minlen and thickonly or driftonly
+    trackone(elm, mflw, 1, str_drift)
   else
     mflw.etlt = elm.tilt
-    trackelm(elm, mflw, thick, str_drift, nil)
+    local track = abs(l) >= minlen and thickonly or driftonly
+    trackelm(elm, mflw, track, str_drift, nil)
   end
 end
 
@@ -106,8 +147,8 @@ local function track_thick (elm, mflw)
 --  mdump('\ntrack_thick', elm.name, 'l=', elm.l, 'angle=', elm.angle, 'tilt=', elm.tilt)
   local l, angle, tilt in elm
   mflw.el, mflw.ang, mflw.etlt = l, angle, tilt
-  local thick = abs(l) >= minlen and thickonly or driftonly
-  trackelm(elm, mflw, thick, cur_thick, nil)
+  local track = abs(l) >= minlen and thickonly or driftonly
+  trackelm(elm, mflw, track, cur_thick, nil)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -155,17 +196,17 @@ local function save_dat (elm, mflw, lw, islc)
   local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
   local dsw = ds*lw
 
-  A[1], A[2], A[3] = W:torotm(A[1], A[2], A[3])
-
-  local x, y, z      = V[1], V[2], V[3]
-  local th, phi, psi = A[1], A[2], A[3]
+  local x, y, z = V[1], V[2], V[3]
+  local phi, the, psi = W:torotyxz()
+  the, psi = rangle(the, A[1]), rangle(psi, A[3])
+  A:fill{the, phi, psi}
 
   W = mapsave and W:copy()
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
   -- keep order!
   mtbl = mtbl + { name, kind, spos+dsw, dsw, ang*lw*tdir, etlt*tdir,
-                  x, y, z, th, phi, psi, psi+etlt*tdir, islc, turn, tdir, eidx,
+                  x, y, z, the, phi, psi, psi+etlt*tdir, islc, turn, tdir, eidx,
                   W }
   return true
 end
@@ -259,9 +300,7 @@ local function make_mflow (self)
 
   -- setup default misalign
   local misalign in self
-  assert(is_integer(misalign) and misalign >= 0,
-         "invalid misalign (positive integer expected)")
-  local miserr = misalign == 2 and 1 or 0
+  assert(is_boolean(misalign), "invalid misalign (boolean expected)")
 
   -- retrieve default actions (avoid evaluation in case of functions)
   local atentry = self:var_raw 'atentry'
@@ -300,7 +339,8 @@ local function make_mflow (self)
 
   if W0 then
     assert(is_matrix(W0), "invalid W0 (matrix expected)")
-    A0[1], A0[2], A0[3] = W0:torotm(A0[1], A0[2], A0[3])
+    local phi, the, psi = W0:torotyxz()
+    A0[1], A0[2], A0[3] = rangle(the, A0[1]), phi, rangle(psi, A0[3])
   end
 
   -- precedence of initial conditions
@@ -328,8 +368,7 @@ local function make_mflow (self)
   mflw.nslc=nslc             -- number of slices for each element
   mflw.nslice=nslice         -- slices for each element
   mflw.implicit=implicit     -- slice also implicit elements
-  mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
-  mflw.miserr=miserr         -- 0 none, 1 error
+  mflw.misalign=misalign     -- consider misalignment errors
 
   mflw.save=save             -- save data
   mflw.savesel=savesel       -- save selector
@@ -346,9 +385,9 @@ local function make_mflow (self)
   mflw.mapsave=mapsave       -- save orientation matrix
 
   -- global frame (exposed vars)
-  mflw.V=vector(3):fill{x,y,z}         -- displacement vector
-  mflw.W=matrix(3):rotm(the,phi,psi)   -- orientation matrix (rotations)
-  mflw.A=vector(3):fill{the,phi,psi}   -- oriented angles
+  mflw.V=vector(3):fill{x,y,z}          -- displacement vector
+  mflw.W=matrix(3):rotyxz(-phi,the,psi) -- orientation matrix (rotations)
+  mflw.A=vector(3):fill{the,phi,psi}    -- oriented angles
 
   -- internal vars for survey (varying states) --
 
@@ -358,9 +397,6 @@ local function make_mflow (self)
     ang=0,                   -- current element angle
     etlt=0,                  -- current element tilt angle
     eslc=0,                  -- current element number of slices
-    R=vector(3),             -- displacement vector
-    S=matrix(3),             -- orientation matrix (rotations)
-    U=vector(3),             -- temporary vector for calculations
   }, {__index=mflw})
 
   -- for processing sequence elements by nstep
@@ -439,7 +475,7 @@ local survey = command 'survey' {
   method=_na,       -- N/A                                                (mflw)
   totalpath=_na,    -- N/A                                                (mflw)
   radiate=_na,      -- N/A                                                (mflw)
-  misalign=0,       -- 0 none, 1 main, 2 main+error                       (mflw)
+  misalign=false,   -- consider misalignment errors                       (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
