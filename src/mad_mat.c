@@ -367,9 +367,11 @@
 // [m x n] transpose
 #define TRANS(C,T) { \
   if (m == 1 || n == 1) { \
-    ssz_t mn = m*n; \
-    for (ssz_t i=0; i < mn; i++) \
-      r[i] = C(x[i]); \
+    if (x != r || I != C(I)) { \
+      ssz_t mn = m*n; \
+      for (ssz_t i=0; i < mn; i++) \
+        r[i] = C(x[i]); \
+    } \
   } else if ((const void*)x != (const void*)r) { \
     for (ssz_t i=0; i < m; i++) \
     for (ssz_t j=0; j < n; j++) \
