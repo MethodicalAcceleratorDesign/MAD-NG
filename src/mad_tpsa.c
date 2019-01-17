@@ -150,6 +150,23 @@ ord_t
   return mo;
 }
 
+// --- init (unsafe) ----------------------------------------------------------o
+
+T*
+FUN(init) (T *t, const D *d, ord_t lo, ord_t hi, ord_t mo)
+{
+  assert(t);
+
+  if (!d) d = mad_desc_curr;
+  ensure(d, "GTPSA descriptor not found");
+
+  if (mo == mad_tpsa_default) mo = d->mo;
+  else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
+
+  t->d = d, t->lo = MIN(lo,mo), t->hi = MIN(hi,mo), t->mo = mo;
+  return t;
+}
+
 // --- ctors, dtor ------------------------------------------------------------o
 
 T*

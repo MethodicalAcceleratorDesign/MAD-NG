@@ -47,7 +47,7 @@ extern const ord_t mad_tpsa_same;
 
 // --- interface --------------------------------------------------------------o
 
-// ctors, dtor
+// ctors, dtor, shape
 tpsa_t* mad_tpsa_newd    (const desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
 tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo);
 void    mad_tpsa_del     (const tpsa_t *t);
@@ -170,6 +170,10 @@ void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *strea
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_,             FILE *stream_);
 log_t   mad_tpsa_is_valid (const tpsa_t *t);
 
+// unsafe operations !!
+tpsa_t* mad_tpsa_init(tpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
+
+// macro wrapper for safe use
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)
 
 // --- end --------------------------------------------------------------------o
