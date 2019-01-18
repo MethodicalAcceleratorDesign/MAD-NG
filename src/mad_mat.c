@@ -412,19 +412,19 @@
 
 // --- mat
 
-void mad_mat_reshape(struct matrix *x, ssz_t m, ssz_t n)
+void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
 { assert(x); x->nr = m; x->nc = n; }
 
-void mad_mat_ident(num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; num_t x = 0; SET(); x = 1; DIAG(); }
+void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; num_t x = 0; SET(); x = v; DIAG(); }
 
-void mad_mat_fill(num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_mat_fill (num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; SET(); }
 
-void mad_mat_copy(const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+void mad_mat_copy (const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
 
-void mad_mat_copym(const num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+void mad_mat_copym (const num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXR; CPY(); }
 
 void mad_mat_trans (const num_t x[], num_t r[], ssz_t m, ssz_t n)
@@ -550,22 +550,25 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
 // -- cmat
 
-void mad_cmat_reshape(struct cmatrix *x, ssz_t m, ssz_t n)
+void mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n)
 { assert(x); x->nr = m; x->nc = n; }
 
-void mad_cmat_ident(cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; cnum_t x = 0; SET(); x = 1; DIAG(); }
+void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; cnum_t x = 0; SET(); x = v; DIAG(); }
 
-void mad_cmat_fill(cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; CNUM(v); cnum_t x = 0; SET(); x = v; DIAG(); }
+
+void mad_cmat_fill (cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; SET(); }
 
-void mad_cmat_fill_r(num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_cmat_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; CNUM(x); SET(); }
 
 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 { mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
 
-void mad_cmat_copy(const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+void mad_cmat_copy (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
 
 void mad_cmat_trans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
@@ -890,7 +893,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_ident(u, n, n, n);
+  mad_mat_eye(1, u, n, n, n);
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1.0) mad_vec_muln(r, x, r, m*n);
@@ -906,7 +909,7 @@ mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rco
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_ident(u, n, n, n);
+  mad_mat_eye(1, u, n, n, n);
   mad_alloc_tmp(num_t, t, m*n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
@@ -920,7 +923,7 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_ident(u, n, n, n);
+  mad_cmat_eye(1, u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1.0) mad_cvec_muln(r, x, r, m*n);
@@ -932,7 +935,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_ident(u, n, n, n);
+  mad_cmat_eye(1, u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1.0) mad_cvec_mulc(r, x, r, m*n);
@@ -1207,4 +1210,140 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
   if (info > 0) warn ("eigen failed to compute all eigenvalues");
 
   return info;
+}
+
+// ----------------------------------------------------------------------------o
+// 3D geometry ----------------------------------------------------------------o
+
+#define N  3
+#define NN (N*N)
+
+#define MGET(src,i,j) src[(i-1)*N+(j-1)]
+
+#define VCPY(src,dst) \
+  for (ssz_t i=0; i<N; dst[i]=src[i], i++)
+
+#define MCPY(src,dst) \
+  for (ssz_t i=0; i<NN; dst[i]=src[i], i++)
+
+// -- Rotations ---------------------------------------------------------------o
+
+// 3D rotations (one axis)
+
+void mad_mat_rotx (num_t x[NN], num_t ax) // Rx
+{
+  CHKX;
+  num_t c = cos(ax), s = sin(ax);
+  num_t r[NN] = { 1, 0, 0,
+                  0, c,-s,
+                  0, s, c };
+  MCPY(r,x);
+}
+
+void mad_mat_roty (num_t x[NN], num_t ay) // Ry
+{
+  CHKX;
+  num_t c = cos(ay), s = sin(ay);
+  num_t r[NN] = { c, 0, s,
+                  0, 1, 0,
+                 -s, 0, c };
+  MCPY(r,x);
+}
+
+void mad_mat_rotz (num_t x[NN], num_t az) // Rz
+{
+  CHKX;
+  num_t c = cos(az), s = sin(az);
+  num_t r[NN] = { c,-s, 0,
+                  s, c, 0,
+                  0, 0, 1 };
+  MCPY(r,x);
+}
+
+// 3D rotations (three axis)
+
+void mad_mat_rotyxz (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
+{ // Ry(ay).Rx(ax).Rz(az)
+  CHKX;
+  num_t cx = cos(ax), sx = sin(ax); // ax = -phi   : elevation angle.
+  num_t cy = cos(ay), sy = sin(ay); // ay =  theta : azimuthal angle.
+  num_t cz = cos(az), sz = sin(az); // az =  psi   : roll      angle.
+  if (!inv) {  // normal
+    num_t r[NN] = { sx*sy*sz + cy*cz, sx*sy*cz - cy*sz, cx*sy,
+                               cx*sz,            cx*cz,   -sx,
+                    sx*cy*sz - sy*cz, sx*cy*cz + sy*sz, cx*cy };
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = { sx*sy*sz + cy*cz, cx*sz, sx*cy*sz - sy*cz,
+                    sx*sy*cz - cy*sz, cx*cz, sx*cy*cz + sy*sz,
+                    cx*sy,              -sx, cx*cy             };
+    MCPY(r,x);
+  }
+}
+
+void mad_mat_torotyxz (const num_t x[NN], num_t r[N], log_t inv)
+{ // extract angles ax, ay, az
+  CHKXR;
+  num_t x22 = MGET(x,2,2), x33 = MGET(x,3,3), x13, x21, x23;
+
+  if (!inv) x13 = MGET(x,1,3), x21 = MGET(x,2,1), x23 = MGET(x,2,3);
+  else      x13 = MGET(x,3,1), x21 = MGET(x,1,2), x23 = MGET(x,3,2);
+
+  r[0] = atan2( x23, sqrt(x21*x21 + x22*x22) ); // ax
+  r[1] = atan2( x13, x33 );                     // ay
+  r[2] = atan2( x21, x22 );                     // az
+}
+
+// -- Survey ------------------------------------------------------------------o
+
+// Fast computation of Rbar and Tbar for misalignments at element exit
+
+#include "mad_cst.h"
+
+void
+mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
+               const num_t R_[N], const num_t T[N])
+{
+  assert(Rb && Tb && T);
+
+  if (fabs(ang) < mad_cst_MINANG) {           // -- straight ------------------o 
+    if (R_) {
+      num_t Ve[N] = {0, 0, el};               // We = I
+      mad_mat_mul (R_, Ve, Tb, N, 1, N);
+      mad_vec_sub (Tb, Ve, Tb, N);
+      mad_vec_add (Tb, T , Tb, N);            // Tb = R*Ve + T - Ve
+      mad_vec_copy(R_,     Rb, NN);           // Rb = R
+
+    } else { // R = I
+      mad_vec_copy(T, Tb, N);                 // Tb = T
+      mad_mat_eye (1, Rb, N, N, N);           // Rb = I
+    }
+
+  } else {                                    // -- curved --------------------o
+    num_t rho = el/ang;
+    num_t Ve[N] = {rho*(cos(ang)-1), 0, rho*sin(ang)};
+    num_t We[NN]; mad_mat_roty(We, -ang);
+    num_t Wt[NN];
+
+    // tilt
+    if (fabs(tlt) >= mad_cst_MINANG) {
+      num_t Rz[NN]; mad_mat_rotz(Rz, tlt);
+      mad_mat_mul (Rz, Ve, Ve, N, 1, N);      // Ve = Rz*Ve
+      mad_mat_mul (Rz, We, Wt, N, N, N);
+      mad_mat_mult(Wt, Rz, We, N, N, N);      // We = Rz*We*Rz:t()
+    }
+
+    if (R_) {
+      num_t Vt[N];
+      mad_mat_mul (R_, Ve, Vt, N, 1, N);
+      mad_vec_sub (Vt, Ve, Vt, N);
+      mad_vec_add (Vt, T , Vt, N);             
+      mad_mat_tmul(We, Vt, Tb, N, 1, N);      // Tb = We:t()*(R*Ve + T - Ve)
+      mad_mat_tmul(We, R_, Wt, N, N, N);
+      mad_mat_mul (Wt, We, Rb, N, N, N);      // Rb = We:t()*R*We
+    } else { // R = I
+      mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
+      mad_mat_eye (    1 , Rb, N, N, N);      // Rb = I
+    }
+  }
 }

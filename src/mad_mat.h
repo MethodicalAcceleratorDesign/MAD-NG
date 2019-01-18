@@ -34,7 +34,7 @@ struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
 // --- interface --------------------------------------------------------------o
 
 void   mad_mat_reshape  (struct matrix *x                                     , ssz_t m, ssz_t n);
-void   mad_mat_ident    (                                           num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); // ident-> mat
+void   mad_mat_eye      (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye -> mat
 void   mad_mat_fill     (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  num -> mat
 void   mad_mat_roll     (       num_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  mat -> mat
 void   mad_mat_copy     (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  mat -> mat
@@ -64,7 +64,8 @@ void   mad_mat_sympconj (const  num_t x[],                          num_t  r[], 
 num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  M' J M - J
 
 void   mad_cmat_reshape (struct cmatrix *x                                    , ssz_t m, ssz_t n);
-void   mad_cmat_ident   (                                          cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  ident->cmat
+void   mad_cmat_eye     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->cmat
+void   mad_cmat_eye_r   (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->cmat
 void   mad_cmat_fill    (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat
 void   mad_cmat_fill_r  (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  cnum ->cmat
 void   mad_cmat_roll    (      cnum_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  cmat ->cmat
@@ -97,6 +98,19 @@ void   mad_cmat_sympconj(const cnum_t x[],                         cnum_t  r[], 
 num_t  mad_cmat_symperr (const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  M' J M - J
 
 void   mad_fft_cleanup (void);
+
+// 3D geometry ----------------------------------------------------------------o
+
+// some rotations
+void   mad_mat_rotx    (      num_t x[], num_t ax); // Rx
+void   mad_mat_roty    (      num_t x[], num_t ay); // Ry
+void   mad_mat_rotz    (      num_t x[], num_t az); // Rz
+void   mad_mat_rotyxz  (      num_t x[], num_t ax, num_t ay, num_t az, log_t inv); // Ry(ay).Rx(ax).Rz(az)
+void   mad_mat_torotyxz(const num_t x[], num_t r[]                   , log_t inv); // ax, ay, az from rotyxz
+
+// misalignments
+void   mad_mat_rtbar   (     num_t Rb[],       num_t Tb[], num_t el, num_t ang, num_t tlt,
+                       const num_t R_[], const num_t T []);
 
 // ----------------------------------------------------------------------------o
 
