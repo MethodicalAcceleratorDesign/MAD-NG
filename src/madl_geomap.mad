@@ -20,11 +20,8 @@
     maps have the following calling convention:
       geomap(elm, map, len_weight)
     where the expected fields are:
-
-    map -> { sdir, V, W }
-    elm -> { l, angle, tilt ; dtheta, dphi, dpsi, dx, dy, ds}
-
-    (fields after ';' are optionnal)
+      map -> { sdir, tdir, el, ang, etlt, V, W }
+      elm -> { angle, dtheta, dphi, dpsi, dx, dy, ds}
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -47,51 +44,53 @@ local T  = vector(3) -- misalignment translation
 local R  = matrix(3) -- misalignment rotation
 local Tb = vector(3) -- misalignment translation at exit (Tbar)
 local Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
-local Rz = matrix(3) -- tilt rotation
 
 local U  = vector(3) -- extra vector for calculation (avoid copy)
-local Q  = matrix(3) -- extra matrix for calculation (avoid copy)
+local S  = matrix(3) -- extra matrix for calculation (avoid copy)
 
 -- patches (lw_ == 0 disable the patch) ---------------------------------------o
 
--- X-rotation (pitch)
+-- X-rotation
 
-function M.xrotation (elm, m, lw_) -- Rx(-phi)
+function M.xrotation (elm, m, lw_) -- Rx(ax)
   if lw_ == 0 then return end
-  local phi = elm.angle
 
-  if abs(phi) >= minang then
+  local ax = elm.angle
+
+  if abs(ax) >= minang then
     local tdir, W in m
     local lw = lw_ or 1
-    We:rotx(-phi*lw*tdir)
+    We:rotx(ax*lw*tdir)
     W:mul(We, W)            -- W = W*We
   end
 end
 
--- Y-rotation (yaw)
+-- Y-rotation
 
-function M.yrotation (elm, m, lw_) -- Ry(-theta)
+function M.yrotation (elm, m, lw_) -- Ry(ay)
   if lw_ == 0 then return end
-  local the = elm.angle
 
-  if abs(the) >= minang then
+  local ay = elm.angle
+
+  if abs(ay) >= minang then
     local tdir, W in m
     local lw = lw_ or 1
-    We:roty(-the*lw*tdir)
+    We:roty(ay*lw*tdir)
     W:mul(We, W)            -- W = W*We
   end
 end
 
--- S-rotation (roll, tilt)
+-- S-rotation
 
-function M.srotation (elm, m, lw_) -- Rz(psi)
+function M.srotation (elm, m, lw_) -- Rz(az)
   if lw_ == 0 then return end
-  local psi = elm.angle
 
-  if abs(psi) >= minang then
+  local az = elm.angle
+
+  if abs(az) >= minang then
     local tdir, W in m
     local lw = lw_ or 1
-    We:rotz(psi*lw*tdir)
+    We:rotz(az*lw*tdir)
     W:mul(We, W)            -- W = W*We
   end
 end
@@ -100,6 +99,7 @@ end
 
 function M.translate (elm, m, lw_)
   if lw_ == 0 then return end
+
   local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
 
   if abs(dx)+abs(dy)+abs(dz) >= minlen then
@@ -162,11 +162,9 @@ end
 
 -- Misalign (lw_>0: entry, lw_<0: exit)
 
-local misalignexit
-
 function M.misalign (elm, m, lw_)
   if lw_ == 0 then return end
-  if (lw_ or 1) < 0 then return misalignexit(elm, m) end
+  if (lw_ or 1) < 0 then return M.misalignexit(elm, m, lw_) end
 
   local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
@@ -176,22 +174,22 @@ function M.misalign (elm, m, lw_)
 
   if not (trn or rot) then return end
 
-  local sdir, V, W in m
+  local tdir, V, W in m
 
   -- translate
   if trn then
-    T:fill{dx*sdir, dy*sdir, dz*sdir}
+    T:fill{dx*tdir, dy*tdir, dz*tdir}
     V:add(W:mul(T, U), V)  -- V = W*T+V
   end
 
   -- rotate
   if rot then
-    R:rotyxz(-dphi*sdir, dthe*sdir, dpsi*sdir)
+    R:rotyxz(-dphi*tdir, dthe*tdir, dpsi*tdir)
     W:mul(R, W)            -- W = W*R
   end
 end
 
-function misalignexit (elm, m)
+function M.misalignexit (elm, m, lw_)
   local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
 
@@ -205,67 +203,23 @@ function misalignexit (elm, m)
 
   -- translation
   if trn then
-    T:fill{dx*sdir, dy*sdir, dz*sdir}
+    T:fill{dx*tdir, dy*tdir, dz*tdir}
   else
     T:zeros()
   end
 
   -- rotation
   if rot then
-    R:rotyxz(-dphi*sdir, dthe*sdir, dpsi*sdir)
+    R:rotyxz(-dphi*tdir, dthe*tdir, dpsi*tdir)
   end
 
-!  -- straight
-!  if abs(ang) < minang then
-!    if rot then
-!      Ve:fill{0, 0, l}                        -- We = I
-!      R:mul(Ve, U):sub(Ve, Tb):add(T, Tb)     -- Tb = R*Ve + T - Ve
-!      Rb:copy(R)                              -- Rb = R
-!    else -- R = I
-!      Tb:copy(T)                              -- Tb = T
-!      Rb:eye()                                -- Rb = I
-!    end
-!
-!  -- curved
-!  else
-!    local rho = l/ang
-!    Ve:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
-!    We:roty(-ang)
-!
-!    -- tilt
-!    if abs(tlt) >= minang then
-!      Rz:rotz(tlt)
-!      Rz:mul(Ve, Ve)                          -- Ve = Rz*Ve
-!      Rz:mul(We, Q):mult(Rz, We)              -- We = Rz*We*Rz:t()
-!    end
-!
-!    -- transform
-!    if rot then
-!      We:tmul(R:mul(Ve, U)
-!        :sub(Ve, Tb):add(T, U), Tb)           -- Tb = We:t()*(R*Ve + T - Ve)
-!      We:tmul(R, Q):mul(We, Rb)               -- Rb = We:t()*R*We
-!    else -- R = I
-!      We:tmul(T,Tb)                           -- Tb = We:t()*T
-!      Rb:eye()                                -- Rb = I
-!    end
-!  end
-
+  -- compute Rbar, Tbar
   _C.mad_mat_rtbar(Rb.data, Tb.data, l, ang, tlt, rot and R.data or nil, T.data)
 
-  W:mult(Rb, W)                               -- W = W*Rb:t()            (global)
-  V:sub(W:mul(Tb, U), V)                      -- V = V - W*Tb            (global)
+  -- apply inverse misalignment to global frame
+  W:mult(Rb, W)                -- W = W*Rb:t()
+  V:sub(W:mul(Tb, U), V)       -- V = V - W*Tb
 end
-
--- TestSurvey.testSBendMisalign3 ...
--- Rb[3x3] =
---    1   0   0
---    0   0.8660254038  -0.5
---    0   0.5   0.8660254038
--- Tb[3x1] =
---    0
---   -0.3774648293
---   -0.2279363154
--- Ok
 
 -- kinds ----------------------------------------------------------------------o
 
