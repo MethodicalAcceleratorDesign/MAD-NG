@@ -21,10 +21,10 @@
       geomap(elm, map, len_weight)
     where the expected fields are:
 
-    map -> { sdir, V, W ; R, S, U }
-    elm -> { l, angle ; phi, theta, psi, dx, dy, dz}
+    map -> { sdir, V, W }
+    elm -> { l, angle, tilt ; dtheta, dphi, dpsi, dx, dy, ds}
 
-    (fields beyond ; are optionnal or internal)
+    (fields after ';' are optionnal)
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -33,20 +33,24 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local abs, sin, cos  in math
-local minlen, minang in MAD.constant
-local is_number      in MAD.typeid
-local errorf         in MAD.utility
+local _C, vector, matrix    in MAD
+local minlen, minang        in MAD.constant
 
--- debug ----------------------------------------------------------------------o
+local abs, sin, cos         in math
 
-local nodump = true
+-- temporaries ----------------------------------------------------------------o
 
-local function mdump(str, l, m)
-  if nodump then return end
-  local V, A in m
-  print(str, l, V[1], V[2], V[3], A[1], A[2], A[3])
-end
+local Ve = vector(3) -- displacement vector of element
+local We = matrix(3) -- orientation  matrix of element
+
+local T  = vector(3) -- misalignment translation
+local R  = matrix(3) -- misalignment rotation
+local Tb = vector(3) -- misalignment translation at exit (Tbar)
+local Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
+local Rz = matrix(3) -- tilt rotation
+
+local U  = vector(3) -- extra vector for calculation (avoid copy)
+local Q  = matrix(3) -- extra matrix for calculation (avoid copy)
 
 -- patches (lw_ == 0 disable the patch) ---------------------------------------o
 
@@ -54,85 +58,91 @@ end
 
 function M.xrotation (elm, m, lw_) -- Rx(-phi)
   if lw_ == 0 then return end
-  local lw = lw_ or 1
+  local phi = elm.angle
 
-  local ang = is_number(elm) and elm or elm.angle
-  if abs(ang) < minang then return end
-
-  local tdir, S, W in m
-  S:rotx(-ang*lw*tdir)
-  W:mul(S, W)              -- W = W*S
+  if abs(phi) >= minang then
+    local tdir, W in m
+    local lw = lw_ or 1
+    We:rotx(-phi*lw*tdir)
+    W:mul(We, W)            -- W = W*We
+  end
 end
 
 -- Y-rotation (yaw)
 
 function M.yrotation (elm, m, lw_) -- Ry(-theta)
   if lw_ == 0 then return end
-  local lw = lw_ or 1
+  local the = elm.angle
 
-  local ang = is_number(elm) and elm or elm.angle
-  if abs(ang) < minang then return end
-
-  local tdir, S, W in m
-  S:roty(-ang*lw*tdir)
-  W:mul(S, W)              -- W = W*S
+  if abs(the) >= minang then
+    local tdir, W in m
+    local lw = lw_ or 1
+    We:roty(-the*lw*tdir)
+    W:mul(We, W)            -- W = W*We
+  end
 end
 
 -- S-rotation (roll, tilt)
 
 function M.srotation (elm, m, lw_) -- Rz(psi)
   if lw_ == 0 then return end
-  local lw = lw_ or 1
+  local psi = elm.angle
 
-  local ang = is_number(elm) and elm or elm.angle
-  if abs(ang) < minang then return end
-
-  local tdir, S, W in m
-  S:rotz(ang*lw*tdir)
-  W:mul(S, W)              -- W = W*S
+  if abs(psi) >= minang then
+    local tdir, W in m
+    local lw = lw_ or 1
+    We:rotz(psi*lw*tdir)
+    W:mul(We, W)            -- W = W*We
+  end
 end
 
 -- Translation
 
 function M.translate (elm, m, lw_)
   if lw_ == 0 then return end
-  local lw = lw_ or 1
+  local dx, dy, dz = elm.dx or 0, elm.dy or 0, elm.dz or 0
 
-  local miserr in m
-  local dx = (elm.dx or 0) + (elm.ddx or 0)*miserr
-  local dy = (elm.dy or 0) + (elm.ddy or 0)*miserr
-  local dz = (elm.dz or 0) + (elm.ddz or 0)*miserr
-
-  if abs(dx)+abs(dy)+abs(dz) < minlen then return end
-
-  local tdir, R, U, V, W in m
-  R:fill{dx*lw*tdir, dy*lw*tdir, dz*lw*tdir}
-  V:add(W:mul(R, U), V)    -- V = W*R+V
+  if abs(dx)+abs(dy)+abs(dz) >= minlen then
+    local tdir, V, W in m
+    local lw = lw_ or 1
+    Ve:fill{dx*lw*tdir, dy*lw*tdir, dz*lw*tdir}
+    V:add(W:mul(Ve, U), V)  -- V = W*Ve+V
+  end
 end
 
--- Changeref (generic patch, dir>0: xyzt, dir<0: tzyx)
+-- Changeref (generic patch, lw_>0: TR, lw_<0: RT)
 
 function M.changeref (elm, m, lw_)
   if lw_ == 0 then return end
+
+  local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
+  local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
+
+  local trn = abs(dx  )+abs(dy  )+abs(dz  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return end
+
+  local tdir, V, W in m
   local lw = lw_ or 1
 
-  if lw < 0 then M.translate(elm, m, lw) end
-
-  local miserr in m
-  local the = (elm.theta or 0) + (elm.dtheta or 0)*miserr
-  local phi = (elm.phi   or 0) + (elm.dphi   or 0)*miserr
-  local psi = (elm.psi   or 0) + (elm.dpsi   or 0)*miserr
-
-  if abs(the)+abs(phi)+abs(psi) >= minang then
-    local tdir, S, W in m
-    if lw > 0
-    then S:rotxyz(-phi*lw*tdir, -the*lw*tdir, psi*lw*tdir)
-    else S:rotzyx(-phi*lw*tdir, -the*lw*tdir, psi*lw*tdir)
-    end
-    W:mul(S, W)            -- W = W*S
+  -- translate
+  if trn and lw < 0 then
+    Ve:fill{-dx*tdir, -dy*tdir, -dz*tdir}
+    V:add(W:mul(Ve, U), V)  -- V = W*Ve+V
   end
 
-  if lw > 0 then M.translate(elm, m, lw) end
+  -- rotate
+  if rot then
+    We:rotyxz(-dphi*lw*tdir, dthe*lw*tdir, dpsi*lw*tdir, lw<0)
+    W:mul(We, W)            -- W = W*We
+  end
+
+  -- translate
+  if trn and lw > 0 then
+    Ve:fill{dx*tdir, dy*tdir, dz*tdir}
+    V:add(W:mul(Ve, U), V)  -- V = W*Ve+V
+  end
 end
 
 -- Changedir (reverse t-direction)
@@ -150,48 +160,149 @@ function M.changenrj (elm_, m_, lw_)
   -- N/A for survey
 end
 
+-- Misalign (lw_>0: entry, lw_<0: exit)
+
+local misalignexit
+
+function M.misalign (elm, m, lw_)
+  if lw_ == 0 then return end
+  if (lw_ or 1) < 0 then return misalignexit(elm, m) end
+
+  local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
+  local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
+
+  local trn = abs(dx  )+abs(dy  )+abs(dz  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return end
+
+  local sdir, V, W in m
+
+  -- translate
+  if trn then
+    T:fill{dx*sdir, dy*sdir, dz*sdir}
+    V:add(W:mul(T, U), V)  -- V = W*T+V
+  end
+
+  -- rotate
+  if rot then
+    R:rotyxz(-dphi*sdir, dthe*sdir, dpsi*sdir)
+    W:mul(R, W)            -- W = W*R
+  end
+end
+
+function misalignexit (elm, m)
+  local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
+  local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
+
+  local trn = abs(dx  )+abs(dy  )+abs(dz  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return end
+
+  local el, ang, etlt, sdir, tdir, V, W in m
+  local l, ang, tlt = el*sdir, ang*tdir, etlt*tdir
+
+  -- translation
+  if trn then
+    T:fill{dx*sdir, dy*sdir, dz*sdir}
+  else
+    T:zeros()
+  end
+
+  -- rotation
+  if rot then
+    R:rotyxz(-dphi*sdir, dthe*sdir, dpsi*sdir)
+  end
+
+!  -- straight
+!  if abs(ang) < minang then
+!    if rot then
+!      Ve:fill{0, 0, l}                        -- We = I
+!      R:mul(Ve, U):sub(Ve, Tb):add(T, Tb)     -- Tb = R*Ve + T - Ve
+!      Rb:copy(R)                              -- Rb = R
+!    else -- R = I
+!      Tb:copy(T)                              -- Tb = T
+!      Rb:eye()                                -- Rb = I
+!    end
+!
+!  -- curved
+!  else
+!    local rho = l/ang
+!    Ve:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
+!    We:roty(-ang)
+!
+!    -- tilt
+!    if abs(tlt) >= minang then
+!      Rz:rotz(tlt)
+!      Rz:mul(Ve, Ve)                          -- Ve = Rz*Ve
+!      Rz:mul(We, Q):mult(Rz, We)              -- We = Rz*We*Rz:t()
+!    end
+!
+!    -- transform
+!    if rot then
+!      We:tmul(R:mul(Ve, U)
+!        :sub(Ve, Tb):add(T, U), Tb)           -- Tb = We:t()*(R*Ve + T - Ve)
+!      We:tmul(R, Q):mul(We, Rb)               -- Rb = We:t()*R*We
+!    else -- R = I
+!      We:tmul(T,Tb)                           -- Tb = We:t()*T
+!      Rb:eye()                                -- Rb = I
+!    end
+!  end
+
+  _C.mad_mat_rtbar(Rb.data, Tb.data, l, ang, tlt, rot and R.data or nil, T.data)
+
+  W:mult(Rb, W)                               -- W = W*Rb:t()            (global)
+  V:sub(W:mul(Tb, U), V)                      -- V = V - W*Tb            (global)
+end
+
+-- TestSurvey.testSBendMisalign3 ...
+-- Rb[3x3] =
+--    1   0   0
+--    0   0.8660254038  -0.5
+--    0   0.5   0.8660254038
+-- Tb[3x1] =
+--    0
+--   -0.3774648293
+--   -0.2279363154
+-- Ok
+
 -- kinds ----------------------------------------------------------------------o
 
 function M.str_drift (elm, m, lw)
-  local el = is_number(elm) and elm or m.el
+  local el in m
   if abs(el) < minlen then return end
 
-  local sdir, R, U, V, W in m
+  local sdir, V, W in m
   local l = el*lw*sdir
 
---  mdump('drift-0:', l, m)
-  R:fill{0, 0, l}
-  V:add(W:mul(R, U), V)     -- V = V+W*R
---  mdump('drift-1:', l, m)
+  Ve:fill{0, 0, l}
+  V:add(W:mul(Ve, U), V)         -- V = W*Ve+V
 end
 
 function M.cur_thin (elm, m, lw_)
-  local ang = is_number(elm) and elm or m.ang
+  local ang in m
   if abs(ang) < minang then return end
 
-  local tdir, S, W in m
+  local tdir, W in m
 
---  mdump('thin-0:', m.el*m.sdir, m)
-  S:roty(-ang*tdir)
-  W:mul(S, W)                   -- W = W*S
---  mdump('thin-1:', m.el*m.sdir, m)
+  We:roty(-ang*tdir)
+  W:mul(We, W)                   -- W = W*We
 end
 
 function M.cur_thick (elm, m, lw)
   local el, ang in m
-  if abs(ang) < minang then return M.str_drift(el, m, lw) end
-  if abs(el)  < minlen then return M.cur_thin(ang, m, lw) end
+  if abs(ang) < minang then return M.str_drift(elm, m, lw) end
+  if abs(el)  < minlen then return M.cur_thin (elm, m, lw) end
 
-  local sdir, tdir, R, S, U, V, W in m
+  local sdir, tdir, V, W in m
   local l, ang = el*sdir*lw, ang*tdir*lw
   local rho = l/ang
 
---  mdump('thick-0:', l, m)
-  R:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
-  S:roty(-ang)
-  V:add(W:mul(R, U), V)         -- V = W*R+V
-  W:mul(S, W)                   -- W = W*S
---  mdump('thick-1:', l, m)
+  Ve:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
+  We:roty(-ang)
+  V:add(W:mul(Ve, U), V)         -- V = W*Ve+V
+  W:mul(We, W)                   -- W = W*We
 end
 
 -- end ------------------------------------------------------------------------o
