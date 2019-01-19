@@ -1212,10 +1212,10 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
   return info;
 }
 
-// ----------------------------------------------------------------------------o
-// 3D geometry ----------------------------------------------------------------o
+// -- GEOMETRY ----------------------------------------------------------------o
 
-#define N  3
+// -- Helpers -----------------------------------------------------------------o
+
 #define NN (N*N)
 
 #define MGET(src,i,j) src[(i-1)*N+(j-1)]
@@ -1226,72 +1226,374 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 #define MCPY(src,dst) \
   for (ssz_t i=0; i<NN; dst[i]=src[i], i++)
 
-// -- Rotations ---------------------------------------------------------------o
+// -- 2D geometry -------------------------------------------------------------o
+
+#undef  N
+#define N 2
+
+// 2D rotation
+
+void mad_mat_rot (num_t x[NN], num_t a) // R
+{
+  CHKX;
+  num_t ca = cos(a), sa = sin(a);
+  num_t r[NN] = {ca,-sa,
+                 sa, ca};
+  MCPY(r,x);
+}
+
+// -- 3D geometry -------------------------------------------------------------o
+
+#undef  N
+#define N 3
 
 // 3D rotations (one axis)
 
 void mad_mat_rotx (num_t x[NN], num_t ax) // Rx
 {
   CHKX;
-  num_t c = cos(ax), s = sin(ax);
-  num_t r[NN] = { 1, 0, 0,
-                  0, c,-s,
-                  0, s, c };
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t r[NN] = {1,  0,  0,
+                 0, cx,-sx,
+                 0, sx, cx};
   MCPY(r,x);
 }
 
 void mad_mat_roty (num_t x[NN], num_t ay) // Ry
 {
   CHKX;
-  num_t c = cos(ay), s = sin(ay);
-  num_t r[NN] = { c, 0, s,
-                  0, 1, 0,
-                 -s, 0, c };
+  num_t cy = cos(ay), sy = sin(ay);
+  num_t r[NN] = { cy, 0, sy,
+                   0, 1,  0,
+                 -sy, 0, cy};
   MCPY(r,x);
 }
 
 void mad_mat_rotz (num_t x[NN], num_t az) // Rz
 {
   CHKX;
-  num_t c = cos(az), s = sin(az);
-  num_t r[NN] = { c,-s, 0,
-                  s, c, 0,
-                  0, 0, 1 };
+  num_t cz = cos(az), sz = sin(az);
+  num_t r[NN] = {cz,-sz, 0,
+                 sz, cz, 0,
+                  0,  0, 1};
   MCPY(r,x);
 }
 
-// 3D rotations (three axis)
+// 3D rotations (two axis)
 
-void mad_mat_rotyxz (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
-{ // Ry(ay).Rx(ax).Rz(az)
+void mad_mat_rotxy (num_t x[NN], num_t ax, num_t ay, log_t inv) // Ry.Rx
+{
   CHKX;
-  num_t cx = cos(ax), sx = sin(ax); // ax = -phi   : elevation angle.
-  num_t cy = cos(ay), sy = sin(ay); // ay =  theta : azimuthal angle.
-  num_t cz = cos(az), sz = sin(az); // az =  psi   : roll      angle.
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t cy = cos(ay), sy = sin(ay);
+
   if (!inv) {  // normal
-    num_t r[NN] = { sx*sy*sz + cy*cz, sx*sy*cz - cy*sz, cx*sy,
-                               cx*sz,            cx*cz,   -sx,
-                    sx*cy*sz - sy*cz, sx*cy*cz + sy*sz, cx*cy };
+    num_t r[NN] = { cy, sx*sy, cx*sy,
+                     0,    cx,   -sx,
+                   -sy, sx*cy, cx*cy};
     MCPY(r,x);
   } else {     // transposed
-    num_t r[NN] = { sx*sy*sz + cy*cz, cx*sz, sx*cy*sz - sy*cz,
-                    sx*sy*cz - cy*sz, cx*cz, sx*cy*cz + sy*sz,
-                    cx*sy,              -sx, cx*cy             };
+    num_t r[NN] = {   cy,   0,   -sy,
+                   sx*sy,  cx, sx*cy,
+                   cx*sy, -sx, cx*cy};
     MCPY(r,x);
   }
 }
 
-void mad_mat_torotyxz (const num_t x[NN], num_t r[N], log_t inv)
-{ // extract angles ax, ay, az
+void mad_mat_rotxz (num_t x[NN], num_t ax, num_t az, log_t inv) // Rz.Rx
+{
+  CHKX;
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t cz = cos(az), sz = sin(az);
+
+  if (!inv) {  // normal
+    num_t r[NN] = {cz,-cx*sz, sx*sz,
+                   sz, cx*cz,-sx*cz,
+                    0,    sx,    cx};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {    cz,    sz,  0,
+                   -cx*sz, cx*cz, sx,
+                    sx*sz,-sx*cz, cx};
+    MCPY(r,x);
+  }
+}
+
+void mad_mat_rotyz (num_t x[NN], num_t ay, num_t az, log_t inv) // Rz.Ry
+{
+  CHKX;
+  num_t cy = cos(ay), sy = sin(ay);
+  num_t cz = cos(az), sz = sin(az);
+
+  if (!inv) {  // normal
+    num_t r[NN] = {cy*cz,-sz, sy*cz,
+                   cy*sz, cz, sy*sz,
+                     -sy,  0,    cy};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {cy*cz,cy*sz, -sy,
+                     -sz,   cz,   0,
+                   sy*cz,sy*sz,  cy};
+    MCPY(r,x);
+  }
+}
+
+// 3D rotations (three axis)
+
+void mad_mat_rotxyz (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
+{ // Rz.Ry.Rx
+  CHKX;
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t cy = cos(ay), sy = sin(ay);
+  num_t cz = cos(az), sz = sin(az);
+
+  if (!inv) {  // normal
+    num_t r[NN] = {cy*cz, cz*sx*sy - cx*sz, cx*cz*sy + sx*sz,
+                   cy*sz, sx*sy*sz + cx*cz, cx*sy*sz - cz*sx,
+                     -sy,            cy*sx,            cx*cy};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {           cy*cz,            cy*sz,   -sy,
+                   cz*sx*sy - cx*sz, sx*sy*sz + cx*cz, cy*sx,
+                   cx*cz*sy + sx*sz, cx*sy*sz - cz*sx, cx*cy};
+    MCPY(r,x);
+  }
+}
+
+void mad_mat_rotxzy (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
+{ // Ry.Rz.Rx
+  CHKX;
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t cy = cos(ay), sy = sin(ay);
+  num_t cz = cos(az), sz = sin(az);
+
+  if (!inv) {  // normal
+    num_t r[NN] = { cy*cz, sx*sy - cx*cy*sz,  cx*sy + cy*sx*sz,
+                       sz, cx*cz           , -cz*sx           ,
+                   -cz*sy, cy*sx + cx*sy*sz,  cx*cy - sx*sy*sz};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {cy*cz           ,     sz, -cz*sy           ,
+                   sx*sy - cx*cy*sz,  cx*cz,  cy*sx + cx*sy*sz,
+                   cx*sy + cy*sx*sz, -cz*sx,  cx*cy - sx*sy*sz};
+    MCPY(r,x);
+  }
+}
+
+void mad_mat_rotyxz (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
+{ // Rz.Rx.Ry
+  CHKX;
+  num_t cx = cos(ax), sx = sin(ax);
+  num_t cy = cos(ay), sy = sin(ay);
+  num_t cz = cos(az), sz = sin(az);
+
+  if (!inv) {  // normal
+    num_t r[NN] = { cy*cz - sx*sy*sz, -cx*sz, cz*sy + cy*sx*sz,
+                    cy*sz + cz*sx*sy,  cx*cz, sy*sz - cy*cz*sx,
+                   -cx*sy           ,     sx, cx*cy           };
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = { cy*cz - sx*sy*sz, cy*sz + cz*sx*sy, -cx*sy,
+                   -cx*sz           , cx*cz           ,     sx,
+                    cz*sy + cy*sx*sz, sy*sz - cy*cz*sx,  cx*cy};
+    MCPY(r,x);
+  }
+}
+
+// 3D angles from rotations
+
+void mad_mat_torotxyz (const num_t x[NN], num_t r[N], log_t inv)
+{ // extract ax, ay, az from rotxyz
   CHKXR;
-  num_t x22 = MGET(x,2,2), x33 = MGET(x,3,3), x13, x21, x23;
+  num_t x11 = MGET(x,1,1), x33 = MGET(x,3,3), x21, x31, x32;
 
-  if (!inv) x13 = MGET(x,1,3), x21 = MGET(x,2,1), x23 = MGET(x,2,3);
-  else      x13 = MGET(x,3,1), x21 = MGET(x,1,2), x23 = MGET(x,3,2);
+  if (!inv) x21 = MGET(x,2,1), x31 = MGET(x,3,1), x32 = MGET(x,3,2);
+  else      x21 = MGET(x,1,2), x31 = MGET(x,1,3), x32 = MGET(x,2,3);
 
-  r[0] = atan2( x23, sqrt(x21*x21 + x22*x22) ); // ax
-  r[1] = atan2( x13, x33 );                     // ay
-  r[2] = atan2( x21, x22 );                     // az
+  r[0] = atan2( x32, x33 );                     // ax
+  r[1] = atan2(-x31, sqrt(x32*x32 + x33*x33) ); // ay
+  r[2] = atan2( x21, x11 );                     // az
+}
+
+void mad_mat_torotxzy (const num_t x[NN], num_t r[N], log_t inv)
+{ // extract ax, ay, az from rotxzy
+  CHKXR;
+  num_t x11 = MGET(x,1,1), x22 = MGET(x,2,2), x21, x23, x31;
+
+  if (!inv) x21 = MGET(x,2,1), x23 = MGET(x,2,3), x31 = MGET(x,3,1);
+  else      x21 = MGET(x,1,2), x23 = MGET(x,3,2), x31 = MGET(x,1,3);
+
+  r[0] = atan2(-x23, x22 );                     // ax
+  r[1] = atan2(-x31, x11 );                     // ay
+  r[2] = atan2( x21, sqrt(x22*x22 + x23*x23) ); // az
+}
+
+void mad_mat_torotyxz (const num_t x[NN], num_t r[N], log_t inv)
+{ // extract ax, ay, az from rotyxz
+  CHKXR;
+  num_t x22 = MGET(x,2,2), x33 = MGET(x,3,3), x12, x31, x32;
+
+  if (!inv) x12 = MGET(x,1,2), x31 = MGET(x,3,1), x32 = MGET(x,3,2);
+  else      x12 = MGET(x,2,1), x31 = MGET(x,1,3), x32 = MGET(x,2,3);
+
+  r[0] = atan2( x32, sqrt(x12*x12 + x22*x22) ); // ax
+  r[1] = atan2(-x31, x33 );                     // ay
+  r[2] = atan2(-x12, x22 );                     // az
+}
+
+// 3D vector rotation
+
+void mad_mat_rotv (num_t x[NN], num_t v[N], num_t av, log_t inv)
+{
+  assert(x && v);
+
+  num_t vx = v[0], vy = v[1], vz = v[2];
+  num_t n = vx*vx + vy*vy + vz*vz;
+
+  if (n == 0) {
+    mad_mat_eye(1, x, N, N, N);
+    return;
+  }
+
+  if (n != 1) {
+    n = 1/sqrt(n);
+    vx *= n, vy *= n, vz *= n;
+  }
+
+  num_t xx = vx*vx,   yy = vy*vy,   zz = vz*vz;
+  num_t xy = vx*vy,   xz = vx*vz,   yz = vy*vz;
+  num_t ca = cos(av), sa = sin(av), C  = 1-ca;
+
+  if (!inv) {  // normal
+    num_t r[NN] = {xx*C +    ca, xy*C - vz*sa, xz*C + vy*sa,
+                   xy*C + vz*sa, yy*C +    ca, yz*C - vx*sa,
+                   xz*C - vy*sa, yz*C + vx*sa, zz*C +    ca};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {xx*C +    ca, xy*C + vz*sa, xz*C - vy*sa,
+                   xy*C - vz*sa, yy*C +    ca, yz*C + vx*sa,
+                   xz*C + vy*sa, yz*C - vx*sa, zz*C +    ca};
+    MCPY(r,x);
+  }
+}
+
+num_t mad_mat_torotv (const num_t x[NN], num_t v_[N], log_t inv)
+{
+  CHKX;
+  num_t vx, vy, vz;
+
+  if (!inv) {
+    vx = MGET(x,3,2) - MGET(x,2,3);
+    vy = MGET(x,1,3) - MGET(x,3,1);
+    vz = MGET(x,2,1) - MGET(x,1,2);
+  } else {
+    vx = MGET(x,2,3) - MGET(x,3,2);
+    vy = MGET(x,3,1) - MGET(x,1,3);
+    vz = MGET(x,1,2) - MGET(x,2,1);
+  }
+
+  num_t n = sqrt(vx*vx + vy*vy + vz*vz);
+  num_t t = MGET(x,1,1) + MGET(x,2,2) + MGET(x,3,3);
+  num_t a = atan2(n, t-1);
+
+  if (v_) {
+    n = n != 0 ? 1/n : 0;
+    v_[0] = n*vx, v_[1] = n*vy, v_[2] = n*vz;
+  }
+  return a;
+}
+
+// Quaternion
+
+void mad_mat_rotq (num_t x[NN], num_t q[4], log_t inv)
+{
+  assert(x && q);
+
+  num_t qw = q[0], qx = q[1], qy = q[2], qz = q[3];
+  num_t n = qw*qw + qx*qx + qy*qy + qz*qz;
+  num_t s = n != 0 ? 2/n : 0;
+  num_t wx = s*qw*qx, wy = s*qw*qy, wz = s*qw*qz;
+  num_t xx = s*qx*qx, xy = s*qx*qy, xz = s*qx*qz;
+  num_t yy = s*qy*qy, yz = s*qy*qz, zz = s*qz*qz;
+
+  if (!inv) {  // normal
+    num_t r[NN] = {1-(yy+zz),    xy-wz ,    xz+wy,
+                      xy+wz , 1-(xx+zz),    yz-wx,
+                      xz-wy ,    yz+wx , 1-(xx+yy)};
+    MCPY(r,x);
+  } else {     // transposed
+    num_t r[NN] = {1-(yy+zz),    xy+wz ,    xz-wy,
+                      xy-wz , 1-(xx+zz),    yz+wx,
+                      xz+wy ,    yz-wx , 1-(xx+yy)};
+    MCPY(r,x);
+  }
+}
+
+void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
+{
+  CHKX;
+  num_t xx = MGET(x,1,1), yy = MGET(x,2,2), zz = MGET(x,3,3);
+  num_t tt = xx+yy+zz, rr, ss;
+
+  // stable trace
+  if (tt > -0.99999) {
+    rr = sqrt(1+tt), ss = 0.5/rr;
+    q[0] = 0.5*rr;
+    if (!inv) {  // normal
+      q[1] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
+      q[2] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
+      q[3] = (MGET(x,2,1) - MGET(x,1,2)) * ss;
+    } else {     // transposed
+      q[1] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
+      q[2] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
+      q[3] = (MGET(x,1,2) - MGET(x,2,1)) * ss;
+    }
+    return;
+  }
+
+  // look for more stable trace
+  num_t m = MAX3(xx, yy, zz);
+  if (!inv) {  // normal
+    if (m == xx) {
+      rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
+      q[1] = 0.5*rr;
+      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
+      q[2] = (MGET(x,1,3) + MGET(x,3,1)) * ss;
+      q[3] = (MGET(x,2,1) + MGET(x,1,2)) * ss;
+    } else if (m == yy) {
+      rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
+      q[2] = 0.5*rr;
+      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
+      q[1] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
+      q[3] = (MGET(x,2,1) + MGET(x,1,2)) * ss;
+    } else {
+      rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
+      q[3] = 0.5*rr;
+      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
+      q[1] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
+      q[2] = (MGET(x,2,1) - MGET(x,1,2)) * ss;
+    }
+  } else {     // transposed
+    if (m == xx) {
+      rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
+      q[1] = 0.5*rr;
+      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
+      q[2] = (MGET(x,3,1) + MGET(x,1,3)) * ss;
+      q[3] = (MGET(x,1,2) + MGET(x,2,1)) * ss;
+    } else if (m == yy) {
+      rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
+      q[2] = 0.5*rr;
+      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
+      q[1] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
+      q[3] = (MGET(x,1,2) + MGET(x,2,1)) * ss;
+    } else {
+      rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
+      q[3] = 0.5*rr;
+      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
+      q[1] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
+      q[2] = (MGET(x,1,2) - MGET(x,2,1)) * ss;
+    }
+  }
 }
 
 // -- Survey ------------------------------------------------------------------o
