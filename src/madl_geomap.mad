@@ -20,7 +20,7 @@
     maps have the following calling convention:
       geomap(elm, map, len_weight)
     where the expected fields are:
-      map -> { sdir, tdir, el, ang, etlt, V, W }
+      map -> { sdir, tdir, ang, tlt, V, W }
       elm -> { angle, dtheta, dphi, dpsi, dx, dy, ds}
 
  o-----------------------------------------------------------------------------o
@@ -210,7 +210,7 @@ function misalignexi (elm, m)
 
   if not (trn or rot) then return end
 
-  local el, ang, etlt, sdir, tdir, edir, V, W in m
+  local ds, ang, tlt, sdir, edir, V, W in m
 
   -- translation
   if trn then T:fill{dx*edir, dy*edir, dz*edir} else T:zeros() end
@@ -219,8 +219,7 @@ function misalignexi (elm, m)
   if rot then R:rotzxy(-dphi*edir, dthe*edir, dpsi*edir) end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(Rb.data, Tb.data,
-                   el, ang*tdir, etlt*tdir, rot and R.data or nil, T.data)
+  _C.mad_mat_rtbar(Rb.data, Tb.data, abs(ds), ang, tlt, rot and R.data or nil, T.data)
 
   -- misalignment at exit and global frame
   -- forward : x2  = Rb^t*(x2'-Tb) => W = W*Rb:t() ; V = V-W*Tb
@@ -238,13 +237,12 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 function M.str_drift (elm, m, lw)
-  local el in m
-  if abs(el) < minlen then return end
+  local ds in m
+  if abs(ds) < minlen then return end
 
-  local sdir, V, W in m
-  local l = el*lw*sdir
+  local V, W in m
 
-  Ve:fill{0, 0, l}
+  Ve:fill{0, 0, ds*lw}
   V:add(W:mul(Ve, U), V)         -- V = W*Ve+V
 end
 
@@ -252,20 +250,20 @@ function M.cur_thin (elm, m, lw_)
   local ang in m
   if abs(ang) < minang then return end
 
-  local tdir, W in m
+  local W in m
 
-  We:roty(-ang*tdir)
+  We:roty(-ang)
   W:mul(We, W)                   -- W = W*We
 end
 
 function M.cur_thick (elm, m, lw)
-  local el, ang in m
+  local ds, ang in m
   if abs(ang) < minang then return M.str_drift(elm, m, lw) end
-  if abs(el)  < minlen then return M.cur_thin (elm, m, lw) end
+  if abs(ds)  < minlen then return M.cur_thin (elm, m, lw) end
 
-  local sdir, tdir, V, W in m
-  local l, ang = el*sdir*lw, ang*tdir*lw
-  local rho = l/ang
+  local V, W in m
+  local ang = ang*lw
+  local rho = ds/ang*lw
 
   Ve:fill{rho*(cos(ang)-1), 0, rho*sin(ang)}
   We:roty(-ang)
