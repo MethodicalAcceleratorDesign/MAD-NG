@@ -127,21 +127,21 @@ function M.changeref (elm, m, lw_)
   local lw = lw_ or 1
 
   -- translate
-  if trn and lw < 0 then
-    Ve:fill{-dx*tdir, -dy*tdir, -dz*tdir}
-    V:add(W:mul(Ve, U), V)  -- V = W*Ve+V
+  if trn and lw > 0 then
+    Ve:fill{dx*tdir, dy*tdir, dz*tdir}
+    V:add(W:mul(Ve, U), V)  -- V = V+W*Ve
   end
 
   -- rotate
   if rot then
-    We:rotzxy(-dphi*lw*tdir, dthe*lw*tdir, dpsi*lw*tdir, lw<0)
+    We:rotzxy(-dphi*tdir, dthe*tdir, dpsi*tdir, lw<0)
     W:mul(We, W)            -- W = W*We
   end
 
   -- translate
-  if trn and lw > 0 then
+  if trn and lw < 0 then
     Ve:fill{dx*tdir, dy*tdir, dz*tdir}
-    V:add(W:mul(Ve, U), V)  -- V = W*Ve+V
+    V:sub(W:mul(Ve, U), V)  -- V = V-W*Ve
   end
 end
 
@@ -160,11 +160,13 @@ function M.changenrj (elm_, m_, lw_)
   -- N/A for survey
 end
 
--- Misalign (lw_>0: entry, lw_<0: exit)
+-- Misalign (misalignment, lw_>0: entry, lw_<0: exit)
+
+local misalignexi
 
 function M.misalign (elm, m, lw_)
   if lw_ == 0 then return end
-  if (lw_ or 1) < 0 then return M.misalignexit(elm, m, lw_) end
+  if (lw_ or 1) < 0 then return misalignexi(elm, m) end
 
   local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
@@ -174,22 +176,32 @@ function M.misalign (elm, m, lw_)
 
   if not (trn or rot) then return end
 
-  local tdir, V, W in m
+  local sdir, V, W in m
+
+  -- misalignment at entry and global frame
+  -- forward : x1' = R*x1+T      => V = V+W*T   ; W = W*R
+  -- backward: x1  = R^t*(x1'-T) => W = W*R:t() ; V = V-W*T 
 
   -- translate
-  if trn then
-    T:fill{dx*tdir, dy*tdir, dz*tdir}
-    V:add(W:mul(T, U), V)  -- V = W*T+V
+  if trn and sdir > 0 then
+    T:fill{dx, dy, dz}
+    V:add(W:mul(T, U), V)  -- V = V+W*T
   end
 
   -- rotate
   if rot then
-    R:rotzxy(-dphi*tdir, dthe*tdir, dpsi*tdir)
-    W:mul(R, W)            -- W = W*R
+    R:rotzxy(-dphi, dthe, dpsi, sdir<0)
+    W:mul(R, W)            -- W = W*R or W*R:t()
+  end
+
+  -- translate
+  if trn and sdir < 0 then
+    T:fill{dx, dy, dz}
+    V:sub(W:mul(T, U), V)  -- V = V-W*T
   end
 end
 
-function M.misalignexit (elm, m, lw_)
+function misalignexi (elm, m)
   local dx  , dy  , dz   = elm.dx     or 0, elm.dy   or 0, elm.dz   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
 
@@ -198,27 +210,28 @@ function M.misalignexit (elm, m, lw_)
 
   if not (trn or rot) then return end
 
-  local el, ang, etlt, sdir, tdir, V, W in m
-  local l, ang, tlt = el*sdir, ang*tdir, etlt*tdir
-
   -- translation
-  if trn then
-    T:fill{dx*tdir, dy*tdir, dz*tdir}
-  else
-    T:zeros()
-  end
+  if trn then T:fill{dx, dy, dz} else T:zeros() end
 
   -- rotation
-  if rot then
-    R:rotzxy(-dphi*tdir, dthe*tdir, dpsi*tdir)
-  end
+  if rot then R:rotzxy(-dphi, dthe, dpsi) end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(Rb.data, Tb.data, l, ang, tlt, rot and R.data or nil, T.data)
+  local el, ang, etlt, sdir, edir, V, W in m
+  _C.mad_mat_rtbar(Rb.data, Tb.data,
+                   el, ang*edir, etlt*edir, rot and R.data or nil, T.data)
 
-  -- apply inverse misalignment to global frame
-  W:mult(Rb, W)                -- W = W*Rb:t()
-  V:sub(W:mul(Tb, U), V)       -- V = V - W*Tb
+  -- misalignment at exit and global frame
+  -- forward : x2  = Rb^t*(x2'-Tb) => W = W*Rb:t() ; V = V-W*Tb 
+  -- backward: x2' = Rb*x2+Tb      => V = V+W*Tb   ; W = W*Rb
+
+  if sdir > 0 then 
+    W:mult(Rb, W)           -- W = W*Rb:t()
+    V:sub(W:mul(Tb, U), V)  -- V = V - W*Tb
+  else
+    V:add(W:mul(Tb, U), V)  -- V = V + W*Tb
+    W:mul(Rb, W)            -- W = W*Rb
+  end
 end
 
 -- kinds ----------------------------------------------------------------------o
