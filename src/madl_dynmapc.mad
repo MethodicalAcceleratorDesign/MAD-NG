@@ -1,0 +1,73 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Dynamic 6D maps (SABAC)
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: I. Shreyber, irina.tecker at cern.ch
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a catalog of dynamical 6D maps for SABAC integrator (i.e. track)
+    maps must have the following calling convention:
+      dynmap(elm, map, length_weight, corrector_weight)
+    (see the symplectic integrators)
+  - TODO: list the expected fields for elm and m
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- Extra maps for SABAC integrators -------------------------------------------o
+
+function M.drift_sabac (elm, m, lw)
+  local el, sdir, npar, beam, T in m
+  local l = el*lw*sdir
+
+  mdump('drift_sabac-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local _beta = 1/(m[i].beam or beam).beta
+    local l_dp = l/(1 + (2*_beta)*pt + pt^2)
+
+    m[i].x = x + px*l_dp
+    m[i].y = y + py*l_dp
+    m[i].t = t - 0.5*(px^2+py^2)*l_dp^2/l
+  end
+
+  mdump('drift_sabac-1:', l, m)
+end
+
+function M.quad_corr_sabac (elm, m, lw, w)
+  local el, sdir, tdir, npar, k1 in m
+  local l, k1w2 = el*lw*sdir, k1^2*tdir*w
+
+  mdump('quad_corr_sabac-0:', l, m)
+
+  for i=1,npar do
+    local x, px, y, py, t, pt in m[i]
+    local  beam = m[i].beam or m.beam
+    local  bdir = tdir*beam.charge
+    local _beta = 1/beam.beta
+    local  l_dp = l/(1 + (2*_beta)*pt + pt^2)
+
+    m[i].px = px + l^2*k1w2*x*l_dp
+    m[i].py = py + l^2*k1w2*y*l_dp
+    m[i].t  = t  + l  *k1w2*0.5*(x^2+y^2)*l_dp^2
+  end
+
+  mdump('quad_corr_sabac-1:', l, m)
+end
+
+-- end ------------------------------------------------------------------------o
+return { dynmapc = M }
