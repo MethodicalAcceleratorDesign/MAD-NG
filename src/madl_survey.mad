@@ -21,6 +21,14 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
+--[=[
+Notes about directions and quantities:
+  element direction   edir: affects curvatures (edir = seq.dir).
+  track direction (s) sdir: affects lengths    (sdir = cmd.dir).
+  time direction  (t) tdir: affects angles     (tdir = edir x sdir).
+  beam direction      bdir: affects strengths  (bdir = edir x sdir x chg).
+]=]
+
 -- locals ---------------------------------------------------------------------o
 
 local vector, matrix, element, mtable, command                   in MAD
@@ -43,7 +51,7 @@ local thinonly, thickonly, driftonly                             in MAD.symint
 
 -- geometric maps -------------------------------------------------------------o
 
-local str_drift, cur_thin, cur_thick                             in MAD.geomap
+local strex_drift, curex_thick, curex_thin                       in MAD.geomap
 
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
@@ -51,8 +59,8 @@ local xrotation, yrotation, srotation, translate,
 -- element tracking -----------------------------------------------------------o
 
 local function trackelm (elm, mflw, track, thick, thin)
-  local rot = fnone
   local mis = mflw.misalign and misalign or fnone
+  local rot = fnone
   local sdir, tlt in mflw
 
   if abs(tlt) >= minang then
@@ -69,31 +77,34 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, mflw)
-  mflw.ang, mflw.tlt = 0, 0
+  mflw.el, mflw.ang, mflw.tlt = 0, 0, 0
   thinonly(elm, mflw, 1, nil, fnone)
 end
 
 local function track_thin (elm, mflw)
-  mflw.ang, mflw.tlt = elm.angle*mflw.tdir, elm.tilt*mflw.tdir
-  trackelm(elm, mflw, thinonly, nil, cur_thin)
+  local tdir in mflw
+  mflw.el, mflw.ang, mflw.tlt = 0, elm.angle*tdir, elm.tilt*tdir
+  trackelm(elm, mflw, thinonly, nil, curex_thin)
 end
 
 local function track_thick (elm, mflw)
-  mflw.ang, mflw.tlt = elm.angle*mflw.tdir, elm.tilt*mflw.tdir
-  local track = abs(mflw.ds) >= minlen and thickonly or driftonly
-  trackelm(elm, mflw, track, cur_thick)
+  local ds, tdir in mflw
+  mflw.el, mflw.ang, mflw.tlt = ds, elm.angle*tdir, elm.tilt*tdir
+  local thick = abs(ds) >= minlen and thickonly or driftonly
+  trackelm(elm, mflw, thick, curex_thick)
 end
 
 local function track_drift (elm, mflw)
-  mflw.ang, mflw.tlt = 0, 0
+  local ds, tdir in mflw
+  mflw.el, mflw.ang, mflw.tlt = ds, 0, 0
   if is_implicit(elm) then
-    local trackone = mflw.implicit and
-                  abs(mflw.ds) >= minlen and thickonly or driftonly
-    trackone(elm, mflw, 1, str_drift)
+    local track = mflw.implicit and
+                  abs(ds) >= minlen and thickonly or driftonly
+    track(elm, mflw, 1, strex_drift)
   else
-    mflw.tlt = elm.tilt*mflw.tdir
-    local track = abs(mflw.ds) >= minlen and thickonly or driftonly
-    trackelm(elm, mflw, track, str_drift)
+    mflw.tlt = elm.tilt*tdir
+    local thick = abs(ds) >= minlen and thickonly or driftonly
+    trackelm(elm, mflw, thick, strex_drift)
   end
 end
 
@@ -136,11 +147,11 @@ local function save_dat (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local A, V, W, ds, ang, eidx, tlt, sdir, tdir, spos, turn, mtbl,
+  local A, V, W, el, ang, eidx, tlt, sdir, tdir, spos, turn, mtbl,
         relative, mapsave in mflw
 
   local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
-  local dsw = ds*lw
+  local elw = el*lw
 
   local x, y, z = V[1], V[2], V[3]
   local phi, the, psi = W:torotzxy()
@@ -151,7 +162,7 @@ local function save_dat (elm, mflw, lw, islc)
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
   -- keep order!
-  mtbl = mtbl + { name, kind, spos+dsw, dsw, ang*lw, tlt,
+  mtbl = mtbl + { name, kind, spos+elw, elw, ang*lw, tlt,
                   x, y, z, the, phi, psi, psi+tlt, islc, turn, tdir, eidx,
                   W }
   return true
@@ -309,8 +320,8 @@ local function make_mflow (self)
   mflw.turn=1                -- current turn index
 
   mflw.s0=s0                 -- initial s-position (i.e. offset)
-  mflw.ds=nil                -- s-length of results (signed)
-  mflw.spos=nil              -- s-position of results (signed)
+  mflw.ds=0                  -- s-length of results (signed)
+  mflw.spos=0                -- s-position of results (signed)
   mflw.nslc=nslc             -- number of slices for each element (number)
   mflw.nslice=nslice         -- slices for each element (number or iterable)
   mflw.implicit=implicit     -- slice also implicit elements
@@ -339,6 +350,7 @@ local function make_mflow (self)
 
   -- for processing elements local frame
   mflw.__edat = setmetatable({
+    el=0,                    -- current element length
     ang=0,                   -- current element angle
     tlt=0,                   -- current element tilt angle
     nsl=0,                   -- current element number of slices
