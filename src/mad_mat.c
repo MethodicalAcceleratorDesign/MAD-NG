@@ -1598,7 +1598,9 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 
 // -- Survey ------------------------------------------------------------------o
 
-// Fast computation of Rbar and Tbar for misalignments at element exit
+// Fast computation of Rbar and Tbar for misalignments at element exit (forward)
+// Tbar = W^t (RV+T-V)
+// Rbar = W^t R W
 
 #include "mad_cst.h"
 
@@ -1608,7 +1610,7 @@ mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
 {
   assert(Rb && Tb && T);
 
-  if (fabs(ang) < mad_cst_MINANG) {           // -- straight ------------------o 
+  if (fabs(ang) < mad_cst_MINANG) {           // -- straight ------------------o
     if (R_) {
       num_t Ve[N] = {0, 0, el};               // We = I
       mad_mat_mul (R_, Ve, Tb, N, 1, N);
@@ -1639,7 +1641,7 @@ mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
       num_t Vt[N];
       mad_mat_mul (R_, Ve, Vt, N, 1, N);
       mad_vec_sub (Vt, Ve, Vt, N);
-      mad_vec_add (Vt, T , Vt, N);             
+      mad_vec_add (Vt, T , Vt, N);
       mad_mat_tmul(We, Vt, Tb, N, 1, N);      // Tb = We:t()*(R*Ve + T - Ve)
       mad_mat_tmul(We, R_, Wt, N, N, N);
       mad_mat_mul (Wt, We, Rb, N, N, N);      // Rb = We:t()*R*We
