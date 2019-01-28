@@ -81,31 +81,28 @@ local xrotation, yrotation, srotation, translate,
 -- sabac: TODO
 local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr        in MAD.dynmap
 
--- debug ----------------------------------------------------------------------o
-
-local nodump -- = true
-
-local function mdump(str, ...)
-  if nodump then return end
-  print(str, ...)
-end
-
 -- strengths and phases -------------------------------------------------------o
 
-local zs = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+local zs = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
 
-local function get_mult (elm, m)
+assert(#zs == 20, "invalid number of default field component")
+
+local function get_mult (elm, m, n)
   local knl, ksl, dknl, dksl in elm
-  local nmul = max(#(knl or {}), #(ksl or {}), #(dknl or {}), #(dksl or {}))
-  m.nmul = nmul
+  m.nmul = min(20,max(#(knl or {}), #(ksl or {}), #(dknl or {}), #(dksl or {})))
 
   knl, ksl, dknl, dksl = knl or zs, ksl or zs, dknl or zs, dksl or zs
+
   m.knl[1], m.knl[2] = knl[1] + dknl[1], knl[2] + dknl[2]
   m.ksl[1], m.ksl[2] = ksl[1] + dksl[1], ksl[2] + dksl[2]
 
-  for i=3,nmul do
+  for i=3,m.nmul do
     m.knl[i] = (knl[i] + dknl[i]) / fact(i-1)
     m.ksl[i] = (ksl[i] + dksl[i]) / fact(i-1)
+  end
+
+  for i=m.nmul+1,n or 0 do
+    m.knl[i], m.ksl[i] = 0, 0
   end
 end
 
@@ -184,13 +181,11 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, m)
---  mdump('\ntrack_marker', elm.name)
   m.el, m.ang, m.tlt = 0, 0, 0
   thinonly(elm, m, 1, nil, fnone)
 end
 
 local function track_drift (elm, m)
---  mdump('\ntrack_drift', elm.name, 'l=', elm.l)
   local ds, tdir in m
   m.el, m.ang, m.tlt = ds, 0, 0
 
@@ -207,15 +202,14 @@ local function track_drift (elm, m)
 end
 
 local function track_multipole (elm, m)
-  get_mult(elm, m)
+  get_mult(elm, m, 0)
   if m.nmul == 0 then return track_marker(elm, m) end
 
---  mdump('\ntrack_multi', elm.name, 'l=', elm.l, 'nmul=', m.nmul)
   local sdir, tdir in m
   m.ang, m.tlt = elm.angle*tdir, elm.tilt*tdir
 
   local kick
-  if  abs(m.ang) < minang then
+  if abs(m.ang) < minang then
     kick = strex_kick
     m.el = 0
   else
@@ -227,7 +221,6 @@ local function track_multipole (elm, m)
 end
 
 local function track_sbend (elm, m)
---  mdump('\ntrack_sbend', elm.name, 'l=', elm.l, 'angle=', elm.angle)
   get_mult(elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local angle, tilt, k0, k0s, k1, k1s in elm
@@ -244,9 +237,6 @@ local function track_sbend (elm, m)
   if nmul < 2 then
     m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
-
---  print()
---  mdump('track_sbend', 'el=', m.el, 'eh=', m.eh, 'k0=', m.k0)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -265,7 +255,6 @@ end
 local track_combined =\ error("NYI") -- for now...
 
 local function track_rbend (elm, m)
---  mdump('\ntrack_rbend', elm.name, 'l=', elm.l, 'angle=', elm.angle)
   get_mult(elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local angle, tilt, k0, k0s, k1, k1s in elm
@@ -282,8 +271,6 @@ local function track_rbend (elm, m)
   if nmul < 2 then
     m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
-
---  mdump('track_rbend', 'el=', m.el, 'eld=', m.eld, 'eh=', m.eh, 'k0=', m.k0)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -302,7 +289,6 @@ local function track_rbend (elm, m)
 end
 
 local function track_quadrupole (elm, m)
---  mdump('\ntrack_quad', elm.name, 'l=', elm.l)
   get_mult(elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k0, k0s, k1, k1s in elm
@@ -317,8 +303,6 @@ local function track_quadrupole (elm, m)
   if nmul < 2 then
     m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
-
---  mdump('track_quad', 'el=', m.el, 'eld=', m.eld, 'eh=', m.eh, 'k1=', m.k1)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -343,8 +327,7 @@ local function track_quadrupole (elm, m)
 end
 
 local function track_sextupole (elm, m)
---  mdump('\ntrack_sext', elm.name, 'l=', elm.l)
-  get_mult(elm, m)
+  get_mult(elm, m, 3)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k2, k2s in elm
   local l = abs(ds)
@@ -359,16 +342,13 @@ local function track_sextupole (elm, m)
     m.nmul = max((k2 or k2s) and 3 or 0, nmul)
   end
 
---  mdump('track_sext', 'el=', m.el, 'k2=', m.knl[3])
-
   local method = elm.method or m.method
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_octupole (elm, m)
---  mdump('\ntrack_octu', elm.name, 'l=', elm.l)
-  get_mult(elm, m)
+  get_mult(elm, m, 4)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k3, k3s in elm
   local l = abs(ds)
@@ -383,16 +363,13 @@ local function track_octupole (elm, m)
     m.nmul = max((k3 or k3s) and 4 or 0, nmul)
   end
 
---  mdump('track_octu', 'el=', m.el, 'k3=', m.knl[4])
-
   local method = elm.method or m.method
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_decapole (elm, m)
---  mdump('\ntrack_deca', elm.name, 'l=', elm.l)
-  get_mult(elm, m)
+  get_mult(elm, m, 5)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k4, k4s in elm
   local l = abs(ds)
@@ -407,16 +384,13 @@ local function track_decapole (elm, m)
     m.nmul = max((k4 or k4s) and 5 or 0, nmul)
   end
 
---  mdump('track_deca', 'el=', m.el, 'k4=', m.k4)
-
   local method = elm.method or m.method
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_dodecapole (elm, m)
---  mdump('\ntrack_dodeca', elm.name, 'l=', elm.l)
-  get_mult(elm, m)
+  get_mult(elm, m, 6)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k5, k5s in elm
   local l = abs(ds)
@@ -430,8 +404,6 @@ local function track_dodecapole (elm, m)
   if nmul < 6 then
     m.nmul = max((k5 or k5s) and 6 or 0, nmul)
   end
-
---  mdump('track_dodeca', 'el=', m.el, 'k5=', m.knl[6])
 
   local method = elm.method or m.method
   local track = #elm == 0 and trackelm or tracksub
