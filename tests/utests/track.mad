@@ -55,8 +55,11 @@ local eps, pi                                                   in MAD.constant
 local track, beam, element, sequence, option, filesys           in MAD
 local fnone, ftrue                                              in MAD.gfunc
 
-local marker, drift, sbend, rbend, quadrupole, multipole        in element
+local marker, drift, multipole, sbend, rbend, quadrupole,
+      sextupole, octupole, decapole, dodecapole                 in element
 local observe                                                   in element.flags
+
+local dat = require 'track_dat'
 
 local refdir = \s -> 'track_ref/'..(s or '')
 local rundir = \s -> 'track_run/'..(s or '')
@@ -122,18 +125,16 @@ local function mkMULT (dir_, chg_)
   return seq   -- seq:dumpseq()
 end
 
-local function mkQUAD (dir_, chg_, skw_)
+local function mkSBEND (dir_, chg_)
   local dir = dir_ or 1 -- sequence direction
   local chg = chg_ or 1 -- particle charge
-  local skw = skw_ or 0 -- skew quad
-  local tlt =  pi/4        *dir*skw
-  local k1f =  0.2110222185*dir*chg
-  local k1d = -0.2110222186*dir*chg
+  local k0f =  2*pi/1e2/1.5*dir*chg
+  local k0d = -2*pi/1e2/1.5*dir*chg
   local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    quadrupole 'm1' {at=0  , l=1.5, k1=k1f*(1-skw), k1s=k1f*skw, tilt=tlt},
-    drift      'd1' {at=1.5, l=3.5},
-    quadrupole 'm2' {at=5  , l=1.5, k1=k1d*(1-skw), k1s=k1d*skw, tilt=tlt},
-    drift      'd2' {at=6.5, l=3.5},
+    sbend 'm1' {at=0  , l=1.5, k0=k0f, angle=k0f*chg*1.5},
+    drift 'd1' {at=1.5, l=3.5},
+    sbend 'm2' {at=5  , l=1.5, k0=k0d, angle=k0d*chg*1.5},
+    drift 'd2' {at=6.5, l=3.5},
   }
   return seq   -- seq:dumpseq()
 end
@@ -152,197 +153,110 @@ local function mkRBEND (dir_, chg_)
   return seq   -- seq:dumpseq()
 end
 
-local function mkSBEND (dir_, chg_)
+local function mkQUAD (dir_, chg_, mul, skw)
   local dir = dir_ or 1 -- sequence direction
   local chg = chg_ or 1 -- particle charge
-  local k0f =  2*pi/1e2/1.5*dir*chg
-  local k0d = -2*pi/1e2/1.5*dir*chg
+  local tlt =  pi/4        *dir*skw
+  local k1f =  0.2110222185*dir*chg
+  local k1d = -0.2110222186*dir*chg
   local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    sbend 'm1' {at=0  , l=1.5, k0=k0f, angle=k0f*chg*1.5},
-    drift 'd1' {at=1.5, l=3.5},
-    sbend 'm2' {at=5  , l=1.5, k0=k0d, angle=k0d*chg*1.5},
-    drift 'd2' {at=6.5, l=3.5},
+    quadrupole 'm1' {at=0  , l=1.5, k1  =  k1f*(1-skw)*(1-mul),
+                                    k1s =  k1f*   skw *(1-mul),
+                                    knl={0,k1f*(1-skw)*   mul*1.5},
+                                    ksl={0,k1f*   skw *   mul*1.5}, tilt=tlt},
+    drift      'd1' {at=1.5, l=3.5},
+    quadrupole 'm2' {at=5  , l=1.5, k1  =  k1d*(1-skw)*(1-mul),
+                                    k1s =  k1d*   skw *(1-mul),
+                                    knl={0,k1d*(1-skw)*   mul*1.5},
+                                    ksl={0,k1d*   skw *   mul*1.5}, tilt=tlt},
+    drift      'd2' {at=6.5, l=3.5},
   }
   return seq   -- seq:dumpseq()
 end
 
--- DRIFT Testsuite -------------------------------------------------------------o
+local function mkSEXT (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/6*dir*skw
+  local k2f =  0.25*dir*chg
+  local k2d = -0.2 *dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    sextupole 'm1' {at=0  , l=1.5, k2  =    k2f*(1-skw)*(1-mul),
+                                   k2s =    k2f*   skw *(1-mul),
+                                   knl={0,0,k2f*(1-skw)*   mul*1.5},
+                                   ksl={0,0,k2f*   skw *   mul*1.5}, tilt=tlt},
+    drift     'd1' {at=1.5, l=3.5},
+    sextupole 'm1' {at=5  , l=1.5, k2  =    k2d*(1-skw)*(1-mul),
+                                   k2s =    k2d*   skw *(1-mul),
+                                   knl={0,0,k2d*(1-skw)*   mul*1.5},
+                                   ksl={0,0,k2d*   skw *   mul*1.5}, tilt=tlt},
+    drift     'd2' {at=6.5, l=3.5},
+  }
+  return seq   -- seq:dumpseq()
+end
 
-local DRIFT = {
--- contraints
-  eps_t = 1, -- tpsa
-  eps_b = 1, -- backtrack
+local function mkOCTU (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/8*dir*skw
+  local k3f =  0.25*dir*chg
+  local k3d = -0.2 *dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    octupole 'm1' {at=0  , l=1.5, k3  =      k3f*(1-skw)*(1-mul),
+                                  k3s =      k3f*   skw *(1-mul),
+                                  knl={0,0,0,k3f*(1-skw)*   mul*1.5},
+                                  ksl={0,0,0,k3f*   skw *   mul*1.5}, tilt=tlt},
+    drift    'd1' {at=1.5, l=3.5},
+    octupole 'm1' {at=5  , l=1.5, k3  =      k3d*(1-skw)*(1-mul),
+                                  k3s =      k3d*   skw *(1-mul),
+                                  knl={0,0,0,k3d*(1-skw)*   mul*1.5},
+                                  ksl={0,0,0,k3d*   skw *   mul*1.5}, tilt=tlt},
+    drift     'd2' {at=6.5, l=3.5},
+  }
+  return seq   -- seq:dumpseq()
+end
 
--- initial conditions
-  x0  = {4e-6, 1e-7, 3e-6, 2e-7, 2e-7, 1e-7},
+local function mkDECA (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/10*dir*skw
+  local k4f =  0.25 *dir*chg
+  local k4d = -0.2  *dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    decapole 'm1' {at=0  , l=1.5, k4  =        k4f*(1-skw)*(1-mul),
+                                  k4s =        k4f*   skw *(1-mul),
+                                  knl={0,0,0,0,k4f*(1-skw)*   mul*1.5},
+                                  ksl={0,0,0,0,k4f*   skw *   mul*1.5}, tilt=tlt},
+    drift    'd1' {at=1.5, l=3.5},
+    decapole 'm1' {at=5  , l=1.5, k4  =        k4d*(1-skw)*(1-mul),
+                                  k4s =        k4d*   skw *(1-mul),
+                                  knl={0,0,0,0,k4d*(1-skw)*   mul*1.5},
+                                  ksl={0,0,0,0,k4d*   skw *   mul*1.5}, tilt=tlt},
+    drift     'd2' {at=6.5, l=3.5},
+  }
+  return seq   -- seq:dumpseq()
+end
 
--- MAD-X track (final)
-  mdx = {4.9999999e-06, 1e-07, 4.9999998e-06, 2e-07, 2.000000107e-07, 1.000000003e-07},
-
--- DKD MAD, 1 slice
-  x2  = {4.9999999000000216e-06, 9.9999999999999995e-08, 4.9999998000000437e-06, 1.9999999999999999e-07, 2.0000001033082526e-07, 9.9999999999999995e-08},
-  xt  = {4.9999999000000216e-06, 9.9999999999999995e-08, 4.9999998000000437e-06, 1.9999999999999999e-07, 2.0000001033082526e-07, 9.9999999999999995e-08},
-  x4  = {4.9999999000000216e-06, 9.9999999999999995e-08, 4.9999998000000437e-06, 1.9999999999999999e-07, 2.0000001033082526e-07, 9.9999999999999995e-08},
-  x6  = {4.9999999000000216e-06, 9.9999999999999995e-08, 4.9999998000000437e-06, 1.9999999999999999e-07, 2.0000001033082526e-07, 9.9999999999999995e-08},
-  x8  = {4.9999999000000216e-06, 9.9999999999999995e-08, 4.9999998000000437e-06, 1.9999999999999999e-07, 2.0000001033082526e-07, 9.9999999999999995e-08},
-
--- DKD MAD, 10 slices (override 1 slice)
-  x2  = {4.9999999000000259e-06, 9.9999999999999995e-08, 4.9999998000000488e-06, 1.9999999999999999e-07, 2.0000001110798138e-07, 9.9999999999999995e-08},
-  xt  = {4.9999999000000259e-06, 9.9999999999999995e-08, 4.9999998000000488e-06, 1.9999999999999999e-07, 2.0000001110798138e-07, 9.9999999999999995e-08},
-  x4  = {4.9999999000000259e-06, 9.9999999999999995e-08, 4.9999998000000488e-06, 1.9999999999999999e-07, 2.0000001110798138e-07, 9.9999999999999995e-08},
-  x6  = {4.9999999000000259e-06, 9.9999999999999995e-08, 4.9999998000000488e-06, 1.9999999999999999e-07, 2.0000001110798138e-07, 9.9999999999999995e-08},
-  x8  = {4.9999999000000259e-06, 9.9999999999999995e-08, 4.9999998000000488e-06, 1.9999999999999999e-07, 2.0000001110798138e-07, 9.9999999999999995e-08},
-
--- DKD PTC, 1 slice
-  p2  = {4.9999999000000216E-006, 9.9999999999999995E-008, 4.9999998000000437E-006, 1.9999999999999999E-007, 2.0000001033082526E-007, 9.9999999999999995E-008},
-  p4  = {4.9999999000000216E-006, 9.9999999999999995E-008, 4.9999998000000437E-006, 1.9999999999999999E-007, 2.0000001033082526E-007, 9.9999999999999995E-008},
-  p6  = {4.9999999000000216E-006, 9.9999999999999995E-008, 4.9999998000000437E-006, 1.9999999999999999E-007, 2.0000001033082526E-007, 9.9999999999999995E-008},
-}
-
--- MULT Testsuite -------------------------------------------------------------o
-
-local MULT = {
--- contraints
-  eps_t = 5, -- tpsa
-  eps_b = 5, -- backtrack
-
--- initial conditions
-  x0  = {0, 1e-6, 0, 5e-7, 0, 0},
---x0  = {4e-6, 1e-7, 3e-6, 2e-7, 2e-7, 1e-7},
-
--- MAD-X track (final)
-  mdx = {},
-
--- DKD MAD, 10 slices (final)
-  x2  = {9.1984463781625e-06,  8.3235741246724e-07, 5.0000000000027e-06, 5e-07, 0.00087778417279077, 0}, -- o=2
-  xt  = {9.1986606700005e-06,  8.3236330659767e-07, 5.0000000000028e-06, 5e-07, 0.00087778415868867, 0}, -- teapot
-  x4  = {7.6800464604013e-06,  5.1717743362473e-07, 5.0000000000022e-06, 5e-07, 0.00087776879524060, 0}, -- o=4
-  x6  = {4.9671555304774e-06, -3.6496213212427e-08, 5.0000000000017e-06, 5e-07, 0.00087773919545320, 0}, -- o=6
-  x8  = {7.1722244443713e-07, -8.6696141362557e-07, 5.0000000000021e-06, 5e-07, 0.00087768516807019, 0}, -- o=8
-
--- DKD PTC, 10 slices (final)
-  p2  = {7.9306379482159E-06, 9.9999980807120E-07, 5.0000048362651E-06, 5E-07, -9.6725315339441E-06, 0}, -- o=2
-  p4  = {9.9981725319316E-06, 1.0000000000149E-06, 4.9999998425082E-06, 5E-07,  3.1498365293814E-07, 0}, -- o=4
-  p6  = {9.9980259575486E-06, 9.9999999998712E-07, 4.9999998429028E-06, 5E-07,  3.1419440826852E-07, 0}, -- o=6
-}
-
--- QUAD Testsuite -------------------------------------------------------------o
-
-local QUAD = {
--- contraints
-  eps_s = 7, -- skew
-  eps_t = 6, -- tpsa
-  eps_b = 5, -- backtrack
-
--- initial conditions
-  x0  = {0, 1e-6, 0, 5e-7, 0, 0},
---x0  = {4e-6, 1e-7, 3e-6, 2e-7, 2e-7, 1e-7},
-
--- MAD-X track (final)
-  mdx = {1.460761371e-05    , 2.360452481e-06    , 1.797764445e-06    , -3.929287342e-07    , -1.454192453e-11    , 0},
-
--- DKD MAD, 10 slices (final)
-  x2  = {1.4600656220217e-05, 2.3588119782185e-06, 1.7943847978254e-06, -3.9372067136230e-07, -1.4531875702772e-11, 0}, -- o=2
-  xt  = {1.4606200539093e-05, 2.3602690620606e-06, 1.7977500040831e-06, -3.9282268749294e-07, -1.4538426018618e-11, 0}, -- teapot
-  x4  = {1.4607603046229e-05, 2.3604497079904e-06, 1.7977728935816e-06, -3.9292618283356e-07, -1.4541645665389e-11, 0}, -- o=4
-  x6  = {1.4607613705636e-05, 2.3604524793350e-06, 1.7977644418495e-06, -3.9292873471424e-07, -1.4541645665389e-11, 0}, -- o=6
-  x8  = {1.4607613712814e-05, 2.3604524808132e-06, 1.7977644446180e-06, -3.9292873420957e-07, -1.4541812198843e-11, 0}, -- o=8
-
--- DKD PTC, 10 slices (final)
-  p2  = {1.4600656220217E-05, 2.3588119782185E-06, 1.7943847978254E-06, -3.9372067136230E-07, -1.4533263481554E-11, 0}, -- o=2
-  p4  = {1.4607603046229E-05, 2.3604497079903E-06, 1.7977728935816E-06, -3.9292618283356E-07, -1.4543033444170E-11, 0}, -- o=4
-  p6  = {1.4607613705636E-05, 2.3604524793350E-06, 1.7977644418495E-06, -3.9292873471424E-07, -1.4542589354960E-11, 0}, -- o=6
-
--- TKT MAD, 1 slice (final)
-  x2t = {1.4607613712814e-05, 2.3604524808134e-06, 1.7977644446181e-06, -3.9292873420967e-07, -1.4268142223273e-11, 0}, -- o=2
-  xtt = {1.4607613712815e-05, 2.3604524808133e-06, 1.7977644446177e-06, -3.9292873420968e-07, -1.4631407196930e-11, 0}, -- teapot
-  x4t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420967e-07, -1.4538148462861e-11, 0}, -- o=4
-  x6t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4541257087330e-11, 0}, -- o=6
-  x8t = {1.4607613712814e-05, 2.3604524808133e-06, 1.7977644446178e-06, -3.9292873420968e-07, -1.4542589354960e-11, 0}, -- o=8
-
--- TKT PTC, 1 slice (final)
-  p2t = {1.4607613712814E-05, 2.3604524808134E-06, 1.7977644446181E-06, -3.9292873420968E-07, -1.4269030401692E-11, 0}, -- o=2
-  p4t = {1.4607613712814E-05, 2.3604524808133E-06, 1.7977644446178E-06, -3.9292873420969E-07, -1.4545697979429E-11, 0}, -- o=4
-  p6t = {1.4607613712814E-05, 2.3604524808133E-06, 1.7977644446178E-06, -3.9292873420968E-07, -1.4542589354960E-11, 0}, -- o=6
-}
-
--- SBEND Testsuite ------------------------------------------------------------o
-
-local SBEND = {
--- constraints
-  eps_t = 64, -- tpsa
-  eps_b = 32, -- backtrack
-
--- initial conditions
-  x0  = {0, 1e-6, 0, 5e-7, 0, 0},
---x0  = {4e-6, 1e-7, 3e-6, 2e-7, 2e-7, 1e-7},
-
--- MAD-X track (final)
-  mdx = {9.91855681e-06, 9.829272954e-07, 5e-06, 5e-07, 3.133578921e-07, 2.220446049e-16},
-
--- DKD MAD, 10 slices (final)
-  x2  = {7.8756914406047e-06, 9.8836091423030e-07, 5.0000048365745e-06, 5e-07, -9.6731502318148e-06, 0}, -- o=2
-  xt  = {8.8869122693544e-06, 9.8567131529221e-07, 4.9999998724726e-06, 5e-07,  2.5505480993893e-07, 0}, -- teapot
-  x4  = {9.9187011397760e-06, 9.8292691050501e-07, 4.9999998429265e-06, 5e-07,  3.1414709789068e-07, 0}, -- o=4
-  x6  = {9.9185563041993e-06, 9.8292729571944e-07, 4.9999998433211e-06, 5e-07,  3.1335786881970e-07, 0}, -- o=6
-  x8  = {9.9185563046384e-06, 9.8292729570210e-07, 4.9999998433211e-06, 5e-07,  3.1335787331610e-07, 0}, -- o=8
-
--- DKD PTC, 10 slices (final)
-  p2  = {7.8756914406164E-06, 9.8836091423117E-07, 5.0000048365745E-06, 5E-07, -9.6731502332581E-06, 0}, -- o=2
-  p4  = {9.9187011398589E-06, 9.8292691050328E-07, 4.9999998429265E-06, 5E-07,  3.1414709722455E-07, 0}, -- o=4
-  p6  = {9.9185563040854E-06, 9.8292729571858E-07, 4.9999998433211E-06, 5E-07,  3.1335786854214E-07, 0}, -- o=6
-
--- TKT MAD, 1 slice (final)
-  x2t = {9.9185563046240e-06, 9.8292729571807e-07, 4.9999998433211e-06, 5e-07, 3.1335787253894e-07, 0}, -- o=2
-  xtt = {9.9185563046326e-06, 9.8292729572053e-07, 4.9999998433211e-06, 5e-07, 3.1335787209485e-07, 0}, -- teapot
-  x4t = {9.9185563081537e-06, 9.8292729571148e-07, 4.9999998433211e-06, 5e-07, 3.1335787253894e-07, 0}, -- o=4
-  x6t = {9.9185563045986e-06, 9.8292729571079e-07, 4.9999998433211e-06, 5e-07, 3.1335787165077e-07, 0}, -- o=6
-  x8t = {9.9185563151951e-06, 9.8292729569319e-07, 4.9999998433211e-06, 5e-07, 3.1335787431530e-07, 0}, -- o=8
-
--- TKT PTC, 1 slice (final)
-  p2t = {9.9185563046040E-06, 9.8292729571233E-07, 4.9999998433211E-06, 5E-07, 3.1335787120668E-07, 0}, -- o=2
-  p4t = {9.9185562976379E-06, 9.8292729575214E-07, 4.9999998433211E-06, 5E-07, 3.1335787120668E-07, 0}, -- o=4
-  p6t = {9.9185562940275E-06, 9.8292729573568E-07, 4.9999998433211E-06, 5E-07, 3.1335787165077E-07, 0}, -- o=6
-}
-
--- RBEND Testsuite ------------------------------------------------------------o
-
-local RBEND = {
--- constraints
-  eps_t = 2, -- tpsa
-  eps_b = 2, -- backtrack
-
--- initial conditions
-  x0  = {0, 1e-6, 0, 5e-7, 0, 0},
---x0  = {4e-6, 1e-7, 3e-6, 2e-7, 2e-7, 1e-7},
-
--- MAD-X track (final)
-  mdx = {},
-
--- DKD MAD, 10 slices (final)
-  x2  = {9.1984463781625e-06,  8.3235741246724e-07, 5.0000000000027e-06, 5e-07, 0.00087778417279077, 0}, -- o=2
-  xt  = {9.1986606700005e-06,  8.3236330659767e-07, 5.0000000000028e-06, 5e-07, 0.00087778415868867, 0}, -- teapot
-  x4  = {7.6800464604013e-06,  5.1717743362473e-07, 5.0000000000022e-06, 5e-07, 0.00087776879524060, 0}, -- o=4
-  x6  = {4.9671555304774e-06, -3.6496213212427e-08, 5.0000000000017e-06, 5e-07, 0.00087773919545320, 0}, -- o=6
-  x8  = {7.1722244443713e-07, -8.6696141362557e-07, 5.0000000000021e-06, 5e-07, 0.00087768516807019, 0}, -- o=8
-
--- DKD PTC, 10 slices (final)
-  p2  = {7.9306379482159E-06, 9.9999980807120E-07, 5.0000048362651E-06, 5E-07, -9.6725315339441E-06, 0}, -- o=2
-  p4  = {9.9981725319316E-06, 1.0000000000149E-06, 4.9999998425082E-06, 5E-07,  3.1498365293814E-07, 0}, -- o=4
-  p6  = {9.9980259575486E-06, 9.9999999998712E-07, 4.9999998429028E-06, 5E-07,  3.1419440826852E-07, 0}, -- o=6
-
--- TKT MAD, 1 slice (final)
-  x2t = {-0.47301905761235, 1.0000000000010e-06, 5.010053825066e-06, 5e-07, -0.019230174855075, 0}, -- o=2
-  xtt = {-0.47301905761235, 1.0000000000079e-06, 5.010053825066e-06, 5e-07, -0.019230174855074, 0}, -- teapot
-  x4t = {-0.47301905761235, 1.0000000000010e-06, 5.010053825066e-06, 5e-07, -0.019230174855076, 0}, -- o=4
-  x6t = {-0.47301905761235, 1.0000000000079e-06, 5.010053825066e-06, 5e-07, -0.019230174855074, 0}, -- o=6
-  x8t = {-0.47301905761235, 9.9999999999406e-07, 5.010053825066e-06, 5e-07, -0.019230174855075, 0}, -- o=8
-
--- TKT PTC, 1 slice (final)
-  p2t = {9.9980259634782E-06, 9.9999999998018E-07, 4.9999998429028E-06, 5E-07, 3.1419441137714E-07, 0}, -- o=2
-  p4t = {9.9980259528929E-06, 1.0000000000010E-06, 4.9999998429028E-06, 5E-07, 3.1419441137714E-07, 0}, -- o=4
-  p6t = {9.9980259492673E-06, 9.9999999998018E-07, 4.9999998429028E-06, 5E-07, 3.1419441137714E-07, 0}, -- o=6
-}
+local function mkDODECA (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/12*dir*skw
+  local k5f =  0.25 *dir*chg
+  local k5d = -0.2  *dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    dodecapole 'm1' {at=0  , l=1.5, k5  =          k5f*(1-skw)*(1-mul),
+                                    k5s =          k5f*   skw *(1-mul),
+                                    knl={0,0,0,0,0,k5f*(1-skw)*   mul*1.5},
+                                    ksl={0,0,0,0,0,k5f*   skw *   mul*1.5}, tilt=tlt},
+    drift      'd1' {at=1.5, l=3.5},
+    dodecapole 'm1' {at=5  , l=1.5, k5  =          k5d*(1-skw)*(1-mul),
+                                    k5s =          k5d*   skw *(1-mul),
+                                    knl={0,0,0,0,0,k5d*(1-skw)*   mul*1.5},
+                                    ksl={0,0,0,0,0,k5d*   skw *   mul*1.5}, tilt=tlt},
+    drift      'd2' {at=6.5, l=3.5},
+  }
+  return seq   -- seq:dumpseq()
+end
 
 -- Generate All Testsuites ----------------------------------------------------o
 
@@ -352,12 +266,14 @@ local t = 'teapot'
 collectlocal(1, tenv) -- collect locals
 
 local TODO    = {MULT=true, RBEND=true}
-local has_TKT = {QUAD=true, SBEND=true, RBEND=true}
-local has_SKS = {QUAD=true} -- skew TKT
+local has_SKW = {QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true} -- skew
+local has_MUL = {SBEND=true, RBEND=true,
+                 QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true} -- multipoles
 
-for _,e in ipairs{'DRIFT','MULT','QUAD','SBEND','RBEND'} do
+for _,e in ipairs{'DRIFT','MULT','SBEND','RBEND','QUAD',
+                  'SEXT','OCTU','DECA','DODECA'} do
 
-if not TODO[e] then -- prevent to run tests not yet finalized
+if not TODO[e] then -- prevent to run tests not yet finalized§
 
   -- prelude
   local s = [[
@@ -376,10 +292,16 @@ if not TODO[e] then -- prevent to run tests not yet finalized
 
 for _,d in ipairs{0, 2} do                   -- mapdef
 for _,o in ipairs{2,'t',4,6,8} do            -- orders
-for _,m in ipairs{'DKD', 'TKT', 'SKS'} do    -- models
+for _,m in ipairs{'DKD', 'TKT'} do           -- models
+for _,z in ipairs{'K', 'M'} do               -- strength/multipoles
 
--- discard identical combination
-if m == 'DKD' or m == 'TKT' and has_TKT[e] or m == 'SKS' and has_SKS[e] then
+-- discard invalid combination
+if z == 'K' or z == 'M' and has_MUL[e] then
+
+for _,w in ipairs{'N', 'S'} do               -- normal/skew
+
+-- discard invalid combination
+if w == 'N' or w == 'S' and has_SKW[e] then
 
 for _,k in ipairs{'',                 -- simple
                   'B', 'R', 'N', 'P', -- backward, reverse, negative, position
@@ -391,18 +313,18 @@ if not (o == 't' and string.find(k,'P',1,true)) then
 
   -- test
   local s = [[
-  function TestTrack${e}:test${m}${n}D${d}M${o}${k} ()
-    local seq  = mk${e}(${r},${s},${w})
+  function TestTrack${e}:test${w}${z}${m}${n}D${d}M${o}${k} ()
+    local seq  = mk${e}(${r},${s},${y},${j})
     local beam = beam { particle = ${s}>0 and 'positron' or 'electron' }
-    local X0   = ${b}>0 and ${e}.x0 or ${e}.x${o}${t}
+    local X0   = ${b}>0 and dat.${e}.x0 or dat.${e}.x${o}${t}
     local mtbl = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=${b},
                         mapdef=${a}, model='${i}', method=${o}, nslice=${p}${n}}
 
-    mtbl:write(rundir('${e}_${m}${n}M${o}${k}'), tbl_col, tbl_hdr)
+    mtbl:write(rundir('${e}_${w}${z}${m}${n}D${d}M${o}${k}'), tbl_col, tbl_hdr)
 
     local row = mtbl[#mtbl]
     local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-    local ref = ${b}<0 and ${e}.x0 or ${e}.x${o}${t}
+    local ref = ${b}<0 and dat.${e}.x0 or dat.${e}.x${o}${t}
 
     if doprt then
       local str = string.format("%.16e, %.16e, %.16e, %.16e, %.16e, %.16e\n",
@@ -411,19 +333,20 @@ if not (o == 't' and string.find(k,'P',1,true)) then
     end
     assertAllAlmostEquals(res, ref, ${c}*eps)
   end
-  ]] % { e=e, d=d, o=o, m=m, k=k,
-         i=({DKD='DKD', TKT='TKT', SKS='TKT'})[m],
-         w=({DKD=0    , TKT=0    , SKS=1    })[m],
-         n=({DKD=10   , TKT=1    , SKS=1    })[m],
-         t=({DKD=''   , TKT='t'  , SKS='t'  })[m],
+  ]] % { e=e, d=d, o=o, m=m, k=k, w=w, z=z,
+         i=({DKD='DKD', TKT='TKT'})[m],
+         n=({DKD=10   , TKT=1    })[m],
+         t=({DKD=''   , TKT='t'  })[m],
+         j=({N=0      , S=1      })[w],
+         y=({K=0      , M=1      })[z],
          a=({[0]=false, [2]=true})[d],
          b = string.find(k,'B',1,true) and -1 or 1,        -- track dir
          r = string.find(k,'R',1,true) and -1 or 1,        -- sequ  dir
          s = string.find(k,'N',1,true) and -1 or 1,        -- charge sign
          p = string.find(k,'P',1,true) and 'slc_p' or '',  -- position
-         c = m == 'SKS' and e..'.eps_s' or                 -- eps_{s,t,b}
-             d >  0     and e..'.eps_t' or
-             string.find(k,'B',1,true) and e..'.eps_b' or 1,
+         c = d >  0   and 'dat.'..e..'.eps_t' or           -- eps_{t,s,b}
+             w == 'S' and 'dat.'..e..'.eps_s' or
+             string.find(k,'B',1,true) and 'dat.'..e..'.eps_b' or 1,
         }
 
   local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
@@ -431,7 +354,9 @@ if not (o == 't' and string.find(k,'P',1,true)) then
 end -- if
 end -- for
 end -- if
-end end end -- for
+end -- for
+end -- if
+end end end end -- for
 end -- if
 end -- for
 
