@@ -1,0 +1,63 @@
+! cd track_ref ; ../madx64 trackDECA.madx > trackDECA.out 2>&1 ; cat trackDECA.out ; cd -
+
+! cd track_ref ; ../madx64 trackDECA.madx  | grep -A 1 'model=' ; cd -
+
+option, -info, -echo ;
+
+beam ; ! positron 1Gev
+
+! set strengths for numerical comparison
+k4f = 0.25 ;
+k4d = -0.2 ;
+
+! SEQUENCE WITH DECAPOLES
+seq: sequence, l=10, refer=centre ;
+m1: multipole, at=0.75, l=1.5 , knl:={0,0,0,0,k4f} ;
+m2: multipole, at=5.75, l=1.5 , knl:={0,0,0,0,k4d} ;
+endsequence ;
+
+! PTC TRACK
+model=1;
+while (model <= 2) {
+  if (model == 2) { nst = 1; } else { nst = 10; }
+
+  method=2;
+  while (method <= 6) {
+    use, sequence=seq ;
+    ptc_create_universe;
+    ptc_create_layout, model=model, method=method, nst=nst, time=true, exact=true;
+    ptc_start, x=4e-4, px=1e-4, y=3e-4, py=2e-4, t=2e-5, pt=1e-5;
+    ptc_observe, place=#s ;
+    ptc_observe, place=m1 ;
+    ptc_observe, place=m2 ;
+    ptc_observe, place=#e ;
+    ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="trackDECAptc." ;
+    ptc_track_end;
+    ptc_end;
+
+    printf, text="model=%g, method=%g, nst=%g", value={model, method, nst} ;
+    system, "tail -n 1 trackDECAptc.one" ;
+
+    method = method + 2 ;
+  }
+  model = model + 1 ;
+}
+
+! MADX TRACK
+select, flag=makethin, slice=10;
+makethin, sequence=seq ;
+use, sequence=seq ;
+track, onepass, onetable, dump, file="trackDECAmadx." ;
+start, x=4e-4, px=1e-4, y=3e-4, py=2e-4, t=2e-5, pt=1e-5;
+observe, place=#s ;
+observe, place=m1 ;
+observe, place=m2 ;
+observe, place=#e ;
+run, turns=1 ;
+endtrack ;
+
+printf, text="model=madx", value={} ;
+system, "tail -n 1 trackDECAmadx.one" ;
+
+save, sequence=seq, file="seqDECA.madx" ;
+stop;
