@@ -1617,7 +1617,6 @@ mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_vec_sub (Tb, Ve, Tb, N);
       mad_vec_add (Tb, T , Tb, N);            // Tb = R*Ve + T - Ve
       mad_vec_copy(R_,     Rb, NN);           // Rb = R
-
     } else { // R = I
       mad_vec_copy(T, Tb, N);                 // Tb = T
       mad_mat_eye (1, Rb, N, N, N);           // Rb = I
