@@ -1,76 +1,62 @@
 ! cd track_ref ; ../madx64 trackMULT.madx > trackMULT.out 2>&1 ; cat trackMULT.out ; cd -
+! cd track_ref ; ../madx64 trackMULT.madx  | grep -A 1 'model=' ; cd -
 
-option, -info ;
+option, -info, -echo, -rbarc ;
 
 beam ; ! positron 1Gev
 
 k0f =  2*pi/1e2/1.5 ;
 k0d = -2*pi/1e2/1.5 ;
-value, k0f, k0d ;
-
-l.mq  = 1.5 ; ![m]
-l.seq = 10 ; ! [m]
-u.seq = pi/2 ; ! [rad]
-f.seq = l.seq/(4*sin(u.seq/2)) ;
-k.seq = 1/(f.seq * l.mq) ;
-k1f = k.seq ; k1d = -k.seq ;
-value, k1f, k1d ;
-
-! set strengths for numerical comparison
 k1f =  0.2110222185 ;
 k1d = -0.2110222186 ;
+value, k0f, k0d, k1f, k1d ;
 
 ! SEQUENCE WITH MULTIPOLES
-seq: sequence, l=l.seq, refer=entry ;
-m1: multipole, at=0.75, lrad=1.5, knl:={k0f*1.5,k1f*1.5} ;
-d1: drift,     at=1.5, l=3.5 ;
-m2: multipole, at=5.75, lrad=1.5, knl:={k0d*1.5,k1d*1.5} ;
-d2: drift,     at=6.5, l=3.5 ;
+seq: sequence, l=10, refer=entry ;
+m1: multipole, at=0, lrad=1.5, knl:={k0f*1.5,k1f*1.5}, angle:=k0f*1.5 ;
+m2: multipole, at=5, lrad=1.5, knl:={k0d*1.5,k1d*1.5}, angle:=k0d*1.5 ;
 endsequence ;
 
-! MATCH THICK LENS
-! use, sequence=seq ;
-! match, sequence=seq ;
-!   ! search for quads strengths
-!   vary, name = k1f, step = 1e-5 ;
-!   vary, name = k1d, step = 1e-5 ;
-!   ! for cell with phase advance of pi/2 (specified in 2*pi unit!)
-!   constraint, range = #e, mux = u.seq/(2*pi) ;
-!   constraint, range = #e, muy = u.seq/(2*pi) ;
-!   lmdif, calls = 20, tolerance = 1e-16 ;
-! endmatch ;
-! value, m1->k1, m2->k1 ;
-
-! PTC TRACK
-use, sequence=seq ;
-ptc_create_universe;
-ptc_create_layout, model=2, method=2, nst=1, time=true, exact=true;
-ptc_start, x=4e-6, px=1e-7, y=3e-6, py=2e-7, t=2e-7, pt=1e-7;
-ptc_observe, place=#s ;
-ptc_observe, place=m1 ;
-ptc_observe, place=d1 ;
-ptc_observe, place=m2 ;
-ptc_observe, place=d2 ;
-ptc_observe, place=#e ;
-ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="trackMULTptc." ;
-ptc_track_end;
-ptc_end;
+set, format="-.16e";
 
 ! MADX TRACK
 use, sequence=seq ;
 track, onepass, onetable, dump, file="trackMULTmadx." ;
-start, x=4e-6, px=1e-7, y=3e-6, py=2e-7, t=2e-7, pt=1e-7;
+start, x=4e-4, px=2e-4, y=3e-4, py=1e-4, t=2e-5, pt=1e-5;
 observe, place=#s ;
 observe, place=m1 ;
-observe, place=d1 ;
 observe, place=m2 ;
-observe, place=d2 ;
 observe, place=#e ;
 run, turns=1 ;
 endtrack ;
 
-!select, flag=twiss, column={name,keyword,s,l,x,px,y,py,t,pt};
-!select, flag=twmap, column={name,pos,k1,k2,k3,k4,k5,k6}; ! does not work...
-!twiss, sequence=seq, file="twmult.tfs", sectormap, sectoracc, sectorfile=twmap.tfs;
-!plot, haxis=s, vaxis=betx, bety;
+printf, text="model=madx", value={} ;
+system, "tail -n 1 trackMULTmadx.one" ;
 
+! PTC TRACK
+model=1;
+while (model <= 1) {
+  if (model == 2) { nst = 1; } else { nst = 3; }
+
+  method=2;
+  while (method <= 2) {
+    use, sequence=seq ;
+    ptc_create_universe;
+    ptc_create_layout, model=model, method=method, nst=nst, time=true, exact=true;
+    ptc_start, x=4e-4, px=2e-4, y=3e-4, py=1e-4, t=2e-5, pt=1e-5;
+    ptc_observe, place=#s ;
+    ptc_observe, place=m1 ;
+    ptc_observe, place=m2 ;
+    ptc_observe, place=#e ;
+    ptc_track, icase=56, closed_orbit=false, dump, onetable, element_by_element, file="trackMULTptc." ;
+    ptc_track_end;
+    ptc_end;
+    printf, text="model=%g, method=%g, nst=%g", value={model, method, nst} ;
+    system, "tail -n 1 trackMULTptc.one" ;
+
+    method = method + 2 ;
+  }
+  model = model + 1 ;
+}
+
+stop;
