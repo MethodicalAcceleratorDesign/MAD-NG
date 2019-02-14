@@ -369,12 +369,13 @@ end
 
 -- THIN -----------------------------------------------------------------------o
 
-function M.thin_kick (elm, m, lw) -- [KICKT]                                    unchecked
+function M.thin_kick (elm, m, lw) -- [KICKT]                                    checked
   if m.nmul == 0 then return end
 
   local el, tdir, beam, nmul, knl, ksl in m
-  local wchg = lw*tdir*beam.charge
+  local wchg  = lw*tdir*beam.charge
   local _beta = 1/beam.beta
+  local bend  = abs(knl[1])+abs(ksl[1]) >= minang
 
 --  mdump('thin_kick-0:', m, el*sdir*lw)
 
@@ -387,14 +388,18 @@ function M.thin_kick (elm, m, lw) -- [KICKT]                                    
     m[i].px = px - wchg*(by - knl[1])
     m[i].py = py + wchg*(bx - ksl[1])
 
-    -- dipole focusing and delta_p, TODO: consider angle vs knl[1]
-    local dpp1 = sqrt(1 + (2*_beta)*pt + pt^2)
-    if el ~= 0 then
-      local dp = dpp1 - 1
-      m[i].px = m[i].px - (knl[1]^2/el)*x + (wchg*knl[1])*dp
-      m[i].py = m[i].py - (ksl[1]^2/el)*y + (wchg*ksl[1])*dp
+    -- dipole focusing and delta_p
+    if bend then
+      local dp = sqrt(1 + (2*_beta)*pt + pt^2) - 1
+      m[i].px = m[i].px + (wchg*knl[1])*dp
+      m[i].py = m[i].py + (wchg*ksl[1])*dp
+      m[i].t  = t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/(1+dp)
+
+      if el ~= 0 then
+        m[i].px = m[i].px - (knl[1]^2/el)*x
+        m[i].py = m[i].py - (ksl[1]^2/el)*y
+      end
     end
-      m[i].t  = t - wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/dpp1
   end
 
 --  mdump('thin_kick-1:', m)
@@ -409,7 +414,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
   local l, ld = el*lw, (eld or el)*lw
   local _beta = 1/beam.beta
 
---  mdump('strex_drift-0:', m, l)
+-- mdump('strex_drift-0:', m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -421,7 +426,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
   end
 
---  mdump('strex_drift-1:', m)
+-- mdump('strex_drift-1:', m)
 end
 
 function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          checked
