@@ -58,6 +58,8 @@ local thinonly, thickonly, driftonly, atend                     in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
+local thin_kick                                                 in MAD.dynmap
+
 local strex_drift, strex_kick, strex_fringe,
       curex_drift, curex_kick, curex_fringe                     in MAD.dynmap
 
@@ -89,21 +91,23 @@ assert(#zs == 20, "invalid number of default field component")
 
 local function get_mult (elm, m, n)
   local knl, ksl, dknl, dksl in elm
-  m.nmul = min(20,max(#(knl or {}), #(ksl or {}), #(dknl or {}), #(dksl or {})))
+  local nmul = min(20,max(#(knl or {}), #(ksl or {}), #(dknl or {}), #(dksl or {})))
 
   knl, ksl, dknl, dksl = knl or zs, ksl or zs, dknl or zs, dksl or zs
 
   m.knl[1], m.knl[2] = knl[1] + dknl[1], knl[2] + dknl[2]
   m.ksl[1], m.ksl[2] = ksl[1] + dksl[1], ksl[2] + dksl[2]
 
-  for i=3,m.nmul do
+  for i=3,nmul do
     m.knl[i] = (knl[i] + dknl[i]) / fact(i-1)
     m.ksl[i] = (ksl[i] + dksl[i]) / fact(i-1)
   end
 
-  for i=m.nmul+1,n or 0 do
+  for i=nmul+1,n or 0 do
     m.knl[i], m.ksl[i] = 0, 0
   end
+
+  m.nmul = nmul
 end
 
 local function get_phas (elm, m)
@@ -190,8 +194,7 @@ local function track_drift (elm, m)
   m.el, m.ang, m.tlt = ds, 0, 0
 
   if is_implicit(elm) then
-    local track = m.implicit and
-                  abs(ds) >= minlen and thickonly or driftonly
+    local track = m.implicit and thickonly or driftonly
     track(elm, m, 1, strex_drift)
   else
     m.tlt = elm.tilt*tdir
@@ -202,16 +205,16 @@ local function track_drift (elm, m)
 end
 
 local function track_multipole (elm, m)
-  get_mult(elm, m, 0)
+  get_mult(elm, m)
   if m.nmul == 0 then return track_marker(elm, m) end
 
+  local angle, tilt in elm
   local sdir, tdir in m
-  m.ang, m.tlt = elm.angle*tdir, elm.tilt*tdir
+  m.el, m.ang, m.tlt = 0, angle*tdir, tilt*tdir
 
   local kick
-  if abs(m.ang) < minang then
+  if abs(angle) < minang then
     kick = strex_kick
-    m.el = 0
   else
     kick = thin_kick
     m.el = elm.lrad*sdir
