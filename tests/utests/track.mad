@@ -55,8 +55,9 @@ local eps, pi                                                   in MAD.constant
 local track, beam, element, sequence, option, filesys           in MAD
 local fnone, ftrue                                              in MAD.gfunc
 
-local marker, drift, multipole, sbend, rbend, solenoid,
-      quadrupole, sextupole, octupole, decapole, dodecapole     in element
+local marker, drift, kicker, multipole, sbend, rbend,
+      quadrupole, sextupole, octupole, decapole, dodecapole,
+      solenoid, rfcavity                                        in element
 local observe                                                   in element.flags
 
 local dat = require 'track_dat'
@@ -170,12 +171,11 @@ local function mkRBEND (dir_, chg_, mul) -- MAD-X like RBEND
   local chg = chg_ or 1 -- particle charge
   local k0f =  2*pi/1e2/1.5*dir*chg
   local k0d = -2*pi/1e2/1.5*dir*chg
-  local e   = \s -> s.angle/2
   local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    sbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5,
-                e1=e, e2=e, kill_ent_fringe=true, kill_exi_fringe=true},
-    sbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
-                e1=e, e2=e, kill_ent_fringe=true, kill_exi_fringe=true},
+    rbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5,
+                kill_ent_fringe=true, kill_exi_fringe=true},
+    rbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
+                kill_ent_fringe=true, kill_exi_fringe=true},
   }
   return seq   -- seq:dumpseq()
 end
@@ -185,12 +185,9 @@ local function mkRBENDfr (dir_, chg_, mul) -- MAD-X like RBEND
   local chg = chg_ or 1 -- particle charge
   local k0f =  2*pi/1e2/1.5*dir*chg
   local k0d = -2*pi/1e2/1.5*dir*chg
-  local e   = \s -> s.angle/2
   local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    sbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5,
-                e1=e, e2=e},
-    sbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
-                e1=e, e2=e},
+    rbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5},
+    rbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5},
   }
   return seq   -- seq:dumpseq()
 end
@@ -290,6 +287,18 @@ local function mkDODECA (dir_, chg_, mul, skw)
   return seq   -- seq:dumpseq()
 end
 
+local function mkKICK (dir_, chg_)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local hk  = 0.25*1e-4*dir*chg
+  local vk  = -0.2*1e-4*dir*chg
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    kicker 'm1' {at=0, l=1.5, hkick=hk, vkick=vk},
+    kicker 'm2' {at=5, l=1.5, hkick=hk, vkick=vk},
+  }
+  return seq   -- seq:dumpseq()
+end
+
 local function mkSOL (dir_, chg_, mul)
   local dir = dir_ or 1 -- sequence direction
   local chg = chg_ or 1 -- particle charge
@@ -302,6 +311,19 @@ local function mkSOL (dir_, chg_, mul)
   return seq   -- seq:dumpseq()
 end
 
+local function mkCAV (dir_, chg_)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local volt = 8*dir*chg -- MV
+  local freq = 400       -- Mhz
+  local lag  = 0.5       -- 2pi unit
+  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+    rfcavity 'm1' {at=0, l=1.5, volt=volt, freq=freq, lag=lag},
+    rfcavity 'm2' {at=5, l=1.5, volt=volt, freq=freq, lag=lag},
+  }
+  return seq   -- seq:dumpseq()
+end
+
 -- Generate All Testsuites ----------------------------------------------------o
 
 local doprt = false
@@ -310,9 +332,9 @@ local t = 'teapot'
 
 collectlocal(1, tenv) -- collect locals
 
-local TODO    = {RFCAV=true, RBENDptc=true}
+local TODO    = {RBENDptc=true}
 local has_TKT = {SBEND=true, SBENDfr=true, SBENDfr2=true,
-                 RBEND=true, RBENDfr=true, RBENDptc=true, SOL=true,
+                 RBEND=true, RBENDfr=true, RBENDptc=true, SOL=true, CAV=true,
                  QUAD=true}
 local has_MUL = {SBEND=true, SBENDfr=true, SBENDfr2=true,
                  RBEND=true, RBENDfr=true, RBENDptc=true, SOL=true,
@@ -321,7 +343,7 @@ local has_SKW = {QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true}
 local max_ORD = {DRIFT=2, MULT=2}
 
 for _,e in ipairs{'DRIFT','MULT','SBEND','SBENDfr','SBENDfr2','RBEND','RBENDfr',
-                  'QUAD','SEXT','OCTU','DECA','DODECA','SOL'} do
+                  'QUAD','SEXT','OCTU','DECA','DODECA','KICK','SOL','CAV'} do
 
 if not TODO[e] then -- prevent to run tests not yet finalized
 
