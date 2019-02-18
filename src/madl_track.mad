@@ -41,7 +41,7 @@ local betablk                                                    in MAD.gphys
 local action                                                     in MAD.symint
 local tblcat, errorf, assertf                                    in MAD.utility
 local apercheck                                                  in MAD.aperture
-local minlen, minang, sqrt2                                      in MAD.constant
+local minlen, minang, clight, sqrt2                              in MAD.constant
 
 local abs, min, max, sqrt, sin, cos, atan2 in math
 
@@ -60,6 +60,8 @@ local thinonly, thickonly, driftonly, atend                     in MAD.symint
 
 local thin_kick                                                 in MAD.dynmap
 
+local kicker_thick, kicker_kick, kicker_fringe                  in MAD.dynmap
+
 local strex_drift, strex_kick, strex_fringe,
       curex_drift, curex_kick, curex_fringe                     in MAD.dynmap
 
@@ -71,7 +73,7 @@ local  quad_thick,  quad_kick,  quad_fringe,
       combi_thick, combi_kick, combi_fringe                     in MAD.dynmap
 
 local solen_thick, solen_kick, solen_fringe,
-      rfcav_thick, rfcav_kick, rfcav_fringe                     in MAD.dynmap
+      rfcav_thick, rfcav_kick, rfcav_fringe, rfcav_kickn        in MAD.dynmap
 
 -- special
 local strex_hkick, quad_hthick, quad_hkick                      in MAD.dynmap
@@ -427,29 +429,83 @@ local function track_solenoid (elm, m)
   track(elm, m, symint[method], thick, kick, solen_fringe)
 end
 
-local function track_rfcavity (elm, m)
-  mdump('\ntrack_rfcav', elm.name, 'l=', elm.l)
+local twopi in MAD.constant
 
-  local l, volt, freq, lag in elm
-  assert(l >= minlen, "invalid rfcavity length (>0 expected)")
+local function track_rfcavity (elm, m)
   get_mult(elm, m)
 
-  m.volt, m.freq, m.lag = volt, freq, lag
-  m.el, m.eld = l, l
+  local ds, tdir, model in m
+  local tilt, volt in elm
+  local l = abs(ds)
 
-  mdump('track_rfcav', 'volt=', m.volt, 'freq=', m.freq, 'lag=', m.lag)
+  assert(l >= minlen, "invalid rfcavity length (>0 expected)")
 
-  local thick, kick
+  m.el, m.tlt = ds, tilt*tdir
 
-  if abs(m.volt) < minvolt then
-    thick, kick = strex_drift, strex_kick
+  local model  = elm.model  or m.model
+  local method = elm.method or m.method
+  local thick, kick, fringe
+
+  if abs(volt) < minvolt then
+    thick, kick, fringe = strex_drift, strex_kick, fnone
   else
-    thick, kick = rfcav_thick, rfcav_kick
+    m.volt, m.freq, m.lag, m.nbsl = volt, elm.freq, elm.lag, elm.n_bessel or 0
+    if m.freq == 0 then
+      m.freq = 1e-6 * elm.harmon * clight * m.beam.beta / m.sequ.l
+    end
+    assert(m.freq > 0, "invalid rfcavity setup, positive freq or harmon expected")
+
+    thick  = rfcav_thick
+    kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
+    fringe = model == 'DKD' and fnone or rfcav_fringe
   end
 
-  local method = elm.method or m.method
   local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, rfcav_fringe)
+  track(elm, m, symint[method], thick, kick, fringe)
+end
+
+local function track_kicker (elm, m)
+  local ds, tdir in m
+
+  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
+  m.hk, m.vk = elm.hkick + (elm.chkick or 0), elm.vkick + (elm.cvkick or 0)
+
+  local method = elm.method or m.method
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
+end
+
+local function track_hkicker (elm, m)
+  local ds, tdir in m
+
+  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
+  m.hk, m.vk = elm.kick + (elm.chkick or 0), 0
+
+  local method = elm.method or m.method
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
+end
+
+local function track_vkicker (elm, m)
+  local ds, tdir in m
+
+  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
+  m.hk, m.vk = 0, elm.kick + (elm.cvkick or 0)
+
+  local method = elm.method or m.method
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
+end
+
+local function track_tkicker (elm, m)
+  local ds, tdir in m
+
+  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
+  m.hk, m.vk = elm.hkick, elm.vkick
+
+  local method = elm.method or m.method
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -480,8 +536,8 @@ E.extra_element:setv({ track = functor( invalid      ) }, 'init') -- forbidden i
 -- specialized maps (invalid == NYI)
 
 E.sbend      :setv({ track = functor( track_sbend      ) }, 'init') -- curved  , k0, (k0s, k1, k1s)
-E.combined   :setv({ track = functor( track_combined   ) }, 'init') -- curved  , k0, k1, (k0s, k1s)
-E.rbend      :setv({ track = functor( track_rbend      ) }, 'init') -- straight, k0, (k0s, k1, k1s)
+E.combined   :setv({ track = functor( notyetdone       ) }, 'init') -- curved  , k0, k1, (k0s, k1s)
+E.rbend      :setv({ track = functor( notyetdone       ) }, 'init') -- straight, k0, (k0s, k1, k1s)
 E.quadrupole :setv({ track = functor( track_quadrupole ) }, 'init') -- straight, k0, k1, (k0s, k1s)
 E.sextupole  :setv({ track = functor( track_sextupole  ) }, 'init') -- straight, (k2, k2s)
 E.octupole   :setv({ track = functor( track_octupole   ) }, 'init') -- straight, (k3, k3s)
@@ -494,10 +550,10 @@ E.twcavity   :setv({ track = functor( notyetdone       ) }, 'init') -- straight,
 E.wiggler    :setv({ track = functor( notyetdone       ) }, 'init') -- straight
 E.elseparator:setv({ track = functor( notyetdone       ) }, 'init') -- straight
 
-E.kicker     :setv({ track = functor( notyetdone       ) }, 'init') -- straight, (hkick, vkick)
-E.hkicker    :setv({ track = functor( notyetdone       ) }, 'init') -- straight, ( kick, hkick)
-E.vkicker    :setv({ track = functor( notyetdone       ) }, 'init') -- straight, ( kick, vkick)
-E.tkicker    :setv({ track = functor( notyetdone       ) }, 'init') -- straight, (hkick, vkick)
+E.kicker     :setv({ track = functor( track_kicker     ) }, 'init') -- straight, (hkick, vkick)
+E.hkicker    :setv({ track = functor( track_hkicker    ) }, 'init') -- straight, ( kick, hkick)
+E.vkicker    :setv({ track = functor( track_vkicker    ) }, 'init') -- straight, ( kick, vkick)
+E.tkicker    :setv({ track = functor( track_tkicker    ) }, 'init') -- straight, (hkick, vkick)
 
 E.beambeam   :setv({ track = functor( notyetdone       ) }, 'init') -- thin
 E.multipole  :setv({ track = functor( track_multipole  ) }, 'init') -- thin
