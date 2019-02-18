@@ -52,9 +52,6 @@ local fnone                                                      in MAD.gfunc
 local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
       sinh, cosh, sinc                                           in MAD.gmath
 
--- constants
-local volt_c = 1e-3
-
 -- debug ----------------------------------------------------------------------o
 
 local nodump = false
@@ -452,6 +449,28 @@ end
 
 M.strex_fringe = fnone -- TODO: see below
 
+-- DKD [KICKERS] --------------------------------------------------------------o
+
+M.kicker_thick  = M.strex_drift
+M.kicker_fringe = fnone
+
+function M.kicker_kick (elm, m, lw)
+--  mdump('kicker_kick-0:', m)
+
+  local hk, vk, tdir, beam in m
+  local wchg = lw*tdir*beam.charge
+
+  for i=1,m.npar do
+    local px, py, beam in m[i]
+    local wchg = beam and lw*tdir*beam.charge or wchg
+
+    m[i].px = px + wchg*hk
+    m[i].py = py + wchg*vk
+  end
+
+--  mdump('kicker_kick-1:', m)
+end
+
 -- DKD [INTER_TEAPOT, l ~= 0, angle ~= 0] -------------------------------------o
 
 function M.curex_drift (elm, m, lw) -- [SPROT]                                  checked
@@ -774,71 +793,136 @@ end
 M.solen_kick   = M.strex_kick
 M.solen_fringe = fnone -- TODO
 
--- rfcavity -------------------------------------------------------------------o
+-- rfcavity [INTER_CAV4] ------------------------------------------------------o
 
 M.rfcav_thick = M.strex_drift
 
-function M.rfcav_kick (elm, m, lw) -- [??]
-  error("NYI")
+function M.rfcav_kick (elm, m, lw) -- [KICKCAVR, FEVAL_CAVR?]
+--  mdump('rfcav_kick-0:', m)
+  local volt, freq, lag, tdir, beam in m
+  local omega = freq*(twopi*1e6/clight)
+  local phase = lag * twopi
+  local _pc   = 1/beam.pc
+  local chg   = beam.charge
+  local vl    = lw*chg*tdir*volt*1e-3
 
--- missing input: tt, phase, phase0, ff, ph, a, r, nbessel, freq, volt, lag
+--  print('vl=', vl*_pc, 'omega=', omega, 'phase=', phase, 'p0c=', beam.pc, 'yl=', el*lw)
 
---  local x, px, y, py, t, pt, bdir, nmul, knl, ksl in m
---  local volt, freq, lag, nbessel in elm
---
---  if freq == 0 then
---    error("Frequency number has to be defined for RF Cavity (i.e. harmon NYI) "
---          .. elm.name)
---  end
---
---  local pc = m.beam.pc
---  local omega = twopi*freq / clight
---  local vl    = bdir*l*volt*volt_c/pc
---  local df, f, r2 = 0, 1, 1
---
---  do i=1,nbessel
---    r2  = -r2*(ko*omega)^2/(4*(i+1)^2)
---    dr2 =  r2*i
---    df  =  df + 2*dr2
---    r2  =  r2*(x^2+y^2)
---    f   =  f + r2
---  end
---
---  local ff, ph = elm.f or {}, elm.ph or {}
---  local a , r  = elm.a or  0, elm.r or 0
---  local arg = omega*(t + tt) + phasе + ph + phase0
---
---  if nbessel > 0 then
---    m.px = px-x*ff[ko]* df * vl * cos(arg)/(omega)
---    m.py = py-y*ff[ko]* df * vl * cos(arg)/(omega)
---  end
---
---  m.pt = m.pt -ff*f*vl*sin(arg)
---
---  local lw = elm.l>0 and l/elm.l or 1
---  local bx, by = bxby(nmul, knl, ksl, x, y, lw)
---
---  m.px = m.px - ff[ko]*           bdir*by/pc*(a + r*cos(arg))
---  m.py = m.py + ff[ko]*           bdir*bx/pc*(a + r*cos(arg))
---  m.pt = m.pt + ff[ko]*(ko*omega)*bdir*by/pc*     r*sin(arg)
+  for i=1,m.npar do
+    local t, pt, beam in m[i]
+    local _pc = beam and 1/beam.charge      or _pc
+    local  vl = beam and vl*chg*beam.charge or  vl
+    local dpt = vl*_pc*sin(phase - omega*t)
 
---[[ useful???
-  by = -lw*knl[nmul] / fact(nmul-1) / nmul
-  bx = -lw*ksl[nmul] / fact(nmul-1) / nmul
+--    print('pt=', m[i].pt, 'dpt=', dpt)
 
-  for i=nmul-1,1,-1 do
-    byt = x*by - y*bx - lw*knl[i] / fact(i-1) / i
-    bx  = y*by + x*bx - lw*ksl[i] / fact(i-1) / i
-    by  = byt
+    m[i].pt = pt + dpt
   end
-
-  byt = x*by - y*bx
-  bx  = y*by + x*bx
-  by  = byt
-]]
+--  mdump('rfcav_kick-1:', m)
 end
 
-M.rfcav_fringe = fnone -- TODO
+function M.rfcav_kickn (elm, m, lw) -- [KICKCAVR]
+
+--  mdump('rfcav_kickn-0:', m)
+  local volt, freq, lag, tdir, nbsl, nmul, knl, ksl, beam in m
+  local omega = freq*(twopi/clight*1e6)
+  local phase = lag * twopi
+  local _pc   = 1/beam.pc
+  local chg   = beam.charge
+  local bdir  = lw*chg*tdir
+  local vl    = bdir*volt*1e-3
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local ph = phase - omega*t
+    local sa, ca = sin(ph), cos(ph)
+
+    local _pc, vl, bdir = _pc, vl, bdir
+    if beam then
+      _pc, vl, bdir = 1/beam.pc, vl*chg*beam.charge, bdir*chg*beam.charge
+    end
+
+    -- single mode (ko=1)
+    local df, f, r2 = 0, 1, 1
+
+    -- bessel modes
+    if nbsl > 0 then
+      for i=1,nbsl do
+        r2 = -r2*omega^2/(4*(i+1)^2)
+        df =  df + 2*r2*i
+        r2 =  r2*(x^2+y^2)
+        f  =  f + r2
+      end
+
+      local c1 = df*vl*_pc*ca/omega
+
+      px = px - x*c1
+      py = py - y*c1
+    end
+
+    -- kick
+    pt = pt - f*vl*_pc*sa
+
+    if nmul > 0 then
+      local bx,by,byt = bxby(nmul, knl, ksl, x, y)
+
+      px = px - bdir* by*_pc *ca
+      py = py + bdir* bx*_pc *ca
+
+      by = -knl[nmul]/nmul
+      bx = -ksl[nmul]/nmul
+
+      for i=nmul-1,1,-1 do
+        byt = x*by - y*bx - knl[i]/i
+        bx  = y*by + x*bx - ksl[i]/i
+        by  = byt
+      end
+      byt = x*by - y*bx -- extra terms?
+      bx  = y*by + x*bx
+      by  = byt
+
+      pt = pt + omega*bdir* by*_pc *sa
+    end
+
+    m[i].px = px
+    m[i].py = py
+    m[i].pt = pt
+  end
+
+--  mdump('rfcav_kickn-1:', m)
+end
+
+function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
+  if lw_ == 0 then return end
+  local lw = lw_ or 1
+
+  local sdir in m
+
+--  mdump('rfcav_fringe-0:', m)
+
+  if sdir*lw == 1 then
+-- print(lw == 1 and 'forward entry' or 'backward exit')  -- mdump('+0:', m)
+    -- TODO: FRINGECAV
+    assert(m.Tbak == nil, "inconsistent totalpath when entering rfcavity")
+    m.Tbak, m.T = m.T, 1
+  end
+
+  if lw == -1 and m.Tbak ~= m.T then
+    local dt = (m.T-m.Tbak)*m.el / m.beam.beta
+    for i=1,m.npar do
+      m[i].t = m[i].t + dt
+    end
+--    print('rfcav-1: total path compensated')
+  end
+
+  if sdir*lw == -1 then
+-- print(lw == -1 and 'forward exit' or 'backward entry')  -- mdump('+0:', m)
+    m.T, m.Tbak = m.Tbak, nil
+    -- TODO: FRINGECAV
+  end
+
+--  mdump('rfcav_fringe-1:', m)
+end
 
 -------------------------------------------------------------------------------o
 -------------------------------------------------------------------------------o
