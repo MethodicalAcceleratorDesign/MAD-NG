@@ -27,17 +27,19 @@ local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
 local sequence, beam, track, twiss, plot, option, filesys        in MAD
+local sin, frac                                                  in MAD.gmath
 local fnone, ftrue, ffalse                                       in MAD.gfunc
 local marker, drift, quadrupole, multipole                       in MAD.element
 local eps, pi                                                    in MAD.constant
 local openfile                                                   in MAD.utility
+local deferred                                                   in MAD.typeid
 
 local refdir = \s -> 'twiss_ref/'..(s or '')
 local rundir = \s -> 'twiss_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local doplot -- = true
+local doplot = true
 
 if doplot then
   local pause, atexit in MAD.utility
@@ -136,6 +138,117 @@ function TestTwiss:testTwissFODO ()
 --  assertEquals(iter, 2)
 --  assertEquals(type, "4D")
 --  assertAllAlmostEquals(mflw.X[1]:totable(), 0, eps)
+end
+
+-- from MAD-X course, src_4.1 and src_5.1
+function TestTwiss:testTwissSimpleRing ()
+  !! import
+  local beam, sequence, element, survey, twiss in MAD
+  local drift, marker, sbend, quadrupole, sextupole, hkicker, vkicker,
+        monitor, bline in element
+  !! end
+
+  !! context
+  local beam = beam { particle='electron', energy=20 }
+  !! end
+
+  !! constants
+  local l, n = deferred {}, deferred {}
+  l.sequ = 240 ! length of the machine
+  l.ssec = 20  ! length of the straight sections
+  n.ssec = 2   ! number of straight sections
+  n.bend = 4   ! number of bends per cell
+  !! end
+
+  !! lengths
+  ! lengths of bends, quads, sexts, kickers, monitors
+  l.mb=3.3 ; l.mq=0.8 ; l.ms=0.4 ; l.mk=0.25 ; l.bp=0.25
+  ! lengths of drifts between magnets and fo-do
+  l.de = 0.3 ; l.df = 0.5
+  ! length of cells (20m)
+  l.cell =\ 2*(l.mb+l.bp+l.mk+l.mq+l.ms+l.mb +4*l.de +l.df)
+  ! number of cells per arc
+  n.cell =\ 1*(l.sequ/n.ssec - l.ssec)/l.cell
+  print('l.cell=', l.cell, 'n.cell=', n.cell)
+  !! end
+
+  !! classes
+  local df = drift      'df' {}
+  local mb = sbend      'mb' { l := l.mb }
+  local mq = quadrupole 'mq' { l := l.mq }
+  local ms = sextupole  'ms' { l := l.ms }
+  local hk = hkicker    'hk' { l := l.mk }
+  local vk = vkicker    'vk' { l := l.mk }
+  local bp = monitor    'bp' { l := l.bp }
+  local mk = marker     'mk' {}
+  !! end
+
+  !! families
+  local k1, k2 = deferred {}, deferred {}
+  local qf = mq 'qf' { k1 := k1.qf }
+  local qd = mq 'qd' { k1 := k1.qd }
+  local sf = ms 'sf' { k2 := k2.sf }
+  local sd = ms 'sd' { k2 := k2.sd }
+  local d0 = df 'd0' { l  := l.ssec/2 }
+  local d1 = df 'd1' { l  := l.df/2 }
+  local d2 = df 'd2' { l  := l.de }
+  local mkf , mkd     = mk 'mkf' {}, mk 'mkd' {}
+  local mkl , mkr, ip = mk 'mkl' {}, mk 'mkr' {}, mk 'ip' {}
+  !! end
+
+  !! lattice
+  local cellf = bline    'cellf' {mkf,d1,mb,d2,bp,hk,d2,qf,d2,sf,d2,mb,d1}
+  local celld = bline    'celld' {mkd,d1,mb,d2,bp,vk,d2,qd,d2,sd,d2,mb,d1}
+  local cell  = bline    'cell'  {cellf,celld}
+  local ssec  = bline    'ssec'  {mkl,d0,ip,d0,mkr}
+  local arc   = bline    'arc'   {5*cell}
+  local sequ  = sequence 'sequ'  {arc,ssec,arc,ssec}
+  !! end
+
+  !! angle
+  n.mb = n.ssec*n.cell*n.bend
+  mb.angle =\ 2*pi/n.mb
+  print('n.mb=', n.mb, 'mb.angle=', mb.angle)
+  !! end
+
+  !! survey
+  local srvcol = {'name','kind','s','l','x','y','z'}
+  local srv = survey { sequence=sequ, nslice=5, implicit=true, atslice=ftrue }
+  srv:write(rundir('sr_survey'), srvcol)
+  !! end
+
+  !! plot survey
+  if doplot then
+    plot {
+      sequence = sequ,
+      laypos   = "in",
+      layonly  = false,
+      x1y1     = { x = 'z' },
+      styles   = 'lines',
+    --  prolog   = 'set xrange [] reverse',
+      xlabel   = "x [m]",
+      ylabel   = "z [m]",
+      fontsize = 14,
+    }
+  end
+  !! end
+
+  !! thick_approx
+  local u_cell = pi/2
+  local f_cell = l.cell/(4*sin(u_cell/2))
+  local k_cell = 1/(f_cell * l.mq)
+  k1.qf = k_cell ; k1.qd = -k_cell
+  print('k1.qf=', k1.qf, 'k1.qd=', k1.qd)
+  print('k1-f=' , k1.qf*beam.brho, 'k0-f=', mb.angle*beam.brho/mb.l)
+  !! end
+
+  !! twiss
+  local twscol = {'name','s','l','beta1','alfa1','mu1','beta2','alfa2','mu2','disp1','disp2'}
+  local tws = twiss { sequence=sequ, beam=beam, nslice=5, implicit=true, atslice=ftrue }
+--  local mux = 360*frac(tws.q1[1])/n.cell
+--  local muy = 360*frac(tws.q2[1])/n.cell
+--  print('mux=', mux, 'muy=', muy)
+  !! end
 end
 
 -- end ------------------------------------------------------------------------o
