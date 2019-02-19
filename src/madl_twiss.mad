@@ -28,7 +28,7 @@ local normal, optfun, phasadv, betablk, dp2pt, has_dp,
       ofname, ofcname                                             in MAD.gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
 local is_nil, is_true, is_mappable, is_damap, is_number           in MAD.typeid
-local tblcpy, assertf                                             in MAD.utility
+local tblcpy, tbldup, assertf                                     in MAD.utility
 local abs                                                         in math
 
 local chromdp = 1e-6
@@ -39,10 +39,9 @@ local function fill_sum (mflw)
   local mtbl in mflw
   local n = #mtbl
 
-  -- tunes (for now...)
-  mtbl.q1 = mtbl.mu1[n]
-  mtbl.q2 = mtbl.mu2[n]
-  mtbl.q3 = mtbl.mu3[n]
+  mtbl._mu1 = nil
+  mtbl._mu2 = nil
+  mtbl._mu3 = nil
 
   -- TODO: momentum compaction factor
   -- TODO: gramma transition
@@ -52,7 +51,7 @@ end
 
 local function fill (elm, mflw, lw, islc)
   local mtbl, npar in mflw
-  local n = #mtbl-npar
+  local n = #mtbl-npar -- complete last npar row partially filled by track
 
   local ofun, ocpl, onam, omat in mflw.__twdat
 
@@ -63,6 +62,9 @@ local function fill (elm, mflw, lw, islc)
     for _,k in ipairs(onam) do
       mtbl[k][n+i] = ofun[k]
     end
+    mtbl.q1[i], mtbl._mu1[i] = mtbl.q1[i] + ofun.mu1 - mtbl._mu1[i], ofun.mu1
+    mtbl.q2[i], mtbl._mu2[i] = mtbl.q2[i] + ofun.mu2 - mtbl._mu2[i], ofun.mu2
+    mtbl.q3[i], mtbl._mu3[i] = mtbl.q3[i] + ofun.mu3 - mtbl._mu3[i], ofun.mu3
   end
   return true
 end
@@ -137,14 +139,14 @@ local function twiss_track0 (self, X0, R0, ofun0)
 
     npar = #X0
     for i=1,npar do
-      local dpt = X[i].beam and dp2pt(chrom, X[i].beam.beta) or dpt
+      local dpt = X0[i].beam and dp2pt(chrom, X0[i].beam.beta) or dpt
 
-      if is_damap(X[i]) then
-        X[i+npar]    = X[i]:copy()
-        X[i+npar].pt = X[i+npar].pt:get0() + dpt
+      if is_damap(X0[i]) then
+        X0[i+npar]    = X0[i]:copy()
+        X0[i+npar].pt = X0[i+npar].pt:get0() + dpt
       else
-        X[i+npar]    = tblcpy(X[i])
-        X[i+npar].pt = X[i].pt + dpt
+        X0[i+npar]    = tblcpy(X0[i])
+        X0[i+npar].pt = X0[i].pt + dpt
       end
       R0[i+npar] = R0[i] -- no need to duplicate
     end
@@ -205,6 +207,12 @@ local function twiss_track0 (self, X0, R0, ofun0)
     -- add twiss columns and type to mtbl
     mtbl.type  = 'twiss'
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
+    -- init phase and tunes
+    local n = #mflw
+    mtbl.q1, mtbl.dq1, mtbl._mu1 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
+    mtbl.q2, mtbl.dq2, mtbl._mu2 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
+    mtbl.q3, mtbl.dq3, mtbl._mu3 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
+    mtbl.chromdp = chrom
   end
 
   return mflw
@@ -296,6 +304,8 @@ local function exec (self)
     mflw = make_mflow(self)
     mflw.__twss = _id
   end
+
+  print('running track!')
 
   mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
 
