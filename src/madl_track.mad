@@ -34,27 +34,27 @@ Notes about directions and quantities:
 local element, mtable, command, damap, symint, aperture, trace   in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
-      is_table, is_callable, is_mappable, is_tpsa, is_damap      in MAD.typeid
-local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
-local fact, arc2len                                              in MAD.gmath
-local betablk, dp2dE                                             in MAD.gphys
-local action                                                     in MAD.symint
-local tblcat, errorf, assertf                                    in MAD.utility
-local apercheck                                                  in MAD.aperture
-local minlen, minang, clight, sqrt2                              in MAD.constant
+      is_table, is_callable, is_mappable, is_tpsa, is_damap     in MAD.typeid
+local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
+local fact, arc2len                                             in MAD.gmath
+local betablk, dp2pt                                            in MAD.gphys
+local action                                                    in MAD.symint
+local tblcat, errorf, assertf                                   in MAD.utility
+local apercheck                                                 in MAD.aperture
+local minlen, minang, clight, sqrt2                             in MAD.constant
+local is_implicit                                               in element.drift
 
 local abs, min, max, sqrt, sin, cos, atan2 in math
 
 local strsub = string.sub
 
-local is_implicit = element.drift.is_implicit
 
 -- constants
 local minvolt = 1e-6
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, driftonly, atend                     in MAD.symint
+local thinonly, thickonly, driftonly, atbegin                   in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -723,8 +723,8 @@ local function make_mflow (self)
   if ataper ~= ffalse then
     ataper = (ataper == fnone or ataper == ftrue) and
               apercheck or achain(apercheck, ataper)
-    atslice = (atslice == fnone or atslice == ftrue) and achain(atend,ataper) or
-               atslice ~= ffalse and chain(atslice, action('ataper')) or atslice
+    atslice = (atslice == fnone or atslice == ftrue) and achain(atbegin,ataper)
+            or atslice ~= ffalse and chain(atslice, action('ataper')) or atslice
   end
 
   -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
@@ -774,11 +774,11 @@ local function make_mflow (self)
   -- precedence of initial conditions
   local npar = #X0
   local mflw = table.new(npar,50)
-  local dpt = deltap ~= 0 and dp2dE(deltap, beam.beta) or 0
+  local dpt = deltap ~= 0 and dp2pt(deltap, beam.beta) or 0
 
   for i=1,npar do
     local X0i = X0[i]
-    local dpt = X0i.beam and dp2dE(deltap, X0i.beam.beta) or dpt
+    local dpt = X0i.beam and dp2pt(deltap, X0i.beam.beta) or dpt
 
     mflw[i] = X0i -- default is to reuse!
 
@@ -800,10 +800,9 @@ local function make_mflow (self)
         if        R0[i] then mflw[i]:set1(R0[i])
         elseif beta0[i] then mflw[i]:set1((betablk(beta0[i]))) end
       elseif is_table(mflw[i]) then -- reuse: fill table
-        mflw[i].id,
-        mflw[i].x, mflw[i].px,
-        mflw[i].y, mflw[i].py,
-        mflw[i].t, mflw[i].pt = id, x, px, y, py, t, pt
+        local tbl = mflw[i]
+        tbl.id, tbl.x, tbl.px, tbl.y, tbl.py, tbl.t, tbl.pt =
+            id,     x,     px,     y,     py,     t,     pt
       else -- replace: need a table for key access (e.g. vector)
         mflw[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
       end
@@ -811,8 +810,8 @@ local function make_mflow (self)
       errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
     end
 
-    -- update original
-    X0[i] = mflw[i]
+    -- update original (?)
+    -- X0[i] = mflw[i]
   end
 
   -- complete mflow
