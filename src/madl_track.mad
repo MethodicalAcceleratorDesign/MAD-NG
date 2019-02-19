@@ -33,8 +33,9 @@ Notes about directions and quantities:
 
 local element, mtable, command, damap, symint, aperture, trace   in MAD
 
-local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer, is_true,
-      is_table, is_callable, is_mappable, is_tpsa, is_damap     in MAD.typeid
+local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer,
+      is_true, is_table, is_callable, is_iterable, is_mappable,
+      is_tpsa, is_damap                                         in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
 local fact, arc2len                                             in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
@@ -618,21 +619,21 @@ local header = {
   'direction', 'observe', 'implicit', 'relative', 'misalign',
 }
 
-local function make_mtable (self, obs)
-  local title, range, nturn, dir, implicit, relative, misalign, mapsave in self
+local function make_mtable (self, obs, ndp)
+  local title, range, nturn, dir, implicit, relative, misalign, deltap, mapsave in self
   local sequ, nrow = self.sequence
 
   if obs > 0 then
-    nrow = nturn-1
+    nrow = (nturn-1)*ndp
   else
-    nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)
+    nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)*ndp
   end
 
   -- keep order!
   return mtable 'track' {
     title=title or sequ.name, type='track', header=header, reserve=nrow,
     direction=dir, observe=obs, implicit=implicit, relative=relative,
-    misalign=misalign,
+    misalign=misalign, deltap=deltap,
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'idx',                      -- index of element in the sequence
@@ -696,13 +697,19 @@ local function make_mflow (self)
 
   -- setup default sclicing
   local nslice in self
-  local nslc = is_number(nslice) and nslice or is_table(nslice) and #nslice
+  local nslc = is_number(nslice) and nslice or is_iterable(nslice) and #nslice
   assert(is_integer(nslc) and nslc > 0,
-         "invalid nslice (positive integer or array of slice weights expected)")
+         "invalid nslice (positive integer or iterable of slice weights expected)")
 
   -- setup default misalign
   local misalign in self
   assert(is_boolean(misalign), "invalid misalign (boolean expected)")
+
+  -- setup deltap (number, table, vector or range)
+  local deltap in self
+  if is_number(deltap) then deltap = {deltap} end
+  assert(is_iterable(deltap), "invalid deltap (number or iterable expected)")
+  local ndp = #deltap
 
   -- retrieve default actions (avoid evaluation in case of functions)
   local atentry = self:var_raw 'atentry'
@@ -730,7 +737,7 @@ local function make_mflow (self)
   -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
   local mtbl, fill
   if save then
-    mtbl = make_mtable(self, observe)
+    mtbl = make_mtable(self, observe, ndp)
 
     if atsave ~= ffalse then
       fill = observe > 0 and save_obs or save_dat
@@ -757,9 +764,8 @@ local function make_mflow (self)
           "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
-  local s0, X0, R0, beta0, deltap, mapdef, mapsave in self
+  local s0, X0, R0, beta0, mapdef, mapsave in self
   assert(is_number  (s0)    , "invalid s0 (number expected)")
-  assert(is_number  (deltap), "invalid deltap (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
@@ -773,45 +779,41 @@ local function make_mflow (self)
 
   -- precedence of initial conditions
   local npar = #X0
-  local mflw = table.new(npar,50)
-  local dpt = deltap ~= 0 and dp2pt(deltap, beam.beta) or 0
+  local mflw = table.new(npar*ndp,50)
 
-  for i=1,npar do
-    local X0i = X0[i]
-    local dpt = X0i.beam and dp2pt(deltap, X0i.beam.beta) or dpt
+  for idp,dp in ipairs(deltap) do
+    local dpt = dp2pt(dp, beam.beta)
 
-    mflw[i] = X0i -- default is to reuse!
+    for i=1,npar do
+      local X0i = X0[i]
+      local dpt = X0i.beam and dp2pt(dp, X0i.beam.beta) or dpt
+      local ii = (idp-1)*npar + i
 
-    if is_damap(X0i) then -- damap are mappable (i.e. must be first)
-      mflw[i].id = X0i.id or i
-      mflw[i].pt = mflw[i].pt:get0() + dpt
-    elseif is_mappable(X0i) then -- access by indexes first for vectors
-      local id =            X0i.id or i
-      local x  =  X0i[1] or X0i.x  or 0
-      local px =  X0i[2] or X0i.px or 0
-      local y  =  X0i[3] or X0i.y  or 0
-      local py =  X0i[4] or X0i.py or 0
-      local t  =  X0i[5] or X0i.t  or 0
-      local pt = (X0i[6] or X0i.pt or 0) + dpt
-      if mapdef then -- replace: damap required from coordinates (and R matrix)
-        mflw[i] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
-        mflw[i].id = id
-        mflw[i]:set0{x, px, y, py, t, pt}
-        if        R0[i] then mflw[i]:set1(R0[i])
-        elseif beta0[i] then mflw[i]:set1((betablk(beta0[i]))) end
-      elseif is_table(mflw[i]) then -- reuse: fill table
-        local tbl = mflw[i]
-        tbl.id, tbl.x, tbl.px, tbl.y, tbl.py, tbl.t, tbl.pt =
-            id,     x,     px,     y,     py,     t,     pt
-      else -- replace: need a table for key access (e.g. vector)
-        mflw[i] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
+      if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
+        mflw[ii] = X0i:copy()
+        mflw[ii].id = X0i.id or i
+        mflw[ii].pt = mflw[ii].pt:get0() + dpt
+      elseif is_mappable(X0i) then -- access by indexes first for vectors
+        local id =            X0i.id or i
+        local x  =  X0i[1] or X0i.x  or 0
+        local px =  X0i[2] or X0i.px or 0
+        local y  =  X0i[3] or X0i.y  or 0
+        local py =  X0i[4] or X0i.py or 0
+        local t  =  X0i[5] or X0i.t  or 0
+        local pt = (X0i[6] or X0i.pt or 0) + dpt
+        if mapdef then -- create: damap required from coordinates (and R matrix)
+          mflw[ii] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
+          mflw[ii].id = id
+          mflw[ii]:set0{x, px, y, py, t, pt}
+          if        R0[i] then mflw[ii]:set1(R0[i])
+          elseif beta0[i] then mflw[ii]:set1((betablk(beta0[i]))) end
+        else -- copy: need a table for key access (e.g. vs. vector)
+          mflw[ii] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
+        end
+      else
+        errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
       end
-    else
-      errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
     end
-
-    -- update original (?)
-    -- X0[i] = mflw[i]
   end
 
   -- complete mflow
@@ -827,8 +829,8 @@ local function make_mflow (self)
   mflw.s0=s0                 -- initial s-position (i.e. offset)
   mflw.ds=nil                -- s-length of results (signed)
   mflw.spos=nil              -- s-position of results (signed)
-  mflw.npar=npar             -- number of tracked particles or damaps
-  mflw.tpar=npar             -- total number of particles or damaps (i.e. #mflw)
+  mflw.npar=npar*ndp         -- number of tracked particles or damaps
+  mflw.tpar=npar*ndp         -- total number of particles or damaps (i.e. #mflw)
   mflw.nslc=nslc             -- number of slices for each element (number)
   mflw.nslice=nslice         -- slices for each element (number or iterable)
   mflw.implicit=implicit     -- slice also implicit elements
@@ -855,6 +857,7 @@ local function make_mflow (self)
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
+  mflw.deltap=deltap         -- save deltaps (for info)
 
   -- internal vars for track (varying states) --
 
