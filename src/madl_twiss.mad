@@ -24,11 +24,14 @@
 -- locals ---------------------------------------------------------------------o
 
 local matrix, command, track, cofind                              in MAD
-local normal, optfun, phasadv, betablk, has_dp, ofname, ofcname   in MAD.gphys
+local normal, optfun, phasadv, betablk, dp2pt, has_dp,
+      ofname, ofcname                                             in MAD.gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
-local is_nil, is_true, is_mappable, is_damap                      in MAD.typeid
+local is_nil, is_true, is_mappable, is_damap, is_number           in MAD.typeid
 local tblcpy, assertf                                             in MAD.utility
 local abs                                                         in math
+
+local chromdp = 1e-6
 
 -- twiss mtable ---------------------------------------------------------------o
 
@@ -116,13 +119,35 @@ end
 -- init track -----------------------------------------------------------------o
 
 local function twiss_track0 (self, X0, R0, ofun0)
-  local mapdef, save in self
+  local mapdef, chrom, beam, save in self
   local atsave = self:var_raw 'atsave' -- prevent evaluation
+  local npar
 
   -- wrap atsave
   if save and atsave ~= ffalse then
       atsave = (atsave == fnone or atsave == ftrue) and
                 fill or achain(fill, atsave)
+  end
+
+  -- chrom option, duplicate particles/damaps and inject chrom dp
+  if save and chrom then
+    if is_true(chrom) then chrom = chromdp end
+    assert(is_number(chrom), "invalid chrom option (boolean or number expected)")
+    local dpt = dp2pt(chrom, beam.beta)
+
+    npar = #X0
+    for i=1,npar do
+      local dpt = X[i].beam and dp2pt(chrom, X[i].beam.beta) or dpt
+
+      if is_damap(X[i]) then
+        X[i+npar]    = X[i]:copy()
+        X[i+npar].pt = X[i+npar].pt:get0() + dpt
+      else
+        X[i+npar]    = tblcpy(X[i])
+        X[i+npar].pt = X[i].pt + dpt
+      end
+      R0[i+npar] = R0[i] -- no need to duplicate
+    end
   end
 
   local mtbl, mflw = track 'twtrack0' {
@@ -174,6 +199,8 @@ local function twiss_track0 (self, X0, R0, ofun0)
       ocpl = coupling,
       omat = matrix(6),
       onam = coupling and ofcname or ofname,
+      chrm = chrom,
+      npar = npar,
     }
     -- add twiss columns and type to mtbl
     mtbl.type  = 'twiss'
@@ -313,6 +340,7 @@ local twiss = command 'twiss' {
   relative=nil,      -- save length of slices instead from element start  (mtbl)
   observe=false,     -- save only in observed elements (every n turns)    (mtbl)
   coupling=false,    -- save optical functions for non-diagonal blocks    (mtbl)
+  chrom=false,       -- compute chromaticity                              (twss)
 
   atentry=nil,       -- action called when entering an element            (trck)
   atslice=nil,       -- action called after each element slices           (trck)
