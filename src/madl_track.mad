@@ -40,7 +40,7 @@ local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
 local fact, arc2len                                             in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
 local action                                                    in MAD.symint
-local tblcat, errorf, assertf                                   in MAD.utility
+local tblcat, errorf, assertf, printf                           in MAD.utility
 local apercheck                                                 in MAD.aperture
 local minlen, minang, clight, sqrt2                             in MAD.constant
 local is_implicit                                               in element.drift
@@ -85,6 +85,22 @@ local xrotation, yrotation, srotation, translate,
 
 -- sabac: TODO
 local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr        in MAD.dynmap
+
+-- debug ----------------------------------------------------------------------o
+
+local function mdump(str, m)
+  if m.npar == 0 then
+    printf("%-15s  no particle found\n", str)
+    return
+  end
+
+  local x, px, y, py, t, pt in m[1]
+  if is_damap(m[1]) then
+    x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
+  end
+  printf("%-15s % -.16e % -.16e % -.16e % -.16e % -.16e % -.16e\n",
+            str,      x,     px,     y,      py,      t,     pt)
+end
 
 -- strengths and phases -------------------------------------------------------o
 
@@ -220,6 +236,8 @@ local function track_sbend (elm, m, e1_, e2_)
 
   assert(l          >= minlen, "invalid sbend length (>0 expected)")
   assert(abs(angle) >= minang, "invalid sbend angle (~=0 expected)")
+
+  if not k0 then k0 = angle/l end -- MAD-X backward compatibility
 
   knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
   ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
@@ -586,14 +604,14 @@ local function save_dat (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local npar, ds, eidx, sdir, tdir, spos, turn, mtbl, relative, mapsave in mflw
+  local ds, eidx, sdir, tdir, spos, turn, mtbl, relative, mapsave in mflw
 
   local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
   local dsw = ds*lw
 
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
-  for i=1,npar do
+  for i=1,mflw.npar do
     local id, x, px, y, py, t, pt in mflw[i]
     local M
     if is_tpsa(x) then
@@ -936,6 +954,8 @@ local function exec (self)
     elm:track(     mflw.__edat       )
     atexit   (elm, mflw.__edat, 0, -2)
 
+    -- check for particles
+    if mflw.npar == 0 then break end
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
     -- check remaining number of element to track
