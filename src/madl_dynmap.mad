@@ -44,7 +44,7 @@ local M = {}
 -- locals ---------------------------------------------------------------------o
 
 local vector, matrix                                             in MAD
-local is_nil, is_number                                          in MAD.typeid
+local is_nil, is_number, is_damap                                in MAD.typeid
 local minlen, minang, clight, twopi                              in MAD.constant
 local printf                                                     in MAD.utility
 
@@ -54,13 +54,18 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 -- debug ----------------------------------------------------------------------o
 
-local nodump = false
+local function mdump(str, m)
+  if m.npar == 0 then
+    printf("%-15s  no particle found\n", str)
+    return
+  end
 
-local function mdump(str, m, l_)
-  if nodump then return end
-  assert(m.npar >= 1)
-  printf("%s\t%s\t%-.17e\t%-.17e\t%-.17e\t%-.17e\t%-.17e\t%-.17e\n",
-         str, l_ and l_ or '', m[1].x, m[1].px, m[1].y, m[1].py, m[1].t, m[1].pt)
+  local x, px, y, py, t, pt in m[1]
+  if is_damap(m[1]) then
+    x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
+  end
+  printf("%-15s % -.16e % -.16e % -.16e % -.16e % -.16e % -.16e\n",
+            str,      x,     px,     y,      py,      t,     pt)
 end
 
 -- field mutipoles ------------------------------------------------------------o
@@ -411,7 +416,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
   local l, ld = el*lw, (eld or el)*lw
   local _beta = 1/beam.beta
 
--- mdump('strex_drift-0:', m)
+--  mdump('strex_drift-0:', m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -423,7 +428,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
   end
 
--- mdump('strex_drift-1:', m)
+--  mdump('strex_drift-1:', m)
 end
 
 function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          checked
@@ -524,34 +529,34 @@ end
 
 -- TKT [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
 
-function M.sbend_thick (elm, m, lw) -- [SSEC]                                   checked
+function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            checked
   local el, eld, eh, ang, k0, beam, T in m
-  local ld, ang, k0 = (eld or el)*lw, ang*lw, k0*m.edir      -- A = ang
-  local rho, _beta, k0q = 1/eh, 1/beam.beta, k0*beam.charge  -- R = rho
+  local ld, ang, k0 = (eld or el)*lw, ang*lw, k0*m.edir
+  local rho, _beta, k0q = 1/eh, 1/beam.beta, k0*beam.charge
 
   local sa, ca = sin(ang), cos(ang)
 
---  mdump('sbend_thick-0:', m, ld)
+--  mdump('sbend_thick-0:', m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
     local   k0q = beam and k0*beam.charge or k0q
     local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)
-    local  pzx = pz - (x+rho)*k0q
-    local  npx =  ca*px + sa*pzx
-    local  dpx = -sa*px + ca*pzx
-    local   ps = sqrt(pw2 - npx^2)
-    local  ptt = sqrt(pw2)
+    local   pz = sqrt(pw2 - px^2)                                      -- PZ
+    local  pzx = pz - k0q*(rho+x)
+    local  npx =  ca*px + sa*pzx                                       -- XN(2)
+    local  dpx = -sa*px + ca*pzx                                       -- DPX'
+    local  pzs = sqrt(pw2 - npx^2)                                     -- PZS
+    local  ptt = sqrt(pw2)                                             -- PT
     local _ptt = 1/ptt
-    local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q
+    local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q            -- XN(3)
 
     -- eq. 126 in Forest06
-    m[i].x  = (ps-dpx)/k0q - rho
-    m[i].px = npx
-    m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta
+    m[i].x  = (pzs-dpx)/k0q - rho                                      -- XN(1)
+    m[i].px = npx                                                      -- XN(2)
+    m[i].y  = y + dxs*py                                               -- XN(3)
+    m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta                      -- XN(6)
   end
 
 --  mdump('sbend_thick-1:', m)
@@ -1111,7 +1116,7 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]
   if lw_ == 0 then return end
   local lw = lw_ or 1
 
---  mdump('curex_fringe-0:', m, m.eld*m.sdir*lw)
+--  mdump('curex_fringe-0:', m)
 
   if m.nmul == 0 then return end -- switched off
 
