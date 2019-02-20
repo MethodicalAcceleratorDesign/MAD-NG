@@ -86,6 +86,9 @@ local function cofind_jacob (self, track)
   local X1 = vector(6):fill(self .X1)
   local X, R, rnk, typ
 
+  -- error handling
+  local errf = self.cowarn and warn or errorf
+
   -- track 6+1 particles to compute jacobian by finite differences
   local Xs = { 0,0,0,0,0,0,X0 }
   for j=1,6 do Xs[j] = X0:same() end
@@ -99,9 +102,13 @@ local function cofind_jacob (self, track)
     end
 
     -- track 6D x 7 particles
-    local _, mflw, ei = track { X0=Xs }
+    local _, mflw = track { X0=Xs }
 
-    -- TODO: yield if ei, require coroutine.wrap
+    -- check for all particles lost
+    if mflw.npar == 0 then
+      errf("closed orbit lost all particles after %d iterations", itr)
+      return X0, R, rnk, typ, itr
+    end
 
     -- retrieve 6D orbit and one-turn map
     X, R = vector(6), matrix(6)
@@ -121,12 +128,8 @@ local function cofind_jacob (self, track)
     if typ then return X0, R, rnk, typ, itr end
   end
 
-  if self.cowarn then
-    warn  ("closed orbit did not converge in %d iterations", coiter)
-    return X0, R, rnk, typ, coiter
-  else
-    errorf("closed orbit did not converge in %d iterations", coiter)
-  end
+  errf("closed orbit did not converge in %d iterations", coiter)
+  return X0, R, rnk, typ, coiter
 end
 
 -- cofind using map -----------------------------------------------------------o
@@ -143,11 +146,20 @@ local function cofind_map (self, track)
   local X1 = vector(6):fill(self .X1)
   local X, R, rnk, typ
 
+  -- error handling
+  local errf = self.cowarn and warn or errorf
+
   -- search for fix point
   for itr=1,coiter do
 
     -- track 6D x 1 damap
     local _, mflw = track { X0=X0 }
+
+    -- check for all particles lost
+    if mflw.npar == 0 then
+      errf("closed orbit lost all particles after %d iterations", itr)
+      return X0, R, rnk, typ, itr
+    end
 
     -- retrieve 6D orbit and one-turn map
     X = mflw[1]:get0()
@@ -160,12 +172,8 @@ local function cofind_map (self, track)
     if typ then return X0, R, rnk, typ, itr end
   end
 
-  if self.cowarn then
-    warn  ("closed orbit did not converge in %d iterations", coiter)
-    return X0, R, rnk, typ, coiter
-  else
-    errorf("closed orbit did not converge in %d iterations", coiter)
-  end
+  errf("closed orbit did not converge in %d iterations", coiter)
+  return X0, R, rnk, typ, coiter
 end
 
 -- cofind command -------------------------------------------------------------o
@@ -245,7 +253,7 @@ local cofind = command 'cofind' {
   X0=nil,            -- initial X coordinates for orbit search            (trck)
   R0=nil,            -- initial R matrix (compagnion of X0 for damap)     (trck)
   beta0=nil,         -- initial beta0 block to build uncoupled R0         (trck)
-  deltap=0,          -- initial deltap                                    (trck)
+  deltap=nil,        -- initial deltap                                    (trck)
 
   mapdef=nil,        -- setup for damap (true => {xy=1})                  (trck)
   mapsave=nil,       -- never save data                                   (trck)
