@@ -56,6 +56,17 @@ end
 local tbl_col = {'name','s','l','slc','beta11','beta22'}
 local tbl_hdr = {'title','type','origin','date','time'}
 
+local srvcol = {'name','kind','s','l','x','y','z'}
+local trkcol = {'name','kind','s','l','x','px','y','py','t','pt'}
+local twscol = {'name','s','l','beta1','alfa1','mu1','beta2','alfa2','mu2','disp1','disp2'}
+local trkcolre = {'name','kind','s','l','x','px','y','py','t','pt',
+                  're11','re12','re13','re14','re15','re16',
+                  're21','re22','re23','re24','re25','re26',
+                  're31','re32','re33','re34','re35','re36',
+                  're41','re42','re43','re44','re45','re46',
+                  're51','re52','re53','re54','re55','re56',
+                  're61','re62','re63','re64','re65','re66' }
+
 -- Tests ----------------------------------------------------------------------o
 
 TestTwiss = {}
@@ -63,11 +74,14 @@ TestTwiss = {}
 function TestTwiss:setUp ()
   filesys.mkdir(rundir())
   self.optfmt = option.format
+  self.nochrg = option.nocharge
   option.format = "%-.10g"
+  option.nocharge = true
 end
 
 function TestTwiss:tearDown ()
-  option.format = self.optfmt
+  option.format   = self.optfmt
+  option.nocharge = self.nochrg
 end
 
 function TestTwiss:testTwissThinFODO ()
@@ -143,34 +157,29 @@ end
 -- from MAD-X course, src_4.1 and src_5.1
 function TestTwiss:testTwissSimpleRing ()
   !! import
-  local beam, sequence, element, survey, twiss in MAD
+  local beam, sequence, element, survey, track, cofind, twiss in MAD
   local drift, marker, sbend, quadrupole, sextupole, hkicker, vkicker,
         monitor, bline in element
-  !! end
 
-  !! context
+  !! vars, knobs
+  local l , n  = deferred {}, deferred {}
+  local k1, k2 = deferred {}, deferred {}
+
+  !! context (note: Setup sets option.nocharge=true)
   local beam = beam { particle='electron', energy=20 }
-  !! end
 
   !! constants
-  local l, n = deferred {}, deferred {}
   l.sequ = 240 ! length of the machine
   l.ssec = 20  ! length of the straight sections
   n.ssec = 2   ! number of straight sections
   n.bend = 4   ! number of bends per cell
-  !! end
 
   !! lengths
-  ! lengths of bends, quads, sexts, kickers, monitors
   l.mb=3.3 ; l.mq=0.8 ; l.ms=0.4 ; l.mk=0.25 ; l.bp=0.25
-  ! lengths of drifts between magnets and fo-do
   l.de = 0.3 ; l.df = 0.5
-  ! length of cells (20m)
   l.cell =\ 2*(l.mb+l.bp+l.mk+l.mq+l.ms+l.mb +4*l.de +l.df)
-  ! number of cells per arc
   n.cell =\ 1*(l.sequ/n.ssec - l.ssec)/l.cell
   print('l.cell=', l.cell, 'n.cell=', n.cell)
-  !! end
 
   !! classes
   local df = drift      'df' {}
@@ -181,10 +190,8 @@ function TestTwiss:testTwissSimpleRing ()
   local vk = vkicker    'vk' { l := l.mk }
   local bp = monitor    'bp' { l := l.bp }
   local mk = marker     'mk' {}
-  !! end
 
   !! families
-  local k1, k2 = deferred {}, deferred {}
   local qf = mq 'qf' { k1 := k1.qf }
   local qd = mq 'qd' { k1 := k1.qd }
   local sf = ms 'sf' { k2 := k2.sf }
@@ -194,28 +201,25 @@ function TestTwiss:testTwissSimpleRing ()
   local d2 = df 'd2' { l  := l.de }
   local mkf , mkd     = mk 'mkf' {}, mk 'mkd' {}
   local mkl , mkr, ip = mk 'mkl' {}, mk 'mkr' {}, mk 'ip' {}
-  !! end
 
   !! lattice
   local cellf = bline    'cellf' {mkf,d1,mb,d2,bp,hk,d2,qf,d2,sf,d2,mb,d1}
   local celld = bline    'celld' {mkd,d1,mb,d2,bp,vk,d2,qd,d2,sd,d2,mb,d1}
   local cell  = bline    'cell'  {cellf,celld}
   local ssec  = bline    'ssec'  {mkl,d0,ip,d0,mkr}
-  local arc   = bline    'arc'   {5*cell}
+  local arc   = sequence 'arc'   {5*cell}
   local sequ  = sequence 'sequ'  {arc,ssec,arc,ssec}
-  !! end
+
+  -- arc:dumpseq()
 
   !! angle
   n.mb = n.ssec*n.cell*n.bend
   mb.angle =\ 2*pi/n.mb
   print('n.mb=', n.mb, 'mb.angle=', mb.angle)
-  !! end
 
   !! survey
-  local srvcol = {'name','kind','s','l','x','y','z'}
-  local srv = survey { sequence=sequ, nslice=5, implicit=true, atslice=ftrue }
+  local srv = survey { sequence=sequ, implicit=true, atslice=ftrue }
   srv:write(rundir('sr_survey'), srvcol)
-  !! end
 
   !! plot survey
   if doplot then
@@ -231,24 +235,58 @@ function TestTwiss:testTwissSimpleRing ()
       fontsize = 14,
     }
   end
-  !! end
 
   !! thick_approx
   local u_cell = pi/2
   local f_cell = l.cell/(4*sin(u_cell/2))
   local k_cell = 1/(f_cell * l.mq)
   k1.qf = k_cell ; k1.qd = -k_cell
-  print('k1.qf=', k1.qf, 'k1.qd=', k1.qd)
-  print('k1-f=' , k1.qf*beam.brho, 'k0-f=', mb.angle*beam.brho/mb.l)
-  !! end
+  print('qf.k1=', qf.k1, 'qd.k1=', qd.k1)
+  print('qf.k1_f=', qf.k1*beam.brho, 'mb.k0_f=', mb.angle*beam.brho/mb.l)
+
+  !! track
+  local trk = track { sequence=arc, beam=beam, mapdef=true, save=true, mapsave=true, observe=false }
+  print("#trk=", #trk)
+  for i=1,6 do for j=1,6 do
+    trk:addcol('re'..i..j, \r -> trk.M[r][i]:get(j+1))
+  end end
+  trk:write(rundir('sr_track_arc'), trkcolre)
+
+--  !! cofind
+--  local X, R, rnk, typ, itr = cofind { sequence=arc, beam=beam }
+--  print('itr=', itr, 'rnk=', rnk, 'typ=', typ)
+--  X:print('X=')
+--  R:print('R=')
+
+--[[
+Started on Wed Feb 20 16:08:26 2019
+    TestTwiss.testTwissSimpleRing ... l.cell= 20  n.cell= 5
+n.mb= 40  mb.angle= 0.15707963267949
+qf.k1=  0.17677669529664  qd.k1=  -0.17677669529664
+qf.k1_f=  11.793271679899 mb.k0_f=  3.1755227594964
+itr=  1 rnk=  4 typ=  4D
+X=[6x1] =
+  0
+  0
+  0
+  0
+  0
+  0
+R=[6x6] =
+  -1.648112459   8.698705172    -7.63197244e-12   -6.248129947e-10  0              9.339706654
+  -0.1331900412  0.09617672986  -3.466669589e-12  -2.768537976e-10  0              0.9570117197
+   0             0               1.63899531       15.00130722       0              0
+   0             0              -0.1879900437     -1.110495185      0              0
+   0.3334443832 -7.426412818     0                 0                1.000000083  -13.97240545
+   0             0               0                 0                0              1
+Ok
+--]]
 
   !! twiss
-  local twscol = {'name','s','l','beta1','alfa1','mu1','beta2','alfa2','mu2','disp1','disp2'}
-  local tws = twiss { sequence=sequ, beam=beam, nslice=5, implicit=true, atslice=ftrue }
+--  local tws = twiss { sequence=arc, beam=beam, implicit=true }
 --  local mux = 360*frac(tws.q1[1])/n.cell
 --  local muy = 360*frac(tws.q2[1])/n.cell
 --  print('mux=', mux, 'muy=', muy)
-  !! end
 end
 
 -- end ------------------------------------------------------------------------o
