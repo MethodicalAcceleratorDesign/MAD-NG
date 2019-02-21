@@ -30,12 +30,6 @@ local assertf, errorf, num2str                                   in MAD.utility
 local twopi, minang                                              in MAD.constant
 local max, abs, sqrt, sin, cos, atan2 in math
 
-local dp_tol   = 1e-12
-local eig_tol  = 1e-12
-local nrm_tol  = 1e-12
-local symp_tol = 1e-12
-local ofun_tol = 1e-12
-
 -- helpers --------------------------------------------------------------------o
 
 local function chkeigsiz (V, W)
@@ -54,6 +48,13 @@ end
 -- implementation -------------------------------------------------------------o
 
 local gphys = {
+
+  -- tolerances
+  dp_tol   = 1e-12,
+  eig_tol  = 1e-12,
+  nrm_tol  = 1e-12,
+  symp_tol = 1e-12,
+  ofun_tol = 1e-12,
 
   -- canonical variables names (index -> name)
   cvname = {'x', 'px', 'y', 'py', 't', 'pt'},
@@ -87,7 +88,7 @@ local gphys = {
 -- check R*Vi = Wi*Vi
 
 function gphys.is_eigsys (V, W, R, eigtol_)
-  local tol = eigtol_ or eig_tol
+  local tol = eigtol_ or gphys.eig_tol
   chkeigsiz(V, W) ; chkeigsiz(R, W)
   assert(is_positive(tol), "invalid argument #4 (positive number expected)")
   local cvec, getc = R.complex, R.getcol
@@ -120,23 +121,24 @@ end
 -- check that N = (1/A * R * A) = Abar * R * A contains only rotations
 
 function gphys.is_normal (A, R, nrmtol_)
-  local tol = nrmtol_ or nrm_tol
+  local tol = nrmtol_ or gphys.nrm_tol
   local get, set = A.get, A.set
 
   local N = (A:bar() * R * A) -- :print("N = Abar R A ")
 
   for i = 1,N.nrow-1,2 do
-    local mu1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
-    local mu2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
-    if abs(mu1-mu2) > tol then
+    local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
+    local a2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
+    if abs(a1-a2) > tol then
       warn("invalid normal form #%d (deviates from a pure rotation by %s)",
-           i, num2str(mu1-mu2))
+           i, num2str(a1-a2))
       return false
     end
     N:setsub(i..i+1, i..i+1, 0)
   end
   if not N:eq(0, tol) then
     warn("invalid normal form N (contains coupling terms)")
+    R:print('R') ; N:print('N')
     return false
   end
 
@@ -146,7 +148,7 @@ end
 -- check for delta_p in one-turn map using dptol tolerance
 
 function gphys.has_dp (R, dptol_)
-  local tol = dptol_ or dp_tol
+  local tol = dptol_ or gphys.dp_tol
   assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
   assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
@@ -336,10 +338,13 @@ end
 function gphys.normal (R, nocheck_)
   chkeigsiz(R)
 
-  local serr = R:symperr()
-  if serr > symp_tol then
+  local serr, Rerr = R:symperr(R:same())
+  if serr > gphys.symp_tol then
     trace(0, "symplectic deviation: %s", num2str(serr))
+    R:print('R') ; Rerr:print("R'JR-J") ;
     gphys.makesymp(R)
+    serr, Rerr = R:symperr(Rerr)
+    R:print('R') ; Rerr:print("R'JR-J") ;
   end
 
   -- get eigenvalues (W) and (right) eigenvectors (V) of R
@@ -370,14 +375,15 @@ end
 
 local _id = {} -- identity
 
-local function oval (x)
-  return abs(x) <= ofun_tol and 0 or x
+local function oval (x, tol)
+  return abs(x) <= tol and 0 or x
 end
 
 -- get phase advance from eigenvalues
 
 function gphys.phasadv (W, optfun)
   local fun = optfun
+  local tol = gphys.ofun_tol
 
   assert(is_cvector(W), "invalid argument #1 (eigenvalues expected)")
   assert(is_table(fun) and fun.__ofun == _id,
@@ -385,9 +391,9 @@ function gphys.phasadv (W, optfun)
 
   local rk6 = W.nrow >= 6
 
-  fun.mu1 =         oval( W[1]:carg() / twopi )
-  fun.mu2 =         oval( W[3]:carg() / twopi )
-  fun.mu3 = rk6 and oval( W[5]:carg() / twopi ) or nil
+  fun.mu1 =         oval( W[1]:carg() / twopi, tol)
+  fun.mu2 =         oval( W[3]:carg() / twopi, tol)
+  fun.mu3 = rk6 and oval( W[5]:carg() / twopi, tol) or nil
 
   if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
   if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
@@ -405,13 +411,14 @@ function gphys.optfun (A, optfun_, optcpl_)
   local get = A.get
   local rk6 = A.nrow >= 6
   local fun = optfun_
+  local tol = gphys.ofun_tol
 
   if fun then
     assert(is_table(fun) and fun.__ofun == _id,
            "invalid argument #2 (optfun table expected)")
     table.clear(fun)
   else
-    fun = table.new(0, rk6 and 35 or 20)
+    fun = table.new(0, 35)
   end
   fun.__ofun = _id
 
@@ -422,65 +429,70 @@ function gphys.optfun (A, optfun_, optcpl_)
 
   -- alpha, beta and gamma
 
-  fun.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)) )
-  fun.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2             )
-  fun.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2             )
+  fun.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)), tol)
+  fun.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2            , tol)
+  fun.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2            , tol)
 
-  fun.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)) )
-  fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2             )
-  fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2             )
+  fun.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)), tol)
+  fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2            , tol)
+  fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2            , tol)
 
   if optcpl_ then
-    fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)) )
-    fun.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2             )
-    fun.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2             )
+    fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)), tol)
+    fun.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2            , tol)
+    fun.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2            , tol)
 
-    fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)) )
-    fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2             )
-    fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2             )
+    fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)), tol)
+    fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2            , tol)
+    fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2            , tol)
   end
 
   if rk6 then
-    fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
-    fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
-    fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
+    fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)), tol)
+    fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2            , tol)
+    fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2            , tol)
 
     if optcpl_ then
-      fun.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)) )
-      fun.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2             )
-      fun.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2             )
+      fun.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)), tol)
+      fun.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2            , tol)
+      fun.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2            , tol)
 
-      fun.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)) )
-      fun.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2             )
-      fun.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2             )
+      fun.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)), tol)
+      fun.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2            , tol)
+      fun.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2            , tol)
 
-      fun.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)) )
-      fun.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2             )
-      fun.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2             )
+      fun.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)), tol)
+      fun.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2            , tol)
+      fun.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2            , tol)
 
-      fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
-      fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2             )
-      fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2             )
+      fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)), tol)
+      fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2            , tol)
+      fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2            , tol)
     end
+  else
+    fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
   end
 
   -- dispersion (5D)
 
   if rk6 then
-    fun.disp1, fun.disp2 = oval( get(A,1,6) ), oval( get(A,2,6) )
-    fun.disp3, fun.disp4 = oval( get(A,3,6) ), oval( get(A,4,6) )
     -- TODO: true 6D using Chao's method
+    fun.disp1, fun.disp2 = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
+    fun.disp3, fun.disp4 = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
+  else
+    fun.disp1, fun.disp2 = 0, 0
+    fun.disp3, fun.disp4 = 0, 0
   end
 
   -- phase advance
 
-  fun.mu1 =         oval( atan2(get(A,1,2), get(A,1,1)) / twopi )
-  fun.mu2 =         oval( atan2(get(A,3,4), get(A,3,3)) / twopi )
-  fun.mu3 = rk6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi ) or nil
+  fun.mu1 =         oval( atan2(get(A,1,2), get(A,1,1)) / twopi, tol)
+  fun.mu2 =         oval( atan2(get(A,3,4), get(A,3,3)) / twopi, tol)
+  fun.mu3 = rk6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi, tol) or 0
 
-  if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
-  if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
-  if rk6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
+  if fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
+  if fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
+  if fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
   return fun
 end
