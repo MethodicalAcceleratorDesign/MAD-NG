@@ -23,9 +23,9 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, command, track, cofind                              in MAD
+local matrix, command, track, cofind, gphys                       in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dp,
-      ofname, ofcname                                             in MAD.gphys
+      ofname, ofcname                                             in gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
 local is_nil, is_true, is_mappable, is_damap, is_number           in MAD.typeid
 local tblcpy, tbldup, assertf                                     in MAD.utility
@@ -39,7 +39,7 @@ local function fill_sum (mflw)
   local mtbl in mflw
   local chrm in mflw.__twdat
 
-  -- chromaticity
+  -- chromaticity (BUG: indexes are wrong for lost particles and/or deltap)
   if chrm then
     local n = floor(#mtbl.q1/2)
     for i=1,n do
@@ -75,9 +75,18 @@ local function fill (elm, mflw, lw, islc)
     local par = mflw[i]
     assertf(is_damap(par), "unexpected particle %d (damap expected)", i)
     optfun(par:get1(omat), ofun, ocpl)
+
+    -- fill table
     for _,k in ipairs(onam) do
       mtbl[k][n+i] = ofun[k]
     end
+
+    -- adjust the phases
+    if ofun.mu1 < mtbl._mu1[i] then ofun.mu1 = ofun.mu1+1 end
+    if ofun.mu2 < mtbl._mu2[i] then ofun.mu2 = ofun.mu2+1 end
+    if ofun.mu3 < mtbl._mu3[i] then ofun.mu3 = ofun.mu3+1 end
+
+    -- compute the tunes
     mtbl.q1[i], mtbl._mu1[i] = mtbl.q1[i] + ofun.mu1 - mtbl._mu1[i], ofun.mu1
     mtbl.q2[i], mtbl._mu2[i] = mtbl.q2[i] + ofun.mu2 - mtbl._mu2[i], ofun.mu2
     mtbl.q3[i], mtbl._mu3[i] = mtbl.q3[i] + ofun.mu3 - mtbl._mu3[i], ofun.mu3
@@ -89,8 +98,7 @@ end
 
 local function twiss_cofind (self, X0, R0)
 
-  -- retrieve closed orbit
-  local X, R, rnk, typ, itr = cofind 'twcofind' {
+  local twcofind = cofind 'twcofind' {
     -- forward options to cofind
     beam     = self.beam,
     sequence = self.sequence,
@@ -126,10 +134,21 @@ local function twiss_cofind (self, X0, R0)
     comethod = self.comethod,
     cowarn   = self.cowarn,
     X1       = self.X1,
+    exec    = false,
   }
+
+  -- retrieve closed orbit
+  local X, R, rnk, typ, itr = twcofind {}
 
   if typ == 'Singular' then
     error("unable to find closed orbit during twiss initialization")
+  end
+
+  -- closed orbit with finite differences, rerun with maps to get cleaner R
+  if not twcofind.mapdef and R:symperr() > gphys.symp_tol then
+    X, R, rnk, typ, itr = twcofind { X0=X, mapdef=true }
+    assert(typ ~= 'Singular' and itr <= 2,
+           "unexpected change of closed orbit when finalizing with damaps")
   end
 
   return X, R, rnk
@@ -379,8 +398,8 @@ local twiss = command 'twiss' {
 
   cotol=nil,         -- closed orbit tolerance                            (cofn)
   coiter=nil,        -- maximum number of iteration                       (cofn)
-  codiff=nil,        -- finite differences steps                          (cofn)
-  codptol=nil,       -- static vs dynamic tolerance                       (cofn)
+  codiff=nil,        -- finite differences step for jacobian              (cofn)
+  codptol=nil,       -- 4D vs 6D dp tolerance                             (cofn)
   comethod=nil,      -- default optimizer                                 (cofn)
   comapdef=nil,      -- optional mapdef for cofind                        (cofn)
   comapdump=nil,     -- dump X and R after each element                   (cofn)
