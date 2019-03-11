@@ -49,8 +49,8 @@ const num_t mad_cst_RADDEG   = M_RADDEG;
 
 // constants for physics
 
-const num_t mad_cst_MINLEN   = 1e-12;
-const num_t mad_cst_MINANG   = 1e-12;
+const num_t mad_cst_MINLEN   = 1e-10;
+const num_t mad_cst_MINANG   = 1e-10;
 
 const num_t mad_cst_CLIGHT   = P_CLIGHT;
 const num_t mad_cst_MU0      = P_MU0;
