@@ -23,12 +23,12 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local warn, vector, matrix, command, track            in MAD
-local cvname, has_dp                                  in MAD.gphys
-local fnone                                           in MAD.gfunc
-local is_number, is_positive, is_boolean, is_true     in MAD.typeid
-local errorf, assertf                                 in MAD.utility
-local abs                                             in math
+local warn, vector, matrix, command, track                        in MAD
+local fnone                                                       in MAD.gfunc
+local cvname, has_dp                                              in MAD.gphys
+local errorf, assertf                                             in MAD.utility
+local is_number, is_positive, is_boolean, is_true, is_iterable    in MAD.typeid
+local abs                                                         in math
 
 local I  = matrix(6):eye()
 local I4 = matrix(4):eye()
@@ -40,8 +40,8 @@ local method = {}
 function method.newton (X0, X, R, T, tol, dptol)
   local dX, rnk
 
-  -- check for 4D or 6D
-  if not T and has_dp(R, dptol) then   -- 6D case
+  if not T and has_dp(R, dptol) then
+    -- 6D case
     dX, rnk = (R-I):solve(X-X0)
 
     if rnk < 6 then
@@ -51,7 +51,9 @@ function method.newton (X0, X, R, T, tol, dptol)
 
     -- adjust orbit
     X0:sub(dX,X0)
-  else                                 -- 4D case
+
+  else
+    -- 4D case
     local X4 = X:getrow(1..4) - X0:getrow(1..4)
     local R4 = R:getsub(1..4, 1..4) - I4
     dX, rnk = R4:solve(X4)
@@ -75,31 +77,32 @@ end
 -- cofind using jacobian ------------------------------------------------------o
 
 local function cofind_jacob (self, track)
-  -- TODO: process multiple maps/particles in // (difficult)
-
   local cotol, coiter, codiff, codptol, comethod in self
   local costep = method[comethod]
   local T = self.totalpath
 
-  -- build 6D initial orbit and final orbit translation
-  local X0 = vector(6):fill(track.X0)
-  local X1 = vector(6):fill(self .X1)
-  local dX = vector(6):fill(codiff)
-  local X, R, rnk, typ
+  assert(is_number(track.X0[1]),"cofind works only with single particles")
 
   -- error handling
   local errf = self.cowarn and warn or errorf
+
+  -- build 6D initial orbit
+  local X0 = vector(6):fill(track.X0)   -- initial coordinates
+  local X1 = vector(6):fill(self .X1)   -- final translation
+  local dX = vector(6):fill(codiff)     -- finite differences
 
   -- track 6+1 particles to compute jacobian by finite differences
   local Xs = { 0,0,0,0,0,0,X0 }
   for j=1,6 do Xs[j] = X0:same() end
 
-  -- scale positions vs momentum
+  -- scale positions vs momentum (empirical...)
   if is_number(codiff) then
-    dX[1], dX[2] = codiff*100, codiff*100
+    dX[1], dX[3] = codiff*100, codiff*100
   end
 
   -- search for fix point
+  local X, R, rnk, typ
+
   for itr=1,coiter do
 
     -- init dx_j
@@ -111,8 +114,8 @@ local function cofind_jacob (self, track)
     local _, mflw = track { X0=Xs }
 
     -- check for all particles lost
-    if mflw.npar == 0 then
-      errf("closed orbit lost all particles after %d iterations", itr)
+    if mflw.npar ~= 7 then
+      errf("cofind lost %d particles after %d iterations", 7-mflw.npar, itr)
       return X0, R, rnk, typ, itr
     end
 
@@ -127,10 +130,10 @@ local function cofind_jacob (self, track)
       end
     end
 
-    -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = X-X0-X1
+    -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = (X-X1)-X0
     rnk, typ = costep(X0, X-X1, R, T, cotol, codptol)
 
-    -- orbit, one-turn map, rank of R, "4D" | "6D" | "Singular", no iterations
+    -- orbit X, one-turn map R, rank of R, "4D"|"6D"|"Singular"|"Lost", itr
     if typ then return X0, R, rnk, typ, itr end
   end
 
@@ -140,46 +143,90 @@ end
 
 -- cofind using map -----------------------------------------------------------o
 
-local function cofind_map (self, track)
-  -- TODO: process multiple maps/particles in // (easy)
+--[[                 npar           tpar                              npart
+   +-----------------+--------------+      +--------------------------+
+X0 | Active          | Lost         | => X | Found/Lost-by-id         |
+   +-----------------+--------------+      +--------------------------+
+--]]
 
+local function cofind_map (self, track)
   local cotol, coiter, codptol, comethod in self
   local costep = method[comethod]
   local T = self.totalpath
 
-  -- build 6D initial orbit and final orbit translation
-  local X0 = vector(6):fill(track.X0)
-  local X1 = vector(6):fill(self .X1)
-  local X, R, rnk, typ
-
   -- error handling
   local errf = self.cowarn and warn or errorf
 
-  -- search for fix point
-  for itr=1,coiter do
+  -- let's track build initial damaps (e.g. handle deltap)
+  local _, mflw = track { nstep=0, save=false }
+  local npar = mflw.npar
 
-    -- track 6D x 1 damap
-    local _, mflw = track { X0=X0 }
+  -- build 6D initial orbit
+  local X0  = table.new(npar,0)   -- initial coordinates [damaps  ]
+  local X1  = table.new(npar,0)   -- final translations  [vectors ]
+  local X   = table.new(npar,0)   -- final coodinates    [vectors ]
+  local R   = table.new(npar,0)   -- final one-turn maps [matrices]
+  local rnk = table.new(npar,0)   -- ranks
+  local typ = table.new(npar,0)   -- types for ending
+  local itr = table.new(npar,0)   -- iterations
+  local X1i = self.X1
 
-    -- check for all particles lost
-    if mflw.npar == 0 then
-      errf("closed orbit lost all particles after %d iterations", itr)
-      return X0, R, rnk, typ, itr
+  -- prepare initial damaps/final vectors
+  for i=1,npar do
+    X0[i] = mflw[i]
+    X1[i] = vector(6):fill(is_iterable(X1i[i]) and X1i[i] or X1i)
+  end
+
+  -- search for fix point(s)
+  for it=1,coiter do
+    -- track damaps
+    local _, mflw = track { X0=X0, npart=npar, deltap=0 }
+    npar = mflw.npar
+
+    local i = 1
+    while i <= npar do
+      -- retrieve 6D orbit and one-turn map
+      local X0i  = X0  [i]:get0()
+      local Xi   = mflw[i]:get0()
+            Ri   = mflw[i]:get1()
+
+      -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = (X-X1)-X0
+      local rnki, typi = costep(X0i, Xi-X1[i], Ri, T, cotol, codptol)
+      -- print('it=', it, 'i=', i, 'typi=', typi, 'err=', (X0i-Xi):norm())
+
+      if typi then
+        -- save results
+        local j = X0[i].id
+        X[j], R[j], rnk[j], typ[j], itr[j] = X0i, Ri, rnki, typi, it
+        X0[i], X0[npar] = X0[npar], nil
+        npar = npar - 1
+      else
+        -- update X0
+        X0[i]:setv(X0i)
+        i = i + 1
+      end
     end
 
-    -- retrieve 6D orbit and one-turn map
-    X = mflw[1]:get0()
-    R = mflw[1]:get1()
+    -- handle lost particles, if any
+    for i=mflw.npar+1,mflw.tpar do
+      local j = X0[i].id
+      X[j], R[j], rnk[j], typ[j], itr[j] = mflw[i]:get0(), nil, 0, "Lost", it
+    end
 
-    -- update X0 = X0-dX if |dX| >= cotol, where dX solves (R-I)dX = X-X0-X1
-    rnk, typ = costep(X0, X-X1, R, T, cotol, codptol)
-
-    -- orbit, one-turn map, rank of R, "4D" | "6D" | "Singular", no iterations
-    if typ then return X0, R, rnk, typ, itr end
+    -- all damaps have been processed
+    if npar == 0 then
+      if itr[2] == nil then
+        -- orbit X, one-turn map R, rank of R, "4D"|"6D"|"Singular"|"Lost", it
+        return X[1], R[1], rnk[1], typ[1], itr[1]
+      else
+        return X, R, rnk, typ, itr
+      end
+    end
   end
 
   errf("closed orbit did not converge in %d iterations", coiter)
-  return X0, R, rnk, typ, coiter
+  -- return X0 and R as-is for analysis (if errf=warn!)
+  return X, R, rnk, typ, coiter
 end
 
 -- cofind command -------------------------------------------------------------o
@@ -214,6 +261,7 @@ local function exec (self)
 
     nturn     = self.nturn,
     nstep     = self.nstep,
+    npart     = self.npart,
     nslice    = self.nslice,
     model     = self.model,
     method    = self.method,
@@ -242,8 +290,8 @@ local function exec (self)
 
   -- search closed orbit using Newton algorithm
   if mapdef
-  then return cofind_map   (self, trck0) -- use damap
-  else return cofind_jacob (self, trck0) -- use jacobian
+  then return cofind_map  (self, trck0) -- use damap
+  else return cofind_jacob(self, trck0) -- use jacobian
   end
 end
 
@@ -268,6 +316,7 @@ local cofind = command 'cofind' {
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track                       (trck)
+  npart=nil,         -- number of particles (or #X0)                      (trck)
   nslice=nil,        -- number of slice for each element                  (trck)
   implicit=nil,      -- slice implicit elements too                       (trck)
   model=nil,         -- model for integration                             (trck)
@@ -296,7 +345,7 @@ local cofind = command 'cofind' {
   codptol=1e-12,     -- 4D vs 6D dp tolerance                             (cofn)
   comethod='newton', -- default optimizer                                 (cofn)
   cowarn=false,      -- commute errors into warnings                      (cofn)
-  X1=0,              -- optional final coordinates translation            (cofn)
+  X1={0,0,0,0,0,0},  -- optional final coordinates translation            (cofn)
 
   mflow=nil,         -- mflow, exclusive with other attributes except nstep
   exec=exec,         -- command to execute upon children creation
