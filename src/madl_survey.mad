@@ -56,6 +56,24 @@ local strex_drift, curex_thick, curex_thin                       in MAD.geomap
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
 
+-- debug ----------------------------------------------------------------------o
+
+local shtfmt  = "%-15s % -.6e % -.6e % -.6e\n"
+local lngfmt  = "%-15s % -.16e % -.16e % -.16e\n"
+local dumpfmt = shtfmt
+
+local function mdump(elm, m)
+  if elm.kind == 'marker' then return end
+
+  local V, W in m
+
+  printf(dumpfmt, elm.name, V[1], V[2], V[3])
+
+  for i=1,W.nrow do
+    printf(dumpfmt, '', W:get(i,1), W:get(i,2), W:get(i,3))
+  end
+end
+
 -- element tracking -----------------------------------------------------------o
 
 local function trackelm (elm, m, track, thick, thin)
@@ -387,12 +405,16 @@ local function exec (self)
   -- debug actions setup
   if MAD.option.debug >= 2 then trace_action(mflw) end
 
+  -- debug maps
+  local tracemap = self.mapdump and mdump or fnone
+
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
     atentry   (elm, mflw.__edat, 0, -1)
     elm:survey(     mflw.__edat       )
     atexit    (elm, mflw.__edat, 0, -2)
+    tracemap  (elm, mflw)
 
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
@@ -404,10 +426,7 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na, _nyi -- not applicable, not yet implemented
-
 local survey = command 'survey' {
-  beam=_na,         -- N/A                                                (mflw)
   sequence=nil,     -- sequence (required)                                (mflw)
   range=nil,        -- range of tracking                                  (iter)
   dir=1,            -- s-direction of tracking (1 or -1)                  (mflw)
@@ -417,35 +436,37 @@ local survey = command 'survey' {
   A0={0,0,0},       -- initial angles theta, phi, psi                     (mflw)
   W0=nil,           -- initial W matrix (companion of X0)                 (mflw)
 
-  mapdef=_na,       -- always use matrix formalism (i.e. true)            (mflw)
   mapsave=false,    -- save the orientation matrix W (rotations)          (mflw)
+  mapdump=false,    -- dump V and W after each element                    (mflw)
 
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
   nslice=1,         -- number of slice for each element                   (mflw)
   implicit=false,   -- slice implicit elements too                        (mflw)
-  model=_na,        -- N/A                                                (mflw)
-  method=_na,       -- N/A                                                (mflw)
-  totalpath=_na,    -- N/A                                                (mflw)
-  radiate=_na,      -- N/A                                                (mflw)
   misalign=false,   -- consider misalignment errors                       (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
-  savesel=fnone,    -- save selector                                      (mtbl)
+  savesel=fnone,    -- save selector (predicate)                          (mtbl)
   relative=false,   -- save length of slices instead from element start   (mtbl)
   observe=false,    -- save only in observed elements (every n turns)     (mtbl)
+
+  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
   atexit=fnone,     -- action called when exiting an element              (mflw)
-  ataper=_na,       -- N/A                                                (mflw)
   atsave=fnone,     -- action called after saving in mtable               (mflw)
-
-  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
   exec=exec,        -- command to execute upon children creation
+
+  __attr = {        -- list of all setup attributes
+    'sequence', 'range', 'dir', 's0', 'X0', 'A0', 'W0', 'mapsave', 'mapdump',
+    'nturn', 'nstep', 'nslice', 'implicit', 'misalign', 'save', 'title',
+    'relative', 'observe', 'usrdef',
+    noeval = {'atentry', 'atslice', 'atexit', 'atsave', 'savesel'},
+  }
 } :set_readonly()   -- reference survey command is readonly
 
 -- end ------------------------------------------------------------------------o
