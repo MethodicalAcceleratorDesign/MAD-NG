@@ -25,7 +25,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
-      is_function, is_functor, is_metaname,is_callable, is_iterable,
+      is_function, is_functor, is_metaname, is_callable, is_iterable,
       is_mappable                                               in MAD.typeid
 local bset, btst, bclr, bnot, band, bor, lshift, eq             in MAD.operator
 local bsearch, lsearch, kpairs, openfile, assertf, errorf       in MAD.utility
@@ -352,12 +352,34 @@ function MF:set_variables (tbl, override_) -- default: override = true
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  local id  = rawget(var,'__id')
   for k,v in pairs(tbl) do
-    assertf(override_ ~= false or is_nil(var[k]), "cannot override variable '%s'",k)
+    assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+            or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
   end
-  var.__id = id
+  return self
+end
+
+function MF:copy_variables (src, lst_, override_) -- default: override = true
+  assert(is_object (self), "invalid argument #1 (object expected)")
+  assert(is_mappable(src), "invalid argument #2 (mappable expected)")
+  if freadonly(self) and override_ ~= 'init' then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
+  local var, svar, lst = self.__var, src.__var, lst_ or self.__attr
+  assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
+  for _,k in ipairs(lst) do
+    assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+            or is_nil(var[k]), "cannot override variable '%s'",k)
+    var[k] = src[k]
+  end
+  if svar and is_iterable(lst.noeval) then
+    for _,k in ipairs(lst.noeval) do
+      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+              or is_nil(var[k]), "cannot override variable '%s'",k)
+      var[k] = svar[k]
+    end
+  end
   return self
 end
 
@@ -398,19 +420,19 @@ function MF:set_methods (tbl, override_) -- default: override = true
     for k,m in pairs(tbl) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
       assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false or is_nil(sm[k]), "cannot override method '%s'",k)
+      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+              or is_nil(sm[k]), "cannot override method '%s'",k)
       sm[k] = m
     end
   else -- default
     local var = self.__var
-    local id  = rawget(var,'__id')
     for k,m in pairs(tbl) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
       assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false or is_nil(var[k]), "cannot override method '%s'",k)
+      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+              or is_nil(var[k]), "cannot override method '%s'",k)
       var[k] = is_function(m) and functor(m) or m
     end
-    var.__id = id
   end
   return self
 end
@@ -427,7 +449,7 @@ function MF:set_metamethods (tbl, override_) -- default: override = false
   local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(tbl) do
-    assertf(is_string(k) and strsub(k,1,2) == '__',
+    assertf(type(k) == 'string' and strsub(k,1,2) == '__',
             "invalid key '%s' (string starting with __ expected)", tostring(k))
     assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
@@ -543,9 +565,11 @@ function MF:clear_variables ()
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  local id  = rawget(var,'__id')
-  for k in kpairs(self) do var[k]=nil end
-  var.__id = id
+  for k in kpairs(self) do
+    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+      var[k]=nil
+    end
+  end
   return self
 end
 
@@ -555,9 +579,11 @@ function MF:clear_all ()
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  local id  = rawget(var,'__id')
-  for k in pairs_iter(self) do var[k]=nil end -- table.clear destroys all keys
-  var.__id = id
+  for k in pairs_iter(self) do -- table.clear destroys all keys
+    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+      var[k]=nil
+    end
+  end
   return self
 end
 
@@ -585,9 +611,11 @@ function MF:copy (name_)
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   local cpy = MF.same(self, name_ or MF.raw_get(self,'__id'))
   local var, cvar = self.__var, cpy.__var
-  local id  = rawget(cvar,'__id')
-  for k,v in pairs_iter(self) do cvar[k] = v end
-  cvar.__id = id
+  for k,v in pairs_iter(self) do
+    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+      cvar[k] = v
+    end
+  end
   return cpy
 end
 
