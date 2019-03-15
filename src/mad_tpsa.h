@@ -63,7 +63,7 @@ ord_t   mad_tpsa_ordv    (const tpsa_t *t1, const tpsa_t *t2, ...);  // max orde
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
 void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void    mad_tpsa_clear   (      tpsa_t *t);
-void    mad_tpsa_scalar  (      tpsa_t *t, num_t v, idx_t iv);
+void    mad_tpsa_scalar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 
 // indexing / monomials
 ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -157,9 +157,10 @@ void    mad_tpsa_logaxpsqrtbpcx2 (const tpsa_t *x, num_t a, num_t b, num_t c, tp
 void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void    mad_tpsa_minv    (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc]);
-void    mad_tpsa_pminv   (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc], ssz_t selected[sa]);
-void    mad_tpsa_compose (ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const tpsa_t *mb[sb], ssz_t sc, tpsa_t *mc[sc]);
+void    mad_tpsa_minv     (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc]);
+void    mad_tpsa_pminv    (ssz_t sa, const tpsa_t *ma[sa],                                 ssz_t sc, tpsa_t *mc[sc], ssz_t selected[sa]);
+void    mad_tpsa_compose  (ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const tpsa_t *mb[sb], ssz_t sc, tpsa_t *mc[sc]);
+void    mad_tpsa_translate(ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const num_t   tb[sb],           tpsa_t *mc[sa]);
 
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);

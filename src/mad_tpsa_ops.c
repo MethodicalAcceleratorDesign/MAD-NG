@@ -295,7 +295,7 @@ FUN(scl) (const T *a, NUM v, T *c)
   const D *d = a->d;
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (!v || a->hi == 0) { FUN(scalar)(c, v*a->coef[0], 0); return; }
+  if (!v || a->hi == 0) { FUN(scalar)(c, v*a->coef[0], 0, 0); return; }
 
   FUN(copy0)(a,c);
 
@@ -490,15 +490,15 @@ FUN(powi) (const T *a, int n, T *c)
   T *t1 = GET_TMPX(c);
 
   switch (n) {
-    case 0: FUN(scalar) (c, 1, 0); break; // ok: no copy
-    case 1: FUN(copy  ) (a, c);    break; // ok: 1 copy
-    case 2: FUN(mul   ) (a,a, c);  break; // ok: 1 copy if a==c
+    case 0: FUN(scalar) (c, 1, 0, 0); break; // ok: no copy
+    case 1: FUN(copy  ) (a, c);       break; // ok: 1 copy
+    case 2: FUN(mul   ) (a,a, c);     break; // ok: 1 copy if a==c
     case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
     case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
     default: {
       T *t2 = GET_TMPX(c), *t;
       FUN(copy  )(a, t1);
-      FUN(scalar)(c, 1, 0);
+      FUN(scalar)(c, 1, 0, 0);
       for (;;) {
         if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
         if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); } // ok: no copy
@@ -659,7 +659,7 @@ FUN(der) (const T *a, T *c, int var)
   // TODO: ensure map_order[var] > 0
 
   if (a->hi == 0) { FUN(reset0)(c); return; }
-  FUN(scalar)(c,FUN(geti)(a,var), 0);  // TODO: what if alpha[var] == 0 ?
+  FUN(scalar)(c,FUN(geti)(a,var), 0, 0);  // TODO: what if alpha[var] == 0 ?
 
   const D *d = c->d;
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
@@ -697,7 +697,7 @@ FUN(derm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
   }
 
   // ord 0 & setup
-  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,a->d), 0);
+  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,a->d), 0, 0);
   if (a->hi <= der_ord)
     return;
 
@@ -756,7 +756,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ord_t   hi = MAX(a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, c->d->to);
 
-  if (!c_hi) { FUN(scalar)(c, c1*a->coef[0] + c2*b->coef[0] + c3, 0); return; }
+  if (!c_hi) { FUN(scalar)(c, c1*a->coef[0] + c2*b->coef[0] + c3, 0, 0); return; }
 
   if (a->lo > b->lo)  {
     const T* t; SWAP(a ,b ,t);

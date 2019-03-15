@@ -66,17 +66,47 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T 
 {
   check_compose(sa, ma, sb, mb, sc, mc);
 
+  // handle aliasing
+  mad_alloc_tmp(T*, mc_, sc);
+  for (idx_t ic = 0; ic < sc; ++ic)
+    mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
+
   #ifdef _OPENMP
   ord_t highest = 0;
   for (idx_t i = 0; i < sa; ++i)
     if (ma[i]->hi > highest) highest = ma[i]->hi;
 
   if (highest >= 6)
-    compose_parallel(sa,ma,mb,mc);
+    compose_parallel(sa,ma,mb,mc_);
   else
   #endif // _OPENMP
+    compose_serial  (sa,ma,mb,mc_);
 
-  compose_serial(sa,ma,mb,mc);
+  // copy back
+  for (idx_t ic = 0; ic < sc; ++ic) {
+    FUN(copy)(mc_[ic], mc[ic]);
+    FUN(del )(mc_[ic]);
+  }
+  mad_free_tmp(mc_);
+}
+
+void
+FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa])
+{
+  // transform tranlation vector into damap
+  mad_alloc_tmp(const T*, mb, sb);
+  for (idx_t ib = 0; ib < sb; ++ib) {
+    T *t = FUN(newd)(ma[0]->d, 1);
+    FUN(scalar)(t, tb[ib], ib, 0);
+    mb[ib] = t;
+  }
+
+  FUN(compose)(sa, ma, sb, mb, sa, mc);
+
+  // cleanup
+  for (idx_t ib = 0; ib < sb; ++ib)
+    FUN(del)(mb[ib]);
+  mad_free_tmp(mb);
 }
 
 // --- end --------------------------------------------------------------------o

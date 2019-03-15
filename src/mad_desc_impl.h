@@ -30,14 +30,14 @@
 
 enum { DESC_MAX_TMP = 6 };
 
-struct desc { // WARNING: needs to be identical with Lua for compatibility
+struct desc { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
   int   id, nth;     // index in list of registered descriptors, max #threads or 1
   int   nmv, nv;     // number of mvars, number of all vars
   ord_t mo, ko, to;  // max order for mvars, knobs, trunc (mo=max(mvar_ords),to<=mo)
   const ord_t
         *mvar_ords,  // mvars orders[nmv] (for each TPSA in map) -- used just for desc comparison
         * var_ords;  //  vars orders[nv ] (max order for each monomial variable)
-              // end of compatibility with Lua FFI
+              // end of compatibility with LuaJIT FFI
 
   ssz_t nc;          // number of coefs (max length of TPSA)
 

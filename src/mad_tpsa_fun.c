@@ -50,9 +50,9 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   assert(n >= 1); // ord 0 treated outside
 
   T *acp = GET_TMPX(c);
-  FUN(copy)(a,acp);               // copy of a
-  FUN(set0)(acp,0,0);             // (a-a_0)
-  FUN(scalar)(c,ord_coef[n],0);   // f(a_n)
+  FUN(copy)(a,acp);                 // copy of a
+  FUN(set0)(acp,0,0);               // (a-a_0)
+  FUN(scalar)(c,ord_coef[n],0,0);   // f(a_n)
 
   // Honer's method (slower by 50% - 100% because mul is always full order)
   while (n-- > 0) {
@@ -154,7 +154,7 @@ FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
   ensure(n > 0, "invalid number of coefficients (>0 expected)");
 
   ord_t to = MIN3(n-1,c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,coef[0],0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,coef[0],0,0); return; }
 
   fun_taylor(a,c,to,coef);
 }
@@ -169,7 +169,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   NUM f0 = 1/a0;
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,v*f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,v*f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -190,7 +190,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   NUM f0 = 1/sqrt(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,v*f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,v*f0,0,0); return; }
 
   NUM ord_coef[to+1], _a0 = 1/a0;
   ord_coef[0] = f0;
@@ -211,7 +211,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = sqrt(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1], _a0 = 1/a0;
   ord_coef[0] = f0;
@@ -229,7 +229,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = exp(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -249,7 +249,7 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = log(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1], _a0 = 1/a0;
   ord_coef[0] = f0;
@@ -288,17 +288,17 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
 
   if (a->hi == 0) {
-    FUN(scalar)(s, sa, 0);
-    FUN(scalar)(c, ca, 0);
+    FUN(scalar)(s, sa, 0, 0);
+    FUN(scalar)(c, ca, 0, 0);
     return;
   }
 
   ord_t sto = MIN(s->mo,s->d->to),
         cto = MIN(c->mo,c->d->to);
   if (!sto || !cto) {
-    if (!sto) FUN(scalar)(s, sa, 0);
+    if (!sto) FUN(scalar)(s, sa, 0, 0);
     else      FUN(sin)(a,s);
-    if (!cto) FUN(scalar)(c, ca, 0);
+    if (!cto) FUN(scalar)(c, ca, 0, 0);
     else      FUN(cos)(a,c);
     return;
   }
@@ -325,7 +325,7 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = sin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -344,7 +344,7 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = cos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -365,7 +365,7 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -400,7 +400,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(M_PI_2 - a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   T *t = GET_TMPX(c);
   FUN(sincos)(a,t,c);
@@ -441,7 +441,7 @@ FUN(sinc) (const T *a, T *c)                              // unstable series....
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
 
@@ -480,17 +480,17 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
   NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
 
   if (a->hi == 0) {
-    FUN(scalar)(sh, sa, 0);
-    FUN(scalar)(ch, ca, 0);
+    FUN(scalar)(sh, sa, 0, 0);
+    FUN(scalar)(ch, ca, 0, 0);
     return;
   }
 
   ord_t sto = MIN(sh->mo,sh->d->to),
         cto = MIN(ch->mo,ch->d->to);
   if (!sto || !cto) {
-    if (!sto) FUN(scalar)(sh, sa, 0);
+    if (!sto) FUN(scalar)(sh, sa, 0, 0);
     else      FUN(sinh)(a,sh);
-    if (!cto) FUN(scalar)(ch, ca, 0);
+    if (!cto) FUN(scalar)(ch, ca, 0, 0);
     else      FUN(cosh)(a,ch);
     return;
   }
@@ -517,7 +517,7 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = sinh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -536,7 +536,7 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = cosh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -555,7 +555,7 @@ FUN(tanh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = tanh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -590,7 +590,7 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   f0 = 1/f0;
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -625,7 +625,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = asin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // asin(x) = -i*ln(i*x + sqrt(1-x^2))
@@ -668,7 +668,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = acos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acos(x) = -i*ln(x+i*sqrt(1-x^2)) = -asin(x)+pi/2
@@ -709,7 +709,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // atan(x) = i/2 ln((i+x) / (i-x))
@@ -758,7 +758,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = atan(1/a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acot(x) = i/2 ln((x-i) / (x+i))
@@ -807,7 +807,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   NUM a0 = a->coef[0], f0 = asinh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // asinh(x) = log(x + sqrt(x^2+1))
@@ -840,7 +840,7 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = acosh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acosh(x) = ln(x + sqrt(x^2-1))
@@ -873,7 +873,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = atanh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // atanh(x) = 1/2 ln((1+x) / (1-x))
@@ -912,7 +912,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = atanh(1/a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     // acoth(x) = 1/2 ln((x+1) / (x-1))
@@ -957,7 +957,7 @@ FUN(erf) (const T *a, T *c)
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0); return; }
+  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI*exp(-a2);
   ord_coef[0] = f0;

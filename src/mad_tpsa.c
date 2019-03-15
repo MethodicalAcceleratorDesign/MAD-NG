@@ -207,7 +207,7 @@ FUN(clear) (T *t)
 }
 
 void
-FUN(scalar) (T *t, NUM v, idx_t iv)
+FUN(scalar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t);
   if (!v && !iv) { FUN(reset0)(t); return; }
@@ -223,7 +223,7 @@ FUN(scalar) (T *t, NUM v, idx_t iv)
     }
     t->hi = 1;
     t->nz = 3;
-    t->coef[iv] = 1;
+    t->coef[iv] = scl ? scl : 1;
   } else {
     t->hi = 0;
     t->nz = 1;
@@ -521,8 +521,8 @@ void FUN(setm_r) (T *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t
 void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
 
-void FUN(scalar_r) (T *t, num_t v_re, num_t v_im, idx_t iv)
-{ FUN(scalar)(t, CNUM(v), iv); }
+void FUN(scalar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
+{ FUN(scalar)(t, CNUM(v), iv, CNUM(scl)); }
 
 #endif // MAD_CTPSA_IMPL
 
