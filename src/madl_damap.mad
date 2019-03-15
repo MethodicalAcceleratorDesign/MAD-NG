@@ -31,14 +31,11 @@ local ffi = require 'ffi'
 local min, max in math
 
 local _C, gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix    in MAD
-local cvname, cvindex                                              in MAD.gphys
+local vname, vname_dup                                             in MAD.gphys
 
 local is_nil, is_number, is_integer, is_complex, is_string, is_table,
       is_tpsa, is_ctpsa, is_matrix, is_cmatrix, is_indexable,
       is_iterable, is_mappable                                     in MAD.typeid
-
--- explicit canonical variables names and indexes
-local cvnam, cvidx = cvname, cvindex
 
 -- types ----------------------------------------------------------------------o
 
@@ -70,56 +67,61 @@ MC.__obj = _idc
 
 -- ctors ----------------------------------------------------------------------o
 
-local function map_alloc (td, mt)
+local function map_alloc (td, vn, mt)
   local ct = mt == MR and tpsa or ctpsa
-  local ta = mt == MR and tpsa_arr(td.nmv) or ctpsa_arr(td.nmv)
+  local ta = mt == MR and tpsa_arr(td.nv) or ctpsa_arr(td.nv)
+  local mv = table.new(td.nv, vn.__n+3) -- __ta, __td, __vn
   local mo = td.mvar_ords
-  local mv = table.new(td.nmv, #cvnam+3) -- __td, __ta, pz
 
-  mv[1] = ct(td, mo[0]):scalar(0,1) ; mv.x , ta[0] = mv[1], mv[1]
-  mv[2] = ct(td, mo[1]):scalar(0,2) ; mv.px, ta[1] = mv[2], mv[2]
-  mv[3] = ct(td, mo[2]):scalar(0,3) ; mv.y , ta[2] = mv[3], mv[3]
-  mv[4] = ct(td, mo[3]):scalar(0,4) ; mv.py, ta[3] = mv[4], mv[4]
-  mv[5] = ct(td, mo[4]):scalar(0,5) ; mv.t , ta[4] = mv[5], mv[5]
-  mv[6] = ct(td, mo[5]):scalar(0,6) ; mv.pt, ta[5] = mv[6], mv[6]
-
-  -- extra map variables (unamed)
-  for i=6,td.nmv-1 do
-    mv[i+1] = ct(td, mo[i]):scalar(0,i+2)
-    ta[i] = mv[i+1]
+  -- map variables
+  for i=1,td.nmv do
+    mv[i] = ct(td, mo[i-1]):scalar(0,i) ; ta[i-1] = mv[i]
+    if vn[i] then mv[vn[i]] = mv[i] end -- named
   end
 
-  mv.pz = ct(td, max(mo[1], mo[3], mo[5])) -- px, py, pt
-  mv.__td, mv.__ta = td, ta
+  -- map knobs (scalar + order 1)
+  for i=td.nmv+1,td.nv do
+    mv[i] = ct(td,       1):scalar(0,i) ; ta[i-1] = mv[i]
+    if vn[i] then mv[vn[i]] = mv[i] end -- named
+  end
+
+  mv.__ta, mv.__td, mv.__vn = ta, td, vn
 
   return setmetatable({__var=mv}, mt)
 end
 
 local function map_ctor(arg, mt)
-  -- default specification by planes.
-  local xy = arg.xy or 2
-  local pt = arg.pt or xy
-  local t  = arg.t  or pt
-  local mo = {xy, xy, xy, xy, t, pt} -- 6D phase space
-
-  if arg.mo then -- overidden by custom definition
-    if is_integer(arg.mo) then
-      for i=1,6 do mo[i] = arg.mo end
-    elseif is_iterable(arg.mo) then
-      for i,o in ipairs(arg.mo) do mo[i] = arg.mo[i] end
-    else
-      error("invalid map variables orders (number or iterable expected)", 2)
-    end
+  -- specification of damap by variables order.
+  if arg.mo then
+    local td = gtpsad(arg)
+    local vn = arg.vn and vname_dup(arg.vn) or vname[min(td.nv,6)]
+    return map_alloc(td, vn, mt)
   end
 
-  local td = gtpsad{nv=arg.nv, mo=mo, nk=arg.nk, ko=arg.ko, dk=arg.dk, vo=arg.vo}
+  -- specification of damap by planes order.
+  local nv = arg.nv or 6
+  local xy = arg.xy or 2
+  local pt = arg.pt or xy
+  local vn = vname[nv]
+  local mo, ko
 
-  return map_alloc(td, mt)
+  if nv == 6 then
+    mo, ko = {xy, xy, xy, xy, pt, pt} -- 6D damap
+  elseif nv == 5 then
+    mo, ko = {xy, xy, xy, xy}, {pt}   -- 5D damap (4D + 1 knob)
+  elseif nv == 4 then
+    mo, ko = {xy, xy, xy, xy}         -- 4D damap
+  else
+    error("invalid dmap specification (4D, 5D or 6D expected)")
+  end
+
+  local td = gtpsad{mo=mo, ko=ko, vn=vn}
+  return map_alloc(td, vn, mt)
 end
 
 --[=[
   arg content:
-    - planes orders: 'xy'=o, 'pt'=o, 't'=o
+    - planes orders: .nv=n or 6, .xy=o or 2, .pt=o or xy
     - otherwise same as gtpsad{}.
 --]=]
 
@@ -142,16 +144,16 @@ function MR.__same (x, y_, e_)
     e_, y_ = y_
   end
   assert(is_nil(y_) or isa_damap(y_), "invalid argument #2 (damap expected)")
-  return map_alloc(x.__td, (is_complex(e_) or is_cdamap(y_)) and MC or MR)
+  return map_alloc(x.__td, x.__vn, (is_complex(e_) or is_cdamap(y_)) and MC or MR)
 end
 
 function MC.__same (x)
-  return map_alloc(x.__td, MC)
+  return map_alloc(x.__td, x.__vn, MC)
 end
 
 function MR.__copy (x, y_)
   if is_nil(y_) then
-    x, y_ = map_alloc(x.__td, MR), x
+    x, y_ = map_alloc(x.__td, x.__vn, MR), x
   else
     assert(is_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y.__td, "incompatible damaps")
@@ -164,7 +166,7 @@ end
 
 function MC.__copy (x, y_)
   if is_nil(y_) then
-    x, y_ = map_alloc(x.__td, MC), x
+    x, y_ = map_alloc(x.__td, x.__vn, MC), x
   else
     assert(is_cdamap(y_), "invalid argument #2 (cdamap expected)")
     assert(x.__td == y.__td, "incompatible cdamaps")
@@ -211,7 +213,7 @@ end
 function MR.setv (x, v)
   assert(is_iterable(v), "invalid argument #2 (iterable expected)")
   for i=1,min(#x,#v) do
-    _C.mad_tpsa_scalar(x[i], v[i], i)
+    _C.mad_tpsa_scalar(x[i], v[i], i, 0)
   end
   return x
 end
@@ -220,7 +222,7 @@ function MC.setv (x, v)
   assert(is_iterable(v), "invalid argument #2 (iterable expected)")
   for i=1,min(#x,#v) do
     local b = complex(v[i])
-    _C.mad_ctpsa_scalar_r(x[i], b.re, b.im, i)
+    _C.mad_ctpsa_scalar_r(x[i], b.re, b.im, i, 0, 0)
   end
   return x
 end
@@ -268,7 +270,7 @@ end
 -- map inverse: r = x^-1
 
 function MR.inv (x, r)
-  r = r or map_alloc(x.__td, MR)
+  r = r or map_alloc(x.__td, x.__vn, MR)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   _C.mad_tpsa_minv(#x, x.__ta, #r, r.__ta)
@@ -276,7 +278,7 @@ function MR.inv (x, r)
 end
 
 function MC.inv (x, r)
-  r = r or map_alloc(x.__td, MC)
+  r = r or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   _C.mad_ctpsa_minv(#x, x.__ta, #r, r.__ta)
@@ -286,7 +288,7 @@ end
 -- partial map inverse on selected variables (rows)
 
 function MR.pinv (x, sel, r)
-  r = r or map_alloc(x.__td, MR)
+  r = r or map_alloc(x.__td, x.__vn, MR)
   assert(is_table(sel), "invalid argument #2 (table expected)")
   assert(is_damap(r)  , "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
@@ -296,7 +298,7 @@ function MR.pinv (x, sel, r)
 end
 
 function MC.pinv (x, sel, r)
-  r = r or map_alloc(x.__td, MC)
+  r = r or map_alloc(x.__td, x.__vn, MC)
   assert(is_table(sel), "invalid argument #2 (table expected)")
   assert(is_cdamap(r) , "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
@@ -310,7 +312,7 @@ end
 
 function MR.normal (x, r, a)
   error("NYI: high order normal form")
-  r, a = r or map_alloc(x.__td, MC), a or map_alloc(x.__td, MC)
+  r, a = r or map_alloc(x.__td, x.__vn, MC), a or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(a), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td and a.__td == x.__td,
@@ -321,7 +323,7 @@ end
 
 function MC.normal (x, r, a)
   error("NYI: high order normal form")
-  r, a = r or map_alloc(x.__td, MC), a or map_alloc(x.__td, MC)
+  r, a = r or map_alloc(x.__td, x.__vn, MC), a or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(a), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td and a.__td == x.__td,
@@ -333,17 +335,17 @@ end
 -- maps composition : r = x(y)
 
 function MR.compose (x, y, r)
-  r = r or map_alloc(x.__td, MR)
+  r = r or map_alloc(x.__td, x.__vn, MR)
   assert(is_damap(y), "invalid argument #2 (damap expected)")
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
   _C.mad_tpsa_compose(#x, x.__ta, #y, y.__ta, #r, r.__ta)
-  return mr
+  return r
 end
 
 function MC.compose (x, y, r)
-  r = r or map_alloc(x.__td, MC)
+  r = r or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
@@ -352,11 +354,32 @@ function MC.compose (x, y, r)
   return r
 end
 
+-- maps translation (special case of composition)
+
+function MR.translate (x, t, r)
+  local v = vector(#t):fill(t)
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  _C.mad_tpsa_translate(#x, x.__ta, #v, v.data, #r, r.__ta)
+  return r
+end
+
+function MC.translate (x, t, r)
+  local v = cvector(#t):fill(t)
+  r = r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  _C.mad_ctpsa_translate(#x, x.__ta, #v, v.data, #r, r.__ta)
+  return r
+end
+
 -- I/O ------------------------------------------------------------------------o
 
 function MR.write (x, file_, eps_)
   for i=1,#x do
-    x[i]:write(file_, cvnam[i] and string.upper(cvnam[i]) or tostring(i), eps_)
+    local vn = x.__vn[i] and string.upper(x.__vn[i]) or tostring(i)
+    x[i]:write(file_, vn, eps_)
   end
   return x
 end
@@ -394,7 +417,7 @@ function MR.__newindex (s, k, x)
   assert(is_tpsa(v), "forbidden access to readonly variable")
 
   if is_number(x) then
-    _C.mad_tpsa_scalar(v, x, cvidx[k] or k)
+    _C.mad_tpsa_scalar(v, x, type(k) == "number" and k or s.__vn[k], 0)
   elseif is_tpsa(x) then
     _C.mad_tpsa_copy(x, v)
   else
@@ -419,7 +442,7 @@ function MC.__newindex (s, k, x)
   if is_number(x) then x = complex(x) end
 
   if is_complex(x) then
-    _C.mad_ctpsa_scalar_r(v, x.re, x.im, cvidx[k] or k)
+    _C.mad_ctpsa_scalar_r(v, x.re,x.im, type(k)=="number" and k or s.__vn[k], 0,0)
   elseif is_ctpsa(x) then
     _C.mad_ctpsa_copy(x, v)
   else
