@@ -822,7 +822,7 @@ local function make_mflow (self)
       if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
         mflw[ii] = X0i:copy()
         mflw[ii].id = X0i.id or ii
-        mflw[ii].pt = mflw[ii].pt:get0() + dpt
+        if dpt ~= 0 then mflw[ii]:translate{0,0,0,0,0,dpt} end
       elseif is_mappable(X0i) then -- access by indexes first for vectors
         local id =            X0i.id or ii
         local x  =  X0i[1] or X0i.x  or 0
@@ -834,11 +834,12 @@ local function make_mflow (self)
         if mapdef then -- create: damap required from coordinates (and R matrix)
           mflw[ii] = damap(is_true(mapdef) and {} or mapdef[i] or mapdef)
           mflw[ii].id = id
-          mflw[ii]:set0{x, px, y, py, t, pt}
+          mflw[ii]:setv{x, px, y, py, t, pt}
           if        R0[i] then mflw[ii]:set1(R0[i])
           elseif beta0[i] then mflw[ii]:set1((betablk(beta0[i]))) end
+          if dpt ~= 0 then mflw[ii]:translate{0,0,0,0,0,dpt} end
         else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt}
+          mflw[ii] = {id=id, x=x, px=px, y=y, py=py, t=t, pt=pt+dpt}
         end
       else
         errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
@@ -983,8 +984,6 @@ local function exec (self)
   return mtbl, mflw
 end
 
-local _na, _nyi -- not applicable, not yet implemented
-
 local track = command 'track' {
   beam=nil,         -- beam (required or sequence.beam)                   (mflw)
   sequence=nil,     -- sequence (required)                                (mflw)
@@ -1007,16 +1006,18 @@ local track = command 'track' {
   nslice=1,         -- number of slice for each element                   (mflw)
   implicit=false,   -- slice implicit elements too                        (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
-  method='simple',  -- method or order for integration                    (mflw)
+  method='simple',  -- method or order for integration (1 to 8)           (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
-  radiate=_nyi,     -- radiate at slices                                  (mflw)
+  radiate=false,    -- radiate at slices (NYI)                            (mflw)
   misalign=true,    -- consider misalignment errors                       (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
-  savesel=fnone,    -- save selector                                      (mtbl)
+  savesel=fnone,    -- save selector (predicate)                          (mtbl)
   relative=false,   -- save length of slices instead from element start   (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
+
+  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
@@ -1024,10 +1025,16 @@ local track = command 'track' {
   ataper=fnone,     -- action called after checking for aperture          (mflw)
   atsave=fnone,     -- action called after saving in mtable               (mflw)
 
-  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
-
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
   exec=exec,        -- command to execute upon children creation
+
+  __attr = {        -- list of all setup attributes
+    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'R0', 'beta0', 'deltap',
+    'mapdef', 'mapsave', 'mapdump', 'nturn', 'nstep', 'npart', 'nslice',
+    'implicit', 'model', 'method', 'totalpath', 'radiate', 'misalign', 'save',
+    'title', 'relative', 'observe', 'usrdef',
+    noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'savesel'},
+  }
 } :set_readonly()   -- reference track command is readonly
 
 -- end ------------------------------------------------------------------------o
