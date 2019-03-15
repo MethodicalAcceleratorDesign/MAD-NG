@@ -36,8 +36,8 @@ local openfile in MAD.utility
 
 -- To review
 local is_nil, is_number, is_integer, is_complex, is_scalar, is_string,
-      is_table, is_lengthable, is_mappable, is_matrix, is_cmatrix,
-      is_vector, is_cvector, is_monomial, has_method               in MAD.typeid
+      is_table, is_lengthable, is_iterable, is_mappable, has_method,
+      is_matrix, is_cmatrix, is_vector, is_cvector, is_monomial    in MAD.typeid
 
 -- tmp for returned values
 local cres = ffi.new 'complex[1]'
@@ -104,8 +104,9 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
   ko: knobs orders     (value, string or array)
   dk: knobs max x-ord  (value)
   vo: variables orders (string or array, defined orders of variables)
+  vn: variables names  (not used by gtpsa but used by damap)
 
-  default: nv=6, mo=2, nk=0, ko=1, dk=0, vo=nil
+  default: nv=6, mo=2, nk=0, ko=1, dk=0, vo=nil, vn={'x','px','y','py','t','pt'}
 
   gtpsad(nil)                               : 6 mvars of order 2.
   gtpsad(3)         -> nv=3                 : 3 mvars of order 2.
@@ -127,14 +128,15 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
                                 knobs x-order is limited to 1 (no cross-terms).
 --]=]
 
-local function gtpsad (nv_, mo_, nk_, ko_, dk_)
+local function gtpsad (nv_, mo_, nk_, ko_, dk_, vo_, vn_)
   local is = is_mappable(nv_)
   local nv = is and nv_.nv or nv_ or 6       -- number of map variables
   local mo = is and nv_.mo or mo_ or 2       -- map variables orders
   local nk = is and nv_.nk or nk_            -- number of knob variables
   local ko = is and nv_.ko or ko_            -- knob variables orders
   local dk = is and nv_.dk or dk_ or 0       -- knob variables max cross-orders
-  local vo = is and nv_.vo or nil            -- variables orders
+  local vo = is and nv_.vo or vo_ or nil     -- variables orders
+  local vn = is and nv_.vn or vn_ or nil     -- variables names (not used)
 
   if is_integer(nv) and is_integer(mo) and is_nil(vo) then
     if is_nil(nk or ko) then
@@ -377,13 +379,13 @@ function MC.clear (x)
   _C.mad_ctpsa_clear(x) return x
 end
 
-function MR.scalar (x, e_, iv_) -- clear + set0(e1) + set1(iv, 1)
-  _C.mad_tpsa_scalar(x, e_ or 0, iv_ or 0) return x
+function MR.scalar (x, e_, iv_, scl_) -- clear + set0(e1) + set1(iv, scl or 1)
+  _C.mad_tpsa_scalar(x, e_ or 0, iv_ or 0, scl_ or 0) return x
 end
 
-function MC.scalar (x, e_, iv_) -- clear + set0(e1) + set1(iv, 1)
-  e_ = complex(e_)
-  _C.mad_ctpsa_scalar_r(x, e_.re, e_.im, iv_ or 0) return x
+function MC.scalar (x, e_, iv_, scl_) -- clear + set0(e1) + set1(iv, scl or 1)
+  e_, scl_ = complex(e_), complex(slc_)
+  _C.mad_ctpsa_scalar_r(x, e_.re, e_.im, iv_ or 0, scl_.re, slc_.im) return x
 end
 
 -- indexing ------------------------------------------------------------------o
@@ -564,7 +566,7 @@ function MR.setv (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_vector(a) then
     _C.mad_tpsa_setv(x, i-1, a:size(), a.data)
-  elseif is_table(a) then
+  elseif is_iterable(a) then
     for j,v in ipairs(a) do
       _C.mad_tpsa_seti(x, j+i-2, 0, v)
     end
@@ -577,7 +579,7 @@ function MC.setv (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_cvector(a) then
     _C.mad_ctpsa_setv(x, i-1, a:size(), a.data)
-  elseif is_table(a) then
+  elseif is_iterable(a) then
     for j,v in ipairs(a) do
       v = complex(v)
       _C.mad_ctpsa_seti_r(x, j+i-2, 0, 0, v.re, v.im)
