@@ -23,13 +23,15 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, command, track, cofind, gphys                       in MAD
+local matrix, command, track, cofind, gphys, option               in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dp,
-      ofname, ofcname                                             in gphys
+      ofname, ofcname, cvindex                                    in gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
-local is_nil, is_true, is_mappable, is_damap, is_number           in MAD.typeid
-local tblcpy, tbldup, assertf                                     in MAD.utility
-local abs, floor                                                  in math
+local tblcat, tblcpy, tbldup, assertf                             in MAD.utility
+local is_nil, is_true, is_boolean, is_number, is_iterable,
+      is_mappable, is_damap, is_matrix, is_optfun                 in MAD.typeid
+
+local abs, min, floor                                             in math
 
 local chromdp = 1e-6
 
@@ -39,8 +41,12 @@ local function fill_sum (mflw)
   local mtbl in mflw
   local chrm in mflw.__twdat
 
+  -- TODO: momentum compaction factor
+  -- TODO: gramma transition
+
   -- chromaticity (BUG: indexes are wrong for lost particles and/or deltap)
   if chrm then
+
     local n = floor(#mtbl.q1/2)
     for i=1,n do
       mtbl.dq1[i] = (mtbl.q1[n+i] - mtbl.q1[i])/chrm
@@ -50,19 +56,12 @@ local function fill_sum (mflw)
 
     -- cleaning
     for i=n+1,2*n do
-      mtbl.q1, mtbl.dq1 = nil, nil
-      mtbl.q2, mtbl.dq2 = nil, nil
-      mtbl.q3, mtbl.dq3 = nil, nil
+      mtbl.q1[i], mtbl.q2[i], mtbl.q3[i] = nil, nil, nil
     end
   end
 
-  -- TODO: momentum compaction factor
-  -- TODO: gramma transition
-
   -- cleaning
-  mtbl._mu1 = nil
-  mtbl._mu2 = nil
-  mtbl._mu3 = nil
+  mtbl._mu1, mtbl._mu2, mtbl._mu3 = nil, nil, nil
 end
 
 local function fill (elm, mflw, lw, islc)
@@ -70,88 +69,97 @@ local function fill (elm, mflw, lw, islc)
   local n = #mtbl-npar -- complete last npar row partially filled by track
 
   local ofun, ocpl, onam, omat in mflw.__twdat
+  local q1, q2, q3, _mu1, _mu2, _mu3 in mtbl
 
   for i=1,npar do
     local par = mflw[i]
     assertf(is_damap(par), "unexpected particle %d (damap expected)", i)
+
+    -- TO FIX: dispersion is wrong as extracted matrix is A not R...
     optfun(par:get1(omat), ofun, ocpl)
 
+    -- adjust the phases
+    local  mu1,  mu2,  mu3 in ofun
+    local dmu1, dmu2, dmu3 = mu1-_mu1[i], mu2-_mu2[i], mu3-_mu3[i]
+
+    if dmu1 < 0 then dmu1 = dmu1+1 end
+    if dmu2 < 0 then dmu2 = dmu2+1 end
+    if dmu3 < 0 then dmu3 = dmu3+1 end
+
+    -- compute the tunes, backup the phases
+    q1[i], _mu1[i] = q1[i] + dmu1, mu1
+    q2[i], _mu2[i] = q2[i] + dmu2, mu2
+    q3[i], _mu3[i] = q3[i] + dmu3, mu3
+
     -- fill table
+    ofun.mu1, ofun.mu2, ofun.mu3 = q1[i], q2[i], q3[i]
+
     for _,k in ipairs(onam) do
       mtbl[k][n+i] = ofun[k]
     end
-
-    -- adjust the phases
-    if ofun.mu1 < mtbl._mu1[i] then ofun.mu1 = ofun.mu1+1 end
-    if ofun.mu2 < mtbl._mu2[i] then ofun.mu2 = ofun.mu2+1 end
-    if ofun.mu3 < mtbl._mu3[i] then ofun.mu3 = ofun.mu3+1 end
-
-    -- compute the tunes
-    mtbl.q1[i], mtbl._mu1[i] = mtbl.q1[i] + ofun.mu1 - mtbl._mu1[i], ofun.mu1
-    mtbl.q2[i], mtbl._mu2[i] = mtbl.q2[i] + ofun.mu2 - mtbl._mu2[i], ofun.mu2
-    mtbl.q3[i], mtbl._mu3[i] = mtbl.q3[i] + ofun.mu3 - mtbl._mu3[i], ofun.mu3
   end
   return true
 end
 
+-- chrom option ---------------------------------------------------------------o
+
+local function twiss_chrom (self, trck0)
+    local chrom, deltap = self.chrom, self.deltap or trck0.deltap
+    local cdp = is_boolean(chrom) and chromdp  or chrom
+    local dps = is_number(deltap) and {deltap} or deltap
+    assert(is_number  (cdp), "invalid chrom attribute (number expected)")
+    assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
+
+    -- double the list of deltap
+    local ndp  = #dps
+    local cdps = table.new(2*ndp,1)
+    for i,v in ipairs(dps) do
+      cdps[i], cdps[i+ndp] = v, v+cdp
+    end
+
+    -- update deltap, keep track of initial #deltap
+    trck0.deltap, cdps.ndp = cdps, ndp
+end
+
 -- close orbit ----------------------------------------------------------------o
 
-local function twiss_cofind (self, X0, R0)
+local function twiss_cofind (self, mflw0)
 
-  local twcofind = cofind 'twcofind' {
-    -- forward options to cofind
-    beam     = self.beam,
-    sequence = self.sequence,
-    range    = self.range,
-    dir      = self.dir,
-
-    s0       = self.s0,
-    X0       = X0,
-    R0       = R0,
-    deltap   = self.deltap,
-
-    mapdef   = self.comapdef,
-    mapdump  = self.comapdump,
-
-    nturn    = self.nturn,
-    nslice   = self.nslice,
-    implicit = self.implicit,
-    model    = self.model,
-    method   = self.method,
-    misalign = self.misalign,
-
-    atentry  = self:var_raw 'atentry', -- prevent evaluation
-    atslice  = self:var_raw 'atslice',
-    atexit   = self:var_raw 'atexit' ,
-    ataper   = self:var_raw 'ataper' ,
-
-    usrdef   = self.usrdef, -- user defined data
-
-    cotol    = self.cotol,
-    coiter   = self.coiter,
-    codiff   = self.codiff,
-    codptol  = self.codptol,
-    comethod = self.comethod,
-    cowarn   = self.cowarn,
-    X1       = self.X1,
-    exec    = false,
-  }
-
-  -- retrieve closed orbit
-  local X, R, rnk, typ, itr = twcofind {}
-
-  if typ == 'Singular' then
-    error("unable to find closed orbit during twiss initialization")
+  -- collect X0s that would need a closed orbit search
+  local npar = mflw0.npar
+  local j, X0 = 1, table.new(npar,0)
+  for i=1,npar do
+    if mflw0[i].status == 'Xset' then
+      X0[j], j = mflw0[i], j+1
+    end
   end
 
-  -- closed orbit with finite differences, rerun with maps to get cleaner R
-  if not twcofind.mapdef and R:symperr() > gphys.symp_tol then
-    X, R, rnk, typ, itr = twcofind { X0=X, mapdef=true }
-    assert(typ ~= 'Singular' and itr <= 2,
-           "unexpected change of closed orbit when finalizing with damaps")
+  -- no particles to setup
+  if j == 1 then return end
+
+  -- prepare cofind template
+  local twcofind = cofind 'twcofind' { exec=false } :copy_variables(self)
+
+  -- retrieve closed orbit(s)
+  local mapdef, mapdump = self.comapdef or true, self.comapdump
+  local _, mflw = twcofind { X0=X0, save=false, mapdef=mapdef, mapdump=mapdump }
+
+  -- save results back to mflw0
+  local nlos = 0
+  for i=1,j-1 do
+    local m  = mflw[i]
+    local i0 = X0[m.id].id
+    if m.status == 'cofound' then
+      mflw0[i0], m.id = m, i0
+    else
+      warn("particle %d lost during closed orbit seach (reason: %s)", i0, m.status)
+      nlos = nlos+1
+    end
   end
 
-  return X, R, rnk
+  if nlos > 0 then
+    errorf("%d particles lost during closed orbit search, twiss aborts", nlos)
+  end
 end
 
 -- init track -----------------------------------------------------------------o
@@ -159,7 +167,6 @@ end
 local function twiss_track0 (self, X0, R0, ofun0)
   local mapdef, chrom, beam, save in self
   local atsave = self:var_raw 'atsave' -- prevent evaluation
-  local npar
 
   -- wrap atsave
   if save and atsave ~= ffalse then
@@ -167,67 +174,15 @@ local function twiss_track0 (self, X0, R0, ofun0)
                 fill or achain(fill, atsave)
   end
 
-  -- chrom option, duplicate particles/damaps and inject chrom dp
-  if save and chrom then
-    if is_true(chrom) then chrom = chromdp end
-    assert(is_number(chrom), "invalid chrom option (boolean or number expected)")
-    local dpt = dp2pt(chrom, beam.beta)
+  -- prepare track template
+  local trck0 = track 'track0' { exec=false } :copy_variables(self)
 
-    npar = #X0
-    for i=1,npar do
-      local dpt = X0[i].beam and dp2pt(chrom, X0[i].beam.beta) or dpt
-
-      if is_damap(X0[i]) then
-        X0[i+npar]    = X0[i]:copy()
-        X0[i+npar].pt = X0[i+npar].pt:get0() + dpt
-      else
-        X0[i+npar]    = tblcpy(X0[i])
-        X0[i+npar].pt = X0[i].pt + dpt
-      end
-      R0[i+npar] = R0[i] -- no need to duplicate
-    end
-  end
-
-  local mtbl, mflw = track 'twtrack0' {
-    -- forwarded options
-    beam      = self.beam,
-    sequence  = self.sequence,
-    range     = self.range,
-    dir       = self.dir,
-
-    s0        = self.s0,
-    X0        = X0,
-    R0        = R0,
-    deltap    = self.deltap,
-
-    mapdef    = is_true(mapdef) and {xy=2} or mapdef,
-    mapsave   = self.mapsave,
-    mapdump   = self.mapdump,
-
-    nturn     = self.nturn,
-    nstep     = 0,                      -- do only initialisation
-    nslice    = self.nslice,
-    implicit  = self.implicit,
-    model     = self.model,
-    method    = self.method,
-    totalpath = self.totalpath,
-    radiate   = self.radiate,
-    misalign  = self.misalign,
-
-    save      = self.save,
-    title     = self.title,
-    savesel   = self:var_raw 'savesel', -- prevent evaluation
-    relative  = self.relative,
-    observe   = self.observe,
-
-    atentry   = self:var_raw 'atentry', -- prevent evaluation
-    atslice   = self:var_raw 'atslice',
-    atexit    = self:var_raw 'atexit' ,
-    ataper    = self:var_raw 'ataper' ,
-    atsave    = atsave,
-
-    usrdef    = self.usrdef, -- user defined data
+  -- prepare track command
+  local mtbl, mflw = trck0 'twtrack0' {
+    X0=X0, R0=R0, atsave=atsave, nstep=0, -- only init
+    mapdef = is_true(mapdef) and {xy=2} or mapdef,
   }
+  local npar = mflw.npar
 
   -- extend mflw and mtbl
   if save then
@@ -246,9 +201,9 @@ local function twiss_track0 (self, X0, R0, ofun0)
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
     -- init phase and tunes
     local n = #mflw
-    mtbl.q1, mtbl.dq1, mtbl._mu1 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
-    mtbl.q2, mtbl.dq2, mtbl._mu2 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
-    mtbl.q3, mtbl.dq3, mtbl._mu3 = tbldup(0,n), tbldup(0,n), tbldup(0,n)
+    mtbl.q1, mtbl._mu1, mtbl.dq1 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
+    mtbl.q2, mtbl._mu2, mtbl.dq2 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
+    mtbl.q3, mtbl._mu3, mtbl.dq3 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
     mtbl.chromdp = chrom
   end
 
@@ -258,73 +213,64 @@ end
 -- trace twiss normal form ----------------------------------------------------o
 
 local function trace_normal (R, A)
-  local fmt = MAD.option.format
-  MAD.option.format = "% 10.5f"
+  local fmt = option.format
+  option.format = "% 10.5f"
   R :print('R1') ; A :print('A1')
   local R2, A2 = betablk(ofun0)
   R2:print('R2') ; A2:print('A2')
-  MAD.option.format = fmt
+  option.format = fmt
 end
 
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local X0, R0, beta0 in self
+  local chrom, coupling, save in self
 
-  -- validate initial conditions
-  if is_nil(X0) then X0 = track.X0 end
-  assert(is_mappable(X0), "invalid X0 (mappable expected)")
-  if not is_mappable(X0[1]) then
-    X0, R0, beta0 = {X0}, {R0}, {beta0}
-  elseif is_nil(R0) and is_nil(beta0) then
-    R0, beta0 = {}, {}
-  end
+  -- prepare track template
+  local trck0 = track 'twtrack' { exec=false } :copy_variables(self)
 
-  local npar = #X0
-  local Xn, An, ofun0 = table.new(npar,0), table.new(npar,0)
+  -- double the deltaps
+  if chrom and save then twiss_chrom(self, trck0) end
+
+  -- let's track build initial damaps (e.g. handle deltap and check attributes)
+  local _, mflw0 = trck0 { nstep=0, save=false }
+  local npar = mflw0.npar
+
+  -- search for missing closed orbit (or stop), doesn't change npar.
+  twiss_cofind(self, mflw0)
+
+  -- extract normal forms
+  local X, A, ofun0 = table.new(npar,0), table.new(npar,0), table.new(npar,0)
 
   for i=1,npar do
-    -- precedence of initial conditions
-    local X0i, R0i
-    if is_damap(X0[i]) then
-      X0i, R0i = X0[i]:get0(), X0[i]:get1()
-    elseif R0[i] then
-      X0i, R0i = X0[i], R0[i]
-    elseif beta0[i] then
-      X0i, R0i = X0[i], betablk(beta0[i])
-    end
-
-    -- find closed orbit or use initial conditions
-    local X, R, rnk
-
-    if R0i then
-      X, R, rnk = X0i, R0i, has_dp(R0i, self.codptol) and 6 or 4
-    else
-      X, R, rnk = twiss_cofind(self, X0i, R0i)
-    end
+    local Xi  = mflw0[i]:get0()
+    local Ri  = mflw0[i]:get1()
+    local rnk = has_dp(Ri, self.codptol) and 6 or 4
 
     -- 4D case
-    if rnk == 4 then R = R:getsub(1..4,1..4) end
+    if rnk == 4 then Ri = Ri:getsub(1..4,1..4) end
 
     -- get linear normal form A from one-turn map R
-    local A, V, W, info = normal(R)
+    local Ai, Vi, Wi = normal(Ri)
 
     -- get initial linear optical functions and phase advances
-    ofun0 = phasadv(W, optfun(A, nil, self.coupling))
+    local ofun0i = phasadv(Wi, optfun(Ai, nil, coupling))
+
+print('mu1=', ofun0i.mu1,'mu2=', ofun0i.mu2,'mu3=', ofun0i.mu3)
 
     -- TODO: high order normal form
 
     -- debug normal form
-    if MAD.option.debug >= 2 then trace_normal(R, A) end
+    if option.debug >= 2 then trace_normal(Ri, Ai) end
 
-    -- back to 6D
-    if rnk == 4 then A = matrix(6):eye():setsub(1..4, 1..4, A) end
+    -- back to 6D (TODO: check 5D...)
+    if rnk == 4 then Ai = matrix(6):eye():setsub(1..4,1..4, Ai) end
 
-    Xn[i], An[i] = X, A
+    X[i], A[i], ofun0[i] = Xi, Ai, ofun0
   end
 
-  -- init track with normal form A and compute optfun
-  return twiss_track0(self, Xn, An, ofun0)
+  -- init track with normal forms A and compute optfun
+  return twiss_track0(self, X, A, ofun0)
 end
 
 -- twiss command --------------------------------------------------------------o
@@ -334,27 +280,28 @@ local _id = {} -- identity
 local function exec (self)
   local mflw, mtbl, ei
 
+  -- retrieve or build mflw (and extend mtbl)
   if self.mflow then
     assert(self.mflow.__twss == _id, "invalid mflow (twiss mflow expected)")
     mflw = self.mflow
   else
-    mflw = make_mflow(self)
+    mflw = make_mflow(self) -- the real work is done here.
     mflw.__twss = _id
   end
 
+  -- track normal form(s)
   mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
 
-  if ei == nil and mtbl ~= nil then
+  if ei == nil and not is_nil(mtbl) then
     fill_sum(mflw)
   end
 
   return mtbl, mflw, ei
 end
 
-local _na, _nyi -- not applicable, not yet implemented
+-- attributes set to nil will use the default from track by inheritance
 
 local twiss = command 'twiss' {
-  -- attributes (not required) set to nil will use the default from track
   beam=nil,          -- beam (required or sequence.beam)                  (trck)
   sequence=nil,      -- sequence (required)                               (trck)
   range=nil,         -- range of tracking                                 (trck)
@@ -364,7 +311,7 @@ local twiss = command 'twiss' {
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
   R0=nil,            -- initial R matrix (companion of X0)                (trck)
   beta0=nil,         -- initial beta0 block to build uncoupled R0         (trck)
-  deltap=nil,        -- initial deltap                                    (trck)
+  deltap=nil,        -- initial deltap(s)                                 (trck)
 
   mapdef=true,       -- always use damap formalism (true => {xy=2})       (trck)
   mapsave=nil,       -- save damap in the mtable                          (trck)
@@ -372,29 +319,30 @@ local twiss = command 'twiss' {
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track                       (trck)
+  npart=nil,         -- number of particles/damaps (or #X0)               (trck)
   nslice=nil,        -- number of slice for each element                  (trck)
   implicit=nil,      -- slice implicit elements too                       (trck)
-  model=nil,         -- model for integration                             (trck)
-  method=nil,        -- method or order for integration                   (trck)
+  model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
+  method=nil,        -- method or order for integration (1 to 8)          (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
-  radiate=_nyi,      -- radiate at slices                                 (trck)
-  misalign=nil,      -- 0 none, 1 main, 2 +error                          (trck)
+  radiate=false,     -- radiate at slices (NYI)                           (trck)
+  misalign=nil,      -- consider misalignment errors                      (trck)
 
   save=true,         -- create mtable and save results                    (mtbl)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
-  savesel=nil,       -- save selector                                     (mtbl)
+  savesel=nil,       -- save selector (predicate)                         (mtbl)
   relative=nil,      -- save length of slices instead from element start  (mtbl)
   observe=false,     -- save only in observed elements (every n turns)    (mtbl)
   coupling=false,    -- save optical functions for non-diagonal blocks    (mtbl)
-  chrom=false,       -- compute chromaticity                              (twss)
+  chrom=false,       -- compute chromaticity by finite difference         (twss)
+
+  usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   atentry=nil,       -- action called when entering an element            (trck)
   atslice=nil,       -- action called after each element slices           (trck)
   atexit=nil,        -- action called when exiting an element             (trck)
   ataper=nil,        -- action called after checking for aperture         (trck)
   atsave=fnone,      -- action called after saving in mtable              (trck)
-
-  usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   cotol=nil,         -- closed orbit tolerance                            (cofn)
   coiter=nil,        -- maximum number of iteration                       (cofn)
@@ -406,8 +354,14 @@ local twiss = command 'twiss' {
   cowarn=nil,        -- commute errors into warnings                      (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
 
-  mflow=nil,      -- current mflow, exclusive with other attributes except nstep
-  exec=exec,      -- command to execute upon children creation
+  mflow=nil,         -- mflow, exclusive with other attributes except nstep
+  exec=exec,         -- command to execute upon children creation
+
+  __attr = tblcat(   -- list of all setup attributes
+    {'chrom', 'coupling', 'comapdef', 'comapdump'},
+    cofind.__attr,
+    {noeval=cofind.__attr.noeval}
+  )
 } :set_readonly() -- reference twiss command is readonly
 
 -- end ------------------------------------------------------------------------o
