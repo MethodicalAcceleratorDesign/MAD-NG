@@ -27,7 +27,7 @@ local matrix, command, track, cofind, gphys, option               in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dp,
       ofname, ofcname, cvindex                                    in gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
-local tblcat, tblcpy, tblrep, assertf                             in MAD.utility
+local tblcat, tblcpy, tblrep, assertf, printf                     in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_damap, is_matrix, is_optfun                 in MAD.typeid
 
@@ -39,29 +39,43 @@ local chromdp = 1e-6
 
 local function fill_sum (mflw)
   local mtbl in mflw
-  local chrm in mflw.__twdat
 
   -- TODO: momentum compaction factor
   -- TODO: gramma transition
 
-  -- chromaticity (BUG: indexes are wrong for lost particles and/or deltap)
-  if chrm then
+  -- chromaticity
+  if mflw.__twdat.chrm then
+    local q1, q2, q3, dq1, dq2, dq3, chromdp in mtbl
+    local n = floor(#q1/2)
 
-    local n = floor(#mtbl.q1/2)
-    for i=1,n do
-      mtbl.dq1[i] = (mtbl.q1[n+i] - mtbl.q1[i])/chrm
-      mtbl.dq2[i] = (mtbl.q2[n+i] - mtbl.q2[i])/chrm
-      mtbl.dq3[i] = (mtbl.q3[n+i] - mtbl.q3[i])/chrm
+    print('cdp=',chromdp, 'n=', n, 'npar=', mflw.npar, 'npar2=', mflw.__twdat.npar)
+
+    -- tag lost damaps
+    for i=mflw.npar+1,mflw.tpar do
+      local id, st = mflw[i].id, mflw[i].status
+      if id > n then id = id-n end
+      dq1[id], dq2[id], dq3[id] = st, st, st
+    end
+
+    -- other damaps
+    for i=1,mflw.npar do
+      local id = mflw[i].id
+      if id > n then id = id-n end
+      if not dq1[id] then
+        dq1[id] = (q1[id+n] - q1[id])/chromdp
+        dq2[id] = (q2[id+n] - q2[id])/chromdp
+        dq3[id] = (q3[id+n] - q3[id])/chromdp
+        printf("id=%d, q1=%.12e, q1dp=%.12e, dq1=%.12e\n\z
+                .     q2=%.12e, q2dp=%.12e, dq2=%.12e\n",
+                id, q1[id], q1[id+n], dq1[id], q2[id], q2[id+n], dq2[id])
+      end
     end
 
     -- cleaning
     for i=n+1,2*n do
-      mtbl.q1[i], mtbl.q2[i], mtbl.q3[i] = nil, nil, nil
+      q1[i], q2[i], q3[i] = nil, nil, nil
     end
   end
-
-  -- cleaning
-  mtbl._mu1, mtbl._mu2, mtbl._mu3 = nil, nil, nil
 end
 
 local function fill (elm, mflw, lw, islc)
@@ -69,34 +83,37 @@ local function fill (elm, mflw, lw, islc)
   local n = #mtbl-npar -- complete last npar row partially filled by track
 
   local ofun, ocpl, onam, omat in mflw.__twdat
-  local q1, q2, q3, _mu1, _mu2, _mu3 in mtbl
+  local q1, q2, q3 in mtbl
 
   for i=1,npar do
     local m = mflw[i]
-    assertf(is_damap(m), "unexpected particle %d (damap expected)", i)
+    local id, of = m.id, ofun[m.id]
+    assertf(is_damap(m), "unexpected particle %d (damap expected)", id)
+
+    -- backup phases
+    local mu1_, mu2_, mu3_ = of.mu1, of.mu2, of.mu3
 
     -- TO FIX: dispersion is wrong when extracted from A instead of R...
-    optfun(m:get1(omat), ofun[i], ocpl)
+    optfun(m:get1(omat), of, ocpl)
 
     -- adjust the phases
-    local  mu1,  mu2,  mu3 in ofun[i]
-    local dmu1, dmu2, dmu3 = mu1-_mu1[i], mu2-_mu2[i], mu3-_mu3[i]
+    local  mu1,  mu2,  mu3 in of
+    local dmu1, dmu2, dmu3 = mu1-mu1_, mu2-mu2_, mu3-mu3_
 
     if dmu1 < 0 then dmu1 = dmu1+1 end
     if dmu2 < 0 then dmu2 = dmu2+1 end
     if dmu3 < 0 then dmu3 = dmu3+1 end
 
-    -- compute the tunes, backup the phases
-    q1[i], _mu1[i] = q1[i] + dmu1, mu1
-    q2[i], _mu2[i] = q2[i] + dmu2, mu2
-    q3[i], _mu3[i] = q3[i] + dmu3, mu3
+    -- compute the tunes
+    q1[id] = q1[id] + dmu1
+    q2[id] = q2[id] + dmu2
+    q3[id] = q3[id] + dmu3
 
     -- fill table
-    ofun.mu1, ofun.mu2, ofun.mu3 = q1[i], q2[i], q3[i]
-
     for _,k in ipairs(onam) do
-      mtbl[k][n+i] = ofun[k]
+      mtbl[k][n+i] = of[k]
     end
+    mtbl.mu1[n+i], mtbl.mu2[n+i], mtbl.mu3[n+i] = q1[id], q2[id], q3[id]
   end
   return true
 end
@@ -167,7 +184,7 @@ end
 -- init track -----------------------------------------------------------------o
 
 local function twiss_track0 (self, X0, R0, ofun0)
-  local mapdef, chrom, beam, save in self
+  local mapdef, save in self
   local atsave = self:var_raw 'atsave' -- prevent evaluation
 
   -- wrap atsave
@@ -181,15 +198,15 @@ local function twiss_track0 (self, X0, R0, ofun0)
 
   -- prepare track command
   local mtbl, mflw = trck0 'twtrack0' {
-    X0=X0, R0=R0, atsave=atsave, nstep=0, -- init only
-    mapdef = is_true(mapdef) and {xy=2} or mapdef,
+    X0=X0, R0=R0, atsave=atsave, nstep=0, deltap=0, -- init only
+    mapdef=is_true(mapdef) and {xy=2} or mapdef,
   }
 
   -- extend mflw and mtbl
   if save then
-    -- add twiss data to mflw
-    local coupling in self
+    local chrom, coupling in self
     local n = mflw.npar
+    -- add twiss data to mflw
     mflw.__twdat = {
       ofun = ofun0,
       ocpl = coupling,
@@ -199,13 +216,13 @@ local function twiss_track0 (self, X0, R0, ofun0)
       npar = n,
     }
     -- add twiss columns and type to mtbl
-    mtbl.type  = 'twiss'
+    mtbl.type = 'twiss'
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
-    -- init phase and tunes
-    mtbl.q1, mtbl._mu1, mtbl.dq1 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
-    mtbl.q2, mtbl._mu2, mtbl.dq2 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
-    mtbl.q3, mtbl._mu3, mtbl.dq3 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
-    mtbl.chromdp = chrom
+    -- init tunes and chromaticities
+    mtbl.q1, mtbl.dq1 = tblrep(0,n), table.new(n/2,0)
+    mtbl.q2, mtbl.dq2 = tblrep(0,n), table.new(n/2,0)
+    mtbl.q3, mtbl.dq3 = tblrep(0,n), table.new(n/2,0)
+    mtbl.chromdp = chrom == true and chromdp or chrom or nil
   end
 
   return mflw
@@ -257,7 +274,9 @@ local function make_mflow (self)
     -- get initial linear optical functions and phase advances
     local ofun0i = phasadv(Wi, optfun(Ai, nil, coupling))
 
+    -- clear phase advances
 print('mu1=', ofun0i.mu1,'mu2=', ofun0i.mu2,'mu3=', ofun0i.mu3)
+    ofun0i.mu1, ofun0i.mu2, ofun0i.mu3 = 0, 0, 0
 
     -- debug normal form
     if option.debug >= 2 then trace_normal(Ri, Ai) end
