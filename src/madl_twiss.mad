@@ -27,7 +27,7 @@ local matrix, command, track, cofind, gphys, option               in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dp,
       ofname, ofcname, cvindex                                    in gphys
 local fnone, ffalse, ftrue, achain                                in MAD.gfunc
-local tblcat, tblcpy, tbldup, assertf                             in MAD.utility
+local tblcat, tblcpy, tblrep, assertf                             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_damap, is_matrix, is_optfun                 in MAD.typeid
 
@@ -72,14 +72,14 @@ local function fill (elm, mflw, lw, islc)
   local q1, q2, q3, _mu1, _mu2, _mu3 in mtbl
 
   for i=1,npar do
-    local par = mflw[i]
-    assertf(is_damap(par), "unexpected particle %d (damap expected)", i)
+    local m = mflw[i]
+    assertf(is_damap(m), "unexpected particle %d (damap expected)", i)
 
-    -- TO FIX: dispersion is wrong as extracted matrix is A not R...
-    optfun(par:get1(omat), ofun, ocpl)
+    -- TO FIX: dispersion is wrong when extracted from A instead of R...
+    optfun(m:get1(omat), ofun[i], ocpl)
 
     -- adjust the phases
-    local  mu1,  mu2,  mu3 in ofun
+    local  mu1,  mu2,  mu3 in ofun[i]
     local dmu1, dmu2, dmu3 = mu1-_mu1[i], mu2-_mu2[i], mu3-_mu3[i]
 
     if dmu1 < 0 then dmu1 = dmu1+1 end
@@ -141,8 +141,10 @@ local function twiss_cofind (self, mflw0)
   local twcofind = cofind 'twcofind' { exec=false } :copy_variables(self)
 
   -- retrieve closed orbit(s)
-  local mapdef, mapdump = self.comapdef or true, self.comapdump
+  local mapdef, mapdump = self.comapdef, self.comapdump
   local _, mflw = twcofind { X0=X0, save=false, mapdef=mapdef, mapdump=mapdump }
+
+  -- TODO: for high order normal form, one needs to track again with mapdef
 
   -- save results back to mflw0
   local nlos = 0
@@ -179,31 +181,30 @@ local function twiss_track0 (self, X0, R0, ofun0)
 
   -- prepare track command
   local mtbl, mflw = trck0 'twtrack0' {
-    X0=X0, R0=R0, atsave=atsave, nstep=0, -- only init
+    X0=X0, R0=R0, atsave=atsave, nstep=0, -- init only
     mapdef = is_true(mapdef) and {xy=2} or mapdef,
   }
-  local npar = mflw.npar
 
   -- extend mflw and mtbl
   if save then
     -- add twiss data to mflw
     local coupling in self
+    local n = mflw.npar
     mflw.__twdat = {
       ofun = ofun0,
       ocpl = coupling,
       omat = matrix(6),
       onam = coupling and ofcname or ofname,
       chrm = chrom,
-      npar = npar,
+      npar = n,
     }
     -- add twiss columns and type to mtbl
     mtbl.type  = 'twiss'
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
     -- init phase and tunes
-    local n = #mflw
-    mtbl.q1, mtbl._mu1, mtbl.dq1 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
-    mtbl.q2, mtbl._mu2, mtbl.dq2 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
-    mtbl.q3, mtbl._mu3, mtbl.dq3 = tbldup(0,n), tbldup(0,n), tbldup(0,npar)
+    mtbl.q1, mtbl._mu1, mtbl.dq1 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
+    mtbl.q2, mtbl._mu2, mtbl.dq2 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
+    mtbl.q3, mtbl._mu3, mtbl.dq3 = tblrep(0,n), tblrep(0,n), tblrep(0,n)
     mtbl.chromdp = chrom
   end
 
@@ -233,13 +234,13 @@ local function make_mflow (self)
   if chrom and save then twiss_chrom(self, trck0) end
 
   -- let's track build initial damaps (e.g. handle deltap and check attributes)
-  local _, mflw0 = trck0 { nstep=0, save=false }
+  local _, mflw0 = trck0 { nstep=0, save=false, mapdef=false }
   local npar = mflw0.npar
 
   -- search for missing closed orbit (or stop), doesn't change npar.
   twiss_cofind(self, mflw0)
 
-  -- extract normal forms
+  -- extract normal forms (TODO: high order normal form)
   local X, A, ofun0 = table.new(npar,0), table.new(npar,0), table.new(npar,0)
 
   for i=1,npar do
@@ -258,15 +259,13 @@ local function make_mflow (self)
 
 print('mu1=', ofun0i.mu1,'mu2=', ofun0i.mu2,'mu3=', ofun0i.mu3)
 
-    -- TODO: high order normal form
-
     -- debug normal form
     if option.debug >= 2 then trace_normal(Ri, Ai) end
 
     -- back to 6D (TODO: check 5D...)
     if rnk == 4 then Ai = matrix(6):eye():setsub(1..4,1..4, Ai) end
 
-    X[i], A[i], ofun0[i] = Xi, Ai, ofun0
+    X[i], A[i], ofun0[i] = Xi, Ai, ofun0i
   end
 
   -- init track with normal forms A and compute optfun
@@ -349,7 +348,7 @@ local twiss = command 'twiss' {
   codiff=nil,        -- finite differences step for jacobian              (cofn)
   codptol=nil,       -- 4D vs 6D dp tolerance                             (cofn)
   comethod=nil,      -- default optimizer                                 (cofn)
-  comapdef=nil,      -- optional mapdef for cofind                        (cofn)
+  comapdef=true,     -- mapdef for cofind                                 (cofn)
   comapdump=nil,     -- dump X and R after each element                   (cofn)
   cowarn=nil,        -- commute errors into warnings                      (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
