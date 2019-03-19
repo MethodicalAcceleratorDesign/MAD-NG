@@ -35,15 +35,13 @@ check_same_desc(ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_normal(ssz_t sa, const T *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *mc[sc])
+check_normal(ssz_t sa, const T *ma[sa], T *mb[sa], T *mc[sa])
 {
   assert(ma && mb && mc);
-  ensure(sa>0 && sb>0 && sc>0, "invalid map sizes (zero or negative sized map)");
-  ensure(sa == sc, "incompatibles GTPSA (number of map variables differ)");
-  ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
+  ensure(sa>0, "invalid map sizes (zero or negative sized map)");
   check_same_desc(sa,ma);
-  check_same_desc(sb,(const T**)mb);
-  check_same_desc(sc,(const T**)mc);
+  check_same_desc(sa,(const T**)mb);
+  check_same_desc(sa,(const T**)mc);
   ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
@@ -62,10 +60,10 @@ check_normal(ssz_t sa, const T *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *mc[sc]
 // x  =  a  r  a^-1, where r is the normalized map (containing tunes and dampings)
 
 void
-FUN(normal) (ssz_t sa, const T *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *mc[sc])
+FUN(normal) (ssz_t sa, const T *ma[sa], T *mb[sa], T *mc[sa])
 {
+  check_normal(sa, ma, mb, mc);
   ensure(0, "NYI: high order normal form");
-  check_normal(sa, ma, sb, mb, sc, mc);
 
 /* TODO
   #ifdef _OPENMP
@@ -83,10 +81,10 @@ FUN(normal) (ssz_t sa, const T *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *mc[sc]
 }
 
 void
-FUN(tnormal)(ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *mc[sc])
+FUN(tnormal)(ssz_t sa, const tpsa_t *ma[sa], T *mb[sa], T *mc[sa])
 {
+  check_normal(sa, (const T**)ma, mb, mc);
   ensure(0, "NYI: high order normal form");
-  check_normal(sa, (const T**)ma, sb, mb, sc, mc);
 
   const D *d = mb[0]->d;
   const T *cma[sa];
@@ -100,7 +98,7 @@ FUN(tnormal)(ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, T *mb[sb], ssz_t sc, T *m
     cma[i] = a;
   }
 
-  FUN(normal)(sa, cma, sb, mb, sc, mc);
+  FUN(normal)(sa, cma, mb, mc);
 
   for (idx_t i = 0; i < sa; i++)
     FUN(del)(cma[i]);

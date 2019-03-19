@@ -222,12 +222,12 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                         num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
-void     mad_ctpsa_minv     (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc]);
-void     mad_ctpsa_pminv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ssz_t sc, ctpsa_t *mc[sc], ssz_t selected[sa]);
-void     mad_ctpsa_compose  (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
-void     mad_ctpsa_translate(ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const cnum_t   tb[sb],           ctpsa_t *mc[sa]);
-void     mad_ctpsa_normal   (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb,       ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
-void     mad_ctpsa_tnormal  (ssz_t sa, const  tpsa_t *ma[sa], ssz_t sb,       ctpsa_t *mb[sb], ssz_t sc, ctpsa_t *mc[sc]);
+void     mad_ctpsa_minv     (ssz_t sa, const ctpsa_t *ma[sa],                                  ctpsa_t *mc[sa]);
+void     mad_ctpsa_pminv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ctpsa_t *mc[sa], ssz_t selected[sa]);
+void     mad_ctpsa_normal   (ssz_t sa, const ctpsa_t *ma[sa],                 ctpsa_t *mb[sa], ctpsa_t *mc[sa]);
+void     mad_ctpsa_tnormal  (ssz_t sa, const  tpsa_t *ma[sa],                 ctpsa_t *mb[sa], ctpsa_t *mc[sa]);
+void     mad_ctpsa_compose  (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ctpsa_t *mc[sa]);
+void     mad_ctpsa_translate(ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const cnum_t   tb[sb], ctpsa_t *mc[sa]);
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);

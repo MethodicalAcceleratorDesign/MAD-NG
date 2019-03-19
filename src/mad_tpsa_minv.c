@@ -41,12 +41,11 @@ check_same_desc(ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_minv(ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
+check_minv(ssz_t sa, const T *ma[sa], T *mc[sa])
 {
-  ensure(sa == sc, "incompatibles number of map variables");
   ensure(sa == ma[0]->d->nmv, "non-square system"); // 'square' matrix, ignoring knobs
   check_same_desc(sa,ma);
-  check_same_desc(sc,(const T**)mc);
+  check_same_desc(sa,(const T**)mc);
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
@@ -170,10 +169,10 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(minv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
+FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
 {
   assert(ma && mc);
-  check_minv(sa,ma,sc,mc);
+  check_minv(sa,ma,mc);
   for (idx_t i = 0; i < sa; ++i)
     ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
@@ -196,12 +195,12 @@ FUN(minv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
   ord_t o_prev = mad_desc_gtrunc(d, 2);
   for (ord_t o = 2; o <= d->mo; ++o) {
     mad_desc_gtrunc(d, o);
-    FUN(compose)(sa, (const T**)nonlin,  sa, (const T**)mc,  sa, tmp);
+    FUN(compose)(sa, (const T**)nonlin, sa, (const T**)mc, tmp);
 
     for (idx_t v = 0; v < sa; ++v)
       FUN(seti)(tmp[v], v+1, 1,1);    // add I
 
-    FUN(compose)(sa, (const T**)lininv, sa, (const T**)tmp, sa, mc);
+    FUN(compose)(sa, (const T**)lininv, sa, (const T**)tmp, mc);
   }
   mad_desc_gtrunc(d, o_prev);
 
@@ -214,10 +213,10 @@ FUN(minv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc])
 }
 
 void
-FUN(pminv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t selected[sa])
+FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], ssz_t selected[sa])
 {
   assert(ma && mc && selected);
-  check_minv(sa,ma,sc,mc);
+  check_minv(sa,ma,mc);
   for (idx_t i = 0; i < sa; ++i)
     if (selected[i])
       ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
@@ -244,8 +243,8 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t selected[sa])
     FUN(set0)(mUnused[i], 0,0);
   }
 
-  FUN(minv)   (sa,(const T**)mUsed  ,sa,           mInv);
-  FUN(compose)(sa,(const T**)mUnused,sa,(const T**)mInv,sc,mc);
+  FUN(minv)   (sa,(const T**)mUsed  ,              mInv);
+  FUN(compose)(sa,(const T**)mUnused,sa,(const T**)mInv,mc);
 
   for (idx_t i = 0; i < sa; ++i) {
     FUN(del)(mUsed[i]);

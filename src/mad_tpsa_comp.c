@@ -41,15 +41,14 @@ check_same_desc(ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T *mc[sc])
+check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
-  ensure(sa>0 && sb>0 && sc>0, "invalid map sizes (zero or negative sized map)");
-  ensure(sa == sc, "incompatibles GTPSA (number of map variables differ)");
+  ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sized map)");
   ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
-  check_same_desc(sc,(const T**)mc);
+  check_same_desc(sa,(const T**)mc);
   ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
@@ -62,13 +61,13 @@ check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T 
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T *mc[sc])
+FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
-  check_compose(sa, ma, sb, mb, sc, mc);
+  check_compose(sa, ma, sb, mb, mc);
 
   // handle aliasing
-  mad_alloc_tmp(T*, mc_, sc);
-  for (idx_t ic = 0; ic < sc; ++ic)
+  mad_alloc_tmp(T*, mc_, sa);
+  for (idx_t ic = 0; ic < sa; ++ic)
     mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
 
   #ifdef _OPENMP
@@ -83,7 +82,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], ssz_t sc, T 
     compose_serial  (sa,ma,mb,mc_);
 
   // copy back
-  for (idx_t ic = 0; ic < sc; ++ic) {
+  for (idx_t ic = 0; ic < sa; ++ic) {
     FUN(copy)(mc_[ic], mc[ic]);
     FUN(del )(mc_[ic]);
   }
@@ -101,7 +100,7 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
     mb[ib] = t;
   }
 
-  FUN(compose)(sa, ma, sb, mb, sa, mc);
+  FUN(compose)(sa, ma, sb, mb, mc);
 
   // cleanup
   for (idx_t ib = 0; ib < sb; ++ib)
