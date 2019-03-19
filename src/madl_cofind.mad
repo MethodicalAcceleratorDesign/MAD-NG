@@ -23,19 +23,22 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local warn, vector, matrix, command, track                        in MAD
+local warn, option, vector, matrix, command, track                in MAD
 local fnone                                                       in MAD.gfunc
 local has_dp, vname                                               in MAD.gphys
 local tblcat, errorf, assertf                                     in MAD.utility
 local is_number, is_positive, is_boolean, is_true, is_iterable    in MAD.typeid
 local abs                                                         in math
 
-local I  = matrix(6):eye()
-local I4 = matrix(4):eye()
-
 -- cofind algorithms ----------------------------------------------------------o
 
 local method = {}
+
+local I  = matrix(6):eye()
+local I4 = matrix(4):eye()
+local X4 = vector(4)
+local R4 = matrix(4)
+local r4 = 1..4
 
 function method.newton (X0, X, R, T, tol, dptol)
   local dX, rnk
@@ -45,11 +48,9 @@ function method.newton (X0, X, R, T, tol, dptol)
     dX, rnk = (R-I):solve(X-X0)
 
     if rnk < 6 then
-      warn("singular matrix occurred during 6D closed orbit search.")
       return rnk, "singular"
     elseif dX:maxabs() <= tol then
-      -- return if last applied correction is below tolerance
-      return rnk, "cofound"
+      return rnk, "cofound", dX
     end
 
     -- adjust orbit
@@ -57,22 +58,20 @@ function method.newton (X0, X, R, T, tol, dptol)
 
   else
     -- 4D case
-    local X4 = X:getrow(1..4) - X0:getrow(1..4)
-    local R4 = R:getsub(1..4, 1..4) - I4
-    dX, rnk = R4:solve(X4)
+    X0:getrow(r4, X4) ; R:getsub(r4,r4, R4)
+    dX, rnk = (R4-I4):solve(X:getrow(r4)-X4)
 
     if rnk < 4 then
-      warn("singular matrix occurred during 4D closed orbit search.")
       return rnk, "singular"
     elseif dX:maxabs() <= tol then
-      -- return if last applied correction is below tolerance
-      return rnk, "cofound"
+      return rnk, "cofound", dX
     end
 
     -- adjust orbit
-    X4 = X0:getrow(1..4) - dX
-    X0:zeros():copy(X4)
+    X0:copy(X4-dX)
   end
+
+  return rnk
 end
 
 -- cofind using jacobian ------------------------------------------------------o
@@ -85,7 +84,7 @@ local function cofind_jacob (self, track)
   local costep = method[comethod]
   local T = self.totalpath
 
-  assert(is_number(track.X0[1]),"cofind+codiff work only on single particle")
+  assert(is_number(track.X0[1]),"cofind: codiff works only on single particle")
 
   -- error handling
   local errf = self.cowarn and warn or errorf
@@ -105,7 +104,7 @@ local function cofind_jacob (self, track)
   end
 
   -- search for fix point
-  local X, R, rnk, typ
+  local X, R = vector(6), matrix(6)
 
   for itr=1,coiter do
 
@@ -117,15 +116,13 @@ local function cofind_jacob (self, track)
     -- track 6D x 7 particles
     local _, mflw = track { X0=Xs, deltap=0, save=false }
 
-    -- check for all particles lost
+    -- lost particles (if any)
     if mflw.npar ~= 7 then
-      errf("cofind lost %d particles after %d iterations", 7-mflw.npar, itr)
+      errf("cofind: lost %d particles at iteration %d", 7-mflw.npar, itr)
       return X0, nil, 0, "lost", itr
     end
 
-    -- retrieve 6D orbit and jacobian map
-    X, R = vector(6), matrix(6)
-
+    -- retrieve orbit and jacobian
     for i=1,6 do
       local vn = vname[i]
       X[i] = mflw[7][vn] -- particle co-ordinates must be accessed by names.
@@ -135,13 +132,22 @@ local function cofind_jacob (self, track)
     end
 
     -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-    rnk, typ = costep(X0, X-X1, R, T, cotol, codptol)
+    local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
 
-    -- orbit X, jacobian R, rank of R, "singular/lost/unfound", it
-    if typ then return X, R, rnk, typ, itr end
+    if typ then -- "cofound/singular"
+      if typ == "singular" then
+        warn("cofind: singular matrix (rnk=%d) at iteration %d", rnk, itr)
+      elseif option.debug >= 3 then
+        dX:print('cofind: last dX')
+      end
+      -- orbit X, jacobian R, rank of R, "cofound/singular", itr
+      return X, R, rnk, typ, itr
+    end
   end
 
-  errf("closed orbit did not converge in %d iterations", coiter)
+  errf("cofind: closed orbit did not converge in %d iterations", coiter)
+
+  -- case errf is warn
   return X, R, 0, "counfound", coiter
 end
 
@@ -172,11 +178,23 @@ local function cofind_map (self, track)
   -- build final translation
   local X1 = vector(6):fill(self.X1)
 
-  for it=1,coiter do
+  for itr=1,coiter do
     -- track damaps
     mtbl, mflw = track { X0=mflw, npart=npar, deltap=0 }
     npar = mflw.npar
 
+    -- lost particles (if any)
+    local nlos = mflw.tpar-npar
+    if nlos ~= 0 then
+      warn("cofind: lost %d particles at iteration %d", nlos, itr)
+      for i=npar+1,npar+nlos do
+        local m  = mflw[i]
+        local i0 = idx0[m.id]
+        mflw0[i0], m.id, m.coiter, mflw[i] = m, i0, itr, nil
+      end
+    end
+
+    -- update orbits
     local i = 1
     while i <= npar do
       -- retrieve orbit and jacobian
@@ -186,35 +204,37 @@ local function cofind_map (self, track)
       local X, R = m:get0(), m:get1()
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, typ = costep(X0, X-X1, R, T, cotol, codptol)
+      local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
 
-      -- save or update damap
-      if typ then
-        m.rank, m.status, m.coiter = rnk, typ, it
-        mflw[i], mflw[npar], idx0[i], npar = mflw[npar], nil, idx0[npar], npar-1
+      if typ then -- "cofound/singular"
+        if typ == "singular" then
+          warn("cofind: singular matrix (rnk=%d) at iteration %d \z
+                for particle %d.", rnk, itr, i0)
+        elseif option.debug >= 3 then
+          dX:print(string.format("cofind: (id=%d,itr=%d) last dX", i0, itr))
+        end
+        -- save damap
+        m.rank, m.status, m.coiter = rnk, typ, itr
+        mflw[i], mflw[npar], idx0[i] = mflw[npar], nil, idx0[npar]
+        npar = npar-1
       else
-        m:setv(X0) ; i = i+1
+        -- update orbit
+        m:setv(X0)
+        i = i+1
       end
 
       mflw0[i0], m.id = m, i0
-    end
-
-    -- handle lost particles (if any)
-    for i=mflw.npar+1,mflw.tpar do
-      local m  = mflw[i]
-      local i0 = idx0[m.id]
-      mflw0[i0], m.id, m.coiter, mflw[i] = m, i0, it, nil
     end
 
     -- all damaps have been processed
     if npar == 0 then return mtbl, mflw0 end
   end
 
-  errf("closed orbit did not converge in %d iterations", coiter)
+  errf("cofind: closed orbit did not converge in %d iterations", coiter)
 
   -- case errf is warn
   for i=1,npar do
-    local m = mflw[i]
+    local m  = mflw[i]
     local i0 = idx0[m.id]
     mflw0[i0], m.id, m.coiter, m.status = m, i0, coiter, "counfound"
   end
