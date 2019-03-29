@@ -54,31 +54,34 @@ local abs, sqrt, max, sin, cos, tan, asin, acos, atan, atan2,
 
 -- debug ----------------------------------------------------------------------o
 
-local nodump  = false
-local nopart  = "%-15s  no particle found\n"
-local shtfmt  = "%-15s % -.6e % -.6e % -.6e % -.6e % -.6e % -.6e\n"
-local lngfmt  = "%-15s % -.16e % -.16e % -.16e % -.16e % -.16e % -.16e\n"
-local dumpfmt = shtfmt
+local shtfmt = "% -.6e % -.6e % -.6e % -.6e % -.6e % -.6e "
+local lngfmt = "% -.16e % -.16e % -.16e % -.16e % -.16e % -.16e "
+local mapfmt = lngfmt -- shtfmt
 
-local function mdump(str, m)
-  if nodump then return end
-  if m.npar == 0 then printf(nopart, str) return end
+local function mdump (str, elm, m)
+--  if false then return end
+
+  local name = is_number(elm) and '"number"' or elm.name
+  printf("%-15s %-15s ", name, str)
+  if is_number(elm) then printf("% -.16e\n", elm) return end
+  if m.npar == 0    then printf("no particle found\n") return end
 
   local X, R = m[1]
 
   if is_damap(X) then
     X, R = X:get0(), X:get1()
-    printf(dumpfmt, str, X[1], X[2], X[3], X[4], X[5], X[6])
+    printf(mapfmt, X[1], X[2], X[3], X[4], X[5], X[6])
   else
-    printf(dumpfmt, str, X.x, X.px, X.y, X.py, X.t, X.pt)
+    printf(mapfmt, X.x, X.px, X.y, X.py, X.t, X.pt)
   end
 
   if R then
     for i=1,R.nrow do
-      printf(dumpfmt, '', R:get(i,1), R:get(i,2), R:get(i,3),
-                          R:get(i,4), R:get(i,5), R:get(i,6))
+      printf(mapfmt, R:get(i,1), R:get(i,2), R:get(i,3),
+                     R:get(i,4), R:get(i,5), R:get(i,6))
     end
   end
+  printf('\n')
 end
 
 -- field mutipoles ------------------------------------------------------------o
@@ -111,6 +114,8 @@ local function xrotation (elm, m, lw_)  -- Rx(ax) [ROT_YZ]
   local sa, ca, ta = sin(ax), cos(ax), tan(ax)
   local _beta = 1/m.beam.beta
 
+  mdump('xrotation:0', elm, m)
+
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
@@ -126,6 +131,8 @@ local function xrotation (elm, m, lw_)  -- Rx(ax) [ROT_YZ]
     m[i].x  = x + _pzt*px
     m[i].t  = t - _pzt*(_beta+pt)
   end
+
+  mdump('xrotation:1', elm, m)
 end
 
 M.xrotation = xrotation
@@ -142,6 +149,8 @@ local function yrotation (elm, m, lw_)  -- Ry(ay) [ROT_XZ]
   local sa, ca, ta = sin(ay), cos(ay), tan(ay)
   local _beta = 1/m.beam.beta
 
+  mdump('yrotation:0', elm, m)
+
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
@@ -157,6 +166,8 @@ local function yrotation (elm, m, lw_)  -- Ry(ay) [ROT_XZ]
     m[i].y  = y + _pzt*py
     m[i].t  = t - _pzt*(_beta+pt)
   end
+
+  mdump('yrotation:1', elm, m)
 end
 
 M.yrotation = yrotation
@@ -172,7 +183,7 @@ local function srotation (elm, m, lw_)  -- Rz(az) [ROT_XY]
   local az = az*(lw_ or 1)
   local sa, ca = sin(az), cos(az)
 
---  mdump('srotation-0:', m, az)
+  mdump('srotation:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py in m[i]
@@ -185,7 +196,7 @@ local function srotation (elm, m, lw_)  -- Rz(az) [ROT_XY]
     m[i].px   = npx
   end
 
---  mdump('srotation-1:', m)
+  mdump('srotation:1', elm, m)
 end
 
 M.srotation = srotation
@@ -201,6 +212,8 @@ local function translate (elm, m, lw_) -- [TRANS]
   local tdir in m
   local lw = lw_ or 1
   local dx, dy = dx*lw*tdir, dy*lw*tdir
+
+  mdump('translate:0', elm, m)
 
   if abs(ds) < minlen then
     for i=1,m.npar do
@@ -223,6 +236,8 @@ local function translate (elm, m, lw_) -- [TRANS]
     m[i].y = y - l_pz*py - dy
     m[i].t = t + l_pz*(_beta+pt)
   end
+
+  mdump('translate:1', elm, m)
 end
 
 M.translate = translate
@@ -240,6 +255,8 @@ function M.changeref (elm, m, lw_)
   local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
 
   if not (trn or rot) then return end
+
+  mdump('changeref:0', elm, m)
 
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
@@ -259,6 +276,8 @@ function M.changeref (elm, m, lw_)
     end
       translate({dx=dx,dy=dy,ds=ds}, m, -1)
   end
+
+  mdump('changeref:1', elm, m)
 end
 
 -- Changedir (reverse mflow t-direction)
@@ -266,8 +285,12 @@ end
 function M.changedir (elm_, m, lw_)
   if lw_ == 0 then return end
 
+  mdump('changedir:0', elm, m)
+
   m.edir = -m.edir
   m.tdir = -m.tdir
+
+  mdump('changedir:1', elm, m)
 end
 
 -- Changenrj (change particles energy)
@@ -281,12 +304,16 @@ function M.changenrj (elm, m, lw_)  -- (option to reset pt?)
   local tdir, beam in m
   beam.energy = beam.energy + dnrj*tdir
 
+  mdump('changenrj:0', elm, m)
+
   for i=1,m.npar do
     beam = m[i].beam
     if beam then
       beam.energy = beam.energy + dnrj*tdir
     end
   end
+
+  mdump('changenrj:1', elm, m)
 end
 
 -- misalignments (lw_ == 0 disable the misalignments) -------------------------o
@@ -314,6 +341,8 @@ function M.misalign (elm, m, lw_)
 
   if not (trn or rot) then return end
 
+  mdump('misalign:0', elm, m)
+
   local sdir, tdir in m
 
   -- misalignment at entry and local/global frames
@@ -336,6 +365,8 @@ function M.misalign (elm, m, lw_)
     end
       translate({dx=dx*tdir,dy=dy*tdir,ds=-ds}, m, -1)
   end
+
+  mdump('misalign:1', elm, m)
 end
 
 function misalignexi (elm, m)
@@ -346,6 +377,8 @@ function misalignexi (elm, m)
   local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
 
   if not (trn or rot) then return end
+
+  mdump('misalignexi:0', elm, m)
 
   local el, ang, tlt, sdir, tdir in m
 
@@ -380,6 +413,8 @@ function misalignexi (elm, m)
       srotation(az, m,  1)
     end
   end
+
+  mdump('misalignexi:1', elm, m)
 end
 
 -- THIN -----------------------------------------------------------------------o
@@ -390,9 +425,10 @@ function M.thin_kick (elm, m, lw) -- [KICKT]                                    
   local el, tdir, beam, nmul, knl, ksl in m
   local wchg  = lw*tdir*beam.charge
   local _beta = 1/beam.beta
-  local bend  = abs(knl[1])+abs(ksl[1]) >= minang
 
---  mdump('thin_kick-0:', m, el*sdir*lw)
+  mdump('thin_kick:0', elm, m)
+
+  local bend  = abs(knl[1])+abs(ksl[1]) >= minang
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -417,7 +453,7 @@ function M.thin_kick (elm, m, lw) -- [KICKT]                                    
     end
   end
 
---  mdump('thin_kick-1:', m)
+  mdump('thin_kick:1', elm, m)
 end
 
 -- DKD [INTER_STREX] ----------------------------------------------------------o
@@ -429,7 +465,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
   local l, ld = el*lw, (eld or el)*lw
   local _beta = 1/beam.beta
 
---  mdump('strex_drift-0:', m)
+  mdump('strex_drift:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -441,7 +477,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*ld*_beta
   end
 
---  mdump('strex_drift-1:', m)
+  mdump('strex_drift:1', elm, m)
 end
 
 function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          checked
@@ -449,9 +485,9 @@ function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          
 
   local tdir, beam, nmul, knl, ksl in m
   local wchg = lw*tdir*beam.charge
-  local dby  = no_k0l and -knl[1] or 0
+  local dby  = no_k0l == true and -knl[1] or 0
 
---  mdump('strex_kick-0:', m)
+  mdump('strex_kick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, beam in m[i]
@@ -462,7 +498,7 @@ function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          
     m[i].py = py + wchg* bx
   end
 
---  mdump('strex_kick-1:', m)
+  mdump('strex_kick:1', elm, m)
 end
 
 M.strex_fringe = fnone -- TODO: see below
@@ -473,10 +509,10 @@ M.kicker_thick  = M.strex_drift
 M.kicker_fringe = fnone
 
 function M.kicker_kick (elm, m, lw)
---  mdump('kicker_kick-0:', m)
-
   local hk, vk, tdir, beam in m
   local wchg = lw*tdir*beam.charge
+
+  mdump('kicker_kick:0', elm, m)
 
   for i=1,m.npar do
     local px, py, beam in m[i]
@@ -486,7 +522,7 @@ function M.kicker_kick (elm, m, lw)
     m[i].py = py + wchg*vk
   end
 
---  mdump('kicker_kick-1:', m)
+  mdump('kicker_kick:1', elm, m)
 end
 
 -- DKD [INTER_TEAPOT, l ~= 0, angle ~= 0] -------------------------------------o
@@ -496,9 +532,9 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                                  
   local ld, ang = (eld or el)*lw, ang*lw   -- A = ang
   local rho, _beta = 1/eh, 1/beam.beta     -- R = rho
 
-  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
+  mdump('curex_drift:0', elm, m)
 
---  mdump('curex_drift-0:', m, ld)
+  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -516,16 +552,16 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                                  
     m[i].t  = t - pst*(_beta+pt) + (1-T)*ld*_beta
   end
 
---  mdump('curex_drift-1:', m)
+  mdump('curex_drift:1', elm, m)
 end
 
 function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                           checked
   local eh, ang, tdir, beam, nmul, knl, ksl in m
   local bdir = beam.charge*tdir
   local wchg = bdir*lw
-  local dby  = no_k0l and -knl[1] or knl[1]-ang*bdir
+  local dby  = no_k0l == true and -knl[1] or knl[1]-ang*bdir
 
---  mdump('curex_kick-0:', m, m.eld*m.sdir*lw)
+  mdump('curex_kick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, beam in m[i]
@@ -537,7 +573,7 @@ function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                           
     m[i].py = py +           wchg * bx
   end
 
---  mdump('curex_kick-1:', m)
+  mdump('curex_kick:1', elm, m)
 end
 
 -- TKT [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
@@ -547,9 +583,9 @@ function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            
   local ld, ang, k0 = (eld or el)*lw, ang*lw, k0*m.edir
   local rho, _beta, k0q = 1/eh, 1/beam.beta, k0*beam.charge
 
-  local sa, ca = sin(ang), cos(ang)
+  mdump('sbend_thick:0', elm, m)
 
---  mdump('sbend_thick-0:', m)
+  local sa, ca = sin(ang), cos(ang)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -572,7 +608,7 @@ function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            
     m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta                      -- XN(6)
   end
 
---  mdump('sbend_thick-1:', m)
+  mdump('sbend_thick:1', elm, m)
 end
 
 M.sbend_kick   = \el,m,lw -> M.curex_kick  (el,m,lw,true)
@@ -585,7 +621,7 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                   
   local l, ld, k0 = el*lw, eld*lw, k0*m.edir
   local _beta, _k0q, k0lq = 1/beam.beta, 1/k0*beam.charge, knl[1]*beam.charge
 
---  mdump('rbend_thick-0:', m, l)
+  mdump('rbend_thick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -609,7 +645,7 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                   
     m[i].t  = t - pzt*(_beta+pt) + (1-T)*ld*_beta
   end
 
---  mdump('rbend_thick-1:', m)
+  mdump('rbend_thick:1', elm, m)
 end
 
 M.rbend_kick   = \el,m,lw -> M.strex_kick  (el,m,lw,true)
@@ -617,11 +653,11 @@ M.rbend_fringe = \el,m,lw -> M.strex_fringe(el,m,lw)
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
 
-local function drift_adj (l, m) -- [KICKPATH] drift adjustment                  checked
+local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment                  checked
   local ca, sa, beam, T in m
   local _beta = 1/beam.beta
 
---  mdump('drift_adj-0:', m, l)
+  mdump('drift_adj:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -633,13 +669,15 @@ local function drift_adj (l, m) -- [KICKPATH] drift adjustment                  
     m[i].t = t - (_beta+pt)*l_pz + (1-T)*l*_beta
   end
 
---  mdump('drift_adj-1:', m)
+  mdump('drift_adj:1', elm, m)
 end
 
 function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                checked
   local el, k1, ca, sa, edir, tdir, beam in m
   local l = el*lw
   local chg = beam.charge
+
+  mdump('quad_thick:0', elm, m)
 
   -- [GETMAT7, h == 0]
   local ws = k1*edir < 0 and -1 or 1
@@ -649,8 +687,6 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
 -- [GETMAT7]
-
-  -- mdump('quad_thick-0:', m, l)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -671,13 +707,15 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
     m[i].py = npy
   end
 
-  -- mdump('quad_thick-1:', m)
+  mdump('quad_thick:1', elm, m)
 end
 
 function M.quad_tthick (elm, m, lw) -- [PUSHTKT7]                               checked
   local el, k1, ca, sa, edir, tdir, beam in m
   local l = el*lw
   local chg = beam.charge
+
+  mdump('quad_tthick:0', elm, m)
 
   -- [GETMAT7, h == 0]
   local ws = k1*edir < 0 and -1 or 1
@@ -687,8 +725,6 @@ function M.quad_tthick (elm, m, lw) -- [PUSHTKT7]                               
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
 -- [GETMAT7]
-
-  -- mdump('quad_tthick-0:', m, l)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -714,18 +750,19 @@ function M.quad_tthick (elm, m, lw) -- [PUSHTKT7]                               
     m[i].py = ca*py + sa*px
   end
 
-  -- mdump('quad_tthick-1:', m)
+  mdump('quad_tthick:1', elm, m)
 end
 
-function M.quad_kick (elm, m, lw) -- [KICKTKT7]                                 checked
+function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7]                             checked
   local el, tdir, beam, nmul, knl, ksl in m
   local l = el*lw
   local  bdir = beam.charge*tdir
   local _beta = 1/beam.beta
 
-  drift_adj(l/2, m)
+--  drift_adj(elm, m, l/2)
+  if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 
-  -- mdump('quad_kick-0:', m, l)
+  mdump('quad_kick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -738,20 +775,22 @@ function M.quad_kick (elm, m, lw) -- [KICKTKT7]                                 
     m[i].py = py + l*bdir*(bx - knl[2]*y)
   end
 
-  -- mdump('quad_kick-1:', m)
+  mdump('quad_kick:1', elm, m)
 
-  drift_adj(l/2, m)
+  -- drift_adj(elm, m, l/2)
+  if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
-function M.quad_tkick (elm, m, lw) -- [KICKTKT7]                                checked
+function M.quad_tkick (elm, m, lw, ii) -- [KICKTKT7]                            checked
   local el, tdir, beam, nmul, knl, ksl in m
   local l = el*lw
   local  bdir = beam.charge*tdir
   local _beta = 1/beam.beta
 
-  drift_adj(l/2, m)
+--  drift_adj(elm, m, l/2)
+  if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 
-  -- mdump('quad_kick-0:', m, l)
+  mdump('quad_tkick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -764,9 +803,10 @@ function M.quad_tkick (elm, m, lw) -- [KICKTKT7]                                
     m[i].py = py + l*bdir*(bx - (knl[2]*y + ksl[2]*x))
   end
 
-  -- mdump('quad_kick-1:', m)
+  mdump('quad_tkick:1', elm, m)
 
-  drift_adj(l/2, m)
+  -- drift_adj(elm, m, l/2)
+  if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
 M.quad_fringe = \el,m,lw -> M.strex_fringe(el,m,lw)
@@ -779,7 +819,7 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOLR]                              
   local bsol = 0.5*ks*beam.charge
   local _beta = 1/beam.beta
 
---  mdump('solen_thick-0:', m, l)
+  mdump('solen_thick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -805,7 +845,7 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOLR]                              
     m[i].t  = t - (_beta+pt)*l_pz + (1-T)*l*_beta
   end
 
---  mdump('solen_thick-1:', m)
+  mdump('solen_thick:1', elm, m)
 end
 
 M.solen_kick   = M.strex_kick
@@ -816,7 +856,6 @@ M.solen_fringe = fnone -- TODO
 M.rfcav_thick = M.strex_drift
 
 function M.rfcav_kick (elm, m, lw) -- [KICKCAVR, FEVAL_CAVR?]
---  mdump('rfcav_kick-0:', m)
   local volt, freq, lag, tdir, beam in m
   local omega = freq*(twopi*1e6/clight)
   local phase = lag * twopi
@@ -825,6 +864,8 @@ function M.rfcav_kick (elm, m, lw) -- [KICKCAVR, FEVAL_CAVR?]
   local vl    = lw*chg*tdir*volt*1e-3
 
 --  print('vl=', vl*_pc, 'omega=', omega, 'phase=', phase, 'p0c=', beam.pc, 'yl=', el*lw)
+
+  mdump('rfcav_kick:0', elm, m)
 
   for i=1,m.npar do
     local t, pt, beam in m[i]
@@ -836,12 +877,11 @@ function M.rfcav_kick (elm, m, lw) -- [KICKCAVR, FEVAL_CAVR?]
 
     m[i].pt = pt + dpt
   end
---  mdump('rfcav_kick-1:', m)
+
+  mdump('rfcav_kick:1', elm, m)
 end
 
 function M.rfcav_kickn (elm, m, lw) -- [KICKCAVR]
-
---  mdump('rfcav_kickn-0:', m)
   local volt, freq, lag, tdir, nbsl, nmul, knl, ksl, beam in m
   local omega = freq*(twopi/clight*1e6)
   local phase = lag * twopi
@@ -849,6 +889,8 @@ function M.rfcav_kickn (elm, m, lw) -- [KICKCAVR]
   local chg   = beam.charge
   local bdir  = lw*chg*tdir
   local vl    = bdir*volt*1e-3
+
+  mdump('rfcav_kickn:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -907,7 +949,7 @@ function M.rfcav_kickn (elm, m, lw) -- [KICKCAVR]
     m[i].pt = pt
   end
 
---  mdump('rfcav_kickn-1:', m)
+  mdump('rfcav_kickn:1', elm, m)
 end
 
 function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
@@ -916,7 +958,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
 
   local sdir in m
 
---  mdump('rfcav_fringe-0:', m)
+  mdump('rfcav_fringe:0', elm, m)
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')  -- mdump('+0:', m)
@@ -939,7 +981,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
     -- TODO: FRINGECAV
   end
 
---  mdump('rfcav_fringe-1:', m)
+  mdump('rfcav_fringe:1', elm, m)
 end
 
 -------------------------------------------------------------------------------o
@@ -956,6 +998,8 @@ function M.combi_thick (elm, m, l) -- [??]
   if abs(k0*l-angle) < minang and abs(k1*l) < minang then
     return M.sbend_thick(elm, m, lw)
   end
+
+  mdump('combi_thick:0', elm, m)
 
   local _el   = 1/elm.l
   local _beta = 1/m.beam.beta
@@ -983,7 +1027,7 @@ function M.combi_thick (elm, m, l) -- [??]
   end
 
 --  local npos in m
---  M.drift_adj(npos == 'last' and l or l/2, m)
+--  drift_adj(elm, m, l/2)
 
   local x, px, y, py, t, pt in m
   local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2
@@ -994,11 +1038,15 @@ function M.combi_thick (elm, m, l) -- [??]
   m.py =  wy2*sy*y + cy*py
   m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
 
---  M.drift_adj(npos == 'first' and l or l/2, m)
+--  drift_adj(elm, m, l/2)
+
+  mdump('combi_thick:1', elm, m)
 end
 
 function M.combi_kick (elm, m, l) -- [??]
   error("NYI")
+  mdump('combi_kick:0', elm, m)
+  mdump('combi_kick:1', elm, m)
 end
 
 M.combi_fringe = fnone
@@ -1013,7 +1061,7 @@ function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               
   local l = el*lw*sdir
   local h = eh*edir
 
---  mdump('quad_hthick-0:', m, l)
+  mdump('quad_hthick:0', elm, m)
 
   for i=1,npar do
     local x, px, y, py, t, pt in m[i]
@@ -1062,7 +1110,7 @@ function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               
     m[i].t   = t - nt
   end
 
---  mdump('quad_hthick-1:', m)
+  mdump('quad_hthick:1', elm, m)
 end
 
 function M.quad_hkick (elm, m, lw) -- [KICKTKT7]                                unchecked
@@ -1071,9 +1119,9 @@ function M.quad_hkick (elm, m, lw) -- [KICKTKT7]                                
   local l = el*lw*sdir
   local h = eh*edir
 
-  drift_adj(l/2, m)
+  drift_adj(elm, m, l/2)
 
---  mdump('quad_hkick-0:', m, l)
+  mdump('quad_hkick:0', elm, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt in m[i]
@@ -1088,9 +1136,9 @@ function M.quad_hkick (elm, m, lw) -- [KICKTKT7]                                
     m[i].t  =  t - l*h*((pt+_beta)/(1+pz) - _beta)*x
   end
 
---  mdump('quad_hkick-1:', m)
+  mdump('quad_hkick:1', elm, m)
 
-  drift_adj(l/2, m)
+  drift_adj(elm, m, l/2)
 end
 
 -- fringes --------------------------------------------------------------------o
@@ -1102,9 +1150,9 @@ local function strex_fringe (elm, m, lw)  -- [FRINGE_STREX]
   if lw_ == 0 then return end
   local lw = lw_ or 1
 
---  mdump('strex_fringe-0:', m, m.eld*m.sdir*lw)
-
   if m.nmul == 0 then return end
+
+  mdump('strex_fringe:0', elm, m)
 
   if lw == 1 then
     local e1, h1 = elm.e1 or 0, elm.h1 or 0
@@ -1122,16 +1170,16 @@ local function strex_fringe (elm, m, lw)  -- [FRINGE_STREX]
     yrotation   ( e2, m, -1)
   end
 
---  mdump('strex_fringe-1:', m)
+  mdump('strex_fringe:1', elm, m)
 end
 
 function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]
   if lw_ == 0 then return end
   local lw = lw_ or 1
 
---  mdump('curex_fringe-0:', m)
-
   if m.nmul == 0 then return end -- switched off
+
+  mdump('curex_fringe:0', elm, m)
 
   local sdir, tdir in m
 
@@ -1158,20 +1206,22 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]
     mad8_wedge ( e, m,  1)                                -- mdump('+4:', m)
     sbend_wedge(-e, m,  1)                                -- mdump('+5:', m)
   else
--- print(lw == -1 and 'forward exit' or 'backward entry') -- mdump('-0:', m)
-    sbend_wedge(-e, m, -1)                                -- mdump('-1:', m)
+-- print(lw == -1 and 'forward exit' or 'backward entry') -- mdump(':0', m)
+    sbend_wedge(-e, m, -1)                                -- mdump(':1', m)
     mad8_wedge ( e, m, -1)                                -- mdump('-2:', m)
     frngfld    (fh, m, -1)                                -- mdump('-3:', m)
     sbend_face ( h, m, -1)                                -- mdump('-4:', m)
     yrotation  (-e, m, -1)                                -- mdump('-5:', m)
   end
 
---  mdump('curex_fringe-1:', m)
+  mdump('curex_fringe:1', elm, m)
 end
 
 function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                         unchecked
   if lw_ == 0  or abs(m.k0) < minang then return end
   local lw = lw_ or 1
+
+  mdump('dipeg_fringe:0', elm, m)
 
   local k0, edir, tdir, beam in m
   local fh, e = 0 -- fringe field integral, pole face angle
@@ -1205,6 +1255,8 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                         
     m[i].px = px + chg*r21*x
     m[i].py = py + chg*r43*y
   end
+
+  mdump('dipeg_fringe:1', elm, m)
 end
 
 -- fringes helpers ------------------------------------------------------------o
@@ -1214,6 +1266,8 @@ function sbend_face (h, m, lw) -- [NEWFACE]
   local k0 = k0*h/2*edir
 
   if abs(k0) < minang then return end
+
+  mdump('sbend_face:0', h, m)
 
   local _beta = 1/beam.beta
   local chg = beam.charge
@@ -1247,11 +1301,15 @@ function sbend_face (h, m, lw) -- [NEWFACE]
     m[i].py = py
     m[i].t  = t
   end
+
+  mdump('sbend_face:1', h, m)
 end
 
 function mad8_wedge (e, m, lw) -- [FRINGE_TEAPOT]
   local k1, edir, beam in m
   if abs(k1*e) < minang then return end
+
+  mdump('mad8_wedge:0', e, m)
 
   local k1e = k1*e * edir*beam.charge
   for i=1,m.npar do
@@ -1259,6 +1317,8 @@ function mad8_wedge (e, m, lw) -- [FRINGE_TEAPOT]
     m[i].px = px + k1e*(x^2-y^2)
     m[i].py = py - k1e*(2*x*y)
   end
+
+  mdump('mad8_wedge:1', e, m)
 end
 
 function sbend_wedge (e, m, lw) -- [WEDGE]
@@ -1268,6 +1328,8 @@ function sbend_wedge (e, m, lw) -- [WEDGE]
   if abs(k0) < minang then
     return yrotation(e, m, lw)
   end
+
+  mdump('sbend_wedge:0', e, m)
 
   local _beta = 1/beam.beta
   local b1 = k0*edir*beam.charge
@@ -1289,6 +1351,8 @@ function sbend_wedge (e, m, lw) -- [WEDGE]
     m[i].y  = y + py * yt
     m[i].t  = t - yt*(_beta + pt)
   end
+
+  mdump('sbend_wedge:1', e, m)
 end
 
 function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
@@ -1298,6 +1362,8 @@ function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
   local  fsad = abs(fh) ~= 0 and 1/(2*36*fh) or 0
   local  b0   = edir*beam.charge*k0*lw
   local _beta = 1/beam.beta
+
+  mdump('sbend_fringe:0', fh, m)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -1346,6 +1412,8 @@ function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
     m[i].py = py
     m[i].t  = t
   end
+
+  mdump('sbend_fringe:1', fh, m)
 end
 
 !! --- TODO -------------------------------------------------------------------o
@@ -1354,6 +1422,8 @@ function mult_fringe (elm, m) -- [??]
   local x, px, y, py, bdir, nmul, knl, ksl in m
   local _beta = 1/m.beam.beta
   local _l = 1/elm.l
+
+  mdump('mult_fringe:0', elm, m)
 
   local rx, ix, fx, fy, fxx, fxy, fyx, fyy = 1, 0, 0, 0, 0, 0, 0, 0
 
@@ -1394,6 +1464,8 @@ function mult_fringe (elm, m) -- [??]
   m.px = (d*px - b*py)*_det
   m.py = (a*py - c*px)*_det
   m.t  = t + (_beta+pt)*(m.px*fx + m.py*fy)*_pz^3
+
+  mdump('mult_fringe:1', elm, m)
 end
 
 function stra_fringe (elm, m) -- [??]
@@ -1401,6 +1473,9 @@ function stra_fringe (elm, m) -- [??]
 	local x, px, y, py, t, pt, T, bdir in m
   local k0   = elm.k0 or 0
   local _beta = 1/m.beam.beta
+
+  mdump('stra_fringe:0', elm, m)
+
 -- soft edge
   local fint = elm.fint or 0  -- fringe field integral at entrance and exit of the bend
   local hgap = elm.hgap or 0  -- half gap of the magnet
@@ -1428,6 +1503,8 @@ function stra_fringe (elm, m) -- [??]
   m.py = py*exp( f1)
 
   srotation(-ang or 0, m)
+
+  mdump('stra_fringe:1', elm, m)
 end
 
 -- end ------------------------------------------------------------------------o
