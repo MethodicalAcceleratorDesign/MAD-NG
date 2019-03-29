@@ -39,7 +39,7 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer,
 local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
 local fact, arc2len                                             in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
-local action                                                    in MAD.symint
+local action, atbegin                                           in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
 local apercheck                                                 in MAD.aperture
 local minlen, minang, clight, sqrt2                             in MAD.constant
@@ -55,7 +55,7 @@ local minvolt = 1e-6
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, driftonly, atbegin                   in MAD.symint
+local thinonly, thickonly, driftonly, DKD, TKT, MKM             in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -88,30 +88,32 @@ local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr        in MAD.dynmap
 
 -- debug ----------------------------------------------------------------------o
 
-local nopart  = "%-15s  no particle found\n"
-local shtfmt  = "%-15s % -.6e % -.6e % -.6e % -.6e % -.6e % -.6e\n"
-local lngfmt  = "%-15s % -.16e % -.16e % -.16e % -.16e % -.16e % -.16e\n"
-local dumpfmt = shtfmt
+local shtfmt = "% -.6e % -.6e % -.6e % -.6e % -.6e % -.6e "
+local lngfmt = "% -.16e % -.16e % -.16e % -.16e % -.16e % -.16e "
+local mapfmt = lngfmt -- shtfmt
 
-local function mdump(elm, m)
+local function mdump (elm, m)
   if elm.kind == 'marker' then return end
-  if m.npar == 0 then printf(nopart, str) return end
+
+  printf("%-15s %-10s", elm.name, 'exit')
+  if m.npar == 0 then printf("no particle found\n") return end
 
   local X, R = m[1]
 
   if is_damap(X) then
     X, R = X:get0(), X:get1()
-    printf(dumpfmt, elm.name, X[1], X[2], X[3], X[4], X[5], X[6])
+    printf(mapfmt, X[1], X[2], X[3], X[4], X[5], X[6])
   else
-    printf(dumpfmt, elm.name, X.x, X.px, X.y, X.py, X.t, X.pt)
+    printf(mapfmt, X.x, X.px, X.y, X.py, X.t, X.pt)
   end
 
   if R then
     for i=1,R.nrow do
-      printf(dumpfmt, '', R:get(i,1), R:get(i,2), R:get(i,3),
-                          R:get(i,4), R:get(i,5), R:get(i,6))
+      printf(mapfmt, R:get(i,1), R:get(i,2), R:get(i,3),
+                     R:get(i,4), R:get(i,5), R:get(i,6))
     end
   end
+  printf('\n')
 end
 
 -- strengths and phases -------------------------------------------------------o
@@ -339,21 +341,21 @@ local function track_quadrupole (elm, m)
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local no_k1s = abs(ksl[2]) < minang
-  local thick, kick
+  local inter, thick, kick
 
-  if model == 'DKD' or no_k1s and abs(knl[2]) < minang then
-    thick, kick = strex_drift, strex_kick
+  if model ~= 'TKT' or no_k1s and abs(knl[2]) < minang then
+    inter, thick, kick = symint[method], strex_drift, strex_kick
   elseif no_k1s then                            -- normal thick
-    thick, kick = quad_thick, quad_kick
+    inter, thick, kick = MKM[method], quad_thick, quad_kick
     m.ca, m.sa, m.k1 = 1, 0, knl[2]/l
   else                                          -- tilted thick
-    thick, kick = quad_tthick, quad_tkick
+    inter, thick, kick = MKM[method], quad_tthick, quad_tkick
     local a = -0.5*atan2(ksl[2], knl[2])*tdir
     m.ca, m.sa, m.k1 = cos(a), sin(a), sqrt(knl[2]^2 + ksl[2]^2)/l*tdir
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, quad_fringe)
+  track(elm, m, inter, thick, kick, quad_fringe)
 
   m.ca, m.sa, m.k1 = nil, nil, nil
 end
