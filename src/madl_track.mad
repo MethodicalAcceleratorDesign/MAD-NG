@@ -92,13 +92,20 @@ local shtfmt = "% -.6e % -.6e % -.6e % -.6e % -.6e % -.6e "
 local lngfmt = "% -.16e % -.16e % -.16e % -.16e % -.16e % -.16e "
 local mapfmt = lngfmt -- shtfmt
 
-local function mdump (elm, m)
-  if elm.kind == 'marker' then return end
+local nodump = {marker=true}
 
-  printf("%-15s %-10s", elm.name, 'exit')
-  if m.npar == 0 then printf("no particle found\n") return end
+local function mdump (mflw, elm, str_)
+  if str_ and mflw.ndump <= 1 then return end
 
-  local X, R = m[1]
+  if is_number(elm) then
+    printf("%-15s %-15s % -.16e\n", 'number', str_, elm) return
+  end
+  if nodump[elm.kind] then return end
+
+  printf("%-15s %-15s ", elm.name, str_ or 'exit')
+  if mflw.npar == 0 then printf("no particle found\n") return end
+
+  local X, R = mflw[1]
 
   if is_damap(X) then
     X, R = X:get0(), X:get1()
@@ -894,6 +901,9 @@ local function make_mflow (self)
   mflw.mapsave=mapsave       -- save damaps
   mflw.deltap=deltap         -- save deltaps (for info)
 
+  mflw.ndump=0               -- dump level of damaps
+  mflw.dump=fnone            -- dump damaps
+
   -- internal vars for track (varying states) --
 
   -- for processing elements
@@ -965,7 +975,11 @@ local function exec (self)
   if MAD.option.debug >= 2 then trace_action(mflw) end
 
   -- debug maps
-  local tracemap = self.mapdump and mdump or fnone
+  local mapdump in self
+  if mapdump then
+    mflw.ndump = mapdump == true and 1 or mapdump
+    mflw.dump = mflw.ndump > 0 and mdump or fnone
+  end
 
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
@@ -973,7 +987,7 @@ local function exec (self)
     atentry  (elm, mflw.__edat, 0, -1)
     elm:track(     mflw.__edat       )
     atexit   (elm, mflw.__edat, 0, -2)
-    tracemap (elm, mflw)
+    mflw:dump(elm)
 
     -- check for particles
     if mflw.npar == 0 then break end
