@@ -62,12 +62,19 @@ local shtfmt = "% -.6e % -.6e % -.6e "
 local lngfmt = "% -.16e % -.16e % -.16e "
 local mapfmt = shtfmt -- lngfmt
 
-local function mdump (elm, m)
-  if elm.kind == 'marker' then return end
+local nodump = {marker=true}
 
-  printf("%-15s ", elm.name)
+local function mdump (mflw, elm, str_)
+  if str_ and mflw.ndump <= 1 then return end
 
-  local V, W in m
+  if is_number(elm) then
+    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
+  end
+  if nodump[elm.kind] then return end
+
+  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
+
+  local V, W in mflw
 
   printf(mapfmt, V[1], V[2], V[3])
 
@@ -358,6 +365,9 @@ local function make_mflow (self)
 
   mflw.mapsave=mapsave       -- save orientation matrix
 
+  mflw.ndump=0               -- dump level of matrix
+  mflw.dump=fnone            -- dump matrix
+
   -- global frame (exposed vars)
   mflw.V=vector(3):fill{x,y,z}          -- displacement vector
   mflw.W=matrix(3):rotzxy(-phi,the,psi) -- orientation matrix (rotations)
@@ -409,7 +419,11 @@ local function exec (self)
   if MAD.option.debug >= 2 then trace_action(mflw) end
 
   -- debug maps
-  local tracemap = self.mapdump and mdump or fnone
+  local mapdump in self
+  if mapdump then
+    mflw.ndump = mapdump == true and 1 or mapdump
+    mflw.dump = mflw.ndump > 0 and mdump or fnone
+  end
 
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
@@ -417,7 +431,7 @@ local function exec (self)
     atentry   (elm, mflw.__edat, 0, -1)
     elm:survey(     mflw.__edat       )
     atexit    (elm, mflw.__edat, 0, -2)
-    tracemap  (elm, mflw)
+    mflw:dump (elm)
 
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn + 1 end
