@@ -55,8 +55,9 @@ extern const num_t mad_cst_RADDEG  ;  // radian to degree factor
 
 // constants for physics
 
-extern const num_t mad_cst_MINLEN  ;  // [m]   Minimum length tolerance
-extern const num_t mad_cst_MINANG  ;  // [rad] Minimum angle  tolerance
+extern const num_t mad_cst_MINLEN  ;  // [m]   Minimum tolerance on lengths
+extern const num_t mad_cst_MINANG  ;  // [rad] Minimum tolerance on angles
+extern const num_t mad_cst_MINSTR  ;  // [1/m] Minimum tolerance on strengths
 
 extern const num_t mad_cst_CLIGHT  ;  // [m/s]
 extern const num_t mad_cst_MU0     ;  // [T.m/A] or [N/A^2] or [V.s/(A.m)]
