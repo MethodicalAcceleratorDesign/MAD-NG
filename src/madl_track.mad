@@ -70,14 +70,10 @@ local rbend_thick, rbend_kick, rbend_fringe,
       sbend_thick, sbend_kick, sbend_fringe, dipeg_fringe       in MAD.dynmap
 
 local  quad_thick,  quad_kick,  quad_fringe,
-       quad_tthick, quad_tkick,
-      combi_thick, combi_kick, combi_fringe                     in MAD.dynmap
+       quad_sthick, quad_skick, quad_hthick, quad_hkick         in MAD.dynmap
 
 local solen_thick, solen_kick, solen_fringe,
       rfcav_thick, rfcav_kick, rfcav_fringe, rfcav_kickn        in MAD.dynmap
-
--- special
-local strex_hkick, quad_hthick, quad_hkick                      in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
@@ -345,7 +341,7 @@ end
 local function track_quadrupole (elm, m)
   get_mult(elm, m, 3)
   local ds, tdir, nmul, knl, ksl in m
-  local tilt, k0, k0s, k1, k1s, k2, k2s in elm
+  local angle, tilt, k0, k0s, k1, k1s, k2, k2s in elm
   local l = abs(ds)
 
   assert(l >= minlen, "invalid quadrupole length (>0 expected)")
@@ -353,7 +349,7 @@ local function track_quadrupole (elm, m)
   knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
   knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
   knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.el, m.tlt = ds, tilt*tdir
+  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
 
   if nmul < 3 then
     m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -361,24 +357,26 @@ local function track_quadrupole (elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
+  local no_ang = abs(angle)  < minang
   local no_k1s = abs(ksl[2]) < minstr
   local inter, thick, kick
 
-  if model ~= 'TKT' or no_k1s and abs(knl[2]) < minstr then
+  if model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
     inter, thick, kick = symint[method], strex_drift, strex_kick
-  elseif no_k1s then                            -- normal thick
+  elseif no_k1s and no_ang then                 -- normal thick
     inter, thick, kick = MKM[method], quad_thick, quad_kick
-    m.ca, m.sa, m.k1 = 1, 0, knl[2]/l
-  else                                          -- tilted thick
-    inter, thick, kick = MKM[method], quad_tthick, quad_tkick
+    m.k1 = knl[2]/l
+  elseif no_ang then                            -- skew thick
+    inter, thick, kick = MKM[method], quad_sthick, quad_skick
     local a = -0.5*atan2(ksl[2], knl[2])*tdir
     m.ca, m.sa, m.k1 = cos(a), sin(a), sqrt(knl[2]^2 + ksl[2]^2)/l*tdir
+  else                                          -- curved thick
+    inter, thick, kick = MKM[method], quad_hthick, quad_hkick
+    m.rho, m.k0, m.k1 = ds/angle*tdir, knl[1]/l, knl[2]/l
   end
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, quad_fringe)
-
-  m.ca, m.sa, m.k1 = nil, nil, nil
 end
 
 local function track_sextupole (elm, m)
