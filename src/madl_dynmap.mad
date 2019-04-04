@@ -66,7 +66,7 @@ local function bxby (nmul, knl, ksl, x, y)
   return bx, by
 end
 
--- TODO: cur_bxby (nmul, knl, ksl, h, x, y) using TPSA (?)
+-- TODO: hbxby (nmul, knl, ksl, x, y, h) using CTPSA for knl & ksl [GETANBN]
 
 -- patches (lw_ == 0 disable the patches) -------------------------------------o
 
@@ -495,9 +495,9 @@ end
 -- DKD [INTER_TEAPOT, l ~= 0, angle ~= 0] -------------------------------------o
 
 function M.curex_drift (elm, m, lw) -- [SPROT]                                  checked
-  local el, eld, eh, ang, beam, T in m
-  local ld, ang = (eld or el)*lw, ang*lw   -- A = ang
-  local rho, _beta = 1/eh, 1/beam.beta     -- R = rho
+  local el, eld, ang, rho, beam, T in m
+  local ld, ang = (eld or el)*lw, ang*lw   -- A, R = ang, rho
+  local _beta = 1/beam.beta
   local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
 
   m:dump(elm, 'curex_drift:0')
@@ -505,7 +505,7 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                                  
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
-    local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+    local    pz = sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
     local   _pz = 1/pz
     local   pxt = px*_pz
     local   ptt = (1 - ta*pxt)*ca
@@ -522,10 +522,11 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                                  
 end
 
 function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                           checked
-  local eh, ang, tdir, beam, nmul, knl, ksl in m
+  local ang, rho, tdir, beam, nmul, knl, ksl in m
   local bdir = beam.charge*tdir
   local wchg = bdir*lw
   local dby  = no_k0l == true and -knl[1] or knl[1]-ang*bdir
+  local eh   = 1/rho
 
   m:dump(elm, 'curex_kick:0')
 
@@ -544,10 +545,10 @@ end
 
 -- TKT [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
 
-function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            checked
-  local el, eld, eh, ang, k0, beam, T in m
+function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, B0=1/R, BN(1)=k0    checked
+  local el, eld, ang, rho, k0, beam, T in m
   local ld, ang, k0 = (eld or el)*lw, ang*lw, k0*m.edir
-  local rho, _beta, k0q = 1/eh, 1/beam.beta, k0*beam.charge
+  local _beta, k0q = 1/beam.beta, k0*beam.charge
   local sa, ca = sin(ang), cos(ang)
 
   m:dump(elm, 'sbend_thick:0')
@@ -556,7 +557,7 @@ function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
     local   k0q = beam and k0*beam.charge or k0q
-    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
+    local  pw2 = 1 + (2*_beta)*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local  pzx = pz - k0q*(rho+x)
     local  npx =  ca*px + sa*pzx                                       -- XN(2)
@@ -567,7 +568,7 @@ function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, BN(1)=k0            
     local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q            -- XN(3)
 
     -- eq. 126 in Forest06
-    m[i].x  = (pzs-dpx)/k0q - rho                                      -- XN(1)
+    m[i].x  = (pzs-dpx)/k0q - rho  -- could be numerically unstable    -- XN(1)
     m[i].px = npx                                                      -- XN(2)
     m[i].y  = y + dxs*py                                               -- XN(3)
     m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta                      -- XN(6)
@@ -594,7 +595,7 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                   
     local _k0q  = beam and 1/(k0*beam.charge) or _k0q
     local  k0lq = beam and knl[1]*beam.charge or k0lq
 
-    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
+    local  pw2 = 1 + (2*_beta)*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)
     local  ptt = sqrt(pw2)
     local _ptt = 1/ptt
@@ -618,7 +619,7 @@ M.rbend_fringe = \el,m,lw -> M.strex_fringe(el,m,lw)
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
 
-local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment                  checked
+local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment             checked
   local ca, sa, beam, T in m
   local _beta = 1/beam.beta
 
@@ -637,19 +638,18 @@ local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment             
   m:dump(elm, 'drift_adj:1')
 end
 
-function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                checked
-  local el, k1, ca, sa, edir, tdir, beam in m
+function M.quad_thick (elm, m, lw) -- [PUSHTKT7, h == 0]                        checked
+  local el, k1, edir, tdir, beam in m
   local l = el*lw
   local chg = beam.charge
 
-  -- [GETMAT7, h == 0]
+  -- [GETMAT7, w ~= 0]
   local ws = k1*edir < 0 and -1 or 1
   local w  = sqrt(abs(k1))*tdir*ws
   local cx, sx = cos (w*l), sin (w*l)
   local cy, sy = cosh(w*l), sinh(w*l)
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
--- [GETMAT7]
 
   m:dump(elm, 'quad_thick:0')
 
@@ -675,21 +675,20 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
   m:dump(elm, 'quad_thick:1')
 end
 
-function M.quad_tthick (elm, m, lw) -- [PUSHTKT7]                               checked
+function M.quad_sthick (elm, m, lw) -- [PUSHTKT7, h == 0, skew]                 checked
   local el, k1, ca, sa, edir, tdir, beam in m
   local l = el*lw
   local chg = beam.charge
 
-  -- [GETMAT7, h == 0]
+  -- [GETMAT7, w ~= 0]
   local ws = k1*edir < 0 and -1 or 1
   local w  = sqrt(abs(k1))*tdir*ws
   local cx, sx = cos (w*l), sin (w*l)
   local cy, sy = cosh(w*l), sinh(w*l)
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
--- [GETMAT7]
 
-  m:dump(elm, 'quad_tthick:0')
+  m:dump(elm, 'quad_sthick:0')
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -715,62 +714,140 @@ function M.quad_tthick (elm, m, lw) -- [PUSHTKT7]                               
     m[i].py = ca*py + sa*px
   end
 
-  m:dump(elm, 'quad_tthick:1')
+  m:dump(elm, 'quad_sthick:1')
 end
 
-function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7]                             checked
+function M.quad_hthick (elm, m, lw) -- [PUSHTKT7, h ~= 0]                       unchecked
+  local el, rho, k0, k1, edir, tdir, beam in m
+  local l, h, c = el*lw, edir/rho, beam.charge
+
+  -- [GETMAT7, w ~= 0]
+  local kx, ky = k1+h*k0, k1
+  local wxs = kx*edir < 0 and -c or c
+  local wys = ky*edir < 0 and -c or c
+  local wx  = sqrt(abs(kx))*tdir*wxs
+  local wy  = sqrt(abs(ky))*tdir*wys
+  local chg, cx, sx, cy, sy, mx12, mx21, mx13, my12, my21, mx33
+
+  m:dump(elm, 'quad_hthick:0')
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt in m[i]
+    local beam = m[i].beam or beam
+    local h_b = h/beam.beta
+
+    if chg ~= beam.charge then -- [GETMAT7, w ~= 0]
+      chg = beam.charge
+      wxs, wys = -wxs, -wys
+
+      if wxs < 0
+      then cx, sx = cosh(wx*l), sinh(wx*l)
+      else cx, sx = cos (wx*l), sin (wx*l)
+      end
+      if wys < 0
+      then cy, sy = cos (wy*l), sin (wy*l)
+      else cy, sy = cosh(wy*l), sinh(wy*l)
+      end
+
+--    mx11, mx22, my11, my22 = cx, cx, cy, cy
+      mx12, mx21, mx13 = sx/wx, -sx*wx*wxs, (1-cx  )/wx^2*wxs
+      my12, my21, mx33 = sy/wy,  sy*wy*wys, (l-mx21)/wx^2*wxs
+    end
+
+--[[ PTC matrix form
+    { cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
+     -sx*wx*ws      , cx                   , h*sx/wx                   ,
+      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta }
+    { cy            , sy/wy                , 0                         ,
+      sy*wy*ws      , cy                   , 0                          }
+--]]
+    local nx  = x*cx         + px*mx12       + pt*(mx13*h_b)
+    local npx = x*mx21       + px*cx         + pt*(mx12*h_b)
+    local ny  = y*cy         + py*my12
+    local npy = y*my21       + py*cy
+    local nt  = x*(mx12*h_b) + px*(mx13*h_b) + pt*(mx33*h^2)
+
+    m[i].x   = nx
+    m[i].y   = ny
+    m[i].px  = npx
+    m[i].py  = npy
+    m[i].t   = t - nt
+  end
+
+  m:dump(elm, 'quad_hthick:1')
+end
+
+function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7, h == 0]                     checked
   local el, tdir, beam, nmul, knl, ksl in m
   local l = el*lw
-  local  bdir = beam.charge*tdir
-  local _beta = 1/beam.beta
+  local bdir = beam.charge*tdir
 
---  drift_adj(elm, m, l/2)
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 
   m:dump(elm, 'quad_kick:0')
 
   for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
+    local x, px, y, py, beam in m[i]
     local  bdir = beam and beam.charge*tdir or bdir
-    local _beta = beam and 1/beam.beta or _beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - l*bdir*(by - knl[2]*x)
-    m[i].py = py + l*bdir*(bx - knl[2]*y)
+    m[i].px = px - (l*bdir)*(by - knl[2]*x)
+    m[i].py = py + (l*bdir)*(bx - knl[2]*y)
   end
 
   m:dump(elm, 'quad_kick:1')
 
-  -- drift_adj(elm, m, l/2)
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
-function M.quad_tkick (elm, m, lw, ii) -- [KICKTKT7]                            checked
+function M.quad_skick (elm, m, lw, ii) -- [KICKTKT7, h == 0, skew]              checked
   local el, tdir, beam, nmul, knl, ksl in m
   local l = el*lw
-  local  bdir = beam.charge*tdir
-  local _beta = 1/beam.beta
+  local bdir = beam.charge*tdir
 
---  drift_adj(elm, m, l/2)
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 
-  m:dump(elm, 'quad_tkick:0')
+  m:dump(elm, 'quad_skick:0')
+
+  for i=1,m.npar do
+    local x, px, y, py, beam in m[i]
+    local  bdir = beam and beam.charge*tdir or bdir
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - (l*bdir)*(by - (knl[2]*x - ksl[2]*y))
+    m[i].py = py + (l*bdir)*(bx - (knl[2]*y + ksl[2]*x))
+  end
+
+  m:dump(elm, 'quad_skick:1')
+
+  if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
+end
+
+function M.quad_hkick (elm, m, lw, ii) -- [KICKTKT7, h ~= 0]                    unchecked
+  local el, rho, edir, tdir, beam, nmul, knl, ksl in m
+  local l, h = el*lw, edir/rho
+  local _beta = 1/beam.beta
+  local  bdir = beam.charge*tdir
+
+  if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
+
+  m:dump(elm, 'quad_hkick:0')
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
+    local _beam = beam and 1/beam.beta or _beta
     local  bdir = beam and beam.charge*tdir or bdir
-    local _beta = beam and 1/beam.beta or _beta
     local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - l*bdir*(by - (knl[2]*x - ksl[2]*y))
-    m[i].py = py + l*bdir*(bx - (knl[2]*y + ksl[2]*x))
+                                  -- PTC uses h here vvv instead of knl[1], TBC
+    m[i].px = px + (l*bdir)*(h*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
+    m[i].py = py + (l*bdir)*(                  (bx          - knl[2]*y))
+    m[i].t  =  t - (l*h)*((_beta+pt)/(1+pz) - _beta)*x
   end
 
-  m:dump(elm, 'quad_tkick:1')
+  m:dump(elm, 'quad_hkick:1')
 
-  -- drift_adj(elm, m, l/2)
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
@@ -792,7 +869,7 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOLR]                              
     local  bsol = beam and 0.5*ks*beam.charge or bsol
     local    xp = px + bsol*y
     local    yp = py - bsol*x
-    local  l_pz = l/sqrt(1 + 2*_beta*pt + pt^2 - xp^2 - yp^2)
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - xp^2 - yp^2)
     local   ang = l_pz*bsol
 
     local ca, sa, sc = cos(ang), sin(ang), sinc(ang)
@@ -1015,96 +1092,6 @@ function M.combi_kick (elm, m, l) -- [??]
 end
 
 M.combi_fringe = fnone
-
--- quadrupole with k0 and k1
-
-function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               unchecked
-  error("NYI")
-  local el, eld, eh, k0, k1, edir, sdir, tdir, npar, beam in m
-  local chg, cx, cy, sx, sy, mx12, mx21, mx13, my12, my21, mx33
-
-  local l = el*lw*sdir
-  local h = eh*edir
-
-  m:dump(elm, 'quad_hthick:0')
-
-  for i=1,npar do
-    local x, px, y, py, t, pt in m[i]
-    local beam = m[i].beam or beam
-    local h_b = h/beam.beta
-
-    if chg ~= beam.charge then -- [GETMAT7]
-      chg = beam.charge
-      local bdir = tdir*chg
-      local kx, ky = k1+h*k0, k1
-      local wx = sqrt(abs(kx))*bdir
-      local wy = sqrt(abs(ky))*bdir
-      local wsx, wsy
-
-      if kx*bdir*sdir < 0
-      then cx, sx, wsx = cosh(wx*l), sinh(wx*l), -1
-      else cx, sx, wsx = cos (wx*l), sin (wx*l),  1
-      end
-      if ky*bdir*sdir < 0
-      then cy, sy, wsy = cos (wy*l), sin (wy*l), -1
-      else cy, sy, wsy = cosh(wy*l), sinh(wy*l),  1
-      end
-
-      mx12, mx21, mx13 = sx/wx, -sx*wx*wsx, (1-cx  )/wx^2*wsx
-      my12, my21, mx33 = sy/wy,  sy*wy*wsy, (l-mx21)/wx^2*wsx
-    end
-
---[[ MATRIX REPRESENTATION FROM PTC [GETMAT7]
-    { cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
-     -sx*wx*ws      , cx                   , h*sx/wx                   ,
-      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta }
-    { cy      , sy/wy, 0,
-      sy*wy*ws, cy   , 0}
---]]
-
-    local nx  = x*cx       + px*mx12     + pt*mx13*h_b
-    local npx = x*mx21     + px*cx       + pt*mx12*h_b
-    local ny  = y*cy       + py*my12
-    local npy = y*my21     + py*cy
-    local nt  = x*mx12*h_b + px*mx13*h_b + pt*mx33*h^2
-
-    m[i].x   = nx
-    m[i].y   = ny
-    m[i].px  = npx
-    m[i].py  = npy
-    m[i].t   = t - nt
-  end
-
-  m:dump(elm, 'quad_hthick:1')
-end
-
-function M.quad_hkick (elm, m, lw) -- [KICKTKT7]                                unchecked
-  error("NYI")
-  local el, eh, edir, sdir, tdir, nmul, knl, ksl in m
-  local l = el*lw*sdir
-  local h = eh*edir
-
-  drift_adj(elm, m, l/2)
-
-  m:dump(elm, 'quad_hkick:0')
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt in m[i]
-    local  beam = m[i].beam or m.beam
-    local  bdir = beam.charge*tdir
-    local _beta = 1/beam.beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2) - 1
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px + l*bdir*(h*(pz-pt*_beta) - (by - knl[1] - knl[2]*x))
-    m[i].py = py + l*bdir*(                  (bx          - knl[2]*y))
-    m[i].t  =  t - l*h*((pt+_beta)/(1+pz) - _beta)*x
-  end
-
-  m:dump(elm, 'quad_hkick:1')
-
-  drift_adj(elm, m, l/2)
-end
 
 -- fringes --------------------------------------------------------------------o
 
