@@ -31,7 +31,7 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local element, mtable, command, damap, symint, aperture, trace   in MAD
+local element, mtable, command, damap, symint, aperture, option, trace in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer,
       is_true, is_table, is_callable, is_iterable, is_mappable,
@@ -119,6 +119,18 @@ local function mdump (mflw, elm, str_)
       printf(mapfmt, R:get(i,1), R:get(i,2), R:get(i,3),
                      R:get(i,4), R:get(i,5), R:get(i,6))
     end
+  end
+  printf('\n')
+end
+
+local function xdump (mflw, elm, str, X)
+  printf("@@ %-15s %-15s ", elm.name, str)
+
+  if is_tpsa(X) then
+    printf(mapfmt == lngfmt and "% -.16e " or "% -.6e ", X:get(1))
+    printf(mapfmt, X:get(2), X:get(3), X:get(4), X:get(5), X:get(6), X:get(7))
+  elseif is_number(X) then
+    printf(mapfmt == lngfmt and "% -.16e " or "% -.6e ", X)
   end
   printf('\n')
 end
@@ -250,9 +262,9 @@ local function track_multipole (elm, m)
 end
 
 local function track_sbend (elm, m, e1_, e2_)
-  get_mult(elm, m, 2)
+  get_mult(elm, m, 3)
   local ds, tdir, nmul, knl, ksl in m
-  local angle, tilt, k0, k0s, k1, k1s, e1, e2 in elm
+  local angle, tilt, k0, k0s, k1, k1s, k2, k2s, e1, e2 in elm
   local l = abs(ds)
 
   assert(l          >= minlen, "invalid sbend length (>0 expected)")
@@ -260,15 +272,15 @@ local function track_sbend (elm, m, e1_, e2_)
 
   if not k0 then k0 = angle/l end -- MAD-X backward compatibility
 
-  knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
-  ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
-  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+  knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
+  knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
+  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
+  m.el, m.ang, m.rho, m.tlt = ds, angle*tdir, ds/angle*tdir, tilt*tdir
   m.e1, m.e2 = (e1_ or e1)*tdir, (e2_ or e2)*tdir
   m.k0, m.k1 = knl[1]/l, knl[2]/l
-  m.eh = m.ang/m.el
 
-  if nmul < 2 then
-    m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
+  if nmul < 3 then
+    m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
 
   local model  = elm.model  or m.model
@@ -294,23 +306,24 @@ local function track_rbend (elm, m)                                             
     return track_sbend(elm, m, elm.e1+angle/2, elm.e2+angle/2)
   end
 
-  get_mult(elm, m, 2)
+  get_mult(elm, m, 3)
   local ds, tdir, nmul, knl, ksl in m
-  local tilt, k0, k0s, k1, k1s, e1, e2 in elm
+  local tilt, k0, k0s, k1, k1s, k2, k2s, e1, e2 in elm
   local l = abs(ds)
 
   assert(l          >= minlen, "invalid rbend length (>0 expected)")
   assert(abs(angle) >= minang, "invalid rbend angle (~=0 expected)")
 
-  knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
-  ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
-  m.eld, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+  knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
+  knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
+  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
+  m.eld, m.ang, m.rho, m.tlt = ds, angle*tdir, ds/angle*tdir, tilt*tdir
   m.e1, m.e2 = e1*tdir, e2*tdir
   m.k0, m.k1 = knl[1]/l, knl[2]/l
-  m.eh, m.el = m.ang/m.eld, arc2len(ds, angle)
+  m.el = arc2len(ds, angle)
 
-  if nmul < 2 then
-    m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
+  if nmul < 3 then
+    m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
 
   local model  = elm.model  or m.model
@@ -330,19 +343,20 @@ local function track_rbend (elm, m)                                             
 end
 
 local function track_quadrupole (elm, m)
-  get_mult(elm, m, 2)
+  get_mult(elm, m, 3)
   local ds, tdir, nmul, knl, ksl in m
-  local tilt, k0, k0s, k1, k1s in elm
+  local tilt, k0, k0s, k1, k1s, k2, k2s in elm
   local l = abs(ds)
 
   assert(l >= minlen, "invalid quadrupole length (>0 expected)")
 
-  knl[1], knl[2] = knl[1]+(k0  or 0)*l, knl[2]+(k1  or 0)*l
-  ksl[1], ksl[2] = ksl[1]+(k0s or 0)*l, ksl[2]+(k1s or 0)*l
+  knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
+  knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
+  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
   m.el, m.tlt = ds, tilt*tdir
 
-  if nmul < 2 then
-    m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
+  if nmul < 3 then
+    m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
 
   local model  = elm.model  or m.model
@@ -476,8 +490,6 @@ local function track_solenoid (elm, m)
   local track  = #elm == 0 and trackelm or tracksub
   track(elm, m, symint[method], thick, kick, solen_fringe)
 end
-
-local twopi in MAD.constant
 
 local function track_rfcavity (elm, m)
   get_mult(elm, m)
@@ -909,7 +921,7 @@ local function make_mflow (self)
   -- for processing elements
   mflw.__edat = setmetatable({
     el=0,                    -- current element length
-    eh=0,                    -- current element curvature
+    rho=0,                   -- current element radius
     ang=0,                   -- current element angle
     e1=0,                    -- current element pole face angle
     e2=0,                    -- current element pole face angle
@@ -972,13 +984,14 @@ local function exec (self)
   local ne = #sequ
 
   -- debug actions setup
-  if MAD.option.debug >= 2 then trace_action(mflw) end
+  if option.debug >= 2 then trace_action(mflw) end
 
   -- debug maps
   local mapdump in self
   if mapdump then
     mflw.ndump = mapdump == true and 1 or mapdump
-    mflw.dump = mflw.ndump > 0 and mdump or fnone
+    mflw.dump  = mflw.ndump > 0 and mdump or fnone
+    mflw.dump1 = mflw.ndump > 1 and xdump or fnone
   end
 
   -- dynamic tracking
