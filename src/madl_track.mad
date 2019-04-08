@@ -31,49 +31,53 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local element, mtable, command, damap, symint, aperture, option, trace in MAD
+local command, element, mtable, damap, aperture, option, trace  in MAD
 
-local is_nil, is_beam, is_sequence, is_boolean, is_number, is_integer,
-      is_true, is_table, is_callable, is_iterable, is_mappable,
-      is_tpsa, is_damap                                         in MAD.typeid
+local is_nil, is_beam, is_sequence, is_boolean, is_number,
+      is_integer, is_true, is_table, is_callable, is_iterable,
+      is_mappable, is_tpsa, is_damap                            in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
 local fact, arc2len                                             in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
 local action, atbegin                                           in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
 local apercheck                                                 in MAD.aperture
-local minlen, minang, minstr, clight, sqrt2                     in MAD.constant
+local minlen, minang, minstr, clight, sqrt2, pi                 in MAD.constant
 local is_implicit                                               in element.drift
 
 local abs, min, max, sqrt, sin, cos, atan2 in math
-
 local strsub = string.sub
-
 
 -- constants
 local minvolt = 1e-6
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, driftonly, DKD, TKT, MKM             in MAD.symint
+local thinonly, thickonly, driftonly, DKD, MKM                  in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
-local thin_kick                                                 in MAD.dynmap
+-- special elements (multipole, kickers)
+local mult_kick, kicker_kick                                    in MAD.dynmap
 
-local kicker_thick, kicker_kick, kicker_fringe                  in MAD.dynmap
-
+-- straight and curved elements
 local strex_drift, strex_kick, strex_fringe,
       curex_drift, curex_kick, curex_fringe                     in MAD.dynmap
 
-local rbend_thick, rbend_kick, rbend_fringe,
-      sbend_thick, sbend_kick, sbend_fringe, dipeg_fringe       in MAD.dynmap
+-- bends (sbend and rbend)
+local rbend_thick, rbend_kick,
+      sbend_thick, sbend_kick, dipeg_fringe                     in MAD.dynmap
 
-local  quad_thick,  quad_kick,  quad_fringe,
-       quad_sthick, quad_skick, quad_hthick, quad_hkick         in MAD.dynmap
+-- quadrupole
+local quad_thick,  quad_kick,
+      quad_sthick, quad_skick,
+      quad_hthick, quad_hkick                                   in MAD.dynmap
 
-local solen_thick, solen_kick, solen_fringe,
-      rfcav_thick, rfcav_kick, rfcav_fringe, rfcav_kickn        in MAD.dynmap
+-- solenoid
+local solen_thick, solen_fringe                                 in MAD.dynmap
+
+-- rfcavity
+local rfcav_kick, rfcav_kickn, rfcav_fringe                     in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
@@ -219,13 +223,13 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, m)
-  m.el, m.ang, m.tlt = 0, 0, 0
+  m.el, m.tlt = 0, 0
   thinonly(elm, m, 1, nil, fnone)
 end
 
 local function track_drift (elm, m)
   local ds, tdir in m
-  m.el, m.ang, m.tlt = ds, 0, 0
+  m.el, m.tlt = ds, 0
 
   if is_implicit(elm) then
     local track = m.implicit and thickonly or driftonly
@@ -244,14 +248,14 @@ local function track_multipole (elm, m)
 
   local angle, tilt in elm
   local sdir, tdir in m
-  m.el, m.ang, m.tlt = 0, angle*tdir, tilt*tdir
+  m.el, m.tlt = 0, tilt*tdir
 
   local kick
   if abs(angle) < minang then
     kick = strex_kick
   else
-    kick = thin_kick
-    m.el = elm.lrad*sdir
+    kick = mult_kick
+    m.el, m.ang = elm.lrad*sdir, angle*tdir
   end
 
   trackelm(elm, m, thinonly, nil, kick, fnone)
@@ -290,7 +294,7 @@ local function track_sbend (elm, m, e1_, e2_)
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, sbend_fringe)
+  track(elm, m, DKD[method], thick, kick, curex_fringe)
 end
 
 local track_combined =\ error("NYI") -- TODO: for now...
@@ -333,7 +337,7 @@ local function track_rbend (elm, m)                                             
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, rbend_fringe)
+  track(elm, m, DKD[method], thick, kick, strex_fringe)
 
    m.eld = nil
 end
@@ -349,7 +353,7 @@ local function track_quadrupole (elm, m)
   knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
   knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
   knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+  m.el, m.tlt = ds, tilt*tdir
 
   if nmul < 3 then
     m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -361,8 +365,10 @@ local function track_quadrupole (elm, m)
   local no_k1s = abs(ksl[2]) < minstr
   local inter, thick, kick
 
+  -- Note: MKM integrators used uniform length for the thick map
+  --       hence all cos, sin, cosh, sinh should be computed here...
   if model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
-    inter, thick, kick = symint[method], strex_drift, strex_kick
+    inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_ang then                 -- normal thick
     inter, thick, kick = MKM[method], quad_thick, quad_kick
     m.k1 = knl[2]/l
@@ -376,7 +382,7 @@ local function track_quadrupole (elm, m)
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, kick, quad_fringe)
+  track(elm, m, inter, thick, kick, strex_fringe)
 end
 
 local function track_sextupole (elm, m)
@@ -384,8 +390,6 @@ local function track_sextupole (elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k2, k2s in elm
   local l = abs(ds)
-
-  assert(l >= minlen, "invalid sextupole length (>0 expected)")
 
   knl[3] = knl[3]+(k2  or 0)*l/2
   ksl[3] = ksl[3]+(k2s or 0)*l/2
@@ -396,8 +400,9 @@ local function track_sextupole (elm, m)
   end
 
   local method = elm.method or m.method
+  local inter = l < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_octupole (elm, m)
@@ -405,8 +410,6 @@ local function track_octupole (elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k3, k3s in elm
   local l = abs(ds)
-
-  assert(l >= minlen, "invalid octupole length (>0 expected)")
 
   knl[4] = knl[4]+(k3  or 0)*l/6
   ksl[4] = ksl[4]+(k3s or 0)*l/6
@@ -417,8 +420,9 @@ local function track_octupole (elm, m)
   end
 
   local method = elm.method or m.method
+  local inter = l < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_decapole (elm, m)
@@ -426,8 +430,6 @@ local function track_decapole (elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k4, k4s in elm
   local l = abs(ds)
-
-  assert(l >= minlen, "invalid decapole length (>0 expected)")
 
   knl[5] = knl[5]+(k4  or 0)*l/24
   ksl[5] = ksl[5]+(k4s or 0)*l/24
@@ -438,8 +440,9 @@ local function track_decapole (elm, m)
   end
 
   local method = elm.method or m.method
+  local inter = l < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_dodecapole (elm, m)
@@ -447,8 +450,6 @@ local function track_dodecapole (elm, m)
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k5, k5s in elm
   local l = abs(ds)
-
-  assert(l >= minlen, "invalid dodecapole length (>0 expected)")
 
   knl[6] = knl[6]+(k5  or 0)*l/120
   ksl[6] = ksl[6]+(k5s or 0)*l/120
@@ -459,8 +460,9 @@ local function track_dodecapole (elm, m)
   end
 
   local method = elm.method or m.method
+  local inter = l < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_solenoid (elm, m)
@@ -475,18 +477,18 @@ local function track_solenoid (elm, m)
   m.el, m.tlt = ds, tilt*tdir
 
   local ksi = ksi + ks*l
-  local thick, kick
+  local thick
 
   if abs(ksi) < minstr then
-    thick, kick = strex_drift, strex_kick
+    thick = strex_drift
   else
     m.ks = ksi/l*edir
-    thick, kick = solen_thick, solen_kick
+    thick = solen_thick
   end
 
   local method = elm.method or m.method
   local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, solen_fringe)
+  track(elm, m, DKD[method], thick, strex_kick, solen_fringe)
 end
 
 local function track_rfcavity (elm, m)
@@ -496,74 +498,77 @@ local function track_rfcavity (elm, m)
   local tilt, volt in elm
   local l = abs(ds)
 
---  assert(l >= minlen, "invalid rfcavity length (>0 expected)")
-
   m.el, m.tlt = ds, tilt*tdir
 
-  local model  = elm.model  or m.model
-  local method = elm.method or m.method
-  local thick, kick, fringe
+  local kick, fringe
 
   if abs(volt) < minvolt then
-    thick, kick, fringe = strex_drift, strex_kick, fnone
+    kick, fringe = strex_kick, fnone
   else
     m.volt, m.freq, m.lag, m.nbsl = volt, elm.freq, elm.lag, elm.n_bessel or 0
     if m.freq == 0 then
       m.freq = 1e-6 * elm.harmon * clight * m.beam.beta / m.sequ.l
+    else
+      m.freq = m.freq * 1e-6
     end
+    print('freq=', m.freq)
     assert(m.freq > 0, "invalid rfcavity setup, positive freq or harmon expected")
-
-    thick  = rfcav_thick
-    kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
-    fringe = model == 'DKD' and fnone or rfcav_fringe
+    m.lag = m.lag + m.freq*pi*l/(clight * m.beam.beta) -- shift lag: t=0 => accel=0
+    kick, fringe = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn, rfcav_fringe
   end
 
-  local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], thick, kick, fringe)
-end
-
-local function track_kicker (elm, m)
-  local ds, tdir in m
-
-  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
-  m.hk, m.vk = elm.hkick + (elm.chkick or 0), elm.vkick + (elm.cvkick or 0)
-
   local method = elm.method or m.method
+  local inter = l < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
-end
-
-local function track_hkicker (elm, m)
-  local ds, tdir in m
-
-  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
-  m.hk, m.vk = elm.kick + (elm.chkick or 0), 0
-
-  local method = elm.method or m.method
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
-end
-
-local function track_vkicker (elm, m)
-  local ds, tdir in m
-
-  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
-  m.hk, m.vk = 0, elm.kick + (elm.cvkick or 0)
-
-  local method = elm.method or m.method
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
+  track(elm, m, inter, strex_drift, kick, fringe)
 end
 
 local function track_tkicker (elm, m)
   local ds, tdir in m
 
-  m.el, m.ang, m.tlt = ds, 0, elm.tilt*tdir
   m.hk, m.vk = elm.hkick, elm.vkick
+  m.el, m.tlt = ds, elm.tilt*tdir
 
   local method = elm.method or m.method
+  local inter = abs(ds) < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, symint[method], kicker_thick, kicker_kick, kicker_fringe)
+  track(elm, m, inter, strex_drift, kicker_kick, fnone)
+end
+
+local function track_kicker (elm, m)
+  local ds, tdir in m
+
+  m.hk, m.vk = elm.hkick + (elm.chkick or 0), elm.vkick + (elm.cvkick or 0)
+  m.el, m.tlt = ds, elm.tilt*tdir
+
+  local method = elm.method or m.method
+  local inter = abs(ds) < minlen and thinonly or DKD[method]
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, strex_drift, kicker_kick, fnone)
+end
+
+local function track_hkicker (elm, m)
+  local ds, tdir in m
+
+  m.hk, m.vk = elm.kick + (elm.chkick or 0), 0
+  m.el, m.tlt = ds, elm.tilt*tdir
+
+  local method = elm.method or m.method
+  local inter = abs(ds) < minlen and thinonly or DKD[method]
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, strex_drift, kicker_kick, fnone)
+end
+
+local function track_vkicker (elm, m)
+  local ds, tdir in m
+
+  m.hk, m.vk = 0, elm.kick + (elm.cvkick or 0)
+  m.el, m.tlt = ds, elm.tilt*tdir
+
+  local method = elm.method or m.method
+  local inter = abs(ds) < minlen and thinonly or DKD[method]
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, strex_drift, kicker_kick, fnone)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -809,8 +814,7 @@ local function make_mflow (self)
   local model, method in self
   assertf(modint[model],
           "invalid integration model %s (DKD or TKT expected)", model)
-  assertf(symint[method] and strsub(method,1,2) ~= 'at',
-          "invalid integration method '%s'", method)
+  assertf(DKD[method], "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
   local s0, X0, R0, beta0, npart, mapdef, mapsave in self
