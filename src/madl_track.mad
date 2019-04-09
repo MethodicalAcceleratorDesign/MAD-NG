@@ -42,7 +42,7 @@ local betablk, dp2pt                                            in MAD.gphys
 local action, atbegin                                           in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
 local apercheck                                                 in MAD.aperture
-local minlen, minang, minstr, clight, sqrt2, pi                 in MAD.constant
+local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
 
 local abs, min, max, sqrt, sin, cos, atan2 in math
@@ -467,7 +467,6 @@ end
 
 local function track_solenoid (elm, m)
   get_mult(elm, m)
-
   local ds, tdir, edir in m
   local tilt, ks, ksi in elm
   local l = abs(ds)
@@ -493,10 +492,8 @@ end
 
 local function track_rfcavity (elm, m)
   get_mult(elm, m)
-
   local ds, tdir, model in m
   local tilt, volt in elm
-  local l = abs(ds)
 
   m.el, m.tlt = ds, tilt*tdir
 
@@ -505,20 +502,15 @@ local function track_rfcavity (elm, m)
   if abs(volt) < minvolt then
     kick, fringe = strex_kick, fnone
   else
-    m.volt, m.freq, m.lag, m.nbsl = volt, elm.freq, elm.lag, elm.n_bessel or 0
+    m.volt, m.freq, m.lag, m.nbsl = volt*1e-3, elm.freq*1e6, elm.lag*twopi, elm.n_bessel
     if m.freq == 0 then
-      m.freq = 1e-6 * elm.harmon * clight * m.beam.beta / m.sequ.l
-    else
-      m.freq = m.freq * 1e-6
+      m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
     end
-    print('freq=', m.freq)
-    assert(m.freq > 0, "invalid rfcavity setup, positive freq or harmon expected")
-    m.lag = m.lag + m.freq*pi*l/(clight * m.beam.beta) -- shift lag: t=0 => accel=0
+    assert(m.freq > 0, "invalid rfcavity setup, (positive freq or harmon expected)")
     kick, fringe = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn, rfcav_fringe
   end
-
   local method = elm.method or m.method
-  local inter = l < minlen and thinonly or DKD[method]
+  local inter = abs(ds) < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, strex_drift, kick, fringe)
 end
@@ -598,17 +590,17 @@ E.extra_element:setv({ track = functor( invalid      ) }, 'init') -- forbidden i
 
 -- specialized maps (invalid == NYI)
 
-E.sbend      :setv({ track = functor( track_sbend      ) }, 'init') -- curved  , k0, (k0s, k1, k1s)
-E.combined   :setv({ track = functor( notyetdone       ) }, 'init') -- curved  , k0, k1, (k0s, k1s)
-E.rbend      :setv({ track = functor( track_rbend      ) }, 'init') -- straight, k0, (k0s, k1, k1s)
-E.quadrupole :setv({ track = functor( track_quadrupole ) }, 'init') -- straight, k0, k1, (k0s, k1s)
+E.sbend      :setv({ track = functor( track_sbend      ) }, 'init') -- curved  , k0, (k0s, k1, k1s, k2, k2s)
+E.combined   :setv({ track = functor( notyetdone       ) }, 'init') -- curved  , k0, k1, (k0s, k1s, k2, k2s)
+E.rbend      :setv({ track = functor( track_rbend      ) }, 'init') -- straight, k0, (k0s, k1, k1s, k2, k2s)
+E.quadrupole :setv({ track = functor( track_quadrupole ) }, 'init') -- straight, k0, k1, (k0s, k1s, k2, k2s)
 E.sextupole  :setv({ track = functor( track_sextupole  ) }, 'init') -- straight, (k2, k2s)
 E.octupole   :setv({ track = functor( track_octupole   ) }, 'init') -- straight, (k3, k3s)
 E.decapole   :setv({ track = functor( track_decapole   ) }, 'init') -- straight, (k4, k4s)
 E.dodecapole :setv({ track = functor( track_dodecapole ) }, 'init') -- straight, (k5, k5s)
 E.solenoid   :setv({ track = functor( track_solenoid   ) }, 'init') -- straight, ksi, (ks)
-E.rfcavity   :setv({ track = functor( track_rfcavity   ) }, 'init') -- straight, (volt, freq, lag)
-E.twcavity   :setv({ track = functor( notyetdone       ) }, 'init') -- straight, (volt, freq, lag)
+E.rfcavity   :setv({ track = functor( track_rfcavity   ) }, 'init') -- straight, volt, (freq, lag, harmon)
+E.twcavity   :setv({ track = functor( notyetdone       ) }, 'init') -- straight, volt, (freq, lag, harmon)
 
 E.wiggler    :setv({ track = functor( notyetdone       ) }, 'init') -- straight
 E.elseparator:setv({ track = functor( notyetdone       ) }, 'init') -- straight
