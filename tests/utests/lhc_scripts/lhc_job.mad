@@ -1,0 +1,132 @@
+-- ../mad lhc_job.mad
+
+local trkhdr = {'title', 'type', 'origin', 'date', 'time', 'refcol'}
+local trkcol = {'name','kind','c10','c20','c30','c40','c50','c60',
+                              'c11','c12','c13','c14','c15','c16',
+                              'c21','c22','c23','c24','c25','c26',
+                              'c31','c32','c33','c34','c35','c36',
+                              'c41','c42','c43','c44','c45','c46',
+                              'c51','c52','c53','c54','c55','c56',
+                              'c61','c62','c63','c64','c65','c66'}
+
+local twscol = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2',
+                'disp1','disp3','re11','re12','re21','re22'}
+
+local function LHC_load ()
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    MADX:load('lhc_as-built.seq'    , 'lhc_as-built.mad') -- convert on need
+    MADX:load('opticsfile.22_ctpps2', 'opticsfile.22_ctpps2.mad')
+    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+
+    local lhcb1, lhcb2 in MADX
+    assert(#lhcb1 == 6694, "invalid number of elements in LHCB1 (6694 expected)")
+    assert(#lhcb2 == 6721, "invalid number of elements in LHCB2 (6721 expected)")
+  end
+
+  return MADX.lhcb1, MADX.lhcb2
+end
+
+local function LHC_twiss ()
+  local lhcb1, nrj  in MADX
+  local beam, twiss, gphys in MAD
+
+  gphys.var.nrm_tol = 5e-9 -- relax normal form checks for large machine
+
+  local beam0 = beam { particle='proton', energy=nrj }
+  local tbl, mfw = twiss { sequence=lhcb1, beam=beam0, mapsave=true, chrom=true }
+
+  print("#tbl=", #tbl)
+  tbl:addcol('re11', \r -> tbl.M[r][1]:get(1+1))
+  tbl:addcol('re12', \r -> tbl.M[r][1]:get(2+1))
+  tbl:addcol('re21', \r -> tbl.M[r][2]:get(1+1))
+  tbl:addcol('re22', \r -> tbl.M[r][2]:get(2+1))
+
+  print('q1=' , tbl.q1[1])    ! q1  = 62.310005
+  print('q2=' , tbl.q2[1])    ! q2  = 60.320005
+  print('dq1=', tbl.dq1[1])   ! dq1 = 20.35834 -- wrong!
+  print('dq2=', tbl.dq2[1])   ! dq2 = 20.57798 -- wrong!
+
+  MAD.option.format = "%-.16e"
+  tbl:write('Cmad_tw.txt', twscol)
+
+-- twiss                     | chrom
+-- q1=62.310000, dq1=1.21357 | dq1=1.21360
+-- q2=60.320000, dq2=1.32671 | dq2=1.32786
+-- ptc_twiss
+-- q1= 0.310007, dq1=1.23317
+-- q2= 0.320007, dq2=1.34619
+end
+
+local function LHC_track ()
+  local lhcb1, nrj in MADX
+  local beam, track, gphys, matrix in MAD
+  local printf in MAD.utility
+
+  local beam0 = beam { particle='proton',  energy=nrj }
+
+  local dpt = gphys.dp2pt(1e-6, beam0.beta)
+
+  -- MAD-X closed orbits with chrom
+!  local X0 = {-5.499762E-04,  1.609342E-08, 5.207712E-09, 1.600252E-04, 0,dpt}
+!  local X0 = {-5.500001E-04, -2.523793E-11, 2.207667E-12, 1.600001E-04, 0,0}
+
+  -- PTC closed orbit
+  local X0 = {-5.5000135301803640E-004,-3.1413416565322823E-010,-4.2925112315554718E-010,1.5999978500025504E-004,0,0}
+  -- PTC closed orbit with dp=1e-6
+!  local X0 = {-5.49977519E-04, 1.57921523E-08, 4.77934325E-09,1.60025045E-04,0.00000000E+00,9.99999990E-07}
+
+  local tbl, mfw = track {sequence=lhcb1, beam=beam0, observe=false,
+                          X0=X0, mapdef={xy=2}, mapsave=true, method=4}
+
+!  printf("#trk=%d, beta=%-.16e, dpt=%-.16e\n", #tbl, beam0.beta, dpt)
+  for i=1,6 do
+    tbl:addcol('c'..i..'0', \r -> tbl.M[r][i]:get(1))
+  end
+  for i=1,6 do for j=1,6 do
+    tbl:addcol('c'..i..j, \r -> tbl.M[r][i]:get(j+1))
+  end end
+
+  MAD.option.format = "%-.16e"
+  tbl:write('Cmad_tk.txt', trkcol, trkhdr)
+end
+
+-- run script
+LHC_load()
+-- LHC_track()
+LHC_twiss()
+
+
+--[[
+mu1=  0.31000517956107  mu2=  0.320005329731  mu3=  0
+#tbl= 13285
+q1= 1.3100051799818
+q2= 1.3200053294762
+
+
+++++++ table: summ
+
+            length             orbit5               alfa            gammatr
+        26658.8832                 -0    0.0003484807932        53.56863458
+
+                q1                dq1            betxmax              dxmax
+       62.30999952        1.213568048        8025.928218        3.188194926
+
+             dxrms             xcomax             xcorms                 q2
+       1.526356161      0.01214590114     0.000847219769        60.32000013
+
+               dq2            betymax              dymax              dyrms
+       1.326707392        8025.942384        3.093015324        0.351926341
+
+            ycomax             ycorms             deltap            synch_1
+     0.01265939852    0.0009129569355                  0                  0
+
+           synch_2            synch_3            synch_4            synch_5
+                 0                  0                  0                  0
+
+            nflips
+                 0
+
+  Number of warnings: 0
+]]
