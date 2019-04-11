@@ -38,9 +38,10 @@ local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
       is_value, is_integer, is_iterable, is_mappable, is_callable,
       is_stringable, is_tablable, is_copiable, is_sameable,
       get_metatable, get_metamethod, wprotect,
-      set_concept, concept                                         in MAD.typeid
+      set_concept, concept                                        in MAD.typeid
+local attributes                                                  in MAD.filesys
 
-local not_mappable, not_extendable, not_mutable                    in concept
+local not_mappable, not_extendable, not_mutable                   in concept
 
 -- implementation -------------------------------------------------------------o
 
@@ -176,9 +177,8 @@ end
 
 local _final = { n=0 } -- __gc not applicable to table (added in 5.2)
 
-_final[_final] = ffi.gc(ffi.new('int[1]'),
-  function ()
-    if MAD.option.debug >= 2 then
+_final[_final] = ffi.gc(ffi.new('int[1]'), \ =>
+    if option.debug >= 2 then
       io.write('MAD finalizer called...\n')
     end
     for i=_final.n,1,-1 do
@@ -349,6 +349,10 @@ local filemode = { -- see fopen in ISO/IEC 9899:2011 7.21.5.3 (C11 standard)
   ['rb+']='w', ['wb+']='w', ['wb+x']='w', ['ab+']='w',
 }
 
+local filetime = { -- see lfs.attributes and POSIX stat(2)
+  access='access', modification='modification', change='change',
+}
+
 function utility.openfile (fname_, mode_, ext_)
   if filemode[fname_] and is_nil(ext_) then
     fname_, mode_, ext_ = nil, fname_, mode_ -- right shift
@@ -378,10 +382,19 @@ end
 
 function utility.fileexists (fname)
   assert(is_string(fname), "invalid argument #1 (string expected)")
-  local file = io.open(fname)
+  local file = (io.open(fname))
   if is_nil(file) then return false end
   io.close(file)
   return true
+end
+
+function utility.fileisnewer (fname1, fname2, attr_)
+  assert(is_string(fname1), "invalid argument #1 (string expected)")
+  assert(is_string(fname2), "invalid argument #2 (string expected)")
+  local at = attr_ or 'modification'
+  assert(filetime[at], "invalid argument #3 (file time attribute expected)")
+  local t1, t2 = attributes(fname1, at), (attributes(fname2, at))
+  return t1 ~= nil and os.difftime(t1,t2) > 0 -- resolution is 1 sec, yuck!
 end
 
 -- string formating
