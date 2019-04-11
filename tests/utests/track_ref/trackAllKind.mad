@@ -1,7 +1,7 @@
---[[ Run and data extraction assuming mapdump=2 below:
+--[[ Run and data extraction assuming mapdump=2 in the script below.
 cd track_ref
-../mad trackAllKind.mad > trackAllKindMad.out 2>&1
-tail -n +7 trackAllKindMad.out > trackAllKindMad_res.txt
+time ../mad trackAllKind.mad > trackAllKindMad.out 2>&1
+grep "^@@\|%%" trackAllKindMad.out | grep -v "exit" > trackAllKindMad_res.txt
 cd ..
 --]]
 
@@ -10,11 +10,7 @@ local drift, kicker, multipole, solenoid, rfcavity, sbend, rbend,
       quadrupole, sextupole, octupole, decapole, dodecapole       in MAD.element
 local printf, tblicpy                                             in MAD.utility
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!
-!! prepare tables: Cmad and Cmad_cfg
-!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 local colres = {'name','cfgid',
                 'c10','c20','c30','c40','c50','c60',
@@ -25,22 +21,24 @@ local colres = {'name','cfgid',
                 'c51','c52','c53','c54','c55','c56',
                 'c61','c62','c63','c64','c65','c66'}
 
-local colcfg = {'cfgid','energy','model','method','nslice','mapdef','mapdump','X0'}
-local prtcfg = {'cfgid','energy','model','method','nslice','no','x','px','y','py','t','pt'}
+local colcfg = {'cfgid','model','energy','method','nslice','mapdef','mapdump','X0'}
+local prtcfg = {'cfgid','model','energy','method','nslice','no','x','px','y','py','t','pt'}
 
 local Cmad     = mtable 'Cmad'    (tblicpy(colres)) -- colres becomes the object
 local Cmad_cfg = mtable 'Cmad_cfg'(tblicpy(colcfg)) -- colcfg becomes the object
+
+--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 do -- setup (from PTC checks)
   local mapdef, mapdump = {xy=2}, 2
   local X0 = {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}
 
   local cfgid = 1
-  for energy = 1,6500,6499 do
   for _,model in ipairs{'DKD','TKT'} do
+  for energy = 1,6500,6499 do
   for method = 2,6,2 do
-  for nslice = 1,3 do     -- order matters!
-    Cmad_cfg = Cmad_cfg + {cfgid, energy, model, method, nslice, mapdef, mapdump, X0}
+  for nslice = 1,3 do     -- v v v order matters!
+    Cmad_cfg = Cmad_cfg + {cfgid, model, energy, method, nslice, mapdef, mapdump, X0}
     cfgid = cfgid + 1
   end end end end
 
@@ -49,14 +47,12 @@ do -- setup (from PTC checks)
   for _,c in ipairs {'x','px','y','py','t','pt'} do
     Cmad_cfg:addcol(c, \r -> Cmad_cfg.X0[r][c])
   end
-  Cmad_cfg.column = prtcfg
+  option.format = "% -8.4g"
+  Cmad_cfg:write("Cmad_cfg.txt", prtcfg)
+  option.format = "% -.16e"
 end
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!
-!! run the tests from Cptc_cfg, save the results in Cptc.txt
-!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 local function rchk (seq, res, cfg)
   local bem = beam {particle = 'proton'}
@@ -101,30 +97,15 @@ local function rchk (seq, res, cfg)
   end
 end
 
+--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+-- TODO: trueRBEND, RFMULTIPOLE, CRABCAVITY, BEAMBEAM, ELSEPARATOR, WIGGLER, ...
+-- TODO: all versions with knl, ksl...
+
 local seqDRIFT = sequence 'seqDRIFT' { l=5,
   drift 'DRIFT1' {at=0.75, l=1.5},
   drift 'DRIFT2' {at=3.25, l=1.5},
 }
-
-rchk (seqDRIFT, Cmad, Cmad_cfg)
-
-! ------
-
-local seqKICK = sequence 'seqKICK' { l=5,
-  kicker 'KICK1' {at=0.75, l=1.5, hkick= 0.25e-3, vkick=-0.25e-3},
-  kicker 'KICK2' {at=3.25, l=1.5, hkick=-0.25e-3, vkick= 0.25e-3},
-}
-
-rchk (seqKICK, Cmad, Cmad_cfg)
-
-! ------
-
-local seqMULT = sequence 'seqMULT' { l=5,
-  multipole 'MULT1' {at=0.75, lrad=1.5, knl={ 0.05*1.5, 0.25*1.5}, angle= 0.05*1.5},
-  multipole 'MULT2' {at=3.25, lrad=1.5, knl={-0.05*1.5,-0.25*1.5}, angle=-0.05*1.5},
-}
-
-rchk (seqMULT, Cmad, Cmad_cfg)
 
 ! ------
 
@@ -133,16 +114,12 @@ local seqSBEND = sequence 'seqSBEND' { l=5,
   sbend 'SBEND2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
 }
 
-rchk (seqSBEND, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqSBENDfr = sequence 'seqSBENDfr' { l=5,
   sbend 'SBENDfr1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5},
   sbend 'SBENDfr2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5},
 }
-
-rchk (seqSBENDfr, Cmad, Cmad_cfg)
 
 ! ------
 
@@ -151,16 +128,12 @@ local seqSBENDfh = sequence 'seqSBENDfh' { l=5,
   sbend 'SBENDfh2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.03, fint=0.5},
 }
 
-rchk (seqSBENDfh, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqRBEND = sequence 'seqRBEND' { l=5,
   rbend 'RBEND1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
   rbend 'RBEND2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
 }
-
-rchk (seqRBEND, Cmad, Cmad_cfg)
 
 ! ------
 
@@ -169,16 +142,12 @@ local seqRBENDfr = sequence 'seqRBENDfr' { l=5,
   rbend 'RBENDfr2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5},
 }
 
-rchk (seqRBENDfr, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqQUAD = sequence 'seqQUAD' { l=5,
   quadrupole 'QUAD1' {at=0.75, l=1.5, k1= 0.25},
   quadrupole 'QUAD2' {at=3.25, l=1.5, k1=-0.25},
 }
-
-rchk (seqQUAD, Cmad, Cmad_cfg)
 
 ! ------
 
@@ -187,16 +156,12 @@ local seqSEXT = sequence 'seqSEXT' { l=5,
   sextupole 'SEXT2' {at=3.25, l=1.5, k2=-0.25},
 }
 
-rchk (seqSEXT, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqOCTU = sequence 'seqOCTU' { l=5,
   octupole 'OCTU1' {at=0.75, l=1.5, k3= 0.25},
   octupole 'OCTU2' {at=3.25, l=1.5, k3=-0.25},
 }
-
-rchk (seqOCTU, Cmad, Cmad_cfg)
 
 ! ------
 
@@ -205,8 +170,6 @@ local seqDECA = sequence 'seqDECA' { l=5,
   multipole 'DECA2' {at=3.25, lrad=1.5, knl={0,0,0,0,-0.25*1.5}},
 }
 
-rchk (seqDECA, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqDODECA = sequence 'seqDODECA' { l=5,
@@ -214,7 +177,19 @@ local seqDODECA = sequence 'seqDODECA' { l=5,
   multipole 'DODECA2' {at=3.25, lrad=1.5, knl={0,0,0,0,0,-0.25*1.5}},
 }
 
-rchk (seqDODECA, Cmad, Cmad_cfg)
+! ------
+
+local seqMULT = sequence 'seqMULT' { l=5,
+  multipole 'MULT1' {at=0.75, lrad=1.5, knl={ 0.05*1.5, 0.25*1.5}, angle= 0.05*1.5},
+  multipole 'MULT2' {at=3.25, lrad=1.5, knl={-0.05*1.5,-0.25*1.5}, angle=-0.05*1.5},
+}
+
+! ------
+
+local seqKICK = sequence 'seqKICK' { l=5,
+  kicker 'KICK1' {at=0.75, l=1.5, hkick= 0.25e-3, vkick=-0.25e-3},
+  kicker 'KICK2' {at=3.25, l=1.5, hkick=-0.25e-3, vkick= 0.25e-3},
+}
 
 ! ------
 
@@ -223,25 +198,56 @@ local seqSOL = sequence 'seqSOL' { l=5,
   solenoid 'SOL2' {at=3.25, l=1.5, ks=-0.25},
 }
 
-rchk (seqSOL, Cmad, Cmad_cfg)
-
 ! ------
 
 local seqCAV = sequence 'seqCAV' { l=5,
-  rfcavity 'CAV1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5},
-  rfcavity 'CAV2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5},
+  rfcavity 'CAV1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5, no_cavity_totalpath=true},
+  rfcavity 'CAV2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5, no_cavity_totalpath=true},
 }
 
-rchk (seqCAV, Cmad, Cmad_cfg)
+! ------
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!
-!! save results and setup
-!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+local seqCAVt = sequence 'seqCAVt' { l=5,
+  rfcavity 'CAVt1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5},
+  rfcavity 'CAVt2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5},
+}
 
-option.format = "% -.16e"
+! ------
+
+local seqCAVh = sequence 'seqCAVh' { l=5,
+  rfcavity 'CAVh1' {at=0.75, l=1.5, volt=8, harmon=2, lag=0.5},
+  rfcavity 'CAVh2' {at=3.75, l=1.5, volt=8, harmon=2, lag=0.5},
+}
+
+! ------
+
+local seqCAVb = sequence 'seqCAVb' { l=5,
+  rfcavity 'CAVb1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5, n_bessel=3},
+  rfcavity 'CAVb2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5, n_bessel=3},
+}
+
+--!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+rchk (seqDRIFT  , Cmad, Cmad_cfg)
+rchk (seqSBEND  , Cmad, Cmad_cfg)
+rchk (seqSBENDfr, Cmad, Cmad_cfg)
+rchk (seqSBENDfh, Cmad, Cmad_cfg)
+rchk (seqRBEND  , Cmad, Cmad_cfg)
+rchk (seqRBENDfr, Cmad, Cmad_cfg)
+rchk (seqQUAD   , Cmad, Cmad_cfg)
+rchk (seqMULT   , Cmad, Cmad_cfg)
+rchk (seqKICK   , Cmad, Cmad_cfg)
+rchk (seqSOL    , Cmad, Cmad_cfg)
+rchk (seqCAV    , Cmad, Cmad_cfg)
+rchk (seqCAVt   , Cmad, Cmad_cfg)
+rchk (seqCAVh   , Cmad, Cmad_cfg)
+rchk (seqCAVb   , Cmad, Cmad_cfg)
+
+Cmad_cfg:remove {#Cmad_cfg/2+1, -1}
+
+rchk (seqSEXT   , Cmad, Cmad_cfg)
+rchk (seqOCTU   , Cmad, Cmad_cfg)
+rchk (seqDECA   , Cmad, Cmad_cfg)
+rchk (seqDODECA , Cmad, Cmad_cfg)
+
 Cmad:write "Cmad.txt"
-
-option.format = "% -8.4g"
-Cmad_cfg:write "Cmad_cfg.txt"
