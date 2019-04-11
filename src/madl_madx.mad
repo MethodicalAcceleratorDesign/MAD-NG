@@ -23,8 +23,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local object, warn                                                in MAD
-local assertf, openfile                                           in MAD.utility
+local object, option, warn                                        in MAD
+local assertf, openfile, fileisnewer                              in MAD.utility
 local bind1st                                                     in MAD.gfunc
 local is_nil, is_number, is_string, is_callable, is_instanceOf    in MAD.typeid
 
@@ -229,7 +229,7 @@ end
   cls[elm] = cls_name : class of element
 ]]--
 
-local function load2madx (madx, src, dst)
+local function load2madx (madx, src, dst, reload_)
   assert(madx == MADX or is_instanceOf(madx, MADX), "invalid MADX environment")
 
   -- compile directly in memory (no translation)
@@ -238,7 +238,15 @@ local function load2madx (madx, src, dst)
     return
   end
 
-  madx = madx or MADX
+  -- compile directly in memory if dst newer than src (no translation)
+  if reload_ ~= true and is_string(src) and               -- reload not enforced
+     is_string(dst) and string.sub(dst, -4) == '.mad' and -- dst is a mad file
+     fileisnewer(dst, src) then                           -- dst newer than src
+    MADX:load_env(dst)
+    return
+  end
+
+  -- madx = madx or MADX ! not needed due to assert
 
   local env = { cur=0, seq={}, elm={}, cls={}, lin=0,
                 wrn=madx.option.warn, madx=madx }
@@ -263,6 +271,9 @@ local function load2madx (madx, src, dst)
     local outf = openfile(dst, 'w', '.mad')
     for i,s in ipairs(out) do outf:write(s, '\n') end
     if is_string(dst) then outf:close() else outf:flush() end
+    if option.debug > 0 then
+      io.write(src, ' converted and saved to ', dst, '\n')
+    end
   end
 
   -- compile in memory
