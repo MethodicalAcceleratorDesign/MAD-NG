@@ -106,10 +106,11 @@ local function fill (elm, mflw, lw, islc)
     q2[id] = q2[id] + dmu2
     q3[id] = q3[id] + dmu3
 
-    -- fill table
-    for _,k in ipairs(onam) do
-      mtbl[k][n+i] = of[k]
+    -- fill table (keep order !)
+    if not mflw[i].nosave then
+      for _,k in ipairs(onam) do mtbl[k][n+i] = of[k] end
     end
+
     mtbl.mu1[n+i], mtbl.mu2[n+i], mtbl.mu3[n+i] = q1[id], q2[id], q3[id]
   end
   return true
@@ -234,7 +235,7 @@ local function twiss_track0 (self, X0, R0, ofun0)
   local trck0 = track 'track0' { exec=false } :copy_variables(self)
 
   -- prepare track command
-  local mtbl, mflw = trck0 'twtrack0' {
+  local mtbl, mflw = trck0 'twiss' {
     X0=X0, R0=R0, atsave=atsave, nstep=0, deltap=0, -- init only
     mapdef=is_true(mapdef) and {xy=2} or mapdef,
   }
@@ -252,6 +253,9 @@ local function twiss_track0 (self, X0, R0, ofun0)
       chrm = chrom,
       npar = n,
     }
+    if chrom then -- do not save extra rows due to chrom
+      for i=n/2+1,n do mflw[i].nosave=true end
+    end
     -- add twiss columns and type to mtbl
     mtbl.type = 'twiss'
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
@@ -306,9 +310,10 @@ local function make_mflow (self)
     local Xi  = mflw0[i]:get0()
     local Ri  = mflw0[i]:get1()
     local rnk = has_dp(Ri, self.codptol) and 6 or 4
+    local R6
 
     -- 4D case
-    if rnk == 4 then Ri = Ri:getsub(r4,r4) end
+    if rnk == 4 then R6, Ri = Ri, Ri:getsub(r4,r4) end
 
     -- get linear normal form A from one-turn map R
     local Ai, Vi, Wi = normal(Ri)
@@ -317,14 +322,21 @@ local function make_mflow (self)
     local ofi = phasadv(Wi, optfun(Ai, nil, coupling))
 
     -- clear phase advances
-print('mu1=', ofi.mu1,'mu2=', ofi.mu2,'mu3=', ofi.mu3)
     ofi.mu1, ofi.mu2, ofi.mu3 = 0, 0, 0
 
     -- debug normal form
     if option.debug >= 2 then trace_normal(Ri, Ai, ofi) end
 
     -- back to 6D (TODO: check 5D...)
-    if rnk == 4 then Ai = Ri:setsub(r4,r4, Ai) end
+    if rnk == 4 then
+--      local fmt = option.format
+--      option.format = "% -.8e"
+--      R6:print('R6') ; Ai:print('Ai')
+      Ai = matrix(6):eye():setsub(r4,r4,Ai) !:setsub(r4,6,R6)
+      Xi[5] = 0 -- reset time
+--      Ai:print('Ai') ; Xi:print('Xi')
+--      option.format = fmt
+    end
 
     X[i], A[i], ofun0[i] = Xi, Ai, ofi
   end
