@@ -27,8 +27,26 @@ local warn, option, vector, matrix, command, track                in MAD
 local fnone                                                       in MAD.gfunc
 local has_dp, vname                                               in MAD.gphys
 local tblcat, errorf, assertf                                     in MAD.utility
-local is_number, is_positive, is_boolean, is_true, is_iterable    in MAD.typeid
-local abs                                                         in math
+local is_number, is_positive, is_boolean, is_true, is_iterable,
+      is_mappable                                                 in MAD.typeid
+
+local abs in math
+
+-- helpers --------------------------------------------------------------------o
+
+local function par2vec (V, X)
+  if not is_mappable(X) then
+    V:fill(X)
+  else
+    V[1] = X[1] or X.x  or 0
+    V[2] = X[2] or X.px or 0
+    V[3] = X[3] or X.y  or 0
+    V[4] = X[4] or X.py or 0
+    V[5] = X[5] or X.t  or 0
+    V[6] = X[6] or X.pt or 0
+  end
+  return V
+end
 
 -- cofind algorithms ----------------------------------------------------------o
 
@@ -78,21 +96,27 @@ end
 
 -- Fast version useful to find a single closed orbit (e.g. to translate X0).
 -- warning: returned values are different from cofind_map.
+-- TODO: adapt to multiple particles and use same returned values.
 
 local function cofind_jacob (self, track)
   local cotol, coiter, codiff, codptol, comethod in self
   local costep = method[comethod]
   local T = self.totalpath
 
-  assert(is_number(track.X0[1]),"cofind: codiff works only on single particle")
-
   -- error handling
   local errf = self.cowarn and warn or errorf
 
   -- build 6D initial orbit
-  local X0 = vector(6):fill(track.X0)   -- initial coordinates
-  local X1 = vector(6):fill(self .X1)   -- final translation
-  local dX = vector(6):fill(codiff)     -- finite differences
+  if is_mappable(track.X0[1]) then
+    if #track.X0 > 1 then
+      warn("cofind: codiff works only on single particle (discarding extra)")
+    end
+    track.X0 = track.X0[1]
+  end
+
+  local X0 = par2vec(vector(6), track.X0) -- initial coordinates
+  local X1 = par2vec(vector(6), self.X1 ) -- final translation
+  local dX = par2vec(vector(6), codiff  ) -- finite differences
 
   -- track 6+1 particles to compute 6D jacobian by finite differences
   local Xs = { 0,0,0,0,0,0,X0 }
@@ -124,7 +148,7 @@ local function cofind_jacob (self, track)
 
     -- retrieve orbit and jacobian
     for i=1,6 do
-      local vn = vname[i]
+      local vn = vname[6][i]
       X[i] = mflw[7][vn] -- particle co-ordinates must be accessed by names.
       for j=1,6 do -- compute jacobian R_ij = df(x_i)/dx_j
         R:set(i,j, (mflw[j][vn] - X[i])/dX[j])
@@ -176,7 +200,7 @@ local function cofind_map (self, track)
   for i=1,npar do idx0[i] = i end
 
   -- build final translation
-  local X1 = vector(6):fill(self.X1)
+  local X1 = par2vec(vector(6), self.X1)
 
   for itr=1,coiter do
     -- track damaps
@@ -230,7 +254,7 @@ local function cofind_map (self, track)
     if npar == 0 then return mtbl, mflw0 end
   end
 
-  errf("cofind: closed orbit did not converge in %d iterations", coiter)
+  errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
 
   -- case errf is warn
   for i=1,npar do
