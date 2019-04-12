@@ -33,7 +33,7 @@ local strtrim, strsplit, strbracket, strquote, strsplitall, num2str,
 local is_nil, is_boolean, is_number, is_integer, is_complex,
       is_string, is_table, is_rawtable, is_range, isa_matrix,
       is_object, is_iterable, is_callable, set_concept, concept,
-      is_file                                                     in MAD.typeid
+      is_file, is_cdata                                           in MAD.typeid
 local not_mappable, not_extendable, not_mutable                   in concept
 
 local abs, min, max, ceil in math
@@ -1337,7 +1337,6 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   end
 
   local data = var_raw(tbl,_data)
-  local file = openfile(filnam_, 'w', tblext)
   local cnam = colnam_ or tbl.column or data.cidx
   local hnam = hdrnam_ or tbl.header
   local nrow = data.nr
@@ -1348,35 +1347,49 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   for i=1,ncol do
     local ci = is_number(cnam[i]) and reflect(cnam[i], ncol) or data.cidx[cnam[i]]
     if not data[ci] then error("invalid column name or index "..cnam[i]) end
-    cols[i], cnam[i] = data[ci], data.cidx[ci]
+    local v = data[ci][1] -- discard cdata not processed
+    if not is_cdata(v) or is_complex(v) or is_range(v) then
+      cols[i], cnam[i] = data[ci], data.cidx[ci]
+    end
   end
 
+  -- open file
+  local file = openfile(filnam_, 'w', tblext)
+
+  -- setup format (TODO: support per header and per column format)
+  local fmt = option.format
+  local hwd = tbl.hdrwidth or option.hdrwidth
+  local cwd = tbl.colwidth or option.colwidth
+  option.format = tbl.format or option.format
+
   -- dump header
-  local v
+  local sfmt, v = '@ %-'..cwd..'s %%'
   for i, k in ipairs(hnam) do
     k, v = hnam[k] or k, tbl[k]
     if is_number(v) then
-      fprintf(file, '@ %-18s %%le      %s\n', k, num2str(v))
+      fprintf(file, sfmt..'le      %s\n', k, num2str(v))
     elseif is_complex(v) then
-      fprintf(file, '@ %-18s %%lz      %s\n', k, tostring(v))
+      fprintf(file, sfmt..'lz      %s\n', k, tostring(v))
     elseif is_range(v) then
-      fprintf(file, '@ %-18s %%lr      %s\n', k, tostring(v))
+      fprintf(file, sfmt..'lr      %s\n', k, tostring(v))
     elseif is_string(v) then
-      fprintf(file, '@ %-18s %%%02ds     %q\n', k, #v, v)
+      fprintf(file, sfmt..'%02ds     %q\n', k, #v, v)
     elseif is_table(v) then
-      fprintf(file, '@ %-18s %%%02dt     %q\n', k, #v, table.concat(v,', '))
+      fprintf(file, sfmt..'%02dt     %q\n', k, #v, table.concat(v,', '))
     elseif is_boolean(v) then
-      fprintf(file, '@ %-18s %%b       %s\n', k, tostring(v))
+      fprintf(file, sfmt..'b       %s\n', k, tostring(v))
     else
-      fprintf(file, '@ %-18s %%?       %s\n', k, tostring(v))
+      fprintf(file, sfmt..'?       %s\n', k, tostring(v))
     end
   end
 
   if ncol > 0 then
+    local sfmt = '%-'..cwd..'s '
+
     -- dump col names
     file:write('* ')
     for i=1,ncol do
-      fprintf(file, i < ncol and '%-18s ' or '%s\n', cnam[i])
+      fprintf(file, i < ncol and sfmt or '%s\n', cnam[i])
     end
 
     -- dump col types
@@ -1388,7 +1401,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
                 is_complex(v) and '%lz' or
                 is_range  (v) and '%lr' or
                 is_boolean(v) and '%b'  or '%?'
-      fprintf(file, i < ncol and '%-18s ' or '%s\n', s)
+      fprintf(file, i < ncol and sfmt or '%s\n', s)
     end
 
     -- dump rows
@@ -1399,11 +1412,14 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
           v = cols[i][j]
               if is_number(v) then v = num2str(v)
           elseif is_string(v) then v = string.format("%q", v) end
-          fprintf(file, i < ncol and '%-18s ' or '%s\n', tostring(v))
+          fprintf(file, i < ncol and sfmt or '%s\n', tostring(v))
         end
       end
     end
   end
+
+  -- restore format
+  option.format = fmt
 
   if is_string(filnam_) then file:close() else file:flush() end
   return tbl
