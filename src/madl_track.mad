@@ -737,6 +737,21 @@ local function trace_action (mflw)
            estr, sstr, xstr, astr, ostr)
 end
 
+-- reset mflow iterator (e.g. track again) ------------------------------------o
+
+local function reset_iter (mflw)
+  local sequ, sdir, __sitr in mflw
+  local s0, range, nturn in __sitr
+  local iter, state, init = sequ:siter(range, nturn, sdir)
+
+  __sitr.iter=iter
+  __sitr.state=state
+
+  mflw.s0, mflw.ds, mflw.spos, mflw.eidx, mflw.turn = s0, 0, 0, init, 1
+
+  return mflw
+end
+
 -- track mflow ----------------------------------------------------------------o
 
 local modint = {DKD=true, TKT=true}
@@ -853,10 +868,11 @@ local function make_mflow (self)
     R0, beta0 = {}, {}
   end
 
-  -- precedence of initial conditions
+  -- create mflw
   local npar = min(npart or 1e9, #X0)
   local mflw = table.new(npar*ndp,50)
 
+  -- precedence of initial conditions
   for idp,dp in ipairs(deltap) do
     local dpt = dp2pt(dp, beam.beta)
 
@@ -907,19 +923,20 @@ local function make_mflow (self)
   mflw.sdir=dir              -- s-direction of tracking
   mflw.tdir=tdir             -- t-direction of tracking
   mflw.edir=edir             -- current element direction
-  mflw.eidx=init             -- current element index
-  mflw.turn=1                -- current turn index
 
   mflw.s0=s0                 -- initial s-position (i.e. offset)
   mflw.ds=0                  -- s-length of results (signed)
   mflw.spos=0                -- s-position of results (signed)
-  mflw.ndp=ndp               -- number of deltap
+  mflw.eidx=init             -- current element index
+  mflw.turn=1                -- current turn index
+
   mflw.npar=npar*ndp         -- number of tracked particles or damaps
   mflw.tpar=npar*ndp         -- total number of particles or damaps (i.e. #mflw)
   mflw.nslc=nslc             -- number of slices for each element (number)
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
+  mflw.deltap=deltap         -- save deltaps
 
   mflw.save=save             -- save data
   mflw.savesel=savesel       -- save selector
@@ -942,12 +959,14 @@ local function make_mflow (self)
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
-  mflw.deltap=deltap         -- save deltaps (for info)
 
   mflw.ndump=0               -- dump level of damaps
-  mflw.dump=fnone            -- dump damaps
+  mflw.dump=fnone            -- dump damaps after each integration step
 
-  -- internal vars for track (varying states) --
+  -- for processing sequence elements by nstep
+  mflw.__sitr={iter=iter, state=state,          -- sequence iterator state
+               s0=s0, range=range, nturn=nturn} -- sequence iterator reset
+  mflw.ireset=reset_iter
 
   -- for processing elements
   mflw.__edat = setmetatable({
@@ -982,15 +1001,12 @@ local function make_mflow (self)
     psl=table.new(15,0),     -- current subelement multipoles shew phases
   }, {__index=mflw})
 
-  -- for processing sequence elements by nstep
-  mflw.__sitr={iter=iter, state=state} -- sequence iterator state
-
   return mflw
 end
 
 -- track command --------------------------------------------------------------o
 
-local _id = {} -- identity
+local _id = {} -- identity (unique)
 
 local function exec (self)
   local mflw, mtbl
@@ -1005,17 +1021,9 @@ local function exec (self)
   end
   mtbl = mflw.mtbl
 
-  -- check number of element to track
+  -- check number of elements to track
   local nstep in self
   if nstep == 0 then return mtbl, mflw end
-
-  -- retrieve information
-  local s0, eidx, sequ, atentry, atexit in mflw
-  local iter, state in mflw.__sitr
-  local ne = #sequ
-
-  -- debug actions setup
-  if option.debug >= 2 then trace_action(mflw) end
 
   -- debug maps
   local mapdump in self
@@ -1025,6 +1033,14 @@ local function exec (self)
     mflw.dump1 = mflw.ndump > 1 and xdump or fnone
   end
 
+  -- debug actions
+  if option.debug >= 2 then trace_action(mflw) end
+
+  -- retrieve information
+  local s0, eidx, sequ, atentry, atexit in mflw
+  local iter, state in mflw.__sitr
+  local ne = #sequ
+
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
@@ -1032,17 +1048,15 @@ local function exec (self)
     elm:track(     mflw.__edat       )
     atexit   (elm, mflw.__edat, 0, -2)
     mflw:dump(elm)
-
-    -- check for particles
-    if mflw.npar == 0 then break end
-    -- check for end of turn
-    if ei == ne then mflw.turn = mflw.turn + 1 end
-    -- check remaining number of element to track
     nstep = nstep-1
-    if nstep == 0 then return mtbl, mflw, ei end
+
+    -- check remaining number of elements and particles to track
+    if nstep == 0 or mflw.npar == 0 then break end
+    -- check for end of turn
+    if ei == ne then mflw.turn = mflw.turn+1 end
   end
 
-  return mtbl, mflw
+  return mtbl, mflw, ei
 end
 
 local track = command 'track' {

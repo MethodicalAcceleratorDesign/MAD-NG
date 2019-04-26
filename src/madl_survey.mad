@@ -245,6 +245,21 @@ local function trace_action (mflw)
            estr, sstr, xstr, ostr)
 end
 
+-- reset mflow iterator (e.g. survey again) -----------------------------------o
+
+local function reset_iter (mflw)
+  local sequ, sdir, __sitr in mflw
+  local s0, range, nturn in __sitr
+  local iter, state, init = sequ:siter(range, nturn, sdir)
+
+  __sitr.iter=iter
+  __sitr.state=state
+
+  mflw.s0, mflw.ds, mflw.spos, mflw.eidx, mflw.turn = s0, 0, 0, init, 1
+
+  return mflw
+end
+
 -- survey mflow ---------------------------------------------------------------o
 
 local function make_mflow (self)
@@ -326,9 +341,10 @@ local function make_mflow (self)
     A0[1], A0[2], A0[3] = rangle(the, A0[1]), phi, rangle(psi, A0[3])
   end
 
-  -- precedence of initial conditions
+  -- create mflw
   local mflw = table.new(0,50)
 
+  -- precedence of initial conditions
   local x   = X0[1] or X0.x
   local y   = X0[2] or X0.y
   local z   = X0[3] or X0.z
@@ -342,12 +358,13 @@ local function make_mflow (self)
   mflw.sdir=dir              -- s-direction of tracking
   mflw.tdir=tdir             -- t-direction of tracking
   mflw.edir=edir             -- current element direction
-  mflw.eidx=init             -- current element index
-  mflw.turn=1                -- current turn index
 
   mflw.s0=s0                 -- initial s-position (i.e. offset)
   mflw.ds=0                  -- s-length of results (signed)
   mflw.spos=0                -- s-position of results (signed)
+  mflw.eidx=init             -- current element index
+  mflw.turn=1                -- current turn index
+
   mflw.nslc=nslc             -- number of slices for each element (number)
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. for plots)
@@ -375,7 +392,10 @@ local function make_mflow (self)
   mflw.W=matrix(3):rotzxy(-phi,the,psi) -- orientation matrix (rotations)
   mflw.A=vector(3):fill{the,phi,psi}    -- oriented angles
 
-  -- internal vars for survey (varying states) --
+  -- for processing sequence elements by nstep
+  mflw.__sitr={iter=iter, state=state,          -- sequence iterator state
+               s0=s0, range=range, nturn=nturn} -- sequence iterator reset
+  mflw.ireset=reset_iter
 
   -- for processing elements local frame
   mflw.__edat = setmetatable({
@@ -385,15 +405,12 @@ local function make_mflow (self)
     nsl=0,                   -- current element number of slices
   }, {__index=mflw})
 
-  -- for processing sequence elements by nstep
-  mflw.__sitr={iter=iter, state=state} -- sequence iterator state
-
   return mflw
 end
 
 -- survey command -------------------------------------------------------------o
 
-local _id = {} -- identity
+local _id = {} -- identity (unique)
 
 local function exec (self)
   local mflw, mtbl
@@ -408,17 +425,9 @@ local function exec (self)
   end
   mtbl = mflw.mtbl
 
-  -- check number of element to track
+  -- check number of elements to track
   local nstep in self
   if nstep == 0 then return mtbl, mflw end
-
-  -- retrieve information
-  local s0, eidx, sequ, atentry, atexit in mflw
-  local iter, state in mflw.__sitr
-  local ne = #sequ
-
-  -- debug actions setup
-  if option.debug >= 2 then trace_action(mflw) end
 
   -- debug maps
   local mapdump in self
@@ -427,6 +436,14 @@ local function exec (self)
     mflw.dump = mflw.ndump > 0 and mdump or fnone
   end
 
+  -- debug actions
+  if option.debug >= 2 then trace_action(mflw) end
+
+  -- retrieve information
+  local s0, eidx, sequ, atentry, atexit in mflw
+  local iter, state in mflw.__sitr
+  local ne = #sequ
+
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
@@ -434,15 +451,15 @@ local function exec (self)
     elm:survey(     mflw.__edat       )
     atexit    (elm, mflw.__edat, 0, -2)
     mflw:dump (elm)
-
-    -- check for end of turn
-    if ei == ne then mflw.turn = mflw.turn + 1 end
-    -- check remaining number of element to track
     nstep = nstep-1
-    if nstep == 0 then return mtbl, mflw, ei end
+
+    -- check remaining number of elements to track
+    if nstep == 0 then break end
+    -- check for end of turn
+    if ei == ne then mflw.turn = mflw.turn+1 end
   end
 
-  return mtbl, mflw
+  return mtbl, mflw, ei
 end
 
 local survey = command 'survey' {
