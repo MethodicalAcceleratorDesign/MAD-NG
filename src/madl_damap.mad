@@ -33,9 +33,12 @@ local min, max in math
 local _C, gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix    in MAD
 local vname, vname_dup                                             in MAD.gphys
 
-local is_nil, is_number, is_integer, is_complex, is_string, is_table,
-      is_tpsa, is_ctpsa, is_matrix, is_cmatrix, is_indexable,
-      is_iterable, is_mappable                                     in MAD.typeid
+local is_nil, is_number, is_integer, is_complex, is_scalar,
+      is_table, is_string, is_indexable, is_iterable, is_mappable,
+      is_vector, is_cvector, isa_vector, is_matrix, is_cmatrix,
+      is_tpsa, is_ctpsa                                            in MAD.typeid
+
+local abs, floor in math
 
 -- types ----------------------------------------------------------------------o
 
@@ -274,8 +277,7 @@ function MR.inv (x, r)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  _C.mad_tpsa_minv(#x, x.__ta, r.__ta)
-  return r
+  _C.mad_tpsa_minv(#x, x.__ta, r.__ta) return r
 end
 
 function MC.inv (x, r)
@@ -283,8 +285,7 @@ function MC.inv (x, r)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_minv(#x, x.__ta, r.__ta)
-  return r
+  _C.mad_ctpsa_minv(#x, x.__ta, r.__ta) return r
 end
 
 -- partial map inverse on selected variables (rows)
@@ -296,8 +297,7 @@ function MR.pinv (x, sel, r)
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
   local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end -- TODO: by key
-  _C.mad_tpsa_pminv(#x, x.__ta, r.__ta, s)
-  return r
+  _C.mad_tpsa_pminv(#x, x.__ta, r.__ta, s) return r
 end
 
 function MC.pinv (x, sel, r)
@@ -307,8 +307,7 @@ function MC.pinv (x, sel, r)
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
   local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end -- TODO: by key
-  _C.mad_ctpsa_pminv(#x, x.__ta, r.__ta, s)
-  return r
+  _C.mad_ctpsa_pminv(#x, x.__ta, r.__ta, s) return r
 end
 
 -- map normal form
@@ -323,8 +322,7 @@ function MR.normal (x, r, a)
   assert(a.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
   assert(#a == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_tnormal(#x, x.__ta, r.__ta, a.__ta)
-  return r, a
+  _C.mad_ctpsa_tnormal(#x, x.__ta, r.__ta, a.__ta) return r, a
 end
 
 function MC.normal (x, r, a)
@@ -336,8 +334,7 @@ function MC.normal (x, r, a)
   assert(a.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
   assert(#a == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_normal(#x, x.__ta, r.__ta, a.__ta)
-  return r, a
+  _C.mad_ctpsa_normal(#x, x.__ta, r.__ta, a.__ta) return r, a
 end
 
 -- maps composition : r = x(y)
@@ -349,8 +346,7 @@ function MR.compose (x, y, r)
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  _C.mad_tpsa_compose(#x, x.__ta, #y, y.__ta, r.__ta)
-  return r
+  _C.mad_tpsa_compose(#x, x.__ta, #y, y.__ta, r.__ta) return r
 end
 
 function MC.compose (x, y, r)
@@ -360,31 +356,189 @@ function MC.compose (x, y, r)
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_compose(#x, x.__ta, #y, y.__ta, r.__ta)
-  return r
+  _C.mad_ctpsa_compose(#x, x.__ta, #y, y.__ta, r.__ta) return r
 end
 
 -- maps translation (special case of composition)
 
 function MR.translate (x, t, r)
-  local v = vector(#x):fill(t)
+  local v = is_vector(t) and t or vector(#x):fill(t)
   r = r or map_alloc(x.__td, x.__vn, MR)
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  _C.mad_tpsa_translate(#x, x.__ta, #v, v.data, r.__ta)
-  return r
+  _C.mad_tpsa_translate(#x, x.__ta, #v, v.data, r.__ta) return r
 end
 
 function MC.translate (x, t, r)
-  local v = cvector(#x):fill(t)
+  local v = is_cvector(t) and t or cvector(#x):fill(t)
   r = r or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_translate(#x, x.__ta, #v, v.data, r.__ta)
+  _C.mad_ctpsa_translate(#x, x.__ta, #v, v.data, r.__ta) return r
+end
+
+-- operators ------------------------------------------------------------------o
+
+-- add
+
+function MR.__radd_mat (t, x, r)
+  if t == 0
+  then return x:copy(r)                     -- [0] + dam => copy
+  else return x:translate(t,r)              -- vec + dam => dam + vec
+  end
+end
+
+function MR.__add (x, t, r)
+  if t == 0 then                            -- dam + [0] => copy
+    return x:copy(r)
+  elseif x == 0 then                        -- 0   + dam => copy
+    return t:copy(r)
+  elseif is_iterable(t) then                -- dam + trn
+    return x:translate(t,r)
+  elseif is_iterable(x) then                -- trn + dam => dam + trn
+    return t:translate(x,r)
+  end
+  error("invalid arguments (unsupported damap operation '+')")
+end
+
+function MC.__radd_cpx (t, x, r)
+  if t == 0
+  then return x:copy(r)                     -- 0   + cdam => copy
+  else return x:translate(t,r)              -- cpx + cdam => cdam + cpx
+  end
+end
+
+function MC.__radd_cmat (t, x, r)
+  if t == 0
+  then return x:copy(r)                     -- [0]  + cdam => copy
+  else return x:translate(t,r)              -- cvec + cdam => cdam + cvec
+  end
+end
+
+function MC.__add (x, t, r)
+  if t == 0 then                            -- cdam + [0]  => copy
+    return x:copy(r)
+  elseif x == 0 then                        -- 0    + cdam => copy
+    return t:copy(r)
+  elseif is_iterable(t) then                -- cdam + ctrn
+    return x:translate(t,r)
+  elseif is_iterable(x) then                -- ctrn + cdam => cdam + ctrn
+    return t:translate(x,r)
+  end
+  error("invalid arguments (unsupported damap operation '+')")
+end
+
+-- sub
+
+function MR.__sub (x, t, r)
+  if t == 0 then                            -- dam - 0 => copy
+    return x:copy(r)
+  elseif is_iterable(t) then                -- dam - trn
+    local v = is_vector(t) and t or vector(#x):fill(t)
+    return x:translate(-v,r)
+  end
+  error("invalid arguments (unsupported damap operation '-')")
+end
+
+function MC.__sub (x, t, r)
+  if t == 0 then                            -- cdam - 0 => copy
+    return x:copy(r)
+  elseif is_iterable(t) then                -- cdam - trn
+    local v = is_cvector(t) and t or cvector(#x):fill(t)
+    return x:translate(-v,r)
+  end
+  error("invalid arguments (unsupported damap operation '-')")
+end
+
+-- mul
+
+function MR.__mul (x, y, r)
+  if rawequal(x,0) then                     -- 0 * dam => copy
+    return y:copy(r)
+  elseif rawequal(x,1) then                 -- 1 * dam => copy
+    return y:copy(r)
+  elseif rawequal(y,0) then                 -- dam * 0 => copy
+    return x:copy(r)
+  elseif rawequal(y,1) then                 -- dam * 1 => copy
+    return x:copy(r)
+  elseif is_damap(y) then                   -- dam * dam => dam o dam
+    return x:compose(y,r)
+  end
+  error("invalid arguments (unsupported damap operation '*')")
+end
+
+function MC.__mul (x, y, r)
+  if rawequal(x,0) then                     -- 0 * cdam => copy
+    return y:copy(r)
+  elseif rawequal(x,1) then                 -- 1 * cdam => copy
+    return y:copy(r)
+  elseif rawequal(y,0) then                 -- cdam * 0 => copy
+    return x:copy(r)
+  elseif rawequal(y,1) then                 -- cdam * 1 => copy
+    return x:copy(r)
+  elseif is_cdamap(y) then                  -- cdam * cdam => cdam o cdam
+    return x:compose(y,r)
+  end
+  error("invalid arguments (unsupported damap operation '*')")
+end
+
+-- div
+
+function MR.__div (x, y, r)
+  if rawequal(x,1) then                     --   1 / dam => dam:inv()
+    return y:inv(r)
+  elseif rawequal(y,1) then                 -- dam / 1   => copy
+    return x:copy(r)
+  elseif is_damap(y) then                   -- dam / dam => dam o dam:inv()
+    return x:compose(y:inv(r),r)
+  end
+  error("invalid arguments (unsupported damap operation '/')")
+end
+
+function MC.__div (x, y, r)
+  if rawequal(x,1) then                     --   1 / cdam => cdam:inv()
+    return y:inv(r)
+  elseif rawequal(y,1) then                 -- cdam / 1   => copy
+    return x:copy(r)
+  elseif is_cdamap(y) then                  -- cdam / cdam => cdam o cdam:inv()
+    return x:compose(y:inv(r),r)
+  end
+  error("invalid arguments (unsupported damap operation '/')")
+end
+
+-- pow
+
+function MR.__pow (x, n, r)
+  assert(is_integer(n), "invalid argument #2 (integer expected)")
+  if n == 0 then                            -- dam^0  => same
+    return x:same()
+  elseif n == 1 then                        -- dam^1  => copy
+    return x:copy(r)
+  elseif n == 2 then                        -- dam^2  => dam o dam
+    return x:compose(x,r)
+  elseif n == -1 then                       -- dam^1  => dam:inv()
+    return x:inv(r)
+  elseif n == -2 then                       -- dam^-2 => dam:inv()^2
+    r = x:inv(r)
+    return r:compose(r,r)
+  end
+
+  local n, t = abs(n), n < 0 and x:inv() or x:copy()
+  r = r or x:same()
+
+  while true do
+    if n%2 == 1 then r = r:compose(t,r) end
+    n = floor(n/2)
+    if n == 0 then break end
+    t:compose(t,t)
+  end
+
   return r
 end
+
+MC.__pow = MR.__pow
 
 -- I/O ------------------------------------------------------------------------o
 
@@ -480,6 +634,12 @@ MR.__same, MR.__copy, MR.__len
 
 MC.  same, MC.  copy, MC.length =
 MC.__same, MC.__copy, MC.__len
+
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow
+
+MC.  add, MC.  sub, MC.  mul, MR.  div, MC.  pow =
+MC.__add, MC.__sub, MC.__mul, MR.__div, MC.__pow
 
 -- MR -> MC -------------------------------------------------------------------o
 
