@@ -118,39 +118,38 @@ end
 
 -- chrom option ---------------------------------------------------------------o
 
-local function twiss_chrom (self, trck0)
-    local chrom, deltap = self.chrom, self.deltap or trck0.deltap
-    local cdp = is_boolean(chrom) and chromdp  or chrom
-    local dps = is_number(deltap) and {deltap} or deltap
-    assert(is_number  (cdp), "invalid chrom attribute (number expected)")
-    assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
+local function chrom_dps (self)
+  local chrom, deltap = self.chrom, self.deltap or 0
+  local cdp = is_boolean(chrom) and chromdp  or chrom
+  local dps = is_number(deltap) and {deltap} or deltap
+  assert(is_number  (cdp), "invalid chrom attribute (number expected)")
+  assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
 
-    -- double the list of deltap
-    local ndp  = #dps
-    local cdps = table.new(2*ndp,1)
-    for i,v in ipairs(dps) do
-      cdps[i], cdps[i+ndp] = v, v+cdp
-    end
+  -- double the list of deltap
+  local ndp  = #dps
+  local cdps = table.new(2*ndp,0)
+  for i,v in ipairs(dps) do
+    cdps[i], cdps[i+ndp] = v, v+cdp
+  end
 
-    -- update deltap, keep track of initial #deltap
-    trck0.deltap, cdps.ndp = cdps, ndp
+  -- update self
+  self.deltap = cdps
 end
 
 -- close orbit ----------------------------------------------------------------o
 
-local function twiss_cofind (self, mflw0)
+local function twiss_cofind (self)
+  local X0
 
-  -- collect X0s that would need a closed orbit search
-  local npar = mflw0.npar
-  local j, X0 = 1, table.new(npar,0)
-  for i=1,npar do
-    if mflw0[i].status == 'Xset' then
-      X0[j], j = mflw0[i], j+1
+  -- collect initial orbits to start closed orbit search
+  if not is_nil(self.X0) then
+    local sX0 = self.X0
+    if not is_mappable(sX0[1]) then sX0 = {sX0} end
+    X0 = table.new(#sX0,0)
+    for i=1,#sX0 do
+      X0[i] = is_damap(sX0[i]) and sX0[i]:get0() or sX0[i]
     end
-  end
-
-  -- no particles to setup
-  if j == 1 then return end
+ end
 
   -- prepare cofind template
   local twcofind = cofind 'twcofind' { exec=false } :copy_variables(self)
@@ -158,8 +157,6 @@ local function twiss_cofind (self, mflw0)
   -- retrieve closed orbit(s)
   local mapdef, mapdump = self.comapdef, self.comapdump
   local _, mflw = twcofind { X0=X0, save=false, mapdef=mapdef, mapdump=mapdump }
-
-  -- TODO: for high order normal form, one needs to track again with user mapdef
 
   -- save results back to mflw0
   local nlos = 0
@@ -223,7 +220,10 @@ end
 
 local function twiss_track0 (self, X0, R0, ofun0)
   local mapdef, save in self
-  local atsave = self:var_raw 'atsave' -- prevent evaluation
+  local atsave = self:var_raw 'atsave' or fnone -- prevent evaluation
+
+  -- prepare track template
+  local trck0 = track 'track0' { exec=false } :copy_variables(self)
 
   -- wrap atsave
   if save and atsave ~= ffalse then
@@ -231,14 +231,16 @@ local function twiss_track0 (self, X0, R0, ofun0)
                 fill or achain(fill, atsave)
   end
 
-  -- prepare track template
-  local trck0 = track 'track0' { exec=false } :copy_variables(self)
-
   -- prepare track command
   local mtbl, mflw = trck0 'twiss' {
-    X0=X0, R0=R0, atsave=atsave, nstep=0, deltap=0, -- init only
+    X0=X0, R0=R0, deltap=0, atsave=atsave, nstep=0, -- init only
     mapdef=is_true(mapdef) and {xy=2} or mapdef,
   }
+
+!  print("DUMP MAPS")
+!  for i=1,#mflw do
+!    mflw[i]:print()
+!  end
 
   -- extend mflw and mtbl
   if save then
@@ -285,23 +287,24 @@ end
 local r4 = 1..4
 
 local function make_mflow (self)
-  local chrom, coupling, cofind, save in self
+  local X0, chrom, coupling, cofind, save in self
 
-  -- prepare track template
-  local trck0 = track 'twtrack' { exec=false } :copy_variables(self)
+  -- double the deltaps attached to self (TODO: remove chrom when HO NF ready)
+  if chrom and save then chrom_dps(self) end
 
-  -- double the deltaps
-  if chrom and save then twiss_chrom(self, trck0) end
+  -- search for closed orbits.
+  if cofind then X0 = twiss_cofind(self) end
 
-  -- let's track build initial damaps (e.g. handle deltap and check attributes)
-  local _, mflw0 = trck0 { nstep=0, save=false, mapdef=false }
+  -- prepare twiss template
+  local twtrk0 = track 'twtrack' { exec=false } :copy_variables(self)
+
+
+  twiss_damap (self, mflw0)
+
+  -- let's track handling deltap and check attributes
+  local mtbl, mflw = twtrk0 { nstep=0 }
+
   local npar = mflw0.npar
-
-  -- search for missing closed orbit or compute damap (doesn't change npar).
-  if cofind
-  then twiss_cofind(self, mflw0)
-  else twiss_damap (self, mflw0)
-  end
 
   -- extract normal forms (TODO: high order normal form)
   local X, A, ofun0 = table.new(npar,0), table.new(npar,0), table.new(npar,0)
@@ -329,13 +332,13 @@ local function make_mflow (self)
 
     -- back to 6D (TODO: check 5D...)
     if rnk == 4 then
---      local fmt = option.format
---      option.format = "% -.8e"
---      R6:print('R6') ; Ai:print('Ai')
-      Ai = matrix(6):eye():setsub(r4,r4,Ai) !:setsub(r4,6,R6)
+      local fmt = option.format
+      option.format = "% -.8e"
+      R6:print('R6') ; Ai:print('Ai')
+      Ai = matrix(6):eye():setsub(r4,r4,Ai) -- TODO 5D :setsub(r4,6,R6)
       Xi[5] = 0 -- reset time
---      Ai:print('Ai') ; Xi:print('Xi')
---      option.format = fmt
+      Ai:print('Ai') ; Xi:print('Xi')
+      option.format = fmt
     end
 
     X[i], A[i], ofun0[i] = Xi, Ai, ofi
@@ -347,7 +350,7 @@ end
 
 -- twiss command --------------------------------------------------------------o
 
-local _id = {} -- identity
+local _id = {} -- identity (unique)
 
 local function exec (self)
   local mflw, mtbl, ei
@@ -357,12 +360,13 @@ local function exec (self)
     assert(self.mflow.__twss == _id, "invalid mflow (twiss mflow expected)")
     mflw = self.mflow
   else
-    mflw = make_mflow(self) -- the real work is done here.
+    mflw = make_mflow(self) -- the real work is done here!
     mflw.__twss = _id
   end
 
-  -- track normal form(s)
-  mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep=self.nstep }
+  -- track the normal form(s)
+  mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep  =self.nstep,
+                                                 mapdump=self.mapdump }
 
   if ei == nil and not is_nil(mtbl) then
     fill_sum(mflw)
@@ -381,6 +385,7 @@ local twiss = command 'twiss' {
 
   s0=nil,            -- initial s                                         (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
+  O0=nil,            -- initial reference orbit where X0s are expressed   (trck)
   R0=nil,            -- initial R matrix (companion of X0)                (trck)
   beta0=nil,         -- initial beta0 block to build uncoupled R0         (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
@@ -397,14 +402,14 @@ local twiss = command 'twiss' {
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
-  radiate=false,     -- radiate at slices (NYI)                           (trck)
+  radiate=nil,       -- radiate at slices (NYI)                           (trck)
   misalign=nil,      -- consider misalignment errors                      (trck)
 
   save=true,         -- create mtable and save results                    (mtbl)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   savesel=nil,       -- save selector (predicate)                         (mtbl)
   relative=nil,      -- save length of slices instead from element start  (mtbl)
-  observe=false,     -- save only in observed elements (every n turns)    (mtbl)
+  observe=false,     -- save after all elements                           (mtbl)
   coupling=false,    -- save optical functions for non-diagonal modes     (mtbl)
   chrom=false,       -- compute chromaticity by finite difference         (twss)
 
@@ -414,7 +419,7 @@ local twiss = command 'twiss' {
   atslice=nil,       -- action called after each element slices           (trck)
   atexit=nil,        -- action called when exiting an element             (trck)
   ataper=nil,        -- action called after checking for aperture         (trck)
-  atsave=fnone,      -- action called after saving in mtable              (trck)
+  atsave=nil,        -- action called after saving in mtable              (trck)
 
   cofind=true,       -- search for closed orbit                           (cofn)
   cotol=nil,         -- closed orbit tolerance                            (cofn)
@@ -422,7 +427,7 @@ local twiss = command 'twiss' {
   codiff=nil,        -- finite differences step for jacobian              (cofn)
   codptol=nil,       -- 4D vs 6D dp tolerance                             (cofn)
   comethod=nil,      -- default optimizer                                 (cofn)
-  comapdef=true,     -- mapdef for cofind                                 (cofn)
+  comapdef=nil,      -- mapdef for cofind                                 (cofn)
   comapdump=nil,     -- dump X and R after each element                   (cofn)
   cowarn=nil,        -- commute errors into warnings                      (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)

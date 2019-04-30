@@ -172,7 +172,7 @@ local function cofind_jacob (self, track)
   errf("cofind: closed orbit did not converge in %d iterations", coiter)
 
   -- case errf is warn
-  return X, R, 0, "counfound", coiter
+  return X, R, 0, "unstable", coiter
 end
 
 -- cofind using map -----------------------------------------------------------o
@@ -183,6 +183,8 @@ X0 | initial                     |    => mflw0 | cofound/singular/lost by id |
    +-----------------------------+             +-----------------------------+
 --]]
 
+-- TODO: ? simplify the code using new mflw:ireset()
+
 local function cofind_map (self, track)
   local cotol, coiter, codptol, comethod in self
   local costep = method[comethod]
@@ -192,39 +194,30 @@ local function cofind_map (self, track)
   local errf = self.cowarn and warn or errorf
 
   -- let's track build initial damaps (e.g. handle deltap and check attributes)
-  local _, mflw0 = track { nstep=0, save=false }
-  local mflw, npar, mtbl = mflw0, mflw0.npar
+  local _, mflw = track { nstep=0, save=false, mapdump=false }
+  local npar, X0 = mflw.npar, table.new(mflw.npar)
 
-  -- keep track of initial indexes
-  local idx0 = table.new(npar,0)
-  for i=1,npar do idx0[i] = i end
+  -- save current orbits
+  for i=1,npar do X0 = mflw[i]:get0() end
 
-  -- build final translation
+  -- save final translation
   local X1 = par2vec(vector(6), self.X1)
 
   for itr=1,coiter do
     -- track damaps
-    mtbl, mflw = track { X0=mflw, npart=npar, deltap=0 }
-    npar = mflw.npar
+    track { mflw=mflw, mapdump=false }
 
     -- lost particles (if any)
-    local nlos = mflw.tpar-npar
-    if nlos ~= 0 then
-      warn("cofind: lost %d particles at iteration %d", nlos, itr)
-      for i=npar+1,npar+nlos do
-        local m  = mflw[i]
-        local i0 = idx0[m.id]
-        mflw0[i0], m.id, m.coiter, mflw[i] = m, i0, itr, nil
-      end
+    if npar ~= mflw.npar then
+      warn("cofind: lost %d particles at iteration %d", npar-mflw.npar, itr)
+      -- save iteration number
+      for i=mflw.npar+1,npar do mflw[i].coiter = itr end
     end
 
     -- update orbits
-    local i = 1
-    while i <= npar do
+    for i=1,mflw.npar do
       -- retrieve orbit and jacobian
       local m  = mflw[i]
-      local i0 = idx0[m.id]
-      local X0 = mflw0[i0]:get0()
       local X, R = m:get0(), m:get1()
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
@@ -248,10 +241,14 @@ local function cofind_map (self, track)
       end
 
       mflw0[i0], m.id = m, i0
+
     end
 
     -- all damaps have been processed
     if npar == 0 then return mtbl, mflw0 end
+
+    npar = mflw.npar
+    mflw:ireset()
   end
 
   errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
@@ -260,7 +257,7 @@ local function cofind_map (self, track)
   for i=1,npar do
     local m  = mflw[i]
     local i0 = idx0[m.id]
-    mflw0[i0], m.id, m.coiter, m.status = m, i0, coiter, "counfound"
+    mflw0[i0], m.id, m.coiter, m.status = m, i0, coiter, "unstable"
   end
   return mtbl, mflw0
 end
@@ -277,15 +274,27 @@ local function exec (self)
   assert (is_boolean(cowarn) , "invalid cowarn (boolean expected)")
 
   -- prepare track template
-  local trck0 = track 'cotrack' { exec=false } :copy_variables(self)
+  local cotrack = track 'cotrack' { exec=false } :copy_variables(self)
+
+  -- collect/extract initial orbits for closed orbit search
+  local sX0 = cotrack.X0
+  assert(is_mappable(sX0), "invalid X0 (mappable expected)")
+  if not is_mappable(sX0[1]) then sX0 = {sX0} end
+  local X0 = table.new(#sX0,0)
+  for i=1,#sX0 do
+    X0[i] = is_damap(sX0[i]) and sX0[i]:get0() or sX0[i]
+  end
+
+  -- setup initial orbits
+  cotrack.X0 = X0
 
   -- setup map order
-  trck0.mapdef = is_true(mapdef) and {xy=1} or mapdef
+  cotrack.mapdef = is_true(mapdef) and {xy=1} or mapdef
 
   -- search closed orbit using Newton algorithm
   if mapdef
-  then return cofind_map  (self, trck0) -- use damap
-  else return cofind_jacob(self, trck0) -- use jacobian
+  then return cofind_map  (self, cotrack) -- use damap
+  else return cofind_jacob(self, cotrack) -- use jacobian
   end
 end
 
@@ -299,11 +308,12 @@ local cofind = command 'cofind' {
 
   s0=nil,            -- initial s                                         (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
+  O0=nil,            -- initial reference orbit where X0s are expressed   (trck)
   R0=nil,            -- initial R matrix (compagnion of X0)               (trck)
   beta0=nil,         -- initial beta0 block to build uncoupled R0         (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
-  mapdef=nil,        -- setup for damap (true => {xy=1})                  (trck)
+  mapdef=true,       -- setup for damap (true => {xy=1})                  (trck)
   mapsave=nil,       -- save damap in the mtable                          (trck)
   mapdump=nil,       -- dump X and R after each element                   (trck)
 
@@ -318,7 +328,7 @@ local cofind = command 'cofind' {
   radiate=nil,       -- radiate at slices (NYI)                           (trck)
   misalign=nil,      -- consider misalignment errors                      (trck)
 
-  save=false,        -- create mtable and save results                    (trck)
+  save=false,        -- create mtable and save results of last turn       (trck)
   title=nil,         -- title of mtable (default seq.name)                (trck)
   savesel=nil,       -- save selector (predicate)                         (trck)
   relative=nil,      -- save length of slices instead from element start  (trck)

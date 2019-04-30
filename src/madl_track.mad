@@ -855,8 +855,9 @@ local function make_mflow (self)
   assertf(DKD[method], "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
-  local s0, X0, R0, beta0, npart, mapdef, mapsave in self
+  local s0, O0, X0, R0, beta0, npart, mapdef, mapsave in self
   assert(is_number  (s0)    , "invalid s0 (number expected)")
+  assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
@@ -867,6 +868,14 @@ local function make_mflow (self)
   elseif is_nil(R0) and is_nil(beta0) then
     R0, beta0 = {}, {}
   end
+
+  -- reference orbit
+  local x0  = O0[1] or O0.x  or 0
+  local px0 = O0[2] or O0.px or 0
+  local y0  = O0[3] or O0.y  or 0
+  local py0 = O0[4] or O0.py or 0
+  local t0  = O0[5] or O0.t  or 0
+  local pt0 = O0[6] or O0.pt or 0
 
   -- create mflw
   local npar = min(npart or 1e9, #X0)
@@ -882,15 +891,13 @@ local function make_mflow (self)
       local dpt = beam and dp2pt(dp, beam.beta) or dpt
       local ii = (idp-1)*npar + i
 
---      print('*** dp=', dp, 'dpt=', dpt)
-
       if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
         mflw[ii] = X0i:copy()
         mflw[ii].id = ii
         mflw[ii].beam = beam
         mflw[ii].status = 'Mset'
         mflw[ii].nosave = nosave
-        if dpt ~= 0 then mflw[ii]:translate{0,0,0,0,0,dpt} end
+        if dpt ~= 0 then mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii]) end
       elseif is_mappable(X0i) then -- access by indexes first for vectors
         local x  = X0i[1] or X0i.x  or 0
         local px = X0i[2] or X0i.px or 0
@@ -904,13 +911,13 @@ local function make_mflow (self)
           mflw[ii].beam = beam
           mflw[ii].status = 'Rset'
           mflw[ii].nosave = nosave
-          mflw[ii]:setv{x, px, y, py, t, pt}
+          mflw[ii]:setv{x,px,y,py,t,pt}
           if        R0[i] then mflw[ii]:set1(R0[i])
           elseif beta0[i] then mflw[ii]:set1((betablk(beta0[i]))) end
-          if dpt ~= 0 then mflw[ii]:translate{0,0,0,0,0,dpt} end
+          if dpt ~= 0 then mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii]) end
         else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {id=ii, x=x, px=px, y=y, py=py, t=t, pt=pt+dpt,
-                      beam=beam, status='Xset', nosave=nosave, }
+          mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+dpt+pt,
+                      id=ii, beam=beam, status='Xset', nosave=nosave, }
         end
       else
         errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
@@ -938,7 +945,6 @@ local function make_mflow (self)
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
-  mflw.deltap=deltap         -- save deltaps
 
   mflw.save=save             -- save data
   mflw.savesel=savesel       -- save selector
@@ -1069,6 +1075,7 @@ local track = command 'track' {
 
   s0=0,             -- initial s                                          (mflw)
   X0={0,0,0,0,0,0}, -- initial X coordinates (or damap, or list of)       (mflw)
+  O0={0,0,0,0,0,0}, -- initial reference orbit where X0s are expressed    (mflw)
   R0=nil,           -- initial R matrix (compagnion of X0 for damap)      (mflw)
   beta0=nil,        -- initial beta0 block to build uncoupled R0          (mflw)
   deltap=0,         -- initial deltap(s)                                  (mflw)
@@ -1106,7 +1113,7 @@ local track = command 'track' {
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'R0', 'beta0', 'deltap',
+    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'R0', 'beta0',
     'mapdef', 'mapsave', 'mapdump', 'nturn', 'nstep', 'npart', 'implicit',
     'model', 'method', 'totalpath', 'radiate', 'misalign', 'save', 'title',
     'relative', 'observe', 'usrdef',
