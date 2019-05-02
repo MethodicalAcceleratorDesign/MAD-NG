@@ -178,8 +178,8 @@ local function trackelm (elm, m, track, thick, thin, fringe)
 end
 
 local function tracksub (elm, m, track, thick, thin, fringe)
-  local sdir, tlt in m
-  local mis  = m.misalign and misalign or fnone
+  local sdir, tlt, __sdat in m
+  local mis = m.misalign and misalign or fnone
   local rot = abs(tlt) >= minang and srotation or fnone
 
   mis   (elm, m, sdir)
@@ -190,13 +190,14 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     local at, lw = 0
     for i=1,#elm do
       at, lw = elm[i].at, elm[i].at - at
-      if abs(lw) >= minlen then
+      if abs(lw) >= minlen then -- drift
         track(elm, m, lw, thick, thin)
       end
-      elm[i]:track(m.__sdat)
+      __sdat.clw = at
+      elm[i]:track(__sdat)
     end
     lw = 1 - at
-    if abs(lw) >= minlen then
+    if abs(lw) >= minlen then  -- last drift
       track(elm, m, lw, thick, thin)
     end
 
@@ -204,13 +205,14 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     local at, lw = 1
     for i=#elm,1,-1 do
       at, lw = elm[i].at, at - elm[i].at
-      if abs(lw) >= minlen then
+      if abs(lw) >= minlen then -- drift
         track(elm, m, lw, thick, thin)
       end
-      elm[i]:track(m.__sdat)
+      __sdat.clw = at
+      elm[i]:track(__sdat)
     end
     lw = at
-    if abs(lw) >= minlen then
+    if abs(lw) >= minlen then -- first drift
       track(elm, m, lw, thick, thin)
     end
   end
@@ -658,19 +660,18 @@ local function save_dat (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local ds, eidx, wsl, sdir, tdir, spos, turn, mtbl, mapsave in mflw
+  local ds, eidx, clw, sdir, tdir, spos, turn, mtbl, mapsave in mflw
 
-  local lw = islc<0 and -1-islc or wsl
+  local lw = islc<0 and -1-islc or clw
   local dsw = ds*lw
 
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
   for i=1,mflw.npar do
-    local m = mflw[i]
-    if m.nosave then goto continue end
+    if mflw[i].nosave then goto continue end
 
+    local m, M = mflw[i]
     local id, x, px, y, py, t, pt in m
-    local M
     if is_damap(m) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
       M = mapsave and (mapsave == 1 and m:get1() or m:copy())
@@ -939,8 +940,8 @@ local function make_mflow (self)
   mflw.edir=edir             -- current element direction
 
   mflw.s0=s0                 -- initial s-position (i.e. offset)
-  mflw.ds=0                  -- s-length of results (signed)
-  mflw.spos=0                -- s-position of results (signed)
+  mflw.ds=0                  -- current element s-length (signed)
+  mflw.spos=0                -- current element s-position (signed)
   mflw.eidx=init             -- current element index
   mflw.turn=1                -- current turn index
 
@@ -983,6 +984,7 @@ local function make_mflow (self)
   -- for processing elements
   mflw.__edat = setmetatable({
     el=0,                    -- current element length
+    clw=0,                   -- current element cumulated length weights
     rho=0,                   -- current element radius
     ang=0,                   -- current element angle
     e1=0,                    -- current element pole face angle
@@ -994,7 +996,6 @@ local function make_mflow (self)
     ks=0,                    -- current element strength ks
     tlt=0,                   -- current element tilt angle
     nsl=0,                   -- current element number of slices
-    wsl=0,                   -- current element slice cumulated weights
     nmul=0,                  -- current element number of multipoles
     knl=table.new(15,0),     -- current element multipoles
     ksl=table.new(15,0),     -- current element multipoles skew
@@ -1005,6 +1006,7 @@ local function make_mflow (self)
 
   -- for processing (thin) subelements
   mflw.__sdat = setmetatable({
+    clw=0,                   -- current subelement cumulated length weights
     tlt=0,                   -- current subelement tilt angle
     nmul=0,                  -- current subelement number of multipoles
     knl=table.new(15,0),     -- current subelement multipoles
@@ -1050,16 +1052,16 @@ local function exec (self)
   if option.debug >= 2 then trace_action(mflw) end
 
   -- retrieve information
-  local s0, eidx, sequ, atentry, atexit in mflw
-  local iter, state in mflw.__sitr
+  local s0, eidx, sequ, atentry, atexit, __sitr, __edat in mflw
+  local iter, state in __sitr
   local ne = #sequ
 
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
-    mflw.eidx, mflw.spos, mflw.ds = ei, s0+spos, ds
-    atentry  (elm, mflw.__edat, 0, -1)
-    elm:track(     mflw.__edat       )
-    atexit   (elm, mflw.__edat, 0, -2)
+    mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
+    atentry  (elm, __edat, 0, -1)
+    elm:track(     __edat       )
+    atexit   (elm, __edat, 0, -2)
     mflw:dump(elm)
     nstep = nstep-1
 

@@ -29,7 +29,7 @@ local M = {}
 -- locals ---------------------------------------------------------------------o
 
 local abs, max, sin, cos in math
-local is_tpsa            in MAD.typeid
+local is_damap           in MAD.typeid
 local errorf             in MAD.utility
 local minang             in MAD.constant
 local is_implicit        in MAD.element.drift
@@ -57,25 +57,23 @@ local apmodel = {
 
 -- aperture check -------------------------------------------------------------o
 
-local function lostpar (i, m, lw, islc)
-  -- take care of mflw wrappers (e.g. __edat in track)
-  m = getmetatable(m).__index
-
-  local npar, wsl, spos, ds, turn in m
-
-  local lw = islc<0 and -1-islc or wsl
-  local dsw = ds*lw
+local function lostpar (idx, mflw, _, islc)
+  local npar, clw, spos, ds, turn in mflw
+  local lw = islc<0 and -1-islc or clw
+  local m = mflw[idx]
 
   -- information saved in lost particle/damap
-  m[i].spos, m[i].ds, m[i].turn, m[i].status = spos+dsw, dsw, turn, "lost"
-  m[i], m[npar] = m[npar], m[i] -- swap with last tracked particle
-  m.npar = npar-1
-  return m.npar
+  m.spos, m.turn, m.status = spos+ds*lw, turn, "lost"
+
+  -- take care of mflw wrappers (e.g. __edat and __sdat in track)
+  m = getmetatable(mflw).__index
+  -- swap with last tracked particle/damap
+  m[idx], m[m.npar], m.npar = m[m.npar], m[idx], m.npar-1
 end
 
 local function checkaper (chkap)
-  return \ap, m, lw, islc =>
-    local npar, tdir, tlt in m
+  return function (ap, mflw, lw, islc)
+    local tdir, tlt in mflw
     local tilt, offset in ap
 
     local ang, ca, sa = (tilt or 0)*tdir - tlt
@@ -91,11 +89,11 @@ local function checkaper (chkap)
       dx, dy = offset[1]*tdir, offset[2]*tdir
     end
 
-    local i = 1
-    while i <= npar do
-      local x, y in m[i]
+    local i, n = 1, mflw.npar
+    while i <= n do
+      local x, y in mflw[i]
 
-      if is_tpsa(x) then -- check for tpsa
+      if is_damap(mflw[i]) then
         x, y = x:get0(), y:get0()
       end
 
@@ -104,11 +102,13 @@ local function checkaper (chkap)
       local ny = abs(-sa*x + ca*y - dy)
 
       if chkap(nx,ny,ap) then
-        npar = lostpar(i, m, lw, islc)
+        lostpar(i, mflw, lw, islc)
+        n = n - 1
       else
         i = i + 1
       end
     end
+
     return true
   end
 end
@@ -127,9 +127,9 @@ local apcheck = setmetatable({
 
 for k,v in pairs(apcheck) do M[k] = v end
 
-function M.apercheck (elm, m, lw, islc)
+function M.apercheck (elm, mflw, lw, islc)
   local aperture in elm
-  return apcheck[aperture.kind](aperture, m, lw, islc)
+  return apcheck[aperture.kind](aperture, mflw, lw, islc)
 end
 
 function M.apersave (mflw)
