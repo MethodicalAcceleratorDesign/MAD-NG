@@ -177,14 +177,6 @@ end
 
 -- cofind using map -----------------------------------------------------------o
 
---[[                       npart or #X0                                     npar
-   +-----------------------------+             +-----------------------------+
-X0 | initial                     |    => mflw0 | cofound/singular/lost by id |
-   +-----------------------------+             +-----------------------------+
---]]
-
--- TODO: ? simplify the code using new mflw:ireset()
-
 local function cofind_map (self, track)
   local cotol, coiter, codptol, comethod in self
   local costep = method[comethod]
@@ -195,10 +187,13 @@ local function cofind_map (self, track)
 
   -- let's track build initial damaps (e.g. handle deltap and check attributes)
   local _, mflw = track { nstep=0, save=false, mapdump=false }
-  local npar, X0 = mflw.npar, table.new(mflw.npar)
 
-  -- save current orbits
-  for i=1,npar do X0 = mflw[i]:get0() end
+  -- save current orbits, clear damaps
+  local npar, X0 = mflw.npar, table.new(mflw.npar)
+  for i=1,npar do
+    X0[i] = mflw[i]:get0() --  get orbit
+    mflw[i]:setv(X0[i])    -- (set orbit), order 1 to I, higher orders to 0
+  end
 
   -- save final translation
   local X1 = par2vec(vector(6), self.X1)
@@ -264,6 +259,9 @@ end
 
 -- cofind command -------------------------------------------------------------o
 
+-- input  status: Xset, Rset, Mset (from track)
+-- output status: stable, unstable, lost, singular.
+
 local function exec (self)
   local mapdef, cotol, coiter, codiff, codptol, comethod, cowarn in self
   assertf(is_positive(cotol ), "invalid cotol %.15g (positive number expected)" , cotol )
@@ -291,7 +289,7 @@ local function exec (self)
   -- setup map order
   cotrack.mapdef = is_true(mapdef) and {xy=1} or mapdef
 
-  -- search closed orbit using Newton algorithm
+  -- search closed orbit
   if mapdef
   then return cofind_map  (self, cotrack) -- use damap
   else return cofind_jacob(self, cotrack) -- use jacobian
@@ -331,7 +329,6 @@ local cofind = command 'cofind' {
   save=false,        -- create mtable and save results of last turn       (trck)
   title=nil,         -- title of mtable (default seq.name)                (trck)
   savesel=nil,       -- save selector (predicate)                         (trck)
-  relative=nil,      -- save length of slices instead from element start  (trck)
   observe=nil,       -- save only in observed elements (every n turns)    (trck)
 
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
@@ -346,7 +343,7 @@ local cofind = command 'cofind' {
   coiter=20,         -- maximum number of iteration                       (cofn)
   codiff=1e-10,      -- finite differences step for jacobian              (cofn)
   codptol=1e-12,     -- 4D vs 6D dp tolerance                             (cofn)
-  comethod='newton', -- default optimizer                                 (cofn)
+  comethod='newton', -- default algorithm                                 (cofn)
   cowarn=false,      -- commute errors into warnings                      (cofn)
   X1={0,0,0,0,0,0},  -- optional final coordinates translation            (cofn)
 

@@ -171,16 +171,16 @@ local function save_dat (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local A, V, W, el, ang, eidx, tlt, sdir, tdir, spos, turn, mtbl,
-        relative, mapsave in mflw
+  local A, V, W, ds, ang, eidx, wsl, tlt, sdir, tdir, spos, turn,
+        mtbl, mapsave in mflw
 
-  local lw = relative and lw*islc or islc<0 and -1-islc or lw*islc
-  local elw = el*lw
+  local lw = islc<0 and -1-islc or wsl
+  local dsw = ds*lw
 
   local x, y, z = V[1], V[2], V[3]
   local phi, the, psi = W:torotzxy()
   the, psi = rangle(the, A[1]), rangle(psi, A[3])
-  A:fill{the, phi, psi}
+  A[1], A[2], A[3] = the, phi, psi
 
   W = mapsave and W:copy()
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
@@ -200,11 +200,11 @@ local function save_obs (elm, mflw, lw, islc)
 end
 
 local header = {
-  'direction', 'observe', 'implicit', 'relative', 'misalign',
+  'direction', 'observe', 'implicit', 'misalign',
 }
 
 local function make_mtable (self, obs)
-  local title, range, nturn, dir, implicit, relative, misalign, mapsave in self
+  local title, range, nturn, dir, implicit, misalign, mapsave in self
   local sequ, nrow = self.sequence
 
   if obs > 0 then
@@ -216,8 +216,8 @@ local function make_mtable (self, obs)
   -- keep order!
   return mtable(self.__id, {
     name=self.name, title=title or sequ.name, type='survey', header=header,
-    direction=dir, observe=obs, implicit=implicit, relative=relative,
-    misalign=misalign, reserve=nrow,
+    direction=dir, observe=obs, implicit=implicit, misalign=misalign,
+    reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt',
     'slc', 'turn','tdir',   -- t-direction of the tracking: sdir * seq.dir
@@ -272,11 +272,10 @@ local function make_mflow (self)
   local iter, state, init = sequ:siter(range, nturn, dir)
 
   -- saving data, build mtable
-  local save, observe, implicit, relative in self
+  local save, observe, implicit in self
   if is_boolean(observe) then observe = observe and 1 or 0 end
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
-  assert(is_boolean(relative), "invalid relative (boolean expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
 
@@ -373,7 +372,6 @@ local function make_mflow (self)
   mflw.save=save             -- save data
   mflw.savesel=savesel       -- save selector
   mflw.observe=observe       -- save observed elements every n turns
-  mflw.relative=relative     -- save length of slices
 
   mflw.atentry=atentry       -- action when entering an element
   mflw.atslice=atslice       -- action after each element slices
@@ -403,6 +401,7 @@ local function make_mflow (self)
     ang=0,                   -- current element angle
     tlt=0,                   -- current element tilt angle
     nsl=0,                   -- current element number of slices
+    wsl=0,                   -- current element slice cumulated weights
   }, {__index=mflw})
 
   return mflw
@@ -446,7 +445,7 @@ local function exec (self)
 
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
-    mflw.eidx = ei ; mflw.spos = s0+spos ; mflw.ds = ds
+    mflw.eidx, mflw.spos, mflw.ds = ei, s0+spos, ds
     atentry   (elm, mflw.__edat, 0, -1)
     elm:survey(     mflw.__edat       )
     atexit    (elm, mflw.__edat, 0, -2)
@@ -484,7 +483,6 @@ local survey = command 'survey' {
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   savesel=fnone,    -- save selector (predicate)                          (mtbl)
-  relative=false,   -- save length of slices instead from element start   (mtbl)
   observe=false,    -- save only in observed elements (every n turns)     (mtbl)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
@@ -499,9 +497,9 @@ local survey = command 'survey' {
 
   __attr = {        -- list of all setup attributes
     'sequence', 'range', 'dir', 's0', 'X0', 'A0', 'W0', 'mapsave', 'mapdump',
-    'nturn', 'nstep', 'implicit', 'misalign', 'save', 'title', 'relative',
-    'observe', 'usrdef',
-    noeval = {'atentry', 'atslice', 'atexit', 'atsave', 'savesel', 'nslice'},
+    'nturn', 'nstep', 'implicit', 'misalign', 'save', 'title', 'observe',
+    'usrdef',
+    noeval = {'atentry', 'atslice', 'atexit', 'atsave', 'nslice', 'savesel'},
   }
 } :set_readonly()   -- reference survey command is readonly
 
