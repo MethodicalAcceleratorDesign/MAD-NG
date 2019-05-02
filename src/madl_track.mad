@@ -855,10 +855,10 @@ local function make_mflow (self)
   assertf(DKD[method], "invalid integration method '%s'", method)
 
   -- retrieve initial conditions
-  local s0, O0, X0, R0, beta0, npart, mapdef, mapsave in self
+  local s0, X0, O0, R0, beta0, npart, mapdef, mapsave in self
   assert(is_number  (s0)    , "invalid s0 (number expected)")
-  assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
+  assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
   assert(is_boolean(mapsave) or mapsave == 1
@@ -869,6 +869,10 @@ local function make_mflow (self)
     R0, beta0 = {}, {}
   end
 
+  -- create mflw
+  local npar = min(npart or 1e9, #X0)
+  local mflw = table.new(npar*ndp,50)
+
   -- reference orbit
   local x0  = O0[1] or O0.x  or 0
   local px0 = O0[2] or O0.px or 0
@@ -876,10 +880,7 @@ local function make_mflow (self)
   local py0 = O0[4] or O0.py or 0
   local t0  = O0[5] or O0.t  or 0
   local pt0 = O0[6] or O0.pt or 0
-
-  -- create mflw
-  local npar = min(npart or 1e9, #X0)
-  local mflw = table.new(npar*ndp,50)
+  local ro0 = abs(x0)+abs(px0)+abs(y0)+abs(py0)+abs(t0)+abs(pt0)
 
   -- precedence of initial conditions
   for idp,dp in ipairs(deltap) do
@@ -897,7 +898,9 @@ local function make_mflow (self)
         mflw[ii].beam = beam
         mflw[ii].status = 'Mset'
         mflw[ii].nosave = nosave
-        if dpt ~= 0 then mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii]) end
+        if ro0 ~= 0 or dpt ~= 0 then
+          mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii])
+        end
       elseif is_mappable(X0i) then -- access by indexes first for vectors
         local x  = X0i[1] or X0i.x  or 0
         local px = X0i[2] or X0i.px or 0
@@ -914,7 +917,9 @@ local function make_mflow (self)
           mflw[ii]:setv{x,px,y,py,t,pt}
           if        R0[i] then mflw[ii]:set1(R0[i])
           elseif beta0[i] then mflw[ii]:set1((betablk(beta0[i]))) end
-          if dpt ~= 0 then mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii]) end
+          if ro0 ~= 0 or dpt ~= 0 then
+            mflw[ii]:translate({x0,px0,y0,py0,t0,pt0+dpt},mflw[ii])
+          end
         else -- copy: need a table for key access (e.g. vs. vector)
           mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+dpt+pt,
                       id=ii, beam=beam, status='Xset', nosave=nosave, }
@@ -1073,11 +1078,11 @@ local track = command 'track' {
   range=nil,        -- range of tracking                                  (iter)
   dir=1,            -- s-direction of tracking (1 or -1)                  (mflw)
 
-  s0=0,             -- initial s                                          (mflw)
+  s0=0,             -- initial s (offset)                                 (mflw)
   X0={0,0,0,0,0,0}, -- initial X coordinates (or damap, or list of)       (mflw)
-  O0={0,0,0,0,0,0}, -- initial reference orbit where X0s are expressed    (mflw)
+  O0={0,0,0,0,0,0}, -- reference orbit where X0 should be translated to   (mflw)
   R0=nil,           -- initial R matrix (compagnion of X0 for damap)      (mflw)
-  beta0=nil,        -- initial beta0 block to build uncoupled R0          (mflw)
+  beta0=nil,        -- initial beta0 block to build R0                    (mflw)
   deltap=0,         -- initial deltap(s)                                  (mflw)
 
   mapdef=false,     -- setup for damap (true => {})                       (mflw)
