@@ -224,8 +224,6 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
 // to check for non-homogeneous maps & knobs
 void     mad_ctpsa_minv     (ssz_t sa, const ctpsa_t *ma[sa],                                  ctpsa_t *mc[sa]);
 void     mad_ctpsa_pminv    (ssz_t sa, const ctpsa_t *ma[sa],                                  ctpsa_t *mc[sa], ssz_t selected[sa]);
-void     mad_ctpsa_normal   (ssz_t sa, const ctpsa_t *ma[sa],                 ctpsa_t *mb[sa], ctpsa_t *mc[sa]);
-void     mad_ctpsa_tnormal  (ssz_t sa, const  tpsa_t *ma[sa],                 ctpsa_t *mb[sa], ctpsa_t *mc[sa]);
 void     mad_ctpsa_compose  (ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const ctpsa_t *mb[sb], ctpsa_t *mc[sa]);
 void     mad_ctpsa_translate(ssz_t sa, const ctpsa_t *ma[sa], ssz_t sb, const cnum_t   tb[sb], ctpsa_t *mc[sa]);
 
