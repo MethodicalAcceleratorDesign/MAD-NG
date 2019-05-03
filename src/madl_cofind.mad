@@ -26,26 +26,39 @@
 local warn, option, vector, matrix, command, track                in MAD
 local fnone                                                       in MAD.gfunc
 local has_dp, vname                                               in MAD.gphys
-local tblcat, errorf, assertf                                     in MAD.utility
+local tblcat, tblorder, errorf, assertf                           in MAD.utility
 local is_number, is_positive, is_boolean, is_true, is_iterable,
       is_mappable                                                 in MAD.typeid
 
 local abs in math
 
+local vn = vname[6]
+
 -- helpers --------------------------------------------------------------------o
 
-local function par2vec (V, X)
-  if not is_mappable(X) then
-    V:fill(X)
-  else
-    V[1] = X[1] or X.x  or 0
-    V[2] = X[2] or X.px or 0
-    V[3] = X[3] or X.y  or 0
-    V[4] = X[4] or X.py or 0
-    V[5] = X[5] or X.t  or 0
-    V[6] = X[6] or X.pt or 0
-  end
+local function parcpy (X, Y_) -- see track init
+  local Y = Y_ or table.new(0,10)
+  Y.x, Y.px = X.x, X.px
+  Y.y, Y.py = X.y, X.py
+  Y.t, Y.pt = X.t, X.pt
+  return Y
+end
+
+local function par2vec (X, V_)
+  local V = V_ or vector(6)
+  if is_number(X) then return V:fill(X) end
+  V[1], V[2] = X.x, X.px
+  V[3], V[4] = X.y, X.py
+  V[5], V[6] = X.t, X.pt
   return V
+end
+
+local function vec2par (V, X_)
+  local X = X_ or table.new(0,10)
+  X.x, X.px = V[1], V[2]
+  X.y, X.py = V[3], V[4]
+  X.t, X.pt = V[5], V[6]
+  return X
 end
 
 -- cofind algorithms ----------------------------------------------------------o
@@ -94,118 +107,181 @@ end
 
 -- cofind using jacobian ------------------------------------------------------o
 
--- Fast version useful to find a single closed orbit (e.g. to translate X0).
--- warning: returned values are different from cofind_map.
--- TODO: adapt to multiple particles and use same returned values.
+-- functor to avoid overrides
+local fun = \m,_,k,v => if m[k] == nil then m[k] = v end end
 
 local function cofind_jacob (self, track)
   local cotol, coiter, codiff, codptol, comethod in self
-  local costep = method[comethod]
-  local T = self.totalpath
+  local costep, T = method[comethod], self.totalpath
 
   -- error handling
   local errf = self.cowarn and warn or errorf
 
-  -- build 6D initial orbit
-  if is_mappable(track.X0[1]) then
-    if #track.X0 > 1 then
-      warn("cofind: codiff works only on single particle (discarding extra)")
-    end
-    track.X0 = track.X0[1]
-  end
-
-  local X0 = par2vec(vector(6), track.X0) -- initial coordinates
-  local X1 = par2vec(vector(6), self.X1 ) -- final translation
-  local dH = par2vec(vector(6), codiff  ) -- finite differences
-
-  -- track 6+1 particles to compute 6D jacobian by finite differences
-  local Xs = { 0,0,0,0,0,0,X0 }
-  for j=1,6 do Xs[j] = X0:same() end
-
-  -- scale positions vs momentum (empirical...)
-  if is_number(codiff) then
-    dH[1], dH[3] = dH[1]*100, dH[3]*100
-  end
-
-  -- search for fix point
+  -- save final translation, finite differences, coordinates scales, temporaries
+  local X1 = par2vec(self.X1)
+  local dH = par2vec(codiff )
+  local dS = par2vec(1      )
   local X, R = vector(6), matrix(6)
 
-  for itr=1,coiter do
+  -- let's track build particles (e.g. handle deltap and check attributes)
+  local mtbl, mflw = track { nstep=0 }
 
-    -- init dx_j
-    for j=1,6 do
-      Xs[j]:copy(X0):seti(j, X0[j]+dH[j])
+  -- save current orbits, extend n particles to n*(1+6) particles
+  local n, X0 = mflw.npar, table.new(mflw.npar,0)
+  for i=n,1,-1 do
+    local m, ii = mflw[i], 7*(i-1)+1
+    local mt = {__index=m, __newindex=bind1st(fun,m)}
+    for j=6,1,-1 do
+      local mc = parcpy(m)
+      mflw[ii+j], mc.id, mc.nosave = mc, ii+j, true
+      setmetatable(mc,mt) -- connect side particles to main particle
+    end
+    mflw[ii], m.id, m.coid = m, ii, m.id
+    X0[i] = par2vec(m) -- save current orbit
+  end
+  mflw.npar, mflw.tpar, n = 7*n, 7*n, 7*n
+
+  -- search for fix points
+  for itr=1,coiter do
+    -- sanity check
+    assert(n%7 == 0, "unexpected corrupted set of particles blocks")
+
+    -- set finite differences for jacobian (side particles)
+    for i=1,n,7 do
+      local id = mflw[i].coid
+      for j=1,6 do
+        m = mflw[i+j]
+        m[vn[j]] = X0[id][j] + dH[j]*dS[j]
+        assert(m.coid == id, "unexpected corrupted particles block")
+      end
     end
 
-    -- track 6D x 7 particles
-    local _, mflw = track { X0=Xs, deltap=0, save=false }
+    -- track blocks of 7 particles
+    track { mflow=mflw }
 
     -- lost particles (if any)
-    if mflw.npar ~= 7 then
-      errf("cofind: lost %d particles at iteration %d", 7-mflw.npar, itr)
-      return X0, nil, 0, "lost", itr
+    if n ~= mflw.npar then
+      warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
+      -- save information (spos, turn and status set by lostpar)
+      for i=mflw.npar+1,n do mflw[i].coiter = itr end
+      n = mflw.npar
+
+      -- filter out particles with at least one lost particle in their block
+      local i = 1
+      while i <= n do
+        if m.status == "lost" then
+          mflw[i], mflw[n] = mflw[n], mflw[i] -- swap with last
+          n = n - 1
+        else
+          i = i + 1
+        end
+      end
+
+      -- reorder remaining tracked particles
+      tblorder(mflw, n)
+      -- update number of tracked particles
+      mflw.npar = n
+      -- sanity check (again)
+      assert(n%7 == 0, "unexpected corrupted set of particles blocks")
     end
 
-    -- retrieve orbit and jacobian
-    for i=1,6 do
-      local vn = vname[6][i]
-      X[i] = mflw[7][vn] -- particle co-ordinates must be accessed by names.
-      for j=1,6 do -- compute jacobian R_ij = df(x_i)/dx_j
-        R:set(i,j, (mflw[j][vn] - X[i])/dH[j])
+    -- update orbits
+    local i = 1
+    while i <= n do
+      local m = mflw[i]
+
+      -- retrieve previous orbit, current orbit and jacobian
+      local X0 = X0[m.coid] ; par2vec(m, X)
+      for j=1,6 do ; for k=1,6 do -- compute jacobian R_jk = df(x_j)/dx_k
+        R:set(j,k, (mflw[i+k][vn[j]] - X[j])/(dH[k]*dS[k]))
+      end end
+
+      -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
+      local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
+
+      if typ then -- "stable/singular"
+        if typ == "singular" then
+          warn("cofind: singular matrix (rnk=%d) at iteration %d \z
+                for particle %d.", rnk, itr, m.coid)
+        elseif option.debug > 2 then
+          dX:print(string.format("cofind: (id=%d,itr=%d) dX", m.coid, itr))
+        end
+        -- save information in stable/singular main particle
+        m.rank, m.status, m.coiter = rnk, typ, itr
+        -- swap with last tracked block
+        for j=0,6 do mflw[i+j], mflw[n-6+j] = mflw[n-6+j], mflw[i+j] end
+        n = n - 7
+      else
+        -- set new orbit to main particle
+        vec2par(X0, m)
+        i = i + 7
       end
     end
 
-    -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-    local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
+    -- update the number of tracked particles
+    mflw.npar = n
 
-    if typ then -- "stable/singular"
-      if typ == "singular" then
-        warn("cofind: singular matrix (rnk=%d) at iteration %d", rnk, itr)
-      elseif option.debug >= 3 then
-        dX:print('cofind: last dX')
-      end
-      -- orbit X, jacobian R, rank of R, "stable/singular", itr
-      return X, R, rnk, typ, itr
+    -- all damaps have been processed
+    if n == 0 then break end
+
+    -- reset sequence iterator
+    mflw:ireset()
+  end
+
+  if n ~= 0 then
+    errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
+    for i=1,n do
+      mflw[i].coiter, mflw[i].status = coiter, "unstable"
     end
   end
 
-  errf("cofind: closed orbit did not converge in %d iterations", coiter)
+  -- remove side particles, restore initial ids
+  local j = 1
+  for i=1,mflw.tpar do
+    local m = mflw[i]
+    if getmetatable(m) == nil then
+      mflw[j], m.id, j, m.coid = m, m.coid, j+1, nil
+    end
+  end
+  j = j - 1
+  assert(7*j == mflw.tpar, "unexpected corrupted set of particles")
 
-  -- case errf is warn
-  return X, R, 0, "unstable", coiter
+  -- reorder entire mflw
+  mflw.npar, mflw.tpar = j, j
+  tblorder(mflw, mflw.npar)
+
+  return mtbl, mflw, X0
 end
 
 -- cofind using map -----------------------------------------------------------o
 
 local function cofind_map (self, track)
   local cotol, coiter, codptol, comethod in self
-  local costep = method[comethod]
-  local T = self.totalpath
+  local costep, T = method[comethod], self.totalpath
 
   -- error handling
   local errf = self.cowarn and warn or errorf
 
+  -- save final translation, temporaries
+  local X1 = par2vec(self.X1)
+  local X, R = vector(6), matrix(6)
+
   -- let's track build damaps (e.g. handle deltap and check attributes)
   local mtbl, mflw = track { nstep=0 }
 
-  -- save current orbits, clear damaps
+  -- save current orbits, cleanup damaps
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
-  for i=1,n do
-    X0[i] = mflw[i]:get0() --  get orbit (vector)
-    mflw[i]:setv(X0[i])    -- (set orbit), order 1 to I, higher orders to 0
-  end
+  for i=1,n do X0[i] = mflw[i]:get0() end  -- save current orbit
 
-  -- save final translation
-  local X1 = par2vec(vector(6), self.X1)
-
+  -- search for fix points
   for itr=1,coiter do
     -- track damaps
-    track { mflw=mflw }
+    track { mflow=mflw }
 
-    -- lost particles (if any)
+    -- lost damaps (if any)
     if n ~= mflw.npar then
       warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
-      -- save information in lost damap (spos, turn and status set by lostpar)
+      -- save information (spos, turn and status set by lostpar)
       for i=mflw.npar+1,n do mflw[i].coiter = itr end
       n = mflw.npar
     end
@@ -214,8 +290,10 @@ local function cofind_map (self, track)
     local i = 1
     while i <= n do
       local m = mflw[i]
-      -- retrieve previous orbit, orbit and jacobian
-      local X0, X, R = X0[m.id], m:get0(), m:get1()
+
+      -- retrieve previous orbit, current orbit and jacobian
+      local X0 = X0[m.id]
+      m:get0(X) ; m:get1(R)
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
       local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
@@ -223,7 +301,7 @@ local function cofind_map (self, track)
       if typ then -- "stable/singular"
         if typ == "singular" then
           warn("cofind: singular matrix (rnk=%d) at iteration %d \z
-                for particle %d.", rnk, itr, m.id)
+                for damap %d.", rnk, itr, m.id)
         elseif option.debug > 2 then
           dX:print(string.format("cofind: (id=%d,itr=%d) dX", m.id, itr))
         end
@@ -233,7 +311,7 @@ local function cofind_map (self, track)
         mflw[i], mflw[n] = mflw[n], mflw[i]
         n = n - 1
       else
-        -- update orbit
+        -- set new orbit, order 1 to I, higher orders to 0
         m:setv(X0)
         i = i + 1
       end
@@ -243,20 +321,24 @@ local function cofind_map (self, track)
     mflw.npar = n
 
     -- all damaps have been processed
-    -- (X0 is ordered, mflw may not, use tblorder to reorder mflw)
-    if n == 0 then return mtbl, mflw, X0 end
+    if n == 0 then break end
 
     -- reset sequence iterator
     mflw:ireset()
   end
 
-  errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
-
-  -- case errf is warn
-  for i=1,n do
-    mflw[i].coiter, mflw[i].status = coiter, "unstable"
+  if n ~= 0 then
+    errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
+    for i=1,n do
+      mflw[i].coiter, mflw[i].status = coiter, "unstable"
+    end
   end
-  return mtbl, mflw, X0 -- X0 is ordered, mflw may not
+
+  -- reorder entire mflw
+  mflw.npar = mflw.tpar
+  tblorder(mflw, mflw.npar)
+
+  return mtbl, mflw, X0
 end
 
 -- cofind command -------------------------------------------------------------o
@@ -335,7 +417,7 @@ local cofind = command 'cofind' {
   codptol=1e-12,     -- 4D vs 6D dp tolerance                             (cofn)
   comethod='newton', -- default algorithm                                 (cofn)
   cowarn=false,      -- commute errors into warnings                      (cofn)
-  X1={0,0,0,0,0,0},  -- optional final coordinates translation            (cofn)
+  X1=0,              -- optional final coordinates translation            (cofn)
 
   mflow=nil,         -- mflow, exclusive with other attributes except nstep
   exec=exec,         -- command to execute upon children creation
