@@ -938,17 +938,18 @@ local function make_mflow (self)
   mflw.spos=0                -- current element s-position (signed)
   mflw.eidx=init             -- current element index
   mflw.turn=1                -- current turn index
+  mflw.nstep=-1              -- current number of remaining steps
 
   mflw.npar=npar*ndp         -- number of tracked particles or damaps
   mflw.tpar=npar*ndp         -- total number of particles or damaps (i.e. #mflw)
-  mflw.nslc=nslc             -- number of slices for each element (number)
+  mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
 
   mflw.save=save             -- save data
-  mflw.savesel=savesel       -- save selector
   mflw.observe=observe       -- save observed elements every n turns
+  mflw.savesel=savesel       -- save selector
 
   mflw.atentry=atentry       -- action when entering an element
   mflw.atslice=atslice       -- action after each element slices
@@ -956,16 +957,15 @@ local function make_mflow (self)
   mflw.ataper=ataper         -- action after checking for aperture
   mflw.atsave=atsave         -- action after saving in mtable
 
-  mflw.usrdef=self.usrdef    -- user defined data
-
   mflw.model=model           -- default integration model
   mflw.method=method         -- default integration method
-  mflw.totalpath=totalpath   -- t is the totalpath
   mflw.radiate=radiate       -- radiate at slices
   mflw.T=T                   -- cancel compensation for time of flight
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
+
+  mflw.usrdef=self.usrdef    -- user defined data
 
   mflw.ndump=0               -- dump level of damaps
   mflw.dump=fnone            -- dump damaps after each integration step
@@ -1033,6 +1033,7 @@ local function exec (self)
   -- check number of elements to track
   local nstep in self
   if nstep == 0 then return mtbl, mflw end
+  mflw.nstep = nstep
 
   -- debug maps
   local mapdump in self
@@ -1057,10 +1058,10 @@ local function exec (self)
     elm:track(     __edat       )
     atexit   (elm, __edat, 0, -2)
     mflw:dump(elm)
-    nstep = nstep-1
+    mflw.nstep = mflw.nstep-1
 
     -- check remaining number of elements and particles/damaps to track
-    if nstep == 0 or mflw.npar == 0 then return mtbl, mflw, ei end
+    if mflw.nstep == 0 or mflw.npar == 0 then return mtbl, mflw, ei end
     -- check for end of turn
     if ei == ne then mflw.turn = mflw.turn+1 end
   end
@@ -1077,7 +1078,7 @@ local track = command 'track' {
   s0=0,             -- initial s (offset)                                 (mflw)
   X0={0,0,0,0,0,0}, -- initial X coordinates (or damap, or list of)       (mflw)
   O0={0,0,0,0,0,0}, -- initial orbit translation to apply to all X0       (mflw)
-  R0=nil,           -- initial R matrix (compagnion of X0 for damap)      (mflw)
+  R0=nil,           -- initial R matrix (companion of X0 for damap)       (mflw)
   beta0=nil,        -- initial beta0 block to build R0                    (mflw)
   deltap=0,         -- initial deltap(s)                                  (mflw)
 
@@ -1089,25 +1090,25 @@ local track = command 'track' {
   nstep=-1,         -- number of elements to track                        (iter)
   npart=nil,        -- number of particles/damaps (or #X0)                (mflw)
   nslice=1,         -- number of slice for each element                   (mflw)
-  implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
-  method='simple',  -- method or order for integration (1 to 8)           (mflw)
-  totalpath=false,  -- 't' is the totalpath                               (mflw)
+  method=2,         -- method or order for integration (1 to 8)           (mflw)
+  implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   radiate=false,    -- radiate at slices (NYI)                            (mflw)
-  misalign=true,    -- consider misalignment errors                       (mflw)
+  misalign=true,    -- consider misalignment                              (mflw)
+  totalpath=false,  -- 't' is the totalpath                               (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
-  savesel=fnone,    -- save selector (predicate)                          (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
-
-  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
+  savesel=fnone,    -- save selector (predicate)                          (mtbl)
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
   atexit=fnone,     -- action called when exiting an element              (mflw)
   ataper=fnone,     -- action called after checking for aperture          (mflw)
   atsave=fnone,     -- action called after saving in mtable               (mflw)
+
+  usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
   exec=exec,        -- command to execute upon children creation
