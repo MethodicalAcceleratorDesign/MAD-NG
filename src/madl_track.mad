@@ -376,8 +376,9 @@ local function track_quadrupole (elm, m)
     m.k1 = knl[2]/l
   elseif no_ang then                            -- skew thick
     inter, thick, kick = MKM[method], quad_sthick, quad_skick
+    m.k1 = sqrt(knl[2]^2 + ksl[2]^2)/l*tdir
     local a = -0.5*atan2(ksl[2], knl[2])*tdir
-    m.ca, m.sa, m.k1 = cos(a), sin(a), sqrt(knl[2]^2 + ksl[2]^2)/l*tdir
+    m.ca, m.sa = cos(a), sin(a)
   else                                          -- curved thick
     inter, thick, kick = MKM[method], quad_hthick, quad_hkick
     m.rho, m.k0, m.k1 = ds/angle*tdir, knl[1]/l, knl[2]/l
@@ -502,7 +503,7 @@ local function track_rfcavity (elm, m)
   local kick, fringe
 
   if abs(volt) < minvolt then
-    kick, fringe = strex_kick, fnone
+    kick, fringe = strex_kick, strex_fringe
   else
     m.volt, m.freq, m.lag, m.nbsl = volt*1e-3, elm.freq*1e6, elm.lag*twopi, elm.n_bessel
     if m.freq == 0 then
@@ -533,7 +534,7 @@ local function track_tkicker (elm, m)
   local method = elm.method or m.method
   local inter = abs(ds) < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, fnone)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_kicker (elm, m)
@@ -552,7 +553,7 @@ local function track_kicker (elm, m)
   local method = elm.method or m.method
   local inter = abs(ds) < minlen and thinonly or DKD[method]
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, fnone)
+  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
 end
 
 local function track_hkicker (elm, m)
@@ -881,14 +882,13 @@ local function make_mflow (self)
   local ro0 = abs(x0)+abs(px0)+abs(y0)+abs(py0)+abs(t0)+abs(pt0)
 
   -- precedence of initial conditions
-  for idp,dp in ipairs(deltap) do
-    local dpt = dp2pt(dp, beam.beta)
+  for i=1,npar do
+    local X0i = X0[i]
+    local beam, nosave = X0i.beam or beam, X0i.nosave
 
-    for i=1,npar do
-      local X0i = X0[i]
-      local beam, nosave in X0i
-      local dpt = beam and dp2pt(dp, beam.beta) or dpt
-      local ii = (idp-1)*npar + i
+    for j,dp in ipairs(deltap) do
+      local ii = (i-1)*ndp + j
+      local dpt = dp2pt(dp, beam.beta)
 
       if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
         mflw[ii] = X0i:copy()
@@ -924,6 +924,8 @@ local function make_mflow (self)
       end
     end
   end
+
+  assert(npar*ndp == #mflw, "unexpected corrupted mflow (wrong #particles/damaps)")
 
   -- complete mflow
   mflw.beam=beam             -- current beam
@@ -1089,7 +1091,7 @@ local track = command 'track' {
   nturn=1,          -- number of turns                                    (iter)
   nstep=-1,         -- number of elements to track                        (iter)
   npart=nil,        -- number of particles/damaps (or #X0)                (mflw)
-  nslice=1,         -- number of slice for each element                   (mflw)
+  nslice=1,         -- number of slices (or weights) for each element     (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
