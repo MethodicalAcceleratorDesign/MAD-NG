@@ -651,7 +651,7 @@ FUN(nrm2) (const T *a, const T *b_)
 }
 
 void
-FUN(der) (const T *a, T *c, int var)
+FUN(deriv) (const T *a, T *c, int var)
 {
   assert(a && c && a != c); // TODO: aliasing
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -682,7 +682,7 @@ FUN(der) (const T *a, T *c, int var)
 }
 
 void
-FUN(derm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
+FUN(derivm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
 {
   assert(a && c && a != c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -692,7 +692,7 @@ FUN(derm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
   ensure(der_ord > 0, "invalid derivative order");
   idx_t idx = mad_desc_get_idx_m(a->d,n,mono);
   if (idx < a->d->ord2idx[2]) {  // fallback on simple version
-    FUN(der)(a,c,idx);
+    FUN(deriv)(a,c,idx);
     return;
   }
 
@@ -719,17 +719,17 @@ FUN(poisson) (const T *a, const T *b, T *c, int n)
     is[i] = FUN(new)(a, a->d->to);
 
   for (int i = 1; i <= n; ++i) {
-    FUN(der)(a, is[0], 2*i - 1);
-    FUN(der)(b, is[1], 2*i    );
-    FUN(mul)(is[0],is[1],is[2]);
-    FUN(add)(is[3],is[2],is[0]);
-    FUN(copy)(is[0],is[3]);      // TODO: use swap ?
+    FUN(deriv)(a, is[0], 2*i - 1);
+    FUN(deriv)(b, is[1], 2*i    );
+    FUN(mul)  (is[0],is[1],is[2]);
+    FUN(add)  (is[3],is[2],is[0]);
+    FUN(copy) (is[0],is[3]);      // TODO: use swap ?
 
-    FUN(der)(a, is[0], 2*i    );
-    FUN(der)(b, is[1], 2*i - 1);
-    FUN(mul)(is[0],is[1],is[2]);
-    FUN(sub)(is[3],is[2],is[0]);
-    FUN(copy)(is[0],is[3]);
+    FUN(deriv)(a, is[0], 2*i    );
+    FUN(deriv)(b, is[1], 2*i - 1);
+    FUN(mul)  (is[0],is[1],is[2]);
+    FUN(sub)  (is[3],is[2],is[0]);
+    FUN(copy) (is[0],is[3]);
   }
 
   FUN(copy)(is[3], c);

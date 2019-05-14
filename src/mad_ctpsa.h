@@ -130,8 +130,8 @@ void     mad_ctpsa_arg     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *a, const ctpsa_t *b_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *a, const ctpsa_t *b_);
-void     mad_ctpsa_der     (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
-void     mad_ctpsa_derm    (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
+void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, int var);  // TODO: check functions that rely on it
+void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
 void     mad_ctpsa_poisson (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int n);  // TO CHECK n
 void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cnum_t coef[n], ctpsa_t *c);
 
