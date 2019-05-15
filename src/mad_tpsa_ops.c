@@ -769,9 +769,20 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
     NUM n;      SWAP(c1,c2,n);
   }
 
-  if (c1 && c2) TPSA_LINOP(c1*, +c2*, 0);
-  else if (!c2) TPSA_LINOP(c1*, + 0*, 0);
-  else          TPSA_LINOP( 0*, +c2*, 0);
+  if (c1 == 1) {
+         if (c2 ==  1) TPSA_LINOP( , +   , 0);
+    else if (c2 == -1) TPSA_LINOP( , -   , 0);
+    else               TPSA_LINOP( , +c2*, 0);
+  } else
+  if (c1 == -1) {
+         if (c2 ==  1) TPSA_LINOP( -, +   , 0);
+    else if (c2 == -1) TPSA_LINOP( -, -   , 0);
+    else               TPSA_LINOP( -, +c2*, 0);
+  } else {
+         if (c2 ==  1) TPSA_LINOP( c1*, +   , 0);
+    else if (c2 == -1) TPSA_LINOP( c1*, -   , 0);
+    else               TPSA_LINOP( c1*, +c2*, 0);
+  }
 
   c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -790,7 +801,7 @@ FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(mul)(x,y,r);
-  FUN(axpb)(a,r,b,r);
+  if (a != 1 || b != 0) FUN(axpb)(a,r,b,r);
 }
 
 void
