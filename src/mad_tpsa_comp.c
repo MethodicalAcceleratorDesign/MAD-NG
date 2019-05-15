@@ -44,7 +44,7 @@ static inline void
 check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
-  ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sized map)");
+  ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
   ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
@@ -92,7 +92,10 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 void
 FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa])
 {
-  // transform tranlation vector into damap
+  assert(ma && tb);
+  ensure(sb>0, "invalid vector sizes (zero or negative sizes)");
+
+  // transform tranlation vector into damap of order 0
   mad_alloc_tmp(const T*, mb, sb);
   for (idx_t ib = 0; ib < sb; ++ib) {
     T *t = FUN(newd)(ma[0]->d, 0);
@@ -105,6 +108,36 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   // cleanup
   for (idx_t ib = 0; ib < sb; ++ib)
     FUN(del)(mb[ib]);
+  mad_free_tmp(mb);
+}
+
+void
+FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
+{
+  assert(ma && tb && tc);
+  ensure(sa>0 && sb>0, "invalid map/vector sizes (zero or negative sizes)");
+  ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
+
+  // transform vectors into damap of order 0
+  mad_alloc_tmp(const T*, mb, sb);
+  mad_alloc_tmp(      T*, mc, sb);
+  for (idx_t ib = 0; ib < sb; ++ib) {
+    T *t1 = FUN(newd)(ma[0]->d, 0);
+    T *t2 = FUN(newd)(ma[0]->d, 0);
+    FUN(scalar)(t1, tb[ib], 0, 0);
+    FUN(scalar)(t2, tc[ib], 0, 0);
+    mb[ib] = t1; mc[ib] = t2;
+  }
+
+  compose_serial(sa,ma,mb,mc);
+
+  // cleanup, save result
+  for (idx_t ib = 0; ib < sb; ++ib) {
+    tc[ib] = mc[ib]->coef[0];
+    FUN(del)(mc[ib]);
+    FUN(del)(mb[ib]);
+  }
+  mad_free_tmp(mc);
   mad_free_tmp(mb);
 }
 

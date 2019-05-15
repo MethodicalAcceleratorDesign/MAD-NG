@@ -161,6 +161,7 @@ void    mad_tpsa_minv     (ssz_t sa, const tpsa_t *ma[sa],                      
 void    mad_tpsa_pminv    (ssz_t sa, const tpsa_t *ma[sa],                                 tpsa_t *mc[sa], ssz_t selected[sa]);
 void    mad_tpsa_compose  (ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const tpsa_t *mb[sb], tpsa_t *mc[sa]);
 void    mad_tpsa_translate(ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const num_t   tb[sb], tpsa_t *mc[sa]);
+void    mad_tpsa_eval     (ssz_t sa, const tpsa_t *ma[sa], ssz_t sb, const num_t   tb[sb], num_t   tc[sb]);
 
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
