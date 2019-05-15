@@ -300,9 +300,15 @@ FUN(scl) (const T *a, NUM v, T *c)
   FUN(copy0)(a,c);
 
   idx_t *pi = d->ord2idx;
-  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
-    c->coef[i] = v * a->coef[i];
-
+  if (v == 1)
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+      c->coef[i] = a->coef[i];
+  else if (v == -1)
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+      c->coef[i] = -a->coef[i];
+  else
+    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+      c->coef[i] = v * a->coef[i];
   CHECK_VALIDITY(c);
 }
 
