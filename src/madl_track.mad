@@ -39,7 +39,7 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number,
 local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
 local fact, arc2len                                             in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
-local action, atbegin                                           in MAD.symint
+local atins                                                     in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
 local apercheck                                                 in MAD.aperture
 local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
@@ -816,31 +816,32 @@ local function make_mflow (self)
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
 
-  local atslice0 = atslice
-
-  -- chain ataper and atslice for aperture check (if not disabled)
-  if ataper ~= ffalse then
-    ataper = (ataper == fnone or ataper == ftrue) and
-              apercheck or achain(apercheck, ataper)
-    atslice = (atslice == fnone or atslice == ftrue) and achain(atbegin,ataper)
-            or atslice ~= ffalse and chain(atslice, action('ataper')) or atslice
-  end
-
-  -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
-  local mtbl, fill
+  local mtbl
   if save then
     mtbl = make_mtable(self, observe, ndp)
+  else
+    atsave = ffalse
+  end
 
-    if atsave ~= ffalse then
-      fill = observe > 0 and save_obs or save_dat
+  if ataper ~= ffalse then -- prepare ataper
+    ataper = ataper == ftrue and apercheck or achain(apercheck, ataper)
+  end
 
-      atsave = (atsave == fnone or atsave == ftrue) and
-                fill or achain(fill, atsave)
-      atexit = (atexit == fnone or atexit == ftrue) and atsave or
-                atexit ~= ffalse and chain(atexit, atsave) or atexit
-      if atentry  == ftrue then atentry = atsave end
-      if atslice0 == ftrue then atslice = chain(atslice, action('atsave')) end
-    end
+  if atsave ~= ffalse then -- prepare atsave
+    local fill = observe > 0 and save_obs or save_dat
+    atsave = atsave == ftrue and fill or achain(fill, atsave)
+  end
+
+  if atentry ~= ffalse then -- chain ataper to atentry
+    atentry = atentry == ftrue and ataper or chain(atentry, ataper)
+  end
+
+  if atexit ~= ffalse then -- chain atsave to atexit
+    atexit = atexit == ftrue and atsave or chain(atexit, atsave)
+  end
+
+  if atslice == ftrue then -- exec atsave inside body
+    atslice = achain(atins, atsave)
   end
 
   -- totalpath
@@ -952,11 +953,11 @@ local function make_mflow (self)
   mflw.observe=observe       -- save observed elements every n turns
   mflw.savesel=savesel       -- save selector
 
-  mflw.atentry=atentry       -- action when entering an element
-  mflw.atslice=atslice       -- action after each element slices
-  mflw.atexit=atexit         -- action when exiting an element
-  mflw.ataper=ataper         -- action after checking for aperture
-  mflw.atsave=atsave         -- action after saving in mtable
+  mflw.atentry=atentry       -- action called when entering an element (ataper)
+  mflw.atslice=atslice       -- action called after each element slices
+  mflw.atexit=atexit         -- action called when exiting an element (atsave)
+  mflw.ataper=ataper         -- action called when checking aperture
+  mflw.atsave=atsave         -- action called when saving in mtable
 
   mflw.model=model           -- default integration model
   mflw.method=method         -- default integration method
@@ -1103,11 +1104,11 @@ local track = command 'track' {
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
   savesel=fnone,    -- save selector (predicate)                          (mtbl)
 
-  atentry=fnone,    -- action called when entering an element             (mflw)
+  atentry=ftrue,    -- action called when entering an element (ataper)    (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
-  atexit=fnone,     -- action called when exiting an element              (mflw)
-  ataper=fnone,     -- action called after checking for aperture          (mflw)
-  atsave=fnone,     -- action called after saving in mtable               (mflw)
+  atexit=ftrue,     -- action called when exiting an element (atsave)     (mflw)
+  ataper=ftrue,     -- action called when checking aperture               (mflw)
+  atsave=ftrue,     -- action called when saving in mtable                (mflw)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
