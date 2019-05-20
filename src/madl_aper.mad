@@ -37,7 +37,7 @@ local is_implicit        in MAD.element.drift
 -- aperture models ------------------------------------------------------------o
 
 local apmodel = {
-  bbox        = \x,y,ap -> x >= ap[1] or y >= ap[1],
+  square      = \x,y,ap -> x >= ap[1] or y >= ap[1],
   rectangle   = \x,y,ap -> x >= ap[1] or y >= ap[2],
 
   circle      = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
@@ -57,21 +57,22 @@ local apmodel = {
 
 -- aperture check -------------------------------------------------------------o
 
-local function lostpar (idx, mflw, _, islc)
+local function lostpar (i, mflw, _, islc)
   local npar, clw, spos, ds, turn in mflw
   local lw = islc<0 and -1-islc or clw
-  local m = mflw[idx]
+  local m = mflw[i]
 
   -- information saved in lost particle/damap
   m.spos, m.turn, m.status = spos+ds*lw, turn, "lost"
   -- take care of mflw wrappers (e.g. __edat and __sdat in track)
   m = getmetatable(mflw).__index
   -- swap with last tracked particle/damap
-  m[idx], m[m.npar], m.npar = m[m.npar], m[idx], m.npar-1
+  m[i], m[m.npar], m.npar = m[m.npar], m[i], m.npar-1
 end
 
 local function checkaper (chkap)
-  return function (ap, mflw, lw, islc)
+  return function (elm, mflw, lw, islc)
+    local ap = elm.aperture
     local tdir, tlt in mflw
     local tilt, offset in ap
 
@@ -97,8 +98,8 @@ local function checkaper (chkap)
       end
 
       -- move to aperture frame
-      local nx = abs( ca*x + sa*y - dx)
-      local ny = abs(-sa*x + ca*y - dy)
+      local nx = abs(ca*x + sa*y - dx)
+      local ny = abs(ca*y - sa*x - dy)
 
       if chkap(nx,ny,ap) then
         lostpar(i, mflw, lw, islc)
@@ -113,7 +114,7 @@ local function checkaper (chkap)
 end
 
 local apcheck = setmetatable({
-  bbox        = checkaper(apmodel.bbox       ),
+  square      = checkaper(apmodel.square     ),
   rectangle   = checkaper(apmodel.rectangle  ),
   circle      = checkaper(apmodel.circle     ),
   ellipse     = checkaper(apmodel.ellipse    ),
@@ -127,12 +128,12 @@ local apcheck = setmetatable({
 for k,v in pairs(apcheck) do M[k] = v end
 
 function M.apercheck (elm, mflw, lw, islc)
-  local aperture in elm
-  return apcheck[aperture.kind](aperture, mflw, lw, islc)
+  return apcheck[elm.aperture.kind](elm, mflw, lw, islc)
 end
 
 function M.apersave (mflw)
   error("NYI")
+  -- TODO: record lost particles in a mtable
   return mtbl
 end
 
