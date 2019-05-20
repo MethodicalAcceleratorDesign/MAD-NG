@@ -37,7 +37,7 @@ local is_sequence, is_boolean, is_number, is_integer,
       is_table, is_callable, is_mappable, is_matrix              in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
 local rangle                                                     in MAD.gmath
-local action                                                     in MAD.symint
+local atins                                                      in MAD.symint
 local tblcat, errorf, printf                                     in MAD.utility
 local minlen, minang                                             in MAD.constant
 
@@ -234,7 +234,7 @@ local act2str = {
 }
 
 local function trace_action (mflw)
-  local atentry, atslice, atexit, ataper, atsave in mflw
+  local atentry, atslice, atexit, atsave in mflw
 
   local estr = act2str[atentry] or 'usrdef'
   local sstr = act2str[atslice] or 'usrdef'
@@ -310,21 +310,28 @@ local function make_mflow (self)
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
 
-  -- chain atsave, atentry, atslice and atexit to fill table (if not disabled)
-  local mtbl, fill
+  local mtbl
   if save then
     mtbl = make_mtable(self, observe)
+  else
+    atsave = ffalse
+  end
 
-    if atsave ~= ffalse then
-      fill = observe > 0 and save_obs or save_dat
+  if atsave ~= ffalse then -- prepare atsave
+    local fill = observe > 0 and save_obs or save_dat
+    atsave = atsave == ftrue and fill or achain(fill, atsave)
+  end
 
-      atsave = (atsave == fnone or atsave == ftrue) and
-                fill or achain(fill, atsave)
-      atexit = (atexit == fnone or atexit == ftrue) and atsave or
-                atexit ~= ffalse and chain(atexit, atsave) or atexit
-      if atentry == ftrue then atentry = atsave end
-      if atslice == ftrue then atslice = chain(atslice, action('atsave')) end
-    end
+  if atentry ~= ffalse then -- chain ataper to atentry
+    atentry = atentry == ftrue and ataper or chain(atentry, ataper)
+  end
+
+  if atexit ~= ffalse then -- chain atsave to atexit
+    atexit = atexit == ftrue and atsave or chain(atexit, atsave)
+  end
+
+  if atslice == ftrue then -- exec atsave inside body
+    atslice = achain(atins, atsave)
   end
 
   -- retrieve initial conditions
@@ -487,10 +494,10 @@ local survey = command 'survey' {
   observe=false,    -- save only in observed elements (every n turns)     (mtbl)
   savesel=fnone,    -- save selector (predicate)                          (mtbl)
 
-  atentry=fnone,    -- action called when entering an element             (mflw)
+  atentry=ftrue,    -- action called when entering an element (ataper)    (mflw)
   atslice=fnone,    -- action called after each element slices            (mflw)
-  atexit=fnone,     -- action called when exiting an element              (mflw)
-  atsave=fnone,     -- action called after saving in mtable               (mflw)
+  atexit=ftrue,     -- action called when exiting an element (atsave)     (mflw)
+  atsave=ftrue,     -- action called when saving in mtable                (mflw)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
