@@ -43,7 +43,7 @@ local random, carg, real, imag, conj, norm, proj, rect, polar,
       sumsqr, sumabs, minabs, maxabs                             in MAD.gmath
 local unm, add, mul, mod, pow, lbool, lnot, land, lor, opstr     in MAD.operator
 local rep, errorf, assertf, openfile, strsplitall, num2str       in MAD.utility
-local inf, eps                                                   in MAD.constant
+local inf                                                        in MAD.constant
 
 -- tmp for returned values
 local  res = ffi.new 'double [1]'
@@ -2296,30 +2296,37 @@ end
 
 -- I/O -----------------------------------------------------------------------o
 
-function MR.write (x, filnam_, name_, eps_)
-  eps_ = eps_ or eps
+function MR.write (x, filnam_, name_, eps_, line_)
+  local eps = eps_ or 0
+  local nsep = line_ == 'line' and ' '  or '  '
+  local lsep = line_ == 'line' and ' ;' or '\n'
   local file = openfile(filnam_, 'w', '.dat')
   local nr, nc, v = x:sizes()
-  file:write(name_ or '', '[',nr,'x',nc, is_cmatrix(x) and 'i' or '','] =\n')
+  file:write(name_ or '', '[',nr,'x',nc, is_cmatrix(x) and 'i' or '','] =')
   local tostr = is_cmatrix(x) and tostring or num2str
   local zero  = is_cmatrix(x) and 0i or 0
+  file:write(lsep == '\n' and lsep or '')
   for i=0,nr-1 do
-    file:write('  ')
+    file:write(nsep)
     for j=0,nc-1 do
       v = get0(x,i,j)
-      file:write(tostr(abs(v) >= eps_ and v or zero), j==nc-1 and '\n' or '  ')
+      file:write(tostr(abs(v) >= eps and v or zero), j<nc-1 and nsep or '')
     end
+    file:write(i<nr-1 and lsep or '\n')
   end
 
   if is_string(filnam_) then file:close() else file:flush() end
   return x
 end
 
-function MR.print (x, name_, eps_)
+function MR.print (x, name_, eps_, line_)
+  if is_nil(line_) and is_string(eps_) then
+    eps_, line_ = nil, eps_ -- right shift
+  end
   if is_nil(eps_) and is_number(name_) then
     name_, eps_ = nil, name_ -- right shift
   end
-  return x:write(nil, name_, eps_)
+  return x:write(nil, name_, eps_, line_)
 end
 
 function MR.read (_, filnam_)
@@ -2336,6 +2343,7 @@ function MR.read (_, filnam_)
   else x, toval =  matrix(nr, nc), tonumber
   end
 
+  -- TODO: read 'line' mode.
   for line in file:lines() do
     if i == nr then break end
     i = i+1
