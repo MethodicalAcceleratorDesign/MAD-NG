@@ -1316,11 +1316,11 @@ function M.assertAllAlmostEquals( actual, expected, margin )
       end
     end
 
-    for k,v in pairs(actual) do
+    for k,v in pairs(expected) do
       if type(v) == 'number' and margin[k] ~= 0 then
-        M.assertAlmostEquals (v, expected[k], margin[k])
+        M.assertAlmostEquals (actual[k], v, margin[k])
       else
-        M.assertEquals (v, expected[k])
+        M.assertEquals (actual[k], v)
       end
     end
 end
