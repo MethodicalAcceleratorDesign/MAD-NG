@@ -23,14 +23,15 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local warn, option, vector, matrix, command, track                in MAD
-local fnone                                                       in MAD.gfunc
-local has_dp, vname                                               in MAD.gphys
-local tblcat, tblorder, errorf, assertf                           in MAD.utility
+local warn, option, vector, matrix, command, track               in MAD
+local fnone, bind1st                                             in MAD.gfunc
+local has_dp, vname                                              in MAD.gphys
+local tblcat, tblorder, errorf, assertf, printf                  in MAD.utility
+local eps                                                        in MAD.constant
 local is_number, is_positive, is_boolean, is_true, is_iterable,
-      is_mappable                                                 in MAD.typeid
+      is_mappable                                                in MAD.typeid
 
-local abs in math
+local abs, min, max in math
 
 local vn = vname[6]
 
@@ -79,9 +80,9 @@ function method.newton (X0, X, R, T, tol, dptol)
     dX, rnk = (R-I):solve(X-X0)
 
     if rnk < 6 then
-      return rnk, "singular"
+      return rnk, dX, "singular"
     elseif dX:maxabs() <= tol then
-      return rnk, "stable", dX
+      return rnk, dX, "stable"
     end
 
     -- adjust orbit
@@ -93,16 +94,16 @@ function method.newton (X0, X, R, T, tol, dptol)
     dX, rnk = (R4-I4):solve(X:getrow(r4)-X4)
 
     if rnk < 4 then
-      return rnk, "singular"
+      return rnk, dX, "singular"
     elseif dX:maxabs() <= tol then
-      return rnk, "stable", dX
+      return rnk, dX, "stable"
     end
 
     -- adjust orbit
     X0:copy(X4-dX)
   end
 
-  return rnk
+  return rnk, dX
 end
 
 -- cofind using jacobian ------------------------------------------------------o
@@ -159,7 +160,7 @@ local function cofind_jacob (self, track)
     for i=1,n,7 do
       local id = mflw[i].coid
       for j=1,6 do
-        m = mflw[i+j]
+        local m = mflw[i+j]
         m[vn[j]] = X0[id][j] + dH[j]*dS[j]
         assert(m.coid == id, "unexpected corrupted particles block")
       end
@@ -206,14 +207,19 @@ local function cofind_jacob (self, track)
       end end
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
+      local rnk, dX, typ = costep(X0, X-X1, R, T, cotol, codptol)
+
+      if option.debug > 2 then
+        printf("cofind: (id=%d,itr=%d)\n", m.coid, itr)
+        X0:print( 'X', eps, 'line')
+        dX:print('dX', eps, 'line')
+        if option.debug > 3 then R:print('R', eps) end
+      end
 
       if typ then -- "stable/singular"
         if typ == "singular" then
           warn("cofind: singular matrix (rnk=%d) at iteration %d \z
                 for particle %d.", rnk, itr, m.coid)
-        elseif option.debug > 2 then
-          dX:print(string.format("cofind: (id=%d,itr=%d) dX", m.coid, itr))
         end
         -- save information in stable/singular main particle
         m.rank, m.status, m.coiter = rnk, typ, itr
@@ -305,14 +311,19 @@ local function cofind_map (self, track)
       m:get0(X) ; m:get1(R)
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, typ, dX = costep(X0, X-X1, R, T, cotol, codptol)
+      local rnk, dX, typ = costep(X0, X-X1, R, T, cotol, codptol)
+
+      if option.debug > 2 then
+        printf("cofind: (id=%d,itr=%d)\n", m.id, itr)
+        X0:print( 'X', eps, 'line')
+        dX:print('dX', eps, 'line')
+        if option.debug > 3 then R:print('R', eps) end
+      end
 
       if typ then -- "stable/singular"
         if typ == "singular" then
           warn("cofind: singular matrix (rnk=%d) at iteration %d \z
                 for damap %d.", rnk, itr, m.id)
-        elseif option.debug > 2 then
-          dX:print(string.format("cofind: (id=%d,itr=%d) dX", m.id, itr))
         end
         -- save information in stable/singular damap
         m.rank, m.status, m.coiter = rnk, typ, itr
