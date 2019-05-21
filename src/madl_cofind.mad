@@ -108,9 +108,6 @@ end
 
 -- cofind using jacobian ------------------------------------------------------o
 
--- functor to avoid overrides
-local fun = \m,_,k,v => if m[k] == nil then m[k] = v end end
-
 local function cofind_jacob (self, track)
   local cotol, coiter, codiff, codptol, comethod in self
   local costep, T = method[comethod], self.totalpath
@@ -131,11 +128,12 @@ local function cofind_jacob (self, track)
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
   for i=n,1,-1 do
     local m, ii = mflw[i], 7*(i-1)+1
-    local mt = {__index=m, __newindex=bind1st(fun,m)}
+    local mt = {__index=m, -- unfortunately, Lua needs a function...
+                __newindex=\_,k,v => if k == 'status' then m[k] = v end end}
     for j=6,1,-1 do
-      local mc = parcpy(m)
+      local mc = parcpy(m) -- no beam, no status, no coid
       mflw[ii+j], mc.id, mc.nosave = mc, ii+j, true
-      setmetatable(mc,mt) -- connect side particles to main particle
+      setmetatable(mc,mt) -- connect secondary particles to primary particle
     end
     mflw[ii], m.id, m.coid = m, ii, m.id
     X0[i] = par2vec(m)   -- save current orbit
@@ -149,20 +147,21 @@ local function cofind_jacob (self, track)
     for i=1,5,2 do
       if X[i+1] > 1e-12 then dS[i] = max(min(X[i]/X[i+1],1e4),1e-4) end
     end
+    if option.debug > 2 then dS:print('cofind: dS', eps, 'line') end
   end
 
   -- search for fix points
   for itr=1,coiter do
     -- sanity check
-    assert(n%7 == 0, "unexpected corrupted set of particles blocks")
+    assert(n%7 == 0, "unexpected corrupted set of particle blocks")
 
-    -- set finite differences for jacobian (side particles)
+    -- set finite differences for jacobian (from secondary particles)
     for i=1,n,7 do
       local id = mflw[i].coid
       for j=1,6 do
         local m = mflw[i+j]
         m[vn[j]] = X0[id][j] + dH[j]*dS[j]
-        assert(m.coid == id, "unexpected corrupted particles block")
+        assert(m.coid == id, "unexpected corrupted set of particle blocks")
       end
     end
 
@@ -179,7 +178,7 @@ local function cofind_jacob (self, track)
       -- filter out particles with at least one lost particle in their block
       local i = 1
       while i <= n do
-        if m.status == "lost" then
+        if mflw[i].status == "lost" then
           mflw[i], mflw[n] = mflw[n], mflw[i] -- swap with last
           n = n - 1
         else
@@ -192,7 +191,7 @@ local function cofind_jacob (self, track)
       -- update number of tracked particles
       mflw.npar = n
       -- sanity check (again)
-      assert(n%7 == 0, "unexpected corrupted set of particles blocks")
+      assert(n%7 == 0, "unexpected corrupted set of particle blocks")
     end
 
     -- update orbits
@@ -211,9 +210,12 @@ local function cofind_jacob (self, track)
 
       if option.debug > 2 then
         printf("cofind: (id=%d,itr=%d)\n", m.coid, itr)
-        X0:print( 'X', eps, 'line')
+        X0:print('X0', eps, 'line')
         dX:print('dX', eps, 'line')
-        if option.debug > 3 then R:print('R', eps) end
+        if option.debug > 3 then
+          X:print('X', eps, 'line')
+          R:print('R', eps)
+        end
       end
 
       if typ then -- "stable/singular"
@@ -221,13 +223,13 @@ local function cofind_jacob (self, track)
           warn("cofind: singular matrix (rnk=%d) at iteration %d \z
                 for particle %d.", rnk, itr, m.coid)
         end
-        -- save information in stable/singular main particle
+        -- save information in stable/singular primary particle
         m.rank, m.status, m.coiter = rnk, typ, itr
         -- swap with last tracked block
         for j=0,6 do mflw[i+j], mflw[n-6+j] = mflw[n-6+j], mflw[i+j] end
         n = n - 7
       else
-        -- set new orbit to main particle
+        -- set new orbit to primary particle
         vec2par(X0, m)
         i = i + 7
       end
@@ -250,19 +252,21 @@ local function cofind_jacob (self, track)
     end
   end
 
-  -- remove side particles, restore initial ids
+  -- remove secondary particles, restore initial id
   local j = 1
   for i=1,mflw.tpar do
     local m = mflw[i]
+    mflw[i] = nil
     if getmetatable(m) == nil then
       mflw[j], m.id, j, m.coid = m, m.coid, j+1, nil
     end
   end
   j = j - 1
-  assert(7*j == mflw.tpar, "unexpected corrupted set of particles")
+  assert(7*j == mflw.tpar, "unexpected corrupted set of particle blocks")
+  mflw.tpar = j
 
   -- reorder entire mflw
-  mflw.npar, mflw.tpar = j, j
+  mflw.npar = mflw.tpar
   tblorder(mflw, mflw.npar)
 
   return mtbl, mflw, X0
@@ -315,9 +319,12 @@ local function cofind_map (self, track)
 
       if option.debug > 2 then
         printf("cofind: (id=%d,itr=%d)\n", m.id, itr)
-        X0:print( 'X', eps, 'line')
+        X0:print('X0', eps, 'line')
         dX:print('dX', eps, 'line')
-        if option.debug > 3 then R:print('R', eps) end
+        if option.debug > 3 then
+          X:print('X', eps, 'line')
+          R:print('R', eps)
+        end
       end
 
       if typ then -- "stable/singular"
