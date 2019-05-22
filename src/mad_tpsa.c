@@ -403,7 +403,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   if (!i) { FUN(set0)(t,a,b); return; }
 
   const D *d = t->d;
-  ensure(i > 0 && i < d->nc , "index order exceeds GPTSA maximum order");
+  ensure(i > 0 && i <  d->nc, "index order exceeds GPTSA maximum order");
   ensure(d->ords[i] <= t->mo, "index order exceeds GTPSA order");
 
   idx_t *pi = d->ord2idx;
@@ -446,7 +446,8 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
 {
   assert(t && v);
   const D *d = t->d;
-  ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
+  ensure(i >= 0 && i+n  <= d->nc, "index order exceeds GPTSA maximum order");
+  ensure(d->ords[i+n-1] <= t->mo, "index order exceeds GTPSA order");
 
   for (idx_t j = 0; j < n; j++) t->coef[j+i] = v[j];
 
