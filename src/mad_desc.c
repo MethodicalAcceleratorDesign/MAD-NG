@@ -907,9 +907,9 @@ static inline int
 desc_equiv (const D *d, int nmv, const ord_t mvar_ords[nmv],
                         int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
-  return d->nmv == nmv && mad_mono_eq(nmv, d->mvar_ords, mvar_ords)
-      && d->nv  == nv  && mad_mono_eq(nv , d-> var_ords,  var_ords)
-      && d->ko  == ko;
+  return d->nmv == nmv && d->nv == nv && d->ko == ko
+         && mad_mono_eq(nmv, d->mvar_ords, mvar_ords)
+         && mad_mono_eq(nv , d-> var_ords,  var_ords);
 }
 
 static inline D*
