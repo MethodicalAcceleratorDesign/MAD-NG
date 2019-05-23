@@ -100,10 +100,10 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
   variables = map variables + knob variables
 
   nv: number of mvars  (ignored and replaced by #mo if mo is an array or a string)
-  mo: mvars orders     (value, string or array)
+  mo: mvars orders     (number, string or array)
   nk: number of knobs  (ignored and replaced by #ko if ko is an array or a string)
-  ko: knobs orders     (value, string or array)
-  dk: knobs max x-ord  (value)
+  ko: knobs orders     (number, string or array)
+  dk: knobs max x-ord  (number)
   vo: variables orders (string or array, defined orders of variables)
   vn: variables names  (not used by gtpsa but used by damap)
 
@@ -188,14 +188,6 @@ local function tpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
   assert(len <= 2^30, "tpsa is too large")
   local tpsa = tpsa_ctor(len) -- VLA
---  if len < _C.mad_alloc_threshold then
---    tpsa = tpsa_ctor(len) -- VLA
---  else
---    assert(len <= 2^30, "tpsa is too large")
---    local siz = tpsa_size + len*dbl_sz
---    tpsa = assert(_C.mad_calloc(1,siz), "out of memory")
---    tpsa = ffi.gc(ffi.cast(tpsa_cref, tpsa), _C.mad_free)
---  end
   _C.mad_tpsa_init(tpsa, d, mo, 0, mo)
   return tpsa
 end
@@ -204,14 +196,6 @@ local function ctpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
    assert(len <= 2^29, "ctpsa is too large")
   local tpsa = ctpsa_ctor(len) -- VLA
---  if len <= _C.mad_alloc_threshold/2 then
---    tpsa = ctpsa_ctor(len) -- VLA
---  else
---    assert(len <= 2^29, "ctpsa is too large")
---    local siz = ctpsa_size + len*cpx_sz
---    tpsa = assert(_C.mad_calloc(1,siz), "out of memory")
---    tpsa = ffi.gc(ffi.cast(ctpsa_cref, tpsa), _C.mad_free)
---  end
   _C.mad_ctpsa_init(tpsa, d, mo, 0, mo)
   return tpsa
 end
@@ -236,22 +220,17 @@ local function tpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  elseif is_table(td) or is_matrix(td) then
-    td, tbl = _C.mad_desc_curr, td
-    mo_     = mo_ or td.mo       -- mo = d.mo
+  else
+    error("invalid argument #1 (GTPSA descriptor expected)")
   end
-  assert(is_gtpsad(td)  , "invalid argument #1 (GTPSA descriptor expected)")
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  local t = tpsa_alloc(td, max(0, min(mo_, td.mo)))
-  if tbl then t:setvec(1,tbl) end
-  return t
+  return tpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
 local function ctpsa (td, mo_)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
-  local tbl
   if is_nil(td) then
     td      = _C.mad_desc_curr
     mo_     = mo_ or td.mo       -- mo = d.mo
@@ -259,15 +238,11 @@ local function ctpsa (td, mo_)
     mo_     = mo_ or td.mo       -- mo = d.mo
   elseif isa_tpsa(td) then
     mo_, td = mo_ or td.mo, td.d -- mo = t.mo
-  elseif is_table(td) or is_cmatrix(td) then
-    td, tbl = _C.mad_desc_curr, td
-    mo_     = mo_ or td.mo       -- mo = d.mo
+  else
+    error("invalid argument #1 (GTPSA descriptor expected)")
   end
-  assert(is_gtpsad(td)  , "invalid argument #1 (GTPSA descriptor expected)")
   assert(is_integer(mo_), "invalid argument #2 (integer expected)")
-  local t = ctpsa_alloc(td, max(0, min(mo_, td.mo)))
-  if tbl then t:setvec(1,tbl) end
-  return t
+  return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -550,7 +525,7 @@ end
 function MR.getvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_integer(a) then a = vector(a) end
-  assert(is_matrix (a), "invalid argument #3 (vector expected)")
+  assert(is_matrix (a), "invalid argument #3 (integer or vector expected)")
   _C.mad_tpsa_getv(x, i-1, a:size(), a.data)
   return a
 end
@@ -558,7 +533,7 @@ end
 function MC.getvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_integer(a) then a = cvector(a) end
-  assert(is_cmatrix(a), "invalid argument #3 (cvector expected)")
+  assert(is_cmatrix(a), "invalid argument #3 (integer or cvector expected)")
   _C.mad_ctpsa_getv(x, i-1, a:size(), a.data)
   return a
 end
@@ -566,7 +541,7 @@ end
 function MR.setvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if not is_matrix(a) and is_iterable(a) then a = vector(#a):fill(a) end
-  assert(is_vector(a), "invalid argument #3 (table or vector expected)")
+  assert(is_vector(a), "invalid argument #3 (iterable or vector expected)")
   _C.mad_tpsa_setv(x, i-1, a:size(), a.data)
   return x
 end
@@ -574,8 +549,22 @@ end
 function MC.setvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if not is_cmatrix(a) and is_iterable(a) then a = cvector(#a):fill(a) end
-  assert(is_cvector(a), "invalid argument #3 (table or cvector expected)")
+  assert(is_cvector(a), "invalid argument #3 (iterable or cvector expected)")
   _C.mad_ctpsa_setv(x, i-1, a:size(), a.data)
+  return x
+end
+
+function MR.fill (x, a)
+  if not is_matrix(a) and is_iterable(a) then a = vector(#a):fill(a) end
+  assert(is_vector(a), "invalid argument #2 (iterable or vector expected)")
+  _C.mad_tpsa_setv(x, 0, a:size(), a.data)
+  return x
+end
+
+function MC.fill (x, a)
+  if not is_cmatrix(a) and is_iterable(a) then a = cvector(#a):fill(a) end
+  assert(is_cvector(a), "invalid argument #2 (iterable or cvector expected)")
+  _C.mad_ctpsa_setv(x, 0, a:size(), a.data)
   return x
 end
 
