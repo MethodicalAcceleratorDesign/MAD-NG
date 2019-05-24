@@ -884,12 +884,15 @@ local function make_mflow (self)
   local ro0 = abs(x0)+abs(px0)+abs(y0)+abs(py0)+abs(t0)+abs(pt0)
 
   -- precedence of initial conditions
+  local ii = 0
   for j,dp in ipairs(deltap) do
     for i=1,npar do
       local X0i = X0[i]
+      if X0i.notrack then goto skip end -- skip this particle
+      ii = ii+1
+
       local beam, nosave = X0i.beam or beam, X0i.nosave
       local dpt = dp2pt(dp, beam.beta)
-      local ii = (j-1)*npar + i
 
       if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
         mflw[ii] = X0i:copy()
@@ -916,18 +919,20 @@ local function make_mflow (self)
           end
           mflw[ii].status = 'Rset'
         else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+dpt+pt,
-                      status='Xset' }
+          mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+dpt+pt}
+          mflw[ii].status = 'Xset'
         end
-        -- save extra information
-        mflw[ii].id, mflw[ii].beam, mflw[ii].nosave = ii, beam, nosave
       else
-        errorf("invalid type of item at id=%d (coordinates or damap expected)", i)
+        errorf("invalid type of item at id=%d (particle or damap expected)", i)
       end
+      -- save extra information
+      mflw[ii].id, mflw[ii].id0, mflw[ii].beam, mflw[ii].nosave =
+               ii,          i  ,          beam,          nosave
+::skip::
     end
   end
 
-  assert(npar*ndp == #mflw, "unexpected corrupted mflow (wrong #particles/damaps)")
+  assert(ii == #mflw, "unexpected corrupted mflow (wrong #particles/damaps)")
 
   -- complete mflow
   mflw.beam=beam             -- current beam
@@ -944,8 +949,8 @@ local function make_mflow (self)
   mflw.turn=1                -- current turn index
   mflw.nstep=-1              -- current number of remaining steps
 
-  mflw.npar=npar*ndp         -- number of tracked particles or damaps
-  mflw.tpar=npar*ndp         -- total number of particles or damaps (i.e. #mflw)
+  mflw.npar=ii               -- number of tracked particles or damaps
+  mflw.tpar=ii               -- total number of particles or damaps (i.e. #mflw)
   mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
