@@ -31,7 +31,7 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, aperture, option, trace  in MAD
+local command, element, mtable, damap, aperture, option         in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_integer, is_true, is_table, is_callable, is_iterable,
@@ -133,6 +133,20 @@ local function xdump (mflw, elm, str, X)
     printf(mapfmt == lngfmt and "% -.16e " or "% -.6e ", X)
   end
   printf('\n')
+end
+
+local function mshow (mflw)
+  local show in MAD
+  show(mflw)
+  for i=1,#mflw do
+    local m = mflw[i]
+    printf("** [%d]=\n", i)
+    show(m)
+    if is_damap(m) then
+      m:get0():print(nil,'line')
+      if option.debug > 2 then m:get1():print(nil,'line') end
+     end
+  end
 end
 
 -- strengths and phases -------------------------------------------------------o
@@ -718,29 +732,9 @@ local function make_mtable (self, obs, ndp)
   })
 end
 
--- trace track internal actions -----------------------------------------------o
-
-local act2str = {
-  [fnone   ] = 'fnone'   , [ftrue   ] = 'ftrue'   , [ffalse] = 'ffalse',
-  [save_dat] = 'save_all', [save_obs] = 'save_obs',
-}
-
-local function trace_action (mflw)
-  local atentry, atslice, atexit, ataper, atsave in mflw
-
-  local estr = act2str[atentry] or 'usrdef'
-  local sstr = act2str[atslice] or 'usrdef'
-  local xstr = act2str[atexit ] or 'usrdef'
-  local astr = act2str[ataper ] or 'usrdef'
-  local ostr = act2str[atsave ] or 'usrdef'
-
-  trace(2, "track actions: atentry=%s, atslice=%s, atexit=%s, ataper=%s, atsave=%s",
-           estr, sstr, xstr, astr, ostr)
-end
-
 -- reset mflow iterator (e.g. track again) ------------------------------------o
 
-local function reset_iter (mflw)
+local function ireset (mflw)
   local sequ, sdir, __sitr in mflw
   local s0, range, nturn in __sitr
   local iter, state, init = sequ:siter(range, nturn, sdir)
@@ -976,13 +970,16 @@ local function make_mflow (self)
 
   mflw.usrdef=self.usrdef    -- user defined data
 
+  -- for debugging
   mflw.ndump=0               -- dump level of damaps
-  mflw.dump=fnone            -- dump damaps after each integration step
+  mflw.mdump=fnone           -- dump damaps after each integration step
+  mflw.xdump=fnone           -- dump damaps after each integration step
+  mflw.show=mshow            -- show the mflow
 
   -- for processing sequence elements by nstep
   mflw.__sitr={iter=iter, state=state,          -- sequence iterator state
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
-  mflw.ireset=reset_iter
+  mflw.ireset=ireset
 
   -- for processing elements (pre-alloc to avoid rehash)
   mflw.__edat = setmetatable({
@@ -1044,12 +1041,9 @@ local function exec (self)
   local mapdump in self
   if mapdump then
     mflw.ndump = mapdump == true and 1 or mapdump
-    mflw.dump  = mflw.ndump > 0 and mdump or fnone
-    mflw.dump1 = mflw.ndump > 1 and xdump or fnone
+    mflw.mdump = mflw.ndump > 0 and mdump or fnone
+    mflw.xdump = mflw.ndump > 1 and xdump or fnone
   end
-
-  -- debug actions
-  if option.debug >= 2 then trace_action(mflw) end
 
   -- retrieve information
   local s0, eidx, sequ, atentry, atexit, __sitr, __edat in mflw
@@ -1059,10 +1053,10 @@ local function exec (self)
   -- dynamic tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
-    atentry  (elm, __edat, 0, -1)
-    elm:track(     __edat       )
-    atexit   (elm, __edat, 0, -2)
-    mflw:dump(elm)
+    atentry   (elm, __edat, 0, -1)
+    elm:track (     __edat       )
+    atexit    (elm, __edat, 0, -2)
+    mflw:mdump(elm)
     mflw.nstep = mflw.nstep-1
 
     -- check remaining number of elements and particles/damaps to track
