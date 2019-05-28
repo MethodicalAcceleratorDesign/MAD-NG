@@ -154,6 +154,26 @@ num_t mad_vec_eval (const num_t x[], num_t x0, ssz_t n) // Horner scheme
   return v;
 }
 
+void mad_vec_minmax(const num_t x[], log_t abs, idx_t r[2], ssz_t n)
+{ CHKXR; num_t v[2];
+  r[0] = r[1] = 0;
+  if (abs) {
+    v[0] = v[1] = fabs(x[0]);
+    for (idx_t i=1; i < n; i++) {
+      num_t a = fabs(x[i]);
+           if (a < v[0]) v[0]=a, r[0]=i;
+      else if (a > v[1]) v[1]=a, r[1]=i;
+    }
+  } else {
+    v[0] = v[1] = x[0];
+    for (idx_t i=1; i < n; i++) {
+      num_t a = x[i];
+           if (a < v[0]) v[0]=a, r[0]=i;
+      else if (a > v[1]) v[1]=a, r[1]=i;
+    }
+  }
+}
+
 #pragma GCC push_options
 #pragma GCC optimize ("O3")
 num_t mad_vec_sum (const num_t x[], ssz_t n) // Neumaier variant
@@ -378,6 +398,17 @@ cnum_t mad_cvec_eval (const cnum_t x[], cnum_t x0, ssz_t n) // Horner scheme
 
 void mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_eval(x, CNUM(x0_re, x0_im), n); }
+
+void mad_cvec_minmax(const cnum_t x[], idx_t r[], ssz_t n)
+{ CHKXR; num_t v[2];
+  r[0] = r[1] = 0;
+  v[0] = v[1] = cabs(x[0]);
+  for (idx_t i=1; i < n; i++) {
+    num_t a = cabs(x[i]);
+         if (a < v[0]) v[0]=a, r[0]=i;
+    else if (a > v[1]) v[1]=a, r[1]=i;
+  }
+}
 
 #pragma GCC push_options
 #pragma GCC optimize ("O3")
