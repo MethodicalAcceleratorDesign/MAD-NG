@@ -46,20 +46,21 @@ local rep, errorf, assertf, openfile, strsplitall, num2str       in MAD.utility
 local inf                                                        in MAD.constant
 
 -- tmp for returned values
-local  res = ffi.new 'double [1]'
-local cres = ffi.new 'complex[1]'
+local ires = ffi.new  'idx_t[2]'
+local  res = ffi.new  'num_t[2]'
+local cres = ffi.new 'cnum_t[2]'
 
 -- constants
-local dbl_sz = ffi.sizeof 'double'
-local cpx_sz = ffi.sizeof 'complex'
+local dbl_sz = ffi.sizeof  'num_t'
+local cpx_sz = ffi.sizeof 'cnum_t'
 
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[ // warning: must be kept identical to C definition
-struct  matrix       { const ssz_t nrow, ncol;       double  data[?]; };
-struct cmatrix       { const ssz_t nrow, ncol;       complex data[?]; };
-struct  matrix_cview { const ssz_t nrow, ncol; const double  data[?]; };
-struct cmatrix_cview { const ssz_t nrow, ncol; const complex data[?]; };
+struct  matrix       { const ssz_t nrow, ncol;        num_t data[?]; };
+struct cmatrix       { const ssz_t nrow, ncol;       cnum_t data[?]; };
+struct  matrix_cview { const ssz_t nrow, ncol; const  num_t data[?]; };
+struct cmatrix_cview { const ssz_t nrow, ncol; const cnum_t data[?]; };
 ]]
 
 local  matrix_ctor  = ffi.typeof 'struct  matrix'
@@ -1040,7 +1041,7 @@ MR.sum     = \x,d_,r_ -> x:foldl(add, nil, d_, r_)
 MR.product = \x,d_,r_ -> x:foldl(mul, nil, d_, r_)
 MR.sumsqr  = \x,d_,r_ -> x:foldl(sumsqr, 0, d_, r_)
 MR.sumabs  = \x,d_,r_ -> x:foldl(sumabs, 0, d_, r_)
-MR.minabs  = \x,d_,r_ -> x:foldl(minabs, 0, d_, r_)
+MR.minabs  = \x,d_,r_ -> x:foldl(minabs, huge, d_, r_)
 MR.maxabs  = \x,d_,r_ -> x:foldl(maxabs, 0, d_, r_)
 
 MR.all   = \x,p,d_,r_ =>
@@ -1079,6 +1080,16 @@ MR.raccmaxabs = \x,d_,r_ -> x:scanr(compose(maxabs,swap), 0, d_, r_)
 MR.filter_out = \x,p,r_ -> x:filter(compose(lnot,p), r_)
 
 -- special algorithms ---------------------------------------------------------o
+
+function MR.minmax (x, abs_)
+  _C.mad_vec_minmax(x.data, abs_ or false, ires, x:size())
+  return ires[0]+1, ires[1]+1
+end
+
+function MC.minmax (x)
+  _C.mad_cvec_minmax(x.data, ires, x:size())
+  return ires[0]+1, ires[1]+1
+end
 
 function MR.kbnsum (x) -- Neumaier variant
   return _C.mad_vec_sum(x.data, x:size())
