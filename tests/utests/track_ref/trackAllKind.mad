@@ -5,10 +5,12 @@ grep "^@@\|%%" trackAllKindMad.out | grep -v "exit" > trackAllKindMad_res.txt
 cd ..
 --]]
 
-local beam, track, sequence, mtable, option                       in MAD
-local drift, kicker, multipole, solenoid, rfcavity, sbend, rbend,
-      quadrupole, sextupole, octupole, decapole, dodecapole       in MAD.element
+local beam, sequence, mtable, track, option                       in MAD
+local drift, hkicker, vkicker, kicker, multipole, solenoid, rfcavity,
+      sbend, rbend, quadrupole, sextupole, octupole, decapole, dodecapole
+                                                                  in MAD.element
 local printf, tblicpy                                             in MAD.utility
+local pi, abs in math
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -21,63 +23,102 @@ local colres = {'name','cfgid',
                 'c51','c52','c53','c54','c55','c56',
                 'c61','c62','c63','c64','c65','c66'}
 
-local colcfg = {'cfgid','model','energy','method','nslice','mapdef','mapdump','X0'}
-local prtcfg = {'cfgid','model','energy','method','nslice','no','x','px','y','py','t','pt'}
+local colcfg = {        'model','energy','tilt','tpath','method','nslice','eon','x0i'}
+local prtcfg = {'cfgid','model','energy','tilt','tpath','method','nslice','eon','x0i'}
+local prthdr = {'name','type','title','origin','date','time'}
 
 local Cmad     = mtable 'Cmad'    (tblicpy(colres)) -- colres becomes the object
 local Cmad_cfg = mtable 'Cmad_cfg'(tblicpy(colcfg)) -- colcfg becomes the object
 
+local models = {'DKD','TKT'}
+
+local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+
+local e_on = 0
+local e_tlt = 0
+local mapdef = true
+local mapdump -- = 2
+
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 do -- setup (from PTC checks)
-  local mapdef, mapdump = {xy=2}, 2
-  local X0 = {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}
-
-  local cfgid = 1
-  for _,model in ipairs{'DKD','TKT'} do
+  for model=1,#models do
   for energy = 1,6500,6499 do
-  for method = 2,6,2 do
-  for nslice = 1,3 do     -- v v v order matters!
-    Cmad_cfg = Cmad_cfg + {cfgid, model, energy, method, nslice, mapdef, mapdump, X0}
-    cfgid = cfgid + 1
-  end end end end
+  for tilt=0,2 do
+  for tpath=0,1 do
+  for method=2,6,2 do
+  for nslice=1,3 do
+  for eon=0,1 do
+  for x0i=1,#X0s do -- v v v order matters!
+    Cmad_cfg = Cmad_cfg + {model, energy, tilt, tpath, method, nslice, eon, x0i}
+  end end end end end end end end
 
   -- add columns for pretty print
-  Cmad_cfg:addcol('no', \r -> Cmad_cfg.mapdef[r].xy)
+  Cmad_cfg:addcol('cfgid', \i -> i)
   for _,c in ipairs {'x','px','y','py','t','pt'} do
-    Cmad_cfg:addcol(c, \r -> Cmad_cfg.X0[r][c])
+    Cmad_cfg:addcol(c, \i -> X0s[Cmad_cfg.x0[i]][c])
   end
   option.format = "% -8.4g"
-  Cmad_cfg:write("Cmad_cfg.txt", prtcfg)
+  Cmad_cfg.colwidth = 8
+  Cmad_cfg:write("Cmad_cfg.txt", prtcfg, prthdr)
   option.format = "% -.16e"
+
+  -- attach config to results
+  Cmad.cfg = Cmad_cfg
 end
+
+-- os.exit()
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-local function rchk (seq, res, cfg)
-  local bem = beam {particle = 'proton'}
-  local row = {}
+local nooff, notilt = 1, 1
+local totcfgrun = 0
+
+local function rchk (tbl, seq)
+  local beam = beam {particle = 'proton'}
+  local cfg  = tbl.cfg
+  local row  = {}
 
   for i=1,#cfg do
+    -- global settings
+    e_on  = cfg.eon[i]
+    e_tlt = cfg.tilt[i]*pi/8
+
+    -- skip invalid cases (madx compat)
+    if not (e_on >= nooff and e_tlt <= notilt) then
+      goto skip
+    end
+
+    -- skip invalid cases (physics compat)
+--    if e_on  == 0 and seq[2].angle ~= 0 or    -- curved element
+--       e_tlt ~= 0 and seq[2].tilt  == 0 then  -- drift (no tilt)
+      -- printf("skipping %s\n", seq[2].name)
+--      goto skip
+--    end
+
     -- dump sequence name and config id
-    if cfg.mapdump[i] then
-      printf("%%%% %s CFGID=%g\n", seq.name, cfg.cfgid[i])
+    if mapdump then
+      printf("@@ %s CFGID=%g\n", seq.name, cfg.cfgid[i])
     end
 
     -- run track for these settings
-    bem.energy = cfg.energy[i]
+    beam.energy = cfg.energy[i]
     local tmp = track {
-      beam     = bem,
-      sequence = seq,
-      X0       = cfg.X0    [i],
-      model    = cfg.model [i],
-      method   = cfg.method[i],
-      nslice   = cfg.nslice[i],
-      mapdef   = cfg.mapdef[i],
-      save     = true,
-      mapsave  = true,
-      mapdump  = cfg.mapdump[i],
-      observe  = false,
+      beam      = beam,
+      sequence  = seq,
+      X0        = X0s   [cfg.x0i  [i]],
+      model     = models[cfg.model[i]],
+      method    = cfg.method[i],
+      nslice    = cfg.nslice[i],
+      totalpath = cfg.tpath [i]<1,
+      mapdef    = mapdef,
+      mapdump   = mapdump,
+      save      = true,
+      mapsave   = true,
+      observe   = false,
     }
 
     -- extend track mtable
@@ -92,9 +133,13 @@ local function rchk (seq, res, cfg)
     -- copy to results
     for i=1,#tmp do
       for j=1,#colres do row[j] = tmp:getcol(colres[j])[i] end
-      res = res + row
+      tbl = tbl + row
     end
+
+    totcfgrun = totcfgrun + 1
+::skip::
   end
+  printf("#case=%d, #tbl=%d\n", totcfgrun, #tbl)
 end
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -102,152 +147,176 @@ end
 -- TODO: trueRBEND, RFMULTIPOLE, CRABCAVITY, BEAMBEAM, ELSEPARATOR, WIGGLER, ...
 -- TODO: all versions with knl, ksl...
 
-local seqDRIFT = sequence 'seqDRIFT' { l=5,
-  drift 'DRIFT1' {at=0.75, l=1.5},
-  drift 'DRIFT2' {at=3.25, l=1.5},
+local seqs = {
+
+sequence 'seqDRIFT' {
+  drift 'DRIFT1' {at=0.75, l=1.5, tilt:=e_tlt },
+  drift 'DRIFT2' {at=3.25, l=1.5, tilt:=e_tlt },
+},
+
+sequence 'seqSBEND' {
+  sbend 'SBEND1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
+  sbend 'SBEND2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
+},
+
+sequence 'seqSBENDfr' {
+  sbend 'SBENDfr1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5},
+  sbend 'SBENDfr2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5},
+},
+
+sequence 'seqSBENDfh' {
+  sbend 'SBENDfh1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5, hgap=0.03, fint=0.5},
+  sbend 'SBENDfh2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.03, fint=0.5},
+},
+
+sequence 'seqRBEND' {
+  rbend 'RBEND1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
+  rbend 'RBEND2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
+},
+
+sequence 'seqRBENDfr' {
+  rbend 'RBENDfr1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5},
+  rbend 'RBENDfr2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5},
+},
+
+sequence 'seqQUAD' {
+  quadrupole 'QUAD1' {at=0.75, l=1.5, tilt:=e_tlt, k1:= 0.25*e_on},
+  quadrupole 'QUAD2' {at=3.25, l=1.5, tilt:=e_tlt, k1:=-0.25*e_on},
+},
+
+sequence 'seqSEXT' {
+  sextupole 'SEXT1' {at=0.75, l=1.5, tilt:=e_tlt, k2:= 0.25*e_on},
+  sextupole 'SEXT2' {at=3.25, l=1.5, tilt:=e_tlt, k2:=-0.25*e_on},
+},
+
+sequence 'seqOCTU' {
+  octupole 'OCTU1' {at=0.75, l=1.5, tilt:=e_tlt, k3:= 0.25*e_on},
+  octupole 'OCTU2' {at=3.25, l=1.5, tilt:=e_tlt, k3:=-0.25*e_on},
+},
+
+sequence 'seqDECA' {l=4,
+  multipole 'DECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0, 0.25*e_on}},
+  multipole 'DECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,-0.25*e_on}},
+},
+
+sequence 'seqDODECA' {l=4,
+  multipole 'DODECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0, 0.25*e_on}},
+  multipole 'DODECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0,-0.25*e_on}},
+},
+
+sequence 'seqMULT' {l=4,
+  multipole 'MULT1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={ 0.05*1.5*e_on, 0.25*1.5*e_on}, angle= 0.05*1.5},
+  multipole 'MULT2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={-0.05*1.5*e_on,-0.25*1.5*e_on}, angle=-0.05*1.5},
+},
+
+sequence 'seqHKICK' {
+  hkicker 'HKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:= 0.25e-3*e_on},
+  hkicker 'HKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:=-0.25e-3*e_on},
+},
+
+sequence 'seqVKICK' {
+  vkicker 'VKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:=-0.25e-3*e_on},
+  vkicker 'VKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:= 0.25e-3*e_on},
+},
+
+sequence 'seqKICK' {
+  kicker 'KICK1' {at=0.75, l=1.5, tilt:=e_tlt, hkick:= 0.25e-3*e_on, vkick:=-0.25e-3*e_on},
+  kicker 'KICK2' {at=3.25, l=1.5, tilt:=e_tlt, hkick:=-0.25e-3*e_on, vkick:= 0.25e-3*e_on},
+},
+
+sequence 'seqSOL' {
+  solenoid 'SOL1' {at=0.75, l=1.5, tilt:=e_tlt, ks:= 0.25*e_on},
+  solenoid 'SOL2' {at=3.25, l=1.5, tilt:=e_tlt, ks:=-0.25*e_on},
+},
+
+sequence 'seqCAV0' {l=4,
+  rfcavity 'CAV01' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+  rfcavity 'CAV02' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+},
+
+sequence 'seqCAV0t' {l=4,
+  rfcavity 'CAV0t1' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+  rfcavity 'CAV0t2' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+},
+
+sequence 'seqCAV' {
+  rfcavity 'CAV1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+  rfcavity 'CAV2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+},
+
+sequence 'seqCAVt' {
+  rfcavity 'CAVt1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+  rfcavity 'CAVt2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+},
+
+sequence 'seqCAVh' {
+  rfcavity 'CAVh1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.5},
+  rfcavity 'CAVh2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.5},
+},
+
+sequence 'seqCAVb' {
+  rfcavity 'CAVb1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, n_bessel=3},
+  rfcavity 'CAVb2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, n_bessel=3},
+},
+
 }
 
-! ------
-
-local seqSBEND = sequence 'seqSBEND' { l=5,
-  sbend 'SBEND1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
-  sbend 'SBEND2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
-}
-
-! ------
-
-local seqSBENDfr = sequence 'seqSBENDfr' { l=5,
-  sbend 'SBENDfr1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5},
-  sbend 'SBENDfr2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5},
-}
-
-! ------
-
-local seqSBENDfh = sequence 'seqSBENDfh' { l=5,
-  sbend 'SBENDfh1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5, hgap=0.03, fint=0.5},
-  sbend 'SBENDfh2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.03, fint=0.5},
-}
-
-! ------
-
-local seqRBEND = sequence 'seqRBEND' { l=5,
-  rbend 'RBEND1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
-  rbend 'RBEND2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
-}
-
-! ------
-
-local seqRBENDfr = sequence 'seqRBENDfr' { l=5,
-  rbend 'RBENDfr1' {at=0.75, l=1.5, k0= 0.05, angle= 0.05*1.5},
-  rbend 'RBENDfr2' {at=3.25, l=1.5, k0=-0.05, angle=-0.05*1.5},
-}
-
-! ------
-
-local seqQUAD = sequence 'seqQUAD' { l=5,
-  quadrupole 'QUAD1' {at=0.75, l=1.5, k1= 0.25},
-  quadrupole 'QUAD2' {at=3.25, l=1.5, k1=-0.25},
-}
-
-! ------
-
-local seqSEXT = sequence 'seqSEXT' { l=5,
-  sextupole 'SEXT1' {at=0.75, l=1.5, k2= 0.25},
-  sextupole 'SEXT2' {at=3.25, l=1.5, k2=-0.25},
-}
-
-! ------
-
-local seqOCTU = sequence 'seqOCTU' { l=5,
-  octupole 'OCTU1' {at=0.75, l=1.5, k3= 0.25},
-  octupole 'OCTU2' {at=3.25, l=1.5, k3=-0.25},
-}
-
-! ------
-
-local seqDECA = sequence 'seqDECA' { l=5,
-  multipole 'DECA1' {at=0.75, lrad=1.5, knl={0,0,0,0, 0.25*1.5}},
-  multipole 'DECA2' {at=3.25, lrad=1.5, knl={0,0,0,0,-0.25*1.5}},
-}
-
-! ------
-
-local seqDODECA = sequence 'seqDODECA' { l=5,
-  multipole 'DODECA1' {at=0.75, lrad=1.5, knl={0,0,0,0,0, 0.25*1.5}},
-  multipole 'DODECA2' {at=3.25, lrad=1.5, knl={0,0,0,0,0,-0.25*1.5}},
-}
-
-! ------
-
-local seqMULT = sequence 'seqMULT' { l=5,
-  multipole 'MULT1' {at=0.75, lrad=1.5, knl={ 0.05*1.5, 0.25*1.5}, angle= 0.05*1.5},
-  multipole 'MULT2' {at=3.25, lrad=1.5, knl={-0.05*1.5,-0.25*1.5}, angle=-0.05*1.5},
-}
-
-! ------
-
-local seqKICK = sequence 'seqKICK' { l=5,
-  kicker 'KICK1' {at=0.75, l=1.5, hkick= 0.25e-3, vkick=-0.25e-3},
-  kicker 'KICK2' {at=3.25, l=1.5, hkick=-0.25e-3, vkick= 0.25e-3},
-}
-
-! ------
-
-local seqSOL = sequence 'seqSOL' { l=5,
-  solenoid 'SOL1' {at=0.75, l=1.5, ks= 0.25},
-  solenoid 'SOL2' {at=3.25, l=1.5, ks=-0.25},
-}
-
-! ------
-
-local seqCAV = sequence 'seqCAV' { l=5,
-  rfcavity 'CAV1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5, no_cavity_totalpath=true},
-  rfcavity 'CAV2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5, no_cavity_totalpath=true},
-}
-
-! ------
-
-local seqCAVt = sequence 'seqCAVt' { l=5,
-  rfcavity 'CAVt1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5},
-  rfcavity 'CAVt2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5},
-}
-
-! ------
-
-local seqCAVh = sequence 'seqCAVh' { l=5,
-  rfcavity 'CAVh1' {at=0.75, l=1.5, volt=8, harmon=2, lag=0.5},
-  rfcavity 'CAVh2' {at=3.75, l=1.5, volt=8, harmon=2, lag=0.5},
-}
-
-! ------
-
-local seqCAVb = sequence 'seqCAVb' { l=5,
-  rfcavity 'CAVb1' {at=0.75, l=1.5, volt=8, freq=400, lag=0.5, n_bessel=3},
-  rfcavity 'CAVb2' {at=3.75, l=1.5, volt=8, freq=400, lag=0.5, n_bessel=3},
-}
+-- setkeys
+for _,seq in ipairs(seqs) do seqs[seq.name] = seq end
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-rchk (seqDRIFT  , Cmad, Cmad_cfg)
-rchk (seqSBEND  , Cmad, Cmad_cfg)
-rchk (seqSBENDfr, Cmad, Cmad_cfg)
-rchk (seqSBENDfh, Cmad, Cmad_cfg)
-rchk (seqRBEND  , Cmad, Cmad_cfg)
-rchk (seqRBENDfr, Cmad, Cmad_cfg)
-rchk (seqQUAD   , Cmad, Cmad_cfg)
-rchk (seqMULT   , Cmad, Cmad_cfg)
-rchk (seqKICK   , Cmad, Cmad_cfg)
-rchk (seqSOL    , Cmad, Cmad_cfg)
-rchk (seqCAV    , Cmad, Cmad_cfg)
-rchk (seqCAVt   , Cmad, Cmad_cfg)
-rchk (seqCAVh   , Cmad, Cmad_cfg)
-rchk (seqCAVb   , Cmad, Cmad_cfg)
+nooff  = 1;
+notilt = 1;
+rchk(Cmad, seqs.seqDRIFT)
 
-Cmad_cfg:remove {#Cmad_cfg/2+1, -1}
+notilt = 0;
+rchk(Cmad, seqs.seqSBEND  )
+rchk(Cmad, seqs.seqSBENDfr) ! fringe
+rchk(Cmad, seqs.seqSBENDfh) ! fringe, fint, hgap
+rchk(Cmad, seqs.seqRBEND  )
+rchk(Cmad, seqs.seqRBENDfr) ! fringe
 
-rchk (seqSEXT   , Cmad, Cmad_cfg)
-rchk (seqOCTU   , Cmad, Cmad_cfg)
-rchk (seqDECA   , Cmad, Cmad_cfg)
-rchk (seqDODECA , Cmad, Cmad_cfg)
+nooff  = 0;
+rchk(Cmad, seqs.seqQUAD  )
+rchk(Cmad, seqs.seqSEXT  )
+rchk(Cmad, seqs.seqOCTU  )
+rchk(Cmad, seqs.seqDECA  )
+rchk(Cmad, seqs.seqDODECA)
+rchk(Cmad, seqs.seqMULT  )
+rchk(Cmad, seqs.seqHKICK )
+rchk(Cmad, seqs.seqVKICK )
+rchk(Cmad, seqs.seqKICK  )
 
-Cmad:write "Cmad.txt"
+notilt = 0;
+rchk(Cmad, seqs.seqSOL)
+
+! switch to 6D for cavities
+nooff  = 1;
+rchk(Cmad, seqs.seqCAV0 )
+rchk(Cmad, seqs.seqCAV0t)
+rchk(Cmad, seqs.seqCAV  )
+rchk(Cmad, seqs.seqCAVt )
+rchk(Cmad, seqs.seqCAVh )
+rchk(Cmad, seqs.seqCAVb )
+
+-- for _,seq in ipairs(seqs) do
+--   rchk(Cmad, seq)
+-- end
+printf("total config run: %d\n", totcfgrun)
+printf("** minima / maxima **\n")
+local fmt = "%3s: "..option.format.." / "..option.format.." [%d/%d]\n"
+for i=4,#colres do
+  local vec = Cmad[colres[i]]
+  local imin, imax = vec:minmax(true)
+  printf(fmt, colres[i], abs(vec[imin]), abs(vec[imax]), imin, imax)
+end
+
+Cmad.colwidth = 24
+Cmad:write("Cmad.txt",prtcol,prthdr)
+
+local Cptc = mtable:read("Cptc.txt")
+
+printf("MAD: #tbl=%d\n", #Cmad)
+printf("PTC: #tbl=%d\n", #Cptc)
+

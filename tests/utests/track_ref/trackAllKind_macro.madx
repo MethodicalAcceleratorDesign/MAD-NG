@@ -1,7 +1,12 @@
 ! used by trackAllKind.madx
 
 prtp(TTTT): macro = {
-  create, table=TTTT, column={_name,"cfgid",
+  create, table=TTTT_cfg, column={
+    "cfgid","model","energy","tilt","tpath","method","nslice","eon","x0i"
+  } ;
+
+  create, table=TTTT, column={
+     _name,"cfgid",
      "c10","c20","c30","c40","c50","c60",
      "c11","c12","c13","c14","c15","c16",
      "c21","c22","c23","c24","c25","c26",
@@ -10,11 +15,8 @@ prtp(TTTT): macro = {
      "c51","c52","c53","c54","c55","c56",
      "c61","c62","c63","c64","c65","c66"} ;
 
-  create, table=TTTT_cfg, column={
-    "cfgid","model","energy","method","nst"
-  } ;
-
-  create, table=TTTT_tmp, column={_name,
+  create, table=TTTT_tmp, column={
+     _name,
      "c10","c20","c30","c40","c50","c60",
      "c11","c12","c13","c14","c15","c16",
      "c21","c22","c23","c24","c25","c26",
@@ -80,36 +82,64 @@ tsav(TTTT): macro = {
     fill, table=TTTT ;
     tsav.__i = tsav.__i+1 ;
   }
-
-  ! save table in case of trouble, overwrite at each iteration...
-  write, table=TTTT, file="tttt.txt" ;
 }
 
+totcfgrun = 0 ;
+
 rchk(TTTT, MMMM): macro = {
-  tcfg.__i = 1 ;
-  tcfg.__n = table(TTTT_cfg, tablelength) ;
+  rchk.__i = 1 ;
+  rchk.__n = table(TTTT_cfg, tablelength) ;
 
   ! loop over settings
-  while (tcfg.__i <= tcfg.__n) {
-    setvars, table=TTTT_cfg, row=tcfg.__i ; ! load settings
+  while (rchk.__i <= rchk.__n) {
+    setvars, table=TTTT_cfg, row=rchk.__i ; ! load settings
 
-    beam, sequence=seqMMMM, particle=proton, energy=energy ;
-    use , sequence=seqMMMM ;
+    e_on  = eon ;
+    e_tlt = tilt*pi/8 ;
 
-    ptc_create_universe ;
-    ptc_create_layout, model=model, method=method, nst=nst, time=true, exact=true ;
-    ptc_setswitch, debuglevel=debug, mapdump=mapdump, exact_mis=true, time=true, totalpath=false ;
-    if (mapdump > 0) { printf, text="%%%% mmmm CFGID=%g", value={cfgid} ; }
-    if (dotwiss > 0 || mapdump == 0) {
-       ptc_twiss, closed_orbit=false, no=no, icase=icase,
-                  x=x,px=px,y=y,py=py,t=t,pt=pt, betx=betx,bety=bety,betz=betz ;
-    } else {
-       ptc_normal, closed_orbit=false, no=no, icase=icase,
+    if (e_on >= nooff && e_tlt <= notilt) {
+          if (x0i == 0) { x= 0; px=  0; y= 0; py=  0; t= 0; pt=  0; }
+      elseif (x0i == 1) { x=x0; px=px0; y=y0; py=py0; t= 0; pt=  0; }
+      elseif (x0i == 2) { x=x0; px=px0; y=y0; py=py0; t= 0; pt=pt0; }
+      else              { x=x0; px=px0; y=y0; py=py0; t=t0; pt=pt0; }
+
+      beam, sequence=seqMMMM, particle=proton, energy=energy ;
+      use , sequence=seqMMMM ;
+
+      assign, echo="/dev/null" ;
+      ptc_create_universe ;
+      ptc_create_layout, model=model, method=method, nst=nslice, time=true, exact=true ;
+      if (tpath == 0) {
+        ptc_setswitch, debuglevel=debug, mapdump=mapdump, exact_mis=true, time=true, totalpath=false ;
+      } else {
+        ptc_setswitch, debuglevel=debug, mapdump=mapdump, exact_mis=true, time=true, totalpath=true ;
+      }
+      if (mapdump > 0) { printf, text="%%%% mmmm CFGID=%g", value={cfgid} ; }
+      if (dotwiss > 0 || mapdump == 0) {
+        ptc_twiss, closed_orbit=false, no=no, icase=icase,
+                   x=x, px=px, y=y, py=py, t=t, pt=pt, betx=1, bety=1, betz=1 ;
+      } else {
+        ptc_normal,closed_orbit=false, no=no, icase=icase,
                    x=x, px=px, y=y, py=py, t=t, pt=pt ;
-    }
-    ptc_end ;
+      }
+      ptc_end ;
+      assign, echo=terminal;
 
-    exec, tsav(TTTT) ;
-    tcfg.__i = tcfg.__i+1 ;
+      exec, tsav(TTTT) ;
+      totcfgrun = totcfgrun + 1 ;
+    }
+    rchk.__i = rchk.__i+1 ;
+  }
+
+  ! save table in case of trouble, override at each new case...
+  tbllen = table(TTTT, tablelength) ;
+  printf, text="#cases=%g, #tbl=%g\n", value={totcfgrun, tbllen} ;
+  if (singlefile == 0) {
+    write , table=TTTT, file="seqmmmmx.txt" ;
+    shrink, table=TTTT, row=0 ; ! clear table
+    print, text="results saved to seqmmmmx.txt" ;
+  } else {
+    write , table=TTTT, file="tttt.txt" ;
+    print, text="results saved to tttt.txt" ;
   }
 }
