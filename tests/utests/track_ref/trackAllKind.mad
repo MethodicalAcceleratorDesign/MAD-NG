@@ -9,7 +9,7 @@ local beam, sequence, mtable, track, option                       in MAD
 local drift, hkicker, vkicker, kicker, multipole, solenoid, rfcavity,
       sbend, rbend, quadrupole, sextupole, octupole, decapole, dodecapole
                                                                   in MAD.element
-local printf, tblicpy                                             in MAD.utility
+local printf, assertf, tblicpy                                    in MAD.utility
 local pi, abs in math
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -59,7 +59,7 @@ do -- setup (from PTC checks)
   -- add columns for pretty print
   Cmad_cfg:addcol('cfgid', \i -> i)
   for _,c in ipairs {'x','px','y','py','t','pt'} do
-    Cmad_cfg:addcol(c, \i -> X0s[Cmad_cfg.x0[i]][c])
+    Cmad_cfg:addcol(c, \i -> X0s[Cmad_cfg.x0i[i]][c])
   end
   option.format = "% -8.4g"
   Cmad_cfg.colwidth = 8
@@ -74,13 +74,14 @@ end
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-local nooff, notilt = 1, 1
+local nooff, notilt
 local totcfgrun = 0
 
 local function rchk (tbl, seq)
   local beam = beam {particle = 'proton'}
   local cfg  = tbl.cfg
   local row  = {}
+  local cfgrun = 0
 
   for i=1,#cfg do
     -- global settings
@@ -88,16 +89,18 @@ local function rchk (tbl, seq)
     e_tlt = cfg.tilt[i]*pi/8
 
     -- skip invalid cases (madx compat)
-    if not (e_on >= nooff and e_tlt <= notilt) then
+    if not (e_on >= nooff and e_tlt <= (1-notilt)*pi) then
       goto skip
     end
 
     -- skip invalid cases (physics compat)
---    if e_on  == 0 and seq[2].angle ~= 0 or    -- curved element
---       e_tlt ~= 0 and seq[2].tilt  == 0 then  -- drift (no tilt)
-      -- printf("skipping %s\n", seq[2].name)
---      goto skip
---    end
+    assertf(#seq == 4, "invalid sequence '%s' length %d ~= 4", seq.name, #seq)
+    -- curved element with not strength
+    assertf(not (e_on  == 0 and seq[2].angle ~= 0 and seq[2].l ~= 0),
+                       "invalid curved case %d '%s'", i, seq.name)
+    -- drift, solenoid, rfcav
+    assertf(not (e_tlt ~= 0 and seq[2].tilt  == 0),
+                       "invalid tilted case %d '%s'", i, seq.name)
 
     -- dump sequence name and config id
     if mapdump then
@@ -136,10 +139,11 @@ local function rchk (tbl, seq)
       tbl = tbl + row
     end
 
-    totcfgrun = totcfgrun + 1
+    cfgrun = cfgrun + 1
 ::skip::
   end
-  printf("#case=%d, #tbl=%d\n", totcfgrun, #tbl)
+  totcfgrun = totcfgrun + cfgrun
+  printf("#totcases=%d, #cases=%d, #tbl=%d\n", totcfgrun, cfgrun, #tbl)
 end
 
 --!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -268,7 +272,7 @@ for _,seq in ipairs(seqs) do seqs[seq.name] = seq end
 
 nooff  = 1;
 notilt = 1;
-rchk(Cmad, seqs.seqDRIFT)
+rchk(Cmad, seqs.seqDRIFT  )
 
 notilt = 0;
 rchk(Cmad, seqs.seqSBEND  )
@@ -278,27 +282,26 @@ rchk(Cmad, seqs.seqRBEND  )
 rchk(Cmad, seqs.seqRBENDfr) ! fringe
 
 nooff  = 0;
-rchk(Cmad, seqs.seqQUAD  )
-rchk(Cmad, seqs.seqSEXT  )
-rchk(Cmad, seqs.seqOCTU  )
-rchk(Cmad, seqs.seqDECA  )
-rchk(Cmad, seqs.seqDODECA)
-rchk(Cmad, seqs.seqMULT  )
-rchk(Cmad, seqs.seqHKICK )
-rchk(Cmad, seqs.seqVKICK )
-rchk(Cmad, seqs.seqKICK  )
+rchk(Cmad, seqs.seqQUAD   )
+rchk(Cmad, seqs.seqSEXT   )
+rchk(Cmad, seqs.seqOCTU   )
+rchk(Cmad, seqs.seqDECA   )
+rchk(Cmad, seqs.seqDODECA )
+rchk(Cmad, seqs.seqMULT   )
+rchk(Cmad, seqs.seqHKICK  )
+rchk(Cmad, seqs.seqVKICK  )
+rchk(Cmad, seqs.seqKICK   )
 
-notilt = 0;
-rchk(Cmad, seqs.seqSOL)
+notilt = 1;
+rchk(Cmad, seqs.seqSOL    )
 
-! switch to 6D for cavities
-nooff  = 1;
-rchk(Cmad, seqs.seqCAV0 )
-rchk(Cmad, seqs.seqCAV0t)
-rchk(Cmad, seqs.seqCAV  )
-rchk(Cmad, seqs.seqCAVt )
-rchk(Cmad, seqs.seqCAVh )
-rchk(Cmad, seqs.seqCAVb )
+nooff  = 1;                 ! avoid to switch back to 56
+rchk(Cmad, seqs.seqCAV0   )
+rchk(Cmad, seqs.seqCAV0t  )
+rchk(Cmad, seqs.seqCAV    )
+rchk(Cmad, seqs.seqCAVt   )
+rchk(Cmad, seqs.seqCAVh   )
+rchk(Cmad, seqs.seqCAVb   )
 
 -- for _,seq in ipairs(seqs) do
 --   rchk(Cmad, seq)
