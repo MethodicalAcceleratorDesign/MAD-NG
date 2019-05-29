@@ -74,6 +74,9 @@ local twscolre = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2'
                   're51','re52','re53','re54','re55','re56',
                   're61','re62','re63','re64','re65','re66' }
 
+local tw_col = {'name','s','l','slc','beta11','beta22'}
+local sv_col = {'name', 'kind', 's', 'l', 'angle', 'x', 'y', 'z', 'theta', 'phi', 'psi', 'globaltilt', 'slc'}
+
 -- Tests ----------------------------------------------------------------------o
 
 TestTwiss = {}
@@ -161,8 +164,62 @@ function TestTwiss:testTwissFODO ()
 --  assertAllAlmostEquals(mflw.X[1]:totable(), 0, eps)
 end
 
--- from MAD-X course, src_4.1 and src_5.1
+
 function TestTwiss:testTwissSimpleRing ()
+  local beam, sequence, element, survey, twiss in MAD
+  local sbend, quadrupole in element
+
+  local mb = sbend      { l=2, k0 =\s s.angle/s.l, kill_ent_fringe=true, kill_exi_fringe=true }
+  local mq = quadrupole { l=1 }
+  local k1f, k1d, ang = 0.296004765416, -0.302420662794, 2*pi/50
+  local cell =\a -> sequence { l=10, refer='entry',
+      mq 'mq1' { at=0, k1=k1f  },
+      mb 'mb1' { at=2, angle=a },
+      mq 'mq2' { at=5, k1=k1d  },
+      mb 'mb2' { at=7, angle=a },
+    }
+  local seq1 = sequence 'seq1' { 25*cell(ang), beam=beam }
+  assertEquals(seq1.l, 250)
+
+  local sv1    = survey { sequence=seq1, mapsave=true, nslice=5, implicit=true, atslice=ftrue }
+  sv1:write(rundir('survey_seq1'))--, sv_col, tbl_hdr)
+
+  local X0 = {-1e-3,1e-4,-1e-4,1e-3,0,0}
+  local _,tw1m = twiss { sequence=seq1, beam=beam, X0=X0, nslice=5, implicit=true, atslice=ftrue, chrom=false, deltap=1e-6 }
+  tw1m.mtbl:write(rundir('twiss_seq1'))--, tw_col, tbl_hdr)
+  tw1m:show()
+
+--  local round in MAD.gmath
+--  local bet11 = { x=vector(#sv1), z=vector(#sv1) }
+--  local v, scl = vector(3), round(tw1.beta11:max()/5)
+--  for i=1,#sv1 do
+--    v:fill {3+tw1.beta11[i]/scl, 0, 0}
+--    sv1.W[i]:mul(v, v)
+--    bet11.x[i], bet11.z[i] = v[1], v[3]
+--  end
+--  bet11.x = bet11.x+sv1.x
+--  bet11.z = bet11.z+sv1.z
+--
+--  if doplot or true then
+--    plot {
+--      sequence = seq1,
+--      laypos   = "in",
+--      layonly  = false,
+--      title    = "Layout in plot with \u{03b2}_x",
+--      data     = { x=bet11.x, z=bet11.z },
+--      x1y1     = { x = 'z' },
+--      styles   = 'lines',
+--    --  prolog   = 'set xrange [] reverse',
+--      xlabel   = "x [m]",
+--      ylabel   = "z [m]",
+--      legend   = { z = '\u{03b2}_x/'..scl },
+--      fontsize = 14,
+--    }
+--  end
+end
+
+-- from MAD-X course, src_4.1 and src_5.1
+function TestTwiss:testTwissSingleRing ()
   !! import
   local beam, sequence, element, survey, track, cofind, twiss in MAD
   local drift, marker, sbend, quadrupole, sextupole, hkicker, vkicker,
