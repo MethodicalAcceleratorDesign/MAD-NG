@@ -150,7 +150,7 @@ mad_str_num (str_t str, ssz_t arg[5])
   // sign
   if (str[i] == '-' || str[i] == '+') ++i;
 
-  // ±inf or ±nan ?
+  // inf or nan ?
   if (isalpha(str[i])) {
     if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
         tolower(str[i+2]) == 'f' && !isalpha(str[i+3])) {
@@ -206,6 +206,31 @@ fini:
   arg[2] = i; // index right after
   arg[3] = d;
   arg[4] = e;
+
+  return str;
+}
+
+str_t
+mad_str_ident (str_t str, ssz_t arg[4])
+{
+  assert(str && arg);
+  mad_str_trim_front(str, arg);
+
+  idx_t i = arg[0];
+
+  if (!isalpha(str[i]) && str[i] != '_') {
+    arg[1] = 0, arg[2] = arg[3] = -1; // no identifier found
+    return str;
+  }
+
+  ++i; while (isalnum(str[i]) || str[i] == '_') ++i;
+
+  arg[1] = i-arg[0]; // len
+  arg[2] = i; // index right after identifier
+
+  while (isspace(str[i])) ++i;
+
+  arg[3] = i; // index right after leading spaces
 
   return str;
 }

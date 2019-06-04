@@ -34,11 +34,11 @@ local band, bor, rol, rshift in bit
 local totable, iter          in fun
 local abs, min, max          in math
 
-local is_nil, is_boolean, is_number, is_string, is_table, is_emptytable,
-      is_value, is_integer, is_iterable, is_mappable, is_callable,
-      is_stringable, is_tablable, is_copiable, is_sameable,
-      get_metatable, get_metamethod, wprotect,
-      set_concept, concept                                        in MAD.typeid
+local is_nil, is_boolean, is_number, is_string, is_table,
+      is_emptytable, is_value, is_integer, is_iterable,
+      is_mappable, is_callable, is_stringable, is_tablable,
+      is_copiable, is_sameable, get_metatable, get_metamethod,
+      wprotect, set_concept, concept                              in MAD.typeid
 local attributes                                                  in MAD.filesys
 
 local not_mappable, not_extendable, not_mutable                   in concept
@@ -504,7 +504,8 @@ end
 
 -- extensions (conversion, factory)
 
-local tostring_ -- forward ref
+local tostring_     -- forward ref
+local is_identifier -- forward ref
 
 function utility.num2str (a)
   if a == 0 then a = abs(a) end
@@ -520,10 +521,14 @@ function utility.tbl2str (tbl, sep_)
   end
   local ir = #r+1
   for k,v in kpairs(tbl) do
-    if is_number(k)
-    then r[ir], ir = '['..tostring_(k)..']='..tostring_(v), ir+1
-    else r[ir], ir =      tostring_(k).. '='..tostring_(v), ir+1
+    if is_number(k) then
+      r[ir] = '[' ..k.. ']='..tostring_(v)
+    elseif is_identifier(k) then
+      r[ir] =       k..  '='..tostring_(v)
+    else
+      r[ir] = '["'..k..'"]='..tostring_(v)
     end
+    ir = ir+1
   end
   return '{'..table.concat(r, sep_ or ', ')..'}'
 end
@@ -669,6 +674,24 @@ function utility.strnum (str, ini_) -- parse number
   return tostr(str, ptr, sarg), sarg[1], sarg[2]+1             -- [2]: index  of closing char or -1
 end                                                            -- [3]: index  of decimal  '.' or -1
                                                                -- [4]: index  of exponent 'e' or -1
+
+function utility.strident (str, ini_) -- parse identifier
+  ini_ = ini_ or 1
+  assert(is_string(str ), "invalid argument #1 (string expected)")
+  assert(is_number(ini_), "invalid argument #2 (number expected)")
+  sarg[0], sarg[1] = ini_-1, #str-(ini_-1)                     -- sarg_in: [0]=ini, [1]=len
+  local ptr = _C.mad_str_ident(str, sarg)                      -- [0]: index  of str (trimmed)
+  -- ident str, length, index closing ident, ditto w spaces    -- [1]: length of ident ([1]=[2]-[0])
+  return tostr(str, ptr, sarg), sarg[1], sarg[2]+1, sarg[3]+1  -- [2]: index  of closing char or -1
+end                                                            -- [3]: index  of closing char after spaces or -1
+
+function is_identifier (str) -- check for identifier
+  if type(str) ~= "string" then return false end
+  sarg[0], sarg[1] = 0, #str                                   -- sarg_in: [0]=ini, [1]=len
+  _C.mad_str_ident(str, sarg)
+  return sarg[3] == #str
+end
+
 function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
   ini_ = ini_ or 1
   assert(is_string(str ), "invalid argument #1 (string expected)")
@@ -783,6 +806,10 @@ function utility.lsearch (tbl, val, equ_, low_, high_)
   end
   return nil
 end
+
+-- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_identifier = is_identifier
 
 -- end ------------------------------------------------------------------------o
 return {
