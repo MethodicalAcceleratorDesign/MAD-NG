@@ -23,11 +23,11 @@
 
 --[=[
 Notes about directions and quantities:
-  element direction   edir: affects curvatures (edir = seq.dir).
-  track direction (s) sdir: affects lengths    (sdir = cmd.dir).
-  time direction  (t) tdir: affects angles     (tdir = edir x sdir).
-  beam direction      bdir: affects strengths  (bdir = edir x sdir x chg).
-]=]
+  edir: element direction affects curvatures (edir = seq.dir).
+  sdir: track direction s affects lengths    (sdir = cmd.dir).
+  tdir: time direction t  affects angles     (tdir = edir x sdir).
+  bdir: beam direction    affects strengths  (bdir = edir x sdir x chg).
+--]=]
 
 -- locals ---------------------------------------------------------------------o
 
@@ -37,7 +37,7 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_integer, is_true, is_table, is_callable, is_iterable,
       is_mappable, is_tpsa, is_damap                            in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain              in MAD.gfunc
-local fact, arc2len                                             in MAD.gmath
+local invfact, arc2len                                          in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
 local atins                                                     in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
@@ -45,7 +45,7 @@ local apercheck                                                 in MAD.aperture
 local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
 
-local abs, min, max, sqrt, sin, cos, atan2 in math
+local abs, min, max in math
 local strsub = string.sub
 
 -- constants
@@ -53,43 +53,45 @@ local minvolt = 1e-6
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, driftonly, DKD, MKM                  in MAD.symint
+local thinonly, thickonly, driftonly, DKD, MKM                     in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
--- special elements (multipole, kickers)
-local mult_kick, kicker_kick                                    in MAD.dynmap
+-- straight elements (DKD)
+local strex_drift, strex_kick, strex_hkick, strex_fringe           in MAD.dynmap
 
--- straight and curved elements
-local strex_drift, strex_kick, strex_fringe,
-      curex_drift, curex_kick, curex_fringe                     in MAD.dynmap
+-- curved elements (DKD)
+local curex_drift, curex_kick, curex_fringe                        in MAD.dynmap
 
--- bends (sbend and rbend)
+-- bends (TKT)
 local rbend_thick, rbend_kick,
-      sbend_thick, sbend_kick, dipeg_fringe                     in MAD.dynmap
+      sbend_thick, sbend_kick, dipeg_fringe                        in MAD.dynmap
 
--- quadrupole
+-- quadrupole (TKT)
 local quad_thick,  quad_kick,
       quad_sthick, quad_skick,
-      quad_hthick, quad_hkick                                   in MAD.dynmap
+      quad_hthick, quad_hkick                                      in MAD.dynmap
+
+-- kickers
+local kicker_kick                                                  in MAD.dynmap
 
 -- solenoid
-local solen_thick, solen_fringe                                 in MAD.dynmap
+local solen_thick, solen_fringe                                    in MAD.dynmap
 
 -- rfcavity
-local rfcav_kick, rfcav_kickn, rfcav_fringe                     in MAD.dynmap
+local rfcav_kick, rfcav_kickn, rfcav_fringe                        in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
-      changeref, changedir, changenrj, misalign                 in MAD.dynmap
+      changeref, changedir, changenrj, misalign                    in MAD.dynmap
 
 -- sabac: TODO
-local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr        in MAD.dynmap
+local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr           in MAD.dynmap
 
 -- debug ----------------------------------------------------------------------o
 
-local shtfmt = "% -.6e % -.6e % -.6e % -.6e % -.6e % -.6e "
-local lngfmt = "% -.16e % -.16e % -.16e % -.16e % -.16e % -.16e "
+local shtfmt = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
+local lngfmt = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
 local mapfmt = lngfmt -- shtfmt
 
 local nodump = {marker=true}
@@ -103,7 +105,7 @@ local function mdump (mflw, elm, str_)
   if nodump[elm.kind] then return end
 
   printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
-  if mflw.npar == 0 then printf("no particle found\n") return end
+  if mflw.npar == 0 then io.write("no particle found\n") return end
 
   local X, R = mflw[1]
 
@@ -116,11 +118,12 @@ local function mdump (mflw, elm, str_)
 
   if R then
     for i=1,R.nrow do
+      io.write(' ')
       printf(mapfmt, R:get(i,1), R:get(i,2), R:get(i,3),
                      R:get(i,4), R:get(i,5), R:get(i,6))
     end
   end
-  printf('\n')
+  io.write('\n')
 end
 
 local function xdump (mflw, elm, str, X)
@@ -132,7 +135,7 @@ local function xdump (mflw, elm, str, X)
   elseif is_number(X) then
     printf(mapfmt == lngfmt and "% -.16e " or "% -.6e ", X)
   end
-  printf('\n')
+  io.write('\n')
 end
 
 local function mshow (mflw)
@@ -157,8 +160,8 @@ local function get_mult (elm, m, n)
   m.nmul = max(#knl, #ksl, #dknl, #dksl)
 
   for i=1,max(m.nmul,n or 0) do
-    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
-    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
+    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) * invfact(i-1)
+    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) * invfact(i-1)
   end
 end
 
@@ -237,39 +240,41 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, m)
-  m.el, m.tlt = 0, 0
+  m.el, m.eh, m.tlt = 0, 0, 0
   thinonly(elm, m, 1, nil, fnone)
 end
 
 local function track_drift (elm, m)
-  local ds, tdir in m
-  m.el, m.tlt = ds, 0
+  m.el, m.eh, m.tlt = m.ds, 0, 0
 
   if is_implicit(elm) then
     local track = m.implicit and thickonly or driftonly
     track(elm, m, 1, strex_drift)
   else
-    m.tlt = elm.tilt*tdir
+    m.tlt = elm.tilt*m.tdir
     local track = #elm == 0 and trackelm or tracksub
-    local thick = abs(ds) >= minlen and thickonly or driftonly
+    local thick = abs(m.ds) >= minlen and thickonly or driftonly
     track(elm, m, thick, strex_drift, nil, fnone)
   end
 end
 
-local function track_multipole (elm, m)
+local function track_multipole (elm, m)                                         -- to review with frs
   get_mult(elm, m)
-  if m.nmul == 0 then return track_marker(elm, m) end
+
+  if m.nmul == 0 then
+    return track_marker(elm, m)
+  end
 
   local angle, tilt in elm
   local sdir, tdir in m
-  m.el, m.tlt = 0, tilt*tdir
+  m.el, m.eh, m.tlt = 0, 0, tilt*tdir
 
   local kick
   if abs(angle) < minang then
     kick = strex_kick
   else
-    kick = mult_kick
-    m.el, m.ang = elm.lrad*sdir, angle*tdir
+    kick = strex_hkick
+    m.el = m.lrad*sdir
   end
 
   trackelm(elm, m, thinonly, nil, kick, fnone)
@@ -277,6 +282,7 @@ end
 
 local function track_sbend (elm, m, e1_, e2_)
   get_mult(elm, m, 3)
+
   local ds, tdir, nmul, knl, ksl in m
   local angle, tilt, k0, k0s, k1, k1s, k2, k2s, e1, e2 in elm
   local l = abs(ds)
@@ -284,14 +290,13 @@ local function track_sbend (elm, m, e1_, e2_)
   assert(l          >= minlen, "invalid sbend length (>0 expected)")
   assert(abs(angle) >= minang, "invalid sbend angle (~=0 expected)")
 
-  if not k0 then k0 = angle/l end -- MAD-X backward compatibility
+!  if not k0 then k0 = angle/l end -- MAD-X compatibility
 
   knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
   knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
   knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.el, m.ang, m.rho, m.tlt = ds, angle*tdir, ds/angle*tdir, tilt*tdir
+  m.el, m.eh, m.tlt = ds, angle/ds*tdir, tilt*tdir
   m.e1, m.e2 = (e1_ or e1)*tdir, (e2_ or e2)*tdir
-  m.k0, m.k1 = knl[1]/l, knl[2]/l
 
   if nmul < 3 then
     m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -314,15 +319,16 @@ end
 local track_combined =\ error("NYI") -- TODO: for now...
 
 local function track_rbend (elm, m)                                             -- unchecked
-  local angle, true_rbend in elm
+  local angle, e1, e2, true_rbend in elm
 
   if not true_rbend then
-    return track_sbend(elm, m, elm.e1+angle/2, elm.e2+angle/2)
+    return track_sbend(elm, m, e1+angle/2, e2+angle/2)
   end
 
   get_mult(elm, m, 3)
+
   local ds, tdir, nmul, knl, ksl in m
-  local tilt, k0, k0s, k1, k1s, k2, k2s, e1, e2 in elm
+  local tilt, k0, k0s, k1, k1s, k2, k2s in elm
   local l = abs(ds)
 
   assert(l          >= minlen, "invalid rbend length (>0 expected)")
@@ -331,9 +337,8 @@ local function track_rbend (elm, m)                                             
   knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
   knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
   knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.eld, m.ang, m.rho, m.tlt = ds, angle*tdir, ds/angle*tdir, tilt*tdir
+  m.eld, m.eh, m.tlt = ds, angle/ds*tdir, tilt*tdir
   m.e1, m.e2 = e1*tdir, e2*tdir
-  m.k0, m.k1 = knl[1]/l, knl[2]/l
   m.el = arc2len(ds, angle)
 
   if nmul < 3 then
@@ -352,25 +357,24 @@ local function track_rbend (elm, m)                                             
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, DKD[method], thick, kick, strex_fringe)
-
    m.eld = nil
 end
 
 local function track_quadrupole (elm, m)
-  get_mult(elm, m, 3)
+  get_mult(elm, m, 2)
+
   local ds, tdir, nmul, knl, ksl in m
-  local angle, tilt, k0, k0s, k1, k1s, k2, k2s in elm
+  local angle, tilt, k0, k0s, k1, k1s in elm
   local l = abs(ds)
 
   assert(l >= minlen, "invalid quadrupole length (>0 expected)")
 
-  knl[1], ksl[1] = knl[1]+(k0 or 0)*l  , ksl[1]+(k0s or 0)*l
-  knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
-  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.el, m.tlt = ds, tilt*tdir
+  knl[1], ksl[1] = knl[1]+(k0 or 0)*l, ksl[1]+(k0s or 0)*l
+  knl[2], ksl[2] = knl[2]+(k1 or 0)*l, ksl[2]+(k1s or 0)*l
+  m.el, m.eh, m.tlt = ds, angle/ds*tdir, tilt*tdir
 
-  if nmul < 3 then
-    m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
+  if nmul < 2 then
+    m.nmul = max((k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
   end
 
   local model  = elm.model  or m.model
@@ -381,19 +385,14 @@ local function track_quadrupole (elm, m)
 
   -- Note: MKM integrators used uniform length for the thick map
   --       hence all cos, sin, cosh, sinh should be computed here...
-  if model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
+  if not m.ptcmodel or model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_ang then                 -- normal thick
     inter, thick, kick = MKM[method], quad_thick, quad_kick
-    m.k1 = knl[2]/l
   elseif no_ang then                            -- skew thick
     inter, thick, kick = MKM[method], quad_sthick, quad_skick
-    m.k1 = sqrt(knl[2]^2 + ksl[2]^2)/l*tdir
-    local a = -0.5*atan2(ksl[2], knl[2])*tdir
-    m.ca, m.sa = cos(a), sin(a)
-  else                                          -- curved thick
+  else                                          -- curved thick (unchecked)
     inter, thick, kick = MKM[method], quad_hthick, quad_hkick
-    m.rho, m.k0, m.k1 = ds/angle*tdir, knl[1]/l, knl[2]/l
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -402,53 +401,71 @@ end
 
 local function track_sextupole (elm, m)
   get_mult(elm, m, 3)
+
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k2, k2s in elm
   local l = abs(ds)
 
-  knl[3] = knl[3]+(k2  or 0)*l/2
-  ksl[3] = ksl[3]+(k2s or 0)*l/2
-  m.el, m.tlt = ds, tilt*tdir
+  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 3 then
     m.nmul = max((k2 or k2s) and 3 or 0, nmul)
   end
 
+  local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local inter = l < minlen and thinonly or DKD[method]
+  local inter, thick, kick
+
+  if not (m.ptcmodel and model == 'TKT' and l >= minlen) then
+    inter = l < minlen and thinonly or DKD[method]
+    thick, kick = strex_drift, strex_kick
+  else
+    inter, thick, kick = MKM[method], quad_thick, quad_kick
+  end
+
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, thick, kick, strex_fringe)
 end
 
 local function track_octupole (elm, m)
   get_mult(elm, m, 4)
+
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k3, k3s in elm
   local l = abs(ds)
 
-  knl[4] = knl[4]+(k3  or 0)*l/6
-  ksl[4] = ksl[4]+(k3s or 0)*l/6
-  m.el, m.tlt = ds, tilt*tdir
+  knl[4], ksl[4] = knl[4]+(k3 or 0)*l/6, ksl[4]+(k3s or 0)*l/6
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 4 then
     m.nmul = max((k3 or k3s) and 4 or 0, nmul)
   end
 
+  local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local inter = l < minlen and thinonly or DKD[method]
+  local inter, thick, kick
+
+  if not (m.ptcmodel and model == 'TKT' and l >= minlen) then
+    inter = l < minlen and thinonly or DKD[method]
+    thick, kick = strex_drift, strex_kick
+  else
+    inter, thick, kick = MKM[method], quad_thick, quad_kick
+  end
+
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
+  track(elm, m, inter, thick, kick, strex_fringe)
 end
 
 local function track_decapole (elm, m)
   get_mult(elm, m, 5)
+
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k4, k4s in elm
   local l = abs(ds)
 
-  knl[5] = knl[5]+(k4  or 0)*l/24
-  ksl[5] = ksl[5]+(k4s or 0)*l/24
-  m.el, m.tlt = ds, tilt*tdir
+  knl[5], ksl[5] = knl[5]+(k4 or 0)*l/24, ksl[5]+(k4s or 0)*l/24
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 5 then
     m.nmul = max((k4 or k4s) and 5 or 0, nmul)
@@ -462,13 +479,13 @@ end
 
 local function track_dodecapole (elm, m)
   get_mult(elm, m, 6)
+
   local ds, tdir, nmul, knl, ksl in m
   local tilt, k5, k5s in elm
   local l = abs(ds)
 
-  knl[6] = knl[6]+(k5  or 0)*l/120
-  ksl[6] = ksl[6]+(k5s or 0)*l/120
-  m.el, m.tlt = ds, tilt*tdir
+  knl[6], ksl[6] = knl[6]+(k5 or 0)*l/120, ksl[6]+(k5s or 0)*l/120
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 6 then
     m.nmul = max((k5 or k5s) and 6 or 0, nmul)
@@ -482,6 +499,7 @@ end
 
 local function track_solenoid (elm, m)
   get_mult(elm, m)
+
   local ds, tdir, edir in m
   local tilt, ks, ksi in elm
   local l = abs(ds)
@@ -496,7 +514,7 @@ local function track_solenoid (elm, m)
   if abs(ksi) < minstr then
     thick = strex_drift
   else
-    m.ks = ksi/l*edir
+    m.ks  = ksi/l*edir
     thick = solen_thick
   end
 
@@ -841,13 +859,14 @@ local function make_mflow (self)
   -- totalpath
   local totalpath in self
   assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
-  local T = totalpath and 1 or 0
+  local T = totalpath and 0 or 1
 
   -- model, method
-  local model, method in self
+  local method, model, ptcmodel in self
+  assertf(DKD[method], "invalid integration method '%s'", method)
   assertf(modint[model],
           "invalid integration model %s (DKD or TKT expected)", model)
-  assertf(DKD[method], "invalid integration method '%s'", method)
+  assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
   local s0, X0, O0, R0, beta0, npart, mapdef, mapsave in self
@@ -858,7 +877,7 @@ local function make_mflow (self)
   assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
-  assert(is_boolean(mapsave) or mapsave == 1
+  assert(is_boolean(mapsave) or mapsave == 1 -- 1 means to save only the matrix
                             , "invalid mapsave (boolean or 1 expected)")
   if not is_mappable(X0[1]) then
     X0, R0, beta0 = {X0}, {R0}, {beta0}
@@ -961,8 +980,9 @@ local function make_mflow (self)
   mflw.ataper=ataper         -- action called when checking aperture
   mflw.atsave=atsave         -- action called when saving in mtable
 
-  mflw.model=model           -- default integration model
   mflw.method=method         -- default integration method
+  mflw.model=model           -- default integration model
+  mflw.ptcmodel=ptcmodel     -- use PTC integration model
   mflw.radiate=radiate       -- radiate at slices
   mflw.T=T                   -- cancel compensation for time of flight
 
@@ -984,15 +1004,13 @@ local function make_mflow (self)
 
   -- for processing elements (pre-alloc to avoid rehash)
   mflw.__edat = setmetatable({
-    el=0,                     -- current element length
-    clw=0,                    -- current element cumulated length weights
-    ang=0, rho=0,             -- current element radius and angle
+    el=0, eh=0,               -- current element length and curvature
     e1=0, e2=0,               -- current element pole face angles
-    k0=0, k0s=0, k1=0, k1s=0, -- current element strengths
-    k2=0, k2s=0, k3=0, k3s=0, k4=0, k4s=0, k5=0, k5s=0,
-    ks=0, volt=0, freq=0, lag=0,
-    tlt=0,                    -- current element tilt angle
+    ks=0,                     -- solenoid strength
+    volt=0, freq=0, lag=0,    -- rfcavity parameters
     nsl=0,                    -- current element number of slices
+    clw=0,                    -- current element cumulated length weights
+    tlt=0,                    -- current element tilt angle
     nmul=0,                   -- current element number of multipoles
     knl=table.new(15,0),      -- current element multipoles
     ksl=table.new(15,0),      -- current element multipoles skew
@@ -1090,8 +1108,9 @@ local track = command 'track' {
   nstep=-1,         -- number of elements to track                        (iter)
   npart=nil,        -- number of particles/damaps (or #X0)                (mflw)
   nslice=1,         -- number of slices (or weights) for each element     (mflw)
-  model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
+  model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
+  ptcmodel=false,   -- use strict PTC integration models                  (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   radiate=false,    -- radiate at slices (NYI)                            (mflw)
   misalign=true,    -- consider misalignment                              (mflw)
@@ -1116,8 +1135,8 @@ local track = command 'track' {
   __attr = {        -- list of all setup attributes
     'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'R0', 'beta0',
     'deltap', 'mapdef', 'mapsave', 'mapdump', 'nturn', 'nstep', 'npart',
-    'model', 'method', 'implicit', 'radiate', 'misalign', 'totalpath',
-    'save', 'title', 'observe', 'usrdef',
+    'method', 'model', 'ptcmodel', 'implicit', 'radiate', 'misalign',
+    'totalpath', 'save', 'title', 'observe', 'usrdef',
     noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'nslice',
               'savesel'},
   }
