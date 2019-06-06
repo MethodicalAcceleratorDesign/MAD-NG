@@ -43,7 +43,6 @@ local object
 local _id = {} -- unique identifier
 
 -- reserved flags (bits)
-local _flg = {} -- hidden key
 local flg_ro, flg_cl = 0, 1 -- flags id for readonly and class
 local flg_free = 2          -- used flags (0 - 1), free flags (2 - 31)
 
@@ -63,11 +62,6 @@ local flg_cls = cachelookup and bset(bset(0, flg_ro), flg_cl) or bset(0, flg_cl)
 
 -- helpers --------------------------------------------------------------------o
 
-local function name (a)
-  local var = a.__var
-  return rawget(var,'__id') or ('? <: ' .. var.__id)
-end
-
 local function init (a)
   local init = getmetatable(a).__init
   if init then return init(a) end
@@ -78,16 +72,21 @@ local function parent (a)
   return getmetatable(a.__index)
 end
 
+local function name (a)
+  local par = parent(a)
+  return par and a.__id == par.__id and ('? <: '..a.__id) or a.__id
+end
+
 local function fclass (a)
-  return btst(rawget(a,_flg) or 0, flg_cl)
+  return btst(a.__flg, flg_cl)
 end
 
 local function freadonly (a)
-  return btst(rawget(a,_flg) or 0, flg_ro)
+  return btst(a.__flg, flg_ro)
 end
 
 local function set_class (a)
-  rawset(a,_flg, bor(rawget(a, _flg) or 0, flg_cls))
+  a.__flg = bor(a.__flg, flg_cls)
   return a
 end
 
@@ -133,24 +132,24 @@ local MT = {__obj=_id}
 
 if cachemethod then          -- object model with cached methods
   function MT:__call (a, b)  -- object constructor (define the object-model)
-    if is_string(a) or is_nil(a) then                     -- [un]named object
-      if is_nil(b) then
-        local obj = {__id=a, __var=var0, __mth=var0, __index=self.__var}
+    if type(a) == 'string' or type(a) == 'nil' then       -- [un]named object
+      a = a or self.__id
+      if type(b) == 'nil' then
+        local obj = {__id=a, __flg=0, __var=var0, __mth=var0, __index=self.__var}
         return setmetatable(obj, getmetatable(self))      -- incomplete object
       elseif is_rawtable(b) then
-        local obj = {__var=b, __mth=self.__mth, __index=self.__var}
-        b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
+        local obj = {__id=a, __flg=0, __var=b, __mth=self.__mth, __index=self.__var}
+        setmetatable(b, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
     elseif is_rawtable(a) then
       if self.__var == var0 then                          -- finalize named object
-        a.__id, self.__id = self.__id, nil
         self.__var = setmetatable(a, self)                -- set fast inheritance
         local par = parent(self) ; set_class(par)
         self.__mth = par.__mth                            -- set shared methods
         return init(self)
       else                                                -- unnamed object
-        local obj = {__var=a, __mth=self.__mth, __index=self.__var}
+        local obj = {__id=self.__id, __flg=0, __var=a, __mth=self.__mth, __index=self.__var}
         setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -161,23 +160,23 @@ if cachemethod then          -- object model with cached methods
 
 else -- default              -- object model
   function MT:__call (a, b)  -- object constructor (define the object-model)
-    if is_string(a) or is_nil(a) then                     -- [un]named object
-      if is_nil(b) then
-        local obj = {__id=a, __var=var0, __index=self.__var} -- proxy
+    if type(a) == 'string' or type(a) == 'nil' then       -- [un]named object
+      a = a or self.__id
+      if type(b) == 'nil' then
+        local obj = {__id=a, __flg=0, __var=var0, __index=self.__var} -- proxy
         return setmetatable(obj, getmetatable(self))      -- incomplete object
       elseif is_rawtable(b) then
-        local obj = {__var=b, __index=self.__var}         -- proxy
-        b.__id=a ; setmetatable(b, obj) ; set_class(self) -- set fast inheritance
+        local obj = {__id=a, __flg=0, __var=b, __index=self.__var}-- proxy
+        setmetatable(b, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
     elseif is_rawtable(a) then
       if self.__var == var0 then                          -- finalize named object
-        a.__id, self.__id = self.__id, nil
         self.__var = setmetatable(a, self)                -- set fast inheritance
         set_class(parent(self))
         return init(self)
       else                                                -- unnamed object
-        local obj = {__var=a, __index=self.__var}         -- proxy
+        local obj = {__id=self.__id, __flg=0, __var=a, __index=self.__var}-- proxy
         setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -191,46 +190,35 @@ end
 
 if cachemethod and cachelookup then -- object model with cached lookup and methods
   function MT:__index (k)
-    local m = self.__mth[k]
-    if m then return m end          -- methods have the precedence over variables
-    local v = rawget(self.__var, k)
-    if rawequal(v, nil) then  -- cache lookup
-      v = self.__var[k] ; self.__var[k] = v
-    end
-    if type(k) == 'string' and type(v) == 'function'
-    then return v(self)
-    else return v end
+    local v = rawget(self.__var, k) -- variable have the precedence over methods
+    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
+    if type(k) == 'string' and type(v) == 'function' then return v(self) end
+    if rawequal(v, nil) then return self.__mth[k] end
+    return v
   end
 
-elseif cachemethod then          -- object model with lookup and cached methods
-  function MT:__index (k)
-    local m = self.__mth[k]
-    if m then return m end       -- methods have the precedence over variables
-    local v = self.__var[k]
-    if type(k) == 'string' and type(v) == 'function'
-    then return v(self)
-    else return v end
-  end
-
-elseif cachelookup then          -- object model with cached lookup
-  function MT:__index (k)
-    local v = rawget(self.__var, k)
-    if rawequal(v, nil) then  -- cache lookup
-      v = self.__var[k] ; self.__var[k] = v
-    end
-    if type(k) == 'string' and type(v) == 'function'
-    then return v(self)
-    else return v end
-  end
-
-else -- default                  -- object model with lookup
+elseif cachemethod then             -- object model with lookup and cached methods
   function MT:__index (k)
     local v = self.__var[k]
-    if type(k) == 'string' and type(v) == 'function'
-    then return v(self)
-    else return v end
+    if type(k) == 'string' and type(v) == 'function' then return v(self) end
+    if rawequal(v, nil) then return self.__mth[k] end
+    return v
   end
 
+elseif cachelookup then             -- object model with cached lookup
+  function MT:__index (k)
+    local v = rawget(self.__var, k) -- variable have the precedence over methods
+    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
+    if type(k) == 'string' and type(v) == 'function' then return v(self) end
+    return v
+  end
+
+else -- default                     -- object model with lookup
+  function MT:__index (k)
+    local v = self.__var[k]
+    if type(k) == 'string' and type(v) == 'function' then return v(self) end
+    return v
+  end
 end
 
 function MT:__newindex (k, v)
@@ -329,8 +317,8 @@ end
 function MF:set_readonly (set_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   if set_ ~= false
-  then rawset(self, _flg, bset(rawget(self,_flg) or 0, flg_ro))
-  else rawset(self, _flg, bclr(rawget(self,_flg) or 0, flg_ro))
+  then self.__flg = bset(self.__flg, flg_ro)
+  else self.__flg = bclr(self.__flg, flg_ro)
   end
   return self
 end
@@ -390,7 +378,6 @@ function MF:wrap_variables (tbl, override_)
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  local id  = rawget(var,'__id')
   for k,f in pairs(tbl) do
     local v, newv = var[k]
     assert(not is_nil(v) , "invalid variable (nil value)")
@@ -401,7 +388,6 @@ function MF:wrap_variables (tbl, override_)
     end
     var[k] = newv
   end
-  var.__id = id
   return self
 end
 
@@ -594,7 +580,7 @@ function MF:same (name_)
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
   -- same shares the same parent
   local par = parent(self)
-  local sam = par(name_, {})
+  local sam = par(name_ or self.__id, {})
   -- metamethods
   local sm, pm = getmetatable(self), getmetatable(par)
   if sm ~= pm then copy_metamethods(sam, sm) end
@@ -609,7 +595,7 @@ end
 function MF:copy (name_)
   assert(is_object(self)                  ,"invalid argument #1 (object expected)")
   assert(is_nil(name_) or is_string(name_),"invalid argument #2 (string expected)")
-  local cpy = MF.same(self, name_ or MF.raw_get(self,'__id'))
+  local cpy = MF.same(self, name_)
   local var, cvar = self.__var, cpy.__var
   for k,v in pairs_iter(self) do
     if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
@@ -630,14 +616,14 @@ local flg_notmask = bnot(flg_mask)
 function MF:test_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
-  return btst(rawget(self,_flg) or 0, n)
+  return btst(self.__flg, n)
 end
 
 function MF:set_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   if n >= flg_free then
-    rawset(self, _flg, bset(rawget(self,_flg) or 0, n))
+    self.__flg = bset(self.__flg, n)
   end
   return self
 end
@@ -646,49 +632,45 @@ function MF:clear_flag (n)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(n)   , "invalid argument #2 (number expected)")
   if n >= flg_free then
-    rawset(self, _flg, bclr(rawget(self,_flg) or 0, n))
+    self.__flg = bclr(self.__flg, n)
   end
   return self
 end
 
 function MF:get_flags ()
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return rawget(self,_flg) or 0
+  return self.__flg
 end
 
 function MF:test_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  return band(rawget(self,_flg) or 0, flags) ~= 0
+  return band(self.__flg, flags) ~= 0
 end
 
 function MF:set_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  flags = band(flags, flg_mask)
-  rawset(self, _flg, bor(rawget(self, _flg) or 0, flags))
+  self.__flg = bor(self.__flg, band(flags, flg_mask))
   return self
 end
 
 function MF:clear_flags (flags)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_number(flags), "invalid argument #2 (number expected)")
-  flags = band(flags, flg_mask)
-  rawset(self, _flg, band(rawget(self, _flg) or 0, bnot(flags)))
+  self.__flg = band(self.__flg, bnot(band(flags, flg_mask)))
   return self
 end
 
 -- environments
-
-local _env = {} -- hidden key
 
 function MF:open_env (ctx_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_nil(ctx_) or is_function(ctx_) or is_number(ctx_) and ctx_ >= 1,
                           "invalid argument #2 (not a function or < 1)")
   ctx_ = is_function(ctx_) and ctx_ or is_number(ctx_) and ctx_+1 or 2
-  assert(is_nil(rawget(self,_env)), "invalid environment (already open)")
-  rawset(self, _env, { ctx=ctx_, env=getfenv(ctx_) })
+  assert(is_nil(rawget(self,'__env')), "invalid environment (already open)")
+  rawset(self, '__env', { ctx=ctx_, env=getfenv(ctx_) })
   rawset(self, self.__id, self) -- self reference
   setfenv(ctx_, self)
   return self
@@ -696,15 +678,15 @@ end
 
 function MF:is_open_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
-  return not is_nil(rawget(self,_env))
+  return not is_nil(rawget(self,'__env'))
 end
 
 function MF:reset_env () -- if an error occurs while in the environment
   assert(is_object(self), "invalid argument #1 (object expected)")
-  local env = rawget(self,_env)
+  local env = rawget(self,'__env')
   if env then
     setfenv(env.ctx, env.env)
-    rawset(self, _env, nil)
+    rawset(self, '__env', nil)
     rawset(self, self.__id, nil) -- clear self reference
   end
   return self
@@ -712,7 +694,7 @@ end
 
 function MF:close_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(not is_nil(rawget(self,_env)), "invalid environment (not open)")
+  assert(not is_nil(rawget(self,'__env')), "invalid environment (not open)")
   return MF.reset_env(self)
 end
 
@@ -763,8 +745,7 @@ function MF:dumpobj (filnam_, class_, pattern_)
   while self and not rawequal(self, class_) do
     local var = self.__var
     -- header
-    local id = rawget(var, '__id')
-    n, str = n+1, id and (" '" .. id .. "'") or ""
+    n, str = n+1, " '" .. self.__id .. "'"
     res[n] = spc .. "+ " .. tostring(self)
     spc = spc .. "   "
     -- variables
@@ -805,7 +786,6 @@ end
 
 local MV = {}
 
-MV.__id  = 'object'
 MV.__par = parent
 MV.first_free_flag = flg_free
 
@@ -825,10 +805,11 @@ MAD.typeid.is_instanceOf = is_instanceOf
 
 -- add variables, methods and metamethods, and set as readonly
 if cachemethod then
-  object = setmetatable({__var=MV, __mth=MF, __index={}}, MT)
+  object = setmetatable({__id='object', __flg=0, __var=MV, __mth=MF, __index={}}, MT)
              :set_readonly()
 else
-  object = MF.set_methods(setmetatable({__var=MV, __index={}}, MT), MF)
+  object = MF.set_methods(
+           setmetatable({__id='object', __flg=0, __var=MV, __index={}}, MT), MF)
              :set_readonly()
 end
 
