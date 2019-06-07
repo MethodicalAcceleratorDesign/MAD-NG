@@ -190,34 +190,40 @@ end
 
 if cachemethod and cachelookup then -- object model with cached lookup and methods
   function MT:__index (k)
-    local v = rawget(self.__var, k) -- variable have the precedence over methods
-    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
-    if type(k) == 'string' and type(v) == 'function' then return v(self) end
-    if rawequal(v, nil) then return self.__mth[k] end
-    return v
+    local v = self.__mth[k]         -- methods have the precedence over variables
+    if type(v) == nil
+    then v = self.__var[k] ; self.__var[k] = v
+    else return v end
+    if type(v) == 'function' and type(k) == 'string'
+    then return v(self)
+    else return v end
   end
 
 elseif cachemethod then             -- object model with lookup and cached methods
   function MT:__index (k)
-    local v = self.__var[k]
-    if type(k) == 'string' and type(v) == 'function' then return v(self) end
-    if rawequal(v, nil) then return self.__mth[k] end
-    return v
+    local v = self.__mth[k]         -- methods have the precedence over variables
+    if type(v) == nil
+    then v = self.__var[k]
+    else return v end
+    if type(v) == 'function' and type(k) == 'string'
+    then return v(self)
+    else return v end
   end
 
 elseif cachelookup then             -- object model with cached lookup
   function MT:__index (k)
-    local v = rawget(self.__var, k) -- variable have the precedence over methods
-    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
-    if type(k) == 'string' and type(v) == 'function' then return v(self) end
-    return v
+    local v = self.__var[k] ; self.__var[k] = v
+    if type(v) == 'function' and type(k) == 'string'
+    then return v(self)
+    else return v end
   end
 
 else -- default                     -- object model with lookup
   function MT:__index (k)
     local v = self.__var[k]
-    if type(k) == 'string' and type(v) == 'function' then return v(self) end
-    return v
+    if type(v) == 'function' and type(k) == 'string'
+    then return v(self)
+    else return v end
   end
 end
 
@@ -231,8 +237,8 @@ end
 
 function MT:__len ()
   local var = self.__var
-  if is_nil(var[1]) then return 0 end -- fast
-  while is_nil(rawget(var,1)) do      -- slow
+  if type(var[1]) == 'nil' then return 0 end -- fast
+  while type(rawget(var,1)) == 'nil' do      -- slow
     var  = self.__index
     self = getmetatable(var)
   end
@@ -277,10 +283,6 @@ function MF:raw_get (k)
   return rawget(self.__var,k)         -- no inheritance nor function evaluation
 end
 
-function MF:raw_set (k, v)
-  rawset(self.__var, k, v)            -- no protection!!
-end
-
 if cachemethod then
   function MF:mth_raw (k)
     return self.__mth[k]              -- no function evaluation with inheritance
@@ -288,7 +290,8 @@ if cachemethod then
 
 else
   function MF:mth_raw (k)
-    return nil                        -- methods are variables, no separate lookup
+    local m = self.__var[k]           -- methods are variables, no separate lookup
+    return is_functor(m) and m or nil
   end
 end
 
@@ -297,14 +300,14 @@ function MF:var_raw (k)
 end
 
 function MF:var_val (k, v)            -- string key with value function
-  if type(k) == 'string' and type(v) == 'function'
+  if type(v) == 'function' and type(k) == 'string'
   then return v(self)
   else return v end
 end
 
 function MF:var_get (k)             -- named __index, can return multiple values
   local v = self.__var[k]
-  if type(k) == 'string' and type(v) == 'function'
+  if type(v) == 'function' and type(k) == 'string'
   then return v(self)
   else return v end
 end
@@ -328,7 +331,7 @@ function MF:get_variables (lst, noeval_)
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
   local n   = #lst
   local res = table.new(0,n)
-  local get = noeval_ == true and MF.var_raw or MF.var_get
+  local get = noeval_ == true and MF.var_raw or MT.__index
   for i=1,n do res[lst[i]] = get(self, lst[i]) end
   return res -- key -> val
 end
