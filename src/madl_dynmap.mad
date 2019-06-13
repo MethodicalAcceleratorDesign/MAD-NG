@@ -445,7 +445,7 @@ end
 function M.strex_hkick (elm, m, lw) -- [KICKT]                                  checked
   if m.nmul == 0 then return end
 
-  local el, tdir, nmul, knl, ksl, beam in m
+  local el, eh, tdir, nmul, knl, ksl, beam in m
   local wchg  = lw*tdir*beam.charge
   local _beta = 1/beam.beta
 
@@ -461,11 +461,11 @@ function M.strex_hkick (elm, m, lw) -- [KICKT]                                  
     m[i].py = py + wchg*bx
 
     -- dipole focusing and delta_p
-    local dpp1 = sqrt(1 + (2*_beta)*pt + pt^2)
-    local dt = wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/dpp1
+    local dp = sqrt(1 + (2*_beta)*pt + pt^2) - 1
+    local dt = wchg*(knl[1]*x - ksl[1]*y) * (_beta+pt)/(1+dp)
 
-    m[i].px = m[i].px - (wchg*knl[1])*(dpp1-2)
-    m[i].py = m[i].py + (wchg*ksl[1])*(dpp1-2)
+    m[i].px = m[i].px - (wchg*knl[1])*(dp-1)
+    m[i].py = m[i].py + (wchg*ksl[1])*(dp-1)
     m[i].t  = t - dt
 
     if el ~= 0 then
@@ -628,16 +628,16 @@ end
 
 function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                checked
   local el, edir, tdir, knl, beam in m
-  local l, k1 = el*lw, knl[2]/abs(el)
+  local l, k1l = el*lw, knl[2]
   local chg = beam.charge
 
   -- [GETMAT7]
-  local ws = k1*edir < 0 and -1 or 1
-  local w  = sqrt(abs(k1))*tdir*ws
+  local ws =  k1l*edir < 0 and -1 or 1
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
-  if w ~= 0 then
+  if abs(k1l) >= minang then
+    local w  = sqrt(abs(k1l/el))*tdir*ws
     cx, sx = cos (w*l), sin (w*l)
     cy, sy = cosh(w*l), sinh(w*l)
     mx1, mx2 = sx/w, -sx*w
@@ -701,35 +701,27 @@ end
 -- h == 0, skew (tilted by k1s)
 
 function M.quad_sthick (elm, m, lw) -- [PUSHTKT7]                               checked
-  local el, edir, tdir, knl, beam in m
+  local el, edir, tdir, knl, ksl, beam in m
   local l = el*lw
   local chg = beam.charge
 
   -- transpose k1s to k1 + field angle
-  local k1 = sqrt(knl[2]^2 + ksl[2]^2)/abs(el) -- *tdir
+  local k1l = sqrt(knl[2]^2 + ksl[2]^2) -- *tdir
   local a  = -0.5*atan2(ksl[2], knl[2]) -- *tdir
   local ca, sa = cos(a), sin(a)
 
   -- [GETMAT7]
-  local ws = k1*edir < 0 and -1 or 1
-  local w  = sqrt(abs(k1))*tdir*ws
-  local cx, sx, mx1, mx2
-  local cy, sy, my1, my2
-
-  if w ~= 0 then
-    cx, sx = cos (w*l), sin (w*l)
-    cy, sy = cosh(w*l), sinh(w*l)
-    mx1, mx2 = sx/w, -sx*w
-    my1, my2 = sy/w,  sy*w
-  else
-    cx, sx, mx1, mx2 = 1, 0, l, 0
-    cy, sy, my1, my2 = 1, 0, l, 0
-  end
+  local ws = k1l*edir < 0 and -1 or 1
+  local w  = sqrt(abs(k1l/el))*tdir*ws
+  local cx, sx = cos (w*l), sin (w*l)
+  local cy, sy = cosh(w*l), sinh(w*l)
+  local mx1, mx2 = sx/w, -sx*w
+  local my1, my2 = sy/w,  sy*w
 
   m:mdump(elm, 'quad_sthick:0')
 
-  printf("k1=%g, ws=%g, w=%g, cx=%g, sx=%g, cy=%g, sy=%g, mx1=%g, mx2=%g, my1=%g, my2=%g\n",
-          k1, ws, w, cx, sx, cy, sy, mx1, mx2, my1, my2)
+--  printf("k1l=%g, a=%g, ws=%g, w=%g, cx=%g, sx=%g, cy=%g, sy=%g, mx1=%g, mx2=%g, my1=%g, my2=%g\n",
+--          k1l, a, ws, w, cx, sx, cy, sy, mx1, mx2, my1, my2)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -786,27 +778,28 @@ function M.quad_skick (elm, m, lw, ii) -- [KICKTKT7]                            
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
--- h ~= 0
+-- eh ~= 0
 
 function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               unchecked
   local el, eh, edir, tdir, knl, beam in m
   local l, c = el*lw, beam.charge
-  local k0, k1 = knl[1]/abs(el), knl[2]/abs(el)
 
   -- [GETMAT7, w ~= 0]
-  local kx, ky = k1+h*k0, k1
+  local kx, ky = knl[2]+eh*knl[1], knl[2]
   local wxs = kx*edir < 0 and -c or c
   local wys = ky*edir < 0 and -c or c
-  local wx  = sqrt(abs(kx))*tdir*wxs
-  local wy  = sqrt(abs(ky))*tdir*wys
-  local chg, cx, sx, cy, sy, mx12, mx21, mx13, my12, my21, mx33
+  local wx  = sqrt(abs(kx/el))*tdir*wxs
+  local wy  = sqrt(abs(ky/el))*tdir*wys
+  local cx, sx, mx12, mx21, mx13
+  local cy, sy, my12, my21, mx33
+  local chg
 
   m:mdump(elm, 'quad_hthick:0')
 
   for i=1,m.npar do
     local x, px, y, py, t, pt in m[i]
     local beam = m[i].beam or beam
-    local h_b = h/beam.beta
+    local h_b = eh/beam.beta
 
     if chg ~= beam.charge then -- [GETMAT7, w ~= 0]
       chg = beam.charge
@@ -837,7 +830,7 @@ function M.quad_hthick (elm, m, lw) -- [PUSHTKT7]                               
     local npx = x*mx21       + px*cx         + pt*(mx12*h_b)
     local ny  = y*cy         + py*my12
     local npy = y*my21       + py*cy
-    local dt  = x*(mx12*h_b) + px*(mx13*h_b) + pt*(mx33*h^2)
+    local dt  = x*(mx12*h_b) + px*(mx13*h_b) + pt*(mx33*eh^2)
 
     m[i].x   = nx
     m[i].y   = ny
@@ -926,19 +919,17 @@ function M.rfcav_kick (elm, m, lw) -- [KICKCAV, FEVAL_CAVR?]
   local volt, freq, lag, tdir, beam in m
   local omega = freq*twopi_clight
   local phase = lag
-  local _pc   = 1/beam.pc
-  local chg   = beam.charge
-  local vl    = lw*chg*tdir*volt
+  local    vl = lw*tdir*volt*beam.charge/beam.pc
 
   m:mdump(elm, 'rfcav_kick:0')
 
--- print('@@ vl=', vl*_pc, 'omega=', omega, 'phase=', phase, 'p0c=', beam.pc, 'yl=', m.el*lw)
+  -- printf('@@ vl=% -.16e, omega=% -.16e, phase=% -.16e, p0c=% -.16e, yl=% -.16e\n',
+  --         vl, omega, phase, beam.pc, m.el*lw)
 
   for i=1,m.npar do
     local t, pt, beam in m[i]
-    local _pc = beam and 1/beam.pc          or _pc
-    local  vl = beam and vl*chg*beam.charge or  vl
-    local dpt = vl*_pc*sin(phase - omega*t)
+    local  vl = beam and vl*chg*beam.charge/beam.pc or vl
+    local dpt = vl*sin(phase - omega*t)
 
     -- energy kick
     m[i].pt = pt + dpt
@@ -1020,7 +1011,8 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
   local lw = lw_ or 1
 
   local sdir, beam in m
-  local _beta = 1/beam.beta
+--  local _beta = 1/beam.beta
+  local beta = beam.beta
 
   m:mdump(elm, 'rfcav_fringe:0')
 
@@ -1030,7 +1022,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
     assert(m.Tbak == nil, "inconsistent totalpath when entering rfcavity")
     m.Tbak, m.T = m.T, 0
     if not elm.no_cavity_totalpath then
-      m.T, m.lag = 1, m.lag - m.freq*m.el*pi_clight*_beta -- t=0 => accel=0
+      m.T, m.lag = 1, m.lag - m.freq*m.el*pi_clight/beta -- t=0 => accel=0
     end
   end
 
@@ -1039,9 +1031,9 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
 
     for i=1,m.npar do
       local t, beam in m[i]
-      local _beta = beam and 1/beam.beta or _beta
+--      local _beta = beam and 1/beam.beta or _beta
 
-      m[i].t = t + Tl*_beta
+      m[i].t = t + Tl/beta
     end
   end
 
@@ -1247,10 +1239,10 @@ end
 -- fringes helpers ------------------------------------------------------------o
 
 function sbend_face (h, m, lw) -- [NEWFACE]
-  local k0, edir, beam in m
-  local k0 = k0*h/2*edir
+  local el, tdir, knl, beam in m
+  local k0h = knl[1]/el*h/2*tdir
 
-  if abs(k0) < minstr then return end
+  if abs(k0h) < minstr then return end
 
   m:mdump(h, 'sbend_face:0')
 
@@ -1263,14 +1255,14 @@ function sbend_face (h, m, lw) -- [NEWFACE]
     local chg   = beam and beam.charge or chg
 
     if lw == 1 then -- to insure reversal symmetry ; horizontal wedge (only dir)
-      px = px + chg*k0*x^2
+      px = px + chg*k0h*x^2
     end
 
     local dpp      =  1 + 2*pt*_beta + pt^2
     local _pt2     =  1/(dpp - px^2)
-    local xi       =  2*k0*lw*sqrt(dpp)*_pt2
-    local dxi_px   =  2*px*xi          *_pt2
-    local dxi_ddel = -2   *xi*(1+pt)   *_pt2
+    local xi       =  2*k0h*lw*sqrt(dpp)*_pt2
+    local dxi_px   =  2*px*xi           *_pt2
+    local dxi_ddel = -2   *xi*(1+pt)    *_pt2
 
     x  = x / (1-dxi_px*y^2)
     px = px - xi*y^2
@@ -1278,7 +1270,7 @@ function sbend_face (h, m, lw) -- [NEWFACE]
     t  = t  - dxi_ddel*x*y^2
 
     if lw == -1 then -- to insure reversal symmetry; horizontal wedge (only dir)
-      px = px - chg*k0*x^2
+      px = px - chg*k0h*x^2
     end
 
     m[i].x  = x
@@ -1291,16 +1283,18 @@ function sbend_face (h, m, lw) -- [NEWFACE]
 end
 
 function mad8_wedge (e, m, lw) -- [FRINGE_TEAPOT]
-  local k1, edir, beam in m
-  if abs(k1*e) < minstr then return end
+  local el, tdir, knl, beam in m
+  local k1e = knl[2]/el*e*tdir
+  if abs(k1e) < minstr then return end
 
   m:mdump(e, 'mad8_wedge:0')
 
-  local k1e = k1*e * edir*beam.charge
+  local chg = beam.charge
   for i=1,m.npar do
-    local x, px, y, py in m[i]
-    m[i].px = px + k1e*(x^2-y^2)
-    m[i].py = py - k1e*(2*x*y)
+    local x, px, y, py, beam in m[i]
+    local chg = beam and beam.charge or chg
+    m[i].px = px + (chg*k1e)*(x^2-y^2)
+    m[i].py = py - (chg*k1e)*(2*x*y)
   end
 
   m:mdump(e, 'mad8_wedge:1')
@@ -1309,18 +1303,20 @@ end
 function sbend_wedge (e, m, lw) -- [WEDGE]
   if abs(e) < minang then return end
 
-  local k0, edir, beam in m
-  if abs(k0) < minstr then return yrotation(e,m,lw) end
+  local el, tdir, knl, beam in m
+  local k0e = knl[1]/el*e*tdir
+  if abs(k0e) < minstr then return yrotation(e,m,lw) end
 
   m:mdump(e, 'sbend_wedge:0')
 
   local _beta = 1/beam.beta
-  local b1 = k0*edir*beam.charge
+  local b1 = k0e*beam.charge
   local sa, ca, sa2 = sin(e), cos(e), sin(2*e)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
+    local    b1 = beam and k0e*beam.charge or b1
 
     local pzy = 1 + 2*_beta*pt + pt^2 - py^2
     local pz  = sqrt(pzy - px^2)
@@ -1339,11 +1335,12 @@ function sbend_wedge (e, m, lw) -- [WEDGE]
 end
 
 function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
-  local k0, edir, beam in m
+  local el, tdir, knl, beam in m
+  local k0 = knl[1]/el*tdir
   if abs(fh)+abs(k0) < minstr then return end
 
   local  fsad = abs(fh) ~= 0 and 1/(2*36*fh) or 0
-  local  b0   = edir*beam.charge*k0*lw
+  local  b0   = k0*lw*beam.charge
   local _beta = 1/beam.beta
 
   m:mdump(fh, 'sbend_fringe:0')
@@ -1351,16 +1348,16 @@ function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
-    local b0 = beam and edir*beam.charge*k0*lw or b0
+    local    b0 = beam and k0*lw*beam.charge or b0
 
-    local dpp = 1 + 2*_beta*pt + pt^2
-    local  pz = sqrt(dpp - px^2 - py^2)
-    local _pz = 1/pz
-    local relp = 1/sqrt(dpp)
-    local tfac = -(_beta + pt)
+    local   dpp = 1 + 2*_beta*pt + pt^2
+    local    pz = sqrt(dpp - px^2 - py^2)
+    local   _pz = 1/pz
+    local  relp = 1/sqrt(dpp)
+    local  tfac = -(_beta + pt)
 
-    local c2 = b0*fh*2
-    local c3 = b0^2*fsad*relp
+    local    c2 = b0*fh*2
+    local    c3 = b0^2*fsad*relp
 
     local xp,  yp  = px/pz, py/pz
     local xyp, yp2 = xp*yp, 1+yp^2
