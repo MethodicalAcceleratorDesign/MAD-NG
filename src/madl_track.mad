@@ -106,11 +106,12 @@ local function mdump (mflw, elm, str_)
   if str_ and mflw.ndump <= 1 then return end
 
   if is_number(elm) then
-    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
+    printf("@@ %-15s %-15s ", '  "', str_ or '')
+  else
+    if nodump[elm.kind] then return end
+    printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
   end
-  if nodump[elm.kind] then return end
 
-  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
   if mflw.npar == 0 then io.write("no particle found\n") return end
 
   local X, R = mflw[1]
@@ -267,9 +268,9 @@ end
 local function track_multipole (elm, m)                                         -- to review with frs
   get_mult(elm, m)
 
-!  if m.nmul == 0 then
-!    return track_marker(elm, m)
-!  end
+  if m.nmul == 0 then
+    return track_marker(elm, m)
+  end
 
   local angle, tilt in elm
   local sdir, tdir in m
@@ -281,7 +282,7 @@ local function track_multipole (elm, m)                                         
     kick = strex_kick
   else
     local lrad in elm
-    m.el, m.eh = lrad*sdir, angle/lrad*tdir
+    m.el = lrad*sdir
     kick = strex_hkick
   end
 
@@ -330,7 +331,7 @@ local function track_rbend (elm, m)                                             
   local angle, e1, e2, true_rbend in elm
 
   if not true_rbend then
-    return track_sbend(elm, m, e1+angle/2, e2+angle/2)
+    return track_sbend(elm, m, e1+angle/2, e2+angle/2)                          -- checked
   end
 
   get_mult(elm, m, 3)
@@ -346,8 +347,7 @@ local function track_rbend (elm, m)                                             
   knl[2], ksl[2] = knl[2]+(k1 or 0)*l  , ksl[2]+(k1s or 0)*l
   knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
   m.eld, m.eh, m.tlt = ds, angle/ds*tdir, tilt*tdir
-  m.e1, m.e2 = e1*tdir, e2*tdir
-  m.el = arc2len(ds, angle)
+  m.el, m.e1, m.e2 = arc2len(ds, angle), e1*tdir, e2*tdir
 
   if nmul < 3 then
     m.nmul = max((k2 or k2s) and 3 or (k1 or k1s) and 2 or (k0 or k0s) and 1 or 0, nmul)
@@ -407,50 +407,7 @@ local function track_quadrupole (elm, m)
   track(elm, m, inter, thick, kick, strex_fringe)
 end
 
-local function track_sextupole (elm, m)
-  get_mult(elm, m, 3)
-
-  local ds, tdir, nmul, knl, ksl in m
-  local tilt, k2, k2s in elm
-  local l = abs(ds)
-
-  knl[3], ksl[3] = knl[3]+(k2 or 0)*l/2, ksl[3]+(k2s or 0)*l/2
-  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
-
-  if nmul < 3 then
-    m.nmul = max((k2 or k2s) and 3 or 0, nmul)
-  end
-
-  local model  = elm.model  or m.model
-  local method = elm.method or m.method
-  local inter, thick, kick
-
-  if not (m.ptcmodel and model == 'TKT' and l >= minlen) then
-    inter = l < minlen and thinonly or DKD[method]
-    thick, kick = strex_drift, strex_kick
-  else
-    inter = MKM[method]
-    thick, kick = quad_thick, quad_kick
-  end
-
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, kick, strex_fringe)
-end
-
-local function track_octupole (elm, m)
-  get_mult(elm, m, 4)
-
-  local ds, tdir, nmul, knl, ksl in m
-  local tilt, k3, k3s in elm
-  local l = abs(ds)
-
-  knl[4], ksl[4] = knl[4]+(k3 or 0)*l/6, ksl[4]+(k3s or 0)*l/6
-  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
-
-  if nmul < 4 then
-    m.nmul = max((k3 or k3s) and 4 or 0, nmul)
-  end
-
+local function track_strexgen (elm, m, l)
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local inter, thick, kick
@@ -466,6 +423,42 @@ local function track_octupole (elm, m)
   track(elm, m, inter, thick, kick, strex_fringe)
 end
 
+local function track_sextupole (elm, m)
+  get_mult(elm, m, 3)
+
+  local ds, tdir, nmul, knl, ksl in m
+  local tilt, k2, k2s in elm
+  local l = abs(ds)
+
+  knl[3] = knl[3]+(k2  or 0)*l/2
+  ksl[3] = ksl[3]+(k2s or 0)*l/2
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
+
+  if nmul < 3 then
+    m.nmul = max((k2 or k2s) and 3 or 0, nmul)
+  end
+
+  track_strexgen (elm, m, l)
+end
+
+local function track_octupole (elm, m)
+  get_mult(elm, m, 4)
+
+  local ds, tdir, nmul, knl, ksl in m
+  local tilt, k3, k3s in elm
+  local l = abs(ds)
+
+  knl[4] = knl[4]+(k3  or 0)*l/6
+  ksl[4] = ksl[4]+(k3s or 0)*l/6
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
+
+  if nmul < 4 then
+    m.nmul = max((k3 or k3s) and 4 or 0, nmul)
+  end
+
+  track_strexgen (elm, m, l)
+end
+
 local function track_decapole (elm, m)
   get_mult(elm, m, 5)
 
@@ -473,17 +466,15 @@ local function track_decapole (elm, m)
   local tilt, k4, k4s in elm
   local l = abs(ds)
 
-  knl[5], ksl[5] = knl[5]+(k4 or 0)*l/24, ksl[5]+(k4s or 0)*l/24
+  knl[5] = knl[5]+(k4  or 0)*l/24
+  ksl[5] = ksl[5]+(k4s or 0)*l/24
   m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 5 then
     m.nmul = max((k4 or k4s) and 5 or 0, nmul)
   end
 
-  local method = elm.method or m.method
-  local inter = l < minlen and thinonly or DKD[method]
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
+  track_strexgen (elm, m, l)
 end
 
 local function track_dodecapole (elm, m)
@@ -493,59 +484,47 @@ local function track_dodecapole (elm, m)
   local tilt, k5, k5s in elm
   local l = abs(ds)
 
-  knl[6], ksl[6] = knl[6]+(k5 or 0)*l/120, ksl[6]+(k5s or 0)*l/120
+  knl[6] = knl[6]+(k5  or 0)*l/120
+  ksl[6] = ksl[6]+(k5s or 0)*l/120
   m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   if nmul < 6 then
     m.nmul = max((k5 or k5s) and 6 or 0, nmul)
   end
 
-  local method = elm.method or m.method
-  local inter = l < minlen and thinonly or DKD[method]
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, strex_kick, strex_fringe)
+  track_strexgen (elm, m, l)
 end
 
-local function track_tkicker (elm, m, hk_, vk_)
+local function track_kickgen (elm, m, hk, vk)
   get_mult(elm, m, 2)
 
   local ds, tdir, nmul, knl, ksl in m
-  local l = abs(ds)
 
-  knl[1] = knl[1] - (hk_ or elm.hkick)
-  ksl[1] = ksl[1] + (vk_ or elm.vkick)
+  knl[1] = knl[1] - hk
+  ksl[1] = ksl[1] + vk
   m.el, m.eh, m.tlt = ds, 0, elm.tilt*tdir
 
   if nmul == 0 and abs(knl[1])+abs(ksl[1]) >= minang then
     m.nmul = 1
   end
 
-  local model  = elm.model  or m.model
-  local method = elm.method or m.method
-  local inter, thick, kick
+  track_strexgen (elm, m, abs(ds))
+end
 
-  if not (m.ptcmodel and model == 'TKT' and l >= minlen) then
-    inter = l < minlen and thinonly or DKD[method]
-    thick, kick = strex_drift, strex_kick
-  else
-    inter = MKM[method]
-    thick, kick = quad_thick, quad_kick
-  end
-
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, kick, strex_fringe)
+local function track_tkicker (elm, m, hk_, vk_)
+  track_kickgen(elm, m, elm.hkick, elm.vkick)
 end
 
 local function track_kicker (elm, m)
-  track_tkicker(elm, m, elm.hkick+elm.chkick, elm.vkick+elm.cvkick)
+  track_kickgen(elm, m, elm.hkick+elm.chkick, elm.vkick+elm.cvkick)
 end
 
 local function track_hkicker (elm, m)
-  track_tkicker(elm, m, elm.hkick+elm.chkick, nil)
+  track_kickgen(elm, m, elm.hkick+elm.chkick, 0)
 end
 
 local function track_vkicker (elm, m)
-  track_tkicker(elm, m, nil, elm.vkick+elm.cvkick)
+  track_kickgen(elm, m, 0, elm.vkick+elm.cvkick)
 end
 
 local function track_solenoid (elm, m)
@@ -588,7 +567,8 @@ local function track_rfcavity (elm, m)
   if not m.ptcmodel and abs(volt) < minvolt and m.nmul == 0 then
     inter, kick = abs(ds) < minlen and thinonly or thickonly, fnone
   else
-    m.volt, m.freq, m.lag, m.nbsl = volt*1e-3, elm.freq*1e6, elm.lag*twopi, elm.n_bessel
+    m.volt, m.freq = volt*1e-3, elm.freq*1e6
+    m.lag , m.nbsl = elm.lag*twopi, elm.n_bessel
     if m.freq == 0 then
       m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
     end
@@ -991,11 +971,11 @@ local function make_mflow (self)
     clw=0,                    -- current element cumulated length weights
     tlt=0,                    -- current element tilt angle
     nmul=0,                   -- current element number of multipoles
-    knl=table.new(15,0),      -- current element multipoles
-    ksl=table.new(15,0),      -- current element multipoles skew
+    knl={[0]=0},              -- current element multipoles
+    ksl={[0]=0},              -- current element multipoles skew
     npha=0,                   -- current element number of multiplole phases
-    pnl=table.new(15,0),      -- current element multipoles phases
-    psl=table.new(15,0),      -- current element multipoles shew phases
+    pnl={[0]=0},              -- current element multipoles phases
+    psl={[0]=0},              -- current element multipoles shew phases
   }, {__index=mflw})
 
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
@@ -1003,11 +983,11 @@ local function make_mflow (self)
     clw=0,                    -- current subelement cumulated length weights
     tlt=0,                    -- current subelement tilt angle
     nmul=0,                   -- current subelement number of multipoles
-    knl=table.new(15,0),      -- current subelement multipoles
-    ksl=table.new(15,0),      -- current subelement multipoles skew
+    knl={[0]=0},              -- current subelement multipoles
+    ksl={[0]=0},              -- current subelement multipoles skew
     npha=0,                   -- current subelement number of multiplole phases
-    pnl=table.new(15,0),      -- current subelement multipoles phases
-    psl=table.new(15,0),      -- current subelement multipoles shew phases
+    pnl={[0]=0},              -- current subelement multipoles phases
+    psl={[0]=0},              -- current subelement multipoles shew phases
   }, {__index=mflw})
 
   return mflw
@@ -1054,7 +1034,6 @@ local function exec (self)
     atentry   (elm, __edat, 0, -1)
     elm:track (     __edat       )
     atexit    (elm, __edat, 0, -2)
-    mflw:mdump(elm)
     mflw.nstep = mflw.nstep-1
 
     -- check remaining number of elements and particles/damaps to track
