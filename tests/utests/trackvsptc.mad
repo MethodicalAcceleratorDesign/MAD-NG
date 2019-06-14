@@ -23,17 +23,14 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local assertTrue, assertEquals, assertAllAlmostEquals            in MAD.utest
+local assertEquals, assertAlmostEquals, assertAllAlmostEquals    in MAD.utest
 
-
-local beam, sequence, mtable, track, option, filesys             in MAD
-local drift, hkicker, vkicker, kicker, solenoid, rfcavity,
-      sbend, rbend, quadrupole, sextupole, octupole,
-      decapole, dodecapole, multipole                            in MAD.element
+local beam, sequence, element, mtable, track, option, filesys    in MAD
 local printf, assertf, tblicpy                                   in MAD.utility
 local eps, pi                                                    in MAD.constant
 local fnone, ftrue                                               in MAD.gfunc
-local abs                                                        in math
+local is_number                                                  in MAD.typeid
+local abs, max, ceil                                             in math
 
 local refdir = \s -> 'track_ref/'..(s or '')
 local rundir = \s -> 'track_run/'..(s or '')
@@ -59,8 +56,13 @@ local colcfg = {        'model','energy','tilt','tpath','method','nslice','eon',
 local prtcfg = {'cfgid','model','energy','tilt','tpath','method','nslice','eon','x0i'}
 local prthdr = {'name','type','title','origin','date','time'}
 
-local cfgsav, ressav, difsav = true, true, true
+-- flags
+
 local cfgtbl, restbl
+local cfgsav, ressav, difsav = true, true, true
+local onlycfgid != 8
+local mapdump    = 0 -- 1 or 2
+local mmshow     = 0 -- 1 or 2
 
 -- setup ----------------------------------------------------------------------o
 
@@ -106,12 +108,14 @@ end
 local e_on  = 0
 local e_tlt = 0
 
-local function chkres (seq)
+local function chkres (seq, tol)
   local beam = beam {particle = 'proton'}
   local res  = getres()
   local cfg  = getcfg()
   local row  = {}
   local run  = 0
+
+  if mmshow then io.write('\n') end
 
   for i=1,#cfg do
     -- global settings
@@ -120,6 +124,10 @@ local function chkres (seq)
 
     -- skip invalid cases (madx compat)
     if not (e_on >= seq.nooff and e_tlt <= (1-seq.notilt)*pi) then
+      goto skip
+    end
+    -- select one cfgid for specific study
+    if onlycfgid and onlycfgid ~= cfg.cfgid[i] then
       goto skip
     end
 
@@ -132,6 +140,11 @@ local function chkres (seq)
     assertf(not (e_tlt ~= 0 and seq[2].tilt  == 0),
                        "invalid tilted case %d '%s'", i, seq.name)
 
+    if is_number(mmshow) and mmshow > 1 then
+      printf("%s: cfg=%4g, x0i=%g, e_on=%g, e_tlt=%g\n",
+             seq.name, i, cfg.x0i[i], e_on, e_tlt)
+    end
+
     -- run track for these settings
     beam.energy = cfg.energy[i]
     local tbl = track {
@@ -142,9 +155,11 @@ local function chkres (seq)
       method    = cfg.method[i],
       nslice    = cfg.nslice[i],
       totalpath = cfg.tpath [i]<1,
+      ptcmodel  = true,
       mapdef    = true,
       save      = true,
       mapsave   = true,
+      mapdump   = mapdump,
       observe   = false,
     }
 
@@ -168,9 +183,12 @@ local function chkres (seq)
   -- read PTC ref, build diff (filename: seqxNAME.txt)
   local nam = string.lower(seq.name)
   local dif = mtable:read(refdir('seqx'..nam..'.txt'))
-  assert(#dif == #res, "invalid PTC input (#rows differs)")
+  assert(#res > 0, "invalid config (no case selected)")
+  assert(#res == #dif, "invalid PTC input (#rows differs)")
+  local imax, _ = {}
   for j=3,#colres do -- substract res in-place
     local rc, dc = res:getcol(j), dif:getcol(j) ; dc:sub(rc,dc)
+    _, imax[j] = dc:iminmax(true)
   end
 
   -- save results and diff (filenames: seqNAME.txt, seqNAMEdif.txt)
@@ -182,7 +200,36 @@ local function chkres (seq)
     option.format, option.colwidth = fmt, colw
   end
 
-  return res, dif
+  -- show summary (for fixing utests)
+  if mmshow then
+    io.write("\n      max value              /  \z
+                      max rel dif            /  \z
+                      max abs dif             imax/cfid\n")
+    local ttol = {}
+    for j=3,#colres do
+      local ima, ic = imax[j], res:getcol('cfgid')[imax[j]]
+      local mv, md = res:getcol(j)[ima], dif:getcol(j)[ima]
+      local mr = md == 0 and 0 or md/max(abs(mv),abs(md+mv))
+      ttol[colres[j]] = ceil(abs(md)/eps)
+      local st = abs(md) > 1e-10 and ('<<<< '..seq.name)
+                                 or abs(md) >= (tol[j-2] or 1)*eps and '<' or ''
+      local er = st == '<' and string.format(" %d eps", ttol[colres[j]]) or ''
+      printf("%s: % -.16e / % -.16e / % -.16e [%4d/%4d] %s%s\n",
+              colres[j], mv, mr, md, ima, ic, st, er)
+    end
+    -- print summary
+    io.write("tol={")
+    for j=3,#colres do
+      if ttol[colres[j]] > 1 then printf("%s=%d,", colres[j], ttol[colres[j]]) end
+    end
+    io.write("}\n")
+  end
+
+  -- check tolerances
+  for j=3,#colres do
+    local epstol = (tol[j-2] or tol[colres[j]] or 1)*eps
+    assertAlmostEquals(dif:getcol(j)[imax[j]], 0, epstol)
+  end
 end
 
 -- Tests ----------------------------------------------------------------------o
@@ -204,201 +251,330 @@ end
 -- TODO: all versions with knl, ksl...
 
 function TestTrackPTCda:testDRIFT ()
+  local drift in element
   local seq = sequence 'DRIFT' { nooff=1, notilt=1,
     drift 'DRIFT1' {at=0.75, l=1.5, tilt:=e_tlt },
     drift 'DRIFT2' {at=3.25, l=1.5, tilt:=e_tlt },
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=16,c12=4,c34=2,c56=64}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testSBEND ()
+  local sbend in element
   local seq = sequence 'SBEND' { nooff=1, notilt=0,
     sbend 'SBEND1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
     sbend 'SBEND2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=144,c30=102,c50=40,c11=14,c12=26,c13=6,c14=12,c16=280,
+               c22=2,c26=2,c31=6,c32=12,c33=6,c34=16,c36=198,c46=2,
+               c51=2,c52=117,c53=2,c54=58,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testSBENDfr ()
+  local sbend in element
   local seq = sequence 'SBENDfr' { nooff=1, notilt=0,
     sbend 'SBENDfr1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5},
     sbend 'SBENDfr2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=178,c30=80,c50=40,c11=12,c12=26,c13=7,c14=12,c16=280,
+               c22=2,c26=2,c31=7,c32=13,c33=4,c34=20,c36=198,c46=2,
+               c51=2,c52=88,c53=2,c54=58,c56=160}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testSBENDfe ()
+  local sbend in element
+  local seq = sequence 'SBENDfe' { nooff=1, notilt=0,
+    sbend 'SBENDfe1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5},
+    sbend 'SBENDfe2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5},
+  }
+  local tol = {c10=128,c30=91,c50=56,c11=14,c12=26,c13=8,c14=11,c16=321,
+               c22=2,c24=2,c31=6,c32=13,c33=8,c34=14,c36=198,c44=2,
+               c51=2,c52=260,c54=117,c56=176}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testSBENDfh ()
+  local sbend in element
   local seq = sequence 'SBENDfh' { nooff=1, notilt=0,
-    sbend 'SBENDfh1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5, hgap=0.03, fint=0.5},
-    sbend 'SBENDfh2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.03, fint=0.5},
+    sbend 'SBENDfh1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5, hgap=0.05, fint=0.8},
+    sbend 'SBENDfh2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.05, fint=0.8},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=148,c30=80,c50=48,c11=8,c12=30,c13=5,c14=12,c16=280,
+               c22=3,c31=6,c32=15,c33=5,c34=12,c36=198,
+               c51=2,c52=204,c53=2,c54=117,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testRBEND ()
+  local rbend in element
   local seq = sequence 'RBEND' { nooff=1, notilt=0,
     rbend 'RBEND1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
     rbend 'RBEND2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, kill_ent_fringe=true, kill_exi_fringe=true},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=89,c30=80,c50=40,c11=13,c12=24,c13=5,c14=17,c16=280,
+               c22=2,c31=5,c32=17,c33=5,c34=24,c36=198,c44=2,
+               c51=2,c52=203,c53=2,c54=202,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testRBENDfr ()
+  local rbend in element
   local seq = sequence 'RBENDfr' { nooff=1, notilt=0,
     rbend 'RBENDfr1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5},
     rbend 'RBENDfr2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=144,c30=80,c50=56,c11=12,c12=18,c13=7,c14=12,c16=336,
+               c22=2,c31=7,c32=16,c33=7,c34=12,c36=198,
+               c51=2,c52=202,c53=2,c54=202,c56=128}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testRBENDfe ()
+  local rbend in element
+  local seq = sequence 'RBENDfe' { nooff=1, notilt=0,
+    rbend 'RBENDfe1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5},
+    rbend 'RBENDfe2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5},
+  }
+  local tol = {c10=134,c30=80,c50=64,c11=12,c12=24,c13=5,c14=12,c16=281,
+               c22=2,c26=2,c31=5,c32=18,c33=4,c34=16,c36=204,c44=2,c46=2,
+               c51=2,c52=173,c53=2,c54=141,c56=128}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testRBENDfh ()
+  local rbend in element
+  local seq = sequence 'RBENDfh' { nooff=1, notilt=0,
+    rbend 'RBENDfh1' {at=0.75, l=1.5, tilt:=e_tlt, k0:= 0.05*e_on, angle= 0.05*1.5, e1= 0.05*1.5/2, e2= 0.05*1.5/1.5, hgap=0.05, fint=0.8},
+    rbend 'RBENDfh2' {at=3.25, l=1.5, tilt:=e_tlt, k0:=-0.05*e_on, angle=-0.05*1.5, e1=-0.05*1.5/2, e2=-0.05*1.5/1.5, hgap=0.05, fint=0.8},
+  }
+  local tol = {c10=134,c30=68,c50=47,c11=13,c12=24,c13=5,c14=10,c16=281,
+               c22=2,c24=2,c26=2,c31=5,c32=17,c33=4,c34=14,c36=199,c46=2,
+               c51=3,c52=209,c53=2,c54=145,c56=160}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testQUAD ()
+  local quadrupole in element
   local seq = sequence 'QUAD' { nooff=0, notilt=0,
     quadrupole 'QUAD1' {at=0.75, l=1.5, tilt:=e_tlt, k1:= 0.25*e_on},
     quadrupole 'QUAD2' {at=3.25, l=1.5, tilt:=e_tlt, k1:=-0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=48,c11=4,c12=24,c13=4,c14=12,c21=3,c22=5,c23=2,c24=4,
+               c31=4,c32=9,c33=4,c34=26,c41=2,c42=5,c43=3,c44=3,c56=160}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testQUADs ()
+  local quadrupole in element
+  local seq = sequence 'QUADs' { nooff=0, notilt=0,
+    quadrupole 'QUADs1' {at=0.75, l=1.5, tilt:=e_tlt, k1:= 0.25*e_on, k1s:=-0.25*e_on},
+    quadrupole 'QUADs2' {at=3.25, l=1.5, tilt:=e_tlt, k1:=-0.25*e_on, k1s:= 0.25*e_on},
+  }
+  local tol = {c50=48,c11=8,c12=24,c13=8,c14=12,c21=5,c22=6,c23=4,c24=7,
+               c31=8,c32=15,c33=8,c34=26,c41=3,c42=6,c43=4,c44=7,c56=160}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testSEXT ()
+  local sextupole in element
   local seq = sequence 'SEXT' { nooff=0, notilt=0,
     sextupole 'SEXT1' {at=0.75, l=1.5, tilt:=e_tlt, k2:= 0.25*e_on},
     sextupole 'SEXT2' {at=3.25, l=1.5, tilt:=e_tlt, k2:=-0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=40,c12=14,c14=7,c22=2,c32=6,c34=12,c56=144}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testSEXTs ()
+  local sextupole in element
+  local seq = sequence 'SEXTs' { nooff=0, notilt=0,
+    sextupole 'SEXTs1' {at=0.75, l=1.5, tilt:=e_tlt, k2:= 0.25*e_on, k2s:=-0.25*e_on},
+    sextupole 'SEXTs2' {at=3.25, l=1.5, tilt:=e_tlt, k2:=-0.25*e_on, k2s:= 0.25*e_on},
+  }
+  local tol = {c50=40,c11=4,c12=16,c13=3,c14=11,c22=3,c24=3,
+               c31=4,c32=10,c33=5,c34=14,c42=3,c44=4,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testOCTU ()
+  local octupole in element
   local seq = sequence 'OCTU' { nooff=0, notilt=0,
     octupole 'OCTU1' {at=0.75, l=1.5, tilt:=e_tlt, k3:= 0.25*e_on},
     octupole 'OCTU2' {at=3.25, l=1.5, tilt:=e_tlt, k3:=-0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=40,c12=14,c14=5,c32=6,c34=12,c56=144}
+  chkres(seq, tol)
 end
 
-function TestTrackPTCda:testDECA ()
-  local seq = sequence 'DECA' {l=4, nooff=0, notilt=0,
-    multipole 'DECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0, 0.25*e_on}},
-    multipole 'DECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,-0.25*e_on}},
+function TestTrackPTCda:testOCTUs ()
+  local octupole in element
+  local seq = sequence 'OCTUs' { nooff=0, notilt=0,
+    octupole 'OCTUs1' {at=0.75, l=1.5, tilt:=e_tlt, k3:= 0.25*e_on, k3s:=-0.25*e_on},
+    octupole 'OCTUs2' {at=3.25, l=1.5, tilt:=e_tlt, k3:=-0.25*e_on, k3s:= 0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
-end
-
-function TestTrackPTCda:testDODECA ()
-  local seq = sequence 'DODECA' {l=4, nooff=0, notilt=0,
-    multipole 'DODECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0, 0.25*e_on}},
-    multipole 'DODECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0,-0.25*e_on}},
-  }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=40,c11=6,c12=20,c13=3,c14=12,c22=4,c24=3,
+               c31=5,c32=11,c33=3,c34=20,c42=3,c44=5,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testMULT ()
-  local seq = sequence 'MULT' {l=4, nooff=0, notilt=0,
-    multipole 'MULT1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={ 0.05*1.5*e_on, 0.25*1.5*e_on}, angle= 0.05*1.5},
-    multipole 'MULT2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={-0.05*1.5*e_on,-0.25*1.5*e_on}, angle=-0.05*1.5},
+  local multipole in element
+  local seq = sequence 'MULT' {l=4, nooff=0, notilt=1,
+    multipole 'MULT1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={ 0.05*1.5*e_on, 0.25*1.5*e_on}, angle:= 0.05*1.5*e_on},
+    multipole 'MULT2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={-0.05*1.5*e_on,-0.25*1.5*e_on}, angle:=-0.05*1.5*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=16,c12=2,c34=2,c52=2,c56=80}
+  chkres(seq, tol)
 end
 
-function TestTrackPTCda:testHKICK ()
-  local seq = sequence 'HKICK' { nooff=0, notilt=0,
-    hkicker 'HKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:= 0.25e-3*e_on},
-    hkicker 'HKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:=-0.25e-3*e_on},
+function TestTrackPTCda:testMULTs ()
+  local multipole in element
+  local seq = sequence 'MULTs' {l=4, nooff=0, notilt=1,
+    multipole 'MULTs1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={ 0.05*1.5*e_on, 0.25*1.5*e_on}, ksl:={-0.05*1.5*e_on,-0.25*1.5*e_on}, angle:= 0.05*1.5*e_on},
+    multipole 'MULTs2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={-0.05*1.5*e_on,-0.25*1.5*e_on}, ksl:={ 0.05*1.5*e_on, 0.25*1.5*e_on}, angle:=-0.05*1.5*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=16,c11=2,c12=4,c14=2,c22=2,c24=2,c33=2,c34=2,c56=80}
+  chkres(seq, tol)
 end
 
-function TestTrackPTCda:testVKICK ()
-  local seq = sequence 'VKICK' { nooff=0, notilt=0,
-    vkicker 'VKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:=-0.25e-3*e_on},
-    vkicker 'VKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:= 0.25e-3*e_on},
+function TestTrackPTCda:testDECA ()
+  local multipole in element
+  local seq = sequence 'DECA' {l=4, nooff=0, notilt=1,
+    multipole 'DECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0, 0.25*1.5*e_on}},
+    multipole 'DECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,-0.25*1.5*e_on}},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=16,c12=2,c34=2,c56=80}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testDODECA ()
+  local multipole in element
+  local seq = sequence 'DODECA' {l=4, nooff=0, notilt=1,
+    multipole 'DODECA1' {at=0.75, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0, 0.25*1.5*e_on}},
+    multipole 'DODECA2' {at=3.25, lrad=1.5, tilt:=e_tlt, knl:={0,0,0,0,0,-0.25*1.5*e_on}},
+  }
+  local tol = {c50=8,c12=8,c34=4,c56=80}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testKICK ()
+  local kicker in element
   local seq = sequence 'KICK' { nooff=0, notilt=0,
-    kicker 'KICK1' {at=0.75, l=1.5, tilt:=e_tlt, hkick:= 0.25e-3*e_on, vkick:=-0.25e-3*e_on},
-    kicker 'KICK2' {at=3.25, l=1.5, tilt:=e_tlt, hkick:=-0.25e-3*e_on, vkick:= 0.25e-3*e_on},
+    kicker 'KICK1' {at=0.75, l=1.5, tilt:=e_tlt, hkick:= 0.25*e_on, vkick:=-0.25*e_on},
+    kicker 'KICK2' {at=3.25, l=1.5, tilt:=e_tlt, hkick:=-0.25*e_on, vkick:= 0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c10=4,c30=2,c50=40,c12=14,c14=5,c16=14,c32=6,c34=12,c36=6,
+               c52=10,c54=6,c56=144}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testHKICK ()
+  local hkicker in element
+  local seq = sequence 'HKICK' { nooff=0, notilt=0,
+    hkicker 'HKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:= 0.25*e_on},
+    hkicker 'HKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:=-0.25*e_on},
+  }
+  local tol = {c10=2,c30=2,c50=40,c12=14,c14=6,c16=6,c32=8,c34=12,c36=4,
+               c52=7,c54=4,c56=144}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testVKICK ()
+  local vkicker in element
+  local seq = sequence 'VKICK' { nooff=0, notilt=0,
+    vkicker 'VKICK1' {at=0.75, l=1.5, tilt:=e_tlt, kick:=-0.25*e_on},
+    vkicker 'VKICK2' {at=3.25, l=1.5, tilt:=e_tlt, kick:= 0.25*e_on},
+  }
+  local tol = {c30=2,c50=40,c12=14,c14=8,c16=4,c32=6,c34=12,c36=6,
+               c52=4,c54=6,c56=144}
+  chkres(seq, tol)
+end
+
+function TestTrackPTCda:testTKICK ()
+  local tkicker in element
+  local seq = sequence 'TKICK' { nooff=0, notilt=0,
+    tkicker 'TKICK1' {at=0.75, l=1.5, tilt:=e_tlt, hkick:= 0.25*e_on, vkick:=-0.25*e_on},
+    tkicker 'TKICK2' {at=3.25, l=1.5, tilt:=e_tlt, hkick:=-0.25*e_on, vkick:= 0.25*e_on},
+  }
+  local tol = {c10=4,c30=2,c50=40,c12=14,c14=5,c16=14,c32=6,c34=12,c36=6,
+               c52=10,c54=6,c56=144}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testSOL ()
+  local solenoid in element
   local seq = sequence 'SOL' { nooff=0, notilt=1,
     solenoid 'SOL1' {at=0.75, l=1.5, tilt:=e_tlt, ks:= 0.25*e_on},
     solenoid 'SOL2' {at=3.25, l=1.5, tilt:=e_tlt, ks:=-0.25*e_on},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=64,c11=27,c12=76,c13=3,c14=6,c21=2,c22=21,c24=2,
+               c31=3,c32=6,c33=18,c34=84,c42=2,c43=2,c44=22,
+               c56=160}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAV0 ()
+  local rfcavity in element
   local seq = sequence 'CAV0' {l=4, nooff=1, notilt=1,
-    rfcavity 'CAV01' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
-    rfcavity 'CAV02' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+    rfcavity 'CAV01' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, no_cavity_totalpath=true},
+    rfcavity 'CAV02' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, no_cavity_totalpath=true},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=24,c60=2,c12=8,c34=4,c55=32,c56=320,c65=5,c66=55}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAV0t ()
+  local rfcavity in element
   local seq = sequence 'CAV0t' {l=4, nooff=1, notilt=1,
-    rfcavity 'CAV0t1' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
-    rfcavity 'CAV0t2' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+    rfcavity 'CAV0t1' {at=0.75, l=0, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6},
+    rfcavity 'CAV0t2' {at=3.25, l=0, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=24,c60=2,c12=8,c34=4,c55=32,c56=320,c65=5,c66=55}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAV ()
+  local rfcavity in element
   local seq = sequence 'CAV' { nooff=1, notilt=1,
-    rfcavity 'CAV1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
-    rfcavity 'CAV2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, no_cavity_totalpath=true},
+    rfcavity 'CAV1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, no_cavity_totalpath=true},
+    rfcavity 'CAV2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, no_cavity_totalpath=true},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=48,c60=2,c12=8,c34=8,c55=76,c56=1152,c65=14,c66=200}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAVt ()
+  local rfcavity in element
   local seq = sequence 'CAVt' { nooff=1, notilt=1,
-    rfcavity 'CAVt1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
-    rfcavity 'CAVt2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5},
+    rfcavity 'CAVt1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6},
+    rfcavity 'CAVt2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=46,c60=4,c12=16,c34=16,c55=208,c56=1120,c65=25,c66=158}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAVh ()
+  local rfcavity in element
   local seq = sequence 'CAVh' { nooff=1, notilt=1,
-   rfcavity 'CAVh1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.5},
-   rfcavity 'CAVh2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.5},
- }
-  chkres(seq)
-  -- TODO: add assertions
+    rfcavity 'CAVh1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.6},
+    rfcavity 'CAVh2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, harmon=2, lag=0.6},
+  }
+  local tol = {c50=16,c12=6,c34=8,c55=9,c56=160,c66=16}
+  chkres(seq, tol)
 end
 
 function TestTrackPTCda:testCAVb ()
+  local rfcavity in element
   local seq = sequence 'CAVb' { nooff=1, notilt=1,
-    rfcavity 'CAVb1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, n_bessel=3},
-    rfcavity 'CAVb2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=400, lag=0.5, n_bessel=3},
+    rfcavity 'CAVb1' {at=0.75, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, n_bessel=3},
+    rfcavity 'CAVb2' {at=3.25, l=1.5, tilt:=e_tlt, volt:=8*e_on, freq=150, lag=0.6, n_bessel=3},
   }
-  chkres(seq)
-  -- TODO: add assertions
+  local tol = {c50=40,c60=3,c11=4,c12=12,c21=2,c22=4,c33=3,c34=12,c43=2,c44=4,
+               c55=264,c56=1112,c65=24,c66=94}
+  chkres(seq, tol)
 end
 
 -- end ------------------------------------------------------------------------o
