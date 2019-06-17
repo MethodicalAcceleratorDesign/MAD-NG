@@ -58,35 +58,32 @@ local thinonly, thickonly, driftonly, DKD, MKM                     in MAD.symint
 -- dynamic maps ---------------------------------------------------------------o
 
 -- straight elements (DKD)
-local strex_drift, strex_kick, strex_hkick, strex_fringe           in MAD.dynmap
+local strex_drift, strex_kick, strex_kickh, strex_fringe           in MAD.dynmap
 
 -- curved elements (DKD)
-local curex_drift, curex_kick, curex_fringe                        in MAD.dynmap
+local curex_drift, curex_kick             , curex_fringe           in MAD.dynmap
 
--- bends (TKT)
-local rbend_thick, rbend_kick,
-      sbend_thick, sbend_kick, dipeg_fringe                        in MAD.dynmap
+-- sbend (TKT)
+local sbend_thick,  sbend_kick,
+      sbend_thickf, sbend_kickf           , dipeg_fringe           in MAD.dynmap
+
+-- rbend (TKT)
+local rbend_thick,  rbend_kick                                     in MAD.dynmap
 
 -- quadrupole (TKT)
 local quad_thick,  quad_kick,
-      quad_sthick, quad_skick,
-      quad_hthick, quad_hkick                                      in MAD.dynmap
+      quad_thicks, quad_kicks,
+      quad_thickh, quad_kickh                                      in MAD.dynmap
 
--- kickers
-local kicker_kick                                                  in MAD.dynmap
-
--- solenoid
-local solen_thick, solen_fringe                                    in MAD.dynmap
+-- solenoid (always TKT)
+local solen_thick                                                  in MAD.dynmap
 
 -- rfcavity
-local rfcav_kick, rfcav_kickn, rfcav_fringe                        in MAD.dynmap
+local rfcav_kick, rfcav_kickn             , rfcav_fringe           in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                    in MAD.dynmap
-
--- sabac: TODO
-local sabac_quad_drift, sabac_quad_kick, sabac_quad_corr           in MAD.dynmap
 
 -- debug ----------------------------------------------------------------------o
 
@@ -283,7 +280,7 @@ local function track_multipole (elm, m)                                         
   else
     local lrad in elm
     m.el = lrad*sdir
-    kick = strex_hkick
+    kick = strex_kickh
   end
 
   trackelm(elm, m, thinonly, nil, kick, fnone)
@@ -313,19 +310,19 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local thick, kick
+  local inter, thick, kick
 
-  if model == 'DKD' then
-    thick, kick = curex_drift, curex_kick
-  else
-    thick, kick = sbend_thick, sbend_kick
+  if model == 'DKD' then                        -- curved thin
+    inter, thick, kick = DKD[method], curex_drift , curex_kick
+  else -- if abs(knl[2]) < minang then              -- curved thick
+    inter, thick, kick = DKD[method], sbend_thick , sbend_kick
+--  else                                          -- curved thick with focusing
+--    inter, thick, kick = MKM[method], sbend_thickf, sbend_kickf
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, DKD[method], thick, kick, curex_fringe)
+  track(elm, m, inter, thick, kick, curex_fringe)
 end
-
-local track_combined =\ error("NYI") -- TODO: for now...
 
 local function track_rbend (elm, m)                                             -- unchecked
   local angle, e1, e2, true_rbend in elm
@@ -396,11 +393,11 @@ local function track_quadrupole (elm, m)
   if not m.ptcmodel or model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_ang then                 -- normal thick
-    inter, thick, kick = MKM[method], quad_thick, quad_kick
+    inter, thick, kick = MKM[method], quad_thick , quad_kick
   elseif no_ang then                            -- skew thick
-    inter, thick, kick = MKM[method], quad_sthick, quad_skick
+    inter, thick, kick = MKM[method], quad_thicks, quad_kicks
   else                                          -- curved thick (unchecked)
-    inter, thick, kick = MKM[method], quad_hthick, quad_hkick
+    inter, thick, kick = MKM[method], quad_thickh, quad_kickh
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -550,7 +547,7 @@ local function track_solenoid (elm, m)
 
   local method = elm.method or m.method
   local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, DKD[method], thick, strex_kick, solen_fringe)
+  track(elm, m, DKD[method], thick, strex_kick, strex_fringe)
 end
 
 local function track_rfcavity (elm, m)
@@ -609,7 +606,6 @@ E.extra_element:setvar({ track = functor( invalid      ) }, 'init') -- forbidden
 -- specialized maps (invalid == NYI)
 
 E.sbend      :setvar({ track = functor( track_sbend      ) }, 'init') -- curved  , k0, (k0s, k1, k1s, k2, k2s)
-E.combined   :setvar({ track = functor( notyetdone       ) }, 'init') -- curved  , k0, k1, (k0s, k1s, k2, k2s)
 E.rbend      :setvar({ track = functor( track_rbend      ) }, 'init') -- straight, k0, (k0s, k1, k1s, k2, k2s)
 E.quadrupole :setvar({ track = functor( track_quadrupole ) }, 'init') -- straight, k0, k1, (k0s, k1s, k2, k2s)
 E.sextupole  :setvar({ track = functor( track_sextupole  ) }, 'init') -- straight, (k2, k2s)
@@ -742,10 +738,16 @@ local function make_mflow (self)
   local iter, state, init = sequ:siter(range, nturn, dir)
 
   -- saving data, build mtable
-  local save, observe, implicit, radiate in self
+  local save, observe, implicit, fringe, radiate in self
+  if is_boolean(fringe ) then fringe  = fringe  and 1 or 0 end
+  if is_boolean(radiate) then radiate = radiate and 1 or 0 end
   if is_boolean(observe) then observe = observe and 1 or 0 end
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
+  assert(is_integer(fringe) and fringe >= 0
+                             , "invalid fringe (positive integer expected)")
+  assert(is_integer(radiate) and radiate >= 0
+                             , "invalid radiate (positive integer expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
 
@@ -927,6 +929,8 @@ local function make_mflow (self)
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
+  mflw.fringe=fringe         -- compute fringe fields (1, 2 or 3)
+  mflw.radiate=radiate       -- radiate at slices
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
 
   mflw.save=save             -- save data
@@ -942,7 +946,6 @@ local function make_mflow (self)
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
   mflw.ptcmodel=ptcmodel     -- use PTC integration model
-  mflw.radiate=radiate       -- radiate at slices
   mflw.T=T                   -- cancel compensation for time of flight
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
@@ -1070,6 +1073,7 @@ local track = command 'track' {
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   ptcmodel=false,   -- use strict PTC integration models                  (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
+  fringe=false,     -- compute fringe fields (1, 2 or 3)                  (mflw)
   radiate=false,    -- radiate at slices (NYI)                            (mflw)
   misalign=true,    -- consider misalignment                              (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
@@ -1093,7 +1097,7 @@ local track = command 'track' {
   __attr = {        -- list of all setup attributes
     'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'R0', 'beta0',
     'deltap', 'mapdef', 'mapsave', 'mapdump', 'nturn', 'nstep', 'npart',
-    'method', 'model', 'ptcmodel', 'implicit', 'radiate', 'misalign',
+    'method', 'model', 'ptcmodel', 'implicit', 'fringe', 'radiate', 'misalign',
     'totalpath', 'save', 'title', 'observe', 'usrdef',
     noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'nslice',
               'savesel'},
