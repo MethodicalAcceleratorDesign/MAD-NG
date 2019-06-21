@@ -51,7 +51,7 @@ local thinonly, thickonly, driftonly                             in MAD.symint
 
 -- geometric maps -------------------------------------------------------------o
 
-local strex_drift, curex_thick, curex_thin                       in MAD.geomap
+local strex_thick, curex_thick, curex_thin                       in MAD.geomap
 
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
@@ -113,28 +113,39 @@ end
 
 local function track_thin (elm, m)
   local tdir in m
-  m.el, m.ang, m.tlt = 0, elm.angle*tdir, elm.tilt*tdir
-  trackelm(elm, m, thinonly, nil, curex_thin)
+  local angle, tilt in elm
+  m.el, m.ang, m.tlt = 0, angle*tdir, tilt*tdir
+
+  local thin = abs(angle) >= minang and curex_thin or fnone
+  trackelm(elm, m, thinonly, nil, thin)
 end
 
 local function track_thick (elm, m)
   local ds, tdir in m
-  m.el, m.ang, m.tlt = ds, elm.angle*tdir, elm.tilt*tdir
-  local thick = abs(ds) >= minlen and thickonly or driftonly
-  trackelm(elm, m, thick, curex_thick)
+  local angle, tilt in elm
+  local no_ang = abs(angle) < minang
+  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+
+  local track, thick
+  if abs(ds) >= minlen then -- trick: driftonly+thick <=> thinonly+thin
+    track, thick = thickonly, no_ang and strex_thick or curex_thick
+  else
+    track, thick = driftonly, no_ang and fnone       or curex_thin
+  end
+
+  trackelm(elm, m, track, thick)
 end
 
 local function track_drift (elm, m)
   local ds, tdir in m
   m.el, m.ang, m.tlt = ds, 0, 0
   if is_implicit(elm) then
-    local track = m.implicit and
-                  abs(ds) >= minlen and thickonly or driftonly
-    track(elm, m, 1, strex_drift)
+    local track = m.implicit and abs(ds) >= minlen and thickonly or driftonly
+    track(elm, m, 1, strex_thick)
   else
     m.tlt = elm.tilt*tdir
     local thick = abs(ds) >= minlen and thickonly or driftonly
-    trackelm(elm, m, thick, strex_drift)
+    trackelm(elm, m, thick, strex_thick)
   end
 end
 
