@@ -693,17 +693,17 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                             -- 
 
   m:mdump(elm, 'quad_thick:0')
 
-  local el, edir, tdir, knl, beam in m
-  local l, k1l = el*lw, knl[2]
+  local el, edir, tdir, k1, beam in m
+  local l = el*lw
   local chg = beam.charge
 
   -- [GETMAT7]
-  local ws =  k1l*edir < 0 and -1 or 1
+  local ws = k1*edir < 0 and -1 or 1
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
-  if abs(k1l) >= minstr then
-    local w  = sqrt(abs(k1l/el))*tdir*ws
+  if abs(k1) >= minstr then
+    local w  = sqrt(abs(k1))*tdir*ws
     cx, sx = cos (w*l), sin (w*l)
     cy, sy = cosh(w*l), sinh(w*l)
     mx1, mx2 = sx/w, -sx*w
@@ -768,18 +768,13 @@ function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- 
 
   m:mdump(elm, 'quad_thicks:0')
 
-  local el, edir, tdir, knl, ksl, beam in m
+  local el, edir, tdir, k1, ca, sa, beam in m
   local l = el*lw
   local chg = beam.charge
 
-  -- transpose k1s to k1 + field angle
-  local k1l = sqrt(knl[2]^2 + ksl[2]^2) -- *tdir
-  local a  = -0.5*atan2(ksl[2], knl[2]) -- *tdir
-  local ca, sa = cos(a), sin(a)
-
   -- [GETMAT7]
-  local ws = k1l*edir < 0 and -1 or 1
-  local w  = sqrt(abs(k1l/el))*tdir*ws
+  local ws = k1*edir < 0 and -1 or 1
+  local w  = sqrt(abs(k1))*tdir*ws
   local cx, sx = cos (w*l), sin (w*l)
   local cy, sy = cosh(w*l), sinh(w*l)
   local mx1, mx2 = sx/w, -sx*w
@@ -1275,12 +1270,12 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- 
   if sdir*lw == 1 then
     e = m.e1
     if not elm.kill_ent_fringe then
-      corr = k0^2*(elm.hgap or 0)*(elm.fint or 0.5)
+      corr = k0^2*elm.hgap*elm.fint
     end
   else
     e = m.e2
     if not elm.kill_exi_fringe then
-      corr = k0^2*(elm.hgap or 0)*(elm.fintx or elm.fint or 0.5)
+      corr = k0^2*elm.hgap*(elm.fintx or elm.fint)
     end
   end
 
@@ -1405,7 +1400,7 @@ function bend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick            -- 
 end
 
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
-  local fh = (elm.hgap or 0)*(lw == -1 and elm.fintx or elm.fint or 0.5)
+  local fh = elm.hgap*(lw == -1 and elm.fintx or elm.fint)
 
   if abs(fh)+abs(m.knl[1]) < minang then return end
 
@@ -1468,23 +1463,26 @@ end
 
 function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- unchecked
   if abs(m.knl[2])+abs(m.ksl[2]) < minstr then return end
-  local fint, hgap in elm
-  if not (fint or hgap) then return end
+  local f1, f2 in elm
+  if abs(f1)+abs(f2) < minstr then return end
 
   m:mdump(elm, 'quad_fringe:0')
 
-  local el, tdir, knl, ksl, beam in m
-  local k1, k1s = knl[2]/el*tdir, ksl[2]/el*tdir
-  local b2, ang = sqrt(k1^2 + k1s^2), -atan2(k1s, k1)/2
+  local el, tdir, k1, ca, sa, beam in m
   local _beta = 1/beam.beta
   local  wchg = beam.charge*tdir*lw
+  local    b2 = k1
 
-  hgap =      (hgap or 0)*b2    -- dummy use of this field, to be reviewed!
-  fint = -sign(fint or 0)*b2/24 -- dummy use of this field, to be reviewed!
+  if not b2 then
+    local edir, knl, ksl in m
+    local a = -0.5*atan2(ksl[2], knl[2])*tdir
+    b2, ca, sa = sqrt(knl[2]^2 + ksl[2]^2)/el*edir, cos(a), sin(a)
+  end
+
+  f1 = -abs(f1)*f1*b2/24
+  f2 =          f2*b2
 
   -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
-  srotation(ang, m)
-
   for i=1,m.npar do
   	local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
@@ -1492,20 +1490,27 @@ function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
     local   _pz = 1/sqrt(1 + 2*_beta*pt + pt^2)
     local    dt = (_beta+pt)*_pz
 
-    local f1 = (wchg*fint)*_pz
-    local f2 =       hgap *_pz
+    local f1 = (wchg*f1)*_pz
+    local f2 =       f2 *_pz
 
-    m[i].t  = t - dt*((f1*x + (1+f1/2)*exp(-f1)*f2*px*_pz)*px -
-                      (f1*y + (1-f1/2)*exp( f1)*f2*py*_pz)*py)*_pz
+    local nx  = ca*x  + sa*y
+    local npx = ca*px + sa*py
+    local ny  = ca*y  - sa*x
+    local npy = ca*py - sa*px
 
-    m[i].x  =  x*exp( f1) + f2*px*_pz
-    m[i].y  =  y*exp(-f1) - f2*py*_pz
+    m[i].t  = t - dt*((f1*nx + (1+f1/2)*exp(-f1)*f2*npx*_pz)*npx -
+                      (f1*ny + (1-f1/2)*exp( f1)*f2*npy*_pz)*npy)*_pz
 
-    m[i].px = px*exp(-f1)
-    m[i].py = py*exp( f1)
+    x  =  nx*exp( f1) + f2*npx*_pz
+    y  =  ny*exp(-f1) - f2*npy*_pz
+    px = npx*exp(-f1)
+    py = npy*exp( f1)
+
+    m[i].x  = ca*x  - sa*y
+    m[i].px = ca*px - sa*py
+    m[i].y  = ca*y  + sa*x
+    m[i].py = ca*py + sa*px
   end
-
-  srotation(-ang, m)
 
   m:mdump(elm, 'quad_fringe:1')
 end
