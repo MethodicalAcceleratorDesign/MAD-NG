@@ -41,6 +41,7 @@ local invfact, arc2len                                          in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
 local atins                                                     in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
+local tobit                                                     in MAD.operator
 local apercheck                                                 in MAD.aperture
 local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
@@ -314,7 +315,7 @@ local function track_sbend (elm, m, e1_, e2_)
 
   if model == 'DKD' then                        -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
-  else -- if abs(knl[2]) < minang then              -- curved thick
+  else -- if abs(knl[2]) < minstr then              -- curved thick
     inter, thick, kick = DKD[method], sbend_thick , sbend_kick
 --  else                                          -- curved thick with focusing
 --    inter, thick, kick = MKM[method], sbend_thickf, sbend_kickf
@@ -330,6 +331,12 @@ local function track_rbend (elm, m)                                             
   if not true_rbend then
     return track_sbend(elm, m, e1+angle/2, e2+angle/2)                          -- checked
   end
+  --[[
+    True RBEND:
+    angle, e1 -> e2 = angle-e1
+    angle, e2 -> e1 = angle-e2
+    e1, e2    -> angle = e1+e2
+  --]]
 
   get_mult(elm, m, 3)
 
@@ -384,17 +391,18 @@ local function track_quadrupole (elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local no_ang = abs(angle)  < minang
+  local no_k0a = abs(knl[1])+abs(angle) < minstr
+  local no_k1  = abs(knl[2]) < minstr
   local no_k1s = abs(ksl[2]) < minstr
   local inter, thick, kick
 
   -- Note: MKM integrators used uniform length for the thick map
   --       hence all cos, sin, cosh, sinh could be computed here...
-  if not m.ptcmodel or model ~= 'TKT' or no_k1s and no_ang and abs(knl[2]) < minstr then
+  if not m.ptcmodel or model ~= 'TKT' or no_k1 and no_k1s and no_k0a then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
-  elseif no_k1s and no_ang then                 -- normal thick
+  elseif no_k1s and no_k0a then                 -- normal thick
     inter, thick, kick = MKM[method], quad_thick , quad_kick
-  elseif no_ang then                            -- skew thick
+  elseif no_k0a then                            -- skew thick
     inter, thick, kick = MKM[method], quad_thicks, quad_kicks
   else                                          -- curved thick (unchecked)
     inter, thick, kick = MKM[method], quad_thickh, quad_kickh
@@ -501,7 +509,7 @@ local function track_kickgen (elm, m, hk, vk)
   ksl[1] = ksl[1] + vk
   m.el, m.eh, m.tlt = ds, 0, elm.tilt*tdir
 
-  if nmul == 0 and abs(knl[1])+abs(ksl[1]) >= minang then
+  if nmul == 0 and abs(knl[1])+abs(ksl[1]) >= minstr then
     m.nmul = 1
   end
 
@@ -929,7 +937,7 @@ local function make_mflow (self)
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
-  mflw.fringe=fringe         -- compute fringe fields (1, 2 or 3)
+  mflw.fringe=tobit(fringe)  -- compute fringe fields (0..7)
   mflw.radiate=radiate       -- radiate at slices
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
 
@@ -1073,7 +1081,7 @@ local track = command 'track' {
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   ptcmodel=false,   -- use strict PTC integration models                  (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
-  fringe=false,     -- compute fringe fields (1, 2 or 3)                  (mflw)
+  fringe=false,     -- activate fringe fields (0..7)                      (mflw)
   radiate=false,    -- radiate at slices (NYI)                            (mflw)
   misalign=true,    -- consider misalignment                              (mflw)
   totalpath=false,  -- 't' is the totalpath                               (mflw)
