@@ -28,6 +28,14 @@
 local M = {}
 
 --[=[
+Notes about directions and quantities:
+  element direction   edir: affects curvatures (edir = seq.dir).
+  track direction (s) sdir: affects lengths    (sdir = cmd.dir).
+  time direction  (t) tdir: affects angles     (tdir = edir x sdir).
+  beam direction      bdir: affects strengths  (bdir = edir x sdir x chg).
+--]=]
+
+--[=[
 Notes about PTC variables vs MAD:
   DIR  : tracking direction        = sdir
   B    : relativistic beta0        = beta
@@ -56,15 +64,18 @@ local vector, matrix                                             in MAD
 local is_nil, is_number, is_damap                                in MAD.typeid
 local minlen, minang, minstr, clight, pi, twopi                  in MAD.constant
 local printf                                                     in MAD.utility
+local tobit, btst, bor                                           in MAD.operator
 
 local fnone                                                      in MAD.gfunc
-local abs, sqrt, sin, cos, tan, asin, acos, atan, atan2,
+local abs, sqrt, exp, sin, cos, tan, asin, acos, atan, atan2,
       sinh, cosh, sinc                                           in MAD.gmath
 
-local min in math
+local min, max in math
 
 local    pi_clight =    pi/clight
 local twopi_clight = twopi/clight
+
+local highest_fringe = 2 -- make it an element or mflow state?
 
 -- field mutipoles ------------------------------------------------------------o
 
@@ -80,15 +91,24 @@ local function bxby (nmul, knl, ksl, x, y)
   return bx, by
 end
 
--- TODO: bxbyh (nmul, knl, ksl, x, y, h) using CTPSA for knl & ksl [GETANBN]
+local function bxbyh (nmul, knl, ksl, x, y, h) -- [GETMAGNETIC] TODO: useful?
+  error("NYI")
+  local bx, by, byt = ksl[nmul], knl[nmul]
 
--- patches (lw_ == 0 disable the patches) -------------------------------------o
+  for i=nmul-1,1,-1 do
+    byt = by*x - bx*y + knl[i]
+    bx  = by*y + bx*x + ksl[i]
+    by  = byt
+  end
+
+  return bx, by
+end
+
+-- patches --------------------------------------------------------------------o
 
 -- X-rotation
 
-local function xrotation (elm, m, lw_)  -- Rx(ax) [ROT_YZ]
-  if lw_ == 0 then return end
-
+local function xrotation (elm, m, lw_)  -- Rx(ax) [ROT_YZ]                   -- checked
   local ax = is_number(elm) and elm or elm.angle*m.tdir
   if abs(ax) < minang then return end
 
@@ -121,9 +141,7 @@ M.xrotation = xrotation
 
 -- Y-rotation
 
-local function yrotation (elm, m, lw_)  -- Ry(ay) [ROT_XZ]
-  if lw_ == 0 then return end
-
+local function yrotation (elm, m, lw_)  -- Ry(ay) [ROT_XZ]                   -- checked
   local ay = is_number(elm) and elm or elm.angle*m.tdir
   if abs(ay) < minang then return end
 
@@ -156,9 +174,7 @@ M.yrotation = yrotation
 
 -- S-rotation
 
-local function srotation (elm, m, lw_)  -- Rz(az) [ROT_XY]
-  if lw_ == 0 then return end
-
+local function srotation (elm, m, lw_)  -- Rz(az) [ROT_XY]                   -- checked
   local az = is_number(elm) and elm or elm.angle*m.tdir
   if abs(az) < minang then return end
 
@@ -185,9 +201,7 @@ M.srotation = srotation
 
 -- Translation
 
-local function translate (elm, m, lw_) -- [TRANS]
-  if lw_ == 0 then return end
-
+local function translate (elm, m, lw_) -- [TRANS]                            -- unchecked
   local dx, dy, ds = elm.dx or 0, elm.dy or 0, elm.ds or 0
   if abs(dx)+abs(dy)+abs(ds) < minlen then return end
 
@@ -227,10 +241,8 @@ M.translate = translate
 
 -- Changeref (generic patch, lw_>0: RT, lw_<0: TR)
 
-function M.changeref (elm, m, lw_)
-  if lw_ == 0 then return end
+function M.changeref (elm, m, lw_)                                           -- unchecked
   local lw = lw_ or 1
-
   local dx  , dy  , ds   = elm.dx     or 0, elm.dy   or 0, elm.ds   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
 
@@ -265,9 +277,7 @@ end
 
 -- Changedir (reverse mflow t-direction)
 
-function M.changedir (elm_, m, lw_)
-  if lw_ == 0 then return end
-
+function M.changedir (elm_, m, lw_)                                          -- unchecked
   m:mdump(elm, 'changedir:0')
 
   m.edir = -m.edir
@@ -278,9 +288,7 @@ end
 
 -- Changenrj (change particles energy)
 
-function M.changenrj (elm, m, lw_)  -- (option to reset pt?)
-  if lw_ == 0 then return end
-
+function M.changenrj (elm, m, lw_)  -- (option to reset pt?)                 -- unchecked
   local dnrj in elm
   if dnrj == 0 then return end
 
@@ -299,7 +307,7 @@ function M.changenrj (elm, m, lw_)  -- (option to reset pt?)
   m:mdump(elm, 'changenrj:1')
 end
 
--- misalignments (lw_ == 0 disable the misalignments) -------------------------o
+-- misalignments --------------------------------------------------------------o
 
 local T  = vector(3) -- misalignment translation
 local R  = matrix(3) -- misalignment rotation
@@ -312,8 +320,7 @@ local misalignexi -- forward declaration
 
 local misalignexi
 
-function M.misalign (elm, m, lw_)
-  if lw_ == 0 then return end
+function M.misalign (elm, m, lw_)                                            -- unchecked
   if (lw_ or 1) < 0 then return misalignexi(elm, m) end
 
   local dx  , dy  , ds   = elm.dx     or 0, elm.dy   or 0, elm.ds   or 0
@@ -352,7 +359,7 @@ function M.misalign (elm, m, lw_)
   m:mdump(elm, 'misalign:1')
 end
 
-function misalignexi (elm, m)
+function misalignexi (elm, m, lw_)                                                -- unchecked
   local dx  , dy  , ds   = elm.dx     or 0, elm.dy   or 0, elm.ds   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
 
@@ -402,7 +409,7 @@ end
 
 -- [INTER_STREX, INTER_TEAPOT, H3 adjustment] ---------------------------------o
 
-local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment             checked
+local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment          -- checked
 
   m:mdump(elm, 'drift_adj:0')
 
@@ -425,7 +432,7 @@ end
 
 -- DKD [INTER_STREX] ----------------------------------------------------------o
 
-function M.strex_drift (elm, m, lw) -- [DRIFT]                                  checked
+function M.strex_drift (elm, m, lw) -- [DRIFT]                               -- checked
   if abs(m.el*lw) < minlen then return end
 
   m:mdump(elm, 'strex_drift:0')
@@ -448,7 +455,7 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                                  
   m:mdump(elm, 'strex_drift:1')
 end
 
-function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          checked
+function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                       -- checked
   if m.nmul == 0 then return end
 
   m:mdump(elm, 'strex_kick:0')
@@ -469,7 +476,7 @@ function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                          
   m:mdump(elm, 'strex_kick:1')
 end
 
-function M.strex_kickh (elm, m, lw) -- [KICKT]                                  checked
+function M.strex_kickh (elm, m, lw) -- [KICKT]                               -- checked
   if m.nmul == 0 then return end
 
   m:mdump(elm, 'strex_kickh:0')
@@ -500,7 +507,7 @@ end
 
 -- DKD [INTER_TEAPOT, l ~= 0, angle = k0l ~= 0] -------------------------------o
 
-function M.curex_drift (elm, m, lw) -- [SPROT]                                  checked
+function M.curex_drift (elm, m, lw) -- [SPROT]                               -- checked
 
   m:mdump(elm, 'curex_drift:0')
 
@@ -529,7 +536,7 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                                  
   m:mdump(elm, 'curex_drift:1')
 end
 
-function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                           checked
+function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                        -- checked
 
   m:mdump(elm, 'curex_kick:0')
 
@@ -541,10 +548,11 @@ function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                           
   for i=1,m.npar do
     local x, px, y, py, beam in m[i]
     local  wchg = beam and lw*tdir*beam.charge or wchg
-    local bx,by = bxby(nmul, knl, ksl, x, y) -- TODO: bxbyh using TPSA
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+    local     r = 1+eh*x
 
-    m[i].px = px - wchg*(by-dby)*(1+eh*x)
-    m[i].py = py + wchg* bx
+    m[i].px = px - wchg*(by-dby)*r
+    m[i].py = py + wchg* bx     *r
   end
 
   m:mdump(elm, 'curex_kick:1')
@@ -552,7 +560,7 @@ end
 
 -- TKT [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
 
-function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, B0=1/R, BN(1)=k0    checked
+function M.sbend_thick (elm, m, lw) -- [SSEC]                                 -- checked
 
   m:mdump(elm, 'sbend_thick:0')
 
@@ -585,9 +593,9 @@ function M.sbend_thick (elm, m, lw) -- [SSEC] A=ang, R=rho, B0=1/R, BN(1)=k0    
   m:mdump(elm, 'sbend_thick:1')
 end
 
-M.sbend_kick = \el,m,lw -> M.curex_kick(el,m,lw,true)
+M.sbend_kick = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                      -- checked
 
-function M.sbend_thickf (elm, m, l) -- [variant with k1]
+function M.sbend_thickf (elm, m, l) -- [variant with k1]                     -- unchecked
   error("NYI")
 
   m:mdump(elm, 'sbend_thickf:0')
@@ -637,7 +645,7 @@ function M.sbend_thickf (elm, m, l) -- [variant with k1]
   m:mdump(elm, 'sbend_thickf:1')
 end
 
-function M.sbend_kickf (elm, m, l) -- [??] -- need curved bx,by?
+function M.sbend_kickf (elm, m, l) -- [??] -- need curved bx,by?             -- unchecked
   error("NYI")
   m:mdump(elm, 'sbend_kickf:0')
   m:mdump(elm, 'sbend_kickf:1')
@@ -645,7 +653,7 @@ end
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
-function M.rbend_thick (elm, m, lw) -- [SPAR]                                   checked
+function M.rbend_thick (elm, m, lw) -- [SPAR]                                -- checked
 
   m:mdump(elm, 'rbend_thick:0')
 
@@ -677,11 +685,11 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                   
   m:mdump(elm, 'rbend_thick:1')
 end
 
-M.rbend_kick = \el,m,lw -> M.strex_kick(el,m,lw,true)
+M.rbend_kick = \el,m,lw -> M.strex_kick(el,m,lw,true)                        -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
 
-function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                checked
+function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                             -- checked
 
   m:mdump(elm, 'quad_thick:0')
 
@@ -694,7 +702,7 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
-  if abs(k1l) >= minang then
+  if abs(k1l) >= minstr then
     local w  = sqrt(abs(k1l/el))*tdir*ws
     cx, sx = cos (w*l), sin (w*l)
     cy, sy = cosh(w*l), sinh(w*l)
@@ -728,7 +736,7 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                                
   m:mdump(elm, 'quad_thick:1')
 end
 
-function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7]                             checked
+function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7]                          -- checked
   local l = m.el*lw
 
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
@@ -756,7 +764,7 @@ end
 
 -- skew (tilted by k1s)
 
-function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                               checked
+function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- checked
 
   m:mdump(elm, 'quad_thicks:0')
 
@@ -809,7 +817,7 @@ function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                               
   m:mdump(elm, 'quad_thicks:1')
 end
 
-function M.quad_kicks (elm, m, lw, ii) -- [KICKTKT7]                            checked
+function M.quad_kicks (elm, m, lw, ii) -- [KICKTKT7]                         -- checked
   local l = m.el*lw
 
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
@@ -837,7 +845,7 @@ end
 
 -- curved, eh ~= 0
 
-function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                               unchecked
+function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- unchecked
 
   m:mdump(elm, 'quad_thickh:0')
 
@@ -900,7 +908,7 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                               
   m:mdump(elm, 'quad_thickh:1')
 end
 
-function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                            unchecked
+function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- unchecked
   local l = m.el*lw
 
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
@@ -920,8 +928,8 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                            
       local    dt = (el*eh)*((_beta+pt)/(1+dp) - _beta)*x
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - eh - knl[2]*x - eh*(dp-_beta*pt))
-      m[i].py = py + wchg*(bx      - knl[2]*y + eh*(dp-_beta*pt))
+      m[i].px = px - wchg*(by - knl[1] - knl[2]*x - eh*(dp-_beta*pt))
+      m[i].py = py + wchg*(bx          - knl[2]*y + eh*(dp-_beta*pt))
       m[i].t  =  t - dt
     end
 
@@ -933,7 +941,7 @@ end
 
 -- TKT [INTER_SOL5] -----------------------------------------------------------o
 
-function M.solen_thick (elm, m, lw) -- [KICK_SOL]                               checked
+function M.solen_thick (elm, m, lw) -- [KICK_SOL]                            -- checked
 
   m:mdump(elm, 'solen_thick:0')
 
@@ -972,7 +980,7 @@ end
 
 -- rfcavity [INTER_CAV4] ------------------------------------------------------o
 
-function M.rfcav_kick (elm, m, lw) -- [KICKCAV, FEVAL_CAVR?]
+function M.rfcav_kick (elm, m, lw) -- [KICKCAV, FEVAL_CAVR?]                 -- checked
 
   m:mdump(elm, 'rfcav_kick:0')
 
@@ -996,7 +1004,7 @@ function M.rfcav_kick (elm, m, lw) -- [KICKCAV, FEVAL_CAVR?]
   m:mdump(elm, 'rfcav_kick:1')
 end
 
-function M.rfcav_kickn (elm, m, lw) -- [KICKCAV, nmul ~= 0 or nbsl ~= 0]
+function M.rfcav_kickn (elm, m, lw) -- [KICKCAV, nmul ~= 0 or nbsl ~= 0]     -- checked
 
   m:mdump(elm, 'rfcav_kickn:0')
 
@@ -1065,9 +1073,7 @@ function M.rfcav_kickn (elm, m, lw) -- [KICKCAV, nmul ~= 0 or nbsl ~= 0]
   m:mdump(elm, 'rfcav_kickn:1')
 end
 
-function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
-  if lw_ == 0 then return end
-
+function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4, FRINGECAV]       -- checked
   m:mdump(elm, 'rfcav_fringe:0')
 
   local lw = lw_ or 1
@@ -1076,7 +1082,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    -- TODO: FRINGECAV
+    -- TODO: [FRINGECAV]
     assert(m.Tbak == nil, "inconsistent totalpath when entering rfcavity")
     m.Tbak, m.T = m.T, 0
     if not elm.no_cavity_totalpath then
@@ -1096,7 +1102,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4 only, no FRINGECAV]
   if sdir*lw == -1 then
 -- print(lw == -1 and 'forward exit' or 'backward entry')
     m.T, m.Tbak = m.Tbak, nil
-    -- TODO: FRINGECAV
+    -- TODO: [FRINGECAV]
   end
 
   m:mdump(elm, 'rfcav_fringe:1')
@@ -1104,108 +1110,166 @@ end
 
 -- fringes --------------------------------------------------------------------o
 
- -- forward declarations
-local mad8_wedge, sbend_wedge, sbend_face, sbend_fringe, quad_fringe, mult_fringe
+local frng_none = tobit(0) -- all bits zero
+local frng_mult = tobit(0) -- bit id for mult
+local frng_bend = tobit(1) -- bit id for bend
+local frng_quad = tobit(2) -- bit id for quad
 
-function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]
-  if lw_ == 0 or m.nmul == 0 then return end -- switched off
+--[[
+Policy in MAD-NG:
+=================
+fringe field level: rbend=2, sbend=2, others=0.
+m.fringe: command fringe fields level (nil/false=0, true=1)
+e.fringe: element fringe fields level (nil/false=0, true=1)
+fringe = bor(m.fringe, e.fringe)
+
+bitwise:                              (ptc_setswitch,fringe=true <-> m.fringe=1)
+fringe=0 -> no fringe field
+fringe=1 -> activate mult_fringe                             (elm.fringe=1 or 3)
+fringe=2 -> activate bend_fringe                          (elm.bend_fringe=true)
+fringe=3 -> activate bend_fringe+mult_fringe
+fringe=4 -> activate quad_fringe                             (elm.fringe=2 or 3)
+fringe=5 -> activate mult_fringe+quad_fringe
+fringe=6 -> activate bend_fringe+quad_fringe
+fringe=7 -> activate bend_fringe+mult_fringe+quad_fringe
+--]]
+
+--[[
+Policy in MAD-X PTC:
+====================
+k%fringe                T/F        ptc_setswitch equivalent to permfringe=1
+el%likemad              T/F        special flag for true rbend
+el%thin                 T/F        disable fringe for cavity
+el%permfringe           0,1,2,3    0:none, 1:mult_fringe, 2:quad_fringe, 3:1+2
+el%bend_fringe          T/F        bend_fringe (and mult_fringe-bend_fringe)
+el%highest_fringe       N (N=2)    limit of mult_fringe
+el%kill_ent_fringe      T/F        disable fringe on entry
+el%kill_exi_fringe      T/F        disable fringe on exit
+
+FRINGE_STRAIGHT: (TRACK_FRINGE)
+  EDGE, MULTIPOLE_FRINGE, FRINGE2QUAD
+
+FRINGE_STREX[LIKEMAD=TRUE]:
+  ROT_XZ, FACE, FRINGE_DIPOLE, MULTIPOLE_FRINGE, FRINGE2QUAD, WEDGE
+FRINGE_STREX:
+  EDGE_TRUE_PARALLEL, MULTIPOLE_FRINGE, FRINGE2QUAD
+
+FRINGE_TEAPOT[EDGE/=0]:
+  ROT_XZ, FACE, FRINGE_DIPOLE, MULTIPOLE_FRINGE, FRINGE2QUAD, MAD8WEDGE, WEDGE
+FRINGE_TEAPOT:
+  FACE, FRINGE_DIPOLE, MULTIPOLE_FRINGE, FRINGE2QUAD
+
+FRINGE_DIPOLE[BEND_FRINGE=TRUE]
+FRINGE2QUAD[PERMFRINGE=2]
+MULTIPOLE_FRINGE[PERMFRINGE=1.or.3]
+
+NEWFACE[EXACT] / FACE[.not.EXACT]
+EDGE
+EDGE_TRUE_PARALLEL
+
+FRINGECAV[PERMFRINGE/=0]
+--]]
+
+ -- forward declarations
+local mad8_wedge, bend_wedge, bend_face, bend_fringe, quad_fringe, mult_fringe
+
+function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- checked
+  if m.nmul == 0 then return end -- switched off
 
   m:mdump(elm, 'strex_fringe:0')
 
   local lw = lw_ or 1
   local sdir, tdir in m
+  local frng = bor(m.fringe, elm.fringe)
+
+--  print("frng=", frng, "frng_mult=", btst(frng, frng_mult),
+--                       "frng_bend=", btst(frng, frng_bend),
+--                       "frng_quad=", btst(frng, frng_quad))
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    local e, h = m.e1, (elm.h1 or 0)*tdir
+    local e, h = m.e1, elm.h1*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
-      yrotation   ( e, m,  1)
-      sbend_face  ( h, m,  1)
-    if m.fringe ~= 0 or not elm.kill_ent_fringe then
-      local fh = (elm.hgap or 0)*(elm.fint or 0.5)*sdir
-      local nf = elm.permfringe
-      sbend_fringe(fh, m,  1)
-      if nf then
-        m.nf = nf == true and 1 or nf
-        if m.nf == 1 or m.nf >= 3 then mult_fringe(elm, m, 1) end
-        if              m.nf >= 2 then quad_fringe(elm, m, 1) end
-      end
+    yrotation ( e, m, 1)
+    bend_face ( h, m, 1)
+    if frng ~= frng_none and not elm.kill_ent_fringe then
+      m.frng = frng
+      if btst(frng, frng_bend) then bend_fringe(elm, m, 1) end
+      if btst(frng, frng_mult) then mult_fringe(elm, m, 1) end
+      if btst(frng, frng_quad) then quad_fringe(elm, m, 1) end
     end
-      sbend_wedge ( a, m,  1)
+    bend_wedge( a, m, 1)
+
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
-    local e, h = m.e2, (elm.h2 or 0)*tdir
+    local e, h = m.e2, elm.h2*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
-      sbend_wedge  (  a, m,  1)
-    if m.fringe ~= 0 or not elm.kill_exi_fringe then
-      local fh = (elm.hgap or 0)*(elm.fintx or elm.fint or 0.5)*sdir
-      local nf = elm.permfringe
-      if nf then
-        m.nf = nf == true and 1 or nf
-        if              m.nf >= 2 then quad_fringe(elm, m, 1) end
-        if m.nf == 1 or m.nf >= 3 then mult_fringe(elm, m, 1) end
-      end
-      sbend_fringe ( fh, m, -1)
+    bend_wedge( a, m, -1)
+    if frng ~= frng_none and not elm.kill_exi_fringe then
+      m.frng = frng
+      if btst(frng, frng_quad) then quad_fringe(elm, m, -1) end
+      if btst(frng, frng_mult) then mult_fringe(elm, m, -1) end
+      if btst(frng, frng_bend) then bend_fringe(elm, m, -1) end
     end
-      sbend_face   (  h, m, -1)
-      yrotation    ( -e, m, -1)
+    bend_face ( h, m, -1)
+    yrotation (-e, m, -1)
   end
 
   m:mdump(elm, 'strex_fringe:1')
 end
 
-function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]
-  if lw_ == 0 or m.nmul == 0 then return end -- switched off
+function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- checked
+  if m.nmul == 0 then return end -- switched off
 
   m:mdump(elm, 'curex_fringe:0')
 
   local lw = lw_ or 1
   local sdir, tdir in m
+  local frng = bor(m.fringe, elm.fringe)
+
+--  print("frng=", frng, "frng_mult=", btst(frng, frng_mult),
+--                       "frng_bend=", btst(frng, frng_bend),
+--                       "frng_quad=", btst(frng, frng_quad))
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    local e, h = m.e1, (elm.h1 or 0)*tdir
-      yrotation   ( e, m,  1)
-      sbend_face  ( h, m,  1)
-    if m.fringe ~= 0 or not elm.kill_ent_fringe then
-      local fh = (elm.hgap or 0)*(elm.fint or 0.5)*sdir
-      local nf = elm.permfringe
-      sbend_fringe(fh, m,  1)
-      if nf then
-        m.nf = nf == true and 1 or nf
-        if m.nf == 1 or m.nf >= 3 then mult_fringe(elm, m, 1) end
-        if              m.nf >= 2 then quad_fringe(elm, m, 1) end
-      end
+    local c, e, h = 0, m.e1, elm.h1*tdir
+    yrotation ( e, m, 1)
+    bend_face ( h, m, 1)
+    if frng ~= frng_none and not elm.kill_ent_fringe then
+      m.frng, c = frng, 0.25
+      if btst(frng, frng_bend) then bend_fringe(elm, m, 1) end
+      if btst(frng, frng_mult) then mult_fringe(elm, m, 1) end
+      if btst(frng, frng_quad) then quad_fringe(elm, m, 1) end
     end
-       mad8_wedge ( e, m,  1)
-      sbend_wedge (-e, m,  1)
+    mad8_wedge( e, m, 1, c)
+    bend_wedge(-e, m, 1)
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
-    local e, h = m.e2, (elm.h2 or 0)*tdir
-      sbend_wedge (-e, m, -1)
-       mad8_wedge ( e, m, -1)
-    if m.fringe ~= 0 or not elm.kill_exi_fringe then
-      local fh = (elm.hgap or 0)*(elm.fintx or elm.fint or 0.5)*sdir
-      local nf = elm.permfringe
-      if nf then
-        m.nf = nf == true and 1 or nf
-        if              m.nf >= 2 then quad_fringe(elm, m, 1) end
-        if m.nf == 1 or m.nf >= 3 then mult_fringe(elm, m, 1) end
-      end
-      sbend_fringe(fh, m, -1)
+    local c, e, h = 0, m.e2, elm.h2*tdir
+    bend_wedge(-e, m, -1)
+    if frng ~= frng_none and not elm.kill_exi_fringe then
+      m.frng, c = frng, 0.25
+      mad8_wedge( e, m, -1, c)
+      if btst(frng, frng_quad) then quad_fringe(elm, m, -1) end
+      if btst(frng, frng_mult) then mult_fringe(elm, m, -1) end
+      if btst(frng, frng_bend) then bend_fringe(elm, m, -1) end
+    else
+      mad8_wedge( e, m, -1, c)
     end
-      sbend_face  ( h, m, -1)
-      yrotation   (-e, m, -1)
+    bend_face ( h, m, -1)
+    yrotation (-e, m, -1)
   end
 
   m:mdump(elm, 'curex_fringe:1')
 end
 
-function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                         unchecked
-  if lw_ == 0 or m.nmul == 0 or abs(m.k0) < minstr then return end -- switched off
+function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- unchecked
+  if m.nmul == 0 or abs(m.knl[1]) < minstr then return end -- switched off
   local lw = lw_ or 1
 
-  local sdir, edir, k0, beam in m
+  local el, edir, sdir, tdir, knl, beam in m
+  local k0 = knl[1]/el*tdir
   local corr, e = 0
 
   if sdir*lw == 1 then
@@ -1225,7 +1289,7 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                         
   m:mdump(elm, 'dipeg_fringe:0')
 
   local chg = beam.charge
-  local k0  = k0*edir
+--  local k0  = k0*edir
   local r21 = k0*tan(e)
   local r43 = corr == 0 and -r21 or -k0 * tan(e - corr/cos(e)*(1+sin(e)^2))
 
@@ -1242,10 +1306,10 @@ end
 
 -- fringes helpers ------------------------------------------------------------o
 
-function sbend_face (h, m, lw) -- [NEWFACE]
-  if abs(m.knl[1]) < minang then return end
+function bend_face (h, m, lw) -- [NEWFACE]                                   -- checked
+  if abs(h)+abs(m.knl[1]) < minstr then return end
 
-  m:mdump(h, 'sbend_face:0')
+  m:mdump(h, 'bend_face:0')
 
   local el, tdir, knl, beam in m
   local   k0h = knl[1]/el*h/2*tdir
@@ -1282,33 +1346,35 @@ function sbend_face (h, m, lw) -- [NEWFACE]
     m[i].t  = t
   end
 
-  m:mdump(h, 'sbend_face:1')
+  m:mdump(h, 'bend_face:1')
 end
 
-function mad8_wedge (e, m, lw) -- [FRINGE_TEAPOT:MAD8_WEDGE]
-  if abs(m.knl[2]) < minang then return end
+function mad8_wedge (e, m, lw, wc) -- [FRINGE_TEAPOT:MAD8_WEDGE]             -- checked
+  if abs(e)+abs(m.knl[2]) < minstr then return end
 
   m:mdump(e, 'mad8_wedge:0')
 
   local el, tdir, knl, beam in m
-  local  k1 = knl[2]/el*tdir
-  local chg = beam.charge
+  local  k1e = knl[2]/el*e*tdir
+  local   c1 = (1+wc)*k1e
+  local   c2 = (1-wc)*k1e
+  local  chg = beam.charge
 
   for i=1,m.npar do
     local x, px, y, py, beam in m[i]
     local chg = beam and beam.charge or chg
-    m[i].px = px + (chg*k1*e  )*(x^2-y^2) -- setup wedge_coeff ?
-    m[i].py = py - (chg*k1*e*2)*(x*y)     -- setup wedge_coeff ?
+    m[i].px = px + (chg*c1  )*x^2 - (chg*c2)*y^2
+    m[i].py = py - (chg*c2*2)*x*y
   end
 
   m:mdump(e, 'mad8_wedge:1')
 end
 
-function sbend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick
+function bend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick            -- checked
   if abs(e)        < minang then return end
-  if abs(m.knl[1]) < minang then return yrotation(e,m,lw) end
+  if abs(m.knl[1]) < minstr then return yrotation(e,m,lw) end
 
-  m:mdump(e, 'sbend_wedge:0')
+  m:mdump(e, 'bend_wedge:0')
 
   local el, tdir, knl, beam in m
   local    k0 = knl[1]/el*tdir
@@ -1335,17 +1401,19 @@ function sbend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick
     m[i].t  = t - dxs*(_beta+pt)
   end
 
-  m:mdump(e, 'sbend_wedge:1')
+  m:mdump(e, 'bend_wedge:1')
 end
 
-function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
+function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
+  local fh = (elm.hgap or 0)*(lw == -1 and elm.fintx or elm.fint or 0.5)
+
   if abs(fh)+abs(m.knl[1]) < minang then return end
 
-  m:mdump(fh, 'sbend_fringe:0')
+  m:mdump(elm, 'bend_fringe:0')
 
-  local el, tdir, knl, beam in m
+  local el, sdir, tdir, knl, beam in m
   local    k0 = knl[1]/el*tdir
-  local  fsad = abs(fh) ~= 0 and 1/(2*36*fh) or 0
+  local  fsad = abs(fh) ~= 0 and sdir/(2*36*fh) or 0
   local  b0   = k0*lw*beam.charge
   local _beta = 1/beam.beta
 
@@ -1366,8 +1434,6 @@ function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
     local xp,  yp  = px/pz, py/pz
     local xyp, yp2 = xp*yp, 1+yp^2
     local xp2,_yp2 = xp^2 , 1/yp2
-
-    -- many of the terms below are very small, i.e. have negligible effect...
 
     local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
     local co2 = b0/cos(fi0)^2
@@ -1397,34 +1463,37 @@ function sbend_fringe (fh, m, lw) -- [FRINGE_DIPOLE]
     m[i].t  = t
   end
 
-  m:mdump(fh, 'sbend_fringe:1')
+  m:mdump(elm, 'bend_fringe:1')
 end
 
-function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                              unchecked
-  if abs(m.knl[2])+abs(m.ksl[2]) < minang then return end
+function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- unchecked
+  if abs(m.knl[2])+abs(m.ksl[2]) < minstr then return end
+  local fint, hgap in elm
+  if not (fint or hgap) then return end
 
   m:mdump(elm, 'quad_fringe:0')
 
   local el, tdir, knl, ksl, beam in m
   local k1, k1s = knl[2]/el*tdir, ksl[2]/el*tdir
   local b2, ang = sqrt(k1^2 + k1s^2), -atan2(k1s, k1)/2
-  local  fint = elm.fint or 0 -- dummy use of this field, to be reviewed!
-  local  hgap = elm.hgap or 0 -- dummy use of this field, to be reviewed!
   local _beta = 1/beam.beta
   local  wchg = beam.charge*tdir*lw
 
+  hgap =      (hgap or 0)*b2    -- dummy use of this field, to be reviewed!
+  fint = -sign(fint or 0)*b2/24 -- dummy use of this field, to be reviewed!
+
   -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
+  srotation(ang, m)
+
   for i=1,m.npar do
-  	local x, px, y, py, t, pt, beam in m
+  	local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
     local  wchg = beam and beam.charge*tdir*lw or wchg
     local   _pz = 1/sqrt(1 + 2*_beta*pt + pt^2)
     local    dt = (_beta+pt)*_pz
 
-    local f1 = -wchg*fint*abs(fint)*_pz*b2/24.0
-    local f2 =  hgap*b2*_pz
-
-    srotation(ang, m)
+    local f1 = (wchg*fint)*_pz
+    local f2 =       hgap *_pz
 
     m[i].t  = t - dt*((f1*x + (1+f1/2)*exp(-f1)*f2*px*_pz)*px -
                       (f1*y + (1-f1/2)*exp( f1)*f2*py*_pz)*py)*_pz
@@ -1434,42 +1503,43 @@ function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                              
 
     m[i].px = px*exp(-f1)
     m[i].py = py*exp( f1)
-
-    srotation(-ang, m)
   end
+
+  srotation(-ang, m)
 
   m:mdump(elm, 'quad_fringe:1')
 end
 
-function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]
+function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       -- checked
 
   m:mdump(elm, 'mult_fringe:0')
 
   local el, tdir, nmul, knl, ksl, beam in m
   local _beta = 1/beam.beta
   local  wchg = beam.charge*tdir*lw
-  local   w_l = el ~= 0 and lw/abs(el) or lw -- to review...
+  local no_k1 = btst(m.frng, frng_bend) -- bend_fringe done
+  local    _l = el ~= 0 and 1/abs(el) or 1 -- to review...
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
     local  wchg = beam and beam.charge*tdir*lw or wchg
-    local   _dp = 1/sqrt(1 + (2*_beta)*pt + pt^2)
+    local   _pz = 1/sqrt(1 + (2*_beta)*pt + pt^2)
 
     local rx, ix = 1, 0
     local fx, fxx, fxy = 0, 0, 0
     local fy, fyx, fyy = 0, 0, 0
 
-    for j=1,min(nmul,m.nf) do
+    for j=1,min(nmul,highest_fringe) do
       local drx, dix = rx, ix
       rx = drx*x - dix*y
       ix = drx*y + dix*x
 
-      local nj, nf = -wchg/(4*(j+1)), j+2/j
-      local knj, ksj = knl[j]*w_l, ksl[j]*w_l
+      local nj, nf = -wchg/(4*(j+1)), (j+2)/j
+      local knj, ksj = knl[j]*_l, ksl[j]*_l
       local u, v, du, dv
 
-      if j == 1 and m.nf ~= 2 then
+      if j == 1 and no_k1 then
         u  = nj*(        - ksj*ix )
         v  = nj*(        + ksj*rx )
         du = nj*(        - ksj*dix)
@@ -1484,26 +1554,26 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]
       local dux, dvx =  j*du, j*dv
       local duy, dvy = -j*dv, j*du
 
-      fx  = fx  +   u*x + nf*    v*y
-      fy  = fy  +   u*y - nf*    v*x
+      fx  = fx  +   u*x + nf*   v*y
+      fy  = fy  +   u*y - nf*   v*x
       fxx = fxx + dux*x + nf* dvx*y + u
       fyy = fyy + duy*y - nf* dvy*x + u
       fxy = fxy + duy*x + nf*(dvy*y + v)
       fyx = fyx + dux*y - nf*(dvx*x + v)
     end
 
-    local    a = 1 - fxx*_dp
-    local    b =   - fyx*_dp
-    local    c =   - fxy*_dp
-    local    d = 1 - fyy*_dp
+    local    a = 1 - fxx*_pz
+    local    b =   - fyx*_pz
+    local    c =   - fxy*_pz
+    local    d = 1 - fyy*_pz
     local _det = 1/(a*d - b*c)
     local  npx = (d*px - b*py)*_det
 
-    m[i].x  = x - fx*_dp
-    m[i].y  = y - fy*_dp
+    m[i].x  = x - fx*_pz
+    m[i].y  = y - fy*_pz
     m[i].py = (a*py - c*px)*_det
     m[i].px = npx
-    m[i].t  = t + (_beta+pt)*(m[i].px*fx + m[i].py*fy)*_dp^3
+    m[i].t  = t + (_beta+pt)*(m[i].px*fx + m[i].py*fy)*_pz^3
   end
 
   m:mdump(elm, 'mult_fringe:1')
