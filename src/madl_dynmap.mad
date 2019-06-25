@@ -840,58 +840,90 @@ end
 
 -- curved, eh ~= 0
 
-function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- unchecked
+function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- checked (for eh=0)
 
   m:mdump(elm, 'quad_thickh:0')
 
   local el, eh, edir, tdir, knl, beam in m
-  local l, c = el*lw, beam.charge
+  local l = el*lw
+  local chg = beam.charge
+  local _beta = 1/beam.beta
 
   -- [GETMAT7, w ~= 0]
-  local kx, ky = knl[2]+eh*knl[1], knl[2]
-  local wxs = kx*edir < 0 and -c or c
-  local wys = ky*edir < 0 and -c or c
-  local wx  = sqrt(abs(kx/el))*tdir*wxs
-  local wy  = sqrt(abs(ky/el))*tdir*wys
-  local cx, sx, mx12, mx21, mx13
-  local cy, sy, my12, my21, mx33
-  local chg
+  local kx  = (knl[2]+eh*knl[1])/el*edir
+  local ky  = -knl[2]/el*edir
+  local wxs = kx*edir < 0 and -1 or 1
+  local wys = ky*edir < 0 and -1 or 1
+  local wx, cx, sx, wy, cy, sy
+  local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
+  local my11, my12,       my21, my22
+
+  if abs(kx) >= minstr then
+    wx = sqrt(abs(kx))*wxs*tdir
+  else
+    wx = 0
+    mx11, mx12, mx13 = 1   , l   , eh*l^2/2
+    mx21, mx22, mx23 = 0   , 1   , eh*l
+    mx31, mx32, mx33 = mx23, mx13, mx13*mx23/3
+  end
+
+  if abs(ky) >= minstr then
+    wy = sqrt(abs(ky))*wys*tdir
+  else
+    wy = 0
+    my11, my12 = 1, l
+    my21, my22 = 0, 1
+  end
+
+  local dox, doy = true, true
+  wx, wy = -wx, -wy -- no need to reverse wxs and wys
 
   for i=1,m.npar do
-    local x, px, y, py, t, pt in m[i]
-    local beam = m[i].beam or beam
-    local h_b = eh/beam.beta
+    local x, px, y, py, t, pt, beam in m[i]
+    local   chg = beam and beam.charge or chg
+    local _beta = beam and 1/beam.beta or _beta
 
-    if chg ~= beam.charge then -- [GETMAT7, w ~= 0]
-      chg = beam.charge
-      wxs, wys = -wxs, -wys
-
-      if wxs < 0
-      then cx, sx = cosh(wx*l), sinh(wx*l)
-      else cx, sx = cos (wx*l), sin (wx*l)
+    if wx ~= 0 and wxs ~= chg or dox then -- [GETMAT7]
+      wx, wxs, dox = -wx, -wxs, nil
+      local cx, sx
+      if wx > 0
+      then cx, sx = cos (wx*l), sin (wx*l)
+      else cx, sx = cosh(wx*l), sinh(wx*l)
       end
-      if wys < 0
+      mx11, mx12, mx13 = cx       , sx/wx,  eh*    (cx-1)*wxs/wx^2
+      mx21, mx22, mx23 = wxs*wx*sx, cx   ,  eh*     mx12
+      mx31, mx32, mx33 = mx23     , mx13 , -eh^2*(l-mx12)*wxs/wx^2
+    end
+
+    if wy ~= 0 and wys ~= chg or doy then -- [GETMAT7]
+      wy, wys, doy = -wy, -wys, nil
+      local cy, sy
+      if wy > 0
       then cy, sy = cos (wy*l), sin (wy*l)
       else cy, sy = cosh(wy*l), sinh(wy*l)
       end
-
---    mx11, mx22, my11, my22 = cx, cx, cy, cy
-      mx12, mx21, mx13 = sx/wx, -sx*wx*wxs, (1-cx  )/wx^2*wxs
-      my12, my21, mx33 = sy/wy,  sy*wy*wys, (l-mx21)/wx^2*wxs
+      my11, my12 = cy       , sy/wy
+      my21, my22 = wys*wy*sy, cy
     end
 
 --[[ PTC matrix form
-    { cx            , sx/wx                , h*(1-cx)/wx2*ws*_beta     ,
-     -sx*wx*ws      , cx                   , h*sx/wx                   ,
-      h*sx/wx*_beta , h*(1-cx)/wx2*ws*_beta, h^2*(l-sx/wx)/wx2*ws*_beta }
-    { cy            , sy/wy                , 0                         ,
-      sy*wy*ws      , cy                   , 0                          }
+    { cx      , sx/wx          ,  h*(cx-1)/wx2*ws     ,
+      sx*wx*ws, cx             ,  h*sx/wx             ,
+      h*sx/wx , h*(cx-1)/wx2*ws, -h^2*(l-sx/wx)/wx2*ws }
+    { cy      , sy/wy          ,  0                   ,
+      sy*wy*ws, cy             ,  0                    }
 --]]
-    local nx  = x*cx         + px*mx12       + pt*(mx13*h_b)
-    local npx = x*mx21       + px*cx         + pt*(mx12*h_b)
-    local ny  = y*cy         + py*my12
-    local npy = y*my21       + py*cy
-    local dt  = x*(mx12*h_b) + px*(mx13*h_b) + pt*(mx33*eh^2)
+
+    -- print("mx11=", mx11) print("mx12=", mx12) print("mx13=", mx13)
+    -- print("mx21=", mx21) print("mx22=", mx22) print("mx23=", mx23)
+    -- print("my11=", my11) print("my12=", my12)
+    -- print("my21=", my21) print("my22=", my22)
+
+    local nx  = x*mx11 + px*mx12 + pt*(mx13*_beta)
+    local npx = x*mx21 + px*mx22 + pt*(mx23*_beta)
+    local ny  = y*my11 + py*my12
+    local npy = y*my21 + py*my22
+    local dt  = x*(mx31*_beta) + px*(mx32*_beta) + pt*mx33
 
     m[i].x   = nx
     m[i].y   = ny
@@ -903,7 +935,7 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   m:mdump(elm, 'quad_thickh:1')
 end
 
-function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- unchecked
+function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- checked (for eh=0)
   local l = m.el*lw
 
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
@@ -911,7 +943,7 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
   if m.nmul > 0 then
     m:mdump(elm, 'quad_kickh:0')
 
-    local el, eh, tdir, nmul, knl, ksl, beam in m
+    local eh, tdir, nmul, knl, ksl, beam in m
     local _beta = 1/beam.beta
     local  wchg = lw*tdir*beam.charge
 
@@ -919,12 +951,12 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
       local x, px, y, py, t, pt, beam in m[i]
       local _beam = beam and 1/beam.beta or _beta
       local  wchg = beam and lw*tdir*beam.charge or wchg
-      local    dp = sqrt(1 + (2*_beta)*pt + pt^2) - 1
-      local    dt = (el*eh)*((_beta+pt)/(1+dp) - _beta)*x
+      local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
+      local    dt = (l*eh)*((_beta+pt)/pz - _beta)*x
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - knl[1] - knl[2]*x - eh*(dp-_beta*pt))
-      m[i].py = py + wchg*(bx          - knl[2]*y + eh*(dp-_beta*pt))
+      m[i].px = px - wchg*(by - knl[2]*x - eh*(pz-_beta*pt))
+      m[i].py = py + wchg*(bx - knl[2]*y)
       m[i].t  =  t - dt
     end
 
