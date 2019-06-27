@@ -170,14 +170,18 @@ local function get_mult (elm, m, n)
   end
 end
 
-local function get_phas (elm, m, n)
+local function get_multphas (elm, m, n)
+  local knl, ksl, dknl, dksl in elm
   local pnl, psl, dpnl, dpsl in elm
 
-  m.npha = max(#pnl, #psl, #dpnl, #dpsl)
+  m.nmul = max(#knl, #ksl, #dknl, #dksl)
+  m.npha = m.nmul
 
-  for i=1,max(m.npha,n or 0) do
-    m.pnl[i] = (pnl[i] or 0) + (dpnl[i] or 0)
-    m.psl[i] = (psl[i] or 0) + (dpsl[i] or 0)
+  for i=1,max(m.nmul,n or 0) do
+    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) * invfact(i-1)
+    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) * invfact(i-1)
+    m.pnl[i] =  (pnl[i] or 0) + (dpnl[i] or 0)
+    m.psl[i] =  (psl[i] or 0) + (dpsl[i] or 0)
   end
 end
 
@@ -417,7 +421,10 @@ local function track_quadrupole (elm, m)
   m.k1 = nil
 end
 
-local function track_strexgen (elm, m, l)
+-- straigth magnets (-rbend -quad -solenoid)
+
+local function track_strexgen (elm, m)
+  local l = abs(m.ds)
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local inter, thick, kick
@@ -426,11 +433,13 @@ local function track_strexgen (elm, m, l)
     inter = l < minlen and thinonly or DKD[method]
     thick, kick = strex_drift, strex_kick
   else
+    m.k1, m.ca, m.sa = m.knl[2]/m.ds*m.edir, 1, 0
     inter, thick, kick = MKM[method], quad_thick, quad_kick
   end
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
+  m.k1 = nil
 end
 
 local function track_sextupole (elm, m)
@@ -448,7 +457,7 @@ local function track_sextupole (elm, m)
     m.nmul = max((k2 or k2s) and 3 or 0, nmul)
   end
 
-  track_strexgen (elm, m, l)
+  track_strexgen (elm, m)
 end
 
 local function track_octupole (elm, m)
@@ -466,7 +475,7 @@ local function track_octupole (elm, m)
     m.nmul = max((k3 or k3s) and 4 or 0, nmul)
   end
 
-  track_strexgen (elm, m, l)
+  track_strexgen (elm, m)
 end
 
 local function track_decapole (elm, m)
@@ -484,7 +493,7 @@ local function track_decapole (elm, m)
     m.nmul = max((k4 or k4s) and 5 or 0, nmul)
   end
 
-  track_strexgen (elm, m, l)
+  track_strexgen (elm, m)
 end
 
 local function track_dodecapole (elm, m)
@@ -502,8 +511,10 @@ local function track_dodecapole (elm, m)
     m.nmul = max((k5 or k5s) and 6 or 0, nmul)
   end
 
-  track_strexgen (elm, m, l)
+  track_strexgen (elm, m)
 end
+
+-- kickers (straigth magnets)
 
 local function track_kickgen (elm, m, hk, vk)
   get_mult(elm, m, 2)
@@ -518,7 +529,7 @@ local function track_kickgen (elm, m, hk, vk)
     m.nmul = 1
   end
 
-  track_strexgen (elm, m, abs(ds))
+  track_strexgen (elm, m)
 end
 
 local function track_tkicker (elm, m, hk_, vk_)
@@ -536,6 +547,8 @@ end
 local function track_vkicker (elm, m)
   track_kickgen(elm, m, 0, elm.vkick+elm.cvkick)
 end
+
+-- solenoid
 
 local function track_solenoid (elm, m)
   get_mult(elm, m)
@@ -563,11 +576,12 @@ local function track_solenoid (elm, m)
   track(elm, m, DKD[method], thick, strex_kick, strex_fringe)
 end
 
-local function track_rfcavity (elm, m)
-  get_mult(elm, m)
+-- rf cavities
 
+local function track_rfcavgen (elm, m)
   local ds, tdir in m
   local tilt, volt in elm
+  local l = abs(ds)
 
   m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
@@ -575,7 +589,7 @@ local function track_rfcavity (elm, m)
   local inter, kick
 
   if not m.ptcmodel and abs(volt) < minvolt and m.nmul == 0 then
-    inter, kick = abs(ds) < minlen and thinonly or thickonly, fnone
+    inter, kick = l < minlen and thinonly or thickonly, fnone
   else
     m.volt, m.freq = volt*1e-3, elm.freq*1e6
     m.lag , m.nbsl = elm.lag*twopi, elm.n_bessel
@@ -583,12 +597,24 @@ local function track_rfcavity (elm, m)
       m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
     end
     assert(m.freq > 0, "invalid rfcavity setup, (positive freq or harmon expected)")
-    inter = abs(ds) < minlen and thinonly or DKD[method]
+    inter = l < minlen and thinonly or DKD[method]
     kick = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
   end
 
-  local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, kick, rfcav_fringe)
+  local fringe = l >= minlen and rfcav_fringe or fnone
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, strex_drift, kick, fringe)
+end
+
+local function track_rfcavity (elm, m)
+  get_mult      (elm, m)
+  track_rfcavgen(elm, m)
+end
+
+local function track_rfmcavity (elm, m)
+  get_multphas  (elm, m)
+  track_rfcavgen(elm, m)
+  m.npha = 0
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -616,7 +642,7 @@ E.specl_element:setvar({ track = functor( track_marker ) }, 'init')
 E.patch_element:setvar({ track = functor( invalid      ) }, 'init') -- avoid missing definition
 E.extra_element:setvar({ track = functor( invalid      ) }, 'init') -- forbidden in track
 
--- specialized maps (invalid == NYI)
+-- specialized maps
 
 E.sbend      :setvar({ track = functor( track_sbend      ) }, 'init') -- curved  , k0, (k0s, k1, k1s, k2, k2s)
 E.rbend      :setvar({ track = functor( track_rbend      ) }, 'init') -- straight, k0, (k0s, k1, k1s, k2, k2s)
@@ -627,7 +653,7 @@ E.decapole   :setvar({ track = functor( track_decapole   ) }, 'init') -- straigh
 E.dodecapole :setvar({ track = functor( track_dodecapole ) }, 'init') -- straight, (k5, k5s)
 E.solenoid   :setvar({ track = functor( track_solenoid   ) }, 'init') -- straight, ksi, (ks)
 E.rfcavity   :setvar({ track = functor( track_rfcavity   ) }, 'init') -- straight, volt, (freq, lag, harmon)
-E.twcavity   :setvar({ track = functor( notyetdone       ) }, 'init') -- straight, volt, (freq, lag, harmon)
+E.rfmultipole:setvar({ track = functor( track_rfmcavity  ) }, 'init') -- straight, volt, (freq, lag, harmon, mult, phas)
 
 E.wiggler    :setvar({ track = functor( notyetdone       ) }, 'init') -- straight
 E.elseparator:setvar({ track = functor( notyetdone       ) }, 'init') -- straight
@@ -639,7 +665,6 @@ E.tkicker    :setvar({ track = functor( track_tkicker    ) }, 'init') -- straigh
 
 E.beambeam   :setvar({ track = functor( notyetdone       ) }, 'init') -- thin
 E.multipole  :setvar({ track = functor( track_multipole  ) }, 'init') -- thin
-E.rfmultipole:setvar({ track = functor( notyetdone       ) }, 'init') -- thin
 
 -- patches
 
