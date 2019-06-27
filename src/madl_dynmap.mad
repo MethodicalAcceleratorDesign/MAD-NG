@@ -838,7 +838,7 @@ function M.quad_kicks (elm, m, lw, ii) -- [KICKTKT7]                         -- 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
--- curved, eh ~= 0
+-- curved (k0 and eh)
 
 function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- checked (for eh=0)
 
@@ -1100,47 +1100,13 @@ function M.rfcav_kickn (elm, m, lw) -- [KICKCAV, nmul ~= 0 or nbsl ~= 0]     -- 
   m:mdump(elm, 'rfcav_kickn:1')
 end
 
-function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4, FRINGECAV]       -- checked
-  m:mdump(elm, 'rfcav_fringe:0')
-
-  local lw = lw_ or 1
-  local sdir, beam in m
-  local beta = beam.beta
-
-  if sdir*lw == 1 then
--- print(lw == 1 and 'forward entry' or 'backward exit')
-    -- TODO: [FRINGECAV]
-    assert(m.Tbak == nil, "inconsistent totalpath when entering rfcavity")
-    m.Tbak, m.T = m.T, 0
-    if not elm.no_cavity_totalpath then
-      m.T, m.lag = 1, m.lag - m.freq*m.el*pi_clight/beta -- t=0 => accel=0
-    end
-  end
-
-  if lw == -1 and m.Tbak ~= m.T then
-    local Tl = (m.T-m.Tbak)*m.el
-
-    for i=1,m.npar do
-      local t, beam in m[i]
-      m[i].t = t + Tl/beta
-    end
-  end
-
-  if sdir*lw == -1 then
--- print(lw == -1 and 'forward exit' or 'backward entry')
-    m.T, m.Tbak = m.Tbak, nil
-    -- TODO: [FRINGECAV]
-  end
-
-  m:mdump(elm, 'rfcav_fringe:1')
-end
-
 -- fringes --------------------------------------------------------------------o
 
 local frng_none = tobit(0) -- all bits zero
 local frng_mult = tobit(0) -- bit id for mult
 local frng_bend = tobit(1) -- bit id for bend
 local frng_quad = tobit(2) -- bit id for quad
+local frng_cav  = tobit(0) -- bit id for cav (same as mult!)
 
 --[[
 Policy in MAD-NG:
@@ -1194,11 +1160,12 @@ NEWFACE[EXACT] / FACE[.not.EXACT]
 EDGE
 EDGE_TRUE_PARALLEL
 
-FRINGECAV[PERMFRINGE/=0]
+FRINGECAV[PERMFRINGE/=0,THIN/=T,NOCAVITY/=T,N_BESSEL/=-1]
 --]]
 
  -- forward declarations
-local mad8_wedge, bend_wedge, bend_face, bend_fringe, quad_fringe, mult_fringe
+local mad8_wedge, bend_wedge, bend_face
+local bend_fringe, quad_fringe, mult_fringe, cav_fringe
 
 function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- checked
   if m.nmul == 0 then return end -- switched off
@@ -1291,44 +1258,45 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
   m:mdump(elm, 'curex_fringe:1')
 end
 
-function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- unchecked
-  if m.nmul == 0 or abs(m.knl[1]) < minstr then return end -- switched off
-  local lw = lw_ or 1
+function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4, FRINGECAV]       -- checked
+  m:mdump(elm, 'rfcav_fringe:0')
 
-  local el, edir, sdir, tdir, knl, beam in m
-  local k0 = knl[1]/el*tdir
-  local corr, e = 0
+  local lw = lw_ or 1
+  local sdir, beam in m
+  local frng = bor(m.fringe, elm.fringe)
 
   if sdir*lw == 1 then
-    e = m.e1
-    if not elm.kill_ent_fringe then
-      corr = k0^2*elm.hgap*elm.fint
+-- print(lw == 1 and 'forward entry' or 'backward exit')
+    assert(m.Tbak == nil, "inconsistent totalpath when entering rfcavity")
+    m.Tbak, m.T = m.T, 0
+    if not elm.no_cavity_totalpath then
+      m.T, m.lag = 1, m.lag - m.freq*m.el*pi_clight/beam.beta -- t=0 => accel=0
     end
-  else
-    e = m.e2
-    if not elm.kill_exi_fringe then
-      corr = k0^2*elm.hgap*(elm.fintx or elm.fint)
+      if btst(frng, frng_cav) and not elm.kill_ent_fringe then
+        cav_fringe(elm, m,  1)
+      end
+  elseif btst(frng, frng_cav) and not elm.kill_exi_fringe then
+-- print(lw == -1 and 'forward exit' or 'backward entry')
+      cav_fringe(elm, m, -1)
+  end
+
+  if lw == -1 and m.Tbak ~= m.T then
+-- on exit restore t if needed
+    local Tl = (m.T-m.Tbak)*m.el
+    local _beta = 1/beam.beta
+    for i=1,m.npar do
+      local t, beam in m[i]
+      local _beta = beam and 1/beam.beta or _beta
+      m[i].t = t + Tl*_beta
     end
   end
 
-  if e == 0 and corr == 0 then return end
-
-  m:mdump(elm, 'dipeg_fringe:0')
-
-  local chg = beam.charge
---  local k0  = k0*edir
-  local r21 = k0*tan(e)
-  local r43 = corr == 0 and -r21 or -k0 * tan(e - corr/cos(e)*(1+sin(e)^2))
-
-  for i=1,m.npar do
-    local x, px, y, py, beam in m[i]
-    local chg = beam and beam.charge or chg
-
-    m[i].px = px + chg*r21*x
-    m[i].py = py + chg*r43*y
+  if sdir*lw == -1 then
+-- print(lw == -1 and 'forward exit' or 'backward entry')
+    m.T, m.Tbak = m.Tbak, nil
   end
 
-  m:mdump(elm, 'dipeg_fringe:1')
+  m:mdump(elm, 'rfcav_fringe:1')
 end
 
 -- fringes helpers ------------------------------------------------------------o
@@ -1614,6 +1582,75 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       --
   end
 
   m:mdump(elm, 'mult_fringe:1')
+end
+
+function cav_fringe (elm, m, lw) -- [FRINGECAV]                               -- checked
+  m:mdump(elm, 'cav_fringe:0')
+
+  local el, volt, freq, lag, nbsl, tdir, beam in m
+  local omega = freq*twopi_clight
+  local phase = lag
+  local    vl = lw/el*volt*beam.charge/beam.pc
+--local     z = 0.5*(1-lw)*el
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local  vl = beam and lw/el*volt*beam.charge/beam.pc or vl
+    local  s1 = sin(phase - omega*t)
+    local  c1 = cos(phase - omega*t)
+
+--    print("vl=", vl, "o=", omega, "ph=", phase)
+--    m:xdump(elm, "s1=", -s1)
+--    m:xdump(elm, "c1=", -c1)
+
+    m[i].px = px - (0.5 *vl      )*s1*x
+    m[i].py = py - (0.5 *vl      )*s1*y
+    m[i].pt = pt + (0.25*vl*omega)*c1*(x^2 + y^2)
+  end
+
+  m:mdump(elm, 'cav_fringe:1')
+end
+
+-- extra fringe (not used) ----------------------------------------------------o
+
+function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- unchecked
+  if m.nmul == 0 or abs(m.knl[1]) < minstr then return end -- switched off
+  local lw = lw_ or 1
+
+  local el, edir, sdir, tdir, knl, beam in m
+  local k0 = knl[1]/el*tdir
+  local corr, e = 0
+
+  if sdir*lw == 1 then
+    e = m.e1
+    if not elm.kill_ent_fringe then
+      corr = k0^2*elm.hgap*elm.fint
+    end
+  else
+    e = m.e2
+    if not elm.kill_exi_fringe then
+      corr = k0^2*elm.hgap*(elm.fintx or elm.fint)
+    end
+  end
+
+  if e == 0 and corr == 0 then return end
+
+  m:mdump(elm, 'dipeg_fringe:0')
+
+  local chg = beam.charge
+--  local k0  = k0*edir
+  local r21 = k0*tan(e)
+  local r43 = corr == 0 and -r21 or -k0 * tan(e - corr/cos(e)*(1+sin(e)^2))
+
+  for i=1,m.npar do
+    local x, px, y, py, beam in m[i]
+    local chg = beam and beam.charge or chg
+
+    m[i].px = px + chg*r21*x
+    m[i].py = py + chg*r43*y
+  end
+
+  m:mdump(elm, 'dipeg_fringe:1')
 end
 
 -- end ------------------------------------------------------------------------o
