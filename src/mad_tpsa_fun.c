@@ -427,12 +427,11 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
 }
 
 void
-FUN(sinc) (const T *a, T *c)                              // unstable series....
+FUN(sinc) (const T *a, T *c)
 {
   assert(a && c);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
-  // With IEEE 754: cos(1e-10) = 1, sin(1e-10) = 0
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
   cnum_t f0 = mad_cnum_sinc(a0);
@@ -445,29 +444,30 @@ FUN(sinc) (const T *a, T *c)                              // unstable series....
 
   NUM ord_coef[to+1];
 
-  if (fabs(a0) > 1e-6) {
-//    T *t = GET_TMPX(c);
-//    FUN(sin)(a,t);
-//    FUN(div)(t,a,c);
-//    REL_TMPX(t);
-//    return;
-// prefer explicit above? not better in term of stability
-    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
-    num_t fo = 1;
-    ord_coef[0] = f0;
-    ord_coef[1] = (ca - f0)*_a0;
-    for (int o = 2; o <= to; ++o) {
-      fo *= o; // formula numerically unstable in (0, 0.5), need some work
-      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
-      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
-      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
-    }
-  } else {  // |a0| < 1e-6
-    ord_coef[0] = 1;
-    ord_coef[1] = 0;
-    for (int o = 2; o <= to; ++o)
-      ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
+  if (fabs(f0) < 1) { // sin(x)/x
+    T *t = GET_TMPX(c);
+    FUN(sin)(a,t);
+    FUN(div)(t,a,c);
+    REL_TMPX(t);
+    return;
   }
+// prefer explicit above? not better in term of stability...
+//    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
+//    num_t fo = 1;
+//    ord_coef[0] = f0;
+//    ord_coef[1] = (ca - f0)*_a0;
+//    for (int o = 2; o <= to; ++o) {
+//      fo *= o; // formula numerically unstable in (0, 0.5), need some work
+//      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+//      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
+//      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
+//    }
+
+  // sinc(x)
+  ord_coef[0] = 1;
+  ord_coef[1] = 0;
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
 }
