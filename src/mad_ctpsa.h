@@ -154,6 +154,7 @@ void     mad_ctpsa_sinh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cosh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tanh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_coth    (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_sinhc   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_asin    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acos    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_atan    (const ctpsa_t *a, ctpsa_t *c);

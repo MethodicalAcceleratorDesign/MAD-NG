@@ -433,18 +433,20 @@ FUN(sinc) (const T *a, T *c)
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
 
   NUM a0 = a->coef[0];
-#ifdef MAD_CTPSA_IMPL
-  cnum_t f0 = mad_cnum_sinc(a0);
-#else
-  num_t  f0 = mad_num_sinc (a0);
-#endif
-
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) { FUN(scalar)(c,f0,0,0); return; }
+
+  if (!to || a->hi == 0) {
+#ifdef MAD_CTPSA_IMPL
+    cnum_t f0 = mad_cnum_sinc(a0);
+#else
+    num_t  f0 = mad_num_sinc (a0);
+#endif
+    FUN(scalar)(c,f0,0,0); return;
+  }
 
   NUM ord_coef[to+1];
 
-  if (fabs(f0) < 1) { // sin(x)/x
+  if (fabs(a0) > 1e-7) { // sin(x)/x
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
     FUN(div)(t,a,c);
@@ -611,6 +613,43 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   case 0: ord_coef[0] = f0;                                           break;
   assert(!"unexpected missing coefficients");
   }
+
+  fun_taylor(a,c,to,ord_coef);
+}
+
+void
+FUN(sinhc) (const T *a, T *c)
+{
+  assert(a && c);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  ord_t to = MIN(c->mo,c->d->to);
+
+  if (!to || a->hi == 0) {
+#ifdef MAD_CTPSA_IMPL
+    cnum_t f0 = mad_cnum_sinhc(a0);
+#else
+    num_t  f0 = mad_num_sinhc (a0);
+#endif
+    FUN(scalar)(c,f0,0,0); return;
+  }
+
+  NUM ord_coef[to+1];
+
+  if (fabs(a0) > 1e-7) { // sinh(x)/x
+    T *t = GET_TMPX(c);
+    FUN(sinh)(a,t);
+    FUN(div)(t,a,c);
+    REL_TMPX(t);
+    return;
+  }
+
+  // sinc(x)
+  ord_coef[0] = 1;
+  ord_coef[1] = 0;
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
 }

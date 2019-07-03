@@ -29,9 +29,12 @@
 
 // --- interface --------------------------------------------------------------o
 
+num_t  mad_num_sinc    (num_t x);
+num_t  mad_num_sinhc   (num_t x);
 num_t  mad_num_powi    (num_t x, int n);
 
 cnum_t mad_cnum_sinc   (cnum_t x);
+cnum_t mad_cnum_sinhc  (cnum_t x);
 cnum_t mad_cnum_powi   (cnum_t x, int n);
 
 num_t mad_cnum_abs_r   (num_t x_re, num_t x_im);
@@ -57,6 +60,7 @@ void  mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r);
 
 void  mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cnum_sinhc_r (num_t x_re, num_t x_im, cnum_t *r);
 
 void  mad_cnum_unit_r  (num_t x_re, num_t x_im, cnum_t *r);
 void  mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r);
@@ -106,14 +110,6 @@ struct rng_state {
   u64_t s[16];
   int p;
 };
-
-// --- inlined functions ------------------------------------------------------o
-
-static inline
-num_t mad_num_sinc(num_t x)
-{
-  return fabs(x)<1e-10 ? 1 : sin(x)/x;
-}
 
 // ----------------------------------------------------------------------------o
 

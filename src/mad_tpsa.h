@@ -123,6 +123,7 @@ void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tanh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_coth    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_sinhc   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_asin    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_acos    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_atan    (const tpsa_t *a, tpsa_t *c);
