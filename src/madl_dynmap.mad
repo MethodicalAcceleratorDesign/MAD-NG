@@ -68,7 +68,7 @@ local tobit, btst, bor                                           in MAD.operator
 
 local fnone                                                      in MAD.gfunc
 local abs, sqrt, exp, sin, cos, tan, asin, acos, atan, atan2,
-      sinh, cosh, sinc                                           in MAD.gmath
+      sinh, cosh, sinc, sinhc                                    in MAD.gmath
 
 local min, max in math
 
@@ -505,7 +505,7 @@ function M.strex_kickh (elm, m, lw) -- [KICKT]                               -- 
   m:mdump(elm, 'strex_kickh:1')
 end
 
--- DKD [INTER_TEAPOT, l ~= 0, angle = k0l ~= 0] -------------------------------o
+-- DKD [INTER_TEAPOT] ---------------------------------------------------------o
 
 function M.curex_drift (elm, m, lw) -- [SPROT]                               -- checked
 
@@ -558,7 +558,7 @@ function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                        -- 
   m:mdump(elm, 'curex_kick:1')
 end
 
--- TKT [INTER_TEAPOT, angle ~= 0] ---------------------------------------------o
+-- TKT [INTER_TEAPOT] ---------------------------------------------------------o
 
 function M.sbend_thick (elm, m, lw) -- [SSEC]                                 -- checked
 
@@ -594,62 +594,6 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
 end
 
 M.sbend_kick = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                      -- checked
-
-function M.sbend_thickf (elm, m, l) -- [variant with k1]                     -- unchecked
-  error("NYI")
-
-  m:mdump(elm, 'sbend_thickf:0')
-
-  local k0, k1, l, angle in elm
-  l, angle = l*lw, angle*lw
-
-  local _el   = 1/elm.l
-  local _beta = 1/m.beam.beta
-  local l_bet2_gam2 = l/(m.beam.gamma^2-1)
-
-  local angle = elm.angle
-  local lw    = l*_el
-  local h     = lw*angle
-  local hbar  = h*_beta
-
-  local knl, bdir in m
-  local k0, k1 = bdir*knl[1]*_el, bdir*knl[2]*_el
-  local hk0pk1 = h*k0+k1
-  local wx2, wy2 = abs(hk0pk1), abs(k1)
-  local wx , wy  = sqrt(wx2), sqrt(wy2)
-
-  local cx, sx, cy, sy
-  if hk0pk1 < 0
-  then cx, sx = cosh(wx*l), sinh(wx*l)/wx -- check wx == 0
-  else cx, sx = cos (wx*l), sin (wx*l)/wx -- check wx == 0
-  end
-  if k1 < 0
-  then cy, sy = cosh(wy*l), sinh(wy*l)/wy -- check wy == 0
-  else cy, sy = cos (wy*l), sin (wy*l)/wy -- check wy == 0
-  end
-
---  local npos in m
---  drift_adj(elm, m, l/2)
-
-  local x, px, y, py, t, pt in m
-  local m16, m56 = (1-cx)/wx2, hbar^2*(l-sx)/wx2
-
-  m.x  =      cx*x + sx*px + hbar*m16*pt + (h-k0)*m16
-  m.px = -wx2*sx*x + cx*px + hbar*sx*pt  + (h-k0)*sx
-  m.y  =      cy*y + sy*py
-  m.py =  wy2*sy*y + cy*py
-  m.t  = t - hbar*(sx*x+m16*px) + (l_bet2_gam2-m56)*pt
-
---  drift_adj(elm, m, l/2)
-
-  m:mdump(elm, 'sbend_thickf:1')
-end
-
-function M.sbend_kickf (elm, m, l) -- [??] -- need curved bx,by?             -- unchecked
-  error("NYI")
-  m:mdump(elm, 'sbend_kickf:0')
-  m:mdump(elm, 'sbend_kickf:1')
-end
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
@@ -792,7 +736,7 @@ function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- 
       -ws, cy, cx, my1, my2, mx1, mx2
     end
 
-    -- quad_thick surrounded by a srotation
+    -- srotation
     local nx  = ca*x  + sa*y
     local npx = ca*px + sa*py
     local ny  = ca*y  - sa*x
@@ -803,6 +747,7 @@ function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- 
     y  = ny*cy  + npy*my1
     py = ny*my2 + npy*cy
 
+    -- srotation^-1
     m[i].x  = ca*x  - sa*y
     m[i].px = ca*px - sa*py
     m[i].y  = ca*y  + sa*x
@@ -966,7 +911,7 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
--- TKT [INTER_SOL5] -----------------------------------------------------------o
+-- DKD, TKT [INTER_SOL5] ------------------------------------------------------o
 
 function M.solen_thick (elm, m, lw) -- [KICK_SOL]                            -- checked
 
@@ -1005,7 +950,58 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOL]                            -- 
   m:mdump(elm, 'solen_thick:1')
 end
 
--- rfcavity [INTER_CAV4] ------------------------------------------------------o
+-- DKD, TKT [SEPTTRACK] -------------------------------------------------------o
+
+function M.esept_thick (elm, m, lw) -- [SEP]                                  -- checked
+
+  m:mdump(elm, 'elsep_thick:0')
+
+  local el, ca, sa, volt, tdir, beam, T in m
+  local     k1 = tdir*volt*beam.charge/beam.pc
+  local      l = el*lw
+  local  _beta = 1/beam.beta
+  local   _bg2 = 1/beam.betgam2
+
+--printf('@@ gammai=% -.16e, beta=% -.16e, p0c=% -.16e\n', 1/beam.gamma, beam.beta, beam.pc)
+--printf('@@ volt=% -.16e, k1=% -.16e, ca=% -.16e, sa=% -.16e\n', volt*1e3, k1, ca, sa)
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local _beta = beam and 1/beam.beta or _beta
+    local _bg2  = beam and 1/beam.betgam2 or _bg2
+    local   k1  = beam and tdir*volt*beam.charge/beam.pc or k1
+    local   e1  = _beta+pt
+
+    -- srotation
+    local   nx  = ca*x  + sa*y
+    local   npx = ca*px + sa*py
+    local   ny  = ca*y  - sa*x
+    local   npy = ca*py - sa*px
+
+    local l_pz  = l/sqrt((e1+k1*ny)^2 - _bg2 - npx^2 - npy^2)
+    local   arg = k1*l_pz
+    local   shx = sinhc(arg)*l_pz
+    local ch,sh = cosh(arg), sinh(arg)
+    local   chm = sinh(0.5*arg)^2*(2/k1) -- was sinhc(0.5*arg)*sinh(0.5*arg)/l_pz
+    local    dt = chm*npy + sh *ny  + e1*shx
+    local    yt = ch *ny  + shx*npy + e1*chm
+    local   pyt = ch *npy + sh*(e1+k1*ny)
+
+    nx = nx + npx*l_pz
+    ny, npy = yt, pyt
+
+    -- srotation^-1
+    m[i].x  = ca*nx  - sa*ny
+    m[i].px = ca*npx - sa*npy
+    m[i].y  = ca*ny  + sa*nx
+    m[i].py = ca*npy + sa*npx
+    m[i].t  = t - dt + (1-T)*l*_beta
+  end
+
+  m:mdump(elm, 'elsep_thick:1')
+end
+
+-- DKD, TKT [INTER_CAV4] ------------------------------------------------------o
 
 function M.rfcav_kick (elm, m, lw) -- [KICKCAV, FEVAL_CAVR?]                 -- checked
 
