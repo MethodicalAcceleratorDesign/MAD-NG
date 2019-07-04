@@ -79,6 +79,9 @@ local quad_thick,  quad_kick,
 -- solenoid (always TKT)
 local solen_thick                                                  in MAD.dynmap
 
+-- electrostatic separator
+local esept_thick                                                  in MAD.dynmap
+
 -- rfcavity
 local rfcav_kick, rfcav_kickn             , rfcav_fringe           in MAD.dynmap
 
@@ -559,7 +562,7 @@ local function track_solenoid (elm, m)
 
   assert(l >= minlen, "invalid solenoid length (>0 expected)")
 
-  m.el, m.tlt = ds, tilt*tdir
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
 
   local ksi = ksi + ks*l
   local thick
@@ -574,6 +577,38 @@ local function track_solenoid (elm, m)
   local method = elm.method or m.method
   local track  = #elm == 0 and trackelm or tracksub
   track(elm, m, DKD[method], thick, strex_kick, strex_fringe)
+end
+
+-- eseptum
+
+local function track_eseptum (elm, m)
+  get_mult(elm, m)
+
+  local ds, tdir in m
+  local tilt, ex, ey, exl, eyl in elm
+  local l = abs(ds)
+
+  assert(l >= minlen, "invalid elseparator length (>0 expected)")
+
+  m.el, m.eh, m.tlt = ds, 0, tilt*tdir
+
+  local exl = exl + ex*l
+  local eyl = eyl + ey*l
+  local volt = sqrt(exl^2 + eyl^2)/l
+  local thick
+
+  if abs(volt) < minvolt then
+    thick = strex_drift
+  else
+    local a = -atan2(eyl, exl)*tdir
+    m.volt, m.ca, m.sa = volt*1e-3, cos(a), sin(a)
+    thick = esept_thick
+  end
+
+  local method = elm.method or m.method
+  local inter  = m.nmul == 0 and thickonly or DKD[method]
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, thick, strex_kick, strex_fringe)
 end
 
 -- rf cavities
@@ -656,7 +691,7 @@ E.rfcavity   :setvar({ track = functor( track_rfcavity   ) }, 'init') -- straigh
 E.rfmultipole:setvar({ track = functor( track_rfmcavity  ) }, 'init') -- straight, volt, (freq, lag, harmon, mult, phas)
 
 E.wiggler    :setvar({ track = functor( notyetdone       ) }, 'init') -- straight
-E.elseparator:setvar({ track = functor( notyetdone       ) }, 'init') -- straight
+E.elseparator:setvar({ track = functor( track_eseptum    ) }, 'init') -- straight
 
 E.kicker     :setvar({ track = functor( track_kicker     ) }, 'init') -- straight, (hkick, vkick)
 E.hkicker    :setvar({ track = functor( track_hkicker    ) }, 'init') -- straight, ( kick, hkick)
