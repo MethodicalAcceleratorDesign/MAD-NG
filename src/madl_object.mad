@@ -31,8 +31,14 @@ local tobit, bset, btst, bclr, bnot, band, bor, lshift, eq      in MAD.operator
 local bsearch, lsearch, kpairs, openfile, assertf, errorf       in MAD.utility
 local functor                                                   in MAD.gfunc
 
-local type, rawget, rawset, rawequal, strsub =
-      type, rawget, rawset, rawequal, string.sub
+local type, assert, error, getmetatable, setmetatable =
+      type, assert, error, getmetatable, setmetatable
+
+local rawget, rawset, rawequal, rawlen, ipairs, pairs, tostring =
+      rawget, rawset, rawequal, rawlen, ipairs, pairs, tostring
+
+local string, table =
+      string, table
 
 -- implementation -------------------------------------------------------------o
 
@@ -230,7 +236,7 @@ else -- default                     -- object model with lookup
 end
 
 function MT:__newindex (k, v)
-  if freadonly(self) or type(k) == 'string' and strsub(k,1,2) == '__' then
+  if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' then
     error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
           .. "' (readonly object, method or variable)", 2)
   end
@@ -346,7 +352,7 @@ function MF:set_variables (tbl, override_) -- default: override = true
   end
   local var = self.__var
   for k,v in pairs(tbl) do
-    assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
   end
@@ -362,13 +368,13 @@ function MF:copy_variables (src, lst_, override_) -- default: override = true
   local var, svar, lst = self.__var, src.__var, lst_ or self.__attr
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
-    assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = src[k]
   end
   if svar and is_iterable(lst.noeval) then
     for _,k in ipairs(lst.noeval) do
-      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(var[k]), "cannot override variable '%s'",k)
       var[k] = svar[k]
     end
@@ -411,7 +417,7 @@ function MF:set_methods (tbl, override_) -- default: override = true
     for k,m in pairs(tbl) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
       assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(sm[k]), "cannot override method '%s'",k)
       sm[k] = m
     end
@@ -420,7 +426,7 @@ function MF:set_methods (tbl, override_) -- default: override = true
     for k,m in pairs(tbl) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
       assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or strsub(k,1,2) ~= '__')
+      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(var[k]), "cannot override method '%s'",k)
       var[k] = is_function(m) and functor(m) or m
     end
@@ -440,7 +446,7 @@ function MF:set_metamethods (tbl, override_) -- default: override = false
   local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(tbl) do
-    assertf(type(k) == 'string' and strsub(k,1,2) == '__',
+    assertf(type(k) == 'string' and string.sub(k,1,2) == '__',
             "invalid key '%s' (string starting with __ expected)", tostring(k))
     assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
@@ -483,7 +489,7 @@ function MF:get_varkeys (class_)
   local lst, key = table.new(8,1), table.new(0,8)
   while self and not rawequal(self, class_) do
     for k,v in kpairs(self) do
-      if not (key[k] or is_functor(v)) and is_string(k) and strsub(k,1,2) ~= '__'
+      if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
       then lst[#lst+1], key[k] = k, k
       end
     end
@@ -557,7 +563,7 @@ function MF:clear_variables ()
   end
   local var = self.__var
   for k in kpairs(self) do
-    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
       var[k]=nil
     end
   end
@@ -571,7 +577,7 @@ function MF:clear_all ()
   end
   local var = self.__var
   for k in pairs_iter(self) do -- table.clear destroys all keys
-    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
       var[k]=nil
     end
   end
@@ -603,7 +609,7 @@ function MF:copy (name_)
   local cpy = MF.same(self, name_)
   local var, cvar = self.__var, cpy.__var
   for k,v in pairs_iter(self) do
-    if type(k) ~= 'string' or strsub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
       cvar[k] = v
     end
   end
@@ -755,7 +761,7 @@ function MF:dumpobj (filnam_, class_, pattern_)
     spc = spc .. "   "
     -- variables
     for k,v in kpairs(self) do
-      if is_string(k) and strsub(k,1,2) ~= '__' and string.find(k,pattern_) then
+      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k,pattern_) then
         str = spc .. tostring(k)
         if is_string(v) then
           str = str .. " : '" .. tostring(v):sub(1,15) .. "'"
