@@ -446,7 +446,7 @@ FUN(sinc) (const T *a, T *c)
 
   NUM ord_coef[to+1];
 
-  if (fabs(a0) > 1e-7) { // sin(x)/x
+  if (fabs(a0) > 1e-12) { // sin(x)/x
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
     FUN(div)(t,a,c);
@@ -637,7 +637,7 @@ FUN(sinhc) (const T *a, T *c)
 
   NUM ord_coef[to+1];
 
-  if (fabs(a0) > 1e-7) { // sinh(x)/x
+  if (fabs(a0) > 1e-12) { // sinh(x)/x
     T *t = GET_TMPX(c);
     FUN(sinh)(a,t);
     FUN(div)(t,a,c);
