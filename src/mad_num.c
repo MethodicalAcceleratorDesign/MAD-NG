@@ -32,8 +32,15 @@
 
 // --- num
 
-num_t mad_num_sinc  (num_t x) { return fabs(x)>1e-7 ? sin (x)/x : 1; }
-num_t mad_num_sinhc (num_t x) { return fabs(x)>1e-7 ? sinh(x)/x : 1; }
+num_t mad_num_sinc  (num_t x)
+{
+  return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin (x)/x;
+}
+
+num_t mad_num_sinhc (num_t x)
+{
+  return fabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : sinh(x)/x;
+}
 
 num_t mad_num_powi (num_t x, int n)
 {
@@ -48,8 +55,15 @@ num_t mad_num_powi (num_t x, int n)
 
 // --- cnum
 
-cnum_t mad_cnum_sinc  (cnum_t x) { return cabs(x)>1e-7 ? csin (x)/x : 1; }
-cnum_t mad_cnum_sinhc (cnum_t x) { return cabs(x)>1e-7 ? csinh(x)/x : 1; }
+cnum_t mad_cnum_sinc  (cnum_t x)
+{
+  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : csin (x)/x;
+}
+
+cnum_t mad_cnum_sinhc (cnum_t x)
+{
+  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : csinh(x)/x;
+}
 
 cnum_t mad_cnum_powi (cnum_t x, int n)
 {
