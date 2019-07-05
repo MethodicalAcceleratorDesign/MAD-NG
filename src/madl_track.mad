@@ -47,7 +47,15 @@ local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
 
 local abs, min, max in math
-local strsub = string.sub
+
+local string, table, debug, io, os =
+      string, table, debug, io, os
+
+local type, getmetatable, setmetatable, assert, error =
+      type, getmetatable, setmetatable, assert, error
+
+local ipairs, pairs, rawget, rawequal, tostring, tonumber =
+      ipairs, pairs, rawget, rawequal, tostring, tonumber
 
 -- constants
 local minvolt = 1e-6
@@ -283,7 +291,7 @@ local function track_multipole (elm, m)                                         
 
   local kick
 
-  if not (m.ptcmodel and abs(angle) >= minang) then
+  if abs(angle) < minang then
     kick = strex_kick
   else
     local lrad in elm
@@ -405,7 +413,7 @@ local function track_quadrupole (elm, m)
 
   -- Note: MKM integrators used uniform length for the thick map
   --       hence all cos, sin, cosh, sinh could be computed here...
-  if not m.ptcmodel or model ~= 'TKT' or no_k1 and no_k1s and no_k0a then
+  if model == 'DKD' or no_k1 and no_k1s and no_k0a then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_k0a then                 -- normal thick
     m.k1, m.ca, m.sa = knl[2]/ds*edir, 1, 0
@@ -432,9 +440,10 @@ local function track_strexgen (elm, m)
   local method = elm.method or m.method
   local inter, thick, kick
 
-  if not (m.ptcmodel and model == 'TKT' and l >= minlen) then
-    inter = l < minlen and thinonly or DKD[method]
-    thick, kick = strex_drift, strex_kick
+  if l < minlen then
+    inter, thick, kick = thinonly, fnone, strex_kick
+  elseif model == 'DKD' then
+    inter, thick, kick = DKD[method], strex_drift, strex_kick
   else
     m.k1, m.ca, m.sa = m.knl[2]/m.ds*m.edir, 1, 0
     inter, thick, kick = MKM[method], quad_thick, quad_kick
@@ -606,7 +615,7 @@ local function track_eseptum (elm, m)
   end
 
   local method = elm.method or m.method
-  local inter  = m.nmul == 0 and thickonly or DKD[method]
+  local inter  = m.nmul == 0 and thickonly or MKM[method]
   local track  = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, strex_kick, strex_fringe)
 end
@@ -623,8 +632,9 @@ local function track_rfcavgen (elm, m)
   local method = elm.method or m.method
   local inter, kick
 
-  if not m.ptcmodel and abs(volt) < minvolt and m.nmul == 0 then
-    inter, kick = l < minlen and thinonly or thickonly, fnone
+  if abs(volt) < minvolt then
+    inter = l < minlen  and thinonly or thickonly
+    kick  = m.nmul == 0 and fnone    or strex_kick
   else
     m.volt, m.freq = volt*1e-3, elm.freq*1e6
     m.lag , m.nbsl = elm.lag*twopi, elm.n_bessel
@@ -636,8 +646,8 @@ local function track_rfcavgen (elm, m)
     kick = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
   end
 
-  local fringe = l >= minlen and rfcav_fringe or fnone
-  local track  = #elm == 0 and trackelm or tracksub
+  local fringe = l < minlen and fnone    or rfcav_fringe
+  local track  = #elm == 0  and trackelm or tracksub
   track(elm, m, inter, strex_drift, kick, fringe)
 end
 
@@ -896,11 +906,10 @@ local function make_mflow (self)
   local T = totalpath and 0 or 1
 
   -- model, method
-  local method, model, ptcmodel in self
+  local method, model in self
   assertf(DKD[method], "invalid integration method '%s'", method)
   assertf(modint[model],
           "invalid integration model %s (DKD or TKT expected)", model)
-  assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
   local s0, X0, O0, R0, beta0, npart, mapdef, mapsave in self
@@ -1018,7 +1027,6 @@ local function make_mflow (self)
 
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
-  mflw.ptcmodel=ptcmodel     -- use PTC integration model
   mflw.T=T                   -- cancel compensation for time of flight
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
@@ -1144,7 +1152,6 @@ local track = command 'track' {
   nslice=1,         -- number of slices (or weights) for each element     (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
-  ptcmodel=false,   -- use strict PTC integration models                  (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   fringe=false,     -- activate fringe fields (0..7)                      (mflw)
   radiate=false,    -- radiate at slices (NYI)                            (mflw)
@@ -1170,8 +1177,8 @@ local track = command 'track' {
   __attr = {        -- list of all setup attributes
     'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'R0', 'beta0',
     'deltap', 'mapdef', 'mapsave', 'mapdump', 'nturn', 'nstep', 'npart',
-    'method', 'model', 'ptcmodel', 'implicit', 'fringe', 'radiate', 'misalign',
-    'totalpath', 'save', 'title', 'observe', 'usrdef',
+    'method', 'model', 'implicit', 'fringe', 'radiate', 'misalign', 'totalpath',
+    'save', 'title', 'observe', 'usrdef',
     noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'nslice',
               'savesel'},
   }
