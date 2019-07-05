@@ -25,16 +25,8 @@ local M = {}
 
 -- modules --------------------------------------------------------------------o
 
--- list of modules to import in MAD
-
+-- list of modules to import in MAD (order matters!)
 local modules = {
-  -- Lua modules --
-
-  -- Strict, LPEG, LuaFun, LuaFileSystem, LuaUnit
-  'strict', 'regex', 'lfun', 'lfs', -- 'utest',
-
-  -- MAD modules (order matters!) --
-
   -- utilities
   'typeid', 'constant', 'gfunc', 'gutil',
   -- maths
@@ -47,6 +39,12 @@ local modules = {
   'command', 'survey', 'track', 'cofind', 'twiss', 'match', 'plot',
   -- environments
   'madx',
+}
+
+-- list of eXternal modules to import in MAD
+local xmodules = {
+  -- Strict, LPEG, LuaFun, LuaFileSystem, LuaUnit
+  'strict', 'regex', 'lfun', 'lfs', 'utest',
 }
 
 -- list of global variables to cleanup after import
@@ -323,7 +321,7 @@ function M.show (a, strict_)
   end
 end
 
--- environment ----------------------------------------------------------------o
+-- load environment -----------------------------------------------------------o
 
 -- protect MAD
 MAD = wprotect(setmetatable(M, {__tostring := "MAD"}))
@@ -331,16 +329,24 @@ MAD = wprotect(setmetatable(M, {__tostring := "MAD"}))
 -- import MAD as a self reference
 MAD:import { MAD = MAD }
 
--- load modules
+-- load eXternal modules
+for _,m in ipairs(xmodules) do MAD:import(m) end
+
+-- activate strict mode (see _G_env below)
+MAD.strict({MADX=true, help=true, show=true})
+
+-- load MAD modules
 for _,m in ipairs(modules) do MAD:import(m) end
 
 -- cleanup globals
 for i,v in ipairs(globals) do _G[v] = nil end
 
 -- useful as globals
-_M   = MAD
 help = MAD.help
 show = MAD.show
+
+-- desactivate strict mode for interactive mode
+if MAD.env.is_interactive() then MAD.unstrict() end
 
 -- check _G pollution ---------------------------------------------------------o
 
@@ -372,8 +378,7 @@ local _G_env = {
   -- LJ 2.1
   'bit', 'jit', 'newproxy',
   -- MAD
-  '_M', 'MAD', 'MADX',
-  'help', 'show',
+  'MAD', 'MADX', 'help', 'show',
 }
 for i,v in ipairs(_G_env) do _G_env[v] = i end
 
@@ -387,10 +392,10 @@ local function check_G (extra)
   end
 end
 
--- check _M pollution ---------------------------------------------------------o
+-- check MAD pollution --------------------------------------------------------o
 
 local _M_env = {
-  '_C', 'MAD', 'MADX', 'check_globals',
+  '_C', 'MAD', 'MADX', 'checkglobal',
   'aperture', 'atexit',
   'beam',
   'cdamap', 'cmatrix', 'cofind', 'command', 'complex', 'constant', 'ctpsa', 'cvector',
@@ -417,7 +422,7 @@ local _M_env = {
 for i,v in ipairs(_M_env) do _M_env[v] = i end
 
 local function check_M ()
-  for k,v in pairs(_M) do
+  for k,v in pairs(MAD) do
     if not _M_env[k] then
       io.write("unexpected MAD variable: ",
                tostring(k), ' -> ', tostring(v), '\n')
@@ -425,9 +430,9 @@ local function check_M ()
   end
 end
 
-M.check_globals = \extra => check_G(extra) ; check_M() end
+M.checkglobal = \extra => check_G(extra) ; check_M() end
 
 -- execute after loading MAD env
-M.check_globals()
+MAD.checkglobal()
 
 -- end ------------------------------------------------------------------------o
