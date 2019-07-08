@@ -121,7 +121,6 @@ local function cofind_jacob (self, track)
   -- save final translation, finite differences, coordinates scales, temporaries
   local X1 = par2vec(self.X1)
   local dH = par2vec(codiff)
-  local dS = par2vec(1)
   local X, R = vector(6), matrix(6)
 
   -- let's track build particles (e.g. handle deltap and check attributes)
@@ -140,18 +139,8 @@ local function cofind_jacob (self, track)
     end
     mflw[ii], m.id, m.coid = m, ii, m.id
     X0[i] = par2vec(m)   -- save current orbit
-    X:add(X0[i]:abs(),X) -- accumulate absolute values of orbits
   end
-  X:div(n,X) -- average accumulated orbits
   mflw.npar, mflw.tpar, n = 7*n, 7*n, 7*n
-
-  -- set dS by q/p
-  if is_number(codiff) then
-    for i=1,5,2 do
-      if X[i+1] > 1e-12 then dS[i] = max(min(X[i]/X[i+1],1e4),1e-4) end
-    end
-    if option.debug > 2 then dS:print('cofind: dS', eps, 'line') end
-  end
 
   -- search for fix points
   for itr=1,coiter do
@@ -163,7 +152,7 @@ local function cofind_jacob (self, track)
       local id = mflw[i].coid
       for j=1,6 do
         local m = mflw[i+j]
-        m[vn[j]] = X0[id][j] + dH[j]*dS[j]
+        m[vn[j]] = X0[id][j] + dH[j]
         assert(m.coid == id, "unexpected corrupted set of particle blocks")
       end
     end
@@ -205,7 +194,7 @@ local function cofind_jacob (self, track)
       -- retrieve previous orbit, current orbit and jacobian
       local X0 = X0[m.coid] ; par2vec(m, X)
       for j=1,6 do ; for k=1,6 do -- compute jacobian R_jk = df(x_j)/dx_k
-        R:set(j,k, (mflw[i+k][vn[j]] - X[j])/(dH[k]*dS[k]))
+        R:set(j,k, (mflw[i+k][vn[j]] - X[j])/dH[k])
       end end
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
@@ -241,11 +230,11 @@ local function cofind_jacob (self, track)
     -- update the number of tracked particles
     mflw.npar = n
 
-    -- all damaps have been processed
+    -- all particles have been processed
     if n == 0 then break end
 
     -- reset sequence iterator
-    mflw:ireset()
+    mflw:sireset()
   end
 
   if n ~= 0 then
@@ -353,7 +342,7 @@ local function cofind_map (self, track)
     if n == 0 then break end
 
     -- reset sequence iterator
-    mflw:ireset()
+    mflw:sireset()
   end
 
   if n ~= 0 then
