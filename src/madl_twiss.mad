@@ -23,7 +23,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, command, track, cofind, gphys, option, warn         in MAD
+local command, track, cofind                                      in MAD
+local vector, matrix, gphys, option, warn                         in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex                                    in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
@@ -139,22 +140,20 @@ local function chrom_dps (self)
   self.deltap = cdps
 end
 
--- close orbit ----------------------------------------------------------------o
+-- closed orbit ---------------------------------------------------------------o
 
-local function twiss_cofind (self, twmflw)
-  local cof = self.cofind
-  if not (cof or cor) then return end
+local function twiss_cofind (self, mflw0)
+  local cof, cor = self.cofind
 
-  if cor == true then cor = 1 end
-  if cof == true or cor and not cof then cof = rep(true, twmflw.npar) end
+  -- cofind is a reference closed orbit guess (i.e. X0ref)
+  if is_iterable(cof) and is_number(cof[1]) then cor, cof = cof, true end
+  -- select all damaps
+  if cof == true then cof = rep(true, mflw0.npar) end
 
   -- select closed orbit(s)
   local X0, Xi = {}
   if cor then
-    local m = twmflw[cor]
-    assert(is_damap(m), "unexpected non-damap to track during twiss cofind")
-    assert(cor == (m.id0 or m.id), "unexpected damap shifted index (corrupted?)")
-    X0[1] = m:get0()
+    X0[1] = vector(cor)
   else
     local j = 1
     for i=1,twmflw.npar do
@@ -324,16 +323,16 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local chrom, save in self
+  local chrom, cofind, save in self
 
   -- double the deltaps of self
   if chrom and save then chrom_dps(self) end
 
-  -- let's track build damaps (e.g. handle deltap and check attributes)
-  local _, mflw = track {exec=false} :copy_variables(self) {nstep=0}
+  -- prepare track template
+  local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
 
-  -- search for closed orbits, translate maps (update mflw)
-  twiss_cofind(self, mflw)
+  -- search for closed orbits, update mflw
+  if cofind then twiss_cofind(self, mflw) end
 
   -- get one-turn-maps to user-defined orders
   track { mflow=mflw }
@@ -361,8 +360,8 @@ local function exec (self)
   end
 
   -- track the normal form(s)
-!  mtbl, mflw, ei = track 'twtrack' { mflow=mflw, nstep  =self.nstep,
-!                                                 mapdump=self.mapdump }
+  local nstep, mapdump in self
+!  mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
 
 !  if ei == nil and not is_nil(mtbl) then
 !    fill_sum(mflw)
@@ -391,6 +390,7 @@ local twiss = command 'twiss' {
   mapdump=nil,       -- dump X and R after each element                   (trck)
 
   nturn=nil,         -- number of turns                                   (trck)
+  nstep=nil,         -- number of elements to track for last phase        (trck)
   npart=nil,         -- number of particles/damaps (or #X0)               (trck)
   nslice=nil,        -- number of slices (or weights) for each element    (trck)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
@@ -427,7 +427,7 @@ local twiss = command 'twiss' {
 
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
-  mflow=nil,         -- mflow, exclusive with other attributes
+  mflow=nil,         -- mflow, exclusive with other attributes except nstep
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
