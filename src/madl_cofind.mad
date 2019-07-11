@@ -65,6 +65,28 @@ local function vec2par (V, X_)
   return X
 end
 
+-- sort damaps by stable/unstable/singular/lost then id
+local mrnk = {stable=1, unstable=2, singular=3, lost=4}
+
+local function mcmp (a, b)
+  local ra, rb = mrnk[a.status], mrnk[a.status]
+  assert(ra and rb, "unknown status detected")
+  return ra == rb and a.id < b.id or ra < rb
+end
+
+local function msort (mflw)
+  assert(#mflw == mflw.tpar, "corrupted list of damap?")
+
+  table.sort(mflw, mcmp)
+
+  mflw.npar = mflw.tpar
+  for i=1,mflw.tpar do
+    if mflw[i].status ~= 'stable' then mflw.npar=i-1 return end
+  end
+
+  return mflw
+end
+
 -- cofind algorithms ----------------------------------------------------------o
 
 local method = {}
@@ -88,7 +110,7 @@ function method.newton (X0, X, R, T, tol, dptol)
       return rnk, dX, "stable"
     end
 
-    -- adjust orbit
+    -- adjust X0 orbit
     X0:sub(dX,X0)
 
   else
@@ -102,7 +124,7 @@ function method.newton (X0, X, R, T, tol, dptol)
       return rnk, dX, "stable"
     end
 
-    -- adjust orbit
+    -- adjust X0 orbit
     X0:copy(X4-dX)
   end
 
@@ -111,20 +133,12 @@ end
 
 -- cofind using jacobian ------------------------------------------------------o
 
-local function cofind_jacob (self, track)
-  local cotol, coiter, codiff, codptol, comethod in self
-  local costep, T = method[comethod], self.totalpath
+local function cofind_jacob (self, mflw)
+  local cotol, coiter, codiff, codptol, comethod, totalpath in self
+  local costep = method[comethod]
 
   -- error handling
   local errf = self.cowarn and warn or errorf
-
-  -- save final translation, finite differences, coordinates scales, temporaries
-  local X1 = par2vec(self.X1)
-  local dH = par2vec(codiff)
-  local X, R = vector(6), matrix(6)
-
-  -- let's track build particles (e.g. handle deltap and check attributes)
-  local mtbl, mflw = track { nstep=0 }
 
   -- save current orbits, extend n particles to n*(1+6) particles
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
@@ -141,6 +155,9 @@ local function cofind_jacob (self, track)
     X0[i] = par2vec(m)   -- save current orbit
   end
   mflw.npar, mflw.tpar, n = 7*n, 7*n, 7*n
+
+  -- save finite differences, final translation, temporaries
+  local dH, X1, X, R = par2vec(codiff), par2vec(self.X1), vector(6), matrix(6)
 
   -- search for fix points
   for itr=1,coiter do
@@ -198,7 +215,7 @@ local function cofind_jacob (self, track)
       end end
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, dX, typ = costep(X0, X-X1, R, T, cotol, codptol)
+      local rnk, dX, typ = costep(X0, X-X1, R, totalpath, cotol, codptol)
 
       if option.debug > 2 then
         printf("cofind: (id=%d,itr=%d,typ=%s)\n", m.coid, itr, typ)
@@ -227,11 +244,11 @@ local function cofind_jacob (self, track)
       end
     end
 
-    -- update the number of tracked particles
-    mflw.npar = n
-
     -- all particles have been processed
     if n == 0 then break end
+
+    -- update the number of particles to track
+    mflw.npar = n
 
     -- reset sequence iterator
     mflw:sireset()
@@ -256,32 +273,25 @@ local function cofind_jacob (self, track)
   assert(7*j == mflw.tpar, "unexpected corrupted set of particle blocks")
   mflw.tpar = j
 
-  -- reorder entire mflw
-  mflw.npar = mflw.tpar
-  tblorder(mflw, mflw.npar)
-
-  return mtbl, mflw, X0
+  -- particles are ordered by stable/unstable/singular/lost then id, X0 by id!
+  return mflw.mtbl, msort(mflw), X0
 end
 
 -- cofind using map -----------------------------------------------------------o
 
-local function cofind_map (self, track)
-  local cotol, coiter, codptol, comethod in self
-  local costep, T = method[comethod], self.totalpath
+local function cofind_map (self, mflw)
+  local cotol, coiter, codptol, comethod, totalpath in self
+  local costep = method[comethod]
 
   -- error handling
   local errf = self.cowarn and warn or errorf
 
-  -- save final translation, temporaries
-  local X1 = par2vec(self.X1)
-  local X, R = vector(6), matrix(6)
-
-  -- let's track build damaps (e.g. handle deltap and check attributes)
-  local mtbl, mflw = track { nstep=0 }
-
   -- save current orbits, cleanup damaps
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
   for i=1,n do X0[i] = mflw[i]:get0() end  -- save current orbit
+
+  -- save final translation, temporaries
+  local X1, X, R = par2vec(self.X1), vector(6), matrix(6)
 
   -- search for fix points
   for itr=1,coiter do
@@ -306,10 +316,10 @@ local function cofind_map (self, track)
       m:get0(X) ; m:get1(R)
 
       -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, dX, typ = costep(X0, X-X1, R, T, cotol, codptol)
+      local rnk, dX, typ = costep(X0, X-X1, R, totalpath, cotol, codptol)
 
       if option.debug > 2 then
-        printf("cofind: (id=%d,itr=%d,typ=%s)\n", m.id, itr, typ)
+        printf("cofind: (id=%d,itr=%d,typ=%s)\n", m.id0 or m.id, itr, typ)
         X0:print('X0', eps, 'line')
         dX:print('dX', eps, 'line')
         if option.debug > 3 then
@@ -321,7 +331,7 @@ local function cofind_map (self, track)
       if typ then -- "stable/singular"
         if typ == "singular" then
           warn("cofind: singular matrix (rnk=%d) at iteration %d \z
-                for damap %d.", rnk, itr, m.id)
+                for damap %d.", rnk, itr, m.id0 or m.id)
         end
         -- save information in stable/singular damap
         m.rank, m.status, m.coiter = rnk, typ, itr
@@ -335,16 +345,17 @@ local function cofind_map (self, track)
       end
     end
 
-    -- update the number of tracked damap
-    mflw.npar = n
-
     -- all damaps have been processed
     if n == 0 then break end
+
+    -- update the number of damap to track
+    mflw.npar = n
 
     -- reset sequence iterator
     mflw:sireset()
   end
 
+  -- mark remaining damap as unstable
   if n ~= 0 then
     errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
     for i=1,n do
@@ -352,11 +363,8 @@ local function cofind_map (self, track)
     end
   end
 
-  -- reorder entire mflw
-  mflw.npar = mflw.tpar
-  tblorder(mflw, mflw.npar)
-
-  return mtbl, mflw, X0
+  -- damaps are ordered by stable/unstable/singular/lost then id, X0 by id!
+  return mflw.mtbl, msort(mflw), X0
 end
 
 -- cofind command -------------------------------------------------------------o
@@ -373,16 +381,16 @@ local function exec (self)
   assertf(   method[comethod], "invalid comethod '%s' (unsupported method)"     ,comethod)
   assert (is_boolean(cowarn) , "invalid cowarn (boolean expected)")
 
-  -- prepare track template
-  local cotrack = track 'cotrack' { exec=false } :copy_variables(self)
-
   -- setup map order
-  cotrack.mapdef = is_true(mapdef) and {xy=1} or mapdef
+  self.mapdef = is_true(mapdef) and {xy=1} or mapdef
+
+  -- prepare track template
+  local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
 
   -- search closed orbit
   if mapdef
-  then return cofind_map  (self, cotrack) -- use damap
-  else return cofind_jacob(self, cotrack) -- use jacobian
+  then return cofind_map  (self, mflw) -- use damap
+  else return cofind_jacob(self, mflw) -- use jacobian
   end
 end
 
@@ -417,7 +425,7 @@ local cofind = command 'cofind' {
   misalign=nil,      -- consider misalignment                             (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
 
-  save=false,        -- create mtable and save results of last turn       (trck)
+  save=false,        -- create mtable and save results                    (trck)
   title=nil,         -- title of mtable (default seq.name)                (trck)
   observe=nil,       -- save only in observed elements (every n turns)    (trck)
   savesel=nil,       -- save selector (predicate)                         (trck)
