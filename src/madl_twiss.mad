@@ -39,6 +39,17 @@ local chromdp = 1e-6
 local assert, error, getmetatable, setmetatable, table =
       assert, error, getmetatable, setmetatable, table
 
+-- helpers --------------------------------------------------------------------o
+
+local function mdump (mflw, msg_, str_)
+  local msg, str = msg_ or '', str_ or 'M'
+  for i=1,mflw.npar do
+    printf("%s%d: ", msg, i)
+    mflw[i]:get0():print(str,'line',' :')
+    mflw[i]:get1():print(nil,'line'    )
+  end
+end
+
 -- twiss mtable ---------------------------------------------------------------o
 
 local function fill_sum (mflw)
@@ -80,7 +91,9 @@ local function fill_sum (mflw)
 end
 
 local function fill (elm, mflw, lw, islc)
-  local mtbl, npar in mflw
+  if mflw.__twdat == nil then return end -- not yet in twiss
+
+  local mtbl, npar, __twdat in mflw
   local n = #mtbl-npar -- complete last npar row partially filled by track
 
   local ofun, ocpl, onam, omat in mflw.__twdat
@@ -174,6 +187,7 @@ local function twiss_cofind (self, mflw0)
     "reference particle lost during closed orbit search (reason: %s)", m.status)
     local Xc = m:get0()
     for i=1,mflw0.npar do mflw0[i]:translate(Xc-X0[i],'in') end
+    if option.debug >= 2 then Xc:print('Xc','line') end
     return
   end
 
@@ -186,6 +200,7 @@ local function twiss_cofind (self, mflw0)
   for j=1,mflw.npar do                                  -- process stable damaps
     local Xc = mflw[j]:get0()
     mflw0[j] = mt0[j]:translate(Xc-X0[mflw[j].id],'in')
+    if option.debug >= 2 then Xc:print('Xc','line') end
   end
   for j=mflw.npar+1,mflw.tpar do mflw0[j] = mflw[j] end -- backup other damaps
   mflw0.npar = mflw.npar
@@ -199,10 +214,10 @@ end
 
 -- normal/closed forms --------------------------------------------------------o
 
-local function trace_normal (R, A, of)
+local function trace_normal (R1, A1, of)
   local fmt = option.format
   option.format = "% 10.5f"
-  R :print('R1') ; A :print('A1')
+  R1:print('R1') ; A1:print('A1')
   local R2, A2 = betablk(of)
   R2:print('R2') ; A2:print('A2')
   option.format = fmt
@@ -303,6 +318,7 @@ local function make_mflow (self)
 
   -- prepare track template
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
+  if option.debug >= 2 then mdump(mflw,'da.') end
 
   -- do not save extra rows due to chrom
   if save and chrom then
@@ -313,16 +329,19 @@ local function make_mflow (self)
   -- search for closed orbits, update mflw
   if cofind then twiss_cofind(self, mflw) end
   if mflw.npar == 0 then return mflw end
+  if option.debug >= 2 then mdump(mflw,'co.') end
 
   -- get one-turn-maps to user-defined orders
   track { mflow=mflw }
   if mflw.npar == 0 then return mflw end
+  if option.debug >= 2 then mdump(mflw,'tk.') end
 
   -- extend track mflw and mtbl for twiss
   twiss_init  (self, mflw)
 
   -- get closed forms (normal forms)
   twiss_closed(self, mflw)
+  if option.debug >= 2 then mdump(mflw,'nf.') end
 
   return mflw
 end
@@ -341,6 +360,10 @@ local function exec (self)
   else
     mflw = make_mflow(self) -- the real work is done here!
     mflw.__twss = _id
+    if not mflw.__twdat then
+      warn("twiss not completed (all damaps were unstable/singular/lost)")
+      return mflw.mtbl, mflw
+    end
   end
 
   -- track the normal form(s)
