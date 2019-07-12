@@ -117,6 +117,7 @@ local function fill (elm, mflw, lw, islc)
 
     mtbl.mu1[n+i], mtbl.mu2[n+i], mtbl.mu3[n+i] = q1[id], q2[id], q3[id]
   end
+
   return true
 end
 
@@ -196,58 +197,6 @@ local function twiss_cofind (self, mflw0)
   end
 end
 
--- init track -----------------------------------------------------------------o
-
-local function twiss_track0 (self, X0, R0, ofun0)
-  local mapdef, save in self
-  local atsave = self:var_raw 'atsave' or ftrue -- prevent evaluation
-
-  -- wrap atsave (see track)
-  if save and atsave ~= ffalse then
-    atsave = atsave == ftrue and fill or achain(fill, atsave)
-  end
-
-  -- prepare track command
-  local trck0      = track 'track0' { exec=false } :copy_variables(self)
-  local mtbl, mflw = trck0 'twiss'  {
-    X0=X0, R0=R0, deltap=0, atsave=atsave, nstep=0, -- init only
-    mapdef=is_true(mapdef) and {xy=2} or mapdef,
-  }
-
-!  print("DUMP MAPS")
-!  for i=1,#mflw do
-!    mflw[i]:print()
-!  end
-
-  -- extend mflw and mtbl
-  if save then
-    local chrom, coupling in self
-    local n = mflw.npar
-    -- add twiss data to mflw
-    mflw.__twdat = {
-      ofun = ofun0,
-      ocpl = coupling,
-      omat = matrix(6),
-      onam = coupling and ofcname or ofname,
-      chrm = chrom,
-      npar = n,
-    }
-    if chrom then -- do not save extra rows due to chrom
-      for i=n/2+1,n do mflw[i].nosave=true end
-    end
-    -- add twiss columns and type to mtbl
-    mtbl.type = 'twiss'
-    for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
-    -- init tunes and chromaticities
-    mtbl.q1, mtbl.dq1 = tblrep(0,n), table.new(n/2,0)
-    mtbl.q2, mtbl.dq2 = tblrep(0,n), table.new(n/2,0)
-    mtbl.q3, mtbl.dq3 = tblrep(0,n), table.new(n/2,0)
-    mtbl.chromdp = chrom == true and chromdp or chrom or nil
-  end
-
-  return mflw
-end
-
 -- normal/closed forms --------------------------------------------------------o
 
 local function trace_normal (R, A, of)
@@ -261,61 +210,105 @@ end
 
 local r4 = 1..4
 
-local function track_closed (self, mflw) -- TODO: high order normal form
-  local npar = mflw.npar
-  local X, A, ofun0 = table.new(npar,0), table.new(npar,0), table.new(npar,0)
+local function twiss_closed (self, mflw) -- TODO: high order normal form
+  local codptol, coupling in self
+  local npar in mflw
 
   for i=1,npar do
-    local Xi  = mflw0[i]:get0()
-    local Ri  = mflw0[i]:get1()
-    local rnk = has_dpt(Ri, self.codptol) and 6 or 4
+    local X, R = mflw[i]:get0(), mflw[i]:get1()
+    local rnk = has_dpt(R, codptol) and 6 or 4
     local R6
 
     -- 4D case
-    if rnk == 4 then R6, Ri = Ri, Ri:getsub(r4,r4) end
+    if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
 
     -- get linear normal form A from one-turn map R
-    local Ai, Vi, Wi = normal(Ri)
+    local A, V, W = normal(R)
 
     -- get initial linear optical functions and phase advances
-    local ofi = phasadv(Wi, optfun(Ai, nil, coupling))
+    local of = phasadv(W, optfun(A, nil, coupling))
 
     -- clear phase advances
-    ofi.mu1, ofi.mu2, ofi.mu3 = 0, 0, 0
+    of.mu1, of.mu2, of.mu3 = 0, 0, 0
 
     -- debug normal form
-    if option.debug >= 2 then trace_normal(Ri, Ai, ofi) end
+    if option.debug >= 2 then trace_normal(R, A, of) end
 
     -- back to 6D (TODO: check 5D...)
     if rnk == 4 then
       local fmt = option.format
-      option.format = "% -.8e"
-      R6:print('R6') ; Ai:print('Ai')
-      Ai = matrix(6):eye():setsub(r4,r4,Ai) -- TODO 5D :setsub(r4,6,R6)
-      Xi[5] = 0 -- reset time
-      Ai:print('Ai') ; Xi:print('Xi')
-      option.format = fmt
+!      option.format = "% -.8e"
+!      R6:print('R6') ; A:print('A')
+      A = matrix(6):eye():setsub(r4,r4,A) -- TODO 5D :setsub(r4,6,R6)
+!      X[5] = 0 -- reset time
+!      A:print('A') ; X:print('X')
+!      option.format = fmt
     end
 
-    X[i], A[i], ofun0[i] = Xi, Ai, ofi
-    -- update mflw!
+    -- X[i], A[i], ofun0[i] = Xi, Ai, ofi
+    mflw[i]:setvar(X):set1(A)
+    mflw.__twdat.ofun[i] = of
   end
+end
+
+-- extend track mflw and mtbl -------------------------------------------------o
+
+local function twiss_init (self, mflw)
+  local save, chrom, coupling in self
+  local npar, mtbl in mflw
+
+  -- add twiss data to mflw
+  mflw.__twdat = {
+    ofun = table.new(npar,0),
+    ocpl = coupling,
+    omat = matrix(6),
+    onam = coupling and ofcname or ofname,
+    chrm = chrom,
+    npar = npar,
+  }
+
+  if not save then return end
+
+  -- clear data from one-turn-maps calculation
+  mtbl:clear()
+
+  -- add twiss columns and type to mtbl
+  mtbl.type = 'twiss'
+  for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
+
+  -- init tunes and chromaticities
+  mtbl.q1, mtbl.dq1 = tblrep(0,npar), table.new(npar/2,0)
+  mtbl.q2, mtbl.dq2 = tblrep(0,npar), table.new(npar/2,0)
+  mtbl.q3, mtbl.dq3 = tblrep(0,npar), table.new(npar/2,0)
+  mtbl.chromdp = chrom == true and chromdp or chrom or nil
 end
 
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local mapdef, chrom, cofind, save in self
+  local save, mapdef, chrom, cofind in self
 
-  -- enforce damaps
+  -- enforce damaps orders
   assert(mapdef, "invalid/missing mapdef (damap required)")
+  if is_true(mapdef) then self.mapdef = {xy=2} end
 
   -- double the deltaps of self
-  if chrom and save then chrom_dps(self) end
+  if save and chrom then chrom_dps(self) end
+
+  -- wrap atsave (see track)
+  local atsave = self:var_raw 'atsave' or ftrue -- prevent evaluation
+  if save and atsave ~= ffalse then
+    self.atsave = atsave == ftrue and fill or achain(fill, atsave)
+  end
 
   -- prepare track template
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
-  if mflw.npar == 0 then return mflw end
+
+  -- do not save extra rows due to chrom
+  if save and chrom then
+    local npar in mflw
+    for i=npar/2+1,npar do mflw[i].nosave=true end
+  end
 
   -- search for closed orbits, update mflw
   if cofind then twiss_cofind(self, mflw) end
@@ -325,8 +318,12 @@ local function make_mflow (self)
   track { mflow=mflw }
   if mflw.npar == 0 then return mflw end
 
+  -- extend track mflw and mtbl for twiss
+  twiss_init  (self, mflw)
+
   -- get closed forms (normal forms)
-!  twiss_closed(self, mflw)
+  twiss_closed(self, mflw)
+
   return mflw
 end
 
@@ -335,7 +332,7 @@ end
 local _id = {} -- identity (unique)
 
 local function exec (self)
-  local mflw, mtbl, ei
+  local mflw
 
   -- retrieve or build mflw (and extend mtbl)
   if self.mflow then
@@ -347,12 +344,11 @@ local function exec (self)
   end
 
   -- track the normal form(s)
-!  local nstep, mapdump in self
-!  mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
+  local nstep, mapdump in self
+  local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
 
-!  if ei == nil and not is_nil(mtbl) then
-!    fill_sum(mflw)
-!  end
+  -- finalise twiss calculation (tunes, chromas)
+  if ei == nil and not is_nil(mtbl) then fill_sum(mflw) end
 
   return mflw.mtbl, mflw, ei
 end
