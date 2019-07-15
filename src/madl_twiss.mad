@@ -26,7 +26,7 @@
 local command, track, cofind                                      in MAD
 local vector, matrix, gphys, option, warn                         in MAD
 local normal, optfun, phasadv, betablk, dp2pt, has_dpt,
-      ofname, ofcname, cvindex                                    in gphys
+      ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
 local tblcat, tblrep, assertf, errorf, printf, rep                in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
@@ -157,33 +157,38 @@ end
 -- closed orbit ---------------------------------------------------------------o
 
 local function twiss_cofind (self, mflw0)
+  local npar in mflw0
+  local X0, Xi = table.new(npar,0), table.new(npar,0)
+
   -- get initial guess(es)
-  local X0 = table.new(mflw0.npar,0)
-  for i=1,mflw0.npar do
+  local j = 1
+  for i=1,npar do
     local m = mflw0[i]
-    assert(is_damap(m), "unexpected non-damap to track during twiss cofind")
-    X0[i] = m:get0()
+    if m.status == 'Xset' then
+      X0[j], Xi[j], j = m:get0():totable(), i, j+1
+      X0[j].beam = m.beam
+    end
   end
+
+  -- nothing to process (no particles)
+  if j == 1 then return end
 
   -- retrieve closed orbit(s)
   local _, mflw = cofind { exec=false } :copy_variables(self)
                          { X0=X0, deltap=0, save=false, nstep=-1, -- override
                            mapdef=self.comapdef, mapdump=self.comapdump }
 
-  -- sanity check
-  assert(mflw0.tpar == mflw.tpar, "unexpected incompatible mflow sizes")
-
-  -- update damaps by their closed orbit (tw: i, co: j)
-  local mt0 = table.new(mflw.npar,0)
-  for j=1,mflw.npar           do mt0  [j] = mflw0[mflw[j].id] end -- reorder
-  for j=1,mflw.npar           do mflw0[j] = mt0 [j]:setvar(mflw[j]:get0()) end
-  for j=mflw.npar+1,mflw.tpar do mflw0[j] = mflw[j] end           -- for debug
-  mflw0.npar = mflw.npar
+  -- update damaps with their closed orbit (tw: i, co: j)
+  for j=1,mflw.tpar do
+    local m = mflw[j]
+    mflw0[Xi[m.id]]:setvar(m:get0()).status = m.status
+  end
 
   -- report
   if mflw.npar ~= mflw.tpar then
-    warn("%d/%d damaps are unstable/singular/lost after closed orbit search",
+    warn("%d/%d particles are unstable/singular/lost after closed orbit search",
          mflw.tpar - mflw.npar, mflw.tpar)
+    msort(mflw0)
   end
 end
 
@@ -276,7 +281,7 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local save, mapdef, chrom, cofind in self
+  local save, mapdef, chrom in self
 
   -- enforce damaps orders
   assert(mapdef, "invalid/missing mapdef (damap required)")
@@ -302,11 +307,9 @@ local function make_mflow (self)
   end
 
   -- search for closed orbits, update mflw
-  if cofind then
-    twiss_cofind(self, mflw)
-    if mflw.npar == 0 then return mflw end
-    if option.debug > 2 then mdump(mflw,'co.') end
-  end
+  twiss_cofind(self, mflw)
+  if mflw.npar == 0 then return mflw end
+  if option.debug > 2 then mdump(mflw,'co.') end
 
   -- get one-turn-maps to user-defined orders
   track { mflow=mflw }
@@ -348,7 +351,7 @@ local function exec (self)
   local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
 
   -- finalise twiss calculation (tunes, chromas)
-  if ei == nil and not is_nil(mtbl) then fill_sum(mflw) end
+  if not ei and mtbl then fill_sum(mflw) end
 
   return mflw.mtbl, mflw, ei
 end
@@ -373,7 +376,6 @@ local twiss = command 'twiss' {
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track for last phase        (trck)
-  npart=nil,         -- number of particles/damaps (or #X0)               (trck)
   nslice=nil,        -- number of slices (or weights) for each element    (trck)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
@@ -396,7 +398,6 @@ local twiss = command 'twiss' {
   ataper=nil,        -- action called when checking for aperture          (trck)
   atsave=nil,        -- action called when saving in mtable               (trck)
 
-  cofind=true,       -- search for closed orbit                           (cofn)
   cotol=nil,         -- closed orbit tolerance                            (cofn)
   coiter=nil,        -- maximum number of iteration                       (cofn)
   codiff=nil,        -- finite differences step for jacobian              (cofn)
@@ -413,7 +414,7 @@ local twiss = command 'twiss' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    {'coupling', 'chrom', 'cofind', 'comapdef', 'comapdump'},
+    {'coupling', 'chrom', 'comapdef', 'comapdump'},
     cofind.__attr,
     {noeval=cofind.__attr.noeval}
   )
