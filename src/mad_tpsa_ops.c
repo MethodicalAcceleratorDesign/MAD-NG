@@ -664,7 +664,7 @@ FUN(deriv) (const T *a, T *c, int var)
   ensure(var >= a->d->ord2idx[1] && var < a->d->ord2idx[2], "invalid domain");
   // TODO: ensure map_order[var] > 0
 
-  if (a->hi == 0) { FUN(reset0)(c); return; }
+  if (!a->hi) { FUN(reset0)(c); return; }
   FUN(scalar)(c,FUN(geti)(a,var), 0, 0);  // TODO: what if alpha[var] == 0 ?
 
   const D *d = c->d;
