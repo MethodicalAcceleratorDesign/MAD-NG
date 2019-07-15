@@ -43,7 +43,7 @@ local assert, error, getmetatable, setmetatable, table =
 
 local function mdump (mflw, msg_, str_)
   local msg, str = msg_ or '', str_ or 'M'
-  for i=1,mflw.npar do
+  for i=1,mflw.npar or #mflw do
     printf("%s%d: ", msg, i)
     mflw[i]:get0():print(str,'line',' :')
     mflw[i]:get1():print(nil,'line'    )
@@ -157,22 +157,12 @@ end
 -- closed orbit ---------------------------------------------------------------o
 
 local function twiss_cofind (self, mflw0)
-  local cof, cor = self.cofind
-
-  -- cofind is a guess for the reference closed orbit (i.e. X0ref)
-      if is_number  (cof) then cor, cof = {cof,cof,cof,cof,cof,cof}, true
-  elseif is_iterable(cof) then cor, cof = cof, true end
-
-  assert(is_number(cor[1]), "invalid initial guess (coordinates expected)")
-
   -- get initial guess(es)
-  local X0 = cor and {vector(cor)} or table.new(mflw0.npar,0)
-  if not cor then
-    for i=1,mflw0.npar do
-      local m = mflw0[i]
-      assert(is_damap(m), "unexpected non-damap to track during twiss cofind")
-      X0[i] = m:get0()
-    end
+  local X0 = table.new(mflw0.npar,0)
+  for i=1,mflw0.npar do
+    local m = mflw0[i]
+    assert(is_damap(m), "unexpected non-damap to track during twiss cofind")
+    X0[i] = m:get0()
   end
 
   -- retrieve closed orbit(s)
@@ -180,29 +170,14 @@ local function twiss_cofind (self, mflw0)
                          { X0=X0, deltap=0, save=false, nstep=-1, -- override
                            mapdef=self.comapdef, mapdump=self.comapdump }
 
-  -- translate damaps on the reference closed orbit
-  if cor then
-    local m = mflw[1]
-    assertf(m.status == 'stable', -- status unstable/singular/lost
-    "reference particle lost during closed orbit search (reason: %s)", m.status)
-    local Xc = m:get0()
-    for i=1,mflw0.npar do mflw0[i]:translate(Xc-X0[i],'in') end
-    if option.debug >= 2 then Xc:print('Xc','line') end
-    return
-  end
-
   -- sanity check
   assert(mflw0.tpar == mflw.tpar, "unexpected incompatible mflow sizes")
 
-  -- translate damaps on their closed orbit (tw: i, co: j)
+  -- update damaps by their closed orbit (tw: i, co: j)
   local mt0 = table.new(mflw.npar,0)
-  for j=1,mflw.npar do mt0[j] = mflw0[mflw[j].id] end   -- backup  stable damaps
-  for j=1,mflw.npar do                                  -- process stable damaps
-    local Xc = mflw[j]:get0()
-    mflw0[j] = mt0[j]:translate(Xc-X0[mflw[j].id],'in')
-    if option.debug >= 2 then Xc:print('Xc','line') end
-  end
-  for j=mflw.npar+1,mflw.tpar do mflw0[j] = mflw[j] end -- backup other damaps
+  for j=1,mflw.npar           do mt0  [j] = mflw0[mflw[j].id] end -- reorder
+  for j=1,mflw.npar           do mflw0[j] = mt0 [j]:setvar(mflw[j]:get0()) end
+  for j=mflw.npar+1,mflw.tpar do mflw0[j] = mflw[j] end           -- for debug
   mflw0.npar = mflw.npar
 
   -- report
@@ -318,7 +293,7 @@ local function make_mflow (self)
 
   -- prepare track template
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
-  if option.debug >= 2 then mdump(mflw,'da.') end
+  if option.debug > 2 then mdump(mflw,'da.') end
 
   -- do not save extra rows due to chrom
   if save and chrom then
@@ -327,21 +302,23 @@ local function make_mflow (self)
   end
 
   -- search for closed orbits, update mflw
-  if cofind then twiss_cofind(self, mflw) end
-  if mflw.npar == 0 then return mflw end
-  if option.debug >= 2 then mdump(mflw,'co.') end
+  if cofind then
+    twiss_cofind(self, mflw)
+    if mflw.npar == 0 then return mflw end
+    if option.debug > 2 then mdump(mflw,'co.') end
+  end
 
   -- get one-turn-maps to user-defined orders
   track { mflow=mflw }
   if mflw.npar == 0 then return mflw end
-  if option.debug >= 2 then mdump(mflw,'tk.') end
+  if option.debug > 2 then mdump(mflw,'tk.') end
 
   -- extend track mflw and mtbl for twiss
   twiss_init  (self, mflw)
 
   -- get closed forms (normal forms)
   twiss_closed(self, mflw)
-  if option.debug >= 2 then mdump(mflw,'nf.') end
+  if option.debug > 2 then mdump(mflw,'nf.') end
 
   return mflw
 end
@@ -386,7 +363,6 @@ local twiss = command 'twiss' {
 
   s0=nil,            -- initial s (offset)                                (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
-  O0=nil,            -- initial orbit translation to apply to all X0      (trck)
   R0=nil,            -- initial R matrix (companion of X0 for damap)      (trck)
   beta0=nil,         -- initial beta0 block to build R0                   (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
@@ -420,7 +396,7 @@ local twiss = command 'twiss' {
   ataper=nil,        -- action called when checking for aperture          (trck)
   atsave=nil,        -- action called when saving in mtable               (trck)
 
-  cofind=0,          -- search for closed orbit (true or initial guess)   (cofn)
+  cofind=true,       -- search for closed orbit                           (cofn)
   cotol=nil,         -- closed orbit tolerance                            (cofn)
   coiter=nil,        -- maximum number of iteration                       (cofn)
   codiff=nil,        -- finite differences step for jacobian              (cofn)
