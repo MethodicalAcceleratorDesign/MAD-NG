@@ -95,11 +95,11 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   assert(ma && tb);
   ensure(sb>0, "invalid vector sizes (zero or negative sizes)");
 
-  // transform tranlation vector into damap of order 0
+  // transform translation vector into damap of order 1
   mad_alloc_tmp(const T*, mb, sb);
   for (idx_t ib = 0; ib < sb; ++ib) {
-    T *t = FUN(newd)(ma[0]->d, 0);
-    FUN(scalar)(t, tb[ib], 0, 0);
+    T *t = FUN(newd)(ma[0]->d, 1);
+    FUN(scalar)(t, tb[ib], ib+1, 0);
     mb[ib] = t;
   }
 
