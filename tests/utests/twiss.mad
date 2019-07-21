@@ -26,7 +26,8 @@
 local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
-local sequence, beam, track, twiss, plot, option, filesys        in MAD
+local sequence, beam, track, twiss, plot, matrix,
+      option, filesys                                            in MAD
 local sin, frac                                                  in MAD.gmath
 local fnone, ftrue, ffalse                                       in MAD.gfunc
 local marker, drift, quadrupole, multipole                       in MAD.element
@@ -39,7 +40,7 @@ local rundir = \s -> 'twiss_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local doplot ! = true
+local doplot = true
 
 if doplot then
   local pause, atexit in MAD.utility
@@ -95,34 +96,35 @@ function TestTwiss:tearDown ()
 end
 
 function TestTwiss:testTwissFODO ()
-  local k1f =  0.3039540091
-  local k1d = -0.3039540091
+  local k1f = 0.3039540091
   local seq = sequence 'seq' { l=10, refer='entry', -- dir=-1,
     quadrupole 'mq1' { at=0, l=1, k1 :=  k1f },
-    quadrupole 'mq2' { at=5, l=1, k1 := -k1d },
+    quadrupole 'mq2' { at=5, l=1, k1 := -k1f },
   }
-  print("k1.qf*beam->brho=", k1f*beam.brho) -- 1.013881308
-
-  -- seq:dumpseq()
+!  print("k1f*beam->brho=", k1f*beam.brho) -- 1.013881308
+!  seq:dumpseq()
   local X0  = { 1e-3, -1e-4, -1e-3, 1e-4, 0, 0 }
-  local mtbl, mflw = twiss {sequence=seq, beam=beam, X0=X0, nslice=10, atslice=ftrue}
+  local mtbl, mflw = twiss {sequence=seq, beam=beam, X0=X0, nslice=10, implicit=true, atslice=ftrue}
 
   plottw(mtbl, seq)
   mtbl:write(rundir('fodotwiss'), tbl_col, tbl_hdr)
-
-  -- TODO: 6D case
+  local A1 = matrix{{ 1.1332157434651435e-09,3.9295066179412479e+00,  0,0,  0,0},
+                    {-2.5448487470377923e-01,6.0495884810043310e-01,  0,0,  0,0},
+                    { 0,0,  5.2509407932888053e-10, 1.8207987353842947e+00, 0,0},
+                    { 0,0, -5.4920952039084892e-01,-3.5931415510671921e-01, 0,0},
+                    { 0,0,  0,0,  1,2.6111999104627692e-06},
+                    { 0,0,  0,0,  0,1}}
   assertEquals(mflw.__twdat.ofun[1].rank, 6)
---  assertEquals(iter, 2)
---  assertEquals(type, "4D")
---  assertAllAlmostEquals(mflw.X[1]:totable(), 0, eps)
+  assertAllAlmostEquals( mflw[1]:get0():totable(), 0, eps)
+  assertAllAlmostEquals((mflw[1]:get1()-A1):totable'vec', 0, eps)
 end
 
 function TestTwiss:testTwissThinFODO ()
   local nsl = 10 -- 10 -- for madx row by row compatibility
   local nth = 10
   local dl  = 1/nth
-  local X0  = { 0, 0, 0, 0, 0, 0 }
-  local k1l = 0.3037241107
+  local X0  = { 1e-3, -1e-4, -1e-3, 1e-4, 0, 0 }
+  local k1l = 0.3039540091
   local mk1 = marker    'mk1' {}
   local mk2 = marker    'mk2' {}
   local df1 = drift     'df1' { l=4, nslice=nsl }
@@ -147,9 +149,8 @@ function TestTwiss:testTwissThinFODO ()
 
   -- seq:dumpseq()
 
-  local mtbl, mflw = MAD.twiss{sequence=seq, beam=beam, X0=X0,
-                              -- atslice=ftrue} -- for madx row by row compatibility
-                               atslice=ftrue, atexit=ffalse}
+  local mtbl, mflw = twiss{sequence=seq, beam=beam, X0=X0,
+                           atslice=ftrue, atexit=ffalse}
 
   plottw(mtbl, seq)
   mtbl:write(rundir('thinfodotwiss'), tbl_col, tbl_hdr)
@@ -217,29 +218,30 @@ end
 -- from MAD-X course, src_4.1 and src_5.1
 function TestTwiss:testTwissSingleRing ()
   !! import
-  local beam, sequence, element, survey, track, cofind, twiss in MAD
+  local beam, sequence, element, survey, twiss in MAD
   local drift, marker, sbend, quadrupole, sextupole, hkicker, vkicker,
         monitor, bline in element
-
-  !! vars, knobs
-  local l , n  = deferred {}, deferred {}
-  local k1, k2 = deferred {}, deferred {}
 
   !! context (note: Setup sets option.nocharge=true)
   local beam = beam { particle='electron', energy=20 }
 
   !! constants
+  local l , n  = deferred {}, deferred {}
   l.sequ = 240 ! length of the machine
   l.ssec = 20  ! length of the straight sections
   n.ssec = 2   ! number of straight sections
   n.bend = 4   ! number of bends per cell
 
   !! lengths
+  ! lengths of bends, quads, sexts, kickers, monitors
   l.mb=3.3 ; l.mq=0.8 ; l.ms=0.4 ; l.mk=0.25 ; l.bp=0.25
+  ! lengths of drifts between magnets and fo-do
   l.de = 0.3 ; l.df = 0.5
+  ! length of cells (20m)
   l.cell =\ 2*(l.mb+l.bp+l.mk+l.mq+l.ms+l.mb +4*l.de +l.df)
+  ! number of cells per arc
   n.cell =\ 1*(l.sequ/n.ssec - l.ssec)/l.cell
-!  print('l.cell=', l.cell, 'n.cell=', n.cell)
+  print('l.cell=', l.cell, 'n.cell=', n.cell)
 
   !! classes
   local df = drift      'df' {}
@@ -252,6 +254,7 @@ function TestTwiss:testTwissSingleRing ()
   local mk = marker     'mk' {}
 
   !! families
+  local k1, k2 = deferred {}, deferred {}
   local qf = mq 'qf' { k1 := k1.qf }
   local qd = mq 'qd' { k1 := k1.qd }
   local sf = ms 'sf' { k2 := k2.sf }
@@ -270,15 +273,13 @@ function TestTwiss:testTwissSingleRing ()
   local arc   = sequence 'arc'   {5*cell}
   local sequ  = sequence 'sequ'  {arc,ssec,arc,ssec}
 
-  -- arc:dumpseq()
-
   !! angle
   n.mb = n.ssec*n.cell*n.bend
   mb.angle =\ 2*pi/n.mb
-!  print('n.mb=', n.mb, 'mb.angle=', mb.angle)
+  print('n.mb=', n.mb, 'mb.angle=', mb.angle)
 
   !! survey
-  local srv = survey { sequence=sequ, implicit=true, atslice=ftrue }
+  local srv = survey { sequence=sequ, nslice=5, implicit=true, atslice=ftrue }
   srv:write(rundir('sr_survey'), srvcol)
 
   !! plot survey
@@ -301,23 +302,23 @@ function TestTwiss:testTwissSingleRing ()
   local f_cell = l.cell/(4*sin(u_cell/2))
   local k_cell = 1/(f_cell * l.mq)
   k1.qf = k_cell ; k1.qd = -k_cell
-!  print('qf.k1=', qf.k1, 'qd.k1=', qd.k1)
-!  print('qf.k1_f=', qf.k1*beam.brho, 'mb.k0_f=', mb.angle*beam.brho/mb.l)
+  print('qf.k1=', qf.k1, 'qd.k1=', qd.k1)
+  print('qf.k1_f=', qf.k1*beam.brho, 'mb.k0_f=', mb.angle*beam.brho/mb.l)
 
   !! twiss
-  local tws, mfw = twiss { sequence=arc, beam=beam, mapsave=true, mapdump=false }
+  local tws, mfw = twiss { sequence=arc, beam=beam, mapsave=true }
 !  print("#tws=", #tws)
   for i=1,6 do for j=1,6 do
     tws:addcol('re'..i..j, \r -> tws.M[r][i]:get(j+1))
   end end
   tws:write(rundir('sr_track_arc.txt'), twscolre)
 
-!  print('q1=', tws.q1[1]) -- =1.391381980, madx=1.279802923
-!  print('q2=', tws.q2[1]) -- =1.207437789, madx=1.232679934
+  print('q1=', tws.q1[1]) -- =1.391381980, madx=1.279802923
+  print('q2=', tws.q2[1]) -- =1.207437789, madx=1.232679934
 
   local mux = 360*frac(tws.q1[1])/n.cell
   local muy = 360*frac(tws.q2[1])/n.cell
-!  print('mux=', mux, 'muy=', muy)
+  print('mux=', mux, 'muy=', muy)
 
 --  local tws = twiss { sequence=arc, beam=beam, implicit=true }
 --  local mux = 360*frac(tws.q1[1])/n.cell
