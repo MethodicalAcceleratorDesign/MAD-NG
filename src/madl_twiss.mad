@@ -42,12 +42,28 @@ local assert, error, getmetatable, setmetatable, table =
 -- helpers --------------------------------------------------------------------o
 
 local function mdump (mflw, msg_, str_)
+  local fmt = option.format
   local msg, str = msg_ or '', str_ or 'M'
+  option.format = "% 10.5f"
   for i=1,mflw.npar or #mflw do
     printf("%s%d: ", msg, i)
-    mflw[i]:get0():print(str,'line',' :')
-    mflw[i]:get1():print(nil,'line'    )
+    mflw[i]:get0():print(str,1e-12,'line')
+    if option.debug >= 3 then
+      mflw[i]:get1():print(' "     ')
+    end
   end
+  option.format = fmt
+end
+
+local function trace_normal (R1, A1, of)
+  local fmt = option.format
+  option.format = "% 10.5f"
+  R1:print('R1') ; A1:print('A1')
+  if option.debug >= 3 then
+    local R2, A2 = betablk(of)
+    R2:print('R2') ; A2:print('A2')
+  end
+  option.format = fmt
 end
 
 -- twiss mtable ---------------------------------------------------------------o
@@ -194,15 +210,6 @@ end
 
 -- normal/closed forms --------------------------------------------------------o
 
-local function trace_normal (R1, A1, of)
-  local fmt = option.format
-  option.format = "% 10.5f"
-  R1:print('R1') ; A1:print('A1')
-  local R2, A2 = betablk(of)
-  R2:print('R2') ; A2:print('A2')
-  option.format = fmt
-end
-
 local r4 = 1..4
 
 local function twiss_closed (self, mflw) -- TODO: high order normal form
@@ -218,7 +225,7 @@ local function twiss_closed (self, mflw) -- TODO: high order normal form
     if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
 
     -- get linear normal form A from one-turn map R
-    local A, V, W = normal(R)
+    local A, V, W, info = normal(R)
 
     -- get initial linear optical functions and phase advances
     local of = phasadv(W, optfun(A, nil, coupling))
@@ -231,13 +238,7 @@ local function twiss_closed (self, mflw) -- TODO: high order normal form
 
     -- back to 6D (TODO: check 5D...)
     if rnk == 4 then
-      local fmt = option.format
-!      option.format = "% -.8e"
-!      R6:print('R6') ; A:print('A')
       A = matrix(6):eye():setsub(r4,r4,A) -- TODO 5D :setsub(r4,6,R6)
-!      X[5] = 0 -- reset time
-!      A:print('A') ; X:print('X')
-!      option.format = fmt
     end
 
     -- X[i], A[i], ofun0[i] = Xi, Ai, ofi
@@ -261,6 +262,9 @@ local function twiss_init (self, mflw)
     chrm = chrom,
     npar = npar,
   }
+
+  -- reset sequence iterator
+  mflw:sireset()
 
   if not save then return end
 
@@ -317,7 +321,7 @@ local function make_mflow (self)
   if option.debug > 2 then mdump(mflw,'tk.') end
 
   -- extend track mflw and mtbl for twiss
-  twiss_init  (self, mflw)
+  twiss_init(self, mflw)
 
   -- get closed forms (normal forms)
   twiss_closed(self, mflw)
