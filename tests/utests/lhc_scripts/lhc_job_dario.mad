@@ -1,0 +1,73 @@
+-- ../mad lhc_job_dario.mad
+
+local trkhdr = {'title', 'type', 'origin', 'date', 'time', 'refcol'}
+local trkcol = {'name','kind','s','l',
+                'C10','C20','C30','C40','C50','C60',
+                'C11','C12','C13','C14','C15','C16',
+                'C21','C22','C23','C24','C25','C26',
+                'C31','C32','C33','C34','C35','C36',
+                'C41','C42','C43','C44','C45','C46',
+                'C51','C52','C53','C54','C55','C56',
+                'C61','C62','C63','C64','C65','C66'}
+
+local function LHC_load ()
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    MADX:load('lhc_as-built.seq'    , 'lhc_as-built.mad') -- convert on need
+    MADX:load('opticsfile.22_ctpps2', 'opticsfile.22_ctpps2.mad')
+    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+
+    local lhcb1, lhcb2 in MADX
+    assert(#lhcb1 == 6694, "invalid number of elements in LHCB1 (6694 expected)")
+    assert(#lhcb2 == 6721, "invalid number of elements in LHCB2 (6721 expected)")
+  end
+
+  return MADX.lhcb1, MADX.lhcb2
+end
+
+local function LHC_track ()
+  local lhcb1, nrj in MADX
+  local beam, track, option in MAD
+
+  local X0 = {-5.5E-04, 0,0, 1.6E-04, 0,0}
+  local beam0 = beam { particle='proton',  energy=nrj }
+  local tbl, mfw = track {sequence=lhcb1, beam=beam0, observe=false,
+                          X0=X0, mapdef=true, mapsave=true, method=4}
+                          -- mapdef=false, mapsave=false
+  -- comment loops if mapdef=false
+  for i=1,6 do
+    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
+    for j=1,6 do
+      tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
+    end
+  end
+
+  option.format = "% -.16e"
+  tbl:write('Cmad_tk_dario.txt', trkcol, trkhdr)
+end
+
+local function LHC_twiss ()
+  local lhcb1, nrj  in MADX
+  local beam, twiss, option, gphys in MAD
+
+  gphys.var.nrm_tol = 5e-9 -- relax normal form checks for large machine
+
+  local beam0 = beam { particle='proton', energy=nrj }
+  local tbl, mfw = twiss { sequence=lhcb1, beam=beam0, mapsave=true }
+
+  for i=1,6 do
+    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
+    for j=1,6 do
+      tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
+    end
+  end
+
+  option.format = "%-.16e"
+  tbl:write('Cmad_tw_dario.txt', trkcol)
+end
+
+-- run script
+LHC_load()
+LHC_track()
+LHC_twiss()
