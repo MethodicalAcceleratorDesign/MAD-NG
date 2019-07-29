@@ -1,13 +1,14 @@
 -- ../mad lhc_job.mad
 
 local trkhdr = {'title', 'type', 'origin', 'date', 'time', 'refcol'}
-local trkcol = {'name','kind','c10','c20','c30','c40','c50','c60',
-                              'c11','c12','c13','c14','c15','c16',
-                              'c21','c22','c23','c24','c25','c26',
-                              'c31','c32','c33','c34','c35','c36',
-                              'c41','c42','c43','c44','c45','c46',
-                              'c51','c52','c53','c54','c55','c56',
-                              'c61','c62','c63','c64','c65','c66'}
+local trkcol = {'name','kind','s','l',
+                'C10','C20','C30','C40','C50','C60',
+                'C11','C12','C13','C14','C15','C16',
+                'C21','C22','C23','C24','C25','C26',
+                'C31','C32','C33','C34','C35','C36',
+                'C41','C42','C43','C44','C45','C46',
+                'C51','C52','C53','C54','C55','C56',
+                'C61','C62','C63','C64','C65','C66'}
 
 local twsmapcol = {'name','kind','s','E1','E2','E3','E4','E5','E6',
                                 'R11','R12','R13','R14','R15','R16',
@@ -26,7 +27,7 @@ local function LHC_load ()
   if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
     MADX:load('lhc_as-built.seq'    , 'lhc_as-built.mad') -- convert on need
     MADX:load('opticsfile.22_ctpps2', 'opticsfile.22_ctpps2.mad')
-    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+--    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
 
     local lhcb1, lhcb2 in MADX
     assert(#lhcb1 == 6694, "invalid number of elements in LHCB1 (6694 expected)")
@@ -83,29 +84,45 @@ local function LHC_track ()
 !  local X0 = {-5.500001E-04, -2.523793E-11, 2.207667E-12, 1.600001E-04, 0,0}
 
   -- PTC closed orbit
-  local X0 = {-5.5000135301803640E-004,-3.1413416565322823E-010,-4.2925112315554718E-010,1.5999978500025504E-004,0,0}
+!  local X0 = {-5.5000135301803640E-004,-3.1413416565322823E-010,-4.2925112315554718E-010,1.5999978500025504E-004,0,0}
   -- PTC closed orbit with dp=1e-6
 !  local X0 = {-5.49977519E-04, 1.57921523E-08, 4.77934325E-09,1.60025045E-04,0.00000000E+00,9.99999990E-07}
 
+
+  local X0 = {-5.5E-04, 0,0, 1.6E-04, 0,0}
   local tbl, mfw = track {sequence=lhcb1, beam=beam0, observe=false,
-                          X0=X0, mapdef=true, mapsave=true, method=4}
+                          X0=X0, mapdef=true, mapsave=true, mapdump=2, method=4}
 
 !  printf("#trk=%d, beta=%-.16e, dpt=%-.16e\n", #tbl, beam0.beta, dpt)
   for i=1,6 do
-    tbl:addcol('c'..i..'0', \r -> tbl.M[r][i]:get(1))
+    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
   end
   for i=1,6 do for j=1,6 do
-    tbl:addcol('c'..i..j, \r -> tbl.M[r][i]:get(j+1))
+    tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
   end end
 
-  MAD.option.format = "%-.16e"
+  MAD.option.format = "% -.16e"
   tbl:write('Cmad_tk.txt', trkcol, trkhdr)
+
+  local tbl1 = MAD.mtable:read('Cmad_tk.txt')
+  local tbl2 = MAD.mtable:read('Cptc_tr.txt')
+  local m = MAD.matrix(#tbl1,6)
+  local v = MAD.vector(#tbl1)
+  local w = MAD.vector(#tbl2)
+  m:setcol(1,1..#tbl1)
+  m:setcol(2,tbl1.s  )
+  for i,k in ipairs {'C10','C20','C30','C40'} do
+    v:fill(tbl1[k])
+    w:fill(tbl2[k])
+    m:setcol(i+2,v-w:getvec(1..#tbl1))
+  end
+  m:print('m')
 end
 
 -- run script
 LHC_load()
 LHC_track()
--- LHC_twiss()
+--LHC_twiss()
 
 
 --[[
