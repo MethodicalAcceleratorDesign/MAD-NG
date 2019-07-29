@@ -369,7 +369,8 @@ function misalignexi (elm, m, lw_)                                              
 
   m:mdump(elm, 'misalignexi:0')
 
-  local el, ang, tlt, sdir, tdir in m
+  local el, eh, sdir, tdir in m
+  local ang, tlt = elm.angle*tdir, elm.tilt*tdir
 
   -- translation
   if trn then T:fill{dx, dy, ds} else T:zeros() end
@@ -574,7 +575,7 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
     local   k0q = beam and k0*beam.charge or k0q
     local   pw2 = 1 + (2*_beta)*pt + pt^2 - py^2
     local    pz = sqrt(pw2 - px^2)                                      -- PZ
-    local   pzx = pz - k0q*(rho+x)
+    local   pzx = pz - k0q*(rho+x) -- could be numerically unstable
     local   npx =  ca*px + sa*pzx                                       -- XN(2)
     local   dpx = -sa*px + ca*pzx                                       -- DPX'
     local   pzs = sqrt(pw2 - npx^2)                                     -- PZS
@@ -582,8 +583,12 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
     local  _ptt = 1/ptt
     local   dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q            -- XN(3)
 
+!    printf("beta= %-.16e, k0q= %-.16e, rho=%-.16e, ang=%-.16e\n", 1/_beta, k0q, rho, ang)
+!    m:xdump(elm, "pzs=", pzs)
+!    m:xdump(elm, "dpx=", dpx/k0q)
+
     -- eq. 126 in Forest06
-    m[i].x  = (pzs-dpx)/k0q - rho  -- could be numerically unstable     -- XN(1)
+    m[i].x  = pzs/k0q - dpx/k0q - rho  -- could be numerically unstable -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
     m[i].t  = t - dxs*(_beta+pt) + (1-T)*ld*_beta                       -- XN(6)
@@ -1177,7 +1182,7 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    local e, h = m.e1, elm.h1*tdir
+    local e, h = elm.e1*tdir, elm.h1*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
     yrotation ( e, m, 1)
     bend_face ( h, m, 1)
@@ -1191,7 +1196,7 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
 
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
-    local e, h = m.e2, elm.h2*tdir
+    local e, h = elm.e2*tdir, elm.h2*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
     bend_wedge( a, m, -1)
     if frng ~= frng_none and not elm.kill_exi_fringe then
@@ -1222,7 +1227,7 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    local c, e, h = 0, m.e1, elm.h1*tdir
+    local c, e, h = 0, (m.e1 or elm.e1)*tdir, elm.h1*tdir
     yrotation ( e, m, 1)
     bend_face ( h, m, 1)
     if frng ~= frng_none and not elm.kill_ent_fringe then
@@ -1235,7 +1240,7 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
     bend_wedge(-e, m, 1)
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
-    local c, e, h = 0, m.e2, elm.h2*tdir
+    local c, e, h = 0, (m.e2 or elm.e2)*tdir, elm.h2*tdir
     bend_wedge(-e, m, -1)
     if frng ~= frng_none and not elm.kill_exi_fringe then
       m.frng, c = frng, 0.25
@@ -1618,12 +1623,12 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- 
   local corr, e = 0
 
   if sdir*lw == 1 then
-    e = m.e1
+    e = elm.e1*tdir
     if not elm.kill_ent_fringe then
       corr = k0^2*elm.hgap*elm.fint
     end
   else
-    e = m.e2
+    e = elm.e2*tdir
     if not elm.kill_exi_fringe then
       corr = k0^2*elm.hgap*(elm.fintx or elm.fint)
     end
