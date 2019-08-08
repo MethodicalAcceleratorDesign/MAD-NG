@@ -27,7 +27,7 @@ local function LHC_load ()
   if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
     MADX:load('lhc_as-built.seq'    , 'lhc_as-built.mad') -- convert on need
     MADX:load('opticsfile.22_ctpps2', 'opticsfile.22_ctpps2.mad')
---    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
 
     local lhcb1, lhcb2 in MADX
     assert(#lhcb1 == 6694, "invalid number of elements in LHCB1 (6694 expected)")
@@ -37,73 +37,7 @@ local function LHC_load ()
   return MADX.lhcb1, MADX.lhcb2
 end
 
-local function LHC_twiss ()
-  local lhcb1, nrj  in MADX
-  local beam, twiss, gphys in MAD
-
-  gphys.var.nrm_tol = 5e-9 -- relax normal form checks for large machine
-
-  local beam0 = beam { particle='proton', energy=nrj }
-  local tbl, mfw = twiss { sequence=lhcb1, beam=beam0, mapsave=true, chrom=true }
-
-  print("#tbl=", #tbl)
-  for i=1,6 do
-    tbl:addcol('E'..i, \r -> tbl.M[r][i]:get(1))
-  end
-  for i=1,6 do for j=1,6 do
-    tbl:addcol('R'..i..j, \r -> tbl.M[r][i]:get(j+1))
-  end end
-
-  print('q1=' , tbl.q1[1])    ! q1  = 62.310005
-  print('q2=' , tbl.q2[1])    ! q2  = 60.320005
-  print('dq1=', tbl.dq1[1])   ! dq1 = 20.35834 -- wrong!
-  print('dq2=', tbl.dq2[1])   ! dq2 = 20.57798 -- wrong!
-
-  MAD.option.format = "%-.16e"
-  tbl:write('Cmad_tw.txt', twsmapcol)
-
--- twiss                     | chrom
--- q1=62.310000, dq1=1.21357 | dq1=1.21360
--- q2=60.320000, dq2=1.32671 | dq2=1.32786
--- ptc_twiss
--- q1= 0.310007, dq1=1.23317
--- q2= 0.320007, dq2=1.34619
-end
-
-local function LHC_track ()
-  local lhcb1, nrj in MADX
-  local beam, track, gphys, matrix in MAD
-  local printf in MAD.utility
-
-  local beam0 = beam { particle='proton',  energy=nrj }
-
-  local dpt = gphys.dp2pt(1e-6, beam0.beta)
-
-  -- MAD-X closed orbits with chrom
-!  local X0 = {-5.499762E-04,  1.609342E-08, 5.207712E-09, 1.600252E-04, 0,dpt}
-!  local X0 = {-5.500001E-04, -2.523793E-11, 2.207667E-12, 1.600001E-04, 0,0}
-
-  -- PTC closed orbit
-!  local X0 = {-5.5000135301803640E-004,-3.1413416565322823E-010,-4.2925112315554718E-010,1.5999978500025504E-004,0,0}
-  -- PTC closed orbit with dp=1e-6
-!  local X0 = {-5.49977519E-04, 1.57921523E-08, 4.77934325E-09,1.60025045E-04,0.00000000E+00,9.99999990E-07}
-
-
-  local X0 = {-5.5E-04, 0,0, 1.6E-04, 0,0}
-  local tbl, mfw = track {sequence=lhcb1, beam=beam0, observe=false,
-                          X0=X0, mapdef=true, mapsave=true, mapdump=2, method=4}
-
-!  printf("#trk=%d, beta=%-.16e, dpt=%-.16e\n", #tbl, beam0.beta, dpt)
-  for i=1,6 do
-    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
-  end
-  for i=1,6 do for j=1,6 do
-    tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
-  end end
-
-  MAD.option.format = "% -.16e"
-  tbl:write('Cmad_tk.txt', trkcol, trkhdr)
-
+local function ChkPTC ()
   local tbl1 = MAD.mtable:read('Cmad_tk.txt')
   local tbl2 = MAD.mtable:read('Cptc_tr.txt')
   local m = MAD.matrix(#tbl1,6)
@@ -119,10 +53,79 @@ local function LHC_track ()
   m:print('m')
 end
 
+local function LHC_track ()
+  local lhcb1, nrj in MADX
+  local beam, track, gphys, option in MAD
+  local beam0 = beam { particle='proton',  energy=nrj }
+  local dpt = gphys.dp2pt(1e-6, beam0.beta)
+
+-- x_diff ~ 9.0949470177292824e-13 for MB.A10R5.B1
+
+  -- MAD-X closed orbits with chrom
+!  local X0 = {-5.499762E-04,  1.609342E-08, 5.207712E-09, 1.600252E-04, 0,dpt}
+!  local X0 = {-5.500001E-04, -2.523793E-11, 2.207667E-12, 1.600001E-04, 0,0}
+
+  -- PTC closed orbit
+!  local X0 = {-5.5000135301803640E-004,-3.1413416565322823E-010,-4.2925112315554718E-010,1.5999978500025504E-004,0,0}
+  -- PTC closed orbit with dp=1e-6
+!  local X0 = {-5.49977519E-04, 1.57921523E-08, 4.77934325E-09,1.60025045E-04,0.00000000E+00,9.99999990E-07}
+
+  local X0 = {{-5.5E-04, 0,0, 1.6E-04, 0,0},{-5.5E-04, 0,0, 1.6E-04, 0,dpt}}
+
+  local tbl, mfw = track {sequence=lhcb1, beam=beam0, observe=false,
+                          X0=X0, mapdef=true, mapsave=true, method=4}
+
+!  local printf in MAD.utility
+!  printf("#trk=%d, beta=%-.16e, dpt=%-.16e\n", #tbl, beam0.beta, dpt)
+  for i=1,6 do
+    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
+    for j=1,6 do
+      tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
+    end
+  end
+
+  option.format = "% -.16e"
+  tbl:write('Cmad_tk.txt', trkcol, trkhdr)
+end
+
+local function LHC_twiss ()
+  local lhcb1, nrj  in MADX
+  local beam, twiss, gphys, option in MAD
+
+  gphys.var.nrm_tol = 5e-9 -- relax normal form checks for large machine
+
+  local beam0 = beam { particle='proton', energy=nrj }
+  local tbl, mfw = twiss { sequence=lhcb1, beam=beam0, mapsave=true, method=4,
+                           chrom=true }
+
+  print("#tbl=", #tbl)
+  for i=1,6 do
+    tbl:addcol('C'..i..'0', \r -> tbl.M[r][i]:get(1))
+    for j=1,6 do
+      tbl:addcol('C'..i..j, \r -> tbl.M[r][i]:get(j+1))
+    end
+  end
+
+  print('q1=' , tbl.q1[1])    ! q1  = 62.310005
+  print('q2=' , tbl.q2[1])    ! q2  = 60.320005
+  print('dq1=', tbl.dq1[1])   ! dq1 = 20.35834 -- wrong!
+  print('dq2=', tbl.dq2[1])   ! dq2 = 20.57798 -- wrong!
+
+  option.format = "%-.16e"
+  tbl:write('Cmad_tw.txt', trkcol)
+
+-- twiss                     | chrom
+-- q1=62.310000, dq1=1.21357 | dq1=1.21360
+-- q2=60.320000, dq2=1.32671 | dq2=1.32786
+-- ptc_twiss
+-- q1= 0.310007, dq1=1.23317
+-- q2= 0.320007, dq2=1.34619
+end
+
 -- run script
 LHC_load()
-LHC_track()
---LHC_twiss()
+!LHC_track()
+LHC_twiss()
 
 
 --[[
