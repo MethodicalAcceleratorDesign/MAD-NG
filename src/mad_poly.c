@@ -16,6 +16,8 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <assert.h>
+
 #include "mad_vec.h"
 
 // Check if a point p is inside a polygon v (vector of points)
@@ -40,6 +42,7 @@ is_right (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t i)
 log_t
 mad_pol_inside(num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n)
 {
+  assert(vx && vy);
   int wn = 0; // the winding number counter
 
   for (ssz_t i = 0; i < n-1; i++) {
