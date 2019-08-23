@@ -116,7 +116,13 @@ void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], ss
 void   mad_cvec_infft (const cnum_t x[], const num_t r_node[]  , cnum_t  r[], ssz_t n, ssz_t nx);
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec-<cvec>
 
+// global fft cleanup
 void   mad_fft_cleanup (void);
+
+// 2D polygons ----------------------------------------------------------------o
+
+// polygon check for containing a point (winding number algo)
+log_t  mad_pol_inside (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n);
 
 // ----------------------------------------------------------------------------o
 
