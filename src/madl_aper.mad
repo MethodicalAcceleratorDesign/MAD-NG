@@ -28,34 +28,41 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local abs, max, sin, cos in math
-local is_damap           in MAD.typeid
-local errorf             in MAD.utility
-local minang             in MAD.constant
-local is_implicit        in MAD.element.drift
+local abs, min, max, sin, cos in math
+
+local _C, vector           in MAD
+local is_damap, is_vector  in MAD.typeid
+local errorf               in MAD.utility
+local minang               in MAD.constant
+local is_implicit          in MAD.element.drift
 
 local getmetatable =
       getmetatable
 
 -- aperture models ------------------------------------------------------------o
 
-local apmodel = {
-  square      = \x,y,ap -> x >= ap[1] or y >= ap[1],
-  rectangle   = \x,y,ap -> x >= ap[1] or y >= ap[2],
+local apmodel
 
-  circle      = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
-  ellipse     = \x,y,ap -> ((x/ap[1])^2 + (y/ap[2])^2 >= 1),
+apmodel = {
+  square     = \x,y,ap -> x >= ap[1] or y >= ap[1],
+  rectangle  = \x,y,ap -> x >= ap[1] or y >= ap[2],
 
-  rectcircle  = \x,y,ap -> x >= ap[1] or y >= ap[2] or x^2 + y^2 >= ap[3]^2,
-  rectellipse = \x,y,ap -> x >= ap[1] or y >= ap[2] or (x/ap[3])^2 + (y/ap[4])^2 >= 1,
+  circle     = \x,y,ap -> x^2 + y^2 >= ap[1]^2,
+  ellipse    = \x,y,ap -> ((x/ap[1])^2 + (y/ap[2])^2 >= 1),
 
-  racetrack   = \x,y,ap -> x >= ap[1] or y >= ap[2] or
-                          (x >= ap[1]-ap[3] and y >= ap[2]-ap[4] and
-                           ((x-(ap[1]-ap[3]))/ap[3])^2 +
-                           ((y-(ap[2]-ap[4]))/ap[4])^2 >= 1),
+  rectcircle = \x,y,ap -> x >= ap[1] or y >= ap[2] or x^2 + y^2 >= ap[3]^2,
+  rectellipse= \x,y,ap -> x >= ap[1] or y >= ap[2] or (x/ap[3])^2 + (y/ap[4])^2 >= 1,
 
-  octagon     = \x,y,ap -> x >= ap[1] or y >= ap[2] or
-                           y >= (x-(ap[1]-ap[3]))*ap[4]/ap[3] + ap[2],
+  racetrack  = \x,y,ap -> x >= ap[1] or y >= ap[2] or
+                         (x >= ap[1]-ap[3] and y >= ap[2]-ap[4] and
+                          ((x-(ap[1]-ap[3]))/ap[3])^2 +
+                          ((y-(ap[2]-ap[4]))/ap[4])^2 >= 1),
+
+  octagon    = \x,y,ap -> x >= ap[1] or y >= ap[2] or
+                          y >= (x-(ap[1]-ap[3]))*ap[4]/ap[3] + ap[2],
+
+  polygon    = \x,y,ap,vx,vy -> ap.bbox and apmodel[ap.bbox.kind](x,y,ap.bbox) or
+                                _C.mad_pol_inside(x,y, vx.data, vy.data, #vx),
 }
 
 -- aperture check -------------------------------------------------------------o
@@ -74,6 +81,8 @@ local function lostpar (i, mflw, _, islc)
 end
 
 local function checkaper (chkap)
+  local is_poly = chkap == apmodel.polygon
+
   return function (elm, mflw, lw, islc)
     local ap = elm.aperture
     local tdir in mflw
@@ -92,6 +101,13 @@ local function checkaper (chkap)
       dx, dy = offset[1]*tdir, offset[2]*tdir
     end
 
+    local vx, vy
+    if is_poly then -- convert polygon to vectors if not vectors
+      if not is_vector(ap.vx) then vx = vector(ap.vx) end
+      if not is_vector(ap.vy) then vy = vector(ap.vy) end
+      assert(#vx == #vy, "incompatible x vs y polygon size")
+    end
+
     local i = 1
     while i <= mflw.npar do
       local x, y in mflw[i]
@@ -104,7 +120,7 @@ local function checkaper (chkap)
       local nx = abs(ca*x + sa*y - dx)
       local ny = abs(ca*y - sa*x - dy)
 
-      if chkap(nx,ny,ap) then
+      if chkap(nx,ny,ap, vx,vy) then
         lostpar(i, mflw, lw, islc)
       else
         i = i + 1
@@ -123,6 +139,7 @@ local apcheck = setmetatable({
   rectellipse = checkaper(apmodel.rectellipse),
   racetrack   = checkaper(apmodel.racetrack  ),
   octagon     = checkaper(apmodel.octagon    ),
+  polygon     = checkaper(apmodel.polygon    ),
 }, { __index  = \_,k -> errorf("unknown kind of aperture '%s'", tostring(k))
 })
 
