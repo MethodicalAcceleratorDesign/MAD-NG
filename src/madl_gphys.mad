@@ -71,22 +71,24 @@ local gphys = {
     {'x', 'px', 'y', 'py', 't', 'pt', x=1, px=2, y=3, py=4, t=5, pt=6, __n=6},
   },
 
-  -- optical functions names (index -> name)
-  ofname = {
-    'alfa11', 'beta11', 'gama11',
-    'alfa22', 'beta22', 'gama22',
-    'alfa33', 'beta33', 'gama33',
-    'disp1' , 'disp2' , 'disp3' , 'disp4' ,
-    'mu1'   , 'mu2'   , 'mu3'   ,
+  -- dispersion (index -> name)
+  dpname = {
+    'dx', 'dpx',
+    'dy', 'dpy',
   },
 
-  -- optical functions names with coupling terms (index -> name)
+  -- optical functions names (index -> name)
+  ofname = {
+    'alfa11', 'beta11', 'gama11', 'mu1',
+    'alfa22', 'beta22', 'gama22', 'mu2',
+    'alfa33', 'beta33', 'gama33', 'mu3',
+  },
+
+  -- optical functions names with coupling (index -> name)
   ocfname = {
-    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13',
-    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23',
-    'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33',
-    'disp1' , 'disp2' , 'disp3' , 'disp4' ,
-    'mu1'   , 'mu2'   , 'mu3'   ,
+    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1',
+    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2',
+    'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
   },
 }
 
@@ -109,9 +111,9 @@ end
 
 -- mflows ---------------------------------------------------------------------o
 
--- particles/damaps rank: X|R|Mset - stable - unstable - singular - lost
-local mrnk = {Xset=1, Rset=1, Mset=1,
-              stable=2, unstable=3, singular=4, lost=5}
+-- particles/damaps status rank: X|B|R|Mset/stable/unstable/singular/lost
+local mrnk = {Xset=1, Bset=1, Rset=1, Mset=1,
+              stable=1, unstable=2, singular=3, lost=4}
 gphys.mrnk = mrnk
 
 -- compare particles/damaps by rank then id
@@ -478,11 +480,11 @@ function gphys.dispersion (R, optfun_)
 
   if rnk >= 6 then
     -- TODO: true 6D using Chao's method
-    fun.disp1, fun.disp2 = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
-    fun.disp3, fun.disp4 = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
+    fun.dx, fun.dpx = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
+    fun.dy, fun.dpy = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
   else
-    fun.disp1, fun.disp2 = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
-    fun.disp3, fun.disp4 = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
+    fun.dx, fun.dpx = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
+    fun.dy, fun.dpy = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
   end
 
   return fun
@@ -584,15 +586,11 @@ function gphys.betablk (optfun)
   local A12 = 0
   local A21 = -fun.alfa11 / A11
   local A22 = sqrt(fun.gama11 - A21^2)
-  local A16 = fun.disp1 or 0
-  local A26 = fun.disp2 or 0
 
   local A33 = sqrt(fun.beta22)
   local A34 = 0
   local A43 = -fun.alfa22 / A33
   local A44 = sqrt(fun.gama22 - A43^2)
-  local A36 = fun.disp3 or 0
-  local A46 = fun.disp4 or 0
 
   local A55, A56, A65, A66 = 0, 0, 0, 0
 
@@ -606,15 +604,21 @@ function gphys.betablk (optfun)
   -- TODO: coupling terms (?)
 
   local A = matrix(6):fill {
-      A11, A12,   0,   0,   0, A16,
-      A21, A22,   0,   0,   0, A26,
-        0,   0, A33, A34,   0, A36,
-        0,   0, A43, A44,   0, A46,
+      A11, A12,   0,   0,   0,   0,
+      A21, A22,   0,   0,   0,   0,
+        0,   0, A33, A34,   0,   0,
+        0,   0, A43, A44,   0,   0,
         0,   0,   0,   0, A55, A56,
         0,   0,   0,   0, A65, A66,
     }
 
   local R = A*S6*A:bar()
+
+  R:set(1,6,fun.dx  or 0)
+  R:set(2,6,fun.dpx or 0)
+  R:set(3,6,fun.dy  or 0)
+  R:set(4,6,fun.dpy or 0)
+
   if fun.rank < 6 then
     R:set(5,5,1) ; R:set(6,6,1)
   end
