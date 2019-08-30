@@ -439,49 +439,70 @@ end
 
 -- get phase advance from eigenvalues
 
-function gphys.phasadv (W, optfun)
-  local fun = optfun
+function gphys.phasadv (W, optfun_)
+  assert(is_cvector(W) , "invalid argument #1 (vector of eigenvalues expected)")
+
+  local fun = optfun_
   local tol = gphys.var.ofun_tol
+  local rnk = fun and fun.rank or W.nrow >= 6 and 6 or 4
 
-  assert(is_cvector(W) , "invalid argument #1 (eigenvalues expected)")
-  assert(is_optfun(fun), "invalid argument #2 (optfun expected)")
+  if is_nil(fun) then fun = table.new(0,50) end
+  fun.__ofun = _id
+  fun.rank   = rnk
 
-  local rk6 = W.nrow >= 6
+  fun.mu1 =              oval( W[1]:carg() / twopi, tol)
+  fun.mu2 =              oval( W[3]:carg() / twopi, tol)
+  fun.mu3 = rnk >= 6 and oval( W[5]:carg() / twopi, tol) or 0
 
-  fun.mu1 =         oval( W[1]:carg() / twopi, tol)
-  fun.mu2 =         oval( W[3]:carg() / twopi, tol)
-  fun.mu3 = rk6 and oval( W[5]:carg() / twopi, tol) or 0
-
-  if         fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
-  if         fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
-  if rk6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
+  if              fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
+  if              fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
+  if rnk >= 6 and fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
   return fun
 end
 
--- get linear optical functions from normal form
--- this routine has to be fast and must match ofname list (see above)
+-- get dispersion from R
 
-function gphys.optfun (A, optfun_, optcpl_)
-  chkeigsiz(A)
+function gphys.dispersion (R, optfun_)
+  assert(is_matrix(R) and R.nrow >= 6 and R.ncol >= 6,
+         "invalid argument #1 (6D+ matrix expected)")
 
-  local get = A.get
-  local rk6 = A.nrow >= 6
+  local get = R.get
   local fun = optfun_
   local tol = gphys.var.ofun_tol
+  local rnk = fun and fun.rank or has_dpt(R) and 6 or 4
 
-  if fun then
-    assert(is_optfun(fun), "invalid argument #2 (optfun expected)")
-    table.clear(fun)
-  else
-    fun = table.new(0, 35)
-  end
+  if is_nil(fun) then fun = table.new(0,50) end
   fun.__ofun = _id
+  fun.rank   = rnk
 
-  -- options
+  if rnk >= 6 then
+    -- TODO: true 6D using Chao's method
+    fun.disp1, fun.disp2 = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
+    fun.disp3, fun.disp4 = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
+  else
+    fun.disp1, fun.disp2 = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
+    fun.disp3, fun.disp4 = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
+  end
 
-  fun.rank = A.nrow
-  fun.ocpl = optcpl_
+  return fun
+end
+
+-- get linear optical functions from A (normal form)
+
+function gphys.optfun (A, optfun_, optcpl_)
+  assert(is_matrix(A) and A.nrow >= 6 and A.ncol >= 6,
+         "invalid argument #1 (6D+ matrix expected)")
+
+  local get = A.get
+  local fun = optfun_
+  local tol = gphys.var.ofun_tol
+  local rnk = fun and fun.rank or has_dpt(A) and 6 or 4
+
+  if is_nil(fun) then fun = table.new(0,50) end
+  fun.__ofun = _id
+  fun.rank   = rnk
+  fun.ocpl   = optcpl_
 
   -- alpha, beta and gamma
 
@@ -501,9 +522,12 @@ function gphys.optfun (A, optfun_, optcpl_)
     fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)), tol)
     fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2            , tol)
     fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2            , tol)
+  else
+    fun.alfa12, fun.beta12, fun.gama12 = nil, nil, nil
+    fun.alfa21, fun.beta21, fun.gama21 = nil, nil, nil
   end
 
-  if rk6 then
+  if rnk >= 6 then
     fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)), tol)
     fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2            , tol)
     fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2            , tol)
@@ -524,27 +548,22 @@ function gphys.optfun (A, optfun_, optcpl_)
       fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)), tol)
       fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2            , tol)
       fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2            , tol)
+    else
+      fun.alfa13, fun.beta13, fun.gama13 = nil, nil, nil
+      fun.alfa23, fun.beta23, fun.gama23 = nil, nil, nil
+      fun.alfa31, fun.beta31, fun.gama31 = nil, nil, nil
+      fun.alfa32, fun.beta32, fun.gama32 = nil, nil, nil
     end
+
   else
     fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
   end
 
-  -- dispersion (5D)
-
-  if rk6 then
-    -- TODO: true 6D using Chao's method
-    fun.disp1, fun.disp2 = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
-    fun.disp3, fun.disp4 = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
-  else
-    fun.disp1, fun.disp2 = 0, 0
-    fun.disp3, fun.disp4 = 0, 0
-  end
-
   -- phase advance
 
-  fun.mu1 =         oval( atan2(get(A,1,2), get(A,1,1)) / twopi, tol)
-  fun.mu2 =         oval( atan2(get(A,3,4), get(A,3,3)) / twopi, tol)
-  fun.mu3 = rk6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi, tol) or 0
+  fun.mu1 =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi, tol)
+  fun.mu2 =              oval( atan2(get(A,3,4), get(A,3,3)) / twopi, tol)
+  fun.mu3 = rnk >= 6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi, tol) or 0
 
   if fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
   if fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
