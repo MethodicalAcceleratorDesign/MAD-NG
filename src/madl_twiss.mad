@@ -39,6 +39,10 @@ local chromdp = 1e-6
 local assert, error, getmetatable, setmetatable, table =
       assert, error, getmetatable, setmetatable, table
 
+local I4 = matrix(4):eye()
+local I6 = matrix(6):eye()
+local r4 = 1..4
+
 -- helpers --------------------------------------------------------------------o
 
 local function mdump (mflw, msg_, str_)
@@ -196,8 +200,12 @@ local function twiss_cofind (self, mflw0)
 
   -- update damaps with their closed orbit (tw: i, co: j)
   for j=1,mflw.tpar do
-    local m = mflw[j]
-    mflw0[Xi[m.id]]:setvar(m:get0()).status = m.status
+    local m, m0 = mflw[j], mflw0[Xi[mflw[j].id]]
+    m0.status = m.status
+    if m.status == 'stable' then
+      m0.coR = m.coR -- backup one-turn-map from cofind
+      m0:setvar(is_damap(m) and m:get0() or m)
+    end
   end
 
   -- report
@@ -210,14 +218,13 @@ end
 
 -- normal/closed forms --------------------------------------------------------o
 
-local r4 = 1..4
-
-local function twiss_closed (self, mflw) -- TODO: high order normal form
+local function twiss_nform (self, mflw) -- TODO: high order normal form
   local codptol, coupling in self
   local npar in mflw
 
   for i=1,npar do
-    local X, R = mflw[i]:get0(), mflw[i]:get1()
+    local m = mflw[i]
+    local X, R = m:get0(), m:get1()
     local rnk = has_dpt(R, codptol) and 6 or 4
     local R6
 
@@ -227,22 +234,20 @@ local function twiss_closed (self, mflw) -- TODO: high order normal form
     -- get linear normal form A from one-turn map R
     local A, V, W, info = normal(R)
 
+    -- debug normal form
+    if option.debug >= 2 then trace_normal(R, A, of) end
+
+    -- back to 6D
+    if rnk == 4 then A = I6:copy():setsub(r4,r4,A) end
+
     -- get initial linear optical functions and phase advances
-    local of = phasadv(W, optfun(A, nil, coupling))
+    local of = phasadv(W, optfun(A, {rank=rnk}, coupling))
+--  show(of)
 
     -- clear phase advances
     of.mu1, of.mu2, of.mu3 = 0, 0, 0
 
-    -- debug normal form
-    if option.debug >= 2 then trace_normal(R, A, of) end
-
-    -- back to 6D (TODO: check 5D...)
-    if rnk == 4 then
-      A = matrix(6):eye():setsub(r4,r4,A) -- TODO 5D :setsub(r4,6,R6)
-    end
-
-    -- X[i], A[i], ofun0[i] = Xi, Ai, ofi
-    mflw[i]:setvar(X):set1(A)
+    m:setvar(X):set1(A)
     mflw.__twdat.ofun[i] = of
   end
 end
@@ -252,6 +257,20 @@ end
 local function twiss_init (self, mflw)
   local save, chrom, coupling in self
   local npar, mtbl in mflw
+
+  -- do not save extra rows due to chrom
+  if save and chrom then
+    local npar in mflw
+    for i=npar/2+1,npar do mflw[i].nosave=true end
+  end
+
+      -- close dispersion (as a function of pt, multiply by beta for dp)
+      local D4 = m.coR:getsub(r4, 6)
+      local R4 = m.coR:getsub(r4,r4)
+      local D4, rnk = (I4-R):solve(D4)
+        print('rnk=', rnk) ; D4:print("D4")
+        :setsub(r4,6,D4)
+
 
   -- add twiss data to mflw
   mflw.__twdat = {
@@ -268,9 +287,6 @@ local function twiss_init (self, mflw)
   mflw:sireset()
 
   if not save then return end
-
-  -- clear data from one-turn-maps calculation
-  mtbl:clear()
 
   -- add twiss columns and type to mtbl
   mtbl.type = 'twiss'
@@ -298,36 +314,33 @@ local function make_mflow (self)
   -- wrap atsave (see track)
   local atsave = self:var_raw 'atsave' or ftrue -- prevent evaluation
   if save and atsave ~= ffalse then
-    self.atsave = atsave == ftrue and fill or achain(fill, atsave)
+    self.atsave  = atsave == ftrue and fill or achain(fill, atsave)
   end
 
-  -- prepare track template
-  local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
+  -- prepare twiss-track template
+  local _, mflw = track { exec=false } :copy_variables(self)
+                  { nstep=0, mapsave=self.mapsave or self.tkmapsave }
   if option.debug > 2 then mdump(mflw,'da.') end
 
-  -- do not save extra rows due to chrom
-  if save and chrom then
-    local npar in mflw
-    for i=npar/2+1,npar do mflw[i].nosave=true end
-  end
-
-  -- search for closed orbits, update mflw
+  -- search for closed orbits (update mflw)
   twiss_cofind(self, mflw)
   if mflw.npar == 0 then return mflw end
   if option.debug > 2 then mdump(mflw,'co.') end
 
+  -- prepare mflw (and mtbl)
+  twiss_init(self, mflw)
+
   -- get one-turn-maps to user-defined orders
-  track { mflow=mflw }
+  mflw.mapsave = self.tkmapsave
+  track { mflow=mflw, mapdump=self.tkmapdump }
   if mflw.npar == 0 then return mflw end
   if option.debug > 2 then mdump(mflw,'tk.') end
 
-  -- extend track mflw and mtbl for twiss
-  twiss_init(self, mflw)
-
-  -- get closed forms (normal forms)
-  twiss_closed(self, mflw)
+  -- get normal forms
+  twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 
+  mflw.mapsave = self.mapsave
   return mflw
 end
 
@@ -375,9 +388,9 @@ local twiss = command 'twiss' {
   beta0=nil,         -- initial beta0 block to build R0                   (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
-  mapdef=true,       -- always use damap formalism (true => {xy=2})       (trck)
-  mapsave=nil,       -- save damap in the mtable                          (trck)
-  mapdump=nil,       -- dump X and R after each element                   (trck)
+  mapdef=true,       -- always use damap formalism (true => {xy=2})       (twss)
+  mapsave=nil,       -- save damap in the mtable                          (twss)
+  mapdump=nil,       -- dump X and R after each element                   (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track for last phase        (trck)
@@ -409,9 +422,12 @@ local twiss = command 'twiss' {
   codptol=nil,       -- 4D vs 6D dpt tolerance                            (cofn)
   comethod=nil,      -- default optimizer                                 (cofn)
   comapdef=nil,      -- mapdef for cofind                                 (cofn)
-  comapdump=nil,     -- dump X and R after each element                   (cofn)
+  comapdump=nil,     -- mapdump for cofind                                (cofn)
   cowarn=nil,        -- commute errors into warnings                      (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
+
+  tkmapsave=nil,     -- save track damap in the mtable                    (trck)
+  tkmapdump=nil,     -- mapdump for track                                 (trck)
 
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
@@ -419,7 +435,7 @@ local twiss = command 'twiss' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    {'coupling', 'chrom', 'comapdef', 'comapdump'},
+    {'coupling', 'chrom', 'tkmapsave', 'tkmapdump', 'comapdef', 'comapdump'},
     cofind.__attr,
     {noeval=cofind.__attr.noeval}
   )
