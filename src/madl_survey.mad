@@ -35,7 +35,8 @@ local vector, matrix, element, mtable, command, option           in MAD
 
 local is_sequence, is_boolean, is_number, is_integer,
       is_table, is_callable, is_mappable, is_matrix              in MAD.typeid
-local fnone, ffalse, ftrue, functor, chain, achain               in MAD.gfunc
+local fnone, ffalse, ftrue, functor, chain, achain,
+      bind3rd, swapv                                             in MAD.gfunc
 local rangle                                                     in MAD.gmath
 local atins, atins1                                              in MAD.symint
 local tblcat, errorf, printf                                     in MAD.utility
@@ -95,23 +96,33 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
+local function trackone (elm, m, track, thick, thin)
+  local sdir, atentry, atexit in m
+
+  atentry(elm, m,  sdir, -1)
+  track  (elm, m,    1 , thick, thin)
+  atexit (elm, m, -sdir, -2)
+end
+
 local function trackelm (elm, m, track, thick, thin)
-  local sdir, tlt in m
+  local sdir, atentry, atexit, tlt in m
   local mis = m.misalign and misalign or fnone
   local rot = abs(tlt) >= minang and srotation or fnone
 
-  mis  (elm, m,  sdir)
-  rot  (tlt, m,  sdir)
-  track(elm, m,    1 , thick, thin)
-  rot  (tlt, m, -sdir)
-  mis  (elm, m, -sdir)
+  atentry(elm, m,  sdir, -1)
+  mis    (elm, m,  sdir)
+  rot    (tlt, m,  sdir)
+  track  (elm, m,    1 , thick, thin)
+  rot    (tlt, m, -sdir)
+  mis    (elm, m, -sdir)
+  atexit (elm, m, -sdir, -2)
 end
 
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, m)
   m.el, m.ang, m.tlt = 0, 0, 0
-  thinonly(elm, m, 1, nil, fnone)
+  trackone(elm, m, thinonly, nil, fnone)
 end
 
 local function track_thin (elm, m)
@@ -145,7 +156,7 @@ local function track_drift (elm, m)
 
   if is_implicit(elm) then
     local track = m.implicit and abs(ds) >= minlen and thickonly or driftonly
-    track(elm, m, 1, strex_thick)
+    trackone(elm, m, track, strex_thick)
   else
     m.tlt = elm.tilt*tdir
     local thick = abs(ds) >= minlen and thickonly or driftonly
@@ -176,13 +187,13 @@ E.extra_element:setvar({ survey = functor( invalid      ) }, 'init') -- forbidde
 
 -- patches
 
-E.xrotation:setvar({ survey = functor( xrotation ) }, 'init')
-E.yrotation:setvar({ survey = functor( yrotation ) }, 'init')
-E.srotation:setvar({ survey = functor( srotation ) }, 'init')
-E.translate:setvar({ survey = functor( translate ) }, 'init')
-E.changeref:setvar({ survey = functor( changeref ) }, 'init')
-E.changedir:setvar({ survey = functor( changedir ) }, 'init')
-E.changenrj:setvar({ survey = functor( changenrj ) }, 'init')
+E.xrotation:setvar({ survey = bind3rd( trackone, xrotation ) }, 'init')
+E.yrotation:setvar({ survey = bind3rd( trackone, yrotation ) }, 'init')
+E.srotation:setvar({ survey = bind3rd( trackone, srotation ) }, 'init')
+E.translate:setvar({ survey = bind3rd( trackone, translate ) }, 'init')
+E.changeref:setvar({ survey = bind3rd( trackone, changeref ) }, 'init')
+E.changedir:setvar({ survey = bind3rd( trackone, changedir ) }, 'init')
+E.changenrj:setvar({ survey = bind3rd( trackone, changenrj ) }, 'init')
 
 -- survey mtable --------------------------------------------------------------o
 
@@ -273,8 +284,7 @@ local function make_mflow (self)
   local iter, state, init = sequ:siter(range, nturn, dir)
 
   -- saving data, build mtable
-  local save, observe, implicit in self
-  if is_boolean(observe) then observe = observe and 1 or 0 end
+  local save, implicit, observe in self
   assert(is_boolean(save)    , "invalid save (boolean expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_integer(observe) and observe >= 0
@@ -332,19 +342,16 @@ local function make_mflow (self)
   end
 
   -- retrieve initial conditions
-  local s0, X0, A0, W0, mapsave in self
-  if X0 == 0 then X0 = {0,0,0} end
-  if A0 == 0 then A0 = {0,0,0} end
+  local s0, X0, A0, mapsave in self
+  if rawequal(X0,0) then X0 = {0,0,0} end
+  if rawequal(A0,0) then A0 = {0,0,0}
+  elseif is_matrix(A0) and A0:size() == 9 then
+    A0 = { swapv( A0:torotzxy() ) }
+  end
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_mappable(A0)    , "invalid A0 (mappable expected)")
   assert(is_boolean(mapsave), "invalid mapsave (boolean expected)")
-
-  if W0 then
-    assert(is_matrix(W0), "invalid W0 (matrix expected)")
-    local phi, the, psi = W0:torotzxy()
-    A0[1], A0[2], A0[3] = rangle(the, A0[1]), phi, rangle(psi, A0[3])
-  end
 
   -- create mflw
   local mflw = table.new(0,50)
@@ -449,16 +456,14 @@ local function exec (self)
   end
 
   -- retrieve information
-  local s0, eidx, sequ, atentry, atexit, __sitr, __edat in mflw
+  local s0, eidx, sequ, __sitr, __edat in mflw
   local iter, state in __sitr
   local ne = #sequ
 
   -- geometric tracking
   for ei,elm,spos,ds in iter, state, eidx do
     mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
-    atentry   (elm, __edat, 0, -1)
-    elm:survey(     __edat       )
-    atexit    (elm, __edat, 0, -2)
+    elm:survey(__edat)
     mflw.nstep = mflw.nstep-1
 
     -- check remaining number of elements to track
@@ -477,8 +482,7 @@ local survey = command 'survey' {
 
   s0=0,             -- initial s                                          (mflw)
   X0=0,             -- initial coordinates x, y, z                        (mflw)
-  A0=0,             -- initial angles theta, phi, psi                     (mflw)
-  W0=nil,           -- initial W matrix (companion of X0)                 (mflw)
+  A0=0,             -- initial angles theta, phi, psi or W0 matrix        (mflw)
 
   mapsave=false,    -- save the orientation matrix W (rotations)          (mflw)
   mapdump=false,    -- dump V and W after each element                    (mflw)
@@ -491,7 +495,7 @@ local survey = command 'survey' {
 
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
-  observe=false,    -- save only in observed elements (every n turns)     (mtbl)
+  observe=0,        -- save only in observed elements (every n turns)     (mtbl)
   savesel=fnone,    -- save selector (predicate)                          (mtbl)
 
   atentry=fnone,    -- action called when entering an element             (mflw)
