@@ -93,6 +93,10 @@ local esept_thick                                                  in MAD.dynmap
 -- rfcavity
 local rfcav_kick, rfcav_kickn             , rfcav_fringe           in MAD.dynmap
 
+-- generic
+
+local gene_thick                                                   in MAD.dynmap
+
 -- patches
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                    in MAD.dynmap
@@ -443,19 +447,19 @@ local function track_strexgen (elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local inter, thick, kick
+  local inter, thick, kick, fringe
 
   if abs(m.ds) < minlen then
-    inter, thick, kick = thinonly, fnone, strex_kick
+    inter, thick, kick, fringe = thinonly, fnone, strex_kick, fnone
   elseif model == 'DKD' then
-    inter, thick, kick = DKD[method], strex_drift, strex_kick
+    inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
     m.k1, m.ca, m.sa = m.knl[2]/m.ds*m.edir, 1, 0
-    inter, thick, kick = MKM[method], quad_thick, quad_kick
+    inter, thick, kick, fringe = MKM[method], quad_thick, quad_kick, strex_fringe
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, kick, strex_fringe)
+  track(elm, m, inter, thick, kick, fringe)
 end
 
 local function track_sextupole (elm, m)
@@ -661,6 +665,27 @@ local function track_rfmcavity (elm, m)
   m.npha = 0
 end
 
+-- generic element
+
+local function track_generic (elm, m)
+  get_mult(elm, m)
+
+  local ds, tdir in m
+  local damap, angle in elm
+  local l = abs(ds)
+
+  m.el, m.eh = ds, angle/ds*tdir
+  m.damap = damap
+
+  local method = elm.method or m.method
+  local inter  = l < minlen  and thinonly or m.nmul == 0 and thickonly or DKD[method]
+  local kick   = m.nmul == 0 and fnone or abs(angle) < minang and strex_kick   or curex_kick
+  local fringe = l < minlen  and fnone or abs(angle) < minang and strex_fringe or curex_fringe
+
+  local track  = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, gene_thick, kick, fringe)
+end
+
 -- load maps into elements ----------------------------------------------------o
 
 local invalid = \e ->
@@ -709,6 +734,8 @@ E.tkicker    :setvar({ track = functor( track_tkicker    ) }, 'init') -- straigh
 
 E.beambeam   :setvar({ track = functor( notyetdone       ) }, 'init') -- thin
 E.multipole  :setvar({ track = functor( track_multipole  ) }, 'init') -- thin
+
+E.generic    :setvar({ track = functor( track_generic    ) }, 'init') -- straight or curved, damap, update
 
 -- patches
 
