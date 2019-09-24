@@ -720,7 +720,7 @@ FUN(poisson) (const T *a, const T *b, T *c, int nv)
   assert(a && b && c);
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  nv = nv>0 ? nv/2 : a->d->nv/2
+  nv = nv>0 ? nv/2 : a->d->nv/2;
 
   T *is[4];
   for (int i = 0; i < 4; ++i)
