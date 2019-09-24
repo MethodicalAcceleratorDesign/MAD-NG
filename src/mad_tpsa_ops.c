@@ -657,15 +657,15 @@ FUN(nrm2) (const T *a, const T *b_)
 }
 
 void
-FUN(deriv) (const T *a, T *c, int var)
+FUN(deriv) (const T *a, T *c, int iv)
 {
   assert(a && c && a != c); // TODO: aliasing
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(var >= a->d->ord2idx[1] && var < a->d->ord2idx[2], "invalid domain");
-  // TODO: ensure map_order[var] > 0
+  ensure(iv >= a->d->ord2idx[1] && iv < a->d->ord2idx[2], "invalid domain");
+  // TODO: ensure map_order[iv] > 0
 
   if (!a->hi) { FUN(reset0)(c); return; }
-  FUN(scalar)(c,FUN(geti)(a,var), 0, 0);  // TODO: what if alpha[var] == 0 ?
+  FUN(scalar)(c,FUN(geti)(a,iv), 0, 0);  // TODO: what if alpha[iv] == 0 ?
 
   const D *d = c->d;
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
@@ -676,10 +676,10 @@ FUN(deriv) (const T *a, T *c, int var)
 
   ord_t der_ord = 1, oc = 1;
   if (mad_bit_get(a->nz,oc+1))
-      hpoly_der_eq(ca,c->coef+pi[oc],var,oc,der_ord,&c->nz,d);
+      hpoly_der_eq(ca,c->coef+pi[oc],iv,oc,der_ord,&c->nz,d);
   for (oc = 2; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+1))
-      hpoly_der_gt(ca,c->coef+pi[oc],var,oc,der_ord,&c->nz,d);
+      hpoly_der_gt(ca,c->coef+pi[oc],iv,oc,der_ord,&c->nz,d);
   ord_t n = mad_bit_lowest(c->nz);
   c->lo = MIN(n,c->mo);
   c->hi = mad_bit_highest(c->nz);
@@ -714,24 +714,26 @@ FUN(derivm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
 }
 
 void
-FUN(poisson) (const T *a, const T *b, T *c, int n)
+FUN(poisson) (const T *a, const T *b, T *c, int nv)
 {
   // C = [A,B]
   assert(a && b && c);
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
+  nv = nv>0 ? nv/2 : a->d->nv/2
+
   T *is[4];
   for (int i = 0; i < 4; ++i)
     is[i] = FUN(new)(a, a->d->to);
 
-  for (int i = 1; i <= n; ++i) {
-    FUN(deriv)(a, is[0], 2*i - 1);
+  for (int i = 1; i <= nv; ++i) {
+    FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
     FUN(deriv)(b, is[1], 2*i    );
     FUN(mul)  (is[0],is[1],is[2]);
     FUN(add)  (is[3],is[2],is[0]);
-    FUN(copy) (is[0],is[3]);      // TODO: use swap ?
+    FUN(copy) (is[0],is[3]);
 
-    FUN(deriv)(a, is[0], 2*i    );
+    FUN(deriv)(a, is[0], 2*i    ); // res = res - da/dp_i * db/dq_i
     FUN(deriv)(b, is[1], 2*i - 1);
     FUN(mul)  (is[0],is[1],is[2]);
     FUN(sub)  (is[3],is[2],is[0]);
