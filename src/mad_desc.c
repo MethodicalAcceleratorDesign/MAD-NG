@@ -1066,8 +1066,12 @@ mad_desc_gtrunc (const D *d_, ord_t to)
 const D*
 mad_desc_newn (int nmv, ord_t mvo)
 {
+  ensure(nmv > 0     , "invalid map variables orders specification");
+  ensure(nmv < 100000, "too many variables");
+
   ord_t mvar_ords[nmv];
   mad_mono_fill(nmv, mvar_ords, mvo);
+
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
@@ -1075,20 +1079,48 @@ const D*
 mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
 {
   assert(mvar_ords);
-  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nmv > 0     , "invalid map variables orders specification");
+  ensure(nmv < 100000, "too many variables");
+
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
 
 const D*
-mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
-               int nv , const ord_t  var_ords[nv ], ord_t dk)
+mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko, ord_t dk)
 {
-  assert(mvar_ords && var_ords);
-  ensure(nmv > 0  , "invalid map variables orders specification");
-  ensure(nv >= nmv, "invalid variable orders specification");
-  ensure(nv < 100000, "too many variables");
+  int nv = nmv+nk;
+  ensure(nmv > 0     , "invalid map variables orders specification");
+  ensure(nk  >= 0    , "invalid knob variables orders specification");
+  ensure(nv  < 100000, "too many variables");
 
-  // knobs max cross-order adjustment
+  ord_t var_ords[nv];
+  mad_mono_fill(nmv, var_ords    , mvo);
+  mad_mono_fill(nk , var_ords+nmv,  ko);
+
+  if (nk > 0) {
+    if (!dk || dk > ko) dk = ko;
+  } else dk = 0;
+
+  return get_desc(nmv, var_ords, nv, var_ords, dk);
+}
+
+const D*
+mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
+               int nv_, const ord_t _var_ords[nv_], ord_t dk)
+{
+  int nv = MAX(nmv, nv_);
+  assert(mvar_ords);
+  ensure(nmv > 0     , "invalid map variables orders specification");
+  ensure(nv  < 100000, "too many variables");
+
+  ord_t var_ords[nv];
+  mad_mono_copy(nmv, mvar_ords, var_ords);
+
+  if (_var_ords) {
+    ensure(nv_ >= 0, "invalid variable orders specification");
+    mad_mono_copy(nv_, _var_ords, var_ords); // override overlapping part
+  }
+
   int nk = nv-nmv;
   if (nk > 0) {
     ord_t ko = mad_mono_max(nk, var_ords+nmv);
@@ -1099,40 +1131,31 @@ mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
 }
 
 const D*
-mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko, ord_t dk)
-{
-  int nv = nmv+nk;
-  ensure(nmv > 0  , "invalid map variables orders specification");
-  ensure(nv >= nmv, "invalid knob variables orders specification");
-  ensure(nv < 100000, "too many variables");
-
-  ord_t var_ords[nv];
-  mad_mono_fill(nmv, var_ords    , mvo);
-  mad_mono_fill(nk , var_ords+nmv,  ko);
-
-  return mad_desc_newv(nmv, var_ords, nv, var_ords, dk);
-}
-
-const D*
 mad_desc_newkv (int nmv, const ord_t mvar_ords[nmv],
                 int nk , const ord_t kvar_ords[nk ],
                 int nv_, const ord_t _var_ords[nv_], ord_t dk)
 {
-  assert(mvar_ords && kvar_ords);
   int nv = MAX(nmv+nk, nv_);
-  ensure(nmv > 0  , "invalid map variables orders specification");
-  ensure(nv >= nmv, "invalid knob variables orders specification");
-  ensure(nv < 100000, "too many variables");
+  assert(mvar_ords && kvar_ords);
+  ensure(nmv > 0     , "invalid map variables orders specification");
+  ensure(nk  >= 0    , "invalid knob variables orders specification");
+  ensure(nv  < 100000, "too many variables");
 
   ord_t var_ords[nv];
   mad_mono_copy(nmv, mvar_ords, var_ords    );
   mad_mono_copy(nk , kvar_ords, var_ords+nmv);
+
   if (_var_ords) {
-    ensure(nv_ > 0, "invalid variable orders specification");
+    ensure(nv_ >= 0, "invalid variable orders specification");
     mad_mono_copy(nv_, _var_ords, var_ords); // override overlapping part
   }
 
-  return mad_desc_newv(nmv, mvar_ords, nv, var_ords, dk);
+  if (nk > 0) {
+    ord_t ko = mad_mono_max(nk, var_ords+nmv);
+    if (!dk || dk > ko) dk = ko;
+  } else dk = 0;
+
+  return get_desc(nmv, mvar_ords, nv, var_ords, dk);
 }
 
 void
