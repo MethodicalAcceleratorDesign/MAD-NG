@@ -13,6 +13,18 @@
 !| Foundation. This file is distributed in the hope that it will be useful, but
 !| WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
 !o-----------------------------------------------------------------------------o
+!|
+!| Notes about binding MAD C types (e.g. defs.h) to Fortran ISO C types:
+!|   tpsa_t, ctpsa_t, desc_t -> type(c_ptr)          ! void* (opaque pointer)
+!|   log_t                   -> logical(c_bool)
+!|   idx_t, ssz_t            -> integer(c_int32_t)
+!|   ord_t                   -> integer(c_signed_char)
+!|   int                     -> integer(c_int)
+!|   num_t                   -> real(c_double)
+!|   str_t                   -> character(c_char)    ! string (*)
+!|   xxx_t*                  -> ftype(c_xxx)(*)      ! pointer to array of
+!|
+!o-----------------------------------------------------------------------------o
 
 module GTPSA
   use, intrinsic :: iso_c_binding
