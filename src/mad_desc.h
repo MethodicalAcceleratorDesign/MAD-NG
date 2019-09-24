@@ -52,7 +52,7 @@ const desc_t* mad_desc_newm (int nmv, const ord_t mvar_ords[nmv]);
 const desc_t* mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
                              int nv , const ord_t  var_ords[nv ], ord_t dk); // knobs X-order
 const desc_t* mad_desc_newkv(int nmv, const ord_t mvar_ords[nmv],
-                             int nkv, const ord_t kvar_ords[nkv],
+                             int nk , const ord_t kvar_ords[nk ],
                              int nv_, const ord_t _var_ords[nv_], ord_t dk); // knobs X-order
 void          mad_desc_del  (const desc_t *d);
 
