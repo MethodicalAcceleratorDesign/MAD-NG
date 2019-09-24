@@ -138,15 +138,25 @@ FUN(ord) (const T *t)
 }
 
 ord_t
-(FUN(ordv)) (const T *t1, const T *t2, ...)
+(FUN(ordv)) (const T *t, ...)
 {
-  assert(t1 && t2);
-  ord_t mo = MAX(t1->mo, t2->mo);
+  assert(t);
+  ord_t mo = t->mo;
   va_list args;
-  va_start(args,t2);
-  while ((t2 = va_arg(args,T*)))
-    if (t2->mo > mo) mo = t2->mo;
+  va_start(args,t);
+  while ((t = va_arg(args,T*)))
+    if (t->mo > mo) mo = t->mo;
   va_end(args);
+  return mo;
+}
+
+ord_t
+FUN(ordn) (ssz_t n, const T *t[])
+{
+  assert(t);
+  ord_t mo = 0;
+  for (idx_t i = 0; i < n; i++)
+    if (t[i]->mo > mo) mo = t[i]->mo;
   return mo;
 }
 
