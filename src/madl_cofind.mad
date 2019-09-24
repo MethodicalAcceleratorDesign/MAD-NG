@@ -135,15 +135,15 @@ local function cofind_jacob (self, mflw)
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
   for i=n,1,-1 do
     local m, ii = mflw[i], 7*(i-1)+1
-    local mt = {__index=m, -- unfortunately, Lua needs a function...
+    local mt = {__index=m, -- unfortunately, Lua needs a function for newindex.
                 __newindex=\_,k,v => if k == 'status' then m[k] = v end end}
     for j=6,1,-1 do
       local mc = parcpy(m) -- no beam, no status, no id0, no coid
       mflw[ii+j], mc.id, mc.nosave = mc, ii+j, true
-      setmetatable(mc,mt) -- connect secondary particles to primary particle
+      setmetatable(mc,mt)  -- connect secondary particles to primary particle
     end
     mflw[ii], m.id, m.coid = m, ii, m.id
-    X0[i] = par2vec(m)   -- save current orbit
+    X0[i] = par2vec(m)     -- save current orbit
   end
   mflw.npar, mflw.tpar, n = 7*n, 7*n, 7*n
 
@@ -155,20 +155,23 @@ local function cofind_jacob (self, mflw)
     -- sanity check
     assert(n%7 == 0, "unexpected corrupted set of particle blocks")
 
-    -- set finite differences for jacobian (from secondary particles)
+    -- 1. set orbit and finite diff. for jacobian (from secondary particles)
     for i=1,n,7 do
-      local id = mflw[i].coid
+      local m, id = mflw[i], mflw[i].id
+      assert(m.coid == id, "unexpected corrupted set of particle blocks")
+      vec2par(X0[id], m)
       for j=1,6 do
-        local m = mflw[i+j]
-        m[vn[j]] = X0[id][j] + dH[j]
+        m = mflw[i+j]
         assert(m.coid == id, "unexpected corrupted set of particle blocks")
+        vec2par(X0[id], m)
+        m[vn[j]] = X0[id][j] + dH[j]
       end
     end
 
-    -- track blocks of 7 particles
+    -- 2. track blocks of 7 particles
     track { mflow=mflw }
 
-    -- lost particles (if any)
+    -- 3. lost particles (if any)
     if n ~= mflw.npar then
       warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
       -- save information (spos, turn and status set by lostpar)
@@ -194,7 +197,7 @@ local function cofind_jacob (self, mflw)
       assert(n%7 == 0, "unexpected corrupted set of particle blocks")
     end
 
-    -- update orbits
+    -- 4. update orbits
     local i = 1
     while i <= n do
       local m = mflw[i]
@@ -224,22 +227,21 @@ local function cofind_jacob (self, mflw)
         for j=0,6 do mflw[i+j], mflw[n-6+j] = mflw[n-6+j], mflw[i+j] end
         n = n - 7
       else
-        -- set new orbit to primary particle
-        vec2par(X0, m)
         i = i + 7
       end
     end
 
-    -- all particles have been processed
-    if n == 0 then break end
-
     -- update the number of particles to track
     mflw.npar = n
+
+    -- all particles have been processed
+    if n == 0 then break end
 
     -- reset sequence iterator
     mflw:sireset()
   end
 
+  -- 5. mark remaining particles as unstable
   if n ~= 0 then
     errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
     for i=1,n do
@@ -247,7 +249,7 @@ local function cofind_jacob (self, mflw)
     end
   end
 
-  -- remove secondary particles, restore initial id
+  -- 6. remove secondary particles, restore initial id
   local j = 0
   for i=1,mflw.tpar do
     local m = mflw[i]
@@ -259,7 +261,7 @@ local function cofind_jacob (self, mflw)
   assert(7*j == mflw.tpar, "unexpected corrupted set of particle blocks")
   mflw.tpar = j
 
-  -- particles are ordered by stable/unstable/singular/lost then by id
+  -- 7. particles are ordered by stable/unstable/singular/lost then by id
   return mflw.mtbl, msort(mflw)
 end
 
@@ -272,19 +274,23 @@ local function cofind_map (self, mflw)
   -- error handling
   local errf = self.cowarn and warn or errorf
 
-  -- save current orbits, cleanup damaps
+  -- save current orbits
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
-  for i=1,n do X0[i] = mflw[i]:get0() end  -- save current orbit
+  for i=1,n do X0[i] = mflw[i]:get0() end
 
   -- save final translation, temporaries
   local X1, X, R = par2vec(self.X1), vector(6), matrix(6)
 
   -- search for fix points
   for itr=1,coiter do
-    -- track damaps
+
+    -- 1. set order 0 to orbit, order 1 to I, higher orders to 0
+    for i=1,n do mflw[i]:setvar(X0[mflw[i].id]) end
+
+    -- 2. track damaps
     track { mflow=mflw }
 
-    -- lost damaps (if any)
+    -- 3. lost damaps (if any)
     if n ~= mflw.npar then
       warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
       -- save information (spos, turn and status set by lostpar)
@@ -292,7 +298,7 @@ local function cofind_map (self, mflw)
       n = mflw.npar
     end
 
-    -- update orbits
+    -- 4. update orbits
     local i = 1
     while i <= n do
       local m = mflw[i]
@@ -310,7 +316,7 @@ local function cofind_map (self, mflw)
 
       if typ then -- "stable/singular"
         if typ == "stable"
-        then m:setvar(X0).coR = R:copy()
+        then m:set0(X0).coR = R:copy() -- update X0 only
         else warn("cofind: singular matrix (rnk=%d) at iteration %d \z
                    for damap %d.", rnk, itr, m.id0 or m.id)
         end
@@ -320,23 +326,21 @@ local function cofind_map (self, mflw)
         mflw[i], mflw[n] = mflw[n], mflw[i]
         n = n - 1
       else
-        -- set new orbit, order 1 to I, higher orders to 0
-        m:setvar(X0)
         i = i + 1
       end
     end
 
-    -- all damaps have been processed
-    if n == 0 then break end
-
     -- update the number of damap to track
     mflw.npar = n
+
+    -- all damaps have been processed
+    if n == 0 then break end
 
     -- reset sequence iterator
     mflw:sireset()
   end
 
-  -- mark remaining damap as unstable
+  -- 5. mark remaining damap as unstable
   if n ~= 0 then
     errf("cofind: closed orbit(s) did not converge in %d iterations", coiter)
     for i=1,n do
@@ -344,13 +348,13 @@ local function cofind_map (self, mflw)
     end
   end
 
-  -- damaps are ordered by stable/unstable/singular/lost then by id
+  -- 7. damaps are ordered by stable/unstable/singular/lost then by id
   return mflw.mtbl, msort(mflw)
 end
 
 -- cofind command -------------------------------------------------------------o
 
--- input  status: Xset, Bset, Rset, Mset (from track)
+-- input  status: Xset, Mset (from track)
 -- output status: stable, unstable, singular, lost.
 
 local function exec (self)
@@ -384,9 +388,7 @@ local cofind = command 'cofind' {
   dir=nil,           -- s-direction of tracking (1 or -1)                 (trck)
 
   s0=nil,            -- initial s (offset)                                (trck)
-  X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
-  R0=nil,            -- initial R matrix (companion of X0 for damap)      (trck)
-  beta0=nil,         -- initial beta0 block to build R0                   (trck)
+  X0=nil,            -- initial X coordinates (or list of)                (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
   mapdef=true,       -- setup for damap (true => {xy=1})                  (trck)
