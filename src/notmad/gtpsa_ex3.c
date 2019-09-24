@@ -24,7 +24,7 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 6 variables of order 3,3,2,2,1,1
+  // descriptor for TPSA with 6 (map) variables of order 3,3,2,2,1,1
   const desc_t *d = mad_desc_newm(6, (ord_t[]){3,3,2,2,1,1});
 
   // two TPSAs, t2 is same as t1

@@ -24,7 +24,7 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 6 variables of order 5 (Berz's like init)
+  // descriptor for TPSA with 6 (map) variables of order 5
   const desc_t *d = mad_desc_newn(6, 5);
 
   // two TPSAs, t2 is same as t1
