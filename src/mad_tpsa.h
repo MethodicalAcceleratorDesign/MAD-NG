@@ -99,9 +99,9 @@ void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
 num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
 num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
-void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int var);  // TODO: check functions that rely on it
+void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int iv); // TODO: check functions that rely on it
 void    mad_tpsa_derivm  (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
-void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int n);  // TO CHECK n
+void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
 void    mad_tpsa_taylor  (const tpsa_t *a, ssz_t n, const num_t coef[n], tpsa_t *c);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c);  // c += v*a, aliasing OK
