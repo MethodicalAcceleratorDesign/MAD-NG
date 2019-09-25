@@ -866,6 +866,18 @@ module GTPSA
       type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_print
 
+    type(c_ptr) function mad_tpsa_scan(stream_) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: stream_ ! src=c_null_ptr => stdin
+    end function mad_tpsa_scan
+
+    subroutine mad_tpsa_debug(tpsa,name_,stream_) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa    ! src
+      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
+      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+    end subroutine mad_tpsa_debug
+
   end interface
 
   ! ----------------------------------------------------------------------------
@@ -1554,6 +1566,46 @@ module GTPSA
       real(c_num_t), value, intent(in) :: eps_  ! display precision, e.g. 1d-12
       type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
     end subroutine mad_ctpsa_print
+
+    type(c_ptr) function mad_ctpsa_scan(stream_) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: stream_ ! src=c_null_ptr => stdin
+    end function mad_ctpsa_scan
+
+    subroutine mad_ctpsa_debug(ctpsa,name_,stream_) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa   ! src
+      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
+      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+    end subroutine mad_ctpsa_debug
+
+  end interface
+
+  ! ----------------------------------------------------------------------------
+  ! -- C FILEs helpers ---------------------------------------------------------
+  ! ----------------------------------------------------------------------------
+
+  interface
+
+    type(c_ptr) function mad_cio_fopen(path,mode) bind(C, name="fopen")
+      import ; implicit none
+      character(c_char), intent(in) :: path(*), mode(*) ! null terminated strings
+    end function mad_cio_fopen
+
+    integer(c_int) function mad_cio_fclose(stream) bind(C, name="fclose")
+      import ; implicit none
+      type(c_ptr), value :: stream
+    end function mad_cio_fclose
+
+    integer(c_int) function mad_cio_fflush(stream) bind(C, name="fflush")
+      import ; implicit none
+      type(c_ptr), value :: stream
+    end function mad_cio_fflush
+
+    subroutine mad_cio_rewind(stream) bind(C, name="rewind")
+      import ; implicit none
+      type(c_ptr), value :: stream
+    end subroutine mad_cio_rewind
 
   end interface
 
