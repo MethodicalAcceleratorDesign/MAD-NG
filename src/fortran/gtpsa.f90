@@ -37,6 +37,121 @@ module GTPSA
   integer(c_signed_char), parameter :: mad_tpsa_default = -1
   integer(c_signed_char), parameter :: mad_tpsa_same    = -2
 
+  ! -- Monomials ---------------------------------------------------------------
+
+  interface
+
+    integer(c_int32_t) function mad_mono_str(n,mono_a,s) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n  ! monomial and string length
+      integer(c_signed_char) :: mono_a(*)         ! monomial
+      character(c_char), intent(in) :: s(*)       ! monomial as string "[0-9]*"
+    end function mad_mono_str
+
+    subroutine mad_mono_fill(n,mono_a,v) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n     ! monomial length
+      integer(c_signed_char) :: mono_a(*)            ! monomial
+      integer(c_signed_char), intent(in), value :: v ! value
+    end subroutine mad_mono_fill
+
+    subroutine mad_mono_copy(n,mono_a,mono_r) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*) ! src
+      integer(c_signed_char) :: mono_r(*) !           ! dst
+    end subroutine mad_mono_copy
+
+    integer(c_signed_char) function mad_mono_min(n,mono_a) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomial length
+      integer(c_signed_char), intent(in) :: mono_a(*) ! monomial
+    end function mad_mono_min
+
+    integer(c_signed_char) function mad_mono_max(n,mono_a) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomial length
+      integer(c_signed_char), intent(in) :: mono_a(*) ! monomial
+    end function mad_mono_max
+
+    integer(c_int) function mad_mono_ord(n,mono_a) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomial length
+      integer(c_signed_char), intent(in) :: mono_a(*) ! monomial
+    end function mad_mono_ord
+
+    integer(c_int) function mad_mono_eq(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_eq
+
+    integer(c_int) function mad_mono_lt(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_lt
+
+    integer(c_int) function mad_mono_gt(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_gt
+
+    integer(c_int) function mad_mono_le(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_le
+
+    integer(c_int) function mad_mono_ge(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_ge
+
+    integer(c_int) function mad_mono_rcmp(n,mono_a,mono_b) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_rcmp
+
+    subroutine mad_mono_add(n,mono_a,mono_b,mono_r) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*),  mono_b(*) ! src
+      integer(c_signed_char) :: mono_r(*) !           ! dst
+    end subroutine mad_mono_add
+
+    subroutine mad_mono_sub(n,mono_a,mono_b,mono_r) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*),  mono_b(*) ! src
+      integer(c_signed_char) :: mono_r(*) !           ! dst
+    end subroutine mad_mono_sub
+
+    subroutine mad_mono_concat(na,mono_a,nb,mono_b,mono_r) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: na, nb ! monomials lengths
+      integer(c_signed_char), intent(in) :: mono_a(*),  mono_b(*) ! src
+      integer(c_signed_char) :: mono_r(*) !           ! dst[na+nb]
+    end subroutine mad_mono_concat
+
+    subroutine mad_mono_sort(n,mono_a,idxs) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomial length
+      integer(c_signed_char), intent(in) :: mono_a(*) ! src
+      integer(c_int32_t) :: idxs(*) ! index lookup: a[idxs[i]] is sorted by order
+    end subroutine mad_mono_sort
+
+    subroutine mad_mono_print(n,mono_a) bind(C)
+      use, intrinsic :: iso_c_binding
+      integer(c_int32_t), intent(in), value :: n      ! monomial length
+      integer(c_signed_char), intent(in) :: mono_a(*) ! src -> stdout
+    end subroutine mad_mono_print
+
+  end interface
+
   ! -- Descriptor --------------------------------------------------------------
 
   interface
