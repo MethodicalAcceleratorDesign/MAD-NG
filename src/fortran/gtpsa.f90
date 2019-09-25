@@ -24,6 +24,8 @@
 !|   str_t                   -> character(c_char)    ! string (*)
 !|   xxx_t*                  -> ftype(c_xxx)(*)      ! pointer to array of
 !|
+!| Compilation:
+!|   gfortran -W -Wall -Wextra -pedantic -std=f2003 -c gtpsa.f90
 !o-----------------------------------------------------------------------------o
 
 module GTPSA
@@ -51,7 +53,7 @@ module GTPSA
       use, intrinsic :: iso_c_binding
       integer(c_int), intent(in), value :: nmv, nk     ! #map_vars, #knobs
       integer(c_signed_char), intent(in), value :: nmo, ko, dk ! order of map_vars, knobs and across knobs
-    end function mad_desc_newk
+    end function mad_desc_newk           ! ko <= dk <= nk*ko, dk=0 => dk=nk*ko
 
     type(c_ptr) function mad_desc_newm(nmv,mvar_ords) bind(C)
       use, intrinsic :: iso_c_binding
@@ -64,14 +66,14 @@ module GTPSA
       integer(c_int), intent(in), value :: nmv, nv       ! #map_vars, #vars
       integer(c_signed_char), intent(in) :: mvar_ords(*), var_ords(*) ! orders of map_vars, vars
       integer(c_signed_char), intent(in), value :: dk    ! max order across knobs
-    end function mad_desc_newv
+    end function mad_desc_newv  ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
 
     type(c_ptr) function mad_desc_newkv(nmv,mvar_ords,nkv,kvar_ords,nv,var_ords,dk) bind(C)
       use, intrinsic :: iso_c_binding
       integer(c_int), intent(in), value :: nmv, nkv, nv  ! #map_vars, #knobs, #vars
       integer(c_signed_char), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords(*) ! orders of map_vars, knobs, vars
       integer(c_signed_char), intent(in), value :: dk    ! max order across knobs
-    end function mad_desc_newkv
+    end function mad_desc_newkv ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
 
     ! -- Destructor -------------------
 
@@ -397,9 +399,9 @@ module GTPSA
 
     subroutine mad_tpsa_poisson(tpsa_a,tpsa_b,tpsa_r,nv) bind(C)
       use, intrinsic :: iso_c_binding
-      type(c_ptr), intent(in), value :: tpsa_a    ! src
-      type(c_ptr), value :: tpsa_r                ! dst
-      integer(c_int32_t), intent(in), value :: nv ! #variables (desc%nv if 0)
+      type(c_ptr), intent(in), value :: tpsa_a, tpsa_b ! src
+      type(c_ptr), value :: tpsa_r                     ! dst
+      integer(c_int32_t), intent(in), value :: nv    ! #variables (desc%nv if 0)
     end subroutine mad_tpsa_poisson
 
     subroutine mad_tpsa_taylor(tpsa_a,n,coef,tpsa_r) bind(C)
