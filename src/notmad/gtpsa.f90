@@ -14,15 +14,26 @@
 !| WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
 !o-----------------------------------------------------------------------------o
 !|
+!| Notes about optional arguments:
+!|   By convention, identifiers of formal parameters ending with an underscore
+!|   (i.e. _) have optional/default values. Hence optional integers and reals
+!|   can have the value 0 (or 0_1) and 0d0, and pointers can have the value
+!|   c_null (i.e. c_null_ptr).
+!|
+!| Notes about strings:
+!|   All strings are expected to be C null terminated strings. An easy way to
+!|   build null terminated strings is to concatenate c_eos (i.e. c_null_char) at
+!|   the end, e.g. "example of C-style string in fortran"//c_eos.
+!|
 !| Notes about binding MAD C types (e.g. defs.h) to Fortran ISO C types:
 !|   tpsa_t, ctpsa_t, desc_t -> type(c_ptr)          ! void* (opaque pointer)
 !|   log_t                   -> logical(c_bool)
-!|   idx_t, ssz_t            -> integer(c_int32_t)
-!|   ord_t                   -> integer(c_ord_t)
-!|   int                     -> integer(c_int)
-!|   num_t                   -> real(c_double)
+!|   idx_t, ssz_t            -> integer(c_int32_t)   ! literals: 5
+!|   ord_t                   -> integer(c_ord_t)     ! literals: 5_1
+!|   int                     -> integer(c_int)       ! literals: 5
+!|   num_t                   -> real(c_double)       ! literals: 5d0
 !|   cnum_t                  -> complex(c_double_complex)
-!|   str_t                   -> character(c_char)    ! string (*)
+!|   str_t                   -> character(c_char)    ! literals: "hi"//c_eos
 !|   xxx_t*                  -> ftype(c_xxx)(*)      ! pointer to array of
 !|   optional pointer (NULL) -> c_null_ptr           ! pointer name ending by _
 !|
@@ -48,8 +59,11 @@ module GTPSA
   ! -- Constants ---------------------------------------------------------------
   ! ----------------------------------------------------------------------------
 
-  integer(c_ord_t), parameter :: mad_tpsa_default = -1
-  integer(c_ord_t), parameter :: mad_tpsa_same    = -2
+  character(c_char), parameter :: c_eos  = c_null_char ! C-style end of string
+  type(c_ptr)      , parameter :: c_null = c_null_ptr  ! C-style NULL pointer
+
+  integer(c_ord_t) , parameter :: mad_tpsa_default = -1
+  integer(c_ord_t) , parameter :: mad_tpsa_same    = -2
 
   ! ----------------------------------------------------------------------------
   ! -- Monomials ---------------------------------------------------------------
@@ -194,17 +208,17 @@ module GTPSA
       integer(c_ord_t), intent(in) :: mvar_ords(*)  ! orders of map_vars
     end function mad_desc_newm
 
-    type(c_ptr) function mad_desc_newv(nmv,mvar_ords,nv,var_ords,dk) bind(C)
+    type(c_ptr) function mad_desc_newv(nmv,mvar_ords,nv_,var_ords_,dk) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nv  ! #map_vars, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), var_ords(*) ! orders of map_vars, vars
+      integer(c_int), value, intent(in) :: nmv, nv_  ! #map_vars, #vars
+      integer(c_ord_t), intent(in) :: mvar_ords(*), var_ords_(*) ! orders of map_vars, vars
       integer(c_ord_t), value, intent(in) :: dk     ! max order across knobs
     end function mad_desc_newv  ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
 
-    type(c_ptr) function mad_desc_newkv(nmv,mvar_ords,nkv,kvar_ords,nv,var_ords,dk) bind(C)
+    type(c_ptr) function mad_desc_newkv(nmv,mvar_ords,nk,kvar_ords,nv_,var_ords_,dk) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nkv, nv ! #map_vars, #knobs, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords(*) ! orders of map_vars, knobs, vars
+      integer(c_int), value, intent(in) :: nmv, nk, nv_ ! #map_vars, #knobs, #vars
+      integer(c_ord_t), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords_(*) ! orders of map_vars, knobs, vars
       integer(c_ord_t), value, intent(in) :: dk         ! max order across knobs
     end function mad_desc_newkv ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
 
@@ -320,12 +334,12 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst
     end subroutine mad_tpsa_copy
 
-    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r) bind(C)
+    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa     ! src
       type(c_ptr), value :: tpsa_r               ! dst
       integer(c_ssz_t), value, intent(in) :: n   ! vector length
-      integer(c_idx_t), intent(in) :: t2r(*)     ! vector of index lookup
+      integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
     end subroutine mad_tpsa_convert
 
     subroutine mad_tpsa_clear(tpsa) bind(C)
@@ -333,21 +347,21 @@ module GTPSA
       type(c_ptr), value :: tpsa
     end subroutine mad_tpsa_clear
 
-    subroutine mad_tpsa_scalar(tpsa,v,iv,scl) bind(C)
+    subroutine mad_tpsa_scalar(tpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      real(c_num_t), value, intent(in) :: v, scl  ! 0 and 1st order values
-      integer(c_idx_t), value, intent(in) :: iv    ! variable index (1st order)
-    end subroutine mad_tpsa_scalar
+      real(c_num_t), value, intent(in) :: v, scl_  ! 0th and 1st order values
+      integer(c_idx_t), value, intent(in) :: iv_   ! variable index (1st order)
+    end subroutine mad_tpsa_scalar                 ! equiv. to set0 if iv=0
 
     ! -- Indexing / monomials ---------
 
-    integer(c_ord_t) function mad_tpsa_mono(tpsa,n,m,i) bind(C)
+    integer(c_ord_t) function mad_tpsa_mono(tpsa,n,m_,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa
-      integer(c_ssz_t), value, intent(in) :: n ! monomial length
       integer(c_idx_t), value, intent(in) :: i ! slot index
-      integer(c_ord_t) :: m(*)                 ! monomial to fill
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
     end function mad_tpsa_mono
 
     integer(c_idx_t) function mad_tpsa_idxs(tpsa,n,s) bind(C)
@@ -381,7 +395,7 @@ module GTPSA
     real(c_num_t) function mad_tpsa_geti(tpsa,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa
-      integer(c_idx_t), value, intent(in) :: i ! slot index
+      integer(c_idx_t), value, intent(in) :: i  ! slot index
     end function mad_tpsa_geti
 
     real(c_num_t) function mad_tpsa_gets(tpsa,n,s) bind(C)
@@ -410,7 +424,7 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa
       integer(c_idx_t), value, intent(in) :: i  ! slot index
       integer(c_ssz_t), value, intent(in) :: n  ! vector length
-      real(c_num_t) :: v(*)                    ! vector to fill
+      real(c_num_t) :: v(*)                     ! vector to fill
     end subroutine mad_tpsa_getv
 
     ! -- Setters ----------------------
@@ -418,14 +432,14 @@ module GTPSA
     subroutine mad_tpsa_set0(tpsa,a,b) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      real(c_num_t), value, intent(in) :: a, b  ! t[0] = a*t[0]+b
+      real(c_num_t), value, intent(in) :: a, b   ! t[0] = a*t[0]+b
     end subroutine mad_tpsa_set0
 
     subroutine mad_tpsa_seti(tpsa,i,a,b) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
       integer(c_idx_t), value, intent(in) :: i   ! slot index
-      real(c_num_t), value, intent(in) :: a, b  ! t[i] = a*t[i]+b
+      real(c_num_t), value, intent(in) :: a, b   ! t[i] = a*t[i]+b
     end subroutine mad_tpsa_seti
 
     subroutine mad_tpsa_sets(tpsa,n,s,a,b) bind(C)
@@ -433,7 +447,7 @@ module GTPSA
       type(c_ptr), value :: tpsa
       integer(c_ssz_t), value, intent(in) :: n   ! string length or 0 (unknown)
       character(c_char), intent(in) :: s(*)      ! monomial as string "[0-9]*"
-      real(c_num_t), value, intent(in) :: a, b  ! t[s] = a*t[s]+b
+      real(c_num_t), value, intent(in) :: a, b   ! t[s] = a*t[s]+b
     end subroutine mad_tpsa_sets
 
     subroutine mad_tpsa_setm(tpsa,n,m,a,b) bind(C)
@@ -441,7 +455,7 @@ module GTPSA
       type(c_ptr), value :: tpsa
       integer(c_ssz_t), value, intent(in) :: n   ! monomial length
       integer(c_ord_t), intent(in) :: m(*)       ! monomial
-      real(c_num_t), value, intent(in) :: a, b  ! t[m] = a*t[m]+b
+      real(c_num_t), value, intent(in) :: a, b   ! t[m] = a*t[m]+b
     end subroutine mad_tpsa_setm
 
     subroutine mad_tpsa_setsm(tpsa,n,m,a,b) bind(C)
@@ -449,7 +463,7 @@ module GTPSA
       type(c_ptr), value :: tpsa
       integer(c_ssz_t), value, intent(in) :: n   ! monomial length
       integer(c_int), intent(in) :: m(*)         ! sparse monomial (idx,ord)
-      real(c_num_t), value, intent(in) :: a, b  ! t[m] = a*t[m]+b
+      real(c_num_t), value, intent(in) :: a, b   ! t[m] = a*t[m]+b
     end subroutine mad_tpsa_setsm
 
     subroutine mad_tpsa_setv(tpsa,i,n,v) bind(C)
@@ -457,15 +471,15 @@ module GTPSA
       type(c_ptr), value :: tpsa
       integer(c_idx_t), value, intent(in) :: i   ! slot index
       integer(c_ssz_t), value, intent(in) :: n   ! vector length
-      real(c_num_t), intent(in) :: v(*)         ! vector to copy
+      real(c_num_t), intent(in) :: v(*)          ! vector to copy
     end subroutine mad_tpsa_setv
 
     ! -- Operators --------------------
 
-    logical(c_bool) function mad_tpsa_equ(tpsa_a,tpsa_b,eps) bind(C)
+    logical(c_bool) function mad_tpsa_equ(tpsa_a,tpsa_b,eps_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b
-      real(c_num_t), value, intent(in) :: eps  ! tolerance during comparison
+      real(c_num_t), value, intent(in) :: eps_  ! tolerance during comparison
     end function mad_tpsa_equ
 
     subroutine mad_tpsa_add(tpsa_a,tpsa_b,tpsa_r) bind(C)
@@ -508,7 +522,7 @@ module GTPSA
     subroutine mad_tpsa_pown(tpsa_a,v,tpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a   ! src
-      real(c_num_t), value, intent(in) :: v     ! power (real)
+      real(c_num_t), value, intent(in) :: v      ! power (real)
       type(c_ptr), value :: tpsa_r               ! dst
     end subroutine mad_tpsa_pown
 
@@ -520,14 +534,14 @@ module GTPSA
       type(c_ptr), value :: tpsa_r               ! dst
     end subroutine mad_tpsa_abs
 
-    real(c_num_t) function mad_tpsa_nrm1(tpsa_a,tpsa_b) bind(C)
+    real(c_num_t) function mad_tpsa_nrm1(tpsa_a,tpsa_b_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b  ! sum_i |a[i]-b[i]|
+      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b_  ! sum_i |a[i]-b[i]|
     end function mad_tpsa_nrm1
 
-    real(c_num_t) function mad_tpsa_nrm2(tpsa_a,tpsa_b) bind(C)
+    real(c_num_t) function mad_tpsa_nrm2(tpsa_a,tpsa_b_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b  ! sqrt(sum_i (a[i]-b[i])^2)
+      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b_  ! sqrt(sum_i (a[i]-b[i])^2)
     end function mad_tpsa_nrm2
 
     subroutine mad_tpsa_deriv(tpsa_a,tpsa_r,iv) bind(C)
@@ -557,35 +571,35 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa_a    ! src
       type(c_ptr), value :: tpsa_r                ! dst
       integer(c_ssz_t), value, intent(in) :: n    ! vector length
-      real(c_num_t), intent(in) :: coef(*)       ! vector of taylor coefs
+      real(c_num_t), intent(in) :: coef(*)        ! vector of taylor coefs
     end subroutine mad_tpsa_taylor
 
     subroutine mad_tpsa_acc(tpsa_a,v,tpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a    ! src
       type(c_ptr), value :: tpsa_r                ! src and dst
-      real(c_num_t), value, intent(in) :: v      ! r = r + v*a (r not reset!)
+      real(c_num_t), value, intent(in) :: v       ! r = r + v*a (r not reset!)
     end subroutine mad_tpsa_acc
 
     subroutine mad_tpsa_scl(tpsa_a,v,tpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a    ! src
       type(c_ptr), value :: tpsa_r                ! dst
-      real(c_num_t), value, intent(in) :: v      ! r = v*a
+      real(c_num_t), value, intent(in) :: v       ! r = v*a
     end subroutine mad_tpsa_scl
 
     subroutine mad_tpsa_inv(tpsa_a,v,tpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a    ! src
       type(c_ptr), value :: tpsa_r                ! dst
-      real(c_num_t), value, intent(in) :: v      ! r = v/a
+      real(c_num_t), value, intent(in) :: v       ! r = v/a
     end subroutine mad_tpsa_inv
 
     subroutine mad_tpsa_invsqrt(tpsa_a,v,tpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a    ! src
       type(c_ptr), value :: tpsa_r                ! dst
-      real(c_num_t), value, intent(in) :: v      ! r = v/sqrt(a)
+      real(c_num_t), value, intent(in) :: v       ! r = v/sqrt(a)
     end subroutine mad_tpsa_invsqrt
 
     subroutine mad_tpsa_sqrt(tpsa_a,tpsa_r) bind(C)
@@ -742,56 +756,56 @@ module GTPSA
 
     subroutine mad_tpsa_axpb(a,tpsa_x,b,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b   ! coefs
+      real(c_num_t), value, intent(in) :: a, b    ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x    ! src
       type(c_ptr), value :: tpsa_r                ! dst=a*x+b
     end subroutine mad_tpsa_axpb
 
     subroutine mad_tpsa_axpbypc(a,tpsa_x,b,tpsa_y,c,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c      ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c       ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x, tpsa_y  ! src
       type(c_ptr), value :: tpsa_r                      ! dst=a*x+b*y+c
     end subroutine mad_tpsa_axpbypc
 
     subroutine mad_tpsa_axypb(a,tpsa_x,tpsa_y,b,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b         ! coefs
+      real(c_num_t), value, intent(in) :: a, b          ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x, tpsa_y  ! src
       type(c_ptr), value :: tpsa_r                      ! dst=a*x*y+b
     end subroutine mad_tpsa_axypb
 
     subroutine mad_tpsa_axypbzpc(a,tpsa_x,tpsa_y,b,tpsa_z,c,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c             ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c              ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x, tpsa_y, tpsa_z ! src
       type(c_ptr), value :: tpsa_r                             ! dst=a*x*y+b*z+c
     end subroutine mad_tpsa_axypbzpc
 
     subroutine mad_tpsa_axypbvwpc(a,tpsa_x,tpsa_y,b,tpsa_u,tpsa_v,c,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c           ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c            ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x, tpsa_y, tpsa_u, tpsa_v ! src
       type(c_ptr), value :: tpsa_r                           ! dst=a*x*y+b*u*v+c
     end subroutine mad_tpsa_axypbvwpc
 
     subroutine mad_tpsa_ax2pby2pcz2(a,tpsa_x,b,tpsa_y,c,tpsa_z,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c     ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c      ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x, tpsa_y, tpsa_z ! src
       type(c_ptr), value :: tpsa_r                     ! dst=a*x^2+b*y^2+c*z^2
     end subroutine mad_tpsa_ax2pby2pcz2
 
     subroutine mad_tpsa_axpsqrtbpcx2(tpsa_x,a,b,c,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c  ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c   ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x      ! src
       type(c_ptr), value :: tpsa_r                  ! dst=a*x+sqrt(b+c*x^2)
     end subroutine mad_tpsa_axpsqrtbpcx2
 
     subroutine mad_tpsa_logaxpsqrtbpcx2(tpsa_x,a,b,c,tpsa_r) bind(C)
       import ; implicit none
-      real(c_num_t), value, intent(in) :: a, b, c  ! coefs
+      real(c_num_t), value, intent(in) :: a, b, c   ! coefs
       type(c_ptr), value, intent(in) :: tpsa_x      ! src
       type(c_ptr), value :: tpsa_r                  ! dst=log(a*x+sqrt(b+c*x^2))
     end subroutine mad_tpsa_logaxpsqrtbpcx2
@@ -806,9 +820,9 @@ module GTPSA
 
     subroutine mad_tpsa_minv(n,tpsa_a,tpsa_r) bind(C)
       import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n        ! vectors lengths
-      type(c_ptr), intent(in) :: tpsa_a(*)            ! src
-      type(c_ptr) :: tpsa_r(*)                        ! dst
+      integer(c_ssz_t), value, intent(in) :: n      ! vectors lengths
+      type(c_ptr), intent(in) :: tpsa_a(*)          ! src
+      type(c_ptr) :: tpsa_r(*)                      ! dst
     end subroutine mad_tpsa_minv
 
     subroutine mad_tpsa_pminv(n,tpsa_a,tpsa_r,select) bind(C)
@@ -830,7 +844,7 @@ module GTPSA
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: na, nb   ! vectors lengths
       type(c_ptr), intent(in) :: tpsa_a(*)            ! src
-      real(c_num_t), intent(in) :: vb(*)             ! src
+      real(c_num_t), intent(in) :: vb(*)              ! src
       type(c_ptr) :: tpsa_r(*)                        ! dst[na]
     end subroutine mad_tpsa_translate
 
@@ -838,8 +852,8 @@ module GTPSA
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: na, nb   ! vectors lengths
       type(c_ptr), intent(in) :: tpsa_a(*)            ! src
-      real(c_num_t), intent(in) :: vb(*)             ! src
-      real(c_num_t) :: vr(*)                         ! dst[nb]
+      real(c_num_t), intent(in) :: vb(*)              ! src
+      real(c_num_t) :: vr(*)                          ! dst[nb]
     end subroutine mad_tpsa_eval
 
     ! -- I/O functions ----------------
@@ -848,7 +862,7 @@ module GTPSA
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa    ! src
       character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
-      real(c_num_t), value, intent(in) :: eps_ ! display precision, e.g. 1d-12
+      real(c_num_t), value, intent(in) :: eps_  ! display precision, e.g. 1d-12
       type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_print
 
@@ -919,12 +933,12 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r              ! dst
     end subroutine mad_ctpsa_copy
 
-    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r) bind(C)
+    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa    ! src
       type(c_ptr), value :: ctpsa_r              ! dst
       integer(c_ssz_t), value, intent(in) :: n   ! vector length
-      integer(c_idx_t), intent(in) :: t2r(*)     ! vector of index lookup
+      integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
     end subroutine mad_ctpsa_convert
 
     subroutine mad_ctpsa_clear(ctpsa) bind(C)
@@ -932,12 +946,12 @@ module GTPSA
       type(c_ptr), value :: ctpsa
     end subroutine mad_ctpsa_clear
 
-    subroutine mad_ctpsa_scalar(ctpsa,v,iv,scl) bind(C)
+    subroutine mad_ctpsa_scalar(ctpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
-      complex(c_cnum_t), value, intent(in) :: v, scl  ! 0 and 1st order values
-      integer(c_idx_t), value, intent(in) :: iv  ! variable index (1st order)
-    end subroutine mad_ctpsa_scalar
+      complex(c_cnum_t), value, intent(in) :: v, scl_ ! 0th and 1st order values
+      integer(c_idx_t), value, intent(in) :: iv_      ! variable index (1st order)
+    end subroutine mad_ctpsa_scalar                   ! equiv. to set0 if iv=0
 
     ! -- Conversion -------------------
 
@@ -953,20 +967,20 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst=imag(src)
     end subroutine mad_ctpsa_imag
 
-    subroutine mad_ctpsa_complex(tpsa_re,tpsa_im,ctpsa_r) bind(C)
+    subroutine mad_ctpsa_complex(tpsa_re_,tpsa_im_,ctpsa_r) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa_re, tpsa_im ! src
-      type(c_ptr), value :: ctpsa_r                      ! dst=re+i*im
+      type(c_ptr), value, intent(in) :: tpsa_re_, tpsa_im_ ! src
+      type(c_ptr), value :: ctpsa_r                  ! dst=(re or 0)+i*(im or 0)
     end subroutine mad_ctpsa_complex
 
     ! -- Indexing / monomials ---------
 
-    integer(c_ord_t) function mad_ctpsa_mono(ctpsa,n,m,i) bind(C)
+    integer(c_ord_t) function mad_ctpsa_mono(ctpsa,n,m_,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa
-      integer(c_ssz_t), value, intent(in) :: n ! monomial length
-      integer(c_ord_t) :: m(*)                 ! monomial to fill
       integer(c_idx_t), value, intent(in) :: i ! slot index
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
     end function mad_ctpsa_mono
 
     integer(c_idx_t) function mad_ctpsa_idxs(ctpsa,n,s) bind(C)
@@ -1081,10 +1095,10 @@ module GTPSA
 
     ! -- Operators --------------------
 
-    logical(c_bool) function mad_ctpsa_equ(ctpsa_a,ctpsa_b,eps) bind(C)
+    logical(c_bool) function mad_ctpsa_equ(ctpsa_a,ctpsa_b,eps_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b
-      real(c_num_t), value, intent(in) :: eps  ! tolerance during comparison
+      real(c_num_t), value, intent(in) :: eps_  ! tolerance during comparison
     end function mad_ctpsa_equ
 
     subroutine mad_ctpsa_add(ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
@@ -1131,7 +1145,7 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r                     ! dst
     end subroutine mad_ctpsa_pown
 
-    ! -- Operators (complex @ real, real @ complex)
+    ! -- Operators with internal real-to-complex conversion
 
     logical(c_bool) function mad_ctpsa_equt(ctpsa_a,tpsa_b,eps) bind(C)
       import ; implicit none
@@ -1209,14 +1223,14 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r              ! dst
     end subroutine mad_ctpsa_conj
 
-    complex(c_cnum_t) function mad_ctpsa_nrm1(ctpsa_a,ctpsa_b) bind(C)
+    complex(c_cnum_t) function mad_ctpsa_nrm1(ctpsa_a,ctpsa_b_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b ! sum_i|a[i]-b[i]|
+      type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b_ ! sum_i|a[i]-b[i]|
     end function mad_ctpsa_nrm1
 
-    complex(c_cnum_t) function mad_ctpsa_nrm2(ctpsa_a,ctpsa_b) bind(C)
+    complex(c_cnum_t) function mad_ctpsa_nrm2(ctpsa_a,ctpsa_b_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b ! sqrt(sum_i(a[i]-b[i])^2)
+      type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b_ ! sqrt(sum_i(a[i]-b[i])^2)
     end function mad_ctpsa_nrm2
 
     subroutine mad_ctpsa_deriv(ctpsa_a,ctpsa_r,iv) bind(C)
