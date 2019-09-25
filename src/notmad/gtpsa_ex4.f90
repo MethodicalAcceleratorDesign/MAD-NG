@@ -21,12 +21,12 @@ program gtpsa_ex4
   use gtpsa
   implicit none
 
-  double precision  :: pi_6 = 3.14159265358979323846264338327950288d0/6
+  real(c_num_t) :: pi_6 = 3.14159265358979323846264338327950288d0/6
   character(c_char) :: eos = c_null_char ! end of C string
 
   type(c_ptr) :: d, t1, t2
-  real(c_double) :: vec(1:7)
-  integer(c_signed_char) :: no(1:4), vo(1:6)
+  real(c_num_t) :: vec(1:7)
+  integer(c_ord_t) :: no(1:4), vo(1:6)
 
   ! descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
   !                          6 variables of order 2,2,2,2,1,1 (i.e. 2 knobs)
@@ -35,7 +35,7 @@ program gtpsa_ex4
   vo = [2_1,2_1,1_1,1_1,1_1,1_1]
   d=mad_desc_newv(4, no, 6, vo, 2_1)
 
-  ! two TPSAs, t2 is same as t1
+  ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)
   t2=mad_tpsa_new (t1, mad_tpsa_same)
 
