@@ -1099,7 +1099,7 @@ mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko, ord_t dk)
 
   if (nk > 0) {
     if (!dk) dk = nk*ko;
-    assert(ko <= dk && dk <= nk*ko, "invalid knobs cross-orders specification")
+    ensure(ko <= dk && dk <= nk*ko, "invalid knobs cross-orders specification");
   } else dk = 0;
 
   return get_desc(nmv, var_ords, nv, var_ords, dk);
@@ -1127,7 +1127,7 @@ mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
     ord_t ko0 = mad_mono_max(nk, var_ords+nmv);
     ord_t ko1 = mad_mono_ord(nk, var_ords+nmv);
     if (!dk) dk = ko1;
-    assert(ko0 <= dk && dk <= ko1, "invalid knobs cross-orders specification")
+    ensure(ko0 <= dk && dk <= ko1, "invalid knobs cross-orders specification");
   } else dk = 0;
 
   return get_desc(nmv, mvar_ords, nv, var_ords, dk);
@@ -1157,7 +1157,7 @@ mad_desc_newkv (int nmv, const ord_t mvar_ords[nmv],
     ord_t ko0 = mad_mono_max(nk, var_ords+nmv);
     ord_t ko1 = mad_mono_ord(nk, var_ords+nmv);
     if (!dk) dk = ko1;
-    assert(ko0 <= dk && dk <= ko1, "invalid knobs cross-orders specification")
+    ensure(ko0 <= dk && dk <= ko1, "invalid knobs cross-orders specification");
   } else dk = 0;
 
   return get_desc(nmv, mvar_ords, nv, var_ords, dk);
