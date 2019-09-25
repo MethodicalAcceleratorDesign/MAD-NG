@@ -160,7 +160,7 @@ void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
 // to check for non-homogeneous maps & knobs
 void    mad_tpsa_minv     (ssz_t n , const tpsa_t *ma[n ],                                 tpsa_t *mc[n ]);
-void    mad_tpsa_pminv    (ssz_t n , const tpsa_t *ma[n ],                                 tpsa_t *mc[n ], ssz_t select[n]);
+void    mad_tpsa_pminv    (ssz_t n , const tpsa_t *ma[n ],                                 tpsa_t *mc[n ], idx_t select[n]);
 void    mad_tpsa_compose  (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const tpsa_t *mb[nb], tpsa_t *mc[na]);
 void    mad_tpsa_translate(ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t   tb[nb], tpsa_t *mc[na]);
 void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t   tb[nb], num_t   tc[nb]);

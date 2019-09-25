@@ -213,19 +213,19 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
 }
 
 void
-FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], ssz_t selected[sa])
+FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
 {
-  assert(ma && mc && selected);
+  assert(ma && mc && select);
   check_minv(sa,ma,mc);
   for (idx_t i = 0; i < sa; ++i)
-    if (selected[i])
+    if (select[i])
       ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
 
   const D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
   for (idx_t i = 0; i < sa; ++i) {
-    if (selected[i]) {
+    if (select[i]) {
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
       mUnused[i] = FUN(newd)(d,1);
