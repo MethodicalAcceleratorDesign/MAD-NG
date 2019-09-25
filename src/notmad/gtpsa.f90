@@ -200,7 +200,7 @@ module GTPSA
       import ; implicit none
       integer(c_int), value, intent(in) :: nmv, nk       ! #map_vars, #knobs
       integer(c_ord_t), value, intent(in) :: nmo, ko, dk ! order of map_vars, knobs and across knobs
-    end function mad_desc_newk             ! ko <= dk <= nk*ko, dk=0 => dk=nk*ko
+    end function mad_desc_newk                           ! dk <= nk*ko, dk=mad_tpsa_default => dk=ko
 
     type(c_ptr) function mad_desc_newm(nmv,mvar_ords) bind(C)
       import ; implicit none
@@ -210,17 +210,17 @@ module GTPSA
 
     type(c_ptr) function mad_desc_newv(nmv,mvar_ords,nv_,var_ords_,dk) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nv_  ! #map_vars, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), var_ords_(*) ! orders of map_vars, vars
-      integer(c_ord_t), value, intent(in) :: dk     ! max order across knobs
-    end function mad_desc_newv  ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
+      integer(c_int), value, intent(in) :: nmv, nv_ ! #map_vars, #vars
+      integer(c_ord_t), intent(in) :: mvar_ords(*), var_ords_(*) ! orders of map_vars and vars
+      integer(c_ord_t), value, intent(in) :: dk     ! max order across knobs <= ord(vo[nmv+1:nv])
+    end function mad_desc_newv                      ! dk=mad_tpsa_default => dk=max(vo[nmv+1:nv])
 
     type(c_ptr) function mad_desc_newkv(nmv,mvar_ords,nk,kvar_ords,nv_,var_ords_,dk) bind(C)
       import ; implicit none
       integer(c_int), value, intent(in) :: nmv, nk, nv_ ! #map_vars, #knobs, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords_(*) ! orders of map_vars, knobs, vars
-      integer(c_ord_t), value, intent(in) :: dk         ! max order across knobs
-    end function mad_desc_newkv ! max(vo[nmv+1:nv]) <= dk <= ord(vo[nmv+1:nv]), dk=0 => dk=ord
+      integer(c_ord_t), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords_(*) ! orders of map_vars, knobs and vars
+      integer(c_ord_t), value, intent(in) :: dk         ! max order across knobs <= ord(ko[1:nk])
+    end function mad_desc_newkv                         ! dk=mad_tpsa_default => dk=max(ko[1:nk])
 
     ! -- Destructor -------------------
 
