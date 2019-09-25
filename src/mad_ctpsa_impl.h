@@ -6,7 +6,7 @@
  |
  | Complex Truncated Power Series Algebra module implementation (private)
  |
- | Methodical Accelerator Design - Copyright CERN 2016+
+ | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -

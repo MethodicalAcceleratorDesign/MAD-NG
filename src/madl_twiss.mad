@@ -3,7 +3,7 @@
  |
  | Twiss module
  |
- | Methodical Accelerator Design - Copyright CERN 2016+
+ | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
@@ -25,12 +25,12 @@
 
 local command, track, cofind                                      in MAD
 local vector, matrix, gphys, option, warn                         in MAD
-local normal, optfun, phasadv, betablk, dp2pt, has_dpt,
+local normal, optfun, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
 local tblcat, tblrep, assertf, errorf, printf, rep                in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
-      is_mappable, is_vector, is_damap, is_optfun                 in MAD.typeid
+      is_mappable, is_vector, is_damap                            in MAD.typeid
 
 local abs, min, floor                                             in math
 
@@ -241,8 +241,8 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
     if rnk == 4 then A = I6:copy():setsub(r4,r4,A) end
 
     -- get initial linear optical functions and phase advances
-    local of = phasadv(W, optfun(A, {rank=rnk}, coupling))
---  show(of)
+    local of = optfun(A, {rank=rnk}, coupling, W)
+    show(of)
 
     -- clear phase advances
     of.mu1, of.mu2, of.mu3 = 0, 0, 0
@@ -264,12 +264,12 @@ local function twiss_init (self, mflw)
     for i=npar/2+1,npar do mflw[i].nosave=true end
   end
 
-      -- close dispersion (as a function of pt, multiply by beta for dp)
-      local D4 = m.coR:getsub(r4, 6)
-      local R4 = m.coR:getsub(r4,r4)
-      local D4, rnk = (I4-R):solve(D4)
-        print('rnk=', rnk) ; D4:print("D4")
-        :setsub(r4,6,D4)
+!      -- close dispersion (as a function of pt, multiply by beta for dp)
+!      local D4 = m.coR:getsub(r4, 6)
+!      local R4 = m.coR:getsub(r4,r4)
+!      local D4, rnk = (I4-R):solve(D4)
+!        print('rnk=', rnk) ; D4:print("D4")
+!        :setsub(r4,6,D4)
 
 
   -- add twiss data to mflw
@@ -304,9 +304,9 @@ end
 local function make_mflow (self)
   local save, mapdef, chrom in self
 
-  -- enforce damaps orders
+  -- enforce damaps orders (default is 1)
   assert(mapdef, "invalid/missing mapdef (damap required)")
-  if is_true(mapdef) then self.mapdef = {xy=2} end
+  if is_true(mapdef) then self.mapdef = {xy=1} end
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -317,9 +317,9 @@ local function make_mflow (self)
     self.atsave  = atsave == ftrue and fill or achain(fill, atsave)
   end
 
-  -- prepare twiss-track template
+  -- prepare A tracking template
   local _, mflw = track { exec=false } :copy_variables(self)
-                  { nstep=0, mapsave=self.mapsave or self.tkmapsave }
+                  { nstep=0, mapsave=self.mapsave or self.trmapsave }
   if option.debug > 2 then mdump(mflw,'da.') end
 
   -- search for closed orbits (update mflw)
@@ -331,8 +331,8 @@ local function make_mflow (self)
   twiss_init(self, mflw)
 
   -- get one-turn-maps to user-defined orders
-  mflw.mapsave = self.tkmapsave
-  track { mflow=mflw, mapdump=self.tkmapdump }
+  mflw.mapsave = self.trmapsave
+  track { mflow=mflw, mapdump=self.trmapdump }
   if mflw.npar == 0 then return mflw end
   if option.debug > 2 then mdump(mflw,'tk.') end
 
@@ -384,11 +384,10 @@ local twiss = command 'twiss' {
 
   s0=nil,            -- initial s (offset)                                (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
-  R0=nil,            -- initial R matrix (companion of X0 for damap)      (trck)
-  beta0=nil,         -- initial beta0 block to build R0                   (trck)
+  beta0=nil,         -- initial beta0 block to build A0                   (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
-  mapdef=true,       -- always use damap formalism (true => {xy=2})       (twss)
+  mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
   mapsave=nil,       -- save damap in the mtable                          (twss)
   mapdump=nil,       -- dump X and R after each element                   (twss)
 
@@ -398,17 +397,17 @@ local twiss = command 'twiss' {
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
   implicit=nil,      -- slice implicit elements too                       (trck)
+  misalign=nil,      -- consider misalignment errors                      (trck)
   fringe=nil,        -- activate fringe fields (0..7)                     (trck)
   radiate=nil,       -- radiate at slices (NYI)                           (trck)
-  misalign=nil,      -- consider misalignment errors                      (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
 
   save=true,         -- create mtable and save results                    (mtbl)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
-  observe=false,     -- save after all elements                           (mtbl)
+  observe=0,         -- save after all elements                           (mtbl)
+  savesel=nil,       -- save selector (predicate)                         (mtbl)
   coupling=false,    -- save optical functions for non-diagonal modes     (mtbl)
   chrom=false,       -- compute chromaticity by finite difference         (twss)
-  savesel=nil,       -- save selector (predicate)                         (mtbl)
 
   atentry=nil,       -- action called when entering an element  (ataper)  (trck)
   atslice=nil,       -- action called after each element slices (atsave)  (trck)
@@ -426,8 +425,8 @@ local twiss = command 'twiss' {
   cowarn=nil,        -- commute errors into warnings                      (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
 
-  tkmapsave=nil,     -- save track damap in the mtable                    (trck)
-  tkmapdump=nil,     -- mapdump for track                                 (trck)
+  trmapsave=nil,     -- save track damap in the mtable                    (trck)
+  trmapdump=nil,     -- mapdump for track                                 (trck)
 
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
@@ -435,7 +434,7 @@ local twiss = command 'twiss' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    {'coupling', 'chrom', 'tkmapsave', 'tkmapdump', 'comapdef', 'comapdump'},
+    {'coupling', 'chrom', 'trmapsave', 'trmapdump', 'comapdef', 'comapdump'},
     cofind.__attr,
     {noeval=cofind.__attr.noeval}
   )

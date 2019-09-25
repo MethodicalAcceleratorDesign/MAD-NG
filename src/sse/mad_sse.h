@@ -6,7 +6,7 @@
  |
  | SSE2 & AVX2 & AVX512 interface
  |
- | Methodical Accelerator Design - Copyright CERN 2015
+ | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  | Contrib: -
