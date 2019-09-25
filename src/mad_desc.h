@@ -57,6 +57,8 @@ const desc_t* mad_desc_newkv(int nmv, const ord_t mvar_ords[nmv],
 void          mad_desc_del  (const desc_t *d);
 
 // introspection
+int   mad_desc_nv     (const desc_t *d);
+int   mad_desc_nmv    (const desc_t *d);
 ord_t mad_desc_maxord (const desc_t *d);
 ssz_t mad_desc_maxlen (const desc_t *d); // ordlen(maxord) == maxlen
 ssz_t mad_desc_ordlen (const desc_t *d, ord_t mo);

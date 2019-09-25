@@ -1022,6 +1022,20 @@ mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
   return d->tv2to[tbl_index_H_sm(d, n, m)];
 }
 
+int
+mad_desc_nv (const D *d)
+{
+  assert(d);
+  return d->nv;
+}
+
+int
+mad_desc_nmv (const D *d)
+{
+  assert(d);
+  return d->nmv;
+}
+
 ord_t
 mad_desc_maxord (const D *d)
 {

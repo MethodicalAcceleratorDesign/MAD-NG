@@ -1,7 +1,7 @@
 /*
  o-----------------------------------------------------------------------------o
  |
- | TPSA Example 4
+ | TPSA Example 5
  |
  | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -25,10 +25,12 @@
 int main(void)
 {
   // descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
-  //                          6 variables of order 2,2,2,2,1,1 (i.e. 2 knobs)
-  //                            with cross-terms of order 2
-  const desc_t *d = mad_desc_newv(4, (ord_t[]){3,3,2,2},
-                                  6, (ord_t[]){2,2,2,2,1,1}, 2);
+  //                          2 knobs of order 1,1
+  //                          4 variables of order 2,2,1,1 (i.e. maps variables)
+  //                            with knobs cross-terms of order 1
+  const desc_t *d = mad_desc_newkv(4, (ord_t[]){3,3,2,2},
+                                   2, (ord_t[]){1,1},
+                                   4, (ord_t[]){2,2,1,1}, 1);
 
   // two TPSAs, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);

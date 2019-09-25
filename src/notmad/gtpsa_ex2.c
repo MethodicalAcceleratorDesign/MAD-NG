@@ -32,14 +32,15 @@ int main(void)
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
   tpsa_t *t2 = mad_tpsa_new(t1, mad_tpsa_same);
 
-  // set order 0 and 1
-  mad_tpsa_setv(t1, 0, 1+6+5, (double[]){mad_cst_PI/6, 1,1,1,1,1,1, 1,1,1,1,1});
+  // set order 0 and 1 (quick and dirty!)
+  mad_tpsa_setv(t1, 0, 1+6+5, (double[]){M_PI/6, 1,1,1,1,1,1, 1,1,1,1,1});
   mad_tpsa_print(t1, "ini", 0,0);
 
   mad_tpsa_sin(t1, t2);
   mad_tpsa_print(t2, "sin", 0,0);
   mad_tpsa_del(t1);
 
+  // tpsa functions and operators support aliasing (i.e. src == dst)
   mad_tpsa_asin(t2, t2);            // asin(x) = -i*ln(i*x + sqrt(1-x^2))
   mad_tpsa_print(t2, "asin", 0, 0); // see the accuracy of asin(sin)
   mad_tpsa_del(t2);
