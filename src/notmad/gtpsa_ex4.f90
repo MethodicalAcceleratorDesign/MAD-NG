@@ -21,11 +21,9 @@ program gtpsa_ex4
   use gtpsa
   implicit none
 
-  real(c_num_t) :: pi_6 = 3.14159265358979323846264338327950288d0/6
-  character(c_char) :: eos = c_null_char ! end of C string
-
-  type(c_ptr) :: d, t1, t2
-  real(c_num_t) :: vec(1:7)
+  real(c_num_t)    :: pi_6 = 3.14159265358979323846264338327950288d0/6
+  type(c_ptr)      :: d, t1, t2
+  real(c_num_t)    :: vec(1:7)
   integer(c_ord_t) :: no(1:4), vo(1:6)
 
   ! descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
@@ -42,16 +40,16 @@ program gtpsa_ex4
   ! set order 0 and 1 (quick and dirty!)
   vec = [pi_6, 1d0,1d0,1d0,1d0,1d0,1d0]
   call mad_tpsa_setv (t1, 0, 1+6, vec);
-  call mad_tpsa_print(t1, "ini"//eos, 0d0, c_null_ptr);
+  call mad_tpsa_print(t1, "ini"//c_eos, 0d0, c_null);
 
   ! t2=sin(t1)
   call mad_tpsa_sin  (t1, t2)
-  call mad_tpsa_print(t2, "sin"//eos, 0d0, c_null_ptr);
+  call mad_tpsa_print(t2, "sin"//c_eos, 0d0, c_null);
   call mad_tpsa_del  (t1)
 
   ! tpsa functions and operators support aliasing (i.e. src == dst)
   call mad_tpsa_asin (t2, t2);           ! asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  call mad_tpsa_print(t2, "asin"//eos, 0d0, c_null_ptr);
+  call mad_tpsa_print(t2, "asin"//c_eos, 0d0, c_null);
   call mad_tpsa_del  (t2);                ! see the accuracy of asin(sin)
 
   ! destroy all created descriptors (optional cleanup)
