@@ -354,12 +354,12 @@ module GTPSA
       integer(c_idx_t), value, intent(in) :: iv_   ! variable index (1st order)
     end subroutine mad_tpsa_scalar                 ! equiv. to set0 if iv=0
 
-    ! -- Indexing / monomials ---------
+    ! -- Indexing / monomials (return idx_t = -1 if invalid)
 
     integer(c_ord_t) function mad_tpsa_mono(tpsa,n,m_,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa
-      integer(c_idx_t), value, intent(in) :: i ! slot index
+      integer(c_idx_t), value, intent(in) :: i ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n ! monomial length
       integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
     end function mad_tpsa_mono
@@ -395,7 +395,7 @@ module GTPSA
     real(c_num_t) function mad_tpsa_geti(tpsa,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa
-      integer(c_idx_t), value, intent(in) :: i  ! slot index
+      integer(c_idx_t), value, intent(in) :: i  ! slot index (must be valid)
     end function mad_tpsa_geti
 
     real(c_num_t) function mad_tpsa_gets(tpsa,n,s) bind(C)
@@ -422,7 +422,7 @@ module GTPSA
     subroutine mad_tpsa_getv(tpsa,i,n,v) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa
-      integer(c_idx_t), value, intent(in) :: i  ! slot index
+      integer(c_idx_t), value, intent(in) :: i  ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n  ! vector length
       real(c_num_t) :: v(*)                     ! vector to fill
     end subroutine mad_tpsa_getv
@@ -438,7 +438,7 @@ module GTPSA
     subroutine mad_tpsa_seti(tpsa,i,a,b) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      integer(c_idx_t), value, intent(in) :: i   ! slot index
+      integer(c_idx_t), value, intent(in) :: i   ! slot index (must be valid)
       real(c_num_t), value, intent(in) :: a, b   ! t[i] = a*t[i]+b
     end subroutine mad_tpsa_seti
 
@@ -469,7 +469,7 @@ module GTPSA
     subroutine mad_tpsa_setv(tpsa,i,n,v) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      integer(c_idx_t), value, intent(in) :: i   ! slot index
+      integer(c_idx_t), value, intent(in) :: i   ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n   ! vector length
       real(c_num_t), intent(in) :: v(*)          ! vector to copy
     end subroutine mad_tpsa_setv
@@ -985,12 +985,12 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r                  ! dst=(re or 0)+i*(im or 0)
     end subroutine mad_ctpsa_complex
 
-    ! -- Indexing / monomials ---------
+    ! -- Indexing / monomials (return idx_t = -1 if invalid)
 
     integer(c_ord_t) function mad_ctpsa_mono(ctpsa,n,m_,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa
-      integer(c_idx_t), value, intent(in) :: i ! slot index
+      integer(c_idx_t), value, intent(in) :: i ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n ! monomial length
       integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
     end function mad_ctpsa_mono
@@ -1026,7 +1026,7 @@ module GTPSA
     complex(c_cnum_t) function mad_ctpsa_geti(ctpsa,i) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa
-      integer(c_idx_t), value, intent(in) :: i  ! slot index
+      integer(c_idx_t), value, intent(in) :: i  ! slot index (must be valid)
     end function mad_ctpsa_geti
 
     complex(c_cnum_t) function mad_ctpsa_gets(ctpsa,n,s) bind(C)
@@ -1053,7 +1053,7 @@ module GTPSA
     subroutine mad_ctpsa_getv(ctpsa,i,n,v) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa
-      integer(c_idx_t), value, intent(in) :: i  ! slot index
+      integer(c_idx_t), value, intent(in) :: i  ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n  ! vector length
       complex(c_cnum_t) :: v(*)                 ! vector to fill
     end subroutine mad_ctpsa_getv
@@ -1069,7 +1069,7 @@ module GTPSA
     subroutine mad_ctpsa_seti(ctpsa,i,a,b) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
-      integer(c_idx_t), value, intent(in) :: i      ! slot index
+      integer(c_idx_t), value, intent(in) :: i      ! slot index (must be valid)
       complex(c_cnum_t), value, intent(in) :: a, b  ! ct[i] = a*ct[i]+b
     end subroutine mad_ctpsa_seti
 
@@ -1100,7 +1100,7 @@ module GTPSA
     subroutine mad_ctpsa_setv(ctpsa,i,n,v) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
-      integer(c_idx_t), value, intent(in) :: i      ! slot index
+      integer(c_idx_t), value, intent(in) :: i      ! slot index (must be valid)
       integer(c_ssz_t), value, intent(in) :: n      ! vector length
       complex(c_cnum_t), intent(in) :: v(*) ! vector to copy
     end subroutine mad_ctpsa_setv
