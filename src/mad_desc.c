@@ -37,6 +37,14 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
+// --- trace functions --------------------------------------------------------o
+
+#if 1
+#  define DBGFUN(a) printf(#a " %s:%d:\n", __func__, __LINE__)
+#else
+#  define DBGFUN(a)
+#endif
+
 // --- globals ----------------------------------------------------------------o
 
 const  ord_t  mad_tpsa_default = -1;
@@ -69,6 +77,7 @@ static inline void
 nxt_mono_by_unk(ssz_t n, const ord_t a[n], const idx_t sort[n],
                 idx_t r, int o, ord_t m[n])
 {
+  DBGFUN(->);
   assert(a && sort && m);
   mad_mono_fill(n, m, 0);
   for (idx_t k=r; k < n; ++k) {
@@ -78,6 +87,7 @@ nxt_mono_by_unk(ssz_t n, const ord_t a[n], const idx_t sort[n],
     if (o <  0) { m[v] += o; break; }
     if (o == 0) {            break; }
   }
+  DBGFUN(<-);
 }
 
 // --- tables -----------------------------------------------------------------o
@@ -85,29 +95,34 @@ nxt_mono_by_unk(ssz_t n, const ord_t a[n], const idx_t sort[n],
 static inline void
 tbl_print(ssz_t w, ssz_t h, ord_t **t)
 {
+  DBGFUN(->);
   for (idx_t i=0; i < MIN(h,50); ++i) {
     printf("(%2d) ", i);
     mad_mono_print(w, t[i]);
     printf(" o=%d\n", mad_mono_ord(w, t[i]));
   }
   if (h > 50) printf("... [ %d more rows ] ...\n", h - 50);
+  DBGFUN(<-);
 }
 
 static inline void
 tbl_realloc_monos(D *d, ssz_t new_nc_)
 {
+  DBGFUN(->);
+  assert(d);
   // reallocates array of monomials to fit at least new_nc_ items
   // if new_nc_ is 0, it increases the capacity of exiting array
-  assert(d);
   if (!new_nc_) new_nc_ = d->nc * 2;
   d->nc = new_nc_;
   d->monos = mad_realloc(d->monos, d->nc * d->nv * sizeof *d->monos);
   d->ords  = mad_realloc(d->ords,  d->nc         * sizeof *d->monos);
+  DBGFUN(<-);
 }
 
 static inline idx_t  // idx to end of d->monos
 make_higher_ord_monos(D *d, idx_t curr_mono_idx, int need_realloc, idx_t var_at_idx[])
 {
+  DBGFUN(->);
   // ords 2..mo
   int nv = d->nv;
   ord_t m[nv], *curr_mono = d->monos + curr_mono_idx*nv;
@@ -143,16 +158,18 @@ make_higher_ord_monos(D *d, idx_t curr_mono_idx, int need_realloc, idx_t var_at_
   printf("}\n");
 #endif
 
+  DBGFUN(<-);
   return curr_mono_idx;
 }
 
 static inline void
 make_monos(D *d)
 {
+  DBGFUN(->);
   // builds the monomials matrix in To order
   assert(d && d->var_ords);
   const int max_init_alloc = 20000;  // to fit (6,12)
-  d->nc = max_nc(d->nv, d->mo);
+  d->nc = max_nc(d->nv, d->mo);      // too bad for knobs, e.g. mo=10, nv=2000
   int nv = d->nv, need_realloc = 0;
   if (d->nc > max_init_alloc || d->nc < 0) {  // nc < 0 when overflow in max_nc
     need_realloc = 1;
@@ -191,58 +208,82 @@ make_monos(D *d)
   d->size += real_nc*d->nv * sizeof *d->monos;
   d->size += real_nc       * sizeof *d->ords;
   d->size += (d->mo+2)     * sizeof *d->ord2idx;
+  DBGFUN(<-);
 }
 
 /* kept for debugging binary search below.
 static inline int
 find_index_lin(ssz_t n, ord_t **T_, const ord_t m[n], idx_t start, idx_t stop)
 {
+  DBGFUN(->);
   assert(T_ && m);
   const ord_t **T = (const ord_t **)T_;
   for (idx_t i=start; i < stop; ++i)
-    if (mad_mono_eq(n, T[i], m)) return i;
+    if (mad_mono_eq(n, T[i], m)) {
+      DBGFUN(<-);
+      return i;
+    }
 
   // error
-  mad_mono_print(n, m);
+  tbl_print(n, to, T_);
+  mad_mono_print(n, m); putchar('\n');
+  DBGFUN(<-);
   error("this monomial was not found in table (unexpected)");
   return -1; // never reached
 }
 */
 
-enum tbl_ordering {BY_ORD, BY_VAR};
+enum tbl_ordering {BY_VAR, BY_ORD};
 
 static inline int
 find_index_bin(ssz_t n, ord_t **T_, const ord_t m[n], idx_t from, idx_t to,
                enum tbl_ordering tbl_ord)
 {
+  DBGFUN(->);
   const ord_t **T = (const ord_t **)T_;
-  idx_t start = from, count = to-from, i = 0, step = 0;
+  idx_t start = from, count = to-from, step, i;
   int ord_m = mad_mono_ord(n, m);
+
+printf("** %s: from=%d, to=%d, dir=%d\n", __func__, from, to, tbl_ord);
+tbl_print(n, to, T_);
+printf("binary search of "); mad_mono_print(n, m); printf(" o=%d\n", mad_mono_ord(n, m));
+
   while (count > 0) {
     step = count / 2;
     i = start + step;
-    if ((tbl_ord == BY_ORD && mad_mono_ord (n, T[i]) < ord_m)
-                           || mad_mono_rcmp(n, T[i], m) < 0) {
+
+printf("(%2d) ", i); mad_mono_print(n, T[i]);
+printf(" o=%d, start=%2d, count=%2d, i=%2d, step=%2d\n", mad_mono_ord(n, T[i]), start, count, i, step);
+
+    if ((tbl_ord && mad_mono_ord (n, T[i]) < ord_m)
+                 || mad_mono_rcmp(n, T[i], m) < 0) {
       start = ++i;
       count -= step + 1;
     }
     else
       count = step;
   }
-  if (start < to && mad_mono_eq(n, T[start], m))
+  if (start < to && mad_mono_eq(n, T[start], m)) {
+printf("(%2d) ", start); mad_mono_print(n, T[start]); printf(" <- found\n");
+    DBGFUN(<-);
     return start;
+  }
+
+printf(" <- not found\n");
+  DBGFUN(<-);
 
   // error
-  tbl_print(n, to, T_);
-  mad_mono_print(n, m);
+//  tbl_print(n, to, T_);
+//  mad_mono_print(n, m); putchar('\n');
   error("this monomial was not found in table_by_%s from %d to %d (unexpected)",
-         tbl_ord == BY_ORD ? "ord" : "var", from, to);
+         tbl_ord ? "ord" : "var", from, to);
   return -1; // never reached
 }
 
 static inline void
 tbl_by_ord(D *d)
 {
+  DBGFUN(->);
   assert(d && d->var_ords && d->ord2idx && d->monos);
 
   d->To    = mad_malloc(d->nc * sizeof *(d->To));
@@ -255,6 +296,7 @@ tbl_by_ord(D *d)
 #if DEBUG > 1
   tbl_print(d->nv, d->nc, d->To);
 #endif
+  DBGFUN(<-);
 }
 
 /**
@@ -267,6 +309,7 @@ tbl_by_ord(D *d)
 static inline void
 tbl_by_var(D *d)
 {
+  DBGFUN(->);
   assert(d && d->var_ords && d->sort_var && d->monos && d->ord2idx);
 
   d->Tv    = mad_malloc(d->nc * sizeof *d->Tv);
@@ -278,6 +321,7 @@ tbl_by_var(D *d)
   int mi = 0, nv = d->nv;
   ord_t m[nv];
   mad_mono_fill(nv, m, 0);
+
   do {
     int o = mad_mono_ord(nv, m);
     int idx = find_index_bin(nv, d->To, m, d->ord2idx[o], d->ord2idx[o+1], BY_ORD);
@@ -301,6 +345,7 @@ tbl_by_var(D *d)
   for (int i=0; i < MIN(d->nc,50); ++i) printf("%d ", d->to2tv[i]);
   printf("%s]\n", d->nc > 50 ? " ... " : "");
 #endif
+  DBGFUN(<-);
 }
 
 // --- H indexing matrix ------------------------------------------------------
@@ -308,6 +353,7 @@ tbl_by_var(D *d)
 static inline void
 tbl_print_H(const D *d)
 {
+  DBGFUN(->);
   assert(d && d->H);
   int cols = d->mo+2;
   for (int i=0; i < d->nv; ++i) {
@@ -316,11 +362,13 @@ tbl_print_H(const D *d)
       printf("%2d ", d->H[i*cols + j]);
     printf("\n");
   }
+  DBGFUN(<-);
 }
 
 static inline int
 tbl_index_H(const D *d, int n, const ord_t m[n])
 {
+  DBGFUN(->);
   assert(d && n <= d->nv);
   int s = 0, I = 0, cols = d->mo+2;
   const idx_t *H = d->H, *sort = d->sort_var;
@@ -332,12 +380,14 @@ tbl_index_H(const D *d, int n, const ord_t m[n])
     s += m[v];
   }
   assert(I > -1);
+  DBGFUN(<-);
   return I;
 }
 
 static inline int
 tbl_index_H_sm(const D *d, int n, const idx_t m[n])
 {
+  DBGFUN(->);
   assert(d && n/2 <= d->nv && !(n & 1));
   int s = 0, I = 0, cols = d->mo+2, idx, o;
   const int *H = d->H;
@@ -349,12 +399,14 @@ tbl_index_H_sm(const D *d, int n, const idx_t m[n])
     s += o;
   }
   assert(I > -1);
+  DBGFUN(<-);
   return I;
 }
 
 static inline void
 tbl_clear_H(D *d)
 {
+  DBGFUN(->);
   int cols = d->mo+2, accum = 0;
   idx_t *sort = d->sort_var, si;
 
@@ -364,11 +416,13 @@ tbl_clear_H(D *d)
     for (int o=1 + MIN(accum, d->mo); o < cols; ++o)  // ords
       d->H[r*cols + o] = -1;
   }
+  DBGFUN(<-);
 }
 
 static inline void
 tbl_solve_H(D *d)
 {
+  DBGFUN(->);
   idx_t *sort = d->sort_var, v;
   int nv = d->nv, cols = d->mo+2, accum = d->var_ords[sort[nv-1]];
   ord_t mono[nv];
@@ -390,11 +444,13 @@ tbl_solve_H(D *d)
         d->H[r*cols + o] = 0;
     }
   }
+  DBGFUN(<-);
 }
 
 static inline void
 tbl_build_H(D *d)
 {
+  DBGFUN(->);
   idx_t *H = d->H;
   int rows = d->nv, cols = d->mo + 2, nc = d->nc;
   ord_t **Tv = d->Tv;
@@ -431,11 +487,13 @@ tbl_build_H(D *d)
 #if DEBUG > 1
   tbl_print_H(d);
 #endif
+  DBGFUN(<-);
 }
 
 static inline void
 tbl_set_H(D *d)
 {
+  DBGFUN(->);
   assert(d && d->var_ords && d->Tv && d->To);
   assert(d->nv != 0);
 
@@ -450,6 +508,7 @@ tbl_set_H(D *d)
   printf("H = {\n");
   tbl_print_H(d);
 #endif
+  DBGFUN(<-);
 }
 
 // --- L indexing matrix ------------------------------------------------------
@@ -457,6 +516,7 @@ tbl_set_H(D *d)
 static inline void
 tbl_print_LC(const idx_t *lc, int oa, int ob, int *pi)
 {
+  DBGFUN(->);
   int iao = pi[oa], ibo = pi[ob], cols = pi[oa+1] - pi[oa];
   for (int ib = pi[ob]; ib < pi[ob+1]; ++ib) {
     printf("\n  ");
@@ -466,11 +526,13 @@ tbl_print_LC(const idx_t *lc, int oa, int ob, int *pi)
     }
   }
   printf("\n");
+  DBGFUN(<-);
 }
 
 static inline void
 tbl_print_L(const D *d)
 {
+  DBGFUN(->);
   int ho = d->mo / 2;
   for (int oc = 2; oc <= MIN(d->mo,5); ++oc)
     for (int j = 1; j <= oc/2; ++j) {
@@ -478,13 +540,14 @@ tbl_print_L(const D *d)
       printf("L[%d][%d] = {", ob, oa);
       tbl_print_LC(d->L[oa*ho + ob], oa, ob, d->ord2idx);
     }
-  if (d->mo > 5)
-    printf("Orders 5 to %d omitted...\n", d->mo);
+  if (d->mo > 5) printf("Orders 5 to %d omitted...\n", d->mo);
+  DBGFUN(<-);
 }
 
 static inline idx_t*
 tbl_build_LC(int oa, int ob, D *d)
 {
+  DBGFUN(->);
 #if DEBUG > 1
   printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
 #endif
@@ -522,12 +585,14 @@ tbl_build_LC(int oa, int ob, D *d)
     }
   }
 
+  DBGFUN(<-);
   return lc;
 }
 
 static inline int**
 get_LC_idxs(int oa, int ob, D *d)
 {
+  DBGFUN(->);
   int oc = oa + ob;
   const idx_t *pi = d->ord2idx, *lc = d->L[d->mo/2*oa + ob],
                 T = (pi[oc+1] + pi[oc] - 1) / 2;  // splitting threshold of oc
@@ -573,12 +638,14 @@ get_LC_idxs(int oa, int ob, D *d)
   }
 #endif
 
+  DBGFUN(<-);
   return LC_idx;
 }
 
 static inline void
 tbl_set_L(D *d)
 {
+  DBGFUN(->);
   ord_t o = d->mo, ho = d->mo / 2;
   int size_L = (o*ho + 1) * sizeof *(d->L);
   d->L = mad_malloc(size_L);
@@ -604,6 +671,7 @@ tbl_set_L(D *d)
 #if DEBUG > 1
   tbl_print_L(d);
 #endif
+  DBGFUN(<-);
 }
 
 // --- descriptor internal checks ---------------------------------------------o
@@ -688,6 +756,7 @@ tbl_check(D *d)
 static inline void
 get_ops(D *d, long long int ops[])
 {
+  DBGFUN(->);
   int *pi = d->ord2idx;
   ops[0] = ops[1] = ops[2] = 0;
   for (int o = 3; o <= d->mo; ++o) {
@@ -704,11 +773,13 @@ get_ops(D *d, long long int ops[])
   }
   ops[d->mo+1] = ops[d->mo]/2;
   ops[d->mo]  -= ops[d->mo+1];
+  DBGFUN(<-);
 }
 
 static inline int
 get_min_dispatched_idx(int nb_threads, long long int dops[])
 {
+  DBGFUN(->);
   long long int min_disp = dops[nb_threads-1];
   int min_disp_idx = nb_threads - 1;
   for (int t = nb_threads-1; t >= 0; --t)
@@ -716,12 +787,14 @@ get_min_dispatched_idx(int nb_threads, long long int dops[])
       min_disp = dops[t];
       min_disp_idx = t;
     }
+  DBGFUN(<-);
   return min_disp_idx;
 }
 
 static inline void
 build_dispatch (D *d)
 {
+  DBGFUN(->);
   // [0] serial(all), [1..nth] parallel(split)
   int nth = d->nth + (d->nth > 1);
 
@@ -766,11 +839,13 @@ build_dispatch (D *d)
   }
   printf("\n");
 #endif
+  DBGFUN(<-);
 }
 
 static inline void
 set_temps (D *d)
 {
+  DBGFUN(->);
   d->  t = mad_malloc(DESC_MAX_TMP * d->nth * sizeof *d-> t );
   d-> ct = mad_malloc(DESC_MAX_TMP * d->nth * sizeof *d->ct );
   d-> ti = mad_malloc(               d->nth * sizeof *d-> ti);
@@ -789,11 +864,13 @@ set_temps (D *d)
           DESC_MAX_TMP, d->nth, 2*DESC_MAX_TMP*d->nth, 2*DESC_MAX_TMP*d->nth,
           d->nc, 2*DESC_MAX_TMP*d->nth* 3ull*d->nc*sizeof(num_t)/2);
 #endif
+  DBGFUN(<-);
 }
 
 static inline void
 del_temps (D *d)
 {
+  DBGFUN(->);
   for(int j = 0; j < d->nth; ++j) {
   for(int i = 0; i < DESC_MAX_TMP; ++i) {
     mad_tpsa_del (d-> t[j*DESC_MAX_TMP+i]);
@@ -803,6 +880,7 @@ del_temps (D *d)
   mad_free(d-> ct);
   mad_free(d-> ti);
   mad_free(d->cti);
+  DBGFUN(<-);
 }
 
 // --- descriptor management --------------------------------------------------o
@@ -812,18 +890,14 @@ enum { MAX_TPSA_DESC = 50 };    // max number of simultaneous descriptors
 static D  *Ds[MAX_TPSA_DESC];
 
 static inline void
-set_var_ords (D *d, const ord_t var_ords[])
+set_sort_var (D *d)
 {
-  assert(d && var_ords);
+  DBGFUN(->);
+  assert(d);
 
   d->sort_var = mad_malloc(d->nv * sizeof *d->sort_var);
-  mad_mono_sort(d->nv, var_ords, d->sort_var);
+  mad_mono_sort(d->nv, d->var_ords, d->sort_var);
   d->size += d->nv * sizeof *d->sort_var;
-
-  ord_t *vo = mad_malloc(d->nv * sizeof *d->var_ords);
-  mad_mono_copy(d->nv, var_ords, vo);
-  d->var_ords = vo;
-  d->size += d->nv * sizeof *d->var_ords;
 
 #if DEBUG > 1
   printf("var_ords sorting: [");
@@ -831,11 +905,14 @@ set_var_ords (D *d, const ord_t var_ords[])
     printf("%d ", d->sort_var[i]);
   printf("]\n");
 #endif
+  DBGFUN(<-);
 }
 
 static inline D*
-desc_init (int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
+desc_init (int nmv, const ord_t mvar_ords[nmv],
+           int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
+  DBGFUN(->);
   assert(mvar_ords);
 
   D *d = mad_malloc(sizeof *d);
@@ -850,8 +927,15 @@ desc_init (int nmv, const ord_t mvar_ords[nmv], int nv, ord_t ko)
   mad_mono_copy(nmv, mvar_ords, mo);
   d->mvar_ords = mo;
   d->size += nmv * sizeof *d->mvar_ords;
+
+  ord_t *vo = mad_malloc(nv * sizeof *d->var_ords);
+  mad_mono_copy(nv, var_ords, vo);
+  d->var_ords = vo;
+  d->size += nv * sizeof *d->var_ords;
+
   d->nth = omp_get_max_threads();
 
+  DBGFUN(<-);
   return d;
 }
 
@@ -859,10 +943,11 @@ static D*
 desc_build (int nmv, const ord_t mvar_ords[nmv],
             int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
+  DBGFUN(->);
   assert(mvar_ords && var_ords);
 
   // input validation
-  ensure(nmv > 0 && nmv < 1000, "invalid number of map variables [%d]", nmv);
+  ensure(nmv > 0 && nmv < DESC_MAX_VAR, "invalid number of map variables [%d]", nmv);
   ensure(nv >= nmv, "#map variables [%d] exceeds #variables [%d]", nmv, nv);
 
   // variables max orders validation
@@ -876,9 +961,9 @@ desc_build (int nmv, const ord_t mvar_ords[nmv],
   ensure(mad_mono_min(nv, var_ords) > 0,
          "some variables have invalid zero order");
 
-  D *d = desc_init(nmv, mvar_ords, nv, ko);
+  D *d = desc_init(nmv, mvar_ords, nv, var_ords, ko);
 
-  set_var_ords(d, var_ords);
+  set_sort_var(d);
   make_monos(d);
   tbl_by_ord(d);
   tbl_by_var(d);  // requires To
@@ -901,6 +986,7 @@ desc_build (int nmv, const ord_t mvar_ords[nmv],
     assert(NULL);
   }
 
+  DBGFUN(<-);
   return d;
 }
 
@@ -917,16 +1003,28 @@ static inline D*
 get_desc (int nmv, const ord_t mvar_ords[nmv],
           int nv , const ord_t  var_ords[nv ], ord_t ko)
 {
+  DBGFUN(->);
   assert(mvar_ords && var_ords);
 
+#if DEBUG > 1
+  printf("mvar_ords[%2d]: ", nmv);
+  mad_mono_print(nmv, mvar_ords);
+  printf("\n var_ords[%2d]: ", nv);
+  mad_mono_print(nv, var_ords);
+  printf(", dk=%d\n", ko);
+#endif
+
   for (int i=0; i < MAX_TPSA_DESC; ++i)
-    if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, nv, var_ords, ko))
+    if (Ds[i] && desc_equiv(Ds[i], nmv, mvar_ords, nv, var_ords, ko)) {
+      DBGFUN(<-);
       return mad_desc_curr=Ds[i], Ds[i];
+    }
 
   for (int i=0; i < MAX_TPSA_DESC; ++i)
     if (!Ds[i]) {
       Ds[i] = desc_build(nmv, mvar_ords, nv, var_ords, ko);
       Ds[i]->id = i;
+      DBGFUN(<-);
       return mad_desc_curr=Ds[i], Ds[i];
     }
 
