@@ -72,7 +72,7 @@ void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *dst);
 void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *dst);
 void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst);
 
-// indexing / monomials
+// indexing / monomials (return idx_t = -1 if invalid)
 ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
 idx_t    mad_ctpsa_idxs    (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
 idx_t    mad_ctpsa_idxm    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);

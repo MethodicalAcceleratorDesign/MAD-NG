@@ -66,7 +66,7 @@ void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n]);
 void    mad_tpsa_clear   (      tpsa_t *t);
 void    mad_tpsa_scalar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 
-// indexing / monomials
+// indexing / monomials (return idx_t = -1 if invalid)
 ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
 idx_t   mad_tpsa_idxs    (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
 idx_t   mad_tpsa_idxm    (const tpsa_t *t, ssz_t n, const ord_t m [n]);

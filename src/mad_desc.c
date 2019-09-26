@@ -45,7 +45,8 @@ const desc_t *mad_desc_curr    =  0;
 
 // --- constants --------------------------------------------------------------o
 
-enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t) };
+enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t),
+       DESC_MAX_VAR = 100000 };
 
 // --- helpers ----------------------------------------------------------------o
 
@@ -947,7 +948,7 @@ mad_desc_mono_isvalid_m (const D *d, ssz_t n, const ord_t m[n])
 int
 mad_desc_mono_isvalid_s (const D *d, ssz_t n, str_t s)
 {
-  assert(s && n <= 1000000);
+  assert(s && n <= DESC_MAX_VAR);
   if (n <= 0) n = strlen(s);
   ord_t m[n];
   n = mad_mono_str(n, m, s);
@@ -1000,8 +1001,7 @@ idx_t
 mad_desc_get_idx_m (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m);
-  ensure(mad_desc_mono_isvalid_m(d, n, m), "invalid monomial");
-  return d->tv2to[tbl_index_H(d, n, m)];
+  return mad_desc_mono_isvalid_m(d,n,m) ? d->tv2to[tbl_index_H(d,n,m)] : -1;
 }
 
 idx_t
@@ -1018,8 +1018,7 @@ idx_t
 mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
 {
   assert(d && m);
-  ensure(mad_desc_mono_isvalid_sm(d, n, m), "invalid monomial");
-  return d->tv2to[tbl_index_H_sm(d, n, m)];
+  return mad_desc_mono_isvalid_sm(d,n,m) ? d->tv2to[tbl_index_H_sm(d,n,m)] : -1;
 }
 
 int
@@ -1080,8 +1079,8 @@ mad_desc_gtrunc (const D *d_, ord_t to)
 const D*
 mad_desc_newn (int nmv, ord_t mvo)
 {
-  ensure(nmv > 0     , "invalid map variables orders specification");
-  ensure(nmv < 100000, "too many variables");
+  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nmv < DESC_MAX_VAR, "too many variables");
 
   ord_t mvar_ords[nmv];
   mad_mono_fill(nmv, mvar_ords, mvo);
@@ -1093,8 +1092,8 @@ const D*
 mad_desc_newm (int nmv, const ord_t mvar_ords[nmv])
 {
   assert(mvar_ords);
-  ensure(nmv > 0     , "invalid map variables orders specification");
-  ensure(nmv < 100000, "too many variables");
+  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nmv < DESC_MAX_VAR, "too many variables");
 
   return get_desc(nmv, mvar_ords, nmv, mvar_ords, 0);
 }
@@ -1103,9 +1102,9 @@ const D*
 mad_desc_newk (int nmv, ord_t mvo, int nk, ord_t ko, ord_t dk)
 {
   int nv = nmv+nk;
-  ensure(nmv > 0     , "invalid map variables orders specification");
-  ensure(nk  >= 0    , "invalid knob variables orders specification");
-  ensure(nv  < 100000, "too many variables");
+  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nk >= 0, "invalid knob variables orders specification");
+  ensure(nv < DESC_MAX_VAR, "too many variables");
 
   ord_t var_ords[nv];
   mad_mono_fill(nmv, var_ords    , mvo);
@@ -1124,8 +1123,8 @@ mad_desc_newv (int nmv, const ord_t mvar_ords[nmv],
 {
   int nv = MAX(nmv, nv_);
   assert(mvar_ords);
-  ensure(nmv > 0     , "invalid map variables orders specification");
-  ensure(nv  < 100000, "too many variables");
+  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nv < DESC_MAX_VAR, "too many variables");
 
   ord_t var_ords[nv];
   mad_mono_copy(nmv, mvar_ords, var_ords);
@@ -1151,9 +1150,9 @@ mad_desc_newkv (int nmv, const ord_t mvar_ords[nmv],
 {
   int nv = MAX(nmv+nk, nv_);
   assert(mvar_ords && kvar_ords);
-  ensure(nmv > 0     , "invalid map variables orders specification");
-  ensure(nk  >= 0    , "invalid knob variables orders specification");
-  ensure(nv  < 100000, "too many variables");
+  ensure(nmv > 0, "invalid map variables orders specification");
+  ensure(nk >= 0, "invalid knob variables orders specification");
+  ensure(nv < DESC_MAX_VAR, "too many variables");
 
   ord_t var_ords[nv];
   mad_mono_copy(nmv, mvar_ords, var_ords    );
