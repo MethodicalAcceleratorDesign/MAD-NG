@@ -92,6 +92,13 @@ module GTPSA
       integer(c_ord_t) :: mono_r(*) !            ! dst
     end subroutine mad_mono_copy
 
+    subroutine mad_mono_rcopy(n,mono_a,mono_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n   ! monomials lengths
+      integer(c_ord_t), intent(in) :: mono_a(*)  ! src
+      integer(c_ord_t) :: mono_r(*) !            ! dst
+    end subroutine mad_mono_rcopy
+
     integer(c_ord_t) function mad_mono_min(n,mono_a) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: n   ! monomial length
@@ -110,35 +117,17 @@ module GTPSA
       integer(c_ord_t), intent(in) :: mono_a(*)  ! monomial
     end function mad_mono_ord
 
-    integer(c_int) function mad_mono_eq(n,mono_a,mono_b) bind(C)
+    integer(c_int) function mad_mono_equ(n,mono_a,mono_b) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
       integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_eq
+    end function mad_mono_equ
 
-    integer(c_int) function mad_mono_lt(n,mono_a,mono_b) bind(C)
+    integer(c_int) function mad_mono_cmp(n,mono_a,mono_b) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
       integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_lt
-
-    integer(c_int) function mad_mono_gt(n,mono_a,mono_b) bind(C)
-      import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
-      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_gt
-
-    integer(c_int) function mad_mono_le(n,mono_a,mono_b) bind(C)
-      import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
-      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_le
-
-    integer(c_int) function mad_mono_ge(n,mono_a,mono_b) bind(C)
-      import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
-      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_ge
+    end function mad_mono_cmp
 
     integer(c_int) function mad_mono_rcmp(n,mono_a,mono_b) bind(C)
       import ; implicit none
@@ -160,19 +149,12 @@ module GTPSA
       integer(c_ord_t) :: mono_r(*)                        ! dst
     end subroutine mad_mono_sub
 
-    subroutine mad_mono_concat(na,mono_a,nb,mono_b,mono_r) bind(C)
+    subroutine mad_mono_cat(na,mono_a,nb,mono_b,mono_r) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: na, nb        ! monomials lengths
       integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! src
       integer(c_ord_t) :: mono_r(*)                        ! dst[na+nb]
-    end subroutine mad_mono_concat
-
-    subroutine mad_mono_sort(n,mono_a,idxs) bind(C)
-      import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n   ! monomial length
-      integer(c_ord_t), intent(in) :: mono_a(*)  ! src
-      integer(c_idx_t) :: idxs(*)  ! index lookup: a[idxs[i]] is sorted by order
-    end subroutine mad_mono_sort
+    end subroutine mad_mono_cat
 
     subroutine mad_mono_print(n,mono_a) bind(C)
       import ; implicit none
@@ -190,37 +172,24 @@ module GTPSA
 
     ! -- Constructors (all constructors return a descriptor)
 
-    type(c_ptr) function mad_desc_newn(nmv,nmo) bind(C)
+    type(c_ptr) function mad_desc_newn(nv,mo_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv     ! #map_vars
-      integer(c_ord_t), value, intent(in) :: nmo   ! order of map_vars
+      integer(c_int), value, intent(in) :: nv      ! #vars
+      integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa
     end function mad_desc_newn
 
-    type(c_ptr) function mad_desc_newk(nmv,nmo,nk,ko,dk) bind(C)
+    type(c_ptr) function mad_desc_newk(nv,mo_,nk,vo_,ko_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nk       ! #map_vars, #knobs
-      integer(c_ord_t), value, intent(in) :: nmo, ko, dk ! order of map_vars, knobs and across knobs
-    end function mad_desc_newk                           ! dk <= nk*ko, dk=mad_tpsa_default => dk=ko
+      integer(c_int), value, intent(in) :: nv, nk          ! #vars, #knobs
+      integer(c_ord_t), value, intent(in) :: mo_, vo_, ko_ ! order of tpsa, mvars and knobs
+    end function mad_desc_newk
 
-    type(c_ptr) function mad_desc_newm(nmv,mvar_ords) bind(C)
+    type(c_ptr) function mad_desc_newv(nv,mo_,vars_,nk,vo_,ko_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nmv      ! #map_vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*)  ! orders of map_vars
-    end function mad_desc_newm
-
-    type(c_ptr) function mad_desc_newv(nmv,mvar_ords,nv_,var_ords_,dk) bind(C)
-      import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nv_ ! #map_vars, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), var_ords_(*) ! orders of map_vars and vars
-      integer(c_ord_t), value, intent(in) :: dk     ! max order across knobs <= ord(vo[nmv+1:nv])
-    end function mad_desc_newv                      ! dk=mad_tpsa_default => dk=max(vo[nmv+1:nv])
-
-    type(c_ptr) function mad_desc_newkv(nmv,mvar_ords,nk,kvar_ords,nv_,var_ords_,dk) bind(C)
-      import ; implicit none
-      integer(c_int), value, intent(in) :: nmv, nk, nv_ ! #map_vars, #knobs, #vars
-      integer(c_ord_t), intent(in) :: mvar_ords(*), kvar_ords(*), var_ords_(*) ! orders of map_vars, knobs and vars
-      integer(c_ord_t), value, intent(in) :: dk         ! max order across knobs <= ord(ko[1:nk])
-    end function mad_desc_newkv                         ! dk=mad_tpsa_default => dk=max(ko[1:nk])
+      integer(c_int), value, intent(in) :: nv, nk          ! #vars, #knobs
+      integer(c_ord_t), intent(in) :: vars_(*)             ! orders of vars, (mvars and knobs)
+      integer(c_ord_t), value, intent(in) :: mo_, vo_, ko_ ! order of tpsa, mvars and knobs
+    end function mad_desc_newv
 
     ! -- Destructor -------------------
 
@@ -239,6 +208,11 @@ module GTPSA
       import ; implicit none
       type(c_ptr), value, intent(in) :: desc
     end function mad_desc_nv
+
+    integer(c_int) function mad_desc_nk(desc) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: desc
+    end function mad_desc_nk
 
     integer(c_int) function mad_desc_nmv(desc) bind(C)
       import ; implicit none
