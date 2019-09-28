@@ -89,19 +89,19 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   switch(!!re_ + 2*!!im_) {
   case 1: // re_ && !im_
     for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
-      c->coef[i] = re->coef[i];
+      c->coef[i] = re_->coef[i];
     break;
 
   case 2: // !re_ && im_
     for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
-      c->coef[i] = im->coef[i]*I;
+      c->coef[i] = im_->coef[i]*I;
     break;
 
   case 3: // re_ && im_
     for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i) {
       c->coef[i] = 0;
-      if (pi[re->lo] <= i && i < pi[re->hi+1]) c->coef[i] += re->coef[i];
-      if (pi[im->lo] <= i && i < pi[im->hi+1]) c->coef[i] += im->coef[i]*I;
+      if (pi[re_->lo] <= i && i < pi[re_->hi+1]) c->coef[i] += re_->coef[i];
+      if (pi[im_->lo] <= i && i < pi[im_->hi+1]) c->coef[i] += im_->coef[i]*I;
     }
   }
 }

@@ -418,6 +418,8 @@ tbl_set_H(D *d)
 
 // --- L indexing matrix ------------------------------------------------------o
 
+#if DEBUG > 1
+
 static inline void
 tbl_print_LC(const idx_t *lc, int oa, int ob, int *pi)
 {
@@ -444,6 +446,8 @@ tbl_print_L(const D *d)
     }
   if (d->mo > 5) printf("Orders 5 to %d omitted...\n", d->mo);
 }
+
+#endif // DEBUG > 1
 
 static inline idx_t*
 tbl_build_LC(int oa, int ob, D *d)

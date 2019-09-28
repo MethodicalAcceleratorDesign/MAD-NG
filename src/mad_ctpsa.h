@@ -77,6 +77,7 @@ ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t 
 idx_t    mad_ctpsa_idxs    (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
 idx_t    mad_ctpsa_idxm    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);
 idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t    mad_ctpsa_cycle   (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i, num_t *v_);
 
 // accessors
 cnum_t   mad_ctpsa_get0    (const ctpsa_t *t);
@@ -231,12 +232,12 @@ void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cnum_t   tb[nb], cnum_t   tc[nb]);
 
 // I/O
-void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
-ctpsa_t* mad_ctpsa_scan     (                                           FILE *stream_);
+void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
+ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
 const
-desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,             FILE *stream_);
-void     mad_ctpsa_scan_coef(      ctpsa_t *t,                          FILE *stream_);
-void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_,             FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_, FILE *stream_);
+void     mad_ctpsa_scan_coef(      ctpsa_t *t,              FILE *stream_);
+void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, FILE *stream_);
 log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
 
 // unsafe operations !!

@@ -26,7 +26,7 @@
 
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
-#define  SPC "                      "
+#define  SPC "                       "
 #else
 #include "mad_tpsa_impl.h"
 #define  SPC
@@ -81,17 +81,17 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   // discard leading white space and the name (which is 10 chars and comma)
-  ensure(!fscanf(stream_, " %*11c"), "unexpected fscanf returned value");
+  ensure(!fscanf(stream_, " %*[^:]:"), "unexpected fscanf returned value");
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
-  cnt = fscanf(stream_, " %c, NV =%5d, NO =%5hhu, NK =%5d, VO=%5hhu, KO =%5hhu,",
-                        &typ,     &nv,       &mo,     &nk,      &vo,       &ko);
+  cnt = fscanf(stream_, " %c, NV = %d, NO = %hhu, NK = %d, VO = %hhu, KO = %hhu",
+                        &typ,     &nv,       &mo,     &nk,       &vo,       &ko);
 
   if (kind_) *kind_ = typ == 'C';
 
   if (cnt == 3) {
-    // TPSA  -- ignore rest of lines; default values
+    // TPSA -- ignore rest of lines
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 2nd line (vars)
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
@@ -103,6 +103,8 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   if (cnt == 6) {
     // GTPSA -- process rest of lines
     ord_t vars[nv];
+
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
 
     // read var orders
     ensure(!fscanf(stream_, " VAR ORDS: "), "unexpected fscanf returned value");
@@ -159,7 +161,7 @@ FUN(scan) (FILE *stream_)
 }
 
 void
-FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
+FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 {
   assert(t);
 
@@ -168,22 +170,29 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   if (!stream_) stream_ = stdout;
 
 #ifndef MAD_CTPSA_IMPL
-  const char typ = 'C';
-#else
   const char typ = 'R';
+#else
+  const char typ = 'C';
 #endif
 
   const D *d = t->d;
 
+  if (nohdr_) goto coeffonly;
+
   // print header
   fprintf(stream_, d->nk
-                 ? "\n %10s: %c, NV =%5d, NO =%5hhu, NK =%5d, VO=%5hhu, KO =%5hhu,"
-                 : "\n %10s: %c, NV =%5d, NO =%5hhu,",
-                      name_, typ,  d->nv,     d->mo,   d->nk,    d->vo,     d->ko);
+                 ? "\n %-8s:  %c, NV = %3d, NO = %2hhu, NK = %3d, VO = %2hhu, KO = %2hhu"
+                 : "\n %-8s:  %c, NV = %3d, NO = %2hhu",
+                      name_, typ,    d->nv,      d->mo,    d->nk,      d->vo,      d->ko);
 
   fprintf(stream_, "\n VAR ORDS:");
   print_ords(d->nv, d->vars, stream_);
-  fprintf(stream_, "\n *******************************************************");
+  fprintf(stream_, "\n********************************************************");
+#ifdef MAD_CTPSA_IMPL
+  fprintf(stream_, "***********************");
+#endif
+
+coeffonly:
 
   // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
@@ -193,9 +202,9 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
     for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
       if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
-      fprintf(stream_, "\n%6d  %21.14lE%5hhu   "          , ++idx, VAL(t->coef[i]), d->ords[i]);
+      fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VAL(t->coef[i]), d->ords[i]);
 #else
-      fprintf(stream_, "\n%6d  %21.14lE%+21.14lEi%5hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
+      fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
       print_ords(d->nv, d->To[i], stream_);
     }

@@ -325,6 +325,29 @@ FUN(idxsm) (const T *t, ssz_t n, const idx_t m[n])
   return mad_desc_get_idx_sm(t->d, n, m);
 }
 
+idx_t
+FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, num_t *v_)
+{
+  assert(t);
+  const D *d = t->d;
+  ensure(0 <= i && i < d->nc, "index out of bounds");
+
+  idx_t *pi = d->ord2idx;
+  idx_t  ni = pi[t->hi+1];
+  for (i = MAX(i,pi[t->lo]); i < ni; ++i)
+    if (t->coef[i]) break;
+
+  if (i >= ni) return -1;
+
+  if (m_) {
+    ensure(0 <= n && n <= d->nv, "invalid monomial length");
+    mad_mono_copy(n, d->To[i], m_);
+  }
+  if (v_) *v_ = t->coef[i];
+
+  return ++i == ni ? -1 : i;
+}
+
 // --- accessors --------------------------------------------------------------o
 
 NUM
