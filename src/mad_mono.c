@@ -58,7 +58,20 @@ void
 mad_mono_copy (ssz_t n, const ord_t a[n], ord_t r[n])
 {
   assert(a && r);
-  for (idx_t i=0; i < n; ++i) r[i] = a[i];
+  if (a != r)
+    for (idx_t i=0; i < n; ++i) r[i] = a[i];
+}
+
+void
+mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n])
+{
+  assert(a && r);
+  ord_t t;
+  if (a != r)
+    for (idx_t i=0; i < n; ++i) r[i] = a[n-1-i];
+  else
+    for (idx_t i=0; i < n/2; ++i)
+      t = r[i], r[i] = r[n-1-i], r[n-1-i] = t;
 }
 
 void
@@ -116,6 +129,8 @@ mad_mono_print (ssz_t n, const ord_t m[n])
 
 // --- default/reference versions ---------------------------------------------o
 
+#undef __SSE2__ // disable optimized versions
+
 #ifdef __SSE2__
 #define FUN(name)   MKNAME(name,_ref)
 #else
@@ -166,7 +181,7 @@ FUN(mad_mono_rcmp) (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=n-1; i >= 0; --i)
-    if (a[i] != b[i]) return a[i] - b[i];
+    if (a[i] - b[i]) return (int)a[i] - b[i];
   return 0;
 }
 
@@ -197,6 +212,8 @@ FUN(mad_mono_min) (ssz_t n, const ord_t a[n])
 // echo | gcc -dM -E -msse2 - | grep "SSE\|AVX"
 // echo | gcc -dM -E -mavx2 - | grep "SSE\|AVX"
 
+#if 0 // disable optimized versions
+
 #if defined(__AVX512F__) && defined(__AVX512BW__)
 // #warning "AVX512 selected"
 #include "sse/mad_mono_avx512.tc" // never tested
@@ -207,5 +224,7 @@ FUN(mad_mono_min) (ssz_t n, const ord_t a[n])
 // #warning "SSE2 selected"
 #include "sse/mad_mono_sse2.tc"
 #endif // __SSE2__ || __AVX2__ || __AVX512F__
+
+#endif
 
 // --- end --------------------------------------------------------------------o

@@ -41,6 +41,7 @@ typedef unsigned char ord_t;
 ssz_t mad_mono_str   (ssz_t n,       ord_t a[n], str_t s); // string mono "[0-9]*"
 void  mad_mono_fill  (ssz_t n,       ord_t a[n], ord_t v);
 void  mad_mono_copy  (ssz_t n, const ord_t a[n], ord_t r[n]);
+void  mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n]);
 
 ord_t mad_mono_min   (ssz_t n, const ord_t a[n]);
 ord_t mad_mono_max   (ssz_t n, const ord_t a[n]);
