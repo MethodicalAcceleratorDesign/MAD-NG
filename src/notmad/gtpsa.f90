@@ -359,6 +359,15 @@ module GTPSA
       integer(c_int), intent(in) :: m(*)        ! sparse monomial (idx,ord)
     end function mad_tpsa_idxsm
 
+    integer(c_idx_t) function mad_tpsa_cycle(tpsa,n,m_,i,v_) bind(C)
+      import ; implicit none                   ! scan for non-zero coeff starting at i>=0
+      type(c_ptr), value, intent(in) :: tpsa   ! return next i to start with or -1 (end)
+      integer(c_idx_t), value, intent(in) :: i ! slot index (must be valid)
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
+      real(c_num_t), intent(out) :: v_         ! coeff to fill (if provided)
+    end function mad_tpsa_cycle
+
     ! -- Getters ----------------------
 
     real(c_num_t) function mad_tpsa_get0(tpsa) bind(C)
@@ -832,12 +841,13 @@ module GTPSA
 
     ! -- I/O functions ----------------
 
-    subroutine mad_tpsa_print(tpsa,name_,eps_,stream_) bind(C)
+    subroutine mad_tpsa_print(tpsa,name_,eps_,nohdr_,stream_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa    ! src
-      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
-      real(c_num_t), value, intent(in) :: eps_  ! display precision, e.g. 1d-12
-      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+      type(c_ptr), value, intent(in) :: tpsa      ! src
+      character(c_char), intent(in) :: name_(*)   ! name (i.e. null terminated string)
+      real(c_num_t), value, intent(in) :: eps_    ! display precision, e.g. 1d-12
+      integer(c_int), value, intent(in) :: nohdr_ ! discard header if not zero
+      type(c_ptr), value :: stream_               ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_print
 
     type(c_ptr) function mad_tpsa_scan(stream_) bind(C)
@@ -989,6 +999,15 @@ module GTPSA
       integer(c_ssz_t), value, intent(in) :: n  ! monomial length
       integer(c_int), intent(in) :: m(*)        ! sparse monomial (idx,ord)
     end function mad_ctpsa_idxsm
+
+    integer(c_idx_t) function mad_ctpsa_cycle(ctpsa,n,m_,i,v_) bind(C)
+      import ; implicit none                   ! scan for non-zero coeff starting at i>=0
+      type(c_ptr), value, intent(in) :: ctpsa  ! return next i to start with or -1 (end)
+      integer(c_idx_t), value, intent(in) :: i ! slot index (must be valid)
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
+      real(c_cnum_t), intent(out) :: v_        ! coeff to fill (if provided)
+    end function mad_ctpsa_cycle
 
     ! -- Getters ----------------------
 
@@ -1533,12 +1552,13 @@ module GTPSA
 
     ! -- I/O functions ----------------
 
-    subroutine mad_ctpsa_print(ctpsa,name_,eps_,stream_) bind(C)
+    subroutine mad_ctpsa_print(ctpsa,name_,eps_,nohdr_,stream_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: ctpsa   ! src
-      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
-      real(c_num_t), value, intent(in) :: eps_  ! display precision, e.g. 1d-12
-      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+      type(c_ptr), value, intent(in) :: ctpsa     ! src
+      character(c_char), intent(in) :: name_(*)   ! name (i.e. null terminated string)
+      real(c_num_t), value, intent(in) :: eps_    ! display precision, e.g. 1d-12
+      integer(c_int), value, intent(in) :: nohdr_ ! discard header if not zero
+      type(c_ptr), value :: stream_               ! dst=c_null_ptr => stdio
     end subroutine mad_ctpsa_print
 
     type(c_ptr) function mad_ctpsa_scan(stream_) bind(C)
