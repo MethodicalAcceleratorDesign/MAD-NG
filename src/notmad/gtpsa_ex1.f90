@@ -36,29 +36,29 @@ program gtpsa_ex1
 
   ! set order 0 and 1 (quick and dirty!)
   vec = [pi_6, 1d0,1d0,1d0,1d0,1d0,1d0]
-  call mad_tpsa_setv (t1, 0, 1+6, vec);
-  call mad_tpsa_print(t1, "ini"//c_eos, 0d0, c_null);
+  call mad_tpsa_setv (t1, 0, 1+6, vec)
+  call mad_tpsa_print(t1, "ini"//c_eos, 0d0, c_null)
 
   ! t2=sin(t1)
   call mad_tpsa_sin  (t1, t2)
-  call mad_tpsa_print(t2, "sin"//c_eos, 1d-14, c_null);
-  call mad_tpsa_del  (t1)
+  call mad_tpsa_print(t2, "sin"//c_eos, 1d-14, c_null)
+  call mad_tpsa_del  (t1); t1=c_null
 
   ! tpsa functions and operators support aliasing (i.e. src == dst)
   call mad_tpsa_asin (t2, t2);           ! asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  call mad_tpsa_print(t2, "asin"//c_eos, 1d-14, c_null);
+  call mad_tpsa_print(t2, "asin"//c_eos, 1d-14, c_null)
 
   ! write tpsa to a file with no tolerance
   fp = mad_cio_fopen("tpsa2.txt", "w")
   if (c_associated(fp)) then
-    call mad_tpsa_print(t2, "asin"//c_eos, 0d0, fp); ! see the accuracy of asin(sin)
+    call mad_tpsa_print(t2, "asin"//c_eos, 0d0, fp) ! see the accuracy of asin(sin)
     fe = mad_cio_fclose(fp)
   endif
 
   ! delete tpsa 2
-  call mad_tpsa_del(t2);
+  call mad_tpsa_del(t2); t2=c_null
 
   ! destroy all created descriptors (optional cleanup)
-  call mad_desc_cleanup();
+  call mad_desc_cleanup()
 
 end program gtpsa_ex1

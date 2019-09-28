@@ -49,7 +49,7 @@ extern const ord_t mad_tpsa_same;
 
 // ctors, dtor, shape
 tpsa_t* mad_tpsa_newd    (const desc_t *d, ord_t mo); // if mo > d_mo, mo = d_mo
-tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo);
+tpsa_t* mad_tpsa_new     (const tpsa_t *t, ord_t mo); // ok with t=(tpsa_t*)ctpsa
 void    mad_tpsa_del     (const tpsa_t *t);
 
 // introspection
@@ -169,7 +169,7 @@ void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                          FILE *stream_);
 const
-desc_t* mad_tpsa_scan_hdr (                                          FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (                 int  *kind_,             FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                          FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_,             FILE *stream_);
 log_t   mad_tpsa_is_valid (const tpsa_t *t);

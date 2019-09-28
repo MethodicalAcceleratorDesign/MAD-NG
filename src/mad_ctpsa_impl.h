@@ -29,8 +29,8 @@
 
 struct ctpsa { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
   const desc_t *d;
-  ord_t  lo, hi, mo; // lowest/highest used ord, max ord (allocated)
-  bit_t  nz;
+  ord_t lo, hi, mo; // lowest/highest used ord, max ord (allocated)
+  bit_t nz;         // warning: must be identical to tpsa up to nz
   cnum_t coef[];
 };
 

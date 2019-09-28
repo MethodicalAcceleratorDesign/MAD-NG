@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 
 #include "mad_mono.h"
@@ -130,30 +131,6 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
   mad_mono_copy(n, a, r  );
   mad_mono_copy(m, b, r+n);
 }
-
-// --- Sort -------------------------------------------------------------------o
-
-__thread static const ord_t *ords;
-
-static int
-cmp_ords (const void *a, const void *b)
-{
-  int i1 = *(const int*)a;
-  int i2 = *(const int*)b;
-
-  return (int)ords[i1] - ords[i2];
-}
-
-void
-mad_mono_sort (ssz_t n, const ord_t a[n], idx_t idxs[n])
-{
-  assert(a && idxs);
-  ords = a;
-  for (idx_t i=0; i < n; ++i) idxs[i] = i;
-  qsort(idxs, MAX(0,n), sizeof *idxs, cmp_ords);
-}
-
-// --- I/O --------------------------------------------------------------------o
 
 void
 mad_mono_print (ssz_t n, const ord_t m[n])

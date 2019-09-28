@@ -58,24 +58,25 @@ read_ords(int n, ord_t ords[n], FILE *stream)
 
 #ifdef MAD_CTPSA_IMPL
 
-extern const D* mad_tpsa_scan_hdr(FILE*);
+extern const D* mad_tpsa_scan_hdr(int*, FILE*);
 
 const D*
-FUN(scan_hdr) (FILE *stream_)
+FUN(scan_hdr) (int *kind_, FILE *stream_)
 {
-  return mad_tpsa_scan_hdr(stream_);
+  return mad_tpsa_scan_hdr(kind_, stream_);
 }
 
 #else
 
 const D*
-FUN(scan_hdr) (FILE *stream_)
+FUN(scan_hdr) (int *kind_, FILE *stream_)
 {
   enum { BUF_SIZE=256 };
   char buf[BUF_SIZE];
 
-  int nmv=0, nk=0, cnt=0;
-  ord_t mo, ko;
+  int nv=0, nk=0, cnt=0;
+  ord_t mo, vo, ko;
+  char typ;
 
   if (!stream_) stream_ = stdin;
 
@@ -84,41 +85,38 @@ FUN(scan_hdr) (FILE *stream_)
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
-  cnt = fscanf(stream_, " NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d",
-                              &mo,       &nmv,    &ko,       &nk);
+  cnt = fscanf(stream_, " %c, NV =%5d, NO =%5hhu, NK =%5d, VO=%5hhu, KO =%5hhu,",
+                        &typ,     &nv,       &mo,     &nk,      &vo,       &ko);
 
-  if (cnt == 2) {
+  if (kind_) *kind_ = typ == 'C';
+
+  if (cnt == 3) {
     // TPSA  -- ignore rest of lines; default values
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 2nd line
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 2nd line (vars)
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
 
-    ord_t mvar_ords[nmv];
-    mad_mono_fill(nmv, mvar_ords, mo);
-    return mad_desc_newm(nmv, mvar_ords);
+    return mad_desc_newn(nv, mo);
   }
 
-  if (cnt == 4) {
+  if (cnt == 6) {
     // GTPSA -- process rest of lines
-    int nv = nmv+nk;
-    ord_t mvar_ords [nmv], var_ords[nv];
-
-    // read mvars orders
-    ensure(!fscanf(stream_, " MAP ORDS: "), "unexpected fscanf returned value");
-    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
-    read_ords(nmv, mvar_ords, stream_);
+    ord_t vars[nv];
 
     // read var orders
-    ensure(!fscanf(stream_, " ||| VAR ORDS: "), "unexpected fscanf returned value");
+    ensure(!fscanf(stream_, " VAR ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
-    read_ords(nv, var_ords, stream_);
+    read_ords(nv, vars, stream_);
 
-    return mad_desc_newv(nmv, mvar_ords, nv, var_ords, ko);
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
+    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
+
+    return mad_desc_newv(nv, mo, vars, nk, vo, ko);
   }
 
-  if (cnt <  2) error("could not read (NO,NV) from header");
-  if (cnt == 3) error("could not read NK from header");
+  if (cnt < 3) error("could not read (NO,NV) from header");
+  if (cnt < 6) error("could not read (NK,VO,KO) from header");
   return NULL; // never reached
 }
 
@@ -154,7 +152,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
 T*
 FUN(scan) (FILE *stream_)
 {
-  const D *d = FUN(scan_hdr)(stream_);
+  const D *d = FUN(scan_hdr)(0, stream_);
   T *t = FUN(newd)(d, mad_tpsa_default);
   FUN(scan_coef)(t, stream_);
   return t;
@@ -169,14 +167,22 @@ FUN(print) (const T *t, str_t name_, num_t eps_, FILE *stream_)
   if (eps_ < 0) eps_ = 1e-16;
   if (!stream_) stream_ = stdout;
 
+#ifndef MAD_CTPSA_IMPL
+  const char typ = 'C';
+#else
+  const char typ = 'R';
+#endif
+
   const D *d = t->d;
 
   // print header
-  fprintf(stream_, "\n %10s, NO =%5hhu, NV =%5d, KO =%5hhu, NK =%5d\n MAP ORDS:",
-                       name_,    d->mo,  d->nmv,     d->ko, d->nv - d->nmv);
-  print_ords(d->nmv, d->mvar_ords, stream_);
-  fprintf(stream_, " ||| VAR ORDS: ");
-  print_ords(d->nv, d->var_ords, stream_);
+  fprintf(stream_, d->nk
+                 ? "\n %10s: %c, NV =%5d, NO =%5hhu, NK =%5d, VO=%5hhu, KO =%5hhu,"
+                 : "\n %10s: %c, NV =%5d, NO =%5hhu,",
+                      name_, typ,  d->nv,     d->mo,   d->nk,    d->vo,     d->ko);
+
+  fprintf(stream_, "\n VAR ORDS:");
+  print_ords(d->nv, d->vars, stream_);
   fprintf(stream_, "\n *******************************************************");
 
   // print coefficients
