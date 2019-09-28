@@ -159,7 +159,7 @@ set_monos (D *d) // builds the monomials matrix in Tv order
     mad_mono_copy(n, m, d->monos + n*i);
   }
 
-  // resize the matrix
+  // resize the matrix (shrink)
   mono_realloc(d, i);
   d->size += d->nc*d->nv * sizeof *d->monos;
   DBGFUN(<-);
