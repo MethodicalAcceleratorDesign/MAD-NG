@@ -76,6 +76,7 @@ typedef double _Complex cnum_t;
 #ifdef _OPENMP
 #include <omp.h>
 #else
+#define __thread
 #define omp_get_num_procs()   1
 #define omp_get_num_threads() 1
 #define omp_get_max_threads() 1
