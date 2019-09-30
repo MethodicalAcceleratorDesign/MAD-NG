@@ -63,7 +63,7 @@ int main(int argc, const char *argv[])
     else     mad_mono_copy(nv, m0, m);
 
     ord_t o = mad_mono_ord(nv, m);
-    printf("**** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
+    printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
     mad_desc_del(mad_desc_newv(nv, m, nk, ko)); printf("\n");
 
     for(idx_t k=1; nol; k++) {
@@ -77,7 +77,7 @@ int main(int argc, const char *argv[])
       if (i == nv) break; // no more case
 
       ord_t o = mad_mono_ord(nv, m);
-      printf("**** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
+      printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
       mad_desc_del(mad_desc_newv(nv, m, nk, ko)); printf("\n");
     }
   }
