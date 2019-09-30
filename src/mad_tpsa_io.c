@@ -34,6 +34,22 @@
 
 // --- local ------------------------------------------------------------------o
 
+static inline int
+skip_line(FILE *stream)
+{
+  int c;
+  while ((c = fgetc(stream)) != '\n' && c != EOF) ;
+  return c;
+}
+
+static inline void
+print_ords_sm(int n, const ord_t ords[n], FILE *stream)
+{
+  assert(ords && stream);
+  for (int i=0; i < n; i++)
+    if (ords[i]) fprintf(stream, "  %d^%hhu", i, ords[i]);
+}
+
 static inline void
 print_ords(int n, const ord_t ords[n], FILE *stream)
 {
@@ -48,9 +64,25 @@ static inline void
 read_ords(int n, ord_t ords[n], FILE *stream)
 {
   assert(ords && stream);
-  for (int i=0; i < n; ++i) {
-    int cnt = fscanf(stream, "%hhu", &ords[i]);
-    ensure(cnt == 1, "invalid input (missing order?)");
+  idx_t idx;
+  ord_t ord;
+  char  chr;
+
+  mad_mono_fill(n, ords, 0);
+  for (int i=0; i < n; i++) {
+    int cnt = fscanf(stream, " %d%c%hhu", &idx, &chr, &ord);
+
+    if (cnt == 3 && chr == '^') {
+      ensure(0 < idx && idx <= n, "invalid index (expecting 0 < %d <= %d)", idx, n);
+      ords[idx-1] = ord, i = idx-1;
+    } else
+    if (cnt == 3 && chr == ' ') {
+      ords[i] = idx, ords[++i] = ord;
+    } else
+    if (cnt == 1) {
+      ords[i] = idx;
+    } else
+      error("invalid input (missing order?)");
   }
 }
 
@@ -71,9 +103,6 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 const D*
 FUN(scan_hdr) (int *kind_, FILE *stream_)
 {
-  enum { BUF_SIZE=256 };
-  char buf[BUF_SIZE];
-
   int nv=0, nk=0, cnt=0;
   ord_t mo, ko;
   char typ;
@@ -92,10 +121,10 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 2nd line (vars)
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 2nd line (vars)
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     return mad_desc_newn(nv, mo);
   }
@@ -104,15 +133,15 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     // GTPSA -- process rest of lines
     ord_t vars[nv];
 
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // finish  1st line
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
 
     // read var orders
     ensure(!fscanf(stream_, " VAR ORDS: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
     read_ords(nv, vars, stream_);
 
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
-    ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     return mad_desc_newv(nv, vars, nk, ko);
   }
@@ -147,7 +176,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
     if (o <= t->mo)             // discard too high mononial
-     FUN(setm)(t,nv,ords, 0.0,c);
+      FUN(setm)(t,nv,ords, 0.0,c);
   }
 }
 
@@ -206,7 +235,7 @@ coeffonly:
 #else
       fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
 #endif
-      print_ords(d->nv, d->To[i], stream_);
+      (d->nv > 20 ? print_ords_sm : print_ords)(d->nv, d->To[i], stream_);
     }
   }
 
