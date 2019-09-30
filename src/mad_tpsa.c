@@ -262,17 +262,18 @@ FUN(copy) (const T *t, T *r)
 }
 
 void
-FUN(convert) (const T *t, T *r, ssz_t n, idx_t t2r_[n])
+FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
 {
-  assert(t && r);
-  if (t->d == r->d && !t2r_) { FUN(copy)(t,r); return; }
-  ensure(t != r, "invalid destination (aliased source)");
+  assert(t && r_);
+  if (t->d == r_->d && !t2r_) { FUN(copy)(t,r_); return; }
+
+  T *r = t == r_ ? GET_TMPX(r_) : r_;
 
   FUN(reset0)(r);
 
-  ssz_t tn = t->d->nv, rn = r->d->nv;
-  ord_t tm[tn], rm[rn];
-  idx_t t2r[rn];
+  ssz_t rn = r->d->nv, tn = t->d->nv;
+  ord_t rm[rn], tm_[tn+1], *tm=tm_+1; tm_[0]=0; // tm[t2r[i]==-1]==0
+  idx_t t2r[rn]; // rm[i] = tm[t2r[i]], i=0..rn-1
 
   idx_t i = 0;
   if (!t2r_)
@@ -286,13 +287,13 @@ FUN(convert) (const T *t, T *r, ssz_t n, idx_t t2r_[n])
   for (idx_t ti = pi[t->lo]; ti < pi[t->hi+1]; ++ti) {
     if (!t->coef[ti]) continue;
     mad_desc_get_mono(t->d, tn, tm, ti);
-    for (idx_t i = 0; i < rn; ++i)
-      rm[i] = t2r[i] >= 0 ? tm[t2r[i]] : 0;
-    if (mad_desc_mono_isvalid_m(r->d, rn, rm))
-      FUN(setm)(r, rn, rm, 1, t->coef[ti]);
+    for (idx_t i = 0; i < rn; ++i) rm[i] = tm[t2r[i]]; // translate/permute
+    idx_t ir = mad_desc_get_idx_m(r->d, rn, rm);
+    if (ir >= 0) FUN(seti)(r, ir, 0, t->coef[ti]);
   }
 
-  CHECK_VALIDITY(r);
+  if (r != r_) { FUN(copy)(r,r_); REL_TMPX(r); }
+  CHECK_VALIDITY(r_);
 }
 
 // --- indexing / monomials ---------------------------------------------------o
