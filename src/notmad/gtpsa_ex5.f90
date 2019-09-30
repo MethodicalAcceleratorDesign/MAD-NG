@@ -27,13 +27,13 @@ program gtpsa_ex5
 
   ! descriptor for TPSA with 100 variables of order 2 without knobs
   d=mad_desc_newn(100, 2_1)
-  write (*,6) "d2 length=", mad_desc_maxlen(d), 'coefs'
+  print *, "d2 length=", mad_desc_maxlen(d), "coefs"
   call mad_desc_del(d); d=c_null
 
   ! descriptor for TPSA with 100 variables of order 2 including
   !                          94  knobs of order 1 (i.e. 6 main variables)
-  d=mad_desc_newn(100, 2_1, 94, 1_1)
-  write (*,6) "d  length=", mad_desc_maxlen(d), 'coefs'
+  d=mad_desc_newk(100, 2_1, 94, 1_1)
+  print *, "d  length=", mad_desc_maxlen(d), "coefs"
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)

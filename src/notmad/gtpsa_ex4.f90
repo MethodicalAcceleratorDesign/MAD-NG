@@ -29,13 +29,13 @@ program gtpsa_ex4
   ! descriptor for TPSA with 6 variables of order 10,10,10,10,10,10 without knobs
   no=[10_1,10_1, 10_1,10_1, 10_1,10_1]
   d=mad_desc_newv(6, no, 0, 0_1)
-  write (*,6) "d10 length=", mad_desc_maxlen(d), 'coefs'
+  print *, "d10 length=", mad_desc_maxlen(d), "coefs"
   call mad_desc_del(d); d=c_null
 
   ! descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without knobs
   no=[2_1,2_1, 2_1,2_1, 1_1,10_1]
   d=mad_desc_newv(6, no, 0, 0_1)
-  write (*,6) "d   length=", mad_desc_maxlen(d), 'coefs'
+  print *, "d   length=", mad_desc_maxlen(d), "coefs"
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)
