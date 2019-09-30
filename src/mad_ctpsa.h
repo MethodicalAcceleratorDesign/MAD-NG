@@ -123,6 +123,8 @@ void     mad_ctpsa_tsub    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mult    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_divt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_tdiv    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_powt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_tpow    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_poisst  (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int nv);
 void     mad_ctpsa_tpoiss  (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 

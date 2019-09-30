@@ -179,6 +179,26 @@ void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   REL_TMPC(t);
 }
 
+void mad_ctpsa_powt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
+{
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ctpsa_t *t = GET_TMPR(b);
+  mad_ctpsa_complex(b, NULL, t);
+  mad_ctpsa_pow(a, t, c);
+  REL_TMPC(t);
+}
+
+void mad_ctpsa_tpow (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
+{
+  assert(a && b && c);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ctpsa_t *t = GET_TMPR(a);
+  mad_ctpsa_complex(a, NULL, t);
+  mad_ctpsa_pow(t, b, c);
+  REL_TMPC(t);
+}
+
 void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int nv)
 {
   assert(a && b && c);
