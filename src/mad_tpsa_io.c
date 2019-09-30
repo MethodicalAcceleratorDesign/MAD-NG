@@ -122,8 +122,7 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 2nd line (vars)
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 2nd line (****)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     return mad_desc_newn(nv, mo);
@@ -131,19 +130,19 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 
   if (cnt == 5) {
     // GTPSA -- process rest of lines
-    ord_t vars[nv];
+    ord_t vo[nv];
 
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
 
-    // read var orders
-    ensure(!fscanf(stream_, " VAR ORDS: "), "unexpected fscanf returned value");
+    // read variables order
+    ensure(!fscanf(stream_, " VO: "), "unexpected fscanf returned value");
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
-    read_ords(nv, vars, stream_);
+    read_ords(nv, vo, stream_);
 
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
-    return mad_desc_newv(nv, vars, nk, ko);
+    return mad_desc_newv(nv, vo, nk, ko);
   }
 
   if (cnt < 3) error("could not read (NO,NV) from header");
@@ -209,13 +208,15 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   if (nohdr_) goto coeffonly;
 
   // print header
-  fprintf(stream_, d->nk
+  fprintf(stream_, d->nk || d->uvo
                  ? "\n %-8s:  %c, NV = %3d, NO = %2hhu, NK = %3d, KO = %2hhu"
                  : "\n %-8s:  %c, NV = %3d, NO = %2hhu",
                       name_, typ,    d->nv,      d->mo,    d->nk,      d->ko);
 
-  fprintf(stream_, "\n VAR ORDS:");
-  print_ords(d->nv, d->vars, stream_);
+  if (d->uvo) {
+    fprintf(stream_, "\n VO:");
+    print_ords(d->nv, d->vo, stream_);
+  }
   fprintf(stream_, "\n********************************************************");
 #ifdef MAD_CTPSA_IMPL
   fprintf(stream_, "***********************");

@@ -217,13 +217,13 @@ module GTPSA
       integer(c_ord_t), value, intent(in) :: mo_, ko_ ! order of tpsa and knobs
     end function mad_desc_newk
 
-    type(c_ptr) function mad_desc_newv(nv,vars,nk,ko_) bind(C)
-      ! mo = max(vars[0:nv-1])
-      ! ko = nk>0 ? min(mo, max(ko_, max( vars[nv-nk:nv-1] ))) : mo
+    type(c_ptr) function mad_desc_newv(nv,vo,nk,ko_) bind(C)
+      ! mo = max(vo[0:nv-1])
+      ! ko = nk>0 ? min(mo, max(ko_, max( vo[nv-nk:nv-1] ))) : mo
       import ; implicit none
-      integer(c_int), value, intent(in) :: nv, nk   ! #vars, #knobs (i.e. mo=max(vars))
-      integer(c_ord_t), intent(in) :: vars(*)       ! orders of vars, (mvars and knobs)
-      integer(c_ord_t), value, intent(in) :: ko_    ! max order of knobs
+      integer(c_int), value, intent(in) :: nv, nk ! #vars, #knobs (i.e. mo=max(vo))
+      integer(c_ord_t), intent(in) :: vo(*)       ! orders of vars, (mvars and knobs)
+      integer(c_ord_t), value, intent(in) :: ko_  ! max order of knobs
     end function mad_desc_newv
 
     ! -- Destructor -------------------
@@ -246,12 +246,12 @@ module GTPSA
       integer(c_ord_t), optional, intent(out) :: mo_, ko_ ! tpsa order, knobs orders
     end function mad_desc_nvmok
 
-    integer(c_ord_t) function mad_desc_getvar(desc,nv,vars_) bind(C)
-      import ; implicit none                    ! return mo
+    integer(c_ord_t) function mad_desc_getvo(desc,nv,vo_) bind(C)
+      import ; implicit none                   ! return mo
       type(c_ptr), value, intent(in) :: desc
-      integer(c_int), value, intent(in) :: nv   ! number of variables, vars_[1..nv]
-      integer(c_ord_t), intent(out) :: vars_(*) ! orders to be filled if provided
-    end function mad_desc_getvar
+      integer(c_int), value, intent(in) :: nv  ! number of variables, vo_[1..nv]
+      integer(c_ord_t), intent(out) :: vo_(*)  ! orders to be filled if provided
+    end function mad_desc_getvo
 
     integer(c_ord_t) function mad_desc_maxord(desc) bind(C)
       import ; implicit none
@@ -342,6 +342,13 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst
     end subroutine mad_tpsa_copy
 
+    subroutine mad_tpsa_cutord(tpsa,tpsa_r,ord) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa    ! src
+      type(c_ptr), value :: tpsa_r              ! dst
+      integer(c_int), value, intent(in) :: ord  ! cut order: 0..-ord or ord..mo
+    end subroutine mad_tpsa_cutord
+
     subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa     ! src
@@ -350,17 +357,17 @@ module GTPSA
       integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
     end subroutine mad_tpsa_convert
 
-    subroutine mad_tpsa_clear(tpsa) bind(C)
-      import ; implicit none
-      type(c_ptr), value :: tpsa
-    end subroutine mad_tpsa_clear
-
     subroutine mad_tpsa_scalar(tpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
       real(c_num_t), value, intent(in) :: v, scl_  ! 0th and 1st order values
       integer(c_idx_t), value, intent(in) :: iv_   ! variable index (1st order)
     end subroutine mad_tpsa_scalar                 ! equiv. to set0 if iv=0
+
+    subroutine mad_tpsa_clear(tpsa) bind(C)
+      import ; implicit none
+      type(c_ptr), value :: tpsa                 ! clear tpsa (reset to 0)
+    end subroutine mad_tpsa_clear
 
     ! -- Indexing / monomials (return idx_t = -1 if invalid)
 
@@ -962,6 +969,13 @@ module GTPSA
       type(c_ptr), value, intent(in) :: ctpsa    ! src
       type(c_ptr), value :: ctpsa_r              ! dst
     end subroutine mad_ctpsa_copy
+
+    subroutine mad_ctpsa_cutord(ctpsa,ctpsa_r,ord) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa    ! src
+      type(c_ptr), value :: ctpsa_r              ! dst
+      integer(c_int), value, intent(in) :: ord  ! cut order: 0..-ord or ord..mo
+    end subroutine mad_ctpsa_cutord
 
     subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_) bind(C)
       import ; implicit none

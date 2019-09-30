@@ -56,6 +56,7 @@ typedef double _Complex cnum_t;
 #define MIN3(a,b,c)  MIN(a,MIN(b,c))
 #define MAX3(a,b,c)  MAX(a,MAX(b,c))
 #define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
+#define SIGN(a)     ((a)<0 ? -1:1)
 
 #define MKSTR(...)     MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...) #__VA_ARGS__

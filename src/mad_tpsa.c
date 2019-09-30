@@ -262,6 +262,35 @@ FUN(copy) (const T *t, T *r)
 }
 
 void
+FUN(cutord) (const T *t, T *r, int ord)
+{
+  assert(t && r);
+  const D *d = t->d;
+  ensure(d == r->d, "incompatible GTPSAs descriptors");
+
+  if (ord < 0) {
+    ord_t o = -ord;
+    if (o >= t->hi) { FUN(reset0)(r); return; }
+    FUN(copy0)(t, r);
+    r->lo = MIN(MAX(t->lo, o), r->mo);
+    r->nz = mad_bit_lcut(t->nz,o);
+  } else {
+    ord_t o = ord;
+    if (o <= t->lo) { FUN(reset0)(r); return; }
+    FUN(copy0)(t, r);
+    r->hi = MIN3(t->hi, o, r->mo);
+    r->nz = mad_bit_hcut(t->nz,o);
+  }
+
+  if (r != t) {
+    idx_t *o2i = d->ord2idx;
+    for (idx_t i = o2i[r->lo]; i < o2i[r->hi+1]; ++i)
+      r->coef[i] = t->coef[i];
+  }
+  CHECK_VALIDITY(r);
+}
+
+void
 FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
 {
   assert(t && r_);
