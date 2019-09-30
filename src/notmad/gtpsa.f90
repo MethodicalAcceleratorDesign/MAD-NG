@@ -247,11 +247,11 @@ module GTPSA
     end function mad_desc_nvmok
 
     integer(c_ord_t) function mad_desc_getvar(desc,nv,vars_) bind(C)
-      import ; implicit none                 ! return mo
+      import ; implicit none                    ! return mo
       type(c_ptr), value, intent(in) :: desc
-      integer(c_int), intent(in) :: nv       ! number of variables, vars_[1..nv]
-      integer(c_ord_t), intent(out) :: vars_ ! orders to be filled if provided
-    end function mad_desc_nk
+      integer(c_int), value, intent(in) :: nv   ! number of variables, vars_[1..nv]
+      integer(c_ord_t), intent(out) :: vars_(*) ! orders to be filled if provided
+    end function mad_desc_getvar
 
     integer(c_ord_t) function mad_desc_maxord(desc) bind(C)
       import ; implicit none
