@@ -21,38 +21,38 @@ program gtpsa_ex5
   use gtpsa
   implicit none
 
-  real(c_num_t)    :: pi_6 = 3.14159265358979323846264338327950288d0/6
-  type(c_ptr)      :: d, t1, t2
-  real(c_num_t)    :: vec(1:7)
-  integer(c_ord_t) :: no(1:4), ko(1:2), vo(1:4)
+  real(c_num_t) :: pi_6 = 3.14159265358979323846264338327950288d0/6
+  type(c_ptr)   :: d, t1, t2
+  real(c_num_t) :: vec(1:101)
 
-  ! descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
-  !                          2 knobs of order 1,1
-  !                          4 variables of order 2,2,1,1 (i.e. maps variables)
-  !                            with knobs cross-terms of order 1
-  no = [3_1,3_1,2_1,2_1]
-  ko = [1_1,1_1]
-  vo = [2_1,2_1,1_1,1_1]
-  d=mad_desc_newkv(4, no, 2, ko, 4, vo, 1_1)
+  ! descriptor for TPSA with 100 variables of order 2 without knobs
+  d=mad_desc_newn(100, 2_1)
+  write (*,6) "d2 length=", mad_desc_maxlen(d), 'coefs'
+  call mad_desc_del(d); d=c_null
+
+  ! descriptor for TPSA with 100 variables of order 2 including
+  !                          94  knobs of order 1 (i.e. 6 main variables)
+  d=mad_desc_newn(100, 2_1, 94, 1_1)
+  write (*,6) "d  length=", mad_desc_maxlen(d), 'coefs'
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)
   t2=mad_tpsa_new (t1, mad_tpsa_same)
 
   ! set order 0 and 1 (quick and dirty!)
-  vec = [pi_6, 1d0,1d0,1d0,1d0,1d0,1d0]
-  call mad_tpsa_setv (t1, 0, 1+6, vec);
-  call mad_tpsa_print(t1, "ini"//c_eos, 0d0, c_null);
+  vec = 1d0 ; vec(1)=pi_6
+  call mad_tpsa_setv (t1, 0, 1+100, vec);
+  call mad_tpsa_print(t1, "ini"//c_eos, 0d0, 0,c_null);
 
   ! t2=sin(t1)
   call mad_tpsa_sin  (t1, t2)
-  call mad_tpsa_print(t2, "sin"//c_eos, 0d0, c_null);
-  call mad_tpsa_del  (t1)
+  call mad_tpsa_print(t2, "sin"//c_eos, 0d0, 0,c_null);
+  call mad_tpsa_del  (t1); t1=c_null
 
   ! tpsa functions and operators support aliasing (i.e. src == dst)
   call mad_tpsa_asin (t2, t2);           ! asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  call mad_tpsa_print(t2, "asin"//c_eos, 0d0, c_null);
-  call mad_tpsa_del  (t2);                ! see the accuracy of asin(sin)
+  call mad_tpsa_print(t2, "asin"//c_eos, 0d0, 0,c_null);
+  call mad_tpsa_del  (t2); t2=c_null     ! see the accuracy of asin(sin)
 
   ! destroy all created descriptors (optional cleanup)
   call mad_desc_cleanup();
