@@ -34,7 +34,7 @@
 #include <assert.h>
 
 #undef  DEBUG
-#define DEBUG 0 // 1 2
+#define DEBUG 2 // 1 2
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
@@ -159,40 +159,42 @@ set_monos (D *d) // builds the monomials matrix in Tv order
   DBGFUN(<-);
 }
 
-static inline void
-mono_print_sm (ssz_t n, const idx_t m[n])
-{
-  assert(m);
-  ssz_t mn = m[n-1];
-  idx_t i = 0;
-  printf("[ ");
-  for (idx_t mi=0; mi < mn; ++mi)
-    printf("%d ", mi==m[i]-1 ? (int)m[++i] : 0);
-  printf("]\n");
-}
-
 // --- tables -----------------------------------------------------------------o
 
 static inline void
-ord_print (ssz_t n, ord_t *v)
+hsm_print (ssz_t n, const idx_t m[n], int l0_)
 {
-  assert(v);
-  idx_t i = 0;
-  ssz_t l = DEBUG > 1 ? MIN(n,50) : n;
-  printf("[ ");
-  for (; i < l; ++i) printf("%d ", v[i]);
-  printf("%s]\n", l < n ? " ... " : "");
+  assert(m);
+  ssz_t len = printf("[ ") + l0_;
+  for (idx_t i=0; i < n; i+=2) {
+    len += printf("%d^%2hhu ", m[i]-1, m[i+1]);
+    if (len >= 80) { printf("\n"); len = 0; }
+  }
+  printf("]\n");
 }
 
 static inline void
-idx_print (ssz_t n, idx_t *v)
+ord_print (ssz_t n, ord_t v[n], int l0_)
 {
   assert(v);
-  idx_t i=0;
-  ssz_t l = DEBUG > 1 ? MIN(n,50) : n;
-  printf("[ ");
-  for (; i < l; ++i) printf("%d ", v[i]);
-  printf("%s]\n", l < n ? " ... " : "");
+  ssz_t len=printf("[ ") + l0_;
+  for (idx_t i=0; i < n; ++i) {
+    len += printf("%d ", v[i]);
+    if (len >= 80) { printf("\n"); len = 0; }
+  }
+  printf("]\n");
+}
+
+static inline void
+idx_print (ssz_t n, idx_t v[n], int l0_)
+{
+  assert(v);
+  ssz_t len = printf("[ ") + l0_;
+  for (idx_t i=0; i < n; ++i) {
+    len += printf("%d ", v[i]);
+    if (len >= 80) { printf("\n"); len = 0; }
+  }
+  printf("]\n");
 }
 
 static inline void
@@ -285,9 +287,9 @@ tbl_by_ord(D *d)
   d->ord2idx[d->mo+1] = d->nc;
 
 #if DEBUG > 0
-  printf("To =\n");     tbl_print(d->nv  , d->nc, d->To);
-  printf("ords = ");    ord_print(d->nc  , d->ords);    printf("\n");
-  printf("ord2idx = "); idx_print(d->mo+2, d->ord2idx); printf("\n");
+  printf("To =\n"); tbl_print(d->nv, d->nc, d->To);
+  ord_print(d->nc  , d->ords,    printf("ords = "));
+  idx_print(d->mo+2, d->ord2idx, printf("ord2idx = "));
 #endif
   DBGFUN(<-);
 }
@@ -345,8 +347,7 @@ tbl_index_H_sm(const D *d, ssz_t n, const idx_t m[n])
     s += m[i];
   }
   if (I < 0) {
-    printf("%s: I=%d for monomial ", __func__, I);
-    mono_print_sm(n,m);
+    hsm_print(n, m, printf("%s: I=%d for monomial ", __func__, I));
     assert(I > -1);
   }
   return I;
@@ -458,12 +459,12 @@ tbl_set_H(D *d)
 // --- L indexing matrix ------------------------------------------------------o
 
 static inline void
-tbl_print_LC(const idx_t *lc, int oa, int ob, int *pi)
+tbl_print_LC(const idx_t *lc, int oa, int ob, int *o2i)
 {
-  int iao = pi[oa], ibo = pi[ob], cols = pi[oa+1] - pi[oa];
-  for (int ib = pi[ob]; ib < pi[ob+1]; ++ib) {
+  int iao = o2i[oa], ibo = o2i[ob], cols = o2i[oa+1] - o2i[oa];
+  for (int ib = o2i[ob]; ib < o2i[ob+1]; ++ib) {
     printf("\n  ");
-    for (int ia = pi[oa]; ia < pi[oa+1]; ++ia) {
+    for (int ia = o2i[oa]; ia < o2i[oa+1]; ++ia) {
       int ic = lc[hpoly_idx(ib-ibo,ia-iao,cols)];
       printf("%3d ", ic);
     }
@@ -485,7 +486,7 @@ tbl_print_L(const D *d)
 }
 
 static inline idx_t*
-tbl_build_LC(int oa, int ob, D *d)
+tbl_build_LC (int oa, int ob, D *d)
 {
   DBGFUN(->);
 #if DEBUG > 1
@@ -495,23 +496,26 @@ tbl_build_LC(int oa, int ob, D *d)
   assert(oa < d->mo && ob < d->mo);
 
   ord_t **To = d->To;
-  const int *pi   = d->ord2idx,      *tv2to = d->tv2to,          // shorter names
-             iao  = pi[oa],            ibo  = pi[ob],            // offsets
-             cols = pi[oa+1] - pi[oa], rows = pi[ob+1] - pi[ob]; // sizes
+  const int *o2i  = d->ord2idx, *tv2to = d->tv2to, // shorter names
+             iao  = o2i[oa],             // offsets indexes
+             ibo  = o2i[ob],
+             cols = o2i[oa+1] - o2i[oa],
+             rows = o2i[ob+1] - o2i[ob]; // sizes
 
-  int mat_size = rows * cols;
+  int mat_size = rows*cols;
+
   idx_t *lc = mad_malloc(mat_size * sizeof *lc);
   d->size += mat_size * sizeof *lc;
-  for (int i = 0; i < mat_size; ++i)
-    lc[i] = -1;
+
+  for (int i = 0; i < mat_size; ++i) lc[i] = -1;
 
   ord_t m[d->nv];
   int ic, idx_lc;
-  for (int ib = pi[ob]; ib < pi[ob+1]; ++ib) {
-    int lim_a = oa == ob ? ib+1 : pi[oa+1];   // triangular is lower left
-    for (int ia = pi[oa]; ia < lim_a; ++ia) {
+  for (int ib = o2i[ob]; ib < o2i[ob+1]; ++ib) {
+    int lim_a = oa == ob ? ib+1 : o2i[oa+1];   // triangular is lower left
+    for (int ia = o2i[oa]; ia < lim_a; ++ia) {
       mad_mono_add(d->nv, To[ia], To[ib], m);
-      if (mad_desc_mono_isvalid_m(d,d->nv,m)) {
+      if (mono_is_valid(d,d->nv,m)) {
         ic = tv2to[tbl_index_H(d,d->nv,m)];
         idx_lc = hpoly_idx(ib-ibo, ia-iao, cols);
         lc[idx_lc] = ic;
@@ -530,20 +534,24 @@ tbl_build_LC(int oa, int ob, D *d)
 }
 
 static inline int**
-get_LC_idxs(int oa, int ob, D *d)
+get_LC_idxs (int oa, int ob, D *d)
 {
   DBGFUN(->);
   int oc = oa + ob;
-  const idx_t *pi = d->ord2idx, *lc = d->L[d->mo/2*oa + ob],
-                T = (pi[oc+1] + pi[oc] - 1) / 2;  // splitting threshold of oc
-  const int  cols =  pi[oa+1] - pi[oa],
-             rows =  pi[ob+1] - pi[ob];
+printf("0: oa=%d, ob=%d, oc=%d, Li=%d\n", oa, ob, oc, d->mo/2*oa + ob);
+  const idx_t *o2i = d->ord2idx, *lc = d->L[d->mo/2*oa + ob];
+printf("0.1\n");
+  const idx_t   T = (o2i[oc+1] + o2i[oc] - 1) / 2;  // splitting threshold of oc
+printf("0.2 T=%d\n", T);
+  const int  cols =  o2i[oa+1] - o2i[oa],
+             rows =  o2i[ob+1] - o2i[ob];
+printf("1 cols=%d, rows=%d\n", cols, rows);
 
   int **LC_idx = mad_malloc(3 * sizeof *LC_idx);
   d->size += 3 * sizeof *LC_idx;
 
-  int *limits = mad_malloc(3 * rows * sizeof *limits); // rows: [start split end]
-  d->size += 3 * rows * sizeof *limits;
+  int *limits = mad_malloc(3*rows * sizeof *limits); // rows: [start split end]
+  d->size += 3*rows * sizeof *limits;
 
   const int START = 0, SPLIT = 1, END = 2;
 
@@ -551,16 +559,22 @@ get_LC_idxs(int oa, int ob, D *d)
   LC_idx[SPLIT] = limits +   rows;
   LC_idx[END  ] = limits + 2*rows;
 
+printf("2\n");
   for (int ib = 0; ib < rows; ++ib) {
     int ia;
+printf("3.1\n");
     for (ia = 0; lc[hpoly_idx(ib,ia,cols)] == -1; ++ia)
       ;  // shift ia to first valid entry
+printf("3.2 ia=%d, ib=%d (START=%d)\n", ia, ib, START);
     LC_idx[START][ib] = ia;
 
+printf("3.3\n");
     for (ia = oa == ob ? ib : cols-1; lc[hpoly_idx(ib,ia,cols)] == -1; --ia)
       ;  // shift ia to last valid entry
+printf("3.4\n");
     LC_idx[END  ][ib] = ia + 1;
 
+printf("3.5\n");
     LC_idx[SPLIT][ib] = oa == ob ? ib+1 : cols;
     for (ia = LC_idx[START][ib]; ia < LC_idx[END][ib]; ++ia)
       if (lc[hpoly_idx(ib,ia,cols)] >= T) {
@@ -568,6 +582,8 @@ get_LC_idxs(int oa, int ob, D *d)
         break;
       }
   }
+
+printf("4\n");
 
 #if DEBUG > 1
   if (oc <= 5) {
@@ -583,31 +599,31 @@ get_LC_idxs(int oa, int ob, D *d)
 }
 
 static inline void
-tbl_set_L(D *d)
+tbl_set_L (D *d)
 {
   DBGFUN(->);
-  ord_t o = d->mo, ho = d->mo / 2;
-  int size_L = (o*ho + 1) * sizeof *(d->L);
-  d->L = mad_malloc(size_L);
-  d->size += size_L;
+  ssz_t ho = d->mo/2;
 
-  int size_lci = (o*ho + 1) * sizeof *(d->L_idx);
-  d->L_idx = mad_malloc(size_lci);
-  d->size += size_lci;
+  size_t L_sz = (ho*d->mo+1) * sizeof *(d->L);
+  d->L = mad_malloc(L_sz);
+  d->size += L_sz;
 
-  memset(d->L,     0, size_L);
-  memset(d->L_idx, 0, size_lci);
+  size_t Li_sz = (ho*d->mo+1) * sizeof *(d->L_idx);
+  d->L_idx = mad_malloc(Li_sz);
+  d->size += Li_sz;
+
+  memset(d->L,     0, L_sz );
+  memset(d->L_idx, 0, Li_sz);
   // #ifdef _OPENMP
   // #pragma omp parallel for schedule(guided,1)
   // #endif
-  for (int oc = 2; oc <= d->mo; ++oc)
-    for (int j = 1; j <= oc / 2; ++j) {
-      int oa = oc - j, ob = j;
-
+  for (ord_t oc=2; oc <= d->mo; ++oc) {
+    for (ord_t j=1; j <= oc/2; ++j) {
+      ord_t oa = oc-j, ob = j;
       d->L    [oa*ho + ob] = tbl_build_LC(oa, ob, d);
       d->L_idx[oa*ho + ob] = get_LC_idxs (oa, ob, d);
     }
-
+  }
 #if DEBUG > 0
   tbl_print_L(d);
 #endif
@@ -621,7 +637,7 @@ tbl_check_L (D *d)
 {
   DBGFUN(->);
   assert(d && d->ord2idx && d->L && d->vars && d->To && d->H);
-  int ho = d->mo / 2, *pi = d->ord2idx;
+  int ho = d->mo / 2, *o2i = d->ord2idx;
   ord_t m[d->nv];
   for (int oc = 2; oc <= d->mo; ++oc)
     for (int j = 1; j <= oc / 2; ++j) {
@@ -629,18 +645,18 @@ tbl_check_L (D *d)
       idx_t *lc = d->L[oa*ho + ob];
       if (!lc)                                     return  1e7 + oa*1e3 + ob;
 
-      int sa = pi[oa+1]-pi[oa], sb = pi[ob+1]-pi[ob];
+      int sa = o2i[oa+1]-o2i[oa], sb = o2i[ob+1]-o2i[ob];
 
       for (int ibl = 0; ibl < sb; ++ibl) {
         int lim_a = oa == ob ? ibl+1 : sa;
         for (int ial = 0; ial < lim_a; ++ial) {
-          int ib = ibl + pi[ob], ia = ial + pi[oa];
+          int ib = ibl + o2i[ob], ia = ial + o2i[oa];
           int il = hpoly_idx(ibl,ial,sa);
           if (il < 0)                              return -2e7 - ia*1e5 - ib;
           if (il >= sa * sb)                       return  2e7 + ia*1e5 + ib;
 
           int ic = lc[il];
-          if (ic >= pi[oc+1])                      return  3e7 + ic*1e5 + 11;
+          if (ic >= o2i[oc+1])                     return  3e7 + ic*1e5 + 11;
           if (ic >= 0 && ic < d->ord2idx[oc])      return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
@@ -709,18 +725,18 @@ static inline void
 get_ops(D *d, long long int ops[])
 {
   DBGFUN(->);
-  int *pi = d->ord2idx;
+  int *o2i = d->ord2idx;
   ops[0] = ops[1] = ops[2] = 0;
   for (int o = 3; o <= d->mo; ++o) {
     ops[o] = 0;
     for (int j = 1; j <= (o-1)/2; ++j) {
       int oa = o-j, ob = j;            // oa > ob >= 1
-      int na = pi[oa+1] - pi[oa], nb = pi[ob+1] - pi[ob];
+      int na = o2i[oa+1] - o2i[oa], nb = o2i[ob+1] - o2i[ob];
       ops[o] += 2 * na * nb;
     }
     if (!(o & 1)) {
       int ho = o/2;
-      ops[o] += (pi[ho+1]-pi[ho]) * (pi[ho+1]-pi[ho]);
+      ops[o] += (o2i[ho+1]-o2i[ho]) * (o2i[ho+1]-o2i[ho]);
     }
   }
   ops[d->mo+1] = ops[d->mo]/2;
@@ -912,23 +928,23 @@ return d;
 
 error:
   printf(eid==1 ? "** >>>>> T BUG <<<<<\n" : "");
-  printf("\nvars= ");  mad_mono_print(d->nv, d->vars);
-  printf("\nTv=\n");   tbl_print(d->nv  , d->nc, d->Tv);
-  printf("\nTo=\n");   tbl_print(d->nv  , d->nc, d->To);
-  printf("\ntv2to= "); idx_print(d->nc  , d->tv2to);   printf("\n");
-  printf("to2tv= ");   idx_print(d->nc  , d->to2tv);   printf("\n");
-  printf("ords = ");   ord_print(d->nc  , d->ords );   printf("\n");
-  printf("ord2idx= "); idx_print(d->mo+2, d->ord2idx); printf("\n");
+  printf("vars= ");  mad_mono_print(d->nv, d->vars);   printf("\n");
+  printf("Tv=\n");   tbl_print(d->nv  , d->nc, d->Tv); printf("\n");
+  printf("To=\n");   tbl_print(d->nv  , d->nc, d->To); printf("\n");
+  idx_print(d->nc  , d->tv2to,   printf("tv2to= "  ));
+  idx_print(d->nc  , d->to2tv,   printf("to2tv= "  ));
+  ord_print(d->nc  , d->ords ,   printf("ords = "  ));
+  idx_print(d->mo+2, d->ord2idx, printf("ord2idx= "));
   assert(--eid);
 
   printf(eid==1 ? "** >>>>> H BUG <<<<<\n" : "");
-  printf("\nH=\n");     tbl_print_H(d);
+  printf("\nH=\n"); tbl_print_H(d);
   printf("\nH consistency reported error %d\n", err);
   assert(--eid);
 
   printf(eid==1 ? "** >>>>> L BUG <<<<<\n" : "");
-  printf("\nL=\n");     tbl_print_L(d);
-  assert(--eid);
+  printf("\nL=\n"); tbl_print_L(d);
+  assert(0);
 }
 
 static inline int
@@ -1069,30 +1085,20 @@ mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
 }
 
 int
-mad_desc_nv (const D *d)
+mad_desc_nvmok (const D *d, ord_t *mo_, int *nk_, ord_t *ko_)
 {
   assert(d);
+  if (mo_) *mo_ = d->mo;
+  if (nk_) *nk_ = d->nk;
+  if (ko_) *ko_ = d->ko;
   return d->nv;
 }
 
-int
-mad_desc_nk (const D *d)
-{
-  assert(d);
-  return d->nk;
-}
-
-int
-mad_desc_nmv (const D *d)
-{
-  assert(d);
-  return d->nmv;
-}
-
 ord_t
-mad_desc_maxord (const D *d)
+mad_desc_getvar (const D *d, int nv, ord_t vars_[nv])
 {
   assert(d);
+  if (vars_) mad_mono_copy(MIN(nv,d->nv), d->vars, vars_);
   return d->mo;
 }
 
