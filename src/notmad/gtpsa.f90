@@ -211,7 +211,7 @@ module GTPSA
 
     type(c_ptr) function mad_desc_newk(nv,mo_,nk,ko_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nv, nk     ! #vars, #knobs
+      integer(c_int), value, intent(in) :: nv, nk     ! #vars, #knobs (right part of vars)
       integer(c_ord_t), value, intent(in) :: mo_, ko_ ! order of tpsa and knobs
     end function mad_desc_newk
 
