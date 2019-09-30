@@ -18,7 +18,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 
 #include "mad_mono.h"
@@ -38,14 +37,14 @@ void
 mad_mono_fill (ssz_t n, ord_t a[n], ord_t v)
 {
   assert(a);
-  memset(a, v, MAX(0,n));
+  for (idx_t i=0; i < n; ++i) a[i] = v;
 }
 
 void
 mad_mono_copy (ssz_t n, const ord_t a[n], ord_t r[n])
 {
   assert(a && r);
-  if (a != r) memcpy(r, a, MAX(0,n));
+  for (idx_t i=0; i < n; ++i) r[i] = a[i];
 }
 
 void
@@ -88,25 +87,58 @@ mad_mono_ord (ssz_t n, const ord_t a[n])
 }
 
 int
-mad_mono_equ (ssz_t n, const ord_t a[n], const ord_t b[n])
+mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  return !memcmp(a, b, MAX(0,n));
+  for (idx_t i=0; i < n; ++i) if (a[i] != b[i]) return 0;
+  return 1;
+}
+
+int
+mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (idx_t i=0; i < n; ++i) if (a[i] >= b[i]) return 0;
+  return 1;
+}
+
+int
+mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (idx_t i=0; i < n; ++i) if (a[i] > b[i]) return 0;
+  return 1;
+}
+
+int
+mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (idx_t i=0; i < n; ++i) if (a[i] <= b[i]) return 0;
+  return 1;
+}
+
+int
+mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);
+  for (idx_t i=0; i < n; ++i) if (a[i] < b[i]) return 0;
+  return 1;
 }
 
 int
 mad_mono_cmp (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  return memcmp(a, b, MAX(0,n));
+  for (idx_t i=0; i < n; ++i) if (a[i] != b[i]) return (int)a[i] - b[i];
+  return 0;
 }
 
 int
 mad_mono_rcmp (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=n-1; i >= 0; --i)
-    if (a[i] != b[i]) return (int)a[i] - b[i];
+  for (idx_t i=n-1; i >= 0; --i) if (a[i] != b[i]) return (int)a[i] - b[i];
   return 0;
 }
 
@@ -121,7 +153,7 @@ void
 mad_mono_sub (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n])
 {
   assert(a && b && r);
-  for (idx_t i=0; i < n; ++i) r[i] = a[i] - b[i];
+  for (idx_t i=0; i < n; ++i) r[i] = a[i] > b[i] ? a[i] - b[i] : 0;
 }
 
 void
@@ -131,6 +163,30 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
   mad_mono_copy(n, a, r  );
   mad_mono_copy(m, b, r+n);
 }
+
+// -- sorting
+
+__thread static const ord_t *ords;
+
+static int
+cmp (const void *a, const void *b)
+{
+  int i1 = *(const int*)a;
+  int i2 = *(const int*)b;
+
+  return (int)ords[i1] - ords[i2];
+}
+
+void
+mad_mono_sort (ssz_t n, const ord_t a[n], idx_t idxs[n])
+{
+  assert(a && idxs);
+  ords = a;
+  for (idx_t i=0; i < n; ++i) idxs[i] = i;
+  qsort(idxs, n, sizeof *idxs, cmp);
+}
+
+// -- printing
 
 void
 mad_mono_print (ssz_t n, const ord_t m[n])

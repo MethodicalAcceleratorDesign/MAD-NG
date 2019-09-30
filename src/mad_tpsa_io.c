@@ -75,7 +75,7 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   char buf[BUF_SIZE];
 
   int nv=0, nk=0, cnt=0;
-  ord_t mo, vo, ko;
+  ord_t mo, ko;
   char typ;
 
   if (!stream_) stream_ = stdin;
@@ -85,8 +85,8 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
-  cnt = fscanf(stream_, " %c, NV = %d, NO = %hhu, NK = %d, VO = %hhu, KO = %hhu",
-                        &typ,     &nv,       &mo,     &nk,       &vo,       &ko);
+  cnt = fscanf(stream_, " %c, NV = %d, NO = %hhu, NK = %d, KO = %hhu",
+                        &typ,     &nv,       &mo,     &nk,        &ko);
 
   if (kind_) *kind_ = typ == 'C';
 
@@ -100,7 +100,7 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     return mad_desc_newn(nv, mo);
   }
 
-  if (cnt == 6) {
+  if (cnt == 5) {
     // GTPSA -- process rest of lines
     ord_t vars[nv];
 
@@ -114,11 +114,11 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard 3rd line (****)
     ensure(fgets(buf, BUF_SIZE, stream_), "invalid input (file error?)"); // discard coeff header
 
-    return mad_desc_newv(nv, mo, vars, nk, vo, ko);
+    return mad_desc_newv(nv, vars, nk, ko);
   }
 
   if (cnt < 3) error("could not read (NO,NV) from header");
-  if (cnt < 6) error("could not read (NK,VO,KO) from header");
+  if (cnt < 5) error("could not read (NK,KO) from header");
   return NULL; // never reached
 }
 
@@ -181,9 +181,9 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
   // print header
   fprintf(stream_, d->nk
-                 ? "\n %-8s:  %c, NV = %3d, NO = %2hhu, NK = %3d, VO = %2hhu, KO = %2hhu"
+                 ? "\n %-8s:  %c, NV = %3d, NO = %2hhu, NK = %3d, KO = %2hhu"
                  : "\n %-8s:  %c, NV = %3d, NO = %2hhu",
-                      name_, typ,    d->nv,      d->mo,    d->nk,      d->vo,      d->ko);
+                      name_, typ,    d->nv,      d->mo,    d->nk,      d->ko);
 
   fprintf(stream_, "\n VAR ORDS:");
   print_ords(d->nv, d->vars, stream_);

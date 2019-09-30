@@ -46,13 +46,21 @@ void  mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n]);
 ord_t mad_mono_min   (ssz_t n, const ord_t a[n]);
 ord_t mad_mono_max   (ssz_t n, const ord_t a[n]);
 int   mad_mono_ord   (ssz_t n, const ord_t a[n]);
-int   mad_mono_equ   (ssz_t n, const ord_t a[n], const ord_t b[n]);
+
+int   mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_gt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_ge    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+
 int   mad_mono_cmp   (ssz_t n, const ord_t a[n], const ord_t b[n]);
 int   mad_mono_rcmp  (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
 void  mad_mono_add   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 void  mad_mono_sub   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 void  mad_mono_cat   (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m]);
+
+void  mad_mono_sort  (ssz_t n, const ord_t a[n], idx_t idxs[n]);
 
 void  mad_mono_print (ssz_t n, const ord_t a[n]);
 

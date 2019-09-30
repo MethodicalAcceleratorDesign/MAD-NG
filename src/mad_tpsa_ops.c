@@ -182,7 +182,7 @@ der_coef(idx_t ia, idx_t di, ord_t der_ord, const D* d)
     return d->To[ia][di-1];
 
   const ord_t *srcm = d->To[ia], *derm = d->To[di];
-  if (mad_mono_cmp(d->nv,derm,srcm) > 0)
+  if (mad_mono_gt(d->nv,derm,srcm))
     return 0;
 
   int c = 1;
