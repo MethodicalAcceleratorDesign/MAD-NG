@@ -51,8 +51,8 @@ struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
         *tv2to,      // lookup tv->to
         *to2tv,      // lookup to->tv
         *H,          // indexing matrix in Tv
-       **L,          // multiplication indexes: L[oa][ob] -> lc; lc[ia][ib] -> ic
-      ***L_idx;      // L_idx[oa,ob] -> [start] [split] [end] idxs in L
+       **L,          // multiplication indexes: L[oa,ob]->L_ord; L_ord[ia,ib]->ic
+      ***L_idx;      // L_idx[oa,ob]->[start] [split] [end] idxs in L
 
   size_t size;       // bytes used by desc
 
