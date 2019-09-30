@@ -70,13 +70,13 @@ mad_bit_clr (bit_t b, int n)
 }
 
 static inline bit_t __attribute__((const))
-mad_bit_lcut (bit_t b, int n) // clear bits below n
+mad_bit_lcut (bit_t b, int n) // clear bits < n
 {
   return b & ~((1u << n) - 1);
 }
 
 static inline bit_t __attribute__((const))
-mad_bit_hcut (bit_t b, int n) // clear bits above n
+mad_bit_hcut (bit_t b, int n) // clear bits > n
 {
   return b & ((2u << n) - 1);
 }

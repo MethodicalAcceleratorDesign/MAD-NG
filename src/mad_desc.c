@@ -34,7 +34,7 @@
 #include <assert.h>
 
 #undef  DEBUG
-#define DEBUG 2 // 1 2
+#define DEBUG 0 // 1 2
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
@@ -552,21 +552,11 @@ get_LC_idxs (ord_t oa, ord_t ob, D *d)
   DBGFUN(->);
   ord_t oc = oa + ob;
   ssz_t ho = d->mo/2;
-printf("0: oa=%d, ob=%d, oc=%d, Li=%d\n", oa, ob, oc, oa*ho + ob);
-
   const idx_t *o2i = d->ord2idx,
                *lc = d->L[oa*ho + ob];
-
-printf("0.1\n");
-
   const idx_t    T = (o2i[oc+1]+o2i[oc]-1) / 2;  // splitting threshold of oc  (???)
-
-printf("0.2 T=%d\n", T);
-
   const ssz_t cols = o2i[oa+1] - o2i[oa],
               rows = o2i[ob+1] - o2i[ob];
-
-printf("1 cols=%d, rows=%d\n", cols, rows);
 
   idx_t **LC_idx = mad_malloc(3 * sizeof *LC_idx);
   d->size += 3 * sizeof *LC_idx;
@@ -580,24 +570,18 @@ printf("1 cols=%d, rows=%d\n", cols, rows);
   LC_idx[SPLIT] = limits +   rows;
   LC_idx[END  ] = limits + 2*rows;
 
-printf("2\n");
   for (idx_t ib = 0; ib < rows; ++ib) {
     idx_t ia;
-printf("3.1\n");
     // shift ia to first valid entry
     for (ia = 0; lc[hpoly_idx(ib,ia,cols)] == -1; ++ia) ;
 
-printf("3.2 ia=%d, ib=%d (START=%d)\n", ia, ib, START);
     LC_idx[START][ib] = ia;
 
-printf("3.3\n");
     // shift ia to last valid entry
     for (ia = oa == ob ? ib : cols-1; lc[hpoly_idx(ib,ia,cols)] == -1; --ia) ;
 
-printf("3.4\n");
     LC_idx[END  ][ib] = ia + 1;
 
-printf("3.5\n");
     LC_idx[SPLIT][ib] = oa == ob ? ib+1 : cols;
     for (ia = LC_idx[START][ib]; ia < LC_idx[END][ib]; ++ia)
       if (lc[hpoly_idx(ib,ia,cols)] >= T) {
@@ -605,8 +589,6 @@ printf("3.5\n");
         break;
       }
   }
-
-printf("4\n");
 
 #if DEBUG > 1
   if (oc <= 5) {

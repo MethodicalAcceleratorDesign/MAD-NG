@@ -269,17 +269,17 @@ FUN(cutord) (const T *t, T *r, int ord)
   ensure(d == r->d, "incompatible GTPSAs descriptors");
 
   if (ord < 0) {
-    ord_t o = -ord;
+    ord_t o = MIN3(-ord, t->mo, d->to);
     if (o >= t->hi) { FUN(reset0)(r); return; }
     FUN(copy0)(t, r);
-    r->lo = MIN(MAX(t->lo, o), r->mo);
-    r->nz = mad_bit_lcut(t->nz,o);
+    r->lo = MIN(MAX(t->lo, o+1), r->mo);
+    r->nz = mad_bit_lcut(t->nz,r->lo);
   } else {
-    ord_t o = ord;
+    ord_t o = MIN3(ord, t->mo, d->to);
     if (o <= t->lo) { FUN(reset0)(r); return; }
     FUN(copy0)(t, r);
-    r->hi = MIN3(t->hi, o, r->mo);
-    r->nz = mad_bit_hcut(t->nz,o);
+    r->hi = MIN3(t->hi, o-1, r->mo);
+    r->nz = mad_bit_hcut(t->nz,r->hi);
   }
 
   if (r != t) {
