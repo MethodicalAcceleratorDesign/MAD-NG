@@ -218,7 +218,7 @@ module GTPSA
     type(c_ptr) function mad_desc_newv(nv,vars,nk,ko_) bind(C)
       import ; implicit none
       integer(c_int), value, intent(in) :: nv, nk   ! #vars, #knobs (i.e. mo=max(vars))
-      integer(c_ord_t), intent(in) :: vars_(*)      ! orders of vars, (mvars and knobs)
+      integer(c_ord_t), intent(in) :: vars(*)       ! orders of vars, (mvars and knobs)
       integer(c_ord_t), value, intent(in) :: ko_    ! max order of knobs
     end function mad_desc_newv
 
