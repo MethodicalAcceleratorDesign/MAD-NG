@@ -26,14 +26,11 @@ int main(void)
 {
   // descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without knobs
   const desc_t *d10 = mad_desc_newv(6, (ord_t[]){10,10,10,10,10,10}, 0,0);
-  printf("d10 length=%d coefs\n", mad_desc_maxlen(d10));
+  printf("d10 length=%4d coefs\n", mad_desc_maxlen(d10));
 
   // descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without knobs
   const desc_t *d = mad_desc_newv(6, (ord_t[]){2,2,2,2,1,10}, 0,0);
-  printf("d length=%d coefs\n", mad_desc_maxlen(d));
-  num_t ratio = (num_t)mad_desc_maxlen(d10) / mad_desc_maxlen(d);
-  printf("expected speedup of d vs d10 in tpsa multiplication x%.1g\n",
-         ratio*ratio);
+  printf("d   length=%4d coefs\n", mad_desc_maxlen(d));
   mad_desc_del(d10); d10 = 0; // not used anymore.
 
   // two TPSAs, t2 is same as t1
@@ -41,7 +38,7 @@ int main(void)
   tpsa_t *t2 = mad_tpsa_new(t1, mad_tpsa_same);
 
   // set order 0 and 1 (quick and dirty!)
-  mad_tpsa_setv(t1, 0, 1+6, (double[]){M_PI/6, 1,1,1,1,1,1});
+  mad_tpsa_setv(t1, 0, 1+6, (num_t[]){M_PI/6, 1,1,1,1,1,1});
   mad_tpsa_print(t1, "ini", 0,0,0);
 
   // t2=sin(t1)

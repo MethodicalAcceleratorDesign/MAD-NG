@@ -25,14 +25,14 @@
 int main(void)
 {
   // descriptor for TPSA with 6 variables of order 3,3,2,2,1,1
-  const desc_t *d = mad_desc_newv(6, (ord_t[]){3,3,2,2,1,1});
+  const desc_t *d = mad_desc_newv(6, (ord_t[]){3,3,2,2,1,1}, 0,0);
 
   // two TPSAs, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
   tpsa_t *t2 = mad_tpsa_new(t1, mad_tpsa_same);
 
   // set order 0 and 1 (quick and dirty!)
-  mad_tpsa_setv(t1, 0, 1+6, (double[]){M_PI/6, 1,1,1,1,1,1});
+  mad_tpsa_setv(t1, 0, 1+6, (num_t[]){M_PI/6, 1,1,1,1,1,1});
   mad_tpsa_print(t1, "ini", 0,0,0);
 
   // t2=sin(t1)
