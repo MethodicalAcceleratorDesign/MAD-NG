@@ -24,11 +24,17 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
-  //                          6 variables of order 2,2,2,2,1,1 (i.e. 2 knobs)
-  //                            with cross-terms of order 2
-  const desc_t *d = mad_desc_newv(4, (ord_t[]){3,3,2,2},
-                                  6, (ord_t[]){2,2,2,2,1,1}, 2);
+  // descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without knobs
+  const desc_t *d10 = mad_desc_newv(6, (ord_t[]){10,10,10,10,10,10}, 0,0);
+  printf("d10 length=%d coefs\n", mad_desc_maxlen(d10));
+
+  // descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without knobs
+  const desc_t *d = mad_desc_newv(6, (ord_t[]){2,2,2,2,1,10}, 0,0);
+  printf("d length=%d coefs\n", mad_desc_maxlen(d));
+  num_t ratio = (num_t)mad_desc_maxlen(d10) / mad_desc_maxlen(d);
+  printf("expected speedup of d vs d10 in tpsa multiplication x%.1g\n",
+         ratio*ratio);
+  mad_desc_del(d10); d10 = 0; // not used anymore.
 
   // two TPSAs, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
@@ -36,16 +42,16 @@ int main(void)
 
   // set order 0 and 1 (quick and dirty!)
   mad_tpsa_setv(t1, 0, 1+6, (double[]){M_PI/6, 1,1,1,1,1,1});
-  mad_tpsa_print(t1, "ini", 0,0);
+  mad_tpsa_print(t1, "ini", 0,0,0);
 
   // t2=sin(t1)
   mad_tpsa_sin(t1, t2);
-  mad_tpsa_print(t2, "sin", 0,0);
+  mad_tpsa_print(t2, "sin", 0,0,0);
   mad_tpsa_del(t1);
 
   // tpsa functions and operators support aliasing (i.e. src == dst)
   mad_tpsa_asin(t2, t2);            // asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  mad_tpsa_print(t2, "asin", 0, 0); // see the accuracy of asin(sin)
+  mad_tpsa_print(t2, "asin", 0,0,0); // see the accuracy of asin(sin)
   mad_tpsa_del(t2);
 
   // destroy all created descriptors (optional cleanup)

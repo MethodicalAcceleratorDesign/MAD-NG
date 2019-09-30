@@ -24,13 +24,19 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 4 maps variables of order 3,3,2,2 and
-  //                          2 knobs of order 1,1
-  //                          4 variables of order 2,2,1,1 (i.e. maps variables)
-  //                            with knobs cross-terms of order 1
-  const desc_t *d = mad_desc_newkv(4, (ord_t[]){3,3,2,2},
-                                   2, (ord_t[]){1,1},
-                                   4, (ord_t[]){2,2,1,1}, 1);
+  // descriptor for TPSA with 6 variables of order 6,6,6,6,1,1 without knobs
+  const desc_t *d6 = mad_desc_newv(6, (ord_t[]){6,6,6,6,1,1}, 0,0);
+  printf("d6 length=%d coefs\n", mad_desc_maxlen(d6));
+
+  // descriptor for TPSA with 6 maps variables of order 6,6,6,6,1,1 including
+  //                          2 knobs of order 1,1 with x-order of 1
+  const desc_t *d = mad_desc_newv(6, (ord_t[]){6,6,6,6,1,1}, 2,1);
+  printf("d length=%d coefs\n", mad_desc_maxlen(d));
+  num_t ratio = (num_t)mad_desc_maxlen(d6) / mad_desc_maxlen(d);
+  printf("expected speedup of d vs d6 in tpsa multiplication x%.1g\n",
+         ratio*ratio);
+  mad_desc_del(d6); d6 = 0; // not used anymore.
+
 
   // two TPSAs, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
@@ -38,16 +44,16 @@ int main(void)
 
   // set order 0 and 1 (quick and dirty!)
   mad_tpsa_setv(t1, 0, 1+6, (double[]){M_PI/6, 1,1,1,1,1,1});
-  mad_tpsa_print(t1, "ini", 0,0);
+  mad_tpsa_print(t1, "ini", 0,0,0);
 
   // t2=sin(t1)
   mad_tpsa_sin(t1, t2);
-  mad_tpsa_print(t2, "sin", 0,0);
+  mad_tpsa_print(t2, "sin", 0,0,0);
   mad_tpsa_del(t1);
 
   // tpsa functions and operators support aliasing (i.e. src == dst)
-  mad_tpsa_asin(t2, t2);            // asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  mad_tpsa_print(t2, "asin", 0, 0); // see the accuracy of asin(sin)
+  mad_tpsa_asin(t2, t2);             // asin(x) = -i*ln(i*x + sqrt(1-x^2))
+  mad_tpsa_print(t2, "asin", 0,0,0); // see the accuracy of asin(sin)
   mad_tpsa_del(t2);
 
   // destroy all created descriptors (optional cleanup)
