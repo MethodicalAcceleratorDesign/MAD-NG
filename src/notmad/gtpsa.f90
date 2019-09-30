@@ -240,10 +240,10 @@ module GTPSA
     ! -- Introspection ----------------
 
     integer(c_int) function mad_desc_nvmok(desc,mo_,nk_,ko_) bind(C)
-      import ; implicit none                    ! return nv
+      import ; implicit none                              ! return nv
       type(c_ptr), value, intent(in) :: desc
-      integer(c_int), intent(out) :: nk_        ! number of knobs
-      integer(c_ord_t), intent(out) :: mo_, ko_ ! tpsa order, knobs orders
+      integer(c_int), optional, intent(out) :: nk_        ! number of knobs
+      integer(c_ord_t), optional, intent(out) :: mo_, ko_ ! tpsa order, knobs orders
     end function mad_desc_nvmok
 
     integer(c_ord_t) function mad_desc_getvar(desc,nv,vars_) bind(C)
