@@ -117,11 +117,35 @@ module GTPSA
       integer(c_ord_t), intent(in) :: mono_a(*)  ! monomial
     end function mad_mono_ord
 
-    integer(c_int) function mad_mono_equ(n,mono_a,mono_b) bind(C)
+    integer(c_int) function mad_mono_eq(n,mono_a,mono_b) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
       integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
-    end function mad_mono_equ
+    end function mad_mono_eq
+
+    integer(c_int) function mad_mono_lt(n,mono_a,mono_b) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
+      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_lt
+
+    integer(c_int) function mad_mono_gt(n,mono_a,mono_b) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
+      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_gt
+
+    integer(c_int) function mad_mono_le(n,mono_a,mono_b) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
+      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_le
+
+    integer(c_int) function mad_mono_ge(n,mono_a,mono_b) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n             ! monomials lengths
+      integer(c_ord_t), intent(in) :: mono_a(*), mono_b(*) ! monomials
+    end function mad_mono_ge
 
     integer(c_int) function mad_mono_cmp(n,mono_a,mono_b) bind(C)
       import ; implicit none
@@ -156,6 +180,13 @@ module GTPSA
       integer(c_ord_t) :: mono_r(*)                        ! dst[na+nb]
     end subroutine mad_mono_cat
 
+    subroutine mad_mono_sort(n,mono_a,idxs) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: n   ! monomial length
+      integer(c_ord_t), intent(in) :: mono_a(*)  ! src
+      integer(c_idx_t) :: idxs(*)  ! index lookup: a[idxs[i]] is sorted by order
+    end subroutine mad_mono_sort
+
     subroutine mad_mono_print(n,mono_a) bind(C)
       import ; implicit none
       integer(c_ssz_t), value, intent(in) :: n   ! monomial length
@@ -178,17 +209,17 @@ module GTPSA
       integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa
     end function mad_desc_newn
 
-    type(c_ptr) function mad_desc_newk(nv,mo_,nk,vo_,ko_) bind(C)
+    type(c_ptr) function mad_desc_newk(nv,mo_,nk,ko_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nv, nk          ! #vars, #knobs
-      integer(c_ord_t), value, intent(in) :: mo_, vo_, ko_ ! order of tpsa, mvars and knobs
+      integer(c_int), value, intent(in) :: nv, nk     ! #vars, #knobs
+      integer(c_ord_t), value, intent(in) :: mo_, ko_ ! order of tpsa and knobs
     end function mad_desc_newk
 
-    type(c_ptr) function mad_desc_newv(nv,mo_,vars_,nk,vo_,ko_) bind(C)
+    type(c_ptr) function mad_desc_newv(nv,vars,nk,ko_) bind(C)
       import ; implicit none
-      integer(c_int), value, intent(in) :: nv, nk          ! #vars, #knobs
-      integer(c_ord_t), intent(in) :: vars_(*)             ! orders of vars, (mvars and knobs)
-      integer(c_ord_t), value, intent(in) :: mo_, vo_, ko_ ! order of tpsa, mvars and knobs
+      integer(c_int), value, intent(in) :: nv, nk   ! #vars, #knobs (i.e. mo=max(vars))
+      integer(c_ord_t), intent(in) :: vars_(*)      ! orders of vars, (mvars and knobs)
+      integer(c_ord_t), value, intent(in) :: ko_    ! max order of knobs
     end function mad_desc_newv
 
     ! -- Destructor -------------------
@@ -1193,6 +1224,18 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa_a, ctpsa_b  ! lhs, rhs
       type(c_ptr), value :: ctpsa_r                      ! dst
     end subroutine mad_ctpsa_tdiv
+
+    subroutine mad_ctpsa_powt(ctpsa_a,tpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa_a, tpsa_b  ! lhs, rhs
+      type(c_ptr), value :: ctpsa_r                      ! dst
+    end subroutine mad_ctpsa_powt
+
+    subroutine mad_ctpsa_tpow(tpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa_a, ctpsa_b  ! lhs, rhs
+      type(c_ptr), value :: ctpsa_r                      ! dst
+    end subroutine mad_ctpsa_tpow
 
     subroutine mad_ctpsa_poisst(ctpsa_a,tpsa_b,ctpsa_r,nv) bind(C)
       import ; implicit none
