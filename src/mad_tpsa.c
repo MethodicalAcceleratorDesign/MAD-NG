@@ -183,7 +183,7 @@ T*
 FUN(newd) (const D *d, ord_t mo)
 {
   if (!d) d = mad_desc_curr;
-  ensure(d, "GTPSA descriptor not found (multithread?)");
+  ensure(d, "GTPSA descriptor not found");
 
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");

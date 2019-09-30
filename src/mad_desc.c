@@ -53,7 +53,7 @@ const  ord_t  mad_tpsa_default = -1;
 const  ord_t  mad_tpsa_same    = -2;
 
 // last descriptor created or searched (used to create GTPSA when d is NULL)
-__thread const desc_t *mad_desc_curr = NULL;
+const desc_t *mad_desc_curr    = NULL;
 
 // --- constants --------------------------------------------------------------o
 
