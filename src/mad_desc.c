@@ -185,7 +185,7 @@ ord_print (ssz_t n, ord_t *v)
 }
 
 static inline void
-vec_print (ssz_t n, idx_t *v)
+idx_print (ssz_t n, idx_t *v)
 {
   assert(v);
   idx_t i=0;
@@ -285,8 +285,9 @@ tbl_by_ord(D *d)
   d->ord2idx[d->mo+1] = d->nc;
 
 #if DEBUG > 0
-  printf("To =\n");
-  tbl_print(d->nv, d->nc, d->To);
+  printf("To =\n");     tbl_print(d->nv  , d->nc, d->To);
+  printf("ords = ");    ord_print(d->nc  , d->ords);    printf("\n");
+  printf("ord2idx = "); idx_print(d->mo+2, d->ord2idx); printf("\n");
 #endif
   DBGFUN(<-);
 }
@@ -618,6 +619,7 @@ tbl_set_L(D *d)
 static int
 tbl_check_L (D *d)
 {
+  DBGFUN(->);
   assert(d && d->ord2idx && d->L && d->vars && d->To && d->H);
   int ho = d->mo / 2, *pi = d->ord2idx;
   ord_t m[d->nv];
@@ -646,12 +648,14 @@ tbl_check_L (D *d)
         }
       }
     }
+  DBGFUN(<-);
   return 0;
 }
 
 static int  // error code
 tbl_check_H (D *d)
 {
+  DBGFUN(->);
   const idx_t *tv2to = d->tv2to,
                   *H = d->H,
                   nv = d->nv;
@@ -675,12 +679,14 @@ tbl_check_H (D *d)
   for (idx_t i=0; i < nc; ++i)
     if (tv2to[tbl_index_H(d,nv,To[i])] != i) return 8e6 + i;
 
+  DBGFUN(<-);
   return 0;
 }
 
 static int  // error code
 tbl_check_T (D *d)
 {
+  DBGFUN(->);
   const idx_t *tv2to = d->tv2to,
               *to2tv = d->to2tv,
                   nv = d->nv;
@@ -693,6 +699,7 @@ tbl_check_T (D *d)
     if (!mad_mono_eq(nv,To[tv2to[i]],Tv[i])) return 2e6 + i;
     if (to2tv[tv2to[i]] != i)                return 3e6 + i;
   }
+  DBGFUN(<-);
   return 0;
 }
 
@@ -887,12 +894,12 @@ desc_build (int nv, ord_t mo, const ord_t vars_[nv], int nk, ord_t ko)
   printf("desc vars: "); mad_mono_print(nv,d->vars); printf("\n");
 #endif
 
-  int err = 0;
+  int err = 0, eid=0;
   set_monos (d);
   tbl_by_var(d);
-  tbl_by_ord(d); if ((err = tbl_check_T(d))) goto error_T;
-  tbl_set_H (d); if ((err = tbl_check_H(d))) goto error_H;
-  tbl_set_L (d); if ((err = tbl_check_L(d))) goto error_L;
+  tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
+  tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
+  tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
   set_thread(d);
   set_temp  (d);
 
@@ -903,27 +910,25 @@ desc_build (int nv, ord_t mo, const ord_t vars_[nv], int nk, ord_t ko)
 DBGFUN(<-);
 return d;
 
-error_T:
-  printf("** >>>>> T BUG <<<<<\n");
-  printf("\nvars= ");   mad_mono_print(d->nv, d->vars);
-  printf("\nTv=\n");    tbl_print(d->nv  , d->nc, d->Tv);
-  printf("\nTo=\n");    tbl_print(d->nv  , d->nc, d->To);
-  printf("\ntv2to=[ "); vec_print(d->nc  , d->tv2to);
-  printf("to2tv=[ ");   vec_print(d->nc  , d->to2tv);
-  printf("ords =[ ");   ord_print(d->nc  , d->ords);
-  printf("ord2idx=[ "); vec_print(d->mo+2, d->ord2idx);
-  assert(0);
+error:
+  printf(eid==1 ? "** >>>>> T BUG <<<<<\n" : "");
+  printf("\nvars= ");  mad_mono_print(d->nv, d->vars);
+  printf("\nTv=\n");   tbl_print(d->nv  , d->nc, d->Tv);
+  printf("\nTo=\n");   tbl_print(d->nv  , d->nc, d->To);
+  printf("\ntv2to= "); idx_print(d->nc  , d->tv2to);   printf("\n");
+  printf("to2tv= ");   idx_print(d->nc  , d->to2tv);   printf("\n");
+  printf("ords = ");   ord_print(d->nc  , d->ords );   printf("\n");
+  printf("ord2idx= "); idx_print(d->mo+2, d->ord2idx); printf("\n");
+  assert(--eid);
 
-error_H:
-  printf("** >>>>> H BUG <<<<<\n");
+  printf(eid==1 ? "** >>>>> H BUG <<<<<\n" : "");
   printf("\nH=\n");     tbl_print_H(d);
   printf("\nH consistency reported error %d\n", err);
-  assert(0);
+  assert(--eid);
 
-error_L:
-  printf("** >>>>> L BUG <<<<<\n");
+  printf(eid==1 ? "** >>>>> L BUG <<<<<\n" : "");
   printf("\nL=\n");     tbl_print_L(d);
-  assert(0);
+  assert(--eid);
 }
 
 static inline int

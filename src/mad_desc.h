@@ -49,7 +49,7 @@ extern const desc_t *mad_desc_curr;
 // mo = max(1,mo_)
 const desc_t* mad_desc_newn(int nv, ord_t mo_);
 
-// if nk == 0, same as newn, otherwise
+// if nk == 0, same as mad_desc_newn, otherwise
 // mo = max(1, mo_)
 // ko = ko_ ? min(mo,ko_) : mo
 const desc_t* mad_desc_newk(int nv, ord_t mo_, int nk, ord_t ko_);

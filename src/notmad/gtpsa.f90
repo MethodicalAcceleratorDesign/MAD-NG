@@ -206,16 +206,20 @@ module GTPSA
     type(c_ptr) function mad_desc_newn(nv,mo_) bind(C)
       import ; implicit none
       integer(c_int), value, intent(in) :: nv      ! #vars
-      integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa
+      integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa, mo=max(1,mo_)
     end function mad_desc_newn
 
     type(c_ptr) function mad_desc_newk(nv,mo_,nk,ko_) bind(C)
+      ! if nk == 0, same as mad_desc_newn, otherwise
+      ! mo = max(1,mo_) and ko = ko_ ? min(mo,ko_) : mo
       import ; implicit none
       integer(c_int), value, intent(in) :: nv, nk     ! #vars, #knobs (right part of vars)
       integer(c_ord_t), value, intent(in) :: mo_, ko_ ! order of tpsa and knobs
     end function mad_desc_newk
 
     type(c_ptr) function mad_desc_newv(nv,vars,nk,ko_) bind(C)
+      ! mo = max(vars[0:nv-1])
+      ! ko = nk>0 ? min(mo, max(ko_, max( vars[nv-nk:nv-1] ))) : mo
       import ; implicit none
       integer(c_int), value, intent(in) :: nv, nk   ! #vars, #knobs (i.e. mo=max(vars))
       integer(c_ord_t), intent(in) :: vars(*)       ! orders of vars, (mvars and knobs)
