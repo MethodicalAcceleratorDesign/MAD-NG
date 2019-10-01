@@ -26,7 +26,7 @@ program gtpsa_ex7
   real(c_num_t) :: vec(1:3)
 
   ! descriptor for TPSA with 3 variables of order 64 (max) with 1 knob order 1
-  d=mad_desc_newn(3, 64_1, 1, 1_1)
+  d=mad_desc_newn(3, 63_1, 1, 1_1)
 
   ! two TPSAs, t2 is same as t1 but complex!
   t1=mad_tpsa_newd(d , mad_tpsa_default)
