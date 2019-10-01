@@ -38,19 +38,33 @@ static const unsigned char mad_bit_highest_tbl_[256] = {
 };
 
 int
-mad_bit_lowest (bit_t b)
+mad_bit_lowest32 (uint32_t b)
 {
   return b ? mad_bit_lowest_tbl_[((b & -b) * 0x077CB531u) >> 27] : 32;
 }
 
 int
-mad_bit_highest (bit_t b)
+mad_bit_lowest64 (uint64_t b)
+{
+  uint32_t lo = b & ~0u;
+  return lo ? mad_bit_lowest32(lo) : 32+mad_bit_lowest32(b >> 32);
+}
+
+int
+mad_bit_highest32 (bit_t b)
 {
   bit_t r = (mad_bit_highest_tbl_[ b        & 0xFF] << 24) |
             (mad_bit_highest_tbl_[(b >>  8) & 0xFF] << 16) |
             (mad_bit_highest_tbl_[(b >> 16) & 0xFF] <<  8) |
             (mad_bit_highest_tbl_[(b >> 24) & 0xFF]);
   return 31 - mad_bit_lowest(r);
+}
+
+int
+mad_bit_highest64 (uint64_t b)
+{
+  uint32_t hi = b >> 32;
+  return hi ? 32+mad_bit_highest32(hi) : mad_bit_highest32(b & ~0u);
 }
 
 #endif // __SSE2__
