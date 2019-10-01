@@ -301,7 +301,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
   FUN(reset0)(r);
 
   ssz_t rn = r->d->nv, tn = t->d->nv;
-  ord_t rm[rn], tm_[tn+1], *tm=tm_+1; tm_[0]=0; // tm[t2r[i]==-1]==0
+  ord_t rm[rn], tm[tn];
   idx_t t2r[rn]; // rm[i] = tm[t2r[i]], i=0..rn-1
 
   idx_t i = 0;
@@ -309,16 +309,20 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
     for (; i < MIN(rn,tn); ++i) t2r[i] = i; // identity
   else
     for (; i < MIN(rn, n); ++i)
-      t2r[i] = t2r_[i] >= 0 && t2r_[i] < tn ? t2r_[i] : -1; // -1 -> discard var
+      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -1; // -1 -> discard var
   rn = i; // truncate
 
   idx_t *pi = t->d->ord2idx;
   for (idx_t ti = pi[t->lo]; ti < pi[t->hi+1]; ++ti) {
-    if (!t->coef[ti]) continue;
+    if (!t->coef[ti]) goto skip;
     mad_desc_get_mono(t->d, tn, tm, ti);
-    for (idx_t i = 0; i < rn; ++i) rm[i] = tm[t2r[i]]; // translate/permute
+    for (idx_t i = 0; i < rn; ++i) {
+      if (tm[i] && t2r[i] < 0) goto skip;   // discard var
+      rm[i] = tm[t2r[i]];                   // translate/permute
+    }
     idx_t ir = mad_desc_get_idx_m(r->d, rn, rm);
     if (ir >= 0) FUN(seti)(r, ir, 0, t->coef[ti]);
+  skip: ;
   }
 
   if (r != r_) { FUN(copy)(r,r_); REL_TMPX(r); }
