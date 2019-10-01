@@ -47,11 +47,11 @@ ord_t mad_mono_min   (ssz_t n, const ord_t a[n]);
 ord_t mad_mono_max   (ssz_t n, const ord_t a[n]);
 int   mad_mono_ord   (ssz_t n, const ord_t a[n]);
 
-int   mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_gt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_ge    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_gt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_ge    (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
 int   mad_mono_cmp   (ssz_t n, const ord_t a[n], const ord_t b[n]);
 int   mad_mono_rcmp  (ssz_t n, const ord_t a[n], const ord_t b[n]);

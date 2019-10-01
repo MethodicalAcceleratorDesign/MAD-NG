@@ -86,44 +86,44 @@ mad_mono_ord (ssz_t n, const ord_t a[n])
   return s;
 }
 
-int
+log_t
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] != b[i]) return 0;
-  return 1;
+  for (idx_t i=0; i < n; ++i) if (a[i] != b[i]) return FALSE;
+  return TRUE;
 }
 
-int
+log_t
 mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] >= b[i]) return 0;
-  return 1;
+  for (idx_t i=0; i < n; ++i) if (a[i] >= b[i]) return FALSE;
+  return TRUE;
 }
 
-int
+log_t
 mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] > b[i]) return 0;
-  return 1;
+  for (idx_t i=0; i < n; ++i) if (a[i] > b[i]) return FALSE;
+  return TRUE;
 }
 
-int
+log_t
 mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] <= b[i]) return 0;
-  return 1;
+  for (idx_t i=0; i < n; ++i) if (a[i] <= b[i]) return FALSE;
+  return TRUE;
 }
 
-int
+log_t
 mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] < b[i]) return 0;
-  return 1;
+  for (idx_t i=0; i < n; ++i) if (a[i] < b[i]) return FALSE;
+  return TRUE;
 }
 
 int
