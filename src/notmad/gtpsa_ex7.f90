@@ -1,6 +1,6 @@
 ! o-----------------------------------------------------------------------------o
 ! |
-! | TPSA Example 6
+! | TPSA Example 7
 ! |
 ! | Methodical Accelerator Design - Copyright (c) 2016+
 ! | Support: http://cern.ch/mad  - mad at cern.ch
@@ -17,24 +17,24 @@
 !  WARNING: this file is not part of MAD, it must be used as an example with the
 !           standalone library, see mad/src/REAME.GTPSA for more info.
 
-program gtpsa_ex6
+program gtpsa_ex7
   use gtpsa
   implicit none
 
   real(c_num_t) :: pi_6 = 3.14159265358979323846264338327950288d0/6
   type(c_ptr)   :: d, t1, t2
-  real(c_num_t) :: vec(1:7)
+  real(c_num_t) :: vec(1:3)
 
-  ! descriptor for TPSA with 6 variables of order 5
-  d=mad_desc_newn(6, 4_1)
+  ! descriptor for TPSA with 3 variables of order 64 (max) with 1 knob order 1
+  d=mad_desc_newn(3, 64_1, 1, 1_1)
 
   ! two TPSAs, t2 is same as t1 but complex!
   t1=mad_tpsa_newd(d , mad_tpsa_default)
   t2=mad_ctpsa_new(t1, mad_tpsa_same)
 
   ! set order 0 and 1 (quick and dirty!)
-  vec=[pi_6, 1d0,1d0,1d0,1d0,1d0,1d0]
-  call mad_tpsa_setv (t1, 0, 1+6, vec);
+  vec=[pi_6, 1d0,1d0,1d0]
+  call mad_tpsa_setv (t1, 0, 1+3, vec);
   call mad_tpsa_print(t1, "ini"//c_eos, 0d0, 0,c_null);
 
   ! t2=sin(t1)
@@ -51,4 +51,4 @@ program gtpsa_ex6
   ! destroy all created descriptors (optional cleanup)
   call mad_desc_cleanup();
 
-end program gtpsa_ex6
+end program gtpsa_ex7

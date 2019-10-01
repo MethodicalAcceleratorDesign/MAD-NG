@@ -57,7 +57,7 @@ const desc_t *mad_desc_curr    = NULL;
 
 // --- constants --------------------------------------------------------------o
 
-enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t),
+enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t) -1,
        DESC_MAX_VAR = 100000 };
 
 // --- sizes ------------------------------------------------------------------o
