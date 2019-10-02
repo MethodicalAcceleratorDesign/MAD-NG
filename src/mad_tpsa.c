@@ -473,16 +473,17 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   ensure(i > 0 && i <  d->nc, "index order exceeds GPTSA maximum order");
   ensure(d->ords[i] <= t->mo, "index order exceeds GTPSA order");
 
-  idx_t *pi = d->ord2idx;
-  ord_t  o  = d->ords[i];
+  idx_t *o2i = d->ord2idx;
+  ord_t  o   = d->ords[i];
 
-  NUM v = t->lo <= o && o <= t->hi ? a*t->coef[i]+b : b;
+  NUM v = t->lo <= o && o <= t->hi && mad_bit_get(t->nz,o) ? a*t->coef[i]+b : b;
 
   if (!v) {
+    if (!mad_bit_get(t->nz,o)) return; // already full of zeros
     t->coef[i] = v;
     idx_t j; // scan hpoly for non-zero
-    for (j = pi[o]; j < pi[o+1] && !t->coef[j]; ++j);
-    if (j == pi[o+1]) { // zero hpoly
+    for (j = o2i[o]; j < o2i[o+1] && !t->coef[j]; ++j) ;
+    if (j == o2i[o+1]) { // zero hpoly
       t->nz = mad_bit_clr(t->nz,o);
       int n = mad_bit_lowest(t->nz);
       t->lo = MIN(n,t->mo);
@@ -492,15 +493,15 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   }
 
   if (t->lo > t->hi) {    // new TPSA, init ord o
-    for (idx_t c = pi[o]; c < pi[o+1]; ++c) t->coef[c] = 0;
+    for (idx_t c = o2i[o]; c < o2i[o+1]; ++c) t->coef[c] = 0;
     t->lo = t->hi = o;
   }
   else if (o > t->hi) {   // extend right
-    for (idx_t c = pi[t->hi+1]; c < pi[o+1]; ++c) t->coef[c] = 0;
+    for (idx_t c = o2i[t->hi+1]; c < o2i[o+1]; ++c) t->coef[c] = 0;
     t->hi = o;
   }
   else if (o < t->lo) {   // extend left
-    for (idx_t c = pi[o]; c < pi[t->lo]; ++c) t->coef[c] = 0;
+    for (idx_t c = o2i[o]; c < o2i[t->lo]; ++c) t->coef[c] = 0;
     t->lo = o;
   }
   t->nz = mad_bit_set(t->nz,o);
@@ -522,11 +523,11 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   if (t->lo > ords[0  ]) t->lo = ords[0  ];
   if (t->hi < ords[n-1]) t->hi = ords[n-1];
 
-  idx_t *pi = d->ord2idx;
+  idx_t *o2i = d->ord2idx;
   for (idx_t o = ords[0]; o <= ords[n-1]; o++) {
     idx_t c; // scan hpoly for non-zero
-    for (c = pi[o]; c < pi[o+1] && !t->coef[c]; ++c);
-    t->nz = c == pi[o+1] ? mad_bit_clr(t->nz,o) : mad_bit_set(t->nz,o);
+    for (c = o2i[o]; c < o2i[o+1] && !t->coef[c]; ++c);
+    t->nz = c == o2i[o+1] ? mad_bit_clr(t->nz,o) : mad_bit_set(t->nz,o);
   }
   CHECK_VALIDITY(t);
 }
