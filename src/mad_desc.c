@@ -1144,13 +1144,13 @@ mad_desc_gtrunc (const D *d_, ord_t to)
   if (to == mad_tpsa_same)
     return d->to;
 
-  ord_t orig = d->to;
+  ord_t old = d->to;
 
   if (to == mad_tpsa_default)
     return d->to = d->mo, orig;
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
-  return d->to = to, orig;
+  return d->to = to, old;
 }
 
 // --- ctors, dtor ------------------------------------------------------------o
