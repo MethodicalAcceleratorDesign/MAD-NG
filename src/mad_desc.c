@@ -57,8 +57,9 @@ const desc_t *mad_desc_curr    = NULL;
 
 // --- constants --------------------------------------------------------------o
 
-enum { DESC_MAX_ORD = CHAR_BIT * sizeof(bit_t) -1,
-       DESC_MAX_VAR = 100000 };
+enum { DESC_WARN_MONO = 1000000,
+       DESC_MAX_ORD   = CHAR_BIT * sizeof(bit_t) -1,
+       DESC_MAX_VAR   = 100000 };
 
 // --- sizes ------------------------------------------------------------------o
 
@@ -138,8 +139,9 @@ set_monos (D *d) // builds the monomials matrix in Tv order
   assert(d && d->vo);
 
   int n = d->nv;
-  d->nc = max_nc(n, d->mo);         // upper bound
-  if (!d->nc) d->nc = max_nc(6,8);  // overflow, start with (6,8)=3003
+  d->nc = max_nc(n, d->mo);   // upper bound
+  if (!d->nc || d->nc > DESC_WARN_MONO)
+    d->nc = max_nc(6,8);     // overflow or too large, start with (6,8)=3003
   mono_realloc(d, d->nc);
 
   ord_t m[n];
@@ -877,6 +879,13 @@ static inline D*
 desc_init (int nv, ord_t mo, const ord_t vo_[nv], int nk, ord_t ko)
 {
   DBGFUN(->);
+  ensure(mo <= DESC_MAX_ORD, // variables max orders validation
+         "gtpsa order exceeds maximum order (%u > %u)", mo, DESC_MAX_ORD);
+
+#if DEBUG > 0
+  printf("desc in: nv=%d, mo=%d, nk=%d, ko=%d\n", nv, mo, nk, ko);
+#endif
+
   D *d = mad_malloc(sizeof *d);
   memset(d, 0, sizeof *d);
   d->size = sizeof *d;
@@ -901,6 +910,14 @@ desc_init (int nv, ord_t mo, const ord_t vo_[nv], int nk, ord_t ko)
   }
   d->vo = vo;
 
+#if DEBUG > 0
+  printf("desc vo: "); mad_mono_print(nv,d->vo); printf("\n");
+#endif
+
+  set_monos(d);
+  if (d->nc > DESC_WARN_MONO)
+    warn("gtpsa will be very large (%d monomials)", d->nc);
+
   d->nth = omp_get_max_threads();
 
   DBGFUN(<-);
@@ -911,21 +928,9 @@ static D*
 desc_build (int nv, ord_t mo, const ord_t vo_[nv], int nk, ord_t ko)
 {
   DBGFUN(->);
-  ensure(mo <= DESC_MAX_ORD, // variables max orders validation
-         "gtpsa order exceeds maximum order (%u > %u)", mo, DESC_MAX_ORD);
-
-#if DEBUG > 0
-  printf("desc in: nv=%d, mo=%d, nk=%d, ko=%d\n", nv, mo, nk, ko);
-#endif
-
   D *d = desc_init(nv, mo, vo_, nk, ko);
-
-#if DEBUG > 0
-  printf("desc vo: "); mad_mono_print(nv,d->vo); printf("\n");
-#endif
-
   int err = 0, eid=0;
-  set_monos (d);
+
   tbl_by_var(d);
   tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
   tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
