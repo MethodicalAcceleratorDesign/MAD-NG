@@ -526,7 +526,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   idx_t *o2i = d->ord2idx;
   for (idx_t o = ords[0]; o <= ords[n-1]; o++) {
     idx_t c; // scan hpoly for non-zero
-    for (c = o2i[o]; c < o2i[o+1] && !t->coef[c]; ++c);
+    for (c = o2i[o]; c < o2i[o+1] && !t->coef[c]; ++c) ;
     t->nz = c == o2i[o+1] ? mad_bit_clr(t->nz,o) : mad_bit_set(t->nz,o);
   }
   CHECK_VALIDITY(t);
