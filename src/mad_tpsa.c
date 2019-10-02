@@ -447,7 +447,7 @@ FUN(set0) (T *t, NUM a, NUM b)
 {
   assert(t);
 
-  t->coef[0] = a*t->coef[0] + b;
+  t->coef[0] = a*t->coef[0]+b;
   if (t->coef[0]) {
     idx_t *pi = t->d->ord2idx;
     for (idx_t c = pi[1]; c < pi[t->lo]; ++c) t->coef[c] = 0;
@@ -476,17 +476,17 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   idx_t *o2i = d->ord2idx;
   ord_t  o   = d->ords[i];
 
-  NUM v = t->lo <= o && o <= t->hi && mad_bit_get(t->nz,o) ? a*t->coef[i]+b : b;
+  NUM v = t->lo <= o && o <= t->hi ? a*t->coef[i]+b : b;
 
   if (!v) {
     if (!mad_bit_get(t->nz,o)) return; // already full of zeros
-    t->coef[i] = v;
+    t->coef[i] = 0;
     idx_t j; // scan hpoly for non-zero
     for (j = o2i[o]; j < o2i[o+1] && !t->coef[j]; ++j) ;
     if (j == o2i[o+1]) { // zero hpoly
       t->nz = mad_bit_clr(t->nz,o);
-      int n = mad_bit_lowest(t->nz);
-      t->lo = MIN(n,t->mo);
+      t->lo = MIN(mad_bit_lowest (t->nz),t->mo);
+      t->hi = MIN(mad_bit_highest(t->nz),t->mo);
     }
     CHECK_VALIDITY(t);
     return;
