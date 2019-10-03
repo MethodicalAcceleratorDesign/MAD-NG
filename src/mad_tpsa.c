@@ -262,6 +262,28 @@ FUN(copy) (const T *t, T *r)
 }
 
 void
+FUN(getord) (const T *t, T *r, ord_t ord)
+{
+  assert(t && r);
+  const D *d = t->d;
+  ensure(d == r->d, "incompatible GTPSAs descriptors");
+
+  if (ord < t->lo || ord > MIN(t->hi, r->mo)) { FUN(reset0)(r); return; }
+
+  r->lo = r->hi = ord;
+  r->nz = mad_bit_lcut(t->nz,r->lo);
+  r->nz = mad_bit_hcut(r->nz,r->hi);
+
+  if (r != t) {
+    idx_t *o2i = d->ord2idx;
+    for (idx_t i = o2i[r->lo]; i < o2i[r->hi+1]; ++i)
+      r->coef[i] = t->coef[i];
+  }
+  if (r->lo) r->coef[0] = 0;
+  CHECK_VALIDITY(r);
+}
+
+void
 FUN(cutord) (const T *t, T *r, int ord)
 {
   assert(t && r);
@@ -287,6 +309,7 @@ FUN(cutord) (const T *t, T *r, int ord)
     for (idx_t i = o2i[r->lo]; i < o2i[r->hi+1]; ++i)
       r->coef[i] = t->coef[i];
   }
+  if (r->lo) r->coef[0] = 0;
   CHECK_VALIDITY(r);
 }
 
@@ -368,8 +391,7 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, num_t *v_)
 
   idx_t *pi = d->ord2idx;
   idx_t  ni = pi[t->hi+1];
-  for (i = MAX(i,pi[t->lo]); i < ni; ++i)
-    if (t->coef[i]) break;
+  for (i = MAX(i,pi[t->lo]); i < ni && !t->coef[i]; ++i) ;
 
   if (i >= ni) return -1;
 

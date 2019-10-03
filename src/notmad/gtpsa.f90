@@ -371,6 +371,13 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst
     end subroutine mad_tpsa_copy
 
+    subroutine mad_tpsa_getord(tpsa,tpsa_r,ord) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa     ! src
+      type(c_ptr), value :: tpsa_r               ! dst
+      integer(c_ord_t), value, intent(in) :: ord ! order to retrieve
+    end subroutine mad_tpsa_getord
+
     subroutine mad_tpsa_cutord(tpsa,tpsa_r,ord) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa    ! src
@@ -1033,11 +1040,18 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r              ! dst
     end subroutine mad_ctpsa_copy
 
+    subroutine mad_ctpsa_getord(ctpsa,ctpsa_r,ord) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa    ! src
+      type(c_ptr), value :: ctpsa_r              ! dst
+      integer(c_ord_t), value, intent(in) :: ord ! order to retrieve
+    end subroutine mad_ctpsa_getord
+
     subroutine mad_ctpsa_cutord(ctpsa,ctpsa_r,ord) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa    ! src
       type(c_ptr), value :: ctpsa_r              ! dst
-      integer(c_int), value, intent(in) :: ord  ! cut order: 0..-ord or ord..mo
+      integer(c_int), value, intent(in) :: ord   ! cut order: 0..-ord or ord..mo
     end subroutine mad_ctpsa_cutord
 
     subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_) bind(C)
