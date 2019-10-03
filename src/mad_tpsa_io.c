@@ -166,7 +166,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
 #ifndef MAD_CTPSA_IMPL
   while ((cnt = fscanf(stream_, "%*d %lG %hhu", &c, &o)) == 2) {
 #else
-  while ((cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 2) {
+  while ((cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 3) {
 #endif
 
     #ifdef DEBUG
@@ -174,8 +174,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
     #endif
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
-    if (o <= t->mo)             // discard too high mononial
-      FUN(setm)(t,nv,ords, 0.0,c);
+    // discard too high mononial
+    if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c);
   }
 }
 
