@@ -23,18 +23,18 @@ program gtpsa_ex0
 
   real(c_num_t)  :: pi_6 = 3.14159265358979323846264338327950288d0/6
   type(c_ptr)    :: d, t1, t2
-  real(c_num_t)  :: vec(1:2)
+  real(c_num_t)  :: vec(1)
 
-  ! descriptor for TPSA with 1 variables of order 15
-  d = mad_desc_newn(1, 15_1)
+  ! descriptor for TPSA with 1 variables of order 0 (smallest construction)
+  d = mad_desc_newn(1, 0_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1 = mad_tpsa_newd(d , mad_tpsa_default)
   t2 = mad_tpsa_new (t1, mad_tpsa_same)
 
   ! set order 0 and 1 (quick and dirty!)
-  vec = [pi_6, 1d0]
-  call mad_tpsa_setv (t1, 0, 1+1, vec)
+  vec = [pi_6]
+  call mad_tpsa_setv (t1, 0, 1, vec)
   call mad_tpsa_print(t1, "ini"//c_eos, 0d0, 0,c_null)
 
   ! t2=sin(t1)

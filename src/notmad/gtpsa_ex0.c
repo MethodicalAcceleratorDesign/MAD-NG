@@ -24,15 +24,15 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 1 variables of order 15
-  const desc_t *d = mad_desc_newn(1, 15);
+  // descriptor for TPSA with 1 variables of order 0 (smallest construction)
+  const desc_t *d = mad_desc_newn(1, 0);
 
   // two TPSAs, t1 has maximum order, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
   tpsa_t *t2 = mad_tpsa_new(t1, mad_tpsa_same);
 
   // set order 0 and 1 (quick and dirty!)
-  mad_tpsa_setv(t1, 0, 1+1, (num_t[]){M_PI/6, 1});
+  mad_tpsa_setv(t1, 0, 1, (num_t[]){M_PI/6});
   mad_tpsa_print(t1, "ini", 0,0,0);
 
   // t2=sin(t1)
