@@ -31,15 +31,14 @@
 enum { DESC_MAX_TMP = 6 };
 
 struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
+  int   id;          // index in list of registered descriptors
   int   nv, nk, nmv; // #vars (max 100000), #knobs, #mvars = nv-nk (main variables)
   ord_t mo, ko, to;  // max order, max order of vo[nmv:nv-1] and global order of truncation
+  const ord_t *vo;   // orders of vars, vo[nv] (max order for each monomial variable)
               // end of compatibility with LuaJIT FFI
 
-  int   id, nth;     // index in list of registered descriptors, max #threads or 1
-  int   uvo;         // user provided vo
+  int   uvo, nth;    // user provided vo, max #threads or 1
   ssz_t nc;          // number of coefs (max length of TPSA)
-
-  const ord_t *vo;   // orders of vars, vo[nv] (max order for each monomial variable)
 
   ord_t *monos,      // 'matrix' storing the monomials (sorted by var)
         *ords,       // order of each mono of To
