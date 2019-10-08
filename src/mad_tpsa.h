@@ -81,12 +81,14 @@ num_t   mad_tpsa_geti    (const tpsa_t *t, idx_t i);
 num_t   mad_tpsa_gets    (const tpsa_t *t, ssz_t n,       str_t s   ); // string mono "[0-9]*"
 num_t   mad_tpsa_getm    (const tpsa_t *t, ssz_t n, const ord_t m[n]);
 num_t   mad_tpsa_getsm   (const tpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
-void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,             num_t v[n]);
 void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */                   num_t a, num_t b);
 void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                      num_t a, num_t b);
 void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s   ,    num_t a, num_t b);
 void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[n],    num_t a, num_t b);
 void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const int   m[n],    num_t a, num_t b);
+
+// accessors vector based
+void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,             num_t v[n]);
 void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const    num_t v[n]);
 
 // operators
@@ -103,7 +105,7 @@ void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
 num_t   mad_tpsa_nrm1    (const tpsa_t *a, const tpsa_t *b_);
 num_t   mad_tpsa_nrm2    (const tpsa_t *a, const tpsa_t *b_);
-void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int iv); // TODO: check functions that rely on it
+void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int iv);
 void    mad_tpsa_derivm  (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
 void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
 void    mad_tpsa_taylor  (const tpsa_t *a, ssz_t n, const num_t coef[n], tpsa_t *c);
@@ -172,9 +174,9 @@ void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
-desc_t* mad_tpsa_scan_hdr (                 int  *kind_, FILE *stream_);
-void    mad_tpsa_scan_coef(      tpsa_t *t,              FILE *stream_);
-void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (                 int  *kind_,           FILE *stream_);
+void    mad_tpsa_scan_coef(      tpsa_t *t,                        FILE *stream_);
+void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, int line, FILE *stream_);
 log_t   mad_tpsa_is_valid (const tpsa_t *t);
 
 // unsafe operations !!
