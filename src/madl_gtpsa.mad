@@ -56,21 +56,23 @@ local assert, error, tostring =
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[
-typedef unsigned int bit_t; // mad_bit.h
+typedef uint64_t bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
-  int   nv, nk, nmv; // #vars (max 100000), #knobs, #mvars = nv-nk (main variables)
-  ord_t mo, ko, to;  // max order, max order of vars[nmv:nv-1] and global order of truncation
+  const int   id;          // index in list of registered descriptors
+  const int   nv, nk, nmv; // #vars (max 100000), #knobs, #mvars = nv-nk (main variables)
+  const ord_t mo, ko, to;  // max order, max order of vars[nmv:nv-1] and global order of truncation
+  const ord_t *const vo;   // orders of vars, vo[nv] (max order for each monomial variable)
 };            // end of compatibility with Lua FFI (rest is not visible)
 
-struct tpsa { // warning: must be kept identical to C definition
+struct tpsa { // warning: must be kept identical to C definition and ctpsa
   const desc_t *const d;  // ptr to descriptor
   const ord_t lo, hi, mo; // lowest/highest used ord, trunc ord
   const bit_t nz;         // non-zero homogeneous polynomials
   const num_t coef[?];
 };
 
-struct ctpsa { // warning: must be kept identical to C definition
+struct ctpsa { // warning: must be kept identical to C definition and tpsa
   const desc_t *const d;  // ptr to descriptor
   const ord_t lo, hi, mo; // lowest/highest used ord, trunc ord
   const bit_t nz;         // non-zero homogeneous polynomials
@@ -135,10 +137,10 @@ local function gtpsad (nv_, mo_, nk_, ko_)
   local vo = is and nv_.vo or nil        -- variables orders
 
   if is_nil(vo) then
-    return _C.mad_desc_newk(nv, mo, nk, ko)
+    return assert(_C.mad_desc_newk(nv,mo,nk,ko),"unexpected null descriptor")
   else
     local m = monomial(vo)
-    return _C.mad_desc_newk(m.n, m.data, nk, ko)
+    return assert(_C.mad_desc_newv(m.n,m.data,nk,ko),"unexpected null descriptor")
   end
 end
 
@@ -150,16 +152,14 @@ local function tpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
   assert(len <= 2^30, "tpsa is too large")
   local tpsa = tpsa_ctor(len) -- VLA
-  _C.mad_tpsa_init(tpsa, d, mo, 0, mo)
-  return tpsa
+  return assert(_C.mad_tpsa_init(tpsa, d, mo, 0, mo), "unexpected null tpsa")
 end
 
 local function ctpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
    assert(len <= 2^29, "ctpsa is too large")
-  local tpsa = ctpsa_ctor(len) -- VLA
-  _C.mad_ctpsa_init(tpsa, d, mo, 0, mo)
-  return tpsa
+  local ctpsa = ctpsa_ctor(len) -- VLA
+  return assert(_C.mad_ctpsa_init(ctpsa, d, mo, 0, mo), "unexpected null ctpsa")
 end
 
 -- ctors ----------------------------------------------------------------------o
@@ -175,11 +175,18 @@ local function tpsa (td, mo_)
     mo_, td = td -- right shift
   end
 
-  if is_nil(td) then td = _C.mad_desc_curr end
-  mo_ = mo_ or td.mo
-  if isa_tpsa(td) then td = td.d end
+  if is_nil(td) then
+    td = assert(_C.mad_desc_curr, "unexpected null descriptor")
+  end
 
-  return tpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local mo = mo_ or td.mo
+  assert(is_integer(mo), "invalid argument #2 (integer expected)")
+
+  if isa_tpsa(td) then
+    td = assert(td.d, "unexpected null descriptor")
+  end
+
+  return tpsa_alloc(td, max(0, min(mo, td.mo)))
 end
 
 local function ctpsa (td, mo_)
@@ -187,11 +194,18 @@ local function ctpsa (td, mo_)
     mo_, td = td -- right shift
   end
 
-  if is_nil(td) then td = _C.mad_desc_curr end
-  mo_ = mo_ or td.mo
-  if isa_tpsa(td) then td = td.d end
+  if is_nil(td) then
+    td = assert(_C.mad_desc_curr, "unexpected null descriptor")
+  end
 
-  return ctpsa_alloc(td, max(0, min(mo_, td.mo)))
+  local mo = mo_ or td.mo
+  assert(is_integer(mo), "invalid argument #2 (integer expected)")
+
+  if isa_tpsa(td) then
+    td = assert(td.d, "unexpected null descriptor")
+  end
+
+  return ctpsa_alloc(td, max(0, min(mo, td.mo)))
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -211,18 +225,18 @@ MC.__len  = \x     -> _C.mad_ctpsa_len(x)
 MR.ord    = \x     -> _C.mad_tpsa_ord (x)
 MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
 
-MR.nv     = \x     -> _C.mad_desc_nvmok (x.d, nil, nil, nil)
-MR.nk     = \x     => _C.mad_desc_nvmok (x.d, nil, int, ord) return int[0],ord[0] end
-MR.maxord = \x     -> _C.mad_desc_getvo (x.d, 0, nil)
+MR.nv     = \x     -> _C.mad_desc_nvmok (x.d,nil,nil,nil)
+MR.nk     = \x     => _C.mad_desc_nvmok (x.d,nil,int,ord) return int[0],ord[0] end
+MR.maxord = \x     -> _C.mad_desc_maxord(x.d)
 MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
-MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d, mo_ or x.mo)
-MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d, to_ or _C.mad_tpsa_same)
+MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
+MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
 MR.is_valid = \x   -> _C.mad_tpsa_is_valid (x)
 MC.is_valid = \x   -> _C.mad_ctpsa_is_valid(x)
 
-MR.debug  = \x,nam_,fil_ => _C.mad_tpsa_debug (x, nam_, fil_) return x end
-MC.debug  = \x,nam_,fil_ => _C.mad_ctpsa_debug(x, nam_, fil_) return x end
+MR.debug  = \x,nam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,lin_,fil_) return x end
+MC.debug  = \x,nam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,lin_,fil_) return x end
 
 -- same, copy, getord, cutord, convert, clear, scalar -------------------------o
 
@@ -254,71 +268,72 @@ end
 
 function MR.__copy (x, y_)
   if is_nil(y_) then
-    x, y_ = tpsa_alloc(x.d, x.mo), x
-    _C.mad_tpsa_copy(y_, x)
+    y_ = tpsa_alloc(x.d, x.mo)
+   _C.mad_tpsa_copy(x, y_)
+  elseif is_tpsa(y_) then
+   _C.mad_tpsa_copy(chksiz(x,y_), y_)
   else
-    assert(is_tpsa(y_), "invalid argument #2 (tpsa expected)")
-    if x ~= y_ then _C.mad_tpsa_copy(y_, chksiz(x,y_)) end
+    assert(is_ctpsa(y_), "invalid argument #2 (tpsa or ctpsa expected)")
+    _C.mad_ctpsa_complex(chksiz(x,y_), nil, y_)
   end
-  return x
+  return y_
 end
 
 function MC.__copy (x, y_)
   if is_nil(y_) then
-    x, y_ = ctpsa_alloc(x.d, x.mo), x
-    _C.mad_ctpsa_copy(y_, x)
-  elseif is_tpsa(y_) then
-    x, y_ = chksiz(x,y_) and ctpsa_alloc(x.d, x.mo), x
-    _C.mad_ctpsa_complex(y_, nil, x)
+    y_ = ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_copy(x, y_)
+  elseif is_ctpsa(y_) then
+    _C.mad_ctpsa_copy(chksiz(x,y_), y_)
   else
-    assert(is_ctpsa(y_), "invalid argument #2 (ctpsa expected)")
-    if x ~= y_ then _C.mad_ctpsa_copy(y_, chksiz(x,y_)) end
+    assert(is_tpsa(y_), "invalid argument #2 (tpsa or ctpsa expected)")
+    _C.mad_ctpsa_real(chksiz(x,y_), y_)
   end
-  return x
+  return y_
 end
 
 function MR.getord (x, o, y_)
   if is_nil(y_) then
-    x, y_ = tpsa_alloc(x.d, x.mo), x
-    _C.mad_tpsa_getord(y_, x, o)
+    y_ = tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_getord(x, y_, o)
   else
     assert(is_tpsa(y_), "invalid argument #3 (tpsa expected)")
-    _C.mad_tpsa_getord(y_, chksiz(x,y_), o)
+    _C.mad_tpsa_getord(chksiz(x,y_), y_, o)
   end
-  return x
+  return y_
 end
 
 function MC.getord (x, o, y_)
   if is_nil(y_) then
-    x, y_ = ctpsa_alloc(x.d, x.mo), x
-    _C.mad_ctpsa_getord(y_, x, o)
+    y_ = ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_getord(x, y_, o)
   else
     assert(is_ctpsa(y_), "invalid argument #3 (ctpsa expected)")
-    _C.mad_ctpsa_getord(y_, chksiz(x,y_), o)
+    _C.mad_ctpsa_getord(chksiz(x,y_), y_, o)
   end
-  return x
+  return y_
 end
 
 function MR.cutord (x, o, y_)
   if is_nil(y_) then
-    x, y_ = tpsa_alloc(x.d, x.mo), x
-    _C.mad_tpsa_cutord(y_, x, o)
+    y_ = tpsa_alloc(x.d, x.mo)
+    _C.mad_tpsa_cutord(x, y_, o)
   else
     assert(is_tpsa(y_), "invalid argument #3 (tpsa expected)")
-    _C.mad_tpsa_cutord(y_, chksiz(x,y_), o)
+    _C.mad_tpsa_cutord(chksiz(x,y_), y_, o)
   end
-  return x
+  return y_
 end
 
 function MC.cutord (x, o, y_)
   if is_nil(y_) then
-    x, y_ = ctpsa_alloc(x.d, x.mo), x
-    _C.mad_ctpsa_cutord(y_, x, o)
+    y_ = ctpsa_alloc(x.d, x.mo)
+    _C.mad_ctpsa_cutord(x, y_, o)
   else
     assert(is_ctpsa(y_), "invalid argument #3 (ctpsa expected)")
-    _C.mad_ctpsa_cutord(y_, chksiz(x,y_), o)
+    _C.mad_ctpsa_cutord(chksiz(x,y_), y_, o)
   end
-  return x
+  return y_
 end
 
 function MR.convert (x, y, tbl_)
@@ -364,33 +379,15 @@ end
 
 -- indexing ------------------------------------------------------------------o
 
-function MR.get_mono (x, i, r) -- idx -> mono
-  assert(is_integer(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nv)
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_mono(t, m.n, m.ord, i) -- set m, return order
-end
-
-function MC.get_mono (x, i, r) -- idx -> mono
-  assert(is_integer(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nv)
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_mono(t, m.n, m.ord, i) -- set m, return order
-end
-
 function MR.get_idx (x, m) -- mono -> idx (0 means invalid)
-  if is_string(m) then
-    return _C.mad_tpsa_idxs(x, #m, m)+1
-  end
+  if is_string(m) then return _C.mad_tpsa_idxs(x, #m, m)+1 end
   m = is_table(m) and monomial(m) or m
   assert(is_monomial(m), "invalid argument #2 (string, table or monomial expected)")
   return _C.mad_tpsa_idxm(x, m.n, m.ord)+1
 end
 
 function MC.get_idx (x, m) -- mono -> idx (0 means invalid)
-  if is_string(m) then
-    return _C.mad_ctpsa_idxs(x, #m, m)+1
-  end
+  if is_string(m) then return _C.mad_ctpsa_idxs(x, #m, m)+1 end
   m = is_table(m) and monomial(m) or m
   assert(is_monomial(m), "invalid argument #2 (string, table or monomial expected)")
   return _C.mad_ctpsa_idxm(x, m.n, m.ord)+1
@@ -408,6 +405,20 @@ function MC.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> i
   local n = #tbl
   local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
   return _C.mad_ctpsa_idxsm(x, n, m)+1
+end
+
+function MR.get_mono (x, i, r) -- idx -> mono
+  assert(is_integer(i), "invalid argument #2 (index expected)")
+  local m = r or monomial(x.d.nv)
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return _C.mad_tpsa_mono(t, m.n, m.ord, i) -- set m, return order
+end
+
+function MC.get_mono (x, i, r) -- idx -> mono
+  assert(is_integer(i), "invalid argument #2 (index expected)")
+  local m = r or monomial(x.d.nv)
+  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+  return _C.mad_ctpsa_mono(t, m.n, m.ord, i) -- set m, return order
 end
 
 function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
@@ -1184,7 +1195,8 @@ function MR.deriv (x, m, r)
 end
 
 function MR.poisson (x, y, nv_, r)
-  assert(is_integer(nv_), "invalid arguments (unsupported GTPSA operation '[,]')")
+  assert(is_nil(nv_) or is_integer(nv_),
+         "invalid arguments (unsupported GTPSA operation '[,]')")
   if is_tpsa(y) then
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo,y.mo))
     _C.mad_tpsa_poisson (x, y, r, nv_ or 0) return r
@@ -1385,7 +1397,8 @@ function MC.deriv (x, m, r)
 end
 
 function MC.poisson(x, y, nv_, r)
-  assert(is_integer(nv_), "invalid arguments (unsupported GTPSA operation '[,]')")
+  assert(is_nil(nv_) or is_integer(nv_),
+         "invalid arguments (unsupported GTPSA operation '[,]')")
   if is_tpsa(y) then
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo,y.mo))
     _C.mad_ctpsa_poisst (x, y, r, nv_ or 0) return r
@@ -1720,18 +1733,15 @@ end
 
 function MR.read (_, filnam_)
   local file = openfile(filnam_, 'r', '.dat')
-  local d = _C.mad_tpsa_scan_hdr(file)
-  local x = tpsa(d)
-  _C.mad_tpsa_scan_coef(x, file)
-  if is_string(filnam_) then file:close() end
-  return x
-end
-
-function MC.read (_, filnam_)
-  local file = openfile(filnam_, 'r', '.dat')
-  local d = _C.mad_tpsa_cscan_hdr(file)
-  local x = ctpsa(d)
-  _C.mad_ctpsa_cscan_coef(x, file)
+  local d = assert(_C.mad_tpsa_scan_hdr(int,file), "unexpected null descriptor")
+  local x
+  if int[0] == 1 then
+    x = ctpsa(d)
+    _C.mad_ctpsa_scan_coef(x, file)
+  else
+    x = tpsa(d)
+    _C.mad_tpsa_scan_coef(x, file)
+  end
   if is_string(filnam_) then file:close() end
   return x
 end
