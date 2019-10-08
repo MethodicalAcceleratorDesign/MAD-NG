@@ -69,5 +69,19 @@ mad_bit_highest64 (uint64_t b)
 
 #endif // __SSE2__
 
+#include <stdio.h>
+
+void mad_bit_check (void)
+{
+  printf("%s: nz=%llu, lo=%d, hi=%d\n", __func__, 0ull,
+                     mad_bit_lowest(0), mad_bit_highest(0));
+  for (int i=0; i <= 64; ++i) {
+    bit_t nz = 1ull << i;
+    printf("i=%d, nz=%llu, lo=%d, hi=%d, lc=%llx, hc=%llx\n", i, nz,
+                     mad_bit_lowest(nz), mad_bit_highest(nz),
+                     mad_bit_lcut(-1,i), mad_bit_hcut(-1,i));
+  }
+}
+
 // --- end --------------------------------------------------------------------o
 

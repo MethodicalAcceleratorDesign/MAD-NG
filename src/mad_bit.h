@@ -111,6 +111,11 @@ mad_bit_highest (bit_t b)
 #include "sse/mad_bit_sse2.tc"
 #endif // __SSE2__ || __AVX2__
 
+
+// --- debug/print lcut, lowest, hcut, highest --------------------------------o
+
+void mad_bit_check (void);
+
 // --- end --------------------------------------------------------------------o
 
 #endif // MAD_BIT_H
