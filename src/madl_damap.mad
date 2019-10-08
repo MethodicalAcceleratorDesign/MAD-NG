@@ -48,13 +48,16 @@ local string, table =
 
 -- types ----------------------------------------------------------------------o
 
-local   int_arr = ffi.typeof 'int [?]'
+local   int_arr = ffi.typeof           'int [?]'
 local  tpsa_arr = ffi.typeof 'struct  tpsa* [?]'
 local ctpsa_arr = ffi.typeof 'struct ctpsa* [?]'
 
 -- identity -------------------------------------------------------------------o
 
 local _idr, _idc = {}, {} -- identity
+
+MR.__obj = _idr
+MC.__obj = _idc
 
 local function is_damap (a)
   local mt = getmetatable(a)
@@ -71,32 +74,16 @@ local function isa_damap (a)
   return mt ~= nil and (mt.__obj == _idr or mt.__obj == _idc)
 end
 
-MR.__obj = _idr
-MC.__obj = _idc
-
 -- ctors ----------------------------------------------------------------------o
 
 local function map_alloc (td, vn, mt)
   local ct = mt == MR and tpsa or ctpsa
-  local ta = mt == MR and tpsa_arr(td.nv) or ctpsa_arr(td.nv)
-  local mv = table.new(max(td.nv,vn.__n), vn.__n+3) -- __ta, __td, __vn
-  local mo = td.mvars
+  local ta = mt == MR and tpsa_arr(td.nmv) or ctpsa_arr(td.nmv)
+  local mv = table.new(td.nmv, td.nmv+3) -- __ta, __td, __vn
 
-  -- map variables (order mo)
   for i=1,td.nmv do
-    mv[i] = ct(td, mo[i-1]):scalar(0,i) ; ta[i-1] = mv[i]
+    mv[i] = ct(td, td.mo):scalar(0,i) ; ta[i-1] = mv[i]
     if vn[i] then mv[vn[i]] = mv[i] end -- named
-  end
-
-  -- map knobs (scalar order 1)
-  for i=td.nmv+1,td.nv do
-    mv[i] = ct(td, 1      ):scalar(0,i) ; ta[i-1] = mv[i]
-    if vn[i] then mv[vn[i]] = mv[i] end -- named
-  end
-
-  -- map scalars (scalar order 0)
-  for i=td.nv+1, vn.__n do
-    mv[vn[i]] = ct(td,0) -- named only
   end
 
   mv.__ta, mv.__td, mv.__vn = ta, td, vn
@@ -105,31 +92,26 @@ local function map_alloc (td, vn, mt)
 end
 
 local function map_ctor(arg, mt)
-  -- specification of damap by variables order.
-  if arg.mo then
+  -- specification of damap by variables orders.
+  if arg.mo or arg.vo then
     local td = gtpsad(arg)
-    local vn = arg.vn and vname_dup(arg.vn) or vname[min(td.nv,6)]
+    local vn = arg.vn and vname_dup(arg.vn) or vname[min(td.nmv,6)]
     return map_alloc(td, vn, mt)
   end
 
-  -- specification of damap by planes order.
-  local nv = arg.nv or 6
+  -- specification of damap by planes orders, nv=6 (6D damap).
   local xy = arg.xy or 1
   local pt = arg.pt or xy
+  local t  = arg.t  or pt
   local vn = arg.vn and vname_dup(arg.vn) or vname[6]
-  local mo, ko
+  local nv, mo, vo
 
-  if nv == 6 then
-    mo, ko = {xy, xy, xy, xy, pt, pt} -- 6D damap
-  elseif nv == 5 then
-    mo, ko = {xy, xy, xy, xy}, {pt}   -- 5D damap (4D + 1 knob)
-  elseif nv == 4 then
-    mo, ko = {xy, xy, xy, xy}         -- 4D damap
-  else
-    error("invalid damap specification (4D, 5D or 6D expected)")
+  if pt == xy and t == xy
+  then nv, mo = 6, xy
+  else vo = {xy, xy, xy, xy, t, pt}
   end
 
-  local td = gtpsad{mo=mo, ko=ko, vn=vn}
+  local td = gtpsad{nv=nv, mo=mo, vo=vo, nk=arg.nk, ko=arg.ko}
   return map_alloc(td, vn, mt)
 end
 
@@ -160,40 +142,29 @@ MR.gtrunc = \x,to_ -> x[1]:gtrunc(to_)
 -- same, copy -----------------------------------------------------------------o
 
 function MR.__same (x, y_, e_)
-  if is_nil(e_) and is_complex(y_) then -- shift right
+  if is_nil(e_) and is_scalar(y_) then -- shift right
     e_, y_ = y_
   end
   assert(is_nil(y_) or isa_damap(y_), "invalid argument #2 (damap expected)")
   return map_alloc(x.__td, x.__vn, (is_complex(e_) or is_cdamap(y_)) and MC or MR)
 end
 
-function MC.__same (x)
-  return map_alloc(x.__td, x.__vn, MC)
+function MC.__same (x, y_, e_)
+  if is_nil(e_) and is_scalar(y_) then -- shift right
+    e_, y_ = y_
+  end
+  assert(is_nil(y_) or isa_damap(y_), "invalid argument #2 (damap expected)")
+  return map_alloc(x.__td, x.__vn, (is_number(e_) or is_damap(y_)) and MR or MC)
 end
 
 function MR.__copy (x, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x.__td, x.__vn, getmetatable(x))
   else
-    assert(is_damap(y_), "invalid argument #2 (damap expected)")
+    assert(isa_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y.__td, "incompatible damaps")
   end
-  for i=1,min(#x,#y_) do
-    _C.mad_tpsa_copy(x[i], y_[i])
-  end
-  return y_
-end
-
-function MC.__copy (x, y_)
-  if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MC)
-  else
-    assert(is_cdamap(y_), "invalid argument #2 (cdamap expected)")
-    assert(x.__td == y.__td, "incompatible cdamaps")
-  end
-  for i=1,min(#x,#y_) do
-    _C.mad_ctpsa_copy(x[i], y_[i])
-  end
+  for i=1,min(#x,#y_) do x[i]:copy(y_[i]) end
   return y_
 end
 
@@ -510,7 +481,7 @@ MC.__pow = MR.__pow -- fully polymorphic
 -- I/O ------------------------------------------------------------------------o
 
 function MR.write (x, file_, eps_)
-  for i=1,#x do -- should it write knobs too?
+  for i=1,#x do
     local vn = x.__vn[i] and string.upper(x.__vn[i]) or tostring(i)
     x[i]:write(file_, vn, eps_)
   end
@@ -523,12 +494,11 @@ end
 
 function MR.read (_, file_)
   error("NYI")
-  -- TODO: 1st decide if knobs and scalars must be written & read...
 end
 
 -- metamethods ----------------------------------------------------------------o
 
-MR.__len   = \s   -> s.__var.__td.nv
+MR.__len   = \s   -> s.__var.__td.nmv
 
 MR.__index = \s,k -> s.__var[k] or MR[k]
 MC.__index = \s,k -> s.__var[k] or MC[k]
@@ -559,10 +529,9 @@ function MC.__newindex (s, k, x)
     then s.__var[k] = x    -- keep tpsa under control
     else rawset(s, k, x)   -- uncontrolled variable
     end
-  elseif type(x) == "number" then
-    _C.mad_ctpsa_scalar_r(v, x,0, type(k)=="number" and k or s.__vn[k], 0,0)
-  elseif is_complex(x) then
-    _C.mad_ctpsa_scalar_r(v, x.re,x.im, type(k)=="number" and k or s.__vn[k], 0,0)
+  elseif is_scalar(x) then
+    x = complex(x)
+    _C.mad_ctpsa_scalar_r(v,x.re,x.im, type(k)=="number" and k or s.__vn[k],0,0)
   else
     _C.mad_ctpsa_copy(x, v)
   end
