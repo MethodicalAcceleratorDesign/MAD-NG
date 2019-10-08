@@ -70,9 +70,9 @@ void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_,
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 
 // conversion
-void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *dst);
-void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *dst);
-void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *dst);
+void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *r);
+void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *r);
+void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
 ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -87,13 +87,11 @@ cnum_t   mad_ctpsa_geti    (const ctpsa_t *t, idx_t i);
 cnum_t   mad_ctpsa_gets    (const ctpsa_t *t, ssz_t n,       str_t s   ); // string w orders in '0'-'9'
 cnum_t   mad_ctpsa_getm    (const ctpsa_t *t, ssz_t n, const ord_t m[n]);
 cnum_t   mad_ctpsa_getsm   (const ctpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
-void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,          cnum_t v[n]);
 void     mad_ctpsa_set0    (      ctpsa_t *t, /* i = 0 */                cnum_t a, cnum_t b); // a*x[0]+b
 void     mad_ctpsa_seti    (      ctpsa_t *t, idx_t i,                   cnum_t a, cnum_t b); // a*x[i]+b
 void     mad_ctpsa_sets    (      ctpsa_t *t, ssz_t n,       str_t s   , cnum_t a, cnum_t b); // a*x[m]+b
 void     mad_ctpsa_setm    (      ctpsa_t *t, ssz_t n, const ord_t m[n], cnum_t a, cnum_t b); // a*x[m]+b
 void     mad_ctpsa_setsm   (      ctpsa_t *t, ssz_t n, const int   m[n], cnum_t a, cnum_t b); // a*x[m]+b
-void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n,    const cnum_t v[n]);
 
 // accessors without complex-by-value
 void     mad_ctpsa_get0_r  (const ctpsa_t *t, cnum_t *r);
@@ -107,6 +105,10 @@ void     mad_ctpsa_sets_r  (      ctpsa_t *t, ssz_t n,       str_t s   , num_t a
 void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
 void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const int   m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
 
+// accessors vector based
+void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,          cnum_t v[n]);
+void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n,    const cnum_t v[n]);
+
 // operators
 log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t eps_);
 void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
@@ -116,6 +118,9 @@ void     mad_ctpsa_div     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_pow     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_powi    (const ctpsa_t *a, int            n, ctpsa_t *c);
 void     mad_ctpsa_pown    (const ctpsa_t *a, cnum_t         v, ctpsa_t *c);
+
+// operators without complex-by-value arguments
+void     mad_ctpsa_pown_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 
 // operators with internal real-to-complex conversion
 log_t    mad_ctpsa_equt    (const ctpsa_t *a, const  tpsa_t *b, num_t tol);
@@ -175,7 +180,6 @@ void     mad_ctpsa_erfc    (const ctpsa_t *a, ctpsa_t *c);
 // functions without complex-by-value arguments
 void     mad_ctpsa_nrm1_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
 void     mad_ctpsa_nrm2_r    (const ctpsa_t *a, const ctpsa_t *b_, cnum_t *r);
-void     mad_ctpsa_pown_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_acc_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_scl_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
@@ -239,9 +243,9 @@ void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
 const
-desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_, FILE *stream_);
-void     mad_ctpsa_scan_coef(      ctpsa_t *t,              FILE *stream_);
-void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,           FILE *stream_);
+void     mad_ctpsa_scan_coef(      ctpsa_t *t,                        FILE *stream_);
+void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, int line, FILE *stream_);
 log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
 
 // unsafe operations !!

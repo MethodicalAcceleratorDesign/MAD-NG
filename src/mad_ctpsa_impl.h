@@ -74,20 +74,6 @@ mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 }
 
 static inline ctpsa_t*
-mad_ctpsa_update0 (ctpsa_t *t)
-{
-  idx_t *pi = t->d->ord2idx;
-  for (ord_t o = t->lo; o <= t->hi; ++o) {
-    if (mad_bit_get(t->nz,o)) {
-      idx_t i = pi[o];
-      while (i < pi[o+1] && !t->coef[i]) ++i;
-      if (i < pi[o+1]) t->nz = mad_bit_clr(t->nz, o);
-    }
-  }
-  return t;
-}
-
-static inline ctpsa_t*
 mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
 {
   const D *d = t->d;
@@ -97,7 +83,7 @@ mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
   TRC_TMPX(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
                   tid, d->cti[tid]-1, (void*)tmp, func));
   tmp->mo = t->mo;
-  return tmp; // mad_ctpsa_reset0(tmp);
+  return mad_ctpsa_reset0(tmp);
 }
 
 static inline ctpsa_t*
