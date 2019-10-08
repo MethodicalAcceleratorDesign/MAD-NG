@@ -48,7 +48,7 @@ struct tpsa { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
-static inline tpsa_t*
+static inline tpsa_t* // reset TPSA
 mad_tpsa_reset0 (tpsa_t *t)
 {
   t->lo = t->mo;
@@ -57,7 +57,7 @@ mad_tpsa_reset0 (tpsa_t *t)
   return t;
 }
 
-static inline tpsa_t*
+static inline tpsa_t* // copy lo, hi, nz, not coefs!
 mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 {
   if (t != r) {
@@ -70,20 +70,6 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 }
 
 static inline tpsa_t*
-mad_tpsa_update0 (tpsa_t *t)
-{
-  idx_t *pi = t->d->ord2idx;
-  for (ord_t o = t->lo; o <= t->hi; ++o) {
-    if (mad_bit_get(t->nz,o)) {
-      idx_t i = pi[o];
-      while (i < pi[o+1] && !t->coef[i]) ++i;
-      if (i < pi[o+1]) t->nz = mad_bit_clr(t->nz, o);
-    }
-  }
-  return t;
-}
-
-static inline tpsa_t*
 mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 {
   const D *d = t->d;
@@ -93,7 +79,7 @@ mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
   TRC_TMPX(printf("GET_TMPX%d[%d]: %p in %s()\n",
                   tid, d->ti[tid]-1, (void*)tmp, func));
   tmp->mo = t->mo;
-  return tmp; // mad_tpsa_reset0(tmp);
+  return mad_tpsa_reset0(tmp);
 }
 
 static inline void
