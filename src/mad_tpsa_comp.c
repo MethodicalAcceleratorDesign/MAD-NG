@@ -63,12 +63,19 @@ check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 void
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
+  DBGFUN(->);
   check_compose(sa, ma, sb, mb, mc);
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  for (idx_t ic = 0; ic < sa; ++ic)
+  for (idx_t ic = 0; ic < sa; ++ic) {
+    DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
     mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
+  }
+
+  for (idx_t ib = 0; ib < sb; ++ib) {
+    DBGTPSA(mb[ib]);
+  }
 
   #ifdef _OPENMP
   ord_t highest = 0;
@@ -85,14 +92,17 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   for (idx_t ic = 0; ic < sa; ++ic) {
     FUN(copy)(mc_[ic], mc[ic]);
     FUN(del )(mc_[ic]);
+
+    DBGTPSA(mc[ic]);
   }
   mad_free_tmp(mc_);
+  DBGFUN(<-);
 }
 
 void
 FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa])
 {
-  assert(ma && tb);
+  assert(ma && tb); DBGFUN(->);
   ensure(sb>0, "invalid vector sizes (zero or negative sizes)");
 
   // transform translation vector into damap of order 1
@@ -109,12 +119,13 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   for (idx_t ib = 0; ib < sb; ++ib)
     FUN(del)(mb[ib]);
   mad_free_tmp(mb);
+  DBGFUN(<-);
 }
 
 void
 FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
 {
-  assert(ma && tb && tc);
+  assert(ma && tb && tc); DBGFUN(->);
   ensure(sa>0 && sb>0, "invalid map/vector sizes (zero or negative sizes)");
   ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
 
@@ -139,6 +150,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
   }
   mad_free_tmp(mc);
   mad_free_tmp(mb);
+  DBGFUN(<-);
 }
 
 // --- end --------------------------------------------------------------------o

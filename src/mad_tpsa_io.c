@@ -95,7 +95,10 @@ extern const D* mad_tpsa_scan_hdr(int*, FILE*);
 const D*
 FUN(scan_hdr) (int *kind_, FILE *stream_)
 {
-  return mad_tpsa_scan_hdr(kind_, stream_);
+  DBGFUN(->);
+  const D* ret = mad_tpsa_scan_hdr(kind_, stream_);
+  DBGFUN(<-);
+  return ret;
 }
 
 #else
@@ -103,6 +106,7 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 const D*
 FUN(scan_hdr) (int *kind_, FILE *stream_)
 {
+  DBGFUN(->);
   int nv=0, nk=0, cnt=0;
   ord_t mo, ko;
   char typ;
@@ -125,7 +129,9 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 2nd line (****)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
-    return mad_desc_newn(nv, mo);
+    const D* ret = mad_desc_newn(nv, mo);
+    DBGFUN(<-);
+    return ret;
   }
 
   if (cnt == 5) {
@@ -142,11 +148,13 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
-    return mad_desc_newv(nv, vo, nk, ko);
+    const D* ret = mad_desc_newv(nv, vo, nk, ko);
+    DBGFUN(<-);
+    return ret;
   }
 
-  if (cnt < 3) error("could not read (NO,NV) from header");
-  if (cnt < 5) error("could not read (NK,KO) from header");
+  if (cnt < 3) { error("could not read (NO,NV) from header"); }
+  if (cnt < 5) { error("could not read (NK,KO) from header"); }
   return NULL; // never reached
 }
 
@@ -155,7 +163,8 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 void
 FUN(scan_coef) (T *t, FILE *stream_)
 {
-  assert(t);
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
   if (!stream_) stream_ = stdin;
 
   NUM c;
@@ -177,21 +186,25 @@ FUN(scan_coef) (T *t, FILE *stream_)
     // discard too high mononial
     if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c);
   }
+
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 T*
 FUN(scan) (FILE *stream_)
 {
+  DBGFUN(->);
   const D *d = FUN(scan_hdr)(0, stream_);
   T *t = FUN(newd)(d, mad_tpsa_default);
   FUN(scan_coef)(t, stream_);
+  DBGFUN(<-);
   return t;
 }
 
 void
 FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 {
-  assert(t);
+  assert(t); DBGFUN(->); DBGTPSA(t);
 
   if (!name_  ) name_ = "-UNNAMED--";
   if (eps_ < 0) eps_ = 1e-16;
@@ -226,10 +239,10 @@ coeffonly:
 
   // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
-  idx_t *pi = d->ord2idx, idx = 0;
+  idx_t *o2i = d->ord2idx, idx = 0;
   for (ord_t o = t->lo; o <= t->hi ; ++o) {
     if (!mad_bit_get(t->nz,o)) continue;
-    for (idx_t i = pi[o]; i < pi[o+1]; ++i) {
+    for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
       if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
       fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VAL(t->coef[i]), d->ords[i]);
@@ -244,6 +257,8 @@ coeffonly:
     fprintf(stream_, "\n          ALL COMPONENTS ZERO \n");
   else
     fprintf(stream_, "\n\n");
+
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 // --- end --------------------------------------------------------------------o

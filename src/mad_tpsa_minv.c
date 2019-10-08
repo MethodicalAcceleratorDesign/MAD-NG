@@ -171,10 +171,13 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 void
 FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
 {
+  DBGFUN(->);
   assert(ma && mc);
   check_minv(sa,ma,mc);
-  for (idx_t i = 0; i < sa; ++i)
+  for (idx_t i = 0; i < sa; ++i) {
+    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
     ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
+  }
 
   const D *d = ma[0]->d;
   T *lininv[sa], *nonlin[sa], *tmp[sa];
@@ -209,17 +212,23 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
     FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
+
+    DBGTPSA(mc[i]);
   }
+  DBGFUN(<-);
 }
 
 void
 FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
 {
+  DBGFUN(->);
   assert(ma && mc && select);
   check_minv(sa,ma,mc);
-  for (idx_t i = 0; i < sa; ++i)
+  for (idx_t i = 0; i < sa; ++i) {
+    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
     if (select[i])
-      ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
+      ensure(mad_bit_get(ma[i]->nz,1), "invalid domain"); // ??
+  }
 
   const D *d = ma[0]->d;
   // split input map into rows that are inverted and rows that are not
@@ -250,7 +259,9 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
     FUN(del)(mUsed[i]);
     FUN(del)(mUnused[i]);
     FUN(del)(mInv[i]);
+    DBGTPSA(mc[i]);
   }
+  DBGFUN(<-);
 }
 
 // --- end --------------------------------------------------------------------o
