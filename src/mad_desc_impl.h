@@ -80,6 +80,36 @@ void     mad_tpsa_del   (const tpsa_t *t);
 ctpsa_t* mad_ctpsa_newd (const D *d, ord_t mo);
 void     mad_ctpsa_del  (const ctpsa_t *t);
 
+// --- TPSA sanity checks -----------------------------------------------------o
+
+#define DEBUG 1
+#define inline
+
+#if DEBUG > 0
+#  define DBGTPSA(t) if (!FUN(is_valid)(t)) FUN(debug)(t,__func__,__LINE__,0)
+#else
+#  define DBGTPSA(t)
+#endif
+
+// --- trace functions --------------------------------------------------------o
+
+#if DEBUG > 0
+#  define DBGFUN(a) printf(#a " %s:%d:\n", __func__, __LINE__)
+#else
+#  define DBGFUN(a)
+#endif
+
+// --- special assert (loop) --------------------------------------------------o
+
+#if DEBUG > 0
+#undef  assert
+#define assert(c) \
+        ((void)( (c) || (__assert_fail(#c, __FILE__, __LINE__, __func__),1) ))
+
+void __assert_fail(const char *assertion, const char *file, int line,
+                   const char *function) __attribute__((noreturn));
+#endif
+
 // --- helpers ----------------------------------------------------------------o
 
 static inline idx_t
@@ -87,12 +117,6 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 {
   return ib*ia_size + ia;
 }
-
-#ifdef DEBUG
-#define CHECK_VALIDITY(t) if (!FUN(is_valid)(t)) FUN(debug)(t,__func__,0)
-#else
-#define CHECK_VALIDITY(t)
-#endif
 
 // --- macros for temporaries -------------------------------------------------o
 
