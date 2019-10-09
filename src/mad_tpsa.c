@@ -89,9 +89,9 @@ log_t
 FUN(is_valid) (const T *t)
 {
   assert(t); DBGFUN(->);
-  log_t ok = FUN(check)(t,0,0);
+  log_t ret = FUN(check)(t,0,0);
   DBGFUN(<-);
-  return ok;
+  return ret;
 }
 
 void
