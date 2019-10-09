@@ -959,10 +959,11 @@ module GTPSA
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end subroutine mad_tpsa_scan_coef
 
-    subroutine mad_tpsa_debug(tpsa,name_,stream_) bind(C)
+    subroutine mad_tpsa_debug(tpsa,name_,line_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa    ! src
       character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
+      type(c_int), value, intent(in) :: line_   ! line number or 0
       type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_debug
 
@@ -1731,10 +1732,11 @@ module GTPSA
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end subroutine mad_ctpsa_scan_coef
 
-    subroutine mad_ctpsa_debug(ctpsa,name_,stream_) bind(C)
+    subroutine mad_ctpsa_debug(ctpsa,name_,line_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa   ! src
       character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
+      type(c_int), value, intent(in) :: line_   ! line number or 0
       type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
     end subroutine mad_ctpsa_debug
 
