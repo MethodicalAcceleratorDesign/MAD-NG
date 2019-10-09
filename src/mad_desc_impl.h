@@ -82,18 +82,17 @@ void     mad_ctpsa_del  (const ctpsa_t *t);
 
 // --- TPSA sanity checks -----------------------------------------------------o
 
-#define DEBUG 1
-#define inline
+#define DEBUG 0
 
 #if DEBUG > 0
-#  define DBGTPSA(t) if (!FUN(is_valid)(t)) FUN(debug)(t,__func__,__LINE__,0)
+#  define DBGTPSA(t) FUN(debug)(t,__func__,__LINE__,0)
 #else
 #  define DBGTPSA(t)
 #endif
 
 // --- trace functions --------------------------------------------------------o
 
-#if DEBUG > 0
+#if DEBUG > 1
 #  define DBGFUN(a) printf(#a " %s:%d:\n", __func__, __LINE__)
 #else
 #  define DBGFUN(a)
