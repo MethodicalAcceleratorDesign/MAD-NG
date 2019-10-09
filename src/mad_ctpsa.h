@@ -249,7 +249,7 @@ void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, int line, FILE *stre
 log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
 
 // unsafe operations !!
-ctpsa_t* mad_ctpsa_init(ctpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
+ctpsa_t* mad_ctpsa_init (ctpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
 
 // macro wrapper for safe use
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
