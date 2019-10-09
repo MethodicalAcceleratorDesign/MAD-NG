@@ -39,16 +39,18 @@ ord in [lo,hi]: nz[ord] == 0 <=> all coef[ord] == 0
 ord in [lo,hi]: nz[ord] == 1 <=> any coef[ord] != 0 (or none)
                 nz[0  ] == 0 <=>     coef[0  ] == 0 && lo >= 1
                 nz[0  ] == 1 <=>     coef[0  ] != 0 && lo == 0
-GTPSA just initialized have lo=mo, hi=0, nz=0, coef[0]=0 (see reset)
+GTPSA just initialized have lo=mo, hi=0, nz=0, coef[0]=0 (see reset0)
 */
 
 static inline log_t
 FUN(check) (const T *t, ord_t *o_, idx_t *i_)
 {
-  assert(t); assert(t->d);
+  assert(t);
   ord_t o  = 0;
   idx_t i  = -1;
-  log_t ok = TRUE;
+  log_t ok = !!t->d;
+
+  if (!ok) goto ret; // i == -1
 
   ok &= t->mo <= t->d->mo;
   ok &= t->hi <= t->mo;
@@ -80,29 +82,37 @@ FUN(check) (const T *t, ord_t *o_, idx_t *i_)
 ret:
   if (o_) *o_ = o;
   if (i_) *i_ = i;
-
   return ok;
 }
 
 log_t
 FUN(is_valid) (const T *t)
 {
- DBGFUN(->);
- log_t ret = FUN(check)(t,0,0);
- DBGFUN(<-); return ret;
+  assert(t); DBGFUN(->);
+  log_t ok = FUN(check)(t,0,0);
+  DBGFUN(<-);
+  return ok;
 }
 
 void
 FUN(debug) (const T *t, str_t name_, int line, FILE *stream_)
 {
-  assert(t); assert(t->d); DBGFUN(->);
+  assert(t); DBGFUN(->);
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
 
-  fprintf(stream_, "{ %s:%d: lo=%d hi=%d mo=%d id=%d",
-          name_ ? name_ : "??", line, t->lo,t->hi,t->mo,d->id); fflush(stream_);
+  ord_t o; idx_t i;
+  log_t ok = FUN(check)(t, &o, &i);
 
-  ord_t   mo = MIN(t->mo,d->mo); // avoid segfault if mo is corrupted
+  fprintf(stream_, "{ %s:%d: ok=%d, lo=%d hi=%d mo=%d id=%d",
+          name_ ? name_ : "??", line, ok, t->lo, t->hi, t->mo, d ? d->id : -1);
+  fflush(stream_);
+
+  if (ok) { fprintf(stream_," }\n"); DBGFUN(<-); return; }
+
+  if (!d) { fprintf(stream_," }\n"); assert(d); }
+
+  ord_t   mo = MIN(t->mo,d->mo);
   idx_t *o2i = d->ord2idx;
   for (idx_t i = 0; i < o2i[mo+1]; ++i)
     fprintf(stream_," [%d]=" FMT, i, VAL(t->coef[i]));
@@ -113,11 +123,7 @@ FUN(debug) (const T *t, str_t name_, int line, FILE *stream_)
     bnz[b] = '0' + !!mad_bit_get(t->nz,b);
   fprintf(stream_," nz=%s", bnz); fflush(stream_);
 
-  ord_t o  = 0;
-  idx_t i  = -1;
-  log_t ok = FUN(check)(t, &o, &i);
-  if (!ok) fprintf(stream_," ** (o=%d, i=%d)\n", o, i);
-  else     fprintf(stream_,"\n");
+  fprintf(stream_," ** (o=%d, i=%d)\n", o, i);
   DBGFUN(<-);
 }
 
