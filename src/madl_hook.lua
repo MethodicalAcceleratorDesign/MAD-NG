@@ -21,41 +21,43 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local level = 0
+local function hook(event, newlines_)
+  -- event: "call", "tail call", "return", "line", "count"
+  local t = debug.getinfo(3)
 
-local function hook_(event)
- local t = debug.getinfo(3)
-
- io.write(level, " >>> ", string.rep(" ",level))
- if t ~= nil and t.currentline >= 0 then
-  io.write(t.short_src,":",t.currentline," ")
- end
-
- t = debug.getinfo(2)
- if event == "call" then
-  level = level+1
- else
-  level = level-1
-  if level < 0 then level = 0 end
- end
-
- if t.what == "main" then
-  if event == "call"
-  then io.write("begin ", t.short_src)
-  else io.write("end "  , t.short_src)
+  io.write(" >>> ")
+  if t ~= nil and t.currentline >= 0 then
+    local src = t.short_src:match("[^/]*$")
+    io.write(src, ":", t.currentline, " ")
   end
- elseif t.what == "Lua" then
-  io.write(event," ",t.name or "(Lua)"," <",t.linedefined,":",t.short_src,">")
- else
-  io.write(event," ",t.name or "(C)"," [",t.what,"] ")
- end
- io.write("\n")
+
+  t = assert(debug.getinfo(2), "unexpected nil context")
+  local src = t.short_src:match("[^/]*$")
+
+  if t.what == "main" then
+    if event == "call" then
+      io.write("begin ", src)
+    elseif event == "return" then
+      io.write("end "  , src)
+    end
+  elseif t.what == "Lua" then
+    io.write(event, " ", t.name or "(Lua)", " <", t.linedefined, ":", src, ">")
+  elseif t.what == "C" then
+    io.write(event, " ", t.name or "(C)", " [", t.what, "] ")
+  else
+    io.write("unknown what: ", t.what, " for event: ", event)
+  end
+
+  io.write("\n")
 end
 
-local function hook (mode)
-  debug.sethook(hook_, mode or "cr")
-  level = 0
+local function dbghook (mode_, count_)
+  -- mode_: "c", "r", "l" or "off"
+  if mode_ == "off"
+  then debug.sethook() -- turn hook off
+  else debug.sethook(hook, mode_ or "cr", count_)
+  end
 end
 
-return { hook = hook }
+return { dbghook = dbghook }
 
