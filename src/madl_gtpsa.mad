@@ -135,13 +135,18 @@ local function gtpsad (nv_, mo_, nk_, ko_)
   local nk = is and nv_.nk or nk_ or 0   -- number of knobs
   local ko = is and nv_.ko or ko_ or 0   -- knob max cross-order
   local vo = is and nv_.vo or nil        -- variables orders
-
+  local d
   if is_nil(vo) then
-    return assert(_C.mad_desc_newk(nv,mo,nk,ko),"unexpected null descriptor")
+    d = _C.mad_desc_newk(nv,mo,nk,ko)
   else
     local m = monomial(vo)
-    return assert(_C.mad_desc_newv(m.n,m.data,nk,ko),"unexpected null descriptor")
+    d = _C.mad_desc_newv(m.n,m.data,nk,ko)
   end
+  return assert(d, "unexpected null descriptor")
+end
+
+local function gtpsad_release (td)
+  _C.mad_desc_del(td)
 end
 
 gtpsad() -- build and set default desc to nv=6,mo=1
@@ -151,15 +156,17 @@ gtpsad() -- build and set default desc to nv=6,mo=1
 local function tpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
   assert(len <= 2^30, "tpsa is too large")
-  local tpsa = tpsa_ctor(len) -- VLA
-  return assert(_C.mad_tpsa_init(tpsa, d, mo, 0, mo), "unexpected null tpsa")
+  local tpsa = tpsa_ctor(len) -- VLA (hooked immediately before calling C)
+  _C.mad_tpsa_init(tpsa, d, mo, 0, mo)
+  return tpsa
 end
 
 local function ctpsa_alloc (d, mo)
   local len = _C.mad_desc_ordlen(d, mo)
    assert(len <= 2^29, "ctpsa is too large")
-  local ctpsa = ctpsa_ctor(len) -- VLA
-  return assert(_C.mad_ctpsa_init(ctpsa, d, mo, 0, mo), "unexpected null ctpsa")
+  local ctpsa = ctpsa_ctor(len) -- VLA (hooked immediately before calling C)
+  _C.mad_ctpsa_init(ctpsa, d, mo, 0, mo)
+  return ctpsa
 end
 
 -- ctors ----------------------------------------------------------------------o
@@ -232,11 +239,11 @@ MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
 MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
-MR.is_valid = \x   -> _C.mad_tpsa_is_valid (x)
-MC.is_valid = \x   -> _C.mad_ctpsa_is_valid(x)
+MR.is_valid = \x -> _C.mad_tpsa_is_valid (x)
+MC.is_valid = \x -> _C.mad_ctpsa_is_valid(x)
 
-MR.debug  = \x,nam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,lin_,fil_) return x end
-MC.debug  = \x,nam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,lin_,fil_) return x end
+MR.debug  = \x,nam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,lin_,fil_) end
+MC.debug  = \x,nam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,lin_,fil_) end
 
 -- same, copy, getord, cutord, convert, clear, scalar -------------------------o
 
@@ -1735,12 +1742,9 @@ function MR.read (_, filnam_)
   local file = openfile(filnam_, 'r', '.dat')
   local d = assert(_C.mad_tpsa_scan_hdr(int,file), "unexpected null descriptor")
   local x
-  if int[0] == 1 then
-    x = ctpsa(d)
-    _C.mad_ctpsa_scan_coef(x, file)
-  else
-    x = tpsa(d)
-    _C.mad_tpsa_scan_coef(x, file)
+  if int[0] == 1
+  then x = ctpsa(d) ; _C.mad_ctpsa_scan_coef(x, file)
+  else x = tpsa (d) ; _C.mad_tpsa_scan_coef (x, file)
   end
   if is_string(filnam_) then file:close() end
   return x
@@ -1804,5 +1808,6 @@ return {
    tpsa  =  tpsa,
   ctpsa  = ctpsa,
   gtpsad = gtpsad,
+  gtpsad_release = gtpsad_release,
   -- __help = require 'madh_gtpsa',
 }
