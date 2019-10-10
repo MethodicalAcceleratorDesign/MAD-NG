@@ -72,7 +72,7 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 static inline tpsa_t*
 mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 {
-  const D *d = t->d;
+  const desc_t *d = t->d;
   int tid = omp_get_thread_num();
   assert(d->ti[tid] < DESC_MAX_TMP);
   tpsa_t *tmp = d->t[ tid*DESC_MAX_TMP + d->ti[tid]++ ];
@@ -85,7 +85,7 @@ mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 static inline void
 mad_tpsa_reltmp (tpsa_t *tmp, const str_t func)
 {
-  const D *d = tmp->d;
+  const desc_t *d = tmp->d;
   int tid = omp_get_thread_num();
   TRC_TMPX(printf("REL_TMPX%d[%d]: %p in %s()\n",
                   tid, d->ti[tid]-1, (void*)tmp, func));
