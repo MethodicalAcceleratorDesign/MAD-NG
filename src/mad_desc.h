@@ -69,6 +69,17 @@ ssz_t mad_desc_maxlen (const desc_t *d); // ordlen(mo) == maxlen
 ssz_t mad_desc_ordlen (const desc_t *d, ord_t mo);
 ord_t mad_desc_gtrunc (const desc_t *d, ord_t to);
 
+// -- indexes / monomials
+log_t mad_desc_isvalids  (const desc_t *d, ssz_t n,       str_t s    );
+log_t mad_desc_isvalidm  (const desc_t *d, ssz_t n, const ord_t m [n]);
+log_t mad_desc_isvalidsm (const desc_t *d, ssz_t n, const idx_t m [n]);
+idx_t mad_desc_idxs      (const desc_t *d, ssz_t n,       str_t s    );
+idx_t mad_desc_idxm      (const desc_t *d, ssz_t n, const ord_t m [n]);
+idx_t mad_desc_idxsm     (const desc_t *d, ssz_t n, const idx_t m [n]);
+idx_t mad_desc_nxtbyvar  (const desc_t *d, ssz_t n,       ord_t m [n]);
+idx_t mad_desc_nxtbyord  (const desc_t *d, ssz_t n,       ord_t m [n]);
+ord_t mad_desc_mono      (const desc_t *d, ssz_t n,       ord_t m_[n], idx_t i);
+
 // global cleanup (warning: no GTSPA must still be in use!)
 void  mad_desc_cleanup(void);
 

@@ -68,16 +68,8 @@ max_nc(ssz_t nv, ssz_t no)
 
 // --- monomials --------------------------------------------------------------o
 
-static inline void
-mono_realloc (D *d, ssz_t nc)
-{
-  assert(d);
-  d->nc = nc;
-  d->monos = mad_realloc(d->monos, nc*d->nv * sizeof *d->monos);
-}
-
-static inline int
-mono_is_valid (const D *d, ssz_t n, const ord_t m[n])
+static inline log_t
+mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m && n <= d->nv);
   return mad_mono_le (n, m, d->vo)
@@ -85,20 +77,52 @@ mono_is_valid (const D *d, ssz_t n, const ord_t m[n])
       && mad_mono_ord(n-d->nmv, m+d->nmv) <= d->ko;
 }
 
-static inline int
-mono_nxt_by_var (const D *d, ssz_t n, ord_t m[n])
+static inline log_t
+mono_isvalidsm (const D *d, ssz_t n, const idx_t m[n])
+{
+  assert(d && m);
+  if (n > 0 && n & 1) return FALSE;
+
+  idx_t prev = -1;
+  ord_t mo = 0, ko = 0;
+
+  for (idx_t i = 0; i < n; i += 2) {
+    idx_t idx = m[i]-1; // translate from var idx to mono idx
+    ord_t ord = m[i+1];
+
+    // check index
+    if (idx >= d->nv || idx < prev) return FALSE;
+
+    // check order
+    mo += ord;
+    if (mo > d->mo || ord > d->vo[idx]) return FALSE;
+
+    // check knob x-order
+    if (idx > d->nmv) {
+      ko += ord;
+      if (ko > d-> ko) return FALSE;
+    }
+
+    // backup index
+    prev = idx;
+  }
+  return TRUE;
+}
+
+static inline log_t
+mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 {
   assert(d && m && n <= d->nv);
   const ord_t *vo = d->vo;
   for (idx_t i=0; i < n; ++i) {
-    if (++m[i] <= vo[i] && mono_is_valid(d, n, m)) return 1;
+    if (++m[i] <= vo[i] && mono_isvalid(d, n, m)) return TRUE;
     m[i] = 0;
   }
-  return 0; // no more valid monomial
+  return FALSE; // no more valid monomial
 }
 
 static inline idx_t
-mono_get_idx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
+mono_findidx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
 {
   const ord_t **T = (const ord_t **)T_;
   idx_t start = from, count = to-from, step, i;
@@ -123,6 +147,14 @@ mono_get_idx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
 }
 
 static inline void
+mono_realloc (D *d, ssz_t nc)
+{
+  assert(d);
+  d->nc = nc;
+  d->monos = mad_realloc(d->monos, nc*d->nv * sizeof *d->monos);
+}
+
+static inline void
 set_monos (D *d) // builds the monomials matrix in Tv order
 {
   DBGFUN(->);
@@ -140,7 +172,7 @@ set_monos (D *d) // builds the monomials matrix in Tv order
 
   // fill the matrix
   idx_t i = 1;
-  for (; mono_nxt_by_var(d, n, m); ++i) {
+  for (; mono_nxtbyvar(d, n, m); ++i) {
     if (i >= d->nc) mono_realloc(d, 2*d->nc);
     mad_mono_copy(n, m, d->monos + n*i);
   }
@@ -331,7 +363,7 @@ tbl_index_H(const D *d, ssz_t n, const ord_t m[n])
 }
 
 static inline int
-tbl_index_H_sm(const D *d, ssz_t n, const idx_t m[n])
+tbl_index_Hsm(const D *d, ssz_t n, const idx_t m[n])
 {
 //  DBGFUN(->);
   assert(d && n/2 <= d->nv && !(n & 1));
@@ -376,12 +408,12 @@ tbl_solve_H(D *d)
     for (; i < ni && !H[j*ni+i]; ++i) {   // for each unknown..
       mad_mono_copy(n, To[o2i[i]-1], m);  // monomial without the unknown
       m[j]++;                             // add the unknown               // 2.
-      if (!mono_is_valid(d, n, m)) {      // monomial blocked by ko
+      if (!mono_isvalid(d, n, m)) {      // monomial blocked by ko
         for (; i < ni && !H[j*ni+i]; ++i) H[j*ni+i] = -1;
         break;
       }
       idx_t i0 = tbl_index_H(d, n, m);                                     // 3.
-      idx_t i1 = o2v[mono_get_idx(To, n, m, o2i[i], o2i[i+1])];            // 4.
+      idx_t i1 = o2v[mono_findidx(To, n, m, o2i[i], o2i[i+1])];            // 4.
       H[j*ni+i] = i1 - i0;                                                 // 5.
     }
   }
@@ -528,7 +560,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
       // get the resulting monomial
       mad_mono_add(nv, To[ia], To[ib], m);
       // check for validity
-      if (mono_is_valid(d,nv,m)) {
+      if (mono_isvalid(d,nv,m)) {
         // get its index in To
         idx_t ic = tv2to[tbl_index_H(d,nv,m)];
         // get its index in lc
@@ -670,7 +702,7 @@ tbl_check_L (D *d)
           if (ic >= 0 && ic < d->ord2idx[oc])      return  3e7 + ic*1e5 + 12;
 
           mad_mono_add(d->nv, d->To[ia], d->To[ib], m);
-          if (ic < 0 && mono_is_valid(d,d->nv,m))  return -3e7          - 13;
+          if (ic < 0 && mono_isvalid(d,d->nv,m))   return -3e7          - 13;
         }
       }
     }
@@ -735,17 +767,17 @@ static inline void
 get_ops(D *d, long long int ops[])
 {
   DBGFUN(->);
-  int *o2i = d->ord2idx;
+  idx_t *o2i = d->ord2idx;
   ops[0] = ops[1] = ops[2] = 0;
-  for (int o = 3; o <= d->mo; ++o) {
+  for (ord_t o = 3; o <= d->mo; ++o) {
     ops[o] = 0;
-    for (int j = 1; j <= (o-1)/2; ++j) {
-      int oa = o-j, ob = j;            // oa > ob >= 1
-      int na = o2i[oa+1] - o2i[oa], nb = o2i[ob+1] - o2i[ob];
+    for (ord_t j = 1; j <= (o-1)/2; ++j) {
+      ord_t oa = o-j, ob = j;            // oa > ob >= 1
+      idx_t na = o2i[oa+1] - o2i[oa], nb = o2i[ob+1] - o2i[ob];
       ops[o] += 2 * na * nb;
     }
     if (!(o & 1)) {
-      int ho = o/2;
+      ord_t ho = o/2;
       ops[o] += (o2i[ho+1]-o2i[ho]) * (o2i[ho+1]-o2i[ho]);
     }
   }
@@ -791,7 +823,7 @@ set_thread (D *d)
   get_ops(d, ops);
 
   // serial
-  for (int o = d->mo; o > 2; --o) {
+  for (ord_t o = d->mo; o > 2; --o) {
     d->ocs[0][sizes[0]++] = o;
     dops[0] += ops[o];
   }
@@ -799,7 +831,7 @@ set_thread (D *d)
 
   // parallel
   if (nth > 1) {
-    for (int o = d->mo+1; o > 2; --o) {
+    for (ord_t o = d->mo+1; o > 2; --o) {
       int idx = get_min_dispatched_idx(d->nth,dops+1) + 1;
       assert(idx > 0 && idx <= d->nth);
       d->ocs[idx][sizes[idx]++] = o;
@@ -990,84 +1022,75 @@ get_desc (int nv, ord_t mo, const ord_t vo_[nv], int nk, ord_t ko)
 
 // --- public -----------------------------------------------------------------o
 
-int
-mad_desc_mono_isvalid_m (const D *d, ssz_t n, const ord_t m[n])
+log_t
+mad_desc_isvalidm (const D *d, ssz_t n, const ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  int ret = n <= d->nv && mono_is_valid(d, n, m);
+  log_t ret = n <= 0 && n <= d->nv && mono_isvalid(d, n, m);
   DBGFUN(<-);
   return ret;
 }
 
-int
-mad_desc_mono_isvalid_s (const D *d, ssz_t n, str_t s)
+log_t
+mad_desc_isvalids (const D *d, ssz_t n, str_t s)
 {
   DBGFUN(->);
   assert(d && s);
   if (n <= 0) n = strlen(s);
-  if (n > d->nv) return 0;
+  if (n > d->nv) return FALSE;
 
   ord_t m[n];
   n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
-  int ret = mono_is_valid(d, n, m);
+  log_t ret = mono_isvalid(d, n, m);
   DBGFUN(<-);
   return ret;
 }
 
-int
-mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m[n])
+log_t
+mad_desc_isvalidsm (const D *d, ssz_t n, const idx_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  if (n > 0 && n & 1) return 0;
-
-  idx_t prev = -1;
-  ord_t mo = 0, ko = 0;
-
-  for (idx_t i = 0; i < n; i += 2) {
-    idx_t idx = m[i]-1; // translate from var idx to mono idx
-    ord_t ord = m[i+1];
-
-    // check index
-    if (idx >= d->nv || idx < prev) return 0;
-
-    // check order
-    mo += ord;
-    if (mo > d->mo || ord > d->vo[idx]) return 0;
-
-    // check knob x-order
-    if (idx > d->nmv) {
-      ko += ord;
-      if (ko > d-> ko) return 0;
-    }
-
-    // backup index
-    prev = idx;
-  }
-
+  log_t ret = mono_isvalidsm(d, n, m);
   DBGFUN(<-);
-  return 1;
+  return ret;
 }
 
-int
-mad_desc_mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
+idx_t
+mad_desc_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
   ensure(n == d->nv, "invalid monomial length %d (%d orders expected)", n, d->nv);
 
-  if (mono_is_valid(d,n,m)) {
-    mad_mono_copy(n, d->Tv[tbl_index_H(d,n,m)], m);
-    DBGFUN(<-);
-    return 1;
-  }
-  DBGFUN(<-);
-  return 0;
+  if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
+
+  idx_t idx = tbl_index_H(d,n,m)+1;
+  if (idx == d->nc) { DBGFUN(<-); return -1; }
+
+  mad_mono_copy(n, d->Tv[idx], m);
+  DBGFUN(<-); return idx;
+}
+
+idx_t
+mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
+{
+  DBGFUN(->);
+  assert(d && m);
+  ensure(n == d->nv, "invalid monomial length %d (%d orders expected)", n, d->nv);
+
+  if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
+
+  idx_t idx = d->tv2to[tbl_index_H(d,n,m)]+1;
+  if (idx == d->nc) { DBGFUN(<-); return -1; }
+
+  mad_mono_copy(n, d->To[idx], m);
+  DBGFUN(<-); return idx;
 }
 
 ord_t
-mad_desc_get_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
+mad_desc_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
 {
   DBGFUN(->);
   assert(d);
@@ -1079,17 +1102,17 @@ mad_desc_get_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
 }
 
 idx_t
-mad_desc_get_idx_m (const D *d, ssz_t n, const ord_t m[n])
+mad_desc_idxm (const D *d, ssz_t n, const ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  idx_t ret = mono_is_valid(d,n,m) ? d->tv2to[tbl_index_H(d,n,m)] : -1;
+  idx_t ret = mono_isvalid(d,n,m) ? d->tv2to[tbl_index_H(d,n,m)] : -1;
   DBGFUN(<-);
   return ret;
 }
 
 idx_t
-mad_desc_get_idx_s (const D *d, ssz_t n, str_t s)
+mad_desc_idxs (const D *d, ssz_t n, str_t s)
 {
   assert(d && s); DBGFUN(->);
   if (n <= 0) n = strlen(s);
@@ -1097,15 +1120,15 @@ mad_desc_get_idx_s (const D *d, ssz_t n, str_t s)
 
   ord_t m[n];
   n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
-  idx_t ret = mad_desc_get_idx_m(d, n, m);
+  idx_t ret = mad_desc_idxm(d, n, m);
   DBGFUN(<-); return ret;
 }
 
 idx_t
-mad_desc_get_idx_sm (const D *d, ssz_t n, const idx_t m[n])
+mad_desc_idxsm (const D *d, ssz_t n, const idx_t m[n])
 {
   assert(d && m); DBGFUN(->);
-  idx_t ret = mad_desc_mono_isvalid_sm(d,n,m) ? d->tv2to[tbl_index_H_sm(d,n,m)] : -1;
+  idx_t ret = mono_isvalidsm(d,n,m) ? d->tv2to[tbl_index_Hsm(d,n,m)] : -1;
   DBGFUN(<-); return ret;
 }
 
