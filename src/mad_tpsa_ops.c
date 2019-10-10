@@ -79,7 +79,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
   const D *d = c->d;
   const NUM *ca = a->coef, *cb = b->coef;
   NUM *cc = c->coef;
-  idx_t *pi = d->ord2idx, hod = d->mo/2;
+  idx_t *o2i = d->ord2idx, hod = d->mo/2;
   bit_t nza = a->nz, nzb = b->nz;
   ord_t lo = MAX(c->lo,3);
 
@@ -96,8 +96,8 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
 
     for (ord_t j=1; j <= (oc-1)/2; ++j) {
       ord_t oa = oc-j, ob = j;            // oa > ob >= 1
-      ssz_t na = pi[oa+1] - pi[oa];
-      ssz_t nb = pi[ob+1] - pi[ob];
+      ssz_t na = o2i[oa+1] - o2i[oa];
+      ssz_t nb = o2i[ob+1] - o2i[ob];
       const idx_t *lc = d->L[oa*hod + ob];
       const idx_t *idx[2] = { d->L_idx[oa*hod + ob][idx0],
                               d->L_idx[oa*hod + ob][idx1] };
@@ -105,30 +105,30 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
 
       if (mad_bit_get(nza & nzb,oa) && mad_bit_get(nza & nzb,ob)) {
 //        printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
-        hpoly_sym_mul(ca+pi[oa],cb+pi[ob], ca+pi[ob],cb+pi[oa], cc, na,nb, lc, idx);
+        hpoly_sym_mul(ca+o2i[oa],cb+o2i[ob],ca+o2i[ob],cb+o2i[oa],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_get(nza,oa) && mad_bit_get(nzb,ob)) {
 //        printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
-        hpoly_asym_mul(ca+pi[oa],cb+pi[ob],cc, na,nb, lc, idx);
+        hpoly_asym_mul(ca+o2i[oa],cb+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_get(nza,ob) && mad_bit_get(nzb,oa)) {
 //        printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
-        hpoly_asym_mul(cb+pi[oa],ca+pi[ob],cc, na,nb, lc, idx);
+        hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
     }
     // even oc, diagonal case
     if (!(oc & 1) && mad_bit_get(nza & nzb,oc/2)) {
       ord_t hoc = oc/2;
-      ssz_t nb = pi[hoc+1]-pi[hoc];
+      ssz_t nb = o2i[hoc+1] - o2i[hoc];
       const idx_t *lc = d->L[hoc*hod + hoc];
       const idx_t *idx[2] = { d->L_idx[hoc*hod + hoc][idx0],
                               d->L_idx[hoc*hod + hoc][idx1] };
       assert(lc); assert(idx[0] && idx[1]);
 //      printf("hpoly_diag_mul (%d) %2d+%2d=%2d\n", ocs[0], hoc,hoc,oc);
-      hpoly_diag_mul(ca+pi[hoc],cb+pi[hoc],cc, nb, lc, idx);
+      hpoly_diag_mul(ca+o2i[hoc],cb+o2i[hoc],cc,nb,lc,idx);
       *cnz = mad_bit_set(*cnz,oc);
     }
   }
@@ -196,13 +196,13 @@ static inline void
 hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[ord*ho + oc], *pi = d->ord2idx;
-  idx_t nc = pi[oc+1] - pi[oc], cols = pi[ord+1] - pi[ord];
-  // idx = idx - pi[ord];
+  const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
+  idx_t nc = o2i[oc+1] - o2i[oc], cols = o2i[ord+1] - o2i[ord];
+  // idx = idx - o2i[ord];
   for (idx_t ic = 0; ic < nc; ++ic) {
-    idx_t ia = lc[hpoly_idx(ic,idx-pi[ord],cols)];
+    idx_t ia = lc[hpoly_idx(ic,idx-o2i[ord],cols)];
     if (ia >= 0 && ca[ia]) {
-      assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
+      assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
     }
@@ -213,13 +213,13 @@ static inline void
 hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[ord*ho + oc], *pi = d->ord2idx;
-  idx_t nc = pi[ord+1] - pi[ord];
-  idx_t idx_shifted = idx - pi[ord];
+  const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
+  idx_t nc = o2i[ord+1] - o2i[ord];
+  idx_t idx_shifted = idx - o2i[ord];
   for (idx_t ic = 0; ic < nc; ++ic) {
     idx_t ia = lc[hpoly_idx(MAX(ic,idx_shifted),MIN(ic,idx_shifted),nc)];
     if (ia >= 0 && ca[ia]) {
-      assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
+      assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
     }
@@ -230,13 +230,13 @@ static inline void
 hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
   const ord_t ho = d->mo/2;
-  const idx_t *lc = d->L[oc*ho + ord], *pi = d->ord2idx;
-  idx_t nc = pi[oc+1] - pi[oc];
-  idx_t idx_shifted = idx - pi[ord];
+  const idx_t *lc = d->L[oc*ho + ord], *o2i = d->ord2idx;
+  idx_t nc = o2i[oc+1] - o2i[oc];
+  idx_t idx_shifted = idx - o2i[ord];
   for (idx_t ic = 0; ic < nc; ++ic) {
     idx_t ia = lc[hpoly_idx(idx_shifted,ic,nc)];
     if (ia >= 0 && ca[ia]) {
-      assert(pi[oc+ord] <= ia && ia < pi[oc+ord+1]);
+      assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
     }
@@ -247,14 +247,14 @@ static inline void
 hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
   const D *d = c->d;
-  idx_t *pi = d->ord2idx;
+  idx_t *o2i = d->ord2idx;
   const NUM *ca = a->coef;
         NUM *cc;
 
   c->hi = MIN3(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
   for (ord_t oc = 1; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+ord)) {
-      cc = c->coef + pi[oc];
+      cc = c->coef + o2i[oc];
            if (oc <  ord) hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
       else if (oc == ord) hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
       else                hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
@@ -270,9 +270,9 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 
 #define TPSA_LINOP(OPA, OPB, ORD) \
 do { \
-  idx_t *pi = c->d->ord2idx; \
-  idx_t start_a = pi[ORD?MAX(a->lo,ORD):a->lo], end_a = pi[MIN(a->hi,c_hi)+1]; \
-  idx_t start_b = pi[ORD?MAX(b->lo,ORD):b->lo], end_b = pi[MIN(b->hi,c_hi)+1]; \
+  idx_t *o2i = c->d->ord2idx; \
+  idx_t start_a = o2i[ORD?MAX(a->lo,ORD):a->lo], end_a = o2i[MIN(a->hi,c_hi)+1]; \
+  idx_t start_b = o2i[ORD?MAX(b->lo,ORD):b->lo], end_b = o2i[MIN(b->hi,c_hi)+1]; \
   idx_t i = start_a; \
   for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
   for (; i <           start_b ; ++i) c->coef[i] = 0; \
@@ -283,8 +283,8 @@ do { \
 
 #define TPSA_CLEAR(ORD) \
 do { \
-  idx_t *pi = c->d->ord2idx; \
-  for (idx_t i = pi[ORD]; i < pi[c_hi+1]; ++i) c->coef[i] = 0; \
+  idx_t *o2i = c->d->ord2idx; \
+  for (idx_t i = o2i[ORD]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0; \
 } while(0)
 
 void
@@ -301,15 +301,15 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   FUN(copy0)(a,c);
 
-  idx_t *pi = d->ord2idx;
+  idx_t *o2i = d->ord2idx;
   if (v == 1)
-    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
       c->coef[i] = a->coef[i];
   else if (v == -1)
-    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
       c->coef[i] = -a->coef[i];
   else
-    for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
       c->coef[i] = v * a->coef[i];
 
   DBGTPSA(c); DBGFUN(<-);
@@ -327,11 +327,11 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   ord_t new_lo = MIN (a->lo,c->lo);
   ord_t new_hi = MIN3(a->hi,c->mo,d->to);
-  idx_t *pi = d->ord2idx;
+  idx_t *o2i = d->ord2idx;
 
-  for (idx_t i = pi[new_lo ]; i < pi[c->lo   ]; ++i) c->coef[i]  = 0;
-  for (idx_t i = pi[c->hi+1]; i < pi[new_hi+1]; ++i) c->coef[i]  = 0;
-  for (idx_t i = pi[a->lo  ]; i < pi[new_hi+1]; ++i) c->coef[i] += v * a->coef[i];
+  for (idx_t i = o2i[new_lo ]; i < o2i[c->lo   ]; ++i) c->coef[i]  = 0;
+  for (idx_t i = o2i[c->hi+1]; i < o2i[new_hi+1]; ++i) c->coef[i]  = 0;
+  for (idx_t i = o2i[a->lo  ]; i < o2i[new_hi+1]; ++i) c->coef[i] += v * a->coef[i];
 
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
@@ -443,11 +443,11 @@ FUN(mul) (const T *a, const T *b, T *r)
               c->nz  = mad_bit_hcut(c->nz,c_hi);
 
     if (mad_bit_get(a->nz & b->nz,1)) {
-      idx_t *pi = d->ord2idx, hod = d->mo/2;
+      idx_t *o2i = d->ord2idx, hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
-      hpoly_diag_mul(a->coef+pi[1], b->coef+pi[1], c->coef, pi[2]-pi[1], lc, idx);
+      hpoly_diag_mul(a->coef+o2i[1], b->coef+o2i[1], c->coef, o2i[2]-o2i[1], lc, idx);
       c->nz = mad_bit_set(c->nz,2);
     }
 
@@ -539,9 +539,9 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  idx_t *pi = a->d->ord2idx;
-  idx_t start_a = pi[a->lo], end_a = pi[a->hi+1];
-  idx_t start_b = pi[b->lo], end_b = pi[b->hi+1];
+  idx_t *o2i = a->d->ord2idx;
+  idx_t start_a = o2i[a->lo], end_a = o2i[a->hi+1];
+  idx_t start_b = o2i[b->lo], end_b = o2i[b->hi+1];
   idx_t i = start_a;
 
   for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > eps_)              { DBGFUN(<-); return FALSE; }
@@ -565,8 +565,8 @@ FUN(abs) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *pi = c->d->ord2idx;
-  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  idx_t *o2i = c->d->ord2idx;
+  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = fabs(a->coef[i]);
 
   DBGTPSA(c); DBGFUN(<-);
@@ -584,8 +584,8 @@ FUN(arg) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *pi = c->d->ord2idx;
-  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  idx_t *o2i = c->d->ord2idx;
+  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = carg(a->coef[i]);
 
   DBGTPSA(c); DBGFUN(<-);
@@ -601,8 +601,8 @@ FUN(conj) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *pi = c->d->ord2idx;
-  for (idx_t i = pi[c->lo]; i < pi[c->hi+1]; ++i)
+  idx_t *o2i = c->d->ord2idx;
+  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = conj(a->coef[i]);
 
   DBGTPSA(c); DBGFUN(<-);
@@ -615,14 +615,14 @@ FUN(nrm1) (const T *a, const T *b_)
 {
   assert(a); DBGFUN(->); DBGTPSA(a);
   NUM norm = 0.0;
-  idx_t *pi = a->d->ord2idx;
+  idx_t *o2i = a->d->ord2idx;
   if (b_) {
     DBGTPSA(b_);
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T *t; SWAP(a,b_,t); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->to)+1],
-          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->to)+1];
+    idx_t start_a = o2i[a ->lo], end_a = o2i[MIN(a ->hi,a ->d->to)+1],
+          start_b = o2i[b_->lo], end_b = o2i[MIN(b_->hi,b_->d->to)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm += fabs(a->coef[i]);
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += fabs(a->coef[i] - b_->coef[i]);
@@ -633,7 +633,7 @@ FUN(nrm1) (const T *a, const T *b_)
     ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o) {
       if (!mad_bit_get(a->nz,o)) continue;
-      for (idx_t i = pi[o]; i < pi[o+1]; ++i)
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
         norm += fabs(a->coef[i]);
     }
   }
@@ -645,14 +645,14 @@ FUN(nrm2) (const T *a, const T *b_)
 {
   assert(a); DBGFUN(->); DBGTPSA(a);
   NUM norm = 0.0;
-  idx_t *pi = a->d->ord2idx;
+  idx_t *o2i = a->d->ord2idx;
   if (b_) {
     DBGTPSA(b_);
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
     if (a->lo > b_->lo) { const T* t; SWAP(a,b_,t); }
 
-    idx_t start_a = pi[a ->lo], end_a = pi[MIN(a ->hi,a ->d->to)+1],
-          start_b = pi[b_->lo], end_b = pi[MIN(b_->hi,b_->d->to)+1];
+    idx_t start_a = o2i[a ->lo], end_a = o2i[MIN(a ->hi,a ->d->to)+1],
+          start_b = o2i[b_->lo], end_b = o2i[MIN(b_->hi,b_->d->to)+1];
     idx_t i;
     for (i = start_a; i < MIN(end_a,start_b); ++i) norm +=  a->coef[i]              *  a->coef[i];
     for (i = start_b; i < MIN(end_a,end_b)  ; ++i) norm += (a->coef[i]-b_->coef[i]) * (a->coef[i]-b_->coef[i]);
@@ -663,7 +663,7 @@ FUN(nrm2) (const T *a, const T *b_)
     ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o)
       if (mad_bit_get(a->nz,o)) {
-        for (idx_t i = pi[o]; i < pi[o+1]; ++i)
+        for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
           norm += a->coef[i] * a->coef[i];
       }
   }
