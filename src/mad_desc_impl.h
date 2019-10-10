@@ -65,19 +65,10 @@ struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 #define D desc_t
 
-ord_t    mad_desc_get_mono        (const D *d, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t    mad_desc_get_idx_s       (const D *d, ssz_t n,       str_t s    );
-idx_t    mad_desc_get_idx_m       (const D *d, ssz_t n, const ord_t m [n]);
-idx_t    mad_desc_get_idx_sm      (const D *d, ssz_t n, const idx_t m [n]);
-int      mad_desc_mono_isvalid_s  (const D *d, ssz_t n,       str_t s    );
-int      mad_desc_mono_isvalid_m  (const D *d, ssz_t n, const ord_t m [n]);
-int      mad_desc_mono_isvalid_sm (const D *d, ssz_t n, const idx_t m [n]);
-int      mad_desc_mono_nxtbyvar   (const D *d, ssz_t n,       ord_t m [n]);
-
-tpsa_t*  mad_tpsa_newd  (const D *d, ord_t mo);
+tpsa_t*  mad_tpsa_newd  (const desc_t *d, ord_t mo);
 void     mad_tpsa_del   (const tpsa_t *t);
 
-ctpsa_t* mad_ctpsa_newd (const D *d, ord_t mo);
+ctpsa_t* mad_ctpsa_newd (const desc_t *d, ord_t mo);
 void     mad_ctpsa_del  (const ctpsa_t *t);
 
 // --- TPSA sanity checks -----------------------------------------------------o
