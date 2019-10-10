@@ -224,7 +224,7 @@ local function chksiz (r, x, y) -- add, sub, mul
   return r
 end
 
--- maxlen, ordlen, gtrunc, dump ---------------------------------------o
+-- maxlen, ordlen, gtrunc, debug ----------------------------------------------o
 
 MR.__len  = \x     -> _C.mad_tpsa_len (x)
 MC.__len  = \x     -> _C.mad_ctpsa_len(x)
@@ -239,11 +239,21 @@ MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
 MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
-MR.is_valid = \x -> _C.mad_tpsa_is_valid (x)
-MC.is_valid = \x -> _C.mad_ctpsa_is_valid(x)
+MR.isvalid = \x -> _C.mad_tpsa_isvalid (x)
+MC.isvalid = \x -> _C.mad_ctpsa_isvalid(x)
 
 MR.debug  = \x,nam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,lin_,fil_) end
 MC.debug  = \x,nam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,lin_,fil_) end
+
+function MR.nxtbyvar (x, m) -- mono -> idx (-1 means invalid or no more)
+  if not is_monomial(m) then m = monomial(m) end
+  return _C.mad_desc_nxtbyvar(x.d, m.n, m.ord), m
+end
+
+function MR.nxtbyord (x, m) -- mono -> idx (-1 means invalid or no more)
+  if not is_monomial(m) then m = monomial(m) end
+  return _C.mad_desc_nxtbyord(x.d, m.n, m.ord), m
+end
 
 -- same, copy, getord, cutord, convert, clear, scalar -------------------------o
 
@@ -384,19 +394,17 @@ function MC.clear (x)
   _C.mad_ctpsa_clear(x) return x
 end
 
--- indexing ------------------------------------------------------------------o
+-- indexing -------------------------------------------------------------------o
 
 function MR.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_tpsa_idxs(x, #m, m)+1 end
-  m = is_table(m) and monomial(m) or m
-  assert(is_monomial(m), "invalid argument #2 (string, table or monomial expected)")
+  if not is_monomial(m) then m = monomial(m) end
   return _C.mad_tpsa_idxm(x, m.n, m.ord)+1
 end
 
 function MC.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_ctpsa_idxs(x, #m, m)+1 end
-  m = is_table(m) and monomial(m) or m
-  assert(is_monomial(m), "invalid argument #2 (string, table or monomial expected)")
+  if not is_monomial(m) then m = monomial(m) end
   return _C.mad_ctpsa_idxm(x, m.n, m.ord)+1
 end
 
@@ -429,18 +437,14 @@ function MC.get_mono (x, i, r) -- idx -> mono
 end
 
 function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
-  local m = is_table(m_) and monomial(m_) or m_
-  assert(is_nil(m) or is_monomial(m),
-         "invalid argument #2 (table or monomial expected)")
-  i = _C.mad_tpsa_cycle(x, m and m.n, m and m.ord, i-1, val)
+  if m_ and not is_monomial(m_) then m_ = monomial(m_) end
+  i = _C.mad_tpsa_cycle(x, m_ and m_.n, m_ and m_.ord, i-1, val)
   return i+1, val[0]
 end
 
 function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
-  local m = is_table(m_) and monomial(m_) or m_
-  assert(is_nil(m) or is_monomial(m),
-         "invalid argument #2 (table or monomial expected)")
-  i = _C.mad_ctpsa_cycle(x, m and m.n, m and m.ord, i-1, cval)
+  if m_ and not is_monomial(m_) then m_ = monomial(m_) end
+  i = _C.mad_ctpsa_cycle(x, m_ and m_.n, m_ and m_.ord, i-1, cval)
   return i+1, cval[0]
 end
 
@@ -471,8 +475,7 @@ function MR.get (x, m) -- idx or str or mono -> num
   elseif is_string(m) then
     return _C.mad_tpsa_gets(x, #m, m)
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     return _C.mad_tpsa_getm(x, m.n, m.ord)
   end
 end
@@ -486,8 +489,7 @@ function MC.get (x, m) -- idx or str or mono -> cnum
   elseif is_string(m) then
     _C.mad_ctpsa_gets(x, #m, m, cres) return cres[0]
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     _C.mad_ctpsa_getm_r(x, m.n, m.ord, cres) return cres[0]
   end
 end
@@ -502,8 +504,7 @@ function MR.set (x, m, a, b)
   elseif is_string(m) then
     _C.mad_tpsa_sets(x, #m, m, a, b) return x
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     _C.mad_tpsa_setm(x, m.n, m.ord, a, b) return x
   end
 end
@@ -519,8 +520,7 @@ function MC.set (x, m, a, b)
   elseif is_string(m) then
     _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im) return x
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (integer, string, table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     _C.mad_ctpsa_setm_r(x, m.n, m.ord, a.re, a.im, b.re, b.im) return x
   end
 end
@@ -1195,8 +1195,7 @@ function MR.deriv (x, m, r)
   if is_integer(m) then
     _C.mad_tpsa_deriv(x, r, m) return r
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     _C.mad_tpsa_derivm(x, r, m.n, m.ord) return r
   end
 end
@@ -1397,8 +1396,7 @@ function MC.deriv (x, m, r)
   if is_integer(m) then
     _C.mad_ctpsa_deriv(x, r, m) return r
   else
-    m = is_table(m) and monomial(m) or m
-    assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
+    if not is_monomial(m) then m = monomial(m) end
     _C.mad_cpsa_derivm(x, r, m.n, m.ord) return r
   end
 end
