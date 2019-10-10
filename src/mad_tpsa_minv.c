@@ -49,115 +49,59 @@ check_minv(ssz_t sa, const T *ma[sa], T *mc[sa])
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
-/* GSL BASED REAL VERSION (NO COMPLEX)
-
-#include <gsl/gsl_linalg.h>
-#include <gsl/gsl_matrix.h>
-#include <gsl/gsl_permutation.h>
-#include <gsl/gsl_blas.h>
-
 static void
 split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 {
-  int nv = d->nv, cv = d->nmv, nk = nv - cv;                    // #vars, #canonical vars, #knobs
-  gsl_matrix *mat_var  =      gsl_matrix_calloc(cv,cv),        // canonical vars
-             *mat_vari =      gsl_matrix_alloc (cv,cv),        // inverse of vars
-             *mat_knb  = nk ? gsl_matrix_calloc(cv,nk) : NULL, // knobs
-             *mat_knbi = nk ? gsl_matrix_alloc (cv,nk) : NULL; // 'inverse' of knobs
+  ssz_t nv = d->nv, mv = d->nmv, nk = d->nk; // #vars, #main vars, #knobs
+  mad_alloc_tmp(NUM, mat_var , mv*mv); // canonical vars
+  mad_alloc_tmp(NUM, mat_vari, mv*mv); // inverse of vars
+  mad_alloc_tmp(NUM, mat_knb , mv*nk); // knobs
+  mad_alloc_tmp(NUM, mat_knbi, mv*nk); // 'inverse' of knobs
 
   // split linear, (-1 * nonlinear)
-  for (int i = 0; i < cv; ++i) {
-    int v = 0;
-    for (; v < cv; ++v) gsl_matrix_set(mat_var, i,v   , ma[i]->coef[v+1]);
-    for (; v < nv; ++v) gsl_matrix_set(mat_knb, i,v-cv, ma[i]->coef[v+1]);
+  for (idx_t i = 0; i < mv; ++i) {
+    T *t = nonlin[i];
 
-    FUN(copy)(ma[i], nonlin[i]);
-
-    // clear constant and linear part
-    for (int c = 0; c < d->ord2idx[2]; ++c)
-      nonlin[i]->coef[c] = 0;
-    nonlin[i]->nz = bclr(nonlin[i]->nz,0);
-    nonlin[i]->nz = bclr(nonlin[i]->nz,1);
-    FUN(scl)(nonlin[i],-1,nonlin[i]);
-  }
-
-  // invert linear
-  gsl_permutation *p = gsl_permutation_alloc(cv);
-  int signum;
-  gsl_linalg_LU_decomp(mat_var, p, &signum);
-  gsl_linalg_LU_invert(mat_var, p, mat_vari);
-  gsl_permutation_free(p);
-
-  if (nk != 0) {
-    gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
-                   -1, mat_vari, mat_knb,
-                    0, mat_knbi);
-  }
-
-  // copy result into TPSA
-  for (int i = 0; i < cv; ++i) {
-    for (int v = 0; v < cv; ++v)
-      FUN(seti)(lininv[i], v    +1, 0, gsl_matrix_get(mat_vari, i,v));
-    for (int k = 0; k < nk; ++k)
-      FUN(seti)(lininv[i], k+cv +1, 0, gsl_matrix_get(mat_knbi, i,k));
-  }
-
-  gsl_matrix_free(mat_var);
-  gsl_matrix_free(mat_knb);
-  gsl_matrix_free(mat_vari);
-  gsl_matrix_free(mat_knbi);
-}
-*/
-
-static void
-split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
-{
-  ssz_t nv = d->nv, cv = d->nmv, nk = nv - cv; // #vars, #canonical vars, #knobs
-  mad_alloc_tmp(NUM, mat_var , cv*cv); // canonical vars
-  mad_alloc_tmp(NUM, mat_vari, cv*cv); // inverse of vars
-  mad_alloc_tmp(NUM, mat_knb , cv*nk); // knobs
-  mad_alloc_tmp(NUM, mat_knbi, cv*nk); // 'inverse' of knobs
-
-  // split linear, (-1 * nonlinear)
-  for (idx_t i = 0; i < cv; ++i) {
     idx_t v = 0;
-    for (; v < cv; ++v) mat_var[i*cv +  v    ] = ma[i]->coef[v+1];
-    for (; v < nv; ++v) mat_knb[i*nk + (v-cv)] = ma[i]->coef[v+1];
+    for (; v < mv; ++v) mat_var[i*mv +  v    ] = ma[i]->coef[v+1];
+    for (; v < nv; ++v) mat_knb[i*nk + (v-mv)] = ma[i]->coef[v+1];
 
-    FUN(copy)(ma[i], nonlin[i]);
+    FUN(copy)(ma[i], t);
 
     // clear constant and linear part
-    for (idx_t c = 0; c < d->ord2idx[2]; ++c)
-      nonlin[i]->coef[c] = 0;
+    for (idx_t c = 0; c < d->ord2idx[2]; ++c) t->coef[c] = 0;
 
-    nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,0);
-    nonlin[i]->nz = mad_bit_clr(nonlin[i]->nz,1);
-    FUN(scl)(nonlin[i],-1,nonlin[i]);
+    t->nz = mad_bit_clr(mad_bit_clr(t->nz,0),1);
+    t->lo = t->nz ? MIN(mad_bit_lowest (t->nz),t->mo) : t->mo;
+    t->hi = t->nz ? MIN(mad_bit_highest(t->nz),t->mo) : 0;
+
+    FUN(scl)(t,-1,t);
   }
 
   // invert linear part: mat_vari = mat_var^-1
 # ifndef MAD_CTPSA_IMPL
-  mad_mat_invn(mat_var, 1, mat_vari, cv, cv, -1);
+  mad_mat_invn(mat_var, 1, mat_vari, mv, mv, -1);
   if (nk != 0) {
     // mat_knbi = - mat_vari * mat_knb
-    mad_mat_mul(mat_vari, mat_knb, mat_knbi, cv, nk, cv);
-    mad_vec_muln(mat_knbi, -1, mat_knbi, cv*nk);
+    mad_mat_mul(mat_vari, mat_knb, mat_knbi, mv, nk, mv);
+    mad_vec_muln(mat_knbi, -1, mat_knbi, mv*nk);
   }
 # else
-  mad_cmat_invn(mat_var, 1, mat_vari, cv, cv, -1);
+  mad_cmat_invn(mat_var, 1, mat_vari, mv, mv, -1);
   if (nk != 0) {
     // mat_knbi = - mat_vari * mat_knb
-    mad_cmat_mul(mat_vari, mat_knb, mat_knbi, cv, nk, cv);
-    mad_cvec_muln(mat_knbi, -1, mat_knbi, cv*nk);
+    mad_cmat_mul(mat_vari, mat_knb, mat_knbi, mv, nk, mv);
+    mad_cvec_muln(mat_knbi, -1, mat_knbi, mv*nk);
   }
 # endif
 
   // copy result into TPSA
-  for (idx_t i = 0; i < cv; ++i) {
-    for (idx_t v = 0; v < cv; ++v)
-      FUN(seti)(lininv[i], v    +1, 0, mat_vari[i*cv + v]);
+  for (idx_t i = 0; i < mv; ++i) {
+    T *t = lininv[i];
+    for (idx_t v = 0; v < mv; ++v)
+      FUN(seti)(t, v    +1, 0, mat_vari[i*mv + v]);
     for (idx_t k = 0; k < nk; ++k)
-      FUN(seti)(lininv[i], k+cv +1, 0, mat_knbi[i*nk + k]);
+      FUN(seti)(t, k+mv +1, 0, mat_knbi[i*nk + k]);
   }
 
   mad_free_tmp(mat_var );
