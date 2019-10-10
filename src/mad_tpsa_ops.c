@@ -672,64 +672,72 @@ FUN(nrm2) (const T *a, const T *b_)
 }
 
 void
-FUN(deriv) (const T *a, T *c, int iv)
+FUN(deriv) (const T *a, T *r, int iv)
 {
-  // TODO: aliasing
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
-  ensure(a != c, "aliasing not yet supported");
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(iv >= a->d->ord2idx[1] && iv < a->d->ord2idx[2], "invalid domain");
-  // TODO: ensure map_order[iv] > 0
+  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  const D *d = a->d;
+  idx_t *o2i = d->ord2idx;
 
-  if (!a->hi) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(iv >= o2i[1] && iv < o2i[2], "invalid domain");
+
+  T *c = a == r ? GET_TMPX(r) : r;
+
+  if (!a->hi) { FUN(reset0)(c); goto ret; } // empty
   FUN(scalar)(c,FUN(geti)(a,iv), 0, 0);  // TODO: what if alpha[iv] == 0 ?
 
-  const D *d = c->d;
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN3(a->hi-1, c->mo, d->to);
 
-  idx_t *pi = d->ord2idx;
   const NUM *ca = a->coef;
 
   ord_t der_ord = 1, oc = 1;
   if (mad_bit_get(a->nz,oc+1))
-      hpoly_der_eq(ca,c->coef+pi[oc],iv,oc,der_ord,&c->nz,d);
+      hpoly_der_eq(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
+
   for (oc = 2; oc <= c->hi; ++oc)
     if (mad_bit_get(a->nz,oc+1))
-      hpoly_der_gt(ca,c->coef+pi[oc],iv,oc,der_ord,&c->nz,d);
+      hpoly_der_gt(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
 
-  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
+  c->lo = c->nz ? MIN(mad_bit_lowest (c->nz),c->mo) : c->mo;
   c->hi = c->nz ? MIN(mad_bit_highest(c->nz),c->mo) : 0;
   if (c->lo) c->coef[0] = 0;
 
-  DBGTPSA(c); DBGFUN(<-);
+ret:
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
+  DBGTPSA(r); DBGFUN(<-);
 }
 
 void
-FUN(derivm) (const T *a, T *c, ssz_t n, const ord_t mono[n])
+FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
 {
-  assert(a && c); DBGFUN(->);
-  ensure(a != c, "aliasing not yet supported");
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(mad_desc_mono_isvalid_m(a->d,n,mono), "invalid monomial");
+  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  const D *d = a->d;
+  idx_t *o2i = d->ord2idx;
+
+  ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(mad_desc_isvalidm(d,n,mono), "invalid monomial");
 
   ord_t der_ord = mad_mono_ord(n,mono);
   ensure(der_ord > 0, "invalid derivative order");
-  idx_t idx = mad_desc_get_idx_m(a->d,n,mono);
-  if (idx < a->d->ord2idx[2]) {  // fallback on simple version
-    FUN(deriv)(a,c,idx);
-    DBGFUN(<-);
-    return;
-  }
+  idx_t idx = mad_desc_idxm(d,n,mono);
+  ensure(idx >= 0, "invalid monomial");
+
+  // fallback on simple version
+  if (idx < o2i[2]) { FUN(deriv)(a,r,idx); DBGFUN(<-); return; }
+
+  T *c = a == r ? GET_TMPX(r) : r;
 
   // ord 0 & setup
-  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,a->d), 0, 0);
-  if (a->hi <= der_ord) { DBGFUN(<-); return; }
+  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0, 0);
+  if (a->hi <= der_ord) { goto ret; }
 
   // ords 1..a->hi - 1
   hpoly_der(a,idx,der_ord,c);
 
-  DBGTPSA(c); DBGFUN(<-);
+ret:
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
+  DBGTPSA(r); DBGFUN(<-);
 }
 
 void
@@ -737,8 +745,8 @@ FUN(poisson) (const T *a, const T *b, T *c, int nv)
 {
   // C = [A,B]
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
-  ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
   const D *d = a->d;
+  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   nv = nv>0 ? nv/2 : d->nv/2;
 
