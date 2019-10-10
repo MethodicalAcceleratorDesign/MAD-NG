@@ -297,6 +297,81 @@ module GTPSA
       integer(c_ord_t), value, intent(in) :: to ! new global truncation order
     end function mad_desc_gtrunc
 
+    ! -- indexes / monomials (return idx_t = -1 if invalid)
+
+    function mad_desc_isvalids(desc,n,s) result(ret) bind(C)
+      import ; implicit none
+      logical(c_bool) :: ret                   ! true or false
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! string length or 0 (unknown)
+      character(c_char), intent(in) :: s(*)    ! monomial as string "[0-9]*"
+    end function mad_desc_isvalids
+
+    function mad_desc_isvalidm(desc,n,m) result(ret) bind(C)
+      import ; implicit none
+      logical(c_bool) :: ret                   ! true or false
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t), intent(in) :: m(*)     ! monomial
+    end function mad_desc_isvalidm
+
+    function mad_desc_isvalidsm(desc,n,m) result(ret) bind(C)
+      import ; implicit none
+      logical(c_bool) :: ret                   ! true or false
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
+    end function mad_desc_isvalidsm
+
+    function mad_desc_idxs(desc,n,s) result(idx) bind(C)
+      import ; implicit none
+      integer(c_idx_t) :: idx                  ! monomial index or -1
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! string length or 0 (unknown)
+      character(c_char), intent(in) :: s(*)    ! monomial as string "[0-9]*"
+    end function mad_desc_idxs
+
+    function mad_desc_idxm(desc,n,m) result(idx) bind(C)
+      import ; implicit none
+      integer(c_idx_t) :: idx                  ! monomial index or -1
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t), intent(in) :: m(*)     ! monomial
+    end function mad_desc_idxm
+
+    function mad_desc_idxsm(desc,n,m) result(idx) bind(C)
+      import ; implicit none
+      integer(c_idx_t) :: idx                  ! monomial index or -1
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
+    end function mad_desc_idxsm
+
+    function mad_desc_nxtbyvar(desc,n,m) result(idx) bind(C)
+      import ; implicit none
+      integer(c_idx_t) :: idx                  ! monomial index or -1
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t), intent(out) :: m(*)     ! monomial
+    end function mad_desc_nxtbyvar
+
+    function mad_desc_nxtbyord(desc,n,m) result(idx) bind(C)
+      import ; implicit none
+      integer(c_idx_t) :: idx                  ! monomial index or -1
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t), intent(out) :: m(*)    ! monomial
+    end function mad_desc_nxtbyord
+
+    function mad_desc_mono(desc,n,m_,i) result(ord) bind(C)
+      import ; implicit none
+      integer(c_ord_t) :: ord                  ! monomial order
+      type(c_ptr), value, intent(in) :: desc   !
+      integer(c_idx_t), value, intent(in) :: i ! slot index (must be valid)
+      integer(c_ssz_t), value, intent(in) :: n ! monomial length
+      integer(c_ord_t) :: m_(*)                ! monomial to fill (if provided)
+    end function mad_desc_mono
+
   end interface
 
   ! ----------------------------------------------------------------------------
@@ -357,11 +432,11 @@ module GTPSA
       type(c_ptr), intent(in) :: tpsa(*)
     end function mad_tpsa_ordn
 
-    function mad_tpsa_is_valid(tpsa) result(ret) bind(C)
+    function mad_tpsa_isvalid(tpsa) result(ret) bind(C)
       import ; implicit none
       logical(c_bool) :: ret                 ! true or false
       type(c_ptr), value, intent(in) :: tpsa ! sanity check on TPSA integrity
-    end function mad_tpsa_is_valid
+    end function mad_tpsa_isvalid
 
     ! -- Initialization ---------------
 
@@ -418,7 +493,7 @@ module GTPSA
 
     function mad_tpsa_idxs(tpsa,n,s) result(idx) bind(C)
       import ; implicit none
-      integer(c_idx_t) :: idx                  ! monomial index
+      integer(c_idx_t) :: idx                  ! monomial index or -1
       type(c_ptr), value, intent(in) :: tpsa   !
       integer(c_ssz_t), value, intent(in) :: n ! string length or 0 (unknown)
       character(c_char), intent(in) :: s(*)    ! monomial as string "[0-9]*"
@@ -426,7 +501,7 @@ module GTPSA
 
     function mad_tpsa_idxm(tpsa,n,m) result(idx) bind(C)
       import ; implicit none
-      integer(c_idx_t) :: idx                  ! monomial index
+      integer(c_idx_t) :: idx                  ! monomial index or -1
       type(c_ptr), value, intent(in) :: tpsa   !
       integer(c_ssz_t), value, intent(in) :: n ! monomial length
       integer(c_ord_t), intent(in) :: m(*)     ! monomial
@@ -434,7 +509,7 @@ module GTPSA
 
     function mad_tpsa_idxsm(tpsa,n,m) result(idx) bind(C)
       import ; implicit none
-      integer(c_idx_t) :: idx                  ! monomial index
+      integer(c_idx_t) :: idx                  ! monomial index or -1
       type(c_ptr), value, intent(in) :: tpsa   !
       integer(c_ssz_t), value, intent(in) :: n ! monomial length
       integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
@@ -961,10 +1036,10 @@ module GTPSA
 
     subroutine mad_tpsa_debug(tpsa,name_,line_,stream_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa    ! src
-      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
-      type(c_int), value, intent(in) :: line_   ! line number or 0
-      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+      type(c_ptr), value, intent(in) :: tpsa     ! src
+      character(c_char), intent(in) :: name_(*)  ! name (i.e. null terminated string)
+      integer(c_int), value, intent(in) :: line_ ! line number or 0
+      type(c_ptr), value :: stream_              ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_debug
 
   end interface
@@ -1027,11 +1102,11 @@ module GTPSA
       type(c_ptr), intent(in) :: ctpsa(*)
     end function mad_ctpsa_ordn
 
-    function mad_ctpsa_is_valid(ctpsa) result(ret) bind(C)
+    function mad_ctpsa_isvalid(ctpsa) result(ret) bind(C)
       import ; implicit none
       logical(c_bool) :: ret                  ! true or false
       type(c_ptr), value, intent(in) :: ctpsa ! sanity check on TPSA integrity
-    end function mad_ctpsa_is_valid
+    end function mad_ctpsa_isvalid
 
     ! -- Initialization ---------------
 
@@ -1734,10 +1809,10 @@ module GTPSA
 
     subroutine mad_ctpsa_debug(ctpsa,name_,line_,stream_) bind(C)
       import ; implicit none
-      type(c_ptr), value, intent(in) :: ctpsa   ! src
-      character(c_char), intent(in) :: name_(*) ! name (i.e. null terminated string)
-      type(c_int), value, intent(in) :: line_   ! line number or 0
-      type(c_ptr), value :: stream_             ! dst=c_null_ptr => stdio
+      type(c_ptr), value, intent(in) :: ctpsa    ! src
+      character(c_char), intent(in) :: name_(*)  ! name (i.e. null terminated string)
+      integer(c_int), value, intent(in) :: line_ ! line number or 0
+      type(c_ptr), value :: stream_              ! dst=c_null_ptr => stdio
     end subroutine mad_ctpsa_debug
 
   end interface
