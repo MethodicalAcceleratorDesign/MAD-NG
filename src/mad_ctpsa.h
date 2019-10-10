@@ -246,7 +246,7 @@ const
 desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,           FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                        FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, int line, FILE *stream_);
-log_t    mad_ctpsa_is_valid (const ctpsa_t *t);
+log_t    mad_ctpsa_isvalid  (const ctpsa_t *t);
 
 // unsafe operations !!
 ctpsa_t* mad_ctpsa_init (ctpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);

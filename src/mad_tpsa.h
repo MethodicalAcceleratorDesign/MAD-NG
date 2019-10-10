@@ -177,7 +177,7 @@ const
 desc_t* mad_tpsa_scan_hdr (                 int  *kind_,           FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                        FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, int line, FILE *stream_);
-log_t   mad_tpsa_is_valid (const tpsa_t *t);
+log_t   mad_tpsa_isvalid  (const tpsa_t *t);
 
 // unsafe operations !!
 tpsa_t* mad_tpsa_init (tpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
