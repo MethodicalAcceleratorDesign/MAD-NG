@@ -28,7 +28,9 @@
 // --- types ------------------------------------------------------------------o
 
 struct ctpsa { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
-  const desc_t *d;
+  const desc_t *d;  // point to tpsa descriptor
+  int32_t     uid;  // special user field for external use (padding)
+
   ord_t lo, hi, mo; // lowest/highest used ord, max ord (allocated)
   bit_t nz;         // warning: must be identical to tpsa up to nz
   cnum_t coef[];
