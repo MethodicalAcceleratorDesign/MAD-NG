@@ -54,7 +54,7 @@ static inline tpsa_t* // reset TPSA
 mad_tpsa_reset0 (tpsa_t *t)
 {
   t->lo = t->mo;
-  t->hi = t->nz = 0;
+  t->hi = t->uid = t->nz = 0;
   t->coef[0] = 0;
   return t;
 }
@@ -66,6 +66,7 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
     r->lo = t->lo;
     r->hi = MIN3(t->hi, r->mo, t->d->to);
     r->nz = mad_bit_hcut(t->nz, r->hi);
+    r->uid = t->uid;
     if (r->lo) r->coef[0] = 0;
   }
   return r;
