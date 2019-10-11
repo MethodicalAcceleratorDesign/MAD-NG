@@ -49,7 +49,7 @@ const desc_t *mad_desc_curr    = NULL;
 enum { DESC_WARN_MONO = 1000000,       // warn if tpsa has 1e6 coefs or more
        DESC_MAX_ORD   = CHAR_BIT * sizeof(bit_t) -1, // max ord of a tpsa (=63)
        DESC_MAX_VAR   = 100000,        // max number of variables in a tpsa
-       DESC_MAX_ARR   = 50 };          // max number of simultaneous descriptors
+       DESC_MAX_ARR   = 100 };         // max number of simultaneous descriptors
 
 // --- sizes ------------------------------------------------------------------o
 
