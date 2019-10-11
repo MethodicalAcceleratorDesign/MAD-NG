@@ -55,6 +55,7 @@ void    mad_tpsa_del     (const tpsa_t *t);
 // introspection
 const
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
+int32_t mad_tpsa_uid     (      tpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t   mad_tpsa_len     (const tpsa_t *t);
 ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t, ...);        // max order of all
@@ -65,7 +66,7 @@ void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
 void    mad_tpsa_getord  (const tpsa_t *t, tpsa_t *r, ord_t ord);
 void    mad_tpsa_cutord  (const tpsa_t *t, tpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
 void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n]);
-void    mad_tpsa_scalar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
+void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 void    mad_tpsa_clear   (      tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)

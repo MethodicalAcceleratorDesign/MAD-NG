@@ -109,7 +109,7 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   mad_alloc_tmp(const T*, mb, sb);
   for (idx_t ib = 0; ib < sb; ++ib) {
     T *t = FUN(newd)(ma[0]->d, 1);
-    FUN(scalar)(t, tb[ib], ib+1, 0);
+    FUN(setvar)(t, tb[ib], ib+1, 0);
     mb[ib] = t;
   }
 
@@ -135,8 +135,8 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
   for (idx_t ib = 0; ib < sb; ++ib) {
     T *t1 = FUN(newd)(ma[0]->d, 0);
     T *t2 = FUN(newd)(ma[0]->d, 0);
-    FUN(scalar)(t1, tb[ib], 0, 0);
-    FUN(scalar)(t2, tc[ib], 0, 0);
+    FUN(setvar)(t1, tb[ib], 0, 0);
+    FUN(setvar)(t2, tc[ib], 0, 0);
     mb[ib] = t1; mc[ib] = t2;
   }
 

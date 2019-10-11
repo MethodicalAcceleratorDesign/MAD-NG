@@ -411,6 +411,13 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa
     end function mad_tpsa_desc
 
+    function mad_tpsa_uid(tpsa, uid_) result(uid) bind(C)
+      import ; implicit none
+      integer(c_int32_t) :: uid                     ! tpsa special uid
+      type(c_ptr), value, intent(in) :: tpsa
+      integer(c_int32_t), value, intent(in) :: uid_ ! tpsa new uid if != 0
+    end function mad_tpsa_uid
+
     function mad_tpsa_len(tpsa) result(len) bind(C)
       import ; implicit none
       integer(c_ssz_t) :: len                   ! #monomials in tpsa
@@ -468,12 +475,12 @@ module GTPSA
       integer(c_idx_t), intent(in) :: t2r_(*)   ! vector of index lookup
     end subroutine mad_tpsa_convert
 
-    subroutine mad_tpsa_scalar(tpsa,v,iv_,scl_) bind(C)
+    subroutine mad_tpsa_setvar(tpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
       real(c_num_t), value, intent(in) :: v, scl_ ! 0th and 1st order values
       integer(c_idx_t), value, intent(in) :: iv_  ! variable index
-    end subroutine mad_tpsa_scalar                ! equiv. to set0 if iv=0
+    end subroutine mad_tpsa_setvar                ! equiv. to set0 if iv=0
 
     subroutine mad_tpsa_clear(tpsa) bind(C)
       import ; implicit none
@@ -1143,12 +1150,12 @@ module GTPSA
       type(c_ptr), value :: ctpsa
     end subroutine mad_ctpsa_clear
 
-    subroutine mad_ctpsa_scalar(ctpsa,v,iv_,scl_) bind(C)
+    subroutine mad_ctpsa_setvar(ctpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
       complex(c_cnum_t), value, intent(in) :: v, scl_ ! 0th and 1st order values
       integer(c_idx_t), value, intent(in) :: iv_      ! variable index (1st order)
-    end subroutine mad_ctpsa_scalar                   ! equiv. to set0 if iv=0
+    end subroutine mad_ctpsa_setvar                   ! equiv. to set0 if iv=0
 
     ! -- Conversion -------------------
 

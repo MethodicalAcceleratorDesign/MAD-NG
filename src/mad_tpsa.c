@@ -137,6 +137,15 @@ FUN(desc) (const T *t)
   DBGFUN(<-); return ret;
 }
 
+int32_t
+FUN(uid) (T *t, int32_t uid_) // set uid if != 0
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+  int32_t ret = t->uid;
+  if (uid_) t->uid = uid_;
+  DBGFUN(<-); return ret;
+}
+
 ssz_t
 FUN(len) (const T *t)
 {
@@ -241,7 +250,7 @@ FUN(clear) (T *t)
 }
 
 void
-FUN(scalar) (T *t, NUM v, idx_t iv, NUM scl)
+FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
 
@@ -680,8 +689,8 @@ void FUN(setm_r) (T *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t
 void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
 { FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
 
-void FUN(scalar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
-{ FUN(scalar)(t, CNUM(v), iv, CNUM(scl)); }
+void FUN(setvar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
+{ FUN(setvar)(t, CNUM(v), iv, CNUM(scl)); }
 
 #endif // MAD_CTPSA_IMPL
 

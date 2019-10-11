@@ -296,7 +296,7 @@ FUN(scl) (const T *a, NUM v, T *c)
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (!v || a->hi == 0) {
-    FUN(scalar)(c,v*a->coef[0],0,0); DBGFUN(<-); return;
+    FUN(setvar)(c,v*a->coef[0],0,0); DBGFUN(<-); return;
   }
 
   FUN(copy0)(a,c);
@@ -505,7 +505,7 @@ FUN(powi) (const T *a, int n, T *c)
   T *t1 = GET_TMPX(c);
 
   switch (n) {
-    case 0: FUN(scalar) (c, 1, 0, 0); break; // ok: no copy
+    case 0: FUN(setvar) (c, 1, 0, 0); break; // ok: no copy
     case 1: FUN(copy  ) (a, c);       break; // ok: 1 copy
     case 2: FUN(mul   ) (a,a, c);     break; // ok: 1 copy if a==c
     case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
@@ -513,7 +513,7 @@ FUN(powi) (const T *a, int n, T *c)
     default: {
       T *t2 = GET_TMPX(c), *t;
       FUN(copy  )(a, t1);
-      FUN(scalar)(c, 1, 0, 0);
+      FUN(setvar)(c, 1, 0, 0);
       for (;;) {
         if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
         if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); } // ok: no copy
@@ -684,7 +684,7 @@ FUN(deriv) (const T *a, T *r, int iv)
   T *c = a == r ? GET_TMPX(r) : r;
 
   if (!a->hi) { FUN(reset0)(c); goto ret; } // empty
-  FUN(scalar)(c,FUN(geti)(a,iv), 0, 0);  // TODO: what if alpha[iv] == 0 ?
+  FUN(setvar)(c,FUN(geti)(a,iv), 0, 0);  // TODO: what if alpha[iv] == 0 ?
 
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN3(a->hi-1, c->mo, d->to);
@@ -729,7 +729,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   T *c = a == r ? GET_TMPX(r) : r;
 
   // ord 0 & setup
-  FUN(scalar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0, 0);
+  FUN(setvar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0, 0);
   if (a->hi <= der_ord) { goto ret; }
 
   // ords 1..a->hi - 1
@@ -798,7 +798,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ord_t c_hi = MIN3(hi, c->mo, c->d->to);
 
   if (!c_hi) {
-    FUN(scalar)(c, c1*a->coef[0] + c2*b->coef[0] + c3, 0, 0);
+    FUN(setvar)(c, c1*a->coef[0] + c2*b->coef[0] + c3, 0, 0);
     DBGFUN(<-); return;
   }
 

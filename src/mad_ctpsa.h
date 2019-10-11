@@ -55,6 +55,7 @@ void     mad_ctpsa_del     (const ctpsa_t *t);
 // introspection
 const
 desc_t*  mad_ctpsa_desc    (const ctpsa_t *t);
+int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t    mad_ctpsa_len     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);        // max order of all
@@ -65,8 +66,8 @@ void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
 void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n]);
-void     mad_ctpsa_scalar  (      ctpsa_t *t, cnum_t v, idx_t iv_, cnum_t scl_);
-void     mad_ctpsa_scalar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
+void     mad_ctpsa_setvar  (      ctpsa_t *t, cnum_t v, idx_t iv_, cnum_t scl_);
+void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 
 // conversion
