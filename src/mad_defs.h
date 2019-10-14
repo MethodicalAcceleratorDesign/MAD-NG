@@ -106,6 +106,19 @@ typedef double _Complex cnum_t;
 #error "unsupported platform"
 #endif
 
+// --- special assert (loop) --------------------------------------------------o
+
+// #define DBGASSERT
+
+#ifdef DBGASSERT
+#undef  assert
+#define assert(c) \
+        ((void)( (c) || (__assert_fail(#c, __FILE__, __LINE__, __func__),1) ))
+
+void __assert_fail(const char *assertion, const char *file, int line,
+                   const char *function) __attribute__((noreturn));
+#endif
+
 // ---------------------------------------------------------------------------o
 
 #endif // MAD_H
