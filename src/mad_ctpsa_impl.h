@@ -58,7 +58,7 @@ static inline ctpsa_t*
 mad_ctpsa_reset0 (ctpsa_t *t)
 {
   t->lo = t->mo;
-  t->hi = t->uid = t->nz = 0;
+  t->hi = t->nz = 0;
   t->coef[0] = 0;
   return t;
 }
@@ -70,10 +70,26 @@ mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
     r->lo = t->lo;
     r->hi = MIN3(t->hi, r->mo, t->d->to);
     r->nz = mad_bit_hcut(t->nz, r->hi);
-    r->uid = t->uid;
     if (r->lo) r->coef[0] = 0;
   }
   return r;
+}
+
+static inline ctpsa_t* // update lo, hi and nz for zero hpoly
+mad_ctpsa_update0 (ctpsa_t *t)
+{
+  idx_t i, *o2i = t->d->ord2idx;
+  for (ord_t o = t->lo; o <= t->hi; ++o) {
+    if (mad_bit_get(t->nz,o)) {
+      for (i = o2i[o]; i < o2i[o+1] && !t->coef[i]; ++i) ;
+      if (i < o2i[o+1]) t->nz = mad_bit_clr(t->nz,o);
+    }
+  }
+  if (!t->nz) return mad_ctpsa_reset0(t);
+  t->lo = mad_bit_lowest (t->nz);
+  t->hi = mad_bit_highest(t->nz);
+  if (t->lo) t->coef[0] = 0;
+  return t;
 }
 
 static inline ctpsa_t*
