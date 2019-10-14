@@ -90,14 +90,14 @@ mad_bit_hcut (bit_t b, int n) // clear bits > n
 }
 
 static inline int __attribute__((const))
-mad_bit_lowest (bit_t b)
+mad_bit_lowest (bit_t b) // 0..64 (0x0 -> 64)
 {
   return sizeof b == sizeof(uint32_t)
          ? mad_bit_lowest32(b) : mad_bit_lowest64(b);
 }
 
 static inline int __attribute__((const))
-mad_bit_highest (bit_t b)
+mad_bit_highest (bit_t b) // -1..63 (0x0 -> -1)
 {
   return sizeof b == sizeof(uint32_t)
          ? mad_bit_highest32(b) : mad_bit_highest64(b);
@@ -106,8 +106,10 @@ mad_bit_highest (bit_t b)
 // --- optimized versions -----------------------------------------------------o
 
 #if defined(__AVX2__)
+// #warning("AVX2 selected")
 #include "sse/mad_bit_avx2.tc"
 #elif defined(__SSE2__)
+// #warning("SSE2 selected")
 #include "sse/mad_bit_sse2.tc"
 #endif // __SSE2__ || __AVX2__
 
