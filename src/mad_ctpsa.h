@@ -244,9 +244,9 @@ void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
 const
-desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,           FILE *stream_);
-void     mad_ctpsa_scan_coef(      ctpsa_t *t,                        FILE *stream_);
-void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, int line, FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,                         FILE *stream_);
+void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                      FILE *stream_);
+void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t    mad_ctpsa_isvalid  (const ctpsa_t *t);
 
 // unsafe operations !!

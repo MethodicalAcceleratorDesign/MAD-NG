@@ -175,9 +175,9 @@ void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
-desc_t* mad_tpsa_scan_hdr (                 int  *kind_,           FILE *stream_);
-void    mad_tpsa_scan_coef(      tpsa_t *t,                        FILE *stream_);
-void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, int line, FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (                 int  *kind_,                         FILE *stream_);
+void    mad_tpsa_scan_coef(      tpsa_t *t,                                      FILE *stream_);
+void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t   mad_tpsa_isvalid  (const tpsa_t *t);
 
 // unsafe operations !!
