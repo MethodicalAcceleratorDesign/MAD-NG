@@ -102,14 +102,12 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   if (!stream_) stream_ = stdout;
 
   ord_t o; idx_t i;
-  log_t ok = FUN(check)(t, &o, &i);
+  if (FUN(check)(t,&o,&i)) return;
 
-  fprintf(stream_, "%s:%d: '%s' { ok=%d, lo=%d hi=%d mo=%d id=%d",
+  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d id=%d",
           fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
-          ok, t->lo, t->hi, t->mo, d ? d->id : -1);
+          t->lo, t->hi, t->mo, d ? d->id : -1);
   fflush(stream_);
-
-  if (ok) { fprintf(stream_," }\n"); return; }
 
   if (!d) { fprintf(stream_," }\n"); assert(d); }
 
@@ -622,18 +620,6 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
 
   // set bits for zeros hpoly
   FUN(update0)(t);
-
-#if 0
-  idx_t *o2i = d->ord2idx;
-  for (idx_t o = ords[0]; o < ords[n]; o++) {
-    idx_t c; // scan hpoly for non-zero
-    for (c = o2i[o]; c < o2i[o+1] && !t->coef[c]; ++c) ;
-    t->nz = c == o2i[o+1] ? mad_bit_clr(t->nz,o) : mad_bit_set(t->nz,o);
-  }
-  t->lo = MIN(mad_bit_lowest(t->nz),t->mo);
-  t->hi = t->nz ? MIN(mad_bit_highest(t->nz),t->mo) : 0;
-  if (t->lo) t->coef[0] = 0;
-#endif
 
   DBGTPSA(t); DBGFUN(<-);
 }
