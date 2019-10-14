@@ -73,11 +73,11 @@ mad_bit_highest64 (uint64_t b)
 
 void mad_bit_check (void)
 {
-  printf("%s: nz=%llu, lo=%d, hi=%d\n", __func__, 0ull,
+  printf("bchk: nz=%16llX, lo=%2d, hi=%2d\n", 0ull,
                      mad_bit_lowest(0ull), mad_bit_highest(0ull));
   for (int i=0; i <= 64; ++i) {
     bit_t nz = 1ull << i;
-    printf("i=%d, nz=%llu, lo=%d, hi=%d, lc=%llx, hc=%llx\n", i, nz,
+    printf("i=%2d, nz=%16llX, lo=%2d, hi=%2d, lc=%16llX, hc=%16llX\n", i, nz,
                      mad_bit_lowest(nz), mad_bit_highest(nz),
                      mad_bit_lcut(~0ull,i), mad_bit_hcut(~0ull,i));
   }

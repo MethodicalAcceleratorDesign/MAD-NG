@@ -47,6 +47,9 @@ static int   mad_bit_highest (bit_t b);
 // --- implementation (private) -----------------------------------------------o
 // ----------------------------------------------------------------------------o
 
+// #undef __AVX2__
+// #undef __SSE2__
+
 #ifndef __SSE2__
 extern int mad_bit_lowest32  (uint32_t b) __attribute__((const));
 extern int mad_bit_lowest64  (uint64_t b) __attribute__((const));
@@ -112,7 +115,6 @@ mad_bit_highest (bit_t b) // -1..63 (0x0 -> -1)
 // #warning("SSE2 selected")
 #include "sse/mad_bit_sse2.tc"
 #endif // __SSE2__ || __AVX2__
-
 
 // --- debug/print lcut, lowest, hcut, highest --------------------------------o
 
