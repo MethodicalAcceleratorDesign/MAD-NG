@@ -76,7 +76,7 @@ void     mad_ctpsa_del  (const ctpsa_t *t);
 #define DEBUG 0
 
 #if DEBUG > 0
-#  define DBGTPSA(t) FUN(debug)(t,__func__,__LINE__,0)
+#  define DBGTPSA(t) FUN(debug)(t,#t,__func__,__LINE__,0)
 #else
 #  define DBGTPSA(t)
 #endif
@@ -84,20 +84,9 @@ void     mad_ctpsa_del  (const ctpsa_t *t);
 // --- trace functions --------------------------------------------------------o
 
 #if DEBUG > 1
-#  define DBGFUN(a) printf(#a " %s:%d:\n", __func__, __LINE__)
+#  define DBGFUN(a) printf(#a " %s:%d:\n",__func__,__LINE__)
 #else
 #  define DBGFUN(a)
-#endif
-
-// --- special assert (loop) --------------------------------------------------o
-
-#if DEBUG > 0
-#undef  assert
-#define assert(c) \
-        ((void)( (c) || (__assert_fail(#c, __FILE__, __LINE__, __func__),1) ))
-
-void __assert_fail(const char *assertion, const char *file, int line,
-                   const char *function) __attribute__((noreturn));
 #endif
 
 // --- helpers ----------------------------------------------------------------o
