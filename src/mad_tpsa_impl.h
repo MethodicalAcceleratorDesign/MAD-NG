@@ -72,7 +72,7 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 static inline tpsa_t* // clear coef[0]
 mad_tpsa_clear0 (tpsa_t *t)
 {
-  t->nz = mad_bit_clr(t->nz,0);
+  t->nz = mad_bit_clr(t->nz, 0);
   if (!t->nz) return mad_tpsa_reset0(t);
   t->lo = mad_bit_lowest(t->nz);
   t->coef[0] = 0;
@@ -83,11 +83,10 @@ static inline tpsa_t* // update t for zero hpoly in [lo,hi]
 mad_tpsa_update0 (tpsa_t *t, ord_t lo, ord_t hi)
 {
   idx_t i, *o2i = t->d->ord2idx;
-  if (hi > t->d->to) t->nz = mad_bit_hcut(t->nz,hi=t->d->to);
   for (ord_t o = lo; o <= hi; ++o) {
-    if (mad_bit_get(t->nz,o)) {
+    if (mad_bit_get(t->nz, o)) {
       for (i = o2i[o]; i < o2i[o+1] && !t->coef[i]; ++i) ;
-      if (i == o2i[o+1]) t->nz = mad_bit_clr(t->nz,o);
+      if (i == o2i[o+1]) t->nz = mad_bit_clr(t->nz, o);
     }
   }
   if (!t->nz) return mad_tpsa_reset0(t);
