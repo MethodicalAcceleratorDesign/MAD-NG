@@ -51,12 +51,14 @@ typedef double _Complex cnum_t;
 
 // --- macros ----------------------------------------------------------------o
 
-#define MIN(a,b)    ((b)<(a) ? (b):(a))
-#define MAX(a,b)    ((b)>(a) ? (b):(a))
-#define MIN3(a,b,c)  MIN(a,MIN(b,c))
-#define MAX3(a,b,c)  MAX(a,MAX(b,c))
-#define SWAP(a,b,t) ((t)=(a), (a)=(b), (b)=(t))
-#define SIGN(a)     ((a)<0 ? -1:1)
+#define MIN(a,b)      ((b)<(a) ? (b):(a))
+#define MAX(a,b)      ((b)>(a) ? (b):(a))
+#define MIN3(a,b,c)   ((b)<(a) ? MIN(b,c):MIN(a,c))
+#define MAX3(a,b,c)   ((b)>(a) ? MAX(b,c):MAX(a,c))
+#define MIN4(a,b,c,d) ((b)<(a) ? MIN3(b,c,d):MIN3(a,c,d))
+#define MAX4(a,b,c,d) ((b)>(a) ? MAX3(b,c,d):MAX3(a,c,d))
+#define SWAP(a,b,t)   ((t)=(a), (a)=(b), (b)=(t))
+#define SIGN(a)       ((a)<0 ? -1:1)
 
 #define MKSTR(...)     MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...) #__VA_ARGS__
