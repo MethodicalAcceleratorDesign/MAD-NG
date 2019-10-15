@@ -28,7 +28,7 @@
 // --- types ------------------------------------------------------------------o
 
 struct ctpsa { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
-  const desc_t *d;  // point to tpsa descriptor
+  const desc_t *d;  // ptr to tpsa descriptor
   int32_t     uid;  // special user field for external use (padding)
 
   ord_t lo, hi, mo; // lowest/highest used ord, max ord (allocated)
@@ -54,7 +54,7 @@ struct ctpsa { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
-static inline ctpsa_t*
+static inline ctpsa_t* // reset TPSA
 mad_ctpsa_reset0 (ctpsa_t *t)
 {
   t->lo = t->mo;
@@ -63,26 +63,35 @@ mad_ctpsa_reset0 (ctpsa_t *t)
   return t;
 }
 
-static inline ctpsa_t*
+static inline ctpsa_t* // copy lo, hi, nz, not coefs!
 mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 {
-  if (t != r) {
-    r->lo = t->lo;
-    r->hi = MIN3(t->hi, r->mo, t->d->to);
-    r->nz = mad_bit_hcut(t->nz, r->hi);
-    if (r->lo) r->coef[0] = 0;
-  }
+  r->hi = MIN3(t->hi, r->mo, t->d->to);
+  r->nz = mad_bit_hcut(t->nz, r->hi);
+  if (!r->nz) return mad_ctpsa_reset0(r);
+  if ((r->lo=t->lo)) r->coef[0] = 0;
   return r;
 }
 
-static inline ctpsa_t* // update lo, hi and nz for zero hpoly
-mad_ctpsa_update0 (ctpsa_t *t)
+static inline ctpsa_t* // clear coef[0]
+mad_ctpsa_clear0 (ctpsa_t *t)
+{
+  t->nz = mad_bit_clr(t->nz,0);
+  if (!t->nz) return mad_ctpsa_reset0(t);
+  t->lo = mad_bit_lowest(t->nz);
+  t->coef[0] = 0;
+  return t;
+}
+
+static inline ctpsa_t* // update t for zero hpoly in [lo,hi]
+mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
 {
   idx_t i, *o2i = t->d->ord2idx;
-  for (ord_t o = t->lo; o <= t->hi; ++o) {
+  if (hi > t->d->to) t->nz = mad_bit_hcut(t->nz,hi=t->d->to);
+  for (ord_t o = lo; o <= hi; ++o) {
     if (mad_bit_get(t->nz,o)) {
       for (i = o2i[o]; i < o2i[o+1] && !t->coef[i]; ++i) ;
-      if (i < o2i[o+1]) t->nz = mad_bit_clr(t->nz,o);
+      if (i == o2i[o+1]) t->nz = mad_bit_clr(t->nz,o);
     }
   }
   if (!t->nz) return mad_ctpsa_reset0(t);
