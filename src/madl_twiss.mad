@@ -195,22 +195,63 @@ local function twiss_cofind (self, mflw0)
 
   -- retrieve closed orbit(s)
   local _, mflw = cofind { exec=false } :copy_variables(self)
-                         { X0=X0, deltap=0, save=false, nstep=-1, -- override
-                           mapdef=self.comapdef, mapdump=self.comapdump }
+                         { X0=X0, deltap=0, save=false, nstep=-1, mapdef=
+                           not self.codiff } -- nil or false codiff use {xy=1}
+                                             -- TODO: disable knobs!
 
   -- update damaps with their closed orbit (tw: i, co: j)
   for j=1,mflw.tpar do
     local m, m0 = mflw[j], mflw0[Xi[mflw[j].id]]
     m0.status = m.status
     if m.status == 'stable' then
-      m0.coR = m.coR -- backup one-turn-map from cofind
       m0:setvar(is_damap(m) and m:get0() or m)
+      m0.coR = m.coR -- backup one-turn-map from last cofind iteration
     end
   end
 
   -- report
   if mflw.npar ~= mflw.tpar then
     warn("%d/%d particles are unstable/singular/lost after closed orbit search",
+         mflw.tpar - mflw.npar, mflw.tpar)
+    msort(mflw0)
+  end
+end
+
+-- track one-turn-map ---------------------------------------------------------o
+
+local function twiss_track (self, mflw0)
+  local npar in mflw0
+  local X0, Xi = table.new(npar,0), table.new(npar,0)
+
+  -- initial 'stable' damaps to track
+  local j = 1
+  for i=1,npar do
+    local m = mflw0[i]
+    if m.status == 'stable' then
+      X0[j], Xi[j]  = m:get0():totable(), i
+      X0[j].beam, j = m.beam, j+1
+    end
+  end
+
+  -- nothing to process (no damaps)
+  if j == 1 then return end
+
+  -- get one-turn-maps to user-defined orders
+  local _, mflw = track { exec=false } :copy_variables(self)
+                        { X0=X0, deltap=0, save=false, nstep=-1 }
+
+  -- update damaps with their one-turn-map on the closed orbit (tw: i, tk: j)
+  for j=1,mflw.tpar do
+    local m, m0 = mflw[j], mflw0[Xi[mflw[j].id]]
+    if m.status == 'Xset'
+    then m:copy(m0)
+    else warn("unexpected damap (%d) status (%s) after tracking", m.id, m.status)
+    end
+  end
+
+  -- report
+  if mflw.npar ~= mflw.tpar then
+    warn("%d/%d particles lost after during tracking on the closed orbit",
          mflw.tpar - mflw.npar, mflw.tpar)
     msort(mflw0)
   end
@@ -302,11 +343,7 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local save, mapdef, chrom in self
-
-  -- enforce damaps orders (default is 1)
-  assert(mapdef, "invalid/missing mapdef (damap required)")
-  if is_true(mapdef) then self.mapdef = {xy=1} end
+  local save, chrom, mapdef in self
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -314,33 +351,34 @@ local function make_mflow (self)
   -- wrap atsave (see track)
   local atsave = self:var_raw 'atsave' or ftrue -- prevent evaluation
   if save and atsave ~= ffalse then
-    self.atsave  = atsave == ftrue and fill or achain(fill, atsave)
+    self.atsave = atsave == ftrue and fill or achain(fill, atsave)
   end
 
-  -- prepare A tracking template
-  local _, mflw = track { exec=false } :copy_variables(self)
-                  { nstep=0, mapsave=self.mapsave or self.trmapsave }
+  -- enforce damaps orders (default is 1)
+  if not mapdef or is_true(mapdef) then self.mapdef = {xy=1} end
+
+  -- prepare tracking template
+  local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
+  if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
   -- search for closed orbits (update mflw)
   twiss_cofind(self, mflw)
-  if mflw.npar == 0 then return mflw end
+  if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'co.') end
+
+  -- track one-turn-map
+  twiss_track(self, mflw)
+  if mflw.npar == 0 then return mflw end -- no more particles...
+  if option.debug > 2 then mdump(mflw,'tk.') end
 
   -- prepare mflw (and mtbl)
   twiss_init(self, mflw)
-
-  -- get one-turn-maps to user-defined orders
-  mflw.mapsave = self.trmapsave
-  track { mflow=mflw, mapdump=self.trmapdump }
-  if mflw.npar == 0 then return mflw end
-  if option.debug > 2 then mdump(mflw,'tk.') end
 
   -- get normal forms
   twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 
-  mflw.mapsave = self.mapsave
   return mflw
 end
 
@@ -384,8 +422,11 @@ local twiss = command 'twiss' {
 
   s0=nil,            -- initial s (offset)                                (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
-  beta0=nil,         -- initial beta0 block to build A0                   (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
+
+  beta0=nil,         -- initial beta0 block (or list of)                  (twss)
+  chrom=false,       -- compute chromaticity by finite difference         (twss)
+  coupling=false,    -- compute optical functions for non-diagonal modes  (twss)
 
   mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
   mapsave=nil,       -- save damap in the mtable                          (twss)
@@ -406,8 +447,6 @@ local twiss = command 'twiss' {
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   observe=0,         -- save after all elements                           (mtbl)
   savesel=nil,       -- save selector (predicate)                         (mtbl)
-  coupling=false,    -- save optical functions for non-diagonal modes     (mtbl)
-  chrom=false,       -- compute chromaticity by finite difference         (twss)
 
   atentry=nil,       -- action called when entering an element  (ataper)  (trck)
   atslice=nil,       -- action called after each element slices (atsave)  (trck)
@@ -415,18 +454,12 @@ local twiss = command 'twiss' {
   ataper=nil,        -- action called when checking for aperture          (trck)
   atsave=nil,        -- action called when saving in mtable               (trck)
 
-  cotol=nil,         -- closed orbit tolerance                            (cofn)
-  coiter=nil,        -- maximum number of iteration                       (cofn)
-  codiff=nil,        -- finite differences step for jacobian              (cofn)
+  cotol=nil,         -- closed orbit tolerance (i.e. |dX|)                (cofn)
+  coiter=nil,        -- maximum number of iterations                      (cofn)
+  codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
   codptol=nil,       -- 4D vs 6D dpt tolerance                            (cofn)
-  comethod=nil,      -- default optimizer                                 (cofn)
-  comapdef=nil,      -- mapdef for cofind                                 (cofn)
-  comapdump=nil,     -- mapdump for cofind                                (cofn)
-  cowarn=nil,        -- commute errors into warnings                      (cofn)
+  comethod=nil,      -- default algorithm                                 (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
-
-  trmapsave=nil,     -- save track damap in the mtable                    (trck)
-  trmapdump=nil,     -- mapdump for track                                 (trck)
 
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
@@ -434,7 +467,7 @@ local twiss = command 'twiss' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    {'coupling', 'chrom', 'trmapsave', 'trmapdump', 'comapdef', 'comapdump'},
+    {'beta0', 'chrom', 'coupling'},
     cofind.__attr,
     {noeval=cofind.__attr.noeval}
   )
