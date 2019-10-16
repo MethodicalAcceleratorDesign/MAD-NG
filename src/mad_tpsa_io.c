@@ -114,7 +114,7 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   // discard leading white space and the name (which is 10 chars and comma)
-  ensure(!fscanf(stream_, " %*[^:]:"), "unexpected fscanf returned value");
+  ensure(fscanf(stream_, " %*[^:]:") != 1, "unexpected input (not a GTPSA?)");
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   // 1st line
@@ -125,8 +125,8 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 2nd line (****)
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,NO line
+    ensure(fscanf(stream_, "%*[*]\n") != 1, "unexpected input (invalid header?)");
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     const D* ret = mad_desc_newn(nv, mo);
@@ -138,22 +138,25 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     // GTPSA -- process rest of lines
     ord_t vo[nv];
 
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish  1st line
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,NO line
 
-    // read variables order
-    ensure(!fscanf(stream_, " VO: "), "unexpected fscanf returned value");
-    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
-    read_ords(nv, vo, stream_);
+    // read variables orders if present
+    if ((cnt += fscanf(stream_, " V%*[O]: ")) == 6) {
+      read_ords(nv, vo, stream_);
+      ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
+    }
 
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard 3rd line (****)
+    ensure(fscanf(stream_, "%*[*]\n") != 1, "unexpected input (invalid header?)");
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
+    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
-    const D* ret = mad_desc_newv(nv, vo, nk, ko);
+    const D* ret = cnt == 5 ? mad_desc_newv(nv, vo, nk, ko)
+                            : mad_desc_newk(nv, mo, nk, ko);
     DBGFUN(<-);
     return ret;
   }
 
-  if (cnt < 3) { error("could not read (NO,NV) from header"); }
+  if (cnt < 3) { error("could not read (NV,NO) from header"); }
   if (cnt < 5) { error("could not read (NK,KO) from header"); }
   return NULL; // never reached
 }
@@ -186,7 +189,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     // discard too high mononial
     if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c);
   }
-
+  FUN(update0)(t, t->lo, t->hi);
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -239,9 +242,10 @@ coeffonly:
 
   // print coefficients
   fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
-  idx_t *o2i = d->ord2idx, idx = 0;
+  const idx_t *o2i = d->ord2idx;
+  idx_t idx = 0;
   for (ord_t o = t->lo; o <= t->hi ; ++o) {
-    if (!mad_bit_get(t->nz,o)) continue;
+    if (!mad_bit_tst(t->nz,o)) continue;
     for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
       if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
