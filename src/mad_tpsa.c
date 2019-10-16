@@ -45,7 +45,6 @@ in [lo,hi]: nz[o] == 0 <=> all coef[[o]] == 0
 static inline log_t
 FUN(check) (const T *t, ord_t *o_, idx_t *i_)
 {
-  assert(t);
   ord_t o  = 0;
   idx_t i  = -1;
   log_t ok = t->d != NULL;
@@ -103,11 +102,12 @@ void
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
   assert(t);
-  const D* d = t->d;
-  if (!stream_) stream_ = stdout;
 
   ord_t o; idx_t i;
   if (FUN(check)(t,&o,&i)) return;
+
+  const D* d = t->d;
+  if (!stream_) stream_ = stdout;
 
   fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d id=%d",
           fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
