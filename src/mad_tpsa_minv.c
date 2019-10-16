@@ -68,12 +68,15 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 
     FUN(copy)(ma[i], t);
 
-    // clear constant and linear part
+    // clear constant and linear part of coef
     for (idx_t c = 0; c < d->ord2idx[2]; ++c) t->coef[c] = 0;
 
-    t->nz = mad_bit_clr(mad_bit_clr(t->nz,0),1);
-    t->lo = t->nz ? MIN(mad_bit_lowest (t->nz),t->mo) : t->mo;
-    t->hi = t->nz ? MIN(mad_bit_highest(t->nz),t->mo) : 0;
+    // clear constant and linear part of nz, adjust lo, hi
+    t->nz = mad_bit_mclr(t->nz,3);
+    if (t->nz) {
+      t->lo = mad_bit_lowest (t->nz);
+      t->hi = mad_bit_highest(t->nz);
+    } else FUN(reset0)(t);
 
     FUN(scl)(t,-1,t);
   }
@@ -120,7 +123,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   check_minv(sa,ma,mc);
   for (idx_t i = 0; i < sa; ++i) {
     DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    ensure(mad_bit_get(ma[i]->nz,1), "invalid domain");
+    ensure(mad_bit_tst(ma[i]->nz,1), "invalid domain");
   }
 
   const D *d = ma[0]->d;
@@ -169,9 +172,10 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
   assert(ma && mc && select);
   check_minv(sa,ma,mc);
   for (idx_t i = 0; i < sa; ++i) {
-    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    if (select[i])
-      ensure(mad_bit_get(ma[i]->nz,1), "invalid domain"); // ??
+    if (select[i]) {
+      DBGTPSA(ma[i]); DBGTPSA(mc[i]);
+      ensure(mad_bit_tst(ma[i]->nz,1), "invalid domain"); // ??
+    }
   }
 
   const D *d = ma[0]->d;
