@@ -180,8 +180,8 @@ void    mad_tpsa_scan_coef(      tpsa_t *t,                                     
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t   mad_tpsa_isvalid  (const tpsa_t *t);
 
-// unsafe operations !!
-tpsa_t* mad_tpsa_init (tpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
+// unsafe operation (mo vs allocated!!)
+tpsa_t* mad_tpsa_init (tpsa_t *t, const desc_t *d, ord_t mo);
 
 // macro wrapper for safe use
 #define mad_tpsa_ordv(...) mad_tpsa_ordv(__VA_ARGS__,NULL)

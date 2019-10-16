@@ -249,8 +249,8 @@ void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                  
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t    mad_ctpsa_isvalid  (const ctpsa_t *t);
 
-// unsafe operations !!
-ctpsa_t* mad_ctpsa_init (ctpsa_t *t, const desc_t *d, ord_t lo, ord_t hi, ord_t mo);
+// unsafe operation (mo vs allocated!!)
+ctpsa_t* mad_ctpsa_init (ctpsa_t *t, const desc_t *d, ord_t mo);
 
 // macro wrapper for safe use
 #define  mad_ctpsa_ordv(...) mad_ctpsa_ordv(__VA_ARGS__,NULL)
