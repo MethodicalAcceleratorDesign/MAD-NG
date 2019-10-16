@@ -32,19 +32,17 @@
 
 // --- num
 
+int mad_num_sign (num_t x)
+{
+  return (x > 0) - (x < 0);  // -1, 0, 1
+}
+
 int mad_num_sign1 (num_t x)
 {
-  static const int sign[2] = { 1, -1 };
-  return sign[signbit(x)];
+  return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN!
 }
 
-int mad_num_step1 (num_t x)
-{
-  static const int step[2] = { 1, 0 };
-  return step[signbit(x)];
-}
-
-num_t mad_num_sinc  (num_t x)
+num_t mad_num_sinc (num_t x)
 {
   return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin (x)/x;
 }

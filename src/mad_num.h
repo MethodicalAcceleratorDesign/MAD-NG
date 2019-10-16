@@ -29,8 +29,8 @@
 
 // --- interface --------------------------------------------------------------o
 
-int    mad_num_sign1   (num_t x);
-int    mad_num_step1   (num_t x);
+int    mad_num_sign    (num_t x); // -1, 0, 1
+int    mad_num_sign1   (num_t x); // -1, 1
 
 num_t  mad_num_sinc    (num_t x);
 num_t  mad_num_sinhc   (num_t x);
