@@ -241,7 +241,7 @@ void
 FUN(del) (const T *t)
 {
   DBGFUN(->);
-  if (t) { DBGTPSA(t); mad_free((void*)t); }
+  if (t) mad_free((void*)t);
   DBGFUN(<-);
 }
 
