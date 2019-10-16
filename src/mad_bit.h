@@ -35,9 +35,21 @@ typedef uint64_t bit_t;
 
 // --- interface --------------------------------------------------------------o
 
-static bit_t mad_bit_set     (bit_t b, int n);
+// bit mask
+static _Bool mad_bit_mtst    (bit_t b, bit_t m);
+static bit_t mad_bit_mget    (bit_t b, bit_t m);
+static bit_t mad_bit_mset    (bit_t b, bit_t m);
+static bit_t mad_bit_mflp    (bit_t b, bit_t m);
+static bit_t mad_bit_mclr    (bit_t b, bit_t m);
+
+// bit nth
+static _Bool mad_bit_tst     (bit_t b, int n);
 static bit_t mad_bit_get     (bit_t b, int n);
+static bit_t mad_bit_set     (bit_t b, int n);
+static bit_t mad_bit_flp     (bit_t b, int n);
 static bit_t mad_bit_clr     (bit_t b, int n);
+
+// other
 static bit_t mad_bit_lcut    (bit_t b, int n);
 static bit_t mad_bit_hcut    (bit_t b, int n);
 static int   mad_bit_lowest  (bit_t b);
@@ -62,34 +74,76 @@ static int mad_bit_highest32 (uint32_t b) __attribute__((const));
 static int mad_bit_highest64 (uint64_t b) __attribute__((const));
 #endif
 
-static inline bit_t  __attribute__((const))
-mad_bit_set (bit_t b, int n)
+static inline _Bool __attribute__((const))
+mad_bit_mtst (bit_t b, bit_t m)
 {
-  return b | (1ull << n);
+  return (b & m) != 0;
+}
+
+static inline bit_t  __attribute__((const))
+mad_bit_mget (bit_t b, bit_t m)
+{
+  return b & m;
+}
+
+static inline bit_t  __attribute__((const))
+mad_bit_mset (bit_t b, bit_t m)
+{
+  return b | m;
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_mflp (bit_t b, bit_t m)
+{
+  return b ^ m;
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_mclr (bit_t b, bit_t m)
+{
+  return b & ~m;
+}
+
+static inline _Bool __attribute__((const))
+mad_bit_tst (bit_t b, int n)
+{
+  return mad_bit_mtst(b, 1ull << n);
 }
 
 static inline bit_t  __attribute__((const))
 mad_bit_get (bit_t b, int n)
 {
-  return b & (1ull << n);
+  return mad_bit_mget(b, 1ull << n);
+}
+
+static inline bit_t  __attribute__((const))
+mad_bit_set (bit_t b, int n)
+{
+  return mad_bit_mset(b, 1ull << n);
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_flp (bit_t b, int n)
+{
+  return mad_bit_mflp(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_clr (bit_t b, int n)
 {
-  return b & ~(1ull << n);
+  return mad_bit_mclr(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_lcut (bit_t b, int n) // clear bits < n
 {
-  return b & ~((1ull << n) - 1);
+  return mad_bit_mclr(b, (1ull << n)-1);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_hcut (bit_t b, int n) // clear bits > n
 {
-  return b & ((2ull << n) - 1);
+  return mad_bit_mget(b, (2ull << n)-1);
 }
 
 static inline int __attribute__((const))
