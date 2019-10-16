@@ -35,7 +35,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        DESC_MAX_VAR    = 100000,  // max number of variables in a tpsa
        DESC_MAX_ARR    = 100,     // max number of simultaneous descriptors
        DESC_MAX_TMP    = 8,       // max number of temp. per thread in each desc
-       TPSA_STRICT_NZ  = FALSE    // enforce strict nz (can be quadratically slow)
+       TPSA_STRICT_NZ  = 1 // enforce strict nz (chk can be quadratic at level 3)
 };
 
 // --- types ------------------------------------------------------------------o
@@ -83,7 +83,7 @@ void     mad_ctpsa_del  (const ctpsa_t *t);
 
 // --- TPSA sanity checks -----------------------------------------------------o
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG > 0
 #  define DBGTPSA(t) FUN(debug)(t,#t,__func__,__LINE__,0)
