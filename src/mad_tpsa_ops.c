@@ -77,9 +77,10 @@ static inline void
 hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_parallel)
 {
   const D *d = c->d;
+  const idx_t *o2i = d->ord2idx;
   const NUM *ca = a->coef, *cb = b->coef;
   NUM *cc = c->coef;
-  idx_t *o2i = d->ord2idx, hod = d->mo/2;
+  idx_t hod = d->mo/2;
   bit_t nza = a->nz, nzb = b->nz;
   ord_t lo = MAX(c->lo,3);
 
@@ -103,24 +104,24 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
                               d->L_idx[oa*hod + ob][idx1] };
        assert(lc); assert(idx[0] && idx[1]);
 
-      if (mad_bit_get(nza & nzb,oa) && mad_bit_get(nza & nzb,ob)) {
+      if (mad_bit_tst(nza & nzb,oa) && mad_bit_tst(nza & nzb,ob)) {
 //        printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_sym_mul(ca+o2i[oa],cb+o2i[ob],ca+o2i[ob],cb+o2i[oa],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
-      else if (mad_bit_get(nza,oa) && mad_bit_get(nzb,ob)) {
+      else if (mad_bit_tst(nza,oa) && mad_bit_tst(nzb,ob)) {
 //        printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_asym_mul(ca+o2i[oa],cb+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
-      else if (mad_bit_get(nza,ob) && mad_bit_get(nzb,oa)) {
+      else if (mad_bit_tst(nza,ob) && mad_bit_tst(nzb,oa)) {
 //        printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
         hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
     }
     // even oc, diagonal case
-    if (!(oc & 1) && mad_bit_get(nza & nzb,oc/2)) {
+    if (!(oc & 1) && mad_bit_tst(nza & nzb,oc/2)) {
       ord_t hoc = oc/2;
       ssz_t nb = o2i[hoc+1] - o2i[hoc];
       const idx_t *lc = d->L[hoc*hod + hoc];
@@ -195,7 +196,7 @@ der_coef(idx_t ia, idx_t di, ord_t der_ord, const D* d)
 static inline void
 hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
-  const ord_t ho = d->mo/2;
+  const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc], cols = o2i[ord+1] - o2i[ord];
   // idx = idx - o2i[ord];
@@ -212,7 +213,7 @@ hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
 static inline void
 hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
-  const ord_t ho = d->mo/2;
+  const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[ord+1] - o2i[ord];
   idx_t idx_shifted = idx - o2i[ord];
@@ -229,7 +230,7 @@ hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
 static inline void
 hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
-  const ord_t ho = d->mo/2;
+  const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[oc*ho + ord], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc];
   idx_t idx_shifted = idx - o2i[ord];
@@ -247,21 +248,19 @@ static inline void
 hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
   const D *d = c->d;
-  idx_t *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
   const NUM *ca = a->coef;
         NUM *cc;
 
   c->hi = MIN3(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
-  for (ord_t oc = 1; oc <= c->hi; ++oc)
-    if (mad_bit_get(a->nz,oc+ord)) {
+  for (ord_t oc = 1; oc <= c->hi; ++oc) {
+    if (mad_bit_tst(a->nz,oc+ord)) {
       cc = c->coef + o2i[oc];
            if (oc <  ord) hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
       else if (oc == ord) hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
       else                hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
     }
-  c->lo = MIN(mad_bit_lowest(c->nz),c->mo);
-  c->hi = c->nz ? MIN(mad_bit_highest(c->nz),c->mo) : 0;
-  if (c->lo) c->coef[0] = 0;
+  }
 }
 
 // --- binary ops -------------------------------------------------------------o
@@ -270,7 +269,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 
 #define TPSA_LINOP(OPA, OPB, ORD) \
 do { \
-  idx_t *o2i = c->d->ord2idx; \
+  const idx_t *o2i = c->d->ord2idx; \
   idx_t start_a = o2i[ORD?MAX(a->lo,ORD):a->lo], end_a = o2i[MIN(a->hi,c_hi)+1]; \
   idx_t start_b = o2i[ORD?MAX(b->lo,ORD):b->lo], end_b = o2i[MIN(b->hi,c_hi)+1]; \
   idx_t i = start_a; \
@@ -283,7 +282,7 @@ do { \
 
 #define TPSA_CLEAR(ORD) \
 do { \
-  idx_t *o2i = c->d->ord2idx; \
+  const idx_t *o2i = c->d->ord2idx; \
   for (idx_t i = o2i[ORD]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0; \
 } while(0)
 
@@ -301,7 +300,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   FUN(copy0)(a,c);
 
-  idx_t *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
   if (v == 1)
     for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
       c->coef[i] = a->coef[i];
@@ -325,9 +324,12 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   if (!v) { DBGFUN(<-); return; }
 
+  const idx_t *o2i = d->ord2idx;
   ord_t new_lo = MIN (a->lo,c->lo);
   ord_t new_hi = MIN3(a->hi,c->mo,d->to);
-  idx_t *o2i = d->ord2idx;
+
+  c->nz = mad_bit_hcut(c->nz|a->nz, MAX(new_hi, c->hi));
+  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
 
   for (idx_t i = o2i[new_lo ]; i < o2i[c->lo   ]; ++i) c->coef[i]  = 0;
   for (idx_t i = o2i[c->hi+1]; i < o2i[new_hi+1]; ++i) c->coef[i]  = 0;
@@ -335,8 +337,8 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
-  c->nz = mad_bit_hcut(c->nz|a->nz,c->hi);
   if (c->lo) c->coef[0] = 0;
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -349,16 +351,20 @@ FUN(add) (const T *a, const T *b, T *c)
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
-
   ord_t   hi = MAX(a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, d->to);
+
+  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
+  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+
+  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
+
   TPSA_LINOP(, +, 0);  // c->coef[i] = a->coef[i] + b->coef[i];
 
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
-  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (c->lo) c->coef[0] = 0;
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -371,18 +377,22 @@ FUN(sub) (const T *a, const T *b, T *c)
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
+  ord_t   hi = MAX (a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, d->to);
+
+  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
+  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+
   const T* t = 0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
-  ord_t   hi = MAX (a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, d->to);
   if (t) TPSA_LINOP(-, +, 0); // c->coef[i] = - a->coef[i] + b->coef[i];
   else   TPSA_LINOP( , -, 0); // c->coef[i] =   a->coef[i] - b->coef[i];
 
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
-  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (c->lo) c->coef[0] = 0;
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -395,7 +405,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   const D *d = a->d;
   ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *c = (a == r || b == r) ? GET_TMPX(r) : r;
+  T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
   c->lo = a->lo + b->lo;
   c->hi = MIN3(a->hi + b->hi, c->mo, d->to);
@@ -408,42 +418,40 @@ FUN(mul) (const T *a, const T *b, T *r)
   NUM a0 = a->coef[0], b0 = b->coef[0];
   c->coef[0] = a0 * b0;
   c->nz = c->coef[0] != 0;
-  if (c->hi == 0) {
-    if (!c->coef[0]) c->lo = c->mo; // reset
-    goto ret;
-  }
+  if (!c->hi) goto ret;
 
   // order 1
   if (c->lo <= 1) {
     idx_t max_ord1 = d->ord2idx[2];
-    if (mad_bit_get(a->nz & b->nz,1) && a0 && b0) {
-      for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
+    if (mad_bit_tst(a->nz & b->nz,1) && a0 != 0 && b0 != 0) {
+      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
       c->nz = mad_bit_set(c->nz,1);
     }
-    else if (mad_bit_get(a->nz,1) && b0) {
-      for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = b0*a->coef[i];
+    else if (mad_bit_tst(a->nz,1) && b0 != 0) {
+      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = b0*a->coef[i];
       c->nz = mad_bit_set(c->nz,1);
     }
-    else if (mad_bit_get(b->nz,1) && a0) {
-      for (idx_t i = 1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
+    else if (mad_bit_tst(b->nz,1) && a0 != 0) {
+      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
       c->nz = mad_bit_set(c->nz,1);
     }
+    else for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = 0;
   }
 
   // order 2+
   if (c->hi > 1) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
-    if (a0 && b0) TPSA_LINOP(b0*, +a0*, 2);
-    else if (!b0) TPSA_LINOP( 0*, +a0*, 2);
-    else          TPSA_LINOP(b0*, + 0*, 2);
+    if (a0 != 0 && b0 != 0) TPSA_LINOP(b0*, +a0*, 2);
+    else if       (b0 == 0) TPSA_LINOP( 0*, +a0*, 2);
+    else                    TPSA_LINOP(b0*, + 0*, 2);
     TPSA_CLEAR(ab_hi+1);
 
-    if (a0) { c->nz |= mad_bit_lcut(b->nz,2); }
-    if (b0) { c->nz |= mad_bit_lcut(a->nz,2); }
-              c->nz  = mad_bit_hcut(c->nz,c_hi);
+    if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
+    if (b0 != 0) { c->nz |= mad_bit_lcut(a->nz,2); }
+                   c->nz  = mad_bit_hcut(c->nz,c_hi);
 
-    if (mad_bit_get(a->nz & b->nz,1)) {
-      idx_t *o2i = d->ord2idx, hod = d->mo/2;
+    if (mad_bit_tst(a->nz & b->nz,1)) {
+      const idx_t *o2i = d->ord2idx, hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
@@ -465,6 +473,8 @@ FUN(mul) (const T *a, const T *b, T *r)
     }
   }
 
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+
 ret:
   assert(a != c && b != c);
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -483,7 +493,7 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) { FUN(scl)(a,1/b0,c); DBGFUN(<-); return; }
 
-  T *t = (a == c || b == c) ? GET_TMPX(c) : c;
+  T *t = (a == c || b == c) ? GET_TMPX(c) : FUN(reset0)(c);
   FUN(inv)(b,1,t);
   FUN(mul)(a,t,c);
   if (t != c) REL_TMPX(t);
@@ -535,13 +545,15 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
   assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
 
+  if (!(a->nz|b->nz)) return TRUE;
+
   if (eps_ < 0) eps_ = 1e-16;
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  idx_t *o2i = a->d->ord2idx;
-  idx_t start_a = o2i[a->lo], end_a = o2i[a->hi+1];
-  idx_t start_b = o2i[b->lo], end_b = o2i[b->hi+1];
+  const idx_t *o2i = a->d->ord2idx;
+  const idx_t start_a = o2i[a->lo], end_a = o2i[a->hi+1];
+  const idx_t start_b = o2i[b->lo], end_b = o2i[b->hi+1];
   idx_t i = start_a;
 
   for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > eps_)              { DBGFUN(<-); return FALSE; }
@@ -565,7 +577,9 @@ FUN(abs) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *o2i = c->d->ord2idx;
+  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+
+  const idx_t *o2i = c->d->ord2idx;
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = fabs(a->coef[i]);
 
@@ -584,9 +598,13 @@ FUN(arg) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *o2i = c->d->ord2idx;
+  if (!c->nz) FUN(reset0)(c);
+
+  const idx_t *o2i = c->d->ord2idx;
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = carg(a->coef[i]);
+
+  FUN(update0)(c, c->lo, c->hi); // required!
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -601,7 +619,9 @@ FUN(conj) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  idx_t *o2i = c->d->ord2idx;
+  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+
+  const idx_t *o2i = c->d->ord2idx;
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = conj(a->coef[i]);
 
@@ -614,8 +634,8 @@ NUM
 FUN(nrm1) (const T *a, const T *b_)
 {
   assert(a); DBGFUN(->); DBGTPSA(a);
-  NUM norm = 0.0;
-  idx_t *o2i = a->d->ord2idx;
+  const idx_t *o2i = a->d->ord2idx;
+  NUM norm = 0;
   if (b_) {
     DBGTPSA(b_);
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
@@ -632,7 +652,7 @@ FUN(nrm1) (const T *a, const T *b_)
   else {
     ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o) {
-      if (!mad_bit_get(a->nz,o)) continue;
+      if (!mad_bit_tst(a->nz,o)) continue;
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
         norm += fabs(a->coef[i]);
     }
@@ -644,8 +664,8 @@ NUM
 FUN(nrm2) (const T *a, const T *b_)
 {
   assert(a); DBGFUN(->); DBGTPSA(a);
-  NUM norm = 0.0;
-  idx_t *o2i = a->d->ord2idx;
+  const idx_t *o2i = a->d->ord2idx;
+  NUM norm = 0;
   if (b_) {
     DBGTPSA(b_);
     ensure(a->d == b_->d, "incompatibles GTPSA (descriptors differ)");
@@ -662,7 +682,7 @@ FUN(nrm2) (const T *a, const T *b_)
   else {
     ord_t hi = MIN(a->hi, a->d->to);
     for (ord_t o = a->lo; o <= hi; ++o)
-      if (mad_bit_get(a->nz,o)) {
+      if (mad_bit_tst(a->nz,o)) {
         for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
           norm += a->coef[i] * a->coef[i];
       }
@@ -676,15 +696,15 @@ FUN(deriv) (const T *a, T *r, int iv)
 {
   assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
   const D *d = a->d;
-  idx_t *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
 
   ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
   ensure(iv >= o2i[1] && iv < o2i[2], "invalid domain");
 
-  T *c = a == r ? GET_TMPX(r) : r;
+  T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
-  if (!a->hi) { FUN(reset0)(c); goto ret; } // empty
-  FUN(setvar)(c,FUN(geti)(a,iv), 0, 0);  // TODO: what if alpha[iv] == 0 ?
+  if (!a->hi) goto ret; // empty
+  FUN(setvar)(c,FUN(geti)(a,iv), 0, 0);
 
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN3(a->hi-1, c->mo, d->to);
@@ -692,16 +712,19 @@ FUN(deriv) (const T *a, T *r, int iv)
   const NUM *ca = a->coef;
 
   ord_t der_ord = 1, oc = 1;
-  if (mad_bit_get(a->nz,oc+1))
+  if (mad_bit_tst(a->nz,oc+1))
       hpoly_der_eq(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
 
   for (oc = 2; oc <= c->hi; ++oc)
-    if (mad_bit_get(a->nz,oc+1))
+    if (mad_bit_tst(a->nz,oc+1))
       hpoly_der_gt(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
 
-  c->lo = c->nz ? MIN(mad_bit_lowest (c->nz),c->mo) : c->mo;
-  c->hi = c->nz ? MIN(mad_bit_highest(c->nz),c->mo) : 0;
-  if (c->lo) c->coef[0] = 0;
+  if (c->nz) {
+    c->lo = mad_bit_lowest (c->nz);
+    c->hi = mad_bit_highest(c->nz);
+    if (c->lo) c->coef[0] = 0;
+    if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  } else FUN(reset0)(c);
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -713,7 +736,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
 {
   assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
   const D *d = a->d;
-  idx_t *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
 
   ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
   ensure(mad_desc_isvalidm(d,n,mono), "invalid monomial");
@@ -726,14 +749,21 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   // fallback on simple version
   if (idx < o2i[2]) { FUN(deriv)(a,r,idx); DBGFUN(<-); return; }
 
-  T *c = a == r ? GET_TMPX(r) : r;
+  T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   // ord 0 & setup
   FUN(setvar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0, 0);
-  if (a->hi <= der_ord) { goto ret; }
+  if (a->hi <= der_ord) goto ret;
 
   // ords 1..a->hi - 1
   hpoly_der(a,idx,der_ord,c);
+
+  if (c->nz) {
+    c->lo = mad_bit_lowest (c->nz);
+    c->hi = mad_bit_highest(c->nz);
+    if (c->lo) c->coef[0] = 0;
+    if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  } else FUN(reset0)(c);
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -797,9 +827,9 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ord_t   hi = MAX(a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, c->d->to);
 
-  if (!c_hi) {
-    FUN(setvar)(c, c1*a->coef[0] + c2*b->coef[0] + c3, 0, 0);
-    DBGFUN(<-); return;
+  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
+  if (!c->nz) {
+    FUN(setvar)(c, c1*a->coef[0]+c2*b->coef[0]+c3, 0,0); DBGFUN(<-); return;
   }
 
   if (a->lo > b->lo)  {
@@ -822,10 +852,10 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
     else               TPSA_LINOP( c1*, +c2*, 0);
   }
 
-  c->lo = a->lo;    // a->lo <= b->lo  (because of swap)
+  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
-  c->nz = mad_bit_hcut(a->nz|b->nz,c->hi);
   if (c->lo) c->coef[0] = 0;
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   if (c3) FUN(set0)(c,1,c3);
 
@@ -852,7 +882,7 @@ FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t = z == r ? GET_TMPX(r) : r;
+  T *t = z == r ? GET_TMPX(r) : FUN(reset0)(r);
   FUN(mul)(x,y,t);
   FUN(axpbypc)(a,t,b,z,c,r);
   if (t != r) REL_TMPX(t);
@@ -886,7 +916,7 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t = z == r ? GET_TMPX(r) : r;
+  T *t = z == r ? GET_TMPX(r) : FUN(reset0)(r);
   FUN(axypbvwpc)(a,x,x, b,y,y, 0, t);
   FUN(axypbzpc)(c,z,z, 1,t, 0, r);
   if (t != r) REL_TMPX(t);
@@ -900,7 +930,7 @@ FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
   assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *t = x == r ? GET_TMPX(r) : r;
+  T *t = x == r ? GET_TMPX(r) : FUN(reset0)(r);
   FUN(axypb)(c,x,x,b,t);
   FUN(sqrt)(t,t);
   FUN(axpbypc)(a,x,1,t,0,r);
