@@ -338,7 +338,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -364,7 +364,7 @@ FUN(add) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -392,7 +392,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -855,9 +855,8 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
-
   if (c3) FUN(set0)(c,1,c3);
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
 
   DBGTPSA(c); DBGFUN(<-);
 }

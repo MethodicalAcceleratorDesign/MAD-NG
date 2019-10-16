@@ -71,7 +71,7 @@ FUN(check) (const T *t, ord_t *o_, idx_t *i_)
         ok &= t->coef[i] == 0; // ensure all zero
         if (!ok) goto ret;
       }
-    else if (TPSA_STRICT_NZ) {
+    else if (TPSA_STRICT_NZ > 2) { // max level required for validation...
       for (i = o2i[o]; i < o2i[o+1] && t->coef[i] == 0; ++i) ;
       ok &= i < o2i[o+1]; // ensure any non-zero
       if (!ok) goto ret;
@@ -585,7 +585,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
     // like in the pattern of clearing an order minus few ending monomials, so
     // I choosed to be lazy and fast with such consecutive seti(0) as there is
     // little chance that seti(0) clears the last non-zero coef of the hpoly.
-    if (TPSA_STRICT_NZ && mad_bit_tst(t->nz, o)) FUN(update0)(t,o,o);
+    if (TPSA_STRICT_NZ > 2 && mad_bit_tst(t->nz, o)) FUN(update0)(t,o,o);
     DBGTPSA(t); DBGFUN(<-); return;
   }
 
@@ -646,7 +646,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   t->nz |= mad_bit_hcut(mad_bit_lcut(~0ull, vlo), vhi);
 
   // update nz for zeros hpoly (see seti for discussion)
-  if (TPSA_STRICT_NZ) FUN(update0)(t, vlo, vhi);
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(t, vlo, vhi);
 
   DBGTPSA(t); DBGFUN(<-);
 }
