@@ -26,9 +26,19 @@
 #include "mad_tpsa.h"
 #include "mad_ctpsa.h"
 
-// --- types ------------------------------------------------------------------o
+// --- constants --------------------------------------------------------------o
 
-enum { DESC_MAX_TMP = 6 };
+#include <limits.h>
+
+enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
+       DESC_MAX_ORD    = CHAR_BIT*sizeof(bit_t)-1, // max ord of a tpsa (=63)
+       DESC_MAX_VAR    = 100000,  // max number of variables in a tpsa
+       DESC_MAX_ARR    = 100,     // max number of simultaneous descriptors
+       DESC_MAX_TMP    = 8,       // max number of temp. per thread in each desc
+       TPSA_STRICT_NZ  = FALSE    // enforce strict nz (can be quadratically slow)
+};
+
+// --- types ------------------------------------------------------------------o
 
 struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   id;          // index in list of registered descriptors

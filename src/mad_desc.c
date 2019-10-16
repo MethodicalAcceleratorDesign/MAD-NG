@@ -30,7 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 #include <assert.h>
 
 #include "mad_mem.h"
@@ -38,18 +37,12 @@
 
 // --- globals ----------------------------------------------------------------o
 
+// must be global variables for access from LuaJIT FFI.
 const  ord_t  mad_tpsa_default = -1;
 const  ord_t  mad_tpsa_same    = -2;
 
 // last descriptor created or searched (used to create GTPSA when d is NULL)
 const desc_t *mad_desc_curr    = NULL;
-
-// --- constants --------------------------------------------------------------o
-
-enum { DESC_WARN_MONO = 1000000,       // warn if tpsa has 1e6 coefs or more
-       DESC_MAX_ORD   = CHAR_BIT * sizeof(bit_t) -1, // max ord of a tpsa (=63)
-       DESC_MAX_VAR   = 100000,        // max number of variables in a tpsa
-       DESC_MAX_ARR   = 100 };         // max number of simultaneous descriptors
 
 // --- sizes ------------------------------------------------------------------o
 
@@ -124,7 +117,7 @@ mono_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 static inline idx_t
 mono_findidx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
 {
-  const ord_t **T = (const ord_t **)T_;
+  const ord_t *const *T = (const ord_t *const *)T_;
   idx_t start = from, count = to-from, step, i;
 
   while (count > 0) {
@@ -396,7 +389,8 @@ tbl_solve_H(D *d)
 {
   DBGFUN(->);
   assert(d);
-  idx_t *H = d->H, *o2i = d->ord2idx, *o2v = d->to2tv;
+  const idx_t *o2i = d->ord2idx, *o2v = d->to2tv;
+  idx_t *H = d->H;
   ord_t **To = d->To;
   ssz_t nj = d->nv, ni = d->mo+2, n = d->nv;
   ord_t m[n];
@@ -679,7 +673,8 @@ tbl_check_L (D *d)
 {
   DBGFUN(->);
   assert(d && d->ord2idx && d->L && d->vo && d->To && d->H);
-  int ho = d->mo / 2, *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
+  int ho = d->mo / 2;
   ord_t m[d->nv];
   for (int oc = 2; oc <= d->mo; ++oc)
     for (int j = 1; j <= oc / 2; ++j) {
@@ -767,7 +762,7 @@ static inline void
 get_ops(D *d, long long int ops[])
 {
   DBGFUN(->);
-  idx_t *o2i = d->ord2idx;
+  const idx_t *o2i = d->ord2idx;
   ops[0] = ops[1] = ops[2] = 0;
   for (ord_t o = 3; o <= d->mo; ++o) {
     ops[o] = 0;
