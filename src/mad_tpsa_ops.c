@@ -329,7 +329,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   ord_t new_hi = MIN3(a->hi,c->mo,d->to);
 
   c->nz = mad_bit_hcut(c->nz|a->nz, MAX(new_hi, c->hi));
-  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   for (idx_t i = o2i[new_lo ]; i < o2i[c->lo   ]; ++i) c->coef[i]  = 0;
   for (idx_t i = o2i[c->hi+1]; i < o2i[new_hi+1]; ++i) c->coef[i]  = 0;
@@ -355,7 +355,7 @@ FUN(add) (const T *a, const T *b, T *c)
   ord_t c_hi = MIN3(hi, c->mo, d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
-  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
@@ -381,7 +381,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   ord_t c_hi = MIN3(hi, c->mo, d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
-  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   const T* t = 0;
   if (a->lo > b->lo) SWAP(a,b,t);
@@ -577,7 +577,7 @@ FUN(abs) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   const idx_t *o2i = c->d->ord2idx;
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
@@ -619,7 +619,7 @@ FUN(conj) (const T *a, T *c)
   c->hi = MIN3(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
-  if (!c->nz) { FUN(reset0)(c); DBGTPSA(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   const idx_t *o2i = c->d->ord2idx;
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)

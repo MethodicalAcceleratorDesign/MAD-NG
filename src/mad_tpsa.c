@@ -206,7 +206,7 @@ FUN(init) (T *t, const D *d, ord_t mo)
   t->d = d, t->uid = 0, t->mo = mo;
   FUN(reset0)(t);
 
-  DBGTPSA(t); DBGFUN(<-); return t;
+  DBGFUN(<-); return t;
 }
 
 // --- ctors, dtor ------------------------------------------------------------o
@@ -226,7 +226,7 @@ FUN(newd) (const D *d, ord_t mo)
   t->d = d, t->uid = 0, t->mo = mo;
   FUN(reset0)(t);
 
-  DBGTPSA(t); DBGFUN(<-); return t;
+  DBGFUN(<-); return t;
 }
 
 T*
@@ -252,7 +252,7 @@ FUN(clear) (T *t)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   FUN(reset0)(t);
-  DBGTPSA(t); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
@@ -263,7 +263,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 
   // v=0 and no first order: reset
   if (!v && !(iv && t->mo && d->to)) {
-    FUN(reset0)(t); DBGTPSA(t); DBGFUN(<-); return;
+    FUN(reset0)(t); DBGFUN(<-); return;
   }
 
   t->coef[0] = v;
@@ -319,7 +319,7 @@ FUN(getord) (const T *t, T *r, ord_t ord)
   ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
 
   if (!mad_bit_tst(t->nz,ord) || ord > MIN(r->mo,d->to)) {
-    FUN(reset0)(r); DBGTPSA(r); DBGFUN(<-); return;
+    FUN(reset0)(r); DBGFUN(<-); return;
   }
 
   // set lo, hi, nz, coef[0]
@@ -346,12 +346,12 @@ FUN(cutord) (const T *t, T *r, int ord)
   if (ord < 0) { // cut 0..-ord, see copy0 with t->lo = -ord+1
     r->hi = MIN3(t->hi, r->mo, d->to);
     r->nz = mad_bit_hcut(mad_bit_lcut(t->nz, -ord+1), r->hi);
-    if (!r->nz) { FUN(reset0)(r); DBGTPSA(r); DBGFUN(<-); return; }
+    if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
     r->lo = -ord+1; r->coef[0] = 0;
   } else {      // cut ord..mo, see copy0 with t->hi = ord-1
     r->hi = MIN3(ord-1, r->mo, d->to);
     r->nz = mad_bit_hcut(t->nz, r->hi);
-    if (!r->nz) { FUN(reset0)(r); DBGTPSA(r); DBGFUN(<-); return; }
+    if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
     if ((r->lo=t->lo)) r->coef[0] = 0;
   }
 
@@ -548,7 +548,7 @@ FUN(set0) (T *t, NUM a, NUM b)
 
   if (!v) { // clear coef[0], set lo and nz
     t->nz = mad_bit_clr(t->nz, 0);
-    if (!t->nz) { FUN(reset0)(t); DBGTPSA(t); DBGFUN(<-); return; }
+    if (!t->nz) { FUN(reset0)(t); DBGFUN(<-); return; }
     t->lo = mad_bit_lowest(t->nz);
     t->coef[0] = 0;
   } else {  // set coef[0], clear (0,lo)
