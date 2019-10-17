@@ -1,0 +1,337 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Trace Analyser
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ |          D. D'Andrea
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide a tool to read (parse) and sort extra traces output -jdump=t1 or t2
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local mtable                    in MAD
+local is_nil, is_table          in MAD.typeid
+local errorf, assertf, printf   in MAD.utility
+
+local find in string
+
+-- locals ---------------------------------------------------------------------o
+
+local trcdbg = false -- debug trace build (parser)
+
+local trctblcol = { -- trctbl columns
+  {'trcno'}, 'what', 'pc', 'filename', 'lineno', 'parent', 'sideexit', 'result',
+  'link', 'reason', 'errno', 'errfile', 'errline', 'flushno', 'treelevel',
+  'parentslist',
+}
+
+local hottblcol = { -- hottbl columns
+  {'pc'}, 'successno', 'abortno', 'blacklistno',
+}
+
+local trcprtmin = { -- minimal subset of trctblcol for printing
+  'trcno', 'what', 'pc', 'parent', 'result', 'flushno', 'treelevel'
+}
+
+local trcprtcol = { -- subset of trctblcol for printing
+  'trcno', 'what', 'pc', 'parent', 'link', 'filename', 'lineno', 'result',
+  'abortno', 'blacklistno', 'errfile', 'errline', 'errno', 'flushno', 'treelevel'
+}
+
+local dbgfldcol = { -- field attributes (debug)
+  'trcno', 'what', 'sideexit', 'parent', 'filename', 'lineno', 'pc', 'result',
+  'link', 'reason', 'errno', 'errfile', 'errline', 'flushno',
+}
+
+-- store trace information ----------------------------------------------------o
+
+-- Debug trace
+local function debug_trace (flds)
+  if not trcdbg then return end
+  for _,v in ipairs(dbgfldcol) do
+    printf("%9s:  %s\n", v, tostring(flds[v]))
+  end
+  io.write('\n')
+end
+
+-- Find parents O(N^2) [TODO: write faster version if needed]
+local function find_parents (trctbl, parent, flushno)
+  if parent == nil then return "R", 1 end
+
+  for i=#trctbl,1,-1 do
+    if trctbl.flushno[i] ~= flushno then break end -- previous flush reached
+
+    if trctbl.trcno[i] == parent and trctbl.result [i] == 'success' then
+      return trctbl.parentslist[i] .. ', ' .. parent, trctbl.treelevel[i]+1
+    end
+  end
+
+  return "..., " .. parent, 0
+end
+
+-- Add trace to table
+local function add_trace (flds, trctbl)
+  debug_trace(flds)
+
+  -- Find parents graph
+  local parentslist, treelevel = find_parents(trctbl, flds.parent, flds.flushno)
+
+  -- add fields info into mtable
+  trctbl:addrow {flds.trcno, flds.what, flds.pc, flds.filename,
+                 flds.lineno, flds.parent, flds.sideexit, flds.result,
+                 flds.link, flds.reason, flds.errno, flds.errfile,
+                 flds.errline, flds.flushno, treelevel, parentslist}
+
+  table.clear(flds)
+end
+
+-- secondary info actions -----------------------------------------------------o
+
+local function info_success_act (line, sbeg0, flds)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.pc = find(line, '%w+ trace compilation [-]+ PC=0x(%x+)', sbeg0)
+  assertf(flds.pc, "invalid 'info success' dump format line %d (unexpected)", ln)
+end
+
+local function info_abort_act (line, sbeg0, flds)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.reason = find(line, '([-%l]+ %l+)', sbeg0)
+  assertf(b, "invalid 'info abort' dump format line %d (unexpected)", ln)
+
+  sbeg0 = e+1
+  if flds.reason == "pc penalty" then
+    b,e, flds.errno, flds.pc = find(line, '=%d+ errno=(%d+) [-]+ PC=0x(%x+)', sbeg0)
+  else
+    b,e, flds.errno, flds.pc = find(line, ' errno=(%d+) [-]+ PC=0x(%x+)', sbeg0)
+  end
+  assertf(flds.pc, "invalid 'info abort' dump format line %d (unexpected)", ln)
+end
+
+local function info_blacklist_act (line, sbeg0, flds)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.errno, flds.pc = find(line, 'penalty=%d+ > %d+ errno=(%d+) [-]+ PC=0x(%x+)', sbeg0)
+  assertf(flds.pc, "invalid 'info blacklist' dump format line %d (unexpected)", ln)
+end
+
+local info_actions = setmetatable({
+  success   = info_success_act,
+  abort     = info_abort_act,
+  blacklist = info_blacklist_act,
+},{
+  __index=\_,k -> errorf("invalid info action '%s'", tostring(k))
+})
+
+-- primary actions -------------------------------------------------------------
+
+local fnpat = '([^: ]+):(%d+)' -- filename pattern: filename.ext:line
+
+local function start_act(line, sbeg0, flds)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.parent = find(line, '(%d+)/', sbeg0)
+  if b then
+    sbeg0 = e+1
+    b,e = find(line, 'stitch ', sbeg0, true)
+    if b then
+      flds.what, sbeg0 = 'stitch trace', e+1
+    else
+      b,e, flds.sideexit = find(line, '(%d+) ', sbeg0)
+      assertf(flds.sideexit, "invalid side trace dump format line %d (unexpected)", ln)
+      flds.what, sbeg0 = 'side trace', e+1
+    end
+  else
+    flds.what = 'root trace'
+  end
+
+  flds.filename, flds.lineno = string.match(line, fnpat..'$', sbeg0)
+  assertf(flds.lineno, "invalid 'start' dump format line %d (missing filename)", ln)
+end
+
+local function info_act(line, sbeg0, flds)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.result = find(line, '(%a+) ', sbeg0)
+  assertf(b, "invalid 'info' dump format line %d (unexpected)", ln)
+
+  info_actions[flds.result](line, e+1, flds)
+end
+
+local function stop_act (line, sbeg0, flds, trctbl)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.link = find(line, '[-]+> (%w+)$', sbeg0)
+  assertf(b, "invalid 'stop' dump format line %d (unexpected)", ln)
+
+  add_trace(flds, trctbl)
+end
+
+local function abort_act(line, sbeg0, flds, trctbl)
+  local ln, b,e = flds.inlineno
+
+  b,e, flds.errfile, flds.errline = find(line, fnpat..' [-]+ ', sbeg0)
+  assertf(b, "invalid 'abort' dump format line %d (unexpected)", ln)
+
+  add_trace(flds, trctbl)
+end
+
+local actions = setmetatable({
+  start = start_act,
+  info  =  info_act,
+  stop  =  stop_act,
+  abort = abort_act,
+},{
+  __index=\_,k -> errorf("invalid action '%s'", tostring(k))
+})
+
+-- read input lines ------------------------------------------------------------
+
+local function scan_lines (filename)
+
+  local flushno = 0
+  local flds    = table.new(0,20)
+  local trctbl  = mtable(trctblcol)
+  trctbl.title  = filename
+
+  local lineno, b,e = 0
+  for line in io.lines(filename) do
+    lineno = lineno+1
+    flds.inlineno = lineno
+
+    -- discard not TRACE lines
+    b,e = find(line, '---- TRACE ', 1, true)
+    if b == nil then goto continue end
+
+    -- TRACE flush
+    b = string.find(line, 'flush', e+1, true)
+    if b ~= nil then flushno = flushno+1 ; goto continue end
+
+    -- get trace number and action
+    local trcno
+    b,e, trcno, flds.act = find(line,'(%d+) (%a+) ', e+1)
+
+    -- check trace number continuity
+    if flds.act ~= 'start' then
+      assertf(flds.trcno == trcno, "inconsistency detected in trace number %d line %d",
+              flds.trcno, flds.inlineno)
+    end
+
+    flds.trcno   = trcno
+    flds.flushno = flushno
+
+    -- get fields values according to specific action
+    actions[flds.act](line, e+1, flds, trctbl)
+
+    ::continue::
+  end
+
+  return trctbl
+end
+
+-- compute hotpaths ------------------------------------------------------------
+
+local function select_hotpaths(trctbl)
+
+  -- Restrict this line if you want to select a subset of the traces
+  local trcidx = 1..#trctbl
+
+  -- Filter unique pc (hot path)
+  local hash   = {}
+  local hottbl = mtable(hottblcol)
+
+  for _,i in ipairs(trcidx) do
+    local pc_flushno = trctbl.pc[i] .. '-' .. trctbl.flushno[i]
+    if not hash[pc_flushno] then
+      hottbl:addrow {pc_flushno, 0, 0, 0}
+      hash[pc_flushno] = true
+    end
+  end
+
+  -- Count the number of success, abort, blacklist
+  for _,i in ipairs(trcidx) do
+    local res = trctbl.result[i]
+    local pc_flushno = trctbl.pc[i] .. '-' .. trctbl.flushno[i]
+    if res == "success" then
+      hottbl[pc_flushno].successno = hottbl[pc_flushno].successno + 1
+    elseif res == "abort" then
+      hottbl[pc_flushno].abortno = hottbl[pc_flushno].abortno + 1
+    elseif res == "blacklist" then
+      hottbl[pc_flushno].blacklistno = hottbl[pc_flushno].blacklistno + 1
+    end
+  end
+
+  -- Copy the number of success, abort, blacklist in trctbl
+  trctbl:addcol('successno'  ,{})
+  trctbl:addcol('abortno'    ,{})
+  trctbl:addcol('blacklistno',{})
+  for _,i in ipairs(trcidx) do
+    local pc_flushno = trctbl.pc[i] .. '-' .. trctbl.flushno[i]
+    trctbl.successno  [i] = hottbl[pc_flushno].successno
+    trctbl.abortno    [i] = hottbl[pc_flushno].abortno
+    trctbl.blacklistno[i] = hottbl[pc_flushno].blacklistno
+  end
+
+  return hottbl
+end
+
+--------------------------------------------------------------------------------
+-- Running the script
+--------------------------------------------------------------------------------
+
+local infile, oufile, htfile = "trcdump.txt", "trcmtbl.txt", "hotmtbl.txt"
+local trcrev, hotrev = false, false
+local trckey, hotkey
+
+local args = MAD.env.arg
+for i=1,#args do
+  if string.sub(args[i],1,1) == "-" then
+    if args[i] == '-i'  then infile = args[i+1]  end
+    if args[i] == '-o'  then oufile = args[i+1]  end
+    if args[i] == '-h'  then htfile = args[i+1]  end
+    if args[i] == '-s'  then trckey = args[i+1]  end
+    if args[i] == '-sh' then hotkey = args[i+1]  end
+    if args[i] == '-r'  then trcrev = not trcrev end
+    if args[i] == '-rh' then hotrev = not hotrev end
+  end
+end
+
+-- Read input, compute hotpaths
+local trctbl = scan_lines(infile)
+local hottbl = select_hotpaths(trctbl)
+
+-- Sort by user key, e.g. blacklistno
+if trckey then
+  if trcrev
+  then trctbl:sort \r1,r2 -> r1[trckey] > r2[trckey]
+  else trctbl:sort \r1,r2 -> r1[trckey] < r2[trckey]
+  end
+end
+
+-- Sort by user key, e.g. abortno
+if hotkey then
+  if hotrev
+  then hottbl:sort \r1,r2 -> r1[hotkey] > r2[hotkey]
+  else hottbl:sort \r1,r2 -> r1[hotkey] < r2[hotkey]
+  end
+end
+
+-- Dump mtables
+trctbl:write(oufile, trcprtcol, {})
+hottbl:write(htfile, nil      , {})
+
+-- end -------------------------------------------------------------------------
