@@ -670,7 +670,7 @@ local function dumpoff()
     jit.attach(dump_texit)
     jit.attach(dump_record)
     jit.attach(dump_trace)
-    ffi.C.mad_ljtrace_debug = 0
+    ffi.C.mad_ljtrace_debug = 0                                           -- MAD
     if out and out ~= stdout and out ~= stderr then out:close() end
     out = nil
   end
@@ -696,7 +696,7 @@ local function dumpon(opt, outfile)
 
   if m.t or m.b or m.i or m.s or m.m then
     jit.attach(dump_trace, "trace")
-    ffi.C.mad_ljtrace_debug = m['2'] and 2 or m['1'] and 1 or 0
+    ffi.C.mad_ljtrace_debug = m['2'] and 2 or m['1'] and 1 or 0           -- MAD
   end
   if m.b then
     jit.attach(dump_record, "record")
