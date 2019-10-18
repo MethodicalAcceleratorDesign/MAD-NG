@@ -26,9 +26,9 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local mtable                          in MAD
-local is_nil, is_table                in MAD.typeid
-local errorf, assertf, printf, tblcpy in MAD.utility
+local mtable                                   in MAD
+local is_nil, is_table                         in MAD.typeid
+local errorf, assertf, printf, tblcpy, strtrim in MAD.utility
 
 local find in string
 
@@ -49,7 +49,7 @@ local config = {
   default = { trcfld = "trcno,what,pc,filename,lineno,parent,sideexit,result,\z
                         link,reason,errno,errfile,errline,flushno,\z
                         successno,abortno,blcklstno,treelevel,parentslist",
-              trckey = "-abortno,-blcklstno,pc,trcno" },
+              trckey = "-blcklstno,-abortno,pc,flushno,trcno" },
 
   hotpath = { trcfld = "",
               trckey = "trcno" },
@@ -187,7 +187,7 @@ end
 local function stop_act (line, s0, flds, trctbl)
   local ln, b,e = flds.inlineno
 
-  b,e, flds.link = find(line, '[-]+> (%w+)$', s0)
+  b,e, flds.link = find(line, '[-]+> ([%w-]+)$', s0)
   assertf(b, "invalid 'stop' dump format line %d (unexpected)", ln)
 
   add_trace(flds, trctbl)
@@ -297,31 +297,9 @@ end
 
 local function get_fldlst (trcfld)
   if not trcfld then return end
-  local fldlst = {}
-  for f in string.gmatch(trcfld, '([^,]+)') do
-    fldlst[#fldlst+1] = f
-  end
-  return fldlst
-end
-
-local function get_trcsrt (trckey)
-  local lst = get_fldlst(trckey)
-  local lhs, rhs, n, tst = "", "", #lst
-
-  for i=1,n do
-    local sgn = string.sub(lst[i],1,1)
-    local fld = (sgn == '-' or sgn == '+') and string.sub(lst[i],2) or lst[i]
-    local cmp =  sgn == '-' and '>' or '<'
-
-    if i < n then
-      lhs = string.format("%sa.%s == b.%s and (", lhs, fld, fld)
-      rhs = string.format(") or a.%s %s b.%s%s", fld, cmp, fld, rhs)
-    else
-      tst = string.format("return \\a,b -> %sa.%s %s b.%s%s", lhs, fld, cmp, fld, rhs)
-    end
-  end
-
-  return assert(load(tst), "unable to build user defined sorting function")()
+  local lst = {}
+  for f in string.gmatch(trcfld, '([^,]+)') do lst[#lst+1] = strtrim(f) end
+  return lst
 end
 
 --------------------------------------------------------------------------------
@@ -330,6 +308,7 @@ end
 
 local infile, oufile = "trcdump.txt", "trcmtbl.txt"
 local cfgtyp, trckey, trcfld = 'default'
+local usrscr
 local args = MAD.env.arg
 
 for i=1,#args do
@@ -341,6 +320,7 @@ for i=1,#args do
   elseif opt == '-c=' then cfgtyp = val
   elseif opt == '-f=' then trcfld = val
   elseif opt == '-s=' then trckey = val
+  elseif opt == '-e=' then usrscr = val
   end
 end
 
@@ -354,12 +334,18 @@ local trctbl = scan_lines(infile)
 select_hotpaths(trctbl)
 
 -- Sort traces by user key, e.g. blcklstno
-trctbl:sort(get_trcsrt(trckey or config[cfgtyp].trckey))
+trctbl:sort(trckey or config[cfgtyp].trckey)
 
 -- Capture fields list for traces
-trcfld =    get_fldlst(trcfld or config[cfgtyp].trcfld)
+trcfld = get_fldlst(trcfld or config[cfgtyp].trcfld)
+
+-- Run user-defined script on trace table (post processing script)
+if usrscr then
+  local scr = "return \\tbl => "..usrscr.." end"
+  assert(load(scr),"unable to execute post processing user script")()(trctbl)
+end
 
 -- Dump mtables
-trctbl:write(oufile, trcfld, {})
+trctbl:write(oufile, trcfld, {}, true)
 
 -- end -------------------------------------------------------------------------
