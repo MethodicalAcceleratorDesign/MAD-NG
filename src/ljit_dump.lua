@@ -84,16 +84,17 @@ local ffi = require("ffi")
 local _C  = ffi.C
 
 ffi.cdef[[
-extern int        mad_ljtrace_debug;
-extern const char mad_ljtrace_message[];
-extern const char mad_ljtrace_hottbls[];
+// variables defined in src/lj_trace.c
+extern int        ljmad_ljtrace_debug;
+extern const char ljmad_ljtrace_message[];
+extern const char ljmad_ljtrace_hottbls[];
 ]]
 
 local function dump_trace_info (tr, otr)
-  local msg = ffi.string(_C.mad_ljtrace_message)
+  local msg = ffi.string(_C.ljmad_ljtrace_message)
   out:write(msg, "\n")
-  if _C.mad_ljtrace_debug > 1 and msg:sub(-1) == "]" then
-    out:write(ffi.string(_C.mad_ljtrace_hottbls))
+  if _C.ljmad_ljtrace_debug > 1 and msg:sub(-1) == "]" then
+    out:write(ffi.string(_C.ljmad_ljtrace_hottbls))
   end
 --out:write("XCHECK: tr=", tr, ", otr=", otr, "\n")
 end
@@ -582,7 +583,7 @@ local function dump_trace(what, tr, func, pc, otr, oex)
     if otr then out:write(" ", otr, "/", oex == -1 and "stitch" or oex) end
     out:write(" ", fmtfunc(func, pc), "\n")
   elseif what == "stop" or what == "abort" then
-    if _C.mad_ljtrace_debug > 0 then dump_trace_info(tr, otr) end         -- MAD
+    if _C.ljmad_ljtrace_debug > 0 then dump_trace_info(tr, otr) end       -- MAD
     out:write("---- TRACE ", tr, " ", what)
     if what == "abort" then
       out:write(" ", fmtfunc(func, pc), " -- ", fmterr(otr, oex), "\n")
@@ -670,7 +671,7 @@ local function dumpoff()
     jit.attach(dump_texit)
     jit.attach(dump_record)
     jit.attach(dump_trace)
-    ffi.C.mad_ljtrace_debug = 0                                           -- MAD
+    _C.ljmad_ljtrace_debug = 0                                            -- MAD
     if out and out ~= stdout and out ~= stderr then out:close() end
     out = nil
   end
@@ -696,7 +697,7 @@ local function dumpon(opt, outfile)
 
   if m.t or m.b or m.i or m.s or m.m then
     jit.attach(dump_trace, "trace")
-    ffi.C.mad_ljtrace_debug = m['2'] and 2 or m['1'] and 1 or 0           -- MAD
+    _C.ljmad_ljtrace_debug = m['2'] and 2 or m['1'] and 1 or 0            -- MAD
   end
   if m.b then
     jit.attach(dump_record, "record")
