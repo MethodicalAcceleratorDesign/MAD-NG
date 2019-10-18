@@ -1078,14 +1078,14 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
   return tbl
 end
 
-local do_select = \sel,_,i => sel[i] = true end
+local do_select = \sel,_,i => sel[i] = nil end
 
 local function select (tbl, rng_, sel_, not_)
   local f = bind1st(do_select, var_raw(tbl,_data)[0])
   return tbl:foreach(f, rng_, sel_, not_)
 end
 
-local do_deselect = \sel,_,i => sel[i] = nil end
+local do_deselect = \sel,_,i => sel[i] = true end
 
 local function deselect (tbl, rng_, sel_, not_)
   local f = bind1st(do_deselect, var_raw(tbl,_data)[0])
@@ -1211,9 +1211,35 @@ local function insert (tbl, rows, rng_, sel_)
   return tbl:build_index()
 end
 
+local function str2cmp (str)
+  -- split fields list ±col1,±col2 ...
+  local lst = {}
+  for f in string.gmatch(str, '([^,]+)') do lst[#lst+1] = strtrim(f) end
+
+  -- build comparison test incrementally
+  local lhs, rhs, n, fun = "", "", #lst
+  for i=1,n do
+    local sgn = string.sub(lst[i],1,1)
+    local fld = (sgn == '-' or sgn == '+') and string.sub(lst[i],2) or lst[i]
+    local cmp =  sgn == '-' and '>' or '<'
+
+    if i < n then
+      lhs = string.format("%sa.%s == b.%s and (", lhs, fld, fld)
+      rhs = string.format(") or a.%s %s b.%s%s", fld, cmp, fld, rhs)
+    else
+      fun = string.format("%sa.%s %s b.%s%s",lhs,fld,cmp,fld,rhs)
+    end
+  end
+
+  -- return compiled function
+  fun = "return \\a,b -> " .. fun
+  return assert(load(fun), "unable to build user defined sorting function")()
+end
+
 local function sort (tbl, cmp, rng_, sel_)
-  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_string(cmp) or is_callable(cmp),
+                         "invalid argument #2 (string or callable expected)")
   local data = var_raw(tbl,_data)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
@@ -1226,6 +1252,7 @@ local function sort (tbl, cmp, rng_, sel_)
   local row1  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
   local row2  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
   local idx_s = tblicpy(idx_r, table.new(nr,0))
+  if is_string(cmp) then cmp = str2cmp(cmp) end
   table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
                               return cmp(row1,row2) end)
 
@@ -1413,7 +1440,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
 
     -- dump rows
     for j=1,nrow do
-      if not rowsel_ or data[0][j] then -- is_selected
+      if not rowsel_ or not data[0][j] then -- is_selected
         file:write('  ')
         for i=1,ncol do
           v = cols[i][j]
