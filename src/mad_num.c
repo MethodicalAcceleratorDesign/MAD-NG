@@ -39,7 +39,7 @@ int mad_num_sign (num_t x)
 
 int mad_num_sign1 (num_t x)
 {
-  return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN!
+  return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN
 }
 
 num_t mad_num_sinc (num_t x)
