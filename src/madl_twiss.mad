@@ -25,7 +25,7 @@
 
 local command, track, cofind                                      in MAD
 local vector, matrix, gphys, option, warn                         in MAD
-local normal, optfun, betablk, dp2pt, has_dpt,
+local normal, optfun, betablk, dp2pt, has_dpt, closed_disp,
       ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
 local tblcat, tblrep, assertf, errorf, printf, rep                in MAD.utility
@@ -39,9 +39,9 @@ local chromdp = 1e-6
 local assert, error, getmetatable, setmetatable, table =
       assert, error, getmetatable, setmetatable, table
 
+local r4 = 1..4
 local I4 = matrix(4):eye()
 local I6 = matrix(6):eye()
-local r4 = 1..4
 
 -- helpers --------------------------------------------------------------------o
 
@@ -97,9 +97,6 @@ local function fill_sum (mflw)
         dq1[id] = (q1[id+n] - q1[id])/chromdp
         dq2[id] = (q2[id+n] - q2[id])/chromdp
         dq3[id] = (q3[id+n] - q3[id])/chromdp
-!        printf("id=%d, q1=%.12e, q1dp=%.12e, dq1=%.12e\n\z
-!                .     q2=%.12e, q2dp=%.12e, dq2=%.12e\n",
-!                id, q1[id], q1[id+n], dq1[id], q2[id], q2[id+n], dq2[id])
       end
     end
 
@@ -126,7 +123,6 @@ local function fill (elm, mflw, lw, islc)
     -- backup phases
     local mu1_, mu2_, mu3_ = of.mu1, of.mu2, of.mu3
 
-    -- TO FIX: dispersion is wrong when extracted from A instead of R...
     optfun(m:get1(omat), of, ocpl)
 
     -- adjust the phases
@@ -269,7 +265,9 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
     local R6
 
     -- 4D case
-    if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
+    if rnk == 4 then
+      R6, R = R, R:getsub(r4,r4), R:getsub(r4,6)
+    end
 
     -- get linear normal form A from one-turn map R
     local A, V, W, info = normal(R)
@@ -278,7 +276,16 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
     if option.debug >= 2 then trace_normal(R, A, of) end
 
     -- back to 6D
-    if rnk == 4 then A = I6:copy():setsub(r4,r4,A) end
+    if rnk == 4 then
+      A, R = I6:copy():setsub(r4,r4,A), R6
+    end
+
+    -- set dispersion
+    if m.status == 'stable' then
+      A:setsub(r4,6,closed_disp(R))
+    else
+      A:setsub(r4,6,R:getsub(r4,6))
+    end
 
     -- get initial linear optical functions and phase advances
     local of = optfun(A, {rank=rnk}, coupling, W)
@@ -291,13 +298,6 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
     mflw.__twdat.ofun[i] = of
   end
 end
-
-!      -- close dispersion (as a function of pt, multiply by beta for dp)
-!      local D4 = m.coR:getsub(r4, 6)
-!      local R4 = m.coR:getsub(r4,r4)
-!      local D4, rnk = (I4-R):solve(D4)
-!        print('rnk=', rnk) ; D4:print("D4")
-!        :setsub(r4,6,D4)
 
 -- extend track mflw and mtbl -------------------------------------------------o
 
@@ -323,7 +323,7 @@ local function twiss_init (self, mflw)
   }
 
   -- reset sequence iterator
-  mflw:sireset()
+--mflw:sireset()
 
   if not save then return end
 
@@ -365,15 +365,15 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'co.') end
 
-  -- track one-turn-map
+  -- track one-turn-map (update mflw)
   twiss_track(self, mflw)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'tk.') end
 
-  -- prepare mflw (and mtbl)
+  -- extend mflw and mtbl
   twiss_init(self, mflw)
 
-  -- get normal forms
+  -- get normal forms (update mflw)
   twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 

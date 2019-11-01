@@ -35,6 +35,9 @@ local assert, table =
       assert, table
 
 local r4 = 1..4
+local I4 = matrix(4):eye()
+local I6 = matrix(6):eye()
+local S4 = matrix(4):symp() -- [4x4] symplectic matrix S
 local S6 = matrix(6):symp() -- [6x6] symplectic matrix S
 
 -- helpers --------------------------------------------------------------------o
@@ -181,7 +184,7 @@ function gphys.is_normal (A, R, nrmtol_)
   local tol = nrmtol_ or gphys.var.nrm_tol
   local get, set = A.get, A.set
 
-  local N = (A:bar() * R * A) -- :print("N = Abar R A ")
+  local N = (A:bar() * R * A)  :print("N = Abar R A ")
 
   for i = 1,N.nrow-1,2 do
     local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
@@ -291,7 +294,7 @@ function gphys.make_symp (R)
   return R
 end
 
--- normalization --------------------------------------------------------------o
+-- closed form ----------------------------------------------------------------o
 
 -- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
 -- (t,pt)
@@ -423,9 +426,21 @@ function gphys.normal (R, nocheck_)
   gphys.phas_eigen(A)
 
   -- check that system is a normal form
-  assert(nocheck_ == true or gphys.is_normal(A, R))
+--assert(nocheck_ == true or gphys.is_normal(A, R))
 
   return A, V, W, info
+end
+
+-- get closed dispersion from one-turn map R
+
+function gphys.closed_disp (R, dosymp_)
+  -- close dispersion (as a function of pt, multiply by beta for dp)
+  local D4 = R:getsub(r4, 6)
+  local R4 = R:getsub(r4,r4)
+  local D4, rnk = (I4-R4):solve(D4)
+  print('rnk=', rnk)
+  D4:print("D4")
+  return D4
 end
 
 -- lattice functions ----------------------------------------------------------o
@@ -445,7 +460,6 @@ function gphys.dispersion (R, optfun_)
   local tol = gphys.var.ofun_tol
   local rnk = fun.rank or has_dpt(R) and 6 or 4
 
-  fun.__ofun = _id
   fun.rank   = rnk
 
   if rnk >= 6 then
@@ -471,7 +485,6 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   local tol = gphys.var.ofun_tol
   local rnk = fun.rank or has_dpt(A) and 6 or 4
 
-  fun.__ofun = _id
   fun.rank   = rnk
   fun.cplg   = lbool(cpl_)
 
@@ -535,9 +548,9 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   if W_ then
     assert(is_cvector(W_) and W_.nrow >= rnk,
            "invalid argument #2 (4D+ complex eigenvalues expected)")
-    fun.mu1 =              oval( W[1]:carg() / twopi, tol)
-    fun.mu2 =              oval( W[3]:carg() / twopi, tol)
-    fun.mu3 = rnk >= 6 and oval( W[5]:carg() / twopi, tol) or 0
+    fun.mu1 =              oval( W_[1]:carg() / twopi, tol)
+    fun.mu2 =              oval( W_[3]:carg() / twopi, tol)
+    fun.mu3 = rnk >= 6 and oval( W_[5]:carg() / twopi, tol) or 0
   else
     fun.mu1 =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi, tol)
     fun.mu2 =              oval( atan2(get(A,3,4), get(A,3,3)) / twopi, tol)
