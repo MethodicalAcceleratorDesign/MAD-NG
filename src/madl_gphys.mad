@@ -23,13 +23,13 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, cvector, trace, warn, typeid                       in MAD
-local is_nil, is_positive, is_table, is_matrix, is_cvector,
-      wrestrict                                                  in MAD.typeid
-local assertf, errorf, num2str                                   in MAD.utility
+local matrix, cvector, trace, warn, option, typeid               in MAD
+local is_nil, is_positive, is_odd, is_table, is_matrix,
+      is_cvector, wrestrict                                      in MAD.typeid
+local assertf, errorf, printf, num2str                           in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
-local max, abs, sqrt, sin, cos, atan2 in math
+local min, max, abs, sqrt, sin, cos, atan2 in math
 
 local assert, table =
       assert, table
@@ -131,7 +131,7 @@ end
 
 -- sort particles/damaps, adjust npar
 function gphys.msort (mflw, cmp_)
-  assert(typeid.is_dynmflow(mflw), "invalid argument #1 (dynamic mflow expected)")
+  assert(typeid.is_dynmflow(mflw),"invalid argument #1 (dynamic mflow expected)")
 
   table.sort(mflw, cmp_ or gphys.mcmp)
 
@@ -153,9 +153,6 @@ function gphys.is_eigsys (V, W, R, eigtol_)
   assert(is_positive(tol), "invalid argument #4 (positive number expected)")
   local cvec, getc = R.complex, R.getcol
 
---  print("checking eigen system")
---  R:print('R'); W:print('W'); V:print('V')
-
   for i=1,#W-1,2 do
     local dW = W[i]-W[i+1]:conj()
     if not dW:eq(0, tol) then
@@ -168,7 +165,7 @@ function gphys.is_eigsys (V, W, R, eigtol_)
     local Vc = Vi:conj()
     local dV1, dV2 = R*Vi-W[i]*Vi, R*Vc-W[i+1]*Vc
     if not (dV1:eq(0, tol) and dV2:eq(0, tol)) then
-      warn("invalid eigen system #%d (R*V%d deviates from W%d*V%d by %s)",
+      warn("invalid eigensystem #%d (R*V%d deviates from W%d*V%d by %s)",
            i, i ,i, i, num2str(max(dV1:norm(),dV2:norm())))
       return false
     end
@@ -178,20 +175,25 @@ function gphys.is_eigsys (V, W, R, eigtol_)
 end
 
 -- check one-turn map normalisation
--- check that N = (1/A * R * A) = Abar * R * A contains only rotations
+-- check that N = (1/A * R * A) [= Abar * R * A] contains only rotations
 
 function gphys.is_normal (A, R, nrmtol_)
   local tol = nrmtol_ or gphys.var.nrm_tol
-  local get, set = A.get, A.set
+  local get, set, n = A.get, A.set, A.nrow
 
-  local N = (A:bar() * R * A)  :print("N = Abar R A ")
+  local N = A:inv() * R * A
 
-  for i = 1,N.nrow-1,2 do
+  if option.debug >= 2 then
+     N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
+  end
+
+  for i = 1,n-1,2 do
     local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
     local a2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
     if abs(a1-a2) > tol then
       warn("invalid normal form #%d (deviates from a pure rotation by %s)",
            i, num2str(a1-a2))
+      R:print('R') ; N:print('N')
       return false
     end
     N:setsub(i..i+1, i..i+1, 0)
@@ -216,13 +218,13 @@ function gphys.has_dpt (R, dptol_)
   assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
 
   local get = R.get
-  local nodp = abs(get(R,6,6) - 1) <= tol
+  local nodpt = abs(get(R,6,6) - 1) <= tol
 
   for i=1,5 do
-    nodp = nodp and abs(get(R,6,i)) <= tol
+    nodpt = nodpt and abs(get(R,6,i)) <= tol
   end
 
-  return not nodp
+  return not nodpt
 end
 
 -- helpers --------------------------------------------------------------------o
@@ -240,40 +242,62 @@ function gphys.pt2dp (pt, beta)
   return pt ~= 0 and sqrt(1 + 2*pt/beta + pt^2) - 1 or 0
 end
 
+-- compute Poisson bracket from pairs of conjugate column vectors
+
+function gphys.get_pb (V, q_col)
+  chkeigsiz(V)
+  assert(q_col>0 and q_col<V.ncol and is_odd(q_col), "invalid q-column index")
+
+  local get, pb = V.get, 0
+
+  for i=1,V.nrow-1,2 do
+    pb = pb + get(V,i,q_col  ) * get(V,i+1,q_col+1)
+            - get(V,i,q_col+1) * get(V,i+1,q_col  )
+  end
+
+  return pb
+end
+
+-- eigensystem ----------------------------------------------------------------o
+
 -- retrieve eigenvalues from pairs of eigenvectors
 
 function gphys.get_eigval (V, R, W)
-  local nr = V.nrow
+  chkeigsiz(V) ; chkeigsiz(R)
 
-  W = W or cvector(nr)
+  local cvec, getc, n = V.complex, V.getcol, V.nrow
 
-  local cvec, getc = A.complex, A.getcol
-  local v1 = cvec(getc(A,1), getc(A,2))
-  local v2 = cvec(getc(A,3), getc(A,4))
+  W = W or cvector(n)
 
-    -- get eigenvalue Wi from R*Vi = Wi*Vi
-  W[1] = get(R,1,1) + get(R,1,2)*get(v1,2,1)/get(v1,1,1)
-  W[2] = W[1]:conj()
-  W[3] = get(R,3,3) + get(R,3,4)*get(v2,4,1)/get(v2,3,1)
-  W[4] = W[3]:conj()
-
-  if nr >= 6 then
-    local v3 = cvec(getc(A,5), getc(A,6))
-    W[5] = get(R,5,5) + get(R,5,6)*get(v3,6,1)/get(v3,5,1)
-    W[6] = W[5]:conj()
+  -- get eigenvalues Wi from eigenvectors Vi: R*Vi = Wi*Vi
+  for i=1,V.nrow-1,2 do
+    local v = cvec(getc(V,i), getc(V,i+1))
+    W[i  ] = get(R,i,i) + get(R,i,i+1)*get(v,i+1,i)/get(v,i,i)
+    W[i+1] = W[i]:conj()
   end
-  -- W:print('W')
+
+  if option.debug >= 2 then
+    io.write("**Eigensystem:\n")
+    R:print('Vectors ')
+    V:print('Eigenvectors ')
+    W:print('Eigenvalues ')
+  end
 
   return W
 end
 
 -- symplectification ----------------------------------------------------------o
 
--- symplectifiy one-turn map R
+-- symplectifiy one-turn map R if needed
 -- Algorithm described in the doctoral thesis of Liam Healey.
 
 function gphys.make_symp (R)
   chkeigsiz(R)
+
+  local serr = R:symperr()
+  if serr <= gphys.var.symp_tol then return end
+
+  trace(0, "symplectic deviation: %s", num2str(serr))
 
   local n, rnk, err = max(R:sizes())
   local I, A, V = R:same():eye()
@@ -296,8 +320,84 @@ end
 
 -- closed form ----------------------------------------------------------------o
 
+-- close dispersion of A from R
+
+function gphys.close_disp (A, R)
+  chkeigsiz(A) ; chkeigsiz(R)
+
+  -- close dispersion (as a function of pt, multiply by beta for dp)
+  local D4 = R:getsub(r4, 6)
+  local R4 = R:getsub(r4,r4)
+  local C4, rnk = (I4-R4):solve(D4)
+  -- TODO: make [t,pt] symplectic ?
+  A:setsub(r4,6,C4)
+
+  if option.debug >= 2 then
+    io.write("**Closed dispersion:\n")
+    C4:print('Dispersion ')
+  end
+end
+
+-- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
+
+function gphys.norm_eigen (V, W)
+  chkeigsiz(V, W)
+
+  local get, set, n = V.get, V.set, V.nrow
+
+  for j=1,n-1,2 do    -- loop over columns
+    local pb = 0      -- poisson bracket (columns pair)
+    for i=1,n-1,2 do
+      pb = pb + get(V,i,j) * get(V,i+1,j+1) - get(V,i,j+1) * get(V,i+1,j)
+    end
+    local spb = sqrt(abs(pb))
+    assert(spb > 0, "invalid eigenvectors (unexpected [v,w]=0)")
+    if pb < 0 then    -- conjugate of eigenvalues (columns)
+       W[j], W[j+1] = W[j]:conj(), W[j+1]:conj()
+    end
+    for i=1,n do      -- normalize plane (columns)
+      set(V,i,j  ,  get(V,i,j)   /  spb      )
+      set(V,i,j+1,  get(V,i,j+1) * (spb / pb))
+    end
+  end
+
+  if option.debug >= 2 then
+    io.write("**Normalized eigensystem:\n")
+    W:print('Eigenvalues ')
+    V:print('Eigenvectors ')
+    io.write("symperr=", V:symperr(), "\n")
+  end
+end
+
+-- rephase in place the eigenvectors to obtain the Courant-Snyder form
+-- i.e. V(1,2)=0 and mu1>0, V(3,4)=0 and mu2>0, V(5,6)=0 and mu3>0
+
+function gphys.phas_eigen (V)
+  chkeigsiz(V)
+
+  local get, set, n = V.get, V.set, V.nrow
+  local P = matrix(V.nrow):eye()
+
+  for i=1,n-1,2 do
+    local d = sqrt(get(V,i,i)^2 + get(V,i,i+1)^2)
+    assert(d > 0, "invalid eigenvectors (unexpected denom=0)")
+    set(P,i  ,i  ,  get(V,i  ,i  ) / d )
+    set(P,i+1,i  ,  get(V,i  ,i+1) / d )
+    set(P,i  ,i+1, -get(P,i+1,i  )     )
+    set(P,i+1,i+1,  get(P,i  ,i  )     )
+  end
+
+  V:mul(P,V) -- V = P*V
+
+  if option.debug >= 2 then
+    io.write("**Rephased eigenvectors:\n")
+    V:print('Eigenvectors ')
+    io.write("symperr=", V:symperr(), "\n")
+  end
+end
+
 -- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
--- (t,pt)
+-- (t,pt), detect by horizontal, vertical, longitudinal order
 
 function gphys.order_eigen (V, W)
   chkeigsiz(V, W)
@@ -323,98 +423,102 @@ function gphys.order_eigen (V, W)
     end
   end
 
---  print("ordered eigen system")
---  W:print('W')
---  V:print('V')
-  return V
+  if option.debug >= 2 then
+    io.write("**Ordered eigensystem:\n")
+    W:print('Eigenvalues ')
+    V:print('Eigenvectors ')
+  end
 end
 
--- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
+-- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
+-- (t,pt), detect by vertical, horizontal, longitudinal order (MAD-X like)
 
-function gphys.norm_eigen (V, W)
+local idx_p = {3,1,5} -- vertical, horizontal, longitudinal
+local idx_l = {[1]=3,[3]=1,[4]=5,[6]=3,[8]=1}
+
+function gphys.order_eigen_madx (V, W)
   chkeigsiz(V, W)
 
-  local get, n = V.get, V.nrow
+  local get, set, n, idx, sel = V.get, V.set, min(V.nrow,6), {0,0}, {}
 
-  for i=1,n-1,2 do
-    local pb = 0 -- poisson bracket
-    for j = 1,n-1,2 do
-      pb = pb + get(V,i,j) * get(V,i+1,j+1) - get(V,i,j+1) * get(V,i+1,j)
+  -- collect columns with largest components for each plane
+  for k=1,n/2-1 do
+    local i, mv = idx_p[k], 0
+    for j=1,n-1,2 do
+      if not sel[j] then -- not yet selected
+        local pv = get(V,i,j  )^2 + get(V,i+1,j  )^2 + -- real part
+                   get(V,i,j+1)^2 + get(V,i+1,j+1)^2   -- imag part
+        if pv > mv then mv, idx[k], sel[j] = pv, j, true end
+      end
     end
-    local spb = sqrt(abs(pb))
-    if pb < 0 then -- swap eigenvalues
-       W[i], W[i+1] = W[i+1], W[i]
-    end
-    for j=1,n do -- normalize plane
-      V:set(i  ,j,  get(V,i  ,j) /  spb      )
-      V:set(i+1,j,  get(V,i+1,j) * (spb / pb))
+  end
+  -- last plane: remaining index
+  idx[n/2] = idx_l[idx[1]+idx[2]]
+  -- swap indexes: vertical, horizontal => horizontal, vertical
+  idx[1], idx[2] = idx[2], idx[1]
+
+  -- reorder eigenvectors and eigenvalues
+  local Vc, Wc = V:copy(), W:copy()
+  for kk,j in ipairs(idx) do
+    local k = 2*kk-1
+    if k ~= j then
+      for i=1,n do
+        set(V,i,k  , get(Vc,i,j  ))
+        set(V,i,k+1, get(Vc,i,j+1))
+      end
+      W[k], W[k+1] = Wc[j], Wc[j+1]
     end
   end
 
---  print("normalized eigen system")
---  W:print('W')
---  V:print('V')
-  return V
-end
-
--- rephase in place the eigenvectors to obtain the Courant-Snyder form
--- i.e. V(1,2)=0 and mu1>0, V(3,4)=0 and mu2>0 (and V(5,6)=0 and mu3>0)
-
-function gphys.phas_eigen (V)
-  chkeigsiz(V)
-
-  local get, set = V.get, V.set
-  local P = matrix(V.nrow):eye()
-
-  local dx = sqrt(get(V,1,1)^2 + get(V,1,2)^2)
-  set(P,1,1,  get(V,1,1) / dx )
-  set(P,2,1,  get(V,1,2) / dx )
-  set(P,1,2, -get(P,2,1) )
-  set(P,2,2,  get(P,1,1) )
-
-  local dy = sqrt(get(V,3,3)^2 + get(V,3,4)^2)
-  set(P,3,3,  get(V,3,3) / dy )
-  set(P,4,3,  get(V,3,4) / dy )
-  set(P,3,4, -get(P,4,3) )
-  set(P,4,4,  get(P,3,3) )
-
-  if V.nrow == 6 then
-    local dp = sqrt(get(V,5,5)^2 + get(V,5,6)^2)
-    set(P,5,5,  get(V,5,5) / dp )
-    set(P,6,5,  get(V,5,6) / dp )
-    set(P,5,6, -get(P,6,5) )
-    set(P,6,6,  get(P,5,5) )
+  if option.debug >= 2 then
+    io.write("**Ordered eigensystem:")
+    for kk,j in ipairs(idx) do io.write(' ',j,'->',2*kk-1) end
+    io.write('\n')
+    W:print('Eigenvalues ')
+    V:print('Eigenvectors ')
   end
-
-  V:mul(P,V) -- V = P*V
-
---  print("rephased eigen vectors")
---  V:print('V')
-  return V
 end
 
 -- get linear normal form A of one-turn map R
 
-function gphys.normal (R, nocheck_)
-  chkeigsiz(R)
-
-  local serr, Rerr = R:symperr(R:same())
-  if serr > gphys.var.symp_tol then
-    trace(0, "symplectic deviation: %s", num2str(serr))
-    R:print('R') ; Rerr:print("R'JR-J") ;
-    gphys.make_symp(R)
-    serr, Rerr = R:symperr(Rerr)
-    R:print('R') ; Rerr:print("R'JR-J") ;
+function gphys.normal (R, rnk_, nocheck_)
+  local fmt
+  if option.debug >= 2 then
+    io.write("-> Normal form\n")
+    fmt, option.format = option.format, "% .5e"
   end
 
-  -- get eigenvalues (W) and (right) eigenvectors (V) of R
-  local W, _, V, info = R:eigen()
+  -- one-turn map R
+  chkeigsiz(R)
+  if option.debug >= 2 then
+    io.write("Input one-turn map:\n")
+    R:print('R ')
+    io.write("symperr=", R:symperr(), "\n")
+  end
+
+  -- detect rank of the system
+  local rnk = rnk_ or has_dpt(R) and 6 or 4
+  local R6
+
+  -- switch to 4D
+  if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
+
+  -- symplectifiy R if needed
+  gphys.make_symp(R)
+
+  -- get eigenvalues (W) and eigenvectors (Vl, Vr) of R
+  local W, _, A, info = R:eigen()
+
+  -- initial conditions for normal form calculation
+  if option.debug >= 2 then
+    io.write("**Eigensystem:\n")
+    R:print('Input vectors ')
+    W:print('Eigenvalues ')
+    A:print('Eigenvectors ')
+  end
 
   -- check that system is eigen
-  assert(nocheck_ == true or gphys.is_eigsys(V, W, R))
-
-  -- reuse matrix returned for left eigenvectors
-  local A = V:copy()
+  if not nocheck_ then gphys.is_eigsys(A, W, R) end
 
   -- normalize eigen system
   gphys.norm_eigen(A, W)
@@ -426,52 +530,29 @@ function gphys.normal (R, nocheck_)
   gphys.phas_eigen(A)
 
   -- check that system is a normal form
---assert(nocheck_ == true or gphys.is_normal(A, R))
+  if not nocheck_ then gphys.is_normal(A, R) end
 
-  return A, V, W, info
-end
+  -- back to 6D, close dispersion (5D)
+  if rnk == 4 then
+    A, R = I6:copy():setsub(r4,r4,A), R6
+    gphys.close_disp(A, R)
+  end
 
--- get closed dispersion from one-turn map R
+  if option.debug >= 2 then
+    io.write("Output normalising map:\n")
+    A:print('A ')
+    io.write("symperr=", A:symperr(), "\n")
+    option.format = fmt
+    io.write("<- Normal form\n")
+  end
 
-function gphys.closed_disp (R, dosymp_)
-  -- close dispersion (as a function of pt, multiply by beta for dp)
-  local D4 = R:getsub(r4, 6)
-  local R4 = R:getsub(r4,r4)
-  local D4, rnk = (I4-R4):solve(D4)
-  print('rnk=', rnk)
-  D4:print("D4")
-  return D4
+  return A, W, info
 end
 
 -- lattice functions ----------------------------------------------------------o
 
 local function oval (x, tol)
   return abs(x) < tol and 0 or x
-end
-
--- get dispersion from R
-
-function gphys.dispersion (R, optfun_)
-  assert(is_matrix(R) and R.nrow >= 6 and R.ncol >= 6,
-         "invalid argument #1 (6D+ matrix expected)")
-
-  local get = R.get
-  local fun = optfun_ or table.new(0,50)
-  local tol = gphys.var.ofun_tol
-  local rnk = fun.rank or has_dpt(R) and 6 or 4
-
-  fun.rank   = rnk
-
-  if rnk >= 6 then
-    -- TODO: true 6D using Chao's method or Etienne's method
-    fun.dx, fun.dpx = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
-    fun.dy, fun.dpy = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
-  else
-    fun.dx, fun.dpx = oval( get(R,1,6), tol), oval( get(R,2,6), tol)
-    fun.dy, fun.dpy = oval( get(R,3,6), tol), oval( get(R,4,6), tol)
-  end
-
-  return fun
 end
 
 -- fill betablock (optical functions) from A (normalising form) and W (tunes)
@@ -481,12 +562,13 @@ function gphys.optfun (A, optfun_, cpl_, W_)
          "invalid argument #1 (6D+ matrix expected)")
 
   local get = A.get
-  local fun = optfun_ or table.new(0,50)
+  local cpl = lbool(cpl_)
+  local fun = optfun_ or table.new(0, cpl and 40 or 20)
   local tol = gphys.var.ofun_tol
   local rnk = fun.rank or has_dpt(A) and 6 or 4
 
-  fun.rank   = rnk
-  fun.cplg   = lbool(cpl_)
+  fun.rank = rnk
+  fun.cplg = cpl
 
   -- diagonal terms
 
@@ -507,13 +589,6 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   end
 
   -- coupling terms
-
-  fun.alfa12, fun.beta12, fun.gama12 = 0, 0, 0
-  fun.alfa21, fun.beta21, fun.gama21 = 0, 0, 0
-  fun.alfa13, fun.beta13, fun.gama13 = 0, 0, 0
-  fun.alfa31, fun.beta31, fun.gama31 = 0, 0, 0
-  fun.alfa23, fun.beta23, fun.gama23 = 0, 0, 0
-  fun.alfa32, fun.beta32, fun.gama32 = 0, 0, 0
 
   if fun.cplg then
     fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)), tol)
@@ -543,6 +618,18 @@ function gphys.optfun (A, optfun_, cpl_, W_)
     end
   end
 
+  -- dispersion
+
+  if rnk >= 6 then
+    -- TODO: true 6D using Chao's method or Etienne's method
+    warn("6D dispersion NYI")
+    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
+    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
+  else
+    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
+    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
+  end
+
   -- phase advance
 
   if W_ then
@@ -561,16 +648,9 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   if fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
   if fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
-  -- dispersion
+  -- backup A for coupling terms
 
-  fun.dx  = get(A,1,6)
-  fun.dpx = get(A,2,6)
-  fun.dy  = get(A,3,6)
-  fun.dpy = get(A,4,6)
-
-  -- backup A
-
-  fun.A = A:copy(fun.A)
+  if fun.cplg then fun.A = A:copy(fun.A) end
 
   return fun
 end
@@ -727,42 +807,10 @@ function gphys.betablk (optfun)
       A61, A62, A63, A64, A65, A66,
     }
 
-  E = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
-  assert(E < gphys.var.symp_tol, "invalid optfun (built A is not symplectic)")
+  local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
+  assert(serr < gphys.var.symp_tol, "invalid optfun (built A is not symplectic)")
 
   return A
-
-!  -- rotation matrix N of the one-turn map R = A N A^-1
-!
-!  local N11, N12, N21, N22 = 1, 0, 0, 1
-!  local N33, N34, N43, N44 = 1, 0, 0, 1
-!  local N55, N56, N65, N66 = 1, 0, 0, 1
-!
-!  if fun.mu1 then
-!    N11, N12 = cos(fun.mu1*twopi), sin(fun.mu1*twopi)
-!    N21, N22 = -N12, N11
-!  end
-!
-!  if fun.mu2 then
-!    N33, N34 = cos(fun.mu2*twopi), sin(fun.mu2*twopi)
-!    N43, N44 = -N34, N33
-!  end
-!
-!  if fun.mu3 then
-!    N55, N56 = cos(fun.mu3*twopi), sin(fun.mu3*twopi)
-!    N65, N66 = -N56, N55
-!  end
-!
-!  local N = matrix(6):fill {
-!    N11, N12,   0,   0,   0,   0,
-!    N21, N22,   0,   0,   0,   0,
-!      0,   0, N33, N34,   0,   0,
-!      0,   0, N43, N44,   0,   0,
-!      0,   0,   0,   0, N55, N56,
-!      0,   0,   0,   0, N65, N66,
-!  }
-!
-!  return A, N
 end
 
 -- env ------------------------------------------------------------------------o
