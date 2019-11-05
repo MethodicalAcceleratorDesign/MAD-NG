@@ -25,7 +25,7 @@
 
 local command, track, cofind                                      in MAD
 local vector, matrix, gphys, option, warn                         in MAD
-local normal, optfun, betablk, dp2pt, has_dpt, closed_disp,
+local normal, optfun, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
 local tblcat, tblrep, assertf, errorf, printf, rep                in MAD.utility
@@ -55,17 +55,6 @@ local function mdump (mflw, msg_, str_)
     if option.debug >= 3 then
       mflw[i]:get1():print(' "     ')
     end
-  end
-  option.format = fmt
-end
-
-local function trace_normal (R1, A1, of)
-  local fmt = option.format
-  option.format = "% 10.5f"
-  R1:print('R1') ; A1:print('A1')
-  if option.debug >= 3 then
-    local R2, A2 = betablk(of)
-    R2:print('R2') ; A2:print('A2')
   end
   option.format = fmt
 end
@@ -218,11 +207,11 @@ local function twiss_track (self, mflw0)
   local npar in mflw0
   local X0, Xi = table.new(npar,0), table.new(npar,0)
 
-  -- initial 'stable' damaps to track [TODO: reuse coR if mapdef is xy=1]
+  -- track non 'Mset' (e.g. 'Xset', 'stable') damaps
   local j = 1
   for i=1,npar do
     local m = mflw0[i]
-    if m.status == 'stable' then
+    if m.status ~= 'Mset' then
       X0[j], Xi[j]  = m:get0():totable(), i
       X0[j].beam, j = m.beam, j+1
     end
@@ -254,42 +243,32 @@ end
 
 -- normal/closed forms --------------------------------------------------------o
 
+local function check_normal (R, A, of)
+  local fmt = option.format
+  option.format = "% 10.5f"
+  io.write("Checking normal form vs optical functions\n")
+  R:print('R') ; A:print('A') ; show(of); betablk(of):print('A(optfun)')
+  option.format = fmt
+end
+
 local function twiss_nform (self, mflw) -- TODO: high order normal form
   local codptol, coupling in self
   local npar in mflw
 
+  -- TODO: init A from betablk
   for i=1,npar do
     local m = mflw[i]
     local X, R = m:get0(), m:get1()
     local rnk = has_dpt(R, codptol) and 6 or 4
-    local R6
-
-    -- 4D case
-    if rnk == 4 then
-      R6, R = R, R:getsub(r4,r4), R:getsub(r4,6)
-    end
 
     -- get linear normal form A from one-turn map R
-    local A, V, W, info = normal(R)
-
-    -- debug normal form
-    if option.debug >= 2 then trace_normal(R, A, of) end
-
-    -- back to 6D
-    if rnk == 4 then
-      A, R = I6:copy():setsub(r4,r4,A), R6
-    end
-
-    -- set dispersion
-    if m.status == 'stable' then
-      A:setsub(r4,6,closed_disp(R))
-    else
-      A:setsub(r4,6,R:getsub(r4,6))
-    end
+    local A, W, info = normal(R, rnk)
 
     -- get initial linear optical functions and phase advances
     local of = optfun(A, {rank=rnk}, coupling, W)
-    show(of)
+
+    -- check normal form
+    if option.debug >= 2 then check_normal(R, A, of) end
 
     -- clear phase advances
     of.mu1, of.mu2, of.mu3 = 0, 0, 0
@@ -341,7 +320,7 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local save, chrom, mapdef in self
+  local save, chrom, mapdef, cofind in self
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -360,10 +339,15 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
+  -- TODO: init from betablk
+  -- ...
+
   -- search for closed orbits (update mflw)
-  twiss_cofind(self, mflw)
-  if mflw.npar == 0 then return mflw end -- no more particles...
-  if option.debug > 2 then mdump(mflw,'co.') end
+  if cofind ~= false then
+    twiss_cofind(self, mflw)
+    if mflw.npar == 0 then return mflw end -- no more particles...
+    if option.debug > 2 then mdump(mflw,'co.') end
+  end
 
   -- track one-turn-map (update mflw)
   twiss_track(self, mflw)
@@ -452,6 +436,7 @@ local twiss = command 'twiss' {
   ataper=nil,        -- action called when checking for aperture          (trck)
   atsave=nil,        -- action called when saving in mtable               (trck)
 
+  cofind=false,      -- search for closed orbit (default is false)        (cofn)
   cotol=nil,         -- closed orbit tolerance (i.e. |dX|)                (cofn)
   coiter=nil,        -- maximum number of iterations                      (cofn)
   codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
