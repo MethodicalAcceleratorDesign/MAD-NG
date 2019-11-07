@@ -1409,9 +1409,11 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
     elseif is_string(v) then
       fprintf(file, sfmt..'%02ds     %q\n', k, #v, v)
     elseif is_table(v) then
-      fprintf(file, sfmt..'%02dt     %q\n', k, #v, table.concat(v,', '))
+      fprintf(file, sfmt..'%02dt     %s\n', k, #v, '{'..table.concat(v,', ')..'}')
     elseif is_boolean(v) then
       fprintf(file, sfmt..'b       %s\n', k, tostring(v))
+    elseif is_nil(v) then
+      fprintf(file, sfmt..'n       %s\n', k, tostring(v))
     else
       fprintf(file, sfmt..'?       %s\n', k, tostring(v))
     end
@@ -1421,13 +1423,13 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
     local sfmt = '%-'..cwd..'s '
 
     -- dump col names
-    file:write('*  ')
+    file:write('* ')
     for i=1,ncol do
       fprintf(file, i < ncol and sfmt or '%s\n', clst[i])
     end
 
     -- dump col types
-    file:write('$  ')
+    file:write('$ ')
     for i=1,ncol do
       v = cols[i][1]
       local s = is_string (v) and '%s'  or
@@ -1479,8 +1481,13 @@ local function read (tbl, filnam_)
     if row[1] == '@' then
       assertf(ncol == 4, "invalid header format (4 columns expected, line %d)", ln)
       local typ = string.sub(row[3],-1)
-      -- types: b, {e, f}, {i, z}, r, s, t, ?
-          if typ == 'e' or typ == 'f' then                -- number
+      -- types: n, b, {e, f}, {i, z}, r, s, t, ?
+          if typ == '?' then                              -- unknown
+        hnam[row[2]] = row[4]
+      elseif typ == 'n' then                              -- nil
+        assertf(row[4]=='nil', "invalid header format (missing nil, line %d)", ln)
+        hnam[row[2]] = nil
+      elseif typ == 'e' or typ == 'f' then                -- number
         hnam[row[2]] = assertf(tonumber(row[4]),
                         "invalid header format (missing number, line %d)", ln)
       elseif typ == 'i' or typ == 'z' then                -- complex
@@ -1499,18 +1506,17 @@ local function read (tbl, filnam_)
           errorf("invalid header format (unmatched string length, line %d)", ln)
         end
       elseif typ == 't' then                              -- table
-        local res, n = strsplitall(strquote(row[4]), ",")
+        local res, n = strsplitall(string.sub(row[4],2,-2), ",")
         if n ~= tonumber(string.sub(row[3],2,-2)) then
           errorf("invalid header format (unmatched table length, line %d)", ln)
         end
-        for i=1,n do
-          local r = tonumber(res[i]) or toboolean(res[i])
-          if is_nil(r) then r = strquote(res[i]) end
+        for i=1,n do -- convert to number or to boolean or remove quotes (if any)
+          local r = tonumber(res[i]) or tocomplex(res[i]) or
+                    torange (res[i]) or toboolean(res[i])
+          if is_nil(r) and res[i] ~= 'nil' then r = strquote(res[i]) end
           res[i] = r
         end
         hnam[row[2]] = res
-      elseif typ == '?' then                             -- unkownn
-        hnam[row[2]] = row[4] ~= 'nil' and row[4] or nil
       else                                               -- invalid
         error("invalid header field type: '"..typ.."'")
       end
