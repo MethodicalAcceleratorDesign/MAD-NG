@@ -23,16 +23,16 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local command, track, cofind                                      in MAD
-local vector, matrix, gphys, option, warn                         in MAD
+local command, track, cofind, option, warn, vector, matrix        in MAD
 local normal, optfun, betablk, dp2pt, has_dpt,
-      ofname, ofcname, cvindex, msort                             in gphys
+      ofname, ofcname, cvindex, msort                             in MAD.gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_vector, is_damap                            in MAD.typeid
 
-local abs, min, max, sqrt, floor                                  in math
+local sqrt                                                        in MAD.gmath
+local abs, min, max, floor                                        in math
 
 local chromdp = 1e-6
 
@@ -61,39 +61,31 @@ end
 
 -- twiss mtable ---------------------------------------------------------------o
 
-local cvtlst = {'q1','q2','q3','dq1','dq2','dq3',
-                'alfap','etap','gammatr','synch_1'}
+local cvtlst = {'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3',
+                'deltap', 'alfap','etap','gammatr','synch_1'}
 
 local function fill_sum (mflw)
-  local mtbl in mflw
-
-  -- tag lost damaps
---  for i=mflw.npar+1,mflw.tpar do
---    local id, st = mflw[i].id, mflw[i].status
---    if id > n then id = id-n end
---    dq1[id], dq2[id], dq3[id] = st, st, st
---    synch_1[id], alfap[id], etap[id], gammatr[id] = st, st, st, st
---  end
+  local mtbl, __twdat in mflw
+  local chrm in __twdat
 
   -- chromaticity
-  if mflw.__twdat.chrm then
-    local q1, q2, q3, dq1, dq2, dq3, chromdp in mtbl
+  if chrm then
+    local q1, q2, q3, dq1, dq2, dq3, deltap in mtbl
     local n = floor(#q1/2)
 
     for i=1,mflw.npar do
       local id = mflw[i].id
       if id > n then id = id-n end
       if not dq1[id] then
-        dq1[id] = (q1[id+n] - q1[id])/chromdp
-        dq2[id] = (q2[id+n] - q2[id])/chromdp
-        dq3[id] = (q3[id+n] - q3[id])/chromdp
+        dq1[id] = (q1[id+n] - q1[id])/chrm
+        dq2[id] = (q2[id+n] - q2[id])/chrm
+        dq3[id] = (q3[id+n] - q3[id])/chrm
       end
     end
 
     -- cleaning
-    for i=n+1,2*n do
-      q1[i], q2[i], q3[i] = nil, nil, nil
-    end
+    for i=n+1,2*n   do q1[i], q2[i], q3[i] = nil, nil, nil end
+    for i=1,#deltap do deltap[i]           = nil           end
   end
 
   -- momentum compaction & phase slip factors, gamma transition
@@ -105,9 +97,10 @@ local function fill_sum (mflw)
     local id, beam = mflw[i].id, mflw[i].beam or beam
     if id > n then id = id-n end
     if not alfap[id] then
-      alfap  [id] = synch_1[id]/len
-      etap   [id] = alfap[id] > 0 and alfap[id] - 1/beam.gamma^2 or 0
-      gammatr[id] = alfap[id] > 0 and 1/sqrt(alfap[id]) or 0
+      local ap = synch_1[id]/len
+      alfap  [id] = ap
+      etap   [id] = ap - 1/beam.gamma^2
+      gammatr[id] = 1/sqrt(ap + (ap < 0 and 0i or 0))
     end
   end
 
@@ -178,7 +171,7 @@ end
 
 local function chrom_dps (self)
   local chrom, deltap = self.chrom, self.deltap or 0
-  local cdp = is_boolean(chrom) and chromdp  or chrom
+  local cdp = chrom == true and chromdp or chrom
   local dps = is_number(deltap) and {deltap} or deltap
   assert(is_number  (cdp), "invalid chrom attribute (number expected)")
   assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
@@ -198,14 +191,13 @@ end
 
 local function twiss_betblk (self, mflw)
   local beta0 in self
-  local npar in mflw
   local findco = false
 
   if not beta0 or not is_mappable(beta0[1]) then
     beta0 = {beta0}
   end
 
-  for i=1,npar do
+  for i=1,mflw.npar do
     local m = mflw[i]
     if m.status == 'Xset' then
       local id = m.id0 or m.id
@@ -319,15 +311,22 @@ local function check_normal (R, A, of)
 end
 
 local function twiss_nform (self, mflw)
-  local beta0, coupling in self
-  local npar in mflw
+  local beta0, save, coupling in self
+  local npar, __twdat in mflw
+
+  if save then
+    __twdat.ofun = table.new(npar,0)
+  end
 
   for i=1,npar do
-    local m, of = mflw[i]
+    local m = mflw[i]
 
     if m.status == 'Bset' then
       -- take a copy of beta0 block
-      of = tblcpy(beta0[m.id0 or m.id])
+      if save then
+        __twdat.ofun[m.id] = tblcpy(beta0[m.id0 or m.id])
+      end
+
     else
       local X, R = m:get0(), m:get1()
       local rnk = has_dpt(R) and 6 or 4
@@ -336,76 +335,72 @@ local function twiss_nform (self, mflw)
       local A, W, info = normal(R, rnk) -- TODO: high order normal form
 
       -- get initial linear optical functions and phase advances
-      of = optfun(A, rnk, coupling, W)
+      local of = optfun(A, rnk, coupling, W)
 
       -- set damap
       m:setvar(X):set1(A)
 
       -- check normal form
       if option.debug >= 2 then check_normal(R, A, of) end
+
+      -- clear initial phase advances
+      if save then
+         of.mu1, of.mu2, of.mu3 = 0, 0, 0
+         __twdat.ofun[m.id] = of
+      end
     end
-
-    -- clear phase advances
-    of.mu1, of.mu2, of.mu3 = 0, 0, 0
-
-    mflw.__twdat.ofun[m.id] = of
   end
 end
 
 -- extend track mflw and mtbl -------------------------------------------------o
 
-local header = {
-  'coupling', 'chromdp',
+local twheader = {
+  'chrom', 'coupling',
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
   'synch_1', -- see also cvtlst above
 }
 
 local function twiss_init (self, mflw)
-  local save, chrom, coupling in self
-  local npar, mtbl in mflw
+  if not self.save then return mflw end
 
-  -- do not save extra rows due to chrom
-  if save and chrom then
-    local npar in mflw
-    for i=npar/2+1,npar do mflw[i].nosave=true end
+  local chrom, coupling in self
+  local npar, mtbl, __twdat in mflw
+  local n = npar
+
+  -- do not save extra rows created by chrom
+  if chrom then
+    n = npar/2
+    for i=n+1,npar do mflw[i].nosave=true end
   end
 
   -- add twiss data to mflw
-  mflw.__twdat = {
-    orow = 0,
-    ofun = table.new(npar,0),
-    ocpl = coupling,
-    omat = matrix(6),
-    onam = coupling and ofcname or ofname,
-    chrm = chrom,
-    npar = npar,
-    pclw = 0,
-  }
-
-  if not save then return end
+  __twdat.orow = 0
+  __twdat.ocpl = coupling
+  __twdat.omat = matrix(6)
+  __twdat.onam = coupling and ofcname or ofname
+  __twdat.chrm = chrom == true and chromdp or chrom or nil
+  __twdat.pclw = 0
 
   -- extend mtbl
   mtbl.type     = 'twiss'
+  mtbl.chrom    = chrom
   mtbl.coupling = coupling
-  mtbl.header   = tblcat(mtbl.header, header)
+  mtbl.header   = tblcat(mtbl.header, twheader)
 
   -- add twiss columns and type to mtbl
   for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
 
-  local n = chrom and npar/2 or npar
   -- tunes and chromaticities
   mtbl.q1, mtbl.dq1 = tblrep(0,npar), table.new(n,0)
   mtbl.q2, mtbl.dq2 = tblrep(0,npar), table.new(n,0)
   mtbl.q3, mtbl.dq3 = tblrep(0,npar), table.new(n,0)
   -- synch integ. 1, momentum compaction & phase slip factors, gamma transition
-  mtbl.synch_1 = tblrep(0,max(n,1))
+  mtbl.synch_1 = tblrep(0,n)
   mtbl.alfap   = table.new(n,0)
   mtbl.etap    = table.new(n,0)
   mtbl.gammatr = table.new(n,0)
-  -- chromaticity deltap for finite difference
-  mtbl.chromdp = chrom == true and chromdp or chrom or nil
 
-  mtbl:write("TOREMOVE")
+  return mflw
 end
 
 -- twiss mflow ----------------------------------------------------------------o
@@ -430,6 +425,9 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
+  -- prepare mflw to twiss extensions
+  mflw.__twdat = {}
+
   -- setup beta block status (update mflw and self.cofind)
   twiss_betblk(self, mflw)
   if option.debug > 2 then mdump(mflw,'bb.') end
@@ -446,14 +444,12 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'tk.') end
 
-  -- extend mflw and mtbl
-  twiss_init(self, mflw)
-
   -- compute normal forms (update mflw)
   twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 
-  return mflw
+  -- return extended mflw and mtbl (if save)
+  return twiss_init(self, mflw)
 end
 
 -- twiss command --------------------------------------------------------------o
