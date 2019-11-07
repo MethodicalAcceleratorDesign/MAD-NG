@@ -40,6 +40,10 @@ local I6 = matrix(6):eye()
 local S4 = matrix(4):symp() -- [4x4] symplectic matrix S
 local S6 = matrix(6):symp() -- [6x6] symplectic matrix S
 
+                -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
+local blkidx   = { 3,1,1,3, 3,3,1,1, 5,1,1,5, 5,3,3,5 } -- keep order!
+local blkidx_n = #blkidx
+
 -- helpers --------------------------------------------------------------------o
 
 local function chkeigsiz (V, W)
@@ -65,6 +69,7 @@ local gphys = {
     eig_tol  = 1e-12,
     nrm_tol  = 1e-12,
     symp_tol = 1e-12,
+    cplg_tol = 1e-14,
     ofun_tol = 1e-14,
     stab_tol = 1e-16, -- below eps!
   },
@@ -226,6 +231,24 @@ function gphys.has_dpt (R, dptol_)
   return not nodpt
 end
 
+-- check for coupling blocks in one-turn map using cplg_tol
+
+function gphys.has_cpl (R, cpltol_)
+  local tol = cpltol_ or phystol.cplg_tol
+  assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
+  assert(is_positive(tol), "invalid argument #2 (positive number expected)")
+
+  local get = R.get
+
+  -- check only transverse coupling
+  local i,j,k,l = blkidx[1], blkidx[2], blkidx[3], blkidx[4]
+  local v = max(abs(get(R,i  ,j)), abs(get(R,i  ,j+1)),
+                abs(get(R,i+1,j)), abs(get(R,i+1,j+1)),
+                abs(get(R,k  ,l)), abs(get(R,k  ,l+1)),
+                abs(get(R,k+1,l)), abs(get(R,k+1,l+1)))
+  return v >= tol
+end
+
 -- helpers --------------------------------------------------------------------o
 
 -- conversion between momentum and energy deviation
@@ -288,10 +311,6 @@ end
 -- stability ------------------------------------------------------------------o
 
 -- check stability, enforce orthogonality of planes if needed
-
-                -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
-local blkidx   = { 3,3,1,1, 3,1,1,3, 5,1,1,5, 5,3,3,5 }
-local blkidx_n = #blkidx
 
 function gphys.make_stable (R)
   chkeigsiz(R)
@@ -597,18 +616,19 @@ end
 function gphys.optfun (A, rnk_, cpl_, W_)
   assert(is_matrix(A) and A.nrow >= 6 and A.ncol >= 6,
          "invalid argument #1 (6D+ matrix expected)")
+  local fun
 
-  local get = A.get
-  local tbl = is_table   (rnk_)
-  local cpl = is_nil     (cpl_) and         tbl and rnk_.cplg or cpl_
-  local rnk = is_positive(rnk_) and rnk_ or tbl and rnk_.rank or has_dpt(A) and 6 or 4
-  local fun = tbl and rnk_ or table.new(0, cpl and 40 or 20)
+  if is_table(rnk_)
+  then fun, rnk_, cpl_ = rnk_, rnk_.rank, rnk_.cplg
+  else fun = table.new(0, cpl_ and 40 or 20)
+  end
+  local cpl = cpl_
+  local rnk = rnk_ or has_dpt(A) and 6 or 4
   local tol = phystol.ofun_tol
 
-  table.clear(fun)
+  fun.rank, fun.cplg = rnk, cpl
 
-  fun.rank = rnk
-  fun.cplg = cpl
+  local get = A.get
 
   -- diagonal terms
 
@@ -620,12 +640,13 @@ function gphys.optfun (A, rnk_, cpl_, W_)
   fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2             )
   fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2             )
 
-  fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
 
   if rnk >= 6 then
     fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
     fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
     fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
+  else
+    fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
   end
 
   -- coupling terms
@@ -655,6 +676,11 @@ function gphys.optfun (A, rnk_, cpl_, W_)
       fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
       fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2             )
       fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2             )
+    else
+      fun.alfa13, fun.beta13, fun.gama13 = 0, 0, 0
+      fun.alfa31, fun.beta31, fun.gama31 = 0, 0, 0
+      fun.alfa23, fun.beta23, fun.gama23 = 0, 0, 0
+      fun.alfa32, fun.beta32, fun.gama32 = 0, 0, 0
     end
   end
 
@@ -697,13 +723,15 @@ end
 
 -- beta block -----------------------------------------------------------------o
 
-function gphys.betablk (optfun)
+function gphys.betablk (optfun, sav_)
   assert(type(optfun) == "table", "invalid argument #1 (table expected)")
 
   local fun = optfun
-  local rnk = fun.rank or fun.beta33 and 6 or 4
-  local cpl = fun.cplg or fun.beta12 and true or nil
+  local rnk = fun.rank or (fun.A and has_dpt(A)) and 6 or 4
+  local cpl = fun.cplg or (fun.A and has_cpl(A)) and true or nil
   local A   = fun.A and fun.A:copy() or matrix(6):eye()
+
+  if sav_ then fun.rank, fun.cplg = rnk, cpl end
 
   -- normalization matrix A of the one-turn map R: N = A^-1 R A
 
@@ -767,8 +795,8 @@ function gphys.betablk (optfun)
 
   local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
   if serr > phystol.symp_tol then
-    warn("normalizing form A[%dx%d] built from beta0 block is not symplectic, \z
-          symperr=%.5e", rnk, rnk, serr)
+    warn("normalizing form A[%dx%d] built from beta0 block %d is not symplectic, \z
+          symperr=%.5e", rnk, rnk, fun.id or 0, serr)
   end
 
   return A
