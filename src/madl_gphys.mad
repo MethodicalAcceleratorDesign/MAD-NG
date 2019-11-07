@@ -47,7 +47,7 @@ local function chkeigsiz (V, W)
 
   local nr, nc = V:sizes()
   assert(nr == 6 and nc == 6 or
-         nr == 4 and nc == 4, "invalid eigenvectors (4D/6D matrix expected)")
+         nr == 4 and nc == 4, "invalid sizes (4D/6D matrix expected)")
 
   if W then
     assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
@@ -60,12 +60,13 @@ end
 local gphys = {
 
   -- tolerances
-  var = {
+  tol = {
     dpt_tol  = 1e-12,
     eig_tol  = 1e-12,
     nrm_tol  = 1e-12,
     symp_tol = 1e-12,
     ofun_tol = 1e-12,
+    zero_tol = 1e-16, -- below eps!
   },
 
   -- default variable names (and indexes)
@@ -99,6 +100,8 @@ local gphys = {
   },
 }
 
+local phystol = gphys.tol
+
 -- variables ------------------------------------------------------------------o
 
 function gphys.vname_dup (vn)
@@ -118,8 +121,8 @@ end
 
 -- mflows ---------------------------------------------------------------------o
 
--- particles/damaps status rank: Xset/Mset/stable/unstable/singular/lost
-local mrnk = {Xset=1, Mset=1, stable=1, unstable=2, singular=3, lost=4}
+-- particles/damaps status rank: Xset/Bset/Mset/stable/unstable/singular/lost
+local mrnk = {Xset=1, Bset=1, Mset=1, stable=1, unstable=2, singular=3, lost=4}
 gphys.mrnk = mrnk
 
 -- compare particles/damaps by rank then id
@@ -148,7 +151,7 @@ end
 -- check R*Vi = Wi*Vi
 
 function gphys.is_eigsys (V, W, R, eigtol_)
-  local tol = eigtol_ or gphys.var.eig_tol
+  local tol = eigtol_ or phystol.eig_tol
   chkeigsiz(V, W) ; chkeigsiz(R, W)
   assert(is_positive(tol), "invalid argument #4 (positive number expected)")
   local cvec, getc = R.complex, R.getcol
@@ -178,9 +181,10 @@ end
 -- check that N = (1/A * R * A) [= Abar * R * A] contains only rotations
 
 function gphys.is_normal (A, R, nrmtol_)
-  local tol = nrmtol_ or gphys.var.nrm_tol
+  local tol = nrmtol_ or phystol.nrm_tol
   local get, set, n = A.get, A.set, A.nrow
 
+  -- use inverse in case of strong symplectic deviation
   local N = A:inv() * R * A
 
   if option.debug >= 2 then
@@ -210,7 +214,7 @@ end
 -- check for delta pt in one-turn map using dptol tolerance
 
 function gphys.has_dpt (R, dptol_)
-  local tol = dptol_ or gphys.var.dpt_tol
+  local tol = dptol_ or phystol.dpt_tol
   assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
   assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
@@ -286,6 +290,36 @@ function gphys.get_eigval (V, R, W)
   return W
 end
 
+-- stability ------------------------------------------------------------------o
+
+-- check stability, enforce orthogonality of planes if needed
+
+function gphys.make_stable (R)
+  chkeigsiz(R)
+  local get, set, n = R.get, R.set, R.nrow
+
+  -- check trace stability
+  for i=1,n-1,2 do
+    local tr = abs(get(R,i,i)+get(R,i+1,i+1))
+        if tr == 2 then
+      warn("Tr(R)=2 for plane %d, undefined solution!", i)
+    elseif tr >  2 then
+      warn("Tr(R)>2 for plane %d, unstable motion!", i)
+    end
+  end
+
+  -- stabilize numerical error to avoid unstable eigenvectors
+  for i=1,n-1,2 do
+  for j=1,n-1,2 do
+    local mx = max(abs(get(R,i  ,j)), abs(get(R,i  ,j+1)),
+                   abs(get(R,i+1,j)), abs(get(R,i+1,j+1)))
+    if mx < phystol.zero_tol then
+      set(R,i  ,j,0) ; set(R,i  ,j+1,0)
+      set(R,i+1,j,0) ; set(R,i+1,j+1,0)
+    end
+  end end
+end
+
 -- symplectification ----------------------------------------------------------o
 
 -- symplectifiy one-turn map R if needed
@@ -295,7 +329,7 @@ function gphys.make_symp (R)
   chkeigsiz(R)
 
   local serr = R:symperr()
-  if serr <= gphys.var.symp_tol then return end
+  if serr <= phystol.symp_tol then return end
 
   trace(0, "symplectic deviation: %s", num2str(serr))
 
@@ -325,7 +359,7 @@ end
 function gphys.close_disp (A, R)
   chkeigsiz(A) ; chkeigsiz(R)
 
-  -- close dispersion (as a function of pt, multiply by beta for dp)
+  -- close dispersion (as a function of pt, multiply by beta0 for dp)
   local D4 = R:getsub(r4, 6)
   local R4 = R:getsub(r4,r4)
   local C4, rnk = (I4-R4):solve(D4)
@@ -364,8 +398,7 @@ function gphys.norm_eigen (V, W)
   if option.debug >= 2 then
     io.write("**Normalized eigensystem:\n")
     W:print('Eigenvalues ')
-    V:print('Eigenvectors ')
-    io.write("symperr=", V:symperr(), "\n")
+    V:print('Eigenvectors ') ; io.write("symperr=", V:symperr(), "\n")
   end
 end
 
@@ -391,8 +424,7 @@ function gphys.phas_eigen (V)
 
   if option.debug >= 2 then
     io.write("**Rephased eigenvectors:\n")
-    V:print('Eigenvectors ')
-    io.write("symperr=", V:symperr(), "\n")
+    V:print('Eigenvectors ') ; io.write("symperr=", V:symperr(), "\n")
   end
 end
 
@@ -492,8 +524,7 @@ function gphys.normal (R, rnk_, nocheck_)
   chkeigsiz(R)
   if option.debug >= 2 then
     io.write("Input one-turn map:\n")
-    R:print('R ')
-    io.write("symperr=", R:symperr(), "\n")
+    R:print('R ') ; io.write("symperr=", R:symperr(), "\n")
   end
 
   -- detect rank of the system
@@ -502,6 +533,9 @@ function gphys.normal (R, rnk_, nocheck_)
 
   -- switch to 4D
   if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
+
+  -- stabilise R if needed
+  gphys.make_stable(R)
 
   -- symplectifiy R if needed
   gphys.make_symp(R)
@@ -540,8 +574,7 @@ function gphys.normal (R, rnk_, nocheck_)
 
   if option.debug >= 2 then
     io.write("Output normalising map:\n")
-    A:print('A ')
-    io.write("symperr=", A:symperr(), "\n")
+    A:print('A ') ; io.write("symperr=", A:symperr(), "\n")
     option.format = fmt
     io.write("<- Normal form\n")
   end
@@ -564,7 +597,7 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   local get = A.get
   local cpl = lbool(cpl_)
   local fun = optfun_ or table.new(0, cpl and 40 or 20)
-  local tol = gphys.var.ofun_tol
+  local tol = phystol.ofun_tol
   local rnk = fun.rank or has_dpt(A) and 6 or 4
 
   fun.rank = rnk
@@ -650,20 +683,28 @@ function gphys.optfun (A, optfun_, cpl_, W_)
 
   -- backup A for coupling terms
 
-  if fun.cplg then fun.A = A:copy(fun.A) end
+  if fun.cplg then fun.A = A:copy() end
 
   return fun
 end
 
 -- beta block -----------------------------------------------------------------o
 
-function gphys.betablk (optfun)
+function gphys.betablk (optfun, rnk_)
   assert(type(optfun) == "table", "invalid argument #1 (table expected)")
   local fun = optfun
-  local rnk = fun.rank or fun.beta33 and 6 or 4
-  local A   = fun.A and fun.A:copy() or matrix(6)
+  local rnk = rnk_ or fun.rank or fun.beta33 and 6 or 4
 
-  -- normalization matrix A of the one-turn map R = A N A^-1
+  fun.rank = rnk
+
+  -- normalization matrix A of the one-turn map R: N = A^-1 R A
+
+  local A11, A12, A13, A14, A15, A16 = 1, 0, 0, 0, 0, fun.dx  or 0
+  local A21, A22, A23, A24, A25, A26 = 0, 1, 0, 0, 0, fun.dpx or 0
+  local A31, A32, A33, A34, A35, A36 = 0, 0, 1, 0, 0, fun.dy  or 0
+  local A41, A42, A43, A44, A45, A46 = 0, 0, 0, 1, 0, fun.dpy or 0
+  local A51, A52, A53, A54, A55, A56 = 0, 0, 0, 0, 1, 0
+  local A61, A62, A63, A64, A65, A66 = 0, 0, 0, 0, 0, 1
 
   -- diagonal terms
 
@@ -673,11 +714,8 @@ function gphys.betablk (optfun)
 
   assert(beta11 > 0, "invalid beta11 (>0 expected)")
 
-  -- A[1:2,1:2]
-  local A11, A12 = sqrt(beta11), 0     -- Courant-Snyder form
-  local A21, A22 = -alfa11/A11 , 1/A11 -- sqrt(gama11 - A21^2)
-
-  -- A[3:4,3:4]
+  A11, A12 = sqrt(beta11), 0     -- Courant-Snyder form
+  A21, A22 = -alfa11/A11 , 1/A11 -- sqrt(gama11 - A21^2)
 
   local alfa22 = fun.alfa22 or 0
   local beta22 = fun.beta22 or 1
@@ -685,12 +723,9 @@ function gphys.betablk (optfun)
 
   assert(beta22 > 0, "invalid beta22 (>0 expected)")
 
-  local A33, A34 = sqrt(beta22), 0     -- Courant-Snyder form
-  local A43, A44 = -alfa22/A33 , 1/A33 -- sqrt(gama22 - A43^2)
+  A33, A34 = sqrt(beta22), 0     -- Courant-Snyder form
+  A43, A44 = -alfa22/A33 , 1/A33 -- sqrt(gama22 - A43^2)
 
-  -- A[5:6,5:6]
-
-  local A55, A56, A65, A66 = 1, 0, 0, 1
   if rnk >= 6 then
     local alfa33 = fun.alfa33 or 0
     local beta33 = fun.beta33 or 1
@@ -704,98 +739,76 @@ function gphys.betablk (optfun)
 
   -- coupling terms (off diagonal)
 
-  -- A[1:2,3:4]
+  if fun.cplg then
 
-  local A13, A14, A23, A24 = 0, 0, 0, 0
-  if fun.beta12 then
-    local alfa12 = fun.alfa12 or 0
-    local beta12 = fun.beta12
-    local gama12 = fun.gama12 or (1+alfa12^2)/beta12
+    if fun.beta12 then
+      local alfa12 = fun.alfa12 or 0
+      local beta12 = fun.beta12
+      local gama12 = fun.gama12 or (1+alfa12^2)/beta12
 
-    assert(beta12 > 0, "invalid beta12 (>0 expected)")
+      assert(beta12 > 0, "invalid beta12 (>0 expected)")
 
-    A13, A14 = sqrt(beta12), 0     -- Courant-Snyder form
-    A23, A24 = -alfa12/A13 , 1/A13 -- sqrt(gama12 - A23^2)
-  end
-
-  -- A[3:4,1:2]
-
-  local A31, A32, A41, A42 = 0, 0, 0, 0
-  if fun.beta21 then
-    local alfa21 = fun.alfa21 or 0
-    local beta21 = fun.beta21
-    local gama21 = fun.gama21 or (1+alfa21^2)/beta21
-
-    assert(beta21 > 0, "invalid beta21 (>0 expected)")
-
-    A31, A32 = sqrt(beta21), 0     -- Courant-Snyder form
-    A41, A42 = -alfa21/A31 , 1/A31 -- sqrt(gama21 - A41^2)
-  end
-
-  local A15, A16, A25, A26 = 0, 0, 0, 0
-  local A35, A36, A45, A46 = 0, 0, 0, 0
-  local A51, A52, A61, A62 = 0, 0, 0, 0
-  local A53, A54, A63, A64 = 0, 0, 0, 0
-
-  if rnk >= 6 then
-
-    -- A[1:2,5:6]
-
-    if fun.beta13 then
-      local alfa13 = fun.alfa13 or 0
-      local beta13 = fun.beta13
-      local gama13 = fun.gama13 or (1+alfa13^2)/beta13
-
-      assert(beta13 > 0, "invalid beta13 (>0 expected)")
-
-      A15, A16 = sqrt(beta13), 0     -- Courant-Snyder form
-      A25, A26 = -alfa13/A15 , 1/A15 -- sqrt(gama13 - A25^2)
+      A13, A14 = sqrt(beta12), 0     -- Courant-Snyder form
+      A23, A24 = -alfa12/A13 , 1/A13 -- sqrt(gama12 - A23^2)
     end
 
-    -- A[3:4,5:6]
+    if fun.beta21 then
+      local alfa21 = fun.alfa21 or 0
+      local beta21 = fun.beta21
+      local gama21 = fun.gama21 or (1+alfa21^2)/beta21
 
-    if fun.beta23 then
-      local alfa23 = fun.alfa23 or 0
-      local beta23 = fun.beta23
-      local gama23 = fun.gama23 or (1+alfa23^2)/beta23
+      assert(beta21 > 0, "invalid beta21 (>0 expected)")
 
-      assert(beta23 > 0, "invalid beta23 (>0 expected)")
-
-      A35, A36 = sqrt(beta23), 0     -- Courant-Snyder form
-      A45, A46 = -alfa23/A35 , 1/A35 -- sqrt(gama23 - A45^2)
+      A31, A32 = sqrt(beta21), 0     -- Courant-Snyder form
+      A41, A42 = -alfa21/A31 , 1/A31 -- sqrt(gama21 - A41^2)
     end
 
-    -- A[5:6,1:2]
+    if rnk >= 6 then
 
-    if fun.beta31 then
-      local alfa31 = fun.alfa31 or 0
-      local beta31 = fun.beta31
-      local gama31 = fun.gama31 or (1+alfa31^2)/beta31
+      if fun.beta13 then
+        local alfa13 = fun.alfa13 or 0
+        local beta13 = fun.beta13
+        local gama13 = fun.gama13 or (1+alfa13^2)/beta13
 
-      assert(beta31 > 0, "invalid beta31 (>0 expected)")
+        assert(beta13 > 0, "invalid beta13 (>0 expected)")
 
-      A51, A52 = sqrt(beta23), 0     -- Courant-Snyder form
-      A61, A62 = -alfa23/A35 , 1/A35 -- sqrt(gama31 - A61^2)
+        A15, A16 = sqrt(beta13), 0     -- Courant-Snyder form
+        A25, A26 = -alfa13/A15 , 1/A15 -- sqrt(gama13 - A25^2)
+      end
+
+      if fun.beta23 then
+        local alfa23 = fun.alfa23 or 0
+        local beta23 = fun.beta23
+        local gama23 = fun.gama23 or (1+alfa23^2)/beta23
+
+        assert(beta23 > 0, "invalid beta23 (>0 expected)")
+
+        A35, A36 = sqrt(beta23), 0     -- Courant-Snyder form
+        A45, A46 = -alfa23/A35 , 1/A35 -- sqrt(gama23 - A45^2)
+      end
+
+      if fun.beta31 then
+        local alfa31 = fun.alfa31 or 0
+        local beta31 = fun.beta31
+        local gama31 = fun.gama31 or (1+alfa31^2)/beta31
+
+        assert(beta31 > 0, "invalid beta31 (>0 expected)")
+
+        A51, A52 = sqrt(beta31), 0     -- Courant-Snyder form
+        A61, A62 = -alfa31/A51 , 1/A51 -- sqrt(gama31 - A61^2)
+      end
+
+      if fun.beta32 then
+        local alfa32 = fun.alfa32 or 0
+        local beta32 = fun.beta32
+        local gama32 = fun.gama32 or (1+alfa32^2)/beta32
+
+        assert(beta32 > 0, "invalid beta32 (>0 expected)")
+
+        A53, A54 = sqrt(beta32), 0     -- Courant-Snyder form
+        A63, A64 = -alfa32/A53 , 1/A53 -- sqrt(gama32 - A63^2)
+      end
     end
-
-    -- A[5:6,3:4]
-
-    if fun.beta32 then
-      local alfa32 = fun.alfa32 or 0
-      local beta32 = fun.beta32
-      local gama32 = fun.gama32 or (1+alfa32^2)/beta32
-
-      assert(beta32 > 0, "invalid beta32 (>0 expected)")
-
-      A53, A54 = sqrt(beta23), 0     -- Courant-Snyder form
-      A63, A64 = -alfa32/A53 , 1/A53 -- sqrt(gama32 - A63^2)
-    end
-
-  else
-    -- A[1:4,6] dispersion
-
-    A16, A26 = fun.dx, fun.dpx
-    A36, A46 = fun.dy, fun.dpy
   end
 
   local A = matrix(6):fill {
@@ -808,7 +821,7 @@ function gphys.betablk (optfun)
     }
 
   local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
-  assert(serr < gphys.var.symp_tol, "invalid optfun (built A is not symplectic)")
+  assert(serr < phystol.symp_tol, "invalid optfun (built A is not symplectic)")
 
   return A
 end
