@@ -65,8 +65,8 @@ local gphys = {
     eig_tol  = 1e-12,
     nrm_tol  = 1e-12,
     symp_tol = 1e-12,
-    ofun_tol = 1e-12,
-    zero_tol = 1e-16, -- below eps!
+    ofun_tol = 1e-14,
+    stab_tol = 1e-16, -- below eps!
   },
 
   -- default variable names (and indexes)
@@ -79,23 +79,17 @@ local gphys = {
     {'x', 'px', 'y', 'py', 't', 'pt', x=1, px=2, y=3, py=4, t=5, pt=6, __n=6},
   },
 
-  -- dispersion (index -> name)
-  dpname = {
-    'dx', 'dpx',
-    'dy', 'dpy',
-  },
-
   -- optical functions names (index -> name)
   ofname = {
-    'alfa11', 'beta11', 'gama11', 'mu1',
-    'alfa22', 'beta22', 'gama22', 'mu2',
+    'alfa11', 'beta11', 'gama11', 'mu1', 'dx', 'dpx',
+    'alfa22', 'beta22', 'gama22', 'mu2', 'dy', 'dpy',
     'alfa33', 'beta33', 'gama33', 'mu3',
   },
 
   -- optical functions names with coupling (index -> name)
   ocfname = {
-    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1',
-    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2',
+    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx',
+    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
   },
 }
@@ -188,7 +182,8 @@ function gphys.is_normal (A, R, nrmtol_)
   local N = A:inv() * R * A
 
   if option.debug >= 2 then
-     N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
+    io.write("**Normalized form:\n")
+    N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
   end
 
   for i = 1,n-1,2 do
@@ -313,7 +308,7 @@ function gphys.make_stable (R)
   for j=1,n-1,2 do
     local mx = max(abs(get(R,i  ,j)), abs(get(R,i  ,j+1)),
                    abs(get(R,i+1,j)), abs(get(R,i+1,j+1)))
-    if mx < phystol.zero_tol then
+    if mx < phystol.stab_tol then
       set(R,i  ,j,0) ; set(R,i  ,j+1,0)
       set(R,i+1,j,0) ; set(R,i+1,j+1,0)
     end
@@ -398,7 +393,7 @@ function gphys.norm_eigen (V, W)
   if option.debug >= 2 then
     io.write("**Normalized eigensystem:\n")
     W:print('Eigenvalues ')
-    V:print('Eigenvectors ') ; io.write("symperr=", V:symperr(), "\n")
+    V:print('Eigenvectors ') ; io.write("symperr=", num2str(V:symperr()), "\n")
   end
 end
 
@@ -424,7 +419,7 @@ function gphys.phas_eigen (V)
 
   if option.debug >= 2 then
     io.write("**Rephased eigenvectors:\n")
-    V:print('Eigenvectors ') ; io.write("symperr=", V:symperr(), "\n")
+    V:print('Eigenvectors ') ; io.write("symperr=", num2str(V:symperr()), "\n")
   end
 end
 
@@ -524,7 +519,7 @@ function gphys.normal (R, rnk_, nocheck_)
   chkeigsiz(R)
   if option.debug >= 2 then
     io.write("Input one-turn map:\n")
-    R:print('R ') ; io.write("symperr=", R:symperr(), "\n")
+    R:print('R ') ; io.write("symperr=", num2str(R:symperr()), "\n")
   end
 
   -- detect rank of the system
@@ -574,7 +569,7 @@ function gphys.normal (R, rnk_, nocheck_)
 
   if option.debug >= 2 then
     io.write("Output normalising map:\n")
-    A:print('A ') ; io.write("symperr=", A:symperr(), "\n")
+    A:print('A ') ;
     option.format = fmt
     io.write("<- Normal form\n")
   end
@@ -584,70 +579,73 @@ end
 
 -- lattice functions ----------------------------------------------------------o
 
-local function oval (x, tol)
-  return abs(x) < tol and 0 or x
+local function oval (x)
+  return abs(x) < phystol.ofun_tol and 0 or x
 end
 
 -- fill betablock (optical functions) from A (normalising form) and W (tunes)
 
-function gphys.optfun (A, optfun_, cpl_, W_)
+function gphys.optfun (A, rnk_, cpl_, W_)
   assert(is_matrix(A) and A.nrow >= 6 and A.ncol >= 6,
          "invalid argument #1 (6D+ matrix expected)")
 
   local get = A.get
-  local cpl = lbool(cpl_)
-  local fun = optfun_ or table.new(0, cpl and 40 or 20)
+  local tbl = is_table   (rnk_)
+  local cpl = is_nil     (cpl_) and         tbl and rnk_.cplg or cpl_
+  local rnk = is_positive(rnk_) and rnk_ or tbl and rnk_.rank or has_dpt(A) and 6 or 4
+  local fun = tbl and rnk_ or table.new(0, cpl and 40 or 20)
   local tol = phystol.ofun_tol
-  local rnk = fun.rank or has_dpt(A) and 6 or 4
+
+  table.clear(fun)
 
   fun.rank = rnk
   fun.cplg = cpl
 
   -- diagonal terms
 
-  fun.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)), tol)
-  fun.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2            , tol)
-  fun.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2            , tol)
+  fun.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)) )
+  fun.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2             )
+  fun.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2             )
 
-  fun.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)), tol)
-  fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2            , tol)
-  fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2            , tol)
+  fun.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)) )
+  fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2             )
+  fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2             )
 
   fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
 
   if rnk >= 6 then
-    fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)), tol)
-    fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2            , tol)
-    fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2            , tol)
+    fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
+    fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
+    fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
   end
 
   -- coupling terms
 
   if fun.cplg then
-    fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)), tol)
-    fun.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2            , tol)
-    fun.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2            , tol)
+    fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)) )
+    fun.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2             )
+    fun.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2             )
 
-    fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)), tol)
-    fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2            , tol)
-    fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2            , tol)
+    fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)) )
+    fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2             )
+    fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2             )
 
     if rnk >= 6 then
-      fun.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)), tol)
-      fun.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2            , tol)
-      fun.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2            , tol)
+      fun.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)) )
+      fun.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2             )
+      fun.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2             )
 
-      fun.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)), tol)
-      fun.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2            , tol)
-      fun.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2            , tol)
+      fun.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)) )
+      fun.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2             )
+      fun.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2             )
 
-      fun.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)), tol)
-      fun.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2            , tol)
-      fun.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2            , tol)
+      fun.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)) )
+      fun.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2             )
+      fun.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2             )
 
-      fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)), tol)
-      fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2            , tol)
-      fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2            , tol)
+      fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
+      fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2             )
+      fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2             )
     end
   end
 
@@ -656,11 +654,11 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   if rnk >= 6 then
     -- TODO: true 6D using Chao's method or Etienne's method
     warn("6D dispersion NYI")
-    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
-    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
+    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6) )
+    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6) )
   else
-    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6), tol)
-    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6), tol)
+    fun.dx, fun.dpx = oval( get(A,1,6), tol), oval( get(A,2,6) )
+    fun.dy, fun.dpy = oval( get(A,3,6), tol), oval( get(A,4,6) )
   end
 
   -- phase advance
@@ -668,13 +666,13 @@ function gphys.optfun (A, optfun_, cpl_, W_)
   if W_ then
     assert(is_cvector(W_) and W_.nrow >= rnk,
            "invalid argument #2 (4D+ complex eigenvalues expected)")
-    fun.mu1 =              oval( W_[1]:carg() / twopi, tol)
-    fun.mu2 =              oval( W_[3]:carg() / twopi, tol)
-    fun.mu3 = rnk >= 6 and oval( W_[5]:carg() / twopi, tol) or 0
+    fun.mu1 =              oval( W_[1]:carg() / twopi )
+    fun.mu2 =              oval( W_[3]:carg() / twopi )
+    fun.mu3 = rnk >= 6 and oval( W_[5]:carg() / twopi ) or 0
   else
-    fun.mu1 =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi, tol)
-    fun.mu2 =              oval( atan2(get(A,3,4), get(A,3,3)) / twopi, tol)
-    fun.mu3 = rnk >= 6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi, tol) or 0
+    fun.mu1 =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi )
+    fun.mu2 =              oval( atan2(get(A,3,4), get(A,3,3)) / twopi )
+    fun.mu3 = rnk >= 6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi ) or 0
   end
 
   if fun.mu1 < 0 then fun.mu1 = 1+fun.mu1 end
@@ -690,138 +688,79 @@ end
 
 -- beta block -----------------------------------------------------------------o
 
-function gphys.betablk (optfun, rnk_)
+function gphys.betablk (optfun)
   assert(type(optfun) == "table", "invalid argument #1 (table expected)")
-  local fun = optfun
-  local rnk = rnk_ or fun.rank or fun.beta33 and 6 or 4
 
-  fun.rank = rnk
+  local fun = optfun
+  local rnk = fun.rank or fun.beta33 and 6 or 4
+  local cpl = fun.cplg or fun.beta12 and true or nil
+  local A   = fun.A and fun.A:copy() or matrix(6):eye()
 
   -- normalization matrix A of the one-turn map R: N = A^-1 R A
 
-  local A11, A12, A13, A14, A15, A16 = 1, 0, 0, 0, 0, fun.dx  or 0
-  local A21, A22, A23, A24, A25, A26 = 0, 1, 0, 0, 0, fun.dpx or 0
-  local A31, A32, A33, A34, A35, A36 = 0, 0, 1, 0, 0, fun.dy  or 0
-  local A41, A42, A43, A44, A45, A46 = 0, 0, 0, 1, 0, fun.dpy or 0
-  local A51, A52, A53, A54, A55, A56 = 0, 0, 0, 0, 1, 0
-  local A61, A62, A63, A64, A65, A66 = 0, 0, 0, 0, 0, 1
+  local get, set = A.get, A.set
 
-  -- diagonal terms
+  -- set/override diagonal terms
 
-  local alfa11 = fun.alfa11 or 0
-  local beta11 = fun.beta11 or 1
-  local gama11 = fun.gama11 or (1+alfa11^2)/beta11
+  if fun.beta11 then
+    local beta11 = fun.beta11
+    local alfa11 = fun.alfa11 or 0
+    local gama11 = fun.gama11 or (1+alfa11^2)/beta11
 
-  assert(beta11 > 0, "invalid beta11 (>0 expected)")
+    assert(beta11 > 0, "invalid beta11 (>0 expected)")
 
-  A11, A12 = sqrt(beta11), 0     -- Courant-Snyder form
-  A21, A22 = -alfa11/A11 , 1/A11 -- sqrt(gama11 - A21^2)
+    local A11 = sqrt(beta11)
+    local A21 = -alfa11/A11
+    local A22 = sqrt(gama11 - A21^2) -- 1/A11
 
-  local alfa22 = fun.alfa22 or 0
-  local beta22 = fun.beta22 or 1
-  local gama22 = fun.gama22 or (1+alfa22^2)/beta22
+    set(A,1,1, A11) ; set(A,1,2,  0 ) -- Courant-Snyder form
+    set(A,2,1, A21) ; set(A,2,2, A22)
+  end
 
-  assert(beta22 > 0, "invalid beta22 (>0 expected)")
+  if fun.beta22 then
+    local beta22 = fun.beta22
+    local alfa22 = fun.alfa22 or 0
+    local gama22 = fun.gama22 or (1+alfa22^2)/beta22
 
-  A33, A34 = sqrt(beta22), 0     -- Courant-Snyder form
-  A43, A44 = -alfa22/A33 , 1/A33 -- sqrt(gama22 - A43^2)
+    assert(beta22 > 0, "invalid beta22 (>0 expected)")
+
+    local A33 = sqrt(beta22)
+    local A43 = -alfa22/A33
+    local A44 = sqrt(gama22 - A43^2) -- 1/A33
+
+    set(A,3,3, A33) ; set(A,3,4,  0 ) -- Courant-Snyder form
+    set(A,4,3, A43) ; set(A,4,4, A44)
+  end
 
   if rnk >= 6 then
-    local alfa33 = fun.alfa33 or 0
     local beta33 = fun.beta33 or 1
+    local alfa33 = fun.alfa33 or 0
     local gama33 = fun.gama33 or (1+alfa33^2)/beta33
 
     assert(beta33 > 0, "invalid beta33 (>0 expected)")
 
-    A55, A56 = sqrt(beta33), 0     -- Courant-Snyder form
-    A65, A66 = -alfa33/A55 , 1/A55 -- sqrt(gama33 - A65^2)
+    local A55 = sqrt(beta33)
+    local A65 = -alfa33/A55
+    local A66 = sqrt(gama33 - A65^2) -- 1/A55
+
+    set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
+    set(A,6,5, A65) ; set(A,6,6, A66)
   end
 
-  -- coupling terms (off diagonal)
+  -- set/override dispersion
 
-  if fun.cplg then
+  if fun.dx  then set(A,1,6, fun.dx ) end
+  if fun.dpx then set(A,2,6, fun.dpx) end
+  if fun.dy  then set(A,3,6, fun.dy ) end
+  if fun.dpy then set(A,4,6, fun.dpy) end
 
-    if fun.beta12 then
-      local alfa12 = fun.alfa12 or 0
-      local beta12 = fun.beta12
-      local gama12 = fun.gama12 or (1+alfa12^2)/beta12
-
-      assert(beta12 > 0, "invalid beta12 (>0 expected)")
-
-      A13, A14 = sqrt(beta12), 0     -- Courant-Snyder form
-      A23, A24 = -alfa12/A13 , 1/A13 -- sqrt(gama12 - A23^2)
-    end
-
-    if fun.beta21 then
-      local alfa21 = fun.alfa21 or 0
-      local beta21 = fun.beta21
-      local gama21 = fun.gama21 or (1+alfa21^2)/beta21
-
-      assert(beta21 > 0, "invalid beta21 (>0 expected)")
-
-      A31, A32 = sqrt(beta21), 0     -- Courant-Snyder form
-      A41, A42 = -alfa21/A31 , 1/A31 -- sqrt(gama21 - A41^2)
-    end
-
-    if rnk >= 6 then
-
-      if fun.beta13 then
-        local alfa13 = fun.alfa13 or 0
-        local beta13 = fun.beta13
-        local gama13 = fun.gama13 or (1+alfa13^2)/beta13
-
-        assert(beta13 > 0, "invalid beta13 (>0 expected)")
-
-        A15, A16 = sqrt(beta13), 0     -- Courant-Snyder form
-        A25, A26 = -alfa13/A15 , 1/A15 -- sqrt(gama13 - A25^2)
-      end
-
-      if fun.beta23 then
-        local alfa23 = fun.alfa23 or 0
-        local beta23 = fun.beta23
-        local gama23 = fun.gama23 or (1+alfa23^2)/beta23
-
-        assert(beta23 > 0, "invalid beta23 (>0 expected)")
-
-        A35, A36 = sqrt(beta23), 0     -- Courant-Snyder form
-        A45, A46 = -alfa23/A35 , 1/A35 -- sqrt(gama23 - A45^2)
-      end
-
-      if fun.beta31 then
-        local alfa31 = fun.alfa31 or 0
-        local beta31 = fun.beta31
-        local gama31 = fun.gama31 or (1+alfa31^2)/beta31
-
-        assert(beta31 > 0, "invalid beta31 (>0 expected)")
-
-        A51, A52 = sqrt(beta31), 0     -- Courant-Snyder form
-        A61, A62 = -alfa31/A51 , 1/A51 -- sqrt(gama31 - A61^2)
-      end
-
-      if fun.beta32 then
-        local alfa32 = fun.alfa32 or 0
-        local beta32 = fun.beta32
-        local gama32 = fun.gama32 or (1+alfa32^2)/beta32
-
-        assert(beta32 > 0, "invalid beta32 (>0 expected)")
-
-        A53, A54 = sqrt(beta32), 0     -- Courant-Snyder form
-        A63, A64 = -alfa32/A53 , 1/A53 -- sqrt(gama32 - A63^2)
-      end
-    end
-  end
-
-  local A = matrix(6):fill {
-      A11, A12, A13, A14, A15, A16,
-      A21, A22, A23, A24, A25, A26,
-      A31, A32, A33, A34, A35, A36,
-      A41, A42, A43, A44, A45, A46,
-      A51, A52, A53, A54, A55, A56,
-      A61, A62, A63, A64, A65, A66,
-    }
+  -- sanity checks
 
   local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
-  assert(serr < phystol.symp_tol, "invalid optfun (built A is not symplectic)")
+  if serr > phystol.symp_tol then
+    warn("normalizing form A[%dx%d] built from beta0 block is not symplectic, \z
+          symperr=%.5e", rnk, rnk, serr)
+  end
 
   return A
 end
