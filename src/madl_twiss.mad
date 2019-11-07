@@ -31,8 +31,7 @@ local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_vector, is_damap                            in MAD.typeid
 
-local sqrt                                                        in MAD.gmath
-local abs, min, max, floor                                        in math
+local abs, min, max, sqrt, floor                                  in math
 
 local chromdp = 1e-6
 
@@ -98,9 +97,10 @@ local function fill_sum (mflw)
     if id > n then id = id-n end
     if not alfap[id] then
       local ap = synch_1[id]/len
+      local as = sqrt(abs(ap))
       alfap  [id] = ap
-      etap   [id] = ap - 1/beam.gamma^2
-      gammatr[id] = 1/sqrt(ap + (ap < 0 and 0i or 0))
+      etap   [id] = as > 0 and ap - 1/beam.gamma^2 or 0
+      gammatr[id] = as > 0 and as/ap or 0
     end
   end
 
@@ -314,17 +314,20 @@ local function twiss_nform (self, mflw)
   local beta0, save, coupling in self
   local npar, __twdat in mflw
 
-  if save then
-    __twdat.ofun = table.new(npar,0)
-  end
+  if save then __twdat.ofun = table.new(npar,0) end
 
   for i=1,npar do
     local m = mflw[i]
 
     if m.status == 'Bset' then
-      -- take a copy of beta0 block
       if save then
-        __twdat.ofun[m.id] = tblcpy(beta0[m.id0 or m.id])
+        -- make a copy of beta0 block
+        local of = tblcpy(beta0[m.id0 or m.id])
+        -- ensure diff values are initialized
+        of.mu1, of.mu2, of.mu3 = of.mu1 or 0, of.mu2 or 0, of.mu3 or 0
+        of.dx = of.dx or 0
+        -- save
+        __twdat.ofun[m.id] = of
       end
 
     else
@@ -343,9 +346,10 @@ local function twiss_nform (self, mflw)
       -- check normal form
       if option.debug >= 2 then check_normal(R, A, of) end
 
-      -- clear initial phase advances
       if save then
+         -- clear initial phase advances
          of.mu1, of.mu2, of.mu3 = 0, 0, 0
+         -- save
          __twdat.ofun[m.id] = of
       end
     end
