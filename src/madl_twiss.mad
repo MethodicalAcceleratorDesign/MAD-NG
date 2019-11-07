@@ -28,7 +28,7 @@ local vector, matrix, gphys, option, warn                         in MAD
 local normal, optfun, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
-local tblcat, tblrep, assertf, errorf, printf, rep                in MAD.utility
+local tblcat, tblcpy, tblrep, rep, assertf, errorf, printf        in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_vector, is_damap                            in MAD.typeid
 
@@ -97,7 +97,7 @@ local function fill_sum (mflw)
 end
 
 local function fill (elm, mflw, lw, islc)
-  if mflw. __twdat == nil then return end -- not yet in twiss
+  assert(mflw.__twdat, "invalid twiss initalisation (unexpected)")
 
   local mtbl, npar, __twdat in mflw
   local orow, ofun, ocpl, onam, omat in __twdat
@@ -159,6 +159,37 @@ local function chrom_dps (self)
   self.deltap = cdps
 end
 
+-- beta0 block ----------------------------------------------------------------o
+
+local function twiss_betblk (self, mflw)
+  local beta0 in self
+  local npar in mflw
+  local findco = false
+
+  if not beta0 or not is_mappable(beta0[1]) then
+    beta0 = {beta0}
+  end
+
+  for i=1,npar do
+    local m = mflw[i]
+    if m.status == 'Xset' then
+      if beta0[m.id0] then -- beta0 block provided
+        m:set1(betablk(beta0[m.id0])).status = 'Bset'
+      else                 -- search for closed orbit
+        findco = true
+      end
+    end
+  end
+
+  if self.cofind == true and findco == false then
+    self.cofind = false -- closed orbit search not needed (was requested)
+
+    if option.debug >= 2 then
+      io.write("No particle found (only beta0 or damap), cofind disabled\n")
+    end
+  end
+end
+
 -- closed orbit ---------------------------------------------------------------o
 
 local function twiss_cofind (self, mflw0)
@@ -207,11 +238,11 @@ local function twiss_track (self, mflw0)
   local npar in mflw0
   local X0, Xi = table.new(npar,0), table.new(npar,0)
 
-  -- track non 'Mset' (e.g. 'Xset', 'stable') damaps
+  -- track 'stable' damaps (was 'Xset')
   local j = 1
   for i=1,npar do
     local m = mflw0[i]
-    if m.status ~= 'Mset' then
+    if m.status == 'stable' then
       X0[j], Xi[j]  = m:get0():totable(), i
       X0[j].beam, j = m.beam, j+1
     end
@@ -245,36 +276,44 @@ end
 
 local function check_normal (R, A, of)
   local fmt = option.format
-  option.format = "% 10.5f"
+  option.format = "% .5e"
   io.write("Checking normal form vs optical functions\n")
   R:print('R') ; A:print('A') ; show(of); betablk(of):print('A(optfun)')
   option.format = fmt
 end
 
 local function twiss_nform (self, mflw) -- TODO: high order normal form
-  local codptol, coupling in self
+  local beta0, coupling in self
   local npar in mflw
 
-  -- TODO: init A from betablk
   for i=1,npar do
-    local m = mflw[i]
-    local X, R = m:get0(), m:get1()
-    local rnk = has_dpt(R, codptol) and 6 or 4
+    local m, of = mflw[i]
 
-    -- get linear normal form A from one-turn map R
-    local A, W, info = normal(R, rnk)
+    if m.status == 'Bset' then
+      -- take a copy of beta0 block
+      of = tblcpy(beta0[m.id0])
 
-    -- get initial linear optical functions and phase advances
-    local of = optfun(A, {rank=rnk}, coupling, W)
+    else
+      local X, R = m:get0(), m:get1()
+      local rnk = has_dpt(R) and 6 or 4
 
-    -- check normal form
-    if option.debug >= 2 then check_normal(R, A, of) end
+      -- get linear normal form A from one-turn map R
+      local A, W, info = normal(R, rnk)
+
+      -- get initial linear optical functions and phase advances
+      of = optfun(A, {rank=rnk}, coupling, W)
+
+      -- set damap
+      m:setvar(X):set1(A)
+
+      -- check normal form
+      if option.debug >= 2 then check_normal(R, A, of) end
+    end
 
     -- clear phase advances
     of.mu1, of.mu2, of.mu3 = 0, 0, 0
 
-    m:setvar(X):set1(A)
-    mflw.__twdat.ofun[i] = of
+    mflw.__twdat.ofun[m.id] = of
   end
 end
 
@@ -320,7 +359,7 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local save, chrom, mapdef, cofind in self
+  local save, chrom, mapdef in self
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -339,11 +378,12 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
-  -- TODO: init from betablk
-  -- ...
+  -- setup beta block status (update mflw and self.cofind)
+  twiss_betblk(self, mflw)
+  if option.debug > 2 then mdump(mflw,'bb.') end
 
   -- search for closed orbits (update mflw)
-  if cofind ~= false then
+  if self.cofind ~= false then
     twiss_cofind(self, mflw)
     if mflw.npar == 0 then return mflw end -- no more particles...
     if option.debug > 2 then mdump(mflw,'co.') end
@@ -405,8 +445,8 @@ local twiss = command 'twiss' {
   s0=nil,            -- initial s (offset)                                (trck)
   X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
+  beta0=nil,         -- initial beta block (or list of)                   (twss)
 
-  beta0=nil,         -- initial beta0 block (or list of)                  (twss)
   chrom=false,       -- compute chromaticity by finite difference         (twss)
   coupling=false,    -- compute optical functions for non-diagonal modes  (twss)
 
@@ -440,7 +480,6 @@ local twiss = command 'twiss' {
   cotol=nil,         -- closed orbit tolerance (i.e. |dX|)                (cofn)
   coiter=nil,        -- maximum number of iterations                      (cofn)
   codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
-  codptol=nil,       -- 4D vs 6D dpt tolerance                            (cofn)
   comethod=nil,      -- default algorithm                                 (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
 
