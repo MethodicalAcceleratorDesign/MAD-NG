@@ -28,11 +28,11 @@ local vector, matrix, gphys, option, warn                         in MAD
 local normal, optfun, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in gphys
 local ffalse, ftrue, achain                                       in MAD.gfunc
-local tblcat, tblcpy, tblrep, rep, assertf, errorf, printf        in MAD.utility
+local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_vector, is_damap                            in MAD.typeid
 
-local abs, min, floor                                             in math
+local abs, min, max, sqrt, floor                                  in math
 
 local chromdp = 1e-6
 
@@ -61,24 +61,25 @@ end
 
 -- twiss mtable ---------------------------------------------------------------o
 
+local cvtlst = {'q1','q2','q3','dq1','dq2','dq3',
+                'alfap','etap','gammatr','synch_1'}
+
 local function fill_sum (mflw)
   local mtbl in mflw
 
-  -- TODO: momentum compaction factor, gamma transition
+  -- tag lost damaps
+--  for i=mflw.npar+1,mflw.tpar do
+--    local id, st = mflw[i].id, mflw[i].status
+--    if id > n then id = id-n end
+--    dq1[id], dq2[id], dq3[id] = st, st, st
+--    synch_1[id], alfap[id], etap[id], gammatr[id] = st, st, st, st
+--  end
 
   -- chromaticity
   if mflw.__twdat.chrm then
     local q1, q2, q3, dq1, dq2, dq3, chromdp in mtbl
     local n = floor(#q1/2)
 
-    -- tag lost damaps
-    for i=mflw.npar+1,mflw.tpar do
-      local id, st = mflw[i].id, mflw[i].status
-      if id > n then id = id-n end
-      dq1[id], dq2[id], dq3[id] = st, st, st
-    end
-
-    -- other damaps
     for i=1,mflw.npar do
       local id = mflw[i].id
       if id > n then id = id-n end
@@ -94,23 +95,52 @@ local function fill_sum (mflw)
       q1[i], q2[i], q3[i] = nil, nil, nil
     end
   end
+
+  -- momentum compaction & phase slip factors, gamma transition
+  local synch_1, alfap, etap, gammatr in mtbl
+  local len, beam = mflw.sequ.l, mflw.beam
+  local n = #synch_1
+
+  for i=1,mflw.npar do
+    local id, beam = mflw[i].id, mflw[i].beam or beam
+    if id > n then id = id-n end
+    if not alfap[id] then
+      alfap  [id] = synch_1[id]/len
+      etap   [id] = alfap[id] > 0 and alfap[id] - 1/beam.gamma^2 or 0
+      gammatr[id] = alfap[id] > 0 and 1/sqrt(alfap[id]) or 0
+    end
+  end
+
+  -- mute list of 0 or 1 number into 0 or the number in header
+  for _,k in ipairs(cvtlst) do
+    local v = mtbl[k]
+    if is_iterable(v) then
+      local n = #v
+          if n == 0 then mtbl[k] = 0
+      elseif n == 1 then mtbl[k] = v[1]
+      end
+    end
+  end
 end
 
 local function fill (elm, mflw, lw, islc)
   assert(mflw.__twdat, "invalid twiss initalisation (unexpected)")
 
-  local mtbl, npar, __twdat in mflw
-  local orow, ofun, ocpl, onam, omat in __twdat
-  local q1, q2, q3 in mtbl
+  local mtbl, __twdat in mflw
+  local orow, ofun, ocpl, onam, omat, pclw in __twdat
+  local q1, q2, q3, synch_1 in mtbl
 
-!print("twfill-0", elm.name, #mtbl, npar, orow)
+  local npar, eh, clw in mflw
+
+!print("twfill", elm.name, #mtbl, npar, orow)
+
   for i=1,npar do
     local m = mflw[i]
     local id, of = m.id, ofun[m.id]
     assertf(is_damap(m), "unexpected particle %d (damap expected)", id)
 
-    -- backup phases
-    local mu1_, mu2_, mu3_ = of.mu1, of.mu2, of.mu3
+    -- backup phases and horizontal dispersion
+    local mu1_, mu2_, mu3_, dx_ = of.mu1, of.mu2, of.mu3, of.dx
 
     optfun(m:get1(omat), of, ocpl)
 
@@ -130,11 +160,16 @@ local function fill (elm, mflw, lw, islc)
     -- fill table (keep order !)
     if not mflw[i].nosave then
       orow = orow + 1
+      -- save optical functions
       for _,k in ipairs(onam) do mtbl[k][orow] = of[k] end
+      -- save phase advances
       mtbl.mu1[orow], mtbl.mu2[orow], mtbl.mu3[orow] = q1[id], q2[id], q3[id]
+      -- save average step of synch integral 1
+      synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
     end
   end
 
+  __twdat.pclw = islc == -2 and 0 or clw
   __twdat.orow = orow
   return true
 end
@@ -173,9 +208,10 @@ local function twiss_betblk (self, mflw)
   for i=1,npar do
     local m = mflw[i]
     if m.status == 'Xset' then
-      if beta0[m.id0] then -- beta0 block provided
-        m:set1(betablk(beta0[m.id0])).status = 'Bset'
-      else                 -- search for closed orbit
+      local id = m.id0 or m.id
+      if beta0[id] then -- beta0 block provided
+        m:set1(betablk(beta0[id])).status = 'Bset'
+      else              -- search for closed orbit
         findco = true
       end
     end
@@ -238,11 +274,11 @@ local function twiss_track (self, mflw0)
   local npar in mflw0
   local X0, Xi = table.new(npar,0), table.new(npar,0)
 
-  -- track 'stable' damaps (was 'Xset')
+  -- track 'Xset' and 'stable' damaps
   local j = 1
   for i=1,npar do
     local m = mflw0[i]
-    if m.status == 'stable' then
+    if m.status == 'Xset' or m.status == 'stable' then
       X0[j], Xi[j]  = m:get0():totable(), i
       X0[j].beam, j = m.beam, j+1
     end
@@ -282,7 +318,7 @@ local function check_normal (R, A, of)
   option.format = fmt
 end
 
-local function twiss_nform (self, mflw) -- TODO: high order normal form
+local function twiss_nform (self, mflw)
   local beta0, coupling in self
   local npar in mflw
 
@@ -291,17 +327,16 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
 
     if m.status == 'Bset' then
       -- take a copy of beta0 block
-      of = tblcpy(beta0[m.id0])
-
+      of = tblcpy(beta0[m.id0 or m.id])
     else
       local X, R = m:get0(), m:get1()
       local rnk = has_dpt(R) and 6 or 4
 
       -- get linear normal form A from one-turn map R
-      local A, W, info = normal(R, rnk)
+      local A, W, info = normal(R, rnk) -- TODO: high order normal form
 
       -- get initial linear optical functions and phase advances
-      of = optfun(A, {rank=rnk}, coupling, W)
+      of = optfun(A, rnk, coupling, W)
 
       -- set damap
       m:setvar(X):set1(A)
@@ -318,6 +353,12 @@ local function twiss_nform (self, mflw) -- TODO: high order normal form
 end
 
 -- extend track mflw and mtbl -------------------------------------------------o
+
+local header = {
+  'coupling', 'chromdp',
+  'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
+  'synch_1', -- see also cvtlst above
+}
 
 local function twiss_init (self, mflw)
   local save, chrom, coupling in self
@@ -338,22 +379,33 @@ local function twiss_init (self, mflw)
     onam = coupling and ofcname or ofname,
     chrm = chrom,
     npar = npar,
+    pclw = 0,
   }
-
-  -- reset sequence iterator
---mflw:sireset()
 
   if not save then return end
 
+  -- extend mtbl
+  mtbl.type     = 'twiss'
+  mtbl.coupling = coupling
+  mtbl.header   = tblcat(mtbl.header, header)
+
   -- add twiss columns and type to mtbl
-  mtbl.type = 'twiss'
   for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
 
-  -- init tunes and chromaticities
-  mtbl.q1, mtbl.dq1 = tblrep(0,npar), table.new(npar/2,0)
-  mtbl.q2, mtbl.dq2 = tblrep(0,npar), table.new(npar/2,0)
-  mtbl.q3, mtbl.dq3 = tblrep(0,npar), table.new(npar/2,0)
+  local n = chrom and npar/2 or npar
+  -- tunes and chromaticities
+  mtbl.q1, mtbl.dq1 = tblrep(0,npar), table.new(n,0)
+  mtbl.q2, mtbl.dq2 = tblrep(0,npar), table.new(n,0)
+  mtbl.q3, mtbl.dq3 = tblrep(0,npar), table.new(n,0)
+  -- synch integ. 1, momentum compaction & phase slip factors, gamma transition
+  mtbl.synch_1 = tblrep(0,max(n,1))
+  mtbl.alfap   = table.new(n,0)
+  mtbl.etap    = table.new(n,0)
+  mtbl.gammatr = table.new(n,0)
+  -- chromaticity deltap for finite difference
   mtbl.chromdp = chrom == true and chromdp or chrom or nil
+
+  mtbl:write("TOREMOVE")
 end
 
 -- twiss mflow ----------------------------------------------------------------o
@@ -397,7 +449,7 @@ local function make_mflow (self)
   -- extend mflw and mtbl
   twiss_init(self, mflw)
 
-  -- get normal forms (update mflw)
+  -- compute normal forms (update mflw)
   twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 
@@ -428,7 +480,7 @@ local function exec (self)
   local nstep, mapdump in self
   local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
 
-  -- finalise twiss calculation (tunes, chromas)
+  -- finalise twiss calculation (tunes, chromas, etc)
   if not ei and mtbl then fill_sum(mflw) end
 
   return mflw.mtbl, mflw, ei
@@ -489,8 +541,8 @@ local twiss = command 'twiss' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    {'beta0', 'chrom', 'coupling'},
     cofind.__attr,
+    {'beta0', 'chrom', 'coupling'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly
