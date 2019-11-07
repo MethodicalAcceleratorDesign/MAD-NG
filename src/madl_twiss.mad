@@ -120,7 +120,7 @@ local function fill (elm, mflw, lw, islc)
   assert(mflw.__twdat, "invalid twiss initalisation (unexpected)")
 
   local mtbl, __twdat in mflw
-  local orow, ofun, ocpl, onam, omat, pclw in __twdat
+  local orow, ofun, onam, omat, pclw in __twdat
   local q1, q2, q3, synch_1 in mtbl
 
   local npar, eh, clw in mflw
@@ -133,9 +133,10 @@ local function fill (elm, mflw, lw, islc)
     assertf(is_damap(m), "unexpected particle %d (damap expected)", id)
 
     -- backup phases and horizontal dispersion
-    local mu1_, mu2_, mu3_, dx_ = of.mu1, of.mu2, of.mu3, of.dx
+    local mu1_, mu2_, mu3_ = of.mu1 or 0, of.mu2 or 0, of.mu3 or 0
+    local dx_ = of.dx or 0
 
-    optfun(m:get1(omat), of, ocpl)
+    optfun(m:get1(omat), of)
 
     -- adjust the phases
     local  mu1,  mu2,  mu3 in of
@@ -190,19 +191,25 @@ end
 -- beta0 block ----------------------------------------------------------------o
 
 local function twiss_betblk (self, mflw)
-  local beta0 in self
-  local findco = false
+  local beta0, coupling, save in self
+  local __twdat in mflw
 
   if not beta0 or not is_mappable(beta0[1]) then
     beta0 = {beta0}
   end
 
+  local findco = false
+
   for i=1,mflw.npar do
     local m = mflw[i]
     if m.status == 'Xset' then
       local id = m.id0 or m.id
-      if beta0[id] then -- beta0 block provided
-        m:set1(betablk(beta0[id])).status = 'Bset'
+      if beta0[id] then
+        local of = tblcpy(beta0[id]) ; of.id = m.id
+        -- get linear normal form A from beta0 block and set damap
+        m:set1(betablk(of,true)).status = 'Bset'
+        -- save beta0 block
+        __twdat.ofun[m.id] = of
       else              -- search for closed orbit
         findco = true
       end
@@ -314,23 +321,10 @@ local function twiss_nform (self, mflw)
   local beta0, save, coupling in self
   local npar, __twdat in mflw
 
-  if save then __twdat.ofun = table.new(npar,0) end
-
   for i=1,npar do
     local m = mflw[i]
 
-    if m.status == 'Bset' then
-      if save then
-        -- make a copy of beta0 block
-        local of = tblcpy(beta0[m.id0 or m.id])
-        -- ensure diff values are initialized
-        of.mu1, of.mu2, of.mu3 = of.mu1 or 0, of.mu2 or 0, of.mu3 or 0
-        of.dx = of.dx or 0
-        -- save
-        __twdat.ofun[m.id] = of
-      end
-
-    else
+    if m.status ~= 'Bset' then
       local X, R = m:get0(), m:get1()
       local rnk = has_dpt(R) and 6 or 4
 
@@ -346,12 +340,11 @@ local function twiss_nform (self, mflw)
       -- check normal form
       if option.debug >= 2 then check_normal(R, A, of) end
 
-      if save then
-         -- clear initial phase advances
-         of.mu1, of.mu2, of.mu3 = 0, 0, 0
-         -- save
-         __twdat.ofun[m.id] = of
-      end
+      -- clear initial phase advances, set id
+      of.id, of.mu1, of.mu2, of.mu3 = m.id, 0, 0, 0
+
+      -- save beta0 block
+      __twdat.ofun[m.id] = of
     end
   end
 end
@@ -379,11 +372,10 @@ local function twiss_init (self, mflw)
 
   -- add twiss data to mflw
   __twdat.orow = 0
-  __twdat.ocpl = coupling
+  __twdat.pclw = 0
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and ofcname or ofname
   __twdat.chrm = chrom == true and chromdp or chrom or nil
-  __twdat.pclw = 0
 
   -- extend mtbl
   mtbl.type     = 'twiss'
@@ -430,7 +422,7 @@ local function make_mflow (self)
   if option.debug > 2 then mdump(mflw,'da.') end
 
   -- prepare mflw to twiss extensions
-  mflw.__twdat = {}
+  mflw.__twdat = {ofun={}}
 
   -- setup beta block status (update mflw and self.cofind)
   twiss_betblk(self, mflw)
