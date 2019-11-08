@@ -1350,6 +1350,45 @@ end
 
 local tblext = {'.tfs', '.txt', '.dat'}
 
+-- convert table of values and strings to table of strings and quoted strings
+local function tbl2str (tbl, i_, j_)
+  local i, j = i_ or 1, j_ or #tbl
+
+  local n = j-i+1
+  local res = table.new(n,0)
+  for k=i,j do -- try some identification or generate a quoted string
+    if is_string(tbl[k])
+    then res[k-i+1] = string.format("%q", tbl[k])
+    else res[k-i+1] = tostring(tbl[k])
+    end
+  end
+
+  return res, n
+end
+
+-- convert table of strings to table of values or quoted strings
+local function str2tbl (tbl, i_, j_)
+  local i, j = i_ or 1, j_ or #tbl
+
+      if            tbl[i]        == '{' then i=i+1
+  elseif string.sub(tbl[i], 1, 1) == '{' then tbl[i] = string.sub(tbl[i],2,-1)
+  end
+      if            tbl[j]        == '}' then j=j-1
+  elseif string.sub(tbl[j],-1,-1) == '}' then tbl[j] = string.sub(tbl[j],1,-2)
+  end
+
+  local n = j-i+1
+  local res = table.new(n,0)
+  for k=i,j do -- try some conversion or generate a quoted string
+    local r = tonumber(tbl[k]) or tocomplex(tbl[k]) or
+              torange (tbl[k]) or toboolean(tbl[k])
+    if is_nil(r) and tbl[k] ~= 'nil' then r = strquote(tbl[k]) end
+    res[k-i+1] = r
+  end
+
+  return res, n
+end
+
 local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   if is_rawtable(filnam_) and is_nil(colnam_) then
     local arg = filnam_  -- named arguments
@@ -1409,7 +1448,9 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
     elseif is_string(v) then
       fprintf(file, sfmt..'%02ds     %q\n', k, #v, v)
     elseif is_table(v) then
-      fprintf(file, sfmt..'%02dt     %s\n', k, #v, '{'..table.concat(v,', ')..'}')
+      local n = #v
+      local s = '{'.. table.concat(tbl2str(v,1,n), ', ') ..'}'
+      fprintf(file, sfmt..'%02dt     %s\n', k, n, s)
     elseif is_boolean(v) then
       fprintf(file, sfmt..'b       %s\n', k, tostring(v))
     elseif is_nil(v) then
@@ -1447,8 +1488,9 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
         for i=1,ncol do
           v = cols[i][j]
               if is_number(v) then v = num2str(v)
-          elseif is_string(v) then v = string.format("%q", v) end
-          fprintf(file, i < ncol and sfmt or '%s\n', tostring(v))
+          elseif is_string(v) then v = string.format("%q", v)
+          else                     v = tostring(v) end
+          fprintf(file, i < ncol and sfmt or '%s\n', v)
         end
       end
     end
@@ -1477,10 +1519,12 @@ local function read (tbl, filnam_)
   -- read header
   for line in file:lines() do
     ln = ln+1
-    row, ncol = strsplitall(line, " \t", nil, row)
+    row, ncol = strsplitall(line, " \t,", nil, row)
     if row[1] == '@' then
-      assertf(ncol == 4, "invalid header format (4 columns expected, line %d)", ln)
+      assertf(ncol >= 4, "invalid header format (4 columns expected, line %d)", ln)
       local typ = string.sub(row[3],-1)
+      assertf(ncol == 4 or typ == 't',
+                         "invalid header format (4 columns expected, line %d)", ln)
       -- types: n, b, {e, f}, {i, z}, r, s, t, ?
           if typ == '?' then                              -- unknown
         hnam[row[2]] = row[4]
@@ -1506,15 +1550,10 @@ local function read (tbl, filnam_)
           errorf("invalid header format (unmatched string length, line %d)", ln)
         end
       elseif typ == 't' then                              -- table
-        local res, n = strsplitall(string.sub(row[4],2,-2), ",")
+--        local res, n = strsplitall(string.sub(row[4],2,-2), ",")
+        local res, n = str2tbl(row, 4, ncol)
         if n ~= tonumber(string.sub(row[3],2,-2)) then
           errorf("invalid header format (unmatched table length, line %d)", ln)
-        end
-        for i=1,n do -- convert to number or to boolean or remove quotes (if any)
-          local r = tonumber(res[i]) or tocomplex(res[i]) or
-                    torange (res[i]) or toboolean(res[i])
-          if is_nil(r) and res[i] ~= 'nil' then r = strquote(res[i]) end
-          res[i] = r
         end
         hnam[row[2]] = res
       else                                               -- invalid
