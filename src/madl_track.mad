@@ -31,9 +31,9 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, aperture, option         in MAD
+local command, element, mtable, damap, symint, aperture, option in MAD
 
-local is_nil, is_beam, is_sequence, is_boolean, is_number,
+local is_nil, is_beam, is_sequence, is_string, is_boolean, is_number,
       is_integer, is_true, is_table, is_callable, is_iterable,
       is_mappable, is_tpsa, is_damap                            in MAD.typeid
 local fnone, ffalse, ftrue, functor, chain, achain, bind3rd     in MAD.gfunc
@@ -833,6 +833,8 @@ end
 
 local modint = {DKD=true, TKT=true}
 
+local savestr = { [false]=0, atentry=1, atbody=2, atexit=4, atslice=6, atall=7 }
+
 local function make_mflow (self)
   -- check sequence
   local sequ = assert(self.sequence, "missing sequence")
@@ -848,9 +850,12 @@ local function make_mflow (self)
 
   -- saving data, build mtable
   local save, implicit, observe, fringe, radiate in self
-  if is_boolean(fringe ) then fringe  = fringe  and 1 or 0 end
-  if is_boolean(radiate) then radiate = radiate and 1 or 0 end
-  assert(is_boolean(save)    , "invalid save (boolean expected)")
+  if is_boolean(fringe ) then fringe  = fringe   and 1 or 0 end
+  if is_boolean(radiate) then radiate = radiate  and 1 or 0 end
+  if save == true        then save    = 'atexit' end
+
+  assert(save == false or is_string(save)
+                             , "invalid save (boolean or string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_integer(fringe) and fringe >= 0
                              , "invalid fringe (positive integer expected)")
@@ -858,6 +863,8 @@ local function make_mflow (self)
                              , "invalid radiate (positive integer expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
+  assert(is_number(savestr[save]) or is_function(symint[save])
+                             , "invalid save directive (valid atxxx expected)")
 
   local savesel = self:var_raw 'savesel'
   assert(is_callable(savesel), "invalid savesel (callable expected)")
@@ -907,19 +914,19 @@ local function make_mflow (self)
   if atsave ~= ffalse then -- prepare atsave
     local fill = observe > 0 and save_obs or save_dat
     atsave = atsave == ftrue and fill or achain(fill, atsave)
-  end
 
-  if atslice == ftrue then -- chain atsave to atslice for slices inside body
-    atslice = achain(atexit ~= ffalse and atins or atins1, atsave)
+    if atslice == ftrue then -- chain atsave to atslice for slices inside body
+      atslice = achain(atexit ~= ffalse and atins or atins1, atsave)
+    end
+
+    if atexit ~= ffalse then -- chain atsave to atexit
+      atexit = atexit == ftrue and atsave or chain(atexit, atsave)
+    end
   end
 
   if ataper ~= ffalse then -- chain ataper to atslice for slice 0
     ataper = ataper == ftrue and apercheck or achain(apercheck, ataper)
     atslice = chain(achain(atbegin, ataper), atslice)
-  end
-
-  if atexit ~= ffalse then -- chain atsave to atexit
-    atexit = atexit == ftrue and atsave or chain(atexit, atsave)
   end
 
   -- totalpath
