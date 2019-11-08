@@ -26,7 +26,7 @@
 local assertNotNil, assertEquals, assertAlmostEquals, assertAllAlmostEquals,
       assertStrContains, assertErrorMsgContains                  in MAD.utest
 
-local sequence, beam, track, cofind, twiss, plot, matrix,
+local sequence, beam, track, cofind, twiss, plot, vector, matrix,
       option, filesys                                            in MAD
 local sin, frac                                                  in MAD.gmath
 local make_symp                                                  in MAD.gphys
@@ -45,11 +45,12 @@ local doplot != true
 
 if doplot then atexit(pause, true) end
 
-local function plottw (mtbl, seq)
+local function plottw (mtbl, x1y2_)
   if not doplot then return end
-  MAD.plot { table=mtbl, title=mtbl.title, sequence=seq,
-             x1y1 = { s={'beta11','beta22'} },
-             x1y2 = { s={'mu1'   ,'mu2'   } } }
+  MAD.plot { table=mtbl, title=mtbl.title, sequence=mtbl.sequ,
+             x1y1 = { s={'beta11','beta22',} },
+             x1y2 = { s= x1y2_ or {'mu1','mu2'} },
+           }
 end
 
 local tbl_col  = {'name','s','l','slc','beta11','beta22'}
@@ -57,7 +58,7 @@ local tbl_hdr  = {'title','type','origin','date','time'}
 
 local srvcol   = {'name','kind','s','l','x','y','z'}
 local trkcol   = {'name','kind','s','l','x','px','y','py','t','pt'}
-local twscol   = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2','disp1','disp2'}
+local twscol   = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2','dx','dpx'}
 local trkcolre = {'name','kind','s','l','x','px','y','py','t','pt',
                   're11','re12','re13','re14','re15','re16',
                   're21','re22','re23','re24','re25','re26',
@@ -65,7 +66,7 @@ local trkcolre = {'name','kind','s','l','x','px','y','py','t','pt',
                   're41','re42','re43','re44','re45','re46',
                   're51','re52','re53','re54','re55','re56',
                   're61','re62','re63','re64','re65','re66' }
-local twscolre = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2','disp1','disp2',
+local twscolre = {'name','s','l','beta11','alfa11','mu1','beta22','alfa22','mu2','dx','dpx',
                   're11','re12','re13','re14','re15','re16',
                   're21','re22','re23','re24','re25','re26',
                   're31','re32','re33','re34','re35','re36',
@@ -164,36 +165,77 @@ function TestTwiss:testTwissFODO ()
   local k1f = 0.3039540091
   local seq = sequence 'seq' { l=10, refer='entry', -- dir=-1,
     quadrupole 'mq1' { at=0, l=1, k1 :=  k1f },
-    quadrupole 'mq2' { at=5, l=1, k1 := -k1f*0.999 },
+    quadrupole 'mq2' { at=5, l=1, k1 := -k1f },
   }
-  !print("k1f*beam->brho=", k1f*beam.brho) -- 1.013881308
-  !seq:dumpseq()
+
   local X0  = { 1e-3, -1e-4, -1e-3, 1e-4, 0, 0 }
-  local mtbl, mflw = twiss {sequence=seq, beam=beam, X0=X0, nslice=1, implicit=true, atslice=ftrue, cofind=true }
+  local mtbl, mflw = twiss {sequence=seq, beam=beam, X0=X0, method=4, nslice=10,
+                            implicit=true, atslice=ftrue }
 
-  plottw(mtbl, seq)
-  mtbl:write(rundir('fodotwiss'), tbl_col, tbl_hdr)
-!  local A1 = matrix{{ 1.1332157434651435e-09,3.9295066179412479e+00,  0,                   0,                         0,0},
-!                    {-2.5448487470377923e-01,6.0495884810043310e-01,  0,                   0,                         0,0},
-!                    { 0,                   0,                         5.2509407932888053e-10, 1.8207987353842947e+00, 0,0},
-!                    { 0,                   0,                        -5.4920952039084892e-01,-3.5931415510671921e-01, 0,0},
-!                    { 0,                   0,                         0,                   0,                         1,2.6111999104627692e-06},
-!                    { 0,                   0,                         0,                   0,                         0,1}}
+  plottw(mtbl, {'mu1','mu2'})
+  plottw(mtbl, {'dx' ,'dy' })
 
-  local A1 = matrix{
-    { 1.1332150773313288e-09,  3.9295066179412510e+00,  8.8117176977043477e-05, -5.8228254415796949e-04, 0.0000000000000000e+00, -1.1427848447450181e-08},
-    {-2.5448487470377945e-01,  6.0495884810043343e-01,  5.1275996164326768e-05, -8.3937379536782854e-05, 0.0000000000000000e+00, -1.2989337885361584e-09},
-    { 2.5504217810502475e-20, -2.6206535231629802e-19,  5.2509241399434359e-10,  1.8207987149360050e+00, 0.0000000000000000e+00,  1.1934037398877480e-09},
-    { 2.2707898853733256e-19,  1.5664035080928287e-21, -5.4920951422300823e-01, -3.5931415107147879e-01, 0.0000000000000000e+00,  6.5814938677885108e-10},
-    { 1.9339415586349526e-09, -1.5100618271759170e-09, -5.7085137406905968e-10, -1.1578067540433471e-09, 1.0000000000000000e+00,  2.6111999118505480e-06},
-    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0.0000000000000000e+00,  1.0000000000000000e+00}}
+-- uncomment to dump twiss table
+!  MAD.option.format = "% .6g"
+!  mtbl:write(rundir('fodotwiss'))
 
-!    { 1.1332144389530896e-09,  3.9295065791160799e+00,  2.5775946787052681e-04,  4.8855663695518544e-04, 0.0000000000000000e+00, -1.2084296585430578e-08},
-!    {-2.5448487218936183e-01,  6.0495884212318674e-01,  8.0426372054568346e-06,  9.1907860536268491e-05, 0.0000000000000000e+00, -1.3835712920988444e-09},
-!    { 1.1622256552874927e-19, -2.5869444925926292e-19,  5.2509385728427560e-10,  1.8207987353842947e+00, 0.0000000000000000e+00,  1.2956541170460780e-09},
-!    { 1.9903962431533337e-19, -2.2924086051343227e-20, -5.4920952039084836e-01, -3.5931415510671921e-01, 0.0000000000000000e+00,  7.1434004166884475e-10},
-!    { 2.0952620737609752e-09, -1.5394900178676199e-09, -6.2317637965297676e-10, -1.2487910454498165e-09, 1.0000000000000000e+00,  2.6111999104627692e-06},
-!    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0.0000000000000000e+00,  1.0000000000000000e+00}}
+-- uncomment to dump X1 and A1
+!  MAD.option.format = "% .16e"
+!  mflw[1]:get0():print("X1")
+!  mflw[1]:get1():print("A1")
+
+  local X1 = vector {
+    -9.9999657982062832e-04,
+     1.0000057871174762e-04,
+     1.0000003022472381e-03,
+    -1.0000031113510857e-04,
+    -2.7848350200310179e-06,
+     0.0000000000000000e+00,
+  }
+  local A1 = matrix {
+    {-4.9510434485811050e-06,  3.4921662548033066e+00, -1.7811676244067631e+00, -2.7062670643942777e-01, 0, -1.4948589145797308e-02},
+    {-2.2616235996261558e-01,  5.3762899675205977e-01, -2.5668944610053618e-01, -1.5701673158605281e-01, 0, -2.0438533234358280e-03},
+    {-8.2533227035099888e-01,  1.2539866371913133e-01, -4.3438831420772317e-08,  1.6181502672720260e+00, 0,  6.2932093856006349e-04},
+    { 1.2504622347622257e-01, -2.7369186653440047e-01, -4.8808439036080736e-01, -3.1932397109538446e-01, 0,  1.1123163663657747e-03},
+    { 2.0927200286528836e-03, -1.0005651821005279e-03, -1.0432955705851935e-04, -2.0252260529256090e-04, 1,  7.4184223926750115e-06},
+    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0,  1.0000000000000000e+00},
+  }
+
+  assertEquals(mflw.__twdat.ofun[1].rank, 4)
+  assertAllAlmostEquals((mflw[1]:get0()-X1):totable(true), 0, eps)
+  assertAllAlmostEquals((mflw[1]:get1()-A1):totable(true), 0, eps)
+end
+
+function TestTwiss:testTwissFODOco ()
+  local k1f = 0.3039540091
+  local seq = sequence 'seq' { l=10, refer='entry', -- dir=-1,
+    quadrupole 'mq1' { at=0, l=1, k1 :=  k1f },
+    quadrupole 'mq2' { at=5, l=1, k1 := -k1f },
+  }
+
+  local X0  = { 1e-3, -1e-4, -1e-3, 1e-4, 0, 0 }
+  local mtbl, mflw = twiss {sequence=seq, beam=beam, X0=X0, method=4, nslice=10,
+                            implicit=true, atslice=ftrue, cofind=true }
+
+  plottw(mtbl, {'mu1','mu2'})
+  plottw(mtbl, {'dx' ,'dy' })
+
+-- uncomment to dump twiss table
+!  MAD.option.format = "% .6g"
+!  mtbl:write(rundir('fodotwissco'))
+
+-- uncomment to dump A1
+!  MAD.option.format = "% .16e"
+!  mflw[1]:get1():print("A1")
+
+  local A1 = matrix {
+    { 1.1332172977773780e-09,  3.9295066179412479e+00,  4.3967837813463541e-19,  1.2977116995115220e-18, 0, -1.2091132409717680e-08},
+    {-2.5448487470377895e-01,  6.0495884810043310e-01,  3.6619805638785203e-20,  1.5748680056900116e-19, 0, -1.3844389377641491e-09},
+    { 2.0373189608456716e-19, -2.2230051011111647e-19,  5.2509419035118299e-10,  1.8207987353842952e+00, 0,  1.2968211083918513e-09},
+    { 1.4117114666499200e-19, -4.7419315589578724e-20, -5.4920952039084869e-01, -3.5931415510671927e-01, 0,  7.1503412578460245e-10},
+    { 2.0969433528095026e-09, -1.5398429185712971e-09, -6.2393811742299099e-10, -1.2495417850613948e-09, 1,  2.6111999104627692e-06},
+    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0,  1.0000000000000000e+00}
+  }
 
   assertEquals(mflw.__twdat.ofun[1].rank, 4)
   assertAllAlmostEquals( mflw[1]:get0():totable(), 0, cofind.cotol)
@@ -228,19 +270,106 @@ function TestTwiss:testTwissThinFODO ()
                 df2 {at=6}, -- for madx row by row compatibility
   }
 
-  -- seq:dumpseq()
-
   local mtbl, mflw = twiss{sequence=seq, beam=beam, X0=X0,
                            atslice=ftrue, atexit=ffalse}
 
-  plottw(mtbl, seq)
-  mtbl:write(rundir('thinfodotwiss'), tbl_col, tbl_hdr)
+  plottw(mtbl, {'mu1','mu2'})
+  plottw(mtbl, {'dx' ,'dy' })
 
-  -- TODO: 6D case
-  assertEquals(mflw.__twdat.ofun[1].rank, 6)
---  assertEquals(iter, 2)
---  assertEquals(type, "4D")
---  assertAllAlmostEquals(mflw.X[1]:totable(), 0, eps)
+-- uncomment to dump twiss table
+!  MAD.option.format = "% .6g"
+!  mtbl:write(rundir('thinfodotwiss'))
+
+-- uncomment to dump X1 and A1
+!  MAD.option.format = "% .16e"
+!  mflw[1]:get0():print("X1")
+!  mflw[1]:get1():print("A1")
+
+  local X1 = vector {
+    -9.8812501118010205e-04,
+     1.0202405625067733e-04,
+     1.0009717143516790e-03,
+    -1.0110643296986624e-04,
+    -2.7930808386145145e-06,
+     0.0000000000000000e+00,
+  }
+  local A1 = matrix {
+    {-5.2874857884464277e-03,  3.4912214406843485e+00, -1.7814092661448826e+00, -2.7349046863533311e-01, 0, -1.4978484568091772e-02},
+    {-2.2697565174240170e-01,  5.3741905341058571e-01, -2.5667812541695623e-01, -1.5752604356460886e-01, 0, -2.0467371192717286e-03},
+    {-8.2542328228769901e-01,  1.2416685803031680e-01, -2.4465886304528284e-03,  1.6169276008079276e+00, 0,  6.3999566869055126e-04},
+    { 1.2544173636665862e-01, -2.7379290704659026e-01, -4.8783751578131618e-01, -3.1992430499305630e-01, 0,  1.1141700918160555e-03},
+    { 2.1031060355278398e-03, -1.0075826739498444e-03, -1.0445065325806405e-04, -2.0261337929446577e-04, 1,  7.4612955441241691e-06},
+    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0,  1.0000000000000000e+00},
+  }
+
+  assertEquals(mflw.__twdat.ofun[1].rank, 4)
+  assertAllAlmostEquals((mflw[1]:get0()-X1):totable(true), 0, eps)
+  assertAllAlmostEquals((mflw[1]:get1()-A1):totable(true), 0, eps)
+end
+
+function TestTwiss:testTwissThinFODOco ()
+  local nsl = 10 -- 10 -- for madx row by row compatibility
+  local nth = 10
+  local dl  = 1/nth
+  local X0  = { 1e-3, -1e-4, -1e-3, 1e-4, 0, 0 }
+  local k1l = 0.3039540091
+  local mk1 = marker    'mk1' {}
+  local mk2 = marker    'mk2' {}
+  local df1 = drift     'df1' { l=4, nslice=nsl }
+  local df2 = drift     'df2' { l=4, nslice=nsl }
+  local mq1 = multipole 'mq1' { knl := {0,  k1l/nth} }
+  local mq2 = multipole 'mq2' { knl := {0, -k1l/nth} }
+  local seq = sequence  'seq' { l=10, refer='entry', -- dir=-1,
+                mq1 {at=0+dl/2              },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+                mk1 {at=0+dl/2, from='prev' },
+                mq1 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq1 {at=dl    , from='prev' },
+                df1 {at=1}, -- for madx row by row compatibility
+
+                mq2 {at=5+dl/2              },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+                mk2 {at=0+dl/2, from='prev' },
+                mq2 {at=0+dl/2, from='prev' },
+      (nth/2-1)*mq2 {at=dl    , from='prev' },
+                df2 {at=6}, -- for madx row by row compatibility
+  }
+
+  local mtbl, mflw = twiss{sequence=seq, beam=beam, X0=X0,
+                           atslice=ftrue, atexit=ffalse, cofind=true}
+
+  plottw(mtbl, {'mu1','mu2'})
+  plottw(mtbl, {'dx' ,'dy' })
+
+-- uncomment to dump twiss table
+!  MAD.option.format = "% .6g"
+!  mtbl:write(rundir('thinfodotwiss'))
+
+-- uncomment to dump X1 and A1
+!  MAD.option.format = "% .16e"
+!  mflw[1]:get0():print("X1")
+!  mflw[1]:get1():print("A1")
+
+  local X1 = vector {
+     8.8924374800564819e-10,
+     3.5435494720402060e-10,
+     8.4636694124226197e-10,
+    -1.9448192743094731e-10,
+     0.0000000000000000e+00,
+     0.0000000000000000e+00,
+  }
+  local A1 = matrix {
+    {-5.9448586881190035e-03,  3.9289738978293132e+00,  4.4176544857294591e-19,  1.3066018192246125e-18, 0, -1.2117633814300314e-08},
+    {-2.5543449815987246e-01,  6.0480426262341158e-01,  3.6659800257399500e-20,  1.5848406707776421e-19, 0, -1.3868753842839423e-09},
+    { 2.0585504387600998e-19, -2.2454666587871626e-19, -2.7533073580884859e-03,  1.8196686094886210e+00, 0,  1.3055405759869156e-09},
+    { 1.4216507232906996e-19, -4.7653288137372149e-20, -5.4900584576550149e-01, -3.6003827609428052e-01, 0,  7.1676832266926154e-10},
+    { 2.1062192042359815e-09, -1.5451437491889178e-09, -6.2635539663231371e-10, -1.2552302896075157e-09, 1,  2.6111999104627692e-06},
+    { 0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00,  0.0000000000000000e+00, 0,  1.0000000000000000e+00},
+  }
+
+  assertEquals(mflw.__twdat.ofun[1].rank, 4)
+  assertAllAlmostEquals((mflw[1]:get0()-X1):totable(true), 0, eps)
+  assertAllAlmostEquals((mflw[1]:get1()-A1):totable(true), 0, eps)
 end
 
 function TestTwiss:testTwissSimpleRing ()
@@ -396,11 +525,11 @@ function TestTwiss:testTwissSingleRing ()
   end end
   tws:write(rundir('sr_track_arc.txt'), twscolre)
 
-! print('q1=', tws.q1[1]) -- =1.391381980, madx=1.279802923
-! print('q2=', tws.q2[1]) -- =1.207437789, madx=1.232679934
+! print('q1=', tws.q1) -- =1.391381980, madx=1.279802923
+! print('q2=', tws.q2) -- =1.207437789, madx=1.232679934
 
-  local mux = 360*frac(tws.q1[1])/n.cell
-  local muy = 360*frac(tws.q2[1])/n.cell
+  local mux = 360*frac(tws.q1)/n.cell
+  local muy = 360*frac(tws.q2)/n.cell
 ! print('mux=', mux, 'muy=', muy)
 
 --  local tws = twiss { sequence=arc, beam=beam, implicit=true }
