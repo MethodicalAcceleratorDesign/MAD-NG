@@ -39,9 +39,9 @@ local is_nil, is_beam, is_sequence, is_string, is_boolean, is_number,
 local fnone, ffalse, ftrue, functor, chain, achain, bind3rd     in MAD.gfunc
 local invfact, arc2len, sqrt, sin, cos, atan2                   in MAD.gmath
 local betablk, dp2pt                                            in MAD.gphys
-local atbegin, atins, atins1                                    in MAD.symint
+local atbegin, atins, atins1, action, actionat                  in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
-local tobit                                                     in MAD.operator
+local tobit, band                                               in MAD.operator
 local apercheck                                                 in MAD.aperture
 local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
@@ -792,11 +792,13 @@ local header = {
   'direction', 'observe', 'implicit', 'misalign', 'deltap'
 }
 
-local function make_mtable (self, obs, ndp)
+local function make_mtable (self, nosav, obs, ndp)
   local title, range, nturn, dir, implicit, misalign, deltap, mapsave in self
   local sequ, nrow = self.sequence
 
-  if obs > 0 then
+  if nosav then
+    nrow = 0
+  elseif obs > 0 then
     nrow = (nturn-1)*ndp
   else
     nrow = sequ:length_of(range, nturn)*(implicit and 2 or 1)*ndp
@@ -833,7 +835,9 @@ end
 
 local modint = {DKD=true, TKT=true}
 
-local savestr = { [false]=0, atentry=1, atbody=2, atexit=4, atslice=6, atall=7 }
+local slicebit = { [false]=tobit(0), [true]=tobit(4),
+                   atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
+                   atbody =tobit(6), atall =tobit(7) }
 
 local function make_mflow (self)
   -- check sequence
@@ -852,10 +856,11 @@ local function make_mflow (self)
   local save, implicit, observe, fringe, radiate in self
   if is_boolean(fringe ) then fringe  = fringe   and 1 or 0 end
   if is_boolean(radiate) then radiate = radiate  and 1 or 0 end
-  if save == true        then save    = 'atexit' end
 
-  assert(save == false or is_string(save)
-                             , "invalid save (boolean or string expected)")
+  local savebit = slicebit[save]
+
+  assert(is_number(savebit)  ,
+              "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_integer(fringe) and fringe >= 0
                              , "invalid fringe (positive integer expected)")
@@ -863,8 +868,6 @@ local function make_mflow (self)
                              , "invalid radiate (positive integer expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
-  assert(is_number(savestr[save]) or is_function(symint[save])
-                             , "invalid save directive (valid atxxx expected)")
 
   local savesel = self:var_raw 'savesel'
   assert(is_callable(savesel), "invalid savesel (callable expected)")
@@ -906,27 +909,35 @@ local function make_mflow (self)
 
   local mtbl
   if save then
-    mtbl = make_mtable(self, observe, ndp)
-  else
-    atsave = ffalse
-  end
+    local nosave = atsave == ffalse
+    mtbl = make_mtable(self, nosave, observe, ndp)
 
-  if atsave ~= ffalse then -- prepare atsave
-    local fill = observe > 0 and save_obs or save_dat
-    atsave = atsave == ftrue and fill or achain(fill, atsave)
+    if not nosave then
+      local fill = observe > 0 and save_obs or save_dat
+      atsave = atsave == fnone and fill or achain(fill, atsave)
 
-    if atslice == ftrue then -- chain atsave to atslice for slices inside body
-      atslice = achain(atexit ~= ffalse and atins or atins1, atsave)
-    end
-
-    if atexit ~= ffalse then -- chain atsave to atexit
-      atexit = atexit == ftrue and atsave or chain(atexit, atsave)
+      if savebit > 0 then
+        local saveact, ex = action 'atsave'
+        if band(savebit, slicebit.atentry) ~= 0 then
+          atentry = atentry == fnone and saveact or chain(atentry, saveact)
+        end
+        if band(savebit, slicebit.atexit) ~= 0 then
+          atexit = atexit == fnone and saveact or chain(atexit, saveact)
+          ex = true
+        end
+        if band(savebit, slicebit.atslice) ~= 0 then
+          local saveact = actionat('atsave', ex and atins or atins1)
+          atslice = atslice == fnone and saveact or chain(atslice, saveact)
+        end
+      end
     end
   end
 
   if ataper ~= ffalse then -- chain ataper to atslice for slice 0
-    ataper = ataper == ftrue and apercheck or achain(apercheck, ataper)
-    atslice = chain(achain(atbegin, ataper), atslice)
+    ataper = ataper == fnone and apercheck or achain(apercheck, ataper)
+
+    local aperact = actionat('ataper', atbegin)
+    atslice = atslice == fnone and aperact or chain(aperact, atslice)
   end
 
   -- totalpath
@@ -1160,9 +1171,9 @@ local track = command 'track' {
 
   atentry=fnone,    -- action called when entering an element             (mflw)
   atslice=fnone,    -- action called after each element slices (ataper)   (mflw)
-  atexit=ftrue,     -- action called when exiting an element   (atsave)   (mflw)
-  ataper=ftrue,     -- action called when checking for aperture           (mflw)
-  atsave=ftrue,     -- action called when saving in mtable                (mflw)
+  atexit=fnone,     -- action called when exiting an element   (atsave)   (mflw)
+  ataper=fnone,     -- action called when checking for aperture           (mflw)
+  atsave=fnone,     -- action called when saving in mtable                (mflw)
 
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 

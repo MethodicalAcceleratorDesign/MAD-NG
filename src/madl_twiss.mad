@@ -123,8 +123,6 @@ local function fill_sum (mflw)
   end
 end
 
-local updt_optfun -- forward declaration
-
 local function fill (elm, mflw, lw, islc)
 !  printf("tw_fill: islc=%2d, elm=%s\n", islc, elm.name)
 
@@ -152,7 +150,8 @@ end
 
 -- optfun (action) ------------------------------------------------------------o
 
-function updt_optfun (elm, mflw, lw, islc) -- already declared as local
+local function optfunact (elm, mflw, lw, islc)
+  if not mflw.__twdat then return end
 !  printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
   local npar, eh, clw, __twdat in mflw
@@ -192,7 +191,6 @@ function updt_optfun (elm, mflw, lw, islc) -- already declared as local
   end
 
   __twdat.pclw = islc == -2 and 0 or clw
-  return true
 end
 
 -- chrom option ---------------------------------------------------------------o
@@ -218,7 +216,7 @@ end
 -- beta0 block ----------------------------------------------------------------o
 
 local function twiss_betblk (self, mflw)
-  local beta0, coupling, save in self
+  local beta0, coupling in self
   local __twdat in mflw
 
   if not beta0 or not is_mappable(beta0[1]) then
@@ -438,11 +436,16 @@ local function make_mflow (self)
   local save, chrom, mapdef in self
 
   -- wrap actions (see track)
-  local atsave  = self:var_raw 'atsave'  or ftrue -- prevent evaluation
-
-  if save and atsave ~= ffalse then
-    self.atsave = atsave == ftrue and fill or achain(fill, atsave)
+  if save then
+    local atsave = self:var_raw 'atsave' -- prevent evaluation
+    self.atsave = not atsave and fill or achain(fill, atsave)
   end
+  -- action for optical function calculation
+  local sliceact = achain(atins, optfunact)
+  local atslice  = self:var_raw 'atslice' -- prevent evaluation
+  local atexit   = self:var_raw 'atexit'  -- prevent evaluation
+  self. atslice  = not atslice and sliceact  or chain(atslice, sliceact )
+  self. atexit   = not atexit  and optfunact or chain(atexit , optfunact)
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -455,10 +458,8 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
-  -- prepare mflw to twiss extensions (TO REVIEW: BUGGY if actions do physics!)
+  -- prepare mflw to twiss extensions
   mflw.__twdat = {ofun={}}
-  mflw.atslice = chain(achain(atins, updt_optfun), mflw.atslice)
-  mflw.atexit  = chain(              updt_optfun , mflw.atexit )
 
   -- setup beta block status (update mflw and self.cofind)
   twiss_betblk(self, mflw)
