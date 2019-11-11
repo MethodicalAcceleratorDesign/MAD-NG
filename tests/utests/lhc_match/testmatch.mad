@@ -1,0 +1,148 @@
+-- time ../mad -jp=vl testmatch.mad
+
+local doplot != true
+
+if doplot then MAD.utility.atexit(MAD.utility.pause, true) end
+
+local function plottw (mtbl, x1y2_)
+  if not doplot then return end
+  MAD.plot { table=mtbl, title=mtbl.title, sequence=mtbl.sequ,
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s= x1y2_ or {'mu1','mu2'} },
+             styles = 'lines',
+           }
+end
+
+local function LHC_load ()
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    MADX:load('lhc_as-built.seq', 'lhc_as-built.mad') -- convert on need
+    MADX:load('opt_400_10000_400_3000.madx', 'opt_400_10000_400_3000.mad')
+    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+
+    local lhcb1, lhcb2 in MADX
+    assert(#lhcb1 == 6677, "invalid number of elements in LHCB1 (6677 expected)")
+    assert(#lhcb2 == 6676, "invalid number of elements in LHCB2 (6676 expected)")
+  end
+end
+
+local function LHC_twiss (chrom)
+  local lhcb1, nrj in MADX
+  local beam, twiss, match in MAD
+  local ftrue in MAD.gfunc
+
+  local beam0  = beam  { particle='proton', energy=nrj }
+  local mt, mf = twiss { sequence=lhcb1, beam=beam0, method=4, cofind=true,
+                         chrom=chrom, save=doplot and 'atbody' or nil,
+                         implicit=doplot, nslice=doplot and 5 or 1}
+  plottw(mt,{'mu1','mu2'})
+  plottw(mt,{'dx','dy'})
+  return mt, mf
+end
+
+local function LHC_match (X0, chrom, mth)
+  local lhcb1, nrj in MADX
+  local beam, twiss, match in MAD
+  local second in MAD.gfunc
+
+  local beam0 = beam  { particle='proton', energy=nrj }
+
+  -- match tunes
+
+  print("values before matching tunes:")
+  print("MADX.kqtf_b1=", MADX.kqtf_b1)
+  print("MADX.kqtd_b1=", MADX.kqtd_b1)
+
+  local status, fmin, ncall = match {
+    command := twiss { sequence=lhcb1, beam=beam0, method=mth or 2, cofind=true, codiff=true,
+                       X0=X0, chrom=false, observe=1 },
+    variables = {
+      { var = 'MADX.kqtf_b1' },
+      { var = 'MADX.kqtd_b1' },
+    },
+    equalities = {
+      { expr = \t -> t.q1 - 64.295 },
+      { expr = \t -> t.q2 - 59.301 },
+    },
+    objective = {
+      tol = 1e-12, maxcall = 100
+    },
+  }
+
+  print("status=", status, "fmin=", fmin, "ncall=", ncall)
+  print("values after matching tunes:")
+  print("MADX.kqtf_b1=", MADX.kqtf_b1)
+  print("MADX.kqtd_b1=", MADX.kqtd_b1)
+
+  if not chrom then return end
+
+  -- match chromaticities
+
+  print("values before matching chromas:")
+  print("MADX.ksf_b1=" , MADX.ksf_b1 )
+  print("MADX.ksd_b1=" , MADX.ksd_b1 )
+
+  local status, fmin, ncall = match {
+    command := twiss { sequence=lhcb1, beam=beam0, method=4, cofind=true, codiff=true,
+                       X0=X0, chrom=true, observe=1 },
+    variables = {
+      { var = 'MADX.ksf_b1' },
+      { var = 'MADX.ksd_b1' },
+    },
+    equalities = {
+      { expr = \t -> t.dq1 - 15 },
+      { expr = \t -> t.dq2 - 15 },
+    },
+    objective = {
+      tol = 1e-12, maxcall = 100
+    },
+  }
+
+  print("status=", status, "fmin=", fmin, "ncall=", ncall)
+  print("values after matching chroma:")
+  print("MADX.ksf_b1=" , MADX.ksf_b1 )
+  print("MADX.ksd_b1=" , MADX.ksd_b1 )
+end
+
+LHC_load()
+local mt, mf =
+LHC_twiss(true); mt:write('lhcb1_twiss.txt')
+LHC_match(mf[1]:get0(),true)
+LHC_twiss(true):write('lhcb1_twiss_matched.txt')
+
+--[[
+MAD-NG unmatched:
+MADX.kqtf_b1 = 0
+MADX.kqtd_b1 = 0
+@ q1   %le   64.31000764
+@ q2   %le   59.32000661
+@ dq1  %le   2.851416696
+@ dq2  %le   3.321080719
+
+MAD-NG matched:
+fmin= 2.986933465198e-22  ncall=  22
+MADX.kqtf_b1 = -7.0636116e-05
+MADX.kqtd_b1 =  7.8067004e-05
+@ q1   %le   64.295
+@ q2   %le   59.301
+@ dq1  %le   2.936157486
+@ dq2  %le   3.294496899
+
+MAD-X unmatched:
+kqtf.b1  =   0;
+kqtd.b1  =   0;
+@ Q1   %le  6.4310000560525822e+01
+@ Q2   %le  5.9320000084036096e+01
+@ DQ1  %le  2.8506086948709708e+00
+@ DQ2  %le  3.3172775886214367e+00
+
+MAD-X matched:
+kqtf.b1      -7.06044e-05
+kqtd.b1       7.80389e-05
+@ Q1   %le  6.4295000000000258e+01
+@ Q2   %le  5.9300999999999860e+01
+@ DQ1  %le  2.9350840833330949e+00
+@ DQ2  %le  3.2900550550607477e+00
+--]]
+
