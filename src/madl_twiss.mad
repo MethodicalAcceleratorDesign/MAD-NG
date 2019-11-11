@@ -26,6 +26,7 @@
 local command, track, cofind, option, warn, vector, matrix        in MAD
 local normal, optfun, betablk, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in MAD.gphys
+local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
@@ -88,20 +89,26 @@ local function fill_sum (mflw)
     for i=1,#deltap do deltap[i]           = nil           end
   end
 
+  -- total length
+  mtbl.length = mflw.spos + mflw.ds - mflw.s0
+
   -- momentum compaction & phase slip factors, gamma transition
-  local synch_1, alfap, etap, gammatr in __twdat
-  local len, beam = mflw.sequ.l, mflw.beam
+  local ofun, synch_1, alfap, etap, gammatr in __twdat
+  local beam, len = mflw.beam, mtbl.length
   local n = #synch_1
 
   for i=1,mflw.npar do
     local id, beam = mflw[i].id, mflw[i].beam or beam
     if id > n then id = id-n end
-    if not alfap[id] then
-      local ap = synch_1[id]/len
-      local as = sqrt(abs(ap))
-      alfap  [id] = ap
-      etap   [id] = as > 0 and ap - 1/beam.gamma^2 or 0
-      gammatr[id] = as > 0 and as/ap or 0
+    if not alfap[id] then -- calculation from MAD-X
+      local of = ofun[id]
+      local R  = mflw[i]:get1()
+      local sd = R:get(5,6) + R:get(5,1)*of.dx + R:get(5,2)*of.dpx
+                            + R:get(5,3)*of.dy + R:get(5,4)*of.dpy
+      etap [id]   = -sd/beam.beta^2 / len
+      alfap[id]   = 1/beam.gamma^2 + etap[id]
+      gammatr[id] = sqrt(1/abs(alfap[id])) * sign(alfap[id])
+      synch_1[id] = alfap[id]*len
     end
   end
 
@@ -154,8 +161,8 @@ local function optfunact (elm, mflw, lw, islc)
   if not mflw.__twdat then return end
 !  printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
-  local npar, eh, clw, __twdat in mflw
-  local opar, ofun, omat, pclw, q1, q2, q3, synch_1 in __twdat
+  local npar, __twdat in mflw
+  local ofun, omat, q1, q2, q3 in __twdat
 
   for i=1,npar do
     local m = mflw[i]
@@ -184,13 +191,13 @@ local function optfunact (elm, mflw, lw, islc)
                ", mu1=", q1[id], ", mu2=", q1[id], ", mu3=", q1[id], "\n")
     end
 
-    -- update first synch integral by step average TODO: REVIEW vs MADX!
-    if id <= opar then
-      synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
-    end
+    -- update first synch integral by step average
+--    if id <= opar then
+--      if abs(eh) > 0 then io.write("eh=", eh, ", ds=", clw-pclw, ", dx=", of.dx, ", ddx=", of.dx-dx_, "\n") end
+--      synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
+--    end
   end
-
-  __twdat.pclw = islc == -2 and 0 or clw
+--  __twdat.pclw = islc == -2 and 0 or clw
 end
 
 -- chrom option ---------------------------------------------------------------o
@@ -380,7 +387,7 @@ end
 -- extend track mflw and mtbl -------------------------------------------------o
 
 local twheader = {
-  'chrom', 'coupling',
+  'chrom', 'coupling', 'length',
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
   'synch_1', -- see also cvtlst above
 }
