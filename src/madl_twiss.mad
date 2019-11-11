@@ -30,7 +30,7 @@ local ffalse, ftrue, fnone, chain, achain                         in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_callable, is_vector, is_damap               in MAD.typeid
-local atins1                                                      in MAD.symint
+local atins                                                       in MAD.symint
 local abs, min, max, sqrt, floor                                  in math
 
 local chromdp = 1e-6
@@ -156,7 +156,7 @@ function updt_optfun (elm, mflw, lw, islc) -- already declared as local
 !  printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
   local npar, eh, clw, __twdat in mflw
-  local ofun, omat, pclw, q1, q2, q3, synch_1 in __twdat
+  local opar, ofun, omat, pclw, q1, q2, q3, synch_1 in __twdat
 
   for i=1,npar do
     local m = mflw[i]
@@ -180,8 +180,15 @@ function updt_optfun (elm, mflw, lw, islc) -- already declared as local
     q2[id] = q2[id] + dmu2
     q3[id] = q3[id] + dmu3
 
+    if option.debug >= 2 then
+      io.write("Phase advance (%d): ", id,
+               ", mu1=", q1[id], ", mu2=", q1[id], ", mu3=", q1[id], "\n")
+    end
+
     -- update first synch integral by step average TODO: REVIEW vs MADX!
-    synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
+    if id <= opar then
+      synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
+    end
   end
 
   __twdat.pclw = islc == -2 and 0 or clw
@@ -264,10 +271,13 @@ local function twiss_cofind (self, mflw0)
   -- nothing to process (no particles)
   if j == 1 then return end
 
+  local mapdef = not self.codiff -- nil or false codiff use {xy=1}
+  local codiff = self.codiff == true and cofind.codiff or self.codiff
+
   -- retrieve closed orbit(s) [TODO: disable knobs]
   local _, mflw = cofind { exec=false } :copy_variables(self)
-                         { X0=X0, deltap=0, save=false, nstep=-1, mapdef=
-                           not self.codiff } -- nil or false codiff use {xy=1}
+                         { X0=X0, deltap=0, save=false, nstep=-1,
+                           mapdef=mapdef, codiff=codiff }
 
   -- update damaps with their closed orbit (tw: i, co: j)
   for j=1,mflw.tpar do
@@ -391,6 +401,7 @@ local function twiss_init (self, mflw)
   -- add twiss data to mflw
   __twdat.orow = 0
   __twdat.pclw = 0
+  __twdat.opar = n
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and ofcname or ofname
   __twdat.chrm = chrom == true and chromdp or chrom or nil
@@ -446,8 +457,8 @@ local function make_mflow (self)
 
   -- prepare mflw to twiss extensions (TO REVIEW: BUGGY if actions do physics!)
   mflw.__twdat = {ofun={}}
-  mflw.atslice = chain(achain(atins1, updt_optfun), mflw.atslice)
-  mflw.atexit  = chain(               updt_optfun , mflw.atexit )
+  mflw.atslice = chain(achain(atins, updt_optfun), mflw.atslice)
+  mflw.atexit  = chain(              updt_optfun , mflw.atexit )
 
   -- setup beta block status (update mflw and self.cofind)
   twiss_betblk(self, mflw)
