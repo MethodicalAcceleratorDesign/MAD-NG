@@ -47,7 +47,7 @@ print_ords_sm(int n, const ord_t ords[n], FILE *stream)
 {
   assert(ords && stream);
   for (int i=0; i < n; i++)
-    if (ords[i]) fprintf(stream, "  %d^%hhu", i, ords[i]);
+    if (ords[i]) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
 }
 
 static inline void
