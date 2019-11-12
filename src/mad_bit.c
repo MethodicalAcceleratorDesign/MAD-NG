@@ -74,8 +74,8 @@ mad_bit_highest64 (uint64_t b)
 
 void mad_bit_check (void)
 {
-  printf("bchk: nz=%16" PRIX64 ", lo=%2d, hi=%2d\n", 0ull,
-                     mad_bit_lowest(0ull), mad_bit_highest(0ull));
+  printf("bchk: nz=%16" PRIX64 ", lo=%2d, hi=%2d\n", (bit_t)0,
+                     mad_bit_lowest(0), mad_bit_highest(0));
   for (int i=0; i <= 64; ++i) {
     bit_t nz = 1ull << i;
     printf("i=%2d, nz=%16" PRIX64 ", lo=%2d, hi=%2d, "
