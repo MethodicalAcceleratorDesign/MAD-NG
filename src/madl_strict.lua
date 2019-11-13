@@ -33,27 +33,37 @@ local function require_strict (modname)
 end
 
 -- Raises an error when an undeclared variable is read or written.
-local function strict (extra)
-  local mt = getmetatable(_G)
-  if mt ~= nil and mt ~= MT then
-    error("a global metatable already exists")
-  end
-  setmetatable(_G, MT)
-  IGNORED_EXTRAS = extra or {}
-  require = require_strict
-end
+local STRICTMODE = false
 
-local function unstrict ()
+local function strict_unset ()
   local mt = getmetatable(_G)
   if mt ~= nil and mt ~= MT then
     error("invalid global metatable (i.e. not set by strict)")
   end
   setmetatable(_G, nil)
-  IGNORED_EXTRAS = nil
+  IGNORED_EXTRAS, STRICTMODE = nil, false
   require = require_orig
 end
 
-return {
-  strict   = strict,
-  unstrict = unstrict,
-}
+local function strict_set (extra)
+  local mt = getmetatable(_G)
+  if mt ~= nil and mt ~= MT then
+    error("a global metatable already exists")
+  end
+  if extra == nil or extra == true then extra = {} end
+  assert(type(extra) == "table", "invalid argument #1 (table expected)")
+  setmetatable(_G, MT)
+  IGNORED_EXTRAS, STRICTMODE = extra, true
+  require = require_strict
+end
+
+local function strict (status)
+  local mode = STRICTMODE
+
+      if status == false    then strict_unset()
+  elseif status ~= 'status' then strict_set(status) end
+
+  return mode
+end
+
+return { strict = strict }
