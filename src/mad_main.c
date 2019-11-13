@@ -746,7 +746,8 @@ static void dotty(lua_State *L)
 	int status;
 	const char *oldprogname = progname;
 	progname = NULL;
-	mad_is_interactive = 1;
+	mad_is_interactive = 1;                                              /* MAD */
+	dostring(L, "MAD.strict(false)", "=(interactive setup)");            /* MAD */
 	while ((status = loadline(L)) != -1) {
 		if (status == LUA_OK) status = docall(L, 0, 0);
 		report(L, status);
