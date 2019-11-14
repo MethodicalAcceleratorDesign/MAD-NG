@@ -60,7 +60,7 @@ local marker, drift, kicker, multipole, sbend, rbend,
       solenoid, rfcavity                                        in element
 local observe                                                   in element.flags
 
-local dat = require 'track_dat'
+local dat = assert(loadfile('data/track.dat'))()
 
 local refdir = \s -> 'track_ref/'..(s or '')
 local rundir = \s -> 'track_run/'..(s or '')
@@ -91,8 +91,8 @@ end
 
 -- local -------------------------o
 
-local tbl_col = {'name','s','x','px','y','py','t','pt'}
-local tbl_hdr = {'title','type','origin','date','time'}
+local tblcol = {'name','s','x','px','y','py','t','pt'}
+local tblhdr = {'title','type','origin','date','time'}
 
 local slc_p1  = {1}
 local slc_p2  = {0.5, 0.5}
@@ -104,8 +104,8 @@ local slc_p10 = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1}
 local function mkDRIFT (dir_, chg_)
   local dir = dir_ or 1 -- sequence direction
   local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    drift 'd1' {at=0, l=5},
-    drift 'd2' {at=5, l=5},
+    drift 'd1' {at=0, l=1.5},
+    drift 'd2' {at=5, l=1.5},
   }
   return seq   -- seq:dumpseq()
 end
@@ -326,8 +326,10 @@ end
 
 -- Generate All Testsuites ----------------------------------------------------o
 
-local doprt = false
 local dofil = false
+local doprt = true
+local dochk = false
+
 local t = 'teapot'
 
 collectlocal(1, tenv) -- collect locals
@@ -347,7 +349,7 @@ for _,e in ipairs{'DRIFT','MULT','SBEND','SBENDfr','SBENDfr2','RBEND','RBENDfr',
 
 if not TODO[e] then -- prevent to run tests not yet finalized
 
-  -- prelude
+  -- generate prelude
   local s = [[
   _G['TestTrack${e}'] = {}
 
@@ -360,6 +362,7 @@ if not TODO[e] then -- prevent to run tests not yet finalized
   end
   ]] % { e=e }
 
+  -- load prelude within the current context
   local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
 
 for _,d in ipairs{0, 2} do                   -- mapdef
@@ -387,47 +390,51 @@ for _,k in ipairs{'',                 -- simple
 -- discard invalid combinations (e.g. teapot and slices position)
 if not (o == 't' and string.find(k,'P',1,true)) then
 
-  -- test generator
+  -- generate test (adjust DKD2N0K first)
   local s = [[
-  function TestTrack${e}:test${w}${z}${m}${n}D${d}M${o}${k} ()
-    local seq  = mk${e}(${r},${s},${y},${j})
-    local beam = beam { particle = ${s}>0 and 'positron' or 'electron' }
-    local X0   = ${b}>0 and dat.${e}.x0 or dat.${e}.x${o}${t}
+ assert( TestTrack${e}.test${m}${o}${w}${d}${z}${k} == nil )
+function TestTrack${e}:test${m}${o}${w}${d}${z}${k} ()
+  local seq  = mk${e}(${r},${s},${y},${j})
+  local beam = beam { particle = ${s}>0 and 'positron' or 'electron' }
+  for i=1,#dat.X0 do
+    local X0   = ${b}>0 and dat.X0[i] or dat.${e}.x${o}${t}[i]
     local mtbl = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=${b},
-                        mapdef=${a}, model='${i}', method=${o}, nslice=${p}${n},
-                        save='atbody'}
-
+                        mapdef=${a}, model='${i}', method=${o},
+                        nslice=${p}${n}, save='atbody'}
     local row = mtbl[#mtbl]
     local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
-    local ref = ${b}<0 and dat.${e}.x0 or dat.${e}.x${o}${t}
-
+    local ref = ${b}<0 and dat.X0[i] or dat.${e}.x${o}${t}[i]
     if dofil then
-      mtbl:write(rundir('${e}_${w}${z}${m}${n}D${d}M${o}${k}'),tbl_col,tbl_hdr)
+      mtbl:write(rundir('${e}_${w}${z}${m}${n}D${d}M${o}${k}'..i),tblcol,tblhdr)
     end
     if doprt then
-      local str = string.format("%.16e, %.16e, %.16e, %.16e, %.16e, %.16e\n",
-                                res[1],res[2],res[3],res[4],res[5],res[6])
-      io.write(str)
+      if i == 1 then io.write('\n') end
+      io.write(string.format("% 2d {% .16e,% .16e,% .16e,% .16e,% .16e,% .16e},\n",
+                                 i, res[1],res[2],res[3],res[4],res[5],res[6]))
     end
-    assertAllAlmostEquals(res, ref, ${c}*eps)
+    if dochk then
+      assertAllAlmostEquals(res, ref, ${c}*eps)
+    end
   end
-  ]] % { e=e, d=d, o=o, m=m, k=k, w=w, z=z,
-         i=({DKD='DKD', TKT='TKT'})[m],
-         n=({DKD=3    , TKT=1    })[m],
-         t=({DKD=''   , TKT='t'  })[m],
-         j=({N=0      , S=1      })[w],
-         y=({K=0      , M=1      })[z],
-         a=({[0]=false, [2]=true})[d],
-         b = string.find(k,'B',1,true) and -1 or 1,        -- track dir
-         r = string.find(k,'R',1,true) and -1 or 1,        -- sequ  dir
-         s = string.find(k,'N',1,true) and -1 or 1,        -- charge sign
-         p = string.find(k,'P',1,true) and 'slc_p' or '',  -- position
-         c = d >  0   and 'dat.'..e..'.eps_t' or           -- eps_{t,s,b,_}
-             w == 'S' and 'dat.'..e..'.eps_s' or
-             string.find(k,'B',1,true) and 'dat.'..e..'.eps_b' or
-             'dat.'..e..'.eps',
-        }
+end]]
+% { e=e, d=d, o=o, m=m, k=k, w=w, z=z,
+    i=({DKD='DKD', TKT='TKT'})[m],
+    n=({DKD=3    , TKT=1    })[m],
+    t=({DKD=''   , TKT='t'  })[m],
+    j=({N=0      , S=1      })[w],
+    y=({K=0      , M=1      })[z],
+    a=({[0]=false, [2]=true})[d],
+    b = string.find(k,'B',1,true) and -1 or 1,        -- track dir
+    r = string.find(k,'R',1,true) and -1 or 1,        -- sequ  dir
+    s = string.find(k,'N',1,true) and -1 or 1,        -- charge sign
+    p = string.find(k,'P',1,true) and 'slc_p' or '',  -- position
+    c = d >  0   and 'dat.'..e..'.eps_t' or           -- eps_{t,s,b,_}
+        w == 'S' and 'dat.'..e..'.eps_s' or
+        string.find(k,'B',1,true) and 'dat.'..e..'.eps_b' or
+        'dat.'..e..'.eps',
+  }
 
+  -- load test within the current context
   local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
 
 end -- if  o is 't'

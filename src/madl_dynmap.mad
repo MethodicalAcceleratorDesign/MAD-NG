@@ -29,10 +29,10 @@ local M = {}
 
 --[=[
 Notes about directions and quantities:
-  element direction   edir: affects curvatures (edir = seq.dir).
-  track direction (s) sdir: affects lengths    (sdir = cmd.dir).
-  time direction  (t) tdir: affects angles     (tdir = edir x sdir).
-  beam direction      bdir: affects strengths  (bdir = edir x sdir x chg).
+  element direction   edir: affects curvatures    (edir = seq.dir).
+  track direction (s) sdir: affects lengths       (sdir = cmd.dir).
+  time direction  (t) tdir: affects angles & nrj  (tdir = edir x sdir).
+  beam direction      bdir: affects strengths & V (bdir = edir x sdir x chg).
 --]=]
 
 --[=[
@@ -220,16 +220,15 @@ local function translate (elm, m, lw_) -- [TRANS]                            -- 
 
   -- ds is treated as a drift without correction for the time of flight
   local l = ds*lw*m.sdir
-  local _beta = m.beam.beta
+  local _beta = 1/m.beam.beta
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
-    local l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
-    local   dt = l_pz*(_beta+pt)
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*l_pz - dx
     m[i].y = y + py*l_pz - dy
-    m[i].t = t - dt
+    m[i].t = t - l_pz*(_beta+pt)
   end
 
   m:mdump(elm, 'translate:1')
@@ -273,7 +272,7 @@ function M.changeref (elm, m, lw_)                                           -- 
   m:mdump(elm, 'changeref:1')
 end
 
--- Changedir (reverse mflow t-direction)
+-- Changedir (reverse mflow e-direction)
 
 function M.changedir (elm_, m, lw_)                                          -- unchecked
   m:mdump(elm, 'changedir:0')
@@ -337,7 +336,7 @@ function M.misalign (elm, m, lw_)                                            -- 
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
-  -- reuse patches without directions
+  -- reuse patches without directions (i.e. cancel tdir)
   if sdir > 0 then
       translate({dx=dx*tdir,dy=dy*tdir,ds= ds}, m,  1)
     if rot then
@@ -357,7 +356,7 @@ function M.misalign (elm, m, lw_)                                            -- 
   m:mdump(elm, 'misalign:1')
 end
 
-function misalignexi (elm, m, lw_)                                                -- unchecked
+function misalignexi (elm, m, lw_)                                            -- unchecked
   local dx  , dy  , ds   = elm.dx     or 0, elm.dy   or 0, elm.ds   or 0
   local dthe, dphi, dpsi = elm.dtheta or 0, elm.dphi or 0, elm.dpsi or 0
 
@@ -384,7 +383,7 @@ function misalignexi (elm, m, lw_)                                              
   -- forward : x2  = Rb^-1*(x2'-Tb)
   -- backward: x2' = Rb*x2+Tb
 
-  -- reuse patches without directions
+  -- reuse patches without directions (i.e. cancel tdir)
   if sdir > 0 then
     if rot then
       local ax, ay, az = Rb:torotzxy()
@@ -413,17 +412,16 @@ local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment          -- 
   m:mdump(elm, 'drift_adj:0')
 
   local T in m
-  local beta = m.beam.beta
+  local _beta = 1/m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local l_pz = l/sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
-    local   dt = l_pz*(1/beta+pt)
+    local _beta = beam and 1/beam.beta or _beta
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*(l_pz-l)
     m[i].y = y + py*(l_pz-l)
-    m[i].t = t - dt + (1-T)*l/beta
+    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(l*_beta)
   end
 
   m:mdump(elm, 'drift_adj:1')
@@ -438,17 +436,16 @@ function M.strex_drift (elm, m, lw) -- [DRIFT]                               -- 
 
   local el, eld, T in m
   local l, ld = el*lw, (eld or el)*lw
-  local beta = m.beam.beta
+  local _beta = 1/m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local l_pz = l/sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
-    local   dt = l_pz*(1/beta+pt)
+    local _beta = beam and 1/beam.beta or _beta
+    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*l_pz
     m[i].y = y + py*l_pz
-    m[i].t = t - dt + (1-T)*ld/beta
+    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(ld*_beta)
   end
 
   m:mdump(elm, 'strex_drift:1')
@@ -481,7 +478,7 @@ function M.strex_kickh (elm, m, lw) -- [KICKT]                               -- 
   m:mdump(elm, 'strex_kickh:0')
 
   local el, tdir, nmul, knl, ksl, beam in m
-  local  wchg = lw*tdir*beam.charge -- with lw == 1
+  local  wchg = lw*tdir*beam.charge
   local _beta = 1/beam.beta
 
   for i=1,m.npar do
@@ -512,24 +509,23 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                               -- 
 
   local el, eld, eh, T in m
   local ld, ang, rho = (eld or el)*lw, eh*el*lw, 1/eh -- R=rho, A=ang
-  local beta = m.beam.beta
   local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
+  local beta = m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
-    local   pz = sqrt(1 + 2*pt/beta + pt^2 - px^2 - py^2)
+    local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
     local  _pz = 1/pz
     local  pxt = px*_pz
     local  ptt = ca - sa*pxt
     local _ptt = 1/ptt
     local  pst = (x+rho)*sa*_pz*_ptt
-    local   dt = pst*(1/beta+pt)
 
     m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
     m[i].px = ca*px + sa*pz
     m[i].y  = y + pst*py
-    m[i].t  = t - dt + (1-T)*ld/beta
+    m[i].t  = t - pst*(1/beta+pt) + (1-T)*(ld/beta)
   end
 
   m:mdump(elm, 'curex_drift:1')
@@ -540,8 +536,7 @@ function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                        -- 
   m:mdump(elm, 'curex_kick:0')
 
   local el, eh, tdir, nmul, knl, ksl, beam in m
-  local bdir = beam.charge*tdir
-  local wchg = bdir*lw
+  local wchg = lw*tdir*beam.charge
   local dby  = no_k0l == true and knl[1] or eh*el*tdir-knl[1]
 
   for i=1,m.npar do
@@ -590,7 +585,7 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
     m[i].x  = pzs/k0q - dpx/k0q - rho  -- could be numerically unstable -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta                       -- XN(6)
+    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
   end
 
   m:mdump(elm, 'sbend_thick:1')
