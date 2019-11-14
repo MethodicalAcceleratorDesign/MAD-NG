@@ -1,0 +1,114 @@
+l.cell = 10 ;   ![m]
+n.cell = 25 ;
+u.cell = pi/2 ; ! 90 phase adv
+l.mb   = 2 ;
+l.mq   = 1 ;
+l.df   = 1 ;
+fl     = l.cell/(4*sin(u.cell)) ;
+k1     = 1/(fl*l.mq) ;
+ang    = 2*pi/n.cell/2 ;
+
+value, ang, k1 ;
+
+mb: sbend     , l=l.mb, k0:=ang/l.mb, angle:=ang ;
+mf: quadrupole, l=l.mq, k1:=k1f ;
+md: quadrupole, l=l.mq, k1:=k1d ;
+df: drift     , l=l.df ;
+
+cell: line = (mf,df,mb,df,md,df,mb,df) ;
+ring: line = (25*cell) ;
+
+beam, particle=electron, energy=20 ;
+use, sequence=ring ;
+survey, sequence=ring ;
+write, table=survey, file="surv.tfs" ;
+
+!-------------
+
+k1f =  k1 ;
+k1d = -k1 ;
+
+use, sequence=cell ;
+match, sequence=cell ;
+vary, name = k1f, step=1e-5 ;
+vary, name = k1d, step=1e-5 ;
+constraint, range=#e, mux=u.cell/(2*pi) ;
+constraint, range=#e, muy=u.cell/(2*pi) ;
+lmdif, calls=200, tolerance=1e-16 ;
+endmatch;
+
+mux = 360*frac(table(summ,q1)) ;
+muy = 360*frac(table(summ,q2)) ;
+
+value, k1f, k1d ; ! 0.2959998954, -0.3024197136
+value, mux, muy ;
+
+!-------------
+
+k1f =  k1 ;
+k1d = -k1 ;
+
+use, sequence=cell ;
+match, use_macro ;
+vary, name = k1f, step=1e-5 ;
+vary, name = k1d, step=1e-5 ;
+m1: macro = { twiss, sequence=cell ; } ;
+constraint, expr = table(summ,q1) = u.cell/(2*pi) ;
+constraint, expr = table(summ,q2) = u.cell/(2*pi) ;
+lmdif, calls=200, tolerance=1e-16 ;
+endmatch;
+
+mux = 360*frac(table(summ,q1)) ;
+muy = 360*frac(table(summ,q2)) ;
+
+value, k1f, k1d ; ! 0.2959998954, -0.3024197136
+value, mux, muy ;
+
+!-------------
+
+k1f =  k1 ;
+k1d = -k1 ;
+
+use, sequence=cell ;
+match, use_macro ;
+vary, name = k1f, step=1e-5 ;
+vary, name = k1d, step=1e-5 ;
+mp1: macro = {
+  ptc_create_universe ;
+  ptc_create_layout, model=2, method=2, time=true, exact=true ;
+  ptc_setswitch, debuglevel=0, mapdump=0, exact_mis=true, fringe=true, time=true, totalpath=false ;
+  ptc_twiss, closed_orbit=true, summary_table=ptc_twiss_summary, no=2, icase=56 ;
+  ptc_end ;
+} ;
+constraint, expr = table(ptc_twiss_summary,q1) = u.cell/(2*pi) ;
+constraint, expr = table(ptc_twiss_summary,q2) = u.cell/(2*pi) ;
+lmdif, calls=200, tolerance=1e-16 ;
+endmatch;
+
+mux = 360*frac(table(summ,q1)) ;
+muy = 360*frac(table(summ,q2)) ;
+
+value, k1f, k1d ; ! 0.2959998954, -0.3024197136
+value, mux, muy ;
+
+!-------------
+
+use, sequence=ring ;
+ptc_create_universe ;
+ptc_create_layout, model=2, method=2, time=true, exact=true ;
+ptc_setswitch, debuglevel=0, mapdump=0, exact_mis=true, fringe=true, time=true, totalpath=false ;
+!ptc_twiss, closed_orbit=true, icase=56, no=2, file="twss.tfs" ;
+ptc_start, x=1e-3, px=-1e-4, y=-1e-3, py=1e-4, t=0, pt=0 ;
+ptc_track, closed_orbit=false, icase=56, dump=true, recloss=true, onetable=true, file="trck.tfs", element_by_element=true;
+ptc_track_end ;
+ptc_end ;
+
+!-------------
+
+use, sequence=ring ;
+option, debug, trace ;
+track, onepass=false, dump=true, onetable=true, file="trck.tfs" ;
+start, x=1e-3, px=-1e-4, y=-1e-3, py=1e-4, t=0, pt=0 ;
+run ;
+endtrack ;
+
