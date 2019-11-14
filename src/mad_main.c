@@ -809,7 +809,7 @@ static int loadjitmodule(lua_State *L)
   if (lua_isnil(L, -1)) {
   nomodule:
     l_message(progname,
-      "unknown MAD command or ljit_* modules not installed");
+      "unknown MAD command or ljit.* modules not installed");
     return 1;
   }
   lua_remove(L, -2);  /* Drop module table. */
