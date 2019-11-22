@@ -1,50 +1,77 @@
 ! used by trackELEM.madx
 
-beam ; ! positron 1Gev
-
+option, -info, -echo, -rbarc ;
 set, format="-.16e";
+beam ; ! positron 1Gev
 
 ! MADX TRACK
 mdxTrck(TTTT): macro = {
   use, sequence=seqTTTT ;
-  track, onepass, onetable, dump, file="trackTTTTmadx." ;
+  if (domkthin > 0) {
+    select, flag=makethin, range=#s/#e, slice=3, thick=true ;
+    makethin, sequence=seqTTTT ;
+    use, sequence=seqTTTT ;
+  }
+  track, onepass, onetable, dump, file="trackttttmadx." ;
   start, x=x0, px=px0, y=y0, py=py0, t=t0, pt=pt0;
   observe, place=#s ;
-  observe, place=m1 ;
-  observe, place=m2 ;
+  observe, place=TTTT1 ;
+  observe, place=TTTT2 ;
   observe, place=#e ;
   run, turns=1 ;
   endtrack ;
 
   printf, text="model=madx", value={} ;
-  system, "tail -n 1 trackTTTTmadx.one" ;
+  system, "tail -n 1 trackttttmadx.one" ;
 }
 
 ! PTC TRACK
 ptcTrck(TTTT): macro = {
+  if (icase      == 0) { icase      = 56; }
+  if (max_model  == 0) { max_model  = 2;  }
+  if (max_method == 0) { max_method = 6;  }
+
   model=1;
-  while (model <= 1) {
+  while (model <= max_model) {
     if (model == 2) { nst = 1; } else { nst = 3; }
 
     method=2;
-    while (method <= 6) {
-      use, sequence=seqTTTT ;
-      ptc_create_universe;
-      ptc_create_layout, model=model, method=method, nst=nst, time=true, exact=true;
-      ptc_start, x=x0, px=px0, y=y0, py=py0, t=t0, pt=pt0;
-      ptc_observe, place=#s ;
-      ptc_observe, place=m1 ;
-      ptc_observe, place=m2 ;
-      ptc_observe, place=#e ;
-      ptc_track, icase=icase, closed_orbit=false, dump, onetable, element_by_element, file="trackTTTTptc." ;
-      ptc_track_end;
-      ptc_end;
+    while (method <= max_method) {
+      x0i = 1 ;
+      while (x0i <= 4) {
+            if (x0i == 1) { x= 0; px=  0; y= 0; py=  0; t= 0; pt=  0; }
+        elseif (x0i == 2) { x=x0; px=px0; y=y0; py=py0; t= 0; pt=  0; } ! 4D
+        elseif (x0i == 3) { x=x0; px=px0; y=y0; py=py0; t= 0; pt=pt0; } ! 5D
+        elseif (x0i == 4) { x=x0; px=px0; y=y0; py=py0; t=t0; pt=pt0; } ! 6D
+        else              { print, text="invalid X0 initialisation!"; }
 
-      printf, text="model=%g, method=%g, nst=%g", value={model, method, nst} ;
-      system, "tail -n 1 trackTTTTptc.one" ;
+        use, sequence=seqTTTT ;
+        ptc_create_universe;
+        ptc_create_layout, model=model, method=method, nst=nst, time=true, exact=true;
+        if (fringe > 0) { ptc_setswitch, mapdump=1, exact_mis=true, time=true, totalpath=false, fringe=true ; }
+        else            { ptc_setswitch, mapdump=1, exact_mis=true, time=true, totalpath=false ; }
+        ptc_start, x=x, px=px, y=y, py=py, t=t, pt=pt;
+        ptc_observe, place=#s ;
+        ptc_observe, place=TTTT1 ;
+        ptc_observe, place=TTTT2 ;
+        ptc_observe, place=#e ;
+        ptc_track, closed_orbit=false, icase=icase, dump, onetable, element_by_element, file="trackttttptc." ;
+        ptc_track_end;
+        ptc_end;
 
+        printf, text="x0i=%g, model=%g, method=%g, nst=%g", value={x0i, model, method, nst} ;
+        system, "tail -n 1 trackttttptc.one" ;
+
+        x0i = x0i + 1 ;
+      }
       method = method + 2 ;
     }
     model = model + 1 ;
   }
+}
+
+! MADX & PTC TRACK
+chkTrck(TTTT) : macro = {
+  exec, ptcTrck(TTTT);
+  exec, mdxTrck(TTTT);
 }

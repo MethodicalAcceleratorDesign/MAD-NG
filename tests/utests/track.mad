@@ -48,7 +48,7 @@ Usage of directions:
 -- locals ---------------------------------------------------------------------o
 
 local assertTrue, assertEquals, assertAllAlmostEquals           in MAD.utest
-local printf, openfile, collectlocal                            in MAD.utility
+local printf, errorf, openfile, collectlocal                    in MAD.utility
 local is_number                                                 in MAD.typeid
 local eps, pi                                                   in MAD.constant
 
@@ -59,6 +59,8 @@ local marker, drift, kicker, multipole, sbend, rbend,
       quadrupole, sextupole, octupole, decapole, dodecapole,
       solenoid, rfcavity                                        in element
 local observe                                                   in element.flags
+
+local abs, ceil in math
 
 local dat = assert(loadfile('data/track.dat'))()
 
@@ -103,11 +105,11 @@ local slc_p10 = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1}
 
 local function mkDRIFT (dir_, chg_)
   local dir = dir_ or 1 -- sequence direction
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    drift 'd1' {at=0, l=1.5},
-    drift 'd2' {at=5, l=1.5},
+  local seq = sequence 'seq' { l=10, dir=dir,
+    drift 'd1' {at=0.75, l=1.5},
+    drift 'd2' {at=5.75, l=1.5},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkMULT (dir_, chg_)
@@ -115,13 +117,257 @@ local function mkMULT (dir_, chg_)
   local chg = chg_ or 1 -- particle charge
   local k0f =  2*pi/1e2/1.5*dir*chg
   local k0d = -2*pi/1e2/1.5*dir*chg
-  local k1f =  0.2110222185*dir*chg
-  local k1d = -0.2110222186*dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
     multipole 'm1' {at=0, lrad=1.5, knl={k0f*1.5,k1f*1.5}, angle=k0f*chg*1.5},
     multipole 'm2' {at=5, lrad=1.5, knl={k0d*1.5,k1d*1.5}, angle=k0d*chg*1.5},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
+end
+
+local function mkMULTs (dir_, chg_)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k0f =  2*pi/1e2/1.5*dir*chg
+  local k0d = -2*pi/1e2/1.5*dir*chg
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    multipole 'm1' {at=0, lrad=1.5, knl={k0f*1.5,k1f*1.5}, ksl={k0f*1.5,k1f*1.5*0.8}, angle=k0f*chg*1.5},
+    multipole 'm2' {at=5, lrad=1.5, knl={k0d*1.5,k1d*1.5}, ksl={k0d*1.5,k1d*1.5*0.8}, angle=k0d*chg*1.5},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUAD (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt = pi/4*dir*skw
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =  k1f*(1-skw)*(1-mul),
+                                     k1s =  k1f*   skw *(1-mul),
+                                     knl={0,k1f*(1-skw)*   mul*1.5},
+                                     ksl={0,k1f*   skw *   mul*1.5}, tilt=tlt},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =  k1d*(1-skw)*(1-mul),
+                                     k1s =  k1d*   skw *(1-mul),
+                                     knl={0,k1d*(1-skw)*   mul*1.5},
+                                     ksl={0,k1d*   skw *   mul*1.5}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUADs (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =  k1f*(1-mul),
+                                     k1s =  k1d*(1-mul),
+                                     knl={0,k1f*   mul*1.5},
+                                     ksl={0,k1d*   mul*1.5}},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =  k1d*(1-mul),
+                                     k1s =  k1f*(1-mul),
+                                     knl={0,k1d*   mul*1.5},
+                                     ksl={0,k1f*   mul*1.5}},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUADf (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =  k1f*(1-mul),
+                                     knl={0,k1f*   mul*1.5}, fringe=7},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =  k1d*(1-mul),
+                                     knl={0,k1d*   mul*1.5}, fringe=7},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUADfs (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =  k1f*(1-mul),
+                                     k1s =  k1d*(1-mul),
+                                     knl={0,k1f*   mul*1.5},
+                                     ksl={0,k1d*   mul*1.5}, fringe=7},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =  k1d*(1-mul),
+                                     k1s =  k1f*(1-mul),
+                                     knl={0,k1d*   mul*1.5},
+                                     ksl={0,k1f*   mul*1.5}, fringe=7},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUADh (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k0  = 5e-4*dir*chg
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =           k1f*(1-mul), k0=k0*(1-mul),
+                                     knl={k0*mul*1.5,k1f*   mul*1.5}},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =           k1d*(1-mul), k0=k0*(1-mul),
+                                     knl={k0*mul*1.5,k1d*   mul*1.5}},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkQUADfh (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k0  = 5e-4*dir*chg
+  local k1f = 0.25*dir*chg
+  local k1d = -0.2*dir*chg
+  local seq = sequence 'seq' { l=10, dir=dir,
+    quadrupole 'm1' {at=0.75, l=1.5, k1  =           k1f*(1-mul), k0=k0*(1-mul),
+                                     knl={k0*mul*1.5,k1f*   mul*1.5}, fringe=7},
+    quadrupole 'm2' {at=5.75, l=1.5, k1  =           k1d*(1-mul), k0=k0*(1-mul),
+                                     knl={k0*mul*1.5,k1d*   mul*1.5}, fringe=7},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkSEXT (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt = pi/6*dir*skw
+  local k2f = 0.25*dir*chg*1e2
+  local k2d = -0.2*dir*chg*1e2
+  local seq = sequence 'seq' { l=10, dir=dir,
+    sextupole 'm1' {at=0.75, l=1.5, k2 =     k2f*(1-skw)*(1-mul),
+                                    k2s=     k2f*   skw *(1-mul),
+                                    knl={0,0,k2f*(1-skw)*   mul*1.5},
+                                    ksl={0,0,k2f*   skw *   mul*1.5}, tilt=tlt},
+    sextupole 'm1' {at=5.75, l=1.5, k2 =     k2d*(1-skw)*(1-mul),
+                                    k2s=     k2d*   skw *(1-mul),
+                                    knl={0,0,k2d*(1-skw)*   mul*1.5},
+                                    ksl={0,0,k2d*   skw *   mul*1.5}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkSEXTs (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k2f = 0.25*dir*chg*1e2
+  local k2d = -0.2*dir*chg*1e2
+  local seq = sequence 'seq' { l=10, dir=dir,
+    sextupole 'm1' {at=0.75, l=1.5, k2 =     k2f*(1-mul),
+                                    k2s=     k2d*(1-mul),
+                                    knl={0,0,k2f*   mul*1.5},
+                                    ksl={0,0,k2d*   mul*1.5}},
+    sextupole 'm1' {at=5.75, l=1.5, k2 =     k2d*(1-mul),
+                                    k2s=     k2f*(1-mul),
+                                    knl={0,0,k2d*   mul*1.5},
+                                    ksl={0,0,k2f*   mul*1.5}},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkOCTU (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/8*dir*skw
+  local k3f = 0.25*dir*chg*1e4
+  local k3d = -0.2*dir*chg*1e4
+  local seq = sequence 'seq' { l=10, dir=dir,
+    octupole 'm1' {at=0.75, l=1.5, k3 =       k3f*(1-skw)*(1-mul),
+                                   k3s=       k3f*   skw *(1-mul),
+                                   knl={0,0,0,k3f*(1-skw)*   mul*1.5},
+                                   ksl={0,0,0,k3f*   skw *   mul*1.5}, tilt=tlt},
+    octupole 'm1' {at=5.75, l=1.5, k3 =       k3d*(1-skw)*(1-mul),
+                                   k3s=       k3d*   skw *(1-mul),
+                                   knl={0,0,0,k3d*(1-skw)*   mul*1.5},
+                                   ksl={0,0,0,k3d*   skw *   mul*1.5}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkOCTUs (dir_, chg_, mul)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local k3f = 0.25*dir*chg*1e4
+  local k3d = -0.2*dir*chg*1e4
+  local seq = sequence 'seq' { l=10, dir=dir,
+    octupole 'm1' {at=0.75, l=1.5, k3 =       k3f*(1-mul),
+                                   k3s=       k3d*(1-mul),
+                                   knl={0,0,0,k3f*   mul*1.5},
+                                   ksl={0,0,0,k3d*   mul*1.5}},
+    octupole 'm1' {at=5.75, l=1.5, k3 =       k3d*(1-mul),
+                                   k3s=       k3f*(1-mul),
+                                   knl={0,0,0,k3d*   mul*1.5},
+                                   ksl={0,0,0,k3f*   mul*1.5}},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkDECA (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/10*dir*skw
+  local k4f =  0.25 *dir*chg*1e6
+  local k4d = -0.2  *dir*chg*1e6
+  local seq = sequence 'seq' { l=10, dir=dir,
+    decapole 'm1' {at=0.75, l=1.5, k4  =        k4f*(1-skw)*(1-mul),
+                                   k4s =        k4f*   skw *(1-mul),
+                                   knl={0,0,0,0,k4f*(1-skw)*   mul*1.5},
+                                   ksl={0,0,0,0,k4f*   skw *   mul*1.5}, tilt=tlt},
+    decapole 'm1' {at=5.75, l=1.5, k4  =        k4d*(1-skw)*(1-mul),
+                                   k4s =        k4d*   skw *(1-mul),
+                                   knl={0,0,0,0,k4d*(1-skw)*   mul*1.5},
+                                   ksl={0,0,0,0,k4d*   skw *   mul*1.5}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkDODECA (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt =  pi/12*dir*skw
+  local k5f =  0.25 *dir*chg*1e8
+  local k5d = -0.2  *dir*chg*1e8
+  local seq = sequence 'seq' { l=10, dir=dir,
+    dodecapole 'm1' {at=0.75, l=1.5, k5  =          k5f*(1-skw)*(1-mul),
+                                     k5s =          k5f*   skw *(1-mul),
+                                     knl={0,0,0,0,0,k5f*(1-skw)*   mul*1.5},
+                                     ksl={0,0,0,0,0,k5f*   skw *   mul*1.5}, tilt=tlt},
+    dodecapole 'm1' {at=5.75, l=1.5, k5  =          k5d*(1-skw)*(1-mul),
+                                     k5s =          k5d*   skw *(1-mul),
+                                     knl={0,0,0,0,0,k5d*(1-skw)*   mul*1.5},
+                                     ksl={0,0,0,0,0,k5d*   skw *   mul*1.5}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
+end
+
+local function mkKICK (dir_, chg_, mul, skw)
+  local dir = dir_ or 1 -- sequence direction
+  local chg = chg_ or 1 -- particle charge
+  local tlt = pi/2*dir*skw
+  local k0f = 0.25*dir*chg*1e-4
+  local k0d = -0.2*dir*chg*1e-4
+  local seq = sequence 'seq' { l=10, dir=dir,
+    kicker 'm1' {at=0.75, l=1.5, hkick=k0f*(1-skw)*(1-mul),
+                                 vkick=k0f*   skw *(1-mul),
+                                 knl={-k0f*(1-skw)*   mul},
+                                 ksl={ k0f*   skw *   mul}, tilt=-tlt},
+    kicker 'm2' {at=5.75, l=1.5, hkick=k0d*   skw *(1-mul),
+                                 vkick=k0d*(1-skw)*(1-mul),
+                                 knl={-k0d*   skw *   mul},
+                                 ksl={ k0d*(1-skw)*   mul}, tilt=tlt},
+  }
+  return seq   -- :dumpseq()
 end
 
 local function mkSBEND (dir_, chg_, mul)
@@ -135,7 +381,7 @@ local function mkSBEND (dir_, chg_, mul)
     sbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
                 kill_ent_fringe=true, kill_exi_fringe=true},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkSBENDfr (dir_, chg_, mul)
@@ -147,7 +393,7 @@ local function mkSBENDfr (dir_, chg_, mul)
     sbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5},
     sbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkSBENDfr2 (dir_, chg_, mul)
@@ -163,7 +409,7 @@ local function mkSBENDfr2 (dir_, chg_, mul)
     sbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
                              hgap=0.03, e1=e1, e2=e2},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkRBEND (dir_, chg_, mul) -- MAD-X like RBEND
@@ -177,7 +423,7 @@ local function mkRBEND (dir_, chg_, mul) -- MAD-X like RBEND
     rbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5,
                 kill_ent_fringe=true, kill_exi_fringe=true},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkRBENDfr (dir_, chg_, mul) -- MAD-X like RBEND
@@ -189,114 +435,7 @@ local function mkRBENDfr (dir_, chg_, mul) -- MAD-X like RBEND
     rbend 'm1' {at=0, l=1.5, k0=k0f*(1-mul), knl={k0f*mul*1.5}, angle=k0f*chg*1.5},
     rbend 'm2' {at=5, l=1.5, k0=k0d*(1-mul), knl={k0d*mul*1.5}, angle=k0d*chg*1.5},
   }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkQUAD (dir_, chg_, mul, skw)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local tlt =  pi/4        *dir*skw
-  local k1f =  0.2110222185*dir*chg
-  local k1d = -0.2110222186*dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    quadrupole 'm1' {at=0, l=1.5, k1  =  k1f*(1-skw)*(1-mul),
-                                  k1s =  k1f*   skw *(1-mul),
-                                  knl={0,k1f*(1-skw)*   mul*1.5},
-                                  ksl={0,k1f*   skw *   mul*1.5}, tilt=tlt},
-    quadrupole 'm2' {at=5, l=1.5, k1  =  k1d*(1-skw)*(1-mul),
-                                  k1s =  k1d*   skw *(1-mul),
-                                  knl={0,k1d*(1-skw)*   mul*1.5},
-                                  ksl={0,k1d*   skw *   mul*1.5}, tilt=tlt},
-  }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkSEXT (dir_, chg_, mul, skw)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local tlt =  pi/6*dir*skw
-  local k2f =  0.25*dir*chg
-  local k2d = -0.2 *dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    sextupole 'm1' {at=0, l=1.5, k2  =    k2f*(1-skw)*(1-mul),
-                                 k2s =    k2f*   skw *(1-mul),
-                                 knl={0,0,k2f*(1-skw)*   mul*1.5},
-                                 ksl={0,0,k2f*   skw *   mul*1.5}, tilt=tlt},
-    sextupole 'm1' {at=5, l=1.5, k2  =    k2d*(1-skw)*(1-mul),
-                                 k2s =    k2d*   skw *(1-mul),
-                                 knl={0,0,k2d*(1-skw)*   mul*1.5},
-                                 ksl={0,0,k2d*   skw *   mul*1.5}, tilt=tlt},
-  }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkOCTU (dir_, chg_, mul, skw)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local tlt =  pi/8*dir*skw
-  local k3f =  0.25*dir*chg
-  local k3d = -0.2 *dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    octupole 'm1' {at=0, l=1.5, k3  =      k3f*(1-skw)*(1-mul),
-                                k3s =      k3f*   skw *(1-mul),
-                                knl={0,0,0,k3f*(1-skw)*   mul*1.5},
-                                ksl={0,0,0,k3f*   skw *   mul*1.5}, tilt=tlt},
-    octupole 'm1' {at=5, l=1.5, k3  =      k3d*(1-skw)*(1-mul),
-                                k3s =      k3d*   skw *(1-mul),
-                                knl={0,0,0,k3d*(1-skw)*   mul*1.5},
-                                ksl={0,0,0,k3d*   skw *   mul*1.5}, tilt=tlt},
-  }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkDECA (dir_, chg_, mul, skw)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local tlt =  pi/10*dir*skw
-  local k4f =  0.25 *dir*chg
-  local k4d = -0.2  *dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    decapole 'm1' {at=0, l=1.5, k4  =        k4f*(1-skw)*(1-mul),
-                                k4s =        k4f*   skw *(1-mul),
-                                knl={0,0,0,0,k4f*(1-skw)*   mul*1.5},
-                                ksl={0,0,0,0,k4f*   skw *   mul*1.5}, tilt=tlt},
-    decapole 'm1' {at=5, l=1.5, k4  =        k4d*(1-skw)*(1-mul),
-                                k4s =        k4d*   skw *(1-mul),
-                                knl={0,0,0,0,k4d*(1-skw)*   mul*1.5},
-                                ksl={0,0,0,0,k4d*   skw *   mul*1.5}, tilt=tlt},
-  }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkDODECA (dir_, chg_, mul, skw)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local tlt =  pi/12*dir*skw
-  local k5f =  0.25 *dir*chg
-  local k5d = -0.2  *dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    dodecapole 'm1' {at=0, l=1.5, k5  =          k5f*(1-skw)*(1-mul),
-                                  k5s =          k5f*   skw *(1-mul),
-                                  knl={0,0,0,0,0,k5f*(1-skw)*   mul*1.5},
-                                  ksl={0,0,0,0,0,k5f*   skw *   mul*1.5}, tilt=tlt},
-    dodecapole 'm1' {at=5, l=1.5, k5  =          k5d*(1-skw)*(1-mul),
-                                  k5s =          k5d*   skw *(1-mul),
-                                  knl={0,0,0,0,0,k5d*(1-skw)*   mul*1.5},
-                                  ksl={0,0,0,0,0,k5d*   skw *   mul*1.5}, tilt=tlt},
-  }
-  return seq   -- seq:dumpseq()
-end
-
-local function mkKICK (dir_, chg_)
-  local dir = dir_ or 1 -- sequence direction
-  local chg = chg_ or 1 -- particle charge
-  local hk  = 0.25*1e-4*dir*chg
-  local vk  = -0.2*1e-4*dir*chg
-  local seq = sequence 'seq' { l=10, refer='entry', dir=dir,
-    kicker 'm1' {at=0, l=1.5, hkick=hk, vkick=vk},
-    kicker 'm2' {at=5, l=1.5, hkick=hk, vkick=vk},
-  }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkSOL (dir_, chg_, mul)
@@ -308,7 +447,7 @@ local function mkSOL (dir_, chg_, mul)
     solenoid 'm1' {at=0, l=1.5, ks=ksf*(1-mul), ksi=ksf*mul*1.5},
     solenoid 'm2' {at=5, l=1.5, ks=ksd*(1-mul), ksi=ksd*mul*1.5},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 local function mkCAV (dir_, chg_)
@@ -321,56 +460,94 @@ local function mkCAV (dir_, chg_)
     rfcavity 'm1' {at=0, l=1.5, volt=volt, freq=freq, lag=lag},
     rfcavity 'm2' {at=5, l=1.5, volt=volt, freq=freq, lag=lag},
   }
-  return seq   -- seq:dumpseq()
+  return seq   -- :dumpseq()
 end
 
 -- Generate All Testsuites ----------------------------------------------------o
 
-local dofil = false
-local doprt = true
-local dochk = false
+local dodmp = 2  -- false or 2
+local dofil = false  -- false
+local doprt = true   -- false
+local dochk = true   -- true
+
+local useX0 = false --{2.3564040619029475e-03,-5.8747638645291001e-04,-2.7565916146145533e-03,-1.3207886897696824e-03,-5.4073622436307450e-07,0.0000000000000000e+00}
 
 local t = 'teapot'
 
 collectlocal(1, tenv) -- collect locals
 
 local TODO    = {RBENDptc=true}
-local has_TKT = {SBEND=true, SBENDfr=true, SBENDfr2=true,
-                 RBEND=true, RBENDfr=true, RBENDptc=true, SOL=true, CAV=true,
-                 QUAD=true}
 local has_MUL = {SBEND=true, SBENDfr=true, SBENDfr2=true,
-                 RBEND=true, RBENDfr=true, RBENDptc=true, SOL=true,
-                 QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true}
-local has_SKW = {QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true}
-local max_ORD = {DRIFT=2, MULT=2}
+                 RBEND=true, RBENDfr=true, RBENDptc=true,
+                 QUAD=true, QUADs=true, QUADh=true, QUADf=true, QUADfs=true, QUADfh=true,
+                 SEXT=true, SEXTs=true, OCTU=true, OCTUs=true, DECA=true, DODECA=true,
+                 KICK=true, SOL=true,}
+local has_SKW = {QUAD=true, SEXT=true, OCTU=true, DECA=true, DODECA=true,
+                 KICK=true}
 
-for _,e in ipairs{'DRIFT','MULT','SBEND','SBENDfr','SBENDfr2','RBEND','RBENDfr',
-                  'QUAD','SEXT','OCTU','DECA','DODECA','KICK','SOL','CAV'} do
+for _,e in ipairs{'DRIFT','MULT','MULTs','KICK','SOL','CAV',
+                  'QUAD','QUADs','QUADh','QUADf','QUADfs','QUADfh',
+                  'SEXT','SEXTs','OCTU','OCTUs','DECA','DODECA',
+                  'SBEND','SBENDfr','SBENDfr2','RBEND','RBENDfr'} do
 
 if not TODO[e] then -- prevent to run tests not yet finalized
 
-  -- generate prelude
-  local s = [[
-  _G['TestTrack${e}'] = {}
+-- generate prelude
+local s = [[
+_G['TestTrack${e}'] = {}
 
-  function TestTrack${e}:setUp ()
-    self.optfmt, option.format = option.format, "%-.16e"
-  end
+function TestTrack${e}:setUp ()
+  self.optfmt, option.format = option.format, "%-.16e"
+end
 
-  function TestTrack${e}:tearDown ()
-    option.format = self.optfmt
-  end
-  ]] % { e=e }
+function TestTrack${e}:tearDown ()
+  option.format = self.optfmt
+end]]
+% { e=e }
 
-  -- load prelude within the current context
-  local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
+-- load prelude within the current context
+local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
 
 for _,d in ipairs{0, 2} do                   -- mapdef
 for _,o in ipairs{2,'t',4,6,8} do            -- orders
 for _,m in ipairs{'DKD', 'TKT'} do           -- models
 
--- discard invalid combinations
-if m == 'DKD' or m == 'TKT' and has_TKT[e] then
+local t = m == 'TKT' and 't' or ''
+
+-- keep only useful combinations of PTC cross checks
+if d == 0 and dat[e]['p'..o..t] then
+
+-- generate cross checks
+local s = [[
+ assert( TestTrack${e}.test${m}${o}vsPTC == nil,
+        "TestTrack${e}.test${m}${o}vsPTC already defined" )
+function TestTrack${e}:test${m}${o}vsPTC ()
+  local m, p, me = dat.${e}.x${o}${t}, dat.${e}.p${o}${t}
+  if doprt then
+    io.write("eps_p={")
+    for i=1,#m do me=0 for j=1,6 do
+      local er = ceil(abs(m[i][j]-p[i][j])/eps)
+      if er > me then me = er end
+      end printf("%d,", me)
+    end
+    io.write("} -- ${m}${o}\n")
+  end
+  if dochk then
+    local tol = dat.${e}.eps_${c}
+    if tol and tol >= 0 then
+      for i=1,#m do assertAllAlmostEquals(m[i], p[i], tol*eps) end
+    end
+  end
+end]]
+% { e=e, m=m, o=o, t=t, c=({DKD='p', TKT='q'})[m] }
+
+-- load cross checks within the current context
+local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
+
+end -- cross checks
+
+-- keep only useful combinations of Model/Order cross checks
+if dat[e]['x'..o..t] then
 
 for _,z in ipairs{'K', 'M'} do               -- strength/multipoles
 
@@ -392,35 +569,48 @@ if not (o == 't' and string.find(k,'P',1,true)) then
 
   -- generate test (adjust DKD2N0K first)
   local s = [[
- assert( TestTrack${e}.test${m}${o}${w}${d}${z}${k} == nil )
+ assert( TestTrack${e}.test${m}${o}${w}${d}${z}${k} == nil,
+        "TestTrack${e}.test${m}${o}${w}${d}${z}${k} already defined" )
 function TestTrack${e}:test${m}${o}${w}${d}${z}${k} ()
   local seq  = mk${e}(${r},${s},${y},${j})
   local beam = beam { particle = ${s}>0 and 'positron' or 'electron' }
   for i=1,#dat.X0 do
-    local X0   = ${b}>0 and dat.X0[i] or dat.${e}.x${o}${t}[i]
-    local mtbl = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=${b},
-                        mapdef=${a}, model='${i}', method=${o},
-                        nslice=${p}${n}, save='atbody'}
-    local row = mtbl[#mtbl]
+    if doprt and i == 1 then io.write('\n') end
+    local X0   = useX0 or ${b}>0 and dat.X0[i] or dat.${e}.x${o}${t}[i]
+    local mtbl, mflw = track {sequence=seq, beam=beam, X0=X0, observe=0, dir=${b},
+                        mapdef=${a}, model='${i}', method=${o}, mapdump=dodmp,
+                        nslice=${p}${n}, save='atbody', ptcmodel=true}
+    if dofil then
+      mtbl:write(rundir('${e}_${m}${o}${w}${d}${z}${k}_'..i),tblcol,tblhdr)
+    end
+    if mflw.npar ~= mflw.tpar then
+      for i=mflw.npar+1,mflw.tpar do
+        printf("id=%d, status='%s'\n", mflw[i].id, mflw[i].status)
+      end
+      errorf("%d particle lost during test (unexpected)", mflw.tpar - mflw.npar)
+    end
+    local row = assert(mtbl[#mtbl], "last row of mtable not found")
     local res = {row.x, row.px, row.y, row.py, row.t, row.pt}
     local ref = ${b}<0 and dat.X0[i] or dat.${e}.x${o}${t}[i]
-    if dofil then
-      mtbl:write(rundir('${e}_${w}${z}${m}${n}D${d}M${o}${k}'..i),tblcol,tblhdr)
-    end
     if doprt then
-      if i == 1 then io.write('\n') end
-      io.write(string.format("% 2d {% .16e,% .16e,% .16e,% .16e,% .16e,% .16e},\n",
-                                 i, res[1],res[2],res[3],res[4],res[5],res[6]))
+      if dochk then
+        printf("tol[%d]={",i) -- print eps scales
+        for i=1,#res do printf("%d,", ceil(abs(res[i]-ref[i])/eps)) end
+        io.write("} -- ${m}${o}${w}${d}${z}${k}\n")
+      else
+        io.write(string.format("{% .16e,% .16e,% .16e,% .16e,% .16e,% .16e},\n",
+                                 res[1],res[2],res[3],res[4],res[5],res[6]))
+      end
     end
     if dochk then
-      assertAllAlmostEquals(res, ref, ${c}*eps)
+      local tol = dat.${e}.eps_${c}
+      assertAllAlmostEquals(res, ref, tol*eps)
     end
   end
 end]]
-% { e=e, d=d, o=o, m=m, k=k, w=w, z=z,
+% { e=e, m=m, o=o, w=w, d=d, z=z, k=k, t=t,
     i=({DKD='DKD', TKT='TKT'})[m],
     n=({DKD=3    , TKT=1    })[m],
-    t=({DKD=''   , TKT='t'  })[m],
     j=({N=0      , S=1      })[w],
     y=({K=0      , M=1      })[z],
     a=({[0]=false, [2]=true})[d],
@@ -428,14 +618,13 @@ end]]
     r = string.find(k,'R',1,true) and -1 or 1,        -- sequ  dir
     s = string.find(k,'N',1,true) and -1 or 1,        -- charge sign
     p = string.find(k,'P',1,true) and 'slc_p' or '',  -- position
-    c = d >  0   and 'dat.'..e..'.eps_t' or           -- eps_{t,s,b,_}
-        w == 'S' and 'dat.'..e..'.eps_s' or
-        string.find(k,'B',1,true) and 'dat.'..e..'.eps_b' or
-        'dat.'..e..'.eps',
+    c = d >  0   and 't' or           -- eps_{d,t,s,b}
+        w == 'S' and 's' or
+        string.find(k,'B',1,true) and 'b' or 'd',
   }
 
-  -- load test within the current context
-  local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
+-- load test within the current context
+local f = assert(loadstring(s)) ; setfenv(f, tenv) ; f()
 
 end -- if  o is 't'
 end -- for k
@@ -443,12 +632,8 @@ end -- if  w
 end -- for w
 end -- if  z
 end -- for z
-end -- if  m
+end -- if  dat
 end -- for m
-
--- stop at max order
-if o == max_ORD[e] then break end
-
 end -- for o
 end -- for d
 end -- if  e
