@@ -635,17 +635,18 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                             -- 
 
   m:mdump(elm, 'quad_thick:0')
 
-  local el, edir, tdir, k1, beam in m
+  local el, sdir, tdir, k1, beam in m
   local l = el*lw
   local chg = beam.charge
 
-  -- [GETMAT7]
-  local ws = k1*edir < 0 and -1 or 1
+  -- [GETMAT7] TODO: cache these values as lw is the same over the slices
+  local ws = k1*sdir < 0 and -1 or 1
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
+  local w
   if abs(k1) >= minstr then
-    local w  = sqrt(abs(k1))*tdir*ws
+    w = sqrt(abs(k1))*tdir*ws
     cx, sx = cos (w*l), sin (w*l)
     cy, sy = cosh(w*l), sinh(w*l)
     mx1, mx2 = sx/w, -sx*w
@@ -663,6 +664,9 @@ function M.quad_thick (elm, m, lw) -- [PUSHTKT7]                             -- 
       ws, cx, cy, mx1, mx2, my1, my2 =
      -ws, cy, cx, my1, my2, mx1, mx2
     end
+
+! printf("l=% -.5e, ws=% d, w=% -.8e, cx=% -.8e, sx=% -.8e, cy=% -.8e, sy=% -.8e\n",
+!        l, ws, w, cx, sx, cy, sy)
 
     local nx  = x*cx  + px*mx1
     local npx = x*mx2 + px*cx
@@ -710,20 +714,17 @@ function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- 
 
   m:mdump(elm, 'quad_thicks:0')
 
-  local el, edir, tdir, k1, ca, sa, beam in m
+  local el, sdir, tdir, k1, ca, sa, beam in m
   local l = el*lw
   local chg = beam.charge
 
-  -- [GETMAT7]
-  local ws = k1*edir < 0 and -1 or 1
+  -- [GETMAT7] TODO: cache these values as lw is the same over the slices
+  local ws = k1*sdir < 0 and -1 or 1
   local w  = sqrt(abs(k1))*tdir*ws
   local cx, sx = cos (w*l), sin (w*l)
   local cy, sy = cosh(w*l), sinh(w*l)
   local mx1, mx2 = sx/w, -sx*w
   local my1, my2 = sy/w,  sy*w
-
---  printf("k1l=%g, a=%g, ws=%g, w=%g, cx=%g, sx=%g, cy=%g, sy=%g, mx1=%g, mx2=%g, my1=%g, my2=%g\n",
---          k1l, a, ws, w, cx, sx, cy, sy, mx1, mx2, my1, my2)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -781,13 +782,13 @@ function M.quad_kicks (elm, m, lw, ii) -- [KICKTKT7]                         -- 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
--- curved (k0 and eh)
+-- curved (eh ~= 0)
 
-function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- checked (for eh=0)
+function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- unchecked (checked for sdir=1 and eh=0)
 
   m:mdump(elm, 'quad_thickh:0')
 
-  local el, eh, edir, tdir, knl, beam in m
+  local el, eh, sdir, edir, tdir, knl, beam in m
   local l = el*lw
   local chg = beam.charge
   local beta = beam.beta
@@ -795,14 +796,14 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   -- [GETMAT7, w ~= 0]
   local kx  = (knl[2]+eh*knl[1])/el*edir
   local ky  = -knl[2]/el*edir
-  local wxs = kx*edir < 0 and -1 or 1
-  local wys = ky*edir < 0 and -1 or 1
+  local wxs = kx*sdir < 0 and -1 or 1
+  local wys = ky*sdir < 0 and -1 or 1
   local wx, cx, sx, wy, cy, sy
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12,       my21, my22
 
   if abs(kx) >= minstr then
-    wx = sqrt(abs(kx))*wxs*tdir
+    wx = sqrt(abs(kx))*tdir*wxs
   else
     wx = 0
     mx11, mx12, mx13 = 1   , l   , eh*l^2/2
@@ -811,24 +812,25 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   end
 
   if abs(ky) >= minstr then
-    wy = sqrt(abs(ky))*wys*tdir
+    wy = sqrt(abs(ky))*tdir*wys
   else
     wy = 0
     my11, my12 = 1, l
     my21, my22 = 0, 1
   end
 
+  -- trig 1st GETMAT7, no need to reverse wxs and wys
   local dox, doy = true, true
-  wx, wy = -wx, -wy -- no need to reverse wxs and wys
+  wx, wy = -wx, -wy
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local  chg = beam and beam.charge or chg
     local beta = beam and beam.beta or beta
 
+    local cx, sx
     if wx ~= 0 and wxs ~= chg or dox then -- [GETMAT7]
       wx, wxs, dox = -wx, -wxs, nil
-      local cx, sx
       if wx > 0
       then cx, sx = cos (wx*l), sin (wx*l)
       else cx, sx = cosh(wx*l), sinh(wx*l)
@@ -838,9 +840,9 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
       mx31, mx32, mx33 = mx23     , mx13 , -eh^2*(l-mx12)*wxs/wx^2
     end
 
+    local cy, sy
     if wy ~= 0 and wys ~= chg or doy then -- [GETMAT7]
       wy, wys, doy = -wy, -wys, nil
-      local cy, sy
       if wy > 0
       then cy, sy = cos (wy*l), sin (wy*l)
       else cy, sy = cosh(wy*l), sinh(wy*l)
@@ -848,6 +850,10 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
       my11, my12 = cy       , sy/wy
       my21, my22 = wys*wy*sy, cy
     end
+
+! printf("l=% -.5e, eh=% -.8e, wxs=% d, wx=% -.8e, cx=% -.8e, sx=% -.8e, \z
+!                              wys=% d, wy=% -.8e, cy=% -.8e, sy=% -.8e\n",
+!         l, eh, wxs, wx, cx, sx, wys, wy, cy, sy)
 
 --[[ PTC matrix form
     { cx      , sx/wx          ,  h*(cx-1)/wx2*ws     ,
@@ -878,7 +884,7 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   m:mdump(elm, 'quad_thickh:1')
 end
 
-function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- checked (for eh=0)
+function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- unchecked (checked for sdir=1 and eh=0)
   local l = m.el*lw
 
   if ii >= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
@@ -895,12 +901,11 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
       local _beam = beam and 1/beam.beta or _beta
       local  wchg = beam and lw*tdir*beam.charge or wchg
       local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
-      local    dt = (l*eh)*((_beta+pt)/pz - _beta)*x
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - knl[2]*x - eh*(pz-_beta*pt))
+      m[i].px = px - wchg*(by - knl[2]*x - eh*knl[1]*(pz-_beta*pt))
       m[i].py = py + wchg*(bx - knl[2]*y)
-      m[i].t  =  t - dt
+      m[i].t  =  t - (l*eh)*((_beta+pt)/pz - _beta)*x
     end
 
     m:mdump(elm, 'quad_kickh:1')
@@ -928,7 +933,6 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOL]                            -- 
     local   yp = py - bsol*x
     local l_pz = l/sqrt(1 + 2*pt/beta + pt^2 - xp^2 - yp^2)
     local  ang = l_pz*bsol
-    local   dt = l_pz*(1/beta+pt)
 
     local ca, sa, sc = cos(ang), sin(ang), sinc(ang)
 
@@ -942,7 +946,7 @@ function M.solen_thick (elm, m, lw) -- [KICK_SOL]                            -- 
     m[i].px = ca*pxt + sa*pyt
     m[i].y  = ca*yt  - sa*xt
     m[i].py = ca*pyt - sa*pxt
-    m[i].t  = t - dt + (1-T)*l/beta
+    m[i].t  = t - l_pz*(1/beta+pt) + (1-T)*l/beta
   end
 
   m:mdump(elm, 'solen_thick:1')
@@ -1199,13 +1203,13 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
 --                       "frng_quad=", btst(frng, frng_quad))
 
   if sdir*lw == 1 then
--- print(lw == 1 and 'forward entry' or 'backward exit')
+! print(lw == 1 and 'forward entry' or 'backward exit')
     local e, h = elm.e1*tdir, elm.h1*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
     yrotation ( e, m, 1)
     bend_face ( h, m, 1)
     if frng ~= frng_none and not elm.kill_ent_fringe then
-      m.frng = frng
+      m.frng, m.hgap = frng, elm.hgap
       if btst(frng, frng_bend) then bend_fringe(elm, m, 1) end
       if btst(frng, frng_mult) then mult_fringe(elm, m, 1) end
       if btst(frng, frng_quad) then quad_fringe(elm, m, 1) end
@@ -1213,12 +1217,12 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
     bend_wedge( a, m, 1)
 
   else
--- print(lw == -1 and 'forward exit' or 'backward entry')
+! print(lw == -1 and 'forward exit' or 'backward entry')
     local e, h = elm.e2*tdir, elm.h2*tdir
     local a = 0.5*m.eh*(m.eld or m.el) - e
     bend_wedge( a, m, -1)
     if frng ~= frng_none and not elm.kill_exi_fringe then
-      m.frng = frng
+      m.frng, m.hgap = frng, elm.hgap
       if btst(frng, frng_quad) then quad_fringe(elm, m, -1) end
       if btst(frng, frng_mult) then mult_fringe(elm, m, -1) end
       if btst(frng, frng_bend) then bend_fringe(elm, m, -1) end
@@ -1249,7 +1253,7 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
     yrotation ( e, m, 1)
     bend_face ( h, m, 1)
     if frng ~= frng_none and not elm.kill_ent_fringe then
-      m.frng, c = frng, 0.25
+      m.frng, m.hgap, c = frng, elm.hgap, 0.25
       if btst(frng, frng_bend) then bend_fringe(elm, m, 1) end
       if btst(frng, frng_mult) then mult_fringe(elm, m, 1) end
       if btst(frng, frng_quad) then quad_fringe(elm, m, 1) end
@@ -1261,7 +1265,7 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
     local c, e, h = 0, (m.e2 or elm.e2)*tdir, elm.h2*tdir
     bend_wedge(-e, m, -1)
     if frng ~= frng_none and not elm.kill_exi_fringe then
-      m.frng, c = frng, 0.25
+      m.frng, m.hgap, c = frng, elm.hgap, 0.25
       mad8_wedge( e, m, -1, c)
       if btst(frng, frng_quad) then quad_fringe(elm, m, -1) end
       if btst(frng, frng_mult) then mult_fringe(elm, m, -1) end
@@ -1325,8 +1329,8 @@ function bend_face (h, m, lw) -- [NEWFACE]                                   -- 
 
   m:mdump(h, 'bend_face:0')
 
-  local tdir, beam in m
-  local   k0h = knl[1]/el*h/2*tdir
+  local edir, beam in m
+  local   k0h = 0.5*h * knl[1]/el*edir
   local   chg = beam.charge
   local _beta = 1/beam.beta
 
@@ -1368,8 +1372,8 @@ function mad8_wedge (e, m, lw, wc) -- [FRINGE_TEAPOT:MAD8_WEDGE]             -- 
 
   m:mdump(e, 'mad8_wedge:0')
 
-  local el, tdir, knl, beam in m
-  local  k1e = knl[2]/el*e*tdir
+  local el, edir, knl, beam in m
+  local  k1e = e*knl[2]/el*edir
   local   c1 = (1+wc)*k1e
   local   c2 = (1-wc)*k1e
   local  chg = beam.charge
@@ -1390,8 +1394,8 @@ function bend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick            -- 
 
   m:mdump(e, 'bend_wedge:0')
 
-  local el, tdir, knl, beam in m
-  local    k0 = knl[1]/el*tdir
+  local el, edir, knl, beam in m
+  local    k0 = knl[1]/el*edir
   local    b1 = k0*beam.charge
   local _beta = 1/beam.beta
   local sa, ca, s2a = sin(e), cos(e), sin(2*e)
@@ -1419,14 +1423,13 @@ function bend_wedge (e, m, lw) -- [WEDGE] see also [sr]bend_thick            -- 
 end
 
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
-  local fh = elm.hgap*(lw == -1 and elm.fintx or elm.fint)
-
-  if abs(fh)+abs(m.knl[1]) < minang then return end
+  if m.hgap < minlen or abs(m.knl[1]) < minang then return end
 
   m:mdump(elm, 'bend_fringe:0')
 
-  local el, sdir, tdir, knl, beam in m
-  local    k0 = knl[1]/el*tdir
+  local el, sdir, edir, beam in m
+  local    fh = m.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
+  local    k0 = m.knl[1]/el*edir
   local  fsad = abs(fh) ~= 0 and sdir/(2*36*fh) or 0
   local  b0   = k0*lw*beam.charge
   local _beta = 1/beam.beta
@@ -1487,14 +1490,17 @@ function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
 
   m:mdump(elm, 'quad_fringe:0')
 
+-- fwd entry, bwd exit : lw= 1
+-- fwd exit , bwd entry: lw=-1
+
   local el, tdir, k1, ca, sa, beam in m
   local _beta = 1/beam.beta
-  local  wchg = beam.charge*tdir*lw
+  local  wchg = beam.charge*lw
   local    b2 = k1
 
   if not b2 then
     local edir, knl, ksl in m
-    local a = -0.5*atan2(ksl[2], knl[2])*tdir
+    local a = -0.5*atan2(ksl[2], knl[2])
     b2, ca, sa = sqrt(knl[2]^2 + ksl[2]^2)/el*edir, cos(a), sin(a)
   end
 
@@ -1505,8 +1511,8 @@ function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   for i=1,m.npar do
   	local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
-    local  wchg = beam and beam.charge*tdir*lw or wchg
-    local   _pz = 1/sqrt(1 + 2*_beta*pt + pt^2)
+    local  wchg = beam and beam.charge*lw or wchg
+    local   _pz = 1/sqrt(1 + (2*_beta)*pt + pt^2)
     local    dt = (_beta+pt)*_pz
 
     local f1 = (wchg*f1)*_pz
@@ -1535,49 +1541,59 @@ function quad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
 end
 
 function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       -- checked
-
   m:mdump(elm, 'mult_fringe:0')
 
-  local el, tdir, nmul, knl, ksl, beam in m
+-- fwd entry, bwd exit : lw= 1
+-- fwd exit , bwd entry: lw=-1
+
+  local el, edir, sdir, tdir, nmul, knl, ksl, beam in m
   local _beta = 1/beam.beta
-  local  wchg = beam.charge*tdir*lw
-  local no_k1 = btst(m.frng, frng_bend) -- bend_fringe done
-  local    _l = el ~= 0 and 1/abs(el) or 1 -- to review...
+  local  wchg = beam.charge*lw
+  local no_k1 = btst(m.frng, frng_bend) and m.hgap > minlen -- bend_fringe done
+  local    _l = el ~= 0 and tdir/el or edir
   local  fmax = elm.fringemax
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local _beta = beam and 1/beam.beta or _beta
-    local  wchg = beam and beam.charge*tdir*lw or wchg
+    local  wchg = beam and beam.charge*lw or wchg
     local   _pz = 1/sqrt(1 + (2*_beta)*pt + pt^2)
 
     local rx, ix = 1, 0
     local fx, fxx, fxy = 0, 0, 0
     local fy, fyx, fyy = 0, 0, 0
 
+    -- NOTE: this loop is not fully time reversable to numerical precision,
+    --       because it depends on x,y and affects x,y (not like multipoles)
     for j=1,min(nmul,fmax) do
       local drx, dix = rx, ix
       rx = drx*x - dix*y
       ix = drx*y + dix*x
 
       local nj, nf = -wchg/(4*(j+1)), (j+2)/j
-      local knj, ksj = knl[j]*_l, ksl[j]*_l
+      local kj, ksj = knl[j]*_l, ksl[j]*_l
       local u, v, du, dv
 
+!      printf("lw=% d, sdir=% d, j=%d, nj=% -.5f, nf=% -.5f, rx=% -.16e, ix=% -.16e, \z
+!              drx=% -.16e, dix=% -.16e, kj=% -.16e, ksj=% -.16e, ",
+!              lw, sdir, j, nj, nf, rx, ix, drx, dix, kj, ksj)
+
       if j == 1 and no_k1 then
-        u  = nj*(        - ksj*ix )
-        v  = nj*(        + ksj*rx )
-        du = nj*(        - ksj*dix)
-        dv = nj*(        + ksj*drx)
+        u  = nj*(       - ksj*ix )
+        v  = nj*(       + ksj*rx )
+        du = nj*(       - ksj*dix)
+        dv = nj*(       + ksj*drx)
       else
-        u  = nj*(knj*rx  - ksj*ix )
-        v  = nj*(knj*ix  + ksj*rx )
-        du = nj*(knj*drx - ksj*dix)
-        dv = nj*(knj*dix + ksj*drx)
+        u  = nj*(kj*rx  - ksj*ix )
+        v  = nj*(kj*ix  + ksj*rx )
+        du = nj*(kj*drx - ksj*dix)
+        dv = nj*(kj*dix + ksj*drx)
       end
 
       local dux, dvx =  j*du, j*dv
       local duy, dvy = -j*dv, j*du
+
+!      printf("u=% -.16e, v=% -.16e, du=% -.16e, dv=% -.16e, ", u, v, du, dv)
 
       fx  = fx  +   u*x + nf*   v*y
       fy  = fy  +   u*y - nf*   v*x
@@ -1585,6 +1601,9 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       --
       fyy = fyy + duy*y - nf* dvy*x + u
       fxy = fxy + duy*x + nf*(dvy*y + v)
       fyx = fyx + dux*y - nf*(dvx*x + v)
+
+!      printf("fx=% -.16e, fy=% -.16e, fxx=% -.16e, fyy=% -.16e, fxy=% -.16e, fyx=% -.16e\n",
+!              fx, fy, fxx, fyy, fxy, fyx)
     end
 
     local    a = 1 - fxx*_pz

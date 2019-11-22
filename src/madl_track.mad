@@ -415,23 +415,23 @@ local function track_quadrupole (elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local no_k0a = abs(knl[1])+abs(angle) < minstr
   local no_k1  = abs(knl[2]) < minstr
   local no_k1s = abs(ksl[2]) < minstr
+  local no_ang = abs(angle)  < minang
   local inter, thick, kick
 
   -- Note: MKM integrators used uniform length for the thick map
   --       hence all cos, sin, cosh, sinh could be computed here...
-  if model == 'DKD' or no_k1 and no_k1s and no_k0a then
+  if model == 'DKD' or no_k1 and no_k1s and no_ang then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
-  elseif no_k1s and no_k0a then                 -- normal thick
+  elseif no_k1s and no_ang then                 -- normal thick
     m.k1, m.ca, m.sa = knl[2]/ds*edir, 1, 0
     inter, thick, kick = MKM[method], quad_thick , quad_kick
-  elseif no_k0a then                            -- skew thick
-    local a = -0.5*atan2(ksl[2], knl[2])*tdir
+  elseif no_ang then                            -- skew thick
+    local a = -0.5*atan2(ksl[2], knl[2])
     m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/ds*edir, cos(a), sin(a)
     inter, thick, kick = MKM[method], quad_thicks, quad_kicks
-  else                                          -- curved thick
+  else                                          -- curved thick              -- unchecked
     m.k1, m.ca, m.sa = no_k1s and knl[2]/ds*edir or nil, 1, 0
     inter, thick, kick = MKM[method], quad_thickh, quad_kickh
   end
@@ -442,7 +442,7 @@ end
 
 -- straigth magnets (-rbend -quad -solenoid)
 
-local function track_strexgen (elm, m)
+local function track_strexgen (elm, m, ptc_)
   m.el, m.eh = m.ds, 0
 
   local model  = elm.model  or m.model
@@ -451,10 +451,10 @@ local function track_strexgen (elm, m)
 
   if abs(m.ds) < minlen then
     inter, thick, kick, fringe = thinonly, fnil, strex_kick, fnil
-  elseif model == 'DKD' or not m.ptcmodel then
+  elseif model == 'DKD' or not ptc_ then
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
-    m.k1, m.ca, m.sa = m.knl[2]/m.ds*m.edir, 1, 0
+    m.k1 = m.knl[2]/m.ds*m.edir
     inter, thick, kick, fringe = MKM[method], quad_thick, quad_kick, strex_fringe
   end
 
@@ -476,7 +476,7 @@ local function track_sextupole (elm, m)
     m.nmul = max((k2 or k2s) and 3 or 0, nmul)
   end
 
-  track_strexgen (elm, m)
+  track_strexgen (elm, m, m.ptcmodel)
 end
 
 local function track_octupole (elm, m)
@@ -493,7 +493,7 @@ local function track_octupole (elm, m)
     m.nmul = max((k3 or k3s) and 4 or 0, nmul)
   end
 
-  track_strexgen (elm, m)
+  track_strexgen (elm, m, m.ptcmodel)
 end
 
 local function track_decapole (elm, m)
@@ -544,7 +544,7 @@ local function track_kickgen (elm, m, hk, vk)
     m.nmul = 1
   end
 
-  track_strexgen (elm, m)
+  track_strexgen (elm, m, m.ptcmodel)
 end
 
 local function track_tkicker (elm, m, hk_, vk_)
@@ -946,10 +946,12 @@ local function make_mflow (self)
   local T = totalpath and 1 or 0
 
   -- model, method
-  local method, model in self
+  local method, model, ptcmodel in self
+  if is_nil(ptcmodel) then ptcmodel = option.ptcmodel end
   assertf(DKD[method], "invalid integration method '%s'", method)
   assertf(modint[model],
-          "invalid integration model %s (DKD or TKT expected)", model)
+                    "invalid integration model %s (DKD or TKT expected)", model)
+  assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
   local s0, X0, mapdef, mapsave in self
@@ -1039,7 +1041,7 @@ local function make_mflow (self)
   mflw.model=model           -- default integration model
   mflw.T=T                   -- cancel compensation for time of flight
 
-  mflw.ptcmodel=option.ptcmodel
+  mflw.ptcmodel=ptcmodel     -- use PTC thick model
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
@@ -1048,8 +1050,8 @@ local function make_mflow (self)
 
   -- for debugging
   mflw.ndump=0               -- dump level of damaps
-  mflw.mdump=fnil           -- dump damaps after each integration step
-  mflw.xdump=fnil           -- dump damaps after each integration step
+  mflw.mdump=fnil            -- dump damaps after each integration step
+  mflw.xdump=fnil            -- dump damaps after each integration step
   mflw.show=mshow            -- show the mflow
 
   -- for processing sequence elements by nstep
@@ -1158,6 +1160,7 @@ local track = command 'track' {
   nslice=1,         -- number of slices (or weights) for each element     (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
+  ptcmodel=nil,     -- use strict PTC thick model (override option)       (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   misalign=false,   -- consider misalignment                              (mflw)
   fringe=false,     -- activate fringe fields (0..7)                      (mflw)
@@ -1182,8 +1185,9 @@ local track = command 'track' {
 
   __attr = {        -- list of all setup attributes
     'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'deltap', 'mapdef',
-    'mapsave', 'mapdump', 'nturn', 'method', 'model', 'implicit', 'fringe',
-    'radiate', 'misalign', 'totalpath', 'save', 'title', 'observe', 'usrdef',
+    'mapsave', 'mapdump', 'nturn', 'method', 'model', 'ptcmodel', 'implicit',
+    'fringe', 'radiate', 'misalign', 'totalpath', 'save', 'title', 'observe',
+    'usrdef',
     noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'nslice',
               'savesel'},
   }
