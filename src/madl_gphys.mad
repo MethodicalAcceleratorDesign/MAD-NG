@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, cvector, trace, warn, option, typeid               in MAD
+local matrix, vector, cvector, trace, warn, option, typeid       in MAD
 local is_nil, is_positive, is_odd, is_table, is_matrix,
       is_cvector, wrestrict                                      in MAD.typeid
 local assertf, errorf, printf, num2str                           in MAD.utility
@@ -31,8 +31,8 @@ local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
 local min, max, abs, sqrt, sin, cos, atan2 in math
 
-local assert, table =
-      assert, table
+local assert, table, type =
+      assert, table, type
 
 local r4 = 1..4
 local I4 = matrix(4):eye()
@@ -557,7 +557,7 @@ function gphys.normal (R, rnk_, nocheck_)
   end
 
   -- detect rank of the system
-  local rnk = rnk_ or has_dpt(R) and 6 or 4
+  local rnk = rnk_ or gphys.has_dpt(R) and 6 or 4
   local R6
 
   -- switch to 4D
@@ -611,30 +611,52 @@ function gphys.normal (R, rnk_, nocheck_)
   return A, W, info
 end
 
--- lattice functions ----------------------------------------------------------o
+-- beta0 block ----------------------------------------------------------------o
+
+local _id = {} -- identity
+
+local function is_beta0 (bet)
+  return type(bet) == "table" and bet.__obj == _id
+end
 
 local function oval (x)
   return abs(x) < phystol.ofun_tol and 0 or x
 end
 
--- fill betablock (optical functions) from A (normalising form) and W (tunes)
+-- fill beta0 block (optical functions) from A (normalising form) and W (tunes)
 
-function gphys.optfun (A, rnk_, cpl_, W_)
-  assert(is_matrix(A) and A.nrow >= 6 and A.ncol >= 6,
-         "invalid argument #1 (6D+ matrix expected)")
+function gphys.map2bet (map, rnk_, cpl_, W_)
+  assert(typeid.is_damap(map), "invalid argument #1 (damap expected)")
+
   local fun
-
-  if is_table(rnk_)
-  then fun, rnk_, cpl_ = rnk_, rnk_.rank, rnk_.cplg
-  else fun = table.new(0, cpl_ and 40 or 20)
+  if is_table(rnk_) then -- rnk_ is fun
+    fun, rnk_, cpl_ = rnk_, rnk_.rank, rnk_.cplg
+    assert(is_beta0(fun), "invalid beta0 block (not created from damap)")
+  else
+    fun = table.new(0, cpl_ and 50 or 30)
+    fun.__obj = _id
   end
+
+  fun.X = map:get0(fun.X)
+  fun.A = map:get1(fun.A)
+  local X, A in fun
+  assert(A.nrow >= 6 and A.ncol >= 6, "invalid damap size (6D+ expected)")
+
+  local get = A.get
   local cpl = cpl_
-  local rnk = rnk_ or has_dpt(A) and 6 or 4
+  local rnk = rnk_ or gphys.has_dpt(A) and 6 or 4
   local tol = phystol.ofun_tol
 
   fun.rank, fun.cplg = rnk, cpl
 
-  local get = A.get
+  -- orbit
+
+  fun.x  = get(X,1,1)
+  fun.px = get(X,2,1)
+  fun.y  = get(X,3,1)
+  fun.py = get(X,4,1)
+  fun.t  = get(X,5,1)
+  fun.pt = get(X,6,1)
 
   -- diagonal terms
 
@@ -720,30 +742,32 @@ function gphys.optfun (A, rnk_, cpl_, W_)
   if fun.mu2 < 0 then fun.mu2 = 1+fun.mu2 end
   if fun.mu3 < 0 then fun.mu3 =  -fun.mu3 end
 
-  -- backup A for coupling terms
-
-  if fun.cplg then fun.A = A:copy(fun.A) end
-
   return fun
 end
 
--- beta block -----------------------------------------------------------------o
+function gphys.bet2map (fun, map, sav_)
+  assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
+  assert(typeid.is_damap(map), "invalid argument #2 (damap expected)")
 
-function gphys.betablk (optfun, sav_)
-  assert(type(optfun) == "table", "invalid argument #1 (table expected)")
-
-  local fun = optfun
-  local rnk = fun.rank or (fun.A and has_dpt(A)) and 6 or 4
-  local cpl = fun.cplg or (fun.A and has_cpl(A)) and true or nil
-  local A   = fun.A and fun.A:copy() or matrix(6):eye()
-
-  if sav_ then fun.rank, fun.cplg = rnk, cpl end
+  local rnk = fun.rank or 4
+  local cpl = fun.cplg or nil
+  local X   = (fun.X or vector(6)):zeros()
+  local A   = (fun.A or matrix(6)):eye()
 
   -- normalization matrix A of the one-turn map R: N = A^-1 R A
 
   local get, set = A.get, A.set
 
-  -- set/override diagonal terms
+  -- set orbit
+
+  if fun.x  then set(X,1,1, fun.x ) end
+  if fun.px then set(X,2,1, fun.px) end
+  if fun.y  then set(X,3,1, fun.y ) end
+  if fun.py then set(X,4,1, fun.py) end
+  if fun.t  then set(X,5,1, fun.t ) end
+  if fun.pt then set(X,6,1, fun.pt) end
+
+  -- set diagonal terms
 
   if fun.beta11 then
     local beta11 = fun.beta11
@@ -760,7 +784,7 @@ function gphys.betablk (optfun, sav_)
     set(A,2,1, A21) ; set(A,2,2, A22)
   end
 
-  if fun.beta22 then
+  if fun.beta22 > 0 then
     local beta22 = fun.beta22
     local alfa22 = fun.alfa22 or 0
     local gama22 = fun.gama22 or (1+alfa22^2)/beta22
@@ -775,12 +799,10 @@ function gphys.betablk (optfun, sav_)
     set(A,4,3, A43) ; set(A,4,4, A44)
   end
 
-  if rnk >= 6 then
-    local beta33 = fun.beta33 or 1
+  if fun.beta33 and fun.beta33 > 0 then
+    local beta33 = fun.beta33
     local alfa33 = fun.alfa33 or 0
     local gama33 = fun.gama33 or (1+alfa33^2)/beta33
-
-    assert(beta33 > 0, "invalid beta33 (>0 expected)")
 
     local A55 = sqrt(beta33)
     local A65 = -alfa33/A55
@@ -788,14 +810,20 @@ function gphys.betablk (optfun, sav_)
 
     set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
     set(A,6,5, A65) ; set(A,6,6, A66)
+
+    rnk = 6
   end
 
-  -- set/override dispersion
+  -- set dispersion
 
   if fun.dx  then set(A,1,6, fun.dx ) end
   if fun.dpx then set(A,2,6, fun.dpx) end
   if fun.dy  then set(A,3,6, fun.dy ) end
   if fun.dpy then set(A,4,6, fun.dpy) end
+
+  -- backup rank and coupling
+
+  if sav_ then fun.rank, fun.cplg = rnk, cpl end
 
   -- sanity checks
 
@@ -805,10 +833,14 @@ function gphys.betablk (optfun, sav_)
           symperr=%.5e", rnk, rnk, fun.id or 0, serr)
   end
 
-  return A
+  fun.X, fun.A = X, A
+
+  return map:setvar(X):set1(A)
 end
 
 -- env ------------------------------------------------------------------------o
+
+MAD.typeid.is_beta0  = is_beta0
 
 gphys = wrestrict(setmetatable(gphys, {__tostring := "MAD.gphys"}))
 
