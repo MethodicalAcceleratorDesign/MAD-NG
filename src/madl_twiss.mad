@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local command, track, cofind, option, warn, vector, matrix        in MAD
-local normal, optfun, betablk, dp2pt, has_dpt,
+local normal, map2bet, bet2map, dp2pt, has_dpt,
       ofname, ofcname, cvindex, msort                             in MAD.gphys
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
@@ -155,13 +155,13 @@ local function fill (elm, mflw, lw, islc)
   return true
 end
 
--- optfun (action) ------------------------------------------------------------o
+-- beta0 (action) -------------------------------------------------------------o
 
-local function optfunact (elm, mflw, lw, islc)
+local function beta0act (elm, mflw, lw, islc)
   if not mflw.__twdat then return end
 !  printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
-  local npar, __twdat in mflw
+  local npar, sdir, __twdat in mflw
   local ofun, omat, q1, q2, q3 in __twdat
 
   for i=1,npar do
@@ -170,12 +170,12 @@ local function optfunact (elm, mflw, lw, islc)
 
     -- backup phases and horizontal dispersion
     local mu1_, mu2_, mu3_ = of.mu1 or 0, of.mu2 or 0, of.mu3 or 0
-    local dx_ = of.dx or 0
 
-    optfun(m:get1(omat), of)
+    -- get beta0 block
+    map2bet(m, of)
 
     -- adjust the phases
-    local dmu1, dmu2, dmu3 = of.mu1-mu1_, of.mu2-mu2_, of.mu3-mu3_
+    local dmu1, dmu2, dmu3 = (of.mu1-mu1_)*sdir, (of.mu2-mu2_)*sdir, (of.mu3-mu3_)*sdir
 
     if dmu1 < 0 then dmu1 = dmu1+1 end
     if dmu2 < 0 then dmu2 = dmu2+1 end
@@ -190,12 +190,6 @@ local function optfunact (elm, mflw, lw, islc)
       io.write("Phase advance (%d): ", id,
                ", mu1=", q1[id], ", mu2=", q1[id], ", mu3=", q1[id], "\n")
     end
-
-    -- update first synch integral by step average
---    if id <= opar then
---      if abs(eh) > 0 then io.write("eh=", eh, ", ds=", clw-pclw, ", dx=", of.dx, ", ddx=", of.dx-dx_, "\n") end
---      synch_1[id] = synch_1[id] + eh*(clw-pclw)*(of.dx+dx_)/2
---    end
   end
 --  __twdat.pclw = islc == -2 and 0 or clw
 end
@@ -239,7 +233,7 @@ local function twiss_betblk (self, mflw)
       if beta0[id] then
         local of = tblcpy(beta0[id]) ; of.id = m.id
         -- get linear normal form A from beta0 block and set damap
-        m:set1(betablk(of,true)).status = 'Bset'
+        bet2map(of,m,true).status = 'Bset'
         -- save beta0 block
         __twdat.ofun[m.id] = of
       else              -- search for closed orbit
@@ -344,11 +338,11 @@ end
 
 -- normal/closed forms --------------------------------------------------------o
 
-local function check_normal (R, A, of)
+local function check_normal (m, of)
   local fmt = option.format
   option.format = "% .5e"
   io.write("Checking normal form vs optical functions\n")
-  R:print('R') ; A:print('A') ; show(of); betablk(of):print('A(optfun)')
+  m:get1():print('A') ; show(of); bet2map(of, m:copy()):get1():print('A(beta0)')
   option.format = fmt
 end
 
@@ -358,29 +352,33 @@ local function twiss_nform (self, mflw)
 
   for i=1,npar do
     local m = mflw[i]
+    local rnk, W
 
-    if m.status ~= 'Bset' then
+    if m.status ~= 'Bset' and m.status ~= 'Mset' then
       local X, R = m:get0(), m:get1()
-      local rnk = has_dpt(R) and 6 or 4
+      local A, info
+
+      -- get rank
+      rnk = has_dpt(R) and 6 or 4
 
       -- get linear normal form A from one-turn map R
-      local A, W, info = normal(R, rnk) -- TODO: high order normal form
-
-      -- get initial linear optical functions and phase advances
-      local of = optfun(A, rnk, coupling, W)
+      A, W, info = normal(R, rnk) -- TODO: high order normal form
 
       -- set damap
       m:setvar(X):set1(A)
-
-      -- check normal form
-      if option.debug >= 2 then check_normal(R, A, of) end
-
-      -- clear initial phase advances, set id
-      of.id, of.mu1, of.mu2, of.mu3 = m.id, 0, 0, 0
-
-      -- save beta0 block
-      __twdat.ofun[m.id] = of
     end
+
+    -- get initial linear optical functions and phase advances
+    local of = map2bet(m, rnk, coupling, W)
+
+    -- check normal form
+    if option.debug >= 2 then check_normal(m, of) end
+
+    -- clear initial phase advances, set id
+    of.id, of.mu1, of.mu2, of.mu3 = m.id, 0, 0, 0
+
+    -- save beta0 block
+    __twdat.ofun[m.id] = of
   end
 end
 
@@ -448,11 +446,11 @@ local function make_mflow (self)
     self.atsave = not atsave and fill or achain(fill, atsave)
   end
   -- action for optical function calculation
-  local sliceact = achain(atins, optfunact)
+  local sliceact = achain(atins, beta0act)
   local atslice  = self:var_raw 'atslice' -- prevent evaluation
   local atexit   = self:var_raw 'atexit'  -- prevent evaluation
-  self. atslice  = not atslice and sliceact  or chain(atslice, sliceact )
-  self. atexit   = not atexit  and optfunact or chain(atexit , optfunact)
+  self. atslice  = not atslice and sliceact or chain(atslice, sliceact)
+  self. atexit   = not atexit  and beta0act or chain(atexit , beta0act)
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
@@ -469,8 +467,8 @@ local function make_mflow (self)
   mflw.__twdat = {ofun={}}
 
   -- setup beta block status (update mflw and self.cofind)
-  twiss_betblk(self, mflw)
-  if option.debug > 2 then mdump(mflw,'bb.') end
+--  twiss_betblk(self, mflw)
+--  if option.debug > 2 then mdump(mflw,'bb.') end
 
   -- search for closed orbits (update mflw)
   if self.cofind ~= false then
@@ -531,9 +529,8 @@ local twiss = command 'twiss' {
   dir=nil,           -- s-direction of tracking (1 or -1)                 (trck)
 
   s0=nil,            -- initial s (offset)                                (trck)
-  X0=nil,            -- initial X coordinates (or damap, or list of)      (trck)
+  X0=nil,            -- initial X coordinates (or damap, or beta0)        (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
-  beta0=nil,         -- initial beta block (or list of)                   (twss)
 
   chrom=false,       -- compute chromaticity by finite difference         (twss)
   coupling=false,    -- compute optical functions for non-diagonal modes  (twss)
@@ -579,7 +576,7 @@ local twiss = command 'twiss' {
 
   __attr = tblcat(   -- list of all setup attributes
     cofind.__attr,
-    {'beta0', 'chrom', 'coupling'},
+    {'chrom', 'coupling'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly
