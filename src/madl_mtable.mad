@@ -124,14 +124,14 @@ end
 -- helper for mangled names and row indexes (same as sequence) ----------------o
 
 -- reflect indexes
-local function reflect (i, n)
+local function ireflect (i, n)
   return i < 0 and n+i+1 or i
 end
 
 -- canonize index (direct)
 local function index_of_idx (tbl, idx)
   local n = var_raw(tbl,_data).nr
-  idx = reflect(idx, n)
+  idx = ireflect(idx, n)
   return idx >= 1 and idx <= n and idx or nil
 end
 
@@ -139,7 +139,7 @@ end
 local function index_of_cnam (tbl, nam, cnt)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_table(ri) then
-    return ri[ reflect(cnt, ri.n) ]
+    return ri[ ireflect(cnt, ri.n) ]
   elseif cnt == 1 or cnt == -1 then
     return ri
   end
@@ -483,13 +483,13 @@ end
 local row_mt = set_concept({
   __len      = \s   -> s[_data].nc,
   __index    = \s,i => local data = s[_data]
-                       local ci = is_integer(i) and reflect(i, data.nc) or data.cidx[i]
+                       local ci = is_integer(i) and ireflect(i, data.nc) or data.cidx[i]
                        if data[ci] then return data[ci][s[_idx]] end
                      end,
   __newindex = \s,i,v => local data = s[_data]
                        assert(not (data.ro or s[_slf]:is_readonly()),
                               "invalid write access to readonly mtable")
-                       local ci = is_integer(i) and reflect(i, data.nc) or data.cidx[i]
+                       local ci = is_integer(i) and ireflect(i, data.nc) or data.cidx[i]
                        assert(data[ci], "invalid column in row write access")
                        local ri = s[_idx]
                        if ci ~= data.cref then
@@ -515,7 +515,7 @@ end
 
 local cnt_mt = set_concept({
   __len      = \s   -> s[_idx].n,
-  __index    = \s,i => local ri = s[_idx][ reflect(i, s[_idx].n) ]
+  __index    = \s,i => local ri = s[_idx][ ireflect(i, s[_idx].n) ]
                        if ri then s[_data][_idx] = ri return s[_data] end
                        end,
   __ipairs   = \s   -> (cnt_iter, s, 0),
@@ -532,7 +532,7 @@ local function index_mm (tbl, key)
   -- row index
   if type(key) == 'number' then                              -- see index_of_idx
     local data = var_raw(tbl,_data)
-    key = reflect(key, data.nr)
+    key = ireflect(key, data.nr)
     if key < 1 or key > data.nr then return nil end
     return setmetatable({[_idx]=key, [_data]=data, [_slf]=tbl}, row_mt)
   end
@@ -608,7 +608,7 @@ local function build_index (tbl, key_)
   if key_ == 'none' then -- 'none' disable index
     data.ridx, data.cref, tbl.refcol = {}
   elseif key_ then       -- change reference column
-    local ci = is_integer(key_) and reflect(key_, data.nc) or data.cidx[key_]
+    local ci = is_integer(key_) and ireflect(key_, data.nc) or data.cidx[key_]
     assert(data[ci], "invalid argument #2 (valid column expected)")
     tbl.refcol, data.cref = data.cidx[ci], ci
   end
@@ -718,18 +718,18 @@ local function get (tbl, row, col, cnt_)
   local data, ri, ci = var_raw(tbl,_data)
 
   if is_integer(col)
-  then ci = reflect(col, data.nc)
+  then ci = ireflect(col, data.nc)
   else ci = data.cidx[col]
   end
   if is_nil(data[ci]) then return nil end
 
   if is_integer(row)
-  then ri = reflect(row, data.nr)
+  then ri = ireflect(row, data.nr)
   else ri = data.ridx[row]
     if is_table(ri) then
       local cnt = cnt_ or 1
       assert(is_integer(cnt), "invalid argument #4 (integer expected)")
-      ri = ri[ reflect(cnt, ri.n) ]
+      ri = ri[ ireflect(cnt, ri.n) ]
     end
   end
 
@@ -743,20 +743,20 @@ local function set (tbl, row, col, val, cnt_)
 
   local ci, ri
   if is_integer(col)
-  then ci = reflect(col, data.nc)
+  then ci = ireflect(col, data.nc)
   else ci = data.cidx[col]
   end
   assert(data[ci], "invalid argument #3 (valid column expected)")
 
   if is_integer(row) then
-    ri = reflect(row, data.nr)
+    ri = ireflect(row, data.nr)
     assert(ri >= 1 and ri <= data.nr, "row index out of bounds")
   else
     ri = assert(data.ridx[row], "invalid argument #2 (valid row expected)")
     if is_table(ri) then
       local cnt = cnt_ or 1
       assert(is_integer(cnt), "invalid argument #5 (number expected)")
-      ri = assert(ri[ reflect(cnt, ri.n) ],
+      ri = assert(ri[ ireflect(cnt, ri.n) ],
                                 "invalid argument #2 (valid row[cnt] expected)")
     end
   end
@@ -789,7 +789,7 @@ end
 local function get_col (tbl, key)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = var_raw(tbl,_data)
-  local ci = is_integer(key) and reflect(key, data.nc) or data.cidx[key]
+  local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
   if not ci or ci < 0 or ci > data.nc then return nil end
   return (ci ~= data.cref or data.ro) and data[ci] or -- index proxy
           setmetatable({[_col]=data[ci], [_data]=data, [_slf]=tbl}, ref_mt)
@@ -799,7 +799,7 @@ local function set_col (tbl, key, val)
   local data = var_raw(tbl,_data)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  local ci = is_integer(key) and reflect(key, data.nc) or data.cidx[key]
+  local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
   assert(ci and ci >= 0 and ci <= data.nc, "invalid argument #2 (valid column expected)")
   if rawequal(data[ci],val) then return tbl end
   if ci > data.nc-data.ng then -- generator to use
@@ -825,7 +825,7 @@ local function ins_col (tbl, key_, kval, val, nvec_)
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   assertf(is_nil(data.cidx[kval]), "invalid argument #3 (column name '%s' already in use)", kval)
   local ci = is_nil(key_) and data.nc+1 or
-             is_integer(key_) and reflect(key_, data.nc) or data.cidx[key_]
+             is_integer(key_) and ireflect(key_, data.nc) or data.cidx[key_]
   assert(ci and ci >= 1 and ci <= data.nc+1,
                                 "invalid insertion key (valid column expected)")
   local cg = data.nc-data.ng+1
@@ -865,7 +865,7 @@ local function rem_col (tbl, key)
   local data = var_raw(tbl,_data)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  local ci = is_integer(key) and reflect(key, data.nc) or data.cidx[key]
+  local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
   assert(ci and ci >= 1 and ci <= data.nc, "invalid argument #2 (valid column expected)")
   if ci > data.nc-data.ng then data.ng = data.ng-1 end
   data.nc, data.cidx[data.cidx[ci]] = data.nc-1, nil
@@ -1417,7 +1417,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   -- collect column
   local j = 1
   for i=1,ncol do
-    local ci = is_number(cnam[i]) and reflect(cnam[i], ncol) or data.cidx[cnam[i]]
+    local ci = is_number(cnam[i]) and ireflect(cnam[i], ncol) or data.cidx[cnam[i]]
     if not data[ci] then error("invalid column name or index "..cnam[i]) end
     local v = data[ci][1] -- discard cdata except complex and range
     if not (is_table(v) or is_cdata(v)) or is_complex(v) or is_range(v) then
