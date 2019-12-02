@@ -35,13 +35,13 @@ local command, element, mtable, damap, symint, aperture, option in MAD
 
 local is_nil, is_beam, is_sequence, is_string, is_boolean, is_number,
       is_integer, is_true, is_table, is_callable, is_iterable,
-      is_mappable, is_tpsa, is_damap                            in MAD.typeid
+      is_mappable, is_tpsa, is_damap, is_beta0                  in MAD.typeid
 local fnil, ffalse, functor, chain, achain, bind3rd             in MAD.gfunc
 local invfact, arc2len, sqrt, sin, cos, atan2                   in MAD.gmath
-local betablk, dp2pt                                            in MAD.gphys
+local dp2pt, bet2map                                            in MAD.gphys
 local atbegin, atins, atins1, action, actionat                  in MAD.symint
 local tblcat, errorf, assertf, printf                           in MAD.utility
-local tobit, band                                               in MAD.operator
+local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
 local minlen, minang, minstr, clight, sqrt2, twopi              in MAD.constant
 local is_implicit                                               in element.drift
@@ -790,8 +790,8 @@ local header = {
   'direction', 'observe', 'implicit', 'misalign', 'deltap'
 }
 
-local function make_mtable (self, nosav, obs, ndp)
-  local title, range, nturn, dir, implicit, misalign, deltap, mapsave in self
+local function make_mtable (self, range, nosav, obs, ndp)
+  local title, nturn, dir, implicit, misalign, deltap, mapsave in self
   local sequ, nrow = self.sequence
 
   if nosav then
@@ -806,7 +806,7 @@ local function make_mtable (self, nosav, obs, ndp)
   return mtable(self.__id, {
     name=self.name, title=title or sequ.name, type='track', header=header,
     direction=dir, observe=obs, implicit=implicit, misalign=misalign,
-    deltap=deltap, reserve=nrow,
+    deltap=deltap, range=range, reserve=nrow,
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'idx',                      -- index of element in the sequence
@@ -838,6 +838,8 @@ local slicebit = { [false]=tobit(0), [true]=tobit(4),
                    atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
                    atbound=tobit(5), atbody =tobit(6), atall =tobit(7) }
 
+local mapkind = { part=tobit(1), damap=tobit(2) }
+
 local function make_mflow (self)
   -- check sequence
   local sequ = assert(self.sequence, "missing sequence")
@@ -847,8 +849,11 @@ local function make_mflow (self)
   local beam = assert(self.beam or sequ.beam, "missing beam")
   assert(is_beam(beam), "invalid beam")
 
+  -- get range (nil == "#s/#e")
+  local range = self.range or sequ.range
+
   -- build iterator (track direction)
-  local range, dir, nturn in self
+  local dir, nturn in self
   local iter, state, init = sequ:siter(range, nturn, dir)
 
   -- saving data, build mtable
@@ -887,7 +892,7 @@ local function make_mflow (self)
   assert(is_boolean(misalign), "invalid misalign (boolean expected)")
 
   -- setup deltap (number, table, vector or range)
-  local deltap in self
+  local deltap = self.deltap or 0
   if is_number(deltap) then deltap = {deltap} end
   assert(is_iterable(deltap), "invalid deltap (number or iterable expected)")
   local ndp = #deltap
@@ -908,7 +913,7 @@ local function make_mflow (self)
   local mtbl
   if save then
     local nosave = atsave == ffalse
-    mtbl = make_mtable(self, nosave, observe, ndp)
+    mtbl = make_mtable(self, range, nosave, observe, ndp)
 
     if not nosave then
       local fill = observe > 0 and save_obs or save_dat
@@ -960,12 +965,13 @@ local function make_mflow (self)
                             , "invalid mapdef (boolean or mappable expected)")
   assert(is_boolean(mapsave) or mapsave == 1 -- 1 means to save only the matrix
                             , "invalid mapsave (boolean or 1 expected)")
-  if not is_mappable(X0[1]) then X0 = {X0} end
+  if not is_mappable(X0[1]) or is_beta0(X0) then X0 = {X0} end
 
   -- create mflw
   local npar = #X0
   local mflw = table.new(npar*ndp,50)
   local mdef = is_true(mapdef) and {xy=1} or mapdef
+  local mknd = 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -976,20 +982,30 @@ local function make_mflow (self)
       local dpt = beam and dp2pt(dp, beam.beta) or dpt
       local ii = (j-1)*npar+i
 
-      if is_damap(X0i) then -- copy: damap are mappable (i.e. must be first)
+      if is_damap(X0i) then -- damap copy
         mflw[ii] = X0i:copy()
         mflw[ii].pt:set0(X0i.pt:get0()+dpt) -- for MADX compatibility
---      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
         mflw[ii].status = 'Mset'
+        mknd = bor(mknd, mapkind.damap)
+--      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
+      elseif is_beta0(X0i) then -- damap created from beta0
+        mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef))
+        mflw[ii].pt:set0(mflw[ii].pt:get0()+dpt) -- for MADX compatibility
+        mflw[ii].status = 'Bset'
+        mknd = bor(mknd, mapkind.damap)
+--      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
       elseif is_mappable(X0i) then -- access by indexes first for vectors
         local x, px = X0i[1] or X0i.x or 0, X0i[2] or X0i.px or 0
         local y, py = X0i[3] or X0i.y or 0, X0i[4] or X0i.py or 0
         local t, pt = X0i[5] or X0i.t or 0, X0i[6] or X0i.pt or 0
-        if mdef then -- create: damap required from coordinates (I as 1st order)
+        if mdef then -- damap created from coordinates (I as 1st order)
           mflw[ii] = damap(mdef[i] or mdef)
-          mflw[ii]:setvar{x,px,y,py,t,pt+dpt}.status = 'Xset'
+          mflw[ii]:setvar{x,px,y,py,t,pt+dpt}
+          mflw[ii].status = 'Xset'
+          mknd = bor(mknd, mapkind.damap)
         else -- copy: need a table for key access (e.g. vs. vector)
           mflw[ii] = {x=x, px=px, y=y, py=py, t=t, pt=pt+dpt, status='Xset'}
+          mknd = bor(mknd, mapkind.part)
         end
       else
         errorf("invalid type of item at id=%d (particle or damap expected)", i)
@@ -1041,6 +1057,7 @@ local function make_mflow (self)
 
   mflw.ptcmodel=ptcmodel     -- use PTC thick model
 
+  mflw.mapknd=mknd           -- kind of maps, particle:1, damap:2, mixed:3
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.mapsave=mapsave       -- save damaps
 
@@ -1140,14 +1157,14 @@ local function exec (self)
 end
 
 local track = command 'track' {
-  beam=nil,         -- beam (required or sequence.beam)                   (mflw)
+  beam=nil,         -- beam (or sequence.beam, required)                  (mflw)
   sequence=nil,     -- sequence (required)                                (mflw)
-  range=nil,        -- range of tracking                                  (iter)
+  range=nil,        -- range (or sequence.range)                          (iter)
   dir=1,            -- s-direction of tracking (1 or -1)                  (mflw)
 
   s0=0,             -- initial s (offset)                                 (mflw)
-  X0=0,             -- initial X coordinates (or damap, or list of)       (mflw)
-  deltap=0,         -- initial deltap(s)                                  (mflw)
+  X0=0,             -- initial X coordinates (or damap, or beta0)         (mflw)
+  deltap=nil,       -- initial deltap(s)                                  (mflw)
 
   mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
   mapsave=false,    -- save damap in the mtable                           (mflw)
