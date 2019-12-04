@@ -25,16 +25,13 @@
 void mad_nlopt (nlopt_args_t *a)
 {
   assert(a);
-  ensure(          a->n > 0 && a->fn && a->x    , "invalid objective function");
-  ensure(!a->p || (a->p > 0 && a->eq && a->etol), "invalid equality constraints");
-  ensure(!a->q || (a->q > 0 && a->le && a->ltol), "invalid inequality constraints");
 
   // create optimizer, set algorithm and problem dimension
   nlopt_opt opt = nlopt_create(a->algo, a->n);
 
   // set objective function to minimize/maximize
-  if (a->fdir > 0) nlopt_set_max_objective(opt, a->fn, NULL);
-  else             nlopt_set_min_objective(opt, a->fn, NULL);
+  if (a->fdir > 0) nlopt_set_min_objective(opt, a->fun, NULL);
+  else             nlopt_set_max_objective(opt, a->fun, NULL);
 
   // set objective function tolerances
   nlopt_set_ftol_abs    (opt, a->ftol);
@@ -51,8 +48,8 @@ void mad_nlopt (nlopt_args_t *a)
   nlopt_set_upper_bounds(opt, a->xmax);
 
   // set constraint functions to satisfy withing tolerances
-  if (a->p) nlopt_add_equality_mconstraint  (opt, a->p, a->eq, NULL, a->etol);
-  if (a->q) nlopt_add_inequality_mconstraint(opt, a->q, a->le, NULL, a->ltol);
+  if (a->p) nlopt_add_equality_mconstraint  (opt, a->p, a->efun, a->edat, a->etol);
+  if (a->q) nlopt_add_inequality_mconstraint(opt, a->q, a->lfun, a->ldat, a->ltol);
 
   // set stopping criteria
   nlopt_set_maxeval(opt, a->maxcall);

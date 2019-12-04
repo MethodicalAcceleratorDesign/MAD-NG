@@ -43,43 +43,46 @@ typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
 
 struct nlopt_args {
   // algorithm
-  int            algo;
+        int    algo;
 
   // objective function (required)
-  nlopt_obj_t   *fn;
-  int            fdir; // 1: maximize, -1: minimize (default)
-  num_t          ftol;
-  num_t          fstop;
+  nlopt_obj_t *fun;
+        int    fdir; // 1: maximize, -1: minimize (default)
+        num_t  fval;
+        num_t  ftol;
+        num_t  fstop;
 
   // state variables [n] (required)
-  ssz_t          n;
-  num_t         *x;
-  const num_t   *xstp;
-  const num_t   *xtol;
-  num_t          rtol;
+        ssz_t  n;
+        num_t *x;
 
-  // bound constraints [n] (optional)
-  const num_t   *xmin;
-  const num_t   *xmax;
+  // initial value, step, tolerances and bounds [n] (optional)
+  const num_t *x0;
+  const num_t *xstp;
+  const num_t *xtol;
+        num_t  rtol;
+  const num_t *xmin;
+  const num_t *xmax;
 
   // equality constraints [p] (optional)
-  ssz_t          p;
-  nlopt_cts_t   *eq;
-  const num_t   *etol;
+        ssz_t  p;
+  nlopt_cts_t *efun;
+        num_t *edat;
+  const num_t *etol;
 
   // inequality constraints [q] (optional)
-  ssz_t          q;
-  nlopt_cts_t   *le;
-  const num_t   *ltol;
+        ssz_t  q;
+  nlopt_cts_t *lfun;
+        num_t *ldat;
+  const num_t *ltol;
 
   // stop criteria (if >0)
-  int            maxcall;
-  num_t          maxtime;
+        int    maxcall;
+        num_t  maxtime;
 
   // returned values
-  int            status;
-  int            ncall;
-  num_t          fval;
+        int    status;
+        int    ncall;
 };
 
 // -- end ---------------------------------------------------------------------o
