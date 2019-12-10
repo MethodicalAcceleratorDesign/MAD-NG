@@ -25,13 +25,14 @@
 
 local ffi = require 'ffi'
 
-local _C, command, vector, warn                                  in MAD
+local _C, command, vector, matrix, warn                          in MAD
 local fnil                                                       in MAD.gfunc
-local assertf, errorf, printf, strsplit                          in MAD.utility
+local assertf, errorf, printf, strsplit, log2num                 in MAD.utility
 local is_nil, is_string, is_iterable, is_mappable, is_callable   in MAD.typeid
 local eps, inf                                                   in MAD.constant
 
-local min    = math.min
+local abs, min, max in math
+
 local strfmt = string.format
 
 -- types ----------------------------------------------------------------------o
@@ -40,7 +41,7 @@ ffi.cdef [[
 // NLopt supported algorithms (see nlopt.h)
 // see https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/ for details
 
-enum {
+typedef enum {
 /* Naming conventions:
   NLOPT_{G/L}{D/N}_* = global/local derivative/no-derivative optimization
   *_RAND algorithms involve some randomization.
@@ -113,13 +114,11 @@ enum {
   NLOPT_GN_ESCH,
 
   NLOPT_NUM_ALGORITHMS /* not an algorithm, just the number of them */
-};
-]]
+} nlopt_algorithm;
 
-ffi.cdef[[
 // NLopt return codes (see nlopt.h)
 
-enum {
+typedef enum {
   NLOPT_FAILURE = -1, /* generic failure code */
   NLOPT_INVALID_ARGS = -2,
   NLOPT_OUT_OF_MEMORY = -3,
@@ -131,8 +130,15 @@ enum {
   NLOPT_FTOL_REACHED = 3,
   NLOPT_XTOL_REACHED = 4,
   NLOPT_MAXEVAL_REACHED = 5,
-  NLOPT_MAXTIME_REACHED = 6
-};
+  NLOPT_MAXTIME_REACHED = 6,
+
+  NLOPT_RUNNING = 0 /* extra code for MAD */
+} nlopt_result;
+
+struct nlopt_opt_s; /* opaque structure, defined internally */
+typedef struct nlopt_opt_s *nlopt_opt;
+
+nlopt_result nlopt_force_stop(nlopt_opt);
 ]]
 
 ffi.cdef[[
@@ -145,45 +151,46 @@ typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
 struct nlopt_args {
   // algorithm
         int    algo;
+        str_t  algonam;
 
   // objective function (required)
   nlopt_obj_t *fun;
-        int    fdir; // 1: maximize, -1: minimize (default)
-        num_t  fval;
-        num_t  ftol;
-        num_t  fstop;
+        num_t  fval;  // current minimum value
+        num_t  fmin;  // minimum value required (target)
+        num_t  ftol;  // minimum value change required (target)
+        num_t  frtol; // minimum relative value change required (target)
 
   // state variables [n] (required)
         ssz_t  n;
         num_t *x;
-
-  // initial value, step, tolerances and bounds [n] (optional)
-  const num_t *x0;
-  const num_t *xstp;
-  const num_t *xtol;
-        num_t  rtol;
+  const num_t *dx;
   const num_t *xmin;
   const num_t *xmax;
+  const num_t *xtol;
+        num_t  xrtol;
 
-  // equality constraints [p] (optional)
+  // equality constraints [p]
         ssz_t  p;
   nlopt_cts_t *efun;
-        num_t *edat;
   const num_t *etol;
 
-  // inequality constraints [q] (optional)
+  // inequality constraints [q]
         ssz_t  q;
   nlopt_cts_t *lfun;
-        num_t *ldat;
   const num_t *ltol;
 
   // stop criteria (if >0)
         int    maxcall;
         num_t  maxtime;
 
+  // debug level
+        int    debug;
+
   // returned values
         int    status;
-        int    ncall;
+
+  // pointer to nlop opaque structure
+  nlopt_opt    opt;
 };
 ]]
 
@@ -251,9 +258,14 @@ local nlopt_algo = {
   NLOPT_G_MLSL_LDS                 = { bd='y', eq='n', le='n', gr='?', lo='y' },
 }
 do
-  local n=0
-  for s,a in pairs(nlopt_algo) do a.id, n = assert(_C[s]), n+1 end
+  local n, t = 0, table.new( _C.NLOPT_NUM_ALGORITHMS,0)
+  for s,a in pairs(nlopt_algo) do
+    a.id = assert(_C[s]) ; n = n+1 ; t[n] = a
+  end
   assert(n == _C.NLOPT_NUM_ALGORITHMS, "unexpected missing NLOPT algorithm")
+
+  for i=1,n do nlopt_algo[t[i].id] = t[i] end
+  assert(n == #nlopt_algo+1, "unexpected corrupted list of NLOPT algorithm")
 end
 
 -- NLopt return code strings
@@ -266,18 +278,21 @@ local retstr = {
   [_C.NLOPT_FORCED_STOP     ] = 'NLOPT_FORCED_STOP',
   -- generic success code
   [_C.NLOPT_SUCCESS         ] = 'NLOPT_SUCCESS',
-  [_C.NLOPT_STOPVAL_REACHED ] = 'NLOPT_STOPVAL_REACHED',
+  [_C.NLOPT_STOPVAL_REACHED ] = 'NLOPT_FMIN_REACHED',    -- MODIFIED
   [_C.NLOPT_FTOL_REACHED    ] = 'NLOPT_FTOL_REACHED',
   [_C.NLOPT_XTOL_REACHED    ] = 'NLOPT_XTOL_REACHED',
-  [_C.NLOPT_MAXEVAL_REACHED ] = 'NLOPT_MAXEVAL_REACHED',
+  [_C.NLOPT_MAXEVAL_REACHED ] = 'NLOPT_MAXCALL_REACHED', -- MODIFIED
   [_C.NLOPT_MAXTIME_REACHED ] = 'NLOPT_MAXTIME_REACHED',
+  -- extra codes (check value with enum of nlopt return code!)
+  [_C.NLOPT_RUNNING         ] = 'NLOPT_RUNNING',         -- ADDED
 }
 
 -- expression default weights by kind -----------------------------------------o
 
 local expr_weights = { -- default weight = 1
-  x  = 10, px  = 100, y  = 10, py  = 100, t = 10, pt = 100,
-  dx = 10, dpx = 100, dy = 10, dpy = 100,
+  x   = 10, px  = 100, y    = 10, py  = 100, t = 10, pt = 100,
+  dx  = 10, dpx = 100, dy   = 10, dpy = 100,
+  mux = 10, muy = 10 , alfx = 10, alfy = 10, -- MAD-X compatiblity
 
   q1  = 10, q2  = 10, q3  = 10,
   mu1 = 10, mu2 = 10, mu3 = 10,
@@ -289,41 +304,48 @@ local expr_weights = { -- default weight = 1
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var, arg = env.__var, env.__var.arg
-  local n, p, q in arg[0]
+  local n, p, q, status in arg[0]
 
-  io.write"\nConstraints                Type        Kind        Weight     Penalty Value\n"
+  io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
   io.write"-----------------------------------------------------------------------------\n"
 
   for i=1,p do
     local e = equalities[i]
-    local w = weights[e.kind] or expr_weights[e.kind] or 1
-    printf("%2d: % -22s % -11s % -10s % -10.5g % -.5e\n",
-              i, e.name or 'unknown', 'equality', e.kind or '', w, var.edat[i])
+    local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+    printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
+              i, e.name or '', 'equality', e.kind or '.', w, var.eval[i])
   end
 
   for i=1,q do
     local e = inequalities[i]
-    local w = weights[e.kind] or expr_weights[e.kind] or 1
-    printf("%2d: % -22s % -11s % -10s % -10.5g % -.5e\n",
-              i+p, e.name or 'unknown', 'inequality', e.kind or '', w, var.ldat[i])
+    local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+    printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
+              i+p, e.name or '', 'inequality', e.kind or '.', w, var.lval[i])
   end
 
-  io.write"\nVariables                  Final Value  Init. Value  Lower Limit  Upper Limit\n"
+  local s1, s2, v1, v2
+  if status == _C.NLOPT_RUNNING
+  then s1, s2, v1, v2 = 'Curr. Value', 'Curr. Step ', var.x, var.dx
+  else s1, s2, v1, v2 = 'Final Value', 'Init. Value', var.x, var.x0 end
+
+  printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
   io.write"-------------------------------------------------------------------------------\n"
 
   for i=1,n do
-    local v = variables[i]
-    printf("% -25s % -.5e % -.5e % -.5e % -.5e\n",
-            v.var, var.x[i], var.x0[i], var.xmin[i], var.xmax[i])
+    printf(" % -25s % -.5e % -.5e % -.5e % -.5e\n",
+            variables[i].var, v1[i], v2[i],
+            max(var.xmin[i],-9.99999e99), min(var.xmax[i], 9.99999e99))
   end
 
-  printf("\nstatus=%s, fmin=% -.8e, ncall=%d\n\n",
-            retstr[arg[0].status], arg[0].fval, arg[0].ncall)
+  local fmt = "\n status=%s,  ncall=%2d\z
+               \n fmin=% -.10e,  fval=% -.10e,  ftol=% -.10e\n\n"
+
+  printf(fmt, retstr[arg[0].status], env.ncall, arg[0].fval, var.fval, var.ftol)
 end
 
 -- callbacks ------------------------------------------------------------------o
 
-local function nlopt_functions (env, mopt)
+local function nlopt_functions (env, mthd, ndsp)
   local command, variables, objective, equalities, inequalities, weights in env
 
   assert(is_nil(objective.exec) or is_callable(objective.exec),
@@ -333,110 +355,144 @@ local function nlopt_functions (env, mopt)
   assert(is_nil(inequalities.exec) or is_callable(inequalities.exec),
          "invalid inequality constraints (callable expected)")
 
-  local update = variables.update
+  local update in variables
   local var, arg = env.__var, env.__var.arg
-  local x, edat, ldat in var
-  local n, p, q in arg[0]
+  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol in var
+  local disp = ndsp > 1 and disp_summ or fnil
+  local dogr = nlopt_algo[mthd].gr == 'y'
 
   -- nlopt objective function
-  return objective.exec or \n_,x_,grad_ =>
-    assert(n_ == n, "unexpected difference in number of variables")
+  return objective.exec or
+    function(n_, x_, grad_)
+      assert(n_ == n, "invalid number of variables (unexpected)")
+      assert(x_     , "missing vector of variables (unexpected)")
 
-    if grad_ ~= nil then -- TODO: add support for jacobian
-      warn("unsupported request for jacobian in objective function (ignored)")
-    end
-
-    local es, ws = 0, 0
-
-    -- iteration number
-    arg[0].ncall = arg[0].ncall + 1
-
-    -- update state variables
-    if update then
-      for i=1,n do x[i]=x_[i-1] end
-      update(x, env)
-    else
-      var.flush = nil
-      for i=1,n do variables[i].set(x_[i-1], env) end
-      if var.flush then jit.flush() end
-    end
-
-    -- call user command
-    local res = command(env)
-
-    -- collect equalities
-    for i=1,p do
-      local expr, kind in equalities[i]
-      local w = weights[kind] or expr_weights[kind] or 1
-      edat[i] = expr(res, env)
-      es = es + (w*edat[i])^2 ; ws = ws + w^2
-    end
-
-    -- collect inequalities
-    for i=1,q do
-      local expr, kind in inequalities[i]
-      local w = weights[kind] or expr_weights[kind] or 1
-      ldat[i] = expr(res, env)
-      if ldat[i] > 0 then
-        es = es + (w*ldat[i])^2 ; ws = ws + w^2
+      -- force to stop
+      if var.status then
+        if arg[0].debug > 0 then io.write("nlopt: forced to stop\n") end
+        _C.nlopt_force_stop(arg[0].opt)
+        return arg[0].fval
       end
-    end
 
-    -- return weighted mean of squares:
-    -- 1/2 \sum_i (w_i cf_i(x))^2 / \sum_i w_i^2
-    return 0.5 * es / ws
-  end,
+      -- iteration number
+      env.ncall = env.ncall + 1
+
+      -- update state vector
+      for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
+
+      -- update state variables
+      if update then
+        update(x, env)
+      else
+        var.flush = nil
+        for i=1,n do variables[i].set(x[i], env) end
+        if var.flush then jit.flush() end -- TODO: avoid jit flush
+      end
+
+      -- call user command
+      local res = command(env)
+
+      -- objective function error
+      local fval = 0
+
+      -- collect equalities constraints
+      for i=1,p do
+        local e = equalities[i]
+        eval[i] = ewgt[i]*e.expr(res, env)
+        if abs(eval[i]) > etol[i] then fval = fval+abs(eval[i]) end
+      end
+
+      -- collect inequalities constraints
+      for i=1,q do
+        local e = inequalities[i]
+        lval[i] = lwgt[i]*e.expr(res, env)
+        if lval[i] > ltol[i] then fval = fval+abs(lval[i]) end
+      end
+
+      -- save objective function
+      var.fval = fval/(p+q)
+      var.ftol = abs(var.fval-arg[0].fval)
+
+      -- compute objective function gradient
+      if grad_ and dogr then error("NYI") end
+
+      -- display intermediate summary
+      disp(env)
+
+      -- stop criteria (nlopt ignores fmin and ftol...?)
+      if var.fval <= arg[0].fmin then
+        var.status = _C.NLOPT_STOPVAL_REACHED
+      elseif var.ftol <= arg[0].ftol or
+             var.ftol <= arg[0].frtol * abs(var.fval) then
+        var.status = _C.NLOPT_FTOL_REACHED
+      end
+
+      -- return weighted mean: \sum_i w_i |c_i(x)| / (p+q)
+      return var.fval
+    end,
 
   -- nlopt equality function
-  equalities.exec or
-    (p>0 and mopt.eq == 'y' and \p_,r_ =>
-        assert(p_ == p, "invalid number of equalities (unexpected)")
-        for i=0,p-1 do r_[i] = edat.data[i] end
-      end or nil),
+  nlopt_algo[mthd].eq == 'y' and (equalities.exec or p>0 and
+    function(p_, r_, n_, x_, grad_)
+      assert(p_ == p, "invalid number of equalities (unexpected)")
+      assert(r_     , "missing vector of equalities (unexpected)")
+      for i=1,p do r_[i-1] = eval[i] end
+      if grad_ and dogr then error("NYI") end
+    end or nil),
 
   -- nlopt inequality function
-  inequalities.exec or
-    (q>0 and mopt.le == 'y' and \q_,r_ =>
-        assert(q_ == q, "invalid number of inequalities (unexpected)")
-        for i=0,q-1 do r_[i] = ldat.data[i] end
-      end or nil)
+  nlopt_algo[mthd].le == 'y' and (inequalities.exec or q>0 and
+    function(q_, r_, n_, x_, grad_)
+      assert(q_ == q, "invalid number of inequalities (unexpected)")
+      assert(r_     , "missing vector of inequalities (unexpected)")
+      for i=1,q do r_[i-1] = lval[i] end
+      if grad_ and dogr then error("NYI") end
+    end or nil)
 end
 
 -- getters/setters ------------------------------------------------------------o
 
-local locfmt =
-  "return \\f,env => local l = 2 \z
-        return \\ => local info = debug.getinfo(l, 'f') \z
-                     if not (info and info.func == f) then \z
-                       l = nil \z
-                       for i=2,1e6 do \z
-                         info = debug.getinfo(i, 'f') \z
-                         if not info then break end \z
-                         if info.func == f then l=i ; break end \z
-                       end ; assert(l, 'local variable not found') \z
-                     end \z
-                     local k, v = debug.getlocal(l, %d) \z
-                     assert(k == '%s', 'invalid local variable getter') \z
-                     return v end, \z
-              \\x => local info = debug.getinfo(l, 'f') \z
-                     if not (info and info.func == f) then \z
-                       l = nil \z
-                       for i=2,1e6 do \z
-                         info = debug.getinfo(i, 'f') \z
-                         if not info then break end \z
-                         if info.func == f then l=i ; break end \z
-                       end ; assert(l, 'local variable not found') \z
-                     end \z
-                     local k = debug.setlocal(l, %d, x) \z
-                     assert(k == '%s', 'invalid local variable setter') \z
-                     env.__var.flush = true end end"
-local upvfmt =
-  "return \\f,env (\\ => local k, v = debug.getupvalue(f, %d) \z
-                         assert(k == '%s', 'invalid upvalue getter') \z
-                         return v end, \z
-                  \\x => local k = debug.setupvalue(f, %d, x) \z
-                         assert(k == '%s', 'invalid upvalue setter') \z
-                         env.__var.flush = true end)"
+local locfmt = [[
+  return \f,env => local vnam, vidx, lget, lset = '%s', %d
+        return \ => local k, v = debug.getlocal(lget or 3, vidx)
+                    if not lget or k ~= vnam then
+                      for i=3,1e6 do
+                        local info = debug.getinfo(i, 'f')
+                        if not info then break end
+                        if info.func == f then lget=i ; break end
+                      end ; assert(lget, 'local variable not found in getter')
+                      k, v = debug.getlocal(lget, vidx)
+                    end
+                    -- print('lget=', lget)
+                    assert(k == vnam, 'invalid local variable in getter')
+                    return v
+                  end,
+              \x => local k = debug.setlocal(lset or 6, vidx, x)
+                    if not lset or k ~= vnam then
+                      for i=6,1e6 do
+                        local info = debug.getinfo(i, 'f')
+                        if not info then break end
+                        if info.func == f then lset=i ; break end
+                      end ; assert(lset, 'local variable not found in setter')
+                      k = debug.setlocal(lset, vidx, x)
+                    end
+                    -- print('lset=', lset)
+                    assert(k == vnam, 'invalid local variable in setter')
+                    env.__var.flush = true
+                  end
+                end ]]
+
+local upvfmt = [[
+  return \f,env => local vnam, vidx = '%s', %d
+        return \ => local k, v = debug.getupvalue(f, vidx)
+                    assert(k == vnam, 'invalid upvalue in getter')
+                    return v
+                  end,
+              \x => local k = debug.setupvalue(f, vidx, x)
+                    assert(k == vnam, 'invalid upvalue in setter')
+                    env.__var.flush = true
+                  end
+                end ]]
 
 local wmsg =
   "write access to %s is very slow; use set, update or indirect (table) access"
@@ -444,30 +500,28 @@ local wmsg =
 local function accessors (variables, env)
   local loc, upv, ctx = {}, {}, getfenv(3)
   local fun = debug.getinfo(3, 'f').func
-  local n = env.__var.x.nrow
+  local n in env.__var
 
   assert(ctx and fun, "unexpected invalid stack level")
 
-  -- scan local variables (stack/registers)
+  -- scan local variables of the caller
   for i=1,1e6 do
     local k,v = debug.getlocal(3, i)
     if not k then break end
     loc[k], loc[i] = i, v -- top/bottom override (required!)
   end
-  -- scan non-local variables (upvalues)
+  -- scan upvalues of the caller
   for i=1,1e6 do
     local k,v = debug.getupvalue(fun, i)
     if not k then break end
     upv[k], upv[i] = i, v -- never override (unique!)
   end
 
---TODO: scan caller context only on need, i.e. on 1st use of loc or upv
---print("CTX") for k,v in pairs(ctx) do if is_string(k) then print(k,    v ) end end
 --print("LOC") for k,v in pairs(loc) do if is_string(k) then print(k,loc[v]) end end
 --print("UPV") for k,v in pairs(upv) do if is_string(k) then print(k,upv[v]) end end
 
   -- build variables getter/setter
-  local wrn = not variables.update
+  local wrn = not (variables.nowarn or variables.update)
 
   for i=1,n do
     local v = variables[i]
@@ -475,40 +529,40 @@ local function accessors (variables, env)
 
     local var, fmt, get, set = v.var
     assertf(is_string(var), "invalid 'var' for variable #%d (string expected)", i)
-    local obj, isep = strsplit(var, '.[')
+    local nam, isep = strsplit(var, '.[')
 
-    if loc[obj] then     -- local variable
-      if isep > 0 then   -- local variable with indirection (safe, use obj)
-        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", obj, var, var)
-        get, set = assert(loadstring(fmt))()(loc[loc[obj]])
+    if loc[nam] then     -- local variable
+      if isep > 0 then   -- local variable with indirect access
+        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
+        get, set = assert(loadstring(fmt))()(loc[loc[nam]])
 
       else               -- local variable with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "local variables") ; wrn=false end
-        fmt = strfmt(locfmt, loc[obj], obj, loc[obj], obj)
+        fmt = strfmt(locfmt, nam, loc[nam])
         get, set = assert(loadstring(fmt))()(fun, env)
       end
 
-    elseif upv[obj] then -- upvalue
-      if isep > 0 then   -- upvalue variable with indirection (safe, use obj)
-        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", obj, var, var)
-        get, set = assert(loadstring(fmt))()(upv[upv[obj]])
+    elseif upv[nam] then -- upvalue
+      if isep > 0 then   -- upvalue with indirect access
+        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
+        get, set = assert(loadstring(fmt))()(upv[upv[nam]])
 
-      else               -- upvalue variable with direct access (need jit.flush!)
+      else               -- upvalue with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "upvalues") ; wrn=false end
-        fmt = strfmt(upvfmt, upv[obj], obj, upv[obj], obj)
+        fmt = strfmt(upvfmt, nam, upv[nam])
         get, set = assert(loadstring(fmt))()(fun, env)
       end
 
-    elseif ctx[obj] then -- caller context (safe, use ctx)
+    elseif ctx[nam] then -- caller context
       fmt = strfmt("return \\__ctx (\\ __ctx.%s, \\__x => __ctx.%s=__x end)", var, var)
       get, set = assert(loadstring(fmt))()(ctx)
 
     else
-      errorf("unable to build getter and setter (variable '%s' not found)", var)
+      errorf("unable to build '%s' getter and setter (variable not found)", var)
     end
 
-    v.get = v.get or get
-    v.set = v.set or set
+    v.get = v.get or assert(get)
+    v.set = v.set or assert(set)
 
   ::next::
   end
@@ -517,20 +571,28 @@ end
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
-  local variables, objective, equalities, inequalities, weights in self
-  local command = self:var_raw 'command' -- prevent evaluation
+  local variables, equalities, inequalities, weights, objective in self
+  local command = self:var_raw 'command' or fnil -- prevent evaluation
 
   -- check inputs
   assert(is_callable(command)     , "invalid match 'command' (callable expected)")
-  assert(is_iterable(variables)   , "invalid match 'variables' (iterable expected)")
-  assert(is_iterable(equalities)  , "invalid match 'equalities' (iterable expected)")
-  assert(is_iterable(inequalities), "invalid match 'inequalities' (iterable expected)")
-  assert(is_mappable(objective)   , "invalid match 'objective' (mappable expected)")
+  assert(is_mappable(variables)   , "invalid match 'variables' (iterable expected)")
+  assert(is_mappable(equalities)  , "invalid match 'equalities' (iterable expected)")
+  assert(is_mappable(inequalities), "invalid match 'inequalities' (iterable expected)")
   assert(is_mappable(weights)     , "invalid match 'weights' (mappable expected)")
+  assert(is_mappable(objective)   , "invalid match 'objective' (mappable expected)")
 
   -- check selected method
-  local method = objective.method or 'NLOPT_LN_COBYLA' -- 'NLOPT_GN_ORIG_DIRECT_L'
-  local mopt = assertf(nlopt_algo[method], "unknown optimisation method '%s'", method)
+  local mthd = objective.method or 'NLOPT_LN_COBYLA' -- 'NLOPT_GN_ORIG_DIRECT_L'
+  local mopt = assertf(nlopt_algo[mthd], "unknown optimisation method '%s'", mthd)
+
+  -- check summary level
+  local summ = objective.summary or false
+  local ndsp = assertf(log2num(summ), "invalid summary '%s'", tostring(summ))
+
+  -- check debug level
+  local dbug = objective.debug or false
+  local ndbg = assertf(log2num(dbug), "invalid debug '%s'", tostring(dbug))
 
   -- local sizes
   local n = min(#variables, variables.nvar or 1e6)
@@ -542,6 +604,7 @@ local function exec (self)
 
   -- matching environment
   local env = {
+    ncall        = 0,
     command      = command,
     objective    = objective,
     variables    = variables,
@@ -550,77 +613,109 @@ local function exec (self)
     weights      = weights,
     usrdef       = self.usrdef,
     __var  = { -- hidden variables
-      x    = vector(n),
+      n    = n,
       x0   = vector(n),
-      xstp = vector(n),
+      x    = vector(n),
+      dx   = vector(n),
       xtol = vector(n),
       xmin = vector(n),
       xmax = vector(n),
-      edat = p>0 and vector(p) or nil,
+      grad = vector(n),
+      p    = p,
+      eval = p>0 and vector(p) or nil,
+      ewgt = p>0 and vector(p) or nil,
       etol = p>0 and vector(p) or nil,
-      ldat = q>0 and vector(q) or nil,
+      q    = q,
+      lval = q>0 and vector(q) or nil,
+      lwgt = q>0 and vector(q) or nil,
       ltol = q>0 and vector(q) or nil,
       arg  = ffi.new 'nlopt_args_t[1]'
     },
   }
+
+  local var = env.__var
 
   -- create variables getter/setters (if needed)
   if is_nil(variables.init) and is_nil(variables.update) then
     accessors(variables, env)
   else
     assert(is_callable(variables.init) and is_callable(variables.update),
-           "invalid pair init/update (callables expected)")
-    variables.init(env.__var.x)
+           "invalid variables init and/or update (callables expected)")
+    variables.init(var.x0)
   end
-
-  -- fill C struct
-  local var, arg = env.__var, env.__var.arg
-
-  arg[0].n       = n
-  arg[0].p       = p
-  arg[0].q       = q
-  arg[0].algo    = mopt.id
-  arg[0].fdir    = objective.dir or 1
-  arg[0].ftol    = objective.tol or eps
-  arg[0].fstop   = objective.stopval or -inf*arg[0].fdir
-  arg[0].x       = var.x   .data
-  arg[0].x0      = var.x0  .data
-  arg[0].xstp    = var.xstp.data
-  arg[0].xtol    = var.xtol.data
-  arg[0].rtol    = variables.tol or eps
-  arg[0].xmin    = var.xmin.data
-  arg[0].xmax    = var.xmax.data
-  arg[0].edat    = p>0 and var.edat.data or nil
-  arg[0].etol    = p>0 and var.etol.data or nil
-  arg[0].ldat    = q>0 and var.ldat.data or nil
-  arg[0].ltol    = q>0 and var.ltol.data or nil
-  arg[0].maxcall = objective.maxcall or 0
-  arg[0].maxtime = objective.maxtime or 0
 
   -- state variables
   for i=1,n do
     local v = variables[i]
-    var.x   [i] = v.get and v.get() or var.x[i]
-    var.x0  [i] = var.x[i]
-    var.xstp[i] = v.step or  0
-    var.xtol[i] = v.tol  or  eps
-    var.xmin[i] = v.min  or -inf
-    var.xmax[i] = v.max  or  inf
+    if v.get then var.x0[i] = v.get() end
+    var.x   [i] = var.x0[i]
+    var.dx  [i] = v.step or variables.step or 0
+    var.xtol[i] = v.tol  or variables.tol  or 0
+    var.xmin[i] = v.min  or variables.min  or -inf
+    var.xmax[i] = v.max  or variables.max  or  inf
+
     if var.xmin[i] > var.xmax[i] then
       var.xmin[i], var.xmax[i] = var.xmax[i], var.xmin[i]
     end
-    if var.xmin[i] > var.x[i] then var.xmin[i] = var.x[i] end
-    if var.xmax[i] < var.x[i] then var.xmax[i] = var.x[i] end
+    if var.x[i] < var.xmin[i] or var.x[i] > var.xmax[i] then
+      warn("invalid initial value %d (out of bounds)", i)
+    end
+    if var.dx[i] == 0 then
+      var.dx[i] = var.x[i] ~= 0 and 0.015625*abs(var.x[i]) or 1e-4
+    end
   end
 
   -- equality constraints
-  for i=1,p do var.etol[i] = equalities[i].tol or eps end
+  for i=1,p do
+    local e = equalities[i]
+    var.etol[i] = e.tol or equalities.tol or 0
+    var.ewgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+  end
 
   -- inequality constraints
-  for i=1,q do var.ltol[i] = inequalities[i].tol or eps end
+  for i=1,q do
+    local e = inequalities[i]
+    var.ltol[i] = e.tol or inequalities.tol or 0
+    var.lwgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+  end
+
+  -- fill C struct
+  local arg = env.__var.arg
+  local x   = var.x:copy() -- use separate vector as nlopt seems to modify it
+
+  arg[0].algo    = mopt.id
+
+  arg[0].fun     = nil -- see below
+  arg[0].fval    = inf -- dummy init
+  arg[0].fmin    = objective.fmin or -inf
+  arg[0].ftol    = objective.ftol or 0
+  arg[0].frtol   = objective.rtol or 0
+
+  arg[0].n       = n
+  arg[0].x       = x.data
+  arg[0].dx      = var.dx.data
+
+  arg[0].xmin    = var.xmin.data
+  arg[0].xmax    = var.xmax.data
+  arg[0].xtol    = var.xtol.data
+  arg[0].xrtol   = variables.rtol or 0
+
+  arg[0].p       = p
+  arg[0].efun    = nil -- see below
+  arg[0].etol    = p>0 and var.etol.data or nil
+
+  arg[0].q       = q
+  arg[0].lfun    = nil -- see below
+  arg[0].ltol    = q>0 and var.ltol.data or nil
+
+  arg[0].maxcall = objective.maxcall or 0
+  arg[0].maxtime = objective.maxtime or 0
+
+  arg[0].debug   = ndbg
+  arg[0].status  = _C.NLOPT_RUNNING
 
   -- nlopt callbacks
-  local fun, efun, lfun = nlopt_functions (env, mopt)
+  local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
   if  fun then  fun = ffi.cast('nlopt_obj_t*',  fun) ; arg[0]. fun =  fun end
   if efun then efun = ffi.cast('nlopt_cts_t*', efun) ; arg[0].efun = efun end
   if lfun then lfun = ffi.cast('nlopt_cts_t*', lfun) ; arg[0].lfun = lfun end
@@ -633,23 +728,50 @@ local function exec (self)
   if efun then efun:free() end
   if lfun then lfun:free() end
 
-  -- return status, fmin, ncall
+  -- return status and status id
   if status == false then
     warn("error '%s' occured during matching", errmsg)
     return retstr[arg[0].status], arg[0].status
-  else
-    if objective.summary then disp_summ(env) end
-    return retstr[arg[0].status], arg[0].fval, arg[0].ncall
   end
+
+  -- forced stop, do not copy state variables (next step)
+  if arg[0].status == _C.NLOPT_FORCED_STOP then
+    arg[0].status = var.status
+  else -- do copy state variables (last step)
+    x:copy(var.x)
+  end
+
+  -- display final summary and return status, fmin, ncall
+  if ndsp > 0 then disp_summ(env) end
+  return retstr[arg[0].status], arg[0].fval, env.ncall
 end
 
 local match = command 'match' {
-  command      = fnil,  -- command to execute at each iteration
-  variables    = {},    -- state variables
-  objective    = {},    -- objective to minimize or maximize
-  equalities   = {},    -- equalities constraints
-  inequalities = {},    -- inqualities constraints
-  weights      = {},    -- variables and constraints weights
+  -- command to execute at each iteration (i.e. call command(env))
+  command = nil,
+  -- state variables
+  variables = {
+  ! { var=nil, step=nil, min=nil, max=nil, tol=nil, get =nil, set   =nil },
+     nvar=nil, step=nil, min=nil, max=nil, tol=nil, init=nil, update=nil,
+     rtol=nil,
+  },
+  -- equalities constraints
+  equalities = {
+  ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
+     exec=nil,                                 tol=nil,
+  },
+  -- inqualities constraints
+  inequalities = {
+  ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
+     exec=nil,                                 tol=nil,
+  },
+  -- constraints weights (i.e. weights[kind])
+  weights = {},
+  -- objective to minimize or maximize
+  objective = {
+    fmin=nil, ftol=nil, rtol=nil, maxtime=nil, maxcall=nil, method=nil, grad=nil,
+    exec=nil, summary=nil, debug=nil,
+  },
 
   usrdef=nil,           -- user defined data attached to matching environment
 
