@@ -38,7 +38,7 @@ local rundir = \s -> 'match_run/'..(s or '')
 
 -- helpers --------------------------------------------------------------------o
 
-local doplot -- = true
+local doplot != true
 
 if doplot then
   local pause, atexit in MAD.utility
@@ -108,26 +108,27 @@ function TestMatch:testMatchThinFODO ()
     command := twiss { sequence=fodo, observe=1 },
 
     variables = {
-      { var = 'knobs.k1qf' },
-      { var = 'knobs.k1qd' },
+      { var = 'knobs.k1qf', min= 0.2, max= 0.4 },
+      { var = 'knobs.k1qd', min=-0.4, max=-0.2 },
     },
 
     equalities = {
-      { var = 'mux', expr = \t -> t.mu1[#t] - 0.25 },
-      { var = 'muy', expr = \t -> t.mu2[#t] - 0.25 },
+      { kind = 'mu1', expr = \t -> t.mu1[#t] - 0.25 },
+      { kind = 'mu2', expr = \t -> t.mu2[#t] - 0.25 },
     },
 
-    objective = { tol = 1e-16, maxcall = 100 },
+    objective = { fmin = 1e-8, maxcall = 50, !summary=true
+    },
   }
 
 --  print('status=', status, 'fmin=', fmin, 'ncall=', ncall)
 --  print('k1_qf=', knobs.k1qf, 'k1_qd=', knobs.k1qd)
 
-  assertEquals      (status    ,  'NLOPT_FTOL_REACHED')
-  assertEquals      (ncall     ,  32)
-  assertAlmostEquals(fmin      ,  6.3877839033e-21, 1e-8)
-  assertAlmostEquals(knobs.k1qf,  0.30372411082735, 1e-8)
-  assertAlmostEquals(knobs.k1qd, -0.30372411097101, 1e-8)
+  assertEquals      (status    ,  'NLOPT_FMIN_REACHED'   )
+  assertEquals      (ncall     ,  32                     )
+  assertAlmostEquals(fmin      ,  6.9388939039e-14, 1e-16)
+  assertAlmostEquals(knobs.k1qf,  0.30372411066447, 1e-12)
+  assertAlmostEquals(knobs.k1qd, -0.30372411066446, 1e-12)
 end
 
 function TestMatch:testMatchFODO ()
@@ -157,24 +158,86 @@ function TestMatch:testMatchFODO ()
   local status, fmin, ncall = match {
     command := twiss { sequence=seq, observe=1 },
     variables = {
-      { var = 'var.k1f' },
-      { var = 'var.k1d' },
+      { var = 'var.k1f', min= 0.2, max= 0.4 },
+      { var = 'var.k1d', min=-0.4, max=-0.2 },
     },
     equalities = {
-      { expr = \t -> t.mu1[#t] - 0.25 },
-      { expr = \t -> t.mu2[#t] - 0.25 },
+      { expr = \t -> assert(t).mu1[#t] - 0.25 },
+      { expr = \t -> assert(t).mu2[#t] - 0.25 },
     },
     objective = {
-      tol = 1e-16, maxcall = 100
+      fmin = 1e-8, maxcall = 50, !summary=2, debug=1
+    },
+  }
+
+!  MAD.utility.printf("var.k1f = % -.16e\n", var.k1f)
+!  MAD.utility.printf("var.k1d = % -.16e\n", var.k1d)
+
+  -- check results
+  assertEquals      (status ,  'NLOPT_FMIN_REACHED'   )
+  assertEquals      (ncall  ,  23                     )
+  assertAlmostEquals(fmin   ,  2.9417391023e-09, 1e-16)
+  assertAlmostEquals(var.k1f,  0.29599989836312, 1e-12)
+  assertAlmostEquals(var.k1d, -0.30241971606909, 1e-12)
+
+  if doplot then
+    -- plot betas and phases
+    local mtbl = twiss {sequence=seq, nslice=10, save='atbody'}
+    plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+           x1y1 = { s={'beta11','beta22'} },
+           x1y2 = { s={'mu1'   ,'mu2'   } } }
+    plot { table=mtbl, sequence=seq, fontsize=18, !styles='lines',
+           x1y1 = { s={'beta11','beta22'} },
+           x1y2 = { s={'mu1'   ,'mu2'   } } }
+  end
+end
+
+function TestMatch:testMatchFODOLocVar ()
+  -- classes
+  local mb = sbend { l=2, angle=2*pi/50 }
+  local mq = quadrupole { l=1 }
+  local k1f= 0.28
+  local k1d=-0.28
+
+  -- sequence
+  local seq = sequence 'seq' {
+    l=10, refer='entry', beam=beam,
+    mq 'mq1' { at=0, k1 := k1f },
+    mb 'mb1' { at=2, k0 =\s s.angle/s.l },
+    mq 'mq2' { at=5, k1 := k1d },
+    mb 'mb2' { at=7, k0 =\s s.angle/s.l },
+  }
+
+  -- twiss
+  if doplot then
+    local mtbl = twiss {sequence=seq, nslice=10, save='atbody'}
+    plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
+           x1y1 = { s={'beta11','beta22'} },
+           x1y2 = { s={'mu1'   ,'mu2'   } } }
+  end
+
+  -- match phase advance
+  local status, fmin, ncall = match {
+    command := twiss { sequence=seq, observe=1 },
+    variables = { nowarn=true,
+      { var = 'k1f', min= 0.2, max= 0.4 },
+      { var = 'k1d', min=-0.4, max=-0.2 },
+    },
+    equalities = {
+      { expr = \t -> assert(t).mu1[#t] - 0.25 },
+      { expr = \t -> assert(t).mu2[#t] - 0.25 },
+    },
+    objective = {
+      fmin = 1e-8, maxcall = 50, !summary=2,
     },
   }
 
   -- check results
-  assertEquals      (status ,  'NLOPT_FTOL_REACHED' )
-  assertEquals      (ncall  ,  34                   )
-  assertAlmostEquals(fmin   ,  6.3877839e-21 , 1e-20)
-  assertAlmostEquals(var.k1f,  0.295999895360, 1e-12)
-  assertAlmostEquals(var.k1d, -0.302419713196, 1e-12)
+  assertEquals      (status,  'NLOPT_FMIN_REACHED'   )
+  assertEquals      (ncall ,  23                     )
+  assertAlmostEquals(fmin  ,  2.9417391023e-09, 1e-16)
+  assertAlmostEquals(k1f   ,  0.29599989836312, 1e-12)
+  assertAlmostEquals(k1d   , -0.30241971606909, 1e-12)
 
   if doplot then
     -- plot betas and phases
@@ -214,24 +277,24 @@ function TestMatch:testMatchFODONoVar ()
   local status, fmin, ncall = match {
     command := twiss { sequence=seq, observe=1 },
     variables = {
-      { var = 'seq.mq1.k1' },
-      { var = 'seq.mq2.k1' },
+      { var = 'seq.mq1.k1', min= 0.2, max= 0.4 },
+      { var = 'seq.mq2.k1', min=-0.4, max=-0.2 },
     },
     equalities = {
       { expr = \t -> t['$end'].mu1 - 0.25 },
       { expr = \t -> t['$end'].mu2 - 0.25 },
     },
     objective = {
-      tol = 1e-16, maxcall = 100
+      fmin = 1e-8, maxcall = 50, !summary=2,
     },
   }
 
   -- check results
-  assertEquals      (status    ,  'NLOPT_FTOL_REACHED' )
-  assertEquals      (ncall     ,  34                   )
-  assertAlmostEquals(fmin      ,  6.3877839e-21 , 1e-20)
-  assertAlmostEquals(seq.mq1.k1,  0.295999895360, 1e-12)
-  assertAlmostEquals(seq.mq2.k1, -0.302419713196, 1e-12)
+  assertEquals      (status    ,  'NLOPT_FMIN_REACHED'   )
+  assertEquals      (ncall     ,  23                     )
+  assertAlmostEquals(fmin      ,  2.9417391023e-09, 1e-16)
+  assertAlmostEquals(seq.mq1.k1,  0.29599989836312, 1e-12)
+  assertAlmostEquals(seq.mq2.k1, -0.30241971606909, 1e-12)
 
   if doplot then
     -- plot betas and phases
@@ -250,11 +313,12 @@ end
 -- Example from NLOpt tutorial
 
 function TestMatch:testMatchFunc ()
-  local ncall, x1, x2 = 0
+  local var = {x1=1.234, x2=5.678}
+  local ncall = 0
 
   local function myfunc (n, x, grad)
     ncall = ncall + 1
-    x1, x2 = x[0], x[1]
+    var.x1, var.x2 = x[0], x[1]
 
     if grad then
       grad[0] = 0.0
@@ -282,8 +346,8 @@ function TestMatch:testMatchFunc ()
   -- match test
   local status, fmin = match {
     variables = {
-      { ini = 1.234, min = -inf },
-      { ini = 5.678, min =  0   },
+      { var = 'var.x1', min = -inf },
+      { var = 'var.x2', min =  0   },
       tol = 1e-4, -- relative tolerance for all variables
     },
 
@@ -294,16 +358,16 @@ function TestMatch:testMatchFunc ()
     },
 
     objective = {
-      method = 'NLOPT_LD_MMA', tol = 1e-16, maxcall = 100,
+      method = 'NLOPT_LD_MMA', fmin = 1e-8, maxcall = 100,
       exec = myfunc,
     },
   }
 
   assertEquals      (status, 'NLOPT_XTOL_REACHED')
   assertEquals      (ncall , 11)
-  assertAlmostEquals(fmin  , 0.54433104738223, 1e-8)
-  assertAlmostEquals(x1    , 0.33333333482478, 1e-8)
-  assertAlmostEquals(x2    , 0.29629628914424, 1e-8)
+  assertAlmostEquals(fmin  , 0.54433104738223, 1e-15)
+  assertAlmostEquals(var.x1, 0.33333333482478, 1e-12)
+  assertAlmostEquals(var.x2, 0.29629628914424, 1e-12)
 end
 
 -- end ------------------------------------------------------------------------o
