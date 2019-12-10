@@ -85,7 +85,7 @@ void mad_nlopt (nlopt_args_t *a)
   if (a->efun) { CHK(nlopt_add_equality_mconstraint  (a->opt, a->p, a->efun, NULL, a->etol)); DBG(efun); }
   if (a->lfun) { CHK(nlopt_add_inequality_mconstraint(a->opt, a->q, a->lfun, NULL, a->ltol)); DBG(lfun); }
 
-  // set extra stopping criteria
+  // set extra stop criteria
   if (a->maxcall > 0) { CHK(nlopt_set_maxeval(a->opt, a->maxcall)); DBG(maxcall); }
   if (a->maxtime > 0) { CHK(nlopt_set_maxtime(a->opt, a->maxtime)); DBG(maxtime); }
 
