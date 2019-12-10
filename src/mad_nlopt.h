@@ -44,45 +44,46 @@ typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
 struct nlopt_args {
   // algorithm
         int    algo;
+        str_t  algonam;
 
   // objective function (required)
   nlopt_obj_t *fun;
-        int    fdir; // 1: maximize, -1: minimize (default)
-        num_t  fval;
-        num_t  ftol;
-        num_t  fstop;
+        num_t  fval;  // current minimum value
+        num_t  fmin;  // minimum value required (target)
+        num_t  ftol;  // minimum value change required (target)
+        num_t  frtol; // minimum relative value change required (target)
 
   // state variables [n] (required)
         ssz_t  n;
         num_t *x;
-
-  // initial value, step, tolerances and bounds [n] (optional)
-  const num_t *x0;
-  const num_t *xstp;
-  const num_t *xtol;
-        num_t  rtol;
+  const num_t *dx;
   const num_t *xmin;
   const num_t *xmax;
+  const num_t *xtol;
+        num_t  xrtol;
 
-  // equality constraints [p] (optional)
+  // equality constraints [p]
         ssz_t  p;
   nlopt_cts_t *efun;
-        num_t *edat;
   const num_t *etol;
 
-  // inequality constraints [q] (optional)
+  // inequality constraints [q]
         ssz_t  q;
   nlopt_cts_t *lfun;
-        num_t *ldat;
   const num_t *ltol;
 
-  // stop criteria (if >0)
+  // extra stop criteria (if >0)
         int    maxcall;
         num_t  maxtime;
 
+  // debug flag
+        int    debug;
+
   // returned values
         int    status;
-        int    ncall;
+
+  // pointer to nlop opaque structure
+  nlopt_opt    opt;
 };
 
 // -- end ---------------------------------------------------------------------o
