@@ -357,9 +357,9 @@ local function nlopt_functions (env, mthd, ndsp)
 
   local update in variables
   local var, arg = env.__var, env.__var.arg
-  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol in var
+  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol, egrd, lgrd in var
   local disp = ndsp > 1 and disp_summ or fnil
-  local dogr = nlopt_algo[mthd].gr == 'y'
+  local grad = nlopt_algo[mthd].gr == 'y'
   local fscl = 0
 
   -- weights scaling
@@ -369,9 +369,10 @@ local function nlopt_functions (env, mthd, ndsp)
 
   -- nlopt objective function
   return objective.exec or
-    function(n_, x_, grad_)
+    function(n_, x_, df_)
       assert(n_ == n, "invalid number of variables (unexpected)")
       assert(x_     , "missing vector of variables (unexpected)")
+      assert(df_ == nil or grad, "unexpected non-nil gradient argument")
 
       -- force to stop
       if var.status then
@@ -403,24 +404,69 @@ local function nlopt_functions (env, mthd, ndsp)
 
       -- collect equalities constraints
       for i=1,p do
-        local e = equalities[i]
-        eval[i] = ewgt[i]*e.expr(res, env)
-        if abs(eval[i]) > etol[i] then fval = fval+abs(eval[i]) end
+        eval[i] = equalities[i].expr(res, env)
+        if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*abs(eval[i]) end
       end
 
       -- collect inequalities constraints
       for i=1,q do
-        local e = inequalities[i]
-        lval[i] = lwgt[i]*e.expr(res, env)
-        if lval[i] > ltol[i] then fval = fval+abs(lval[i]) end
+        lval[i] = inequalities[i].expr(res, env)
+        if lval[i] > ltol[i] then fval = fval + lwgt[i]*abs(lval[i]) end
       end
 
       -- save objective function
       var.fval = fval*fscl
       var.ftol = abs(var.fval-arg[0].fval)
 
-      -- compute objective function gradient
-      if grad_ and dogr then error("NYI") end
+      -- gradient requested
+      if df_ ~= nil then
+        if egrd then egrd:zeros() end
+        if lgrd then lgrd:zeros() end
+
+        -- compute objective function gradient(s)
+        for iv=1,n do
+          env.ncall = env.ncall + 1
+          if dx[iv] == 0 then df_[iv-1]=0 ; goto next end
+
+          for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
+
+          if update then
+            update(x, env)
+          else
+            var.flush = nil
+            for i=1,n do variables[i].set(x[i], env) end
+            if var.flush then jit.flush() end -- TODO: avoid jit flush
+          end
+
+          local res = command(env)
+
+          local fval = 0
+          for i=1,p do
+            local ev = equalities[i].expr(res, env)
+            egrd:set(iv,i, (ev-eval[i])/dx[iv])
+            if abs(ev) > etol[i] then fval = fval + ewgt[i]*abs(ev) end
+          end
+          for i=1,q do
+            local lv = inequalities[i].expr(res, env)
+            lgrd:set(iv,i, (lv-lval[i])/dx[iv])
+            if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
+          end
+          fval = fval*fscl
+          df_[iv-1] = (fval-var.fval)/dx[iv]
+
+        ::next::
+        end
+
+        -- restore variables
+        for i=1,n do x[i] = x_[i-1] end
+        if update then
+          update(x, env)
+        else
+          var.flush = nil
+          for i=1,n do variables[i].set(x[i], env) end
+          if var.flush then jit.flush() end -- TODO: avoid jit flush
+        end
+      end
 
       -- display intermediate summary
       disp(env)
@@ -439,20 +485,20 @@ local function nlopt_functions (env, mthd, ndsp)
 
   -- nlopt equality function
   nlopt_algo[mthd].eq == 'y' and (equalities.exec or p>0 and
-    function(p_, r_, n_, x_, grad_)
+    function(p_, r_, n_, x_, de_)
       assert(p_ == p, "invalid number of equalities (unexpected)")
       assert(r_     , "missing vector of equalities (unexpected)")
       for i=1,p do r_[i-1] = eval[i] end
-      if grad_ and dogr then error("NYI") end
+      if de_ ~= nil then for i=1,n*p do de_[i-1] = egrd[i] end end
     end or nil),
 
   -- nlopt inequality function
   nlopt_algo[mthd].le == 'y' and (inequalities.exec or q>0 and
-    function(q_, r_, n_, x_, grad_)
+    function(q_, r_, n_, x_, dl_)
       assert(q_ == q, "invalid number of inequalities (unexpected)")
       assert(r_     , "missing vector of inequalities (unexpected)")
       for i=1,q do r_[i-1] = lval[i] end
-      if grad_ and dogr then error("NYI") end
+      if dl_ ~= nil then for i=1,n*q do dl_[i-1] = lgrd[i] end end
     end or nil)
 end
 
@@ -626,15 +672,16 @@ local function exec (self)
       xtol = vector(n),
       xmin = vector(n),
       xmax = vector(n),
-      grad = vector(n),
       p    = p,
-      eval = p>0 and vector(p) or nil,
-      ewgt = p>0 and vector(p) or nil,
-      etol = p>0 and vector(p) or nil,
+      eval = p>0 and vector(p)   or nil,
+      ewgt = p>0 and vector(p)   or nil,
+      etol = p>0 and vector(p)   or nil,
+      egrd = p>0 and matrix(n,p) or nil,
       q    = q,
-      lval = q>0 and vector(q) or nil,
-      lwgt = q>0 and vector(q) or nil,
-      ltol = q>0 and vector(q) or nil,
+      lval = q>0 and vector(q)   or nil,
+      lwgt = q>0 and vector(q)   or nil,
+      ltol = q>0 and vector(q)   or nil,
+      lgrd = q>0 and matrix(n,q) or nil,
       arg  = ffi.new 'nlopt_args_t[1]'
     },
   }
@@ -720,19 +767,22 @@ local function exec (self)
   arg[0].debug   = ndbg
   arg[0].status  = _C.NLOPT_RUNNING
 
+  if ndbg > 1 then var.dx:print("STEP") end
+
   -- nlopt callbacks
   local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
-  if  fun then  fun = ffi.cast('nlopt_obj_t*',  fun) ; arg[0]. fun =  fun end
-  if efun then efun = ffi.cast('nlopt_cts_t*', efun) ; arg[0].efun = efun end
-  if lfun then lfun = ffi.cast('nlopt_cts_t*', lfun) ; arg[0].lfun = lfun end
+  local fun_cb, efun_cb, lfun_cb
+  if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) ; arg[0]. fun =  fun_cb end
+  if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) ; arg[0].efun = efun_cb end
+  if lfun then lfun_cb = ffi.cast('nlopt_cts_t*', lfun) ; arg[0].lfun = lfun_cb end
 
   -- optimize (protected call)
   local status, errmsg = pcall(_C.mad_nlopt, arg)
 
   -- release callback (note: callbacks are never collected)
-  if  fun then  fun:free() end
-  if efun then efun:free() end
-  if lfun then lfun:free() end
+  if  fun then  fun_cb:free() end
+  if efun then efun_cb:free() end
+  if lfun then lfun_cb:free() end
 
   -- return status and status id
   if status == false then
