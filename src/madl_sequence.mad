@@ -30,7 +30,8 @@ local second, bind1st, bind2nd, bind2st                          in MAD.gfunc
 local lt, sub, ltrue, lfalse                                     in MAD.operator
 local sequence, marker, drift, changedir, flags                  in MAD.element
 local minlen, eps                                                in MAD.constant
-local strtrim, strsplit, strbracket, bsearch, errorf, openfile   in MAD.utility
+local strtrim, strsplit, strbracket, bsearch, assertf, errorf,
+      openfile                                                   in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_string, is_table, is_rawtable, is_iterable, is_callable,
       is_range, is_element, is_object, is_instanceOf,
@@ -253,25 +254,17 @@ local function index_of_idx (seq, idx)
   return idx >= 1 and idx <= n and idx or nil
 end
 
--- get index from s-position (binary)
-local function index_of_num (seq, num, dir)
---  local l = seq.l
---  if num < 0 then num = l+num end -- reflect
---  if num < 0 or num > l then return nil end
-  if num < 0 or num > seq.l then return nil end
-  local data = var_raw(seq,_data)
-  local idx = bsearch(data.spos, num)
-  dir = dir or 0
-  assert(dir == 0 or dir == 1 or dir == -1, "invalid direction (0, 1 or -1 expected)")
-  if idx > 1 and num < data.spos[idx]-minlen then
-    local epos = data.spos[idx-1] + data.ds[idx-1]
-    if dir < 0 or num < epos+minlen then
-      idx = idx-1
-    elseif dir == 0 and num > epos+minlen then
-      idx = nil
-    end
+local index_of_fnam -- forward declaration
+
+-- get index of ref (direct)
+local function index_of_ref (seq, ref)
+  local msg, idx = "invalid reference index (name or index expected)"
+  if is_string(ref) then
+    idx, msg = index_of_fnam(seq, ref), "invalid reference name '%s'"
+  elseif is_integer(ref) then
+    idx, msg = index_of_idx (seq, ref), "invalid reference index %d"
   end
-  return idx, num
+  return assertf(idx, msg, ref)
 end
 
 -- get index from name [with absolute count] (direct)
@@ -289,8 +282,7 @@ end
 local function index_of_rnam (seq, nam, cnt, ref)
   local ei = var_raw(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
-  assert(is_integer(ref), "invalid reference index (integer expected)")
-  local idx = assert(index_of_idx(seq, ref), "invalid reference index")
+  local idx = index_of_ref(seq, ref)
   if is_number(ei) then
     return (cnt ==  1 and ei >= idx and ei) or
            (cnt == -1 and ei <= idx and ei) or nil
@@ -304,12 +296,32 @@ local function index_of_rnam (seq, nam, cnt, ref)
       if ei[i] <= idx then return ei[i+cnt+1] end
     end
   end
+  return nil
+end
+
+-- get index from s-position (binary)
+local function index_of_num (seq, num, ref_, dir_)
+  local data = var_raw(seq,_data)
+  if ref_ then num = num + data.upos[index_of_ref(seq,ref_)] end
+  if num < 0 or num > seq.l then return nil end
+  local idx = bsearch(data.spos, num)
+  local dir = dir_ or 0
+  assert(dir == 0 or dir == 1 or dir == -1, "invalid direction (0, 1 or -1 expected)")
+  if idx > 1 and num < data.spos[idx]-minlen then
+    local epos = data.spos[idx-1] + data.ds[idx-1]
+    if dir < 0 or num < epos+minlen then
+      idx = idx-1
+    elseif dir == 0 and num > epos+minlen then
+      idx = nil
+    end
+  end
+  return idx, num
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
 local function index_of_str (seq, str, ref_, dir_)
   local num = tonumber(str)
-  if num then return index_of_num(seq, num, dir_) end
+  if num then return index_of_num(seq, num, ref_, dir_) end
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
@@ -321,7 +333,7 @@ local function index_of_str (seq, str, ref_, dir_)
 end
 
 -- get index from 'from' [mangled] name (direct or linear)
-local function index_of_fnam (seq, nam, ref_)
+function index_of_fnam (seq, nam, ref_) -- already declared local
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local nam, cnt, _, bra = strbracket(nam)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
@@ -338,9 +350,7 @@ local function index_of_elm (seq, elm, ref_, dir_)
   local nam, data = elm.__id, var_raw(seq,_data)
   local ei = data.eidx[nam]
   if is_nil(ei) then return nil end
-  ref_ = ref_ or 1
-  assert(is_integer(ref_), "invalid reference index (integer expected)")
-  local idx = assert(index_of_idx(seq, ref_), "invalid reference index")
+  local idx = ref_ and index_of_ref(seq, ref_) or 1
   if is_number(ei) then
     return ei >= idx and data[ei] == elm and ei or nil
   end
@@ -372,8 +382,7 @@ local function name_of_idx (seq, idx, ref_)
 
   local cnt, b1, b2 = 0
   if ref_ then
-    assert(is_integer(ref_), "invalid reference index (integer expected)")
-    local idx = assert(index_of_idx(seq, ref_), "invalid reference index")
+    local idx = index_of_ref(seq, ref_)
     for i=1,ei.n do
       if ei[i] < idx then cnt = cnt+1 else break end
     end
@@ -833,7 +842,7 @@ end
 
 local function index_of (seq, a, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-      if is_number (a) then return index_of_num(seq, a, dir_)
+      if is_number (a) then return index_of_num(seq, a, ref_, dir_)
   elseif is_string (a) then return index_of_str(seq, a, ref_, dir_)
   elseif is_element(a) then return index_of_elm(seq, a, ref_, dir_)
   end
@@ -851,7 +860,7 @@ local function range_of (seq, rng_, ref_, dir_)
     else error("invalid range direction (1 or -1 expected)")
     end
   elseif is_number(rng_) then
-    start, istart = rng_, index_of_num(seq, rng_, dir_)
+    start, istart = rng_, index_of_num(seq, rng_, ref_, dir_)
     stop , istop  = start, istart
   elseif is_string(rng_) then
     local s1, i2 = strsplit(rng_, "/")
