@@ -135,6 +135,19 @@ local function index_of_idx (tbl, idx)
   return idx >= 1 and idx <= n and idx or nil
 end
 
+local index_of_fnam -- forward declaration
+
+-- get index of ref (direct)
+local function index_of_ref (tbl, ref)
+  local msg, idx = "invalid reference index (name or index expected)"
+  if is_string(ref) then
+    idx, msg = index_of_fnam(tbl, ref), "invalid reference name '%s'"
+  elseif is_integer(ref) then
+    idx, msg = index_of_idx (tbl, ref), "invalid reference index %d"
+  end
+  return assertf(idx, msg, ref)
+end
+
 -- get index from name [with absolute count] (direct)
 local function index_of_cnam (tbl, nam, cnt)
   local ri = var_raw(tbl,_data).ridx[nam]
@@ -143,15 +156,13 @@ local function index_of_cnam (tbl, nam, cnt)
   elseif cnt == 1 or cnt == -1 then
     return ri
   end
---  return nil
 end
 
 -- get index from name [with relative count] (linear)
 local function index_of_rnam (tbl, nam, cnt, ref)
   local ri = var_raw(tbl,_data).ridx[nam]
   if is_nil(ri) then return nil end
-  assert(is_integer(ref), "invalid reference index (integer expected)")
-  local idx = assert(index_of_idx(tbl, ref), "invalid reference index")
+  local idx = index_of_ref(tbl, ref)
   if is_number(ri) then
     return (cnt ==  1 and ri >= idx and ri) or
            (cnt == -1 and ri <= idx and ri) or nil
@@ -167,13 +178,18 @@ local function index_of_rnam (tbl, nam, cnt, ref)
   end
 end
 
+-- get index from row position (direct)
+local function index_of_row (tbl, idx, ref_)
+  assert(is_integer(idx), "invalid index (integer expected)")
+  if ref_ then return idx + index_of_ref(tbl, ref_) end
+  idx = index_of_idx(tbl, idx)
+  if idx and idx >= 1 and idx <= #tbl then return idx end
+end
+
 -- get index from [mangled] name or s-position (direct or linear)
 local function index_of_str (tbl, str, ref_)
   local num = tonumber(str)
-  if num then
-     assert(is_integer(num), "invalid index (integer expected)")
-     return index_of_idx(tbl, num)
-  end
+  if num then return index_of_row(tbl, num, ref_) end
   assert(var_raw(tbl,_data).cref, "no reference column found")
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
@@ -182,6 +198,20 @@ local function index_of_str (tbl, str, ref_)
     return index_of_cnam(tbl, nam, cnt      )
   else
     return index_of_rnam(tbl, nam, cnt, ref_)
+  end
+end
+
+-- get index from 'ref' [mangled] name (direct or linear)
+function index_of_fnam (tbl, nam, ref_) -- already declared local
+  assert(is_string(nam), "invalid argument #2 (string expected)")
+  assert(var_raw(tbl,_data).cref, "no reference column found")
+  local nam, cnt, _, bra = strbracket(nam)
+  cnt = is_nil(cnt) and 1 or tonumber(cnt)
+  assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
+  if is_nil(ref_) or bra ~= 2 then -- need both for relative from
+    return index_of_cnam(tbl, nam, cnt      ), bra
+  else
+    return index_of_rnam(tbl, nam, cnt, ref_), bra
   end
 end
 
@@ -200,8 +230,7 @@ local function name_of_idx (tbl, idx, ref_)
 
   local cnt, b1, b2 = 0
   if ref_ then
-    assert(is_integer(ref_), "invalid reference index (integer expected)")
-    local idx = assert(index_of_idx(tbl, ref_), "invalid reference index")
+    local idx = index_of_ref(tbl, ref_)
     for i=1,ri.n do
       if ri[i] < idx then cnt = cnt+1 else break end
     end
@@ -628,7 +657,7 @@ end
 
 local function index_of (tbl, a, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-      if is_integer(a) then return index_of_idx(tbl, a)
+      if is_integer(a) then return index_of_row(tbl, a, ref_)
   elseif is_string (a) then return index_of_str(tbl, a, ref_)
   end
   errorf("invalid argument #2 (number or string expected, got %s)",
@@ -645,7 +674,7 @@ local function range_of (tbl, rng_, ref_, dir_)
     else error("invalid range direction (1 or -1 expected)")
     end
   elseif is_integer(rng_) then
-    start, istart = rng_, index_of_idx(tbl, rng_)
+    start, istart = rng_, index_of_row(tbl, rng_, ref_)
     stop , istop  = start, istart
   elseif is_string(rng_) then
     local s1, i2 = strsplit(rng_, "/" )
