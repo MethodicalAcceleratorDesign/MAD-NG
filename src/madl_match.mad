@@ -25,7 +25,7 @@
 
 local ffi = require 'ffi'
 
-local _C, command, vector, matrix, warn                          in MAD
+local _C, command, vector, matrix, warn, option                  in MAD
 local fnil                                                       in MAD.gfunc
 local assertf, errorf, printf, strsplit, log2num                 in MAD.utility
 local is_nil, is_string, is_iterable, is_mappable, is_callable   in MAD.typeid
@@ -345,6 +345,13 @@ end
 
 -- callbacks ------------------------------------------------------------------o
 
+local function dspmat(mat, nam)
+  local fmt = option.format
+  option.format = "% -.5e"
+  mat:print(nam)
+  option.format = fmt
+end
+
 local function nlopt_functions (env, mthd, ndsp)
   local command, variables, objective, equalities, inequalities, weights in env
 
@@ -357,9 +364,13 @@ local function nlopt_functions (env, mthd, ndsp)
 
   local update in variables
   local var, arg = env.__var, env.__var.arg
-  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol, egrd, lgrd in var
+  local n, p, q, x, dx, df, eval, ewgt, etol, lval, lwgt, ltol, egrd, lgrd,
+        ndbg in var
   local disp = ndsp > 1 and disp_summ or fnil
   local grad = nlopt_algo[mthd].gr == 'y'
+  local ncal = arg[0].maxcall > 0
+  local fmin = arg[0].fmin > -inf
+  local ftol = arg[0].ftol > 0
   local fscl = 0
 
   -- weights scaling
@@ -376,7 +387,7 @@ local function nlopt_functions (env, mthd, ndsp)
 
       -- force to stop
       if var.status then
-        if arg[0].debug > 0 then io.write("nlopt: forced to stop\n") end
+        if ndbg >= 1 then io.write("nlopt: forced to stop\n") end
         _C.nlopt_force_stop(arg[0].opt)
         return arg[0].fval
       end
@@ -385,7 +396,12 @@ local function nlopt_functions (env, mthd, ndsp)
       env.ncall = env.ncall + 1
 
       -- update state vector
-      for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
+      for i=1,n do
+        x[i], dx[i] = x_[i-1], x_[i-1]-x[i]
+        if dx[i] == 0 then
+          dx[i] = x[i] ~= 0 and 0.015625*abs(x[i]) or 1e-4
+        end
+      end
 
       -- update state variables
       if update then
@@ -426,7 +442,7 @@ local function nlopt_functions (env, mthd, ndsp)
         -- compute objective function gradient(s)
         for iv=1,n do
           env.ncall = env.ncall + 1
-          if dx[iv] == 0 then df_[iv-1]=0 ; goto next end
+          if dx[iv] == 0 then df[iv]=0 ; goto next end
 
           for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
 
@@ -452,13 +468,13 @@ local function nlopt_functions (env, mthd, ndsp)
             if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
           end
           fval = fval*fscl
-          df_[iv-1] = (fval-var.fval)/dx[iv]
+          df[iv] = (fval-var.fval)/dx[iv]
 
         ::next::
         end
 
-        -- restore variables
-        for i=1,n do x[i] = x_[i-1] end
+        -- restore variables, copy gradient
+        for i=1,n do x[i], df_[i-1] = x_[i-1], df[i] end
         if update then
           update(x, env)
         else
@@ -466,16 +482,20 @@ local function nlopt_functions (env, mthd, ndsp)
           for i=1,n do variables[i].set(x[i], env) end
           if var.flush then jit.flush() end -- TODO: avoid jit flush
         end
+
+        if ndbg >= 2 then dspmat(df,"GRAD-F") end
       end
 
       -- display intermediate summary
       disp(env)
 
       -- stop criteria (nlopt ignores fmin and ftol...?)
-      if var.fval <= arg[0].fmin then
+      if ncal and env.ncall >= arg[0].maxcall then
+        var.status = _C.NLOPT_MAXEVAL_REACHED
+      elseif fmin and var.fval <= arg[0].fmin then
         var.status = _C.NLOPT_STOPVAL_REACHED
-      elseif var.ftol <= arg[0].ftol or
-             var.ftol <= arg[0].frtol * abs(var.fval) then
+      elseif ftol and (var.ftol <= arg[0].ftol or
+                       var.ftol <= arg[0].frtol*abs(var.fval)) then
         var.status = _C.NLOPT_FTOL_REACHED
       end
 
@@ -489,7 +509,10 @@ local function nlopt_functions (env, mthd, ndsp)
       assert(p_ == p, "invalid number of equalities (unexpected)")
       assert(r_     , "missing vector of equalities (unexpected)")
       for i=1,p do r_[i-1] = eval[i] end
-      if de_ ~= nil then for i=1,n*p do de_[i-1] = egrd[i] end end
+      if de_ ~= nil then
+        for i=1,n*p do de_[i-1] = egrd[i] end
+        if ndbg >= 2 then dspmat(egrd,"JACOBIAN-EQ") end
+      end
     end or nil),
 
   -- nlopt inequality function
@@ -498,7 +521,10 @@ local function nlopt_functions (env, mthd, ndsp)
       assert(q_ == q, "invalid number of inequalities (unexpected)")
       assert(r_     , "missing vector of inequalities (unexpected)")
       for i=1,q do r_[i-1] = lval[i] end
-      if dl_ ~= nil then for i=1,n*q do dl_[i-1] = lgrd[i] end end
+      if dl_ ~= nil then
+        for i=1,n*q do dl_[i-1] = lgrd[i] end
+        if ndbg >= 2 then dspmat(lgrd,"JACOBIAN-LE") end
+      end
     end or nil)
 end
 
@@ -669,6 +695,7 @@ local function exec (self)
       x0   = vector(n),
       x    = vector(n),
       dx   = vector(n),
+      df   = vector(n),
       xtol = vector(n),
       xmin = vector(n),
       xmax = vector(n),
@@ -682,6 +709,7 @@ local function exec (self)
       lwgt = q>0 and vector(q)   or nil,
       ltol = q>0 and vector(q)   or nil,
       lgrd = q>0 and matrix(n,q) or nil,
+      ndbg = ndbg,
       arg  = ffi.new 'nlopt_args_t[1]'
     },
   }
@@ -767,7 +795,7 @@ local function exec (self)
   arg[0].debug   = ndbg
   arg[0].status  = _C.NLOPT_RUNNING
 
-  if ndbg > 1 then var.dx:print("STEP") end
+  if ndbg >= 2 then var.dx:print("STEP-X") end
 
   -- nlopt callbacks
   local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
