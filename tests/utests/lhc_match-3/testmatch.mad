@@ -1,0 +1,98 @@
+-- time ../mad -jp=vl testmatch.mad
+
+local doplot = true
+
+local assertf in MAD.utility
+
+--if doplot then MAD.utility.atexit(MAD.utility.pause, true) end
+
+local filesys in MAD
+os.execute("rm -rf temp ; mkdir temp")
+filesys.mkdir("input")
+filesys.mkdir("output")
+filesys.link("lhc-optics/slhc", "slhc", true)
+filesys.link("lhc-optics/lhc" , "lhc" , true)
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  PLOT Utility
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local function plottw (mflw, x1y2_, dir_)
+  if not doplot then return end
+  local sequ, mtbl in mflw
+  local dir = not dir_
+  MAD.plot { table=mtbl,
+             title=mtbl.title,
+
+             sequence=dir and sequ or nil,
+             range   =dir and (sequ.range or {mtbl[1].name,mtbl[-1].name}) or nil,
+
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s= x1y2_ or {'mu1','mu2'} },
+
+             styles = 'lines',
+             output = 'plot.pdf',
+             prolog = "set multiplot",
+           }
+end
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  LOAD LHC
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local function SLHC_load (nrj, optics)
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    -- load sequence
+    MADX:load('input/slhc.uvar.mad') -- must be updated after conversion
+    MADX:load('lhc/lhc.seq', 'input/lhc.mad') -- convert on need
+
+    -- sanity checks
+    local lhcb1, lhcb2 in MADX
+    local n1, n2 = #lhcb1, #lhcb2
+    assertf(n1 == 6677, "invalid number of elements %d in LHCB1 (6677 expected)", n1)
+    assertf(n2 == 6676, "invalid number of elements %d in LHCB2 (6676 expected)", n2)
+
+    local beam in MAD
+    -- set sequences direction and attach beams
+    lhcb1.dir =  1 ; lhcb1.beam = beam { particle='proton', energy=nrj }
+    lhcb2.dir = -1 ; lhcb2.beam = beam { particle='proton', energy=nrj }
+
+    -- dump LHC
+    lhcb1:dumpseq("lhcb1")
+    lhcb2:dumpseq("lhcb2")
+
+    -- SLHC beam 1 & 2 or 4
+    MADX.mylhcbeam = 0
+
+    -- build SLHC from LHC
+    MADX:load('input/slhc.remove.mad')
+
+    -- load SLHC from MADX
+    local lhcb1, lhcb2, bv_aux in MADX
+    local n1, n2 = #lhcb1, #lhcb2
+
+    -- dump SLHC + sanity checks
+    if bv_aux == 1 then
+      lhcb1:dumpseq("slhcb1")
+      lhcb2:dumpseq("slhcb2")
+      assertf(n1 == 6432, "invalid number of elements %d in SLHCB1 (6432 expected)", n1)
+      assertf(n2 == 6434, "invalid number of elements %d in SLHCB2 (6434 expected)", n2)
+    else
+      lhcb2:dumpseq("slhcb4")
+      assertf(n2 == 6434, "invalid number of elements %d in SLHCB4 (6434 expected)", n2)
+    end
+  end
+end
+
+local function SLHC_optic(name)
+  MADX:load("slhc/round/"..name..".madx", "input/"..name..".mad")
+end
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  SCRIPT
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+SLHC_load (7000)
+SLHC_optic("opt_round_150_1500")
