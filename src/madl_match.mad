@@ -413,25 +413,27 @@ local function nlopt_functions (env, mthd, ndsp)
 
       -- call user command
       local res = command(env)
-
-      -- objective function error
-      local fval = 0
-
-      -- collect equalities constraints
-      for i=1,p do
-        eval[i] = equalities[i].expr(res, env)
-        if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*abs(eval[i]) end
+      if is_nil(res) then
+        var.fval, var.ftol = inf, inf
+        if p>0 then eval:ones(inf) end
+        if q>0 then lval:ones(inf) end
+        goto final
       end
 
-      -- collect inequalities constraints
-      for i=1,q do
-        lval[i] = inequalities[i].expr(res, env)
-        if lval[i] > ltol[i] then fval = fval + lwgt[i]*abs(lval[i]) end
+      -- compute objective function
+      do
+        local fval = 0
+        for i=1,p do
+          eval[i] = equalities[i].expr(res, env)
+          if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*abs(eval[i]) end
+        end
+        for i=1,q do
+          lval[i] = inequalities[i].expr(res, env)
+          if lval[i] > ltol[i] then fval = fval + lwgt[i]*abs(lval[i]) end
+        end
+        var.fval = fval*fscl
+        var.ftol = abs(var.fval-arg[0].fval)
       end
-
-      -- save objective function
-      var.fval = fval*fscl
-      var.ftol = abs(var.fval-arg[0].fval)
 
       -- gradient requested
       if df_ ~= nil then
@@ -454,6 +456,7 @@ local function nlopt_functions (env, mthd, ndsp)
           end
 
           local res = command(env)
+          if is_nil(res) then goto next end
 
           local fval = 0
           for i=1,p do
@@ -484,6 +487,8 @@ local function nlopt_functions (env, mthd, ndsp)
 
         if ndbg >= 2 then dspmat(df,"GRAD-F") end
       end
+
+      ::final::
 
       -- display intermediate summary
       disp(env)
