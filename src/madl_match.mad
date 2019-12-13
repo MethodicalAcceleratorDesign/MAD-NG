@@ -305,21 +305,23 @@ local function disp_summ (env)
   local var, arg = env.__var, env.__var.arg
   local n, p, q, status in arg[0]
 
-  io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
-  io.write"-----------------------------------------------------------------------------\n"
+  if p+q > 0 then
+    io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
+    io.write"-----------------------------------------------------------------------------\n"
 
-  for i=1,p do
-    local e = equalities[i]
-    local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
-    printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
-              i, e.name or '', 'equality', e.kind or '.', w, var.eval[i])
-  end
+    for i=1,p do
+      local e = equalities[i]
+      local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+      printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
+                i, e.name or '', 'equality', e.kind or '.', w, var.eval[i])
+    end
 
-  for i=1,q do
-    local e = inequalities[i]
-    local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
-    printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
-              i+p, e.name or '', 'inequality', e.kind or '.', w, var.lval[i])
+    for i=1,q do
+      local e = inequalities[i]
+      local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
+                i+p, e.name or '', 'inequality', e.kind or '.', w, var.lval[i])
+    end
   end
 
   local s1, s2, v1, v2
@@ -378,105 +380,80 @@ local function nlopt_functions (env, mthd, ndsp)
   fscl = fscl == 0 and 1 or 1/fscl
 
   -- nlopt objective function
-  return objective.exec or
-    function(n_, x_, df_)
-      assert(n_ == n, "invalid number of variables (unexpected)")
-      assert(x_     , "missing vector of variables (unexpected)")
-      assert(df_ == nil or grad, "unexpected non-nil gradient argument")
+  return function(n_, x_, df_)
+    assert(n_ == n, "invalid number of variables (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(df_ == nil or grad, "unexpected non-nil gradient argument")
 
-      -- force to stop
-      if var.status then
-        if ndbg >= 1 then io.write("nlopt: forced to stop\n") end
-        _C.nlopt_force_stop(arg[0].opt, var.status)
-        return arg[0].fval
+    -- force to stop
+    if var.status then
+      if ndbg >= 1 then io.write("nlopt: forced to stop\n") end
+      _C.nlopt_force_stop(arg[0].opt, var.status)
+      return arg[0].fval
+    end
+
+    -- iteration number
+    env.ncall = env.ncall + 1
+
+    -- update state vector
+    for i=1,n do
+      x[i], dx[i] = x_[i-1], x_[i-1]-x[i]
+    end
+
+    -- update state variables
+    if update then
+      update(x, env)
+    else
+      var.flush = nil
+      for i=1,n do variables[i].set(x[i], env) end
+      if var.flush then jit.flush() end -- TODO: avoid jit flush
+    end
+
+    -- call user defined function
+    if objective.exec then
+      var.fval = objective.exec(x, df_ ~= nil and df:zeros() or nil)
+      var.ftol = abs(var.fval-arg[0].fval)
+      for i=1,n do df_[i-1] = df[i] end
+      if ndbg >= 2 then dspmat(df,"GRAD-F") end
+      goto final
+    else
+
+    -- call user command
+    local res = command(env)
+    if is_nil(res) then
+      var.fval, var.ftol = inf, inf
+      if p>0 then eval:ones(inf) end
+      if q>0 then lval:ones(inf) end
+      goto final
+    end
+
+    -- compute objective function
+    do
+      local fval = 0
+      for i=1,p do
+        eval[i] = equalities[i].expr(res, env)
+        if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*abs(eval[i]) end
       end
-
-      -- iteration number
-      env.ncall = env.ncall + 1
-
-      -- update state vector
-      for i=1,n do
-        x[i], dx[i] = x_[i-1], x_[i-1]-x[i]
-        if dx[i] == 0 then
-          dx[i] = x[i] ~= 0 and 0.015625*abs(x[i]) or 1e-4
-        end
+      for i=1,q do
+        lval[i] = inequalities[i].expr(res, env)
+        if lval[i] > ltol[i] then fval = fval + lwgt[i]*abs(lval[i]) end
       end
+      var.fval = fval*fscl
+      var.ftol = abs(var.fval-arg[0].fval)
+    end
 
-      -- update state variables
-      if update then
-        update(x, env)
-      else
-        var.flush = nil
-        for i=1,n do variables[i].set(x[i], env) end
-        if var.flush then jit.flush() end -- TODO: avoid jit flush
-      end
+    -- compute objective function gradient(s)
+    if df_ ~= nil then
+      if egrd then egrd:zeros() end
+      if lgrd then lgrd:zeros() end
+      df:zeros()
 
-      -- call user command
-      local res = command(env)
-      if is_nil(res) then
-        var.fval, var.ftol = inf, inf
-        if p>0 then eval:ones(inf) end
-        if q>0 then lval:ones(inf) end
-        goto final
-      end
+      for iv=1,n do
+        env.ncall = env.ncall + 1
+        if dx[iv] == 0 then goto next end
 
-      -- compute objective function
-      do
-        local fval = 0
-        for i=1,p do
-          eval[i] = equalities[i].expr(res, env)
-          if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*abs(eval[i]) end
-        end
-        for i=1,q do
-          lval[i] = inequalities[i].expr(res, env)
-          if lval[i] > ltol[i] then fval = fval + lwgt[i]*abs(lval[i]) end
-        end
-        var.fval = fval*fscl
-        var.ftol = abs(var.fval-arg[0].fval)
-      end
+        for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
 
-      -- gradient requested
-      if df_ ~= nil then
-        if egrd then egrd:zeros() end
-        if lgrd then lgrd:zeros() end
-
-        -- compute objective function gradient(s)
-        for iv=1,n do
-          env.ncall = env.ncall + 1
-          if dx[iv] == 0 then df[iv]=0 ; goto next end
-
-          for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
-
-          if update then
-            update(x, env)
-          else
-            var.flush = nil
-            for i=1,n do variables[i].set(x[i], env) end
-            if var.flush then jit.flush() end -- TODO: avoid jit flush
-          end
-
-          local res = command(env)
-          if is_nil(res) then goto next end
-
-          local fval = 0
-          for i=1,p do
-            local ev = equalities[i].expr(res, env)
-            egrd:set(iv,i, (ev-eval[i])/dx[iv])
-            if abs(ev) > etol[i] then fval = fval + ewgt[i]*abs(ev) end
-          end
-          for i=1,q do
-            local lv = inequalities[i].expr(res, env)
-            lgrd:set(iv,i, (lv-lval[i])/dx[iv])
-            if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
-          end
-          fval = fval*fscl
-          df[iv] = (fval-var.fval)/dx[iv]
-
-        ::next::
-        end
-
-        -- restore variables, copy gradient
-        for i=1,n do x[i], df_[i-1] = x_[i-1], df[i] end
         if update then
           update(x, env)
         else
@@ -485,51 +462,96 @@ local function nlopt_functions (env, mthd, ndsp)
           if var.flush then jit.flush() end -- TODO: avoid jit flush
         end
 
-        if ndbg >= 2 then dspmat(df,"GRAD-F") end
+        local res = command(env)
+        if is_nil(res) then goto next end
+
+        local fval = 0
+        for i=1,p do
+          local ev = equalities[i].expr(res, env)
+          egrd:set(iv,i, (ev-eval[i])/dx[iv])
+          if abs(ev) > etol[i] then fval = fval + ewgt[i]*abs(ev) end
+        end
+        for i=1,q do
+          local lv = inequalities[i].expr(res, env)
+          lgrd:set(iv,i, (lv-lval[i])/dx[iv])
+          if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
+        end
+        fval = fval*fscl
+        df[iv] = (fval-var.fval)/dx[iv]
+
+      ::next::
       end
 
-      ::final::
-
-      -- display intermediate summary
-      disp(env)
-
-      -- stop criteria (nlopt ignores fmin and ftol...?)
-      if ncal and env.ncall >= arg[0].maxcall then
-        var.status = _C.NLOPT_MAXEVAL_REACHED
-      elseif fmin and var.fval <= arg[0].fmin then
-        var.status = _C.NLOPT_STOPVAL_REACHED
-      elseif ftol and (var.ftol <= arg[0].ftol or
-                       var.ftol <= arg[0].frtol*abs(var.fval)) then
-        var.status = _C.NLOPT_FTOL_REACHED
+      -- restore variables, copy gradient
+      for i=1,n do x[i], df_[i-1] = x_[i-1], df[i] end
+      if update then
+        update(x, env)
+      else
+        var.flush = nil
+        for i=1,n do variables[i].set(x[i], env) end
+        if var.flush then jit.flush() end -- TODO: avoid jit flush
       end
 
-      -- return weighted mean: \sum_i w_i |c_i(x)| / \sum_i w_i
-      return var.fval
-    end,
+      if ndbg >= 2 then dspmat(df,"GRAD-F") end
+    end
+    end
+
+    ::final::
+
+    -- display intermediate summary
+    disp(env)
+
+    -- stop criteria (nlopt ignores fmin and ftol...?)
+    if ncal and env.ncall >= arg[0].maxcall then
+      var.status = _C.NLOPT_MAXEVAL_REACHED
+    elseif fmin and var.fval <= arg[0].fmin then
+      var.status = _C.NLOPT_STOPVAL_REACHED
+    elseif ftol and (var.ftol <= arg[0].ftol or
+                     var.ftol <= arg[0].frtol*abs(var.fval)) then
+      var.status = _C.NLOPT_FTOL_REACHED
+    end
+
+    -- return weighted mean: \sum_i w_i |c_i(x)| / \sum_i w_i
+    return var.fval
+  end,
 
   -- nlopt equality function
-  nlopt_algo[mthd].eq == 'y' and (equalities.exec or p>0 and
-    function(p_, r_, n_, x_, de_)
-      assert(p_ == p, "invalid number of equalities (unexpected)")
-      assert(r_     , "missing vector of equalities (unexpected)")
-      for i=1,p do r_[i-1] = eval[i] end
-      if de_ ~= nil then
-        for i=1,n*p do de_[i-1] = egrd[i] end
-        if ndbg >= 2 then dspmat(egrd,"JACOBIAN-EQ") end
-      end
-    end or nil),
+  nlopt_algo[mthd].eq == 'y' and (p>0 and function(p_, r_, n_, x_, de_)
+    assert(p_ == p , "invalid number of equalities (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(r_ ~= nil, "missing vector of equalities (unexpected)")
+    assert(de_ == nil or grad, "unexpected non-nil jacobian argument")
+
+    -- call user defined function
+    if equalities.exec then
+      equalities.exec(eval, x, de_ ~= nil and egrd:zeros() or nil)
+    end
+
+    for i=1,p do r_[i-1] = eval[i] end
+    if de_ ~= nil then
+      for i=1,n*p do de_[i-1] = egrd[i] end
+      if ndbg >= 2 then dspmat(egrd,"JACOBIAN-EQ") end
+    end
+  end or nil),
 
   -- nlopt inequality function
-  nlopt_algo[mthd].le == 'y' and (inequalities.exec or q>0 and
-    function(q_, r_, n_, x_, dl_)
-      assert(q_ == q, "invalid number of inequalities (unexpected)")
-      assert(r_     , "missing vector of inequalities (unexpected)")
-      for i=1,q do r_[i-1] = lval[i] end
-      if dl_ ~= nil then
-        for i=1,n*q do dl_[i-1] = lgrd[i] end
-        if ndbg >= 2 then dspmat(lgrd,"JACOBIAN-LE") end
-      end
-    end or nil)
+  nlopt_algo[mthd].le == 'y' and (q>0 and function(q_, r_, n_, x_, dl_)
+    assert(q_ == q  , "invalid number of inequalities (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
+    assert(dl_ == nil or grad, "unexpected non-nil jacobian argument")
+
+    -- call user defined function
+    if inequalities.exec then
+      inequalities.exec(lval, x, dl_ ~= nil and lgrd:zeros() or nil)
+    end
+
+    for i=1,q do r_[i-1] = lval[i] end
+    if dl_ ~= nil then
+      for i=1,n*q do dl_[i-1] = lgrd[i] end
+      if ndbg >= 2 then dspmat(lgrd,"JACOBIAN-LE") end
+    end
+  end or nil)
 end
 
 -- getters/setters ------------------------------------------------------------o

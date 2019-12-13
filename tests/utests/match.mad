@@ -313,61 +313,89 @@ end
 -- Example from NLOpt tutorial
 
 function TestMatch:testMatchFunc ()
-  local var = {x1=1.234, x2=5.678}
-  local ncall = 0
+  local x_ = {1.234, 5.678}
 
-  local function myfunc (n, x, grad)
-    ncall = ncall + 1
-    var.x1, var.x2 = x[0], x[1]
+  local printf in MAD.utility
 
+  local function myfn (x, grad)
     if grad then
-      grad[0] = 0.0
-      grad[1] = 0.5 / sqrt(x[1])
+      grad[1] = 0.0
+      grad[2] = 0.5 / sqrt(x[2])
     end
-    return sqrt(x[1])
+    return sqrt(x[2])
   end
 
-  local function myconstraint (m, res, n, x, grad)
+  local function myle (r, x, grad)
     local a, b = 2, 0
     if grad then
-      grad[0] = 3 * a * (a*x[0] + b) * (a*x[0] + b)
-      grad[1] = -1.0
+      grad[1] = 3 * a * (a*x[1] + b) * (a*x[1] + b)
+      grad[2] = -1.0
     end
-    res[0] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
+    r[1] = ((a*x[1] + b) * (a*x[1] + b) * (a*x[1] + b) - x[2])
 
     local a, b = -1, 1
     if grad then
-      grad[2] = 3 * a * (a*x[0] + b) * (a*x[0] + b)
-      grad[3] = -1.0
+      grad[3] = 3 * a * (a*x[1] + b) * (a*x[1] + b)
+      grad[4] = -1.0
     end
-    res[1] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1])
+    r[2] = ((a*x[1] + b) * (a*x[1] + b) * (a*x[1] + b) - x[2])
   end
 
   -- match test
-  local status, fmin = match {
+  local status, fmin, ncall = match {
     variables = {
-      { var = 'var.x1', min = -inf },
-      { var = 'var.x2', min =  0   },
+      { var = 'x_[1]', min = -inf },
+      { var = 'x_[2]', min =  0   },
       tol = 1e-4, -- relative tolerance for all variables
     },
-
     inequalities = {
-      { tol = 1e-8 },
-      { tol = 1e-8 },
-      exec = myconstraint,
+      {}, {}, tol = 1e-8,
+      exec = myle,
     },
-
     objective = {
-      method = 'NLOPT_LD_MMA', fmin = 1e-8, maxcall = 100,
-      exec = myfunc,
+      method = 'NLOPT_LD_MMA', fmin = 1e-8, maxcall = 100, !summary=2,
+      exec = myfn,
     },
   }
 
   assertEquals      (status, 'NLOPT_XTOL_REACHED')
   assertEquals      (ncall , 11)
   assertAlmostEquals(fmin  , 0.54433104738223, 1e-15)
-  assertAlmostEquals(var.x1, 0.33333333482478, 1e-12)
-  assertAlmostEquals(var.x2, 0.29629628914424, 1e-12)
+  assertAlmostEquals(x_[1] , 0.33333333482478, 1e-12)
+  assertAlmostEquals(x_[2] , 0.29629628914424, 1e-12)
+end
+
+-- Example from Octave tutorial
+
+function TestMatch:testMatchFunc2 ()
+  local vector in MAD
+  local exp    in math
+
+  local x = vector {-1.8, 1.7, 1.9, -0.8, -0.8}
+
+  local status, fmin, ncall = match {
+    variables = {
+      { var = 'x[1]' },
+      { var = 'x[2]' },
+      { var = 'x[3]' },
+      { var = 'x[4]' },
+    },
+    equalities = {
+      { expr := x:sumsqr() - 10         },
+      { expr := x[2]*x[3] - 5*x[4]*x[5] },
+      { expr := x[1]^3+x[2]^3+1         },
+    },
+    objective = {
+      fmin = 1e-8, maxcall = 50, summary=2,
+      exec := exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
+    },
+  }
+
+!  assertEquals      (status, 'NLOPT_XTOL_REACHED')
+!  assertEquals      (ncall , 11)
+!  assertAlmostEquals(fmin  , 0.54433104738223, 1e-15)
+!  assertAlmostEquals(var.x1, 0.33333333482478, 1e-12)
+!  assertAlmostEquals(var.x2, 0.29629628914424, 1e-12)
 end
 
 -- end ------------------------------------------------------------------------o
