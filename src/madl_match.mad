@@ -374,7 +374,7 @@ local function nlopt_functions (env, mthd, ndsp)
   local ftol = arg[0].ftol > 0
   local fscl = 0
 
-  -- weights scaling
+  -- weights scaling preparation
   if ewgt then fscl = fscl + ewgt:sum() end
   if lwgt then fscl = fscl + lwgt:sum() end
   fscl = fscl == 0 and 1 or 1/fscl
@@ -450,7 +450,7 @@ local function nlopt_functions (env, mthd, ndsp)
 
       for iv=1,n do
         env.ncall = env.ncall + 1
-        if dx[iv] == 0 then goto next end
+        if dx[iv] == 0 then goto next end -- correct??
 
         for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
 
@@ -465,24 +465,26 @@ local function nlopt_functions (env, mthd, ndsp)
         local res = command(env)
         if is_nil(res) then goto next end
 
-        local fval = 0
-        for i=1,p do
-          local ev = equalities[i].expr(res, env)
-          egrd:set(iv,i, (ev-eval[i])/dx[iv])
-          if abs(ev) > etol[i] then fval = fval + ewgt[i]*abs(ev) end
+        do
+          local fval = 0
+          for i=1,p do
+            local ev = equalities[i].expr(res, env)
+            if abs(ev) > etol[i] then fval = fval + ewgt[i]*abs(ev) end
+            egrd:set(iv,i, (ev-eval[i])/dx[iv])
+          end
+          for i=1,q do
+            local lv = inequalities[i].expr(res, env)
+            if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
+            lgrd:set(iv,i, (lv-lval[i])/dx[iv])
+          end
+          fval = fval*fscl
+          df[iv] = (fval-var.fval)/dx[iv]
         end
-        for i=1,q do
-          local lv = inequalities[i].expr(res, env)
-          lgrd:set(iv,i, (lv-lval[i])/dx[iv])
-          if lv > ltol[i] then fval = fval + lwgt[i]*abs(lv) end
-        end
-        fval = fval*fscl
-        df[iv] = (fval-var.fval)/dx[iv]
 
       ::next::
       end
 
-      -- restore variables, copy gradient
+      -- restore variables, copy back gradient
       for i=1,n do x[i], df_[i-1] = x_[i-1], df[i] end
       if update then
         update(x, env)
@@ -495,7 +497,6 @@ local function nlopt_functions (env, mthd, ndsp)
       if ndbg >= 2 then dspmat(df,"GRAD-F") end
     end
     end
-
     ::final::
 
     -- display intermediate summary
