@@ -22,8 +22,10 @@
 #include "mad_log.h"
 #include "mad_nlopt.h"
 
-#define DBG(s) if (a->debug) puts("nlopt: " #s " set")
 #define CHK(a) ensure(a == 1, "unable to configure nlopt")
+#define DBG(s)  if (a->debug) printf("nlopt: %s set\n",#s);
+#define DBGI(s) if (a->debug) printf("nlopt: %s set to %d\n",#s,a->s);
+#define DBGN(s) if (a->debug) printf("nlopt: %s set to % -.6e\n",#s,a->s);
 
 static inline
 num_t min(ssz_t n, const num_t x[n])
@@ -56,19 +58,19 @@ void mad_nlopt (nlopt_args_t *a)
   CHK(nlopt_set_min_objective(a->opt, a->fun, NULL)); DBG(fun);
 
   // set objective function stop value
-  if (a->fmin > -INFINITY) { CHK(nlopt_set_stopval(a->opt, a->fmin)); DBG(fmin); }
+  if (a->fmin > -INFINITY) { CHK(nlopt_set_stopval(a->opt, a->fmin)); DBGN(fmin); }
 
   // set objective function tolerance (value change)
-  if (a->ftol > 0) { CHK(nlopt_set_ftol_abs(a->opt, a->ftol)); DBG(ftol); }
+  if (a->ftol > 0) { CHK(nlopt_set_ftol_abs(a->opt, a->ftol)); DBGN(ftol); }
 
   // set objective function relative tolerance (relative value change)
-  if (a->frtol > 0) { CHK(nlopt_set_ftol_rel(a->opt, a->frtol)); DBG(frtol); }
+  if (a->frtol > 0) { CHK(nlopt_set_ftol_rel(a->opt, a->frtol)); DBGN(frtol); }
 
   // set variables tolerances
   if (max(a->n,a->xtol) > 0) { CHK(nlopt_set_xtol_abs(a->opt, a->xtol)); DBG(xtol); }
 
   // set variables relative tolerance (same for all)
-  if (a->xrtol > 0) { CHK(nlopt_set_xtol_rel(a->opt, a->xrtol)); DBG(xrtol); }
+  if (a->xrtol > 0) { CHK(nlopt_set_xtol_rel(a->opt, a->xrtol)); DBGN(xrtol); }
 
   // set variables initial step size
   if (min(a->n,a->dx) > 0) { CHK(nlopt_set_initial_step(a->opt, a->dx)); DBG(xstp); }
@@ -86,8 +88,8 @@ void mad_nlopt (nlopt_args_t *a)
   if (a->lfun) { CHK(nlopt_add_inequality_mconstraint(a->opt, a->q, a->lfun, NULL, a->ltol)); DBG(lfun); }
 
   // set extra stop criteria
-  if (a->maxcall > 0) { CHK(nlopt_set_maxeval(a->opt, a->maxcall)); DBG(maxcall); }
-  if (a->maxtime > 0) { CHK(nlopt_set_maxtime(a->opt, a->maxtime)); DBG(maxtime); }
+  if (a->maxcall > 0) { CHK(nlopt_set_maxeval(a->opt, a->maxcall)); DBGI(maxcall); }
+  if (a->maxtime > 0) { CHK(nlopt_set_maxtime(a->opt, a->maxtime)); DBGN(maxtime); }
 
   // seach for minimum
   a->status = nlopt_optimize(a->opt, a->x, &a->fval);
