@@ -40,6 +40,10 @@ assert(is_nil(rawget(_G,'MADX')), "MADX environment already defined")
 
 local cmt = { ['//'] = '--', ['/*'] = '--[[', ['*/'] = ']]', }
 
+local function convert_ident (str)
+  return string.lower(string.gsub(str, '([.$])', '_'))
+end
+
 local function convert_comments (line)
   return string.gsub(line, '([/*][/*])', cmt)
 end
@@ -60,7 +64,7 @@ local function convert_name (env, str)
     assertf(c == string.sub(str,-1), "unterminated string, line %d", env.lin)
     return str
   else
-    return string.lower(string.gsub(str, '([.$])', '_'))
+    return convert_ident(str)
   end
 end
 
@@ -287,6 +291,24 @@ local function load2madx (madx, src, dst, reload_)
   collectgarbage() -- release memory
 end
 
+-- MADX env -------------------------------------------------------------------o
+
+-- set option.madxenv when opening and closing MADX environment (used by seq.)
+local open_env_  = object:var_raw 'open_env'
+local reset_env_ = object:var_raw 'reset_env'
+
+local function open_env (madx, ctx_)
+  assert(madx == MADX or is_instanceOf(madx, MADX), "invalid MADX environment")
+  option.madxenv = true
+  return open_env_(madx, ctx_)
+end
+
+local function reset_env (madx)
+  assert(madx == MADX or is_instanceOf(madx, MADX), "invalid MADX environment")
+  option.madxenv = false
+  return reset_env_(madx)
+end
+
 -- MADX helpers ---------------------------------------------------------------o
 
 local sinc in MAD.gmath
@@ -320,7 +342,9 @@ local MADX = object 'MADX' {
 
 -- load madx definition
 MADX:set_methods {
-  load = load2madx,
+  load      = load2madx,
+   open_env =  open_env,
+  reset_env = reset_env,
 }
 
 -- math functions, see mad_dict.c from MAD-X source
@@ -390,18 +414,21 @@ do
   for _,v in ipairs(str2id) do MADX[v] = v end
 end
 
--- undefined variables have value zero
-local  type   = type
-local  index  = getmetatable(MADX).__index -- catch from parent
-local windex  = \s,k =>
+-- undefined variables have value zero, names are converted to identifiers
+local      index  = getmetatable(MADX).__index    -- catch from parent
+local   newindex  = getmetatable(MADX).__newindex -- catch from parent
+local __newindex  = \s,k,v -> newindex(s, convert_ident(k), v)
+local    __index  = \s,k =>
+  k = convert_ident(k)
   local v = index(s,k)
   if type(v) ~= 'nil' then return v end
   if s.option.warn then warn("undefined variable used (zero): " .. k) end
-  _G.MADX[k] = 0
+  s[k] = 0
   return 0
 end
 
-MADX:set_metamethods ({ __index=windex }, true) :set_readonly()
+MADX:set_metamethods ({ __index=__index, __newindex=__newindex }, true)
+    :set_readonly()
 
 -- global MADX is a read-write child.
 _G.MADX = MADX(table.new(0,1000))
