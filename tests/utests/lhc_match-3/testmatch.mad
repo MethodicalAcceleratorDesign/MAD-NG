@@ -72,17 +72,20 @@ local function SLHC_load (nrj, optics)
     -- load SLHC from MADX
     local lhcb1, lhcb2, bv_aux in MADX
     local n1, n2 = #lhcb1, #lhcb2
-    print("#lhcb1=", n1, "#lhcb2=", n2)
+
+    -- set sequences direction and attach beams
+    lhcb1.dir =  1 ; lhcb1.beam = beam { particle='proton', energy=nrj }
+    lhcb2.dir = -1 ; lhcb2.beam = beam { particle='proton', energy=nrj }
 
     -- dump SLHC + sanity checks
     if bv_aux == 1 then
       lhcb1:dumpseq("slhcb1")
       lhcb2:dumpseq("slhcb2")
-!      assertf(n1 == 6432, "invalid number of elements %d in SLHCB1 (6432 expected)", n1)
-!      assertf(n2 == 6434, "invalid number of elements %d in SLHCB2 (6434 expected)", n2)
+      assertf(n1 == 6719, "invalid number of elements %d in SLHCB1 (6719 expected)", n1)
+      assertf(n2 == 6721, "invalid number of elements %d in SLHCB2 (6721 expected)", n2)
     else
       lhcb2:dumpseq("slhcb4")
-!      assertf(n2 == 6434, "invalid number of elements %d in SLHCB4 (6434 expected)", n2)
+      assertf(n2 == 6721, "invalid number of elements %d in SLHCB4 (6721 expected)", n2)
     end
   end
 end
@@ -91,9 +94,44 @@ local function SLHC_optic(name)
   MADX:load("slhc/round/"..name..".madx", "input/"..name..".mad")
 end
 
+local function check_IP(bim)
+  local twiss   in MAD
+  local printf  in MAD.utility
+  local observe in MAD.element.flags
+  local seq = bim == 'b2' and MADX.lhcb2 or MADX.lhcb1
+
+  local obspts = {"IP1", "IP5", "IP2", "IP8"}
+  for _,e in ipairs(obspts) do seq[e]:select(observe) end
+
+  local t = twiss { sequence=seq, method=4, observe=1, chrom=true, cofind=true }
+
+  t:write("output/twiss"..seq.name)
+
+  printf('refbetxip1%s = %.15g\nrefbetyip1%s = %.15g\n', bim,t.IP1.beta11,bim,t.IP1.beta22)
+  printf('refbetxip5%s = %.15g\nrefbetyip5%s = %.15g\n', bim,t.IP5.beta11,bim,t.IP5.beta22)
+  printf('refbetxip2%s = %.15g\nrefbetyip2%s = %.15g\n', bim,t.IP2.beta11,bim,t.IP2.beta22)
+  printf('refbetxip8%s = %.15g\nrefbetyip8%s = %.15g\n', bim,t.IP8.beta11,bim,t.IP8.beta22)
+
+  printf('refqx%s  = %.15g\nrefqy%s  = %.15g\n', bim,t.q1,bim,t.q2)
+  printf('refdqx%s = %.15g\nrefdqy%s = %.15g\n', bim,t.dq1,bim,t.dq2)
+
+  printf('refxip1%s = %.15g\nrefyip1%s = %.15g\n', bim,t.IP1.x,bim,t.IP1.y)
+  printf('refxip5%s = %.15g\nrefyip5%s = %.15g\n', bim,t.IP5.x,bim,t.IP5.y)
+  printf('refxip2%s = %.15g\nrefyip2%s = %.15g\n', bim,t.IP2.x,bim,t.IP2.y)
+  printf('refxip8%s = %.15g\nrefyip8%s = %.15g\n', bim,t.IP8.x,bim,t.IP8.y)
+
+  printf('refpxip1%s = %.15g\nrefpyip1%s = %.15g\n', bim,t.IP1.px,bim,t.IP1.py)
+  printf('refpxip5%s = %.15g\nrefpyip5%s = %.15g\n', bim,t.IP5.px,bim,t.IP5.py)
+  printf('refpxip2%s = %.15g\nrefpyip2%s = %.15g\n', bim,t.IP2.px,bim,t.IP2.py)
+  printf('refpxip8%s = %.15g\nrefpyip8%s = %.15g\n', bim,t.IP8.px,bim,t.IP8.py)
+end
+
 ----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
 --  SCRIPT
 ----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
 
-SLHC_load (7000)
-SLHC_optic("opt_round_150_1500")
+print "SLHC_load"    ; SLHC_load (7000)
+print "SLHC_optic"   ; SLHC_optic "opt_round_150_1500"
+print "check_IP(B1)" ; check_IP   'b1'
+print "check_IP(B2)" ; check_IP   'b2'
+
