@@ -99,28 +99,28 @@ end
 
 local function seq_poserr (typ, seq, idx, pos)
   local msg = string.format(
-    "invalid %s position at s = %.6gm (negative drift %.6gm)",
-             typ,               seq:spos(idx),        seq:spos(idx)-pos)
+    "invalid %s position at s = %.4fm [%.4fm] (negative drift %.6gm)",
+             typ,               seq:spos(idx), seq:upos(idx), seq:spos(idx)-pos)
   seq_error(msg, seq, idx, seq[idx])
 end
 
 local function seq_uposerr (typ, seq, idx, pos)
   local msg = string.format(
-    "invalid %s position at s = %.6gm (inconsistency in [spos,upos,ds] by %.6gm)",
-             typ,               seq:spos(idx),                            pos)
+    "invalid %s position at s = %.4fm [%.4fm] (inconsistency in [spos,upos,ds] by %.6gm)",
+             typ,               seq:spos(idx), seq:upos(idx),              pos)
   seq_error(msg, seq, idx, seq[idx])
 end
 
 local function seq_lenerr (typ, seq, idx, len)
   local msg = string.format(
-    "invalid %s length at s = %.6gm (invalid length %.6gm)",
-             typ,             seq:spos(idx),        len)
+    "invalid %s length at s = %.4fm [%.4fm] (invalid length %.6gm)",
+             typ,             seq:spos(idx), seq:upos(idx), len)
   seq_error(msg, seq, idx, seq[idx])
 end
 
 local function seq_lenchg (typ, seq, idx, len)
   local msg = string.format(
-    "invalid %s length at s = %.6gm (length changed by %.6gm)",
+    "invalid %s length at s = %.4fm (length changed by %.6gm)",
              typ,             seq:spos(idx),           len)
   seq_error(msg, seq, idx, seq[idx])
 end
@@ -728,7 +728,7 @@ local function finish_sequ (seq)
   if option.debug >= 2 then check_sequ(seq) end
 
   -- publish sequence in MADX environment
-  if option.madxenv then seq:publish(MADX) end
+  if option.madxenv then seq:publish(MADX, true) end
 end
 
 -- sequence init (build)
@@ -1057,9 +1057,13 @@ local function remove (seq, rng_, sel_)
   assert(idx_r[nr] < data.ne       , "invalid range, $end marker selected")
 
   -- remove elements by decreasing indexes -- to optimize to avoid O(N^2) removal
+  local dbg = option.debug > 1
   local elm_r = table.new(nr,0)
   for i=nr,1,-1 do
     local ii = idx_r[i]
+    if dbg then
+      io.write("seq: removing element '", data[ii].__id, "'\n")
+    end
     elm_r[i] = data[ii]    -- backup
     table.remove(data     , ii)
     table.remove(data.spos, ii)
@@ -1174,6 +1178,7 @@ local function install (seq, elm, rng_, sel_)
   end
 
   -- insert elements -- need to be optimized to avoid O(N^2) insertion
+  local dbg = option.debug > 1
   for ie=1,i do
     local idx = bsearch(data.spos, spos[ie], 2, data.ne)
     if is_sequence(ins[ie]) and #ins[ie] > 2 then
@@ -1183,6 +1188,9 @@ local function install (seq, elm, rng_, sel_)
       table.move(data.upos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.ds  , idx, data.ne, idx+sdata.ne-2)
       for j=2,sdata.ne-1 do -- see sequ_pos
+        if dbg then
+          io.write("seq: installing element '", sdata[j].__id, "'\n")
+        end
         data     [idx+j-2] = sdata     [j]
         data.spos[idx+j-2] = sdata.spos[j]+spos[ie]
         data.upos[idx+j-2] = sdata.upos[j]+spos[ie]
@@ -1191,6 +1199,9 @@ local function install (seq, elm, rng_, sel_)
       data.ne = data.ne + sdata.ne - 2
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst data
     else
+      if dbg then
+        io.write("seq: installing element '", ins[ie].__id, "'\n")
+      end
       table.insert(data     , idx, ins [ie])
       table.insert(data.spos, idx, spos[ie])
       table.insert(data.upos, idx, upos[ie])
@@ -1237,10 +1248,25 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function publish (seq, env)
+local function publish (seq, env, keeporig_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_mappable(env), "invalid argument #2 (mappable expected)")
-  for _,elm in ipairs(seq) do env[elm.name] = elm end
+  if not keeporig_ then
+    for _,elm in ipairs(seq) do env[elm.name] = elm end
+    return seq
+  end
+
+  local wrn
+  if env == MADX or is_instanceOf(env, MADX) then
+    wrn, env.option.warn = env.option.warn, false
+  end
+  local data = var_raw(seq,_data)
+  for idx,elm in ipairs(seq) do
+    local nam = elm.__id
+    if is_element(env[nam]) then data[idx] = env[nam] else env[nam] = elm end
+  end
+  if wrn ~= nil then env.option.warn = wrn end
+  return seq
 end
 
 local function reflect (seq, nam_)
