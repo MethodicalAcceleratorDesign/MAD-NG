@@ -24,8 +24,8 @@
 -- locals ---------------------------------------------------------------------o
 
 local command, track, cofind, option, warn, vector, matrix        in MAD
-local normal, map2bet, bet2map, dp2pt, has_dpt,
-      ofname, ofcname, cvindex, msort                             in MAD.gphys
+local normal1, map2bet, bet2map, cfn2bet, dp2pt, has_dpt,
+      ofname, ofcname, ofhname, ofchname, cvindex, msort          in MAD.gphys
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
@@ -68,43 +68,43 @@ local cvtlst = {'deltap',
 local function fill_sum (mflw)
   local mtbl, __twdat in mflw
 
-  -- chromaticity
+  -- cleanup deltap
   if __twdat.chrm then
-    local q1, q2, q3, dq1, dq2, dq3, chrm in __twdat
     local deltap in mtbl
-    local n = floor(#q1/2)
-
-    for i=1,mflw.npar do
-      local id = mflw[i].id
-      if id > n then id = id-n end
-      if not dq1[id] then
-        dq1[id] = (q1[id+n] - q1[id])/chrm
-        dq2[id] = (q2[id+n] - q2[id])/chrm
-        dq3[id] = (q3[id+n] - q3[id])/chrm
-      end
-    end
-
-    -- cleaning
-    for i=n+1,2*n   do q1[i], q2[i], q3[i] = nil, nil, nil end
-    for i=1,#deltap do deltap[i]           = nil           end
+    local ndp = #deltap
+    for i=ndp/2+1,ndp do deltap[i] = nil end
   end
 
   -- total length
   mtbl.length = mflw.spos + mflw.ds - mflw.s0
 
   -- momentum compaction & phase slip factors, gamma transition
-  local ofun, synch_1, alfap, etap, gammatr in __twdat
+  local npar, ofun, chrm, q1, q2, q3, dq1, dq2, dq3,
+        synch_1, alfap, etap, gammatr in __twdat
   local beam, len = mflw.beam, mtbl.length
-  local n = #synch_1
 
   for i=1,mflw.npar do
-    local id, beam = mflw[i].id, mflw[i].beam or beam
-    if id > n then id = id-n end
-    if not alfap[id] then -- calculation from MAD-X
+    local id = mflw[i].id
+    if id <= npar then
       local of = ofun[id]
+
+      q1[id] = of.mu1
+      q2[id] = of.mu2
+      q3[id] = of.mu3
+
+      if chrm then
+        local ofdp = ofun[id+npar]
+
+        dq1[id] = (ofdp.mu1 - of.mu1) / chrm
+        dq2[id] = (ofdp.mu2 - of.mu2) / chrm
+        dq3[id] = (ofdp.mu3 - of.mu3) / chrm
+      end
+
+      -- calculation from MAD-X
       local R  = mflw[i]:get1()
       local sd = R:get(5,6) + R:get(5,1)*of.dx + R:get(5,2)*of.dpx
                             + R:get(5,3)*of.dy + R:get(5,4)*of.dpy
+      local beam = mflw[i].beam or beam
       etap [id]   = -sd/beam.beta^2 / len
       alfap[id]   = 1/beam.gamma^2 + etap[id]
       gammatr[id] = sqrt(1/abs(alfap[id])) * sign(alfap[id])
@@ -130,28 +130,26 @@ local function fill_sum (mflw)
   end
 end
 
-local function fill (elm, mflw, lw, islc)
+local function fill_row (elm, mflw, lw, islc)
 !  printf("tw_fill: islc=%2d, elm=%s\n", islc, elm.name)
 
   local npar, mtbl, __twdat in mflw
-  local orow, ofun, onam, q1, q2, q3 in __twdat
+  local nrow, ofun, onam in __twdat
 
--- print("twfill", elm.name, #mtbl, npar, orow)
+-- print("twfill", elm.name, #mtbl, npar, nrow)
 
   for i=1,npar do
     local m = mflw[i]
     if not m.nosave then
       local id, of = m.id, ofun[m.id]
 
-      orow = orow + 1
+      nrow = nrow + 1
       -- save optical functions (keep order !)
-      for _,k in ipairs(onam) do mtbl[k][orow] = of[k] end
-      -- save phase advances
-      mtbl.mu1[orow], mtbl.mu2[orow], mtbl.mu3[orow] = q1[id], q2[id], q3[id]
+      for _,k in ipairs(onam) do mtbl[k][nrow] = of[k] end
     end
   end
 
-  __twdat.orow = orow
+  __twdat.nrow = nrow
   return true
 end
 
@@ -159,38 +157,31 @@ end
 
 local function beta0act (elm, mflw, lw, islc)
   if not mflw.__twdat then return end
-!  printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
-  local npar, sdir, __twdat in mflw
-  local ofun, omat, q1, q2, q3 in __twdat
+! printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
 
-  for i=1,npar do
+  local ofun, chrm in mflw.__twdat
+
+  for i=1,mflw.npar do
     local m = mflw[i]
-    local id, of = m.id, ofun[m.id]
+    map2bet(m, ofun[m.id])
+  end
 
-    -- backup phases and horizontal dispersion
-    local mu1_, mu2_, mu3_ = of.mu1 or 0, of.mu2 or 0, of.mu3 or 0
-
-    -- get beta0 block
-    map2bet(m, of)
-
-    -- adjust the phases
-    local dmu1, dmu2, dmu3 = (of.mu1-mu1_)*sdir, (of.mu2-mu2_)*sdir, (of.mu3-mu3_)*sdir
-
-    if dmu1 < 0 then dmu1 = dmu1+1 end
-    if dmu2 < 0 then dmu2 = dmu2+1 end
-    if dmu3 < 0 then dmu3 = dmu3+1 end
-
-    -- update the tunes
-    q1[id] = q1[id] + dmu1
-    q2[id] = q2[id] + dmu2
-    q3[id] = q3[id] + dmu3
-
-    if option.debug >= 2 then
-      printf("Phase advance (%d): mu1=% -.5e, mu2=% -.5e, mu3=% -.5e\n",
-              id, q1[id], q1[id], q1[id])
+  if chrm then
+--    print(elm.name)
+    local npar in mflw.__twdat
+    for i=1,mflw.npar do
+      local id = mflw[i].id
+      if id > npar then
+        local id0 = mflw[mflw[i].nosave].id
+--        print(id, id1, ofun[id].id, ofun[id1].id, mflw[i].nosave)
+        assert(ofun[id].id == id, "unexpected corrupted optical function index")
+        assert(id0+npar    == id, "unexpected corrupted optical function index (dp)")
+        cfn2bet(ofun[id0], ofun[id], chrm)
+      end
     end
   end
+
 --  __twdat.pclw = islc == -2 and 0 or clw
 end
 
@@ -198,20 +189,23 @@ end
 
 local function chrom_dps (self)
   local chrom, deltap = self.chrom, self.deltap or 0
-  local cdp = chrom == true and chromdp or chrom
+  local cdp = (chrom == true or chrom == 0) and chromdp or chrom
   local dps = is_number(deltap) and {deltap} or deltap
   assert(is_number  (cdp), "invalid chrom attribute (number expected)")
   assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
 
-  -- double the list of deltap
-  local ndp  = #dps
-  local cdps = table.new(2*ndp,0)
-  for i,v in ipairs(dps) do
-    cdps[i], cdps[i+ndp] = v, v+cdp
-  end
+  if cdp then
+    -- double the list of deltap
+    local ndp  = #dps
+    local cdps = table.new(2*ndp,0)
+    for i,v in ipairs(dps) do
+      cdps[i], cdps[i+ndp] = v, v+cdp
+    end
 
-  -- update self
-  self.deltap = cdps
+    -- update self
+    self.chrom  = cdp
+    self.deltap = cdps
+  end
 end
 
 -- closed orbit ---------------------------------------------------------------o
@@ -310,8 +304,12 @@ local function check_normal (m, of)
 end
 
 local function twiss_nform (self, mflw)
-  local beta0, coupling in self
-  local npar, __twdat in mflw
+  local beta0, coupling, chrom in self
+  local npar in mflw
+
+  -- prepare mflw to twiss extensions
+  mflw.__twdat = {ofun={}}
+  local ofun in mflw.__twdat
 
   for i=1,npar do
     local m = mflw[i]
@@ -319,29 +317,25 @@ local function twiss_nform (self, mflw)
 
     if m.status ~= 'Bset' and m.status ~= 'Mset' then
       local X, R = m:get0(), m:get1()
-      local A, info
 
       -- get rank
       rnk = has_dpt(R) and 6 or 4
 
       -- get linear normal form A from one-turn map R
-      A, W, info = normal(R, rnk) -- TODO: high order normal form
+      local A = normal1(R, rnk) -- TODO: high order normal form
 
       -- set damap
       m:setvar(X):set1(A)
     end
 
     -- get initial linear optical functions and phase advances
-    local of = map2bet(m, rnk, coupling, W)
+    local of = map2bet(m, rnk, coupling)
 
     -- check normal form
-    if option.debug >= 2 then check_normal(m, of) end
-
-    -- clear initial phase advances, set id
-    of.id, of.mu1, of.mu2, of.mu3 = m.id, 0, 0, 0
+    if option.debug > 1 then check_normal(m, of) end
 
     -- save beta0 block
-    __twdat.ofun[m.id] = of
+    ofun[m.id] = of ; of.id = m.id
   end
 end
 
@@ -355,30 +349,31 @@ local twheader = {
 
 local function twiss_init (self, mflw)
   local save, chrom, coupling in self
-  local npar, mtbl, __twdat in mflw
+  local npar, beam, mtbl, __twdat in mflw
   local n = npar
 
   -- do not save extra rows created by chrom
   if chrom then
     n = npar/2
-    for i=n+1,npar do mflw[i].nosave=true end
+    for i=1,n do mflw[i+n].nosave = i end
   end
 
   -- add twiss data to mflw
-  __twdat.orow = 0
+  __twdat.npar = n
+  __twdat.nrow = 0
   __twdat.pclw = 0
-  __twdat.opar = n
+  __twdat.chrm = dp2pt(chrom, beam.beta)
   __twdat.omat = matrix(6)
-  __twdat.onam = coupling and ofcname or ofname
-  __twdat.chrm = chrom == true and chromdp or chrom or nil
+  __twdat.onam = coupling and (chrom and ofchname or ofcname) or
+                               chrom and ofhname  or ofname
 
   -- tunes and chromaticities
-  __twdat.q1, __twdat.dq1 = tblrep(0,npar), table.new(n,0)
-  __twdat.q2, __twdat.dq2 = tblrep(0,npar), table.new(n,0)
-  __twdat.q3, __twdat.dq3 = tblrep(0,npar), table.new(n,0)
+  __twdat.q1, __twdat.dq1 = table.new(n,0), table.new(n,0)
+  __twdat.q2, __twdat.dq2 = table.new(n,0), table.new(n,0)
+  __twdat.q3, __twdat.dq3 = table.new(n,0), table.new(n,0)
 
   -- synch integ. 1, momentum compaction & phase slip factors, gamma transition
-  __twdat.synch_1 = tblrep(0,n)
+  __twdat.synch_1 = table.new(n,0)
   __twdat.alfap   = table.new(n,0)
   __twdat.etap    = table.new(n,0)
   __twdat.gammatr = table.new(n,0)
@@ -406,7 +401,7 @@ local function make_mflow (self)
   -- wrap actions (see track)
   if save then
     local atsave = self:var_raw 'atsave' -- prevent evaluation
-    self.atsave = not atsave and fill or achain(fill, atsave)
+    self.atsave = not atsave and fill_row or achain(fill_row, atsave)
   end
   -- action for optical function calculation
   local sliceact = achain(atins, beta0act)
@@ -426,22 +421,19 @@ local function make_mflow (self)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'da.') end
 
-  -- prepare mflw to twiss extensions
-  mflw.__twdat = {ofun={}}
-
-  -- search for closed orbits (update mflw)
+  -- search for closed orbits (update mflw, keep order)
   if self.cofind ~= false then
     twiss_cofind(self, mflw)
     if mflw.npar == 0 then return mflw end -- no more particles...
     if option.debug > 2 then mdump(mflw,'co.') end
   end
 
-  -- track one-turn-map (update mflw)
+  -- track one-turn-map (update mflw, keep order)
   twiss_track(self, mflw)
   if mflw.npar == 0 then return mflw end -- no more particles...
   if option.debug > 2 then mdump(mflw,'tk.') end
 
-  -- compute normal forms (update mflw)
+  -- compute normal forms (update mflw, keep order)
   twiss_nform(self, mflw)
   if option.debug > 2 then mdump(mflw,'nf.') end
 
@@ -491,7 +483,7 @@ local twiss = command 'twiss' {
   X0=nil,            -- initial X coordinates (or damap, or beta0)        (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
-  chrom=false,       -- compute chromaticity by finite difference         (twss)
+  chrom=false,       -- compute chromatic functions and finite difference (twss)
   coupling=false,    -- compute optical functions for non-diagonal modes  (twss)
 
   mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
