@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local command, track, cofind, option, warn, vector, matrix        in MAD
-local normal1, map2bet, bet2map, cfn2bet, dp2pt, has_dpt,
+local normal1, map2bet, bet2map, cfn2bet, syn2bet, dp2pt, has_dpt,
       ofname, ofcname, ofhname, ofchname, cvindex, msort          in MAD.gphys
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
@@ -62,8 +62,8 @@ end
 -- twiss mtable ---------------------------------------------------------------o
 
 local cvtlst = {'deltap',
-                'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3',
-                'alfap','etap','gammatr','synch_1'}
+                'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap','etap','gammatr',
+                'synch1','synch_1','synch_2','synch_3','synch_4','synch_5'}
 
 local function fill_sum (mflw)
   local mtbl, __twdat in mflw
@@ -80,7 +80,8 @@ local function fill_sum (mflw)
 
   -- momentum compaction & phase slip factors, gamma transition
   local npar, ofun, chrm, q1, q2, q3, dq1, dq2, dq3,
-        synch_1, alfap, etap, gammatr in __twdat
+        synch_1, synch_2, synch_3, synch_4, synch_5,
+        synch1, alfap, etap, gammatr in __twdat
   local beam, len = mflw.beam, mtbl.length
 
   for i=1,mflw.npar do
@@ -98,6 +99,12 @@ local function fill_sum (mflw)
         dq1[id] = (ofdp.mu1 - of.mu1) / chrm
         dq2[id] = (ofdp.mu2 - of.mu2) / chrm
         dq3[id] = (ofdp.mu3 - of.mu3) / chrm
+
+        synch_1[id] = of.synch_1
+        synch_2[id] = of.synch_2
+        synch_3[id] = of.synch_3
+        synch_4[id] = of.synch_4
+        synch_5[id] = of.synch_5
       end
 
       -- calculation from MAD-X
@@ -105,10 +112,10 @@ local function fill_sum (mflw)
       local sd = R:get(5,6) + R:get(5,1)*of.dx + R:get(5,2)*of.dpx
                             + R:get(5,3)*of.dy + R:get(5,4)*of.dpy
       local beam = mflw[i].beam or beam
-      etap [id]   = -sd/beam.beta^2 / len
-      alfap[id]   = 1/beam.gamma^2 + etap[id]
+      etap   [id] = -sd/beam.beta^2 / len
+      alfap  [id] = 1/beam.gamma^2 + etap[id]
       gammatr[id] = sqrt(1/abs(alfap[id])) * sign(alfap[id])
-      synch_1[id] = alfap[id]*len
+      synch1 [id] = alfap[id]*len
     end
   end
 
@@ -155,7 +162,7 @@ end
 
 -- beta0 (action) -------------------------------------------------------------o
 
-local function beta0act (elm, mflw, lw, islc)
+local function twissact (elm, mflw, lw, islc)
   if not mflw.__twdat then return end
 
 ! printf("tw_ofun: islc=%2d, elm=%s\n", islc, elm.name)
@@ -170,6 +177,7 @@ local function beta0act (elm, mflw, lw, islc)
   if chrm then
 --    print(elm.name)
     local npar in mflw.__twdat
+    local e1, e2 in elm
     for i=1,mflw.npar do
       local id = mflw[i].id
       if id > npar then
@@ -178,6 +186,8 @@ local function beta0act (elm, mflw, lw, islc)
         assert(ofun[id].id == id, "unexpected corrupted optical function index")
         assert(id0+npar    == id, "unexpected corrupted optical function index (dp)")
         cfn2bet(ofun[id0], ofun[id], chrm)
+      elseif mflw.eh ~= 0 and islc == -2 then
+        syn2bet(ofun[id], mflw, elm)
       end
     end
   end
@@ -343,8 +353,9 @@ end
 
 local twheader = {
   'chrom', 'coupling', 'length',
+  -- see also cvtlst above
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
-  'synch_1', -- see also cvtlst above
+  'synch1', 'synch_1', 'synch_2', 'synch_3', 'synch_4', 'synch_5',
 }
 
 local function twiss_init (self, mflw)
@@ -362,7 +373,7 @@ local function twiss_init (self, mflw)
   __twdat.npar = n
   __twdat.nrow = 0
   __twdat.pclw = 0
-  __twdat.chrm = dp2pt(chrom, beam.beta)
+  __twdat.chrm = chrom and dp2pt(chrom, beam.beta) or chrom
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and (chrom and ofchname or ofcname) or
                                chrom and ofhname  or ofname
@@ -374,6 +385,11 @@ local function twiss_init (self, mflw)
 
   -- synch integ. 1, momentum compaction & phase slip factors, gamma transition
   __twdat.synch_1 = table.new(n,0)
+  __twdat.synch_2 = table.new(n,0)
+  __twdat.synch_3 = table.new(n,0)
+  __twdat.synch_4 = table.new(n,0)
+  __twdat.synch_5 = table.new(n,0)
+  __twdat.synch1  = table.new(n,0)
   __twdat.alfap   = table.new(n,0)
   __twdat.etap    = table.new(n,0)
   __twdat.gammatr = table.new(n,0)
@@ -404,11 +420,11 @@ local function make_mflow (self)
     self.atsave = not atsave and fill_row or achain(fill_row, atsave)
   end
   -- action for optical function calculation
-  local sliceact = achain(atins, beta0act)
+  local sliceact = achain(atins, twissact)
   local atslice  = self:var_raw 'atslice' -- prevent evaluation
   local atexit   = self:var_raw 'atexit'  -- prevent evaluation
   self. atslice  = not atslice and sliceact or chain(atslice, sliceact)
-  self. atexit   = not atexit  and beta0act or chain(atexit , beta0act)
+  self. atexit   = not atexit  and twissact or chain(atexit , twissact)
 
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
