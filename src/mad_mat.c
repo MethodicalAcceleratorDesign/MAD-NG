@@ -782,7 +782,8 @@ square and nonsinguler the routines dgetrf and zgetrf.
 
 LAPACK is the default method for solving dense numerical matrices. When the
 matrix is square and nonsingular the routines dgesv and zgesv are used
-otherwise routines dgelsy and zgelsy are used.
+otherwise routines dgelsy and zgelsy are used. Alternate methods dgelsd and
+zgelsd based on SVD can be used too.
 
 LAPACK is the default method for computing the entire set of singluar values
 and singular vectors. For generalized SVD the routines dgesdd and zgesdd are
@@ -791,6 +792,9 @@ used.
 LAPACK is the default method for computing the entire set of eigenvalues and
 eigenvectors. For simple eigenvalues the routines dgeev and zgeev are used. For
 generalized eigenvalues the routines dggev and zggev are used.
+
+LAPACK C examples using F77 interface can be found at:
+https://software.intel.com/sites/products/documentation/doclib/mkl_sa/11/mkl_lapack_examples/
 */
 
 // -----
@@ -820,6 +824,18 @@ void zgelsy_ (const int *m, const int *n, const int *nrhs,
               cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
               int jpvt[], const num_t *rcond, int *rank,
               cnum_t work[], const int lwork[], num_t rwork[], int *info);
+
+// -----
+// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min | b - Ax | using SVD
+// -----
+void dgelsd_ (const int *m, const int *n, const int *nrhs,
+              num_t A[], const int *lda, num_t B[], const int *ldb,
+              num_t S[], const num_t *rcond, int *rank,
+              num_t work[], int *lwork, int iwork[], int *info);
+void zgelsd_ (const int *m, const int *n, const int *nrhs,
+              cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
+               num_t S[], const num_t *rcond, int *rank,
+              cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
 
 // -----
 // SVD A[m x n]
@@ -1122,7 +1138,7 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
   mad_mat_trans(u, u, m, m);
 
   if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("SVD failed to converged");
+  if (info > 0) warn ("SVD failed to converge");
 
   return info;
 }
@@ -1149,9 +1165,140 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], ssz_t m, ssz_
   mad_cvec_conj (v, v, n*n);
 
   if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("SVD failed to converged");
+  if (info > 0) warn ("SVD failed to converge");
 
   return info;
+}
+
+// -- LEAST SQUARE Solvers ----------------------------------------------------o
+
+int
+mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+{
+  assert( a && b && x );
+  int info=0;
+  const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  num_t sz;
+  int lwork=-1, rank;
+  int pvt[nn]; memset(pvt, 0, sizeof pvt);
+  mad_alloc_tmp(num_t, ta, m*n);
+  mad_alloc_tmp(num_t, tb, mn*p); mad_vec_zero(tb+m*p, (mn-m)*p);
+  mad_vec_copy (b , tb, m*p);
+  mad_mat_trans(tb, tb, mn, p);
+  mad_mat_trans(a , ta, m , n);
+  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, &info); // query
+  mad_alloc_tmp(num_t, wk, lwork=sz);
+  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, &info); // compute
+  mad_mat_trans(tb, tb, p, mn);
+  mad_vec_copy (tb,  x, n*p);
+
+  mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("unexpect lapack error");
+
+  return rank;
+}
+
+int
+mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+{
+  assert( a && b && x );
+  int info=0;
+  const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  cnum_t sz;
+  num_t rwk[2*nn];
+  int lwork=-1, rank;
+  int pvt[nn]; memset(pvt, 0, sizeof pvt);
+  mad_alloc_tmp(cnum_t, ta, m*n);
+  mad_alloc_tmp(cnum_t, tb, mn*p); mad_cvec_zero(tb+m*p, (mn-m)*p);
+  mad_cvec_copy (b , tb, m*p);
+  mad_cmat_trans(tb, tb, mn, p);
+  mad_cmat_trans(a , ta, m , n);
+  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
+  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
+  mad_cmat_trans(tb, tb, p, mn);
+  mad_cvec_copy (tb,  x, n*p);
+
+  mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("unexpect lapack error");
+
+  return rank;
+}
+
+int
+mad_mat_lsmin (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+{
+  assert( a && b && x );
+  int info=0;
+  const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  num_t sz;
+  int lwork=-1, rank, isz;
+  mad_alloc_tmp(num_t, ta, m *n);
+  mad_alloc_tmp(num_t, tb, mn*p);
+  mad_alloc_tmp(num_t, ts, MIN(m,n));
+  mad_vec_copy (b , tb, m*p);
+  mad_vec_zero (tb+m*p, (mn-m)*p);
+  mad_mat_trans(tb, tb, mn, p);
+  mad_mat_trans(a , ta, m , n);
+  dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &isz, &info); // query
+  mad_alloc_tmp(num_t,  wk, lwork=sz);
+  mad_alloc_tmp(int  , iwk, isz);
+  dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  iwk, &info); // compute
+  mad_mat_trans(tb, tb, p, mn);
+  mad_vec_copy (tb,  x, n*p);
+
+  if (s_) mad_vec_copy(ts, s_, MIN(m,n));
+
+  mad_free_tmp(wk); mad_free_tmp(iwk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(ts);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("LSMIN failed to converge");
+
+  return rank;
+}
+
+int
+mad_cmat_lsmin (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+{
+  assert( a && b && x );
+  int info=0;
+  const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  num_t rsz;
+  cnum_t sz;
+  int lwork=-1, rank, isz;
+  mad_alloc_tmp(cnum_t, ta, m*n);
+  mad_alloc_tmp(cnum_t, tb, mn*p);
+  mad_alloc_tmp( num_t, ts, MIN(m,n));
+  mad_cvec_copy (b , tb, m*p);
+  mad_cvec_zero (tb+m*p, (mn-m)*p);
+  mad_cmat_trans(tb, tb, mn, p);
+  mad_cmat_trans(a , ta, m , n);
+  zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &rsz, &isz, &info); // query
+  mad_alloc_tmp(cnum_t,  wk, lwork=creal(sz));
+  mad_alloc_tmp( num_t, rwk, (int)rsz);
+  mad_alloc_tmp( int  , iwk, isz);
+  zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  rwk,  iwk, &info); // compute
+  mad_cmat_trans(tb, tb, p, mn);
+  mad_cvec_copy (tb,  x, n*p);
+
+  if (s_) mad_vec_copy(ts, s_, MIN(m,n));
+
+  mad_free_tmp(wk); mad_free_tmp(rwk); mad_free_tmp(iwk);
+  mad_free_tmp(ta); mad_free_tmp(tb);  mad_free_tmp(ts);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("LSMIN failed to converge");
+
+  return rank;
 }
 
 // -- EIGEN -------------------------------------------------------------------o
