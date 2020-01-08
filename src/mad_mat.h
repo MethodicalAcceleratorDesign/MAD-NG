@@ -56,6 +56,10 @@ int    mad_mat_div      (const  num_t x[], const  num_t y[],        num_t  r[], 
 int    mad_mat_divm     (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  mat / cmat
 int    mad_mat_solve    (const  num_t a[], const num_t b[] ,        num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); // min|b-ax| (QR)
 int    mad_mat_lsmin    (const  num_t a[], const num_t b[] ,        num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[]); // min|b-ax| (SVD)
+int    mad_mat_gsolve   (const  num_t a[], const num_t b[] , const  num_t  c[], const num_t d[],
+                                                                    num_t  x[], ssz_t m, ssz_t n, ssz_t p);
+int    mad_mat_glsmin   (const  num_t a[], const num_t b[] , const  num_t  d[],
+                                                 num_t x[] ,        num_t  y[], ssz_t m, ssz_t n, ssz_t p);
 int    mad_mat_svd      (const  num_t x[], num_t u[], num_t s[],    num_t  v[], ssz_t m, ssz_t n);                       // u * s * v.t
 int    mad_mat_eigen    (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],          ssz_t n);                       //  w, vl, vr
 void   mad_mat_fft      (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  mat ->cmat
@@ -64,6 +68,7 @@ void   mad_mat_nfft     (const  num_t x[], const num_t x_node[]  , cnum_t  r[], 
 void   mad_mat_center   (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, int d);                //  mat -> mat-<mat>_r
 void   mad_mat_sympconj (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  M' J M - J
+
 
 void   mad_cmat_reshape (struct cmatrix *x                                    , ssz_t m, ssz_t n);
 void   mad_cmat_eye     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->cmat
@@ -90,6 +95,10 @@ int    mad_cmat_div     (const cnum_t x[], const cnum_t y[],       cnum_t  r[], 
 int    mad_cmat_divm    (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  cmat /  mat
 int    mad_cmat_solve   (const cnum_t a[], const cnum_t b[],       cnum_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); // min|b-ax| (QR)
 int    mad_cmat_lsmin   (const cnum_t a[], const cnum_t b[],       cnum_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[]); // min|b-ax| (SVD)
+int    mad_cmat_gsolve  (const cnum_t a[], const cnum_t b[], const cnum_t  c[], const cnum_t d[],
+                                                                   cnum_t  x[], ssz_t m, ssz_t n, ssz_t p);
+int    mad_cmat_glsmin  (const cnum_t a[], const cnum_t b[], const cnum_t  d[],
+                                                 cnum_t x[],       cnum_t  y[], ssz_t m, ssz_t n, ssz_t p);
 int    mad_cmat_svd     (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], ssz_t m, ssz_t n);                       // u * s * v.t
 int    mad_cmat_eigen   (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],          ssz_t n);                       // w, vl, vr
 void   mad_cmat_fft     (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat ->cmat

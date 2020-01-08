@@ -780,10 +780,12 @@ void mad_cmat_sympconj (const cnum_t x[], cnum_t r[], ssz_t n)
 LAPACK is the default method for computing LU decomposition. When matrix is
 square and nonsinguler the routines dgetrf and zgetrf.
 
-LAPACK is the default method for solving dense numerical matrices. When the
-matrix is square and nonsingular the routines dgesv and zgesv are used
-otherwise routines dgelsy and zgelsy are used. Alternate methods dgelsd and
-zgelsd based on SVD can be used too.
+LAPACK is the default method for solving linear least squares problems for dense
+matrices. When the matrix is square and nonsingular the routines dgesv and zgesv
+are used otherwise routines dgelsy and zgelsy are used. Alternate methods dgelsd
+and zgelsd based on SVD can be used too. The general least squares problems for
+dense matrices uses dgglse and zgglse for the first kind, and dggglm and zggglm
+for the second kind.
 
 LAPACK is the default method for computing the entire set of singluar values
 and singular vectors. For generalized SVD the routines dgesdd and zgesdd are
@@ -795,6 +797,8 @@ generalized eigenvalues the routines dggev and zggev are used.
 
 LAPACK C examples using F77 interface can be found at:
 https://software.intel.com/sites/products/documentation/doclib/mkl_sa/11/mkl_lapack_examples/
+LAPACK F77 examples with data can be found at:
+https://github.com/numericalalgorithmsgroup/LAPACK_Examples/tree/master/examples
 */
 
 // -----
@@ -806,7 +810,7 @@ void zgetrf_ (const int *m, const int *n, cnum_t A[], const int *lda,
               int *IPIV, int *info);
 
 // -----
-// Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min | b - Ax | using LU
+// Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min |} b - Ax ||_2 using LU
 // -----
 void dgesv_ (const int *n, const int *nrhs, num_t  A[], const int *lda,
                                  int *IPIV, num_t  B[], const int *ldb, int *info);
@@ -814,7 +818,7 @@ void zgesv_ (const int *n, const int *nrhs, cnum_t A[], const int *lda,
                                  int *IPIV, cnum_t B[], const int *ldb, int *info);
 
 // -----
-// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min | b - Ax | using QR
+// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min || b - Ax ||_2 using QR
 // -----
 void dgelsy_ (const int *m, const int *n, const int *nrhs,
               num_t A[], const int *lda, num_t B[], const int *ldb,
@@ -826,7 +830,7 @@ void zgelsy_ (const int *m, const int *n, const int *nrhs,
               cnum_t work[], const int lwork[], num_t rwork[], int *info);
 
 // -----
-// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min | b - Ax | using SVD
+// Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min || b - Ax ||_2 using SVD
 // -----
 void dgelsd_ (const int *m, const int *n, const int *nrhs,
               num_t A[], const int *lda, num_t B[], const int *ldb,
@@ -836,6 +840,32 @@ void zgelsd_ (const int *m, const int *n, const int *nrhs,
               cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
                num_t S[], const num_t *rcond, int *rank,
               cnum_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
+
+// -----
+// LS minimization: min_x || c - A*x ||_2 subject to B*x = d using QR
+// -----
+
+void dgglse_ (const int *m, const int *n, const int *p,
+              num_t A[], const int *lda, num_t B[], const int *ldb,
+              num_t C[], num_t D[], num_t X[],
+              num_t work[], int *lwork, int *info);
+void zgglse_ (const int *m, const int *n, const int *p,
+              cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
+              cnum_t C[], cnum_t D[], cnum_t X[],
+              cnum_t work[], int *lwork, int *info);
+
+// -----
+// LS minimization: min_x || y ||_2 subject to A*x + B*y = d using QR
+// -----
+
+void dggglm_ (const int *m, const int *n, const int *p,
+              num_t A[], const int *lda, num_t B[], const int *ldb,
+              num_t D[], num_t X[], num_t Y[],
+              num_t work[], int *lwork, int *info);
+void zggglm_ (const int *m, const int *n, const int *p,
+              cnum_t A[], const int *lda, cnum_t B[], const int *ldb,
+              cnum_t D[], cnum_t X[], cnum_t Y[],
+              cnum_t work[], int *lwork, int *info);
 
 // -----
 // SVD A[m x n]
@@ -1299,6 +1329,132 @@ mad_cmat_lsmin (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
   if (info > 0) warn ("LSMIN failed to converge");
 
   return rank;
+}
+
+// -- Generalized LS Solvers --------------------------------------------------o
+
+int
+mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d[],
+                num_t x[], ssz_t m, ssz_t n, ssz_t p)
+{
+  assert( a && b && x );
+  ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
+  int info=0;
+  const int nm=m, nn=n, np=p;
+
+  num_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(num_t, ta, m*n);
+  mad_alloc_tmp(num_t, tb, p*n);
+  mad_alloc_tmp(num_t, tc, m);
+  mad_alloc_tmp(num_t, td, p);
+  mad_mat_trans(a, ta, m, n);
+  mad_mat_trans(b, tb, p, n);
+  mad_vec_copy (c, tc, m);
+  mad_vec_copy (d, td, p);
+  dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
+  mad_alloc_tmp(num_t, wk, lwork=sz);
+  dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
+
+  mad_free_tmp(wk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("[B A] is singular, no solution found");
+
+  return info;
+}
+
+int
+mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t c[], const cnum_t d[],
+                 cnum_t x[], ssz_t m, ssz_t n, ssz_t p)
+{
+  assert( a && b && x );
+  ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
+  int info=0;
+  const int nm=m, nn=n, np=p;
+
+  cnum_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(cnum_t, ta, m*n);
+  mad_alloc_tmp(cnum_t, tb, p*n);
+  mad_alloc_tmp(cnum_t, tc, m);
+  mad_alloc_tmp(cnum_t, td, p);
+  mad_cmat_trans(a, ta, m, n);
+  mad_cmat_trans(b, tb, p, n);
+  mad_cvec_copy (c, tc, m);
+  mad_cvec_copy (d, td, p);
+  zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
+  mad_alloc_tmp(cnum_t, wk, lwork=sz);
+  zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
+
+  mad_free_tmp(wk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("[B A] is singular, no solution found");
+
+  return info;
+}
+
+int
+mad_mat_glsmin (const num_t a[], const num_t b[], const num_t d[],
+                num_t x[], num_t y[], ssz_t m, ssz_t n, ssz_t p)
+{
+  assert( a && b && x );
+  ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
+  int info=0;
+  const int nm=m, nn=n, np=p;
+
+  num_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(num_t, ta, m*n);
+  mad_alloc_tmp(num_t, tb, m*p);
+  mad_alloc_tmp(num_t, td, m);
+  mad_mat_trans(a, ta, m, n);
+  mad_mat_trans(b, tb, m, p);
+  mad_vec_copy (d, td, m);
+  dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
+  mad_alloc_tmp(num_t, wk, lwork=sz);
+  dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
+
+  mad_free_tmp(wk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("[A B] is singular, no solution found");
+
+  return info;
+}
+
+int
+mad_cmat_glsmin (const cnum_t a[], const cnum_t b[], const cnum_t d[],
+                 cnum_t x[], cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
+{
+  assert( a && b && x );
+  ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
+  int info=0;
+  const int nm=m, nn=n, np=p;
+
+  cnum_t sz;
+  int lwork=-1;
+  mad_alloc_tmp(cnum_t, ta, m*n);
+  mad_alloc_tmp(cnum_t, tb, m*p);
+  mad_alloc_tmp(cnum_t, td, m);
+  mad_cmat_trans(a, ta, m, n);
+  mad_cmat_trans(b, tb, m, p);
+  mad_cvec_copy (d, td, m);
+  zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
+  mad_alloc_tmp(cnum_t, wk, lwork=sz);
+  zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
+
+  mad_free_tmp(wk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
+
+  if (info < 0) error("invalid input argument");
+  if (info > 0) warn ("[A B] is singular, no solution found");
+
+  return info;
 }
 
 // -- EIGEN -------------------------------------------------------------------o
