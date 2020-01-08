@@ -1398,8 +1398,8 @@ mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t c[], const cnu
 }
 
 int
-mad_mat_glsmin (const num_t a[], const num_t b[], const num_t d[],
-                num_t x[], num_t y[], ssz_t m, ssz_t n, ssz_t p)
+mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
+                 num_t x[], num_t y[], ssz_t m, ssz_t n, ssz_t p)
 {
   assert( a && b && x );
   ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
@@ -1428,8 +1428,8 @@ mad_mat_glsmin (const num_t a[], const num_t b[], const num_t d[],
 }
 
 int
-mad_cmat_glsmin (const cnum_t a[], const cnum_t b[], const cnum_t d[],
-                 cnum_t x[], cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
+mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t d[],
+                  cnum_t x[], cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
 {
   assert( a && b && x );
   ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
