@@ -1335,7 +1335,7 @@ mad_cmat_lsmin (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
 
 int
 mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d[],
-                num_t x[], ssz_t m, ssz_t n, ssz_t p)
+                num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
 {
   assert( a && b && x );
   ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
@@ -1356,6 +1356,8 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
   mad_alloc_tmp(num_t, wk, lwork=sz);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
 
+  if (nrm_) *nrm_ = mad_vec_norm(tc+(n-p), m-(n-p)); // residues
+
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
 
@@ -1367,7 +1369,7 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
 
 int
 mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t c[], const cnum_t d[],
-                 cnum_t x[], ssz_t m, ssz_t n, ssz_t p)
+                 cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
 {
   assert( a && b && x );
   ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
@@ -1387,6 +1389,8 @@ mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t c[], const cnu
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
   mad_alloc_tmp(cnum_t, wk, lwork=sz);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
+
+  if (nrm_) *nrm_ = mad_cvec_norm(tc+(n-p), m-(n-p)); // residues
 
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
