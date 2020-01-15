@@ -27,6 +27,35 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
+
+// --- helpers for debug ------------------------------------------------------o
+
+#if 0
+#include <stdio.h>
+
+static void
+mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
+{
+  printf("%s[%dx%d]=\n", name, m, n);
+  for (idx_t i=0; i < m; i++) {
+    for (idx_t j=0; j < n; j++)
+      printf("% -10.5f ", a[i*n+j]);
+    printf("\n");
+  }
+}
+
+static void
+iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
+{
+  printf("%s[%dx%d]=\n", name, m, n);
+  for (idx_t i=0; i < m; i++) {
+    for (idx_t j=0; j < n; j++)
+      printf("% 3d ", a[i*n+j]);
+    printf("\n");
+  }
+}
+#endif
+
 // --- implementation ---------------------------------------------------------o
 
 #define CHKR     assert( r )
@@ -1914,7 +1943,7 @@ micit_(const num_t a[], const num_t xin[], num_t cin[], num_t res[],
        num_t rho[], num_t ptop[], num_t rmss[], num_t xrms[], num_t xptp[],
        num_t xiter[], int *ifail);
 
-static int
+static int // madx legacy code wrapper
 madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
              ssz_t N, num_t tol, num_t r_[])
 {
@@ -1948,7 +1977,7 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
          /* working buffers */
          ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
 
-  // Re-order corrector strengths and save residues. Strengths are not minused.
+  // Re-order corrector strengths and save residues. Strengths are not minused!
   for (idx_t i=0; i < iter; ++i) x[i] = -X[nx[i]-1];
   if (r_) mad_vec_copy(R, r_, m);
 
@@ -1974,31 +2003,12 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   return iter;
 }
 
-#if 0
-#include <stdio.h>
-
-static void
-mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
-{
-  printf("%s[%dx%d]=\n", name, m, n);
-  for (idx_t i=0; i < m; i++) {
-    for (idx_t j=0; j < n; j++)
-      printf("% -.5f ", a[i*n+j]);
-    printf("\n");
-  }
-}
-
-static void
-iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
-{
-  printf("%s[%dx%d]=\n", name, m, n);
-  for (idx_t i=0; i < m; i++) {
-    for (idx_t j=0; j < n; j++)
-      printf("% 3d ", a[i*n+j]);
-    printf("\n");
-  }
-}
-#endif
+/*
+  Reference:
+  B. Autin, and Y. Marti,
+  "Closed Orbit Correction of A.G. Machines Using A Small Number of Magnets",
+  CERN ISR-MA/73-17, 1973.
+*/
 
 int // Micado (from MAD9 + bug fixes)
 mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
@@ -2006,7 +2016,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 {
   assert(a && b && x);
 
-  // Micado notes: min | b - Ax |
+  // Micado notes: min_x || b - Ax ||_2 using N correctors amongst n
   // a: response matrix      [m x n]
   // b: vector of monitors   [m]
   // x: vector of correctors [n] (out)
@@ -2024,7 +2034,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   }
 
   // N == 0 means to use all correctors
-  if (N > n || N == 0) N = n;
+  if (N > n || N <= 0) N = n;
 
   // X-check with MAD-X Micado
   if (mad_use_madx_micado) {
@@ -2063,14 +2073,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     sqrmin = 1e-8 * sum / n;       // 1e-8 * average of correctors effectiveness
   }
 
-// mprint("A", A  , m, n);
-// mprint("B", B  , 1, m);
-// mprint("R", R  , 1, m);
-// mprint("X", X  , 1, n);
-// mprint("S", sqr, 1, n);
-// mprint("D", dot, 1, n);
-// iprint("P", pvt, 1, n);
-
   // Begin of iteration: loop over best-kick selection (i.e. A columns).
   for (idx_t k=0; k < N; ++k) {
     // Search the columns not yet used for largest scaled change vector.
@@ -2086,9 +2088,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
         }
       }
 
-// printf("\n--------------------------------------------------------------\n");
-// printf("k=% -2d, kpiv=% -2d, vpiv=% -.4e\n", k, changeIndex, maxChange);
-
       // Stop iterations, if no suitable column found.
       if (changeIndex < 0) { N=k; break; }
 
@@ -2102,8 +2101,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       }
     }
 
-// iprint("P", pvt, 1, n);
-
     // Compute beta, sigma, and vector u[k].
     num_t beta, hh;
     { hh = 0;
@@ -2112,8 +2109,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       sqr[k] = -sigma; // saved for use in X[1..k] update
       A(k,k) += sigma;
       beta = 1 / (A(k,k) * sigma);
-
-// printf("sig=% -.4e, beta=% -.4e\n", sigma, beta);
     }
 
     // Transform remaining columns of A.
@@ -2124,15 +2119,11 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       for (idx_t i=k; i < m; ++i) A(i,j) -= A(i,k) * hh;
     }
 
-// mprint("A", A, m, n);
-
     // Transform vector b.
     hh = 0;
     for (idx_t i=k; i < m; ++i) hh += A(i,k) * B[i];
     hh *= beta;
     for (idx_t i=k; i < m; ++i) B[i] -= A(i,k) * hh;
-
-// mprint("B", B, 1, m);
 
     // Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
     for (idx_t j=k+1; j < n; ++j) {
@@ -2140,21 +2131,12 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       dot[j] -= A(k,j) * B[k];
     }
 
-// mprint("S", sqr, 1, n);
-// mprint("D", dot, 1, n);
-
-    // Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k]
+    // Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
     for (idx_t i=k; i >= 0; --i) {
       X[i] = B[i];
-// printf("x(%d)=%9.4f\n", i, X[i]);
-      for (idx_t j=i+1; j <= k; ++j) { // BUG: was j < k
-        X[i] -= A(i,j) * X[j];
-// printf("x(%d)=%9.4f, a(%d,%d)=%9.4f, x(%d)=%9.4f\n", i, X[i], i, j, A(i,j), j, X[j]);
-      }
+      for (idx_t j=i+1; j <= k; ++j) X[i] -= A(i,j) * X[j];
       X[i] /= sqr[i];
     }
-
-// mprint("X", X, 1, n);
 
     // Compute original residual vector by backward transformation.
     mad_vec_copy(B, R, m);
@@ -2165,8 +2147,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       for (idx_t i=j; i < m; ++i) R[i] += A(i,j) * hh;
     }
 
-// mprint("R", R, 1, m);
-
     // Check for convergence.
     num_t e = sqrt(mad_vec_dot(R, R, m) / m);
     if (e <= tol) { N=k+1; break; }
@@ -2174,14 +2154,9 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
 #undef A
 
-// printf("N=%d\n", N);
-// mprint("X", X, 1, n);
-
-  // Re-order corrector strengths and save residues. Strengths are not minused.
+  // Re-order corrector strengths and save residues. Strengths are not minused!
   for (idx_t i=0; i < N; ++i) x[pvt[i]] = X[i];
   if (r_) mad_vec_copy(R, r_, m);
-
-// mprint("x", x, 1, n);
 
   mad_free_tmp(A);
   mad_free_tmp(B);
