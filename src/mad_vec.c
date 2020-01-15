@@ -61,6 +61,9 @@ void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], ssz_t n)
   else        for (idx_t i=0; i < n; i++) r[i] = CNUM(0   ,y[i]);
 }
 
+num_t mad_vec_sum (const num_t x[], ssz_t n)
+{ CHKX; num_t r=0; for (idx_t i=0; i < n; i++) r += x[i]; return r; }
+
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; for (idx_t i=0; i < n; i++) r += x[i] * y[i]; return r; }
 
@@ -176,7 +179,9 @@ void mad_vec_minmax(const num_t x[], log_t abs, idx_t r[2], ssz_t n)
 
 #pragma GCC push_options
 #pragma GCC optimize ("O3")
-num_t mad_vec_sum (const num_t x[], ssz_t n) // Neumaier variant
+// Neumaier variants of Kahan sum
+
+num_t mad_vec_ksum (const num_t x[], ssz_t n)
 { CHKX;
   num_t s = x[0], c = 0, t;
   for (idx_t i=1; i < n; i++) {
@@ -185,6 +190,36 @@ num_t mad_vec_sum (const num_t x[], ssz_t n) // Neumaier variant
       c = c + ((s-t) + x[i]);
     else
       c = c + ((x[i]-t) + s);
+    s = t;
+  }
+  return s + c;
+}
+
+num_t mad_vec_knorm (const num_t x[], ssz_t n)
+{ CHKX;
+  num_t s = x[0]*x[0], c = 0, t, v;
+  for (idx_t i=1; i < n; i++) {
+    v = x[i]*x[i];
+    t = s + v;
+    if (s >= t)
+      c = c + ((s-t) + v);
+    else
+      c = c + ((v-t) + s);
+    s = t;
+  }
+  return sqrt(s + c);
+}
+
+num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n)
+{ CHKXY;
+  num_t s = x[0]*y[0], c = 0, t, v;
+  for (idx_t i=1; i < n; i++) {
+    v = x[i]*y[i];
+    t = s + v;
+    if (fabs(s) >= fabs(t))
+      c = c + ((s-t) + v);
+    else
+      c = c + ((v-t) + s);
     s = t;
   }
   return s + c;
@@ -296,6 +331,9 @@ void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 
 void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
 { CHKXR; for (idx_t i=0; i < n; i++) r[i] = conj(x[i]); }
+
+cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n)
+{ CHKX; cnum_t r=0; for (idx_t i=0; i < n; i++) r += x[i]; return r; }
 
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n)
 { CHKXY; cnum_t r=0; for (idx_t i=0; i < n; i++) r += conj(x[i])*y[i]; return r; }
@@ -409,23 +447,6 @@ void mad_cvec_minmax(const cnum_t x[], idx_t r[], ssz_t n)
     else if (a > v[1]) v[1]=a, r[1]=i;
   }
 }
-
-#pragma GCC push_options
-#pragma GCC optimize ("O3")
-cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n) // Neumaier variant
-{ CHKX;
-  cnum_t s = x[0], c = 0, t;
-  for (idx_t i=1; i < n; i++) {
-    t = s + x[i];
-    if (fabs(creal(s))+fabs(cimag(s)) >= fabs(creal(t))+fabs(cimag(t)))
-      c = c + ((s-t) + x[i]);
-    else
-      c = c + ((x[i]-t) + s);
-    s = t;
-  }
-  return s + c;
-}
-#pragma GCC pop_options
 
 void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_sum(x, n); }
