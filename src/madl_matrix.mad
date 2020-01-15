@@ -43,7 +43,7 @@ local random, carg, real, imag, conj, norm, proj, rect, polar,
       sumysqr, sumyabs, minyabs, maxyabs                         in MAD.gmath
 local unm, add, mul, mod, pow, lbool, lnot, land, lor, opstr     in MAD.operator
 local rep, errorf, assertf, openfile, strsplitall, num2str       in MAD.utility
-local inf                                                        in MAD.constant
+local inf, eps                                                   in MAD.constant
 
 -- tmp for returned values
 local ires = ffi.new  'idx_t[2]'
@@ -1107,12 +1107,21 @@ end
 -- Kahan's summation, Horner's evaluation -------------------------------------o
 
 function MR.ksum (x) -- Neumaier variant
-  return _C.mad_vec_sum(x.data, x:size())
+  return _C.mad_vec_ksum(x.data, x:size())
 end
 
-function MC.ksum (x) -- Neumaier variant
-  _C.mad_cvec_sum(x.data, cres, x:size()) return cres[0]
+function MR.knorm (x) -- Neumaier variant
+  return _C.mad_vec_knorm(x.data, x:size())
 end
+
+function MR.kdot (x, y) -- Neumaier variant
+  assert(x:size() == y:size(), "incompatible matrix sizes")
+  return _C.mad_vec_kdot(x.data, y.data, x:size())
+end
+
+MC.ksum  = \ error("not supported")
+MC.knorm = \ error("not supported")
+MC.kdot  = \ error("not supported")
 
 function MR.eval (x, x0)
   return _C.mad_vec_eval(x.data, x0, x:size())
@@ -1979,20 +1988,6 @@ end
 
 -- least squares solvers ------------------------------------------------------o
 
-function MR.lsmin (a, b, rcond_) -- min | b - Ax | using SVD
-  local np, nr, nc = b.ncol, a:sizes()
-  local rs, rx = matrix_alloc(min(nr,nc),1), matrix_alloc(nc, np)
-  local rnk = _C.mad_mat_lsmin(a.data, b.data, rx.data, nr, nc, np, rcond_ or -1, rs.data)
-  return rx, rs, rnk
-end
-
-function MC.lsmin (a, b, rcond_)
-  local np, nr, nc = b.ncol, a:sizes()
-  local rs, rx = matrix_alloc(min(nr,nc),1), cmatrix_alloc(nc, np)
-  local rnk = _C.mad_cmat_lsmin(a.data, b.data, rx.data, nr, nc, np, rcond_ or -1, rs.data)
-  return rx, rs, rnk
-end
-
 function MR.solve (a, b, rcond_) -- min | b - Ax | using QR or LQ
   local np, nr, nc = b.ncol, a:sizes()
   local rx = matrix_alloc(nc, np)
@@ -2005,6 +2000,29 @@ function MC.solve (a, b, rcond_)
   local rx = cmatrix_alloc(nc, np)
   local rnk = _C.mad_cmat_solve(a.data, b.data, rx.data, nr, nc, np, rcond_ or -1)
   return rx, rnk
+end
+
+function MR.nsolve (a, b, rcond_, n_) -- min | b - Ax | using MICADO (best kick)
+  local nr, nc = a:sizes()
+  local rr, rx = matrix_alloc(nr, 1), matrix_alloc(nc, 1)
+  local nx = _C.mad_mat_nsolve(a.data, b.data, rx.data, nr, nc, n_ or 0, rcond_ or eps, rr.data)
+  return rx, rr, nx
+end
+
+MC.nsolve = \ error("unsupported complex nsolve")
+
+function MR.ssolve (a, b, rcond_) -- min | b - Ax | using SVD
+  local np, nr, nc = b.ncol, a:sizes()
+  local rs, rx = matrix_alloc(min(nr,nc),1), matrix_alloc(nc, np)
+  local rnk = _C.mad_mat_ssolve(a.data, b.data, rx.data, nr, nc, np, rcond_ or -1, rs.data)
+  return rx, rs, rnk
+end
+
+function MC.ssolve (a, b, rcond_)
+  local np, nr, nc = b.ncol, a:sizes()
+  local rs, rx = matrix_alloc(min(nr,nc),1), cmatrix_alloc(nc, np)
+  local rnk = _C.mad_cmat_ssolve(a.data, b.data, rx.data, nr, nc, np, rcond_ or -1, rs.data)
+  return rx, rs, rnk
 end
 
 function MR.gsolve (a, b, c, d) -- min | c - Ax | subject to Bx = d using QR or LQ
