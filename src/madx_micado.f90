@@ -4,7 +4,7 @@
 !**                                                                          **!
 !******************************************************************************!
 
-subroutine micit(a, xin, cin, res, nx, rms, im, ic, iter, ny, ax, cinx, &
+subroutine micit(cin, res, nx, rms, im, ic, iter, ny, ax, cinx, &
                  xinx, resx, rho, ptop, rmss, xrms, xptp, xiter, ifail)
     implicit none
     ! ****************************************************
@@ -351,7 +351,7 @@ end subroutine micit
 !**                                                                          **!
 !******************************************************************************!
 
-subroutine svddec(a, svdmat, umat, vmat, ws, wvec, sortw, &
+subroutine svddec(svdmat, umat, vmat, ws, wvec, sortw, &
                   sngcut, sngval, im, ic, iflag, sing)
     implicit none
     ! ****************************************************
@@ -363,7 +363,7 @@ subroutine svddec(a, svdmat, umat, vmat, ws, wvec, sortw, &
     !                                                    *
     ! ****************************************************
     integer :: im, ic
-    double precision :: a(im,ic), svdmat(im,ic)
+    double precision :: svdmat(im,ic) !, a(im,ic)
     double precision :: umat(im,ic)
     double precision :: vmat(ic,ic)
     double precision :: ws(ic), wvec(ic)
@@ -374,7 +374,7 @@ subroutine svddec(a, svdmat, umat, vmat, ws, wvec, sortw, &
     integer, parameter :: nsing=5
     double precision :: rat
 
-    SVDMAT(:im,:ic) = A(:im,:ic)
+    ! SVDMAT(:im,:ic) = A(:im,:ic)
 
     call prepsvd(im, ic, svdmat, wvec, umat, vmat, errflag, ws)
     if (errflag .ne. 0) write(*,*) 'end SVD with error code: ',errflag
