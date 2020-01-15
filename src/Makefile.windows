@@ -23,6 +23,7 @@ NOT    	:= $(wildcard *.mad help/*.mad)
 
 # setup
 CC      := gcc
+FC      := gfortran
 DIR     := build
 LIB     := ../lib
 BIN     := ../bin/windows
@@ -46,6 +47,10 @@ CFLAGS  += -ffast-math -fno-builtin-cproj
 				 # -fno-cx-limited-range
 				 # -fassociative-math -freciprocal-math -ffinite-math-only
 
+# fortran
+FFLAGS  := -std=f95 -W -Wall -Wextra -pedantic
+FFLAGS  += -O3 -ftree-vectorize -fPIC -flto #-march=native
+
 # lua/mad
 LFLAGS  :=
 
@@ -63,16 +68,18 @@ LDFLAGS += $(BIN)/liblpeg.a   $(BIN)/liblfs.a     $(BIN)/libluajit.a \
 					 $(LDOPTIONS)
 
 # files setup
-ASRC    := $(wildcard *.lua *.mad help/*.mad *.c sse/*.c)  # all sources
-RSRC    := $(filter-out $(NOT),$(ASRC))                    # retained sources
-CSRC    := $(filter %.c,$(RSRC))                           # C sources
-LSRC    := $(filter %.lua,$(RSRC))                         # lua sources
-MSRC    := $(filter %.mad,$(RSRC))                         # mad sources
+ASRC    := $(wildcard *.lua *.mad help/*.mad *.c sse/*.c *.f90) # all sources
+RSRC    := $(filter-out $(NOT),$(ASRC))                       # retained sources
+CSRC    := $(filter %.c,$(RSRC))                              # .c   sources
+FSRC    := $(filter %.f90,$(RSRC))                            # .f90 sources
+LSRC    := $(filter %.lua,$(RSRC))                            # .lua sources
+MSRC    := $(filter %.mad,$(RSRC))                            # .mad sources
 
 DEP     := $(patsubst %.c,%.d,$(filter-out mad_main.c,$(CSRC)))
 DEP     := $(addprefix $(DIR)/,$(DEP))
 
 OBJ     := $(patsubst %.c,%.o,$(CSRC))
+OBJ     += $(patsubst %.f90,%.o,$(FSRC))
 OBJ     += $(patsubst %.lua,%.o,$(LSRC))
 OBJ     += $(patsubst %.mad,%.o,$(MSRC))
 OBJ     := $(addprefix $(DIR)/,$(OBJ))
@@ -80,9 +87,10 @@ OBJ     := $(addprefix $(DIR)/,$(OBJ))
 DOIT    := $(shell mkdir -p $(DIR) $(DIR)/help $(DIR)/sse)
 
 # files specific setup
-$(DIR)/mad_main.o:  CFLAGS += -I$(LIB)/luajit/src
-$(DIR)/mad_nlopt.o: CFLAGS += -I$(LIB)/nlopt/src/api
-$(DIR)/mad_fft.o:   CFLAGS += -I$(LIB)/fftw3/api -I$(LIB)/nfft3/include
+$(DIR)/mad_main.o:    CFLAGS += -I$(LIB)/luajit/src
+$(DIR)/mad_nlopt.o:   CFLAGS += -I$(LIB)/nlopt/src/api
+$(DIR)/mad_fft.o:     CFLAGS += -I$(LIB)/fftw3/api -I$(LIB)/nfft3/include
+$(DIR)/madx_micado.o: FFLAGS += -Wno-compare-reals
 
 # rules
 $(PRJ): lib$(PRJ).a
@@ -96,6 +104,9 @@ $(DIR)/%.o: %.mad
 
 $(DIR)/%.o: %.lua
 	$(LJ) $(LFLAGS) -bg $< $@
+
+$(DIR)/%.o: %.f90
+	$(FC) $(FFLAGS) -c $< -o $@
 
 $(DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
