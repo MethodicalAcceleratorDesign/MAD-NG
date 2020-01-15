@@ -1931,25 +1931,61 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 #undef N
 #undef X
 
-// -- Correct -----------------------------------------------------------------o
+// -- Orbit Correction --------------------------------------------------------o
 
 int mad_use_madx_micado = 0;
 
 extern void // see madx_micado.f90
-micit_(const num_t a[], const num_t xin[], num_t cin[], num_t res[],
+micit_(num_t cin[], num_t res[],
        int nx[], num_t *rms, int *im, int *ic, int *iter,
        /* working buffers */
        int ny[], num_t ax[], num_t cinx[], num_t xinx[], num_t resx[],
        num_t rho[], num_t ptop[], num_t rmss[], num_t xrms[], num_t xptp[],
        num_t xiter[], int *ifail);
 
+extern void
+svddec_(num_t svdmat[], num_t umat[], num_t vmat[],
+        /* working buffers */
+        num_t ws[], num_t wvec[], int sortw[], num_t *sngcut, num_t *sngval,
+        /* sizes and output */
+        int *im, int *ic, int *iflag, int sing[]);
+
+static int // madx legacy code wrapper
+madx_svdcond (const num_t a[], idx_t sing[], ssz_t m, ssz_t n, num_t scut, num_t sval)
+{
+  /* copy buffers */
+  mad_alloc_tmp(num_t, A  , m*n);
+  mad_alloc_tmp(num_t, U  , m*n);
+  mad_alloc_tmp(num_t, V  , n*n);
+  mad_alloc_tmp(num_t, S  , n);
+  /* working buffers */
+  mad_alloc_tmp(num_t, W  , n);
+  mad_alloc_tmp(idx_t, srt, n);
+
+  mad_mat_trans(a, A, m, n);
+
+  num_t sngcut=scut, sngval=sval;
+  int im=m, ic=n, flag=0;
+
+  svddec_(A, U, V, S, W, srt, &sngcut, &sngval, &im, &ic, &flag, sing);
+
+  /* copy buffers */
+  mad_free_tmp(A);
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+  /* working buffers */
+  mad_free_tmp(W);
+  mad_free_tmp(srt);
+
+  return flag;
+}
+
 static int // madx legacy code wrapper
 madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
              ssz_t N, num_t tol, num_t r_[])
 {
   /* copy buffers */
-  mad_alloc_tmp(num_t, A   , m*n);
-  mad_alloc_tmp(num_t, B   , m);
   mad_alloc_tmp(num_t, X   , n);
   mad_alloc_tmp(num_t, R   , m);
   /* working buffers */
@@ -1966,14 +2002,14 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   mad_alloc_tmp(num_t, xptp, n);
   mad_alloc_tmp(num_t, xitr, n);
 
-  mad_mat_trans(a, A, m, n);
-  mad_vec_copy (b, B, m);
-  mad_vec_zero (x,    n);
+  mad_mat_trans(a, ax  , m, n);
+  mad_vec_copy (b, xinx, m);
+  mad_vec_zero (x,       n);
 
   int im=m, ic=n, iter=N, ifail=0;
   num_t rms=tol;
 
-  micit_(A, B, X, R, nx, &rms, &im, &ic, &iter,
+  micit_(X, R, nx, &rms, &im, &ic, &iter,
          /* working buffers */
          ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
 
@@ -1982,8 +2018,6 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   if (r_) mad_vec_copy(R, r_, m);
 
   /* copy buffers */
-  mad_free_tmp(A);
-  mad_free_tmp(B);
   mad_free_tmp(X);
   mad_free_tmp(R);
   /* working buffers */
@@ -2169,7 +2203,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   return N;
 }
 
-// -- Survey ------------------------------------------------------------------o
+// -- Survey Misalignments ----------------------------------------------------o
 
 #define N 3
 
