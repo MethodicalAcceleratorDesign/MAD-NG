@@ -1225,8 +1225,8 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
 
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("unexpect lapack error");
+  if (info < 0) error("Solve: invalid input argument");
+  if (info > 0) warn ("Solve: unexpect lapack error");
 
   return rank;
 }
@@ -1255,14 +1255,14 @@ mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
 
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("unexpect lapack error");
+  if (info < 0) error("Solve: invalid input argument");
+  if (info > 0) warn ("Solve: unexpect lapack error");
 
   return rank;
 }
 
 int
-mad_mat_lsmin (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
 {
   assert( a && b && x );
   int info=0;
@@ -1289,14 +1289,14 @@ mad_mat_lsmin (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   mad_free_tmp(wk); mad_free_tmp(iwk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(ts);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("LSMIN failed to converge");
+  if (info < 0) error("SSolve: invalid input argument");
+  if (info > 0) warn ("SSolve failed to converge");
 
   return rank;
 }
 
 int
-mad_cmat_lsmin (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+mad_cmat_ssolve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
 {
   assert( a && b && x );
   int info=0;
@@ -1325,8 +1325,8 @@ mad_cmat_lsmin (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
   mad_free_tmp(wk); mad_free_tmp(rwk); mad_free_tmp(iwk);
   mad_free_tmp(ta); mad_free_tmp(tb);  mad_free_tmp(ts);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("LSMIN failed to converge");
+  if (info < 0) error("SSolve: invalid input argument");
+  if (info > 0) warn ("SSolve: failed to converge");
 
   return rank;
 }
@@ -1361,8 +1361,8 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("[B A] is singular, no solution found");
+  if (info < 0) error("GSolve: invalid input argument");
+  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   return info;
 }
@@ -1395,8 +1395,8 @@ mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t c[], const cnu
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("[B A] is singular, no solution found");
+  if (info < 0) error("GSolve: invalid input argument");
+  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   return info;
 }
@@ -1425,8 +1425,8 @@ mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("[A B] is singular, no solution found");
+  if (info < 0) error("GMSolve: invalid input argument");
+  if (info > 0) warn ("GMSolve: [A B] is singular, no solution found");
 
   return info;
 }
@@ -1455,8 +1455,8 @@ mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t d[],
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("[A B] is singular, no solution found");
+  if (info < 0) error("GMSolve: invalid input argument");
+  if (info > 0) warn ("GMSolve: [A B] is singular, no solution found");
 
   return info;
 }
@@ -1523,19 +1523,13 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 
 // -- Helpers -----------------------------------------------------------------o
 
-#define NN (N*N)
-
-#define MGET(src,i,j) src[(i-1)*N+(j-1)]
-
-#define VCPY(src,dst) \
-  for (ssz_t i=0; i<N; dst[i]=src[i], i++)
-
-#define MCPY(src,dst) \
-  for (ssz_t i=0; i<NN; dst[i]=src[i], i++)
+#define NN            (N*N)
+#define X(i,j)        x[(i-1)*N+(j-1)]
+#define VCPY(src,dst) for(ssz_t i=0; i<N ; dst[i]=src[i], i++)
+#define MCPY(src,dst) for(ssz_t i=0; i<NN; dst[i]=src[i], i++)
 
 // -- 2D geometry -------------------------------------------------------------o
 
-#undef  N
 #define N 2
 
 // 2D rotation
@@ -1549,9 +1543,10 @@ void mad_mat_rot (num_t x[NN], num_t a) // R
   MCPY(r,x);
 }
 
+#undef N
+
 // -- 3D geometry -------------------------------------------------------------o
 
-#undef  N
 #define N 3
 
 // 3D rotations (one axis)
@@ -1712,10 +1707,11 @@ void mad_mat_rotyxz (num_t x[NN], num_t ax, num_t ay, num_t az, log_t inv)
 void mad_mat_torotxyz (const num_t x[NN], num_t r[N], log_t inv)
 { // extract ax, ay, az from rotxyz
   CHKXR;
-  num_t x11 = MGET(x,1,1), x33 = MGET(x,3,3), x21, x31, x32;
 
-  if (!inv) x21 = MGET(x,2,1), x31 = MGET(x,3,1), x32 = MGET(x,3,2);
-  else      x21 = MGET(x,1,2), x31 = MGET(x,1,3), x32 = MGET(x,2,3);
+  num_t x11 = X(1,1), x33 = X(3,3), x21, x31, x32;
+
+  if (!inv) x21 = X(2,1), x31 = X(3,1), x32 = X(3,2);
+  else      x21 = X(1,2), x31 = X(1,3), x32 = X(2,3);
 
   r[0] = atan2( x32, x33 );                     // ax
   r[1] = atan2(-x31, sqrt(x32*x32 + x33*x33) ); // ay
@@ -1725,10 +1721,10 @@ void mad_mat_torotxyz (const num_t x[NN], num_t r[N], log_t inv)
 void mad_mat_torotxzy (const num_t x[NN], num_t r[N], log_t inv)
 { // extract ax, ay, az from rotxzy
   CHKXR;
-  num_t x11 = MGET(x,1,1), x22 = MGET(x,2,2), x21, x23, x31;
+  num_t x11 = X(1,1), x22 = X(2,2), x21, x23, x31;
 
-  if (!inv) x21 = MGET(x,2,1), x23 = MGET(x,2,3), x31 = MGET(x,3,1);
-  else      x21 = MGET(x,1,2), x23 = MGET(x,3,2), x31 = MGET(x,1,3);
+  if (!inv) x21 = X(2,1), x23 = X(2,3), x31 = X(3,1);
+  else      x21 = X(1,2), x23 = X(3,2), x31 = X(1,3);
 
   r[0] = atan2(-x23, x22 );                     // ax
   r[1] = atan2(-x31, x11 );                     // ay
@@ -1738,10 +1734,10 @@ void mad_mat_torotxzy (const num_t x[NN], num_t r[N], log_t inv)
 void mad_mat_torotyxz (const num_t x[NN], num_t r[N], log_t inv)
 { // extract ax, ay, az from rotyxz
   CHKXR;
-  num_t x22 = MGET(x,2,2), x33 = MGET(x,3,3), x12, x31, x32;
+  num_t x22 = X(2,2), x33 = X(3,3), x12, x31, x32;
 
-  if (!inv) x12 = MGET(x,1,2), x31 = MGET(x,3,1), x32 = MGET(x,3,2);
-  else      x12 = MGET(x,2,1), x31 = MGET(x,1,3), x32 = MGET(x,2,3);
+  if (!inv) x12 = X(1,2), x31 = X(3,1), x32 = X(3,2);
+  else      x12 = X(2,1), x31 = X(1,3), x32 = X(2,3);
 
   r[0] = atan2( x32, sqrt(x12*x12 + x22*x22) ); // ax
   r[1] = atan2(-x31, x33 );                     // ay
@@ -1790,17 +1786,17 @@ num_t mad_mat_torotv (const num_t x[NN], num_t v_[N], log_t inv)
   num_t vx, vy, vz;
 
   if (!inv) {
-    vx = MGET(x,3,2) - MGET(x,2,3);
-    vy = MGET(x,1,3) - MGET(x,3,1);
-    vz = MGET(x,2,1) - MGET(x,1,2);
+    vx = X(3,2) - X(2,3);
+    vy = X(1,3) - X(3,1);
+    vz = X(2,1) - X(1,2);
   } else {
-    vx = MGET(x,2,3) - MGET(x,3,2);
-    vy = MGET(x,3,1) - MGET(x,1,3);
-    vz = MGET(x,1,2) - MGET(x,2,1);
+    vx = X(2,3) - X(3,2);
+    vy = X(3,1) - X(1,3);
+    vz = X(1,2) - X(2,1);
   }
 
   num_t n = sqrt(vx*vx + vy*vy + vz*vz);
-  num_t t = MGET(x,1,1) + MGET(x,2,2) + MGET(x,3,3);
+  num_t t = X(1,1) + X(2,2) + X(3,3);
   num_t a = atan2(n, t-1);
 
   if (v_) {
@@ -1839,7 +1835,7 @@ void mad_mat_rotq (num_t x[NN], num_t q[4], log_t inv)
 void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 {
   CHKX;
-  num_t xx = MGET(x,1,1), yy = MGET(x,2,2), zz = MGET(x,3,3);
+  num_t xx = X(1,1), yy = X(2,2), zz = X(3,3);
   num_t tt = xx+yy+zz, rr, ss;
 
   // stable trace
@@ -1847,13 +1843,13 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
     rr = sqrt(1+tt), ss = 0.5/rr;
     q[0] = 0.5*rr;
     if (!inv) {  // normal
-      q[1] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
-      q[2] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
-      q[3] = (MGET(x,2,1) - MGET(x,1,2)) * ss;
+      q[1] = (X(3,2) - X(2,3)) * ss;
+      q[2] = (X(1,3) - X(3,1)) * ss;
+      q[3] = (X(2,1) - X(1,2)) * ss;
     } else {     // transposed
-      q[1] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
-      q[2] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
-      q[3] = (MGET(x,1,2) - MGET(x,2,1)) * ss;
+      q[1] = (X(2,3) - X(3,2)) * ss;
+      q[2] = (X(3,1) - X(1,3)) * ss;
+      q[3] = (X(1,2) - X(2,1)) * ss;
     }
     return;
   }
@@ -1864,46 +1860,343 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
-      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
-      q[2] = (MGET(x,1,3) + MGET(x,3,1)) * ss;
-      q[3] = (MGET(x,2,1) + MGET(x,1,2)) * ss;
+      q[0] = (X(3,2) - X(2,3)) * ss;
+      q[2] = (X(1,3) + X(3,1)) * ss;
+      q[3] = (X(2,1) + X(1,2)) * ss;
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
-      q[1] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
-      q[3] = (MGET(x,2,1) + MGET(x,1,2)) * ss;
+      q[0] = (X(3,2) - X(2,3)) * ss;
+      q[1] = (X(1,3) - X(3,1)) * ss;
+      q[3] = (X(2,1) + X(1,2)) * ss;
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (MGET(x,3,2) - MGET(x,2,3)) * ss;
-      q[1] = (MGET(x,1,3) - MGET(x,3,1)) * ss;
-      q[2] = (MGET(x,2,1) - MGET(x,1,2)) * ss;
+      q[0] = (X(3,2) - X(2,3)) * ss;
+      q[1] = (X(1,3) - X(3,1)) * ss;
+      q[2] = (X(2,1) - X(1,2)) * ss;
     }
   } else {     // transposed
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
-      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
-      q[2] = (MGET(x,3,1) + MGET(x,1,3)) * ss;
-      q[3] = (MGET(x,1,2) + MGET(x,2,1)) * ss;
+      q[0] = (X(2,3) - X(3,2)) * ss;
+      q[2] = (X(3,1) + X(1,3)) * ss;
+      q[3] = (X(1,2) + X(2,1)) * ss;
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
-      q[1] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
-      q[3] = (MGET(x,1,2) + MGET(x,2,1)) * ss;
+      q[0] = (X(2,3) - X(3,2)) * ss;
+      q[1] = (X(3,1) - X(1,3)) * ss;
+      q[3] = (X(1,2) + X(2,1)) * ss;
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (MGET(x,2,3) - MGET(x,3,2)) * ss;
-      q[1] = (MGET(x,3,1) - MGET(x,1,3)) * ss;
-      q[2] = (MGET(x,1,2) - MGET(x,2,1)) * ss;
+      q[0] = (X(2,3) - X(3,2)) * ss;
+      q[1] = (X(3,1) - X(1,3)) * ss;
+      q[2] = (X(1,2) - X(2,1)) * ss;
     }
   }
 }
 
+#undef N
+#undef X
+
+// -- Correct -----------------------------------------------------------------o
+
+int mad_use_madx_micado = 0;
+
+extern void // see madx_micado.f90
+micit_(const num_t a[], const num_t xin[], num_t cin[], num_t res[],
+       int nx[], num_t *rms, int *im, int *ic, int *iter,
+       /* working buffers */
+       int ny[], num_t ax[], num_t cinx[], num_t xinx[], num_t resx[],
+       num_t rho[], num_t ptop[], num_t rmss[], num_t xrms[], num_t xptp[],
+       num_t xiter[], int *ifail);
+
+static int
+madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
+             ssz_t N, num_t tol, num_t r_[])
+{
+  /* copy buffers */
+  mad_alloc_tmp(num_t, A   , m*n);
+  mad_alloc_tmp(num_t, B   , m);
+  mad_alloc_tmp(num_t, X   , n);
+  mad_alloc_tmp(num_t, R   , m);
+  /* working buffers */
+  mad_alloc_tmp(idx_t, nx  , n);
+  mad_alloc_tmp(idx_t, ny  , n);
+  mad_alloc_tmp(num_t, ax  , m*n);
+  mad_alloc_tmp(num_t, cinx, n);
+  mad_alloc_tmp(num_t, xinx, m);
+  mad_alloc_tmp(num_t, resx, m);
+  mad_alloc_tmp(num_t, rho , 3*n);
+  mad_alloc_tmp(num_t, ptop, n);
+  mad_alloc_tmp(num_t, rmss, n);
+  mad_alloc_tmp(num_t, xrms, n);
+  mad_alloc_tmp(num_t, xptp, n);
+  mad_alloc_tmp(num_t, xitr, n);
+
+  mad_mat_trans(a, A, m, n);
+  mad_vec_copy (b, B, m);
+  mad_vec_zero (x,    n);
+
+  int im=m, ic=n, iter=N, ifail=0;
+  num_t rms=tol;
+
+  micit_(A, B, X, R, nx, &rms, &im, &ic, &iter,
+         /* working buffers */
+         ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
+
+  // Re-order corrector strengths and save residues. Strengths are not minused.
+  for (idx_t i=0; i < iter; ++i) x[i] = -X[nx[i]-1];
+  if (r_) mad_vec_copy(R, r_, m);
+
+  /* copy buffers */
+  mad_free_tmp(A);
+  mad_free_tmp(B);
+  mad_free_tmp(X);
+  mad_free_tmp(R);
+  /* working buffers */
+  mad_free_tmp(nx);
+  mad_free_tmp(ny);
+  mad_free_tmp(ax);
+  mad_free_tmp(cinx);
+  mad_free_tmp(xinx);
+  mad_free_tmp(resx);
+  mad_free_tmp(rho);
+  mad_free_tmp(ptop);
+  mad_free_tmp(rmss);
+  mad_free_tmp(xrms);
+  mad_free_tmp(xptp);
+  mad_free_tmp(xitr);
+
+  return iter;
+}
+
+#if 0
+#include <stdio.h>
+
+static void
+mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
+{
+  printf("%s[%dx%d]=\n", name, m, n);
+  for (idx_t i=0; i < m; i++) {
+    for (idx_t j=0; j < n; j++)
+      printf("% -.5f ", a[i*n+j]);
+    printf("\n");
+  }
+}
+
+static void
+iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
+{
+  printf("%s[%dx%d]=\n", name, m, n);
+  for (idx_t i=0; i < m; i++) {
+    for (idx_t j=0; j < n; j++)
+      printf("% 3d ", a[i*n+j]);
+    printf("\n");
+  }
+}
+#endif
+
+int // Micado (from MAD9 + bug fixes)
+mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
+               ssz_t N, num_t tol, num_t r_[])
+{
+  assert(a && b && x);
+
+  // Micado notes: min | b - Ax |
+  // a: response matrix      [m x n]
+  // b: vector of monitors   [m]
+  // x: vector of correctors [n] (out)
+  // r: residues             [m] (out)
+  // N: number of correctors to use 0 < N <= n (out: actually used)
+
+  mad_vec_zero(x, n);
+
+  // No correctors.
+  if (n == 0) return 0;
+
+  // Checks if tolerance is already reached.
+  { num_t e = sqrt(mad_vec_dot(b, b, m) / m);
+    if (e <= tol) return 0;
+  }
+
+  // N == 0 means to use all correctors
+  if (N > n || N == 0) N = n;
+
+  // X-check with MAD-X Micado
+  if (mad_use_madx_micado) {
+    return madx_micado(a, b, x, m, n, N, tol, r_);
+  }
+
+  mad_alloc_tmp(num_t, A  , m*n);
+  mad_alloc_tmp(num_t, B  , m);
+  mad_alloc_tmp(num_t, X  , n);
+  mad_alloc_tmp(num_t, R  , m);
+  mad_alloc_tmp(num_t, sqr, n);
+  mad_alloc_tmp(num_t, dot, n);
+  mad_alloc_tmp(idx_t, pvt, n);
+
+  mad_vec_copy(a, A, m*n);
+  mad_vec_copy(b, B, m);
+  mad_vec_zero(X, n);
+  mad_vec_zero(R, m);
+
+#define A(i,j) A[(i)*n+(j)]
+
+  // Compute scalar products sqr[k] = A[k].A[k] and dot[k] = A[k].B.
+  num_t sqrmin = 0;
+  { num_t sum = 0;
+    for (idx_t k=0; k < n; ++k) {
+      pvt[k] = k;
+      num_t hh = 0, gg = 0;
+      for (idx_t i=0; i < m; ++i) {
+        hh += A(i,k) * A(i,k);  // corrector effectiveness versus measured orbit
+        gg += A(i,k) * B[i];    // corrector effectiveness versus target   orbit
+      }
+      sum   += hh; // was += sum;
+      sqr[k] = hh;
+      dot[k] = gg;
+    }
+    sqrmin = 1e-8 * sum / n;       // 1e-8 * average of correctors effectiveness
+  }
+
+// mprint("A", A  , m, n);
+// mprint("B", B  , 1, m);
+// mprint("R", R  , 1, m);
+// mprint("X", X  , 1, n);
+// mprint("S", sqr, 1, n);
+// mprint("D", dot, 1, n);
+// iprint("P", pvt, 1, n);
+
+  // Begin of iteration: loop over best-kick selection (i.e. A columns).
+  for (idx_t k=0; k < N; ++k) {
+    // Search the columns not yet used for largest scaled change vector.
+    { num_t maxChange = 0;
+      idx_t changeIndex = -1;
+      for (idx_t j=k; j < n; ++j) {
+        if (sqr[j] > sqrmin) {            // criteria that minimize the residues
+          num_t change = dot[j]*dot[j] / sqr[j];
+          if (change > maxChange) {
+            changeIndex = j;
+            maxChange = change;
+          }
+        }
+      }
+
+// printf("\n--------------------------------------------------------------\n");
+// printf("k=% -2d, kpiv=% -2d, vpiv=% -.4e\n", k, changeIndex, maxChange);
+
+      // Stop iterations, if no suitable column found.
+      if (changeIndex < 0) { N=k; break; }
+
+      // Move the column just found to next position.
+      if (changeIndex > k) {
+        num_t tr; idx_t ti;
+        SWAP(sqr[k], sqr[changeIndex], tr);
+        SWAP(dot[k], dot[changeIndex], tr);
+        SWAP(pvt[k], pvt[changeIndex], ti);
+        for (idx_t i=0; i < m; ++i) SWAP(A(i,k), A(i,changeIndex), tr);
+      }
+    }
+
+// iprint("P", pvt, 1, n);
+
+    // Compute beta, sigma, and vector u[k].
+    num_t beta, hh;
+    { hh = 0;
+      for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,k);
+      num_t sigma = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
+      sqr[k] = -sigma; // saved for use in X[1..k] update
+      A(k,k) += sigma;
+      beta = 1 / (A(k,k) * sigma);
+
+// printf("sig=% -.4e, beta=% -.4e\n", sigma, beta);
+    }
+
+    // Transform remaining columns of A.
+    for (idx_t j=k+1; j < n; ++j) {
+      hh = 0;
+      for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,j);
+      hh *= beta;
+      for (idx_t i=k; i < m; ++i) A(i,j) -= A(i,k) * hh;
+    }
+
+// mprint("A", A, m, n);
+
+    // Transform vector b.
+    hh = 0;
+    for (idx_t i=k; i < m; ++i) hh += A(i,k) * B[i];
+    hh *= beta;
+    for (idx_t i=k; i < m; ++i) B[i] -= A(i,k) * hh;
+
+// mprint("B", B, 1, m);
+
+    // Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
+    for (idx_t j=k+1; j < n; ++j) {
+      sqr[j] -= A(k,j) * A(k,j);
+      dot[j] -= A(k,j) * B[k];
+    }
+
+// mprint("S", sqr, 1, n);
+// mprint("D", dot, 1, n);
+
+    // Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k]
+    for (idx_t i=k; i >= 0; --i) {
+      X[i] = B[i];
+// printf("x(%d)=%9.4f\n", i, X[i]);
+      for (idx_t j=i+1; j <= k; ++j) { // BUG: was j < k
+        X[i] -= A(i,j) * X[j];
+// printf("x(%d)=%9.4f, a(%d,%d)=%9.4f, x(%d)=%9.4f\n", i, X[i], i, j, A(i,j), j, X[j]);
+      }
+      X[i] /= sqr[i];
+    }
+
+// mprint("X", X, 1, n);
+
+    // Compute original residual vector by backward transformation.
+    mad_vec_copy(B, R, m);
+    for (idx_t j=k; j >= 0; --j) {
+      R[j] = hh = 0;
+      for (idx_t i=j; i < m; ++i) hh += A(i,j) * R[i];
+      hh /= sqr[j] * A(j,j);
+      for (idx_t i=j; i < m; ++i) R[i] += A(i,j) * hh;
+    }
+
+// mprint("R", R, 1, m);
+
+    // Check for convergence.
+    num_t e = sqrt(mad_vec_dot(R, R, m) / m);
+    if (e <= tol) { N=k+1; break; }
+  }
+
+#undef A
+
+// printf("N=%d\n", N);
+// mprint("X", X, 1, n);
+
+  // Re-order corrector strengths and save residues. Strengths are not minused.
+  for (idx_t i=0; i < N; ++i) x[pvt[i]] = X[i];
+  if (r_) mad_vec_copy(R, r_, m);
+
+// mprint("x", x, 1, n);
+
+  mad_free_tmp(A);
+  mad_free_tmp(B);
+  mad_free_tmp(X);
+  mad_free_tmp(R);
+  mad_free_tmp(sqr);
+  mad_free_tmp(dot);
+  mad_free_tmp(pvt);
+
+  return N;
+}
+
 // -- Survey ------------------------------------------------------------------o
+
+#define N 3
 
 // Fast computation of Rbar and Tbar for misalignments at element exit (forward)
 // Tbar = W^t (RV+T-V)
@@ -1957,3 +2250,5 @@ mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
     }
   }
 }
+
+#undef N
