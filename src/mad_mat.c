@@ -74,10 +74,10 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 // [m x n] = [m x p] * [p x n]
 // naive implementation (not vectorized)
 #define MMUL { /* mat * mat */ \
-  for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t i=0; i < m; i++) \
+  for (idx_t j=0; j < n; j++) { \
     r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i*n+j] += x[i*p+k] * y[k*n+j]; \
   } \
 }
@@ -88,13 +88,13 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define MMUL() { /* mat * mat */ \
   assert(m>0 && n>0 && p>0); \
   if (n & ~7) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n-7; j+=8) { \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n-7; j+=8) { \
         r[i*n+j  ] = r[i*n+j+1] = \
         r[i*n+j+2] = r[i*n+j+3] = \
         r[i*n+j+4] = r[i*n+j+5] = \
         r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (ssz_t k=0; k < p; k++) { \
+        for (idx_t k=0; k < p; k++) { \
           r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
           r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
           r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
@@ -108,11 +108,11 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (n & 4) { \
-    ssz_t j = n - (n & 7); \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - (n & 7); \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
+      for (idx_t k=0; k < p; k++) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
         r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
@@ -121,20 +121,20 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (n & 2) { \
-    ssz_t j = n - (n & 3); \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - (n & 3); \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
+      for (idx_t k=0; k < p; k++) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
       } \
     } \
   } \
   if (n & 1) { \
-    ssz_t j = n - 1; \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - 1; \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
+      for (idx_t k=0; k < p; k++) \
         r[i*n+j] += x[i*p+k] * y[k*n+j]; \
     } \
   } \
@@ -143,24 +143,24 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [m x p] * [p x 1]
 #define MULV() /* mat * vec */ \
-  for (ssz_t i=0; i < m; i++) { \
+  for (idx_t i=0; i < m; i++) { \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i] += x[i*p+k] * y[k]; \
   }
 
 // m=1: [1 x n] = [1 x p] * [p x n]
 #define VMUL() /* vec * mat */ \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t j=0; j < n; j++) { \
     r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[j] += x[k] * y[k*n+j]; \
   }
 
 // m=1, n=1: [1 x 1] = [1 x p] * [p x 1]
 #define IMUL() /* vec * vec */ \
   { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[0] += x[k] * y[k]; \
   }
 
@@ -179,10 +179,10 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 // [m x n] = [p x m]' * [p x n]
 // naive implementation (not vectorized)
 #define TMMUL(C) { /* mat' * mat */ \
-  for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t i=0; i < m; i++) \
+  for (idx_t j=0; j < n; j++) { \
     r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
   } \
 }
@@ -193,13 +193,13 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define TMMUL(C) { /* mat' * mat */ \
   assert(m>0 && n>0 && p>0); \
   if (n & ~7) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n-7; j+=8) { \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n-7; j+=8) { \
         r[i*n+j  ] = r[i*n+j+1] = \
         r[i*n+j+2] = r[i*n+j+3] = \
         r[i*n+j+4] = r[i*n+j+5] = \
         r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (ssz_t k=0; k < p; k++) { \
+        for (idx_t k=0; k < p; k++) { \
           r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
           r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
           r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
@@ -213,11 +213,11 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (n & 4) { \
-    ssz_t j = n - (n & 7); \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - (n & 7); \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
+      for (idx_t k=0; k < p; k++) { \
         r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
         r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
         r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
@@ -226,20 +226,20 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (n & 2) { \
-    ssz_t j = n - (n & 3); \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - (n & 3); \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
-      for (ssz_t k=0; k < p; k++) { \
+      for (idx_t k=0; k < p; k++) { \
         r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
         r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
       } \
     } \
   } \
   if (n & 1) { \
-    ssz_t j = n - 1; \
-    for (ssz_t i=0; i < m; i++) { \
+    idx_t j = n - 1; \
+    for (idx_t i=0; i < m; i++) { \
       r[i*n+j] = 0; \
-      for (ssz_t k=0; k < p; k++) \
+      for (idx_t k=0; k < p; k++) \
         r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
     } \
   } \
@@ -248,24 +248,24 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [p x m]' * [p x 1]
 #define TMULV(C) /* mat' * vec */ \
-  for (ssz_t i=0; i < m; i++) { \
+  for (idx_t i=0; i < m; i++) { \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i] += C(x[k*m+i]) * y[k]; \
   }
 
 // m=1: [1 x n] = [p x 1]' * [p x n]
 #define TVMUL(C) /* vec' * mat */ \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t j=0; j < n; j++) { \
     r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[j] += C(x[k]) * y[k*n+j]; \
   }
 
 // m=1, n=1: [1 x 1] = [p x 1]' * [p x 1]
 #define TIMUL(C) /* vec' * vec */ \
   { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[0] += C(x[k]) * y[k]; \
   }
 
@@ -284,10 +284,10 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 // [m x n] = [m x p] * [n x p]'
 // naive implementation (not vectorized)
 #define MMULT(C) { /* mat * mat' */ \
-  for (ssz_t i=0; i < m; i++) \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t i=0; i < m; i++) \
+  for (idx_t j=0; j < n; j++) { \
     r[i*n+j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
   } \
 }
@@ -297,11 +297,11 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 #define MMULT(C) { /* mat * mat' */ \
   assert(m>0 && n>0 && p>0); \
-  for (ssz_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
   if (n & ~7) { \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
-        for (ssz_t k=0; k < p-7; k+=8) { \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n; j++) { \
+        for (idx_t k=0; k < p-7; k+=8) { \
           r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
           r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
           r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
@@ -315,9 +315,9 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (p & 4) { \
-    ssz_t k = p - (p & 7); \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
+    idx_t k = p - (p & 7); \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n; j++) { \
         r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
         r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
         r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
@@ -326,18 +326,18 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     } \
   } \
   if (p & 2) { \
-    ssz_t k = p - (p & 3); \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) { \
+    idx_t k = p - (p & 3); \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n; j++) { \
         r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
         r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
       } \
     } \
   } \
   if (p & 1) { \
-    ssz_t k = p - 1; \
-    for (ssz_t i=0; i < m; i++) { \
-      for (ssz_t j=0; j < n; j++) \
+    idx_t k = p - 1; \
+    for (idx_t i=0; i < m; i++) { \
+      for (idx_t j=0; j < n; j++) \
         r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
     } \
   } \
@@ -346,24 +346,24 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [m x p] * [1 x p]'
 #define MULVT(C) /* mat * vec' */ \
-  for (ssz_t i=0; i < m; i++) { \
+  for (idx_t i=0; i < m; i++) { \
     r[i] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[i] += x[i*p+k] * C(y[k]); \
   }
 
 // m=1: [1 x n] = [1 x p]' * [n x p]'
 #define VMULT(C) /* vec * mat' */ \
-  for (ssz_t j=0; j < n; j++) { \
+  for (idx_t j=0; j < n; j++) { \
     r[j] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[j] += x[k] * C(y[j*p+k]); \
   }
 
 // m=1, n=1: [1 x 1] = [1 x p] * [1 x p]'
 #define IMULT(C) /* vec * vec' */ \
   { r[0] = 0; \
-    for (ssz_t k=0; k < p; k++) \
+    for (idx_t k=0; k < p; k++) \
       r[0] += x[k] * C(y[k]); \
   }
 
@@ -378,44 +378,50 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 
 // -----
 
-// r = ([m x n] <*> [m x n])
+// r = [m x n] <*> [m x n]
 #define DOT(C) { \
   if (n == 1) { \
     r[0] = 0; \
-    for (ssz_t i=0; i < m; i++) \
+    for (idx_t i=0; i < m; i++) \
       r[0] += C(x[i]) * y[i]; \
   } else { \
-    for (ssz_t j=0; j < n; j++) { \
+    for (idx_t j=0; j < n; j++) { \
       r[j] = 0; \
-      for (ssz_t i=0; i < m; i++) \
+      for (idx_t i=0; i < m; i++) \
         r[j] += C(x[i*n+j]) * y[i*n+j]; \
     } \
   } \
 }
 
+// r = [n] <*> [n]
+#define VDOT(C) { \
+  for (idx_t i=0, ix=0, iy=0; i < n; i++, ix+=xs, iy+=ys) \
+    r += C(x[ix]) * y[iy]; \
+  }
+
 // [m x n] transpose
 #define TRANS(C,T) { \
   if (m == 1 || n == 1) { \
     if (x != r || I != C(I)) { \
-      ssz_t mn = m*n; \
-      for (ssz_t i=0; i < mn; i++) \
+      idx_t mn = m*n; \
+      for (idx_t i=0; i < mn; i++) \
         r[i] = C(x[i]); \
     } \
   } else if ((const void*)x != (const void*)r) { \
-    for (ssz_t i=0; i < m; i++) \
-    for (ssz_t j=0; j < n; j++) \
+    for (idx_t i=0; i < m; i++) \
+    for (idx_t j=0; j < n; j++) \
       r[j*m+i] = C(x[i*n+j]); \
   } else if (m == n) { \
-    for (ssz_t i=0; i < m; i++) \
-    for (ssz_t j=i; j < n; j++) { \
+    for (idx_t i=0; i < m; i++) \
+    for (idx_t j=i; j < n; j++) { \
       T t = C(r[j*m+i]); \
       r[j*m+i] = C(r[i*n+j]); \
       r[i*n+j] = t; \
     } \
   } else { \
     mad_alloc_tmp(T, t, m*n); \
-    for (ssz_t i=0; i < m; i++) \
-    for (ssz_t j=0; j < n; j++) \
+    for (idx_t i=0; i < m; i++) \
+    for (idx_t j=0; j < n; j++) \
       t[j*m+i] = C(x[i*n+j]); \
     memcpy(r, t, m*n*sizeof(T)); \
     mad_free_tmp(t); \
@@ -423,19 +429,19 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 }
 
 #define CPY(OP) { \
-  for (ssz_t i=0; i<m; i++) \
-  for (ssz_t j=0; j<n; j++) \
+  for (idx_t i=0; i<m; i++) \
+  for (idx_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x[i*ldx+j]; \
 }
 
 #define SET(OP) { \
-  for (ssz_t i=0; i<m; i++) \
-  for (ssz_t j=0; j<n; j++) \
+  for (idx_t i=0; i<m; i++) \
+  for (idx_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x; \
 }
 
 #define DIAG(OP) { \
-  for (ssz_t i=0; i<MIN(m,n); i++) \
+  for (idx_t i=0; i<MIN(m,n); i++) \
     r[i*ldr+i] OP##= x; \
 }
 
@@ -464,6 +470,9 @@ void mad_mat_dot (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n)
 
 void mad_mat_dotm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
 { CHKXYR; DOT(); }
+
+num_t mad_mat_vdot (const num_t x[], idx_t xs, const num_t y[], idx_t ys, ssz_t n)
+{ CHKXY; num_t r=0; VDOT(); return r; }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYR;
@@ -529,18 +538,18 @@ void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
   assert(d == 1 || d == 2); // 1=row, 2=col
   if (d == 1)
-    for (ssz_t i=0; i < m; i++) {
+    for (idx_t i=0; i < m; i++) {
       num_t mu = 0;
-      for (ssz_t j=0; j < n; j++) mu += x[i*n+j];
+      for (idx_t j=0; j < n; j++) mu += x[i*n+j];
       mu /= n;
-      for (ssz_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+      for (idx_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
     }
   else
-    for (ssz_t j=0; j < n; j++) {
+    for (idx_t j=0; j < n; j++) {
       num_t mu = 0;
-      for (ssz_t i=0; i < m; i++) mu += x[i*n+j];
+      for (idx_t i=0; i < m; i++) mu += x[i*n+j];
       mu /= m;
-      for (ssz_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
+      for (idx_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
     }
 }
 
@@ -612,6 +621,18 @@ void mad_cmat_dot (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_
 void mad_cmat_dotm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n)
 { CHKXYR; DOT(conj); }
 
+cnum_t mad_cmat_vdot (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, ssz_t n)
+{ CHKXY; cnum_t r=0; VDOT(conj); return r; }
+
+cnum_t mad_cmat_vdotm (const cnum_t x[], idx_t xs, const num_t y[], idx_t ys, ssz_t n)
+{ CHKXY; cnum_t r=0; VDOT(conj); return r; }
+
+void mad_cmat_vdot_r (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, cnum_t *r, ssz_t n)
+{ CHKXYR; *r = mad_cmat_vdot(x, xs, y, ys, n); }
+
+void mad_cmat_vdotm_r (const cnum_t x[], idx_t xs, const num_t y[], idx_t ys, cnum_t *r, ssz_t n)
+{ CHKXYR; *r = mad_cmat_vdotm(x, xs, y, ys, n); }
+
 void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYR;
   if (x != r && y != r) { MUL(); return; }
@@ -676,18 +697,18 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 { CHKXR;
   assert(d == 1 || d == 2); // 1=row, 2=col
   if (d == 1)
-    for (ssz_t i=0; i < m; i++) {
+    for (idx_t i=0; i < m; i++) {
       cnum_t mu = 0;
-      for (ssz_t j=0; j < n; j++) mu += x[i*n+j];
+      for (idx_t j=0; j < n; j++) mu += x[i*n+j];
       mu /= n;
-      for (ssz_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+      for (idx_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
     }
   else
-    for (ssz_t j=0; j < n; j++) {
+    for (idx_t j=0; j < n; j++) {
       cnum_t mu = 0;
-      for (ssz_t i=0; i < m; i++) mu += x[i*n+j];
+      for (idx_t i=0; i < m; i++) mu += x[i*n+j];
       mu /= m;
-      for (ssz_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
+      for (idx_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
     }
 }
 
@@ -705,19 +726,19 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
 { CHKX; assert(x != r && !(n & 1));
   num_t s=0, s0, s1, s2, s3;
-  for (ssz_t i = 0; i < n-1; i += 2) {
+  for (idx_t i = 0; i < n-1; i += 2) {
     // i == j
     s1 = -1, s2 = 1;
-    for (ssz_t k = 0; k < n-1; k += 2) {
+    for (idx_t k = 0; k < n-1; k += 2) {
       s1 += a_(x,k,i) * d_(x,k,i) - b_(x,k,i) * c_(x,k,i);
       s2 += b_(x,k,i) * c_(x,k,i) - a_(x,k,i) * d_(x,k,i);
     }
     s += s1*s1 + s2*s2;
     if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
     // i < j
-    for (ssz_t j = i+2; j < n-1; j += 2) {
+    for (idx_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
-      for (ssz_t k = 0; k < n-1; k += 2) {
+      for (idx_t k = 0; k < n-1; k += 2) {
         s0 += a_(x,k,i) * c_(x,k,j) - a_(x,k,j) * c_(x,k,i);
         s1 += a_(x,k,i) * d_(x,k,j) - b_(x,k,j) * c_(x,k,i);
         s2 += b_(x,k,i) * c_(x,k,j) - a_(x,k,j) * d_(x,k,i);
@@ -736,19 +757,19 @@ num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
 num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
 { CHKX; assert(x != r && !(n & 1));
   cnum_t s=0, s0, s1, s2, s3;
-  for (ssz_t i = 0; i < n-1; i += 2) {
+  for (idx_t i = 0; i < n-1; i += 2) {
     // i == j
     s1 = -1, s2 = 1;
-    for (ssz_t k = 0; k < n-1; k += 2) {
+    for (idx_t k = 0; k < n-1; k += 2) {
       s1 += conj(a_(x,k,i)) * d_(x,k,i) - b_(x,k,i) * conj(c_(x,k,i));
       s2 += conj(b_(x,k,i)) * c_(x,k,i) - a_(x,k,i) * conj(d_(x,k,i));
     }
     s += s1*s1 + s2*s2;
     if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
     // i < j
-    for (ssz_t j = i+2; j < n-1; j += 2) {
+    for (idx_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
-      for (ssz_t k = 0; k < n-1; k += 2) {
+      for (idx_t k = 0; k < n-1; k += 2) {
         s0 += conj(a_(x,k,i)) * c_(x,k,j) - a_(x,k,j) * conj(c_(x,k,i));
         s1 += conj(a_(x,k,i)) * d_(x,k,j) - b_(x,k,j) * conj(c_(x,k,i));
         s2 += conj(b_(x,k,i)) * c_(x,k,j) - a_(x,k,j) * conj(d_(x,k,i));
@@ -769,11 +790,11 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
 void mad_mat_sympconj (const num_t x[], num_t r[], ssz_t n)
 { CHKXR; assert(!(n & 1));
   num_t t;
-  for (ssz_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
+  for (idx_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
     t = a_(x,i,i),  a_(r,i,i) =  d_(x,i,i),  d_(r,i,i) = t;
     b_(r,i,i) = -b_(x,i,i),  c_(r,i,i) = -c_(x,i,i);
 
-    for (ssz_t j = i+2; j < n-1; j += 2) { // 2x2 blocks off diagonal
+    for (idx_t j = i+2; j < n-1; j += 2) { // 2x2 blocks off diagonal
       t = a_(x,i,j),  a_(r,i,j) =  d_(x,j,i),  d_(r,j,i) =  t;
       t = b_(x,i,j),  b_(r,i,j) = -b_(x,j,i),  b_(r,j,i) = -t;
       t = c_(x,i,j),  c_(r,i,j) = -c_(x,j,i),  c_(r,j,i) = -t;
@@ -785,11 +806,11 @@ void mad_mat_sympconj (const num_t x[], num_t r[], ssz_t n)
 void mad_cmat_sympconj (const cnum_t x[], cnum_t r[], ssz_t n)
 { CHKXR; assert(!(n & 1));
   cnum_t t;
-  for (ssz_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
+  for (idx_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
     t = a_(x,i,i),  a_(r,i,i) =  conj(d_(x,i,i)),  d_(r,i,i) = conj(t);
     b_(r,i,i) = -conj(b_(x,i,i)),  c_(r,i,i) = -conj(c_(x,i,i));
 
-    for (ssz_t j = i+2; j < n-1; j += 2) {   // 2x2 blocks off diagonal
+    for (idx_t j = i+2; j < n-1; j += 2) {   // 2x2 blocks off diagonal
       t = a_(x,i,j),  a_(r,i,j) =  conj(d_(x,j,i)),  d_(r,j,i) =  conj(t);
       t = b_(x,i,j),  b_(r,i,j) = -conj(b_(x,j,i)),  b_(r,j,i) = -conj(t);
       t = c_(x,i,j),  c_(r,i,j) = -conj(c_(x,j,i)),  c_(r,j,i) = -conj(t);
@@ -1554,8 +1575,8 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 
 #define NN            (N*N)
 #define X(i,j)        x[(i-1)*N+(j-1)]
-#define VCPY(src,dst) for(ssz_t i=0; i<N ; dst[i]=src[i], i++)
-#define MCPY(src,dst) for(ssz_t i=0; i<NN; dst[i]=src[i], i++)
+#define VCPY(src,dst) for(idx_t i=0; i<N ; dst[i]=src[i], i++)
+#define MCPY(src,dst) for(idx_t i=0; i<NN; dst[i]=src[i], i++)
 
 // -- 2D geometry -------------------------------------------------------------o
 
@@ -1934,6 +1955,7 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 // -- Orbit Correction --------------------------------------------------------o
 
 int mad_use_madx_micado = 0;
+int mad_use_madx_svdcnd = 0;
 
 extern void // see madx_micado.f90
 micit_(num_t cin[], num_t res[],
@@ -1951,7 +1973,7 @@ svddec_(num_t svdmat[], num_t umat[], num_t vmat[],
         int *im, int *ic, int *iflag, int sing[]);
 
 static int // madx legacy code wrapper
-madx_svdcond (const num_t a[], idx_t sing[], ssz_t m, ssz_t n, num_t scut, num_t sval)
+madx_svdcnd (const num_t a[], idx_t sing[], ssz_t m, ssz_t n, num_t scut, num_t sval)
 {
   /* copy buffers */
   mad_alloc_tmp(num_t, A  , m*n);
