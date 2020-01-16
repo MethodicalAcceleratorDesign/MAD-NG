@@ -2101,7 +2101,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   mad_alloc_tmp(num_t, B  , m);
   mad_alloc_tmp(num_t, X  , n);
   mad_alloc_tmp(num_t, R  , m);
-  mad_alloc_tmp(num_t, sqr, n);
+  mad_alloc_tmp(num_t, sqr, n); // rho[k] = dot[k]^2/sqr[k]
   mad_alloc_tmp(num_t, dot, n);
   mad_alloc_tmp(idx_t, pvt, n);
 
@@ -2112,7 +2112,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
 #define A(i,j) A[(i)*n+(j)]
 
-  // Compute scalar products sqr[k] = A[k].A[k] and dot[k] = A[k].B.
+  // Box 3: Compute scalar products sqr[k] = A[k].A[k] and dot[k] = A[k].B.
   num_t sqrmin = 0;
   { num_t sum = 0;
     for (idx_t k=0; k < n; ++k) {
@@ -2129,13 +2129,13 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     sqrmin = 1e-8 * sum / n;       // 1e-8 * average of correctors effectiveness
   }
 
-  // Begin of iteration: loop over best-kick selection (i.e. A columns).
+  // Begin of iteration (l): loop over best-kick selection (i.e. A columns).
   for (idx_t k=0; k < N; ++k) {
-    // Search the columns not yet used for largest scaled change vector.
+    // Box 3: Search the columns not yet used for largest scaled change vector.
     { num_t maxChange = 0;
       idx_t changeIndex = -1;
       for (idx_t j=k; j < n; ++j) {
-        if (sqr[j] > sqrmin) {            // criteria that minimize the residues
+        if (sqr[j] > sqrmin) {        // criteria rho that minimize the residues
           num_t change = dot[j]*dot[j] / sqr[j];
           if (change > maxChange) {
             changeIndex = j;
@@ -2144,7 +2144,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
         }
       }
 
-      // Stop iterations, if no suitable column found.
+      // Stop iterations if no suitable column are found.
       if (changeIndex < 0) { N=k; break; }
 
       // Move the column just found to next position.
@@ -2157,7 +2157,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       }
     }
 
-    // Compute beta, sigma, and vector u[k].
+    // Box 4: Compute beta, sigma, and vector u[k].
     num_t beta, hh;
     { hh = 0;
       for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,k);
@@ -2167,7 +2167,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       beta = 1 / (A(k,k) * sigma);
     }
 
-    // Transform remaining columns of A.
+    // Box 5: Transform remaining columns of A.
     for (idx_t j=k+1; j < n; ++j) {
       hh = 0;
       for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,j);
@@ -2175,26 +2175,26 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       for (idx_t i=k; i < m; ++i) A(i,j) -= A(i,k) * hh;
     }
 
-    // Transform vector b.
+    // Box 6: Transform vector b.
     hh = 0;
     for (idx_t i=k; i < m; ++i) hh += A(i,k) * B[i];
     hh *= beta;
     for (idx_t i=k; i < m; ++i) B[i] -= A(i,k) * hh;
 
-    // Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
+    // Box 3: Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
     for (idx_t j=k+1; j < n; ++j) {
       sqr[j] -= A(k,j) * A(k,j);
       dot[j] -= A(k,j) * B[k];
     }
 
-    // Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
+    // Box 7: Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
     for (idx_t i=k; i >= 0; --i) {
       X[i] = B[i];
       for (idx_t j=i+1; j <= k; ++j) X[i] -= A(i,j) * X[j];
       X[i] /= sqr[i];
     }
 
-    // Compute original residual vector by backward transformation.
+    // Box 8: Compute original residual vector by backward transformation.
     mad_vec_copy(B, R, m);
     for (idx_t j=k; j >= 0; --j) {
       R[j] = hh = 0;
@@ -2203,7 +2203,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       for (idx_t i=j; i < m; ++i) R[i] += A(i,j) * hh;
     }
 
-    // Check for convergence.
+    // Box 9: Check for convergence.
     num_t e = sqrt(mad_vec_dot(R, R, m) / m);
     if (e <= tol) { N=k+1; break; }
   }
