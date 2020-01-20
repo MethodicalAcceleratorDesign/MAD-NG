@@ -61,6 +61,8 @@ int    mad_mat_gsolve   (const  num_t a[], const  num_t b[], const  num_t  c[], 
                                                                     num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_);
 int    mad_mat_gmsolve  (const  num_t a[], const  num_t b[], const  num_t  d[],
                                                   num_t x[],        num_t  y[], ssz_t m, ssz_t n, ssz_t p);
+int    mad_mat_pcacnd   (const  num_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[]);
+int    mad_mat_svdcnd   (const  num_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol);
 int    mad_mat_svd      (const  num_t x[], num_t u[], num_t s[],    num_t  v[], ssz_t m, ssz_t n);                       //  u * s * v.t
 int    mad_mat_eigen    (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],          ssz_t n);                       //  w, vl, vr
 void   mad_mat_fft      (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  mat ->cmat

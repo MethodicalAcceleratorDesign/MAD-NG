@@ -36,6 +36,7 @@ void   mad_vec_copy   (const  num_t x[],                          num_t  r[], ss
 void   mad_vec_copyv  (const  num_t x[],                         cnum_t  r[], ssz_t n); //  vec ->cvec
 void   mad_vec_cvec   (const  num_t x[], const  num_t y[],       cnum_t  r[], ssz_t n); // vr,vi->cvec
 void   mad_vec_minmax (const  num_t x[],       log_t abs       ,  idx_t  r[], ssz_t n); // MinMax(vec)
+num_t  mad_vec_abs    (const  num_t x[],                          num_t  r[], ssz_t n); // Sum and |vec_i|
 num_t  mad_vec_eval   (const  num_t x[],        num_t x0,                     ssz_t n); // Horner scheme
 num_t  mad_vec_sum    (const  num_t x[],                                      ssz_t n); // Sum(vec)
 num_t  mad_vec_ksum   (const  num_t x[],                                      ssz_t n); // Sum(vec) (Kahan)
@@ -80,6 +81,7 @@ void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], ss
 void   mad_cvec_vec   (const cnum_t x[],             num_t re[], num_t  ri[], ssz_t n); //  cvec->vr,vi
 void   mad_cvec_conj  (const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec*
 void   mad_cvec_minmax(const cnum_t x[],                          idx_t  r[], ssz_t n); // MinMax(vec)
+num_t  mad_cvec_abs   (const cnum_t x[],                          num_t  r[], ssz_t n); // Sum and |cvec_i|
 cnum_t mad_cvec_eval  (const cnum_t x[],       cnum_t x0,                     ssz_t n); // Horner scheme
 void   mad_cvec_eval_r(const cnum_t x[],num_t x0_re,num_t x0_im, cnum_t *r  , ssz_t n);
 cnum_t mad_cvec_sum   (const cnum_t x[],                                      ssz_t n); // Sum(vec)

@@ -61,6 +61,15 @@ void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], ssz_t n)
   else        for (idx_t i=0; i < n; i++) r[i] = CNUM(0   ,y[i]);
 }
 
+num_t mad_vec_abs (const num_t x[], num_t r_[], ssz_t n)
+{ CHKX; num_t s=0;
+  if (r_)
+    for (idx_t i=0; i < n; i++) r_[i] = fabs(x[i]), s += r_[i];
+  else
+    for (idx_t i=0; i < n; i++) s    += fabs(x[i]);
+  return s;
+}
+
 num_t mad_vec_sum (const num_t x[], ssz_t n)
 { CHKX; num_t r=0; for (idx_t i=0; i < n; i++) r += x[i]; return r; }
 
@@ -327,6 +336,15 @@ void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
                                             ri[i]=cimag(x[i]);
   else if (re)  for (idx_t i=0; i < n; i++) re[i]=creal(x[i]);
   else          for (idx_t i=0; i < n; i++) ri[i]=cimag(x[i]);
+}
+
+num_t mad_cvec_abs (const cnum_t x[], num_t r_[], ssz_t n)
+{ CHKX; num_t s=0;
+  if (r_)
+    for (idx_t i=0; i < n; i++) r_[i] = cabs(x[i]), s += r_[i];
+  else
+    for (idx_t i=0; i < n; i++) s    += cabs(x[i]);
+  return s;
 }
 
 void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)

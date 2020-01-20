@@ -16,9 +16,11 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <math.h>
+#include <float.h>
 #include <complex.h>
 #include <assert.h>
 
@@ -33,7 +35,7 @@
 #if 0
 #include <stdio.h>
 
-static void
+static void __attribute__((unused))
 mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
@@ -44,7 +46,7 @@ mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
   }
 }
 
-static void
+static void __attribute__((unused))
 iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
@@ -1972,24 +1974,69 @@ svddec_(num_t svdmat[], num_t umat[], num_t vmat[],
         /* sizes and output */
         int *im, int *ic, int *iflag, int sing[]);
 
+static void
+vec_sort (num_t v[], idx_t c[], ssz_t n)
+{
+  num_t tr;
+  idx_t ti;
+
+  // Set indexes.
+  for (idx_t i=0; i < n; i++) c[i] = i;
+
+  // Sort values by ascending order.
+  for (idx_t i=1; i < n; i++)
+  for (idx_t j=i; j > 0; j--)
+    if (v[j-1] > v[j]) {
+      SWAP(v[j-1], v[j], tr);
+      SWAP(c[j-1], c[j], ti);
+    }
+}
+
+static ssz_t
+ivec_sort (idx_t v[], ssz_t n, log_t rmdup)
+{
+  idx_t ti;
+
+  // Sort indexes by ascending order.
+  for (idx_t i=1; i < n; i++)
+  for (idx_t j=i; j > 0; j--)
+    if (v[j-1] > v[j]) SWAP(v[j-1], v[j], ti);
+
+  // Remove duplicates.
+  if (rmdup) {
+    idx_t k = 1;
+    for (idx_t i=1; i < n; i++)
+      if (v[k-1] < v[i]) v[k++] = v[i];
+    return k;
+  }
+
+  return n;
+}
+
 static int // madx legacy code wrapper
-madx_svdcnd (const num_t a[], idx_t sing[], ssz_t m, ssz_t n, num_t scut, num_t sval)
+madx_svdcnd (const num_t a[], idx_t c[], ssz_t m, ssz_t n, num_t scut, num_t s_[], num_t sval)
 {
   /* copy buffers */
   mad_alloc_tmp(num_t, A  , m*n);
   mad_alloc_tmp(num_t, U  , m*n);
   mad_alloc_tmp(num_t, V  , n*n);
-  mad_alloc_tmp(num_t, S  , n);
+  mad_alloc_tmp(num_t, S  , n  );
   /* working buffers */
-  mad_alloc_tmp(num_t, W  , n);
-  mad_alloc_tmp(idx_t, srt, n);
+  mad_alloc_tmp(num_t, W  , n  );
+  mad_alloc_tmp(idx_t, srt, n  );
+  mad_alloc_tmp(idx_t, sng, 2*n);
 
   mad_mat_trans(a, A, m, n);
 
-  num_t sngcut=scut, sngval=sval;
-  int im=m, ic=n, flag=0;
+  int im=m, ic=n, nc=0;
 
-  svddec_(A, U, V, S, W, srt, &sngcut, &sngval, &im, &ic, &flag, sing);
+  svddec_(A, U, V, W, S, srt, &scut, &sval, &im, &ic, &nc, sng);
+
+  // Backup singular values.
+  if (s_) mad_vec_copy(S, s_, MIN(m,n));
+
+  // Backup indexes of columns to remove.
+  for (idx_t i=0; i < nc; i++) c[i] = sng[2*i];
 
   /* copy buffers */
   mad_free_tmp(A);
@@ -1999,8 +2046,121 @@ madx_svdcnd (const num_t a[], idx_t sing[], ssz_t m, ssz_t n, num_t scut, num_t 
   /* working buffers */
   mad_free_tmp(W);
   mad_free_tmp(srt);
+  mad_free_tmp(sng);
 
-  return flag;
+  // Return sorted indexes of columns to remove.
+  return ivec_sort(c, nc, true);
+}
+
+int // Matrix preconditionning using SVD, return indexes of columns to remove.
+mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
+               ssz_t N, num_t cut, num_t s_[], num_t tol)
+{
+  assert(a && c);
+
+  // X-check with MAD-X SVD cond (where N = n-5)
+  if (mad_use_madx_svdcnd) {
+    return madx_svdcnd(a, c, m, n, cut, s_, 1/tol);
+  }
+
+  ssz_t mn = MIN(m,n);
+
+  mad_alloc_tmp(num_t, U, m*m);
+  mad_alloc_tmp(num_t, V, n*n);
+  mad_alloc_tmp(num_t, S, mn );
+
+  int info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) return -1;
+
+  // Backup singular values.
+  if (s_) mad_vec_copy(S, s_, mn);
+
+  // N == 0 means to check for all singular values.
+  if (N > mn || N <= 0) N = mn;
+
+  // Tolerance on components similarity in V columns.
+  if (tol < DBL_EPSILON) tol = DBL_EPSILON;
+
+  // Number of columns to remove.
+  idx_t nc = 0;
+
+#define V(i,j) V[(i)*n+(j)]
+
+  // Loop over increasing singular values.
+  for (idx_t i=mn-1; i >= mn-N; i--) {
+
+    // Singular value is large, stop checking.
+    if (S[i] >= cut) break;
+
+    // Loop over rows of V (i.e. columns of V^T)
+    for (idx_t j=0  ; j < n-1; j++)
+    for (idx_t k=j+1; k < n  ; k++) {
+      num_t vj = fabs(V(j,i));
+
+      // Proceed only significant component for this singular value.
+      if (vj > 1e-4) {
+        num_t vk  = fabs(V(k,i));
+        num_t rat = fabs(vj-vk)/(vj+vk);
+
+        // Discard column j with similar (or opposite) effect of column k > j.
+        if (rat <= tol) {
+          c[nc++] = j; // can hold duplicated indexes...
+          if (nc == n) goto finalize; // c is full...
+        }
+      }
+    }
+  }
+
+#undef V
+
+finalize:
+
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+
+  // Return sorted indexes of columns to remove.
+  return ivec_sort(c, nc, true);
+}
+
+int // Matrix reconditionning using SVD.
+mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+{
+  assert(a);
+  ssz_t mn = MIN(m,n);
+
+  mad_alloc_tmp(num_t, U, m*m);
+  mad_alloc_tmp(num_t, V, n*n);
+  mad_alloc_tmp(num_t, S, mn );
+  mad_alloc_tmp(num_t, P, n  );
+
+  int info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) return -1;
+
+  // Backup singular values.
+  if (s_) mad_vec_copy(S, s_, mn);
+
+  // N <= 0 means keep all columns.
+  if (N > n || N <= 0) N = n;
+
+  // Cut <= 0 means keep all singular values.
+  for (idx_t i=0; i < N; i++)
+    if (S[i] <= cut) { N=i; break; }
+
+  // Compute projections on Principal Components, i.e. S V.
+  mad_vec_abs(V, V, N*n);
+  mad_mat_mul(S, V, P, 1, n, N);
+
+  // Sort projections by ascending order.
+  vec_sort(P, c, n);
+
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+  mad_free_tmp(P);
+
+  // Return sorted indexes of columns to remove.
+  return ivec_sort(c, n-N, false);
 }
 
 static int // madx legacy code wrapper
@@ -2084,6 +2244,8 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // No correctors.
   if (n == 0) return 0;
 
+  if (tol < DBL_EPSILON) tol = DBL_EPSILON;
+
   // Checks if tolerance is already reached.
   { num_t e = sqrt(mad_vec_dot(b, b, m) / m);
     if (e <= tol) return 0;
@@ -2122,7 +2284,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
         hh += A(i,k) * A(i,k);  // corrector effectiveness versus measured orbit
         gg += A(i,k) * B[i];    // corrector effectiveness versus target   orbit
       }
-      sum   += hh; // was += sum;
+      sum   += hh;
       sqr[k] = hh;
       dot[k] = gg;
     }
