@@ -2163,6 +2163,48 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut,
   return ivec_sort(c, n-N, false);
 }
 
+int // Matrix reconditionning using SVD.
+mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+{
+  assert(a);
+  ssz_t mn = MIN(m,n);
+
+  mad_alloc_tmp(cnum_t, U, m*m);
+  mad_alloc_tmp(cnum_t, V, n*n);
+  mad_alloc_tmp( num_t, R, n*n);
+  mad_alloc_tmp( num_t, S, mn );
+  mad_alloc_tmp( num_t, P, n  );
+
+  int info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) return -1;
+
+  // Backup singular values.
+  if (s_) mad_vec_copy(S, s_, mn);
+
+  // N <= 0 means keep all columns.
+  if (N > n || N <= 0) N = n;
+
+  // Cut <= 0 means keep all singular values.
+  for (idx_t i=0; i < N; i++)
+    if (S[i] <= cut) { N=i; break; }
+
+  // Compute projections on Principal Components, i.e. S V.
+  mad_cvec_abs(V, R, N*n);
+  mad_mat_mul (S, R, P, 1, n, N);
+
+  // Sort projections by ascending order.
+  vec_sort(P, c, n);
+
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(R);
+  mad_free_tmp(S);
+  mad_free_tmp(P);
+
+  // Return sorted indexes of columns to remove.
+  return ivec_sort(c, n-N, false);
+}
+
 static int // madx legacy code wrapper
 madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
              ssz_t N, num_t tol, num_t r_[])
