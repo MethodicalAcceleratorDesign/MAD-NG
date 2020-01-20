@@ -21,7 +21,7 @@ subroutine micit(cin, res, nx, rms, im, ic, iter, ny, ax, cinx, &
     double precision :: ax(im,ic), cinx(ic), xinx(im), resx(im), rho(3*ic), ptop(ic)
     double precision :: rmss(ic), xrms(ic), xptp(ic), xiter(ic)
 
-!    integer :: j
+    integer :: j
 
     integer :: i, ny(ic)
     double precision :: rms, rm
@@ -37,11 +37,11 @@ subroutine micit(cin, res, nx, rms, im, ic, iter, ny, ax, cinx, &
     XINX(:im) = XIN(:im)
     RESX(:im) = zero
 
-!  write(*,'("A[",i2,"x",i2,"]=")') im, ic
-!  do i=1,im ; write(*,'(1x,10f9.5)') (a(i,j),j=1,ic) ; enddo
-!
-!  write(*,'("B[",i2,"x",i2,"]=")') im, 1
-!  write(*,'(1x,10f9.5)') (xin(j),j=1,im)
+  write(*,'("A[",i2,"x",i2,"]=")') im, ic
+  do i=1,im ; write(*,'(1x,10f9.5)') (a(i,j),j=1,ic) ; enddo
+
+  write(*,'("B[",i2,"x",i2,"]=")') im, 1
+  write(*,'(1x,10f9.5)') (xin(j),j=1,im)
 
     rm = sqrt(dot_product(XINX,XINX)/float(im))
     if(rm.le.rms) then
@@ -61,14 +61,14 @@ subroutine micit(cin, res, nx, rms, im, ic, iter, ny, ax, cinx, &
     RES(:im) = RESX(:im)
     NX(NY(1:ic)) = (/ (i, i = 1, ic) /) ! NX(NY(i)) = i
 
-!  write(*,'("X[",i2,"x",i2,"]=")') ic, 1
-!  write(*,'(1x,10f9.5)') (cin(j),j=1,ic)
-!
-!  write(*,'("NY[",i2,"x",i2,"]=")') ic, 1
-!  write(*,'(1x,10i3)') (ny(i),i=1,ic)
-!
-!  write(*,'("NX[",i2,"x",i2,"]=")') ic, 1
-!  write(*,'(1x,10i3)') (nx(i),i=1,ic)
+  write(*,'("X[",i2,"x",i2,"]=")') ic, 1
+  write(*,'(1x,10f9.5)') (cin(j),j=1,ic)
+
+  write(*,'("NY[",i2,"x",i2,"]=")') ic, 1
+  write(*,'(1x,10i3)') (ny(i),i=1,ic)
+
+  write(*,'("NX[",i2,"x",i2,"]=")') ic, 1
+  write(*,'(1x,10i3)') (nx(i),i=1,ic)
 
     return
 
@@ -377,24 +377,42 @@ subroutine svddec(svdmat, umat, vmat, ws, wvec, sortw, &
     ! SVDMAT(:im,:ic) = A(:im,:ic)
 
     call prepsvd(im, ic, svdmat, wvec, umat, vmat, errflag, ws)
-    if (errflag .ne. 0) write(*,*) 'end SVD with error code: ',errflag
+    if (errflag .ne. 0) then
+      write(*,*) 'end SVD with error code: ',errflag
+      iflag = -1
+      return
+    endif
 
-    call rvord(wvec,sortw,ws,ic)
+    call rvord(wvec,sortw,ws,ic) ! useless, SV are already sorted...
+
+  write(*,'("V[",i2,"x",i2,"]=")') ic, ic
+  do i=1,ic ; write(*,'(1x,10f9.5)') (vmat(i,j),j=1,ic) ; enddo
+
+  write(*,'("S[",i2,"x",i2,"]=")') ic, 1
+  write(*,'(1x,10f9.5)') (wvec(i),i=1,ic)
+
+  write(*,'("W[",i2,"x",i2,"]=")') ic, 1
+  write(*,'(1x,10i3)') (sortw(i),i=1,ic)
+
+  write(*,'(" nc=",i3,", sngcut=",f9.5,", sngval=",f9.5)') min(nsing,ic), sngcut, sngval
 
     iflag = 0
     do  ii = 1, min(nsing,ic)
        i = sortw(ii)
-       if ( abs(wvec(i)) .lt. sngval) then
+!  write(*,'(" wvec(i)=",f9.5,", i=",i3)') wvec(i), i
+       if ( abs(wvec(i)) .lt. sngcut) then
            do  j = 1, ic-1
               do  jj = j+1, ic
 
+!  write(*,'(" vmat(j,i)=",f9.5,", j=",i3)') vmat(j,i), j
                  if( abs(vmat(j,i)) .gt. 1.0d-4) then
                     rat = abs(vmat(j,i)) + abs(vmat(jj,i))
                     rat = rat/abs(abs(vmat(j,i)) - abs(vmat(jj,i)))
 
-                    if (rat .gt. sngcut) then
+!  write(*,'(" rat=",f9.5, ", 1/rat=",f9.5)') rat, 1/rat
+                    if (rat .gt. sngval) then
                        if (iflag .lt. ic) then
-                          iflag = iflag + 1
+                          iflag = iflag + 1 ! recorded indexes are C indexes!
                           sing(1,iflag) =  j - 1
                           sing(2,iflag) = jj - 1
                        endif
@@ -406,6 +424,9 @@ subroutine svddec(svdmat, umat, vmat, ws, wvec, sortw, &
            enddo
         endif
      enddo
+
+  write(*,'("C[",i2,"x",i2,"]=")') iflag, 1
+  write(*,'(1x,10i3)') (sing(1,i),i=1,iflag)
 
 !******************************************************************************!
   CONTAINS
@@ -454,7 +475,7 @@ subroutine rvord(inv,outv,ws,n)
      ! subroutine to sort the indexes of elements stored in input vector INV
      ! in reverse order in output vector OUTV.
      ! WS is a workspace vector, N is the dimension of the vectors.
-     ! Supposition that INV contains positive numbers only!
+     ! Supposition that INV contains positive numbers only! LD: ok since S_i > 0
      integer  :: n
      double precision  ::  inv(n), ws(n)
      integer  :: outv(n)
