@@ -27,7 +27,8 @@ local M = {}
 
 local object                                       in MAD
 local is_nil, is_number, is_table, is_object       in MAD.typeid
-local test_flag, set_flag, clear_flag              in object
+local fbit, fset, tobit                            in MAD.operator
+local set_flag, clear_flag, test_flag              in object
 
 local _nyi
 
@@ -36,8 +37,7 @@ local _nyi
 local Element = object 'element' {
   kind='element', is_element=true,
   l=0, lrad=0, angle=0, tilt=0, e1=0, e2=0,                  -- number required!
-  f1=0, f2=0, h1=0, h2=0, hgap=0, fint=0,                    -- number required!
-  fintx=false,
+  f1=0, f2=0, h1=0, h2=0, hgap=0, fint=0, fintx=false,       -- number required!
   k0 =false, k1 =false, k2 =false, k3 =false, k4 =false, k5 =false,
   k0s=false, k1s=false, k2s=false, k3s=false, k4s=false, k5s=false,
   knl={}, ksl={}, dknl={}, dksl={}, dknlr={}, dkslr={}, radius=false, -- *r NYI
@@ -59,26 +59,52 @@ end
 -- flags ----------------------------------------------------------------------o
 
 M.flags = {
-  selected = Element.first_free_flag,
-  implicit = Element.first_free_flag+1,               -- inherited from object
-  observe  = Element.first_free_flag+2,
-  layout   = Element.first_free_flag+3,
-  layangle = Element.first_free_flag+4,
-}
+  -- general
+  selected = fbit(0),
 
-Element.first_free_flag = Element.first_free_flag+5   -- overridden in Element
+  -- monitors & kickers (e.g. orbit correction)
+  enabled  = fbit(1),
+
+  -- survey, track, twiss
+  observe  = fbit(2),
+
+  -- implicit elements (e.g. implicit drifts)
+  implicit = fbit(3),
+
+  -- plot layout
+  layout   = fbit(4),
+  layangle = fbit(5),
+
+  -- bits 6..29 are free
+
+  -- reserved (i.e. object model)
+  reserved1 = fbit(30),
+  reserved2 = fbit(31),
+
+  -- fringe fields (elements fringe attribute)
+  fringe = {
+    std    = fset(fbit(0),fbit(1)),
+    bend   = fbit(0),
+    mult   = fbit(1),
+    qsad   = fbit(2),
+    rfcav  = fbit(0),
+    sadstd = fset(fbit(0),fbit(1),fbit(2)),
+    all    = tobit(-1)
+  }
+}
 
 -- members --------------------------------------------------------------------o
 
-local implicit, observe, selected in M.flags
+local selected, enabled, implicit, observe, fringe in M.flags
 
 Element :set_methods {
   is_selected = \s,f ->  test_flag(s, f or selected),
   select      = \s,f ->   set_flag(s, f or selected),
   deselect    = \s,f -> clear_flag(s, f or selected),
   -- specializations
-  is_implicit = \s   ->  test_flag(s, implicit),
+  is_enabled  = \s   ->  test_flag(s, enabled ),
   is_observed = \s   ->  test_flag(s, observe ),
+  is_implicit = \s   ->  test_flag(s, implicit),
 
 } :set_metamethods ({
   -- identity
@@ -103,8 +129,8 @@ M. thin_element = Element  'thin_element' { is_thin    = true }
 M.drift_element = Element 'drift_element' { is_drift   = true }
 M.thick_element = Element 'thick_element' { is_thick   = true }
 M.patch_element = Element 'patch_element' { is_patch   = true }
-M.specl_element = Element 'specl_element' { is_special = true }
 M.extra_element = Element 'extra_element' { is_extra   = true }
+M.specl_element = Element 'specl_element' { is_special = true }
 
 -- assembler elements
 
@@ -120,25 +146,24 @@ M.slink       = M.specl_element 'slink'        { }
 -- drift elements
 
 M.drift       = M.drift_element 'drift'        { }
-M.monitor     = M.drift_element 'monitor'      { }
 M.collimator  = M.drift_element 'collimator'   { }
 M.instrument  = M.drift_element 'instrument'   { }
 M.placeholder = M.drift_element 'placeholder'  { }
 
 -- thick elements
 
-M.sbend       = M.thick_element 'sbend'        { fringe=2 }
-M.rbend       = M.thick_element 'rbend'        { fringe=2, true_rbend=false }
-M.quadrupole  = M.thick_element 'quadrupole'   { }
-M.sextupole   = M.thick_element 'sextupole'    { }
-M.octupole    = M.thick_element 'octupole'     { }
-M.decapole    = M.thick_element 'decapole'     { }
-M.dodecapole  = M.thick_element 'dodecapole'   { }
-M.solenoid    = M.thick_element 'solenoid'     { ks=0, ksi=0 }
-M.tkicker     = M.thick_element 'tkicker'      { hkick=0, vkick=0 }
-M.wiggler     = M.thick_element 'wiggler'      { _nyi }
-M.elseparator = M.thick_element 'elseparator'  { ex=0, ey=0, exl=0, eyl=0 }
-M.rfcavity    = M.thick_element 'rfcavity'     { volt=0, freq=0, lag=0, harmon=0, n_bessel=0, no_cavity_totalpath=false }
+M.sbend       = M.thick_element 'sbend'        { fringe=fringe.std }
+M.rbend       = M.thick_element 'rbend'        { fringe=fringe.std, true_rbend=false }
+M.quadrupole  = M.thick_element 'quadrupole'   { fringe=fringe.std }
+M.sextupole   = M.thick_element 'sextupole'    { fringe=fringe.std }
+M.octupole    = M.thick_element 'octupole'     { fringe=fringe.std }
+M.decapole    = M.thick_element 'decapole'     { fringe=fringe.std }
+M.dodecapole  = M.thick_element 'dodecapole'   { fringe=fringe.std }
+M.solenoid    = M.thick_element 'solenoid'     { fringe=fringe.std, ks=0, ksi=0 }
+M.tkicker     = M.thick_element 'tkicker'      { fringe=fringe.std, hkick=0, vkick=0 }
+M.wiggler     = M.thick_element 'wiggler'      { fringe=fringe.std, _nyi }
+M.elseparator = M.thick_element 'elseparator'  { fringe=fringe.std, ex=0, ey=0, exl=0, eyl=0 }
+M.rfcavity    = M.thick_element 'rfcavity'     { fringe=fringe.std, volt=0, freq=0, lag=0, harmon=0, n_bessel=0, totalpath=true }
 M.generic     = M.thick_element 'generic'      { damap=nil, nslice=1 }
 
 -- thin elements
@@ -161,6 +186,7 @@ M.changenrj   = M.patch_element 'changenrj'    { }
 M.rfmultipole = M.rfcavity      'rfmultipole'  { } -- no pnl, psl support yet
 M.crabcavity  = M.rfmultipole   'crabcavity'   { _nyi } -- needed?
 
+M.monitor     = M.instrument     'monitor'     { }
 M.hmonitor    = M.monitor       'hmonitor'     { }
 M.vmonitor    = M.monitor       'vmonitor'     { }
 
