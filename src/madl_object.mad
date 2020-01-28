@@ -27,7 +27,7 @@
 local is_nil, is_boolean, is_number, is_string, is_table, is_rawtable,
       is_function, is_functor, is_metaname, is_callable, is_iterable,
       is_mappable                                               in MAD.typeid
-local tobit, bset, btst, bclr, bnot, band, bor, lshift, eq      in MAD.operator
+local fbit, fnot, fset, fcut, fclr, ftst                        in MAD.operator
 local bsearch, lsearch, kpairs, openfile, assertf, errorf       in MAD.utility
 local functor                                                   in MAD.gfunc
 
@@ -48,11 +48,14 @@ local object
 -- object kind
 local _id = {} -- unique identifier
 
--- reserved flags (bits)
-local BZ     = tobit(0) -- all zero bits
-local flg_ro = tobit(0) -- flag id for readonly
-local flg_cl = tobit(1) -- flag id ofr class
-local flg_free = 2      -- used flags (0 - 1), free flags (2 - 31)
+-- object flags (protected)
+local oflg = {
+  readonly = fbit(30),
+  class    = fbit(31),
+
+  rocls    = fset(fbit(30),fbit(31)),
+  protect  = fnot(fset(fbit(30),fbit(31))),
+}
 
 -- instance and metatable of 'incomplete objects' proxy
 local var0 = setmetatable({}, {
@@ -66,7 +69,7 @@ local var0 = setmetatable({}, {
 local cachelookup = false -- MAD.option.omcachelookup
 local cachemethod = false -- MAD.option.omcachemethod
 
-local flg_cls = cachelookup and bset(bset(0, flg_ro), flg_cl) or bset(0, flg_cl)
+local flg_cls = cachelookup and oflg.rocls or oflg.class
 
 -- helpers --------------------------------------------------------------------o
 
@@ -86,15 +89,15 @@ local function name (a)
 end
 
 local function fclass (a)
-  return btst(a.__flg, flg_cl)
+  return ftst(a.__flg, oflg.class)
 end
 
 local function freadonly (a)
-  return btst(a.__flg, flg_ro)
+  return ftst(a.__flg, oflg.readonly)
 end
 
 local function set_class (a)
-  a.__flg = bor(a.__flg, flg_cls)
+  a.__flg = fset(a.__flg, flg_cls)
   return a
 end
 
@@ -143,10 +146,10 @@ if cachemethod then          -- object model with cached methods
     if type(a) == 'string' or type(a) == 'nil' then       -- [un]named object
       a = a or self.__id
       if type(b) == 'nil' then
-        local obj = {__id=a, __flg=BZ, __var=var0, __mth=var0, __index=self.__var}
+        local obj = {__id=a, __flg=0, __var=var0, __mth=var0, __index=self.__var}
         return setmetatable(obj, getmetatable(self))      -- incomplete object
       elseif is_rawtable(b) then
-        local obj = {__id=a, __flg=BZ, __var=b, __mth=self.__mth, __index=self.__var}
+        local obj = {__id=a, __flg=0, __var=b, __mth=self.__mth, __index=self.__var}
         setmetatable(b, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -157,7 +160,7 @@ if cachemethod then          -- object model with cached methods
         self.__mth = par.__mth                            -- set shared methods
         return init(self)
       else                                                -- unnamed object
-        local obj = {__id=self.__id, __flg=BZ, __var=a, __mth=self.__mth, __index=self.__var}
+        local obj = {__id=self.__id, __flg=0, __var=a, __mth=self.__mth, __index=self.__var}
         setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -171,10 +174,10 @@ else -- default              -- object model
     if type(a) == 'string' or type(a) == 'nil' then       -- [un]named object
       a = a or self.__id
       if type(b) == 'nil' then
-        local obj = {__id=a, __flg=BZ, __var=var0, __index=self.__var} -- proxy
+        local obj = {__id=a, __flg=0, __var=var0, __index=self.__var} -- proxy
         return setmetatable(obj, getmetatable(self))      -- incomplete object
       elseif is_rawtable(b) then
-        local obj = {__id=a, __flg=BZ, __var=b, __index=self.__var}-- proxy
+        local obj = {__id=a, __flg=0, __var=b, __index=self.__var}-- proxy
         setmetatable(b, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -184,7 +187,7 @@ else -- default              -- object model
         set_class(parent(self))
         return init(self)
       else                                                -- unnamed object
-        local obj = {__id=self.__id, __flg=BZ, __var=a, __index=self.__var}-- proxy
+        local obj = {__id=self.__id, __flg=0, __var=a, __index=self.__var}-- proxy
         setmetatable(a, obj) ; set_class(self)            -- set fast inheritance
         return init(setmetatable(obj, getmetatable(self)))-- complete object
       end
@@ -328,8 +331,8 @@ end
 function MF:set_readonly (set_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   if set_ ~= false
-  then self.__flg = bset(self.__flg, flg_ro)
-  else self.__flg = bclr(self.__flg, flg_ro)
+  then self.__flg = fset(self.__flg, oflg.readonly)
+  else self.__flg = fclr(self.__flg, oflg.readonly)
   end
   return self
 end
@@ -621,55 +624,28 @@ MT.__copy = MF.copy
 
 -- flags
 
-local flg_mask = lshift(-1, flg_free)
-local flg_notmask = bnot(flg_mask)
-
-function MF:test_flag (n)
+function MF:get_flag ()
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(n)   , "invalid argument #2 (number expected)")
-  return btst(self.__flg, n)
+  return fcut(self.__flg, oflg.protect)
 end
 
-function MF:set_flag (n)
+function MF:test_flag (flgs)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(n)   , "invalid argument #2 (number expected)")
-  if n >= flg_free then
-    self.__flg = bset(self.__flg, n)
-  end
+  assert(is_number(flgs), "invalid argument #2 (number expected)")
+  return ftst(self.__flg, fcut(flgs, oflg.protect))
+end
+
+function MF:set_flag (flgs)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_number(flgs), "invalid argument #2 (number expected)")
+  self.__flg = fset(self.__flg, fcut(flgs, oflg.protect))
   return self
 end
 
-function MF:clear_flag (n)
+function MF:clear_flag (flgs)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(n)   , "invalid argument #2 (number expected)")
-  if n >= flg_free then
-    self.__flg = bclr(self.__flg, n)
-  end
-  return self
-end
-
-function MF:get_flags ()
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  return self.__flg
-end
-
-function MF:test_flags (flags)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_number(flags), "invalid argument #2 (number expected)")
-  return band(self.__flg, flags) ~= 0
-end
-
-function MF:set_flags (flags)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_number(flags), "invalid argument #2 (number expected)")
-  self.__flg = bor(self.__flg, band(flags, flg_mask))
-  return self
-end
-
-function MF:clear_flags (flags)
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_number(flags), "invalid argument #2 (number expected)")
-  self.__flg = band(self.__flg, bnot(band(flags, flg_mask)))
+  assert(is_number(flgs), "invalid argument #2 (number expected)")
+  self.__flg = fclr(self.__flg, fcut(flgs, oflg.protect))
   return self
 end
 
@@ -798,7 +774,6 @@ end
 local MV = {}
 
 MV.__par = parent
-MV.first_free_flag = flg_free
 
 -- aliases
 MV.parent = parent
@@ -816,11 +791,11 @@ MAD.typeid.is_instanceOf = is_instanceOf
 
 -- add variables, methods and metamethods, and set as readonly
 if cachemethod then
-  object = setmetatable({__id='object', __flg=BZ, __var=MV, __mth=MF, __index={}}, MT)
+  object = setmetatable({__id='object', __flg=0, __var=MV, __mth=MF, __index={}}, MT)
              :set_readonly()
 else
   object = MF.set_methods(
-           setmetatable({__id='object', __flg=BZ, __var=MV, __index={}}, MT), MF)
+           setmetatable({__id='object', __flg=0, __var=MV, __index={}}, MT), MF)
              :set_readonly()
 end
 
