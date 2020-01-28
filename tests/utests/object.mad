@@ -29,6 +29,7 @@ local assertNil, assertTrue, assertFalse, assertEquals, assertNotEquals,
 
 local object       in MAD
 local functor      in MAD.gfunc
+local fbit         in MAD.operator
 local is_number, is_function, is_table, is_object, is_class, is_instanceOf,
       is_functor   in MAD.typeid
 
@@ -376,24 +377,24 @@ function TestObject:testSetGetFlags()
   local p3 = object
   local p00 = p0 'p00' {}
 
-  assertEquals(p0:set_flags(-1), p0)
-  assertEquals(p1:set_flags(-1), p1)
-  assertEquals(p2:set_flags(-1), p2)
-  assertEquals(p3:set_flags(-1), p3)
+  assertEquals(p0:set_flag(-1), p0)
+  assertEquals(p1:set_flag(-1), p1)
+  assertEquals(p2:set_flag(-1), p2)
+  assertEquals(p3:set_flag(-1), p3)
 
-  local tobit in MAD.operator
-  assertEquals(p0:get_flags(), tobit(0xfffffffe)) -- object (class+        )
-  assertEquals(p1:get_flags(), tobit(0xfffffffc)) -- object (     +        )
-  assertEquals(p2:get_flags(), tobit(0xfffffffd)) -- object (     +readonly)
-  assertEquals(p3:get_flags(), tobit(0xffffffff)) -- object (class+readonly)
+  -- new: get_flag does not return bits 30..31 state
+  assertEquals(p0:get_flag(), 0x3fffffff) -- object (class+        )
+  assertEquals(p1:get_flag(), 0x3fffffff) -- object (     +        )
+  assertEquals(p2:get_flag(), 0x3fffffff) -- object (     +readonly)
+  assertEquals(p3:get_flag(), 0x3fffffff) -- object (class+readonly)
 
   -- no inheritance
-  p0:set_flags(-1)
-  assertEquals(p00:get_flags(), 0)
-  p00:set_flags(0)
-  assertNotEquals(p0:get_flags(), 0)
+  p0:set_flag(-1)
+  assertEquals(p00:get_flag(), 0)
+  p00:set_flag(1)
+  assertNotEquals(p0:get_flag(), 1)
   local p01 = p0 'p00' {}
-  assertNotEquals(p01:get_flags(), p0:get_flags())
+  assertNotEquals(p01:get_flag(), p0:get_flag())
 end
 
 function TestObjectErr:testSetGetFlags()
@@ -403,14 +404,14 @@ function TestObjectErr:testSetGetFlags()
   }
 
   for i=1,#objectErr+1 do
-    assertErrorMsgContains(_msg[1], p0.set_flags, objectErr[i])
-    assertErrorMsgContains(_msg[1], p0.get_flags, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.set_flag, objectErr[i])
+    assertErrorMsgContains(_msg[1], p0.get_flag, objectErr[i])
   end
-  assertErrorMsgContains(msg[1], p0.set_flags, p0, nil)
-  assertErrorMsgContains(msg[1], p0.set_flags, p0, true)
-  assertErrorMsgContains(msg[1], p0.set_flags, p0, "")
-  assertErrorMsgContains(msg[1], p0.set_flags, p0, {})
-  assertErrorMsgContains(msg[1], p0.set_flags, p0, \ ())
+  assertErrorMsgContains(msg[1], p0.set_flag, p0, nil)
+  assertErrorMsgContains(msg[1], p0.set_flag, p0, true)
+  assertErrorMsgContains(msg[1], p0.set_flag, p0, "")
+  assertErrorMsgContains(msg[1], p0.set_flag, p0, {})
+  assertErrorMsgContains(msg[1], p0.set_flag, p0, \ ())
 end
 
 function TestObject:testClearSetTestFlag()
@@ -422,21 +423,23 @@ function TestObject:testClearSetTestFlag()
   assertFalse(p0:test_flag(2))
   assertFalse(p1:test_flag(2))
   assertFalse(p2:test_flag(2))
-  for i=2, 31 do
-    assertFalse(p0:test_flag(i))
-    p0:set_flag(i)
-    assertTrue(p0:test_flag(i))
-    p0:clear_flag(i)
-    assertFalse(p0:test_flag(i))
+  for i=0,29 do
+    local f = fbit(i)
+    assertFalse(p0:test_flag(f))
+    p0:set_flag(f)
+    assertTrue(p0:test_flag(f))
+    p0:clear_flag(f)
+    assertFalse(p0:test_flag(f))
   end
 
   -- no inheritance
-  p0:set_flag(2)
-  assertFalse(p00:test_flag(2))
-  p00:clear_flag(2)
-  assertTrue(p0:test_flag(2))
+  local f = fbit(2)
+  p0:set_flag(f)
+  assertFalse(p00:test_flag(f))
+  p00:clear_flag(f)
+  assertTrue(p0:test_flag(f))
   local p01 = p0 'p00' {}
-  assertFalse(p01:test_flag(2))
+  assertFalse(p01:test_flag(f))
 end
 
 function TestObject:testValueSemantic()
@@ -952,8 +955,8 @@ end
 function TestObject:testGetVarKeys()
   local p0 = object 'p0' { x=1, y=2, z:=3 }
   local p1 = p0 'p1' { x=-1, y={} }
-  local r  = {"first_free_flag", "name", "parent"}
-  local r2 = {"first_free_flag", "name", "parent", 'x','y','z'}
+  local r  = {"name", "parent"}
+  local r2 = {"name", "parent", 'x','y','z'}
 
   local t = object:get_varkeys()   table.sort(t) assertEquals (t, r ) -- object not excluded
   t = p0:get_varkeys()             table.sort(t) assertEquals (t, r2)
