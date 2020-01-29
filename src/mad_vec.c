@@ -542,8 +542,14 @@ void mad_ivec_copyv (const idx_t x[], num_t r[], ssz_t n)
 { CHKXR; if (x > (idx_t*)r) for (idx_t i=0; i <  n; i++) r[  i] = x[  i];
   else   if (x < (idx_t*)r) for (idx_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
 
+void mad_ivec_add (const idx_t x[], const idx_t y[], idx_t r[], ssz_t n)
+{ CHKXYR; for (idx_t i=0; i < n; i++) r[i] = x[i] + y[i]; }
+
 void mad_ivec_addn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
 { CHKXR; for (idx_t i=0; i < n; i++) r[i] = x[i] + y; }
+
+void mad_ivec_sub (const idx_t x[], const idx_t y[], idx_t r[], ssz_t n)
+{ CHKXYR; for (idx_t i=0; i < n; i++) r[i] = x[i] - y[i]; }
 
 void mad_ivec_subn (const idx_t y[], idx_t x, idx_t r[], ssz_t n)
 { CHKYR; for (idx_t i=0; i < n; i++) r[i] = x - y[i]; }
