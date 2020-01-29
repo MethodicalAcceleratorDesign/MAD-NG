@@ -131,6 +131,7 @@ void   mad_ivec_shift (       idx_t x[],                                      ss
 void   mad_ivec_roll  (       idx_t x[],                                      ssz_t n, int nroll);
 void   mad_ivec_copy  (const  idx_t x[],                          idx_t  r[], ssz_t n); // ivec ->ivec
 void   mad_ivec_copyv (const  idx_t x[],                          num_t  r[], ssz_t n); // ivec -> vec
+void   mad_ivec_minmax(const  idx_t x[],       log_t abs       ,  idx_t  r[], ssz_t n); // MinMax(ivec)
 void   mad_ivec_addn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec +  num
 void   mad_ivec_subn  (const  idx_t y[],        idx_t x        ,  idx_t  r[], ssz_t n); //  idx - ivec
 void   mad_ivec_muln  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec *  num

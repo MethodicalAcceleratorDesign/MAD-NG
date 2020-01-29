@@ -580,3 +580,23 @@ void mad_ivec_roll (idx_t x[], ssz_t n, int nroll)
   }
   mad_free_tmp(a);
 }
+
+void mad_ivec_minmax(const idx_t x[], log_t absf, idx_t r[2], ssz_t n)
+{ CHKXR; idx_t v[2];
+  r[0] = r[1] = 0;
+  if (absf) {
+    v[0] = v[1] = abs(x[0]);
+    for (idx_t i=1; i < n; i++) {
+      idx_t a = abs(x[i]);
+           if (a < v[0]) v[0]=a, r[0]=i;
+      else if (a > v[1]) v[1]=a, r[1]=i;
+    }
+  } else {
+    v[0] = v[1] = x[0];
+    for (idx_t i=1; i < n; i++) {
+      idx_t a = x[i];
+           if (a < v[0]) v[0]=a, r[0]=i;
+      else if (a > v[1]) v[1]=a, r[1]=i;
+    }
+  }
+}
