@@ -402,7 +402,7 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
   }
 
 // [m x n] transpose
-#define TRANS(C,T) { \
+#define TRANS(T,C) { \
   if (m == 1 || n == 1) { \
     if (x != r || I != C(I)) { \
       idx_t mn = m*n; \
@@ -442,6 +442,12 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
     r[i*ldr+j] OP##= x; \
 }
 
+#define SEQ(OP) { \
+  for (idx_t i=0; i<m; i++) \
+  for (idx_t j=0; j<n; j++) \
+    r[i*ldr+j] OP##= (i*ldr+j)+x; \
+}
+
 #define DIAG(OP) { \
   for (idx_t i=0; i<MIN(m,n); i++) \
     r[i*ldr+i] OP##= x; \
@@ -455,6 +461,9 @@ void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
 void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; num_t x = 0; SET(); x = v; DIAG(); }
 
+void mad_mat_seq (num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; SEQ(); }
+
 void mad_mat_fill (num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; SET(); }
 
@@ -465,7 +474,7 @@ void mad_mat_copym (const num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ss
 { CHKXR; CPY(); }
 
 void mad_mat_trans (const num_t x[], num_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(,num_t); }
+{ CHKXR; TRANS(num_t,); }
 
 void mad_mat_dot (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n)
 { CHKXYR; DOT(); }
@@ -599,6 +608,12 @@ void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; CNUM(v); cnum_t x = 0; SET(); x = v; DIAG(); }
 
+void mad_cmat_seq (cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; SEQ(); }
+
+void mad_cmat_seq_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; CNUM(x); SEQ(); }
+
 void mad_cmat_fill (cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; SET(); }
 
@@ -612,10 +627,10 @@ void mad_cmat_copy (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, s
 { CHKXRX; CPY(); }
 
 void mad_cmat_trans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(,cnum_t); }
+{ CHKXR; TRANS(cnum_t,); }
 
 void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(conj,cnum_t); }
+{ CHKXR; TRANS(cnum_t,conj); }
 
 void mad_cmat_dot (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
 { CHKXYR; DOT(conj); }
@@ -713,6 +728,29 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
       for (idx_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
     }
 }
+
+// --- imat
+
+void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
+{ assert(x); x->nr = m; x->nc = n; }
+
+void mad_imat_eye (idx_t v, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
+
+void mad_imat_seq (idx_t x, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; SEQ(); }
+
+void mad_imat_fill (idx_t x, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; SET(); }
+
+void mad_imat_copy (const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+{ CHKXRX; CPY(); }
+
+void mad_imat_copym (const idx_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+{ CHKXR; CPY(); }
+
+void mad_imat_trans (const idx_t x[], idx_t r[], ssz_t m, ssz_t n)
+{ CHKXR; TRANS(idx_t,); }
 
 // -- Symplectic matrices -----------------------------------------------------o
 

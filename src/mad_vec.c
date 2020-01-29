@@ -43,6 +43,9 @@
 void mad_vec_zero (num_t r[], ssz_t n)
 { CHKR; for (idx_t i=0; i < n; i++) r[i] = 0; }
 
+void mad_vec_seq (num_t x, num_t r[], ssz_t n)
+{ CHKR; for (idx_t i=0; i < n; i++) r[i] = i+x; }
+
 void mad_vec_fill (num_t x, num_t r[], ssz_t n)
 { CHKR; for (idx_t i=0; i < n; i++) r[i] = x; }
 
@@ -315,6 +318,12 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
 void mad_cvec_zero (cnum_t r[], ssz_t n)
 { CHKR; for (idx_t i=0; i < n; i++) r[i] = 0; }
 
+void mad_cvec_seq (cnum_t x, cnum_t r[], ssz_t n)
+{ CHKR; for (idx_t i=0; i < n; i++) r[i] = i+x; }
+
+void mad_cvec_seq_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+{ mad_cvec_seq(CNUM(x_re,x_im), r, n); }
+
 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
 { CHKR; for (idx_t i=0; i < n; i++) r[i] = x; }
 
@@ -496,3 +505,60 @@ void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_
   }
 }
 
+// --- ivec
+
+void mad_ivec_zero (idx_t r[], ssz_t n)
+{ CHKR; for (idx_t i=0; i < n; i++) r[i] = 0; }
+
+void mad_ivec_seq (idx_t x, idx_t r[], ssz_t n)
+{ CHKR; for (idx_t i=0; i < n; i++) r[i] = i+x; }
+
+void mad_ivec_fill (idx_t x, idx_t r[], ssz_t n)
+{ CHKR; for (idx_t i=0; i < n; i++) r[i] = x; }
+
+void mad_ivec_copy (const idx_t x[], idx_t r[], ssz_t n)
+{ CHKXR; if (x > r) for (idx_t i=0; i <  n; i++) r[  i] = x[  i];
+  else   if (x < r) for (idx_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
+
+void mad_ivec_copyv (const idx_t x[], num_t r[], ssz_t n)
+{ CHKXR; if (x > (idx_t*)r) for (idx_t i=0; i <  n; i++) r[  i] = x[  i];
+  else   if (x < (idx_t*)r) for (idx_t i=1; i <= n; i++) r[n-i] = x[n-i]; }
+
+void mad_ivec_addn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
+{ CHKXR; for (idx_t i=0; i < n; i++) r[i] = x[i] + y; }
+
+void mad_ivec_subn (const idx_t y[], idx_t x, idx_t r[], ssz_t n)
+{ CHKYR; for (idx_t i=0; i < n; i++) r[i] = x - y[i]; }
+
+void mad_ivec_muln (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
+{ CHKXR; for (idx_t i=0; i < n; i++) r[i] = x[i] * y; }
+
+void mad_ivec_divn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
+{ CHKXR; for (idx_t i=0; i < n; i++) r[i] = x[i] + y; }
+
+void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
+{ CHKXR; for (idx_t i=0; i < n; i++) r[i] = x[i] % y; }
+
+void mad_ivec_shift (idx_t x[], ssz_t n, int nshft)
+{ CHKX;
+  if (nshft > 0) mad_ivec_copy(x, x+nshft, n-nshft); // shift x down (or right)
+  else
+  if (nshft < 0) mad_ivec_copy(x-nshft, x, n+nshft); // shift x up (or left)
+}
+
+void mad_ivec_roll (idx_t x[], ssz_t n, int nroll)
+{ CHKX; nroll %= n;
+  ssz_t nsz = abs(nroll);
+  mad_alloc_tmp(idx_t, a, nsz);
+  if (nroll > 0) {
+    mad_ivec_copy(x+n-nsz, a    ,   nsz); // end of x to a
+    mad_ivec_copy(x      , x+nsz, n-nsz); // shift x down (or right)
+    mad_ivec_copy(a      , x    ,   nsz); // a to beginning of x
+  } else
+  if (nroll < 0) {
+    mad_ivec_copy(x    , a      ,   nsz); // beginning of x to a
+    mad_ivec_copy(x+nsz, x      , n-nsz); // shift x up (or left)
+    mad_ivec_copy(a    , x+n-nsz,   nsz); // a to end of x
+  }
+  mad_free_tmp(a);
+}

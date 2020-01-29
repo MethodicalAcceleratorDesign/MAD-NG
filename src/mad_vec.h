@@ -29,6 +29,7 @@
 // --- interface --------------------------------------------------------------o
 
 void   mad_vec_zero   (                                           num_t  r[], ssz_t n); //  0   -> vec
+void   mad_vec_seq    (                         num_t x        ,  num_t  r[], ssz_t n); //  seq -> vec
 void   mad_vec_fill   (                         num_t x        ,  num_t  r[], ssz_t n); //  num -> vec
 void   mad_vec_shift  (       num_t x[],                                      ssz_t n, int nshft);
 void   mad_vec_roll   (       num_t x[],                                      ssz_t n, int nroll);
@@ -73,6 +74,8 @@ void   mad_vec_nfft   (const  num_t x[], const num_t x_node[]  , cnum_t  r[], ss
 void   mad_vec_center (const  num_t x[],                          num_t  r[], ssz_t n); //  vec -> vec-<vec>
 
 void   mad_cvec_zero  (                                          cnum_t  r[], ssz_t n); //  0    ->cvec
+void   mad_cvec_seq   (                        cnum_t x        , cnum_t  r[], ssz_t n); //  cnum ->cvec
+void   mad_cvec_seq_r (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t n); //  seq  ->cvec
 void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], ssz_t n); //  cnum ->cvec
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t n); //  cnum ->cvec
 void   mad_cvec_shift (      cnum_t x[],                                      ssz_t n, int nshft);
@@ -120,6 +123,19 @@ void   mad_cvec_ifft  (const cnum_t x[],                         cnum_t  r[], ss
 void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], ssz_t n); //  cvec -> vec
 void   mad_cvec_infft (const cnum_t x[], const num_t r_node[]  , cnum_t  r[], ssz_t n, ssz_t nx);
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec-<cvec>
+
+void   mad_ivec_zero  (                                           idx_t  r[], ssz_t n); //  0   -> ivec
+void   mad_ivec_seq   (                         idx_t x        ,  idx_t  r[], ssz_t n); //  seq  ->ivec
+void   mad_ivec_fill  (                         idx_t x        ,  idx_t  r[], ssz_t n); //  idx -> ivec
+void   mad_ivec_shift (       idx_t x[],                                      ssz_t n, int nshft);
+void   mad_ivec_roll  (       idx_t x[],                                      ssz_t n, int nroll);
+void   mad_ivec_copy  (const  idx_t x[],                          idx_t  r[], ssz_t n); // ivec ->ivec
+void   mad_ivec_copyv (const  idx_t x[],                          num_t  r[], ssz_t n); // ivec -> vec
+void   mad_ivec_addn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec +  num
+void   mad_ivec_subn  (const  idx_t y[],        idx_t x        ,  idx_t  r[], ssz_t n); //  idx - ivec
+void   mad_ivec_muln  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec *  num
+void   mad_ivec_divn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec /  num
+void   mad_ivec_modn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n); // ivec %  num
 
 // global fft cleanup
 void   mad_fft_cleanup (void);
