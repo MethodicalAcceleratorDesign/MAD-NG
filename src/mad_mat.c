@@ -752,6 +752,39 @@ void mad_imat_copym (const idx_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ss
 void mad_imat_trans (const idx_t x[], idx_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(idx_t,); }
 
+void
+mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+{ CHKX; mroll %= m; nroll %= n;
+  ssz_t nm = n*m, msz = n*abs(mroll), nsz = abs(nroll);
+  ssz_t sz = msz > nsz ? msz : nsz;
+  mad_alloc_tmp(idx_t, a, sz);
+  if (mroll > 0) {
+    mad_ivec_copy(x+nm-msz, a    ,    msz); // end of x to a
+    mad_ivec_copy(x       , x+msz, nm-msz); // shift x down
+    mad_ivec_copy(a       , x    ,    msz); // a to beginning of x
+  } else
+  if (mroll < 0) {
+    mad_ivec_copy(x    , a       ,    msz); // beginning of x to a
+    mad_ivec_copy(x+msz, x       , nm-msz); // shift x up
+    mad_ivec_copy(a    , x+nm-msz,    msz); // a to end of x
+  }
+  if (nroll > 0) {
+    for (ssz_t i=0; i < nm; i += n) {
+      mad_ivec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
+      mad_ivec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
+      mad_ivec_copy(a        , x+i    ,   nsz); // a to beginning of x
+    }
+  } else
+  if (nroll < 0) {
+    for (ssz_t i=0; i < nm; i += n) {
+      mad_ivec_copy(x+i    , a        ,   nsz); // beginning of x to a
+      mad_ivec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
+      mad_ivec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
+    }
+  }
+  mad_free_tmp(a);
+}
+
 // -- Symplectic matrices -----------------------------------------------------o
 
 // M[2n x 2n] accessed as n blocks of [a b ; c d]
