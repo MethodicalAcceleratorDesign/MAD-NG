@@ -26,15 +26,8 @@
 
 #include "mad_defs.h"
 
-// --- types ------------------------------------------------------------------o
-
-struct  matrix { ssz_t nr, nc;  num_t data[]; };
-struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
-struct imatrix { ssz_t nr, nc;  idx_t data[]; };
-
 // --- interface --------------------------------------------------------------o
 
-void   mad_mat_reshape  (struct matrix *x                                     , ssz_t m, ssz_t n);
 void   mad_mat_eye      (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye -> mat
 void   mad_mat_seq      (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  seq -> mat
 void   mad_mat_fill     (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  num -> mat
@@ -75,7 +68,6 @@ void   mad_mat_sympconj (const  num_t x[],                          num_t  r[], 
 num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  M' J M - J
 num_t  mad_mat_vdot     (const  num_t x[], idx_t xs, const  num_t y[], idx_t ys,         ssz_t n);                       // <mat[i], mat[j]>
 
-void   mad_cmat_reshape (struct cmatrix *x                                    , ssz_t m, ssz_t n);
 void   mad_cmat_eye     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->cmat
 void   mad_cmat_eye_r   (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->cmat
 void   mad_cmat_seq     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr); //  seq  ->cmat
@@ -122,7 +114,6 @@ cnum_t mad_cmat_vdotm   (const cnum_t x[], idx_t xs, const  num_t y[], idx_t ys,
 void   mad_cmat_vdot_r  (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, cnum_t *r, ssz_t n);
 void   mad_cmat_vdotm_r (const cnum_t x[], idx_t xs, const  num_t y[], idx_t ys, cnum_t *r, ssz_t n);
 
-void   mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n);
 void   mad_imat_eye     (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr); //  eye  ->imat
 void   mad_imat_seq     (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr); //  seq  ->imat
 void   mad_imat_fill    (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr); //  idx  ->imat
@@ -161,8 +152,20 @@ void   mad_mat_torotq (const num_t x[], num_t q[], log_t inv);
 void   mad_mat_rtbar    (      num_t Rb[],       num_t Tb[], num_t el, num_t ang, num_t tlt,
                          const num_t R_[], const num_t T []);
 
-// nsolve special flag
+// special flags
 extern int mad_use_madx_micado;
+extern int mad_use_madx_svdcnd;
+
+// matrix functions -----------------------------------------------------------o
+
+struct  matrix;
+struct cmatrix;
+struct imatrix;
+
+// unsafe functions, assume that matrices reshaped sizes are valid (no check!).
+void   mad_mat_reshape  (struct matrix  *x, ssz_t m, ssz_t n);
+void   mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n);
+void   mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n);
 
 // ----------------------------------------------------------------------------o
 

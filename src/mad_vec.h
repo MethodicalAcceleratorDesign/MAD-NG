@@ -145,6 +145,18 @@ void   mad_fft_cleanup (void);
 // polygon check for containing a point (winding number algo)
 log_t  mad_pol_inside (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n);
 
+// vector functions -----------------------------------------------------------o
+
+struct  matrix;
+struct cmatrix;
+struct imatrix;
+
+// unsafe functions, assume that matrices have been reshaped to smaller sizes.
+void   mad_vec_append   (struct matrix  *x,     num_t y);
+void   mad_cvec_append  (struct cmatrix *x,    cnum_t y);
+void   mad_cvec_append_r(struct cmatrix *x, num_t y_re, num_t y_im);
+void   mad_ivec_append  (struct imatrix *x,     idx_t y);
+
 // ----------------------------------------------------------------------------o
 
 #endif // MAD_VEC_H

@@ -38,6 +38,24 @@
 #define SQR(a)      ((a)*(a))
 #define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
+// --- vector, cvector, ivector
+
+struct  matrix { ssz_t nr, nc;  num_t data[]; };
+struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
+struct imatrix { ssz_t nr, nc;  idx_t data[]; };
+
+void mad_vec_append (struct matrix *x, num_t v)
+{ CHKX; if (x->nc == 1) x->data[x->nr++] = v; else x->data[x->nc++] = v; }
+
+void mad_ivec_append (struct imatrix *x, idx_t v)
+{ CHKX; if (x->nc == 1) x->data[x->nr++] = v; else x->data[x->nc++] = v; }
+
+void mad_cvec_append (struct cmatrix *x, cnum_t v)
+{ CHKX; if (x->nc == 1) x->data[x->nr++] = v; else x->data[x->nc++] = v; }
+
+void mad_cvec_append_r (struct cmatrix *x, num_t v_re, num_t v_im)
+{ CHKX; mad_cvec_append(x, CNUM(v_re, v_im)); }
+
 // --- vec
 
 void mad_vec_zero (num_t r[], ssz_t n)

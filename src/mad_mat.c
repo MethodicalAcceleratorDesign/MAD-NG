@@ -29,7 +29,6 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-
 // --- helpers for debug ------------------------------------------------------o
 
 #if 0
@@ -69,6 +68,21 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define CHKXRX   assert( x && r && x != r)
 
 #define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
+
+// --- matrix, cmatrix, imatrix
+
+struct  matrix { ssz_t nr, nc;  num_t data[]; };
+struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
+struct imatrix { ssz_t nr, nc;  idx_t data[]; };
+
+void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
+{ CHKX; x->nr = m; x->nc = n; }
+
+void mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n)
+{ CHKX; x->nr = m; x->nc = n; }
+
+void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
+{ CHKX; x->nr = m; x->nc = n; }
 
 // -----
 
@@ -455,9 +469,6 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 
 // --- mat
 
-void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
-{ assert(x); x->nr = m; x->nc = n; }
-
 void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; num_t x = 0; SET(); x = v; DIAG(); }
 
@@ -599,9 +610,6 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
 // -- cmat
 
-void mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n)
-{ assert(x); x->nr = m; x->nc = n; }
-
 void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; cnum_t x = 0; SET(); x = v; DIAG(); }
 
@@ -730,9 +738,6 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 }
 
 // --- imat
-
-void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
-{ assert(x); x->nr = m; x->nc = n; }
 
 void mad_imat_eye (idx_t v, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
