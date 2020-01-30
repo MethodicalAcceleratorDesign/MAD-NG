@@ -24,13 +24,14 @@
 -- locals ---------------------------------------------------------------------o
 
 -- to check!
-local warn, option, vector, matrix, command, track               in MAD
-local bind1st                                                    in MAD.gfunc
-local has_dpt, vname, msort                                      in MAD.gphys
-local rep, tblcat, tblorder, errorf, assertf, printf             in MAD.utility
-local eps                                                        in MAD.constant
+local warn, option, vector, matrix, command, element            in MAD
+local bind1st                                                   in MAD.gfunc
+local has_dpt, vname, msort                                     in MAD.gphys
+local rep, assertf, printf                                      in MAD.utility
+local eps                                                       in MAD.constant
 local is_number, is_positive, is_boolean, is_true, is_iterable,
-      is_mappable                                                in MAD.typeid
+      is_mappable, is_mtable, is_sequence                       in MAD.typeid
+local enabled                                                   in element.flags
 
 local abs, min, max in math
 
@@ -41,27 +42,68 @@ local assert, error, getmetatable, setmetatable, table =
 -- {"dx","dy","ds","dphi","dtheta","dpsi","mrex","mrey","mredx","mredy","arex","arey","mscalx","mscaly"}
 --   0    1    2    3      4        5      6      7      8       9       10     11     12       13
 
+-- response matrix ------------------------------------------------------------o
+
+local fct_aij = {
+  line = function (beti, betj, phai, phaj)
+    return phai < phaj and sqrt(beti*betj) * sin(abs(phai-phaj)) or 0
+  end,
+
+  ring = function (beti, betj, phai, phaj, Q)
+    return sqrt(beti*betj) * cos(abs(phai-phaj) - pi*Q) / (2*sin(pi*Q))
+  end,
+}
+
 -- correct command ------------------------------------------------------------o
 
-local target0 = { b1={x=rep(0), y=rep(0)}, b2={x=rep(0), y=rep(0)} }
+local target0 = {{ x=rep(0), px=rep(0), y=rep(0), py=rep(0) },
+                 { x=rep(0), px=rep(0), y=rep(0), py=rep(0) }}
 
 local function exec (self)
-  local model, orbit, target in self
+  local model, orbit, target, kind in self
+  local sequ = self.sequence
+  local E = element
 
-  if is_rawtable(model) then
-    model = { b1=model }
+  if is_sequence(sequ) then sequ, range = {sequ}, {range} end
+  if is_mtable(model)  then model  = {model}  end
+  orbit, target = orbit or model, target or target0
+  if is_mtable(orbit)  then orbit  = {orbit}  end
+  if is_mtable(target) then target = {target} end
+
+  local grp = { n = #sequ }
+
+  -- collect enabled correctors and monitors of beamline(s)
+  for k=1,grp.n do
+    assert(is_sequence(sequ [k]), "invalid sequence (sequence expected)")
+    assert(is_mtable  (model[k]) and model[k].type == 'twiss',
+                                  "invalid model mtable (twiss mtable expected)")
+    assert(is_mtable  (orbit[k]), "invalid orbit mtable (mtable expected)")
+
+    grp[k] = { seq=sequ[k], rng=range[k], tbl=model[k], mon={n=0}, cor={n=0}, shr={n=0} }
+
+    local seq, rng, tbl, mon, cor in grp[k]
+    local kind in tbl
+
+    for i, e in seq:iter(rng) do
+      if e:test_flag(enabled) then
+            if E[e.kind].is_monitor then mon[mon.n+1], mon.n = i, mon.n+1
+        elseif E[e.kind].is_kicker  then cor[cor.n+1], cor.n = i, cor.n+1 end
+      end
+    end
+
+    -- find shared correctors between consecutive beamlines (if any)
+    if k > 1 then
+      local pseq, pshr = grp[k-1].seq, grp[k-1].shr
+      for i=1,cor.n do
+        local nam = seq[cor[i]].name
+        local j = pseq:index_of(nam)
+        if j then
+          asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
+          pshr[j] = cor[i]
+        end
+      end
+    end
   end
-
-  orbit  = orbit  or model   -- reuse model orbit if not provided
-  target = target or target0 -- use target zero orbit if not provided
-
-  assert(is_mtable(model.b1) and model.b1.type == 'twiss',
-                              "invalid model mtable (twiss mtable expected)")
-  assert(is_mtable(orbit.b1), "invalid orbit mtable (mtable expected)")
-
-  for idx,row in model:iter(range) do
-  end
-
 
   -- for each planes:
   --   collect monitors and correctors on one or two tables
@@ -72,11 +114,12 @@ local function exec (self)
 end
 
 local correct = command 'correct' {
+  sequence=nil,      -- sequence(s) (required)                            (corr)
+  range=nil,         -- sequence(s) range(s)                              (corr)
+
   model=nil,         -- mtable(s) with twiss functions (required)         (corr)
   orbit=nil,         -- mtable(s) with measured orbit(s), or use model    (corr)
   target=nil,        -- mtable(s) with target orbit(s), or zero orbit     (corr)
-  range=nil,         -- mtable(s) range(s) to rectrict mtable(s)          (corr)
-  sequence=nil,      -- sequence(s) used to update kickers                (corr)
 
   kind='ring',       -- 'line' or 'ring'                                  (corr)
   plane='xy',        -- 'x', 'y' or 'xy'                                  (corr)
