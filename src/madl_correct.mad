@@ -42,9 +42,20 @@ local assert, error, getmetatable, setmetatable, table =
 -- {"dx","dy","ds","dphi","dtheta","dpsi","mrex","mrey","mredx","mredy","arex","arey","mscalx","mscaly"}
 --   0    1    2    3      4        5      6      7      8       9       10     11     12       13
 
+-- planes ---------------------------------------------------------------------o
+
+local planes = { x = {'x'}, y = {'y'}, xy = {'x', 'y'} }
+
+-- reference orbit ------------------------------------------------------------o
+
+local target0 = {{ x=rep(0), px=rep(0), y=rep(0), py=rep(0) },
+                 { x=rep(0), px=rep(0), y=rep(0), py=rep(0) }}
+
 -- response matrix ------------------------------------------------------------o
 
-local fct_aij = {
+-- TODO: add dispersion correction
+
+local aij_fct = {
   line = function (beti, betj, phai, phaj)
     return phai < phaj and sqrt(beti*betj) * sin(abs(phai-phaj)) or 0
   end,
@@ -56,11 +67,8 @@ local fct_aij = {
 
 -- correct command ------------------------------------------------------------o
 
-local target0 = {{ x=rep(0), px=rep(0), y=rep(0), py=rep(0) },
-                 { x=rep(0), px=rep(0), y=rep(0), py=rep(0) }}
-
 local function exec (self)
-  local model, orbit, target, kind in self
+  local model, orbit, target, kind, plane in self
   local sequ = self.sequence
   local E = element
 
@@ -70,43 +78,81 @@ local function exec (self)
   if is_mtable(orbit)  then orbit  = {orbit}  end
   if is_mtable(target) then target = {target} end
 
-  local grp = { n = #sequ }
+  local grp = { nseq=#sequ, nxcor=0, nxmon=0, nycor=0, nymon=0 }
 
-  -- collect enabled correctors and monitors of beamline(s)
-  for k=1,grp.n do
+  for k=1,grp.nseq do -- loop over sequences
     assert(is_sequence(sequ [k]), "invalid sequence (sequence expected)")
     assert(is_mtable  (model[k]) and model[k].type == 'twiss',
                                   "invalid model mtable (twiss mtable expected)")
     assert(is_mtable  (orbit[k]), "invalid orbit mtable (mtable expected)")
 
-    grp[k] = { seq=sequ[k], rng=range[k], tbl=model[k], mon={n=0}, cor={n=0}, shr={n=0} }
+    grp[k] = { seq=sequ[k], rng=range[k], tbl=model[k],
+               xmon={n=0}, xcor={n=0}, xshr={n=0},
+               ymon={n=0}, ycor={n=0}, yshr={n=0} }
 
-    local seq, rng, tbl, mon, cor in grp[k]
-    local kind in tbl
+    local seq, rng, tbl, xmon, ymon, xcor, ycor in grp[k]
 
+    -- collect enabled correctors and monitors of beamline(s)
     for i, e in seq:iter(rng) do
       if e:test_flag(enabled) then
-            if E[e.kind].is_monitor then mon[mon.n+1], mon.n = i, mon.n+1
-        elseif E[e.kind].is_kicker  then cor[cor.n+1], cor.n = i, cor.n+1 end
+        local knd = e.kind
+        if E[knd].is_kicker or E[knd].is_monitor then
+              if kind == 'hmonitor' then
+            xmon[xmon.n+1], xmon.n = i, xmon.n+1
+          elseif kind == 'vmonitor' then
+            ymon[ymon.n+1], ymon.n = i, ymon.n+1
+          elseif kind == 'hkicker' or kind == 'kicker' then
+            xcor[xcor.n+1], xcor.n = i, xcor.n+1
+          elseif kind == 'vkicker' or kind == 'kicker' then
+            ycor[ycor.n+1], ycor.n = i, ycor.n+1
+          end
       end
     end
+
+    grp.nxmon = grp.nxmon + xmon.n
+    grp.nymon = grp.nymon + ymon.n
+    grp.nxcor = grp.nxcor + xcor.n
+    grp.nycor = grp.nycor + ycor.n
 
     -- find shared correctors between consecutive beamlines (if any)
     if k > 1 then
-      local pseq, pshr = grp[k-1].seq, grp[k-1].shr
-      for i=1,cor.n do
-        local nam = seq[cor[i]].name
-        local j = pseq:index_of(nam)
-        if j then
-          asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
-          pshr[j] = cor[i]
+      local pseq = grp[k-1].seq
+
+      if plane == 'x' or plane == 'xy' then
+        local pshr = grp[k-1].xshr
+        for i=1,xcor.n do
+          local nam = seq[xcor[i]].name
+          local j = pseq:index_of(nam)
+          if j then
+            asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
+            pshr[j], pshr.n = xcor[i], pshr.n+1
+          end
         end
+        grp.nxcor = grp.nxcor - pshr.n
       end
-    end
+
+      if plane == 'y' or plane == 'xy' then
+        local pshr = grp[k-1].yshr
+        for i=1,ycor.n do
+          local nam = seq[ycor[i]].name
+          local j = pseq:index_of(nam)
+          if j then
+            asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
+            pshr[j], pshr.n = ycor[i], pshr.n+1
+          end
+        end
+        grp.nycor = grp.nycor - pshr.n
+      end
+    end -- shared sequences
+  end -- loop over sequences
+
+  -- build matrix for each plane
+  for i,p in ipairs(planes[plane]) do
+    local A = matrix()
+    -- TODO
   end
 
   -- for each planes:
-  --   collect monitors and correctors on one or two tables
   --   build response matrix for ring or line for one or two tables
   --   solve the least squared minimum.
   --   reassign the strength to the kickers in the sequences (if provided)
