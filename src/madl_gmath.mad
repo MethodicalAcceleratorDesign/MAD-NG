@@ -209,19 +209,21 @@ struct rng_state {
 };
 ]]
 
-local    randgen = ffi.typeof 'rng_state_t'
-local is_randgen = \a -> istype(randgen, a)
+local rng_ctor = ffi.typeof 'struct rng_state'
+local rng_sz   = ffi.sizeof 'struct rng_state'
+
+local is_randgen = \a -> istype(rng_ctor, a)
 
 local randseed = \r,x  => _C.mad_num_randseed(r, x or 0); r.x=nan; return r end
 local randjump = \r,r_ => _C.mad_num_randjump(r, r_)    ; r.x=nan; return r end
 
-local gref = randseed(ffi.new 'rng_state_t') -- reference stream
-local grng = randseed(ffi.new 'rng_state_t') -- global generator
+local gref = randseed(rng_ctor()) -- reference stream
+local grng = randseed(rng_ctor()) -- global generator
 
 local function randnewgen ()
-  local rng = ffi.new 'rng_state_t'
+  local rng = rng_ctor()
   rng.id = gref.id + 1
-  ffi.copy(gref, randjump(rng, gref), ffi.sizeof 'rng_state_t')
+  ffi.copy(gref, randjump(rng, gref), rng_sz)
   return rng
 end
 
@@ -232,12 +234,10 @@ local function randsetgen (rng)
 end
 
 local function rand (rng)
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   return _C.mad_num_rand(rng)
 end
 
 local function randi (rng)
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   return _C.mad_num_randi(rng)
 end
 
@@ -305,11 +305,10 @@ local rng_mt = set_concept({
   __tostring = \r -> string.format("RNG: %p", r),
 }, not_mappable + not_extendable + not_mutable)
 
-ffi.metatype('rng_state_t', rng_mt)
+ffi.metatype('struct rng_state', rng_mt)
 
 -- gmath ----------------------------------------------------------------------o
 
-gmath.is_randgen = is_randgen
 gmath.randnewgen = randnewgen
 gmath.randsetgen = randsetgen
 
@@ -322,7 +321,7 @@ gmath.randseed = \seed -> grng:randseed(seed)
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_randgen = gmath.is_randgen
+MAD.typeid.is_randgen = is_randgen
 
 gmath = wrestrict(setmetatable(gmath, {__tostring := "MAD.gmath"}))
 
