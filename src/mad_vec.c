@@ -94,6 +94,15 @@ num_t mad_vec_abs (const num_t x[], num_t r_[], ssz_t n)
 num_t mad_vec_sum (const num_t x[], ssz_t n)
 { CHKX; num_t r=0; for (idx_t i=0; i < n; i++) r += x[i]; return r; }
 
+num_t mad_vec_mean (const num_t x[], ssz_t n)
+{ CHKX; return mad_vec_sum(x,n)/n; }
+
+num_t mad_vec_var (const num_t x[], ssz_t n)
+{ num_t xb = mad_vec_mean(x,n);
+  num_t r=0; for (idx_t i=0; i < n; i++) r += SQR(x[i]-xb);
+  return sqrt(r/n);
+}
+
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; for (idx_t i=0; i < n; i++) r += x[i] * y[i]; return r; }
 
@@ -380,6 +389,24 @@ void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
 cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n)
 { CHKX; cnum_t r=0; for (idx_t i=0; i < n; i++) r += x[i]; return r; }
 
+void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n)
+{ CHKXR; *r = mad_cvec_sum(x, n); }
+
+cnum_t mad_cvec_mean (const cnum_t x[], ssz_t n)
+{ CHKX; return mad_cvec_sum(x,n)/n; }
+
+void mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n)
+{ CHKXR; *r = mad_cvec_mean(x, n); }
+
+cnum_t mad_cvec_var (const cnum_t x[], ssz_t n)
+{ cnum_t xb = mad_cvec_mean(x,n);
+  cnum_t r=0; for (idx_t i=0; i < n; i++) r += SQR(x[i]-xb);
+  return csqrt(r/n);
+}
+
+void mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
+{ CHKXR; *r = mad_cvec_var(x, n); }
+
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n)
 { CHKXY; cnum_t r=0; for (idx_t i=0; i < n; i++) r += conj(x[i])*y[i]; return r; }
 
@@ -492,9 +519,6 @@ void mad_cvec_minmax(const cnum_t x[], idx_t r[], ssz_t n)
     else if (a > v[1]) v[1]=a, r[1]=i;
   }
 }
-
-void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n)
-{ CHKXR; *r = mad_cvec_sum(x, n); }
 
 void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n)
 { assert(a && x && r);
