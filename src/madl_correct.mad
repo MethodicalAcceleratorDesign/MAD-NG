@@ -25,12 +25,14 @@
 
 -- to check!
 local warn, option, vector, matrix, command, element            in MAD
-local bind1st                                                   in MAD.gfunc
+local rand                                                      in MAD.gmath
+local ftrue, bind1st                                            in MAD.gfunc
 local has_dpt, vname, msort                                     in MAD.gphys
 local rep, assertf, printf                                      in MAD.utility
 local eps                                                       in MAD.constant
-local is_number, is_positive, is_boolean, is_true, is_iterable,
-      is_mappable, is_mtable, is_sequence                       in MAD.typeid
+local is_boolean, is_true, is_number, is_positive, is_integer,
+      is_iterable, is_mappable, is_callable, is_mtable,
+      is_sequence                                               in MAD.typeid
 local enabled                                                   in element.flags
 
 local abs, min, max in math
@@ -38,125 +40,239 @@ local abs, min, max in math
 local assert, error, getmetatable, setmetatable, table =
       assert, error, getmetatable, setmetatable, table
 
--- MAD-X EALIGN slots in p_node->p_al_err->a
--- {"dx","dy","ds","dphi","dtheta","dpsi","mrex","mrey","mredx","mredy","arex","arey","mscalx","mscaly"}
---   0    1    2    3      4        5      6      7      8       9       10     11     12       13
+-- collect monitors and correctors from sequences and models ------------------o
 
--- planes ---------------------------------------------------------------------o
+local planes = {
+  x = { nam='x', bet='beta11', mu='mu1', nu='q1',
+        mon={hmonitor=true, monitor=true}, cor={hkicker=true, kicker=true} },
+
+  y = { nam='y', bet='beta22', mu='mu2', nu='q2',
+        mon={vmonitor=true, monitor=true}, cor={vkicker=true, kicker=true} },
+}
+
+local function get_moncor (sequ, range, model, plan, psel)
+  local pln = planes[plan]
+  local grp = { nseq=#sequ, pln=pln, ncor=0, nmon=0 }
+
+  for k=1,grp.nseq do
+    assert(is_sequence(sequ[k]), "invalid sequence (sequence expected)")
+    assert(is_mtable(model[k]) and model[k].type == 'twiss',
+                                 "invalid model (twiss mtable expected)")
+
+    -- Notes: mon->seq, cor->seq, im: mon->A,B, jc: cor->A,X,
+    --        shr: seq->pseq, idx: seq->mod (s2m), mod.idx: mod->seq (m2s).
+    grp[k] = { seq=sequ[k], rng=range[k], mod=model[k],
+               mon={n=0}, cor={n=0}, shr={n=0}, idx={n=0}, im={n=0}, jc={n=0} }
+
+    local seq, rng, mod, mon, cor, shr, idx in grp[k]
+    local m2s = mod.idx
+
+    for i,e in seq:iter(rng) do
+      if not e:test_flag(enabled) then goto continue end
+
+      local knd, reg = e.kind, false
+          if pln.mon[knd] then -- monitors
+        mon[mon.n+1], mon.n, reg = i, mon.n+1, true
+      elseif pln.cor[knd] then -- correctors
+        cor[cor.n+1], cor.n, reg = i, cor.n+1, true
+      end
+
+      if reg then -- seq -> mod
+        local j = mod:index_of(e.name)
+        assert(i == m2s[j], "inconsistency detected between sequence and model")
+        idx[i], idx.n = j, idx.n+1
+      end
+
+      ::continue::
+    end
+
+    if k > 1 then -- shared correctors
+      local pseq = grp[k-1].seq
+      for _, ii in ipairs(cor) do
+        local nam = seq[ii].name
+        local j = pseq:index_of(nam)
+        if j then
+          assertf(not shr[ii], "shared corrector %s appears multiple times", nam)
+          shr[ii], shr.n = j, shr.n+1
+        end
+      end
+    end
+
+    grp.nmon = grp.nmon + mon.n
+    grp.ncor = grp.ncor + cor.n - shr.n
+  end
+
+  return grp
+end
+
+-- remove monitors not enabled by monon ---------------------------------------o
+
+local function rem_monoff (grp, monon)
+  assert(is_positive(monon) and monon < 1, "invalid monon (positive number <1 expected)")
+
+  for _,g in ipairs(grp) do
+    local seq, mon in grp
+    local n = 0
+    for i=mon.n,1 do
+      if rand() > monon then
+        table.remove(mon, i) ; n = n+1
+        if option.debug > 0 then
+          printf("correct: monitor %s is disabled by monon\n", seq[mon[i]].name)
+        end
+      end
+    end
+    grp.nmon, mon.n = grp.nmon-n, mon.n-n
+  end
+end
+
+-- remove monitors not enabled by moncut --------------------------------------o
+
+local function rem_moncut (grp, moncut)
+  assert(is_positive(moncut), "invalid moncut (positive number expected)")
+
+  local nam, bet in grp.pln
+  for _,g in ipairs(grp) do
+    local seq, mod, mon, idx in g
+    local q, b, v = mod[nam], mod[bet], vector(mon.n)
+
+    for i,ii in ipairs(mon) do
+      v[i] = q[idx[ii]]/sqrt(b[idx[ii]])
+    end
+
+    local n, avg, var = 0, v:mean(), v:variance()
+    for i=mon.n,1 do
+      if abs(v[i]-avg) > moncut*var then
+        table.remove(mon, i) ; n = n+1
+        if option.debug > 0 then
+          printf("correct: monitor %s is disabled by moncut\n", seq[mon[i]].name)
+        end
+      end
+    end
+    grp.nmon, mon.n = grp.nmon-n, mon.n-n
+  end
+end
+
+-- response matrix ------------------------------------------------------------o
+
+-- TODO: add dispersion correction (DFS)
+
+local aij_fct = {
+  line = function (beti, phai, betj, phaj)
+    return phai < phaj and sqrt(beti*betj) * sin(abs(phai-phaj)) or 0
+  end,
+
+  ring = function (beti, phai, betj, phaj, nu)
+    return sqrt(beti*betj) * cos(abs(phai-phaj) - pi*nu) / (2*sin(pi*nu))
+  end,
+}
+
+--[[
+Matrix A:
+
+mon\cor |  B1  | B1&2 |  B2  | B2&3 |  B3  | B3&4 | ..
+       -+------+------+------+------+------+------+
+     B1 |   X  |   X  |   0  |   0  |   0  |   0  |
+       -+------+------+------+------+------+------+
+     B2 |   0  |   X  |   X  |   X  |   0  |   0  |
+       -+------+------+------+------+------+------+
+     B3 |   0  |   0  |   0  |   X  |   X  |   X  |
+       -+------+------+------+------+------+------+
+     B4 |   0  |   0  |   0  |   0  |   0  |   X  |
+       -+------+------+------+------+------+------+
+       :
+--]]
+
+local function build_Amat (grp, model, kind)
+  local aij, ia, ja = aij_fct[kind], 0, 0
+  local A = matrix(grp.nmon, grp.ncor)
+
+  local k_bet, k_pha, k_nu
+  if grp.plan == 'x'
+  then k_bet, k_pha, k_nu = 'beta11', 'mu1', 'q1'
+  else k_bet, k_pha, k_nu = 'beta22', 'mu2', 'q2'
+  end
+
+  for k,g in ipairs(grp) do
+    local mod, mon, cor, shr, idx, im, jc in g
+    local bet, pha, nu = mod[k_bet], mod[k_pha], mod[k_nu]
+    local pidx, ai, aj = grp[k-1].idx
+
+    -- cor[j], seq[cor[j]], mod[idx[cor[j]]], jc[cor[j]] = aj
+    -- mon[i], seq[mon[i]], mod[idx[mon[i]]], im[mon[i]] = ai
+    for j=1,cor.n do
+      local jj
+      if shr[cor[j]] then
+        jj = pidx[shr[cor[j]]]
+      else
+        jj =  idx[    cor[j] ] ; jc[cor[j]] = ja+j
+      end
+      for i=1,mon.n do
+        local ii = idx[mon[i]] ; im[mon[i]] = ia+i
+        A:set(ia+i, ja+j, aij(bet[ii],pha[ii], bet[jj],pha[jj], nu))
+      end
+    end
+    ia, ja = ia+mon.n, ja+cor.n-shr.n
+  end
+
+  grp.A = A
+end
+
+-- orbit vector ---------------------------------------------------------------o
+
+local function build_Bvec (grp, orbit, target)
+  local A = matrix(grp.nmon, grp.ncor)
+
+  for k,g in ipairs(grp) do
+    assertf(is_mtable(orbit[k]),
+            "invalid orbit mtable %s (mtable expected)", orbit[k].name)
+  end
+
+end
+
+-- correct command ------------------------------------------------------------o
 
 local planes = { x = {'x'}, y = {'y'}, xy = {'x', 'y'} }
-
--- reference orbit ------------------------------------------------------------o
 
 local target0 = {{ x=rep(0), px=rep(0), y=rep(0), py=rep(0) },
                  { x=rep(0), px=rep(0), y=rep(0), py=rep(0) }}
 
--- response matrix ------------------------------------------------------------o
-
--- TODO: add dispersion correction
-
-local aij_fct = {
-  line = function (beti, betj, phai, phaj)
-    return phai < phaj and sqrt(beti*betj) * sin(abs(phai-phaj)) or 0
-  end,
-
-  ring = function (beti, betj, phai, phaj, Q)
-    return sqrt(beti*betj) * cos(abs(phai-phaj) - pi*Q) / (2*sin(pi*Q))
-  end,
-}
-
--- correct command ------------------------------------------------------------o
-
 local function exec (self)
-  local model, orbit, target, kind, plane in self
+  local model, orbit, target, range, kind, plane, monon, moncut in self
   local sequ = self.sequence
   local E = element
 
   if is_sequence(sequ) then sequ, range = {sequ}, {range} end
-  if is_mtable(model)  then model  = {model}  end
+  if is_mtable(model) then model = {model} end
+
   orbit, target = orbit or model, target or target0
-  if is_mtable(orbit)  then orbit  = {orbit}  end
+  if is_mtable(orbit) then orbit = {orbit} end
   if is_mtable(target) then target = {target} end
 
-  local grp = { nseq=#sequ, nxcor=0, nxmon=0, nycor=0, nymon=0 }
+  local plan = planes[plane]
+  assertf(plan, "invalid plane %s ('x', 'y' or 'xy' expected)", tostring(plane))
 
-  for k=1,grp.nseq do -- loop over sequences
-    assert(is_sequence(sequ [k]), "invalid sequence (sequence expected)")
-    assert(is_mtable  (model[k]) and model[k].type == 'twiss',
-                                  "invalid model mtable (twiss mtable expected)")
-    assert(is_mtable  (orbit[k]), "invalid orbit mtable (mtable expected)")
+  for pln in ipairs(plan) do
+    -- collect monitors and correctors
+    local grp = get_moncor(sequ, range, model, pln)
 
-    grp[k] = { seq=sequ[k], rng=range[k], tbl=model[k],
-               xmon={n=0}, xcor={n=0}, xshr={n=0},
-               ymon={n=0}, ycor={n=0}, yshr={n=0} }
+    -- remove monitors not enabled by monon
+    if monon then rem_monon(grp, monon) end
 
-    local seq, rng, tbl, xmon, ymon, xcor, ycor in grp[k]
+    -- remove monitors not enabled by moncut
+    if moncut then rem_moncut(grp, moncut) end
 
-    -- collect enabled correctors and monitors of beamline(s)
-    for i, e in seq:iter(rng) do
-      if e:test_flag(enabled) then
-        local knd = e.kind
-        if E[knd].is_kicker or E[knd].is_monitor then
-              if kind == 'hmonitor' then
-            xmon[xmon.n+1], xmon.n = i, xmon.n+1
-          elseif kind == 'vmonitor' then
-            ymon[ymon.n+1], ymon.n = i, ymon.n+1
-          elseif kind == 'hkicker' or kind == 'kicker' then
-            xcor[xcor.n+1], xcor.n = i, xcor.n+1
-          elseif kind == 'vkicker' or kind == 'kicker' then
-            ycor[ycor.n+1], ycor.n = i, ycor.n+1
-          end
-      end
-    end
+    -- build the response matrix
+    build_Amat(grp, model, kind)
 
-    grp.nxmon = grp.nxmon + xmon.n
-    grp.nymon = grp.nymon + ymon.n
-    grp.nxcor = grp.nxcor + xcor.n
-    grp.nycor = grp.nycor + ycor.n
+    -- build the orbit vector (see pro_correct_getorbit)
+    build_Bvec (grp, orbit, target)
 
-    -- find shared correctors between consecutive beamlines (if any)
-    if k > 1 then
-      local pseq = grp[k-1].seq
-
-      if plane == 'x' or plane == 'xy' then
-        local pshr = grp[k-1].xshr
-        for i=1,xcor.n do
-          local nam = seq[xcor[i]].name
-          local j = pseq:index_of(nam)
-          if j then
-            asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
-            pshr[j], pshr.n = xcor[i], pshr.n+1
-          end
-        end
-        grp.nxcor = grp.nxcor - pshr.n
-      end
-
-      if plane == 'y' or plane == 'xy' then
-        local pshr = grp[k-1].yshr
-        for i=1,ycor.n do
-          local nam = seq[ycor[i]].name
-          local j = pseq:index_of(nam)
-          if j then
-            asserf(not pshr[j], "shared corrector %s appears multiple times", nam)
-            pshr[j], pshr.n = ycor[i], pshr.n+1
-          end
-        end
-        grp.nycor = grp.nycor - pshr.n
-      end
-    end -- shared sequences
-  end -- loop over sequences
-
-  -- build matrix for each plane
-  for i,p in ipairs(planes[plane]) do
-    local A = matrix()
-    -- TODO
+    build_Xvec (grp)                -- strength vector
+    compute_cor(grp, self)          -- compute corrector strengths
+                                    -- fill tables and update sequences kickers
   end
 
-  -- for each planes:
-  --   build response matrix for ring or line for one or two tables
-  --   solve the least squared minimum.
-  --   reassign the strength to the kickers in the sequences (if provided)
-  -- return the table of strengths and readings for planes
+  return -- return the table of strengths and readings for planes
 end
 
 local correct = command 'correct' {
@@ -172,22 +288,24 @@ local correct = command 'correct' {
   method='micado',   -- 'LSQ', 'SVD' or 'MICADO'                          (corr)
   tol=1e-5,          -- rms tolerance on the orbit                        (corr)
 
-  cond=nil,          -- nil, 'svdcnd' or 'pcacnd'                         (corr)
-  ncorr=0,           -- number of correctors to consider by MICADO, 0=all (corr)
-  scut=0,            -- value to theshold singular values in precond      (corr)
-  stol=0,            -- value to theshold correctors in svdcnd            (corr)
-  cadd=0,            -- 0=set/1=add correction strength to sequ. kickers  (corr)
-  monon=1,           -- fraction (0<?<=1) of randomly available monitors  (corr)
-  monseed=nil,       -- random seed for monon selection                   (corr)
-  monerror=0,        -- 1: use mrex and mrey alignment errors of monitors (corr)
+  ncor=0,            -- number of correctors to consider, 0=all           (corr)
+  coradd=0,          -- 0=set/1=add correction strength to sequ. kickers  (corr)
+  corcnd=nil,        -- precond of correctors using 'svdcnd' or 'pcacnd'  (corr)
+  corcut=0,          -- value to theshold singular values in precond      (corr)
+  cortol=0,          -- value to theshold correctors in svdcnd            (corr)
+
+  monon=nil,         -- fraction (0<?<=1) of randomly available monitors  (corr)
+  moncut=nil,        -- cut monitors above moncut sigmas                  (corr)
+  monerr=nil,        -- 1: use mrex and mrey alignment errors of monitors (corr)
                      -- 2: add msex and msey scaling errors of monitors   (corr)
 
   exec=exec,         -- command to execute upon children creation
 
   __attr = {
-    'model', 'orbit', 'target', 'range', 'sequence',
-    'kind', 'plane', 'method', 'tol', 'units',
-    'cond', 'ncorr', 'scut', 'stol', 'cadd', 'monon', 'monseed', 'monerror', }
+    'sequence', 'range', 'model', 'orbit', 'target',
+    'kind', 'plane', 'method', 'tol',
+    'ncorr', 'coradd', 'corcnd', 'corcut', 'cortol', 'monon', 'moncut', 'monerr'
+  }
 } :set_readonly()    -- reference correct command is readonly
 
 -- end ------------------------------------------------------------------------o
