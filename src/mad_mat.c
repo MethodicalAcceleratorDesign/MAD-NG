@@ -75,14 +75,16 @@ struct  matrix { ssz_t nr, nc;  num_t data[]; };
 struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
 struct imatrix { ssz_t nr, nc;  idx_t data[]; };
 
+// Note: matrix of zero size are forbidden
+
 void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = m; x->nc = n; }
+{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
 
 void mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = m; x->nc = n; }
+{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
 
 void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = m; x->nc = n; }
+{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
 
 // -----
 
