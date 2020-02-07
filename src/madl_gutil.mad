@@ -29,8 +29,8 @@ local bit = require 'bit'
 local string, table, debug, io, os =
       string, table, debug, io, os
 
-local type, getmetatable, setmetatable, assert, error =
-      type, getmetatable, setmetatable, assert, error
+local type, getmetatable, setmetatable, assert, error, load =
+      type, getmetatable, setmetatable, assert, error, load
 
 local ipairs, pairs, tostring, tonumber =
       ipairs, pairs, tostring, tonumber
@@ -597,6 +597,31 @@ function utility.str2tbl (str, match_, ini_)
   else
     return {str}, 1
   end
+end
+
+function utility.str2cmp (str)
+  -- split fields list ±col1,±col2 ...
+  local lst = {}
+  for f in string.gmatch(str, '([^,]+)') do lst[#lst+1] = utility.strtrim(f) end
+
+  -- build comparison test incrementally
+  local lhs, rhs, n, fun = "", "", #lst
+  for i=1,n do
+    local sgn = string.sub(lst[i],1,1)
+    local fld = (sgn == '-' or sgn == '+') and string.sub(lst[i],2) or lst[i]
+    local cmp =  sgn == '-' and '>' or '<'
+
+    if i < n then
+      lhs = string.format("%sa.%s == b.%s and (", lhs, fld, fld)
+      rhs = string.format(") or a.%s %s b.%s%s", fld, cmp, fld, rhs)
+    else
+      fun = string.format("%sa.%s %s b.%s%s",lhs,fld,cmp,fld,rhs)
+    end
+  end
+
+  -- return compiled function
+  fun = "return \\a,b -> " .. fun
+  return assert(load(fun), "unable to build user defined sorting function")()
 end
 
 function tostring_ (a, ...)      -- to review
