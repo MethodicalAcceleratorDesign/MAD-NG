@@ -2132,13 +2132,13 @@ madx_svdcnd (const num_t a[], idx_t c[], ssz_t m, ssz_t n, num_t scut, num_t s_[
 
 int // Matrix preconditionning using SVD, return indexes of columns to remove.
 mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
-               ssz_t N, num_t cut, num_t s_[], num_t tol)
+               ssz_t N, num_t rcond, num_t s_[], num_t tol)
 {
   assert(a && c);
 
   // X-check with MAD-X SVD cond (where N = n-5)
   if (mad_use_madx_svdcnd) {
-    return madx_svdcnd(a, c, m, n, cut, s_, 1/tol);
+    return madx_svdcnd(a, c, m, n, rcond, s_, 1/tol);
   }
 
   ssz_t mn = MIN(m,n);
@@ -2159,6 +2159,9 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on components similarity in V columns.
   if (tol < DBL_EPSILON) tol = DBL_EPSILON;
 
+  // rcond == 0 means keep all singular values.
+  rcond = MAX(rcond, 0);
+
   // Number of columns to remove.
   idx_t nc = 0;
 
@@ -2168,7 +2171,7 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   for (idx_t i=mn-1; i >= mn-N; i--) {
 
     // Singular value is large, stop checking.
-    if (S[i] >= cut) break;
+    if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
     for (idx_t j=0  ; j < n-1; j++)
@@ -2202,7 +2205,7 @@ finalize:
 }
 
 int // Matrix reconditionning using SVD.
-mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t s_[])
 {
   assert(a);
   ssz_t mn = MIN(m,n);
@@ -2221,9 +2224,11 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut,
   // N <= 0 means keep all columns.
   if (N > n || N <= 0) N = n;
 
-  // Cut <= 0 means keep all singular values.
+  // rcond == 0 means keep all singular values.
+  rcond = MAX(rcond, 0);
+
   for (idx_t i=0; i < N; i++)
-    if (S[i] <= cut) { N=i; break; }
+    if (S[i] <= rcond*S[0]) { N=i; break; }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_vec_abs(V, V, N*n);
@@ -2242,7 +2247,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut,
 }
 
 int // Matrix reconditionning using SVD.
-mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t s_[])
 {
   assert(a);
   ssz_t mn = MIN(m,n);
@@ -2262,9 +2267,11 @@ mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cu
   // N <= 0 means keep all columns.
   if (N > n || N <= 0) N = n;
 
-  // Cut <= 0 means keep all singular values.
+  // rcond == 0 means keep all singular values.
+  rcond = MAX(rcond, 0);
+
   for (idx_t i=0; i < N; i++)
-    if (S[i] <= cut) { N=i; break; }
+    if (S[i] <= rcond*S[0]) { N=i; break; }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_cvec_abs(V, R, N*n);
@@ -2492,7 +2499,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
 #undef A
 
-  // Re-order corrector strengths and save residues. Strengths are not minused!
+  // Re-order corrector strengths and save residues.
   for (idx_t i=0; i < N; ++i) x[pvt[i]] = X[i];
   if (r_) mad_vec_copy(R, r_, m);
 
