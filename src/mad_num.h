@@ -114,6 +114,18 @@ struct rng_state {
   int p;
 };
 
+// MADX random number generator
+typedef struct xrng_state xrng_state_t;
+
+num_t mad_num_xrand     (xrng_state_t*);           // [0.,1.)
+void  mad_num_xrandseed (xrng_state_t*, int seed);
+
+// --- private
+struct xrng_state {
+  int s[55];
+  idx_t n;
+};
+
 // ----------------------------------------------------------------------------o
 
 #endif // MAD_NUM_H

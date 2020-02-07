@@ -28,7 +28,7 @@ local complex = ffi.typeof 'complex'
 
 local _C, option                                                 in MAD
 local nan, twopi                                                 in MAD.constant
-local second                                                     in MAD.gfunc
+local first, second                                              in MAD.gfunc
 local is_nan, is_nil, is_number, wrestrict, set_concept, concept in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
 
@@ -244,15 +244,14 @@ end
 -- Box-Muller transformation (Marsaglia's polar form)
 -- generates pseudo-random gaussian numbers (pairs of, cached)
 local function randn (rng)
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   local x1, x2, w
   if rng.x == rng.x then
     x1, rng.x = rng.x, nan
     return x1
   end
   repeat
-    x1 = 2*rand(rng) - 1
-    x2 = 2*rand(rng) - 1
+    x1 = 2*rng:rand() - 1
+    x2 = 2*rng:rand() - 1
     w = x1*x1 + x2*x2
   until w < 1
   w = sqrt( -2 * log(w) / w )
@@ -262,11 +261,10 @@ end
 
 -- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
 local function randtn (rng, cut_)
-  if is_nil(cut_) then return randn(rng) end
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
+  if is_nil(cut_) then return rng:randn() end
   assert(is_number(cut_), "invalid argument #2 (number expected)")
   local c, r = abs(cut_)
-  repeat r = randn(rng) until abs(r) <= c
+  repeat r = rng:randn() until abs(r) <= c
   return r
 end
 
@@ -274,11 +272,10 @@ end
 -- Discrete Univariate Distributions, L. Devroye, p505
 local function randp (rng, lmb_)
   local lmb = lmb_ or 1
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
   assert(is_number(lmb) and lmb > 0 and lmb < 30,
-                          "invalid argument #2 (0 < lambda < 30 expected)")
+         "invalid argument #2 (0 < lambda < 30 expected)")
   local x, p = 0, exp(-lmb)
-  local s, u = p, rand(rng)
+  local s, u = p, rng:rand()
   while u > s do
     x = x + 1
     p = p * lmb/x
@@ -307,6 +304,45 @@ local rng_mt = set_concept({
 
 ffi.metatype('struct rng_state', rng_mt)
 
+-- MADX RNG ----------o
+
+ffi.cdef [[
+struct xrng_state {
+  int s[55];
+  idx_t n;
+  num_t x;
+};
+]]
+
+local xrng_ctor = ffi.typeof 'struct xrng_state'
+local xrng_sz   = ffi.sizeof 'struct xrng_state'
+
+local is_xrandgen = \a -> istype(xrng_ctor, a)
+
+local xrandseed = \r,x => _C.mad_num_xrandseed(r, x or 0); r.x=nan; return r end
+
+local xrng = xrandseed(xrng_ctor()) -- global generator
+
+local function xrand (rng)
+  return _C.mad_num_xrand(rng)
+end
+
+local xrng_mt = set_concept({
+  __index = {
+    rand     = xrand,
+    randn    = \r -> first(randn(r),randn(r)), -- MADX discard even trials...
+    randp    = randp,
+    randtn   = randtn,
+    randseed = xrandseed,
+  },
+  __ipairs   = \r -> (iter, r, 0),
+  __tostring = \r -> string.format("XRNG: %p", r),
+}, not_mappable + not_extendable + not_mutable)
+
+ffi.metatype('struct xrng_state', xrng_mt)
+
+xrng:randseed(123456789) -- MADX init
+
 -- gmath ----------------------------------------------------------------------o
 
 gmath.randnewgen = randnewgen
@@ -315,9 +351,15 @@ gmath.randsetgen = randsetgen
 gmath.rand     = \     -> grng:rand    ()
 gmath.randi    = \     -> grng:randi   ()
 gmath.randn    = \     -> grng:randn   ()
-gmath.randp    = \lmb_ -> grng:randp   (lmb_)
 gmath.randtn   = \cut_ -> grng:randtn  (cut_)
+gmath.randp    = \lmb_ -> grng:randp   (lmb_)
 gmath.randseed = \seed -> grng:randseed(seed)
+
+gmath.xrand     = \     -> xrng:rand    ()
+gmath.xrandn    = \     -> xrng:randn   ()
+gmath.xrandtn   = \cut_ -> xrng:randtn  (cut_)
+gmath.xrandp    = \lmb_ -> xrng:randp   (lmb_)
+gmath.xrandseed = \seed -> xrng:randseed(seed)
 
 -- env ------------------------------------------------------------------------o
 

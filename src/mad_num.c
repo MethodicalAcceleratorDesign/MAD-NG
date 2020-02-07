@@ -18,6 +18,7 @@
 
 #include <math.h>
 #include <complex.h>
+#include <stdlib.h>
 #include <assert.h>
 
 #include "mad_num.h"
@@ -255,3 +256,48 @@ void mad_num_randjump (      rng_state_t *restrict st,
 }
 
 #undef N
+
+// -- RNG MADX ----------------------------------------------------------------o
+
+#define MAX_RAND 1000000000
+#define SCL_RAND 1e-9
+#define  NR_RAND 55
+#define  NJ_RAND 24
+#define  ND_RAND 21
+
+static void
+irngen(xrng_state_t *rng)
+{
+  int j;
+  for (int i = 0; i < NJ_RAND; i++) {
+    if ((j = rng->s[i] - rng->s[i+NR_RAND-NJ_RAND]) < 0) j += MAX_RAND;
+    rng->s[i] = j;
+  }
+  for (int i = NJ_RAND; i < NR_RAND; i++) {
+    if ((j = rng->s[i] - rng->s[i-NJ_RAND]) < 0) j += MAX_RAND;
+    rng->s[i] = j;
+  }
+  rng->n = 0;
+}
+
+void
+mad_num_xrandseed (xrng_state_t *rng, int seed)
+{
+  int k = 1, j = abs(seed) % MAX_RAND;
+  rng->s[NR_RAND-1] = j;
+  for (int i = 0; i < NR_RAND-1; i++) {
+    int ii = (ND_RAND*(i+1)) % NR_RAND;
+    rng->s[ii-1] = k;
+    if ((k = j - k) < 0) k += MAX_RAND;
+    j = rng->s[ii-1];
+  }
+  for (int i = 0; i < 3; i++) irngen(rng);
+}
+
+num_t
+mad_num_xrand (xrng_state_t *rng) // [0.,1.)
+{
+  if (rng->n == NR_RAND) irngen(rng);
+  return SCL_RAND * rng->s[rng->n++];
+}
+
