@@ -302,8 +302,8 @@ local expr_weights = { -- default weight = 1
 
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
-  local var, arg = env.__var, env.__var.arg
-  local n, p, q, status in arg[0]
+  local var = env.__var
+  local n, p, q, fbst, status in var
 
   if p+q > 0 then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
@@ -341,7 +341,7 @@ local function disp_summ (env)
   local fmt = "\n status=%s,  ncall=%2d\z
                \n fmin=% -.10e,  fval=% -.10e,  ftol=% -.10e\n\n"
 
-  printf(fmt, retstr[arg[0].status], env.ncall, arg[0].fval, var.fval, var.ftol)
+  printf(fmt, retstr[status], env.ncall, var.fbst, var.fval, var.ftol)
 end
 
 -- callbacks ------------------------------------------------------------------o
@@ -364,14 +364,13 @@ local function nlopt_functions (env, mthd, ndsp)
          "invalid inequality constraints (callable expected)")
 
   local update in variables
-  local var, arg = env.__var, env.__var.arg
-  local n, p, q, x, dx, df, eval, ewgt, etol, lval, lwgt, ltol, egrd, lgrd,
-        ndbg in var
+  local var = env.__var
+  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol, ejac, ljac, fgrd in var
   local disp = ndsp > 1 and disp_summ or fnil
   local grad = nlopt_algo[mthd].gr == 'y'
-  local ncal = arg[0].maxcall > 0
-  local fmin = arg[0].fmin > 0
-  local ftol = arg[0].ftol > 0
+  local ncal = var.maxcall > 0
+  local fmin = var.fmin > 0
+  local ftol = var.ftol > 0
   local fscl = 0
 
   -- weights scaling preparation
@@ -385,11 +384,11 @@ local function nlopt_functions (env, mthd, ndsp)
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(df_ == nil or grad, "unexpected non-nil gradient argument")
 
-    -- force to stop
-    if var.status then
-      if ndbg >= 1 then io.write("nlopt: forced to stop\n") end
-      _C.nlopt_force_stop(arg[0].opt, var.status)
-      return arg[0].fval
+    -- force to stop (NLOPT specific)
+    if var.status ~= _C.NLOPT_RUNNING then
+      if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+      _C.nlopt_force_stop(env.__arg[0].opt, var.status)
+      return var.fval
     end
 
     -- iteration number
@@ -409,51 +408,82 @@ local function nlopt_functions (env, mthd, ndsp)
       if var.flush then jit.flush() end -- TODO: avoid jit flush
     end
 
-    -- call user defined function
+    -- call user defined function (e.g. f(x))
     if objective.exec then
-      var.fval = abs(objective.exec(x, df_ ~= nil and df:zeros() or nil))
-      var.ftol = abs(var.fval-arg[0].fval)
+      local fval = abs(objective.exec(x, df_ ~= nil and fgrd:zeros() or nil))
+      var.fval, var.fstp = fval, abs(var.fval-fval)
       if df_ ~= nil then
-        for i=1,n do df_[i-1] = df[i] end
-        if ndbg >= 2 then dspmat(df,"GRAD-F") end
+        for i=1,n do df_[i-1] = fgrd[i] end
+        if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
       end
       goto final
+
+    -- call user command (e.g. twiss)
     else
-
-    -- call user command
-    local res = command(env)
-    if is_nil(res) then
-      var.fval, var.ftol = inf, inf
-      if p>0 then eval:ones(inf) end
-      if q>0 then lval:ones(inf) end
-      goto final
-    else
-      -- compute objective function
-      local fval = 0
-      for i=1,p do
-        eval[i] = equalities[i].expr(res, env)
-        if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*eval[i]^2 end
+      local res = command(env)
+      if is_nil(res) then
+        var.fval, var.fstp = inf, inf
+        if p>0 then eval:ones(inf) end
+        if q>0 then lval:ones(inf) end
+        goto final
+      else
+        -- compute objective function
+        local fval = 0
+        for i=1,p do
+          eval[i] = equalities[i].expr(res, env)
+          if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*eval[i]^2 end
+        end
+        for i=1,q do
+          lval[i] = inequalities[i].expr(res, env)
+          if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
+        end
+        fval = sqrt(fval*fscl)
+        var.fval, var.fstp = fval, abs(var.fval-fval)
       end
-      for i=1,q do
-        lval[i] = inequalities[i].expr(res, env)
-        if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
-      end
-      var.fval = sqrt(fval*fscl)
-      var.ftol = abs(var.fval-arg[0].fval)
-    end
 
-    -- compute objective function gradient(s)
-    if df_ ~= nil then
-      if egrd then egrd:zeros() end
-      if lgrd then lgrd:zeros() end
-      df:zeros()
+      -- compute objective function gradient and (in)equalities jacobian(s)
+      if df_ ~= nil then
+        if ejac then ejac:zeros() end
+        if ljac then ljac:zeros() end
+        fgrd:zeros()
 
-      for iv=1,n do
-        env.ncall = env.ncall + 1
-        if dx[iv] == 0 then goto next end -- correct??
+        for iv=1,n do
+          env.ncall = env.ncall + 1
+          if dx[iv] == 0 then goto next end -- correct??
 
-        for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
+          for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
 
+          if update then
+            update(x, env)
+          else
+            var.flush = nil
+            for i=1,n do variables[i].set(x[i], env) end
+            if var.flush then jit.flush() end -- TODO: avoid jit flush
+          end
+
+          local res = command(env)
+          if is_nil(res) then goto next
+          else
+            local fval = 0
+            for i=1,p do
+              local ev = equalities[i].expr(res, env)
+              if abs(ev) > etol[i] then fval = fval + ewgt[i]*ev^2 end
+              ejac:set(iv,i, (ev-eval[i])/dx[iv])
+            end
+            for i=1,q do
+              local lv = inequalities[i].expr(res, env)
+              if lv > ltol[i] then fval = fval + lwgt[i]*lv^2 end
+              ljac:set(iv,i, (lv-lval[i])/dx[iv])
+            end
+            fval = sqrt(fval*fscl)
+            fgrd[iv] = (fval-var.fval)/dx[iv]
+          end
+
+        ::next::
+        end
+
+        -- restore variables, copy back gradient
+        for i=1,n do x[i], df_[i-1] = x_[i-1], fgrd[i] end
         if update then
           update(x, env)
         else
@@ -462,55 +492,26 @@ local function nlopt_functions (env, mthd, ndsp)
           if var.flush then jit.flush() end -- TODO: avoid jit flush
         end
 
-        local res = command(env)
-        if is_nil(res) then goto next
-        else
-          -- compute objective function gradients
-          local fval = 0
-          for i=1,p do
-            local ev = equalities[i].expr(res, env)
-            if abs(ev) > etol[i] then fval = fval + ewgt[i]*ev^2 end
-            egrd:set(iv,i, (ev-eval[i])/dx[iv])
-          end
-          for i=1,q do
-            local lv = inequalities[i].expr(res, env)
-            if lv > ltol[i] then fval = fval + lwgt[i]*lv^2 end
-            lgrd:set(iv,i, (lv-lval[i])/dx[iv])
-          end
-          fval = sqrt(fval*fscl)
-          df[iv] = (fval-var.fval)/dx[iv]
-        end
-
-      ::next::
+        if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
       end
-
-      -- restore variables, copy back gradient
-      for i=1,n do x[i], df_[i-1] = x_[i-1], df[i] end
-      if update then
-        update(x, env)
-      else
-        var.flush = nil
-        for i=1,n do variables[i].set(x[i], env) end
-        if var.flush then jit.flush() end -- TODO: avoid jit flush
-      end
-
-      if ndbg >= 2 then dspmat(df,"GRAD-F") end
-    end
     end
     ::final::
 
-    -- display intermediate summary
-    disp(env)
-
     -- stop criteria (nlopt ignores fmin and ftol...?)
-    if ncal and env.ncall >= arg[0].maxcall then
+    if ncal and env.ncall >= var.maxcall then
       var.status = _C.NLOPT_MAXEVAL_REACHED
-    elseif fmin and var.fval <= arg[0].fmin then
+    elseif fmin and var.fval <= var.fmin then
       var.status = _C.NLOPT_STOPVAL_REACHED
-    elseif ftol and (var.ftol <= arg[0].ftol or
-                     var.ftol <= arg[0].frtol*var.fval) then
+    elseif ftol and (var.fstp <= var.ftol or
+                     var.fstp <= var.frtol*var.fval) then
       var.status = _C.NLOPT_FTOL_REACHED
     end
+
+    -- backup best fmin
+    if var.fval < var.fbst then var.fbst = var.fval end
+
+    -- display intermediate summary
+    disp(env)
 
     -- return weighted squared mean: sqrt(\sum_i w_i c_i(x)^2 / \sum_i w_i)
     return var.fval
@@ -525,13 +526,13 @@ local function nlopt_functions (env, mthd, ndsp)
 
     -- call user defined function
     if equalities.exec then
-      equalities.exec(eval, x, de_ ~= nil and egrd:zeros() or nil)
+      equalities.exec(eval, x, de_ ~= nil and ejac:zeros() or nil)
     end
 
     for i=1,p do r_[i-1] = eval[i] end
     if de_ ~= nil then
-      for i=1,n*p do de_[i-1] = egrd[i] end
-      if ndbg >= 2 then dspmat(egrd,"JACOBIAN-EQ") end
+      for i=1,n*p do de_[i-1] = ejac[i] end
+      if env.debug >= 2 then dspmat(ejac,"JACOBIAN-EQ") end
     end
   end or nil),
 
@@ -544,13 +545,13 @@ local function nlopt_functions (env, mthd, ndsp)
 
     -- call user defined function
     if inequalities.exec then
-      inequalities.exec(lval, x, dl_ ~= nil and lgrd:zeros() or nil)
+      inequalities.exec(lval, x, dl_ ~= nil and ljac:zeros() or nil)
     end
 
     for i=1,q do r_[i-1] = lval[i] end
     if dl_ ~= nil then
-      for i=1,n*q do dl_[i-1] = lgrd[i] end
-      if ndbg >= 2 then dspmat(lgrd,"JACOBIAN-LE") end
+      for i=1,n*q do dl_[i-1] = ljac[i] end
+      if env.debug >= 2 then dspmat(ljac,"JACOBIAN-LE") end
     end
   end or nil)
 end
@@ -583,7 +584,7 @@ local locfmt = [[
                     end
                     -- print('lset=', lset)
                     assert(k == vnam, 'invalid local variable in setter')
-                    env.__var.flush = true
+                    env.__var.flush = env.__var.fjit
                   end
                 end ]]
 
@@ -595,7 +596,7 @@ local upvfmt = [[
                   end,
               \x => local k = debug.setupvalue(f, vidx, x)
                     assert(k == vnam, 'invalid upvalue in setter')
-                    env.__var.flush = true
+                    env.__var.flush = env.__var.fjit
                   end
                 end ]]
 
@@ -710,6 +711,7 @@ local function exec (self)
   -- matching environment
   local env = {
     ncall        = 0,
+    debug        = ndbg,
     command      = command,
     objective    = objective,
     variables    = variables,
@@ -718,27 +720,44 @@ local function exec (self)
     weights      = weights,
     usrdef       = self.usrdef,
     __var  = { -- hidden variables
-      n    = n,
-      x0   = vector(n),
-      x    = vector(n),
-      dx   = vector(n),
-      df   = vector(n),
-      xtol = vector(n),
-      xmin = vector(n),
-      xmax = vector(n),
-      p    = p,
-      eval = p>0 and vector(p)   or nil,
-      ewgt = p>0 and vector(p)   or nil,
-      etol = p>0 and vector(p)   or nil,
-      egrd = p>0 and matrix(n,p) or nil,
-      q    = q,
-      lval = q>0 and vector(q)   or nil,
-      lwgt = q>0 and vector(q)   or nil,
-      ltol = q>0 and vector(q)   or nil,
-      lgrd = q>0 and matrix(n,q) or nil,
-      ndbg = ndbg,
-      arg  = ffi.new 'nlopt_args_t[1]'
+      n    = n,                            -- number of variables
+      x0   = vector(n),                    -- variables initial values
+      x    = vector(n),                    -- variables values
+      dx   = vector(n),                    -- variables steps
+      xmin = vector(n),                    -- variables minimum bounds
+      xmax = vector(n),                    -- variables maximum bounds
+      xtol = vector(n),                    -- variables tolerances
+      xrtol= max(variables.rtol or 0, 0),  -- variables relative tolerance
+
+      p    = p,                            -- number of equalities
+      efun = nil,                          -- equalities function (see above)
+      eval = p>0 and vector(p)   or nil,   -- equalities values
+      ewgt = p>0 and vector(p)   or nil,   -- equalities weights
+      etol = p>0 and vector(p)   or nil,   -- equalities tolerances
+      ejac = p>0 and matrix(n,p) or nil,   -- equalities jacobian
+
+      q    = q,                            -- number of inequalities
+      lfun = nil,                          -- inequalities function (see above)
+      lval = q>0 and vector(q)   or nil,   -- inequalities values
+      lwgt = q>0 and vector(q)   or nil,   -- inequalities weights
+      ltol = q>0 and vector(q)   or nil,   -- inequalities tolerances
+      ljac = q>0 and matrix(n,q) or nil,   -- inequalities jacobian
+
+      fun  = nil,                          -- cost function (see above)
+      fval = inf,                          -- cost function value (dummy init)
+      fbst = inf,                          -- cost function best value
+      fgrd = vector(n),                    -- cost function gradient
+      fmin = max(objective.fmin or 0, 0),  -- cost function minimum (target)
+      ftol = max(objective.ftol or 0, 0),  -- cost function tolerance (target)
+      frtol= max(objective.rtol or 0, 0),  -- cost function relative tolerance (target)
+
+      maxcall = objective.maxcall or 0,    -- algorithm call limit
+      maxtime = objective.maxtime or 0,    -- algorithm time limit
+      status  = _C.NLOPT_RUNNING,          -- algorithm status
+      errmsg  = nil,                       -- error message
+      fjit    = false,                     -- JIT must be flushed (_C API)
     },
+    __arg = nil,
   }
 
   local var = env.__var
@@ -777,6 +796,8 @@ local function exec (self)
     end
   end
 
+  if env.debug >= 2 then var.dx:print("STEP0") end
+
   -- equality constraints
   for i=1,p do
     local e = equalities[i]
@@ -791,17 +812,30 @@ local function exec (self)
     var.lwgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
   end
 
-  -- fill C struct
-  local arg = env.__var.arg
-  local x   = var.x:copy() -- use separate vector as nlopt seems to modify it
+  -- build optimizer functions (should be moved above "begin nlopt_args_t")
+  local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
+  var.fun, var.efun, var.lfun = fun, efun, lfun
+
+  -- intermediate C struct for nlopt (NLOPT specific) -------------------------o
+  local arg = ffi.new 'nlopt_args_t[1]'
+  env.__arg = arg -- hook the struct
+
+  -- nlopt C -> MAD callbacks
+  local fun_cb, efun_cb, lfun_cb
+  if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) end
+  if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) end
+  if lfun then lfun_cb = ffi.cast('nlopt_cts_t*', lfun) end
+
+  -- nlopt seems to modify/use x internally, make a copy.
+  local x = var.x:copy()
 
   arg[0].algo    = mopt.id
 
-  arg[0].fun     = nil -- see below
-  arg[0].fval    = inf -- dummy init
-  arg[0].fmin    = max(objective.fmin or 0, 0)
-  arg[0].ftol    = max(objective.ftol or 0, 0)
-  arg[0].frtol   = max(objective.rtol or 0, 0)
+  arg[0].fun     = fun_cb
+  arg[0].fval    = var.fval
+  arg[0].fmin    = var.fmin
+  arg[0].ftol    = var.ftol
+  arg[0].frtol   = var.frtol
 
   arg[0].n       = n
   arg[0].x       = x.data
@@ -810,30 +844,24 @@ local function exec (self)
   arg[0].xmin    = var.xmin.data
   arg[0].xmax    = var.xmax.data
   arg[0].xtol    = var.xtol.data
-  arg[0].xrtol   = max(variables.rtol or 0, 0)
+  arg[0].xrtol   = var.xrtol
 
   arg[0].p       = p
-  arg[0].efun    = nil -- see below
+  arg[0].efun    = efun_cb
   arg[0].etol    = p>0 and var.etol.data or nil
 
   arg[0].q       = q
-  arg[0].lfun    = nil -- see below
+  arg[0].lfun    = lfun_cb
   arg[0].ltol    = q>0 and var.ltol.data or nil
 
-  arg[0].maxcall = objective.maxcall or 0
-  arg[0].maxtime = objective.maxtime or 0
+  arg[0].maxcall = var.maxcall
+  arg[0].maxtime = var.maxtime
 
-  arg[0].debug   = ndbg
-  arg[0].status  = _C.NLOPT_RUNNING
+  arg[0].debug   = env.debug
+  arg[0].status  = var.status
 
-  if ndbg >= 2 then var.dx:print("STEP0") end
-
-  -- nlopt callbacks
-  local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
-  local fun_cb, efun_cb, lfun_cb
-  if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) ; arg[0]. fun =  fun_cb end
-  if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) ; arg[0].efun = efun_cb end
-  if lfun then lfun_cb = ffi.cast('nlopt_cts_t*', lfun) ; arg[0].lfun = lfun_cb end
+  -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
+  var.fjit = true
 
   -- optimize (protected call)
   local status, errmsg = pcall(_C.mad_nlopt, arg)
@@ -843,22 +871,20 @@ local function exec (self)
   if efun then efun_cb:free() end
   if lfun then lfun_cb:free() end
 
-  -- return status and status id
-  if status == false then
-    warn("error '%s' occured during matching", errmsg)
-    return retstr[arg[0].status], arg[0].status
-  end
-
-  -- forced stop, do not copy state variables (next step)
-  if arg[0].status == _C.NLOPT_FORCED_STOP then
-    arg[0].status = var.status
-  else -- do copy state variables (last step)
+  -- not a forced stop, copy state variables (next step)
+  if arg[0].status ~= _C.NLOPT_FORCED_STOP then
+    var.status = arg[0].status
     x:copy(var.x)
   end
+  -- end (NLOPT specific) -----------------------------------------------------o
 
-  -- display final summary and return status, fmin, ncall
-  if ndsp > 0 then disp_summ(env) end
-  return retstr[arg[0].status], arg[0].fval, env.ncall
+  -- display error or final summary
+  if status == false then
+    warn("error '%s' occured during matching", errmsg)
+  elseif ndsp > 0 then disp_summ(env) end
+
+  -- return status, fmin, ncall
+  return retstr[var.status], var.fbst, env.ncall
 end
 
 local match = command 'match' {
