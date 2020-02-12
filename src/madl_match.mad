@@ -344,8 +344,9 @@ local function disp_summ (env)
   printf(fmt, retstr[status], env.ncall, var.fbst, var.fval, var.ftol)
 end
 
--- callbacks ------------------------------------------------------------------o
+-- optimiser cost functions ---------------------------------------------------o
 
+-- debug helper
 local function dspmat(mat, nam)
   local fmt = option.numfmt
   option.numfmt = "% -.5e"
@@ -384,10 +385,10 @@ local function nlopt_functions (env, mthd, ndsp)
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(df_ == nil or grad, "unexpected non-nil gradient argument")
 
-    -- force to stop (NLOPT specific)
+    -- finalize before force to stop
     if var.status ~= _C.NLOPT_RUNNING then
       if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
-      _C.nlopt_force_stop(env.__arg[0].opt, var.status)
+      var.final(env)
       return var.fval
     end
 
@@ -519,6 +520,7 @@ local function nlopt_functions (env, mthd, ndsp)
 
   -- nlopt equality function
   nlopt_algo[mthd].eq == 'y' and (p>0 and function(p_, r_, n_, x_, de_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
     assert(p_ == p , "invalid number of equalities (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of equalities (unexpected)")
@@ -538,6 +540,7 @@ local function nlopt_functions (env, mthd, ndsp)
 
   -- nlopt inequality function
   nlopt_algo[mthd].le == 'y' and (q>0 and function(q_, r_, n_, x_, dl_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
     assert(q_ == q  , "invalid number of inequalities (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
@@ -603,10 +606,9 @@ local upvfmt = [[
 local wmsg =
   "write access to %s is very slow; use set, update or indirect (table) access"
 
-local function accessors (variables, env)
+local function accessors (env)
   local loc, upv, ctx = {}, {}, getfenv(3)
   local fun = debug.getinfo(3, 'f').func
-  local n in env.__var
 
   assert(ctx and fun, "unexpected invalid stack level")
 
@@ -627,7 +629,9 @@ local function accessors (variables, env)
 --print("UPV") for k,v in pairs(upv) do if is_string(k) then print(k,upv[v]) end end
 
   -- build variables getter/setter
+  local variables in env
   local wrn = not (variables.nowarn or variables.update)
+  local n in env.__var
 
   for i=1,n do
     local v = variables[i]
@@ -674,6 +678,76 @@ local function accessors (variables, env)
   end
 end
 
+-- NLOPT lib wrapper ----------------------------------------------------------o
+
+local function nlopt_librun (env)
+  local var = env.__var
+  local arg = ffi.new 'nlopt_args_t[1]'
+
+  -- nlopt C -> MAD callbacks
+  local fun_cb, efun_cb, lfun_cb
+  if var. fun then  fun_cb = ffi.cast('nlopt_obj_t*', var. fun) end
+  if var.efun then efun_cb = ffi.cast('nlopt_cts_t*', var.efun) end
+  if var.lfun then lfun_cb = ffi.cast('nlopt_cts_t*', var.lfun) end
+
+  -- nlopt seems to modify/use x internally, make a copy.
+  local n, p, q in var
+  local x = var.x:copy()
+
+  arg[0].algo    = var.method.id
+
+  arg[0].fun     = fun_cb
+  arg[0].fval    = var.fval
+  arg[0].fmin    = var.fmin
+  arg[0].ftol    = var.ftol
+  arg[0].frtol   = var.frtol
+
+  arg[0].n       = n
+  arg[0].x       = x.data
+  arg[0].dx      = var.dx.data
+
+  arg[0].xmin    = var.xmin.data
+  arg[0].xmax    = var.xmax.data
+  arg[0].xtol    = var.xtol.data
+  arg[0].xrtol   = var.xrtol
+
+  arg[0].p       = p
+  arg[0].efun    = efun_cb
+  arg[0].etol    = p>0 and var.etol.data or nil
+
+  arg[0].q       = q
+  arg[0].lfun    = lfun_cb
+  arg[0].ltol    = q>0 and var.ltol.data or nil
+
+  arg[0].maxcall = var.maxcall
+  arg[0].maxtime = var.maxtime
+
+  arg[0].debug   = env.debug
+  arg[0].status  = var.status
+
+  -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
+  var.fjit = true
+
+  -- nlopt can be forced to stop, forward stop...
+  var.final =\ _C.nlopt_force_stop(arg[0].opt, var.status)
+
+  -- optimize (protected call)
+  local status, errmsg = pcall(_C.mad_nlopt, arg)
+
+  -- release callback (note: callbacks are never collected)
+  if var. fun then  fun_cb:free() end
+  if var.efun then efun_cb:free() end
+  if var.lfun then lfun_cb:free() end
+
+  -- not a forced stop, copy state variables back (next step)
+  if arg[0].status ~= _C.NLOPT_FORCED_STOP then
+    var.status = arg[0].status
+    x:copy(var.x)
+  end
+
+  return status, errmsg
+end
+
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
@@ -711,7 +785,7 @@ local function exec (self)
   -- matching environment
   local env = {
     ncall        = 0,
-    debug        = ndbg,
+    debug        = ndbg,        -- debug level, can be changed during iterations
     command      = command,
     objective    = objective,
     variables    = variables,
@@ -719,6 +793,7 @@ local function exec (self)
     inequalities = inequalities,
     weights      = weights,
     usrdef       = self.usrdef,
+
     __var  = { -- hidden variables
       n    = n,                            -- number of variables
       x0   = vector(n),                    -- variables initial values
@@ -751,20 +826,22 @@ local function exec (self)
       ftol = max(objective.ftol or 0, 0),  -- cost function tolerance (target)
       frtol= max(objective.rtol or 0, 0),  -- cost function relative tolerance (target)
 
+      method  = mopt,                      -- algorithm method (nlopt_algo row)
+      sumdisp = ndsp,                      -- algorithm summary level
       maxcall = objective.maxcall or 0,    -- algorithm call limit
       maxtime = objective.maxtime or 0,    -- algorithm time limit
+      final   = fnil,                      -- algorithm finalizer
       status  = _C.NLOPT_RUNNING,          -- algorithm status
-      errmsg  = nil,                       -- error message
-      fjit    = false,                     -- JIT must be flushed (_C API)
+      errmsg  = nil,                       -- algorithm error message
+      fjit    = false,                     -- JIT must be flushed (C API)
     },
-    __arg = nil,
   }
 
   local var = env.__var
 
   -- create variables getter/setters (if needed)
   if is_nil(variables.init) and is_nil(variables.update) then
-    accessors(variables, env)
+    accessors(env)
   else
     assert(is_callable(variables.init) and is_callable(variables.update),
            "invalid variables init and/or update (callables expected)")
@@ -812,71 +889,12 @@ local function exec (self)
     var.lwgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
   end
 
-  -- build optimizer functions (should be moved above "begin nlopt_args_t")
+  -- build optimizer functions
   local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
   var.fun, var.efun, var.lfun = fun, efun, lfun
 
-  -- intermediate C struct for nlopt (NLOPT specific) -------------------------o
-  local arg = ffi.new 'nlopt_args_t[1]'
-  env.__arg = arg -- hook the struct
-
-  -- nlopt C -> MAD callbacks
-  local fun_cb, efun_cb, lfun_cb
-  if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) end
-  if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) end
-  if lfun then lfun_cb = ffi.cast('nlopt_cts_t*', lfun) end
-
-  -- nlopt seems to modify/use x internally, make a copy.
-  local x = var.x:copy()
-
-  arg[0].algo    = mopt.id
-
-  arg[0].fun     = fun_cb
-  arg[0].fval    = var.fval
-  arg[0].fmin    = var.fmin
-  arg[0].ftol    = var.ftol
-  arg[0].frtol   = var.frtol
-
-  arg[0].n       = n
-  arg[0].x       = x.data
-  arg[0].dx      = var.dx.data
-
-  arg[0].xmin    = var.xmin.data
-  arg[0].xmax    = var.xmax.data
-  arg[0].xtol    = var.xtol.data
-  arg[0].xrtol   = var.xrtol
-
-  arg[0].p       = p
-  arg[0].efun    = efun_cb
-  arg[0].etol    = p>0 and var.etol.data or nil
-
-  arg[0].q       = q
-  arg[0].lfun    = lfun_cb
-  arg[0].ltol    = q>0 and var.ltol.data or nil
-
-  arg[0].maxcall = var.maxcall
-  arg[0].maxtime = var.maxtime
-
-  arg[0].debug   = env.debug
-  arg[0].status  = var.status
-
-  -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
-  var.fjit = true
-
-  -- optimize (protected call)
-  local status, errmsg = pcall(_C.mad_nlopt, arg)
-
-  -- release callback (note: callbacks are never collected)
-  if  fun then  fun_cb:free() end
-  if efun then efun_cb:free() end
-  if lfun then lfun_cb:free() end
-
-  -- not a forced stop, copy state variables (next step)
-  if arg[0].status ~= _C.NLOPT_FORCED_STOP then
-    var.status = arg[0].status
-    x:copy(var.x)
-  end
-  -- end (NLOPT specific) -----------------------------------------------------o
+  -- call optimiser
+  local status, errmsg = nlopt_librun(env)
 
   -- display error or final summary
   if status == false then
