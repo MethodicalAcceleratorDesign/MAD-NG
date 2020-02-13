@@ -35,165 +35,53 @@ local abs, sqrt, min, max in math
 
 local strfmt = string.format
 
--- types ----------------------------------------------------------------------o
+-- load nlopt lib wrapper -----------------------------------------------------o
+
+local nlopt_librun = require 'madl_nlopt'
+
+-- extend lib wrapper enums ---------------------------------------------------o
 
 ffi.cdef [[
-// NLopt supported algorithms (see nlopt.h)
-// see https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/ for details
-
-typedef enum {
-/* Naming conventions:
-  NLOPT_{G/L}{D/N}_* = global/local derivative/no-derivative optimization
-  *_RAND algorithms involve some randomization.
-  *_NOSCAL algorithms are *not* scaled to a unit hypercube
-           (i.e. they are sensitive to the units of x)
-*/
-  NLOPT_GN_DIRECT = 0,
-  NLOPT_GN_DIRECT_L,
-  NLOPT_GN_DIRECT_L_RAND,
-  NLOPT_GN_DIRECT_NOSCAL,
-  NLOPT_GN_DIRECT_L_NOSCAL,
-  NLOPT_GN_DIRECT_L_RAND_NOSCAL,
-
-  NLOPT_GN_ORIG_DIRECT,
-  NLOPT_GN_ORIG_DIRECT_L,
-
-  NLOPT_GD_STOGO,
-  NLOPT_GD_STOGO_RAND,
-
-  NLOPT_LD_LBFGS_NOCEDAL,
-
-  NLOPT_LD_LBFGS,
-
-  NLOPT_LN_PRAXIS,
-
-  NLOPT_LD_VAR1,
-  NLOPT_LD_VAR2,
-
-  NLOPT_LD_TNEWTON,
-  NLOPT_LD_TNEWTON_RESTART,
-  NLOPT_LD_TNEWTON_PRECOND,
-  NLOPT_LD_TNEWTON_PRECOND_RESTART,
-
-  NLOPT_GN_CRS2_LM,
-
-  NLOPT_GN_MLSL,
-  NLOPT_GD_MLSL,
-  NLOPT_GN_MLSL_LDS,
-  NLOPT_GD_MLSL_LDS,
-
-  NLOPT_LD_MMA,
-
-  NLOPT_LN_COBYLA,
-
-  NLOPT_LN_NEWUOA,
-  NLOPT_LN_NEWUOA_BOUND,
-
-  NLOPT_LN_NELDERMEAD,
-  NLOPT_LN_SBPLX,
-
-  NLOPT_LN_AUGLAG,
-  NLOPT_LD_AUGLAG,
-  NLOPT_LN_AUGLAG_EQ,
-  NLOPT_LD_AUGLAG_EQ,
-
-  NLOPT_LN_BOBYQA,
-
-  NLOPT_GN_ISRES,
-
-/* new variants that require local_optimizer to be set */
-  NLOPT_AUGLAG,
-  NLOPT_AUGLAG_EQ,
-  NLOPT_G_MLSL,
-  NLOPT_G_MLSL_LDS,
-
-  NLOPT_LD_SLSQP,
-
-  NLOPT_LD_CCSAQ,
-
-  NLOPT_GN_ESCH,
-
-  NLOPT_NUM_ALGORITHMS /* not an algorithm, just the number of them */
-} nlopt_algorithm;
-
-// NLopt return codes (see nlopt.h)
-
-typedef enum {
-  NLOPT_FAILURE = -1, /* generic failure code */
-  NLOPT_INVALID_ARGS = -2,
-  NLOPT_OUT_OF_MEMORY = -3,
-  NLOPT_ROUNDOFF_LIMITED = -4,
-  NLOPT_FORCED_STOP = -5,
-
-  NLOPT_SUCCESS = 1, /* generic success code */
-  NLOPT_STOPVAL_REACHED = 2,
-  NLOPT_FTOL_REACHED = 3,
-  NLOPT_XTOL_REACHED = 4,
-  NLOPT_MAXEVAL_REACHED = 5,
-  NLOPT_MAXTIME_REACHED = 6,
-
-  NLOPT_RUNNING = 0 /* extra code for MAD */
-} nlopt_result;
-
-  /* API - to check after nlopt upgrade */
-  typedef struct nlopt_opt_s *nlopt_opt; /* internal opaque structure */
-  nlopt_result nlopt_force_stop(nlopt_opt, int val);
+enum {
+  /* extra status/return code from MAD */
+  NLOPT_RUNNING = 0,
+}
 ]]
 
-ffi.cdef[[
-// NLopt MAD C interface (see mad_nlopt.h)
+ffi.cdef [[
+enum {
+ /* extra MAD algorithms */
+  NLOPT_LN_LMDIF = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
+  NLOPT_LD_LMDIF,
 
-typedef num_t (nlopt_obj_t)(u32_t n, const num_t *x, num_t *grad, void *data);
-typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
-                            u32_t n, const num_t* x, num_t* grad, void* data);
+  NLOPT_LN_JACOBIAN,
+  NLOPT_LD_JACOBIAN,
 
-struct nlopt_args {
-  // algorithm
-        int    algo;
-        str_t  algonam;
-
-  // objective function (required)
-  nlopt_obj_t *fun;
-        num_t  fval;  // current minimum value
-        num_t  fmin;  // minimum value required (target)
-        num_t  ftol;  // minimum value change required (target)
-        num_t  frtol; // minimum relative value change required (target)
-
-  // state variables [n] (required)
-        ssz_t  n;
-        num_t *x;
-  const num_t *dx;
-  const num_t *xmin;
-  const num_t *xmax;
-  const num_t *xtol;
-        num_t  xrtol;
-
-  // equality constraints [p]
-        ssz_t  p;
-  nlopt_cts_t *efun;
-  const num_t *etol;
-
-  // inequality constraints [q]
-        ssz_t  q;
-  nlopt_cts_t *lfun;
-  const num_t *ltol;
-
-  // stop criteria (if >0)
-        int    maxcall;
-        num_t  maxtime;
-
-  // debug level
-        int    debug;
-
-  // returned values
-        int    status;
-
-  // pointer to nlop opaque structure
-  nlopt_opt    opt;
-};
+  NLOPT_NUM_ALGOS, /* not an algorithm, just the number of them */
+}
 ]]
 
--- NLopt supported algorithms (see nlopt.h) -----------------------------------o
+-- NLopt return code strings (see madl_nlopt) ---------------------------------o
+
+local retstr = {
+  -- generic failure code
+  [_C.NLOPT_FAILURE         ] = 'NLOPT_FAILURE',
+  [_C.NLOPT_INVALID_ARGS    ] = 'NLOPT_INVALID_ARGS',
+  [_C.NLOPT_OUT_OF_MEMORY   ] = 'NLOPT_OUT_OF_MEMORY',
+  [_C.NLOPT_ROUNDOFF_LIMITED] = 'NLOPT_ROUNDOFF_LIMITED',
+  [_C.NLOPT_FORCED_STOP     ] = 'NLOPT_FORCED_STOP',
+  -- generic success code
+  [_C.NLOPT_SUCCESS         ] = 'NLOPT_SUCCESS',
+  [_C.NLOPT_STOPVAL_REACHED ] = 'NLOPT_FMIN_REACHED',    -- MODIFIED
+  [_C.NLOPT_FTOL_REACHED    ] = 'NLOPT_FTOL_REACHED',
+  [_C.NLOPT_XTOL_REACHED    ] = 'NLOPT_XTOL_REACHED',
+  [_C.NLOPT_MAXEVAL_REACHED ] = 'NLOPT_MAXCALL_REACHED', -- MODIFIED
+  [_C.NLOPT_MAXTIME_REACHED ] = 'NLOPT_MAXTIME_REACHED',
+  -- extra codes (check value with enum of nlopt return code!)
+  [_C.NLOPT_RUNNING         ] = 'NLOPT_RUNNING',         -- ADDED
+}
+
+-- NLopt supported algorithms (see madl_nlopt) --------------------------------o
 
 --[[
 Algorithm specs:
@@ -204,6 +92,12 @@ Algorithm specs:
   gr = require explicit computation of gradient
   lo = require local optimiser specification (NYI)
   lg = require augmented lagrangian (NYI)
+
+Algorithm names:
+  NLOPT_{G/L}{D/N}_* = global/local derivative/no-derivative optimization
+  *_RAND algorithms involve some randomization.
+  *_NOSCAL algorithms are *not* scaled to a unit hypercube
+           (i.e. they are sensitive to the units of x)
 --]]
 
 local nlopt_algo = {
@@ -255,36 +149,28 @@ local nlopt_algo = {
   NLOPT_AUGLAG_EQ                  = { bd='y', eq='y', le='y', gr='?', lo='y' },
   NLOPT_G_MLSL                     = { bd='y', eq='n', le='n', gr='?', lo='y' },
   NLOPT_G_MLSL_LDS                 = { bd='y', eq='n', le='n', gr='?', lo='y' },
-}
-do
-  local n, t = 0, table.new( _C.NLOPT_NUM_ALGORITHMS,0)
-  for s,a in pairs(nlopt_algo) do
-    a.id = assert(_C[s]) ; n = n+1 ; t[n] = a
-  end
-  assert(n == _C.NLOPT_NUM_ALGORITHMS, "unexpected missing NLOPT algorithm")
 
+  -- MAD algorithms
+  NLOPT_LN_LMDIF                   = { bd='y', eq='y', le='y', gr='n', lo='n' },
+  NLOPT_LD_LMDIF                   = { bd='y', eq='y', le='y', gr='y', lo='n' },
+  NLOPT_LN_JACOBIAN                = { bd='y', eq='y', le='y', gr='n', lo='n' },
+  NLOPT_LD_JACOBIAN                = { bd='y', eq='y', le='y', gr='y', lo='n' },
+}
+
+-- load nlopt lib wrapper -----------------------------------------------------o
+
+do -- check integrity between nlopt_algo and NLOPT enums (from madl_nlopt)
+  local ntot = _C.NLOPT_NUM_ALGOS
+  local n, t = 0, table.new(ntot,0)
+  for s,a in pairs(nlopt_algo) do
+    a.id = assert(_C[s]) -- extend nlopt_algo rows with id attribute
+    n = n+1 ; t[n] = a
+  end
+  assert(n == ntot, "unexpected missing NLOPT algorithm")
+  -- fill array part with rows by id, starting at enum 0, i.e. len+1
   for i=1,n do nlopt_algo[t[i].id] = t[i] end
   assert(n == #nlopt_algo+1, "unexpected corrupted list of NLOPT algorithm")
 end
-
--- NLopt return code strings
-local retstr = {
-  -- generic failure code
-  [_C.NLOPT_FAILURE         ] = 'NLOPT_FAILURE',
-  [_C.NLOPT_INVALID_ARGS    ] = 'NLOPT_INVALID_ARGS',
-  [_C.NLOPT_OUT_OF_MEMORY   ] = 'NLOPT_OUT_OF_MEMORY',
-  [_C.NLOPT_ROUNDOFF_LIMITED] = 'NLOPT_ROUNDOFF_LIMITED',
-  [_C.NLOPT_FORCED_STOP     ] = 'NLOPT_FORCED_STOP',
-  -- generic success code
-  [_C.NLOPT_SUCCESS         ] = 'NLOPT_SUCCESS',
-  [_C.NLOPT_STOPVAL_REACHED ] = 'NLOPT_FMIN_REACHED',    -- MODIFIED
-  [_C.NLOPT_FTOL_REACHED    ] = 'NLOPT_FTOL_REACHED',
-  [_C.NLOPT_XTOL_REACHED    ] = 'NLOPT_XTOL_REACHED',
-  [_C.NLOPT_MAXEVAL_REACHED ] = 'NLOPT_MAXCALL_REACHED', -- MODIFIED
-  [_C.NLOPT_MAXTIME_REACHED ] = 'NLOPT_MAXTIME_REACHED',
-  -- extra codes (check value with enum of nlopt return code!)
-  [_C.NLOPT_RUNNING         ] = 'NLOPT_RUNNING',         -- ADDED
-}
 
 -- expression default weights by kind -----------------------------------------o
 
@@ -303,7 +189,7 @@ local expr_weights = { -- default weight = 1
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
-  local n, p, q, fbst, status in var
+  local n, p, q in var
 
   if p+q > 0 then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
@@ -325,7 +211,7 @@ local function disp_summ (env)
   end
 
   local s1, s2, v1, v2
-  if status == _C.NLOPT_RUNNING
+  if var.status == _C.NLOPT_RUNNING
   then s1, s2, v1, v2 = 'Curr. Value', 'Curr. Step ', var.x, var.dx
   else s1, s2, v1, v2 = 'Final Value', 'Init. Value', var.x, var.x0 end
 
@@ -341,21 +227,73 @@ local function disp_summ (env)
   local fmt = "\n status=%s,  ncall=%2d\z
                \n fmin=% -.10e,  fval=% -.10e,  ftol=% -.10e\n\n"
 
-  printf(fmt, retstr[status], env.ncall, var.fbst, var.fval, var.ftol)
+  printf(fmt, retstr[var.status], env.ncall, var.fbst, var.fval, var.ftol)
 end
 
--- optimiser cost functions ---------------------------------------------------o
+-- optimizer cost functions ---------------------------------------------------o
 
--- debug helper
+-- update variables (helper)
+local function update_vars (env, x)
+  local variables in env
+  local var = env.__var
+
+  if variables.update then
+    variables.update(x, env)
+  else
+    var.flush = nil
+    for i=1,x.nrow do variables[i].set(x[i], env) end
+    if var.flush then jit.flush() end -- TODO: avoid jit flush
+  end
+end
+
+-- compute cost function value
+local function compute_fval (env, eval, lval)
+  local command, equalities, inequalities in env
+
+  env.ncall = env.ncall + 1
+
+  local res = command(env) -- call user command (e.g. twiss)
+  if is_nil(res) then return end
+
+  local var = env.__var
+  local etol, ewgt, ltol, lwgt in var
+
+  local fval = 0
+  for i=1,var.p do
+    eval[i] = equalities[i].expr(res, env)
+    if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*eval[i]^2 end
+  end
+  for i=1,var.q do
+    lval[i] = inequalities[i].expr(res, env)
+    if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
+  end
+
+  return sqrt(fval*var.fscl)
+end
+
+-- compute cost function gradient (and jacobians) for the iv-th variable
+local function compute_fgrd (env, iv, dx)
+  local var = env.__var
+  local ejac, eval, etmp, ljac, lval, ltmp in var
+
+  local fval = compute_fval(env, etmp, ltmp)
+
+  var.fgrd[iv] = (fval-var.fval)/dx
+  for i=1,var.p do ejac:set(iv,i, (etmp[i]-eval[i])/dx) end
+  for i=1,var.q do ljac:set(iv,i, (ltmp[i]-lval[i])/dx) end
+
+  return fval
+end
+
+-- print matrix (debug helper)
 local function dspmat(mat, nam)
-  local fmt = option.numfmt
-  option.numfmt = "% -.5e"
-  mat:print(nam)
-  option.numfmt = fmt
+  local fmt = option.numfmt;
+  option.numfmt = "% -.5e" ; mat:print(nam) ; option.numfmt = fmt
 end
 
-local function nlopt_functions (env, mthd, ndsp)
-  local command, variables, objective, equalities, inequalities, weights in env
+-- cost functions factory
+local function nlopt_functions (env)
+  local objective, equalities, inequalities in env
 
   assert(is_nil(objective.exec) or is_callable(objective.exec),
          "invalid objective (callable expected)")
@@ -364,147 +302,87 @@ local function nlopt_functions (env, mthd, ndsp)
   assert(is_nil(inequalities.exec) or is_callable(inequalities.exec),
          "invalid inequality constraints (callable expected)")
 
-  local update in variables
   local var = env.__var
-  local n, p, q, x, dx, eval, ewgt, etol, lval, lwgt, ltol, ejac, ljac, fgrd in var
-  local disp = ndsp > 1 and disp_summ or fnil
-  local grad = nlopt_algo[mthd].gr == 'y'
-  local ncal = var.maxcall > 0
-  local fmin = var.fmin > 0
-  local ftol = var.ftol > 0
-  local fscl = 0
+  local n, p, q, method in var
 
-  -- weights scaling preparation
-  if ewgt then fscl = fscl + ewgt:sum() end
-  if lwgt then fscl = fscl + lwgt:sum() end
-  fscl = fscl == 0 and 1 or 1/fscl
+  -- gradient (and jacobian) sanity check
+  local grad = method.gr == 'y'
 
-  -- nlopt objective function
-  return function(n_, x_, df_)
-    assert(n_ == n, "invalid number of variables (unexpected)")
+  return -- objective, equalities and inequalities functions
+
+  -- objective function
+  function(n_, x_, df_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
-    assert(df_ == nil or grad, "unexpected non-nil gradient argument")
+    assert(df_ == nil or grad, "non-nil gradient argument (unexpected)")
 
-    -- finalize before force to stop
+    -- check for stopping
     if var.status ~= _C.NLOPT_RUNNING then
       if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
       var.final(env)
       return var.fval
     end
 
-    -- iteration number
-    env.ncall = env.ncall + 1
+    local x, dx, fgrd, eval, ejac, lval, ljac in var
 
-    -- update state vector
-    for i=1,n do
-      x[i], dx[i] = x_[i-1], x_[i-1]-x[i]
+    -- reset data
+    if df_ ~= nil then
+      fgrd:zeros()
+      if p>0 then ejac:zeros() end
+      if q>0 then ljac:zeros() end
     end
 
-    -- update state variables
-    if update then
-      update(x, env)
-    else
-      var.flush = nil
-      for i=1,n do variables[i].set(x[i], env) end
-      if var.flush then jit.flush() end -- TODO: avoid jit flush
-    end
+    -- update variables
+    for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
+    update_vars(env, x)
 
-    -- call user defined function (e.g. f(x))
-    if objective.exec then
-      local fval = abs(objective.exec(x, df_ ~= nil and fgrd:zeros() or nil))
+    local fval
+    if objective.exec then             -- call user defined function (e.g. f(x))
+      env.ncall = env.ncall + 1
+      fval = abs(objective.exec(x, fgrd))
+      if fval == nil then goto skip end
       var.fval, var.fstp = fval, abs(var.fval-fval)
-      if df_ ~= nil then
-        for i=1,n do df_[i-1] = fgrd[i] end
-        if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
-      end
-      goto final
-
-    -- call user command (e.g. twiss)
     else
-      local res = command(env)
-      if is_nil(res) then
-        var.fval, var.fstp = inf, inf
-        if p>0 then eval:ones(inf) end
-        if q>0 then lval:ones(inf) end
-        goto final
-      else
-        -- compute objective function
-        local fval = 0
-        for i=1,p do
-          eval[i] = equalities[i].expr(res, env)
-          if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*eval[i]^2 end
-        end
-        for i=1,q do
-          lval[i] = inequalities[i].expr(res, env)
-          if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
-        end
-        fval = sqrt(fval*fscl)
-        var.fval, var.fstp = fval, abs(var.fval-fval)
-      end
+      -- compute objective function
+      fval = compute_fval(env, eval, lval)
+      if fval == nil then goto skip end
+      var.fval, var.fstp = fval, abs(var.fval-fval)
 
       -- compute objective function gradient and (in)equalities jacobian(s)
       if df_ ~= nil then
-        if ejac then ejac:zeros() end
-        if ljac then ljac:zeros() end
-        fgrd:zeros()
-
         for iv=1,n do
-          env.ncall = env.ncall + 1
-          if dx[iv] == 0 then goto next end -- correct??
-
-          for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
-
-          if update then
-            update(x, env)
-          else
-            var.flush = nil
-            for i=1,n do variables[i].set(x[i], env) end
-            if var.flush then jit.flush() end -- TODO: avoid jit flush
+          if dx[iv] ~= 0 then -- forward finite difference
+            for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
+            update_vars(env, x) -- update state vector
+            fval = compute_fgrd(env, iv, dx[iv])
+            if fval == nil then goto skip end
           end
-
-          local res = command(env)
-          if is_nil(res) then goto next
-          else
-            local fval = 0
-            for i=1,p do
-              local ev = equalities[i].expr(res, env)
-              if abs(ev) > etol[i] then fval = fval + ewgt[i]*ev^2 end
-              ejac:set(iv,i, (ev-eval[i])/dx[iv])
-            end
-            for i=1,q do
-              local lv = inequalities[i].expr(res, env)
-              if lv > ltol[i] then fval = fval + lwgt[i]*lv^2 end
-              ljac:set(iv,i, (lv-lval[i])/dx[iv])
-            end
-            fval = sqrt(fval*fscl)
-            fgrd[iv] = (fval-var.fval)/dx[iv]
-          end
-
-        ::next::
         end
-
-        -- restore variables, copy back gradient
-        for i=1,n do x[i], df_[i-1] = x_[i-1], fgrd[i] end
-        if update then
-          update(x, env)
-        else
-          var.flush = nil
-          for i=1,n do variables[i].set(x[i], env) end
-          if var.flush then jit.flush() end -- TODO: avoid jit flush
-        end
-
-        if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
+        for i=1,n do x[i] = x_[i-1] end -- restore variables
+        update_vars(env, x)
       end
     end
-    ::final::
+
+    if df_ ~= nil then -- backup gradient
+      for i=1,n do df_[i-1] = fgrd[i] end
+      if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
+    end
+
+::skip::
+
+    -- check for valid variables domain
+    if fval == nil then
+      var.fval, var.fstp = inf, inf
+      if p>0 then eval:ones(inf) end
+      if q>0 then lval:ones(inf) end
+    end
 
     -- stop criteria (nlopt ignores fmin and ftol...?)
-    if ncal and env.ncall >= var.maxcall then
+    if env.ncall >= var.maxcall then
       var.status = _C.NLOPT_MAXEVAL_REACHED
-    elseif fmin and var.fval <= var.fmin then
+    elseif var.fval <= var.fmin then
       var.status = _C.NLOPT_STOPVAL_REACHED
-    elseif ftol and (var.fstp <= var.ftol or
-                     var.fstp <= var.frtol*var.fval) then
+    elseif var.fstp <= var.ftol or var.fstp <= var.frtol*var.fval then
       var.status = _C.NLOPT_FTOL_REACHED
     end
 
@@ -512,51 +390,55 @@ local function nlopt_functions (env, mthd, ndsp)
     if var.fval < var.fbst then var.fbst = var.fval end
 
     -- display intermediate summary
-    disp(env)
+    if var.sumdisp > 0 then disp_summ(env) end
 
     -- return weighted squared mean: sqrt(\sum_i w_i c_i(x)^2 / \sum_i w_i)
     return var.fval
   end,
 
-  -- nlopt equality function
-  nlopt_algo[mthd].eq == 'y' and (p>0 and function(p_, r_, n_, x_, de_)
+  -- equality function
+  method.eq == 'y' and p>0 and
+  function(p_, r_, n_, x_, de_)
     assert(n_ == n  , "invalid number of variables (unexpected)")
-    assert(p_ == p , "invalid number of equalities (unexpected)")
+    assert(p_ == p  , "invalid number of equalities (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of equalities (unexpected)")
-    assert(de_ == nil or grad, "unexpected non-nil jacobian argument")
+    assert(de_ == nil or grad, "non-nil jacobian argument (unexpected)")
 
-    -- call user defined function
-    if equalities.exec then
-      equalities.exec(eval, x, de_ ~= nil and ejac:zeros() or nil)
+    local x, eval, ejac in var
+
+    if equalities.exec then -- call user defined function
+      equalities.exec(eval, x, ejac)
     end
 
     for i=1,p do r_[i-1] = eval[i] end
-    if de_ ~= nil then
+    if de_ ~= nil then -- backup jacobian
       for i=1,n*p do de_[i-1] = ejac[i] end
       if env.debug >= 2 then dspmat(ejac,"JACOBIAN-EQ") end
     end
-  end or nil),
+  end or nil,
 
-  -- nlopt inequality function
-  nlopt_algo[mthd].le == 'y' and (q>0 and function(q_, r_, n_, x_, dl_)
+  -- inequality function
+  method.le == 'y' and q>0 and
+  function(q_, r_, n_, x_, dl_)
     assert(n_ == n  , "invalid number of variables (unexpected)")
     assert(q_ == q  , "invalid number of inequalities (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
-    assert(dl_ == nil or grad, "unexpected non-nil jacobian argument")
+    assert(dl_ == nil or grad, "non-nil jacobian argument (unexpected)")
 
-    -- call user defined function
-    if inequalities.exec then
-      inequalities.exec(lval, x, dl_ ~= nil and ljac:zeros() or nil)
+    local x, lval, ljac in var
+
+    if inequalities.exec then -- call user defined function
+      inequalities.exec(lval, x, ljac)
     end
 
     for i=1,q do r_[i-1] = lval[i] end
-    if dl_ ~= nil then
+    if dl_ ~= nil then -- backup jacobian
       for i=1,n*q do dl_[i-1] = ljac[i] end
       if env.debug >= 2 then dspmat(ljac,"JACOBIAN-LE") end
     end
-  end or nil)
+  end or nil
 end
 
 -- getters/setters ------------------------------------------------------------o
@@ -576,9 +458,9 @@ local locfmt = [[
                     assert(k == vnam, 'invalid local variable in getter')
                     return v
                   end,
-              \x => local k = debug.setlocal(lset or 6, vidx, x)
+              \x => local k = debug.setlocal(lset or 7, vidx, x)
                     if not lset or k ~= vnam then
-                      for i=6,1e6 do
+                      for i=7,1e6 do
                         local info = debug.getinfo(i, 'f')
                         if not info then break end
                         if info.func == f then lset=i ; break end
@@ -678,76 +560,6 @@ local function accessors (env)
   end
 end
 
--- NLOPT lib wrapper ----------------------------------------------------------o
-
-local function nlopt_librun (env)
-  local var = env.__var
-  local arg = ffi.new 'nlopt_args_t[1]'
-
-  -- nlopt C -> MAD callbacks
-  local fun_cb, efun_cb, lfun_cb
-  if var. fun then  fun_cb = ffi.cast('nlopt_obj_t*', var. fun) end
-  if var.efun then efun_cb = ffi.cast('nlopt_cts_t*', var.efun) end
-  if var.lfun then lfun_cb = ffi.cast('nlopt_cts_t*', var.lfun) end
-
-  -- nlopt seems to modify/use x internally, make a copy.
-  local n, p, q in var
-  local x = var.x:copy()
-
-  arg[0].algo    = var.method.id
-
-  arg[0].fun     = fun_cb
-  arg[0].fval    = var.fval
-  arg[0].fmin    = var.fmin
-  arg[0].ftol    = var.ftol
-  arg[0].frtol   = var.frtol
-
-  arg[0].n       = n
-  arg[0].x       = x.data
-  arg[0].dx      = var.dx.data
-
-  arg[0].xmin    = var.xmin.data
-  arg[0].xmax    = var.xmax.data
-  arg[0].xtol    = var.xtol.data
-  arg[0].xrtol   = var.xrtol
-
-  arg[0].p       = p
-  arg[0].efun    = efun_cb
-  arg[0].etol    = p>0 and var.etol.data or nil
-
-  arg[0].q       = q
-  arg[0].lfun    = lfun_cb
-  arg[0].ltol    = q>0 and var.ltol.data or nil
-
-  arg[0].maxcall = var.maxcall
-  arg[0].maxtime = var.maxtime
-
-  arg[0].debug   = env.debug
-  arg[0].status  = var.status
-
-  -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
-  var.fjit = true
-
-  -- nlopt can be forced to stop, forward stop...
-  var.final =\ _C.nlopt_force_stop(arg[0].opt, var.status)
-
-  -- optimize (protected call)
-  local status, errmsg = pcall(_C.mad_nlopt, arg)
-
-  -- release callback (note: callbacks are never collected)
-  if var. fun then  fun_cb:free() end
-  if var.efun then efun_cb:free() end
-  if var.lfun then lfun_cb:free() end
-
-  -- not a forced stop, copy state variables back (next step)
-  if arg[0].status ~= _C.NLOPT_FORCED_STOP then
-    var.status = arg[0].status
-    x:copy(var.x)
-  end
-
-  return status, errmsg
-end
-
 -- match command --------------------------------------------------------------o
 
 local function exec (self)
@@ -802,13 +614,14 @@ local function exec (self)
       xmin = vector(n),                    -- variables minimum bounds
       xmax = vector(n),                    -- variables maximum bounds
       xtol = vector(n),                    -- variables tolerances
-      xrtol= max(variables.rtol or 0, 0),  -- variables relative tolerance
+      xrtol= variables.rtol or -inf,       -- variables relative tolerance
 
       p    = p,                            -- number of equalities
       efun = nil,                          -- equalities function (see above)
       eval = p>0 and vector(p)   or nil,   -- equalities values
       ewgt = p>0 and vector(p)   or nil,   -- equalities weights
       etol = p>0 and vector(p)   or nil,   -- equalities tolerances
+      etmp = p>0 and vector(p)   or nil,   -- equalities temporary values
       ejac = p>0 and matrix(n,p) or nil,   -- equalities jacobian
 
       q    = q,                            -- number of inequalities
@@ -816,19 +629,21 @@ local function exec (self)
       lval = q>0 and vector(q)   or nil,   -- inequalities values
       lwgt = q>0 and vector(q)   or nil,   -- inequalities weights
       ltol = q>0 and vector(q)   or nil,   -- inequalities tolerances
+      ltmp = q>0 and vector(q)   or nil,   -- inequalities temporary values
       ljac = q>0 and matrix(n,q) or nil,   -- inequalities jacobian
 
       fun  = nil,                          -- cost function (see above)
       fval = inf,                          -- cost function value (dummy init)
       fbst = inf,                          -- cost function best value
+      fscl = 1,                            -- cost function weights scaling
       fgrd = vector(n),                    -- cost function gradient
-      fmin = max(objective.fmin or 0, 0),  -- cost function minimum (target)
-      ftol = max(objective.ftol or 0, 0),  -- cost function tolerance (target)
-      frtol= max(objective.rtol or 0, 0),  -- cost function relative tolerance (target)
+      fmin = objective.fmin or -inf,       -- cost function minimum (target)
+      ftol = objective.ftol or -inf,       -- cost function tolerance (target)
+      frtol= objective.rtol or -inf,       -- cost function relative tolerance (target)
 
       method  = mopt,                      -- algorithm method (nlopt_algo row)
       sumdisp = ndsp,                      -- algorithm summary level
-      maxcall = objective.maxcall or 0,    -- algorithm call limit
+      maxcall = objective.maxcall or 1e9,  -- algorithm call limit
       maxtime = objective.maxtime or 0,    -- algorithm time limit
       final   = fnil,                      -- algorithm finalizer
       status  = _C.NLOPT_RUNNING,          -- algorithm status
@@ -889,9 +704,14 @@ local function exec (self)
     var.lwgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
   end
 
+  -- weights scaling preparation
+  local fscl = 0
+  if p>0 then fscl = fscl + var.ewgt:sum() end
+  if q>0 then fscl = fscl + var.lwgt:sum() end
+  var.fscl = fscl == 0 and 1 or 1/fscl
+
   -- build optimizer functions
-  local fun, efun, lfun = nlopt_functions (env, mthd, ndsp)
-  var.fun, var.efun, var.lfun = fun, efun, lfun
+  var.fun, var.efun, var.lfun = nlopt_functions(env)
 
   -- call optimiser
   local status, errmsg = nlopt_librun(env)
@@ -899,7 +719,7 @@ local function exec (self)
   -- display error or final summary
   if status == false then
     warn("error '%s' occured during matching", errmsg)
-  elseif ndsp > 0 then disp_summ(env) end
+  elseif var.sumdisp > 0 then disp_summ(env) end
 
   -- return status, fmin, ncall
   return retstr[var.status], var.fbst, env.ncall
@@ -919,7 +739,7 @@ local match = command 'match' {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      exec=nil,                                 tol=nil,
   },
-  -- inqualities constraints
+  -- inequalities constraints
   inequalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      exec=nil,                                 tol=nil,
