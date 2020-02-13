@@ -98,8 +98,5 @@ void mad_nlopt (nlopt_args_t *a)
   nlopt_destroy(a->opt); a->opt = NULL;
 }
 
-void mad_nlopt_srand (u64_t seed)
-{
-  nlopt_srand(seed);
-  nlopt_srand_time();
-}
+void mad_nlopt_srand (u64_t seed) { nlopt_srand(seed);  }
+void mad_nlopt_srand_time (void)  { nlopt_srand_time(); }

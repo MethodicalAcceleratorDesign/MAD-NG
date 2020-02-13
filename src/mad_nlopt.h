@@ -33,6 +33,7 @@ typedef struct nlopt_args nlopt_args_t;
 
 void mad_nlopt (nlopt_args_t *args);
 void mad_nlopt_srand (u64_t seed);
+void mad_nlopt_srand_time (void);
 
 // -- types -------------------------------------------------------------------o
 
