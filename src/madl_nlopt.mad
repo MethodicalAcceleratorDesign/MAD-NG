@@ -1,0 +1,264 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | NLOPT lib module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - TODO
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local ffi = require 'ffi'
+local _C in MAD
+
+-- types ----------------------------------------------------------------------o
+
+ffi.cdef [[
+// NLopt return codes (see nlopt.h)
+
+typedef enum {
+  NLOPT_FAILURE = -1, /* generic failure code */
+  NLOPT_INVALID_ARGS = -2,
+  NLOPT_OUT_OF_MEMORY = -3,
+  NLOPT_ROUNDOFF_LIMITED = -4,
+  NLOPT_FORCED_STOP = -5,
+
+  NLOPT_SUCCESS = 1, /* generic success code */
+  NLOPT_STOPVAL_REACHED = 2,
+  NLOPT_FTOL_REACHED = 3,
+  NLOPT_XTOL_REACHED = 4,
+  NLOPT_MAXEVAL_REACHED = 5,
+  NLOPT_MAXTIME_REACHED = 6,
+} nlopt_result;
+]]
+
+ffi.cdef [[
+// NLopt supported algorithms (see nlopt.h)
+// see https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/ for details
+
+typedef enum {
+/* Naming conventions:
+  NLOPT_{G/L}{D/N}_* = global/local derivative/no-derivative optimization
+  *_RAND algorithms involve some randomization.
+  *_NOSCAL algorithms are *not* scaled to a unit hypercube
+           (i.e. they are sensitive to the units of x)
+*/
+  NLOPT_GN_DIRECT = 0,
+  NLOPT_GN_DIRECT_L,
+  NLOPT_GN_DIRECT_L_RAND,
+  NLOPT_GN_DIRECT_NOSCAL,
+  NLOPT_GN_DIRECT_L_NOSCAL,
+  NLOPT_GN_DIRECT_L_RAND_NOSCAL,
+
+  NLOPT_GN_ORIG_DIRECT,
+  NLOPT_GN_ORIG_DIRECT_L,
+
+  NLOPT_GD_STOGO,
+  NLOPT_GD_STOGO_RAND,
+
+  NLOPT_LD_LBFGS_NOCEDAL,
+
+  NLOPT_LD_LBFGS,
+
+  NLOPT_LN_PRAXIS,
+
+  NLOPT_LD_VAR1,
+  NLOPT_LD_VAR2,
+
+  NLOPT_LD_TNEWTON,
+  NLOPT_LD_TNEWTON_RESTART,
+  NLOPT_LD_TNEWTON_PRECOND,
+  NLOPT_LD_TNEWTON_PRECOND_RESTART,
+
+  NLOPT_GN_CRS2_LM,
+
+  NLOPT_GN_MLSL,
+  NLOPT_GD_MLSL,
+  NLOPT_GN_MLSL_LDS,
+  NLOPT_GD_MLSL_LDS,
+
+  NLOPT_LD_MMA,
+
+  NLOPT_LN_COBYLA,
+
+  NLOPT_LN_NEWUOA,
+  NLOPT_LN_NEWUOA_BOUND,
+
+  NLOPT_LN_NELDERMEAD,
+  NLOPT_LN_SBPLX,
+
+  NLOPT_LN_AUGLAG,
+  NLOPT_LD_AUGLAG,
+  NLOPT_LN_AUGLAG_EQ,
+  NLOPT_LD_AUGLAG_EQ,
+
+  NLOPT_LN_BOBYQA,
+
+  NLOPT_GN_ISRES,
+
+/* new variants that require local_optimizer to be set */
+  NLOPT_AUGLAG,
+  NLOPT_AUGLAG_EQ,
+  NLOPT_G_MLSL,
+  NLOPT_G_MLSL_LDS,
+
+  NLOPT_LD_SLSQP,
+
+  NLOPT_LD_CCSAQ,
+
+  NLOPT_GN_ESCH,
+
+  NLOPT_NUM_ALGORITHMS /* not an algorithm, just the number of them */
+} nlopt_algorithm;
+]]
+
+ffi.cdef[[
+// NLopt MAD C interface (see mad_nlopt.h)
+
+typedef struct nlopt_args nlopt_args_t; /* MAD wrapper structure */
+typedef struct nlopt_opt_s nlopt_opt; /* internal opaque structure */
+
+typedef num_t (nlopt_obj_t)(u32_t n, const num_t *x, num_t *grad, void *data);
+typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
+                            u32_t n, const num_t* x, num_t* grad, void* data);
+
+void mad_nlopt (nlopt_args_t *args);
+void mad_nlopt_srand (u64_t seed);
+void mad_nlopt_srand_time (void);
+
+struct nlopt_args {
+  // algorithm
+        int    algo;
+        str_t  algonam;
+
+  // objective function (required)
+  nlopt_obj_t *fun;
+        num_t  fval;  // current minimum value
+        num_t  fmin;  // minimum value required (target)
+        num_t  ftol;  // minimum value change required (target)
+        num_t  frtol; // minimum relative value change required (target)
+
+  // state variables [n] (required)
+        ssz_t  n;
+        num_t *x;
+  const num_t *dx;
+  const num_t *xmin;
+  const num_t *xmax;
+  const num_t *xtol;
+        num_t  xrtol;
+
+  // equality constraints [p]
+        ssz_t  p;
+  nlopt_cts_t *efun;
+  const num_t *etol;
+
+  // inequality constraints [q]
+        ssz_t  q;
+  nlopt_cts_t *lfun;
+  const num_t *ltol;
+
+  // stop criteria (if >0)
+        int    maxcall;
+        num_t  maxtime;
+
+  // debug level
+        int    debug;
+
+  // returned values
+        int    status;
+
+  // pointer to nlop opaque structure
+  nlopt_opt   *opt;
+};
+
+/* NLOPT API - to check after nlopt upgrade */
+nlopt_result nlopt_force_stop (nlopt_opt*, int val);
+]]
+
+-- NLOPT lib wrapper ----------------------------------------------------------o
+
+local function nlopt_librun (env)
+  local var = env.__var
+  local arg = ffi.new 'nlopt_args_t[1]'
+
+  -- nlopt C -> MAD callbacks
+  local fun_cb, efun_cb, lfun_cb
+  if var. fun then  fun_cb = ffi.cast('nlopt_obj_t*', var. fun) end
+  if var.efun then efun_cb = ffi.cast('nlopt_cts_t*', var.efun) end
+  if var.lfun then lfun_cb = ffi.cast('nlopt_cts_t*', var.lfun) end
+
+  -- nlopt seems to modify/use x internally, make a copy.
+  local n, p, q in var
+  local x = var.x:copy()
+
+  arg[0].algo    = var.method.id
+
+  arg[0].fun     = fun_cb
+  arg[0].fval    = var.fval
+  arg[0].fmin    = var.fmin
+  arg[0].ftol    = var.ftol
+  arg[0].frtol   = var.frtol
+
+  arg[0].n       = n
+  arg[0].x       = x.data
+  arg[0].dx      = var.dx.data
+
+  arg[0].xmin    = var.xmin.data
+  arg[0].xmax    = var.xmax.data
+  arg[0].xtol    = var.xtol.data
+  arg[0].xrtol   = var.xrtol
+
+  arg[0].p       = p
+  arg[0].efun    = efun_cb
+  arg[0].etol    = p>0 and var.etol.data or nil
+
+  arg[0].q       = q
+  arg[0].lfun    = lfun_cb
+  arg[0].ltol    = q>0 and var.ltol.data or nil
+
+  arg[0].maxcall = var.maxcall
+  arg[0].maxtime = var.maxtime
+
+  arg[0].debug   = env.debug
+  arg[0].status  = var.status
+
+  -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
+  var.fjit = true
+
+  -- nlopt can be forced to stop, forward stop...
+  var.final =\ _C.nlopt_force_stop(arg[0].opt, var.status)
+
+  -- optimize (protected call to C API)
+  local status, errmsg = pcall(_C.mad_nlopt, arg)
+
+  -- release callback (note: callbacks are never collected)
+  if var. fun then  fun_cb:free() end
+  if var.efun then efun_cb:free() end
+  if var.lfun then lfun_cb:free() end
+
+  -- not a forced stop, copy state variables back (next step)
+  if arg[0].status ~= _C.NLOPT_FORCED_STOP then
+    var.status = arg[0].status
+    x:copy(var.x)
+  end
+
+  return status, errmsg
+end
+
+-- end ------------------------------------------------------------------------o
+return nlopt_librun
