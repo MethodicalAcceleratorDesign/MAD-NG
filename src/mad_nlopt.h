@@ -45,7 +45,7 @@ typedef void  (nlopt_cts_t)(u32_t m, num_t *res,
 struct nlopt_args {
   // algorithm
         int    algo;
-        str_t  algonam;
+        str_t  algonam; // set by mad_nlopt
 
   // objective function (required)
   nlopt_obj_t *fun;
@@ -67,11 +67,13 @@ struct nlopt_args {
         ssz_t  p;
   nlopt_cts_t *efun;
   const num_t *etol;
+         void *edat;
 
   // inequality constraints [q]
         ssz_t  q;
   nlopt_cts_t *lfun;
   const num_t *ltol;
+         void *ldat;
 
   // extra stop criteria (if >0)
         int    maxcall;
@@ -81,10 +83,10 @@ struct nlopt_args {
         int    debug;
 
   // returned values
-        int    status;
+        int    status; // set by mad_nlopt
 
-  // pointer to nlop opaque structure
-  nlopt_opt    opt;
+  // pointer to nlopt opaque structure
+  nlopt_opt    opt;    // set by mad_nlopt
 };
 
 // -- end ---------------------------------------------------------------------o
