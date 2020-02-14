@@ -27,10 +27,12 @@
 #define DBGI(s) if (a->debug) printf("nlopt: %s set to %d\n",#s,a->s);
 #define DBGN(s) if (a->debug) printf("nlopt: %s set to % -.6e\n",#s,a->s);
 
+static num_t inf = INFINITY;
+
 static inline
 num_t min(ssz_t n, const num_t x[n])
 {
-  num_t mx = INFINITY;
+  num_t mx = inf;
   if (x) for (ssz_t i=0; i<n; i++) if (x[i] < mx) mx = x[i];
   return mx;
 }
@@ -38,7 +40,7 @@ num_t min(ssz_t n, const num_t x[n])
 static inline
 num_t max(int n, const num_t x[n])
 {
-  num_t mx = -INFINITY;
+  num_t mx = -inf;
   if (x) for (ssz_t i=0; i<n; i++) if (x[i] > mx) mx = x[i];
   return mx;
 }
@@ -52,50 +54,50 @@ void mad_nlopt (nlopt_args_t *a)
   ensure(a->algonam, "invalid nlopt algorithm id=%d", a->algo);
 
   // create optimizer, set algorithm and problem dimension
-  a->opt = nlopt_create(a->algo, a->n);
+  nlopt_opt opt = nlopt_create(a->algo, a->n); a->opt = opt;
 
   // set objective function to minimize
-  CHK(nlopt_set_min_objective(a->opt, a->fun, NULL)); DBG(fun);
+  CHK(nlopt_set_min_objective(opt, a->fun, a->fdat)); DBG(fun);
 
   // set objective function stop value
-  if (a->fmin > -INFINITY) { CHK(nlopt_set_stopval(a->opt, a->fmin)); DBGN(fmin); }
+  if (a->fmin > -inf) { CHK(nlopt_set_stopval(opt, a->fmin)); DBGN(fmin); }
 
   // set objective function tolerance (value change)
-  if (a->ftol > 0) { CHK(nlopt_set_ftol_abs(a->opt, a->ftol)); DBGN(ftol); }
+  if (a->ftol > 0) { CHK(nlopt_set_ftol_abs(opt, a->ftol)); DBGN(ftol); }
 
   // set objective function relative tolerance (relative value change)
-  if (a->frtol > 0) { CHK(nlopt_set_ftol_rel(a->opt, a->frtol)); DBGN(frtol); }
+  if (a->frtol > 0) { CHK(nlopt_set_ftol_rel(opt, a->frtol)); DBGN(frtol); }
 
   // set variables tolerances
-  if (max(a->n,a->xtol) > 0) { CHK(nlopt_set_xtol_abs(a->opt, a->xtol)); DBG(xtol); }
+  if (max(a->n,a->xtol) > 0) { CHK(nlopt_set_xtol_abs(opt, a->xtol)); DBG(xtol); }
 
   // set variables relative tolerance (same for all)
-  if (a->xrtol > 0) { CHK(nlopt_set_xtol_rel(a->opt, a->xrtol)); DBGN(xrtol); }
+  if (a->xrtol > 0) { CHK(nlopt_set_xtol_rel(opt, a->xrtol)); DBGN(xrtol); }
 
   // set variables initial step size
-  if (min(a->n,a->dx) > 0) { CHK(nlopt_set_initial_step(a->opt, a->dx)); DBG(xstp); }
+  if (min(a->n,a->dx) > 0) { CHK(nlopt_set_initial_step(opt, a->dx)); DBG(xstp); }
 
   // set variables boundary constraints
-  if (max(a->n,a->xmin) > -INFINITY) { CHK(nlopt_set_lower_bounds(a->opt, a->xmin)); DBG(xmin); }
-  if (min(a->n,a->xmax) <  INFINITY) { CHK(nlopt_set_upper_bounds(a->opt, a->xmax)); DBG(xmax); }
+  if (max(a->n,a->xmin) > -inf) { CHK(nlopt_set_lower_bounds(opt, a->xmin)); DBG(xmin); }
+  if (min(a->n,a->xmax) <  inf) { CHK(nlopt_set_upper_bounds(opt, a->xmax)); DBG(xmax); }
 
   // check constraints tolerances
   if (! (max(a->p,a->etol) > 0) ) a->etol = NULL; else DBG(etol);
   if (! (max(a->q,a->ltol) > 0) ) a->ltol = NULL; else DBG(ltol);
 
   // set constraints to satisfy (within tolerances)
-  if (a->efun) { CHK(nlopt_add_equality_mconstraint  (a->opt, a->p, a->efun, a->edat, a->etol)); DBG(efun); }
-  if (a->lfun) { CHK(nlopt_add_inequality_mconstraint(a->opt, a->q, a->lfun, a->ldat, a->ltol)); DBG(lfun); }
+  if (a->efun) { CHK(nlopt_add_equality_mconstraint  (opt, a->p, a->efun, a->edat, a->etol)); DBG(efun); }
+  if (a->lfun) { CHK(nlopt_add_inequality_mconstraint(opt, a->q, a->lfun, a->ldat, a->ltol)); DBG(lfun); }
 
   // set extra stop criteria
-  if (a->maxcall > 0) { CHK(nlopt_set_maxeval(a->opt, a->maxcall)); DBGI(maxcall); }
-  if (a->maxtime > 0) { CHK(nlopt_set_maxtime(a->opt, a->maxtime)); DBGN(maxtime); }
+  if (a->maxcall > 0) { CHK(nlopt_set_maxeval(opt, a->maxcall)); DBGI(maxcall); }
+  if (a->maxtime > 0) { CHK(nlopt_set_maxtime(opt, a->maxtime)); DBGN(maxtime); }
 
   // seach for minimum
-  a->status = nlopt_optimize(a->opt, a->x, &a->fval);
+  a->status = nlopt_optimize(opt, a->x, &a->fval);
 
   // destroy optimizer
-  nlopt_destroy(a->opt); a->opt = NULL;
+  nlopt_destroy(opt); a->opt = NULL;
 }
 
 void mad_nlopt_srand (u64_t seed) { nlopt_srand(seed);  }

@@ -53,6 +53,7 @@ struct nlopt_args {
         num_t  fmin;  // minimum value required (target)
         num_t  ftol;  // minimum value change required (target)
         num_t  frtol; // minimum relative value change required (target)
+         void *fdat;
 
   // state variables [n] (required)
         ssz_t  n;
