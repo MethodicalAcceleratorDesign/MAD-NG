@@ -54,6 +54,7 @@ int main(void)
   arg.algo = NLOPT_LN_COBYLA;
   // objective
   arg.fun  = myfunc;
+  arg.fmin = -INFINITY;
   // variables
   arg.n    = 5;
   arg.x    = x;

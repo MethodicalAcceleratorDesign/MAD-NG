@@ -71,6 +71,7 @@ int main(void)
   arg.algo  = NLOPT_LN_COBYLA; // NLOPT_LN_COBYLA, NLOPT_LD_MMA
   // objective
   arg.fun   = myfunc;
+  arg.fmin  = -INFINITY;
   // variables
   arg.n     = 2;
   arg.x     = x;
