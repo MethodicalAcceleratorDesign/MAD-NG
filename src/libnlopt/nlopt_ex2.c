@@ -61,6 +61,7 @@ int main(void)
   // equalities
   arg.p    = 3;
   arg.efun = myconstraints;
+  arg.debug = 1;
 
   mad_nlopt(&arg);
 
