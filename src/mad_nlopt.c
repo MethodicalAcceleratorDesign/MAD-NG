@@ -45,14 +45,6 @@ num_t max (ssz_t n, const num_t x[n])
   return mx;
 }
 
-static inline
-num_t pos (ssz_t n, const num_t x[n])
-{
-  num_t px = 0;
-  if (x) for (ssz_t i=0; i<n; i++) if (x[i] > px) px = x[i];
-  return px;
-}
-
 void mad_nlopt (nlopt_args_t *a)
 {
   assert(a);
@@ -80,18 +72,18 @@ void mad_nlopt (nlopt_args_t *a)
   if (a->xrtol > 0  ) CHKN(xrtol, nlopt_set_xtol_rel(opt, a->xrtol));
 
   // set variables tolerances
-  if (pos(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(opt, a->xtol));
+  if (max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(opt, a->xtol));
 
   // set variables initial step size
-  if (pos(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(opt, a->xstp));
+  if (max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(opt, a->xstp));
 
   // set variables boundary constraints
   if (max(a->n,a->xmin) > -INF) CHK(xmin, nlopt_set_lower_bounds(opt, a->xmin));
   if (min(a->n,a->xmax) <  INF) CHK(xmax, nlopt_set_upper_bounds(opt, a->xmax));
 
   // check constraints tolerances
-  if (! (pos(a->p,a->etol) > 0) ) a->etol = NULL; else CHK(etol,1);
-  if (! (pos(a->q,a->ltol) > 0) ) a->ltol = NULL; else CHK(ltol,1);
+  if (! (max(a->p,a->etol) > 0) ) a->etol = NULL; else CHK(etol,1);
+  if (! (max(a->q,a->ltol) > 0) ) a->ltol = NULL; else CHK(ltol,1);
 
   // set constraints to satisfy (within tolerances)
   if (a->efun) CHK(efun, nlopt_add_equality_mconstraint  (opt, a->p, a->efun, a->edat, a->etol));
