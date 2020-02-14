@@ -24,7 +24,8 @@ typedef struct {
 
 static int count = 0;
 
-double myfunc(unsigned n, const double *x, double *grad, void *data)
+static double
+myfunc(unsigned n, const double *x, double *grad, void *data)
 {
   assert(n == 2); assert(data == NULL);
   ++count;
@@ -35,7 +36,8 @@ double myfunc(unsigned n, const double *x, double *grad, void *data)
   return sqrt(x[1]);
 }
 
-void myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, void *data)
+static void
+myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, void *data)
 {
   assert(m == 2); assert(n == 2); assert(data);
   my_constraint_data *d = (my_constraint_data*) data;
@@ -58,21 +60,22 @@ void myconstraints(unsigned m, double *r, unsigned n, const double *x, double *g
 
 int main(void)
 {
-  double lb[2] = { -HUGE_VAL, 0 }; /* lower bounds */
-  double tol[2] = { 1e-8, 1e-8 }; /* lower bounds */
+  double x  [2] = { 1.234, 5.678 };
+  double lb [2] = { -HUGE_VAL, 0 };
+  double tol[2] = { 1e-8, 1e-8 };
   my_constraint_data data[2] = { {2,0}, {-1,1} };
+
   nlopt_opt opt = nlopt_create(NLOPT_LN_COBYLA, 2); // NLOPT_LN_COBYLA, NLOPT_LD_MMA
 
   nlopt_set_lower_bounds(opt, lb);
   nlopt_set_min_objective(opt, myfunc, NULL);
   nlopt_add_inequality_mconstraint(opt, 2, myconstraints, data, tol);
-
   nlopt_set_xtol_rel(opt, 1e-4);
 
-  double x[2] = { 1.234, 5.678 };  /* `*`some` `initial` `guess`*` */
-  double minf; /* `*`the` `minimum` `objective` `value,` `upon` `return`*` */
-  if (nlopt_optimize(opt, x, &minf) < 0) {
-      printf("nlopt failed!\n");
+  double minf;
+  int status = nlopt_optimize(opt, x, &minf);
+  if (status < 0) {
+    printf("nlopt failed! reason: %d, count: %d\n", status, count);
   }
   else {
       printf("found minimum after %d evaluations\n", count);

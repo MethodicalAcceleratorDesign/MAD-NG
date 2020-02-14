@@ -19,14 +19,15 @@ found minimum at f(0.333329,0.2962) = 0.5442423017
 #include <mad_nlopt.h>
 
 typedef struct {
-  double a, b;
+  num_t a, b;
 } my_constraint_data;
 
 static int count = 0;
 
-double myfunc(unsigned n, const double *x, double *grad, void *data)
+static num_t
+myfunc(u32_t n, const num_t *x, num_t *grad, void *data)
 {
-  assert(n == 2); assert(data == NULL);
+  assert(n == 2); assert(!data);
   ++count;
   if (grad) {
     grad[0] = 0.0;
@@ -35,19 +36,20 @@ double myfunc(unsigned n, const double *x, double *grad, void *data)
   return sqrt(x[1]);
 }
 
-void myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, void *data)
+static void
+myconstraints(u32_t m, num_t *r, u32_t n, const num_t *x, num_t *grad, void *data)
 {
-  assert(m == 2); assert(n == 2); assert(data);
+  assert(m == 2 && n == 2); assert(x && data);
   my_constraint_data *d = (my_constraint_data*) data;
 
-  { double a = d[0].a, b = d[0].b;
+  { num_t a = d[0].a, b = d[0].b;
     if (grad) {
       grad[0] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
       grad[1] = -1.0;
     }
     r[0] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1]);
   }
-  { double a = d[1].a, b = d[1].b;
+  { num_t a = d[1].a, b = d[1].b;
     if (grad) {
       grad[2] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
       grad[3] = -1.0;
@@ -58,9 +60,9 @@ void myconstraints(unsigned m, double *r, unsigned n, const double *x, double *g
 
 int main(void)
 {
-  double x   [2] = { 1.234, 5.678 };
-  double lb  [2] = { -HUGE_VAL, 0 };
-  double ltol[2] = { 1e-8, 1e-8 };
+  num_t x   [2] = { 1.234, 5.678 };
+  num_t lb  [2] = { -HUGE_VAL, 0 };
+  num_t ltol[2] = { 1e-8, 1e-8 };
   my_constraint_data data[2] = { {2,0}, {-1,1} };
 
   nlopt_args_t arg = { 0 };
@@ -74,8 +76,6 @@ int main(void)
   arg.x     = x;
   arg.xmin  = lb;
   arg.xrtol = 1e-4;
-  // equalities
-  arg.p     = 0;
   // inequalities
   arg.q     = 2;
   arg.lfun  = myconstraints;
@@ -85,7 +85,7 @@ int main(void)
   mad_nlopt(&arg);
 
   if (arg.status < 0) {
-    printf("nlopt failed!\n");
+    printf("nlopt failed! reason: %d, count: %d\n", arg.status, count);
   }
   else {
     printf("found minimum after %d evaluations\n", count);
