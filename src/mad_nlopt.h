@@ -61,6 +61,7 @@ struct nlopt_args {
   const num_t *xstp;
   const num_t *xmin;
   const num_t *xmax;
+  const num_t *xwgt;
   const num_t *xtol;
         num_t  xrtol;
 

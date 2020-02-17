@@ -74,6 +74,9 @@ void mad_nlopt (nlopt_args_t *a)
   // set variables tolerances
   if (max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(opt, a->xtol));
 
+  // set variables weights
+  if (max(a->n,a->xwgt) > 0) CHK(xwgt, nlopt_set_x_weights(opt, a->xwgt));
+
   // set variables initial step size
   if (max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(opt, a->xstp));
 

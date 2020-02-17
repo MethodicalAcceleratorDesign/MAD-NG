@@ -1,7 +1,7 @@
 /*
 compile & run:
 gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex2.c mad_log.c ../mad_nlopt.c \
-    -o nlopt_ex2 -I.. -I../../lib/nlopt-2.6.1/src/api/ ../../bin/macosx/libnlopt.a
+    -o nlopt_ex2 -I.. -I../../lib/nlopt-git/src/api/ ../../bin/macosx/libnlopt.a
 ./nlopt_ex2
 
 output:
@@ -69,7 +69,7 @@ int main(void)
     printf("nlopt failed! reason: %d, count: %d\n", arg.status, count);
   }
   else {
-    printf("found minimum after %d evaluations\n", count);
+    printf("found minimum after %d evaluations, reason: %d\n", count, arg.status);
     printf("found minimum at f(%g,%g,%g,%g,%g) = %0.10g\n",
            x[0], x[1], x[2], x[3], x[4], arg.fval);
   }

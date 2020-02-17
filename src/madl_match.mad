@@ -196,14 +196,14 @@ local function disp_summ (env)
     io.write"-----------------------------------------------------------------------------\n"
 
     for i=1,p do
-      local e = equalities[i]
+      local e = equalities[i] or {}
       local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
                 i, e.name or '', 'equality', e.kind or '.', w, var.eval[i])
     end
 
     for i=1,q do
-      local e = inequalities[i]
+      local e = inequalities[i] or {}
       local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
                 i+p, e.name or '', 'inequality', e.kind or '.', w, var.lval[i])
@@ -212,7 +212,7 @@ local function disp_summ (env)
 
   local s1, s2, v1, v2
   if var.status == _C.NLOPT_RUNNING
-  then s1, s2, v1, v2 = 'Curr. Value', 'Curr. Step ', var.x, var.dx
+  then s1, s2, v1, v2 = 'Curr. Value', 'Curr. Step ', var.x, var.xstp
   else s1, s2, v1, v2 = 'Final Value', 'Init. Value', var.x, var.x0 end
 
   printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
@@ -225,17 +225,33 @@ local function disp_summ (env)
   end
 
   local fmt = "\n status=%s,  ncall=%2d\z
-               \n fmin=% -.10e,  fval=% -.10e,  ftol=% -.10e\n\n"
+               \n fval=% -.10e,  ftol=% -.10e\n\n"
 
-  printf(fmt, retstr[var.status], env.ncall, var.fbst, var.fval, var.ftol)
+  printf(fmt, retstr[var.status], env.ncall, var.fval, var.ftol)
 end
 
--- optimizer cost functions ---------------------------------------------------o
+-- optimizer functions --------------------------------------------------------o
+
+-- print matrix (debug helper)
+local function dspmat(mat, nam)
+  local fmt = option.numfmt;
+  option.numfmt = "% -.5e" ; mat:print(nam) ; option.numfmt = fmt
+end
+
+-- invalid variable domain (helper)
+local function invalid_dom (env)
+  local var = env.__var
+
+  var.fval, var.fstp = inf, inf
+  if var.p>0 then var.eval:ones(inf) end
+  if var.q>0 then var.lval:ones(inf) end
+end
 
 -- update variables (helper)
-local function update_vars (env, x)
+local function update_vars (env)
   local variables in env
   local var = env.__var
+  local x in var
 
   if variables.update then
     variables.update(x, env)
@@ -246,17 +262,15 @@ local function update_vars (env, x)
   end
 end
 
--- compute cost function value
-local function compute_fval (env, eval, lval)
+-- compute cost function value - sqrt(\sum_i w_i c_i(x)^2 / \sum_i w_i)
+local function compute_fval (env)
   local command, equalities, inequalities in env
-
-  env.ncall = env.ncall + 1
 
   local res = command(env) -- call user command (e.g. twiss)
   if is_nil(res) then return end
 
   local var = env.__var
-  local etol, ewgt, ltol, lwgt in var
+  local eval, etol, ewgt, lval, ltol, lwgt in var
 
   local fval = 0
   for i=1,var.p do
@@ -268,27 +282,7 @@ local function compute_fval (env, eval, lval)
     if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
   end
 
-  return sqrt(fval*var.fscl)
-end
-
--- compute cost function gradient (and jacobians) for the iv-th variable
-local function compute_fgrd (env, iv, dx)
-  local var = env.__var
-  local ejac, eval, etmp, ljac, lval, ltmp in var
-
-  local fval = compute_fval(env, etmp, ltmp)
-
-  var.fgrd[iv] = (fval-var.fval)/dx
-  for i=1,var.p do ejac:set(iv,i, (etmp[i]-eval[i])/dx) end
-  for i=1,var.q do ljac:set(iv,i, (ltmp[i]-lval[i])/dx) end
-
-  return fval
-end
-
--- print matrix (debug helper)
-local function dspmat(mat, nam)
-  local fmt = option.numfmt;
-  option.numfmt = "% -.5e" ; mat:print(nam) ; option.numfmt = fmt
+  return sqrt(fval / var.fwgt)
 end
 
 -- cost functions factory
@@ -303,141 +297,72 @@ local function nlopt_functions (env)
          "invalid inequality constraints (callable expected)")
 
   local var = env.__var
-  local n, p, q, method in var
-
-  -- gradient (and jacobian) sanity check
+  local n, p, q, x, fgrd, eval, ejac, lval, ljac, method in var
   local grad = method.gr == 'y'
 
   return -- objective, equalities and inequalities functions
 
   -- objective function
-  function(n_, x_, df_)
-    assert(n_ == n  , "invalid number of variables (unexpected)")
-    assert(x_ ~= nil, "missing vector of variables (unexpected)")
-    assert(df_ == nil or grad, "non-nil gradient argument (unexpected)")
+  function()
+    -- update variables
+    update_vars(env)
 
-    -- check for stopping
-    if var.status ~= _C.NLOPT_RUNNING then
-      if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
-      var.final(env)
-      return var.fval
-    end
-
-    local x, dx, fgrd, eval, ejac, lval, ljac in var
-
-    -- reset data
-    if df_ ~= nil then
+    -- reset gradient (and jac.)
+    if grad then
       fgrd:zeros()
       if p>0 then ejac:zeros() end
       if q>0 then ljac:zeros() end
     end
 
-    -- update variables
-    for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
-    update_vars(env, x)
+    env.ncall = env.ncall + 1
 
     local fval
-    if objective.exec then             -- call user defined function (e.g. f(x))
-      env.ncall = env.ncall + 1
-      fval = abs(objective.exec(x, fgrd))
-      if fval == nil then goto skip end
-      var.fval, var.fstp = fval, abs(var.fval-fval)
-    else
-      -- compute objective function
-      fval = compute_fval(env, eval, lval)
-      if fval == nil then goto skip end
-      var.fval, var.fstp = fval, abs(var.fval-fval)
-
-      -- compute objective function gradient and (in)equalities jacobian(s)
-      if df_ ~= nil then
-        for iv=1,n do
-          if dx[iv] ~= 0 then -- forward finite difference
-            for i=1,n do x[i] = x_[i-1] end ; x[iv] = x[iv]+dx[iv]
-            update_vars(env, x) -- update state vector
-            fval = compute_fgrd(env, iv, dx[iv])
-            if fval == nil then goto skip end
-          end
-        end
-        for i=1,n do x[i] = x_[i-1] end -- restore variables
-        update_vars(env, x)
-      end
+    if objective.exec
+    then fval = objective.exec(x, fgrd)            -- call user defined function
+    else fval = compute_fval(env)                  -- compute objective function
     end
 
-    if df_ ~= nil then -- backup gradient
-      for i=1,n do df_[i-1] = fgrd[i] end
-      if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
-    end
+    if fval == nil then invalid_dom(env) ; goto skip end
 
-::skip::
+    -- backup values
+    var.fval, var.fstp = fval, fval-var.fval
 
-    -- check for valid variables domain
-    if fval == nil then
-      var.fval, var.fstp = inf, inf
-      if p>0 then eval:ones(inf) end
-      if q>0 then lval:ones(inf) end
-    end
+    -- backup best fval
+    if var.fval <= var.fmin then var.fbst = var.fval end
 
-    -- stop criteria (nlopt ignores fmin and ftol...?)
-    if env.ncall >= var.maxcall then
-      var.status = _C.NLOPT_MAXEVAL_REACHED
-    elseif var.fval <= var.fmin then
-      var.status = _C.NLOPT_STOPVAL_REACHED
-    elseif var.fstp <= var.ftol or var.fstp <= var.frtol*var.fval then
-      var.status = _C.NLOPT_FTOL_REACHED
-    end
+   if env.debug >= 2 then dspmat(fgrd,"GRAD-F") end
 
-    -- backup best fmin
-    if var.fval < var.fbst then var.fbst = var.fval end
+ ::skip::
 
     -- display intermediate summary
     if var.sumdisp > 0 then disp_summ(env) end
 
-    -- return weighted squared mean: sqrt(\sum_i w_i c_i(x)^2 / \sum_i w_i)
+    -- check for stopping
+    if var.status ~= _C.NLOPT_RUNNING then
+      if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+      var.final(env)
+    end
+
+    -- return objective function value
     return var.fval
   end,
 
   -- equality function
   method.eq == 'y' and p>0 and
-  function(p_, r_, n_, x_, de_)
-    assert(n_ == n  , "invalid number of variables (unexpected)")
-    assert(p_ == p  , "invalid number of equalities (unexpected)")
-    assert(x_ ~= nil, "missing vector of variables (unexpected)")
-    assert(r_ ~= nil, "missing vector of equalities (unexpected)")
-    assert(de_ == nil or grad, "non-nil jacobian argument (unexpected)")
-
-    local x, eval, ejac in var
-
-    if equalities.exec then -- call user defined function
-      equalities.exec(eval, x, ejac)
+  function()
+    if equalities.exec then
+      equalities.exec(x, eval, ejac)               -- call user defined function
     end
-
-    for i=1,p do r_[i-1] = eval[i] end
-    if de_ ~= nil then -- backup jacobian
-      for i=1,n*p do de_[i-1] = ejac[i] end
-      if env.debug >= 2 then dspmat(ejac,"JACOBIAN-EQ") end
-    end
+    if env.debug >= 2 then dspmat(ejac,"JACOBIAN-EQ") end
   end or nil,
 
   -- inequality function
   method.le == 'y' and q>0 and
-  function(q_, r_, n_, x_, dl_)
-    assert(n_ == n  , "invalid number of variables (unexpected)")
-    assert(q_ == q  , "invalid number of inequalities (unexpected)")
-    assert(x_ ~= nil, "missing vector of variables (unexpected)")
-    assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
-    assert(dl_ == nil or grad, "non-nil jacobian argument (unexpected)")
-
-    local x, lval, ljac in var
-
-    if inequalities.exec then -- call user defined function
-      inequalities.exec(lval, x, ljac)
+  function()
+    if inequalities.exec then
+      inequalities.exec(x, lval, ljac)             -- call user defined function
     end
-
-    for i=1,q do r_[i-1] = lval[i] end
-    if dl_ ~= nil then -- backup jacobian
-      for i=1,n*q do dl_[i-1] = ljac[i] end
-      if env.debug >= 2 then dspmat(ljac,"JACOBIAN-LE") end
-    end
+    if env.debug >= 2 then dspmat(ljac,"JACOBIAN-LE") end
   end or nil
 end
 
@@ -587,9 +512,9 @@ local function exec (self)
   local ndbg = assertf(log2num(dbug), "invalid debug '%s'", tostring(dbug))
 
   -- local sizes
-  local n = min(#variables, variables.nvar or 1e6)
-  local p =     #equalities
-  local q =     #inequalities
+  local n =    variables.nvar or #variables
+  local p =   equalities.nequ or #equalities
+  local q = inequalities.nequ or #inequalities
 
   -- check sizes compatiblity
   assert(n > 0, "invalid objective (variables expected)")
@@ -610,9 +535,11 @@ local function exec (self)
       n    = n,                            -- number of variables
       x0   = vector(n),                    -- variables initial values
       x    = vector(n),                    -- variables values
-      dx   = vector(n),                    -- variables steps
+!      dx   = vector(n),                    -- variables values
+      xstp = vector(n),                    -- variables steps
       xmin = vector(n),                    -- variables minimum bounds
       xmax = vector(n),                    -- variables maximum bounds
+      xwgt = vector(n),                    -- variables weights
       xtol = vector(n),                    -- variables tolerances
       xrtol= variables.rtol or -inf,       -- variables relative tolerance
 
@@ -621,7 +548,7 @@ local function exec (self)
       eval = p>0 and vector(p)   or nil,   -- equalities values
       ewgt = p>0 and vector(p)   or nil,   -- equalities weights
       etol = p>0 and vector(p)   or nil,   -- equalities tolerances
-      etmp = p>0 and vector(p)   or nil,   -- equalities temporary values
+!      etmp = p>0 and vector(p)   or nil,   -- equalities temporary values
       ejac = p>0 and matrix(n,p) or nil,   -- equalities jacobian
 
       q    = q,                            -- number of inequalities
@@ -629,13 +556,14 @@ local function exec (self)
       lval = q>0 and vector(q)   or nil,   -- inequalities values
       lwgt = q>0 and vector(q)   or nil,   -- inequalities weights
       ltol = q>0 and vector(q)   or nil,   -- inequalities tolerances
-      ltmp = q>0 and vector(q)   or nil,   -- inequalities temporary values
+!      ltmp = q>0 and vector(q)   or nil,   -- inequalities temporary values
       ljac = q>0 and matrix(n,q) or nil,   -- inequalities jacobian
 
       fun  = nil,                          -- cost function (see above)
       fval = inf,                          -- cost function value (dummy init)
       fbst = inf,                          -- cost function best value
-      fscl = 1,                            -- cost function weights scaling
+      fstp = 0,                            -- cost function current step
+      fwgt = 0,                            -- cost function weights sum
       fgrd = vector(n),                    -- cost function gradient
       fmin = objective.fmin or -inf,       -- cost function minimum (target)
       ftol = objective.ftol or -inf,       -- cost function tolerance (target)
@@ -665,13 +593,14 @@ local function exec (self)
 
   -- state variables
   for i=1,n do
-    local v = variables[i]
+    local v = variables[i] or {}
     if v.get then var.x0[i] = v.get() end
     var.x   [i] = var.x0[i]
-    var.dx  [i] = v.step or variables.step or 0
-    var.xtol[i] = v.tol  or variables.tol  or 0
-    var.xmin[i] = v.min  or variables.min  or -inf
-    var.xmax[i] = v.max  or variables.max  or  inf
+    var.xstp[i] = v.step   or variables.step or 0
+    var.xtol[i] = v.tol    or variables.tol  or 0
+    var.xwgt[i] = v.weight or variables.wgt  or 0
+    var.xmin[i] = v.min    or variables.min  or -inf
+    var.xmax[i] = v.max    or variables.max  or  inf
 
     if var.xmin[i] > var.xmax[i] then
       var.xmin[i], var.xmax[i] = var.xmax[i], var.xmin[i]
@@ -683,32 +612,31 @@ local function exec (self)
     if var.x[i] < var.xmin[i] or var.x[i] > var.xmax[i] then
       warn("invalid initial value %d (out of bounds)", i)
     end
-    if var.dx[i] == 0 then
-      var.dx[i] = var.x[i] ~= 0 and 0.015625*abs(var.x[i]) or 1e-4
-    end
+!    if var.xstp[i] == 0 then -- to review
+!      var.xstp[i] = var.x[i] ~= 0 and 0.015625*abs(var.x[i]) or 1e-6
+!    end
   end
 
-  if env.debug >= 2 then var.dx:print("STEP0") end
+  if env.debug >= 2 then var.xstp:print("\nX-STEP0") end
 
   -- equality constraints
   for i=1,p do
-    local e = equalities[i]
-    var.etol[i] = e.tol or equalities.tol or 0
-    var.ewgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+    local e = equalities[i] or {}
+    var.etol[i] = abs(e.tol or equalities.tol or 0)
+    var.ewgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.fwgt    = var.fwgt + var.ewgt[i]
   end
 
   -- inequality constraints
   for i=1,q do
-    local e = inequalities[i]
+    local e = inequalities[i] or {}
     var.ltol[i] = e.tol or inequalities.tol or 0
-    var.lwgt[i] = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
+    var.lwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.fwgt    = var.fwgt + var.lwgt[i]
   end
 
-  -- weights scaling preparation
-  local fscl = 0
-  if p>0 then fscl = fscl + var.ewgt:sum() end
-  if q>0 then fscl = fscl + var.lwgt:sum() end
-  var.fscl = fscl == 0 and 1 or 1/fscl
+  -- adjust weights
+  if var.fwgt == 0 then var.fwgt = 1 end
 
   -- build optimizer functions
   var.fun, var.efun, var.lfun = nlopt_functions(env)
@@ -722,7 +650,7 @@ local function exec (self)
   elseif var.sumdisp > 0 then disp_summ(env) end
 
   -- return status, fmin, ncall
-  return retstr[var.status], var.fbst, env.ncall
+  return retstr[var.status], var.fval, env.ncall
 end
 
 local match = command 'match' {
@@ -730,19 +658,19 @@ local match = command 'match' {
   command = nil,
   -- state variables
   variables = {
-  ! { var=nil, step=nil, min=nil, max=nil, tol=nil, sign=nil, get =nil, set   =nil },
-     nvar=nil, step=nil, min=nil, max=nil, tol=nil, sign=nil, init=nil, update=nil,
-     rtol=nil, sign=nil,
+  ! { var=nil, step=nil, min=nil, max=nil, tol=nil, sign=nil, get=nil, set=nil },
+     rtol=nil, step=nil, min=nil, max=nil, tol=nil, sign=nil,
+     nvar=nil, init=nil, update=nil,
   },
   -- equalities constraints
   equalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
-     exec=nil,                                 tol=nil,
+     exec=nil, nequ=nil,                       tol=nil,
   },
   -- inequalities constraints
   inequalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
-     exec=nil,                                 tol=nil,
+     exec=nil, nequ=nil,                       tol=nil,
   },
   -- constraints weights (i.e. weights[kind])
   weights = {},

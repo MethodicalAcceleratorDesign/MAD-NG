@@ -160,6 +160,7 @@ struct nlopt_args {
   const num_t *xstp;
   const num_t *xmin;
   const num_t *xmax;
+  const num_t *xwgt;
   const num_t *xtol;
         num_t  xrtol;
 
@@ -195,18 +196,73 @@ nlopt_result nlopt_force_stop (nlopt_opt*, int val);
 
 -- NLOPT lib wrapper ----------------------------------------------------------o
 
+-- functions wrapper
+local function nlopt_funwrap (env)
+  local var = env.__var
+  local n, p, q, x, fun, fgrd, efun, eval, ejac, lfun, lval, ljac, method in var
+  local grad = method.gr == 'y'
+
+  return fun and -- objective function
+  function (n_, x_, df_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(df_ == nil or grad, "non-nil gradient argument (unexpected)")
+
+    for i=1,n do x[i] = x_[i-1] end
+    local fval = fun()
+    if grad then for i=1,n do df_[i-1] = fgrd[i] end end
+
+    return fval
+  end or nil,
+
+  efun and -- equalities
+  function(p_, r_, n_, x_, jac_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
+    assert(p_ == p  , "invalid number of equalities (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(r_ ~= nil, "missing vector of equalities (unexpected)")
+    assert(jac_ == nil or grad, "non-nil jacobian argument (unexpected)")
+
+    for i=1,n do x[i] = x_[i-1] end -- done by fun?
+    efun()
+    for i=1,p do r_[i-1] = eval[i] end
+    if grad then for i=1,n*p do jac_[i-1] = ejac[i] end end
+  end or nil,
+
+  lfun and -- inequalities
+  function(q_, r_, n_, x_, jac_)
+    assert(n_ == n  , "invalid number of variables (unexpected)")
+    assert(q_ == q  , "invalid number of inequalities (unexpected)")
+    assert(x_ ~= nil, "missing vector of variables (unexpected)")
+    assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
+    assert(jac_ == nil or grad, "non-nil jacobian argument (unexpected)")
+
+    for i=1,n do x[i] = x_[i-1] end -- done by fun?
+    lfun()
+    for i=1,q do r_[i-1] = lval[i] end
+    if grad then for i=1,n*q do jac_[i-1] = ljac[i] end end
+  end or nil
+end
+
+local function nlopt_final (env, arg)
+  return function()
+    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+    _C.nlopt_force_stop(arg[0].opt, var.status)
+  end
+end
+
 local function nlopt_librun (env)
   local var = env.__var
   local arg = ffi.new 'nlopt_args_t[1]'
 
-  -- nlopt C -> MAD callbacks
+  -- nlopt C -> MAD callbacks and wrappers
+  local fun,    efun,    lfun    = nlopt_funwrap(env)
   local fun_cb, efun_cb, lfun_cb
-  if var. fun then  fun_cb = ffi.cast('nlopt_obj_t*', var. fun) end
-  if var.efun then efun_cb = ffi.cast('nlopt_cts_t*', var.efun) end
-  if var.lfun then lfun_cb = ffi.cast('nlopt_cts_t*', var.lfun) end
+  if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) end
+  if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) end
+  if lfun then lfun_cb = ffi.cast('nlopt_cts_t*', lfun) end
 
-  -- nlopt seems to modify/use x internally, make a copy.
-  local n, p, q in var
+  -- nlopt use x to keep the best solution found so far, make a copy.
   local x = var.x:copy()
 
   arg[0].algo    = var.method.id
@@ -217,22 +273,22 @@ local function nlopt_librun (env)
   arg[0].ftol    = var.ftol
   arg[0].frtol   = var.frtol
 
-  arg[0].n       = n
+  arg[0].n       = var.n
   arg[0].x       = x.data
-  arg[0].dx      = var.dx.data
-
+  arg[0].xstp    = var.xstp.data
   arg[0].xmin    = var.xmin.data
   arg[0].xmax    = var.xmax.data
+  arg[0].xwgt    = var.xwgt.data
   arg[0].xtol    = var.xtol.data
   arg[0].xrtol   = var.xrtol
 
-  arg[0].p       = p
+  arg[0].p       = var.p
   arg[0].efun    = efun_cb
-  arg[0].etol    = p>0 and var.etol.data or nil
+  arg[0].etol    = var.p>0 and var.etol.data or nil
 
-  arg[0].q       = q
+  arg[0].q       = var.q
   arg[0].lfun    = lfun_cb
-  arg[0].ltol    = q>0 and var.ltol.data or nil
+  arg[0].ltol    = var.q>0 and var.ltol.data or nil
 
   arg[0].maxcall = var.maxcall
   arg[0].maxtime = var.maxtime
@@ -243,22 +299,24 @@ local function nlopt_librun (env)
   -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
   var.fjit = true
 
-  -- nlopt can be forced to stop, forward stop...
-  var.final =\ _C.nlopt_force_stop(arg[0].opt, var.status)
+  -- nlopt can be forced to stop by user
+  var.final = nlopt_final(env, arg)
 
   -- optimize (protected call to C API)
   local status, errmsg = pcall(_C.mad_nlopt, arg)
 
   -- release callback (note: callbacks are never collected)
-  if var. fun then  fun_cb:free() end
-  if var.efun then efun_cb:free() end
-  if var.lfun then lfun_cb:free() end
+  if  fun then  fun_cb:free() end
+  if efun then efun_cb:free() end
+  if lfun then lfun_cb:free() end
 
-  -- not a forced stop, copy state variables back (next step)
+  -- not a forced stop, copy status back
   if arg[0].status ~= _C.NLOPT_FORCED_STOP then
     var.status = arg[0].status
-    x:copy(var.x)
   end
+
+  -- copy results back
+  var.fval = arg[0].fval ; x:copy(var.x)
 
   return status, errmsg
 end

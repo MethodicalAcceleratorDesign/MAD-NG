@@ -1,16 +1,18 @@
 /*
 compile & run:
 gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex0.c \
-    -o nlopt_ex0 -I../../lib/nlopt-2.6.1/src/api/ ../../bin/macosx/libnlopt.a
+    -o nlopt_ex0 -I../../lib/nlopt-git/src/api/ ../../bin/macosx/libnlopt.a
 ./nlopt_ex0
 
 output:
 NLOPT_LD_MMA:
-found minimum after 11 evaluations
-found minimum at f(0.333333,0.296296) = 0.5443310474
+found minimum after 11 evaluations, reason: 4
+found minimum at f(0.333333,0.296296) = 0.5443310477
+relative errors: x0=0.000000, x1=-0.000000, f(x0,x1)=-0.000000
 NLOPT_LN_COBYLA:
-found minimum after 31 evaluations
-found minimum at f(0.333329,0.2962) = 0.5442423017
+found minimum after 31 evaluations, reason: 4
+found minimum at f(0.333329,0.296200) = 0.5442423017
+relative errors: x0=-0.000012, x1=-0.000326, f(x0,x1)=-0.000163
 */
 
 #include <math.h>
@@ -24,10 +26,12 @@ typedef struct {
 
 static int count = 0;
 
+static inline double sqr(double x) { return x*x; }
+
 static double
 myfunc(unsigned n, const double *x, double *grad, void *data)
 {
-  assert(n == 2); assert(data == NULL);
+  assert(n == 2); assert(!data);
   ++count;
   if (grad) {
     grad[0] = 0.0;
@@ -39,22 +43,22 @@ myfunc(unsigned n, const double *x, double *grad, void *data)
 static void
 myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, void *data)
 {
-  assert(m == 2); assert(n == 2); assert(data);
+  assert(m == 2 && n == 2); assert(x && data);
   my_constraint_data *d = (my_constraint_data*) data;
 
   { double a = d[0].a, b = d[0].b;
     if (grad) {
-      grad[0] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
+      grad[0] = 3*a*sqr(a*x[0]+b);
       grad[1] = -1.0;
     }
-    r[0] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1]);
+    r[0] = sqr(a*x[0]+b)*(a*x[0]+b) - x[1];
   }
   { double a = d[1].a, b = d[1].b;
     if (grad) {
-      grad[2] = 3 * a * (a*x[0] + b) * (a*x[0] + b);
+      grad[2] = 3*a*sqr(a*x[0]+b);
       grad[3] = -1.0;
     }
-    r[1] = ((a*x[0] + b) * (a*x[0] + b) * (a*x[0] + b) - x[1]);
+    r[1] = sqr(a*x[0]+b)*(a*x[0]+b) - x[1];
   }
 }
 
@@ -78,8 +82,10 @@ int main(void)
     printf("nlopt failed! reason: %d, count: %d\n", status, count);
   }
   else {
-      printf("found minimum after %d evaluations\n", count);
-      printf("found minimum at f(%g,%g) = %0.10g\n", x[0], x[1], minf);
+      printf("found minimum after %d evaluations, reason: %d\n", count, status);
+      printf("found minimum at f(%.6f,%.6f) = %.10f\n", x[0], x[1], minf);
+      printf("relative errors: x0=%.6f, x1=%.6f, f(x0,x1)=%.6f\n",
+             (x[0]-1.0/3)/x[0], (x[1]-8.0/27)/x[1], (minf-sqrt(8.0/27))/minf);
   }
 
   nlopt_destroy(opt);
