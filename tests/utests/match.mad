@@ -337,28 +337,44 @@ local function testFuncLe (x, r, jac)
   r[2] = (a*x[1]+b)^3 - x[2]
 end
 
-local function testMatchFunc (x, mth)
+local function testMatchFunc1 (x, mth)
   return match {
     variables = {
       { var = 'x[1]', min = -inf },
       { var = 'x[2]', min =  0   },
-      -- rtol = 1e-4,                       -- relative tolerance for all variables
+      rtol = 1e-4,                       -- relative tolerance for all variables
     },
     inequalities = {
       exec = testFuncLe, nequ = 2, tol = 1e-8,     -- tolerance for inequalities
     },
     objective = {
-      method = mth, maxcall = 100, fmin=sqrt(8/27)+1e-3, summary=2, !debug=1,
+      method = mth, maxcall = 100, !summary=2, !debug=1,
       exec = testFuncFn,
     },
   }
 end
 
-function TestMatch:testMatchFuncLD ()
-  local x = {1.234, 5.678}
-  local status, fval, ncall = testMatchFunc(x, 'NLOPT_LD_MMA')
+local function testMatchFunc2 (x, mth)
+  return match {
+    variables = {
+      { var = 'x[1]', min = -inf },
+      { var = 'x[2]', min =  0   },
+    },
+    inequalities = {
+      exec = testFuncLe, nequ = 2, tol = 1e-8,     -- tolerance for inequalities
+    },
+    objective = {
+      method = mth, maxcall = 100, fmin=sqrt(8/27)+1e-3, !summary=2, !debug=1,
+      exec = testFuncFn,
+    },
+  }
+end
 
-  print("status=", status, "fval=", fval, "ncall=", ncall)
+function TestMatch:testMatchFuncLD1 ()
+  local x = {1.234, 5.678}
+  local status, fval, ncall = testMatchFunc1(x, 'NLOPT_LD_MMA')
+
+--  print("status=", status, "fval=", fval, "ncall=", ncall)
   assertEquals      (status, 'NLOPT_XTOL_REACHED')
   assertEquals      (ncall , 11)
   assertAlmostEquals(fval  , sqrt(8/27), 1e-8)
@@ -366,11 +382,23 @@ function TestMatch:testMatchFuncLD ()
   assertAlmostEquals(x[2]  ,      8/27 , 1e-8)
 end
 
-function TestMatch:testMatchFuncLN ()
+function TestMatch:testMatchFuncLD2 ()
   local x = {1.234, 5.678}
-  local status, fval, ncall = testMatchFunc(x, 'NLOPT_LN_COBYLA')
+  local status, fval, ncall = testMatchFunc2(x, 'NLOPT_LD_MMA')
 
-  print("status=", status, "fval=", fval, "ncall=", ncall)
+--  print("status=", status, "fval=", fval, "ncall=", ncall)
+  assertEquals      (status, 'NLOPT_FMIN_REACHED')
+  assertEquals      (ncall , 10)
+  assertAlmostEquals(fval  , sqrt(8/27), 1e-4)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-4)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-4)
+end
+
+function TestMatch:testMatchFuncLN1 ()
+  local x = {1.234, 5.678}
+  local status, fval, ncall = testMatchFunc1(x, 'NLOPT_LN_COBYLA')
+
+--  print("status=", status, "fval=", fval, "ncall=", ncall)
   assertEquals      (status, 'NLOPT_XTOL_REACHED')
   assertEquals      (ncall , 31)
   assertAlmostEquals(fval  , sqrt(8/27), 1e-4)
@@ -378,8 +406,20 @@ function TestMatch:testMatchFuncLN ()
   assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
 end
 
+function TestMatch:testMatchFuncLN2 ()
+  local x = {1.234, 5.678}
+  local status, fval, ncall = testMatchFunc2(x, 'NLOPT_LN_COBYLA')
+
+--  print("status=", status, "fval=", fval, "ncall=", ncall)
+  assertEquals      (status, 'NLOPT_FMIN_REACHED')
+  assertEquals      (ncall , 25)
+  assertAlmostEquals(fval  , sqrt(8/27), 1e-3)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-3)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
+end
+
 -- Example from Octave tutorial (unstable!!)
--- Note: Octave does not succeed to find a solution
+-- Note: Octave does succeed to find a solution but reports wrong status
 
 function TestMatch:testMatchFunc3 ()
   local vector in MAD
@@ -402,11 +442,11 @@ function TestMatch:testMatchFunc3 ()
     },
     objective = {
       exec := exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
-      rtol = 1e-15, maxcall = 500, summary=2, debug=2,
+      rtol = 1e-15, maxcall = 500, !summary=2, debug=2,
     },
   }
 
-!  assertEquals      (status, 'NLOPT_FTOL_REACHED')
+  assertEquals      (status, 'NLOPT_MAXCALL_REACHED')
 !  assertAlmostEquals(fmin  , 8.53e-16, 1e-15)
 !  assertTrue        (ncall <= 250)
 end
