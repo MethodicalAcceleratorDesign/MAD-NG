@@ -1,7 +1,7 @@
 /*
 compile & run:
 gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex1.c mad_log.c ../mad_nlopt.c \
-    -o nlopt_ex1 -I.. -I../../lib/nlopt-git/src/api/ ../../bin/macosx/libnlopt.a
+    -o nlopt_ex1 -I.. -I../../lib/nlopt/src/api/ ../../bin/macosx/libnlopt.a
 ./nlopt_ex1
 
 output:
