@@ -199,14 +199,14 @@ local function disp_summ (env)
       local e = equalities[i] or {}
       local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
-                i, e.name or '', 'equality', e.kind or '.', w, var.eval[i])
+                i, e.name or '', 'equality', e.kind or ' .', w, var.eval[i])
     end
 
     for i=1,q do
       local e = inequalities[i] or {}
       local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
-                i+p, e.name or '', 'inequality', e.kind or '.', w, var.lval[i])
+                i+p, e.name or '', 'inequality', e.kind or ' .', w, var.lval[i])
     end
   end
 
@@ -224,8 +224,8 @@ local function disp_summ (env)
             max(var.xmin[i],-9.99999e99), min(var.xmax[i], 9.99999e99))
   end
 
-  local fmt = "\n status=%s,  ncall=%2d,  fval=% -.7e,  fstp=% -.5e\n\n"
-  printf(fmt, retstr[var.status], env.ncall, var.fval, var.fstp)
+  local fmt = "\n ncall=%2d,  fval=% -.7e,  fstp=% -.5e,  status=%s\n\n"
+  printf(fmt, env.ncall, var.fval, var.fstp, retstr[var.status])
 end
 
 -- getters/setters ------------------------------------------------------------o
@@ -387,19 +387,18 @@ local function compute_fval (env)
   if is_nil(res) then return end
 
   local var = env.__var
-  local eval, etol, ewgt, lval, ltol, lwgt in var
+  local p, q, fwgt, eval, etol, ewgt, lval, ltol, lwgt in var
 
   local fval = 0
-  for i=1,var.p do
+  for i=1,p do
     eval[i] = equalities[i].expr(res, env)
     if abs(eval[i]) > etol[i] then fval = fval + ewgt[i]*eval[i]^2 end
   end
-  for i=1,var.q do
+  for i=1,q do
     lval[i] = inequalities[i].expr(res, env)
-    if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
+    if     lval[i]  > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end
   end
-
-  return sqrt(fval / var.fwgt)
+  return sqrt(fval / fwgt)
 end
 
 -- cost functions factory
@@ -419,7 +418,7 @@ local function nlopt_functions (env)
 
   return -- objective, equalities and inequalities functions
 
-  -- objective function
+  -- objective function (i.e. fun)
   function()
     -- update variables
     update_vars(env)
@@ -451,17 +450,11 @@ local function nlopt_functions (env)
     -- display intermediate summary
     if var.sumdisp > 0 then disp_summ(env) end
 
-    -- check for stopping
-    if var.status ~= _C.NLOPT_RUNNING then
-      if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
-      var.final(env)
-    end
-
     -- return objective function value
-    return var.fval
+    return var.fval, var.fstp
   end,
 
-  -- equality function
+  -- equality function (i.e. efun)
   method.eq == 'y' and p>0 and
   function()
     if equalities.exec then
@@ -470,7 +463,7 @@ local function nlopt_functions (env)
     if grad and env.debug >= 2 then dspmat(ejac,"JACOBIAN-EQ") end
   end or nil,
 
-  -- inequality function
+  -- inequality function (i.e. lfun)
   method.le == 'y' and q>0 and
   function()
     if inequalities.exec then
@@ -536,7 +529,7 @@ local function exec (self)
       xmax = vector(n),                    -- variables maximum bounds
       xwgt = vector(n),                    -- variables weights
       xtol = vector(n),                    -- variables tolerances
-      xrtol= variables.rtol or 0,          -- variables relative tolerance
+      xrtol= variables.rtol or -inf,       -- variables relative tolerance
 
       p    = p,                            -- number of equalities
       efun = nil,                          -- equalities function (see above)
@@ -560,12 +553,12 @@ local function exec (self)
       fwgt = 0,                            -- cost function weights sum
       fgrd = vector(n),                    -- cost function gradient
       fmin = objective.fmin or -inf,       -- cost function minimum (target)
-      ftol = objective.tol  or 0,          -- cost function tolerance (target)
-      frtol= objective.rtol or 0,          -- cost function relative tolerance (target)
+      ftol = objective.tol  or -inf,       -- cost function tolerance (target)
+      frtol= objective.rtol or -inf,       -- cost function relative tolerance (target)
 
       method  = mopt,                      -- algorithm method (nlopt_algo row)
       sumdisp = ndsp,                      -- algorithm summary level
-      maxcall = objective.maxcall or 1e9,  -- algorithm call limit
+      maxcall = objective.maxcall or 0,    -- algorithm call limit
       maxtime = objective.maxtime or 0,    -- algorithm time limit
       final   = fnil,                      -- algorithm finalizer
       status  = _C.NLOPT_RUNNING,          -- algorithm status

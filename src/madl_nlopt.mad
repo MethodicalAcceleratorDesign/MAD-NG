@@ -26,6 +26,8 @@
 local ffi = require 'ffi'
 local _C in MAD
 
+local abs in math
+
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[
@@ -191,16 +193,23 @@ struct nlopt_args {
 };
 
 /* NLOPT API - to check after nlopt upgrade */
-nlopt_result nlopt_force_stop (nlopt_opt*, int val);
+nlopt_result nlopt_force_stop (nlopt_opt, int val);
 ]]
 
 -- NLOPT lib wrapper ----------------------------------------------------------o
 
--- functions wrapper
-local function nlopt_funwrap (env)
+local function nlopt_final (env, arg)
+  local var = env.__var
+  return function()
+    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+    _C.nlopt_force_stop(arg[0].opt, var.status)
+  end
+end
+
+local function nlopt_fwrap (env)
   local var = env.__var
   local n, p, q, x, dx, fun, fgrd, efun, eval, ejac, lfun, lval, ljac,
-        method in var
+        fmin, ftol, frtol, method in var
   local grad = method.gr == 'y'
 
   return fun and -- objective function
@@ -210,8 +219,15 @@ local function nlopt_funwrap (env)
     assert(df_ == nil or grad, "non-nil gradient argument (unexpected)")
 
     for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
-    local fval = fun()
+    local fval, fstp = fun()
     if grad then for i=1,n do df_[i-1] = fgrd[i] end end
+
+    -- stop criteria (nlopt ignores fmin and ftol?)
+    if fval <= fmin then
+      var.status = _C.NLOPT_STOPVAL_REACHED ; var.final(env)
+    elseif abs(fstp) <= ftol or abs(fstp) <= frtol*abs(fval) then
+      var.status = _C.NLOPT_FTOL_REACHED    ; var.final(env)
+    end
 
     return fval
   end or nil,
@@ -245,19 +261,12 @@ local function nlopt_funwrap (env)
   end or nil
 end
 
-local function nlopt_final (env, arg)
-  return function()
-    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
-    _C.nlopt_force_stop(arg[0].opt, var.status)
-  end
-end
-
 local function nlopt_librun (env)
   local var = env.__var
   local arg = ffi.new 'nlopt_args_t[1]'
 
   -- nlopt C -> MAD callbacks and wrappers
-  local fun,    efun,    lfun    = nlopt_funwrap(env)
+  local fun,    efun,    lfun    = nlopt_fwrap(env)
   local fun_cb, efun_cb, lfun_cb
   if  fun then  fun_cb = ffi.cast('nlopt_obj_t*',  fun) end
   if efun then efun_cb = ffi.cast('nlopt_cts_t*', efun) end
@@ -316,10 +325,8 @@ local function nlopt_librun (env)
   -- not a forced stop, copy status back
   if arg[0].status ~= _C.NLOPT_FORCED_STOP then
     var.status = arg[0].status
+    var.fval = arg[0].fval ; x:copy(var.x)
   end
-
-  -- copy results back
-  var.fval = arg[0].fval ; x:copy(var.x)
 
   return status, errmsg
 end
