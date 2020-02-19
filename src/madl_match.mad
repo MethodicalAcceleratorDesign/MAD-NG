@@ -39,27 +39,15 @@ local mintol = 1e-8
 
 -- load nlopt lib wrapper -----------------------------------------------------o
 
-local nlopt_librun = require 'madl_nlopt'
+local nlopt_librun = require 'madl_nlopt' -- must be first
+local lsopt_librun = require 'madl_lsopt' -- must be second (extend)
 
--- extend lib wrapper enums ---------------------------------------------------o
+-- extend lib enums -----------------------------------------------------------o
 
 ffi.cdef [[
 enum {
   /* extra status/return code from MAD */
   NLOPT_RUNNING = 0,
-}
-]]
-
-ffi.cdef [[
-enum {
- /* extra MAD algorithms */
-  NLOPT_LN_LMDIF = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
-  NLOPT_LD_LMDIF,
-
-  NLOPT_LN_JACOBIAN,
-  NLOPT_LD_JACOBIAN,
-
-  NLOPT_NUM_ALGOS, /* not an algorithm, just the number of them */
 }
 ]]
 
@@ -83,7 +71,7 @@ local retstr = {
   [_C.NLOPT_RUNNING         ] = 'RUNNING',         -- ADDED
 }
 
--- NLopt supported algorithms (see madl_nlopt) --------------------------------o
+-- Optimiser supported algorithms (see madl_nlopt and madl_lsopt) -------------o
 
 --[[
 Algorithm specs:
@@ -96,13 +84,13 @@ Algorithm specs:
   lg = require augmented lagrangian (NYI)
 
 Algorithm names:
-  NLOPT_{G/L}{D/N}_* = global/local derivative/no-derivative optimization
+  {G/L}{D/N}_* = global/local derivative/no-derivative optimization
   *_RAND algorithms involve some randomization.
   *_NOSCAL algorithms are *not* scaled to a unit hypercube
            (i.e. they are sensitive to the units of x)
 --]]
 
-local nlopt_algo = {
+local optalgo = {
   -- global optimisers without derivatives
   GN_CRS2_LM                 = { bd='f', eq='n', le='n', gr='n', lo='n' },
   GN_DIRECT                  = { bd='f', eq='n', le='n', gr='n', lo='n' },
@@ -152,7 +140,7 @@ local nlopt_algo = {
   G_MLSL                     = { bd='y', eq='n', le='n', gr='?', lo='y' },
   G_MLSL_LDS                 = { bd='y', eq='n', le='n', gr='?', lo='y' },
 
-  -- MAD algorithms
+  -- MAD LSOpt algorithms
   LN_LMDIF                   = { bd='y', eq='y', le='y', gr='n', lo='n' },
   LD_LMDIF                   = { bd='y', eq='y', le='y', gr='y', lo='n' },
   LN_JACOBIAN                = { bd='y', eq='y', le='y', gr='n', lo='n' },
@@ -161,17 +149,17 @@ local nlopt_algo = {
 
 -- load nlopt lib wrapper -----------------------------------------------------o
 
-do -- check integrity between nlopt_algo and NLOPT enums (from madl_nlopt)
+do -- check integrity between optalgo and NLOPT enums (from madl_nlopt)
   local ntot = _C.NLOPT_NUM_ALGOS
   local n, t = 0, table.new(ntot,0)
-  for s,a in pairs(nlopt_algo) do
-    a.id = assert(_C['NLOPT_'..s]) -- extend nlopt_algo rows with id attribute
+  for s,a in pairs(optalgo) do
+    a.id = assert(_C['NLOPT_'..s]) -- extend optalgo rows with id attribute
     n = n+1 ; t[n] = a
   end
   assert(n == ntot, "unexpected missing NLOPT algorithm")
   -- fill array part with rows by id, starting at enum 0, i.e. len+1
-  for i=1,n do nlopt_algo[t[i].id] = t[i] end
-  assert(n == #nlopt_algo+1, "unexpected corrupted list of NLOPT algorithm")
+  for i=1,n do optalgo[t[i].id] = t[i] end
+  assert(n == #optalgo+1, "unexpected corrupted list of NLOPT algorithm")
 end
 
 -- expression default weights by kind -----------------------------------------o
@@ -495,7 +483,7 @@ local function exec (self)
 
   -- check selected method
   local mthd = objective.method or 'LN_COBYLA' -- 'GN_ORIG_DIRECT_L'
-  local mopt = assertf(nlopt_algo[mthd], "unknown optimisation method '%s'", mthd)
+  local mopt = assertf(optalgo[mthd], "unknown optimisation method '%s'", mthd)
 
   -- check summary level
   local summ = objective.summary or false
@@ -562,7 +550,7 @@ local function exec (self)
       ftol = objective.tol  or 0,          -- cost function tolerance (target)
       frtol= objective.rtol or 0,          -- cost function relative tolerance (target)
 
-      method   = mopt,                     -- algorithm method (nlopt_algo row)
+      method   = mopt,                     -- algorithm method (optalgo row)
       sumdisp  = ndsp,                     -- algorithm summary level
       maxcall  = objective.maxcall or 0,   -- algorithm call limit
       maxtime  = objective.maxtime or 0,   -- algorithm time limit
