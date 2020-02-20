@@ -80,8 +80,7 @@ Algorithm specs:
   eq = support equality constraints (result == 0)
   le = support inequality constraints (result <= 0)
   gr = require explicit computation of gradient
-  lo = require local optimiser specification (NYI)
-  lg = require augmented lagrangian (NYI)
+  lo = require local optimiser specification
 
 Algorithm names:
   {G/L}{D/N}_* = global/local derivative/no-derivative optimization
@@ -418,8 +417,8 @@ local function nlopt_functions (env)
          "invalid inequality constraints (callable expected)")
 
   local var = env.__var
-  local n, p, q, x, fgrd, eval, ejac, lval, ljac, method in var
-  local grad = method.gr == 'y'
+  local n, p, q, x, fgrd, eval, ejac, lval, ljac, method, submthd in var
+  local grad = method.gr == 'y' or method.gr == '?' and submthd.gr == 'y'
 
   -- objective function
   local fun = function ()
@@ -481,9 +480,16 @@ local function exec (self)
   assert(is_mappable(weights)     , "invalid match 'weights' (mappable expected)")
   assert(is_mappable(objective)   , "invalid match 'objective' (mappable expected)")
 
-  -- check selected method
-  local mthd = objective.method or 'LN_COBYLA' -- 'GN_ORIG_DIRECT_L'
+  -- check selected method (and submethod)
+  local mthd = objective.method or 'LN_COBYLA'
   local mopt = assertf(optalgo[mthd], "unknown optimisation method '%s'", mthd)
+  local sopt = nil
+
+  if mopt.lo == 'y' then
+    local smthd = objective.submethod
+    assertf(smthd, "optimisation method '%s' requires a submethod", mthd)
+    sopt = assertf(optalgo[smthd], "unknown optimisation submethod '%s'", smthd)
+  end
 
   -- check summary level
   local summ = objective.summary or false
@@ -551,6 +557,7 @@ local function exec (self)
       frtol= objective.rtol or 0,          -- cost function relative tolerance (target)
 
       method   = mopt,                     -- algorithm method (optalgo row)
+      submthd  = sopt,                     -- algorithm submethod (optalgo row)
       sumdisp  = ndsp,                     -- algorithm summary level
       maxcall  = objective.maxcall or 0,   -- algorithm call limit
       maxtime  = objective.maxtime or 0,   -- algorithm time limit
@@ -660,7 +667,7 @@ local match = command 'match' {
   weights = {},
   -- objective to minimize or maximize
   objective = {
-    method=nil, fmin=nil, tol=nil, rtol=nil,
+    method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil,
     exec=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
   },
 

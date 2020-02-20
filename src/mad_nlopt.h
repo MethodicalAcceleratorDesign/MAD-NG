@@ -47,6 +47,10 @@ struct nlopt_args {
         int    algo;
         str_t  algonam; // set by mad_nlopt
 
+  // local algorithm (if provided)
+        int    subalgo;
+        str_t  subalgonam;
+
   // objective function (required)
   nlopt_obj_t *fun;
         num_t  fval;  // current minimum value

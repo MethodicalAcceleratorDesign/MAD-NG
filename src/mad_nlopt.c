@@ -96,6 +96,47 @@ void mad_nlopt (nlopt_args_t *a)
   if (a->maxcall > 0) CHKI(maxcall, nlopt_set_maxeval(opt, a->maxcall));
   if (a->maxtime > 0) CHKN(maxtime, nlopt_set_maxtime(opt, a->maxtime));
 
+  // local optimiser
+  if (a->algo >= NLOPT_AUGLAG && a->algo <= NLOPT_G_MLSL_LDS) {
+    // retrieve sub algorithm full name (and sanity check)
+    a->subalgonam = nlopt_algorithm_name(a->subalgo);
+    ensure(a->subalgonam, "invalid nlopt local algorithm id=%d", a->subalgo);
+
+    // create local optimizer, set algorithm and problem dimension
+    nlopt_opt sopt = nlopt_create(a->subalgo, a->n);
+
+    // set objective function stop value
+    if (a->fmin > -INF) CHKN(fmin, nlopt_set_stopval(sopt, a->fmin));
+
+    // set objective function tolerance (value change)
+    if (a->ftol > 0   ) CHKN(ftol, nlopt_set_ftol_abs(sopt, a->ftol));
+
+    // set objective function relative tolerance (relative value change)
+    if (a->frtol > 0  ) CHKN(frtol, nlopt_set_ftol_rel(sopt, a->frtol));
+
+    // set variables relative tolerance (same for all)
+    if (a->xrtol > 0  ) CHKN(xrtol, nlopt_set_xtol_rel(sopt, a->xrtol));
+
+    // set variables tolerances
+    if (max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(sopt, a->xtol));
+
+    // set variables weights
+    if (max(a->n,a->xwgt) > 0) CHK(xwgt, nlopt_set_x_weights(sopt, a->xwgt));
+
+    // set variables initial step size
+    if (max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(sopt, a->xstp));
+
+    // set extra stop criteria
+    if (a->maxcall > 0) CHKI(maxcall, nlopt_set_maxeval(sopt, a->maxcall));
+    if (a->maxtime > 0) CHKN(maxtime, nlopt_set_maxtime(sopt, a->maxtime));
+
+    // set local optimizer
+    CHK(subalgo, nlopt_set_local_optimizer(opt, sopt));
+
+    // destroy local optimizer
+    nlopt_destroy(sopt);
+  }
+
   // seach for minimum
   a->status = nlopt_optimize(opt, a->x, &a->fval);
 
