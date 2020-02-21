@@ -90,6 +90,7 @@ Algorithm names:
            (i.e. they are sensitive to the units of x)
 --]]
 
+local optalgo_default = 'LN_COBYLA'
 local optalgo = {
   -- global optimisers without derivatives
   GN_CRS2_LM                 = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
@@ -352,8 +353,8 @@ local function invalid_dom (env)
   local var = env.__var
 
   var.fval, var.fstp = inf, inf
-  if var.p>0 then var.eval:ones(inf) end
-  if var.q>0 then var.lval:ones(inf) end
+  if var.eval ~= nil then var.eval:ones(inf) end
+  if var.lval ~= nil then var.lval:ones(inf) end
 end
 
 -- update variables (helper)
@@ -362,7 +363,7 @@ local function update_vars (env)
   local var = env.__var
   local x in var
 
-  if variables.update then
+  if variables.update ~= nil then
     variables.update(x, env)
   else
     var.flush = nil
@@ -383,26 +384,26 @@ local function compute_fval (env)
 
   update_vars(env)                                -- update user variables
 
-  if command then
+  if command ~= nil then
     res = command(env)                            -- call user defined command
     if is_nil(res) then return end                -- invalid domain, return nil
   end
 
-  if objective.exec then
+  if objective.exec ~= nil then
     fval = objective.exec(x, fgrd)                -- call user defined function
   end
 
-  if equalities.exec
+  if equalities.exec ~= nil
   then equalities.exec(x, eval, ejac)             -- call user defined function
   else for i=1,p do eval[i] = equalities[i].expr(res, env) end
   end
 
-  if inequalities.exec
+  if inequalities.exec ~= nil
   then inequalities.exec(x, lval, ljac)           -- call user defined function
   else for i=1,q do lval[i] = inequalities[i].expr(res, env) end
   end
 
-  if objective.exec or method.lg == 'y' then return fval end
+  if objective.exec ~= nil or method.lg == 'y' then return fval end
 
   -- augment fval with squared constraints penalties
   local etol, ewgt, ltol, lwgt, fwgt in var
@@ -416,12 +417,12 @@ end
 -- compute objective function gradient and (in)equalities jacobians
 local function compute_fgrd (env)
   local var = env.__var
-  local n, p, q, x, xtmp, fgrd, eval, etmp, ejac, lval, ltmp, ljac in var
+  local n, p, q, x, dx, xtmp, fgrd, eval, etmp, ejac, lval, ltmp, ljac in var
 
   -- cleanup
   fgrd:zeros()
-  if p>0 then ejac:zeros() end
-  if q>0 then ljac:zeros() end
+  if ejac ~= nil then ejac:zeros() end
+  if ljac ~= nil then ljac:zeros() end
 
   -- reference evaluation
   local fval = compute_fval(env)
@@ -433,8 +434,15 @@ local function compute_fgrd (env)
   var.ltmp, var.lval = var.lval, var.ltmp
   x:copy(xtmp)
 
+  -- estimate jacobian step (2^-7 ~= 1% exact)
+  local dh = 0.0078125*dx:minabs() -- to review (dh[i] vs dx[i] ?)
+  if dh == 0 then dh = 1e-10 end
+
+  if env.debug >= 2 then
+    printf("nlopt: computing gradient and jacobian(s) with dh=%-.6e\n", dh)
+  end
+
   -- compute jacobian
-  local dh = 1e-8 -- to review
   for iv=1,n do
     xtmp[iv] = x[iv]+dh
 
@@ -449,9 +457,9 @@ local function compute_fgrd (env)
   end
 
   -- restore variables
-  var.x   , var.xtmp = x   , xtmp
-  var.eval, var.etmp = eval, etmp
-  var.lval, var.ltmp = lval, ltmp
+  var.xtmp, var.x    = xtmp, x
+  var.etmp, var.eval = etmp, eval
+  var.ltmp, var.lval = ltmp, lval
   update_vars(env, x)
 
   return fval
@@ -472,7 +480,7 @@ local function nlopt_functions (env)
     end
 
     -- check returned value (and backup)
-    if fval then
+    if fval ~= nil then
       var.fval, var.fstp = fval, fval-var.fval
       if env.debug >= 2 then
         dspmat(x   , "X"          )
@@ -519,7 +527,7 @@ local function exec (self)
   assert(is_callable(inqexec)     , "invalid inequality function (callable expected)")
 
   -- check selected method (and submethod)
-  local mthd = objective.method or 'LN_COBYLA'
+  local mthd = objective.method or optalgo_default
   local mopt = assertf(optalgo[mthd], "unknown optimisation method '%s'", mthd)
   local sopt = nil
 
@@ -571,14 +579,14 @@ local function exec (self)
       xmax = vector(n),                    -- variables maximum bounds
       xwgt = vector(n),                    -- variables weights
       xtol = vector(n),                    -- variables tolerances
-      xtmp = grdf and vector(n),           -- variables temporary
+      xtmp = grdf and vector(n) or nil,    -- variables temporary
       xrtol= variables.rtol or 0,          -- variables relative tolerance
 
       p    = p,                            -- number of equalities
       efun = nil,                          -- equalities function (see above)
-      eval = p>0 and vector(p)   or nil,   -- equalities values
-      ewgt = p>0 and vector(p)   or nil,   -- equalities weights
-      etol = p>0 and vector(p)   or nil,   -- equalities tolerances
+      eval = p>0 and vector(p) or nil,     -- equalities values
+      ewgt = p>0 and vector(p) or nil,     -- equalities weights
+      etol = p>0 and vector(p) or nil,     -- equalities tolerances
       ejac = p>0 and grdm and matrix(p,n) or nil, -- equalities jacobian
       etmp = p>0 and grdf and vector(p)   or nil, -- equalities temporary
 
@@ -595,7 +603,7 @@ local function exec (self)
       fval = inf,                          -- objective func value (dummy init)
       fstp = 0,                            -- objective func current step
       fwgt = 0,                            -- objective func weights sum
-      fgrd = grdm and vector(n),           -- objective func gradient
+      fgrd = grdm and vector(n) or nil,    -- objective func gradient
       fmin = objective.fmin or -inf,       -- objective func minimum (target)
       ftol = objective.tol  or 0,          -- objective func tolerance (target)
       frtol= objective.rtol or 0,          -- objective func relative tolerance (target)
