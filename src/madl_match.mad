@@ -416,8 +416,10 @@ local function compute_fval (env)
   return sqrt(fval) / fwgt -- sqrt(\sum_i (w_i c_i(x))^2) / (\sum_i w_i)
 end
 
--- compute objective function gradient and (in)equalities jacobians
-local function compute_fgrd (env)
+-- compute gradient and (in)equalities jacobians
+local function compute_fgrd (env, fval)
+  if fval == nil then return end
+
   local var = env.__var
   local n, p, q, x, dx, xtmp, fgrd, eval, etmp, ejac, lval, ltmp, ljac in var
 
@@ -426,17 +428,13 @@ local function compute_fgrd (env)
   if ejac ~= nil then ejac:zeros() end
   if ljac ~= nil then ljac:zeros() end
 
-  -- reference evaluation
-  local fval = compute_fval(env)
-  if fval == nil then return end
-
   -- backup variables
   var.xtmp, var.x    = var.x   , var.xtmp
   var.etmp, var.eval = var.eval, var.etmp
   var.ltmp, var.lval = var.lval, var.ltmp
   x:copy(xtmp)
 
-  -- estimate jacobian step (2^-7 ~= 1% exact)
+  -- estimate jacobian step (2^-7*|dx|, MAD-X uses 2^-15*|x|)
   local dh = 0.0078125*dx:minabs() -- to review (dh[i] vs dx[i] ?)
   if dh == 0 then dh = 1e-10 end
 
@@ -475,11 +473,9 @@ local function nlopt_functions (env)
   -- objective function
   local fun = function ()
     -- compute objective function and (in)equalities constraints
-    local fval
-    if grdf
-    then fval = compute_fgrd(env)
-    else fval = compute_fval(env)
-    end
+    local fval = compute_fval(env)
+    -- compute function gradient and (in)equalities jacobian
+    if grdf then fval = compute_fgrd(env, fval) end
 
     -- check returned value (and backup)
     if fval ~= nil then
