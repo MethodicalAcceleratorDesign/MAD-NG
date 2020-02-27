@@ -92,6 +92,7 @@ Algorithm names:
 
 local optalgo_default = 'LN_COBYLA'
 local optalgo = {
+  -- MAD NLOpt algorithms
   -- global optimisers without derivatives
   GN_CRS2_LM                 = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
   GN_DIRECT                  = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
@@ -142,9 +143,11 @@ local optalgo = {
   G_MLSL_LDS                 = { bd='y', eq='n', le='n', gr='?', lo='y', lg='n' },
 
   -- MAD LSOpt algorithms
+  -- pseudo-global optimisers without derivatives
   LN_LMDIF                   = { bd='y', eq='y', le='y', gr='n', lo='n', lg='n' },
-  LD_LMDIF                   = { bd='y', eq='y', le='y', gr='y', lo='n', lg='n' },
   LN_JACOBIAN                = { bd='y', eq='y', le='y', gr='n', lo='n', lg='n' },
+  -- pseudo-global optimisers with derivatives
+  LD_LMDIF                   = { bd='y', eq='y', le='y', gr='y', lo='n', lg='n' },
   LD_JACOBIAN                = { bd='y', eq='y', le='y', gr='y', lo='n', lg='n' },
 }
 
@@ -180,7 +183,7 @@ local expr_weights = { -- default weight = 1
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
-  local n, p, q in var
+  local n, p, q, eval, ewgt, lval, lwgt in var
 
   if p+q > 0 then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
@@ -188,16 +191,14 @@ local function disp_summ (env)
 
     for i=1,p do
       local e = equalities[i] or {}
-      local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
-                i, e.name or '', 'equality', e.kind or ' .', w, var.eval[i])
+                i, e.name or '', 'equality', e.kind or ' .', ewgt[i], eval[i]/ewgt[i])
     end
 
     for i=1,q do
       local e = inequalities[i] or {}
-      local w = e.weight or weights[e.kind] or expr_weights[e.kind] or 1
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
-                i+p, e.name or '', 'inequality', e.kind or ' .', w, var.lval[i])
+                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i], lval[i]/lwgt[i])
     end
   end
 
@@ -210,9 +211,10 @@ local function disp_summ (env)
   io.write"-------------------------------------------------------------------------------\n"
 
   for i=1,n do
-    printf(" % -25s % -.5e % -.5e % -.5e % -.5e\n",
-            variables[i].var, v1[i], v2[i],
-            max(var.xmin[i],-9.99999e99), min(var.xmax[i], 9.99999e99))
+    local xmin = var.xmin[i] > -1e100 and strfmt("% -.5e",var.xmin[i]) or '  .'
+    local xmax = var.xmax[i] <  1e100 and strfmt("% -.5e",var.xmax[i]) or '  .'
+    printf(" % -25s % -.5e % -.5e % -12s % -12s\n",
+           variables[i].var, v1[i], v2[i], xmin, xmax)
   end
 
   local fmt = "\n ncall=%2d,  fval=% -.7e,  fstp=% -.5e,  status=%s\n\n"
@@ -377,7 +379,7 @@ local function compute_fval (env)
   local command, objective, equalities, inequalities in env
 
   local var = env.__var
-  local p, q, x, fgrd, eval, ejac, lval, ljac, method in var
+  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, method in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -395,23 +397,23 @@ local function compute_fval (env)
 
   if equalities.exec ~= nil
   then equalities.exec(x, eval, ejac)             -- call user defined function
-  else for i=1,p do eval[i] = equalities[i].expr(res, env) end
+  else for i=1,p do eval[i] = ewgt[i]*equalities[i].expr(res, env) end
   end
 
   if inequalities.exec ~= nil
   then inequalities.exec(x, lval, ljac)           -- call user defined function
-  else for i=1,q do lval[i] = inequalities[i].expr(res, env) end
+  else for i=1,q do lval[i] = lwgt[i]*inequalities[i].expr(res, env) end
   end
 
   if objective.exec ~= nil or method.lg == 'y' then return fval end
 
   -- augment fval with squared constraints penalties
-  local etol, ewgt, ltol, lwgt, fwgt in var
+  local ltol, fwgt in var
 
-  for i=1,p do fval = fval + ewgt[i]*eval[i]^2 end
-  for i=1,q do if lval[i] > ltol[i] then fval = fval + lwgt[i]*lval[i]^2 end end
+  for i=1,p do fval = fval + eval[i]^2 end
+  for i=1,q do if lval[i] > ltol[i] then fval = fval + lval[i]^2 end end
 
-  return sqrt(fval / fwgt) -- sqrt(\sum_i w_i c_i(x)^2 / \sum_i w_i)
+  return sqrt(fval) / fwgt -- sqrt(\sum_i (w_i c_i(x))^2) / (\sum_i w_i)
 end
 
 -- compute objective function gradient and (in)equalities jacobians
@@ -639,7 +641,7 @@ local function exec (self)
     var.x   [i] = var.x0[i]
     var.xstp[i] = v.step   or variables.step or 0
     var.xtol[i] = v.tol    or variables.tol  or 0
-    var.xwgt[i] = v.weight or variables.wgt  or 0
+    var.xwgt[i] = v.weight or variables.wgt  or 1
     var.xmin[i] = v.min    or variables.min  or -inf
     var.xmax[i] = v.max    or variables.max  or  inf
 
@@ -658,20 +660,20 @@ local function exec (self)
   -- equality constraints
   for i=1,p do
     local e = equalities[i] or {}
-    var.etol[i] = abs(e.tol or equalities.tol or mintol)
     var.ewgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.etol[i] = abs(e.tol or equalities.tol or mintol) * var.ewgt[i]
     var.fwgt    = var.fwgt + var.ewgt[i]
   end
 
   -- inequality constraints
   for i=1,q do
     local e = inequalities[i] or {}
-    var.ltol[i] = e.tol or inequalities.tol or eps
     var.lwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.ltol[i] = (e.tol or inequalities.tol or eps) * var.lwgt[i]
     var.fwgt    = var.fwgt + var.lwgt[i]
   end
 
-  -- adjust weights
+  -- adjust weights (e.g. p+q=0)
   if var.fwgt == 0 then var.fwgt = 1 end
 
   -- build optimizer functions
