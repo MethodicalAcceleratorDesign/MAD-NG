@@ -379,7 +379,7 @@ local function compute_fval (env)
   local command, objective, equalities, inequalities in env
 
   local var = env.__var
-  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, method in var
+  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, valf in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -405,7 +405,7 @@ local function compute_fval (env)
   else for i=1,q do lval[i] = lwgt[i]*inequalities[i].expr(res, env) end
   end
 
-  if objective.exec ~= nil or method.lg == 'y' then return fval end
+  if not valf then return fval end
 
   -- augment fval with squared constraints penalties
   local ltol, fwgt in var
@@ -547,6 +547,9 @@ local function exec (self)
   local dbug = objective.debug or false
   local ndbg = assertf(log2num(dbug), "invalid debug '%s'", tostring(dbug))
 
+  -- objective function computation (explicitly) needed
+  local valf = objective.exec == nil and mopt.lg == 'n'
+
   -- gradient (and jacobians) computation (explicitly) needed
   local grdm = mopt.gr == 'y' or mopt.gr == '?' and sopt.gr == 'y'
   local grdf = grdm and not (objective.exec and objective.grad ~= false)
@@ -601,6 +604,7 @@ local function exec (self)
       ltmp = q>0 and grdf and vector(q)   or nil, -- inequalities temporary
 
       fun  = nil,                          -- objective func (see above)
+      valf = valf,                         -- objective func value flag
       grdf = grdf,                         -- objective func gradient flag
       fval = inf,                          -- objective func value (dummy init)
       fstp = 0,                            -- objective func current step
@@ -658,10 +662,11 @@ local function exec (self)
   end
 
   -- equality constraints
+  local emintol = valf and inf or mintol
   for i=1,p do
     local e = equalities[i] or {}
     var.ewgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
-    var.etol[i] = abs(e.tol or equalities.tol or mintol) * var.ewgt[i]
+    var.etol[i] = abs(e.tol or equalities.tol or emintol) * var.ewgt[i]
     var.fwgt    = var.fwgt + var.ewgt[i]
   end
 
