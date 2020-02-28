@@ -223,47 +223,43 @@ end
 
 -- getters/setters ------------------------------------------------------------o
 
-local locfmt = [[
-  return \f,env => local vnam, vidx, lget, lset = '%s', %d
-        return \ => local k, v = debug.getlocal(lget or 3, vidx)
-                    if not lget or k ~= vnam then
-                      for i=3,1e6 do
-                        local info = debug.getinfo(i, 'f')
-                        if not info then break end
-                        if info.func == f then lget=i ; break end
-                      end ; assert(lget, 'local variable not found in getter')
-                      k, v = debug.getlocal(lget, vidx)
-                    end
-                    -- print('lget=', lget)
-                    assert(k == vnam, 'invalid local variable in getter')
-                    return v
-                  end,
-              \x => local k = debug.setlocal(lset or 7, vidx, x)
-                    if not lset or k ~= vnam then
-                      for i=7,1e6 do
-                        local info = debug.getinfo(i, 'f')
-                        if not info then break end
-                        if info.func == f then lset=i ; break end
-                      end ; assert(lset, 'local variable not found in setter')
-                      k = debug.setlocal(lset, vidx, x)
-                    end
-                    -- print('lset=', lset)
-                    assert(k == vnam, 'invalid local variable in setter')
-                    env.__var.flush = env.__var.fjit
-                  end
-                end ]]
+local function mklocacc (env, fun, vnam, vidx)
+  local var = env.__var
+  return \ => local flvl = 3
+              while flvl < 1e6 do
+                local info = debug.getinfo(flvl, 'f')
+                assert(info, 'user function not found in getter')
+                if info.func == fun then break else flvl = flvl+1 end
+              end
+              local k, v = debug.getlocal(flvl, vidx)
+              assert(k == vnam, 'invalid local variable in getter')
+              return v
+            end,
+        \x => local flvl = 3
+              while flvl < 1e6 do
+                local info = debug.getinfo(flvl, 'f')
+                assert(info, 'user function not found in setter')
+                if info.func == fun then break else flvl = flvl+1 end
+              end
+              local k, v = debug.getlocal(flvl, vidx)
+              assert(k == vnam, 'invalid local variable in setter')
+              debug.setlocal(flvl, vidx, x)
+              var.flush = var.fjit
+            end
+end
 
-local upvfmt = [[
-  return \f,env => local vnam, vidx = '%s', %d
-        return \ => local k, v = debug.getupvalue(f, vidx)
-                    assert(k == vnam, 'invalid upvalue in getter')
-                    return v
-                  end,
-              \x => local k = debug.setupvalue(f, vidx, x)
-                    assert(k == vnam, 'invalid upvalue in setter')
-                    env.__var.flush = env.__var.fjit
-                  end
-                end ]]
+local function mkupvacc (env, fun, vnam, vidx)
+  local var = env.__var
+  return \ => local k, v = debug.getupvalue(fun, vidx)
+              assert(k == vnam, 'invalid upvalue in getter')
+              return v
+            end,
+        \x => local k = debug.getupvalue(fun, vidx)
+              assert(k == vnam, 'invalid upvalue in setter')
+              debug.setupvalue(fun, vidx, x)
+              var.flush = var.fjit
+            end
+end
 
 local wmsg =
   "write access to %s is very slow; use set, update or indirect (table) access"
@@ -307,22 +303,18 @@ local function accessors (env)
       if isep > 0 then   -- local variable with indirect access
         fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
         get, set = assert(loadstring(fmt))()(loc[loc[nam]])
-
       else               -- local variable with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "local variables") ; wrn=false end
-        fmt = strfmt(locfmt, nam, loc[nam])
-        get, set = assert(loadstring(fmt))()(fun, env)
+        get, set = mklocacc(env, fun, nam, loc[nam])
       end
 
     elseif upv[nam] then -- upvalue
       if isep > 0 then   -- upvalue with indirect access
         fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
         get, set = assert(loadstring(fmt))()(upv[upv[nam]])
-
       else               -- upvalue with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "upvalues") ; wrn=false end
-        fmt = strfmt(upvfmt, nam, upv[nam])
-        get, set = assert(loadstring(fmt))()(fun, env)
+        get, set = mkupvacc(env, fun, nam, upv[nam])
       end
 
     elseif ctx[nam] then -- caller context
@@ -460,7 +452,7 @@ local function compute_fgrd (env, fval)
   var.xtmp, var.x    = xtmp, x
   var.etmp, var.eval = etmp, eval
   var.ltmp, var.lval = ltmp, lval
-  update_vars(env, x)
+  update_vars(env)
 
   return fval
 end
@@ -468,14 +460,14 @@ end
 -- functions factory
 local function nlopt_functions (env)
   local var = env.__var
-  local x, p, q, fgrd, grdf, ejac, ljac, method, grdmthd in var
+  local x, p, q, fgrd, ejac, ljac, method in var
 
   -- objective function
   local fun = function ()
     -- compute objective function and (in)equalities constraints
     local fval = compute_fval(env)
     -- compute function gradient and (in)equalities jacobian
-    if grdf then fval = compute_fgrd(env, fval) end
+    if var.grdf then fval = compute_fgrd(env, fval) end
 
     -- check returned value (and backup)
     if fval ~= nil then
@@ -690,7 +682,10 @@ local function exec (self)
   -- display error or final summary
   if status == false then
     warn("error '%s' occured during matching", errmsg)
-  elseif var.sumdisp > 0 then disp_summ(env) end
+    var.x0:copy(var.x) ; update_vars(env) -- reset values
+  elseif var.sumdisp > 0 then
+    disp_summ(env)
+  end
 
   -- return status, fmin, ncall
   return retstr[var.status], var.fval, env.ncall
