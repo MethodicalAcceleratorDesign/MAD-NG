@@ -219,9 +219,11 @@ function TestMatch:testMatchFODOLocVar ()
   -- match phase advance
   local status, fmin, ncall = match {
     command := twiss { sequence=seq, observe=1 },
-    variables = { nowarn=true,
+    variables = { !nowarn=true,
       { var = 'k1f', min= 0.2, max= 0.4 },
       { var = 'k1d', min=-0.4, max=-0.2 },
+      init   = \x => x[1], x[2] = k1f, k1d end, -- explicit init/update avoid
+      update = \x => k1f, k1d = x[1], x[2] end, -- to flush the JIT...
     },
     equalities = {
       { expr = \t -> assert(t).mu1[#t]-0.25 },
@@ -309,6 +311,51 @@ function TestMatch:testMatchFODONoVar ()
   end
 end
 
+-- FODO matching --------------------------------------------------------------o
+
+local function testMatchFODO (var, mth)
+  -- classes
+  local mb = sbend { l=2, angle=2*pi/50 }
+  local mq = quadrupole { l=1 }
+
+  -- sequence
+  local seq = sequence 'seq' {
+    l=10, refer='entry', beam=beam,
+    mq 'mq1' { at=0, k1 := var.k1f },
+    mb 'mb1' { at=2, k0 =\s s.angle/s.l },
+    mq 'mq2' { at=5, k1 := var.k1d },
+    mb 'mb2' { at=7, k0 =\s s.angle/s.l },
+  }
+
+  -- match phase advance
+  return match {
+    command := twiss { sequence=seq, observe=1 },
+    variables = {
+      { var = 'var.k1f', min= 0.2, max= 0.4 },
+      { var = 'var.k1d', min=-0.4, max=-0.2 },
+    },
+    equalities = {
+      { expr = \t -> assert(t).mu1[#t]-0.25 },
+      { expr = \t -> assert(t).mu2[#t]-0.25 },
+    },
+    objective = {
+      method=mth, fmin = 1e-8, maxcall = 100, !summary=2, !debug=2
+    },
+  }
+end
+
+function TestMatch:testMatchFODOJAC ()
+  local var = { k1f=0.28, k1d=-0.28 }
+  local status, fmin, ncall = testMatchFODO(var, 'LD_JACOBIAN')
+
+  -- check results
+  assertEquals      (status ,  'FMIN_REACHED'         )
+  assertEquals      (ncall  ,  12                     ) -- 4 iterations
+  assertAlmostEquals(fmin   ,  3.0368820358e-13, 1e-16)
+  assertAlmostEquals(var.k1f,  0.29599989525034, 1e-12)
+  assertAlmostEquals(var.k1d, -0.30241971341642, 1e-12)
+end
+
 -- Function matching ----------------------------------------------------------o
 
 -- Example from NLOpt tutorial
@@ -348,7 +395,7 @@ local function testMatchFunc1 (x, mth)
       exec = testFuncLe, nequ = 2, tol = 1e-8
     },
     objective = {
-      method = mth, maxcall = 100, !summary=2, !debug=2,
+      method=mth, maxcall=100, !summary=2, !debug=2,
       exec = testFuncFn,
     },
   }
@@ -364,8 +411,29 @@ local function testMatchFunc2 (x, mth)
       exec = testFuncLe, nequ = 2, tol = 1e-8
     },
     objective = {
-      method = mth, maxcall = 100, fmin=sqrt(8/27)+1e-3, !summary=2, !debug=2,
+      method=mth, maxcall=100, fmin=sqrt(8/27)+1e-3, !summary=2, !debug=2,
       exec = testFuncFn,
+    },
+  }
+end
+
+local function testMatchFunc3 (x, mth)
+  return match {
+    variables = {
+      { var = 'x[1]' },
+      { var = 'x[2]' },
+      { var = 'x[3]' },
+      { var = 'x[4]' },
+      { var = 'x[5]' },
+    },
+    equalities = {
+      { expr := x:sumsqr() - 10         },
+      { expr := x[2]*x[3] - 5*x[4]*x[5] },
+      { expr := x[1]^3+x[2]^3+1         },
+    },
+    objective = {
+      exec := math.exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
+      method=mth, tol=3e-10, maxcall=100, grad=false, !summary=2, !debug=2,
     },
   }
 end
@@ -414,41 +482,57 @@ function TestMatch:testMatchFuncLN2 ()
   assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
 end
 
--- Example from Octave tutorial (unstable)
--- Note: Octave does succeed to find a solution but reports wrong status
+function TestMatch:testMatchFuncJAC1 ()
+  local x = {1.234, 5.678}
+  local status, fmin, ncall = testMatchFunc1(x, 'LD_JACOBIAN')
 
-function TestMatch:testMatchFunc3 ()
-  local vector in MAD
-  local exp    in math
-  local x = vector {-1.8, 1.7, 1.9, -0.8, -0.8}
+  assertEquals      (status, 'XTOL_REACHED'  )
+  assertEquals      (ncall , 8               )
+  assertAlmostEquals(fmin  , sqrt(8/27), 1e-8)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-8)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-8)
+end
 
-  local status, fmin, ncall = match {
-    variables = {
-      { var = 'x[1]' },
-      { var = 'x[2]' },
-      { var = 'x[3]' },
-      { var = 'x[4]' },
-      { var = 'x[5]' },
-    },
-    equalities = {
-      { expr := x:sumsqr() - 10         },
-      { expr := x[2]*x[3] - 5*x[4]*x[5] },
-      { expr := x[1]^3+x[2]^3+1         },
-    },
-    objective = {
-      exec := exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
-      method='LD_SLSQP', tol=3e-10, maxcall = 100, grad=false, !summary=2, !debug=2,
-    },
-  }
+function TestMatch:testMatchFuncJAC2 ()
+  local x = {1.234, 5.678}
+  local status, fmin, ncall = testMatchFunc2(x, 'LD_JACOBIAN')
+
+  assertEquals      (status, 'FMIN_REACHED'  )
+  assertEquals      (ncall , 8               )
+  assertAlmostEquals(fmin  , sqrt(8/27), 1e-3)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-3)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
+end
+
+-- Example from Octave tutorial
+-- Note: Octave does succeed to find a solution but reports roundoff error...
+
+function TestMatch:testMatchFuncSQP3 ()
+  local x = MAD.vector {-1.8, 1.7, 1.9, -0.8, -0.8}
+  local status, fmin, ncall = testMatchFunc3(x, 'LD_SLSQP')
 
   assertEquals      (status, 'FTOL_REACHED' )
   assertEquals      (ncall , 54             ) -- 9 iterations 9x(1+5)
-  assertAlmostEquals(fmin  ,  0.053950, 1e-5) -- values from examples
+  assertAlmostEquals(fmin  ,  0.053950, 1e-5) -- values from example
   assertAlmostEquals(x[1]  , -1.71714 , 1e-5)
   assertAlmostEquals(x[2]  ,  1.59571 , 1e-5)
   assertAlmostEquals(x[3]  ,  1.82725 , 1e-5)
   assertAlmostEquals(x[4]  , -0.763643, 1e-5)
   assertAlmostEquals(x[5]  , -0.763643, 1e-5)
+end
+
+function TestMatch:testMatchFuncJAC3 ()
+  local x = MAD.vector {-1.8, 1.7, 1.9, -0.8, -0.8}
+  local status, fmin, ncall = testMatchFunc3(x, 'LD_JACOBIAN')
+
+  assertEquals      (status, 'FTOL_REACHED' )
+  assertEquals      (ncall , 30             ) -- 5 iterations 5x(1+5)
+  assertAlmostEquals(fmin  ,  0.053996, 1e-5) -- find another minimum
+  assertAlmostEquals(x[1]  , -1.72693 , 1e-5) -- fstp=-5.12167e-11
+  assertAlmostEquals(x[2]  ,  1.60702 , 1e-5) -- cval= 4.40930e-14
+  assertAlmostEquals(x[3]  ,  1.80897 , 1e-5)
+  assertAlmostEquals(x[4]  , -0.762504, 1e-5)
+  assertAlmostEquals(x[5]  , -0.762504, 1e-5)
 end
 
 -- end ------------------------------------------------------------------------o
