@@ -202,12 +202,10 @@ nlopt_result nlopt_force_stop (nlopt_opt, int val);
 
 -- NLOPT lib wrapper ----------------------------------------------------------o
 
-local function nlopt_final (env, arg)
+local function nlopt_final (env)
   local var = env.__var
-  return function()
-    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
-    _C.nlopt_force_stop(arg[0].opt, var.status)
-  end
+  if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+  _C.nlopt_force_stop(var.__arg[0].opt, var.status)
 end
 
 local function nlopt_fwrap (env)
@@ -222,6 +220,7 @@ local function nlopt_fwrap (env)
     for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
     local fval = fun()
     if df_ ~= nil then for i=1,n do df_[i-1] = fgrd[i] end end
+    if env.stop then nlopt_final(env) end
     return fval
   end or nil
 
@@ -303,10 +302,10 @@ local function nloptrun (env)
   -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
   var.fjit = true
 
-  -- nlopt can be forced to stop by user
-  var.finalize = nlopt_final(env, arg)
+  -- attach arg to var
+  var.__arg = arg
 
-  -- optimize (protected call to C API)
+  -- optimizer (protected call to C API)
   local status, errmsg = pcall(_C.mad_nlopt, arg)
 
   -- release callback (note: callbacks are never collected)
@@ -318,6 +317,9 @@ local function nloptrun (env)
   if arg[0].status ~= _C.NLOPT_FORCED_STOP then
     var.status = arg[0].status
   end
+
+  -- detach arg from var
+  var.__arg = nil
 
   return status, errmsg
 end
