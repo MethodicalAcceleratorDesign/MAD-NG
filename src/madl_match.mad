@@ -201,7 +201,7 @@ local function disp_summ (env)
 
   local s1, s2, s3, v1, v2, v3
   if var.status == _C.NLOPT_RUNNING then
-    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=% -.5e [%d]'
+    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
     v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
   else
     s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
@@ -218,8 +218,10 @@ local function disp_summ (env)
            variables[i].var, v1[i], v2[i], xmin, xmax)
   end
 
-  local fmt = "\n ncall=%2d,  fval=% -.7e,  fstp=% -.5e,  "..s3.."\n\n"
-  printf(fmt, env.ncall, var.fval, var.fstp, v3, var.ccnt)
+  env.dtime = os.clock()-var.time0
+
+  local fmt = "\n ncall=%d [%ds], fval=%-.7e, fstp=%-.5e, "..s3.."\n\n"
+  printf(fmt, env.ncall, env.dtime, var.fval, var.fstp, v3, var.ccnt)
 end
 
 -- getters/setters ------------------------------------------------------------o
@@ -375,6 +377,7 @@ local function compute_fval (env)
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
+  env.dtime = os.clock()-var.time0
 
   update_vars(env)                                -- update user variables
 
@@ -385,6 +388,7 @@ local function compute_fval (env)
 
   if objective.exec ~= nil then
     fval = objective.exec(x, fgrd)                -- call user defined function
+    if fval == nil then return end                -- invalid domain, return nil
   end
 
   if equalities.exec ~= nil
@@ -552,7 +556,9 @@ local function exec (self)
 
   -- matching environment
   local env = {
-    ncall        = 0,
+    stop         = false,       -- forced stop
+    dtime        = 0,           -- current elapsed time
+    ncall        = 0,           -- current number of call
     debug        = ndbg,        -- debug level, can be changed during iterations
     command      = command,
     objective    = objective,
@@ -575,6 +581,7 @@ local function exec (self)
       xtol = vector(n),                    -- variables tolerances
       xtmp = grdf and vector(n) or nil,    -- variables temporary
       xrtol= variables.rtol or 0,          -- variables relative tolerance
+      xtolf= false,                        -- variables tolerance flag
 
       p    = p,                            -- number of equalities
       efun = nil,                          -- equalities function (see above)
@@ -612,10 +619,10 @@ local function exec (self)
       sumdisp  = ndsp,                     -- algorithm summary level
       maxcall  = objective.maxcall or 0,   -- algorithm call limit
       maxtime  = objective.maxtime or 0,   -- algorithm time limit
-      finalize = fnil,                     -- algorithm finalizer
       status   = _C.NLOPT_RUNNING,         -- algorithm status
       errmsg   = nil,                      -- algorithm error message
       fjit     = false,                    -- JIT must be flushed (C API)
+      time0    = os.clock(),               -- start time
     },
   }
 
@@ -654,6 +661,9 @@ local function exec (self)
     end
   end
 
+  -- xtol and xrtol flag
+  var.xtolf = max(var.xrtol, var.xtol:max()) > 0
+
   -- equality constraints
   for i=1,p do
     local e = equalities[i] or {}
@@ -685,7 +695,7 @@ local function exec (self)
 
   -- display error or final summary
   if status == false then
-    warn("error '%s' occured during matching", errmsg)
+    warn("error '%s' occured during matching", errmsg or '?')
     var.x0:copy(var.x) ; update_vars(env) -- reset values
   elseif var.sumdisp > 0 then
     disp_summ(env)
