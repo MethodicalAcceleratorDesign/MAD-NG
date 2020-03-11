@@ -24,19 +24,99 @@
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
-local _C, vector, matrix in MAD
+local _C, option, vector, matrix in MAD
 
-local abs in math
+local eps, inf in MAD.constant
+local abs      in MAD.gmath
+
+-- New algos ------------------------------------------------------------------o
 
 ffi.cdef [[
 enum {
  /* extra MAD algorithms */
-  NLOPT_LD_LMDIF = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
+  NLOPT_LD_LMDIF     = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
   NLOPT_LD_JACOBIAN,
 
   NLOPT_NUM_ALGOS, /* not an algorithm, just the number of them */
 }
 ]]
+
+-- helper ---------------------------------------------------------------------o
+
+local function dspmat(mat, nam)
+  if mat ~= nil then
+    local fmt = option.numfmt;
+    option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
+  end
+end
+
+-- Variables domain -----------------------------------------------------------o
+
+local function check_dom (env)
+  local var = env.__var
+  local n, x, dx, xslp, xmin, xmax in var
+  local nadj = 0
+
+  for i=1,n do
+    -- check slope
+    if dx[i]*xslp[i] < 0 then x[i], dx[i], nadj = x[i]+dx[i], 0, nadj+1 end
+
+    -- check bounding box
+        if x[i] < xmin[i] then x[i], nadj = xmin[i], nadj+1
+    elseif x[i] > xmax[i] then x[i], nadj = xmax[i], nadj+1 end
+  end
+
+  if env.debug >= 1 and nadj > 0 then
+    io.write("nlopt: ", nadj, "variables ajusted (bounds or slope)\n")
+  end
+end
+
+--[[ MAD-X rule, same as forcing xmin/xmax...
+  local dv = min(max(1e-12, xstp[i]), (xmin[i] - x[i])*0.5)
+  x[i], nadj = xmin[i]+2*dv, nadj+1
+  local dv = min(max(1e-12, xstp[i]), (x[i] - xmax[i])*0.5)
+  x[i], nadj = xmax[i]-2*dv, nadj+1
+--]]
+
+-- Stopping criteria ----------------------------------------------------------o
+
+local function check_stop (env)
+  local var = env.__var
+  local status = var.status
+
+  if env.stop then
+    var.status = _C.NLOPT_FORCED_STOP
+    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+
+  elseif var.maxcall > 0 and env.ncall >= var.maxcall then
+   var.status = _C.NLOPT_MAXEVAL_REACHED
+
+  elseif var.maxtime > 0 and var.time1-var.time0 >= var.maxtime then
+   var.status = _C.NLOPT_MAXTIME_REACHED
+
+  elseif var.ccnt > 0 then
+    -- not a feasible point -> continue
+
+  elseif var.fval <= var.fmin then
+    var.status = _C.NLOPT_STOPVAL_REACHED
+
+  elseif abs(var.fstp) - var.ftol <= 0 or
+         abs(var.fstp) - var.frtol*abs(var.fval) <= 0 then
+    var.status = _C.NLOPT_FTOL_REACHED
+
+  elseif var.xtolf then
+    local ax, adx = abs(var.x), abs(var.dx)
+
+    if (adx - var.xtol):max() <= 0 or (adx - var.xrtol*ax):max() <= 0 then
+      var.status = _C.NLOPT_XTOL_REACHED
+
+    elseif (adx - eps*ax):max() <= 0 then
+      var.status = _C.NLOPT_ROUNDOFF_LIMITED
+    end
+  end
+
+  return var.status ~= status
+end
 
 -- Levenberg-Marquardt --------------------------------------------------------o
 
@@ -50,43 +130,50 @@ end
 
 local function ld_jacobian (env)
   local var = env.__var
-  local bisect in env.objective
-  local fmin, maxcall in var
-  local n, p, q, x, dx, fun, fgrd, eval, ejac, lval, ljac in var
+  local bisect, rcond in env.objective
+  local n, p, q, x, dx, fun, eval, ejac, lval, ljac in var
+  local A, B = matrix(p+q,n), vector(p+q)
 
-  local J = matrix(p+q,n)
-  local B = vector(p+q)
+  while true do
+    check_dom(env)                          -- check domain
+    fun() -- call user function/command, compute Jacobian
+    if check_stop(env) then return true end -- check criteria
 
-!  print("\nmaxcall=", maxcall)
-
-  while env.ncall < maxcall do
-!    print("ncall=", env.ncall+1)
-    local fval = fun()
-
-!    print("fval=", fval)
-!    if eval then eval:print("eval") end
-!    if lval then lval:print("lval") end
-
-    if var.ccnt == 0 then -- feasible point?
-      if fval < fmin then
-        var.status = _C.NLOPT_STOPVAL_REACHED
-        return true
+    -- try bisection if fval increases
+    if var.fstp > 0 and bisect then
+      if env.debug >= 1 then io.write("nlopt: trying bisection\n") end
+      local fbst, fval, grdf, xtolf = inf, var.fval, var.grdf, var.xtolf
+      local x0, dx0 = x:copy(), dx:copy()
+      var.grdf, var.xtolf = false, false -- disable Jacobian and xtol
+      for i=1,bisect do
+        dx:div(2,dx) ; x:add(dx,x) ; fun() -- don't compute Jacobian
+        if fbst > var.fval then fbst = var.fval ; x:copy(x0) ; dx:copy(dx0) end
+        if fval > fbst then break end
       end
+      x0:copy(x) ; dx0:copy(dx)
+      var.xtolf = xtolf -- restore xtol
+      if check_stop(env) then fun() return true end -- check criteria (better to backup vectors than run fun!)
+      var.grdf = grdf   -- restore Jacobian
+      fun() -- compute Jacobian
     end
 
-        if ljac == nil then ejac:copy(J) ; eval:copy(B)
-    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
-    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
+    -- build Ax=b
+        if ljac == nil then ejac:copy(A) ; eval:copy(B)
+    elseif ejac == nil then ljac:copy(A) ; lval:copy(B)
+    else   ejac:concat(ljac, A) ;  eval:concat(lval, B)
     end
 
-    local xx, xs, rnk = J:ssolve(B) -- rcond...
-!    print("rnk=", rnk)
-    xx:copy(dx) ; x:sub(dx,x)
-!    dx:print('dx')
+    -- Newton step using SVD to find min_x ||b - Ax||
+    local X, sv, rnk = A:ssolve(B, rcond)
+    X:copy(dx) ; x:sub(dx,x)
+
+    -- debug info
+    if env.debug >= 1 then
+      io.write("nlopt: Jacobian-Newton step using SVD\n\z
+                Rank=", rnk, ", Rcond=", rcond or 'eps', '\n')
+      dspmat(sv, "JACOBIAN-SV")
+    end
   end
-
-  var.status = _C.NLOPT_MAXEVAL_REACHED
-  return true
 end
 
 -- LSOPT lib ------------------------------------------------------------------o
@@ -100,7 +187,7 @@ local function lsoptrun (env)
   local var = env.__var
   local fun = dispatch[var.method.id]
 
-  -- optimize (protected call to C API)
+  -- optimizer (protected call)
   return pcall(fun, env)
 end
 
