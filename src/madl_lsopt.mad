@@ -24,69 +24,84 @@
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
-local _C in MAD
+local _C, vector, matrix in MAD
 
 local abs in math
 
 ffi.cdef [[
 enum {
  /* extra MAD algorithms */
-  NLOPT_LN_LMDIF = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
-  NLOPT_LD_LMDIF,
-
-  NLOPT_LN_JACOBIAN,
+  NLOPT_LD_LMDIF = NLOPT_NUM_ALGORITHMS, /* start where NLOPT stops */
   NLOPT_LD_JACOBIAN,
 
   NLOPT_NUM_ALGOS, /* not an algorithm, just the number of them */
 }
 ]]
 
+-- Levenberg-Marquardt --------------------------------------------------------o
+
+local function ld_lmdif (env)
+  local var = env.__var
+  print("ld_lmdif")
+  for k,v in pairs(var.method) do print(k,v) end
+end
+
+-- Jacobian -------------------------------------------------------------------o
+
+local function ld_jacobian (env)
+  local var = env.__var
+  local bisect in env.objective
+  local fmin, maxcall in var
+  local n, p, q, x, dx, fun, fgrd, eval, ejac, lval, ljac in var
+
+  local J = matrix(p+q,n)
+  local B = vector(p+q)
+
+!  print("\nmaxcall=", maxcall)
+
+  while env.ncall < maxcall do
+!    print("ncall=", env.ncall+1)
+    local fval = fun()
+
+!    print("fval=", fval)
+!    if eval then eval:print("eval") end
+!    if lval then lval:print("lval") end
+
+    if var.ccnt == 0 then -- feasible point?
+      if fval < fmin then
+        var.status = _C.NLOPT_STOPVAL_REACHED
+        return true
+      end
+    end
+
+        if ljac == nil then ejac:copy(J) ; eval:copy(B)
+    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
+    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
+    end
+
+    local xx, xs, rnk = J:ssolve(B) -- rcond...
+!    print("rnk=", rnk)
+    xx:copy(dx) ; x:sub(dx,x)
+!    dx:print('dx')
+  end
+
+  var.status = _C.NLOPT_MAXEVAL_REACHED
+  return true
+end
+
 -- LSOPT lib ------------------------------------------------------------------o
+
+local dispatch = {
+  [_C.NLOPT_LD_LMDIF   ] = ld_lmdif,
+  [_C.NLOPT_LD_JACOBIAN] = ld_jacobian,
+}
 
 local function lsoptrun (env)
   local var = env.__var
-  local arg
-
-  error("NYI")
-
-!  TODO
-!  arg[0].algo    = var.method.id
-!
-!  arg[0].fun     = fun_cb
-!  arg[0].fval    = var.fval
-!  arg[0].fmin    = var.fmin
-!  arg[0].ftol    = var.ftol
-!  arg[0].frtol   = var.frtol
-!
-!  arg[0].n       = var.n
-!  arg[0].x       = x.data
-!  arg[0].xstp    = var.xstp.data
-!  arg[0].xmin    = var.xmin.data
-!  arg[0].xmax    = var.xmax.data
-!  arg[0].xwgt    = var.xwgt.data
-!  arg[0].xtol    = var.xtol.data
-!  arg[0].xrtol   = var.xrtol
-!
-!  arg[0].p       = var.p
-!  arg[0].efun    = efun_cb
-!  arg[0].etol    = var.p>0 and var.etol.data or nil
-!  arg[0].edat    = nil
-!
-!  arg[0].q       = var.q
-!  arg[0].lfun    = lfun_cb
-!  arg[0].ltol    = var.q>0 and var.ltol.data or nil
-!  arg[0].ldat    = nil
-!
-!  arg[0].maxcall = var.maxcall
-!  arg[0].maxtime = var.maxtime
-!
-!  arg[0].debug   = env.debug
-!  arg[0].status  = var.status
+  local fun = dispatch[var.method.id]
 
   -- optimize (protected call to C API)
-  local status, errmsg = pcall(fnil, arg)
-
-  return status, errmsg
+  return pcall(fun, env)
 end
 
 -- end ------------------------------------------------------------------------o
