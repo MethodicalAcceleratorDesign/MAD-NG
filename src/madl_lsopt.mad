@@ -24,10 +24,11 @@
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
-local _C, option, vector, matrix in MAD
-
-local eps, inf in MAD.constant
-local abs      in MAD.gmath
+local _C, option, vector, matrix                                 in MAD
+local is_callable                                                in MAD.typeid
+local assertf, errorf, printf                                    in MAD.utility
+local eps, inf                                                   in MAD.constant
+local abs                                                        in MAD.gmath
 
 -- New algos ------------------------------------------------------------------o
 
@@ -44,10 +45,30 @@ enum {
 -- helper ---------------------------------------------------------------------o
 
 local function dspmat(mat, nam)
+  -- duplicate from madl_match.mad ;-(
   if mat ~= nil then
     local fmt = option.numfmt;
     option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
   end
+end
+
+local function backup (src, dst)
+  dst = dst or {}
+
+  dst.fval, dst.fstp, dst.cval, dst.ccnt =
+  src.fval, src.fstp, src.cval, src.ccnt
+
+  if src.x    then dst.x    = src.x   :copy(dst.x   ) end
+  if src.dx   then dst.dx   = src.dx  :copy(dst.dx  ) end
+
+  if src.eval then dst.eval = src.eval:copy(dst.eval) end
+  if src.lval then dst.lval = src.lval:copy(dst.lval) end
+
+  if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
+  if src.ejac then dst.ejac = src.ejac:copy(dst.ejac) end
+  if src.ljac then dst.ljac = src.ljac:copy(dst.ljac) end
+
+  return dst
 end
 
 -- Variables domain -----------------------------------------------------------o
@@ -67,11 +88,11 @@ local function check_dom (env)
   end
 
   if env.debug >= 1 and nadj > 0 then
-    io.write("nlopt: ", nadj, "variables ajusted (bounds or slope)\n")
+    io.write("nlopt: ", nadj, "variables ajusted (bounds or slope).\n")
   end
 end
 
---[[ MAD-X rule, same as forcing xmin/xmax...
+--[[ MAD-X rules: same as forcing xmin/xmax...
   local dv = min(max(1e-12, xstp[i]), (xmin[i] - x[i])*0.5)
   x[i], nadj = xmin[i]+2*dv, nadj+1
   local dv = min(max(1e-12, xstp[i]), (x[i] - xmax[i])*0.5)
@@ -84,14 +105,16 @@ local function check_stop (env)
   local var = env.__var
   local status = var.status
 
+  env.dtime = os.clock()-var.time0 -- update timer (after fun call)
+
   if env.stop then
     var.status = _C.NLOPT_FORCED_STOP
-    if env.debug >= 1 then io.write("nlopt: forced to stop\n") end
+    if env.debug >= 1 then io.write("nlopt: forced to stop.\n") end
 
   elseif var.maxcall > 0 and env.ncall >= var.maxcall then
    var.status = _C.NLOPT_MAXEVAL_REACHED
 
-  elseif var.maxtime > 0 and var.time1-var.time0 >= var.maxtime then
+  elseif var.maxtime > 0 and enbv.dtime >= var.maxtime then
    var.status = _C.NLOPT_MAXTIME_REACHED
 
   elseif var.ccnt > 0 then
@@ -118,6 +141,35 @@ local function check_stop (env)
   return var.status ~= status
 end
 
+-- Bisection ------------------------------------------------------------------o
+
+local function bisection (env)
+  local var, obj = env.__var, env.objective
+
+  if obj.bisect < 1 then return end
+
+  local x, dx, fun, fval, grdf in var
+  local bak, ret = backup(var)
+
+  var.grdf = false                               -- disable Jacobian
+  for i=1,obj.bisect do
+    if env.debug >= 1 then printf("nlopt: trying Bisection %d.\n", i) end
+    dx:div(2,dx) ; x:add(dx,x) ; var.fval = fval -- for var.fstp
+    ret = fun()                                  -- call user command/function
+    if ret and var.fval < fval then break end    -- new minimum found
+  end
+  var.grdf = grdf                                -- restore Jacobian
+
+  if var.fval < fval then                        -- new minimum found
+    if env.debug >= 1 then io.write("nlopt: Bisection succeeded.\n") end
+    if check_stop(env) then return true end      -- check criteria
+    var.funf = true ; fun() ; var.funf = nil     -- compute Jacobian (only)
+  elseif var.fval > fval or not ret then
+    if env.debug >= 1 then io.write("nlopt: Bisection failed, restoring.\n") end
+    backup(bak, var)                             -- restore initial case
+  end
+end
+
 -- Levenberg-Marquardt --------------------------------------------------------o
 
 local function ld_lmdif (env)
@@ -129,48 +181,45 @@ end
 -- Jacobian -------------------------------------------------------------------o
 
 local function ld_jacobian (env)
-  local var = env.__var
-  local bisect, rcond in env.objective
+  local var, objective = env.__var, env.objective
   local n, p, q, x, dx, fun, eval, ejac, lval, ljac in var
   local A, B = matrix(p+q,n), vector(p+q)
 
   while true do
     check_dom(env)                          -- check domain
-    fun() -- call user function/command, compute Jacobian
+    fun()                                   -- call user command/function
     if check_stop(env) then return true end -- check criteria
 
     -- try bisection if fval increases
-    if var.fstp > 0 and bisect then
-      if env.debug >= 1 then io.write("nlopt: trying bisection\n") end
-      local fbst, fval, grdf, xtolf = inf, var.fval, var.grdf, var.xtolf
-      local x0, dx0 = x:copy(), dx:copy()
-      var.grdf, var.xtolf = false, false -- disable Jacobian and xtol
-      for i=1,bisect do
-        dx:div(2,dx) ; x:add(dx,x) ; fun() -- don't compute Jacobian
-        if fbst > var.fval then fbst = var.fval ; x:copy(x0) ; dx:copy(dx0) end
-        if fval > fbst then break end
-      end
-      x0:copy(x) ; dx0:copy(dx)
-      var.xtolf = xtolf -- restore xtol
-      if check_stop(env) then fun() return true end -- check criteria (better to backup vectors than run fun!)
-      var.grdf = grdf   -- restore Jacobian
-      fun() -- compute Jacobian
+    if var.fstp > 0 and objective.bisect and bisection(env) then
+      return true
     end
 
     -- build Ax=b
+    local A, B = A, B
         if ljac == nil then ejac:copy(A) ; eval:copy(B)
     elseif ejac == nil then ljac:copy(A) ; lval:copy(B)
     else   ejac:concat(ljac, A) ;  eval:concat(lval, B)
     end
 
-    -- Newton step using SVD to find min_x ||b - Ax||
-    local X, sv, rnk = A:ssolve(B, rcond)
-    X:copy(dx) ; x:sub(dx,x)
+  ::user_callback_loop::
+
+    -- Do one Newton-step using SVD to find min_x ||b - Ax||
+    local xx, rk, sv = A:ssolve(B, objective.rcond)
+
+    -- user defined callback to update A, B or xx
+    if is_callable(objective.atsolve) then
+      A, B, xx = objective.atsolve(env, A, B, xx, rk, sv)
+      if A or B then goto user_callback_loop end -- A or B returned, run again
+    end
+
+    -- update
+    xx:copy(dx) ; x:sub(dx,x)
 
     -- debug info
     if env.debug >= 1 then
-      io.write("nlopt: Jacobian-Newton step using SVD\n\z
-                Rank=", rnk, ", Rcond=", rcond or 'eps', '\n')
+      io.write("nlopt: Jacobian-Newton step using SVD.\n\z
+                Rank=", rk, ", Rcond=", objective.rcond or 'eps', '\n')
       dspmat(sv, "JACOBIAN-SV")
     end
   end
