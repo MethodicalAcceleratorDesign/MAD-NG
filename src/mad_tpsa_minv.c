@@ -87,14 +87,14 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
   if (nk != 0) {
     // mat_knbi = - mat_vari * mat_knb
     mad_mat_mul(mat_vari, mat_knb, mat_knbi, mv, nk, mv);
-    mad_vec_muln(mat_knbi, -1, mat_knbi, mv*nk);
+    mad_vec_muln(mat_knbi, -1, mat_knbi, mv*nk, 1);
   }
 # else
   mad_cmat_invn(mat_var, 1, mat_vari, mv, mv, -1);
   if (nk != 0) {
     // mat_knbi = - mat_vari * mat_knb
     mad_cmat_mul(mat_vari, mat_knb, mat_knbi, mv, nk, mv);
-    mad_cvec_muln(mat_knbi, -1, mat_knbi, mv*nk);
+    mad_cvec_muln(mat_knbi, -1, mat_knbi, mv*nk, 1);
   }
 # endif
 
