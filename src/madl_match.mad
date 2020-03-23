@@ -187,15 +187,15 @@ local function disp_summ (env)
     io.write"-----------------------------------------------------------------------------\n"
 
     for i=1,p do
-      local e = equalities[i] or {}
+      local e, v = equalities[i] or {}, eval[i]/ewgt[i]
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
-                i, e.name or '', 'equality', e.kind or ' .', ewgt[i], eval[i]/ewgt[i])
+                i, e.name or '', 'equality', e.kind or ' .', ewgt[i], abs(v))
     end
 
     for i=1,q do
-      local e = inequalities[i] or {}
+      local e, v = inequalities[i] or {}, lval[i]/lwgt[i]
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
-                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i], lval[i]/lwgt[i])
+                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i], v < 0 and 0 or v)
     end
   end
 
@@ -405,8 +405,12 @@ local function compute_fval (env)
   local etol, ltol, fwgt in var
   local cv, cn = 0, 0
 
-  for i=1,p do if abs(eval[i]) > etol[i] then cn = cn+1 end cv = cv+eval[i]^2 end
-  for i=1,q do if     lval[i]  > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 end end
+  for i=1,p do
+    if abs(eval[i]) > etol[i] then cn = cn+1 end cv = cv+eval[i]^2
+  end
+  for i=1,q do
+   if lval[i] > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 else lval[i] = 0 end
+  end
 
   var.ccnt, var.cval = cn, sqrt(cv)/fwgt
   if valf then fval = fval + var.cval end
@@ -444,7 +448,7 @@ local function compute_fgrd (env)
 
   -- compute jacobian
   for iv=1,n do
-    xtmp[iv] = x[iv]+dh
+    xtmp[iv] = x[iv]+dh ; var.fval = fval
 
     local dfval = compute_fval(env)
     if dfval == nil then fval = nil ; break end
@@ -482,18 +486,22 @@ local function nlopt_functions (env)
 
     -- some debug display
     if env.debug >= 2 then
-      io.write("fval=", fval or 'invalid domain', '\n')
-      dspmat(x   , "X"          )
-      dspmat(fgrd, "GRAD-F"     )
-      dspmat(ejac, "JACOBIAN-EQ")
-      dspmat(ljac, "JACOBIAN-LE")
+      if not var.funf then
+        io.write("fval=", fval or 'invalid domain', '\n')
+        dspmat(x, "X")
+      end
+      if var.grdf and fval then
+        dspmat(fgrd, "GRAD-F"     )
+        dspmat(ejac, "JACOBIAN-EQ")
+        dspmat(ljac, "JACOBIAN-LE")
+      end
     end
 
     -- check returned value (and backup)
     if fval == nil then invalid_dom(env) end
 
     -- display intermediate summary
-    if var.sumdisp > 0 then disp_summ(env) end
+    if var.sumdisp > 0 and not var.funf then disp_summ(env) end
 
     -- return objective function value
     return var.fval
@@ -588,7 +596,7 @@ local function exec (self)
       xtol = vector(n),                    -- variables tolerances
       xtmp = grdf and vector(n) or nil,    -- variables temporary
       dtmp = grdf and vector(n) or nil,    -- variables steps temporary
-      xrtol= variables.rtol or 0,          -- variables relative tolerance
+      xrtol= variables.rtol or eps,        -- variables relative tolerance
       xtolf= false,                        -- variables tolerance flag
 
       p    = p,                            -- number of equalities
@@ -747,7 +755,7 @@ local match = command 'match' {
   objective = {
     method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
     exec=nil, grad=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
-    bisect=nil, rcond=nil, atsolve=nil -- jacobian only
+    bisec=nil, rcond=nil, jtol=nil, jitr=nil -- jacobian only
   },
 
   usrdef=nil,           -- user defined data attached to matching environment
