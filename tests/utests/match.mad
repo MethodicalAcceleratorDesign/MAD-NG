@@ -32,6 +32,7 @@ local ftrue                                                      in MAD.gfunc
 local marker, drift, sbend, quadrupole, multipole                in MAD.element
 local eps, inf, pi                                               in MAD.constant
 local sqrt                                                       in MAD.gmath
+local printf                                                     in MAD.utility
 
 local refdir = \s -> 'match_ref/'..(s or '')
 local rundir = \s -> 'match_run/'..(s or '')
@@ -170,8 +171,8 @@ function TestMatch:testMatchFODO ()
     },
   }
 
-!  MAD.utility.printf("var.k1f = % -.16e\n", var.k1f)
-!  MAD.utility.printf("var.k1d = % -.16e\n", var.k1d)
+!  printf("var.k1f = % -.16e\n", var.k1f)
+!  printf("var.k1d = % -.16e\n", var.k1d)
 
   -- check results
   assertEquals      (status ,  'FMIN_REACHED'         )
@@ -417,6 +418,9 @@ local function testMatchFunc2 (x, mth)
   }
 end
 
+-- Example from Octave tutorial
+-- Note: Octave does succeed to find a solution but reports roundoff error...
+
 local function testMatchFunc3 (x, mth)
   return match {
     variables = {
@@ -436,6 +440,61 @@ local function testMatchFunc3 (x, mth)
       method=mth, tol=3e-10, maxcall=100, grad=false, !summary=2, !debug=2,
     },
   }
+end
+
+-- Example #71 from Hock-Schittkowsky test suite (IPOPT)
+
+local function testMatchFunc4 (x, mth, smth)
+  local fmin = 17.014016822208
+  local fn =\ x[1]*x[4] * (x[1]+x[2]+x[3]) + x[3]
+
+  return match {
+    command := printf("x1=%.6e, x2=%.6e, x3=%.6e, x4=%.6e\n", x[1],x[2],x[3],x[4]),
+    variables = {
+      { var = 'x[1]' },
+      { var = 'x[2]' },
+      { var = 'x[3]' },
+      { var = 'x[4]' },
+      min=0, max=6,
+    },
+    equalities = {
+      { expr := fn() - fmin },
+      { expr := x[1]^2+x[2]^2+x[3]^2+x[4]^2 - 40 },
+    },
+    inequalities = {
+      { expr := 25 - x[1]*x[2]*x[3]*x[4] },
+      { expr := 0.9999999999999999 - x[1] },
+      { expr := 1 - x[2] },
+      { expr := 1 - x[3] },
+      { expr := 1 - x[4] },
+      { expr := x[1] - 2 },
+      { expr := x[2] - 5.0000000000000001 },
+      { expr := x[3] - 5.0000000000000001 },
+      { expr := x[4] - 2 },
+    },
+    objective = {
+!      exec := x[1]*x[4] * (x[1]+x[2]+x[3]) + x[3] - fmin,
+      method=mth, fmin=1e-12, maxcall=500, grad=false, bisec=3, summary=2, debug=2,
+      submethod=smth,
+    },
+  }
+end
+
+function TestMatch:testMatchFuncJAC4 () -- difficult problem...
+  local x = MAD.vector {1,5,5,1}
+  local r = MAD.vector {1,4.7429994,3.8211503,1.3794082}
+  local f = 17.014016822208 -- r[1]*r[4] * (r[1]+r[2]+r[3]) + r[3] -- 17.014016822208
+
+  local status, fmin, ncall = testMatchFunc4(x, 'LD_JACOBIAN') !'LN_COBYLA') ! !'AUGLAG_EQ',
+
+  print(status, fmin, ncall, f, fmin-f)
+!  assertEquals      (status, 'FTOL_REACHED' )
+!  assertEquals      (ncall , 30             ) -- 5 iterations 5x(1+5)
+
+  assertAlmostEquals(x[1], 1.00000000, 1e-8)
+  assertAlmostEquals(x[2], 4.74299963, 1e-8)
+  assertAlmostEquals(x[3], 3.82114998, 1e-8)
+  assertAlmostEquals(x[4], 1.37940829, 1e-8)
 end
 
 function TestMatch:testMatchFuncLD1 ()
@@ -503,9 +562,6 @@ function TestMatch:testMatchFuncJAC2 ()
   assertAlmostEquals(x[1]  ,      1/3  , 1e-3)
   assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
 end
-
--- Example from Octave tutorial
--- Note: Octave does succeed to find a solution but reports roundoff error...
 
 function TestMatch:testMatchFuncSQP3 ()
   local x = MAD.vector {-1.8, 1.7, 1.9, -0.8, -0.8}
