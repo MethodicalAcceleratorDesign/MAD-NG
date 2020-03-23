@@ -804,21 +804,36 @@ end
 
 MI.getvec = MR.getvec
 
-function MR.remvec (x, ij, r_)
+function MR.remvec (x, ij) -- inplace
   if is_number(ij) then ij = {ij} end
-  if is_string(r_) and r_ == 'in' then r_ = x end
-  assert(is_iterable(ij)              , "invalid argument #2 (iterable expected)")
-  assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
+  assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   local n = x:size()
-  local r, k, ik = r_ or x:same(n-#ij,1), 1, {}
-  for _,i in ipairs(ij) do ik[i] = true end
-  for i=1,n do if not ik[i] then r[k] = geti_s(x,i) ; k=k+1 end end
-  return r
+  local k, ik = 1, {}
+  for _,i in ipairs(ij) do ik[i] = true end -- collect indexes
+  for i=1,n do if not ik[i] then x[k] = geti_s(x,i) ; k=k+1 end end
+  return x:reshape(1,n-#ij)
 end
 
 MI.remvec = MR.remvec
 
-function MR.setvec (x, ij, y, p_, s_)
+function MR.insvec (x, ij, y) -- inplace
+  if is_number(ij) then ij = {ij} end
+  if is_scalar(y) then y = rep(y) end
+  assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(y) , "invalid argument #3 (scalar or iterable expected)")
+  if ij[1] then
+    local i, j = #x, #ij
+    while i >= 1 do
+      for k=i,ij[j]+1,-1 do x[k] = x[k-j] end
+      i, j, x[ij[j]] = ij[j]-1, j-1, y[j]
+    end
+  end
+  return x
+end
+
+MI.insvec = MR.insvec
+
+function MR.setvec (x, ij, y, p_, s_) -- inplace
   if is_number(ij) then ij = {ij} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
@@ -846,7 +861,7 @@ end
 
 MI.getdiag = MR.getdiag
 
-function MR.setdiag (x, y, p_, s_)
+function MR.setdiag (x, y, p_, s_) -- inplace
   local n = min(x:sizes())
   if is_scalar(y) then y = rep(y) end
   if is_nil(p_) or is_nil(s_) then
@@ -1005,7 +1020,7 @@ end
 
 MI.getsub = MR.getsub
 
-function MR.setsub (x, ir, jc, y, p_, s_)
+function MR.setsub (x, ir, jc, y, p_, s_) -- inplace
   if is_number(ir) then ir = {ir} end
   if is_number(jc) then jc = {jc} end
   if is_scalar(y) then y = rep(y) end
@@ -2477,7 +2492,7 @@ function MC.gmsolve (a, b, d)
   return rx, ry, info
 end
 
--- svd, det, eigenvalue, eigenvector ------------------------------------------o
+-- system pre-conditionning ---------------------------------------------------o
 
 function MR.pcacnd (a, n_, rcond_)
   local nr, nc = a:sizes()
@@ -2507,6 +2522,8 @@ function MR.svdcnd (a, n_, rcond_, tol_)
 end
 
 MC.svdcnd = \ error("unsupported complex svdcnd")
+
+-- svd, det, eigenvalue, eigenvector ------------------------------------------o
 
 function MR.svd (x)
   local nr, nc = x:sizes()
