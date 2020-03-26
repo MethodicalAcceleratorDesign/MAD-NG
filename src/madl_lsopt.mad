@@ -71,25 +71,42 @@ local function backup (src, dst)
   return dst
 end
 
--- Variables domain -----------------------------------------------------------o
+local function eval_fun (env)
+  local var = env.__var
+  local grdf in var
 
-local function check_dom (env)
+  var.grdf = false ; var.fun() ; var.grdf = grdf  -- compute function (only)
+end
+
+local function eval_jac (env)
+  local var = env.__var
+
+  var.funf = true ; var.fun() ; var.funf = nil    -- compute jacobian (only)
+end
+
+-- Check/adjust variables to domain -------------------------------------------o
+
+local function check_vars (env)
   local var = env.__var
   local n, x, dx, xslp, xmin, xmax in var
   local nadj = 0
 
+  -- check slope and bounding box
   for i=1,n do
-    -- check slope
-    if dx[i]*xslp[i] < 0 then x[i], dx[i], nadj = x[i]+dx[i], 0, nadj+1 end
-
-    -- check bounding box
-        if x[i] < xmin[i] then x[i], nadj = xmin[i], nadj+1
-    elseif x[i] > xmax[i] then x[i], nadj = xmax[i], nadj+1 end
+    if dx[i]*xslp[i] < 0 then
+      x[i], dx[i], nadj = x[i]+dx[i], 0, nadj+1
+    elseif x[i] < xmin[i] then
+      x[i], dx[i], nadj = xmin[i], dx[i]+x[i]-xmin[i], nadj+1
+    elseif x[i] > xmax[i] then
+      x[i], dx[i], nadj = xmax[i], dx[i]+x[i]-xmax[i], nadj+1
+    end
   end
 
   if env.debug >= 1 and nadj > 0 then
-    io.write("nlopt: ", nadj, "variables ajusted (bounds or slope).\n")
+    io.write("nlopt: ", nadj, " variables ajusted (bounds or slope).\n")
   end
+
+  return nadj
 end
 
 --[[ MAD-X rules: same as forcing xmin/xmax...
@@ -98,6 +115,30 @@ end
   local dv = min(max(1e-12, xstp[i]), (x[i] - xmax[i])*0.5)
   x[i], nadj = xmax[i]-2*dv, nadj+1
 --]]
+
+local function adjust_vars (env)
+  local var = env.__var
+  local n, x, dx, xmin, xmax in var
+  local scl = 1
+
+  for i=1,n do
+    if dx[i] ~= 0 then
+      local s = 1
+          if x[i] < xmin[i] then s = 1 + (x[i]-xmin[i])/dx[i]
+      elseif x[i] > xmax[i] then s = 1 + (x[i]-xmax[i])/dx[i] end
+      if s < scl then scl = s end
+    end
+  end
+
+      if scl < 0.1 then check_vars(env) -- scale is too small, cut
+  elseif scl <  1  then                 -- scale is fine, adjust length
+    x:add(dx,x) ; dx:mul(scl,dx) ; x:sub(dx,x)
+
+    if env.debug >= 1 then
+      io.write("nlopt: variables step scaled by ", scl, ".\n")
+    end
+  end
+end
 
 -- Stopping criteria ----------------------------------------------------------o
 
@@ -141,30 +182,10 @@ local function check_stop (env)
   return var.status ~= status
 end
 
--- Split evaluation -----------------------------------------------------------o
-
-local function eval_fun (env)
-  local var = env.__var
-  local grdf in var
-
-  check_dom(env)                                  -- check domain
-  var.grdf = false ; var.fun() ; var.grdf = grdf  -- compute function (only)
-  if check_stop(env) then return true end         -- check criteria
-end
-
-local function eval_jac (env)
-  local var = env.__var
-
-  var.funf = true ; var.fun() ; var.funf = nil    -- compute jacobian (only)
-end
-
 -- Bisection ------------------------------------------------------------------o
 
 local function bisection (env)
   local var, obj = env.__var, env.objective
-
-  if obj.bisec < 1 then return end
-
   local x, dx, fun, fval, grdf in var
   local bak, ret = backup(var)
 
@@ -220,7 +241,7 @@ local function reject_vars (env, A, rx, rdx, ic)
     else
       local ii = i-k
       local xi = rx[ii]-rdx[ii]
-      if rdx[ii]*xslp[i] < 0 or xi < xmin[i] or xi > xmax[i] then
+      if rdx[ii]*xslp[i] < 0 then -- or xi < xmin[i] or xi > xmax[i] then
         table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
       end
     end
@@ -251,10 +272,17 @@ end
 
 local function ld_jacobian (env)
   local var, objective = env.__var, env.objective
-  local n, p, q, x, dx, eval, ejac, lval, ljac in var
+  local n, p, q, x, dx, eval, ejac, lval, ljac, jacf in var
+  local jitr, bisec = objective.jitr or 20, objective.bisec or 0
 
-  -- compute function
-  if eval_fun(env) then return true end
+  -- check domain (and adjust x to bbox)
+  check_vars(env)
+
+  -- compute function (only)
+  eval_fun(env)
+
+  -- check stopping criteria
+  if check_stop(env) then return true end
 
   while true do
     -- compute jacobian
@@ -275,8 +303,8 @@ local function ld_jacobian (env)
     -- reject constraints with insufficient row norm in Jacobian (jtol)
     reject_cons(env, A, B, ir)
 
-    -- solve system, loop over reductions
-    for i=1,objective.jitr or 20 do
+    -- solve and reduce system
+    for i=1,jitr do
       -- one Newton-step using SVD to find min_x ||b - Ax||
       rdx, rk, sv = A:ssolve(B, objective.rcond)
 
@@ -289,21 +317,24 @@ local function ld_jacobian (env)
         end
       end
 
-      -- reject variables outside min-max or wrong slope
-      if reject_vars(env, A, rx, rdx, ic) == 0 then break end
+      -- reject variables with wrong slope
+      if not jacf or reject_vars(env, A, rx, rdx, ic) == 0 then break end
     end
 
     -- update variables, rejected variables don't move
     rdx:copy(dx):insvec(ic,0) ; x:sub(dx,x)
 
-    -- compute function
-    if eval_fun(env) then return true end
+    -- adjust domain (i.e. scale or cut dx to fit bbox)
+    adjust_vars(env)
+
+    -- compute function (only)
+    eval_fun(env)
+
+    -- check stopping criteria
+    if check_stop(env) then return true end
 
     -- try bisection if fval increases
-    if var.fstp > 0 and objective.bisec and bisection(env) then
-      return true
-    end
-
+    if var.fstp > 0 and bisec >= 1 and bisection(env) then return true end
   end
 end
 
