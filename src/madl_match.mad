@@ -373,7 +373,7 @@ end
 local function compute_fval (env)
   local command, objective, equalities, inequalities in env
   local var = env.__var
-  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, valf in var
+  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, valf, optf in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -408,8 +408,11 @@ local function compute_fval (env)
   for i=1,p do
     if abs(eval[i]) > etol[i] then cn = cn+1 end cv = cv+eval[i]^2
   end
-  for i=1,q do
-   if lval[i] > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 else lval[i] = 0 end
+  if optf
+  then for i=1,q do -- nlopt algorithms prefer to have full jacobian
+    if lval[i] > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 end end
+  else for i=1,q do -- custom algorithms prefer to have reduced jacobian
+    if lval[i] > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 else lval[i]=0 end end
   end
 
   var.ccnt, var.cval = cn, sqrt(cv)/fwgt
@@ -442,7 +445,7 @@ local function compute_fgrd (env)
   local dh = 0.0078125*dx:minabs() -- to review (dh[i] vs dx[i] ?)
   if dh == 0 then dh = 1e-10 end
 
-  if env.debug >= 2 then
+  if env.debug >= 1 then
     printf("nlopt: computing gradient and jacobian(s) with dh=%-.6e\n", dh)
   end
 
@@ -461,7 +464,7 @@ local function compute_fgrd (env)
   end
 
   -- restore (swap) states
-  var.fval, var.fstp, var.cval, var.ccnt = fval, fstp, cval, ccnt
+  var.fval, var.fstp, var.cval, var.ccnt, var.hjac = fval, fstp, cval, ccnt, dh
   var.xtmp, var.x    = xtmp, x
   var.dtmp, var.dx   = dtmp, dx
   var.etmp, var.eval = etmp, eval
@@ -622,6 +625,9 @@ local function exec (self)
       funf = nil,                          -- objective func computed flag
       valf = valf,                         -- objective func value flag
       grdf = grdf,                         -- objective func gradient flag
+      jacf = nil,                          -- objective func jacobian flag (reduce)
+      optf = nil,                          -- objective func optimiser flag (reduce)
+      hjac = nil,                          -- objective func jacobian step
       fval = inf,                          -- objective func value (dummy init)
       fstp = 0,                            -- objective func current step
       fwgt = 0,                            -- objective func weights sum
@@ -681,6 +687,9 @@ local function exec (self)
   -- xtol and xrtol flag
   var.xtolf = max(var.xrtol, var.xtol:max()) > 0
 
+  -- jacobian flag (reduce system during solve)
+  var.jacf = var.xslp:max() > 0
+
   -- equality constraints
   for i=1,p do
     local e = equalities[i] or {}
@@ -702,6 +711,9 @@ local function exec (self)
 
   -- build optimizer functions
   var.fun, var.efun, var.lfun = nlopt_functions(env)
+
+  -- set flags about algorithms used
+  var.optf = var.method.id < _C.NLOPT_NUM_ALGORITHMS or inequalities.exec
 
   -- call optimiser
   local status, errmsg
@@ -755,7 +767,7 @@ local match = command 'match' {
   objective = {
     method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
     exec=nil, grad=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
-    bisec=nil, rcond=nil, jtol=nil, jitr=nil -- jacobian only
+    bisec=nil, rcond=nil, jtol=nil, jitr=nil, jrand=nil -- jacobian only
   },
 
   usrdef=nil,           -- user defined data attached to matching environment
