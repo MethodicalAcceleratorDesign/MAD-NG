@@ -181,6 +181,17 @@ local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
   local n, p, q, eval, ewgt, lval, lwgt in var
+  local s1, s2, s3, v1, v2, v3
+
+  env.dtime = os.clock()-var.time0 -- update timer before display
+
+  if var.status == _C.NLOPT_RUNNING then
+    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
+    v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
+  else
+    s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
+    v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
+  end
 
   if p+q > 0 then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
@@ -199,15 +210,6 @@ local function disp_summ (env)
     end
   end
 
-  local s1, s2, s3, v1, v2, v3
-  if var.status == _C.NLOPT_RUNNING then
-    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
-    v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
-  else
-    s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
-    v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
-  end
-
   printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
   io.write"-------------------------------------------------------------------------------\n"
 
@@ -218,9 +220,7 @@ local function disp_summ (env)
            variables[i].var, v1[i], v2[i], xmin, xmax)
   end
 
-  env.dtime = os.clock()-var.time0 -- update timer before display
-
-  local fmt = "\n ncall=%d [%ds], fval=%-.7e, fstp=%-.5e, "..s3.."\n\n"
+  local fmt = "\n ncall=%d [%ds], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
   printf(fmt, env.ncall, env.dtime, var.fval, var.fstp, v3, var.ccnt)
 end
 
@@ -374,6 +374,7 @@ local function compute_fval (env)
   local command, objective, equalities, inequalities in env
   local var = env.__var
   local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, valf, optf in var
+  local xbst, ebst, lbst in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -418,6 +419,12 @@ local function compute_fval (env)
   var.ccnt, var.cval = cn, sqrt(cv)/fwgt
   if valf then fval = fval + var.cval end
   var.fval, var.fstp = fval, fval-var.fval
+
+  if fval < var.fbst then
+    var.fbst = var.fval ; var.sbst = var.fstp ; x:copy(xbst)
+    if eval then eval:copy(ebst) end
+    if lval then lval:copy(lbst) end
+  end
 
   -- var: fval, fstp, cval, ccnt, eval, lval, [fgrd, ejac, ljac]
   return fval
@@ -593,6 +600,7 @@ local function exec (self)
       x0   = vector(n),                    -- variables initial values
       xstp = vector(n),                    -- variables initial steps
       xslp = vector(n),                    -- variables slopes
+      xbst = vector(n),                    -- variables best values
       xmin = vector(n),                    -- variables minimum bounds
       xmax = vector(n),                    -- variables maximum bounds
       xwgt = vector(n),                    -- variables weights
@@ -606,6 +614,7 @@ local function exec (self)
       efun = nil,                          -- equalities function (see above)
       eval = p>0 and vector(p) or nil,     -- equalities values
       ewgt = p>0 and vector(p) or nil,     -- equalities weights
+      ebst = p>0 and vector(p) or nil,     -- equalities best values
       etol = p>0 and vector(p) or nil,     -- equalities tolerances
       ejac = p>0 and grdm and matrix(p,n) or nil, -- equalities jacobian
       etmp = p>0 and grdf and vector(p)   or nil, -- equalities temporary
@@ -614,6 +623,7 @@ local function exec (self)
       lfun = nil,                          -- inequalities function (see above)
       lval = q>0 and vector(q) or nil,     -- inequalities values
       lwgt = q>0 and vector(q) or nil,     -- inequalities weights
+      lbst = q>0 and vector(q) or nil,     -- inequalities best values
       ltol = q>0 and vector(q) or nil,     -- inequalities tolerances
       ljac = q>0 and grdm and matrix(q,n) or nil, -- inequalities jacobian
       ltmp = q>0 and grdf and vector(q)   or nil, -- inequalities temporary
@@ -629,6 +639,8 @@ local function exec (self)
       optf = nil,                          -- objective func optimiser flag (reduce)
       hjac = nil,                          -- objective func jacobian step
       fval = inf,                          -- objective func value (dummy init)
+      fbst = inf,                          -- objective func best value
+      sbst = 0,                            -- objective func best value step
       fstp = 0,                            -- objective func current step
       fwgt = 0,                            -- objective func weights sum
       fgrd = grdm and vector(n) or nil,    -- objective func gradient
@@ -729,8 +741,15 @@ local function exec (self)
   if status == false then
     reset = true
     warn("error '%s' occured during matching", errmsg or '?')
-  elseif var.sumdisp > 0 then
-    disp_summ(env)
+  else
+    if var.status == _C.NLOPT_MAXEVAL_REACHED or
+       var.status == _C.NLOPT_MAXTIME_REACHED then
+      -- some non-value reached, restore best case
+      var.fval = var.fbst ; var.fstp = var.sbst ; var.xbst:copy(var.x)
+      if var.eval then var.ebst:copy(var.eval) end
+      if var.lval then var.lbst:copy(var.lval) end
+    end
+    if var.sumdisp > 0 then disp_summ(env) end
   end
 
   -- reset variables to initial values

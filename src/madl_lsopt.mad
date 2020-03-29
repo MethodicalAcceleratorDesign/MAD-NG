@@ -28,7 +28,7 @@ local _C, option, ivector, vector, matrix                        in MAD
 local is_callable                                                in MAD.typeid
 local assertf, errorf, printf                                    in MAD.utility
 local eps, inf                                                   in MAD.constant
-local abs                                                        in MAD.gmath
+local abs, rand                                                  in MAD.gmath
 
 -- New algos ------------------------------------------------------------------o
 
@@ -184,13 +184,13 @@ end
 
 -- Bisection ------------------------------------------------------------------o
 
-local function bisection (env)
-  local var, obj = env.__var, env.objective
+local function bisection (env, bisec)
+  local var = env.__var
   local x, dx, fun, fval, grdf in var
   local bak, ret = backup(var)
 
   var.grdf = false                               -- disable Jacobian
-  for i=1,obj.bisec do
+  for i=1,bisec do
     if env.debug >= 1 then printf("nlopt: trying Bisection %d.\n", i) end
     dx:div(2,dx) ; x:add(dx,x) ; var.fval = fval -- for var.fstp
     ret = fun()                                  -- call user command/function
@@ -273,7 +273,10 @@ end
 local function ld_jacobian (env)
   local var, objective = env.__var, env.objective
   local n, p, q, x, dx, eval, ejac, lval, ljac, jacf in var
-  local jitr, bisec = objective.jitr or 20, objective.bisec or 0
+  local jrand, jitr, bisec in objective
+
+  -- default setup
+  jrand, jitr, bisec = jrand == true and rand or jrand, jitr or 20, bisec or 3
 
   -- check domain (and adjust x to bbox)
   check_vars(env)
@@ -321,6 +324,13 @@ local function ld_jacobian (env)
       if not jacf or reject_vars(env, A, rx, rdx, ic) == 0 then break end
     end
 
+    -- add some randomness to dx
+    if jrand then
+      rdx:print('rdx')
+      rdx:map(\x -> x+(jrand()-jrand())*var.hjac, 'in')
+      rdx:print('rdx rand')
+    end
+
     -- update variables, rejected variables don't move
     rdx:copy(dx):insvec(ic,0) ; x:sub(dx,x)
 
@@ -334,7 +344,7 @@ local function ld_jacobian (env)
     if check_stop(env) then return true end
 
     -- try bisection if fval increases
-    if var.fstp > 0 and bisec >= 1 and bisection(env) then return true end
+    if var.fstp > 0 and bisec >= 1 and bisection(env,bisec) then return true end
   end
 end
 
