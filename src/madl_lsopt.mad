@@ -30,6 +30,8 @@ local assertf, errorf, printf                                    in MAD.utility
 local eps, inf                                                   in MAD.constant
 local abs, rand                                                  in MAD.gmath
 
+local max in math
+
 -- New algos ------------------------------------------------------------------o
 
 ffi.cdef [[
@@ -50,25 +52,6 @@ local function dspmat(mat, nam)
     local fmt = option.numfmt;
     option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
   end
-end
-
-local function backup (src, dst)
-  dst = dst or {}
-
-  dst.fval, dst.fstp, dst.cval, dst.ccnt =
-  src.fval, src.fstp, src.cval, src.ccnt
-
-  if src.x    then dst.x    = src.x   :copy(dst.x   ) end
-  if src.dx   then dst.dx   = src.dx  :copy(dst.dx  ) end
-
-  if src.eval then dst.eval = src.eval:copy(dst.eval) end
-  if src.lval then dst.lval = src.lval:copy(dst.lval) end
-
-  if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
-  if src.ejac then dst.ejac = src.ejac:copy(dst.ejac) end
-  if src.ljac then dst.ljac = src.ljac:copy(dst.ljac) end
-
-  return dst
 end
 
 local function eval_fun (env)
@@ -186,7 +169,7 @@ end
 
 local function bisection (env, bisec)
   local var = env.__var
-  local x, dx, fun, fval, grdf in var
+  local x, dx, fun, fval, grdf, backup in var
   local bak, ret = backup(var)
 
   var.grdf = false                               -- disable Jacobian
@@ -263,9 +246,112 @@ end
 -- Levenberg-Marquardt --------------------------------------------------------o
 
 local function ld_lmdif (env)
-  local var = env.__var
-  print("ld_lmdif")
-  for k,v in pairs(var.method) do print(k,v) end
+  local var, objective = env.__var, env.objective
+  local n, p, q, x, dx, eval, ejac, lval, ljac, jacf, backup in var
+  local jrand, jitr, jtau, bisec in objective
+
+  -- default setup
+  jrand = jrand == true and rand or jrand
+  jitr, jtau, bisec = jitr or 20, jtau or 1e-3, bisec or 3
+
+  -- check domain (and adjust x to bbox)
+  check_vars(env)
+
+  -- compute function (only)
+  eval_fun(env)
+
+  -- check stopping criteria
+  if check_stop(env) then return true end
+
+  -- LM persistent variables
+  local bak, nu, mu = {}, 2
+
+  while true do
+    -- compute jacobian
+    eval_jac(env)
+
+    -- build Ax=b
+    local J, B = matrix(p+q,n), vector(p+q)
+        if ljac == nil then ejac:copy(J) ; eval:copy(B)
+    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
+    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
+    end
+    local A, G, ir = J:tmul(J), J:tmul(B), {}
+
+    -- initialise damping term.
+    if mu == nil then mu = jtau*A:max('diag') end
+
+    -- debug info
+    if env.debug >= 2 then
+      dspmat(J, "J") ; dspmat(B, "B") ;
+      dspmat(A, "A") ; dspmat(G, "G") ;
+    end
+
+    -- reject constraints with insufficient row norm in Jacobian (jtol)
+    reject_cons(env, A, G, ir)
+
+    -- backup current status
+    backup(var, bak)
+
+  ::damping_loop::
+
+    local ic, rx, rdx, rk, sv = {}, x:copy()
+
+    -- solve and reduce damped system
+    for i=1,jitr do
+      -- A = A + mu*I
+      local A = A:mapij \x,i,j -> i==j and x+mu or x
+
+      -- one Gauss-Newton step using SVD to find min_x ||b - Ax||
+      rdx, rk, sv = A:ssolve(G, objective.rcond)
+
+      -- debug info
+      if env.debug >= 1 then
+        io.write("nlopt: Gauss-Newton step using SVD, \z
+                  rank=", rk, ", rcond=", objective.rcond or 'eps', '\n')
+        if env.debug >= 2 then
+          dspmat(A, "A") ; dspmat(G, "G") ; dspmat(sv, "JACOBIAN-SV")
+        end
+      end
+
+      -- reject variables with wrong slope
+      if not jacf or reject_vars(env, A, rx, rdx, ic) == 0 then break end
+    end
+
+    -- update variables, rejected variables don't move
+    rdx:copy(dx):insvec(ic,0) ; x:sub(dx,x)
+
+    -- adjust domain (i.e. scale or cut dx to fit bbox)
+    adjust_vars(env)
+
+    -- compute function (only)
+    eval_fun(env)
+
+    -- check stopping criteria
+    if check_stop(env) then return true end
+
+    -- try bisection if fval increases
+    if var.fstp > 0 and bisec >= 1 and bisection(env,bisec) then return true end
+
+    -- check step improvement (update damping term)
+    local dF, dL = 0, dx:dot(mu*dx+G)
+    if eval then dF = dF + bak.eval:sumsqr() - var.eval:sumsqr() end
+    if lval then dF = dF + bak.lval:sumsqr() - var.lval:sumsqr() end
+    local rho = dF/dL
+
+    -- debug info
+    if env.debug >= 2 then
+      printf("mu=% -.6e, rho=% -.6e, dF=% -.6e, dL=% -.6e\n", mu, rho, dF, dL)
+    end
+
+    if rho > 0 then   -- decrease damping term, reset nu
+      mu, nu = mu*max(1/3, 1-(2*rho-1)^3), 2
+    else              -- increase damping term, cancel step, restore backup
+      backup(bak, var)
+      mu, nu = mu*nu, 2*nu
+      goto damping_loop
+    end
+  end
 end
 
 -- Jacobian -------------------------------------------------------------------o
@@ -291,37 +377,37 @@ local function ld_jacobian (env)
     -- compute jacobian
     eval_jac(env)
 
-    -- build Ax=b
-    local A, B, rx = matrix(p+q,n), vector(p+q), x:copy()
-        if ljac == nil then ejac:copy(A) ; eval:copy(B)
-    elseif ejac == nil then ljac:copy(A) ; lval:copy(B)
-    else   ejac:concat(ljac, A) ;  eval:concat(lval, B)
+    -- build Jx=b
+    local J, B, rx = matrix(p+q,n), vector(p+q), x:copy()
+        if ljac == nil then ejac:copy(J) ; eval:copy(B)
+    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
+    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
     end
 
     -- debug info
-    if env.debug >= 2 then dspmat(A, "A") ; dspmat(B, "B") end
+    if env.debug >= 2 then dspmat(J, "J") ; dspmat(B, "B") end
 
     local ir, ic, rdx, rk, sv = {}, {}
 
     -- reject constraints with insufficient row norm in Jacobian (jtol)
-    reject_cons(env, A, B, ir)
+    reject_cons(env, J, B, ir)
 
     -- solve and reduce system
     for i=1,jitr do
-      -- one Newton-step using SVD to find min_x ||b - Ax||
-      rdx, rk, sv = A:ssolve(B, objective.rcond)
+      -- one Newton-Raphson step using SVD to find min_x ||b - Jx||
+      rdx, rk, sv = J:ssolve(B, objective.rcond)
 
       -- debug info
       if env.debug >= 1 then
-        io.write("nlopt: Jacobian-Newton step using SVD, \z
+        io.write("nlopt: Newton-Raphson step using SVD, \z
                   rank=", rk, ", rcond=", objective.rcond or 'eps', '\n')
         if env.debug >= 2 then
-          dspmat(A, "A") ; dspmat(B, "B") ; dspmat(sv, "JACOBIAN-SV")
+          dspmat(J, "J") ; dspmat(B, "B") ; dspmat(sv, "JACOBIAN-SV")
         end
       end
 
       -- reject variables with wrong slope
-      if not jacf or reject_vars(env, A, rx, rdx, ic) == 0 then break end
+      if not jacf or reject_vars(env, J, rx, rdx, ic) == 0 then break end
     end
 
     -- add some randomness to dx
